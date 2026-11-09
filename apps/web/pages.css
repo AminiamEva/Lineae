@@ -147,3 +147,8 @@ header .ribbon { grid-column: 2; position: static; width: max-content; max-width
   header { grid-template-columns: auto minmax(0, 1fr); }
   header .ribbon { justify-self: center; width: auto; }
 }
+
+header { display: flex; justify-content: center; }
+header h1 { position: absolute; inset-inline-start: clamp(1rem, 4vw, 3rem); top: .65rem; margin: 0; }
+header h1.edge-hidden { visibility: hidden; }
+header .ribbon { max-width: 100%; }

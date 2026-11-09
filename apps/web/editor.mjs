@@ -792,9 +792,21 @@ function updateStatusBar() {
 new MutationObserver(updateStatusBar).observe(editor, { childList: true, characterData: true, subtree: true });
 language.addEventListener('change', updateStatusBar);
 
+const wordmark = header.querySelector('h1');
+function updateWordmark() {
+  const paper = editor.getBoundingClientRect();
+  const brand = wordmark.getBoundingClientRect();
+  wordmark.classList.toggle('edge-hidden', paper.left < brand.right + 16);
+}
+const paperObserver = new ResizeObserver(updateWordmark);
+paperObserver.observe(editor);
+paperObserver.observe(header);
+document.querySelector('main').addEventListener('scroll', updateWordmark, { passive: true });
+
 function applyZoom() {
   editor.style.zoom = String(Number(zoom.value) / 100);
   percent.textContent = zoom.value + '%';
+  updateWordmark();
 }
 function wheelZoom(event) {
   event.preventDefault();
