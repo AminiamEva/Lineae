@@ -23,6 +23,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/configure-pages@v5
+      - run: node --test tests/latex.test.mjs
       - name: Package the formula editor
         run: |
           archive=$(npm pack mathlive@0.108.0 --pack-destination "$RUNNER_TEMP" --silent)
@@ -32,6 +33,7 @@ jobs:
       - name: Version browser assets
         run: |
           sed -i "s|./pages.css|./pages.css?v=${GITHUB_SHA}|; s|./editor.mjs|./editor.mjs?v=${GITHUB_SHA}|" apps/web/index.html
+          sed -i "s|\.mjs';|.mjs?v=${GITHUB_SHA}';|" apps/web/editor.mjs
       - uses: actions/upload-pages-artifact@v3
         with:
           path: apps/web

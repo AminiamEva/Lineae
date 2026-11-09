@@ -1,3 +1,8 @@
+import { parseTable, serializeTable } from './latex/tables.mjs';
+import { parseDocument, plain } from './latex/document.mjs';
+import { fontFamilies, fontSizes, parseInline } from './latex/inline.mjs';
+import { exportDocument } from './latex/packages.mjs';
+
 const file = document.querySelector('#file');
 const editor = document.querySelector('#editor');
 
@@ -165,8 +170,6 @@ A mathematical paper.
 
 \end{document}
 `;
-const documentPattern = /^(.*?^\\begin\{document\}[ \t]*\r?\n)(.*)(^\\end\{document\}[ \t]*(?:\r?\n|$).*)$/ms;
-const plain = /^[^\\{}%$&#_^~\r\n]*$/;
 const templates = {
   heading: String.raw`\section{Introduction}`,
   bullets: '\\begin{itemize}\n\\item \n\\end{itemize}',
@@ -203,53 +206,6 @@ function field(value, save, key = 'paragraph', math = false) {
   return input;
 }
 
-const fontFamilies = { Georgia: '\\rmfamily', Arial: '\\sffamily', monospace: '\\ttfamily' };
-const fontSizes = { 1: '\\scriptsize', 2: '\\small', 3: '\\normalsize', 4: '\\large', 5: '\\Large', 6: '\\LARGE', 7: '\\Huge' };
-
-function parseInline(source, depth = 0) {
-  if (depth > 40) return null;
-  const nodes = [];
-  let cursor = 0;
-  while (cursor < source.length) {
-    const rest = source.slice(cursor);
-    const text = rest.match(/^[^\\{}%$&#_^~\r\n]+/);
-    const math = rest.match(/^\$([^$\r\n]+)\$/);
-    if (text || math) {
-      nodes.push(text ? text[0] : { math: math[1] });
-      cursor += (text ?? math)[0].length;
-      continue;
-    }
-    const emphasis = rest.match(/^\\(textbf|textit|underline)\{/);
-    const color = rest.match(/^\\textcolor\[HTML\]\{([0-9a-f]{6})\}\{/i);
-    const points = rest.match(/^\{\\fontsize\{(\d{1,2})\}\{\d{1,2}\}\\selectfont /);
-    const group = rest.match(/^\{(\\[A-Za-z]+) /);
-    const family = group && Object.keys(fontFamilies).find(key => fontFamilies[key] === group[1]);
-    const size = group && Object.keys(fontSizes).find(key => fontSizes[key] === group[1]);
-    if (!emphasis && !color && !family && !size && !points) return null;
-    const start = (emphasis ?? color ?? points ?? group)[0].length;
-    let balance = 1;
-    let end = start;
-    for (; end < rest.length && balance; end++) {
-      if (rest[end] === '\\' && /[{}\\]/.test(rest[end + 1] ?? '')) {
-        end++;
-      } else if (rest[end] === '{') balance++;
-      else if (rest[end] === '}') balance--;
-    }
-    if (balance) return null;
-    const children = parseInline(rest.slice(start, end - 1), depth + 1);
-    if (!children) return null;
-    nodes.push({
-      tag: { textbf: 'strong', textit: 'em', underline: 'u' }[emphasis?.[1]],
-      points: points?.[1],
-      attribute: color ? 'color' : family ? 'face' : size ? 'size' : null,
-      value: color ? '#' + color[1] : family || size,
-      children,
-    });
-    cursor += end;
-  }
-  return nodes;
-}
-
 function paperText(value, save, key) {
   const control = document.createElement('span');
   control.className = 'paper-text';
@@ -278,9 +234,10 @@ function editorBlock(raw) {
   node.serialize = () => output === raw ? raw : raw.match(/^\s*/)[0] + output + raw.match(/\s*$/)[0];
   const body = raw.trim();
   const heading = body.match(/^\\section\{([^{}]*)\}$/);
-  const formula = body.match(/^\\\[([\s\S]*?)\\\]$/);
+  const formula = body.match(/^(\\\[)([\s\S]*?)(\\\])$/) ??
+    body.match(/^(\\begin\{equation\*?\})([\s\S]*?)(\\end\{equation\*?\})$/);
   const list = body.match(/^\\begin\{(itemize|enumerate)\}\r?\n([\s\S]*?)\r?\n\\end\{\1\}$/);
-  const table = body.match(/^\\begin\{tabular\}\{([lcr]+)\}\r?\n([\s\S]*?)\r?\n\\end\{tabular\}$/);
+  const table = parseTable(body);
   const lineBreak = raw.includes('\r\n') ? '\r\n' : documentParts.eol;
 
   if (heading && plain.test(heading[1])) {
@@ -290,7 +247,7 @@ function editorBlock(raw) {
     node.append(title);
   } else if (formula) {
     node.className = 'display-equation';
-    node.append(field(formula[1], value => { output = '\\[' + value + '\\]'; }, 'display', true));
+    node.append(field(formula[2].trim(), value => { output = formula[1] + value + formula[3]; }, 'display', true));
   } else if (list && list[2].split(/\r?\n/).every(line => /^\\item(?: |$)/.test(line) && plain.test(line.slice(6)))) {
     const items = list[2].split(/\r?\n/).map(line => line.slice(6));
     const view = document.createElement(list[1] === 'itemize' ? 'ul' : 'ol');
@@ -325,16 +282,13 @@ function editorBlock(raw) {
     };
     items.forEach((_, index) => add(index));
     node.append(view);
-  } else if (table && tableRows(table).every(row => row.length === table[1].length && row.every(value => plain.test(value.trim())))) {
-    const rows = tableRows(table);
-    let columns = table[1];
+  } else if (table) {
+    const { rows } = table;
     const view = document.createElement('table');
-    const save = () => {
-      output = ['\\begin{tabular}{' + columns + '}', ...rows.map(row => row.join(' & ') + ' \\\\'), '\\end{tabular}'].join(lineBreak);
-    };
+    const save = () => { output = serializeTable(table, lineBreak); };
     const addCell = (tr, row, index) => {
       const cell = tr.insertCell();
-      const control = paperText(row[index].trim(), value => { row[index] = value; save(); }, 'table');
+      const control = paperText(row[index].trim(), value => { row[index] = value ? ' ' + value + ' ' : ''; save(); }, 'table');
       control.addEventListener('keydown', event => {
         if (event.key !== 'Tab' || event.isComposing) return;
         const cells = Array.from(view.querySelectorAll('.paper-text'));
@@ -350,22 +304,27 @@ function editorBlock(raw) {
       });
       cell.append(control);
     };
-    const addRow = row => {
+    const addRow = ({ cells, rules }) => {
       const tr = view.insertRow();
-      row.forEach((_, index) => addCell(tr, row, index));
+      if (rules.length) tr.dataset.rule = rules.at(-1).slice(1);
+      cells.forEach((_, index) => {
+        addCell(tr, cells, index);
+        tr.cells[index].style.textAlign = { l: 'left', c: 'center', r: 'right' }[table.columns[index]];
+      });
     };
     rows.forEach(addRow);
+    if (table.trailing.length) view.dataset.rule = table.trailing.at(-1).slice(1);
     node.append(view);
     node.addTableRow = () => {
-      const row = Array(columns.length).fill('');
+      const row = { cells: Array(table.columns.length).fill(''), rules: [] };
       rows.push(row);
       addRow(row);
       save();
       view.rows[view.rows.length - 1].querySelector('.paper-text')?.focus();
     };
     node.addTableColumn = () => {
-      columns += 'l';
-      rows.forEach((row, index) => {
+      table.columns += 'l';
+      rows.forEach(({ cells: row }, index) => {
         row.push('');
         addCell(view.rows[index], row, row.length - 1);
       });
@@ -383,7 +342,7 @@ function editorBlock(raw) {
       const save = () => {
         const serialize = (element, bold = false) => {
           if (element.nodeType === Node.TEXT_NODE) return element.textContent;
-          if (element.dataset?.inlineMath !== undefined) return '$' + element.firstChild.value + '$';
+          if (element.dataset?.inlineMath !== undefined) return element.dataset.open + element.firstChild.value + element.dataset.close;
           const strong = element.matches?.('b, strong');
           const text = Array.from(element.childNodes, child => serialize(child, bold || strong)).join('');
           let result = strong && !bold && text ? '\\textbf{' + text + '}' : text;
@@ -409,9 +368,10 @@ function editorBlock(raw) {
         line.setAttribute('aria-invalid', String(!plain.test(text.textContent)));
         download.disabled = Boolean(editor.querySelector('[aria-invalid="true"]'));
       };
-      const inlineMath = value => {
+      const inlineMath = (value, delimiters = ['$', '$']) => {
         const wrapper = document.createElement('span');
         wrapper.dataset.inlineMath = '';
+        [wrapper.dataset.open, wrapper.dataset.close] = delimiters;
         wrapper.contentEditable = 'false';
         const control = field(value, () => wrapper.closest('.document-line')?.syncSource(), 'inline', true);
         wrapper.append(control);
@@ -419,7 +379,7 @@ function editorBlock(raw) {
       };
       const render = part => {
         if (typeof part === 'string') return document.createTextNode(part);
-        if (part.math !== undefined) return inlineMath(part.math);
+        if (part.math !== undefined) return inlineMath(part.math, part.delimiters);
         const element = document.createElement(part.tag ?? (part.points ? 'span' : 'font'));
         if (part.points) {
           element.dataset.points = part.points;
@@ -502,33 +462,11 @@ function editorBlock(raw) {
   return node;
 }
 
-function tableRows(match) {
-  return match[2].split(/\r?\n/).map(line => line.replace(/[ \t]*\\\\[ \t]*$/, '').split('&'));
-}
-
 function openDocument(source) {
-  const match = source.match(documentPattern);
-  if (!match) return false;
-  const [, start, body, end] = match;
-
-  const blocks = [];
-  const environments = [];
-  let cursor = 0;
-  const tokens = /%[^\r\n]*|\\(?:begin|end)\{[^{}\r\n]+\}|\\[\[\]]|\\[\\%]|(?:\r?\n)[ \t]*(?:\r?\n)(?:[ \t]*\r?\n)*/g;
-  for (const token of body.matchAll(tokens)) {
-    const value = token[0];
-    if (value.startsWith('\\begin{') || value === '\\[') environments.push(value);
-    else if (value.startsWith('\\end{') || value === '\\]') {
-      const expected = value === '\\]' ? '\\[' : value.replace('\\end', '\\begin');
-      if (environments.pop() !== expected) return false;
-    } else if (/^[\r\n]/.test(value) && !environments.length) {
-      blocks.push(body.slice(cursor, token.index), value);
-      cursor = token.index + value.length;
-    }
-  }
-  if (environments.length) return false;
-  blocks.push(body.slice(cursor));
-  documentParts = { start, end, eol: start.includes('\r\n') ? '\r\n' : '\n' };
+  const parsed = parseDocument(source);
+  if (!parsed) return false;
+  documentParts = parsed;
+  const { blocks } = parsed;
   editor.replaceChildren(...blocks.filter(Boolean).map((block, index) => {
     if (block.trim()) return editorBlock(block);
     const spacer = document.createElement('span');
@@ -1031,16 +969,8 @@ file.addEventListener('change', async () => {
 
 download.addEventListener('click', () => {
   const body = Array.from(editor.children, node => node.serialize()).join('');
-  const { start, end, eol } = documentParts;
-  const separator = body && !body.endsWith('\n') ? eol : '';
-  let preamble = body.includes('\\textcolor[HTML]') && !/\\(?:usepackage|RequirePackage)(?:\[[^\]]*\])?\{[^}]*\bxcolor\b[^}]*\}/.test(start)
-    ? start.replace(/^\\begin\{document\}/m, '\\usepackage{xcolor}' + eol + '\\begin{document}')
-    : start;
-  if (/\\fontsize\{\d+\}\{\d+\}\\selectfont/.test(body) &&
-      !/\\(?:usepackage|RequirePackage)(?:\[[^\]]*\])?\{[^}]*\b(?:fix-cm|fontspec|lmodern)\b[^}]*\}/.test(preamble)) {
-    preamble = preamble.replace(/^([ \t]*\\documentclass)/m, '\\RequirePackage{fix-cm}' + eol + '$1');
-  }
-  const url = URL.createObjectURL(new Blob([preamble, body, separator, end], { type: 'text/plain;charset=utf-8' }));
+  const source = exportDocument(documentParts, body);
+  const url = URL.createObjectURL(new Blob([source], { type: 'text/plain;charset=utf-8' }));
   const link = document.createElement('a');
   link.href = url;
   link.download = filename;

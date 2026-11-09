@@ -170,3 +170,7 @@ main { padding-top: 7rem; }
 .math-hint { inset-block-end: 2.4rem; }
 
 header h1 { transition: opacity .18s ease-out; }
+
+#editor tr[data-rule] td { border-top-color: currentColor; }
+#editor tr[data-rule="toprule"] td, #editor table[data-rule="bottomrule"] tr:last-child td { border-block-width: 2px 1px; }
+#editor table[data-rule="bottomrule"] tr:last-child td { border-bottom: 2px solid currentColor; }
