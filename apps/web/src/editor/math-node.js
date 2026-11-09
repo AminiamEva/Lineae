@@ -27,6 +27,13 @@ export const MathNode = Node.create({
           if(event.key.toLowerCase()==='z')editor.commands.undo();else editor.commands.redo();
           return;
         }
+        if(event.key==='$' && (field.value || node.attrs.display)) {
+          event.preventDefault();event.stopPropagation();
+          const position=getPos();
+          editor.commands.focus();
+          editor.commands.setTextSelection(position+1);
+          return;
+        }
         if(event.key==='$' && !field.value && !node.attrs.display) {
           event.preventDefault();
           const pos=getPos();

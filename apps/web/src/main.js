@@ -63,7 +63,21 @@ const Shortcuts = Extension.create({
     },
   }})],
   addKeyboardShortcuts() {
+    const enterFormula = forward => {
+      const { selection }=this.editor.state;
+      if(!selection.empty)return false;
+      const node=forward?selection.$from.nodeAfter:selection.$from.nodeBefore;
+      if(node?.type.name!=='math')return false;
+      const position=selection.from-(forward?0:node.nodeSize);
+      const field=this.editor.view.nodeDOM(position)?.querySelector('math-field');
+      if(!field)return false;
+      field.focus();
+      field.executeCommand(forward?'moveToMathfieldStart':'moveToMathfieldEnd');
+      return true;
+    };
     return {
+      ArrowRight:()=>enterFormula(true),
+      ArrowLeft:()=>enterFormula(false),
       Tab:()=>{
         if(this.editor.isActive('table'))return false;
         if(this.editor.isActive('listItem'))return this.editor.commands.sinkListItem('listItem');
