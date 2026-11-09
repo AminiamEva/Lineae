@@ -36,6 +36,17 @@ export function contextCommands(context) {
   const { editor, field } = context;
   const selectionEmpty = field ? field.selection.ranges.every(([from, to]) => from === to) : editor.state.selection.empty;
   return [
+    ...[['addRowAfter','在下方插入矩阵行','Insert matrix row'], ['addColumnAfter','在右侧插入矩阵列','Insert matrix column'],
+      ['removeRow','删除矩阵行','Delete matrix row'], ['removeColumn','删除矩阵列','Delete matrix column']].map(([id,zh,en]) => ({
+        id, labels:[zh,en], visible:Boolean(field?.value.match(/\\begin\{(?:[pbBvV]?matrix|array|cases)/)),
+        run:()=>{field.focus();field.executeCommand(id);},
+      })),
+    { id:'display-style', labels:['切换公式显示样式','Toggle display style'], visible:Boolean(field), run:()=>{
+      field.focus();
+      const latex=field.value;
+      field.value=latex.startsWith('\\displaystyle')?latex.replace(/^\\displaystyle\s*/, ''):'\\displaystyle '+latex;
+      field.dispatchEvent(new Event('input',{bubbles:true}));
+    }},
     { id: 'undo', labels: ['撤销', 'Undo'], enabled: editor.can().undo(), run: () => editor.chain().focus().undo().run() },
     { id: 'redo', labels: ['重做', 'Redo'], enabled: editor.can().redo(), run: () => editor.chain().focus().redo().run() },
     { id: 'cut', labels: ['剪切', 'Cut'], enabled: !selectionEmpty, run: () => copySelection(context, true) },

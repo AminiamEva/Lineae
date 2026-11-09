@@ -68,6 +68,7 @@ export const MathNode = Node.create({
       dom.dataset.mathView = '';
       dom.getMathPosition = getPos;
       dom.contentEditable = 'false';
+      dom.draggable = true;
 
       const handle = document.createElement('span');
       handle.className = 'math-drag-handle';
@@ -79,8 +80,20 @@ export const MathNode = Node.create({
       handle.addEventListener('mousedown', () => editor.commands.setNodeSelection(getPos()));
 
       const field = document.createElement('math-field');
+      field.setAttribute('default-mode', node.isBlock ? 'math' : 'inline-math');
       field.textContent = node.attrs.latex;
       dom.append(handle, field);
+
+      // Two consecutive ambiguous keys replace the structural action with a literal.
+      // Preserve the selection as well as the source, including inside nested matrices.
+      let pendingKey = null;
+      const ambiguous = {
+        '_': ['moveToSubscript', '\\_'],
+        '^': ['moveToSuperscript', '\\textasciicircum{}'],
+        '/': [['insert', '\\frac{#@}{#?}'], '/'],
+      };
+      field.addEventListener('pointerdown', () => { pendingKey = null; });
+      field.addEventListener('blur', () => { pendingKey = null; });
 
       field.addEventListener('input', () => {
         const position = getPos();
@@ -89,6 +102,23 @@ export const MathNode = Node.create({
         }
       });
       field.addEventListener('keydown', event => {
+        if (!event.ctrlKey && !event.metaKey && !event.altKey && ambiguous[event.key]) {
+          event.preventDefault(); event.stopPropagation();
+          if (event.repeat) return;
+          const [command, literal] = ambiguous[event.key];
+          if (pendingKey?.key === event.key) {
+            const previous = pendingKey;
+            pendingKey = null;
+            field.value = previous.value;
+            field.selection = previous.selection;
+            field.executeCommand(['insert', literal]);
+          } else {
+            pendingKey = { key: event.key, value: field.value, selection: structuredClone(field.selection) };
+            field.executeCommand(command);
+          }
+          return;
+        }
+        if (!['Shift', 'Control', 'Alt', 'Meta'].includes(event.key)) pendingKey = null;
         if (event.key === '\\' && !event.ctrlKey && !event.altKey && !event.metaKey) {
           event.preventDefault();
           event.stopPropagation();
@@ -124,6 +154,11 @@ export const MathNode = Node.create({
       field.addEventListener('mount', () => {
         field.mathVirtualKeyboardPolicy = 'manual';
         field.popoverPolicy = 'off';
+        field.inlineShortcuts = {};
+        field.smartMode = false;
+        field.smartFence = false;
+        field.smartSuperscript = false;
+        field.environmentPopoverPolicy = 'off';
         field.keybindings = [...configuredKeys, ...field.keybindings];
       });
       return {
@@ -134,7 +169,7 @@ export const MathNode = Node.create({
           if (field.value !== node.attrs.latex) field.value = node.attrs.latex;
           return true;
         },
-        stopEvent: event => event.target !== handle,
+        stopEvent: event => !['dragstart','dragend','dragover','dragenter','dragleave','drop'].includes(event.type) && event.target !== handle,
         ignoreMutation: () => true,
       };
     };

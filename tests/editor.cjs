@@ -142,6 +142,50 @@ const server=createServer(async(req,res)=>{
     await paper.evaluate(element=>element.dispatchEvent(new WheelEvent('wheel',{deltaY:-80,ctrlKey:true,bubbles:true,cancelable:true})));
     const afterZoom=Number(await page.locator('input[type=range]').inputValue());
     assert.ok(afterZoom-beforeZoom>=8 && afterZoom-beforeZoom<=12);
+    await page.keyboard.press('Control+0');
+    assert.equal(await page.locator('input[type=range]').inputValue(),'100');
+    await page.keyboard.press('Control+-');
+    assert.equal(await page.locator('input[type=range]').inputValue(),'90');
+    await page.keyboard.press('Control+=');
+    assert.equal(await page.locator('input[type=range]').inputValue(),'100');
+
+    await importSource('Start $x$ end\n\nDestination');
+    const formula=page.locator('math-field');
+    await formula.evaluate(field=>{field.focus();field.executeCommand('moveToMathfieldEnd');});
+    await page.keyboard.type('sin');
+    assert.equal(await formula.evaluate(field=>field.value),'xsin');
+    await page.keyboard.type('__');
+    assert.match(await formula.evaluate(field=>field.value),/\\_/);
+    await page.keyboard.type('a_2');
+    assert.match(await formula.evaluate(field=>field.value),/a_\{?2/);
+    await formula.evaluate(field=>field.executeCommand('moveToMathfieldEnd'));
+    await page.keyboard.type('\\');
+    await completion.locator('input').fill('in');
+    await page.keyboard.press('Enter');
+    assert.match(await formula.evaluate(field=>field.value),/\\in(?!fty|t)/);
+    await formula.click({button:'right'});
+    await context.locator('[data-command="display-style"]').click();
+    assert.match(await formula.evaluate(field=>field.value),/^\\displaystyle/);
+    assert.match(await page.locator('.environment-tag').textContent(),/Inline math/);
+
+    await formula.evaluate(field=>{field.value='';field.dispatchEvent(new Event('input',{bubbles:true}));field.focus();});
+    await page.keyboard.type('\\');await completion.locator('input').fill('matrix');await page.keyboard.press('Enter');
+    assert.ok(!(await formula.evaluate(field=>field.value)).includes('&'));
+    await page.locator('[data-group=insert]').click();
+    await page.getByRole('button',{name:'＋ Row',exact:true}).click();
+    assert.match(await formula.evaluate(field=>field.value),/\\\\/);
+    await page.getByRole('button',{name:'＋ Column',exact:true}).click();
+    assert.match(await formula.evaluate(field=>field.value),/&/);
+
+    await importSource('First $x$ end\n\nDestination');
+    await page.locator('.math-drag-handle').hover();
+    await page.locator('.math-drag-handle').dragTo(paper.locator(':scope > p').last(),{targetPosition:{x:40,y:10}});
+    assert.equal(await formula.count(),1,'Drag moves rather than duplicates formula');
+    assert.equal(await paper.locator(':scope > p').last().locator('math-field').count(),1,'Formula lands in target paragraph');
+    await page.locator('[data-group=home]').click();
+    await paper.locator(':scope > p').first().click();
+    await page.locator('select[aria-label="fontSize"]').selectOption('18pt');
+    assert.equal(await page.locator('select[aria-label="fontSize"]').inputValue(),'18pt');
     assert.deepEqual(errors,[]);
     console.log('Browser regressions passed');
   }finally{

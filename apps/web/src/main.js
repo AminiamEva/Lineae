@@ -1,4 +1,5 @@
 import { installContextMenu } from './editor/context-menu.js';
+import { installFormatControls } from './editor/format-controls.js';
 import { PaperBehavior } from './editor/paper-behavior.js';
 import { MathNode, MathBlock, configureMathKeys, insertFormula } from './editor/math-node.js';
 import { serialize, importBlock } from './editor/latex-codec.js';
@@ -110,18 +111,7 @@ editor.on('transaction',()=>{
     button.setAttribute('aria-pressed',String(editor.isActive(mark)));
   }
 });
-for(const [attribute,values] of Object.entries({
-  color:['#000000','#595959','#c00000','#ff0000','#ed7d31','#ffc000','#00b050','#008080','#0070c0','#7030a0'],
-  fontFamily:['Georgia','Arial','monospace'],
-  fontSize:[8,9,10,11,12,14,16,18,20,24,28,32,36,48,60,72].map(size=>size+'pt'),
-})) {
-  const menu=document.createElement('select');
-  menu.setAttribute('aria-label',attribute);
-  menu.append(new Option({color:'颜色 / Color',fontFamily:'字体 / Font',fontSize:'字号 / Size'}[attribute],''));
-  values.forEach(value=>menu.append(new Option(value,value)));
-  menu.addEventListener('change',()=>{if(menu.value)editor.chain().focus().setMark('textStyle',{[attribute]:menu.value}).run();menu.value='';});
-  tools.append(menu);
-}
+installFormatControls(editor, tools);
 const headingMenu = document.createElement('select');
 headingMenu.setAttribute('aria-label', '段落样式 / Paragraph style');
 for (const [value, label] of [['0', '正文 / Text'], ['1', 'section'], ['2', 'subsection'], ['3', 'subsubsection']]) {
@@ -132,13 +122,14 @@ headingMenu.addEventListener('change', () => {
   if (level) editor.chain().focus().setHeading({ level }).run();
   else editor.chain().focus().setParagraph().run();
 });
-editor.on('selectionUpdate', () => { headingMenu.value = String(editor.getAttributes('heading').level ?? 0); });
+editor.on('transaction', () => { headingMenu.value = String(editor.getAttributes('heading').level ?? 0); });
 tools.append(headingMenu);
 button('itemize',()=>editor.chain().focus().toggleBulletList().run());
 button('enumerate',()=>editor.chain().focus().toggleOrderedList().run());
 button('▦',()=>editor.chain().focus().insertTable({rows:2,cols:2,withHeaderRow:false}).run());
-button('＋ Row',()=>editor.chain().focus().addRowAfter().run());
-button('＋ Column',()=>editor.chain().focus().addColumnAfter().run());
+function activeMath() { return document.activeElement?.tagName === 'MATH-FIELD' ? document.activeElement : null; }
+button('＋ Row',()=>{const field=activeMath(); if(field)field.executeCommand('addRowAfter');else editor.chain().focus().addRowAfter().run();});
+button('＋ Column',()=>{const field=activeMath(); if(field)field.executeCommand('addColumnAfter');else editor.chain().focus().addColumnAfter().run();});
 button('$',()=>insertMath());
 button('$$',()=>insertMath(true));
 const sourceView=document.createElement('textarea');
@@ -199,11 +190,16 @@ commands.append(filter, candidates);
 document.body.append(commands);
 
 const formulaCommands = {
-  frac: '\\frac{#?}{#?}', sqrt: '\\sqrt{#?}', sum: '\\sum_{#?}^{#?}',
-  int: '\\int_{#?}^{#?}', lim: '\\lim_{#?}', matrix: '\\begin{pmatrix}#?&#?\\\\#?&#?\\end{pmatrix}',
+  frac: '\\frac{#?}{#?}', sqrt: '\\sqrt{#?}', sum: '\\sum',
+  int: '\\int', lim: '\\lim', matrix: '\\begin{pmatrix}#?\\end{pmatrix}',
   alpha: '\\alpha', beta: '\\beta', gamma: '\\gamma', delta: '\\delta', theta: '\\theta',
   lambda: '\\lambda', mu: '\\mu', pi: '\\pi', sigma: '\\sigma', omega: '\\omega',
   infty: '\\infty', leq: '\\leq', geq: '\\geq', neq: '\\neq', times: '\\times',
+  in: '\\in', notin: '\\notin', subset: '\\subset', subseteq: '\\subseteq',
+  cup: '\\cup', cap: '\\cap', forall: '\\forall', exists: '\\exists',
+  to: '\\to', rightarrow: '\\rightarrow', leftarrow: '\\leftarrow',
+  sin: '\\sin', cos: '\\cos', tan: '\\tan', log: '\\log', ln: '\\ln',
+  displaystyle: '\\displaystyle', textstyle: '\\textstyle',
 };
 const structureCommands = {
   section: () => editor.chain().focus().setHeading({ level: 1 }).run(),
@@ -274,7 +270,7 @@ function renderCommands() {
     [name, () => insertFormulaCommand(latex)]));
   if (!completionField) Object.assign(actions, structureCommands);
   const query = filter.value.replace(/^\\/, '').toLowerCase();
-  for (const [name, action] of Object.entries(actions).filter(([name]) => name.startsWith(query))) {
+  for (const [name, action] of Object.entries(actions).filter(([name]) => name.startsWith(query)).sort(([a],[b]) => Number(b===query)-Number(a===query))) {
     const control = document.createElement('button');
     control.type = 'button';
     control.id = 'complete-' + name;
@@ -326,6 +322,12 @@ function scale() {
 window.addEventListener('resize',scale);
 zoom.addEventListener('input',scale);
 let wheelZoom = Number(zoom.value);
+document.addEventListener('keydown', event => {
+  if (!(event.ctrlKey || event.metaKey) || activeMath() || !['+','=','-','0'].includes(event.key)) return;
+  event.preventDefault();
+  wheelZoom = event.key === '0' ? 100 : Math.max(50, Math.min(300, Number(zoom.value) + (event.key === '-' ? -10 : 10)));
+  zoom.value = String(wheelZoom); scale();
+}, true);
 zoom.addEventListener('input', () => { wheelZoom = Number(zoom.value); });
 document.querySelector('main').addEventListener('wheel', event => {
   if (!event.ctrlKey) return;
@@ -335,7 +337,18 @@ document.querySelector('main').addEventListener('wheel', event => {
   zoom.value = String(Math.round(wheelZoom));
   scale();
 }, { passive: false });
-footer.append(count,zoom,percent);document.body.append(footer);scale();
+const environment = document.createElement('span'); environment.className='environment-tag';
+function updateEnvironment() {
+  const field=activeMath();
+  const name=field ? (field.value.includes('matrix}')?'matrix':field.closest('.math-display')?'display math':'inline math') :
+    !sourceView.hidden?'LaTeX': ['table','listItem','heading'].find(type=>editor.isActive(type)) ?? 'text';
+  const labels={matrix:'矩阵 / Matrix','display math':'行间公式 / Display math','inline math':'行内公式 / Inline math',table:'表格 / Table',listItem:'列表 / List',heading:'标题 / Heading',text:'正文 / Text',LaTeX:'源码 / Source'};
+  environment.textContent=labels[name]; environment.dataset.environment=name;
+}
+footer.append(count,environment,zoom,percent);document.body.append(footer);scale();
+editor.on('transaction',updateEnvironment);
+document.addEventListener('focusin',updateEnvironment);paper.addEventListener('input',updateEnvironment);
+updateEnvironment();
 editor.on('update',()=>{count.textContent=editor.getText().length+' 字符 / characters';});
 const header=document.querySelector('header');
 const ribbon=document.createElement('div');ribbon.className='ribbon';
@@ -344,7 +357,7 @@ const home=document.createElement('div');home.className='tools';
 const insert=document.createElement('div');insert.className='tools';
 const files=header.querySelector('.tools');
 for(const control of [...tools.children]) {
-  (control.tagName==='SELECT' || ['↶','↷','B','I','U','H'].includes(control.textContent)?home:insert).append(control);
+  (control.hasAttribute('data-home') || control.tagName==='SELECT' || ['↶','↷','B','I','U','H'].includes(control.textContent)?home:insert).append(control);
 }
 const groups={files,home,insert};
 const captions={files:['文件','File'],home:['主页','Home'],insert:['插入','Insert']};
