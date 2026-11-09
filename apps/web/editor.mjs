@@ -99,7 +99,6 @@ const documentPattern = /^(.*?^\\begin\{document\}[ \t]*\r?\n)(.*)(^\\end\{docum
 const plain = /^[^\\{}%$&#_^~\r\n]*$/;
 const templates = {
   heading: String.raw`\section{Introduction}`,
-  paragraph: 'New paragraph',
   bullets: '\\begin{itemize}\n\\item First item\n\\end{itemize}',
   ordered: '\\begin{enumerate}\n\\item First item\n\\end{enumerate}',
   table: '\\begin{tabular}{ll}\nA & B \\\\\n1 & 2 \\\\\n\\end{tabular}',
@@ -134,6 +133,7 @@ function field(value, save, key = 'paragraph', math = false) {
 function editorBlock(raw) {
   const node = document.createElement('section');
   let output = raw;
+  node.contentEditable = 'false';
   node.serialize = () => output === raw ? raw : raw.match(/^\s*/)[0] + output + raw.match(/\s*$/)[0];
   const body = raw.trim();
   const heading = body.match(/^\\section\{([^{}]*)\}$/);
@@ -190,7 +190,7 @@ function editorBlock(raw) {
     if (parts.every((value, index) => index % 2 ? value.startsWith('$') || plain.test(value.slice(8, -1)) : plain.test(value))) {
       const line = document.createElement('p');
       line.className = 'document-line';
-      line.contentEditable = 'true';
+      node.removeAttribute('contenteditable');
       line.setAttribute('aria-label', copy[language.value].paragraph);
       line.dataset.field = 'paragraph';
       line.dataset.documentLine = '';
@@ -212,7 +212,7 @@ function editorBlock(raw) {
         const wrapper = document.createElement('span');
         wrapper.dataset.inlineMath = '';
         wrapper.contentEditable = 'false';
-        const control = field(value, save, 'inline', true);
+        const control = field(value, () => wrapper.closest('.document-line')?.syncSource(), 'inline', true);
         wrapper.append(control);
         return wrapper;
       };
@@ -227,18 +227,41 @@ function editorBlock(raw) {
           line.append(value);
         }
       });
+      line.syncSource = save;
       line.addEventListener('input', event => {
         if (!event.target.closest('[data-inline-math]')) save();
       });
-      line.addEventListener('beforeinput', event => {
+      line.handleParagraphInput = event => {
+        if (event.inputType === 'insertParagraph' && !event.target.closest('[data-inline-math]')) {
+          const selection = window.getSelection();
+          if (!selection.rangeCount || !line.contains(selection.anchorNode) || !line.contains(selection.focusNode)) return;
+          event.preventDefault();
+          const range = selection.getRangeAt(0);
+          range.deleteContents();
+          const tail = range.cloneRange();
+          tail.setEnd(line, line.childNodes.length);
+          const fragment = tail.extractContents();
+          const next = editorBlock('');
+          const nextLine = next.querySelector('.document-line');
+          nextLine.replaceChildren(fragment);
+          const spacer = document.createElement('span');
+          spacer.hidden = true;
+          spacer.contentEditable = 'false';
+          spacer.serialize = () => documentParts.eol.repeat(2);
+          node.after(spacer, next);
+          save();
+          nextLine.dispatchEvent(new Event('input'));
+          selection.collapse(nextLine, 0);
+          return;
+        }
         if (event.target.closest('[data-inline-math]')) return;
         if (['insertParagraph', 'insertLineBreak', 'insertFromDrop'].includes(event.inputType)) event.preventDefault();
-      });
-      line.addEventListener('paste', event => {
+      };
+      line.handlePaste = event => {
         if (event.target.closest('[data-inline-math]')) return;
         event.preventDefault();
         document.execCommand('insertText', false, event.clipboardData.getData('text/plain').replace(/\r?\n/g, ' '));
-      });
+      };
       line.insertInlineMath = range => {
         if (!range.collapsed) return;
         const math = inlineMath('x^2');
@@ -247,6 +270,7 @@ function editorBlock(raw) {
         math.firstChild.focus();
       };
       node.append(line);
+      return node;
     } else {
       const details = document.createElement('details');
       const summary = document.createElement('summary');
@@ -297,18 +321,50 @@ function openDocument(source) {
     if (block.trim()) return editorBlock(block);
     const spacer = document.createElement('span');
     spacer.hidden = true;
+    spacer.contentEditable = 'false';
     spacer.serialize = () => block;
     return spacer;
   }));
+  if (!editor.querySelector('.document-line')) editor.append(editorBlock(''));
   download.disabled = false;
   return true;
 }
+
+editor.contentEditable = 'true';
+editor.setAttribute('role', 'textbox');
+editor.setAttribute('aria-multiline', 'true');
+editor.setAttribute('aria-label', '文档 / Document');
+
+function selectedLine() {
+  const anchor = window.getSelection()?.anchorNode;
+  return (anchor?.nodeType === Node.ELEMENT_NODE ? anchor : anchor?.parentElement)?.closest('.document-line');
+}
+
+editor.addEventListener('beforeinput', event => {
+  if (event.target !== editor) return;
+  const line = selectedLine();
+  if (!line || !line.contains(window.getSelection().focusNode)) {
+    event.preventDefault();
+    return;
+  }
+  line.handleParagraphInput(event);
+});
+editor.addEventListener('input', event => {
+  if (event.target === editor) selectedLine()?.syncSource();
+});
+editor.addEventListener('paste', event => {
+  if (event.target !== editor) return;
+  const line = selectedLine();
+  if (line?.contains(window.getSelection().focusNode)) line.handlePaste(event);
+  else event.preventDefault();
+});
 
 const insert = document.querySelector('#insert');
 for (const [key, template] of Object.entries(templates)) {
   insert.append(button(key, () => {
     const spacer = document.createElement('span');
     spacer.hidden = true;
+    spacer.contentEditable = 'false';
     spacer.serialize = () => documentParts.eol.repeat(2);
     editor.append(spacer, editorBlock(template));
   }));
