@@ -428,7 +428,7 @@ const formulaCommands = {
   cup: '\\cup', cap: '\\cap', forall: '\\forall', exists: '\\exists',
   to: '\\to', rightarrow: '\\rightarrow', leftarrow: '\\leftarrow',
   sin: '\\sin', cos: '\\cos', tan: '\\tan', log: '\\log', ln: '\\ln',
-  displaystyle: '\\displaystyle', textstyle: '\\textstyle',
+  displaystyle: '\\displaystyle', textstyle: '\\textstyle', space: '\\space',
 };
 for (const name of mathSymbols) {
   if (/^[A-Za-z]+$/.test(name) && !(name in formulaCommands)) formulaCommands[name] = '\\' + name;
@@ -536,7 +536,7 @@ function renderCommands() {
     [name, () => insertFormulaCommand(latex)]));
   if (!completionField) Object.assign(actions, structureCommands);
   const query = filter.value.replace(/^\\/, '').toLowerCase();
-  for (const [name, action] of Object.entries(actions).filter(([name]) => name.startsWith(query)).sort(([a],[b]) => Number(b===query)-Number(a===query))) {
+  for (const [name, action] of Object.entries(actions).filter(([name]) => name.toLowerCase().startsWith(query)).sort(([a],[b]) => Number(b.toLowerCase()===query)-Number(a.toLowerCase()===query))) {
     const control = document.createElement('button');
     control.type = 'button';
     control.id = 'complete-' + name;
