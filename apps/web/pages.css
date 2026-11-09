@@ -174,3 +174,14 @@ header h1 { transition: opacity .18s ease-out; }
 #editor tr[data-rule] td { border-top-color: currentColor; }
 #editor tr[data-rule="toprule"] td, #editor table[data-rule="bottomrule"] tr:last-child td { border-block-width: 2px 1px; }
 #editor table[data-rule="bottomrule"] tr:last-child td { border-bottom: 2px solid currentColor; }
+
+.ProseMirror { min-height: 240mm; outline: none; white-space: pre-wrap; }
+.ProseMirror p { margin: 0 0 .7em; }
+.ProseMirror table { border-collapse: collapse; table-layout: fixed; width: 100%; }
+.ProseMirror td,.ProseMirror th { border: 1px solid #aaa; padding: .4em; min-width: 2em; vertical-align: top; position: relative; }
+.ProseMirror .selectedCell { background: #548bdf33; }
+.ProseMirror .math-display { display: block; text-align: center; }
+.ProseMirror pre[data-raw] { white-space: pre-wrap; background: light-dark(#f4f4f6,#333); font: 12px monospace; }
+.ProseMirror math-field { min-width: 1em; border: 0; }
+.source-view { width: min(90vw, 65rem); min-height: 80vh; margin: auto; font: 14px/1.6 monospace; }
+header #insert { pointer-events: auto; padding: .4rem; box-shadow: 0 3px 20px #0002; }

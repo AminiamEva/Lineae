@@ -23,6 +23,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/configure-pages@v5
+      - run: npm install --no-audit --no-fund
+      - run: npm run build
       - run: node --test tests/latex.test.mjs
       - name: Package the formula editor
         run: |
