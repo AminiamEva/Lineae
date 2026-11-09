@@ -140,8 +140,71 @@ function activeMath() {
   if(document.activeElement?.tagName==='MATH-FIELD') return document.activeElement;
   return editingMath?.isConnected ? editingMath : null;
 }
-button('＋ Row',()=>{const field=activeMath(); if(field)field.executeCommand('addRowAfter');else editor.chain().focus().addRowAfter().run();});
-button('＋ Column',()=>{const field=activeMath(); if(field)field.executeCommand('addColumnAfter');else editor.chain().focus().addColumnAfter().run();});
+function matrixCells(value) {
+  const match=value.match(/\\begin\{(pmatrix|bmatrix|Bmatrix|vmatrix|Vmatrix|matrix|array)\}/);
+  if(!match)return null;
+  const name=match[1], open=match[0], close='\\end{'+name+'}';
+  const start=match.index+open.length, end=value.lastIndexOf(close);
+  if(end<start)return null;
+  let body=value.slice(start,end);
+  if(/\\(?:begin|end)\{/.test(body))return null;
+  const spec=name==='array'?(body.match(/^\s*\{[^{}]*\}/)?.[0]??''):'';
+  body=body.slice(spec.length);
+  return {
+    prefix:value.slice(0,match.index), open, spec, close, suffix:value.slice(end+close.length),
+    rows:body.split(/\\\\/).map(row=>row.split(/(?<!\\)&/)),
+  };
+}
+function joinMatrix(info) {
+  return info.prefix+info.open+info.spec+info.rows.map(row=>row.join(' & ')).join('\\\\')+info.close+info.suffix;
+}
+function fillMatrixAxis(field, axis) {
+  const before=matrixCells(field.value);
+  field.executeCommand(axis==='row'?'addRowAfter':'addColumnAfter');
+  if(!before)return;
+  const after=matrixCells(field.value);
+  if(!after)return;
+  let changed=false;
+  if(axis==='column') {
+    const oldRow=before.rows[0], newRow=after.rows[0];
+    let index=-1;
+    for(let i=0;i<newRow.length;i++) {
+      const trial=newRow.filter((_,j)=>j!==i);
+      if(trial.length===oldRow.length&&trial.every((cell,j)=>cell===oldRow[j])) { index=i; break; }
+    }
+    if(index<0)index=newRow.findIndex(cell=>!cell.trim());
+    if(index<0)return;
+    for(const row of after.rows) {
+      if(!row[index]?.trim()) { row[index]=' \\placeholder{} '; changed=true; }
+    }
+  } else {
+    let index=-1;
+    for(let i=0;i<after.rows.length;i++) {
+      const trial=after.rows.filter((_,j)=>j!==i);
+      if(trial.length===before.rows.length&&trial.every((row,j)=>
+        row.length===before.rows[j].length&&row.every((cell,k)=>cell===before.rows[j][k]))) { index=i; break; }
+    }
+    if(index<0)index=after.rows.length-1;
+    for(let i=0;i<after.rows[index].length;i++) {
+      if(!after.rows[index][i].trim()) { after.rows[index][i]=' \\placeholder{} '; changed=true; }
+    }
+  }
+  if(!changed)return;
+  field.value=joinMatrix(after);
+  field.dispatchEvent(new Event('input',{bubbles:true}));
+}
+function addMatrixRow() {
+  const field=activeMath();
+  if(field)fillMatrixAxis(field,'row');
+  else editor.chain().focus().addRowAfter().run();
+}
+function addMatrixColumn() {
+  const field=activeMath();
+  if(field)fillMatrixAxis(field,'column');
+  else editor.chain().focus().addColumnAfter().run();
+}
+button('＋ Row',addMatrixRow);
+button('＋ Column',addMatrixColumn);
 button('$',()=>insertMath());
 button('$$',()=>insertMath(true));
 const sourceView=document.createElement('textarea');
@@ -342,11 +405,27 @@ document.addEventListener('keydown', event => {
   zoom.value = String(wheelZoom); scale();
 }, true);
 zoom.addEventListener('input', () => { wheelZoom = Number(zoom.value); });
+let matrixChord=false;
+document.addEventListener('keydown', event => {
+  if (event.defaultPrevented || event.altKey || event.metaKey) { matrixChord=false; return; }
+  const editingMatrix=Boolean(activeMath())||editor.isActive('table');
+  if (event.ctrlKey && !event.shiftKey && event.key.toLowerCase()==='e') {
+    if (!editingMatrix) { matrixChord=false; return; }
+    event.preventDefault(); event.stopPropagation(); matrixChord=true; return;
+  }
+  if (!matrixChord) return;
+  const key=event.key.toLowerCase();
+  matrixChord=false;
+  if (!['r','c'].includes(key)) return;
+  event.preventDefault(); event.stopPropagation();
+  if (key==='r') addMatrixRow(); else addMatrixColumn();
+}, true);
 document.querySelector('main').addEventListener('wheel', event => {
   if (!event.ctrlKey) return;
   event.preventDefault();
   const units = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? window.innerHeight : 1;
-  wheelZoom = Math.max(50, Math.min(300, wheelZoom - event.deltaY * units * 0.12));
+  const speed = event.deltaMode === 0 && Math.abs(event.deltaY) < 50 ? 0.24 : 0.12;
+  wheelZoom = Math.max(50, Math.min(300, wheelZoom - event.deltaY * units * speed));
   zoom.value = String(Math.round(wheelZoom));
   scale();
 }, { passive: false });

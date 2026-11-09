@@ -36,7 +36,7 @@ export function serialize(node) {
     case 'bulletList': return '\\begin{itemize}\n' + content + '\\end{itemize}\n\n';
     case 'orderedList': return '\\begin{enumerate}\n' + content + '\\end{enumerate}\n\n';
     case 'listItem': return '\\item ' + content.trim() + '\n';
-    case 'mathBlock': return '\\[' + node.attrs.latex + '\\]\n\n';
+    case 'mathBlock': return /^\\begin\{/.test(node.attrs.latex.trim()) ? node.attrs.latex + '\n\n' : '\\[' + node.attrs.latex + '\\]\n\n';
     case 'math': return node.attrs.display ? '\\[' + node.attrs.latex + '\\]' : '$' + node.attrs.latex + '$';
     case 'ref': return '\\ref{' + node.attrs.key + '}';
     case 'raw': return node.attrs.source;

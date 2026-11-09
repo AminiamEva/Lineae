@@ -70,6 +70,20 @@ test('paragraphs, escapes, emphasis, comments and unicode remain editable', () =
   assert.equal(textOf(unicode[1]), 'English paragraph: mathematics.');
 });
 
+test('inline math commands and block math environments stay editable', () => {
+  const inline = importBlocks(String.raw`Inline $\mathbf{x}$ end.`);
+  assert.equal(inline[0].type, 'paragraph');
+  const math = inline[0].content.find(node => node.type === 'math');
+  assert.equal(math?.attrs.latex, String.raw`\mathbf{x}`);
+
+  const align = importBlocks(String.raw`\begin{align}
+\mathbf{x} &= 1 \\
+\end{align}`);
+  assert.equal(align[0].type, 'mathBlock');
+  assert.match(align[0].attrs.latex, /^\\begin\{align\}/);
+  assert.match(align[0].attrs.latex, /\\mathbf\{x\}/);
+});
+
 test('heading levels, starred headings, short titles, labels, references and contents are structured', () => {
   const levels = parse('headings/headings-levels.tex');
   assert.deepEqual(levels.map(node => node.attrs?.level), [1, 2, 3]);

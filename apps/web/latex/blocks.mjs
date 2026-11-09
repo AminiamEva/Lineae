@@ -46,6 +46,8 @@ export function importBlock(block) {
   if (text === '\\tableofcontents') return { type: 'tableOfContents' };
   const math = text.match(/^\\\[([\s\S]*?)\\\]$/) ?? text.match(/^\\begin\{equation\*?\}([\s\S]*?)\\end\{equation\*?\}$/);
   if (math) return { type: 'mathBlock', attrs: { latex: math[1], display: true } };
+  const environment = text.match(/^\\begin\{(align\*?|gather\*?|multline\*?|displaymath|math|split|aligned|gathered|cases|dcases|rcases|[pbBvV]?matrix|array)\}([\s\S]*?)\\end\{\1\}$/);
+  if (environment) return { type: 'mathBlock', attrs: { latex: text, display: true } };
   const list = text.match(/^\\begin\{(itemize|enumerate)\}\n([\s\S]*?)\n\\end\{\1\}$/);
   if (list) {
     const items = list[2].split(/\n(?=\\item)/).map(item => inlineContent(item.replace(/^\\item\s?/, '')));

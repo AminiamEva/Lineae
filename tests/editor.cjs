@@ -174,16 +174,22 @@ const server=createServer(async(req,res)=>{
     await formula.click();
     await page.keyboard.type('\\');await completion.locator('input').fill('matrix');await page.keyboard.press('Enter');
     assert.ok(!(await formula.evaluate(field=>field.value)).includes('&'));
+    const initialPlaceholders=(await formula.evaluate(field=>field.value)).match(/\\placeholder\{\}/g)?.length??0;
     await page.locator('[data-group=insert]').click();
     await page.getByRole('button',{name:'＋ Row',exact:true}).click();
     assert.match(await formula.evaluate(field=>field.value),/\\\\/);
+    const rowPlaceholders=(await formula.evaluate(field=>field.value)).match(/\\placeholder\{\}/g)?.length??0;
+    assert.ok(rowPlaceholders>initialPlaceholders,'Adding a row adds placeholder boxes: '+rowPlaceholders);
     await page.getByRole('button',{name:'＋ Column',exact:true}).click();
     assert.match(await formula.evaluate(field=>field.value),/&/);
+    const columnPlaceholders=(await formula.evaluate(field=>field.value)).match(/\\placeholder\{\}/g)?.length??0;
+    assert.ok(columnPlaceholders>rowPlaceholders,'Adding a column adds placeholder boxes: '+columnPlaceholders);
     const placeholderBoxes=await formula.evaluate(field=>[...field.shadowRoot.querySelectorAll('.ML__cmr')].map(element=>{
       const rect=element.getBoundingClientRect();
       return {x:rect.x+rect.width/2,y:rect.y+rect.height/2};
     }));
     assert.ok(placeholderBoxes.length>=2,'Matrix exposes placeholder boxes: '+placeholderBoxes.length);
+    assert.equal(placeholderBoxes.length,columnPlaceholders,'Every matrix placeholder has a visible box');
     const caretRanges=[];
     for(const box of placeholderBoxes.slice(0,2)) {
       await page.mouse.click(box.x,box.y);
@@ -193,7 +199,17 @@ const server=createServer(async(req,res)=>{
     await page.keyboard.type('Q');
     const matrixValue=await formula.evaluate(field=>field.value);
     assert.match(matrixValue,/Q/);
-    assert.equal(matrixValue.match(/\\placeholder\{\}/g)?.length??0,1,'Typing replaces the clicked placeholder: '+matrixValue);
+    assert.equal(matrixValue.match(/\\placeholder\{\}/g)?.length??0,columnPlaceholders-1,'Typing replaces the clicked placeholder: '+matrixValue);
+    const beforeRowChord=matrixValue;
+    await formula.click();
+    await page.keyboard.press('Control+e');
+    await page.keyboard.press('r');
+    const afterRowChord=await formula.evaluate(field=>field.value);
+    assert.ok(afterRowChord.split(/\\\\/).length>beforeRowChord.split(/\\\\/).length,'Ctrl+E R adds a matrix row');
+    await page.keyboard.press('Control+e');
+    await page.keyboard.press('c');
+    const afterColumnChord=await formula.evaluate(field=>field.value);
+    assert.ok((afterColumnChord.match(/&/g)??[]).length>(afterRowChord.match(/&/g)??[]).length,'Ctrl+E C adds a matrix column');
 
     await importSource('First $x$ end\n\nDestination');
     await page.locator('.math-drag-handle').hover();
@@ -211,7 +227,8 @@ const server=createServer(async(req,res)=>{
     const literals=await formula.evaluate(field=>field.value);
     assert.ok(literals.includes('textasciicircum') && literals.includes('/') && !literals.includes('frac'),literals);
     await page.locator('[data-group=home]').click();
-    await paper.locator(':scope > p').first().click();
+    await paper.locator(':scope > p').first().click({position:{x:4,y:8}});
+    await page.keyboard.press('End');
     await page.locator('select[aria-label="fontSize"]').selectOption('18pt');
     assert.equal(await page.locator('select[aria-label="fontSize"]').inputValue(),'18pt');
 
@@ -253,6 +270,15 @@ const server=createServer(async(req,res)=>{
     await page.waitForFunction(()=>document.querySelectorAll('.ProseMirror h1[data-label="sec:target"]').length===1);
     assert.equal(await paper.locator('.ref-node').count(),1,'reference is an editable atom');
     assert.equal(await paper.locator('.ref-node').textContent(),'§1');
+    await page.locator('input[type=file]').setInputFiles({
+      name:'align.tex',mimeType:'text/plain',
+      buffer:Buffer.from('\\documentclass{article}\n\\begin{document}\n\\begin{align}\n\\mathbf{x} &= 1 \\\\\n\\end{align}\n\\end{document}\n'),
+    });
+    await page.waitForFunction(()=>Boolean(document.querySelector('.ProseMirror .math-display')));
+    assert.equal(await paper.locator('pre[data-raw]').count(),0,'align environment should parse');
+    const alignField=page.locator('.ProseMirror math-field').last();
+    assert.match(await alignField.evaluate(field=>field.value),/\\begin\{align\}/);
+    assert.match(await alignField.evaluate(field=>field.value),/\\mathbf\{x\}/);
 
     assert.deepEqual(errors,[]);
     console.log('Browser regressions passed');
