@@ -72,7 +72,26 @@ async function applyConfiguration() {
 }
 
 let mathBindings = { 'ctrl+6': 'moveToSuperscript', 'ctrl+-': 'moveToSubscript' };
+const mathHint = document.createElement('aside');
+mathHint.className = 'math-hint';
+mathHint.hidden = true;
+mathHint.setAttribute('role', 'status');
+document.body.append(mathHint);
+
 function configureMath(field) {
+  field.popoverPolicy = 'off';
+  if (!field.dataset.hintReady) {
+    field.dataset.hintReady = 'true';
+    field.addEventListener('keydown', event => {
+      if (event.key === '\\') {
+        mathHint.textContent = language.value === 'zh-CN'
+          ? 'LaTeX 命令 · 例如 \\frac、\\sqrt、\\alpha'
+          : 'LaTeX commands · e.g. \\frac, \\sqrt, \\alpha';
+        mathHint.hidden = false;
+      } else if (event.key === 'Escape' || event.key === 'Enter') mathHint.hidden = true;
+    }, true);
+    field.addEventListener('blur', () => { mathHint.hidden = true; });
+  }
   const commands = new Set(['moveToSuperscript', 'moveToSubscript', 'moveAfterParent']);
   field.keybindings = Object.entries(mathBindings)
     .filter(([key, command]) => /^ctrl\+[^+]+$/i.test(key) && commands.has(command))

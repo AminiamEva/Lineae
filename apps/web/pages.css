@@ -108,3 +108,20 @@ main > #status { max-width: 210mm; margin: 0 auto 1rem; }
 #editor { box-sizing: border-box; width: 210mm; min-height: 297mm; margin-inline: auto; padding: 22mm; border-radius: 2px; box-shadow: 0 2px 14px #0002; cursor: text; }
 #editor:focus { outline: none; }
 #editor .document-line { width: 100%; }
+
+.math-hint {
+  position: fixed;
+  z-index: 4;
+  inset-inline-end: 1rem;
+  inset-block-end: 1rem;
+  box-sizing: border-box;
+  width: min(22rem, calc(100vw - 2rem));
+  min-height: 3rem;
+  padding: .75rem 1rem;
+  border: 1px solid light-dark(#ddd, #47474c);
+  border-radius: .9rem;
+  background: light-dark(#fff, #242426);
+  color: inherit;
+  box-shadow: 0 5px 20px #0002;
+  pointer-events: none;
+}
