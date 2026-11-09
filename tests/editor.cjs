@@ -151,7 +151,9 @@ const server=createServer(async(req,res)=>{
 
     await importSource('Start $x$ end\n\nDestination');
     const formula=page.locator('math-field');
+    await formula.click();
     await formula.evaluate(field=>{field.focus();field.executeCommand('moveToMathfieldEnd');});
+    await page.waitForFunction(()=>document.activeElement?.tagName==='MATH-FIELD');
     await page.keyboard.type('sin');
     assert.equal(await formula.evaluate(field=>field.value),'xsin');
     await page.keyboard.type('__');
