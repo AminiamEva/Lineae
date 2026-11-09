@@ -69,7 +69,11 @@ export const MathNode = Node.create({
       dom.dataset.mathView = '';
       dom.getMathPosition = getPos;
       dom.contentEditable = 'false';
-      dom.draggable = true;
+      // A draggable node view swallows pointer hit-testing inside MathLive, so
+      // clicking a placeholder box or a matrix cell would not move its caret.
+      // ProseMirror re-enables dragging temporarily on mousedown for the handle.
+      dom.draggable = false;
+      queueMicrotask(() => { dom.draggable = false; });
 
       const handle = document.createElement('span');
       handle.className = 'math-drag-handle';

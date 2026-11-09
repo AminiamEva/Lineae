@@ -179,6 +179,21 @@ const server=createServer(async(req,res)=>{
     assert.match(await formula.evaluate(field=>field.value),/\\\\/);
     await page.getByRole('button',{name:'＋ Column',exact:true}).click();
     assert.match(await formula.evaluate(field=>field.value),/&/);
+    const placeholderBoxes=await formula.evaluate(field=>[...field.shadowRoot.querySelectorAll('.ML__cmr')].map(element=>{
+      const rect=element.getBoundingClientRect();
+      return {x:rect.x+rect.width/2,y:rect.y+rect.height/2};
+    }));
+    assert.ok(placeholderBoxes.length>=2,'Matrix exposes placeholder boxes: '+placeholderBoxes.length);
+    const caretRanges=[];
+    for(const box of placeholderBoxes.slice(0,2)) {
+      await page.mouse.click(box.x,box.y);
+      caretRanges.push(await formula.evaluate(field=>field.selection.ranges));
+    }
+    assert.notDeepEqual(caretRanges[0],caretRanges[1],'Each placeholder box receives its own caret: '+JSON.stringify(caretRanges));
+    await page.keyboard.type('Q');
+    const matrixValue=await formula.evaluate(field=>field.value);
+    assert.match(matrixValue,/Q/);
+    assert.equal(matrixValue.match(/\\placeholder\{\}/g)?.length??0,1,'Typing replaces the clicked placeholder: '+matrixValue);
 
     await importSource('First $x$ end\n\nDestination');
     await page.locator('.math-drag-handle').hover();
