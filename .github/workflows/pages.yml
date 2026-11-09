@@ -23,7 +23,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/configure-pages@v5
-      - run: npm install --no-audit --no-fund
+      - run: npm ci --no-audit --no-fund
       - run: npm run build
       - run: node --test tests/latex.test.mjs
       - name: Package the formula editor
@@ -32,6 +32,8 @@ jobs:
           mkdir -p apps/web/vendor/mathlive
           tar -xzf "$RUNNER_TEMP/$archive" -C apps/web/vendor/mathlive --strip-components=1 \
             package/mathlive.min.js package/fonts
+      - run: npx playwright install --with-deps chromium
+      - run: node tests/editor.cjs
       - name: Version browser assets
         run: |
           sed -i "s|./pages.css|./pages.css?v=${GITHUB_SHA}|; s|./editor.mjs|./editor.mjs?v=${GITHUB_SHA}|" apps/web/index.html

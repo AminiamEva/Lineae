@@ -185,3 +185,12 @@ header h1 { transition: opacity .18s ease-out; }
 .ProseMirror math-field { min-width: 1em; border: 0; }
 .source-view { width: min(90vw, 65rem); min-height: 80vh; margin: auto; font: 14px/1.6 monospace; }
 header #insert { pointer-events: auto; padding: .4rem; box-shadow: 0 3px 20px #0002; }
+
+.command-menu { position:fixed; right:1rem; bottom:3rem; width:18rem; z-index:10; border-radius:1rem; padding:.7rem; background:light-dark(#fff,#242426); box-shadow:0 3px 20px #0003; }
+.command-menu input { width:100%; box-sizing:border-box; }
+.command-menu button { display:block; width:100%; text-align:left; margin-top:.3rem; }
+
+.ribbon .tools[hidden] { display:none; }
+.ribbon select { max-width:8rem; }
+.ProseMirror .math-display { margin:.6em 0; min-height:1.5em; }
+.ProseMirror-selectednode { outline:2px solid #468bdf; border-radius:3px; }
