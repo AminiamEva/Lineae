@@ -1,17 +1,23 @@
-# Lineae editor architecture
+# Lineae editing architecture
 
-The UTF-8 LaTeX source is the interchange format. Imported blocks retain their original source until edited. Unrecognized structures stay visible as read-only source.
+The editable document is a ProseMirror tree hosted by Tiptap. Changes use transactions, which map selections and support undo and redo. Lists, headings, paragraphs and tables use the editor's structural commands.
 
-| Module | Responsibility |
-| --- | --- |
-| latex/document.mjs | Document boundaries, source blocks, line endings and environment grouping |
-| latex/inline.mjs | Supported inline syntax and math delimiters |
-| latex/tables.mjs | Simple tabular models, alignment, and rule serialization |
-| latex/packages.mjs | Feature-to-package resolution and preamble assembly |
-| editor.mjs | DOM projection, input, selection, MathLive integration and UI |
+## Components
 
-Package declarations and package rendering are separate. Declaring a package does not make arbitrary commands editable. A rendering adapter must explicitly recognize the syntax, retain source for unsupported cases, and provide an edit serializer.
+- src/main.js assembles the editor, command toolbar, source view, file input and display controls.
+- src/editor/math-node.js adapts MathLive to an inline atomic node. Formula input dispatches transactions.
+- src/editor/latex-codec.js maps supported LaTeX to the editor tree and serializes edited content.
+- latex/document.mjs retains preamble, document boundaries and opaque source blocks.
+- latex/inline.mjs recognizes supported inline syntax.
+- latex/tables.mjs recognizes simple table syntax.
+- latex/packages.mjs resolves feature dependencies in exported LaTeX.
 
-The web preview covers supported constructs. XeLaTeX remains the reference for final glyph metrics, page breaking, floats, numbering and arbitrary macro expansion. Native compiler integration and a unified transactional editor model are subsequent architecture work.
+Source mode is an explicit whole-document edit. Applying it rebuilds the editable projection. Unsupported constructs remain opaque nodes editable in source mode.
 
-GitHub Actions runs the LaTeX regression tests before packaging the pinned MathLive distribution and publishing the static site.
+## Verification and builds
+
+Dependencies are locked in package-lock.json. GitHub Actions runs npm ci, bundles the application, runs source regression tests, packages MathLive, and executes Chromium editing regressions before deployment. Generated editor.mjs and vendor assets belong to the deployment artifact.
+
+## Current fidelity limits
+
+The editable browser layout is not calibrated to XeLaTeX page breaking or arbitrary package expansion. Complex package constructs and source trivia inside changed supported blocks need dedicated adapters and a lossless syntax model. Source edits reset rich-text history. MathLive completion covers math commands; the document command menu covers structural insertions.
