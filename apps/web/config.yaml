@@ -5,6 +5,6 @@
     "toolbar": ["open", "download", "language"]
   },
   "keybindings": {
-    "math": {}
+    "math": { "ctrl+6": "moveToSuperscript", "ctrl+-": "moveToSubscript", "ctrl+0": "moveAfterParent" }
   }
 }

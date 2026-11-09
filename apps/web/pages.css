@@ -90,3 +90,21 @@ header h1 { margin-right: auto; }
 #editor [data-copy="item"]::before, #editor [data-copy="row"]::before { content: '＋'; }
 #editor [data-copy="column"]::before { content: '⊞'; }
 #editor [data-copy="remove"]::before { content: '×'; }
+
+.ribbon { position: sticky; top: 0; z-index: 2; padding: .45rem clamp(1rem, 4vw, 3rem); background: light-dark(#fff, #242426); border-bottom: 1px solid light-dark(#ddd, #47474c); }
+.ribbon-tabs { display: flex; gap: .25rem; margin-bottom: .4rem; }
+.ribbon-tabs button { background: transparent; color: inherit; }
+.ribbon-tabs [aria-pressed="true"] { color: light-dark(#0059c7, #8dbdff); background: light-dark(#e8f1ff, #343d50); }
+.ribbon .tools { display: inline-flex; box-shadow: none; gap: .25rem; }
+.ribbon .tools[hidden] { display: none; }
+.ribbon .tools label { display: inline-flex; align-items: center; gap: .45rem; }
+.ribbon .tools button[data-copy], .ribbon .tools .open span { font-size: .875rem; }
+.ribbon .tools button[data-copy]::before, .ribbon .tools .open span::before { margin-inline-end: .4em; }
+.ribbon .tools [data-copy="bold"] { font-size: 0; }
+.ribbon .tools [data-copy="bold"]::before { margin-inline-end: 0; }
+.ribbon #insert { margin-bottom: 0; }
+main { max-width: none; overflow: auto; padding: 1rem; margin: 0; }
+main > #status { max-width: 210mm; margin: 0 auto 1rem; }
+#editor { box-sizing: border-box; width: 210mm; min-height: 297mm; margin-inline: auto; padding: 22mm; border-radius: 2px; box-shadow: 0 2px 14px #0002; cursor: text; }
+#editor:focus { outline: none; }
+#editor .document-line { width: 100%; }

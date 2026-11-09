@@ -53,6 +53,8 @@ async function applyConfiguration() {
   const response = await fetch(new URL('./config.yaml', import.meta.url));
   if (!response.ok) throw new Error('Configuration request failed');
   const configuration = await response.json();
+  mathBindings = configuration.keybindings?.math ?? mathBindings;
+  editor.querySelectorAll('math-field').forEach(configureMath);
   const settings = configuration.interface;
   if (configuration.version !== 1 || !settings) return;
 
@@ -61,12 +63,20 @@ async function applyConfiguration() {
     translate();
   }
 
-  const toolbar = document.querySelector('.tools');
+  const toolbar = document.querySelector('[data-file-tools]');
   const tools = new Map(Array.from(toolbar.children, tool => [tool.dataset.tool, tool]));
   if (Array.isArray(settings.toolbar) && settings.toolbar.length === tools.size &&
       new Set(settings.toolbar).size === tools.size && settings.toolbar.every(tool => tools.has(tool))) {
     toolbar.append(...settings.toolbar.map(tool => tools.get(tool)));
   }
+}
+
+let mathBindings = { 'ctrl+6': 'moveToSuperscript', 'ctrl+-': 'moveToSubscript' };
+function configureMath(field) {
+  const commands = new Set(['moveToSuperscript', 'moveToSubscript', 'moveAfterParent']);
+  field.keybindings = Object.entries(mathBindings)
+    .filter(([key, command]) => /^ctrl\+[^+]+$/i.test(key) && commands.has(command))
+    .map(([key, command]) => ({ key, command }));
 }
 
 let languageTouched = false;
@@ -76,6 +86,8 @@ language.addEventListener('change', translate);
 translate();
 
 const labels = {
+  files: ['文件', 'File'], home: ['主页', 'Home'], insert: ['插入', 'Insert'],
+  view: ['视图', 'View'], zoom: ['页面缩放', 'Page zoom'],
   color: ['文字颜色', 'Text color'], family: ['字体', 'Font family'], size: ['字号', 'Font size'],
   heading: ['标题', 'Heading'], paragraph: ['段落', 'Paragraph'],
   bold: ['粗体', 'Bold'], inline: ['行内公式', 'Inline math'],
@@ -124,6 +136,7 @@ function button(key, action) {
 
 function field(value, save, key = 'paragraph', math = false) {
   const input = document.createElement(math && customElements.get('math-field') ? 'math-field' : 'input');
+  if (input.localName === 'math-field') configureMath(input);
   input.value = value;
   input.dataset.field = key;
   input.setAttribute('aria-label', copy[language.value][key]);
@@ -489,6 +502,31 @@ editor.addEventListener('beforeinput', event => {
 editor.addEventListener('input', event => {
   if (event.target === editor) selectedLine()?.syncSource();
 });
+editor.addEventListener('pointerdown', event => {
+  if (event.button !== 0 || event.target.closest('.document-line, [contenteditable="false"], button, math-field, input')) return;
+  const lines = Array.from(editor.querySelectorAll('.document-line'));
+  if (!lines.length) return;
+  const line = lines.reduce((nearest, candidate) => {
+    const distance = element => {
+      const rect = element.getBoundingClientRect();
+      return Math.max(rect.top - event.clientY, event.clientY - rect.bottom, 0);
+    };
+    return distance(candidate) < distance(nearest) ? candidate : nearest;
+  });
+  event.preventDefault();
+  editor.focus({ preventScroll: true });
+  const selection = window.getSelection();
+  const range = document.createRange();
+  range.selectNodeContents(line);
+  range.collapse(event.clientY < line.getBoundingClientRect().top);
+  if (event.shiftKey && editor.contains(selection.anchorNode)) {
+    selection.extend(range.startContainer, range.startOffset);
+  } else {
+    selection.removeAllRanges();
+    selection.addRange(range);
+  }
+});
+
 editor.addEventListener('paste', event => {
   if (event.target !== editor) return;
   const line = selectedLine();
@@ -556,12 +594,63 @@ for (const [key, [command, options]] of Object.entries(formatOptions)) {
 }
 
 function labelFormatMenus() {
-  for (const menu of insert.querySelectorAll('[data-format]')) {
+  for (const menu of document.querySelectorAll('[data-format]')) {
     const label = copy[language.value][menu.dataset.format];
     menu.title = label;
     menu.setAttribute('aria-label', label);
   }
 }
+
+const panels = new Map();
+const tabs = document.createElement('nav');
+tabs.className = 'ribbon-tabs';
+tabs.setAttribute('aria-label', '命令分组 / Command groups');
+const filePanel = document.querySelector('header .tools');
+filePanel.dataset.fileTools = '';
+const toolbar = document.createElement('div');
+toolbar.className = 'ribbon';
+document.querySelector('header').after(toolbar);
+toolbar.append(tabs, filePanel, insert);
+panels.set('files', filePanel);
+panels.set('insert', insert);
+for (const name of ['home', 'view']) {
+  const panel = document.createElement('div');
+  panel.className = 'tools';
+  toolbar.append(panel);
+  panels.set(name, panel);
+}
+panels.get('home').append(insert.querySelector('[data-copy="bold"]'), ...insert.querySelectorAll('[data-format]'));
+
+const zoom = document.createElement('select');
+for (const percent of [50, 75, 100, 125, 150, 200]) {
+  zoom.append(new Option(percent + '%', String(percent)));
+}
+zoom.value = '100';
+zoom.addEventListener('change', () => {
+  editor.style.zoom = String(Number(zoom.value) / 100);
+});
+const zoomLabel = document.createElement('label');
+const zoomText = document.createElement('span');
+zoomText.dataset.copy = 'zoom';
+zoomLabel.append(zoomText, zoom);
+panels.get('view').append(zoomLabel);
+
+const tabButtons = new Map();
+function selectTab(active) {
+  for (const [name, panel] of panels) {
+    panel.hidden = name !== active;
+    tabButtons.get(name).setAttribute('aria-pressed', String(name === active));
+  }
+}
+for (const name of ['files', 'home', 'insert', 'view']) {
+  const control = button(name, () => selectTab(name));
+  tabButtons.set(name, control);
+  tabs.append(control);
+}
+tabs.addEventListener('mousedown', event => {
+  if (event.target.closest('button')) event.preventDefault();
+});
+selectTab('home');
 
 labelFormatMenus();
 language.addEventListener('change', labelFormatMenus);
@@ -575,6 +664,7 @@ language.addEventListener('change', () => {
 customElements.whenDefined('math-field').then(() => {
   for (const field of editor.querySelectorAll('input[data-field="inline"], input[data-field="display"]')) {
     const replacement = document.createElement('math-field');
+    configureMath(replacement);
     replacement.value = field.value;
     replacement.dataset.field = field.dataset.field;
     replacement.setAttribute('aria-label', field.getAttribute('aria-label'));
