@@ -57,6 +57,26 @@ const server=createServer(async(req,res)=>{
     await page.keyboard.type('B');
     const cells=await paper.locator('td').allTextContents();
     assert.ok(cells[0].includes('A') && cells[1].includes('B'),JSON.stringify(cells));
+    await page.locator('[data-group=home]').click();
+    await page.getByRole('button',{name:'↶',exact:true}).click();
+    assert.ok(!(await paper.locator('td').allTextContents())[1].includes('B'));
+    await page.getByRole('button',{name:'↷',exact:true}).click();
+    assert.ok((await paper.locator('td').allTextContents())[1].includes('B'));
+    await page.locator('[data-group=insert]').click();
+    await page.getByRole('button',{name:'LaTeX',exact:true}).click();
+    const source=await page.locator('.source-view').inputValue();
+    assert.match(source,/\\begin\{tabular\}/);
+    await page.getByRole('button',{name:'LaTeX',exact:true}).click();
+    assert.ok(await paper.locator('table').count());
+    await paper.locator('p').last().click();
+    await page.keyboard.press('End');
+    await page.keyboard.press('Enter');
+    await page.keyboard.type('\\');
+    await page.waitForFunction(()=>!document.querySelector('.command-menu').hidden);
+    await page.locator('.command-menu input').fill('sqrt');
+    await page.keyboard.press('Enter');
+    await page.waitForFunction(()=>document.activeElement?.tagName==='MATH-FIELD');
+    assert.match(await page.locator('math-field').last().evaluate(field=>field.value),/sqrt/);
     assert.deepEqual(errors,[]);
     console.log('Browser regressions passed');
   }finally{

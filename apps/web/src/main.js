@@ -58,7 +58,11 @@ const Shortcuts = Extension.create({
   }})],
   addKeyboardShortcuts() {
     return {
-      Tab:()=>this.editor.isActive('listItem')?this.editor.commands.sinkListItem('listItem'):false,
+      Tab:()=>{
+        if(this.editor.isActive('table'))return false;
+        if(this.editor.isActive('listItem'))return this.editor.commands.sinkListItem('listItem');
+        return this.editor.commands.insertContent('    ');
+      },
       'Shift-Tab':()=>this.editor.isActive('listItem')?this.editor.commands.liftListItem('listItem'):false,
     };
   },
@@ -110,7 +114,13 @@ sourceView.className='source-view'; sourceView.hidden=true;
 paper.after(sourceView);
 let documentParts=parseDocument('\\documentclass{article}\n\\usepackage{amsmath}\n\\begin{document}\n\\end{document}\n');
 let filename='lineae.tex';
-function source() {return exportDocument(documentParts,serialize(editor.getJSON()));}
+let importedSource=null;
+let importedSnapshot=null;
+function source() {
+  const document=editor.getJSON();
+  if(importedSnapshot===JSON.stringify(document))return importedSource;
+  return exportDocument(documentParts,serialize(document));
+}
 function load(text) {
   const parsed=parseDocument(text);
   if(!parsed)throw new Error('无法识别文档 / Invalid document');
@@ -118,6 +128,7 @@ function load(text) {
   documentParts=parsed;
   const content=parsed.blocks.map(importBlock).filter(Boolean);
   editor.commands.setContent({type:'doc',content:content.length?content:[{type:'paragraph'}]});
+  importedSource=text;importedSnapshot=JSON.stringify(editor.getJSON());
 }
 button('LaTeX',()=>{
   if(sourceView.hidden) {
@@ -189,7 +200,15 @@ const footer=document.createElement('footer');footer.className='document-status'
 const count=document.createElement('span');
 const zoom=document.createElement('input');zoom.type='range';zoom.min='50';zoom.max='300';zoom.value='100';
 const percent=document.createElement('output');
-function scale(){paper.style.zoom=Number(zoom.value)/100;percent.textContent=zoom.value+'%';}
+function scale() {
+  paper.style.zoom=Number(zoom.value)/100;
+  percent.textContent=zoom.value+'%';
+  requestAnimationFrame(()=>{
+    const brand=document.querySelector('header h1');
+    brand.style.opacity=String(Math.max(0,Math.min(1,(paper.getBoundingClientRect().left-brand.getBoundingClientRect().right)/28)));
+  });
+}
+window.addEventListener('resize',scale);
 zoom.addEventListener('input',scale);
 let wheel=0;
 document.querySelector('main').addEventListener('wheel',event=>{
