@@ -4,12 +4,26 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Lineae</title>
+  <style>
+    body { max-width: 48rem; margin: 3rem auto; padding: 0 1rem; font: 16px/1.6 system-ui; }
+    label { display: block; margin: 1rem 0; }
+    textarea, select { display: block; width: 100%; box-sizing: border-box; font: inherit; }
+    textarea { min-height: 8rem; }
+  </style>
+  <script type="module" src="./editor.mjs"></script>
 </head>
 <body>
   <main>
     <h1>Lineae</h1>
-    <p>LaTeX 可视化编辑器</p>
-    <p>P0 · 部署验证页</p>
+    <p>P0 · 正文局部编辑</p>
+    <label>打开 UTF-8 .tex 文件 <input id="file" type="file" accept=".tex"></label>
+    <p id="status" role="status">请选择包含独立纯文本段落的 LaTeX 文件。</p>
+    <fieldset id="editor" disabled>
+      <legend>编辑正文</legend>
+      <label>段落 <select id="paragraph"></select></label>
+      <label>正文 <textarea id="text"></textarea></label>
+      <button id="download" type="button">下载 .tex</button>
+    </fieldset>
   </main>
 </body>
 </html>
