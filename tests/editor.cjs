@@ -17,7 +17,7 @@ const server=createServer(async(req,res)=>{
   await new Promise(done=>server.listen(0,'127.0.0.1',done));
   const browser=await chromium.launch({headless:true});
   try{
-    const page=await browser.newPage();
+    const page=await browser.newPage({viewport:{width:1280,height:1400}});
     const errors=[];
     page.on('pageerror',error=>{errors.push(error.message);console.log('PAGE ERROR',error.message);});
     await page.goto('http://127.0.0.1:'+server.address().port);
@@ -77,7 +77,8 @@ const server=createServer(async(req,res)=>{
     const initialBounds=await completion.boundingBox();
     const initialScroll=await page.evaluate(()=>window.scrollY);
     const caretBounds=await paper.locator('p').last().boundingBox();
-    assert.ok(initialBounds.y>=caretBounds.y && initialBounds.x<caretBounds.x+80,'Completion appears below the text entry position');
+    assert.ok(initialBounds.y>=caretBounds.y && initialBounds.x<caretBounds.x+80,
+      'Completion appears below the text entry position: '+JSON.stringify({initialBounds,caretBounds}));
     for(let index=0;index<16;index++) await page.keyboard.press('ArrowDown');
     assert.equal(await page.evaluate(()=>window.scrollY),initialScroll);
     await page.locator('.command-menu input').fill('sqrt');
