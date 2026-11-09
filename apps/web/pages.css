@@ -125,3 +125,15 @@ main > #status { max-width: 210mm; margin: 0 auto 1rem; }
   box-shadow: 0 5px 20px #0002;
   pointer-events: none;
 }
+
+.ribbon { text-align: center; }
+.ribbon-tabs, .ribbon .tools { justify-content: center; }
+.document-status { position: fixed; z-index: 3; inset-inline: 0; bottom: 0; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: .5rem; padding: .45rem 1rem; font-size: .85rem; background: light-dark(#fff, #242426); border-top: 1px solid light-dark(#ddd, #47474c); }
+.document-status label { display: flex; align-items: center; gap: .5rem; }
+.document-status input { width: clamp(4rem, 15vw, 10rem); }
+main { padding-bottom: 5rem; }
+.math-hint { inset-block-end: 4.5rem; }
+
+.ribbon .tools [data-copy="italic"], .ribbon .tools [data-copy="underline"] { font-size: 0; }
+.ribbon .tools [data-copy="italic"]::before { content: 'I'; font-style: italic; margin: 0; }
+.ribbon .tools [data-copy="underline"]::before { content: 'U'; text-decoration: underline; margin: 0; }

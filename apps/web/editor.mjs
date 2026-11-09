@@ -107,6 +107,7 @@ translate();
 const labels = {
   files: ['文件', 'File'], home: ['主页', 'Home'], insert: ['插入', 'Insert'],
   view: ['视图', 'View'], zoom: ['页面缩放', 'Page zoom'],
+  italic: ['斜体', 'Italic'], underline: ['下划线', 'Underline'],
   color: ['文字颜色', 'Text color'], family: ['字体', 'Font family'], size: ['字号', 'Font size'],
   heading: ['标题', 'Heading'], paragraph: ['段落', 'Paragraph'],
   bold: ['粗体', 'Bold'], inline: ['行内公式', 'Inline math'],
@@ -169,7 +170,7 @@ function field(value, save, key = 'paragraph', math = false) {
 }
 
 const fontFamilies = { Georgia: '\\rmfamily', Arial: '\\sffamily', monospace: '\\ttfamily' };
-const fontSizes = { 2: '\\small', 3: '\\normalsize', 4: '\\large', 5: '\\Large' };
+const fontSizes = { 1: '\\scriptsize', 2: '\\small', 3: '\\normalsize', 4: '\\large', 5: '\\Large', 6: '\\LARGE', 7: '\\Huge' };
 
 function parseInline(source, depth = 0) {
   if (depth > 40) return null;
@@ -184,13 +185,14 @@ function parseInline(source, depth = 0) {
       cursor += (text ?? math)[0].length;
       continue;
     }
-    const bold = rest.match(/^\\textbf\{/);
+    const emphasis = rest.match(/^\\(textbf|textit|underline)\{/);
     const color = rest.match(/^\\textcolor\[HTML\]\{([0-9a-f]{6})\}\{/i);
+    const points = rest.match(/^\{\\fontsize\{(\d{1,2})\}\{\d{1,2}\}\\selectfont /);
     const group = rest.match(/^\{(\\[A-Za-z]+) /);
     const family = group && Object.keys(fontFamilies).find(key => fontFamilies[key] === group[1]);
     const size = group && Object.keys(fontSizes).find(key => fontSizes[key] === group[1]);
-    if (!bold && !color && !family && !size) return null;
-    const start = (bold ?? color ?? group)[0].length;
+    if (!emphasis && !color && !family && !size && !points) return null;
+    const start = (emphasis ?? color ?? points ?? group)[0].length;
     let balance = 1;
     let end = start;
     for (; end < rest.length && balance; end++) {
@@ -203,7 +205,8 @@ function parseInline(source, depth = 0) {
     const children = parseInline(rest.slice(start, end - 1), depth + 1);
     if (!children) return null;
     nodes.push({
-      bold: Boolean(bold),
+      tag: { textbf: 'strong', textit: 'em', underline: 'u' }[emphasis?.[1]],
+      points: points?.[1],
       attribute: color ? 'color' : family ? 'face' : size ? 'size' : null,
       value: color ? '#' + color[1] : family || size,
       children,
@@ -330,6 +333,12 @@ function editorBlock(raw) {
           const strong = element.matches?.('b, strong');
           const text = Array.from(element.childNodes, child => serialize(child, bold || strong)).join('');
           let result = strong && !bold && text ? '\\textbf{' + text + '}' : text;
+          if (element.matches?.('i, em') && result) result = '\\textit{' + result + '}';
+          if (element.matches?.('u') && result) result = '\\underline{' + result + '}';
+          const points = Number(element.dataset?.points);
+          if (Number.isInteger(points) && points >= 6 && points <= 72) {
+            result = '{\\fontsize{' + points + '}{' + Math.ceil(points * 1.2) + '}\\selectfont ' + result + '}';
+          }
           if (element.matches?.('font')) {
             const font = element.getAttribute('face');
             const size = element.getAttribute('size');
@@ -357,7 +366,11 @@ function editorBlock(raw) {
       const render = part => {
         if (typeof part === 'string') return document.createTextNode(part);
         if (part.math !== undefined) return inlineMath(part.math);
-        const element = document.createElement(part.bold ? 'strong' : 'font');
+        const element = document.createElement(part.tag ?? (part.points ? 'span' : 'font'));
+        if (part.points) {
+          element.dataset.points = part.points;
+          element.style.fontSize = part.points + 'pt';
+        }
         if (part.attribute) element.setAttribute(part.attribute, part.value);
         element.append(...part.children.map(render));
         return element;
@@ -595,6 +608,38 @@ editor.addEventListener('paste', event => {
   } else event.preventDefault();
 });
 
+function paragraphAfter(section) {
+  let next = section?.nextElementSibling;
+  while (next?.hidden) next = next.nextElementSibling;
+  let line = next?.querySelector(':scope > .document-line');
+  if (!line) {
+    const block = editorBlock('');
+    const spacer = document.createElement('span');
+    spacer.hidden = true;
+    spacer.contentEditable = 'false';
+    spacer.serialize = () => documentParts.eol.repeat(2);
+    if (section) section.after(spacer, block);
+    else editor.append(spacer, block);
+    line = block.querySelector('.document-line');
+  }
+  editor.focus({ preventScroll: true });
+  window.getSelection().collapse(line, 0);
+  return line;
+}
+
+editor.addEventListener('dblclick', event => {
+  if (event.target === editor) paragraphAfter(editor.lastElementChild);
+});
+editor.addEventListener('keydown', event => {
+  if (event.key !== 'ArrowDown' || event.shiftKey || event.isComposing) return;
+  const section = event.target.closest('section');
+  const fields = section?.querySelectorAll('.paper-text');
+  if (fields?.length && event.target === fields[fields.length - 1] && section.querySelector('ul, ol, table')) {
+    event.preventDefault();
+    paragraphAfter(section);
+  }
+});
+
 const insert = document.querySelector('#insert');
 for (const [key, template] of Object.entries(templates)) {
   insert.append(button(key, () => {
@@ -602,17 +647,24 @@ for (const [key, template] of Object.entries(templates)) {
     spacer.hidden = true;
     spacer.contentEditable = 'false';
     spacer.serialize = () => documentParts.eol.repeat(2);
-    editor.append(spacer, editorBlock(template));
+    const block = editorBlock(template);
+    editor.append(spacer, block);
+    if (key === 'display') block.querySelector('math-field, input')?.focus();
   }));
 }
-for (const key of ['bold', 'inline']) {
+for (const key of ['bold', 'italic', 'underline', 'inline']) {
   const control = button(key, () => {
     const selection = window.getSelection();
     const anchor = selection.anchorNode;
     const line = (anchor?.nodeType === Node.ELEMENT_NODE ? anchor : anchor?.parentElement)?.closest('[data-document-line]');
-    if (!line || !selection.rangeCount || !line.contains(selection.focusNode)) return;
-    if (key === 'bold') document.execCommand('bold');
-    else line.insertInlineMath(selection.getRangeAt(0));
+    if (key !== 'inline') {
+      if (line && selection.rangeCount && line.contains(selection.focusNode)) document.execCommand(key);
+      return;
+    }
+    if (!line || !selection.rangeCount || !line.contains(selection.focusNode)) paragraphAfter(editor.lastElementChild);
+    const range = selection.getRangeAt(0).cloneRange();
+    range.collapse(false);
+    selectedLine(range.startContainer)?.insertInlineMath(range);
   });
   control.addEventListener('mousedown', event => event.preventDefault());
   insert.append(control);
@@ -629,15 +681,19 @@ document.addEventListener('selectionchange', () => {
 });
 
 const formatOptions = {
-  color: ['foreColor', [['#202124', '●'], ['#c4263a', '🔴'], ['#245eb7', '🔵'], ['#238451', '🟢']]],
+  color: ['foreColor', ['#000000','#ffffff','#595959','#a6a6a6','#c00000','#ff0000','#ed7d31','#ffc000','#ffff00','#92d050','#00b050','#008080','#00b0f0','#0070c0','#002060','#7030a0','#f4b183','#ffd966','#a9d18e','#9dc3e6','#b4a7d6'].map(value => [value, value.toUpperCase()])],
   family: ['fontName', [['Georgia', 'Serif'], ['Arial', 'Sans'], ['monospace', 'Mono']]],
-  size: ['fontSize', [['2', 'S'], ['3', 'M'], ['4', 'L'], ['5', 'XL']]],
+  size: [null, [6, 8, 9, 10, 11, 12, 14, 16, 18, 20, 24, 28, 32, 36, 48, 60, 72].map(value => [String(value), value + ' pt'])],
 };
 for (const [key, [command, options]] of Object.entries(formatOptions)) {
   const menu = document.createElement('select');
   menu.dataset.format = key;
   menu.append(new Option({ color: '◉', family: 'Aa', size: '↕' }[key], ''));
-  for (const [value, icon] of options) menu.append(new Option(icon, value));
+  for (const [value, label] of options) {
+    const option = new Option(label, value);
+    if (key === 'color') option.style.backgroundColor = value;
+    menu.append(option);
+  }
   menu.addEventListener('change', () => {
     if (formatRange && editor.contains(formatRange.commonAncestorContainer) && menu.value) {
       const range = formatRange;
@@ -646,7 +702,16 @@ for (const [key, [command, options]] of Object.entries(formatOptions)) {
       selection.removeAllRanges();
       selection.addRange(range);
       document.execCommand('styleWithCSS', false, false);
-      document.execCommand(command, false, menu.value);
+      if (command) {
+        document.execCommand(command, false, menu.value);
+      } else {
+        const span = document.createElement('span');
+        span.dataset.points = menu.value;
+        span.style.fontSize = menu.value + 'pt';
+        span.append(range.extractContents());
+        range.insertNode(span);
+        range.selectNodeContents(span);
+      }
       selectedLine()?.syncSource();
     }
     menu.value = '';
@@ -680,21 +745,57 @@ for (const name of ['home', 'view']) {
   toolbar.append(panel);
   panels.set(name, panel);
 }
-panels.get('home').append(insert.querySelector('[data-copy="bold"]'), ...insert.querySelectorAll('[data-format]'));
+panels.get('home').append(...insert.querySelectorAll('[data-copy="bold"], [data-copy="italic"], [data-copy="underline"]'), ...insert.querySelectorAll('[data-format]'));
 
-const zoom = document.createElement('select');
-for (const percent of [50, 75, 100, 125, 150, 200]) {
-  zoom.append(new Option(percent + '%', String(percent)));
-}
+const footer = document.createElement('footer');
+footer.className = 'document-status';
+const counts = document.createElement('output');
+const zoom = document.createElement('input');
+zoom.type = 'range';
+zoom.min = '50';
+zoom.max = '200';
+zoom.step = '5';
 zoom.value = '100';
-zoom.addEventListener('change', () => {
-  editor.style.zoom = String(Number(zoom.value) / 100);
-});
+const percent = document.createElement('output');
 const zoomLabel = document.createElement('label');
 const zoomText = document.createElement('span');
 zoomText.dataset.copy = 'zoom';
-zoomLabel.append(zoomText, zoom);
-panels.get('view').append(zoomLabel);
+zoomLabel.append(zoomText, zoom, percent);
+footer.append(counts, zoomLabel);
+document.body.append(footer);
+
+function updateStatusBar() {
+  const text = Array.from(editor.querySelectorAll('.document-line, .paper-text'))
+    .map(line => line.textContent.trim()).join(' ').trim();
+  const words = Array.from(new Intl.Segmenter(language.value, { granularity: 'word' }).segment(text))
+    .filter(segment => segment.isWordLike).length;
+  const characters = Array.from(text).length;
+  counts.textContent = language.value === 'zh-CN'
+    ? words + ' 词 · ' + characters + ' 字符'
+    : words + ' words · ' + characters + ' characters';
+}
+new MutationObserver(updateStatusBar).observe(editor, { childList: true, characterData: true, subtree: true });
+language.addEventListener('change', updateStatusBar);
+
+function applyZoom() {
+  editor.style.zoom = String(Number(zoom.value) / 100);
+  percent.textContent = zoom.value + '%';
+}
+function wheelZoom(event) {
+  event.preventDefault();
+  zoom.value = String(Number(zoom.value) + (event.deltaY < 0 ? 5 : -5));
+  applyZoom();
+}
+zoom.addEventListener('input', applyZoom);
+zoomLabel.addEventListener('wheel', wheelZoom, { passive: false });
+document.querySelector('main').addEventListener('wheel', event => {
+  if (event.ctrlKey) wheelZoom(event);
+}, { passive: false });
+panels.get('view').append(button('zoom', () => {
+  zoom.value = '100';
+  applyZoom();
+}));
+applyZoom();
 
 const tabButtons = new Map();
 function selectTab(active) {
@@ -762,9 +863,13 @@ download.addEventListener('click', () => {
   const body = Array.from(editor.children, node => node.serialize()).join('');
   const { start, end, eol } = documentParts;
   const separator = body && !body.endsWith('\n') ? eol : '';
-  const preamble = body.includes('\\textcolor[HTML]') && !/\\(?:usepackage|RequirePackage)(?:\[[^\]]*\])?\{[^}]*\bxcolor\b[^}]*\}/.test(start)
+  let preamble = body.includes('\\textcolor[HTML]') && !/\\(?:usepackage|RequirePackage)(?:\[[^\]]*\])?\{[^}]*\bxcolor\b[^}]*\}/.test(start)
     ? start.replace(/^\\begin\{document\}/m, '\\usepackage{xcolor}' + eol + '\\begin{document}')
     : start;
+  if (/\\fontsize\{\d+\}\{\d+\}\\selectfont/.test(body) &&
+      !/\\(?:usepackage|RequirePackage)(?:\[[^\]]*\])?\{[^}]*\b(?:fix-cm|fontspec|lmodern)\b[^}]*\}/.test(preamble)) {
+    preamble = preamble.replace(/^([ \t]*\\documentclass)/m, '\\RequirePackage{fix-cm}' + eol + '$1');
+  }
   const url = URL.createObjectURL(new Blob([preamble, body, separator, end], { type: 'text/plain;charset=utf-8' }));
   const link = document.createElement('a');
   link.href = url;
