@@ -184,6 +184,15 @@ const server=createServer(async(req,res)=>{
     await page.locator('.math-drag-handle').dragTo(paper.locator(':scope > p').last(),{targetPosition:{x:40,y:10}});
     assert.equal(await formula.count(),1,'Drag moves rather than duplicates formula');
     assert.equal(await paper.locator(':scope > p').last().locator('math-field').count(),1,'Formula lands in target paragraph');
+    await page.keyboard.press('Control+z');
+    assert.equal(await paper.locator(':scope > p').first().locator('math-field').count(),1,'Undo restores dragged formula');
+    await page.keyboard.press('Control+y');
+    assert.equal(await paper.locator(':scope > p').last().locator('math-field').count(),1,'Redo moves formula again');
+    await formula.click();
+    await formula.evaluate(field=>field.executeCommand('moveToMathfieldEnd'));
+    await page.keyboard.type('^^//');
+    const literals=await formula.evaluate(field=>field.value);
+    assert.ok(literals.includes('textasciicircum') && literals.includes('/') && !literals.includes('frac'),literals);
     await page.locator('[data-group=home]').click();
     await paper.locator(':scope > p').first().click();
     await page.locator('select[aria-label="fontSize"]').selectOption('18pt');

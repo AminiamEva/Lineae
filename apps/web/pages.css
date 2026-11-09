@@ -84,3 +84,6 @@ button,select,.color-control { transition:background-color .14s ease,color .14s 
 .document-status .environment-tag { margin-right:8px; padding:1px 7px; border-radius:6px; color:light-dark(#31518a,#bdd4ff); background:light-dark(#edf2fc,#303d54); }
 .environment-tag[data-environment*="math"],.environment-tag[data-environment="matrix"] { color:light-dark(#70409a,#dfbbff); background:light-dark(#f3eafa,#473154); }
 .environment-tag[data-environment="table"] { color:light-dark(#176d59,#a0e1ce); background:light-dark(#e5f5ee,#25473e); }
+.ui-icon { display:inline-block; width:16px; height:16px; flex:none; vertical-align:-3px; fill:none; stroke:currentColor; stroke-width:1.6; stroke-linecap:round; stroke-linejoin:round; }
+.icon-button { display:inline-flex; align-items:center; gap:5px; }
+.editor-context-menu .ui-icon { margin-right:8px; }

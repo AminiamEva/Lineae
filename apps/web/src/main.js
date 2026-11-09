@@ -1,5 +1,6 @@
 import { installContextMenu } from './editor/context-menu.js';
 import { installFormatControls } from './editor/format-controls.js';
+import { decorateToolbar } from './editor/icons.js';
 import { PaperBehavior } from './editor/paper-behavior.js';
 import { MathNode, MathBlock, configureMathKeys, insertFormula } from './editor/math-node.js';
 import { serialize, importBlock } from './editor/latex-codec.js';
@@ -379,6 +380,7 @@ for(const name of Object.keys(groups)) {
   tab.addEventListener('click',()=>selectGroup(name));tabs.append(tab);
 }
 ribbon.append(tabs,files,home,insert);header.append(ribbon);tools.remove();
+decorateToolbar(ribbon);
 const download=document.querySelector('#download');
 language.addEventListener('change',updateLanguage);updateLanguage();selectGroup('home');
 

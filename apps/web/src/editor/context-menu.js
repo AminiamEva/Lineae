@@ -1,4 +1,5 @@
 import { DOMSerializer } from '@tiptap/pm/model';
+import { icon } from './icons.js';
 
 function selectedMath(context) {
   const ranges = context.field.selection.ranges;
@@ -127,6 +128,8 @@ export function installContextMenu(editor, paper, language, reportError) {
       control.setAttribute('role', 'menuitem');
       control.dataset.command = command.id;
       control.textContent = command.labels[language.value === 'zh-CN' ? 0 : 1];
+      control.prepend(icon(command.id.startsWith('delete') || command.id.startsWith('remove') ? 'delete' :
+        command.id.toLowerCase().includes('column') ? 'column' : command.id.toLowerCase().includes('row') ? 'row' : command.id));
       control.disabled = command.enabled === false;
       control.addEventListener('mousedown', event => event.preventDefault());
       control.addEventListener('click', async () => {
