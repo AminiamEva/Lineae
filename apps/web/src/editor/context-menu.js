@@ -77,6 +77,48 @@ export function contextCommands(context) {
       visible: !field && editor.isActive('heading'),
       run: () => editor.chain().focus().updateAttributes('heading', { numbered: !editor.getAttributes('heading').numbered }).run(),
     },
+    { id: 'heading-short-title', labels: ['设置短标题', 'Set short title'],
+      visible: !field && editor.isActive('heading'),
+      run: () => {
+        const current = editor.getAttributes('heading').shortTitle ?? '';
+        const value = window.prompt('短标题 / Short title', current);
+        if (value === null) return;
+        editor.chain().focus().updateAttributes('heading', { shortTitle: value.trim() || null }).run();
+      },
+    },
+    { id: 'heading-label', labels: ['设置标签', 'Set label'],
+      visible: !field && editor.isActive('heading'),
+      run: () => {
+        const current = editor.getAttributes('heading').label ?? '';
+        const value = window.prompt('标签键 / Label key', current);
+        if (value === null) return;
+        editor.chain().focus().updateAttributes('heading', { label: value.trim() || null }).run();
+      },
+    },
+    { id: 'insert-ref', labels: ['插入引用', 'Insert reference'],
+      visible: !field,
+      run: () => {
+        const value = window.prompt('引用标签 / Reference label', '');
+        if (value === null || !value.trim()) return;
+        editor.chain().focus().insertContent({ type: 'ref', attrs: { key: value.trim() } }).run();
+      },
+    },
+    { id: 'edit-ref', labels: ['编辑引用', 'Edit reference'],
+      visible: !field && editor.isActive('ref'),
+      run: () => {
+        const current = editor.getAttributes('ref').key ?? '';
+        const value = window.prompt('引用标签 / Reference label', current);
+        if (value === null) return;
+        editor.chain().focus().updateAttributes('ref', { key: value.trim() }).run();
+      },
+    },
+    { id: 'table-of-contents', labels: ['插入或删除目录', 'Insert or remove contents'],
+      visible: !field,
+      run: () => {
+        if (editor.isActive('tableOfContents')) editor.chain().focus().deleteSelection().run();
+        else editor.chain().focus().insertContent({ type: 'tableOfContents' }).run();
+      },
+    },
     { id: 'row-after', labels: ['在下方插入行', 'Insert row below'], visible: !field && editor.isActive('table'),
       run: () => editor.chain().focus().addRowAfter().run() },
     { id: 'column-after', labels: ['在右侧插入列', 'Insert column right'], visible: !field && editor.isActive('table'),

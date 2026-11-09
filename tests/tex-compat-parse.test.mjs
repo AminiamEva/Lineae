@@ -1,0 +1,97 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { parseDocument } from '../apps/web/latex/document.mjs';
+import { importBlocks } from '../apps/web/latex/blocks.mjs';
+
+const root = 'tests/fixtures/tex-compat';
+const files = [
+  'text/text-paragraphs.tex',
+  'text/text-escaped.tex',
+  'text/text-emphasis.tex',
+  'text/text-comments.tex',
+  'text/text-unicode.tex',
+  'headings/headings-levels.tex',
+  'headings/headings-starred.tex',
+  'headings/headings-short-title.tex',
+  'headings/headings-label-ref.tex',
+  'headings/headings-toc.tex',
+];
+
+function parse(file) {
+  const source = readFileSync(join(root, file), 'utf8');
+  const document = parseDocument(source);
+  assert.ok(document, file + ' should parse');
+  return document.blocks.flatMap(importBlocks);
+}
+
+function textOf(node) {
+  return (node.content ?? []).map(child => {
+    if (child.type === 'text') return child.text;
+    if (child.type === 'hardBreak') return '\n';
+    if (child.type === 'ref') return '\\ref{' + child.attrs.key + '}';
+    return textOf(child);
+  }).join('');
+}
+
+test('the first ten fixtures produce structured nodes without raw fallback', () => {
+  for (const file of files) {
+    const nodes = parse(file);
+    assert.ok(nodes.length, file + ' should produce nodes');
+    assert.ok(nodes.every(node => node.type !== 'raw'), file + ' should not fall back to raw');
+  }
+});
+
+test('paragraphs, escapes, emphasis, comments and unicode remain editable', () => {
+  const paragraphs = parse('text/text-paragraphs.tex');
+  assert.deepEqual(paragraphs.map(node => node.type), ['paragraph', 'paragraph']);
+  assert.ok(paragraphs[1].content.some(node => node.type === 'hardBreak'));
+  assert.equal(textOf(paragraphs[1]), 'Second paragraph.\nSame paragraph, new line.');
+
+  const escaped = parse('text/text-escaped.tex');
+  assert.equal(textOf(escaped[0]), 'Symbols: % & _ # $ { }.');
+  assert.equal(textOf(escaped[1]), 'Backslash: \\.');
+
+  const emphasis = parse('text/text-emphasis.tex');
+  const bold = emphasis[0].content.find(node => node.marks?.some(mark => mark.type === 'bold'));
+  const boldItalic = emphasis[0].content.find(node => node.marks?.some(mark => mark.type === 'bold') && node.marks?.some(mark => mark.type === 'italic'));
+  assert.ok(bold, 'bold text is editable');
+  assert.ok(boldItalic, 'nested emph text carries both marks');
+  const italicBold = emphasis[1].content.find(node => node.marks?.some(mark => mark.type === 'italic') && node.marks?.some(mark => mark.type === 'bold'));
+  assert.ok(italicBold, 'nested textbf inside textit carries both marks');
+
+  const comments = parse('text/text-comments.tex');
+  assert.equal(textOf(comments[0]), 'Visiblejoined.');
+  assert.equal(textOf(comments[1]), 'Rate: 25%. Next sentence.');
+
+  const unicode = parse('text/text-unicode.tex');
+  assert.equal(textOf(unicode[0]), '中文段落：数学论文。');
+  assert.equal(textOf(unicode[1]), 'English paragraph: mathematics.');
+});
+
+test('heading levels, starred headings, short titles, labels, references and contents are structured', () => {
+  const levels = parse('headings/headings-levels.tex');
+  assert.deepEqual(levels.map(node => node.attrs?.level), [1, 2, 3]);
+  assert.ok(levels.every(node => node.type === 'heading' && node.attrs.numbered));
+
+  const starred = parse('headings/headings-starred.tex');
+  assert.deepEqual(starred.map(node => node.attrs.numbered), [true, false, true]);
+
+  const shortTitle = parse('headings/headings-short-title.tex');
+  assert.deepEqual(shortTitle.map(node => node.type), ['tableOfContents', 'heading']);
+  assert.equal(shortTitle[1].attrs.shortTitle, 'Short');
+  assert.equal(textOf(shortTitle[1]), 'A longer section title');
+
+  const label = parse('headings/headings-label-ref.tex');
+  assert.deepEqual(label.map(node => node.type), ['heading', 'paragraph']);
+  assert.equal(label[0].attrs.label, 'sec:target');
+  const reference = label[1].content.find(node => node.type === 'ref');
+  assert.equal(reference?.attrs.key, 'sec:target');
+  assert.ok(label[1].content.some(node => node.type === 'text' && node.text.includes('\u00A0')), 'tilde becomes a non-breaking space');
+
+  const toc = parse('headings/headings-toc.tex');
+  assert.deepEqual(toc.map(node => node.type), ['tableOfContents', 'heading', 'paragraph', 'heading', 'paragraph']);
+  assert.deepEqual(toc.filter(node => node.type === 'heading').map(node => node.attrs.level), [1, 2]);
+  assert.equal(textOf(toc[4]), 'More text.');
+});

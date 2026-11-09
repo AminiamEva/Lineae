@@ -3,7 +3,8 @@ import { installFormatControls } from './editor/format-controls.js';
 import { decorateToolbar } from './editor/icons.js';
 import { PaperBehavior } from './editor/paper-behavior.js';
 import { MathNode, MathBlock, configureMathKeys, insertFormula } from './editor/math-node.js';
-import { serialize, importBlock } from './editor/latex-codec.js';
+import { Ref, TableOfContents, refreshReferences } from './editor/references.js';
+import { serialize, importBlocks } from './editor/latex-codec.js';
 import { Editor, Node, Extension, Mark } from '@tiptap/core';
 import StarterKit from '@tiptap/starter-kit';
 import Table from '@tiptap/extension-table';
@@ -89,9 +90,10 @@ const paper=document.querySelector('#editor');
 paper.replaceChildren();
 editor=new Editor({
   element:paper,
-  extensions:[StarterKit.configure({heading:{levels:[1,2,3]}}),PaperBehavior,TextStyle,Underline,Table.configure({resizable:true}),TableRow,TableCell,TableHeader,Raw,MathNode,MathBlock,Shortcuts],
+  extensions:[StarterKit.configure({heading:{levels:[1,2,3]}}),PaperBehavior,TextStyle,Underline,Table.configure({resizable:true}),TableRow,TableCell,TableHeader,Raw,MathNode,MathBlock,Ref,TableOfContents,Shortcuts],
   content:'<p></p>',
 });
+editor.on('update',()=>refreshReferences(paper));
 const tools=document.querySelector('#insert');
 tools.replaceChildren();
 function button(label, action) {
@@ -159,8 +161,9 @@ function load(text) {
   if(!parsed)throw new Error('无法识别文档 / Invalid document');
   // Preserve imported source exactly. Unsupported blocks remain directly accessible in source mode.
   documentParts=parsed;
-  const content=parsed.blocks.map(importBlock).filter(Boolean);
+  const content=parsed.blocks.flatMap(importBlocks);
   editor.commands.setContent({type:'doc',content:content.length?content:[{type:'paragraph'}]});
+  refreshReferences(paper);
   importedSource=text;importedSnapshot=JSON.stringify(editor.getJSON());
 }
 button('LaTeX',()=>{

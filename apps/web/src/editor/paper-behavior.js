@@ -29,6 +29,16 @@ export const PaperBehavior = Extension.create({
           parseHTML: element => element.dataset.numbered !== 'false',
           renderHTML: attributes => ({ 'data-numbered': String(attributes.numbered) }),
         },
+        shortTitle: {
+          default: null,
+          parseHTML: element => element.dataset.shortTitle ?? null,
+          renderHTML: attributes => attributes.shortTitle ? { 'data-short-title': attributes.shortTitle } : {},
+        },
+        label: {
+          default: null,
+          parseHTML: element => element.dataset.label ?? null,
+          renderHTML: attributes => attributes.label ? { 'data-label': attributes.label } : {},
+        },
       },
     }];
   },

@@ -214,6 +214,46 @@ const server=createServer(async(req,res)=>{
     await paper.locator(':scope > p').first().click();
     await page.locator('select[aria-label="fontSize"]').selectOption('18pt');
     assert.equal(await page.locator('select[aria-label="fontSize"]').inputValue(),'18pt');
+
+    const fixtures={
+      'text/text-paragraphs.tex':'Same paragraph, new line.',
+      'text/text-escaped.tex':'Backslash: \\',
+      'text/text-emphasis.tex':'emphasized',
+      'text/text-comments.tex':'Visiblejoined.',
+      'text/text-unicode.tex':'中文段落：数学论文。',
+      'headings/headings-levels.tex':'Detail',
+      'headings/headings-starred.tex':'Aside',
+      'headings/headings-short-title.tex':'A longer section title',
+      'headings/headings-label-ref.tex':'See Section',
+      'headings/headings-toc.tex':'More text.',
+    };
+    for(const [file,expected] of Object.entries(fixtures)) {
+      await page.locator('input[type=file]').setInputFiles({
+        name:'fixture.tex',mimeType:'text/plain',buffer:await readFile('tests/fixtures/tex-compat/'+file),
+      });
+      await page.waitForFunction(text=>document.querySelector('.ProseMirror').textContent.includes(text),expected);
+      assert.equal(await paper.locator('pre[data-raw]').count(),0,file+' should not fall back to raw');
+    }
+    await page.locator('input[type=file]').setInputFiles({
+      name:'fixture.tex',mimeType:'text/plain',buffer:await readFile('tests/fixtures/tex-compat/headings/headings-levels.tex'),
+    });
+    await page.waitForFunction(()=>document.querySelectorAll('.ProseMirror h1,.ProseMirror h2,.ProseMirror h3').length===3);
+    await page.locator('input[type=file]').setInputFiles({
+      name:'fixture.tex',mimeType:'text/plain',buffer:await readFile('tests/fixtures/tex-compat/headings/headings-starred.tex'),
+    });
+    await page.waitForFunction(()=>document.querySelectorAll('.ProseMirror h1[data-numbered="false"]').length===1);
+    await page.locator('input[type=file]').setInputFiles({
+      name:'fixture.tex',mimeType:'text/plain',buffer:await readFile('tests/fixtures/tex-compat/headings/headings-short-title.tex'),
+    });
+    await page.waitForFunction(()=>document.querySelectorAll('.ProseMirror h1[data-short-title="Short"]').length===1);
+    assert.ok(await paper.locator('.toc-block').count(),'contents block is editable');
+    await page.locator('input[type=file]').setInputFiles({
+      name:'fixture.tex',mimeType:'text/plain',buffer:await readFile('tests/fixtures/tex-compat/headings/headings-label-ref.tex'),
+    });
+    await page.waitForFunction(()=>document.querySelectorAll('.ProseMirror h1[data-label="sec:target"]').length===1);
+    assert.equal(await paper.locator('.ref-node').count(),1,'reference is an editable atom');
+    assert.equal(await paper.locator('.ref-node').textContent(),'§1');
+
     assert.deepEqual(errors,[]);
     console.log('Browser regressions passed');
   }finally{
