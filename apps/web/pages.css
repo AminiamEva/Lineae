@@ -17,3 +17,22 @@ button:disabled { opacity: .55; cursor: default; }
 .open { position: relative; overflow: hidden; }
 .open input { position: absolute; inset: 0; width: 100%; opacity: 0; cursor: pointer; }
 .open:focus-within { outline: 2px solid #0059c7; outline-offset: 3px; }
+
+header { justify-content: center; }
+header h1 { margin-right: auto; }
+.tools {
+  justify-content: center;
+  padding: .3rem;
+  gap: .25rem;
+  border-radius: 1.5rem;
+  background: #1c1c1e;
+  box-shadow: 0 4px 12px #0002;
+}
+.tools button, .tools .open, .tools select {
+  border: 0;
+  border-radius: 1.25rem;
+  padding: .45rem .75rem;
+  background: #3a3a3c;
+  color: #fff;
+}
+.tools :focus-visible { outline: 2px solid #80bfff; outline-offset: 2px; }

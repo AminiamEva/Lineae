@@ -42,6 +42,31 @@ function translate() {
 }
 
 language.value = preferredLanguage;
+
+// The configuration uses YAML's JSON-compatible syntax.
+async function applyConfiguration() {
+  const response = await fetch(new URL('./config.yaml', import.meta.url));
+  if (!response.ok) throw new Error('Configuration request failed');
+  const configuration = await response.json();
+  const settings = configuration.interface;
+  if (configuration.version !== 1 || !settings) return;
+
+  if (!languageTouched && Object.hasOwn(copy, settings.language)) {
+    language.value = settings.language;
+    translate();
+  }
+
+  const toolbar = document.querySelector('.tools');
+  const tools = new Map(Array.from(toolbar.children, tool => [tool.dataset.tool, tool]));
+  if (Array.isArray(settings.toolbar) && settings.toolbar.length === tools.size &&
+      new Set(settings.toolbar).size === tools.size && settings.toolbar.every(tool => tools.has(tool))) {
+    toolbar.append(...settings.toolbar.map(tool => tools.get(tool)));
+  }
+}
+
+let languageTouched = false;
+language.addEventListener('change', () => { languageTouched = true; });
+applyConfiguration().catch(error => console.warn('Lineae configuration / 配置加载失败', error));
 language.addEventListener('change', translate);
 translate();
 
@@ -90,6 +115,7 @@ function validate() {
 file.addEventListener('change', async () => {
   const selectedFile = file.files[0];
   editor.disabled = true;
+  download.disabled = true;
   if (!selectedFile) return;
   setStatus('loading');
   try {

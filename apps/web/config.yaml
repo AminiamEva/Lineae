@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "interface": {
+    "language": "auto",
+    "toolbar": ["open", "download", "language"]
+  },
+  "keybindings": {
+    "math": {}
+  }
+}
