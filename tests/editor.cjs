@@ -423,6 +423,19 @@ const server=createServer(async(req,res)=>{
     assert.ok(await page.locator('#complete-title').count(),'Typing backslash offers document commands');
     await page.keyboard.press('Escape');
 
+    await page.keyboard.type('\\');
+    await page.locator('.command-menu input').fill('Gamma');
+    assert.equal(await page.locator('.command-candidates button').first().getAttribute('id'),'complete-Gamma');
+    await page.locator('.command-menu input').fill('gamma');
+    assert.equal(await page.locator('.command-candidates button').first().getAttribute('id'),'complete-gamma');
+    await page.keyboard.press('Escape');
+    await page.getByRole('button',{name:'LaTeX',exact:true}).click();
+    const editedSource=(await page.locator('.source-view').inputValue()).replace('\\end{document}','Unsaved regression text\n\\end{document}');
+    await page.locator('.source-view').fill(editedSource);
+    await page.getByRole('button',{name:'LaTeX',exact:true}).click();
+    assert.equal(await page.evaluate(()=>{
+      const event=new Event('beforeunload',{cancelable:true});window.dispatchEvent(event);return event.defaultPrevented;
+    }),true,'Switching views must not mark edits as saved');
     assert.deepEqual(errors,[]);
     console.log('Browser regressions passed');
   }finally{

@@ -309,7 +309,7 @@ function source() {
   return exportDocument(documentParts,serialize(document));
 }
 savedSource=source();
-function load(text) {
+function load(text, markSaved = true) {
   const parsed=parseDocument(text);
   if(!parsed)throw new Error('无法识别文档 / Invalid document');
   // Preserve imported source exactly. Unsupported blocks remain directly accessible in source mode.
@@ -317,13 +317,16 @@ function load(text) {
   const content=parsed.blocks.flatMap(importBlocks);
   editor.commands.setContent({type:'doc',content:content.length?content:[{type:'paragraph'}]});
   refreshReferences(paper);syncTableAttributes();
-  importedSource=text;importedSnapshot=JSON.stringify(editor.getJSON());savedSource=text;renderMeta();
+  importedSource=text;importedSnapshot=JSON.stringify(editor.getJSON());
+  if(markSaved) savedSource=text;
+  if(!sourceView.hidden) sourceView.value=text;
+  renderMeta();
 }
 button('LaTeX',()=>{
   if(sourceView.hidden) {
     sourceView.value=source(); sourceView.hidden=false; paper.hidden=true;
   } else {
-    try {load(sourceView.value);sourceView.hidden=true;paper.hidden=false;editor.commands.focus();}
+    try {load(sourceView.value,false);sourceView.hidden=true;paper.hidden=false;editor.commands.focus();}
     catch(error){document.querySelector('#status').hidden=false;document.querySelector('#status').textContent=error.message;}
   }
 });
@@ -535,8 +538,9 @@ function renderCommands() {
   const actions = Object.fromEntries(Object.entries(formulaCommands).map(([name, latex]) =>
     [name, () => insertFormulaCommand(latex)]));
   if (!completionField) Object.assign(actions, structureCommands);
-  const query = filter.value.replace(/^\\/, '').toLowerCase();
-  for (const [name, action] of Object.entries(actions).filter(([name]) => name.toLowerCase().startsWith(query)).sort(([a],[b]) => Number(b.toLowerCase()===query)-Number(a.toLowerCase()===query))) {
+  const exactQuery = filter.value.replace(/^\\/, '');
+  const query = exactQuery.toLowerCase();
+  for (const [name, action] of Object.entries(actions).filter(([name]) => name.toLowerCase().startsWith(query)).sort(([a],[b]) => Number(b===exactQuery)-Number(a===exactQuery) || Number(b.toLowerCase()===query)-Number(a.toLowerCase()===query))) {
     const control = document.createElement('button');
     control.type = 'button';
     control.id = 'complete-' + name;
