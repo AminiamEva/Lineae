@@ -333,10 +333,16 @@ const server=createServer(async(req,res)=>{
     await page.locator('.editor-dialog button[type=submit]').click();
     await page.waitForFunction(()=>document.querySelector('.ProseMirror ul')?.getAttribute('data-marker')==='◦');
 
-    const savePromise=page.waitForEvent('download');
+    await page.evaluate(()=>{
+      window.__savedText='';
+      window.showSaveFilePicker=async()=>({
+        name:'lineae.tex',
+        createWritable:async()=>({write:async text=>{window.__savedText=text;},close:async()=>{}}),
+      });
+    });
     await page.keyboard.press('Control+s');
-    const saved=await savePromise;
-    assert.match(saved.suggestedFilename(),/\.tex$/,'Ctrl+S saves the document');
+    await page.waitForFunction(()=>window.__savedText.includes('\\documentclass'));
+    assert.match(await page.evaluate(()=>window.__savedText),/\\documentclass/,'Ctrl+S saves to the local file');
 
     await importSource('\\begin{tabular}{ll}\nA & B \\\\\nC & D \\\\\n\\end{tabular}');
     await page.waitForFunction(()=>Boolean(document.querySelector('.ProseMirror table')));

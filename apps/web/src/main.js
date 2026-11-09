@@ -249,6 +249,8 @@ sourceView.className='source-view'; sourceView.hidden=true;
 paper.after(sourceView);
 let documentParts=parseDocument('\\documentclass{article}\n\\usepackage{amsmath}\n\\begin{document}\n\\end{document}\n');
 let filename='lineae.tex';
+let fileHandle=null;
+let savedSource='';
 let importedSource=null;
 let importedSnapshot=null;
 function readMeta(key) {
@@ -306,6 +308,7 @@ function source() {
   if(importedSnapshot===JSON.stringify(document))return importedSource;
   return exportDocument(documentParts,serialize(document));
 }
+savedSource=source();
 function load(text) {
   const parsed=parseDocument(text);
   if(!parsed)throw new Error('无法识别文档 / Invalid document');
@@ -314,7 +317,7 @@ function load(text) {
   const content=parsed.blocks.flatMap(importBlocks);
   editor.commands.setContent({type:'doc',content:content.length?content:[{type:'paragraph'}]});
   refreshReferences(paper);syncTableAttributes();
-  importedSource=text;importedSnapshot=JSON.stringify(editor.getJSON());renderMeta();
+  importedSource=text;importedSnapshot=JSON.stringify(editor.getJSON());savedSource=text;renderMeta();
 }
 button('LaTeX',()=>{
   if(sourceView.hidden) {
@@ -325,10 +328,44 @@ button('LaTeX',()=>{
   }
 });
 document.querySelector('#download').disabled=false;
-function saveDocument() {
-  const url=URL.createObjectURL(new Blob([sourceView.hidden?source():sourceView.value],{type:'text/plain;charset=utf-8'}));
+function downloadText(text) {
+  const url=URL.createObjectURL(new Blob([text],{type:'text/plain;charset=utf-8'}));
   const a=document.createElement('a');a.href=url;a.download=filename;a.click();
   setTimeout(()=>URL.revokeObjectURL(url),1000);
+}
+async function saveDocument() {
+  const text=sourceView.hidden?source():sourceView.value;
+  if(window.showSaveFilePicker) {
+    try {
+      if(!fileHandle)fileHandle=await window.showSaveFilePicker({suggestedName:filename,types:[{description:'LaTeX',accept:{'text/plain':['.tex']}}]});
+      let writable;
+      try { writable=await fileHandle.createWritable(); }
+      catch { await fileHandle.requestPermission?.({mode:'readwrite'}); writable=await fileHandle.createWritable(); }
+      await writable.write(text);await writable.close();
+      if(fileHandle.name)filename=fileHandle.name;
+      savedSource=text;
+      const status=document.querySelector('#status');
+      status.hidden=false;status.textContent='已保存 / Saved';
+      return;
+    } catch(error) {
+      if(error?.name==='AbortError')return;
+      console.warn('Save / 保存',error);
+    }
+  }
+  downloadText(text);
+}
+async function openDocument() {
+  try {
+    const [handle]=await window.showOpenFilePicker({types:[{description:'LaTeX',accept:{'text/plain':['.tex']}}],multiple:false});
+    const file=await handle.getFile();
+    fileHandle=handle;filename=file.name;
+    load(await file.text());
+    return true;
+  } catch(error) {
+    if(error?.name==='AbortError')return true;
+    console.warn('Open / 打开',error);
+    return false;
+  }
 }
 document.querySelector('#download').addEventListener('click',saveDocument);
 document.addEventListener('keydown',event=>{
@@ -336,9 +373,19 @@ document.addEventListener('keydown',event=>{
     event.preventDefault(); event.stopPropagation(); saveDocument();
   }
 },true);
+document.querySelector('.open').addEventListener('click',event=>{
+  if(!window.showOpenFilePicker)return;
+  event.preventDefault();
+  openDocument().then(opened=>{if(!opened)document.querySelector('#file').click();});
+});
+window.addEventListener('beforeunload',event=>{
+  try { if((sourceView.hidden?source():sourceView.value)===savedSource)return; } catch {}
+  event.preventDefault();
+  event.returnValue='';
+});
 document.querySelector('#file').addEventListener('change',async event=>{
   const file=event.target.files[0];if(!file)return;
-  try {load(new TextDecoder('utf-8',{fatal:true,ignoreBOM:true}).decode(await file.arrayBuffer()));filename=file.name;}
+  try {fileHandle=null;load(new TextDecoder('utf-8',{fatal:true,ignoreBOM:true}).decode(await file.arrayBuffer()));filename=file.name;}
   catch(error){const status=document.querySelector('#status');status.hidden=false;status.textContent=error.message;}
 });
 const commands = document.createElement('div');
@@ -700,7 +747,7 @@ function updateLanguage() {
   const chinese=language.value==='zh-CN';
   document.documentElement.lang=language.value;
   for(const tab of tabs.children)tab.textContent=captions[tab.dataset.group][chinese?0:1];
-  download.textContent=chinese?'下载 .tex':'Download .tex';
+  download.textContent=chinese?'保存 .tex':'Save .tex';
   exportConfig.textContent=chinese?'配置':'Config';
   header.querySelector('.open span').textContent=chinese?'打开 .tex':'Open .tex';
 }
