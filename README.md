@@ -368,6 +368,8 @@ GNU GPLv3 is the intended licence, subject to formal adoption and verification o
 
 Until a licence is published, the repository's public availability should not be interpreted as granting general redistribution or modification rights.
 
+# Contributors
+
 <a href="https://github.com/AminiamEva/lineae/graphs/contributors">
   <img src="https://contrib.rocks/image?repo=AminiamEva/lineae" />
 </a>
