@@ -36,3 +36,23 @@ header h1 { margin-right: auto; }
   color: #fff;
 }
 .tools :focus-visible { outline: 2px solid #80bfff; outline-offset: 2px; }
+
+:root { color-scheme: light dark; }
+.tools { background: #ececf1; }
+.tools button, .tools .open, .tools select { background: #fff; color: #202124; }
+@media (prefers-color-scheme: dark) {
+  :root { background: #161618; color: #f5f5f7; }
+  header, fieldset, textarea, select { background: #242426; border-color: #47474c; }
+  #status { color: #c7c7cf; }
+  .tools { background: #111113; }
+  .tools button, .tools .open, .tools select { background: #38383d; color: #fff; }
+}
+
+#insert { justify-content: flex-start; margin-bottom: 1rem; }
+#editor { background: light-dark(#fff, #242426); padding: clamp(1rem, 4vw, 3rem); border-radius: 1rem; }
+#editor section { margin-bottom: 1rem; padding-bottom: .75rem; border-bottom: 1px solid light-dark(#ddd, #555); overflow: auto; }
+#editor input, math-field { font: inherit; color: inherit; background: transparent; border: 1px solid light-dark(#ddd, #555); border-radius: .4rem; box-sizing: border-box; padding: .35rem; max-width: 100%; }
+#editor section > input { display: block; width: 100%; }
+#editor .bold, #editor .heading input { font-weight: 700; }
+#editor button { margin: .35rem .3rem 0 0; background: light-dark(#ececf1, #38383d); color: inherit; }
+#editor [aria-invalid="true"] { outline: 2px solid #d54848; }

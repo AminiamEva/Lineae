@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Lineae</title>
   <link rel="stylesheet" href="./pages.css">
+  <script defer src="https://cdn.jsdelivr.net/npm/mathlive@0.108.0"></script>
   <script type="module" src="./editor.mjs"></script>
 </head>
 <body>
@@ -21,12 +22,8 @@
   </header>
   <main>
     <p id="status" role="status" data-copy="intro">请选择一个 UTF-8 .tex 文件。</p>
-    <fieldset id="editor" disabled>
-      <legend data-copy="editor">编辑正文</legend>
-      <label><span data-copy="paragraph">段落</span><select id="paragraph"></select></label>
-      <label><span data-copy="text">正文</span><textarea id="text" dir="auto"></textarea></label>
-
-    </fieldset>
+    <nav id="insert" class="tools" aria-label="插入 / Insert"></nav>
+    <article id="editor"></article>
   </main>
 </body>
 </html>
