@@ -452,8 +452,7 @@ editor.setAttribute('role', 'textbox');
 editor.setAttribute('aria-multiline', 'true');
 editor.setAttribute('aria-label', '文档 / Document');
 
-function selectedLine() {
-  const anchor = window.getSelection()?.anchorNode;
+function selectedLine(anchor = window.getSelection()?.anchorNode) {
   return (anchor?.nodeType === Node.ELEMENT_NODE ? anchor : anchor?.parentElement)?.closest('.document-line');
 }
 
@@ -489,10 +488,51 @@ function mergeAtBoundary(event, line, selection) {
   selection.collapse(first, offset);
 }
 
+function collapseTextSelection(selection) {
+  if (!selection.rangeCount || selection.isCollapsed) return false;
+  const range = selection.getRangeAt(0);
+  const first = selectedLine(range.startContainer);
+  const last = selectedLine(range.endContainer);
+  if (!first || !last || first === last) return false;
+  const sections = [];
+  let section = first.parentElement.nextElementSibling;
+  while (section) {
+    if (!section.hidden && !section.querySelector(':scope > .document-line')) return false;
+    sections.push(section);
+    if (section === last.parentElement) break;
+    section = section.nextElementSibling;
+  }
+  if (!section) return false;
+
+  const tail = range.cloneRange();
+  tail.collapse(false);
+  tail.setEnd(last, last.childNodes.length);
+  const suffix = tail.extractContents();
+  const prefix = range.cloneRange();
+  prefix.collapse(true);
+  prefix.setEnd(first, first.childNodes.length);
+  prefix.deleteContents();
+  const offset = first.childNodes.length;
+  first.append(suffix);
+  sections.forEach(node => node.remove());
+  selection.collapse(first, offset);
+  first.syncSource();
+  return true;
+}
+
 editor.addEventListener('beforeinput', event => {
   if (event.target !== editor) return;
   const line = selectedLine();
-  if (!line || !line.contains(window.getSelection().focusNode)) {
+  const selection = window.getSelection();
+  if (!line || !line.contains(selection.focusNode)) {
+    const type = event.inputType;
+    if (!event.isComposing && (type.startsWith('delete') || ['insertText', 'insertParagraph'].includes(type)) &&
+        collapseTextSelection(selection)) {
+      event.preventDefault();
+      if (type === 'insertText' && event.data) document.execCommand('insertText', false, event.data);
+      if (type === 'insertParagraph') selectedLine().handleParagraphInput(event);
+      return;
+    }
     event.preventDefault();
     return;
   }
@@ -530,8 +570,10 @@ editor.addEventListener('pointerdown', event => {
 editor.addEventListener('paste', event => {
   if (event.target !== editor) return;
   const line = selectedLine();
-  if (line?.contains(window.getSelection().focusNode)) line.handlePaste(event);
-  else event.preventDefault();
+  const selection = window.getSelection();
+  if (line?.contains(selection.focusNode) || collapseTextSelection(selection)) {
+    selectedLine().handlePaste(event);
+  } else event.preventDefault();
 });
 
 const insert = document.querySelector('#insert');
