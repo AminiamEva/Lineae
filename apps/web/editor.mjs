@@ -136,6 +136,51 @@ function field(value, save, key = 'paragraph', math = false) {
   return input;
 }
 
+const fontFamilies = { Georgia: '\\rmfamily', Arial: '\\sffamily', monospace: '\\ttfamily' };
+const fontSizes = { 2: '\\small', 3: '\\normalsize', 4: '\\large', 5: '\\Large' };
+
+function parseInline(source, depth = 0) {
+  if (depth > 40) return null;
+  const nodes = [];
+  let cursor = 0;
+  while (cursor < source.length) {
+    const rest = source.slice(cursor);
+    const text = rest.match(/^[^\\{}%$&#_^~\r\n]+/);
+    const math = rest.match(/^\$([^$\r\n]+)\$/);
+    if (text || math) {
+      nodes.push(text ? text[0] : { math: math[1] });
+      cursor += (text ?? math)[0].length;
+      continue;
+    }
+    const bold = rest.match(/^\\textbf\{/);
+    const color = rest.match(/^\\textcolor\[HTML\]\{([0-9a-f]{6})\}\{/i);
+    const group = rest.match(/^\{(\\[A-Za-z]+) /);
+    const family = group && Object.keys(fontFamilies).find(key => fontFamilies[key] === group[1]);
+    const size = group && Object.keys(fontSizes).find(key => fontSizes[key] === group[1]);
+    if (!bold && !color && !family && !size) return null;
+    const start = (bold ?? color ?? group)[0].length;
+    let balance = 1;
+    let end = start;
+    for (; end < rest.length && balance; end++) {
+      if (rest[end] === '\\' && /[{}\\]/.test(rest[end + 1] ?? '')) {
+        end++;
+      } else if (rest[end] === '{') balance++;
+      else if (rest[end] === '}') balance--;
+    }
+    if (balance) return null;
+    const children = parseInline(rest.slice(start, end - 1), depth + 1);
+    if (!children) return null;
+    nodes.push({
+      bold: Boolean(bold),
+      attribute: color ? 'color' : family ? 'face' : size ? 'size' : null,
+      value: color ? '#' + color[1] : family || size,
+      children,
+    });
+    cursor += end;
+  }
+  return nodes;
+}
+
 function editorBlock(raw) {
   const node = document.createElement('section');
   let output = raw;
@@ -192,8 +237,8 @@ function editorBlock(raw) {
       save();
     }));
   } else {
-    const parts = body.split(/(\\textbf\{[^{}]*\}|\$[^$\r\n]+\$)/);
-    if (parts.every((value, index) => index % 2 ? value.startsWith('$') || plain.test(value.slice(8, -1)) : plain.test(value))) {
+    const parts = parseInline(body);
+    if (parts) {
       const line = document.createElement('p');
       line.className = 'document-line';
       node.removeAttribute('contenteditable');
@@ -211,10 +256,8 @@ function editorBlock(raw) {
             const font = element.getAttribute('face');
             const size = element.getAttribute('size');
             const color = element.getAttribute('color');
-            const families = { Georgia: '\\rmfamily', Arial: '\\sffamily', monospace: '\\ttfamily' };
-            const sizes = { 2: '\\small', 3: '\\normalsize', 4: '\\large', 5: '\\Large' };
-            if (Object.hasOwn(families, font)) result = '{' + families[font] + ' ' + result + '}';
-            if (Object.hasOwn(sizes, size)) result = '{' + sizes[size] + ' ' + result + '}';
+            if (Object.hasOwn(fontFamilies, font)) result = '{' + fontFamilies[font] + ' ' + result + '}';
+            if (Object.hasOwn(fontSizes, size)) result = '{' + fontSizes[size] + ' ' + result + '}';
             if (/^#[0-9a-f]{6}$/i.test(color)) result = '\\textcolor[HTML]{' + color.slice(1) + '}{' + result + '}';
           }
           return result;
@@ -233,17 +276,15 @@ function editorBlock(raw) {
         wrapper.append(control);
         return wrapper;
       };
-      parts.forEach((value, index) => {
-        if (index % 2 && value.startsWith('$')) {
-          line.append(inlineMath(value.slice(1, -1)));
-        } else if (index % 2) {
-          const strong = document.createElement('strong');
-          strong.textContent = value.slice(8, -1);
-          line.append(strong);
-        } else {
-          line.append(value);
-        }
-      });
+      const render = part => {
+        if (typeof part === 'string') return document.createTextNode(part);
+        if (part.math !== undefined) return inlineMath(part.math);
+        const element = document.createElement(part.bold ? 'strong' : 'font');
+        if (part.attribute) element.setAttribute(part.attribute, part.value);
+        element.append(...part.children.map(render));
+        return element;
+      };
+      line.append(...parts.map(render));
       line.syncSource = save;
       line.addEventListener('input', event => {
         if (!event.target.closest('[data-inline-math]')) save();
