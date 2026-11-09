@@ -1,3 +1,5 @@
+import { parseInline } from '../latex/inline.mjs';
+import { parseTable } from '../latex/tables.mjs';
 import { Editor, Node, Extension } from '@tiptap/core';
 import StarterKit from '@tiptap/starter-kit';
 import Table from '@tiptap/extension-table';
@@ -155,15 +157,47 @@ paper.after(sourceView);
 let documentParts=parseDocument('\\documentclass{article}\n\\usepackage{amsmath}\n\\begin{document}\n\\end{document}\n');
 let filename='lineae.tex';
 function source() {return exportDocument(documentParts,serialize(editor.getJSON()));}
+function inlineContent(text) {
+  const parsed=parseInline(text);
+  if(!parsed)return null;
+  function convert(parts,marks=[]) {
+    return parts.flatMap(part=>{
+      if(typeof part==='string')return part?[{type:'text',text:part,marks}]:[];
+      if(part.math!==undefined)return [{type:'math',attrs:{latex:part.math,display:false}}];
+      const type={strong:'bold',em:'italic'}[part.tag];
+      if(!type)throw new Error('Unsupported inline formatting');
+      return convert(part.children,[...marks,{type}]);
+    });
+  }
+  try{return convert(parsed);}catch{return null;}
+}
+function importBlock(block) {
+  const text=block.trim();
+  if(!text)return null;
+  const heading=text.match(/^\\(section|subsection|subsubsection)\{([^{}]*)\}$/);
+  if(heading)return {type:'heading',attrs:{level:['section','subsection','subsubsection'].indexOf(heading[1])+1},content:[{type:'text',text:heading[2]}]};
+  const math=text.match(/^\\\[([\s\S]*?)\\\]$/);
+  if(math)return {type:'paragraph',content:[{type:'math',attrs:{latex:math[1],display:true}}]};
+  const list=text.match(/^\\begin\{(itemize|enumerate)\}\n([\s\S]*?)\n\\end\{\1\}$/);
+  if(list) {
+    const items=list[2].split(/\n(?=\\item)/).map(item=>inlineContent(item.replace(/^\\item\s?/,'')));
+    if(items.every(Boolean))return {type:list[1]==='itemize'?'bulletList':'orderedList',content:items.map(content=>({type:'listItem',content:[{type:'paragraph',content}]}))};
+  }
+  const table=parseTable(text);
+  if(table && !table.trailing.length && table.rows.every(row=>!row.rules.length)) {
+    return {type:'table',content:table.rows.map(row=>({type:'tableRow',content:row.cells.map(cell=>({type:'tableCell',content:[{type:'paragraph',content:cell.trim()?[{type:'text',text:cell.trim()}]:[]}]}))}))};
+  }
+  const content=inlineContent(text);
+  if(content)return {type:'paragraph',content};
+  return {type:'raw',attrs:{source:block}};
+}
 function load(text) {
   const parsed=parseDocument(text);
   if(!parsed)throw new Error('无法识别文档 / Invalid document');
   // Preserve imported source exactly. Unsupported blocks remain directly accessible in source mode.
   documentParts=parsed;
-  editor.commands.setContent({type:'doc',content:parsed.blocks.filter(Boolean).map(block=>{
-    if(/^[^\\{}%$&#_^~]*$/.test(block))return {type:'paragraph',content:block.trim()?[{type:'text',text:block.trim()}]:[]};
-    return {type:'raw',attrs:{source:block}};
-  })});
+  const content=parsed.blocks.map(importBlock).filter(Boolean);
+  editor.commands.setContent({type:'doc',content:content.length?content:[{type:'paragraph'}]});
 }
 button('LaTeX',()=>{
   if(sourceView.hidden) {
