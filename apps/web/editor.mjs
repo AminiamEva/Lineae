@@ -444,6 +444,38 @@ function selectedLine() {
   return (anchor?.nodeType === Node.ELEMENT_NODE ? anchor : anchor?.parentElement)?.closest('.document-line');
 }
 
+function mergeAtBoundary(event, line, selection) {
+  if (!selection.isCollapsed || !selection.rangeCount ||
+      !['deleteContentBackward', 'deleteContentForward'].includes(event.inputType)) return;
+  const backward = event.inputType === 'deleteContentBackward';
+  const caret = selection.getRangeAt(0);
+  const remaining = caret.cloneRange();
+  if (backward) remaining.setStart(line, 0);
+  else remaining.setEnd(line, line.childNodes.length);
+  const fragment = remaining.cloneContents();
+  if (fragment.textContent || fragment.querySelector('[data-inline-math]')) return;
+  event.preventDefault();
+
+  const section = line.parentElement;
+  const direction = backward ? 'previousElementSibling' : 'nextElementSibling';
+  const spacers = [];
+  let neighbor = section[direction];
+  while (neighbor?.hidden) {
+    spacers.push(neighbor);
+    neighbor = neighbor[direction];
+  }
+  const other = neighbor?.querySelector(':scope > .document-line');
+  if (!other) return;
+  const first = backward ? other : line;
+  const second = backward ? line : other;
+  const offset = first.childNodes.length;
+  first.append(...second.childNodes);
+  second.parentElement.remove();
+  spacers.forEach(spacer => spacer.remove());
+  first.syncSource();
+  selection.collapse(first, offset);
+}
+
 editor.addEventListener('beforeinput', event => {
   if (event.target !== editor) return;
   const line = selectedLine();
@@ -451,7 +483,8 @@ editor.addEventListener('beforeinput', event => {
     event.preventDefault();
     return;
   }
-  line.handleParagraphInput(event);
+  mergeAtBoundary(event, line, window.getSelection());
+  if (!event.defaultPrevented) line.handleParagraphInput(event);
 });
 editor.addEventListener('input', event => {
   if (event.target === editor) selectedLine()?.syncSource();
