@@ -79,3 +79,14 @@ header h1 { margin-right: auto; }
 .tools [data-copy="ordered"]::before { content: '≡'; }
 .tools [data-copy="table"]::before { content: '▦'; }
 .tools [data-format] { min-width: 3rem; }
+
+#editor .paper-text { display: inline-block; min-width: 1ch; min-height: 1em; outline: none; white-space: pre-wrap; }
+#editor .paper-text:focus-visible { box-shadow: inset 0 -1px #3684ed; }
+#editor table { width: 100%; border-collapse: collapse; }
+#editor td { border: 1px solid light-dark(#d8d8df, #515158); padding: .35rem .6rem; }
+#editor td .paper-text { display: block; }
+#editor section > button[data-copy] { font-size: 0; }
+#editor section > button[data-copy]::before { font-size: 1rem; }
+#editor [data-copy="item"]::before, #editor [data-copy="row"]::before { content: '＋'; }
+#editor [data-copy="column"]::before { content: '⊞'; }
+#editor [data-copy="remove"]::before { content: '×'; }

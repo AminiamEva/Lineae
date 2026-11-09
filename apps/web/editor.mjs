@@ -181,6 +181,26 @@ function parseInline(source, depth = 0) {
   return nodes;
 }
 
+function paperText(value, save, key) {
+  const control = document.createElement('span');
+  control.className = 'paper-text';
+  control.contentEditable = 'plaintext-only';
+  control.dataset.field = key;
+  control.setAttribute('aria-label', copy[language.value][key]);
+  control.setAttribute('role', 'textbox');
+  control.textContent = value;
+  control.addEventListener('beforeinput', event => {
+    if (['insertParagraph', 'insertLineBreak', 'insertFromDrop'].includes(event.inputType)) event.preventDefault();
+  });
+  control.addEventListener('input', () => {
+    const valid = plain.test(control.textContent);
+    control.setAttribute('aria-invalid', String(!valid));
+    if (valid) save(control.textContent);
+    download.disabled = Boolean(editor.querySelector('[aria-invalid="true"]'));
+  });
+  return control;
+}
+
 function editorBlock(raw) {
   const node = document.createElement('section');
   let output = raw;
@@ -195,7 +215,9 @@ function editorBlock(raw) {
 
   if (heading && plain.test(heading[1])) {
     node.className = 'heading';
-    node.append(field(heading[1], value => { output = '\\section{' + value + '}'; }, 'heading'));
+    const title = document.createElement('h2');
+    title.append(paperText(heading[1], value => { output = '\\section{' + value + '}'; }, 'heading'));
+    node.append(title);
   } else if (formula) {
     node.append(field(formula[1], value => { output = '\\[' + value + '\\]'; }, 'display', true));
   } else if (list && list[2].split(/\r?\n/).every(line => /^\\item /.test(line) && plain.test(line.slice(6)))) {
@@ -206,11 +228,25 @@ function editorBlock(raw) {
     };
     const add = index => {
       const li = document.createElement('li');
-      li.append(field(items[index], value => { items[index] = value; save(); }, 'item'));
+      const control = paperText(items[index], value => { items[index] = value; save(); }, 'item');
+      control.addEventListener('keydown', event => {
+        if (event.key === 'Enter' && !event.isComposing) {
+          event.preventDefault();
+          addItem();
+        }
+      });
+      li.append(control);
       view.append(li);
+      return control;
     };
     items.forEach((_, index) => add(index));
-    node.append(view, button('item', () => { items.push(''); add(items.length - 1); save(); }));
+    const addItem = () => {
+      items.push('');
+      const control = add(items.length - 1);
+      save();
+      control.focus();
+    };
+    node.append(view, button('item', addItem));
   } else if (table && tableRows(table).every(row => row.length === table[1].length && row.every(value => plain.test(value.trim())))) {
     const rows = tableRows(table);
     let columns = table[1];
@@ -219,7 +255,17 @@ function editorBlock(raw) {
       output = ['\\begin{tabular}{' + columns + '}', ...rows.map(row => row.join(' & ') + ' \\\\'), '\\end{tabular}'].join(lineBreak);
     };
     const addCell = (tr, row, index) => {
-      tr.insertCell().append(field(row[index].trim(), value => { row[index] = value; save(); }, 'table'));
+      const cell = tr.insertCell();
+      const control = paperText(row[index].trim(), value => { row[index] = value; save(); }, 'table');
+      control.addEventListener('keydown', event => {
+        if (event.key !== 'Tab' || event.isComposing) return;
+        const cells = Array.from(view.querySelectorAll('.paper-text'));
+        const next = cells[cells.indexOf(control) + (event.shiftKey ? -1 : 1)];
+        if (!next) return;
+        event.preventDefault();
+        next.focus();
+      });
+      cell.append(control);
     };
     const addRow = row => {
       const tr = view.insertRow();
