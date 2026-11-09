@@ -71,12 +71,17 @@ const server=createServer(async(req,res)=>{
     await paper.locator('p').last().click();
     await page.keyboard.press('End');
     await page.keyboard.press('Enter');
+    const caretBounds=await page.evaluate(()=>{
+      const selection=window.getSelection();
+      const element=selection.focusNode.nodeType===1?selection.focusNode:selection.focusNode.parentElement;
+      const bounds=element.getBoundingClientRect();
+      return {x:bounds.x,y:bounds.y};
+    });
     await page.keyboard.type('\\');
     await page.waitForFunction(()=>!document.querySelector('.command-menu').hidden);
     const completion=page.locator('.command-menu');
     const initialBounds=await completion.boundingBox();
     const initialScroll=await page.evaluate(()=>window.scrollY);
-    const caretBounds=await paper.locator('p').last().boundingBox();
     assert.ok(initialBounds.y>=caretBounds.y && initialBounds.x<caretBounds.x+80,
       'Completion appears below the text entry position: '+JSON.stringify({initialBounds,caretBounds}));
     for(let index=0;index<16;index++) await page.keyboard.press('ArrowDown');
