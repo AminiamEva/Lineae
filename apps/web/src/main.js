@@ -128,7 +128,16 @@ tools.append(headingMenu);
 button('itemize',()=>editor.chain().focus().toggleBulletList().run());
 button('enumerate',()=>editor.chain().focus().toggleOrderedList().run());
 button('▦',()=>editor.chain().focus().insertTable({rows:2,cols:2,withHeaderRow:false}).run());
-function activeMath() { return document.activeElement?.tagName === 'MATH-FIELD' ? document.activeElement : null; }
+let editingMath = null;
+document.addEventListener('focusin', event => {
+  const field=event.composedPath().find(element=>element?.tagName==='MATH-FIELD');
+  if(field) editingMath=field;
+  else if(paper.contains(event.target) || event.target.classList?.contains('source-view')) editingMath=null;
+},true);
+function activeMath() {
+  if(document.activeElement?.tagName==='MATH-FIELD') return document.activeElement;
+  return editingMath?.isConnected ? editingMath : null;
+}
 button('＋ Row',()=>{const field=activeMath(); if(field)field.executeCommand('addRowAfter');else editor.chain().focus().addRowAfter().run();});
 button('＋ Column',()=>{const field=activeMath(); if(field)field.executeCommand('addColumnAfter');else editor.chain().focus().addColumnAfter().run();});
 button('$',()=>insertMath());
