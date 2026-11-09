@@ -48,3 +48,5 @@ main { padding:125px 24px 60px; overflow:auto; }
 .command-menu button { display:block; width:100%; text-align:left; margin-top:.3rem; }
 .ML__popover { position:fixed!important; inset:auto 16px 42px auto!important; width:288px!important; max-width:calc(100vw - 32px); }
 #status { max-width:210mm; margin:0 auto 1rem; }
+
+.tools button[aria-pressed=true] { color:light-dark(#0059c7,#9bc8ff); background:light-dark(#dceaff,#343d50); }

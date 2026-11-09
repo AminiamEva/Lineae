@@ -1,4 +1,4 @@
-import { MathNode } from './editor/math-node.js';
+import { MathNode, configureMathKeys } from './editor/math-node.js';
 import { serialize, importBlock } from './editor/latex-codec.js';
 import { Editor, Node, Extension, Mark } from '@tiptap/core';
 import StarterKit from '@tiptap/starter-kit';
@@ -31,10 +31,16 @@ const Raw = Node.create({
   parseHTML:()=>[{tag:'pre[data-raw]'}],
   renderHTML:({node})=>['pre',{'data-raw':'',contenteditable:'false'},node.attrs.source],
 });
+try {
+  const configurationUrl=new URL('./config.yaml',import.meta.url);
+  configurationUrl.search=new URL(import.meta.url).search;
+  const response=await fetch(configurationUrl);
+  if(response.ok)configureMathKeys((await response.json()).keybindings?.math);
+} catch(error) { console.warn('Configuration / 配置',error); }
 let editor;
-function insertMath(display=false) {
+function insertMath(display=false, latex='') {
   const position=editor.state.selection.from;
-  editor.chain().focus().insertContent({type:'math',attrs:{latex:'',display}}).run();
+  editor.chain().focus().insertContent({type:'math',attrs:{latex,display}}).run();
   requestAnimationFrame(()=>{
     const dom=editor.view.nodeDOM(position);
     dom?.querySelector('math-field')?.focus();
@@ -86,9 +92,14 @@ function button(label, action) {
 }
 button('↶',()=>editor.chain().focus().undo().run());
 button('↷',()=>editor.chain().focus().redo().run());
-button('B',()=>editor.chain().focus().toggleBold().run());
-button('I',()=>editor.chain().focus().toggleItalic().run());
-button('U',()=>editor.chain().focus().toggleMark('underline').run());
+const boldButton=button('B',()=>editor.chain().focus().toggleBold().run());
+const italicButton=button('I',()=>editor.chain().focus().toggleItalic().run());
+const underlineButton=button('U',()=>editor.chain().focus().toggleMark('underline').run());
+editor.on('transaction',()=>{
+  for(const [button,mark] of [[boldButton,'bold'],[italicButton,'italic'],[underlineButton,'underline']]) {
+    button.setAttribute('aria-pressed',String(editor.isActive(mark)));
+  }
+});
 for(const [attribute,values] of Object.entries({
   color:['#000000','#595959','#c00000','#ff0000','#ed7d31','#ffc000','#00b050','#008080','#0070c0','#7030a0'],
   fontFamily:['Georgia','Arial','monospace'],
@@ -134,7 +145,7 @@ button('LaTeX',()=>{
   if(sourceView.hidden) {
     sourceView.value=source(); sourceView.hidden=false; paper.hidden=true;
   } else {
-    try {load(sourceView.value);sourceView.hidden=true;paper.hidden=false;}
+    try {load(sourceView.value);sourceView.hidden=true;paper.hidden=false;editor.commands.focus();}
     catch(error){document.querySelector('#status').hidden=false;document.querySelector('#status').textContent=error.message;}
   }
 });
@@ -169,11 +180,7 @@ const commandActions={
   equation:()=>insertMath(true),
 };
 function insertFormulaCommand(latex) {
-  insertMath();
-  requestAnimationFrame(()=>{
-    const field=document.activeElement;
-    if(field?.tagName==='MATH-FIELD')field.executeCommand(['insert',latex]);
-  });
+  insertMath(false,latex.replaceAll('#?', '\\placeholder{}'));
 }
 function showCommands() {
   commands.hidden=false;filter.value='';renderCommands();filter.focus();

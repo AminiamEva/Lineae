@@ -1,4 +1,10 @@
 import { Node } from '@tiptap/core';
+let configuredKeys=[{key:'ctrl+6',command:'moveToSuperscript'},{key:'ctrl+-',command:'moveToSubscript'},{key:'ctrl+0',command:'moveAfterParent'}];
+export function configureMathKeys(values) {
+  const allowed=new Set(['moveToSuperscript','moveToSubscript','moveAfterParent']);
+  const entries=Object.entries(values ?? {}).filter(([key,command])=>/^ctrl\+[^+]+$/.test(key)&&allowed.has(command));
+  if(entries.length)configuredKeys=entries.map(([key,command])=>({key,command}));
+}
 export const MathNode = Node.create({
   name:'math', group:'inline', inline:true, atom:true,
   addAttributes:()=>({latex:{default:''},display:{default:false}}),
@@ -38,9 +44,7 @@ export const MathNode = Node.create({
       });
       field.addEventListener('mount',()=>{
         field.keybindings=[
-          {key:'ctrl+6',command:'moveToSuperscript'},
-          {key:'ctrl+-',command:'moveToSubscript'},
-          {key:'ctrl+0',command:'moveAfterParent'},
+          ...configuredKeys,
           ...field.keybindings,
         ];
       });
