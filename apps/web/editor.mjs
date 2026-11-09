@@ -188,25 +188,65 @@ function editorBlock(raw) {
   } else {
     const parts = body.split(/(\\textbf\{[^{}]*\}|\$[^$\r\n]+\$)/);
     if (parts.every((value, index) => index % 2 ? value.startsWith('$') || plain.test(value.slice(8, -1)) : plain.test(value))) {
-      const save = () => { output = parts.join(''); };
+      const line = document.createElement('p');
+      line.className = 'document-line';
+      line.contentEditable = 'true';
+      line.setAttribute('aria-label', copy[language.value].paragraph);
+      line.dataset.field = 'paragraph';
+      line.dataset.documentLine = '';
+      const save = () => {
+        const serialize = (element, bold = false) => {
+          if (element.nodeType === Node.TEXT_NODE) return element.textContent;
+          if (element.dataset?.inlineMath !== undefined) return '$' + element.firstChild.value + '$';
+          const strong = element.matches?.('b, strong');
+          const text = Array.from(element.childNodes, child => serialize(child, bold || strong)).join('');
+          return strong && !bold && text ? '\\textbf{' + text + '}' : text;
+        };
+        output = serialize(line);
+        const text = line.cloneNode(true);
+        text.querySelectorAll('[data-inline-math]').forEach(math => math.remove());
+        line.setAttribute('aria-invalid', String(!plain.test(text.textContent)));
+        download.disabled = Boolean(editor.querySelector('[aria-invalid="true"]'));
+      };
+      const inlineMath = value => {
+        const wrapper = document.createElement('span');
+        wrapper.dataset.inlineMath = '';
+        wrapper.contentEditable = 'false';
+        const control = field(value, save, 'inline', true);
+        wrapper.append(control);
+        return wrapper;
+      };
       parts.forEach((value, index) => {
         if (index % 2 && value.startsWith('$')) {
-          node.append(field(value.slice(1, -1), next => { parts[index] = '$' + next + '$'; save(); }, 'inline', true));
+          line.append(inlineMath(value.slice(1, -1)));
         } else if (index % 2) {
-          const control = field(value.slice(8, -1), next => { parts[index] = '\\textbf{' + next + '}'; save(); }, 'bold');
-          control.className = 'bold';
-          node.append(control);
-        } else if (value || parts.length === 1) {
-          node.append(field(value, next => { parts[index] = next; save(); }));
+          const strong = document.createElement('strong');
+          strong.textContent = value.slice(8, -1);
+          line.append(strong);
+        } else {
+          line.append(value);
         }
       });
-      for (const key of ['bold', 'inline']) {
-        node.append(button(key, () => {
-          if (node.querySelector('[aria-invalid="true"]')) return;
-          output += key === 'bold' ? ' \\textbf{Text}' : ' $x^2$';
-          node.replaceWith(editorBlock(output));
-        }));
-      }
+      line.addEventListener('input', event => {
+        if (!event.target.closest('[data-inline-math]')) save();
+      });
+      line.addEventListener('beforeinput', event => {
+        if (event.target.closest('[data-inline-math]')) return;
+        if (['insertParagraph', 'insertLineBreak', 'insertFromDrop'].includes(event.inputType)) event.preventDefault();
+      });
+      line.addEventListener('paste', event => {
+        if (event.target.closest('[data-inline-math]')) return;
+        event.preventDefault();
+        document.execCommand('insertText', false, event.clipboardData.getData('text/plain').replace(/\r?\n/g, ' '));
+      });
+      line.insertInlineMath = range => {
+        if (!range.collapsed) return;
+        const math = inlineMath('x^2');
+        range.insertNode(math);
+        save();
+        math.firstChild.focus();
+      };
+      node.append(line);
     } else {
       const details = document.createElement('details');
       const summary = document.createElement('summary');
@@ -272,6 +312,18 @@ for (const [key, template] of Object.entries(templates)) {
     spacer.serialize = () => documentParts.eol.repeat(2);
     editor.append(spacer, editorBlock(template));
   }));
+}
+for (const key of ['bold', 'inline']) {
+  const control = button(key, () => {
+    const selection = window.getSelection();
+    const anchor = selection.anchorNode;
+    const line = (anchor?.nodeType === Node.ELEMENT_NODE ? anchor : anchor?.parentElement)?.closest('[data-document-line]');
+    if (!line || !selection.rangeCount || !line.contains(selection.focusNode)) return;
+    if (key === 'bold') document.execCommand('bold');
+    else line.insertInlineMath(selection.getRangeAt(0));
+  });
+  control.addEventListener('mousedown', event => event.preventDefault());
+  insert.append(control);
 }
 openDocument(sample);
 translate();

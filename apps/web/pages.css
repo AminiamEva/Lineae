@@ -56,3 +56,13 @@ header h1 { margin-right: auto; }
 #editor .bold, #editor .heading input { font-weight: 700; }
 #editor button { margin: .35rem .3rem 0 0; background: light-dark(#ececf1, #38383d); color: inherit; }
 #editor [aria-invalid="true"] { outline: 2px solid #d54848; }
+
+#editor .document-line { min-height: 1.6em; margin: .25rem 0; white-space: pre-wrap; overflow-wrap: anywhere; font: 1.15rem/1.65 Georgia, "Songti SC", SimSun, serif; }
+#editor .document-line:focus { outline: none; }
+#editor [data-inline-math] { display: inline-block; vertical-align: middle; }
+#editor [data-inline-math] math-field { border: 0; padding: 0; }
+#editor section:has(.document-line) { border-bottom: 0; overflow: visible; }
+#editor section > button[data-copy="remove"] { display: none; }
+#editor section:focus-within > button[data-copy="remove"] { display: inline-block; }
+#editor li input, #editor .heading input { border-color: transparent; }
+#editor li input:focus, #editor .heading input:focus { border-color: light-dark(#ddd, #555); }
