@@ -5,6 +5,46 @@ const input = document.querySelector('#text');
 const status = document.querySelector('#status');
 const download = document.querySelector('#download');
 
+const copy = {
+  'zh-CN': {
+    open: '打开 .tex', editor: '编辑正文', paragraph: '段落', text: '正文', download: '下载 .tex',
+    intro: '请选择一个 UTF-8 .tex 文件。',
+    loading: '正在读取文件…',
+    ready: '可编辑独立纯文本段落。下载会保留其余源码。',
+    invalid: '请输入单行正文，避免 LaTeX 特殊字符。',
+    unsupported: '未找到支持的段落。正文须仅含纯文本和注释，且段落前后留空行。',
+    unreadable: '无法读取文件。请检查文件是否为 UTF-8 编码。',
+  },
+  en: {
+    open: 'Open .tex', editor: 'Edit document', paragraph: 'Paragraph', text: 'Text', download: 'Download .tex',
+    intro: 'Choose a UTF-8 .tex file.',
+    loading: 'Reading the file…',
+    ready: 'Edit a standalone plain-text paragraph. The download preserves the rest of the source.',
+    invalid: 'Enter one line of text without LaTeX special characters.',
+    unsupported: 'No supported paragraphs found. Use plain text and comments with blank lines around each paragraph.',
+    unreadable: 'Could not read the file. Check that it uses UTF-8 encoding.',
+  },
+};
+
+const language = document.querySelector('#language');
+const preferredLanguage = navigator.language.toLowerCase().startsWith('zh') ? 'zh-CN' : 'en';
+
+function setStatus(key) {
+  status.dataset.copy = key;
+  status.textContent = copy[language.value][key];
+}
+
+function translate() {
+  document.documentElement.lang = language.value;
+  for (const element of document.querySelectorAll('[data-copy]')) {
+    element.textContent = copy[language.value][element.dataset.copy];
+  }
+}
+
+language.value = preferredLanguage;
+language.addEventListener('change', translate);
+translate();
+
 let source = '';
 let spans = [];
 let filename = '';
@@ -43,9 +83,7 @@ function showParagraph() {
 function validate() {
   const valid = input.value.trim() !== '' && !/[\r\n\\{}%$&#_^~]/.test(input.value);
   download.disabled = !valid;
-  status.textContent = valid
-    ? '可编辑独立纯文本段落。下载会保留其余源码。'
-    : '请输入单行正文，避免 LaTeX 特殊字符。';
+  setStatus(valid ? 'ready' : 'invalid');
   return valid;
 }
 
@@ -53,6 +91,7 @@ file.addEventListener('change', async () => {
   const selectedFile = file.files[0];
   editor.disabled = true;
   if (!selectedFile) return;
+  setStatus('loading');
   try {
     const bytes = await selectedFile.arrayBuffer();
     if (selectedFile !== file.files[0]) return;
@@ -62,7 +101,7 @@ file.addEventListener('change', async () => {
     edits.clear();
     paragraph.replaceChildren(...spans.map((span, index) => new Option(span.value, index)));
     if (!spans.length) {
-      status.textContent = '未找到支持的段落。请使用正文仅含纯文本和注释、且段落前后留空行的文档。';
+      setStatus('unsupported');
       return;
     }
     selection = 0;
@@ -70,7 +109,7 @@ file.addEventListener('change', async () => {
     editor.disabled = false;
     showParagraph();
   } catch {
-    if (selectedFile === file.files[0]) status.textContent = '无法读取文件。请检查文件是否为 UTF-8 编码。';
+    if (selectedFile === file.files[0]) setStatus('unreadable');
   }
 });
 
@@ -99,5 +138,3 @@ download.addEventListener('click', () => {
   link.click();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 });
-
-

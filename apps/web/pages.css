@@ -1,0 +1,19 @@
+:root { font: 16px/1.5 -apple-system, BlinkMacSystemFont, system-ui, sans-serif; color: #202124; background: #f2f2f7; }
+body { margin: 0; }
+header, .tools { display: flex; align-items: center; justify-content: space-between; gap: .75rem; flex-wrap: wrap; }
+header { background: #fff; border-bottom: 1px solid #d8d8de; padding: .65rem clamp(1rem, 4vw, 3rem); }
+h1 { margin: 0; font-size: 1.25rem; }
+main { max-width: 48rem; margin: 2rem auto; padding: 0 1rem; }
+#status { color: #53535d; }
+fieldset { min-inline-size: 0; margin: 0; padding: clamp(1rem, 5vw, 3rem); border: 1px solid #dedee5; border-radius: .75rem; background: white; box-shadow: 0 6px 24px #2021240c; }
+legend { padding: 0 .5rem; font-weight: 600; }
+fieldset label { display: block; margin-bottom: 1rem; }
+textarea, select, button { font: inherit; }
+fieldset select, textarea { display: block; box-sizing: border-box; width: 100%; margin-top: .25rem; }
+textarea, select { border: 1px solid #ceced6; border-radius: .5rem; padding: .5rem; background: #fff; color: inherit; }
+textarea { min-height: 12rem; resize: vertical; font-family: Georgia, "Songti SC", SimSun, serif; }
+button, .open { border: 0; border-radius: .65rem; background: #0059c7; color: white; padding: .55rem .85rem; cursor: pointer; }
+button:disabled { opacity: .55; cursor: default; }
+.open { position: relative; overflow: hidden; }
+.open input { position: absolute; inset: 0; width: 100%; opacity: 0; cursor: pointer; }
+.open:focus-within { outline: 2px solid #0059c7; outline-offset: 3px; }
