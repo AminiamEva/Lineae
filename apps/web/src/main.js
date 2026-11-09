@@ -3,9 +3,10 @@ import { installFormatControls } from './editor/format-controls.js';
 import { decorateToolbar } from './editor/icons.js';
 import { PaperBehavior } from './editor/paper-behavior.js';
 import { MathNode, MathBlock, configureMathKeys, insertFormula } from './editor/math-node.js';
-import { Ref, TableOfContents, refreshReferences } from './editor/references.js';
+import { Ref, Label, TableOfContents, refreshReferences } from './editor/references.js';
 import { installTableHoverAddRow } from './editor/table-hover.js';
 import { parseYaml, toYaml, mergeConfig } from './editor/config.mjs';
+import { askText } from './editor/dialog.js';
 import { serialize, importBlocks } from './editor/latex-codec.js';
 import { Editor, Node, Extension, Mark } from '@tiptap/core';
 import StarterKit from '@tiptap/starter-kit';
@@ -112,7 +113,7 @@ const paper=document.querySelector('#editor');
 paper.replaceChildren();
 editor=new Editor({
   element:paper,
-  extensions:[StarterKit.configure({heading:{levels:[1,2,3]}}),PaperBehavior,TextStyle,Underline,Table.configure({resizable:true}),TableRow,TableCell,TableHeader,Raw,DescriptionList,DescriptionItem,MathNode,MathBlock,Ref,TableOfContents,Shortcuts],
+  extensions:[StarterKit.configure({heading:{levels:[1,2,3]}}),PaperBehavior,TextStyle,Underline,Table.configure({resizable:true}),TableRow,TableCell,TableHeader,Raw,DescriptionList,DescriptionItem,MathNode,MathBlock,Ref,Label,TableOfContents,Shortcuts],
   content:'<p></p>',
 });
 function syncTableAttributes() {
@@ -250,6 +251,56 @@ let documentParts=parseDocument('\\documentclass{article}\n\\usepackage{amsmath}
 let filename='lineae.tex';
 let importedSource=null;
 let importedSnapshot=null;
+function readMeta(key) {
+  const match=documentParts.start.match(new RegExp('\\\\'+key+'\\{([^{}]*)\\}'));
+  return match?match[1]:'';
+}
+function writeMeta(key,value) {
+  const line='\\'+key+'{'+value+'}';
+  const pattern=new RegExp('\\\\'+key+'\\{([^{}]*)\\}');
+  const apply=text=>pattern.test(text)
+    ? text.replace(pattern,line)
+    : text.replace(/\\begin\{document\}/,line+'\n\\begin{document}');
+  documentParts.start=apply(documentParts.start);
+  if(importedSource)importedSource=apply(importedSource);
+  renderMeta();
+}
+const metaBar=document.createElement('section');metaBar.id='document-meta';
+const metaTitle=document.createElement('div');metaTitle.className='doc-title';
+const metaAuthor=document.createElement('div');metaAuthor.className='doc-author';
+metaBar.append(metaTitle,metaAuthor);paper.before(metaBar);
+metaTitle.addEventListener('click',async()=>{
+  const value=await askText('标题 / Title',readMeta('title'));
+  if(value!==null)writeMeta('title',value);
+});
+metaAuthor.addEventListener('click',async()=>{
+  const value=await askText('作者 / Author',readMeta('author'));
+  if(value!==null)writeMeta('author',value);
+});
+function renderMeta() {
+  metaTitle.replaceChildren();
+  metaAuthor.replaceChildren();
+  const title=readMeta('title');
+  const author=readMeta('author');
+  metaTitle.hidden=!title&&Boolean(author);
+  metaAuthor.hidden=!author&&Boolean(title);
+  if(title)metaTitle.textContent=title;
+  if(author)metaAuthor.textContent=author;
+  if(!title&&!author) {
+    const hint=document.createElement('button');
+    hint.type='button';hint.textContent='添加标题/作者 / Add title & author';
+    hint.addEventListener('click',async event=>{
+      event.stopPropagation();
+      const titleValue=await askText('标题 / Title',readMeta('title'));
+      if(titleValue===null)return;
+      const authorValue=await askText('作者 / Author',readMeta('author'));
+      if(authorValue===null)return;
+      writeMeta('title',titleValue);writeMeta('author',authorValue);
+    });
+    metaTitle.hidden=false;metaTitle.append(hint);
+  }
+}
+renderMeta();
 function source() {
   const document=editor.getJSON();
   if(importedSnapshot===JSON.stringify(document))return importedSource;
@@ -263,7 +314,7 @@ function load(text) {
   const content=parsed.blocks.flatMap(importBlocks);
   editor.commands.setContent({type:'doc',content:content.length?content:[{type:'paragraph'}]});
   refreshReferences(paper);syncTableAttributes();
-  importedSource=text;importedSnapshot=JSON.stringify(editor.getJSON());
+  importedSource=text;importedSnapshot=JSON.stringify(editor.getJSON());renderMeta();
 }
 button('LaTeX',()=>{
   if(sourceView.hidden) {
@@ -310,9 +361,15 @@ document.body.append(commands);
 const formulaCommands = {
   frac: '\\frac{#?}{#?}', sqrt: '\\sqrt{#?}', sum: '\\sum',
   int: '\\int', lim: '\\lim', matrix: '\\begin{pmatrix}#?\\end{pmatrix}',
-  mathbf: '\\mathbf{#?}', mathrm: '\\mathrm{#?}', mathit: '\\mathit{#?}',
-  mathcal: '\\mathcal{#?}', mathbb: '\\mathbb{#?}', text: '\\text{#?}',
-  overline: '\\overline{#?}', hat: '\\hat{#?}', vec: '\\vec{#?}', dot: '\\dot{#?}',
+  mathbf: '\\mathbf{x}', mathrm: '\\mathrm{x}', mathit: '\\mathit{x}',
+  mathcal: '\\mathcal{x}', mathbb: '\\mathbb{x}', text: '\\text{x}',
+  mathsf: '\\mathsf{x}', mathtt: '\\mathtt{x}', mathfrak: '\\mathfrak{x}', mathscr: '\\mathscr{x}',
+  boldsymbol: '\\boldsymbol{x}', operatorname: '\\operatorname{x}', op: '\\operatorname{x}',
+  leftparen: '\\left(\\placeholder{}\\right)', leftbracket: '\\left[\\placeholder{}\\right]',
+  leftbrace: '\\left\\{\\placeholder{}\\right\\}', leftdot: '\\left.\\placeholder{}\\right|',
+  rightparen: '\\left(\\placeholder{}\\right)', rightbracket: '\\left[\\placeholder{}\\right]',
+  rightbrace: '\\left\\{\\placeholder{}\\right\\}', rightdot: '\\left|\\placeholder{}\\right.',
+  overline: '\\overline{x}', hat: '\\hat{x}', vec: '\\vec{x}', dot: '\\dot{x}',
   partial: '\\partial', nabla: '\\nabla', prod: '\\prod', iint: '\\iint', oint: '\\oint',
   alpha: '\\alpha', beta: '\\beta', gamma: '\\gamma', delta: '\\delta', theta: '\\theta',
   lambda: '\\lambda', mu: '\\mu', pi: '\\pi', sigma: '\\sigma', omega: '\\omega',
@@ -338,6 +395,40 @@ const structureCommands = {
   table: () => editor.chain().focus().insertTable({ rows: 2, cols: 2, withHeaderRow: false }).run(),
   inline: () => insertMath(),
   equation: () => insertMath(true),
+  quote: () => editor.chain().focus().toggleBlockquote().run(),
+  description: () => editor.chain().focus().insertContent({type:'descriptionList',content:[{type:'descriptionItem',attrs:{term:''},content:[{type:'paragraph'}]}]}).run(),
+  toc: () => {
+    if(editor.isActive('tableOfContents'))editor.chain().focus().deleteSelection().run();
+    else editor.chain().focus().insertContent({type:'tableOfContents'}).run();
+  },
+  label: async () => {
+    if(editor.isActive('heading')) {
+      const value=await askText('标签键 / Label key',editor.getAttributes('heading').label??'');
+      if(value!==null)editor.chain().focus().updateAttributes('heading',{label:value||null}).run();
+    } else {
+      const value=await askText('标签键 / Label key');
+      if(value)editor.chain().focus().insertContent({type:'label',attrs:{key:value}}).run();
+    }
+  },
+  ref: async () => {
+    const value=await askText('引用标签 / Reference label');
+    if(value)editor.chain().focus().insertContent({type:'ref',attrs:{key:value}}).run();
+  },
+  title: async () => {
+    const value=await askText('标题 / Title',readMeta('title'));
+    if(value!==null)writeMeta('title',value);
+  },
+  author: async () => {
+    const value=await askText('作者 / Author',readMeta('author'));
+    if(value!==null)writeMeta('author',value);
+  },
+  textbf: () => editor.chain().focus().toggleBold().run(),
+  textit: () => editor.chain().focus().toggleItalic().run(),
+  emph: () => editor.chain().focus().toggleItalic().run(),
+  underline: () => editor.chain().focus().toggleMark('underline').run(),
+  matrix: () => insertMath(false,'\\begin{pmatrix}\\placeholder{}\\end{pmatrix}'),
+  cases: () => insertMath(true,'\\begin{cases}\\placeholder{} & \\placeholder{}\\\\ \\placeholder{} & \\placeholder{}\\end{cases}'),
+  align: () => insertMath(true,'\\begin{align}\\placeholder{} &= \\placeholder{}\\\\ \\placeholder{} &= \\placeholder{}\\end{align}'),
 };
 let completionField = null;
 let completionAnchor = null;
@@ -509,10 +600,6 @@ function groupButton(container,label,action) {
   container.append(control);
   return control;
 }
-function promptText(message,current='') {
-  const value=window.prompt(message,current);
-  return value===null?null:value.trim();
-}
 groupButton(tableGroup,'▦',()=>editor.chain().focus().insertTable({rows:2,cols:2,withHeaderRow:false}).run());
 groupButton(tableGroup,'＋ Row',addMatrixRow);
 groupButton(tableGroup,'＋ Column',addMatrixColumn);
@@ -535,23 +622,45 @@ groupButton(formatGroup,'code',()=>editor.chain().focus().toggleCode().run());
 groupButton(formatGroup,'quote',()=>editor.chain().focus().toggleBlockquote().run());
 groupButton(formatGroup,'hr',()=>editor.chain().focus().setHorizontalRule().run());
 groupButton(formatGroup,'desc',()=>editor.chain().focus().insertContent({type:'descriptionList',content:[{type:'descriptionItem',attrs:{term:''},content:[{type:'paragraph'}]}]}).run());
-groupButton(referenceGroup,'label',()=>{
-  if(!editor.isActive('heading'))return;
-  const value=promptText('标签键 / Label key',editor.getAttributes('heading').label??'');
-  if(value!==null)editor.chain().focus().updateAttributes('heading',{label:value||null}).run();
+function setListStyle(style) {
+  if(editor.isActive('orderedList'))editor.chain().focus().updateAttributes('orderedList',{labelStyle:style}).run();
+  else if(editor.isActive('bulletList'))editor.chain().focus().updateAttributes('bulletList',{marker:style}).run();
+}
+groupButton(formatGroup,'1.',()=>setListStyle('decimal'));
+groupButton(formatGroup,'a.',()=>setListStyle('lower-alpha'));
+groupButton(formatGroup,'A.',()=>setListStyle('upper-alpha'));
+groupButton(formatGroup,'I.',()=>setListStyle('upper-roman'));
+groupButton(formatGroup,'甲',()=>setListStyle('cjk-heavenly-stem'));
+groupButton(formatGroup,'•',async()=>{const value=await askText('项目符号 / Bullet marker','•');if(value)setListStyle(value);});
+groupButton(referenceGroup,'label',async()=>{
+  if(editor.isActive('heading')){
+    const value=await askText('标签键 / Label key',editor.getAttributes('heading').label??'');
+    if(value!==null)editor.chain().focus().updateAttributes('heading',{label:value||null}).run();
+  } else {
+    const value=await askText('标签键 / Label key');
+    if(value)editor.chain().focus().insertContent({type:'label',attrs:{key:value}}).run();
+  }
 });
-groupButton(referenceGroup,'ref',()=>{
-  const value=promptText('引用标签 / Reference label');
+groupButton(referenceGroup,'ref',async()=>{
+  const value=await askText('引用标签 / Reference label');
   if(value)editor.chain().focus().insertContent({type:'ref',attrs:{key:value}}).run();
 });
 groupButton(referenceGroup,'toc',()=>{
   if(editor.isActive('tableOfContents'))editor.chain().focus().deleteSelection().run();
   else editor.chain().focus().insertContent({type:'tableOfContents'}).run();
 });
-groupButton(referenceGroup,'short',()=>{
+groupButton(referenceGroup,'short',async()=>{
   if(!editor.isActive('heading'))return;
-  const value=promptText('短标题 / Short title',editor.getAttributes('heading').shortTitle??'');
+  const value=await askText('短标题 / Short title',editor.getAttributes('heading').shortTitle??'');
   if(value!==null)editor.chain().focus().updateAttributes('heading',{shortTitle:value||null}).run();
+});
+groupButton(referenceGroup,'title',async()=>{
+  const value=await askText('标题 / Title',readMeta('title'));
+  if(value!==null)writeMeta('title',value);
+});
+groupButton(referenceGroup,'author',async()=>{
+  const value=await askText('作者 / Author',readMeta('author'));
+  if(value!==null)writeMeta('author',value);
 });
 groupButton(mathGroup,'$',()=>insertMath());
 groupButton(mathGroup,'$$',()=>insertMath(true));

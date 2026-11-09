@@ -63,6 +63,26 @@ export const PaperBehavior = Extension.create({
           renderHTML: attributes => attributes.align ? { 'data-align': attributes.align, style: 'text-align:' + attributes.align } : {},
         },
       },
+    }, {
+      types: ['orderedList'],
+      attributes: {
+        labelStyle: {
+          default: null,
+          parseHTML: element => element.dataset.labelStyle ?? null,
+          renderHTML: attributes => attributes.labelStyle ? { 'data-label-style': attributes.labelStyle, style: 'list-style-type:' + attributes.labelStyle } : {},
+        },
+      },
+    }, {
+      types: ['bulletList'],
+      attributes: {
+        marker: {
+          default: null,
+          parseHTML: element => element.dataset.marker ?? null,
+          renderHTML: attributes => attributes.marker
+            ? { 'data-marker': attributes.marker, style: "list-style-type: '" + String(attributes.marker).replace(/\\/g, '\\\\').replace(/'/g, "\\'") + "'" }
+            : {},
+        },
+      },
     }];
   },
   addProseMirrorPlugins() {
@@ -100,6 +120,20 @@ export const PaperBehavior = Extension.create({
               event.preventDefault();
               return true;
             },
+          },
+        },
+      }),
+      new Plugin({
+        props: {
+          decorations(state) {
+            const { from, to } = state.selection;
+            if (from === to) return null;
+            const decorations = [];
+            state.doc.nodesBetween(from, to, (node, position) => {
+              if (node.type.name === 'math' || node.type.name === 'mathBlock')
+                decorations.push(Decoration.node(position, position + node.nodeSize, { class: 'math-selected' }));
+            });
+            return DecorationSet.create(state.doc, decorations);
           },
         },
       }),

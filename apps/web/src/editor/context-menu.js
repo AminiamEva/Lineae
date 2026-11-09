@@ -1,5 +1,6 @@
 import { DOMSerializer } from '@tiptap/pm/model';
 import { icon } from './icons.js';
+import { promptDialog, askText } from './dialog.js';
 
 function selectedMath(context) {
   const ranges = context.field.selection.ranges;
@@ -42,6 +43,34 @@ export function contextCommands(context) {
         id, labels:[zh,en], visible:Boolean(field?.value.match(/\\begin\{(?:[pbBvV]?matrix|array|cases)/)),
         run:()=>{field.focus();field.executeCommand(id);},
       })),
+    ...[
+      ['pmatrix','圆括号','Parentheses'], ['bmatrix','方括号','Brackets'], ['Bmatrix','花括号','Braces'],
+      ['vmatrix','单竖线','Bars'], ['Vmatrix','双竖线','Double bars'], ['matrix','无括号','None'],
+    ].map(([target,zh,en]) => ({
+      id:'matrix-'+target, labels:[zh,en],
+      visible:Boolean(field?.value.match(/\\begin\{(?:[pbBvV]?matrix)\}/)),
+      run:()=>{
+        const value=field.value;
+        const match=value.match(/\\begin\{(pmatrix|bmatrix|Bmatrix|vmatrix|Vmatrix|matrix)\}([\s\S]*?)\\end\{\1\}/);
+        if(!match)return;
+        const next=value.slice(0,match.index)+'\\begin{'+target+'}'+match[2]+'\\end{'+target+'}'+value.slice(match.index+match[0].length);
+        field.focus();field.value=next;field.dispatchEvent(new Event('input',{bubbles:true}));
+      },
+    })),
+    { id:'matrix-custom', labels:['自定义左右括号','Custom delimiters'],
+      visible:Boolean(field?.value.match(/\\begin\{(?:[pbBvV]?matrix)\}/)),
+      run:async()=>{
+        const left=await askText('左括号 / Left delimiter','(');
+        if(left===null)return;
+        const right=await askText('右括号 / Right delimiter',')');
+        if(right===null)return;
+        const value=field.value;
+        const match=value.match(/\\begin\{(pmatrix|bmatrix|Bmatrix|vmatrix|Vmatrix|matrix)\}([\s\S]*?)\\end\{\1\}/);
+        if(!match)return;
+        const next=value.slice(0,match.index)+'\\left'+left+'\\begin{matrix}'+match[2]+'\\end{matrix}\\right'+right+value.slice(match.index+match[0].length);
+        field.focus();field.value=next;field.dispatchEvent(new Event('input',{bubbles:true}));
+      },
+    },
     { id:'display-style', labels:['切换公式显示样式','Toggle display style'], visible:Boolean(field), run:()=>{
       field.focus();
       const latex=field.value;
@@ -79,44 +108,59 @@ export function contextCommands(context) {
     },
     { id: 'heading-short-title', labels: ['设置短标题', 'Set short title'],
       visible: !field && editor.isActive('heading'),
-      run: () => {
+      run: async () => {
         const current = editor.getAttributes('heading').shortTitle ?? '';
-        const value = window.prompt('短标题 / Short title', current);
+        const value = await promptDialog({ title: '短标题 / Short title', value: current });
         if (value === null) return;
         editor.chain().focus().updateAttributes('heading', { shortTitle: value.trim() || null }).run();
       },
     },
     { id: 'heading-label', labels: ['设置标签', 'Set label'],
-      visible: !field && editor.isActive('heading'),
-      run: () => {
-        const current = editor.getAttributes('heading').label ?? '';
-        const value = window.prompt('标签键 / Label key', current);
-        if (value === null) return;
-        editor.chain().focus().updateAttributes('heading', { label: value.trim() || null }).run();
+      visible: !field,
+      run: async () => {
+        if (editor.isActive('heading')) {
+          const current = editor.getAttributes('heading').label ?? '';
+          const value = await promptDialog({ title: '标签键 / Label key', value: current });
+          if (value === null) return;
+          editor.chain().focus().updateAttributes('heading', { label: value.trim() || null }).run();
+        } else {
+          const value = await promptDialog({ title: '标签键 / Label key', value: '' });
+          if (value === null || !value.trim()) return;
+          editor.chain().focus().insertContent({ type: 'label', attrs: { key: value.trim() } }).run();
+        }
+      },
+    },
+    { id: 'edit-label', labels: ['编辑标签', 'Edit label'],
+      visible: !field && editor.isActive('label'),
+      run: async () => {
+        const current = editor.getAttributes('label').key ?? '';
+        const value = await promptDialog({ title: '标签键 / Label key', value: current });
+        if (value === null || !value.trim()) return;
+        editor.chain().focus().updateAttributes('label', { key: value.trim() }).run();
       },
     },
     { id: 'description-term', labels: ['编辑术语', 'Edit term'],
       visible: !field && editor.isActive('descriptionItem'),
-      run: () => {
+      run: async () => {
         const current = editor.getAttributes('descriptionItem').term ?? '';
-        const value = window.prompt('术语 / Term', current);
+        const value = await promptDialog({ title: '术语 / Term', value: current });
         if (value === null) return;
         editor.chain().focus().updateAttributes('descriptionItem', { term: value.trim() }).run();
       },
     },
     { id: 'insert-ref', labels: ['插入引用', 'Insert reference'],
       visible: !field,
-      run: () => {
-        const value = window.prompt('引用标签 / Reference label', '');
+      run: async () => {
+        const value = await promptDialog({ title: '引用标签 / Reference label', value: '' });
         if (value === null || !value.trim()) return;
         editor.chain().focus().insertContent({ type: 'ref', attrs: { key: value.trim() } }).run();
       },
     },
     { id: 'edit-ref', labels: ['编辑引用', 'Edit reference'],
       visible: !field && editor.isActive('ref'),
-      run: () => {
+      run: async () => {
         const current = editor.getAttributes('ref').key ?? '';
-        const value = window.prompt('引用标签 / Reference label', current);
+        const value = await promptDialog({ title: '引用标签 / Reference label', value: current });
         if (value === null) return;
         editor.chain().focus().updateAttributes('ref', { key: value.trim() }).run();
       },

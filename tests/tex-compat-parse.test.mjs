@@ -170,6 +170,25 @@ test('lists and tables in fixtures 11-20 are structured without raw fallback', (
   assert.match(textOf(paragraphCell.content[0].content[0]), /deliberately long sentence/);
 });
 
+test('list label styles are parsed for editing', () => {
+  const alpha = importBlocks(String.raw`\begin{enumerate}[label=\alph*]
+\item Alpha
+\item Beta
+\end{enumerate}`)[0];
+  assert.equal(alpha.type, 'orderedList');
+  assert.equal(alpha.attrs.labelStyle, 'lower-alpha');
+
+  const chinese = importBlocks(String.raw`\begin{enumerate}[label=\chinese*]
+\item 甲
+\end{enumerate}`)[0];
+  assert.equal(chinese.attrs.labelStyle, 'cjk-heavenly-stem');
+
+  const bullet = importBlocks(String.raw`\begin{itemize}[label=★]
+\item A
+\end{itemize}`)[0];
+  assert.equal(bullet.attrs.marker, '★');
+});
+
 test('heading levels, starred headings, short titles, labels, references and contents are structured', () => {
   const levels = parse('headings/headings-levels.tex');
   assert.deepEqual(levels.map(node => node.attrs?.level), [1, 2, 3]);

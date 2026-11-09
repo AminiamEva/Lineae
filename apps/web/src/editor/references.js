@@ -65,6 +65,47 @@ export const Ref = Node.create({
   },
 });
 
+export const Label = Node.create({
+  name: 'label',
+  group: 'inline',
+  inline: true,
+  atom: true,
+  selectable: true,
+  addAttributes: () => ({ key: { default: '' } }),
+  parseHTML: () => [{ tag: 'span[data-label-node]', getAttrs: dom => ({ key: dom.dataset.labelNode }) }],
+  renderHTML: ({ node }) => ['span', { 'data-label-node': node.attrs.key }, '#' + node.attrs.key],
+  addNodeView() {
+    return ({ node, editor, getPos }) => {
+      const dom = document.createElement('span');
+      dom.className = 'label-node';
+      dom.contentEditable = 'false';
+      const render = () => {
+        dom.dataset.labelView = node.attrs.key;
+        dom.textContent = '#' + node.attrs.key;
+        dom.title = '\\label{' + node.attrs.key + '}';
+      };
+      render();
+      dom.addEventListener('mousedown', event => {
+        const position = getPos();
+        if (typeof position !== 'number') return;
+        event.preventDefault();
+        event.stopPropagation();
+        editor.commands.setNodeSelection(position);
+      });
+      return {
+        dom,
+        update(next) {
+          if (next.type !== node.type) return false;
+          node = next;
+          render();
+          return true;
+        },
+        ignoreMutation: () => true,
+      };
+    };
+  },
+});
+
 export const TableOfContents = Node.create({
   name: 'tableOfContents',
   group: 'block',

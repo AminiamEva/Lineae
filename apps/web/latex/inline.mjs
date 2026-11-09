@@ -60,6 +60,9 @@ export function parseInline(source, depth = 0) {
     const reference = rest.match(/^\\ref\{([^{}\r\n]+)\}/);
     if (reference) { nodes.push({ ref: reference[1] }); cursor += reference[0].length; continue; }
 
+    const label = rest.match(/^\\label\{([^{}\r\n]+)\}/);
+    if (label) { nodes.push({ label: label[1] }); cursor += label[0].length; continue; }
+
     const emphasis = rest.match(/^\\(textbf|textit|emph|textsl|sout|underline)\{/);
     const plain = rest.match(plainPattern);
     const fontCommand = rest.match(/^\\(texttt|textsf|textrm)\{/);

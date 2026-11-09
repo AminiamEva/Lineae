@@ -314,6 +314,25 @@ const server=createServer(async(req,res)=>{
     await loadFixture('lists/lists-paragraphs.tex');
     await page.waitForFunction(()=>document.querySelectorAll('.ProseMirror li p').length===2);
 
+    await loadFixture('lists/lists-enumerate.tex');
+    await page.waitForFunction(()=>document.querySelectorAll('.ProseMirror ol li').length===3);
+    await page.locator('.ProseMirror ol li').first().click();
+    await page.locator('[data-group=format]').click();
+    await page.getByRole('button',{name:'a.',exact:true}).click();
+    await page.waitForFunction(()=>document.querySelector('.ProseMirror ol')?.getAttribute('data-label-style')==='lower-alpha');
+    await page.getByRole('button',{name:'甲',exact:true}).click();
+    await page.waitForFunction(()=>document.querySelector('.ProseMirror ol')?.getAttribute('data-label-style')==='cjk-heavenly-stem');
+
+    await loadFixture('lists/lists-itemize.tex');
+    await page.waitForFunction(()=>document.querySelectorAll('.ProseMirror ul li').length===3);
+    await page.locator('.ProseMirror ul li').first().click();
+    await page.locator('[data-group=format]').click();
+    await page.getByRole('button',{name:'•',exact:true}).click();
+    await page.waitForFunction(()=>Boolean(document.querySelector('.editor-dialog')));
+    await page.locator('.editor-dialog input').fill('◦');
+    await page.locator('.editor-dialog button[type=submit]').click();
+    await page.waitForFunction(()=>document.querySelector('.ProseMirror ul')?.getAttribute('data-marker')==='◦');
+
     const savePromise=page.waitForEvent('download');
     await page.keyboard.press('Control+s');
     const saved=await savePromise;
@@ -328,6 +347,75 @@ const server=createServer(async(req,res)=>{
     const rowsBefore=await page.locator('.ProseMirror table tr').count();
     await page.locator('.table-insert-row').click();
     assert.equal(await page.locator('.ProseMirror table tr').count(),rowsBefore+1,'Hover button inserts a table row');
+
+    const columnCell=page.locator('.ProseMirror td').first();
+    const columnBox=await columnCell.boundingBox();
+    await page.mouse.move(columnBox.x+columnBox.width-2,columnBox.y+columnBox.height/2);
+    await page.waitForFunction(()=>{const button=document.querySelector('.table-insert-column');return button&&!button.hidden;});
+    const columnsBefore=await page.locator('.ProseMirror table tr').first().locator('td,th').count();
+    await page.locator('.table-insert-column').click();
+    await page.waitForFunction(count=>document.querySelectorAll('.ProseMirror table tr:first-child td,.ProseMirror table tr:first-child th').length>count,columnsBefore);
+
+    await importSource('Before $x$ after');
+    await page.waitForFunction(()=>Boolean(document.querySelector('.ProseMirror math-field')));
+    await paper.locator('p').first().click({position:{x:2,y:8}});
+    await page.keyboard.down('Shift');
+    for(let index=0;index<12;index++)await page.keyboard.press('ArrowRight');
+    await page.keyboard.up('Shift');
+    await page.waitForFunction(()=>document.querySelectorAll('.ProseMirror .math-selected').length>0);
+
+    await importSource('Paragraph');
+    await page.waitForFunction(()=>document.querySelectorAll('.ProseMirror p').length===1);
+    await paper.locator('p').first().click();
+    await page.keyboard.press('End');
+    await page.keyboard.type('$');
+    await page.waitForFunction(()=>document.activeElement?.tagName==='MATH-FIELD');
+    await page.keyboard.type('\\');
+    await page.waitForFunction(()=>!document.querySelector('.command-menu').hidden);
+    await page.locator('.command-menu input').fill('matrix');
+    await page.keyboard.press('Enter');
+    await page.waitForTimeout(150);
+    const matrixField=page.locator('.ProseMirror math-field').last();
+    await matrixField.click({button:'right'});
+    await context.locator('[data-command="matrix-bmatrix"]').click();
+    assert.match(await matrixField.evaluate(field=>field.value),/\\begin\{bmatrix\}/,'Matrix delimiters can be changed');
+
+    await importSource('Paragraph');
+    await page.waitForFunction(()=>document.querySelectorAll('.ProseMirror p').length===1);
+    await paper.locator('p').first().click();
+    await page.keyboard.press('End');
+    await page.keyboard.type('Anchor');
+    await page.locator('[data-group=reference]').click();
+    await page.getByRole('button',{name:'label',exact:true}).click();
+    await page.waitForFunction(()=>Boolean(document.querySelector('.editor-dialog')));
+    await page.locator('.editor-dialog input').fill('sec:new');
+    await page.locator('.editor-dialog button[type=submit]').click();
+    await page.waitForFunction(()=>Boolean(document.querySelector('.ProseMirror .label-node')));
+
+    await page.getByRole('button',{name:'ref',exact:true}).click();
+    await page.waitForFunction(()=>Boolean(document.querySelector('.editor-dialog')));
+    await page.locator('.editor-dialog input').fill('sec:new');
+    await page.locator('.editor-dialog button[type=submit]').click();
+    await page.waitForFunction(()=>Boolean(document.querySelector('.ProseMirror .ref-node')));
+
+    await page.getByRole('button',{name:'title',exact:true}).click();
+    await page.waitForFunction(()=>Boolean(document.querySelector('.editor-dialog')));
+    await page.locator('.editor-dialog input').fill('My Title');
+    await page.locator('.editor-dialog button[type=submit]').click();
+    await page.getByRole('button',{name:'author',exact:true}).click();
+    await page.waitForFunction(()=>Boolean(document.querySelector('.editor-dialog')));
+    await page.locator('.editor-dialog input').fill('Me');
+    await page.locator('.editor-dialog button[type=submit]').click();
+    await page.waitForFunction(()=>document.querySelector('#document-meta .doc-title')?.textContent==='My Title');
+    assert.equal(await page.locator('#document-meta .doc-author').textContent(),'Me');
+
+    await paper.locator('p').last().click();
+    await page.keyboard.press('End');
+    await page.keyboard.type('\\');
+    await page.waitForFunction(()=>!document.querySelector('.command-menu').hidden);
+    await page.locator('.command-menu input').fill('title');
+    assert.ok(await page.locator('#complete-title').count(),'Typing backslash offers document commands');
+    await page.keyboard.press('Escape');
 
     assert.deepEqual(errors,[]);
     console.log('Browser regressions passed');

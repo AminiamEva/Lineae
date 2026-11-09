@@ -5,6 +5,8 @@ const dependencies = [
   { name: 'amsmath', pattern: /\\(?:begin\{(?:align\*?|gather\*?|multline\*?|equation\*|split|aligned|cases|[pbBvV]?matrix)\}|(?:dfrac|tfrac|text|operatorname)\b)/ },
   { name: 'xcolor', pattern: /\\(?:textcolor|colorbox|definecolor)\b/ },
   { name: 'booktabs', pattern: /\\(?:toprule|midrule|bottomrule|cmidrule)\b/ },
+  { name: 'enumitem', pattern: /\\begin\{(?:itemize|enumerate)\}\[/ },
+  { name: 'zhnumber', pattern: /\\chinese\b/ },
   { name: 'graphicx', pattern: /\\includegraphics\b/ },
   { name: 'hyperref', pattern: /\\(?:href|url|hyperref)\b/, satisfies: ['url'], onlyUrl: /\\(?:href|hyperref)\b/ },
   { name: 'fix-cm', pattern: /\\fontsize\s*\{[^{}]+\}\s*\{[^{}]+\}\s*\\selectfont\b/,

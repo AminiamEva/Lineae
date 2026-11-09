@@ -9,6 +9,7 @@ function inlineContent(text) {
       if (typeof part === 'string') return part ? [{ type: 'text', text: part, marks }] : [];
       if (part.math !== undefined) return [{ type: 'math', attrs: { latex: part.math, display: false } }];
       if (part.ref !== undefined) return [{ type: 'ref', attrs: { key: part.ref } }];
+      if (part.label !== undefined) return [{ type: 'label', attrs: { key: part.label } }];
       if (part.hardBreak) return [{ type: 'hardBreak' }];
       const type = { strong: 'bold', em: 'italic', u: 'underline', strike: 'strike', code: 'code' }[part.tag];
       if (type) return convert(part.children, [...marks, { type }]);
@@ -102,7 +103,7 @@ function itemParts(content) {
 }
 
 function parseListBlock(text) {
-  const open = text.match(/^\\begin\{(itemize|enumerate|description)\}/);
+  const open = text.match(/^\\begin\{(itemize|enumerate|description)\}(?:\[([^\]]*)\])?/);
   if (!open) return null;
   const env = open[1];
   const close = '\\end{' + env + '}';
@@ -124,8 +125,16 @@ function parseListBlock(text) {
     else content.push({ type: 'listItem', content: parts });
   }
   if (!content.length) return null;
+  const attrs = {};
+  const option = open[2]?.match(/label\s*=\s*([^,]+)/)?.[1]?.trim();
+  if (option) {
+    if (env === 'enumerate') {
+      const styles = { '\\arabic*': 'decimal', '\\alph*': 'lower-alpha', '\\Alph*': 'upper-alpha', '\\roman*': 'lower-roman', '\\Roman*': 'upper-roman', '\\chinese*': 'cjk-heavenly-stem' };
+      if (styles[option]) attrs.labelStyle = styles[option];
+    } else if (env === 'itemize') attrs.marker = option;
+  }
   if (env === 'description') return { type: 'descriptionList', content };
-  return { type: env === 'itemize' ? 'bulletList' : 'orderedList', content };
+  return { type: env === 'itemize' ? 'bulletList' : 'orderedList', attrs, content };
 }
 
 export function importBlock(block) {

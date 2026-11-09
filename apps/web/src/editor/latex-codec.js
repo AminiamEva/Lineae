@@ -40,8 +40,16 @@ export function serialize(node) {
     case 'tableOfContents': return '\\tableofcontents\n\n';
     case 'blockquote': return '\\begin{quote}\n' + content + '\\end{quote}\n\n';
     case 'horizontalRule': return '\\hrule\n\n';
-    case 'bulletList': return '\\begin{itemize}\n' + content + '\\end{itemize}\n\n';
-    case 'orderedList': return '\\begin{enumerate}\n' + content + '\\end{enumerate}\n\n';
+    case 'bulletList': {
+      const open = node.attrs.marker ? '\\begin{itemize}[label=' + node.attrs.marker + ']' : '\\begin{itemize}';
+      return open + '\n' + content + '\\end{itemize}\n\n';
+    }
+    case 'orderedList': {
+      const labels = { decimal: '\\arabic*', 'lower-alpha': '\\alph*', 'upper-alpha': '\\Alph*', 'lower-roman': '\\roman*', 'upper-roman': '\\Roman*', 'cjk-heavenly-stem': '\\chinese*' };
+      const label = labels[node.attrs.labelStyle];
+      const open = label ? '\\begin{enumerate}[label=' + label + ']' : '\\begin{enumerate}';
+      return open + '\n' + content + '\\end{enumerate}\n\n';
+    }
     case 'listItem': {
       const body = node.content.some(child => child.type === 'bulletList' || child.type === 'orderedList')
         ? content.replace(/\n\n(?=\\begin\{)/, '\n')
@@ -53,6 +61,7 @@ export function serialize(node) {
     case 'mathBlock': return /^\\begin\{/.test(node.attrs.latex.trim()) ? node.attrs.latex + '\n\n' : '\\[' + node.attrs.latex + '\\]\n\n';
     case 'math': return node.attrs.display ? '\\[' + node.attrs.latex + '\\]' : '$' + node.attrs.latex + '$';
     case 'ref': return '\\ref{' + node.attrs.key + '}';
+    case 'label': return '\\label{' + node.attrs.key + '}';
     case 'raw': return node.attrs.source;
     case 'hardBreak': return '\\\\\n';
     case 'table': {
