@@ -39,6 +39,17 @@ const Raw = Node.create({
   parseHTML:()=>[{tag:'pre[data-raw]'}],
   renderHTML:({node})=>['pre',{'data-raw':'',contenteditable:'false'},node.attrs.source],
 });
+const DescriptionList = Node.create({
+  name:'descriptionList', group:'block', content:'descriptionItem+',
+  parseHTML:()=>[{tag:'dl'}],
+  renderHTML:()=>['dl',0],
+});
+const DescriptionItem = Node.create({
+  name:'descriptionItem', content:'paragraph+', defining:true,
+  addAttributes:()=>({term:{default:''}}),
+  parseHTML:()=>[{tag:'dd',getAttrs:dom=>({term:dom.dataset.term??''})}],
+  renderHTML:({node})=>['dd',{'data-term':node.attrs.term},0],
+});
 let appConfig={};
 try {
   const configurationUrl=new URL('./config.yaml',import.meta.url);
@@ -101,10 +112,23 @@ const paper=document.querySelector('#editor');
 paper.replaceChildren();
 editor=new Editor({
   element:paper,
-  extensions:[StarterKit.configure({heading:{levels:[1,2,3]}}),PaperBehavior,TextStyle,Underline,Table.configure({resizable:true}),TableRow,TableCell,TableHeader,Raw,MathNode,MathBlock,Ref,TableOfContents,Shortcuts],
+  extensions:[StarterKit.configure({heading:{levels:[1,2,3]}}),PaperBehavior,TextStyle,Underline,Table.configure({resizable:true}),TableRow,TableCell,TableHeader,Raw,DescriptionList,DescriptionItem,MathNode,MathBlock,Ref,TableOfContents,Shortcuts],
   content:'<p></p>',
 });
-editor.on('update',()=>refreshReferences(paper));
+function syncTableAttributes() {
+  editor.state.doc.descendants((node, position) => {
+    if (node.type.name !== 'table') return;
+    const dom = editor.view.nodeDOM(position);
+    const table = dom?.tagName === 'TABLE' ? dom : dom?.querySelector?.('table');
+    if (!table) return;
+    if (node.attrs.columns) table.dataset.columns = node.attrs.columns;
+    else delete table.dataset.columns;
+    if (node.attrs.booktabs) table.dataset.booktabs = 'true';
+    else delete table.dataset.booktabs;
+  });
+}
+editor.on('update',()=>{refreshReferences(paper);syncTableAttributes();});
+syncTableAttributes();
 installTableHoverAddRow(editor, paper);
 const tools=document.querySelector('#insert');
 tools.replaceChildren();
@@ -238,7 +262,7 @@ function load(text) {
   documentParts=parsed;
   const content=parsed.blocks.flatMap(importBlocks);
   editor.commands.setContent({type:'doc',content:content.length?content:[{type:'paragraph'}]});
-  refreshReferences(paper);
+  refreshReferences(paper);syncTableAttributes();
   importedSource=text;importedSnapshot=JSON.stringify(editor.getJSON());
 }
 button('LaTeX',()=>{
@@ -495,6 +519,14 @@ groupButton(tableGroup,'＋ Column',addMatrixColumn);
 groupButton(tableGroup,'－ Row',()=>editor.chain().focus().deleteRow().run());
 groupButton(tableGroup,'－ Column',()=>editor.chain().focus().deleteColumn().run());
 groupButton(tableGroup,'删除表格',()=>editor.chain().focus().deleteTable().run());
+groupButton(tableGroup,'merge',()=>editor.chain().focus().mergeCells().run());
+groupButton(tableGroup,'split',()=>editor.chain().focus().splitCell().run());
+groupButton(tableGroup,'booktabs',()=>{if(editor.isActive('table'))editor.chain().focus().updateAttributes('table',{booktabs:!editor.getAttributes('table').booktabs}).run();});
+for(const [label,align] of [['左','left'],['中','center'],['右','right']]) groupButton(tableGroup,label,()=>{
+  if(!editor.isActive('table'))return;
+  const type=editor.isActive('tableHeader')?'tableHeader':'tableCell';
+  editor.chain().focus().updateAttributes(type,{align}).run();
+});
 groupButton(formatGroup,'B',()=>editor.chain().focus().toggleBold().run());
 groupButton(formatGroup,'I',()=>editor.chain().focus().toggleItalic().run());
 groupButton(formatGroup,'U',()=>editor.chain().focus().toggleMark('underline').run());
@@ -502,6 +534,7 @@ groupButton(formatGroup,'S',()=>editor.chain().focus().toggleStrike().run());
 groupButton(formatGroup,'code',()=>editor.chain().focus().toggleCode().run());
 groupButton(formatGroup,'quote',()=>editor.chain().focus().toggleBlockquote().run());
 groupButton(formatGroup,'hr',()=>editor.chain().focus().setHorizontalRule().run());
+groupButton(formatGroup,'desc',()=>editor.chain().focus().insertContent({type:'descriptionList',content:[{type:'descriptionItem',attrs:{term:''},content:[{type:'paragraph'}]}]}).run());
 groupButton(referenceGroup,'label',()=>{
   if(!editor.isActive('heading'))return;
   const value=promptText('标签键 / Label key',editor.getAttributes('heading').label??'');

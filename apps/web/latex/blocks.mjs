@@ -38,6 +38,96 @@ function heading(name, star, short, title, label) {
   };
 }
 
+function matchingListEnd(text, start, env) {
+  const pattern = /\\(begin|end)\{(itemize|enumerate|description)\}/g;
+  pattern.lastIndex = start;
+  let depth = 0;
+  let match;
+  while ((match = pattern.exec(text))) {
+    if (match[1] === 'begin') depth++;
+    else {
+      depth--;
+      if (depth === 0) return match.index;
+    }
+  }
+  return -1;
+}
+
+function splitListItems(body) {
+  const pattern = /\\item\b|\\begin\{(itemize|enumerate|description)\}|\\end\{(itemize|enumerate|description)\}/g;
+  const items = [];
+  let depth = 0;
+  let start = null;
+  let match;
+  while ((match = pattern.exec(body))) {
+    const token = match[0];
+    if (token.startsWith('\\begin')) { depth++; continue; }
+    if (token.startsWith('\\end')) { depth = Math.max(0, depth - 1); continue; }
+    if (depth !== 0) continue;
+    if (start !== null) items.push(body.slice(start, match.index));
+    start = match.index + token.length;
+  }
+  if (start === null) return null;
+  items.push(body.slice(start));
+  return items;
+}
+
+function paragraphs(text) {
+  return text.split(/\n\s*\n/).map(part => part.trim()).filter(Boolean).map(part => ({
+    type: 'paragraph',
+    content: inlineContent(part) ?? [{ type: 'text', text: part }],
+  }));
+}
+
+function itemParts(content) {
+  const parts = [];
+  let cursor = 0;
+  const pattern = /\\begin\{(itemize|enumerate|description)\}/g;
+  let match;
+  while ((match = pattern.exec(content))) {
+    const before = content.slice(cursor, match.index).trim();
+    if (before) parts.push(...paragraphs(before));
+    const end = matchingListEnd(content, match.index, match[1]);
+    if (end < 0) return null;
+    const close = '\\end{' + match[1] + '}';
+    const nested = parseListBlock(content.slice(match.index, end + close.length));
+    if (!nested) return null;
+    parts.push(nested);
+    cursor = end + close.length;
+    pattern.lastIndex = cursor;
+  }
+  const after = content.slice(cursor).trim();
+  if (after) parts.push(...paragraphs(after));
+  return parts.length ? parts : [{ type: 'paragraph' }];
+}
+
+function parseListBlock(text) {
+  const open = text.match(/^\\begin\{(itemize|enumerate|description)\}/);
+  if (!open) return null;
+  const env = open[1];
+  const close = '\\end{' + env + '}';
+  const end = text.lastIndexOf(close);
+  if (end < open[0].length || text.slice(end + close.length).trim()) return null;
+  const items = splitListItems(text.slice(open[0].length, end));
+  if (!items) return null;
+  const content = [];
+  for (const item of items) {
+    let body = item;
+    let term = '';
+    if (env === 'description') {
+      const match = body.match(/^\s*\[([^\]]*)\]/);
+      if (match) { term = match[1]; body = body.slice(match[0].length); }
+    }
+    const parts = itemParts(body);
+    if (!parts) return null;
+    if (env === 'description') content.push({ type: 'descriptionItem', attrs: { term }, content: parts });
+    else content.push({ type: 'listItem', content: parts });
+  }
+  if (!content.length) return null;
+  if (env === 'description') return { type: 'descriptionList', content };
+  return { type: env === 'itemize' ? 'bulletList' : 'orderedList', content };
+}
+
 export function importBlock(block) {
   const text = block.trim();
   if (!text) return null;
@@ -55,14 +145,24 @@ export function importBlock(block) {
     const content = paragraphs.map(part => ({ type: 'paragraph', content: inlineContent(part) ?? [{ type: 'text', text: part }] }));
     return { type: 'blockquote', content: content.length ? content : [{ type: 'paragraph' }] };
   }
-  const list = text.match(/^\\begin\{(itemize|enumerate)\}\n([\s\S]*?)\n\\end\{\1\}$/);
-  if (list) {
-    const items = list[2].split(/\n(?=\\item)/).map(item => inlineContent(item.replace(/^\\item\s?/, '')));
-    if (items.every(Boolean)) return { type: list[1] === 'itemize' ? 'bulletList' : 'orderedList', content: items.map(content => ({ type: 'listItem', content: [{ type: 'paragraph', content }] })) };
-  }
+  const list = parseListBlock(text);
+  if (list) return list;
   const table = parseTable(text);
-  if (table && !table.trailing.length && table.rows.every(row => !row.rules.length)) {
-    return { type: 'table', content: table.rows.map(row => ({ type: 'tableRow', content: row.cells.map(cell => ({ type: 'tableCell', content: [{ type: 'paragraph', content: cell.trim() ? [{ type: 'text', text: cell.trim() }] : [] }] })) })) };
+  if (table) {
+    const booktabs = table.rows.some(row => row.rules.some(rule => /toprule|midrule|bottomrule/.test(rule))) ||
+      table.trailing.some(rule => /toprule|midrule|bottomrule/.test(rule));
+    return {
+      type: 'table',
+      attrs: { columns: table.columns, booktabs },
+      content: table.rows.map(row => ({
+        type: 'tableRow',
+        content: row.cells.map((cell, index) => ({
+          type: 'tableCell',
+          attrs: { colspan: row.spans?.[index] ?? 1, rowspan: 1, align: row.aligns?.[index] ?? table.specs[index]?.align ?? null },
+          content: [{ type: 'paragraph', content: cell.trim() ? (inlineContent(cell) ?? [{ type: 'text', text: cell.trim() }]) : [] }],
+        })),
+      })),
+    };
   }
   const content = inlineContent(text);
   if (content) return { type: 'paragraph', content };

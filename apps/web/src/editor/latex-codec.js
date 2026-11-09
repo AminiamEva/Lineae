@@ -42,14 +42,41 @@ export function serialize(node) {
     case 'horizontalRule': return '\\hrule\n\n';
     case 'bulletList': return '\\begin{itemize}\n' + content + '\\end{itemize}\n\n';
     case 'orderedList': return '\\begin{enumerate}\n' + content + '\\end{enumerate}\n\n';
-    case 'listItem': return '\\item ' + content.trim() + '\n';
+    case 'listItem': {
+      const body = node.content.some(child => child.type === 'bulletList' || child.type === 'orderedList')
+        ? content.replace(/\n\n(?=\\begin\{)/, '\n')
+        : content;
+      return '\\item ' + body.trim() + '\n';
+    }
+    case 'descriptionList': return '\\begin{description}\n' + content + '\\end{description}\n\n';
+    case 'descriptionItem': return '\\item[' + node.attrs.term + '] ' + content.trim() + '\n';
     case 'mathBlock': return /^\\begin\{/.test(node.attrs.latex.trim()) ? node.attrs.latex + '\n\n' : '\\[' + node.attrs.latex + '\\]\n\n';
     case 'math': return node.attrs.display ? '\\[' + node.attrs.latex + '\\]' : '$' + node.attrs.latex + '$';
     case 'ref': return '\\ref{' + node.attrs.key + '}';
     case 'raw': return node.attrs.source;
     case 'hardBreak': return '\\\\\n';
-    case 'table': return '\\begin{tabular}{' + 'l'.repeat(node.content[0].content.length) + '}\n' + content + '\\end{tabular}\n\n';
-    case 'tableRow': return node.content.map(cell => serialize(cell).trim()).join(' & ') + ' \\\\\n';
+    case 'table': {
+      const columns = node.attrs.columns || 'l'.repeat(node.content[0]?.content.length ?? 1);
+      let body = '';
+      node.content.forEach((row, index) => {
+        if (node.attrs.booktabs && index === 0) body += '\\toprule\n';
+        body += serialize(row);
+        if (node.attrs.booktabs && index === 0 && node.content.length > 1) body += '\\midrule\n';
+      });
+      if (node.attrs.booktabs) body += '\\bottomrule\n';
+      return '\\begin{tabular}{' + columns + '}\n' + body + '\\end{tabular}\n\n';
+    }
+    case 'tableRow': return node.content.map(cell => serialize(cell)).join(' & ') + ' \\\\\n';
+    case 'tableCell':
+    case 'tableHeader': {
+      const value = (node.content ?? []).map(serialize).join('').trim();
+      const span = node.attrs.colspan ?? 1;
+      if (span > 1) {
+        const align = node.attrs.align === 'center' ? 'c' : node.attrs.align === 'right' ? 'r' : 'l';
+        return '\\multicolumn{' + span + '}{' + align + '}{' + value + '}';
+      }
+      return value;
+    }
     default: return content;
   }
 }

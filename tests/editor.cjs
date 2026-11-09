@@ -279,6 +279,41 @@ const server=createServer(async(req,res)=>{
     assert.match(await alignField.evaluate(field=>field.value),/\\begin\{align\}/);
     assert.match(await alignField.evaluate(field=>field.value),/\\mathbf\{x\}/);
 
+    const moreFixtures={
+      'lists/lists-itemize.tex':'Plum',
+      'lists/lists-enumerate.tex':'Gamma',
+      'lists/lists-nested.tex':'Inner B',
+      'lists/lists-description.tex':'Outputs.',
+      'lists/lists-paragraphs.tex':'Second paragraph in the same item.',
+      'tables/tables-basic.tex':'3',
+      'tables/tables-alignment.tex':'Longer left',
+      'tables/tables-multicolumn.tex':'Combined',
+      'tables/tables-booktabs.tex':'Value',
+      'tables/tables-paragraph-cell.tex':'Short text.',
+    };
+    for(const [file,expected] of Object.entries(moreFixtures)) {
+      await page.locator('input[type=file]').setInputFiles({
+        name:'fixture.tex',mimeType:'text/plain',buffer:await readFile('tests/fixtures/tex-compat/'+file),
+      });
+      await page.waitForFunction(text=>document.querySelector('.ProseMirror').textContent.includes(text),expected);
+      assert.equal(await paper.locator('pre[data-raw]').count(),0,file+' should not fall back to raw');
+    }
+    const loadFixture=async file=>page.locator('input[type=file]').setInputFiles({
+      name:'fixture.tex',mimeType:'text/plain',buffer:await readFile('tests/fixtures/tex-compat/'+file),
+    });
+    await loadFixture('lists/lists-nested.tex');
+    await page.waitForFunction(()=>document.querySelectorAll('.ProseMirror ol ul').length===1);
+    await loadFixture('lists/lists-description.tex');
+    await page.waitForFunction(()=>document.querySelectorAll('.ProseMirror dd[data-term="Domain"]').length===1);
+    await loadFixture('tables/tables-multicolumn.tex');
+    await page.waitForFunction(()=>document.querySelectorAll('.ProseMirror td[colspan="2"]').length===1);
+    await loadFixture('tables/tables-booktabs.tex');
+    await page.waitForFunction(()=>document.querySelectorAll('.ProseMirror table[data-booktabs="true"]').length===1);
+    await loadFixture('tables/tables-paragraph-cell.tex');
+    await page.waitForFunction(()=>document.querySelector('.ProseMirror table')?.getAttribute('data-columns')==='p{3cm}l');
+    await loadFixture('lists/lists-paragraphs.tex');
+    await page.waitForFunction(()=>document.querySelectorAll('.ProseMirror li p').length===2);
+
     const savePromise=page.waitForEvent('download');
     await page.keyboard.press('Control+s');
     const saved=await savePromise;

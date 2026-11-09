@@ -42,6 +42,12 @@ main { padding:125px 24px 60px; overflow:auto; }
 .table-insert-row:hover { background:light-dark(#e5efff,#394c67); }
 .ProseMirror blockquote { margin:.6em 0; padding-left:1em; border-left:3px solid light-dark(#d5dce8,#4a5568); }
 .ProseMirror code { font-family:ui-monospace,SFMono-Regular,monospace; background:light-dark(#f2f3f6,#2e3138); border-radius:3px; padding:0 .2em; }
+.ProseMirror dl { margin:.5em 0; }
+.ProseMirror dd { margin-left:0; }
+.ProseMirror dd[data-term]::before { content:attr(data-term); font-weight:600; margin-right:.5em; }
+.ProseMirror table[data-booktabs] td,.ProseMirror table[data-booktabs] th { border-left:0; border-right:0; }
+.ProseMirror table[data-booktabs] tr:first-child td,.ProseMirror table[data-booktabs] tr:first-child th { border-top:2px solid light-dark(#333,#ddd); }
+.ProseMirror table[data-booktabs] tr:last-child td,.ProseMirror table[data-booktabs] tr:last-child th { border-bottom:2px solid light-dark(#333,#ddd); }
 .ProseMirror .toc-block { border:1px dashed light-dark(#c9d3e6,#46536a); border-radius:8px; padding:.6em .8em; margin:.6em 0; background:light-dark(#f7f9fd,#232a34); }
 .ProseMirror .toc-title { font-weight:600; margin-bottom:.3em; opacity:.8; }
 .ProseMirror .toc-entry { font-size:.95em; }

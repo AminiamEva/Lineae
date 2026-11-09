@@ -40,6 +40,29 @@ export const PaperBehavior = Extension.create({
           renderHTML: attributes => attributes.label ? { 'data-label': attributes.label } : {},
         },
       },
+    }, {
+      types: ['table'],
+      attributes: {
+        columns: {
+          default: null,
+          parseHTML: element => element.dataset.columns ?? null,
+          renderHTML: attributes => attributes.columns ? { 'data-columns': attributes.columns } : {},
+        },
+        booktabs: {
+          default: false,
+          parseHTML: element => element.dataset.booktabs === 'true',
+          renderHTML: attributes => attributes.booktabs ? { 'data-booktabs': 'true' } : {},
+        },
+      },
+    }, {
+      types: ['tableCell', 'tableHeader'],
+      attributes: {
+        align: {
+          default: null,
+          parseHTML: element => element.dataset.align ?? null,
+          renderHTML: attributes => attributes.align ? { 'data-align': attributes.align, style: 'text-align:' + attributes.align } : {},
+        },
+      },
     }];
   },
   addProseMirrorPlugins() {

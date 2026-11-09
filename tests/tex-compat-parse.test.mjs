@@ -115,6 +115,61 @@ test('inline math commands and block math environments stay editable', () => {
   assert.match(align[0].attrs.latex, /\\mathbf\{x\}/);
 });
 
+test('lists and tables in fixtures 11-20 are structured without raw fallback', () => {
+  const files = [
+    'lists/lists-itemize.tex', 'lists/lists-enumerate.tex', 'lists/lists-nested.tex',
+    'lists/lists-description.tex', 'lists/lists-paragraphs.tex',
+    'tables/tables-basic.tex', 'tables/tables-alignment.tex', 'tables/tables-multicolumn.tex',
+    'tables/tables-booktabs.tex', 'tables/tables-paragraph-cell.tex',
+  ];
+  for (const file of files) {
+    const nodes = parse(file);
+    assert.ok(nodes.length, file);
+    assert.ok(nodes.every(node => node.type !== 'raw'), file + ' should not fall back to raw');
+  }
+
+  const itemize = parse('lists/lists-itemize.tex');
+  assert.equal(itemize[0].type, 'bulletList');
+  assert.equal(itemize[0].content.length, 3);
+  assert.equal(textOf(itemize[0].content[0]), 'Apple');
+
+  const nested = parse('lists/lists-nested.tex')[0];
+  assert.equal(nested.type, 'orderedList');
+  assert.equal(nested.content.length, 2);
+  const inner = nested.content[0].content.find(node => node.type === 'bulletList');
+  assert.equal(inner?.content.length, 2);
+  assert.equal(textOf(inner.content[0]), 'Inner A');
+
+  const description = parse('lists/lists-description.tex')[0];
+  assert.equal(description.type, 'descriptionList');
+  assert.deepEqual(description.content.map(item => item.attrs.term), ['Domain', 'Range']);
+  assert.equal(textOf(description.content[0]), 'Inputs.');
+
+  const paragraphs = parse('lists/lists-paragraphs.tex')[0];
+  assert.equal(paragraphs.content[0].content.filter(node => node.type === 'paragraph').length, 2);
+
+  const basic = parse('tables/tables-basic.tex')[0];
+  assert.equal(basic.type, 'table');
+  assert.equal(basic.attrs.columns, 'll');
+  assert.equal(basic.content.length, 2);
+  assert.equal(basic.content[0].content.length, 2);
+
+  const alignment = parse('tables/tables-alignment.tex')[0];
+  assert.deepEqual(alignment.content[0].content.map(cell => cell.attrs.align), ['left', 'center', 'right']);
+
+  const multicolumn = parse('tables/tables-multicolumn.tex')[0];
+  assert.equal(multicolumn.content[0].content[0].attrs.colspan, 2);
+  assert.equal(textOf(multicolumn.content[0].content[0]), 'Combined');
+
+  const booktabs = parse('tables/tables-booktabs.tex')[0];
+  assert.equal(booktabs.attrs.booktabs, true);
+  assert.equal(booktabs.content.length, 2);
+
+  const paragraphCell = parse('tables/tables-paragraph-cell.tex')[0];
+  assert.equal(paragraphCell.attrs.columns, 'p{3cm}l');
+  assert.match(textOf(paragraphCell.content[0].content[0]), /deliberately long sentence/);
+});
+
 test('heading levels, starred headings, short titles, labels, references and contents are structured', () => {
   const levels = parse('headings/headings-levels.tex');
   assert.deepEqual(levels.map(node => node.attrs?.level), [1, 2, 3]);

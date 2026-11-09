@@ -95,6 +95,15 @@ export function contextCommands(context) {
         editor.chain().focus().updateAttributes('heading', { label: value.trim() || null }).run();
       },
     },
+    { id: 'description-term', labels: ['编辑术语', 'Edit term'],
+      visible: !field && editor.isActive('descriptionItem'),
+      run: () => {
+        const current = editor.getAttributes('descriptionItem').term ?? '';
+        const value = window.prompt('术语 / Term', current);
+        if (value === null) return;
+        editor.chain().focus().updateAttributes('descriptionItem', { term: value.trim() }).run();
+      },
+    },
     { id: 'insert-ref', labels: ['插入引用', 'Insert reference'],
       visible: !field,
       run: () => {
