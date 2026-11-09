@@ -8,7 +8,7 @@ const download = document.querySelector('#download');
 const copy = {
   'zh-CN': {
     open: '打开 .tex', editor: '编辑正文', paragraph: '段落', text: '正文', download: '下载 .tex',
-    intro: '打开 UTF-8 .tex 文件，或在下面开始写作。',
+    intro: '',
     loading: '正在读取文件…',
     ready: '可编辑独立纯文本段落。下载会保留其余源码。',
     invalid: '请输入单行正文，避免 LaTeX 特殊字符。',
@@ -17,7 +17,7 @@ const copy = {
   },
   en: {
     open: 'Open .tex', editor: 'Edit document', paragraph: 'Paragraph', text: 'Text', download: 'Download .tex',
-    intro: 'Open a UTF-8 .tex file or start writing below.',
+    intro: '',
     loading: 'Reading the file…',
     ready: 'Edit a standalone plain-text paragraph. The download preserves the rest of the source.',
     invalid: 'Enter one line of text without LaTeX special characters.',
@@ -32,6 +32,7 @@ const preferredLanguage = navigator.language.toLowerCase().startsWith('zh') ? 'z
 function setStatus(key) {
   status.dataset.copy = key;
   status.textContent = copy[language.value][key];
+  status.hidden = !status.textContent;
 }
 
 function translate() {
@@ -223,6 +224,7 @@ function paperText(value, save, key) {
   control.dataset.field = key;
   control.setAttribute('aria-label', copy[language.value][key]);
   control.setAttribute('role', 'textbox');
+  control.tabIndex = 0;
   control.textContent = value;
   control.addEventListener('beforeinput', event => {
     if (['insertParagraph', 'insertLineBreak', 'insertFromDrop'].includes(event.inputType)) event.preventDefault();
@@ -641,16 +643,28 @@ editor.addEventListener('keydown', event => {
 });
 
 const insert = document.querySelector('#insert');
+function sourceSeparator() {
+  const spacer = document.createElement('span');
+  spacer.hidden = true;
+  spacer.contentEditable = 'false';
+  spacer.serialize = () => documentParts.eol.repeat(2);
+  return spacer;
+}
+
 for (const [key, template] of Object.entries(templates)) {
-  insert.append(button(key, () => {
-    const spacer = document.createElement('span');
-    spacer.hidden = true;
-    spacer.contentEditable = 'false';
-    spacer.serialize = () => documentParts.eol.repeat(2);
+  const control = button(key, () => {
     const block = editorBlock(template);
-    editor.append(spacer, block);
-    if (key === 'display') block.querySelector('math-field, input')?.focus();
-  }));
+    const current = selectedLine()?.parentElement;
+    if (current) {
+      current.after(sourceSeparator(), block);
+      if (block.nextElementSibling && !block.nextElementSibling.hidden) block.after(sourceSeparator());
+    } else editor.append(sourceSeparator(), block);
+    const target = block.querySelector('math-field, input, .paper-text');
+    target?.focus();
+    block.scrollIntoView({ block: 'nearest' });
+  });
+  control.addEventListener('mousedown', event => event.preventDefault());
+  insert.append(control);
 }
 for (const key of ['bold', 'italic', 'underline', 'inline']) {
   const control = button(key, () => {
@@ -735,7 +749,8 @@ const filePanel = document.querySelector('header .tools');
 filePanel.dataset.fileTools = '';
 const toolbar = document.createElement('div');
 toolbar.className = 'ribbon';
-document.querySelector('header').after(toolbar);
+const header = document.querySelector('header');
+header.append(toolbar);
 toolbar.append(tabs, filePanel, insert);
 panels.set('files', filePanel);
 panels.set('insert', insert);

@@ -137,3 +137,13 @@ main { padding-bottom: 5rem; }
 .ribbon .tools [data-copy="italic"], .ribbon .tools [data-copy="underline"] { font-size: 0; }
 .ribbon .tools [data-copy="italic"]::before { content: 'I'; font-style: italic; margin: 0; }
 .ribbon .tools [data-copy="underline"]::before { content: 'U'; text-decoration: underline; margin: 0; }
+
+header { position: sticky; top: 0; z-index: 2; display: grid; grid-template-columns: 1fr minmax(0, auto) 1fr; align-items: start; background: light-dark(#f2f2f7, #161618); border: 0; }
+header h1 { grid-column: 1; align-self: start; padding-block: .4rem; }
+header .ribbon { grid-column: 2; position: static; width: max-content; max-width: 100%; min-width: 0; padding: 0; background: transparent; border: 0; }
+.ribbon-tabs { flex-wrap: wrap; }
+.ribbon .tools { width: fit-content; max-width: 100%; box-sizing: border-box; border-radius: 1.5rem; box-shadow: 0 3px 12px #0001; }
+@media (max-width: 640px) {
+  header { grid-template-columns: auto minmax(0, 1fr); }
+  header .ribbon { justify-self: center; width: auto; }
+}
