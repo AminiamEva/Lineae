@@ -1,0 +1,75 @@
+import { Extension } from '@tiptap/core';
+import { Plugin, TextSelection } from '@tiptap/pm/state';
+import { Decoration, DecorationSet } from '@tiptap/pm/view';
+
+function numberedHeadings(doc) {
+  const counters = [0, 0, 0];
+  const decorations = [];
+  doc.descendants((node, position) => {
+    if (node.type.name !== 'heading' || node.attrs.numbered === false) return;
+    const level = node.attrs.level;
+    if (level > counters.length) return;
+    counters[level - 1]++;
+    counters.fill(0, level);
+    decorations.push(Decoration.node(position, position + node.nodeSize, {
+      'data-section-number': counters.slice(0, level).join('.'),
+    }));
+  });
+  return DecorationSet.create(doc, decorations);
+}
+
+export const PaperBehavior = Extension.create({
+  name: 'paperBehavior',
+  addGlobalAttributes() {
+    return [{
+      types: ['heading'],
+      attributes: {
+        numbered: {
+          default: true,
+          parseHTML: element => element.dataset.numbered !== 'false',
+          renderHTML: attributes => ({ 'data-numbered': String(attributes.numbered) }),
+        },
+      },
+    }];
+  },
+  addProseMirrorPlugins() {
+    return [
+      new Plugin({
+        state: {
+          init: (_, state) => numberedHeadings(state.doc),
+          apply: (transaction, previous) => transaction.docChanged ? numberedHeadings(transaction.doc) : previous,
+        },
+        props: { decorations(state) { return this.getState(state); } },
+      }),
+      new Plugin({
+        appendTransaction(transactions, oldState, state) {
+          if (!transactions.some(transaction => transaction.docChanged)) return null;
+          if (!['table', 'mathBlock'].includes(state.doc.lastChild?.type.name)) return null;
+          return state.tr.insert(state.doc.content.size, state.schema.nodes.paragraph.create());
+        },
+        props: {
+          handleDOMEvents: {
+            dblclick(view, event) {
+              if (event.target !== view.dom) return false;
+              let previous = null;
+              view.state.doc.forEach((node, position) => {
+                const element = view.nodeDOM(position);
+                if (element?.getBoundingClientRect().bottom <= event.clientY) previous = { node, position };
+              });
+              if (!previous) return false;
+              const end = previous.position + previous.node.nodeSize;
+              let transaction = view.state.tr;
+              const next = transaction.doc.nodeAt(end);
+              if (next?.type.name !== 'paragraph') transaction.insert(end, view.state.schema.nodes.paragraph.create());
+              transaction.setSelection(TextSelection.create(transaction.doc, end + 1));
+              view.dispatch(transaction);
+              view.focus();
+              event.preventDefault();
+              return true;
+            },
+          },
+        },
+      }),
+    ];
+  },
+});

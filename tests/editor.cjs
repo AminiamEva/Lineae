@@ -77,6 +77,50 @@ const server=createServer(async(req,res)=>{
     await page.keyboard.press('Enter');
     await page.waitForFunction(()=>document.activeElement?.tagName==='MATH-FIELD');
     assert.match(await page.locator('math-field').last().evaluate(field=>field.value),/sqrt/);
+    const importSource = async body => {
+      await page.locator('input[type=file]').setInputFiles({
+        name:'regression.tex',mimeType:'text/plain',
+        buffer:Buffer.from('\\documentclass{article}\n\\begin{document}\n\n'+body+'\n\n\\end{document}\n'),
+      });
+    };
+    await importSource('\\section{First}\n\n\\subsection{Child}\n\n\\subsubsection{Detail}\n\n\\section*{Unnumbered}\n\n\\section{Second}');
+    await page.waitForFunction(()=>document.querySelectorAll('.ProseMirror h1').length===3);
+    assert.deepEqual(await paper.locator('[data-section-number]').evaluateAll(nodes=>nodes.map(node=>node.dataset.sectionNumber)),['1','1.1','1.1.1','2']);
+    assert.equal(await paper.locator('h1').nth(1).getAttribute('data-section-number'),null);
+
+    await importSource('Before\n\n\\[x\\]\n\nAfter');
+    await page.waitForFunction(()=>document.querySelector('.ProseMirror > .math-display'));
+    await paper.locator(':scope > p').last().click();
+    await page.keyboard.press('End');
+    await page.locator('[data-group=insert]').click();
+    await page.getByRole('button',{name:'itemize',exact:true}).click();
+    assert.deepEqual(await paper.locator(':scope > *').evaluateAll(nodes=>nodes.map(node=>node.tagName)),['P','DIV','UL']);
+    assert.equal(await paper.locator('ul').textContent(),'After');
+    const toggles=await page.locator('math-field').evaluate(field=>
+      [...field.shadowRoot.querySelectorAll('[part="menu-toggle"],[part="virtual-keyboard-toggle"]')]
+        .map(toggle=>getComputedStyle(toggle).display));
+    assert.ok(toggles.length>=2 && toggles.every(value=>value==='none'));
+    assert.equal(await page.locator('.math-drag-handle').getAttribute('draggable'),'true');
+
+    await importSource('\\begin{tabular}{ll}\n & \\\\\n & \\\\\n\\end{tabular}');
+    await page.waitForFunction(()=>Boolean(document.querySelector('.ProseMirror table')));
+    const box=await paper.locator('table').boundingBox();
+    await page.mouse.dblclick(box.x+10,box.y+box.height+36);
+    await page.keyboard.type('Below table');
+    assert.equal(await paper.locator(':scope > p').last().textContent(),'Below table');
+    assert.ok(!(await paper.locator('table').textContent()).includes('Below table'));
+    await paper.locator(':scope > p').last().click({button:'right'});
+    const context=page.locator('.editor-context-menu');
+    assert.equal(await context.isVisible(),true);
+    await page.keyboard.press('Escape');
+    assert.equal(await context.isVisible(),false);
+    await paper.locator('td').first().click({button:'right'});
+    assert.equal(await context.locator('[data-command="delete-table"]').isVisible(),true);
+    await page.keyboard.press('Escape');
+    const beforeZoom=Number(await page.locator('input[type=range]').inputValue());
+    await paper.evaluate(element=>element.dispatchEvent(new WheelEvent('wheel',{deltaY:-80,ctrlKey:true,bubbles:true,cancelable:true})));
+    const afterZoom=Number(await page.locator('input[type=range]').inputValue());
+    assert.ok(afterZoom-beforeZoom>=8 && afterZoom-beforeZoom<=12);
     assert.deepEqual(errors,[]);
     console.log('Browser regressions passed');
   }finally{

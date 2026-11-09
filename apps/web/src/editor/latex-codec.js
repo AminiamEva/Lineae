@@ -24,10 +24,11 @@ export function serialize(node) {
   }
   switch (node.type) {
     case 'paragraph': return content + '\n\n';
-    case 'heading': return '\\' + ['section','subsection','subsubsection'][Math.min(node.attrs.level,3)-1] + '{' + content + '}\n\n';
+    case 'heading': return '\\' + ['section','subsection','subsubsection'][Math.min(node.attrs.level,3)-1] + (node.attrs.numbered === false ? '*' : '') + '{' + content + '}\n\n';
     case 'bulletList': return '\\begin{itemize}\n' + content + '\\end{itemize}\n\n';
     case 'orderedList': return '\\begin{enumerate}\n' + content + '\\end{enumerate}\n\n';
     case 'listItem': return '\\item ' + content.trim() + '\n';
+    case 'mathBlock': return '\\[' + node.attrs.latex + '\\]\n\n';
     case 'math': return node.attrs.display ? '\\[' + node.attrs.latex + '\\]' : '$' + node.attrs.latex + '$';
     case 'raw': return node.attrs.source;
     case 'hardBreak': return '\\\\\n';
@@ -57,10 +58,10 @@ function inlineContent(text) {
 export function importBlock(block) {
   const text=block.trim();
   if(!text)return null;
-  const heading=text.match(/^\\(section|subsection|subsubsection)\{([^{}]*)\}$/);
-  if(heading)return {type:'heading',attrs:{level:['section','subsection','subsubsection'].indexOf(heading[1])+1},content:[{type:'text',text:heading[2]}]};
+  const heading=text.match(/^\\(section|subsection|subsubsection)(\*?)\{([^{}]*)\}$/);
+  if(heading)return {type:'heading',attrs:{level:['section','subsection','subsubsection'].indexOf(heading[1])+1,numbered:!heading[2]},content:heading[3]?[{type:'text',text:heading[3]}]:[]};
   const math=text.match(/^\\\[([\s\S]*?)\\\]$/) ?? text.match(/^\\begin\{equation\*?\}([\s\S]*?)\\end\{equation\*?\}$/);
-  if(math)return {type:'paragraph',content:[{type:'math',attrs:{latex:math[1],display:true}}]};
+  if(math)return {type:'mathBlock',attrs:{latex:math[1],display:true}};
   const list=text.match(/^\\begin\{(itemize|enumerate)\}\n([\s\S]*?)\n\\end\{\1\}$/);
   if(list) {
     const items=list[2].split(/\n(?=\\item)/).map(item=>inlineContent(item.replace(/^\\item\s?/,'')));

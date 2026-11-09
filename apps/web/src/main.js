@@ -1,4 +1,6 @@
-import { MathNode, configureMathKeys } from './editor/math-node.js';
+import { installContextMenu } from './editor/context-menu.js';
+import { PaperBehavior } from './editor/paper-behavior.js';
+import { MathNode, MathBlock, configureMathKeys, insertFormula } from './editor/math-node.js';
 import { serialize, importBlock } from './editor/latex-codec.js';
 import { Editor, Node, Extension, Mark } from '@tiptap/core';
 import StarterKit from '@tiptap/starter-kit';
@@ -38,13 +40,8 @@ try {
   if(response.ok)configureMathKeys((await response.json()).keybindings?.math);
 } catch(error) { console.warn('Configuration / 配置',error); }
 let editor;
-function insertMath(display=false, latex='') {
-  const position=editor.state.selection.from;
-  editor.chain().focus().insertContent({type:'math',attrs:{latex,display}}).run();
-  requestAnimationFrame(()=>{
-    const dom=editor.view.nodeDOM(position);
-    dom?.querySelector('math-field')?.focus();
-  });
+function insertMath(display = false, latex = '') {
+  insertFormula(editor, display, latex);
 }
 const Shortcuts = Extension.create({
   name:'documentShortcuts',
@@ -54,8 +51,7 @@ const Shortcuts = Extension.create({
       if(text!=='$')return false;
       const previous=view.state.doc.resolve(from).nodeBefore;
       if(previous?.type.name==='math' && !previous.attrs.latex && !previous.attrs.display) {
-        view.dispatch(view.state.tr.setNodeMarkup(from-previous.nodeSize,undefined,{latex:'',display:true}));
-        requestAnimationFrame(()=>view.nodeDOM(from-previous.nodeSize)?.querySelector('math-field')?.focus());
+        insertFormula(editor, true, '', { from: from - previous.nodeSize, to: from });
         return true;
       }
       insertMath();
@@ -67,7 +63,7 @@ const Shortcuts = Extension.create({
       const { selection }=this.editor.state;
       if(!selection.empty)return false;
       const node=forward?selection.$from.nodeAfter:selection.$from.nodeBefore;
-      if(node?.type.name!=='math')return false;
+      if(!['math','mathBlock'].includes(node?.type.name))return false;
       const position=selection.from-(forward?0:node.nodeSize);
       const field=this.editor.view.nodeDOM(position)?.querySelector('math-field');
       if(!field)return false;
@@ -91,7 +87,7 @@ const paper=document.querySelector('#editor');
 paper.replaceChildren();
 editor=new Editor({
   element:paper,
-  extensions:[StarterKit,TextStyle,Underline,Table.configure({resizable:true}),TableRow,TableCell,TableHeader,Raw,MathNode,Shortcuts],
+  extensions:[StarterKit.configure({heading:{levels:[1,2,3]}}),PaperBehavior,TextStyle,Underline,Table.configure({resizable:true}),TableRow,TableCell,TableHeader,Raw,MathNode,MathBlock,Shortcuts],
   content:'<p></p>',
 });
 const tools=document.querySelector('#insert');
@@ -126,7 +122,18 @@ for(const [attribute,values] of Object.entries({
   menu.addEventListener('change',()=>{if(menu.value)editor.chain().focus().setMark('textStyle',{[attribute]:menu.value}).run();menu.value='';});
   tools.append(menu);
 }
-button('H',()=>editor.chain().focus().toggleHeading({level:1}).run());
+const headingMenu = document.createElement('select');
+headingMenu.setAttribute('aria-label', '段落样式 / Paragraph style');
+for (const [value, label] of [['0', '正文 / Text'], ['1', 'section'], ['2', 'subsection'], ['3', 'subsubsection']]) {
+  headingMenu.append(new Option(label, value));
+}
+headingMenu.addEventListener('change', () => {
+  const level = Number(headingMenu.value);
+  if (level) editor.chain().focus().setHeading({ level }).run();
+  else editor.chain().focus().setParagraph().run();
+});
+editor.on('selectionUpdate', () => { headingMenu.value = String(editor.getAttributes('heading').level ?? 0); });
+tools.append(headingMenu);
 button('itemize',()=>editor.chain().focus().toggleBulletList().run());
 button('enumerate',()=>editor.chain().focus().toggleOrderedList().run());
 button('▦',()=>editor.chain().focus().insertTable({rows:2,cols:2,withHeaderRow:false}).run());
@@ -231,13 +238,16 @@ function scale() {
 }
 window.addEventListener('resize',scale);
 zoom.addEventListener('input',scale);
-let wheel=0;
-document.querySelector('main').addEventListener('wheel',event=>{
-  if(!event.ctrlKey)return;
-  event.preventDefault();wheel+=event.deltaY;
-  if(Math.abs(wheel)<80)return;
-  zoom.value=String(Number(zoom.value)+(wheel<0?2:-2));wheel=0;scale();
-},{passive:false});
+let wheelZoom = Number(zoom.value);
+zoom.addEventListener('input', () => { wheelZoom = Number(zoom.value); });
+document.querySelector('main').addEventListener('wheel', event => {
+  if (!event.ctrlKey) return;
+  event.preventDefault();
+  const units = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? window.innerHeight : 1;
+  wheelZoom = Math.max(50, Math.min(300, wheelZoom - event.deltaY * units * 0.12));
+  zoom.value = String(Math.round(wheelZoom));
+  scale();
+}, { passive: false });
 footer.append(count,zoom,percent);document.body.append(footer);scale();
 editor.on('update',()=>{count.textContent=editor.getText().length+' 字符 / characters';});
 const header=document.querySelector('header');
@@ -271,3 +281,9 @@ for(const name of Object.keys(groups)) {
 ribbon.append(tabs,files,home,insert);header.append(ribbon);tools.remove();
 const download=document.querySelector('#download');
 language.addEventListener('change',updateLanguage);updateLanguage();selectGroup('home');
+
+installContextMenu(editor, paper, language, message => {
+  const status = document.querySelector('#status');
+  status.hidden = false;
+  status.textContent = message;
+});
