@@ -1,7 +1,20 @@
 export const fontFamilies = { Georgia: '\\rmfamily', Arial: '\\sffamily', monospace: '\\ttfamily' };
 export const fontSizes = { 1: '\\scriptsize', 2: '\\small', 3: '\\normalsize', 4: '\\large', 5: '\\Large', 6: '\\LARGE', 7: '\\Huge' };
 
-const textCommands = { backslash: '\\', asciitilde: '~', asciicircum: '^' };
+const textSymbols = {
+  textbackslash: '\\', textasciitilde: '~', textasciicircum: '^', textasciigrave: '`',
+  textbar: '|', textless: '<', textgreater: '>', textunderscore: '_',
+  textbraceleft: '{', textbraceright: '}', textdollar: '$', textpercent: '%',
+  textampersand: '&', textsection: '§', textparagraph: '¶', textbullet: '•',
+  textellipsis: '…', textendash: '–', textemdash: '—',
+  textquoteleft: '‘', textquoteright: '’', textquotedblleft: '“', textquotedblright: '”',
+  textregistered: '®', texttrademark: '™',
+};
+const simpleCommands = { LaTeX: 'LaTeX', TeX: 'TeX', copyright: '©', ldots: '…', dots: '…' };
+const symbolPattern = /^\\(text(?:backslash|asciitilde|asciicircum|asciigrave|bar|less|greater|underscore|braceleft|braceright|dollar|percent|ampersand|section|paragraph|bullet|ellipsis|endash|emdash|quoteleft|quoteright|quotedblleft|quotedblright|registered|trademark))(?:\{\})?/;
+const simplePattern = /^\\(LaTeX|TeX|copyright|ldots|dots)\b(?:\{\})?/;
+const plainPattern = /^\\(textsc|textup|textmd|textnormal|mbox|hbox|fbox|textsuperscript|textsubscript)\{/;
+const ignoredPattern = /^\\(?:noindent|indent|smallskip|medskip|bigskip|newpage|clearpage|pagebreak|nolinebreak|hspace|vspace)(?:\{[^{}]*\})?[ \t]*/;
 
 export function parseInline(source, depth = 0) {
   if (depth > 40) return null;
@@ -16,13 +29,22 @@ export function parseInline(source, depth = 0) {
     const escaped = rest.match(/^\\([%&_#${}])/);
     if (escaped) { nodes.push(escaped[1]); cursor += escaped[0].length; continue; }
 
-    const textCommand = rest.match(/^\\text(backslash|asciitilde|asciicircum)\{\}/);
-    if (textCommand) { nodes.push(textCommands[textCommand[1]]); cursor += textCommand[0].length; continue; }
+    const symbol = rest.match(symbolPattern);
+    if (symbol) { nodes.push(textSymbols[symbol[1]]); cursor += symbol[0].length; continue; }
+
+    const simple = rest.match(simplePattern);
+    if (simple) { nodes.push(simpleCommands[simple[1]]); cursor += simple[0].length; continue; }
 
     if (rest[0] === '~') { nodes.push('\u00A0'); cursor += 1; continue; }
 
     const lineBreak = rest.match(/^\\\\(?:\[[^\]]*\])?[ \t]*(?:\r?\n)?/);
     if (lineBreak) { nodes.push({ hardBreak: true }); cursor += lineBreak[0].length; continue; }
+
+    const newlineCommand = rest.match(/^\\(?:newline|linebreak)\b[ \t]*(?:\r?\n)?/);
+    if (newlineCommand) { nodes.push({ hardBreak: true }); cursor += newlineCommand[0].length; continue; }
+
+    const ignored = rest.match(ignoredPattern);
+    if (ignored) { cursor += ignored[0].length; continue; }
 
     const newline = rest.match(/^[ \t]*\r?\n[ \t]*/);
     if (newline) { nodes.push(' '); cursor += newline[0].length; continue; }
@@ -38,14 +60,16 @@ export function parseInline(source, depth = 0) {
     const reference = rest.match(/^\\ref\{([^{}\r\n]+)\}/);
     if (reference) { nodes.push({ ref: reference[1] }); cursor += reference[0].length; continue; }
 
-    const emphasis = rest.match(/^\\(textbf|textit|emph|underline)\{/);
+    const emphasis = rest.match(/^\\(textbf|textit|emph|textsl|sout|underline)\{/);
+    const plain = rest.match(plainPattern);
+    const fontCommand = rest.match(/^\\(texttt|textsf|textrm)\{/);
     const color = rest.match(/^\\textcolor\[HTML\]\{([0-9a-f]{6})\}\{/i);
     const points = rest.match(/^\{\\fontsize\{(\d{1,2})\}\{\d{1,2}\}\\selectfont /);
     const group = rest.match(/^\{(\\[A-Za-z]+) /);
     const family = group && Object.keys(fontFamilies).find(key => fontFamilies[key] === group[1]);
     const size = group && Object.keys(fontSizes).find(key => fontSizes[key] === group[1]);
-    if (!emphasis && !color && !family && !size && !points) return null;
-    const start = (emphasis ?? color ?? points ?? group)[0].length;
+    if (!emphasis && !plain && !fontCommand && !color && !family && !size && !points) return null;
+    const start = (emphasis ?? plain ?? fontCommand ?? color ?? points ?? group)[0].length;
     let balance = 1;
     let end = start;
     for (; end < rest.length && balance; end++) {
@@ -57,11 +81,13 @@ export function parseInline(source, depth = 0) {
     if (balance) return null;
     const children = parseInline(rest.slice(start, end - 1), depth + 1);
     if (!children) return null;
+    if (plain) { nodes.push(...children); cursor += end; continue; }
+    const monospace = fontCommand?.[1] === 'texttt';
     nodes.push({
-      tag: { textbf: 'strong', textit: 'em', emph: 'em', underline: 'u' }[emphasis?.[1]],
+      tag: emphasis ? { textbf: 'strong', textit: 'em', emph: 'em', textsl: 'em', sout: 'strike', underline: 'u' }[emphasis[1]] : monospace ? 'code' : undefined,
       points: points?.[1],
-      attribute: color ? 'color' : family ? 'face' : size ? 'size' : null,
-      value: color ? '#' + color[1] : family || size,
+      attribute: fontCommand && !monospace ? 'face' : color ? 'color' : family ? 'face' : size ? 'size' : null,
+      value: fontCommand && !monospace ? { textsf: 'Arial', textrm: 'Georgia' }[fontCommand[1]] : color ? '#' + color[1] : family || size,
       children,
     });
     cursor += end;

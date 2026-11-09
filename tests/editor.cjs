@@ -227,8 +227,7 @@ const server=createServer(async(req,res)=>{
     const literals=await formula.evaluate(field=>field.value);
     assert.ok(literals.includes('textasciicircum') && literals.includes('/') && !literals.includes('frac'),literals);
     await page.locator('[data-group=home]').click();
-    await paper.locator(':scope > p').first().click({position:{x:4,y:8}});
-    await page.keyboard.press('End');
+    await paper.locator(':scope > p').first().click({clickCount:3,position:{x:4,y:8}});
     await page.locator('select[aria-label="fontSize"]').selectOption('18pt');
     assert.equal(await page.locator('select[aria-label="fontSize"]').inputValue(),'18pt');
 
@@ -279,6 +278,21 @@ const server=createServer(async(req,res)=>{
     const alignField=page.locator('.ProseMirror math-field').last();
     assert.match(await alignField.evaluate(field=>field.value),/\\begin\{align\}/);
     assert.match(await alignField.evaluate(field=>field.value),/\\mathbf\{x\}/);
+
+    const savePromise=page.waitForEvent('download');
+    await page.keyboard.press('Control+s');
+    const saved=await savePromise;
+    assert.match(saved.suggestedFilename(),/\.tex$/,'Ctrl+S saves the document');
+
+    await importSource('\\begin{tabular}{ll}\nA & B \\\\\nC & D \\\\\n\\end{tabular}');
+    await page.waitForFunction(()=>Boolean(document.querySelector('.ProseMirror table')));
+    const cell=page.locator('.ProseMirror td').first();
+    const cellBox=await cell.boundingBox();
+    await page.mouse.move(cellBox.x+cellBox.width/2,cellBox.y+cellBox.height-2);
+    await page.waitForFunction(()=>{const button=document.querySelector('.table-insert-row');return button&&!button.hidden;});
+    const rowsBefore=await page.locator('.ProseMirror table tr').count();
+    await page.locator('.table-insert-row').click();
+    assert.equal(await page.locator('.ProseMirror table tr').count(),rowsBefore+1,'Hover button inserts a table row');
 
     assert.deepEqual(errors,[]);
     console.log('Browser regressions passed');

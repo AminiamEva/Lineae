@@ -1,8 +1,12 @@
 import { importBlock, importBlocks } from '../../latex/blocks.mjs';
 export { importBlock, importBlocks };
 
-const escape = text => text.replace(/[\u00A0\\{}%$&#_^~]/g, char => ({
+const escape = text => text.replace(/[\u00A0\\{}%$&#_^~§¶•…–—‘’“”®™©]/g, char => ({
   '\\': '\\textbackslash{}', '~': '\\textasciitilde{}', '^': '\\textasciicircum{}', '\u00A0': '~',
+  '§': '\\textsection{}', '¶': '\\textparagraph{}', '•': '\\textbullet{}', '…': '\\ldots{}',
+  '–': '\\textendash{}', '—': '\\textemdash{}', '‘': '\\textquoteleft{}', '’': '\\textquoteright{}',
+  '“': '\\textquotedblleft{}', '”': '\\textquotedblright{}', '®': '\\textregistered{}',
+  '™': '\\texttrademark{}', '©': '\\copyright{}',
 }[char] ?? '\\' + char));
 
 export function serialize(node) {
@@ -13,6 +17,7 @@ export function serialize(node) {
       if (mark.type === 'bold') value = '\\textbf{' + value + '}';
       if (mark.type === 'italic') value = '\\textit{' + value + '}';
       if (mark.type === 'strike') value = '\\sout{' + value + '}';
+      if (mark.type === 'code') value = '\\texttt{' + value + '}';
       if (mark.type === 'underline') value = '\\underline{' + value + '}';
       if (mark.type === 'textStyle') {
         if (/^#[\da-f]{6}$/i.test(mark.attrs.color ?? '')) value='\\textcolor[HTML]{'+mark.attrs.color.slice(1)+'}{'+value+'}';
@@ -33,6 +38,8 @@ export function serialize(node) {
       return '\\' + name + (node.attrs.numbered === false ? '*' : '') + short + '{' + content + '}' + label + '\n\n';
     }
     case 'tableOfContents': return '\\tableofcontents\n\n';
+    case 'blockquote': return '\\begin{quote}\n' + content + '\\end{quote}\n\n';
+    case 'horizontalRule': return '\\hrule\n\n';
     case 'bulletList': return '\\begin{itemize}\n' + content + '\\end{itemize}\n\n';
     case 'orderedList': return '\\begin{enumerate}\n' + content + '\\end{enumerate}\n\n';
     case 'listItem': return '\\item ' + content.trim() + '\n';

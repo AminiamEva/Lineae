@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { parseDocument } from '../apps/web/latex/document.mjs';
 import { importBlocks } from '../apps/web/latex/blocks.mjs';
+import { mathSymbols } from '../apps/web/latex/math-symbols.mjs';
 
 const root = 'tests/fixtures/tex-compat';
 const files = [
@@ -68,6 +69,36 @@ test('paragraphs, escapes, emphasis, comments and unicode remain editable', () =
   const unicode = parse('text/text-unicode.tex');
   assert.equal(textOf(unicode[0]), '中文段落：数学论文。');
   assert.equal(textOf(unicode[1]), 'English paragraph: mathematics.');
+});
+
+test('all catalog math symbols stay inside editable math nodes', () => {
+  for (const name of mathSymbols.filter(name => /^[A-Za-z]+$/.test(name))) {
+    const nodes = importBlocks('$\\' + name + '$');
+    assert.equal(nodes[0]?.type, 'paragraph', name);
+    assert.equal(nodes[0].content[0]?.type, 'math', name);
+    assert.equal(nodes[0].content[0].attrs.latex, '\\' + name);
+  }
+});
+
+test('common text commands are parsed without raw fallback', () => {
+  const parts = importBlocks(String.raw`First\par Second`);
+  assert.deepEqual(parts.map(node => node.type), ['paragraph', 'paragraph']);
+  assert.deepEqual(parts.map(textOf), ['First', 'Second']);
+
+  const [line] = importBlocks(String.raw`A\linebreak B`);
+  assert.ok(line.content.some(node => node.type === 'hardBreak'));
+
+  const [spaced] = importBlocks(String.raw`A\hspace{1em}B`);
+  assert.equal(textOf(spaced), 'AB');
+
+  const [symbols] = importBlocks(String.raw`\noindent \textasciicircum{} \textasciitilde{} \textbackslash{} \textsection{} \LaTeX{}`);
+  assert.equal(textOf(symbols), '^ ~ \\ § LaTeX');
+
+  const [formatted] = importBlocks(String.raw`\textbf{bold} \textsc{small} \sout{gone} \texttt{code}`);
+  assert.equal(formatted.content.find(node => node.marks?.some(mark => mark.type === 'bold'))?.text, 'bold');
+  assert.equal(formatted.content.find(node => node.marks?.some(mark => mark.type === 'strike'))?.text, 'gone');
+  assert.equal(formatted.content.find(node => node.marks?.some(mark => mark.type === 'code'))?.text, 'code');
+  assert.ok(textOf(formatted).includes('small'));
 });
 
 test('inline math commands and block math environments stay editable', () => {

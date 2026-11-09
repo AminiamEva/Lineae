@@ -1,10 +1,10 @@
-{
-  "version": 1,
-  "interface": {
-    "language": "auto",
-    "toolbar": ["open", "download", "language"]
-  },
-  "keybindings": {
-    "math": { "ctrl+6": "moveToSuperscript", "ctrl+-": "moveToSubscript", "ctrl+0": "moveAfterParent" }
-  }
-}
+version: 1
+interface:
+  language: auto
+  zoom: 100
+  toolbar: [open, download, language]
+keybindings:
+  math:
+    ctrl+6: moveToSuperscript
+    ctrl+-: moveToSubscript
+    ctrl+0: moveAfterParent

@@ -10,7 +10,7 @@ function inlineContent(text) {
       if (part.math !== undefined) return [{ type: 'math', attrs: { latex: part.math, display: false } }];
       if (part.ref !== undefined) return [{ type: 'ref', attrs: { key: part.ref } }];
       if (part.hardBreak) return [{ type: 'hardBreak' }];
-      const type = { strong: 'bold', em: 'italic', u: 'underline' }[part.tag];
+      const type = { strong: 'bold', em: 'italic', u: 'underline', strike: 'strike', code: 'code' }[part.tag];
       if (type) return convert(part.children, [...marks, { type }]);
       const attrs = part.points ? { fontSize: part.points + 'pt' } :
         part.attribute === 'color' ? { color: part.value } :
@@ -44,10 +44,17 @@ export function importBlock(block) {
   const headingMatch = text.match(/^\\(section|subsection|subsubsection)(\*?)(?:\[([^\]]*)\])?\{([^{}]*)\}(?:[ \t]*\\label\{([^{}]*)\})?$/);
   if (headingMatch) return heading(headingMatch[1], headingMatch[2], headingMatch[3], headingMatch[4], headingMatch[5]);
   if (text === '\\tableofcontents') return { type: 'tableOfContents' };
-  const math = text.match(/^\\\[([\s\S]*?)\\\]$/) ?? text.match(/^\\begin\{equation\*?\}([\s\S]*?)\\end\{equation\*?\}$/);
+  if (text === '\\hrule') return { type: 'horizontalRule' };
+  const math = text.match(/^\\\[([\s\S]*?)\\\]$/) ?? text.match(/^\$\$([\s\S]*?)\$\$$/) ?? text.match(/^\\begin\{equation\*?\}([\s\S]*?)\\end\{equation\*?\}$/);
   if (math) return { type: 'mathBlock', attrs: { latex: math[1], display: true } };
   const environment = text.match(/^\\begin\{(align\*?|gather\*?|multline\*?|displaymath|math|split|aligned|gathered|cases|dcases|rcases|[pbBvV]?matrix|array)\}([\s\S]*?)\\end\{\1\}$/);
   if (environment) return { type: 'mathBlock', attrs: { latex: text, display: true } };
+  const quote = text.match(/^\\begin\{quote\}([\s\S]*?)\\end\{quote\}$/);
+  if (quote) {
+    const paragraphs = quote[1].split(/\n\s*\n/).map(part => part.trim()).filter(Boolean);
+    const content = paragraphs.map(part => ({ type: 'paragraph', content: inlineContent(part) ?? [{ type: 'text', text: part }] }));
+    return { type: 'blockquote', content: content.length ? content : [{ type: 'paragraph' }] };
+  }
   const list = text.match(/^\\begin\{(itemize|enumerate)\}\n([\s\S]*?)\n\\end\{\1\}$/);
   if (list) {
     const items = list[2].split(/\n(?=\\item)/).map(item => inlineContent(item.replace(/^\\item\s?/, '')));
@@ -64,7 +71,25 @@ export function importBlock(block) {
 
 const structural = /\\(tableofcontents)\b|\\(section|subsection|subsubsection)(\*?)(?:\[([^\]]*)\])?\{([^{}]*)\}(?:[ \t]*\\label\{([^{}]*)\})?/g;
 
-export function importBlocks(block) {
+function splitParagraphs(block) {
+  const parts = [];
+  let start = 0;
+  let depth = 0;
+  const tokens = /\\(begin|end)\{[^{}]+\}|\\par\b/g;
+  let match;
+  while ((match = tokens.exec(block))) {
+    if (match[1] === 'begin') depth++;
+    else if (match[1] === 'end') depth = Math.max(0, depth - 1);
+    else if (depth === 0) {
+      parts.push(block.slice(start, match.index));
+      start = match.index + match[0].length;
+    }
+  }
+  parts.push(block.slice(start));
+  return parts;
+}
+
+function importSegment(block) {
   const nodes = [];
   let cursor = 0;
   structural.lastIndex = 0;
@@ -79,4 +104,8 @@ export function importBlocks(block) {
   const after = importBlock(block.slice(cursor));
   if (after) nodes.push(after);
   return nodes;
+}
+
+export function importBlocks(block) {
+  return splitParagraphs(block).flatMap(importSegment);
 }

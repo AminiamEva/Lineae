@@ -4,6 +4,8 @@ import { decorateToolbar } from './editor/icons.js';
 import { PaperBehavior } from './editor/paper-behavior.js';
 import { MathNode, MathBlock, configureMathKeys, insertFormula } from './editor/math-node.js';
 import { Ref, TableOfContents, refreshReferences } from './editor/references.js';
+import { installTableHoverAddRow } from './editor/table-hover.js';
+import { parseYaml, toYaml, mergeConfig } from './editor/config.mjs';
 import { serialize, importBlocks } from './editor/latex-codec.js';
 import { Editor, Node, Extension, Mark } from '@tiptap/core';
 import StarterKit from '@tiptap/starter-kit';
@@ -14,6 +16,7 @@ import TableHeader from '@tiptap/extension-table-header';
 import { Plugin } from '@tiptap/pm/state';
 import { parseDocument } from '../latex/document.mjs';
 import { exportDocument } from '../latex/packages.mjs';
+import { mathSymbols } from '../latex/math-symbols.mjs';
 
 const TextStyle = Mark.create({
   name:'textStyle',
@@ -36,12 +39,20 @@ const Raw = Node.create({
   parseHTML:()=>[{tag:'pre[data-raw]'}],
   renderHTML:({node})=>['pre',{'data-raw':'',contenteditable:'false'},node.attrs.source],
 });
+let appConfig={};
 try {
   const configurationUrl=new URL('./config.yaml',import.meta.url);
   configurationUrl.search=new URL(import.meta.url).search;
   const response=await fetch(configurationUrl);
-  if(response.ok)configureMathKeys((await response.json()).keybindings?.math);
+  if(response.ok)appConfig=parseYaml(await response.text());
+  const saved=localStorage.getItem('lineae.config');
+  if(saved)appConfig=mergeConfig(appConfig,parseYaml(saved));
+  configureMathKeys(appConfig.keybindings?.math);
 } catch(error) { console.warn('Configuration / 配置',error); }
+function saveConfig(patch) {
+  appConfig={...appConfig,interface:{...appConfig.interface,...patch}};
+  try { localStorage.setItem('lineae.config',toYaml(appConfig)); } catch {}
+}
 let editor;
 function insertMath(display = false, latex = '') {
   insertFormula(editor, display, latex);
@@ -94,6 +105,7 @@ editor=new Editor({
   content:'<p></p>',
 });
 editor.on('update',()=>refreshReferences(paper));
+installTableHoverAddRow(editor, paper);
 const tools=document.querySelector('#insert');
 tools.replaceChildren();
 function button(label, action) {
@@ -238,11 +250,17 @@ button('LaTeX',()=>{
   }
 });
 document.querySelector('#download').disabled=false;
-document.querySelector('#download').addEventListener('click',()=>{
+function saveDocument() {
   const url=URL.createObjectURL(new Blob([sourceView.hidden?source():sourceView.value],{type:'text/plain;charset=utf-8'}));
   const a=document.createElement('a');a.href=url;a.download=filename;a.click();
   setTimeout(()=>URL.revokeObjectURL(url),1000);
-});
+}
+document.querySelector('#download').addEventListener('click',saveDocument);
+document.addEventListener('keydown',event=>{
+  if((event.ctrlKey||event.metaKey)&&!event.altKey&&event.key.toLowerCase()==='s') {
+    event.preventDefault(); event.stopPropagation(); saveDocument();
+  }
+},true);
 document.querySelector('#file').addEventListener('change',async event=>{
   const file=event.target.files[0];if(!file)return;
   try {load(new TextDecoder('utf-8',{fatal:true,ignoreBOM:true}).decode(await file.arrayBuffer()));filename=file.name;}
@@ -268,8 +286,15 @@ document.body.append(commands);
 const formulaCommands = {
   frac: '\\frac{#?}{#?}', sqrt: '\\sqrt{#?}', sum: '\\sum',
   int: '\\int', lim: '\\lim', matrix: '\\begin{pmatrix}#?\\end{pmatrix}',
+  mathbf: '\\mathbf{#?}', mathrm: '\\mathrm{#?}', mathit: '\\mathit{#?}',
+  mathcal: '\\mathcal{#?}', mathbb: '\\mathbb{#?}', text: '\\text{#?}',
+  overline: '\\overline{#?}', hat: '\\hat{#?}', vec: '\\vec{#?}', dot: '\\dot{#?}',
+  partial: '\\partial', nabla: '\\nabla', prod: '\\prod', iint: '\\iint', oint: '\\oint',
   alpha: '\\alpha', beta: '\\beta', gamma: '\\gamma', delta: '\\delta', theta: '\\theta',
   lambda: '\\lambda', mu: '\\mu', pi: '\\pi', sigma: '\\sigma', omega: '\\omega',
+  varepsilon: '\\varepsilon', varphi: '\\varphi', vartheta: '\\vartheta',
+  Gamma: '\\Gamma', Delta: '\\Delta', Theta: '\\Theta', Lambda: '\\Lambda',
+  Xi: '\\Xi', Pi: '\\Pi', Sigma: '\\Sigma', Phi: '\\Phi', Psi: '\\Psi', Omega: '\\Omega',
   infty: '\\infty', leq: '\\leq', geq: '\\geq', neq: '\\neq', times: '\\times',
   in: '\\in', notin: '\\notin', subset: '\\subset', subseteq: '\\subseteq',
   cup: '\\cup', cap: '\\cap', forall: '\\forall', exists: '\\exists',
@@ -277,6 +302,9 @@ const formulaCommands = {
   sin: '\\sin', cos: '\\cos', tan: '\\tan', log: '\\log', ln: '\\ln',
   displaystyle: '\\displaystyle', textstyle: '\\textstyle',
 };
+for (const name of mathSymbols) {
+  if (/^[A-Za-z]+$/.test(name) && !(name in formulaCommands)) formulaCommands[name] = '\\' + name;
+}
 const structureCommands = {
   section: () => editor.chain().focus().setHeading({ level: 1 }).run(),
   subsection: () => editor.chain().focus().setHeading({ level: 2 }).run(),
@@ -398,6 +426,8 @@ function scale() {
 window.addEventListener('resize',scale);
 zoom.addEventListener('input',scale);
 let wheelZoom = Number(zoom.value);
+const configuredZoom=Number(appConfig.interface?.zoom);
+if(Number.isFinite(configuredZoom)&&configuredZoom>=50&&configuredZoom<=300) { zoom.value=String(configuredZoom); wheelZoom=configuredZoom; }
 document.addEventListener('keydown', event => {
   if (!(event.ctrlKey || event.metaKey) || activeMath() || !['+','=','-','0'].includes(event.key)) return;
   event.preventDefault();
@@ -405,6 +435,7 @@ document.addEventListener('keydown', event => {
   zoom.value = String(wheelZoom); scale();
 }, true);
 zoom.addEventListener('input', () => { wheelZoom = Number(zoom.value); });
+zoom.addEventListener('change', () => saveConfig({ zoom: Number(zoom.value) }));
 let matrixChord=false;
 document.addEventListener('keydown', event => {
   if (event.defaultPrevented || event.altKey || event.metaKey) { matrixChord=false; return; }
@@ -442,6 +473,63 @@ editor.on('transaction',updateEnvironment);
 document.addEventListener('focusin',updateEnvironment);paper.addEventListener('input',updateEnvironment);
 updateEnvironment();
 editor.on('update',()=>{count.textContent=editor.getText().length+' 字符 / characters';});
+const tableGroup=document.createElement('div');tableGroup.className='tools';
+const formatGroup=document.createElement('div');formatGroup.className='tools';
+const referenceGroup=document.createElement('div');referenceGroup.className='tools';
+const mathGroup=document.createElement('div');mathGroup.className='tools';
+function groupButton(container,label,action) {
+  const control=document.createElement('button');
+  control.type='button';control.textContent=label;
+  control.addEventListener('mousedown',event=>event.preventDefault());
+  control.addEventListener('click',action);
+  container.append(control);
+  return control;
+}
+function promptText(message,current='') {
+  const value=window.prompt(message,current);
+  return value===null?null:value.trim();
+}
+groupButton(tableGroup,'▦',()=>editor.chain().focus().insertTable({rows:2,cols:2,withHeaderRow:false}).run());
+groupButton(tableGroup,'＋ Row',addMatrixRow);
+groupButton(tableGroup,'＋ Column',addMatrixColumn);
+groupButton(tableGroup,'－ Row',()=>editor.chain().focus().deleteRow().run());
+groupButton(tableGroup,'－ Column',()=>editor.chain().focus().deleteColumn().run());
+groupButton(tableGroup,'删除表格',()=>editor.chain().focus().deleteTable().run());
+groupButton(formatGroup,'B',()=>editor.chain().focus().toggleBold().run());
+groupButton(formatGroup,'I',()=>editor.chain().focus().toggleItalic().run());
+groupButton(formatGroup,'U',()=>editor.chain().focus().toggleMark('underline').run());
+groupButton(formatGroup,'S',()=>editor.chain().focus().toggleStrike().run());
+groupButton(formatGroup,'code',()=>editor.chain().focus().toggleCode().run());
+groupButton(formatGroup,'quote',()=>editor.chain().focus().toggleBlockquote().run());
+groupButton(formatGroup,'hr',()=>editor.chain().focus().setHorizontalRule().run());
+groupButton(referenceGroup,'label',()=>{
+  if(!editor.isActive('heading'))return;
+  const value=promptText('标签键 / Label key',editor.getAttributes('heading').label??'');
+  if(value!==null)editor.chain().focus().updateAttributes('heading',{label:value||null}).run();
+});
+groupButton(referenceGroup,'ref',()=>{
+  const value=promptText('引用标签 / Reference label');
+  if(value)editor.chain().focus().insertContent({type:'ref',attrs:{key:value}}).run();
+});
+groupButton(referenceGroup,'toc',()=>{
+  if(editor.isActive('tableOfContents'))editor.chain().focus().deleteSelection().run();
+  else editor.chain().focus().insertContent({type:'tableOfContents'}).run();
+});
+groupButton(referenceGroup,'short',()=>{
+  if(!editor.isActive('heading'))return;
+  const value=promptText('短标题 / Short title',editor.getAttributes('heading').shortTitle??'');
+  if(value!==null)editor.chain().focus().updateAttributes('heading',{shortTitle:value||null}).run();
+});
+groupButton(mathGroup,'$',()=>insertMath());
+groupButton(mathGroup,'$$',()=>insertMath(true));
+groupButton(mathGroup,'frac',()=>insertMath(false,'\\frac{\\placeholder{}}{\\placeholder{}}'));
+groupButton(mathGroup,'sqrt',()=>insertMath(false,'\\sqrt{\\placeholder{}}'));
+groupButton(mathGroup,'sum',()=>insertMath(false,'\\sum'));
+groupButton(mathGroup,'int',()=>insertMath(false,'\\int'));
+groupButton(mathGroup,'matrix',()=>insertMath(false,'\\begin{pmatrix}\\placeholder{}\\end{pmatrix}'));
+groupButton(mathGroup,'cases',()=>insertMath(true,'\\begin{cases}\\placeholder{} & \\placeholder{}\\\\ \\placeholder{} & \\placeholder{}\\end{cases}'));
+groupButton(mathGroup,'align',()=>insertMath(true,'\\begin{align}\\placeholder{} &= \\placeholder{}\\\\ \\placeholder{} &= \\placeholder{}\\end{align}'));
+
 const header=document.querySelector('header');
 const ribbon=document.createElement('div');ribbon.className='ribbon';
 const tabs=document.createElement('nav');tabs.className='ribbon-tabs';
@@ -451,14 +539,27 @@ const files=header.querySelector('.tools');
 for(const control of [...tools.children]) {
   (control.hasAttribute('data-home') || control.tagName==='SELECT' || ['↶','↷','B','I','U','H'].includes(control.textContent)?home:insert).append(control);
 }
-const groups={files,home,insert};
-const captions={files:['文件','File'],home:['主页','Home'],insert:['插入','Insert']};
+const groups={files,home,insert,table:tableGroup,format:formatGroup,reference:referenceGroup,math:mathGroup};
+const captions={files:['文件','File'],home:['主页','Home'],insert:['插入','Insert'],table:['表格','Table'],format:['格式','Format'],reference:['引用','Reference'],math:['数学','Math']};
 const language=document.querySelector('#language');
+const exportConfig=document.createElement('button');
+exportConfig.type='button';
+exportConfig.addEventListener('mousedown',event=>event.preventDefault());
+exportConfig.addEventListener('click',()=>{
+  const url=URL.createObjectURL(new Blob([toYaml(appConfig)+'\n'],{type:'text/yaml;charset=utf-8'}));
+  const a=document.createElement('a');a.href=url;a.download='config.yaml';a.click();
+  setTimeout(()=>URL.revokeObjectURL(url),1000);
+});
+files.append(exportConfig);
+const configuredLanguage=appConfig.interface?.language;
+if(['zh-CN','en'].includes(configuredLanguage))language.value=configuredLanguage;
+else if(!configuredLanguage||configuredLanguage==='auto')language.value=(navigator.language??'').toLowerCase().startsWith('zh')?'zh-CN':'en';
 function updateLanguage() {
   const chinese=language.value==='zh-CN';
   document.documentElement.lang=language.value;
   for(const tab of tabs.children)tab.textContent=captions[tab.dataset.group][chinese?0:1];
   download.textContent=chinese?'下载 .tex':'Download .tex';
+  exportConfig.textContent=chinese?'配置':'Config';
   header.querySelector('.open span').textContent=chinese?'打开 .tex':'Open .tex';
 }
 function selectGroup(name) {
@@ -470,10 +571,10 @@ for(const name of Object.keys(groups)) {
   tab.addEventListener('mousedown',event=>event.preventDefault());
   tab.addEventListener('click',()=>selectGroup(name));tabs.append(tab);
 }
-ribbon.append(tabs,files,home,insert);header.append(ribbon);tools.remove();
+ribbon.append(tabs,files,home,insert,tableGroup,formatGroup,referenceGroup,mathGroup);header.append(ribbon);tools.remove();
 decorateToolbar(ribbon);
 const download=document.querySelector('#download');
-language.addEventListener('change',updateLanguage);updateLanguage();selectGroup('home');
+language.addEventListener('change',()=>{updateLanguage();saveConfig({language:language.value});});updateLanguage();selectGroup('home');
 
 installContextMenu(editor, paper, language, message => {
   const status = document.querySelector('#status');

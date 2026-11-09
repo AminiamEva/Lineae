@@ -38,6 +38,10 @@ main { padding:125px 24px 60px; overflow:auto; }
 .ProseMirror math-field { min-width:1em; border:0; background:transparent; color:inherit; }
 .ProseMirror-selectednode { outline:2px solid #468bdf; border-radius:3px; }
 .ProseMirror .ref-node { display:inline-block; padding:0 .3em; border-radius:4px; background:light-dark(#eef3fc,#2b3442); color:light-dark(#2f5aa8,#bcd4ff); cursor:pointer; user-select:none; }
+.table-insert-row { position:fixed; z-index:20; width:22px; height:22px; border-radius:50%; border:1px solid light-dark(#7aa7e6,#5b7fb3); background:light-dark(#fff,#2c3440); color:light-dark(#2f5aa8,#bcd4ff); font:16px/1 sans-serif; cursor:pointer; box-shadow:0 1px 4px #0003; padding:0; }
+.table-insert-row:hover { background:light-dark(#e5efff,#394c67); }
+.ProseMirror blockquote { margin:.6em 0; padding-left:1em; border-left:3px solid light-dark(#d5dce8,#4a5568); }
+.ProseMirror code { font-family:ui-monospace,SFMono-Regular,monospace; background:light-dark(#f2f3f6,#2e3138); border-radius:3px; padding:0 .2em; }
 .ProseMirror .toc-block { border:1px dashed light-dark(#c9d3e6,#46536a); border-radius:8px; padding:.6em .8em; margin:.6em 0; background:light-dark(#f7f9fd,#232a34); }
 .ProseMirror .toc-title { font-weight:600; margin-bottom:.3em; opacity:.8; }
 .ProseMirror .toc-entry { font-size:.95em; }
