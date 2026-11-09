@@ -429,6 +429,7 @@ const server=createServer(async(req,res)=>{
     await page.locator('.command-menu input').fill('gamma');
     assert.equal(await page.locator('.command-candidates button').first().getAttribute('id'),'complete-gamma');
     await page.keyboard.press('Escape');
+    await page.locator('[data-group=insert]').click();
     await page.getByRole('button',{name:'LaTeX',exact:true}).click();
     const editedSource=(await page.locator('.source-view').inputValue()).replace('\\end{document}','Unsaved regression text\n\\end{document}');
     await page.locator('.source-view').fill(editedSource);
