@@ -1,3 +1,10 @@
+[![Build](https://img.shields.io/github/actions/workflow/status/AminiamEva/Lineae/pages.yml?branch=main&style=flat-square&label=build)](https://github.com/AminiamEva/Lineae/actions/workflows/pages.yml)
+[![Stars](https://img.shields.io/github/stars/AminiamEva/Lineae?style=flat-square)](https://github.com/AminiamEva/Lineae/stargazers)
+[![Forks](https://img.shields.io/github/forks/AminiamEva/Lineae?style=flat-square)](https://github.com/AminiamEva/Lineae/forks)
+[![Issues](https://img.shields.io/github/issues/AminiamEva/Lineae?style=flat-square)](https://github.com/AminiamEva/Lineae/issues)
+[![Contributors](https://img.shields.io/github/contributors/AminiamEva/Lineae?style=flat-square)](https://github.com/AminiamEva/Lineae/graphs/contributors)
+[![Last Commit](https://img.shields.io/github/last-commit/AminiamEva/Lineae?style=flat-square)](https://github.com/AminiamEva/Lineae/commits/main/)
+
 # Lineae
 
 **Write naturally. Typeset beautifully.**
@@ -360,6 +367,12 @@ A licence file has not yet been committed to this repository.
 GNU GPLv3 is the intended licence, subject to formal adoption and verification of third-party dependency obligations.
 
 Until a licence is published, the repository's public availability should not be interpreted as granting general redistribution or modification rights.
+
+<a href="https://github.com/AminiamEva/lineae/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=AminiamEva/lineae" />
+</a>
+
+Made with [contrib.rocks](https://contrib.rocks).
 
 ---
 
