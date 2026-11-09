@@ -169,9 +169,9 @@ const documentPattern = /^(.*?^\\begin\{document\}[ \t]*\r?\n)(.*)(^\\end\{docum
 const plain = /^[^\\{}%$&#_^~\r\n]*$/;
 const templates = {
   heading: String.raw`\section{Introduction}`,
-  bullets: '\\begin{itemize}\n\\item First item\n\\end{itemize}',
-  ordered: '\\begin{enumerate}\n\\item First item\n\\end{enumerate}',
-  table: '\\begin{tabular}{ll}\nA & B \\\\\n1 & 2 \\\\\n\\end{tabular}',
+  bullets: '\\begin{itemize}\n\\item \n\\end{itemize}',
+  ordered: '\\begin{enumerate}\n\\item \n\\end{enumerate}',
+  table: ['\\begin{tabular}{ll}', ' & ' + '\\\\', ' & ' + '\\\\', '\\end{tabular}'].join('\n'),
   display: String.raw`\[x^2+y^2=z^2\]`,
 };
 let documentParts;
@@ -188,8 +188,10 @@ function button(key, action) {
 
 function field(value, save, key = 'paragraph', math = false) {
   const input = document.createElement(math && customElements.get('math-field') ? 'math-field' : 'input');
-  if (input.localName === 'math-field') configureMath(input);
-  input.value = value;
+  if (input.localName === 'math-field') {
+    input.textContent = value;
+    queueMicrotask(() => { if (input.isConnected) configureMath(input); });
+  } else input.value = value;
   input.dataset.field = key;
   input.setAttribute('aria-label', copy[language.value][key]);
   input.addEventListener('input', () => {
@@ -434,6 +436,18 @@ function editorBlock(raw) {
       });
       line.handleParagraphInput = event => {
         if (event.inputType === 'insertParagraph' && !event.target.closest('[data-inline-math]')) {
+          if (!line.textContent.trim() && !line.querySelector('[data-inline-math]')) {
+            let previous = node.previousElementSibling;
+            while (previous?.hidden) previous = previous.previousElementSibling;
+            const fields = previous?.querySelectorAll('li .paper-text');
+            if (fields?.length) {
+              event.preventDefault();
+              const last = fields[fields.length - 1];
+              last.focus();
+              window.getSelection().collapse(last, last.childNodes.length);
+              return;
+            }
+          }
           const selection = window.getSelection();
           if (!selection.rangeCount || !line.contains(selection.anchorNode) || !line.contains(selection.focusNode)) return;
           event.preventDefault();
@@ -468,7 +482,7 @@ function editorBlock(raw) {
         const math = inlineMath('x^2');
         range.insertNode(math);
         save();
-        math.firstChild.focus();
+        requestAnimationFrame(() => math.firstChild?.focus());
       };
       node.append(line);
       return node;
@@ -557,6 +571,17 @@ function mergeAtBoundary(event, line, selection) {
     spacers.push(neighbor);
     neighbor = neighbor[direction];
   }
+  const heading = backward && neighbor?.querySelector('h2 .paper-text');
+  if (heading && plain.test(line.textContent) && !line.querySelector('strong, em, u, font, [data-inline-math], [data-points]')) {
+    const offset = heading.textContent.length;
+    heading.textContent += line.textContent;
+    heading.dispatchEvent(new Event('input'));
+    section.remove();
+    spacers.forEach(spacer => spacer.remove());
+    heading.focus();
+    selection.collapse(heading.firstChild, offset);
+    return;
+  }
   const other = neighbor?.querySelector(':scope > .document-line');
   if (!other) return;
   const first = backward ? other : line;
@@ -600,6 +625,41 @@ function collapseTextSelection(selection) {
   first.syncSource();
   return true;
 }
+
+function deleteSelectedObjects(selection) {
+  if (selection.isCollapsed || !selection.rangeCount) return false;
+  const range = selection.getRangeAt(0);
+  const sections = Array.from(editor.querySelectorAll(':scope > section'));
+  const covered = sections.filter(section => {
+    if (!range.intersectsNode(section) || section.querySelector('details')) return false;
+    const contents = document.createRange();
+    contents.selectNodeContents(section);
+    const start = range.cloneRange();
+    start.collapse(true);
+    const end = range.cloneRange();
+    end.collapse(false);
+    const prefix = contents.cloneRange();
+    const suffix = contents.cloneRange();
+    if (section.contains(start.startContainer)) prefix.setEnd(start.startContainer, start.startOffset);
+    else prefix.collapse(true);
+    if (section.contains(end.startContainer)) suffix.setStart(end.startContainer, end.startOffset);
+    else suffix.collapse(false);
+    return !prefix.toString().trim() && !suffix.toString().trim() &&
+      !prefix.cloneContents().querySelector('math-field, input') &&
+      !suffix.cloneContents().querySelector('math-field, input');
+  });
+  const intersected = sections.filter(section => range.intersectsNode(section));
+  if (covered.length < 2 || covered.length !== intersected.length) return false;
+  const previous = covered[0].previousElementSibling;
+  covered.forEach(section => section.remove());
+  paragraphAfter(previous);
+  return true;
+}
+
+editor.addEventListener('keydown', event => {
+  if (event.isComposing || !['Backspace', 'Delete'].includes(event.key)) return;
+  if (deleteSelectedObjects(window.getSelection())) event.preventDefault();
+}, true);
 
 editor.addEventListener('beforeinput', event => {
   if (event.target !== editor) return;
@@ -717,13 +777,6 @@ let activeTable;
 editor.addEventListener('focusin', event => {
   activeTable = event.target.closest('section:has(table)');
 });
-for (const [key, method] of [['row', 'addTableRow'], ['column', 'addTableColumn']]) {
-  const control = button(key, () => {
-    if (activeTable?.isConnected) activeTable[method]();
-  });
-  control.addEventListener('mousedown', event => event.preventDefault());
-  insert.append(control);
-}
 function sourceSeparator() {
   const spacer = document.createElement('span');
   spacer.hidden = true;
@@ -741,8 +794,16 @@ for (const [key, template] of Object.entries(templates)) {
       if (block.nextElementSibling && !block.nextElementSibling.hidden) block.after(sourceSeparator());
     } else editor.append(sourceSeparator(), block);
     const target = block.querySelector('math-field, input, .paper-text');
-    target?.focus();
+    if (target?.localName === 'math-field') requestAnimationFrame(() => target.focus());
+    else target?.focus();
     block.scrollIntoView({ block: 'nearest' });
+  });
+  control.addEventListener('mousedown', event => event.preventDefault());
+  insert.append(control);
+}
+for (const [key, method] of [['row', 'addTableRow'], ['column', 'addTableColumn']]) {
+  const control = button(key, () => {
+    if (activeTable?.isConnected) activeTable[method]();
   });
   control.addEventListener('mousedown', event => event.preventDefault());
   insert.append(control);
@@ -849,7 +910,7 @@ const counts = document.createElement('output');
 const zoom = document.createElement('input');
 zoom.type = 'range';
 zoom.min = '50';
-zoom.max = '200';
+zoom.max = '300';
 zoom.step = '5';
 zoom.value = '100';
 const percent = document.createElement('output');
@@ -877,7 +938,8 @@ const wordmark = header.querySelector('h1');
 function updateWordmark() {
   const paper = editor.getBoundingClientRect();
   const brand = wordmark.getBoundingClientRect();
-  wordmark.classList.toggle('edge-hidden', paper.left < brand.right + 16);
+  const clearance = Math.min(paper.left, toolbar.getBoundingClientRect().left) - brand.right;
+  wordmark.style.opacity = String(Math.min(1, Math.max(0, clearance / 28)));
 }
 const paperObserver = new ResizeObserver(updateWordmark);
 paperObserver.observe(editor);
@@ -934,8 +996,7 @@ language.addEventListener('change', () => {
 customElements.whenDefined('math-field').then(() => {
   for (const field of editor.querySelectorAll('input[data-field="inline"], input[data-field="display"]')) {
     const replacement = document.createElement('math-field');
-    configureMath(replacement);
-    replacement.value = field.value;
+    replacement.textContent = field.value;
     replacement.dataset.field = field.dataset.field;
     replacement.setAttribute('aria-label', field.getAttribute('aria-label'));
     replacement.addEventListener('input', () => {
@@ -945,6 +1006,7 @@ customElements.whenDefined('math-field').then(() => {
       download.disabled = Boolean(editor.querySelector('[aria-invalid="true"]'));
     });
     field.replaceWith(replacement);
+    configureMath(replacement);
   }
 });
 

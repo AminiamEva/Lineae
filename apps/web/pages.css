@@ -168,3 +168,5 @@ main { padding-top: 7rem; }
 .document-status { min-height: 1.15rem; padding: .15rem .7rem; font-size: .72rem; }
 .document-status input { height: .65rem; }
 .math-hint { inset-block-end: 2.4rem; }
+
+header h1 { transition: opacity .18s ease-out; }
