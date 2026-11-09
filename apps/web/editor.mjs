@@ -51,7 +51,9 @@ language.value = preferredLanguage;
 
 // The configuration uses YAML's JSON-compatible syntax.
 async function applyConfiguration() {
-  const response = await fetch(new URL('./config.yaml', import.meta.url));
+  const configUrl = new URL('./config.yaml', import.meta.url);
+  configUrl.search = new URL(import.meta.url).search;
+  const response = await fetch(configUrl);
   if (!response.ok) throw new Error('Configuration request failed');
   const configuration = await response.json();
   mathBindings = configuration.keybindings?.math ?? mathBindings;
