@@ -89,6 +89,12 @@ export const MathNode = Node.create({
         }
       });
       field.addEventListener('keydown', event => {
+        if (event.key === '\\' && !event.ctrlKey && !event.altKey && !event.metaKey) {
+          event.preventDefault();
+          event.stopPropagation();
+          dom.dispatchEvent(new CustomEvent('lineae-math-command', { bubbles: true, detail: { field } }));
+          return;
+        }
         if (event.ctrlKey && ['z', 'y'].includes(event.key.toLowerCase())) {
           event.preventDefault();
           event.stopPropagation();
@@ -117,6 +123,7 @@ export const MathNode = Node.create({
       });
       field.addEventListener('mount', () => {
         field.mathVirtualKeyboardPolicy = 'manual';
+        field.popoverPolicy = 'off';
         field.keybindings = [...configuredKeys, ...field.keybindings];
       });
       return {

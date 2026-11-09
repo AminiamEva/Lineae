@@ -181,48 +181,135 @@ document.querySelector('#file').addEventListener('change',async event=>{
   try {load(new TextDecoder('utf-8',{fatal:true,ignoreBOM:true}).decode(await file.arrayBuffer()));filename=file.name;}
   catch(error){const status=document.querySelector('#status');status.hidden=false;status.textContent=error.message;}
 });
-const commands=document.createElement('div');
-commands.className='command-menu';commands.hidden=true;
-const filter=document.createElement('input');
-filter.placeholder='LaTeX 命令 / command';
-const candidates=document.createElement('div');
-commands.append(filter,candidates);document.body.append(commands);
-const commandActions={
-  frac:()=>insertFormulaCommand('\\frac{#?}{#?}'),
-  sqrt:()=>insertFormulaCommand('\\sqrt{#?}'),
-  sum:()=>insertFormulaCommand('\\sum_{#?}^{#?}'),
-  int:()=>insertFormulaCommand('\\int_{#?}^{#?}'),
-  section:()=>editor.chain().focus().setHeading({level:1}).run(),
-  subsection:()=>editor.chain().focus().setHeading({level:2}).run(),
-  itemize:()=>editor.chain().focus().toggleBulletList().run(),
-  enumerate:()=>editor.chain().focus().toggleOrderedList().run(),
-  table:()=>editor.chain().focus().insertTable({rows:2,cols:2,withHeaderRow:false}).run(),
-  inline:()=>insertMath(),
-  equation:()=>insertMath(true),
+const commands = document.createElement('div');
+commands.className = 'command-menu';
+commands.hidden = true;
+commands.setAttribute('role', 'dialog');
+commands.setAttribute('aria-label', 'LaTeX 补全 / LaTeX completion');
+const filter = document.createElement('input');
+filter.placeholder = 'LaTeX 命令 / command';
+filter.setAttribute('aria-label', filter.placeholder);
+filter.setAttribute('aria-controls', 'latex-candidates');
+filter.setAttribute('aria-autocomplete', 'list');
+const candidates = document.createElement('div');
+candidates.id = 'latex-candidates';
+candidates.className = 'command-candidates';
+candidates.setAttribute('role', 'listbox');
+commands.append(filter, candidates);
+document.body.append(commands);
+
+const formulaCommands = {
+  frac: '\\frac{#?}{#?}', sqrt: '\\sqrt{#?}', sum: '\\sum_{#?}^{#?}',
+  int: '\\int_{#?}^{#?}', lim: '\\lim_{#?}', matrix: '\\begin{pmatrix}#?&#?\\\\#?&#?\\end{pmatrix}',
+  alpha: '\\alpha', beta: '\\beta', gamma: '\\gamma', delta: '\\delta', theta: '\\theta',
+  lambda: '\\lambda', mu: '\\mu', pi: '\\pi', sigma: '\\sigma', omega: '\\omega',
+  infty: '\\infty', leq: '\\leq', geq: '\\geq', neq: '\\neq', times: '\\times',
 };
-function insertFormulaCommand(latex) {
-  insertMath(false,latex.replaceAll('#?', '\\placeholder{}'));
+const structureCommands = {
+  section: () => editor.chain().focus().setHeading({ level: 1 }).run(),
+  subsection: () => editor.chain().focus().setHeading({ level: 2 }).run(),
+  subsubsection: () => editor.chain().focus().setHeading({ level: 3 }).run(),
+  itemize: () => editor.chain().focus().toggleBulletList().run(),
+  enumerate: () => editor.chain().focus().toggleOrderedList().run(),
+  table: () => editor.chain().focus().insertTable({ rows: 2, cols: 2, withHeaderRow: false }).run(),
+  inline: () => insertMath(),
+  equation: () => insertMath(true),
+};
+let completionField = null;
+let completionAnchor = null;
+let candidateIndex = 0;
+
+function positionCommands() {
+  if (!completionAnchor) return;
+  const width = Math.min(320, window.innerWidth - 16);
+  commands.style.width = width + 'px';
+  commands.style.left = Math.max(8, Math.min(completionAnchor.left, window.innerWidth - width - 8)) + 'px';
+  const below = completionAnchor.bottom + 6;
+  const height = commands.getBoundingClientRect().height;
+  commands.style.top = (below + height <= window.innerHeight - 32
+    ? below : Math.max(8, completionAnchor.top - height - 6)) + 'px';
 }
-function showCommands() {
-  commands.hidden=false;filter.value='';renderCommands();filter.focus();
+function closeCommands(restoreFocus = false) {
+  commands.hidden = true;
+  if (restoreFocus) {
+    if (completionField?.isConnected) completionField.focus();
+    else editor.view.focus();
+  }
+}
+function showCommands(field = null) {
+  completionField = field;
+  if (field) {
+    const caret = field.shadowRoot?.querySelector('.ML__caret');
+    completionAnchor = (caret ?? field).getBoundingClientRect();
+  } else completionAnchor = editor.view.coordsAtPos(editor.state.selection.from);
+  commands.hidden = false;
+  filter.value = '';
+  renderCommands();
+  positionCommands();
+  filter.focus();
+}
+function insertFormulaCommand(latex) {
+  const fragment = latex.replaceAll('#?', '\\placeholder{}');
+  if (completionField?.isConnected) {
+    completionField.focus();
+    completionField.executeCommand(['insert', fragment]);
+  } else insertMath(false, fragment);
+}
+function highlightCandidate(index) {
+  const controls = [...candidates.querySelectorAll('button')];
+  if (!controls.length) { filter.removeAttribute('aria-activedescendant'); return; }
+  candidateIndex = (index + controls.length) % controls.length;
+  for (let i = 0; i < controls.length; i++) controls[i].setAttribute('aria-selected', String(i === candidateIndex));
+  filter.setAttribute('aria-activedescendant', controls[candidateIndex].id);
+  const selected = controls[candidateIndex];
+  const top = selected.offsetTop;
+  const bottom = top + selected.offsetHeight;
+  if (top < candidates.scrollTop) candidates.scrollTop = top;
+  else if (bottom > candidates.scrollTop + candidates.clientHeight)
+    candidates.scrollTop = bottom - candidates.clientHeight;
 }
 function renderCommands() {
   candidates.replaceChildren();
-  for(const [name,action] of Object.entries(commandActions).filter(([name])=>name.startsWith(filter.value))) {
-    const control=document.createElement('button');control.textContent='\\'+name;
-    control.addEventListener('click',()=>{commands.hidden=true;action();});
+  const actions = Object.fromEntries(Object.entries(formulaCommands).map(([name, latex]) =>
+    [name, () => insertFormulaCommand(latex)]));
+  if (!completionField) Object.assign(actions, structureCommands);
+  const query = filter.value.replace(/^\\/, '').toLowerCase();
+  for (const [name, action] of Object.entries(actions).filter(([name]) => name.startsWith(query))) {
+    const control = document.createElement('button');
+    control.type = 'button';
+    control.id = 'complete-' + name;
+    control.setAttribute('role', 'option');
+    control.textContent = '\\' + name;
+    control.tabIndex = -1;
+    control.addEventListener('mousedown', event => event.preventDefault());
+    control.addEventListener('click', () => { closeCommands(); action(); });
     candidates.append(control);
   }
+  if (!candidates.children.length) {
+    const empty = document.createElement('p');
+    empty.textContent = '无匹配命令 / No matching command';
+    candidates.append(empty);
+  }
+  highlightCandidate(0);
 }
-filter.addEventListener('input',renderCommands);
-filter.addEventListener('keydown',event=>{
-  if(event.key==='Escape'){commands.hidden=true;editor.commands.focus();}
-  if(event.key==='Enter'){event.preventDefault();candidates.firstElementChild?.click();}
-  if(event.key==='ArrowDown'){event.preventDefault();candidates.firstElementChild?.focus();}
+filter.addEventListener('input', renderCommands);
+filter.addEventListener('keydown', event => {
+  if (event.key === 'Escape') { event.preventDefault(); closeCommands(true); }
+  if (['Enter', 'Tab'].includes(event.key)) {
+    event.preventDefault();
+    candidates.querySelectorAll('button')[candidateIndex]?.click();
+  }
+  if (['ArrowDown', 'ArrowUp'].includes(event.key)) {
+    event.preventDefault();
+    highlightCandidate(candidateIndex + (event.key === 'ArrowDown' ? 1 : -1));
+  }
 });
-commands.addEventListener('keydown',event=>{
-  if(event.key==='Escape'){commands.hidden=true;editor.commands.focus();}
-});
+paper.addEventListener('lineae-math-command', event => showCommands(event.detail.field));
+document.addEventListener('pointerdown', event => { if (!commands.contains(event.target)) closeCommands(); }, true);
+document.addEventListener('scroll', event => {
+  if (!commands.hidden && !commands.contains(event.target)) closeCommands();
+}, true);
+window.addEventListener('resize', () => closeCommands());
 
 const footer=document.createElement('footer');footer.className='document-status';
 const count=document.createElement('span');

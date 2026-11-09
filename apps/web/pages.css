@@ -66,3 +66,10 @@ main { padding:125px 24px 60px; overflow:auto; }
 .editor-context-menu button { display:block; width:100%; border-radius:7px; background:transparent; text-align:left; padding:6px 10px; }
 .editor-context-menu button:focus { outline:0; background:light-dark(#e7effd,#39475e); }
 .editor-context-menu button:disabled { opacity:.4; cursor:default; }
+
+.command-menu { inset:auto; width:320px; height:260px; padding:8px; display:flex; flex-direction:column; gap:6px; border:1px solid light-dark(#ddd,#555); backdrop-filter:blur(12px); }
+.command-menu input { flex:0 0 34px; min-height:34px; border:1px solid light-dark(#ccd0d8,#555); border-radius:7px; background:light-dark(#fff,#303035); color:inherit; padding:5px 8px; }
+.command-candidates { position:relative; flex:1; min-height:0; overflow:auto; scrollbar-gutter:stable; }
+.command-candidates button { margin:0 0 2px; padding:5px 9px; border-radius:6px; }
+.command-candidates [aria-selected=true] { background:light-dark(#e5efff,#394c67); color:light-dark(#164b94,#d7e8ff); }
+.command-candidates p { padding:5px; opacity:.7; }

@@ -73,10 +73,25 @@ const server=createServer(async(req,res)=>{
     await page.keyboard.press('Enter');
     await page.keyboard.type('\\');
     await page.waitForFunction(()=>!document.querySelector('.command-menu').hidden);
+    const completion=page.locator('.command-menu');
+    const initialBounds=await completion.boundingBox();
+    const initialScroll=await page.evaluate(()=>window.scrollY);
+    const caretBounds=await paper.locator('p').last().boundingBox();
+    assert.ok(initialBounds.y>=caretBounds.y && initialBounds.x<caretBounds.x+80,'Completion appears below the text entry position');
+    for(let index=0;index<16;index++) await page.keyboard.press('ArrowDown');
+    assert.equal(await page.evaluate(()=>window.scrollY),initialScroll);
     await page.locator('.command-menu input').fill('sqrt');
+    assert.deepEqual(await completion.boundingBox(),initialBounds,'Filtering must not move or resize completion');
     await page.keyboard.press('Enter');
     await page.waitForFunction(()=>document.activeElement?.tagName==='MATH-FIELD');
     assert.match(await page.locator('math-field').last().evaluate(field=>field.value),/sqrt/);
+    await page.keyboard.type('\\');
+    await page.waitForFunction(()=>!document.querySelector('.command-menu').hidden);
+    const mathBounds=await completion.boundingBox();
+    await completion.locator('input').fill('alpha');
+    assert.deepEqual(await completion.boundingBox(),mathBounds);
+    await page.keyboard.press('Enter');
+    assert.match(await page.locator('math-field').last().evaluate(field=>field.value),/alpha/);
     const importSource = async body => {
       await page.locator('input[type=file]').setInputFiles({
         name:'regression.tex',mimeType:'text/plain',
