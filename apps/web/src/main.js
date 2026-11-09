@@ -46,6 +46,12 @@ const Shortcuts = Extension.create({
     handleTextInput(view,from,to,text) {
       if(text==='\\') {showCommands();return true;}
       if(text!=='$')return false;
+      const previous=view.state.doc.resolve(from).nodeBefore;
+      if(previous?.type.name==='math' && !previous.attrs.latex && !previous.attrs.display) {
+        view.dispatch(view.state.tr.setNodeMarkup(from-previous.nodeSize,undefined,{latex:'',display:true}));
+        requestAnimationFrame(()=>view.nodeDOM(from-previous.nodeSize)?.querySelector('math-field')?.focus());
+        return true;
+      }
       insertMath();
       return true;
     },

@@ -19,7 +19,7 @@ const server=createServer(async(req,res)=>{
   try{
     const page=await browser.newPage();
     const errors=[];
-    page.on('pageerror',error=>errors.push(error.message));
+    page.on('pageerror',error=>{errors.push(error.message);console.log('PAGE ERROR',error.message);});
     await page.goto('http://127.0.0.1:'+server.address().port);
     const paper=page.locator('.ProseMirror');
     await paper.click();
