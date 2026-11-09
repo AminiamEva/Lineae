@@ -100,7 +100,12 @@ export const MathNode = Node.create({
         '^': ['moveToSuperscript', '\\textasciicircum{}'],
         '/': [['insert', '\\frac{#@}{#?}'], '/'],
       };
-      field.addEventListener('pointerdown', () => { pendingKey = null; });
+      field.addEventListener('pointerdown', event => {
+        pendingKey = null;
+        // A freshly moved/undone node can still have a queued outer-editor focus.
+        // Finish the explicit formula click after that frame without moving its caret.
+        if (event.button === 0) requestAnimationFrame(() => { if (field.isConnected) field.focus(); });
+      });
       field.addEventListener('blur', () => { pendingKey = null; });
 
       field.addEventListener('input', () => {

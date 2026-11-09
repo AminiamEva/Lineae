@@ -191,6 +191,7 @@ const server=createServer(async(req,res)=>{
     assert.equal(await paper.locator(':scope > p').last().locator('math-field').count(),1,'Redo moves formula again');
     await formula.click();
     await formula.evaluate(field=>field.executeCommand('moveToMathfieldEnd'));
+    await page.waitForFunction(()=>document.activeElement?.tagName==='MATH-FIELD');
     await page.keyboard.type('^^//');
     const literals=await formula.evaluate(field=>field.value);
     assert.ok(literals.includes('textasciicircum') && literals.includes('/') && !literals.includes('frac'),literals);
