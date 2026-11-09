@@ -1,5 +1,6 @@
 import { Node } from '@tiptap/core';
 import { TextSelection } from '@tiptap/pm/state';
+import { closeHistory } from '@tiptap/pm/history';
 
 let configuredKeys = [
   { key: 'ctrl+6', command: 'moveToSuperscript' },
@@ -78,6 +79,13 @@ export const MathNode = Node.create({
       handle.draggable = true;
       handle.dataset.dragHandle = '';
       handle.addEventListener('mousedown', () => editor.commands.setNodeSelection(getPos()));
+      dom.addEventListener('dragstart', () => {
+        editor.view.dispatch(closeHistory(editor.state.tr));
+      });
+      dom.addEventListener('dragend', () => {
+        editor.view.dispatch(closeHistory(editor.state.tr));
+        editor.view.focus();
+      });
 
       const field = document.createElement('math-field');
       field.setAttribute('default-mode', node.isBlock ? 'math' : 'inline-math');
