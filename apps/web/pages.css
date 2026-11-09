@@ -66,3 +66,16 @@ header h1 { margin-right: auto; }
 #editor section:focus-within > button[data-copy="remove"] { display: inline-block; }
 #editor li input, #editor .heading input { border-color: transparent; }
 #editor li input:focus, #editor .heading input:focus { border-color: light-dark(#ddd, #555); }
+
+.tools button[data-copy], .tools .open span { font-size: 0; }
+.tools button[data-copy]::before, .tools .open span::before { font-size: 1rem; }
+.tools .open span::before { content: '↑'; }
+.tools [data-copy="download"]::before { content: '↓'; }
+.tools [data-copy="heading"]::before { content: 'H'; }
+.tools [data-copy="bold"]::before { content: 'B'; font-weight: 800; }
+.tools [data-copy="inline"]::before { content: '𝑥²'; }
+.tools [data-copy="display"]::before { content: '∑'; }
+.tools [data-copy="bullets"]::before { content: '☷'; }
+.tools [data-copy="ordered"]::before { content: '≡'; }
+.tools [data-copy="table"]::before { content: '▦'; }
+.tools [data-format] { min-width: 3rem; }

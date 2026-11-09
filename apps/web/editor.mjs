@@ -37,7 +37,12 @@ function setStatus(key) {
 function translate() {
   document.documentElement.lang = language.value;
   for (const element of document.querySelectorAll('[data-copy]')) {
-    element.textContent = copy[language.value][element.dataset.copy];
+    const label = copy[language.value][element.dataset.copy];
+    element.textContent = label;
+    if (element.matches('button, .open span')) {
+      element.title = label;
+      element.setAttribute('aria-label', label);
+    }
   }
 }
 
@@ -71,6 +76,7 @@ language.addEventListener('change', translate);
 translate();
 
 const labels = {
+  color: ['文字颜色', 'Text color'], family: ['字体', 'Font family'], size: ['字号', 'Font size'],
   heading: ['标题', 'Heading'], paragraph: ['段落', 'Paragraph'],
   bold: ['粗体', 'Bold'], inline: ['行内公式', 'Inline math'],
   display: ['独立公式', 'Display math'], bullets: ['项目列表', 'Bulleted list'],
@@ -200,7 +206,18 @@ function editorBlock(raw) {
           if (element.dataset?.inlineMath !== undefined) return '$' + element.firstChild.value + '$';
           const strong = element.matches?.('b, strong');
           const text = Array.from(element.childNodes, child => serialize(child, bold || strong)).join('');
-          return strong && !bold && text ? '\\textbf{' + text + '}' : text;
+          let result = strong && !bold && text ? '\\textbf{' + text + '}' : text;
+          if (element.matches?.('font')) {
+            const font = element.getAttribute('face');
+            const size = element.getAttribute('size');
+            const color = element.getAttribute('color');
+            const families = { Georgia: '\\rmfamily', Arial: '\\sffamily', monospace: '\\ttfamily' };
+            const sizes = { 2: '\\small', 3: '\\normalsize', 4: '\\large', 5: '\\Large' };
+            if (Object.hasOwn(families, font)) result = '{' + families[font] + ' ' + result + '}';
+            if (Object.hasOwn(sizes, size)) result = '{' + sizes[size] + ' ' + result + '}';
+            if (/^#[0-9a-f]{6}$/i.test(color)) result = '\\textcolor[HTML]{' + color.slice(1) + '}{' + result + '}';
+          }
+          return result;
         };
         output = serialize(line);
         const text = line.cloneNode(true);
@@ -381,6 +398,53 @@ for (const key of ['bold', 'inline']) {
   control.addEventListener('mousedown', event => event.preventDefault());
   insert.append(control);
 }
+let formatRange;
+document.addEventListener('selectionchange', () => {
+  const selection = window.getSelection();
+  const line = selectedLine();
+  if (line && selection.rangeCount && !selection.isCollapsed && line.contains(selection.focusNode)) {
+    formatRange = selection.getRangeAt(0).cloneRange();
+  } else if (editor.contains(selection.anchorNode)) {
+    formatRange = undefined;
+  }
+});
+
+const formatOptions = {
+  color: ['foreColor', [['#202124', '●'], ['#c4263a', '🔴'], ['#245eb7', '🔵'], ['#238451', '🟢']]],
+  family: ['fontName', [['Georgia', 'Serif'], ['Arial', 'Sans'], ['monospace', 'Mono']]],
+  size: ['fontSize', [['2', 'S'], ['3', 'M'], ['4', 'L'], ['5', 'XL']]],
+};
+for (const [key, [command, options]] of Object.entries(formatOptions)) {
+  const menu = document.createElement('select');
+  menu.dataset.format = key;
+  menu.append(new Option({ color: '◉', family: 'Aa', size: '↕' }[key], ''));
+  for (const [value, icon] of options) menu.append(new Option(icon, value));
+  menu.addEventListener('change', () => {
+    if (formatRange && editor.contains(formatRange.commonAncestorContainer) && menu.value) {
+      const range = formatRange;
+      editor.focus();
+      const selection = window.getSelection();
+      selection.removeAllRanges();
+      selection.addRange(range);
+      document.execCommand('styleWithCSS', false, false);
+      document.execCommand(command, false, menu.value);
+      selectedLine()?.syncSource();
+    }
+    menu.value = '';
+  });
+  insert.append(menu);
+}
+
+function labelFormatMenus() {
+  for (const menu of insert.querySelectorAll('[data-format]')) {
+    const label = copy[language.value][menu.dataset.format];
+    menu.title = label;
+    menu.setAttribute('aria-label', label);
+  }
+}
+
+labelFormatMenus();
+language.addEventListener('change', labelFormatMenus);
 openDocument(sample);
 translate();
 language.addEventListener('change', () => {
@@ -427,7 +491,10 @@ download.addEventListener('click', () => {
   const body = Array.from(editor.children, node => node.serialize()).join('');
   const { start, end, eol } = documentParts;
   const separator = body && !body.endsWith('\n') ? eol : '';
-  const url = URL.createObjectURL(new Blob([start, body, separator, end], { type: 'text/plain;charset=utf-8' }));
+  const preamble = body.includes('\\textcolor[HTML]') && !/\\(?:usepackage|RequirePackage)(?:\[[^\]]*\])?\{[^}]*\bxcolor\b[^}]*\}/.test(start)
+    ? start.replace(/^\\begin\{document\}/m, '\\usepackage{xcolor}' + eol + '\\begin{document}')
+    : start;
+  const url = URL.createObjectURL(new Blob([preamble, body, separator, end], { type: 'text/plain;charset=utf-8' }));
   const link = document.createElement('a');
   link.href = url;
   link.download = filename;
