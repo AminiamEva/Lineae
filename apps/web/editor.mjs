@@ -94,6 +94,35 @@ function configureMath(field) {
       } else if (event.key === 'Escape' || event.key === 'Enter') mathHint.hidden = true;
     }, true);
     field.addEventListener('blur', () => { mathHint.hidden = true; });
+    field.addEventListener('move-out', event => {
+      const inline = field.closest('[data-inline-math]');
+      if (inline) {
+        editor.focus({ preventScroll: true });
+        const index = Array.prototype.indexOf.call(inline.parentNode.childNodes, inline);
+        window.getSelection().collapse(inline.parentNode, index + (event.detail?.direction === 'backward' ? 0 : 1));
+      } else {
+        paragraphAfter(field.closest('section'));
+      }
+    });
+    field.addEventListener('keydown', event => {
+      if (event.key !== 'Backspace' || field.value || event.isComposing) return;
+      event.preventDefault();
+      const inline = field.closest('[data-inline-math]');
+      if (inline) {
+        const line = inline.closest('.document-line');
+        const parent = inline.parentNode;
+        const index = Array.prototype.indexOf.call(parent.childNodes, inline);
+        inline.remove();
+        editor.focus();
+        window.getSelection().collapse(parent, index);
+        line.syncSource();
+      } else {
+        const section = field.closest('section');
+        paragraphAfter(section);
+        section.remove();
+      }
+      download.disabled = Boolean(editor.querySelector('[aria-invalid="true"]'));
+    }, true);
   }
   const commands = new Set(['moveToSuperscript', 'moveToSubscript', 'moveAfterParent']);
   field.keybindings = Object.entries(mathBindings)
@@ -114,8 +143,8 @@ const labels = {
   color: ['文字颜色', 'Text color'], family: ['字体', 'Font family'], size: ['字号', 'Font size'],
   heading: ['标题', 'Heading'], paragraph: ['段落', 'Paragraph'],
   bold: ['粗体', 'Bold'], inline: ['行内公式', 'Inline math'],
-  display: ['独立公式', 'Display math'], bullets: ['项目列表', 'Bulleted list'],
-  ordered: ['编号列表', 'Numbered list'], table: ['表格', 'Table'],
+  display: ['独立公式', 'Display math'], bullets: ['项目列表 (itemize)', 'itemize'],
+  ordered: ['编号列表 (enumerate)', 'enumerate'], table: ['表格', 'Table'],
   row: ['添加一行', 'Add row'], column: ['添加一列', 'Add column'],
   item: ['添加项目', 'Add item'], remove: ['删除此块', 'Remove block'],
   source: ['保留的源码', 'Preserved source'],
@@ -258,8 +287,9 @@ function editorBlock(raw) {
     title.append(paperText(heading[1], value => { output = '\\section{' + value + '}'; }, 'heading'));
     node.append(title);
   } else if (formula) {
+    node.className = 'display-equation';
     node.append(field(formula[1], value => { output = '\\[' + value + '\\]'; }, 'display', true));
-  } else if (list && list[2].split(/\r?\n/).every(line => /^\\item /.test(line) && plain.test(line.slice(6)))) {
+  } else if (list && list[2].split(/\r?\n/).every(line => /^\\item(?: |$)/.test(line) && plain.test(line.slice(6)))) {
     const items = list[2].split(/\r?\n/).map(line => line.slice(6));
     const view = document.createElement(list[1] === 'itemize' ? 'ul' : 'ol');
     const save = () => {
@@ -267,25 +297,32 @@ function editorBlock(raw) {
     };
     const add = index => {
       const li = document.createElement('li');
-      const control = paperText(items[index], value => { items[index] = value; save(); }, 'item');
+      const control = paperText(items[index], value => {
+        items[Array.prototype.indexOf.call(view.children, li)] = value;
+        save();
+      }, 'item');
       control.addEventListener('keydown', event => {
-        if (event.key === 'Enter' && !event.isComposing) {
-          event.preventDefault();
-          addItem();
+        if (event.isComposing || event.key !== 'Enter') return;
+        event.preventDefault();
+        const position = Array.prototype.indexOf.call(view.children, li);
+        if (!control.textContent.trim() && position === items.length - 1) {
+          items.pop();
+          li.remove();
+          paragraphAfter(node);
+          if (items.length) save();
+          else node.remove();
+          return;
         }
+        items.splice(position + 1, 0, '');
+        add(position + 1).focus();
+        save();
       });
       li.append(control);
-      view.append(li);
+      view.insertBefore(li, view.children[index] ?? null);
       return control;
     };
     items.forEach((_, index) => add(index));
-    const addItem = () => {
-      items.push('');
-      const control = add(items.length - 1);
-      save();
-      control.focus();
-    };
-    node.append(view, button('item', addItem));
+    node.append(view);
   } else if (table && tableRows(table).every(row => row.length === table[1].length && row.every(value => plain.test(value.trim())))) {
     const rows = tableRows(table);
     let columns = table[1];
@@ -300,6 +337,11 @@ function editorBlock(raw) {
         if (event.key !== 'Tab' || event.isComposing) return;
         const cells = Array.from(view.querySelectorAll('.paper-text'));
         const next = cells[cells.indexOf(control) + (event.shiftKey ? -1 : 1)];
+        if (!next && !event.shiftKey) {
+          event.preventDefault();
+          node.addTableRow();
+          return;
+        }
         if (!next) return;
         event.preventDefault();
         next.focus();
@@ -311,16 +353,22 @@ function editorBlock(raw) {
       row.forEach((_, index) => addCell(tr, row, index));
     };
     rows.forEach(addRow);
-    node.append(view, button('row', () => {
+    node.append(view);
+    node.addTableRow = () => {
       const row = Array(columns.length).fill('');
       rows.push(row);
       addRow(row);
       save();
-    }), button('column', () => {
+      view.rows[view.rows.length - 1].querySelector('.paper-text')?.focus();
+    };
+    node.addTableColumn = () => {
       columns += 'l';
-      rows.forEach((row, index) => { row.push(''); addCell(view.rows[index], row, row.length - 1); });
+      rows.forEach((row, index) => {
+        row.push('');
+        addCell(view.rows[index], row, row.length - 1);
+      });
       save();
-    }));
+    };
   } else {
     const parts = parseInline(body);
     if (parts) {
@@ -436,10 +484,7 @@ function editorBlock(raw) {
       return node;
     }
   }
-  node.append(button('remove', () => {
-    node.remove();
-    download.disabled = Boolean(editor.querySelector('[aria-invalid="true"]'));
-  }));
+
   return node;
 }
 
@@ -635,6 +680,29 @@ editor.addEventListener('dblclick', event => {
   if (event.target === editor) paragraphAfter(editor.lastElementChild);
 });
 editor.addEventListener('keydown', event => {
+  if (event.target !== editor || event.shiftKey || event.ctrlKey || event.altKey || event.isComposing) return;
+  const selection = window.getSelection();
+  const line = selectedLine();
+  if (!line || !selection.isCollapsed || !selection.rangeCount) return;
+  const forward = ['ArrowRight', 'Delete'].includes(event.key);
+  if (!forward && !['ArrowLeft', 'Backspace'].includes(event.key)) return;
+  const { startContainer, startOffset } = selection.getRangeAt(0);
+  const adjacent = startContainer.nodeType === Node.TEXT_NODE
+    ? (forward && startOffset === startContainer.length ? startContainer.nextSibling
+      : !forward && startOffset === 0 ? startContainer.previousSibling : null)
+    : startContainer.childNodes[startOffset - (forward ? 0 : 1)];
+  if (adjacent?.dataset?.inlineMath === undefined) return;
+  event.preventDefault();
+  if (event.key === 'Backspace' || event.key === 'Delete') {
+    adjacent.remove();
+    line.syncSource();
+  } else {
+    adjacent.firstChild.focus();
+    adjacent.firstChild.executeCommand?.(forward ? 'moveToMathfieldStart' : 'moveToMathfieldEnd');
+  }
+});
+
+editor.addEventListener('keydown', event => {
   if (event.key !== 'ArrowDown' || event.shiftKey || event.isComposing) return;
   const section = event.target.closest('section');
   const fields = section?.querySelectorAll('.paper-text');
@@ -645,6 +713,17 @@ editor.addEventListener('keydown', event => {
 });
 
 const insert = document.querySelector('#insert');
+let activeTable;
+editor.addEventListener('focusin', event => {
+  activeTable = event.target.closest('section:has(table)');
+});
+for (const [key, method] of [['row', 'addTableRow'], ['column', 'addTableColumn']]) {
+  const control = button(key, () => {
+    if (activeTable?.isConnected) activeTable[method]();
+  });
+  control.addEventListener('mousedown', event => event.preventDefault());
+  insert.append(control);
+}
 function sourceSeparator() {
   const spacer = document.createElement('span');
   spacer.hidden = true;

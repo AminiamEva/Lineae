@@ -152,3 +152,19 @@ header { display: flex; justify-content: center; }
 header h1 { position: absolute; inset-inline-start: clamp(1rem, 4vw, 3rem); top: .65rem; margin: 0; }
 header h1.edge-hidden { visibility: hidden; }
 header .ribbon { max-width: 100%; }
+
+header { position: fixed; inset: .65rem 0 auto; padding: 0 1rem; background: transparent; pointer-events: none; }
+header .ribbon { pointer-events: auto; padding: .35rem; border-radius: 1.5rem; background: light-dark(#f9f9fbee, #242426ee); box-shadow: 0 4px 22px #0002; backdrop-filter: blur(12px); }
+.ribbon .tools { box-shadow: none; }
+main { padding-top: 7rem; }
+#editor section { margin: 0 0 .9em; padding: 0; border: 0; overflow: visible; }
+#editor section > button[data-copy="remove"] { display: none; }
+#editor { font: 10pt/1.35 Georgia, "Songti SC", SimSun, serif; }
+#editor .document-line { font: inherit; margin: 0; }
+#editor .paper-text { display: block; }
+#editor li .paper-text { width: 100%; }
+#editor .display-equation { text-align: center; }
+#editor math-field { border: 0; padding: 0; }
+.document-status { min-height: 1.15rem; padding: .15rem .7rem; font-size: .72rem; }
+.document-status input { height: .65rem; }
+.math-hint { inset-block-end: 2.4rem; }

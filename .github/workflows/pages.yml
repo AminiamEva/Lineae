@@ -23,6 +23,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/configure-pages@v5
+      - name: Package the formula editor
+        run: |
+          archive=$(npm pack mathlive@0.108.0 --pack-destination "$RUNNER_TEMP" --silent)
+          mkdir -p apps/web/vendor/mathlive
+          tar -xzf "$RUNNER_TEMP/$archive" -C apps/web/vendor/mathlive --strip-components=1 \
+            package/mathlive.min.js package/fonts
       - name: Version browser assets
         run: |
           sed -i "s|./pages.css|./pages.css?v=${GITHUB_SHA}|; s|./editor.mjs|./editor.mjs?v=${GITHUB_SHA}|" apps/web/index.html
