@@ -171,6 +171,7 @@ const server=createServer(async(req,res)=>{
     assert.match(await page.locator('.environment-tag').textContent(),/Inline math/);
 
     await formula.evaluate(field=>{field.value='';field.dispatchEvent(new Event('input',{bubbles:true}));field.focus();});
+    await formula.click();
     await page.keyboard.type('\\');await completion.locator('input').fill('matrix');await page.keyboard.press('Enter');
     assert.ok(!(await formula.evaluate(field=>field.value)).includes('&'));
     await page.locator('[data-group=insert]').click();
