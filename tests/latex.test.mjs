@@ -9,6 +9,9 @@ import { importBlocks } from '../apps/web/latex/blocks.mjs';
 test('round-trips a code listing and scoped table rule width', () => {
   const listing=['\\begin{lstlisting}[language=Python]','def f():','    return 42','\\end{lstlisting}'].join('\n');
   assert.equal(serialize(importBlocks(listing)[0]).trim(),listing);
+  const literal = '\\begin{lstlisting}\n\\begin{not-an-environment}\n\\end{lstlisting}';
+  const parsed = parseDocument('\\documentclass{article}\n\\begin{document}\n'+literal+'\n\\end{document}\n');
+  assert.ok(parsed.blocks.some(block=>block.includes(literal)));
   const table=['{\\setlength{\\arrayrulewidth}{0.8pt}','\\begin{tabular}{|l|l|}','\\hline','a & b \\\\','\\hline','\\end{tabular}','}'].join('\n');
   assert.equal(serialize(importBlocks(table)[0]).trim(),table);
 });
