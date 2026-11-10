@@ -1,4 +1,5 @@
 import { installContextMenu } from './editor/context-menu.js';
+import { closeHistory } from '@tiptap/pm/history';
 import { mathFontStyles, applyMathFont } from './editor/math-formatting.js';
 import { installFormatControls } from './editor/format-controls.js';
 import { decorateToolbar } from './editor/icons.js';
@@ -539,6 +540,7 @@ function renderCommands() {
   const actions = Object.fromEntries(Object.entries(formulaCommands).map(([name, latex]) =>
     [name, () => insertFormulaCommand(latex)]));
   for(const name of Object.keys(mathFontStyles)) actions[name]=()=>{
+    editor.view.dispatch(closeHistory(editor.state.tr));
     if(completionField?.isConnected) applyMathFont(completionField,name);
     else insertFormula(editor,false,'',undefined,field=>applyMathFont(field,name));
   };

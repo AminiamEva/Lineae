@@ -184,6 +184,7 @@ const server=createServer(async(req,res)=>{
     assert.match(await formula.evaluate(field=>field.value),/&/);
     const columnPlaceholders=(await formula.evaluate(field=>field.value)).match(/\\placeholder\{\}/g)?.length??0;
     assert.ok(columnPlaceholders>rowPlaceholders,'Adding a column adds placeholder boxes: '+columnPlaceholders);
+    await page.waitForFunction(expected=>document.querySelector('math-field')?.shadowRoot.querySelectorAll('.ML__cmr').length===expected,columnPlaceholders);
     const placeholderBoxes=await formula.evaluate(field=>[...field.shadowRoot.querySelectorAll('.ML__cmr')].map(element=>{
       const rect=element.getBoundingClientRect();
       return {x:rect.x+rect.width/2,y:rect.y+rect.height/2};
