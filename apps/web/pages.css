@@ -71,8 +71,8 @@ main { padding:125px 24px 60px; overflow:auto; }
 .ProseMirror .column-resize-handle { position:absolute; right:-2px; top:0; bottom:0; width:4px; background:#589af4; pointer-events:none; }
 .resize-cursor { cursor:col-resize; }
 .ProseMirror .math-display { display:block; text-align:center; margin:.6em 0; min-height:1.5em; }
-.ProseMirror math-field { min-width:1em; border:0; background:transparent; color:inherit; font-family:inherit; }
-.ProseMirror .math-inline math-field { display:inline-block; width:max-content; max-width:100%; min-width:0; padding:0; vertical-align:baseline; }
+.ProseMirror math-field { min-width:1em; border:0; background:transparent; color:inherit; font-family:inherit; text-indent:0; }
+.ProseMirror .math-inline math-field { display:inline-block; width:max-content; max-width:100%; min-width:.6em; padding:0; vertical-align:baseline; }
 .ProseMirror .math-inline math-field::part(container) { padding:0; }
 .ProseMirror-selectednode { outline:2px solid #468bdf; border-radius:3px; }
 .ProseMirror .ref-node { display:inline-block; padding:0 .3em; border-radius:4px; background:light-dark(#eef3fc,#2b3442); color:light-dark(#2f5aa8,#bcd4ff); cursor:pointer; user-select:none; }

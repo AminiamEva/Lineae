@@ -8,11 +8,12 @@ export function installSpaceOverlay(editor, paper) {
   let enabled = true;
   let composing = false;
   let frame = 0;
+  let compositionFrame = 0;
 
   function draw() {
     frame=0;
     canvas.hidden=!enabled || !paper.getClientRects().length;
-    if (canvas.hidden || composing) return;
+    if (canvas.hidden) return;
     const width=document.documentElement.clientWidth;
     const height=window.innerHeight;
     const scale=window.devicePixelRatio||1;
@@ -74,9 +75,25 @@ export function installSpaceOverlay(editor, paper) {
     }
   }
   function schedule() { if(!frame) frame=requestAnimationFrame(draw); }
+  function compositionLoop() {
+    compositionFrame=0;
+    if(!composing)return;
+    draw();
+    compositionFrame=requestAnimationFrame(compositionLoop);
+  }
   editor.on('transaction',({transaction})=>{if(transaction.docChanged)schedule();});
-  paper.addEventListener('compositionstart',()=>{composing=true;});
-  paper.addEventListener('compositionend',()=>{composing=false;schedule();});
+  paper.addEventListener('compositionstart',()=>{
+    composing=true;
+    if(!compositionFrame)compositionFrame=requestAnimationFrame(compositionLoop);
+  });
+  paper.addEventListener('compositionupdate',schedule);
+  paper.addEventListener('compositionend',()=>{
+    composing=false;
+    if(compositionFrame)cancelAnimationFrame(compositionFrame);
+    compositionFrame=0;
+    schedule();
+  });
+  document.addEventListener('selectionchange',schedule);
   window.addEventListener('scroll',schedule,true);
   window.addEventListener('resize',schedule);
   const observer=new ResizeObserver(schedule);

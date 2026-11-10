@@ -50,6 +50,8 @@ export function insertFormula(editor, display = false, latex = '', range, onFocu
 
 const mathFieldStyle = `
   .ML__text { font-family: inherit; }
+  .ML__is-inline, .ML__container, .ML__content { text-indent: 0; }
+  .ML__content { padding-left: 0 !important; padding-right: 0 !important; }
   .ML__mathbf, .ML__mathbfit, .ML__bb, .ML__cal, .ML__frak, .ML__script, .ML__sans, .ML__tt {
     background: light-dark(rgba(77,124,179,.10), rgba(120,170,230,.18));
     border-radius: 2px;

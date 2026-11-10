@@ -442,7 +442,7 @@ const server=createServer(async(req,res)=>{
     await page.waitForFunction(()=>document.querySelector('#document-meta .doc-title')?.textContent==='My Title');
     assert.equal(await page.locator('#document-meta .doc-author').textContent(),'Me');
 
-    await paper.locator('p').last().click();
+    await paper.locator('p').last().click({position:{x:8,y:8}});
     await page.keyboard.press('End');
     await page.keyboard.type('\\');
     await page.waitForFunction(()=>!document.querySelector('.command-menu').hidden);
@@ -828,6 +828,10 @@ const server=createServer(async(req,res)=>{
     await page.waitForFunction(()=>document.querySelectorAll('.lineae-multi-selected').length>=2);
     await page.keyboard.press('Delete');
     assert.equal((await paper.locator('p').textContent()).trim(),'beta');
+    await importSource('\\indent $x+y$ tail');
+    await page.waitForFunction(()=>document.querySelector('math-field'));
+    const inlineWidth=await page.locator('math-field').evaluate(field=>({host:field.getBoundingClientRect().width,base:field.shadowRoot.querySelector('.ML__base').getBoundingClientRect().width}));
+    assert.ok(Math.abs(inlineWidth.host-inlineWidth.base)<1,'Inline math keeps no inherited indent gap: '+JSON.stringify(inlineWidth));
     await importSource('前 后');
     await page.waitForFunction(()=>document.querySelector('.ProseMirror p')?.textContent==='前 后');
     await paper.locator('p').scrollIntoViewIfNeeded();
@@ -843,7 +847,17 @@ const server=createServer(async(req,res)=>{
     await paper.locator('p').click();
     await page.keyboard.press('End');
     const cdp=await page.context().newCDPSession(page);
+    const overlayChecksum=()=>page.evaluate(()=>{
+      const canvas=document.querySelector('.space-overlay');
+      const data=canvas.getContext('2d').getImageData(0,0,canvas.width,canvas.height).data;
+      let checksum=0;
+      for(let index=3;index<data.length;index+=4)if(data[index])checksum=(checksum+index)%1000000007;
+      return checksum;
+    });
+    const beforeComposition=await overlayChecksum();
     await cdp.send('Input.imeSetComposition',{text:'zhong',selectionStart:5,selectionEnd:5});
+    await page.waitForTimeout(120);
+    assert.notEqual(await overlayChecksum(),beforeComposition,'Markers follow composition text');
     assert.equal(await page.locator('.space-overlay').isVisible(),true);
     await cdp.send('Input.imeSetComposition',{text:'中文',selectionStart:2,selectionEnd:2});
     await cdp.send('Input.insertText',{text:'中文'});
