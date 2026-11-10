@@ -449,6 +449,21 @@ const server=createServer(async(req,res)=>{
     });
     await context.locator('[data-command="matrix-bmatrix"]').click();
     assert.match(await siblingMath.evaluate(field=>field.value),/\\begin\{pmatrix\}a\\end\{pmatrix\}.*\\begin\{bmatrix\}b\\end\{bmatrix\}/,'Only the matrix containing the caret changes');
+    await importSource('Fonts');
+    await page.waitForFunction(()=>document.querySelector('.ProseMirror')?.textContent==='Fonts');
+    await paper.locator('p').click();await page.keyboard.press('End');
+    await page.keyboard.type('\\');
+    await page.locator('.command-menu input').fill('mathbb');await page.keyboard.press('Enter');
+    await page.waitForFunction(()=>document.activeElement?.tagName==='MATH-FIELD');
+    assert.equal(await page.locator('math-field').evaluate(field=>field.value),'','Font command must not insert default text');
+    await page.keyboard.type('R');
+    assert.match(await page.locator('math-field').evaluate(field=>field.value),/\\mathbb\{R\}/);
+    await page.locator('math-field').evaluate(field=>field.executeCommand('selectAll'));
+    await page.keyboard.type('\\');
+    await page.locator('.command-menu input').fill('mathbf');await page.keyboard.press('Enter');
+    assert.match(await page.locator('math-field').evaluate(field=>field.value),/\\mathbf\{R\}/,'Formatting preserves selected content');
+    await page.keyboard.press('Control+z');
+    assert.match(await page.locator('math-field').evaluate(field=>field.value),/\\mathbb\{R\}/,'Undo restores original math font');
     assert.deepEqual(errors,[]);
     console.log('Browser regressions passed');
   }finally{

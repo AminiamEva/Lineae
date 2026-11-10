@@ -15,25 +15,27 @@ export function configureMathKeys(values) {
   if (entries.length) configuredKeys = entries.map(([key, command]) => ({ key, command }));
 }
 
-export function focusFormula(editor, id) {
+export function focusFormula(editor, id, onFocus) {
   requestAnimationFrame(() => {
     editor.state.doc.descendants((node, position) => {
       if (node.attrs.id === id) {
-        editor.view.nodeDOM(position)?.querySelector('math-field')?.focus();
+        const field=editor.view.nodeDOM(position)?.querySelector('math-field');
+        field?.focus();
+        if(field)onFocus?.(field);
         return false;
       }
     });
   });
 }
 
-export function insertFormula(editor, display = false, latex = '', range) {
+export function insertFormula(editor, display = false, latex = '', range, onFocus) {
   const id = crypto.randomUUID();
   const content = { type: display ? 'mathBlock' : 'math', attrs: { latex, display, id } };
   const chain = editor.chain().focus();
   if (range) chain.insertContentAt(range, content);
   else chain.insertContent(content);
   chain.run();
-  focusFormula(editor, id);
+  focusFormula(editor, id, onFocus);
 }
 
 function leaveFormula(editor, position, node, backward) {

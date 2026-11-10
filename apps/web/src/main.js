@@ -1,4 +1,5 @@
 import { installContextMenu } from './editor/context-menu.js';
+import { mathFontStyles, applyMathFont } from './editor/math-formatting.js';
 import { installFormatControls } from './editor/format-controls.js';
 import { decorateToolbar } from './editor/icons.js';
 import { PaperBehavior } from './editor/paper-behavior.js';
@@ -537,6 +538,10 @@ function renderCommands() {
   candidates.replaceChildren();
   const actions = Object.fromEntries(Object.entries(formulaCommands).map(([name, latex]) =>
     [name, () => insertFormulaCommand(latex)]));
+  for(const name of Object.keys(mathFontStyles)) actions[name]=()=>{
+    if(completionField?.isConnected) applyMathFont(completionField,name);
+    else insertFormula(editor,false,'',undefined,field=>applyMathFont(field,name));
+  };
   if (!completionField) Object.assign(actions, structureCommands);
   const exactQuery = filter.value.replace(/^\\/, '');
   const query = exactQuery.toLowerCase();
