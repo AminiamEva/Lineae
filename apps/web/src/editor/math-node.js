@@ -148,6 +148,9 @@ export function toggleDisplayStyle(field) {
 
 function leaveFormula(editor, position, node, backward) {
   const target = position + (backward ? 0 : node.nodeSize);
+  // Focus first: moving focus out of MathLive can otherwise restore the
+  // browser's previous text selection over the destination we just set.
+  editor.view.focus();
   let transaction = editor.state.tr;
   if (node.isBlock) {
     const resolved = transaction.doc.resolve(target);
@@ -156,7 +159,6 @@ function leaveFormula(editor, position, node, backward) {
   }
   transaction.setSelection(TextSelection.near(transaction.doc.resolve(target), backward ? -1 : 1));
   editor.view.dispatch(transaction);
-  editor.view.focus();
 }
 
 export const MathNode = Node.create({
