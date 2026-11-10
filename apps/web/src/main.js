@@ -415,14 +415,15 @@ function load(text, markSaved = true) {
   if(!sourceView.hidden) sourceView.value=text;
   renderMeta();
 }
-button('LaTeX',()=>{
+function toggleSourceView(){
   if(sourceView.hidden) {
     sourceView.value=source(); sourceView.hidden=false; documentPage.hidden=true;
   } else {
     try {load(sourceView.value,false);sourceView.hidden=true;documentPage.hidden=false;editor.commands.focus();}
     catch(error){document.querySelector('#status').hidden=false;document.querySelector('#status').textContent=error.message;}
   }
-});
+  updateSourceButton();
+}
 document.querySelector('#download').disabled=false;
 function downloadText(text) {
   const url=URL.createObjectURL(new Blob([text],{type:'text/plain;charset=utf-8'}));
@@ -786,9 +787,17 @@ themeButton.addEventListener('click',()=>{
 function updateThemeButton(){
   const chinese=document.documentElement.lang.startsWith('zh');
   const label={light:['浅色','Light'],dark:['深色','Dark'],system:['跟随系统','System']}[theme.getPreference()];
-  themeButton.dataset.tooltipZh='切换主题：'+label[0];
-  themeButton.dataset.tooltipEn='Switch theme: '+label[1];
   themeButton.setAttribute('aria-label',(chinese?'主题：':'Theme: ')+label[chinese?0:1]);
+}
+const sourceButton=document.createElement('button');
+sourceButton.type='button';sourceButton.className='source-toggle';
+sourceButton.setAttribute('aria-label','LaTeX');
+sourceButton.addEventListener('mousedown',event=>event.preventDefault());
+sourceButton.addEventListener('click',toggleSourceView);
+function updateSourceButton(){
+  const chinese=document.documentElement.lang.startsWith('zh');
+  sourceButton.textContent=sourceView.hidden?(chinese?'源码':'Source'):(chinese?'富文本':'Rich text');
+  sourceButton.setAttribute('aria-pressed',String(!sourceView.hidden));
 }
 function scale() {
   documentPage.style.zoom=Number(zoom.value)/100;
@@ -892,7 +901,7 @@ function updateEnvironment() {
   const labels={matrix:t('矩阵','Matrix'),'display math':t('行间公式','Display math'),'inline math':t('行内公式','Inline math'),table:t('表格','Table'),listItem:t('列表','List'),heading:t('标题','Heading'),text:t('正文','Text'),LaTeX:t('源码','Source')};
   environment.textContent=labels[name]; environment.dataset.environment=name;
 }
-footer.append(count,environment,zoom,percent,themeButton);document.body.append(footer);scale();
+footer.append(count,environment,zoom,percent,themeButton,sourceButton);document.body.append(footer);scale();
 editor.on('transaction',updateEnvironment);
 document.addEventListener('focusin',updateEnvironment);paper.addEventListener('input',updateEnvironment);
 updateEnvironment();
@@ -1067,6 +1076,7 @@ function updateLanguage() {
   headingMenu.setAttribute('aria-label',t('段落样式','Paragraph style'));
   tooltips?.setLanguage(language.value);
   updateThemeButton();
+  updateSourceButton();
   renderMeta();
   updateEnvironment();
   count.textContent=editor.getText().length+' '+t('字符','characters');

@@ -1,8 +1,9 @@
 export function installSpaceOverlay(editor, paper) {
+  const page = paper.closest('.document-page') ?? paper;
   const canvas = document.createElement('canvas');
   canvas.className = 'space-overlay';
   canvas.setAttribute('aria-hidden','true');
-  document.body.append(canvas);
+  page.append(canvas);
   const context = canvas.getContext('2d');
   if (!context) return () => {};
   let enabled = true;
@@ -12,32 +13,43 @@ export function installSpaceOverlay(editor, paper) {
 
   function draw() {
     frame=0;
-    canvas.hidden=!enabled || !paper.getClientRects().length;
+    const pageRect=page.getBoundingClientRect();
+    canvas.hidden=!enabled || !pageRect.width || !pageRect.height;
     if (canvas.hidden) return;
-    const width=document.documentElement.clientWidth;
-    const height=window.innerHeight;
+    const zoom=page.offsetWidth ? pageRect.width/page.offsetWidth : 1;
+    const width=page.clientWidth;
+    const height=page.clientHeight;
     const scale=window.devicePixelRatio||1;
     const pixelsWide=Math.ceil(width*scale);
     const pixelsHigh=Math.ceil(height*scale);
     if (canvas.width!==pixelsWide) canvas.width=pixelsWide;
     if (canvas.height!==pixelsHigh) canvas.height=pixelsHigh;
-    canvas.style.width=`${width}px`;
-    canvas.style.height=`${height}px`;
     context.setTransform(scale,0,0,scale,0,0);
     context.clearRect(0,0,width,height);
     context.fillStyle='rgba(128,128,128,.58)';
     context.strokeStyle=context.fillStyle;
     const range=document.createRange();
+    const local=rect=>({
+      left:(rect.left-pageRect.left)/zoom,
+      right:(rect.right-pageRect.left)/zoom,
+      top:(rect.top-pageRect.top)/zoom,
+      bottom:(rect.bottom-pageRect.top)/zoom,
+      width:rect.width/zoom,
+      height:rect.height/zoom,
+    });
     for (const block of editor.view.dom.querySelectorAll('p,h1,h2,h3,pre')) {
-      const bounds=block.getBoundingClientRect();
+      const bounds=local(block.getBoundingClientRect());
       if(bounds.bottom<0 || bounds.top>height || bounds.right<0 || bounds.left>width)continue;
       if (block.tagName==='P') {
         const style=getComputedStyle(block);
-        const zoom=block.offsetWidth ? bounds.width/block.offsetWidth : 1;
-        const lineHeight=(Number.parseFloat(style.lineHeight)||20)*zoom;
-        const indent=(Number.parseFloat(style.textIndent)||0)*zoom;
+        const lineHeight=Number.parseFloat(style.lineHeight)||20;
+        const indent=Number.parseFloat(style.textIndent)||0;
         range.selectNodeContents(block);
-        const rect=Array.from(range.getClientRects()).findLast(rect=>rect.width>0);
+        // Absolute drag handles sit above the line; they must not decide the
+        // paragraph mark position. Keep only rects inside the line box.
+        const rects=Array.from(range.getClientRects()).map(local)
+          .filter(rect=>rect.width>0 && rect.top>=bounds.top-1 && rect.bottom<=bounds.bottom+1);
+        const rect=rects.findLast(rect=>rect.width>0);
         const y=bounds.top+lineHeight/2;
         context.font=`${lineHeight*.55}px sans-serif`;
         context.textBaseline='middle';
@@ -45,7 +57,7 @@ export function installSpaceOverlay(editor, paper) {
         if(indent>0) {
           const end=bounds.left+indent-4;
           context.beginPath();context.moveTo(bounds.left+2,y);context.lineTo(end,y);
-          context.moveTo(end,y-3*zoom);context.lineTo(end,y+3*zoom);context.stroke();
+          context.moveTo(end,y-3);context.lineTo(end,y+3);context.stroke();
         }
       }
       const walker=document.createTreeWalker(block,NodeFilter.SHOW_TEXT,{
@@ -55,7 +67,7 @@ export function installSpaceOverlay(editor, paper) {
         for(const match of node.data.matchAll(/[ \u00a0\t]/g)) {
           range.setStart(node,match.index);
           range.setEnd(node,match.index+1);
-          const rect=range.getBoundingClientRect();
+          const rect=local(range.getBoundingClientRect());
           if(rect.width<1 || rect.bottom<0 || rect.top>height || rect.right<0 || rect.left>width)continue;
           const x=(rect.left+rect.right)/2;
           const y=(rect.top+rect.bottom)/2;
@@ -97,7 +109,7 @@ export function installSpaceOverlay(editor, paper) {
   window.addEventListener('scroll',schedule,true);
   window.addEventListener('resize',schedule);
   const observer=new ResizeObserver(schedule);
-  observer.observe(paper);
+  observer.observe(page);
   schedule();
   return value=>{enabled=value;schedule();};
 }
