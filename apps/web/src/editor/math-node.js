@@ -32,6 +32,15 @@ export function focusFormula(editor, id, onFocus) {
 export function insertFormula(editor, display = false, latex = '', range, onFocus) {
   const id = crypto.randomUUID();
   const content = { type: display ? 'mathBlock' : 'math', attrs: { latex, display, id } };
+  if (display) {
+    const { doc, selection } = editor.state;
+    const $start = doc.resolve(range?.from ?? selection.from);
+    const $end = doc.resolve(range?.to ?? selection.to);
+    if ($start.depth === 1 && $start.sameParent($end) && $start.parent.type.name === 'paragraph'
+      && $start.parentOffset === 0 && $end.parentOffset === $start.parent.content.size) {
+      range = { from:$start.before(), to:$start.after() };
+    }
+  }
   const chain = editor.chain().focus();
   if (range) chain.insertContentAt(range, content);
   else chain.insertContent(content);

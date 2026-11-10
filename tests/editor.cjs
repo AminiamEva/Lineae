@@ -782,10 +782,10 @@ const server=createServer(async(req,res)=>{
       const bounds=[];
       const walker=document.createTreeWalker(paragraph,NodeFilter.SHOW_TEXT);
       for(let node=walker.nextNode();node;node=walker.nextNode()) {
-        const word=/alpha|gamma/.exec(node.textContent);
-        if(!word)continue;
-        const range=document.createRange();range.setStart(node,word.index);range.setEnd(node,word.index+word[0].length);
-        const rect=range.getBoundingClientRect();bounds.push({left:rect.left,right:rect.right,y:(rect.top+rect.bottom)/2});
+        for(const word of node.textContent.matchAll(/alpha|gamma/g)) {
+          const range=document.createRange();range.setStart(node,word.index);range.setEnd(node,word.index+word[0].length);
+          const rect=range.getBoundingClientRect();bounds.push({left:rect.left,right:rect.right,y:(rect.top+rect.bottom)/2});
+        }
       }
       return bounds;
     });
@@ -799,6 +799,20 @@ const server=createServer(async(req,res)=>{
     await page.waitForFunction(()=>document.querySelectorAll('.lineae-multi-selected').length>=2);
     await page.keyboard.press('Delete');
     assert.equal((await paper.locator('p').textContent()).trim(),'beta');
+    await importSource('前 后');
+    await page.waitForFunction(()=>document.querySelector('.ProseMirror p')?.textContent==='前 后');
+    await paper.locator('p').click();
+    await page.keyboard.press('End');
+    const cdp=await page.context().newCDPSession(page);
+    await cdp.send('Input.imeSetComposition',{text:'zhong',selectionStart:5,selectionEnd:5});
+    await cdp.send('Input.imeSetComposition',{text:'中文',selectionStart:2,selectionEnd:2});
+    await cdp.send('Input.insertText',{text:'中文'});
+    await page.waitForFunction(()=>document.querySelector('.ProseMirror p')?.textContent==='前 后中文');
+    await page.keyboard.press('Backspace');
+    assert.equal(await paper.locator('p').textContent(),'前 后中');
+    await page.keyboard.press('Home');
+    await page.keyboard.press('Delete');
+    assert.equal(await paper.locator('p').textContent(),' 后中');
     assert.deepEqual(errors,[]);
     console.log('Browser regressions passed');
   }finally{

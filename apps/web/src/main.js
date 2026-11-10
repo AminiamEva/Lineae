@@ -1,6 +1,7 @@
 import { installContextMenu } from './editor/context-menu.js';
 import { textCommands } from '../latex/inline.mjs';
 import { closeHistory } from '@tiptap/pm/history';
+import { exitCode } from '@tiptap/pm/commands';
 import { mathFontStyles, applyMathFont } from './editor/math-formatting.js';
 import { installFormatControls } from './editor/format-controls.js';
 import { decorateToolbar } from './editor/icons.js';
@@ -162,7 +163,7 @@ const Shortcuts = Extension.create({
       const parent = view.state.doc.resolve(from).parent;
       if (text === '`' && parent.type.name !== 'codeBlock') {
         const now=performance.now();
-        const continued=backticks && now-backticks.time<450 && backticks.doc===view.state.doc && backticks.pos===from;
+        const continued=backticks && now-backticks.time<650 && backticks.doc===view.state.doc && backticks.pos===from;
         if (continued && backticks.count===2 && parent.textContent==='`') {
           editor.chain().deleteRange({from:from-1,to:from}).setCodeBlock().run();
           backticks=null;
@@ -809,6 +810,19 @@ let wheelZoom = Number(zoom.value);
 const configuredZoom=Number(appConfig.interface?.zoom);
 if(Number.isFinite(configuredZoom)&&configuredZoom>=50&&configuredZoom<=300) { zoom.value=String(configuredZoom); wheelZoom=configuredZoom; }
 document.addEventListener('keydown', event => {
+  if (event.ctrlKey && !event.shiftKey && !event.altKey && !event.metaKey && ['0','j'].includes(event.key.toLowerCase())
+    && editor.view.hasFocus() && !event.composedPath().some(node=>node?.tagName==='MATH-FIELD')) {
+    if (editor.isActive('codeBlock')) {
+      event.preventDefault(); event.stopPropagation();
+      exitCode(editor.state, editor.view.dispatch);
+      return;
+    }
+    if (editor.isActive('code')) {
+      event.preventDefault(); event.stopPropagation();
+      editor.commands.unsetCode();
+      return;
+    }
+  }
   if (!(event.ctrlKey || event.metaKey) || activeMath() || event.composedPath().some(node=>node?.tagName==='MATH-FIELD') || !['+','=','-','0'].includes(event.key)) return;
   event.preventDefault();
   wheelZoom = event.key === '0' ? 100 : Math.max(50, Math.min(300, Number(zoom.value) + (event.key === '-' ? -10 : 10)));
@@ -1021,7 +1035,9 @@ const insert=document.createElement('div');insert.className='tools';
 groupButton(insert,t('图片','Image'),()=>insertLocalImage(editor));
 groupButton(insert,t('代码块','Code block'),async()=>{
   const language=await askText(t('代码语言，例如 Python、Java 或 C++','Code language, e.g. Python, Java or C++'),editor.getAttributes('codeBlock').language??'');
-  if(language!==null && (!language || /^[A-Za-z0-9+_-]+$/.test(language))) editor.chain().focus().setCodeBlock({language:language||null}).run();
+  if(language===null || (language && !/^[A-Za-z0-9+_-]+$/.test(language))) return;
+  if(editor.isActive('codeBlock')) editor.chain().focus().updateAttributes('codeBlock',{language:language||null}).run();
+  else editor.chain().focus().setCodeBlock({language:language||null}).run();
 });
 const files=header.querySelector('.tools');
 for(const control of [...tools.children]) {

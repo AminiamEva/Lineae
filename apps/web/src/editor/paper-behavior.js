@@ -21,34 +21,14 @@ function numberedHeadings(doc) {
 
 function formattingMarks(doc) {
   const decorations = [];
-  const widget = (position, kind, glyph, side) => Decoration.widget(position, () => {
-    const marker = document.createElement('span');
-    marker.className = `format-mark format-mark-${kind}`;
-    marker.contentEditable = 'false';
-    marker.setAttribute('aria-hidden','true');
-    marker.dataset.glyph = glyph;
-    return marker;
-  }, { side, key:`${kind}:${position}`, ignoreSelection:true });
-  doc.descendants((node, position, parent) => {
-    if (node.type.name === 'paragraph') {
-      decorations.push(widget(position + node.nodeSize - 1, 'paragraph', '¶', -1));
-      if (node.attrs.indent && parent === doc) decorations.push(widget(position+1,'indent','–|',1));
-    }
-    if (node.type.name === 'hardBreak') decorations.push(widget(position,'break','↵',-1));
-    if (node.isText && parent?.type.name !== 'codeBlock') {
-      for (const match of node.text.matchAll(/[ \t\u00a0]/g)) {
-        decorations.push(widget(position+match.index,'space',match[0]==='\t'?'→':match[0]==='\u00a0'?'°':'·',1));
-      }
-    }
+  doc.descendants((node, position) => {
     if (node.type.name === 'codeBlock') {
-      if (node.attrs.language) {
         const tokens = /(?:#[^\n]*|\/\/[^\n]*|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|\b(?:const|let|var|function|class|return|if|else|for|while|import|from|def|print|int|float|bool|true|false|None|null|public|static)\b|\b\d+(?:\.\d+)?\b)/g;
         for (const match of node.textContent.matchAll(tokens)) {
           const from=position+1+match.index;
           const kind=/^(?:#|\/\/)/.test(match[0])?'comment':/^["']/.test(match[0])?'string':/^\d/.test(match[0])?'number':'keyword';
           decorations.push(Decoration.inline(from,from+match[0].length,{class:`code-token-${kind}`}));
         }
-      }
       return false;
     }
   });

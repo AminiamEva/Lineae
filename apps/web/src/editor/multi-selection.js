@@ -52,6 +52,11 @@ export const MultiSelection = Extension.create({
           return false;
         },
         handleDOMEvents:{
+          compositionstart(view) {
+            dragging=null;
+            if(key.getState(view.state).length)view.dispatch(view.state.tr.setMeta(key,[]));
+            return false;
+          },
           mousedown(view,event) {
             if(event.button!==0)return false;
             const previous=key.getState(view.state);
