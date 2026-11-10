@@ -27,6 +27,7 @@ import TableHeader from '@tiptap/extension-table-header';
 import { Plugin } from '@tiptap/pm/state';
 import { parseDocument } from '../latex/document.mjs';
 import { exportDocument } from '../latex/packages.mjs';
+import { readPageSetup, writePageSetup, pageMetrics } from '../latex/geometry.mjs';
 import { mathSymbols } from '../latex/math-symbols.mjs';
 import { createThemeController } from './ui/theme.mjs';
 import { installTooltips } from './ui/tooltips.mjs';
@@ -356,6 +357,25 @@ const sourceView=document.createElement('textarea');
 sourceView.className='source-view'; sourceView.hidden=true;
 documentPage.after(sourceView);
 let documentParts=parseDocument('\\documentclass{article}\n\\usepackage{amsmath}\n\\begin{document}\n\\end{document}\n');
+let pageSetup=readPageSetup(documentParts.start);
+let pagePaper,pageOrientation,pageMargin;
+function applyPageSetup(){
+  const metrics=pageMetrics(pageSetup);
+  documentPage.style.setProperty('--page-width',metrics.width);
+  documentPage.style.setProperty('--page-height',metrics.height);
+  documentPage.style.setProperty('--page-margin',metrics.margin);
+  if(pagePaper){
+    pagePaper.value=pageSetup.paper;
+    pageOrientation.value=pageSetup.orientation;
+    pageMargin.value=pageSetup.margin;
+  }
+}
+function updatePageSetup(patch){
+  pageSetup={...pageSetup,...patch};
+  documentParts.start=writePageSetup(documentParts.start,pageSetup);
+  if(importedSource)importedSource=writePageSetup(importedSource,pageSetup);
+  applyPageSetup();
+}
 let filename='lineae.tex';
 let fileHandle=null;
 let savedSource='';
@@ -414,6 +434,8 @@ function load(text, markSaved = true) {
   if(markSaved) savedSource=text;
   if(!sourceView.hidden) sourceView.value=text;
   renderMeta();
+  pageSetup=readPageSetup(documentParts.start);
+  applyPageSetup();
 }
 function toggleSourceView(){
   if(sourceView.hidden) {
@@ -907,6 +929,7 @@ document.addEventListener('focusin',updateEnvironment);paper.addEventListener('i
 updateEnvironment();
 editor.on('update',()=>{count.textContent=editor.getText().length+' '+t('字符','characters');});
 const tableGroup=document.createElement('div');tableGroup.className='tools';
+const layoutGroup=document.createElement('div');layoutGroup.className='tools';
 const formatGroup=document.createElement('div');formatGroup.className='tools';
 const referenceGroup=document.createElement('div');referenceGroup.className='tools';
 const mathGroup=document.createElement('div');mathGroup.className='tools';
@@ -918,6 +941,22 @@ function groupButton(container,label,action) {
   container.append(control);
   return control;
 }
+pagePaper=document.createElement('select');
+for(const [value,label] of [['a4','A4'],['letter','Letter']])pagePaper.append(new Option(label,value));
+pagePaper.setAttribute('aria-label',t('纸张','Paper'));
+pageOrientation=document.createElement('select');
+pageOrientation.setAttribute('aria-label',t('方向','Orientation'));
+pageMargin=document.createElement('input');
+pageMargin.type='text';pageMargin.setAttribute('aria-label',t('页边距','Margin'));
+pageMargin.style.width='74px';
+layoutGroup.append(pagePaper,pageOrientation,pageMargin);
+pagePaper.addEventListener('change',()=>updatePageSetup({paper:pagePaper.value}));
+pageOrientation.addEventListener('change',()=>updatePageSetup({orientation:pageOrientation.value}));
+pageMargin.addEventListener('change',()=>{
+  if(/^\d+(?:\.\d+)?(?:mm|cm|in|pt)$/.test(pageMargin.value.trim()))updatePageSetup({margin:pageMargin.value.trim()});
+  else pageMargin.value=pageSetup.margin;
+});
+applyPageSetup();
 groupButton(tableGroup,'▦',()=>editor.chain().focus().insertTable({rows:2,cols:2,withHeaderRow:false}).run());
 groupButton(tableGroup,'＋ Row',addMatrixRow);
 groupButton(tableGroup,'＋ Column',addMatrixColumn);
@@ -1058,8 +1097,8 @@ const files=header.querySelector('.tools');
 for(const control of [...tools.children]) {
   (control.hasAttribute('data-home') || control.tagName==='SELECT' || ['↶','↷','B','I','U','H'].includes(control.textContent)?home:insert).append(control);
 }
-const groups={files,home,insert,table:tableGroup,format:formatGroup,reference:referenceGroup,math:mathGroup};
-const captions={files:['文件','File'],home:['主页','Home'],insert:['插入','Insert'],table:['表格','Table'],format:['格式','Format'],reference:['引用','Reference'],math:['数学','Math']};
+const groups={files,home,insert,layout:layoutGroup,table:tableGroup,format:formatGroup,reference:referenceGroup,math:mathGroup};
+const captions={files:['文件','File'],home:['主页','Home'],insert:['插入','Insert'],layout:['布局','Layout'],table:['表格','Table'],format:['格式','Format'],reference:['引用','Reference'],math:['数学','Math']};
 const language=document.querySelector('#language');
 const exportConfig=document.createElement('button');
 exportConfig.type='button';
@@ -1084,6 +1123,11 @@ function updateLanguage() {
   filter.placeholder=t('LaTeX 命令','LaTeX command');
   filter.setAttribute('aria-label',filter.placeholder);
   headingMenu.setAttribute('aria-label',t('段落样式','Paragraph style'));
+  pagePaper.setAttribute('aria-label',t('纸张','Paper'));
+  pageMargin.setAttribute('aria-label',t('页边距','Margin'));
+  pageOrientation.replaceChildren(new Option(t('纵向','Portrait'),'portrait'),new Option(t('横向','Landscape'),'landscape'));
+  pageOrientation.value=pageSetup.orientation;
+  pageOrientation.setAttribute('aria-label',t('方向','Orientation'));
   tooltips?.setLanguage(language.value);
   updateThemeButton();
   updateSourceButton();
@@ -1100,7 +1144,7 @@ for(const name of Object.keys(groups)) {
   tab.addEventListener('mousedown',event=>event.preventDefault());
   tab.addEventListener('click',()=>selectGroup(name));tabs.append(tab);
 }
-ribbon.append(tabs,files,home,insert,tableGroup,formatGroup,referenceGroup,mathGroup);header.append(ribbon);tools.remove();
+ribbon.append(tabs,files,home,insert,layoutGroup,tableGroup,formatGroup,referenceGroup,mathGroup);header.append(ribbon);tools.remove();
 decorateToolbar(ribbon);
 const tooltips=installTooltips(document.body,{document,language:language.value});
 for(const control of ribbon.querySelectorAll('button'))control.dataset.rovingItem='';

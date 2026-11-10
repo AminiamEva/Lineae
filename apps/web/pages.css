@@ -25,8 +25,8 @@ select { max-width:115px; }
 .open { position:relative; overflow:hidden; }
 .open input { position:absolute; inset:0; width:100%; opacity:0; cursor:pointer; }
 main { padding:125px 24px 60px; overflow:auto; }
-.document-page { position:relative; width:210mm; min-height:297mm; margin:auto; padding:22mm; background:light-dark(#fff,#242426); box-shadow:0 2px 14px #0002; font:10pt/1.5 Georgia,"Songti SC",SimSun,serif; cursor:text; }
-#editor { min-height:calc(297mm - 44mm); outline:none; }
+.document-page { position:relative; width:var(--page-width,210mm); min-height:var(--page-height,297mm); margin:auto; padding:var(--page-margin,22mm); background:light-dark(#fff,#242426); box-shadow:0 2px 14px #0002; font:10pt/1.5 Georgia,"Songti SC",SimSun,serif; cursor:text; }
+#editor { min-height:calc(var(--page-height,297mm) - var(--page-margin,22mm) * 2); outline:none; }
 .ProseMirror { min-height:250mm; outline:none; overflow-wrap:anywhere; white-space:pre-wrap; }
 .ProseMirror p { margin:0; }
 .document-image { margin:.6em 0; }

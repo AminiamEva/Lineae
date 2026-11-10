@@ -5,6 +5,7 @@ import { parseInline } from '../apps/web/latex/inline.mjs';
 import { exportDocument, resolvePackages } from '../apps/web/latex/packages.mjs';
 import { serialize } from '../apps/web/src/editor/latex-codec.js';
 import { importBlocks } from '../apps/web/latex/blocks.mjs';
+import { pageMetrics, readPageSetup, writePageSetup } from '../apps/web/latex/geometry.mjs';
 
 test('round-trips a code listing and scoped table rule width', () => {
   const listing=['\\begin{lstlisting}[language=Python]','def f():','    return 42','\\end{lstlisting}'].join('\n');
@@ -108,6 +109,16 @@ test('serializes small caps and boxed text marks', () => {
     }],
   };
   assert.equal(serialize(doc), '\\textsc{Small} \\fbox{Box}\n\n');
+});
+
+test('round-trips page geometry through the preamble', () => {
+  const preamble = '\\documentclass{article}\n\\begin{document}\n';
+  const written = writePageSetup(preamble, { paper: 'letter', orientation: 'landscape', margin: '1in' });
+  assert.match(written, /\\usepackage\[letterpaper,landscape,margin=1in\]\{geometry\}/);
+  assert.deepEqual(readPageSetup(written), { paper: 'letter', orientation: 'landscape', margin: '1in' });
+  assert.deepEqual(pageMetrics({ paper: 'letter', orientation: 'landscape', margin: '1in' }), { width: '11in', height: '8.5in', margin: '1in' });
+  const defaults = readPageSetup('\\documentclass{article}\n');
+  assert.deepEqual(defaults, { paper: 'a4', orientation: 'portrait', margin: '2.2cm' });
 });
 
 test('round-trips table floats with captions and labels', () => {
