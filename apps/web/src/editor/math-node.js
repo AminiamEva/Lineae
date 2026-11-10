@@ -200,7 +200,7 @@ export const MathNode = Node.create({
         }
       });
       field.addEventListener('keydown', event => {
-        if (event.key === '0' && event.ctrlKey && !event.shiftKey && !event.altKey && !event.metaKey) {
+        if (['0', 'j'].includes(event.key.toLowerCase()) && event.ctrlKey && !event.shiftKey && !event.altKey && !event.metaKey) {
           event.preventDefault(); event.stopPropagation();
           leaveEnvironment(field);
           return;

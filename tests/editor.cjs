@@ -651,10 +651,11 @@ const server=createServer(async(req,res)=>{
     assert.match(exportedMath,/\\frac\{1\}\{\}/,'Editing placeholders do not leak into exported LaTeX');
     assert.ok(!exportedMath.includes('\\placeholder{}'),'Exported LaTeX has no MathLive placeholders');
     await page.getByRole('button',{name:'LaTeX',exact:true}).click();
-    await importSource(String.raw`$\mathbf{AB}+C$ tail`);
+    await importSource(String.raw`Lead $\mathbf{AB}+C$ tail`);
     await page.waitForFunction(()=>document.querySelector('math-field')?.value.includes('mathbf{AB}'));
-    await paper.locator('p').click();
+    await paper.locator('p').click({position:{x:2,y:8}});
     await page.keyboard.press('Home');
+    for (let index=0;index<5;index++) await page.keyboard.press('ArrowRight');
     await page.keyboard.press('Control+e');
     await page.keyboard.press('e');
     await page.waitForFunction(()=>document.activeElement?.tagName==='MATH-FIELD');
@@ -664,6 +665,9 @@ const server=createServer(async(req,res)=>{
     await page.keyboard.press('Control+0');
     assert.equal(await page.locator('input[type=range]').inputValue(),chordZoom);
     assert.ok(await chordField.evaluate(field=>field.position>1 && field.position<field.lastOffset),'Ctrl+0 leaves the style run without jumping to the formula end');
+    const exitedPosition=await chordField.evaluate(field=>{const position=field.position;field.position=1;return position;});
+    await page.keyboard.press('Control+j');
+    assert.equal(await chordField.evaluate(field=>field.position),exitedPosition);
     assert.deepEqual(errors,[]);
     console.log('Browser regressions passed');
   }finally{
