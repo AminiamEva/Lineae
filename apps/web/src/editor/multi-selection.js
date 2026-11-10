@@ -24,6 +24,13 @@ function replaceRanges(view, ranges, text='') {
   view.dispatch(transaction.scrollIntoView());
 }
 
+function browserRange(view) {
+  const selection=window.getSelection();
+  if (!selection?.rangeCount || !view.dom.contains(selection.anchorNode) || !view.dom.contains(selection.focusNode)) return null;
+  const range=selection.getRangeAt(0);
+  return {from:view.posAtDOM(range.startContainer,range.startOffset),to:view.posAtDOM(range.endContainer,range.endOffset)};
+}
+
 export const MultiSelection = Extension.create({
   name:'lineaeMultiSelection',
   addProseMirrorPlugins() {
@@ -60,7 +67,7 @@ export const MultiSelection = Extension.create({
           mousedown(view,event) {
             if(event.button!==0)return false;
             const previous=key.getState(view.state);
-            const {from,to}=view.state.selection;
+            const {from,to}=browserRange(view) ?? view.state.selection;
             dragging=event.ctrlKey ? {doc:view.state.doc,ranges:mergeRanges([...previous,{from,to}])} : null;
             if(!dragging && previous.length)view.dispatch(view.state.tr.setMeta(key,[]));
             return false;
@@ -71,12 +78,9 @@ export const MultiSelection = Extension.create({
             if(!start?.ranges.length)return false;
             requestAnimationFrame(()=>{
               if(view.isDestroyed || view.state.doc!==start.doc)return;
-              const selection=window.getSelection();
-              if(!selection?.rangeCount || !view.dom.contains(selection.anchorNode) || !view.dom.contains(selection.focusNode))return;
-              const range=selection.getRangeAt(0);
-              const from=view.posAtDOM(range.startContainer,range.startOffset);
-              const to=view.posAtDOM(range.endContainer,range.endOffset);
-              const ranges=mergeRanges([...start.ranges,{from,to}]);
+              const range=browserRange(view);
+              if(!range)return;
+              const ranges=mergeRanges([...start.ranges,range]);
               view.dispatch(view.state.tr.setMeta(key,ranges.length>1?ranges:[]));
             });
             return false;

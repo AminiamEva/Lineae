@@ -801,6 +801,7 @@ const server=createServer(async(req,res)=>{
     assert.ok(!(await integral.evaluate(field=>field.value)).includes('\\space'));
     await importSource('alpha beta gamma');
     await page.waitForFunction(()=>document.querySelector('.ProseMirror p')?.textContent==='alpha beta gamma');
+    await paper.locator('p').scrollIntoViewIfNeeded();
     const words=await paper.locator('p').evaluate(paragraph=>{
       const bounds=[];
       const walker=document.createTreeWalker(paragraph,NodeFilter.SHOW_TEXT);
@@ -824,6 +825,7 @@ const server=createServer(async(req,res)=>{
     assert.equal((await paper.locator('p').textContent()).trim(),'beta');
     await importSource('前 后');
     await page.waitForFunction(()=>document.querySelector('.ProseMirror p')?.textContent==='前 后');
+    await paper.locator('p').scrollIntoViewIfNeeded();
     await page.waitForFunction(()=>{
       const paragraph=document.querySelector('.ProseMirror p');
       const canvas=document.querySelector('.space-overlay');
