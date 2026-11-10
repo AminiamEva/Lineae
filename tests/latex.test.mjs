@@ -13,6 +13,8 @@ test('preserves local image paths and supported widths and requests graphicx', (
   assert.equal(serialize(node).trim(), image);
   assert.ok(resolvePackages('',image).some(rule=>rule.name==='graphicx'));
   assert.equal(importBlocks(String.raw`\includegraphics[angle=90]{plot.png}`)[0].type,'raw');
+  const figure=['\\begin{figure}[ht]','\\centering',image,'\\caption{Plot}','\\label{fig:plot}','\\end{figure}'].join('\n');
+  assert.equal(serialize(importBlocks(figure)[0]).trim(),figure);
 });
 import { parseDelimiterPair, wrapMathWithDelimiters } from '../apps/web/latex/delimiters.mjs';
 

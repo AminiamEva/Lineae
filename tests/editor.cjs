@@ -760,10 +760,15 @@ const server=createServer(async(req,res)=>{
     await importSource(String.raw`\includegraphics[width=0.5\linewidth]{plot.png}`);
     const imageNode=paper.locator('figure.document-image');
     const chooser=page.waitForEvent('filechooser');
-    await imageNode.getByRole('button').click();
+    await imageNode.getByRole('button',{name:/plot\.png/}).click();
     await (await chooser).setFiles({name:'plot.png',mimeType:'image/png',buffer:Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jB9kAAAAASUVORK5CYII=','base64')});
     await imageNode.locator('img').waitFor({state:'visible'});
     assert.equal(await imageNode.locator('img').evaluate(image=>image.style.width),'50%');
+    await imageNode.hover();
+    await imageNode.locator('.document-image-controls button').first().click();
+    await page.locator('.editor-dialog input').fill('6cm');
+    await page.locator('.editor-dialog button[type=submit]').click();
+    assert.equal(await imageNode.locator('img').evaluate(image=>image.style.width),'6cm');
     await importSource('');
     await page.waitForFunction(()=>document.querySelector('.ProseMirror p')?.textContent==='');
     await paper.locator('p').click();

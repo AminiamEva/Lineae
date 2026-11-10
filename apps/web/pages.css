@@ -28,6 +28,11 @@ main { padding:125px 24px 60px; overflow:auto; }
 .ProseMirror p { margin:0; }
 .document-image { margin:.6em 0; }
 .document-image img { display:block; max-width:100%; height:auto; }
+.document-image[data-centered="true"] { text-align:center; }
+.document-image[data-centered="true"] img { margin-inline:auto; }
+.document-image { position:relative; }
+.document-image-controls { position:absolute; inset:0 0 auto auto; display:flex; gap:4px; opacity:0; }
+.document-image:hover .document-image-controls,.document-image:focus-within .document-image-controls { opacity:1; }
 .ProseMirror pre:has(>code) { padding:.5em .75em; background:light-dark(#f4f5f7,#303035); border-radius:5px; white-space:pre-wrap; text-autospace:no-autospace; }
 .code-token-keyword { color:light-dark(#6737a1,#c2a1f2); }
 .code-token-string { color:light-dark(#26724f,#9dd6b7); }
