@@ -62,6 +62,7 @@ export function decorateToolbar(root) {
     B:['bold','粗体 / Bold',false],I:['italic','斜体 / Italic',false],U:['underline','下划线 / Underline',false],S:['strike','删除线 / Strikethrough',false],
     itemize:['list','itemize',true],enumerate:['list','enumerate',true],
     code:['code','code',true],quote:['quote','quote',true],hr:['hr','hr',false],desc:['desc','desc',true],
+    sc:['title','小型大写 / Small caps',true],box:['borders','文本框 / Boxed text',true],
     label:['label','label',true],ref:['ref','ref',true],eqref:['ref','eqref',true],refs:['ref','refs',true],cite:['citation','cite',true],toc:['toc','toc',true],short:['short','short',true],title:['title','title',true],author:['author','author',true],
     '▦':['table','▦',false],'＋ Row':['row','＋ Row',true],'＋ Column':['column','＋ Column',true],
     merge:['merge','merge',true],split:['split','split',true],booktabs:['booktabs','booktabs',true],

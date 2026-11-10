@@ -965,7 +965,9 @@ const server=createServer(async(req,res)=>{
     const boxedText=paper.locator('[data-boxed]');
     await boxedText.waitFor();
     await boxedText.click();
+    console.log('Box selection before exit',await page.evaluate(()=>({active:document.activeElement?.outerHTML.slice(0,120),anchor:window.getSelection()?.anchorNode?.parentElement?.outerHTML,offset:window.getSelection()?.anchorOffset})));
     await page.keyboard.press('Control+j');
+    console.log('Box selection after exit',await page.evaluate(()=>({anchor:window.getSelection()?.anchorNode?.parentElement?.outerHTML,offset:window.getSelection()?.anchorOffset})));
     await page.keyboard.type('X');
     assert.equal(await boxedText.textContent(),'Box','Ctrl+J leaves the complete box');
     assert.match(await paper.textContent(),/BoxX after/);

@@ -623,6 +623,7 @@ const structureCommands = {
   alignat: () => insertMath(true, '\\begin{alignat}{2}\\placeholder{} &= \\placeholder{} & \\quad \\placeholder{} &= \\placeholder{}\\end{alignat}'),
   smallmatrix: () => insertMath(false, '\\begin{smallmatrix}\\placeholder{}\\end{smallmatrix}'),
   quote: () => editor.chain().focus().toggleBlockquote().run(),
+  hrule: () => editor.chain().focus().setHorizontalRule().run(),
   description: () => editor.chain().focus().insertContent({type:'descriptionList',content:[{type:'descriptionItem',attrs:{term:''},content:[{type:'paragraph'}]}]}).run(),
   toc: () => {
     if(editor.isActive('tableOfContents'))editor.chain().focus().deleteSelection().run();
@@ -899,6 +900,7 @@ if(Number.isFinite(configuredZoom)&&configuredZoom>=50&&configuredZoom<=300) { z
 document.addEventListener('keydown', event => {
   if (event.ctrlKey && !event.shiftKey && !event.altKey && !event.metaKey && event.key.toLowerCase()==='j'
     && editor.view.hasFocus() && !event.composedPath().some(node=>node?.tagName==='MATH-FIELD')) {
+    editor.view.domObserver.flush();
     if (editor.isActive('codeBlock')) {
       event.preventDefault(); event.stopPropagation();
       exitCode(editor.state, editor.view.dispatch);
