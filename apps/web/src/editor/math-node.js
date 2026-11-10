@@ -73,6 +73,7 @@ function commitUnclosedFences(field) {
     if (atom.leftDelim !== '?' && atom.rightDelim !== '?') continue;
     if (atom.leftDelim === '?') atom.leftDelim = '.';
     if (atom.rightDelim === '?') atom.rightDelim = '.';
+    atom.variant = 'left...right';
     atom.isDirty = true;
     changed = true;
   }

@@ -750,7 +750,7 @@ const server=createServer(async(req,res)=>{
     await page.waitForFunction(()=>document.querySelector('math-field')?.value.includes('\\backslash'));
     await page.keyboard.type('[x');
     await page.keyboard.type('$');
-    await page.waitForFunction(()=>document.querySelector('math-field')?.value.includes('\\right.'));
+    assert.match(await selectionField.evaluate(field=>field.value),/\\right\./,'Pending delimiter is invisible after leaving math');
     assert.deepEqual(errors,[]);
     console.log('Browser regressions passed');
   }finally{
