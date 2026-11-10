@@ -463,6 +463,7 @@ const server=createServer(async(req,res)=>{
     await page.keyboard.type('\\');
     await page.locator('.command-menu input').fill('mathbf');await page.keyboard.press('Enter');
     assert.match(await page.locator('math-field').evaluate(field=>field.value),/\\mathbf\{R\}/,'Formatting preserves selected content');
+    await page.locator('math-field').evaluate(field=>new Promise(resolve=>requestAnimationFrame(()=>{field.focus();resolve();})));
     await page.keyboard.press('Control+z');
     assert.match(await page.locator('math-field').evaluate(field=>field.value),/\\mathbb\{R\}/,'Undo restores original math font');
     assert.deepEqual(errors,[]);
