@@ -87,8 +87,9 @@ export const MathNode = Node.create({
       const handle = document.createElement('span');
       handle.className = 'math-drag-handle';
       handle.textContent = '⠿';
-      handle.title = '拖动公式 / Drag formula';
-      handle.setAttribute('aria-label', handle.title);
+      handle.setAttribute('aria-label', '拖动公式 / Drag formula');
+      handle.dataset.tooltipZh = '拖动公式';
+      handle.dataset.tooltipEn = 'Drag formula';
       handle.draggable = true;
       handle.dataset.dragHandle = '';
       handle.addEventListener('mousedown', () => editor.commands.setNodeSelection(getPos()));

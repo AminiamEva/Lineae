@@ -31,7 +31,9 @@ export function decorateToolbar(root) {
     '$':['math','$',true],'$$':['math','$$',true],LaTeX:['code','LaTeX',true]};
   for(const control of root.querySelectorAll('button')) {
     const label=control.textContent, entry=map[label]; if(!entry)continue;
-    control.setAttribute('aria-label',label);control.title=entry[1];
+    control.setAttribute('aria-label',label);
+    const [zh,en]=entry[1].split(' / ');
+    control.dataset.tooltipZh=zh;control.dataset.tooltipEn=en??zh;
     control.classList.add('icon-button');
     control.replaceChildren(icon(entry[0]));
     if(entry[2])control.append(document.createTextNode(label));

@@ -20,6 +20,10 @@ import { Plugin } from '@tiptap/pm/state';
 import { parseDocument } from '../latex/document.mjs';
 import { exportDocument } from '../latex/packages.mjs';
 import { mathSymbols } from '../latex/math-symbols.mjs';
+import { createThemeController } from './ui/theme.mjs';
+import { installTooltips } from './ui/tooltips.mjs';
+import { installRovingFocus } from './ui/keyboard-nav.mjs';
+import { fadeIn } from './ui/motion.mjs';
 
 const TextStyle = Mark.create({
   name:'textStyle',
@@ -67,16 +71,18 @@ function saveConfig(patch) {
   appConfig={...appConfig,interface:{...appConfig.interface,...patch}};
   try { localStorage.setItem('lineae.config',toYaml(appConfig)); } catch {}
 }
+const theme=createThemeController({root:document.documentElement,storage:localStorage});
+const prefersReducedMotion=()=>window.matchMedia?.('(prefers-reduced-motion: reduce)').matches??false;
 let editor;
 // Insert into the live field so MathLive selects the first placeholder.
 // Creating the node with the source already set leaves the caret at offset 0.
-function insertLiveMath(field, latex) {
-  field.insert(latex, { format: 'latex' });
+function insertLiveMath(field, latex, notify = true) {
+  field.executeCommand(['insert', latex]);
   if (latex === '\\text{x}') {
     const end = field.selection?.ranges?.[0]?.[1];
     if (end > 0) field.selection = { ranges: [[end - 1, end]], direction: 'none' };
   }
-  field.dispatchEvent(new Event('input', { bubbles: true }));
+  if (notify) field.dispatchEvent(new Event('input', { bubbles: true }));
 }
 function insertMath(display = false, latex = '') {
   if (!latex) return insertFormula(editor, display, '');
@@ -521,6 +527,7 @@ function showCommands(field = null) {
     completionAnchor = (caret ?? field).getBoundingClientRect();
   } else completionAnchor = editor.view.coordsAtPos(editor.state.selection.from);
   commands.hidden = false;
+  fadeIn(commands, { prefersReducedMotion: prefersReducedMotion() });
   filter.value = '';
   renderCommands();
   positionCommands();
@@ -530,7 +537,7 @@ function insertFormulaCommand(latex) {
   const fragment = latex.replaceAll('#?', '\\placeholder{}');
   if (completionField?.isConnected) {
     completionField.focus();
-    insertLiveMath(completionField, fragment);
+    insertLiveMath(completionField, fragment, false);
   } else insertMath(false, fragment);
 }
 function highlightCandidate(index) {
@@ -599,6 +606,20 @@ const footer=document.createElement('footer');footer.className='document-status'
 const count=document.createElement('span');
 const zoom=document.createElement('input');zoom.type='range';zoom.min='50';zoom.max='300';zoom.value='100';
 const percent=document.createElement('output');
+const themeButton=document.createElement('button');
+themeButton.type='button';themeButton.className='theme-toggle';themeButton.textContent='◐';
+themeButton.addEventListener('mousedown',event=>event.preventDefault());
+themeButton.addEventListener('click',()=>{
+  const next={light:'dark',dark:'system',system:'light'}[theme.getPreference()];
+  theme.set(next);updateThemeButton();
+});
+function updateThemeButton(){
+  const chinese=document.documentElement.lang.startsWith('zh');
+  const label={light:['浅色','Light'],dark:['深色','Dark'],system:['跟随系统','System']}[theme.getPreference()];
+  themeButton.dataset.tooltipZh='切换主题：'+label[0];
+  themeButton.dataset.tooltipEn='Switch theme: '+label[1];
+  themeButton.setAttribute('aria-label',(chinese?'主题：':'Theme: ')+label[chinese?0:1]);
+}
 function scale() {
   paper.style.zoom=Number(zoom.value)/100;
   percent.textContent=zoom.value+'%';
@@ -652,7 +673,7 @@ function updateEnvironment() {
   const labels={matrix:'矩阵 / Matrix','display math':'行间公式 / Display math','inline math':'行内公式 / Inline math',table:'表格 / Table',listItem:'列表 / List',heading:'标题 / Heading',text:'正文 / Text',LaTeX:'源码 / Source'};
   environment.textContent=labels[name]; environment.dataset.environment=name;
 }
-footer.append(count,environment,zoom,percent);document.body.append(footer);scale();
+footer.append(count,environment,zoom,percent,themeButton);document.body.append(footer);scale();
 editor.on('transaction',updateEnvironment);
 document.addEventListener('focusin',updateEnvironment);paper.addEventListener('input',updateEnvironment);
 updateEnvironment();
@@ -772,6 +793,8 @@ function updateLanguage() {
   download.textContent=chinese?'保存 .tex':'Save .tex';
   exportConfig.textContent=chinese?'配置':'Config';
   header.querySelector('.open span').textContent=chinese?'打开 .tex':'Open .tex';
+  tooltips?.setLanguage(language.value);
+  updateThemeButton();
 }
 function selectGroup(name) {
   for(const [key,panel] of Object.entries(groups)) panel.hidden=key!==name;
@@ -784,6 +807,10 @@ for(const name of Object.keys(groups)) {
 }
 ribbon.append(tabs,files,home,insert,tableGroup,formatGroup,referenceGroup,mathGroup);header.append(ribbon);tools.remove();
 decorateToolbar(ribbon);
+const tooltips=installTooltips(document.body,{document,language:language.value});
+for(const control of ribbon.querySelectorAll('button'))control.dataset.rovingItem='';
+installRovingFocus(tabs,{initial:Object.keys(groups).indexOf('home'),onActivate:control=>control.click()});
+for(const panel of Object.values(groups))installRovingFocus(panel,{onActivate:control=>control.click()});
 const download=document.querySelector('#download');
 language.addEventListener('change',()=>{updateLanguage();saveConfig({language:language.value});});updateLanguage();selectGroup('home');
 

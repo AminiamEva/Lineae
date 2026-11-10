@@ -1,6 +1,7 @@
 import { DOMSerializer } from '@tiptap/pm/model';
 import { icon } from './icons.js';
 import { promptDialog, askText } from './dialog.js';
+import { popIn } from '../ui/motion.mjs';
 
 function selectedMath(context) {
   const ranges = context.field.selection.ranges;
@@ -258,6 +259,7 @@ export function installContextMenu(editor, paper, language, reportError) {
     const bounds = menu.getBoundingClientRect();
     menu.style.left = Math.max(8, Math.min(event.clientX, window.innerWidth - bounds.width - 8)) + 'px';
     menu.style.top = Math.max(8, Math.min(event.clientY, window.innerHeight - bounds.height - 8)) + 'px';
+    popIn(menu, { prefersReducedMotion: window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false });
     menu.querySelector('button:not(:disabled)')?.focus();
   }, true);
   menu.addEventListener('keydown', event => {

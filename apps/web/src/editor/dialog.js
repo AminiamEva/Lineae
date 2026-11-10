@@ -1,3 +1,5 @@
+import { popIn } from '../ui/motion.mjs';
+
 export function promptDialog({ title, value = '', confirm = '确定 / OK', cancel = '取消 / Cancel' }) {
   return new Promise(resolve => {
     const backdrop = document.createElement('div');
@@ -34,6 +36,7 @@ export function promptDialog({ title, value = '', confirm = '确定 / OK', cance
     backdrop.addEventListener('pointerdown', event => { if (event.target === backdrop) close(null); });
     document.addEventListener('keydown', onKey, true);
     document.body.append(backdrop);
+    popIn(form, { prefersReducedMotion: window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false });
     input.focus();
     input.select();
   });
