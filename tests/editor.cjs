@@ -161,11 +161,12 @@ const server=createServer(async(req,res)=>{
     }));
     const zoomedGeometry=await pageGeometry();
     await page.keyboard.press('Control+0');
+    assert.equal(Number(await page.locator('input[type=range]').inputValue()),afterZoom,'Ctrl+0 does not control document zoom');
+    await page.locator('input[type=range]').fill('100');
     const naturalGeometry=await pageGeometry();
     for(const dimension of Object.keys(naturalGeometry)) {
       assert.ok(Math.abs(zoomedGeometry[dimension]/naturalGeometry[dimension]-afterZoom/100)<0.01,dimension+' must scale with the paper');
     }
-    await page.keyboard.press('Control+0');
     assert.equal(await page.locator('input[type=range]').inputValue(),'100');
     await page.keyboard.press('Control+-');
     assert.equal(await page.locator('input[type=range]').inputValue(),'90');
@@ -960,6 +961,38 @@ const server=createServer(async(req,res)=>{
     assert.ok(projectBytes.includes(Buffer.from('drop-test.png')));
     assert.ok(projectBytes.includes(Buffer.from('works.bib')));
     assert.ok(projectBytes.includes(Buffer.from('\\addbibresource{works.bib}')));
+    await importSource('Before \\fbox{Box} after');
+    const boxedText=paper.locator('[data-boxed]');
+    await boxedText.waitFor();
+    await boxedText.click();
+    await page.keyboard.press('Control+j');
+    await page.keyboard.type('X');
+    assert.equal(await boxedText.textContent(),'Box','Ctrl+J leaves the complete box');
+    assert.match(await paper.textContent(),/BoxX after/);
+    await importSource('\\begin{quote}\nQuoted text.\n\\end{quote}');
+    await paper.locator('blockquote p').click();
+    await page.keyboard.press('Control+j');
+    await page.keyboard.type('Outside');
+    assert.equal(await paper.locator('blockquote').textContent(),'Quoted text.');
+    assert.equal(await paper.locator(':scope > p').last().textContent(),'Outside');
+    await paper.locator('p').first().click();
+    await page.keyboard.press('End');
+    await page.keyboard.type('\\');
+    await completion.locator('input').fill('fbox');
+    assert.equal(await completion.getByRole('option',{name:'\\fbox',exact:true}).count(),1);
+    await page.keyboard.press('Escape');
+    for (const width of [1280,390]) {
+      await page.setViewportSize({width,height:1400});
+      for (const group of ['files','home','insert','layout','table','format','reference','math']) {
+        await page.locator(`[data-group=${group}]`).click();
+        const layout=await page.locator('.ribbon').evaluate(element=>{
+          const panel=[...element.querySelectorAll('.tools')].find(node=>!node.hidden);
+          const bounds=element.getBoundingClientRect();
+          return {left:bounds.left,right:bounds.right,scroll:panel.scrollWidth,client:panel.clientWidth};
+        });
+        assert.ok(layout.left>=-1 && layout.right<=width+1 && layout.scroll<=layout.client+1,JSON.stringify({group,width,layout}));
+      }
+    }
     assert.deepEqual(errors,[]);
     console.log('Browser regressions passed');
   }finally{

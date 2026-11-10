@@ -10,9 +10,12 @@ body { margin:0; }
 header { position:fixed; inset:12px 12px auto; display:flex; justify-content:center; z-index:5; pointer-events:none; }
 header h1 { position:absolute; left:20px; top:4px; margin:0; font-size:18px; transition:opacity .18s; }
 .ribbon { pointer-events:auto; max-width:min(960px,calc(100vw - 24px)); padding:6px; border:1px solid light-dark(#ffffffb0,#ffffff18); border-radius:24px; background:light-dark(#fffffff2,#242426f2); box-shadow:0 6px 24px #0002; backdrop-filter:blur(16px); }
-.ribbon-tabs { display:flex; justify-content:safe center; gap:4px; overflow-x:auto; scrollbar-width:none; }
-.tools { display:flex; flex-wrap:nowrap; justify-content:safe center; align-items:center; gap:4px; padding:5px 3px 3px; overflow-x:auto; overscroll-behavior-x:contain; scrollbar-width:thin; animation:toolbar-appear .14s ease-out; }
+.ribbon-tabs { display:flex; flex-wrap:wrap; justify-content:center; gap:2px; }
+.tools { display:flex; flex-wrap:wrap; justify-content:center; align-items:center; gap:3px; padding:4px 3px 3px; animation:toolbar-appear .14s ease-out; }
 .tools > *,.ribbon-tabs > * { flex-shrink:0; }
+.ribbon-tabs button { padding:4px 8px; font-size:12px; }
+.tools button,.tools select,.tools .open { padding:5px 8px; font-size:12px; }
+@media (max-width:600px) { .ribbon { border-radius:18px; } .tools { gap:2px; } .tools button { padding:4px 6px; } }
 @keyframes toolbar-appear { from { opacity:0; transform:translateY(-3px); } to { opacity:1; transform:translateY(0); } }
 @media (prefers-reduced-motion:reduce) { .tools { animation:none; } }
 button,select,input { font:inherit; }

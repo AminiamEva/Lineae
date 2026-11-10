@@ -4,7 +4,7 @@ import { closeHistory } from '@tiptap/pm/history';
 import { exitCode } from '@tiptap/pm/commands';
 import { mathFontStyles, applyMathFont } from './editor/math-formatting.js';
 import { installFormatControls } from './editor/format-controls.js';
-import { decorateToolbar } from './editor/icons.js';
+import { decorateToolbar, icon } from './editor/icons.js';
 import { PaperBehavior } from './editor/paper-behavior.js';
 import { MathNode, MathBlock, configureMathKeys, insertFormula, toggleDisplayStyle } from './editor/math-node.js';
 import { Ref, Label, Cite, Footnote, TableOfContents, refreshReferences, collectReferenceLabels } from './editor/references.js';
@@ -29,7 +29,7 @@ import Table from '@tiptap/extension-table';
 import TableRow from '@tiptap/extension-table-row';
 import TableCell from '@tiptap/extension-table-cell';
 import TableHeader from '@tiptap/extension-table-header';
-import { Plugin } from '@tiptap/pm/state';
+import { Plugin, Selection } from '@tiptap/pm/state';
 import { parseDocument } from '../latex/document.mjs';
 import { exportDocument } from '../latex/packages.mjs';
 import { MARGIN_PRESETS, readPageSetup, writePageSetup, pageMetrics } from '../latex/geometry.mjs';
@@ -652,7 +652,14 @@ const structureCommands = {
   textbf: () => editor.chain().focus().toggleBold().run(),
   textit: () => editor.chain().focus().toggleItalic().run(),
   emph: () => editor.chain().focus().toggleItalic().run(),
+  textsl: () => editor.chain().focus().toggleItalic().run(),
+  sout: () => editor.chain().focus().toggleStrike().run(),
   underline: () => editor.chain().focus().toggleMark('underline').run(),
+  textsc: () => editor.chain().focus().toggleMark('smallcaps').run(),
+  fbox: () => editor.chain().focus().toggleMark('boxed').run(),
+  textsuperscript: () => editor.chain().focus().toggleMark('superscript').run(),
+  textsubscript: () => editor.chain().focus().toggleMark('subscript').run(),
+  texttt: () => editor.chain().focus().toggleCode().run(),
   matrix: () => insertMath(false,'\\begin{pmatrix}\\placeholder{}\\end{pmatrix}'),
   cases: () => insertMath(true,'\\begin{cases}\\placeholder{} & \\placeholder{}\\\\ \\placeholder{} & \\placeholder{}\\end{cases}'),
   align: () => insertMath(true,'\\begin{align}\\placeholder{} &= \\placeholder{}\\\\ \\placeholder{} &= \\placeholder{}\\end{align}'),
@@ -852,7 +859,7 @@ const count=document.createElement('span');
 const zoom=document.createElement('input');zoom.type='range';zoom.min='50';zoom.max='300';zoom.value='100';
 const percent=document.createElement('output');
 const themeButton=document.createElement('button');
-themeButton.type='button';themeButton.className='theme-toggle';themeButton.textContent='◐';
+themeButton.type='button';themeButton.className='theme-toggle';
 themeButton.addEventListener('mousedown',event=>event.preventDefault());
 themeButton.addEventListener('click',()=>{
   const next={light:'dark',dark:'system',system:'light'}[theme.getPreference()];
@@ -861,7 +868,10 @@ themeButton.addEventListener('click',()=>{
 function updateThemeButton(){
   const chinese=document.documentElement.lang.startsWith('zh');
   const label={light:['浅色','Light'],dark:['深色','Dark'],system:['跟随系统','System']}[theme.getPreference()];
-  themeButton.setAttribute('aria-label',(chinese?'主题：':'Theme: ')+label[chinese?0:1]);
+  const description=(chinese?'主题：':'Theme: ')+label[chinese?0:1];
+  themeButton.setAttribute('aria-label',description);
+  themeButton.title=description;
+  themeButton.replaceChildren(icon({light:'sun',dark:'moon',system:'system'}[theme.getPreference()]));
 }
 const sourceButton=document.createElement('button');
 sourceButton.type='button';sourceButton.className='source-toggle';
@@ -887,7 +897,7 @@ let wheelZoom = Number(zoom.value);
 const configuredZoom=Number(appConfig.interface?.zoom);
 if(Number.isFinite(configuredZoom)&&configuredZoom>=50&&configuredZoom<=300) { zoom.value=String(configuredZoom); wheelZoom=configuredZoom; }
 document.addEventListener('keydown', event => {
-  if (event.ctrlKey && !event.shiftKey && !event.altKey && !event.metaKey && ['0','j'].includes(event.key.toLowerCase())
+  if (event.ctrlKey && !event.shiftKey && !event.altKey && !event.metaKey && event.key.toLowerCase()==='j'
     && editor.view.hasFocus() && !event.composedPath().some(node=>node?.tagName==='MATH-FIELD')) {
     if (editor.isActive('codeBlock')) {
       event.preventDefault(); event.stopPropagation();
@@ -899,10 +909,33 @@ document.addEventListener('keydown', event => {
       editor.commands.unsetCode();
       return;
     }
+    for (const mark of ['boxed','smallcaps','superscript','subscript','bold','italic','underline','strike']) {
+      if (!editor.isActive(mark)) continue;
+      event.preventDefault(); event.stopPropagation();
+      // Move past the whole marked range before continuing outside the command.
+      editor.chain().focus().extendMarkRange(mark).command(({tr}) => {
+        tr.setSelection(tr.selection.constructor.near(tr.doc.resolve(tr.selection.to)));
+        tr.removeStoredMark(editor.schema.marks[mark]);
+        return true;
+      }).unsetMark(mark).run();
+      return;
+    }
+    const { $from }=editor.state.selection;
+    for (let depth=$from.depth; depth>0; depth--) {
+      if (!['blockquote','theoremBlock','bulletList','orderedList','descriptionList','table'].includes($from.node(depth).type.name)) continue;
+      event.preventDefault(); event.stopPropagation();
+      const after=$from.after(depth);
+      const tr=editor.state.tr;
+      if (!tr.doc.resolve(after).nodeAfter) tr.insert(after,editor.schema.nodes.paragraph.create());
+      tr.setSelection(Selection.near(tr.doc.resolve(after),1));
+      editor.view.dispatch(tr.scrollIntoView());
+      editor.view.focus();
+      return;
+    }
   }
-  if (!(event.ctrlKey || event.metaKey) || activeMath() || event.composedPath().some(node=>node?.tagName==='MATH-FIELD') || !['+','=','-','0'].includes(event.key)) return;
+  if (!(event.ctrlKey || event.metaKey) || activeMath() || event.composedPath().some(node=>node?.tagName==='MATH-FIELD') || !['+','=','-'].includes(event.key)) return;
   event.preventDefault();
-  wheelZoom = event.key === '0' ? 100 : Math.max(50, Math.min(300, Number(zoom.value) + (event.key === '-' ? -10 : 10)));
+  wheelZoom = Math.max(50, Math.min(300, Number(zoom.value) + (event.key === '-' ? -10 : 10)));
   zoom.value = String(wheelZoom); scale();
 }, true);
 zoom.addEventListener('input', () => { wheelZoom = Number(zoom.value); });
@@ -1060,6 +1093,7 @@ groupButton(formatGroup,'B',()=>editor.chain().focus().toggleBold().run());
 groupButton(formatGroup,'I',()=>editor.chain().focus().toggleItalic().run());
 groupButton(formatGroup,'U',()=>editor.chain().focus().toggleMark('underline').run());
 groupButton(formatGroup,'S',()=>editor.chain().focus().toggleStrike().run());
+groupButton(formatGroup,t('清除格式','Clear formatting'),()=>editor.chain().focus().unsetAllMarks().run());
 groupButton(formatGroup,'code',()=>editor.chain().focus().toggleCode().run());
 groupButton(formatGroup,'quote',()=>editor.chain().focus().toggleBlockquote().run());
 groupButton(formatGroup,'hr',()=>editor.chain().focus().setHorizontalRule().run());

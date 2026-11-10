@@ -1,5 +1,8 @@
 // A single stroke-based icon family shared by toolbar and contextual actions.
 const paths = {
+  sun:'M12 3v2M12 19v2M3 12h2m14 0h2M5.6 5.6 7 7m10 10 1.4 1.4M18.4 5.6 17 7M7 17l-1.4 1.4M16 12a4 4 0 1 1-8 0 4 4 0 0 1 8 0z',
+  moon:'M20 15.5A8.5 8.5 0 0 1 8.5 4a8.5 8.5 0 1 0 11.5 11.5z',
+  system:'M4 5h16v11H4zM9 20h6m-3-4v4',
   undo:'M8 4 3 9l5 5M3 9h10a6 6 0 0 1 0 12',
   redo:'m16 4 5 5-5 5m5-5H11a6 6 0 0 0 0 12',
   list:'M9 6h12M9 12h12M9 18h12M3 6h1M3 12h1M3 18h1',
