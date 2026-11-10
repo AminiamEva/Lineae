@@ -1017,9 +1017,7 @@ const server=createServer(async(req,res)=>{
     await page.waitForFunction(()=>document.querySelector('.ProseMirror p')?.textContent.includes('Before') && document.querySelector('[data-math-view]')?.dataset.latex==='x');
     await page.locator('math-field').evaluate(field=>{field.focus();field.executeCommand('moveToMathfieldEnd');});
     await page.waitForFunction(()=>document.activeElement?.tagName==='MATH-FIELD');
-    console.log('Boundary field',await page.locator('math-field').evaluate(field=>({position:field.position,last:field.lastOffset,selection:field.selection})));
     await page.keyboard.press('ArrowRight');
-    console.log('Boundary selection',await page.evaluate(()=>({node:window.getSelection()?.anchorNode?.textContent,offset:window.getSelection()?.anchorOffset})));
     assert.ok(await paper.evaluate(element=>element===document.activeElement),'ArrowRight exits at the end of inline math');
     await page.keyboard.type('Q');
     await page.locator('.source-toggle').click();
