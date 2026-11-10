@@ -819,6 +819,8 @@ const server=createServer(async(req,res)=>{
       await page.mouse.move(word.left+0.5,word.y);await page.mouse.down();
       await page.mouse.move(word.right-0.5,word.y,{steps:8});await page.mouse.up();
       if(index) await page.keyboard.up('Control');
+      const selected=await page.evaluate(()=>window.getSelection().toString());
+      assert.equal(selected,index?'gamma':'alpha',JSON.stringify(word));
     }
     await page.waitForFunction(()=>document.querySelectorAll('.lineae-multi-selected').length>=2);
     await page.keyboard.press('Delete');
