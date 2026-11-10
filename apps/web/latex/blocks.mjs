@@ -163,6 +163,37 @@ export function importBlock(block) {
   }
   const list = parseListBlock(text);
   if (list) return list;
+  const tableFloat = /^\\begin\{(table\*?)\}(?:\[([^\]]*)\])?([\s\S]*?)\\end\{\1\}$/.exec(text);
+  if (tableFloat) {
+    const inner = tableFloat[3];
+    const start = inner.indexOf('\\begin{tabular}');
+    const end = inner.lastIndexOf('\\end{tabular}');
+    const tabular = start >= 0 && end > start ? parseTable(inner.slice(start, end + '\\end{tabular}'.length)) : null;
+    if (tabular) {
+      const caption = /\\caption\{([^{}]*)\}/.exec(inner);
+      const label = /\\label\{([^{}]*)\}/.exec(inner);
+      const booktabs = tabular.rows.some(row => row.rules.some(rule => /toprule|midrule|bottomrule/.test(rule))) ||
+        tabular.trailing.some(rule => /toprule|midrule|bottomrule/.test(rule));
+      return {
+        type: 'table',
+        attrs: {
+          columns: tabular.columns, booktabs,
+          caption: caption?.[1] ?? null,
+          label: label?.[1] ?? null,
+          placement: tableFloat[2] || null,
+          centered: /\\centering\b/.test(inner),
+        },
+        content: tabular.rows.map(row => ({
+          type: 'tableRow',
+          content: row.cells.map((cell, index) => ({
+            type: 'tableCell',
+            attrs: { colspan: row.spans?.[index] ?? 1, rowspan: 1, align: row.aligns?.[index] ?? tabular.specs[index]?.align ?? null },
+            content: [{ type: 'paragraph', content: cell.trim() ? (inlineContent(cell) ?? [{ type: 'text', text: cell.trim() }]) : [] }],
+          })),
+        })),
+      };
+    }
+  }
   const table = parseTable(text);
   if (table) {
     const booktabs = table.rows.some(row => row.rules.some(rule => /toprule|midrule|bottomrule/.test(rule))) ||

@@ -112,9 +112,16 @@ export function serialize(node) {
       });
       if (border && border!=='none') body += '\\hline\n';
       if (!border && node.attrs.booktabs) body += '\\bottomrule\n';
-      const tabular='\\begin{tabular}{' + columns + '}\n' + body + '\\end{tabular}';
-      return (/^\d+(?:\.\d+)?pt$/.test(node.attrs.borderWidth??'')
-        ? '{\\setlength{\\arrayrulewidth}{'+node.attrs.borderWidth+'}\n'+tabular+'\n}' : tabular)+'\n\n';
+      let tabular='\\begin{tabular}{' + columns + '}\n' + body + '\\end{tabular}';
+      if (/^\d+(?:\.\d+)?pt$/.test(node.attrs.borderWidth??''))
+        tabular='{\\setlength{\\arrayrulewidth}{'+node.attrs.borderWidth+'}\n'+tabular+'\n}';
+      if (node.attrs.caption!=null || node.attrs.label || node.attrs.centered || node.attrs.placement)
+        return '\\begin{table}'+(node.attrs.placement?'['+node.attrs.placement+']':'')+'\n'
+          +(node.attrs.centered?'\\centering\n':'')
+          +(node.attrs.caption!=null?'\\caption{'+node.attrs.caption+'}\n':'')
+          +(node.attrs.label?'\\label{'+node.attrs.label+'}\n':'')
+          +tabular+'\n\\end{table}\n\n';
+      return tabular+'\n\n';
     }
     case 'tableRow': return node.content.map(cell => serialize(cell)).join(' & ') + ' \\\\\n';
     case 'tableCell':

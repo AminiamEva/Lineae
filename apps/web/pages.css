@@ -88,6 +88,7 @@ main { padding:125px 24px 60px; overflow:auto; }
 .ProseMirror dd { margin-left:0; }
 .ProseMirror dd[data-term]::before { content:attr(data-term); font-weight:600; margin-right:.5em; }
 .ProseMirror table[data-booktabs] td,.ProseMirror table[data-booktabs] th { border-left:0; border-right:0; }
+.ProseMirror table[data-caption]::before { content:attr(data-caption); display:table-caption; caption-side:top; padding:0 0 .45em; text-align:center; font-size:.9em; color:light-dark(#555,#c9c9cf); }
 .ProseMirror table[data-booktabs] tr:first-child td,.ProseMirror table[data-booktabs] tr:first-child th { border-top:2px solid light-dark(#333,#ddd); }
 .ProseMirror table[data-booktabs] tr:last-child td,.ProseMirror table[data-booktabs] tr:last-child th { border-bottom:2px solid light-dark(#333,#ddd); }
 .ProseMirror .math-selected { background:light-dark(#cfe2ff,#2f4a6e); border-radius:3px; }

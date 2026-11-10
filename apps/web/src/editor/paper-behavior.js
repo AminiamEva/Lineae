@@ -96,6 +96,26 @@ export const PaperBehavior = Extension.create({
           parseHTML: element => element.dataset.booktabs === 'true',
           renderHTML: attributes => attributes.booktabs ? { 'data-booktabs': 'true' } : {},
         },
+        caption: {
+          default: null,
+          parseHTML: element => element.dataset.caption ?? null,
+          renderHTML: attributes => attributes.caption ? { 'data-caption': attributes.caption } : {},
+        },
+        label: {
+          default: null,
+          parseHTML: element => element.dataset.label ?? null,
+          renderHTML: attributes => attributes.label ? { 'data-label': attributes.label } : {},
+        },
+        placement: {
+          default: null,
+          parseHTML: element => element.dataset.placement ?? null,
+          renderHTML: attributes => attributes.placement ? { 'data-placement': attributes.placement } : {},
+        },
+        centered: {
+          default: false,
+          parseHTML: element => element.dataset.centered === 'true',
+          renderHTML: attributes => attributes.centered ? { 'data-centered': 'true' } : {},
+        },
       },
     }, {
       types: ['tableCell', 'tableHeader'],

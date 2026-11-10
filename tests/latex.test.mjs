@@ -110,6 +110,23 @@ test('serializes small caps and boxed text marks', () => {
   assert.equal(serialize(doc), '\\textsc{Small} \\fbox{Box}\n\n');
 });
 
+test('round-trips table floats with captions and labels', () => {
+  const body = '\\begin{table}[htbp]\n\\centering\n\\caption{Results}\n\\label{tab:results}\n\\begin{tabular}{lc}\nA & B \\\\\n\\end{tabular}\n\\end{table}';
+  const source = '\\documentclass{article}\n\\begin{document}\n\n' + body + '\n\n\\end{document}\n';
+  const doc = parseDocument(source);
+  const [table] = doc.blocks.flatMap(importBlocks).filter(node => node.type === 'table');
+  assert.ok(table);
+  assert.equal(table.attrs.caption, 'Results');
+  assert.equal(table.attrs.label, 'tab:results');
+  assert.equal(table.attrs.placement, 'htbp');
+  assert.equal(table.attrs.centered, true);
+  const latex = serialize(table);
+  assert.match(latex, /\\begin\{table\}\[htbp\]/);
+  assert.match(latex, /\\caption\{Results\}/);
+  assert.match(latex, /\\label\{tab:results\}/);
+  assert.match(latex, /\\begin\{tabular\}\{lc\}/);
+});
+
 test('parses extended math environments as math blocks', () => {
   for (const environment of [
     ['alignat', '\\begin{alignat}{2}\na&=b & c&=d\n\\end{alignat}'],

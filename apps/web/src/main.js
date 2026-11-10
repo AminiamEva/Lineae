@@ -927,6 +927,16 @@ groupButton(tableGroup,'删除表格',()=>editor.chain().focus().deleteTable().r
 groupButton(tableGroup,'merge',()=>editor.chain().focus().mergeCells().run());
 groupButton(tableGroup,'split',()=>editor.chain().focus().splitCell().run());
 groupButton(tableGroup,'booktabs',()=>{if(editor.isActive('table'))editor.chain().focus().updateAttributes('table',{booktabs:!editor.getAttributes('table').booktabs}).run();});
+groupButton(tableGroup,t('题注','Caption'),async()=>{
+  if(!editor.isActive('table'))return;
+  const value=await askText(t('表格题注（LaTeX）','Table caption (LaTeX)'),editor.getAttributes('table').caption??'');
+  if(value!==null)editor.chain().focus().updateAttributes('table',{caption:value||null,centered:true,placement:editor.getAttributes('table').placement??'htbp'}).run();
+});
+groupButton(tableGroup,'label',async()=>{
+  if(!editor.isActive('table'))return;
+  const value=await askText(t('表格标签键','Table label key'),editor.getAttributes('table').label??'');
+  if(value!==null)editor.chain().focus().updateAttributes('table',{label:value||null}).run();
+});
 groupButton(tableGroup,t('边框','Borders'),async()=>{
   if(!editor.isActive('table'))return;
   const mode=await askText(t('边框：grid 全部、outer 外框、horizontal 横线、none 无','Borders: grid, outer, horizontal, none'),editor.getAttributes('table').borderMode??'grid');
