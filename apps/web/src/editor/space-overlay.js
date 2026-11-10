@@ -1,11 +1,15 @@
+const SVG = 'http://www.w3.org/2000/svg';
+
+function shape(name, attributes = {}) {
+  const element = document.createElementNS(SVG, name);
+  for (const [key, value] of Object.entries(attributes)) element.setAttribute(key, String(value));
+  return element;
+}
+
 export function installSpaceOverlay(editor, paper) {
   const page = paper.closest('.document-page') ?? paper;
-  const canvas = document.createElement('canvas');
-  canvas.className = 'space-overlay';
-  canvas.setAttribute('aria-hidden','true');
-  page.append(canvas);
-  const context = canvas.getContext('2d');
-  if (!context) return () => {};
+  const overlay = shape('svg', { class:'space-overlay', 'aria-hidden':'true' });
+  page.append(overlay);
   let enabled = true;
   let composing = false;
   let frame = 0;
@@ -14,20 +18,16 @@ export function installSpaceOverlay(editor, paper) {
   function draw() {
     frame=0;
     const pageRect=page.getBoundingClientRect();
-    canvas.hidden=!enabled || !pageRect.width || !pageRect.height;
-    if (canvas.hidden) return;
+    overlay.hidden=!enabled || !pageRect.width || !pageRect.height;
+    if (overlay.hidden) return;
     const zoom=page.offsetWidth ? pageRect.width/page.offsetWidth : 1;
     const width=page.clientWidth;
     const height=page.clientHeight;
-    const scale=window.devicePixelRatio||1;
-    const pixelsWide=Math.ceil(width*scale);
-    const pixelsHigh=Math.ceil(height*scale);
-    if (canvas.width!==pixelsWide) canvas.width=pixelsWide;
-    if (canvas.height!==pixelsHigh) canvas.height=pixelsHigh;
-    context.setTransform(scale,0,0,scale,0,0);
-    context.clearRect(0,0,width,height);
-    context.fillStyle='rgba(128,128,128,.58)';
-    context.strokeStyle=context.fillStyle;
+    overlay.setAttribute('viewBox',`0 0 ${width} ${height}`);
+    overlay.setAttribute('width','100%');
+    overlay.setAttribute('height','100%');
+    overlay.replaceChildren();
+    const color='rgba(128,128,128,.58)';
     const range=document.createRange();
     const local=rect=>({
       left:(rect.left-pageRect.left)/zoom,
@@ -45,19 +45,25 @@ export function installSpaceOverlay(editor, paper) {
         const lineHeight=Number.parseFloat(style.lineHeight)||20;
         const indent=Number.parseFloat(style.textIndent)||0;
         range.selectNodeContents(block);
-        // Absolute drag handles sit above the line; they must not decide the
-        // paragraph mark position. Keep only rects inside the line box.
         const rects=Array.from(range.getClientRects()).map(local)
           .filter(rect=>rect.width>0 && rect.top>=bounds.top-1 && rect.bottom<=bounds.bottom+1);
         const rect=rects.findLast(rect=>rect.width>0);
         const y=bounds.top+lineHeight/2;
-        context.font=`${lineHeight*.55}px sans-serif`;
-        context.textBaseline='middle';
-        context.fillText('¶',(rect?.right??bounds.left+indent)+3,rect?(rect.top+rect.bottom)/2:y);
+        const mark=shape('text',{
+          x:(rect?.right??bounds.left+indent)+3,
+          y:rect?(rect.top+rect.bottom)/2:y,
+          'font-size':lineHeight*.55,
+          'font-family':'sans-serif',
+          'text-anchor':'start',
+          'dominant-baseline':'middle',
+          fill:color,
+        });
+        mark.textContent='¶';
+        overlay.append(mark);
         if(indent>0) {
           const end=bounds.left+indent-4;
-          context.beginPath();context.moveTo(bounds.left+2,y);context.lineTo(end,y);
-          context.moveTo(end,y-3);context.lineTo(end,y+3);context.stroke();
+          overlay.append(shape('line',{x1:bounds.left+2,y1:y,x2:end,y2:y,stroke:color,'stroke-width':1}));
+          overlay.append(shape('line',{x1:end,y1:y-3,x2:end,y2:y+3,stroke:color,'stroke-width':1}));
         }
       }
       const walker=document.createTreeWalker(block,NodeFilter.SHOW_TEXT,{
@@ -71,16 +77,18 @@ export function installSpaceOverlay(editor, paper) {
           if(rect.width<1 || rect.bottom<0 || rect.top>height || rect.right<0 || rect.left>width)continue;
           const x=(rect.left+rect.right)/2;
           const y=(rect.top+rect.bottom)/2;
-          const radius=Math.max(.8,Math.min(2,rect.height*.057));
-          context.beginPath();
           if(match[0]==='\t') {
             const end=rect.right-2;
-            context.moveTo(rect.left+2,y);context.lineTo(end,y);
-            context.lineTo(end-3,y-3);context.moveTo(end,y);context.lineTo(end-3,y+3);
-            context.stroke();
+            overlay.append(shape('path',{
+              d:`M ${rect.left+2} ${y} L ${end} ${y} L ${end-3} ${y-3} M ${end} ${y} L ${end-3} ${y+3}`,
+              fill:'none',stroke:color,'stroke-width':1,
+            }));
           } else {
-            context.arc(x,y,radius,0,Math.PI*2);
-            if(match[0]==='\u00a0')context.stroke();else context.fill();
+            overlay.append(shape('circle',{
+              cx:x,cy:y,r:Math.max(.8,Math.min(2,rect.height*.057)),
+              fill:match[0]==='\u00a0'?'none':color,
+              stroke:match[0]==='\u00a0'?color:'none','stroke-width':1,
+            }));
           }
         }
       }

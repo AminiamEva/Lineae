@@ -800,32 +800,29 @@ const server=createServer(async(req,res)=>{
     await paper.locator('p').scrollIntoViewIfNeeded();
     await page.waitForFunction(()=>{
       const paragraph=document.querySelector('.ProseMirror p');
-      const canvas=document.querySelector('.space-overlay');
-      if(!canvas || paragraph.childElementCount!==0)return false;
+      const overlay=document.querySelector('.space-overlay');
+      if(!overlay || paragraph.childElementCount!==0)return false;
       const range=document.createRange();
       range.setStart(paragraph.firstChild,1);range.setEnd(paragraph.firstChild,2);
       const page=document.querySelector('.document-page');
       const pageRect=page.getBoundingClientRect();
       const zoom=pageRect.width/page.offsetWidth||1;
-      const rect=range.getBoundingClientRect(), scale=devicePixelRatio;
+      const rect=range.getBoundingClientRect();
       const left=(rect.left-pageRect.left)/zoom;
-      const top=(rect.top-pageRect.top)/zoom;
-      return canvas.getContext('2d').getImageData(Math.floor(left*scale),Math.floor(top*scale),Math.max(1,Math.ceil(rect.width/zoom*scale)),Math.max(1,Math.ceil(rect.height/zoom*scale))).data.some((value,index)=>index%4===3&&value>0);
+      const right=(rect.right-pageRect.left)/zoom;
+      return [...overlay.querySelectorAll('circle')].some(circle=>{
+        const x=Number(circle.getAttribute('cx'));
+        return x>=left-1&&x<=right+1;
+      });
     });
     await paper.locator('p').click();
     await page.keyboard.press('End');
     const cdp=await page.context().newCDPSession(page);
-    const overlayChecksum=()=>page.evaluate(()=>{
-      const canvas=document.querySelector('.space-overlay');
-      const data=canvas.getContext('2d').getImageData(0,0,canvas.width,canvas.height).data;
-      let checksum=0;
-      for(let index=3;index<data.length;index+=4)if(data[index])checksum=(checksum+index)%1000000007;
-      return checksum;
-    });
-    const beforeComposition=await overlayChecksum();
+    const overlayState=()=>page.evaluate(()=>document.querySelector('.space-overlay').innerHTML);
+    const beforeComposition=await overlayState();
     await cdp.send('Input.imeSetComposition',{text:'zhong',selectionStart:5,selectionEnd:5});
     await page.waitForTimeout(120);
-    assert.notEqual(await overlayChecksum(),beforeComposition,'Markers follow composition text');
+    assert.notEqual(await overlayState(),beforeComposition,'Markers follow composition text');
     assert.equal(await page.locator('.space-overlay').isVisible(),true);
     await cdp.send('Input.imeSetComposition',{text:'中文',selectionStart:2,selectionEnd:2});
     await cdp.send('Input.insertText',{text:'中文'});
@@ -834,6 +831,7 @@ const server=createServer(async(req,res)=>{
     assert.equal(await paper.locator('p').textContent(),'前 后中');
     await paper.locator('p').evaluate(paragraph=>window.getSelection().collapse(paragraph.firstChild,0));
     await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(resolve)));
+    await paper.focus();
     await page.keyboard.press('Delete');
     await page.waitForFunction(()=>document.querySelector('.ProseMirror p')?.textContent.trimStart()==='后中');
     assert.deepEqual(errors,[]);
