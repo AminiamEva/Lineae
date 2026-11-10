@@ -1,0 +1,33 @@
+% Lineae Bib engine fixture: messy but common real-world constructs.
+@misc(parenkey, title = {Parenthesized entry})
+
+@misc{dup, title = {First version}}
+@misc{dup, title = {Second version}}
+
+@article{dupf,
+  title = {First title},
+  title = {Second title},
+  year = 2020,
+}
+
+@misc{missingcomma,
+  title = {Value without a comma}
+  year = {2020}
+}
+
+@misc{extracommas,,,
+  title = {OK},
+  note = {},
+}
+
+@misc{quotedmath,
+  author = "M{\"u}ller, J{\"o}rg",
+  title = "Quotes with {braces} and an {\"u}mlaut",
+}
+
+@comment{jabref-meta: databaseType:bibtex;}
+
+@customtype{weird,
+  howpublished = {Self-published},
+  note = {A custom entry type must survive}
+}

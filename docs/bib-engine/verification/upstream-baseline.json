@@ -1,0 +1,315 @@
+{
+  "repository": "https://github.com/AminiamEva/Lineae",
+  "branch": "main",
+  "commit": "a79a8b9ca0f836eb241a75703ec0d3cac2a8c11e",
+  "commitDate": "2026-11-09T15:34:59Z",
+  "commitMessage": "Make command completion case-insensitive and add space command",
+  "treeSha": "3bf453514b41e2a7633e87170a242fb3d54f0aff",
+  "fileCount": 50,
+  "upstreamBlobCount": 50,
+  "matchesUpstream": true,
+  "differences": [],
+  "missingLocal": [],
+  "files": [
+    {
+      "path": ".github/workflows/pages.yml",
+      "blobSha": "124c9812efb687e1324ef258cf67797292ff8067",
+      "sha256": "108a516513054e4421811acc26f1a996b4a6fa738b072ae6df675c49e0f01edc",
+      "size": 1390
+    },
+    {
+      "path": ".gitignore",
+      "blobSha": "961504063e571719ee3ef2db4e3361cefa6f1c2b",
+      "sha256": "39d1a713f2bd0781ec79cdcfa1f93624ae0f288c3c1ec99b4a9a3c307414542a",
+      "size": 51
+    },
+    {
+      "path": "apps/web/config.yaml",
+      "blobSha": "813dd327d17a0675115f240b05aefb787aa48f89",
+      "sha256": "b23ba12cd27e7d3b1a35e210ff8d863e643134fd08d71dc1cce26b2c9af519f0",
+      "size": 196
+    },
+    {
+      "path": "apps/web/index.html",
+      "blobSha": "e2147e05806d3bdcf7e4dfd264b5aa114b92306b",
+      "sha256": "bafe1623da462e8fe57db42b137b836993d2e178d0bd89377cb6189cf0871b6e",
+      "size": 1126
+    },
+    {
+      "path": "apps/web/latex/blocks.mjs",
+      "blobSha": "7850db1784edba38de5c823acf86b6d0c4c00001",
+      "sha256": "376d726ce072385e92470b13710a057bec3fd8771b6c4c938aec07da947c0b8b",
+      "size": 9025
+    },
+    {
+      "path": "apps/web/latex/document.mjs",
+      "blobSha": "96617fbcd2451cfca33e366019f3fb7a1ca9f465",
+      "sha256": "45aed92c9cc34c222d212f28b5ff6b68b7328b5a2f00202776fdbd49a72afe14",
+      "size": 1187
+    },
+    {
+      "path": "apps/web/latex/inline.mjs",
+      "blobSha": "91045fdd6f9afd757431f3912460b1fd8c4842a9",
+      "sha256": "35ce8cab57e039ee9a124091d447f8cc893f7213bc06dadc10c6b2fa7e7b27d2",
+      "size": 5405
+    },
+    {
+      "path": "apps/web/latex/math-symbols.mjs",
+      "blobSha": "d0bd93fc0a2b176e1b5fdd5235adec31b9b70ff8",
+      "sha256": "fe3e70d0e222ab3e744e30bed20ed7e8515dae9cc402f06c9a518c468f77a2b4",
+      "size": 4741
+    },
+    {
+      "path": "apps/web/latex/packages.mjs",
+      "blobSha": "b44e359c2e2270d06f44e164c67a94a92d2fba15",
+      "sha256": "9199a8b3faa99fcb7a5042bc04ca1359effb3154eb0e46abc9c8ef64a54f35a6",
+      "size": 2336
+    },
+    {
+      "path": "apps/web/latex/tables.mjs",
+      "blobSha": "0436e99d6a656e62335fd940bed9844194885aea",
+      "sha256": "a872fe022a20b8c6ac3e815f882ae00e6b28898f32553cd34d0d0148e2d92103",
+      "size": 3760
+    },
+    {
+      "path": "apps/web/pages.css",
+      "blobSha": "0e78b165fb8297983a15a0bf45b345aeb6616651",
+      "sha256": "4bf4e8d25e547d44a30e26c96076c76b5ef6ddf931c337e740d4929f06eed06a",
+      "size": 11206
+    },
+    {
+      "path": "apps/web/src/editor/config.mjs",
+      "blobSha": "16a85754ddc83ca9eaa9684a1a0d6334c7c6a00f",
+      "sha256": "4c0cdd53ed3e056ca0dadf94c2b2d84c6c516c0f3e09342f0b6b25a34b5fd65b",
+      "size": 2244
+    },
+    {
+      "path": "apps/web/src/editor/context-menu.js",
+      "blobSha": "870e714c8ddb40305bd5fa630ca81c04d74dc4c9",
+      "sha256": "4114140ef5279d5b9c15b72f1700e8ba69df1e53dfb35aee26c6b00ff1ebb225",
+      "size": 13987
+    },
+    {
+      "path": "apps/web/src/editor/dialog.js",
+      "blobSha": "315ec55eb9324c3eb5e4286aaf733584a69f1c7b",
+      "sha256": "81e6e67a54849e267727f776d0ed24dadbafddc159da4b17db0723a505eb0f85",
+      "size": 1838
+    },
+    {
+      "path": "apps/web/src/editor/format-controls.js",
+      "blobSha": "4d12eb34d9fdf3fff8f7c5a4ce337dd18fccfeba",
+      "sha256": "886cbeaed4f423aae222e64a80490d67e01f5933b3e28c32c262a7cb04103c57",
+      "size": 1827
+    },
+    {
+      "path": "apps/web/src/editor/icons.js",
+      "blobSha": "df89f0ba90ce6a38c3b31871c766f60eca8a6dfb",
+      "sha256": "8a2cc1be360890242f55f07b7a26edae4764d1bc62a0d8d64c74e2135a60c9fd",
+      "size": 2027
+    },
+    {
+      "path": "apps/web/src/editor/latex-codec.js",
+      "blobSha": "c60a9318eda65d1cc21cf1a9b4955a688275c9c0",
+      "sha256": "e304b8a421a7b59a6539a9f31d350741fd18c398c2e02b57921a29a8d8f29000",
+      "size": 5032
+    },
+    {
+      "path": "apps/web/src/editor/math-node.js",
+      "blobSha": "5af0ab7b340bc28b84f95b57abaa51fdd1fed7b2",
+      "sha256": "f85b06048896a82dfc37d4b73f4641bc3938ec1b70514852e827ed4cdbfc74c0",
+      "size": 8462
+    },
+    {
+      "path": "apps/web/src/editor/paper-behavior.js",
+      "blobSha": "9237c10c204fa219376f1e2513ee744d6a67383d",
+      "sha256": "7dfc243a8185a47b1e4187f4fe9c412c4f05e218d7e1766746ecac381be8c3ba",
+      "size": 5485
+    },
+    {
+      "path": "apps/web/src/editor/references.js",
+      "blobSha": "19dba0c100287fd0b4f092b4153bb598cb0e8c41",
+      "sha256": "5bbf24374a6f50b2d5d7f090543d17e7fd47af1efda9077412d389284cff473a",
+      "size": 4662
+    },
+    {
+      "path": "apps/web/src/editor/table-hover.js",
+      "blobSha": "d33715666dc3fe09b22cf054151ff28353214701",
+      "sha256": "bfcf2d3b9996fb97a82d8c756da032615e44383632de40a06defb667a7228f79",
+      "size": 3031
+    },
+    {
+      "path": "apps/web/src/main.js",
+      "blobSha": "8be7382530b897d748f5a574d217d3b97df277d1",
+      "sha256": "099670d20a06f1e2c9e8537705cac6c9bc61489b9c63dd7fa68f8e562b76f1a3",
+      "size": 38837
+    },
+    {
+      "path": "docs/EDITOR_ARCHITECTURE.md",
+      "blobSha": "60b346891196f5be9bf4932372f762f6845ce1b1",
+      "sha256": "537c3c47e5457a5e785091fc007a4f21413dc244237aa6345ebe393eee89e4d6",
+      "size": 1699
+    },
+    {
+      "path": "package-lock.json",
+      "blobSha": "6fd204690869fdcbfcb82eca17b45443e1e7b48e",
+      "sha256": "86fbe8e4f317ec22ef7a4bf0a1fea88dee141848d52f72be00aa6874926ea3fd",
+      "size": 44522
+    },
+    {
+      "path": "package.json",
+      "blobSha": "19bf2b2b1e40125e4956a41a70de1ed1c38f31c5",
+      "sha256": "917b9e9d3c9eabe6cac28ceba427a047d1697544768117da03a40c80ba5f58d5",
+      "size": 1441
+    },
+    {
+      "path": "README.md",
+      "blobSha": "50971749433e6d9a5e737d848a829d7035ed2ee4",
+      "sha256": "48d54341d9f6f3f543891cee5efc2e0f4485a3d38cb6cfc852d0a9009f3e562b",
+      "size": 13275
+    },
+    {
+      "path": "tests/config.test.mjs",
+      "blobSha": "0d6540ed7005cf3598e37679406d872cd2fb44a5",
+      "sha256": "a2152a6d4f088eeb7e614fe4e2e805eebb8becdcc46aaa849c73093cbdec7192",
+      "size": 1210
+    },
+    {
+      "path": "tests/editor.cjs",
+      "blobSha": "5f9dab1aab246b9c1583c774a22945b8803bceec",
+      "sha256": "dd60c28733f456b6f4ef9eee9b6934a395c9427a2f5e08b1784d9c42869e87d9",
+      "size": 27121
+    },
+    {
+      "path": "tests/fixtures/tex-compat/headings/headings-label-ref.tex",
+      "blobSha": "9dafd951cf42ec8f587f58b427081f95d371308c",
+      "sha256": "09ab2337fa5f20feb6c7d15bbdcc25f775709cc2df7a7b12b4f48726b04f6a50",
+      "size": 121
+    },
+    {
+      "path": "tests/fixtures/tex-compat/headings/headings-levels.tex",
+      "blobSha": "0c663e32325a9afbaaea8bc3d8037c40745d522a",
+      "sha256": "bece92efd54cd9d27c5ef2f043926e587dc833c30691842c4334eece602554fa",
+      "size": 112
+    },
+    {
+      "path": "tests/fixtures/tex-compat/headings/headings-short-title.tex",
+      "blobSha": "a2c6e336dfb370785bb708ef1f23ddf4b0f6be0d",
+      "sha256": "48107cbc142a388b9170b31e2fa4d6da0db6d224b94e4fdcef3c2959e6c4d4f2",
+      "size": 113
+    },
+    {
+      "path": "tests/fixtures/tex-compat/headings/headings-starred.tex",
+      "blobSha": "91f7aa04296058a00fb99e200e3140e7d8ccb963",
+      "sha256": "043db5e9a63a6d7766be40a9abeff9c8048c0e167b6864b657e7233181cd47be",
+      "size": 106
+    },
+    {
+      "path": "tests/fixtures/tex-compat/headings/headings-toc.tex",
+      "blobSha": "a1020f2959dcd3a50cf347e38e6940df96d21c1b",
+      "sha256": "37d480f2184922c28250dc924d12eb146ea2cb1094fe8fa7523e0840189f3a3a",
+      "size": 125
+    },
+    {
+      "path": "tests/fixtures/tex-compat/lists/lists-description.tex",
+      "blobSha": "9e0b1dc8304e5458593e27e5563e188eebfa53b0",
+      "sha256": "ec861aa1466d80081650c913d3813fa7674459016b05f77f431aab753295f4bf",
+      "size": 138
+    },
+    {
+      "path": "tests/fixtures/tex-compat/lists/lists-enumerate.tex",
+      "blobSha": "3ed9eeaf2b905c25170c572dd5f39f5cf6165f72",
+      "sha256": "a461f22b46ef4a83fc3c81ed0dc6fcc0e798461fcccd270919d091a6f37bab21",
+      "size": 125
+    },
+    {
+      "path": "tests/fixtures/tex-compat/lists/lists-itemize.tex",
+      "blobSha": "03fdb7ea0d45a51832390459731f8aebc4d73777",
+      "sha256": "cb1515c1155ccf9feb146b1c9de5e5130ef4cc8147c7bef95514e19b7b8556db",
+      "size": 120
+    },
+    {
+      "path": "tests/fixtures/tex-compat/lists/lists-nested.tex",
+      "blobSha": "a61d8c5579a152e5edb841fd105eb110fdd49c4c",
+      "sha256": "40274957889c90893036e9b9803bb14776ae534b1435a4c125ca94bb9b7605f9",
+      "size": 171
+    },
+    {
+      "path": "tests/fixtures/tex-compat/lists/lists-paragraphs.tex",
+      "blobSha": "af774e97d648638f71b7a4350c4ad99c6037242b",
+      "sha256": "43478edc2334b9656ec2423cf6b285c91742d0bd816eeac592e4ab1fec481664",
+      "size": 145
+    },
+    {
+      "path": "tests/fixtures/tex-compat/tables/tables-alignment.tex",
+      "blobSha": "daad5e7dcb233edfd0a58535cc2528c2434d37df",
+      "sha256": "0fc2d149e2aa88f6ba38a197ded9e32432f84381a12fdf503852280188aa8698",
+      "size": 136
+    },
+    {
+      "path": "tests/fixtures/tex-compat/tables/tables-basic.tex",
+      "blobSha": "209b05d474f46fc12a102566cca26353bf911d5e",
+      "sha256": "4e25f350f6964847a954be9c80d534d5b67bcf63b85eb0973449ffe9332bca56",
+      "size": 105
+    },
+    {
+      "path": "tests/fixtures/tex-compat/tables/tables-booktabs.tex",
+      "blobSha": "ee4f891d081cddcf1f81f7d3b50bf1995b4acf10",
+      "sha256": "372648713a5e6a7919876b16edc01288cfbffad20d6972ae54390f52f055069b",
+      "size": 167
+    },
+    {
+      "path": "tests/fixtures/tex-compat/tables/tables-multicolumn.tex",
+      "blobSha": "e27ca1fb27ab35cd282e55fca605f009435efdb8",
+      "sha256": "40961acaa7eeeddfd2ba01c2d28588d83c92bd849806cfd87069382051a8f97b",
+      "size": 128
+    },
+    {
+      "path": "tests/fixtures/tex-compat/tables/tables-paragraph-cell.tex",
+      "blobSha": "53c0b4a9fd14fbab733f3eb9aaa45d75c79002c9",
+      "sha256": "d2ee32c33dcdbe1c612d914a931f8c17c59a69107294bcd0e441935acc5e63de",
+      "size": 200
+    },
+    {
+      "path": "tests/fixtures/tex-compat/text/text-comments.tex",
+      "blobSha": "a14700f80635380be55a1f6c12c53d9410245313",
+      "sha256": "50e4bec6ac49db264783959016bd08fa8f6e533298fb20f7a01f74293a8b62d5",
+      "size": 135
+    },
+    {
+      "path": "tests/fixtures/tex-compat/text/text-emphasis.tex",
+      "blobSha": "d711696c96f789083fa81b84c5a99809cf3cebf3",
+      "sha256": "8dd88e1580d44cd43183b7402efd29721b8a520327a6a69ef7afd4172b378244",
+      "size": 140
+    },
+    {
+      "path": "tests/fixtures/tex-compat/text/text-escaped.tex",
+      "blobSha": "a3f7539c04dffb490f77ee890f431ee9332ba01d",
+      "sha256": "8b20418b2bdd1d73a0f5155457a90842f36c2075613736d642c7c8418192606e",
+      "size": 117
+    },
+    {
+      "path": "tests/fixtures/tex-compat/text/text-paragraphs.tex",
+      "blobSha": "01732bc885b3c008f485f62c767a8ab8869bcf56",
+      "sha256": "eb555982f2a564d56449e99cade082d1ec02c96cc04480c23584ab3a1ff4a6b1",
+      "size": 120
+    },
+    {
+      "path": "tests/fixtures/tex-compat/text/text-unicode.tex",
+      "blobSha": "a06dcc9d8d2c2f78858acdb90db21073486a9723",
+      "sha256": "cf7d703b7a055da14e441c9a2b43b494578a845eb15f8310e09323401f4fd9f8",
+      "size": 136
+    },
+    {
+      "path": "tests/latex.test.mjs",
+      "blobSha": "c7b63be3ae6fe871d477c463d7b33c81e0bb4295",
+      "sha256": "7a6fd25e5a69565572ceb68ca90d1491da56e8e153edc954ba84d1f35f2e10a6",
+      "size": 2828
+    },
+    {
+      "path": "tests/tex-compat-parse.test.mjs",
+      "blobSha": "dcacc4d68afad4ba44852bbc715521e46f46004a",
+      "sha256": "828d0a33143349208ccb356d2525412858a65a29df702dd753869277ba30d7c9",
+      "size": 9875
+    }
+  ]
+}
