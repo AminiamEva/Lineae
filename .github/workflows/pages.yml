@@ -26,6 +26,7 @@ jobs:
       - run: npm ci --no-audit --no-fund
       - run: npm run build
       - run: node --test tests/latex.test.mjs
+      - run: node --test tests/bib/*.test.mjs tests/bib/*/*.test.mjs
       - name: Package the formula editor
         run: |
           archive=$(npm pack mathlive@0.108.0 --pack-destination "$RUNNER_TEMP" --silent)
