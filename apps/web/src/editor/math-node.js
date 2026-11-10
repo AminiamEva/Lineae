@@ -1,6 +1,7 @@
 import { Node } from '@tiptap/core';
 import { TextSelection } from '@tiptap/pm/state';
 import { closeHistory } from '@tiptap/pm/history';
+import { t } from '../ui/i18n.mjs';
 
 let configuredKeys = [
   { key: 'ctrl+6', command: 'moveToSuperscript' },
@@ -142,7 +143,7 @@ export const MathNode = Node.create({
       const handle = document.createElement('span');
       handle.className = 'math-drag-handle';
       handle.textContent = '⠿';
-      handle.setAttribute('aria-label', '拖动公式 / Drag formula');
+      handle.setAttribute('aria-label', t('拖动公式','Drag formula'));
       handle.dataset.tooltipZh = '拖动公式';
       handle.dataset.tooltipEn = 'Drag formula';
       handle.draggable = true;

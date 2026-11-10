@@ -24,6 +24,7 @@ import { createThemeController } from './ui/theme.mjs';
 import { installTooltips } from './ui/tooltips.mjs';
 import { installRovingFocus } from './ui/keyboard-nav.mjs';
 import { fadeIn } from './ui/motion.mjs';
+import { getLanguage, localize, setLanguage, t } from './ui/i18n.mjs';
 
 const cssColor = value => {
   const rgb=/^rgba?\(\s*(\d+)[,\s]+(\d+)[,\s]+(\d+)/i.exec(value??'');
@@ -83,7 +84,12 @@ try {
   const saved=localStorage.getItem('lineae.config');
   if(saved)appConfig=mergeConfig(appConfig,parseYaml(saved));
   configureMathKeys(appConfig.keybindings?.math);
-} catch(error) { console.warn('Configuration / 配置',error); }
+} catch(error) { console.warn(t('配置','Configuration'),error); }
+const configuredLanguage=appConfig.interface?.language;
+const initialLanguage=['zh-CN','en'].includes(configuredLanguage)
+  ? configuredLanguage
+  : ((navigator.language??'').toLowerCase().startsWith('zh')?'zh-CN':'en');
+setLanguage(initialLanguage);
 function saveConfig(patch) {
   appConfig={...appConfig,interface:{...appConfig.interface,...patch}};
   try { localStorage.setItem('lineae.config',toYaml(appConfig)); } catch {}
@@ -197,10 +203,11 @@ editor.on('transaction',()=>{
 });
 installFormatControls(editor, tools);
 const headingMenu = document.createElement('select');
-headingMenu.setAttribute('aria-label', '段落样式 / Paragraph style');
-for (const [value, label] of [['0', '正文 / Text'], ['1', 'section'], ['2', 'subsection'], ['3', 'subsubsection']]) {
-  headingMenu.append(new Option(label, value));
-}
+headingMenu.setAttribute('aria-label', t('段落样式','Paragraph style'));
+const textStyleOption = new Option(t('正文','Text'), '0');
+textStyleOption.dataset.zh='正文';textStyleOption.dataset.en='Text';
+headingMenu.append(textStyleOption);
+for (const [value, label] of [['1','section'],['2','subsection'],['3','subsubsection']]) headingMenu.append(new Option(label, value));
 headingMenu.addEventListener('change', () => {
   const level = Number(headingMenu.value);
   if (level) editor.chain().focus().setHeading({ level }).run();
@@ -316,11 +323,11 @@ const metaTitle=document.createElement('div');metaTitle.className='doc-title';
 const metaAuthor=document.createElement('div');metaAuthor.className='doc-author';
 metaBar.append(metaTitle,metaAuthor);paper.before(metaBar);
 metaTitle.addEventListener('click',async()=>{
-  const value=await askText('标题 / Title',readMeta('title'));
+  const value=await askText(t('标题','Title'),readMeta('title'));
   if(value!==null)writeMeta('title',value);
 });
 metaAuthor.addEventListener('click',async()=>{
-  const value=await askText('作者 / Author',readMeta('author'));
+  const value=await askText(t('作者','Author'),readMeta('author'));
   if(value!==null)writeMeta('author',value);
 });
 function renderMeta() {
@@ -334,12 +341,12 @@ function renderMeta() {
   if(author)metaAuthor.textContent=author;
   if(!title&&!author) {
     const hint=document.createElement('button');
-    hint.type='button';hint.textContent='添加标题/作者 / Add title & author';
+    hint.type='button';hint.textContent=t('添加标题/作者','Add title & author');
     hint.addEventListener('click',async event=>{
       event.stopPropagation();
-      const titleValue=await askText('标题 / Title',readMeta('title'));
+      const titleValue=await askText(t('标题','Title'),readMeta('title'));
       if(titleValue===null)return;
-      const authorValue=await askText('作者 / Author',readMeta('author'));
+      const authorValue=await askText(t('作者','Author'),readMeta('author'));
       if(authorValue===null)return;
       writeMeta('title',titleValue);writeMeta('author',authorValue);
     });
@@ -355,7 +362,7 @@ function source() {
 savedSource=source();
 function load(text, markSaved = true) {
   const parsed=parseDocument(text);
-  if(!parsed)throw new Error('无法识别文档 / Invalid document');
+  if(!parsed)throw new Error(t('无法识别文档','Invalid document'));
   // Preserve imported source exactly. Unsupported blocks remain directly accessible in source mode.
   documentParts=parsed;
   const content=parsed.blocks.flatMap(importBlocks);
@@ -392,11 +399,11 @@ async function saveDocument() {
       if(fileHandle.name)filename=fileHandle.name;
       savedSource=text;
       const status=document.querySelector('#status');
-      status.hidden=false;status.textContent='已保存 / Saved';
+      status.hidden=false;status.textContent=t('已保存','Saved');
       return;
     } catch(error) {
       if(error?.name==='AbortError')return;
-      console.warn('Save / 保存',error);
+      console.warn(t('保存','Save'),error);
     }
   }
   downloadText(text);
@@ -410,7 +417,7 @@ async function openDocument() {
     return true;
   } catch(error) {
     if(error?.name==='AbortError')return true;
-    console.warn('Open / 打开',error);
+    console.warn(t('打开','Open'),error);
     return false;
   }
 }
@@ -439,9 +446,9 @@ const commands = document.createElement('div');
 commands.className = 'command-menu';
 commands.hidden = true;
 commands.setAttribute('role', 'dialog');
-commands.setAttribute('aria-label', 'LaTeX 补全 / LaTeX completion');
+commands.setAttribute('aria-label', t('LaTeX 补全','LaTeX completion'));
 const filter = document.createElement('input');
-filter.placeholder = 'LaTeX 命令 / command';
+filter.placeholder = t('LaTeX 命令','LaTeX command');
 filter.setAttribute('aria-label', filter.placeholder);
 filter.setAttribute('aria-controls', 'latex-candidates');
 filter.setAttribute('aria-autocomplete', 'list');
@@ -497,23 +504,23 @@ const structureCommands = {
   },
   label: async () => {
     if(editor.isActive('heading')) {
-      const value=await askText('标签键 / Label key',editor.getAttributes('heading').label??'');
+      const value=await askText(t('标签键','Label key'),editor.getAttributes('heading').label??'');
       if(value!==null)editor.chain().focus().updateAttributes('heading',{label:value||null}).run();
     } else {
-      const value=await askText('标签键 / Label key');
+      const value=await askText(t('标签键','Label key'));
       if(value)editor.chain().focus().insertContent({type:'label',attrs:{key:value}}).run();
     }
   },
   ref: async () => {
-    const value=await askText('引用标签 / Reference label');
+    const value=await askText(t('引用标签','Reference label'));
     if(value)editor.chain().focus().insertContent({type:'ref',attrs:{key:value}}).run();
   },
   title: async () => {
-    const value=await askText('标题 / Title',readMeta('title'));
+    const value=await askText(t('标题','Title'),readMeta('title'));
     if(value!==null)writeMeta('title',value);
   },
   author: async () => {
-    const value=await askText('作者 / Author',readMeta('author'));
+    const value=await askText(t('作者','Author'),readMeta('author'));
     if(value!==null)writeMeta('author',value);
   },
   textbf: () => editor.chain().focus().toggleBold().run(),
@@ -607,7 +614,7 @@ function renderCommands() {
   }
   if (!candidates.children.length) {
     const empty = document.createElement('p');
-    empty.textContent = '无匹配命令 / No matching command';
+    empty.textContent = t('无匹配命令','No matching command');
     candidates.append(empty);
   }
   highlightCandidate(0);
@@ -703,14 +710,14 @@ function updateEnvironment() {
   const field=activeMath();
   const name=field ? (field.value.includes('matrix}')?'matrix':field.closest('.math-display')?'display math':'inline math') :
     !sourceView.hidden?'LaTeX': ['table','listItem','heading'].find(type=>editor.isActive(type)) ?? 'text';
-  const labels={matrix:'矩阵 / Matrix','display math':'行间公式 / Display math','inline math':'行内公式 / Inline math',table:'表格 / Table',listItem:'列表 / List',heading:'标题 / Heading',text:'正文 / Text',LaTeX:'源码 / Source'};
+  const labels={matrix:t('矩阵','Matrix'),'display math':t('行间公式','Display math'),'inline math':t('行内公式','Inline math'),table:t('表格','Table'),listItem:t('列表','List'),heading:t('标题','Heading'),text:t('正文','Text'),LaTeX:t('源码','Source')};
   environment.textContent=labels[name]; environment.dataset.environment=name;
 }
 footer.append(count,environment,zoom,percent,themeButton);document.body.append(footer);scale();
 editor.on('transaction',updateEnvironment);
 document.addEventListener('focusin',updateEnvironment);paper.addEventListener('input',updateEnvironment);
 updateEnvironment();
-editor.on('update',()=>{count.textContent=editor.getText().length+' 字符 / characters';});
+editor.on('update',()=>{count.textContent=editor.getText().length+' '+t('字符','characters');});
 const tableGroup=document.createElement('div');tableGroup.className='tools';
 const formatGroup=document.createElement('div');formatGroup.className='tools';
 const referenceGroup=document.createElement('div');referenceGroup.className='tools';
@@ -754,18 +761,18 @@ groupButton(formatGroup,'a.',()=>setListStyle('lower-alpha'));
 groupButton(formatGroup,'A.',()=>setListStyle('upper-alpha'));
 groupButton(formatGroup,'I.',()=>setListStyle('upper-roman'));
 groupButton(formatGroup,'甲',()=>setListStyle('cjk-heavenly-stem'));
-groupButton(formatGroup,'•',async()=>{const value=await askText('项目符号 / Bullet marker','•');if(value)setListStyle(value);});
+groupButton(formatGroup,'•',async()=>{const value=await askText(t('项目符号','Bullet marker'),'•');if(value)setListStyle(value);});
 groupButton(referenceGroup,'label',async()=>{
   if(editor.isActive('heading')){
-    const value=await askText('标签键 / Label key',editor.getAttributes('heading').label??'');
+    const value=await askText(t('标签键','Label key'),editor.getAttributes('heading').label??'');
     if(value!==null)editor.chain().focus().updateAttributes('heading',{label:value||null}).run();
   } else {
-    const value=await askText('标签键 / Label key');
+    const value=await askText(t('标签键','Label key'));
     if(value)editor.chain().focus().insertContent({type:'label',attrs:{key:value}}).run();
   }
 });
 groupButton(referenceGroup,'ref',async()=>{
-  const value=await askText('引用标签 / Reference label');
+  const value=await askText(t('引用标签','Reference label'));
   if(value)editor.chain().focus().insertContent({type:'ref',attrs:{key:value}}).run();
 });
 groupButton(referenceGroup,'toc',()=>{
@@ -774,15 +781,15 @@ groupButton(referenceGroup,'toc',()=>{
 });
 groupButton(referenceGroup,'short',async()=>{
   if(!editor.isActive('heading'))return;
-  const value=await askText('短标题 / Short title',editor.getAttributes('heading').shortTitle??'');
+  const value=await askText(t('短标题','Short title'),editor.getAttributes('heading').shortTitle??'');
   if(value!==null)editor.chain().focus().updateAttributes('heading',{shortTitle:value||null}).run();
 });
 groupButton(referenceGroup,'title',async()=>{
-  const value=await askText('标题 / Title',readMeta('title'));
+  const value=await askText(t('标题','Title'),readMeta('title'));
   if(value!==null)writeMeta('title',value);
 });
 groupButton(referenceGroup,'author',async()=>{
-  const value=await askText('作者 / Author',readMeta('author'));
+  const value=await askText(t('作者','Author'),readMeta('author'));
   if(value!==null)writeMeta('author',value);
 });
 groupButton(mathGroup,'$',()=>insertMath());
@@ -816,18 +823,25 @@ exportConfig.addEventListener('click',()=>{
   setTimeout(()=>URL.revokeObjectURL(url),1000);
 });
 files.append(exportConfig);
-const configuredLanguage=appConfig.interface?.language;
-if(['zh-CN','en'].includes(configuredLanguage))language.value=configuredLanguage;
-else if(!configuredLanguage||configuredLanguage==='auto')language.value=(navigator.language??'').toLowerCase().startsWith('zh')?'zh-CN':'en';
+language.value=initialLanguage;
 function updateLanguage() {
+  setLanguage(language.value);
   const chinese=language.value==='zh-CN';
   document.documentElement.lang=language.value;
+  localize(document);
   for(const tab of tabs.children)tab.textContent=captions[tab.dataset.group][chinese?0:1];
   download.textContent=chinese?'保存 .tex':'Save .tex';
   exportConfig.textContent=chinese?'配置':'Config';
   header.querySelector('.open span').textContent=chinese?'打开 .tex':'Open .tex';
+  commands.setAttribute('aria-label',t('LaTeX 补全','LaTeX completion'));
+  filter.placeholder=t('LaTeX 命令','LaTeX command');
+  filter.setAttribute('aria-label',filter.placeholder);
+  headingMenu.setAttribute('aria-label',t('段落样式','Paragraph style'));
   tooltips?.setLanguage(language.value);
   updateThemeButton();
+  renderMeta();
+  updateEnvironment();
+  count.textContent=editor.getText().length+' '+t('字符','characters');
 }
 function selectGroup(name) {
   for(const [key,panel] of Object.entries(groups)) panel.hidden=key!==name;

@@ -1,6 +1,7 @@
 import { popIn } from '../ui/motion.mjs';
+import { t } from '../ui/i18n.mjs';
 
-export function promptDialog({ title, value = '', confirm = '确定 / OK', cancel = '取消 / Cancel' }) {
+export function promptDialog({ title, value = '', confirm, cancel }) {
   return new Promise(resolve => {
     const backdrop = document.createElement('div');
     backdrop.className = 'editor-dialog-backdrop';
@@ -15,10 +16,10 @@ export function promptDialog({ title, value = '', confirm = '确定 / OK', cance
     actions.className = 'editor-dialog-actions';
     const cancelButton = document.createElement('button');
     cancelButton.type = 'button';
-    cancelButton.textContent = cancel;
+    cancelButton.textContent = cancel ?? t('取消','Cancel');
     const confirmButton = document.createElement('button');
     confirmButton.type = 'submit';
-    confirmButton.textContent = confirm;
+    confirmButton.textContent = confirm ?? t('确定','OK');
     actions.append(cancelButton, confirmButton);
     form.append(label, input, actions);
     backdrop.append(form);

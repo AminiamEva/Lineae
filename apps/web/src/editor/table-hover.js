@@ -1,9 +1,13 @@
+import { t } from '../ui/i18n.mjs';
+
 export function installTableHoverAddRow(editor, paper) {
   const rowButton = document.createElement('button');
   rowButton.type = 'button';
   rowButton.className = 'table-insert-row';
   rowButton.textContent = '+';
-  rowButton.title = '在下方插入行 / Insert row below';
+  rowButton.dataset.tooltipZh = '在下方插入行';
+  rowButton.dataset.tooltipEn = 'Insert row below';
+  rowButton.setAttribute('aria-label', t('在下方插入行','Insert row below'));
   rowButton.hidden = true;
   document.body.append(rowButton);
 
@@ -11,7 +15,9 @@ export function installTableHoverAddRow(editor, paper) {
   columnButton.type = 'button';
   columnButton.className = 'table-insert-column';
   columnButton.textContent = '+';
-  columnButton.title = '在右侧插入列 / Insert column right';
+  columnButton.dataset.tooltipZh = '在右侧插入列';
+  columnButton.dataset.tooltipEn = 'Insert column right';
+  columnButton.setAttribute('aria-label', t('在右侧插入列','Insert column right'));
   columnButton.hidden = true;
   document.body.append(columnButton);
 

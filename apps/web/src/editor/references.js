@@ -1,4 +1,5 @@
 import { Node } from '@tiptap/core';
+import { t } from '../ui/i18n.mjs';
 
 export function outline(doc) {
   const counters = [0, 0, 0];
@@ -123,7 +124,7 @@ export const TableOfContents = Node.create({
         dom.replaceChildren();
         const title = document.createElement('div');
         title.className = 'toc-title';
-        title.textContent = '目录 / Contents';
+        title.textContent = t('目录','Contents');
         dom.append(title);
         for (const item of outline(editor.state.doc)) {
           const row = document.createElement('div');

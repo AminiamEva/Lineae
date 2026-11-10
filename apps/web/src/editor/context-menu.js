@@ -3,6 +3,7 @@ import { icon } from './icons.js';
 import { promptDialog, askText } from './dialog.js';
 import { toggleDisplayStyle } from './math-node.js';
 import { popIn } from '../ui/motion.mjs';
+import { t } from '../ui/i18n.mjs';
 
 function selectedMath(context) {
   const ranges = context.field.selection.ranges;
@@ -78,9 +79,9 @@ export function contextCommands(context) {
     { id:'matrix-custom', labels:['自定义左右括号','Custom delimiters'],
       visible:Boolean(field?.value.match(/\\begin\{(?:[pbBvV]?matrix)\}/)),
       run:async()=>{
-        const left=await askText('左括号 / Left delimiter','(');
+        const left=await askText(t('左括号','Left delimiter'),'(');
         if(left===null)return;
-        const right=await askText('右括号 / Right delimiter',')');
+        const right=await askText(t('右括号','Right delimiter'),')');
         if(right===null)return;
         const value=field.value;
         const match=value.match(/\\begin\{(pmatrix|bmatrix|Bmatrix|vmatrix|Vmatrix|matrix)\}([\s\S]*?)\\end\{\1\}/);
@@ -125,7 +126,7 @@ export function contextCommands(context) {
       visible: !field && editor.isActive('heading'),
       run: async () => {
         const current = editor.getAttributes('heading').shortTitle ?? '';
-        const value = await promptDialog({ title: '短标题 / Short title', value: current });
+        const value = await promptDialog({ title: t('短标题','Short title'), value: current });
         if (value === null) return;
         editor.chain().focus().updateAttributes('heading', { shortTitle: value.trim() || null }).run();
       },
@@ -135,11 +136,11 @@ export function contextCommands(context) {
       run: async () => {
         if (editor.isActive('heading')) {
           const current = editor.getAttributes('heading').label ?? '';
-          const value = await promptDialog({ title: '标签键 / Label key', value: current });
+          const value = await promptDialog({ title: t('标签键','Label key'), value: current });
           if (value === null) return;
           editor.chain().focus().updateAttributes('heading', { label: value.trim() || null }).run();
         } else {
-          const value = await promptDialog({ title: '标签键 / Label key', value: '' });
+          const value = await promptDialog({ title: t('标签键','Label key'), value: '' });
           if (value === null || !value.trim()) return;
           editor.chain().focus().insertContent({ type: 'label', attrs: { key: value.trim() } }).run();
         }
@@ -149,7 +150,7 @@ export function contextCommands(context) {
       visible: !field && editor.isActive('label'),
       run: async () => {
         const current = editor.getAttributes('label').key ?? '';
-        const value = await promptDialog({ title: '标签键 / Label key', value: current });
+        const value = await promptDialog({ title: t('标签键','Label key'), value: current });
         if (value === null || !value.trim()) return;
         editor.chain().focus().updateAttributes('label', { key: value.trim() }).run();
       },
@@ -158,7 +159,7 @@ export function contextCommands(context) {
       visible: !field && editor.isActive('descriptionItem'),
       run: async () => {
         const current = editor.getAttributes('descriptionItem').term ?? '';
-        const value = await promptDialog({ title: '术语 / Term', value: current });
+        const value = await promptDialog({ title: t('术语','Term'), value: current });
         if (value === null) return;
         editor.chain().focus().updateAttributes('descriptionItem', { term: value.trim() }).run();
       },
@@ -166,7 +167,7 @@ export function contextCommands(context) {
     { id: 'insert-ref', labels: ['插入引用', 'Insert reference'],
       visible: !field,
       run: async () => {
-        const value = await promptDialog({ title: '引用标签 / Reference label', value: '' });
+        const value = await promptDialog({ title: t('引用标签','Reference label'), value: '' });
         if (value === null || !value.trim()) return;
         editor.chain().focus().insertContent({ type: 'ref', attrs: { key: value.trim() } }).run();
       },
@@ -175,7 +176,7 @@ export function contextCommands(context) {
       visible: !field && editor.isActive('ref'),
       run: async () => {
         const current = editor.getAttributes('ref').key ?? '';
-        const value = await promptDialog({ title: '引用标签 / Reference label', value: current });
+        const value = await promptDialog({ title: t('引用标签','Reference label'), value: current });
         if (value === null) return;
         editor.chain().focus().updateAttributes('ref', { key: value.trim() }).run();
       },
