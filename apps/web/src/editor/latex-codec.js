@@ -91,8 +91,9 @@ export function serialize(node) {
     }
     case 'math': {
       const latex = withoutPlaceholders(node.attrs.latex);
-      if (node.attrs.delimiter === '\\(') return '\\(' + latex + '\\)';
-      return node.attrs.display ? '\\[' + latex + '\\]' : '$' + latex + '$';
+      const prefix=node.attrs.breakBefore?'\\newline\n':'';
+      if (node.attrs.delimiter === '\\(') return prefix + '\\(' + latex + '\\)';
+      return prefix + (node.attrs.display ? '\\[' + latex + '\\]' : '$' + latex + '$');
     }
     case 'ref': return (node.attrs.equation ? '\\eqref{' : '\\ref{') + node.attrs.key + '}';
     case 'cite': return '\\cite{' + node.attrs.key + '}';

@@ -51,10 +51,10 @@ main { padding:125px 24px 60px; overflow:auto; }
 .code-token-string { color:light-dark(#26724f,#9dd6b7); }
 .code-token-number { color:light-dark(#8d512c,#e5b289); }
 .code-token-comment { color:light-dark(#676d76,#a5aab2); }
-.ProseMirror > p[data-indent="true"] { text-indent:1.5em; }
+.ProseMirror > p[data-indent="true"] { text-indent:2em; text-indent:2ic; }
 .space-overlay { position:absolute; inset:0; width:100%; height:100%; z-index:2; pointer-events:none; user-select:none; overflow:visible; }
 .box-edge-caret { position:absolute; width:1px; background:currentColor; z-index:3; pointer-events:none; }
-.ProseMirror.has-box-edge-caret { caret-color:transparent; }
+.ProseMirror.has-box-edge-caret,.ProseMirror.has-motion-caret { caret-color:transparent; }
 .empty-box-preview { position:absolute; width:.65em; border:1px solid currentColor; opacity:.55; pointer-events:none; }
 .ProseMirror { text-autospace:ideograph-alpha ideograph-numeric; }
 .document-find { position:fixed; inset:104px 16px auto auto; z-index:15; display:flex; flex-wrap:wrap; align-items:center; gap:5px; padding:7px; border-radius:12px; background:light-dark(#fff,#29292d); box-shadow:0 4px 18px #0003; }
@@ -78,7 +78,8 @@ main { padding:125px 24px 60px; overflow:auto; }
 .tex-logo-e { position:relative; top:.21em; text-transform:uppercase; margin-inline:-.14em -.09em; }
 .ProseMirror h1 { font-size:1.7em; }
 .ProseMirror h2 { font-size:1.4em; }
-.ProseMirror ul,.ProseMirror ol { padding-left:2em; }
+.ProseMirror :is(ul,ol) { padding-inline-start:2em; }
+.ProseMirror :is(ul,ol) :is(ul,ol) { padding-inline-start:clamp(0px,100% - 10em,2em); }
 .ProseMirror li p { margin:.2em 0; }
 .ProseMirror table { border-collapse:collapse; table-layout:fixed; width:100%; }
 .ProseMirror td,.ProseMirror th { border:1px solid light-dark(#bbb,#606066); padding:.4em; min-width:2em; position:relative; vertical-align:top; }
@@ -94,7 +95,10 @@ main { padding:125px 24px 60px; overflow:auto; }
 .ProseMirror { counter-reset:lineae-equation; }
 .ProseMirror .math-display[data-numbered="true"] { counter-increment:lineae-equation; position:relative; padding-right:3em; }
 .ProseMirror .math-display[data-numbered="true"]::after { content:"(" counter(lineae-equation) ")"; position:absolute; right:.4em; top:50%; transform:translateY(-50%); color:light-dark(#666,#b8b8bf); font-size:.9em; }
-.ProseMirror math-field { min-width:1em; border:0; background:transparent; color:inherit; font-family:inherit; text-indent:0; }
+.ProseMirror math-field { min-width:1em; max-width:100%; border:0; background:transparent; color:inherit; font-family:inherit; text-indent:0; }
+.ProseMirror .math-inline { display:inline-block; max-width:100%; vertical-align:baseline; }
+.ProseMirror .math-display math-field { max-width:calc(100% - 16px); }
+.ProseMirror math-field::part(content) { overflow-x:auto; }
 .ProseMirror .math-inline math-field { position:relative; z-index:1; display:inline-block; width:max-content; max-width:100%; min-width:.6em; padding:0; vertical-align:baseline; }
 .ProseMirror .math-inline math-field::part(container) { padding:0; }
 .ProseMirror-selectednode { outline:2px solid #468bdf; border-radius:3px; }

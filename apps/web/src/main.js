@@ -78,7 +78,8 @@ const SmallCaps = Mark.create({
 });
 const Boxed = Mark.create({
   name:'boxed',parseHTML:()=>[{tag:'span[data-boxed]'}],
-  renderHTML:()=>['span',{'data-boxed':'',style:'border:1px solid currentColor;padding:0 .2em'},0],
+  addAttributes:()=>({boxId:{default:null,parseHTML:element=>element.dataset.boxId??null}}),
+  renderHTML:({mark})=>['span',{'data-boxed':'','data-box-id':mark.attrs.boxId,style:'border:1px solid currentColor;padding:0 .2em'},0],
 });
 const TextCommand = Mark.create({
   name: 'textCommand',
@@ -443,18 +444,52 @@ function renderMeta() {
   metaAuthor.dataset.placeholder=t('作者','Author');
 }
 renderMeta();
+function recordFormulaLineBreaks(document) {
+  if (documentPage.hidden) return false;
+  let changed=false;
+  editor.state.doc.forEach((paragraph,position,index)=>{
+    if (paragraph.type.name!=='paragraph') return;
+    paragraph.forEach((node,offset,childIndex)=>{
+      if (node.type.name!=='math' || childIndex===0 ||
+          paragraph.child(childIndex-1).type.name==='hardBreak') return;
+      const start=position+1+offset;
+      const formula=editor.view.nodeDOM(start)?.getBoundingClientRect();
+      if (!formula?.width) return;
+      const preceding=editor.view.coordsAtPos(start-1,1);
+      if (formula.top<=(preceding.top+preceding.bottom)/2) return;
+      document.content[index].content[childIndex].attrs.breakBefore=true;
+      changed=true;
+    });
+  });
+  return changed;
+}
 function source() {
   const document=editor.getJSON();
-  if(importedSnapshot===JSON.stringify(document))return importedSource;
-  return exportDocument(documentParts,serialize(document));
+  const untouched=importedSnapshot===JSON.stringify(document);
+  if (!recordFormulaLineBreaks(document) && untouched) return importedSource;
+  return exportDocument(documentParts,serialize(document),{chineseTypesetting:true});
 }
 savedSource=source();
+function identifyImportedBoxes(node) {
+  let boxId=null;
+  for (const child of node.content ?? []) {
+    const mark=child.marks?.find(mark=>mark.type==='boxed');
+    if (mark) {
+      boxId ??=crypto.randomUUID();
+      mark.attrs={...mark.attrs,boxId};
+    } else {
+      boxId=null;
+    }
+    identifyImportedBoxes(child);
+  }
+}
 function load(text, markSaved = true) {
   const parsed=parseDocument(text);
   if(!parsed)throw new Error(t('无法识别文档','Invalid document'));
   // Preserve imported source exactly. Unsupported blocks remain directly accessible in source mode.
   documentParts=parsed;
   const content=parsed.blocks.flatMap(importBlocks);
+  for (const block of content) identifyImportedBoxes(block);
   editor.commands.setContent({type:'doc',content:content.length?content:[{type:'paragraph'}]});
   refreshReferences(paper);syncTableAttributes();
   importedSource=text;importedSnapshot=JSON.stringify(editor.getJSON());

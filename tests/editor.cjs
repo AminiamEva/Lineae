@@ -1009,6 +1009,22 @@ const server=createServer(async(req,res)=>{
     await page.keyboard.press('Control+Shift+b');
     assert.equal(await boxedText.count(),0,'The shortcut unwraps the whole box from inside');
     assert.match(await paper.textContent(),/LBoxIX after/);
+    await importSource('中文\\fbox{甲} \\fbox{乙}');
+    await page.waitForFunction(()=>document.querySelectorAll('.ProseMirror [data-boxed]').length===2);
+    const firstBox=paper.locator('[data-boxed]').first();
+    const firstBounds=await firstBox.boundingBox();
+    await page.mouse.click(firstBounds.x+firstBounds.width+1,firstBounds.y+firstBounds.height/2);
+    await page.locator('.box-edge-caret[data-edge="right"][data-side="outside"]').waitFor();
+    await page.keyboard.press('Delete');
+    assert.equal(await paper.locator('[data-boxed]').count(),2);
+    assert.equal(await paper.locator('p').first().textContent(),'中文甲乙');
+    await page.keyboard.press('Control+Shift+b');
+    await page.locator('.empty-box-preview').waitFor();
+    await page.keyboard.type('Z');
+    assert.deepEqual(await paper.locator('[data-boxed]').allTextContents(),['甲','Z','乙']);
+    await page.locator('.source-toggle').click();
+    assert.match(await page.locator('.source-view').inputValue(),/\\usepackage\{ctex\}/);
+    await page.locator('.source-toggle').click();
     await importSource('\\begin{quote}\nQuoted text.\n\\end{quote}');
     await paper.locator('blockquote p').click();
     await page.keyboard.press('Control+j');
@@ -1043,6 +1059,24 @@ const server=createServer(async(req,res)=>{
       }
     }
     await page.setViewportSize({width:1280,height:1400});
+    const longFormula='x+y+'.repeat(160)+'z';
+    await importSource('Lead $'+longFormula+'$\n\n\\['+longFormula+'\\]');
+    await page.waitForFunction(()=>document.querySelectorAll('.ProseMirror math-field').length===2);
+    assert.ok(await paper.evaluate(element=>{
+      const right=element.getBoundingClientRect().right;
+      return [...element.querySelectorAll('math-field')].every(field=>field.getBoundingClientRect().right<=right+1);
+    }),'Long inline and display formulas stay within the text column');
+    await page.locator('.source-toggle').click();
+    assert.ok((await page.locator('.source-view').inputValue()).includes('\\newline\n$'+longFormula+'$'));
+    await page.locator('.source-toggle').click();
+    const nestedLists=Array.from({length:32},(_,index)=>index%2?'enumerate':'itemize');
+    await importSource(nestedLists.map(kind=>'\\begin{'+kind+'}\n\\item Level\n').join('')+
+      nestedLists.reverse().map(kind=>'\\end{'+kind+'}\n').join(''));
+    await page.waitForFunction(()=>document.querySelectorAll('.ProseMirror li').length===32);
+    assert.ok(await paper.evaluate(element=>{
+      const right=element.getBoundingClientRect().right;
+      return [...element.querySelectorAll('li')].every(item=>item.getBoundingClientRect().left<right-20);
+    }),'Deep mixed lists retain room for text');
     await importSource('Before $x$ after');
     await page.waitForFunction(()=>document.querySelector('.ProseMirror p')?.textContent.includes('Before') && document.querySelector('[data-math-view]')?.dataset.latex==='x');
     await page.locator('math-field').evaluate(field=>{field.focus();field.executeCommand('moveToMathfieldEnd');});

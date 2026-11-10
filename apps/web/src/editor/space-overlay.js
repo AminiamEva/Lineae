@@ -20,38 +20,62 @@ export function installSpaceOverlay(editor, paper) {
   emptyBox.hidden=true;
   emptyBox.setAttribute('aria-hidden','true');
   page.append(emptyBox);
+  const motionCaret=document.createElement('span');
+  motionCaret.className='box-edge-caret';
+  motionCaret.hidden=true;
+  motionCaret.setAttribute('aria-hidden','true');
+  page.append(motionCaret);
+  const reducedMotion=window.matchMedia('(prefers-reduced-motion: reduce)');
+  let lastCaret=null;
+  let caretAnimation=null;
+  let animateCaret=false;
   let enabled = true;
   let composing = false;
   let frame = 0;
   let compositionFrame = 0;
   let arrowOrigin = null;
 
-  function boxEdge() {
+  function boxEdge(preferNext=false) {
     const { selection }=editor.state;
     if (!selection.empty || !selection.$from.parent.isTextblock) return null;
     const { $from }=selection;
     const before=$from.nodeBefore?.marks ?? [];
     const after=$from.nodeAfter?.marks ?? [];
-    const boxed=mark=>mark.type.name==='boxed';
-    const end=before.some(boxed);
-    if (end===after.some(boxed)) return null;
+    const boxed=editor.schema.marks.boxed;
+    const previous=boxed.isInSet(before);
+    const next=boxed.isInSet(after);
+    if ((!previous && !next) || (previous && next && previous.eq(next))) return null;
+    const active=boxed.isInSet(editor.state.storedMarks ?? []);
+    const end=Boolean(previous && (!next || (active ? previous.eq(active) : !preferNext)));
     const {node,offset}=editor.view.domAtPos($from.pos,end?-1:1);
     const adjacent=node.nodeType===Node.ELEMENT_NODE ? node.childNodes[end?offset-1:offset] : node;
     const element=adjacent?.nodeType===Node.ELEMENT_NODE ? adjacent : adjacent?.parentElement;
     const box=element?.closest('[data-boxed]');
     const rect=box && [...box.getClientRects()].at(end?-1:0);
-    return rect?.width ? {rect,end,box,insideMarks:end?before:after,outsideMarks:end?after:before} : null;
+    const outsideMarks=boxed.removeFromSet(end?after:before);
+    return rect?.width ? {rect,end,box,mark:end?previous:next,insideMarks:end?before:after,outsideMarks} : null;
   }
 
   function insideBox(edge) {
     const {storedMarks,selection}=editor.state;
-    if (storedMarks) return storedMarks.some(mark=>mark.type.name==='boxed');
+    if (storedMarks) return Boolean(edge.mark.isInSet(storedMarks));
     if (arrowOrigin && selection.from!==arrowOrigin.position)
       return edge.end===arrowOrigin.right;
     return edge.box.contains(window.getSelection()?.anchorNode);
   }
 
-  paper.addEventListener('pointerdown',()=>{arrowOrigin=null;},true);
+  function pendingBoxMark(selection, marks) {
+    const mark=editor.schema.marks.boxed.isInSet(marks ?? []);
+    return mark && !mark.isInSet(selection.$from.nodeBefore?.marks ?? []) &&
+      !mark.isInSet(selection.$from.nodeAfter?.marks ?? []) ? mark : null;
+  }
+
+  paper.addEventListener('pointerdown',()=>{
+    arrowOrigin=null;
+    animateCaret=false;
+    lastCaret=null;
+    caretAnimation?.cancel();
+  },true);
   paper.addEventListener('keydown',event=>{
     if (event.ctrlKey && event.shiftKey && !event.altKey && !event.metaKey &&
         (event.code==='KeyB' || event.key.toLowerCase()==='b') &&
@@ -64,7 +88,9 @@ export function installSpaceOverlay(editor, paper) {
         const {selection,storedMarks}=editor.state;
         const edge=boxEdge();
         const inside=edge ? insideBox(edge) : editor.isActive('boxed');
-        if (selection.empty && inside) {
+        if (selection.empty && pendingBoxMark(selection,storedMarks)) {
+          editor.commands.unsetMark('boxed');
+        } else if (selection.empty && inside) {
           const boxed=editor.schema.marks.boxed;
           editor.chain().extendMarkRange('boxed').unsetMark('boxed').command(({tr})=>{
             tr.setSelection(selection.constructor.create(tr.doc,selection.from));
@@ -72,13 +98,37 @@ export function installSpaceOverlay(editor, paper) {
             return true;
           }).run();
         } else if (selection.empty && edge) {
-          const boxed=editor.schema.marks.boxed.create();
+          const boxed=editor.schema.marks.boxed.create({boxId:crypto.randomUUID()});
           editor.view.dispatch(editor.state.tr.setStoredMarks(boxed.addToSet(storedMarks ?? edge.outsideMarks)));
         } else {
-          editor.commands.toggleMark('boxed');
+          if (editor.isActive('boxed')) editor.commands.unsetMark('boxed');
+          else editor.commands.setMark('boxed',{boxId:crypto.randomUUID()});
         }
       }
       return;
+    }
+    if ((event.key==='Backspace' || event.key==='Delete') && !event.ctrlKey && !event.shiftKey &&
+        !event.metaKey && !event.altKey && !composing && !event.isComposing && editor.view.hasFocus()) {
+      editor.view.domObserver.flush();
+      const edge=boxEdge();
+      const backward=event.key==='Backspace';
+      if (edge && !insideBox(edge) && backward!==edge.end) {
+        const {doc,selection}=editor.state;
+        const { $from }=selection;
+        const gap=backward?$from.nodeBefore:$from.nodeAfter;
+        if (gap?.isText && /^[ \u00a0]+$/.test(gap.text)) {
+          const other=doc.resolve($from.pos+(backward?-gap.nodeSize:gap.nodeSize));
+          const neighbor=backward?other.nodeBefore:other.nodeAfter;
+          if (editor.schema.marks.boxed.isInSet(neighbor?.marks ?? [])) {
+            event.preventDefault();
+            event.stopPropagation();
+            arrowOrigin=null;
+            const from=$from.pos-(backward?1:0);
+            editor.view.dispatch(editor.state.tr.delete(from,from+1).setStoredMarks(edge.outsideMarks));
+            return;
+          }
+        }
+      }
     }
     const right=event.key==='ArrowRight';
     const horizontal=right || event.key==='ArrowLeft';
@@ -88,7 +138,7 @@ export function installSpaceOverlay(editor, paper) {
       return;
     }
     editor.view.domObserver.flush();
-    const edge=boxEdge();
+    const edge=boxEdge(right);
     if (edge) {
       const enter=right!==edge.end;
       if (insideBox(edge)!==enter) {
@@ -126,17 +176,17 @@ export function installSpaceOverlay(editor, paper) {
     const edge=!composing && editor.view.hasFocus() ? boxEdge() : null;
     const marks=editor.state.storedMarks;
     const {selection}=editor.state;
-    const pendingBox=!edge && !composing && editor.view.hasFocus() && selection.empty &&
-      marks?.some(mark=>mark.type.name==='boxed') &&
-      !selection.$from.marks().some(mark=>mark.type.name==='boxed');
+    const pendingBox=!composing && editor.view.hasFocus() && selection.empty &&
+      pendingBoxMark(selection,marks);
     emptyBox.hidden=!pendingBox;
     if (pendingBox) {
       const caret=editor.view.coordsAtPos(selection.from);
-      emptyBox.style.left=((caret.left-pageRect.left)/zoom-2)+'px';
+      const x=edge?.end ? edge.rect.right+2*zoom : caret.left-2*zoom;
+      emptyBox.style.left=((x-pageRect.left)/zoom)+'px';
       emptyBox.style.top=((caret.top-pageRect.top)/zoom)+'px';
       emptyBox.style.height=Math.max(1,(caret.bottom-caret.top)/zoom)+'px';
     }
-    boxCaret.hidden=!(edge && (marks || (arrowOrigin && editor.state.selection.from!==arrowOrigin.position)));
+    boxCaret.hidden=pendingBox || !(edge && (marks || (arrowOrigin && editor.state.selection.from!==arrowOrigin.position)));
     editor.view.dom.classList.toggle('has-box-edge-caret',!boxCaret.hidden);
     if (!boxCaret.hidden) {
       const inside=insideBox(edge);
@@ -147,6 +197,46 @@ export function installSpaceOverlay(editor, paper) {
       boxCaret.style.top=((edge.rect.top-pageRect.top)/zoom+2)+'px';
       boxCaret.style.height=Math.max(1,edge.rect.height/zoom-4)+'px';
     }
+    const canAnimate=!reducedMotion.matches && !composing && selection.empty &&
+      editor.view.hasFocus() && boxCaret.hidden && !pendingBox && pageRect.width;
+    if (!canAnimate) {
+      lastCaret=null;
+      caretAnimation?.cancel();
+    } else {
+      const caret=editor.view.coordsAtPos(selection.from);
+      const next={
+        x:(caret.left-pageRect.left)/zoom,
+        y:(caret.top-pageRect.top)/zoom,
+        height:(caret.bottom-caret.top)/zoom,
+        position:selection.from,
+      };
+      if (animateCaret && lastCaret && next.position!==lastCaret.position &&
+          Math.abs(next.y-lastCaret.y)<2 && Math.abs(next.x-lastCaret.x)>0.5 &&
+          Math.abs(next.x-lastCaret.x)<80 && next.height>0) {
+        const delta=lastCaret.x-next.x;
+        caretAnimation?.cancel();
+        motionCaret.hidden=false;
+        motionCaret.style.left=next.x+'px';
+        motionCaret.style.top=next.y+'px';
+        motionCaret.style.height=next.height+'px';
+        editor.view.dom.classList.add('has-motion-caret');
+        const animation=motionCaret.animate(
+          [{transform:'translateX('+delta+'px)'},{transform:'translateX(0)'}],
+          {duration:75,easing:'ease-out'},
+        );
+        caretAnimation=animation;
+        const finish=()=>{
+          if (caretAnimation!==animation) return;
+          caretAnimation=null;
+          motionCaret.hidden=true;
+          editor.view.dom.classList.remove('has-motion-caret');
+        };
+        animation.onfinish=finish;
+        animation.oncancel=finish;
+      }
+      lastCaret=next;
+    }
+    animateCaret=false;
     overlay.hidden=!enabled || !pageRect.width || !pageRect.height;
     if (overlay.hidden) return;
     const width=page.clientWidth;
@@ -257,6 +347,7 @@ export function installSpaceOverlay(editor, paper) {
     compositionFrame=requestAnimationFrame(compositionLoop);
   }
   editor.on('transaction',({transaction})=>{
+    if (transaction.docChanged || transaction.selectionSet) animateCaret=true;
     schedule();
     if (!transaction.selectionSet || !arrowOrigin || editor.state.storedMarks) return;
     const state=editor.state;

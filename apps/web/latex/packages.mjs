@@ -29,19 +29,24 @@ function declaredPackages(preamble) {
   return new Set(Array.from(declarations).flatMap(match => match[1].split(',').map(name => name.trim())));
 }
 
-export function resolvePackages(preamble, body) {
+export function resolvePackages(preamble, body, { chineseTypesetting=false } = {}) {
   const existing = declaredPackages(preamble);
   const source = withoutComments(body);
-  return dependencies.filter(rule => {
+  const required=dependencies.filter(rule => {
     if (existing.has(rule.name) || !rule.pattern.test(source)) return false;
     const alternative = rule.satisfies?.some(name => existing.has(name));
     return !alternative || Boolean(rule.onlyUrl?.test(source));
   });
+  const cleanPreamble=withoutComments(preamble);
+  const chineseClass=/\\documentclass\s*(?:\[[^\]]*\]\s*)?\{ctex(?:art|rep|book|beamer)\}/.test(cleanPreamble);
+  if (chineseTypesetting && !chineseClass && !existing.has('ctex') && !existing.has('xeCJK') &&
+      /\p{Script=Han}/u.test(cleanPreamble + source)) required.push({name:'ctex'});
+  return required;
 }
 
-export function exportDocument({ start, end, eol }, body) {
+export function exportDocument({ start, end, eol }, body, options) {
   let preamble = start;
-  for (const { name, beforeClass } of resolvePackages(start, body)) {
+  for (const { name, beforeClass } of resolvePackages(start, body, options)) {
     if (beforeClass) {
       preamble = preamble.replace(/^([ \t]*\\documentclass)/m, '\\RequirePackage{' + name + '}' + eol + '$1');
     } else {
