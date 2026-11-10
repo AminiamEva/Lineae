@@ -667,7 +667,7 @@ const server=createServer(async(req,res)=>{
     await paper.locator('p').first().click();
     await page.keyboard.press('Control+f');
     const find=page.locator('.document-find');
-    await find.locator('input').fill('word');
+    await find.locator('input').first().fill('word');
     assert.equal(await find.locator('output').textContent(),'1 / 2');
     await page.keyboard.press('Enter');
     assert.equal(await find.locator('output').textContent(),'2 / 2');
@@ -834,6 +834,16 @@ const server=createServer(async(req,res)=>{
     await paper.focus();
     await page.keyboard.press('Delete');
     await page.waitForFunction(()=>document.querySelector('.ProseMirror p')?.textContent.trimStart()==='后中');
+    await importSource('alpha beta alpha');
+    await page.waitForFunction(()=>document.querySelector('.ProseMirror p')?.textContent==='alpha beta alpha');
+    await paper.locator('p').click();
+    await page.keyboard.press('Control+f');
+    const findPanel=page.locator('.document-find');
+    await findPanel.locator('input').first().fill('alpha');
+    await findPanel.locator('.document-find-row input').fill('gamma');
+    await findPanel.locator('[data-action="replace-all"]').click();
+    await page.waitForFunction(()=>document.querySelector('.ProseMirror p')?.textContent==='gamma beta gamma');
+    await page.keyboard.press('Escape');
     assert.deepEqual(errors,[]);
     console.log('Browser regressions passed');
   }finally{

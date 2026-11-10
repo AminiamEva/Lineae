@@ -50,6 +50,16 @@ export const DocumentImage = Node.create({
       const button=document.createElement('button');
       button.type='button';
       const caption=document.createElement('figcaption');
+      caption.contentEditable='true';
+      caption.spellcheck=false;
+      caption.dataset.placeholder=t('题注','Caption');
+      caption.addEventListener('keydown',event=>{
+        if(event.key==='Enter'){event.preventDefault();caption.blur();}
+      });
+      caption.addEventListener('blur',()=>{
+        const text=caption.textContent.trim();
+        if(text!==(node.attrs.caption??''))update({figure:true,caption:text||null},node);
+      });
       const controls=document.createElement('div');
       controls.className='document-image-controls';
       const size=document.createElement('button');
@@ -79,7 +89,7 @@ export const DocumentImage = Node.create({
         if(preview)image.src=preview;
         image.alt=node.attrs.path;
         caption.textContent=node.attrs.caption??'';
-        caption.hidden=node.attrs.caption===null;
+        caption.hidden=node.attrs.caption===null && !node.attrs.figure;
         dom.dataset.centered=String(node.attrs.centered);
         button.textContent=t('定位图片','Locate image')+' · '+node.attrs.path;
         const width=node.attrs.width;
@@ -88,7 +98,7 @@ export const DocumentImage = Node.create({
       button.addEventListener('click',()=>chooseFile(file=>{remember(node.attrs.path,file);refresh();}));
       dom.append(image,button,caption,controls);
       refresh();
-      return {dom,stopEvent:event=>button.contains(event.target)||controls.contains(event.target),update(next){if(next.type!==node.type)return false;node=next;refresh();return true;}};
+      return {dom,stopEvent:event=>button.contains(event.target)||controls.contains(event.target)||caption.contains(event.target),update(next){if(next.type!==node.type)return false;node=next;refresh();return true;}};
     };
   },
 });
