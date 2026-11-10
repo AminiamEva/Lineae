@@ -659,8 +659,9 @@ const server=createServer(async(req,res)=>{
     await page.waitForFunction(()=>document.querySelector('math-field')?.value.includes('mathbf{AB}'));
     await paper.locator('p').click({position:{x:2,y:8}});
     await paper.locator('p').evaluate(paragraph=>{
-      const leading=Array.from(paragraph.childNodes).find(node=>node.nodeType===Node.TEXT_NODE);
-      window.getSelection().collapse(leading,leading.length);
+      const math=paragraph.querySelector('[data-math-view]');
+      const boundary=Array.from(paragraph.childNodes).indexOf(math);
+      window.getSelection().collapse(paragraph,boundary);
     });
     await page.keyboard.press('Control+e');
     await page.keyboard.press('e');
@@ -770,6 +771,29 @@ const server=createServer(async(req,res)=>{
     await paper.locator('pre code').waitFor();
     await page.keyboard.type('return 42');
     assert.equal(await paper.locator('pre code').textContent(),'return 42');
+    await importSource('alpha beta gamma');
+    await page.waitForFunction(()=>document.querySelector('.ProseMirror p')?.textContent==='alpha beta gamma');
+    const words=await paper.locator('p').evaluate(paragraph=>{
+      const bounds=[];
+      const walker=document.createTreeWalker(paragraph,NodeFilter.SHOW_TEXT);
+      for(let node=walker.nextNode();node;node=walker.nextNode()) {
+        const word=/alpha|gamma/.exec(node.textContent);
+        if(!word)continue;
+        const range=document.createRange();range.setStart(node,word.index);range.setEnd(node,word.index+word[0].length);
+        const rect=range.getBoundingClientRect();bounds.push({left:rect.left,right:rect.right,y:(rect.top+rect.bottom)/2});
+      }
+      return bounds;
+    });
+    for (let index=0;index<words.length;index++) {
+      if(index) await page.keyboard.down('Control');
+      const word=words[index];
+      await page.mouse.move(word.left+0.5,word.y);await page.mouse.down();
+      await page.mouse.move(word.right-0.5,word.y,{steps:8});await page.mouse.up();
+      if(index) await page.keyboard.up('Control');
+    }
+    await page.waitForFunction(()=>document.querySelectorAll('.lineae-multi-selected').length>=2);
+    await page.keyboard.press('Delete');
+    assert.equal((await paper.locator('p').textContent()).trim(),'beta');
     assert.deepEqual(errors,[]);
     console.log('Browser regressions passed');
   }finally{

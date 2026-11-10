@@ -12,6 +12,7 @@ import { parseYaml, toYaml, mergeConfig } from './editor/config.mjs';
 import { askText } from './editor/dialog.js';
 import { installDocumentFind } from './editor/find.js';
 import { DocumentImage, insertLocalImage } from './editor/image-node.js';
+import { MultiSelection } from './editor/multi-selection.js';
 import { wrapMathWithDelimiters } from '../latex/delimiters.mjs';
 import { readDelimiterPair } from './editor/delimiter-input.js';
 import { serialize, importBlocks } from './editor/latex-codec.js';
@@ -219,7 +220,7 @@ paper.before(documentPage);documentPage.append(paper);
 paper.replaceChildren();
 editor=new Editor({
   element:paper,
-  extensions:[StarterKit.configure({heading:{levels:[1,2,3]}}),PaperBehavior,TextStyle,TextCommand,Underline,Superscript,Subscript,SmallCaps,Boxed,Table.configure({resizable:true}),TableRow,TableCell,TableHeader,Raw,DocumentImage,DescriptionList,DescriptionItem,MathNode,MathBlock,Ref,Label,TableOfContents,Shortcuts],
+  extensions:[StarterKit.configure({heading:{levels:[1,2,3]}}),MultiSelection,PaperBehavior,TextStyle,TextCommand,Underline,Superscript,Subscript,SmallCaps,Boxed,Table.configure({resizable:true}),TableRow,TableCell,TableHeader,Raw,DocumentImage,DescriptionList,DescriptionItem,MathNode,MathBlock,Ref,Label,TableOfContents,Shortcuts],
   content:'<p></p>',
 });
 function syncTableAttributes() {
