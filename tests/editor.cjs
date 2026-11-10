@@ -91,6 +91,10 @@ const server=createServer(async(req,res)=>{
     assert.deepEqual(await completion.boundingBox(),initialBounds,'Filtering must not move or resize completion');
     await page.keyboard.press('Enter');
     await page.waitForFunction(()=>document.activeElement?.tagName==='MATH-FIELD');
+    await page.waitForFunction(()=>{
+      const fields=document.querySelectorAll('math-field');
+      return fields[fields.length-1]?.value.includes('sqrt');
+    });
     assert.match(await page.locator('math-field').last().evaluate(field=>field.value),/sqrt/);
     await page.keyboard.type('\\');
     await page.waitForFunction(()=>!document.querySelector('.command-menu').hidden);
@@ -98,6 +102,10 @@ const server=createServer(async(req,res)=>{
     await completion.locator('input').fill('alpha');
     assert.deepEqual(await completion.boundingBox(),mathBounds);
     await page.keyboard.press('Enter');
+    await page.waitForFunction(()=>{
+      const fields=document.querySelectorAll('math-field');
+      return fields[fields.length-1]?.value.includes('alpha');
+    });
     assert.match(await page.locator('math-field').last().evaluate(field=>field.value),/alpha/);
     const importSource = async body => {
       await page.locator('input[type=file]').setInputFiles({
@@ -530,6 +538,7 @@ const server=createServer(async(req,res)=>{
     await page.waitForFunction(()=>!document.querySelector('.editor-context-menu').hidden);
     await context.locator('[data-command="display-style"]').click();
     assert.equal(await displayField.evaluate(field=>field.value),'\\displaystyle{\\sum}','Display style wraps the whole formula');
+    await displayField.focus();
     await page.keyboard.type('\\');
     await page.waitForFunction(()=>!document.querySelector('.command-menu').hidden);
     await page.locator('.command-menu input').fill('prod');
