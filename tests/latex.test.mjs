@@ -3,6 +3,7 @@ import test from 'node:test';
 import { parseDocument } from '../apps/web/latex/document.mjs';
 import { parseInline } from '../apps/web/latex/inline.mjs';
 import { exportDocument, resolvePackages } from '../apps/web/latex/packages.mjs';
+import { serialize } from '../apps/web/src/editor/latex-codec.js';
 
 test('preserves the bytes of an untouched document, including CRLF and opaque environments', () => {
   const source = [
@@ -13,6 +14,18 @@ test('preserves the bytes of an untouched document, including CRLF and opaque en
   assert.equal(doc.eol, '\r\n');
   assert.ok(doc.blocks.some(block => block.includes('first\r\n\r\nsecond')));
   assert.equal(exportDocument(doc, doc.blocks.join('')), source);
+});
+
+test('serializes raw blocks with a blank line before following text', () => {
+  const doc = {
+    type: 'doc',
+    content: [
+      { type: 'paragraph', content: [{ type: 'text', text: 'Before' }] },
+      { type: 'raw', attrs: { source: '\\begin{opaque}\nbody\n\\end{opaque}' } },
+      { type: 'paragraph', content: [{ type: 'text', text: 'After' }] },
+    ],
+  };
+  assert.equal(serialize(doc), 'Before\n\n\\begin{opaque}\nbody\n\\end{opaque}\n\nAfter\n\n');
 });
 
 test('recognizes inline formatting and preserves the original math delimiter', () => {

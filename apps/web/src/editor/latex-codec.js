@@ -71,7 +71,7 @@ export function serialize(node) {
     }
     case 'ref': return '\\ref{' + node.attrs.key + '}';
     case 'label': return '\\label{' + node.attrs.key + '}';
-    case 'raw': return node.attrs.source;
+    case 'raw': return node.attrs.source.replace(/\n+$/, '') + '\n\n';
     case 'hardBreak': return '\\\\\n';
     case 'table': {
       const columns = node.attrs.columns || 'l'.repeat(node.content[0]?.content.length ?? 1);
