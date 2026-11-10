@@ -52,7 +52,14 @@ export function contextCommands(context) {
       run:()=>{
         // Operate on the matrix containing the caret, not the first source match.
         // This preserves sibling/nested matrices and the math editor's selection.
-        field.focus();field.executeCommand(['setEnvironment',target]);
+        field.focus();
+        if(field.executeCommand(['setEnvironment',target]))return;
+        // A click on the bracket can select the whole formula. Only when there
+        // is exactly one simple matrix is entering its first cell unambiguous.
+        if(/^\\begin\{([pbBvV]?matrix)\}(?:(?!\\(?:begin|end)\{)[\s\S])*\\end\{\1\}$/.test(field.value)) {
+          field.position=1;
+          field.executeCommand(['setEnvironment',target]);
+        }
       },
     })),
     { id:'matrix-custom', labels:['自定义左右括号','Custom delimiters'],
