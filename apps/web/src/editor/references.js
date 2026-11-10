@@ -22,23 +22,26 @@ export function outline(doc) {
 export function collectReferenceLabels(doc) {
   const labels = [];
   const seen = new Set();
-  for (const heading of outline(doc)) {
-    if (!heading.label || seen.has(heading.label)) continue;
-    seen.add(heading.label);
-    labels.push({ key:heading.label, number:heading.number || null, title:heading.text, kind:'heading' });
-  }
+  const headings=outline(doc);
+  let headingIndex=0;
   let equationNumber=0;
+  let current={number:null,title:'',kind:'label'};
+  function add(key,details) {
+    if(!key || seen.has(key))return;
+    seen.add(key);labels.push({key,...details});
+  }
   doc.descendants(node => {
+    if(node.type.name==='heading') {
+      const heading=headings[headingIndex++];
+      if(heading?.number)current={number:heading.number,title:heading.text,kind:'heading'};
+      add(node.attrs.label,current);
+    }
     if (node.type.name==='mathBlock' && node.attrs.delimiter==='equation') {
       equationNumber++;
-      if(node.attrs.label && !seen.has(node.attrs.label)) {
-        seen.add(node.attrs.label);
-        labels.push({key:node.attrs.label,number:String(equationNumber),title:node.attrs.latex,kind:'equation'});
-      }
+      current={number:String(equationNumber),title:node.attrs.latex,kind:'equation'};
+      add(node.attrs.label,current);
     }
-    if (node.type.name !== 'label' || seen.has(node.attrs.key)) return;
-    seen.add(node.attrs.key);
-    labels.push({ key:node.attrs.key, number:null, title:'', kind:'label' });
+    if (node.type.name==='label') add(node.attrs.key,current);
   });
   return labels;
 }

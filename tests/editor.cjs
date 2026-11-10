@@ -858,6 +858,11 @@ const server=createServer(async(req,res)=>{
     await importSource('\\section{First}\\label{sec:first}\n\nMark \\label{note} here and see \\ref{sec:first}');
     await page.waitForFunction(()=>document.querySelector('.label-node')&&document.querySelector('.ref-node'));
     assert.equal(await page.locator('.ref-node').textContent(),'1','References show only the resolved number');
+    await importSource('\\section{First}\n\n\\subsection{Child}\n\nBody \\label{yes}.\n\n\\section{Second}\n\nSee \\ref{yes}.');
+    await page.waitForFunction(()=>document.querySelector('.ref-node')?.textContent==='1.1');
+    assert.equal(await page.locator('.ref-node').textContent(),'1.1','Inline label uses the most recent numbered section');
+    await importSource('\\section{First}\\label{sec:first}\n\nMark \\label{note} here and see \\ref{sec:first}');
+    await page.waitForFunction(()=>document.querySelector('.label-node')&&document.querySelector('.ref-node'));
     const labelPlacement=await page.evaluate(()=>{
       const label=document.querySelector('.label-node');
       const page=document.querySelector('.document-page');

@@ -39,6 +39,13 @@ const paths = {
   left:'M4 6h16M4 12h10M4 18h16',
   center:'M4 6h16M7 12h10M4 18h16',
   right:'M4 6h16M10 12h10M4 18h16',
+  image:'M3 4h18v16H3zM5 17l4-5 3 3 3-4 4 6M15 8h.01',
+  folder:'M3 6h7l2 2h9v11H3z',
+  borders:'M4 4h16v16H4zM4 12h16M12 4v16',
+  ruler:'M3 7h18v10H3zM7 7v4m4-4v3m4-3v4m4-4v3',
+  citation:'M5 5h5v6H5zM14 5h5v6h-5zM8 11l-2 6m11-6-2 6',
+  equation:'M5 6h14M5 12h14M5 18h14M8 3v6M16 15v6',
+  short:'M4 6h16M4 12h10M4 18h7',
 };
 export function icon(name) {
   const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');
@@ -52,12 +59,15 @@ export function decorateToolbar(root) {
     B:['bold','粗体 / Bold',false],I:['italic','斜体 / Italic',false],U:['underline','下划线 / Underline',false],S:['strike','删除线 / Strikethrough',false],
     itemize:['list','itemize',true],enumerate:['list','enumerate',true],
     code:['code','code',true],quote:['quote','quote',true],hr:['hr','hr',false],desc:['desc','desc',true],
-    label:['label','label',true],ref:['ref','ref',true],toc:['toc','toc',true],short:['short','short',true],title:['title','title',true],author:['author','author',true],
+    label:['label','label',true],ref:['ref','ref',true],eqref:['ref','eqref',true],refs:['ref','refs',true],cite:['citation','cite',true],toc:['toc','toc',true],short:['short','short',true],title:['title','title',true],author:['author','author',true],
     '▦':['table','▦',false],'＋ Row':['row','＋ Row',true],'＋ Column':['column','＋ Column',true],
     merge:['merge','merge',true],split:['split','split',true],booktabs:['booktabs','booktabs',true],
     '左':['left','左 / Left',false],'中':['center','中 / Center',false],'右':['right','右 / Right',false],
     frac:['frac','frac',true],sqrt:['sqrt','sqrt',true],sum:['sum','sum',true],int:['int','int',true],
-    matrix:['matrix','matrix',true],cases:['cases','cases',true],align:['align','align',true],
+    matrix:['matrix','matrix',true],cases:['cases','cases',true],align:['align','align',true],equation:['equation','equation',true],
+    '图片':['image','图片 / Image',true],Image:['image','图片 / Image',true],
+    '边框':['borders','边框 / Borders',true],Borders:['borders','边框 / Borders',true],
+    '线宽':['ruler','线宽 / Rule width',true],'Rule width':['ruler','线宽 / Rule width',true],
     '$':['math','$',true],'$$':['math','$$',true],LaTeX:['code','LaTeX',true]};
   for(const control of root.querySelectorAll('button')) {
     const label=control.textContent, entry=map[label]; if(!entry)continue;
