@@ -1005,6 +1005,10 @@ const server=createServer(async(req,res)=>{
     await page.locator('.empty-box-preview').waitFor();
     await page.keyboard.press('Control+Shift+b');
     await page.locator('.empty-box-preview').waitFor({state:'hidden'});
+    await boxedText.click();
+    await page.keyboard.press('Control+Shift+b');
+    assert.equal(await boxedText.count(),0,'The shortcut unwraps the whole box from inside');
+    assert.match(await paper.textContent(),/LBoxIX after/);
     await importSource('\\begin{quote}\nQuoted text.\n\\end{quote}');
     await paper.locator('blockquote p').click();
     await page.keyboard.press('Control+j');

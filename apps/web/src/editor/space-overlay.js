@@ -61,7 +61,22 @@ export function installSpaceOverlay(editor, paper) {
       arrowOrigin=null;
       if (!event.repeat) {
         editor.view.domObserver.flush();
-        editor.commands.toggleMark('boxed');
+        const {selection,storedMarks}=editor.state;
+        const edge=boxEdge();
+        const inside=edge ? insideBox(edge) : editor.isActive('boxed');
+        if (selection.empty && inside) {
+          const boxed=editor.schema.marks.boxed;
+          editor.chain().extendMarkRange('boxed').unsetMark('boxed').command(({tr})=>{
+            tr.setSelection(selection.constructor.create(tr.doc,selection.from));
+            tr.removeStoredMark(boxed);
+            return true;
+          }).run();
+        } else if (selection.empty && edge) {
+          const boxed=editor.schema.marks.boxed.create();
+          editor.view.dispatch(editor.state.tr.setStoredMarks(boxed.addToSet(storedMarks ?? edge.outsideMarks)));
+        } else {
+          editor.commands.toggleMark('boxed');
+        }
       }
       return;
     }
