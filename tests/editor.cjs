@@ -700,12 +700,16 @@ const server=createServer(async(req,res)=>{
     await page.keyboard.press('Escape');
     assert.equal(await find.isVisible(),false);
     await page.locator('math-field').click();
+    await page.waitForFunction(()=>document.activeElement?.tagName==='MATH-FIELD');
     await page.keyboard.press('Control+i');
+    await page.waitForFunction(()=>document.querySelector('math-field')?.value.includes('\\int'));
     assert.match(await page.locator('math-field').evaluate(field=>field.value),/\\int/);
     await page.keyboard.press('Control+f');
+    await page.waitForFunction(()=>document.querySelector('math-field')?.value.includes('\\frac'));
     assert.match(await page.locator('math-field').evaluate(field=>field.value),/\\frac/);
     assert.equal(await find.isVisible(),false);
     await page.keyboard.press('Control+m');
+    await page.waitForFunction(()=>document.querySelector('math-field')?.value.includes('\\begin{pmatrix}'));
     assert.match(await page.locator('math-field').evaluate(field=>field.value),/\\begin\{pmatrix\}/);
     assert.deepEqual(errors,[]);
     console.log('Browser regressions passed');
