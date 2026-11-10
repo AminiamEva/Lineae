@@ -27,6 +27,9 @@ main { padding:125px 24px 60px; overflow:auto; }
 .ProseMirror { min-height:250mm; outline:none; overflow-wrap:anywhere; white-space:pre-wrap; }
 .ProseMirror p { margin:0; }
 .ProseMirror p + p { text-indent:1.5em; }
+.document-find { position:fixed; inset:104px 16px auto auto; z-index:15; display:flex; align-items:center; gap:5px; padding:7px; border-radius:12px; background:light-dark(#fff,#29292d); box-shadow:0 4px 18px #0003; }
+.document-find input { width:min(38vw,200px); font:inherit; padding:5px 8px; border:1px solid light-dark(#ccd0d8,#555); border-radius:7px; }
+.document-find output { min-width:3em; font-size:.85em; }
 [data-text-command="LaTeX"],[data-text-command="TeX"] { position:relative; white-space:nowrap; }
 .tex-logo-source { color:transparent; }
 .tex-logo-art { position:absolute; inset-inline-start:0; top:0; pointer-events:none; user-select:none; }

@@ -204,6 +204,12 @@ export const MathNode = Node.create({
       });
       let leavingStructure = false;
       field.addEventListener('keydown', event => {
+        const key = event.key.toLowerCase();
+        if (event.ctrlKey && !event.shiftKey && !event.altKey && !event.metaKey && ['f','i','m','l','r'].includes(key)) {
+          event.preventDefault(); event.stopImmediatePropagation();
+          dom.dispatchEvent(new CustomEvent('lineae-math-shortcut', { bubbles:true, detail:{field,key} }));
+          return;
+        }
         if (['0', 'j'].includes(event.key.toLowerCase()) && event.ctrlKey && !event.shiftKey && !event.altKey && !event.metaKey) {
           event.preventDefault(); event.stopPropagation();
           leavingStructure = true;

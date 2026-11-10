@@ -688,6 +688,25 @@ const server=createServer(async(req,res)=>{
     await page.waitForFunction(()=>document.querySelectorAll('.ProseMirror .tex-logo-art').length===2);
     const paragraphGap=await paper.locator('p').evaluateAll(([first,second])=>second.getBoundingClientRect().top-first.getBoundingClientRect().bottom);
     assert.ok(Math.abs(paragraphGap)<1,'Paragraphs have no extra vertical gap');
+    await importSource('Find word and word.\n\n$z$');
+    await page.waitForFunction(()=>document.querySelector('.ProseMirror p')?.textContent==='Find word and word.');
+    await paper.locator('p').first().click();
+    await page.keyboard.press('Control+f');
+    const find=page.locator('.document-find');
+    await find.locator('input').fill('word');
+    assert.equal(await find.locator('output').textContent(),'1 / 2');
+    await page.keyboard.press('Enter');
+    assert.equal(await find.locator('output').textContent(),'2 / 2');
+    await page.keyboard.press('Escape');
+    assert.equal(await find.isVisible(),false);
+    await page.locator('math-field').click();
+    await page.keyboard.press('Control+i');
+    assert.match(await page.locator('math-field').evaluate(field=>field.value),/\\int/);
+    await page.keyboard.press('Control+f');
+    assert.match(await page.locator('math-field').evaluate(field=>field.value),/\\frac/);
+    assert.equal(await find.isVisible(),false);
+    await page.keyboard.press('Control+m');
+    assert.match(await page.locator('math-field').evaluate(field=>field.value),/\\begin\{pmatrix\}/);
     assert.deepEqual(errors,[]);
     console.log('Browser regressions passed');
   }finally{

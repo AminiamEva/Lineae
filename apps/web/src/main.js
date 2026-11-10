@@ -10,6 +10,7 @@ import { Ref, Label, TableOfContents, refreshReferences } from './editor/referen
 import { installTableHoverAddRow } from './editor/table-hover.js';
 import { parseYaml, toYaml, mergeConfig } from './editor/config.mjs';
 import { askText } from './editor/dialog.js';
+import { installDocumentFind } from './editor/find.js';
 import { parseDelimiterPair, wrapMathWithDelimiters } from '../latex/delimiters.mjs';
 import { serialize, importBlocks } from './editor/latex-codec.js';
 import { Editor, Node, Extension, Mark } from '@tiptap/core';
@@ -214,6 +215,7 @@ function syncTableAttributes() {
 editor.on('update',()=>{refreshReferences(paper);syncTableAttributes();});
 syncTableAttributes();
 installTableHoverAddRow(editor, paper);
+installDocumentFind(editor);
 const tools=document.querySelector('#insert');
 tools.replaceChildren();
 function button(label, action) {
@@ -595,11 +597,13 @@ function insertFormulaCommand(latex) {
     insertLiveMath(completionField, fragment);
   } else insertMath(false, fragment);
 }
-async function chooseMathDelimiters(field) {
+async function chooseMathDelimiters(field, rightFirst = false) {
   const selection = field && structuredClone(field.selection);
   const value = field?.value;
   const documentBefore = editor.state.doc;
-  const input = await askText(t('左右定界符，用空格分隔；点表示无定界符', 'Left and right delimiters, separated by a space; dot hides one side'), '( ]');
+  const input = await askText(rightFirst
+    ? t('右、左定界符，用空格分隔；点表示无定界符', 'Right then left delimiter, separated by a space; dot hides one side')
+    : t('左、右定界符，用空格分隔；点表示无定界符', 'Left then right delimiter, separated by a space; dot hides one side'), rightFirst ? '] (' : '( ]');
   if (field?.isConnected) field.focus();
   else editor.view.focus();
   if (input === null) return;
@@ -610,6 +614,7 @@ async function chooseMathDelimiters(field) {
     status.textContent = t('请输入两个有效的定界符，例如 ( ] 或 { .', 'Enter two valid delimiters, such as ( ] or { .');
     return;
   }
+  if (rightFirst) pair.reverse();
   if (field) {
     if (!field.isConnected || field.value !== value) return;
     field.selection = selection;
@@ -636,7 +641,8 @@ function renderCommands() {
   candidates.replaceChildren();
   const actions = Object.fromEntries(Object.entries(formulaCommands).map(([name, latex]) =>
     [name, () => insertFormulaCommand(latex)]));
-  actions.left = actions.right = () => chooseMathDelimiters(completionField);
+  actions.left = () => chooseMathDelimiters(completionField);
+  actions.right = () => chooseMathDelimiters(completionField, true);
   for(const name of Object.keys(mathFontStyles)) actions[name]=()=>{
     editor.view.dispatch(closeHistory(editor.state.tr));
     if(completionField?.isConnected) applyMathFont(completionField,name);
@@ -688,6 +694,20 @@ filter.addEventListener('keydown', event => {
   }
 });
 paper.addEventListener('lineae-math-command', event => showCommands(event.detail.field));
+paper.addEventListener('lineae-math-shortcut', ({detail:{field,key}}) => {
+  if (key === 'l' || key === 'r') {
+    chooseMathDelimiters(field, key === 'r');
+    return;
+  }
+  const selected = field.selection.ranges.map(range => field.getValue(range)).join('');
+  const slot = '\\placeholder{}';
+  const fragments = {
+    f: `\\frac{${selected || slot}}{${slot}}`,
+    i: `\\int${selected ? ' '+selected : ''}`,
+    m: `\\begin{pmatrix}${selected || slot}\\end{pmatrix}`,
+  };
+  insertLiveMath(field, fragments[key]);
+});
 document.addEventListener('pointerdown', event => { if (!commands.contains(event.target)) closeCommands(); }, true);
 document.addEventListener('scroll', event => {
   if (!commands.hidden && !commands.contains(event.target)) closeCommands();
