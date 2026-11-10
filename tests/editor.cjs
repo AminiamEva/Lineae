@@ -795,6 +795,12 @@ const server=createServer(async(req,res)=>{
     await page.waitForFunction(()=>document.querySelector('math-field'));
     const inlineWidth=await page.locator('math-field').evaluate(field=>({host:field.getBoundingClientRect().width,base:field.shadowRoot.querySelector('.ML__base').getBoundingClientRect().width}));
     assert.ok(Math.abs(inlineWidth.host-inlineWidth.base)<1,'Inline math keeps no inherited indent gap: '+JSON.stringify(inlineWidth));
+    const handlePlace=await page.locator('math-field').evaluate(field=>{
+      const handle=field.closest('[data-math-view]').querySelector('.math-drag-handle');
+      const f=field.getBoundingClientRect(),h=handle.getBoundingClientRect();
+      return {fieldLeft:f.left,handleRight:h.right,handleTop:h.top,fieldTop:f.top};
+    });
+    assert.ok(handlePlace.handleRight<=handlePlace.fieldLeft,'Inline drag handle sits left of the formula: '+JSON.stringify(handlePlace));
     await importSource('前 后');
     await page.waitForFunction(()=>document.querySelector('.ProseMirror p')?.textContent==='前 后');
     await paper.locator('p').scrollIntoViewIfNeeded();

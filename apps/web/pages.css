@@ -147,7 +147,7 @@ main { padding:125px 24px 60px; overflow:auto; }
 [data-math-view]:focus-within .math-drag-handle,
 [data-math-view].ProseMirror-selectednode .math-drag-handle { opacity:1; }
 .math-drag-handle:active { cursor:grabbing; }
-.math-inline .math-drag-handle { position:absolute; left:-6px; right:auto; top:50%; bottom:auto; transform:translate(-100%,-50%); z-index:0; }
+.math-inline .math-drag-handle { position:absolute!important; left:-10px!important; right:auto!important; top:50%!important; bottom:auto!important; transform:translate(-100%,-50%)!important; z-index:0!important; }
 .editor-context-menu { position:fixed; z-index:30; width:220px; max-height:calc(100vh - 16px); overflow:auto; padding:5px; border-radius:12px; background:light-dark(#fffffff5,#29292df5); box-shadow:0 5px 24px #0003; backdrop-filter:blur(12px); border:1px solid light-dark(#ddd,#555); }
 .editor-context-menu button { display:block; width:100%; border-radius:7px; background:transparent; text-align:left; padding:6px 10px; }
 .editor-context-menu button:focus { outline:0; background:light-dark(#e7effd,#39475e); }
