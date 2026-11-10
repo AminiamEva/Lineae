@@ -65,8 +65,8 @@ export function parseInline(source, depth = 0) {
     const footnote = rest.match(/^\\footnote\{([^{}\r\n]*)\}/);
     if (footnote) { nodes.push({ footnote: footnote[1] }); cursor += footnote[0].length; continue; }
 
-    const reference = rest.match(/^\\ref\{([^{}\r\n]+)\}/);
-    if (reference) { nodes.push({ ref: reference[1] }); cursor += reference[0].length; continue; }
+    const reference = rest.match(/^\\(eqref|ref)\{([^{}\r\n]+)\}/);
+    if (reference) { nodes.push({ ref: reference[2], ...(reference[1]==='eqref' && {equation:true}) }); cursor += reference[0].length; continue; }
 
     const citation = rest.match(/^\\cite\{([^{}\r\n]+)\}/);
     if (citation) { nodes.push({ cite: citation[1] }); cursor += citation[0].length; continue; }

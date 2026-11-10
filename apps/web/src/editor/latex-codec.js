@@ -82,7 +82,9 @@ export function serialize(node) {
       const delimiter = node.attrs.delimiter;
       if (delimiter === '$$') return '$$' + latex + '$$\n\n';
       if (delimiter === 'equation' || delimiter === 'equation*') {
-        return '\\begin{' + delimiter + '}' + latex + '\\end{' + delimiter + '}\n\n';
+        const label = node.attrs.label ? '\\label{'+node.attrs.label+'}' : '';
+        const body=label ? latex.trimEnd()+label+latex.slice(latex.trimEnd().length) : latex;
+        return '\\begin{' + delimiter + '}' + body + '\\end{' + delimiter + '}\n\n';
       }
       return /^\\begin\{/.test(latex.trim()) ? latex + '\n\n' : '\\[' + latex + '\\]\n\n';
     }
@@ -91,7 +93,7 @@ export function serialize(node) {
       if (node.attrs.delimiter === '\\(') return '\\(' + latex + '\\)';
       return node.attrs.display ? '\\[' + latex + '\\]' : '$' + latex + '$';
     }
-    case 'ref': return '\\ref{' + node.attrs.key + '}';
+    case 'ref': return (node.attrs.equation ? '\\eqref{' : '\\ref{') + node.attrs.key + '}';
     case 'cite': return '\\cite{' + node.attrs.key + '}';
     case 'footnote': return '\\footnote{' + node.attrs.text + '}';
     case 'label': return '\\label{' + node.attrs.key + '}';

@@ -2,7 +2,7 @@
 // Dependencies are added only when that feature appears in the document body.
 const dependencies = [
   { name: 'ulem', pattern: /\\sout\b/ },
-  { name: 'amsmath', pattern: /\\(?:begin\{(?:align\*?|gather\*?|multline\*?|equation\*|split|aligned|cases|[pbBvV]?matrix)\}|(?:dfrac|tfrac|text|operatorname)\b)/ },
+  { name: 'amsmath', pattern: /\\(?:begin\{(?:align\*?|gather\*?|multline\*?|equation\*|split|aligned|cases|[pbBvV]?matrix)\}|(?:dfrac|tfrac|text|operatorname|eqref)\b)/ },
   { name: 'xcolor', pattern: /\\(?:textcolor|colorbox|definecolor)\b/ },
   { name: 'booktabs', pattern: /\\(?:toprule|midrule|bottomrule|cmidrule)\b/ },
   { name: 'enumitem', pattern: /\\begin\{(?:itemize|enumerate)\}\[/ },

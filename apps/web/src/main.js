@@ -1079,6 +1079,11 @@ groupButton(referenceGroup,'refs',async()=>{
   const value=labels.length?await chooseReference(labels):null;
   if(value)editor.chain().focus().insertContent({type:'ref',attrs:{key:value}}).run();
 });
+groupButton(referenceGroup,'eqref',async()=>{
+  const labels=collectReferenceLabels(editor.state.doc).filter(item=>item.kind==='equation');
+  const value=labels.length?await chooseReference(labels):await askText(t('公式标签','Equation label'));
+  if(value)editor.chain().focus().insertContent({type:'ref',attrs:{key:value,equation:true}}).run();
+});
 groupButton(referenceGroup,'fn',async()=>{
   const value=await askText(t('脚注内容','Footnote text'));
   if(value)editor.chain().focus().insertContent({type:'footnote',attrs:{text:value}}).run();
@@ -1112,6 +1117,17 @@ groupButton(referenceGroup,'author',async()=>{
 groupButton(mathGroup,'$',()=>insertMath());
 groupButton(mathGroup,'$$',()=>insertMath(true));
 groupButton(mathGroup,'equation',()=>insertEquation());
+groupButton(mathGroup,'equation label',async()=>{
+  const field=activeMath();
+  const position=field?.closest('[data-math-view]')?.getMathPosition?.() ?? editor.state.selection.from;
+  const documentBefore=editor.state.doc;
+  const node=documentBefore.nodeAt(position);
+  if(node?.type.name!=='mathBlock' || node.attrs.delimiter!=='equation')return;
+  const label=await askText(t('公式标签','Equation label'),node.attrs.label??'');
+  if(label===null || !/^[\p{L}\p{N}:_.-]*$/u.test(label) || editor.state.doc!==documentBefore)return;
+  editor.view.dispatch(editor.state.tr.setNodeMarkup(position,undefined,{...node.attrs,label:label||null}));
+  field?.focus();
+});
 groupButton(mathGroup,'frac',()=>insertMath(false,'\\frac{\\placeholder{}}{\\placeholder{}}'));
 groupButton(mathGroup,'sqrt',()=>insertMath(false,'\\sqrt{\\placeholder{}}'));
 groupButton(mathGroup,'sum',()=>insertMath(false,'\\sum'));

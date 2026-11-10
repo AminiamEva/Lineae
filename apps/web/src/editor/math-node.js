@@ -168,6 +168,7 @@ export const MathNode = Node.create({
   addAttributes: () => ({
     latex: { default: '' },
     delimiter: { default: null },
+    label: { default: null },
     display: { default: false },
     id: { default: null, rendered: false },
   }),

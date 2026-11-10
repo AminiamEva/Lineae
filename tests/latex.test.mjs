@@ -5,6 +5,16 @@ import { parseInline } from '../apps/web/latex/inline.mjs';
 import { exportDocument, resolvePackages } from '../apps/web/latex/packages.mjs';
 import { serialize } from '../apps/web/src/editor/latex-codec.js';
 import { importBlocks } from '../apps/web/latex/blocks.mjs';
+
+test('keeps numbered equation labels out of math content and exports eqref', () => {
+  const [math]=importBlocks('\\begin{equation}\nx=1\n\\label{eq:x}\n\\end{equation}');
+  assert.equal(math.attrs.label,'eq:x');
+  assert.equal(math.attrs.latex.trim(),'x=1');
+  assert.match(serialize(math),/x=1\\label\{eq:x\}/);
+  const [paragraph]=importBlocks(String.raw`See \eqref{eq:x}.`);
+  assert.equal(serialize(paragraph).trim(),String.raw`See \eqref{eq:x}.`);
+  assert.equal(resolvePackages('',serialize(paragraph)).filter(rule=>rule.name==='amsmath').length,1);
+});
 import { pageMetrics, readPageSetup, writePageSetup } from '../apps/web/latex/geometry.mjs';
 
 test('round-trips a code listing and scoped table rule width', () => {

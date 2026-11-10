@@ -19,10 +19,6 @@ export function outline(doc) {
   return items;
 }
 
-function referenceNumber(doc, key) {
-  return outline(doc).find(item => item.label === key)?.number || null;
-}
-
 export function collectReferenceLabels(doc) {
   const labels = [];
   const seen = new Set();
@@ -31,7 +27,15 @@ export function collectReferenceLabels(doc) {
     seen.add(heading.label);
     labels.push({ key:heading.label, number:heading.number || null, title:heading.text, kind:'heading' });
   }
+  let equationNumber=0;
   doc.descendants(node => {
+    if (node.type.name==='mathBlock' && node.attrs.delimiter==='equation') {
+      equationNumber++;
+      if(node.attrs.label && !seen.has(node.attrs.label)) {
+        seen.add(node.attrs.label);
+        labels.push({key:node.attrs.label,number:String(equationNumber),title:node.attrs.latex,kind:'equation'});
+      }
+    }
     if (node.type.name !== 'label' || seen.has(node.attrs.key)) return;
     seen.add(node.attrs.key);
     labels.push({ key:node.attrs.key, number:null, title:'', kind:'label' });
@@ -45,9 +49,9 @@ export const Ref = Node.create({
   inline: true,
   atom: true,
   selectable: true,
-  addAttributes: () => ({ key: { default: '' } }),
-  parseHTML: () => [{ tag: 'span[data-ref]', getAttrs: dom => ({ key: dom.dataset.ref }) }],
-  renderHTML: ({ node }) => ['span', { 'data-ref': node.attrs.key }, '\\ref{' + node.attrs.key + '}'],
+  addAttributes: () => ({ key: { default: '' }, equation: { default:false } }),
+  parseHTML: () => [{ tag: 'span[data-ref]', getAttrs: dom => ({ key: dom.dataset.ref, equation:dom.dataset.eqref==='true' }) }],
+  renderHTML: ({ node }) => ['span', { 'data-ref': node.attrs.key, 'data-eqref':String(node.attrs.equation) }, (node.attrs.equation?'\\eqref{':'\\ref{') + node.attrs.key + '}'],
   addNodeView() {
     return ({ node, editor, getPos }) => {
       const dom = document.createElement('span');
@@ -55,10 +59,10 @@ export const Ref = Node.create({
       dom.contentEditable = 'false';
       const render = () => {
         dom.dataset.refView = node.attrs.key;
-        const number = referenceNumber(editor.state.doc, node.attrs.key);
-        dom.textContent = number ?? '?';
+        const number = collectReferenceLabels(editor.state.doc).find(item=>item.key===node.attrs.key)?.number ?? null;
+        dom.textContent = node.attrs.equation ? `(${number??'?'})` : number ?? '?';
         dom.classList.toggle('missing', !number);
-        dom.title = '\\ref{' + node.attrs.key + '}';
+        dom.title = (node.attrs.equation?'\\eqref{':'\\ref{') + node.attrs.key + '}';
       };
       render();
       dom.refreshRef = render;

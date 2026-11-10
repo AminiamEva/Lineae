@@ -10,7 +10,7 @@ function inlineContent(text) {
       if (typeof part === 'string') return part ? [{ type: 'text', text: part, marks }] : [];
       if (part.textCommand) return [{ type: 'text', text: textCommands[part.textCommand], marks: [...marks, { type: 'textCommand', attrs: { name: part.textCommand } }] }];
       if (part.math !== undefined) return [{ type: 'math', attrs: { latex: part.math, display: false, delimiter: part.delimiters[0] } }];
-      if (part.ref !== undefined) return [{ type: 'ref', attrs: { key: part.ref } }];
+      if (part.ref !== undefined) return [{ type: 'ref', attrs: { key: part.ref, ...(part.equation && {equation:true}) } }];
       if (part.cite !== undefined) return [{ type: 'cite', attrs: { key: part.cite } }];
       if (part.footnote !== undefined) return [{ type: 'footnote', attrs: { text: part.footnote } }];
       if (part.label !== undefined) return [{ type: 'label', attrs: { key: part.label } }];
@@ -153,7 +153,8 @@ export function importBlock(block) {
   const math = text.match(/^\\\[([\s\S]*?)\\\]$/) ?? text.match(/^\$\$([\s\S]*?)\$\$$/) ?? text.match(/^\\begin\{equation\*?\}([\s\S]*?)\\end\{equation\*?\}$/);
   if (math) {
     const delimiter = text.startsWith('$$') ? '$$' : text.match(/^\\begin\{(equation\*?)\}/)?.[1] ?? '\\[';
-    return { type: 'mathBlock', attrs: { latex: math[1], display: true, delimiter } };
+    const label = delimiter === 'equation' ? /\\label\{([^{}\s]+)\}(\s*)$/.exec(math[1]) : null;
+    return { type: 'mathBlock', attrs: { latex: label ? math[1].slice(0,label.index).trimEnd()+label[2] : math[1], display: true, delimiter, ...(label && {label:label[1]}) } };
   }
   const environment = text.match(/^\\begin\{(align\*?|alignat\*?|flalign\*?|eqnarray\*?|gather\*?|multline\*?|displaymath|math|split|aligned|alignedat|gathered|cases|dcases|drcases|rcases|[pbBvV]?matrix|[pbBvV]?smallmatrix|array|darray|subarray)\}([\s\S]*?)\\end\{\1\}$/);
   if (environment) return { type: 'mathBlock', attrs: { latex: text, display: true } };
