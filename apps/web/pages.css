@@ -22,7 +22,8 @@ select { max-width:115px; }
 .open { position:relative; overflow:hidden; }
 .open input { position:absolute; inset:0; width:100%; opacity:0; cursor:pointer; }
 main { padding:125px 24px 60px; overflow:auto; }
-#editor { width:210mm; min-height:297mm; margin:auto; padding:22mm; background:light-dark(#fff,#242426); box-shadow:0 2px 14px #0002; font:10pt/1.5 Georgia,"Songti SC",SimSun,serif; cursor:text; }
+.document-page { width:210mm; min-height:297mm; margin:auto; padding:22mm; background:light-dark(#fff,#242426); box-shadow:0 2px 14px #0002; font:10pt/1.5 Georgia,"Songti SC",SimSun,serif; cursor:text; }
+#editor { min-height:calc(297mm - 44mm); outline:none; }
 .ProseMirror { min-height:250mm; outline:none; overflow-wrap:anywhere; white-space:pre-wrap; }
 .ProseMirror p { margin:0 0 .65em; }
 .ProseMirror h1 { font-size:1.7em; }
@@ -58,10 +59,12 @@ main { padding:125px 24px 60px; overflow:auto; }
 .editor-dialog label { font-weight:600; }
 .editor-dialog input { padding:8px; border-radius:7px; border:1px solid light-dark(#ccd0d8,#555); background:light-dark(#fff,#303035); color:inherit; }
 .editor-dialog-actions { display:flex; justify-content:flex-end; gap:8px; }
-#document-meta { max-width:210mm; margin:0 auto 10px; display:flex; flex-direction:column; gap:4px; }
-#document-meta .doc-title { font-size:1.6em; font-weight:600; }
-#document-meta .doc-author { font-size:.95em; opacity:.8; }
-#document-meta button { align-self:flex-start; background:transparent; border:1px dashed light-dark(#bbb,#555); border-radius:6px; padding:2px 8px; font-size:12px; opacity:.7; }
+#document-meta { margin:0 0 14px; display:flex; flex-direction:column; gap:4px; }
+#document-meta .doc-title { font-size:1.6em; font-weight:600; min-height:1.3em; }
+#document-meta .doc-author { font-size:.95em; opacity:.8; min-height:1.3em; }
+#document-meta .doc-title:empty::before,#document-meta .doc-author:empty::before { content:attr(data-placeholder); opacity:.35; }
+#document-meta .doc-title,#document-meta .doc-author { outline:none; border-radius:4px; }
+#document-meta .doc-title:focus,#document-meta .doc-author:focus { background:light-dark(#f3f6fb,#2c3038); }
 .ProseMirror .toc-block { border:1px dashed light-dark(#c9d3e6,#46536a); border-radius:8px; padding:.6em .8em; margin:.6em 0; background:light-dark(#f7f9fd,#232a34); }
 .ProseMirror .toc-title { font-weight:600; margin-bottom:.3em; opacity:.8; }
 .ProseMirror .toc-entry { font-size:.95em; }

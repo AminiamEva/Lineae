@@ -160,6 +160,8 @@ const Shortcuts = Extension.create({
   },
 });
 const paper=document.querySelector('#editor');
+const documentPage=document.createElement('div');documentPage.className='document-page';
+paper.before(documentPage);documentPage.append(paper);
 paper.replaceChildren();
 editor=new Editor({
   element:paper,
@@ -321,37 +323,22 @@ function writeMeta(key,value) {
 const metaBar=document.createElement('section');metaBar.id='document-meta';
 const metaTitle=document.createElement('div');metaTitle.className='doc-title';
 const metaAuthor=document.createElement('div');metaAuthor.className='doc-author';
-metaBar.append(metaTitle,metaAuthor);paper.before(metaBar);
-metaTitle.addEventListener('click',async()=>{
-  const value=await askText(t('标题','Title'),readMeta('title'));
-  if(value!==null)writeMeta('title',value);
-});
-metaAuthor.addEventListener('click',async()=>{
-  const value=await askText(t('作者','Author'),readMeta('author'));
-  if(value!==null)writeMeta('author',value);
-});
+metaBar.append(metaTitle,metaAuthor);documentPage.prepend(metaBar);
+function editMeta(element,key){
+  element.contentEditable='true';element.spellcheck=false;
+  element.addEventListener('keydown',event=>{if(event.key==='Enter'){event.preventDefault();element.blur();}});
+  element.addEventListener('blur',()=>{
+    const value=element.textContent.trim();
+    if(value!==readMeta(key))writeMeta(key,value);
+    else renderMeta();
+  });
+}
+editMeta(metaTitle,'title');editMeta(metaAuthor,'author');
 function renderMeta() {
-  metaTitle.replaceChildren();
-  metaAuthor.replaceChildren();
-  const title=readMeta('title');
-  const author=readMeta('author');
-  metaTitle.hidden=!title&&Boolean(author);
-  metaAuthor.hidden=!author&&Boolean(title);
-  if(title)metaTitle.textContent=title;
-  if(author)metaAuthor.textContent=author;
-  if(!title&&!author) {
-    const hint=document.createElement('button');
-    hint.type='button';hint.textContent=t('添加标题/作者','Add title & author');
-    hint.addEventListener('click',async event=>{
-      event.stopPropagation();
-      const titleValue=await askText(t('标题','Title'),readMeta('title'));
-      if(titleValue===null)return;
-      const authorValue=await askText(t('作者','Author'),readMeta('author'));
-      if(authorValue===null)return;
-      writeMeta('title',titleValue);writeMeta('author',authorValue);
-    });
-    metaTitle.hidden=false;metaTitle.append(hint);
-  }
+  metaTitle.textContent=readMeta('title');
+  metaAuthor.textContent=readMeta('author');
+  metaTitle.dataset.placeholder=t('标题','Title');
+  metaAuthor.dataset.placeholder=t('作者','Author');
 }
 renderMeta();
 function source() {
