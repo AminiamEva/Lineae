@@ -167,9 +167,13 @@ export function importBlock(block) {
   if (table) {
     const booktabs = table.rows.some(row => row.rules.some(rule => /toprule|midrule|bottomrule/.test(rule))) ||
       table.trailing.some(rule => /toprule|midrule|bottomrule/.test(rule));
+    const ends = table.rows[0].rules.includes('\\hline') && table.trailing.includes('\\hline');
+    const all = ends && table.rows.every(row=>row.rules.includes('\\hline'));
+    const vertical = table.columns.startsWith('|') && table.columns.endsWith('|');
+    const borderMode = all && vertical ? 'grid' : all ? 'horizontal' : ends && vertical ? 'outer' : null;
     return {
       type: 'table',
-      attrs: { columns: table.columns, booktabs },
+      attrs: { columns: table.columns, booktabs, borderMode },
       content: table.rows.map(row => ({
         type: 'tableRow',
         content: row.cells.map((cell, index) => ({
@@ -224,6 +228,11 @@ function importSegment(block) {
 }
 
 export function importBlocks(block) {
+  const ruledTable = /^\{\\setlength\{\\arrayrulewidth\}\{(\d+(?:\.\d+)?pt)\}\s*(\\begin\{tabular\}[\s\S]*\\end\{tabular\})\s*\}$/.exec(block.trim());
+  if (ruledTable) {
+    const node=importBlock(ruledTable[2]);
+    if(node?.type==='table')return [{...node,attrs:{...node.attrs,borderWidth:ruledTable[1]}}];
+  }
   const listing = /^\\begin\{lstlisting\}(?:\[language=([A-Za-z0-9+_-]+)\])?\r?\n([\s\S]*?)\r?\n\\end\{lstlisting\}$/.exec(block.trim());
   if (listing) return [{type:'codeBlock',attrs:{language:listing[1]??null},content:listing[2]?[{type:'text',text:listing[2]}]:[]}];
   return splitParagraphs(block).flatMap(importSegment);

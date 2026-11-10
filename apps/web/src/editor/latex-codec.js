@@ -94,15 +94,25 @@ export function serialize(node) {
     case 'raw': return node.attrs.source.replace(/\n+$/, '') + '\n\n';
     case 'hardBreak': return '\\\\\n';
     case 'table': {
-      const columns = node.attrs.columns || 'l'.repeat(node.content[0]?.content.length ?? 1);
+      let columns = node.attrs.columns || 'l'.repeat(node.content[0]?.content.length ?? 1);
+      const border = node.attrs.borderMode;
+      if (border) {
+        columns = columns.replace(/\|/g,'');
+        if (border === 'outer') columns='|'+columns+'|';
+        if (border === 'grid') columns='|'+columns.replace(/([pmb]\{[^{}]*\}|[lcr])/g,'$1|');
+      }
       let body = '';
       node.content.forEach((row, index) => {
-        if (node.attrs.booktabs && index === 0) body += '\\toprule\n';
+        if (border === 'grid' || border === 'horizontal' || (border==='outer' && index===0)) body += '\\hline\n';
+        if (!border && node.attrs.booktabs && index === 0) body += '\\toprule\n';
         body += serialize(row);
-        if (node.attrs.booktabs && index === 0 && node.content.length > 1) body += '\\midrule\n';
+        if (!border && node.attrs.booktabs && index === 0 && node.content.length > 1) body += '\\midrule\n';
       });
-      if (node.attrs.booktabs) body += '\\bottomrule\n';
-      return '\\begin{tabular}{' + columns + '}\n' + body + '\\end{tabular}\n\n';
+      if (border && border!=='none') body += '\\hline\n';
+      if (!border && node.attrs.booktabs) body += '\\bottomrule\n';
+      const tabular='\\begin{tabular}{' + columns + '}\n' + body + '\\end{tabular}';
+      return (/^\d+(?:\.\d+)?pt$/.test(node.attrs.borderWidth??'')
+        ? '{\\setlength{\\arrayrulewidth}{'+node.attrs.borderWidth+'}\n'+tabular+'\n}' : tabular)+'\n\n';
     }
     case 'tableRow': return node.content.map(cell => serialize(cell)).join(' & ') + ' \\\\\n';
     case 'tableCell':

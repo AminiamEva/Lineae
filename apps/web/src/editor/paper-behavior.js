@@ -90,6 +90,8 @@ export const PaperBehavior = Extension.create({
     }, {
       types: ['table'],
       attributes: {
+        borderMode: { default:null },
+        borderWidth: { default:null },
         columns: {
           default: null,
           parseHTML: element => element.dataset.columns ?? null,

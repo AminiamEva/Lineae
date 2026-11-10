@@ -233,6 +233,8 @@ function syncTableAttributes() {
     else delete table.dataset.columns;
     if (node.attrs.booktabs) table.dataset.booktabs = 'true';
     else delete table.dataset.booktabs;
+    table.dataset.borderMode=node.attrs.borderMode??'';
+    table.style.setProperty('--table-rule-width',node.attrs.borderWidth??'1px');
   });
 }
 editor.on('update',()=>{refreshReferences(paper);syncTableAttributes();});
@@ -908,6 +910,16 @@ groupButton(tableGroup,'删除表格',()=>editor.chain().focus().deleteTable().r
 groupButton(tableGroup,'merge',()=>editor.chain().focus().mergeCells().run());
 groupButton(tableGroup,'split',()=>editor.chain().focus().splitCell().run());
 groupButton(tableGroup,'booktabs',()=>{if(editor.isActive('table'))editor.chain().focus().updateAttributes('table',{booktabs:!editor.getAttributes('table').booktabs}).run();});
+groupButton(tableGroup,t('边框','Borders'),async()=>{
+  if(!editor.isActive('table'))return;
+  const mode=await askText(t('边框：grid 全部、outer 外框、horizontal 横线、none 无','Borders: grid, outer, horizontal, none'),editor.getAttributes('table').borderMode??'grid');
+  if(mode && ['grid','outer','horizontal','none'].includes(mode)) editor.chain().focus().updateAttributes('table',{borderMode:mode,booktabs:false}).run();
+});
+groupButton(tableGroup,t('线宽','Rule width'),async()=>{
+  if(!editor.isActive('table'))return;
+  const width=await askText(t('表格线宽（例如 0.8pt）','Table rule width (e.g. 0.8pt)'),editor.getAttributes('table').borderWidth??'0.4pt');
+  if(width!==null && (!width || /^\d+(?:\.\d+)?pt$/.test(width))) editor.chain().focus().updateAttributes('table',{borderWidth:width||null}).run();
+});
 for(const [label,align] of [['左','left'],['中','center'],['右','right']]) groupButton(tableGroup,label,()=>{
   if(!editor.isActive('table'))return;
   const type=editor.isActive('tableHeader')?'tableHeader':'tableCell';

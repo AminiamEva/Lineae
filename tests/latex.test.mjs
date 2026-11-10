@@ -6,6 +6,13 @@ import { exportDocument, resolvePackages } from '../apps/web/latex/packages.mjs'
 import { serialize } from '../apps/web/src/editor/latex-codec.js';
 import { importBlocks } from '../apps/web/latex/blocks.mjs';
 
+test('round-trips a code listing and scoped table rule width', () => {
+  const listing=['\\begin{lstlisting}[language=Python]','def f():','    return 42','\\end{lstlisting}'].join('\n');
+  assert.equal(serialize(importBlocks(listing)[0]).trim(),listing);
+  const table=['{\\setlength{\\arrayrulewidth}{0.8pt}','\\begin{tabular}{|l|l|}','\\hline','a & b \\\\','\\hline','\\end{tabular}','}'].join('\n');
+  assert.equal(serialize(importBlocks(table)[0]).trim(),table);
+});
+
 test('preserves local image paths and supported widths and requests graphicx', () => {
   const image = String.raw`\includegraphics[width=0.5\linewidth]{figures/plot.png}`;
   const [node] = importBlocks(image);

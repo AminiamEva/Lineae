@@ -66,6 +66,10 @@ main { padding:125px 24px 60px; overflow:auto; }
 .ProseMirror table { border-collapse:collapse; table-layout:fixed; width:100%; }
 .ProseMirror td,.ProseMirror th { border:1px solid light-dark(#bbb,#606066); padding:.4em; min-width:2em; position:relative; vertical-align:top; }
 .ProseMirror .selectedCell { background:#548bdf33; }
+.ProseMirror table[data-border-mode="grid"] :is(td,th) { border-width:var(--table-rule-width); }
+.ProseMirror table[data-border-mode="none"] :is(td,th),.ProseMirror table[data-border-mode="outer"] :is(td,th) { border:0; }
+.ProseMirror table[data-border-mode="outer"] { border:var(--table-rule-width) solid currentColor; }
+.ProseMirror table[data-border-mode="horizontal"] :is(td,th) { border-inline:0; border-block-width:var(--table-rule-width); }
 .lineae-multi-selected { background:light-dark(#cfe2ff,#2f4a6e); }
 .ProseMirror .column-resize-handle { position:absolute; right:-2px; top:0; bottom:0; width:4px; background:#589af4; pointer-events:none; }
 .resize-cursor { cursor:col-resize; }
