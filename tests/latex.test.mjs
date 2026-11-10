@@ -13,6 +13,13 @@ test('round-trips a code listing and scoped table rule width', () => {
   assert.equal(serialize(importBlocks(table)[0]).trim(),table);
 });
 
+test('recognizes full text control words without consuming unknown commands', () => {
+  assert.equal(parseInline(String.raw`\textdegreeExtra`),null);
+  const [paragraph] = importBlocks(String.raw`25\textdegree{} and \texteuro{}10`);
+  assert.equal(serialize(paragraph).trim(),String.raw`25\textdegree{} and \texteuro{}10`);
+  assert.ok(resolvePackages('',serialize(paragraph)).some(rule=>rule.name==='textcomp'));
+});
+
 test('preserves local image paths and supported widths and requests graphicx', () => {
   const image = String.raw`\includegraphics[width=0.5\linewidth]{figures/plot.png}`;
   const [node] = importBlocks(image);

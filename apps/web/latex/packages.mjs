@@ -9,6 +9,7 @@ const dependencies = [
   { name: 'zhnumber', pattern: /\\chinese\b/ },
   { name: 'graphicx', pattern: /\\includegraphics\b/ },
   { name: 'listings', pattern: /\\begin\{lstlisting\}/ },
+  { name: 'textcomp', pattern: /\\(?:textdegree|textcelsius|textmu|textohm|textcent|textyen|texteuro|textperthousand|textnumero)\b/ },
   { name: 'hyperref', pattern: /\\(?:href|url|hyperref)\b/, satisfies: ['url'], onlyUrl: /\\(?:href|hyperref)\b/ },
   { name: 'fix-cm', pattern: /\\fontsize\s*\{[^{}]+\}\s*\{[^{}]+\}\s*\\selectfont\b/,
     satisfies: ['fontspec', 'lmodern'], beforeClass: true },
