@@ -14,6 +14,7 @@ import { askText } from './editor/dialog.js';
 import { installDocumentFind } from './editor/find.js';
 import { DocumentImage, insertLocalImage } from './editor/image-node.js';
 import { MultiSelection } from './editor/multi-selection.js';
+import { installSpaceOverlay } from './editor/space-overlay.js';
 import { wrapMathWithDelimiters } from '../latex/delimiters.mjs';
 import { readDelimiterPair } from './editor/delimiter-input.js';
 import { serialize, importBlocks } from './editor/latex-codec.js';
@@ -953,10 +954,12 @@ groupButton(formatGroup,'box',()=>editor.chain().focus().toggleMark('boxed').run
 groupButton(formatGroup,'\\LaTeX',()=>insertTextCommand('LaTeX'));
 groupButton(formatGroup,'\\TeX',()=>insertTextCommand('TeX'));
 let showFormattingMarks = true;
+const setSpaceOverlay=installSpaceOverlay(editor,paper);
 documentPage.dataset.formattingMarks = 'true';
 const formattingMarks = groupButton(formatGroup,'¶',()=>{
   showFormattingMarks = !showFormattingMarks;
   documentPage.dataset.formattingMarks = String(showFormattingMarks);
+  setSpaceOverlay(showFormattingMarks);
   formattingMarks.setAttribute('aria-pressed',String(showFormattingMarks));
 });
 formattingMarks?.setAttribute('aria-pressed','true');

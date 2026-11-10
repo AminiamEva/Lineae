@@ -824,10 +824,20 @@ const server=createServer(async(req,res)=>{
     assert.equal((await paper.locator('p').textContent()).trim(),'beta');
     await importSource('前 后');
     await page.waitForFunction(()=>document.querySelector('.ProseMirror p')?.textContent==='前 后');
+    await page.waitForFunction(()=>{
+      const paragraph=document.querySelector('.ProseMirror p');
+      const canvas=document.querySelector('.space-overlay');
+      if(!canvas || paragraph.childElementCount!==0)return false;
+      const range=document.createRange();
+      range.setStart(paragraph.firstChild,1);range.setEnd(paragraph.firstChild,2);
+      const rect=range.getBoundingClientRect(), scale=devicePixelRatio;
+      return canvas.getContext('2d').getImageData(Math.floor(rect.left*scale),Math.floor(rect.top*scale),Math.max(1,Math.ceil(rect.width*scale)),Math.max(1,Math.ceil(rect.height*scale))).data.some((value,index)=>index%4===3&&value>0);
+    });
     await paper.locator('p').click();
     await page.keyboard.press('End');
     const cdp=await page.context().newCDPSession(page);
     await cdp.send('Input.imeSetComposition',{text:'zhong',selectionStart:5,selectionEnd:5});
+    assert.equal(await page.locator('.space-overlay').isVisible(),false);
     await cdp.send('Input.imeSetComposition',{text:'中文',selectionStart:2,selectionEnd:2});
     await cdp.send('Input.insertText',{text:'中文'});
     await page.waitForFunction(()=>document.querySelector('.ProseMirror p')?.textContent==='前 后中文');
