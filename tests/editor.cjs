@@ -748,7 +748,10 @@ const server=createServer(async(req,res)=>{
     await selectionField.evaluate(field=>field.executeCommand('moveToMathfieldEnd'));
     await page.keyboard.type('\\\\');
     await page.waitForFunction(()=>document.querySelector('math-field')?.value.includes('\\backslash'));
+    await selectionField.click();
+    await selectionField.evaluate(field=>field.executeCommand('moveToMathfieldEnd'));
     await page.keyboard.type('[x');
+    await page.waitForFunction(()=>document.querySelector('math-field')?.value.includes('[x'));
     await page.keyboard.type('$');
     assert.match(await selectionField.evaluate(field=>field.value),/\\right\./,'Pending delimiter is invisible after leaving math');
     assert.deepEqual(errors,[]);
