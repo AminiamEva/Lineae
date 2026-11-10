@@ -466,6 +466,10 @@ const server=createServer(async(req,res)=>{
     await page.locator('math-field').evaluate(field=>new Promise(resolve=>requestAnimationFrame(()=>{field.focus();resolve();})));
     await page.keyboard.press('Control+z');
     assert.match(await page.locator('math-field').evaluate(field=>field.value),/\\mathbb\{R\}/,'Undo restores original math font');
+    assert.equal(await page.locator('math-field').count(),1,'Undo keeps the formula node');
+    assert.match(await paper.textContent(),/Fonts/,'Undo keeps preceding text');
+    await page.keyboard.press('Control+y');
+    assert.match(await page.locator('math-field').evaluate(field=>field.value),/\\mathbf\{R\}/,'Redo restores math font');
     assert.deepEqual(errors,[]);
     console.log('Browser regressions passed');
   }finally{
