@@ -23,6 +23,22 @@ function referenceNumber(doc, key) {
   return outline(doc).find(item => item.label === key)?.number || null;
 }
 
+export function collectReferenceLabels(doc) {
+  const labels = [];
+  const seen = new Set();
+  for (const heading of outline(doc)) {
+    if (!heading.label || seen.has(heading.label)) continue;
+    seen.add(heading.label);
+    labels.push({ key:heading.label, number:heading.number || null, title:heading.text, kind:'heading' });
+  }
+  doc.descendants(node => {
+    if (node.type.name !== 'label' || seen.has(node.attrs.key)) return;
+    seen.add(node.attrs.key);
+    labels.push({ key:node.attrs.key, number:null, title:'', kind:'label' });
+  });
+  return labels;
+}
+
 export const Ref = Node.create({
   name: 'ref',
   group: 'inline',

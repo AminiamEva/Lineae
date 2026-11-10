@@ -7,8 +7,9 @@ import { installFormatControls } from './editor/format-controls.js';
 import { decorateToolbar } from './editor/icons.js';
 import { PaperBehavior } from './editor/paper-behavior.js';
 import { MathNode, MathBlock, configureMathKeys, insertFormula, toggleDisplayStyle } from './editor/math-node.js';
-import { Ref, Label, Cite, Footnote, TableOfContents, refreshReferences } from './editor/references.js';
+import { Ref, Label, Cite, Footnote, TableOfContents, refreshReferences, collectReferenceLabels } from './editor/references.js';
 import { insertCitationDialog } from './editor/citation-dialog.js';
+import { chooseReference } from './editor/reference-index.js';
 import { installTableHoverAddRow } from './editor/table-hover.js';
 import { parseYaml, toYaml, mergeConfig } from './editor/config.mjs';
 import { askText } from './editor/dialog.js';
@@ -1045,7 +1046,13 @@ groupButton(referenceGroup,'label',async()=>{
   }
 });
 groupButton(referenceGroup,'ref',async()=>{
-  const value=await askText(t('引用标签','Reference label'));
+  const labels=collectReferenceLabels(editor.state.doc);
+  const value=labels.length?await chooseReference(labels):await askText(t('引用标签','Reference label'));
+  if(value)editor.chain().focus().insertContent({type:'ref',attrs:{key:value}}).run();
+});
+groupButton(referenceGroup,'refs',async()=>{
+  const labels=collectReferenceLabels(editor.state.doc);
+  const value=labels.length?await chooseReference(labels):null;
   if(value)editor.chain().focus().insertContent({type:'ref',attrs:{key:value}}).run();
 });
 groupButton(referenceGroup,'fn',async()=>{

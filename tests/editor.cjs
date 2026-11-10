@@ -866,6 +866,13 @@ const server=createServer(async(req,res)=>{
     });
     assert.equal(labelPlacement.position,'absolute','Labels do not occupy text width');
     assert.ok(labelPlacement.left>=labelPlacement.contentRight-2&&labelPlacement.right<=labelPlacement.pageRight,'Labels sit in the page margin: '+JSON.stringify(labelPlacement));
+    await page.locator('[data-group=reference]').click();
+    await page.getByRole('button',{name:'ref',exact:true}).click();
+    await page.waitForFunction(()=>Boolean(document.querySelector('.reference-dialog')));
+    assert.match(await page.locator('.reference-dialog select').textContent(),/sec:first/,'Reference dialog lists existing labels');
+    await page.locator('.reference-dialog select').selectOption('sec:first');
+    await page.locator('.reference-dialog button[type=submit]').click();
+    await page.waitForFunction(()=>document.querySelectorAll('.ref-node').length===2);
     await importSource('Footnote here');
     await page.waitForFunction(()=>document.querySelector('.ProseMirror p')?.textContent==='Footnote here');
     await page.locator('[data-group=reference]').click();

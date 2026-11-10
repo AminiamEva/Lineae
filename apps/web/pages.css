@@ -113,7 +113,7 @@ main { padding:125px 24px 60px; overflow:auto; }
 .editor-dialog { width:min(380px,90vw); display:flex; flex-direction:column; gap:10px; padding:16px; border-radius:12px; background:light-dark(#fff,#29292d); box-shadow:0 10px 40px #0005; border:1px solid light-dark(#ddd,#555); }
 .editor-dialog label { font-weight:600; }
 .editor-dialog input { padding:8px; border-radius:7px; border:1px solid light-dark(#ccd0d8,#555); background:light-dark(#fff,#303035); color:inherit; }
-.citation-dialog select { min-height:190px; padding:4px; border-radius:7px; border:1px solid light-dark(#ccd0d8,#555); background:light-dark(#fff,#303035); color:inherit; }
+.citation-dialog select,.reference-dialog select { min-height:190px; padding:4px; border-radius:7px; border:1px solid light-dark(#ccd0d8,#555); background:light-dark(#fff,#303035); color:inherit; }
 .editor-dialog-actions { display:flex; justify-content:flex-end; gap:8px; }
 #document-meta { margin:0 0 14px; display:flex; flex-direction:column; align-items:center; text-align:center; gap:4px; }
 #document-meta .doc-title { font-size:1.6em; font-weight:600; min-height:1.3em; }
