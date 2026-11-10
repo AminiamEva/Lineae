@@ -127,6 +127,10 @@ export function installSpaceOverlay(editor, paper) {
   window.addEventListener('resize',schedule);
   const observer=new ResizeObserver(schedule);
   observer.observe(page);
+  // The browser can change the editable DOM during composition before a
+  // ProseMirror transaction is emitted. Refresh the visual layer in either case.
+  const contentObserver=new MutationObserver(schedule);
+  contentObserver.observe(paper,{subtree:true,childList:true,characterData:true});
   schedule();
   return value=>{enabled=value;schedule();};
 }

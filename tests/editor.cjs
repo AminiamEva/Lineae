@@ -965,9 +965,7 @@ const server=createServer(async(req,res)=>{
     const boxedText=paper.locator('[data-boxed]');
     await boxedText.waitFor();
     await boxedText.click();
-    console.log('Box selection before exit',await page.evaluate(()=>({active:document.activeElement?.outerHTML.slice(0,120),anchor:window.getSelection()?.anchorNode?.parentElement?.outerHTML,offset:window.getSelection()?.anchorOffset})));
     await page.keyboard.press('Control+j');
-    console.log('Box selection after exit',await page.evaluate(()=>({anchor:window.getSelection()?.anchorNode?.parentElement?.outerHTML,offset:window.getSelection()?.anchorOffset})));
     await page.keyboard.type('X');
     assert.equal(await boxedText.textContent(),'Box','Ctrl+J leaves the complete box');
     assert.match(await paper.textContent(),/BoxX after/);
@@ -977,6 +975,15 @@ const server=createServer(async(req,res)=>{
     await page.keyboard.type('Outside');
     assert.equal(await paper.locator('blockquote').textContent(),'Quoted text.');
     assert.equal(await paper.locator(':scope > p').last().textContent(),'Outside');
+    await importSource('\\begin{enumerate}\n\\item One\n\\item Two\n\\end{enumerate}');
+    await page.waitForFunction(()=>{
+      const list=document.querySelector('.ProseMirror ol');
+      return list && list.querySelectorAll('p').length===2 && document.querySelectorAll('.space-overlay text').length>=2;
+    });
+    await paper.locator('li p').first().click();
+    await page.keyboard.press('Control+a');
+    await page.keyboard.press('Backspace');
+    await page.waitForFunction(()=>document.querySelectorAll('.space-overlay text').length===document.querySelectorAll('.ProseMirror p').length);
     await paper.locator('p').first().click();
     await page.keyboard.press('End');
     await page.keyboard.type('\\');
