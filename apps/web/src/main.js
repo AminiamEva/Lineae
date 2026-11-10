@@ -935,6 +935,11 @@ document.addEventListener('keydown', event => {
       return;
     }
   }
+  if (event.ctrlKey && !event.shiftKey && !event.altKey && !event.metaKey && event.key==='0'
+    && editor.view.hasFocus() && !event.composedPath().some(node=>node?.tagName==='MATH-FIELD')) {
+    event.preventDefault();
+    return;
+  }
   if (!(event.ctrlKey || event.metaKey) || activeMath() || event.composedPath().some(node=>node?.tagName==='MATH-FIELD') || !['+','=','-'].includes(event.key)) return;
   event.preventDefault();
   wheelZoom = Math.max(50, Math.min(300, Number(zoom.value) + (event.key === '-' ? -10 : 10)));
