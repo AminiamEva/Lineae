@@ -1,0 +1,56 @@
+% Lineae Bib engine fixture: classic BibTeX 0.99 features.
+% Contact: nobody@example.com - an @ outside an entry must not start a command.
+
+@string{acm = "ACM"}
+@string{acmtrans = acm # " Transactions on Programming Languages"}
+
+@preamble{"\newcommand{\noopsort}[1]{} " # "\newcommand{\singleletter}[1]{#1}"}
+
+@Article{knuth1984,
+  author    = {Knuth, Donald E.},
+  title     = "The {\TeX}book",
+  journal   = acmtrans,
+  year      = 1984,
+  volume    = {17},
+  number    = 4,
+  pages     = {1--10},
+  month     = jan,
+  note      = {Reprinted with corrections \& additions; 100\% coverage {[sic]}.}
+}
+
+@book{lamport1994,
+  author = {Lamport, Leslie},
+  title = {LaTeX: A Document Preparation System},
+  publisher = {Addison-Wesley},
+  year = 1994,
+  edition = {2nd},
+}
+
+@inproceedings{smith2020,
+  author = {Smith, Jane and Doe, John},
+  title = {Nested {Braces {in {a {Title}}}} and $E = mc^2$},
+  booktitle = {Proceedings of the {International} Conference on Testing},
+  series = {LNCS},
+  volume = {12345},
+  pages = {100--115},
+  publisher = {Springer},
+  address = {Berlin, Heidelberg},
+  year = {2020}
+}
+
+@misc{unicode2024,
+  author = {李, 明 and Müller, Anna},
+  title = {中文标题与 {Unicode} 组合：测试 — 破折号},
+  year = {2024},
+  note = {Email: a@b.example; URL: https://example.com/a_b?x=1&y=2}
+}
+
+@techreport{tr2001,
+  author = {Example, Edward},
+  title = {A Technical Report},
+  institution = {Example Institute},
+  type = {Technical Report},
+  number = {TR-2001-01},
+  year = 2001,
+  month = dec
+}

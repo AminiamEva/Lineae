@@ -1,0 +1,32 @@
+% XeLaTeX + BibTeX verification fixture.
+% The same database is compiled twice by verify-xelatex.mjs: once as written,
+% once after a parse -> serialize round-trip. The .bbl and PDF text must match.
+
+@string{acm = "ACM"}
+
+@article{knuth1984,
+  author  = {Knuth, Donald E.},
+  title   = {The {\TeX}book and 100\% of {\em nothing}},
+  journal = {Computers \& Typesetting},
+  year    = {1984},
+  volume  = {A},
+  month   = jan,
+  pages   = {1--10},
+}
+
+@book{lamport1994,
+  author    = {Lamport, Leslie},
+  title     = {LaTeX: A Document Preparation System},
+  publisher = {Addison-Wesley},
+  year      = {1994},
+  edition   = {2nd},
+}
+
+@inproceedings{smith2020,
+  author    = {Smith, Jane and Doe, John},
+  title     = {Nested {Braces {in {a {Title}}}} and \& symbols},
+  booktitle = {Proceedings of the {International} Conference on Testing},
+  year      = {2020},
+  pages     = {100--115},
+  publisher = acm,
+}

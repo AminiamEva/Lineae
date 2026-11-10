@@ -1,0 +1,23 @@
+% Lineae Bib engine fixture: cross-references between entries.
+@proceedings{proc2021,
+  title = {Proceedings of the Workshop},
+  year = {2021},
+  publisher = {ACM},
+  address = {New York},
+}
+
+@inproceedings{child2021,
+  author = {Child, Alice},
+  title = {A Paper in the Proceedings},
+  crossref = {proc2021},
+  pages = {1--8},
+}
+
+@set{set2021,
+  entryset = {child2021, proc2021},
+}
+
+@misc{related2021,
+  title = {A Related Item},
+  related = {child2021, proc2021},
+}

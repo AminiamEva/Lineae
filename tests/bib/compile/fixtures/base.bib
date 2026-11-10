@@ -1,0 +1,54 @@
+% Round-two compilation fixture: a small database that every editor case starts
+% from. It intentionally covers macros, crossref, DOI, an unknown field and a
+% removable entry.
+@string{acm = "ACM"}
+@string{acmtrans = acm # " Transactions on Programming Languages"}
+
+@article{knuth1984,
+  author      = {Knuth, Donald E.},
+  title       = {The {\TeX}book},
+  journal     = acmtrans,
+  year        = {1984},
+  volume      = {A},
+  pages       = {1--10},
+  doi         = {10.5555/knuth.1984},
+  customfield = {keep-me},
+}
+
+@book{lamport1994,
+  author    = {Lamport, Leslie},
+  title     = {LaTeX: A Document Preparation System},
+  publisher = {Addison-Wesley},
+  year      = {1994},
+}
+
+@inproceedings{child2020,
+  author    = {Child, Alice},
+  title     = {A Paper in the Proceedings},
+  booktitle = {Collected Papers},
+  crossref  = {parentA},
+  pages     = {1--8},
+}
+
+@proceedings{parentA,
+  editor    = {Editor, Emily},
+  title     = {Proceedings of the First Workshop},
+  year      = {2020},
+  publisher = {ACM},
+  address   = {New York},
+}
+
+@proceedings{parentB,
+  editor    = {Editor, Emily},
+  title     = {Proceedings of the Second Workshop},
+  year      = {2021},
+  publisher = {Springer},
+  address   = {Berlin},
+}
+
+@misc{turing1950,
+  author = {Turing, Alan M.},
+  title  = {Computing Machinery and Intelligence},
+  year   = {1950},
+  note   = {Mind},
+}
