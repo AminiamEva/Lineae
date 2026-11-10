@@ -13,7 +13,8 @@ const textSymbols = {
 const simpleCommands = { LaTeX: 'LaTeX', TeX: 'TeX', copyright: '©', ldots: '…', dots: '…' };
 const symbolPattern = /^\\(text(?:backslash|asciitilde|asciicircum|asciigrave|bar|less|greater|underscore|braceleft|braceright|dollar|percent|ampersand|section|paragraph|bullet|ellipsis|endash|emdash|quoteleft|quoteright|quotedblleft|quotedblright|registered|trademark))(?:\{\})?/;
 const simplePattern = /^\\(LaTeX|TeX|copyright|ldots|dots)\b(?:\{\})?/;
-const plainPattern = /^\\(textsc|textup|textmd|textnormal|mbox|hbox|fbox|textsuperscript|textsubscript)\{/;
+const plainPattern = /^\\(textsc|textup|textmd|textnormal|mbox|hbox|fbox)\{/;
+const scriptPattern = /^\\(textsuperscript|textsubscript)\{/;
 const ignoredPattern = /^\\(?:noindent|indent|smallskip|medskip|bigskip|newpage|clearpage|pagebreak|nolinebreak|hspace|vspace)(?:\{[^{}]*\})?[ \t]*/;
 
 export function parseInline(source, depth = 0) {
@@ -65,14 +66,15 @@ export function parseInline(source, depth = 0) {
 
     const emphasis = rest.match(/^\\(textbf|textit|emph|textsl|sout|underline)\{/);
     const plain = rest.match(plainPattern);
+    const script = rest.match(scriptPattern);
     const fontCommand = rest.match(/^\\(texttt|textsf|textrm)\{/);
     const color = rest.match(/^\\textcolor\[HTML\]\{([0-9a-f]{6})\}\{/i);
     const points = rest.match(/^\{\\fontsize\{(\d{1,2})\}\{\d{1,2}\}\\selectfont /);
     const group = rest.match(/^\{(\\[A-Za-z]+) /);
     const family = group && Object.keys(fontFamilies).find(key => fontFamilies[key] === group[1]);
     const size = group && Object.keys(fontSizes).find(key => fontSizes[key] === group[1]);
-    if (!emphasis && !plain && !fontCommand && !color && !family && !size && !points) return null;
-    const start = (emphasis ?? plain ?? fontCommand ?? color ?? points ?? group)[0].length;
+    if (!emphasis && !plain && !script && !fontCommand && !color && !family && !size && !points) return null;
+    const start = (emphasis ?? plain ?? script ?? fontCommand ?? color ?? points ?? group)[0].length;
     let balance = 1;
     let end = start;
     for (; end < rest.length && balance; end++) {
@@ -85,6 +87,11 @@ export function parseInline(source, depth = 0) {
     const children = parseInline(rest.slice(start, end - 1), depth + 1);
     if (!children) return null;
     if (plain) { nodes.push(...children); cursor += end; continue; }
+    if (script) {
+      nodes.push({ tag: script[1] === 'textsuperscript' ? 'sup' : 'sub', children });
+      cursor += end;
+      continue;
+    }
     const monospace = fontCommand?.[1] === 'texttt';
     nodes.push({
       tag: emphasis ? { textbf: 'strong', textit: 'em', emph: 'em', textsl: 'em', sout: 'strike', underline: 'u' }[emphasis[1]] : monospace ? 'code' : undefined,

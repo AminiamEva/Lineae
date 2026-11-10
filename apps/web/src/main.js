@@ -25,10 +25,21 @@ import { installTooltips } from './ui/tooltips.mjs';
 import { installRovingFocus } from './ui/keyboard-nav.mjs';
 import { fadeIn } from './ui/motion.mjs';
 
+const cssColor = value => {
+  const rgb=/^rgba?\(\s*(\d+)[,\s]+(\d+)[,\s]+(\d+)/i.exec(value??'');
+  if(rgb)return '#'+[1,2,3].map(index=>Number(rgb[index]).toString(16).padStart(2,'0')).join('');
+  return /^#[\da-f]{6}$/i.test(value??'')?value:null;
+};
+const cssSize = value => {
+  const px=/^([\d.]+)px$/i.exec(value??'');
+  return px?Math.round(Number(px[1])*.75)+'pt':(value||null);
+};
 const TextStyle = Mark.create({
   name:'textStyle',
   addAttributes:()=>({
-    color:{default:null},fontFamily:{default:null},fontSize:{default:null},
+    color:{default:null,parseHTML:element=>cssColor(element.style.color)},
+    fontFamily:{default:null,parseHTML:element=>element.style.fontFamily?.replace(/["']/g,'')||null},
+    fontSize:{default:null,parseHTML:element=>cssSize(element.style.fontSize)},
   }),
   parseHTML:()=>[{tag:'span[data-text-style]'}],
   renderHTML:({HTMLAttributes})=>['span',{
@@ -39,6 +50,12 @@ const TextStyle = Mark.create({
 });
 const Underline = Mark.create({
   name:'underline',parseHTML:()=>[{tag:'u'}],renderHTML:()=>['u',0],
+});
+const Superscript = Mark.create({
+  name:'superscript',parseHTML:()=>[{tag:'sup'}],renderHTML:()=>['sup',0],
+});
+const Subscript = Mark.create({
+  name:'subscript',parseHTML:()=>[{tag:'sub'}],renderHTML:()=>['sub',0],
 });
 const Raw = Node.create({
   name:'raw', group:'block', atom:true,
@@ -77,12 +94,20 @@ let editor;
 // Insert into the live field so MathLive selects the first placeholder.
 // Creating the node with the source already set leaves the caret at offset 0.
 function insertLiveMath(field, latex, notify = true) {
-  field.executeCommand(['insert', latex]);
-  if (latex === '\\text{x}') {
-    const end = field.selection?.ranges?.[0]?.[1];
-    if (end > 0) field.selection = { ranges: [[end - 1, end]], direction: 'none' };
+  const apply = () => {
+    if (!field.isConnected) return;
+    field.executeCommand(['insert', latex]);
+    if (latex === '\\text{x}') {
+      const end = field.selection?.ranges?.[0]?.[1];
+      if (end > 0) field.selection = { ranges: [[end - 1, end]], direction: 'none' };
+    }
+    if (notify) field.dispatchEvent(new Event('input', { bubbles: true }));
+  };
+  if (field.hasFocus()) apply();
+  else {
+    field.focus();
+    requestAnimationFrame(apply);
   }
-  if (notify) field.dispatchEvent(new Event('input', { bubbles: true }));
 }
 function insertMath(display = false, latex = '') {
   if (!latex) return insertFormula(editor, display, '');
@@ -132,7 +157,7 @@ const paper=document.querySelector('#editor');
 paper.replaceChildren();
 editor=new Editor({
   element:paper,
-  extensions:[StarterKit.configure({heading:{levels:[1,2,3]}}),PaperBehavior,TextStyle,Underline,Table.configure({resizable:true}),TableRow,TableCell,TableHeader,Raw,DescriptionList,DescriptionItem,MathNode,MathBlock,Ref,Label,TableOfContents,Shortcuts],
+  extensions:[StarterKit.configure({heading:{levels:[1,2,3]}}),PaperBehavior,TextStyle,Underline,Superscript,Subscript,Table.configure({resizable:true}),TableRow,TableCell,TableHeader,Raw,DescriptionList,DescriptionItem,MathNode,MathBlock,Ref,Label,TableOfContents,Shortcuts],
   content:'<p></p>',
 });
 function syncTableAttributes() {
@@ -536,8 +561,7 @@ function showCommands(field = null) {
 function insertFormulaCommand(latex) {
   const fragment = latex.replaceAll('#?', '\\placeholder{}');
   if (completionField?.isConnected) {
-    completionField.focus();
-    insertLiveMath(completionField, fragment, false);
+    insertLiveMath(completionField, fragment);
   } else insertMath(false, fragment);
 }
 function highlightCandidate(index) {
@@ -588,6 +612,10 @@ function renderCommands() {
   }
   highlightCandidate(0);
 }
+document.addEventListener('focusin', event => {
+  if (commands.hidden || commands.contains(event.target)) return;
+  queueMicrotask(() => { if (!commands.hidden) filter.focus(); });
+}, true);
 filter.addEventListener('input', renderCommands);
 filter.addEventListener('keydown', event => {
   if (event.key === 'Escape') { event.preventDefault(); closeCommands(true); }

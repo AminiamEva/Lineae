@@ -22,6 +22,8 @@ export function serialize(node) {
       if (mark.type === 'strike') value = '\\sout{' + value + '}';
       if (mark.type === 'code') value = '\\texttt{' + value + '}';
       if (mark.type === 'underline') value = '\\underline{' + value + '}';
+      if (mark.type === 'superscript') value = '\\textsuperscript{' + value + '}';
+      if (mark.type === 'subscript') value = '\\textsubscript{' + value + '}';
       if (mark.type === 'textStyle') {
         if (/^#[\da-f]{6}$/i.test(mark.attrs.color ?? '')) value='\\textcolor[HTML]{'+mark.attrs.color.slice(1)+'}{'+value+'}';
         const size=Number.parseFloat(mark.attrs.fontSize);

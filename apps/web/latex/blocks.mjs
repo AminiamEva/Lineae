@@ -11,7 +11,7 @@ function inlineContent(text) {
       if (part.ref !== undefined) return [{ type: 'ref', attrs: { key: part.ref } }];
       if (part.label !== undefined) return [{ type: 'label', attrs: { key: part.label } }];
       if (part.hardBreak) return [{ type: 'hardBreak' }];
-      const type = { strong: 'bold', em: 'italic', u: 'underline', strike: 'strike', code: 'code' }[part.tag];
+      const type = { strong: 'bold', em: 'italic', u: 'underline', strike: 'strike', code: 'code', sup: 'superscript', sub: 'subscript' }[part.tag];
       if (type) return convert(part.children, [...marks, { type }]);
       const attrs = part.points ? { fontSize: part.points + 'pt' } :
         part.attribute === 'color' ? { color: part.value } :

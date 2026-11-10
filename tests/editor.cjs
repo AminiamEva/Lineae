@@ -96,11 +96,13 @@ const server=createServer(async(req,res)=>{
       return fields[fields.length-1]?.value.includes('sqrt');
     });
     assert.match(await page.locator('math-field').last().evaluate(field=>field.value),/sqrt/);
+    await page.locator('math-field').last().focus();
     await page.keyboard.type('\\');
     await page.waitForFunction(()=>!document.querySelector('.command-menu').hidden);
     const mathBounds=await completion.boundingBox();
     await completion.locator('input').fill('alpha');
     assert.deepEqual(await completion.boundingBox(),mathBounds);
+    await completion.locator('input').focus();
     await page.keyboard.press('Enter');
     await page.waitForFunction(()=>{
       const fields=document.querySelectorAll('math-field');
@@ -170,9 +172,12 @@ const server=createServer(async(req,res)=>{
     await page.keyboard.type('a_2');
     assert.match(await formula.evaluate(field=>field.value),/a_\{?2/);
     await formula.evaluate(field=>field.executeCommand('moveToMathfieldEnd'));
+    await formula.focus();
     await page.keyboard.type('\\');
     await completion.locator('input').fill('in');
+    await completion.locator('input').focus();
     await page.keyboard.press('Enter');
+    await page.waitForFunction(()=>document.querySelector('math-field')?.value.includes('\\in'));
     assert.match(await formula.evaluate(field=>field.value),/\\in(?!fty|t)/);
     await formula.click({button:'right'});
     await context.locator('[data-command="display-style"]').click();
@@ -181,7 +186,7 @@ const server=createServer(async(req,res)=>{
 
     await formula.evaluate(field=>{field.value='';field.dispatchEvent(new Event('input',{bubbles:true}));field.focus();});
     await formula.click();
-    await page.keyboard.type('\\');await completion.locator('input').fill('matrix');await page.keyboard.press('Enter');
+    await page.keyboard.type('\\');await completion.locator('input').fill('matrix');await completion.locator('input').focus();await page.keyboard.press('Enter');
     assert.ok(!(await formula.evaluate(field=>field.value)).includes('&'));
     const initialPlaceholders=(await formula.evaluate(field=>field.value)).match(/\\placeholder\{\}/g)?.length??0;
     await page.locator('[data-group=insert]').click();
@@ -542,8 +547,12 @@ const server=createServer(async(req,res)=>{
     await page.keyboard.type('\\');
     await page.waitForFunction(()=>!document.querySelector('.command-menu').hidden);
     await page.locator('.command-menu input').fill('prod');
+    await page.locator('.command-menu input').focus();
     await page.keyboard.press('Enter');
-    await page.waitForTimeout(80);
+    await page.waitForFunction(()=>{
+      const field=document.querySelector('math-field');
+      return field?.value.includes('\\prod')&&field.shadowRoot.querySelectorAll('.ML__op-symbol.ML__large-op').length===2;
+    });
     assert.equal(await displayField.evaluate(field=>[...field.shadowRoot.querySelectorAll('.ML__op-symbol.ML__large-op')].length),2,'Display style applies to later input');
     await importSource('$\\mathbf{x+y}$');
     await page.waitForFunction(()=>document.querySelector('math-field'));
@@ -559,6 +568,34 @@ const server=createServer(async(req,res)=>{
     await textEnvField.focus();
     await page.keyboard.press('Control+0');
     assert.notEqual(await textEnvField.evaluate(field=>field.mode),'text','Ctrl+0 leaves the text environment');
+    await importSource('\\textcolor[HTML]{ff0000}{Red} blue');
+    await page.waitForFunction(()=>document.querySelector('.ProseMirror')?.textContent==='Red blue');
+    await page.locator('[data-group=home]').click();
+    await paper.locator('p').click();
+    await page.keyboard.press('Home');
+    await page.keyboard.press('Shift+End');
+    await page.waitForTimeout(150);
+    await page.keyboard.press('Control+c');
+    await page.waitForTimeout(100);
+    await page.keyboard.press('End');
+    await page.keyboard.press('Control+v');
+    await page.waitForTimeout(100);
+    assert.ok(await paper.locator('span[data-text-style]').evaluateAll(nodes=>nodes.filter(node=>getComputedStyle(node).color==='rgb(255, 0, 0)').length)>=2,'Pasted text keeps its color');
+    await importSource('H\\textsuperscript{2}O and x\\textsubscript{1}');
+    await page.waitForFunction(()=>document.querySelector('.ProseMirror sup')&&document.querySelector('.ProseMirror sub'));
+    assert.equal(await paper.locator('sup').textContent(),'2');
+    assert.equal(await paper.locator('sub').textContent(),'1');
+    const textScript=await paper.locator('p').evaluate(node=>({base:parseFloat(getComputedStyle(node).fontSize),script:parseFloat(getComputedStyle(node.querySelector('sup')).fontSize)}));
+    assert.ok(Math.abs(textScript.script/textScript.base-.7)<.05,'Text scripts use the XeTeX script size');
+    await importSource('$x^2+y_1$');
+    await page.waitForFunction(()=>document.querySelector('math-field')?.value.includes('^2'));
+    const mathScript=await page.locator('math-field').evaluate(field=>{
+      const spans=[...field.shadowRoot.querySelectorAll('.ML__content span')].filter(element=>element.textContent&&!element.children.length);
+      const base=spans.find(element=>element.textContent==='x');
+      const script=spans.find(element=>element.textContent==='2');
+      return parseFloat(getComputedStyle(script).fontSize)/parseFloat(getComputedStyle(base).fontSize);
+    });
+    assert.ok(Math.abs(mathScript-.7)<.02,'Math scripts use the XeTeX script size');
     await page.locator('#language').evaluate(element=>{element.value='zh-CN';element.dispatchEvent(new Event('change',{bubbles:true}));});
     await page.locator('[data-group=home]').click();
     await page.getByRole('button',{name:'↶',exact:true}).hover();

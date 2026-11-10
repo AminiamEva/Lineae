@@ -28,6 +28,15 @@ test('serializes raw blocks with a blank line before following text', () => {
   assert.equal(serialize(doc), 'Before\n\n\\begin{opaque}\nbody\n\\end{opaque}\n\nAfter\n\n');
 });
 
+test('parses text superscripts and subscripts as structure', () => {
+  const [sup] = parseInline(String.raw`\textsuperscript{2}`);
+  const [sub] = parseInline(String.raw`\textsubscript{1}`);
+  assert.equal(sup.tag, 'sup');
+  assert.deepEqual(sup.children, ['2']);
+  assert.equal(sub.tag, 'sub');
+  assert.deepEqual(sub.children, ['1']);
+});
+
 test('recognizes inline formatting and preserves the original math delimiter', () => {
   const [span] = parseInline(String.raw`\textcolor[HTML]{445566}{\textit{中文 \(x^2\)}}`);
   assert.equal(span.value, '#445566');
