@@ -862,10 +862,10 @@ const server=createServer(async(req,res)=>{
       const label=document.querySelector('.label-node');
       const page=document.querySelector('.document-page');
       const content=document.querySelector('.ProseMirror');
-      return { position:getComputedStyle(label).position, left:label.getBoundingClientRect().left, right:label.getBoundingClientRect().right, pageRight:page.getBoundingClientRect().right, contentRight:content.getBoundingClientRect().right };
+      return { position:getComputedStyle(label).position, left:label.getBoundingClientRect().left, right:label.getBoundingClientRect().right, pageLeft:page.getBoundingClientRect().left, contentLeft:content.getBoundingClientRect().left };
     });
     assert.equal(labelPlacement.position,'absolute','Labels do not occupy text width');
-    assert.ok(labelPlacement.left>=labelPlacement.contentRight-2&&labelPlacement.right<=labelPlacement.pageRight,'Labels sit in the page margin: '+JSON.stringify(labelPlacement));
+    assert.ok(labelPlacement.left>=labelPlacement.pageLeft&&labelPlacement.right<=labelPlacement.contentLeft,'Labels sit in the left page margin: '+JSON.stringify(labelPlacement));
     await page.locator('[data-group=reference]').click();
     await page.getByRole('button',{name:'ref',exact:true}).click();
     await page.waitForFunction(()=>Boolean(document.querySelector('.reference-dialog')));
