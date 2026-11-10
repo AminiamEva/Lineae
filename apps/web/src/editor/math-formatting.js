@@ -30,6 +30,7 @@ export function applyMathFont(field, command) {
         if(!/^[A-Za-z0-9]$/.test(event.key))return;
         event.preventDefault();event.stopImmediatePropagation();
         field.insert('\\'+command+'{'+event.key+'}',{format:'latex',selectionMode:'after'});
+        field.dispatchEvent(new Event('input',{bubbles:true}));
       };
       field.addEventListener('keydown',start,true);
       field.addEventListener('pointerdown',()=>field.removeEventListener('keydown',start,true),{once:true});
