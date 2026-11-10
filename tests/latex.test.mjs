@@ -11,6 +11,9 @@ test('keeps numbered equation labels out of math content and exports eqref', () 
   assert.equal(math.attrs.label,'eq:x');
   assert.equal(math.attrs.latex.trim(),'x=1');
   assert.match(serialize(math),/x=1\\label\{eq:x\}/);
+  const [leading]=importBlocks('\\begin{equation}\n\\label{eq:x}\nx=1\n\\end{equation}');
+  assert.equal(leading.attrs.label,'eq:x');
+  assert.equal(leading.attrs.latex.trim(),'x=1');
   const [paragraph]=importBlocks(String.raw`See \eqref{eq:x}.`);
   assert.equal(serialize(paragraph).trim(),String.raw`See \eqref{eq:x}.`);
   assert.equal(resolvePackages('',serialize(paragraph)).filter(rule=>rule.name==='amsmath').length,1);

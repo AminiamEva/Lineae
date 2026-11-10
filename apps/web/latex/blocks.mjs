@@ -153,8 +153,14 @@ export function importBlock(block) {
   const math = text.match(/^\\\[([\s\S]*?)\\\]$/) ?? text.match(/^\$\$([\s\S]*?)\$\$$/) ?? text.match(/^\\begin\{equation\*?\}([\s\S]*?)\\end\{equation\*?\}$/);
   if (math) {
     const delimiter = text.startsWith('$$') ? '$$' : text.match(/^\\begin\{(equation\*?)\}/)?.[1] ?? '\\[';
-    const label = delimiter === 'equation' ? /\\label\{([^{}\s]+)\}(\s*)$/.exec(math[1]) : null;
-    return { type: 'mathBlock', attrs: { latex: label ? math[1].slice(0,label.index).trimEnd()+label[2] : math[1], display: true, delimiter, ...(label && {label:label[1]}) } };
+    const candidate = delimiter === 'equation' ? /(?<!\\)\\label\{([^{}\s]+)\}(\s*)$/.exec(math[1]) : null;
+    const sameLine = candidate ? math[1].slice(math[1].lastIndexOf('\n',candidate.index-1)+1,candidate.index) : '';
+    const trailing = /(^|[^\\])(?:\\\\)*%/.test(sameLine) ? null : candidate;
+    const leading = delimiter === 'equation' && !trailing ? /^(\s*)\\label\{([^{}\s]+)\}[ \t]*(?:\r?\n)?/.exec(math[1]) : null;
+    const latex = trailing ? math[1].slice(0,trailing.index).trimEnd()+trailing[2]
+      : leading ? leading[1]+math[1].slice(leading[0].length) : math[1];
+    const label = trailing?.[1] ?? leading?.[2];
+    return { type: 'mathBlock', attrs: { latex, display: true, delimiter, ...(label && {label}) } };
   }
   const environment = text.match(/^\\begin\{(align\*?|alignat\*?|flalign\*?|eqnarray\*?|gather\*?|multline\*?|displaymath|math|split|aligned|alignedat|gathered|cases|dcases|drcases|rcases|[pbBvV]?matrix|[pbBvV]?smallmatrix|array|darray|subarray)\}([\s\S]*?)\\end\{\1\}$/);
   if (environment) return { type: 'mathBlock', attrs: { latex: text, display: true } };
