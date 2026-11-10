@@ -1015,10 +1015,8 @@ const server=createServer(async(req,res)=>{
     await page.setViewportSize({width:1280,height:1400});
     await importSource('Before $x$ after');
     await page.waitForFunction(()=>document.querySelector('.ProseMirror p')?.textContent.includes('Before') && document.querySelector('[data-math-view]')?.dataset.latex==='x');
-    console.log('Boundary before',await page.evaluate(()=>({pos:document.querySelector('[data-math-view]').getMathPosition(),html:document.querySelector('.ProseMirror p').innerHTML})));
     await page.locator('math-field').evaluate(field=>{field.focus();field.executeCommand('moveToMathfieldEnd');});
     await page.keyboard.press('ArrowRight');
-    console.log('Boundary after',await page.evaluate(()=>({text:window.getSelection()?.anchorNode?.textContent,offset:window.getSelection()?.anchorOffset,html:window.getSelection()?.anchorNode?.parentElement?.outerHTML})));
     assert.ok(await paper.evaluate(element=>element===document.activeElement),'ArrowRight exits at the end of inline math');
     await page.keyboard.type('Q');
     await page.locator('.source-toggle').click();

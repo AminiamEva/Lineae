@@ -159,6 +159,8 @@ function leaveFormula(editor, position, node, backward) {
   }
   transaction.setSelection(TextSelection.near(transaction.doc.resolve(target), backward ? -1 : 1));
   editor.view.dispatch(transaction);
+  const domPosition=editor.view.domAtPos(editor.state.selection.from, backward ? -1 : 1);
+  window.getSelection()?.collapse(domPosition.node,domPosition.offset);
 }
 
 export const MathNode = Node.create({
@@ -250,7 +252,7 @@ export const MathNode = Node.create({
             field.selection.ranges.every(([start,end])=>start===end)) {
           const backward=event.key==='ArrowLeft';
           if (field.position===(backward?0:field.lastOffset)) {
-            event.preventDefault(); event.stopPropagation();
+            event.preventDefault(); event.stopImmediatePropagation();
             commitUnclosedFences(field);
             leaveFormula(editor,getPos(),node,backward);
             return;
