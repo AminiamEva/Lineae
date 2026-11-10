@@ -518,6 +518,38 @@ const server=createServer(async(req,res)=>{
     await page.keyboard.press('Control+v');
     await page.waitForFunction(()=>document.querySelectorAll('math-field').length===3);
     assert.equal(await page.locator('math-field').last().evaluate(field=>field.value),'x+1','Pasting a copied formula creates a formula node');
+    const scriptField=await bodyCommand('mathscr');
+    await page.keyboard.type('x');
+    assert.equal(await scriptField.evaluate(field=>field.value),'\\mathscr{x}','Script style applies to the next typed character');
+    const spaceField=await bodyCommand('mathbb');
+    await page.keyboard.press('Space');
+    assert.equal(await spaceField.evaluate(field=>field.value),'\\space','Space inserts a math space');
+    assert.ok(await spaceField.evaluate(field=>[...field.shadowRoot.querySelectorAll('.ML__mediumspace')].every(element=>getComputedStyle(element).backgroundColor!=='rgba(0, 0, 0, 0)')),'Space gets a visible marker');
+    const displayField=await bodyCommand('sum');
+    await displayField.click({button:'right'});
+    await page.waitForFunction(()=>!document.querySelector('.editor-context-menu').hidden);
+    await context.locator('[data-command="display-style"]').click();
+    assert.equal(await displayField.evaluate(field=>field.value),'\\displaystyle{\\sum}','Display style wraps the whole formula');
+    await page.keyboard.type('\\');
+    await page.waitForFunction(()=>!document.querySelector('.command-menu').hidden);
+    await page.locator('.command-menu input').fill('prod');
+    await page.keyboard.press('Enter');
+    await page.waitForTimeout(80);
+    assert.equal(await displayField.evaluate(field=>[...field.shadowRoot.querySelectorAll('.ML__op-symbol.ML__large-op')].length),2,'Display style applies to later input');
+    await importSource('$\\mathbf{x+y}$');
+    await page.waitForFunction(()=>document.querySelector('math-field'));
+    assert.ok(await page.locator('math-field').first().evaluate(field=>[...field.shadowRoot.querySelectorAll('.ML__mathbf')].every(element=>getComputedStyle(element).backgroundColor!=='rgba(0, 0, 0, 0)')),'Font commands highlight their content');
+    await importSource('$x+\\text{abc}+y$');
+    await page.waitForFunction(()=>document.querySelector('math-field'));
+    const textEnvField=page.locator('math-field').first();
+    await textEnvField.click();
+    await textEnvField.evaluate(field=>{
+      field.focus();
+      for(let i=0;i<=field.lastOffset;i++)if(field.getValue(i,i+1)==='c'){field.position=i+1;break;}
+    });
+    await textEnvField.focus();
+    await page.keyboard.press('Control+0');
+    assert.notEqual(await textEnvField.evaluate(field=>field.mode),'text','Ctrl+0 leaves the text environment');
     await page.locator('#language').evaluate(element=>{element.value='zh-CN';element.dispatchEvent(new Event('change',{bubbles:true}));});
     await page.locator('[data-group=home]').click();
     await page.getByRole('button',{name:'↶',exact:true}).hover();

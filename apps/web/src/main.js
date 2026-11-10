@@ -4,7 +4,7 @@ import { mathFontStyles, applyMathFont } from './editor/math-formatting.js';
 import { installFormatControls } from './editor/format-controls.js';
 import { decorateToolbar } from './editor/icons.js';
 import { PaperBehavior } from './editor/paper-behavior.js';
-import { MathNode, MathBlock, configureMathKeys, insertFormula } from './editor/math-node.js';
+import { MathNode, MathBlock, configureMathKeys, insertFormula, toggleDisplayStyle } from './editor/math-node.js';
 import { Ref, Label, TableOfContents, refreshReferences } from './editor/references.js';
 import { installTableHoverAddRow } from './editor/table-hover.js';
 import { parseYaml, toYaml, mergeConfig } from './editor/config.mjs';
@@ -561,6 +561,11 @@ function renderCommands() {
     editor.view.dispatch(closeHistory(editor.state.tr));
     if(completionField?.isConnected) applyMathFont(completionField,name);
     else insertFormula(editor,false,'',undefined,field=>applyMathFont(field,name));
+  };
+  actions.displaystyle=()=>{
+    editor.view.dispatch(closeHistory(editor.state.tr));
+    if(completionField?.isConnected) toggleDisplayStyle(completionField);
+    else insertFormula(editor,false,'',undefined,field=>toggleDisplayStyle(field));
   };
   if (!completionField) Object.assign(actions, structureCommands);
   const exactQuery = filter.value.replace(/^\\/, '');

@@ -4,6 +4,7 @@ export const mathFontStyles = {
   mathrm: { variant: 'normal', variantStyle: 'up' },
   mathit: { variant: 'normal', variantStyle: 'italic' },
   mathcal: { variant: 'calligraphic', variantStyle: 'up' },
+  mathscr: { variant: 'script', variantStyle: 'up' },
   mathbb: { variant: 'double-struck', variantStyle: 'up' },
   mathsf: { variant: 'sans-serif', variantStyle: 'up' },
   mathtt: { variant: 'monospace', variantStyle: 'up' },

@@ -1,6 +1,7 @@
 import { DOMSerializer } from '@tiptap/pm/model';
 import { icon } from './icons.js';
 import { promptDialog, askText } from './dialog.js';
+import { toggleDisplayStyle } from './math-node.js';
 import { popIn } from '../ui/motion.mjs';
 
 function selectedMath(context) {
@@ -89,10 +90,7 @@ export function contextCommands(context) {
       },
     },
     { id:'display-style', labels:['切换公式显示样式','Toggle display style'], visible:Boolean(field), run:()=>{
-      field.focus();
-      const latex=field.value;
-      field.value=latex.startsWith('\\displaystyle')?latex.replace(/^\\displaystyle\s*/, ''):'\\displaystyle '+latex;
-      field.dispatchEvent(new Event('input',{bubbles:true}));
+      toggleDisplayStyle(field);
     }},
     { id: 'undo', labels: ['撤销', 'Undo'], enabled: editor.can().undo(), run: () => editor.chain().focus().undo().run() },
     { id: 'redo', labels: ['重做', 'Redo'], enabled: editor.can().redo(), run: () => editor.chain().focus().redo().run() },

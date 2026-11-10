@@ -38,6 +38,61 @@ export function insertFormula(editor, display = false, latex = '', range, onFocu
   focusFormula(editor, id, onFocus);
 }
 
+const mathFieldStyle = `
+  .ML__mathbf, .ML__mathbfit, .ML__bb, .ML__cal, .ML__frak, .ML__script, .ML__sans, .ML__tt {
+    background: light-dark(rgba(77,124,179,.10), rgba(120,170,230,.18));
+    border-radius: 2px;
+  }
+  .ML__mediumspace {
+    background: light-dark(#d9f2df,#2f5138);
+    border-radius: 2px;
+    box-shadow: 0 0 0 1px light-dark(#b7e3c2,#3f6b4b) inset;
+  }
+`;
+
+function installMathFieldStyle(field) {
+  const root = field.shadowRoot;
+  if (!root || root.querySelector('style[data-lineae-field]')) return;
+  const style = document.createElement('style');
+  style.dataset.lineaeField = '';
+  style.textContent = mathFieldStyle;
+  root.append(style);
+}
+
+function leaveEnvironment(field) {
+  const before = JSON.stringify(field.selection.ranges);
+  if (field.mode === 'text') {
+    field.executeCommand('moveToNextGroup');
+    if (field.mode === 'text') field.executeCommand('moveToNextGroup');
+  } else {
+    field.executeCommand('moveAfterParent');
+  }
+  if (JSON.stringify(field.selection.ranges) === before) field.executeCommand('moveToNextGroup');
+  return JSON.stringify(field.selection.ranges) !== before;
+}
+
+export function toggleDisplayStyle(field) {
+  const latex = field.value.trim();
+  const grouped = /^\\displaystyle\{([\s\S]*)\}$/.exec(latex);
+  const prefixed = /^\\displaystyle\s+([\s\S]*)$/.exec(latex);
+  field.focus();
+  if (grouped || prefixed) {
+    field.value = (grouped ? grouped[1] : prefixed[1]).trim();
+    field.executeCommand('moveToMathfieldEnd');
+    const position = field.position;
+    field.dispatchEvent(new Event('input', { bubbles: true }));
+    requestAnimationFrame(() => { if (field.isConnected) { field.focus(); field.position = position; } });
+    return false;
+  }
+  field.value = '\\displaystyle{' + latex + '}';
+  field.executeCommand('moveToMathfieldEnd');
+  const position = Math.max(0, field.lastOffset - 1);
+  field.position = position;
+  field.dispatchEvent(new Event('input', { bubbles: true }));
+  requestAnimationFrame(() => { if (field.isConnected) { field.focus(); field.position = Math.min(position, field.lastOffset); } });
+  return true;
+}
+
 function leaveFormula(editor, position, node, backward) {
   const target = position + (backward ? 0 : node.nodeSize);
   let transaction = editor.state.tr;
@@ -130,6 +185,21 @@ export const MathNode = Node.create({
         }
       });
       field.addEventListener('keydown', event => {
+        if (event.code === 'Digit0' && event.ctrlKey && !event.shiftKey && !event.altKey && !event.metaKey) {
+          event.preventDefault(); event.stopPropagation();
+          leaveEnvironment(field);
+          return;
+        }
+        if ((event.key === 'ArrowLeft' || event.key === 'ArrowRight') && field.mode === 'text') {
+          const before = JSON.stringify(field.selection.ranges);
+          queueMicrotask(() => {
+            if (!field.isConnected || field.mode !== 'text') return;
+            if (JSON.stringify(field.selection.ranges) !== before) return;
+            const command = event.key === 'ArrowRight' ? 'moveToNextGroup' : 'moveToPreviousGroup';
+            field.executeCommand(command);
+            if (field.mode === 'text') field.executeCommand(command);
+          });
+        }
         if (!event.ctrlKey && !event.metaKey && !event.altKey && ambiguous[event.key]) {
           event.preventDefault(); event.stopPropagation();
           if (event.repeat) return;
@@ -187,7 +257,9 @@ export const MathNode = Node.create({
         field.smartFence = false;
         field.smartSuperscript = false;
         field.environmentPopoverPolicy = 'off';
+        field.mathModeSpace = '\\space';
         field.keybindings = [...configuredKeys, ...field.keybindings];
+        installMathFieldStyle(field);
       });
       return {
         dom,
