@@ -654,8 +654,9 @@ const server=createServer(async(req,res)=>{
     await importSource(String.raw`Lead $\mathbf{AB}+C$ tail`);
     await page.waitForFunction(()=>document.querySelector('math-field')?.value.includes('mathbf{AB}'));
     await paper.locator('p').click({position:{x:2,y:8}});
-    await page.keyboard.press('Home');
-    for (let index=0;index<5;index++) await page.keyboard.press('ArrowRight');
+    await paper.locator('p').evaluate(paragraph=>{
+      window.getSelection().collapse(paragraph.firstChild,paragraph.firstChild.length);
+    });
     await page.keyboard.press('Control+e');
     await page.keyboard.press('e');
     await page.waitForFunction(()=>document.activeElement?.tagName==='MATH-FIELD');
@@ -668,6 +669,9 @@ const server=createServer(async(req,res)=>{
     const exitedPosition=await chordField.evaluate(field=>{const position=field.position;field.position=1;return position;});
     await page.keyboard.press('Control+j');
     assert.equal(await chordField.evaluate(field=>field.position),exitedPosition);
+    await chordField.evaluate(field=>{field.executeCommand('moveToMathfieldEnd');});
+    await page.keyboard.type('(x)');
+    assert.match(await chordField.evaluate(field=>field.value),/\\left\(x\\right\)$/);
     assert.deepEqual(errors,[]);
     console.log('Browser regressions passed');
   }finally{

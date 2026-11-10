@@ -700,7 +700,12 @@ document.addEventListener('keydown', event => {
 zoom.addEventListener('input', () => { wheelZoom = Number(zoom.value); });
 zoom.addEventListener('change', () => saveConfig({ zoom: Number(zoom.value) }));
 function formulaAtSelection() {
-  const { selection } = editor.state;
+  let { selection } = editor.state;
+  const domSelection = window.getSelection();
+  if (domSelection?.isCollapsed && editor.view.dom.contains(domSelection.anchorNode)) {
+    const position = editor.view.posAtDOM(domSelection.anchorNode, domSelection.anchorOffset);
+    if (position >= 0 && !selection.node) selection = { empty:true, $from:editor.state.doc.resolve(position) };
+  }
   const { $from } = selection;
   const math = node => ['math','mathBlock'].includes(node?.type.name);
   if (math(selection.node)) return { position:selection.from, start:true };
