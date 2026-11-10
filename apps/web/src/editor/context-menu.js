@@ -53,7 +53,18 @@ export function contextCommands(context) {
         // Operate on the matrix containing the caret, not the first source match.
         // This preserves sibling/nested matrices and the math editor's selection.
         field.focus();
-        if(field.executeCommand(['setEnvironment',target]))return;
+        const previous=field.value;
+        if(field.executeCommand(['setEnvironment',target])) {
+          // MathLive 0.108 can retain the old verbatim environment source after
+          // changing its array model. Re-serialize that model before persisting.
+          const updated=field.getValue('latex-expanded');
+          if(updated!==previous) {
+            const selection=structuredClone(field.selection);
+            field.value=updated;field.selection=selection;
+            field.dispatchEvent(new Event('input',{bubbles:true}));
+          }
+          return;
+        }
         // A click on the bracket can select the whole formula. Only when there
         // is exactly one simple matrix is entering its first cell unambiguous.
         if(/^\\begin\{([pbBvV]?matrix)\}(?:(?!\\(?:begin|end)\{)[\s\S])*\\end\{\1\}$/.test(field.value)) {
