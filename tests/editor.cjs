@@ -470,6 +470,36 @@ const server=createServer(async(req,res)=>{
     assert.match(await paper.textContent(),/Fonts/,'Undo keeps preceding text');
     await page.keyboard.press('Control+y');
     assert.match(await page.locator('math-field').evaluate(field=>field.value),/\\mathbf\{R\}/,'Redo restores math font');
+    const bodyCommand=async name=>{
+      await importSource('Commands');
+      await page.waitForFunction(()=>document.querySelector('.ProseMirror')?.textContent==='Commands');
+      await paper.locator('p').click();
+      await page.keyboard.press('End');
+      await page.keyboard.type('\\');
+      await page.locator('.command-menu input').fill(name);
+      await page.keyboard.press('Enter');
+      await page.waitForFunction(()=>document.activeElement?.tagName==='MATH-FIELD');
+      return page.locator('math-field').last();
+    };
+    const fractionField=await bodyCommand('frac');
+    await page.keyboard.type('1');
+    assert.match(await fractionField.evaluate(field=>field.value),/^\\frac\{1\}\{\\placeholder\{\}\}$/,'Command insertion puts the caret inside the first placeholder');
+    const accentField=await bodyCommand('hat');
+    await page.keyboard.type('R');
+    assert.equal(await accentField.evaluate(field=>field.value),'\\hat{R}','Accent command takes the next typed character');
+    const textField=await bodyCommand('text');
+    await page.keyboard.type('R');
+    assert.equal(await textField.evaluate(field=>field.value),'\\text{R}','Text command keeps its command and replaces the sentinel');
+    const operatorField=await bodyCommand('operatorname');
+    await page.keyboard.type('R');
+    assert.equal(await operatorField.evaluate(field=>field.value),'\\operatorname{R}','Operator name takes the next typed character');
+    await bodyCommand('frac');
+    await page.keyboard.type('1');
+    await page.locator('[data-group=insert]').click();
+    await page.getByRole('button',{name:'LaTeX',exact:true}).click();
+    const exportedMath=await page.locator('.source-view').inputValue();
+    assert.match(exportedMath,/\\frac\{1\}\{\}/,'Editing placeholders do not leak into exported LaTeX');
+    assert.ok(!exportedMath.includes('\\placeholder{}'),'Exported LaTeX has no MathLive placeholders');
     assert.deepEqual(errors,[]);
     console.log('Browser regressions passed');
   }finally{

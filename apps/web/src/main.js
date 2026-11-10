@@ -68,8 +68,19 @@ function saveConfig(patch) {
   try { localStorage.setItem('lineae.config',toYaml(appConfig)); } catch {}
 }
 let editor;
+// Insert into the live field so MathLive selects the first placeholder.
+// Creating the node with the source already set leaves the caret at offset 0.
+function insertLiveMath(field, latex) {
+  field.insert(latex, { format: 'latex' });
+  if (latex === '\\text{x}') {
+    const end = field.selection?.ranges?.[0]?.[1];
+    if (end > 0) field.selection = { ranges: [[end - 1, end]], direction: 'none' };
+  }
+  field.dispatchEvent(new Event('input', { bubbles: true }));
+}
 function insertMath(display = false, latex = '') {
-  insertFormula(editor, display, latex);
+  if (!latex) return insertFormula(editor, display, '');
+  insertFormula(editor, display, '', undefined, field => insertLiveMath(field, latex));
 }
 const Shortcuts = Extension.create({
   name:'documentShortcuts',
@@ -416,12 +427,12 @@ const formulaCommands = {
   mathbf: '\\mathbf{x}', mathrm: '\\mathrm{x}', mathit: '\\mathit{x}',
   mathcal: '\\mathcal{x}', mathbb: '\\mathbb{x}', text: '\\text{x}',
   mathsf: '\\mathsf{x}', mathtt: '\\mathtt{x}', mathfrak: '\\mathfrak{x}', mathscr: '\\mathscr{x}',
-  boldsymbol: '\\boldsymbol{x}', operatorname: '\\operatorname{x}', op: '\\operatorname{x}',
+  boldsymbol: '\\boldsymbol{x}', operatorname: '\\operatorname{}', op: '\\operatorname{}',
   leftparen: '\\left(\\placeholder{}\\right)', leftbracket: '\\left[\\placeholder{}\\right]',
   leftbrace: '\\left\\{\\placeholder{}\\right\\}', leftdot: '\\left.\\placeholder{}\\right|',
   rightparen: '\\left(\\placeholder{}\\right)', rightbracket: '\\left[\\placeholder{}\\right]',
   rightbrace: '\\left\\{\\placeholder{}\\right\\}', rightdot: '\\left|\\placeholder{}\\right.',
-  overline: '\\overline{x}', hat: '\\hat{x}', vec: '\\vec{x}', dot: '\\dot{x}',
+  overline: '\\overline{\\placeholder{}}', hat: '\\hat{\\placeholder{}}', vec: '\\vec{\\placeholder{}}', dot: '\\dot{\\placeholder{}}',
   partial: '\\partial', nabla: '\\nabla', prod: '\\prod', iint: '\\iint', oint: '\\oint',
   alpha: '\\alpha', beta: '\\beta', gamma: '\\gamma', delta: '\\delta', theta: '\\theta',
   lambda: '\\lambda', mu: '\\mu', pi: '\\pi', sigma: '\\sigma', omega: '\\omega',
@@ -519,7 +530,7 @@ function insertFormulaCommand(latex) {
   const fragment = latex.replaceAll('#?', '\\placeholder{}');
   if (completionField?.isConnected) {
     completionField.focus();
-    completionField.executeCommand(['insert', fragment]);
+    insertLiveMath(completionField, fragment);
   } else insertMath(false, fragment);
 }
 function highlightCandidate(index) {

@@ -9,6 +9,9 @@ const escape = text => text.replace(/[\u00A0\\{}%$&#_^~§¶•…–—‘’“
   '™': '\\texttrademark{}', '©': '\\copyright{}',
 }[char] ?? '\\' + char));
 
+// MathLive placeholders are editing aids with no LaTeX meaning.
+const withoutPlaceholders = latex => latex.replace(/\\placeholder\{[^{}]*\}/g, '');
+
 export function serialize(node) {
   const content = (node.content ?? []).map(serialize).join('');
   if (node.type === 'text') {
@@ -58,8 +61,14 @@ export function serialize(node) {
     }
     case 'descriptionList': return '\\begin{description}\n' + content + '\\end{description}\n\n';
     case 'descriptionItem': return '\\item[' + node.attrs.term + '] ' + content.trim() + '\n';
-    case 'mathBlock': return /^\\begin\{/.test(node.attrs.latex.trim()) ? node.attrs.latex + '\n\n' : '\\[' + node.attrs.latex + '\\]\n\n';
-    case 'math': return node.attrs.display ? '\\[' + node.attrs.latex + '\\]' : '$' + node.attrs.latex + '$';
+    case 'mathBlock': {
+      const latex = withoutPlaceholders(node.attrs.latex);
+      return /^\\begin\{/.test(latex.trim()) ? latex + '\n\n' : '\\[' + latex + '\\]\n\n';
+    }
+    case 'math': {
+      const latex = withoutPlaceholders(node.attrs.latex);
+      return node.attrs.display ? '\\[' + latex + '\\]' : '$' + latex + '$';
+    }
     case 'ref': return '\\ref{' + node.attrs.key + '}';
     case 'label': return '\\label{' + node.attrs.key + '}';
     case 'raw': return node.attrs.source;
