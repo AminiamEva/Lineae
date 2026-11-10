@@ -697,7 +697,21 @@ filter.addEventListener('keydown', event => {
   }
 });
 paper.addEventListener('lineae-math-command', event => showCommands(event.detail.field));
-paper.addEventListener('lineae-math-shortcut', ({detail:{field,key}}) => {
+const mathOperatorKeys = { 'cs:s':'sum', 'cs:p':'prod', 'cs:i':'iint', 'csa:i':'iiint', 'a:i':'oint', 'sa:i':'oiint' };
+window.addEventListener('keydown', event => {
+  if (event.defaultPrevented || event.metaKey || event.isComposing) return;
+  const field = event.composedPath().find(node => node?.tagName === 'MATH-FIELD');
+  if (!field || !paper.contains(field)) return;
+  const key = /^Key[A-Z]$/.test(event.code) ? event.code.slice(3).toLowerCase() : event.key.toLowerCase();
+  const modifiers = `${event.ctrlKey ? 'c' : ''}${event.shiftKey ? 's' : ''}${event.altKey ? 'a' : ''}`;
+  const operator = mathOperatorKeys[`${modifiers}:${key}`];
+  if (!operator && (modifiers !== 'c' || !['f','i','m','l','r'].includes(key))) return;
+  event.preventDefault(); event.stopImmediatePropagation();
+  if (event.repeat) return;
+  if (operator) {
+    insertLiveMath(field, '\\'+operator);
+    return;
+  }
   if (key === 'l' || key === 'r') {
     chooseMathDelimiters(field, key === 'r');
     return;
@@ -710,7 +724,7 @@ paper.addEventListener('lineae-math-shortcut', ({detail:{field,key}}) => {
     m: `\\begin{pmatrix}${selected || slot}\\end{pmatrix}`,
   };
   insertLiveMath(field, fragments[key]);
-});
+}, true);
 document.addEventListener('pointerdown', event => { if (!commands.contains(event.target)) closeCommands(); }, true);
 document.addEventListener('scroll', event => {
   if (!commands.hidden && !commands.contains(event.target)) closeCommands();
