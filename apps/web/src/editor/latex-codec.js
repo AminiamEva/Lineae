@@ -41,6 +41,11 @@ export function serialize(node) {
     return value;
   }
   switch (node.type) {
+    case 'codeBlock': {
+      const language=node.attrs?.language;
+      const option=/^[A-Za-z0-9+_-]+$/.test(language??'') ? '[language='+language+']' : '';
+      return '\\begin{lstlisting}'+option+'\n'+(node.content??[]).map(child=>child.text??'').join('')+'\n\\end{lstlisting}\n\n';
+    }
     case 'documentImage': return serializeImage(node.attrs);
     case 'paragraph': return (node.attrs?.indent === false ? '\\noindent ' : '') + content + '\n\n';
     case 'heading': {

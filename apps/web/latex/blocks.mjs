@@ -224,5 +224,7 @@ function importSegment(block) {
 }
 
 export function importBlocks(block) {
+  const listing = /^\\begin\{lstlisting\}(?:\[language=([A-Za-z0-9+_-]+)\])?\r?\n([\s\S]*?)\r?\n\\end\{lstlisting\}$/.exec(block.trim());
+  if (listing) return [{type:'codeBlock',attrs:{language:listing[1]??null},content:listing[2]?[{type:'text',text:listing[2]}]:[]}];
   return splitParagraphs(block).flatMap(importSegment);
 }

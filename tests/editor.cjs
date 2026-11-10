@@ -659,7 +659,8 @@ const server=createServer(async(req,res)=>{
     await page.waitForFunction(()=>document.querySelector('math-field')?.value.includes('mathbf{AB}'));
     await paper.locator('p').click({position:{x:2,y:8}});
     await paper.locator('p').evaluate(paragraph=>{
-      window.getSelection().collapse(paragraph.firstChild,paragraph.firstChild.length);
+      const leading=Array.from(paragraph.childNodes).find(node=>node.nodeType===Node.TEXT_NODE);
+      window.getSelection().collapse(leading,leading.length);
     });
     await page.keyboard.press('Control+e');
     await page.keyboard.press('e');
@@ -762,6 +763,13 @@ const server=createServer(async(req,res)=>{
     await (await chooser).setFiles({name:'plot.png',mimeType:'image/png',buffer:Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jB9kAAAAASUVORK5CYII=','base64')});
     await imageNode.locator('img').waitFor({state:'visible'});
     assert.equal(await imageNode.locator('img').evaluate(image=>image.style.width),'50%');
+    await importSource('');
+    await page.waitForFunction(()=>document.querySelector('.ProseMirror p')?.textContent==='');
+    await paper.locator('p').click();
+    await page.keyboard.type('```');
+    await paper.locator('pre code').waitFor();
+    await page.keyboard.type('return 42');
+    assert.equal(await paper.locator('pre code').textContent(),'return 42');
     assert.deepEqual(errors,[]);
     console.log('Browser regressions passed');
   }finally{

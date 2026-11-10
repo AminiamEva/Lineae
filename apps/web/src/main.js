@@ -153,10 +153,29 @@ function insertMath(display = false, latex = '') {
   if (!latex) return insertFormula(editor, display, '');
   insertFormula(editor, display, '', undefined, field => insertLiveMath(field, latex));
 }
+let backticks = null;
 const Shortcuts = Extension.create({
   name:'documentShortcuts',
   addProseMirrorPlugins:()=>[new Plugin({props:{
     handleTextInput(view,from,to,text) {
+      const parent = view.state.doc.resolve(from).parent;
+      if (text === '`' && parent.type.name !== 'codeBlock') {
+        const now=performance.now();
+        const continued=backticks && now-backticks.time<450 && backticks.doc===view.state.doc && backticks.pos===from;
+        if (continued && backticks.count===2 && parent.textContent==='`') {
+          editor.chain().deleteRange({from:from-1,to:from}).setCodeBlock().run();
+          backticks=null;
+        } else if (continued && backticks.count===1) {
+          view.dispatch(view.state.tr.insertText('`',from,to));
+          backticks={time:now,count:2,doc:view.state.doc,pos:view.state.selection.from};
+        } else {
+          editor.commands.toggleCode();
+          backticks={time:now,count:1,doc:view.state.doc,pos:view.state.selection.from};
+        }
+        return true;
+      }
+      backticks=null;
+      if (parent.type.name === 'codeBlock') return false;
       if(text==='\\') {showCommands();return true;}
       if(text!=='$')return false;
       const previous=view.state.doc.resolve(from).nodeBefore;
@@ -182,6 +201,7 @@ const Shortcuts = Extension.create({
       return true;
     };
     return {
+      'Alt-`':()=>this.editor.commands.insertContent('`'),
       ArrowRight:()=>enterFormula(true),
       ArrowLeft:()=>enterFormula(false),
       Tab:()=>{
@@ -986,6 +1006,10 @@ const tabs=document.createElement('nav');tabs.className='ribbon-tabs';
 const home=document.createElement('div');home.className='tools';
 const insert=document.createElement('div');insert.className='tools';
 groupButton(insert,t('图片','Image'),()=>insertLocalImage(editor));
+groupButton(insert,t('代码块','Code block'),async()=>{
+  const language=await askText(t('代码语言，例如 Python、Java 或 C++','Code language, e.g. Python, Java or C++'),editor.getAttributes('codeBlock').language??'');
+  if(language!==null && (!language || /^[A-Za-z0-9+_-]+$/.test(language))) editor.chain().focus().setCodeBlock({language:language||null}).run();
+});
 const files=header.querySelector('.tools');
 for(const control of [...tools.children]) {
   (control.hasAttribute('data-home') || control.tagName==='SELECT' || ['↶','↷','B','I','U','H'].includes(control.textContent)?home:insert).append(control);
