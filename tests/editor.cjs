@@ -437,6 +437,18 @@ const server=createServer(async(req,res)=>{
     assert.equal(await page.evaluate(()=>{
       const event=new Event('beforeunload',{cancelable:true});window.dispatchEvent(event);return event.defaultPrevented;
     }),true,'Switching views must not mark edits as saved');
+    await importSource('$\\begin{pmatrix}a\\end{pmatrix}+\\begin{pmatrix}b\\end{pmatrix}$');
+    await page.waitForFunction(()=>document.querySelector('math-field')?.value.includes('b'));
+    const siblingMath=page.locator('math-field');
+    await siblingMath.click();
+    await siblingMath.evaluate(field=>{
+      for(let i=0;i<field.lastOffset;i++) {
+        if(field.getValue(i,i+1)==='b') {field.position=i+1;break;}
+      }
+      field.dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,composed:true,clientX:400,clientY:300}));
+    });
+    await context.locator('[data-command="matrix-bmatrix"]').click();
+    assert.match(await siblingMath.evaluate(field=>field.value),/\\begin\{pmatrix\}a\\end\{pmatrix\}.*\\begin\{bmatrix\}b\\end\{bmatrix\}/,'Only the matrix containing the caret changes');
     assert.deepEqual(errors,[]);
     console.log('Browser regressions passed');
   }finally{
