@@ -43,6 +43,7 @@ export function serialize(node) {
     return value;
   }
   switch (node.type) {
+    case 'theoremBlock': return '\\begin{'+node.attrs.kind+'}'+(node.attrs.title?'['+node.attrs.title+']':'')+'\n'+content.trimEnd()+'\n\\end{'+node.attrs.kind+'}\n\n';
     case 'codeBlock': {
       const language=node.attrs?.language;
       const option=/^[A-Za-z0-9+_-]+$/.test(language??'') ? '[language='+language+']' : '';

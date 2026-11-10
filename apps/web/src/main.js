@@ -14,7 +14,10 @@ import { installTableHoverAddRow } from './editor/table-hover.js';
 import { parseYaml, toYaml, mergeConfig } from './editor/config.mjs';
 import { askText } from './editor/dialog.js';
 import { installDocumentFind } from './editor/find.js';
-import { DocumentImage, insertLocalImage } from './editor/image-node.js';
+import { DocumentImage, insertLocalImage, installImageDrop } from './editor/image-node.js';
+import { projectAssets, rememberAsset } from './editor/project-assets.js';
+import { buildProjectZip, safeProjectPath } from './editor/project-zip.mjs';
+import { theoremNames } from '../latex/theorem.mjs';
 import { MultiSelection } from './editor/multi-selection.js';
 import { installSpaceOverlay } from './editor/space-overlay.js';
 import { wrapMathWithDelimiters } from '../latex/delimiters.mjs';
@@ -90,6 +93,13 @@ const TextCommand = Mark.create({
 function insertTextCommand(name) {
   editor.chain().focus().insertContent({ type: 'text', text: textCommands[name], marks: [{ type: 'textCommand', attrs: { name } }] }).run();
 }
+const TheoremBlock = Node.create({
+  name:'theoremBlock',group:'block',content:'block+',defining:true,
+  addAttributes:()=>({kind:{default:'theorem'},title:{default:null}}),
+  parseHTML:()=>[{tag:'section[data-theorem]',getAttrs:element=>Object.hasOwn(theoremNames,element.dataset.theorem)?{kind:element.dataset.theorem,title:element.dataset.theoremTitle||null}:false}],
+  renderHTML:({node})=>['section',{'data-theorem':node.attrs.kind,'data-theorem-title':node.attrs.title??'',
+    'data-theorem-heading':theoremNames[node.attrs.kind]+(node.attrs.title?' ('+node.attrs.title+')':'')+'.'},0],
+});
 const Raw = Node.create({
   name:'raw', group:'block', atom:true,
   addAttributes:()=>({source:{default:''}}),
@@ -220,7 +230,7 @@ paper.before(documentPage);documentPage.append(paper);
 paper.replaceChildren();
 editor=new Editor({
   element:paper,
-  extensions:[StarterKit.configure({heading:{levels:[1,2,3]}}),MultiSelection,PaperBehavior,TextStyle,TextCommand,Underline,Superscript,Subscript,SmallCaps,Boxed,Table.configure({resizable:true}),TableRow,TableCell,TableHeader,Raw,DocumentImage,DescriptionList,DescriptionItem,MathNode,MathBlock,Ref,Cite,Footnote,Label,TableOfContents,Shortcuts],
+  extensions:[StarterKit.configure({heading:{levels:[1,2,3]}}),MultiSelection,PaperBehavior,TextStyle,TextCommand,Underline,Superscript,Subscript,SmallCaps,Boxed,Table.configure({resizable:true}),TableRow,TableCell,TableHeader,Raw,DocumentImage,TheoremBlock,DescriptionList,DescriptionItem,MathNode,MathBlock,Ref,Cite,Footnote,Label,TableOfContents,Shortcuts],
   content:'<p></p>',
 });
 function syncTableAttributes() {
@@ -240,6 +250,7 @@ function syncTableAttributes() {
 editor.on('update',()=>{refreshReferences(paper);syncTableAttributes();});
 syncTableAttributes();
 installTableHoverAddRow(editor, paper);
+installImageDrop(editor,paper);
 installDocumentFind(editor);
 const tools=document.querySelector('#insert');
 tools.replaceChildren();
@@ -463,10 +474,33 @@ function toggleSourceView(){
   updateSourceButton();
 }
 document.querySelector('#download').disabled=false;
-function downloadText(text) {
-  const url=URL.createObjectURL(new Blob([text],{type:'text/plain;charset=utf-8'}));
-  const a=document.createElement('a');a.href=url;a.download=filename;a.click();
-  setTimeout(()=>URL.revokeObjectURL(url),1000);
+async function downloadProject() {
+  const text=sourceView.hidden?source():sourceView.value;
+  const status=document.querySelector('#status');
+  try {
+    const assets=new Map(projectAssets().filter(([path])=>safeProjectPath(path)));
+    const dependencies=[...text.matchAll(/\\(?:includegraphics|addbibresource)(?:\[[^\]]*\])?\{([^{}]+)\}/g)].map(match=>match[1]);
+    for(const match of text.matchAll(/\\bibliography\{([^{}]+)\}/g)) {
+      dependencies.push(...match[1].split(',').map(name=>name.trim()).filter(Boolean).map(name=>name.endsWith('.bib')?name:name+'.bib'));
+    }
+    const required=new Map();
+    const missing=[];
+    for(const path of new Set(dependencies)) {
+      const actual=assets.has(path)?path:[...assets.keys()].find(key=>key.replace(/\.[^.\/]+$/,'')===path);
+      if(actual) required.set(actual,assets.get(actual));else missing.push(path);
+    }
+    if(missing.length) {
+      status.hidden=false;status.textContent=t('缺少项目资源','Missing project assets')+': '+missing.join(', ');
+      return;
+    }
+    const name=safeProjectPath(filename)?filename:'lineae.tex';
+    const zip=await buildProjectZip([[name,text],...[...required].filter(([path])=>path!==name)]);
+    const url=URL.createObjectURL(zip);
+    const a=document.createElement('a');a.href=url;a.download=name.replace(/\.tex$/i,'')+'.zip';a.click();
+    setTimeout(()=>URL.revokeObjectURL(url),1000);
+  } catch(error) {
+    status.hidden=false;status.textContent=error.message;
+  }
 }
 async function saveDocument() {
   const text=sourceView.hidden?source():sourceView.value;
@@ -487,7 +521,7 @@ async function saveDocument() {
       console.warn(t('保存','Save'),error);
     }
   }
-  downloadText(text);
+  await downloadProject();
 }
 async function openDocument() {
   try {
@@ -502,7 +536,7 @@ async function openDocument() {
     return false;
   }
 }
-document.querySelector('#download').addEventListener('click',saveDocument);
+document.querySelector('#download').addEventListener('click',downloadProject);
 document.addEventListener('keydown',event=>{
   if((event.ctrlKey||event.metaKey)&&!event.altKey&&!event.shiftKey&&event.key.toLowerCase()==='s') {
     event.preventDefault(); event.stopPropagation(); saveDocument();
@@ -572,6 +606,7 @@ const structureCommands = {
   indent: () => editor.chain().focus().updateAttributes('paragraph',{indent:true}).run(),
   noindent: () => editor.chain().focus().updateAttributes('paragraph',{indent:false}).run(),
   par: () => editor.chain().focus().splitBlock().run(),
+  ...Object.fromEntries(Object.keys(theoremNames).map(kind=>[kind,()=>editor.chain().focus().wrapIn('theoremBlock',{kind}).run()])),
   section: () => editor.chain().focus().setHeading({ level: 1 }).run(),
   subsection: () => editor.chain().focus().setHeading({ level: 2 }).run(),
   subsubsection: () => editor.chain().focus().setHeading({ level: 3 }).run(),
@@ -1159,6 +1194,17 @@ groupButton(insert,t('代码块','Code block'),async()=>{
   else editor.chain().focus().setCodeBlock({language:language||null}).run();
 });
 const files=header.querySelector('.tools');
+const attachFolder=groupButton(files,t('关联资源目录','Attach asset folder'),()=>{
+  const picker=document.createElement('input');
+  picker.type='file';picker.webkitdirectory=true;
+  picker.addEventListener('change',()=>{
+    for(const file of picker.files) {
+      const path=file.webkitRelativePath.split('/').slice(1).join('/');
+      if(safeProjectPath(path))rememberAsset(path,file);
+    }
+  },{once:true});
+  picker.click();
+});
 for(const control of [...tools.children]) {
   (control.hasAttribute('data-home') || control.tagName==='SELECT' || ['↶','↷','B','I','U','H'].includes(control.textContent)?home:insert).append(control);
 }
@@ -1181,7 +1227,8 @@ function updateLanguage() {
   document.documentElement.lang=language.value;
   localize(document);
   for(const tab of tabs.children)tab.textContent=captions[tab.dataset.group][chinese?0:1];
-  download.textContent=chinese?'保存 .tex':'Save .tex';
+  download.textContent=chinese?'下载项目 .zip':'Download project .zip';
+  attachFolder.textContent=chinese?'关联资源目录':'Attach asset folder';
   exportConfig.textContent=chinese?'配置':'Config';
   header.querySelector('.open span').textContent=chinese?'打开 .tex':'Open .tex';
   commands.setAttribute('aria-label',t('LaTeX 补全','LaTeX completion'));

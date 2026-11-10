@@ -44,15 +44,19 @@ export function installSpaceOverlay(editor, paper) {
         const style=getComputedStyle(block);
         const lineHeight=Number.parseFloat(style.lineHeight)||20;
         const indent=Number.parseFloat(style.textIndent)||0;
-        range.selectNodeContents(block);
-        const rects=Array.from(range.getClientRects()).map(local)
-          .filter(rect=>rect.width>0 && rect.top>=bounds.top-1 && rect.bottom<=bounds.bottom+1);
+        const rects=[];
+        for(const child of block.childNodes) {
+          if(child.matches?.('.label-node,.ProseMirror-trailingBreak'))continue;
+          if(child.nodeType===Node.TEXT_NODE)range.selectNodeContents(child);else range.selectNode(child);
+          rects.push(...Array.from(range.getClientRects()).map(local)
+            .filter(rect=>rect.width>0 && rect.top>=bounds.top-1 && rect.bottom<=bounds.bottom+1));
+        }
         for (const atom of block.querySelectorAll('math-field,.ref-node,.cite-node,img')) {
           if (atom.closest('.label-node')) continue;
           const rect=local(atom.getBoundingClientRect());
           if (rect.width>0 && rect.top>=bounds.top-1 && rect.bottom<=bounds.bottom+1) rects.push(rect);
         }
-        const rect=rects.reduce((last, rect) => !last || rect.right>last.right ? rect : last, null);
+        const rect=rects.reduce((last, rect) => !last || rect.top>last.top+lineHeight/2 || (Math.abs(rect.top-last.top)<lineHeight/2 && rect.right>last.right) ? rect : last, null);
         const y=bounds.top+lineHeight/2;
         const mark=shape('text',{
           x:(rect?.right??bounds.left+indent)+3,

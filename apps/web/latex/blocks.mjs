@@ -1,6 +1,7 @@
 import { parseInline, textCommands } from './inline.mjs';
 import { parseTable } from './tables.mjs';
 import { parseImageBlock } from './images.mjs';
+import { theoremParts } from './theorem.mjs';
 
 function inlineContent(text) {
   const parsed = parseInline(text);
@@ -268,6 +269,11 @@ function importSegment(block) {
 }
 
 export function importBlocks(block) {
+  const theorem=theoremParts(block);
+  if(theorem) {
+    const content=theorem.body.split(/\r?\n[ \t]*\r?\n/).map(part=>importBlock(part)).filter(Boolean);
+    return [{type:'theoremBlock',attrs:{kind:theorem.kind,title:theorem.title},content:content.length?content:[{type:'paragraph'}]}];
+  }
   const ruledTable = /^\{\\setlength\{\\arrayrulewidth\}\{(\d+(?:\.\d+)?pt)\}\s*(\\begin\{tabular\}[\s\S]*\\end\{tabular\})\s*\}$/.exec(block.trim());
   if (ruledTable) {
     const node=importBlock(ruledTable[2]);

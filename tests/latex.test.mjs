@@ -5,6 +5,21 @@ import { parseInline } from '../apps/web/latex/inline.mjs';
 import { exportDocument, resolvePackages } from '../apps/web/latex/packages.mjs';
 import { serialize } from '../apps/web/src/editor/latex-codec.js';
 import { importBlocks } from '../apps/web/latex/blocks.mjs';
+import { buildProjectZip } from '../apps/web/src/editor/project-zip.mjs';
+
+test('exports theorem and proof environments and a path-safe project ZIP', async () => {
+  const [theorem]=importBlocks('\\begin{theorem}[Example]\nStatement.\n\\end{theorem}');
+  assert.equal(theorem.type,'theoremBlock');
+  assert.match(serialize(theorem),/\\begin\{theorem\}\[Example\]/);
+  assert.equal(importBlocks('\\begin{proof}\nArgument.\n\\end{proof}')[0].attrs.kind,'proof');
+  const zip=await buildProjectZip([['main.tex','text'],['ref/图.png',new Blob([new Uint8Array([1,2,3])])]]);
+  const bytes=new Uint8Array(await zip.arrayBuffer());
+  const view=new DataView(bytes.buffer);
+  assert.equal(view.getUint32(0,true),0x04034b50);
+  assert.equal(view.getUint16(bytes.length-12,true),2);
+  assert.ok(new TextDecoder().decode(bytes).includes('ref/图.png'));
+  await assert.rejects(buildProjectZip([['../outside.tex','x']]),/Invalid ZIP entry/);
+});
 
 test('keeps numbered equation labels out of math content and exports eqref', () => {
   const [math]=importBlocks('\\begin{equation}\nx=1\n\\label{eq:x}\n\\end{equation}');

@@ -1,6 +1,7 @@
 import { getEntryValue, parseBibFile } from '../../bib/index.mjs';
 import { t } from '../ui/i18n.mjs';
 import { popIn } from '../ui/motion.mjs';
+import { rememberAsset } from './project-assets.js';
 
 function pickBibFile() {
   return new Promise(resolve => {
@@ -64,6 +65,7 @@ export async function insertCitationDialog() {
   const file = await pickBibFile();
   if (!file) return null;
   const document = await parseBibFile(file);
+  rememberAsset(file.name,file);
   const entries = document.entries.map(entry => ({
     key: entry.key,
     title: getEntryValue(entry, 'title', document) || entry.type,

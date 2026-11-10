@@ -919,6 +919,32 @@ const server=createServer(async(req,res)=>{
       return ['--page-width','--page-height','--page-margin-top','--page-margin-right'].map(name=>page.style.getPropertyValue(name));
     });
     assert.deepEqual(pageLayout,['210mm','148mm','1.27cm','1.27cm'],'Layout controls update the page metrics');
+    await importSource('\\begin{theorem}[Example]\nStatement.\n\\end{theorem}\n\n\\begin{proof}\nArgument.\n\\end{proof}');
+    await paper.locator('[data-theorem="proof"]').waitFor();
+    assert.equal(await paper.locator('[data-theorem="theorem"] p').textContent(),'Statement.');
+    await paper.evaluate(element=>{
+      const transfer=new DataTransfer();
+      const png=Uint8Array.from(atob('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jB9kAAAAASUVORK5CYII='),char=>char.charCodeAt(0));
+      transfer.items.add(new File([png],'drop-test.png',{type:'image/png'}));
+      const rect=element.getBoundingClientRect();
+      element.dispatchEvent(new DragEvent('drop',{bubbles:true,cancelable:true,dataTransfer:transfer,clientX:rect.left+10,clientY:rect.top+10}));
+    });
+    await paper.locator('figure.document-image img').waitFor({state:'visible'});
+    await paper.locator('p').first().click();
+    await page.keyboard.press('Control+a');
+    await page.keyboard.press('Control+c');
+    await page.waitForFunction(async()=>{
+      const entries=await navigator.clipboard.read();
+      for(const entry of entries)if(entry.types.includes('text/html')&&(await (await entry.getType('text/html')).text()).includes('data-document-image="drop-test.png"'))return true;
+      return false;
+    });
+    await page.locator('[data-group=files]').click();
+    const downloading=page.waitForEvent('download');
+    await page.locator('#download').click();
+    const downloaded=await downloading;
+    assert.match(downloaded.suggestedFilename(),/\.zip$/);
+    const projectBytes=await readFile(await downloaded.path());
+    assert.ok(projectBytes.includes(Buffer.from('drop-test.png')));
     assert.deepEqual(errors,[]);
     console.log('Browser regressions passed');
   }finally{
