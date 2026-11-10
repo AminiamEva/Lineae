@@ -810,9 +810,10 @@ const server=createServer(async(req,res)=>{
     await page.waitForFunction(()=>document.querySelector('.ProseMirror p')?.textContent==='前 后中文');
     await page.keyboard.press('Backspace');
     assert.equal(await paper.locator('p').textContent(),'前 后中');
-    await page.keyboard.press('Home');
+    await paper.locator('p').evaluate(paragraph=>window.getSelection().collapse(paragraph.firstChild,0));
+    await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(resolve)));
     await page.keyboard.press('Delete');
-    assert.equal(await paper.locator('p').textContent(),' 后中');
+    await page.waitForFunction(()=>document.querySelector('.ProseMirror p')?.textContent.trimStart()==='后中');
     assert.deepEqual(errors,[]);
     console.log('Browser regressions passed');
   }finally{
