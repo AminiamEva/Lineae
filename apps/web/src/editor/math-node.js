@@ -76,8 +76,11 @@ function leaveEnvironment(field) {
   }
   const before = JSON.stringify(field.selection.ranges);
   if (field.mode === 'text') {
-    field.executeCommand('moveToNextGroup');
-    if (field.mode === 'text') field.executeCommand('moveToNextGroup');
+    let end = field.position;
+    while (end < field.lastOffset && /^\\text\{/.test(field.getValue(end, end + 1))) end++;
+    field.position = end;
+    field.executeCommand(['switchMode', 'math']);
+    return true;
   } else {
     field.executeCommand('moveAfterParent');
   }
@@ -199,10 +202,13 @@ export const MathNode = Node.create({
           editor.view.dispatch(editor.state.tr.setNodeMarkup(position, undefined, { ...node.attrs, latex: field.value }));
         }
       });
+      let leavingStructure = false;
       field.addEventListener('keydown', event => {
         if (['0', 'j'].includes(event.key.toLowerCase()) && event.ctrlKey && !event.shiftKey && !event.altKey && !event.metaKey) {
           event.preventDefault(); event.stopPropagation();
-          leaveEnvironment(field);
+          leavingStructure = true;
+          try { leaveEnvironment(field); }
+          finally { leavingStructure = false; }
           return;
         }
         if ((event.key === 'ArrowLeft' || event.key === 'ArrowRight') && field.mode === 'text') {
@@ -262,6 +268,7 @@ export const MathNode = Node.create({
         }
       }, true);
       field.addEventListener('move-out', event => {
+        if (leavingStructure) { event.preventDefault(); return; }
         leaveFormula(editor, getPos(), node, event.detail.direction === 'backward');
       });
       field.addEventListener('mount', () => {

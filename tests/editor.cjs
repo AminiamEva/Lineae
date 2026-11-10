@@ -516,6 +516,10 @@ const server=createServer(async(req,res)=>{
     const textField=await bodyCommand('text');
     await page.keyboard.type('R');
     assert.equal(await textField.evaluate(field=>field.value),'\\text{R}','Text command keeps its command and replaces the sentinel');
+    await page.keyboard.press('Control+j');
+    assert.equal(await page.evaluate(()=>document.activeElement?.tagName),'MATH-FIELD');
+    await page.keyboard.type('+2');
+    assert.match(await textField.evaluate(field=>field.value),/\\text\{R\}\s*\+2/,'Math input resumes after leaving text');
     const operatorField=await bodyCommand('operatorname');
     await page.keyboard.type('R');
     assert.equal(await operatorField.evaluate(field=>field.value),'\\operatorname{R}','Operator name takes the next typed character');
@@ -680,6 +684,10 @@ const server=createServer(async(req,res)=>{
     await page.locator('.editor-dialog button[type=submit]').click();
     await page.waitForFunction(()=>/^\\left\[.*\\right\)$/.test(document.querySelector('math-field')?.value));
     assert.match(await chordField.evaluate(field=>field.value),/\\mathbf\{AB\}/,'Wrapping preserves selected math');
+    await importSource(String.raw`\LaTeX{} and \TeX{}`+'\n\n中文');
+    await page.waitForFunction(()=>document.querySelectorAll('.ProseMirror .tex-logo-art').length===2);
+    const paragraphGap=await paper.locator('p').evaluateAll(([first,second])=>second.getBoundingClientRect().top-first.getBoundingClientRect().bottom);
+    assert.ok(Math.abs(paragraphGap)<1,'Paragraphs have no extra vertical gap');
     assert.deepEqual(errors,[]);
     console.log('Browser regressions passed');
   }finally{

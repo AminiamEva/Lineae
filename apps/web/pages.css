@@ -25,7 +25,13 @@ main { padding:125px 24px 60px; overflow:auto; }
 .document-page { width:210mm; min-height:297mm; margin:auto; padding:22mm; background:light-dark(#fff,#242426); box-shadow:0 2px 14px #0002; font:10pt/1.5 Georgia,"Songti SC",SimSun,serif; cursor:text; }
 #editor { min-height:calc(297mm - 44mm); outline:none; }
 .ProseMirror { min-height:250mm; outline:none; overflow-wrap:anywhere; white-space:pre-wrap; }
-.ProseMirror p { margin:0 0 .65em; }
+.ProseMirror p { margin:0; }
+.ProseMirror p + p { text-indent:1.5em; }
+[data-text-command="LaTeX"],[data-text-command="TeX"] { position:relative; white-space:nowrap; }
+.tex-logo-source { color:transparent; }
+.tex-logo-art { position:absolute; inset-inline-start:0; top:0; pointer-events:none; user-select:none; }
+.tex-logo-a { position:relative; top:-.35em; font-size:.72em; margin-inline:-.28em -.12em; }
+.tex-logo-e { position:relative; top:.22em; margin-inline:-.13em -.1em; }
 .ProseMirror h1 { font-size:1.7em; }
 .ProseMirror h2 { font-size:1.4em; }
 .ProseMirror ul,.ProseMirror ol { padding-left:2em; }
