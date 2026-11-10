@@ -680,10 +680,16 @@ const server=createServer(async(req,res)=>{
     await page.keyboard.type('\\');
     await page.locator('.command-menu input').fill('left');
     await page.keyboard.press('Enter');
-    await page.locator('.editor-dialog input').fill('[ )');
-    await page.locator('.editor-dialog button[type=submit]').click();
+    await page.locator('.delimiter-input input').first().fill('[');
+    assert.equal(await page.locator('.delimiter-input input').last().evaluate(input=>document.activeElement===input),true);
+    await page.keyboard.type(')');
     await page.waitForFunction(()=>/^\\left\[.*\\right\)$/.test(document.querySelector('math-field')?.value));
     assert.match(await chordField.evaluate(field=>field.value),/\\mathbf\{AB\}/,'Wrapping preserves selected math');
+    await chordField.evaluate(field=>{field.focus();field.executeCommand('moveToMathfieldEnd');});
+    await page.keyboard.press('Control+e');
+    await page.keyboard.press('t');
+    await page.keyboard.type('[');
+    assert.match(await chordField.evaluate(field=>field.value),/\[$/,'Literal fence does not generate a pair');
     await importSource(String.raw`\LaTeX{} and \TeX{}`+'\n\n中文');
     await page.waitForFunction(()=>document.querySelectorAll('.ProseMirror .tex-logo-art').length===2);
     const paragraphGap=await paper.locator('p').evaluateAll(([first,second])=>second.getBoundingClientRect().top-first.getBoundingClientRect().bottom);

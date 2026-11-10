@@ -11,7 +11,8 @@ import { installTableHoverAddRow } from './editor/table-hover.js';
 import { parseYaml, toYaml, mergeConfig } from './editor/config.mjs';
 import { askText } from './editor/dialog.js';
 import { installDocumentFind } from './editor/find.js';
-import { parseDelimiterPair, wrapMathWithDelimiters } from '../latex/delimiters.mjs';
+import { wrapMathWithDelimiters } from '../latex/delimiters.mjs';
+import { readDelimiterPair } from './editor/delimiter-input.js';
 import { serialize, importBlocks } from './editor/latex-codec.js';
 import { Editor, Node, Extension, Mark } from '@tiptap/core';
 import StarterKit from '@tiptap/starter-kit';
@@ -604,20 +605,16 @@ async function chooseMathDelimiters(field, rightFirst = false) {
   const selection = field && structuredClone(field.selection);
   const value = field?.value;
   const documentBefore = editor.state.doc;
-  const input = await askText(rightFirst
-    ? t('右、左定界符，用空格分隔；点表示无定界符', 'Right then left delimiter, separated by a space; dot hides one side')
-    : t('左、右定界符，用空格分隔；点表示无定界符', 'Left then right delimiter, separated by a space; dot hides one side'), rightFirst ? '] (' : '( ]');
-  if (field?.isConnected) field.focus();
-  else editor.view.focus();
-  if (input === null) return;
-  const pair = parseDelimiterPair(input);
+  const anchor = field?.getBoundingClientRect() ?? editor.view.coordsAtPos(editor.state.selection.from);
+  const pair = await readDelimiterPair(anchor, rightFirst);
   if (!pair) {
-    const status = document.querySelector('#status');
-    status.hidden = false;
-    status.textContent = t('请输入两个有效的定界符，例如 ( ] 或 { .', 'Enter two valid delimiters, such as ( ] or { .');
+    if (document.activeElement === document.body) {
+      if (field?.isConnected) field.focus(); else editor.view.focus();
+    }
     return;
   }
-  if (rightFirst) pair.reverse();
+  if (field?.isConnected) field.focus();
+  else editor.view.focus();
   if (field) {
     if (!field.isConnected || field.value !== value) return;
     field.selection = selection;
@@ -697,6 +694,22 @@ filter.addEventListener('keydown', event => {
   }
 });
 paper.addEventListener('lineae-math-command', event => showCommands(event.detail.field));
+const literalFences = { '(': '(', ')': ')', '[':'[', ']':']', '{':'\\{', '}':'\\}', '|':'\\vert' };
+function armLiteralFence(field) {
+  if (!field) return;
+  field.focus();
+  const controller = new AbortController();
+  const options = { signal:controller.signal, capture:true };
+  field.addEventListener('blur',()=>controller.abort(),options);
+  field.addEventListener('keydown',event=>{
+    if (['Shift','Alt','Control','Meta'].includes(event.key)) return;
+    controller.abort();
+    const fence=literalFences[event.key];
+    if (!fence || event.ctrlKey || event.altKey || event.metaKey) return;
+    event.preventDefault(); event.stopImmediatePropagation();
+    insertLiveMath(field,fence);
+  },options);
+}
 const mathOperatorKeys = { 'cs:s':'sum', 'cs:p':'prod', 'cs:i':'iint', 'csa:i':'iiint', 'a:i':'oint', 'sa:i':'oiint' };
 window.addEventListener('keydown', event => {
   if (event.defaultPrevented || event.metaKey || event.isComposing) return;
@@ -803,6 +816,11 @@ document.addEventListener('keydown', event => {
   if (performance.now()>matrixChord) return;
   const key=event.key.toLowerCase();
   matrixChord=0;
+  if (key==='t' && document.activeElement?.tagName==='MATH-FIELD') {
+    event.preventDefault(); event.stopPropagation();
+    armLiteralFence(document.activeElement);
+    return;
+  }
   if (key==='e' && editor.view.hasFocus()) {
     const target=formulaAtSelection();
     const field=target && editor.view.nodeDOM(target.position)?.querySelector('math-field');
@@ -938,6 +956,16 @@ groupButton(mathGroup,'frac',()=>insertMath(false,'\\frac{\\placeholder{}}{\\pla
 groupButton(mathGroup,'sqrt',()=>insertMath(false,'\\sqrt{\\placeholder{}}'));
 groupButton(mathGroup,'sum',()=>insertMath(false,'\\sum'));
 groupButton(mathGroup,'int',()=>insertMath(false,'\\int'));
+for (const operator of ['prod','iint','iiint','oint','oiint']) {
+  groupButton(mathGroup,'\\'+operator,()=>{
+    const field=activeMath();
+    if(field)insertLiveMath(field,'\\'+operator);
+    else insertMath(false,'\\'+operator);
+  });
+}
+groupButton(mathGroup,'\\left',()=>chooseMathDelimiters(activeMath()));
+groupButton(mathGroup,'\\right',()=>chooseMathDelimiters(activeMath(),true));
+groupButton(mathGroup,'单括号 / Literal fence',()=>armLiteralFence(activeMath()));
 groupButton(mathGroup,'matrix',()=>insertMath(false,'\\begin{pmatrix}\\placeholder{}\\end{pmatrix}'));
 groupButton(mathGroup,'cases',()=>insertMath(true,'\\begin{cases}\\placeholder{} & \\placeholder{}\\\\ \\placeholder{} & \\placeholder{}\\end{cases}'));
 groupButton(mathGroup,'align',()=>insertMath(true,'\\begin{align}\\placeholder{} &= \\placeholder{}\\\\ \\placeholder{} &= \\placeholder{}\\end{align}'));

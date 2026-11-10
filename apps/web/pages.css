@@ -31,6 +31,10 @@ main { padding:125px 24px 60px; overflow:auto; }
 .document-find { position:fixed; inset:104px 16px auto auto; z-index:15; display:flex; align-items:center; gap:5px; padding:7px; border-radius:12px; background:light-dark(#fff,#29292d); box-shadow:0 4px 18px #0003; }
 .document-find input { width:min(38vw,200px); font:inherit; padding:5px 8px; border:1px solid light-dark(#ccd0d8,#555); border-radius:7px; }
 .document-find output { min-width:3em; font-size:.85em; }
+.delimiter-input { position:fixed; z-index:20; display:grid; grid-template-columns:1fr 1fr; gap:5px; width:min(290px,calc(100vw - 16px)); padding:6px; border-radius:9px; background:light-dark(#fff,#26262a); box-shadow:0 2px 10px #0002; }
+.delimiter-input input { width:100%; min-width:0; border:1px solid transparent; border-radius:5px; color:inherit; background:light-dark(#e8effa,#37445c); padding:4px 6px; }
+.delimiter-input input + input { background:light-dark(#efe9f7,#483b58); }
+.delimiter-input small { grid-column:1 / -1; opacity:.7; }
 [data-text-command="LaTeX"],[data-text-command="TeX"] { position:relative; white-space:nowrap; }
 .tex-logo-source { color:transparent; }
 .tex-logo-source::selection { color:transparent; background:light-dark(#b9d7fa99,#38568099); }
