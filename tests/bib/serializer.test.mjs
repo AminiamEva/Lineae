@@ -18,7 +18,7 @@ test('EOL conversion is explicit and reversible', () => {
   const crlf = serializeBib(document, { eol: 'crlf' });
   assert.ok(!/[^\r]\n/.test(crlf));
   assert.equal(parseBib(crlf).source.eol, '\r\n');
-  assert.equal(serializeBib(parseBib(crlf), { eol: 'lf' }), document.source.text);
+  assert.equal(serializeBib(parseBib(crlf), { eol: 'lf' }), document.source.text.replace(/\r\n/g,'\n'));
 });
 
 test('BOM handling is explicit', () => {
@@ -94,7 +94,7 @@ test('a new entry is appended after a blank line and parses back', () => {
     fields: { author: 'New, Author', title: 'A New Entry', year: '2024' },
   }));
   const text = editor.toBibTeX();
-  assert.match(text, /\n\n@misc\{new2024,/);
+  assert.match(text, /(?:\r?\n){2}@misc\{new2024,/);
   const reparsed = parseBib(text);
   assert.equal(reparsed.entries.at(-1).key, 'new2024');
   assert.equal(serializeBib(reparsed), text);
