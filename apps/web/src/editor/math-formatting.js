@@ -11,6 +11,11 @@ export const mathFontStyles = {
 };
 
 export function applyMathFont(field, command) {
+  const apply=()=>{
+    field.focus();
+    field.applyStyle(mathFontStyles[command]);
+  };
   field.focus();
-  field.applyStyle(mathFontStyles[command]);
+  if(field.hasFocus()) apply();
+  else field.addEventListener('mount',apply,{once:true});
 }
