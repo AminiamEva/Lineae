@@ -61,6 +61,29 @@ function installMathFieldStyle(field) {
   root.append(style);
 }
 
+function commitUnclosedFences(field) {
+  // MathLive 0.108 serializes a pending delimiter as the suggested glyph.
+  // Read the pinned model to distinguish a suggestion from an explicit keypress.
+  const model = field._mathfield?.model;
+  if (!model?.at) return;
+  let changed = false;
+  for (let offset = 0; offset <= field.lastOffset; offset++) {
+    const atom = model.at(offset);
+    if (atom?.type !== 'leftright') continue;
+    if (atom.leftDelim !== '?' && atom.rightDelim !== '?') continue;
+    if (atom.leftDelim === '?') atom.leftDelim = '.';
+    if (atom.rightDelim === '?') atom.rightDelim = '.';
+    atom.isDirty = true;
+    changed = true;
+  }
+  if (changed) {
+    const latex = field.getValue();
+    field.setValue('', { silenceNotifications:true });
+    field.setValue(latex, { silenceNotifications:true });
+    field.dispatchEvent(new Event('input',{bubbles:true}));
+  }
+}
+
 function leaveEnvironment(field) {
   // Font commands can be represented as adjacent styled atoms rather than
   // a parent group. Move past that style run before using group navigation.
@@ -195,6 +218,7 @@ export const MathNode = Node.create({
         if (event.button === 0) requestAnimationFrame(() => { if (field.isConnected) field.focus(); });
       });
       field.addEventListener('blur', () => { pendingKey = null; });
+      field.addEventListener('lineae-commit-fences', () => commitUnclosedFences(field));
 
       field.addEventListener('input', () => {
         if(node.attrs.latex===field.value)return;
@@ -258,7 +282,10 @@ export const MathNode = Node.create({
           if (!field.value && !node.isBlock) {
             const position = getPos();
             insertFormula(editor, true, '', { from: position, to: position + node.nodeSize });
-          } else leaveFormula(editor, getPos(), node, false);
+          } else {
+            commitUnclosedFences(field);
+            leaveFormula(editor, getPos(), node, false);
+          }
           return;
         }
         if (event.key === 'Backspace' && !field.value) {
@@ -270,6 +297,7 @@ export const MathNode = Node.create({
       }, true);
       field.addEventListener('move-out', event => {
         if (leavingStructure) { event.preventDefault(); return; }
+        commitUnclosedFences(field);
         leaveFormula(editor, getPos(), node, event.detail.direction === 'backward');
       });
       field.addEventListener('mount', () => {

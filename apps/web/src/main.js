@@ -258,8 +258,10 @@ button('▦',()=>editor.chain().focus().insertTable({rows:2,cols:2,withHeaderRow
 let editingMath = null;
 document.addEventListener('focusin', event => {
   const field=event.composedPath().find(element=>element?.tagName==='MATH-FIELD');
-  if(field) editingMath=field;
-  else if(paper.contains(event.target) || event.target.classList?.contains('source-view')) editingMath=null;
+  if(field || paper.contains(event.target) || event.target.classList?.contains('source-view')) {
+    if(editingMath && editingMath!==field) editingMath.dispatchEvent(new Event('lineae-commit-fences'));
+    editingMath=field ?? null;
+  }
 },true);
 function activeMath() {
   if(document.activeElement?.tagName==='MATH-FIELD') return document.activeElement;

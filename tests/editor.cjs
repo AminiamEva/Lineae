@@ -739,9 +739,18 @@ const server=createServer(async(req,res)=>{
     await selectionField.evaluate(field=>field.executeCommand('moveToMathfieldStart'));
     await page.keyboard.press('Shift+ArrowRight');
     assert.equal(await selectionField.evaluate(field=>field.getValue(field.selection.ranges[0])),'a');
+    const selectionBox=await selectionField.boundingBox();
+    await page.mouse.move(selectionBox.x+2,selectionBox.y+selectionBox.height/2);
+    await page.mouse.down();
+    await page.mouse.move(selectionBox.x+selectionBox.width-2,selectionBox.y+selectionBox.height/2,{steps:10});
+    await page.mouse.up();
+    assert.ok(await selectionField.evaluate(field=>field.selection.ranges.some(([from,to])=>from!==to)),'Mouse drag creates a math selection');
     await selectionField.evaluate(field=>field.executeCommand('moveToMathfieldEnd'));
     await page.keyboard.type('\\\\');
     await page.waitForFunction(()=>document.querySelector('math-field')?.value.includes('\\backslash'));
+    await page.keyboard.type('[x');
+    await page.keyboard.type('$');
+    await page.waitForFunction(()=>document.querySelector('math-field')?.value.includes('\\right.'));
     assert.deepEqual(errors,[]);
     console.log('Browser regressions passed');
   }finally{
