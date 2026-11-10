@@ -82,15 +82,7 @@ const TextCommand = Mark.create({
     const name = element.dataset.textCommand;
     return Object.hasOwn(textCommands, name) ? { name } : false;
   } }],
-  renderHTML: ({ mark }) => {
-    const name = mark.attrs.name;
-    const attrs = { 'data-text-command': name };
-    if (name !== 'TeX' && name !== 'LaTeX') return ['span', attrs, 0];
-    const letters = name === 'LaTeX' ? ['L', ['span', { class: 'tex-logo-a' }, 'A']] : [];
-    return ['span', attrs, ['span', { class: 'tex-logo-source' }, 0],
-      ['span', { class: 'tex-logo-art', 'aria-hidden': 'true', contenteditable: 'false' },
-        ...letters, 'T', ['span', { class: 'tex-logo-e' }, 'E'], 'X']];
-  },
+  renderHTML: ({ mark }) => ['span', { 'data-text-command': mark.attrs.name }, 0],
 });
 function insertTextCommand(name) {
   editor.chain().focus().insertContent({ type: 'text', text: textCommands[name], marks: [{ type: 'textCommand', attrs: { name } }] }).run();

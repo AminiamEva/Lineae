@@ -18,8 +18,10 @@ export function serialize(node) {
   const content = (node.content ?? []).map(serialize).join('');
   if (node.type === 'text') {
     const command = node.marks?.find(mark => mark.type === 'textCommand')?.attrs?.name;
-    let value = Object.hasOwn(textCommands, command) && textCommands[command] === node.text
-      ? '\\' + command + '{}' : escape(node.text);
+    const glyph=Object.hasOwn(textCommands,command) ? textCommands[command] : '';
+    const count=glyph ? node.text.length/glyph.length : 0;
+    let value = count && Number.isInteger(count) && glyph.repeat(count)===node.text
+      ? ('\\' + command + '{}').repeat(count) : escape(node.text);
     for (const mark of node.marks ?? []) {
       if (mark.type === 'bold') value = '\\textbf{' + value + '}';
       if (mark.type === 'italic') value = '\\textit{' + value + '}';

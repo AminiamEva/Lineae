@@ -694,7 +694,9 @@ const server=createServer(async(req,res)=>{
     await page.keyboard.type('[');
     assert.match(await chordField.evaluate(field=>field.value),/\[$/,'Literal fence does not generate a pair');
     await importSource(String.raw`\LaTeX{} and \TeX{}`+'\n\n中文');
-    await page.waitForFunction(()=>document.querySelectorAll('.ProseMirror .tex-logo-art').length===2);
+    await page.waitForFunction(()=>document.querySelectorAll('.ProseMirror .tex-logo-e').length===2);
+    assert.equal(await paper.locator('p').first().textContent(),'LaTeX and TeX');
+    assert.equal(await paper.locator('.tex-logo-a').textContent(),'a');
     const paragraphGap=await paper.locator('p').evaluateAll(([first,second])=>second.getBoundingClientRect().top-first.getBoundingClientRect().bottom);
     assert.ok(Math.abs(paragraphGap)<1,'Paragraphs have no extra vertical gap');
     await importSource('Find word and word.\n\n$z$');

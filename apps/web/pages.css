@@ -54,11 +54,8 @@ main { padding:125px 24px 60px; overflow:auto; }
 .delimiter-input-embedded input:nth-child(2) { inset-inline-start:100%; }
 .delimiter-input-embedded small { position:absolute; z-index:20; inset-inline-start:0; top:100%; white-space:nowrap; }
 [data-text-command="LaTeX"],[data-text-command="TeX"] { position:relative; white-space:nowrap; }
-.tex-logo-source { color:transparent; }
-.tex-logo-source::selection { color:transparent; background:light-dark(#b9d7fa99,#38568099); }
-.tex-logo-art { position:absolute; inset-inline-start:0; top:0; pointer-events:none; user-select:none; }
-.tex-logo-a { position:relative; top:-.35em; font-size:.72em; margin-inline:-.28em -.12em; }
-.tex-logo-e { position:relative; top:.22em; margin-inline:-.13em -.1em; }
+.tex-logo-a { position:relative; top:-.32em; font-size:.72em; line-height:0; text-transform:uppercase; margin-inline:-.23em -.1em; }
+.tex-logo-e { position:relative; top:.21em; text-transform:uppercase; margin-inline:-.14em -.09em; }
 .ProseMirror h1 { font-size:1.7em; }
 .ProseMirror h2 { font-size:1.4em; }
 .ProseMirror ul,.ProseMirror ol { padding-left:2em; }
