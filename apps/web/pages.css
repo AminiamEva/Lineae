@@ -84,6 +84,7 @@ main { padding:125px 24px 60px; overflow:auto; }
 .ProseMirror .math-inline math-field::part(container) { padding:0; }
 .ProseMirror-selectednode { outline:2px solid #468bdf; border-radius:3px; }
 .ProseMirror .ref-node { display:inline-block; padding:0 .3em; border-radius:4px; background:light-dark(#eef3fc,#2b3442); color:light-dark(#2f5aa8,#bcd4ff); cursor:pointer; user-select:none; }
+.ProseMirror .cite-node { display:inline-block; padding:0 .3em; border-radius:4px; background:light-dark(#eaf5f0,#243b34); color:light-dark(#1c6b52,#a6e3ce); cursor:pointer; user-select:none; }
 .table-insert-row { position:fixed; z-index:20; width:22px; height:22px; border-radius:50%; border:1px solid light-dark(#7aa7e6,#5b7fb3); background:light-dark(#fff,#2c3440); color:light-dark(#2f5aa8,#bcd4ff); font:16px/1 sans-serif; cursor:pointer; box-shadow:0 1px 4px #0003; padding:0; }
 .table-insert-row:hover { background:light-dark(#e5efff,#394c67); }
 .ProseMirror blockquote { margin:.6em 0; padding-left:1em; border-left:3px solid light-dark(#d5dce8,#4a5568); }
@@ -104,6 +105,7 @@ main { padding:125px 24px 60px; overflow:auto; }
 .editor-dialog { width:min(380px,90vw); display:flex; flex-direction:column; gap:10px; padding:16px; border-radius:12px; background:light-dark(#fff,#29292d); box-shadow:0 10px 40px #0005; border:1px solid light-dark(#ddd,#555); }
 .editor-dialog label { font-weight:600; }
 .editor-dialog input { padding:8px; border-radius:7px; border:1px solid light-dark(#ccd0d8,#555); background:light-dark(#fff,#303035); color:inherit; }
+.citation-dialog select { min-height:190px; padding:4px; border-radius:7px; border:1px solid light-dark(#ccd0d8,#555); background:light-dark(#fff,#303035); color:inherit; }
 .editor-dialog-actions { display:flex; justify-content:flex-end; gap:8px; }
 #document-meta { margin:0 0 14px; display:flex; flex-direction:column; align-items:center; text-align:center; gap:4px; }
 #document-meta .doc-title { font-size:1.6em; font-weight:600; min-height:1.3em; }

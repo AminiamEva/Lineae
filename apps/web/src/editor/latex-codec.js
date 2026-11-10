@@ -92,6 +92,7 @@ export function serialize(node) {
       return node.attrs.display ? '\\[' + latex + '\\]' : '$' + latex + '$';
     }
     case 'ref': return '\\ref{' + node.attrs.key + '}';
+    case 'cite': return '\\cite{' + node.attrs.key + '}';
     case 'label': return '\\label{' + node.attrs.key + '}';
     case 'raw': return node.attrs.source.replace(/\n+$/, '') + '\n\n';
     case 'hardBreak': return '\\\\\n';

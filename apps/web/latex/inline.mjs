@@ -65,6 +65,9 @@ export function parseInline(source, depth = 0) {
     const reference = rest.match(/^\\ref\{([^{}\r\n]+)\}/);
     if (reference) { nodes.push({ ref: reference[1] }); cursor += reference[0].length; continue; }
 
+    const citation = rest.match(/^\\cite\{([^{}\r\n]+)\}/);
+    if (citation) { nodes.push({ cite: citation[1] }); cursor += citation[0].length; continue; }
+
     const label = rest.match(/^\\label\{([^{}\r\n]+)\}/);
     if (label) { nodes.push({ label: label[1] }); cursor += label[0].length; continue; }
 

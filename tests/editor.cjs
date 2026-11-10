@@ -834,6 +834,18 @@ const server=createServer(async(req,res)=>{
     await paper.focus();
     await page.keyboard.press('Delete');
     await page.waitForFunction(()=>document.querySelector('.ProseMirror p')?.textContent.trimStart()==='后中');
+    await importSource('Citation here');
+    await page.waitForFunction(()=>document.querySelector('.ProseMirror p')?.textContent==='Citation here');
+    await page.locator('[data-group=reference]').click();
+    const [citationChooser] = await Promise.all([
+      page.waitForEvent('filechooser'),
+      page.getByRole('button',{name:'cite',exact:true}).click(),
+    ]);
+    await citationChooser.setFiles({name:'refs.bib',mimeType:'text/plain',buffer:Buffer.from('@article{knuth1984,title={Literate Programming},author={Knuth}}')});
+    await page.waitForFunction(()=>Boolean(document.querySelector('.citation-dialog')));
+    await page.locator('.citation-dialog select').selectOption('knuth1984');
+    await page.locator('.citation-dialog button[type=submit]').click();
+    await page.waitForFunction(()=>document.querySelector('.ProseMirror .cite-node')?.textContent.includes('knuth1984'));
     await importSource('alpha beta alpha');
     await page.waitForFunction(()=>document.querySelector('.ProseMirror p')?.textContent==='alpha beta alpha');
     await paper.locator('p').click();

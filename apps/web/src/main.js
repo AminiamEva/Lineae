@@ -7,7 +7,8 @@ import { installFormatControls } from './editor/format-controls.js';
 import { decorateToolbar } from './editor/icons.js';
 import { PaperBehavior } from './editor/paper-behavior.js';
 import { MathNode, MathBlock, configureMathKeys, insertFormula, toggleDisplayStyle } from './editor/math-node.js';
-import { Ref, Label, TableOfContents, refreshReferences } from './editor/references.js';
+import { Ref, Label, Cite, TableOfContents, refreshReferences } from './editor/references.js';
+import { insertCitationDialog } from './editor/citation-dialog.js';
 import { installTableHoverAddRow } from './editor/table-hover.js';
 import { parseYaml, toYaml, mergeConfig } from './editor/config.mjs';
 import { askText } from './editor/dialog.js';
@@ -215,7 +216,7 @@ paper.before(documentPage);documentPage.append(paper);
 paper.replaceChildren();
 editor=new Editor({
   element:paper,
-  extensions:[StarterKit.configure({heading:{levels:[1,2,3]}}),MultiSelection,PaperBehavior,TextStyle,TextCommand,Underline,Superscript,Subscript,SmallCaps,Boxed,Table.configure({resizable:true}),TableRow,TableCell,TableHeader,Raw,DocumentImage,DescriptionList,DescriptionItem,MathNode,MathBlock,Ref,Label,TableOfContents,Shortcuts],
+  extensions:[StarterKit.configure({heading:{levels:[1,2,3]}}),MultiSelection,PaperBehavior,TextStyle,TextCommand,Underline,Superscript,Subscript,SmallCaps,Boxed,Table.configure({resizable:true}),TableRow,TableCell,TableHeader,Raw,DocumentImage,DescriptionList,DescriptionItem,MathNode,MathBlock,Ref,Cite,Label,TableOfContents,Shortcuts],
   content:'<p></p>',
 });
 function syncTableAttributes() {
@@ -1043,6 +1044,15 @@ groupButton(referenceGroup,'label',async()=>{
 groupButton(referenceGroup,'ref',async()=>{
   const value=await askText(t('引用标签','Reference label'));
   if(value)editor.chain().focus().insertContent({type:'ref',attrs:{key:value}}).run();
+});
+groupButton(referenceGroup,'cite',async()=>{
+  try{
+    const key=await insertCitationDialog();
+    if(key)editor.chain().focus().insertContent({type:'cite',attrs:{key}}).run();
+  }catch(error){
+    document.querySelector('#status').hidden=false;
+    document.querySelector('#status').textContent=error.message;
+  }
 });
 groupButton(referenceGroup,'toc',()=>{
   if(editor.isActive('tableOfContents'))editor.chain().focus().deleteSelection().run();

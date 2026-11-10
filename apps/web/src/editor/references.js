@@ -66,6 +66,47 @@ export const Ref = Node.create({
   },
 });
 
+export const Cite = Node.create({
+  name: 'cite',
+  group: 'inline',
+  inline: true,
+  atom: true,
+  selectable: true,
+  addAttributes: () => ({ key: { default: '' } }),
+  parseHTML: () => [{ tag: 'span[data-cite]', getAttrs: dom => ({ key: dom.dataset.cite }) }],
+  renderHTML: ({ node }) => ['span', { 'data-cite': node.attrs.key }, '[' + node.attrs.key + ']'],
+  addNodeView() {
+    return ({ node, editor, getPos }) => {
+      const dom = document.createElement('span');
+      dom.className = 'cite-node';
+      dom.contentEditable = 'false';
+      const render = () => {
+        dom.dataset.citeView = node.attrs.key;
+        dom.textContent = '[' + node.attrs.key + ']';
+        dom.title = '\\cite{' + node.attrs.key + '}';
+      };
+      render();
+      dom.addEventListener('mousedown', event => {
+        const position = getPos();
+        if (typeof position !== 'number') return;
+        event.preventDefault();
+        event.stopPropagation();
+        editor.commands.setNodeSelection(position);
+      });
+      return {
+        dom,
+        update(next) {
+          if (next.type !== node.type) return false;
+          node = next;
+          render();
+          return true;
+        },
+        ignoreMutation: () => true,
+      };
+    };
+  },
+});
+
 export const Label = Node.create({
   name: 'label',
   group: 'inline',

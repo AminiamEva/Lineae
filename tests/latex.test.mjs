@@ -87,6 +87,13 @@ test('parses text superscripts and subscripts as structure', () => {
   assert.deepEqual(sub.children, ['1']);
 });
 
+test('round-trips citations as inline nodes', () => {
+  const [cite] = parseInline('\\cite{knuth1984}');
+  assert.equal(cite.cite, 'knuth1984');
+  const doc = { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'cite', attrs: { key: 'knuth1984' } }] }] };
+  assert.equal(serialize(doc), '\\cite{knuth1984}\n\n');
+});
+
 test('parses small caps and boxed text as structure', () => {
   const [smallCaps] = parseInline(String.raw`\textsc{Small}`);
   const [boxed] = parseInline(String.raw`\fbox{Box}`);
