@@ -307,7 +307,7 @@ button('$',()=>insertMath());
 button('$$',()=>insertMath(true));
 const sourceView=document.createElement('textarea');
 sourceView.className='source-view'; sourceView.hidden=true;
-paper.after(sourceView);
+documentPage.after(sourceView);
 let documentParts=parseDocument('\\documentclass{article}\n\\usepackage{amsmath}\n\\begin{document}\n\\end{document}\n');
 let filename='lineae.tex';
 let fileHandle=null;
@@ -370,9 +370,9 @@ function load(text, markSaved = true) {
 }
 button('LaTeX',()=>{
   if(sourceView.hidden) {
-    sourceView.value=source(); sourceView.hidden=false; paper.hidden=true;
+    sourceView.value=source(); sourceView.hidden=false; documentPage.hidden=true;
   } else {
-    try {load(sourceView.value,false);sourceView.hidden=true;paper.hidden=false;editor.commands.focus();}
+    try {load(sourceView.value,false);sourceView.hidden=true;documentPage.hidden=false;editor.commands.focus();}
     catch(error){document.querySelector('#status').hidden=false;document.querySelector('#status').textContent=error.message;}
   }
 });
@@ -662,11 +662,11 @@ function updateThemeButton(){
   themeButton.setAttribute('aria-label',(chinese?'主题：':'Theme: ')+label[chinese?0:1]);
 }
 function scale() {
-  paper.style.zoom=Number(zoom.value)/100;
+  documentPage.style.zoom=Number(zoom.value)/100;
   percent.textContent=zoom.value+'%';
   requestAnimationFrame(()=>{
     const brand=document.querySelector('header h1');
-    brand.style.opacity=String(Math.max(0,Math.min(1,(paper.getBoundingClientRect().left-brand.getBoundingClientRect().right)/28)));
+    brand.style.opacity=documentPage.hidden ? '1' : String(Math.max(0,Math.min(1,(documentPage.getBoundingClientRect().left-brand.getBoundingClientRect().right)/28)));
   });
 }
 window.addEventListener('resize',scale);

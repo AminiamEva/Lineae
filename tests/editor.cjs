@@ -153,6 +153,18 @@ const server=createServer(async(req,res)=>{
     await paper.evaluate(element=>element.dispatchEvent(new WheelEvent('wheel',{deltaY:-80,ctrlKey:true,bubbles:true,cancelable:true})));
     const afterZoom=Number(await page.locator('input[type=range]').inputValue());
     assert.ok(afterZoom-beforeZoom>=8 && afterZoom-beforeZoom<=12);
+    const pageGeometry=()=>page.locator('.document-page').evaluate(sheet=>({
+      width:sheet.getBoundingClientRect().width,
+      height:sheet.getBoundingClientRect().height,
+      bodyWidth:sheet.querySelector('#editor').getBoundingClientRect().width,
+      titleWidth:sheet.querySelector('#document-meta').getBoundingClientRect().width,
+    }));
+    const zoomedGeometry=await pageGeometry();
+    await page.keyboard.press('Control+0');
+    const naturalGeometry=await pageGeometry();
+    for(const dimension of Object.keys(naturalGeometry)) {
+      assert.ok(Math.abs(zoomedGeometry[dimension]/naturalGeometry[dimension]-afterZoom/100)<0.01,dimension+' must scale with the paper');
+    }
     await page.keyboard.press('Control+0');
     assert.equal(await page.locator('input[type=range]').inputValue(),'100');
     await page.keyboard.press('Control+-');
