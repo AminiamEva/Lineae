@@ -1,4 +1,5 @@
 import { importBlock, importBlocks } from '../../latex/blocks.mjs';
+import { textCommands } from '../../latex/inline.mjs';
 export { importBlock, importBlocks };
 
 const escape = text => text.replace(/[\u00A0\\{}%$&#_^~§¶•…–—‘’“”®™©]/g, char => ({
@@ -15,7 +16,9 @@ const withoutPlaceholders = latex => latex.replace(/\\placeholder\{[^{}]*\}/g, '
 export function serialize(node) {
   const content = (node.content ?? []).map(serialize).join('');
   if (node.type === 'text') {
-    let value = escape(node.text);
+    const command = node.marks?.find(mark => mark.type === 'textCommand')?.attrs?.name;
+    let value = Object.hasOwn(textCommands, command) && textCommands[command] === node.text
+      ? '\\' + command + '{}' : escape(node.text);
     for (const mark of node.marks ?? []) {
       if (mark.type === 'bold') value = '\\textbf{' + value + '}';
       if (mark.type === 'italic') value = '\\textit{' + value + '}';
@@ -67,10 +70,16 @@ export function serialize(node) {
     case 'descriptionItem': return '\\item[' + node.attrs.term + '] ' + content.trim() + '\n';
     case 'mathBlock': {
       const latex = withoutPlaceholders(node.attrs.latex);
+      const delimiter = node.attrs.delimiter;
+      if (delimiter === '$$') return '$$' + latex + '$$\n\n';
+      if (delimiter === 'equation' || delimiter === 'equation*') {
+        return '\\begin{' + delimiter + '}' + latex + '\\end{' + delimiter + '}\n\n';
+      }
       return /^\\begin\{/.test(latex.trim()) ? latex + '\n\n' : '\\[' + latex + '\\]\n\n';
     }
     case 'math': {
       const latex = withoutPlaceholders(node.attrs.latex);
+      if (node.attrs.delimiter === '\\(') return '\\(' + latex + '\\)';
       return node.attrs.display ? '\\[' + latex + '\\]' : '$' + latex + '$';
     }
     case 'ref': return '\\ref{' + node.attrs.key + '}';

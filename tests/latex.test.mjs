@@ -6,6 +6,19 @@ import { exportDocument, resolvePackages } from '../apps/web/latex/packages.mjs'
 import { serialize } from '../apps/web/src/editor/latex-codec.js';
 import { importBlocks } from '../apps/web/latex/blocks.mjs';
 
+test('re-serializes text symbols and formula wrappers after visual import', () => {
+  const paragraph = String.raw`\textbf{\LaTeX{} \textasciigrave{} \textasciicircum{}} \(x^2\)`;
+  const [node] = importBlocks(paragraph);
+  node.content.push({ type: 'text', text: ' edited' });
+  const output = serialize(node);
+  for (const command of [String.raw`\LaTeX{}`, String.raw`\textasciigrave{}`, String.raw`\textasciicircum{}`, String.raw`\(x^2\)`]) {
+    assert.ok(output.includes(command), output);
+  }
+  for (const source of ['$$x^2$$', String.raw`\begin{equation}x^2\end{equation}`, String.raw`\begin{equation*}x^2\end{equation*}`]) {
+    assert.equal(serialize(importBlocks(source)[0]).trim(), source);
+  }
+});
+
 test('preserves the bytes of an untouched document, including CRLF and opaque environments', () => {
   const source = [
     '\\documentclass{article}', '% keep this', '\\begin{document}', '',

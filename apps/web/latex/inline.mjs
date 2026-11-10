@@ -11,6 +11,7 @@ const textSymbols = {
   textregistered: '®', texttrademark: '™',
 };
 const simpleCommands = { LaTeX: 'LaTeX', TeX: 'TeX', copyright: '©', ldots: '…', dots: '…' };
+export const textCommands = Object.freeze({ ...textSymbols, ...simpleCommands });
 const symbolPattern = /^\\(text(?:backslash|asciitilde|asciicircum|asciigrave|bar|less|greater|underscore|braceleft|braceright|dollar|percent|ampersand|section|paragraph|bullet|ellipsis|endash|emdash|quoteleft|quoteright|quotedblleft|quotedblright|registered|trademark))(?:\{\})?/;
 const simplePattern = /^\\(LaTeX|TeX|copyright|ldots|dots)\b(?:\{\})?/;
 const plainPattern = /^\\(textup|textmd|textnormal|mbox|hbox)\{/;
@@ -32,10 +33,10 @@ export function parseInline(source, depth = 0) {
     if (escaped) { nodes.push(escaped[1]); cursor += escaped[0].length; continue; }
 
     const symbol = rest.match(symbolPattern);
-    if (symbol) { nodes.push(textSymbols[symbol[1]]); cursor += symbol[0].length; continue; }
+    if (symbol) { nodes.push({ textCommand: symbol[1] }); cursor += symbol[0].length; continue; }
 
     const simple = rest.match(simplePattern);
-    if (simple) { nodes.push(simpleCommands[simple[1]]); cursor += simple[0].length; continue; }
+    if (simple) { nodes.push({ textCommand: simple[1] }); cursor += simple[0].length; continue; }
 
     if (rest[0] === '~') { nodes.push('\u00A0'); cursor += 1; continue; }
 

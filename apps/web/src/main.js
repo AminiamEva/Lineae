@@ -1,4 +1,5 @@
 import { installContextMenu } from './editor/context-menu.js';
+import { textCommands } from '../latex/inline.mjs';
 import { closeHistory } from '@tiptap/pm/history';
 import { mathFontStyles, applyMathFont } from './editor/math-formatting.js';
 import { installFormatControls } from './editor/format-controls.js';
@@ -66,6 +67,19 @@ const Boxed = Mark.create({
   name:'boxed',parseHTML:()=>[{tag:'span[data-boxed]'}],
   renderHTML:()=>['span',{'data-boxed':'',style:'border:1px solid currentColor;padding:0 .2em'},0],
 });
+const TextCommand = Mark.create({
+  name: 'textCommand',
+  inclusive: false,
+  addAttributes: () => ({ name: { default: null } }),
+  parseHTML: () => [{ tag: 'span[data-text-command]', getAttrs: element => {
+    const name = element.dataset.textCommand;
+    return Object.hasOwn(textCommands, name) ? { name } : false;
+  } }],
+  renderHTML: ({ mark }) => ['span', { 'data-text-command': mark.attrs.name }, 0],
+});
+function insertTextCommand(name) {
+  editor.chain().focus().insertContent({ type: 'text', text: textCommands[name], marks: [{ type: 'textCommand', attrs: { name } }] }).run();
+}
 const Raw = Node.create({
   name:'raw', group:'block', atom:true,
   addAttributes:()=>({source:{default:''}}),
@@ -173,7 +187,7 @@ paper.before(documentPage);documentPage.append(paper);
 paper.replaceChildren();
 editor=new Editor({
   element:paper,
-  extensions:[StarterKit.configure({heading:{levels:[1,2,3]}}),PaperBehavior,TextStyle,Underline,Superscript,Subscript,SmallCaps,Boxed,Table.configure({resizable:true}),TableRow,TableCell,TableHeader,Raw,DescriptionList,DescriptionItem,MathNode,MathBlock,Ref,Label,TableOfContents,Shortcuts],
+  extensions:[StarterKit.configure({heading:{levels:[1,2,3]}}),PaperBehavior,TextStyle,TextCommand,Underline,Superscript,Subscript,SmallCaps,Boxed,Table.configure({resizable:true}),TableRow,TableCell,TableHeader,Raw,DescriptionList,DescriptionItem,MathNode,MathBlock,Ref,Label,TableOfContents,Shortcuts],
   content:'<p></p>',
 });
 function syncTableAttributes() {
@@ -599,7 +613,10 @@ function renderCommands() {
     if(completionField?.isConnected) toggleDisplayStyle(completionField);
     else insertFormula(editor,false,'',undefined,field=>toggleDisplayStyle(field));
   };
-  if (!completionField) Object.assign(actions, structureCommands);
+  if (!completionField) {
+    Object.assign(actions, structureCommands);
+    for (const name of Object.keys(textCommands)) actions[name] = () => insertTextCommand(name);
+  }
   const exactQuery = filter.value.replace(/^\\/, '');
   const query = exactQuery.toLowerCase();
   for (const [name, action] of Object.entries(actions).filter(([name]) => name.toLowerCase().startsWith(query)).sort(([a],[b]) => Number(b===exactQuery)-Number(a===exactQuery) || Number(b.toLowerCase()===query)-Number(a.toLowerCase()===query))) {
@@ -756,8 +773,8 @@ groupButton(formatGroup,'x²',()=>editor.chain().focus().toggleMark('superscript
 groupButton(formatGroup,'x₂',()=>editor.chain().focus().toggleMark('subscript').run());
 groupButton(formatGroup,'sc',()=>editor.chain().focus().toggleMark('smallcaps').run());
 groupButton(formatGroup,'box',()=>editor.chain().focus().toggleMark('boxed').run());
-groupButton(formatGroup,'\\LaTeX',()=>editor.chain().focus().insertContent('LaTeX').run());
-groupButton(formatGroup,'\\TeX',()=>editor.chain().focus().insertContent('TeX').run());
+groupButton(formatGroup,'\\LaTeX',()=>insertTextCommand('LaTeX'));
+groupButton(formatGroup,'\\TeX',()=>insertTextCommand('TeX'));
 groupButton(formatGroup,'desc',()=>editor.chain().focus().insertContent({type:'descriptionList',content:[{type:'descriptionItem',attrs:{term:''},content:[{type:'paragraph'}]}]}).run());
 function setListStyle(style) {
   if(editor.isActive('orderedList'))editor.chain().focus().updateAttributes('orderedList',{labelStyle:style}).run();

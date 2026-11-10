@@ -1,4 +1,4 @@
-import { parseInline } from './inline.mjs';
+import { parseInline, textCommands } from './inline.mjs';
 import { parseTable } from './tables.mjs';
 
 function inlineContent(text) {
@@ -7,7 +7,8 @@ function inlineContent(text) {
   function convert(parts, marks = []) {
     return parts.flatMap(part => {
       if (typeof part === 'string') return part ? [{ type: 'text', text: part, marks }] : [];
-      if (part.math !== undefined) return [{ type: 'math', attrs: { latex: part.math, display: false } }];
+      if (part.textCommand) return [{ type: 'text', text: textCommands[part.textCommand], marks: [...marks, { type: 'textCommand', attrs: { name: part.textCommand } }] }];
+      if (part.math !== undefined) return [{ type: 'math', attrs: { latex: part.math, display: false, delimiter: part.delimiters[0] } }];
       if (part.ref !== undefined) return [{ type: 'ref', attrs: { key: part.ref } }];
       if (part.label !== undefined) return [{ type: 'label', attrs: { key: part.label } }];
       if (part.hardBreak) return [{ type: 'hardBreak' }];
@@ -145,7 +146,10 @@ export function importBlock(block) {
   if (text === '\\tableofcontents') return { type: 'tableOfContents' };
   if (text === '\\hrule') return { type: 'horizontalRule' };
   const math = text.match(/^\\\[([\s\S]*?)\\\]$/) ?? text.match(/^\$\$([\s\S]*?)\$\$$/) ?? text.match(/^\\begin\{equation\*?\}([\s\S]*?)\\end\{equation\*?\}$/);
-  if (math) return { type: 'mathBlock', attrs: { latex: math[1], display: true } };
+  if (math) {
+    const delimiter = text.startsWith('$$') ? '$$' : text.match(/^\\begin\{(equation\*?)\}/)?.[1] ?? '\\[';
+    return { type: 'mathBlock', attrs: { latex: math[1], display: true, delimiter } };
+  }
   const environment = text.match(/^\\begin\{(align\*?|alignat\*?|flalign\*?|eqnarray\*?|gather\*?|multline\*?|displaymath|math|split|aligned|alignedat|gathered|cases|dcases|drcases|rcases|[pbBvV]?matrix|[pbBvV]?smallmatrix|array|darray|subarray)\}([\s\S]*?)\\end\{\1\}$/);
   if (environment) return { type: 'mathBlock', attrs: { latex: text, display: true } };
   const quote = text.match(/^\\begin\{quote\}([\s\S]*?)\\end\{quote\}$/);

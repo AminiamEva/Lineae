@@ -115,6 +115,7 @@ export const MathNode = Node.create({
   draggable: true,
   addAttributes: () => ({
     latex: { default: '' },
+    delimiter: { default: null },
     display: { default: false },
     id: { default: null, rendered: false },
   }),
