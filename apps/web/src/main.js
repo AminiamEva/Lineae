@@ -58,6 +58,14 @@ const Superscript = Mark.create({
 const Subscript = Mark.create({
   name:'subscript',parseHTML:()=>[{tag:'sub'}],renderHTML:()=>['sub',0],
 });
+const SmallCaps = Mark.create({
+  name:'smallcaps',parseHTML:()=>[{tag:'span[data-smallcaps]'}],
+  renderHTML:()=>['span',{'data-smallcaps':'',style:'font-variant:small-caps'},0],
+});
+const Boxed = Mark.create({
+  name:'boxed',parseHTML:()=>[{tag:'span[data-boxed]'}],
+  renderHTML:()=>['span',{'data-boxed':'',style:'border:1px solid currentColor;padding:0 .2em'},0],
+});
 const Raw = Node.create({
   name:'raw', group:'block', atom:true,
   addAttributes:()=>({source:{default:''}}),
@@ -165,7 +173,7 @@ paper.before(documentPage);documentPage.append(paper);
 paper.replaceChildren();
 editor=new Editor({
   element:paper,
-  extensions:[StarterKit.configure({heading:{levels:[1,2,3]}}),PaperBehavior,TextStyle,Underline,Superscript,Subscript,Table.configure({resizable:true}),TableRow,TableCell,TableHeader,Raw,DescriptionList,DescriptionItem,MathNode,MathBlock,Ref,Label,TableOfContents,Shortcuts],
+  extensions:[StarterKit.configure({heading:{levels:[1,2,3]}}),PaperBehavior,TextStyle,Underline,Superscript,Subscript,SmallCaps,Boxed,Table.configure({resizable:true}),TableRow,TableCell,TableHeader,Raw,DescriptionList,DescriptionItem,MathNode,MathBlock,Ref,Label,TableOfContents,Shortcuts],
   content:'<p></p>',
 });
 function syncTableAttributes() {
@@ -483,6 +491,12 @@ const structureCommands = {
   table: () => editor.chain().focus().insertTable({ rows: 2, cols: 2, withHeaderRow: false }).run(),
   inline: () => insertMath(),
   equation: () => insertMath(true),
+  gather: () => insertMath(true, '\\begin{gather}\\placeholder{}\\\\ \\placeholder{}\\end{gather}'),
+  multline: () => insertMath(true, '\\begin{multline}\\placeholder{}\\\\ \\placeholder{}\\end{multline}'),
+  flalign: () => insertMath(true, '\\begin{flalign}\\placeholder{} &= \\placeholder{}\\\\ \\placeholder{} &= \\placeholder{}\\end{flalign}'),
+  eqnarray: () => insertMath(true, '\\begin{eqnarray}\\placeholder{} &=& \\placeholder{}\\\\ \\placeholder{} &=& \\placeholder{}\\end{eqnarray}'),
+  alignat: () => insertMath(true, '\\begin{alignat}{2}\\placeholder{} &= \\placeholder{} & \\quad \\placeholder{} &= \\placeholder{}\\end{alignat}'),
+  smallmatrix: () => insertMath(false, '\\begin{smallmatrix}\\placeholder{}\\end{smallmatrix}'),
   quote: () => editor.chain().focus().toggleBlockquote().run(),
   description: () => editor.chain().focus().insertContent({type:'descriptionList',content:[{type:'descriptionItem',attrs:{term:''},content:[{type:'paragraph'}]}]}).run(),
   toc: () => {
@@ -738,6 +752,12 @@ groupButton(formatGroup,'S',()=>editor.chain().focus().toggleStrike().run());
 groupButton(formatGroup,'code',()=>editor.chain().focus().toggleCode().run());
 groupButton(formatGroup,'quote',()=>editor.chain().focus().toggleBlockquote().run());
 groupButton(formatGroup,'hr',()=>editor.chain().focus().setHorizontalRule().run());
+groupButton(formatGroup,'x²',()=>editor.chain().focus().toggleMark('superscript').run());
+groupButton(formatGroup,'x₂',()=>editor.chain().focus().toggleMark('subscript').run());
+groupButton(formatGroup,'sc',()=>editor.chain().focus().toggleMark('smallcaps').run());
+groupButton(formatGroup,'box',()=>editor.chain().focus().toggleMark('boxed').run());
+groupButton(formatGroup,'\\LaTeX',()=>editor.chain().focus().insertContent('LaTeX').run());
+groupButton(formatGroup,'\\TeX',()=>editor.chain().focus().insertContent('TeX').run());
 groupButton(formatGroup,'desc',()=>editor.chain().focus().insertContent({type:'descriptionList',content:[{type:'descriptionItem',attrs:{term:''},content:[{type:'paragraph'}]}]}).run());
 function setListStyle(style) {
   if(editor.isActive('orderedList'))editor.chain().focus().updateAttributes('orderedList',{labelStyle:style}).run();

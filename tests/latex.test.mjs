@@ -4,6 +4,7 @@ import { parseDocument } from '../apps/web/latex/document.mjs';
 import { parseInline } from '../apps/web/latex/inline.mjs';
 import { exportDocument, resolvePackages } from '../apps/web/latex/packages.mjs';
 import { serialize } from '../apps/web/src/editor/latex-codec.js';
+import { importBlocks } from '../apps/web/latex/blocks.mjs';
 
 test('preserves the bytes of an untouched document, including CRLF and opaque environments', () => {
   const source = [
@@ -35,6 +36,44 @@ test('parses text superscripts and subscripts as structure', () => {
   assert.deepEqual(sup.children, ['2']);
   assert.equal(sub.tag, 'sub');
   assert.deepEqual(sub.children, ['1']);
+});
+
+test('parses small caps and boxed text as structure', () => {
+  const [smallCaps] = parseInline(String.raw`\textsc{Small}`);
+  const [boxed] = parseInline(String.raw`\fbox{Box}`);
+  assert.equal(smallCaps.tag, 'textsc');
+  assert.deepEqual(smallCaps.children, ['Small']);
+  assert.equal(boxed.tag, 'fbox');
+  assert.deepEqual(boxed.children, ['Box']);
+});
+
+test('serializes small caps and boxed text marks', () => {
+  const doc = {
+    type: 'doc',
+    content: [{
+      type: 'paragraph',
+      content: [
+        { type: 'text', text: 'Small', marks: [{ type: 'smallcaps' }] },
+        { type: 'text', text: ' ' },
+        { type: 'text', text: 'Box', marks: [{ type: 'boxed' }] },
+      ],
+    }],
+  };
+  assert.equal(serialize(doc), '\\textsc{Small} \\fbox{Box}\n\n');
+});
+
+test('parses extended math environments as math blocks', () => {
+  for (const environment of [
+    ['alignat', '\\begin{alignat}{2}\na&=b & c&=d\n\\end{alignat}'],
+    ['eqnarray', '\\begin{eqnarray}\na&=&b\n\\end{eqnarray}'],
+    ['smallmatrix', '\\begin{smallmatrix}\na&b\\\\c&d\n\\end{smallmatrix}'],
+  ]) {
+    const [name, body] = environment;
+    const source = '\\documentclass{article}\n\\begin{document}\n\n' + body + '\n\n\\end{document}\n';
+    const doc = parseDocument(source);
+    const nodes = doc.blocks.flatMap(importBlocks);
+    assert.ok(nodes.some(node => node.type === 'mathBlock' && node.attrs.latex.includes(name)), name);
+  }
 });
 
 test('recognizes inline formatting and preserves the original math delimiter', () => {

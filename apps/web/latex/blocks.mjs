@@ -11,7 +11,7 @@ function inlineContent(text) {
       if (part.ref !== undefined) return [{ type: 'ref', attrs: { key: part.ref } }];
       if (part.label !== undefined) return [{ type: 'label', attrs: { key: part.label } }];
       if (part.hardBreak) return [{ type: 'hardBreak' }];
-      const type = { strong: 'bold', em: 'italic', u: 'underline', strike: 'strike', code: 'code', sup: 'superscript', sub: 'subscript' }[part.tag];
+      const type = { strong: 'bold', em: 'italic', u: 'underline', strike: 'strike', code: 'code', sup: 'superscript', sub: 'subscript', textsc: 'smallcaps', fbox: 'boxed' }[part.tag];
       if (type) return convert(part.children, [...marks, { type }]);
       const attrs = part.points ? { fontSize: part.points + 'pt' } :
         part.attribute === 'color' ? { color: part.value } :
@@ -146,7 +146,7 @@ export function importBlock(block) {
   if (text === '\\hrule') return { type: 'horizontalRule' };
   const math = text.match(/^\\\[([\s\S]*?)\\\]$/) ?? text.match(/^\$\$([\s\S]*?)\$\$$/) ?? text.match(/^\\begin\{equation\*?\}([\s\S]*?)\\end\{equation\*?\}$/);
   if (math) return { type: 'mathBlock', attrs: { latex: math[1], display: true } };
-  const environment = text.match(/^\\begin\{(align\*?|gather\*?|multline\*?|displaymath|math|split|aligned|gathered|cases|dcases|rcases|[pbBvV]?matrix|array)\}([\s\S]*?)\\end\{\1\}$/);
+  const environment = text.match(/^\\begin\{(align\*?|alignat\*?|flalign\*?|eqnarray\*?|gather\*?|multline\*?|displaymath|math|split|aligned|alignedat|gathered|cases|dcases|drcases|rcases|[pbBvV]?matrix|[pbBvV]?smallmatrix|array|darray|subarray)\}([\s\S]*?)\\end\{\1\}$/);
   if (environment) return { type: 'mathBlock', attrs: { latex: text, display: true } };
   const quote = text.match(/^\\begin\{quote\}([\s\S]*?)\\end\{quote\}$/);
   if (quote) {
