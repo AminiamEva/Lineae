@@ -1014,8 +1014,10 @@ const server=createServer(async(req,res)=>{
     }
     await page.setViewportSize({width:1280,height:1400});
     await importSource('Before $x$ after');
+    console.log('Math boundary before',await page.evaluate(()=>({position:document.querySelector('[data-math-view]').getMathPosition(),paragraph:document.querySelector('.ProseMirror p').innerHTML})));
     await page.locator('math-field').evaluate(field=>{field.focus();field.executeCommand('moveToMathfieldEnd');});
     await page.keyboard.press('ArrowRight');
+    console.log('Math boundary after',await page.evaluate(()=>({node:window.getSelection()?.anchorNode?.parentElement?.outerHTML,offset:window.getSelection()?.anchorOffset})));
     assert.ok(await paper.evaluate(element=>element===document.activeElement),'ArrowRight exits at the end of inline math');
     await page.keyboard.type('Q');
     await page.locator('.source-toggle').click();
