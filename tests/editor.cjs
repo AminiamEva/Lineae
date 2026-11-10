@@ -782,7 +782,9 @@ const server=createServer(async(req,res)=>{
     await page.locator('.editor-dialog input').fill('Python');
     await page.locator('.editor-dialog button[type=submit]').click();
     await page.waitForFunction(()=>document.querySelector('.ProseMirror pre code')?.classList.contains('language-Python'));
+    await page.waitForFunction(()=>document.activeElement?.classList.contains('ProseMirror'));
     await page.keyboard.press('Control+j');
+    await paper.locator(':scope > p').waitFor();
     await page.keyboard.type('after');
     await page.waitForFunction(()=>document.querySelector('.ProseMirror > p')?.textContent==='after');
     await page.keyboard.press('Enter');
