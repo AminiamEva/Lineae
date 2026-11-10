@@ -26,6 +26,8 @@ main { padding:125px 24px 60px; overflow:auto; }
 #editor { min-height:calc(297mm - 44mm); outline:none; }
 .ProseMirror { min-height:250mm; outline:none; overflow-wrap:anywhere; white-space:pre-wrap; }
 .ProseMirror p { margin:0; }
+.document-image { margin:.6em 0; }
+.document-image img { display:block; max-width:100%; height:auto; }
 .ProseMirror > p[data-indent="true"] { text-indent:1.5em; }
 [data-formatting-marks="true"] .ProseMirror p::after { content:'¶'; position:absolute; color:light-dark(#7086a2,#8ca5c6); font: .75em/1.5 sans-serif; text-indent:0; margin-inline-start:.35em; pointer-events:none; user-select:none; }
 .document-find { position:fixed; inset:104px 16px auto auto; z-index:15; display:flex; align-items:center; gap:5px; padding:7px; border-radius:12px; background:light-dark(#fff,#29292d); box-shadow:0 4px 18px #0003; }

@@ -1,5 +1,6 @@
 import { parseInline, textCommands } from './inline.mjs';
 import { parseTable } from './tables.mjs';
+import { parseImageBlock } from './images.mjs';
 
 function inlineContent(text) {
   const parsed = parseInline(text);
@@ -141,6 +142,8 @@ function parseListBlock(text) {
 export function importBlock(block) {
   const text = block.trim();
   if (!text) return null;
+  const image = parseImageBlock(text);
+  if (image) return image;
   const headingMatch = text.match(/^\\(section|subsection|subsubsection)(\*?)(?:\[([^\]]*)\])?\{([^{}]*)\}(?:[ \t]*\\label\{([^{}]*)\})?$/);
   if (headingMatch) return heading(headingMatch[1], headingMatch[2], headingMatch[3], headingMatch[4], headingMatch[5]);
   if (text === '\\tableofcontents') return { type: 'tableOfContents' };

@@ -731,6 +731,17 @@ const server=createServer(async(req,res)=>{
     await page.keyboard.type('Indented');
     await page.keyboard.press('Enter');
     assert.equal(await paper.locator('p').last().getAttribute('data-indent'),'true');
+    await importSource('Selection $abc$');
+    await page.waitForFunction(()=>document.querySelector('math-field')?.value==='abc');
+    const selectionField=page.locator('math-field');
+    await selectionField.click();
+    await page.waitForFunction(()=>document.activeElement?.tagName==='MATH-FIELD');
+    await selectionField.evaluate(field=>field.executeCommand('moveToMathfieldStart'));
+    await page.keyboard.press('Shift+ArrowRight');
+    assert.equal(await selectionField.evaluate(field=>field.getValue(field.selection.ranges[0])),'a');
+    await selectionField.evaluate(field=>field.executeCommand('moveToMathfieldEnd'));
+    await page.keyboard.type('\\\\');
+    await page.waitForFunction(()=>document.querySelector('math-field')?.value.includes('\\backslash'));
     assert.deepEqual(errors,[]);
     console.log('Browser regressions passed');
   }finally{

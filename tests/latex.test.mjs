@@ -5,6 +5,15 @@ import { parseInline } from '../apps/web/latex/inline.mjs';
 import { exportDocument, resolvePackages } from '../apps/web/latex/packages.mjs';
 import { serialize } from '../apps/web/src/editor/latex-codec.js';
 import { importBlocks } from '../apps/web/latex/blocks.mjs';
+
+test('preserves local image paths and supported widths and requests graphicx', () => {
+  const image = String.raw`\includegraphics[width=0.5\linewidth]{figures/plot.png}`;
+  const [node] = importBlocks(image);
+  assert.equal(node.type, 'documentImage');
+  assert.equal(serialize(node).trim(), image);
+  assert.ok(resolvePackages('',image).some(rule=>rule.name==='graphicx'));
+  assert.equal(importBlocks(String.raw`\includegraphics[angle=90]{plot.png}`)[0].type,'raw');
+});
 import { parseDelimiterPair, wrapMathWithDelimiters } from '../apps/web/latex/delimiters.mjs';
 
 test('builds asymmetric and invisible math delimiters without accepting arbitrary commands', () => {

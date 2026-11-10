@@ -1,5 +1,6 @@
 import { importBlock, importBlocks } from '../../latex/blocks.mjs';
 import { textCommands } from '../../latex/inline.mjs';
+import { serializeImage } from '../../latex/images.mjs';
 export { importBlock, importBlocks };
 
 const escape = text => text.replace(/[\u00A0\\{}%$&#_^~§¶•…–—‘’“”®™©]/g, char => ({
@@ -40,6 +41,7 @@ export function serialize(node) {
     return value;
   }
   switch (node.type) {
+    case 'documentImage': return serializeImage(node.attrs);
     case 'paragraph': return (node.attrs?.indent === false ? '\\noindent ' : '') + content + '\n\n';
     case 'heading': {
       const name = ['section','subsection','subsubsection'][Math.min(node.attrs.level,3)-1];
