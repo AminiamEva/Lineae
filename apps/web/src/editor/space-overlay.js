@@ -47,7 +47,12 @@ export function installSpaceOverlay(editor, paper) {
         range.selectNodeContents(block);
         const rects=Array.from(range.getClientRects()).map(local)
           .filter(rect=>rect.width>0 && rect.top>=bounds.top-1 && rect.bottom<=bounds.bottom+1);
-        const rect=rects.findLast(rect=>rect.width>0);
+        for (const atom of block.querySelectorAll('math-field,.ref-node,.cite-node,img')) {
+          if (atom.closest('.label-node')) continue;
+          const rect=local(atom.getBoundingClientRect());
+          if (rect.width>0 && rect.top>=bounds.top-1 && rect.bottom<=bounds.bottom+1) rects.push(rect);
+        }
+        const rect=rects.reduce((last, rect) => !last || rect.right>last.right ? rect : last, null);
         const y=bounds.top+lineHeight/2;
         const mark=shape('text',{
           x:(rect?.right??bounds.left+indent)+3,

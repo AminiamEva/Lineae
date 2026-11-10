@@ -801,6 +801,18 @@ const server=createServer(async(req,res)=>{
       return {fieldLeft:f.left,handleRight:h.right,handleTop:h.top,fieldTop:f.top};
     });
     assert.ok(handlePlace.handleRight<=handlePlace.fieldLeft-8,'Inline drag handle keeps a clear gap left of the formula: '+JSON.stringify(handlePlace));
+    await importSource('Tail $x$');
+    await page.waitForFunction(()=>document.querySelector('math-field')&&document.querySelector('.space-overlay text'));
+    await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
+    const parAfterMath=await page.evaluate(()=>{
+      const page=document.querySelector('.document-page');
+      const pageRect=page.getBoundingClientRect();
+      const zoom=pageRect.width/page.offsetWidth||1;
+      const mark=[...document.querySelectorAll('.space-overlay text')].find(node=>node.textContent==='¶');
+      const field=document.querySelector('math-field').getBoundingClientRect();
+      return { markX:Number(mark?.getAttribute('x')), fieldRight:(field.right-pageRect.left)/zoom };
+    });
+    assert.ok(parAfterMath.markX>=parAfterMath.fieldRight+1,'Paragraph mark follows the formula: '+JSON.stringify(parAfterMath));
     await importSource('前 后');
     await page.waitForFunction(()=>document.querySelector('.ProseMirror p')?.textContent==='前 后');
     await paper.locator('p').scrollIntoViewIfNeeded();
