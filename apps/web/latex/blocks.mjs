@@ -177,8 +177,9 @@ export function importBlock(block) {
       })),
     };
   }
-  const content = inlineContent(text);
-  if (content) return { type: 'paragraph', content };
+  const indentation = /^\\(noindent|indent)(?![A-Za-z])[ \t]*/.exec(text);
+  const content = inlineContent(indentation ? text.slice(indentation[0].length) : text);
+  if (content) return { type: 'paragraph', ...(indentation && { attrs: { indent: indentation[1] === 'indent' } }), content };
   return { type: 'raw', attrs: { source: block } };
 }
 

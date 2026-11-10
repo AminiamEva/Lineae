@@ -711,6 +711,20 @@ const server=createServer(async(req,res)=>{
     await page.keyboard.press('Control+m');
     await page.waitForFunction(()=>document.querySelector('math-field')?.value.includes('\\begin{pmatrix}'));
     assert.match(await page.locator('math-field').evaluate(field=>field.value),/\\begin\{pmatrix\}/);
+    for (const [shortcut,operator] of [['Control+Shift+s','sum'],['Control+Shift+p','prod'],['Control+Shift+i','iint'],['Control+Shift+Alt+i','iiint'],['Alt+i','oint'],['Alt+Shift+i','oiint']]) {
+      await page.keyboard.press(shortcut);
+      await page.waitForFunction(name=>document.querySelector('math-field')?.value.includes('\\'+name),operator);
+    }
+    await importSource(String.raw`\noindent Unindented`);
+    await page.waitForFunction(()=>document.querySelector('.ProseMirror p[data-indent="false"]')?.textContent==='Unindented');
+    await paper.locator('p').click();
+    await page.keyboard.press('End');
+    await page.keyboard.press('Enter');
+    assert.equal(await paper.locator('p').last().getAttribute('data-indent'),'false');
+    await page.keyboard.press('Control+i');
+    await page.keyboard.type('Indented');
+    await page.keyboard.press('Enter');
+    assert.equal(await paper.locator('p').last().getAttribute('data-indent'),'true');
     assert.deepEqual(errors,[]);
     console.log('Browser regressions passed');
   }finally{

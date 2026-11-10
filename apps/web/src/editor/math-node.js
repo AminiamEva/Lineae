@@ -40,6 +40,7 @@ export function insertFormula(editor, display = false, latex = '', range, onFocu
 }
 
 const mathFieldStyle = `
+  .ML__text { font-family: inherit; }
   .ML__mathbf, .ML__mathbfit, .ML__bb, .ML__cal, .ML__frak, .ML__script, .ML__sans, .ML__tt {
     background: light-dark(rgba(77,124,179,.10), rgba(120,170,230,.18));
     border-radius: 2px;
@@ -205,6 +206,15 @@ export const MathNode = Node.create({
       let leavingStructure = false;
       field.addEventListener('keydown', event => {
         const key = event.key.toLowerCase();
+        const letter = /^Key[A-Z]$/.test(event.code) ? event.code.slice(3).toLowerCase() : key;
+        const modifiers = `${event.ctrlKey ? 'c' : ''}${event.shiftKey ? 's' : ''}${event.altKey ? 'a' : ''}`;
+        const operator = { 'cs:s':'sum', 'cs:p':'prod', 'cs:i':'iint', 'csa:i':'iiint', 'a:i':'oint', 'sa:i':'oiint' }[`${modifiers}:${letter}`];
+        if (operator && !event.metaKey && !event.isComposing) {
+          event.preventDefault(); event.stopImmediatePropagation();
+          field.executeCommand(['insert', '\\'+operator]);
+          field.dispatchEvent(new Event('input',{bubbles:true}));
+          return;
+        }
         if (event.ctrlKey && !event.shiftKey && !event.altKey && !event.metaKey && ['f','i','m','l','r'].includes(key)) {
           event.preventDefault(); event.stopImmediatePropagation();
           dom.dispatchEvent(new CustomEvent('lineae-math-shortcut', { bubbles:true, detail:{field,key} }));

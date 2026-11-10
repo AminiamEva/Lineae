@@ -443,7 +443,7 @@ async function openDocument() {
 }
 document.querySelector('#download').addEventListener('click',saveDocument);
 document.addEventListener('keydown',event=>{
-  if((event.ctrlKey||event.metaKey)&&!event.altKey&&event.key.toLowerCase()==='s') {
+  if((event.ctrlKey||event.metaKey)&&!event.altKey&&!event.shiftKey&&event.key.toLowerCase()==='s') {
     event.preventDefault(); event.stopPropagation(); saveDocument();
   }
 },true);
@@ -508,6 +508,9 @@ for (const name of mathSymbols) {
   if (/^[A-Za-z]+$/.test(name) && !(name in formulaCommands)) formulaCommands[name] = '\\' + name;
 }
 const structureCommands = {
+  indent: () => editor.chain().focus().updateAttributes('paragraph',{indent:true}).run(),
+  noindent: () => editor.chain().focus().updateAttributes('paragraph',{indent:false}).run(),
+  par: () => editor.chain().focus().splitBlock().run(),
   section: () => editor.chain().focus().setHeading({ level: 1 }).run(),
   subsection: () => editor.chain().focus().setHeading({ level: 2 }).run(),
   subsubsection: () => editor.chain().focus().setHeading({ level: 3 }).run(),
@@ -860,6 +863,20 @@ groupButton(formatGroup,'sc',()=>editor.chain().focus().toggleMark('smallcaps').
 groupButton(formatGroup,'box',()=>editor.chain().focus().toggleMark('boxed').run());
 groupButton(formatGroup,'\\LaTeX',()=>insertTextCommand('LaTeX'));
 groupButton(formatGroup,'\\TeX',()=>insertTextCommand('TeX'));
+let showFormattingMarks = true;
+documentPage.dataset.formattingMarks = 'true';
+const formattingMarks = groupButton(formatGroup,'¶',()=>{
+  showFormattingMarks = !showFormattingMarks;
+  documentPage.dataset.formattingMarks = String(showFormattingMarks);
+  formattingMarks.setAttribute('aria-pressed',String(showFormattingMarks));
+});
+formattingMarks?.setAttribute('aria-pressed','true');
+document.addEventListener('keydown',event=>{
+  if (!event.ctrlKey || event.altKey || event.shiftKey || event.metaKey || event.key.toLowerCase() !== 'i') return;
+  if (!editor.view.hasFocus() || !editor.isActive('paragraph') || event.composedPath().some(node=>node?.tagName==='MATH-FIELD')) return;
+  event.preventDefault(); event.stopPropagation();
+  editor.commands.updateAttributes('paragraph',{indent:editor.getAttributes('paragraph').indent === false});
+},true);
 groupButton(formatGroup,'desc',()=>editor.chain().focus().insertContent({type:'descriptionList',content:[{type:'descriptionItem',attrs:{term:''},content:[{type:'paragraph'}]}]}).run());
 function setListStyle(style) {
   if(editor.isActive('orderedList'))editor.chain().focus().updateAttributes('orderedList',{labelStyle:style}).run();

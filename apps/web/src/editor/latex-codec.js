@@ -40,7 +40,7 @@ export function serialize(node) {
     return value;
   }
   switch (node.type) {
-    case 'paragraph': return content + '\n\n';
+    case 'paragraph': return (node.attrs?.indent === false ? '\\noindent ' : '') + content + '\n\n';
     case 'heading': {
       const name = ['section','subsection','subsubsection'][Math.min(node.attrs.level,3)-1];
       const short = node.attrs.shortTitle ? '[' + node.attrs.shortTitle + ']' : '';

@@ -23,6 +23,16 @@ export const PaperBehavior = Extension.create({
   name: 'paperBehavior',
   addGlobalAttributes() {
     return [{
+      types: ['paragraph'],
+      attributes: {
+        indent: {
+          default: true,
+          keepOnSplit: true,
+          parseHTML: element => element.dataset.indent !== 'false',
+          renderHTML: attributes => ({ 'data-indent': String(attributes.indent) }),
+        },
+      },
+    }, {
       types: ['heading'],
       attributes: {
         numbered: {

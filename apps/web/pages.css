@@ -26,12 +26,14 @@ main { padding:125px 24px 60px; overflow:auto; }
 #editor { min-height:calc(297mm - 44mm); outline:none; }
 .ProseMirror { min-height:250mm; outline:none; overflow-wrap:anywhere; white-space:pre-wrap; }
 .ProseMirror p { margin:0; }
-.ProseMirror p + p { text-indent:1.5em; }
+.ProseMirror > p[data-indent="true"] { text-indent:1.5em; }
+[data-formatting-marks="true"] .ProseMirror p::after { content:'¶'; position:absolute; color:light-dark(#7086a2,#8ca5c6); font: .75em/1.5 sans-serif; text-indent:0; margin-inline-start:.35em; pointer-events:none; user-select:none; }
 .document-find { position:fixed; inset:104px 16px auto auto; z-index:15; display:flex; align-items:center; gap:5px; padding:7px; border-radius:12px; background:light-dark(#fff,#29292d); box-shadow:0 4px 18px #0003; }
 .document-find input { width:min(38vw,200px); font:inherit; padding:5px 8px; border:1px solid light-dark(#ccd0d8,#555); border-radius:7px; }
 .document-find output { min-width:3em; font-size:.85em; }
 [data-text-command="LaTeX"],[data-text-command="TeX"] { position:relative; white-space:nowrap; }
 .tex-logo-source { color:transparent; }
+.tex-logo-source::selection { color:transparent; background:light-dark(#b9d7fa99,#38568099); }
 .tex-logo-art { position:absolute; inset-inline-start:0; top:0; pointer-events:none; user-select:none; }
 .tex-logo-a { position:relative; top:-.35em; font-size:.72em; margin-inline:-.28em -.12em; }
 .tex-logo-e { position:relative; top:.22em; margin-inline:-.13em -.1em; }
@@ -45,7 +47,7 @@ main { padding:125px 24px 60px; overflow:auto; }
 .ProseMirror .column-resize-handle { position:absolute; right:-2px; top:0; bottom:0; width:4px; background:#589af4; pointer-events:none; }
 .resize-cursor { cursor:col-resize; }
 .ProseMirror .math-display { display:block; text-align:center; margin:.6em 0; min-height:1.5em; }
-.ProseMirror math-field { min-width:1em; border:0; background:transparent; color:inherit; }
+.ProseMirror math-field { min-width:1em; border:0; background:transparent; color:inherit; font-family:inherit; }
 .ProseMirror-selectednode { outline:2px solid #468bdf; border-radius:3px; }
 .ProseMirror .ref-node { display:inline-block; padding:0 .3em; border-radius:4px; background:light-dark(#eef3fc,#2b3442); color:light-dark(#2f5aa8,#bcd4ff); cursor:pointer; user-select:none; }
 .table-insert-row { position:fixed; z-index:20; width:22px; height:22px; border-radius:50%; border:1px solid light-dark(#7aa7e6,#5b7fb3); background:light-dark(#fff,#2c3440); color:light-dark(#2f5aa8,#bcd4ff); font:16px/1 sans-serif; cursor:pointer; box-shadow:0 1px 4px #0003; padding:0; }
@@ -102,6 +104,7 @@ main { padding:125px 24px 60px; overflow:auto; }
 [data-math-view]:focus-within .math-drag-handle,
 [data-math-view].ProseMirror-selectednode .math-drag-handle { opacity:1; }
 .math-drag-handle:active { cursor:grabbing; }
+.math-inline .math-drag-handle { position:absolute; inset-inline-start:0; bottom:100%; z-index:2; }
 .editor-context-menu { position:fixed; z-index:30; width:220px; max-height:calc(100vh - 16px); overflow:auto; padding:5px; border-radius:12px; background:light-dark(#fffffff5,#29292df5); box-shadow:0 5px 24px #0003; backdrop-filter:blur(12px); border:1px solid light-dark(#ddd,#555); }
 .editor-context-menu button { display:block; width:100%; border-radius:7px; background:transparent; text-align:left; padding:6px 10px; }
 .editor-context-menu button:focus { outline:0; background:light-dark(#e7effd,#39475e); }
