@@ -115,6 +115,7 @@ export const MathNode = Node.create({
       field.addEventListener('blur', () => { pendingKey = null; });
 
       field.addEventListener('input', () => {
+        if(node.attrs.latex===field.value)return;
         const position = getPos();
         if (typeof position === 'number') {
           editor.view.dispatch(editor.state.tr.setNodeMarkup(position, undefined, { ...node.attrs, latex: field.value }));
