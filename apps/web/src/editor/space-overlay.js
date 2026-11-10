@@ -57,7 +57,7 @@ export function installSpaceOverlay(editor, paper) {
     }
   }
   function schedule() { if(!frame) frame=requestAnimationFrame(draw); }
-  editor.on('update',schedule);
+  editor.on('transaction',({transaction})=>{if(transaction.docChanged)schedule();});
   paper.addEventListener('compositionstart',()=>{composing=true;canvas.hidden=true;});
   paper.addEventListener('compositionend',()=>{composing=false;schedule();});
   window.addEventListener('scroll',schedule,true);
