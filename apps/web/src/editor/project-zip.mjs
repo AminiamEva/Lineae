@@ -14,6 +14,24 @@ export function safeProjectPath(path) {
     && path.split('/').every(part=>part && part!=='.' && part!=='..');
 }
 
+export function projectDependencies(tex) {
+  const source=tex.replace(/\\begin\{(verbatim\*?|lstlisting|minted)\}[\s\S]*?\\end\{\1\}/g,'')
+    .replace(/\\[\\%]|%[^\r\n]*/g,token=>token.startsWith('%')?'':token);
+  const dependencies=[];
+  for(const match of source.matchAll(/\\(includegraphics|addbibresource|bibliography|input|include)(?:\[[^\]]*\])?\{([^{}]+)\}/g)) {
+    const command=match[1];
+    const names=command==='bibliography'?match[2].split(','):[match[2]];
+    for(const raw of names) {
+      let path=raw.trim();
+      if(!path)continue;
+      if(command==='bibliography'&&!path.endsWith('.bib'))path+='.bib';
+      if((command==='input'||command==='include')&&!/\.[^/]+$/.test(path))path+='.tex';
+      dependencies.push(path);
+    }
+  }
+  return dependencies;
+}
+
 export async function buildProjectZip(entries) {
   const local=[], central=[];
   const seen=new Set();

@@ -16,7 +16,7 @@ import { askText } from './editor/dialog.js';
 import { installDocumentFind } from './editor/find.js';
 import { DocumentImage, insertLocalImage, installImageDrop } from './editor/image-node.js';
 import { projectAssets, rememberAsset } from './editor/project-assets.js';
-import { buildProjectZip, safeProjectPath } from './editor/project-zip.mjs';
+import { buildProjectZip, safeProjectPath, projectDependencies } from './editor/project-zip.mjs';
 import { theoremNames } from '../latex/theorem.mjs';
 import { MultiSelection } from './editor/multi-selection.js';
 import { installSpaceOverlay } from './editor/space-overlay.js';
@@ -479,15 +479,16 @@ async function downloadProject() {
   const status=document.querySelector('#status');
   try {
     const assets=new Map(projectAssets().filter(([path])=>safeProjectPath(path)));
-    const dependencies=[...text.matchAll(/\\(?:includegraphics|addbibresource)(?:\[[^\]]*\])?\{([^{}]+)\}/g)].map(match=>match[1]);
-    for(const match of text.matchAll(/\\bibliography\{([^{}]+)\}/g)) {
-      dependencies.push(...match[1].split(',').map(name=>name.trim()).filter(Boolean).map(name=>name.endsWith('.bib')?name:name+'.bib'));
-    }
+    const dependencies=new Set(projectDependencies(text));
     const required=new Map();
     const missing=[];
-    for(const path of new Set(dependencies)) {
+    for(const path of dependencies) {
       const actual=assets.has(path)?path:[...assets.keys()].find(key=>key.replace(/\.[^.\/]+$/,'')===path);
-      if(actual) required.set(actual,assets.get(actual));else missing.push(path);
+      if(!actual) {missing.push(path);continue;}
+      if(required.has(actual) || actual===filename)continue;
+      const file=assets.get(actual);
+      required.set(actual,file);
+      if(actual.endsWith('.tex'))for(const dependency of projectDependencies(await file.text()))dependencies.add(dependency);
     }
     if(missing.length) {
       status.hidden=false;status.textContent=t('缺少项目资源','Missing project assets')+': '+missing.join(', ');
@@ -1125,8 +1126,24 @@ groupButton(referenceGroup,'fn',async()=>{
 });
 groupButton(referenceGroup,'cite',async()=>{
   try{
-    const key=await insertCitationDialog();
-    if(key)editor.chain().focus().insertContent({type:'cite',attrs:{key}}).run();
+    const documentBefore=editor.state.doc;
+    const citation=await insertCitationDialog();
+    if(!citation || editor.state.doc!==documentBefore)return;
+    const {key,file}=citation;
+    if(!/^[\p{L}\p{N}_. -]+\.bib$/iu.test(file.name))throw new Error(t('文献文件名不受支持','Unsupported bibliography filename'));
+    const tex=source();
+    const resources=[...tex.matchAll(/\\addbibresource(?:\[[^\]]*\])?\{([^{}]+)\}/g)].map(match=>match[1]);
+    const classic=[...tex.matchAll(/\\bibliography\{([^{}]+)\}/g)].flatMap(match=>match[1].split(',').map(name=>name.trim()).filter(Boolean).map(name=>name.endsWith('.bib')?name:name+'.bib'));
+    const linked=[...resources,...classic].filter(path=>path.split('/').at(-1)===file.name);
+    if(linked.length>1 || (!linked.length && classic.length))throw new Error(t('请关联文档中声明的文献文件','Attach the bibliography declared in the document'));
+    rememberAsset(linked[0]??file.name,file);
+    if(!linked.length) {
+      const eol=documentParts.eol;
+      const hasBiblatex=/\\(?:usepackage|RequirePackage)(?:\[[^\]]*\])?\{[^{}]*\bbiblatex\b[^{}]*\}/.test(documentParts.start);
+      const declarations=(hasBiblatex?'':'\\usepackage{biblatex}'+eol)+'\\addbibresource{'+file.name+'}'+eol;
+      documentParts={...documentParts,start:documentParts.start.replace(/^\\begin\{document\}/m,()=>declarations+'\\begin{document}')};
+    }
+    editor.chain().focus().insertContent({type:'cite',attrs:{key}}).run();
   }catch(error){
     document.querySelector('#status').hidden=false;
     document.querySelector('#status').textContent=error.message;

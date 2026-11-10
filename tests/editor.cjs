@@ -938,6 +938,14 @@ const server=createServer(async(req,res)=>{
       for(const entry of entries)if(entry.types.includes('text/html')&&(await (await entry.getType('text/html')).text()).includes('data-document-image="drop-test.png"'))return true;
       return false;
     });
+    await page.keyboard.press('ArrowRight');
+    await page.locator('[data-group=reference]').click();
+    const bibChooser=page.waitForEvent('filechooser');
+    await page.getByRole('button',{name:'cite',exact:true}).click();
+    await (await bibChooser).setFiles({name:'works.bib',mimeType:'text/plain',buffer:Buffer.from('@misc{example,title={Example}}')});
+    await page.locator('.citation-dialog select').selectOption('example');
+    await page.locator('.citation-dialog button[type=submit]').click();
+    await paper.locator('.cite-node').waitFor();
     await page.locator('[data-group=files]').click();
     const downloading=page.waitForEvent('download');
     await page.locator('#download').click();
@@ -945,6 +953,8 @@ const server=createServer(async(req,res)=>{
     assert.match(downloaded.suggestedFilename(),/\.zip$/);
     const projectBytes=await readFile(await downloaded.path());
     assert.ok(projectBytes.includes(Buffer.from('drop-test.png')));
+    assert.ok(projectBytes.includes(Buffer.from('works.bib')));
+    assert.ok(projectBytes.includes(Buffer.from('\\addbibresource{works.bib}')));
     assert.deepEqual(errors,[]);
     console.log('Browser regressions passed');
   }finally{
