@@ -61,6 +61,19 @@ function installMathFieldStyle(field) {
 }
 
 function leaveEnvironment(field) {
+  // Font commands can be represented as adjacent styled atoms rather than
+  // a parent group. Move past that style run before using group navigation.
+  const styleAt = offset => /^(\\(?:math(?:bf|rm|it|cal|bb|sf|tt|frak|scr)|boldsymbol|operatorname)\*?)\{/.exec(
+    field.getValue(offset - 1, offset),
+  )?.[1];
+  const style = field.position > 0 && styleAt(field.position);
+  if (style) {
+    let end = field.position;
+    while (end < field.lastOffset && styleAt(end + 1) === style) end++;
+    field.position = end;
+    field.applyStyle({ variant: 'normal', variantStyle: '' });
+    return true;
+  }
   const before = JSON.stringify(field.selection.ranges);
   if (field.mode === 'text') {
     field.executeCommand('moveToNextGroup');
@@ -187,7 +200,7 @@ export const MathNode = Node.create({
         }
       });
       field.addEventListener('keydown', event => {
-        if (event.code === 'Digit0' && event.ctrlKey && !event.shiftKey && !event.altKey && !event.metaKey) {
+        if (event.key === '0' && event.ctrlKey && !event.shiftKey && !event.altKey && !event.metaKey) {
           event.preventDefault(); event.stopPropagation();
           leaveEnvironment(field);
           return;

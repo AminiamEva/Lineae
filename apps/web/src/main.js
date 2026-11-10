@@ -692,25 +692,51 @@ let wheelZoom = Number(zoom.value);
 const configuredZoom=Number(appConfig.interface?.zoom);
 if(Number.isFinite(configuredZoom)&&configuredZoom>=50&&configuredZoom<=300) { zoom.value=String(configuredZoom); wheelZoom=configuredZoom; }
 document.addEventListener('keydown', event => {
-  if (!(event.ctrlKey || event.metaKey) || activeMath() || !['+','=','-','0'].includes(event.key)) return;
+  if (!(event.ctrlKey || event.metaKey) || activeMath() || event.composedPath().some(node=>node?.tagName==='MATH-FIELD') || !['+','=','-','0'].includes(event.key)) return;
   event.preventDefault();
   wheelZoom = event.key === '0' ? 100 : Math.max(50, Math.min(300, Number(zoom.value) + (event.key === '-' ? -10 : 10)));
   zoom.value = String(wheelZoom); scale();
 }, true);
 zoom.addEventListener('input', () => { wheelZoom = Number(zoom.value); });
 zoom.addEventListener('change', () => saveConfig({ zoom: Number(zoom.value) }));
-let matrixChord=false;
+function formulaAtSelection() {
+  const { selection } = editor.state;
+  const { $from } = selection;
+  const math = node => ['math','mathBlock'].includes(node?.type.name);
+  if (math(selection.node)) return { position:selection.from, start:true };
+  if (!selection.empty) return null;
+  if (math($from.nodeAfter)) return { position:$from.pos, start:true };
+  if (math($from.nodeBefore)) return { position:$from.pos-$from.nodeBefore.nodeSize, start:false };
+  if ($from.depth === 1) {
+    const before = editor.state.doc.resolve($from.before());
+    const after = editor.state.doc.resolve($from.after());
+    if (!$from.parentOffset && math(before.nodeBefore)) return { position:before.pos-before.nodeBefore.nodeSize, start:false };
+    if ($from.parentOffset === $from.parent.content.size && math(after.nodeAfter)) return { position:after.pos, start:true };
+  }
+  return null;
+}
+let matrixChord=0;
 document.addEventListener('keydown', event => {
-  if (event.defaultPrevented || event.altKey || event.metaKey) { matrixChord=false; return; }
+  if (event.defaultPrevented || event.altKey || event.metaKey || event.isComposing) { matrixChord=0; return; }
+  if (event.key==='Control') return;
   const editingMatrix=Boolean(activeMath())||editor.isActive('table');
   if (event.ctrlKey && !event.shiftKey && event.key.toLowerCase()==='e') {
-    if (!editingMatrix) { matrixChord=false; return; }
-    event.preventDefault(); event.stopPropagation(); matrixChord=true; return;
+    if (!editingMatrix && !(editor.view.hasFocus() && formulaAtSelection())) { matrixChord=0; return; }
+    event.preventDefault(); event.stopPropagation(); matrixChord=performance.now()+1500; return;
   }
-  if (!matrixChord) return;
+  if (performance.now()>matrixChord) return;
   const key=event.key.toLowerCase();
-  matrixChord=false;
-  if (!['r','c'].includes(key)) return;
+  matrixChord=0;
+  if (key==='e' && editor.view.hasFocus()) {
+    const target=formulaAtSelection();
+    const field=target && editor.view.nodeDOM(target.position)?.querySelector('math-field');
+    if (!field) return;
+    event.preventDefault(); event.stopPropagation();
+    field.focus();
+    field.executeCommand(target.start?'moveToMathfieldStart':'moveToMathfieldEnd');
+    return;
+  }
+  if (!editingMatrix || !['r','c'].includes(key)) return;
   event.preventDefault(); event.stopPropagation();
   if (key==='r') addMatrixRow(); else addMatrixColumn();
 }, true);
