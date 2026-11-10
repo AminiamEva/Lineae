@@ -141,8 +141,8 @@ export function installSpaceOverlay(editor, paper) {
     // A boxed mark and the surrounding text can share the same document
     // position at its edge. Indicate the actual DOM caret side without
     // modifying the selection or intercepting editing gestures.
-    const selection=window.getSelection();
-    const anchor=selection?.isCollapsed && editor.view.hasFocus() ? selection.anchorNode : null;
+    const domSelection=window.getSelection();
+    const anchor=domSelection?.isCollapsed && editor.view.hasFocus() ? domSelection.anchorNode : null;
     const anchorElement=anchor?.nodeType===Node.ELEMENT_NODE ? anchor : anchor?.parentElement;
     const explicitMarks=editor.state.storedMarks;
     const activeBox=(!explicitMarks || explicitMarks.some(mark=>mark.type.name==='boxed'))
