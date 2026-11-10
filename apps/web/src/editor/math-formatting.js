@@ -13,7 +13,9 @@ export const mathFontStyles = {
 export function applyMathFont(field, command) {
   const apply=()=>{
     field.focus();
+    const before=field.value;
     field.applyStyle(mathFontStyles[command]);
+    if(field.value!==before)field.dispatchEvent(new Event('input',{bubbles:true}));
     if(field.selection.ranges.every(([from,to])=>from===to)) {
       const start=event=>{
         if(event.ctrlKey||event.altKey||event.metaKey||event.key.length!==1)return;
