@@ -752,9 +752,16 @@ const server=createServer(async(req,res)=>{
     await page.waitForFunction(()=>document.activeElement?.tagName==='MATH-FIELD');
     await selectionField.evaluate(field=>field.executeCommand('moveToMathfieldEnd'));
     await page.keyboard.type('[x');
-    assert.match(await selectionField.evaluate(field=>field.value),/\[\s*x/);
+    assert.match(await selectionField.evaluate(field=>field.value),/(?:\[|\\lbrack)\s*x/);
     await page.keyboard.type('$');
     assert.match(await selectionField.evaluate(field=>field.value),/\\right\./,'Pending delimiter is invisible after leaving math');
+    await importSource(String.raw`\includegraphics[width=0.5\linewidth]{plot.png}`);
+    const imageNode=paper.locator('figure.document-image');
+    const chooser=page.waitForEvent('filechooser');
+    await imageNode.getByRole('button').click();
+    await (await chooser).setFiles({name:'plot.png',mimeType:'image/png',buffer:Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jB9kAAAAASUVORK5CYII=','base64')});
+    await imageNode.locator('img').waitFor({state:'visible'});
+    assert.equal(await imageNode.locator('img').evaluate(image=>image.style.width),'50%');
     assert.deepEqual(errors,[]);
     console.log('Browser regressions passed');
   }finally{
