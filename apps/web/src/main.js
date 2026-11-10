@@ -10,6 +10,7 @@ import { Ref, Label, TableOfContents, refreshReferences } from './editor/referen
 import { installTableHoverAddRow } from './editor/table-hover.js';
 import { parseYaml, toYaml, mergeConfig } from './editor/config.mjs';
 import { askText } from './editor/dialog.js';
+import { parseDelimiterPair, wrapMathWithDelimiters } from '../latex/delimiters.mjs';
 import { serialize, importBlocks } from './editor/latex-codec.js';
 import { Editor, Node, Extension, Mark } from '@tiptap/core';
 import StarterKit from '@tiptap/starter-kit';
@@ -586,6 +587,30 @@ function insertFormulaCommand(latex) {
     insertLiveMath(completionField, fragment);
   } else insertMath(false, fragment);
 }
+async function chooseMathDelimiters(field) {
+  const selection = field && structuredClone(field.selection);
+  const value = field?.value;
+  const documentBefore = editor.state.doc;
+  const input = await askText(t('左右定界符，用空格分隔；点表示无定界符', 'Left and right delimiters, separated by a space; dot hides one side'), '( ]');
+  if (field?.isConnected) field.focus();
+  else editor.view.focus();
+  if (input === null) return;
+  const pair = parseDelimiterPair(input);
+  if (!pair) {
+    const status = document.querySelector('#status');
+    status.hidden = false;
+    status.textContent = t('请输入两个有效的定界符，例如 ( ] 或 { .', 'Enter two valid delimiters, such as ( ] or { .');
+    return;
+  }
+  if (field) {
+    if (!field.isConnected || field.value !== value) return;
+    field.selection = selection;
+    const content = selection.ranges.map(range => field.getValue(range)).join('');
+    insertLiveMath(field, wrapMathWithDelimiters(pair, content));
+  } else if (editor.state.doc === documentBefore) {
+    insertMath(false, wrapMathWithDelimiters(pair, ''));
+  }
+}
 function highlightCandidate(index) {
   const controls = [...candidates.querySelectorAll('button')];
   if (!controls.length) { filter.removeAttribute('aria-activedescendant'); return; }
@@ -603,6 +628,7 @@ function renderCommands() {
   candidates.replaceChildren();
   const actions = Object.fromEntries(Object.entries(formulaCommands).map(([name, latex]) =>
     [name, () => insertFormulaCommand(latex)]));
+  actions.left = actions.right = () => chooseMathDelimiters(completionField);
   for(const name of Object.keys(mathFontStyles)) actions[name]=()=>{
     editor.view.dispatch(closeHistory(editor.state.tr));
     if(completionField?.isConnected) applyMathFont(completionField,name);

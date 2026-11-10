@@ -5,6 +5,13 @@ import { parseInline } from '../apps/web/latex/inline.mjs';
 import { exportDocument, resolvePackages } from '../apps/web/latex/packages.mjs';
 import { serialize } from '../apps/web/src/editor/latex-codec.js';
 import { importBlocks } from '../apps/web/latex/blocks.mjs';
+import { parseDelimiterPair, wrapMathWithDelimiters } from '../apps/web/latex/delimiters.mjs';
+
+test('builds asymmetric and invisible math delimiters without accepting arbitrary commands', () => {
+  assert.equal(wrapMathWithDelimiters(parseDelimiterPair('( ]'), 'x'), String.raw`\left( x \right]`);
+  assert.equal(wrapMathWithDelimiters(parseDelimiterPair('{ .'), ''), String.raw`\left\{ \placeholder{} \right.`);
+  assert.equal(parseDelimiterPair(String.raw`\frac )`), null);
+});
 
 test('re-serializes text symbols and formula wrappers after visual import', () => {
   const paragraph = String.raw`\textbf{\LaTeX{} \textasciigrave{} \textasciicircum{}} \(x^2\)`;

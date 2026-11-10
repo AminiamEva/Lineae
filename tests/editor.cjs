@@ -672,6 +672,14 @@ const server=createServer(async(req,res)=>{
     await chordField.evaluate(field=>{field.executeCommand('moveToMathfieldEnd');});
     await page.keyboard.type('(x)');
     assert.match(await chordField.evaluate(field=>field.value),/\\left\(x\\right\)$/);
+    await chordField.evaluate(field=>{field.executeCommand('selectAll');});
+    await page.keyboard.type('\\');
+    await page.locator('.command-menu input').fill('left');
+    await page.keyboard.press('Enter');
+    await page.locator('.editor-dialog input').fill('[ )');
+    await page.locator('.editor-dialog button[type=submit]').click();
+    await page.waitForFunction(()=>/^\\left\[.*\\right\)$/.test(document.querySelector('math-field')?.value));
+    assert.match(await chordField.evaluate(field=>field.value),/\\mathbf\{AB\}/,'Wrapping preserves selected math');
     assert.deepEqual(errors,[]);
     console.log('Browser regressions passed');
   }finally{
