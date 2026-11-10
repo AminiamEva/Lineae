@@ -29,9 +29,9 @@ export function focusFormula(editor, id, onFocus) {
   });
 }
 
-export function insertFormula(editor, display = false, latex = '', range, onFocus) {
+export function insertFormula(editor, display = false, latex = '', range, onFocus, extra = {}) {
   const id = crypto.randomUUID();
-  const content = { type: display ? 'mathBlock' : 'math', attrs: { latex, display, id } };
+  const content = { type: display ? 'mathBlock' : 'math', attrs: { latex, display, id, ...extra } };
   if (display) {
     const { doc, selection } = editor.state;
     const $start = doc.resolve(range?.from ?? selection.from);
@@ -185,6 +185,7 @@ export const MathNode = Node.create({
       if (node.isBlock) dom.dataset.mathBlock = '';
       else dom.dataset.math = '';
       dom.dataset.latex = node.attrs.latex;
+      dom.dataset.numbered = String(node.isBlock && node.attrs.delimiter === 'equation');
       dom.getMathPosition = getPos;
       dom.contentEditable = 'false';
       // A draggable node view swallows pointer hit-testing inside MathLive, so
@@ -330,6 +331,7 @@ export const MathNode = Node.create({
           if (next.type !== node.type) return false;
           node = next;
           dom.dataset.latex = node.attrs.latex;
+          dom.dataset.numbered = String(node.isBlock && node.attrs.delimiter === 'equation');
           if (field.value !== node.attrs.latex) field.value = node.attrs.latex;
           return true;
         },

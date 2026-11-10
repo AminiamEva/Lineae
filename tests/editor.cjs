@@ -869,6 +869,11 @@ const server=createServer(async(req,res)=>{
     await findPanel.locator('[data-action="replace-all"]').click();
     await page.waitForFunction(()=>document.querySelector('.ProseMirror p')?.textContent==='gamma beta gamma');
     await page.keyboard.press('Escape');
+    await importSource('\\begin{equation}x\\end{equation}\n\n\\begin{equation}y\\end{equation}');
+    await page.waitForFunction(()=>document.querySelectorAll('.math-display[data-numbered="true"]').length===2);
+    const equationNumbers=await page.locator('.math-display[data-numbered="true"]').evaluateAll(nodes=>nodes.map(node=>({increment:getComputedStyle(node).counterIncrement,content:getComputedStyle(node,'::after').content})));
+    assert.equal(equationNumbers.length,2);
+    assert.ok(equationNumbers.every(item=>item.increment.includes('lineae-equation')&&item.content.includes('counter(lineae-equation)')),'Equation environments use an ordered CSS counter');
     assert.deepEqual(errors,[]);
     console.log('Browser regressions passed');
   }finally{

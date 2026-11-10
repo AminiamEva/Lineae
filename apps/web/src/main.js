@@ -150,6 +150,9 @@ function insertMath(display = false, latex = '') {
   if (!latex) return insertFormula(editor, display, '');
   insertFormula(editor, display, '', undefined, field => insertLiveMath(field, latex));
 }
+function insertEquation() {
+  insertFormula(editor, true, '', undefined, field => insertLiveMath(field, '\\placeholder{}'), { delimiter:'equation' });
+}
 let backticks = null;
 const Shortcuts = Extension.create({
   name:'documentShortcuts',
@@ -1077,6 +1080,7 @@ groupButton(referenceGroup,'author',async()=>{
 });
 groupButton(mathGroup,'$',()=>insertMath());
 groupButton(mathGroup,'$$',()=>insertMath(true));
+groupButton(mathGroup,'equation',()=>insertEquation());
 groupButton(mathGroup,'frac',()=>insertMath(false,'\\frac{\\placeholder{}}{\\placeholder{}}'));
 groupButton(mathGroup,'sqrt',()=>insertMath(false,'\\sqrt{\\placeholder{}}'));
 groupButton(mathGroup,'sum',()=>insertMath(false,'\\sum'));
