@@ -12,6 +12,7 @@ function inlineContent(text) {
       if (part.math !== undefined) return [{ type: 'math', attrs: { latex: part.math, display: false, delimiter: part.delimiters[0] } }];
       if (part.ref !== undefined) return [{ type: 'ref', attrs: { key: part.ref } }];
       if (part.cite !== undefined) return [{ type: 'cite', attrs: { key: part.cite } }];
+      if (part.footnote !== undefined) return [{ type: 'footnote', attrs: { text: part.footnote } }];
       if (part.label !== undefined) return [{ type: 'label', attrs: { key: part.label } }];
       if (part.hardBreak) return [{ type: 'hardBreak' }];
       const type = { strong: 'bold', em: 'italic', u: 'underline', strike: 'strike', code: 'code', sup: 'superscript', sub: 'subscript', textsc: 'smallcaps', fbox: 'boxed' }[part.tag];

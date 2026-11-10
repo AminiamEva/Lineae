@@ -87,6 +87,13 @@ test('parses text superscripts and subscripts as structure', () => {
   assert.deepEqual(sub.children, ['1']);
 });
 
+test('round-trips footnotes as inline nodes', () => {
+  const [footnote] = parseInline('\\footnote{A note}');
+  assert.equal(footnote.footnote, 'A note');
+  const doc = { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'footnote', attrs: { text: 'A note' } }] }] };
+  assert.equal(serialize(doc), '\\footnote{A note}\n\n');
+});
+
 test('round-trips citations as inline nodes', () => {
   const [cite] = parseInline('\\cite{knuth1984}');
   assert.equal(cite.cite, 'knuth1984');

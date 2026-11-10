@@ -840,6 +840,13 @@ const server=createServer(async(req,res)=>{
     await paper.focus();
     await page.keyboard.press('Delete');
     await page.waitForFunction(()=>document.querySelector('.ProseMirror p')?.textContent.trimStart()==='后中');
+    await importSource('Footnote here');
+    await page.waitForFunction(()=>document.querySelector('.ProseMirror p')?.textContent==='Footnote here');
+    await page.locator('[data-group=reference]').click();
+    await page.getByRole('button',{name:'fn',exact:true}).click();
+    await page.locator('.editor-dialog input').fill('A note');
+    await page.locator('.editor-dialog button[type=submit]').click();
+    await page.waitForFunction(()=>document.querySelector('.ProseMirror .footnote-node')?.textContent==='1');
     await importSource('Citation here');
     await page.waitForFunction(()=>document.querySelector('.ProseMirror p')?.textContent==='Citation here');
     await page.locator('[data-group=reference]').click();

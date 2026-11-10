@@ -62,6 +62,9 @@ export function parseInline(source, depth = 0) {
       continue;
     }
 
+    const footnote = rest.match(/^\\footnote\{([^{}\r\n]*)\}/);
+    if (footnote) { nodes.push({ footnote: footnote[1] }); cursor += footnote[0].length; continue; }
+
     const reference = rest.match(/^\\ref\{([^{}\r\n]+)\}/);
     if (reference) { nodes.push({ ref: reference[1] }); cursor += reference[0].length; continue; }
 

@@ -93,6 +93,7 @@ export function serialize(node) {
     }
     case 'ref': return '\\ref{' + node.attrs.key + '}';
     case 'cite': return '\\cite{' + node.attrs.key + '}';
+    case 'footnote': return '\\footnote{' + node.attrs.text + '}';
     case 'label': return '\\label{' + node.attrs.key + '}';
     case 'raw': return node.attrs.source.replace(/\n+$/, '') + '\n\n';
     case 'hardBreak': return '\\\\\n';

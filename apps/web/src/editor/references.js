@@ -66,6 +66,53 @@ export const Ref = Node.create({
   },
 });
 
+export const Footnote = Node.create({
+  name: 'footnote',
+  group: 'inline',
+  inline: true,
+  atom: true,
+  selectable: true,
+  addAttributes: () => ({ text: { default: '' } }),
+  parseHTML: () => [{ tag: 'sup[data-footnote]', getAttrs: dom => ({ text: dom.dataset.footnote }) }],
+  renderHTML: ({ node }) => ['sup', { 'data-footnote': node.attrs.text }, ''],
+  addNodeView() {
+    return ({ node, editor, getPos }) => {
+      const dom = document.createElement('sup');
+      dom.className = 'footnote-node';
+      dom.contentEditable = 'false';
+      const render = () => {
+        const position = getPos();
+        let number = 0;
+        if (typeof position === 'number') {
+          editor.state.doc.descendants((child, childPosition) => {
+            if (child.type.name === 'footnote' && childPosition <= position) number++;
+          });
+        }
+        dom.textContent = String(number || 1);
+        dom.title = t('脚注','Footnote') + ': ' + node.attrs.text;
+      };
+      render();
+      dom.addEventListener('mousedown', event => {
+        const position = getPos();
+        if (typeof position !== 'number') return;
+        event.preventDefault();
+        event.stopPropagation();
+        editor.commands.setNodeSelection(position);
+      });
+      return {
+        dom,
+        update(next) {
+          if (next.type !== node.type) return false;
+          node = next;
+          render();
+          return true;
+        },
+        ignoreMutation: () => true,
+      };
+    };
+  },
+});
+
 export const Cite = Node.create({
   name: 'cite',
   group: 'inline',
