@@ -1,6 +1,43 @@
 import { t } from '../ui/i18n.mjs';
+import { Plugin, PluginKey } from '@tiptap/pm/state';
+import { Decoration, DecorationSet } from '@tiptap/pm/view';
+
+function collectMatches(doc, query) {
+  const matches = [];
+  if (!query) return matches;
+  const pattern = new RegExp(query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'giu');
+  doc.descendants((node, position) => {
+    if (!node.isTextblock) return;
+    const text = node.textBetween(0, node.content.size, '', '\uFFFC');
+    for (const match of text.matchAll(pattern)) {
+      const from = position + 1 + match.index;
+      matches.push({ from, to: from + match[0].length });
+    }
+    return false;
+  });
+  return matches;
+}
 
 export function installDocumentFind(editor) {
+  let query = '';
+  let activeFrom = -1;
+  const plugin = new Plugin({
+    key: new PluginKey('lineaeFind'),
+    props: {
+      decorations(state) {
+        if (!query) return null;
+        return DecorationSet.create(state.doc, collectMatches(state.doc, query).map(match =>
+          Decoration.inline(match.from, match.to, {
+            class: match.from === activeFrom ? 'find-match find-current' : 'find-match',
+          })));
+      },
+    },
+  });
+  editor.registerPlugin(plugin);
+  const refresh = () => {
+    if (editor.isDestroyed) return;
+    editor.view.dispatch(editor.state.tr.setMeta('lineaeFind', Date.now()));
+  };
   const panel = document.createElement('form');
   panel.className = 'document-find';
   panel.setAttribute('role', 'search');
@@ -32,27 +69,13 @@ export function installDocumentFind(editor) {
   panel.append(input, status, previous, next, close, row);
   document.body.append(panel);
 
-  function collect(query) {
-    const matches = [];
-    if (!query) return matches;
-    const pattern = new RegExp(query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'giu');
-    editor.state.doc.descendants((node, position) => {
-      if (!node.isTextblock) return;
-      const text = node.textBetween(0, node.content.size, '', '\uFFFC');
-      for (const match of text.matchAll(pattern)) {
-        const from = position + 1 + match.index;
-        matches.push({ from, to: from + match[0].length });
-      }
-      return false;
-    });
-    return matches;
-  }
-
   function find(direction, restart = false) {
-    const query = input.value;
-    const matches = collect(query);
+    query = input.value;
+    const matches = collectMatches(editor.state.doc, query);
     if (!matches.length) {
+      activeFrom = -1;
       status.textContent = query ? t('无匹配','No matches') : '';
+      refresh();
       return;
     }
     const { from, to } = editor.state.selection;
@@ -60,7 +83,9 @@ export function installDocumentFind(editor) {
       ? matches.findIndex(match => match.from >= to)
       : matches.findLastIndex(match => match.to <= from);
     const current = index < 0 ? (direction > 0 ? 0 : matches.length - 1) : index;
+    activeFrom = matches[current].from;
     editor.chain().setTextSelection(matches[current]).scrollIntoView().run();
+    refresh();
     status.textContent = `${current + 1} / ${matches.length}`;
   }
 
@@ -78,10 +103,12 @@ export function installDocumentFind(editor) {
   }
 
   function replaceEvery() {
-    const query = input.value;
-    const matches = collect(query);
+    query = input.value;
+    const matches = collectMatches(editor.state.doc, query);
     if (!matches.length) {
+      activeFrom = -1;
       status.textContent = query ? t('无匹配','No matches') : '';
+      refresh();
       return;
     }
     let transaction = editor.state.tr;
@@ -89,10 +116,18 @@ export function installDocumentFind(editor) {
       transaction = transaction.insertText(replacement.value, match.from, match.to);
     }
     editor.view.dispatch(transaction);
+    activeFrom = -1;
     status.textContent = t('已全部替换','All replaced');
+    refresh();
   }
 
-  function dismiss() { panel.hidden = true; editor.view.focus(); }
+  function dismiss() {
+    panel.hidden = true;
+    query = '';
+    activeFrom = -1;
+    refresh();
+    editor.view.focus();
+  }
   panel.addEventListener('submit', event => {
     event.preventDefault();
     if (document.activeElement === replacement) replaceOne();

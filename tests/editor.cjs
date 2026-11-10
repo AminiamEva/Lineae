@@ -669,8 +669,11 @@ const server=createServer(async(req,res)=>{
     const find=page.locator('.document-find');
     await find.locator('input').first().fill('word');
     assert.equal(await find.locator('output').textContent(),'1 / 2');
+    assert.equal(await page.locator('.find-match').count(),2,'All matches are highlighted');
+    assert.equal(await page.locator('.find-current').count(),1,'Current match is highlighted distinctly');
     await page.keyboard.press('Enter');
     assert.equal(await find.locator('output').textContent(),'2 / 2');
+    assert.equal(await page.locator('.find-current').count(),1);
     await page.keyboard.press('Escape');
     assert.equal(await find.isVisible(),false);
     await page.locator('math-field').click();
