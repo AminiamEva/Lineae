@@ -1014,10 +1014,9 @@ const server=createServer(async(req,res)=>{
     }
     await page.setViewportSize({width:1280,height:1400});
     await importSource('Before $x$ after');
-    console.log('Math boundary before',await page.evaluate(()=>({position:document.querySelector('[data-math-view]').getMathPosition(),paragraph:document.querySelector('.ProseMirror p').innerHTML})));
+    await page.waitForFunction(()=>document.querySelector('.ProseMirror p')?.textContent.includes('Before') && document.querySelector('[data-math-view]')?.dataset.latex==='x');
     await page.locator('math-field').evaluate(field=>{field.focus();field.executeCommand('moveToMathfieldEnd');});
     await page.keyboard.press('ArrowRight');
-    console.log('Math boundary after',await page.evaluate(()=>({node:window.getSelection()?.anchorNode?.parentElement?.outerHTML,offset:window.getSelection()?.anchorOffset})));
     assert.ok(await paper.evaluate(element=>element===document.activeElement),'ArrowRight exits at the end of inline math');
     await page.keyboard.type('Q');
     await page.locator('.source-toggle').click();
@@ -1031,7 +1030,13 @@ const server=createServer(async(req,res)=>{
       element.dispatchEvent(new ClipboardEvent('paste',{bubbles:true,cancelable:true,clipboardData:clipboard}));
     });
     await paper.locator('figure.document-image img').waitFor({state:'visible'});
-    assert.match(await paper.locator('figure.document-image img').getAttribute('alt'),/^clipboard-.*\.png$/);
+    const clipboardImageName=await paper.locator('figure.document-image img').getAttribute('alt');
+    assert.match(clipboardImageName,/^clipboard-.*\.png$/);
+    await page.locator('[data-group=files]').click();
+    const clipboardDownload=page.waitForEvent('download');
+    await page.locator('#download').click();
+    assert.ok((await readFile(await (await clipboardDownload).path())).includes(Buffer.from(clipboardImageName)),
+      'The downloaded project contains the pasted image');
     assert.deepEqual(errors,[]);
     console.log('Browser regressions passed');
   }finally{
