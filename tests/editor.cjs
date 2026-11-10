@@ -24,6 +24,8 @@ const server=createServer(async(req,res)=>{
     await page.goto('http://127.0.0.1:'+server.address().port);
     const paper=page.locator('.ProseMirror');
     await paper.click();
+    assert.equal(await paper.evaluate(element=>getComputedStyle(element).animationName),'none',
+      'The editor leaves caret blinking to the browser and system');
     await page.keyboard.type('Hello');
     await page.keyboard.press('Enter');
     await page.keyboard.press('Enter');
@@ -693,6 +695,12 @@ const server=createServer(async(req,res)=>{
       await page.keyboard.press(shortcut);
       await page.waitForFunction(name=>document.querySelector('math-field')?.value.includes('\\'+name),operator);
     }
+    const beforeToolbarSum=await page.locator('math-field').first().evaluate(field=>field.value);
+    const mathCount=await page.locator('math-field').count();
+    await page.locator('[data-group=math]').click();
+    await page.getByRole('button',{name:'sum',exact:true}).click();
+    await page.waitForFunction(previous=>document.querySelector('math-field')?.value!==previous,beforeToolbarSum);
+    assert.equal(await page.locator('math-field').count(),mathCount,'The sum button edits the active formula');
     await importSource(String.raw`\noindent Unindented`);
     await page.waitForFunction(()=>document.querySelector('.ProseMirror p[data-indent="false"]')?.textContent==='Unindented');
     await paper.locator('p').click();
@@ -965,7 +973,9 @@ const server=createServer(async(req,res)=>{
     const boxedText=paper.locator('[data-boxed]');
     await boxedText.waitFor();
     await boxedText.click();
+    await page.waitForFunction(()=>Boolean(document.querySelector('.space-overlay [data-active-box]')));
     await page.keyboard.press('Control+j');
+    await page.waitForFunction(()=>!document.querySelector('.space-overlay [data-active-box]'));
     await page.keyboard.type('X');
     assert.equal(await boxedText.textContent(),'Box','Ctrl+J leaves the complete box');
     assert.match(await paper.textContent(),/BoxX after/);

@@ -642,6 +642,17 @@ const structureCommands = {
     const value=await askText(t('引用标签','Reference label'));
     if(value)editor.chain().focus().insertContent({type:'ref',attrs:{key:value}}).run();
   },
+  eqref: async () => {
+    const labels=collectReferenceLabels(editor.state.doc).filter(item=>item.kind==='equation');
+    const value=labels.length?await chooseReference(labels):await askText(t('公式标签','Equation label'));
+    if(value)editor.chain().focus().insertContent({type:'ref',attrs:{key:value,equation:true}}).run();
+  },
+  footnote: async () => {
+    const value=await askText(t('脚注内容','Footnote text'));
+    if(value)editor.chain().focus().insertContent({type:'footnote',attrs:{text:value}}).run();
+  },
+  includegraphics: () => insertLocalImage(editor),
+  tableofcontents: () => editor.chain().focus().insertContent({type:'tableOfContents'}).run(),
   title: async () => {
     const value=await askText(t('标题','Title'),readMeta('title'));
     if(value!==null)writeMeta('title',value);
@@ -1223,7 +1234,10 @@ groupButton(mathGroup,'equation label',async()=>{
 });
 groupButton(mathGroup,'frac',()=>insertMath(false,'\\frac{\\placeholder{}}{\\placeholder{}}'));
 groupButton(mathGroup,'sqrt',()=>insertMath(false,'\\sqrt{\\placeholder{}}'));
-groupButton(mathGroup,'sum',()=>insertMath(false,'\\sum'));
+groupButton(mathGroup,'sum',()=>{
+  const field=activeMath();
+  if(field)insertLiveMath(field,'\\sum'); else insertMath(false,'\\sum');
+});
 groupButton(mathGroup,'int',()=>insertMath(false,'\\int'));
 for (const operator of ['prod','iint','iiint','oint','oiint']) {
   groupButton(mathGroup,'\\'+operator,()=>{

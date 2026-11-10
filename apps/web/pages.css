@@ -22,8 +22,6 @@ button,select,input { font:inherit; }
 button,select,.open { border:0; border-radius:16px; color:inherit; background:light-dark(#f0f0f5,#36363a); padding:6px 10px; cursor:pointer; }
 button:hover { background:light-dark(#e5ecfb,#414955); }
 button:active { transform:scale(.97); }
-@keyframes lineae-caret-blink { 0%,45% { caret-color:currentColor; } 46%,100% { caret-color:transparent; } }
-.ProseMirror { animation:lineae-caret-blink 1.15s steps(1,end) infinite; }
 button:focus-visible,select:focus-visible { outline:2px solid #4d90ee; outline-offset:2px; }
 .ribbon-tabs button { background:transparent; }
 .ribbon-tabs [aria-pressed=true] { color:light-dark(#0059c7,#9bc8ff); background:light-dark(#e8f1ff,#343d50); }

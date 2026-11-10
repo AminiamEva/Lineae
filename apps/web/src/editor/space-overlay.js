@@ -37,6 +37,24 @@ export function installSpaceOverlay(editor, paper) {
       width:rect.width/zoom,
       height:rect.height/zoom,
     });
+    // A boxed mark and the surrounding text can share the same document
+    // position at its edge. Indicate the actual DOM caret side without
+    // modifying the selection or intercepting editing gestures.
+    const selection=window.getSelection();
+    const anchor=selection?.isCollapsed && editor.view.hasFocus() ? selection.anchorNode : null;
+    const anchorElement=anchor?.nodeType===Node.ELEMENT_NODE ? anchor : anchor?.parentElement;
+    const explicitMarks=editor.state.storedMarks;
+    const activeBox=(!explicitMarks || explicitMarks.some(mark=>mark.type.name==='boxed'))
+      ? anchorElement?.closest?.('[data-boxed]') : null;
+    if (activeBox && paper.contains(activeBox)) {
+      for (const clientRect of activeBox.getClientRects()) {
+        const rect=local(clientRect);
+        if (rect.width>0 && rect.height>0) overlay.append(shape('rect',{
+          'data-active-box':'',x:rect.left,y:rect.top,width:rect.width,height:rect.height,
+          rx:2,fill:'rgba(80,135,210,.12)',stroke:'rgba(80,135,210,.45)','stroke-width':1,
+        }));
+      }
+    }
     for (const block of editor.view.dom.querySelectorAll('p,h1,h2,h3,pre')) {
       const bounds=local(block.getBoundingClientRect());
       if(bounds.bottom<0 || bounds.top>height || bounds.right<0 || bounds.left>width)continue;
