@@ -650,6 +650,7 @@ const server=createServer(async(req,res)=>{
     const exportedMath=await page.locator('.source-view').inputValue();
     assert.match(exportedMath,/\\frac\{1\}\{\}/,'Editing placeholders do not leak into exported LaTeX');
     assert.ok(!exportedMath.includes('\\placeholder{}'),'Exported LaTeX has no MathLive placeholders');
+    await page.getByRole('button',{name:'LaTeX',exact:true}).click();
     await importSource(String.raw`$\mathbf{AB}+C$ tail`);
     await page.waitForFunction(()=>document.querySelector('math-field')?.value.includes('mathbf{AB}'));
     await paper.locator('p').click();
