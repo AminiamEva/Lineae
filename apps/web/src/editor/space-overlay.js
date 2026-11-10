@@ -15,25 +15,65 @@ export function installSpaceOverlay(editor, paper) {
   boxCaret.hidden=true;
   boxCaret.setAttribute('aria-hidden','true');
   page.append(boxCaret);
+  const emptyBox=document.createElement('span');
+  emptyBox.className='empty-box-preview';
+  emptyBox.hidden=true;
+  emptyBox.setAttribute('aria-hidden','true');
+  page.append(emptyBox);
   let enabled = true;
   let composing = false;
   let frame = 0;
   let compositionFrame = 0;
+  let arrowOrigin = null;
 
   function boxEdge() {
     const { selection }=editor.state;
     if (!selection.empty || !selection.$from.parent.isTextblock) return null;
     const { $from }=selection;
-    const marks=$from.nodeBefore?.marks;
-    const boxed=marks?.find(mark=>mark.type.name==='boxed');
-    if (!boxed || boxed.isInSet($from.nodeAfter?.marks ?? [])) return null;
-    const {node,offset}=editor.view.domAtPos($from.pos,-1);
-    const before=node.nodeType===Node.ELEMENT_NODE ? node.childNodes[offset-1] : node;
-    const element=before?.nodeType===Node.ELEMENT_NODE ? before : before?.parentElement;
+    const before=$from.nodeBefore?.marks ?? [];
+    const after=$from.nodeAfter?.marks ?? [];
+    const boxed=mark=>mark.type.name==='boxed';
+    const end=before.some(boxed);
+    if (end===after.some(boxed)) return null;
+    const {node,offset}=editor.view.domAtPos($from.pos,end?-1:1);
+    const adjacent=node.nodeType===Node.ELEMENT_NODE ? node.childNodes[end?offset-1:offset] : node;
+    const element=adjacent?.nodeType===Node.ELEMENT_NODE ? adjacent : adjacent?.parentElement;
     const box=element?.closest('[data-boxed]');
-    const rect=box && [...box.getClientRects()].at(-1);
-    return rect?.width ? {rect, marks} : null;
+    const rect=box && [...box.getClientRects()].at(end?-1:0);
+    return rect?.width ? {rect,end,box,insideMarks:end?before:after,outsideMarks:end?after:before} : null;
   }
+
+  function insideBox(edge) {
+    const {storedMarks,selection}=editor.state;
+    if (storedMarks) return storedMarks.some(mark=>mark.type.name==='boxed');
+    if (arrowOrigin && selection.from!==arrowOrigin.position)
+      return edge.end===arrowOrigin.right;
+    return edge.box.contains(window.getSelection()?.anchorNode);
+  }
+
+  paper.addEventListener('pointerdown',()=>{arrowOrigin=null;},true);
+  paper.addEventListener('keydown',event=>{
+    const right=event.key==='ArrowRight';
+    const horizontal=right || event.key==='ArrowLeft';
+    if (!horizontal || event.shiftKey || event.ctrlKey || event.altKey || event.metaKey ||
+        composing || event.isComposing || !editor.view.hasFocus()) {
+      arrowOrigin=null;
+      return;
+    }
+    editor.view.domObserver.flush();
+    const edge=boxEdge();
+    if (edge) {
+      const enter=right!==edge.end;
+      if (insideBox(edge)!==enter) {
+        event.preventDefault();
+        event.stopPropagation();
+        arrowOrigin=null;
+        editor.view.dispatch(editor.state.tr.setStoredMarks(enter?edge.insideMarks:edge.outsideMarks));
+        return;
+      }
+    }
+    arrowOrigin={position:editor.state.selection.from,right};
+  },true);
 
   paper.addEventListener('click',event=>{
     if (event.button || event.shiftKey || event.ctrlKey || event.altKey || event.metaKey ||
@@ -41,13 +81,14 @@ export function installSpaceOverlay(editor, paper) {
     editor.view.domObserver.flush();
     const edge=boxEdge();
     if (!edge) return;
-    const {rect,marks}=edge;
+    const {rect,end}=edge;
+    const border=end?rect.right:rect.left;
     const tolerance=Math.min(8,rect.height/2);
     if (event.clientY<rect.top || event.clientY>rect.bottom ||
-        Math.abs(event.clientX-rect.right)>tolerance) return;
-    const inside=event.clientX<rect.right;
+        Math.abs(event.clientX-border)>tolerance) return;
+    const inside=end?event.clientX<border:event.clientX>border;
     editor.view.dispatch(editor.state.tr.setStoredMarks(
-      inside ? marks : marks.filter(mark=>mark.type.name!=='boxed'),
+      inside ? edge.insideMarks : edge.outsideMarks,
     ));
   });
 
@@ -57,12 +98,25 @@ export function installSpaceOverlay(editor, paper) {
     const zoom=page.offsetWidth ? pageRect.width/page.offsetWidth : 1;
     const edge=!composing && editor.view.hasFocus() ? boxEdge() : null;
     const marks=editor.state.storedMarks;
-    boxCaret.hidden=!(edge && marks);
+    const {selection}=editor.state;
+    const pendingBox=!edge && !composing && editor.view.hasFocus() && selection.empty &&
+      marks?.some(mark=>mark.type.name==='boxed') &&
+      !selection.$from.marks().some(mark=>mark.type.name==='boxed');
+    emptyBox.hidden=!pendingBox;
+    if (pendingBox) {
+      const caret=editor.view.coordsAtPos(selection.from);
+      emptyBox.style.left=((caret.left-pageRect.left)/zoom-2)+'px';
+      emptyBox.style.top=((caret.top-pageRect.top)/zoom)+'px';
+      emptyBox.style.height=Math.max(1,(caret.bottom-caret.top)/zoom)+'px';
+    }
+    boxCaret.hidden=!(edge && (marks || (arrowOrigin && editor.state.selection.from!==arrowOrigin.position)));
     editor.view.dom.classList.toggle('has-box-edge-caret',!boxCaret.hidden);
     if (!boxCaret.hidden) {
-      const inside=marks.some(mark=>mark.type.name==='boxed');
+      const inside=insideBox(edge);
+      const border=edge.end?edge.rect.right:edge.rect.left;
       boxCaret.dataset.side=inside?'inside':'outside';
-      boxCaret.style.left=((edge.rect.right-pageRect.left)/zoom+(inside?-3:2))+'px';
+      boxCaret.dataset.edge=edge.end?'right':'left';
+      boxCaret.style.left=((border-pageRect.left)/zoom+(inside===edge.end?-3:2))+'px';
       boxCaret.style.top=((edge.rect.top-pageRect.top)/zoom+2)+'px';
       boxCaret.style.height=Math.max(1,edge.rect.height/zoom-4)+'px';
     }
@@ -175,7 +229,19 @@ export function installSpaceOverlay(editor, paper) {
     draw();
     compositionFrame=requestAnimationFrame(compositionLoop);
   }
-  editor.on('transaction',schedule);
+  editor.on('transaction',({transaction})=>{
+    schedule();
+    if (!transaction.selectionSet || !arrowOrigin || editor.state.storedMarks) return;
+    const state=editor.state;
+    const origin=arrowOrigin;
+    queueMicrotask(()=>{
+      if (editor.state!==state || arrowOrigin!==origin || !editor.view.hasFocus()) return;
+      const edge=boxEdge();
+      if (!edge || state.selection.from===origin.position) return;
+      arrowOrigin=null;
+      editor.view.dispatch(state.tr.setStoredMarks(edge.end===origin.right?edge.insideMarks:edge.outsideMarks));
+    });
+  });
   paper.addEventListener('focusin',schedule);
   paper.addEventListener('focusout',schedule);
   paper.addEventListener('compositionstart',()=>{

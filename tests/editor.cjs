@@ -978,7 +978,7 @@ const server=createServer(async(req,res)=>{
     await page.waitForFunction(()=>!document.querySelector('.space-overlay [data-active-box]'));
     const outsideCaret=await page.locator('.box-edge-caret[data-side="outside"]').boundingBox();
     const boxBounds=await boxedText.boundingBox();
-    await page.mouse.click(boxBounds.x+boxBounds.width-2,boxBounds.y+boxBounds.height/2);
+    await page.keyboard.press('ArrowLeft');
     const insideCaret=page.locator('.box-edge-caret[data-side="inside"]');
     await insideCaret.waitFor();
     assert.ok((await insideCaret.boundingBox()).x<boxBounds.x+boxBounds.width &&
@@ -991,6 +991,20 @@ const server=createServer(async(req,res)=>{
     await page.keyboard.type('X');
     assert.equal(await boxedText.textContent(),'BoxI');
     assert.match(await paper.textContent(),/BoxIX after/);
+    const leftBox=await boxedText.boundingBox();
+    await page.mouse.click(leftBox.x+2,leftBox.y+leftBox.height/2);
+    await page.locator('.box-edge-caret[data-edge="left"][data-side="inside"]').waitFor();
+    await page.keyboard.press('ArrowLeft');
+    await page.locator('.box-edge-caret[data-edge="left"][data-side="outside"]').waitFor();
+    await page.keyboard.press('ArrowRight');
+    await page.locator('.box-edge-caret[data-edge="left"][data-side="inside"]').waitFor();
+    await page.keyboard.type('L');
+    assert.equal(await boxedText.textContent(),'LBoxI');
+    await page.keyboard.press('End');
+    await page.keyboard.press('Control+Shift+b');
+    await page.locator('.empty-box-preview').waitFor();
+    await page.keyboard.press('Control+Shift+b');
+    await page.locator('.empty-box-preview').waitFor({state:'hidden'});
     await importSource('\\begin{quote}\nQuoted text.\n\\end{quote}');
     await paper.locator('blockquote p').click();
     await page.keyboard.press('Control+j');
