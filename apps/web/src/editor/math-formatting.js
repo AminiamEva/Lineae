@@ -14,11 +14,15 @@ export function applyMathFont(field, command) {
   const apply=()=>{
     field.focus();
     const before=field.value;
+    const selection=structuredClone(field.selection);
     field.applyStyle(mathFontStyles[command]);
-    if(field.value!==before)field.dispatchEvent(new Event('input',{bubbles:true}));
-    requestAnimationFrame(()=>{
-      if(field.isConnected && field.value!==before)field.dispatchEvent(new Event('input',{bubbles:true}));
-    });
+    const after=field.value;
+    if(after!==before) {
+      field.value=before;
+      field.insert(after,{format:'latex',insertionMode:'replaceAll',selectionMode:'after'});
+      field.selection=selection;
+      field.dispatchEvent(new Event('input',{bubbles:true}));
+    }
     if(field.selection.ranges.every(([from,to])=>from===to)) {
       const start=event=>{
         if(event.ctrlKey||event.altKey||event.metaKey||event.key.length!==1)return;
