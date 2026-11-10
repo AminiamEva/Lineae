@@ -295,7 +295,7 @@ const server=createServer(async(req,res)=>{
     });
     await page.waitForFunction(()=>document.querySelectorAll('.ProseMirror h1[data-label="sec:target"]').length===1);
     assert.equal(await paper.locator('.ref-node').count(),1,'reference is an editable atom');
-    assert.equal(await paper.locator('.ref-node').textContent(),'§1');
+    assert.equal(await paper.locator('.ref-node').textContent(),'1');
     await page.locator('input[type=file]').setInputFiles({
       name:'align.tex',mimeType:'text/plain',
       buffer:Buffer.from('\\documentclass{article}\n\\begin{document}\n\\begin{align}\n\\mathbf{x} &= 1 \\\\\n\\end{align}\n\\end{document}\n'),
@@ -840,6 +840,17 @@ const server=createServer(async(req,res)=>{
     await paper.focus();
     await page.keyboard.press('Delete');
     await page.waitForFunction(()=>document.querySelector('.ProseMirror p')?.textContent.trimStart()==='后中');
+    await importSource('\\section{First}\\label{sec:first}\n\nMark \\label{note} here and see \\ref{sec:first}');
+    await page.waitForFunction(()=>document.querySelector('.label-node')&&document.querySelector('.ref-node'));
+    assert.equal(await page.locator('.ref-node').textContent(),'1','References show only the resolved number');
+    const labelPlacement=await page.evaluate(()=>{
+      const label=document.querySelector('.label-node');
+      const page=document.querySelector('.document-page');
+      const content=document.querySelector('.ProseMirror');
+      return { position:getComputedStyle(label).position, left:label.getBoundingClientRect().left, right:label.getBoundingClientRect().right, pageRight:page.getBoundingClientRect().right, contentRight:content.getBoundingClientRect().right };
+    });
+    assert.equal(labelPlacement.position,'absolute','Labels do not occupy text width');
+    assert.ok(labelPlacement.left>=labelPlacement.contentRight-2&&labelPlacement.right<=labelPlacement.pageRight,'Labels sit in the page margin: '+JSON.stringify(labelPlacement));
     await importSource('Footnote here');
     await page.waitForFunction(()=>document.querySelector('.ProseMirror p')?.textContent==='Footnote here');
     await page.locator('[data-group=reference]').click();

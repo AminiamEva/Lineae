@@ -40,7 +40,8 @@ export const Ref = Node.create({
       const render = () => {
         dom.dataset.refView = node.attrs.key;
         const number = referenceNumber(editor.state.doc, node.attrs.key);
-        dom.textContent = number ? '§' + number : '→' + node.attrs.key;
+        dom.textContent = number ?? '?';
+        dom.classList.toggle('missing', !number);
         dom.title = '\\ref{' + node.attrs.key + '}';
       };
       render();
