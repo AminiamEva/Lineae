@@ -68,22 +68,35 @@ export const MultiSelection = Extension.create({
             if(event.button!==0)return false;
             const previous=key.getState(view.state);
             const {from,to}=browserRange(view) ?? view.state.selection;
-            dragging=event.ctrlKey ? {doc:view.state.doc,ranges:mergeRanges([...previous,{from,to}])} : null;
-            if(!dragging && previous.length)view.dispatch(view.state.tr.setMeta(key,[]));
-            return false;
-          },
-          mouseup(view) {
-            const start=dragging;
-            dragging=null;
-            if(!start?.ranges.length)return false;
-            requestAnimationFrame(()=>{
-              if(view.isDestroyed || view.state.doc!==start.doc)return;
-              const range=browserRange(view);
-              if(!range)return;
-              const ranges=mergeRanges([...start.ranges,range]);
-              view.dispatch(view.state.tr.setMeta(key,ranges.length>1?ranges:[]));
-            });
-            return false;
+            const ranges=mergeRanges([...previous,{from,to}]);
+            const hit=view.posAtCoords({left:event.clientX,top:event.clientY});
+            if (!event.ctrlKey || !ranges.length || !hit) {
+              if(previous.length)view.dispatch(view.state.tr.setMeta(key,[]));
+              return false;
+            }
+            // Chromium can extend the native Ctrl-drag to the entire paragraph.
+            // Own the second drag so the two ranges remain separate.
+            event.preventDefault();
+            const start={doc:view.state.doc,ranges,anchor:hit.pos};
+            dragging=start;
+            function track(pointer, finish) {
+              if(view.isDestroyed || dragging!==start || view.state.doc!==start.doc)return;
+              const end=view.posAtCoords({left:pointer.clientX,top:pointer.clientY});
+              if(!end)return;
+              const doc=view.state.doc;
+              const selection=TextSelection.between(doc.resolve(start.anchor),doc.resolve(end.pos));
+              const next=mergeRanges([...start.ranges,{from:selection.from,to:selection.to}]);
+              if(finish)dragging=null;
+              view.dispatch(view.state.tr.setSelection(selection).setMeta(key,next));
+            }
+            const move=pointer=>track(pointer,false);
+            document.addEventListener('mousemove',move,true);
+            document.addEventListener('mouseup',pointer=>{
+              document.removeEventListener('mousemove',move,true);
+              track(pointer,true);
+              dragging=null;
+            },{once:true,capture:true});
+            return true;
           },
           copy(view,event) {return copyRanges(view,event,false);},
           cut(view,event) {return copyRanges(view,event,true);},
