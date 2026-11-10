@@ -4,16 +4,22 @@ import { closeHistory } from '@tiptap/pm/history';
 import { exitCode } from '@tiptap/pm/commands';
 import { mathFontStyles, applyMathFont } from './editor/math-formatting.js';
 import { installFormatControls } from './editor/format-controls.js';
-import { decorateToolbar } from './editor/icons.js';
+import { decorateToolbar, icon } from './editor/icons.js';
 import { PaperBehavior } from './editor/paper-behavior.js';
 import { MathNode, MathBlock, configureMathKeys, insertFormula, toggleDisplayStyle } from './editor/math-node.js';
-import { Ref, Label, TableOfContents, refreshReferences } from './editor/references.js';
+import { Ref, Label, Cite, Footnote, TableOfContents, refreshReferences, collectReferenceLabels } from './editor/references.js';
+import { insertCitationDialog } from './editor/citation-dialog.js';
+import { chooseReference } from './editor/reference-index.js';
 import { installTableHoverAddRow } from './editor/table-hover.js';
 import { parseYaml, toYaml, mergeConfig } from './editor/config.mjs';
 import { askText } from './editor/dialog.js';
 import { installDocumentFind } from './editor/find.js';
-import { DocumentImage, insertLocalImage } from './editor/image-node.js';
+import { DocumentImage, insertLocalImage, installImageDrop } from './editor/image-node.js';
+import { projectAssets, rememberAsset } from './editor/project-assets.js';
+import { buildProjectZip, safeProjectPath, projectDependencies } from './editor/project-zip.mjs';
+import { theoremNames } from '../latex/theorem.mjs';
 import { MultiSelection } from './editor/multi-selection.js';
+import { installSpaceOverlay } from './editor/space-overlay.js';
 import { wrapMathWithDelimiters } from '../latex/delimiters.mjs';
 import { readDelimiterPair } from './editor/delimiter-input.js';
 import { serialize, importBlocks } from './editor/latex-codec.js';
@@ -23,9 +29,10 @@ import Table from '@tiptap/extension-table';
 import TableRow from '@tiptap/extension-table-row';
 import TableCell from '@tiptap/extension-table-cell';
 import TableHeader from '@tiptap/extension-table-header';
-import { Plugin } from '@tiptap/pm/state';
+import { Plugin, Selection } from '@tiptap/pm/state';
 import { parseDocument } from '../latex/document.mjs';
 import { exportDocument } from '../latex/packages.mjs';
+import { MARGIN_PRESETS, readPageSetup, writePageSetup, pageMetrics } from '../latex/geometry.mjs';
 import { mathSymbols } from '../latex/math-symbols.mjs';
 import { createThemeController } from './ui/theme.mjs';
 import { installTooltips } from './ui/tooltips.mjs';
@@ -81,19 +88,18 @@ const TextCommand = Mark.create({
     const name = element.dataset.textCommand;
     return Object.hasOwn(textCommands, name) ? { name } : false;
   } }],
-  renderHTML: ({ mark }) => {
-    const name = mark.attrs.name;
-    const attrs = { 'data-text-command': name };
-    if (name !== 'TeX' && name !== 'LaTeX') return ['span', attrs, 0];
-    const letters = name === 'LaTeX' ? ['L', ['span', { class: 'tex-logo-a' }, 'A']] : [];
-    return ['span', attrs, ['span', { class: 'tex-logo-source' }, 0],
-      ['span', { class: 'tex-logo-art', 'aria-hidden': 'true', contenteditable: 'false' },
-        ...letters, 'T', ['span', { class: 'tex-logo-e' }, 'E'], 'X']];
-  },
+  renderHTML: ({ mark }) => ['span', { 'data-text-command': mark.attrs.name }, 0],
 });
 function insertTextCommand(name) {
   editor.chain().focus().insertContent({ type: 'text', text: textCommands[name], marks: [{ type: 'textCommand', attrs: { name } }] }).run();
 }
+const TheoremBlock = Node.create({
+  name:'theoremBlock',group:'block',content:'block+',defining:true,
+  addAttributes:()=>({kind:{default:'theorem'},title:{default:null}}),
+  parseHTML:()=>[{tag:'section[data-theorem]',getAttrs:element=>Object.hasOwn(theoremNames,element.dataset.theorem)?{kind:element.dataset.theorem,title:element.dataset.theoremTitle||null}:false}],
+  renderHTML:({node})=>['section',{'data-theorem':node.attrs.kind,'data-theorem-title':node.attrs.title??'',
+    'data-theorem-heading':theoremNames[node.attrs.kind]+(node.attrs.title?' ('+node.attrs.title+')':'')+'.'},0],
+});
 const Raw = Node.create({
   name:'raw', group:'block', atom:true,
   addAttributes:()=>({source:{default:''}}),
@@ -154,6 +160,9 @@ function insertLiveMath(field, latex, notify = true) {
 function insertMath(display = false, latex = '') {
   if (!latex) return insertFormula(editor, display, '');
   insertFormula(editor, display, '', undefined, field => insertLiveMath(field, latex));
+}
+function insertEquation() {
+  insertFormula(editor, true, '', undefined, field => insertLiveMath(field, '\\placeholder{}'), { delimiter:'equation' });
 }
 let backticks = null;
 const Shortcuts = Extension.create({
@@ -221,7 +230,7 @@ paper.before(documentPage);documentPage.append(paper);
 paper.replaceChildren();
 editor=new Editor({
   element:paper,
-  extensions:[StarterKit.configure({heading:{levels:[1,2,3]}}),MultiSelection,PaperBehavior,TextStyle,TextCommand,Underline,Superscript,Subscript,SmallCaps,Boxed,Table.configure({resizable:true}),TableRow,TableCell,TableHeader,Raw,DocumentImage,DescriptionList,DescriptionItem,MathNode,MathBlock,Ref,Label,TableOfContents,Shortcuts],
+  extensions:[StarterKit.configure({heading:{levels:[1,2,3]}}),MultiSelection,PaperBehavior,TextStyle,TextCommand,Underline,Superscript,Subscript,SmallCaps,Boxed,Table.configure({resizable:true}),TableRow,TableCell,TableHeader,Raw,DocumentImage,TheoremBlock,DescriptionList,DescriptionItem,MathNode,MathBlock,Ref,Cite,Footnote,Label,TableOfContents,Shortcuts],
   content:'<p></p>',
 });
 function syncTableAttributes() {
@@ -241,6 +250,7 @@ function syncTableAttributes() {
 editor.on('update',()=>{refreshReferences(paper);syncTableAttributes();});
 syncTableAttributes();
 installTableHoverAddRow(editor, paper);
+installImageDrop(editor,paper);
 installDocumentFind(editor);
 const tools=document.querySelector('#insert');
 tools.replaceChildren();
@@ -281,6 +291,7 @@ button('enumerate',()=>editor.chain().focus().toggleOrderedList().run());
 button('▦',()=>editor.chain().focus().insertTable({rows:2,cols:2,withHeaderRow:false}).run());
 let editingMath = null;
 document.addEventListener('focusin', event => {
+  if (event.target.closest?.('.delimiter-input-embedded')) return;
   const field=event.composedPath().find(element=>element?.tagName==='MATH-FIELD');
   if(field || paper.contains(event.target) || event.target.classList?.contains('source-view')) {
     if(editingMath && editingMath!==field) editingMath.dispatchEvent(new Event('lineae-commit-fences'));
@@ -362,6 +373,36 @@ const sourceView=document.createElement('textarea');
 sourceView.className='source-view'; sourceView.hidden=true;
 documentPage.after(sourceView);
 let documentParts=parseDocument('\\documentclass{article}\n\\usepackage{amsmath}\n\\begin{document}\n\\end{document}\n');
+let pageSetup=readPageSetup(documentParts.start);
+let pagePaper,pageOrientation,pageMarginPreset,pageMarginTop,pageMarginRight,pageMarginBottom,pageMarginLeft;
+function applyPageSetup(){
+  const metrics=pageMetrics(pageSetup);
+  documentPage.style.setProperty('--page-width',metrics.width);
+  documentPage.style.setProperty('--page-height',metrics.height);
+  documentPage.style.setProperty('--page-margin-top',metrics.margins.top);
+  documentPage.style.setProperty('--page-margin-right',metrics.margins.right);
+  documentPage.style.setProperty('--page-margin-bottom',metrics.margins.bottom);
+  documentPage.style.setProperty('--page-margin-left',metrics.margins.left);
+  if(pagePaper){
+    pagePaper.value=pageSetup.paper;
+    pageOrientation.value=pageSetup.orientation;
+    pageMarginTop.value=pageSetup.margins.top;
+    pageMarginRight.value=pageSetup.margins.right;
+    pageMarginBottom.value=pageSetup.margins.bottom;
+    pageMarginLeft.value=pageSetup.margins.left;
+    pageMarginPreset.value=Object.keys(MARGIN_PRESETS).find(key=>MARGIN_PRESETS[key]===pageSetup.margin)??'custom';
+  }
+}
+function updatePageSetup(patch){
+  if(patch.margins)pageSetup={...pageSetup,...patch,margins:{...pageSetup.margins,...patch.margins}};
+  else if(patch.margin)pageSetup={...pageSetup,...patch,margins:{top:patch.margin,right:patch.margin,bottom:patch.margin,left:patch.margin}};
+  else pageSetup={...pageSetup,...patch};
+  const sides=Object.values(pageSetup.margins);
+  pageSetup.margin=sides.every(value=>value===sides[0])?sides[0]:'custom';
+  documentParts.start=writePageSetup(documentParts.start,pageSetup);
+  if(importedSource)importedSource=writePageSetup(importedSource,pageSetup);
+  applyPageSetup();
+}
 let filename='lineae.tex';
 let fileHandle=null;
 let savedSource='';
@@ -420,20 +461,47 @@ function load(text, markSaved = true) {
   if(markSaved) savedSource=text;
   if(!sourceView.hidden) sourceView.value=text;
   renderMeta();
+  pageSetup=readPageSetup(documentParts.start);
+  applyPageSetup();
 }
-button('LaTeX',()=>{
+function toggleSourceView(){
   if(sourceView.hidden) {
     sourceView.value=source(); sourceView.hidden=false; documentPage.hidden=true;
   } else {
     try {load(sourceView.value,false);sourceView.hidden=true;documentPage.hidden=false;editor.commands.focus();}
     catch(error){document.querySelector('#status').hidden=false;document.querySelector('#status').textContent=error.message;}
   }
-});
+  updateSourceButton();
+}
 document.querySelector('#download').disabled=false;
-function downloadText(text) {
-  const url=URL.createObjectURL(new Blob([text],{type:'text/plain;charset=utf-8'}));
-  const a=document.createElement('a');a.href=url;a.download=filename;a.click();
-  setTimeout(()=>URL.revokeObjectURL(url),1000);
+async function downloadProject() {
+  const text=sourceView.hidden?source():sourceView.value;
+  const status=document.querySelector('#status');
+  try {
+    const assets=new Map(projectAssets().filter(([path])=>safeProjectPath(path)));
+    const dependencies=new Set(projectDependencies(text));
+    const required=new Map();
+    const missing=[];
+    for(const path of dependencies) {
+      const actual=assets.has(path)?path:[...assets.keys()].find(key=>key.replace(/\.[^.\/]+$/,'')===path);
+      if(!actual) {missing.push(path);continue;}
+      if(required.has(actual) || actual===filename)continue;
+      const file=assets.get(actual);
+      required.set(actual,file);
+      if(actual.endsWith('.tex'))for(const dependency of projectDependencies(await file.text()))dependencies.add(dependency);
+    }
+    if(missing.length) {
+      status.hidden=false;status.textContent=t('缺少项目资源','Missing project assets')+': '+missing.join(', ');
+      return;
+    }
+    const name=safeProjectPath(filename)?filename:'lineae.tex';
+    const zip=await buildProjectZip([[name,text],...[...required].filter(([path])=>path!==name)]);
+    const url=URL.createObjectURL(zip);
+    const a=document.createElement('a');a.href=url;a.download=name.replace(/\.tex$/i,'')+'.zip';a.click();
+    setTimeout(()=>URL.revokeObjectURL(url),1000);
+  } catch(error) {
+    status.hidden=false;status.textContent=error.message;
+  }
 }
 async function saveDocument() {
   const text=sourceView.hidden?source():sourceView.value;
@@ -454,7 +522,7 @@ async function saveDocument() {
       console.warn(t('保存','Save'),error);
     }
   }
-  downloadText(text);
+  await downloadProject();
 }
 async function openDocument() {
   try {
@@ -469,7 +537,7 @@ async function openDocument() {
     return false;
   }
 }
-document.querySelector('#download').addEventListener('click',saveDocument);
+document.querySelector('#download').addEventListener('click',downloadProject);
 document.addEventListener('keydown',event=>{
   if((event.ctrlKey||event.metaKey)&&!event.altKey&&!event.shiftKey&&event.key.toLowerCase()==='s') {
     event.preventDefault(); event.stopPropagation(); saveDocument();
@@ -539,6 +607,7 @@ const structureCommands = {
   indent: () => editor.chain().focus().updateAttributes('paragraph',{indent:true}).run(),
   noindent: () => editor.chain().focus().updateAttributes('paragraph',{indent:false}).run(),
   par: () => editor.chain().focus().splitBlock().run(),
+  ...Object.fromEntries(Object.keys(theoremNames).map(kind=>[kind,()=>editor.chain().focus().wrapIn('theoremBlock',{kind}).run()])),
   section: () => editor.chain().focus().setHeading({ level: 1 }).run(),
   subsection: () => editor.chain().focus().setHeading({ level: 2 }).run(),
   subsubsection: () => editor.chain().focus().setHeading({ level: 3 }).run(),
@@ -554,6 +623,7 @@ const structureCommands = {
   alignat: () => insertMath(true, '\\begin{alignat}{2}\\placeholder{} &= \\placeholder{} & \\quad \\placeholder{} &= \\placeholder{}\\end{alignat}'),
   smallmatrix: () => insertMath(false, '\\begin{smallmatrix}\\placeholder{}\\end{smallmatrix}'),
   quote: () => editor.chain().focus().toggleBlockquote().run(),
+  hrule: () => editor.chain().focus().setHorizontalRule().run(),
   description: () => editor.chain().focus().insertContent({type:'descriptionList',content:[{type:'descriptionItem',attrs:{term:''},content:[{type:'paragraph'}]}]}).run(),
   toc: () => {
     if(editor.isActive('tableOfContents'))editor.chain().focus().deleteSelection().run();
@@ -572,6 +642,17 @@ const structureCommands = {
     const value=await askText(t('引用标签','Reference label'));
     if(value)editor.chain().focus().insertContent({type:'ref',attrs:{key:value}}).run();
   },
+  eqref: async () => {
+    const labels=collectReferenceLabels(editor.state.doc).filter(item=>item.kind==='equation');
+    const value=labels.length?await chooseReference(labels):await askText(t('公式标签','Equation label'));
+    if(value)editor.chain().focus().insertContent({type:'ref',attrs:{key:value,equation:true}}).run();
+  },
+  footnote: async () => {
+    const value=await askText(t('脚注内容','Footnote text'));
+    if(value)editor.chain().focus().insertContent({type:'footnote',attrs:{text:value}}).run();
+  },
+  includegraphics: () => insertLocalImage(editor),
+  tableofcontents: () => editor.chain().focus().insertContent({type:'tableOfContents'}).run(),
   title: async () => {
     const value=await askText(t('标题','Title'),readMeta('title'));
     if(value!==null)writeMeta('title',value);
@@ -583,7 +664,14 @@ const structureCommands = {
   textbf: () => editor.chain().focus().toggleBold().run(),
   textit: () => editor.chain().focus().toggleItalic().run(),
   emph: () => editor.chain().focus().toggleItalic().run(),
+  textsl: () => editor.chain().focus().toggleItalic().run(),
+  sout: () => editor.chain().focus().toggleStrike().run(),
   underline: () => editor.chain().focus().toggleMark('underline').run(),
+  textsc: () => editor.chain().focus().toggleMark('smallcaps').run(),
+  fbox: () => editor.chain().focus().toggleMark('boxed').run(),
+  textsuperscript: () => editor.chain().focus().toggleMark('superscript').run(),
+  textsubscript: () => editor.chain().focus().toggleMark('subscript').run(),
+  texttt: () => editor.chain().focus().toggleCode().run(),
   matrix: () => insertMath(false,'\\begin{pmatrix}\\placeholder{}\\end{pmatrix}'),
   cases: () => insertMath(true,'\\begin{cases}\\placeholder{} & \\placeholder{}\\\\ \\placeholder{} & \\placeholder{}\\end{cases}'),
   align: () => insertMath(true,'\\begin{align}\\placeholder{} &= \\placeholder{}\\\\ \\placeholder{} &= \\placeholder{}\\end{align}'),
@@ -633,7 +721,7 @@ async function chooseMathDelimiters(field, rightFirst = false) {
   const value = field?.value;
   const documentBefore = editor.state.doc;
   const anchor = field?.getBoundingClientRect() ?? editor.view.coordsAtPos(editor.state.selection.from);
-  const pair = await readDelimiterPair(anchor, rightFirst);
+  const pair = await readDelimiterPair(anchor, rightFirst, field?.closest('[data-math-view]'));
   if (!pair) {
     if (document.activeElement === document.body) {
       if (field?.isConnected) field.focus(); else editor.view.focus();
@@ -744,7 +832,7 @@ function armLiteralFence(field) {
     insertLiveMath(field,fence);
   },options);
 }
-const mathOperatorKeys = { 'cs:s':'sum', 'cs:p':'prod', 'cs:i':'iint', 'csa:i':'iiint', 'a:i':'oint', 'sa:i':'oiint' };
+const mathOperatorKeys = { 'cs:s':'sum', 'ca:s':'sum', 'cs:p':'prod', 'cs:i':'iint', 'csa:i':'iiint', 'a:i':'oint', 'sa:i':'oiint' };
 window.addEventListener('keydown', event => {
   if (event.defaultPrevented || event.metaKey || event.isComposing) return;
   const field = event.composedPath().find(node => node?.tagName === 'MATH-FIELD');
@@ -783,7 +871,7 @@ const count=document.createElement('span');
 const zoom=document.createElement('input');zoom.type='range';zoom.min='50';zoom.max='300';zoom.value='100';
 const percent=document.createElement('output');
 const themeButton=document.createElement('button');
-themeButton.type='button';themeButton.className='theme-toggle';themeButton.textContent='◐';
+themeButton.type='button';themeButton.className='theme-toggle';
 themeButton.addEventListener('mousedown',event=>event.preventDefault());
 themeButton.addEventListener('click',()=>{
   const next={light:'dark',dark:'system',system:'light'}[theme.getPreference()];
@@ -792,9 +880,20 @@ themeButton.addEventListener('click',()=>{
 function updateThemeButton(){
   const chinese=document.documentElement.lang.startsWith('zh');
   const label={light:['浅色','Light'],dark:['深色','Dark'],system:['跟随系统','System']}[theme.getPreference()];
-  themeButton.dataset.tooltipZh='切换主题：'+label[0];
-  themeButton.dataset.tooltipEn='Switch theme: '+label[1];
-  themeButton.setAttribute('aria-label',(chinese?'主题：':'Theme: ')+label[chinese?0:1]);
+  const description=(chinese?'主题：':'Theme: ')+label[chinese?0:1];
+  themeButton.setAttribute('aria-label',description);
+  themeButton.title=description;
+  themeButton.replaceChildren(icon({light:'sun',dark:'moon',system:'system'}[theme.getPreference()]));
+}
+const sourceButton=document.createElement('button');
+sourceButton.type='button';sourceButton.className='source-toggle';
+sourceButton.setAttribute('aria-label','LaTeX');
+sourceButton.addEventListener('mousedown',event=>event.preventDefault());
+sourceButton.addEventListener('click',toggleSourceView);
+function updateSourceButton(){
+  const chinese=document.documentElement.lang.startsWith('zh');
+  sourceButton.textContent=sourceView.hidden?(chinese?'源码':'Source'):(chinese?'富文本':'Rich text');
+  sourceButton.setAttribute('aria-pressed',String(!sourceView.hidden));
 }
 function scale() {
   documentPage.style.zoom=Number(zoom.value)/100;
@@ -810,8 +909,9 @@ let wheelZoom = Number(zoom.value);
 const configuredZoom=Number(appConfig.interface?.zoom);
 if(Number.isFinite(configuredZoom)&&configuredZoom>=50&&configuredZoom<=300) { zoom.value=String(configuredZoom); wheelZoom=configuredZoom; }
 document.addEventListener('keydown', event => {
-  if (event.ctrlKey && !event.shiftKey && !event.altKey && !event.metaKey && ['0','j'].includes(event.key.toLowerCase())
+  if (event.ctrlKey && !event.shiftKey && !event.altKey && !event.metaKey && event.key.toLowerCase()==='j'
     && editor.view.hasFocus() && !event.composedPath().some(node=>node?.tagName==='MATH-FIELD')) {
+    editor.view.domObserver.flush();
     if (editor.isActive('codeBlock')) {
       event.preventDefault(); event.stopPropagation();
       exitCode(editor.state, editor.view.dispatch);
@@ -822,10 +922,38 @@ document.addEventListener('keydown', event => {
       editor.commands.unsetCode();
       return;
     }
+    for (const mark of ['boxed','smallcaps','superscript','subscript','bold','italic','underline','strike']) {
+      if (!editor.isActive(mark)) continue;
+      event.preventDefault(); event.stopPropagation();
+      // Move past the whole marked range before continuing outside the command.
+      editor.chain().focus().extendMarkRange(mark).command(({tr}) => {
+        tr.setSelection(tr.selection.constructor.near(tr.doc.resolve(tr.selection.to)));
+        tr.removeStoredMark(editor.schema.marks[mark]);
+        return true;
+      }).unsetMark(mark).run();
+      return;
+    }
+    const { $from }=editor.state.selection;
+    for (let depth=$from.depth; depth>0; depth--) {
+      if (!['blockquote','theoremBlock','bulletList','orderedList','descriptionList','table'].includes($from.node(depth).type.name)) continue;
+      event.preventDefault(); event.stopPropagation();
+      const after=$from.after(depth);
+      const tr=editor.state.tr;
+      if (!tr.doc.resolve(after).nodeAfter) tr.insert(after,editor.schema.nodes.paragraph.create());
+      tr.setSelection(Selection.near(tr.doc.resolve(after),1));
+      editor.view.dispatch(tr.scrollIntoView());
+      editor.view.focus();
+      return;
+    }
   }
-  if (!(event.ctrlKey || event.metaKey) || activeMath() || event.composedPath().some(node=>node?.tagName==='MATH-FIELD') || !['+','=','-','0'].includes(event.key)) return;
+  if (event.ctrlKey && !event.shiftKey && !event.altKey && !event.metaKey && event.key==='0'
+    && editor.view.hasFocus() && !event.composedPath().some(node=>node?.tagName==='MATH-FIELD')) {
+    event.preventDefault();
+    return;
+  }
+  if (!(event.ctrlKey || event.metaKey) || activeMath() || event.composedPath().some(node=>node?.tagName==='MATH-FIELD') || !['+','=','-'].includes(event.key)) return;
   event.preventDefault();
-  wheelZoom = event.key === '0' ? 100 : Math.max(50, Math.min(300, Number(zoom.value) + (event.key === '-' ? -10 : 10)));
+  wheelZoom = Math.max(50, Math.min(300, Number(zoom.value) + (event.key === '-' ? -10 : 10)));
   zoom.value = String(wheelZoom); scale();
 }, true);
 zoom.addEventListener('input', () => { wheelZoom = Number(zoom.value); });
@@ -898,12 +1026,13 @@ function updateEnvironment() {
   const labels={matrix:t('矩阵','Matrix'),'display math':t('行间公式','Display math'),'inline math':t('行内公式','Inline math'),table:t('表格','Table'),listItem:t('列表','List'),heading:t('标题','Heading'),text:t('正文','Text'),LaTeX:t('源码','Source')};
   environment.textContent=labels[name]; environment.dataset.environment=name;
 }
-footer.append(count,environment,zoom,percent,themeButton);document.body.append(footer);scale();
+footer.append(count,environment,zoom,percent,themeButton,sourceButton);document.body.append(footer);scale();
 editor.on('transaction',updateEnvironment);
 document.addEventListener('focusin',updateEnvironment);paper.addEventListener('input',updateEnvironment);
 updateEnvironment();
 editor.on('update',()=>{count.textContent=editor.getText().length+' '+t('字符','characters');});
 const tableGroup=document.createElement('div');tableGroup.className='tools';
+const layoutGroup=document.createElement('div');layoutGroup.className='tools';layoutGroup.id='layout-panel';
 const formatGroup=document.createElement('div');formatGroup.className='tools';
 const referenceGroup=document.createElement('div');referenceGroup.className='tools';
 const mathGroup=document.createElement('div');mathGroup.className='tools';
@@ -915,6 +1044,35 @@ function groupButton(container,label,action) {
   container.append(control);
   return control;
 }
+pagePaper=document.createElement('select');
+for(const [value,label] of [['a4','A4'],['a5','A5'],['letter','Letter'],['legal','Legal']])pagePaper.append(new Option(label,value));
+pagePaper.setAttribute('aria-label',t('纸张','Paper'));
+pageOrientation=document.createElement('select');
+pageOrientation.setAttribute('aria-label',t('方向','Orientation'));
+pageMarginPreset=document.createElement('select');
+for(const value of ['normal','narrow','wide','custom'])pageMarginPreset.append(new Option(value,value));
+pageMarginPreset.setAttribute('aria-label',t('页边距预设','Margin preset'));
+function marginInput(label){
+  const input=document.createElement('input');
+  input.type='text';input.style.width='64px';input.setAttribute('aria-label',label);
+  return input;
+}
+pageMarginTop=marginInput(t('上边距','Top margin'));
+pageMarginRight=marginInput(t('右边距','Right margin'));
+pageMarginBottom=marginInput(t('下边距','Bottom margin'));
+pageMarginLeft=marginInput(t('左边距','Left margin'));
+layoutGroup.append(pagePaper,pageOrientation,pageMarginPreset,pageMarginTop,pageMarginRight,pageMarginBottom,pageMarginLeft);
+pagePaper.addEventListener('change',()=>updatePageSetup({paper:pagePaper.value}));
+pageOrientation.addEventListener('change',()=>updatePageSetup({orientation:pageOrientation.value}));
+pageMarginPreset.addEventListener('change',()=>{
+  if(MARGIN_PRESETS[pageMarginPreset.value])updatePageSetup({margin:MARGIN_PRESETS[pageMarginPreset.value]});
+});
+for(const [side,input] of [['top',pageMarginTop],['right',pageMarginRight],['bottom',pageMarginBottom],['left',pageMarginLeft]])input.addEventListener('change',()=>{
+  const value=input.value.trim();
+  if(/^\d+(?:\.\d+)?(?:mm|cm|in|pt)$/.test(value))updatePageSetup({margins:{[side]:value}});
+  else input.value=pageSetup.margins[side];
+});
+applyPageSetup();
 groupButton(tableGroup,'▦',()=>editor.chain().focus().insertTable({rows:2,cols:2,withHeaderRow:false}).run());
 groupButton(tableGroup,'＋ Row',addMatrixRow);
 groupButton(tableGroup,'＋ Column',addMatrixColumn);
@@ -924,6 +1082,16 @@ groupButton(tableGroup,'删除表格',()=>editor.chain().focus().deleteTable().r
 groupButton(tableGroup,'merge',()=>editor.chain().focus().mergeCells().run());
 groupButton(tableGroup,'split',()=>editor.chain().focus().splitCell().run());
 groupButton(tableGroup,'booktabs',()=>{if(editor.isActive('table'))editor.chain().focus().updateAttributes('table',{booktabs:!editor.getAttributes('table').booktabs}).run();});
+groupButton(tableGroup,t('题注','Caption'),async()=>{
+  if(!editor.isActive('table'))return;
+  const value=await askText(t('表格题注（LaTeX）','Table caption (LaTeX)'),editor.getAttributes('table').caption??'');
+  if(value!==null)editor.chain().focus().updateAttributes('table',{caption:value||null,centered:true,placement:editor.getAttributes('table').placement??'htbp'}).run();
+});
+groupButton(tableGroup,'label',async()=>{
+  if(!editor.isActive('table'))return;
+  const value=await askText(t('表格标签键','Table label key'),editor.getAttributes('table').label??'');
+  if(value!==null)editor.chain().focus().updateAttributes('table',{label:value||null}).run();
+});
 groupButton(tableGroup,t('边框','Borders'),async()=>{
   if(!editor.isActive('table'))return;
   const mode=await askText(t('边框：grid 全部、outer 外框、horizontal 横线、none 无','Borders: grid, outer, horizontal, none'),editor.getAttributes('table').borderMode??'grid');
@@ -943,6 +1111,7 @@ groupButton(formatGroup,'B',()=>editor.chain().focus().toggleBold().run());
 groupButton(formatGroup,'I',()=>editor.chain().focus().toggleItalic().run());
 groupButton(formatGroup,'U',()=>editor.chain().focus().toggleMark('underline').run());
 groupButton(formatGroup,'S',()=>editor.chain().focus().toggleStrike().run());
+groupButton(formatGroup,t('清除格式','Clear formatting'),()=>editor.chain().focus().unsetAllMarks().run());
 groupButton(formatGroup,'code',()=>editor.chain().focus().toggleCode().run());
 groupButton(formatGroup,'quote',()=>editor.chain().focus().toggleBlockquote().run());
 groupButton(formatGroup,'hr',()=>editor.chain().focus().setHorizontalRule().run());
@@ -953,10 +1122,12 @@ groupButton(formatGroup,'box',()=>editor.chain().focus().toggleMark('boxed').run
 groupButton(formatGroup,'\\LaTeX',()=>insertTextCommand('LaTeX'));
 groupButton(formatGroup,'\\TeX',()=>insertTextCommand('TeX'));
 let showFormattingMarks = true;
+const setSpaceOverlay=installSpaceOverlay(editor,paper);
 documentPage.dataset.formattingMarks = 'true';
 const formattingMarks = groupButton(formatGroup,'¶',()=>{
   showFormattingMarks = !showFormattingMarks;
   documentPage.dataset.formattingMarks = String(showFormattingMarks);
+  setSpaceOverlay(showFormattingMarks);
   formattingMarks.setAttribute('aria-pressed',String(showFormattingMarks));
 });
 formattingMarks?.setAttribute('aria-pressed','true');
@@ -987,8 +1158,48 @@ groupButton(referenceGroup,'label',async()=>{
   }
 });
 groupButton(referenceGroup,'ref',async()=>{
-  const value=await askText(t('引用标签','Reference label'));
+  const labels=collectReferenceLabels(editor.state.doc);
+  const value=labels.length?await chooseReference(labels):await askText(t('引用标签','Reference label'));
   if(value)editor.chain().focus().insertContent({type:'ref',attrs:{key:value}}).run();
+});
+groupButton(referenceGroup,'refs',async()=>{
+  const labels=collectReferenceLabels(editor.state.doc);
+  const value=labels.length?await chooseReference(labels):null;
+  if(value)editor.chain().focus().insertContent({type:'ref',attrs:{key:value}}).run();
+});
+groupButton(referenceGroup,'eqref',async()=>{
+  const labels=collectReferenceLabels(editor.state.doc).filter(item=>item.kind==='equation');
+  const value=labels.length?await chooseReference(labels):await askText(t('公式标签','Equation label'));
+  if(value)editor.chain().focus().insertContent({type:'ref',attrs:{key:value,equation:true}}).run();
+});
+groupButton(referenceGroup,'fn',async()=>{
+  const value=await askText(t('脚注内容','Footnote text'));
+  if(value)editor.chain().focus().insertContent({type:'footnote',attrs:{text:value}}).run();
+});
+groupButton(referenceGroup,'cite',async()=>{
+  try{
+    const documentBefore=editor.state.doc;
+    const citation=await insertCitationDialog();
+    if(!citation || editor.state.doc!==documentBefore)return;
+    const {key,file}=citation;
+    if(!/^[\p{L}\p{N}_. -]+\.bib$/iu.test(file.name))throw new Error(t('文献文件名不受支持','Unsupported bibliography filename'));
+    const tex=source();
+    const resources=[...tex.matchAll(/\\addbibresource(?:\[[^\]]*\])?\{([^{}]+)\}/g)].map(match=>match[1]);
+    const classic=[...tex.matchAll(/\\bibliography\{([^{}]+)\}/g)].flatMap(match=>match[1].split(',').map(name=>name.trim()).filter(Boolean).map(name=>name.endsWith('.bib')?name:name+'.bib'));
+    const linked=[...resources,...classic].filter(path=>path.split('/').at(-1)===file.name);
+    if(linked.length>1 || (!linked.length && classic.length))throw new Error(t('请关联文档中声明的文献文件','Attach the bibliography declared in the document'));
+    rememberAsset(linked[0]??file.name,file);
+    if(!linked.length) {
+      const eol=documentParts.eol;
+      const hasBiblatex=/\\(?:usepackage|RequirePackage)(?:\[[^\]]*\])?\{[^{}]*\bbiblatex\b[^{}]*\}/.test(documentParts.start);
+      const declarations=(hasBiblatex?'':'\\usepackage{biblatex}'+eol)+'\\addbibresource{'+file.name+'}'+eol;
+      documentParts={...documentParts,start:documentParts.start.replace(/^\\begin\{document\}/m,()=>declarations+'\\begin{document}')};
+    }
+    editor.chain().focus().insertContent({type:'cite',attrs:{key}}).run();
+  }catch(error){
+    document.querySelector('#status').hidden=false;
+    document.querySelector('#status').textContent=error.message;
+  }
 });
 groupButton(referenceGroup,'toc',()=>{
   if(editor.isActive('tableOfContents'))editor.chain().focus().deleteSelection().run();
@@ -1009,9 +1220,24 @@ groupButton(referenceGroup,'author',async()=>{
 });
 groupButton(mathGroup,'$',()=>insertMath());
 groupButton(mathGroup,'$$',()=>insertMath(true));
+groupButton(mathGroup,'equation',()=>insertEquation());
+groupButton(mathGroup,'equation label',async()=>{
+  const field=activeMath();
+  const position=field?.closest('[data-math-view]')?.getMathPosition?.() ?? editor.state.selection.from;
+  const documentBefore=editor.state.doc;
+  const node=documentBefore.nodeAt(position);
+  if(node?.type.name!=='mathBlock' || node.attrs.delimiter!=='equation')return;
+  const label=await askText(t('公式标签','Equation label'),node.attrs.label??'');
+  if(label===null || !/^[\p{L}\p{N}:_.-]*$/u.test(label) || editor.state.doc!==documentBefore)return;
+  editor.view.dispatch(editor.state.tr.setNodeMarkup(position,undefined,{...node.attrs,label:label||null}));
+  field?.focus();
+});
 groupButton(mathGroup,'frac',()=>insertMath(false,'\\frac{\\placeholder{}}{\\placeholder{}}'));
 groupButton(mathGroup,'sqrt',()=>insertMath(false,'\\sqrt{\\placeholder{}}'));
-groupButton(mathGroup,'sum',()=>insertMath(false,'\\sum'));
+groupButton(mathGroup,'sum',()=>{
+  const field=activeMath();
+  if(field)insertLiveMath(field,'\\sum'); else insertMath(false,'\\sum');
+});
 groupButton(mathGroup,'int',()=>insertMath(false,'\\int'));
 for (const operator of ['prod','iint','iiint','oint','oiint']) {
   groupButton(mathGroup,'\\'+operator,()=>{
@@ -1040,11 +1266,22 @@ groupButton(insert,t('代码块','Code block'),async()=>{
   else editor.chain().focus().setCodeBlock({language:language||null}).run();
 });
 const files=header.querySelector('.tools');
+const attachFolder=groupButton(files,t('关联资源目录','Attach asset folder'),()=>{
+  const picker=document.createElement('input');
+  picker.type='file';picker.webkitdirectory=true;
+  picker.addEventListener('change',()=>{
+    for(const file of picker.files) {
+      const path=file.webkitRelativePath.split('/').slice(1).join('/');
+      if(safeProjectPath(path))rememberAsset(path,file);
+    }
+  },{once:true});
+  picker.click();
+});
 for(const control of [...tools.children]) {
   (control.hasAttribute('data-home') || control.tagName==='SELECT' || ['↶','↷','B','I','U','H'].includes(control.textContent)?home:insert).append(control);
 }
-const groups={files,home,insert,table:tableGroup,format:formatGroup,reference:referenceGroup,math:mathGroup};
-const captions={files:['文件','File'],home:['主页','Home'],insert:['插入','Insert'],table:['表格','Table'],format:['格式','Format'],reference:['引用','Reference'],math:['数学','Math']};
+const groups={files,home,insert,layout:layoutGroup,table:tableGroup,format:formatGroup,reference:referenceGroup,math:mathGroup};
+const captions={files:['文件','File'],home:['主页','Home'],insert:['插入','Insert'],layout:['布局','Layout'],table:['表格','Table'],format:['格式','Format'],reference:['引用','Reference'],math:['数学','Math']};
 const language=document.querySelector('#language');
 const exportConfig=document.createElement('button');
 exportConfig.type='button';
@@ -1062,15 +1299,33 @@ function updateLanguage() {
   document.documentElement.lang=language.value;
   localize(document);
   for(const tab of tabs.children)tab.textContent=captions[tab.dataset.group][chinese?0:1];
-  download.textContent=chinese?'保存 .tex':'Save .tex';
+  download.textContent=chinese?'下载项目 .zip':'Download project .zip';
+  attachFolder.textContent=chinese?'关联资源目录':'Attach asset folder';
   exportConfig.textContent=chinese?'配置':'Config';
   header.querySelector('.open span').textContent=chinese?'打开 .tex':'Open .tex';
   commands.setAttribute('aria-label',t('LaTeX 补全','LaTeX completion'));
   filter.placeholder=t('LaTeX 命令','LaTeX command');
   filter.setAttribute('aria-label',filter.placeholder);
   headingMenu.setAttribute('aria-label',t('段落样式','Paragraph style'));
+  pagePaper.setAttribute('aria-label',t('纸张','Paper'));
+  pageOrientation.replaceChildren(new Option(t('纵向','Portrait'),'portrait'),new Option(t('横向','Landscape'),'landscape'));
+  pageOrientation.value=pageSetup.orientation;
+  pageOrientation.setAttribute('aria-label',t('方向','Orientation'));
+  pageMarginPreset.replaceChildren(
+    new Option(t('常规边距','Normal margins'),'normal'),
+    new Option(t('窄边距','Narrow margins'),'narrow'),
+    new Option(t('宽边距','Wide margins'),'wide'),
+    new Option(t('自定义','Custom'),'custom'),
+  );
+  pageMarginPreset.value=Object.keys(MARGIN_PRESETS).find(key=>MARGIN_PRESETS[key]===pageSetup.margin)??'custom';
+  pageMarginPreset.setAttribute('aria-label',t('页边距预设','Margin preset'));
+  pageMarginTop.setAttribute('aria-label',t('上边距','Top margin'));
+  pageMarginRight.setAttribute('aria-label',t('右边距','Right margin'));
+  pageMarginBottom.setAttribute('aria-label',t('下边距','Bottom margin'));
+  pageMarginLeft.setAttribute('aria-label',t('左边距','Left margin'));
   tooltips?.setLanguage(language.value);
   updateThemeButton();
+  updateSourceButton();
   renderMeta();
   updateEnvironment();
   count.textContent=editor.getText().length+' '+t('字符','characters');
@@ -1084,7 +1339,7 @@ for(const name of Object.keys(groups)) {
   tab.addEventListener('mousedown',event=>event.preventDefault());
   tab.addEventListener('click',()=>selectGroup(name));tabs.append(tab);
 }
-ribbon.append(tabs,files,home,insert,tableGroup,formatGroup,referenceGroup,mathGroup);header.append(ribbon);tools.remove();
+ribbon.append(tabs,files,home,insert,layoutGroup,tableGroup,formatGroup,referenceGroup,mathGroup);header.append(ribbon);tools.remove();
 decorateToolbar(ribbon);
 const tooltips=installTooltips(document.body,{document,language:language.value});
 for(const control of ribbon.querySelectorAll('button'))control.dataset.rovingItem='';

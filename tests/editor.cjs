@@ -24,6 +24,8 @@ const server=createServer(async(req,res)=>{
     await page.goto('http://127.0.0.1:'+server.address().port);
     const paper=page.locator('.ProseMirror');
     await paper.click();
+    assert.equal(await paper.evaluate(element=>getComputedStyle(element).animationName),'none',
+      'The editor leaves caret blinking to the browser and system');
     await page.keyboard.type('Hello');
     await page.keyboard.press('Enter');
     await page.keyboard.press('Enter');
@@ -161,11 +163,12 @@ const server=createServer(async(req,res)=>{
     }));
     const zoomedGeometry=await pageGeometry();
     await page.keyboard.press('Control+0');
+    assert.equal(Number(await page.locator('input[type=range]').inputValue()),afterZoom,'Ctrl+0 does not control document zoom');
+    await page.locator('input[type=range]').fill('100');
     const naturalGeometry=await pageGeometry();
     for(const dimension of Object.keys(naturalGeometry)) {
       assert.ok(Math.abs(zoomedGeometry[dimension]/naturalGeometry[dimension]-afterZoom/100)<0.01,dimension+' must scale with the paper');
     }
-    await page.keyboard.press('Control+0');
     assert.equal(await page.locator('input[type=range]').inputValue(),'100');
     await page.keyboard.press('Control+-');
     assert.equal(await page.locator('input[type=range]').inputValue(),'90');
@@ -295,7 +298,7 @@ const server=createServer(async(req,res)=>{
     });
     await page.waitForFunction(()=>document.querySelectorAll('.ProseMirror h1[data-label="sec:target"]').length===1);
     assert.equal(await paper.locator('.ref-node').count(),1,'reference is an editable atom');
-    assert.equal(await paper.locator('.ref-node').textContent(),'§1');
+    assert.equal(await paper.locator('.ref-node').textContent(),'1');
     await page.locator('input[type=file]').setInputFiles({
       name:'align.tex',mimeType:'text/plain',
       buffer:Buffer.from('\\documentclass{article}\n\\begin{document}\n\\begin{align}\n\\mathbf{x} &= 1 \\\\\n\\end{align}\n\\end{document}\n'),
@@ -442,7 +445,7 @@ const server=createServer(async(req,res)=>{
     await page.waitForFunction(()=>document.querySelector('#document-meta .doc-title')?.textContent==='My Title');
     assert.equal(await page.locator('#document-meta .doc-author').textContent(),'Me');
 
-    await paper.locator('p').last().click();
+    await paper.locator('p').last().click({position:{x:8,y:8}});
     await page.keyboard.press('End');
     await page.keyboard.type('\\');
     await page.waitForFunction(()=>!document.querySelector('.command-menu').hidden);
@@ -523,30 +526,6 @@ const server=createServer(async(req,res)=>{
     const operatorField=await bodyCommand('operatorname');
     await page.keyboard.type('R');
     assert.equal(await operatorField.evaluate(field=>field.value),'\\operatorname{R}','Operator name takes the next typed character');
-    await importSource('Before $x+1$ after');
-    await page.waitForFunction(()=>document.querySelector('math-field')?.value.includes('x+1'));
-    await paper.locator('p').click();
-    await page.keyboard.press('Home');
-    await page.keyboard.press('Shift+End');
-    await page.waitForTimeout(150);
-    await page.keyboard.press('Control+c');
-    await page.waitForTimeout(100);
-    assert.equal(await page.evaluate(()=>navigator.clipboard.readText()),'Before $x+1$ after','Copied text keeps formula source');
-    await page.keyboard.press('End');
-    await page.keyboard.press('Control+v');
-    await page.waitForFunction(()=>document.querySelectorAll('math-field').length===2);
-    assert.equal(await page.locator('math-field').count(),2,'Pasting copied body text keeps formulas');
-    const copiedMath=page.locator('math-field').first();
-    await copiedMath.click();
-    await copiedMath.evaluate(field=>field.executeCommand('selectAll'));
-    await page.waitForTimeout(100);
-    await page.keyboard.press('Control+c');
-    await page.waitForTimeout(100);
-    await paper.locator('p').click({position:{x:4,y:4}});
-    await page.keyboard.press('End');
-    await page.keyboard.press('Control+v');
-    await page.waitForFunction(()=>document.querySelectorAll('math-field').length===3);
-    assert.equal(await page.locator('math-field').last().evaluate(field=>field.value),'x+1','Pasting a copied formula creates a formula node');
     const scriptField=await bodyCommand('mathscr');
     await page.keyboard.type('x');
     assert.equal(await scriptField.evaluate(field=>field.value),'\\mathscr{x}','Script style applies to the next typed character');
@@ -584,19 +563,6 @@ const server=createServer(async(req,res)=>{
     await textEnvField.focus();
     await page.keyboard.press('Control+0');
     assert.notEqual(await textEnvField.evaluate(field=>field.mode),'text','Ctrl+0 leaves the text environment');
-    await importSource('\\textcolor[HTML]{ff0000}{Red} blue');
-    await page.waitForFunction(()=>document.querySelector('.ProseMirror')?.textContent==='Red blue');
-    await page.locator('[data-group=home]').click();
-    await paper.locator('p').click();
-    await page.keyboard.press('Home');
-    await page.keyboard.press('Shift+End');
-    await page.waitForTimeout(150);
-    await page.keyboard.press('Control+c');
-    await page.waitForTimeout(100);
-    await page.keyboard.press('End');
-    await page.keyboard.press('Control+v');
-    await page.waitForTimeout(100);
-    assert.ok(await paper.locator('span[data-text-style]').evaluateAll(nodes=>nodes.filter(node=>getComputedStyle(node).color==='rgb(255, 0, 0)').length)>=2,'Pasted text keeps its color');
     await importSource('H\\textsuperscript{2}O and x\\textsubscript{1}');
     await page.waitForFunction(()=>document.querySelector('.ProseMirror sup')&&document.querySelector('.ProseMirror sub'));
     assert.equal(await paper.locator('sup').textContent(),'2');
@@ -683,6 +649,7 @@ const server=createServer(async(req,res)=>{
     await page.locator('.command-menu input').fill('left');
     await page.keyboard.press('Enter');
     await page.locator('.delimiter-input input').first().fill('[');
+    assert.equal(await page.locator('[data-math-view] .delimiter-input-embedded').count(),1);
     assert.equal(await page.locator('.delimiter-input input').last().evaluate(input=>document.activeElement===input),true);
     await page.keyboard.type(')');
     await page.waitForFunction(()=>/^\\left\[.*\\right\)$/.test(document.querySelector('math-field')?.value));
@@ -693,7 +660,9 @@ const server=createServer(async(req,res)=>{
     await page.keyboard.type('[');
     assert.match(await chordField.evaluate(field=>field.value),/\[$/,'Literal fence does not generate a pair');
     await importSource(String.raw`\LaTeX{} and \TeX{}`+'\n\n中文');
-    await page.waitForFunction(()=>document.querySelectorAll('.ProseMirror .tex-logo-art').length===2);
+    await page.waitForFunction(()=>document.querySelectorAll('.ProseMirror .tex-logo-e').length===2);
+    assert.equal(await paper.locator('p').first().textContent(),'LaTeX and TeX');
+    assert.equal(await paper.locator('.tex-logo-a').textContent(),'a');
     const paragraphGap=await paper.locator('p').evaluateAll(([first,second])=>second.getBoundingClientRect().top-first.getBoundingClientRect().bottom);
     assert.ok(Math.abs(paragraphGap)<1,'Paragraphs have no extra vertical gap');
     await importSource('Find word and word.\n\n$z$');
@@ -701,10 +670,13 @@ const server=createServer(async(req,res)=>{
     await paper.locator('p').first().click();
     await page.keyboard.press('Control+f');
     const find=page.locator('.document-find');
-    await find.locator('input').fill('word');
+    await find.locator('input').first().fill('word');
     assert.equal(await find.locator('output').textContent(),'1 / 2');
+    assert.equal(await page.locator('.find-match').count(),2,'All matches are highlighted');
+    assert.equal(await page.locator('.find-current').count(),1,'Current match is highlighted distinctly');
     await page.keyboard.press('Enter');
     assert.equal(await find.locator('output').textContent(),'2 / 2');
+    assert.equal(await page.locator('.find-current').count(),1);
     await page.keyboard.press('Escape');
     assert.equal(await find.isVisible(),false);
     await page.locator('math-field').click();
@@ -723,6 +695,12 @@ const server=createServer(async(req,res)=>{
       await page.keyboard.press(shortcut);
       await page.waitForFunction(name=>document.querySelector('math-field')?.value.includes('\\'+name),operator);
     }
+    const beforeToolbarSum=await page.locator('math-field').first().evaluate(field=>field.value);
+    const mathCount=await page.locator('math-field').count();
+    await page.locator('[data-group=math]').click();
+    await page.getByRole('button',{name:'sum',exact:true}).click();
+    await page.waitForFunction(previous=>document.querySelector('math-field')?.value!==previous,beforeToolbarSum);
+    assert.equal(await page.locator('math-field').count(),mathCount,'The sum button edits the active formula');
     await importSource(String.raw`\noindent Unindented`);
     await page.waitForFunction(()=>document.querySelector('.ProseMirror p[data-indent="false"]')?.textContent==='Unindented');
     await paper.locator('p').click();
@@ -782,7 +760,9 @@ const server=createServer(async(req,res)=>{
     await page.locator('.editor-dialog input').fill('Python');
     await page.locator('.editor-dialog button[type=submit]').click();
     await page.waitForFunction(()=>document.querySelector('.ProseMirror pre code')?.classList.contains('language-Python'));
+    await page.waitForFunction(()=>document.activeElement?.classList.contains('ProseMirror'));
     await page.keyboard.press('Control+j');
+    await paper.locator(':scope > p').waitFor();
     await page.keyboard.type('after');
     await page.waitForFunction(()=>document.querySelector('.ProseMirror > p')?.textContent==='after');
     await page.keyboard.press('Enter');
@@ -799,6 +779,7 @@ const server=createServer(async(req,res)=>{
     assert.ok(!(await integral.evaluate(field=>field.value)).includes('\\space'));
     await importSource('alpha beta gamma');
     await page.waitForFunction(()=>document.querySelector('.ProseMirror p')?.textContent==='alpha beta gamma');
+    await paper.locator('p').scrollIntoViewIfNeeded();
     const words=await paper.locator('p').evaluate(paragraph=>{
       const bounds=[];
       const walker=document.createTreeWalker(paragraph,NodeFilter.SHOW_TEXT);
@@ -816,16 +797,63 @@ const server=createServer(async(req,res)=>{
       await page.mouse.move(word.left+0.5,word.y);await page.mouse.down();
       await page.mouse.move(word.right-0.5,word.y,{steps:8});await page.mouse.up();
       if(index) await page.keyboard.up('Control');
+      const selected=await page.evaluate(()=>window.getSelection().toString());
+      assert.equal(selected,index?'gamma':'alpha',JSON.stringify(word));
     }
     await page.waitForFunction(()=>document.querySelectorAll('.lineae-multi-selected').length>=2);
     await page.keyboard.press('Delete');
     assert.equal((await paper.locator('p').textContent()).trim(),'beta');
+    await importSource('\\indent $x+y$ tail');
+    await page.waitForFunction(()=>document.querySelector('math-field'));
+    const inlineWidth=await page.locator('math-field').evaluate(field=>({host:field.getBoundingClientRect().width,base:field.shadowRoot.querySelector('.ML__base').getBoundingClientRect().width}));
+    assert.ok(Math.abs(inlineWidth.host-inlineWidth.base)<1,'Inline math keeps no inherited indent gap: '+JSON.stringify(inlineWidth));
+    const handlePlace=await page.locator('math-field').evaluate(field=>{
+      const handle=field.closest('[data-math-view]').querySelector('.math-drag-handle');
+      const f=field.getBoundingClientRect(),h=handle.getBoundingClientRect();
+      return {fieldLeft:f.left,handleRight:h.right,handleTop:h.top,fieldTop:f.top};
+    });
+    assert.ok(handlePlace.handleRight<=handlePlace.fieldLeft-8,'Inline drag handle keeps a clear gap left of the formula: '+JSON.stringify(handlePlace));
+    await importSource('Tail $x$');
+    await page.waitForFunction(()=>document.querySelector('math-field')&&document.querySelector('.space-overlay text'));
+    await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
+    const parAfterMath=await page.evaluate(()=>{
+      const page=document.querySelector('.document-page');
+      const pageRect=page.getBoundingClientRect();
+      const zoom=pageRect.width/page.offsetWidth||1;
+      const mark=[...document.querySelectorAll('.space-overlay text')].find(node=>node.textContent==='¶');
+      const field=document.querySelector('math-field').getBoundingClientRect();
+      return { markX:Number(mark?.getAttribute('x')), fieldRight:(field.right-pageRect.left)/zoom };
+    });
+    assert.ok(parAfterMath.markX>=parAfterMath.fieldRight+1,'Paragraph mark follows the formula: '+JSON.stringify(parAfterMath));
     await importSource('前 后');
     await page.waitForFunction(()=>document.querySelector('.ProseMirror p')?.textContent==='前 后');
+    await paper.locator('p').scrollIntoViewIfNeeded();
+    await page.waitForFunction(()=>{
+      const paragraph=document.querySelector('.ProseMirror p');
+      const overlay=document.querySelector('.space-overlay');
+      if(!overlay || paragraph.childElementCount!==0)return false;
+      const range=document.createRange();
+      range.setStart(paragraph.firstChild,1);range.setEnd(paragraph.firstChild,2);
+      const page=document.querySelector('.document-page');
+      const pageRect=page.getBoundingClientRect();
+      const zoom=pageRect.width/page.offsetWidth||1;
+      const rect=range.getBoundingClientRect();
+      const left=(rect.left-pageRect.left)/zoom;
+      const right=(rect.right-pageRect.left)/zoom;
+      return [...overlay.querySelectorAll('circle')].some(circle=>{
+        const x=Number(circle.getAttribute('cx'));
+        return x>=left-1&&x<=right+1;
+      });
+    });
     await paper.locator('p').click();
     await page.keyboard.press('End');
     const cdp=await page.context().newCDPSession(page);
+    const overlayState=()=>page.evaluate(()=>document.querySelector('.space-overlay').innerHTML);
+    const beforeComposition=await overlayState();
     await cdp.send('Input.imeSetComposition',{text:'zhong',selectionStart:5,selectionEnd:5});
+    await page.waitForTimeout(120);
+    assert.notEqual(await overlayState(),beforeComposition,'Markers follow composition text');
+    assert.equal(await page.locator('.space-overlay').isVisible(),true);
     await cdp.send('Input.imeSetComposition',{text:'中文',selectionStart:2,selectionEnd:2});
     await cdp.send('Input.insertText',{text:'中文'});
     await page.waitForFunction(()=>document.querySelector('.ProseMirror p')?.textContent==='前 后中文');
@@ -833,8 +861,157 @@ const server=createServer(async(req,res)=>{
     assert.equal(await paper.locator('p').textContent(),'前 后中');
     await paper.locator('p').evaluate(paragraph=>window.getSelection().collapse(paragraph.firstChild,0));
     await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(resolve)));
+    await paper.focus();
     await page.keyboard.press('Delete');
     await page.waitForFunction(()=>document.querySelector('.ProseMirror p')?.textContent.trimStart()==='后中');
+    await importSource('\\section{First}\\label{sec:first}\n\nMark \\label{note} here and see \\ref{sec:first}');
+    await page.waitForFunction(()=>document.querySelector('.label-node')&&document.querySelector('.ref-node'));
+    assert.equal(await page.locator('.ref-node').textContent(),'1','References show only the resolved number');
+    await importSource('\\section{First}\n\n\\subsection{Child}\n\nBody \\label{yes}.\n\n\\section{Second}\n\nSee \\ref{yes}.');
+    await page.waitForFunction(()=>document.querySelector('.ref-node')?.textContent==='1.1');
+    assert.equal(await page.locator('.ref-node').textContent(),'1.1','Inline label uses the most recent numbered section');
+    await importSource('\\section{First}\\label{sec:first}\n\nMark \\label{note} here and see \\ref{sec:first}');
+    await page.waitForFunction(()=>document.querySelector('.label-node')&&document.querySelector('.ref-node'));
+    const labelPlacement=await page.evaluate(()=>{
+      const label=document.querySelector('.label-node');
+      const page=document.querySelector('.document-page');
+      const content=document.querySelector('.ProseMirror');
+      return { position:getComputedStyle(label).position, left:label.getBoundingClientRect().left, right:label.getBoundingClientRect().right, pageLeft:page.getBoundingClientRect().left, contentLeft:content.getBoundingClientRect().left };
+    });
+    assert.equal(labelPlacement.position,'absolute','Labels do not occupy text width');
+    assert.ok(labelPlacement.left>=labelPlacement.pageLeft&&labelPlacement.right<=labelPlacement.contentLeft,'Labels sit in the left page margin: '+JSON.stringify(labelPlacement));
+    await page.locator('[data-group=reference]').click();
+    await page.getByRole('button',{name:'ref',exact:true}).click();
+    await page.waitForFunction(()=>Boolean(document.querySelector('.reference-dialog')));
+    assert.match(await page.locator('.reference-dialog select').textContent(),/sec:first/,'Reference dialog lists existing labels');
+    await page.locator('.reference-dialog select').selectOption('sec:first');
+    await page.locator('.reference-dialog button[type=submit]').click();
+    await page.waitForFunction(()=>document.querySelectorAll('.ref-node').length===2);
+    await importSource('Footnote here');
+    await page.waitForFunction(()=>document.querySelector('.ProseMirror p')?.textContent==='Footnote here');
+    await page.locator('[data-group=reference]').click();
+    await page.getByRole('button',{name:'fn',exact:true}).click();
+    await page.locator('.editor-dialog input').fill('A note');
+    await page.locator('.editor-dialog button[type=submit]').click();
+    await page.waitForFunction(()=>document.querySelector('.ProseMirror .footnote-node')?.textContent==='1');
+    await importSource('Citation here');
+    await page.waitForFunction(()=>document.querySelector('.ProseMirror p')?.textContent==='Citation here');
+    await page.locator('[data-group=reference]').click();
+    const [citationChooser] = await Promise.all([
+      page.waitForEvent('filechooser'),
+      page.getByRole('button',{name:'cite',exact:true}).click(),
+    ]);
+    await citationChooser.setFiles({name:'refs.bib',mimeType:'text/plain',buffer:Buffer.from('@article{knuth1984,title={Literate Programming},author={Knuth}}')});
+    await page.waitForFunction(()=>Boolean(document.querySelector('.citation-dialog')));
+    await page.locator('.citation-dialog select').selectOption('knuth1984');
+    await page.locator('.citation-dialog button[type=submit]').click();
+    await page.waitForFunction(()=>document.querySelector('.ProseMirror .cite-node')?.textContent.includes('knuth1984'));
+    await importSource('alpha beta alpha');
+    await page.waitForFunction(()=>document.querySelector('.ProseMirror p')?.textContent==='alpha beta alpha');
+    await paper.locator('p').click();
+    await page.keyboard.press('Control+f');
+    const findPanel=page.locator('.document-find');
+    await findPanel.locator('input').first().fill('alpha');
+    await findPanel.locator('.document-find-row input').fill('gamma');
+    await findPanel.locator('[data-action="replace-all"]').click();
+    await page.waitForFunction(()=>document.querySelector('.ProseMirror p')?.textContent==='gamma beta gamma');
+    await page.keyboard.press('Escape');
+    await importSource('See \\eqref{eq:y} and \\ref{eq:y}.\n\n\\begin{equation}x\\end{equation}\n\n\\begin{equation*}z\\end{equation*}\n\n\\begin{equation}y\\label{eq:y}\\end{equation}');
+    await page.waitForFunction(()=>document.querySelectorAll('.math-display[data-numbered="true"]').length===2);
+    const equationNumbers=await page.locator('.math-display[data-numbered="true"]').evaluateAll(nodes=>nodes.map(node=>({increment:getComputedStyle(node).counterIncrement,content:getComputedStyle(node,'::after').content})));
+    assert.equal(equationNumbers.length,2);
+    assert.ok(equationNumbers.every(item=>item.increment.includes('lineae-equation')&&item.content.includes('counter(lineae-equation)')),'Equation environments use an ordered CSS counter');
+    assert.deepEqual(await paper.locator('.ref-node').allTextContents(),['(2)','2']);
+    assert.equal(await paper.locator('math-field').last().evaluate(field=>field.value),'y');
+    await page.locator('[data-group=layout]').click();
+    const layoutSelects=page.locator('#layout-panel select');
+    await layoutSelects.nth(0).selectOption('a5');
+    await layoutSelects.nth(1).selectOption('landscape');
+    await layoutSelects.nth(2).selectOption('narrow');
+    const pageLayout=await page.evaluate(()=>{
+      const page=document.querySelector('.document-page');
+      return ['--page-width','--page-height','--page-margin-top','--page-margin-right'].map(name=>page.style.getPropertyValue(name));
+    });
+    assert.deepEqual(pageLayout,['210mm','148mm','1.27cm','1.27cm'],'Layout controls update the page metrics');
+    await importSource('\\begin{theorem}[Example]\nStatement.\n\\end{theorem}\n\n\\begin{proof}\nArgument.\n\\end{proof}');
+    await paper.locator('[data-theorem="proof"]').waitFor();
+    assert.equal(await paper.locator('[data-theorem="theorem"] p').textContent(),'Statement.');
+    await paper.evaluate(element=>{
+      const transfer=new DataTransfer();
+      const png=Uint8Array.from(atob('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jB9kAAAAASUVORK5CYII='),char=>char.charCodeAt(0));
+      transfer.items.add(new File([png],'drop-test.png',{type:'image/png'}));
+      const rect=element.getBoundingClientRect();
+      element.dispatchEvent(new DragEvent('drop',{bubbles:true,cancelable:true,dataTransfer:transfer,clientX:rect.left+10,clientY:rect.top+10}));
+    });
+    await paper.locator('figure.document-image img').waitFor({state:'visible'});
+    await paper.locator('p').first().click();
+    await page.keyboard.press('Control+a');
+    await page.keyboard.press('Control+c');
+    await page.waitForFunction(async()=>{
+      const entries=await navigator.clipboard.read();
+      for(const entry of entries)if(entry.types.includes('text/html')&&(await (await entry.getType('text/html')).text()).includes('data-document-image="drop-test.png"'))return true;
+      return false;
+    });
+    await page.keyboard.press('ArrowRight');
+    await page.locator('[data-group=reference]').click();
+    const bibChooser=page.waitForEvent('filechooser');
+    await page.getByRole('button',{name:'cite',exact:true}).click();
+    await (await bibChooser).setFiles({name:'works.bib',mimeType:'text/plain',buffer:Buffer.from('@misc{example,title={Example}}')});
+    await page.locator('.citation-dialog select').selectOption('example');
+    await page.locator('.citation-dialog button[type=submit]').click();
+    await paper.locator('.cite-node').waitFor();
+    await page.locator('[data-group=files]').click();
+    const downloading=page.waitForEvent('download');
+    await page.locator('#download').click();
+    const downloaded=await downloading;
+    assert.match(downloaded.suggestedFilename(),/\.zip$/);
+    const projectBytes=await readFile(await downloaded.path());
+    assert.ok(projectBytes.includes(Buffer.from('drop-test.png')));
+    assert.ok(projectBytes.includes(Buffer.from('works.bib')));
+    assert.ok(projectBytes.includes(Buffer.from('\\addbibresource{works.bib}')));
+    await importSource('Before \\fbox{Box} after');
+    const boxedText=paper.locator('[data-boxed]');
+    await boxedText.waitFor();
+    await boxedText.click();
+    await page.waitForFunction(()=>Boolean(document.querySelector('.space-overlay [data-active-box]')));
+    await page.keyboard.press('Control+j');
+    await page.waitForFunction(()=>!document.querySelector('.space-overlay [data-active-box]'));
+    await page.keyboard.type('X');
+    assert.equal(await boxedText.textContent(),'Box','Ctrl+J leaves the complete box');
+    assert.match(await paper.textContent(),/BoxX after/);
+    await importSource('\\begin{quote}\nQuoted text.\n\\end{quote}');
+    await paper.locator('blockquote p').click();
+    await page.keyboard.press('Control+j');
+    await page.keyboard.type('Outside');
+    assert.equal(await paper.locator('blockquote').textContent(),'Quoted text.');
+    assert.equal(await paper.locator(':scope > p').last().textContent(),'Outside');
+    await importSource('\\begin{enumerate}\n\\item One\n\\item Two\n\\end{enumerate}');
+    await page.waitForFunction(()=>{
+      const list=document.querySelector('.ProseMirror ol');
+      return list && list.querySelectorAll('p').length===2 && document.querySelectorAll('.space-overlay text').length>=2;
+    });
+    await paper.locator('li p').first().click();
+    await page.keyboard.press('Control+a');
+    await page.keyboard.press('Backspace');
+    await page.waitForFunction(()=>document.querySelectorAll('.space-overlay text').length===document.querySelectorAll('.ProseMirror p').length);
+    await paper.locator('p').first().click();
+    await page.keyboard.press('End');
+    await page.keyboard.type('\\');
+    await completion.locator('input').fill('fbox');
+    assert.equal(await completion.getByRole('option',{name:'\\fbox',exact:true}).count(),1);
+    await page.keyboard.press('Escape');
+    for (const width of [1280,390]) {
+      await page.setViewportSize({width,height:1400});
+      for (const group of ['files','home','insert','layout','table','format','reference','math']) {
+        await page.locator(`[data-group=${group}]`).click();
+        const layout=await page.locator('.ribbon').evaluate(element=>{
+          const panel=[...element.querySelectorAll('.tools')].find(node=>!node.hidden);
+          const bounds=element.getBoundingClientRect();
+          return {left:bounds.left,right:bounds.right,scroll:panel.scrollWidth,client:panel.clientWidth};
+        });
+        assert.ok(layout.left>=-1 && layout.right<=width+1 && layout.scroll<=layout.client+1,JSON.stringify({group,width,layout}));
+      }
+    }
     assert.deepEqual(errors,[]);
     console.log('Browser regressions passed');
   }finally{

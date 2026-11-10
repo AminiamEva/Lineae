@@ -18,8 +18,10 @@ export function serialize(node) {
   const content = (node.content ?? []).map(serialize).join('');
   if (node.type === 'text') {
     const command = node.marks?.find(mark => mark.type === 'textCommand')?.attrs?.name;
-    let value = Object.hasOwn(textCommands, command) && textCommands[command] === node.text
-      ? '\\' + command + '{}' : escape(node.text);
+    const glyph=Object.hasOwn(textCommands,command) ? textCommands[command] : '';
+    const count=glyph ? node.text.length/glyph.length : 0;
+    let value = count && Number.isInteger(count) && glyph.repeat(count)===node.text
+      ? ('\\' + command + '{}').repeat(count) : escape(node.text);
     for (const mark of node.marks ?? []) {
       if (mark.type === 'bold') value = '\\textbf{' + value + '}';
       if (mark.type === 'italic') value = '\\textit{' + value + '}';
@@ -41,6 +43,7 @@ export function serialize(node) {
     return value;
   }
   switch (node.type) {
+    case 'theoremBlock': return '\\begin{'+node.attrs.kind+'}'+(node.attrs.title?'['+node.attrs.title+']':'')+'\n'+content.trimEnd()+'\n\\end{'+node.attrs.kind+'}\n\n';
     case 'codeBlock': {
       const language=node.attrs?.language;
       const option=/^[A-Za-z0-9+_-]+$/.test(language??'') ? '[language='+language+']' : '';
@@ -80,7 +83,9 @@ export function serialize(node) {
       const delimiter = node.attrs.delimiter;
       if (delimiter === '$$') return '$$' + latex + '$$\n\n';
       if (delimiter === 'equation' || delimiter === 'equation*') {
-        return '\\begin{' + delimiter + '}' + latex + '\\end{' + delimiter + '}\n\n';
+        const label = node.attrs.label ? '\\label{'+node.attrs.label+'}' : '';
+        const body=label ? latex.trimEnd()+label+latex.slice(latex.trimEnd().length) : latex;
+        return '\\begin{' + delimiter + '}' + body + '\\end{' + delimiter + '}\n\n';
       }
       return /^\\begin\{/.test(latex.trim()) ? latex + '\n\n' : '\\[' + latex + '\\]\n\n';
     }
@@ -89,7 +94,9 @@ export function serialize(node) {
       if (node.attrs.delimiter === '\\(') return '\\(' + latex + '\\)';
       return node.attrs.display ? '\\[' + latex + '\\]' : '$' + latex + '$';
     }
-    case 'ref': return '\\ref{' + node.attrs.key + '}';
+    case 'ref': return (node.attrs.equation ? '\\eqref{' : '\\ref{') + node.attrs.key + '}';
+    case 'cite': return '\\cite{' + node.attrs.key + '}';
+    case 'footnote': return '\\footnote{' + node.attrs.text + '}';
     case 'label': return '\\label{' + node.attrs.key + '}';
     case 'raw': return node.attrs.source.replace(/\n+$/, '') + '\n\n';
     case 'hardBreak': return '\\\\\n';
@@ -110,9 +117,16 @@ export function serialize(node) {
       });
       if (border && border!=='none') body += '\\hline\n';
       if (!border && node.attrs.booktabs) body += '\\bottomrule\n';
-      const tabular='\\begin{tabular}{' + columns + '}\n' + body + '\\end{tabular}';
-      return (/^\d+(?:\.\d+)?pt$/.test(node.attrs.borderWidth??'')
-        ? '{\\setlength{\\arrayrulewidth}{'+node.attrs.borderWidth+'}\n'+tabular+'\n}' : tabular)+'\n\n';
+      let tabular='\\begin{tabular}{' + columns + '}\n' + body + '\\end{tabular}';
+      if (/^\d+(?:\.\d+)?pt$/.test(node.attrs.borderWidth??''))
+        tabular='{\\setlength{\\arrayrulewidth}{'+node.attrs.borderWidth+'}\n'+tabular+'\n}';
+      if (node.attrs.caption!=null || node.attrs.label || node.attrs.centered || node.attrs.placement)
+        return '\\begin{table}'+(node.attrs.placement?'['+node.attrs.placement+']':'')+'\n'
+          +(node.attrs.centered?'\\centering\n':'')
+          +(node.attrs.caption!=null?'\\caption{'+node.attrs.caption+'}\n':'')
+          +(node.attrs.label?'\\label{'+node.attrs.label+'}\n':'')
+          +tabular+'\n\\end{table}\n\n';
+      return tabular+'\n\n';
     }
     case 'tableRow': return node.content.map(cell => serialize(cell)).join(' & ') + ' \\\\\n';
     case 'tableCell':

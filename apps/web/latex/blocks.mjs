@@ -1,6 +1,7 @@
 import { parseInline, textCommands } from './inline.mjs';
 import { parseTable } from './tables.mjs';
 import { parseImageBlock } from './images.mjs';
+import { theoremParts } from './theorem.mjs';
 
 function inlineContent(text) {
   const parsed = parseInline(text);
@@ -10,7 +11,9 @@ function inlineContent(text) {
       if (typeof part === 'string') return part ? [{ type: 'text', text: part, marks }] : [];
       if (part.textCommand) return [{ type: 'text', text: textCommands[part.textCommand], marks: [...marks, { type: 'textCommand', attrs: { name: part.textCommand } }] }];
       if (part.math !== undefined) return [{ type: 'math', attrs: { latex: part.math, display: false, delimiter: part.delimiters[0] } }];
-      if (part.ref !== undefined) return [{ type: 'ref', attrs: { key: part.ref } }];
+      if (part.ref !== undefined) return [{ type: 'ref', attrs: { key: part.ref, ...(part.equation && {equation:true}) } }];
+      if (part.cite !== undefined) return [{ type: 'cite', attrs: { key: part.cite } }];
+      if (part.footnote !== undefined) return [{ type: 'footnote', attrs: { text: part.footnote } }];
       if (part.label !== undefined) return [{ type: 'label', attrs: { key: part.label } }];
       if (part.hardBreak) return [{ type: 'hardBreak' }];
       const type = { strong: 'bold', em: 'italic', u: 'underline', strike: 'strike', code: 'code', sup: 'superscript', sub: 'subscript', textsc: 'smallcaps', fbox: 'boxed' }[part.tag];
@@ -151,7 +154,14 @@ export function importBlock(block) {
   const math = text.match(/^\\\[([\s\S]*?)\\\]$/) ?? text.match(/^\$\$([\s\S]*?)\$\$$/) ?? text.match(/^\\begin\{equation\*?\}([\s\S]*?)\\end\{equation\*?\}$/);
   if (math) {
     const delimiter = text.startsWith('$$') ? '$$' : text.match(/^\\begin\{(equation\*?)\}/)?.[1] ?? '\\[';
-    return { type: 'mathBlock', attrs: { latex: math[1], display: true, delimiter } };
+    const candidate = delimiter === 'equation' ? /(?<!\\)\\label\{([^{}\s]+)\}(\s*)$/.exec(math[1]) : null;
+    const sameLine = candidate ? math[1].slice(math[1].lastIndexOf('\n',candidate.index-1)+1,candidate.index) : '';
+    const trailing = /(^|[^\\])(?:\\\\)*%/.test(sameLine) ? null : candidate;
+    const leading = delimiter === 'equation' && !trailing ? /^(\s*)\\label\{([^{}\s]+)\}[ \t]*(?:\r?\n)?/.exec(math[1]) : null;
+    const latex = trailing ? math[1].slice(0,trailing.index).trimEnd()+trailing[2]
+      : leading ? leading[1]+math[1].slice(leading[0].length) : math[1];
+    const label = trailing?.[1] ?? leading?.[2];
+    return { type: 'mathBlock', attrs: { latex, display: true, delimiter, ...(label && {label}) } };
   }
   const environment = text.match(/^\\begin\{(align\*?|alignat\*?|flalign\*?|eqnarray\*?|gather\*?|multline\*?|displaymath|math|split|aligned|alignedat|gathered|cases|dcases|drcases|rcases|[pbBvV]?matrix|[pbBvV]?smallmatrix|array|darray|subarray)\}([\s\S]*?)\\end\{\1\}$/);
   if (environment) return { type: 'mathBlock', attrs: { latex: text, display: true } };
@@ -163,6 +173,37 @@ export function importBlock(block) {
   }
   const list = parseListBlock(text);
   if (list) return list;
+  const tableFloat = /^\\begin\{(table\*?)\}(?:\[([^\]]*)\])?([\s\S]*?)\\end\{\1\}$/.exec(text);
+  if (tableFloat) {
+    const inner = tableFloat[3];
+    const start = inner.indexOf('\\begin{tabular}');
+    const end = inner.lastIndexOf('\\end{tabular}');
+    const tabular = start >= 0 && end > start ? parseTable(inner.slice(start, end + '\\end{tabular}'.length)) : null;
+    if (tabular) {
+      const caption = /\\caption\{([^{}]*)\}/.exec(inner);
+      const label = /\\label\{([^{}]*)\}/.exec(inner);
+      const booktabs = tabular.rows.some(row => row.rules.some(rule => /toprule|midrule|bottomrule/.test(rule))) ||
+        tabular.trailing.some(rule => /toprule|midrule|bottomrule/.test(rule));
+      return {
+        type: 'table',
+        attrs: {
+          columns: tabular.columns, booktabs,
+          caption: caption?.[1] ?? null,
+          label: label?.[1] ?? null,
+          placement: tableFloat[2] || null,
+          centered: /\\centering\b/.test(inner),
+        },
+        content: tabular.rows.map(row => ({
+          type: 'tableRow',
+          content: row.cells.map((cell, index) => ({
+            type: 'tableCell',
+            attrs: { colspan: row.spans?.[index] ?? 1, rowspan: 1, align: row.aligns?.[index] ?? tabular.specs[index]?.align ?? null },
+            content: [{ type: 'paragraph', content: cell.trim() ? (inlineContent(cell) ?? [{ type: 'text', text: cell.trim() }]) : [] }],
+          })),
+        })),
+      };
+    }
+  }
   const table = parseTable(text);
   if (table) {
     const booktabs = table.rows.some(row => row.rules.some(rule => /toprule|midrule|bottomrule/.test(rule))) ||
@@ -228,6 +269,11 @@ function importSegment(block) {
 }
 
 export function importBlocks(block) {
+  const theorem=theoremParts(block);
+  if(theorem) {
+    const content=theorem.body.split(/\r?\n[ \t]*\r?\n/).map(part=>importBlock(part)).filter(Boolean);
+    return [{type:'theoremBlock',attrs:{kind:theorem.kind,title:theorem.title},content:content.length?content:[{type:'paragraph'}]}];
+  }
   const ruledTable = /^\{\\setlength\{\\arrayrulewidth\}\{(\d+(?:\.\d+)?pt)\}\s*(\\begin\{tabular\}[\s\S]*\\end\{tabular\})\s*\}$/.exec(block.trim());
   if (ruledTable) {
     const node=importBlock(ruledTable[2]);

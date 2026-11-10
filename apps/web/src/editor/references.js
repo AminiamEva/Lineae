@@ -19,8 +19,31 @@ export function outline(doc) {
   return items;
 }
 
-function referenceNumber(doc, key) {
-  return outline(doc).find(item => item.label === key)?.number || null;
+export function collectReferenceLabels(doc) {
+  const labels = [];
+  const seen = new Set();
+  const headings=outline(doc);
+  let headingIndex=0;
+  let equationNumber=0;
+  let current={number:null,title:'',kind:'label'};
+  function add(key,details) {
+    if(!key || seen.has(key))return;
+    seen.add(key);labels.push({key,...details});
+  }
+  doc.descendants(node => {
+    if(node.type.name==='heading') {
+      const heading=headings[headingIndex++];
+      if(heading?.number)current={number:heading.number,title:heading.text,kind:'heading'};
+      add(node.attrs.label,current);
+    }
+    if (node.type.name==='mathBlock' && node.attrs.delimiter==='equation') {
+      equationNumber++;
+      current={number:String(equationNumber),title:node.attrs.latex,kind:'equation'};
+      add(node.attrs.label,current);
+    }
+    if (node.type.name==='label') add(node.attrs.key,current);
+  });
+  return labels;
 }
 
 export const Ref = Node.create({
@@ -29,9 +52,9 @@ export const Ref = Node.create({
   inline: true,
   atom: true,
   selectable: true,
-  addAttributes: () => ({ key: { default: '' } }),
-  parseHTML: () => [{ tag: 'span[data-ref]', getAttrs: dom => ({ key: dom.dataset.ref }) }],
-  renderHTML: ({ node }) => ['span', { 'data-ref': node.attrs.key }, '\\ref{' + node.attrs.key + '}'],
+  addAttributes: () => ({ key: { default: '' }, equation: { default:false } }),
+  parseHTML: () => [{ tag: 'span[data-ref]', getAttrs: dom => ({ key: dom.dataset.ref, equation:dom.dataset.eqref==='true' }) }],
+  renderHTML: ({ node }) => ['span', { 'data-ref': node.attrs.key, 'data-eqref':String(node.attrs.equation) }, (node.attrs.equation?'\\eqref{':'\\ref{') + node.attrs.key + '}'],
   addNodeView() {
     return ({ node, editor, getPos }) => {
       const dom = document.createElement('span');
@@ -39,12 +62,101 @@ export const Ref = Node.create({
       dom.contentEditable = 'false';
       const render = () => {
         dom.dataset.refView = node.attrs.key;
-        const number = referenceNumber(editor.state.doc, node.attrs.key);
-        dom.textContent = number ? '§' + number : '→' + node.attrs.key;
-        dom.title = '\\ref{' + node.attrs.key + '}';
+        const number = collectReferenceLabels(editor.state.doc).find(item=>item.key===node.attrs.key)?.number ?? null;
+        dom.textContent = node.attrs.equation ? `(${number??'?'})` : number ?? '?';
+        dom.classList.toggle('missing', !number);
+        dom.title = (node.attrs.equation?'\\eqref{':'\\ref{') + node.attrs.key + '}';
       };
       render();
       dom.refreshRef = render;
+      dom.addEventListener('mousedown', event => {
+        const position = getPos();
+        if (typeof position !== 'number') return;
+        event.preventDefault();
+        event.stopPropagation();
+        editor.commands.setNodeSelection(position);
+      });
+      return {
+        dom,
+        update(next) {
+          if (next.type !== node.type) return false;
+          node = next;
+          render();
+          return true;
+        },
+        ignoreMutation: () => true,
+      };
+    };
+  },
+});
+
+export const Footnote = Node.create({
+  name: 'footnote',
+  group: 'inline',
+  inline: true,
+  atom: true,
+  selectable: true,
+  addAttributes: () => ({ text: { default: '' } }),
+  parseHTML: () => [{ tag: 'sup[data-footnote]', getAttrs: dom => ({ text: dom.dataset.footnote }) }],
+  renderHTML: ({ node }) => ['sup', { 'data-footnote': node.attrs.text }, ''],
+  addNodeView() {
+    return ({ node, editor, getPos }) => {
+      const dom = document.createElement('sup');
+      dom.className = 'footnote-node';
+      dom.contentEditable = 'false';
+      const render = () => {
+        const position = getPos();
+        let number = 0;
+        if (typeof position === 'number') {
+          editor.state.doc.descendants((child, childPosition) => {
+            if (child.type.name === 'footnote' && childPosition <= position) number++;
+          });
+        }
+        dom.textContent = String(number || 1);
+        dom.title = t('脚注','Footnote') + ': ' + node.attrs.text;
+      };
+      render();
+      dom.addEventListener('mousedown', event => {
+        const position = getPos();
+        if (typeof position !== 'number') return;
+        event.preventDefault();
+        event.stopPropagation();
+        editor.commands.setNodeSelection(position);
+      });
+      return {
+        dom,
+        update(next) {
+          if (next.type !== node.type) return false;
+          node = next;
+          render();
+          return true;
+        },
+        ignoreMutation: () => true,
+      };
+    };
+  },
+});
+
+export const Cite = Node.create({
+  name: 'cite',
+  group: 'inline',
+  inline: true,
+  atom: true,
+  selectable: true,
+  addAttributes: () => ({ key: { default: '' } }),
+  parseHTML: () => [{ tag: 'span[data-cite]', getAttrs: dom => ({ key: dom.dataset.cite }) }],
+  renderHTML: ({ node }) => ['span', { 'data-cite': node.attrs.key }, '[' + node.attrs.key + ']'],
+  addNodeView() {
+    return ({ node, editor, getPos }) => {
+      const dom = document.createElement('span');
+      dom.className = 'cite-node';
+      dom.contentEditable = 'false';
+      const render = () => {
+        dom.dataset.citeView = node.attrs.key;
+        dom.textContent = '[' + node.attrs.key + ']';
+        dom.title = '\\cite{' + node.attrs.key + '}';
+      };
+      render();
       dom.addEventListener('mousedown', event => {
         const position = getPos();
         if (typeof position !== 'number') return;

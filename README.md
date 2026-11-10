@@ -362,11 +362,9 @@ Before implementing substantial changes, please open an issue to discuss the pro
 
 ## Licence
 
-A licence file has not yet been committed to this repository.
+Unless otherwise indicated, Lineae's original source code is licensed under the **GNU Affero General Public License version 3 only (AGPL-3.0-only)**. See [LICENSE](LICENSE) for the full licence text.
 
-GNU GPLv3 is the intended licence, subject to formal adoption and verification of third-party dependency obligations.
-
-Until a licence is published, the repository's public availability should not be interpreted as granting general redistribution or modification rights.
+Third-party libraries and assets retain their respective licences. This project licence does not override third-party copyright or licensing terms.
 
 # Contributors
 

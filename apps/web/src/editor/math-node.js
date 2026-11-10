@@ -29,9 +29,9 @@ export function focusFormula(editor, id, onFocus) {
   });
 }
 
-export function insertFormula(editor, display = false, latex = '', range, onFocus) {
+export function insertFormula(editor, display = false, latex = '', range, onFocus, extra = {}) {
   const id = crypto.randomUUID();
-  const content = { type: display ? 'mathBlock' : 'math', attrs: { latex, display, id } };
+  const content = { type: display ? 'mathBlock' : 'math', attrs: { latex, display, id, ...extra } };
   if (display) {
     const { doc, selection } = editor.state;
     const $start = doc.resolve(range?.from ?? selection.from);
@@ -50,6 +50,8 @@ export function insertFormula(editor, display = false, latex = '', range, onFocu
 
 const mathFieldStyle = `
   .ML__text { font-family: inherit; }
+  .ML__is-inline, .ML__container, .ML__content { text-indent: 0; }
+  .ML__content { padding-left: 0 !important; padding-right: 0 !important; }
   .ML__mathbf, .ML__mathbfit, .ML__bb, .ML__cal, .ML__frak, .ML__script, .ML__sans, .ML__tt {
     background: light-dark(rgba(77,124,179,.10), rgba(120,170,230,.18));
     border-radius: 2px;
@@ -166,6 +168,7 @@ export const MathNode = Node.create({
   addAttributes: () => ({
     latex: { default: '' },
     delimiter: { default: null },
+    label: { default: null },
     display: { default: false },
     id: { default: null, rendered: false },
   }),
@@ -183,6 +186,7 @@ export const MathNode = Node.create({
       if (node.isBlock) dom.dataset.mathBlock = '';
       else dom.dataset.math = '';
       dom.dataset.latex = node.attrs.latex;
+      dom.dataset.numbered = String(node.isBlock && node.attrs.delimiter === 'equation');
       dom.getMathPosition = getPos;
       dom.contentEditable = 'false';
       // A draggable node view swallows pointer hit-testing inside MathLive, so
@@ -328,6 +332,7 @@ export const MathNode = Node.create({
           if (next.type !== node.type) return false;
           node = next;
           dom.dataset.latex = node.attrs.latex;
+          dom.dataset.numbered = String(node.isBlock && node.attrs.delimiter === 'equation');
           if (field.value !== node.attrs.latex) field.value = node.attrs.latex;
           return true;
         },

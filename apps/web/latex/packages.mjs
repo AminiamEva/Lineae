@@ -1,13 +1,16 @@
+import { theoremNames } from './theorem.mjs';
+
 // Each rule describes a feature emitted by the editor or recognized in source.
 // Dependencies are added only when that feature appears in the document body.
 const dependencies = [
   { name: 'ulem', pattern: /\\sout\b/ },
-  { name: 'amsmath', pattern: /\\(?:begin\{(?:align\*?|gather\*?|multline\*?|equation\*|split|aligned|cases|[pbBvV]?matrix)\}|(?:dfrac|tfrac|text|operatorname)\b)/ },
+  { name: 'amsmath', pattern: /\\(?:begin\{(?:align\*?|gather\*?|multline\*?|equation\*|split|aligned|cases|[pbBvV]?matrix)\}|(?:dfrac|tfrac|text|operatorname|eqref)\b)/ },
   { name: 'xcolor', pattern: /\\(?:textcolor|colorbox|definecolor)\b/ },
   { name: 'booktabs', pattern: /\\(?:toprule|midrule|bottomrule|cmidrule)\b/ },
   { name: 'enumitem', pattern: /\\begin\{(?:itemize|enumerate)\}\[/ },
   { name: 'zhnumber', pattern: /\\chinese\b/ },
   { name: 'graphicx', pattern: /\\includegraphics\b/ },
+  { name: 'amsthm', pattern: /\\begin\{proof\}/ },
   { name: 'listings', pattern: /\\begin\{lstlisting\}/ },
   { name: 'textcomp', pattern: /\\(?:textdegree|textcelsius|textmu|textohm|textcent|textyen|texteuro|textperthousand|textnumero)\b/ },
   { name: 'hyperref', pattern: /\\(?:href|url|hyperref)\b/, satisfies: ['url'], onlyUrl: /\\(?:href|hyperref)\b/ },
@@ -44,6 +47,11 @@ export function exportDocument({ start, end, eol }, body) {
     } else {
       preamble = preamble.replace(/^\\begin\{document\}/m, '\\usepackage{' + name + '}' + eol + '\\begin{document}');
     }
+  }
+  for(const [kind,title] of Object.entries(theoremNames)) {
+    if(kind==='proof' || !body.includes('\\begin{'+kind+'}') || new RegExp('\\\\newtheorem\\*?\\s*\\{'+kind+'\\}').test(withoutComments(start)))continue;
+    const declaration='\\ifcsname '+kind+'\\endcsname\\else\\newtheorem{'+kind+'}{'+title+'}\\fi';
+    preamble=preamble.replace(/^\\begin\{document\}/m,()=>declaration+eol+'\\begin{document}');
   }
   const separator = body && !body.endsWith('\n') ? eol : '';
   return preamble + body + separator + end;

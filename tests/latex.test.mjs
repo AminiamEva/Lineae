@@ -5,6 +5,36 @@ import { parseInline } from '../apps/web/latex/inline.mjs';
 import { exportDocument, resolvePackages } from '../apps/web/latex/packages.mjs';
 import { serialize } from '../apps/web/src/editor/latex-codec.js';
 import { importBlocks } from '../apps/web/latex/blocks.mjs';
+import { buildProjectZip, projectDependencies } from '../apps/web/src/editor/project-zip.mjs';
+
+test('exports theorem and proof environments and a path-safe project ZIP', async () => {
+  const [theorem]=importBlocks('\\begin{theorem}[Example]\nStatement.\n\\end{theorem}');
+  assert.equal(theorem.type,'theoremBlock');
+  assert.match(serialize(theorem),/\\begin\{theorem\}\[Example\]/);
+  assert.equal(importBlocks('\\begin{proof}\nArgument.\n\\end{proof}')[0].attrs.kind,'proof');
+  const zip=await buildProjectZip([['main.tex','text'],['ref/图.png',new Blob([new Uint8Array([1,2,3])])]]);
+  const bytes=new Uint8Array(await zip.arrayBuffer());
+  const view=new DataView(bytes.buffer);
+  assert.equal(view.getUint32(0,true),0x04034b50);
+  assert.equal(view.getUint16(bytes.length-12,true),2);
+  assert.ok(new TextDecoder().decode(bytes).includes('ref/图.png'));
+  await assert.rejects(buildProjectZip([['../outside.tex','x']]),/Invalid ZIP entry/);
+  assert.deepEqual(projectDependencies('% \\input{ignored}\n\\input{chapters/intro}\n\\addbibresource{ref/works.bib}\n\\includegraphics{ref/图.png}'),['chapters/intro.tex','ref/works.bib','ref/图.png']);
+});
+
+test('keeps numbered equation labels out of math content and exports eqref', () => {
+  const [math]=importBlocks('\\begin{equation}\nx=1\n\\label{eq:x}\n\\end{equation}');
+  assert.equal(math.attrs.label,'eq:x');
+  assert.equal(math.attrs.latex.trim(),'x=1');
+  assert.match(serialize(math),/x=1\\label\{eq:x\}/);
+  const [leading]=importBlocks('\\begin{equation}\n\\label{eq:x}\nx=1\n\\end{equation}');
+  assert.equal(leading.attrs.label,'eq:x');
+  assert.equal(leading.attrs.latex.trim(),'x=1');
+  const [paragraph]=importBlocks(String.raw`See \eqref{eq:x}.`);
+  assert.equal(serialize(paragraph).trim(),String.raw`See \eqref{eq:x}.`);
+  assert.equal(resolvePackages('',serialize(paragraph)).filter(rule=>rule.name==='amsmath').length,1);
+});
+import { pageMetrics, readPageSetup, writePageSetup } from '../apps/web/latex/geometry.mjs';
 
 test('round-trips a code listing and scoped table rule width', () => {
   const listing=['\\begin{lstlisting}[language=Python]','def f():','    return 42','\\end{lstlisting}'].join('\n');
@@ -86,6 +116,20 @@ test('parses text superscripts and subscripts as structure', () => {
   assert.deepEqual(sub.children, ['1']);
 });
 
+test('round-trips footnotes as inline nodes', () => {
+  const [footnote] = parseInline('\\footnote{A note}');
+  assert.equal(footnote.footnote, 'A note');
+  const doc = { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'footnote', attrs: { text: 'A note' } }] }] };
+  assert.equal(serialize(doc), '\\footnote{A note}\n\n');
+});
+
+test('round-trips citations as inline nodes', () => {
+  const [cite] = parseInline('\\cite{knuth1984}');
+  assert.equal(cite.cite, 'knuth1984');
+  const doc = { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'cite', attrs: { key: 'knuth1984' } }] }] };
+  assert.equal(serialize(doc), '\\cite{knuth1984}\n\n');
+});
+
 test('parses small caps and boxed text as structure', () => {
   const [smallCaps] = parseInline(String.raw`\textsc{Small}`);
   const [boxed] = parseInline(String.raw`\fbox{Box}`);
@@ -108,6 +152,47 @@ test('serializes small caps and boxed text marks', () => {
     }],
   };
   assert.equal(serialize(doc), '\\textsc{Small} \\fbox{Box}\n\n');
+});
+
+test('round-trips page geometry through the preamble', () => {
+  const preamble = '\\documentclass{article}\n\\begin{document}\n';
+  const written = writePageSetup(preamble, { paper: 'letter', orientation: 'landscape', margin: '1in' });
+  assert.match(written, /\\usepackage\[letterpaper,landscape,margin=1in\]\{geometry\}/);
+  assert.deepEqual(readPageSetup(written), {
+    paper: 'letter', orientation: 'landscape', margin: '1in',
+    margins: { top: '1in', right: '1in', bottom: '1in', left: '1in' },
+  });
+  assert.deepEqual(pageMetrics({ paper: 'letter', orientation: 'landscape', margin: '1in' }), {
+    width: '11in', height: '8.5in', margin: '1in',
+    margins: { top: '1in', right: '1in', bottom: '1in', left: '1in' },
+  });
+  const defaults = readPageSetup('\\documentclass{article}\n');
+  assert.deepEqual(defaults, {
+    paper: 'a4', orientation: 'portrait', margin: '2.2cm',
+    margins: { top: '2.2cm', right: '2.2cm', bottom: '2.2cm', left: '2.2cm' },
+  });
+  const asymmetric = writePageSetup(preamble, { paper: 'a5', margins: { top: '1cm', right: '2cm', bottom: '3cm', left: '4cm' } });
+  assert.match(asymmetric, /a5paper/);
+  assert.match(asymmetric, /top=1cm/);
+  assert.match(asymmetric, /left=4cm/);
+  assert.deepEqual(readPageSetup(asymmetric).margins, { top: '1cm', right: '2cm', bottom: '3cm', left: '4cm' });
+});
+
+test('round-trips table floats with captions and labels', () => {
+  const body = '\\begin{table}[htbp]\n\\centering\n\\caption{Results}\n\\label{tab:results}\n\\begin{tabular}{lc}\nA & B \\\\\n\\end{tabular}\n\\end{table}';
+  const source = '\\documentclass{article}\n\\begin{document}\n\n' + body + '\n\n\\end{document}\n';
+  const doc = parseDocument(source);
+  const [table] = doc.blocks.flatMap(importBlocks).filter(node => node.type === 'table');
+  assert.ok(table);
+  assert.equal(table.attrs.caption, 'Results');
+  assert.equal(table.attrs.label, 'tab:results');
+  assert.equal(table.attrs.placement, 'htbp');
+  assert.equal(table.attrs.centered, true);
+  const latex = serialize(table);
+  assert.match(latex, /\\begin\{table\}\[htbp\]/);
+  assert.match(latex, /\\caption\{Results\}/);
+  assert.match(latex, /\\label\{tab:results\}/);
+  assert.match(latex, /\\begin\{tabular\}\{lc\}/);
 });
 
 test('parses extended math environments as math blocks', () => {

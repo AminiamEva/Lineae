@@ -27,7 +27,7 @@ test('classic fixture: entries, strings, preamble and no syntax errors', () => {
   assert.equal(document.preambles.length, 1);
   assert.equal(document.diagnostics.length, 0, codesOf(document.diagnostics).join(','));
   assert.equal(document.source.filename, 'classic.bib');
-  assert.equal(document.source.eol, '\n');
+  assert.equal(document.source.eol, source.includes('\r\n') ? '\r\n' : '\n');
   assert.equal(reconstruct(document), document.source.text);
   assert.equal(serializeBib(document), source);
   assert.deepEqual(

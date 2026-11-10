@@ -22,6 +22,20 @@ function numberedHeadings(doc) {
 function formattingMarks(doc) {
   const decorations = [];
   doc.descendants((node, position) => {
+    if (node.isText) {
+      const logo = node.marks.find(mark=>mark.type.name==='textCommand')?.attrs.name;
+      if (logo === 'LaTeX' || logo === 'TeX') {
+        const count=node.text.length/logo.length;
+        if (Number.isInteger(count) && node.text===logo.repeat(count)) {
+          for (let index=0;index<count;index++) {
+            const start=position+index*logo.length;
+            if (logo==='LaTeX') decorations.push(Decoration.inline(start+1,start+2,{class:'tex-logo-a'}));
+            const e=start+logo.indexOf('e');
+            if(e>=start)decorations.push(Decoration.inline(e,e+1,{class:'tex-logo-e'}));
+          }
+        }
+      }
+    }
     if (node.type.name === 'codeBlock') {
         const tokens = /(?:#[^\n]*|\/\/[^\n]*|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|\b(?:const|let|var|function|class|return|if|else|for|while|import|from|def|print|int|float|bool|true|false|None|null|public|static)\b|\b\d+(?:\.\d+)?\b)/g;
         for (const match of node.textContent.matchAll(tokens)) {
@@ -81,6 +95,26 @@ export const PaperBehavior = Extension.create({
           default: false,
           parseHTML: element => element.dataset.booktabs === 'true',
           renderHTML: attributes => attributes.booktabs ? { 'data-booktabs': 'true' } : {},
+        },
+        caption: {
+          default: null,
+          parseHTML: element => element.dataset.caption ?? null,
+          renderHTML: attributes => attributes.caption ? { 'data-caption': attributes.caption } : {},
+        },
+        label: {
+          default: null,
+          parseHTML: element => element.dataset.label ?? null,
+          renderHTML: attributes => attributes.label ? { 'data-label': attributes.label } : {},
+        },
+        placement: {
+          default: null,
+          parseHTML: element => element.dataset.placement ?? null,
+          renderHTML: attributes => attributes.placement ? { 'data-placement': attributes.placement } : {},
+        },
+        centered: {
+          default: false,
+          parseHTML: element => element.dataset.centered === 'true',
+          renderHTML: attributes => attributes.centered ? { 'data-centered': 'true' } : {},
         },
       },
     }, {
