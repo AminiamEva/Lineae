@@ -10,17 +10,64 @@ export function installSpaceOverlay(editor, paper) {
   const page = paper.closest('.document-page') ?? paper;
   const overlay = shape('svg', { class:'space-overlay', 'aria-hidden':'true' });
   page.append(overlay);
+  const boxCaret=document.createElement('span');
+  boxCaret.className='box-edge-caret';
+  boxCaret.hidden=true;
+  boxCaret.setAttribute('aria-hidden','true');
+  page.append(boxCaret);
   let enabled = true;
   let composing = false;
   let frame = 0;
   let compositionFrame = 0;
 
+  function boxEdge() {
+    const { selection }=editor.state;
+    if (!selection.empty || !selection.$from.parent.isTextblock) return null;
+    const { $from }=selection;
+    const marks=$from.nodeBefore?.marks;
+    const boxed=marks?.find(mark=>mark.type.name==='boxed');
+    if (!boxed || boxed.isInSet($from.nodeAfter?.marks ?? [])) return null;
+    const {node,offset}=editor.view.domAtPos($from.pos,-1);
+    const before=node.nodeType===Node.ELEMENT_NODE ? node.childNodes[offset-1] : node;
+    const element=before?.nodeType===Node.ELEMENT_NODE ? before : before?.parentElement;
+    const box=element?.closest('[data-boxed]');
+    const rect=box && [...box.getClientRects()].at(-1);
+    return rect?.width ? {rect, marks} : null;
+  }
+
+  paper.addEventListener('click',event=>{
+    if (event.button || event.shiftKey || event.ctrlKey || event.altKey || event.metaKey ||
+        !window.getSelection()?.isCollapsed || composing) return;
+    editor.view.domObserver.flush();
+    const edge=boxEdge();
+    if (!edge) return;
+    const {rect,marks}=edge;
+    const tolerance=Math.min(8,rect.height/2);
+    if (event.clientY<rect.top || event.clientY>rect.bottom ||
+        Math.abs(event.clientX-rect.right)>tolerance) return;
+    const inside=event.clientX<rect.right;
+    editor.view.dispatch(editor.state.tr.setStoredMarks(
+      inside ? marks : marks.filter(mark=>mark.type.name!=='boxed'),
+    ));
+  });
+
   function draw() {
     frame=0;
     const pageRect=page.getBoundingClientRect();
+    const zoom=page.offsetWidth ? pageRect.width/page.offsetWidth : 1;
+    const edge=!composing && editor.view.hasFocus() ? boxEdge() : null;
+    const marks=editor.state.storedMarks;
+    boxCaret.hidden=!(edge && marks);
+    editor.view.dom.classList.toggle('has-box-edge-caret',!boxCaret.hidden);
+    if (!boxCaret.hidden) {
+      const inside=marks.some(mark=>mark.type.name==='boxed');
+      boxCaret.dataset.side=inside?'inside':'outside';
+      boxCaret.style.left=((edge.rect.right-pageRect.left)/zoom+(inside?-3:2))+'px';
+      boxCaret.style.top=((edge.rect.top-pageRect.top)/zoom+2)+'px';
+      boxCaret.style.height=Math.max(1,edge.rect.height/zoom-4)+'px';
+    }
     overlay.hidden=!enabled || !pageRect.width || !pageRect.height;
     if (overlay.hidden) return;
-    const zoom=page.offsetWidth ? pageRect.width/page.offsetWidth : 1;
     const width=page.clientWidth;
     const height=page.clientHeight;
     overlay.setAttribute('viewBox',`0 0 ${width} ${height}`);
@@ -128,7 +175,9 @@ export function installSpaceOverlay(editor, paper) {
     draw();
     compositionFrame=requestAnimationFrame(compositionLoop);
   }
-  editor.on('transaction',({transaction})=>{if(transaction.docChanged)schedule();});
+  editor.on('transaction',schedule);
+  paper.addEventListener('focusin',schedule);
+  paper.addEventListener('focusout',schedule);
   paper.addEventListener('compositionstart',()=>{
     composing=true;
     if(!compositionFrame)compositionFrame=requestAnimationFrame(compositionLoop);

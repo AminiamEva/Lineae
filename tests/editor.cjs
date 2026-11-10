@@ -976,9 +976,21 @@ const server=createServer(async(req,res)=>{
     await page.waitForFunction(()=>Boolean(document.querySelector('.space-overlay [data-active-box]')));
     await page.keyboard.press('Control+j');
     await page.waitForFunction(()=>!document.querySelector('.space-overlay [data-active-box]'));
+    const outsideCaret=await page.locator('.box-edge-caret[data-side="outside"]').boundingBox();
+    const boxBounds=await boxedText.boundingBox();
+    await page.mouse.click(boxBounds.x+boxBounds.width-2,boxBounds.y+boxBounds.height/2);
+    const insideCaret=page.locator('.box-edge-caret[data-side="inside"]');
+    await insideCaret.waitFor();
+    assert.ok((await insideCaret.boundingBox()).x<boxBounds.x+boxBounds.width &&
+      outsideCaret.x>boxBounds.x+boxBounds.width,'The two caret positions straddle the border');
+    await page.keyboard.type('I');
+    assert.equal(await boxedText.textContent(),'BoxI');
+    const expandedBox=await boxedText.boundingBox();
+    await page.mouse.click(expandedBox.x+expandedBox.width+1,expandedBox.y+expandedBox.height/2);
+    await page.locator('.box-edge-caret[data-side="outside"]').waitFor();
     await page.keyboard.type('X');
-    assert.equal(await boxedText.textContent(),'Box','Ctrl+J leaves the complete box');
-    assert.match(await paper.textContent(),/BoxX after/);
+    assert.equal(await boxedText.textContent(),'BoxI');
+    assert.match(await paper.textContent(),/BoxIX after/);
     await importSource('\\begin{quote}\nQuoted text.\n\\end{quote}');
     await paper.locator('blockquote p').click();
     await page.keyboard.press('Control+j');
