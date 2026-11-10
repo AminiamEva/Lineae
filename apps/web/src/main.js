@@ -29,7 +29,7 @@ import TableHeader from '@tiptap/extension-table-header';
 import { Plugin } from '@tiptap/pm/state';
 import { parseDocument } from '../latex/document.mjs';
 import { exportDocument } from '../latex/packages.mjs';
-import { readPageSetup, writePageSetup, pageMetrics } from '../latex/geometry.mjs';
+import { MARGIN_PRESETS, readPageSetup, writePageSetup, pageMetrics } from '../latex/geometry.mjs';
 import { mathSymbols } from '../latex/math-symbols.mjs';
 import { createThemeController } from './ui/theme.mjs';
 import { installTooltips } from './ui/tooltips.mjs';
@@ -363,20 +363,31 @@ sourceView.className='source-view'; sourceView.hidden=true;
 documentPage.after(sourceView);
 let documentParts=parseDocument('\\documentclass{article}\n\\usepackage{amsmath}\n\\begin{document}\n\\end{document}\n');
 let pageSetup=readPageSetup(documentParts.start);
-let pagePaper,pageOrientation,pageMargin;
+let pagePaper,pageOrientation,pageMarginPreset,pageMarginTop,pageMarginRight,pageMarginBottom,pageMarginLeft;
 function applyPageSetup(){
   const metrics=pageMetrics(pageSetup);
   documentPage.style.setProperty('--page-width',metrics.width);
   documentPage.style.setProperty('--page-height',metrics.height);
-  documentPage.style.setProperty('--page-margin',metrics.margin);
+  documentPage.style.setProperty('--page-margin-top',metrics.margins.top);
+  documentPage.style.setProperty('--page-margin-right',metrics.margins.right);
+  documentPage.style.setProperty('--page-margin-bottom',metrics.margins.bottom);
+  documentPage.style.setProperty('--page-margin-left',metrics.margins.left);
   if(pagePaper){
     pagePaper.value=pageSetup.paper;
     pageOrientation.value=pageSetup.orientation;
-    pageMargin.value=pageSetup.margin;
+    pageMarginTop.value=pageSetup.margins.top;
+    pageMarginRight.value=pageSetup.margins.right;
+    pageMarginBottom.value=pageSetup.margins.bottom;
+    pageMarginLeft.value=pageSetup.margins.left;
+    pageMarginPreset.value=Object.keys(MARGIN_PRESETS).find(key=>MARGIN_PRESETS[key]===pageSetup.margin)??'custom';
   }
 }
 function updatePageSetup(patch){
-  pageSetup={...pageSetup,...patch};
+  if(patch.margins)pageSetup={...pageSetup,...patch,margins:{...pageSetup.margins,...patch.margins}};
+  else if(patch.margin)pageSetup={...pageSetup,...patch,margins:{top:patch.margin,right:patch.margin,bottom:patch.margin,left:patch.margin}};
+  else pageSetup={...pageSetup,...patch};
+  const sides=Object.values(pageSetup.margins);
+  pageSetup.margin=sides.every(value=>value===sides[0])?sides[0]:'custom';
   documentParts.start=writePageSetup(documentParts.start,pageSetup);
   if(importedSource)importedSource=writePageSetup(importedSource,pageSetup);
   applyPageSetup();
@@ -934,7 +945,7 @@ document.addEventListener('focusin',updateEnvironment);paper.addEventListener('i
 updateEnvironment();
 editor.on('update',()=>{count.textContent=editor.getText().length+' '+t('字符','characters');});
 const tableGroup=document.createElement('div');tableGroup.className='tools';
-const layoutGroup=document.createElement('div');layoutGroup.className='tools';
+const layoutGroup=document.createElement('div');layoutGroup.className='tools';layoutGroup.id='layout-panel';
 const formatGroup=document.createElement('div');formatGroup.className='tools';
 const referenceGroup=document.createElement('div');referenceGroup.className='tools';
 const mathGroup=document.createElement('div');mathGroup.className='tools';
@@ -947,19 +958,32 @@ function groupButton(container,label,action) {
   return control;
 }
 pagePaper=document.createElement('select');
-for(const [value,label] of [['a4','A4'],['letter','Letter']])pagePaper.append(new Option(label,value));
+for(const [value,label] of [['a4','A4'],['a5','A5'],['letter','Letter'],['legal','Legal']])pagePaper.append(new Option(label,value));
 pagePaper.setAttribute('aria-label',t('纸张','Paper'));
 pageOrientation=document.createElement('select');
 pageOrientation.setAttribute('aria-label',t('方向','Orientation'));
-pageMargin=document.createElement('input');
-pageMargin.type='text';pageMargin.setAttribute('aria-label',t('页边距','Margin'));
-pageMargin.style.width='74px';
-layoutGroup.append(pagePaper,pageOrientation,pageMargin);
+pageMarginPreset=document.createElement('select');
+for(const value of ['normal','narrow','wide','custom'])pageMarginPreset.append(new Option(value,value));
+pageMarginPreset.setAttribute('aria-label',t('页边距预设','Margin preset'));
+function marginInput(label){
+  const input=document.createElement('input');
+  input.type='text';input.style.width='64px';input.setAttribute('aria-label',label);
+  return input;
+}
+pageMarginTop=marginInput(t('上边距','Top margin'));
+pageMarginRight=marginInput(t('右边距','Right margin'));
+pageMarginBottom=marginInput(t('下边距','Bottom margin'));
+pageMarginLeft=marginInput(t('左边距','Left margin'));
+layoutGroup.append(pagePaper,pageOrientation,pageMarginPreset,pageMarginTop,pageMarginRight,pageMarginBottom,pageMarginLeft);
 pagePaper.addEventListener('change',()=>updatePageSetup({paper:pagePaper.value}));
 pageOrientation.addEventListener('change',()=>updatePageSetup({orientation:pageOrientation.value}));
-pageMargin.addEventListener('change',()=>{
-  if(/^\d+(?:\.\d+)?(?:mm|cm|in|pt)$/.test(pageMargin.value.trim()))updatePageSetup({margin:pageMargin.value.trim()});
-  else pageMargin.value=pageSetup.margin;
+pageMarginPreset.addEventListener('change',()=>{
+  if(MARGIN_PRESETS[pageMarginPreset.value])updatePageSetup({margin:MARGIN_PRESETS[pageMarginPreset.value]});
+});
+for(const [side,input] of [['top',pageMarginTop],['right',pageMarginRight],['bottom',pageMarginBottom],['left',pageMarginLeft]])input.addEventListener('change',()=>{
+  const value=input.value.trim();
+  if(/^\d+(?:\.\d+)?(?:mm|cm|in|pt)$/.test(value))updatePageSetup({margins:{[side]:value}});
+  else input.value=pageSetup.margins[side];
 });
 applyPageSetup();
 groupButton(tableGroup,'▦',()=>editor.chain().focus().insertTable({rows:2,cols:2,withHeaderRow:false}).run());
@@ -1149,10 +1173,21 @@ function updateLanguage() {
   filter.setAttribute('aria-label',filter.placeholder);
   headingMenu.setAttribute('aria-label',t('段落样式','Paragraph style'));
   pagePaper.setAttribute('aria-label',t('纸张','Paper'));
-  pageMargin.setAttribute('aria-label',t('页边距','Margin'));
   pageOrientation.replaceChildren(new Option(t('纵向','Portrait'),'portrait'),new Option(t('横向','Landscape'),'landscape'));
   pageOrientation.value=pageSetup.orientation;
   pageOrientation.setAttribute('aria-label',t('方向','Orientation'));
+  pageMarginPreset.replaceChildren(
+    new Option(t('常规边距','Normal margins'),'normal'),
+    new Option(t('窄边距','Narrow margins'),'narrow'),
+    new Option(t('宽边距','Wide margins'),'wide'),
+    new Option(t('自定义','Custom'),'custom'),
+  );
+  pageMarginPreset.value=Object.keys(MARGIN_PRESETS).find(key=>MARGIN_PRESETS[key]===pageSetup.margin)??'custom';
+  pageMarginPreset.setAttribute('aria-label',t('页边距预设','Margin preset'));
+  pageMarginTop.setAttribute('aria-label',t('上边距','Top margin'));
+  pageMarginRight.setAttribute('aria-label',t('右边距','Right margin'));
+  pageMarginBottom.setAttribute('aria-label',t('下边距','Bottom margin'));
+  pageMarginLeft.setAttribute('aria-label',t('左边距','Left margin'));
   tooltips?.setLanguage(language.value);
   updateThemeButton();
   updateSourceButton();

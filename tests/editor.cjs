@@ -907,6 +907,16 @@ const server=createServer(async(req,res)=>{
     const equationNumbers=await page.locator('.math-display[data-numbered="true"]').evaluateAll(nodes=>nodes.map(node=>({increment:getComputedStyle(node).counterIncrement,content:getComputedStyle(node,'::after').content})));
     assert.equal(equationNumbers.length,2);
     assert.ok(equationNumbers.every(item=>item.increment.includes('lineae-equation')&&item.content.includes('counter(lineae-equation)')),'Equation environments use an ordered CSS counter');
+    await page.locator('[data-group=layout]').click();
+    const layoutSelects=page.locator('#layout-panel select');
+    await layoutSelects.nth(0).selectOption('a5');
+    await layoutSelects.nth(1).selectOption('landscape');
+    await layoutSelects.nth(2).selectOption('narrow');
+    const pageLayout=await page.evaluate(()=>{
+      const page=document.querySelector('.document-page');
+      return ['--page-width','--page-height','--page-margin-top','--page-margin-right'].map(name=>page.style.getPropertyValue(name));
+    });
+    assert.deepEqual(pageLayout,['210mm','148mm','1.27cm','1.27cm'],'Layout controls update the page metrics');
     assert.deepEqual(errors,[]);
     console.log('Browser regressions passed');
   }finally{

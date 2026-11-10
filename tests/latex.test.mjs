@@ -129,10 +129,24 @@ test('round-trips page geometry through the preamble', () => {
   const preamble = '\\documentclass{article}\n\\begin{document}\n';
   const written = writePageSetup(preamble, { paper: 'letter', orientation: 'landscape', margin: '1in' });
   assert.match(written, /\\usepackage\[letterpaper,landscape,margin=1in\]\{geometry\}/);
-  assert.deepEqual(readPageSetup(written), { paper: 'letter', orientation: 'landscape', margin: '1in' });
-  assert.deepEqual(pageMetrics({ paper: 'letter', orientation: 'landscape', margin: '1in' }), { width: '11in', height: '8.5in', margin: '1in' });
+  assert.deepEqual(readPageSetup(written), {
+    paper: 'letter', orientation: 'landscape', margin: '1in',
+    margins: { top: '1in', right: '1in', bottom: '1in', left: '1in' },
+  });
+  assert.deepEqual(pageMetrics({ paper: 'letter', orientation: 'landscape', margin: '1in' }), {
+    width: '11in', height: '8.5in', margin: '1in',
+    margins: { top: '1in', right: '1in', bottom: '1in', left: '1in' },
+  });
   const defaults = readPageSetup('\\documentclass{article}\n');
-  assert.deepEqual(defaults, { paper: 'a4', orientation: 'portrait', margin: '2.2cm' });
+  assert.deepEqual(defaults, {
+    paper: 'a4', orientation: 'portrait', margin: '2.2cm',
+    margins: { top: '2.2cm', right: '2.2cm', bottom: '2.2cm', left: '2.2cm' },
+  });
+  const asymmetric = writePageSetup(preamble, { paper: 'a5', margins: { top: '1cm', right: '2cm', bottom: '3cm', left: '4cm' } });
+  assert.match(asymmetric, /a5paper/);
+  assert.match(asymmetric, /top=1cm/);
+  assert.match(asymmetric, /left=4cm/);
+  assert.deepEqual(readPageSetup(asymmetric).margins, { top: '1cm', right: '2cm', bottom: '3cm', left: '4cm' });
 });
 
 test('round-trips table floats with captions and labels', () => {
