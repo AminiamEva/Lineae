@@ -800,7 +800,7 @@ const server=createServer(async(req,res)=>{
       const f=field.getBoundingClientRect(),h=handle.getBoundingClientRect();
       return {fieldLeft:f.left,handleRight:h.right,handleTop:h.top,fieldTop:f.top};
     });
-    assert.ok(handlePlace.handleRight<=handlePlace.fieldLeft,'Inline drag handle sits left of the formula: '+JSON.stringify(handlePlace));
+    assert.ok(handlePlace.handleRight<=handlePlace.fieldLeft-8,'Inline drag handle keeps a clear gap left of the formula: '+JSON.stringify(handlePlace));
     await importSource('前 后');
     await page.waitForFunction(()=>document.querySelector('.ProseMirror p')?.textContent==='前 后');
     await paper.locator('p').scrollIntoViewIfNeeded();
