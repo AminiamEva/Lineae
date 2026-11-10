@@ -776,6 +776,27 @@ const server=createServer(async(req,res)=>{
     await paper.locator('pre code').waitFor();
     await page.keyboard.type('return 42');
     assert.equal(await paper.locator('pre code').textContent(),'return 42');
+    assert.equal(await paper.locator('pre .code-token-keyword').textContent(),'return');
+    await page.locator('[data-group=insert]').click();
+    await page.getByRole('button',{name:/^(代码块|Code block)$/}).click();
+    await page.locator('.editor-dialog input').fill('Python');
+    await page.locator('.editor-dialog button[type=submit]').click();
+    await page.waitForFunction(()=>document.querySelector('.ProseMirror pre code')?.classList.contains('language-Python'));
+    await page.keyboard.press('Control+j');
+    await page.keyboard.type('after');
+    await page.waitForFunction(()=>document.querySelector('.ProseMirror > p')?.textContent==='after');
+    await page.keyboard.press('Enter');
+    await page.keyboard.type('$$');
+    await page.waitForFunction(()=>document.activeElement?.tagName==='MATH-FIELD' && document.activeElement.closest('.math-display'));
+    assert.deepEqual(await paper.evaluate(element=>Array.from(element.children).map(child=>child.matches('.math-display')?'math':child.tagName)),['PRE','P','math','P']);
+    const integral=page.locator('math-field');
+    await page.keyboard.press('Control+i');
+    await page.keyboard.type('_i');
+    await page.keyboard.press('Control+j');
+    await page.keyboard.press('Control+i');
+    await page.keyboard.type('_0');
+    assert.match(await integral.evaluate(field=>field.value),/\\int_\{?i\}?\s*\\int_\{?0\}?/);
+    assert.ok(!(await integral.evaluate(field=>field.value)).includes('\\space'));
     await importSource('alpha beta gamma');
     await page.waitForFunction(()=>document.querySelector('.ProseMirror p')?.textContent==='alpha beta gamma');
     const words=await paper.locator('p').evaluate(paragraph=>{
