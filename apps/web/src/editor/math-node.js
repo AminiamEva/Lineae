@@ -64,11 +64,18 @@ export const MathNode = Node.create({
   }),
   parseHTML: () => [{ tag: 'span[data-math]', getAttrs: dom => ({ latex: dom.dataset.latex ?? dom.textContent }) }],
   renderHTML: ({ node }) => ['span', { 'data-math': '', 'data-latex': node.attrs.latex }, node.attrs.latex],
+  // Plain-text clipboard output keeps the source so formulas survive a copy.
+  renderText: ({ node }) => node.attrs.display ? '\\[' + node.attrs.latex + '\\]' : '$' + node.attrs.latex + '$',
   addNodeView() {
     return ({ node, editor, getPos }) => {
       const dom = document.createElement(node.isBlock ? 'div' : 'span');
       dom.className = node.isBlock ? 'math-display' : 'math-inline';
       dom.dataset.mathView = '';
+      // Keep the source on the node view so copied HTML can be parsed back
+      // into a formula node instead of pasting the rendered MathLive DOM.
+      if (node.isBlock) dom.dataset.mathBlock = '';
+      else dom.dataset.math = '';
+      dom.dataset.latex = node.attrs.latex;
       dom.getMathPosition = getPos;
       dom.contentEditable = 'false';
       // A draggable node view swallows pointer hit-testing inside MathLive, so
@@ -186,6 +193,7 @@ export const MathNode = Node.create({
         update(next) {
           if (next.type !== node.type) return false;
           node = next;
+          dom.dataset.latex = node.attrs.latex;
           if (field.value !== node.attrs.latex) field.value = node.attrs.latex;
           return true;
         },

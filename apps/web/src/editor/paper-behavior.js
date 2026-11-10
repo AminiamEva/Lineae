@@ -1,4 +1,5 @@
 import { Extension } from '@tiptap/core';
+import { Fragment, Slice } from '@tiptap/pm/model';
 import { Plugin, TextSelection } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
 
@@ -134,6 +135,29 @@ export const PaperBehavior = Extension.create({
                 decorations.push(Decoration.node(position, position + node.nodeSize, { class: 'math-selected' }));
             });
             return DecorationSet.create(state.doc, decorations);
+          },
+        },
+      }),
+      new Plugin({
+        props: {
+          // Turn a whole copied formula (MathLive writes "$$ … $$") into a
+          // real node. Mixed clipboard text is left untouched so source
+          // fidelity does not depend on guessing where math starts.
+          handlePaste(view, event) {
+            const data = event.clipboardData;
+            if (!data || Array.from(data.types ?? []).includes('text/html')) return false;
+            const text = (data.getData('text/plain') ?? '').trim();
+            const match = text.match(/^(?:\$\$([\s\S]+?)\$\$|\\\[([\s\S]+?)\\\]|\\\(([\s\S]+?)\\\)|\$([^$\r\n]+?)\$)$/);
+            if (!match) return false;
+            const latex = (match[1] ?? match[2] ?? match[3] ?? match[4]).trim();
+            if (!latex) return false;
+            const display = match[1] !== undefined || match[2] !== undefined;
+            const type = view.state.schema.nodes[display ? 'mathBlock' : 'math'];
+            if (!type) return false;
+            view.dispatch(view.state.tr
+              .replaceSelection(new Slice(Fragment.from(type.create({ latex, display })), 0, 0))
+              .scrollIntoView());
+            return true;
           },
         },
       }),
