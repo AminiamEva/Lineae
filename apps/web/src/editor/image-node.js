@@ -28,6 +28,24 @@ function remember(path, file) {
 }
 
 export function installImageDrop(editor, paper) {
+  paper.addEventListener('paste',event=>{
+    if (event.composedPath().some(node=>node?.tagName==='MATH-FIELD')) return;
+    const data=event.clipboardData;
+    // Preserve the richer Lineae HTML when a document image is copied with text.
+    if (data?.getData('text/html').includes('data-document-image=')) return;
+    const files=Array.from(data?.items??[])
+      .filter(item=>item.kind==='file' && rasterTypes.has(item.type))
+      .map(item=>item.getAsFile()).filter(Boolean);
+    if (!files.length) return;
+    event.preventDefault(); event.stopPropagation();
+    const extensions={'image/png':'png','image/jpeg':'jpg','image/webp':'webp','image/gif':'gif','image/avif':'avif'};
+    const content=files.map(file=>{
+      const path='clipboard-'+crypto.randomUUID()+'.'+extensions[file.type];
+      remember(path,file);
+      return {type:'documentImage',attrs:{path}};
+    });
+    editor.chain().focus().insertContent(content).run();
+  },true);
   paper.addEventListener('dragover',event=>{
     if(Array.from(event.dataTransfer?.items??[]).some(item=>item.kind==='file'&&rasterTypes.has(item.type)))event.preventDefault();
   },true);

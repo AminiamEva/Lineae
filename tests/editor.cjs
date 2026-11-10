@@ -1012,6 +1012,24 @@ const server=createServer(async(req,res)=>{
         assert.ok(layout.left>=-1 && layout.right<=width+1 && layout.scroll<=layout.client+1,JSON.stringify({group,width,layout}));
       }
     }
+    await page.setViewportSize({width:1280,height:1400});
+    await importSource('Before $x$ after');
+    await page.locator('math-field').evaluate(field=>{field.focus();field.executeCommand('moveToMathfieldEnd');});
+    await page.keyboard.press('ArrowRight');
+    assert.ok(await paper.evaluate(element=>element===document.activeElement),'ArrowRight exits at the end of inline math');
+    await page.keyboard.type('Q');
+    await page.locator('.source-toggle').click();
+    assert.match(await page.locator('.source-view').inputValue(),/\$x\$Q after/);
+    await page.locator('.source-toggle').click();
+    await paper.locator('p').first().click();
+    await paper.evaluate(element=>{
+      const clipboard=new DataTransfer();
+      const png=Uint8Array.from(atob('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jB9kAAAAASUVORK5CYII='),c=>c.charCodeAt(0));
+      clipboard.items.add(new File([png],'image.png',{type:'image/png'}));
+      element.dispatchEvent(new ClipboardEvent('paste',{bubbles:true,cancelable:true,clipboardData:clipboard}));
+    });
+    await paper.locator('figure.document-image img').waitFor({state:'visible'});
+    assert.match(await paper.locator('figure.document-image img').getAttribute('alt'),/^clipboard-.*\.png$/);
     assert.deepEqual(errors,[]);
     console.log('Browser regressions passed');
   }finally{

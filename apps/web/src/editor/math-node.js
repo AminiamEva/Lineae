@@ -243,6 +243,17 @@ export const MathNode = Node.create({
       });
       let leavingStructure = false;
       field.addEventListener('keydown', event => {
+        if ((event.key === 'ArrowRight' || event.key === 'ArrowLeft') &&
+            !event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey &&
+            field.selection.ranges.every(([start,end])=>start===end)) {
+          const backward=event.key==='ArrowLeft';
+          if (field.position===(backward?0:field.lastOffset)) {
+            event.preventDefault(); event.stopPropagation();
+            commitUnclosedFences(field);
+            leaveFormula(editor,getPos(),node,backward);
+            return;
+          }
+        }
         if (['0', 'j'].includes(event.key.toLowerCase()) && event.ctrlKey && !event.shiftKey && !event.altKey && !event.metaKey) {
           event.preventDefault(); event.stopPropagation();
           leavingStructure = true;
