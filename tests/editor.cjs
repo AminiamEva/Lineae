@@ -683,6 +683,7 @@ const server=createServer(async(req,res)=>{
     await page.locator('.command-menu input').fill('left');
     await page.keyboard.press('Enter');
     await page.locator('.delimiter-input input').first().fill('[');
+    assert.equal(await page.locator('[data-math-view] .delimiter-input-embedded').count(),1);
     assert.equal(await page.locator('.delimiter-input input').last().evaluate(input=>document.activeElement===input),true);
     await page.keyboard.type(')');
     await page.waitForFunction(()=>/^\\left\[.*\\right\)$/.test(document.querySelector('math-field')?.value));
@@ -841,7 +842,7 @@ const server=createServer(async(req,res)=>{
     await page.keyboard.press('End');
     const cdp=await page.context().newCDPSession(page);
     await cdp.send('Input.imeSetComposition',{text:'zhong',selectionStart:5,selectionEnd:5});
-    assert.equal(await page.locator('.space-overlay').isVisible(),false);
+    assert.equal(await page.locator('.space-overlay').isVisible(),true);
     await cdp.send('Input.imeSetComposition',{text:'中文',selectionStart:2,selectionEnd:2});
     await cdp.send('Input.insertText',{text:'中文'});
     await page.waitForFunction(()=>document.querySelector('.ProseMirror p')?.textContent==='前 后中文');

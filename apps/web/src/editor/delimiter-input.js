@@ -1,7 +1,7 @@
 import { parseDelimiterPair } from '../../latex/delimiters.mjs';
 import { t } from '../ui/i18n.mjs';
 
-export function readDelimiterPair(anchor, rightFirst) {
+export function readDelimiterPair(anchor, rightFirst, formulaView) {
   return new Promise(resolve => {
     const form = document.createElement('form');
     form.className = 'delimiter-input';
@@ -50,6 +50,13 @@ export function readDelimiterPair(anchor, rightFirst) {
       if (!form.contains(event.target)) finish(null);
     }, { ...options, capture:true });
     window.addEventListener('resize', () => finish(null), options);
+    if (formulaView) {
+      form.classList.add('delimiter-input-embedded');
+      form.contentEditable='false';
+      formulaView.append(form);
+      first.focus();
+      return;
+    }
     document.body.append(form);
     const bounds = form.getBoundingClientRect();
     form.style.left = `${Math.max(8, Math.min(anchor.left, innerWidth - bounds.width - 8))}px`;

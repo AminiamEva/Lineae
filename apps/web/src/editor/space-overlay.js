@@ -11,8 +11,8 @@ export function installSpaceOverlay(editor, paper) {
 
   function draw() {
     frame=0;
-    canvas.hidden=!enabled || composing || !paper.getClientRects().length;
-    if (canvas.hidden) return;
+    canvas.hidden=!enabled || !paper.getClientRects().length;
+    if (canvas.hidden || composing) return;
     const width=document.documentElement.clientWidth;
     const height=window.innerHeight;
     const scale=window.devicePixelRatio||1;
@@ -30,6 +30,23 @@ export function installSpaceOverlay(editor, paper) {
     for (const block of editor.view.dom.querySelectorAll('p,h1,h2,h3,pre')) {
       const bounds=block.getBoundingClientRect();
       if(bounds.bottom<0 || bounds.top>height || bounds.right<0 || bounds.left>width)continue;
+      if (block.tagName==='P') {
+        const style=getComputedStyle(block);
+        const zoom=block.offsetWidth ? bounds.width/block.offsetWidth : 1;
+        const lineHeight=(Number.parseFloat(style.lineHeight)||20)*zoom;
+        const indent=(Number.parseFloat(style.textIndent)||0)*zoom;
+        range.selectNodeContents(block);
+        const rect=Array.from(range.getClientRects()).findLast(rect=>rect.width>0);
+        const y=bounds.top+lineHeight/2;
+        context.font=`${lineHeight*.55}px sans-serif`;
+        context.textBaseline='middle';
+        context.fillText('¶',(rect?.right??bounds.left+indent)+3,rect?(rect.top+rect.bottom)/2:y);
+        if(indent>0) {
+          const end=bounds.left+indent-4;
+          context.beginPath();context.moveTo(bounds.left+2,y);context.lineTo(end,y);
+          context.moveTo(end,y-3*zoom);context.lineTo(end,y+3*zoom);context.stroke();
+        }
+      }
       const walker=document.createTreeWalker(block,NodeFilter.SHOW_TEXT,{
         acceptNode:node=>node.parentElement.closest('[contenteditable="false"]') ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT,
       });
@@ -58,7 +75,7 @@ export function installSpaceOverlay(editor, paper) {
   }
   function schedule() { if(!frame) frame=requestAnimationFrame(draw); }
   editor.on('transaction',({transaction})=>{if(transaction.docChanged)schedule();});
-  paper.addEventListener('compositionstart',()=>{composing=true;canvas.hidden=true;});
+  paper.addEventListener('compositionstart',()=>{composing=true;});
   paper.addEventListener('compositionend',()=>{composing=false;schedule();});
   window.addEventListener('scroll',schedule,true);
   window.addEventListener('resize',schedule);

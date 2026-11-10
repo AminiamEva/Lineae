@@ -282,6 +282,7 @@ button('enumerate',()=>editor.chain().focus().toggleOrderedList().run());
 button('▦',()=>editor.chain().focus().insertTable({rows:2,cols:2,withHeaderRow:false}).run());
 let editingMath = null;
 document.addEventListener('focusin', event => {
+  if (event.target.closest?.('.delimiter-input-embedded')) return;
   const field=event.composedPath().find(element=>element?.tagName==='MATH-FIELD');
   if(field || paper.contains(event.target) || event.target.classList?.contains('source-view')) {
     if(editingMath && editingMath!==field) editingMath.dispatchEvent(new Event('lineae-commit-fences'));
@@ -634,7 +635,7 @@ async function chooseMathDelimiters(field, rightFirst = false) {
   const value = field?.value;
   const documentBefore = editor.state.doc;
   const anchor = field?.getBoundingClientRect() ?? editor.view.coordsAtPos(editor.state.selection.from);
-  const pair = await readDelimiterPair(anchor, rightFirst);
+  const pair = await readDelimiterPair(anchor, rightFirst, field?.closest('[data-math-view]'));
   if (!pair) {
     if (document.activeElement === document.body) {
       if (field?.isConnected) field.focus(); else editor.view.focus();
@@ -745,7 +746,7 @@ function armLiteralFence(field) {
     insertLiveMath(field,fence);
   },options);
 }
-const mathOperatorKeys = { 'cs:s':'sum', 'cs:p':'prod', 'cs:i':'iint', 'csa:i':'iiint', 'a:i':'oint', 'sa:i':'oiint' };
+const mathOperatorKeys = { 'cs:s':'sum', 'ca:s':'sum', 'cs:p':'prod', 'cs:i':'iint', 'csa:i':'iiint', 'a:i':'oint', 'sa:i':'oiint' };
 window.addEventListener('keydown', event => {
   if (event.defaultPrevented || event.metaKey || event.isComposing) return;
   const field = event.composedPath().find(node => node?.tagName === 'MATH-FIELD');

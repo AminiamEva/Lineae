@@ -39,9 +39,6 @@ main { padding:125px 24px 60px; overflow:auto; }
 .code-token-number { color:light-dark(#8d512c,#e5b289); }
 .code-token-comment { color:light-dark(#676d76,#a5aab2); }
 .ProseMirror > p[data-indent="true"] { text-indent:1.5em; }
-[data-formatting-marks="true"] .ProseMirror p { position:relative; }
-[data-formatting-marks="true"] .ProseMirror p::after { content:'¶'; position:absolute; margin-inline-start:.3em; color:light-dark(#969696,#888); font:.72em/1.4 sans-serif; text-indent:0; pointer-events:none; }
-[data-formatting-marks="true"] .ProseMirror > p[data-indent="true"]::before { content:''; position:absolute; inset-inline-start:.3em; top:.5em; width:.65em; height:.4em; border-block-end:1px solid #969696; border-inline-end:1px solid #969696; pointer-events:none; }
 .space-overlay { position:fixed; inset:0 auto auto 0; z-index:2; pointer-events:none; user-select:none; }
 .ProseMirror { text-autospace:ideograph-alpha ideograph-numeric; }
 .document-find { position:fixed; inset:104px 16px auto auto; z-index:15; display:flex; align-items:center; gap:5px; padding:7px; border-radius:12px; background:light-dark(#fff,#29292d); box-shadow:0 4px 18px #0003; }
@@ -51,6 +48,11 @@ main { padding:125px 24px 60px; overflow:auto; }
 .delimiter-input input { width:100%; min-width:0; border:1px solid transparent; border-radius:5px; color:inherit; background:light-dark(#e8effa,#37445c); padding:4px 6px; }
 .delimiter-input input + input { background:light-dark(#efe9f7,#483b58); }
 .delimiter-input small { grid-column:1 / -1; opacity:.7; }
+.delimiter-input.delimiter-input-embedded { display:contents; }
+.delimiter-input-embedded input { position:absolute; z-index:20; top:50%; transform:translateY(-50%); width:2.4em; padding:.12em .25em; }
+.delimiter-input-embedded input:first-child { inset-inline-end:100%; }
+.delimiter-input-embedded input:nth-child(2) { inset-inline-start:100%; }
+.delimiter-input-embedded small { position:absolute; z-index:20; inset-inline-start:0; top:100%; white-space:nowrap; }
 [data-text-command="LaTeX"],[data-text-command="TeX"] { position:relative; white-space:nowrap; }
 .tex-logo-source { color:transparent; }
 .tex-logo-source::selection { color:transparent; background:light-dark(#b9d7fa99,#38568099); }
