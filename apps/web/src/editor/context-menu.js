@@ -50,11 +50,9 @@ export function contextCommands(context) {
       id:'matrix-'+target, labels:[zh,en],
       visible:Boolean(field?.value.match(/\\begin\{(?:[pbBvV]?matrix)\}/)),
       run:()=>{
-        const value=field.value;
-        const match=value.match(/\\begin\{(pmatrix|bmatrix|Bmatrix|vmatrix|Vmatrix|matrix)\}([\s\S]*?)\\end\{\1\}/);
-        if(!match)return;
-        const next=value.slice(0,match.index)+'\\begin{'+target+'}'+match[2]+'\\end{'+target+'}'+value.slice(match.index+match[0].length);
-        field.focus();field.value=next;field.dispatchEvent(new Event('input',{bubbles:true}));
+        // Operate on the matrix containing the caret, not the first source match.
+        // This preserves sibling/nested matrices and the math editor's selection.
+        field.focus();field.executeCommand(['setEnvironment',target]);
       },
     })),
     { id:'matrix-custom', labels:['自定义左右括号','Custom delimiters'],
