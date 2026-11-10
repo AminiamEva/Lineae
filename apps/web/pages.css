@@ -80,6 +80,10 @@ main { padding:125px 24px 60px; overflow:auto; }
 .ProseMirror h2 { font-size:1.4em; }
 .ProseMirror :is(ul,ol) { padding-inline-start:2em; }
 .ProseMirror :is(ul,ol) :is(ul,ol) { padding-inline-start:clamp(0px,100% - 10em,2em); }
+/* Imported lists can be deeper than the editor's nine visible levels. */
+.ProseMirror :is(ul,ol) :is(ul,ol) :is(ul,ol) :is(ul,ol) :is(ul,ol) :is(ul,ol) :is(ul,ol) :is(ul,ol) :is(ul,ol) :is(ul,ol) {
+  padding-inline-start:0;
+}
 .ProseMirror li p { margin:.2em 0; }
 .ProseMirror table { border-collapse:collapse; table-layout:fixed; width:100%; }
 .ProseMirror td,.ProseMirror th { border:1px solid light-dark(#bbb,#606066); padding:.4em; min-width:2em; position:relative; vertical-align:top; }
@@ -91,12 +95,13 @@ main { padding:125px 24px 60px; overflow:auto; }
 .lineae-multi-selected { background:light-dark(#cfe2ff,#2f4a6e); }
 .ProseMirror .column-resize-handle { position:absolute; right:-2px; top:0; bottom:0; width:4px; background:#589af4; pointer-events:none; }
 .resize-cursor { cursor:col-resize; }
-.ProseMirror .math-display { display:block; text-align:center; margin:.6em 0; min-height:1.5em; }
+.ProseMirror .math-display { display:flex; justify-content:center; align-items:center; margin:.6em 0; min-height:1.5em; }
 .ProseMirror { counter-reset:lineae-equation; }
 .ProseMirror .math-display[data-numbered="true"] { counter-increment:lineae-equation; position:relative; padding-right:3em; }
 .ProseMirror .math-display[data-numbered="true"]::after { content:"(" counter(lineae-equation) ")"; position:absolute; right:.4em; top:50%; transform:translateY(-50%); color:light-dark(#666,#b8b8bf); font-size:.9em; }
 .ProseMirror math-field { min-width:1em; max-width:100%; border:0; background:transparent; color:inherit; font-family:inherit; text-indent:0; }
 .ProseMirror .math-inline { display:inline-block; max-width:100%; vertical-align:baseline; }
+.ProseMirror > p[data-indent="true"] .math-inline { max-width:calc(100% - 2ic); }
 .ProseMirror .math-display math-field { max-width:calc(100% - 16px); }
 .ProseMirror math-field::part(content) { overflow-x:auto; }
 .ProseMirror .math-inline math-field { position:relative; z-index:1; display:inline-block; width:max-content; max-width:100%; min-width:.6em; padding:0; vertical-align:baseline; }

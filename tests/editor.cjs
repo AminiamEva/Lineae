@@ -1061,11 +1061,12 @@ const server=createServer(async(req,res)=>{
     await page.setViewportSize({width:1280,height:1400});
     const longFormula='x+y+'.repeat(160)+'z';
     await importSource('Lead $'+longFormula+'$\n\n\\['+longFormula+'\\]');
-    await page.waitForFunction(()=>document.querySelectorAll('.ProseMirror math-field').length===2);
-    assert.ok(await paper.evaluate(element=>{
+    await page.waitForFunction(latex=>[...document.querySelectorAll('.ProseMirror [data-math-view]')].filter(node=>node.dataset.latex===latex).length===2,longFormula);
+    const formulaOverflow=await paper.evaluate(element=>{
       const right=element.getBoundingClientRect().right;
-      return [...element.querySelectorAll('math-field')].every(field=>field.getBoundingClientRect().right<=right+1);
-    }),'Long inline and display formulas stay within the text column');
+      return [...element.querySelectorAll('math-field')].map(field=>field.getBoundingClientRect().right-right);
+    });
+    assert.ok(formulaOverflow.every(value=>value<=1),'Formula overflow in pixels: '+formulaOverflow);
     await page.locator('.source-toggle').click();
     assert.ok((await page.locator('.source-view').inputValue()).includes('\\newline\n$'+longFormula+'$'));
     await page.locator('.source-toggle').click();

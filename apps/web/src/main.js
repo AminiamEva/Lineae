@@ -218,7 +218,14 @@ const Shortcuts = Extension.create({
       ArrowLeft:()=>enterFormula(false),
       Tab:()=>{
         if(this.editor.isActive('table'))return false;
-        if(this.editor.isActive('listItem'))return this.editor.commands.sinkListItem('listItem');
+        if (this.editor.isActive('listItem')) {
+          const { $from }=this.editor.state.selection;
+          let depth=0;
+          for (let level=1; level<=$from.depth; level++) {
+            if ($from.node(level).type.name==='listItem') depth++;
+          }
+          return depth>=9 || this.editor.commands.sinkListItem('listItem');
+        }
         return this.editor.commands.insertContent('    ');
       },
       'Shift-Tab':()=>this.editor.isActive('listItem')?this.editor.commands.liftListItem('listItem'):false,
@@ -449,12 +456,17 @@ function recordFormulaLineBreaks(document) {
   let changed=false;
   editor.state.doc.forEach((paragraph,position,index)=>{
     if (paragraph.type.name!=='paragraph') return;
+    const paragraphDOM=editor.view.nodeDOM(position);
+    const lineWidth=paragraphDOM?.getBoundingClientRect().width;
+    if (!lineWidth) return;
     paragraph.forEach((node,offset,childIndex)=>{
       if (node.type.name!=='math' || childIndex===0 ||
           paragraph.child(childIndex-1).type.name==='hardBreak') return;
       const start=position+1+offset;
       const formula=editor.view.nodeDOM(start)?.getBoundingClientRect();
-      if (!formula?.width) return;
+      const scale=lineWidth/(paragraphDOM.offsetWidth || lineWidth);
+      const indent=(Number.parseFloat(getComputedStyle(paragraphDOM).textIndent)||0)*scale;
+      if (!formula?.width || formula.width<lineWidth-indent-1) return;
       const preceding=editor.view.coordsAtPos(start-1,1);
       if (formula.top<=(preceding.top+preceding.bottom)/2) return;
       document.content[index].content[childIndex].attrs.breakBefore=true;
@@ -471,15 +483,10 @@ function source() {
 }
 savedSource=source();
 function identifyImportedBoxes(node) {
-  let boxId=null;
   for (const child of node.content ?? []) {
     const mark=child.marks?.find(mark=>mark.type==='boxed');
-    if (mark) {
-      boxId ??=crypto.randomUUID();
-      mark.attrs={...mark.attrs,boxId};
-    } else {
-      boxId=null;
-    }
+    // The importer shares this mark object across the text in one source group.
+    if (mark && !mark.attrs?.boxId) mark.attrs={...mark.attrs,boxId:crypto.randomUUID()};
     identifyImportedBoxes(child);
   }
 }
