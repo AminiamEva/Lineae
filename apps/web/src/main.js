@@ -79,9 +79,6 @@ const SmallCaps = Mark.create({
 const Boxed = Mark.create({
   name:'boxed',parseHTML:()=>[{tag:'span[data-boxed]'}],
   renderHTML:()=>['span',{'data-boxed':'',style:'border:1px solid currentColor;padding:0 .2em'},0],
-  addKeyboardShortcuts() {
-    return {'Ctrl-Shift-b':()=>this.editor.commands.toggleMark(this.name)};
-  },
 });
 const TextCommand = Mark.create({
   name: 'textCommand',

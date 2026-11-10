@@ -53,6 +53,18 @@ export function installSpaceOverlay(editor, paper) {
 
   paper.addEventListener('pointerdown',()=>{arrowOrigin=null;},true);
   paper.addEventListener('keydown',event=>{
+    if (event.ctrlKey && event.shiftKey && !event.altKey && !event.metaKey &&
+        (event.code==='KeyB' || event.key.toLowerCase()==='b') &&
+        !composing && !event.isComposing && editor.view.hasFocus()) {
+      event.preventDefault();
+      event.stopPropagation();
+      arrowOrigin=null;
+      if (!event.repeat) {
+        editor.view.domObserver.flush();
+        editor.commands.toggleMark('boxed');
+      }
+      return;
+    }
     const right=event.key==='ArrowRight';
     const horizontal=right || event.key==='ArrowLeft';
     if (!horizontal || event.shiftKey || event.ctrlKey || event.altKey || event.metaKey ||
