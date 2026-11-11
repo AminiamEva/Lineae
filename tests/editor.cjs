@@ -1297,9 +1297,20 @@ async function verifySelectionGeometry(page, paper, importSource) {
         getComputedStyle(element).caretColor!=='rgba(0, 0, 0, 0)'),true,'The IME owns the focused text caret during preedit');
     }
     assert.notEqual(await paragraphMark.getAttribute('x'),initialMark,'The paragraph mark follows preedit text');
-    assert.equal(await page.locator('.space-overlay circle').evaluate(dot=>new Promise(resolve=>{
-      requestAnimationFrame(()=>requestAnimationFrame(()=>requestAnimationFrame(()=>resolve(dot.isConnected))));
-    })),true,'The space dot stays visible and idle while waiting for a candidate');
+    assert.equal(await page.evaluate(async()=>{
+      let dot=document.querySelector('.space-overlay circle');
+      let stable=0;
+      for (let frame=0;frame<10;frame++) {
+        await new Promise(requestAnimationFrame);
+        const next=document.querySelector('.space-overlay circle');
+        if (!next) return false;
+        // Allow an in-flight DOM or resize notification from the last update.
+        stable=next===dot ? stable+1 : 0;
+        if (stable===3) return true;
+        dot=next;
+      }
+      return false;
+    }),true,'The space dot stays visible and idle while waiting for a candidate');
 
     const committed=await samplePaintedCaret(page,()=>cdp.send('Input.insertText',{text:'中文'}));
     assertPaintedEdit(committed,'前 后中文',-1,'IME commit');
