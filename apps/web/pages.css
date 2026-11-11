@@ -8,7 +8,11 @@
 body { margin:0; }
 [hidden] { display:none!important; }
 header { position:fixed; inset:12px 12px auto; display:flex; justify-content:center; z-index:5; pointer-events:none; }
-header h1 { position:absolute; left:20px; top:4px; margin:0; font-size:18px; transition:opacity .18s; }
+header h1 { position:absolute; left:20px; top:4px; margin:0; width:126px; line-height:0; transition:opacity .18s; }
+header .brand-wordmark { display:block; width:100%; height:auto; }
+header .brand-wordmark-dark { display:none; }
+:root[data-theme="dark"] header .brand-wordmark-light { display:none; }
+:root[data-theme="dark"] header .brand-wordmark-dark { display:block; }
 .ribbon { pointer-events:auto; max-width:min(960px,calc(100vw - 24px)); padding:6px; border:1px solid light-dark(#ffffffb0,#ffffff18); border-radius:24px; background:light-dark(#fffffff2,#242426f2); box-shadow:0 6px 24px #0002; backdrop-filter:blur(16px); }
 .ribbon-tabs { display:flex; flex-wrap:wrap; justify-content:center; gap:2px; }
 .tools { display:flex; flex-wrap:wrap; justify-content:center; align-items:center; gap:3px; padding:4px 3px 3px; animation:toolbar-appear .14s ease-out; }
