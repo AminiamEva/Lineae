@@ -74,10 +74,14 @@ export function installSpaceOverlay(editor, paper) {
 
   paper.addEventListener('pointerdown',()=>{
     arrowOrigin=null;
-    scheduleCaret(null,true);
+    scheduleCaret('navigate',true);
   },{capture:true,signal});
+  paper.addEventListener('pointermove',event=>{
+    if ((event.buttons & 1) && editor.view.hasFocus()) scheduleCaret('navigate',true);
+  },{capture:true,passive:true,signal});
   paper.addEventListener('keydown',event=>{
-    if (/^(Arrow|Home$|End$|PageUp$|PageDown$)/.test(event.key)) scheduleCaret(null,true);
+    // A paint can run after the native move but before selectionchange.
+    if (/^(Arrow(?:Left|Right|Up|Down)|Home|End|PageUp|PageDown)$/.test(event.key)) scheduleCaret('navigate',true);
     if (['Backspace','Delete'].includes(event.key) && !composing && !event.isComposing && editor.view.hasFocus()) {
       scheduleCaret('edit',true);
     }
