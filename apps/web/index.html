@@ -4,14 +4,17 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Lineae</title>
-  <link rel="icon" type="image/svg+xml" href="./assets/brand/lineae-icon.svg">
+  <link rel="icon" type="image/svg+xml" sizes="any" href="./assets/brand/lineae-icon.svg">
   <link rel="stylesheet" href="./pages.css">
   <script defer src="./vendor/mathlive/mathlive.min.js"></script>
   <script type="module" src="./editor.mjs"></script>
 </head>
 <body>
   <header>
-    <h1>Lineae</h1>
+    <h1 class="brand" aria-label="Lineæ">
+      <img class="brand-wordmark brand-wordmark-light" src="./assets/brand/lineae-wordmark.svg" width="488" height="186" alt="">
+      <img class="brand-wordmark brand-wordmark-dark" src="./assets/brand/lineae-wordmark-dark.svg" width="488" height="186" alt="">
+    </h1>
     <div class="tools" aria-label="编辑工具 / Editing tools">
       <label class="open" data-tool="open"><span data-copy="open">打开 .tex</span><input id="file" type="file" accept=".tex"></label>
       <button id="download" type="button" data-tool="download" data-copy="download" disabled>保存 .tex</button>
