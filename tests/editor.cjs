@@ -1225,14 +1225,17 @@ const server=createServer(async(req,res)=>{
     await languageDialog.fill('yaml');
     await languageDialog.press('Enter');
     await page.waitForFunction(()=>document.querySelector('.ProseMirror pre[data-language="yaml"]'));
-    for (const [index,line] of ['# config','name: demo','items:','  - one','count: 42'].entries()) {
+    for (const [index,line] of ['name: demo','items:','  - one','count: 42','# note'].entries()) {
       if (index) await page.keyboard.press('Enter');
       await page.keyboard.type(line);
     }
     assert.equal(await paper.locator('pre[data-language="yaml"]').count(),1,'Code block keeps its language');
+    await page.waitForFunction(()=>Boolean(
+      document.querySelector('.ProseMirror pre .code-token-property')
+      && document.querySelector('.ProseMirror pre .code-token-comment')));
     const yamlTokens=await paper.locator('pre span[class^="code-token-"]').evaluateAll(nodes=>[...new Set(nodes.map(node=>node.className))]);
     assert.ok(yamlTokens.includes('code-token-property')&&yamlTokens.includes('code-token-comment'),
-      'YAML keys and comments are highlighted: '+JSON.stringify(yamlTokens));
+      'YAML keys and comments are highlighted: '+JSON.stringify(yamlTokens)+' '+await paper.locator('pre code').textContent());
     assert.equal(await paper.locator('pre[data-language="yaml"]').evaluate(element=>getComputedStyle(element,'::before').content),'"yaml"',
       'The code block shows its language');
     await page.keyboard.press('Enter');
