@@ -13,6 +13,142 @@ const server=createServer(async(req,res)=>{
     res.end(data);
   }catch{res.writeHead(404).end();}
 });
+
+async function verifyCaretMotion(page, paper) {
+  const caret=page.locator('.document-caret');
+  const close=(a,b)=>Math.abs(a.x-b.x)<1 && Math.abs(a.y-b.y)<1;
+  const settled=()=>page.waitForFunction(()=>{
+    const caret=document.querySelector('.document-caret');
+    const selection=document.getSelection();
+    const range=selection?.rangeCount && selection.getRangeAt(0);
+    if (!caret || caret.hidden || !range?.collapsed || caret.getAnimations().some(a=>a.id==='lineae-caret-glide')) return false;
+    const painted=caret.getBoundingClientRect(), native=range.getBoundingClientRect();
+    return Math.abs(painted.left-native.left)<1 && Math.abs(painted.top-native.top)<1;
+  },null,{timeout:4000});
+  // Pause each new glide and sample controlled times so the continuity check
+  // doesn't depend on the speed of the CI runner or display refresh rate.
+  const observeGlide=()=>caret.evaluate(element=>{
+    const current=element.getAnimations().find(a=>a.id==='lineae-caret-glide');
+    element.motionSample=null;
+    const layer=document.querySelector('.document-selection');
+    const point=rect=>({x:rect.left,y:rect.top});
+    const observer=new MutationObserver(()=>{
+      const glide=element.getAnimations().find(a=>a.id==='lineae-caret-glide' && a!==current);
+      if (!glide) return;
+      observer.disconnect();
+      const animations=[glide,...layer.getAnimations({subtree:true})];
+      const duration=glide.effect.getTiming().duration;
+      for (const animation of animations) animation.pause();
+      const at=progress=>{
+        for (const animation of animations) animation.currentTime=duration*progress;
+        const highlight=layer.firstElementChild?.getBoundingClientRect();
+        return {...point(element.getBoundingClientRect()),left:highlight?.left,right:highlight?.right};
+      };
+      const start=at(0), middle=at(.3);
+      const native=document.getSelection();
+      const focus=document.createRange();
+      focus.setStart(native.focusNode,native.focusOffset);
+      const end=point(focus.getBoundingClientRect());
+      element.motionSample={start,middle,end,duration,selected:native.toString()};
+    });
+    observer.observe(element,{attributes:true,attributeFilter:['style']});
+  });
+  const sample=async()=>{
+    await page.waitForFunction(()=>document.querySelector('.document-caret')?.motionSample,null,{timeout:4000});
+    return caret.evaluate(element=>element.motionSample);
+  };
+  const resume=()=>page.evaluate(()=>{
+    for (const animation of document.getAnimations()) {
+      if (['lineae-caret-glide','lineae-selection-glide'].includes(animation.id)) animation.play();
+    }
+  });
+
+  await paper.locator('p').first().click();
+  await page.keyboard.press('Home');
+  await settled();
+  await observeGlide();
+  await page.keyboard.press('End');
+  const horizontal=await sample();
+  assert.ok(horizontal.start.x<horizontal.middle.x && horizontal.middle.x<horizontal.end.x,
+    'The painted caret moves toward a selection that already reached the end of the line');
+
+  await observeGlide();
+  await page.keyboard.press('ArrowDown');
+  const vertical=await sample();
+  assert.ok(close(vertical.start,horizontal.middle),'A rapid key press starts at the painted caret');
+  assert.ok(vertical.start.y<vertical.middle.y && vertical.middle.y<vertical.end.y,
+    'The caret glides between lines');
+  await page.keyboard.insertText('!');
+  await settled();
+  assert.ok((await paper.locator('p').last().textContent()).includes('!'),
+    'Typing during a glide immediately edits at the real selection');
+  await observeGlide();
+  await page.keyboard.insertText('b');
+  const typed=await sample();
+  assert.ok(typed.start.x<typed.middle.x && typed.middle.x<typed.end.x && typed.duration<horizontal.duration,
+    'A keystroke paints a short glide while the new character is already present');
+  assert.match(await paper.locator('p').last().textContent(),/!b/);
+  await resume();
+  await settled();
+  await observeGlide();
+  await page.keyboard.press('Backspace');
+  const deleted=await sample();
+  assert.ok(deleted.start.x>deleted.middle.x && deleted.middle.x>deleted.end.x && deleted.duration<horizontal.duration,
+    'Backspace immediately removes the character while the caret moves back');
+  assert.doesNotMatch(await paper.locator('p').last().textContent(),/!b/);
+  await resume();
+  await settled();
+
+  await observeGlide();
+  await paper.locator('p').first().click({position:{x:60,y:8}});
+  const click=await sample();
+  assert.ok(click.end.y<click.middle.y && click.middle.y<click.start.y,'A mouse click can glide across lines');
+  await resume();
+  await settled();
+
+  await observeGlide();
+  await page.keyboard.press('Shift+ArrowRight');
+  const selected=await sample();
+  assert.equal(selected.selected.length,1);
+  assert.ok(Math.abs(selected.middle.right-selected.middle.x)<1,
+    'The forward highlight edge and caret move together');
+  await observeGlide();
+  await page.keyboard.press('Shift+ArrowRight');
+  const extended=await sample();
+  assert.equal(extended.selected.length,2);
+  assert.ok(close(extended.start,selected.middle) && Math.abs(extended.start.right-extended.start.x)<1 &&
+    Math.abs(extended.middle.right-extended.middle.x)<1,
+    'Extending a moving selection retargets its caret and highlight together');
+  await resume();
+  await page.keyboard.press('ArrowRight');
+  await settled();
+  await observeGlide();
+  await page.keyboard.press('Shift+ArrowLeft');
+  const reversed=await sample();
+  assert.equal(reversed.selected.length,1);
+  assert.ok(Math.abs(reversed.middle.left-reversed.middle.x)<1,
+    'A backward selection moves the left highlight edge with the caret');
+  await resume();
+  await page.keyboard.press('ArrowLeft');
+  await settled();
+  await page.keyboard.press('Control+=');
+  await settled();
+  await page.keyboard.press('Control+-');
+  await settled();
+
+  await page.emulateMedia({reducedMotion:'reduce'});
+  await caret.waitFor({state:'hidden'});
+  await page.keyboard.press('ArrowLeft');
+  await page.keyboard.press('Shift+ArrowRight');
+  assert.equal(await paper.evaluate(element=>element.classList.contains('has-document-selection')),false,
+    'Reduced motion also uses the native selection highlight');
+  assert.equal(await paper.evaluate(element=>getComputedStyle(element).caretColor==='rgba(0, 0, 0, 0)'),false,
+    'Reduced motion uses the native text caret');
+  await page.emulateMedia({reducedMotion:'no-preference'});
+  await page.keyboard.press('End');
+  await settled();
+}
+
 (async()=>{
   await new Promise(done=>server.listen(0,'127.0.0.1',done));
   const browser=await chromium.launch({headless:true});
@@ -25,7 +161,7 @@ const server=createServer(async(req,res)=>{
     const paper=page.locator('.ProseMirror');
     await paper.click();
     assert.equal(await paper.evaluate(element=>getComputedStyle(element).animationName),'none',
-      'The editor leaves caret blinking to the browser and system');
+      'Caret animation does not animate the editing surface');
     await page.keyboard.type('Hello');
     await page.keyboard.press('Enter');
     await page.keyboard.press('Enter');
@@ -117,6 +253,10 @@ const server=createServer(async(req,res)=>{
         buffer:Buffer.from('\\documentclass{article}\n\\begin{document}\n\n'+body+'\n\n\\end{document}\n'),
       });
     };
+    await importSource('Alpha beta gamma delta epsilon.\n\nAlpha beta gamma delta epsilon.');
+    await page.waitForFunction(()=>document.querySelectorAll('.ProseMirror > p').length===2 &&
+      document.querySelector('.ProseMirror > p').textContent.startsWith('Alpha'));
+    await verifyCaretMotion(page,paper);
     await importSource('\\section{First}\n\n\\subsection{Child}\n\n\\subsubsection{Detail}\n\n\\section*{Unnumbered}\n\n\\section{Second}');
     await page.waitForFunction(()=>document.querySelectorAll('.ProseMirror h1').length===3);
     assert.deepEqual(await paper.locator('[data-section-number]').evaluateAll(nodes=>nodes.map(node=>node.dataset.sectionNumber)),['1','1.1','1.1.1','2']);
@@ -897,16 +1037,20 @@ const server=createServer(async(req,res)=>{
     });
     await paper.locator('p').click();
     await page.keyboard.press('End');
+    const documentCaret=page.locator('.document-caret');
+    await documentCaret.waitFor();
     const cdp=await page.context().newCDPSession(page);
     const overlayState=()=>page.evaluate(()=>document.querySelector('.space-overlay').innerHTML);
     const beforeComposition=await overlayState();
     await cdp.send('Input.imeSetComposition',{text:'zhong',selectionStart:5,selectionEnd:5});
+    await documentCaret.waitFor({state:'hidden'});
     await page.waitForTimeout(120);
     assert.notEqual(await overlayState(),beforeComposition,'Markers follow composition text');
     assert.equal(await page.locator('.space-overlay').isVisible(),true);
     await cdp.send('Input.imeSetComposition',{text:'中文',selectionStart:2,selectionEnd:2});
     await cdp.send('Input.insertText',{text:'中文'});
     await page.waitForFunction(()=>document.querySelector('.ProseMirror p')?.textContent==='前 后中文');
+    await documentCaret.waitFor();
     await page.keyboard.press('Backspace');
     assert.equal(await paper.locator('p').textContent(),'前 后中');
     await paper.locator('p').evaluate(paragraph=>window.getSelection().collapse(paragraph.firstChild,0));

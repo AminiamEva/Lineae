@@ -1,4 +1,7 @@
+import { createCaretMotion } from './caret-motion.js';
+
 const SVG = 'http://www.w3.org/2000/svg';
+const TEXT_EDIT = new Set(['insertText','deleteContentBackward','deleteContentForward','deleteWordBackward','deleteWordForward']);
 
 function shape(name, attributes = {}) {
   const element = document.createElementNS(SVG, name);
@@ -9,6 +12,9 @@ function shape(name, attributes = {}) {
 export function installSpaceOverlay(editor, paper) {
   const page = paper.closest('.document-page') ?? paper;
   const overlay = shape('svg', { class:'space-overlay', 'aria-hidden':'true' });
+  const activeBoxOverlay = shape('g');
+  const marksOverlay = shape('g');
+  overlay.append(activeBoxOverlay, marksOverlay);
   page.append(overlay);
   const boxCaret=document.createElement('span');
   boxCaret.className='box-edge-caret';
@@ -20,19 +26,15 @@ export function installSpaceOverlay(editor, paper) {
   emptyBox.hidden=true;
   emptyBox.setAttribute('aria-hidden','true');
   page.append(emptyBox);
-  const motionCaret=document.createElement('span');
-  motionCaret.className='box-edge-caret';
-  motionCaret.hidden=true;
-  motionCaret.setAttribute('aria-hidden','true');
-  page.append(motionCaret);
-  const reducedMotion=window.matchMedia('(prefers-reduced-motion: reduce)');
-  let lastCaret=null;
-  let caretAnimation=null;
-  let animateCaret=false;
+  const textCaret=createCaretMotion(editor.view,page);
+  const listeners=new AbortController();
+  const { signal }=listeners;
   let enabled = true;
   let composing = false;
-  let frame = 0;
-  let compositionFrame = 0;
+  let caretFrame = 0;
+  let marksFrame = 0;
+  let caretIntent = null;
+  let caretActivity = false;
   let arrowOrigin = null;
 
   function boxEdge(preferNext=false) {
@@ -72,11 +74,13 @@ export function installSpaceOverlay(editor, paper) {
 
   paper.addEventListener('pointerdown',()=>{
     arrowOrigin=null;
-    animateCaret=false;
-    lastCaret=null;
-    caretAnimation?.cancel();
-  },true);
+    scheduleCaret(null,true);
+  },{capture:true,signal});
   paper.addEventListener('keydown',event=>{
+    if (/^(Arrow|Home$|End$|PageUp$|PageDown$)/.test(event.key)) scheduleCaret(null,true);
+    if (['Backspace','Delete'].includes(event.key) && !composing && !event.isComposing && editor.view.hasFocus()) {
+      scheduleCaret('edit',true);
+    }
     if (event.ctrlKey && event.shiftKey && !event.altKey && !event.metaKey &&
         (event.code==='KeyB' || event.key.toLowerCase()==='b') &&
         !composing && !event.isComposing && editor.view.hasFocus()) {
@@ -150,7 +154,7 @@ export function installSpaceOverlay(editor, paper) {
       }
     }
     arrowOrigin={position:editor.state.selection.from,right};
-  },true);
+  },{capture:true,signal});
 
   paper.addEventListener('click',event=>{
     if (event.button || event.shiftKey || event.ctrlKey || event.altKey || event.metaKey ||
@@ -167,10 +171,13 @@ export function installSpaceOverlay(editor, paper) {
     editor.view.dispatch(editor.state.tr.setStoredMarks(
       inside ? edge.insideMarks : edge.outsideMarks,
     ));
-  });
+  },{signal});
 
-  function draw() {
-    frame=0;
+  function drawCaret() {
+    caretFrame=0;
+    const intent=caretIntent, activity=caretActivity;
+    caretIntent=null;
+    caretActivity=false;
     const pageRect=page.getBoundingClientRect();
     const zoom=page.offsetWidth ? pageRect.width/page.offsetWidth : 1;
     const edge=!composing && editor.view.hasFocus() ? boxEdge() : null;
@@ -197,64 +204,9 @@ export function installSpaceOverlay(editor, paper) {
       boxCaret.style.top=((edge.rect.top-pageRect.top)/zoom+2)+'px';
       boxCaret.style.height=Math.max(1,edge.rect.height/zoom-4)+'px';
     }
-    const canAnimate=!reducedMotion.matches && !composing && selection.empty &&
-      editor.view.hasFocus() && boxCaret.hidden && !pendingBox && pageRect.width;
-    if (!canAnimate) {
-      lastCaret=null;
-      caretAnimation?.cancel();
-    } else {
-      const caret=editor.view.coordsAtPos(selection.from);
-      const next={
-        x:(caret.left-pageRect.left)/zoom,
-        y:(caret.top-pageRect.top)/zoom,
-        height:(caret.bottom-caret.top)/zoom,
-        position:selection.from,
-      };
-      if (animateCaret && lastCaret && next.position!==lastCaret.position &&
-          Math.abs(next.y-lastCaret.y)<2 && Math.abs(next.x-lastCaret.x)>0.5 &&
-          Math.abs(next.x-lastCaret.x)<80 && next.height>0) {
-        const delta=lastCaret.x-next.x;
-        caretAnimation?.cancel();
-        motionCaret.hidden=false;
-        motionCaret.style.left=next.x+'px';
-        motionCaret.style.top=next.y+'px';
-        motionCaret.style.height=next.height+'px';
-        editor.view.dom.classList.add('has-motion-caret');
-        const animation=motionCaret.animate(
-          [{transform:'translateX('+delta+'px)'},{transform:'translateX(0)'}],
-          {duration:75,easing:'ease-out'},
-        );
-        caretAnimation=animation;
-        const finish=()=>{
-          if (caretAnimation!==animation) return;
-          caretAnimation=null;
-          motionCaret.hidden=true;
-          editor.view.dom.classList.remove('has-motion-caret');
-        };
-        animation.onfinish=finish;
-        animation.oncancel=finish;
-      }
-      lastCaret=next;
-    }
-    animateCaret=false;
-    overlay.hidden=!enabled || !pageRect.width || !pageRect.height;
-    if (overlay.hidden) return;
-    const width=page.clientWidth;
-    const height=page.clientHeight;
-    overlay.setAttribute('viewBox',`0 0 ${width} ${height}`);
-    overlay.setAttribute('width','100%');
-    overlay.setAttribute('height','100%');
-    overlay.replaceChildren();
-    const color='rgba(128,128,128,.58)';
-    const range=document.createRange();
-    const local=rect=>({
-      left:(rect.left-pageRect.left)/zoom,
-      right:(rect.right-pageRect.left)/zoom,
-      top:(rect.top-pageRect.top)/zoom,
-      bottom:(rect.bottom-pageRect.top)/zoom,
-      width:rect.width/zoom,
-      height:rect.height/zoom,
-    });
+    textCaret.update({pageRect,zoom,intent,activity,blocked:composing || !boxCaret.hidden || Boolean(pendingBox)});
+    activeBoxOverlay.replaceChildren();
+    if (!enabled || !pageRect.width || !pageRect.height) return;
     // A boxed mark and the surrounding text can share the same document
     // position at its edge. Indicate the actual DOM caret side without
     // modifying the selection or intercepting editing gestures.
@@ -265,14 +217,38 @@ export function installSpaceOverlay(editor, paper) {
     const activeBox=(!explicitMarks || explicitMarks.some(mark=>mark.type.name==='boxed'))
       ? anchorElement?.closest?.('[data-boxed]') : null;
     if (activeBox && paper.contains(activeBox)) {
-      for (const clientRect of activeBox.getClientRects()) {
-        const rect=local(clientRect);
-        if (rect.width>0 && rect.height>0) overlay.append(shape('rect',{
-          'data-active-box':'',x:rect.left,y:rect.top,width:rect.width,height:rect.height,
+      for (const rect of activeBox.getClientRects()) {
+        if (rect.width>0 && rect.height>0) activeBoxOverlay.append(shape('rect',{
+          'data-active-box':'',x:(rect.left-pageRect.left)/zoom,y:(rect.top-pageRect.top)/zoom,
+          width:rect.width/zoom,height:rect.height/zoom,
           rx:2,fill:'rgba(80,135,210,.12)',stroke:'rgba(80,135,210,.45)','stroke-width':1,
         }));
       }
     }
+  }
+
+  function drawMarks() {
+    marksFrame=0;
+    const pageRect=page.getBoundingClientRect();
+    const zoom=page.offsetWidth ? pageRect.width/page.offsetWidth : 1;
+    overlay.hidden=!enabled || !pageRect.width || !pageRect.height;
+    if (overlay.hidden) return;
+    // The native DOM can change between transactions during IME composition.
+    if (composing) scheduleMarks();
+    const width=page.clientWidth;
+    const height=page.clientHeight;
+    overlay.setAttribute('viewBox',`0 0 ${width} ${height}`);
+    marksOverlay.replaceChildren();
+    const color='rgba(128,128,128,.58)';
+    const range=document.createRange();
+    const local=rect=>({
+      left:(rect.left-pageRect.left)/zoom,
+      right:(rect.right-pageRect.left)/zoom,
+      top:(rect.top-pageRect.top)/zoom,
+      bottom:(rect.bottom-pageRect.top)/zoom,
+      width:rect.width/zoom,
+      height:rect.height/zoom,
+    });
     for (const block of editor.view.dom.querySelectorAll('p,h1,h2,h3,pre')) {
       const bounds=local(block.getBoundingClientRect());
       if(bounds.bottom<0 || bounds.top>height || bounds.right<0 || bounds.left>width)continue;
@@ -304,11 +280,11 @@ export function installSpaceOverlay(editor, paper) {
           fill:color,
         });
         mark.textContent='¶';
-        overlay.append(mark);
+        marksOverlay.append(mark);
         if(indent>0) {
           const end=bounds.left+indent-4;
-          overlay.append(shape('line',{x1:bounds.left+2,y1:y,x2:end,y2:y,stroke:color,'stroke-width':1}));
-          overlay.append(shape('line',{x1:end,y1:y-3,x2:end,y2:y+3,stroke:color,'stroke-width':1}));
+          marksOverlay.append(shape('line',{x1:bounds.left+2,y1:y,x2:end,y2:y,stroke:color,'stroke-width':1}));
+          marksOverlay.append(shape('line',{x1:end,y1:y-3,x2:end,y2:y+3,stroke:color,'stroke-width':1}));
         }
       }
       const walker=document.createTreeWalker(block,NodeFilter.SHOW_TEXT,{
@@ -324,12 +300,12 @@ export function installSpaceOverlay(editor, paper) {
           const y=(rect.top+rect.bottom)/2;
           if(match[0]==='\t') {
             const end=rect.right-2;
-            overlay.append(shape('path',{
+            marksOverlay.append(shape('path',{
               d:`M ${rect.left+2} ${y} L ${end} ${y} L ${end-3} ${y-3} M ${end} ${y} L ${end-3} ${y+3}`,
               fill:'none',stroke:color,'stroke-width':1,
             }));
           } else {
-            overlay.append(shape('circle',{
+            marksOverlay.append(shape('circle',{
               cx:x,cy:y,r:Math.max(.8,Math.min(2,rect.height*.057)),
               fill:match[0]==='\u00a0'?'none':color,
               stroke:match[0]==='\u00a0'?color:'none','stroke-width':1,
@@ -339,22 +315,30 @@ export function installSpaceOverlay(editor, paper) {
       }
     }
   }
-  function schedule() { if(!frame) frame=requestAnimationFrame(draw); }
-  function compositionLoop() {
-    compositionFrame=0;
-    if(!composing)return;
-    draw();
-    compositionFrame=requestAnimationFrame(compositionLoop);
+  function scheduleCaret(intent=null,activity=false) {
+    if (intent==='edit' || !caretIntent) caretIntent=intent;
+    caretActivity ||= activity;
+    if (!caretFrame) caretFrame=requestAnimationFrame(drawCaret);
+  }
+  function scheduleMarks() {
+    if (!marksFrame) marksFrame=requestAnimationFrame(drawMarks);
+  }
+  function scheduleLayout() {
+    scheduleCaret();
+    scheduleMarks();
+  }
+  function yieldCaret() {
+    caretIntent=null;
+    textCaret.hide();
   }
   editor.on('transaction',({transaction})=>{
     if (transaction.docChanged) {
-      caretAnimation?.cancel();
-      caretAnimation=null;
-      motionCaret.hidden=true;
-      editor.view.dom.classList.remove('has-motion-caret');
+      if (caretIntent!=='edit') yieldCaret();
+      scheduleMarks();
     }
-    if (transaction.selectionSet && !transaction.docChanged) animateCaret=true;
-    schedule();
+    if (editor.state.selection.$cursor===undefined) yieldCaret();
+    scheduleCaret(transaction.selectionSet && !transaction.docChanged ? 'navigate' : null,
+      transaction.docChanged || transaction.selectionSet);
     if (!transaction.selectionSet || !arrowOrigin || editor.state.storedMarks) return;
     const state=editor.state;
     const origin=arrowOrigin;
@@ -366,28 +350,54 @@ export function installSpaceOverlay(editor, paper) {
       editor.view.dispatch(state.tr.setStoredMarks(edge.end===origin.right?edge.insideMarks:edge.outsideMarks));
     });
   });
-  paper.addEventListener('focusin',schedule);
-  paper.addEventListener('focusout',schedule);
+  paper.addEventListener('focusin',()=>{scheduleCaret(null,true);scheduleMarks();},{signal});
+  paper.addEventListener('focusout',()=>{yieldCaret();scheduleCaret();},{signal});
+  paper.addEventListener('beforeinput',event=>{
+    if (!composing && !event.isComposing && editor.view.hasFocus() && TEXT_EDIT.has(event.inputType)) {
+      scheduleCaret('edit',true);
+    } else {
+      yieldCaret();
+      scheduleCaret(null,true);
+    }
+  },{capture:true,signal});
   paper.addEventListener('compositionstart',()=>{
     composing=true;
-    if(!compositionFrame)compositionFrame=requestAnimationFrame(compositionLoop);
-  });
-  paper.addEventListener('compositionupdate',schedule);
+    yieldCaret();
+    scheduleLayout();
+  },{capture:true,signal});
+  paper.addEventListener('compositionupdate',scheduleMarks,{signal});
   paper.addEventListener('compositionend',()=>{
     composing=false;
-    if(compositionFrame)cancelAnimationFrame(compositionFrame);
-    compositionFrame=0;
-    schedule();
-  });
-  document.addEventListener('selectionchange',schedule);
-  window.addEventListener('scroll',schedule,true);
-  window.addEventListener('resize',schedule);
-  const observer=new ResizeObserver(schedule);
+    scheduleLayout();
+  },{capture:true,signal});
+  document.addEventListener('selectionchange',()=>scheduleCaret('navigate',true),{signal});
+  document.addEventListener('visibilitychange',()=>{yieldCaret();scheduleCaret();},{signal});
+  window.addEventListener('blur',yieldCaret,{signal});
+  window.addEventListener('focus',()=>scheduleCaret(null,true),{signal});
+  window.addEventListener('scroll',scheduleLayout,{capture:true,passive:true,signal});
+  window.addEventListener('resize',scheduleLayout,{signal});
+  paper.addEventListener('load',scheduleLayout,{capture:true,signal});
+  document.fonts?.addEventListener('loadingdone',scheduleLayout,{signal});
+  textCaret.watchPreferences(()=>scheduleCaret(),signal);
+  const observer=new ResizeObserver(scheduleLayout);
   observer.observe(page);
+  observer.observe(editor.view.dom);
   // The browser can change the editable DOM during composition before a
   // ProseMirror transaction is emitted. Refresh the visual layer in either case.
-  const contentObserver=new MutationObserver(schedule);
+  const contentObserver=new MutationObserver(scheduleLayout);
   contentObserver.observe(paper,{subtree:true,childList:true,characterData:true});
-  schedule();
-  return value=>{enabled=value;schedule();};
+  contentObserver.observe(page,{attributes:true,attributeFilter:['style','hidden'],childList:true});
+  editor.on('destroy',()=>{
+    listeners.abort();
+    observer.disconnect();
+    contentObserver.disconnect();
+    cancelAnimationFrame(caretFrame);
+    cancelAnimationFrame(marksFrame);
+    textCaret.destroy();
+    overlay.remove();
+    boxCaret.remove();
+    emptyBox.remove();
+  });
+  scheduleLayout();
+  return value=>{enabled=value;scheduleLayout();};
 }
