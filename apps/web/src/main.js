@@ -4,7 +4,7 @@ import { closeHistory } from '@tiptap/pm/history';
 import { exitCode } from '@tiptap/pm/commands';
 import { mathFontStyles, applyMathFont } from './editor/math-formatting.js';
 import { installFormatControls } from './editor/format-controls.js';
-import { decorateToolbar, icon } from './editor/icons.js';
+import { decorateToolbar, applyToolbarDescriptions, icon } from './editor/icons.js';
 import { PaperBehavior } from './editor/paper-behavior.js';
 import { MathNode, MathBlock, configureMathKeys, insertFormula, toggleDisplayStyle } from './editor/math-node.js';
 import { Ref, Label, Cite, Footnote, TableOfContents, refreshReferences, collectReferenceLabels } from './editor/references.js';
@@ -224,7 +224,7 @@ const Shortcuts = Extension.create({
           for (let level=1; level<=$from.depth; level++) {
             if ($from.node(level).type.name==='listItem') depth++;
           }
-          return depth>=9 || this.editor.commands.sinkListItem('listItem');
+          return depth>=10 || this.editor.commands.sinkListItem('listItem');
         }
         return this.editor.commands.insertContent('    ');
       },
@@ -456,21 +456,25 @@ function recordFormulaLineBreaks(document) {
   let changed=false;
   editor.state.doc.forEach((paragraph,position,index)=>{
     if (paragraph.type.name!=='paragraph') return;
-    const paragraphDOM=editor.view.nodeDOM(position);
-    const lineWidth=paragraphDOM?.getBoundingClientRect().width;
-    if (!lineWidth) return;
     paragraph.forEach((node,offset,childIndex)=>{
-      if (node.type.name!=='math' || childIndex===0 ||
-          paragraph.child(childIndex-1).type.name==='hardBreak') return;
+      if (node.type.name!=='math') return;
       const start=position+1+offset;
-      const formula=editor.view.nodeDOM(start)?.getBoundingClientRect();
-      const scale=lineWidth/(paragraphDOM.offsetWidth || lineWidth);
-      const indent=(Number.parseFloat(getComputedStyle(paragraphDOM).textIndent)||0)*scale;
-      if (!formula?.width || formula.width<lineWidth-indent-1) return;
-      const preceding=editor.view.coordsAtPos(start-1,1);
-      if (formula.top<=(preceding.top+preceding.bottom)/2) return;
-      document.content[index].content[childIndex].attrs.breakBefore=true;
-      changed=true;
+      const startsLine=childIndex===0||paragraph.child(childIndex-1).type.name==='hardBreak';
+      let breakBefore=false;
+      if (!startsLine) {
+        const formula=editor.view.nodeDOM(start)?.getBoundingClientRect();
+        if (formula?.width) {
+          const preceding=editor.view.coordsAtPos(start-1,1);
+          // The browser wraps an inline-block that does not fit the remaining
+          // space. TeX does not, so record the same break as \newline.
+          breakBefore=formula.left<=preceding.left+.5;
+        }
+      }
+      if (Boolean(node.attrs.breakBefore)!==breakBefore) {
+        const target=document.content[index].content[childIndex];
+        target.attrs={...target.attrs,breakBefore:breakBefore||null};
+        changed=true;
+      }
     });
   });
   return changed;
@@ -924,7 +928,8 @@ function updateThemeButton(){
   const label={light:['浅色','Light'],dark:['深色','Dark'],system:['跟随系统','System']}[theme.getPreference()];
   const description=(chinese?'主题：':'Theme: ')+label[chinese?0:1];
   themeButton.setAttribute('aria-label',description);
-  themeButton.title=description;
+  themeButton.dataset.tooltipZh=description;
+  themeButton.dataset.tooltipEn=description;
   themeButton.replaceChildren(icon({light:'sun',dark:'moon',system:'system'}[theme.getPreference()]));
 }
 const sourceButton=document.createElement('button');
@@ -935,6 +940,11 @@ sourceButton.addEventListener('click',toggleSourceView);
 function updateSourceButton(){
   const chinese=document.documentElement.lang.startsWith('zh');
   sourceButton.textContent=sourceView.hidden?(chinese?'源码':'Source'):(chinese?'富文本':'Rich text');
+  const description=sourceView.hidden
+    ? (chinese?'切换到 LaTeX 源码视图':'Switch to the LaTeX source view')
+    : (chinese?'返回富文本编辑':'Return to rich-text editing');
+  sourceButton.dataset.tooltipZh=description;
+  sourceButton.dataset.tooltipEn=description;
   sourceButton.setAttribute('aria-pressed',String(!sourceView.hidden));
 }
 function scale() {
@@ -1388,7 +1398,7 @@ for(const control of ribbon.querySelectorAll('button'))control.dataset.rovingIte
 installRovingFocus(tabs,{initial:Object.keys(groups).indexOf('home'),onActivate:control=>control.click()});
 for(const panel of Object.values(groups))installRovingFocus(panel,{onActivate:control=>control.click()});
 const download=document.querySelector('#download');
-language.addEventListener('change',()=>{updateLanguage();saveConfig({language:language.value});});updateLanguage();selectGroup('home');
+language.addEventListener('change',()=>{updateLanguage();saveConfig({language:language.value});});updateLanguage();applyToolbarDescriptions(ribbon);selectGroup('home');
 
 installContextMenu(editor, paper, language, message => {
   const status = document.querySelector('#status');

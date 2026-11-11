@@ -602,10 +602,10 @@ const server=createServer(async(req,res)=>{
     await page.locator('#language').evaluate(element=>{element.value='zh-CN';element.dispatchEvent(new Event('change',{bubbles:true}));});
     await page.locator('[data-group=home]').click();
     await page.getByRole('button',{name:'↶',exact:true}).hover();
-    await page.waitForFunction(()=>document.querySelector('.lineae-tooltip')?.textContent==='撤销');
+    await page.waitForFunction(()=>document.querySelector('.lineae-tooltip')?.textContent.includes('撤销'));
     await page.locator('#language').evaluate(element=>{element.value='en';element.dispatchEvent(new Event('change',{bubbles:true}));});
     await page.getByRole('button',{name:'↶',exact:true}).hover();
-    await page.waitForFunction(()=>document.querySelector('.lineae-tooltip')?.textContent==='Undo');
+    await page.waitForFunction(()=>document.querySelector('.lineae-tooltip')?.textContent.includes('Undo'));
     await page.locator('#language').evaluate(element=>{element.value='zh-CN';element.dispatchEvent(new Event('change',{bubbles:true}));});
     await page.locator('[data-group=home]').focus();
     await page.keyboard.press('ArrowRight');
@@ -701,6 +701,28 @@ const server=createServer(async(req,res)=>{
     await page.getByRole('button',{name:'sum',exact:true}).click();
     await page.waitForFunction(previous=>document.querySelector('math-field')?.value!==previous,beforeToolbarSum);
     assert.equal(await page.locator('math-field').count(),mathCount,'The sum button edits the active formula');
+    const missingTooltips=await page.evaluate(()=>[...document.querySelectorAll('.ribbon button')]
+      .filter(button=>!button.dataset.tooltipZh&&!button.dataset.tooltip)
+      .map(button=>button.textContent.trim()||button.getAttribute('aria-label')));
+    assert.deepEqual(missingTooltips,[],'Every toolbar button has a tooltip');
+    await page.locator('[data-group=table]').click();
+    const mergeButton=page.getByRole('button',{name:'merge',exact:true});
+    await mergeButton.hover();
+    const tooltip=page.locator('.lineae-tooltip');
+    await page.waitForTimeout(150);
+    assert.equal(await tooltip.isVisible(),false,'Tooltips wait before appearing');
+    await page.waitForTimeout(500);
+    assert.equal(await tooltip.isVisible(),true);
+    const tooltipText=await tooltip.textContent();
+    assert.notEqual(tooltipText.toLowerCase(),'merge','Tooltips explain the control instead of repeating its label');
+    const tooltipPlacement=await mergeButton.evaluate((button,tip)=>{
+      const control=button.getBoundingClientRect(),label=tip.getBoundingClientRect();
+      return {control:{top:control.top,bottom:control.bottom},label:{top:label.top,bottom:label.bottom}};
+    },await tooltip.elementHandle());
+    assert.ok(tooltipPlacement.label.bottom<=tooltipPlacement.control.top+.5||tooltipPlacement.label.top>=tooltipPlacement.control.bottom-.5,
+      'Tooltip does not cover its control: '+JSON.stringify(tooltipPlacement));
+    await page.mouse.move(0,0);
+    assert.equal(await tooltip.isVisible(),false);
     await importSource(String.raw`\noindent Unindented`);
     await page.waitForFunction(()=>document.querySelector('.ProseMirror p[data-indent="false"]')?.textContent==='Unindented');
     await paper.locator('p').click();
@@ -805,8 +827,13 @@ const server=createServer(async(req,res)=>{
     assert.equal((await paper.locator('p').textContent()).trim(),'beta');
     await importSource('\\indent $x+y$ tail');
     await page.waitForFunction(()=>document.querySelector('math-field'));
-    const inlineWidth=await page.locator('math-field').evaluate(field=>({host:field.getBoundingClientRect().width,base:field.shadowRoot.querySelector('.ML__base').getBoundingClientRect().width}));
+    const inlineWidth=await page.locator('math-field').evaluate(field=>{
+      const view=field.closest('[data-math-view]');
+      const host=field.getBoundingClientRect(),base=field.shadowRoot.querySelector('.ML__base').getBoundingClientRect();
+      return {viewLeft:view.getBoundingClientRect().left,hostLeft:host.left,host:host.width,base:base.width};
+    });
     assert.ok(Math.abs(inlineWidth.host-inlineWidth.base)<1,'Inline math keeps no inherited indent gap: '+JSON.stringify(inlineWidth));
+    assert.ok(inlineWidth.hostLeft-inlineWidth.viewLeft<1,'Inline math has no leading space: '+JSON.stringify(inlineWidth));
     const handlePlace=await page.locator('math-field').evaluate(field=>{
       const handle=field.closest('[data-math-view]').querySelector('.math-drag-handle');
       const f=field.getBoundingClientRect(),h=handle.getBoundingClientRect();
@@ -1067,8 +1094,19 @@ const server=createServer(async(req,res)=>{
       return [...element.querySelectorAll('math-field')].map(field=>field.getBoundingClientRect().right-right);
     });
     assert.ok(formulaOverflow.every(value=>value<=1),'Formula overflow in pixels: '+formulaOverflow);
+    assert.ok(await page.evaluate(()=>{
+      const main=document.querySelector('main');
+      return main.scrollWidth<=main.clientWidth+1;
+    }),'Long formulas do not add a page scrollbar');
     await page.locator('.source-toggle').click();
     assert.ok((await page.locator('.source-view').inputValue()).includes('\\newline\n$'+longFormula+'$'));
+    await page.locator('.source-toggle').click();
+    const wrappedFormula='x+y+'.repeat(10)+'z';
+    await importSource('W'.repeat(40)+'$'+wrappedFormula+'$');
+    await page.waitForFunction(latex=>document.querySelector('[data-math-view]')?.dataset.latex===latex,wrappedFormula);
+    await page.locator('.source-toggle').click();
+    assert.ok((await page.locator('.source-view').inputValue()).includes('\\newline\n$'+wrappedFormula+'$'),
+      'A formula that wraps naturally is recorded as \\newline even when it fits an empty line');
     await page.locator('.source-toggle').click();
     const nestedLists=Array.from({length:32},(_,index)=>index%2?'enumerate':'itemize');
     await importSource(nestedLists.map(kind=>'\\begin{'+kind+'}\n\\item Level\n').join('')+
@@ -1078,6 +1116,21 @@ const server=createServer(async(req,res)=>{
       const right=element.getBoundingClientRect().right;
       return [...element.querySelectorAll('li')].every(item=>item.getBoundingClientRect().left<right-20);
     }),'Deep mixed lists retain room for text');
+    const nineLevels=Array.from({length:9},(_,index)=>index%2?'enumerate':'itemize');
+    await importSource(nineLevels.map(kind=>'\\begin{'+kind+'}\n\\item Level\n').join('')+
+      nineLevels.slice().reverse().map((kind,index)=>(index===0?'\\item Extra\n':'')+'\\end{'+kind+'}\n').join(''));
+    await page.waitForFunction(()=>document.querySelectorAll('.ProseMirror li').length===10);
+    const deepestDepth=()=>page.evaluate(()=>Math.max(...[...document.querySelectorAll('.ProseMirror li')].map(item=>{
+      let depth=1;
+      for(let parent=item.parentElement;parent;parent=parent.parentElement)if(parent.tagName==='LI')depth++;
+      return depth;
+    })));
+    await paper.getByText('Extra',{exact:true}).click();
+    await page.keyboard.press('End');
+    await page.keyboard.press('Tab');
+    assert.equal(await deepestDepth(),10,'Lists can sink to the tenth level');
+    await page.keyboard.press('Tab');
+    assert.equal(await deepestDepth(),10,'Lists stop at the tenth level');
     await importSource('Before $x$ after');
     await page.waitForFunction(()=>document.querySelector('.ProseMirror p')?.textContent.includes('Before') && document.querySelector('[data-math-view]')?.dataset.latex==='x');
     await page.locator('math-field').evaluate(field=>{field.focus();field.executeCommand('moveToMathfieldEnd');});

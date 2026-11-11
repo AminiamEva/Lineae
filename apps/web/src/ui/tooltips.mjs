@@ -23,11 +23,11 @@ export function parseTooltipDataset(dataset = {}) {
   });
 }
 
-export function clampTooltipPosition({ left = 0, top = 0, width = 0, height = 0 }, { width: viewportWidth = 0, height: viewportHeight = 0 }, margin = 8, gap = 6) {
+export function clampTooltipPosition({ left = 0, top = 0, bottom, width = 0, height = 0 }, { width: viewportWidth = 0, height: viewportHeight = 0 }, margin = 8, gap = 6) {
   const maxLeft = Math.max(margin, viewportWidth - width - margin);
   const clampedLeft = Math.min(Math.max(margin, left), maxLeft);
   const above = top - gap - height;
-  const below = top + gap;
+  const below = (bottom ?? top) + gap;
   const placement = above >= margin ? 'top' : 'bottom';
   const maxTop = Math.max(margin, viewportHeight - height - margin);
   const clampedTop = Math.min(Math.max(margin, placement === 'top' ? above : below), maxTop);
@@ -38,6 +38,7 @@ export function installTooltips(root, {
   document: doc = globalThis.document,
   language = 'zh-CN',
   selector = '[data-tooltip-zh],[data-tooltip]',
+  delay = 500,
 } = {}) {
   if (!root?.addEventListener || !doc?.createElement) return null;
   const id = 'lineae-tooltip-' + (++tooltipCounter);
@@ -60,13 +61,20 @@ export function installTooltips(root, {
   (doc.body ?? root).append(tip);
   let lang = language === 'en' ? 'en' : 'zh-CN';
   let active = null;
+  let pendingTimer = null;
 
+  const cancelPending = () => {
+    if (pendingTimer === null) return;
+    clearTimeout(pendingTimer);
+    pendingTimer = null;
+  };
   const hide = () => {
+    cancelPending();
     if (active) active.removeAttribute?.('aria-describedby');
     active = null;
     tip.hidden = true;
   };
-  const show = control => {
+  const render = control => {
     if (!control?.getBoundingClientRect) return;
     const text = tooltipText(parseTooltipDataset(control.dataset), lang);
     if (!text) { hide(); return; }
@@ -82,12 +90,25 @@ export function installTooltips(root, {
       height: doc.defaultView?.innerHeight ?? globalThis.innerHeight ?? 768,
     };
     const position = clampTooltipPosition(
-      { left: rect.left, top: rect.bottom, width: tipRect.width, height: tipRect.height },
+      { left: rect.left, top: rect.top, bottom: rect.bottom, width: tipRect.width, height: tipRect.height },
       viewport,
     );
     tip.style.left = position.left + 'px';
     tip.style.top = position.top + 'px';
     tip.dataset.placement = position.placement;
+  };
+  const show = (control, immediate = false) => {
+    cancelPending();
+    if (!control?.getBoundingClientRect) return;
+    if (active === control) return;
+    if (immediate || delay <= 0) {
+      render(control);
+      return;
+    }
+    pendingTimer = setTimeout(() => {
+      pendingTimer = null;
+      if (active !== control) render(control);
+    }, delay);
   };
   const onPointerOver = event => {
     const control = event.target.closest?.(selector);
@@ -101,7 +122,7 @@ export function installTooltips(root, {
   };
   const onFocusIn = event => {
     const control = event.target.closest?.(selector);
-    if (control && root.contains?.(control)) show(control);
+    if (control && root.contains?.(control)) show(control, true);
   };
   const onFocusOut = () => hide();
   const onKey = event => { if (event.key === 'Escape') hide(); };
@@ -117,7 +138,7 @@ export function installTooltips(root, {
     hide,
     setLanguage(next) {
       lang = next === 'en' ? 'en' : 'zh-CN';
-      if (active) show(active);
+      if (active) render(active);
     },
     destroy() {
       hide();

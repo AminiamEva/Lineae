@@ -62,7 +62,7 @@ test('tooltip installer shows, positions, switches language and hides', () => {
   const control = fakeElement('button', { left: 100, top: 100, width: 60, height: 20 });
   control.dataset.tooltipZh = '合并';
   control.dataset.tooltipEn = 'Merge';
-  const tooltips = installTooltips(root, { document: doc });
+  const tooltips = installTooltips(root, { document: doc, delay: 0 });
   assert.ok(tooltips);
   root.listeners.pointerover[0]({ target: control });
   const tip = tooltips.element;
@@ -70,7 +70,7 @@ test('tooltip installer shows, positions, switches language and hides', () => {
   assert.equal(tip.textContent, '合并');
   assert.equal(control.attributes['aria-describedby'], tip.id);
   assert.equal(tip.style.left, '100px');
-  assert.equal(tip.style.top, '90px');
+  assert.equal(tip.style.top, '70px');
   assert.equal(tip.dataset.placement, 'top');
 
   root.listeners.pointerout[0]({ target: control });

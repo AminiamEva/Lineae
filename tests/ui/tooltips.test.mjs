@@ -37,4 +37,8 @@ test('tooltip position clamps to the viewport and flips above', () => {
     clampTooltipPosition({ left: 500, top: 500, width: 100, height: 40 }, { width: 300, height: 300 }),
     { left: 192, top: 252, placement: 'top' },
   );
+  assert.deepEqual(
+    clampTooltipPosition({ left: 500, top: 10, bottom: 34, width: 100, height: 40 }, { width: 1000, height: 800 }),
+    { left: 500, top: 40, placement: 'bottom' },
+  );
 });

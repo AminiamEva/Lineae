@@ -29,7 +29,7 @@ select { max-width:115px; }
 .open { position:relative; overflow:hidden; }
 .open input { position:absolute; inset:0; width:100%; opacity:0; cursor:pointer; }
 main { padding:125px 24px 60px; overflow:auto; }
-.document-page { position:relative; width:var(--page-width,210mm); min-height:var(--page-height,297mm); margin:auto; padding:var(--page-margin-top,22mm) var(--page-margin-right,22mm) var(--page-margin-bottom,22mm) var(--page-margin-left,22mm); background:light-dark(#fff,#242426); box-shadow:0 2px 14px #0002; font:10pt/1.5 Georgia,"Songti SC",SimSun,serif; cursor:text; }
+.document-page { position:relative; width:var(--page-width,210mm); min-height:var(--page-height,297mm); margin:auto; padding:var(--page-margin-top,22mm) var(--page-margin-right,22mm) var(--page-margin-bottom,22mm) var(--page-margin-left,22mm); background:light-dark(#fff,#242426); box-shadow:0 2px 14px #0002; font:10pt/1.5 Georgia,"Songti SC",SimSun,serif; cursor:text; overflow-x:clip; }
 #editor { min-height:calc(var(--page-height,297mm) - var(--page-margin-top,22mm) - var(--page-margin-bottom,22mm)); outline:none; }
 .ProseMirror { min-height:250mm; outline:none; overflow-wrap:anywhere; white-space:pre-wrap; }
 .ProseMirror p { margin:0; }
@@ -80,8 +80,8 @@ main { padding:125px 24px 60px; overflow:auto; }
 .ProseMirror h2 { font-size:1.4em; }
 .ProseMirror :is(ul,ol) { padding-inline-start:2em; }
 .ProseMirror :is(ul,ol) :is(ul,ol) { padding-inline-start:clamp(0px,100% - 10em,2em); }
-/* Imported lists can be deeper than the editor's nine visible levels. */
-.ProseMirror :is(ul,ol) :is(ul,ol) :is(ul,ol) :is(ul,ol) :is(ul,ol) :is(ul,ol) :is(ul,ol) :is(ul,ol) :is(ul,ol) :is(ul,ol) {
+/* Imported lists can be deeper than the editor's ten visible levels. */
+.ProseMirror :is(ul,ol) :is(ul,ol) :is(ul,ol) :is(ul,ol) :is(ul,ol) :is(ul,ol) :is(ul,ol) :is(ul,ol) :is(ul,ol) :is(ul,ol) :is(ul,ol) {
   padding-inline-start:0;
 }
 .ProseMirror li p { margin:.2em 0; }
@@ -100,10 +100,10 @@ main { padding:125px 24px 60px; overflow:auto; }
 .ProseMirror .math-display[data-numbered="true"] { counter-increment:lineae-equation; position:relative; padding-right:3em; }
 .ProseMirror .math-display[data-numbered="true"]::after { content:"(" counter(lineae-equation) ")"; position:absolute; right:.4em; top:50%; transform:translateY(-50%); color:light-dark(#666,#b8b8bf); font-size:.9em; }
 .ProseMirror math-field { min-width:1em; max-width:100%; border:0; background:transparent; color:inherit; font-family:inherit; text-indent:0; }
-.ProseMirror .math-inline { display:inline-block; max-width:100%; vertical-align:baseline; }
+.ProseMirror .math-inline { display:inline-block; max-width:100%; vertical-align:baseline; text-indent:0; }
 .ProseMirror > p[data-indent="true"] .math-inline { max-width:calc(100% - 2ic); }
 .ProseMirror .math-display math-field { max-width:calc(100% - 16px); }
-.ProseMirror math-field::part(content) { overflow-x:auto; }
+.ProseMirror math-field::part(content) { overflow-x:visible; }
 .ProseMirror .math-inline math-field { position:relative; z-index:1; display:inline-block; width:max-content; max-width:100%; min-width:.6em; padding:0; vertical-align:baseline; }
 .ProseMirror .math-inline math-field::part(container) { padding:0; }
 .ProseMirror-selectednode { outline:2px solid #468bdf; border-radius:3px; }

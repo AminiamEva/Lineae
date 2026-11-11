@@ -57,6 +57,121 @@ export function icon(name) {
   const path=document.createElementNS(svg.namespaceURI,'path');
   path.setAttribute('d',paths[name] ?? paths.math);svg.append(path);return svg;
 }
+const descriptions = {
+  files:{zh:'文件与项目操作',en:'File and project actions'},
+  home:{zh:'常用编辑操作',en:'Common editing tools'},
+  insert:{zh:'插入内容',en:'Insert content'},
+  layout:{zh:'页面布局与边距',en:'Page layout and margins'},
+  table:{zh:'表格编辑',en:'Table editing'},
+  format:{zh:'文本与列表格式',en:'Text and list formatting'},
+  reference:{zh:'交叉引用与文献',en:'Cross references and citations'},
+  math:{zh:'公式插入与编辑',en:'Insert and edit formulas'},
+  download:{zh:'下载完整的 LaTeX 项目压缩包',en:'Download the complete LaTeX project'},
+  'Download project .zip':{zh:'下载完整的 LaTeX 项目压缩包',en:'Download the complete LaTeX project'},
+  '下载项目 .zip':{zh:'下载完整的 LaTeX 项目压缩包',en:'Download the complete LaTeX project'},
+  'Attach asset folder':{zh:'关联图片等资源所在的目录',en:'Attach a folder containing images and assets'},
+  '关联资源目录':{zh:'关联图片等资源所在的目录',en:'Attach a folder containing images and assets'},
+  Config:{zh:'编辑器设置',en:'Editor settings'},
+  '配置':{zh:'编辑器设置',en:'Editor settings'},
+  '↶':{zh:'撤销上一步操作',en:'Undo the last action'},
+  '↷':{zh:'重做已撤销的操作',en:'Redo the last undone action'},
+  B:{zh:'粗体',en:'Bold'},
+  I:{zh:'斜体',en:'Italic'},
+  U:{zh:'下划线',en:'Underline'},
+  S:{zh:'删除线',en:'Strikethrough'},
+  'Clear formatting':{zh:'清除字符格式',en:'Clear character formatting'},
+  '清除格式':{zh:'清除字符格式',en:'Clear character formatting'},
+  code:{zh:'行内代码',en:'Inline code'},
+  quote:{zh:'引用块',en:'Block quote'},
+  hr:{zh:'水平分隔线',en:'Horizontal rule'},
+  'x²':{zh:'上标',en:'Superscript'},
+  'x₂':{zh:'下标',en:'Subscript'},
+  sc:{zh:'小型大写字母',en:'Small caps'},
+  box:{zh:'给文字加边框',en:'Put a box around text'},
+  '\\LaTeX':{zh:'插入 LaTeX 标志',en:'Insert the LaTeX logo'},
+  '\\TeX':{zh:'插入 TeX 标志',en:'Insert the TeX logo'},
+  '¶':{zh:'显示或隐藏格式标记',en:'Show or hide formatting marks'},
+  desc:{zh:'描述列表',en:'Description list'},
+  '1.':{zh:'数字编号列表',en:'Numbered list (1, 2, 3)'},
+  'a.':{zh:'小写字母编号列表',en:'Lowercase letter list'},
+  'A.':{zh:'大写字母编号列表',en:'Uppercase letter list'},
+  'I.':{zh:'罗马数字编号列表',en:'Roman numeral list'},
+  '甲':{zh:'天干编号列表',en:'Heavenly stem numbering'},
+  '•':{zh:'自定义项目符号',en:'Custom bullet marker'},
+  Image:{zh:'插入本地图片',en:'Insert a local image'},
+  '图片':{zh:'插入本地图片',en:'Insert a local image'},
+  'Code block':{zh:'插入带语言标记的代码块',en:'Insert a fenced code block'},
+  '代码块':{zh:'插入带语言标记的代码块',en:'Insert a fenced code block'},
+  itemize:{zh:'项目符号列表',en:'Bullet list'},
+  enumerate:{zh:'编号列表',en:'Numbered list'},
+  '▦':{zh:'插入表格',en:'Insert a table'},
+  '＋ Row':{zh:'在下方插入行',en:'Insert a row below'},
+  '＋ Column':{zh:'在右侧插入列',en:'Insert a column to the right'},
+  '－ Row':{zh:'删除当前行',en:'Delete the current row'},
+  '－ Column':{zh:'删除当前列',en:'Delete the current column'},
+  '删除表格':{zh:'删除整个表格',en:'Delete the whole table'},
+  merge:{zh:'合并选中的单元格',en:'Merge selected cells'},
+  split:{zh:'拆分当前单元格',en:'Split the current cell'},
+  booktabs:{zh:'使用 booktabs 三线表样式',en:'Use booktabs-style rules'},
+  Caption:{zh:'设置表格题注',en:'Set the table caption'},
+  '题注':{zh:'设置表格题注',en:'Set the table caption'},
+  label:{zh:'设置标签键',en:'Set a label key'},
+  Borders:{zh:'选择表格边框样式',en:'Choose table border style'},
+  '边框':{zh:'选择表格边框样式',en:'Choose table border style'},
+  'Rule width':{zh:'设置表格线宽',en:'Set table rule width'},
+  '线宽':{zh:'设置表格线宽',en:'Set table rule width'},
+  '左':{zh:'单元格左对齐',en:'Align cell left'},
+  '中':{zh:'单元格居中',en:'Center cell'},
+  '右':{zh:'单元格右对齐',en:'Align cell right'},
+  ref:{zh:'插入交叉引用',en:'Insert a cross-reference'},
+  refs:{zh:'打开引用索引',en:'Open the reference index'},
+  eqref:{zh:'插入公式引用',en:'Insert an equation reference'},
+  fn:{zh:'插入脚注',en:'Insert a footnote'},
+  cite:{zh:'插入文献引用',en:'Insert a citation'},
+  toc:{zh:'插入目录',en:'Insert a table of contents'},
+  short:{zh:'设置短标题',en:'Set a short title'},
+  title:{zh:'设置文档标题',en:'Set the document title'},
+  author:{zh:'设置文档作者',en:'Set the document author'},
+  '$':{zh:'插入行内公式',en:'Insert an inline formula'},
+  '$$':{zh:'插入独立公式',en:'Insert a display formula'},
+  equation:{zh:'插入编号公式环境',en:'Insert a numbered equation'},
+  'equation label':{zh:'给当前公式添加标签',en:'Add a label to the current equation'},
+  frac:{zh:'插入分数',en:'Insert a fraction'},
+  sqrt:{zh:'插入根号',en:'Insert a square root'},
+  sum:{zh:'插入求和符号',en:'Insert a summation'},
+  int:{zh:'插入积分符号',en:'Insert an integral'},
+  '\\prod':{zh:'插入连乘符号',en:'Insert a product'},
+  '\\iint':{zh:'插入二重积分',en:'Insert a double integral'},
+  '\\iiint':{zh:'插入三重积分',en:'Insert a triple integral'},
+  '\\oint':{zh:'插入环路积分',en:'Insert a contour integral'},
+  '\\oiint':{zh:'插入闭合曲面积分',en:'Insert a closed surface integral'},
+  '\\left':{zh:'插入自适应左括号',en:'Insert a scalable left delimiter'},
+  '\\right':{zh:'插入自适应右括号',en:'Insert a scalable right delimiter'},
+  '单括号 / Literal fence':{zh:'输入不与自动配对关联的括号',en:'Insert a literal fence without auto-pairing'},
+  matrix:{zh:'插入矩阵',en:'Insert a matrix'},
+  cases:{zh:'插入分段函数',en:'Insert a cases environment'},
+  align:{zh:'插入对齐公式',en:'Insert an align environment'},
+};
+
+function setDescription(control, description) {
+  if (!description) return;
+  control.dataset.tooltipZh=description.zh;
+  control.dataset.tooltipEn=description.en;
+}
+
+export function applyToolbarDescriptions(root) {
+  for (const control of root.querySelectorAll('button')) {
+    const label=control.textContent.trim();
+    const key=control.dataset.group||control.dataset.tool||control.getAttribute('aria-label')||label;
+    const description=descriptions[key]??descriptions[label];
+    if (description) setDescription(control,description);
+    else if (!control.dataset.tooltipZh&&!control.dataset.tooltip) {
+      const fallback=label||control.getAttribute('aria-label')||'';
+      if (fallback) setDescription(control,{zh:fallback,en:fallback});
+    }
+  }
+}
+
 export function decorateToolbar(root) {
   const map={'↶':['undo','撤销 / Undo',false],'↷':['redo','重做 / Redo',false],
     B:['bold','粗体 / Bold',false],I:['italic','斜体 / Italic',false],U:['underline','下划线 / Underline',false],S:['strike','删除线 / Strikethrough',false],
@@ -82,4 +197,5 @@ export function decorateToolbar(root) {
     control.replaceChildren(icon(entry[0]));
     if(entry[2])control.append(document.createTextNode(label));
   }
+  applyToolbarDescriptions(root);
 }
