@@ -525,7 +525,13 @@ function preserveMathSelection(field, update) {
   if (!paths || !updated) return;
   const ranges=paths.map((range,index)=>range.map((path,end)=>{
     let atom=updated.root;
-    for (const [branch,child] of path) atom=atom?.branch(branch)?.[child];
+    for (const [branch,child] of path) {
+      if (Array.isArray(branch) && (!atom || atom.type!=='array' || branch[0]>=atom.rowCount || branch[1]>=atom.colCount)) {
+        atom=null;
+        break;
+      }
+      atom=atom?.branch(branch)?.[child];
+    }
     const offset=atom ? updated.offsetOf(atom) : -1;
     return offset>=0 ? offset : Math.min(selection.ranges[index][end],field.lastOffset);
   }));
