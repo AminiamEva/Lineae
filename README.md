@@ -13,22 +13,24 @@
 
 <p align="center"><a href="README.md">English</a> · <a href="README.zh-CN.md">简体中文</a></p>
 
-Lineae is a browser-based LaTeX editor for academic and technical writing. It brings a document-oriented editing experience to LaTeX: write and format text, work with equations, and edit common document structures in place, while keeping <code>.tex</code> as the document format.
+Lineae is an experimental browser-based **WYSIWYG LaTeX editor** for academic and technical writing. Its goal is not merely to make LaTeX documents editable through a graphical interface: **what appears in the editor should match the result of compiling the same document with a TeX engine as closely as possible.** LaTeX remains the native document format, with ordinary <code>.tex</code> files at the centre of the workflow.
 
-The project is in early development. The browser prototype is usable and supports a growing subset of LaTeX, but it is not yet a complete TeX environment or a replacement for an established LaTeX workflow.
+The project is in early development. Its browser prototype supports direct editing and a growing subset of LaTeX, but it does not yet reproduce TeX's exact line breaking, pagination, or final PDF layout. Close correspondence between the editing view and compiled output is the project's objective, **not a feature already delivered**.
 
 ## Why Lineae
 
-LaTeX offers precise control over mathematical notation and document structure, but a source-first workflow can make ordinary writing feel like editing markup. Word processors make direct editing easier, yet they do not offer the same native relationship with LaTeX documents and the TeX toolchain.
+Direct manipulation alone is not the same as WYSIWYG typesetting. A visual editor may let users edit equations, tables, and headings while displaying a layout that differs substantially from the document ultimately produced by TeX. Lineae aims to close that gap: the editing surface should become a trustworthy view of the typeset document, not just a convenient representation of its structure.
 
-Lineae explores a middle ground. The editor presents the document itself as the place to work: text is formatted where it appears, equations can be edited directly, and supported structures such as headings, lists, tables, and figures have corresponding editing controls. The source remains accessible rather than being hidden behind a proprietary document format.
+Existing scientific editors make different trade-offs. [LyX](https://www.lyx.org/) follows a WYSIWYM (*What You See Is What You Mean*) approach, prioritising document structure rather than exact on-screen reproduction of the final layout. [GNU TeXmacs](https://www.texmacs.org/) offers WYSIWYG scientific editing with its own typesetting system and native document format, rather than using LaTeX as its underlying typesetter. Lineae's intended combination is **native LaTeX files, direct editing, and rendering calibrated against actual TeX compilation**.
 
-A few decisions shape the project:
+That means fidelity in typography and layout matters as much as editing controls: fonts, spacing, mathematical notation, line wrapping, page geometry, and eventually pagination should agree with the compiled output wherever feasible. A perfect match for arbitrary packages and custom macros is not a realistic short-term promise; mismatches and unsupported constructs should remain visible and inspectable rather than being concealed.
 
-- **Edit the document, not the markup.** Common writing and mathematical operations should happen in context, without requiring users to hand-edit every structural command.
-- **Keep LaTeX as the document format.** The editor should work with ordinary <code>.tex</code> files and preserve unsupported material instead of silently discarding or guessing at it.
-- **Keep editing separate from compilation.** Interactive editing and equation display serve the writing process; final typesetting belongs to a TeX engine. Lineae does not aim to reimplement TeX in the browser.
-- **Prefer predictable behaviour over superficial compatibility.** A clearly unsupported construct is better left as source than converted into an editable element that changes its meaning.
+The project follows four principles:
+
+- **Aim for true WYSIWYG.** Judge the editing view by its agreement with compiled TeX output, not simply by whether a construct can be edited visually.
+- **Keep LaTeX as the document format.** Work with ordinary <code>.tex</code> files and preserve unsupported material rather than replacing it with a proprietary representation or silently changing its meaning.
+- **Separate rendering from compilation, but connect their results.** The interactive renderer should remain responsive, while a real TeX engine provides the reference for final output and, in future, for measuring and improving visual fidelity. Lineae does not plan to reimplement TeX wholesale in the browser.
+- **Make limitations explicit.** Prefer reliable source preservation and a clear fallback to inaccurate previews or lossy conversion.
 
 ## Features
 
@@ -42,7 +44,7 @@ Tables can be edited in the document, with support for basic <code>tabular</code
 
 Section numbering, starred headings, short titles, labels, references, and a table of contents are supported. Footnotes and document-level title and author fields are also available. A find-and-replace panel, context menus, keyboard shortcuts, undo, and redo support day-to-day editing.
 
-The editor uses a continuous document view. It does not currently reproduce TeX page breaks or exact line layout.
+The editor currently uses a continuous document view. Its line breaks, spacing, and pagination are not yet guaranteed to match compiled TeX output; closing that gap is a central development goal.
 
 ### Mathematical editing
 
@@ -100,7 +102,7 @@ BibTeX / BibLaTeX engine
        +---- citation checks against .tex source
 ~~~
 
-The structured editor document is used to support editing; it is not a replacement for the source file or the final typesetting engine. A source-aware representation and localised source updates are part of the development direction, but the current implementation can still regenerate edited structures.
+The structured editor document supports interactive editing; the <code>.tex</code> source remains the document of record, and a TeX engine remains the authority for final typesetting. Separating the interactive renderer from compilation is an implementation choice, **not** a decision to accept different visual results. The planned compilation integration will provide a reference against which to assess and improve on-screen font metrics, mathematical layout, spacing, line breaking, and eventually page layout. Source-aware representation and localised source updates are also development goals; the current implementation can still regenerate edited structures.
 
 See [Editor Architecture](docs/EDITOR_ARCHITECTURE.md) for implementation details.
 
@@ -114,13 +116,14 @@ Lineae is a working prototype, not a finished editor. The distinction between wh
 | LaTeX interoperability | Import and export for a defined subset; unsupported constructs are preserved where possible |
 | Bibliography | Standalone BibTeX/BibLaTeX module with its own API and acceptance tests |
 | Source fidelity | Unmodified files can be preserved; reliable local updates after visual edits are still in development |
+| Editor–PDF visual fidelity | A core design goal; systematic comparison with compiled TeX output is not yet implemented |
 | Multi-file projects | Not yet supported as a complete project workflow |
 | TeX compilation and PDF preview | Not integrated |
 | Desktop application and precise pagination | Not implemented |
 
 The immediate work is centred on three areas: making equation input and navigation more reliable; improving source preservation, mode switching, and editing history; and tightening the behaviour of ordinary document editing, including selection, clipboard operations, and long-document navigation.
 
-After these foundations are stable, the project can move towards multi-file project handling, an independent TeX compilation interface, PDF preview, and source-to-PDF navigation. Accurate pagination and desktop packaging are later goals, not current features. The [implementation roadmap](docs/IMPLEMENTATION_ROADMAP.md) records the more detailed priorities and acceptance criteria.
+After these foundations are stable, the project can move towards multi-file project handling, an independent TeX compilation interface, and PDF preview. Comparing the editor view with compiled output—and progressively aligning fonts, spacing, line breaks, and page geometry—is a core direction, not an optional preview enhancement. Source-to-PDF navigation, accurate pagination, and desktop packaging remain future work, not current features. The [implementation roadmap](docs/IMPLEMENTATION_ROADMAP.md) records the more detailed priorities and acceptance criteria.
 
 ## Getting started
 
