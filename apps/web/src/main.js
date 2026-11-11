@@ -955,16 +955,22 @@ function insertFormulaCommand(latex) {
   } else insertMath(false, fragment);
 }
 async function chooseMathDelimiters(field, rightFirst = false) {
-  if (field?.isConnected && document.activeElement !== field) {
-    field.focus();
-    await new Promise(requestAnimationFrame);
-  }
   const selection = field && structuredClone(field.selection);
   const value = field?.value;
+  if (field?.isConnected) {
+    field.focus();
+    // MathLive only paints a caret for a collapsed selection.
+    if (selection.ranges.some(([start,end])=>start!==end)) {
+      const position=field.position;
+      field.selection={ranges:[[position,position]],direction:'forward'};
+    }
+    await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
+  }
   const documentBefore = editor.state.doc;
   const anchor = field?.getBoundingClientRect() ?? editor.view.coordsAtPos(editor.state.selection.from);
   const pair = await readDelimiterPair(anchor, rightFirst, field?.closest('[data-math-view]'));
   if (!pair) {
+    if (field?.isConnected && field.value===value && document.activeElement===field) field.selection=selection;
     if (document.activeElement === document.body) {
       if (field?.isConnected) field.focus(); else editor.view.focus();
     }
