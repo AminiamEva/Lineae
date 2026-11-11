@@ -650,9 +650,11 @@ const server=createServer(async(req,res)=>{
     await page.keyboard.type('\\');
     await page.locator('.command-menu input').fill('left');
     await page.keyboard.press('Enter');
-    await page.locator('.delimiter-input input').first().fill('[');
-    assert.equal(await page.locator('[data-math-view] .delimiter-input-embedded').count(),1);
-    assert.equal(await page.locator('.delimiter-input input').last().evaluate(input=>document.activeElement===input),true);
+    await page.waitForSelector('.delimiter-ghost-slot');
+    await page.keyboard.press('[');
+    assert.equal(await page.locator('.delimiter-ghost-slot').first().textContent(),'[');
+    assert.equal(await page.locator('[data-math-view] .delimiter-input-embedded').count(),0);
+    assert.equal(await page.locator('.delimiter-ghost-slot').last().evaluate(slot=>slot.classList.contains('is-active')),true);
     await page.keyboard.type(')');
     await page.waitForFunction(()=>/^\\left\[.*\\right\)$/.test(document.querySelector('math-field')?.value));
     assert.match(await chordField.evaluate(field=>field.value),/\\mathbf\{AB\}/,'Wrapping preserves selected math');
@@ -841,7 +843,8 @@ const server=createServer(async(req,res)=>{
       const f=field.getBoundingClientRect(),h=handle.getBoundingClientRect();
       return {fieldLeft:f.left,handleRight:h.right,handleTop:h.top,fieldTop:f.top};
     });
-    assert.ok(handlePlace.handleRight<=handlePlace.fieldLeft-8,'Inline drag handle keeps a clear gap left of the formula: '+JSON.stringify(handlePlace));
+    const handleGap=handlePlace.fieldLeft-handlePlace.handleRight;
+    assert.ok(handleGap>=1&&handleGap<=6,'Inline drag handle sits directly left of the formula: '+JSON.stringify(handlePlace));
     await page.locator('.math-drag-handle').hover();
     await page.waitForTimeout(150);
     assert.equal(await page.locator('.lineae-tooltip').isVisible(),false,'Drag handle tooltip waits before appearing');
@@ -1157,6 +1160,59 @@ const server=createServer(async(req,res)=>{
     await page.locator('.source-toggle').click();
     assert.match(await page.locator('.source-view').inputValue(),/\$x\$Q after/);
     await page.locator('.source-toggle').click();
+    await importSource('Before $\\int_{0}^{1} x\\,dx$ after');
+    await page.waitForFunction(()=>document.querySelector('[data-math-view]')?.dataset.latex==='\\int_{0}^{1} x\\,dx');
+    const entryBox=await page.locator('math-field').boundingBox();
+    await page.mouse.click(entryBox.x+entryBox.width+4,entryBox.y+entryBox.height/2);
+    await page.waitForFunction(()=>document.activeElement?.tagName!=='MATH-FIELD');
+    await page.keyboard.press('ArrowLeft');
+    await page.waitForFunction(()=>document.activeElement?.tagName==='MATH-FIELD');
+    assert.equal(await page.locator('math-field').evaluate(field=>field.position),
+      await page.locator('math-field').evaluate(field=>field.lastOffset),
+      'One Left crosses the trailing space and enters the formula');
+    await importSource('Before $x$ after');
+    await page.waitForFunction(()=>document.querySelector('[data-math-view]')?.dataset.latex==='x');
+    await page.locator('math-field').evaluate(field=>{field.focus();field.executeCommand('moveToMathfieldEnd');});
+    await page.waitForFunction(()=>document.activeElement?.tagName==='MATH-FIELD');
+    await page.keyboard.press('ArrowRight');
+    await page.keyboard.press('Backspace');
+    await page.waitForFunction(()=>document.querySelector('.ProseMirror-selectednode'));
+    assert.equal(await page.locator('[data-math-view]').count(),1,'The first Backspace only selects the formula');
+    await page.keyboard.press('Backspace');
+    await page.waitForFunction(()=>!document.querySelector('[data-math-view]'));
+    assert.equal(await page.locator('[data-math-view]').count(),0,'The second Backspace deletes the selected formula');
+    await importSource('Before $x$ after');
+    await page.waitForFunction(()=>document.querySelector('math-field'));
+    const innerScrollers=await page.locator('math-field').evaluate(field=>{
+      const content=field.shadowRoot.querySelector('.ML__content');
+      const scrollers=[...field.shadowRoot.querySelectorAll('*')].filter(node=>
+        ['auto','scroll'].includes(getComputedStyle(node).overflowX)&&node.scrollWidth>node.clientWidth+1).length;
+      return {overflow:getComputedStyle(content).overflowX,scrollers};
+    });
+    assert.equal(innerScrollers.overflow,'visible','MathLive does not scroll inline formulas');
+    assert.equal(innerScrollers.scrollers,0,'Inline formulas show no inner scrollbar');
+    await importSource('Before $a+b$ after');
+    await page.waitForFunction(()=>document.querySelector('[data-math-view]')?.dataset.latex==='a+b');
+    await page.locator('math-field').evaluate(field=>{field.focus();field.executeCommand('moveToMathfieldEnd');});
+    await page.waitForFunction(()=>document.activeElement?.tagName==='MATH-FIELD');
+    await page.locator('[data-group=math]').click();
+    await page.getByRole('button',{name:'\\left',exact:true}).click();
+    await page.waitForSelector('.delimiter-ghost');
+    const ghostPlace=await page.evaluate(()=>{
+      const ghost=document.querySelector('.delimiter-ghost').getBoundingClientRect();
+      const caret=[...document.querySelector('math-field').shadowRoot.querySelectorAll('.ML__caret')][0].getBoundingClientRect();
+      return {slots:document.querySelectorAll('.delimiter-ghost-slot').length,left:ghost.left,right:ghost.right,caret:caret.left,
+        embedded:document.querySelectorAll('.delimiter-input-embedded').length};
+    });
+    assert.equal(ghostPlace.slots,2,'Delimiter insertion shows two in-place highlights');
+    assert.equal(ghostPlace.embedded,0,'Delimiter inputs no longer float on both sides');
+    assert.ok(ghostPlace.left>=ghostPlace.caret-10&&ghostPlace.right<=ghostPlace.caret+10,
+      'Delimiter highlights sit at the caret: '+JSON.stringify(ghostPlace));
+    await page.keyboard.press('(');
+    await page.keyboard.press(')');
+    await page.waitForFunction(()=>document.querySelector('math-field')?.value.includes('\\left('));
+    assert.match(await page.locator('math-field').evaluate(field=>field.value),/\\right\)$/);
+    assert.equal(await page.locator('.delimiter-ghost').count(),0,'The highlights disappear after both delimiters are typed');
     await paper.locator('p').first().click();
     await paper.evaluate(element=>{
       const clipboard=new DataTransfer();

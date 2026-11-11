@@ -29,7 +29,7 @@ import Table from '@tiptap/extension-table';
 import TableRow from '@tiptap/extension-table-row';
 import TableCell from '@tiptap/extension-table-cell';
 import TableHeader from '@tiptap/extension-table-header';
-import { Plugin, Selection } from '@tiptap/pm/state';
+import { Plugin, Selection, NodeSelection } from '@tiptap/pm/state';
 import { parseDocument } from '../latex/document.mjs';
 import { exportDocument } from '../latex/packages.mjs';
 import { MARGIN_PRESETS, readPageSetup, writePageSetup, pageMetrics } from '../latex/geometry.mjs';
@@ -201,11 +201,34 @@ const Shortcuts = Extension.create({
   }})],
   addKeyboardShortcuts() {
     const enterFormula = forward => {
-      const { selection }=this.editor.state;
+      const { selection, doc }=this.editor.state;
       if(!selection.empty)return false;
-      const node=forward?selection.$from.nodeAfter:selection.$from.nodeBefore;
-      if(!['math','mathBlock'].includes(node?.type.name))return false;
-      const position=selection.from-(forward?0:node.nodeSize);
+      const $from=selection.$from;
+      const isMath=node=>['math','mathBlock'].includes(node?.type.name);
+      let position=-1;
+      if(isMath(forward?$from.nodeAfter:$from.nodeBefore)) {
+        const node=forward?$from.nodeAfter:$from.nodeBefore;
+        position=selection.from-(forward?0:node.nodeSize);
+      } else if($from.parent.inlineContent) {
+        // A click just past a formula can land after its trailing space.
+        // Cross that whitespace in the same keypress so entering needs one arrow.
+        const textOffset=$from.textOffset;
+        const textNode=$from.parent.maybeChild($from.index());
+        if(!textNode?.isText)return false;
+        if(forward) {
+          const rest=$from.parent.textBetween($from.parentOffset,$from.parentOffset+textNode.nodeSize-textOffset,'\0','\0');
+          if(!/^\s*$/.test(rest))return false;
+          const boundary=$from.pos+textNode.nodeSize-textOffset;
+          if(isMath(doc.resolve(boundary).nodeAfter))position=boundary;
+        } else if(textOffset>0) {
+          const prefix=$from.parent.textBetween($from.parentOffset-textOffset,$from.parentOffset,'\0','\0');
+          if(!/^\s*$/.test(prefix))return false;
+          const boundary=$from.pos-textOffset;
+          const node=doc.resolve(boundary).nodeBefore;
+          if(isMath(node))position=boundary-node.nodeSize;
+        }
+      }
+      if(position<0)return false;
       const field=this.editor.view.nodeDOM(position)?.querySelector('math-field');
       if(!field)return false;
       field.focus();
@@ -216,6 +239,18 @@ const Shortcuts = Extension.create({
       'Alt-`':()=>this.editor.commands.insertContent('`'),
       ArrowRight:()=>enterFormula(true),
       ArrowLeft:()=>enterFormula(false),
+      Backspace:()=>{
+        const { selection, doc }=this.editor.state;
+        if(!selection.empty)return false;
+        const node=selection.$from.nodeBefore;
+        if(!['math','mathBlock'].includes(node?.type.name))return false;
+        // Treat a formula as one object: the first press selects it whole,
+        // the next press lets ProseMirror delete the selection.
+        const position=selection.from-node.nodeSize;
+        this.editor.view.focus();
+        this.editor.view.dispatch(this.editor.state.tr.setSelection(NodeSelection.create(doc,position)));
+        return true;
+      },
       Tab:()=>{
         if(this.editor.isActive('table'))return false;
         if (this.editor.isActive('listItem')) {
