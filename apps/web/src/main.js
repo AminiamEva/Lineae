@@ -1373,7 +1373,7 @@ groupButton(formatGroup,'sc',()=>editor.chain().focus().toggleMark('smallcaps').
 groupButton(formatGroup,'box',()=>spaceOverlay.toggleBox()).dataset.shortcut='editor.toggleBox';
 groupButton(formatGroup,'\\LaTeX',()=>insertTextCommand('LaTeX'));
 groupButton(formatGroup,'\\TeX',()=>insertTextCommand('TeX'));
-const spaceOverlay=installSpaceOverlay(editor,paper);
+const spaceOverlay=installSpaceOverlay(editor,paper,{selectionFocus:zoom});
 const formattingMarks = groupButton(formatGroup,'¶',()=>{
   config.updateInterface({formattingMarks:!config.value.interface.formattingMarks});
   updateEditorDisplayPreferences();

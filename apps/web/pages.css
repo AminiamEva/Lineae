@@ -64,12 +64,13 @@ main { padding:125px 24px 60px; overflow:auto; }
 .code-token-attr { color:light-dark(#7a5a00,#e2cb85); }
 .ProseMirror > p[data-indent="true"] { text-indent:2em; text-indent:2ic; }
 .space-overlay { position:absolute; inset:0; width:100%; height:100%; z-index:2; pointer-events:none; user-select:none; overflow:visible; }
-.box-edge-caret { position:absolute; width:1px; background:currentColor; z-index:3; pointer-events:none; }
 .document-caret { position:absolute; left:0; top:0; z-index:3; background:currentColor; border-radius:1px; transform-origin:0 0; pointer-events:none; user-select:none; }
-.ProseMirror.has-box-edge-caret,.ProseMirror.has-document-caret { caret-color:transparent; }
-.document-selection { position:absolute; inset:0; z-index:1; pointer-events:none; user-select:none; }
-.document-selection > span { position:absolute; left:0; top:0; width:1px; height:1px; transform-origin:0 0; background:light-dark(#397ce44d,#6197eb65); }
+.ProseMirror.has-document-caret { caret-color:transparent; }
+.document-selection { position:absolute; inset:0; z-index:1; contain:layout; pointer-events:none; user-select:none; }
+.document-selection > span { position:absolute; background:light-dark(#397ce44d,#6197eb65); }
+.document-selection > [data-selection-object] { border-radius:4px; }
 .ProseMirror.has-document-selection::selection,.ProseMirror.has-document-selection ::selection { background-color:transparent; color:currentColor; }
+.ProseMirror.has-document-selection .lineae-multi-selected { background:transparent; }
 .empty-box-preview { position:absolute; width:.65em; border:1px solid currentColor; opacity:.55; pointer-events:none; }
 .ProseMirror { text-autospace:ideograph-alpha ideograph-numeric; }
 .document-find { position:fixed; inset:104px 16px auto auto; z-index:15; display:flex; flex-wrap:wrap; align-items:center; gap:5px; padding:7px; border-radius:12px; background:light-dark(#fff,#29292d); box-shadow:0 4px 18px #0003; }

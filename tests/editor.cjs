@@ -149,6 +149,190 @@ async function verifyCaretMotion(page, paper) {
   await settled();
 }
 
+async function verifySelectionGeometry(page, paper, importSource) {
+  const zoom = page.locator('input[type=range]');
+  const paragraphs = paper.locator(':scope > p');
+  const setZoom = value => zoom.evaluate((control, percent) => {
+    control.value = percent;
+    control.dispatchEvent(new Event('input', { bubbles: true }));
+  }, String(value));
+  const settle = async () => {
+    await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    await page.waitForFunction(() => !document.getAnimations().some(animation =>
+      ['lineae-caret-glide', 'lineae-selection-glide'].includes(animation.id)), null, { timeout: 5000 });
+  };
+  const snapshot = () => paragraphs.evaluateAll(nodes => {
+    const selection = document.getSelection();
+    const range = selection.getRangeAt(0);
+    const rect = bounds => [bounds.left, bounds.top, bounds.right, bounds.bottom];
+    const expected = nodes.flatMap(paragraph => {
+      const text = paragraph.firstChild;
+      if (text?.nodeType !== Node.TEXT_NODE || !range.intersectsNode(text)) return [];
+      const segment = document.createRange();
+      segment.setStart(text, text === range.startContainer ? range.startOffset : 0);
+      segment.setEnd(text, text === range.endContainer ? range.endOffset : text.length);
+      return [...segment.getClientRects()].filter(bounds => bounds.width > 0).map(rect);
+    });
+    const caret = document.querySelector('.document-caret');
+    return {
+      text: selection.toString(), anchor: selection.anchorOffset, focus: selection.focusOffset,
+      caret: rect(caret.getBoundingClientRect()),
+      active: document.querySelector('.ProseMirror').classList.contains('has-document-selection'),
+      expected,
+      painted: [...document.querySelectorAll('.document-selection > span:not([data-selection-object])')]
+        .map(element => rect(element.getBoundingClientRect())),
+    };
+  });
+  const assertBounds = (painted, expected, label) => {
+    assert.equal(painted.length, expected.length, label + ' has the expected number of rectangles');
+    for (let i = 0; i < expected.length; i++) {
+      assert.ok(painted[i].every((edge, j) => Math.abs(edge - expected[i][j]) < .75),
+        label + ' stays within the selected content: ' + JSON.stringify({ painted: painted[i], expected: expected[i] }));
+    }
+  };
+
+  await importSource('汉字输入yingyu wen\n\n' + '样例'.repeat(26));
+  await page.waitForFunction(() => document.querySelector('.ProseMirror p')?.textContent === '汉字输入yingyu wen');
+  await paragraphs.first().click({ position: { x: 60, y: 8 } });
+  await paragraphs.evaluateAll(([first, last]) => {
+    document.getSelection().setBaseAndExtent(last.firstChild, last.firstChild.length, first.firstChild, 10);
+  });
+  await settle();
+  const selected = await snapshot();
+  assert.ok(selected.active && selected.expected.length >= 2);
+  for (const percent of [219, 251, 50, 300, 100]) {
+    await setZoom(percent);
+    await settle();
+    const current = await snapshot();
+    assert.equal(current.text, selected.text, 'Zoom preserves the selection');
+    assertBounds(current.painted, current.expected, percent + '% text highlight');
+  }
+  await zoom.focus();
+  await setZoom(251);
+  await settle();
+  const onSlider = await snapshot();
+  assert.equal(onSlider.text, selected.text);
+  assert.ok(onSlider.active && onSlider.caret.every(edge => edge === 0), 'The zoom slider preserves the highlight and takes keyboard focus');
+  assertBounds(onSlider.painted, onSlider.expected, 'Selection while the zoom slider has focus');
+  await paragraphs.first().click({ position: { x: 100, y: 10 } });
+  await page.keyboard.press('Home');
+  for (let step = 0; step < 6; step++) await page.keyboard.press('Shift+ArrowRight');
+  await settle();
+  const expanded = await snapshot();
+  assert.equal(expanded.text.length, 6);
+  assertBounds(expanded.painted, expanded.expected, 'Rapid horizontal selection at fractional zoom');
+  assert.ok(Math.abs(expanded.painted[0][2] - expanded.caret[0]) < .75, 'The highlight stops at the moving edge');
+
+  await setZoom(219);
+  await importSource('样例'.repeat(53) + '\n\n' + '样例'.repeat(17));
+  await page.waitForFunction(() => document.querySelector('.ProseMirror > p')?.textContent.length === 106);
+  await paragraphs.last().click({ position: { x: 45, y: 8 } });
+  await page.keyboard.press('End');
+  await settle();
+  const anchor = await snapshot();
+  let previous = anchor;
+  for (const key of ['Shift+ArrowUp', 'Shift+ArrowUp', 'Shift+ArrowDown', 'Shift+ArrowDown']) {
+    await page.keyboard.press(key);
+    await settle();
+    const current = await snapshot();
+    assert.equal(current.anchor, anchor.anchor, 'Vertical Shift selection keeps its original anchor');
+    assert.ok(key.endsWith('Up') ? current.caret[1] < previous.caret[1] : current.caret[1] > previous.caret[1],
+      'The caret moves to the requested visual line');
+    assertBounds(current.painted, current.expected, key);
+    previous = current;
+  }
+  assert.equal(previous.text, '', 'Reversing the vertical movement collapses at the anchor');
+  assert.ok(Math.abs(previous.caret[0] - anchor.caret[0]) < .75);
+  await setZoom(100);
+
+  await page.evaluate(() => {
+    const animate = Element.prototype.animate;
+    window.lineaeMotionFrames = [];
+    Element.prototype.animate = function(frames, options) {
+      if (['lineae-selection-glide', 'lineae-caret-glide'].includes(options?.id)) {
+        window.lineaeMotionFrames.push({ id: options.id, frames, object: this.hasAttribute('data-selection-object') });
+      }
+      return animate.call(this, frames, options);
+    };
+    window.restoreLineaeAnimate = () => { Element.prototype.animate = animate; };
+  });
+  try {
+    await importSource('Before formula\n\n\\[\\int_0^1 f(x)\\,dx\\]\n\nAfter formula');
+    await paper.locator('.math-display math-field').waitFor();
+    await paragraphs.first().click({ position: { x: 40, y: 8 } });
+    await settle();
+    const [start, end] = await paragraphs.evaluateAll(nodes => nodes.map(node => {
+      const range = document.createRange();
+      range.setStart(node.firstChild, 5);
+      const rect = range.getBoundingClientRect();
+      return { x: rect.left, y: (rect.top + rect.bottom) / 2 };
+    }));
+    await page.mouse.move(start.x, start.y);
+    await page.mouse.down();
+    await page.mouse.move(end.x, end.y, { steps: 8 });
+    await page.mouse.up();
+    await settle();
+    const crossFormula = await snapshot();
+    assert.ok(crossFormula.active && crossFormula.expected.length === 2, 'Dragging across a formula keeps the custom text highlight');
+    assertBounds(crossFormula.painted, crossFormula.expected, 'Text on both sides of a display formula');
+    const objectBounds = await page.evaluate(() => ['.math-display', '[data-selection-object]'].map(selector => {
+      const rect = document.querySelector(selector)?.getBoundingClientRect();
+      return rect ? [rect.left, rect.top, rect.right, rect.bottom] : null;
+    }));
+    assert.ok(objectBounds[1], 'The selected formula has its own rectangle');
+    assert.equal(await page.locator('.document-selection > [data-selection-object]').count(), 1);
+    assertBounds([objectBounds[1]], [objectBounds[0]], 'Formula highlight');
+    assert.ok(await page.evaluate(() => window.lineaeMotionFrames.some(frame => frame.object && frame.id === 'lineae-selection-glide')),
+      'The formula highlight animates as the drag crosses it');
+
+    const longLine = '样'.repeat(140);
+    await importSource(longLine);
+    await page.waitForFunction(text => document.querySelector('.ProseMirror p')?.textContent === text, longLine);
+    const firstLineLength = await paragraphs.first().evaluate(paragraph => {
+      const text = paragraph.firstChild;
+      const range = document.createRange();
+      range.setStart(text, 0);
+      range.setEnd(text, 1);
+      const firstTop = range.getBoundingClientRect().top;
+      for (let i = 1; i < text.length; i++) {
+        range.setStart(text, i);
+        range.setEnd(text, i + 1);
+        if (range.getBoundingClientRect().top > firstTop + 2) return i;
+      }
+      return 0;
+    });
+    assert.ok(firstLineLength > 10, 'The fixture has a soft wrap');
+    const oneLine = longLine.slice(0, firstLineLength);
+    await importSource(oneLine);
+    await page.waitForFunction(text => document.querySelector('.ProseMirror p')?.textContent === text, oneLine);
+    await paragraphs.first().click({ position: { x: 60, y: 8 } });
+    await page.keyboard.press('End');
+    await settle();
+    const beforeWrap = await snapshot();
+    for (const [edit, count] of [[() => page.keyboard.insertText('样'), firstLineLength + 1],
+      [() => page.keyboard.press('Backspace'), firstLineLength]]) {
+      await page.evaluate(() => { window.lineaeMotionFrames.length = 0; });
+      await edit();
+      await settle();
+      assert.equal((await paragraphs.first().textContent()).length, count);
+      const caret = (await snapshot()).caret;
+      assert.ok(count > firstLineLength ? caret[1] > beforeWrap.caret[1] : Math.abs(caret[1] - beforeWrap.caret[1]) < .75);
+      assert.ok(await page.evaluate(() => window.lineaeMotionFrames.some(frame => frame.id === 'lineae-caret-glide' &&
+        frame.frames[0].transform !== frame.frames[1].transform)), 'An edit crossing a soft wrap glides to the new line');
+    }
+    await page.keyboard.press('Home');
+    await settle();
+    await page.evaluate(() => { window.lineaeMotionFrames.length = 0; });
+    await page.keyboard.press('Delete');
+    await settle();
+    assert.equal((await paragraphs.first().textContent()).length, firstLineLength - 1);
+    assert.ok(await page.evaluate(() => window.lineaeMotionFrames.some(frame => frame.id === 'lineae-caret-glide' &&
+      frame.frames[0].opacity < 1)), 'Forward Delete gives feedback at the stationary caret');
+  } finally {
+    await page.evaluate(() => window.restoreLineaeAnimate());
+  }
+}
+
 (async()=>{
   await new Promise(done=>server.listen(0,'127.0.0.1',done));
   const browser=await chromium.launch({headless:true});
@@ -261,6 +445,7 @@ async function verifyCaretMotion(page, paper) {
     await page.waitForFunction(()=>document.querySelectorAll('.ProseMirror > p').length===2 &&
       document.querySelector('.ProseMirror > p').textContent.startsWith('Alpha'));
     await verifyCaretMotion(page,paper);
+    await verifySelectionGeometry(page,paper,importSource);
     await importSource('Shortcut sample');
     await page.waitForFunction(()=>document.querySelector('.ProseMirror p')?.textContent==='Shortcut sample');
     await paper.locator('p').click();
@@ -987,8 +1172,10 @@ async function verifyCaretMotion(page, paper) {
       assert.equal(selected,index?'gamma':'alpha',JSON.stringify(word));
     }
     await page.waitForFunction(()=>document.querySelectorAll('.lineae-multi-selected').length>=2);
+    await page.waitForFunction(()=>document.querySelectorAll('.document-selection > span').length===2, null, {timeout:4000});
     await page.keyboard.press('Delete');
     assert.equal((await paper.locator('p').textContent()).trim(),'beta');
+    await page.waitForFunction(()=>!document.querySelector('.document-selection > span'), null, {timeout:4000});
     await importSource('\\indent $x+y$ tail');
     await page.waitForFunction(()=>document.querySelector('math-field'));
     const inlineWidth=await page.locator('math-field').evaluate(field=>{

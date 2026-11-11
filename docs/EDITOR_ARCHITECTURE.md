@@ -6,7 +6,7 @@ The editable document is a ProseMirror tree hosted by Tiptap. Changes use transa
 
 - src/main.js assembles the editor, command toolbar, source view, file input and display controls.
 - src/editor/math-node.js adapts MathLive to an inline atomic node. Formula input dispatches transactions.
-- src/editor/caret-motion.js and src/editor/selection-motion.js paint the caret and text highlight from the browser selection, with a shared animation clock. Navigation retargets from the displayed position; typing and deletion use a shorter, local movement. Composition, complex selections and reduced motion use native rendering. The box edge caret and MathLive retain their own behavior. src/editor/space-overlay.js updates the caret separately from nonprinting marks.
+- src/editor/caret-motion.js and src/editor/selection-motion.js share the page's coordinate system and an animation clock. Text highlights use measured text runs. Formulas and other atomic nodes use their own bounds. The browser and ProseMirror still own the selection. Navigation retargets from the displayed position, and edits use a shorter motion at the insertion point. IME composition and reduced motion use native rendering. MathLive and table cell selections keep their own rendering. src/editor/space-overlay.js updates the caret separately from nonprinting marks.
 - src/editor/latex-codec.js maps supported LaTeX to the editor tree and serializes edited content.
 - latex/document.mjs retains preamble, document boundaries and opaque source blocks.
 - latex/inline.mjs recognizes supported inline syntax.
