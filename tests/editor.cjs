@@ -299,6 +299,8 @@ const server=createServer(async(req,res)=>{
     await page.waitForFunction(()=>document.querySelectorAll('.ProseMirror h1[data-label="sec:target"]').length===1);
     assert.equal(await paper.locator('.ref-node').count(),1,'reference is an editable atom');
     assert.equal(await paper.locator('.ref-node').textContent(),'1');
+    assert.equal(await paper.locator('.ref-node').getAttribute('title'),null,'References use the shared tooltip');
+    assert.match(await paper.locator('.ref-node').getAttribute('data-tooltip'),/\\ref\{sec:target\}/);
     await page.locator('input[type=file]').setInputFiles({
       name:'align.tex',mimeType:'text/plain',
       buffer:Buffer.from('\\documentclass{article}\n\\begin{document}\n\\begin{align}\n\\mathbf{x} &= 1 \\\\\n\\end{align}\n\\end{document}\n'),
@@ -840,6 +842,20 @@ const server=createServer(async(req,res)=>{
       return {fieldLeft:f.left,handleRight:h.right,handleTop:h.top,fieldTop:f.top};
     });
     assert.ok(handlePlace.handleRight<=handlePlace.fieldLeft-8,'Inline drag handle keeps a clear gap left of the formula: '+JSON.stringify(handlePlace));
+    await page.locator('.math-drag-handle').hover();
+    await page.waitForTimeout(150);
+    assert.equal(await page.locator('.lineae-tooltip').isVisible(),false,'Drag handle tooltip waits before appearing');
+    await page.waitForTimeout(500);
+    assert.equal(await page.locator('.lineae-tooltip').isVisible(),true);
+    assert.equal(await page.locator('.lineae-tooltip').textContent(),'拖动公式');
+    const handleTooltipPlacement=await page.evaluate(()=>{
+      const handle=document.querySelector('.math-drag-handle').getBoundingClientRect();
+      const tip=document.querySelector('.lineae-tooltip').getBoundingClientRect();
+      return {handle:{top:handle.top,bottom:handle.bottom},tip:{top:tip.top,bottom:tip.bottom}};
+    });
+    assert.ok(handleTooltipPlacement.tip.bottom<=handleTooltipPlacement.handle.top+.5||handleTooltipPlacement.tip.top>=handleTooltipPlacement.handle.bottom-.5,
+      'Drag handle tooltip does not cover the handle: '+JSON.stringify(handleTooltipPlacement));
+    await page.mouse.move(0,0);
     await importSource('Tail $x$');
     await page.waitForFunction(()=>document.querySelector('math-field')&&document.querySelector('.space-overlay text'));
     await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));

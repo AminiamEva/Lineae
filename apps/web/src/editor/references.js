@@ -65,7 +65,7 @@ export const Ref = Node.create({
         const number = collectReferenceLabels(editor.state.doc).find(item=>item.key===node.attrs.key)?.number ?? null;
         dom.textContent = node.attrs.equation ? `(${number??'?'})` : number ?? '?';
         dom.classList.toggle('missing', !number);
-        dom.title = (node.attrs.equation?'\\eqref{':'\\ref{') + node.attrs.key + '}';
+        dom.dataset.tooltip = (node.attrs.equation?'\\eqref{':'\\ref{') + node.attrs.key + '}';
       };
       render();
       dom.refreshRef = render;
@@ -113,7 +113,8 @@ export const Footnote = Node.create({
           });
         }
         dom.textContent = String(number || 1);
-        dom.title = t('脚注','Footnote') + ': ' + node.attrs.text;
+        dom.dataset.tooltipZh = '脚注: ' + node.attrs.text;
+        dom.dataset.tooltipEn = 'Footnote: ' + node.attrs.text;
       };
       render();
       dom.addEventListener('mousedown', event => {
@@ -154,7 +155,7 @@ export const Cite = Node.create({
       const render = () => {
         dom.dataset.citeView = node.attrs.key;
         dom.textContent = '[' + node.attrs.key + ']';
-        dom.title = '\\cite{' + node.attrs.key + '}';
+        dom.dataset.tooltip = '\\cite{' + node.attrs.key + '}';
       };
       render();
       dom.addEventListener('mousedown', event => {
@@ -195,7 +196,7 @@ export const Label = Node.create({
       const render = () => {
         dom.dataset.labelView = node.attrs.key;
         dom.textContent = '#' + node.attrs.key;
-        dom.title = '\\label{' + node.attrs.key + '}';
+        dom.dataset.tooltip = '\\label{' + node.attrs.key + '}';
       };
       render();
       dom.addEventListener('mousedown', event => {
