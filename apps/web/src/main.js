@@ -1072,7 +1072,8 @@ document.addEventListener('scroll', event => {
 window.addEventListener('resize', () => closeCommands());
 document.addEventListener('keydown', event => {
   if (event.key !== 'Escape' || event.defaultPrevented || !commands.hidden) return;
-  if (!editor.view.hasFocus() || !editor.state.storedMarks?.some(mark => mark.type.name === 'boxed')) return;
+  if (document.querySelector('.editor-dialog-backdrop')) return;
+  if (!editor.state.storedMarks?.some(mark => mark.type.name === 'boxed')) return;
   event.preventDefault();
   editor.view.dispatch(editor.state.tr.removeStoredMark(editor.schema.marks.boxed));
 }, true);
