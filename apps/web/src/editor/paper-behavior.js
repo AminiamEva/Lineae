@@ -19,6 +19,48 @@ function numberedHeadings(doc) {
   return DecorationSet.create(doc, decorations);
 }
 
+const clikeKeywords = 'abstract|as|async|await|break|case|catch|class|const|continue|default|delete|do|else|enum|export|extends|final|finally|for|from|function|goto|if|implements|import|in|instanceof|interface|let|namespace|new|package|private|protected|public|return|sealed|static|super|switch|this|throw|throws|try|type|typeof|var|void|while|with|yield|true|false|null|None|True|False|undefined|nil';
+function codeFamily(language) {
+  const name = String(language ?? '').trim().toLowerCase();
+  if (!name) return 'clike';
+  if (['yaml','yml'].includes(name)) return 'yaml';
+  if (['py','python'].includes(name)) return 'python';
+  if (['tex','latex'].includes(name)) return 'latex';
+  if (['html','xml','svg','markup','vue'].includes(name)) return 'markup';
+  if (['css','scss','less','sass'].includes(name)) return 'css';
+  if (['sql','mysql','postgresql','postgres','psql','sqlite'].includes(name)) return 'sql';
+  if (['json','jsonc'].includes(name)) return 'json';
+  if (['sh','bash','shell','zsh','fish','console'].includes(name)) return 'shell';
+  return 'clike';
+}
+function codeTokenRegex(family) {
+  switch (family) {
+    case 'yaml':
+      return /(?<comment>#[^\n]*)|(?<string>"(?:\\.|[^"\\])*"|'(?:''|[^'])*')|(?<property>[\w.$/-]+(?=\s*:))|(?<keyword>\b(?:true|false|null|yes|no|on|off)\b)|(?<number>-?\b\d+(?:\.\d+)?\b)/gim;
+    case 'python':
+      return /(?<comment>#[^\n]*)|(?<string>"""[\s\S]*?"""|'''[\s\S]*?'''|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*')|(?<keyword>\b(?:and|as|assert|async|await|break|class|continue|def|del|elif|else|except|False|finally|for|from|global|if|import|in|is|lambda|None|nonlocal|not|or|pass|raise|return|True|try|while|with|yield)\b)|(?<number>\b\d+(?:\.\d+)?\b)|(?<function>\b[A-Za-z_]\w*(?=\s*\())/g;
+    case 'latex':
+      return /(?<comment>(?<!\\)%[^\n]*)|(?<string>\$[^$]*\$)|(?<keyword>\\[A-Za-z@]+\*?)|(?<number>\b\d+(?:\.\d+)?\b)/g;
+    case 'markup':
+      return /(?<comment><!--[\s\S]*?-->)|(?<string>"[^"]*"|'[^']*')|(?<tag><\/?[\w:-]+|\/?>)|(?<attr>[\w:-]+(?=\s*=))/g;
+    case 'css':
+      return /(?<comment>\/\*[\s\S]*?\*\/)|(?<string>"[^"]*"|'[^']*')|(?<property>[-\w]+(?=\s*:))|(?<keyword>@[\w-]+|!important)|(?<number>-?\b\d+(?:\.\d+)?(?:px|em|rem|%|vh|vw|s|ms|deg|fr)?\b|#[\da-f]{3,8}\b)/gi;
+    case 'json':
+      return /(?<property>"(?:\\.|[^"\\])*"(?=\s*:))|(?<string>"(?:\\.|[^"\\])*")|(?<keyword>\b(?:true|false|null)\b)|(?<number>-?\b\d+(?:\.\d+)?(?:e[+-]?\d+)?\b)/gi;
+    case 'sql':
+      return /(?<comment>--[^\n]*|\/\*[\s\S]*?\*\/)|(?<string>'(?:''|[^'])*')|(?<keyword>\b(?:select|from|where|insert|into|values|update|set|delete|create|table|alter|drop|join|left|right|inner|outer|group|order|by|having|limit|offset|as|and|or|not|null|is|in|distinct|union|case|when|then|else|end|primary|key|foreign|references|index|view)\b)|(?<number>\b\d+(?:\.\d+)?\b)/gi;
+    case 'shell':
+      return /(?<comment>#[^\n]*)|(?<string>"(?:\\.|[^"\\])*"|'[^']*')|(?<keyword>\b(?:if|then|else|elif|fi|for|while|do|done|case|esac|in|function|return|exit|export|local|readonly|source|alias|echo|cd)\b)|(?<property>\$\{?[\w@#?*!-]+\}?)|(?<number>\b\d+(?:\.\d+)?\b)/g;
+    default:
+      return new RegExp(
+        '(?<comment>\\/\\*[\\s\\S]*?\\*\\/|\\/\\/[^\\n]*|#[^\\n]*)'
+        + '|(?<string>"(?:\\\\.|[^"\\\\])*"|\'(?:\\\\.|[^\'\\\\])*\'|`(?:\\\\.|[^`\\\\])*`)'
+        + '|(?<keyword>\\b(?:' + clikeKeywords + ')\\b)'
+        + '|(?<type>\\b(?:int|long|short|float|double|char|bool|boolean|string|str|void|byte|number|any|unknown|never|object)\\b)'
+        + '|(?<number>\\b\\d+(?:\\.\\d+)?\\b)'
+        + '|(?<function>\\b[A-Za-z_$][\\w$]*(?=\\s*\\())', 'g');
+  }
+}
 function formattingMarks(doc) {
   const decorations = [];
   doc.descendants((node, position) => {
@@ -37,12 +79,13 @@ function formattingMarks(doc) {
       }
     }
     if (node.type.name === 'codeBlock') {
-        const tokens = /(?:#[^\n]*|\/\/[^\n]*|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|\b(?:const|let|var|function|class|return|if|else|for|while|import|from|def|print|int|float|bool|true|false|None|null|public|static)\b|\b\d+(?:\.\d+)?\b)/g;
-        for (const match of node.textContent.matchAll(tokens)) {
-          const from=position+1+match.index;
-          const kind=/^(?:#|\/\/)/.test(match[0])?'comment':/^["']/.test(match[0])?'string':/^\d/.test(match[0])?'number':'keyword';
-          decorations.push(Decoration.inline(from,from+match[0].length,{class:`code-token-${kind}`}));
-        }
+      const tokenPattern = codeTokenRegex(codeFamily(node.attrs.language));
+      for (const match of node.textContent.matchAll(tokenPattern)) {
+        const kind = match.groups && Object.keys(match.groups).find(key => match.groups[key] !== undefined);
+        if (!kind || !match[0]) continue;
+        const from=position+1+match.index;
+        decorations.push(Decoration.inline(from,from+match[0].length,{class:`code-token-${kind}`}));
+      }
       return false;
     }
   });
@@ -60,6 +103,13 @@ export const PaperBehavior = Extension.create({
           keepOnSplit: true,
           parseHTML: element => element.dataset.indent !== 'false',
           renderHTML: attributes => ({ 'data-indent': String(attributes.indent) }),
+        },
+        indentLevel: {
+          default: 0,
+          parseHTML: element => Number(element.dataset.indentLevel) || 0,
+          renderHTML: attributes => attributes.indentLevel
+            ? { 'data-indent-level': String(attributes.indentLevel), style: `margin-left:${attributes.indentLevel * 2}em` }
+            : {},
         },
       },
     }, {

@@ -693,8 +693,12 @@ const server=createServer(async(req,res)=>{
     assert.match(await page.locator('math-field').evaluate(field=>field.value),/\\frac/);
     assert.equal(await find.isVisible(),false);
     await page.keyboard.press('Control+m');
-    await page.waitForFunction(()=>document.querySelector('math-field')?.value.includes('\\begin{pmatrix}'));
-    assert.match(await page.locator('math-field').evaluate(field=>field.value),/\\begin\{pmatrix\}/);
+    await page.waitForFunction(()=>document.querySelector('math-field')?.value.includes('\\begin{matrix}'));
+    assert.match(await page.locator('math-field').evaluate(field=>field.value),/\\begin\{matrix\}/);
+    for (const [shortcut,environment] of [['Control+Shift+m','pmatrix'],['Control+Alt+m','bmatrix'],['Control+Shift+Alt+m','Bmatrix']]) {
+      await page.keyboard.press(shortcut);
+      await page.waitForFunction(name=>document.querySelector('math-field')?.value.includes('\\begin{'+name+'}'),environment);
+    }
     for (const [shortcut,operator] of [['Control+Shift+s','sum'],['Control+Shift+p','prod'],['Control+Shift+i','iint'],['Control+Shift+Alt+i','iiint'],['Alt+i','oint'],['Alt+Shift+i','oiint']]) {
       await page.keyboard.press(shortcut);
       await page.waitForFunction(name=>document.querySelector('math-field')?.value.includes('\\'+name),operator);
@@ -1213,6 +1217,76 @@ const server=createServer(async(req,res)=>{
     await page.waitForFunction(()=>document.querySelector('math-field')?.value.includes('\\left('));
     assert.match(await page.locator('math-field').evaluate(field=>field.value),/\\right\)$/);
     assert.equal(await page.locator('.delimiter-ghost').count(),0,'The highlights disappear after both delimiters are typed');
+    await importSource('Code blocks');
+    await paper.locator('p').last().click();
+    await page.locator('[data-group=insert]').click();
+    await page.getByRole('button',{name:'Code block',exact:true}).click();
+    const languageDialog=page.locator('.editor-dialog input');
+    await languageDialog.fill('yaml');
+    await languageDialog.press('Enter');
+    await page.waitForFunction(()=>document.querySelector('.ProseMirror pre[data-language="yaml"]'));
+    for (const [index,line] of ['# config','name: demo','items:','  - one','count: 42'].entries()) {
+      if (index) await page.keyboard.press('Enter');
+      await page.keyboard.type(line);
+    }
+    assert.equal(await paper.locator('pre[data-language="yaml"]').count(),1,'Code block keeps its language');
+    const yamlTokens=await paper.locator('pre span[class^="code-token-"]').evaluateAll(nodes=>[...new Set(nodes.map(node=>node.className))]);
+    assert.ok(yamlTokens.includes('code-token-property')&&yamlTokens.includes('code-token-comment'),
+      'YAML keys and comments are highlighted: '+JSON.stringify(yamlTokens));
+    assert.equal(await paper.locator('pre[data-language="yaml"]').evaluate(element=>getComputedStyle(element,'::before').content),'"yaml"',
+      'The code block shows its language');
+    await page.keyboard.press('Enter');
+    await page.keyboard.press('Tab');
+    await page.keyboard.type('tail');
+    assert.match(await paper.locator('pre code').textContent(),/\n {2}tail$/,'YAML tabs are two spaces');
+    await page.keyboard.press('Shift+Tab');
+    assert.match(await paper.locator('pre code').textContent(),/\ntail$/,'Shift+Tab removes one YAML indent');
+    assert.ok(await page.evaluate(()=>document.activeElement?.classList.contains('ProseMirror')),'Shift+Tab keeps editor focus');
+    await importSource('Python code');
+    await paper.locator('p').last().click();
+    await page.locator('[data-group=insert]').click();
+    await page.getByRole('button',{name:'Code block',exact:true}).click();
+    await languageDialog.fill('python');
+    await languageDialog.press('Enter');
+    await page.waitForFunction(()=>document.querySelector('.ProseMirror pre[data-language="python"]'));
+    for (const [index,line] of ['def greet(name):','    # note','    return "hi"'].entries()) {
+      if (index) await page.keyboard.press('Enter');
+      await page.keyboard.type(line);
+    }
+    assert.ok(await paper.locator('pre .code-token-keyword').count(),'Python keywords are highlighted');
+    assert.ok(await paper.locator('pre .code-token-string').count(),'Python strings are highlighted');
+
+    await importSource('Plain text');
+    await paper.locator('p').last().click();
+    await page.locator('[data-group=format]').click();
+    await page.getByRole('button',{name:'box',exact:true}).click();
+    await page.keyboard.press('Escape');
+    await page.keyboard.type('unboxed');
+    assert.equal(await paper.locator('[data-boxed]').count(),0,'Escape cancels a pending box');
+
+    await importSource('\\begin{enumerate}\n\\item One\n\\begin{enumerate}\n\\item Two\n\\begin{enumerate}\n\\item Three\n\\end{enumerate}\n\\end{enumerate}\n\\item Four\n\\end{enumerate}');
+    await page.waitForFunction(()=>document.querySelectorAll('.ProseMirror li').length===4);
+    await paper.locator('li p').nth(2).click();
+    await page.keyboard.press('End');
+    await page.keyboard.press('Enter');
+    await page.keyboard.press('Backspace');
+    assert.equal(await paper.locator(':scope > p[data-indent-level="3"]').count(),1,
+      'Backspace leaves the list at the current indentation');
+    await page.keyboard.press('Backspace');
+    assert.equal(await paper.locator(':scope > p[data-indent-level]').count(),0,
+      'A second Backspace returns to the page margin');
+
+    await importSource('Nested tables');
+    await paper.locator('p').last().click();
+    await page.locator('[data-group=table]').click();
+    for (let level=0;level<4;level++) {
+      await page.getByRole('button',{name:'▦',exact:true}).click();
+      await page.waitForTimeout(80);
+    }
+    const tableWidths=await paper.locator('table').evaluateAll(tables=>tables.map(table=>table.getBoundingClientRect().width));
+    assert.ok(tableWidths.at(-1)>tableWidths[0]*.6,
+      'Nested tables keep most of the page width: '+JSON.stringify(tableWidths));
+
     await paper.locator('p').first().click();
     await paper.evaluate(element=>{
       const clipboard=new DataTransfer();

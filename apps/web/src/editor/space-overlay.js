@@ -347,7 +347,13 @@ export function installSpaceOverlay(editor, paper) {
     compositionFrame=requestAnimationFrame(compositionLoop);
   }
   editor.on('transaction',({transaction})=>{
-    if (transaction.docChanged || transaction.selectionSet) animateCaret=true;
+    if (transaction.docChanged) {
+      caretAnimation?.cancel();
+      caretAnimation=null;
+      motionCaret.hidden=true;
+      editor.view.dom.classList.remove('has-motion-caret');
+    }
+    if (transaction.selectionSet && !transaction.docChanged) animateCaret=true;
     schedule();
     if (!transaction.selectionSet || !arrowOrigin || editor.state.storedMarks) return;
     const state=editor.state;

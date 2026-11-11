@@ -23,8 +23,9 @@ import { installSpaceOverlay } from './editor/space-overlay.js';
 import { wrapMathWithDelimiters } from '../latex/delimiters.mjs';
 import { readDelimiterPair } from './editor/delimiter-input.js';
 import { serialize, importBlocks } from './editor/latex-codec.js';
-import { Editor, Node, Extension, Mark } from '@tiptap/core';
+import { Editor, Node, Extension, Mark, mergeAttributes } from '@tiptap/core';
 import StarterKit from '@tiptap/starter-kit';
+import CodeBlock from '@tiptap/extension-code-block';
 import Table from '@tiptap/extension-table';
 import TableRow from '@tiptap/extension-table-row';
 import TableCell from '@tiptap/extension-table-cell';
@@ -80,6 +81,15 @@ const Boxed = Mark.create({
   name:'boxed',parseHTML:()=>[{tag:'span[data-boxed]'}],
   addAttributes:()=>({boxId:{default:null,parseHTML:element=>element.dataset.boxId??null}}),
   renderHTML:({mark})=>['span',{'data-boxed':'','data-box-id':mark.attrs.boxId,style:'border:1px solid currentColor;padding:0 .2em'},0],
+});
+const LanguageCodeBlock = CodeBlock.extend({
+  renderHTML({ node, HTMLAttributes }) {
+    const language = node.attrs.language;
+    const attributes = mergeAttributes(this.options.HTMLAttributes, HTMLAttributes);
+    if (language) attributes['data-language'] = language;
+    return ['pre', attributes,
+      ['code', { class: language ? this.options.languageClassPrefix + language : null }, 0]];
+  },
 });
 const TextCommand = Mark.create({
   name: 'textCommand',
@@ -165,6 +175,56 @@ function insertMath(display = false, latex = '') {
 function insertEquation() {
   insertFormula(editor, true, '', undefined, field => insertLiveMath(field, '\\placeholder{}'), { delimiter:'equation' });
 }
+const matrixEnvironments = new Set(['matrix', 'pmatrix', 'bmatrix', 'Bmatrix', 'vmatrix', 'Vmatrix']);
+function matrixSource(name, content = '\\placeholder{}') {
+  const environment = matrixEnvironments.has(name) ? name : 'matrix';
+  return `\\begin{${environment}}${content}\\end{${environment}}`;
+}
+function matrixShortcut(modifiers) {
+  return { c:'matrix', cs:'pmatrix', ca:'bmatrix', csa:'Bmatrix' }[modifiers] ?? null;
+}
+function codeBlockAt($from) {
+  for (let depth = $from.depth; depth >= 0; depth--) {
+    const node = $from.node(depth);
+    if (node.type.name === 'codeBlock') return node;
+  }
+  return null;
+}
+function looksLikeYaml(text) {
+  const lines = text.split('\n').map(line => line.trim()).filter(line => line && !line.startsWith('#'));
+  if (lines.length < 2) return false;
+  const mappings = lines.filter(line => /^[\w."'/-]+\s*:(\s|$)/.test(line) || /^-\s+\S/.test(line));
+  return mappings.length >= Math.ceil(lines.length * 0.6);
+}
+function indentWidthAt($from) {
+  const block = codeBlockAt($from);
+  if (!block) return 4;
+  const language = (block.attrs.language ?? '').toLowerCase();
+  if (language === 'yaml' || language === 'yml') return 2;
+  if (!language && looksLikeYaml(block.textContent)) return 2;
+  return 4;
+}
+function outdentCurrentLine(editor) {
+  const { selection } = editor.state;
+  const { $from } = selection;
+  if (!$from.parent.isTextblock) return false;
+  const width = indentWidthAt($from);
+  const text = $from.parent.textContent.slice(0, $from.parentOffset);
+  const lineStart = text.lastIndexOf('\n') + 1;
+  const line = text.slice(lineStart);
+  let remove = 0;
+  while (remove < width && line[remove] === ' ') remove++;
+  if (!remove && line[0] === '\t') remove = 1;
+  if (remove) {
+    const from = $from.pos - line.length;
+    editor.view.dispatch(editor.state.tr.delete(from, from + remove));
+    return true;
+  }
+  if ($from.parent.type.name === 'paragraph' && (($from.parent.attrs.indentLevel ?? 0) > 0)) {
+    editor.view.dispatch(editor.state.tr.setNodeMarkup($from.before(), undefined, { ...$from.parent.attrs, indentLevel:0 }));
+  }
+  return true;
+}
 let backticks = null;
 const Shortcuts = Extension.create({
   name:'documentShortcuts',
@@ -242,14 +302,55 @@ const Shortcuts = Extension.create({
       Backspace:()=>{
         const { selection, doc }=this.editor.state;
         if(!selection.empty)return false;
-        const node=selection.$from.nodeBefore;
-        if(!['math','mathBlock'].includes(node?.type.name))return false;
-        // Treat a formula as one object: the first press selects it whole,
-        // the next press lets ProseMirror delete the selection.
-        const position=selection.from-node.nodeSize;
-        this.editor.view.focus();
-        this.editor.view.dispatch(this.editor.state.tr.setSelection(NodeSelection.create(doc,position)));
-        return true;
+        const $from=selection.$from;
+        const node=$from.nodeBefore;
+        if(['math','mathBlock'].includes(node?.type.name)) {
+          // Treat a formula as one object: the first press selects it whole,
+          // the next press lets ProseMirror delete the selection.
+          const position=selection.from-node.nodeSize;
+          this.editor.view.focus();
+          this.editor.view.dispatch(this.editor.state.tr.setSelection(NodeSelection.create(doc,position)));
+          return true;
+        }
+        const paragraph=$from.parent;
+        if(paragraph.type.name==='paragraph'&&$from.parentOffset===0&&paragraph.content.size===0) {
+          const indentLevel=paragraph.attrs.indentLevel??0;
+          if(indentLevel>0) {
+            const position=$from.before();
+            this.editor.view.dispatch(this.editor.state.tr.setNodeMarkup(position,undefined,{...paragraph.attrs,indentLevel:0}));
+            this.editor.view.focus();
+            return true;
+          }
+          let listItemDepth=0;
+          const listDepths=[];
+          for(let depth=1;depth<=$from.depth;depth++) {
+            const type=$from.node(depth).type.name;
+            if(type==='listItem')listItemDepth=depth;
+            if(type==='bulletList'||type==='orderedList')listDepths.push(depth);
+          }
+          if(listItemDepth&&listDepths.length) {
+            const item=$from.node(listItemDepth);
+            const hasNestedList=item.content.content.some(child=>['bulletList','orderedList'].includes(child.type.name));
+            if(!item.textContent.trim()&&!hasNestedList) {
+              const level=listDepths.length;
+              this.editor.view.focus();
+              let lifted=false;
+              // Lift the empty block out of one list level at a time. This
+              // keeps the paragraph at the caret position instead of moving
+              // it to the end of the outermost list.
+              while(this.editor.commands.liftEmptyBlock()) lifted=true;
+              if(lifted) {
+                const position=this.editor.state.selection.$from.before();
+                const paragraph=this.editor.state.doc.nodeAt(position);
+                if(paragraph?.type.name==='paragraph') {
+                  this.editor.view.dispatch(this.editor.state.tr.setNodeMarkup(position,undefined,{...paragraph.attrs,indent:false,indentLevel:level}));
+                }
+              }
+              return lifted;
+            }
+          }
+        }
+        return false;
       },
       Tab:()=>{
         if(this.editor.isActive('table'))return false;
@@ -261,9 +362,19 @@ const Shortcuts = Extension.create({
           }
           return depth>=10 || this.editor.commands.sinkListItem('listItem');
         }
+        if (this.editor.isActive('codeBlock')) {
+          return this.editor.commands.insertContent(' '.repeat(indentWidthAt(this.editor.state.selection.$from)));
+        }
         return this.editor.commands.insertContent('    ');
       },
-      'Shift-Tab':()=>this.editor.isActive('listItem')?this.editor.commands.liftListItem('listItem'):false,
+      'Shift-Tab':()=>{
+        if (this.editor.isActive('listItem')) {
+          this.editor.commands.liftListItem('listItem');
+          return true;
+        }
+        outdentCurrentLine(this.editor);
+        return true;
+      },
     };
   },
 });
@@ -273,7 +384,7 @@ paper.before(documentPage);documentPage.append(paper);
 paper.replaceChildren();
 editor=new Editor({
   element:paper,
-  extensions:[StarterKit.configure({heading:{levels:[1,2,3]}}),MultiSelection,PaperBehavior,TextStyle,TextCommand,Underline,Superscript,Subscript,SmallCaps,Boxed,Table.configure({resizable:true}),TableRow,TableCell,TableHeader,Raw,DocumentImage,TheoremBlock,DescriptionList,DescriptionItem,MathNode,MathBlock,Ref,Cite,Footnote,Label,TableOfContents,Shortcuts],
+  extensions:[StarterKit.configure({heading:{levels:[1,2,3]},codeBlock:false}),LanguageCodeBlock,MultiSelection,PaperBehavior,TextStyle,TextCommand,Underline,Superscript,Subscript,SmallCaps,Boxed,Table.configure({resizable:true}),TableRow,TableCell,TableHeader,Raw,DocumentImage,TheoremBlock,DescriptionList,DescriptionItem,MathNode,MathBlock,Ref,Cite,Footnote,Label,TableOfContents,Shortcuts],
   content:'<p></p>',
 });
 function syncTableAttributes() {
@@ -658,7 +769,10 @@ document.body.append(commands);
 
 const formulaCommands = {
   frac: '\\frac{#?}{#?}', sqrt: '\\sqrt{#?}', sum: '\\sum',
-  int: '\\int', lim: '\\lim', matrix: '\\begin{pmatrix}#?\\end{pmatrix}',
+  int: '\\int', lim: '\\lim', matrix: '\\begin{matrix}#?\\end{matrix}',
+  pmatrix: '\\begin{pmatrix}#?\\end{pmatrix}', bmatrix: '\\begin{bmatrix}#?\\end{bmatrix}',
+  Bmatrix: '\\begin{Bmatrix}#?\\end{Bmatrix}', vmatrix: '\\begin{vmatrix}#?\\end{vmatrix}',
+  Vmatrix: '\\begin{Vmatrix}#?\\end{Vmatrix}',
   mathbf: '\\mathbf{x}', mathrm: '\\mathrm{x}', mathit: '\\mathit{x}',
   mathcal: '\\mathcal{x}', mathbb: '\\mathbb{x}', text: '\\text{x}',
   mathsf: '\\mathsf{x}', mathtt: '\\mathtt{x}', mathfrak: '\\mathfrak{x}', mathscr: '\\mathscr{x}',
@@ -753,7 +867,12 @@ const structureCommands = {
   textsuperscript: () => editor.chain().focus().toggleMark('superscript').run(),
   textsubscript: () => editor.chain().focus().toggleMark('subscript').run(),
   texttt: () => editor.chain().focus().toggleCode().run(),
-  matrix: () => insertMath(false,'\\begin{pmatrix}\\placeholder{}\\end{pmatrix}'),
+  matrix: () => insertMath(false,matrixSource('matrix')),
+  pmatrix: () => insertMath(false,matrixSource('pmatrix')),
+  bmatrix: () => insertMath(false,matrixSource('bmatrix')),
+  Bmatrix: () => insertMath(false,matrixSource('Bmatrix')),
+  vmatrix: () => insertMath(false,matrixSource('vmatrix')),
+  Vmatrix: () => insertMath(false,matrixSource('Vmatrix')),
   cases: () => insertMath(true,'\\begin{cases}\\placeholder{} & \\placeholder{}\\\\ \\placeholder{} & \\placeholder{}\\end{cases}'),
   align: () => insertMath(true,'\\begin{align}\\placeholder{} &= \\placeholder{}\\\\ \\placeholder{} &= \\placeholder{}\\end{align}'),
 };
@@ -905,6 +1024,7 @@ function armLiteralFence(field) {
   const options = { signal:controller.signal, capture:true };
   field.addEventListener('blur',()=>controller.abort(),options);
   field.addEventListener('keydown',event=>{
+    if (event.key === 'Escape') { controller.abort(); return; }
     if (['Shift','Alt','Control','Meta'].includes(event.key)) return;
     controller.abort();
     const fence=literalFences[event.key];
@@ -921,7 +1041,8 @@ window.addEventListener('keydown', event => {
   const key = /^Key[A-Z]$/.test(event.code) ? event.code.slice(3).toLowerCase() : event.key.toLowerCase();
   const modifiers = `${event.ctrlKey ? 'c' : ''}${event.shiftKey ? 's' : ''}${event.altKey ? 'a' : ''}`;
   const operator = mathOperatorKeys[`${modifiers}:${key}`];
-  if (!operator && (modifiers !== 'c' || !['f','i','m','l','r'].includes(key))) return;
+  const matrix = key === 'm' ? matrixShortcut(modifiers) : null;
+  if (!operator && !matrix && (modifiers !== 'c' || !['f','i','l','r'].includes(key))) return;
   event.preventDefault(); event.stopImmediatePropagation();
   if (event.repeat) return;
   if (operator) {
@@ -934,10 +1055,13 @@ window.addEventListener('keydown', event => {
   }
   const selected = field.selection.ranges.map(range => field.getValue(range)).join('');
   const slot = '\\placeholder{}';
+  if (matrix) {
+    insertLiveMath(field, matrixSource(matrix, selected || slot));
+    return;
+  }
   const fragments = {
     f: `\\frac{${selected || slot}}{${slot}}`,
     i: `\\int${selected ? ' '+selected : ''}`,
-    m: `\\begin{pmatrix}${selected || slot}\\end{pmatrix}`,
   };
   insertLiveMath(field, fragments[key]);
 }, true);
@@ -946,6 +1070,12 @@ document.addEventListener('scroll', event => {
   if (!commands.hidden && !commands.contains(event.target)) closeCommands();
 }, true);
 window.addEventListener('resize', () => closeCommands());
+document.addEventListener('keydown', event => {
+  if (event.key !== 'Escape' || event.defaultPrevented || !commands.hidden) return;
+  if (!editor.view.hasFocus() || !editor.state.storedMarks?.some(mark => mark.type.name === 'boxed')) return;
+  event.preventDefault();
+  editor.view.dispatch(editor.state.tr.removeStoredMark(editor.schema.marks.boxed));
+}, true);
 
 const footer=document.createElement('footer');footer.className='document-status';
 const count=document.createElement('span');
@@ -1336,7 +1466,7 @@ for (const operator of ['prod','iint','iiint','oint','oiint']) {
 groupButton(mathGroup,'\\left',()=>chooseMathDelimiters(activeMath()));
 groupButton(mathGroup,'\\right',()=>chooseMathDelimiters(activeMath(),true));
 groupButton(mathGroup,'单括号 / Literal fence',()=>armLiteralFence(activeMath()));
-groupButton(mathGroup,'matrix',()=>insertMath(false,'\\begin{pmatrix}\\placeholder{}\\end{pmatrix}'));
+groupButton(mathGroup,'matrix',()=>insertMath(false,matrixSource('matrix')));
 groupButton(mathGroup,'cases',()=>insertMath(true,'\\begin{cases}\\placeholder{} & \\placeholder{}\\\\ \\placeholder{} & \\placeholder{}\\end{cases}'));
 groupButton(mathGroup,'align',()=>insertMath(true,'\\begin{align}\\placeholder{} &= \\placeholder{}\\\\ \\placeholder{} &= \\placeholder{}\\end{align}'));
 
