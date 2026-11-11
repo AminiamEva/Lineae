@@ -3,6 +3,7 @@ import test from 'node:test';
 import { parseDocument } from '../apps/web/latex/document.mjs';
 import { parseInline } from '../apps/web/latex/inline.mjs';
 import { exportDocument, resolvePackages } from '../apps/web/latex/packages.mjs';
+import { numberedMathRows } from '../apps/web/latex/math-environments.mjs';
 import { serialize } from '../apps/web/src/editor/latex-codec.js';
 import { importBlocks } from '../apps/web/latex/blocks.mjs';
 import { buildProjectZip, projectDependencies } from '../apps/web/src/editor/project-zip.mjs';
@@ -207,6 +208,27 @@ test('parses extended math environments as math blocks', () => {
     const nodes = doc.blocks.flatMap(importBlocks);
     assert.ok(nodes.some(node => node.type === 'mathBlock' && node.attrs.latex.includes(name)), name);
   }
+});
+
+test('exports title and math structures with the required outer commands', () => {
+  const parts = parseDocument('\\documentclass{article}\n\\title{Example}\n\\begin{document}\n\\end{document}\n');
+  const cases = String.raw`\begin{cases}1&x>0\\0&x\le0\end{cases}`;
+  const body = serialize(importBlocks(cases)[0]);
+  assert.ok(body.startsWith('\\[' + cases + '\\]'));
+  const source = exportDocument(parts, body);
+  assert.match(source, /\\date\{\}\n\\begin\{document\}\n\\maketitle/);
+  assert.match(source, /\\usepackage\{amsmath\}/);
+  assert.equal((exportDocument(parts, '\\maketitle\n' + body).match(/\\maketitle/g) ?? []).length, 1);
+});
+
+test('counts numbered alignment rows while skipping nested matrices and suppressed rows', () => {
+  const latex = String.raw`\begin{align}a&=\begin{matrix}1\\2\end{matrix}\label{eq:a}\\b&=2\notag\\c&=3\end{align}`;
+  assert.deepEqual(numberedMathRows({ latex }), [
+    { index: 0, label: 'eq:a' },
+    { index: 1, label: null, unnumbered: true },
+    { index: 2, label: null },
+  ]);
+  assert.deepEqual(numberedMathRows({ latex: latex.replaceAll('{align}', '{align*}') }), []);
 });
 
 test('recognizes inline formatting and preserves the original math delimiter', () => {

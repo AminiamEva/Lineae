@@ -34,7 +34,7 @@ import TableCell from '@tiptap/extension-table-cell';
 import TableHeader from '@tiptap/extension-table-header';
 import { Plugin, Selection, NodeSelection } from '@tiptap/pm/state';
 import { parseDocument } from '../latex/document.mjs';
-import { exportDocument } from '../latex/packages.mjs';
+import { exportDocument, hasTitleCommand } from '../latex/packages.mjs';
 import { MARGIN_PRESETS, readPageSetup, writePageSetup, pageMetrics } from '../latex/geometry.mjs';
 import { mathSymbols } from '../latex/math-symbols.mjs';
 import { createThemeController } from './ui/theme.mjs';
@@ -658,7 +658,7 @@ function recordFormulaLineBreaks(document) {
 function source() {
   const document=editor.getJSON();
   const untouched=importedSnapshot===JSON.stringify(document);
-  if (!recordFormulaLineBreaks(document) && untouched) return importedSource;
+  if (!recordFormulaLineBreaks(document) && untouched && (!readMeta('title') || hasTitleCommand(importedSource))) return importedSource;
   return exportDocument(documentParts,serialize(document),{chineseTypesetting:true});
 }
 savedSource=source();
@@ -675,7 +675,8 @@ function load(text, markSaved = true) {
   if(!parsed)throw new Error(t('无法识别文档','Invalid document'));
   // Preserve imported source exactly. Unsupported blocks remain directly accessible in source mode.
   documentParts=parsed;
-  const content=parsed.blocks.flatMap(importBlocks);
+  const content=parsed.blocks.flatMap((block,index)=>importBlocks(index===0 && readMeta('title')
+    ? block.replace(/^\s*\\maketitle\b[ \t]*(?:\r?\n|$)/,'') : block));
   for (const block of content) identifyImportedBoxes(block);
   editor.commands.setContent({type:'doc',content:content.length?content:[{type:'paragraph'}]});
   refreshReferences(paper);syncTableAttributes();
@@ -835,12 +836,8 @@ const structureCommands = {
   enumerate: () => editor.chain().focus().toggleOrderedList().run(),
   table: () => editor.chain().focus().insertTable({ rows: 2, cols: 2, withHeaderRow: false }).run(),
   inline: () => insertMath(),
-  equation: () => insertMath(true),
-  gather: () => insertMath(true, '\\begin{gather}\\placeholder{}\\\\ \\placeholder{}\\end{gather}'),
-  multline: () => insertMath(true, '\\begin{multline}\\placeholder{}\\\\ \\placeholder{}\\end{multline}'),
-  flalign: () => insertMath(true, '\\begin{flalign}\\placeholder{} &= \\placeholder{}\\\\ \\placeholder{} &= \\placeholder{}\\end{flalign}'),
-  eqnarray: () => insertMath(true, '\\begin{eqnarray}\\placeholder{} &=& \\placeholder{}\\\\ \\placeholder{} &=& \\placeholder{}\\end{eqnarray}'),
-  alignat: () => insertMath(true, '\\begin{alignat}{2}\\placeholder{} &= \\placeholder{} & \\quad \\placeholder{} &= \\placeholder{}\\end{alignat}'),
+  equation: insertEquation,
+  'equation*': () => insertFormula(editor,true,'',undefined,undefined,{delimiter:'equation*'}),
   smallmatrix: () => insertMath(false, '\\begin{smallmatrix}\\placeholder{}\\end{smallmatrix}'),
   quote: () => editor.chain().focus().toggleBlockquote().run(),
   hrule: () => editor.chain().focus().setHorizontalRule().run(),
@@ -850,6 +847,7 @@ const structureCommands = {
     else editor.chain().focus().insertContent({type:'tableOfContents'}).run();
   },
   label: async () => {
+    if (activeMath() || formulaAtSelection()) return editFormulaLabel();
     if(editor.isActive('heading')) {
       const value=await askText(t('标签键','Label key'),editor.getAttributes('heading').label??'');
       if(value!==null)editor.chain().focus().updateAttributes('heading',{label:value||null}).run();
@@ -902,8 +900,20 @@ const structureCommands = {
   vmatrix: () => insertMath(false,matrixSource('vmatrix')),
   Vmatrix: () => insertMath(false,matrixSource('Vmatrix')),
   cases: () => insertMath(true,'\\begin{cases}\\placeholder{} & \\placeholder{}\\\\ \\placeholder{} & \\placeholder{}\\end{cases}'),
-  align: () => insertMath(true,'\\begin{align}\\placeholder{} &= \\placeholder{}\\\\ \\placeholder{} &= \\placeholder{}\\end{align}'),
 };
+const mathSlot = '\\placeholder{}';
+const alignedRow = mathSlot + ' & ' + mathSlot;
+for (const [environment, row] of Object.entries({
+  align:alignedRow, alignat:alignedRow, flalign:alignedRow,
+  eqnarray:mathSlot + ' & ' + mathSlot + ' & ' + mathSlot,
+  gather:mathSlot, multline:mathSlot,
+})) {
+  for (const suffix of ['', '*']) {
+    const name=environment+suffix;
+    const columns=environment==='alignat' ? '{1}' : '';
+    structureCommands[name]=()=>insertMath(true,'\\begin{'+name+'}'+columns+row+'\\\\'+row+'\\end{'+name+'}');
+  }
+}
 let completionField = null;
 let completionAnchor = null;
 let candidateIndex = 0;
@@ -945,6 +955,10 @@ function insertFormulaCommand(latex) {
   } else insertMath(false, fragment);
 }
 async function chooseMathDelimiters(field, rightFirst = false) {
+  if (field?.isConnected && document.activeElement !== field) {
+    field.focus();
+    await new Promise(requestAnimationFrame);
+  }
   const selection = field && structuredClone(field.selection);
   const value = field?.value;
   const documentBefore = editor.state.doc;
@@ -1000,7 +1014,7 @@ function renderCommands() {
     Object.assign(actions, structureCommands);
     for (const name of Object.keys(textCommands)) actions[name] = () => insertTextCommand(name);
   }
-  const exactQuery = filter.value.replace(/^\\/, '');
+  const exactQuery = filter.value.replace(/^\\/, '').replace(/^begin\{([^{}]*)\}?$/, '$1');
   const query = exactQuery.toLowerCase();
   for (const [name, action] of Object.entries(actions).filter(([name]) => name.toLowerCase().startsWith(query)).sort(([a],[b]) => Number(b===exactQuery)-Number(a===exactQuery) || Number(b.toLowerCase()===query)-Number(a.toLowerCase()===query))) {
     const control = document.createElement('button');
@@ -1403,6 +1417,7 @@ groupButton(formatGroup,'I.',()=>setListStyle('upper-roman'));
 groupButton(formatGroup,'甲',()=>setListStyle('cjk-heavenly-stem'));
 groupButton(formatGroup,'•',async()=>{const value=await askText(t('项目符号','Bullet marker'),'•');if(value)setListStyle(value);});
 groupButton(referenceGroup,'label',async()=>{
+  if (activeMath() || formulaAtSelection()) return editFormulaLabel();
   if(editor.isActive('heading')){
     const value=await askText(t('标签键','Label key'),editor.getAttributes('heading').label??'');
     if(value!==null)editor.chain().focus().updateAttributes('heading',{label:value||null}).run();
@@ -1475,17 +1490,22 @@ groupButton(referenceGroup,'author',async()=>{
 groupButton(mathGroup,'$',()=>insertMath());
 groupButton(mathGroup,'$$',()=>insertMath(true)).dataset.shortcut='editor.insertDisplayMath';
 groupButton(mathGroup,'equation',()=>insertEquation());
-groupButton(mathGroup,'equation label',async()=>{
+async function editFormulaLabel() {
   const field=activeMath();
-  const position=field?.closest('[data-math-view]')?.getMathPosition?.() ?? editor.state.selection.from;
-  const documentBefore=editor.state.doc;
-  const node=documentBefore.nodeAt(position);
+  const position=field?.closest('[data-math-view]')?.getMathPosition?.() ?? formulaAtSelection()?.position;
+  if (position === undefined) return;
+  const node=editor.state.doc.nodeAt(position);
   if(node?.type.name!=='mathBlock' || node.attrs.delimiter!=='equation')return;
   const label=await askText(t('公式标签','Equation label'),node.attrs.label??'');
-  if(label===null || !/^[\p{L}\p{N}:_.-]*$/u.test(label) || editor.state.doc!==documentBefore)return;
-  editor.view.dispatch(editor.state.tr.setNodeMarkup(position,undefined,{...node.attrs,label:label||null}));
+  const currentPosition=field?.closest('[data-math-view]')?.getMathPosition?.() ?? position;
+  const current=editor.state.doc.nodeAt(currentPosition);
+  if(label===null || !/^[\p{L}\p{N}:_.-]*$/u.test(label) ||
+      current?.type!==node.type || current.attrs.delimiter!=='equation' ||
+      (current!==node && (!field?.isConnected || current.attrs.id!==node.attrs.id)))return;
+  editor.view.dispatch(editor.state.tr.setNodeMarkup(currentPosition,undefined,{...current.attrs,label:label||null}));
   field?.focus();
-});
+}
+groupButton(mathGroup,'equation label',editFormulaLabel);
 groupButton(mathGroup,'frac',()=>insertMath(false,'\\frac{\\placeholder{}}{\\placeholder{}}'));
 groupButton(mathGroup,'sqrt',()=>insertMath(false,'\\sqrt{\\placeholder{}}'));
 groupButton(mathGroup,'sum',()=>{
@@ -1505,7 +1525,8 @@ groupButton(mathGroup,'\\right',()=>chooseMathDelimiters(activeMath(),true));
 groupButton(mathGroup,'单括号 / Literal fence',()=>armLiteralFence(activeMath()));
 groupButton(mathGroup,'matrix',()=>insertMath(false,matrixSource('matrix')));
 groupButton(mathGroup,'cases',()=>insertMath(true,'\\begin{cases}\\placeholder{} & \\placeholder{}\\\\ \\placeholder{} & \\placeholder{}\\end{cases}'));
-groupButton(mathGroup,'align',()=>insertMath(true,'\\begin{align}\\placeholder{} &= \\placeholder{}\\\\ \\placeholder{} &= \\placeholder{}\\end{align}'));
+groupButton(mathGroup,'align',structureCommands.align);
+groupButton(mathGroup,'align*',structureCommands['align*']);
 
 const header=document.querySelector('header');
 const ribbon=document.createElement('div');ribbon.className='ribbon';

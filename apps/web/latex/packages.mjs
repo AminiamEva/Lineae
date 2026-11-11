@@ -4,7 +4,8 @@ import { theoremNames } from './theorem.mjs';
 // Dependencies are added only when that feature appears in the document body.
 const dependencies = [
   { name: 'ulem', pattern: /\\sout\b/ },
-  { name: 'amsmath', pattern: /\\(?:begin\{(?:align\*?|gather\*?|multline\*?|equation\*|split|aligned|cases|[pbBvV]?matrix)\}|(?:dfrac|tfrac|text|operatorname|eqref)\b)/ },
+  { name: 'amsmath', pattern: /\\(?:begin\{(?:align|alignat|flalign|gather|multline|equation|split|aligned|alignedat|gathered|cases|[pbBvV]?(?:small)?matrix)\*?\}|(?:dfrac|tfrac|text|operatorname|eqref)\b)/ },
+  { name: 'mathtools', pattern: /\\begin\{(?:[dr]cases|drcases|multlined|[pbBvV]smallmatrix)\*?\}/ },
   { name: 'xcolor', pattern: /\\(?:textcolor|colorbox|definecolor)\b/ },
   { name: 'booktabs', pattern: /\\(?:toprule|midrule|bottomrule|cmidrule)\b/ },
   { name: 'enumitem', pattern: /\\begin\{(?:itemize|enumerate)\}\[/ },
@@ -20,6 +21,10 @@ const dependencies = [
 
 function withoutComments(source) {
   return source.replace(/\\[\\%]|%[^\r\n]*/g, match => match.startsWith('%') ? '' : match);
+}
+
+export function hasTitleCommand(source) {
+  return /\\maketitle\b/.test(withoutComments(source));
 }
 
 function declaredPackages(preamble) {
@@ -57,6 +62,13 @@ export function exportDocument({ start, end, eol }, body, options) {
     if(kind==='proof' || !body.includes('\\begin{'+kind+'}') || new RegExp('\\\\newtheorem\\*?\\s*\\{'+kind+'\\}').test(withoutComments(start)))continue;
     const declaration='\\ifcsname '+kind+'\\endcsname\\else\\newtheorem{'+kind+'}{'+title+'}\\fi';
     preamble=preamble.replace(/^\\begin\{document\}/m,()=>declaration+eol+'\\begin{document}');
+  }
+  const metadata = withoutComments(start);
+  if (/\\title\s*\{/.test(metadata) && !hasTitleCommand(body)) {
+    if (!/\\date\s*\{/.test(metadata)) {
+      preamble = preamble.replace(/^\\begin\{document\}/m, () => '\\date{}' + eol + '\\begin{document}');
+    }
+    body = '\\maketitle' + eol + eol + body;
   }
   const separator = body && !body.endsWith('\n') ? eol : '';
   return preamble + body + separator + end;

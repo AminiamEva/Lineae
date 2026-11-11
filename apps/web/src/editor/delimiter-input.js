@@ -3,24 +3,12 @@ import { t } from '../ui/i18n.mjs';
 
 const DELIMITER_KEY = /^[()[\]{}.|]$/;
 
-function caretAnchor(formulaView) {
-  const field = formulaView.querySelector('math-field');
-  const view = formulaView.getBoundingClientRect();
-  const caret = field?.shadowRoot
-    ? [...field.shadowRoot.querySelectorAll('.ML__caret')].find(item => item.getBoundingClientRect().height > 0)
-    : null;
-  const rect = caret?.getBoundingClientRect();
-  if (rect) return { left:rect.left - view.left + rect.width / 2, top:rect.top - view.top + rect.height / 2 };
-  const fieldRect = field?.getBoundingClientRect();
-  if (!fieldRect) return { left:0, top:0 };
-  return { left:fieldRect.left - view.left + fieldRect.width / 2, top:fieldRect.top - view.top + fieldRect.height / 2 };
-}
-
-// Two light slots appear exactly at the caret. Typing fills them in place
-// instead of showing inputs floating on either side of the formula.
 function readInlineDelimiterPair(formulaView, rightFirst) {
   return new Promise(resolve => {
-    const ghost = document.createElement('div');
+    const field = formulaView.querySelector('math-field');
+    const caret = field?.shadowRoot?.querySelector('.ML__caret, .ML__text-caret, .ML__latex-caret');
+    if (!caret) { resolve(null); return; }
+    const ghost = document.createElement('span');
     ghost.className = 'delimiter-ghost';
     ghost.setAttribute('aria-hidden', 'true');
     const slot = document.createElement('span');
@@ -28,10 +16,8 @@ function readInlineDelimiterPair(formulaView, rightFirst) {
     const other = document.createElement('span');
     other.className = 'delimiter-ghost-slot';
     ghost.append(slot, other);
-    formulaView.append(ghost);
-    const anchor = caretAnchor(formulaView);
-    ghost.style.left = anchor.left + 'px';
-    ghost.style.top = anchor.top + 'px';
+    // Place the preview in the MathLive row so the matrix measures its width.
+    caret.before(ghost);
 
     const values = ['', ''];
     const order = rightFirst ? [1, 0] : [0, 1];
@@ -96,7 +82,7 @@ function readInlineDelimiterPair(formulaView, rightFirst) {
     document.addEventListener('pointerdown', event => {
       if (!ghost.contains(event.target)) close(null);
     }, { capture:true, signal });
-    formulaView.querySelector('math-field')?.addEventListener('blur', () => close(null), { signal });
+    field.addEventListener('blur', () => close(null), { signal });
     paint();
   });
 }

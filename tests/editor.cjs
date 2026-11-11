@@ -1395,7 +1395,7 @@ async function verifySelectionGeometry(page, paper, importSource) {
     await page.keyboard.press('Escape');
     await importSource('See \\eqref{eq:y} and \\ref{eq:y}.\n\n\\begin{equation}x\\end{equation}\n\n\\begin{equation*}z\\end{equation*}\n\n\\begin{equation}y\\label{eq:y}\\end{equation}');
     await page.waitForFunction(()=>document.querySelectorAll('.math-display[data-numbered="true"]').length===2);
-    const equationNumbers=await page.locator('.math-display[data-numbered="true"]').evaluateAll(nodes=>nodes.map(node=>({increment:getComputedStyle(node).counterIncrement,content:getComputedStyle(node,'::after').content})));
+    const equationNumbers=await page.locator('.math-equation-number').evaluateAll(nodes=>nodes.map(node=>({increment:getComputedStyle(node).counterIncrement,content:getComputedStyle(node,'::after').content})));
     assert.equal(equationNumbers.length,2);
     assert.ok(equationNumbers.every(item=>item.increment.includes('lineae-equation')&&item.content.includes('counter(lineae-equation)')),'Equation environments use an ordered CSS counter');
     assert.deepEqual(await paper.locator('.ref-node').allTextContents(),['(2)','2']);
@@ -1631,16 +1631,14 @@ async function verifySelectionGeometry(page, paper, importSource) {
     await page.locator('[data-group=math]').click();
     await page.getByRole('button',{name:'\\left',exact:true}).click();
     await page.waitForSelector('.delimiter-ghost');
-    const ghostPlace=await page.evaluate(()=>{
-      const ghost=document.querySelector('.delimiter-ghost').getBoundingClientRect();
-      const caret=[...document.querySelector('math-field').shadowRoot.querySelectorAll('.ML__caret')][0].getBoundingClientRect();
-      return {slots:document.querySelectorAll('.delimiter-ghost-slot').length,left:ghost.left,right:ghost.right,caret:caret.left,
-        embedded:document.querySelectorAll('.delimiter-input-embedded').length};
+    const ghostPlace=await page.locator('.delimiter-ghost').evaluate(preview=>{
+      const ghost=preview.getBoundingClientRect();
+      const caret=preview.nextElementSibling.getBoundingClientRect();
+      return {slots:preview.children.length,right:ghost.right,caret:caret.left};
     });
     assert.equal(ghostPlace.slots,2,'Delimiter insertion shows two in-place highlights');
-    assert.equal(ghostPlace.embedded,0,'Delimiter inputs no longer float on both sides');
-    assert.ok(ghostPlace.left>=ghostPlace.caret-10&&ghostPlace.right<=ghostPlace.caret+10,
-      'Delimiter highlights sit at the caret: '+JSON.stringify(ghostPlace));
+    assert.ok(ghostPlace.right<=ghostPlace.caret+1,
+      'Delimiter highlights take up space before the caret: '+JSON.stringify(ghostPlace));
     await page.keyboard.press('(');
     await page.keyboard.press(')');
     await page.waitForFunction(()=>document.querySelector('math-field')?.value.includes('\\left('));

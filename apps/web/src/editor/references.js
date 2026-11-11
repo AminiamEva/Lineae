@@ -1,5 +1,6 @@
 import { Node } from '@tiptap/core';
 import { t } from '../ui/i18n.mjs';
+import { numberedMathRows } from '../../latex/math-environments.mjs';
 
 export function outline(doc) {
   const counters = [0, 0, 0];
@@ -36,10 +37,13 @@ export function collectReferenceLabels(doc) {
       if(heading?.number)current={number:heading.number,title:heading.text,kind:'heading'};
       add(node.attrs.label,current);
     }
-    if (node.type.name==='mathBlock' && node.attrs.delimiter==='equation') {
-      equationNumber++;
-      current={number:String(equationNumber),title:node.attrs.latex,kind:'equation'};
-      add(node.attrs.label,current);
+    if (node.type.name==='mathBlock') {
+      for (const row of numberedMathRows(node.attrs)) {
+        if (row.unnumbered) continue;
+        equationNumber++;
+        current={number:String(equationNumber),title:node.attrs.latex,kind:'equation'};
+        add(row.label ?? node.attrs.label,current);
+      }
     }
     if (node.type.name==='label') add(node.attrs.key,current);
   });

@@ -2,6 +2,7 @@ import { Node } from '@tiptap/core';
 import { TextSelection } from '@tiptap/pm/state';
 import { closeHistory } from '@tiptap/pm/history';
 import { t } from '../ui/i18n.mjs';
+import { numberedMathRows } from '../../latex/math-environments.mjs';
 
 let smartFences;
 export function configureMathFences(value) { smartFences = value; }
@@ -46,6 +47,11 @@ const mathFieldStyle = `
      turns into a visible native scrollbar under an inline formula. */
   .ML__content { overflow: visible !important; scrollbar-width: none; }
   .ML__content::-webkit-scrollbar { display: none; }
+  .delimiter-ghost { display:inline-flex; gap:.1em; pointer-events:none; vertical-align:baseline; }
+  .delimiter-ghost-slot { display:inline-flex; justify-content:center; align-items:center; width:.65em;
+    height:1em; border-radius:.15em; line-height:1; color:inherit; background:light-dark(#e8effa,#37445c); }
+  .delimiter-ghost-slot + .delimiter-ghost-slot { background:light-dark(#efe9f7,#483b58); }
+  .delimiter-ghost-slot.is-active { box-shadow:inset 0 0 0 1px #749bd0; }
   .ML__mathbf, .ML__mathbfit, .ML__bb, .ML__cal, .ML__frak, .ML__script, .ML__sans, .ML__tt {
     background: light-dark(rgba(77,124,179,.10), rgba(120,170,230,.18));
     border-radius: 2px;
@@ -214,6 +220,20 @@ export const MathNode = Node.create({
       field.setAttribute('default-mode', node.isBlock ? 'math' : 'inline-math');
       field.textContent = node.attrs.latex;
       dom.append(handle, field);
+      const numbers = document.createElement('span');
+      numbers.className = 'math-equation-numbers';
+      function renderNumbers() {
+        if (!node.isBlock) return;
+        const rows = numberedMathRows(node.attrs);
+        dom.dataset.numbered = String(rows.some(row => !row.unnumbered));
+        numbers.replaceChildren(...rows.map(row => {
+          const number = document.createElement('span');
+          if (!row.unnumbered) number.className = 'math-equation-number';
+          return number;
+        }));
+      }
+      if (node.isBlock) dom.append(numbers);
+      renderNumbers();
 
       // Two consecutive ambiguous keys replace the structural action with a literal.
       // Preserve the selection as well as the source, including inside nested matrices.
@@ -331,7 +351,7 @@ export const MathNode = Node.create({
           if (next.type !== node.type) return false;
           node = next;
           dom.dataset.latex = node.attrs.latex;
-          dom.dataset.numbered = String(node.isBlock && node.attrs.delimiter === 'equation');
+          renderNumbers();
           if (field.value !== node.attrs.latex) field.value = node.attrs.latex;
           return true;
         },
