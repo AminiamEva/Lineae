@@ -50,7 +50,12 @@ test('migrates saved preferences and the old theme into one YAML file', () => {
   assert.equal(store.value.keybindings.editor.toggleBox,'ctrl+e b');
   assert.equal(values.has('lineae.theme'),false);
   assert.equal(parseYaml(values.get('lineae.config')).version,2);
-  assert.equal(createConfigStore(defaults,{ storage }).value.interface.theme,'dark');
+  const bindings = store.bindings;
+  store.updateInterface({zoom:140});
+  assert.equal(store.bindings,bindings,'Saving a display setting keeps a pending chord on the same keymap');
+  const restored = createConfigStore(defaults,{ storage }).value;
+  assert.equal(restored.interface.theme,'dark');
+  assert.equal(restored.interface.zoom,140);
 });
 
 test('importing a conflicting or malformed profile keeps the active profile', () => {

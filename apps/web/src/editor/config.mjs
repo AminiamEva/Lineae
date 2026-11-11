@@ -123,7 +123,11 @@ export function createConfigStore(defaultYaml, { storage, isMac = false, onError
     importYaml(text) { apply(migrateLegacyConfig(parseYaml(text))); persist(); },
     exportYaml() { return toYaml(settings); },
     updateInterface(patch) {
-      apply(mergeConfig(overrides, { interface: patch }));
+      checkKeys(defaults.interface, patch, 'interface.');
+      const updated = { ...settings, interface: mergeConfig(settings.interface, patch) };
+      validateConfig(updated);
+      overrides = mergeConfig(overrides, { interface: patch });
+      settings = updated;
       persist();
     },
   };
