@@ -13,37 +13,126 @@
 
 <p align="center"><a href="README.md">English</a> · <a href="README.zh-CN.md">简体中文</a></p>
 
-Lineae is an experimental, browser-based LaTeX editor for technical and scientific writing. It combines a word-processor-style editing interface with mathematical input, while keeping LaTeX as the document format.
+Lineae is a browser-based LaTeX editor for academic and technical writing. It brings a document-oriented editing experience to LaTeX: write and format text, work with equations, and edit common document structures in place, while keeping <code>.tex</code> as the document format.
 
-> **Project status:** Early development. The browser editor is functional, but supports a defined subset of LaTeX. It is not a complete TeX environment or a replacement for a conventional LaTeX workflow.
+The project is in early development. The browser prototype is usable and supports a growing subset of LaTeX, but it is not yet a complete TeX environment or a replacement for an established LaTeX workflow.
 
-## What works today
+## Why Lineae
 
-**Document editing.** The editor supports paragraphs, section headings, common text formatting, lists, description lists, tables, code blocks, quotations, theorem and proof environments, footnotes, labels, cross-references, and tables of contents. Document title, author, paper size, orientation, and margins can also be edited.
+LaTeX offers precise control over mathematical notation and document structure, but a source-first workflow can make ordinary writing feel like editing markup. Word processors make direct editing easier, yet they do not offer the same native relationship with LaTeX documents and the TeX toolchain.
 
-**Mathematics.** MathLive provides editable inline and display equations. The editor includes matrix insertion and row/column operations, selected AMS environments, formula command completion, and keyboard navigation between equations and surrounding text.
+Lineae explores a middle ground. The editor presents the document itself as the place to work: text is formatted where it appears, equations can be edited directly, and supported structures such as headings, lists, tables, and figures have corresponding editing controls. The source remains accessible rather than being hidden behind a proprietary document format.
 
-**LaTeX files.** Open and edit UTF-8 <code>.tex</code> files in either the visual editor or source mode. Supported structures are converted to editable document elements; unsupported content is retained as source blocks where possible. Unmodified documents can be exported with their original source intact. After visual edits, supported structures are serialized again, so edited documents are not guaranteed to round-trip losslessly. Browser file pickers are used for direct file access where supported; project export is a separate ZIP download.
+A few decisions shape the project:
 
-**References and bibliography.** Labels, <code>\ref</code>, <code>\eqref</code>, footnotes, and citation insertion are available in the editor. A separate BibTeX/BibLaTeX engine provides parsing, validation, entry operations, serialization, and <code>.tex</code> citation checks. Its public API and design are documented in [the Bib engine documentation](docs/bib-engine/API.md).
+- **Edit the document, not the markup.** Common writing and mathematical operations should happen in context, without requiring users to hand-edit every structural command.
+- **Keep LaTeX as the document format.** The editor should work with ordinary <code>.tex</code> files and preserve unsupported material instead of silently discarding or guessing at it.
+- **Keep editing separate from compilation.** Interactive editing and equation display serve the writing process; final typesetting belongs to a TeX engine. Lineae does not aim to reimplement TeX in the browser.
+- **Prefer predictable behaviour over superficial compatibility.** A clearly unsupported construct is better left as source than converted into an editable element that changes its meaning.
 
-**Images and project export.** Local images can be inserted or dropped into the document, with support for figure captions and width settings. The project export action packages the active <code>.tex</code> file together with local assets already loaded by the editor.
+## Features
 
-**Interface.** The application has Chinese and English interface options, light and dark themes, zoom controls, and locally stored YAML-based preferences.
+The current prototype covers the everyday structures needed to begin working on a technical document. Support is deliberately limited to syntax the editor can recognise and handle.
+
+### Writing and document structure
+
+The editor is built on Tiptap and ProseMirror. It supports paragraphs, section headings, and common text formatting, including bold, italic, underline, strikethrough, font family, font size, colour, superscript, and subscript. Ordered, unordered, and description lists, block quotations, horizontal rules, and code blocks are available as well.
+
+Tables can be edited in the document, with support for basic <code>tabular</code> structures, selected column specifications, merged columns, and <code>booktabs</code>-style rules. The editor also recognises selected theorem environments, including theorem, lemma, proposition, corollary, definition, remark, and proof.
+
+Section numbering, starred headings, short titles, labels, references, and a table of contents are supported. Footnotes and document-level title and author fields are also available. A find-and-replace panel, context menus, keyboard shortcuts, undo, and redo support day-to-day editing.
+
+The editor uses a continuous document view. It does not currently reproduce TeX page breaks or exact line layout.
+
+### Mathematical editing
+
+MathLive provides editable inline and display mathematics. Equations are edited in place rather than in a separate source panel. The current implementation includes common mathematical input, matrix insertion and row or column operations, selected AMS environments, command completion, and keyboard navigation between equations and surrounding text.
+
+This is an editing surface, not a TeX math engine. The set of commands and environments that can be imported, displayed, and exported is finite and continues to be tested.
+
+### LaTeX import and export
+
+Lineae can open UTF-8 <code>.tex</code> files and switch between visual editing and source mode. Recognised commands and environments are converted into structured editor nodes. Constructs outside the supported subset are kept as opaque source blocks where possible, so they remain available in source mode and are not mistaken for ordinary text.
+
+An imported document that has not been changed can be exported with its original source intact. Once a supported section is edited visually, that section may be serialised again; whitespace, comments, command choices, or other source details can therefore change. General lossless round-tripping after edits is not implemented yet.
+
+### Images, references, and files
+
+Local images can be inserted from a file picker or dropped into the document. Figure captions, image width, alignment, placement, and labels are supported within the implemented figure subset. Citation insertion can read a local <code>.bib</code> file, while labels and cross-references can be inserted and resolved in the document.
+
+The editor can open and save files through browser file-system APIs where available. Browsers without the required save interface fall back to a download. <code>Ctrl+S</code> or <code>Cmd+S</code> invokes the save action. Project export creates a ZIP containing the active <code>.tex</code> file and local resources already loaded by the editor; it is not yet a full multi-file project manager.
+
+### Bibliography module
+
+The repository also contains a standalone BibTeX/BibLaTeX module, separate from the editor interface. Its public API covers parsing, validation, entry editing, serialization, diagnostics, citation scanning in <code>.tex</code> files, and a preflight check before compilation.
+
+The module's acceptance report records **182 passing automated tests** and **19 successful real compilation combinations** across BibTeX/Biber workflows. These results apply to the bibliography module and its tested scope; they should not be read as a claim of complete BibTeX/BibLaTeX compatibility or a finished bibliography-management application. See the [Bib engine API](docs/bib-engine/API.md) and [architecture](docs/bib-engine/ARCHITECTURE.md).
+
+### Interface and preferences
+
+The application has Chinese and English interface options, light and dark themes, document zoom, a ribbon-style toolbar, and configurable mathematical keyboard shortcuts. Interface preferences are stored locally in YAML format.
+
+## Architecture
+
+The browser editor uses a ProseMirror document tree as its live editing model, with Tiptap providing the editor framework. MathLive handles interactive mathematical input. Dedicated LaTeX modules parse and serialise the supported document structures, while the editor's source mode provides access to the original text and unsupported constructs.
+
+The intended boundary is straightforward:
+
+~~~text
+Browser interface
+       |
+       v
+Tiptap / ProseMirror  <---->  MathLive
+       |
+       v
+LaTeX import and export
+       |
+       +---- recognised syntax -> editable document nodes
+       |
+       +---- unsupported syntax -> preserved source blocks
+       |
+       v
+     .tex files
+
+BibTeX / BibLaTeX engine
+       |
+       +---- parsing, validation, editing and serialisation
+       +---- citation checks against .tex source
+~~~
+
+The structured editor document is used to support editing; it is not a replacement for the source file or the final typesetting engine. A source-aware representation and localised source updates are part of the development direction, but the current implementation can still regenerate edited structures.
+
+See [Editor Architecture](docs/EDITOR_ARCHITECTURE.md) for implementation details.
+
+## Development status
+
+Lineae is a working prototype, not a finished editor. The distinction between what is already usable and what remains planned is important.
+
+| Area | Status |
+| --- | --- |
+| Browser editor | Usable prototype with rich-text editing, equations, document structures, and interface preferences |
+| LaTeX interoperability | Import and export for a defined subset; unsupported constructs are preserved where possible |
+| Bibliography | Standalone BibTeX/BibLaTeX module with its own API and acceptance tests |
+| Source fidelity | Unmodified files can be preserved; reliable local updates after visual edits are still in development |
+| Multi-file projects | Not yet supported as a complete project workflow |
+| TeX compilation and PDF preview | Not integrated |
+| Desktop application and precise pagination | Not implemented |
+
+The immediate work is centred on three areas: making equation input and navigation more reliable; improving source preservation, mode switching, and editing history; and tightening the behaviour of ordinary document editing, including selection, clipboard operations, and long-document navigation.
+
+After these foundations are stable, the project can move towards multi-file project handling, an independent TeX compilation interface, PDF preview, and source-to-PDF navigation. Accurate pagination and desktop packaging are later goals, not current features. The [implementation roadmap](docs/IMPLEMENTATION_ROADMAP.md) records the more detailed priorities and acceptance criteria.
 
 ## Getting started
 
-Lineae runs as a static web application. The interactive editor does not require an application server or a TeX distribution.
+Lineae runs as a static web application. You do not need an application server or a TeX distribution to use the browser editor. A local HTTP server is required to serve the files.
 
 ### Requirements
 
 - Node.js and npm
 - A modern browser
-- Python 3, or another local HTTP server
+- Python 3 or another local HTTP server
 
-### Build
-
-Clone the repository and install the locked dependencies:
+### Build the editor
 
 ~~~bash
 git clone https://github.com/AminiamEva/Lineae.git
@@ -52,7 +141,7 @@ npm ci
 npm run build
 ~~~
 
-MathLive is distributed separately as a static browser asset. Prepare it with the same packaging step used by the deployment workflow:
+MathLive is distributed as a separate browser asset. Prepare it locally with:
 
 ~~~bash
 archive="$(npm pack mathlive@0.108.0 --silent)"
@@ -67,41 +156,17 @@ Start a local server:
 python3 -m http.server 8000 --directory apps/web
 ~~~
 
-Open [http://localhost:8000](http://localhost:8000).
+Then open [http://localhost:8000](http://localhost:8000).
 
-## Editor configuration
+## Tests
 
-In the **File** tab, choose **Export YAML** to download your current settings and **Import YAML** to apply an edited file. Lineae remembers them in the current browser. Omitted settings use the defaults in [config.yaml](apps/web/config.yaml).
-
-In the document, press `Ctrl+E` and then `C` to insert a display formula, or `B` to toggle `\fbox`. In a matrix or table, `Ctrl+E C` adds a column and `Ctrl+E R` adds a row. `Ctrl+E E` edits the formula next to the caret. Use a space between strokes, a YAML list for alternatives, and `null` to disable a binding. `mod` means Ctrl on Windows and Linux and Command on macOS.
-
-```yaml
-version: 2
-editing:
-  autoReplaceLigatures: true
-keybindings:
-  editor:
-    insertDisplayMath: ctrl+e c
-    toggleBox: [ctrl+e b, ctrl+alt+b]
-```
-
-Ligature replacement is off by default. When enabled, typing a space or punctuation after a word applies the replacements in `editing.ligatures`. This changes the document text and can be undone. Code, formulas, and imported or pasted text keep their original contents.
-
-## Development and tests
-
-Build the editor bundle with:
+Run the LaTeX, configuration, compatibility, and UI tests with:
 
 ~~~bash
-npm run build
+node --test tests/latex.test.mjs tests/config.test.mjs tests/tex-compat-parse.test.mjs tests/ui/*.test.mjs
 ~~~
 
-Run the LaTeX, configuration, and compatibility tests:
-
-~~~bash
-node --test tests/latex.test.mjs tests/config.test.mjs tests/tex-compat-parse.test.mjs
-~~~
-
-Run the Bib engine tests:
+Run the bibliography module tests with:
 
 ~~~bash
 node --test tests/bib/*.test.mjs tests/bib/*/*.test.mjs
@@ -114,31 +179,17 @@ npx playwright install chromium
 node tests/editor.cjs
 ~~~
 
-GitHub Actions builds the application, runs the regression suites, prepares the browser assets, and deploys the web application to GitHub Pages.
+The GitHub Actions workflow builds the application, runs the LaTeX and bibliography test suites, prepares MathLive, runs the browser regression suite, and deploys the site to GitHub Pages.
 
-## Architecture
+## Contributing
 
-The editing model is built on Tiptap and ProseMirror. MathLive handles interactive mathematical input, while dedicated LaTeX modules parse and serialize the supported document structures. The Bib engine is a separate module and does not depend on the editor UI.
-
-See [Editor Architecture](docs/EDITOR_ARCHITECTURE.md) for the editor internals and [Bib engine architecture](docs/bib-engine/ARCHITECTURE.md) for the bibliography subsystem.
-
-## Current limitations
-
-- LaTeX support is intentionally limited. Arbitrary macro expansion and the full semantics of third-party packages are not implemented.
-- Unsupported commands and environments may remain available only as source blocks, rather than editable visual elements.
-- Source preservation is strongest for documents that have not been modified. Editing supported structures can change their original formatting or serialization.
-- The editor uses a continuous document view; it does not reproduce TeX's exact line-breaking or pagination.
-- TeX compilation, PDF preview, and SyncTeX navigation are not integrated.
-- The current editor works on one active <code>.tex</code> document. ZIP export can include loaded resources, but this is not yet a full multi-file project editor.
-- A desktop application is not currently provided.
-
-Development is focused on more reliable mathematical editing, source-preserving document operations, and broader LaTeX compatibility. Compilation and multi-file project workflows remain separate stages of the roadmap.
+Lineae is still in an early stage, and internal interfaces may change. If you find a bug or a LaTeX compatibility issue, an issue with a small, reproducible <code>.tex</code> example is especially useful. The formal process for external contributions will be documented as the project matures; see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Licence
 
 Unless otherwise indicated, Lineae's original source code is licensed under the **GNU Affero General Public License version 3 only (AGPL-3.0-only)**. See [LICENSE](LICENSE) for the full licence text.
 
-Third-party libraries and assets retain their respective licences. This project licence does not override third-party copyright or licensing terms.
+Third-party libraries and assets retain their respective licences. The project licence does not override third-party copyright or licensing terms.
 
 # Contributors
 
