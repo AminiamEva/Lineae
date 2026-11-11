@@ -544,7 +544,14 @@ function addAlignmentPair(field) {
 function fillMatrixAxis(field, axis) {
   if (axis==='column' && addAlignmentPair(field)) return;
   const before=matrixCells(field.value);
+  const model=field._mathfield?.model;
+  const selection=structuredClone(field.selection);
+  const original=model && selection.ranges.map(range=>range.map(offset=>model.at(offset)));
   field.executeCommand(axis==='row'?'addRowAfter':'addColumnAfter');
+  if (original && model===field._mathfield?.model) {
+    const ranges=original.map(range=>range.map(atom=>model.offsetOf(atom)));
+    if (ranges.every(range=>range.every(offset=>offset>=0))) field.selection={...selection,ranges};
+  }
   if(!before)return;
   const after=matrixCells(field.value);
   if(!after)return;

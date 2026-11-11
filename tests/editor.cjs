@@ -492,7 +492,7 @@ async function verifySelectionGeometry(page, paper, importSource) {
     await paper.locator('p').last().click();
     await page.keyboard.press('End');
     await page.keyboard.press('Shift+PageUp');
-    await page.waitForFunction(()=>document.querySelector('.math-display')?.classList.contains('lineae-range-selected') ||
+    await page.waitForFunction(()=>document.querySelector('.math-display')?.classList.contains('math-selected') ||
       document.querySelector('.document-selection [data-selection-object]'));
     assert.equal(await page.evaluate(()=>document.getSelection().anchorNode?.textContent),'Last line',
       'Shift+PageUp extends the range from the original caret past the leading formula');
@@ -627,10 +627,18 @@ async function verifySelectionGeometry(page, paper, importSource) {
     await page.keyboard.press('r');
     const afterRowChord=await formula.evaluate(field=>field.value);
     assert.ok(afterRowChord.split(/\\\\/).length>beforeRowChord.split(/\\\\/).length,'Ctrl+E R adds a matrix row');
+    const matrixCell = () => formula.evaluate(field=>{
+      let atom=field._mathfield.model.at(field.position);
+      while (atom?.parent && !Array.isArray(atom.parentBranch)) atom=atom.parent;
+      return atom?.parentBranch;
+    });
+    const beforeColumnCell=await matrixCell();
+    assert.ok(Array.isArray(beforeColumnCell),'The caret is inside a matrix cell before inserting a column');
     await page.keyboard.press('Control+e');
     await page.keyboard.press('c');
     const afterColumnChord=await formula.evaluate(field=>field.value);
     assert.ok((afterColumnChord.match(/&/g)??[]).length>(afterRowChord.match(/&/g)??[]).length,'Ctrl+E C adds a matrix column');
+    assert.deepEqual(await matrixCell(),beforeColumnCell,'Adding a column leaves the caret in its original cell');
 
     await importSource('First $x$ end\n\nDestination');
     await page.locator('.math-drag-handle').hover();

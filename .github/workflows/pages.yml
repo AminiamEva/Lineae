@@ -33,7 +33,9 @@ jobs:
           mkdir -p apps/web/vendor/mathlive
           tar -xzf "$RUNNER_TEMP/$archive" -C apps/web/vendor/mathlive --strip-components=1 \
             package/mathlive.min.js package/fonts
-      - run: npx playwright install --with-deps chromium
+      - name: Install Chromium for headless regression
+        run: npx playwright install --only-shell chromium
+        timeout-minutes: 5
       - run: node tests/editor.cjs
       - name: Version browser assets
         run: |
