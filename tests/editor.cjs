@@ -1261,9 +1261,25 @@ const server=createServer(async(req,res)=>{
 
     await importSource('Plain text');
     await paper.locator('p').last().click();
+    await page.keyboard.press('End');
     await page.locator('[data-group=format]').click();
     await page.getByRole('button',{name:'box',exact:true}).click();
+    const boxDebug=await page.evaluate(()=>({
+      active:document.activeElement?.tagName+'.'+document.activeElement?.className,
+      collapsed:getSelection()?.isCollapsed,
+      selected:getSelection()?.toString(),
+      menuHidden:document.querySelector('.command-menu')?.hidden,
+      dialog:Boolean(document.querySelector('.editor-dialog-backdrop')),
+      boxed:document.querySelectorAll('[data-boxed]').length,
+    }));
     await page.keyboard.press('Escape');
+    boxDebug.after=await page.evaluate(()=>({
+      active:document.activeElement?.tagName+'.'+document.activeElement?.className,
+      collapsed:getSelection()?.isCollapsed,
+      selected:getSelection()?.toString(),
+      boxed:document.querySelectorAll('[data-boxed]').length,
+    }));
+    console.log('BOX DEBUG',JSON.stringify(boxDebug));
     await page.keyboard.type('unboxed');
     assert.equal(await paper.locator('[data-boxed]').count(),0,'Escape cancels a pending box');
 
