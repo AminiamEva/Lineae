@@ -1,7 +1,7 @@
 import { importBlock, importBlocks } from '../../latex/blocks.mjs';
 import { textCommands } from '../../latex/inline.mjs';
 import { serializeImage } from '../../latex/images.mjs';
-import { displayEnvironment } from '../../latex/math-environments.mjs';
+import { alignmentLabel, displayEnvironment } from '../../latex/math-environments.mjs';
 export { importBlock, importBlocks };
 
 const escape = text => text.replace(/[\u00A0\\{}%$&#_^~§¶•…–—‘’“”®™©]/g, char => ({
@@ -88,7 +88,8 @@ export function serialize(node) {
         const body=label ? latex.trimEnd()+label+latex.slice(latex.trimEnd().length) : latex;
         return '\\begin{' + delimiter + '}' + body + '\\end{' + delimiter + '}\n\n';
       }
-      return !delimiter && displayEnvironment(latex) ? latex + '\n\n' : '\\[' + latex + '\\]\n\n';
+      return !delimiter && displayEnvironment(latex)
+        ? alignmentLabel(latex,node.attrs.labelRow,node.attrs.label) + '\n\n' : '\\[' + latex + '\\]\n\n';
     }
     case 'math': {
       const latex = withoutPlaceholders(node.attrs.latex);

@@ -42,7 +42,7 @@ export function collectReferenceLabels(doc) {
         if (row.unnumbered) continue;
         equationNumber++;
         current={number:String(equationNumber),title:node.attrs.latex,kind:'equation'};
-        add(row.label ?? node.attrs.label,current);
+        add(row.label ?? (row.index === (node.attrs.labelRow ?? 0) ? node.attrs.label : null),current);
       }
     }
     if (node.type.name==='label') add(node.attrs.key,current);

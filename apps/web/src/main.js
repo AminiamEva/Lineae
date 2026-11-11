@@ -35,6 +35,7 @@ import TableHeader from '@tiptap/extension-table-header';
 import { Plugin, Selection, NodeSelection } from '@tiptap/pm/state';
 import { parseDocument } from '../latex/document.mjs';
 import { exportDocument, hasTitleCommand } from '../latex/packages.mjs';
+import { appendAlignmentPair, displayEnvironment, numberedMathRows } from '../latex/math-environments.mjs';
 import { MARGIN_PRESETS, readPageSetup, writePageSetup, pageMetrics } from '../latex/geometry.mjs';
 import { mathSymbols } from '../latex/math-symbols.mjs';
 import { createThemeController } from './ui/theme.mjs';
@@ -184,6 +185,9 @@ function insertLiveMath(field, latex, notify = true) {
 }
 function insertMath(display = false, latex = '') {
   if (!latex) return insertFormula(editor, display, '');
+  if (display && displayEnvironment(latex)) {
+    return insertFormula(editor,true,latex,undefined,field=>field.executeCommand('moveToNextPlaceholder'));
+  }
   insertFormula(editor, display, '', undefined, field => insertLiveMath(field, latex));
 }
 function insertEquation() {
@@ -512,7 +516,33 @@ function mathPositionPath(model, offset) {
   }
   return path;
 }
+function preserveMathSelection(field, update) {
+  const model=field._mathfield?.model;
+  const selection=structuredClone(field.selection);
+  const paths=model && selection.ranges.map(range=>range.map(offset=>mathPositionPath(model,offset)));
+  update();
+  const updated=field._mathfield?.model;
+  if (!paths || !updated) return;
+  const ranges=paths.map((range,index)=>range.map((path,end)=>{
+    let atom=updated.root;
+    for (const [branch,child] of path) atom=atom?.branch(branch)?.[child];
+    const offset=atom ? updated.offsetOf(atom) : -1;
+    return offset>=0 ? offset : Math.min(selection.ranges[index][end],field.lastOffset);
+  }));
+  field.selection={...selection,ranges};
+}
+function addAlignmentPair(field) {
+  const position=field.closest('[data-math-view]')?.getMathPosition?.();
+  const node=typeof position==='number' && editor.state.doc.nodeAt(position);
+  const latex=node && appendAlignmentPair(node.attrs.latex);
+  if (!latex) return false;
+  preserveMathSelection(field,()=>editor.view.dispatch(
+    editor.state.tr.setNodeMarkup(position,undefined,{...node.attrs,latex}),
+  ));
+  return true;
+}
 function fillMatrixAxis(field, axis) {
+  if (axis==='column' && addAlignmentPair(field)) return;
   const before=matrixCells(field.value);
   field.executeCommand(axis==='row'?'addRowAfter':'addColumnAfter');
   if(!before)return;
@@ -544,20 +574,7 @@ function fillMatrixAxis(field, axis) {
     }
   }
   if(!changed)return;
-  const model=field._mathfield?.model;
-  const selection=structuredClone(field.selection);
-  const paths=model && selection.ranges.map(range=>range.map(offset=>mathPositionPath(model,offset)));
-  field.value=joinMatrix(after);
-  const updated=field._mathfield?.model;
-  if (paths && updated) {
-    const ranges=paths.map((range,index)=>range.map((path,end)=>{
-      let atom=updated.root;
-      for (const [branch,child] of path) atom=atom?.branch(branch)?.[child];
-      const offset=atom ? updated.offsetOf(atom) : -1;
-      return offset>=0 ? offset : Math.min(selection.ranges[index][end],field.lastOffset);
-    }));
-    field.selection={...selection,ranges};
-  }
+  preserveMathSelection(field,()=>{field.value=joinMatrix(after);});
   field.dispatchEvent(new Event('input',{bubbles:true}));
 }
 function addMatrixRow() {
@@ -679,7 +696,9 @@ function recordFormulaLineBreaks(document) {
 function source() {
   const document=editor.getJSON();
   const untouched=importedSnapshot===JSON.stringify(document);
-  if (!recordFormulaLineBreaks(document) && untouched && (!readMeta('title') || hasTitleCommand(importedSource))) return importedSource;
+  const bareMath=document.content.some(node=>node.type==='mathBlock' && !node.attrs.delimiter &&
+    /^\\begin\{(?:[dr]?cases|drcases|aligned|alignedat|gathered|split|[pbBvV]?(?:small)?matrix|array|darray|subarray|multlined)\}/.test(node.attrs.latex));
+  if (!recordFormulaLineBreaks(document) && untouched && !bareMath && (!readMeta('title') || hasTitleCommand(importedSource))) return importedSource;
   return exportDocument(documentParts,serialize(document),{chineseTypesetting:true});
 }
 savedSource=source();
@@ -1027,6 +1046,7 @@ function renderCommands() {
     [name, () => insertFormulaCommand(latex)]));
   actions.left = () => chooseMathDelimiters(completionField);
   actions.right = () => chooseMathDelimiters(completionField, true);
+  if (completionField) actions.label = editFormulaLabel;
   for(const name of Object.keys(mathFontStyles)) actions[name]=()=>{
     editor.view.dispatch(closeHistory(editor.state.tr));
     if(completionField?.isConnected) applyMathFont(completionField,name);
@@ -1522,14 +1542,21 @@ async function editFormulaLabel() {
   const position=field?.closest('[data-math-view]')?.getMathPosition?.() ?? formulaAtSelection()?.position;
   if (position === undefined) return;
   const node=editor.state.doc.nodeAt(position);
-  if(node?.type.name!=='mathBlock' || node.attrs.delimiter!=='equation')return;
+  if(node?.type.name!=='mathBlock')return;
+  const alignment=/^(?:align|alignat|flalign)$/.test(displayEnvironment(node.attrs.latex) ?? '');
+  if(node.attrs.delimiter!=='equation' && !alignment)return;
+  const model=field?._mathfield?.model;
+  const cursorRow=model && mathPositionPath(model,field.position).find(([branch])=>Array.isArray(branch))?.[0][0];
+  const numbered=numberedMathRows(node.attrs).filter(row=>!row.unnumbered && !row.label);
+  const row=numbered.find(item=>item.index===cursorRow) ?? numbered.find(item=>item.index===node.attrs.labelRow) ?? numbered[0];
+  if(!row)return;
   const label=await askText(t('公式标签','Equation label'),node.attrs.label??'');
   const currentPosition=field?.closest('[data-math-view]')?.getMathPosition?.() ?? position;
   const current=editor.state.doc.nodeAt(currentPosition);
   if(label===null || !/^[\p{L}\p{N}:_.-]*$/u.test(label) ||
-      current?.type!==node.type || current.attrs.delimiter!=='equation' ||
+      current?.type!==node.type || current.attrs.delimiter!==node.attrs.delimiter ||
       (current!==node && (!field?.isConnected || current.attrs.id!==node.attrs.id)))return;
-  editor.view.dispatch(editor.state.tr.setNodeMarkup(currentPosition,undefined,{...current.attrs,label:label||null}));
+  editor.view.dispatch(editor.state.tr.setNodeMarkup(currentPosition,undefined,{...current.attrs,label:label||null,labelRow:label?row.index:null}));
   field?.focus();
 }
 groupButton(mathGroup,'equation label',editFormulaLabel);

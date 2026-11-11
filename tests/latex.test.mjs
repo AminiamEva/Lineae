@@ -3,7 +3,7 @@ import test from 'node:test';
 import { parseDocument } from '../apps/web/latex/document.mjs';
 import { parseInline } from '../apps/web/latex/inline.mjs';
 import { exportDocument, resolvePackages } from '../apps/web/latex/packages.mjs';
-import { numberedMathRows } from '../apps/web/latex/math-environments.mjs';
+import { appendAlignmentPair, mathDocumentSource, mathEditorSource, numberedMathRows } from '../apps/web/latex/math-environments.mjs';
 import { serialize } from '../apps/web/src/editor/latex-codec.js';
 import { importBlocks } from '../apps/web/latex/blocks.mjs';
 import { buildProjectZip, projectDependencies } from '../apps/web/src/editor/project-zip.mjs';
@@ -229,6 +229,17 @@ test('counts numbered alignment rows while skipping nested matrices and suppress
     { index: 2, label: null },
   ]);
   assert.deepEqual(numberedMathRows({ latex: latex.replaceAll('{align}', '{align*}') }), []);
+});
+
+test('extends an alignment without losing the exported environment', () => {
+  const input = '\\begin{alignat*}{1}a&b\\\\c&d\\end{alignat*}';
+  const extended = appendAlignmentPair(input);
+  assert.match(extended, /^\\begin\{alignat\*\}\{2\}a&b & \\placeholder\{\} & \\placeholder\{\}/);
+  const editable = mathEditorSource(extended);
+  assert.match(editable, /^\\begin\{aligned\}/);
+  assert.equal(mathDocumentSource(editable, extended), extended);
+  assert.match(serialize({type:'mathBlock',attrs:{latex:'\\begin{align}x&y\\end{align}',label:'eq:xy',labelRow:0}}),
+    /x&y\\label\{eq:xy\}\\end\{align\}/);
 });
 
 test('recognizes inline formatting and preserves the original math delimiter', () => {

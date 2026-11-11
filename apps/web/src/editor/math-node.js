@@ -2,7 +2,7 @@ import { Node } from '@tiptap/core';
 import { TextSelection } from '@tiptap/pm/state';
 import { closeHistory } from '@tiptap/pm/history';
 import { t } from '../ui/i18n.mjs';
-import { numberedMathRows } from '../../latex/math-environments.mjs';
+import { mathDocumentSource, mathEditorSource, numberedMathRows } from '../../latex/math-environments.mjs';
 
 let smartFences;
 export function configureMathFences(value) { smartFences = value; }
@@ -173,6 +173,7 @@ export const MathNode = Node.create({
     latex: { default: '' },
     delimiter: { default: null },
     label: { default: null },
+    labelRow: { default: null },
     display: { default: false },
     id: { default: null, rendered: false },
   }),
@@ -218,7 +219,7 @@ export const MathNode = Node.create({
 
       const field = document.createElement('math-field');
       field.setAttribute('default-mode', node.isBlock ? 'math' : 'inline-math');
-      field.textContent = node.attrs.latex;
+      field.textContent = mathEditorSource(node.attrs.latex);
       dom.append(handle, field);
       const numbers = document.createElement('span');
       numbers.className = 'math-equation-numbers';
@@ -253,10 +254,11 @@ export const MathNode = Node.create({
       field.addEventListener('lineae-commit-fences', () => commitUnclosedFences(field));
 
       field.addEventListener('input', () => {
-        if(node.attrs.latex===field.value)return;
+        const latex=mathDocumentSource(field.value,node.attrs.latex);
+        if(node.attrs.latex===latex)return;
         const position = getPos();
         if (typeof position === 'number') {
-          editor.view.dispatch(editor.state.tr.setNodeMarkup(position, undefined, { ...node.attrs, latex: field.value }));
+          editor.view.dispatch(editor.state.tr.setNodeMarkup(position, undefined, { ...node.attrs, latex }));
         }
       });
       let leavingStructure = false;
@@ -352,7 +354,10 @@ export const MathNode = Node.create({
           node = next;
           dom.dataset.latex = node.attrs.latex;
           renderNumbers();
-          if (field.value !== node.attrs.latex) field.value = node.attrs.latex;
+          if (mathDocumentSource(field.value,node.attrs.latex) !== node.attrs.latex) {
+            const latex=mathEditorSource(node.attrs.latex);
+            if (field.value !== latex) field.value=latex;
+          }
           return true;
         },
         stopEvent: event => !['dragstart','dragend','dragover','dragenter','dragleave','drop'].includes(event.type) && event.target !== handle,
