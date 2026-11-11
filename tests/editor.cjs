@@ -207,7 +207,7 @@ async function verifySelectionGeometry(page, paper, importSource) {
     const selection = document.getSelection();
     const range = selection.getRangeAt(0);
     const rect = bounds => [bounds.left, bounds.top, bounds.right, bounds.bottom];
-    const expected = nodes.flatMap(paragraph => {
+    const expected = range.collapsed ? [] : nodes.flatMap(paragraph => {
       const text = paragraph.firstChild;
       if (text?.nodeType !== Node.TEXT_NODE || !range.intersectsNode(text)) return [];
       const segment = document.createRange();
@@ -709,6 +709,11 @@ async function verifySelectionGeometry(page, paper, importSource) {
     const alignField=page.locator('.ProseMirror math-field').last();
     assert.match(await alignField.evaluate(field=>field.value),/\\begin\{align\}/);
     assert.match(await alignField.evaluate(field=>field.value),/\\mathbf\{x\}/);
+    await alignField.click();
+    await editorChord('c');
+    await page.waitForFunction(()=>document.querySelector('.ProseMirror math-field')?.value.startsWith('\\begin{aligned}'));
+    assert.ok((await alignField.evaluate(field=>field.value)).split('&').length>=4,
+      'Ctrl+E C adds another alignment pair');
 
     const moreFixtures={
       'lists/lists-itemize.tex':'Plum',
