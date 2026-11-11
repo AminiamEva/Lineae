@@ -1,7 +1,7 @@
 import { createSelectionMotion, measureSelection, projectRect } from './selection-motion.js';
 
 const MOVE_EASING = 'cubic-bezier(.22,.62,.27,1)';
-const EDIT_EASING = 'cubic-bezier(.14,.75,.25,1)';
+const EDIT_EASING = 'cubic-bezier(.24,.34,.37,1)';
 const BLINK_FRAMES = [
   { opacity: 1, offset: 0 }, { opacity: 1, offset: .46, easing: 'ease-in-out' },
   { opacity: 0, offset: .55 }, { opacity: 0, offset: .91, easing: 'ease-in-out' },
@@ -17,11 +17,15 @@ export function measurePage(page) {
   return { pageRect, zoom };
 }
 
-function caretPlacement(view, selection, rowDirection, previousTop, preferred) {
-  const focus = view.dom.ownerDocument.createRange();
+function nativeCaretRect(selection) {
+  const focus = selection.focusNode.ownerDocument.createRange();
   focus.setStart(selection.focusNode, selection.focusOffset);
   focus.collapse(true);
-  const native = { rect: [...focus.getClientRects()].find(isCaretRect), affinity: 'native' };
+  return [...focus.getClientRects()].find(isCaretRect);
+}
+
+function caretPlacement(view, selection, rowDirection, previousTop, preferred) {
+  const native = { rect: nativeCaretRect(selection), affinity: 'native' };
   if (native.rect && !preferred && (!rowDirection || previousTop === undefined)) return native;
 
   // At a soft wrap the same document offset can be either the end of one
@@ -56,10 +60,10 @@ function caretStyle({ x, y, height }) {
   return { transform: `translate(${x}px, ${y}px)`, height: `${height}px` };
 }
 
-function editOrigin(from, to) {
+function limitEditTravel(from, to, composition) {
   const dx = from.x - to.x;
   const dy = from.y - to.y;
-  const xLimit = Math.min(14, to.height * .7);
+  const xLimit = composition ? to.height * 1.1 : Math.min(14, to.height * .85);
   const yLimit = to.height * .65;
   return {
     x: to.x + (Math.abs(dy) > yLimit && Math.abs(dx) > to.height * 2 ? 0 : Math.max(-xLimit, Math.min(xLimit, dx))),
@@ -82,7 +86,6 @@ export function createCaretMotion(view, page) {
 
   let target = null;
   let lastZoom = null;
-  let preparedEdit = null;
   let glide = null;
   let blink = null;
 
@@ -100,7 +103,6 @@ export function createCaretMotion(view, page) {
   }
 
   function hide() {
-    preparedEdit = null;
     if (lastZoom === null) return;
     target = null;
     lastZoom = null;
@@ -117,23 +119,25 @@ export function createCaretMotion(view, page) {
       view.dom.contains(selection.focusNode) ? selection : null;
   }
 
-  function prepareEdit() {
-    if (target || preparedEdit || reducedMotion.matches || forcedColors.matches || page.dataset.caretMotion === 'false') return;
-    const native = nativeSelection();
-    const rect = native && caretPlacement(view, native).rect;
-    if (rect) {
-      const { pageRect, zoom } = measurePage(page);
-      preparedEdit = { rect: projectRect(rect, pageRect, zoom), zoom };
-    }
+  function motionEnabled() {
+    return page.dataset.caretMotion !== 'false' && !reducedMotion.matches &&
+      !forcedColors.matches && typeof caret.animate === 'function';
   }
 
-  function update({ pageRect, zoom, boxEdge, blocked, intent, edited, activity, rowDirection, retainSelection }) {
-    const origin = preparedEdit;
-    preparedEdit = null;
+  function captureNativeCaret(layout) {
+    if (!motionEnabled()) return null;
+    const native = nativeSelection();
+    if (!native) return null;
+    const rect = view.composing ? nativeCaretRect(native) : caretPlacement(view, native).rect;
+    if (!rect || !inViewport(rect, win)) return null;
+    const { pageRect, zoom } = layout ?? measurePage(page);
+    return { rect: projectRect(rect, pageRect, zoom), zoom };
+  }
+
+  function update({ pageRect, zoom, boxEdge, intent, origin, activity, rowDirection, retainSelection }) {
     const focused = view.hasFocus();
-    const animated = page.dataset.caretMotion !== 'false' && !reducedMotion.matches &&
-      !forcedColors.matches && typeof caret.animate === 'function';
-    if (blocked || view.composing || !view.editable || !doc.hasFocus() || doc.hidden ||
+    const animated = motionEnabled();
+    if (view.composing || !view.editable || !doc.hasFocus() || doc.hidden ||
         (!focused && !retainSelection) || (!animated && !boxEdge) || !pageRect.width || !pageRect.height) return hide();
 
     const native = nativeSelection();
@@ -154,7 +158,9 @@ export function createCaretMotion(view, page) {
 
     const selectionChanged = !selectionMotion.matches(selection);
     const caretChanged = !sameCaret(target, next);
-    if (lastZoom === zoom && !selectionChanged && !caretChanged && !edited) {
+    const composition = intent === 'composition';
+    const editing = intent === 'edit' || composition;
+    if (lastZoom === zoom && !selectionChanged && !caretChanged && !editing) {
       target = next;
       if (activity && next && animated && !glide) restartBlink(selection.active);
       return;
@@ -170,17 +176,16 @@ export function createCaretMotion(view, page) {
       }
       if (!from && origin?.zoom === zoom) from = origin.rect;
     }
-    const editing = intent === 'edit';
-    if (from && next && editing) from = editOrigin(from, next);
+    if (from && next && editing) from = limitEditTravel(from, next, composition);
     // A click on a boxed mark must distinguish the two sides of its border
     // immediately. Changes in its text can still move the caret with the edit.
     if (!editing && (boxEdge || target?.edge)) from = null;
     const distance = from && next ? Math.hypot(next.x - from.x, next.y - from.y) : 0;
     const moves = from && next && (distance >= .3 || Math.abs(from.height - next.height) >= .3);
-    const pulse = Boolean(edited && next && !moves);
+    const pulse = Boolean(editing && next && !moves);
     const layoutStable = lastZoom === null || lastZoom === zoom;
     const timing = animated && layoutStable && intent && (moves || pulse || (selectionChanged && (lastZoom === zoom || from))) ? {
-      duration: editing ? 55 : Math.min(150, 105 + distance * .12),
+      duration: editing ? (composition ? 115 : 100) : Math.min(150, 105 + distance * .12),
       easing: editing ? EDIT_EASING : MOVE_EASING,
       fill: 'backwards',
     } : null;
@@ -200,7 +205,9 @@ export function createCaretMotion(view, page) {
       Object.assign(caret.style, caretStyle(next));
     }
 
-    const startTime = doc.timeline.currentTime;
+    // Start edits on the next paint. A timestamp taken during layout can put
+    // the first visible frame well into a short glide on a busy editor page.
+    const startTime = editing ? null : doc.timeline.currentTime;
     selectionMotion.draw(selection, { pageRect, zoom, from, to: next, timing, startTime });
     if (!next || !animated) { blink?.cancel(); return; }
     if (!timing || (!moves && !pulse)) { restartBlink(selection.active); return; }
@@ -208,7 +215,7 @@ export function createCaretMotion(view, page) {
     restartBlink(true);
     const keyframes = moves ? [caretStyle(from), caretStyle(next)] : [{ opacity: .75 }, { opacity: 1 }];
     const animation = caret.animate(keyframes, { ...timing, id: 'lineae-caret-glide' });
-    animation.startTime = startTime;
+    if (startTime !== null) animation.startTime = startTime;
     glide = animation;
     animation.onfinish = () => {
       if (glide !== animation) return;
@@ -218,7 +225,8 @@ export function createCaretMotion(view, page) {
   }
 
   return {
-    update, hide, prepareEdit,
+    update, hide, captureNativeCaret,
+    prepareEdit: () => target ? null : captureNativeCaret(),
     watchPreferences(schedule, signal) {
       reducedMotion.addEventListener('change', schedule, { signal });
       forcedColors.addEventListener('change', schedule, { signal });

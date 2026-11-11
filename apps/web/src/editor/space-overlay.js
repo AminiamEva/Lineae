@@ -30,11 +30,12 @@ export function installSpaceOverlay(editor, paper, { selectionFocus = null } = {
   const { signal }=listeners;
   let enabled = true;
   let composing = false;
+  let compositionOrigin = null;
   let caretFrame = 0;
   let marksFrame = 0;
   let caretIntent = null;
+  let caretOrigin = null;
   let caretActivity = false;
-  let caretEdited = false;
   let rowDirection;
   let pendingEdit = null;
   let arrowOrigin = null;
@@ -114,19 +115,20 @@ export function installSpaceOverlay(editor, paper, { selectionFocus = null } = {
     }
   },{capture:true,passive:true,signal});
   paper.addEventListener('keydown',event=>{
+    if (composing || editor.view.composing || event.isComposing || event.keyCode===229) return;
     // A paint can run after the native move but before selectionchange.
     if (/^(Arrow(?:Left|Right|Up|Down)|Home|End|PageUp|PageDown)$/.test(event.key)) {
       rowDirection=event.altKey || event.ctrlKey || event.metaKey ? 0 :
         event.key==='ArrowUp' ? -1 : event.key==='ArrowDown' ? 1 : 0;
       scheduleCaret('navigate',true);
     }
-    if (['Backspace','Delete','Enter'].includes(event.key) && !composing && !event.isComposing && editor.view.hasFocus()) {
-      scheduleEdit();
+    if (['Backspace','Delete','Enter'].includes(event.key) && editor.view.hasFocus()) {
+      rememberEdit();
     } else {
       pendingEdit=null;
     }
     if ((event.key==='Backspace' || event.key==='Delete') && !event.ctrlKey && !event.shiftKey &&
-        !event.metaKey && !event.altKey && !composing && !event.isComposing && editor.view.hasFocus()) {
+        !event.metaKey && !event.altKey && editor.view.hasFocus()) {
       editor.view.domObserver.flush();
       const edge=boxEdge();
       const backward=event.key==='Backspace';
@@ -150,8 +152,7 @@ export function installSpaceOverlay(editor, paper, { selectionFocus = null } = {
     }
     const right=event.key==='ArrowRight';
     const horizontal=right || event.key==='ArrowLeft';
-    if (!horizontal || event.shiftKey || event.ctrlKey || event.altKey || event.metaKey ||
-        composing || event.isComposing || !editor.view.hasFocus()) {
+    if (!horizontal || event.shiftKey || event.ctrlKey || event.altKey || event.metaKey || !editor.view.hasFocus()) {
       arrowOrigin=null;
       return;
     }
@@ -189,16 +190,24 @@ export function installSpaceOverlay(editor, paper, { selectionFocus = null } = {
 
   function drawCaret() {
     caretFrame=0;
-    const intent=caretIntent, activity=caretActivity, edited=caretEdited, direction=rowDirection;
+    const intent=caretIntent, activity=caretActivity, origin=caretOrigin, direction=rowDirection;
     caretIntent=null;
+    caretOrigin=null;
     caretActivity=false;
-    caretEdited=false;
     rowDirection=undefined;
     const {pageRect,zoom}=measurePage(page);
-    const edge=!composing && editor.view.hasFocus() ? boxEdge() : null;
+    if (composing) {
+      // Save the native caret from the last displayed preedit frame. A final
+      // compositionupdate and compositionend can arrive before the next paint.
+      if (editor.view.hasFocus()) compositionOrigin=textCaret.captureNativeCaret({pageRect,zoom}) ?? compositionOrigin;
+      emptyBox.hidden=true;
+      activeBoxOverlay.replaceChildren();
+      return;
+    }
+    const edge=editor.view.hasFocus() ? boxEdge() : null;
     const marks=editor.state.storedMarks;
     const {selection}=editor.state;
-    const pendingBox=!composing && editor.view.hasFocus() && selection.empty &&
+    const pendingBox=editor.view.hasFocus() && selection.empty &&
       pendingBoxMark(selection,marks);
     emptyBox.hidden=!pendingBox;
     if (pendingBox) {
@@ -219,8 +228,8 @@ export function installSpaceOverlay(editor, paper, { selectionFocus = null } = {
         rect:{left,top,right:left+zoom,bottom:Math.max(top+zoom,edge.rect.bottom-2*zoom)},
       };
     }
-    textCaret.update({pageRect,zoom,intent,activity,edited,rowDirection:direction,boxEdge:boxCursor,
-      blocked:composing,retainSelection:document.activeElement===selectionFocus});
+    textCaret.update({pageRect,zoom,intent,activity,origin,rowDirection:direction,boxEdge:boxCursor,
+      retainSelection:document.activeElement===selectionFocus});
     activeBoxOverlay.replaceChildren();
     if (!enabled || !pageRect.width || !pageRect.height) return;
     // A boxed mark and the surrounding text can share the same document
@@ -248,8 +257,6 @@ export function installSpaceOverlay(editor, paper, { selectionFocus = null } = {
     const {pageRect,zoom}=measurePage(page);
     overlay.hidden=!enabled || !pageRect.width || !pageRect.height;
     if (overlay.hidden) return;
-    // The native DOM can change between transactions during IME composition.
-    if (composing) scheduleMarks();
     const width=page.clientWidth;
     const height=page.clientHeight;
     overlay.setAttribute('viewBox',`0 0 ${width} ${height}`);
@@ -331,15 +338,15 @@ export function installSpaceOverlay(editor, paper, { selectionFocus = null } = {
     }
   }
   function scheduleCaret(intent=null,activity=false) {
-    if (intent==='edit' || !caretIntent) caretIntent=intent;
+    if (intent==='edit' || intent==='composition' || !caretIntent) caretIntent=intent;
     caretActivity ||= activity;
     if (!caretFrame) caretFrame=requestAnimationFrame(drawCaret);
   }
-  function scheduleEdit() {
+  function rememberEdit() {
     rowDirection=0;
-    pendingEdit={doc:editor.state.doc,expires:performance.now()+150};
-    textCaret.prepareEdit();
-    scheduleCaret('edit',true);
+    const doc=editor.state.doc;
+    if (pendingEdit?.doc===doc && performance.now()<pendingEdit.expires) return;
+    pendingEdit={doc,expires:performance.now()+150,origin:textCaret.prepareEdit()};
   }
   function scheduleMarks() {
     if (!marksFrame) marksFrame=requestAnimationFrame(drawMarks);
@@ -350,21 +357,21 @@ export function installSpaceOverlay(editor, paper, { selectionFocus = null } = {
   }
   function yieldCaret() {
     caretIntent=null;
-    caretEdited=false;
+    caretOrigin=null;
     rowDirection=undefined;
     pendingEdit=null;
     textCaret.hide();
   }
   editor.on('transaction',({transaction})=>{
     if (transaction.docChanged) {
-      // A paint may precede ProseMirror's DOM mutation transaction. Keep the
-      // edit's intent independently of the frame that first observed it.
-      const matchingEdit=pendingEdit?.doc===transaction.before && performance.now()<pendingEdit.expires;
+      const edit=pendingEdit;
       pendingEdit=null;
-      if (matchingEdit && !composing && !editor.view.composing) {
-        caretEdited=true;
-        scheduleCaret('edit',true);
-      } else yieldCaret();
+      if (!composing && !editor.view.composing && caretIntent!=='composition') {
+        if (edit?.doc===transaction.before && performance.now()<edit.expires) {
+          caretOrigin=edit.origin ?? caretOrigin;
+          scheduleCaret('edit',true);
+        } else yieldCaret();
+      }
       scheduleMarks();
     }
     scheduleCaret(transaction.selectionSet && !transaction.docChanged ? 'navigate' : null,
@@ -382,26 +389,43 @@ export function installSpaceOverlay(editor, paper, { selectionFocus = null } = {
   });
   paper.addEventListener('focusin',()=>{scheduleCaret(null,true);scheduleMarks();},{signal});
   paper.addEventListener('focusout',event=>{
+    if (event.target===editor.view.dom) {
+      composing=false;
+      compositionOrigin=null;
+    }
     if (!selectionFocus || event.relatedTarget!==selectionFocus) yieldCaret();
     scheduleCaret();
   },{signal});
   selectionFocus?.addEventListener('blur',()=>scheduleCaret(),{signal});
   paper.addEventListener('beforeinput',event=>{
-    if (!composing && !event.isComposing && editor.view.hasFocus() && TEXT_EDIT.has(event.inputType)) {
-      scheduleEdit();
+    if (event.target!==editor.view.dom || composing || event.isComposing ||
+        event.inputType==='insertCompositionText' || event.inputType==='insertFromComposition') return;
+    if (TEXT_EDIT.has(event.inputType)) {
+      rememberEdit();
     } else {
       yieldCaret();
       scheduleCaret(null,true);
     }
   },{capture:true,signal});
-  paper.addEventListener('compositionstart',()=>{
+  paper.addEventListener('compositionstart',event=>{
+    if (event.target!==editor.view.dom) return;
+    compositionOrigin=textCaret.captureNativeCaret();
     composing=true;
+    arrowOrigin=null;
     yieldCaret();
     scheduleLayout();
   },{capture:true,signal});
-  paper.addEventListener('compositionupdate',scheduleMarks,{signal});
-  paper.addEventListener('compositionend',()=>{
+  paper.addEventListener('compositionupdate',event=>{
+    if (event.target===editor.view.dom) scheduleLayout();
+  },{signal});
+  paper.addEventListener('compositionend',event=>{
+    if (event.target!==editor.view.dom || !composing) return;
     composing=false;
+    if (event.data && editor.view.hasFocus()) {
+      caretOrigin=compositionOrigin;
+      scheduleCaret('composition',true);
+    }
+    compositionOrigin=null;
     scheduleLayout();
   },{capture:true,signal});
   document.addEventListener('selectionchange',()=>scheduleCaret('navigate',true),{signal});

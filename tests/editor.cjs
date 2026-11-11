@@ -14,6 +14,51 @@ const server=createServer(async(req,res)=>{
   }catch{res.writeHead(404).end();}
 });
 
+async function samplePaintedCaret(page, edit) {
+  const probe = await page.locator('.document-caret').evaluateHandle(caret => {
+    const previous = new Set(caret.getAnimations());
+    const editable = document.querySelector('.ProseMirror');
+    const samples = [];
+    return { result: new Promise(resolve => {
+      let frame;
+      const timeout = setTimeout(finish, 1500);
+      function finish() {
+        clearTimeout(timeout);
+        cancelAnimationFrame(frame);
+        resolve(samples);
+      }
+      function sample() {
+        const glide = caret.getAnimations().find(animation => animation.id === 'lineae-caret-glide' && !previous.has(animation));
+        if (glide && !caret.hidden) {
+          const selection = document.getSelection();
+          const range = selection.getRangeAt(0).cloneRange();
+          range.collapse(selection.direction === 'backward');
+          samples.push({ time: glide.currentTime, painted: caret.getBoundingClientRect().left,
+            target: range.getBoundingClientRect().left, text: editable.textContent });
+        } else if (samples.length) {
+          finish();
+          return;
+        }
+        frame = requestAnimationFrame(sample);
+      }
+      frame = requestAnimationFrame(sample);
+    }) };
+  });
+  try {
+    await edit();
+    return await probe.evaluate(({ result }) => result);
+  } finally {
+    await probe.dispose();
+  }
+}
+
+function assertPaintedEdit(samples, text, direction, action) {
+  const intermediate = samples.filter(frame => frame.text.includes(text) && direction * (frame.target - frame.painted) > .5);
+  assert.ok(intermediate.some((frame, index) => frame.time >= 25 &&
+    intermediate.slice(0, index).some(first => direction * (frame.painted - first.painted) > .5)),
+  `${action} shows intermediate caret positions after the text has already changed: ${JSON.stringify(samples)}`);
+}
+
 async function verifyCaretMotion(page, paper) {
   const caret=page.locator('.document-caret');
   const close=(a,b)=>Math.abs(a.x-b.x)<1 && Math.abs(a.y-b.y)<1;
@@ -82,21 +127,18 @@ async function verifyCaretMotion(page, paper) {
   await settled();
   assert.ok((await paper.locator('p').last().textContent()).includes('!'),
     'Typing during a glide immediately edits at the real selection');
-  await observeGlide();
-  await page.keyboard.insertText('b');
-  const typed=await sample();
-  assert.ok(typed.start.x<typed.middle.x && typed.middle.x<typed.end.x && typed.duration<horizontal.duration,
-    'A keystroke paints a short glide while the new character is already present');
-  assert.match(await paper.locator('p').last().textContent(),/!b/);
-  await resume();
+  const typed=await samplePaintedCaret(page,()=>page.keyboard.type('b'));
+  assertPaintedEdit(typed,'!b',1,'Typing');
   await settled();
-  await observeGlide();
-  await page.keyboard.press('Backspace');
-  const deleted=await sample();
-  assert.ok(deleted.start.x>deleted.middle.x && deleted.middle.x>deleted.end.x && deleted.duration<horizontal.duration,
-    'Backspace immediately removes the character while the caret moves back');
+  const deleted=await samplePaintedCaret(page,()=>page.keyboard.press('Backspace'));
+  assertPaintedEdit(deleted,'!',-1,'Backspace');
   assert.doesNotMatch(await paper.locator('p').last().textContent(),/!b/);
-  await resume();
+  const beforeRepeat=await paper.locator('p').last().textContent();
+  await page.keyboard.type('abc');
+  assert.match(await paper.locator('p').last().textContent(),/!abc/);
+  for (let index=0;index<3;index++) await page.keyboard.down('Backspace');
+  await page.keyboard.up('Backspace');
+  assert.equal(await paper.locator('p').last().textContent(),beforeRepeat);
   await settled();
 
   await observeGlide();
@@ -1243,17 +1285,32 @@ async function verifySelectionGeometry(page, paper, importSource) {
     const documentCaret=page.locator('.document-caret');
     await documentCaret.waitFor();
     const cdp=await page.context().newCDPSession(page);
-    const overlayState=()=>page.evaluate(()=>document.querySelector('.space-overlay').innerHTML);
-    const beforeComposition=await overlayState();
-    await cdp.send('Input.imeSetComposition',{text:'zhong',selectionStart:5,selectionEnd:5});
+    const compose=(text, offset=text.length)=>cdp.send('Input.imeSetComposition',{text,selectionStart:offset,selectionEnd:offset});
+    const waitForText=text=>page.waitForFunction(expected=>document.querySelector('.ProseMirror p')?.textContent===expected,text,{timeout:4000});
+    const paragraphMark=page.locator('.space-overlay text').first();
+    const initialMark=await paragraphMark.getAttribute('x');
+    for (const [text,offset] of [['zhong',5],['zhongwen',5],['zhongwe',7]]) {
+      await compose(text,offset);
+      await waitForText('前 后'+text);
+      await documentCaret.waitFor({state:'hidden'});
+      assert.equal(await paper.evaluate(element=>document.activeElement===element &&
+        getComputedStyle(element).caretColor!=='rgba(0, 0, 0, 0)'),true,'The IME owns the focused text caret during preedit');
+    }
+    assert.notEqual(await paragraphMark.getAttribute('x'),initialMark,'The paragraph mark follows preedit text');
+    assert.equal(await page.locator('.space-overlay circle').evaluate(dot=>new Promise(resolve=>{
+      requestAnimationFrame(()=>requestAnimationFrame(()=>requestAnimationFrame(()=>resolve(dot.isConnected))));
+    })),true,'The space dot stays visible and idle while waiting for a candidate');
+
+    const committed=await samplePaintedCaret(page,()=>cdp.send('Input.insertText',{text:'中文'}));
+    assertPaintedEdit(committed,'前 后中文',-1,'IME commit');
+    await compose('ce');
+    await waitForText('前 后中文ce');
     await documentCaret.waitFor({state:'hidden'});
-    await page.waitForTimeout(120);
-    assert.notEqual(await overlayState(),beforeComposition,'Markers follow composition text');
-    assert.equal(await page.locator('.space-overlay').isVisible(),true);
-    await cdp.send('Input.imeSetComposition',{text:'中文',selectionStart:2,selectionEnd:2});
-    await cdp.send('Input.insertText',{text:'中文'});
-    await page.waitForFunction(()=>document.querySelector('.ProseMirror p')?.textContent==='前 后中文');
+    await compose('');
+    await waitForText('前 后中文');
     await documentCaret.waitFor();
+    assert.equal(await documentCaret.evaluate(caret=>caret.getAnimations().some(a=>a.id==='lineae-caret-glide')),false,
+      'Cancelling a candidate does not animate a text edit');
     await page.keyboard.press('Backspace');
     assert.equal(await paper.locator('p').textContent(),'前 后中');
     await paper.locator('p').evaluate(paragraph=>window.getSelection().collapse(paragraph.firstChild,0));
@@ -1261,6 +1318,18 @@ async function verifySelectionGeometry(page, paper, importSource) {
     await paper.focus();
     await page.keyboard.press('Delete');
     await page.waitForFunction(()=>document.querySelector('.ProseMirror p')?.textContent.trimStart()==='后中');
+    await page.keyboard.press('End');
+    let literalText=await paper.locator('p').textContent();
+    for (const symbol of ['\\','$','`','，']) {
+      await compose('x');
+      await waitForText(literalText+'x');
+      await cdp.send('Input.insertText',{text:symbol});
+      literalText+=symbol;
+      await waitForText(literalText);
+      assert.equal(await paper.evaluate(element=>document.activeElement===element),true,
+        'Symbols committed by the IME stay in prose');
+    }
+    await cdp.detach();
     await importSource('\\section{First}\\label{sec:first}\n\nMark \\label{note} here and see \\ref{sec:first}');
     await page.waitForFunction(()=>document.querySelector('.label-node')&&document.querySelector('.ref-node'));
     assert.equal(await page.locator('.ref-node').textContent(),'1','References show only the resolved number');

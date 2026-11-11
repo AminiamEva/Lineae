@@ -237,9 +237,9 @@ function outdentCurrentLine(editor) {
   return true;
 }
 let backticks = null;
-function replaceTypedLigatures(view, from, to, text) {
+function replaceTypedLigatures(view, from, to, text, defaultTransaction) {
   const { autoReplaceLigatures, ligatures } = config.value.editing;
-  if (!autoReplaceLigatures || view.composing || from !== to || !/^[\s.,;:!?)]$/u.test(text)) return false;
+  if (!autoReplaceLigatures || from !== to || !/^[\s.,;:!?)]$/u.test(text)) return false;
   const before = view.state.doc.resolve(from).nodeBefore;
   if (!before?.isText || before.marks.some(mark => ['code', 'textCommand'].includes(mark.type.name)) || editor.isActive('code')) return false;
   const word = /[a-zA-Z]+$/.exec(before.text)?.[0];
@@ -247,14 +247,19 @@ function replaceTypedLigatures(view, from, to, text) {
   const patterns = Object.keys(ligatures).filter(key => ligatures[key]).sort((a,b) => b.length-a.length);
   if (!patterns.length) return false;
   const replacement = word.replace(new RegExp(patterns.join('|'), 'g'), letters => ligatures[letters]);
-  if (replacement === word) return false;
+  if (replacement === word || defaultTransaction().getMeta('composition')) return false;
   view.dispatch(closeHistory(view.state.tr.insertText(replacement + text, from - word.length, to)));
   return true;
 }
 const Shortcuts = Extension.create({
   name:'documentShortcuts',
   addProseMirrorPlugins:()=>[new Plugin({props:{
-    handleTextInput(view,from,to,text) {
+    handleTextInput(view,from,to,text,defaultTransaction) {
+      const commandTrigger = text === '`' || text === '\\' || text === '$';
+      if (view.composing || (commandTrigger && defaultTransaction().getMeta('composition'))) {
+        backticks=null;
+        return false;
+      }
       const parent = view.state.doc.resolve(from).parent;
       if (text === '`' && parent.type.name !== 'codeBlock') {
         const now=performance.now();
@@ -273,7 +278,7 @@ const Shortcuts = Extension.create({
       }
       backticks=null;
       if (parent.type.name === 'codeBlock') return false;
-      if (replaceTypedLigatures(view,from,to,text)) return true;
+      if (replaceTypedLigatures(view,from,to,text,defaultTransaction)) return true;
       if(text==='\\') {showCommands();return true;}
       if(text!=='$')return false;
       const previous=view.state.doc.resolve(from).nodeBefore;
@@ -1082,7 +1087,7 @@ document.addEventListener('scroll', event => {
 }, true);
 window.addEventListener('resize', () => closeCommands());
 document.addEventListener('keydown', event => {
-  if (event.key !== 'Escape') return;
+  if (event.key !== 'Escape' || event.isComposing || event.keyCode === 229 || editor.view.composing) return;
   if (!editor.state.storedMarks?.some(mark => mark.type.name === 'boxed')) return;
   editor.view.dispatch(editor.state.tr.removeStoredMark(editor.schema.marks.boxed));
 }, true);

@@ -157,7 +157,7 @@ export function createSelectionMotion(view, page) {
       const animation = element.animate([styleRect(origin), styleRect(rect)], {
         ...timing, id: 'lineae-selection-glide',
       });
-      animation.startTime = startTime;
+      if (startTime !== null) animation.startTime = startTime;
       if (exit) animation.onfinish = () => element.remove();
     }
   }
