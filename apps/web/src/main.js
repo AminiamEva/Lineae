@@ -504,6 +504,14 @@ function matrixCells(value) {
 function joinMatrix(info) {
   return info.prefix+info.open+info.spec+info.rows.map(row=>row.join(' & ')).join('\\\\')+info.close+info.suffix;
 }
+function mathPositionPath(model, offset) {
+  const path=[];
+  for (let atom=model.at(offset); atom?.parent; atom=atom.parent) {
+    const branch=atom.parentBranch;
+    path.unshift([branch,atom.parent.branch(branch).indexOf(atom)]);
+  }
+  return path;
+}
 function fillMatrixAxis(field, axis) {
   const before=matrixCells(field.value);
   field.executeCommand(axis==='row'?'addRowAfter':'addColumnAfter');
@@ -536,7 +544,20 @@ function fillMatrixAxis(field, axis) {
     }
   }
   if(!changed)return;
+  const model=field._mathfield?.model;
+  const selection=structuredClone(field.selection);
+  const paths=model && selection.ranges.map(range=>range.map(offset=>mathPositionPath(model,offset)));
   field.value=joinMatrix(after);
+  const updated=field._mathfield?.model;
+  if (paths && updated) {
+    const ranges=paths.map((range,index)=>range.map((path,end)=>{
+      let atom=updated.root;
+      for (const [branch,child] of path) atom=atom?.branch(branch)?.[child];
+      const offset=atom ? updated.offsetOf(atom) : -1;
+      return offset>=0 ? offset : Math.min(selection.ranges[index][end],field.lastOffset);
+    }));
+    field.selection={...selection,ranges};
+  }
   field.dispatchEvent(new Event('input',{bubbles:true}));
 }
 function addMatrixRow() {

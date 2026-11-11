@@ -488,6 +488,14 @@ async function verifySelectionGeometry(page, paper, importSource) {
       document.querySelector('.ProseMirror > p').textContent.startsWith('Alpha'));
     await verifyCaretMotion(page,paper);
     await verifySelectionGeometry(page,paper,importSource);
+    await importSource('\\[x\\]\n\nLast line');
+    await paper.locator('p').last().click();
+    await page.keyboard.press('End');
+    await page.keyboard.press('Shift+PageUp');
+    await page.waitForFunction(()=>document.querySelector('.math-display')?.classList.contains('lineae-range-selected') ||
+      document.querySelector('.document-selection [data-selection-object]'));
+    assert.equal(await page.evaluate(()=>document.getSelection().anchorNode?.textContent),'Last line',
+      'Shift+PageUp extends the range from the original caret past the leading formula');
     await importSource('Shortcut sample');
     await page.waitForFunction(()=>document.querySelector('.ProseMirror p')?.textContent==='Shortcut sample');
     await paper.locator('p').click();

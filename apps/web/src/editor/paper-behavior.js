@@ -245,6 +245,46 @@ export const PaperBehavior = Extension.create({
       }),
       new Plugin({
         props: {
+          handleKeyDown(view, event) {
+            if (!event.shiftKey || event.ctrlKey || event.metaKey || event.altKey || event.isComposing ||
+                !['PageUp', 'PageDown'].includes(event.key)) return false;
+            const { doc, selection } = view.state;
+            const direction = event.key === 'PageUp' ? -1 : 1;
+            const caret = view.coordsAtPos(selection.head, direction);
+            const bounds = view.dom.getBoundingClientRect();
+            const height = view.dom.ownerDocument.defaultView.innerHeight;
+            const y = (caret.top + caret.bottom) / 2 + direction * Math.max(1, height - 48);
+            const x = Math.max(bounds.left + 1, Math.min(bounds.right - 1, caret.left));
+            const hit = view.posAtCoords({ left: x, top: y });
+            let head = y <= bounds.top ? 0 : y >= bounds.bottom ? doc.content.size : hit?.pos;
+            if (head === undefined) {
+              // Offscreen points have no browser hit target. Use document
+              // geometry so a page move remains a page move while scrolling.
+              doc.forEach((node, position) => {
+                if (head !== undefined) return;
+                const rect = view.nodeDOM(position)?.getBoundingClientRect();
+                if (!rect || rect.bottom < y) return;
+                if (!node.isTextblock) {
+                  head = position + (direction > 0 ? node.nodeSize : 0);
+                  return;
+                }
+                let low = position + 1, high = low + node.content.size;
+                while (low < high) {
+                  const middle = Math.floor((low + high) / 2);
+                  const line = view.coordsAtPos(middle, direction);
+                  if (line.bottom < y || (line.top <= y && line.left < x)) low = middle + 1;
+                  else high = middle;
+                }
+                head = low;
+              });
+              if (head === undefined) return false;
+            }
+            if (hit?.inside >= 0 && doc.nodeAt(hit.inside)?.type.name === 'mathBlock') {
+              head = hit.inside + (direction > 0 ? doc.nodeAt(hit.inside).nodeSize : 0);
+            }
+            view.dispatch(view.state.tr.setSelection(TextSelection.create(doc, selection.anchor, head)).scrollIntoView());
+            return true;
+          },
           decorations(state) {
             const { from, to } = state.selection;
             if (from === to) return null;
