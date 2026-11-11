@@ -710,10 +710,14 @@ async function verifySelectionGeometry(page, paper, importSource) {
     assert.match(await alignField.evaluate(field=>field.value),/\\begin\{align\}/);
     assert.match(await alignField.evaluate(field=>field.value),/\\mathbf\{x\}/);
     await alignField.click();
+    await alignField.evaluate(field=>field.focus());
+    await page.waitForFunction(()=>document.activeElement?.tagName==='MATH-FIELD');
     await editorChord('c');
-    await page.waitForFunction(()=>document.querySelector('.ProseMirror math-field')?.value.startsWith('\\begin{aligned}'));
-    assert.ok((await alignField.evaluate(field=>field.value)).split('&').length>=4,
-      'Ctrl+E C adds another alignment pair');
+    const alignment=await alignField.evaluate(field=>({
+      displayed:field.value, source:field.closest('[data-math-view]').dataset.latex,
+    }));
+    assert.match(alignment.source,/\\begin\{align\}[\s\S]*&[\s\S]*&[\s\S]*&/,
+      'Ctrl+E C adds another alignment pair: '+JSON.stringify(alignment));
 
     const moreFixtures={
       'lists/lists-itemize.tex':'Plum',
