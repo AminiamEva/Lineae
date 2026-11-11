@@ -1,7 +1,7 @@
 {
   "private": true,
   "scripts": {
-    "build": "esbuild apps/web/src/main.js --bundle --format=esm --outfile=apps/web/editor.mjs"
+    "build": "esbuild apps/web/src/main.js --bundle --format=esm --loader:.yaml=text --outfile=apps/web/editor.mjs"
   },
   "dependencies": {
     "@tiptap/core": "2.11.5",
@@ -11,7 +11,8 @@
     "@tiptap/extension-table-row": "2.11.5",
     "@tiptap/pm": "2.11.5",
     "@tiptap/starter-kit": "2.11.5",
-    "esbuild": "0.25.0"
+    "esbuild": "0.25.0",
+    "yaml": "2.9.1"
   },
   "overrides": {
     "@tiptap/pm": "2.11.5",

@@ -88,7 +88,7 @@ export function createCaretMotion(view, page) {
   }
 
   function update({ pageRect, zoom, blocked, intent, activity }) {
-    if (blocked || view.composing || !view.editable || !view.hasFocus() || !doc.hasFocus() || doc.hidden ||
+    if (blocked || page.dataset.caretMotion === 'false' || view.composing || !view.editable || !view.hasFocus() || !doc.hasFocus() || doc.hidden ||
         reducedMotion.matches || forcedColors.matches || typeof caret.animate !== 'function' ||
         !pageRect.width || !pageRect.height) return hide();
 

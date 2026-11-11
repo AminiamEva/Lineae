@@ -145,11 +145,7 @@ export function installDocumentFind(editor) {
   replace.addEventListener('click', replaceOne);
   replaceAll.addEventListener('click', replaceEvery);
   close.addEventListener('click', dismiss);
-  document.addEventListener('keydown', event => {
-    if (!event.ctrlKey || event.altKey || event.shiftKey || event.key.toLowerCase() !== 'f') return;
-    if (!editor.view.hasFocus() && !panel.contains(event.target)) return;
-    if (event.composedPath().some(node => node?.tagName === 'MATH-FIELD')) return;
-    event.preventDefault();
+  function show() {
     const findLabel = t('查找正文','Find in document');
     input.setAttribute('aria-label', findLabel);
     input.placeholder = findLabel;
@@ -163,5 +159,6 @@ export function installDocumentFind(editor) {
     panel.hidden = false;
     input.focus();
     input.select();
-  }, true);
+  }
+  return { panel, show };
 }

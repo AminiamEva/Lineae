@@ -3,18 +3,8 @@ import { TextSelection } from '@tiptap/pm/state';
 import { closeHistory } from '@tiptap/pm/history';
 import { t } from '../ui/i18n.mjs';
 
-let configuredKeys = [
-  { key: 'ctrl+6', command: 'moveToSuperscript' },
-  { key: 'ctrl+-', command: 'moveToSubscript' },
-  { key: 'ctrl+0', command: 'moveAfterParent' },
-];
-
-export function configureMathKeys(values) {
-  const allowed = new Set(['moveToSuperscript', 'moveToSubscript', 'moveAfterParent']);
-  const entries = Object.entries(values ?? {}).filter(([key, command]) =>
-    /^ctrl\+[^+]+$/.test(key) && allowed.has(command));
-  if (entries.length) configuredKeys = entries.map(([key, command]) => ({ key, command }));
-}
+let smartFences;
+export function configureMathFences(value) { smartFences = value; }
 
 export function focusFormula(editor, id, onFocus) {
   requestAnimationFrame(() => {
@@ -250,6 +240,11 @@ export const MathNode = Node.create({
         }
       });
       let leavingStructure = false;
+      field.addEventListener('lineae-leave-math-environment', () => {
+        leavingStructure = true;
+        try { leaveEnvironment(field); }
+        finally { leavingStructure = false; }
+      });
       field.addEventListener('keydown', event => {
         if ((event.key === 'ArrowRight' || event.key === 'ArrowLeft') &&
             !event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey &&
@@ -261,13 +256,6 @@ export const MathNode = Node.create({
             leaveFormula(editor,getPos(),node,backward);
             return;
           }
-        }
-        if (['0', 'j'].includes(event.key.toLowerCase()) && event.ctrlKey && !event.shiftKey && !event.altKey && !event.metaKey) {
-          event.preventDefault(); event.stopPropagation();
-          leavingStructure = true;
-          try { leaveEnvironment(field); }
-          finally { leavingStructure = false; }
-          return;
         }
         if ((event.key === 'ArrowLeft' || event.key === 'ArrowRight') && field.mode === 'text') {
           const before = JSON.stringify(field.selection.ranges);
@@ -302,13 +290,6 @@ export const MathNode = Node.create({
           dom.dispatchEvent(new CustomEvent('lineae-math-command', { bubbles: true, detail: { field } }));
           return;
         }
-        if (event.ctrlKey && ['z', 'y'].includes(event.key.toLowerCase())) {
-          event.preventDefault();
-          event.stopPropagation();
-          if (event.key.toLowerCase() === 'z') editor.commands.undo();
-          else editor.commands.redo();
-          return;
-        }
         if (event.key === '$') {
           event.preventDefault();
           event.stopPropagation();
@@ -338,11 +319,10 @@ export const MathNode = Node.create({
         field.popoverPolicy = 'off';
         field.inlineShortcuts = {};
         field.smartMode = false;
-        field.smartFence = true;
+        if (smartFences !== undefined) field.smartFence = smartFences;
         field.smartSuperscript = false;
         field.environmentPopoverPolicy = 'off';
         field.mathModeSpace = '\\space';
-        field.keybindings = [...configuredKeys, ...field.keybindings];
         installMathFieldStyle(field);
       });
       return {

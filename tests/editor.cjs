@@ -253,10 +253,26 @@ async function verifyCaretMotion(page, paper) {
         buffer:Buffer.from('\\documentclass{article}\n\\begin{document}\n\n'+body+'\n\n\\end{document}\n'),
       });
     };
+    const editorChord = async key => {
+      await page.keyboard.press('Control+e');
+      await page.keyboard.press(key);
+    };
     await importSource('Alpha beta gamma delta epsilon.\n\nAlpha beta gamma delta epsilon.');
     await page.waitForFunction(()=>document.querySelectorAll('.ProseMirror > p').length===2 &&
       document.querySelector('.ProseMirror > p').textContent.startsWith('Alpha'));
     await verifyCaretMotion(page,paper);
+    await importSource('Shortcut sample');
+    await page.waitForFunction(()=>document.querySelector('.ProseMirror p')?.textContent==='Shortcut sample');
+    await paper.locator('p').click();
+    await page.keyboard.press('End');
+    await page.keyboard.press('Control+e');
+    assert.equal(await paper.locator('math-field').count(),0,'Ctrl+E alone waits for a second stroke');
+    await page.keyboard.press('Escape');
+    await page.keyboard.type('!');
+    assert.equal(await paper.locator('code').count(),0,'Ctrl+E no longer toggles inline code');
+    await editorChord('c');
+    await page.waitForFunction(()=>document.activeElement?.closest('.math-display'));
+    assert.equal(await paper.locator('.math-display math-field').evaluate(field=>field.value),'');
     await importSource('\\section{First}\n\n\\subsection{Child}\n\n\\subsubsection{Detail}\n\n\\section*{Unnumbered}\n\n\\section{Second}');
     await page.waitForFunction(()=>document.querySelectorAll('.ProseMirror h1').length===3);
     assert.deepEqual(await paper.locator('[data-section-number]').evaluateAll(nodes=>nodes.map(node=>node.dataset.sectionNumber)),['1','1.1','1.1.1','2']);
@@ -1196,11 +1212,13 @@ async function verifyCaretMotion(page, paper) {
     assert.equal(await boxedText.textContent(),'LBoxI');
     await page.keyboard.press('End');
     await page.keyboard.press('Control+Shift+b');
+    assert.equal(await page.locator('.empty-box-preview').isVisible(),false,'The old boxed-text shortcut is inactive');
+    await editorChord('b');
     await page.locator('.empty-box-preview').waitFor();
-    await page.keyboard.press('Control+Shift+b');
+    await editorChord('b');
     await page.locator('.empty-box-preview').waitFor({state:'hidden'});
     await boxedText.click();
-    await page.keyboard.press('Control+Shift+b');
+    await editorChord('b');
     assert.equal(await boxedText.count(),0,'The shortcut unwraps the whole box from inside');
     assert.match(await paper.textContent(),/LBoxIX after/);
     await importSource('中文\\fbox{甲} \\fbox{乙}');
@@ -1212,7 +1230,7 @@ async function verifyCaretMotion(page, paper) {
     await page.keyboard.press('Delete');
     assert.equal(await paper.locator('[data-boxed]').count(),2);
     assert.equal(await paper.locator('p').first().textContent(),'中文甲乙');
-    await page.keyboard.press('Control+Shift+b');
+    await editorChord('b');
     await page.locator('.empty-box-preview').waitFor();
     await page.keyboard.type('Z');
     assert.deepEqual(await paper.locator('[data-boxed]').allTextContents(),['甲','Z','乙']);
@@ -1451,6 +1469,49 @@ async function verifyCaretMotion(page, paper) {
     await page.locator('#download').click();
     assert.ok((await readFile(await (await clipboardDownload).path())).includes(Buffer.from(clipboardImageName)),
       'The downloaded project contains the pasted image');
+
+    await importSource('Custom preferences');
+    await page.waitForFunction(()=>document.querySelector('.ProseMirror p')?.textContent==='Custom preferences');
+    await page.locator('[data-group=files]').click();
+    const configFile = page.waitForEvent('filechooser');
+    await page.getByRole('button',{name:/^(Import YAML|导入 YAML)$/}).click();
+    await (await configFile).setFiles({
+      name:'custom.yaml',mimeType:'application/yaml',buffer:Buffer.from([
+        'version: 2', 'interface:', '  language: en', '  theme: dark', '  zoom: 125',
+        '  formattingMarks: false', '  caretMotion: false', 'editing:', '  autoReplaceLigatures: true',
+        'keybindings:', '  editor:', '    insertDisplayMath: ctrl+q c',
+      ].join('\n')),
+    });
+    await page.waitForFunction(()=>document.querySelector('#status')?.textContent==='YAML settings applied');
+    assert.equal(await page.locator('input[type=range]').inputValue(),'125');
+    assert.equal(await page.locator('html').getAttribute('data-theme'),'dark');
+    assert.equal(await page.locator('.document-page').getAttribute('data-formatting-marks'),'false');
+    assert.equal(await paper.locator('p').textContent(),'Custom preferences','Config import preserves the open document');
+    const exportedConfig=page.waitForEvent('download');
+    await page.getByRole('button',{name:'Export YAML',exact:true}).click();
+    const {parseYaml}=await import('../apps/web/src/editor/config.mjs');
+    const profile=parseYaml(await readFile(await (await exportedConfig).path(),'utf8'));
+    assert.equal(profile.interface.theme,'dark');
+    assert.equal(profile.keybindings.editor.insertDisplayMath,'ctrl+q c');
+    assert.equal(profile.editing.autoReplaceLigatures,true);
+    await paper.locator('p').click();
+    await page.keyboard.press('End');
+    await page.keyboard.type(' office ');
+    assert.match(await paper.locator('p').textContent(),/oﬃce/,'The imported ligature option applies to typed prose');
+    await page.keyboard.press('Control+z');
+    assert.match(await paper.locator('p').textContent(),/office$/,'Undo restores the original letters');
+    await editorChord('c');
+    assert.equal(await paper.locator('math-field').count(),0,'The old chord no longer inserts a display formula');
+    await page.keyboard.press('Control+q');
+    await page.keyboard.press('c');
+    await page.waitForFunction(()=>document.activeElement?.closest('.math-display'));
+
+    const restored = await browserContext.newPage();
+    restored.on('pageerror',error=>errors.push(error.message));
+    await restored.goto(page.url());
+    await restored.locator('.document-page[data-formatting-marks="false"][data-caret-motion="false"]').waitFor();
+    assert.equal(await restored.locator('html').getAttribute('data-theme'),'dark');
+    assert.equal(await restored.locator('input[type=range]').inputValue(),'125','YAML preferences persist on reopening');
     assert.deepEqual(errors,[]);
     console.log('Browser regressions passed');
   }finally{

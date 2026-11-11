@@ -1,10 +1,76 @@
-version: 1
+version: 2
 interface:
   language: auto
+  theme: system
   zoom: 100
-  toolbar: [open, download, language]
+  zoomOnCtrlWheel: true
+  formattingMarks: true
+  caretMotion: true
+  toolbar: [open, download, language, assets]
+editing:
+  smartFences: true
+  autoReplaceLigatures: false
+  ligatures:
+    ff: ﬀ
+    fi: ﬁ
+    fl: ﬂ
+    ffi: ﬃ
+    ffl: ﬄ
+# Separate two strokes with a space. Use a list for alternatives or null to disable.
 keybindings:
+  chordTimeoutMs: 1500
+  global:
+    save: [ctrl+s, meta+s]
+    zoomIn: [ctrl+=, meta+=, ctrl+plus, meta+plus, ctrl+shift+plus, meta+shift+plus]
+    zoomOut: [ctrl+-, meta+-]
+  editor:
+    insertDisplayMath: ctrl+e c
+    toggleBox: ctrl+e b
+    editMath: ctrl+e e
+    find: ctrl+f
+    leaveEnvironment: ctrl+j
+    ignoreBrowserZoomReset: ctrl+0
+    literalBacktick: alt+backtick
+    undo: mod+z
+    redo: [mod+y, mod+shift+z]
+    toggleBold: mod+b
+    toggleItalic: mod+i
+    toggleStrike: mod+shift+s
+    toggleCode: null
+    toggleCodeBlock: mod+alt+c
+    toggleBlockquote: null
+    toggleBulletList: mod+shift+8
+    toggleOrderedList: mod+shift+7
+    paragraph: mod+alt+0
+    section: mod+alt+1
+    subsection: mod+alt+2
+    subsubsection: mod+alt+3
+    hardBreak: mod+enter
+  paragraph:
+    toggleIndent: ctrl+i
+  table:
+    addRow: ctrl+e r
+    addColumn: ctrl+e c
   math:
-    ctrl+6: moveToSuperscript
-    ctrl+-: moveToSubscript
-    ctrl+0: moveAfterParent
+    superscript: ctrl+6
+    subscript: ctrl+-
+    leaveEnvironment: [ctrl+0, ctrl+j]
+    addRow: ctrl+e r
+    addColumn: ctrl+e c
+    literalFence: ctrl+e t
+    left: ctrl+l
+    right: ctrl+r
+    frac: ctrl+f
+    int: ctrl+i
+    matrix: ctrl+m
+    pmatrix: ctrl+shift+m
+    bmatrix: ctrl+alt+m
+    Bmatrix: ctrl+alt+shift+m
+    sum: [ctrl+shift+s, ctrl+alt+s]
+    prod: ctrl+shift+p
+    iint: ctrl+shift+i
+    iiint: ctrl+alt+shift+i
+    oint: alt+i
+    oiint: alt+shift+i
+    undo: ctrl+z
+    redo: ctrl+y

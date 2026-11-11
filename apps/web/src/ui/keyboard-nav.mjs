@@ -66,7 +66,7 @@ export function installRovingFocus(container, {
 } = {}) {
   if (!container?.querySelectorAll) return () => {};
   const items = () => [...container.querySelectorAll(itemSelector)].filter(element =>
-    !element.disabled && element.getAttribute?.('aria-disabled') !== 'true');
+    !element.hidden && !element.disabled && element.getAttribute?.('aria-disabled') !== 'true');
   let active = 0;
   const sync = index => {
     const list = items();

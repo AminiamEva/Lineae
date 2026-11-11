@@ -277,6 +277,24 @@ The application is currently implemented primarily in JavaScript.
 
 A native desktop backend is not required by the present architecture.
 
+## Editor configuration
+
+In the **File** tab, use **Export YAML** to download the effective settings, then **Import YAML** to apply your edited file. Lineae remembers preferences in the current browser. Omitted settings use the defaults in [config.yaml](apps/web/config.yaml). Language, theme, zoom, formatting marks, and caret motion are stored alongside editing options and shortcuts.
+
+Press `Ctrl+E` and then `C` to insert a display formula in the document, or `B` to toggle `\fbox`. In a matrix or table, `Ctrl+E C` adds a column and `Ctrl+E R` adds a row. `Ctrl+E E` edits the formula next to the caret. Use spaces between strokes, a YAML list for alternatives, and `null` to disable a binding. `mod` means Ctrl on Windows and Linux and Command on macOS.
+
+```yaml
+version: 2
+editing:
+  autoReplaceLigatures: true
+keybindings:
+  editor:
+    insertDisplayMath: ctrl+e c
+    toggleBox: [ctrl+e b, ctrl+alt+b]
+```
+
+Ligature replacement is off by default. When enabled, the configured Latin letter sequences in `editing.ligatures` are replaced when you finish typing a word with a space or punctuation. This changes the document text and can be undone. Code, formulas and imported or pasted text keep their original contents.
+
 ## Development
 
 ### Building

@@ -6,12 +6,14 @@ import { mathFontStyles, applyMathFont } from './editor/math-formatting.js';
 import { installFormatControls } from './editor/format-controls.js';
 import { decorateToolbar, applyToolbarDescriptions, icon } from './editor/icons.js';
 import { PaperBehavior } from './editor/paper-behavior.js';
-import { MathNode, MathBlock, configureMathKeys, insertFormula, toggleDisplayStyle } from './editor/math-node.js';
+import { MathNode, MathBlock, configureMathFences, insertFormula, toggleDisplayStyle } from './editor/math-node.js';
 import { Ref, Label, Cite, Footnote, TableOfContents, refreshReferences, collectReferenceLabels } from './editor/references.js';
 import { insertCitationDialog } from './editor/citation-dialog.js';
 import { chooseReference } from './editor/reference-index.js';
 import { installTableHoverAddRow } from './editor/table-hover.js';
-import { parseYaml, toYaml, mergeConfig } from './editor/config.mjs';
+import { createConfigStore } from './editor/config.mjs';
+import { installKeybindings } from './editor/keybindings.mjs';
+import defaultConfigYaml from '../config.yaml';
 import { askText } from './editor/dialog.js';
 import { installDocumentFind } from './editor/find.js';
 import { DocumentImage, insertLocalImage, installImageDrop } from './editor/image-node.js';
@@ -82,7 +84,23 @@ const Boxed = Mark.create({
   addAttributes:()=>({boxId:{default:null,parseHTML:element=>element.dataset.boxId??null}}),
   renderHTML:({mark})=>['span',{'data-boxed':'','data-box-id':mark.attrs.boxId,style:'border:1px solid currentColor;padding:0 .2em'},0],
 });
-const LanguageCodeBlock = CodeBlock.extend({
+function withoutModShortcuts(extension) {
+  return extension.extend({
+    addKeyboardShortcuts() {
+      return Object.fromEntries(Object.entries(this.parent()).filter(([key]) => !key.split('-').includes('Mod')));
+    },
+  });
+}
+const configurableExtensions = new Set([
+  'bold', 'blockquote', 'bulletList', 'code', 'hardBreak', 'heading', 'history', 'italic',
+  'orderedList', 'paragraph', 'strike',
+]);
+const ConfigurableStarterKit = StarterKit.extend({
+  addExtensions() {
+    return this.parent().map(extension => configurableExtensions.has(extension.name) ? withoutModShortcuts(extension) : extension);
+  },
+});
+const LanguageCodeBlock = withoutModShortcuts(CodeBlock).extend({
   renderHTML({ node, HTMLAttributes }) {
     const language = node.attrs.language;
     const attributes = mergeAttributes(this.options.HTMLAttributes, HTMLAttributes);
@@ -128,26 +146,22 @@ const DescriptionItem = Node.create({
   parseHTML:()=>[{tag:'dd',getAttrs:dom=>({term:dom.dataset.term??''})}],
   renderHTML:({node})=>['dd',{'data-term':node.attrs.term},0],
 });
-let appConfig={};
-try {
-  const configurationUrl=new URL('./config.yaml',import.meta.url);
-  configurationUrl.search=new URL(import.meta.url).search;
-  const response=await fetch(configurationUrl);
-  if(response.ok)appConfig=parseYaml(await response.text());
-  const saved=localStorage.getItem('lineae.config');
-  if(saved)appConfig=mergeConfig(appConfig,parseYaml(saved));
-  configureMathKeys(appConfig.keybindings?.math);
-} catch(error) { console.warn(t('配置','Configuration'),error); }
-const configuredLanguage=appConfig.interface?.language;
-const initialLanguage=['zh-CN','en'].includes(configuredLanguage)
-  ? configuredLanguage
-  : ((navigator.language??'').toLowerCase().startsWith('zh')?'zh-CN':'en');
-setLanguage(initialLanguage);
-function saveConfig(patch) {
-  appConfig={...appConfig,interface:{...appConfig.interface,...patch}};
-  try { localStorage.setItem('lineae.config',toYaml(appConfig)); } catch {}
+function browserStorage() {
+  try { return window.localStorage; } catch { return null; }
 }
-const theme=createThemeController({root:document.documentElement,storage:localStorage});
+const config = createConfigStore(defaultConfigYaml, {
+  storage: browserStorage(),
+  isMac: /Mac|iPhone|iPad|iPod/.test(navigator.platform),
+  onError: error => console.warn(t('配置','Configuration'),error),
+});
+function configuredLanguage() {
+  const value = config.value.interface.language;
+  if (value !== 'auto') return value;
+  return navigator.language?.toLowerCase().startsWith('zh') ? 'zh-CN' : 'en';
+}
+setLanguage(configuredLanguage());
+const theme=createThemeController({root:document.documentElement,storage:null,preference:config.value.interface.theme});
+configureMathFences(config.value.editing.smartFences);
 const prefersReducedMotion=()=>window.matchMedia?.('(prefers-reduced-motion: reduce)').matches??false;
 let editor;
 // Insert into the live field so MathLive selects the first placeholder.
@@ -179,9 +193,6 @@ const matrixEnvironments = new Set(['matrix', 'pmatrix', 'bmatrix', 'Bmatrix', '
 function matrixSource(name, content = '\\placeholder{}') {
   const environment = matrixEnvironments.has(name) ? name : 'matrix';
   return `\\begin{${environment}}${content}\\end{${environment}}`;
-}
-function matrixShortcut(modifiers) {
-  return { c:'matrix', cs:'pmatrix', ca:'bmatrix', csa:'Bmatrix' }[modifiers] ?? null;
 }
 function codeBlockAt($from) {
   for (let depth = $from.depth; depth >= 0; depth--) {
@@ -226,6 +237,20 @@ function outdentCurrentLine(editor) {
   return true;
 }
 let backticks = null;
+function replaceTypedLigatures(view, from, to, text) {
+  const { autoReplaceLigatures, ligatures } = config.value.editing;
+  if (!autoReplaceLigatures || view.composing || from !== to || !/^[\s.,;:!?)]$/u.test(text)) return false;
+  const before = view.state.doc.resolve(from).nodeBefore;
+  if (!before?.isText || before.marks.some(mark => ['code', 'textCommand'].includes(mark.type.name)) || editor.isActive('code')) return false;
+  const word = /[a-zA-Z]+$/.exec(before.text)?.[0];
+  if (!word) return false;
+  const patterns = Object.keys(ligatures).filter(key => ligatures[key]).sort((a,b) => b.length-a.length);
+  if (!patterns.length) return false;
+  const replacement = word.replace(new RegExp(patterns.join('|'), 'g'), letters => ligatures[letters]);
+  if (replacement === word) return false;
+  view.dispatch(closeHistory(view.state.tr.insertText(replacement + text, from - word.length, to)));
+  return true;
+}
 const Shortcuts = Extension.create({
   name:'documentShortcuts',
   addProseMirrorPlugins:()=>[new Plugin({props:{
@@ -248,6 +273,7 @@ const Shortcuts = Extension.create({
       }
       backticks=null;
       if (parent.type.name === 'codeBlock') return false;
+      if (replaceTypedLigatures(view,from,to,text)) return true;
       if(text==='\\') {showCommands();return true;}
       if(text!=='$')return false;
       const previous=view.state.doc.resolve(from).nodeBefore;
@@ -296,7 +322,6 @@ const Shortcuts = Extension.create({
       return true;
     };
     return {
-      'Alt-`':()=>this.editor.commands.insertContent('`'),
       ArrowRight:()=>enterFormula(true),
       ArrowLeft:()=>enterFormula(false),
       Backspace:()=>{
@@ -384,7 +409,7 @@ paper.before(documentPage);documentPage.append(paper);
 paper.replaceChildren();
 editor=new Editor({
   element:paper,
-  extensions:[StarterKit.configure({heading:{levels:[1,2,3]},codeBlock:false}),LanguageCodeBlock,MultiSelection,PaperBehavior,TextStyle,TextCommand,Underline,Superscript,Subscript,SmallCaps,Boxed,Table.configure({resizable:true}),TableRow,TableCell,TableHeader,Raw,DocumentImage,TheoremBlock,DescriptionList,DescriptionItem,MathNode,MathBlock,Ref,Cite,Footnote,Label,TableOfContents,Shortcuts],
+  extensions:[ConfigurableStarterKit.configure({heading:{levels:[1,2,3]},codeBlock:false}),LanguageCodeBlock,MultiSelection,PaperBehavior,TextStyle,TextCommand,Underline,Superscript,Subscript,SmallCaps,Boxed,Table.configure({resizable:true}),TableRow,TableCell,TableHeader,Raw,DocumentImage,TheoremBlock,DescriptionList,DescriptionItem,MathNode,MathBlock,Ref,Cite,Footnote,Label,TableOfContents,Shortcuts],
   content:'<p></p>',
 });
 function syncTableAttributes() {
@@ -405,7 +430,7 @@ editor.on('update',()=>{refreshReferences(paper);syncTableAttributes();});
 syncTableAttributes();
 installTableHoverAddRow(editor, paper);
 installImageDrop(editor,paper);
-installDocumentFind(editor);
+const documentFind = installDocumentFind(editor);
 const tools=document.querySelector('#insert');
 tools.replaceChildren();
 function button(label, action) {
@@ -522,7 +547,7 @@ function addMatrixColumn() {
 button('＋ Row',addMatrixRow);
 button('＋ Column',addMatrixColumn);
 button('$',()=>insertMath());
-button('$$',()=>insertMath(true));
+button('$$',()=>insertMath(true)).dataset.shortcut='editor.insertDisplayMath';
 const sourceView=document.createElement('textarea');
 sourceView.className='source-view'; sourceView.hidden=true;
 documentPage.after(sourceView);
@@ -730,11 +755,6 @@ async function openDocument() {
   }
 }
 document.querySelector('#download').addEventListener('click',downloadProject);
-document.addEventListener('keydown',event=>{
-  if((event.ctrlKey||event.metaKey)&&!event.altKey&&!event.shiftKey&&event.key.toLowerCase()==='s') {
-    event.preventDefault(); event.stopPropagation(); saveDocument();
-  }
-},true);
 document.querySelector('.open').addEventListener('click',event=>{
   if(!window.showOpenFilePicker)return;
   event.preventDefault();
@@ -863,7 +883,10 @@ const structureCommands = {
   sout: () => editor.chain().focus().toggleStrike().run(),
   underline: () => editor.chain().focus().toggleMark('underline').run(),
   textsc: () => editor.chain().focus().toggleMark('smallcaps').run(),
-  fbox: () => editor.chain().focus().toggleMark('boxed').run(),
+  fbox: () => spaceOverlay.toggleBox(),
+  find: () => documentFind.show(),
+  importconfig: () => importConfig.click(),
+  exportconfig: () => exportConfig.click(),
   textsuperscript: () => editor.chain().focus().toggleMark('superscript').run(),
   textsubscript: () => editor.chain().focus().toggleMark('subscript').run(),
   texttt: () => editor.chain().focus().toggleCode().run(),
@@ -1033,38 +1056,26 @@ function armLiteralFence(field) {
     insertLiveMath(field,fence);
   },options);
 }
-const mathOperatorKeys = { 'cs:s':'sum', 'ca:s':'sum', 'cs:p':'prod', 'cs:i':'iint', 'csa:i':'iiint', 'a:i':'oint', 'sa:i':'oiint' };
-window.addEventListener('keydown', event => {
-  if (event.defaultPrevented || event.metaKey || event.isComposing) return;
-  const field = event.composedPath().find(node => node?.tagName === 'MATH-FIELD');
-  if (!field || !paper.contains(field)) return;
-  const key = /^Key[A-Z]$/.test(event.code) ? event.code.slice(3).toLowerCase() : event.key.toLowerCase();
-  const modifiers = `${event.ctrlKey ? 'c' : ''}${event.shiftKey ? 's' : ''}${event.altKey ? 'a' : ''}`;
-  const operator = mathOperatorKeys[`${modifiers}:${key}`];
-  const matrix = key === 'm' ? matrixShortcut(modifiers) : null;
-  if (!operator && !matrix && (modifiers !== 'c' || !['f','i','l','r'].includes(key))) return;
-  event.preventDefault(); event.stopImmediatePropagation();
-  if (event.repeat) return;
-  if (operator) {
-    insertLiveMath(field, '\\'+operator);
-    return;
-  }
-  if (key === 'l' || key === 'r') {
-    chooseMathDelimiters(field, key === 'r');
-    return;
+function runMathShortcut(command, field, event) {
+  if (event.repeat && !['undo','redo','leaveEnvironment','superscript','subscript'].includes(command)) return;
+  switch (command) {
+    case 'undo': editor.commands.undo(); return;
+    case 'redo': editor.commands.redo(); return;
+    case 'superscript': field.executeCommand('moveToSuperscript'); return;
+    case 'subscript': field.executeCommand('moveToSubscript'); return;
+    case 'leaveEnvironment': field.dispatchEvent(new Event('lineae-leave-math-environment')); return;
+    case 'addRow': fillMatrixAxis(field,'row'); return;
+    case 'addColumn': fillMatrixAxis(field,'column'); return;
+    case 'literalFence': armLiteralFence(field); return;
+    case 'left': case 'right': chooseMathDelimiters(field,command==='right'); return;
   }
   const selected = field.selection.ranges.map(range => field.getValue(range)).join('');
   const slot = '\\placeholder{}';
-  if (matrix) {
-    insertLiveMath(field, matrixSource(matrix, selected || slot));
-    return;
-  }
-  const fragments = {
-    f: `\\frac{${selected || slot}}{${slot}}`,
-    i: `\\int${selected ? ' '+selected : ''}`,
-  };
-  insertLiveMath(field, fragments[key]);
-}, true);
+  if (matrixEnvironments.has(command)) insertLiveMath(field, matrixSource(command,selected || slot));
+  else if (command==='frac') insertLiveMath(field, `\\frac{${selected || slot}}{${slot}}`);
+  else if (command==='int') insertLiveMath(field, `\\int${selected ? ' '+selected : ''}`);
+  else insertLiveMath(field, '\\'+command);
+}
 document.addEventListener('pointerdown', event => { if (!commands.contains(event.target)) closeCommands(); }, true);
 document.addEventListener('scroll', event => {
   if (!commands.hidden && !commands.contains(event.target)) closeCommands();
@@ -1085,6 +1096,7 @@ themeButton.type='button';themeButton.className='theme-toggle';
 themeButton.addEventListener('mousedown',event=>event.preventDefault());
 themeButton.addEventListener('click',()=>{
   const next={light:'dark',dark:'system',system:'light'}[theme.getPreference()];
+  config.updateInterface({theme:next});
   theme.set(next);updateThemeButton();
 });
 function updateThemeButton(){
@@ -1120,60 +1132,45 @@ function scale() {
   });
 }
 window.addEventListener('resize',scale);
-zoom.addEventListener('input',scale);
-let wheelZoom = Number(zoom.value);
-const configuredZoom=Number(appConfig.interface?.zoom);
-if(Number.isFinite(configuredZoom)&&configuredZoom>=50&&configuredZoom<=300) { zoom.value=String(configuredZoom); wheelZoom=configuredZoom; }
-document.addEventListener('keydown', event => {
-  if (event.ctrlKey && !event.shiftKey && !event.altKey && !event.metaKey && event.key.toLowerCase()==='j'
-    && editor.view.hasFocus() && !event.composedPath().some(node=>node?.tagName==='MATH-FIELD')) {
-    editor.view.domObserver.flush();
-    if (editor.isActive('codeBlock')) {
-      event.preventDefault(); event.stopPropagation();
-      exitCode(editor.state, editor.view.dispatch);
-      return;
-    }
-    if (editor.isActive('code')) {
-      event.preventDefault(); event.stopPropagation();
-      editor.commands.unsetCode();
-      return;
-    }
-    for (const mark of ['boxed','smallcaps','superscript','subscript','bold','italic','underline','strike']) {
-      if (!editor.isActive(mark)) continue;
-      event.preventDefault(); event.stopPropagation();
-      // Move past the whole marked range before continuing outside the command.
-      editor.chain().focus().extendMarkRange(mark).command(({tr}) => {
-        tr.setSelection(tr.selection.constructor.near(tr.doc.resolve(tr.selection.to)));
-        tr.removeStoredMark(editor.schema.marks[mark]);
-        return true;
-      }).unsetMark(mark).run();
-      return;
-    }
-    const { $from }=editor.state.selection;
-    for (let depth=$from.depth; depth>0; depth--) {
-      if (!['blockquote','theoremBlock','bulletList','orderedList','descriptionList','table'].includes($from.node(depth).type.name)) continue;
-      event.preventDefault(); event.stopPropagation();
-      const after=$from.after(depth);
-      const tr=editor.state.tr;
-      if (!tr.doc.resolve(after).nodeAfter) tr.insert(after,editor.schema.nodes.paragraph.create());
-      tr.setSelection(Selection.near(tr.doc.resolve(after),1));
-      editor.view.dispatch(tr.scrollIntoView());
-      editor.view.focus();
-      return;
-    }
+let wheelZoom = config.value.interface.zoom;
+let zoomSaveTimer;
+zoom.value = String(wheelZoom);
+function saveZoom() {
+  clearTimeout(zoomSaveTimer);
+  const value = Number(zoom.value);
+  if (value !== config.value.interface.zoom) config.updateInterface({zoom:value});
+}
+function setZoom(value) {
+  wheelZoom = Math.max(50, Math.min(300, value));
+  zoom.value = String(Math.round(wheelZoom));
+  scale();
+}
+zoom.addEventListener('input', () => setZoom(Number(zoom.value)));
+zoom.addEventListener('change',saveZoom);
+function leaveTextEnvironment() {
+  if (editor.isActive('codeBlock')) return exitCode(editor.state,editor.view.dispatch);
+  if (editor.isActive('code')) return editor.commands.unsetCode();
+  for (const mark of ['boxed','smallcaps','superscript','subscript','bold','italic','underline','strike']) {
+    if (!editor.isActive(mark)) continue;
+    return editor.chain().focus().extendMarkRange(mark).command(({tr}) => {
+      tr.setSelection(tr.selection.constructor.near(tr.doc.resolve(tr.selection.to)));
+      tr.removeStoredMark(editor.schema.marks[mark]);
+      return true;
+    }).unsetMark(mark).run();
   }
-  if (event.ctrlKey && !event.shiftKey && !event.altKey && !event.metaKey && event.key==='0'
-    && editor.view.hasFocus() && !event.composedPath().some(node=>node?.tagName==='MATH-FIELD')) {
-    event.preventDefault();
-    return;
+  const { $from }=editor.state.selection;
+  for (let depth=$from.depth; depth>0; depth--) {
+    if (!['blockquote','theoremBlock','bulletList','orderedList','descriptionList','table'].includes($from.node(depth).type.name)) continue;
+    const after=$from.after(depth);
+    const tr=editor.state.tr;
+    if (!tr.doc.resolve(after).nodeAfter) tr.insert(after,editor.schema.nodes.paragraph.create());
+    tr.setSelection(Selection.near(tr.doc.resolve(after),1));
+    editor.view.dispatch(tr.scrollIntoView());
+    editor.view.focus();
+    return true;
   }
-  if (!(event.ctrlKey || event.metaKey) || activeMath() || event.composedPath().some(node=>node?.tagName==='MATH-FIELD') || !['+','=','-'].includes(event.key)) return;
-  event.preventDefault();
-  wheelZoom = Math.max(50, Math.min(300, Number(zoom.value) + (event.key === '-' ? -10 : 10)));
-  zoom.value = String(wheelZoom); scale();
-}, true);
-zoom.addEventListener('input', () => { wheelZoom = Number(zoom.value); });
-zoom.addEventListener('change', () => saveConfig({ zoom: Number(zoom.value) }));
+  return false;
+}
 function formulaAtSelection() {
   let { selection } = editor.state;
   const domSelection = window.getSelection();
@@ -1195,44 +1192,83 @@ function formulaAtSelection() {
   }
   return null;
 }
-let matrixChord=0;
-document.addEventListener('keydown', event => {
-  if (event.defaultPrevented || event.altKey || event.metaKey || event.isComposing) { matrixChord=0; return; }
-  if (event.key==='Control') return;
-  const editingMatrix=Boolean(activeMath())||editor.isActive('table');
-  if (event.ctrlKey && !event.shiftKey && event.key.toLowerCase()==='e') {
-    if (!editingMatrix && !(editor.view.hasFocus() && formulaAtSelection())) { matrixChord=0; return; }
-    event.preventDefault(); event.stopPropagation(); matrixChord=performance.now()+1500; return;
-  }
-  if (performance.now()>matrixChord) return;
-  const key=event.key.toLowerCase();
-  matrixChord=0;
-  if (key==='t' && document.activeElement?.tagName==='MATH-FIELD') {
-    event.preventDefault(); event.stopPropagation();
-    armLiteralFence(document.activeElement);
-    return;
-  }
-  if (key==='e' && editor.view.hasFocus()) {
-    const target=formulaAtSelection();
-    const field=target && editor.view.nodeDOM(target.position)?.querySelector('math-field');
-    if (!field) return;
-    event.preventDefault(); event.stopPropagation();
-    field.focus();
-    field.executeCommand(target.start?'moveToMathfieldStart':'moveToMathfieldEnd');
-    return;
-  }
-  if (!editingMatrix || !['r','c'].includes(key)) return;
-  event.preventDefault(); event.stopPropagation();
-  if (key==='r') addMatrixRow(); else addMatrixColumn();
-}, true);
+function editMathAtSelection() {
+  const target=formulaAtSelection();
+  const field=target && editor.view.nodeDOM(target.position)?.querySelector('math-field');
+  if (!field) return false;
+  field.focus();
+  field.executeCommand(target.start?'moveToMathfieldStart':'moveToMathfieldEnd');
+  return true;
+}
+function zoomByKeyboard(amount, {field}) {
+  if (field) return false;
+  setZoom(Number(zoom.value)+amount);
+  saveZoom();
+}
+const shortcutActions = {
+  global: {
+    save: (_context,event) => { if (!event.repeat) saveDocument(); },
+    zoomIn: context => zoomByKeyboard(10,context),
+    zoomOut: context => zoomByKeyboard(-10,context),
+  },
+  editor: {
+    insertDisplayMath: () => insertMath(true),
+    toggleBox: () => spaceOverlay.toggleBox(),
+    editMath: editMathAtSelection,
+    find: documentFind.show,
+    leaveEnvironment: leaveTextEnvironment,
+    ignoreBrowserZoomReset: () => true,
+    literalBacktick: () => editor.commands.insertContent('`'),
+    undo: () => editor.commands.undo(),
+    redo: () => editor.commands.redo(),
+    toggleBold: () => editor.commands.toggleBold(),
+    toggleItalic: () => editor.commands.toggleItalic(),
+    toggleStrike: () => editor.commands.toggleStrike(),
+    toggleCode: () => editor.commands.toggleCode(),
+    toggleCodeBlock: () => editor.commands.toggleCodeBlock(),
+    toggleBlockquote: () => editor.commands.toggleBlockquote(),
+    toggleBulletList: () => editor.commands.toggleBulletList(),
+    toggleOrderedList: () => editor.commands.toggleOrderedList(),
+    paragraph: () => editor.commands.setParagraph(),
+    section: () => editor.commands.toggleHeading({level:1}),
+    subsection: () => editor.commands.toggleHeading({level:2}),
+    subsubsection: () => editor.commands.toggleHeading({level:3}),
+    hardBreak: () => editor.commands.setHardBreak(),
+  },
+  paragraph: {
+    toggleIndent: () => editor.commands.updateAttributes('paragraph',{indent:editor.getAttributes('paragraph').indent === false}),
+  },
+  table: {
+    addRow: () => editor.commands.addRowAfter(),
+    addColumn: () => editor.commands.addColumnAfter(),
+  },
+};
+installKeybindings(window, {
+  getBindings: () => config.bindings,
+  getContext(event) {
+    const field = event.composedPath().find(node => node?.tagName === 'MATH-FIELD');
+    if (field && paper.contains(field)) return { element:field, field, scopes:['math','global'] };
+    if (documentFind.panel.contains(event.target)) return { element:documentFind.panel, scopes:['editor'], only:'find' };
+    if (!editor.view.hasFocus()) return { element:document.activeElement, scopes:['global'] };
+    editor.view.domObserver.flush();
+    const scopes = ['editor','global'];
+    if (editor.isActive('paragraph')) scopes.unshift('paragraph');
+    if (editor.isActive('table')) scopes.unshift('table');
+    return { element:editor.view.dom, scopes };
+  },
+  run({scope,command},context,event) {
+    if (scope === 'math') return runMathShortcut(command,context.field,event);
+    return shortcutActions[scope][command](context,event);
+  },
+});
 document.querySelector('main').addEventListener('wheel', event => {
-  if (!event.ctrlKey) return;
+  if (!event.ctrlKey || !config.value.interface.zoomOnCtrlWheel) return;
   event.preventDefault();
   const units = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? window.innerHeight : 1;
   const speed = event.deltaMode === 0 && Math.abs(event.deltaY) < 50 ? 0.24 : 0.12;
-  wheelZoom = Math.max(50, Math.min(300, wheelZoom - event.deltaY * units * speed));
-  zoom.value = String(Math.round(wheelZoom));
-  scale();
+  setZoom(wheelZoom-event.deltaY*units*speed);
+  clearTimeout(zoomSaveTimer);
+  zoomSaveTimer=setTimeout(saveZoom,200);
 }, { passive: false });
 const environment = document.createElement('span'); environment.className='environment-tag';
 function updateEnvironment() {
@@ -1334,25 +1370,22 @@ groupButton(formatGroup,'hr',()=>editor.chain().focus().setHorizontalRule().run(
 groupButton(formatGroup,'x²',()=>editor.chain().focus().toggleMark('superscript').run());
 groupButton(formatGroup,'x₂',()=>editor.chain().focus().toggleMark('subscript').run());
 groupButton(formatGroup,'sc',()=>editor.chain().focus().toggleMark('smallcaps').run());
-groupButton(formatGroup,'box',()=>editor.chain().focus().toggleMark('boxed').run());
+groupButton(formatGroup,'box',()=>spaceOverlay.toggleBox()).dataset.shortcut='editor.toggleBox';
 groupButton(formatGroup,'\\LaTeX',()=>insertTextCommand('LaTeX'));
 groupButton(formatGroup,'\\TeX',()=>insertTextCommand('TeX'));
-let showFormattingMarks = true;
-const setSpaceOverlay=installSpaceOverlay(editor,paper);
-documentPage.dataset.formattingMarks = 'true';
+const spaceOverlay=installSpaceOverlay(editor,paper);
 const formattingMarks = groupButton(formatGroup,'¶',()=>{
-  showFormattingMarks = !showFormattingMarks;
-  documentPage.dataset.formattingMarks = String(showFormattingMarks);
-  setSpaceOverlay(showFormattingMarks);
-  formattingMarks.setAttribute('aria-pressed',String(showFormattingMarks));
+  config.updateInterface({formattingMarks:!config.value.interface.formattingMarks});
+  updateEditorDisplayPreferences();
 });
-formattingMarks?.setAttribute('aria-pressed','true');
-document.addEventListener('keydown',event=>{
-  if (!event.ctrlKey || event.altKey || event.shiftKey || event.metaKey || event.key.toLowerCase() !== 'i') return;
-  if (!editor.view.hasFocus() || !editor.isActive('paragraph') || event.composedPath().some(node=>node?.tagName==='MATH-FIELD')) return;
-  event.preventDefault(); event.stopPropagation();
-  editor.commands.updateAttributes('paragraph',{indent:editor.getAttributes('paragraph').indent === false});
-},true);
+function updateEditorDisplayPreferences() {
+  const { formattingMarks:showMarks, caretMotion }=config.value.interface;
+  documentPage.dataset.formattingMarks=String(showMarks);
+  documentPage.dataset.caretMotion=String(caretMotion);
+  spaceOverlay.setFormattingMarks(showMarks);
+  formattingMarks.setAttribute('aria-pressed',String(showMarks));
+}
+updateEditorDisplayPreferences();
 groupButton(formatGroup,'desc',()=>editor.chain().focus().insertContent({type:'descriptionList',content:[{type:'descriptionItem',attrs:{term:''},content:[{type:'paragraph'}]}]}).run());
 function setListStyle(style) {
   if(editor.isActive('orderedList'))editor.chain().focus().updateAttributes('orderedList',{labelStyle:style}).run();
@@ -1435,7 +1468,7 @@ groupButton(referenceGroup,'author',async()=>{
   if(value!==null)writeMeta('author',value);
 });
 groupButton(mathGroup,'$',()=>insertMath());
-groupButton(mathGroup,'$$',()=>insertMath(true));
+groupButton(mathGroup,'$$',()=>insertMath(true)).dataset.shortcut='editor.insertDisplayMath';
 groupButton(mathGroup,'equation',()=>insertEquation());
 groupButton(mathGroup,'equation label',async()=>{
   const field=activeMath();
@@ -1493,22 +1526,73 @@ const attachFolder=groupButton(files,t('关联资源目录','Attach asset folder
   },{once:true});
   picker.click();
 });
+attachFolder.dataset.tool='assets';
 for(const control of [...tools.children]) {
   (control.hasAttribute('data-home') || control.tagName==='SELECT' || ['↶','↷','B','I','U','H'].includes(control.textContent)?home:insert).append(control);
 }
 const groups={files,home,insert,layout:layoutGroup,table:tableGroup,format:formatGroup,reference:referenceGroup,math:mathGroup};
 const captions={files:['文件','File'],home:['主页','Home'],insert:['插入','Insert'],layout:['布局','Layout'],table:['表格','Table'],format:['格式','Format'],reference:['引用','Reference'],math:['数学','Math']};
 const language=document.querySelector('#language');
-const exportConfig=document.createElement('button');
-exportConfig.type='button';
-exportConfig.addEventListener('mousedown',event=>event.preventDefault());
-exportConfig.addEventListener('click',()=>{
-  const url=URL.createObjectURL(new Blob([toYaml(appConfig)+'\n'],{type:'text/yaml;charset=utf-8'}));
+const findButton=groupButton(home,t('查找','Find'),documentFind.show);
+findButton.dataset.shortcut='editor.find';
+const importConfig=groupButton(files,t('导入 YAML','Import YAML'),()=>{
+  const picker=document.createElement('input');
+  picker.type='file';
+  picker.accept='.yaml,.yml,application/yaml,text/yaml';
+  picker.addEventListener('change',async()=>{
+    const file=picker.files[0];
+    if (!file) return;
+    const status=document.querySelector('#status');
+    try {
+      config.importYaml(await file.text());
+      applyImportedPreferences();
+      status.textContent=t('已应用 YAML 配置','YAML settings applied');
+    } catch (error) {
+      status.textContent=t('无法读取 YAML 配置','Could not load YAML settings')+' · '+error.message;
+    }
+    status.hidden=false;
+  },{once:true});
+  picker.click();
+});
+const exportConfig=groupButton(files,t('导出 YAML','Export YAML'),()=>{
+  saveZoom();
+  const url=URL.createObjectURL(new Blob([config.exportYaml()],{type:'application/yaml;charset=utf-8'}));
   const a=document.createElement('a');a.href=url;a.download='config.yaml';a.click();
   setTimeout(()=>URL.revokeObjectURL(url),1000);
 });
-files.append(exportConfig);
-language.value=initialLanguage;
+let releaseFileNavigation;
+function updateFileTools() {
+  const order=config.value.interface.toolbar;
+  for (const control of files.querySelectorAll('[data-tool]')) control.hidden=!order.includes(control.dataset.tool);
+  for (const name of order) files.insertBefore(files.querySelector(`[data-tool="${name}"]`),importConfig);
+  releaseFileNavigation?.();
+  releaseFileNavigation=installRovingFocus(files,{onActivate:control=>control.click()});
+}
+function applyImportedPreferences() {
+  clearTimeout(zoomSaveTimer);
+  language.value=configuredLanguage();
+  theme.set(config.value.interface.theme);
+  setZoom(config.value.interface.zoom);
+  updateEditorDisplayPreferences();
+  const { smartFences }=config.value.editing;
+  configureMathFences(smartFences);
+  for (const field of paper.querySelectorAll('math-field')) field.smartFence=smartFences;
+  updateFileTools();
+  updateLanguage();
+}
+function updateShortcutHints() {
+  const display={ctrl:'Ctrl',meta:'Meta',alt:'Alt',shift:'Shift',equal:'=',plus:'+',minus:'−'};
+  const format=stroke=>stroke.split('+').map(key=>display[key] ?? key.toUpperCase()).join('+');
+  for (const control of ribbon.querySelectorAll('[data-shortcut]')) {
+    const [scope,command]=control.dataset.shortcut.split('.');
+    const binding=config.bindings.scopes.get(scope)?.find(entry=>entry.command===command);
+    if (!binding) continue;
+    const shortcut=[binding.first,binding.second].filter(Boolean).map(format).join(' ');
+    control.dataset.tooltipZh+=' · '+shortcut;
+    control.dataset.tooltipEn+=' · '+shortcut;
+  }
+}
+language.value=configuredLanguage();
 function updateLanguage() {
   setLanguage(language.value);
   const chinese=language.value==='zh-CN';
@@ -1517,7 +1601,9 @@ function updateLanguage() {
   for(const tab of tabs.children)tab.textContent=captions[tab.dataset.group][chinese?0:1];
   download.textContent=chinese?'下载项目 .zip':'Download project .zip';
   attachFolder.textContent=chinese?'关联资源目录':'Attach asset folder';
-  exportConfig.textContent=chinese?'配置':'Config';
+  importConfig.textContent=chinese?'导入 YAML':'Import YAML';
+  exportConfig.textContent=chinese?'导出 YAML':'Export YAML';
+  findButton.textContent=chinese?'查找':'Find';
   header.querySelector('.open span').textContent=chinese?'打开 .tex':'Open .tex';
   commands.setAttribute('aria-label',t('LaTeX 补全','LaTeX completion'));
   filter.placeholder=t('LaTeX 命令','LaTeX command');
@@ -1545,6 +1631,8 @@ function updateLanguage() {
   renderMeta();
   updateEnvironment();
   count.textContent=editor.getText().length+' '+t('字符','characters');
+  applyToolbarDescriptions(ribbon);
+  updateShortcutHints();
 }
 function selectGroup(name) {
   for(const [key,panel] of Object.entries(groups)) panel.hidden=key!==name;
@@ -1560,9 +1648,12 @@ decorateToolbar(ribbon);
 const tooltips=installTooltips(document.body,{document,language:language.value});
 for(const control of ribbon.querySelectorAll('button'))control.dataset.rovingItem='';
 installRovingFocus(tabs,{initial:Object.keys(groups).indexOf('home'),onActivate:control=>control.click()});
-for(const panel of Object.values(groups))installRovingFocus(panel,{onActivate:control=>control.click()});
+for(const [name,panel] of Object.entries(groups)) {
+  if (name!=='files') installRovingFocus(panel,{onActivate:control=>control.click()});
+}
 const download=document.querySelector('#download');
-language.addEventListener('change',()=>{updateLanguage();saveConfig({language:language.value});});updateLanguage();applyToolbarDescriptions(ribbon);selectGroup('home');
+language.addEventListener('change',()=>{config.updateInterface({language:language.value});updateLanguage();});
+updateFileTools();updateLanguage();selectGroup('home');
 
 installContextMenu(editor, paper, language, message => {
   const status = document.querySelector('#status');

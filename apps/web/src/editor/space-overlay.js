@@ -72,6 +72,34 @@ export function installSpaceOverlay(editor, paper) {
       !mark.isInSet(selection.$from.nodeAfter?.marks ?? []) ? mark : null;
   }
 
+  function toggleBox() {
+    if (composing || editor.view.composing) return false;
+    if (!editor.view.hasFocus()) editor.view.focus();
+    arrowOrigin=null;
+    editor.view.domObserver.flush();
+    const {selection,storedMarks}=editor.state;
+    const edge=boxEdge();
+    const inside=edge ? insideBox(edge) : editor.isActive('boxed');
+    if (selection.empty && pendingBoxMark(selection,storedMarks)) {
+      editor.commands.unsetMark('boxed');
+    } else if (selection.empty && inside) {
+      const boxed=editor.schema.marks.boxed;
+      editor.chain().extendMarkRange('boxed').unsetMark('boxed').command(({tr})=>{
+        tr.setSelection(selection.constructor.create(tr.doc,selection.from));
+        tr.removeStoredMark(boxed);
+        return true;
+      }).run();
+    } else if (selection.empty && edge) {
+      const boxed=editor.schema.marks.boxed.create({boxId:crypto.randomUUID()});
+      editor.view.dispatch(editor.state.tr.setStoredMarks(boxed.addToSet(storedMarks ?? edge.outsideMarks)));
+    } else if (editor.isActive('boxed')) {
+      editor.commands.unsetMark('boxed');
+    } else {
+      editor.commands.setMark('boxed',{boxId:crypto.randomUUID()});
+    }
+    return true;
+  }
+
   paper.addEventListener('pointerdown',()=>{
     arrowOrigin=null;
     scheduleCaret('navigate',true);
@@ -84,36 +112,6 @@ export function installSpaceOverlay(editor, paper) {
     if (/^(Arrow(?:Left|Right|Up|Down)|Home|End|PageUp|PageDown)$/.test(event.key)) scheduleCaret('navigate',true);
     if (['Backspace','Delete'].includes(event.key) && !composing && !event.isComposing && editor.view.hasFocus()) {
       scheduleCaret('edit',true);
-    }
-    if (event.ctrlKey && event.shiftKey && !event.altKey && !event.metaKey &&
-        (event.code==='KeyB' || event.key.toLowerCase()==='b') &&
-        !composing && !event.isComposing && editor.view.hasFocus()) {
-      event.preventDefault();
-      event.stopPropagation();
-      arrowOrigin=null;
-      if (!event.repeat) {
-        editor.view.domObserver.flush();
-        const {selection,storedMarks}=editor.state;
-        const edge=boxEdge();
-        const inside=edge ? insideBox(edge) : editor.isActive('boxed');
-        if (selection.empty && pendingBoxMark(selection,storedMarks)) {
-          editor.commands.unsetMark('boxed');
-        } else if (selection.empty && inside) {
-          const boxed=editor.schema.marks.boxed;
-          editor.chain().extendMarkRange('boxed').unsetMark('boxed').command(({tr})=>{
-            tr.setSelection(selection.constructor.create(tr.doc,selection.from));
-            tr.removeStoredMark(boxed);
-            return true;
-          }).run();
-        } else if (selection.empty && edge) {
-          const boxed=editor.schema.marks.boxed.create({boxId:crypto.randomUUID()});
-          editor.view.dispatch(editor.state.tr.setStoredMarks(boxed.addToSet(storedMarks ?? edge.outsideMarks)));
-        } else {
-          if (editor.isActive('boxed')) editor.commands.unsetMark('boxed');
-          else editor.commands.setMark('boxed',{boxId:crypto.randomUUID()});
-        }
-      }
-      return;
     }
     if ((event.key==='Backspace' || event.key==='Delete') && !event.ctrlKey && !event.shiftKey &&
         !event.metaKey && !event.altKey && !composing && !event.isComposing && editor.view.hasFocus()) {
@@ -390,7 +388,7 @@ export function installSpaceOverlay(editor, paper) {
   // ProseMirror transaction is emitted. Refresh the visual layer in either case.
   const contentObserver=new MutationObserver(scheduleLayout);
   contentObserver.observe(paper,{subtree:true,childList:true,characterData:true});
-  contentObserver.observe(page,{attributes:true,attributeFilter:['style','hidden'],childList:true});
+  contentObserver.observe(page,{attributes:true,attributeFilter:['style','hidden','data-caret-motion'],childList:true});
   editor.on('destroy',()=>{
     listeners.abort();
     observer.disconnect();
@@ -403,5 +401,5 @@ export function installSpaceOverlay(editor, paper) {
     emptyBox.remove();
   });
   scheduleLayout();
-  return value=>{enabled=value;scheduleLayout();};
+  return { toggleBox, setFormattingMarks(value) { enabled=value;scheduleLayout(); } };
 }
