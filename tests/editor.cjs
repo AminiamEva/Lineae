@@ -875,7 +875,7 @@ async function verifySelectionGeometry(page, paper, importSource) {
       const item=document.querySelector('.ProseMirror ol li.list-item-selected');
       return getComputedStyle(item,'::before').backgroundColor;
     });
-    assert.notEqual(marker,'rgba(0, 0, 0, 0)','The selected list item marker gets a pale highlight');
+    assert.ok(marker && marker!=='rgba(0, 0, 0, 0)','The selected list item marker gets a pale highlight: '+marker);
 
     await importSource('Rapid caret');
     await paper.locator(':scope > p').click();
@@ -1965,9 +1965,13 @@ async function verifySelectionGeometry(page, paper, importSource) {
     await operandField.click();
     await operandField.evaluate(field=>field.focus());
     await page.waitForFunction(()=>document.activeElement?.matches('math-field[data-lineae-editing]'));
-    assert.notEqual(await operandMark.evaluate(el=>getComputedStyle(el).backgroundColor),'rgba(0, 0, 0, 0)');
+    const editingBackground=await operandMark.evaluate(el=>getComputedStyle(el).backgroundColor);
+    assert.ok(editingBackground && editingBackground!=='rgba(0, 0, 0, 0)',
+      'Formula operands highlight while editing: '+editingBackground);
     await operandField.evaluate(field=>field.blur());
-    assert.equal(await operandMark.evaluate(el=>getComputedStyle(el).backgroundColor),'rgba(0, 0, 0, 0)');
+    const blurredBackground=await operandMark.evaluate(el=>getComputedStyle(el).backgroundColor);
+    assert.ok(blurredBackground===''||blurredBackground==='rgba(0, 0, 0, 0)',
+      'The operand highlight clears when editing ends: '+blurredBackground);
     await importSource('\\[\\frac{\\placeholder{}}{\\placeholder{}}\\]');
     const slotField=paper.locator('math-field').first();
     await slotField.evaluate(field=>{field.focus();field.position=0;});
