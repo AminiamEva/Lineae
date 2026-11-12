@@ -6,7 +6,7 @@ interface:
   zoomOnCtrlWheel: true
   formattingMarks: true
   caretMotion: true
-  toolbar: [open, download, language, assets]
+  toolbar: [open, saveAs, download, language, assets]
 editing:
   smartFences: true
   autoReplaceLigatures: false

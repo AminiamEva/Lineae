@@ -10,7 +10,7 @@ test('parses the shipped YAML config', () => {
   assert.equal(config.version, 2);
   assert.equal(config.interface.language, 'auto');
   assert.equal(config.interface.zoom, 100);
-  assert.deepEqual(config.interface.toolbar, ['open', 'download', 'language', 'assets']);
+  assert.deepEqual(config.interface.toolbar, ['open', 'saveAs', 'download', 'language', 'assets']);
   assert.equal(config.keybindings.editor.insertDisplayMath, 'ctrl+e c');
   assert.equal(config.keybindings.editor.toggleBox, 'ctrl+e b');
   assert.equal(config.keybindings.math.superscript, 'ctrl+6');

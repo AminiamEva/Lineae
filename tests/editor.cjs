@@ -587,6 +587,7 @@ async function verifySelectionGeometry(page, paper, importSource) {
     await formula.click({button:'right'});
     await context.locator('[data-command="display-style"]').click();
     assert.match(await formula.evaluate(field=>field.value),/^\\displaystyle/);
+    await page.waitForFunction(()=>/Inline math/.test(document.querySelector('.environment-tag')?.textContent||''));
     assert.match(await page.locator('.environment-tag').textContent(),/Inline math/);
 
     await formula.evaluate(field=>{field.value='';field.dispatchEvent(new Event('input',{bubbles:true}));field.focus();});
@@ -774,14 +775,29 @@ async function verifySelectionGeometry(page, paper, importSource) {
 
     await page.evaluate(()=>{
       window.__savedText='';
-      window.showSaveFilePicker=async()=>({
-        name:'lineae.tex',
-        createWritable:async()=>({write:async text=>{window.__savedText=text;},close:async()=>{}}),
-      });
+      window.__savePickerCalls=0;
+      window.__saveAsOptions=null;
+      window.showSaveFilePicker=async options=>{
+        const call=++window.__savePickerCalls;
+        if(call>1)window.__saveAsOptions=options;
+        return {
+          name:call===1?'first.tex':'copy.tex',
+          createWritable:async()=>({write:async text=>{window.__savedText=text;},close:async()=>{}}),
+        };
+      };
     });
     await page.keyboard.press('Control+s');
     await page.waitForFunction(()=>window.__savedText.includes('\\documentclass'));
     assert.match(await page.evaluate(()=>window.__savedText),/\\documentclass/,'Ctrl+S saves to the local file');
+    assert.equal(await page.evaluate(()=>window.__savePickerCalls),1,'Ctrl+S reuses the existing handle');
+
+    await page.locator('[data-group=files]').click();
+    await page.locator('[data-tool=saveAs]').click();
+    await page.waitForFunction(()=>window.__savePickerCalls===2);
+    await page.waitForFunction(()=>window.__savedText.includes('\\documentclass'));
+    assert.equal(await page.evaluate(()=>window.__savePickerCalls),2,'Save as opens a new picker');
+    assert.equal(await page.evaluate(()=>window.__saveAsOptions?.suggestedName),'first.tex','Save as suggests the current file name');
+    assert.equal(await page.locator('#status').isHidden(),false,'Save as reports success in the status bar');
 
     await importSource('\\begin{tabular}{ll}\nA & B \\\\\nC & D \\\\\n\\end{tabular}');
     await page.waitForFunction(()=>Boolean(document.querySelector('.ProseMirror table')));

@@ -184,6 +184,15 @@ node tests/editor.cjs
 
 The GitHub Actions workflow builds the application, runs the LaTeX and bibliography test suites, prepares MathLive, runs the browser regression suite, and deploys the site to GitHub Pages.
 
+## Desktop preview
+
+A Windows x64 preview built with Tauri 2 lives in `apps/desktop`. It reuses the
+browser editor, adds native open/save/save-as dialogs, and exports projects through
+the existing ZIP pipeline. Builds and packaging run only on GitHub Actions; see
+[docs/desktop-preview.md](docs/desktop-preview.md) for artifacts and acceptance
+steps. Compilation, file watching, and auto-update are intentionally out of scope
+for this preview.
+
 ## Contributing
 
 Lineae is still in an early stage, and internal interfaces may change. If you find a bug or a LaTeX compatibility issue, an issue with a small, reproducible <code>.tex</code> example is especially useful. The formal process for external contributions will be documented as the project matures; see [CONTRIBUTING.md](CONTRIBUTING.md).
