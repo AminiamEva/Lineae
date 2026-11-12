@@ -411,11 +411,16 @@ async function verifySelectionGeometry(page, paper, importSource) {
     await page.keyboard.press('Enter');
     await page.keyboard.type('two');
     await page.keyboard.press('Tab');
-    assert.equal(await paper.locator('li').last().textContent(),'two    ');
+    assert.equal(await paper.locator('li').last().evaluate(li=>Boolean(li.parentElement.closest('li'))),true,
+      'Tab nests a list item instead of inserting spaces');
     await page.keyboard.press('Shift+Tab');
-    assert.equal(await paper.locator('li').last().textContent(),'two');
+    assert.equal(await paper.locator('li').last().evaluate(li=>Boolean(li.parentElement.closest('li'))),false,
+      'Shift+Tab lifts the list item back out');
     await page.keyboard.press('Enter');
+    assert.equal(await paper.locator('li').count(),3);
     await page.keyboard.press('Enter');
+    assert.equal(await paper.locator('li').count(),2,'Enter on an empty item leaves the list');
+    assert.equal(await paper.evaluate(()=>document.querySelector('.ProseMirror').lastElementChild.tagName),'P');
     await page.getByRole('button',{name:'▦',exact:true}).click();
     await page.keyboard.type('A');
     await page.keyboard.press('Tab');
@@ -772,6 +777,116 @@ async function verifySelectionGeometry(page, paper, importSource) {
     await page.locator('.editor-dialog input').fill('◦');
     await page.locator('.editor-dialog button[type=submit]').click();
     await page.waitForFunction(()=>document.querySelector('.ProseMirror ul')?.getAttribute('data-marker')==='◦');
+
+    await importSource('Plain line');
+    await page.locator('.ProseMirror > p').click();
+    await page.keyboard.press('End');
+    await page.keyboard.press('Enter');
+    await page.keyboard.press('Space');
+    await page.waitForTimeout(40);
+    assert.equal(await paper.locator('ol').count(),0,'A single space must not start a list');
+
+    await importSource('Code fence');
+    await page.locator('.ProseMirror > p').click();
+    await page.keyboard.press('End');
+    await page.keyboard.press('Enter');
+    await page.keyboard.type('```rust');
+    await page.waitForFunction(()=>Boolean(document.querySelector('.ProseMirror pre code')));
+    await page.keyboard.press('Enter');
+    await page.waitForFunction(()=>document.querySelector('.ProseMirror pre')?.getAttribute('data-language')==='rust');
+    assert.equal(await paper.locator('pre code').textContent(),'','A typed fence can name the code language');
+    assert.equal(await paper.locator('pre').evaluate(element=>getComputedStyle(element).fontFamily.includes('monospace')),true,
+      'Code blocks use a monospace font');
+
+    await importSource('\\begin{enumerate}\n\\item Outer\n\\begin{enumerate}\n\\item Inner\n\\end{enumerate}\n\\end{enumerate}');
+    await page.waitForFunction(()=>document.querySelectorAll('.ProseMirror ol ol li').length===1);
+    await paper.locator('ol ol li').click();
+    const caretInList=()=>page.evaluate(()=>Boolean((window.getSelection().anchorNode?.nodeType===3
+      ? window.getSelection().anchorNode.parentElement
+      : window.getSelection().anchorNode)?.closest?.('li')));
+    await page.keyboard.press('Control+j');
+    await page.waitForFunction(()=>document.querySelectorAll('.ProseMirror ol li').length===2);
+    assert.equal(await caretInList(),true,'Ctrl+J leaves the current list level');
+    await page.keyboard.press('Control+Shift+j');
+    await page.waitForTimeout(20);
+    assert.equal(await caretInList(),false,'Ctrl+Shift+J leaves every enclosing list');
+
+    await importSource('\\begin{lstlisting}\ncode\n\\end{lstlisting}');
+    await page.waitForFunction(()=>Boolean(document.querySelector('.ProseMirror pre code')));
+    await paper.locator('pre code').click();
+    await page.keyboard.press('Control+End');
+    await page.keyboard.press('Control+Shift+j');
+    await page.waitForFunction(()=>document.querySelector('.ProseMirror').lastElementChild.tagName==='P');
+    assert.equal(await page.evaluate(()=>document.activeElement?.classList.contains('ProseMirror')),true,
+      'Ctrl+Shift+J leaves a code block like Ctrl+J');
+
+    await importSource('Whole paragraph indentation.');
+    await page.locator('.ProseMirror > p').click();
+    await page.keyboard.press('Home');
+    await page.keyboard.press('Shift+End');
+    await page.waitForTimeout(30);
+    await page.keyboard.press('Shift+Tab');
+    await page.waitForFunction(()=>document.querySelector('.ProseMirror > p')?.dataset.indent==='false');
+    await page.keyboard.press('Tab');
+    await page.waitForFunction(()=>document.querySelector('.ProseMirror > p')?.dataset.indent==='true');
+    assert.equal(await page.evaluate(()=>window.getSelection().toString()),'Whole paragraph indentation.',
+      'Tab and Shift+Tab keep the paragraph selected');
+
+    const selectRange=async (start,length)=>{
+      await page.locator('.ProseMirror > p').click();
+      await page.keyboard.press('Home');
+      for (let index=0;index<start;index++) await page.keyboard.press('ArrowRight');
+      await page.keyboard.down('Shift');
+      for (let index=0;index<length;index++) await page.keyboard.press('ArrowRight');
+      await page.keyboard.up('Shift');
+      await page.waitForTimeout(30);
+    };
+    await importSource('Partial selection replacement.');
+    await selectRange(8,9);
+    await page.keyboard.press('Tab');
+    await page.waitForFunction(()=>/^Partial {6}replacement\.$/.test(document.querySelector('.ProseMirror > p')?.textContent||''));
+    await importSource('Partial selection replacement.');
+    await selectRange(8,9);
+    await page.keyboard.press('Shift+Tab');
+    await page.waitForFunction(()=>document.querySelector('.ProseMirror > p')?.textContent==='Partial  replacement.');
+
+    await importSource('First margin paragraph.\n\nSecond margin paragraph.');
+    await page.waitForFunction(()=>document.querySelectorAll('.ProseMirror > p').length===2);
+    const margin=await page.evaluate(()=>{
+      const paper=document.querySelector('.ProseMirror');
+      const rect=paper.getBoundingClientRect();
+      const [first,second]=paper.querySelectorAll(':scope > p');
+      return {x:rect.left-8,first:first.getBoundingClientRect().toJSON(),second:second.getBoundingClientRect().toJSON()};
+    });
+    await page.mouse.move(margin.x,margin.first.top+margin.first.height*.8);
+    await page.mouse.down();
+    await page.mouse.move(margin.x,margin.second.top+margin.second.height*.3,{steps:4});
+    await page.mouse.up();
+    assert.equal(await page.evaluate(()=>getSelection().toString().replace(/\s+/g,' ').trim()),
+      'First margin paragraph. Second margin paragraph.','Left-margin drag selects whole paragraphs');
+
+    await importSource('\\begin{enumerate}\n\\item Highlighted item\n\\item Plain item\n\\end{enumerate}');
+    await page.waitForFunction(()=>document.querySelectorAll('.ProseMirror ol li').length===2);
+    await paper.locator('ol li').first().click();
+    await page.keyboard.press('Home');
+    await page.keyboard.press('Shift+End');
+    await page.waitForFunction(()=>document.querySelector('.ProseMirror ol li')?.classList.contains('list-item-selected'));
+    const marker=await page.evaluate(()=>{
+      const item=document.querySelector('.ProseMirror ol li.list-item-selected');
+      return getComputedStyle(item,'::before').backgroundColor;
+    });
+    assert.ok(marker && marker!=='rgba(0, 0, 0, 0)','The selected list item marker gets a pale highlight: '+marker);
+
+    await importSource('Rapid caret');
+    await paper.locator(':scope > p').click();
+    await page.keyboard.press('End');
+    await page.keyboard.type('abcdefghij',{delay:15});
+    const caretGap=await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>{
+      const caret=document.querySelector('.document-caret');
+      const native=document.getSelection().getRangeAt(0).getBoundingClientRect();
+      resolve(Math.abs(caret.getBoundingClientRect().left-native.left));
+    })));
+    assert.ok(caretGap<3,'Rapid typing leaves the painted caret at the input position');
 
     await page.evaluate(()=>{
       window.__savedText='';
@@ -1850,9 +1965,13 @@ async function verifySelectionGeometry(page, paper, importSource) {
     await operandField.click();
     await operandField.evaluate(field=>field.focus());
     await page.waitForFunction(()=>document.activeElement?.matches('math-field[data-lineae-editing]'));
-    assert.notEqual(await operandMark.evaluate(el=>getComputedStyle(el).backgroundColor),'rgba(0, 0, 0, 0)');
+    const editingBackground=await operandMark.evaluate(el=>getComputedStyle(el).backgroundColor);
+    assert.ok(editingBackground && editingBackground!=='rgba(0, 0, 0, 0)',
+      'Formula operands highlight while editing: '+editingBackground);
     await operandField.evaluate(field=>field.blur());
-    assert.equal(await operandMark.evaluate(el=>getComputedStyle(el).backgroundColor),'rgba(0, 0, 0, 0)');
+    const blurredBackground=await operandMark.evaluate(el=>getComputedStyle(el).backgroundColor);
+    assert.ok(blurredBackground===''||blurredBackground==='rgba(0, 0, 0, 0)',
+      'The operand highlight clears when editing ends: '+blurredBackground);
     await importSource('\\[\\frac{\\placeholder{}}{\\placeholder{}}\\]');
     const slotField=paper.locator('math-field').first();
     await slotField.evaluate(field=>{field.focus();field.position=0;});

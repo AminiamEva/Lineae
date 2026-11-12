@@ -40,7 +40,7 @@ import Table from '@tiptap/extension-table';
 import TableRow from '@tiptap/extension-table-row';
 import TableCell from '@tiptap/extension-table-cell';
 import TableHeader from '@tiptap/extension-table-header';
-import { Plugin, Selection, NodeSelection } from '@tiptap/pm/state';
+import { Plugin, Selection, NodeSelection, TextSelection } from '@tiptap/pm/state';
 import { parseDocument } from '../latex/document.mjs';
 import { exportDocument, hasTitleCommand } from '../latex/packages.mjs';
 import { appendAlignmentPair, displayEnvironment, numberedMathRows } from '../latex/math-environments.mjs';
@@ -288,11 +288,92 @@ function replaceTypedLigatures(view, from, to, text, defaultTransaction) {
   view.dispatch(closeHistory(view.state.tr.insertText(replacement + text, from - word.length, to)));
   return true;
 }
+function listItemDepthAt($pos) {
+  for(let depth=$pos.depth;depth>0;depth--) if($pos.node(depth).type.name==='listItem') return depth;
+  return 0;
+}
+function listItemLevelAt($pos) {
+  let level=0;
+  for(let depth=$pos.depth;depth>0;depth--) if($pos.node(depth).type.name==='listItem') level++;
+  return level;
+}
 function indentListItem(editor) {
   const { $from }=editor.state.selection;
-  let depth=0;
-  for(let level=1;level<=$from.depth;level++) if($from.node(level).type.name==='listItem') depth++;
-  return depth>0 && depth<10 && editor.chain().focus().sinkListItem('listItem').run();
+  return listItemLevelAt($from)<10 && editor.chain().focus().sinkListItem('listItem').run();
+}
+function wholeBlockSelection(selection) {
+  if (selection.empty) return false;
+  let blocks=0, whole=true;
+  selection.$from.doc.nodesBetween(selection.from,selection.to,(node,position)=>{
+    if (!node.isTextblock) return;
+    blocks++;
+    if (position+1<selection.from || position+node.nodeSize-1>selection.to) whole=false;
+    return false;
+  });
+  return blocks>0 && whole;
+}
+function setParagraphIndent(editor, indent) {
+  const { state }=editor;
+  const positions=[];
+  state.doc.nodesBetween(state.selection.from,state.selection.to,(node,position)=>{
+    if (node.type.name==='paragraph') positions.push(position);
+  });
+  if (!positions.length) return false;
+  const transaction=state.tr;
+  for (const position of positions) {
+    const paragraph=transaction.doc.nodeAt(position);
+    if (paragraph?.type.name==='paragraph') transaction.setNodeMarkup(position,undefined,{
+      ...paragraph.attrs, indent, indentLevel:indent ? paragraph.attrs.indentLevel : 0,
+    });
+  }
+  editor.view.dispatch(transaction);
+  return true;
+}
+function exitEmptyListItem(editor) {
+  const { selection }=editor.state;
+  if (!selection.empty) return false;
+  const $from=selection.$from;
+  if ($from.parent.type.name!=='paragraph' || $from.parent.content.size) return false;
+  const itemDepth=listItemDepthAt($from);
+  if (!itemDepth) return false;
+  const item=$from.node(itemDepth);
+  const hasNestedList=item.content.content.some(child=>['bulletList','orderedList'].includes(child.type.name));
+  if (item.textContent.trim() || hasNestedList) return false;
+  let listLevels=0;
+  for (let depth=1;depth<=$from.depth;depth++) {
+    if (['bulletList','orderedList'].includes($from.node(depth).type.name)) listLevels++;
+  }
+  editor.view.focus();
+  let lifted=false;
+  while (editor.commands.liftEmptyBlock()) lifted=true;
+  if (!lifted) return false;
+  const position=editor.state.selection.$from.before();
+  const paragraph=editor.state.doc.nodeAt(position);
+  if (paragraph?.type.name==='paragraph') {
+    editor.view.dispatch(editor.state.tr.setNodeMarkup(position,undefined,{
+      ...paragraph.attrs, indent:false, indentLevel:listLevels,
+    }));
+  }
+  return true;
+}
+const codeFenceLanguages = new Set(('bash c cpp csharp css dart dockerfile elixir erlang go haskell html ini '+
+  'java javascript js json jsonc kotlin latex less lua makefile markdown md perl php plaintext py python r ruby '+
+  'rust sass scala scss shell sql swift tex toml typescript ts vue xml yaml yml zig').split(' '));
+function applyCodeFenceLanguage(editor) {
+  const { selection }=editor.state;
+  if (!selection.empty) return false;
+  const $from=selection.$from;
+  if ($from.parent.type.name!=='codeBlock') return false;
+  const text=$from.parent.textContent;
+  const language=text.trim().toLowerCase();
+  if ($from.parentOffset!==text.length || !codeFenceLanguages.has(language)) return false;
+  const position=$from.before();
+  const transaction=editor.state.tr
+    .delete(position+1,position+1+text.length)
+    .setNodeMarkup(position,undefined,{...$from.parent.attrs,language});
+  transaction.setSelection(TextSelection.create(transaction.doc,position+1));
+  editor.view.dispatch(transaction);
+  return true;
 }
 const Shortcuts = Extension.create({
   name:'documentShortcuts',
@@ -442,17 +523,39 @@ const Shortcuts = Extension.create({
         }
         return false;
       },
+      Enter:()=>applyCodeFenceLanguage(this.editor)||exitEmptyListItem(this.editor),
       Tab:()=>{
         if(this.editor.isActive('table'))return false;
         if (this.editor.isActive('codeBlock')) {
           return this.editor.commands.insertContent(' '.repeat(indentWidthAt(this.editor.state.selection.$from)));
         }
+        const { selection }=this.editor.state;
+        if (!selection.empty && !wholeBlockSelection(selection)) {
+          this.editor.view.dispatch(this.editor.state.tr.insertText('    '));
+          return true;
+        }
+        if (listItemDepthAt(selection.$from)) return indentListItem(this.editor);
+        if (!selection.empty) return setParagraphIndent(this.editor,true);
         this.editor.view.dispatch(this.editor.state.tr.insertText('    '));
         return true;
       },
       'Shift-Tab':()=>{
         if(this.editor.isActive('table'))return false;
-        const { $from, empty }=this.editor.state.selection;
+        const { selection }=this.editor.state;
+        const { $from, empty }=selection;
+        if (this.editor.isActive('codeBlock')) {
+          if (empty && !$from.parent.type.spec.code) {
+            const spaces=/ {1,4}$/.exec($from.parent.textBetween(0,$from.parentOffset,'\0','\0'));
+            if (spaces) this.editor.view.dispatch(this.editor.state.tr.delete($from.pos-spaces[0].length,$from.pos));
+          } else outdentCurrentLine(this.editor);
+          return true;
+        }
+        if (!selection.empty && !wholeBlockSelection(selection)) {
+          this.editor.view.dispatch(this.editor.state.tr.deleteSelection());
+          return true;
+        }
+        if (listItemDepthAt($from)) return this.editor.chain().focus().liftListItem('listItem').run();
+        if (!selection.empty) return setParagraphIndent(this.editor,false);
         if (empty && !$from.parent.type.spec.code) {
           const spaces=/ {1,4}$/.exec($from.parent.textBetween(0,$from.parentOffset,'\0','\0'));
           if (spaces) this.editor.view.dispatch(this.editor.state.tr.delete($from.pos-spaces[0].length,$from.pos));
@@ -471,6 +574,50 @@ editor=new Editor({
   extensions:[ConfigurableStarterKit.configure({heading:{levels:[1,2,3]},codeBlock:false}),LanguageCodeBlock,MultiSelection,PaperBehavior,TextStyle,TextCommand,Underline,Superscript,Subscript,SmallCaps,Boxed,Table.configure({resizable:true}),TableRow,TableCell,TableHeader,Raw,DocumentImage,TheoremBlock,DescriptionList,DescriptionItem,MathNode,MathBlock,Ref,Cite,Footnote,Label,TableOfContents,Shortcuts],
   content:'<p></p>',
 });
+function installMarginSelection(editor,page,paper) {
+  let drag=null;
+  const blockAt=(clientY)=>{
+    const paperRect=paper.getBoundingClientRect();
+    const hit=editor.view.posAtCoords({left:paperRect.left+2,top:clientY});
+    if (!hit) return null;
+    const $pos=editor.state.doc.resolve(Math.max(0,Math.min(hit.pos,editor.state.doc.content.size)));
+    let depth=$pos.depth;
+    while(depth>0 && !$pos.node(depth).isTextblock) depth--;
+    if (!depth) return null;
+    return {from:$pos.before(depth)+1,to:$pos.after(depth)-1};
+  };
+  const extend=(clientY)=>{
+    if (!drag) return;
+    const block=blockAt(clientY);
+    if (!block) return;
+    const doc=editor.state.doc;
+    const from=Math.min(drag.from,block.from), to=Math.max(drag.to,block.to);
+    editor.view.dispatch(editor.state.tr
+      .setSelection(TextSelection.between(doc.resolve(from),doc.resolve(to)))
+      .scrollIntoView());
+  };
+  page.addEventListener('mousedown',event=>{
+    if (event.button!==0 || event.isComposing) return;
+    const paperRect=paper.getBoundingClientRect();
+    const pageRect=page.getBoundingClientRect();
+    if (event.clientX>=paperRect.left || event.clientX<pageRect.left) return;
+    const block=blockAt(event.clientY);
+    if (!block) return;
+    event.preventDefault();
+    drag={...block};
+    editor.view.focus();
+    extend(event.clientY);
+    const move=pointer=>{ if(pointer.buttons)extend(pointer.clientY); };
+    const finish=()=>{
+      document.removeEventListener('mousemove',move,true);
+      document.removeEventListener('mouseup',finish,true);
+      drag=null;
+    };
+    document.addEventListener('mousemove',move,true);
+    document.addEventListener('mouseup',finish,true);
+  });
+}
+installMarginSelection(editor,documentPage,paper);
 function syncTableAttributes() {
   editor.state.doc.descendants((node, position) => {
     if (node.type.name !== 'table') return;
@@ -1331,6 +1478,22 @@ function leaveTextEnvironment() {
   }
   return false;
 }
+function leaveAllTextEnvironments() {
+  if (editor.isActive('codeBlock')) return exitCode(editor.state,editor.view.dispatch);
+  const { $from }=editor.state.selection;
+  let outerDepth=0;
+  for (let depth=1; depth<=$from.depth; depth++) {
+    if (['blockquote','theoremBlock','bulletList','orderedList','descriptionList','table'].includes($from.node(depth).type.name)) outerDepth=depth;
+  }
+  if (!outerDepth) return leaveTextEnvironment();
+  const after=$from.after(outerDepth);
+  const tr=editor.state.tr;
+  if (!tr.doc.resolve(after).nodeAfter) tr.insert(after,editor.schema.nodes.paragraph.create());
+  tr.setSelection(Selection.near(tr.doc.resolve(after),1));
+  editor.view.dispatch(tr.scrollIntoView());
+  editor.view.focus();
+  return true;
+}
 function formulaAtSelection() {
   let { selection } = editor.state;
   const domSelection = window.getSelection();
@@ -1390,6 +1553,7 @@ const shortcutActions = {
     alignCenter: () => setParagraphAlignment('center'),
     find: documentFind.show,
     leaveEnvironment: leaveTextEnvironment,
+    leaveAllEnvironments: leaveAllTextEnvironments,
     toggleContextMarker: () => {
       const { $from }=editor.state.selection;
       for (let depth=$from.depth;depth>0;depth--) {

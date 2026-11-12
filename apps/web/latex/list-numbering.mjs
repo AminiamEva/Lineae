@@ -13,6 +13,7 @@ const roman=/^M{0,3}(?:CM|CD|D?C{0,3})(?:XC|XL|L?X{0,3})(?:IX|IV|V?I{0,3})$/;
 export function listMarker(match) {
   const [,open,raw,end]=match;
   const token=/^[①-⑳]$/u.test(raw) ? raw : raw.normalize('NFKC');
+  if (!token) return null;
   if (open && ![')', '）'].includes(end)) return null;
   const suffix=open ? 'parens' : end===')'||end==='）' ? 'paren' : end==='、' ? 'comma' : end ? 'dot' : 'bare';
   let style='decimal', start=Number(token);
