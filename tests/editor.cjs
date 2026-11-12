@@ -1225,8 +1225,8 @@ async function verifySelectionGeometry(page, paper, importSource) {
     assert.deepEqual(await paper.evaluate(element=>Array.from(element.children).map(child=>child.matches('.math-display')?'math':child.tagName)),['PRE','P','math','P']);
     const integral=page.locator('math-field');
     await page.keyboard.press('Control+i');
-    await integral.evaluate(field=>field.executeCommand('moveToMathfieldStart'));
-    await page.keyboard.press('ArrowRight');
+    assert.equal(await integral.evaluate(field=>field._mathfield.model.at(field.position)?.command),'\\int',
+      'Integral insertion leaves the caret on the operator side of the operand');
     await page.keyboard.type('_i');
     await page.keyboard.press('Control+j');
     await integral.evaluate(field=>field.executeCommand('moveToMathfieldEnd'));
@@ -1840,7 +1840,28 @@ async function verifySelectionGeometry(page, paper, importSource) {
     for(let index=0;index<3;index++) await page.keyboard.press('Backspace');
     assert.equal(await integralWithLimit.evaluate(field=>field.value),'','Backspacing through an empty limit removes the integral');
     await importSource('\\[\\int\\mathord{x}\\]');
-    await paper.locator('math-field [data-lineae-integrand]').first().waitFor();
+    const operandField=paper.locator('math-field').first();
+    const operandMark=operandField.locator('[data-lineae-integrand]').first();
+    await operandMark.waitFor();
+    await operandField.click();
+    assert.notEqual(await operandMark.evaluate(el=>getComputedStyle(el).backgroundColor),'rgba(0, 0, 0, 0)');
+    await page.locator('[data-group=math]').click();
+    await operandField.evaluate(field=>field.blur());
+    assert.equal(await operandMark.evaluate(el=>getComputedStyle(el).backgroundColor),'rgba(0, 0, 0, 0)');
+    await importSource('\\[\\frac{\\placeholder{}}{\\placeholder{}}\\]');
+    const slotField=paper.locator('math-field').first();
+    await slotField.evaluate(field=>{field.focus();field.position=0;});
+    const slotBranch=()=>slotField.evaluate(field=>{
+      const end=field.selection.ranges[0][1];
+      return field._mathfield.model.at(end).parentBranch;
+    });
+    await page.keyboard.press('Tab');
+    assert.equal(await slotBranch(),'above');
+    await page.keyboard.press('Tab');
+    assert.equal(await slotBranch(),'below');
+    await page.keyboard.press('Shift+Tab');
+    assert.equal(await slotBranch(),'above');
+    assert.equal(await slotField.evaluate(field=>field.hasFocus()),true);
     await importSource('\\begin{enumerate}\\item 2\\begin{enumerate}\\item 3\\begin{enumerate}\\item 4\\end{enumerate}\\end{enumerate}\\end{enumerate}\n\n\\noindent');
     await page.waitForFunction(()=>document.querySelectorAll('.ProseMirror li').length===3);
     await paper.locator(':scope > p').last().click();
