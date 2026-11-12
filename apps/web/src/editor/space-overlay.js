@@ -18,7 +18,8 @@ export function installSpaceOverlay(editor, paper, { selectionFocus = null } = {
   const overlay = shape('svg', { class:'space-overlay', 'aria-hidden':'true' });
   const activeBoxOverlay = shape('g');
   const marksOverlay = shape('g');
-  overlay.append(activeBoxOverlay, marksOverlay);
+  const preeditCaret = shape('rect', {class:'preedit-caret', fill:'currentColor', visibility:'hidden'});
+  overlay.append(activeBoxOverlay, marksOverlay, preeditCaret);
   page.append(overlay);
   const emptyBox=document.createElement('span');
   emptyBox.className='empty-box-preview';
@@ -31,6 +32,8 @@ export function installSpaceOverlay(editor, paper, { selectionFocus = null } = {
   let enabled = true;
   let composing = false;
   let compositionOrigin = null;
+  let compositionFormula = null;
+  let preeditText = '';
   let caretFrame = 0;
   let marksFrame = 0;
   let caretIntent = null;
@@ -200,6 +203,7 @@ export function installSpaceOverlay(editor, paper, { selectionFocus = null } = {
       // Save the native caret from the last displayed preedit frame. A final
       // compositionupdate and compositionend can arrive before the next paint.
       if (editor.view.hasFocus()) compositionOrigin=textCaret.captureNativeCaret({pageRect,zoom}) ?? compositionOrigin;
+      drawFirstPreeditCaret(pageRect, zoom);
       emptyBox.hidden=true;
       activeBoxOverlay.replaceChildren();
       return;
@@ -250,6 +254,51 @@ export function installSpaceOverlay(editor, paper, { selectionFocus = null } = {
         }));
       }
     }
+  }
+
+  function hidePreeditCaret() {
+    if (preeditCaret.getAttribute('visibility')==='hidden') return;
+    preeditCaret.setAttribute('visibility','hidden');
+    editor.view.dom.classList.remove('has-preedit-caret');
+  }
+
+  function drawFirstPreeditCaret(pageRect, zoom) {
+    const formula = compositionFormula;
+    const selection = paper.ownerDocument.getSelection();
+    if (!formula?.isConnected || !/^[a-z]$/i.test(preeditText) ||
+        !editor.view.hasFocus() || !selection?.isCollapsed || !selection.focusNode) {
+      hidePreeditCaret();
+      return;
+    }
+    // During the first native update the caret can still report the boundary
+    // before the newly inserted text. Measure the text without changing the
+    // Selection, which would interrupt the IME session.
+    let text = formula.nextSibling;
+    while (text?.nodeName === 'IMG' && text.classList.contains('ProseMirror-separator')) {
+      text = text.nextSibling;
+    }
+    while (text?.nodeType === Node.ELEMENT_NODE && text.contentEditable !== 'false') {
+      text = text.firstChild;
+    }
+    if (text?.nodeType !== Node.TEXT_NODE || !text.data.startsWith(preeditText)) {
+      hidePreeditCaret();
+      return;
+    }
+    const end = paper.ownerDocument.createRange();
+    end.setStart(text, preeditText.length);
+    end.collapse(true);
+    const target = end.getBoundingClientRect();
+    const native = selection.getRangeAt(0).getBoundingClientRect();
+    if (!target.height || (Math.abs(target.left-native.left)<1 && Math.abs(target.top-native.top)<1)) {
+      hidePreeditCaret();
+      return;
+    }
+    preeditCaret.setAttribute('x',(target.left-pageRect.left)/zoom);
+    preeditCaret.setAttribute('y',(target.top-pageRect.top)/zoom);
+    preeditCaret.setAttribute('width',1.5/zoom);
+    preeditCaret.setAttribute('height',target.height/zoom);
+    preeditCaret.setAttribute('visibility','visible');
+    editor.view.dom.classList.add('has-preedit-caret');
   }
 
   function drawMarks() {
@@ -361,6 +410,7 @@ export function installSpaceOverlay(editor, paper, { selectionFocus = null } = {
     rowDirection=undefined;
     pendingEdit=null;
     textCaret.hide();
+    hidePreeditCaret();
   }
   editor.on('transaction',({transaction})=>{
     if (transaction.docChanged) {
@@ -392,6 +442,9 @@ export function installSpaceOverlay(editor, paper, { selectionFocus = null } = {
     if (event.target===editor.view.dom) {
       composing=false;
       compositionOrigin=null;
+      compositionFormula=null;
+      preeditText='';
+      hidePreeditCaret();
     }
     if (!selectionFocus || event.relatedTarget!==selectionFocus) yieldCaret();
     scheduleCaret();
@@ -410,17 +463,27 @@ export function installSpaceOverlay(editor, paper, { selectionFocus = null } = {
   paper.addEventListener('compositionstart',event=>{
     if (event.target!==editor.view.dom) return;
     compositionOrigin=textCaret.captureNativeCaret();
+    const { $from, empty } = editor.state.selection;
+    const previous = $from.nodeBefore;
+    compositionFormula = empty && previous?.type.name==='math'
+      ? editor.view.nodeDOM($from.pos-previous.nodeSize) : null;
+    preeditText='';
     composing=true;
     arrowOrigin=null;
     yieldCaret();
     scheduleLayout();
   },{capture:true,signal});
   paper.addEventListener('compositionupdate',event=>{
-    if (event.target===editor.view.dom) scheduleLayout();
+    if (event.target!==editor.view.dom) return;
+    preeditText=event.data;
+    scheduleLayout();
   },{signal});
   paper.addEventListener('compositionend',event=>{
     if (event.target!==editor.view.dom || !composing) return;
     composing=false;
+    compositionFormula=null;
+    preeditText='';
+    hidePreeditCaret();
     if (event.data && editor.view.hasFocus()) {
       caretOrigin=compositionOrigin;
       scheduleCaret('composition',true);

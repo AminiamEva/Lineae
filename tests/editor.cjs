@@ -1880,11 +1880,43 @@ async function verifySelectionGeometry(page, paper, importSource) {
     await page.waitForFunction(()=>document.querySelector('.ProseMirror p')?.textContent.endsWith('s'));
     assert.equal(await paper.evaluate(element=>element.editor.state.doc.firstChild.textContent),'正文 ',
       'The first preedit syllable stays in the browser until the candidate commits');
+    const firstCaret = await paper.evaluate(async element=>{
+      const formula=element.querySelector('.math-inline');
+      const native=document.getSelection();
+      const range=native.getRangeAt(0);
+      const anchor=native.focusNode;
+      const offset=native.focusOffset;
+      const before=range.getBoundingClientRect();
+      // Reproduce the Windows first-keystroke geometry without resetting
+      // the browser's live IME selection.
+      range.getBoundingClientRect=()=>new DOMRect(formula.getBoundingClientRect().right,before.top,0,before.height);
+      try {
+        window.dispatchEvent(new Event('resize'));
+        await new Promise(resolve=>requestAnimationFrame(resolve));
+        const painted=document.querySelector('.preedit-caret');
+        const walker=document.createTreeWalker(formula.parentElement,NodeFilter.SHOW_TEXT);
+        let first;
+        while ((first=walker.nextNode()) && !(formula.compareDocumentPosition(first)&Node.DOCUMENT_POSITION_FOLLOWING && first.data==='s')) {}
+        if (!first) return {visible:false};
+        const end=document.createRange();
+        end.setStart(first,1);
+        end.collapse(true);
+        return {
+          visible:painted.getAttribute('visibility')==='visible',
+          delta:Math.abs(painted.getBoundingClientRect().left-end.getBoundingClientRect().left),
+          selectionKept:native.focusNode===anchor && native.focusOffset===offset,
+        };
+      } finally {
+        delete range.getBoundingClientRect;
+      }
+    });
+    assert.ok(firstCaret.visible && firstCaret.delta<1 && firstCaret.selectionKept,JSON.stringify(firstCaret));
     await clickIme.send('Input.imeSetComposition',{text:'shi',selectionStart:3,selectionEnd:3});
     const preedit=paper.locator('p').first();
     await page.waitForFunction(()=>document.querySelector('.ProseMirror p')?.textContent.endsWith('shi'),null,{timeout:3000})
       .catch(async()=>assert.fail('IME preedit after clicking inline math: '+await preedit.textContent()));
     assert.ok(await paper.evaluate(element=>element.editor.view.composing),'Pinyin updates keep the native composition active');
+    await page.waitForFunction(()=>document.querySelector('.preedit-caret')?.getAttribute('visibility')==='hidden');
     await page.waitForTimeout(1700); // Leave the candidate open past the old expiry.
     await clickIme.send('Input.imeSetComposition',{text:'士',selectionStart:1,selectionEnd:1});
     await page.waitForFunction(()=>document.querySelector('.ProseMirror p')?.textContent.endsWith('士'));
