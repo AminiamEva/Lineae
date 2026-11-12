@@ -9,7 +9,7 @@ import { decorateToolbar, applyToolbarDescriptions, icon } from './editor/icons.
 import { PaperBehavior } from './editor/paper-behavior.js';
 import { MathNode, MathBlock, configureMathFences, insertFormula, mathEnvironment, toggleDisplayStyle } from './editor/math-node.js';
 import { Ref, Label, Cite, Footnote, TableOfContents, refreshReferences, collectReferenceLabels } from './editor/references.js';
-import { insertCitationDialog } from './editor/citation-dialog.js';
+import { createCitationLibrary, openCitationPanel } from './editor/citation-library.js';
 import { chooseReference } from './editor/reference-index.js';
 import { installTableHoverAddRow } from './editor/table-hover.js';
 import { createConfigStore } from './editor/config.mjs';
@@ -44,6 +44,8 @@ import { installTooltips } from './ui/tooltips.mjs';
 import { installRovingFocus } from './ui/keyboard-nav.mjs';
 import { fadeIn } from './ui/motion.mjs';
 import { getLanguage, localize, setLanguage, t } from './ui/i18n.mjs';
+
+const citationLibrary = createCitationLibrary();
 
 const cssColor = value => {
   const rgb=/^rgba?\(\s*(\d+)[,\s]+(\d+)[,\s]+(\d+)/i.exec(value??'');
@@ -782,6 +784,15 @@ function toggleSourceView(){
     try {load(sourceView.value,false);sourceView.hidden=true;documentPage.hidden=false;editor.commands.focus();}
     catch(error){document.querySelector('#status').hidden=false;document.querySelector('#status').textContent=error.message;}
   }
+  updateSourceButton();
+}
+function locateMissingCitation(missing) {
+  const text = source();
+  sourceView.value = text;
+  sourceView.hidden = false;
+  documentPage.hidden = true;
+  sourceView.focus();
+  sourceView.setSelectionRange(missing.start, missing.start + missing.key.length);
   updateSourceButton();
 }
 document.querySelector('#download').disabled=false;
@@ -1591,9 +1602,13 @@ groupButton(referenceGroup,'fn',async()=>{
 groupButton(referenceGroup,'cite',async()=>{
   try{
     const documentBefore=editor.state.doc;
-    const citation=await insertCitationDialog();
-    if(!citation || editor.state.doc!==documentBefore)return;
-    const {key,file}=citation;
+    const entry=await openCitationPanel({
+      library: citationLibrary,
+      texSource: source(),
+      onLocateMissing: locateMissingCitation,
+    });
+    if(!entry || editor.state.doc!==documentBefore)return;
+    const {key,file}=entry;
     if(!/^[\p{L}\p{N}_. -]+\.bib$/iu.test(file.name))throw new Error(t('文献文件名不受支持','Unsupported bibliography filename'));
     const tex=source();
     const resources=[...tex.matchAll(/\\addbibresource(?:\[[^\]]*\])?\{([^{}]+)\}/g)].map(match=>match[1]);
