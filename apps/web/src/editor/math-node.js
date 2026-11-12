@@ -214,11 +214,6 @@ function leaveFormula(editor, position, node, backward) {
     if (!neighbor?.isTextblock) transaction.insert(target, editor.schema.nodes.paragraph.create());
   }
   transaction.setSelection(TextSelection.near(transaction.doc.resolve(target), backward ? -1 : 1));
-  if (node.isInline && transaction.selection.empty && !transaction.selection.$from.textOffset) {
-    // ProseMirror uses stored marks to create a native composition anchor
-    // when the first editable position touches an uneditable inline atom.
-    transaction.setStoredMarks(transaction.selection.$from.marks());
-  }
   editor.view.dispatch(transaction);
 }
 

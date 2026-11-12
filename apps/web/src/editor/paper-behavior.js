@@ -4,38 +4,67 @@ import { Plugin, TextSelection } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import { listMarkerCSS } from '../../latex/list-numbering.mjs';
 
-function inlineMathComposition() {
-  let session=null;
-  const afterMath = selection => selection instanceof TextSelection && selection.empty &&
-    !selection.$from.textOffset && selection.$from.nodeBefore?.type.name==='math';
+function paperFormatting() {
+  let session = null;
+  let composing = false;
+  function compositionAnchor(view) {
+    const { selection } = view.state;
+    if (!(selection instanceof TextSelection) || !selection.empty) return null;
+    const native = view.dom.ownerDocument.getSelection();
+    const position = native?.isCollapsed && view.dom.contains(native.anchorNode)
+      ? view.posAtDOM(native.anchorNode, native.anchorOffset)
+      : selection.from;
+    if (position < 0 || position > view.state.doc.content.size) return null;
+    const boundary = view.state.doc.resolve(position);
+    return !boundary.textOffset && boundary.nodeBefore?.type.name === 'math' ? position : null;
+  }
+
   function recoverCommit(view, committed) {
     const pending=session;
     if (!pending?.preedit || typeof committed!=='string' || !/\p{Script=Han}/u.test(committed)) return;
     queueMicrotask(()=>{
-      if (session!==pending || view.isDestroyed || !view.hasFocus()) return;
+      if (composing || session!==pending || view.isDestroyed || !view.hasFocus()) return;
       view.domObserver.flush();
       const {doc}=view.state, {from,preedit}=pending;
       const end=from+preedit.length+committed.length;
-      if(end>doc.content.size || doc.resolve(from).nodeBefore?.type.name!=='math' ||
-        doc.textBetween(from,end,'\0','\0')!==preedit+committed) return;
+      if(from>doc.content.size || doc.resolve(from).nodeBefore?.type.name!=='math') {
+        session=null;
+        return;
+      }
+      if(end>doc.content.size || doc.textBetween(from,end,'\0','\0')!==preedit+committed) {
+        if (doc.textBetween(from,Math.min(from+committed.length,doc.content.size),'\0','\0')===committed) session=null;
+        return;
+      }
       session=null;
       const tr=view.state.tr.delete(from,from+preedit.length);
       view.dispatch(tr.setSelection(TextSelection.create(tr.doc,from+committed.length)));
     });
   }
-  return new Plugin({
-    appendTransaction(transactions, _oldState, state) {
-      if (state.storedMarks || !transactions.some(transaction=>transaction.selectionSet) || !afterMath(state.selection)) return null;
-      return state.tr.setStoredMarks(state.selection.$from.marks());
+  function finishComposition(view) {
+    composing = false;
+    queueMicrotask(() => {
+      if (composing || view.isDestroyed || view.composing) return;
+      view.dispatch(view.state.tr.setMeta(plugin, true));
+    });
+  }
+  const plugin = new Plugin({
+    state: {
+      init: (_, state) => formattingMarks(state.doc),
+      apply(transaction, previous) {
+        // Preserve the browser's text node and its neighbors during preedit.
+        if (composing) return transaction.docChanged ? previous.map(transaction.mapping, transaction.doc) : previous;
+        return transaction.docChanged || transaction.getMeta(plugin) ? formattingMarks(transaction.doc) : previous;
+      },
     },
     props:{
+      decorations(state) { return plugin.getState(state); },
       handleDOMEvents:{
-        compositionstart(view) {
-          const {selection,storedMarks}=view.state;
-          if (afterMath(selection)) {
-            session={from:selection.from,preedit:''};
-            if(!storedMarks)view.dispatch(view.state.tr.setStoredMarks(selection.$from.marks()));
-          }
+        compositionstart(view, event) {
+          if (event.target !== view.dom) return false;
+          composing = true;
+          const from = compositionAnchor(view);
+          if (from !== null) session = {from, preedit:''};
+          else if (session && view.state.selection.from !== session.from + session.preedit.length) session=null;
           return false;
         },
         compositionupdate(_view,event) {
@@ -49,11 +78,17 @@ function inlineMathComposition() {
           return false;
         },
         compositionend(view,event) {
+          if (event.target !== view.dom) return false;
           recoverCommit(view,event.data);
+          finishComposition(view);
           return false;
         },
         pointerdown() {session=null;return false;},
-        blur() {session=null;return false;},
+        blur(view) {
+          session=null;
+          if (composing) finishComposition(view);
+          return false;
+        },
         keydown(_view,event) {
           if (!event.isComposing && event.keyCode!==229 &&
               /^(?:Arrow(?:Left|Right|Up|Down)|Home|End|PageUp|PageDown|Tab|Escape)$/.test(event.key)) session=null;
@@ -62,6 +97,7 @@ function inlineMathComposition() {
       },
     },
   });
+  return plugin;
 }
 
 function numberedHeadings(doc) {
@@ -276,13 +312,7 @@ export const PaperBehavior = Extension.create({
   },
   addProseMirrorPlugins() {
     return [
-      new Plugin({
-        state: {
-          init:(_,state)=>formattingMarks(state.doc),
-          apply:(transaction,previous)=>transaction.docChanged ? formattingMarks(transaction.doc) : previous,
-        },
-        props:{decorations(state){return this.getState(state);}},
-      }),
+      paperFormatting(),
       new Plugin({
         state: {
           init: (_, state) => numberedHeadings(state.doc),
@@ -319,7 +349,6 @@ export const PaperBehavior = Extension.create({
           },
         },
       }),
-      inlineMathComposition(),
       new Plugin({
         props: {
           handleKeyDown(view, event) {

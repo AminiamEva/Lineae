@@ -1853,6 +1853,8 @@ async function verifySelectionGeometry(page, paper, importSource) {
     assert.match(await inline.evaluate(field=>field.value),/!\s*=/);
     await page.keyboard.press('Control+Shift+j');
     assert.ok(await paper.evaluate(element=>element===document.activeElement),'Ctrl+Shift+J focuses the document');
+    assert.equal(await paper.evaluate(element=>element.editor.state.storedMarks),null,
+      'Leaving a formula does not arm a stored-mark cursor that can restart composition');
     await page.bringToFront();
     const ime=await browserContext.newCDPSession(page);
     await ime.send('Input.imeSetComposition',{text:'zhong',selectionStart:5,selectionEnd:5});
@@ -1871,6 +1873,8 @@ async function verifySelectionGeometry(page, paper, importSource) {
     const formulaBox=await integralAtEnd.boundingBox();
     await page.mouse.click(formulaBox.x+formulaBox.width+8,formulaBox.y+formulaBox.height/2);
     assert.ok(await paper.evaluate(element=>element===document.activeElement),'Clicking after inline math focuses prose');
+    assert.equal(await paper.evaluate(element=>element.editor.state.storedMarks),null,
+      'Clicking after inline math leaves the native composition cursor alone');
     const clickIme=await browserContext.newCDPSession(page);
     await clickIme.send('Input.imeSetComposition',{text:'s',selectionStart:1,selectionEnd:1});
     await page.waitForFunction(()=>document.querySelector('.ProseMirror p')?.textContent.endsWith('s'));
@@ -1878,13 +1882,20 @@ async function verifySelectionGeometry(page, paper, importSource) {
     const preedit=paper.locator('p').first();
     await page.waitForFunction(()=>document.querySelector('.ProseMirror p')?.textContent.endsWith('shi'),null,{timeout:3000})
       .catch(async()=>assert.fail('IME preedit after clicking inline math: '+await preedit.textContent()));
+    assert.ok(await paper.evaluate(element=>element.editor.view.composing),'Pinyin updates keep the native composition active');
     await page.waitForTimeout(1700); // Leave the candidate open past the old expiry.
+    await clickIme.send('Input.imeSetComposition',{text:'士',selectionStart:1,selectionEnd:1});
+    await page.waitForFunction(()=>document.querySelector('.ProseMirror p')?.textContent.endsWith('士'));
+    assert.ok(await paper.evaluate(element=>element.editor.view.composing),'Showing a candidate keeps composition active');
+    assert.equal(await paper.locator('.math-inline.math-cjk-after').count(),0,
+      'The formula keeps its layout until the candidate is committed');
     await clickIme.send('Input.insertText',{text:'是'});
     await page.waitForFunction(()=>{
-      const text=document.querySelector('.ProseMirror p')?.textContent;
-      return text?.endsWith('是') && !text.includes('shi');
+      const text=document.querySelector('.ProseMirror')?.editor.state.doc.firstChild.textContent;
+      return text === '正文 是';
     },null,{timeout:3000}).catch(async()=>assert.fail('IME committed beside inline math: '+await preedit.textContent()));
     assert.doesNotMatch(await paper.locator('p').first().textContent(),/shi/);
+    await paper.locator('.math-inline.math-cjk-after').waitFor();
     await clickIme.detach();
     await page.keyboard.press('Control+0');
     assert.equal(await page.locator('input[type=range]').inputValue(),'100');
