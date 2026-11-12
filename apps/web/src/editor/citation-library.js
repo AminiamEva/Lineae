@@ -358,6 +358,7 @@ export function openCitationPanel({
       selected = entry;
       selectedEntries.clear();
       selectedEntries.set(`${entry.file}:${entry.sourceIndex}`, entry);
+      insert.disabled = false;
       insert.click();
     });
     panel.append(title, picker, importButton, sourceSelect, addButton, batchButton, listButton, batchPicker, citationCommandDialog, citationCommand, preNote, postNote, search, status, list, diagnostics, actions);
