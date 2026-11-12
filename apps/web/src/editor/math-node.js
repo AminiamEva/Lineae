@@ -37,8 +37,7 @@ function navigateEmptyMathSlot(field, backward) {
   for (let end = 0; end <= field.lastOffset; end++) {
     const atom = model.at(end);
     if (atom?.type === 'placeholder') {
-      const start = model.offsetOf(atom.leftSibling);
-      if (start >= 0 && start < end) slots.push([start, end]);
+      if (end > 0) slots.push([end - 1, end]);
     } else if (atom?.type === 'first' && atom.parent?.type !== 'root' &&
         atom.parent?.branch(atom.parentBranch)?.length === 1) {
       slots.push([end, end]);
@@ -61,8 +60,7 @@ function enterEmptyOperatorBody(field) {
   const placeholder = children.find(atom => atom.type === 'placeholder');
   if (!placeholder || children.some(atom => !['first','placeholder'].includes(atom.type))) return;
   const end = model.offsetOf(placeholder);
-  const start = model.offsetOf(placeholder.leftSibling);
-  if (start >= 0 && start < end) field.selection = { ranges: [[start,end]], direction: 'forward' };
+  if (end > 0) field.selection = { ranges: [[end-1,end]], direction: 'forward' };
 }
 
 export function mathEnvironment(field) {

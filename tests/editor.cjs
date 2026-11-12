@@ -1856,9 +1856,17 @@ async function verifySelectionGeometry(page, paper, importSource) {
     await importSource('\\[\\frac{\\placeholder{}}{\\placeholder{}}\\]');
     const slotField=paper.locator('math-field').first();
     await slotField.evaluate(field=>{field.focus();field.position=0;});
+    await page.waitForFunction(()=>document.activeElement?.matches('math-field[data-lineae-editing]'));
     const slotBranch=()=>slotField.evaluate(field=>{
-      const end=field.selection.ranges[0][1];
-      return field._mathfield.model.at(end).parentBranch;
+      const model=field._mathfield.model;
+      const atom=model.at(field.selection.ranges[0][1]);
+      for(let child=atom;child?.parent;child=child.parent) {
+        if (child.parent.type==='genfrac') return child.parentBranch;
+      }
+      return {value:field.value,selection:field.selection,atoms:Array.from({length:field.lastOffset+1},(_,offset)=>{
+        const item=model.at(offset);
+        return [item.type,item.parentBranch];
+      })};
     });
     await page.keyboard.press('Tab');
     assert.equal(await slotBranch(),'above');
