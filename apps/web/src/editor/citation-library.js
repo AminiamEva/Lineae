@@ -274,7 +274,7 @@ export function openCitationPanel({
     const backdrop = document.createElement('div');
     backdrop.className = 'editor-dialog-backdrop citation-panel-backdrop';
     const panel = document.createElement('section');
-    panel.className = 'editor-dialog citation-panel citation-dialog';
+    panel.className = 'editor-dialog citation-panel';
     panel.setAttribute('role', 'dialog');
     panel.setAttribute('aria-modal', 'true');
     panel.setAttribute('aria-labelledby', 'citation-panel-title');
@@ -322,6 +322,9 @@ export function openCitationPanel({
     for (const command of ['cite', 'citep', 'citet', 'parencite', 'textcite', 'autocite']) {
       citationCommand.append(new Option(`\\${command}`, command));
     }
+    const citationCommandDialog = document.createElement('div');
+    citationCommandDialog.className = 'citation-dialog';
+    citationCommandDialog.append(citationCommand);
     const preNote = document.createElement('input');
     preNote.placeholder = t('前注（可选）','Pre-note (optional)');
     preNote.setAttribute('aria-label', preNote.placeholder);
@@ -344,7 +347,7 @@ export function openCitationPanel({
     const insert = button(t('插入引用','Insert citation'));
     insert.disabled = true;
     actions.append(cancel, insert);
-    panel.append(title, picker, importButton, sourceSelect, addButton, batchButton, listButton, batchPicker, citationCommand, preNote, postNote, search, status, list, diagnostics, actions);
+    panel.append(title, picker, importButton, sourceSelect, addButton, batchButton, listButton, batchPicker, citationCommandDialog, preNote, postNote, search, status, list, diagnostics, actions);
     backdrop.append(panel);
 
     let selected = null;
