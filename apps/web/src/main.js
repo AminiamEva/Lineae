@@ -18,7 +18,13 @@ import defaultConfigYaml from '../config.yaml';
 import { askText } from './editor/dialog.js';
 import { installDocumentFind } from './editor/find.js';
 import { DocumentImage, insertLocalImage, installImageDrop } from './editor/image-node.js';
-import { projectAssets, rememberAsset } from './editor/project-assets.js';
+import {
+  clearProjectAssets,
+  projectAssets,
+  readBibliographyMetadata,
+  rememberAsset,
+  writeBibliographyMetadata,
+} from './editor/project-assets.js';
 import { buildProjectZip, safeProjectPath, projectDependencies } from './editor/project-zip.mjs';
 import { theoremNames } from '../latex/theorem.mjs';
 import { MultiSelection } from './editor/multi-selection.js';
@@ -694,6 +700,12 @@ function writeMeta(key,value) {
   if(importedSource)importedSource=apply(importedSource);
   renderMeta();
 }
+function persistCitationState() {
+  const paths = projectDependencies(source()).filter(path => path.endsWith('.bib'));
+  const metadata = writeBibliographyMetadata(documentParts.start, citationLibrary.exportState({ paths }));
+  documentParts.start = metadata;
+  if (importedSource) importedSource = writeBibliographyMetadata(importedSource, citationLibrary.exportState({ paths }));
+}
 const metaBar=document.createElement('section');metaBar.id='document-meta';
 const metaTitle=document.createElement('div');metaTitle.className='doc-title';
 const metaAuthor=document.createElement('div');metaAuthor.className='doc-author';
@@ -763,6 +775,8 @@ function identifyImportedBoxes(node) {
 function load(text, markSaved = true) {
   const parsed=parseDocument(text);
   if(!parsed)throw new Error(t('无法识别文档','Invalid document'));
+  clearProjectAssets();
+  citationLibrary.restoreState(readBibliographyMetadata(text));
   // Preserve imported source exactly. Unsupported blocks remain directly accessible in source mode.
   documentParts=parsed;
   const content=parsed.blocks.flatMap((block,index)=>importBlocks(index===0 && readMeta('title')
@@ -1606,22 +1620,27 @@ groupButton(referenceGroup,'cite',async()=>{
       library: citationLibrary,
       texSource: source(),
       onLocateMissing: locateMissingCitation,
+      onChange: persistCitationState,
     });
     if(!entry || editor.state.doc!==documentBefore)return;
-    const {key,file}=entry;
-    if(!/^[\p{L}\p{N}_. -]+\.bib$/iu.test(file.name))throw new Error(t('文献文件名不受支持','Unsupported bibliography filename'));
+    const {key,file:sourcePath,blob}=entry;
+    const sourceName=sourcePath.split('/').at(-1);
+    if(!/^[\p{L}\p{N}_. -]+\.bib$/iu.test(sourceName))throw new Error(t('文献文件名不受支持','Unsupported bibliography filename'));
     const tex=source();
     const resources=[...tex.matchAll(/\\addbibresource(?:\[[^\]]*\])?\{([^{}]+)\}/g)].map(match=>match[1]);
     const classic=[...tex.matchAll(/\\bibliography\{([^{}]+)\}/g)].flatMap(match=>match[1].split(',').map(name=>name.trim()).filter(Boolean).map(name=>name.endsWith('.bib')?name:name+'.bib'));
-    const linked=[...resources,...classic].filter(path=>path.split('/').at(-1)===file.name);
+    const linked=[...resources,...classic].filter(path=>path.split('/').at(-1)===sourceName);
     if(linked.length>1 || (!linked.length && classic.length))throw new Error(t('请关联文档中声明的文献文件','Attach the bibliography declared in the document'));
-    rememberAsset(linked[0]??file.name,file);
+    const linkedPath=linked[0]??sourcePath;
+    if (linkedPath !== sourcePath) citationLibrary.setSourcePath(sourcePath, linkedPath);
+    rememberAsset(linkedPath,blob);
     if(!linked.length) {
       const eol=documentParts.eol;
       const hasBiblatex=/\\(?:usepackage|RequirePackage)(?:\[[^\]]*\])?\{[^{}]*\bbiblatex\b[^{}]*\}/.test(documentParts.start);
-      const declarations=(hasBiblatex?'':'\\usepackage{biblatex}'+eol)+'\\addbibresource{'+file.name+'}'+eol;
+      const declarations=(hasBiblatex?'':'\\usepackage{biblatex}'+eol)+'\\addbibresource{'+sourceName+'}'+eol;
       documentParts={...documentParts,start:documentParts.start.replace(/^\\begin\{document\}/m,()=>declarations+'\\begin{document}')};
     }
+    persistCitationState();
     editor.chain().focus().insertContent({type:'cite',attrs:{key}}).run();
   }catch(error){
     document.querySelector('#status').hidden=false;

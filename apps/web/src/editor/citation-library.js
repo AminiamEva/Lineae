@@ -1,9 +1,11 @@
 import {
   checkTexCitations,
   getEntryValue,
+  parseBib,
   parseBibFile,
   validateBib,
 } from '../../bib/index.mjs';
+import { rememberAsset } from './project-assets.js';
 import { t } from '../ui/i18n.mjs';
 import { popIn } from '../ui/motion.mjs';
 
@@ -64,9 +66,53 @@ export function createCitationLibrary() {
       const validation = validateBib(document, { profile: 'biblatex' });
       const existing = sources.findIndex(source => source.file === file || source.file === file.name);
       if (existing >= 0) sources.splice(existing, 1);
-      sources.push({ file: file.name, blob: file, document, validation });
+      sources.push({ file: file.name, blob: file, sourceText: document.source.text, document, validation });
       return sources.at(-1);
     },
+      setSourcePath(from, to) {
+        const source = sources.find(item => item.file === from);
+        if (!source || typeof to !== 'string' || !to) return false;
+        source.file = to;
+        for (const [key, choice] of choices) {
+          if (choice.startsWith(`${from}:`)) choices.set(key, `${to}:${choice.slice(from.length + 1)}`);
+        }
+        return true;
+      },
+      exportState({ paths } = {}) {
+        const allowed = paths ? new Set(paths) : null;
+        const selectedSources = sources.filter(source => !allowed || allowed.has(source.file));
+        const selectedPaths = new Set(selectedSources.map(source => source.file));
+        return {
+          sources: selectedSources.map(source => ({
+            path: source.file,
+            name: source.blob?.name ?? source.file.split('/').at(-1),
+            type: source.blob?.type ?? 'text/plain',
+            sourceText: source.sourceText ?? source.document.source.text,
+          })),
+          choices: [...choices].filter(([, value]) => selectedPaths.has(value.split(':')[0])),
+        };
+      },
+      restoreState(state) {
+        sources.splice(0, sources.length);
+        choices.clear();
+        for (const [key, value] of state?.choices ?? []) choices.set(key, value);
+        for (const item of state?.sources ?? []) {
+          if (!item || typeof item.path !== 'string' || typeof item.sourceText !== 'string') continue;
+          const document = parseBib(item.sourceText, { filename: item.path });
+          const blob = new File([item.sourceText], item.name ?? item.path.split('/').at(-1), {
+            type: item.type ?? 'text/plain',
+          });
+          sources.push({
+            file: item.path,
+            blob,
+            sourceText: item.sourceText,
+            document,
+            validation: validateBib(document, { profile: 'biblatex' }),
+          });
+          rememberAsset(item.path, blob);
+        }
+        return this.sources;
+      },
     removeFile(fileName) {
       const index = sources.findIndex(source => source.file === fileName);
       if (index < 0) return false;
@@ -108,6 +154,7 @@ export function openCitationPanel({
   texSource = '',
   onInsert = () => {},
   onLocateMissing = () => {},
+  onChange = () => {},
 } = {}) {
   return new Promise(resolve => {
     const backdrop = document.createElement('div');
@@ -193,6 +240,7 @@ export function openCitationPanel({
           const keep = button(t(`保留 ${entry.file}` ,`Keep ${entry.file}`));
           keep.addEventListener('click', () => {
             library.choose(key, entry.file, entry.sourceIndex);
+            onChange();
             render();
           });
           const detail = document.createElement('pre');
