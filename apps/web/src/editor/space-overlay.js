@@ -41,6 +41,7 @@ export function installSpaceOverlay(editor, paper, { selectionFocus = null } = {
   let caretActivity = false;
   let rowDirection;
   let pendingEdit = null;
+  let lastEditTransactionAt = 0;
   let arrowOrigin = null;
 
   function boxEdge(preferNext=false) {
@@ -387,7 +388,7 @@ export function installSpaceOverlay(editor, paper, { selectionFocus = null } = {
     }
   }
   function scheduleCaret(intent=null,activity=false) {
-    if (intent==='edit' || intent==='composition' || !caretIntent) caretIntent=intent;
+    if (intent==='edit' || intent==='edit-rapid' || intent==='composition' || !caretIntent) caretIntent=intent;
     caretActivity ||= activity;
     if (!caretFrame) caretFrame=requestAnimationFrame(drawCaret);
   }
@@ -409,6 +410,7 @@ export function installSpaceOverlay(editor, paper, { selectionFocus = null } = {
     caretOrigin=null;
     rowDirection=undefined;
     pendingEdit=null;
+    lastEditTransactionAt=0;
     textCaret.hide();
     hidePreeditCaret();
   }
@@ -419,7 +421,10 @@ export function installSpaceOverlay(editor, paper, { selectionFocus = null } = {
       if (!composing && !editor.view.composing && caretIntent!=='composition') {
         if (edit?.doc===transaction.before && performance.now()<edit.expires) {
           caretOrigin=edit.origin ?? caretOrigin;
-          scheduleCaret('edit',true);
+          const now=performance.now();
+          const rapid=now-lastEditTransactionAt<120;
+          lastEditTransactionAt=now;
+          scheduleCaret(rapid?'edit-rapid':'edit',true);
         } else yieldCaret();
       }
       scheduleMarks();

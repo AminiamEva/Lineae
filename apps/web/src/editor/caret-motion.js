@@ -88,7 +88,6 @@ export function createCaretMotion(view, page) {
   let lastZoom = null;
   let glide = null;
   let blink = null;
-  let lastEditAt = 0;
 
   function stopGlide() {
     const previous = glide;
@@ -160,12 +159,10 @@ export function createCaretMotion(view, page) {
     const selectionChanged = !selectionMotion.matches(selection);
     const caretChanged = !sameCaret(target, next);
     const composition = intent === 'composition';
-    const editing = intent === 'edit' || composition;
+    const editing = intent === 'edit' || intent === 'edit-rapid' || composition;
     // Fast typing can outrun a 100 ms glide. Snap consecutive edits to the
     // newest target so the caret never trails the text being inserted or deleted.
-    const now = performance.now();
-    const rapidEdit = editing && now - lastEditAt < 120;
-    if (editing) lastEditAt = now;
+    const rapidEdit = intent === 'edit-rapid';
     if (lastZoom === zoom && !selectionChanged && !caretChanged && !editing) {
       target = next;
       if (activity && next && animated && !glide) restartBlink(selection.active);
