@@ -1802,6 +1802,24 @@ async function verifySelectionGeometry(page, paper, importSource) {
     await restored.locator('.document-page[data-formatting-marks="false"][data-caret-motion="false"]').waitFor();
     assert.equal(await restored.locator('html').getAttribute('data-theme'),'dark');
     assert.equal(await restored.locator('input[type=range]').inputValue(),'125','YAML preferences persist on reopening');
+    await importSource('\\[\\int_{-1}\\]');
+    const integral=paper.locator('math-field').first();
+    await integral.evaluate(field=>{
+      field.focus();
+      const model=field._mathfield.model;
+      for (let offset=field.lastOffset;offset>=0;offset--) {
+        if (model.at(offset)?.parentBranch==='subscript') { field.position=offset; break; }
+      }
+    });
+    await page.waitForFunction(()=>document.querySelector('.environment-tag')?.textContent.includes('Subscript'));
+    for(let index=0;index<3;index++) await page.keyboard.press('Backspace');
+    assert.equal(await integral.evaluate(field=>field.value),'','Backspacing through an empty limit removes the integral');
+    await importSource('\\begin{enumerate}\\item 2\\begin{enumerate}\\item 3\\begin{enumerate}\\item 4\\end{enumerate}\\end{enumerate}\\end{enumerate}\n\n\\noindent');
+    await page.waitForFunction(()=>document.querySelectorAll('.ProseMirror li').length===3);
+    await paper.locator(':scope > p').last().click();
+    await page.keyboard.press('Backspace');
+    assert.equal(await paper.locator('li').count(),3,'Backspace after a nested list does not add another item');
+    assert.equal(await page.evaluate(()=>document.getSelection().focusNode?.textContent),'4');
     assert.deepEqual(errors,[]);
     console.log('Browser regressions passed');
   }finally{

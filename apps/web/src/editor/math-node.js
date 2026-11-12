@@ -7,6 +7,46 @@ import { mathDocumentSource, mathEditorSource, numberedMathRows } from '../../la
 let smartFences;
 export function configureMathFences(value) { smartFences = value; }
 
+const isIntegral = atom => /^\\(?:i{1,3}nt|oi{1,3}nt)$/.test(atom?.command ?? '');
+const integralBody = atom => atom?.type === 'group' &&
+  (isIntegral(atom.leftSibling) || (atom.leftSibling?.type === 'subsup' && isIntegral(atom.leftSibling.leftSibling)));
+
+export function mathEnvironment(field) {
+  const model=field._mathfield?.model;
+  const labels=[];
+  for (let atom=model?.at(field.position); atom; atom=atom.parent) {
+    if (atom.parentBranch==='subscript') labels.unshift(t('下标','Subscript'));
+    if (atom.parentBranch==='superscript') labels.unshift(t('上标','Superscript'));
+    if (Array.isArray(atom.parentBranch)) labels.unshift(t(
+      '第 '+(atom.parentBranch[0]+1)+' 行，第 '+(atom.parentBranch[1]+1)+' 列',
+      'Row '+(atom.parentBranch[0]+1)+', column '+(atom.parentBranch[1]+1)));
+    if (integralBody(atom)) labels.unshift(t('被积式','Integrand'));
+    if (atom.type==='genfrac') labels.unshift(t('分式','Fraction'));
+    if (atom.type==='surd') labels.unshift(t('根式','Radical'));
+    if (atom.type==='array') labels.unshift(atom.environmentName ?? t('矩阵','Matrix'));
+    if (isIntegral(atom)) labels.unshift('op/'+atom.command.slice(1));
+    else if (['operator','extensible-symbol'].includes(atom.type) && atom.command) labels.unshift('op/'+atom.command.replace(/^\\/,''));
+  }
+  return labels;
+}
+
+function deleteIntegralAtEmptyLimit(field) {
+  if (field.selection.ranges.some(([start,end])=>start!==end)) return false;
+  const model=field._mathfield?.model;
+  const cursor=model?.at(field.position);
+  const branch=cursor?.parentBranch;
+  if (cursor?.type!=='first' || !['subscript','superscript'].includes(branch)) return false;
+  const owner=cursor.parent;
+  const operator=owner.type==='subsup' ? owner.leftSibling : owner;
+  if (!isIntegral(operator) || !owner.hasEmptyBranch('subscript') || !owner.hasEmptyBranch('superscript')) return false;
+  const start=model.offsetOf(operator.leftSibling);
+  const end=model.offsetOf(owner);
+  if (start<0 || end<=start) return false;
+  field.selection={ranges:[[start,end]],direction:'forward'};
+  field.executeCommand('deleteBackward');
+  return true;
+}
+
 export function focusFormula(editor, id, onFocus) {
   requestAnimationFrame(() => {
     editor.state.doc.descendants((node, position) => {
@@ -47,6 +87,7 @@ const mathFieldStyle = `
      turns into a visible native scrollbar under an inline formula. */
   .ML__content { overflow: visible !important; scrollbar-width: none; }
   .ML__content::-webkit-scrollbar { display: none; }
+  [data-lineae-integrand] { background:light-dark(#e9f4ed,#304a3b); border-radius:.15em; }
   .delimiter-ghost { display:inline-flex; gap:.1em; pointer-events:none; vertical-align:baseline; }
   .delimiter-ghost-slot { display:inline-flex; justify-content:center; align-items:center; width:.65em;
     height:1em; border-radius:.15em; line-height:1; color:inherit; background:light-dark(#e8effa,#37445c); }
@@ -268,6 +309,11 @@ export const MathNode = Node.create({
         finally { leavingStructure = false; }
       });
       field.addEventListener('keydown', event => {
+        if (event.key==='Backspace' && !event.ctrlKey && !event.metaKey && !event.altKey && deleteIntegralAtEmptyLimit(field)) {
+          event.preventDefault();
+          event.stopImmediatePropagation();
+          return;
+        }
         if ((event.key === 'ArrowRight' || event.key === 'ArrowLeft') &&
             !event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey &&
             field.selection.ranges.every(([start,end])=>start===end)) {
@@ -346,6 +392,27 @@ export const MathNode = Node.create({
         field.environmentPopoverPolicy = 'off';
         field.mathModeSpace = '\\space';
         installMathFieldStyle(field);
+        const root=field.shadowRoot;
+        if (!root) return;
+        const markIntegrands=()=>{
+          const model=field._mathfield?.model;
+          if (!model) return;
+          const ids=new Set();
+          for (let offset=0;offset<=field.lastOffset;offset++) {
+            const atom=model.at(offset);
+            if (integralBody(atom)) {
+              for (const child of atom.body ?? []) if (child.id) ids.add(String(child.id));
+            }
+          }
+          for (const element of root.querySelectorAll('[data-atom-id]')) {
+            element.toggleAttribute('data-lineae-integrand',ids.has(element.dataset.atomId));
+          }
+          dom.dispatchEvent(new Event('lineae-math-position',{bubbles:true}));
+        };
+        const observer=new MutationObserver(markIntegrands);
+        observer.observe(root,{subtree:true,childList:true});
+        field.addEventListener('unmount',()=>observer.disconnect(),{once:true});
+        markIntegrands();
       });
       return {
         dom,

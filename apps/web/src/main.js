@@ -6,7 +6,7 @@ import { mathFontStyles, applyMathFont } from './editor/math-formatting.js';
 import { installFormatControls } from './editor/format-controls.js';
 import { decorateToolbar, applyToolbarDescriptions, icon } from './editor/icons.js';
 import { PaperBehavior } from './editor/paper-behavior.js';
-import { MathNode, MathBlock, configureMathFences, insertFormula, toggleDisplayStyle } from './editor/math-node.js';
+import { MathNode, MathBlock, configureMathFences, insertFormula, mathEnvironment, toggleDisplayStyle } from './editor/math-node.js';
 import { Ref, Label, Cite, Footnote, TableOfContents, refreshReferences, collectReferenceLabels } from './editor/references.js';
 import { insertCitationDialog } from './editor/citation-dialog.js';
 import { chooseReference } from './editor/reference-index.js';
@@ -361,6 +361,15 @@ const Shortcuts = Extension.create({
             const type=$from.node(depth).type.name;
             if(type==='listItem')listItemDepth=depth;
             if(type==='bulletList'||type==='orderedList')listDepths.push(depth);
+          }
+          if(!listItemDepth && ['bulletList','orderedList'].includes(doc.resolve($from.before()).nodeBefore?.type.name)) {
+            const before=$from.before();
+            const previous=Selection.findFrom(doc.resolve(before),-1,true);
+            if(previous) {
+              const tr=this.editor.state.tr.delete(before,$from.after());
+              this.editor.view.dispatch(tr.setSelection(previous.map(tr.doc,tr.mapping)).scrollIntoView());
+              return true;
+            }
           }
           if(listItemDepth&&listDepths.length) {
             const item=$from.node(listItemDepth);
@@ -848,7 +857,7 @@ document.body.append(commands);
 
 const formulaCommands = {
   frac: '\\frac{#?}{#?}', sqrt: '\\sqrt{#?}', sum: '\\sum',
-  int: '\\int', lim: '\\lim', matrix: '\\begin{matrix}#?\\end{matrix}',
+  int: '\\int', intbody: '\\int{\\placeholder{}}', lim: '\\lim', matrix: '\\begin{matrix}#?\\end{matrix}',
   pmatrix: '\\begin{pmatrix}#?\\end{pmatrix}', bmatrix: '\\begin{bmatrix}#?\\end{bmatrix}',
   Bmatrix: '\\begin{Bmatrix}#?\\end{Bmatrix}', vmatrix: '\\begin{vmatrix}#?\\end{vmatrix}',
   Vmatrix: '\\begin{Vmatrix}#?\\end{Vmatrix}',
@@ -1351,15 +1360,18 @@ document.querySelector('main').addEventListener('wheel', event => {
 }, { passive: false });
 const environment = document.createElement('span'); environment.className='environment-tag';
 function updateEnvironment() {
-  const field=activeMath();
-  const name=field ? (field.value.includes('matrix}')?'matrix':field.closest('.math-display')?'display math':'inline math') :
+  const field=document.activeElement?.tagName==='MATH-FIELD' ? document.activeElement : null;
+  const name=field ? (field.closest('.math-display')?'display math':'inline math') :
     !sourceView.hidden?'LaTeX': ['table','listItem','heading'].find(type=>editor.isActive(type)) ?? 'text';
   const labels={matrix:t('矩阵','Matrix'),'display math':t('行间公式','Display math'),'inline math':t('行内公式','Inline math'),table:t('表格','Table'),listItem:t('列表','List'),heading:t('标题','Heading'),text:t('正文','Text'),LaTeX:t('源码','Source')};
-  environment.textContent=labels[name]; environment.dataset.environment=name;
+  environment.textContent=[labels[name],...(field ? mathEnvironment(field) : [])].join(' › ');
+  environment.dataset.environment=name;
 }
 footer.append(count,environment,zoom,percent,themeButton,sourceButton);document.body.append(footer);scale();
 editor.on('transaction',updateEnvironment);
 document.addEventListener('focusin',updateEnvironment);paper.addEventListener('input',updateEnvironment);
+paper.addEventListener('selection-change',updateEnvironment,true);
+paper.addEventListener('lineae-math-position',updateEnvironment);
 updateEnvironment();
 editor.on('update',()=>{count.textContent=editor.getText().length+' '+t('字符','characters');});
 const tableGroup=document.createElement('div');tableGroup.className='tools';
@@ -1579,7 +1591,11 @@ groupButton(mathGroup,'sum',()=>{
   const field=activeMath();
   if(field)insertLiveMath(field,'\\sum'); else insertMath(false,'\\sum');
 });
-groupButton(mathGroup,'int',()=>insertMath(false,'\\int'));
+groupButton(mathGroup,'int',()=>{
+  const field=activeMath();
+  if (field) insertLiveMath(field,'\\int{\\placeholder{}}');
+  else insertMath(false,'\\int{\\placeholder{}}');
+});
 for (const operator of ['prod','iint','iiint','oint','oiint']) {
   groupButton(mathGroup,'\\'+operator,()=>{
     const field=activeMath();
