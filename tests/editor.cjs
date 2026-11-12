@@ -1907,9 +1907,12 @@ async function verifySelectionGeometry(page, paper, importSource) {
     await paper.locator('p').first().click({position:{x:3,y:6}});
     await page.waitForFunction(()=>document.querySelector('.math-inline math-field')?.value==='x+y');
     await script.click();
+    await page.waitForFunction(()=>document.activeElement?.tagName==='MATH-FIELD');
     await script.evaluate(field=>{field.position=1;});
     await page.keyboard.press('Control+6');
+    await page.waitForFunction(()=>document.activeElement?._mathfield?.model.at(document.activeElement.position)?.parentBranch==='superscript');
     await page.keyboard.press('2');
+    await page.waitForFunction(()=>document.activeElement?.value?.includes('2'));
     await page.keyboard.press('Control+Shift+j');
     assert.match(await script.evaluate(field=>field.value),/x\^\{?2\}?\+y/);
     await importSource('Single $x+y$');
