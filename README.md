@@ -11,7 +11,7 @@
 
 **Write naturally. Typeset beautifully.**
 
-<p align="center"><a href="README.md">English</a> · <a href="README.zh-CN.md">简体中文</a></p>
+<p align="center"><a href="README.md">English</a> · <a href="README.zh-CN.md">简体中文</a> · <a href="README.zh-TW.md">繁體中文</a> · <a href="README.ja.md">日本語</a> · <a href="README.ko.md">한국어</a> · <a href="README.es.md">Español</a> · <a href="README.fr.md">Français</a> · <a href="README.de.md">Deutsch</a> · <a href="README.pt-BR.md">Português (BR)</a> · <a href="README.ru.md">Русский</a></p>
 
 Lineae is an experimental browser-based **WYSIWYG LaTeX editor** for academic and technical writing. Its goal is not merely to make LaTeX documents editable through a graphical interface: **what appears in the editor should match the result of compiling the same document with a TeX engine as closely as possible.** LaTeX remains the native document format, with ordinary <code>.tex</code> files at the centre of the workflow.
 
