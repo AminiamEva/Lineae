@@ -978,6 +978,8 @@ async function verifySelectionGeometry(page, paper, importSource) {
     await page.waitForFunction(()=>document.querySelector('math-field'));
     const boldField=page.locator('math-field').first();
     await boldField.click();
+    await boldField.evaluate(field=>field.focus());
+    await page.waitForFunction(()=>document.activeElement?.matches('math-field[data-lineae-editing]'));
     assert.ok(await boldField.evaluate(field=>[...field.shadowRoot.querySelectorAll('.ML__mathbf')].every(element=>getComputedStyle(element).backgroundColor!=='rgba(0, 0, 0, 0)')),'Font commands highlight their content during editing');
     await importSource('$x+\\text{abc}+y$');
     await page.waitForFunction(()=>document.querySelector('math-field'));
@@ -1846,6 +1848,8 @@ async function verifySelectionGeometry(page, paper, importSource) {
     const operandMark=operandField.locator('[data-lineae-integrand]').first();
     await operandMark.waitFor();
     await operandField.click();
+    await operandField.evaluate(field=>field.focus());
+    await page.waitForFunction(()=>document.activeElement?.matches('math-field[data-lineae-editing]'));
     assert.notEqual(await operandMark.evaluate(el=>getComputedStyle(el).backgroundColor),'rgba(0, 0, 0, 0)');
     await operandField.evaluate(field=>field.blur());
     assert.equal(await operandMark.evaluate(el=>getComputedStyle(el).backgroundColor),'rgba(0, 0, 0, 0)');
@@ -1863,6 +1867,14 @@ async function verifySelectionGeometry(page, paper, importSource) {
     await page.keyboard.press('Shift+Tab');
     assert.equal(await slotBranch(),'above');
     assert.equal(await slotField.evaluate(field=>field.hasFocus()),true);
+    await importSource('\\[x\\]');
+    const directOperand=paper.locator('math-field').first();
+    await directOperand.evaluate(field=>{field.focus();field.position=field.lastOffset;});
+    await page.keyboard.press('Control+Shift+s');
+    assert.equal(await directOperand.evaluate(field=>field._mathfield.model.at(field.position)?.command),'\\sum');
+    await page.keyboard.type('k');
+    assert.match(await directOperand.evaluate(field=>field.value),/\\sum\\mathord\{k\}/,
+      'Typing without limits replaces the empty operand slot');
     await importSource('\\begin{enumerate}\\item 2\\begin{enumerate}\\item 3\\begin{enumerate}\\item 4\\end{enumerate}\\end{enumerate}\\end{enumerate}\n\n\\noindent');
     await page.waitForFunction(()=>document.querySelectorAll('.ProseMirror li').length===3);
     await paper.locator(':scope > p').last().click();

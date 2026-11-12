@@ -50,6 +50,21 @@ function navigateEmptyMathSlot(field, backward) {
   if (next) field.selection = { ranges: [next], direction: 'forward' };
 }
 
+function enterEmptyOperatorBody(field) {
+  if (!caretCollapsed(field)) return;
+  const model = field._mathfield?.model;
+  const caret = model?.at(field.position);
+  const body = caret?.rightSibling;
+  const operator = bodyOperator(body);
+  if (!operator || operator !== (caret.type === 'subsup' ? caret.leftSibling : caret)) return;
+  const children = body.body ?? [];
+  const placeholder = children.find(atom => atom.type === 'placeholder');
+  if (!placeholder || children.some(atom => !['first','placeholder'].includes(atom.type))) return;
+  const end = model.offsetOf(placeholder);
+  const start = model.offsetOf(placeholder.leftSibling);
+  if (start >= 0 && start < end) field.selection = { ranges: [[start,end]], direction: 'forward' };
+}
+
 export function mathEnvironment(field) {
   const model=field._mathfield?.model;
   const labels=[];
@@ -132,7 +147,7 @@ const mathFieldStyle = `
      turns into a visible native scrollbar under an inline formula. */
   .ML__content { overflow: visible !important; scrollbar-width: none; }
   .ML__content::-webkit-scrollbar { display: none; }
-  :host(:focus-within) [data-lineae-integrand] { background:light-dark(#e9f4ed,#304a3b); border-radius:.15em; }
+  :host([data-lineae-editing]) [data-lineae-integrand] { background:light-dark(#e9f4ed,#304a3b); border-radius:.15em; }
   :host([data-empty-matrix-cell]) .ML__caret::after {
     content:""; position:absolute; inset:-.05em auto -.05em -.05em;
     width:.66em; border:1px solid currentColor; border-radius:.16em;
@@ -143,11 +158,11 @@ const mathFieldStyle = `
     height:1em; border-radius:.15em; line-height:1; color:inherit; background:light-dark(#e8effa,#37445c); }
   .delimiter-ghost-slot + .delimiter-ghost-slot { background:light-dark(#efe9f7,#483b58); }
   .delimiter-ghost-slot.is-active { box-shadow:inset 0 0 0 1px #749bd0; }
-  :host(:focus-within) :is(.ML__mathbf, .ML__mathbfit, .ML__bb, .ML__cal, .ML__frak, .ML__script, .ML__sans, .ML__tt) {
+  :host([data-lineae-editing]) :is(.ML__mathbf, .ML__mathbfit, .ML__bb, .ML__cal, .ML__frak, .ML__script, .ML__sans, .ML__tt) {
     background: light-dark(rgba(77,124,179,.10), rgba(120,170,230,.18));
     border-radius: 2px;
   }
-  :host(:focus-within) .ML__mediumspace {
+  :host([data-lineae-editing]) .ML__mediumspace {
     background: light-dark(#d9f2df,#2f5138);
     border-radius: 2px;
     box-shadow: 0 0 0 1px light-dark(#b7e3c2,#3f6b4b) inset;
@@ -440,7 +455,10 @@ export const MathNode = Node.create({
           if (field.isConnected && focusRequest===pointerFocus) field.focus();
         });
       },true);
+      field.addEventListener('focus', () => field.setAttribute('data-lineae-editing',''));
+      field.addEventListener('compositionstart', () => enterEmptyOperatorBody(field), true);
       field.addEventListener('blur', () => {
+        field.removeAttribute('data-lineae-editing');
         pendingKey=null; pendingDollar=false; oneScript=null; replacedOperator=null;
         queueMicrotask(()=>{if(field.isConnected&&!field.hasFocus())clearEmptyScripts(field);});
       });
@@ -479,6 +497,9 @@ export const MathNode = Node.create({
           pendingKey=null; pendingDollar=false; oneScript=null; replacedOperator=null;
           navigateEmptyMathSlot(field, event.shiftKey);
           return;
+        }
+        if (plain && Array.from(event.key).length === 1 && !['^','_','$'].includes(event.key)) {
+          enterEmptyOperatorBody(field);
         }
         const scriptCharacter=/^[^\s^_/$\\]$/u.test(event.key);
         if (oneScript && plain && scriptCharacter &&
@@ -629,6 +650,7 @@ export const MathNode = Node.create({
         field.environmentPopoverPolicy = 'off';
         field.mathModeSpace = '\\space';
         installMathFieldStyle(field);
+        field.toggleAttribute('data-lineae-editing',field.hasFocus());
         const root=field.shadowRoot;
         if (!root) return;
         const markIntegrands=()=>{
