@@ -962,7 +962,7 @@ async function verifySelectionGeometry(page, paper, importSource) {
     await displayField.click({button:'right'});
     await page.waitForFunction(()=>!document.querySelector('.editor-context-menu').hidden);
     await context.locator('[data-command="display-style"]').click();
-    assert.equal(await displayField.evaluate(field=>field.value),'\\displaystyle{\\sum}','Display style wraps the whole formula');
+    assert.equal(await displayField.evaluate(field=>field.value),'\\displaystyle{\\sum\\mathord{\\placeholder{}}}','Display style wraps the operator and its operand slot');
     await displayField.focus();
     await page.keyboard.type('\\');
     await page.waitForFunction(()=>!document.querySelector('.command-menu').hidden);
@@ -976,7 +976,9 @@ async function verifySelectionGeometry(page, paper, importSource) {
     assert.equal(await displayField.evaluate(field=>[...field.shadowRoot.querySelectorAll('.ML__op-symbol.ML__large-op')].length),2,'Display style applies to later input');
     await importSource('$\\mathbf{x+y}$');
     await page.waitForFunction(()=>document.querySelector('math-field'));
-    assert.ok(await page.locator('math-field').first().evaluate(field=>[...field.shadowRoot.querySelectorAll('.ML__mathbf')].every(element=>getComputedStyle(element).backgroundColor!=='rgba(0, 0, 0, 0)')),'Font commands highlight their content');
+    const boldField=page.locator('math-field').first();
+    await boldField.click();
+    assert.ok(await boldField.evaluate(field=>[...field.shadowRoot.querySelectorAll('.ML__mathbf')].every(element=>getComputedStyle(element).backgroundColor!=='rgba(0, 0, 0, 0)')),'Font commands highlight their content during editing');
     await importSource('$x+\\text{abc}+y$');
     await page.waitForFunction(()=>document.querySelector('math-field'));
     const textEnvField=page.locator('math-field').first();
@@ -1845,7 +1847,6 @@ async function verifySelectionGeometry(page, paper, importSource) {
     await operandMark.waitFor();
     await operandField.click();
     assert.notEqual(await operandMark.evaluate(el=>getComputedStyle(el).backgroundColor),'rgba(0, 0, 0, 0)');
-    await page.locator('[data-group=math]').click();
     await operandField.evaluate(field=>field.blur());
     assert.equal(await operandMark.evaluate(el=>getComputedStyle(el).backgroundColor),'rgba(0, 0, 0, 0)');
     await importSource('\\[\\frac{\\placeholder{}}{\\placeholder{}}\\]');
