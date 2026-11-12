@@ -35,3 +35,38 @@ test('citation diagnostics reuse tex citation scanning for missing keys', async 
   assert.deepEqual(result.citations.missing.map(item => item.key), ['missing']);
   assert.equal(result.citations.missing[0].start, 12);
 });
+
+test('bibliography edits use the transactional editor and preserve untouched source', async () => {
+  const library = createCitationLibrary();
+  await library.addFile(bib(
+    'refs.bib',
+    '% keep this comment\n@article{Key,\n  title = {Keep {\\TeX} and \\\\LaTeX},\n  CustomField = {未知字段},\n  bad = {raw {value}},\n}\n',
+  ));
+  const result = library.updateEntry('refs.bib', 'Key', { fields: { title: 'Changed {\\TeX}' } });
+  assert.equal(result.ok, true);
+  const text = library.getSource('refs.bib').sourceText;
+  assert.match(text, /% keep this comment/);
+  assert.match(text, /CustomField = \{未知字段\}/);
+  assert.match(text, /title = \{Changed \{\\TeX\}\}/);
+  assert.match(text, /bad = \{raw \{value\}\}/);
+});
+
+test('bibliography editing exposes previews, occurrence-safe removal, and batch import', async () => {
+  const library = createCitationLibrary();
+  await library.addFile(bib('refs.bib', '@article{same, title={First}}\n@article{same, title={Second}}'));
+  const rename = library.previewRename('refs.bib', 'same', 'renamed', {
+    texSource: '\\cite{same}',
+    occurrence: 1,
+  });
+  assert.equal(rename.ok, true);
+  assert.equal(rename.externalReferences.length, 1);
+  assert.equal(rename.ambiguous, true);
+  const imported = library.importEntries('refs.bib', [
+    { key: 'third', type: 'misc', fields: { title: 'Third' } },
+  ]);
+  assert.equal(imported.ok, true);
+  assert.equal(imported.count, 1);
+  const removed = library.removeEntry('refs.bib', 'same', { occurrence: 0 });
+  assert.equal(removed.ok, true);
+  assert.equal(library.getSource('refs.bib').document.entries.length, 2);
+});

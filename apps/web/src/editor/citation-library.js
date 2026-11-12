@@ -1,5 +1,6 @@
 import {
   checkTexCitations,
+  createBibEditor,
   getEntryValue,
   parseBib,
   parseBibFile,
@@ -10,15 +11,21 @@ import { t } from '../ui/i18n.mjs';
 import { popIn } from '../ui/motion.mjs';
 
 function entrySummary(entry, document, file, index, blob) {
+  const occurrence = document.entries
+    .slice(0, index)
+    .filter(candidate => candidate.key === entry.key).length;
   return {
     key: entry.key,
     type: entry.type,
+    typeRaw: entry.typeRaw,
     author: getEntryValue(entry, 'author', document) || '',
     title: getEntryValue(entry, 'title', document) || '',
     year: getEntryValue(entry, 'year', document) || getEntryValue(entry, 'date', document) || '',
     file,
     blob,
     sourceIndex: index,
+    occurrence,
+    entry,
     sourceText: document.source.text.slice(entry.start, entry.end),
   };
 }
@@ -30,6 +37,40 @@ export function createCitationLibrary() {
   function allEntries() {
     return sources.flatMap(source => source.document.entries.map((entry, index) =>
       entrySummary(entry, source.document, source.file, index, source.blob)));
+  }
+
+  function syncSource(source) {
+    const text = source.editor.toBibTeX();
+    source.document = source.editor.getDocument();
+    source.validation = validateBib(source.document, { profile: 'biblatex' });
+    source.sourceText = text;
+    source.blob = new File([text], source.blob?.name ?? source.file.split('/').at(-1), {
+      type: source.blob?.type ?? 'text/plain',
+    });
+    rememberAsset(source.file, source.blob);
+    return source;
+  }
+
+  function sourceFor(file) {
+    return sources.find(source => source.file === file);
+  }
+
+  function entryInputs(document) {
+    return document.entries.map(entry => ({
+      key: entry.key,
+      type: entry.typeRaw || entry.type,
+      fields: entry.fields
+        .filter(field => !field.unparsed && field.value)
+        .reduce((fields, field) => {
+          fields[field.nameRaw || field.name] = {
+            text: field.value.parts.map(part => part.value).join(' # '),
+            delimiter: field.value.parts[0]?.kind === 'quoted'
+              ? 'quoted'
+              : field.value.parts[0]?.kind === 'number' ? 'number' : 'braced',
+          };
+          return fields;
+        }, {}),
+    }));
   }
 
   function conflicts() {
@@ -66,8 +107,74 @@ export function createCitationLibrary() {
       const validation = validateBib(document, { profile: 'biblatex' });
       const existing = sources.findIndex(source => source.file === file || source.file === file.name);
       if (existing >= 0) sources.splice(existing, 1);
-      sources.push({ file: file.name, blob: file, sourceText: document.source.text, document, validation });
+      sources.push({
+        file: file.name,
+        blob: file,
+        sourceText: document.source.text,
+        document,
+        editor: createBibEditor(document, { profile: 'biblatex' }),
+        validation,
+      });
       return sources.at(-1);
+    },
+    getSource(file) {
+      return sourceFor(file) ?? null;
+    },
+    addEntry(file, input) {
+      const source = sourceFor(file);
+      if (!source) return { ok: false, error: { code: 'BIB401', message: `Bibliography source "${file}" does not exist.` } };
+      const result = source.editor.addEntry(input);
+      if (result.ok) syncSource(source);
+      return result;
+    },
+    updateEntry(file, key, patch, options = {}) {
+      const source = sourceFor(file);
+      if (!source) return { ok: false, error: { code: 'BIB401', message: `Bibliography source "${file}" does not exist.` } };
+      const result = source.editor.updateEntry(key, patch, options);
+      if (result.ok && result.changedFields?.length) syncSource(source);
+      return result;
+    },
+    importEntries(file, inputs, options = {}) {
+      const source = sourceFor(file);
+      if (!source) return { ok: false, error: { code: 'BIB401', message: `Bibliography source "${file}" does not exist.` } };
+      const result = source.editor.importEntries(inputs, options);
+      if (result.ok && result.count) syncSource(source);
+      return result;
+    },
+    updateEntries(file, patches) {
+      const source = sourceFor(file);
+      if (!source) return { ok: false, error: { code: 'BIB401', message: `Bibliography source "${file}" does not exist.` } };
+      const result = source.editor.updateEntries(patches);
+      if (result.ok && result.count) syncSource(source);
+      return result;
+    },
+    previewRename(file, oldKey, newKey, options = {}) {
+      const source = sourceFor(file);
+      if (!source) return { ok: false, error: { code: 'BIB401', message: `Bibliography source "${file}" does not exist.` } };
+      return createBibEditor(source.document).renameEntry(oldKey, newKey, options);
+    },
+    renameEntry(file, oldKey, newKey, options = {}) {
+      const source = sourceFor(file);
+      if (!source) return { ok: false, error: { code: 'BIB401', message: `Bibliography source "${file}" does not exist.` } };
+      const result = source.editor.renameEntry(oldKey, newKey, options);
+      if (result.ok && result.changed) syncSource(source);
+      return result;
+    },
+    previewRemove(file, key, options = {}) {
+      const source = sourceFor(file);
+      if (!source) return { ok: false, error: { code: 'BIB401', message: `Bibliography source "${file}" does not exist.` } };
+      return createBibEditor(source.document).removeEntry(key, options);
+    },
+    removeEntry(file, key, options = {}) {
+      const source = sourceFor(file);
+      if (!source) return { ok: false, error: { code: 'BIB401', message: `Bibliography source "${file}" does not exist.` } };
+      const result = source.editor.removeEntry(key, options);
+      if (result.ok) syncSource(source);
+      return result;
+    },
+    entriesForImport(file) {
+      const source = sourceFor(file);
+      return source ? entryInputs(source.document) : [];
     },
       setSourcePath(from, to) {
         const source = sources.find(item => item.file === from);
@@ -107,6 +214,7 @@ export function createCitationLibrary() {
             blob,
             sourceText: item.sourceText,
             document,
+            editor: createBibEditor(document, { profile: 'biblatex' }),
             validation: validateBib(document, { profile: 'biblatex' }),
           });
           rememberAsset(item.path, blob);
@@ -155,6 +263,7 @@ export function openCitationPanel({
   onInsert = () => {},
   onLocateMissing = () => {},
   onChange = () => {},
+  onRename = () => {},
 } = {}) {
   return new Promise(resolve => {
     const backdrop = document.createElement('div');
@@ -174,6 +283,17 @@ export function openCitationPanel({
     picker.setAttribute('aria-label', t('导入 BibTeX 文件','Import BibTeX files'));
     const importButton = button(t('导入 .bib 文件','Import .bib files'));
     importButton.addEventListener('click', () => picker.click());
+    const sourceSelect = document.createElement('select');
+    sourceSelect.setAttribute('aria-label', t('编辑目标文献文件','Bibliography file to edit'));
+    const addButton = button(t('新增条目','Add entry'));
+    addButton.addEventListener('click', () => openEditor());
+    const batchPicker = document.createElement('input');
+    batchPicker.type = 'file';
+    batchPicker.accept = '.bib,text/plain';
+    batchPicker.hidden = true;
+    batchPicker.setAttribute('aria-label', t('批量导入 BibTeX 条目','Import BibTeX entries'));
+    const batchButton = button(t('批量导入条目','Import entries'));
+    batchButton.addEventListener('click', () => batchPicker.click());
     const search = document.createElement('input');
     search.type = 'search';
     search.placeholder = t('按键、作者、标题或年份搜索','Search key, author, title, or year');
@@ -190,7 +310,7 @@ export function openCitationPanel({
     const insert = button(t('插入引用','Insert citation'));
     insert.disabled = true;
     actions.append(cancel, insert);
-    panel.append(title, picker, importButton, search, status, list, diagnostics, actions);
+    panel.append(title, picker, importButton, sourceSelect, addButton, batchButton, batchPicker, search, status, list, diagnostics, actions);
     backdrop.append(panel);
 
     let selected = null;
@@ -202,9 +322,122 @@ export function openCitationPanel({
       status.textContent = message;
       status.dataset.state = isError ? 'error' : 'normal';
     };
+    const selectedSource = () => library.getSource(sourceSelect.value);
+    const fieldText = field => field?.value?.parts?.map(part => part.value).join(' # ') ?? '';
+    const openEditor = (entry = null, summary = null) => {
+      const source = selectedSource();
+      if (!source) {
+        updateStatus(t('请先导入文献文件。','Import a bibliography file first.'), true);
+        return;
+      }
+      const form = document.createElement('form');
+      form.className = 'editor-dialog citation-entry-editor';
+      const heading = document.createElement('h3');
+      heading.textContent = entry ? t('编辑文献条目','Edit bibliography entry') : t('新增文献条目','Add bibliography entry');
+      const key = document.createElement('input');
+      key.value = entry?.key ?? '';
+      key.required = true;
+      key.setAttribute('aria-label', t('引用键','Citation key'));
+      const type = document.createElement('input');
+      type.value = entry?.typeRaw ?? entry?.type ?? 'misc';
+      type.setAttribute('aria-label', t('条目类型','Entry type'));
+      const fields = document.createElement('div');
+      fields.className = 'citation-entry-fields';
+      const original = new Map();
+      for (const field of entry?.fields ?? []) {
+        if (field.unparsed) {
+          const raw = document.createElement('pre');
+          raw.textContent = field.raw;
+          raw.setAttribute('aria-label', t(`未解析字段 ${field.nameRaw || field.name}`, `Unparsed field ${field.nameRaw || field.name}`));
+          fields.append(raw);
+          continue;
+        }
+        const row = document.createElement('label');
+        row.textContent = field.nameRaw || field.name;
+        const input = document.createElement('textarea');
+        input.value = fieldText(field);
+        input.dataset.field = field.name;
+        input.dataset.original = input.value;
+        original.set(field.name, input.value);
+        row.append(input);
+        fields.append(row);
+      }
+      const fieldName = document.createElement('input');
+      fieldName.placeholder = t('新增字段名','New field name');
+      fieldName.setAttribute('aria-label', fieldName.placeholder);
+      const fieldValue = document.createElement('textarea');
+      fieldValue.placeholder = t('新增字段值（保留 LaTeX 转义）','New field value (preserve LaTeX escapes)');
+      fieldValue.setAttribute('aria-label', fieldValue.placeholder);
+      const save = button(t('保存','Save'));
+      save.type = 'submit';
+      const cancel = button(t('取消','Cancel'));
+      const editorActions = document.createElement('div');
+      editorActions.className = 'editor-dialog-actions';
+      editorActions.append(cancel, save);
+      form.append(heading, key, type, fields, fieldName, fieldValue, editorActions);
+      const backdrop = document.createElement('div');
+      backdrop.className = 'editor-dialog-backdrop';
+      backdrop.append(form);
+      const close = () => backdrop.remove();
+      cancel.addEventListener('click', close);
+      form.addEventListener('submit', event => {
+        event.preventDefault();
+        const patchFields = {};
+        for (const input of fields.querySelectorAll('textarea[data-field]')) {
+          if (input.value !== input.dataset.original) patchFields[input.dataset.field] = input.value;
+        }
+        if (fieldName.value.trim()) patchFields[fieldName.value.trim()] = fieldValue.value;
+        let result;
+        let renameResult = null;
+        if (!entry) {
+          result = library.addEntry(source.file, { key: key.value, type: type.value, fields: patchFields });
+        } else if (key.value.trim() !== entry.key) {
+          const preview = library.previewRename(source.file, entry.key, key.value, {
+            texSource,
+            occurrence: summary?.occurrence,
+          });
+          if (!preview.ok) {
+            updateStatus(`[${preview.error.code}] ${preview.error.message}`, true);
+            return;
+          }
+          const references = [
+            ...(preview.externalReferences ?? []).map(item => `${item.command} @ ${item.start}`),
+            ...(preview.updatedReferences ?? []).map(item => `${item.entryKey}.${item.field}`),
+          ];
+          const sync = window.confirm(t(
+            `将修改 ${references.length} 处引用。是否同时同步正文引用？\n${references.join('\n')}`,
+            `This changes ${references.length} references. Also update citations in the document?\n${references.join('\n')}`,
+          ));
+          result = library.renameEntry(source.file, entry.key, key.value, {
+            texSource,
+            occurrence: summary?.occurrence,
+          });
+          if (result.ok && sync) renameResult = { ...result, oldKey: entry.key, newKey: key.value };
+        } else {
+          result = library.updateEntry(source.file, entry.key, { type: type.value, fields: patchFields });
+        }
+        if (!result?.ok) {
+          const error = result?.error;
+          updateStatus(error ? `[${error.code}] ${error.message}` : t('保存失败','Save failed'), true);
+          return;
+        }
+        onChange();
+        if (renameResult) onRename(renameResult);
+        close();
+        render();
+      });
+      document.body.append(backdrop);
+      key.focus();
+    };
     const render = () => {
       list.replaceChildren();
       diagnostics.replaceChildren();
+      const previousSource = sourceSelect.value;
+      sourceSelect.replaceChildren(...library.sources.map(source => new Option(source.file, source.file)));
+      if (library.sources.some(source => source.file === previousSource)) sourceSelect.value = previousSource;
+      sourceSelect.disabled = library.sources.length === 0;
+      addButton.disabled = library.sources.length === 0;
+      batchButton.disabled = library.sources.length === 0;
       const found = library.search(search.value);
       const currentConflicts = library.conflicts;
       const citationDiagnostics = library.diagnostics(texSource);
@@ -228,7 +461,38 @@ export function openCitationPanel({
         });
         const meta = document.createElement('small');
         meta.textContent = [entry.author, entry.year, entry.file].filter(Boolean).join(' · ');
-        row.append(choose, meta);
+        const edit = button(t('编辑','Edit'));
+        edit.setAttribute('aria-label', t(`编辑 ${entry.key}`, `Edit ${entry.key}`));
+        edit.addEventListener('click', () => {
+          sourceSelect.value = entry.file;
+          openEditor(entry.entry, entry);
+        });
+        const remove = button(t('删除','Delete'));
+        remove.setAttribute('aria-label', t(`删除 ${entry.key}`, `Delete ${entry.key}`));
+        remove.addEventListener('click', () => {
+          const preview = library.previewRemove(entry.file, entry.key, { occurrence: entry.occurrence });
+          if (!preview.ok) {
+            updateStatus(`[${preview.error.code}] ${preview.error.message}`, true);
+            return;
+          }
+          const cited = library.diagnostics(texSource).citations?.cited?.includes(entry.key);
+          const impact = [
+            ...(preview.danglingReferences ?? []).map(item => `${item.entryKey}.${item.field}`),
+            ...(cited ? [t('正文引用','document citations')] : []),
+          ];
+          if (!window.confirm(t(
+            `删除 ${entry.key} 将影响：${impact.length ? impact.join(', ') : '无已知引用'}。确定删除？`,
+            `Deleting ${entry.key} affects: ${impact.length ? impact.join(', ') : 'no known references'}. Delete it?`,
+          ))) return;
+          const result = library.removeEntry(entry.file, entry.key, { occurrence: entry.occurrence });
+          if (!result.ok) {
+            updateStatus(`[${result.error.code}] ${result.error.message}`, true);
+            return;
+          }
+          onChange();
+          render();
+        });
+        row.append(choose, meta, edit, remove);
         list.append(row);
       }
       for (const [key, entries] of currentConflicts) {
@@ -284,6 +548,30 @@ export function openCitationPanel({
       if (!failed) render();
       picker.value = '';
     });
+    batchPicker.addEventListener('change', async () => {
+      const file = batchPicker.files?.[0];
+      if (!file || !sourceSelect.value) return;
+      try {
+        const document = await parseBibFile(file, { filename: file.name });
+        const parsedInputs = document.entries.map(entry => ({
+          key: entry.key,
+          type: entry.typeRaw || entry.type,
+          fields: entry.fields.filter(field => !field.unparsed && field.value).reduce((fields, field) => {
+            fields[field.nameRaw || field.name] = { text: fieldText(field), delimiter: field.value.parts[0]?.kind === 'quoted' ? 'quoted' : 'braced' };
+            return fields;
+          }, {}),
+        }));
+        const result = library.importEntries(sourceSelect.value, parsedInputs, { onConflict: 'error' });
+        if (!result.ok) updateStatus(`[${result.error.code}] ${result.error.message}`, true);
+        else updateStatus(t(`已导入 ${result.count} 条。`,`Imported ${result.count} entries.`));
+        onChange();
+        render();
+      } catch (error) {
+        updateStatus(`${t('无法解析','Could not parse')} ${file.name}: ${error.message}`, true);
+      }
+      batchPicker.value = '';
+    });
+    sourceSelect.addEventListener('change', render);
     search.addEventListener('input', render);
     cancel.addEventListener('click', () => close(null));
     backdrop.addEventListener('pointerdown', event => { if (event.target === backdrop) close(null); });

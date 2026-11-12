@@ -161,6 +161,10 @@ main { padding:125px 24px 60px; overflow:auto; }
 .citation-entry { display:flex; align-items:center; gap:8px; }
 .citation-entry button { flex:1; text-align:left; }
 .citation-entry small { opacity:.75; }
+.citation-entry-editor { width:min(620px,94vw); max-height:88vh; overflow:auto; }
+.citation-entry-editor textarea { min-height:58px; resize:vertical; padding:8px; border-radius:7px; border:1px solid light-dark(#ccd0d8,#555); background:light-dark(#fff,#303035); color:inherit; }
+.citation-entry-fields { display:flex; flex-direction:column; gap:8px; max-height:42vh; overflow:auto; }
+.citation-entry-fields label { display:flex; flex-direction:column; gap:3px; font-weight:600; }
 .citation-panel-diagnostics { display:flex; flex-direction:column; gap:6px; max-height:28vh; overflow:auto; font-size:.9em; }
 .citation-panel-diagnostics pre { margin:0; padding:6px; overflow:auto; border-radius:5px; background:light-dark(#f4f4f5,#202024); }
 .citation-panel [data-state="error"] { color:light-dark(#a11,#ff9b9b); }

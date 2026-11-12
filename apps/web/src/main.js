@@ -10,6 +10,7 @@ import { PaperBehavior } from './editor/paper-behavior.js';
 import { MathNode, MathBlock, configureMathFences, insertFormula, mathEnvironment, toggleDisplayStyle } from './editor/math-node.js';
 import { Ref, Label, Cite, Footnote, TableOfContents, refreshReferences, collectReferenceLabels } from './editor/references.js';
 import { createCitationLibrary, openCitationPanel } from './editor/citation-library.js';
+import { applyCitationRenames } from '../bib/index.mjs';
 import { chooseReference } from './editor/reference-index.js';
 import { installTableHoverAddRow } from './editor/table-hover.js';
 import { createConfigStore } from './editor/config.mjs';
@@ -1621,6 +1622,10 @@ groupButton(referenceGroup,'cite',async()=>{
       texSource: source(),
       onLocateMissing: locateMissingCitation,
       onChange: persistCitationState,
+      onRename: ({ oldKey, newKey }) => {
+        const applied = applyCitationRenames(source(), { [oldKey]: newKey });
+        if (applied.count) load(applied.text, false);
+      },
     });
     if(!entry || editor.state.doc!==documentBefore)return;
     const {key,file:sourcePath,blob}=entry;
