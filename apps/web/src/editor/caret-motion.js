@@ -88,6 +88,7 @@ export function createCaretMotion(view, page) {
   let lastZoom = null;
   let glide = null;
   let blink = null;
+  let lastEditAt = 0;
 
   function stopGlide() {
     const previous = glide;
@@ -160,6 +161,11 @@ export function createCaretMotion(view, page) {
     const caretChanged = !sameCaret(target, next);
     const composition = intent === 'composition';
     const editing = intent === 'edit' || composition;
+    // Fast typing can outrun a 100 ms glide. Snap consecutive edits to the
+    // newest target so the caret never trails the text being inserted or deleted.
+    const now = performance.now();
+    const rapidEdit = editing && now - lastEditAt < 120;
+    if (editing) lastEditAt = now;
     if (lastZoom === zoom && !selectionChanged && !caretChanged && !editing) {
       target = next;
       if (activity && next && animated && !glide) restartBlink(selection.active);
@@ -184,7 +190,7 @@ export function createCaretMotion(view, page) {
     const moves = from && next && (distance >= .3 || Math.abs(from.height - next.height) >= .3);
     const pulse = Boolean(editing && next && !moves);
     const layoutStable = lastZoom === null || lastZoom === zoom;
-    const timing = animated && layoutStable && intent && (moves || pulse || (selectionChanged && (lastZoom === zoom || from))) ? {
+    const timing = !rapidEdit && animated && layoutStable && intent && (moves || pulse || (selectionChanged && (lastZoom === zoom || from))) ? {
       duration: editing ? (composition ? 115 : 100) : Math.min(150, 105 + distance * .12),
       easing: editing ? EDIT_EASING : MOVE_EASING,
       fill: 'backwards',

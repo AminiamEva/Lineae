@@ -33,6 +33,7 @@ keybindings:
     alignCenter: ctrl+e i
     find: ctrl+f
     leaveEnvironment: ctrl+j
+    leaveAllEnvironments: ctrl+shift+j
     toggleContextMarker: ctrl+t
     ignoreBrowserZoomReset: null
     literalBacktick: alt+backtick

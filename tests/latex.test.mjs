@@ -35,6 +35,7 @@ test('Word-style numbering preserves the marker and starting number in TeX', () 
     }
   }
   assert.equal(listMarker(markerInput.exec('word. ')),null);
+  assert.equal(listMarker(markerInput.exec(' ')),null,'a single space must not start a list');
 });
 
 test('exports theorem and proof environments and a path-safe project ZIP', async () => {

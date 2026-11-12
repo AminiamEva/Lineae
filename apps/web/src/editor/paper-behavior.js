@@ -363,6 +363,28 @@ export const PaperBehavior = Extension.create({
         props: { decorations(state) { return this.getState(state); } },
       }),
       new Plugin({
+        props: {
+          decorations(state) {
+            const { from, to } = state.selection;
+            if (from === to) return null;
+            const decorations = [];
+            state.doc.nodesBetween(from, to, (node, position) => {
+              if (node.type.name !== 'listItem') return;
+              // Only the item's own paragraph participates in the marker
+              // highlight, so selecting a nested item does not light up every
+              // ancestor list marker.
+              const ownEnd = position + 1 + (node.firstChild?.nodeSize ?? 0);
+              if (to <= position + 1 || from >= ownEnd) return;
+              const parent = state.doc.resolve(position).parent;
+              const attrs = { class: 'list-item-selected' };
+              if (parent.type.name === 'bulletList') attrs['data-selected-marker'] = parent.attrs.marker ?? '•';
+              decorations.push(Decoration.node(position, position + node.nodeSize, attrs));
+            });
+            return DecorationSet.create(state.doc, decorations);
+          },
+        },
+      }),
+      new Plugin({
         appendTransaction(transactions, oldState, state) {
           if (!transactions.some(transaction => transaction.docChanged)) return null;
           if (!['table', 'mathBlock'].includes(state.doc.lastChild?.type.name)) return null;
