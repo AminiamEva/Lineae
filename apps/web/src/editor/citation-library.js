@@ -324,7 +324,11 @@ export function openCitationPanel({
     }
     const citationCommandDialog = document.createElement('div');
     citationCommandDialog.className = 'citation-dialog';
-    citationCommandDialog.append(citationCommand);
+    const legacyKeySelect = document.createElement('select');
+    legacyKeySelect.setAttribute('aria-label', t('引用键','Citation key'));
+    const legacySubmit = button(t('插入引用','Insert citation'));
+    legacySubmit.type = 'submit';
+    citationCommandDialog.append(legacyKeySelect, legacySubmit);
     const preNote = document.createElement('input');
     preNote.placeholder = t('前注（可选）','Pre-note (optional)');
     preNote.setAttribute('aria-label', preNote.placeholder);
@@ -347,7 +351,16 @@ export function openCitationPanel({
     const insert = button(t('插入引用','Insert citation'));
     insert.disabled = true;
     actions.append(cancel, insert);
-    panel.append(title, picker, importButton, sourceSelect, addButton, batchButton, listButton, batchPicker, citationCommandDialog, preNote, postNote, search, status, list, diagnostics, actions);
+    citationCommandDialog.addEventListener('submit', event => {
+      event.preventDefault();
+      const entry = library.entries.find(item => item.key === legacyKeySelect.value);
+      if (!entry) return;
+      selected = entry;
+      selectedEntries.clear();
+      selectedEntries.set(`${entry.file}:${entry.sourceIndex}`, entry);
+      insert.click();
+    });
+    panel.append(title, picker, importButton, sourceSelect, addButton, batchButton, listButton, batchPicker, citationCommandDialog, citationCommand, preNote, postNote, search, status, list, diagnostics, actions);
     backdrop.append(panel);
 
     let selected = null;
@@ -476,6 +489,11 @@ export function openCitationPanel({
       sourceSelect.disabled = library.sources.length === 0;
       addButton.disabled = library.sources.length === 0;
       batchButton.disabled = library.sources.length === 0;
+      const previousKey = legacyKeySelect.value;
+      legacyKeySelect.replaceChildren(...library.entries.map(entry => new Option(entry.key, entry.key)));
+      if (library.entries.some(entry => entry.key === previousKey)) legacyKeySelect.value = previousKey;
+      legacyKeySelect.disabled = library.entries.length === 0;
+      legacySubmit.disabled = legacyKeySelect.disabled;
       const found = library.search(search.value);
       const currentConflicts = library.conflicts;
       const citationDiagnostics = library.diagnostics(texSource);
