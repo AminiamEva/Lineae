@@ -6,7 +6,27 @@ import { exportDocument, resolvePackages } from '../apps/web/latex/packages.mjs'
 import { appendAlignmentPair, mathDocumentSource, mathEditorSource, numberedMathRows } from '../apps/web/latex/math-environments.mjs';
 import { serialize } from '../apps/web/src/editor/latex-codec.js';
 import { importBlocks } from '../apps/web/latex/blocks.mjs';
+import { listMarker, markerInput } from '../apps/web/latex/list-numbering.mjs';
 import { buildProjectZip, projectDependencies } from '../apps/web/src/editor/project-zip.mjs';
+
+test('Word-style numbering preserves the marker and starting number in TeX', () => {
+  for (const [input, style, start] of [
+    ['b. ','lower-alpha',2], ['（３） ','decimal-parens',3], ['IV) ','upper-roman-paren',4],
+    ['甲 ','cjk-heavenly-stem-bare',1], ['十二、 ','cjk-ideographic-comma',12], ['③ ','circled-decimal-bare',3],
+  ]) {
+    const attrs=listMarker(markerInput.exec(input));
+    assert.deepEqual(attrs,{start,labelStyle:style},input);
+    const node={type:'orderedList',attrs,content:[{type:'listItem',content:[{type:'paragraph',content:[{type:'text',text:'Item'}]}]}]};
+    const output=serialize(node);
+    assert.deepEqual(importBlocks(output)[0].attrs,{labelStyle:style,...(start>1 ? {start} : {})},output);
+    if (input.startsWith('甲')) {
+      const source=exportDocument({start:'\\documentclass{article}\n\\begin{document}\n',end:'\\end{document}',eol:'\n'},output,{chineseTypesetting:true});
+      assert.match(source,/\\usepackage\{ctex\}/);
+      assert.match(source,/\\DeclareRobustCommand\{\\lineaeStem\}/);
+    }
+  }
+  assert.equal(listMarker(markerInput.exec('word. ')),null);
+});
 
 test('exports theorem and proof environments and a path-safe project ZIP', async () => {
   const [theorem]=importBlocks('\\begin{theorem}[Example]\nStatement.\n\\end{theorem}');

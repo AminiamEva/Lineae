@@ -23,6 +23,7 @@ keybindings:
     save: [ctrl+s, meta+s]
     zoomIn: [ctrl+=, meta+=, ctrl+plus, meta+plus, ctrl+shift+plus, meta+shift+plus]
     zoomOut: [ctrl+-, meta+-]
+    zoomReset: ctrl+0
   editor:
     insertDisplayMath: ctrl+e c
     toggleBox: ctrl+e b
@@ -30,7 +31,7 @@ keybindings:
     find: ctrl+f
     leaveEnvironment: ctrl+j
     toggleContextMarker: ctrl+t
-    ignoreBrowserZoomReset: ctrl+0
+    ignoreBrowserZoomReset: null
     literalBacktick: alt+backtick
     undo: mod+z
     redo: [mod+y, mod+shift+z]

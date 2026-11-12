@@ -2,6 +2,7 @@ import { parseInline, textCommands } from './inline.mjs';
 import { parseTable } from './tables.mjs';
 import { parseImageBlock } from './images.mjs';
 import { theoremParts } from './theorem.mjs';
+import { listStyleForLabel } from './list-numbering.mjs';
 
 function inlineContent(text) {
   const parsed = parseInline(text);
@@ -134,8 +135,8 @@ function parseListBlock(text) {
   const option = open[2]?.match(/label\s*=\s*([^,]+)/)?.[1]?.trim();
   if (option) {
     if (env === 'enumerate') {
-      const styles = { '\\arabic*': 'decimal', '(\\arabic*)': 'decimal-parens', '\\arabic*)': 'decimal-paren', '\\alph*': 'lower-alpha', '\\Alph*': 'upper-alpha', '\\roman*': 'lower-roman', '\\Roman*': 'upper-roman', '\\chinese*': 'cjk-heavenly-stem' };
-      if (styles[option]) attrs.labelStyle = styles[option];
+      const style=listStyleForLabel(option);
+      if (style) attrs.labelStyle=style;
     } else if (env === 'itemize') attrs.marker = { '\\ensuremath{\\circ}':'◦', '\\rule{.45em}{.45em}':'▪' }[option] ?? option;
   }
   const start = open[2]?.match(/(?:^|,)\s*start\s*=\s*([1-9]\d*)\s*(?:,|$)/)?.[1];

@@ -2,6 +2,7 @@ import { Extension } from '@tiptap/core';
 import { Fragment, Slice } from '@tiptap/pm/model';
 import { Plugin, TextSelection } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
+import { listMarkerCSS } from '../../latex/list-numbering.mjs';
 
 function numberedHeadings(doc) {
   const counters = [0, 0, 0];
@@ -182,7 +183,7 @@ export const PaperBehavior = Extension.create({
         labelStyle: {
           default: null,
           parseHTML: element => element.dataset.labelStyle ?? null,
-          renderHTML: attributes => attributes.labelStyle ? { 'data-label-style': attributes.labelStyle, style: 'list-style-type:' + attributes.labelStyle } : {},
+          renderHTML: attributes => attributes.labelStyle ? { 'data-label-style': attributes.labelStyle, style: listMarkerCSS(attributes.labelStyle) } : {},
         },
       },
     }, {
@@ -241,6 +242,18 @@ export const PaperBehavior = Extension.create({
               return true;
             },
           },
+        },
+      }),
+      new Plugin({
+        appendTransaction(transactions, oldState, state) {
+          const { selection, storedMarks }=state;
+          if (storedMarks || !transactions.some(transaction=>transaction.selectionSet) ||
+            !(selection instanceof TextSelection) || !selection.empty) return null;
+          const { $from }=selection;
+          if ($from.textOffset || $from.nodeBefore?.type.name!=='math') return null;
+          // A mouse click or a document navigation can reach this boundary
+          // without using the formula's keyboard exit handler.
+          return state.tr.setStoredMarks($from.marks());
         },
       }),
       new Plugin({

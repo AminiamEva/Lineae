@@ -1,4 +1,5 @@
 import { importBlock, importBlocks } from '../../latex/blocks.mjs';
+import { listLabel } from '../../latex/list-numbering.mjs';
 import { textCommands } from '../../latex/inline.mjs';
 import { serializeImage } from '../../latex/images.mjs';
 import { alignmentLabel, displayEnvironment } from '../../latex/math-environments.mjs';
@@ -67,8 +68,7 @@ export function serialize(node) {
       return open + '\n' + content + '\\end{itemize}\n\n';
     }
     case 'orderedList': {
-      const labels = { decimal: '\\arabic*', 'decimal-parens':'(\\arabic*)', 'decimal-paren':'\\arabic*)', 'lower-alpha': '\\alph*', 'upper-alpha': '\\Alph*', 'lower-roman': '\\roman*', 'upper-roman': '\\Roman*', 'cjk-heavenly-stem': '\\chinese*' };
-      const label = labels[node.attrs.labelStyle];
+      const label = listLabel(node.attrs.labelStyle);
       const options = [label && 'label=' + label, node.attrs.start > 1 && 'start=' + node.attrs.start].filter(Boolean);
       const open = '\\begin{enumerate}' + (options.length ? '['+options.join(',')+']' : '');
       return open + '\n' + content + '\\end{enumerate}\n\n';

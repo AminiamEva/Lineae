@@ -1,5 +1,6 @@
 import { installContextMenu } from './editor/context-menu.js';
 import { textCommands } from '../latex/inline.mjs';
+import { markerInput, listMarker } from '../latex/list-numbering.mjs';
 import { closeHistory } from '@tiptap/pm/history';
 import { exitCode } from '@tiptap/pm/commands';
 import { mathFontStyles, applyMathFont } from './editor/math-formatting.js';
@@ -104,10 +105,14 @@ const ConfigurableStarterKit = StarterKit.extend({
       return extension.name === 'orderedList' ? configured.extend({
         addInputRules() {
           return [wrappingInputRule({
-            find: /^(?:([1-9]\d*)\.|\(([1-9]\d*)\)|([1-9]\d*)\)) $/,
+            find: text => {
+              const match=markerInput.exec(text);
+              const data=match && listMarker(match);
+              return data && {text:match[0],index:0,data};
+            },
             type: this.type,
-            getAttributes: match => ({ start: Number(match[1] ?? match[2] ?? match[3]), labelStyle: match[2] ? 'decimal-parens' : match[3] ? 'decimal-paren' : null }),
-            joinPredicate: (match, node) => !match[2] && !match[3] && !node.attrs.labelStyle && node.childCount + node.attrs.start === Number(match[1]),
+            getAttributes: match => match.data,
+            joinPredicate: ({data}, node) => node.attrs.labelStyle===data.labelStyle && node.childCount+node.attrs.start===data.start,
           })];
         },
       }) : configured;
@@ -1322,11 +1327,17 @@ function zoomByKeyboard(amount, {field}) {
   setZoom(Number(zoom.value)+amount);
   saveZoom();
 }
+function resetPageZoom({field}) {
+  if (field) return false;
+  setZoom(100);
+  saveZoom();
+}
 const shortcutActions = {
   global: {
     save: (_context,event) => { if (!event.repeat) saveDocument(); },
     zoomIn: context => zoomByKeyboard(10,context),
     zoomOut: context => zoomByKeyboard(-10,context),
+    zoomReset: resetPageZoom,
   },
   editor: {
     insertDisplayMath: () => insertMath(true),
@@ -1347,7 +1358,7 @@ const shortcutActions = {
       }
       return false;
     },
-    ignoreBrowserZoomReset: () => true,
+    ignoreBrowserZoomReset: resetPageZoom,
     literalBacktick: () => editor.commands.insertContent('`'),
     undo: () => editor.commands.undo(),
     redo: () => editor.commands.redo(),

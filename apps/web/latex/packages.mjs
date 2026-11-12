@@ -9,7 +9,7 @@ const dependencies = [
   { name: 'xcolor', pattern: /\\(?:textcolor|colorbox|definecolor)\b/ },
   { name: 'booktabs', pattern: /\\(?:toprule|midrule|bottomrule|cmidrule)\b/ },
   { name: 'enumitem', pattern: /\\begin\{(?:itemize|enumerate)\}\[/ },
-  { name: 'zhnumber', pattern: /\\chinese\b/ },
+  { name: 'zhnumber', pattern: /\\(?:chinese|zhnum)\b/ },
   { name: 'graphicx', pattern: /\\includegraphics\b/ },
   { name: 'amsthm', pattern: /\\begin\{proof\}/ },
   { name: 'listings', pattern: /\\begin\{lstlisting\}/ },
@@ -45,7 +45,7 @@ export function resolvePackages(preamble, body, { chineseTypesetting=false } = {
   const cleanPreamble=withoutComments(preamble);
   const chineseClass=/\\documentclass\s*(?:\[[^\]]*\]\s*)?\{ctex(?:art|rep|book|beamer)\}/.test(cleanPreamble);
   if (chineseTypesetting && !chineseClass && !existing.has('ctex') && !existing.has('xeCJK') &&
-      /\p{Script=Han}/u.test(cleanPreamble + source)) required.push({name:'ctex'});
+      /\p{Script=Han}|\\(?:lineaeStem|zhnum)\b/u.test(cleanPreamble + source)) required.push({name:'ctex'});
   return required;
 }
 
@@ -61,6 +61,10 @@ export function exportDocument({ start, end, eol }, body, options) {
   for(const [kind,title] of Object.entries(theoremNames)) {
     if(kind==='proof' || !body.includes('\\begin{'+kind+'}') || new RegExp('\\\\newtheorem\\*?\\s*\\{'+kind+'\\}').test(withoutComments(start)))continue;
     const declaration='\\ifcsname '+kind+'\\endcsname\\else\\newtheorem{'+kind+'}{'+title+'}\\fi';
+    preamble=preamble.replace(/^\\begin\{document\}/m,()=>declaration+eol+'\\begin{document}');
+  }
+  if (/\\lineaeStem\b/.test(withoutComments(body)) && !/\\lineaeStem\b/.test(withoutComments(start))) {
+    const declaration='\\DeclareRobustCommand{\\lineaeStem}[1]{\\ifcase#1\\or 甲\\or 乙\\or 丙\\or 丁\\or 戊\\or 己\\or 庚\\or 辛\\or 壬\\or 癸\\else#1\\fi}';
     preamble=preamble.replace(/^\\begin\{document\}/m,()=>declaration+eol+'\\begin{document}');
   }
   const metadata = withoutComments(start);

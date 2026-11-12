@@ -246,27 +246,37 @@ function addDisplayLine(field) {
   field.dispatchEvent(new Event('input',{bubbles:true}));
 }
 
-function clearEmptyScripts(field) {
+function clearEmptyScripts(field, keepActive = false) {
   const model=field._mathfield?.model;
   if (!model) return;
+  const active=new Map();
+  if (keepActive) {
+    for (let atom=model.at(field.position);atom?.parent;atom=atom.parent) {
+      active.set(atom.parent,atom.parentBranch);
+    }
+  }
   const empty=[];
   for(let i=0;i<=field.lastOffset;i++) {
     const atom=model.at(i);
-    if(atom?.type==='first' && ['subscript','superscript'].includes(atom.parentBranch) &&
-      atom.parent.hasEmptyBranch(atom.parentBranch)) empty.push([atom.parent,atom.parentBranch]);
+    if(atom?.type!=='first' || !['subscript','superscript'].includes(atom.parentBranch) ||
+      active.get(atom.parent)===atom.parentBranch) continue;
+    const children=atom.parent.branch(atom.parentBranch).slice(1);
+    if (children.every(child=>child.type==='placeholder')) empty.push([atom.parent,atom.parentBranch]);
   }
   if(!empty.length)return;
   model.deferNotifications({content:true,selection:true,type:'deleteContentBackward'},()=>{
     const caret=model.at(field.position);
     const fallback=caret?.parent;
+    const previous=caret?.leftSibling ?? fallback?.leftSibling;
     for (const [owner,branch] of empty) owner.removeBranch(branch);
     for (const owner of new Set(empty.map(([owner])=>owner))) {
       if (owner.type==='subsup' && owner.hasEmptyBranch('subscript') &&
           owner.hasEmptyBranch('superscript') && owner.parent) owner.parent.removeChild(owner);
     }
     const offset=model.offsetOf(caret);
-    model.position=offset>=0 ? offset : Math.max(0,model.offsetOf(fallback));
+    model.position=offset>=0 ? offset : Math.max(0,model.offsetOf(fallback),model.offsetOf(previous));
   });
+  field.dispatchEvent(new Event('input',{bubbles:true}));
 }
 
 export const MathNode = Node.create({
@@ -342,14 +352,15 @@ export const MathNode = Node.create({
       if (node.isBlock) dom.append(numbers);
       renderNumbers();
 
-      // Two consecutive ambiguous keys replace the structural action with a literal.
-      // Preserve the selection as well as the source, including inside nested matrices.
+      // A second caret keeps the same one-character superscript. Other
+      // ambiguous keys can still use their doubled spelling as a literal.
       let pendingKey = null;
       let pendingDollar = false;
       let oneScript = null;
       let exitedStyleAt = null;
       let replacedOperator = null;
       let pointerFocus = 0;
+      let scriptCleanupQueued = false;
       const finish = backward => {
         pointerFocus++;
         commitUnclosedFences(field);
@@ -395,7 +406,18 @@ export const MathNode = Node.create({
           if (field.isConnected && focusRequest===pointerFocus) field.focus();
         });
       },true);
-      field.addEventListener('blur', () => { pendingKey = null; pendingDollar=false; oneScript=null; replacedOperator=null; });
+      field.addEventListener('blur', () => {
+        pendingKey=null; pendingDollar=false; oneScript=null; replacedOperator=null;
+        queueMicrotask(()=>{if(field.isConnected&&!field.hasFocus())clearEmptyScripts(field);});
+      });
+      field.addEventListener('selection-change',()=>{
+        if (scriptCleanupQueued) return;
+        scriptCleanupQueued=true;
+        queueMicrotask(()=>{
+          scriptCleanupQueued=false;
+          if(field.isConnected && caretCollapsed(field))clearEmptyScripts(field,field.hasFocus());
+        });
+      });
       field.addEventListener('lineae-commit-fences', () => commitUnclosedFences(field));
 
       field.addEventListener('input', () => {
@@ -418,6 +440,17 @@ export const MathNode = Node.create({
         if (event.isComposing || event.keyCode===229 || event.getModifierState?.('AltGraph')) return;
         const plain=!event.ctrlKey&&!event.metaKey&&!event.altKey;
         const consume=()=>{event.preventDefault();event.stopImmediatePropagation();};
+        if (oneScript && plain && /^[\p{L}\p{N}]$/u.test(event.key)) {
+          const atom=field._mathfield?.model?.at(field.position);
+          if (atom?.parent===oneScript.parent && atom.parentBranch===oneScript.branch) {
+            consume();
+            oneScript=null; pendingKey=null;
+            field.executeCommand(['typedText',event.key]);
+            field.executeCommand('moveAfterParent');
+            field.dispatchEvent(new Event('input',{bubbles:true}));
+            return;
+          }
+        }
         if(event.key!=='ArrowRight') exitedStyleAt=null;
         if (!['Shift','Control','Alt','Meta','^','_'].includes(event.key) &&
           (!plain || ['ArrowLeft','ArrowRight','ArrowUp','ArrowDown','Escape','Backspace','Enter','Tab'].includes(event.key))) oneScript=null;
@@ -485,6 +518,7 @@ export const MathNode = Node.create({
           if (event.repeat) return;
           const [command, literal] = ambiguous[event.key];
           if (pendingKey?.key === event.key) {
+            if (event.key==='^' && oneScript) return;
             const previous = pendingKey;
             pendingKey = null;
             oneScript = null;

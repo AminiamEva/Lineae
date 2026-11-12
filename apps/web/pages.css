@@ -37,8 +37,10 @@ main { padding:125px 24px 60px; overflow:auto; }
 #editor { min-height:calc(var(--page-height,297mm) - var(--page-margin-top,22mm) - var(--page-margin-bottom,22mm)); outline:none; }
 .ProseMirror { min-height:250mm; outline:none; overflow-wrap:anywhere; white-space:pre-wrap; }
 .ProseMirror p { margin:0; }
-@counter-style decimal-parens { system:extends decimal; prefix:"("; suffix:") "; }
-@counter-style decimal-paren { system:extends decimal; suffix:") "; }
+@counter-style circled-decimal { system:fixed; symbols:"①" "②" "③" "④" "⑤" "⑥" "⑦" "⑧" "⑨" "⑩" "⑪" "⑫" "⑬" "⑭" "⑮" "⑯" "⑰" "⑱" "⑲" "⑳"; fallback:decimal; }
+.ProseMirror ol[data-label-style] > li::marker {
+  content:var(--list-prefix,"") counter(list-item,var(--list-counter,decimal)) var(--list-suffix,". ");
+}
 .ProseMirror [data-theorem] { margin:.65em 0; }
 .ProseMirror [data-theorem]::before { content:attr(data-theorem-heading); font-weight:700; }
 .ProseMirror [data-theorem="proof"]::after { content:'□'; display:block; text-align:right; }
