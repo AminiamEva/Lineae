@@ -25,7 +25,7 @@ import { installSpaceOverlay } from './editor/space-overlay.js';
 import { wrapMathWithDelimiters } from '../latex/delimiters.mjs';
 import { readDelimiterPair } from './editor/delimiter-input.js';
 import { serialize, importBlocks } from './editor/latex-codec.js';
-import { Editor, Node, Extension, Mark, mergeAttributes } from '@tiptap/core';
+import { Editor, Node, Extension, Mark, mergeAttributes, wrappingInputRule } from '@tiptap/core';
 import StarterKit from '@tiptap/starter-kit';
 import CodeBlock from '@tiptap/extension-code-block';
 import Table from '@tiptap/extension-table';
@@ -98,7 +98,20 @@ const configurableExtensions = new Set([
 ]);
 const ConfigurableStarterKit = StarterKit.extend({
   addExtensions() {
-    return this.parent().map(extension => configurableExtensions.has(extension.name) ? withoutModShortcuts(extension) : extension);
+    return this.parent().map(extension => {
+      if (!configurableExtensions.has(extension.name)) return extension;
+      const configured = withoutModShortcuts(extension);
+      return extension.name === 'orderedList' ? configured.extend({
+        addInputRules() {
+          return [wrappingInputRule({
+            find: /^(?:([1-9]\d*)\.|\(([1-9]\d*)\)|([1-9]\d*)\)) $/,
+            type: this.type,
+            getAttributes: match => ({ start: Number(match[1] ?? match[2] ?? match[3]), labelStyle: match[2] ? 'decimal-parens' : match[3] ? 'decimal-paren' : null }),
+            joinPredicate: (match, node) => !match[2] && !match[3] && !node.attrs.labelStyle && node.childCount + node.attrs.start === Number(match[1]),
+          })];
+        },
+      }) : configured;
+    });
   },
 });
 const LanguageCodeBlock = withoutModShortcuts(CodeBlock).extend({
@@ -255,6 +268,12 @@ function replaceTypedLigatures(view, from, to, text, defaultTransaction) {
   view.dispatch(closeHistory(view.state.tr.insertText(replacement + text, from - word.length, to)));
   return true;
 }
+function indentListItem(editor) {
+  const { $from }=editor.state.selection;
+  let depth=0;
+  for(let level=1;level<=$from.depth;level++) if($from.node(level).type.name==='listItem') depth++;
+  return depth>0 && depth<10 && editor.chain().focus().sinkListItem('listItem').run();
+}
 const Shortcuts = Extension.create({
   name:'documentShortcuts',
   addProseMirrorPlugins:()=>[new Plugin({props:{
@@ -335,7 +354,15 @@ const Shortcuts = Extension.create({
       ArrowLeft:()=>enterFormula(false),
       Backspace:()=>{
         const { selection, doc }=this.editor.state;
+        if (selection instanceof NodeSelection && selection.node.type.name === 'mathBlock') {
+          const previous=Selection.findFrom(doc.resolve(selection.from),-1,true);
+          const tr=this.editor.state.tr.deleteSelection();
+          if (previous) tr.setSelection(previous.map(tr.doc,tr.mapping));
+          this.editor.view.dispatch(tr.scrollIntoView());
+          return true;
+        }
         if(!selection.empty)return false;
+        if(this.editor.commands.undoInputRule())return true;
         const $from=selection.$from;
         const node=$from.nodeBefore;
         if(['math','mathBlock'].includes(node?.type.name)) {
@@ -397,25 +424,19 @@ const Shortcuts = Extension.create({
       },
       Tab:()=>{
         if(this.editor.isActive('table'))return false;
-        if (this.editor.isActive('listItem')) {
-          const { $from }=this.editor.state.selection;
-          let depth=0;
-          for (let level=1; level<=$from.depth; level++) {
-            if ($from.node(level).type.name==='listItem') depth++;
-          }
-          return depth>=10 || this.editor.commands.sinkListItem('listItem');
-        }
         if (this.editor.isActive('codeBlock')) {
           return this.editor.commands.insertContent(' '.repeat(indentWidthAt(this.editor.state.selection.$from)));
         }
-        return this.editor.commands.insertContent('    ');
+        this.editor.view.dispatch(this.editor.state.tr.insertText('    '));
+        return true;
       },
       'Shift-Tab':()=>{
-        if (this.editor.isActive('listItem')) {
-          this.editor.commands.liftListItem('listItem');
-          return true;
-        }
-        outdentCurrentLine(this.editor);
+        if(this.editor.isActive('table'))return false;
+        const { $from, empty }=this.editor.state.selection;
+        if (empty && !$from.parent.type.spec.code) {
+          const spaces=/ {1,4}$/.exec($from.parent.textBetween(0,$from.parentOffset,'\0','\0'));
+          if (spaces) this.editor.view.dispatch(this.editor.state.tr.delete($from.pos-spaces[0].length,$from.pos));
+        } else outdentCurrentLine(this.editor);
         return true;
       },
     };
@@ -1068,7 +1089,11 @@ function renderCommands() {
     [name, () => insertFormulaCommand(latex)]));
   actions.left = () => chooseMathDelimiters(completionField);
   actions.right = () => chooseMathDelimiters(completionField, true);
-  if (completionField) actions.label = editFormulaLabel;
+  if (completionField) {
+    actions.label = editFormulaLabel;
+    actions.textasciicircum = () => insertLiveMath(completionField,'\\text{ˆ}');
+    if (completionField.closest('.math-display')) actions.newline = () => completionField.dispatchEvent(new Event('lineae-math-newline'));
+  }
   for(const name of Object.keys(mathFontStyles)) actions[name]=()=>{
     editor.view.dispatch(closeHistory(editor.state.tr));
     if(completionField?.isConnected) applyMathFont(completionField,name);
@@ -1081,11 +1106,14 @@ function renderCommands() {
   };
   if (!completionField) {
     Object.assign(actions, structureCommands);
+    actions.togglemarker = () => shortcutActions.editor.toggleContextMarker();
+    actions.indentitem = () => indentListItem(editor);
+    actions.outdentitem = () => editor.chain().focus().liftListItem('listItem').run();
     for (const name of Object.keys(textCommands)) actions[name] = () => insertTextCommand(name);
   }
   const exactQuery = filter.value.replace(/^\\/, '').replace(/^begin\{([^{}]*)\}?$/, '$1');
   const query = exactQuery.toLowerCase();
-  for (const [name, action] of Object.entries(actions).filter(([name]) => name.toLowerCase().startsWith(query)).sort(([a],[b]) => Number(b===exactQuery)-Number(a===exactQuery) || Number(b.toLowerCase()===query)-Number(a.toLowerCase()===query))) {
+  for (const [name, action] of Object.entries(actions).filter(([name]) => name.toLowerCase().startsWith(query)).sort(([a],[b]) => Number(b===exactQuery)-Number(a===exactQuery) || Number(b.startsWith(exactQuery))-Number(a.startsWith(exactQuery)) || Number(b.toLowerCase()===query)-Number(a.toLowerCase()===query))) {
     const control = document.createElement('button');
     control.type = 'button';
     control.id = 'complete-' + name;
@@ -1152,6 +1180,7 @@ function runMathShortcut(command, field, event) {
     case 'superscript': field.executeCommand('moveToSuperscript'); return;
     case 'subscript': field.executeCommand('moveToSubscript'); return;
     case 'leaveEnvironment': field.dispatchEvent(new Event('lineae-leave-math-environment')); return;
+    case 'leaveFormula': field.dispatchEvent(new Event('lineae-leave-formula')); return;
     case 'addRow': fillMatrixAxis(field,'row'); return;
     case 'addColumn': fillMatrixAxis(field,'column'); return;
     case 'literalFence': armLiteralFence(field); return;
@@ -1305,6 +1334,19 @@ const shortcutActions = {
     editMath: editMathAtSelection,
     find: documentFind.show,
     leaveEnvironment: leaveTextEnvironment,
+    toggleContextMarker: () => {
+      const { $from }=editor.state.selection;
+      for (let depth=$from.depth;depth>0;depth--) {
+        const node=$from.node(depth);
+        const key={orderedList:'labelStyle',bulletList:'marker',heading:'numbered'}[node.type.name];
+        if (!key) continue;
+        const choices={orderedList:[null,'decimal-parens','lower-alpha','lower-roman'],bulletList:[null,'◦','▪'],heading:[true,false]}[node.type.name];
+        const value=choices[(choices.indexOf(node.attrs[key])+1)%choices.length];
+        editor.view.dispatch(editor.state.tr.setNodeMarkup($from.before(depth),undefined,{...node.attrs,[key]:value}));
+        return true;
+      }
+      return false;
+    },
     ignoreBrowserZoomReset: () => true,
     literalBacktick: () => editor.commands.insertContent('`'),
     undo: () => editor.commands.undo(),
@@ -1338,6 +1380,7 @@ installKeybindings(window, {
     if (field && paper.contains(field)) return { element:field, field, scopes:['math','global'] };
     if (documentFind.panel.contains(event.target)) return { element:documentFind.panel, scopes:['editor'], only:'find' };
     if (!editor.view.hasFocus()) return { element:document.activeElement, scopes:['global'] };
+    if (editor.view.composing) return { element:editor.view.dom, scopes:[] };
     editor.view.domObserver.flush();
     const scopes = ['editor','global'];
     if (editor.isActive('paragraph')) scopes.unshift('paragraph');
@@ -1367,7 +1410,7 @@ function updateEnvironment() {
   environment.textContent=[labels[name],...(field ? mathEnvironment(field) : [])].join(' › ');
   environment.dataset.environment=name;
 }
-footer.append(count,environment,zoom,percent,themeButton,sourceButton);document.body.append(footer);scale();
+footer.append(count,document.querySelector('#status'),environment,zoom,percent,themeButton,sourceButton);document.body.append(footer);scale();
 editor.on('transaction',updateEnvironment);
 document.addEventListener('focusin',updateEnvironment);paper.addEventListener('input',updateEnvironment);
 paper.addEventListener('selection-change',updateEnvironment,true);
@@ -1483,6 +1526,9 @@ function setListStyle(style) {
   else if(editor.isActive('bulletList'))editor.chain().focus().updateAttributes('bulletList',{marker:style}).run();
 }
 groupButton(formatGroup,'1.',()=>setListStyle('decimal'));
+groupButton(formatGroup,t('切换标记','Cycle marker'),()=>{ editor.view.focus(); shortcutActions.editor.toggleContextMarker(); }).dataset.shortcut='editor.toggleContextMarker';
+groupButton(formatGroup,t('列表降一级','Indent list item'),()=>indentListItem(editor));
+groupButton(formatGroup,t('列表升一级','Outdent list item'),()=>editor.chain().focus().liftListItem('listItem').run());
 groupButton(formatGroup,'a.',()=>setListStyle('lower-alpha'));
 groupButton(formatGroup,'A.',()=>setListStyle('upper-alpha'));
 groupButton(formatGroup,'I.',()=>setListStyle('upper-roman'));
@@ -1586,6 +1632,8 @@ async function editFormulaLabel() {
 }
 groupButton(mathGroup,'equation label',editFormulaLabel);
 groupButton(mathGroup,'frac',()=>insertMath(false,'\\frac{\\placeholder{}}{\\placeholder{}}'));
+groupButton(mathGroup,t('公式换行','Math line break'),()=>activeMath()?.dispatchEvent(new Event('lineae-math-newline')));
+groupButton(mathGroup,t('退出公式','Exit formula'),()=>activeMath()?.dispatchEvent(new Event('lineae-leave-formula'))).dataset.shortcut='math.leaveFormula';
 groupButton(mathGroup,'sqrt',()=>insertMath(false,'\\sqrt{\\placeholder{}}'));
 groupButton(mathGroup,'sum',()=>{
   const field=activeMath();

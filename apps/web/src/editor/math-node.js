@@ -93,6 +93,11 @@ const mathFieldStyle = `
   .ML__content { overflow: visible !important; scrollbar-width: none; }
   .ML__content::-webkit-scrollbar { display: none; }
   [data-lineae-integrand] { background:light-dark(#e9f4ed,#304a3b); border-radius:.15em; }
+  :host([data-empty-matrix-cell]) .ML__caret::after {
+    content:""; position:absolute; inset:-.05em auto -.05em -.05em;
+    width:.66em; border:1px solid currentColor; border-radius:.16em;
+    opacity:.45; pointer-events:none;
+  }
   .delimiter-ghost { display:inline-flex; gap:.1em; pointer-events:none; vertical-align:baseline; }
   .delimiter-ghost-slot { display:inline-flex; justify-content:center; align-items:center; width:.65em;
     height:1em; border-radius:.15em; line-height:1; color:inherit; background:light-dark(#e8effa,#37445c); }
@@ -205,8 +210,58 @@ function leaveFormula(editor, position, node, backward) {
   }
   transaction.setSelection(TextSelection.near(transaction.doc.resolve(target), backward ? -1 : 1));
   editor.view.dispatch(transaction);
-  const domPosition=editor.view.domAtPos(editor.state.selection.from, backward ? -1 : 1);
-  window.getSelection()?.collapse(domPosition.node,domPosition.offset);
+}
+
+const operatorPairs = { '!=':'\\ne', '>=':'\\ge', '<=':'\\le', '->':'\\to' };
+const caretCollapsed = field => field.selection.ranges.every(([start,end]) => start === end);
+
+function addDisplayLine(field) {
+  const model = field._mathfield?.model;
+  if (!model) return;
+  for (let atom = model.at(field.position); atom; atom = atom.parent) {
+    if (atom.type !== 'array') continue;
+    if (/^(?:align(?:at|ed)?|flalign|gather(?:ed)?|multline|eqnarray)\*?$/.test(atom.environmentName ?? '')) {
+      field.executeCommand('addRowAfter');
+      return;
+    }
+  }
+  const value=field.value;
+  const caret=model.at(field.position);
+  const split=caret?.parent?.type==='root';
+  const before=split ? field.getValue(0,field.position) : value;
+  const after=split ? field.getValue(field.position,field.lastOffset) : '';
+  field.value='\\begin{gathered}'+(before || '\\placeholder{}')+'\\\\'+(after || '\\placeholder{}')+'\\end{gathered}';
+  const updated=field._mathfield?.model;
+  for(let i=0;i<=field.lastOffset;i++) {
+    const atom=updated?.at(i);
+    if(atom?.type==='first' && Array.isArray(atom.parentBranch) && atom.parentBranch[0]===1) {
+      field.position=i; break;
+    }
+  }
+  field.dispatchEvent(new Event('input',{bubbles:true}));
+}
+
+function clearEmptyScripts(field) {
+  const model=field._mathfield?.model;
+  if (!model) return;
+  const empty=[];
+  for(let i=0;i<=field.lastOffset;i++) {
+    const atom=model.at(i);
+    if(atom?.type==='first' && ['subscript','superscript'].includes(atom.parentBranch) &&
+      atom.parent.hasEmptyBranch(atom.parentBranch)) empty.push([atom.parent,atom.parentBranch]);
+  }
+  if(!empty.length)return;
+  model.deferNotifications({content:true,selection:true,type:'deleteContentBackward'},()=>{
+    const caret=model.at(field.position);
+    const fallback=caret?.parent;
+    for (const [owner,branch] of empty) owner.removeBranch(branch);
+    for (const owner of new Set(empty.map(([owner])=>owner))) {
+      if (owner.type==='subsup' && owner.hasEmptyBranch('subscript') &&
+          owner.hasEmptyBranch('superscript') && owner.parent) owner.parent.removeChild(owner);
+    }
+    const offset=model.offsetOf(caret);
+    model.position=offset>=0 ? offset : Math.max(0,model.offsetOf(fallback));
+  });
 }
 
 export const MathNode = Node.create({
@@ -285,18 +340,54 @@ export const MathNode = Node.create({
       // Two consecutive ambiguous keys replace the structural action with a literal.
       // Preserve the selection as well as the source, including inside nested matrices.
       let pendingKey = null;
+      let pendingDollar = false;
+      let oneScript = null;
+      let exitedStyleAt = null;
+      let replacedOperator = null;
+      const finish = backward => {
+        commitUnclosedFences(field);
+        clearEmptyScripts(field);
+        leaveFormula(editor,getPos(),node,backward);
+      };
       const ambiguous = {
         '_': ['moveToSubscript', '\\_'],
-        '^': ['moveToSuperscript', '\\textasciicircum{}'],
+        '^': ['moveToSuperscript', '\\text{ˆ}'],
         '/': [['insert', '\\frac{#@}{#?}'], '/'],
       };
       field.addEventListener('pointerdown', event => {
         pendingKey = null;
+        pendingDollar = false;
+        replacedOperator = null;
+        oneScript = null;
+        exitedStyleAt = null;
         // A freshly moved/undone node can still have a queued outer-editor focus.
         // Finish the explicit formula click after that frame without moving its caret.
-        if (event.button === 0) requestAnimationFrame(() => { if (field.isConnected) field.focus(); });
-      });
-      field.addEventListener('blur', () => { pendingKey = null; });
+        if (event.button !== 0 || event.shiftKey) return;
+        const model=field._mathfield?.model;
+        const target=event.composedPath().find(element=>element?.dataset?.atomId);
+        if (model && target) {
+          let atom;
+          for(let i=0;i<=field.lastOffset;i++) {
+            const candidate=model.at(i);
+            if(String(candidate?.id)===target.dataset.atomId) { atom=candidate; break; }
+          }
+          for (;atom;atom=atom.parent) {
+            if(atom.type!=='genfrac') continue;
+            const box=field.shadowRoot?.querySelector('[data-atom-id="'+atom.id+'"]')?.getBoundingClientRect();
+            if(box && Math.abs(event.clientX-box.right)<=Math.max(3,box.height*.1) &&
+                event.clientY>=box.top && event.clientY<=box.bottom) {
+              event.preventDefault(); event.stopImmediatePropagation();
+              field.focus();
+              field.position=model.offsetOf(atom);
+              return;
+            }
+          }
+        }
+        requestAnimationFrame(() => {
+          if (field.isConnected && (document.activeElement===field || document.activeElement===document.body)) field.focus();
+        });
+      },true);
+      field.addEventListener('blur', () => { pendingKey = null; pendingDollar=false; oneScript=null; replacedOperator=null; });
       field.addEventListener('lineae-commit-fences', () => commitUnclosedFences(field));
 
       field.addEventListener('input', () => {
@@ -308,12 +399,50 @@ export const MathNode = Node.create({
         }
       });
       let leavingStructure = false;
+      field.addEventListener('lineae-leave-formula',()=>finish(false));
+      field.addEventListener('lineae-math-newline',()=>{if(node.isBlock){field.focus();addDisplayLine(field);}});
       field.addEventListener('lineae-leave-math-environment', () => {
         leavingStructure = true;
-        try { leaveEnvironment(field); }
+        try { if (leaveEnvironment(field)) clearEmptyScripts(field); }
         finally { leavingStructure = false; }
       });
       field.addEventListener('keydown', event => {
+        if (event.isComposing || event.keyCode===229 || event.getModifierState?.('AltGraph')) return;
+        const plain=!event.ctrlKey&&!event.metaKey&&!event.altKey;
+        const consume=()=>{event.preventDefault();event.stopImmediatePropagation();};
+        if(event.key!=='ArrowRight') exitedStyleAt=null;
+        if (!['Shift','Control','Alt','Meta','^','_'].includes(event.key) &&
+          (!plain || ['ArrowLeft','ArrowRight','ArrowUp','ArrowDown','Escape','Backspace','Enter','Tab'].includes(event.key))) oneScript=null;
+        if (!['Shift','Control','Alt','Meta','$'].includes(event.key)) pendingDollar=false;
+        if (replacedOperator && !['Shift','Control','Alt','Meta'].includes(event.key)) {
+          const previous=replacedOperator;
+          replacedOperator=null;
+          if (plain && event.key==='Backspace' && field.value===previous.after && field.position===previous.position && caretCollapsed(field)) {
+            consume();
+            field.value=previous.before;
+            field.selection=previous.selection;
+            field.dispatchEvent(new Event('input',{bubbles:true}));
+            return;
+          }
+        }
+        if (plain && ['=','>'].includes(event.key) && caretCollapsed(field) && field.position>0) {
+          const end=field.position;
+          const prefix=field.getValue(end-1,end);
+          const replacement=operatorPairs[prefix+event.key];
+          if(replacement) {
+            consume();
+            field.selection={ranges:[[end-1,end]]};
+            field.executeCommand(['insert',prefix+event.key]);
+            const before=field.value, selection=structuredClone(field.selection);
+            field.selection={ranges:[[end-1,field.position]]};
+            field.executeCommand(['insert',replacement]);
+            replacedOperator={before,selection,after:field.value,position:field.position};
+            return;
+          }
+        }
+        if (plain && node.isBlock && event.key==='Enter') {
+          consume(); addDisplayLine(field); return;
+        }
         if (event.key==='Backspace' && !event.ctrlKey && !event.metaKey && !event.altKey && deleteIntegralAtEmptyLimit(field)) {
           event.preventDefault();
           event.stopImmediatePropagation();
@@ -323,10 +452,12 @@ export const MathNode = Node.create({
             !event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey &&
             field.selection.ranges.every(([start,end])=>start===end)) {
           const backward=event.key==='ArrowLeft';
+          if (!backward && exitedStyleAt!==field.position && field.position>0 && /^\\(?:math(?:bf|rm|it|cal|bb|sf|tt|frak|scr)|boldsymbol|operatorname)\*?\{/.test(field.getValue(field.position-1,field.position))) {
+            consume(); leaveEnvironment(field); exitedStyleAt=field.position; return;
+          }
           if (field.position===(backward?0:field.lastOffset)) {
             event.preventDefault(); event.stopImmediatePropagation();
-            commitUnclosedFences(field);
-            leaveFormula(editor,getPos(),node,backward);
+            finish(backward);
             return;
           }
         }
@@ -347,12 +478,17 @@ export const MathNode = Node.create({
           if (pendingKey?.key === event.key) {
             const previous = pendingKey;
             pendingKey = null;
+            oneScript = null;
             field.value = previous.value;
             field.selection = previous.selection;
             field.executeCommand(['insert', literal]);
           } else {
             pendingKey = { key: event.key, value: field.value, selection: structuredClone(field.selection) };
             field.executeCommand(command);
+            if (event.key==='^' || event.key==='_') {
+              const atom=field._mathfield?.model?.at(field.position);
+              oneScript=atom && { parent:atom.parent, branch:atom.parentBranch };
+            }
           }
           return;
         }
@@ -363,29 +499,39 @@ export const MathNode = Node.create({
           dom.dispatchEvent(new CustomEvent('lineae-math-command', { bubbles: true, detail: { field } }));
           return;
         }
-        if (event.key === '$') {
+        if (plain && event.key === '$') {
           event.preventDefault();
           event.stopPropagation();
           if (!field.value && !node.isBlock) {
             const position = getPos();
             insertFormula(editor, true, '', { from: position, to: position + node.nodeSize });
-          } else {
-            commitUnclosedFences(field);
-            leaveFormula(editor, getPos(), node, false);
-          }
+          } else if (!node.isBlock || pendingDollar) finish(false);
+          else pendingDollar=true;
           return;
         }
         if (event.key === 'Backspace' && !field.value) {
           event.preventDefault();
           event.stopPropagation();
           const position = getPos();
-          editor.chain().focus().deleteRange({ from: position, to: position + node.nodeSize }).run();
+          const previous=node.isBlock ? TextSelection.findFrom(editor.state.doc.resolve(position),-1,true) : null;
+          const tr=editor.state.tr.delete(position,position+node.nodeSize);
+          tr.setSelection(previous ? previous.map(tr.doc,tr.mapping) : TextSelection.near(tr.doc.resolve(position),-1));
+          editor.view.focus();
+          editor.view.dispatch(tr.scrollIntoView());
         }
       }, true);
+      field.addEventListener('input', event => {
+        if (!oneScript || event.isComposing || !['insertText','insertCompositionText'].includes(event.inputType)) return;
+        if (/^[-+−]$/.test(event.data ?? '')) return;
+        const script=oneScript;
+        oneScript=null;
+        const atom=field._mathfield?.model?.at(field.position);
+        if(atom?.parent===script.parent && atom.parentBranch===script.branch) field.executeCommand('moveAfterParent');
+      });
       field.addEventListener('move-out', event => {
-        if (leavingStructure) { event.preventDefault(); return; }
-        commitUnclosedFences(field);
-        leaveFormula(editor, getPos(), node, event.detail.direction === 'backward');
+        event.preventDefault();
+        if (leavingStructure) return;
+        if (['forward','backward'].includes(event.detail.direction)) finish(event.detail.direction === 'backward');
       });
       field.addEventListener('mount', () => {
         field.mathVirtualKeyboardPolicy = 'manual';
@@ -402,6 +548,9 @@ export const MathNode = Node.create({
         const markIntegrands=()=>{
           const model=field._mathfield?.model;
           if (!model) return;
+          const caret=model.at(field.position);
+          field.toggleAttribute('data-empty-matrix-cell', Boolean(caret?.type==='first' &&
+            Array.isArray(caret.parentBranch) && caret.parent.branch(caret.parentBranch)?.length===1));
           const ids=new Set();
           for (let offset=0;offset<=field.lastOffset;offset++) {
             const atom=model.at(offset);

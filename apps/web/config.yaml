@@ -29,6 +29,7 @@ keybindings:
     editMath: ctrl+e e
     find: ctrl+f
     leaveEnvironment: ctrl+j
+    toggleContextMarker: ctrl+t
     ignoreBrowserZoomReset: ctrl+0
     literalBacktick: alt+backtick
     undo: mod+z
@@ -55,6 +56,7 @@ keybindings:
     superscript: ctrl+6
     subscript: ctrl+-
     leaveEnvironment: [ctrl+0, ctrl+j]
+    leaveFormula: ctrl+shift+j
     addRow: ctrl+e r
     addColumn: ctrl+e c
     literalFence: ctrl+e t

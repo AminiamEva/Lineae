@@ -134,10 +134,12 @@ function parseListBlock(text) {
   const option = open[2]?.match(/label\s*=\s*([^,]+)/)?.[1]?.trim();
   if (option) {
     if (env === 'enumerate') {
-      const styles = { '\\arabic*': 'decimal', '\\alph*': 'lower-alpha', '\\Alph*': 'upper-alpha', '\\roman*': 'lower-roman', '\\Roman*': 'upper-roman', '\\chinese*': 'cjk-heavenly-stem' };
+      const styles = { '\\arabic*': 'decimal', '(\\arabic*)': 'decimal-parens', '\\arabic*)': 'decimal-paren', '\\alph*': 'lower-alpha', '\\Alph*': 'upper-alpha', '\\roman*': 'lower-roman', '\\Roman*': 'upper-roman', '\\chinese*': 'cjk-heavenly-stem' };
       if (styles[option]) attrs.labelStyle = styles[option];
-    } else if (env === 'itemize') attrs.marker = option;
+    } else if (env === 'itemize') attrs.marker = { '\\ensuremath{\\circ}':'◦', '\\rule{.45em}{.45em}':'▪' }[option] ?? option;
   }
+  const start = open[2]?.match(/(?:^|,)\s*start\s*=\s*([1-9]\d*)\s*(?:,|$)/)?.[1];
+  if (env === 'enumerate' && start) attrs.start = Number(start);
   if (env === 'description') return { type: 'descriptionList', content };
   return { type: env === 'itemize' ? 'bulletList' : 'orderedList', attrs, content };
 }

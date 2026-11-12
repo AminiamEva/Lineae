@@ -62,13 +62,15 @@ export function serialize(node) {
     case 'blockquote': return '\\begin{quote}\n' + content + '\\end{quote}\n\n';
     case 'horizontalRule': return '\\hrule\n\n';
     case 'bulletList': {
-      const open = node.attrs.marker ? '\\begin{itemize}[label=' + node.attrs.marker + ']' : '\\begin{itemize}';
+      const marker = { '◦':'\\ensuremath{\\circ}', '▪':'\\rule{.45em}{.45em}' }[node.attrs.marker] ?? node.attrs.marker;
+      const open = marker ? '\\begin{itemize}[label=' + marker + ']' : '\\begin{itemize}';
       return open + '\n' + content + '\\end{itemize}\n\n';
     }
     case 'orderedList': {
-      const labels = { decimal: '\\arabic*', 'lower-alpha': '\\alph*', 'upper-alpha': '\\Alph*', 'lower-roman': '\\roman*', 'upper-roman': '\\Roman*', 'cjk-heavenly-stem': '\\chinese*' };
+      const labels = { decimal: '\\arabic*', 'decimal-parens':'(\\arabic*)', 'decimal-paren':'\\arabic*)', 'lower-alpha': '\\alph*', 'upper-alpha': '\\Alph*', 'lower-roman': '\\roman*', 'upper-roman': '\\Roman*', 'cjk-heavenly-stem': '\\chinese*' };
       const label = labels[node.attrs.labelStyle];
-      const open = label ? '\\begin{enumerate}[label=' + label + ']' : '\\begin{enumerate}';
+      const options = [label && 'label=' + label, node.attrs.start > 1 && 'start=' + node.attrs.start].filter(Boolean);
+      const open = '\\begin{enumerate}' + (options.length ? '['+options.join(',')+']' : '');
       return open + '\n' + content + '\\end{enumerate}\n\n';
     }
     case 'listItem': {

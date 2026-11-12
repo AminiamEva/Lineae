@@ -37,6 +37,7 @@ function alignmentRows(body) {
 }
 
 export function mathEditorSource(latex) {
+  latex = latex.replace(/\\textasciicircum(?:\{\})?(?![a-zA-Z])/g, '\\text{ˆ}');
   const parts = alignmentParts(latex);
   if (!parts) return latex;
   const [, , environment, body] = parts;
@@ -45,10 +46,10 @@ export function mathEditorSource(latex) {
 }
 
 export function mathDocumentSource(value, previous) {
-  if (mathEditorSource(previous) === previous) return value;
+  value = value.replace(/\\text\{ˆ\}/g, '\\textasciicircum{}');
   const body = /^\\begin\{aligned\}([\s\S]*)\\end\{aligned\}$/.exec(value)?.[1];
   const parts = alignmentParts(previous);
-  return body === undefined ? value : parts[1] + body + parts[4];
+  return body === undefined || !parts ? value : parts[1] + body + parts[4];
 }
 
 export function appendAlignmentPair(latex) {
