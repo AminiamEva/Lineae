@@ -37,10 +37,7 @@ jobs:
       - name: UI tests
         run: node --test tests/ui/*.test.mjs
       - name: Bib backend tests
-        shell: pwsh
-        run: |
-          $files = Get-ChildItem tests/bib -Recurse -Filter *.test.mjs | ForEach-Object { $_.FullName }
-          node --test --test-isolation=none @files
+        run: node --test "tests/bib/**/*.test.mjs"
       - name: Install Chromium
         run: npx playwright install --only-shell chromium
       - name: Browser regressions
