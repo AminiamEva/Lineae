@@ -554,8 +554,7 @@ async function verifySelectionGeometry(page, paper, importSource) {
     }));
     const zoomedGeometry=await pageGeometry();
     await page.keyboard.press('Control+0');
-    assert.equal(Number(await page.locator('input[type=range]').inputValue()),afterZoom,'Ctrl+0 does not control document zoom');
-    await page.locator('input[type=range]').fill('100');
+    assert.equal(Number(await page.locator('input[type=range]').inputValue()),100,'Ctrl+0 restores document zoom in prose');
     const naturalGeometry=await pageGeometry();
     for(const dimension of Object.keys(naturalGeometry)) {
       assert.ok(Math.abs(zoomedGeometry[dimension]/naturalGeometry[dimension]-afterZoom/100)<0.01,dimension+' must scale with the paper');
