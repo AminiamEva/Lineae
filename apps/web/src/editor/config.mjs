@@ -3,7 +3,7 @@ import { compileKeybindings } from './keybindings.mjs';
 
 const storageKey = 'lineae.config';
 const themes = ['system', 'light', 'dark'];
-const fileTools = ['open', 'download', 'language', 'assets'];
+const fileTools = ['open', 'saveAs', 'download', 'language', 'assets'];
 const isMapping = value => value !== null && typeof value === 'object' && !Array.isArray(value);
 
 export function parseYaml(text) {

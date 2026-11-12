@@ -814,16 +814,18 @@ async function downloadProject() {
     status.hidden=false;status.textContent=error.message;
   }
 }
-async function saveDocument() {
+async function saveDocument(saveAs=false) {
   const text=sourceView.hidden?source():sourceView.value;
   if(window.showSaveFilePicker) {
     try {
-      if(!fileHandle)fileHandle=await window.showSaveFilePicker({suggestedName:filename,types:[{description:'LaTeX',accept:{'text/plain':['.tex']}}]});
+      let handle=saveAs?null:fileHandle;
+      if(!handle)handle=await window.showSaveFilePicker({suggestedName:filename,types:[{description:'LaTeX',accept:{'text/plain':['.tex']}}]});
       let writable;
-      try { writable=await fileHandle.createWritable(); }
-      catch { await fileHandle.requestPermission?.({mode:'readwrite'}); writable=await fileHandle.createWritable(); }
+      try { writable=await handle.createWritable(); }
+      catch { await handle.requestPermission?.({mode:'readwrite'}); writable=await handle.createWritable(); }
       await writable.write(text);await writable.close();
-      if(fileHandle.name)filename=fileHandle.name;
+      fileHandle=handle;
+      if(handle.name)filename=handle.name;
       savedSource=text;
       const status=document.querySelector('#status');
       status.hidden=false;status.textContent=t('已保存','Saved');
@@ -1738,6 +1740,8 @@ const exportConfig=groupButton(files,t('导出 YAML','Export YAML'),()=>{
   const a=document.createElement('a');a.href=url;a.download='config.yaml';a.click();
   setTimeout(()=>URL.revokeObjectURL(url),1000);
 });
+const saveAsButton=groupButton(files,t('另存为','Save as'),()=>saveDocument(true));
+saveAsButton.dataset.tool='saveAs';
 let releaseFileNavigation;
 function updateFileTools() {
   const order=config.value.interface.toolbar;
@@ -1778,6 +1782,7 @@ function updateLanguage() {
   localize(document);
   for(const tab of tabs.children)tab.textContent=captions[tab.dataset.group][chinese?0:1];
   download.textContent=chinese?'下载项目 .zip':'Download project .zip';
+  saveAsButton.textContent=chinese?'另存为':'Save as';
   attachFolder.textContent=chinese?'关联资源目录':'Attach asset folder';
   importConfig.textContent=chinese?'导入 YAML':'Import YAML';
   exportConfig.textContent=chinese?'导出 YAML':'Export YAML';

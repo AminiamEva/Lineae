@@ -1,0 +1,86 @@
+name: Desktop Preview
+
+on:
+  pull_request:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: desktop-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - run: npm run build
+      - name: Vendor MathLive
+        shell: pwsh
+        run: |
+          $archive = npm pack mathlive@0.108.0 --pack-destination $env:RUNNER_TEMP --silent
+          New-Item -ItemType Directory -Force apps/web/vendor/mathlive | Out-Null
+          tar -xzf "$env:RUNNER_TEMP/$archive" -C apps/web/vendor/mathlive --strip-components=1 package/mathlive.min.js package/fonts
+      - name: Data tests
+        run: node --test tests/*.test.mjs
+      - name: UI tests
+        run: node --test tests/ui/*.test.mjs
+      - name: Bib backend tests
+        run: node --test "tests/bib/**/*.test.mjs"
+      - name: Install Chromium
+        run: npx playwright install --only-shell chromium
+      - name: Browser regressions
+        run: node tests/editor.cjs
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: apps/desktop/src-tauri -> target
+      - name: Install desktop CLI
+        run: npm ci --prefix apps/desktop --no-audit --no-fund
+      - name: Build Windows packages
+        run: npm --prefix apps/desktop run tauri build
+      - name: Collect preview artifacts
+        shell: pwsh
+        run: |
+          $target = "apps/desktop/src-tauri/target/release"
+          $out = "artifacts"
+          New-Item -ItemType Directory -Force $out | Out-Null
+          Get-ChildItem "$target/bundle/nsis/*.exe" | Copy-Item -Destination $out
+          Copy-Item "$target/lineae.exe" "$out/Lineae-portable-preview.exe"
+          @(
+            "Lineae portable preview"
+            ""
+            "Run Lineae-portable-preview.exe directly. No installer is required."
+            "Windows WebView2 Runtime must be available on the machine."
+            "The offline installer already includes WebView2."
+          ) | Set-Content "$out/PORTABLE.txt" -Encoding utf8
+          Compress-Archive -Path "$out/Lineae-portable-preview.exe","$out/PORTABLE.txt" -DestinationPath "$out/Lineae-portable-preview.zip"
+          Remove-Item "$out/Lineae-portable-preview.exe","$out/PORTABLE.txt"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lineae-desktop-preview-${{ github.sha }}
+          path: artifacts/*
+          if-no-files-found: error
+      - name: Publish tagged preview
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = $env:GITHUB_REF_NAME
+          gh release view $tag *> $null
+          if ($LASTEXITCODE -ne 0) {
+            gh release create $tag --title "Lineae $tag" --notes "Preview desktop build for $tag" --prerelease
+          }
+          Get-ChildItem artifacts/* | ForEach-Object { gh release upload $tag $_.FullName --clobber }
