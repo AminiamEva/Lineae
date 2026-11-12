@@ -8,7 +8,7 @@ let smartFences;
 export function configureMathFences(value) { smartFences = value; }
 
 const isIntegral = atom => /^\\(?:i{1,3}nt|oi{1,3}nt)$/.test(atom?.command ?? '');
-const integralBody = atom => atom?.type === 'group' &&
+const integralBody = atom => (atom?.type === 'group' || atom?.command === '\\mathord') &&
   (isIntegral(atom.leftSibling) || (atom.leftSibling?.type === 'subsup' && isIntegral(atom.leftSibling.leftSibling)));
 
 export function mathEnvironment(field) {
@@ -20,7 +20,8 @@ export function mathEnvironment(field) {
     if (Array.isArray(atom.parentBranch)) labels.unshift(t(
       '第 '+(atom.parentBranch[0]+1)+' 行，第 '+(atom.parentBranch[1]+1)+' 列',
       'Row '+(atom.parentBranch[0]+1)+', column '+(atom.parentBranch[1]+1)));
-    if (integralBody(atom)) labels.unshift(t('被积式','Integrand'));
+    if (integralBody(atom)) labels.unshift('op/'+(atom.leftSibling.type==='subsup'
+      ? atom.leftSibling.leftSibling : atom.leftSibling).command.slice(1),t('被积式','Integrand'));
     if (atom.type==='genfrac') labels.unshift(t('分式','Fraction'));
     if (atom.type==='surd') labels.unshift(t('根式','Radical'));
     if (atom.type==='array') labels.unshift(atom.environmentName ?? t('矩阵','Matrix'));
@@ -42,8 +43,12 @@ function deleteIntegralAtEmptyLimit(field) {
   const start=model.offsetOf(operator.leftSibling);
   const end=model.offsetOf(owner);
   if (start<0 || end<=start) return false;
-  field.selection={ranges:[[start,end]],direction:'forward'};
-  field.executeCommand('deleteBackward');
+  if (!model.contentWillChange({inputType:'deleteContentBackward'})) return true;
+  model.deferNotifications({content:true,selection:true,type:'deleteContentBackward'},()=>{
+    if (owner!==operator) owner.parent.removeChild(owner);
+    operator.parent.removeChild(operator);
+    model.position=start;
+  });
   return true;
 }
 
@@ -401,6 +406,7 @@ export const MathNode = Node.create({
           for (let offset=0;offset<=field.lastOffset;offset++) {
             const atom=model.at(offset);
             if (integralBody(atom)) {
+              if (atom.id) ids.add(String(atom.id));
               for (const child of atom.body ?? []) if (child.id) ids.add(String(child.id));
             }
           }

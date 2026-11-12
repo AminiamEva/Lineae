@@ -857,7 +857,7 @@ document.body.append(commands);
 
 const formulaCommands = {
   frac: '\\frac{#?}{#?}', sqrt: '\\sqrt{#?}', sum: '\\sum',
-  int: '\\int', intbody: '\\int{\\placeholder{}}', lim: '\\lim', matrix: '\\begin{matrix}#?\\end{matrix}',
+  int: '\\int', intbody: '\\int\\mathord{\\placeholder{}}', lim: '\\lim', matrix: '\\begin{matrix}#?\\end{matrix}',
   pmatrix: '\\begin{pmatrix}#?\\end{pmatrix}', bmatrix: '\\begin{bmatrix}#?\\end{bmatrix}',
   Bmatrix: '\\begin{Bmatrix}#?\\end{Bmatrix}', vmatrix: '\\begin{vmatrix}#?\\end{vmatrix}',
   Vmatrix: '\\begin{Vmatrix}#?\\end{Vmatrix}',
@@ -1593,8 +1593,8 @@ groupButton(mathGroup,'sum',()=>{
 });
 groupButton(mathGroup,'int',()=>{
   const field=activeMath();
-  if (field) insertLiveMath(field,'\\int{\\placeholder{}}');
-  else insertMath(false,'\\int{\\placeholder{}}');
+  if (field) insertLiveMath(field,formulaCommands.intbody);
+  else insertMath(false,formulaCommands.intbody);
 });
 for (const operator of ['prod','iint','iiint','oint','oiint']) {
   groupButton(mathGroup,'\\'+operator,()=>{

@@ -1814,6 +1814,8 @@ async function verifySelectionGeometry(page, paper, importSource) {
     await page.waitForFunction(()=>document.querySelector('.environment-tag')?.textContent.includes('Subscript'));
     for(let index=0;index<3;index++) await page.keyboard.press('Backspace');
     assert.equal(await integralWithLimit.evaluate(field=>field.value),'','Backspacing through an empty limit removes the integral');
+    await importSource('\\[\\int\\mathord{x}\\]');
+    await paper.locator('math-field [data-lineae-integrand]').first().waitFor();
     await importSource('\\begin{enumerate}\\item 2\\begin{enumerate}\\item 3\\begin{enumerate}\\item 4\\end{enumerate}\\end{enumerate}\\end{enumerate}\n\n\\noindent');
     await page.waitForFunction(()=>document.querySelectorAll('.ProseMirror li').length===3);
     await paper.locator(':scope > p').last().click();
