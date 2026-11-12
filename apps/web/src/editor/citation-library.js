@@ -274,7 +274,7 @@ export function openCitationPanel({
     const backdrop = document.createElement('div');
     backdrop.className = 'editor-dialog-backdrop citation-panel-backdrop';
     const panel = document.createElement('section');
-    panel.className = 'editor-dialog citation-panel';
+    panel.className = 'editor-dialog citation-panel citation-dialog';
     panel.setAttribute('role', 'dialog');
     panel.setAttribute('aria-modal', 'true');
     panel.setAttribute('aria-labelledby', 'citation-panel-title');
@@ -643,6 +643,7 @@ export function openCitationPanel({
     document.body.append(backdrop);
     popIn(panel, { prefersReducedMotion: window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false });
     render();
+    if (!library.sources.length) picker.click();
     search.focus();
   });
 }
