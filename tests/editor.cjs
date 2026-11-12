@@ -1858,7 +1858,8 @@ async function verifySelectionGeometry(page, paper, importSource) {
     await ime.detach();
     await importSource('正文 $\\int$');
     const integralAtEnd=paper.locator('.math-inline math-field');
-    await integralAtEnd.waitFor();
+    await page.waitForFunction(()=>document.querySelector('.ProseMirror p')?.textContent.startsWith('正文') &&
+      document.querySelector('.math-inline math-field')?.value==='\\int');
     const formulaBox=await integralAtEnd.boundingBox();
     await page.mouse.click(formulaBox.x+formulaBox.width+8,formulaBox.y+formulaBox.height/2);
     assert.ok(await paper.evaluate(element=>element===document.activeElement),'Clicking after inline math focuses prose');
@@ -1869,6 +1870,7 @@ async function verifySelectionGeometry(page, paper, importSource) {
     const preedit=paper.locator('p').first();
     await page.waitForFunction(()=>document.querySelector('.ProseMirror p')?.textContent.endsWith('shi'),null,{timeout:3000})
       .catch(async()=>assert.fail('IME preedit after clicking inline math: '+await preedit.textContent()));
+    await page.evaluate(()=>new Promise(done=>requestAnimationFrame(()=>requestAnimationFrame(done))));
     await clickIme.send('Input.insertText',{text:'是'});
     await page.waitForFunction(()=>document.querySelector('.ProseMirror p')?.textContent.endsWith('是'));
     assert.doesNotMatch(await paper.locator('p').first().textContent(),/shi/);
