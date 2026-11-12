@@ -95,9 +95,18 @@ function paperFormatting() {
           const from = compositionAnchor(view);
           if (from !== null && !preeditDOM) {
             session = {from, preedit:''};
-            holdPreeditDOM(view);
+            // Ask ProseMirror for its native cursor wrapper once, before its
+            // compositionstart handler runs. No selection transaction during
+            // preedit should create another wrapper.
+            if (!view.composing && !view.state.storedMarks) {
+              view.dispatch(view.state.tr.setStoredMarks(view.state.selection.$from.marks()));
+            }
           }
           else if (session && view.state.selection.from !== session.from + session.preedit.length) session=null;
+          return false;
+        },
+        beforeinput(view,event) {
+          if (composing && session && !preeditDOM && event.inputType==='insertCompositionText') holdPreeditDOM(view);
           return false;
         },
         compositionupdate(_view,event) {
