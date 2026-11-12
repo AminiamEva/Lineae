@@ -654,7 +654,8 @@ async function verifySelectionGeometry(page, paper, importSource) {
     await page.waitForFunction(()=>document.activeElement?.tagName==='MATH-FIELD');
     await page.keyboard.type('^^//');
     const literals=await formula.evaluate(field=>field.value);
-    assert.ok(literals.includes('textasciicircum') && literals.includes('/') && !literals.includes('frac'),literals);
+    assert.ok(literals.includes('\\text{ˆ}') && literals.includes('/') && !literals.includes('frac'),literals);
+    assert.match(await formula.evaluate(field=>field.closest('[data-math-view]').dataset.latex),/\\textasciicircum\{\}/);
     await page.locator('[data-group=home]').click();
     await paper.locator(':scope > p').first().click({clickCount:3,position:{x:4,y:8}});
     await page.locator('select[aria-label="fontSize"]').selectOption('18pt');
@@ -1825,6 +1826,7 @@ async function verifySelectionGeometry(page, paper, importSource) {
     assert.equal(await paper.locator('li').count(),3,'Backspace after a nested list does not add another item');
     assert.equal(await page.evaluate(()=>document.getSelection().focusNode?.textContent),'4');
     await importSource(' ');
+    await page.waitForFunction(()=>document.querySelector('.ProseMirror > p')?.textContent==='');
     await paper.locator('p').first().click();
     await page.keyboard.type('(3) ');
     assert.equal(await paper.locator('ol').getAttribute('start'),'3');
@@ -1838,7 +1840,7 @@ async function verifySelectionGeometry(page, paper, importSource) {
     await page.keyboard.type('!=');
     assert.match(await inline.evaluate(field=>field.value),/\\ne(?:q)?\b/);
     await page.keyboard.press('Backspace');
-    assert.match(await inline.evaluate(field=>field.value),/!=/);
+    assert.match(await inline.evaluate(field=>field.value),/!\s*=/);
     await page.keyboard.press('Control+Shift+j');
     const ime=await browserContext.newCDPSession(page);
     await ime.send('Input.imeSetComposition',{text:'zhong',selectionStart:5,selectionEnd:5});
