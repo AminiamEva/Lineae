@@ -11,7 +11,7 @@
 
 **Write naturally. Typeset beautifully.**
 
-<p align="center"><a href="README.md">English</a> · <a href="README.zh-CN.md">简体中文</a></p>
+<p align="center"><a href="README.md">English</a> · <a href="README.zh-CN.md">简体中文</a> · <a href="README.zh-TW.md">繁體中文</a> · <a href="README.ja.md">日本語</a> · <a href="README.ko.md">한국어</a> · <a href="README.es.md">Español</a> · <a href="README.fr.md">Français</a> · <a href="README.de.md">Deutsch</a> · <a href="README.pt-BR.md">Português (BR)</a> · <a href="README.ru.md">Русский</a></p>
 
 Lineae 是一款正在开发的 **LaTeX 所见即所得编辑器**，面向论文、讲义和技术文档写作。我们想做的不只是让用户摆脱 LaTeX 命令、改用图形界面编辑，而是让**编辑区里的排版效果与同一份文档经过 TeX 引擎编译后的结果尽可能一致**。<code>.tex</code> 文件仍是文档的基础，不需要转存为另一种专有格式。
 
@@ -178,6 +178,10 @@ node tests/editor.cjs
 ~~~
 
 GitHub Actions 会自动构建应用、运行 LaTeX 和文献模块测试、准备 MathLive、执行浏览器回归测试，并将网页应用部署到 GitHub Pages。
+
+## 桌面预览版
+
+`apps/desktop` 里有一个用 Tauri 2 构建的 Windows x64 预览版。它复用浏览器编辑器，增加了原生的打开、保存和另存为对话框，并沿用现有的 ZIP 流程导出项目。构建和打包只在 GitHub Actions 上运行；产物清单和验收步骤见 [docs/desktop-preview.md](docs/desktop-preview.md)。编译、文件监听和自动更新不在这个预览版的范围内。
 
 ## 参与项目
 
