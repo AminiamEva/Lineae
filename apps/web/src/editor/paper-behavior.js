@@ -7,6 +7,7 @@ import { listMarkerCSS } from '../../latex/list-numbering.mjs';
 function paperFormatting() {
   let session = null;
   let composing = false;
+  let preeditDOM = null;
   function compositionAnchor(view) {
     const { selection } = view.state;
     if (!(selection instanceof TextSelection) || !selection.empty) return null;
@@ -19,11 +20,35 @@ function paperFormatting() {
     return !boundary.textOffset && boundary.nodeBefore?.type.name === 'math' ? position : null;
   }
 
+  function holdPreeditDOM(view) {
+    // A browser can create a new text node after the math atom for the first
+    // syllable. If ProseMirror reparses the paragraph before the next syllable,
+    // the IME can lose that node. Give the native input session exclusive
+    // ownership of the DOM until it commits, then replay its mutation records.
+    const records = [];
+    const observer = new MutationObserver(changes => records.push(...changes));
+    view.domObserver.stop();
+    observer.observe(view.dom, {subtree:true, childList:true, characterData:true, characterDataOldValue:true});
+    preeditDOM = {observer, records};
+  }
+
+  function releasePreeditDOM(view) {
+    if (!preeditDOM) return;
+    const {observer, records} = preeditDOM;
+    preeditDOM = null;
+    records.push(...observer.takeRecords());
+    observer.disconnect();
+    if (view.isDestroyed) return;
+    view.domObserver.start();
+    view.domObserver.queue.push(...records);
+    view.domObserver.flush();
+  }
+
   function recoverCommit(view, committed) {
     const pending=session;
     if (!pending?.preedit || typeof committed!=='string' || !/\p{Script=Han}/u.test(committed)) return;
     queueMicrotask(()=>{
-      if (composing || session!==pending || view.isDestroyed || !view.hasFocus()) return;
+      if (composing || preeditDOM || session!==pending || view.isDestroyed || !view.hasFocus()) return;
       view.domObserver.flush();
       const {doc}=view.state, {from,preedit}=pending;
       const end=from+preedit.length+committed.length;
@@ -43,11 +68,16 @@ function paperFormatting() {
   function finishComposition(view) {
     composing = false;
     queueMicrotask(() => {
-      if (composing || view.isDestroyed || view.composing) return;
+      if (composing || view.isDestroyed) return;
+      releasePreeditDOM(view);
       view.dispatch(view.state.tr.setMeta(plugin, true));
     });
   }
   const plugin = new Plugin({
+    view: () => ({ destroy() {
+      preeditDOM?.observer.disconnect();
+      preeditDOM = null;
+    } }),
     state: {
       init: (_, state) => formattingMarks(state.doc),
       apply(transaction, previous) {
@@ -63,7 +93,10 @@ function paperFormatting() {
           if (event.target !== view.dom) return false;
           composing = true;
           const from = compositionAnchor(view);
-          if (from !== null) session = {from, preedit:''};
+          if (from !== null && !preeditDOM) {
+            session = {from, preedit:''};
+            holdPreeditDOM(view);
+          }
           else if (session && view.state.selection.from !== session.from + session.preedit.length) session=null;
           return false;
         },
@@ -79,8 +112,8 @@ function paperFormatting() {
         },
         compositionend(view,event) {
           if (event.target !== view.dom) return false;
-          recoverCommit(view,event.data);
           finishComposition(view);
+          recoverCommit(view,event.data);
           return false;
         },
         pointerdown() {session=null;return false;},

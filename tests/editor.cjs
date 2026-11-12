@@ -1878,6 +1878,8 @@ async function verifySelectionGeometry(page, paper, importSource) {
     const clickIme=await browserContext.newCDPSession(page);
     await clickIme.send('Input.imeSetComposition',{text:'s',selectionStart:1,selectionEnd:1});
     await page.waitForFunction(()=>document.querySelector('.ProseMirror p')?.textContent.endsWith('s'));
+    assert.equal(await paper.evaluate(element=>element.editor.state.doc.firstChild.textContent),'正文 ',
+      'The first preedit syllable stays in the browser until the candidate commits');
     await clickIme.send('Input.imeSetComposition',{text:'shi',selectionStart:3,selectionEnd:3});
     const preedit=paper.locator('p').first();
     await page.waitForFunction(()=>document.querySelector('.ProseMirror p')?.textContent.endsWith('shi'),null,{timeout:3000})
