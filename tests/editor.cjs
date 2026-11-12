@@ -1870,7 +1870,7 @@ async function verifySelectionGeometry(page, paper, importSource) {
     const preedit=paper.locator('p').first();
     await page.waitForFunction(()=>document.querySelector('.ProseMirror p')?.textContent.endsWith('shi'),null,{timeout:3000})
       .catch(async()=>assert.fail('IME preedit after clicking inline math: '+await preedit.textContent()));
-    await page.evaluate(()=>new Promise(done=>requestAnimationFrame(()=>requestAnimationFrame(done))));
+    await page.waitForTimeout(1700); // Leave the candidate open past the old expiry.
     await clickIme.send('Input.insertText',{text:'是'});
     await page.waitForFunction(()=>{
       const text=document.querySelector('.ProseMirror p')?.textContent;
@@ -1882,7 +1882,7 @@ async function verifySelectionGeometry(page, paper, importSource) {
     assert.equal(await page.locator('input[type=range]').inputValue(),'100');
     await importSource(' ');
     await page.waitForFunction(()=>document.querySelector('.ProseMirror > p')?.textContent==='');
-    for (const [prefix,style] of [['a.','lower-alpha'],['IV.','upper-roman'],['甲','cjk-heavenly-stem-bare'],['二、','cjk-ideographic-comma']]) {
+    for (const [prefix,style] of [['a.','lower-alpha'],['AA.','upper-alpha'],['IV.','upper-roman'],['甲','cjk-heavenly-stem-bare'],['二、','cjk-ideographic-comma']]) {
       await paper.locator('p').first().click();
       await page.keyboard.insertText(prefix);
       await page.keyboard.press('Space');
@@ -1925,6 +1925,14 @@ async function verifySelectionGeometry(page, paper, importSource) {
     await page.keyboard.press('2');
     await page.keyboard.press('z');
     assert.match(await script.evaluate(field=>field.value),/x\^\{?2\}?z\+y/,'Doubled caret enters one character and returns to the baseline');
+    await page.keyboard.press('Control+6');
+    await page.keyboard.press('ArrowRight');
+    await page.waitForFunction(()=>!/\^\{\}/.test(document.querySelector('.math-inline math-field')?.value));
+    await page.keyboard.press('Shift+Digit6');
+    await page.keyboard.press('Shift+Digit6');
+    await page.keyboard.press('Shift+Equal');
+    await page.keyboard.press('w');
+    assert.match(await script.evaluate(field=>field.value),/z\^\{?\+\}?w/);
     await importSource('\\[a\\]');
     const display=paper.locator('.math-display math-field');
     await display.click();

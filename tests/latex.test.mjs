@@ -11,7 +11,7 @@ import { buildProjectZip, projectDependencies } from '../apps/web/src/editor/pro
 
 test('Word-style numbering preserves the marker and starting number in TeX', () => {
   for (const [input, style, start] of [
-    ['b. ','lower-alpha',2], ['（３） ','decimal-parens',3], ['IV) ','upper-roman-paren',4],
+    ['b. ','lower-alpha',2], ['AA. ','upper-alpha',27], ['（３） ','decimal-parens',3], ['IV) ','upper-roman-paren',4],
     ['甲 ','cjk-heavenly-stem-bare',1], ['十二、 ','cjk-ideographic-comma',12], ['③ ','circled-decimal-bare',3],
   ]) {
     const attrs=listMarker(markerInput.exec(input));

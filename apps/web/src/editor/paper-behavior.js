@@ -18,23 +18,21 @@ function inlineMathComposition() {
         compositionstart(view) {
           const {selection,storedMarks}=view.state;
           if (afterMath(selection)) {
-            session={from:selection.from,preedit:'',lastUpdate:performance.now()};
+            session={from:selection.from,preedit:''};
             if(!storedMarks)view.dispatch(view.state.tr.setStoredMarks(selection.$from.marks()));
-          } else if (!session || performance.now()-session.lastUpdate>1500) session=null;
+          }
           return false;
         },
         compositionupdate(_view,event) {
           if(session && /^[a-z' ]+$/i.test(event.data)) {
             session.preedit=event.data;
-            session.lastUpdate=performance.now();
           }
           return false;
         },
         input(view,event) {
           const pending=session;
           const committed=event.data;
-          if (!pending?.preedit || typeof committed!=='string' || !/\p{Script=Han}/u.test(committed) ||
-            performance.now()-pending.lastUpdate>1500) return false;
+          if (!pending?.preedit || typeof committed!=='string' || !/\p{Script=Han}/u.test(committed)) return false;
           session=null;
           queueMicrotask(()=>{
             if (view.isDestroyed || !view.hasFocus()) return;
@@ -52,6 +50,10 @@ function inlineMathComposition() {
         },
         pointerdown() {session=null;return false;},
         blur() {session=null;return false;},
+        keydown(_view,event) {
+          if (!event.isComposing && event.keyCode!==229) session=null;
+          return false;
+        },
       },
     },
   });

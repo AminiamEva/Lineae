@@ -440,7 +440,9 @@ export const MathNode = Node.create({
         if (event.isComposing || event.keyCode===229 || event.getModifierState?.('AltGraph')) return;
         const plain=!event.ctrlKey&&!event.metaKey&&!event.altKey;
         const consume=()=>{event.preventDefault();event.stopImmediatePropagation();};
-        if (oneScript && plain && /^[\p{L}\p{N}]$/u.test(event.key)) {
+        const scriptCharacter=/^[^\s^_/$\\]$/u.test(event.key);
+        if (oneScript && plain && scriptCharacter &&
+            !(event.key==='-' && oneScript.branch==='subscript')) {
           const atom=field._mathfield?.model?.at(field.position);
           if (atom?.parent===oneScript.parent && atom.parentBranch===oneScript.branch) {
             consume();
@@ -567,7 +569,7 @@ export const MathNode = Node.create({
       }, true);
       field.addEventListener('input', event => {
         if (!oneScript || event.isComposing || !['insertText','insertCompositionText'].includes(event.inputType)) return;
-        if (/^[-+−]$/.test(event.data ?? '')) return;
+        if (event.data==='-' && oneScript.branch==='subscript') return;
         const script=oneScript;
         oneScript=null;
         const atom=field._mathfield?.model?.at(field.position);

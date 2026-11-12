@@ -1,7 +1,7 @@
 const stems='甲乙丙丁戊己庚辛壬癸';
 const chinese='一二三四五六七八九';
 const counters = {
-  decimal:'\\arabic*', 'lower-alpha':'\\alph*', 'upper-alpha':'\\Alph*',
+  decimal:'\\arabic*', 'lower-alpha':'\\protect\\alphalph{\\arabic*}', 'upper-alpha':'\\protect\\AlphAlph{\\arabic*}',
   'lower-roman':'\\roman*', 'upper-roman':'\\Roman*',
   'cjk-heavenly-stem':'\\protect\\lineaeStem{\\arabic*}',
   'cjk-ideographic':'\\protect\\zhnum{\\arabic*}',
@@ -31,8 +31,9 @@ export function listMarker(match) {
       const values={I:1,V:5,X:10,L:50,C:100,D:500,M:1000};
       start=[...normalized].reduce((n,c,i)=>n+values[c]*(values[c]<values[normalized[i+1]]?-1:1),0);
       style=upper?'upper-roman':'lower-roman';
-    } else if (token.length===1) {
-      start=normalized.charCodeAt(0)-64; style=upper?'upper-alpha':'lower-alpha';
+    } else if (/^([a-z])\1*$/i.test(token) && (upper || token===token.toLowerCase())) {
+      start=[...normalized].reduce((n,c)=>n*26+c.charCodeAt(0)-64,0);
+      style=upper?'upper-alpha':'lower-alpha';
     } else return null;
   }
   if (!Number.isSafeInteger(start) || start<1) return null;
@@ -65,6 +66,8 @@ export function listMarkerCSS(style) {
 }
 
 export function listStyleForLabel(label) {
+  if (label==='\\alph*' || label==='\\alph*.') return 'lower-alpha';
+  if (label==='\\Alph*' || label==='\\Alph*.') return 'upper-alpha';
   if (label==='\\chinese*') return 'cjk-heavenly-stem';
   for (const name of Object.keys(counters)) {
     if (label===listLabel(name) ||

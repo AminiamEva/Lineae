@@ -9,6 +9,7 @@ const dependencies = [
   { name: 'xcolor', pattern: /\\(?:textcolor|colorbox|definecolor)\b/ },
   { name: 'booktabs', pattern: /\\(?:toprule|midrule|bottomrule|cmidrule)\b/ },
   { name: 'enumitem', pattern: /\\begin\{(?:itemize|enumerate)\}\[/ },
+  { name: 'alphalph', pattern: /\\(?:alphalph|AlphAlph)\b/ },
   { name: 'zhnumber', pattern: /\\(?:chinese|zhnum)\b/ },
   { name: 'graphicx', pattern: /\\includegraphics\b/ },
   { name: 'amsthm', pattern: /\\begin\{proof\}/ },
