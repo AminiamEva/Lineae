@@ -1850,9 +1850,11 @@ async function verifySelectionGeometry(page, paper, importSource) {
     await page.bringToFront();
     const ime=await browserContext.newCDPSession(page);
     await ime.send('Input.imeSetComposition',{text:'zhong',selectionStart:5,selectionEnd:5});
+    await page.waitForFunction(()=>document.querySelector('.ProseMirror p')?.textContent.endsWith('zhong'));
     await ime.send('Input.insertText',{text:'中'});
     const paragraph=paper.locator('p').first();
-    assert.match(await paragraph.textContent(),/中$/,'Composition commits outside the formula');
+    await page.waitForFunction(()=>document.querySelector('.ProseMirror p')?.textContent.endsWith('中'));
+    assert.doesNotMatch(await paragraph.textContent(),/zhong/,'IME commit replaces the preedit');
     await page.keyboard.press('Comma');
     assert.match(await paragraph.textContent(),/中,$/,'The first punctuation after composition is inserted once');
     await ime.detach();
