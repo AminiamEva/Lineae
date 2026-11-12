@@ -255,6 +255,18 @@ export const PaperBehavior = Extension.create({
           // without using the formula's keyboard exit handler.
           return state.tr.setStoredMarks($from.marks());
         },
+        props: {
+          handleDOMEvents: {
+            compositionstart(view) {
+              const { selection,storedMarks }=view.state;
+              if (!storedMarks && selection instanceof TextSelection && selection.empty &&
+                !selection.$from.textOffset && selection.$from.nodeBefore?.type.name==='math') {
+                view.dispatch(view.state.tr.setStoredMarks(selection.$from.marks()));
+              }
+              return false;
+            },
+          },
+        },
       }),
       new Plugin({
         props: {

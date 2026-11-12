@@ -1866,7 +1866,9 @@ async function verifySelectionGeometry(page, paper, importSource) {
     await clickIme.send('Input.imeSetComposition',{text:'s',selectionStart:1,selectionEnd:1});
     await page.waitForFunction(()=>document.querySelector('.ProseMirror p')?.textContent.endsWith('s'));
     await clickIme.send('Input.imeSetComposition',{text:'shi',selectionStart:3,selectionEnd:3});
-    await page.waitForFunction(()=>document.querySelector('.ProseMirror p')?.textContent.endsWith('shi'));
+    const preedit=paper.locator('p').first();
+    await page.waitForFunction(()=>document.querySelector('.ProseMirror p')?.textContent.endsWith('shi'),null,{timeout:3000})
+      .catch(async()=>assert.fail('IME preedit after clicking inline math: '+await preedit.textContent()));
     await clickIme.send('Input.insertText',{text:'是'});
     await page.waitForFunction(()=>document.querySelector('.ProseMirror p')?.textContent.endsWith('是'));
     assert.doesNotMatch(await paper.locator('p').first().textContent(),/shi/);
