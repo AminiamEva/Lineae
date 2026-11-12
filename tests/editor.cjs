@@ -1872,7 +1872,10 @@ async function verifySelectionGeometry(page, paper, importSource) {
       .catch(async()=>assert.fail('IME preedit after clicking inline math: '+await preedit.textContent()));
     await page.evaluate(()=>new Promise(done=>requestAnimationFrame(()=>requestAnimationFrame(done))));
     await clickIme.send('Input.insertText',{text:'是'});
-    await page.waitForFunction(()=>document.querySelector('.ProseMirror p')?.textContent.endsWith('是'));
+    await page.waitForFunction(()=>{
+      const text=document.querySelector('.ProseMirror p')?.textContent;
+      return text?.endsWith('是') && !text.includes('shi');
+    },null,{timeout:3000}).catch(async()=>assert.fail('IME committed beside inline math: '+await preedit.textContent()));
     assert.doesNotMatch(await paper.locator('p').first().textContent(),/shi/);
     await clickIme.detach();
     await page.keyboard.press('Control+0');

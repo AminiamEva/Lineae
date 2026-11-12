@@ -4,6 +4,59 @@ import { Plugin, TextSelection } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import { listMarkerCSS } from '../../latex/list-numbering.mjs';
 
+function inlineMathComposition() {
+  let session=null;
+  const afterMath = selection => selection instanceof TextSelection && selection.empty &&
+    !selection.$from.textOffset && selection.$from.nodeBefore?.type.name==='math';
+  return new Plugin({
+    appendTransaction(transactions, _oldState, state) {
+      if (state.storedMarks || !transactions.some(transaction=>transaction.selectionSet) || !afterMath(state.selection)) return null;
+      return state.tr.setStoredMarks(state.selection.$from.marks());
+    },
+    props:{
+      handleDOMEvents:{
+        compositionstart(view) {
+          const {selection,storedMarks}=view.state;
+          if (afterMath(selection)) {
+            session={from:selection.from,preedit:'',lastUpdate:performance.now()};
+            if(!storedMarks)view.dispatch(view.state.tr.setStoredMarks(selection.$from.marks()));
+          } else if (!session || performance.now()-session.lastUpdate>1500) session=null;
+          return false;
+        },
+        compositionupdate(_view,event) {
+          if(session && /^[a-z' ]+$/i.test(event.data)) {
+            session.preedit=event.data;
+            session.lastUpdate=performance.now();
+          }
+          return false;
+        },
+        input(view,event) {
+          const pending=session;
+          const committed=event.data;
+          if (!pending?.preedit || typeof committed!=='string' || !/\p{Script=Han}/u.test(committed) ||
+            performance.now()-pending.lastUpdate>1500) return false;
+          session=null;
+          queueMicrotask(()=>{
+            if (view.isDestroyed || !view.hasFocus()) return;
+            view.domObserver.flush();
+            const {doc}=view.state, {from,preedit}=pending;
+            const end=from+preedit.length+committed.length;
+            // Chromium can commit as a plain insertion beside a noneditable
+            // atom. Only reconcile the exact duplicate at the IME anchor.
+            if(end>doc.content.size || doc.resolve(from).nodeBefore?.type.name!=='math' ||
+              doc.textBetween(from,end,'\0','\0')!==preedit+committed) return;
+            const tr=view.state.tr.delete(from,from+preedit.length);
+            view.dispatch(tr.setSelection(TextSelection.create(tr.doc,from+committed.length)));
+          });
+          return false;
+        },
+        pointerdown() {session=null;return false;},
+        blur() {session=null;return false;},
+      },
+    },
+  });
+}
+
 function numberedHeadings(doc) {
   const counters = [0, 0, 0];
   const decorations = [];
@@ -244,30 +297,7 @@ export const PaperBehavior = Extension.create({
           },
         },
       }),
-      new Plugin({
-        appendTransaction(transactions, oldState, state) {
-          const { selection, storedMarks }=state;
-          if (storedMarks || !transactions.some(transaction=>transaction.selectionSet) ||
-            !(selection instanceof TextSelection) || !selection.empty) return null;
-          const { $from }=selection;
-          if ($from.textOffset || $from.nodeBefore?.type.name!=='math') return null;
-          // A mouse click or a document navigation can reach this boundary
-          // without using the formula's keyboard exit handler.
-          return state.tr.setStoredMarks($from.marks());
-        },
-        props: {
-          handleDOMEvents: {
-            compositionstart(view) {
-              const { selection,storedMarks }=view.state;
-              if (!storedMarks && selection instanceof TextSelection && selection.empty &&
-                !selection.$from.textOffset && selection.$from.nodeBefore?.type.name==='math') {
-                view.dispatch(view.state.tr.setStoredMarks(selection.$from.marks()));
-              }
-              return false;
-            },
-          },
-        },
-      }),
+      inlineMathComposition(),
       new Plugin({
         props: {
           handleKeyDown(view, event) {
