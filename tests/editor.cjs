@@ -1859,10 +1859,12 @@ async function verifySelectionGeometry(page, paper, importSource) {
     assert.match(await paragraph.textContent(),/中,$/,'The first punctuation after composition is inserted once');
     await ime.detach();
     await importSource('\\[a\\]');
-    const display=paper.locator('math-field');
+    const display=paper.locator('.math-display math-field');
     await display.click();
+    await page.waitForFunction(()=>document.activeElement?.closest('.math-display'));
     await display.evaluate(field=>{field.position=field.lastOffset;});
     await page.keyboard.press('Enter');
+    await page.waitForFunction(()=>document.activeElement?.value?.includes('\\begin{gathered}'));
     await page.keyboard.type('b');
     assert.match(await display.evaluate(field=>field.value),/\\begin\{gathered\}a\s*\\\\\s*b/);
     await page.keyboard.type('$$');

@@ -349,7 +349,9 @@ export const MathNode = Node.create({
       let oneScript = null;
       let exitedStyleAt = null;
       let replacedOperator = null;
+      let pointerFocus = 0;
       const finish = backward => {
+        pointerFocus++;
         commitUnclosedFences(field);
         clearEmptyScripts(field);
         leaveFormula(editor,getPos(),node,backward);
@@ -368,6 +370,7 @@ export const MathNode = Node.create({
         // A freshly moved/undone node can still have a queued outer-editor focus.
         // Finish the explicit formula click after that frame without moving its caret.
         if (event.button !== 0 || event.shiftKey) return;
+        const focusRequest=++pointerFocus;
         const model=field._mathfield?.model;
         const target=event.composedPath().find(element=>element?.dataset?.atomId);
         if (model && target) {
@@ -389,7 +392,7 @@ export const MathNode = Node.create({
           }
         }
         requestAnimationFrame(() => {
-          if (field.isConnected && (document.activeElement===field || document.activeElement===document.body)) field.focus();
+          if (field.isConnected && focusRequest===pointerFocus) field.focus();
         });
       },true);
       field.addEventListener('blur', () => { pendingKey = null; pendingDollar=false; oneScript=null; replacedOperator=null; });
@@ -520,6 +523,7 @@ export const MathNode = Node.create({
           event.preventDefault();
           event.stopPropagation();
           const position = getPos();
+          pointerFocus++;
           const previous=node.isBlock ? TextSelection.findFrom(editor.state.doc.resolve(position),-1,true) : null;
           const tr=editor.state.tr.delete(position,position+node.nodeSize);
           tr.setSelection(previous ? previous.map(tr.doc,tr.mapping) : TextSelection.near(tr.doc.resolve(position),-1));
