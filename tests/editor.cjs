@@ -1836,8 +1836,12 @@ async function verifySelectionGeometry(page, paper, importSource) {
     assert.match(await paper.locator('p').textContent(),/^\(3\)/);
     await importSource('Before $x$');
     const inline=paper.locator('math-field');
-    await inline.evaluate(field=>{field.focus();field.position=field.lastOffset;});
-    await page.keyboard.type('!=');
+    await inline.click();
+    await inline.evaluate(field=>{field.position=field.lastOffset;});
+    await page.waitForFunction(()=>document.activeElement?.tagName==='MATH-FIELD');
+    await page.keyboard.press('Shift+Digit1');
+    await page.waitForFunction(()=>document.activeElement?.value?.endsWith('!'));
+    await page.keyboard.press('Equal');
     assert.match(await inline.evaluate(field=>field.value),/\\ne(?:q)?\b/);
     await page.keyboard.press('Backspace');
     assert.match(await inline.evaluate(field=>field.value),/!\s*=/);
@@ -1850,7 +1854,8 @@ async function verifySelectionGeometry(page, paper, importSource) {
     await ime.detach();
     await importSource('\\[a\\]');
     const display=paper.locator('math-field');
-    await display.evaluate(field=>{field.focus();field.position=field.lastOffset;});
+    await display.click();
+    await display.evaluate(field=>{field.position=field.lastOffset;});
     await page.keyboard.press('Enter');
     await page.keyboard.type('b');
     assert.match(await display.evaluate(field=>field.value),/\\begin\{gathered\}a\s*\\\\\s*b/);
