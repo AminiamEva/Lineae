@@ -4,6 +4,7 @@ import {
   getEntryValue,
   parseBib,
   parseBibFile,
+  scanTexCitations,
   validateBib,
 } from '../../bib/index.mjs';
 import { rememberAsset } from './project-assets.js';
@@ -264,6 +265,8 @@ export function openCitationPanel({
   onLocateMissing = () => {},
   onChange = () => {},
   onRename = () => {},
+  onInsertCitation = () => {},
+  onInsertBibliography = () => {},
 } = {}) {
   return new Promise(resolve => {
     const backdrop = document.createElement('div');
@@ -294,6 +297,35 @@ export function openCitationPanel({
     batchPicker.setAttribute('aria-label', t('批量导入 BibTeX 条目','Import BibTeX entries'));
     const batchButton = button(t('批量导入条目','Import entries'));
     batchButton.addEventListener('click', () => batchPicker.click());
+    const listButton = button(t('插入参考文献列表','Insert bibliography list'));
+    listButton.addEventListener('click', () => {
+      const scan = scanTexCitations(texSource);
+      if (scan.mode === 'unknown') {
+        updateStatus(t('未识别文献模式；请先声明文献资源。','Bibliography mode is unknown; declare a bibliography resource first.'), true);
+        return;
+      }
+      const command = scan.mode === 'bibtex'
+        ? `\\bibliography{${scan.bibliography.map(item => item.path).join(',')}}`
+        : '\\printbibliography';
+      onInsertBibliography({
+        mode: scan.mode,
+        command,
+        bibliography: scan.bibliography,
+        resources: scan.resources,
+        bibliographyStyle: scan.bibliographyStyle,
+      });
+    });
+    const citationCommand = document.createElement('select');
+    citationCommand.setAttribute('aria-label', t('引用命令','Citation command'));
+    for (const command of ['cite', 'citep', 'citet', 'parencite', 'textcite', 'autocite']) {
+      citationCommand.append(new Option(`\\${command}`, command));
+    }
+    const preNote = document.createElement('input');
+    preNote.placeholder = t('前注（可选）','Pre-note (optional)');
+    preNote.setAttribute('aria-label', preNote.placeholder);
+    const postNote = document.createElement('input');
+    postNote.placeholder = t('后注（可选）','Post-note (optional)');
+    postNote.setAttribute('aria-label', postNote.placeholder);
     const search = document.createElement('input');
     search.type = 'search';
     search.placeholder = t('按键、作者、标题或年份搜索','Search key, author, title, or year');
@@ -310,10 +342,11 @@ export function openCitationPanel({
     const insert = button(t('插入引用','Insert citation'));
     insert.disabled = true;
     actions.append(cancel, insert);
-    panel.append(title, picker, importButton, sourceSelect, addButton, batchButton, batchPicker, search, status, list, diagnostics, actions);
+    panel.append(title, picker, importButton, sourceSelect, addButton, batchButton, listButton, batchPicker, citationCommand, preNote, postNote, search, status, list, diagnostics, actions);
     backdrop.append(panel);
 
     let selected = null;
+    const selectedEntries = new Map();
     const close = value => {
       backdrop.remove();
       resolve(value);
@@ -441,6 +474,22 @@ export function openCitationPanel({
       const found = library.search(search.value);
       const currentConflicts = library.conflicts;
       const citationDiagnostics = library.diagnostics(texSource);
+      const scan = scanTexCitations(texSource);
+      const modeLabel = {
+        bibtex: t('BibTeX 模式','BibTeX mode'),
+        biblatex: t('biblatex/Biber 模式','biblatex/Biber mode'),
+        mixed: t('混合模式（请核对配置）','Mixed mode (check configuration)'),
+        unknown: t('未识别模式','Unknown mode'),
+      }[scan.mode];
+      const mode = document.createElement('div');
+      mode.textContent = `${t('文献模式','Bibliography mode')}: ${modeLabel}`;
+      diagnostics.append(mode);
+      const support = document.createElement('small');
+      support.textContent = t(
+        '已识别 \\bibliography、\\bibliographystyle、\\addbibresource、\\printbibliography；其他配置保持原始源码。',
+        'Recognizes \\bibliography, \\bibliographystyle, \\addbibresource, and \\printbibliography; other configuration is preserved as source.',
+      );
+      diagnostics.append(support);
       if (!library.sources.length) {
         updateStatus(t('尚未导入文献文件。请导入一个或多个 .bib 文件。','No bibliography files imported. Import one or more .bib files.'));
       } else if (!found.length) {
@@ -455,9 +504,11 @@ export function openCitationPanel({
         choose.setAttribute('aria-label', `${entry.key}, ${entry.author || t('未知作者','unknown author')}, ${entry.year || t('无年份','no year')}`);
         choose.addEventListener('click', () => {
           selected = entry;
+          const selectionKey = `${entry.file}:${entry.sourceIndex}`;
+          if (selectedEntries.has(selectionKey)) selectedEntries.delete(selectionKey);
+          else selectedEntries.set(selectionKey, entry);
           insert.disabled = false;
-          for (const item of list.querySelectorAll('[aria-selected]')) item.setAttribute('aria-selected', 'false');
-          choose.setAttribute('aria-selected', 'true');
+          choose.setAttribute('aria-selected', selectedEntries.has(selectionKey) ? 'true' : 'false');
         });
         const meta = document.createElement('small');
         meta.textContent = [entry.author, entry.year, entry.file].filter(Boolean).join(' · ');
@@ -577,7 +628,14 @@ export function openCitationPanel({
     backdrop.addEventListener('pointerdown', event => { if (event.target === backdrop) close(null); });
     insert.addEventListener('click', () => {
       if (!selected) return;
-      onInsert(selected);
+      const entries = [...selectedEntries.values()];
+      const keys = entries.length ? entries.map(entry => entry.key) : [selected.key];
+      if (keys.length > 1 || preNote.value || postNote.value || citationCommand.value !== 'cite') {
+        const command = `\\${citationCommand.value}${preNote.value ? `[${preNote.value}]` : ''}${postNote.value ? `[${postNote.value}]` : ''}{${keys.join(',')}}`;
+        onInsertCitation({ command, keys, preNote: preNote.value, postNote: postNote.value, citationCommand: citationCommand.value, entries });
+      } else {
+        onInsert(selected);
+      }
       close(selected);
     });
     document.body.append(backdrop);

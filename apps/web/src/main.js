@@ -1626,6 +1626,12 @@ groupButton(referenceGroup,'cite',async()=>{
         const applied = applyCitationRenames(source(), { [oldKey]: newKey });
         if (applied.count) load(applied.text, false);
       },
+      onInsertCitation: ({ command }) => {
+        editor.chain().focus().insertContent(command).run();
+      },
+      onInsertBibliography: ({ command }) => {
+        editor.chain().focus().insertContent(command).run();
+      },
     });
     if(!entry || editor.state.doc!==documentBefore)return;
     const {key,file:sourcePath,blob}=entry;
