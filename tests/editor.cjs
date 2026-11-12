@@ -1846,11 +1846,15 @@ async function verifySelectionGeometry(page, paper, importSource) {
     await page.keyboard.press('Backspace');
     assert.match(await inline.evaluate(field=>field.value),/!\s*=/);
     await page.keyboard.press('Control+Shift+j');
+    assert.ok(await paper.evaluate(element=>element===document.activeElement),'Ctrl+Shift+J focuses the document');
+    await page.bringToFront();
     const ime=await browserContext.newCDPSession(page);
     await ime.send('Input.imeSetComposition',{text:'zhong',selectionStart:5,selectionEnd:5});
     await ime.send('Input.insertText',{text:'中'});
-    await page.keyboard.type(',');
-    await page.waitForFunction(()=>document.querySelector('.ProseMirror p')?.textContent.endsWith('中,'));
+    const paragraph=paper.locator('p').first();
+    assert.match(await paragraph.textContent(),/中$/,'Composition commits outside the formula');
+    await page.keyboard.press('Comma');
+    assert.match(await paragraph.textContent(),/中,$/,'The first punctuation after composition is inserted once');
     await ime.detach();
     await importSource('\\[a\\]');
     const display=paper.locator('math-field');
