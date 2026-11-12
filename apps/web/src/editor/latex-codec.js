@@ -52,7 +52,11 @@ export function serialize(node) {
       return '\\begin{lstlisting}'+option+'\n'+(node.content??[]).map(child=>child.text??'').join('')+'\n\\end{lstlisting}\n\n';
     }
     case 'documentImage': return serializeImage(node.attrs);
-    case 'paragraph': return (node.attrs?.indent === false ? '\\noindent ' : '') + content + '\n\n';
+    case 'paragraph': {
+      const body=(node.attrs?.indent === false ? '\\noindent ' : '') + content;
+      const command={left:'raggedright',right:'raggedleft',center:'centering'}[node.attrs?.align];
+      return (command ? '{\\'+command+' '+body+'\\par}' : body)+'\n\n';
+    }
     case 'heading': {
       const name = ['section','subsection','subsubsection'][Math.min(node.attrs.level,3)-1];
       const short = node.attrs.shortTitle ? '[' + node.attrs.shortTitle + ']' : '';

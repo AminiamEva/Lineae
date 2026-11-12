@@ -121,6 +121,8 @@ main { padding:125px 24px 60px; overflow:auto; }
 .math-equation-number::after { content:"(" counter(lineae-equation) ")"; }
 .ProseMirror math-field { min-width:1em; max-width:100%; border:0; background:transparent; color:inherit; font-family:inherit; text-indent:0; }
 .ProseMirror .math-inline { display:inline-block; max-width:100%; vertical-align:baseline; text-indent:0; }
+.ProseMirror .math-inline.math-cjk-before { margin-inline-start:.25em; }
+.ProseMirror .math-inline.math-cjk-after { margin-inline-end:.25em; }
 .ProseMirror > p[data-indent="true"] .math-inline { max-width:calc(100% - 2ic); }
 .ProseMirror .math-display math-field { max-width:calc(100% - 16px); }
 .ProseMirror math-field::part(content) { overflow-x:visible; }

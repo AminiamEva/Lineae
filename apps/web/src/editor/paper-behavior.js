@@ -8,6 +8,21 @@ function inlineMathComposition() {
   let session=null;
   const afterMath = selection => selection instanceof TextSelection && selection.empty &&
     !selection.$from.textOffset && selection.$from.nodeBefore?.type.name==='math';
+  function recoverCommit(view, committed) {
+    const pending=session;
+    if (!pending?.preedit || typeof committed!=='string' || !/\p{Script=Han}/u.test(committed)) return;
+    queueMicrotask(()=>{
+      if (session!==pending || view.isDestroyed || !view.hasFocus()) return;
+      view.domObserver.flush();
+      const {doc}=view.state, {from,preedit}=pending;
+      const end=from+preedit.length+committed.length;
+      if(end>doc.content.size || doc.resolve(from).nodeBefore?.type.name!=='math' ||
+        doc.textBetween(from,end,'\0','\0')!==preedit+committed) return;
+      session=null;
+      const tr=view.state.tr.delete(from,from+preedit.length);
+      view.dispatch(tr.setSelection(TextSelection.create(tr.doc,from+committed.length)));
+    });
+  }
   return new Plugin({
     appendTransaction(transactions, _oldState, state) {
       if (state.storedMarks || !transactions.some(transaction=>transaction.selectionSet) || !afterMath(state.selection)) return null;
@@ -24,34 +39,24 @@ function inlineMathComposition() {
           return false;
         },
         compositionupdate(_view,event) {
-          if(session && /^[a-z' ]+$/i.test(event.data)) {
+          if(session && event.data && !/\p{Script=Han}/u.test(event.data)) {
             session.preedit=event.data;
           }
           return false;
         },
         input(view,event) {
-          const pending=session;
-          const committed=event.data;
-          if (!pending?.preedit || typeof committed!=='string' || !/\p{Script=Han}/u.test(committed)) return false;
-          session=null;
-          queueMicrotask(()=>{
-            if (view.isDestroyed || !view.hasFocus()) return;
-            view.domObserver.flush();
-            const {doc}=view.state, {from,preedit}=pending;
-            const end=from+preedit.length+committed.length;
-            // Chromium can commit as a plain insertion beside a noneditable
-            // atom. Only reconcile the exact duplicate at the IME anchor.
-            if(end>doc.content.size || doc.resolve(from).nodeBefore?.type.name!=='math' ||
-              doc.textBetween(from,end,'\0','\0')!==preedit+committed) return;
-            const tr=view.state.tr.delete(from,from+preedit.length);
-            view.dispatch(tr.setSelection(TextSelection.create(tr.doc,from+committed.length)));
-          });
+          recoverCommit(view,event.data);
+          return false;
+        },
+        compositionend(view,event) {
+          recoverCommit(view,event.data);
           return false;
         },
         pointerdown() {session=null;return false;},
         blur() {session=null;return false;},
         keydown(_view,event) {
-          if (!event.isComposing && event.keyCode!==229) session=null;
+          if (!event.isComposing && event.keyCode!==229 &&
+              /^(?:Arrow(?:Left|Right|Up|Down)|Home|End|PageUp|PageDown|Tab|Escape)$/.test(event.key)) session=null;
           return false;
         },
       },
@@ -119,7 +124,16 @@ function codeTokenRegex(family) {
 }
 function formattingMarks(doc) {
   const decorations = [];
-  doc.descendants((node, position) => {
+  doc.descendants((node, position, parent, index) => {
+    if (node.type.name==='math' && parent) {
+      const before=parent.maybeChild(index-1);
+      const after=parent.maybeChild(index+1);
+      const classes=[];
+      if (before?.isText && /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]$/u.test(before.text)) classes.push('math-cjk-before');
+      if (after?.isText && /^[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/u.test(after.text)) classes.push('math-cjk-after');
+      if (classes.length) decorations.push(Decoration.node(position,position+node.nodeSize,{class:classes.join(' ')}));
+    }
+
     if (node.isText) {
       const logo = node.marks.find(mark=>mark.type.name==='textCommand')?.attrs.name;
       if (logo === 'LaTeX' || logo === 'TeX') {
@@ -154,6 +168,12 @@ export const PaperBehavior = Extension.create({
     return [{
       types: ['paragraph'],
       attributes: {
+        align: {
+          default: null,
+          parseHTML: element => ['left','center','right'].includes(element.dataset.align) ? element.dataset.align : null,
+          renderHTML: ({align}) => ['left','center','right'].includes(align)
+            ? { 'data-align':align, style:'text-align:'+align } : {},
+        },
         indent: {
           default: true,
           keepOnSplit: true,

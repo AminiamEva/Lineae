@@ -9,6 +9,15 @@ import { importBlocks } from '../apps/web/latex/blocks.mjs';
 import { listMarker, markerInput } from '../apps/web/latex/list-numbering.mjs';
 import { buildProjectZip, projectDependencies } from '../apps/web/src/editor/project-zip.mjs';
 
+test('paragraph alignment round-trips without leaking into the next paragraph', () => {
+  for (const align of ['left','center','right']) {
+    const paragraph={type:'paragraph',attrs:{align},content:[{type:'text',text:'Aligned'}]};
+    const [restored]=importBlocks(serialize(paragraph));
+    assert.equal(restored.attrs.align,align);
+    assert.equal(restored.content[0].text,'Aligned');
+  }
+});
+
 test('Word-style numbering preserves the marker and starting number in TeX', () => {
   for (const [input, style, start] of [
     ['b. ','lower-alpha',2], ['AA. ','upper-alpha',27], ['（３） ','decimal-parens',3], ['IV) ','upper-roman-paren',4],

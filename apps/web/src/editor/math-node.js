@@ -8,8 +8,12 @@ let smartFences;
 export function configureMathFences(value) { smartFences = value; }
 
 const isIntegral = atom => /^\\(?:i{1,3}nt|oi{1,3}nt)$/.test(atom?.command ?? '');
-const integralBody = atom => (atom?.type === 'group' || atom?.command === '\\mathord') &&
-  (isIntegral(atom.leftSibling) || (atom.leftSibling?.type === 'subsup' && isIntegral(atom.leftSibling.leftSibling)));
+function bodyOperator(atom) {
+  if (atom?.type !== 'group' && atom?.command !== '\\mathord') return null;
+  const left=atom.leftSibling;
+  const operator=left?.type==='subsup' ? left.leftSibling : left;
+  return isIntegral(operator) || /^\\(?:sum|prod)$/.test(operator?.command ?? '') ? operator : null;
+}
 
 export function mathEnvironment(field) {
   const model=field._mathfield?.model;
@@ -20,8 +24,9 @@ export function mathEnvironment(field) {
     if (Array.isArray(atom.parentBranch)) labels.unshift(t(
       '第 '+(atom.parentBranch[0]+1)+' 行，第 '+(atom.parentBranch[1]+1)+' 列',
       'Row '+(atom.parentBranch[0]+1)+', column '+(atom.parentBranch[1]+1)));
-    if (integralBody(atom)) labels.unshift('op/'+(atom.leftSibling.type==='subsup'
-      ? atom.leftSibling.leftSibling : atom.leftSibling).command.slice(1),t('被积式','Integrand'));
+    const operator=bodyOperator(atom);
+    if (operator) labels.unshift('op/'+operator.command.slice(1),
+      isIntegral(operator) ? t('被积式','Integrand') : t('运算主体','Operand'));
     if (atom.type==='genfrac') labels.unshift(t('分式','Fraction'));
     if (atom.type==='surd') labels.unshift(t('根式','Radical'));
     if (atom.type==='array') labels.unshift(atom.environmentName ?? t('矩阵','Matrix'));
@@ -352,8 +357,7 @@ export const MathNode = Node.create({
       if (node.isBlock) dom.append(numbers);
       renderNumbers();
 
-      // A second caret keeps the same one-character superscript. Other
-      // ambiguous keys can still use their doubled spelling as a literal.
+      // A repeated structural key inserts the literal character.
       let pendingKey = null;
       let pendingDollar = false;
       let oneScript = null;
@@ -520,7 +524,6 @@ export const MathNode = Node.create({
           if (event.repeat) return;
           const [command, literal] = ambiguous[event.key];
           if (pendingKey?.key === event.key) {
-            if (event.key==='^' && oneScript) return;
             const previous = pendingKey;
             pendingKey = null;
             oneScript = null;
@@ -601,7 +604,7 @@ export const MathNode = Node.create({
           const ids=new Set();
           for (let offset=0;offset<=field.lastOffset;offset++) {
             const atom=model.at(offset);
-            if (integralBody(atom)) {
+            if (bodyOperator(atom)) {
               if (atom.id) ids.add(String(atom.id));
               for (const child of atom.body ?? []) if (child.id) ids.add(String(child.id));
             }

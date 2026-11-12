@@ -28,6 +28,9 @@ keybindings:
     insertDisplayMath: ctrl+e c
     toggleBox: ctrl+e b
     editMath: ctrl+e e
+    alignLeft: ctrl+e l
+    alignRight: ctrl+e r
+    alignCenter: ctrl+e i
     find: ctrl+f
     leaveEnvironment: ctrl+j
     toggleContextMarker: ctrl+t
@@ -64,6 +67,8 @@ keybindings:
     left: ctrl+l
     right: ctrl+r
     frac: ctrl+f
+    sqrt: ctrl+2
+    indexedRoot: ctrl+shift+2
     int: ctrl+i
     matrix: ctrl+m
     pmatrix: ctrl+shift+m

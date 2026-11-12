@@ -1042,6 +1042,7 @@ async function verifySelectionGeometry(page, paper, importSource) {
     await page.keyboard.press('e');
     await page.waitForFunction(()=>document.activeElement?.tagName==='MATH-FIELD');
     const chordField=page.locator('math-field');
+    assert.ok(await chordField.evaluate(field=>field.position===field.lastOffset));
     await chordField.evaluate(field=>{field.position=1;});
     const chordZoom=await page.locator('input[type=range]').inputValue();
     await page.keyboard.press('Control+0');
@@ -1108,7 +1109,7 @@ async function verifySelectionGeometry(page, paper, importSource) {
     }
     for (const [shortcut,operator] of [['Control+Shift+s','sum'],['Control+Shift+p','prod'],['Control+Shift+i','iint'],['Control+Shift+Alt+i','iiint'],['Alt+i','oint'],['Alt+Shift+i','oiint']]) {
       await page.keyboard.press(shortcut);
-      await page.waitForFunction(name=>document.querySelector('math-field')?.value.includes('\\'+name),operator);
+      await page.waitForFunction(name=>new RegExp('\\\\'+name+'\\s*\\\\mathord').test(document.querySelector('math-field')?.value),operator);
     }
     const beforeToolbarSum=await page.locator('math-field').first().evaluate(field=>field.value);
     const mathCount=await page.locator('math-field').count();
@@ -1208,11 +1209,18 @@ async function verifySelectionGeometry(page, paper, importSource) {
     assert.deepEqual(await paper.evaluate(element=>Array.from(element.children).map(child=>child.matches('.math-display')?'math':child.tagName)),['PRE','P','math','P']);
     const integral=page.locator('math-field');
     await page.keyboard.press('Control+i');
+    await integral.evaluate(field=>field.executeCommand('moveToMathfieldStart'));
+    await page.keyboard.press('ArrowRight');
     await page.keyboard.type('_i');
     await page.keyboard.press('Control+j');
+    await integral.evaluate(field=>field.executeCommand('moveToMathfieldEnd'));
     await page.keyboard.press('Control+i');
+    await integral.evaluate(field=>{
+      const model=field._mathfield.model;
+      for(let i=field.lastOffset;i>0;i--) if(model.at(i)?.command==='\\int'){field.position=i;break;}
+    });
     await page.keyboard.type('_0');
-    assert.match(await integral.evaluate(field=>field.value),/\\int_\{?i\}?\s*\\int_\{?0\}?/);
+    assert.match(await integral.evaluate(field=>field.value),/\\int_\{?i\}?[\s\S]*\\int_\{?0\}?/);
     assert.ok(!(await integral.evaluate(field=>field.value)).includes('\\space'));
     await importSource('alpha beta gamma');
     await page.waitForFunction(()=>document.querySelector('.ProseMirror p')?.textContent==='alpha beta gamma');
@@ -1922,17 +1930,25 @@ async function verifySelectionGeometry(page, paper, importSource) {
     await script.evaluate(field=>{field.position=1;});
     await page.keyboard.press('Shift+Digit6');
     await page.keyboard.press('Shift+Digit6');
+    assert.match(await script.evaluate(field=>field.value),/\\text\{ˆ\}/,'Doubled caret inserts a literal caret');
+    await script.evaluate(field=>{field.position=1;});
+    await page.keyboard.press('Shift+Digit6');
     await page.keyboard.press('2');
     await page.keyboard.press('z');
-    assert.match(await script.evaluate(field=>field.value),/x\^\{?2\}?z\+y/,'Doubled caret enters one character and returns to the baseline');
-    await page.keyboard.press('Control+6');
-    await page.keyboard.press('ArrowRight');
-    await page.waitForFunction(()=>!/\^\{\}/.test(document.querySelector('.math-inline math-field')?.value));
-    await page.keyboard.press('Shift+Digit6');
-    await page.keyboard.press('Shift+Digit6');
-    await page.keyboard.press('Shift+Equal');
-    await page.keyboard.press('w');
-    assert.match(await script.evaluate(field=>field.value),/z\^\{?\+\}?w/);
+    assert.match(await script.evaluate(field=>field.value),/x\^\{?2\}?z/,'Single caret enters one character and returns to the baseline');
+    await page.keyboard.press('Control+2');
+    await page.waitForFunction(()=>document.activeElement?.value?.includes('\\sqrt{'));
+    await page.keyboard.press('Control+Shift+Digit2');
+    await page.waitForFunction(()=>document.activeElement?.value?.includes('\\sqrt['));
+    await page.keyboard.press('Control+Shift+j');
+    for (const [key,align] of [['l','left'],['r','right'],['i','center']]) {
+      await editorChord(key);
+      assert.equal(await paper.locator('p').first().getAttribute('data-align'),align);
+    }
+    await importSource('中文$x$汉字 and $y$ text');
+    await paper.locator('.math-cjk-before.math-cjk-after').waitFor();
+    assert.equal(await paper.locator('.math-cjk-before').count(),1);
+    assert.equal(await paper.locator('.math-cjk-after').count(),1);
     await importSource('\\[a\\]');
     const display=paper.locator('.math-display math-field');
     await display.click();

@@ -1195,7 +1195,11 @@ function runMathShortcut(command, field, event) {
   const slot = '\\placeholder{}';
   if (matrixEnvironments.has(command)) insertLiveMath(field, matrixSource(command,selected || slot));
   else if (command==='frac') insertLiveMath(field, `\\frac{${selected || slot}}{${slot}}`);
-  else if (command==='int') insertLiveMath(field, `\\int${selected ? ' '+selected : ''}`);
+  else if (command==='sqrt') insertLiveMath(field, `\\sqrt{${selected || slot}}`);
+  else if (command==='indexedRoot') insertLiveMath(field, `\\sqrt[${slot}]{${selected || slot}}`);
+  else if (/^(?:i{1,3}nt|oi{1,3}nt|sum|prod)$/.test(command)) {
+    insertLiveMath(field, `\\${command}\\mathord{${selected || slot}}`);
+  }
   else insertLiveMath(field, '\\'+command);
 }
 document.addEventListener('pointerdown', event => { if (!commands.contains(event.target)) closeCommands(); }, true);
@@ -1319,8 +1323,12 @@ function editMathAtSelection() {
   const field=target && editor.view.nodeDOM(target.position)?.querySelector('math-field');
   if (!field) return false;
   field.focus();
-  field.executeCommand(target.start?'moveToMathfieldStart':'moveToMathfieldEnd');
+  field.executeCommand('moveToMathfieldEnd');
   return true;
+}
+function setParagraphAlignment(align) {
+  if (!editor.isActive('paragraph')) return false;
+  return editor.chain().focus().updateAttributes('paragraph',{align}).run();
 }
 function zoomByKeyboard(amount, {field}) {
   if (field) return false;
@@ -1343,6 +1351,9 @@ const shortcutActions = {
     insertDisplayMath: () => insertMath(true),
     toggleBox: () => spaceOverlay.toggleBox(),
     editMath: editMathAtSelection,
+    alignLeft: () => setParagraphAlignment('left'),
+    alignRight: () => setParagraphAlignment('right'),
+    alignCenter: () => setParagraphAlignment('center'),
     find: documentFind.show,
     leaveEnvironment: leaveTextEnvironment,
     toggleContextMarker: () => {
@@ -1505,6 +1516,9 @@ for(const [label,align] of [['左','left'],['中','center'],['右','right']]) gr
   editor.chain().focus().updateAttributes(type,{align}).run();
 });
 groupButton(formatGroup,'B',()=>editor.chain().focus().toggleBold().run());
+for (const [align,label] of [['left',t('左对齐','Align left')],['right',t('右对齐','Align right')],['center',t('居中','Center')]]) {
+  groupButton(formatGroup,label,()=>setParagraphAlignment(align));
+}
 groupButton(formatGroup,'I',()=>editor.chain().focus().toggleItalic().run());
 groupButton(formatGroup,'U',()=>editor.chain().focus().toggleMark('underline').run());
 groupButton(formatGroup,'S',()=>editor.chain().focus().toggleStrike().run());
@@ -1645,22 +1659,18 @@ groupButton(mathGroup,'equation label',editFormulaLabel);
 groupButton(mathGroup,'frac',()=>insertMath(false,'\\frac{\\placeholder{}}{\\placeholder{}}'));
 groupButton(mathGroup,t('公式换行','Math line break'),()=>activeMath()?.dispatchEvent(new Event('lineae-math-newline')));
 groupButton(mathGroup,t('退出公式','Exit formula'),()=>activeMath()?.dispatchEvent(new Event('lineae-leave-formula'))).dataset.shortcut='math.leaveFormula';
-groupButton(mathGroup,'sqrt',()=>insertMath(false,'\\sqrt{\\placeholder{}}'));
-groupButton(mathGroup,'sum',()=>{
-  const field=activeMath();
-  if(field)insertLiveMath(field,'\\sum'); else insertMath(false,'\\sum');
-});
-groupButton(mathGroup,'int',()=>{
-  const field=activeMath();
-  if (field) insertLiveMath(field,formulaCommands.intbody);
-  else insertMath(false,formulaCommands.intbody);
-});
-for (const operator of ['prod','iint','iiint','oint','oiint']) {
-  groupButton(mathGroup,'\\'+operator,()=>{
+for (const [label,command,latex] of [
+  ['sqrt','sqrt','\\sqrt{\\placeholder{}}'],
+  ['ⁿ√','indexedRoot','\\sqrt[\\placeholder{}]{\\placeholder{}}'],
+  ...['sum','int','prod','iint','iiint','oint','oiint'].map(name=>[
+    ['sum','int'].includes(name) ? name : '\\'+name,name,'\\'+name+'\\mathord{\\placeholder{}}',
+  ]),
+]) {
+  groupButton(mathGroup,label,()=>{
     const field=activeMath();
-    if(field)insertLiveMath(field,'\\'+operator);
-    else insertMath(false,'\\'+operator);
-  });
+    if(field)runMathShortcut(command,field,{repeat:false});
+    else insertMath(false,latex);
+  }).dataset.shortcut='math.'+command;
 }
 groupButton(mathGroup,'\\left',()=>chooseMathDelimiters(activeMath()));
 groupButton(mathGroup,'\\right',()=>chooseMathDelimiters(activeMath(),true));

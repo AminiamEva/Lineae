@@ -146,6 +146,13 @@ function parseListBlock(text) {
 }
 
 export function importBlock(block) {
+  const alignment=/^\{\\(raggedright|raggedleft|centering)\s+([\s\S]*?)\\par\}$/.exec(block.trim());
+  if (alignment) {
+    const paragraph=importBlock(alignment[2]);
+    if (paragraph?.type==='paragraph') {
+      return {...paragraph,attrs:{...paragraph.attrs,align:{raggedright:'left',raggedleft:'right',centering:'center'}[alignment[1]]}};
+    }
+  }
   const text = block.trim();
   if (!text) return null;
   const image = parseImageBlock(text);
@@ -240,12 +247,15 @@ function splitParagraphs(block) {
   const parts = [];
   let start = 0;
   let depth = 0;
-  const tokens = /\\(begin|end)\{[^{}]+\}|\\par\b/g;
+  let groups = 0;
+  const tokens = /\\(begin|end)\{[^{}]+\}|\\par\b|\\.|[{}]/g;
   let match;
   while ((match = tokens.exec(block))) {
     if (match[1] === 'begin') depth++;
     else if (match[1] === 'end') depth = Math.max(0, depth - 1);
-    else if (depth === 0) {
+    else if (match[0] === '{') groups++;
+    else if (match[0] === '}') groups = Math.max(0, groups - 1);
+    else if (match[0] === '\\par' && depth === 0 && groups === 0) {
       parts.push(block.slice(start, match.index));
       start = match.index + match[0].length;
     }
