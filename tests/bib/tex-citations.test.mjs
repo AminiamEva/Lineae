@@ -76,6 +76,13 @@ test('finds bibliography resources and styles', () => {
     ['addglobalbib', 'global.bib'],
   ]);
   assert.equal(scan.printBibliography.length, 1);
+  assert.equal(scan.mode, 'mixed');
+});
+
+test('distinguishes BibTeX, biblatex/Biber, and unknown configurations', () => {
+  assert.equal(scanTexCitations('\\bibliographystyle{plain}\\bibliography{refs}').mode, 'bibtex');
+  assert.equal(scanTexCitations('\\addbibresource{refs.bib}\\printbibliography').mode, 'biblatex');
+  assert.equal(scanTexCitations('\\usepackage{custombib}').mode, 'unknown');
 });
 
 test('resource offsets survive option values that contain braces', () => {

@@ -9,7 +9,8 @@ import { decorateToolbar, applyToolbarDescriptions, icon } from './editor/icons.
 import { PaperBehavior } from './editor/paper-behavior.js';
 import { MathNode, MathBlock, configureMathFences, insertFormula, mathEnvironment, toggleDisplayStyle } from './editor/math-node.js';
 import { Ref, Label, Cite, Footnote, TableOfContents, refreshReferences, collectReferenceLabels } from './editor/references.js';
-import { insertCitationDialog } from './editor/citation-dialog.js';
+import { createCitationLibrary, openCitationPanel } from './editor/citation-library.js';
+import { applyCitationRenames } from '../bib/index.mjs';
 import { chooseReference } from './editor/reference-index.js';
 import { installTableHoverAddRow } from './editor/table-hover.js';
 import { createConfigStore } from './editor/config.mjs';
@@ -18,7 +19,13 @@ import defaultConfigYaml from '../config.yaml';
 import { askText } from './editor/dialog.js';
 import { installDocumentFind } from './editor/find.js';
 import { DocumentImage, insertLocalImage, installImageDrop } from './editor/image-node.js';
-import { projectAssets, rememberAsset } from './editor/project-assets.js';
+import {
+  clearProjectAssets,
+  projectAssets,
+  readBibliographyMetadata,
+  rememberAsset,
+  writeBibliographyMetadata,
+} from './editor/project-assets.js';
 import { buildProjectZip, safeProjectPath, projectDependencies } from './editor/project-zip.mjs';
 import { theoremNames } from '../latex/theorem.mjs';
 import { MultiSelection } from './editor/multi-selection.js';
@@ -44,6 +51,8 @@ import { installTooltips } from './ui/tooltips.mjs';
 import { installRovingFocus } from './ui/keyboard-nav.mjs';
 import { fadeIn } from './ui/motion.mjs';
 import { getLanguage, localize, setLanguage, t } from './ui/i18n.mjs';
+
+const citationLibrary = createCitationLibrary();
 
 const cssColor = value => {
   const rgb=/^rgba?\(\s*(\d+)[,\s]+(\d+)[,\s]+(\d+)/i.exec(value??'');
@@ -692,6 +701,12 @@ function writeMeta(key,value) {
   if(importedSource)importedSource=apply(importedSource);
   renderMeta();
 }
+function persistCitationState() {
+  const paths = projectDependencies(source()).filter(path => path.endsWith('.bib'));
+  const metadata = writeBibliographyMetadata(documentParts.start, citationLibrary.exportState({ paths }));
+  documentParts.start = metadata;
+  if (importedSource) importedSource = writeBibliographyMetadata(importedSource, citationLibrary.exportState({ paths }));
+}
 const metaBar=document.createElement('section');metaBar.id='document-meta';
 const metaTitle=document.createElement('div');metaTitle.className='doc-title';
 const metaAuthor=document.createElement('div');metaAuthor.className='doc-author';
@@ -761,6 +776,8 @@ function identifyImportedBoxes(node) {
 function load(text, markSaved = true) {
   const parsed=parseDocument(text);
   if(!parsed)throw new Error(t('无法识别文档','Invalid document'));
+  clearProjectAssets();
+  citationLibrary.restoreState(readBibliographyMetadata(text));
   // Preserve imported source exactly. Unsupported blocks remain directly accessible in source mode.
   documentParts=parsed;
   const content=parsed.blocks.flatMap((block,index)=>importBlocks(index===0 && readMeta('title')
@@ -782,6 +799,15 @@ function toggleSourceView(){
     try {load(sourceView.value,false);sourceView.hidden=true;documentPage.hidden=false;editor.commands.focus();}
     catch(error){document.querySelector('#status').hidden=false;document.querySelector('#status').textContent=error.message;}
   }
+  updateSourceButton();
+}
+function locateMissingCitation(missing) {
+  const text = source();
+  sourceView.value = text;
+  sourceView.hidden = false;
+  documentPage.hidden = true;
+  sourceView.focus();
+  sourceView.setSelectionRange(missing.start, missing.start + missing.key.length);
   updateSourceButton();
 }
 document.querySelector('#download').disabled=false;
@@ -1593,22 +1619,41 @@ groupButton(referenceGroup,'fn',async()=>{
 groupButton(referenceGroup,'cite',async()=>{
   try{
     const documentBefore=editor.state.doc;
-    const citation=await insertCitationDialog();
-    if(!citation || editor.state.doc!==documentBefore)return;
-    const {key,file}=citation;
-    if(!/^[\p{L}\p{N}_. -]+\.bib$/iu.test(file.name))throw new Error(t('文献文件名不受支持','Unsupported bibliography filename'));
+    const entry=await openCitationPanel({
+      library: citationLibrary,
+      texSource: source(),
+      onLocateMissing: locateMissingCitation,
+      onChange: persistCitationState,
+      onRename: ({ oldKey, newKey }) => {
+        const applied = applyCitationRenames(source(), { [oldKey]: newKey });
+        if (applied.count) load(applied.text, false);
+      },
+      onInsertCitation: ({ command }) => {
+        editor.chain().focus().insertContent(command).run();
+      },
+      onInsertBibliography: ({ command }) => {
+        editor.chain().focus().insertContent(command).run();
+      },
+    });
+    if(!entry || editor.state.doc!==documentBefore)return;
+    const {key,file:sourcePath,blob}=entry;
+    const sourceName=sourcePath.split('/').at(-1);
+    if(!/^[\p{L}\p{N}_. -]+\.bib$/iu.test(sourceName))throw new Error(t('文献文件名不受支持','Unsupported bibliography filename'));
     const tex=source();
     const resources=[...tex.matchAll(/\\addbibresource(?:\[[^\]]*\])?\{([^{}]+)\}/g)].map(match=>match[1]);
     const classic=[...tex.matchAll(/\\bibliography\{([^{}]+)\}/g)].flatMap(match=>match[1].split(',').map(name=>name.trim()).filter(Boolean).map(name=>name.endsWith('.bib')?name:name+'.bib'));
-    const linked=[...resources,...classic].filter(path=>path.split('/').at(-1)===file.name);
+    const linked=[...resources,...classic].filter(path=>path.split('/').at(-1)===sourceName);
     if(linked.length>1 || (!linked.length && classic.length))throw new Error(t('请关联文档中声明的文献文件','Attach the bibliography declared in the document'));
-    rememberAsset(linked[0]??file.name,file);
+    const linkedPath=linked[0]??sourcePath;
+    if (linkedPath !== sourcePath) citationLibrary.setSourcePath(sourcePath, linkedPath);
+    rememberAsset(linkedPath,blob);
     if(!linked.length) {
       const eol=documentParts.eol;
       const hasBiblatex=/\\(?:usepackage|RequirePackage)(?:\[[^\]]*\])?\{[^{}]*\bbiblatex\b[^{}]*\}/.test(documentParts.start);
-      const declarations=(hasBiblatex?'':'\\usepackage{biblatex}'+eol)+'\\addbibresource{'+file.name+'}'+eol;
+      const declarations=(hasBiblatex?'':'\\usepackage{biblatex}'+eol)+'\\addbibresource{'+sourceName+'}'+eol;
       documentParts={...documentParts,start:documentParts.start.replace(/^\\begin\{document\}/m,()=>declarations+'\\begin{document}')};
     }
+    persistCitationState();
     editor.chain().focus().insertContent({type:'cite',attrs:{key}}).run();
   }catch(error){
     document.querySelector('#status').hidden=false;
