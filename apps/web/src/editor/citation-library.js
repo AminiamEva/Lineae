@@ -322,7 +322,7 @@ export function openCitationPanel({
     for (const command of ['cite', 'citep', 'citet', 'parencite', 'textcite', 'autocite']) {
       citationCommand.append(new Option(`\\${command}`, command));
     }
-    const citationCommandDialog = document.createElement('div');
+    const citationCommandDialog = document.createElement('form');
     citationCommandDialog.className = 'citation-dialog';
     const legacyKeySelect = document.createElement('select');
     legacyKeySelect.setAttribute('aria-label', t('引用键','Citation key'));
