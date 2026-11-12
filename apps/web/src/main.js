@@ -7,7 +7,7 @@ import { mathFontStyles, applyMathFont } from './editor/math-formatting.js';
 import { installFormatControls } from './editor/format-controls.js';
 import { decorateToolbar, applyToolbarDescriptions, icon } from './editor/icons.js';
 import { PaperBehavior } from './editor/paper-behavior.js';
-import { MathNode, MathBlock, configureMathFences, insertFormula, mathEnvironment, toggleDisplayStyle } from './editor/math-node.js';
+import { MathNode, MathBlock, configureMathFences, focusInsertedOperator, insertFormula, isMathOperatorWithBody, mathEnvironment, toggleDisplayStyle } from './editor/math-node.js';
 import { Ref, Label, Cite, Footnote, TableOfContents, refreshReferences, collectReferenceLabels } from './editor/references.js';
 import { createCitationLibrary, openCitationPanel } from './editor/citation-library.js';
 import { applyCitationRenames } from '../bib/index.mjs';
@@ -197,7 +197,13 @@ let editor;
 function insertLiveMath(field, latex, notify = true) {
   const apply = () => {
     if (!field.isConnected) return;
-    field.executeCommand(['insert', latex]);
+    const name = /^\\([a-z]+)(?=$|\\mathord\{)/.exec(latex)?.[1];
+    const operator = isMathOperatorWithBody(name);
+    const start = field.selection.ranges[0]?.[0] ?? field.position;
+    const source = operator && latex === '\\'+name
+      ? latex+'\\mathord{\\placeholder{}}' : latex;
+    field.executeCommand(['insert', source]);
+    if (operator) focusInsertedOperator(field, start);
     if (latex === '\\text{x}') {
       const end = field.selection?.ranges?.[0]?.[1];
       if (end > 0) field.selection = { ranges: [[end - 1, end]], direction: 'none' };
@@ -1372,7 +1378,7 @@ function runMathShortcut(command, field, event) {
   else if (command==='frac') insertLiveMath(field, `\\frac{${selected || slot}}{${slot}}`);
   else if (command==='sqrt') insertLiveMath(field, `\\sqrt{${selected || slot}}`);
   else if (command==='indexedRoot') insertLiveMath(field, `\\sqrt[${slot}]{${selected || slot}}`);
-  else if (/^(?:i{1,3}nt|oi{1,3}nt|sum|prod)$/.test(command)) {
+  else if (isMathOperatorWithBody(command)) {
     insertLiveMath(field, `\\${command}\\mathord{${selected || slot}}`);
   }
   else insertLiveMath(field, '\\'+command);

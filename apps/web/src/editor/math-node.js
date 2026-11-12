@@ -8,11 +8,59 @@ let smartFences;
 export function configureMathFences(value) { smartFences = value; }
 
 const isIntegral = atom => /^\\(?:i{1,3}nt|oi{1,3}nt)$/.test(atom?.command ?? '');
+export const isMathOperatorWithBody = name => /^(?:i{1,3}nt|oi{1,3}nt|sum|prod)$/.test(name);
 function bodyOperator(atom) {
   if (atom?.type !== 'group' && atom?.command !== '\\mathord') return null;
   const left=atom.leftSibling;
   const operator=left?.type==='subsup' ? left.leftSibling : left;
   return isIntegral(operator) || /^\\(?:sum|prod)$/.test(operator?.command ?? '') ? operator : null;
+}
+
+export function focusInsertedOperator(field, start) {
+  const model = field._mathfield?.model;
+  if (!model) return;
+  // The body is a separate atom. Scripts must attach to the operator before it.
+  for (let offset = start + 1; offset <= field.lastOffset; offset++) {
+    const atom = model.at(offset);
+    if (isMathOperatorWithBody(atom?.command?.slice(1))) {
+      field.position = offset;
+      return;
+    }
+  }
+}
+
+function navigateEmptyMathSlot(field, backward) {
+  const model = field._mathfield?.model;
+  if (!model) return;
+  const [from, to] = field.selection.ranges[0] ?? [field.position, field.position];
+  const slots = [];
+  for (let end = 0; end <= field.lastOffset; end++) {
+    const atom = model.at(end);
+    if (atom?.type === 'placeholder') {
+      if (end > 0) slots.push([end - 1, end]);
+    } else if (atom?.type === 'first' && atom.parent?.type !== 'root' &&
+        atom.parent?.branch(atom.parentBranch)?.length === 1) {
+      slots.push([end, end]);
+    }
+  }
+  const next = backward
+    ? slots.findLast(([start, end]) => end <= from && start < from) ?? slots.at(-1)
+    : slots.find(([start, end]) => start >= to && end > to) ?? slots[0];
+  if (next) field.selection = { ranges: [next], direction: 'forward' };
+}
+
+function enterEmptyOperatorBody(field) {
+  if (!caretCollapsed(field)) return;
+  const model = field._mathfield?.model;
+  const caret = model?.at(field.position);
+  const body = caret?.rightSibling;
+  const operator = bodyOperator(body);
+  if (!operator || operator !== (caret.type === 'subsup' ? caret.leftSibling : caret)) return;
+  const children = body.body ?? [];
+  const placeholder = children.find(atom => atom.type === 'placeholder');
+  if (!placeholder || children.some(atom => !['first','placeholder'].includes(atom.type))) return;
+  const end = model.offsetOf(placeholder);
+  if (end > 0) field.selection = { ranges: [[end-1,end]], direction: 'forward' };
 }
 
 export function mathEnvironment(field) {
@@ -97,7 +145,7 @@ const mathFieldStyle = `
      turns into a visible native scrollbar under an inline formula. */
   .ML__content { overflow: visible !important; scrollbar-width: none; }
   .ML__content::-webkit-scrollbar { display: none; }
-  [data-lineae-integrand] { background:light-dark(#e9f4ed,#304a3b); border-radius:.15em; }
+  :host([data-lineae-editing]) [data-lineae-integrand] { background:light-dark(#e9f4ed,#304a3b); border-radius:.15em; }
   :host([data-empty-matrix-cell]) .ML__caret::after {
     content:""; position:absolute; inset:-.05em auto -.05em -.05em;
     width:.66em; border:1px solid currentColor; border-radius:.16em;
@@ -108,11 +156,11 @@ const mathFieldStyle = `
     height:1em; border-radius:.15em; line-height:1; color:inherit; background:light-dark(#e8effa,#37445c); }
   .delimiter-ghost-slot + .delimiter-ghost-slot { background:light-dark(#efe9f7,#483b58); }
   .delimiter-ghost-slot.is-active { box-shadow:inset 0 0 0 1px #749bd0; }
-  .ML__mathbf, .ML__mathbfit, .ML__bb, .ML__cal, .ML__frak, .ML__script, .ML__sans, .ML__tt {
+  :host([data-lineae-editing]) :is(.ML__mathbf, .ML__mathbfit, .ML__bb, .ML__cal, .ML__frak, .ML__script, .ML__sans, .ML__tt) {
     background: light-dark(rgba(77,124,179,.10), rgba(120,170,230,.18));
     border-radius: 2px;
   }
-  .ML__mediumspace {
+  :host([data-lineae-editing]) .ML__mediumspace {
     background: light-dark(#d9f2df,#2f5138);
     border-radius: 2px;
     box-shadow: 0 0 0 1px light-dark(#b7e3c2,#3f6b4b) inset;
@@ -405,7 +453,10 @@ export const MathNode = Node.create({
           if (field.isConnected && focusRequest===pointerFocus) field.focus();
         });
       },true);
+      field.addEventListener('focus', () => field.setAttribute('data-lineae-editing',''));
+      field.addEventListener('compositionstart', () => enterEmptyOperatorBody(field), true);
       field.addEventListener('blur', () => {
+        field.removeAttribute('data-lineae-editing');
         pendingKey=null; pendingDollar=false; oneScript=null; replacedOperator=null;
         queueMicrotask(()=>{if(field.isConnected&&!field.hasFocus())clearEmptyScripts(field);});
       });
@@ -439,6 +490,15 @@ export const MathNode = Node.create({
         if (event.isComposing || event.keyCode===229 || event.getModifierState?.('AltGraph')) return;
         const plain=!event.ctrlKey&&!event.metaKey&&!event.altKey;
         const consume=()=>{event.preventDefault();event.stopImmediatePropagation();};
+        if (plain && event.key === 'Tab') {
+          consume();
+          pendingKey=null; pendingDollar=false; oneScript=null; replacedOperator=null;
+          navigateEmptyMathSlot(field, event.shiftKey);
+          return;
+        }
+        if (plain && Array.from(event.key).length === 1 && !['^','_','$'].includes(event.key)) {
+          enterEmptyOperatorBody(field);
+        }
         const scriptCharacter=/^[^\s^_/$\\]$/u.test(event.key);
         if (oneScript && plain && scriptCharacter &&
             !(event.key==='-' && oneScript.branch==='subscript')) {
@@ -588,6 +648,7 @@ export const MathNode = Node.create({
         field.environmentPopoverPolicy = 'off';
         field.mathModeSpace = '\\space';
         installMathFieldStyle(field);
+        field.toggleAttribute('data-lineae-editing',field.hasFocus());
         const root=field.shadowRoot;
         if (!root) return;
         const markIntegrands=()=>{
