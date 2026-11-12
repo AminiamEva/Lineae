@@ -187,8 +187,10 @@ export function createCitationLibrary() {
         return true;
       },
       exportState({ paths } = {}) {
-        const allowed = paths ? new Set(paths) : null;
-        const selectedSources = sources.filter(source => !allowed || allowed.has(source.file));
+        // Keep every imported source in metadata so duplicate-key choices and
+        // unresolved alternatives survive a close/reopen cycle. `paths` limits
+        // archive dependencies in the caller; it must not discard editor state.
+        const selectedSources = sources;
         const selectedPaths = new Set(selectedSources.map(source => source.file));
         return {
           sources: selectedSources.map(source => ({
