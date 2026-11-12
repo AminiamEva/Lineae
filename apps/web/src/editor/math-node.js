@@ -437,6 +437,7 @@ export const MathNode = Node.create({
             field.selection={ranges:[[end-1,field.position]]};
             field.executeCommand(['insert',replacement]);
             replacedOperator={before,selection,after:field.value,position:field.position};
+            field.dispatchEvent(new Event('input',{bubbles:true}));
             return;
           }
         }
@@ -482,6 +483,7 @@ export const MathNode = Node.create({
             field.value = previous.value;
             field.selection = previous.selection;
             field.executeCommand(['insert', literal]);
+            field.dispatchEvent(new Event('input',{bubbles:true}));
           } else {
             pendingKey = { key: event.key, value: field.value, selection: structuredClone(field.selection) };
             field.executeCommand(command);
