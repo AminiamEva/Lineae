@@ -42,6 +42,7 @@ export function installSpaceOverlay(editor, paper, { selectionFocus = null } = {
   let rowDirection;
   let pendingEdit = null;
   let lastEditTransactionAt = 0;
+  let editBurst = 0;
   let arrowOrigin = null;
 
   function boxEdge(preferNext=false) {
@@ -411,6 +412,7 @@ export function installSpaceOverlay(editor, paper, { selectionFocus = null } = {
     rowDirection=undefined;
     pendingEdit=null;
     lastEditTransactionAt=0;
+    editBurst=0;
     textCaret.hide();
     hidePreeditCaret();
   }
@@ -422,9 +424,9 @@ export function installSpaceOverlay(editor, paper, { selectionFocus = null } = {
         if (edit?.doc===transaction.before && performance.now()<edit.expires) {
           caretOrigin=edit.origin ?? caretOrigin;
           const now=performance.now();
-          const rapid=now-lastEditTransactionAt<120;
+          editBurst=now-lastEditTransactionAt<120?editBurst+1:1;
           lastEditTransactionAt=now;
-          scheduleCaret(rapid?'edit-rapid':'edit',true);
+          scheduleCaret(editBurst>=4?'edit-rapid':'edit',true);
         } else yieldCaret();
       }
       scheduleMarks();
