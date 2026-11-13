@@ -44,7 +44,7 @@ Tables can be edited in the document, with support for basic <code>tabular</code
 
 Section numbering, starred headings, short titles, labels, references, and a table of contents are supported. Footnotes and document-level title and author fields are also available. A find-and-replace panel, context menus, keyboard shortcuts, undo, and redo support day-to-day editing.
 
-The editor currently uses a continuous document view. Its line breaks, spacing, and pagination are not yet guaranteed to match compiled TeX output; closing that gap is a central development goal.
+The editor offers paginated and continuous views. Page geometry and block placement are calibrated against XeLaTeX output, but line breaking and line-level pagination are not yet guaranteed to match compiled TeX; closing that gap is a central development goal.
 
 ### Mathematical editing
 
@@ -119,11 +119,12 @@ Lineae is a working prototype, not a finished editor. The distinction between wh
 | Editor–PDF visual fidelity | A core design goal; systematic comparison with compiled TeX output is not yet implemented |
 | Multi-file projects | Not yet supported as a complete project workflow |
 | TeX compilation and PDF preview | Not integrated |
-| Desktop application and precise pagination | Not implemented |
+| Desktop application | Windows x64 preview (Tauri 2) with native dialogs and block-level pagination |
+| Precise pagination | Page geometry and block placement calibrated to XeLaTeX; line-level splitting not implemented |
 
 The immediate work is centred on three areas: making equation input and navigation more reliable; improving source preservation, mode switching, and editing history; and tightening the behaviour of ordinary document editing, including selection, clipboard operations, and long-document navigation.
 
-After these foundations are stable, the project can move towards multi-file project handling, an independent TeX compilation interface, and PDF preview. Comparing the editor view with compiled output—and progressively aligning fonts, spacing, line breaks, and page geometry—is a core direction, not an optional preview enhancement. Source-to-PDF navigation, accurate pagination, and desktop packaging remain future work, not current features. The [implementation roadmap](docs/IMPLEMENTATION_ROADMAP.md) records the more detailed priorities and acceptance criteria.
+After these foundations are stable, the project can move towards multi-file project handling, an independent TeX compilation interface, and PDF preview. Comparing the editor view with compiled output—and progressively aligning fonts, spacing, line breaks, and page geometry—is a core direction, not an optional preview enhancement. Source-to-PDF navigation and line-level pagination remain future work, not current features; desktop packaging is available as a preview. The [implementation roadmap](docs/IMPLEMENTATION_ROADMAP.md) records the more detailed priorities and acceptance criteria.
 
 ## Getting started
 

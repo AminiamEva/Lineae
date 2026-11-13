@@ -280,7 +280,7 @@ async function verifySelectionGeometry(page, paper, importSource) {
     const current = await snapshot();
     assert.equal(current.anchor, anchor.anchor, 'Vertical Shift selection keeps its original anchor');
     assert.ok(key.endsWith('Up') ? current.caret[1] < previous.caret[1] : current.caret[1] > previous.caret[1],
-      'The caret moves to the requested visual line');
+      'The caret moves to the requested visual line: '+JSON.stringify({key,anchor:anchor.caret,previous:previous.caret,current:current.caret,expected:current.expected}));
     assertBounds(current.painted, current.expected, key);
     previous = current;
   }
