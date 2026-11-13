@@ -19,6 +19,7 @@ module.exports = async function checkLifecycle(context, url) {
       const parent = page.parentNode;
       const footer = page.nextSibling;
       const failures = [];
+      const trace = [];
       let renders = 0;
       for (const hidden of [null, 'until-found']) {
         if (hidden === null) page.removeAttribute('hidden');
@@ -38,6 +39,7 @@ module.exports = async function checkLifecycle(context, url) {
             if (!editor || (firstEditor && firstEditor !== editor)) failures.push('EditorView reuse');
             firstEditor = editor;
             workspace.close();
+            if (page.outerHTML !== original) trace.push({mode,hidden,cycle:i,original,actual:page.outerHTML});
             if (page.outerHTML !== original) failures.push('close: ' + mode);
           }
           workspace.open('abc');
@@ -45,8 +47,13 @@ module.exports = async function checkLifecycle(context, url) {
           if (mode === 'collapsed') expand.click();
           const content = panel.querySelector('.cm-content');
           content.focus();
-          document.execCommand('insertText', false, 'x');
+          const events = [];
+          content.addEventListener('input', e => events.push([e.inputType,e.data]));
+          const accepted = document.execCommand('insertText', false, 'x');
+          trace.push({mode,hidden,accepted,events,dom:content.textContent,immediate:workspace.value});
           if (workspace.value === 'abc') failures.push('pending edit setup');
+          await Promise.resolve();
+          trace.push({mode,hidden,afterMicrotask:workspace.value});
           const beforeDestroy = renders;
           workspace.destroy();
           workspace.destroy();
@@ -54,15 +61,18 @@ module.exports = async function checkLifecycle(context, url) {
           workspace.reset('late');
           document.dispatchEvent(new KeyboardEvent('keydown', {key:'Escape'}));
           await new Promise(resolve => setTimeout(resolve, 300));
+          trace.push({mode,hidden,original,actual:page.outerHTML,renders,beforeDestroy,parent:page.parentNode===parent,
+            sibling:page.nextSibling===footer,childCount:parent.childNodes.length,editorRemains:!!panel.querySelector('.cm-editor')});
           if (renders !== beforeDestroy || page.outerHTML !== original || page.parentNode !== parent ||
               page.nextSibling !== footer || parent.childNodes.length !== 2 || panel.querySelector('.cm-editor')) {
             failures.push('destroy: ' + mode + '/' + hidden);
           }
         }
       }
-      return failures;
+      return {failures,trace};
     });
-    assert.deepEqual(results, []);
+    for (const record of results.trace) console.log('LIFECYCLE', JSON.stringify(record));
+    assert.deepEqual(results.failures, []);
   } finally {
     await browserPage.close();
   }
