@@ -1,4 +1,5 @@
 const { chromium } = require('playwright');
+const { expect } = require('playwright/test');
 const { createServer } = require('node:http');
 const { readFile } = require('node:fs/promises');
 const { resolve, extname } = require('node:path');
@@ -805,7 +806,9 @@ async function verifySelectionGeometry(page, paper, importSource) {
     assert.equal(await paper.locator('ol').count(),0,'A single space must not start a list');
 
     await importSource('Code fence');
-    await page.locator('.ProseMirror > p').click();
+    const codeFenceParagraph = paper.locator(':scope > p').filter({ hasText: /^Code fence$/ });
+    await expect(codeFenceParagraph, 'The imported document should contain exactly one Code fence paragraph').toHaveCount(1);
+    await codeFenceParagraph.click();
     await page.keyboard.press('End');
     await page.keyboard.press('Enter');
     await page.keyboard.type('```rust');
