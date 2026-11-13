@@ -8,7 +8,9 @@
 body { margin:0; }
 [hidden] { display:none!important; }
 header { position:fixed; inset:12px 12px auto; display:flex; justify-content:center; z-index:5; pointer-events:none; }
-header h1 { position:absolute; left:20px; top:4px; margin:0; width:126px; line-height:0; transition:opacity .18s; }
+header h1 { position:absolute; left:20px; top:4px; margin:0; width:126px; line-height:0; transition:opacity .18s; pointer-events:auto; }
+header .brand-link { display:block; cursor:pointer; }
+header .brand-link:hover { opacity:.82; }
 header .brand-wordmark { display:block; width:100%; height:auto; }
 header .brand-wordmark-dark { display:none; }
 :root[data-theme="dark"] header .brand-wordmark-light { display:none; }
@@ -34,6 +36,9 @@ select { max-width:115px; }
 .open input { position:absolute; inset:0; width:100%; opacity:0; cursor:pointer; }
 main { padding:125px 24px 60px; overflow:auto; }
 .document-page { position:relative; width:var(--page-width,210mm); min-height:var(--page-height,297mm); margin:auto; padding:var(--page-margin-top,22mm) var(--page-margin-right,22mm) var(--page-margin-bottom,22mm) var(--page-margin-left,22mm); background:light-dark(#fff,#242426); box-shadow:0 2px 14px #0002; font:10pt/1.5 Georgia,"Songti SC",SimSun,serif; cursor:text; overflow-x:clip; }
+/* Word-style selection area: the left page margin shows a right-pointing
+   arrow instead of the text I-beam, matching the whole-paragraph drag. */
+.document-page::before { content:""; position:absolute; inset-block:0; inset-inline-start:0; width:var(--page-margin-left,22mm); cursor:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16'%3E%3Cpath d='M1.5 5.5h7V2l6 6-6 6v-3.5h-7z' fill='%23000' stroke='%23fff' stroke-width='1.2'/%3E%3C/svg%3E") 15 8, default; }
 #editor { min-height:calc(var(--page-height,297mm) - var(--page-margin-top,22mm) - var(--page-margin-bottom,22mm)); outline:none; }
 .ProseMirror { min-height:250mm; outline:none; overflow-wrap:anywhere; white-space:pre-wrap; }
 .ProseMirror p { margin:0; }
@@ -104,9 +109,9 @@ main { padding:125px 24px 60px; overflow:auto; }
 .ProseMirror li.list-item-selected::before {
   content:var(--list-prefix,"") counter(list-item,var(--list-counter,decimal)) var(--list-suffix,". ");
   position:absolute;
-  inset-inline-end:calc(100% + .3em);
+  inset-inline-end:calc(100% + .1em);
   top:0;
-  padding:0 .28em;
+  padding:0 0 0 .3em;
   border-radius:.35em;
   color:light-dark(#4d6f9f,#b9d0ef);
   background:light-dark(#e8f0fb,#2b3a50);

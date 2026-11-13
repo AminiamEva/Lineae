@@ -820,6 +820,15 @@ async function verifySelectionGeometry(page, paper, importSource) {
     assert.equal(await page.evaluate(()=>document.activeElement?.classList.contains('ProseMirror')),true,
       'Ctrl+Shift+J leaves a code block like Ctrl+J');
 
+    await importSource('\\begin{enumerate}\n\\item Alone\n\\end{enumerate}');
+    await page.waitForFunction(()=>document.querySelectorAll('.ProseMirror ol li').length===1);
+    await paper.locator('ol li').click();
+    await page.keyboard.press('End');
+    await page.keyboard.press('Tab');
+    await page.waitForFunction(()=>document.querySelector('.ProseMirror ol li p')?.textContent==='Alone    ');
+    assert.equal(await page.evaluate(()=>document.activeElement?.classList.contains('ProseMirror')),true,
+      'Tab in a single-item list appends four spaces without losing focus');
+
     await importSource('Whole paragraph indentation.');
     await page.locator('.ProseMirror > p').click();
     await page.keyboard.press('Home');
@@ -864,6 +873,10 @@ async function verifySelectionGeometry(page, paper, importSource) {
     await page.mouse.up();
     assert.equal(await page.evaluate(()=>getSelection().toString().replace(/\s+/g,' ').trim()),
       'First margin paragraph. Second margin paragraph.','Left-margin drag selects whole paragraphs');
+    assert.match(await page.evaluate(()=>getComputedStyle(document.querySelector('.document-page'),'::before').cursor),
+      /^url\(/,'The left page margin shows the selection arrow cursor');
+    assert.equal(await page.locator('header .brand-link').getAttribute('href'),'https://github.com/AminiamEva/Lineae',
+      'The wordmark links to the GitHub repository');
 
     await importSource('\\begin{enumerate}\n\\item Highlighted item\n\\item Plain item\n\\end{enumerate}');
     await page.waitForFunction(()=>document.querySelectorAll('.ProseMirror ol li').length===2);
