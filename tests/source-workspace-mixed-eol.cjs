@@ -49,7 +49,14 @@ module.exports = async function checkMixedEol(context, url) {
     assert.deepEqual(before.tex,original,'Unedited mixed source ZIP is byte-identical');
     await change('Signal energy','Signal power');
     await change('E =','P =');
-    await change('% Nested braces','% 第四阶段：源码完整性\n% Nested braces');
+    await panel.getByRole('button',{name:/查找与替换|Find and replace/}).click();
+    const commentSearch = panel.locator('input[name=search]');
+    await commentSearch.fill('% Nested braces');
+    await commentSearch.press('Enter');
+    await commentSearch.press('Escape');
+    await content.press('Home');
+    await page.keyboard.insertText('% 第四阶段：源码完整性');
+    await page.keyboard.press('Enter');
     await body.click();
     await source.click();
     await expand.click();
