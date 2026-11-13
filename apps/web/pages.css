@@ -340,16 +340,14 @@ button,select,.color-control { transition:background-color .14s ease,color .14s 
 .document-page .ProseMirror .tableWrapper { width:max-content; max-width:100%; }
 .document-page .ProseMirror > .tableWrapper > table { min-width:0!important; }
 .document-page .ProseMirror > .tableWrapper col { width:auto!important; min-width:0!important; }
-.document-page .ProseMirror td,.document-page .ProseMirror th { min-width:0; border:0; padding:0 5.9776pt; line-height:var(--tex-line-height); }
-.document-page[data-formatting-marks="true"] .ProseMirror td,
-.document-page[data-formatting-marks="true"] .ProseMirror th { padding:2px 5.9776pt; }
+.document-page .ProseMirror td,.document-page .ProseMirror th { min-width:0; border:0; padding:2px 5.9776pt; line-height:var(--tex-line-height); }
 .document-page .ProseMirror table[data-border-mode="grid"] :is(td,th) { border:var(--table-rule-width) solid currentColor; }
 .document-page .ProseMirror table[data-border-mode="outer"] { border:var(--table-rule-width) solid currentColor; }
 .document-page .ProseMirror table[data-border-mode="horizontal"] :is(td,th) { border-block:var(--table-rule-width) solid currentColor; }
 .document-page .ProseMirror table[data-booktabs] :is(td,th) { border-inline:0; }
 /* Editing grid for tabulars without explicit rules. Booktabs and tables with
    an explicit border mode keep their typeset rules. */
-.document-page[data-formatting-marks="true"] .ProseMirror table:not([data-border-mode="grid"]):not([data-border-mode="outer"]):not([data-border-mode="horizontal"]):not([data-border-mode="none"]):not([data-booktabs]) :is(td,th) {
+.document-page .ProseMirror table:not([data-border-mode="grid"]):not([data-border-mode="outer"]):not([data-border-mode="horizontal"]):not([data-border-mode="none"]):not([data-booktabs]) :is(td,th) {
   border:1px solid light-dark(#d5d9e1,#4a505c);
 }
 
