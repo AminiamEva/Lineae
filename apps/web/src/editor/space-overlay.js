@@ -505,6 +505,9 @@ export function installSpaceOverlay(editor, paper, { selectionFocus = null } = {
   window.addEventListener('focus',()=>scheduleCaret(null,true),{signal});
   window.addEventListener('scroll',scheduleLayout,{capture:true,passive:true,signal});
   window.addEventListener('resize',scheduleLayout,{signal});
+  // Pagination changes block translations through a stylesheet, which is not
+  // observable from the page subtree.
+  window.addEventListener('lineae-layout',scheduleLayout,{signal});
   paper.addEventListener('load',scheduleLayout,{capture:true,signal});
   document.fonts?.addEventListener('loadingdone',scheduleLayout,{signal});
   textCaret.watchPreferences(()=>scheduleCaret(),signal);

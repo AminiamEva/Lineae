@@ -405,11 +405,20 @@ async function verifySelectionGeometry(page, paper, importSource) {
     await page.keyboard.type('q');
     await page.waitForFunction(()=>/^\\displaystyle\s+q$/.test(document.querySelector('math-field')?.value));
     assert.match(await page.locator('math-field').evaluate(field=>field.value),/^\\displaystyle\s+q$/,'Inline formulas default to displaystyle');
-    await page.keyboard.press('ArrowRight');
+    await page.locator('input[type=file]').setInputFiles({name:'empty.tex',mimeType:'text/plain',
+      buffer:Buffer.from('\\documentclass{article}\n\\begin{document}\n\n\\end{document}\n')});
+    await page.waitForFunction(()=>Boolean(document.querySelector('.ProseMirror p')));
+    await paper.locator('p').first().click();
     await page.keyboard.press('End');
-    await page.keyboard.press('Enter');
     await page.keyboard.type('$$');
     await page.waitForFunction(()=>Boolean(document.querySelector('.math-display')));
+    const emptyDisplayOffset=await page.evaluate(()=>{
+      const page=document.querySelector('.document-page');
+      const display=document.querySelector('.math-display');
+      const zoom=page.getBoundingClientRect().width/page.offsetWidth||1;
+      return (display.getBoundingClientRect().top-page.getBoundingClientRect().top)/zoom-parseFloat(getComputedStyle(page).paddingTop);
+    });
+    assert.ok(Math.abs(emptyDisplayOffset)<1,'An empty-line display formula starts on the current line: '+emptyDisplayOffset);
     await page.keyboard.press('Backspace');
     assert.equal(await page.locator('.math-display').count(),0);
     await page.locator('[data-group=insert]').click();
@@ -1225,6 +1234,18 @@ async function verifySelectionGeometry(page, paper, importSource) {
       await page.waitForFunction(value=>document.querySelector('math-field')?.value===value,expected);
       assert.equal(await page.locator('math-field').last().evaluate(field=>field.value),expected,label);
     }
+    await importSource('$ $');
+    const integralField=page.locator('math-field').last();
+    await integralField.click();
+    await integralField.evaluate(field=>{field.value='';field.position=0;});
+    await integralField.focus();
+    await page.keyboard.type('\\');
+    await page.locator('.command-menu input').fill('int');
+    await page.keyboard.press('Enter');
+    await page.waitForFunction(()=>document.querySelector('math-field')?.value.includes('\\int'));
+    await page.keyboard.press('Backspace');
+    await page.waitForFunction(()=>!document.querySelector('math-field')?.value.includes('\\int'));
+    assert.equal(await integralField.evaluate(field=>field.value),'','Deleting an operator removes its empty body too');
     await importSource('\\begin{itemize}\\item First\\end{itemize}');
     await paper.locator('li p').click();
     const bulletMarker=await paper.locator('ul').getAttribute('data-marker');
@@ -1725,6 +1746,29 @@ async function verifySelectionGeometry(page, paper, importSource) {
     await paginationButton.click();
     await page.waitForFunction(()=>document.querySelector('.document-page')?.dataset.pageCount==='3');
     assert.equal(await paginationButton.getAttribute('aria-pressed'),'true','Paginated mode restores the original pages');
+    await importSource(Array.from({length:40},()=> '设 $x_{n}\\to a$，且 $\\lim_{n\\to\\infty}x_n=a$。').join('\n\n'));
+    await page.waitForFunction(()=>Number(document.querySelector('.document-page')?.dataset.pageCount)>1);
+    await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
+    const pageOverflow=await page.evaluate(()=>{
+      const sheet=document.querySelector('.document-page');
+      const pageRect=sheet.getBoundingClientRect();
+      const zoom=pageRect.width/sheet.offsetWidth||1;
+      const pageHeight=sheet.querySelector('.document-sheet').offsetHeight;
+      const gap=parseFloat(getComputedStyle(sheet).getPropertyValue('--page-gap'))||0;
+      const pitch=pageHeight+gap;
+      const marginTop=parseFloat(getComputedStyle(sheet).paddingTop);
+      const marginBottom=parseFloat(getComputedStyle(sheet).paddingBottom);
+      return [...document.querySelectorAll('.ProseMirror > *')].flatMap((node,index)=>{
+        const rect=node.getBoundingClientRect();
+        const top=(rect.top-pageRect.top)/zoom;
+        const bottom=(rect.bottom-pageRect.top)/zoom;
+        const pageIndex=Math.floor(top/pitch);
+        const bodyTop=pageIndex*pitch+marginTop;
+        const bodyBottom=pageIndex*pitch+pageHeight-marginBottom;
+        return bottom>bodyBottom+1||top<bodyTop-1 ? [{index,top,bottom,bodyTop,bodyBottom}] : [];
+      });
+    });
+    assert.deepEqual(pageOverflow,[],'Mixed math paragraphs never cross the page body: '+JSON.stringify(pageOverflow));
     await page.locator('[data-group=layout]').click();
     const layoutSelects=page.locator('#layout-panel select');
     await layoutSelects.nth(0).selectOption('a5');
@@ -1735,9 +1779,34 @@ async function verifySelectionGeometry(page, paper, importSource) {
       return ['--page-width','--page-height','--page-margin-top','--page-margin-right'].map(name=>page.style.getPropertyValue(name));
     });
     assert.deepEqual(pageLayout,['210mm','148mm','1.27cm','1.27cm'],'Layout controls update the page metrics');
+    const pageNumberGap=()=>page.evaluate(()=>{
+      const sheet=document.querySelector('.document-sheet');
+      const number=document.querySelector('.document-page-number');
+      const zoom=sheet.getBoundingClientRect().width/sheet.offsetWidth||1;
+      return (sheet.getBoundingClientRect().bottom-number.getBoundingClientRect().bottom)/zoom;
+    });
+    const narrowNumberGap=await pageNumberGap();
+    const bottomMargin=page.locator('#layout-panel input').nth(2);
+    await bottomMargin.fill('30mm');
+    await bottomMargin.dispatchEvent('change');
+    await page.waitForFunction(()=>document.querySelector('.document-page')?.style.getPropertyValue('--page-margin-bottom')==='30mm');
+    const wideNumberGap=await pageNumberGap();
+    assert.ok(Math.abs((wideNumberGap-narrowNumberGap)-((30-12.7)*96/25.4))<2,
+      'The page number follows the bottom margin: '+JSON.stringify({narrowNumberGap,wideNumberGap}));
+    await layoutSelects.nth(2).selectOption('narrow');
     await importSource('\\begin{theorem}[Example]\nStatement.\n\\end{theorem}\n\n\\begin{proof}\nArgument.\n\\end{proof}');
     await paper.locator('[data-theorem="proof"]').waitFor();
     assert.equal(await paper.locator('[data-theorem="theorem"] p').textContent(),'Statement.');
+    const theoremStyle=await paper.locator('[data-theorem="theorem"]').evaluate(node=>({
+      body:getComputedStyle(node).fontStyle,
+      heading:getComputedStyle(node,'::before').fontStyle,
+    }));
+    assert.deepEqual(theoremStyle,{body:'italic',heading:'normal'},'Theorem bodies are italic and headings are upright');
+    const proofStyle=await paper.locator('[data-theorem="proof"]').evaluate(node=>({
+      body:getComputedStyle(node.querySelector('p')).fontStyle,
+      heading:getComputedStyle(node,'::before').fontStyle,
+    }));
+    assert.deepEqual(proofStyle,{body:'normal',heading:'italic'},'Proof bodies are upright and the label is italic');
     await paper.evaluate(element=>{
       const transfer=new DataTransfer();
       const png=Uint8Array.from(atob('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jB9kAAAAASUVORK5CYII='),char=>char.charCodeAt(0));

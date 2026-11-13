@@ -84,6 +84,33 @@ export function mathEnvironment(field) {
   return labels;
 }
 
+function emptyOperatorBody(atom) {
+  if (atom?.command !== '\\mathord') return null;
+  const children = atom.body ?? [];
+  return children.length && children.every(child => child.type === 'first' || child.type === 'placeholder')
+    ? atom : null;
+}
+
+function deleteOperatorWithEmptyBody(field) {
+  if (!caretCollapsed(field)) return false;
+  const model = field._mathfield?.model;
+  if (!model) return false;
+  const caret = model.at(field.position);
+  if (!caret) return false;
+  const group = emptyOperatorBody(caret) ?? emptyOperatorBody(caret.rightSibling) ?? emptyOperatorBody(caret.parent);
+  const operator = group && bodyOperator(group);
+  if (!operator) return false;
+  const start = model.offsetOf(operator);
+  if (start < 0) return false;
+  if (!model.contentWillChange({ inputType:'deleteContentBackward' })) return true;
+  model.deferNotifications({ content:true, selection:true, type:'deleteContentBackward' }, () => {
+    group.parent.removeChild(group);
+    operator.parent.removeChild(operator);
+    model.position = start;
+  });
+  return true;
+}
+
 function deleteIntegralAtEmptyLimit(field) {
   if (field.selection.ranges.some(([start,end])=>start!==end)) return false;
   const model=field._mathfield?.model;
@@ -601,6 +628,11 @@ export const MathNode = Node.create({
         }
         if (plain && node.isBlock && event.key==='Enter') {
           consume(); addDisplayLine(field); return;
+        }
+        if (event.key==='Backspace' && !event.ctrlKey && !event.metaKey && !event.altKey && deleteOperatorWithEmptyBody(field)) {
+          event.preventDefault();
+          event.stopImmediatePropagation();
+          return;
         }
         if (event.key==='Backspace' && !event.ctrlKey && !event.metaKey && !event.altKey && deleteIntegralAtEmptyLimit(field)) {
           event.preventDefault();

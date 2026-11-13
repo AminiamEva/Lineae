@@ -56,6 +56,7 @@ export function installTypesetPagination(page, paper, meta) {
     page.style.setProperty('--editor-min-height', '0');
     page.style.setProperty('--page-stack-height', 'var(--page-height)');
     renderSheets(1);
+    window.dispatchEvent(new CustomEvent('lineae-layout'));
   }
 
   function layout() {
@@ -101,6 +102,7 @@ export function installTypesetPagination(page, paper, meta) {
     page.style.setProperty('--editor-min-height', `${Math.max(0, lastBodyBottom - editorTop)}px`);
     page.dataset.pageCount = String(plan.pageCount);
     renderSheets(plan.pageCount);
+    window.dispatchEvent(new CustomEvent('lineae-layout'));
   }
 
   function schedule() {
@@ -110,7 +112,17 @@ export function installTypesetPagination(page, paper, meta) {
   const resize = new ResizeObserver(schedule);
   resize.observe(editable);
   resize.observe(meta);
-  const mutations = new MutationObserver(schedule);
+  // MathLive mounts and measures inside a shadow root, so the editor's own
+  // border box can stay at its minimum height while a paragraph grows.
+  const childResize = new ResizeObserver(schedule);
+  const observeChildren = () => {
+    for (const child of editable.children) childResize.observe(child);
+  };
+  observeChildren();
+  const mutations = new MutationObserver(() => {
+    observeChildren();
+    schedule();
+  });
   mutations.observe(editable, { subtree: true, childList: true, characterData: true });
   mutations.observe(meta, { subtree: true, childList: true, characterData: true });
   mutations.observe(page, { attributes: true, attributeFilter: ['hidden'] });

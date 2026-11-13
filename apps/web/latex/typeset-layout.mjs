@@ -47,7 +47,6 @@ export function planPagination(blocks, { pageHeight, pageGap, marginTop, marginB
   const tolerance = 3;
   let translation = 0;
   let pageIndex = 0;
-  let furthestBottom = marginTop;
 
   for (let index = 0; index < blocks.length; index++) {
     const block = blocks[index];
@@ -59,6 +58,15 @@ export function planPagination(blocks, { pageHeight, pageGap, marginTop, marginB
     const groupBottom = block.keepWithNext && next ? next.top + next.height + translation : bottom;
     const groupHeight = groupBottom - top;
     const canMove = block.height <= bodyHeight + tolerance && groupHeight <= bodyHeight + tolerance;
+
+    // After an oversized block, resume at the next body rather than placing
+    // the following block in the page gap.
+    if (top < bodyTop - tolerance) {
+      const space = bodyTop - top;
+      translation += space;
+      top += space;
+      bottom += space;
+    }
 
     if (canMove && top > bodyTop + tolerance && groupBottom > bodyBottom + tolerance) {
       pageIndex++;
@@ -72,11 +80,10 @@ export function planPagination(blocks, { pageHeight, pageGap, marginTop, marginB
     }
 
     translations[index] = translation;
-    furthestBottom = Math.max(furthestBottom, bottom);
 
     // A single table, image, or paragraph can be taller than the body. Do not
     // split its editable DOM; account for every sheet it visually reaches.
-    while (furthestBottom > pageIndex * pitch + pageHeight - marginBottom + tolerance) pageIndex++;
+    while (bottom > pageIndex * pitch + pageHeight - marginBottom + tolerance) pageIndex++;
   }
 
   return { breaks, translations, pageCount: Math.max(1, pageIndex + 1) };

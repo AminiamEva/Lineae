@@ -290,7 +290,7 @@ button,select,.color-control { transition:background-color .14s ease,color .14s 
 .document-page[data-pagination="flow"] .document-sheet { flex:0 0 auto; min-height:100%; }
 .document-page[data-pagination="flow"] .document-page-number { display:none; }
 .document-sheet { position:relative; flex:0 0 var(--page-height,11in); width:100%; background:light-dark(#fff,#242426); box-shadow:0 2px 14px #0002; }
-.document-page-number { position:absolute; left:50%; bottom:30.84mm; translate:-50% 0; color:inherit; font:var(--tex-font-size)/var(--tex-line-height) "Latin Modern Roman",serif; }
+.document-page-number { position:absolute; left:50%; bottom:calc(var(--page-margin-bottom,42.070mm) - 31.77pt); translate:-50% 0; color:inherit; font:var(--tex-font-size)/var(--tex-line-height) "Latin Modern Roman",serif; }
 .document-page[data-page-style="empty"] .document-page-number { display:none; }
 .document-page[data-page-style="headings"] .document-page-number { inset:30mm var(--page-margin-right) auto auto; translate:0; }
 #document-meta,#editor { position:relative; z-index:1; }
@@ -337,9 +337,13 @@ button,select,.color-control { transition:background-color .14s ease,color .14s 
 .document-page .ProseMirror [data-theorem="theorem"] { counter-increment:lineae-theorem; }
 .document-page .ProseMirror [data-theorem="theorem"][data-theorem-title=""]::before { content:"Theorem " counter(lineae-theorem) "."; }
 .document-page .ProseMirror [data-theorem="theorem"]:not([data-theorem-title=""])::before { content:"Theorem " counter(lineae-theorem) " (" attr(data-theorem-title) ")."; }
-.document-page .ProseMirror [data-theorem]:not([data-theorem="proof"]):not([data-theorem="definition"]):not([data-theorem="remark"]) > p:first-child { display:inline; font-style:italic; }
+.document-page .ProseMirror [data-theorem]:not([data-theorem="proof"]):not([data-theorem="definition"]):not([data-theorem="remark"]) { font-style:italic; }
+.document-page .ProseMirror [data-theorem]:not([data-theorem="proof"]):not([data-theorem="definition"]):not([data-theorem="remark"]) > p:first-child { display:inline; }
+.document-page .ProseMirror [data-theorem]::before { font-style:normal; }
+.document-page .ProseMirror [data-theorem] math-field { font-style:normal; }
 .document-page .ProseMirror [data-theorem="proof"]::before { font-style:italic; font-weight:400; }
 .document-page .ProseMirror [data-theorem="proof"] > p:first-child { display:inline; }
 .document-page .ProseMirror [data-theorem="proof"]::after { display:inline; float:right; }
 .document-page .ProseMirror .math-display { margin:9.9626pt 0 5.9776pt; }
+.document-page .ProseMirror > .math-display:first-child { margin-top:0; }
 .document-page .ProseMirror code,.document-page .ProseMirror pre { font-family:"Latin Modern Mono",monospace; }
