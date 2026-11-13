@@ -50,29 +50,29 @@ jobs:
         run: npm ci --prefix apps/desktop --no-audit --no-fund
       - name: Build Windows packages
         run: npm --prefix apps/desktop run tauri build
-      - name: Collect preview artifacts
+      - name: Collect desktop artifacts
         shell: pwsh
         run: |
           $target = "apps/desktop/src-tauri/target/release"
           $out = "artifacts"
           New-Item -ItemType Directory -Force $out | Out-Null
           Get-ChildItem "$target/bundle/nsis/*.exe" | Copy-Item -Destination $out
-          Copy-Item "$target/lineae.exe" "$out/Lineae-portable-preview.exe"
+          Copy-Item "$target/lineae.exe" "$out/Lineae-portable.exe"
           @(
-            "Lineae portable preview"
+            "Lineae portable"
             ""
-            "Run Lineae-portable-preview.exe directly. No installer is required."
+            "Run Lineae-portable.exe directly. No installer is required."
             "Windows WebView2 Runtime must be available on the machine."
             "The offline installer already includes WebView2."
           ) | Set-Content "$out/PORTABLE.txt" -Encoding utf8
-          Compress-Archive -Path "$out/Lineae-portable-preview.exe","$out/PORTABLE.txt" -DestinationPath "$out/Lineae-portable-preview.zip"
-          Remove-Item "$out/Lineae-portable-preview.exe","$out/PORTABLE.txt"
+          Compress-Archive -Path "$out/Lineae-portable.exe","$out/PORTABLE.txt" -DestinationPath "$out/Lineae-portable.zip"
+          Remove-Item "$out/Lineae-portable.exe","$out/PORTABLE.txt"
       - uses: actions/upload-artifact@v4
         with:
-          name: lineae-desktop-preview-${{ github.sha }}
+          name: lineae-desktop-${{ github.sha }}
           path: artifacts/*
           if-no-files-found: error
-      - name: Publish tagged preview
+      - name: Publish tagged release
         if: startsWith(github.ref, 'refs/tags/v')
         shell: pwsh
         env:
@@ -81,6 +81,8 @@ jobs:
           $tag = $env:GITHUB_REF_NAME
           gh release view $tag *> $null
           if ($LASTEXITCODE -ne 0) {
-            gh release create $tag --title "Lineae $tag" --notes "Preview desktop build for $tag" --prerelease
+            $arguments = @($tag, "--title", "Lineae $tag", "--notes", "Windows x64 desktop build for $tag")
+            if ($tag -match 'preview') { $arguments += "--prerelease" }
+            & gh release create @arguments
           }
           Get-ChildItem artifacts/* | ForEach-Object { gh release upload $tag $_.FullName --clobber }

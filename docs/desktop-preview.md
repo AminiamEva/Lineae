@@ -42,12 +42,12 @@ The `Desktop Preview` workflow (`.github/workflows/desktop.yml`) runs on every p
 request and on `v*` tags. It performs the web build, vendors MathLive, runs the
 data, UI, bibliography, and Playwright suites, then builds the Tauri bundle.
 
-Pull requests upload an artifact named `lineae-desktop-preview-<sha>` containing:
+Builds upload an artifact named `lineae-desktop-<sha>` containing:
 
 - `Lineae_0.1.0_x64-setup.exe` (offline NSIS installer)
-- `Lineae-portable-preview.zip` (portable executable and notes)
+- `Lineae-portable.zip` (portable executable and notes)
 
-Tag builds also attach the artifacts to a prerelease.
+Tag builds attach the artifacts to a GitHub release. Tags containing `preview` are published as prereleases; other tags publish a normal release.
 
 ## Acceptance checklist
 
