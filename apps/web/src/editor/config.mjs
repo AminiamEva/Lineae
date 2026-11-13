@@ -47,6 +47,7 @@ function validateConfig(settings) {
       ui.toolbar.some(tool => !fileTools.includes(tool))) throw new Error('Invalid interface.toolbar');
   for (const [path, value] of Object.entries({
     'interface.zoomOnCtrlWheel': ui.zoomOnCtrlWheel,
+    'interface.continuedTables': ui.continuedTables,
     'interface.formattingMarks': ui.formattingMarks,
     'interface.caretMotion': ui.caretMotion,
     'editing.smartFences': editing.smartFences,

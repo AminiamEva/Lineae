@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { planPagination, typesetProfile } from '../apps/web/latex/typeset-layout.mjs';
+import { planPagination, planTableRows, typesetProfile } from '../apps/web/latex/typeset-layout.mjs';
 
 test('derives XeLaTeX article and ctex typography profiles', () => {
   assert.deepEqual(typesetProfile('\\documentclass{article}'), {
@@ -48,6 +48,21 @@ test('keeps a heading with the following block when both fit on a fresh page', (
   assert.deepEqual(plan.breaks, [{ index: 1, space: 320, page: 2 }]);
   assert.deepEqual(plan.translations, [0, 320, 320]);
   assert.equal(plan.pageCount, 2);
+});
+
+test('splits table rows at page boundaries with a repeated header', () => {
+  const rows = Array.from({ length:10 }, (_, index) => ({ top:index * 30, height:30 }));
+  const plan = planTableRows(rows, {
+    top:50, pageHeight:300, pageGap:20, marginTop:50, marginBottom:50,
+    headerHeight:20, repeatHeader:true,
+  });
+  assert.deepEqual(plan.breaks, [{ row:6, padding:160, headerTop:370 }]);
+  assert.equal(plan.extra, 160);
+  assert.equal(plan.pageCount, 2);
+  assert.equal(planTableRows(rows, {
+    top:50, pageHeight:300, pageGap:20, marginTop:50, marginBottom:50,
+    headerHeight:20, repeatHeader:false,
+  }).breaks[0].padding, 140);
 });
 
 test('does not split an oversized editable block', () => {

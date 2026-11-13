@@ -4,6 +4,7 @@ interface:
   theme: system
   zoom: 100
   zoomOnCtrlWheel: true
+  continuedTables: true
   formattingMarks: true
   caretMotion: true
   toolbar: [open, saveAs, download, language, assets]

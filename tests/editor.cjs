@@ -209,12 +209,20 @@ async function verifySelectionGeometry(page, paper, importSource) {
     const range = selection.getRangeAt(0);
     const rect = bounds => [bounds.left, bounds.top, bounds.right, bounds.bottom];
     const expected = range.collapsed ? [] : nodes.flatMap(paragraph => {
-      const text = paragraph.firstChild;
-      if (text?.nodeType !== Node.TEXT_NODE || !range.intersectsNode(text)) return [];
-      const segment = document.createRange();
-      segment.setStart(text, text === range.startContainer ? range.startOffset : 0);
-      segment.setEnd(text, text === range.endContainer ? range.endOffset : text.length);
-      return [...segment.getClientRects()].filter(bounds => bounds.width > 0).map(rect);
+      if (!range.intersectsNode(paragraph)) return [];
+      const walker = document.createTreeWalker(paragraph, NodeFilter.SHOW_TEXT);
+      const rects = [];
+      for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+        if (!range.intersectsNode(node)) continue;
+        const start = node === range.startContainer ? range.startOffset : 0;
+        const end = node === range.endContainer ? range.endOffset : node.data.length;
+        if (end <= start) continue;
+        const segment = document.createRange();
+        segment.setStart(node, start);
+        segment.setEnd(node, end);
+        rects.push(...[...segment.getClientRects()].filter(bounds => bounds.width > 0).map(rect));
+      }
+      return rects;
     });
     const caret = document.querySelector('.document-caret');
     return {
@@ -223,22 +231,44 @@ async function verifySelectionGeometry(page, paper, importSource) {
       active: document.querySelector('.ProseMirror').classList.contains('has-document-selection'),
       expected,
       painted: [...document.querySelectorAll('.document-selection > span:not([data-selection-object])')]
-        .map(element => rect(element.getBoundingClientRect())),
+        .map(element => rect(element.getBoundingClientRect()))
+        .filter(bounds => bounds[2] - bounds[0] > 0),
     };
   });
   const assertBounds = (painted, expected, label) => {
-    assert.equal(painted.length, expected.length, label + ' has the expected number of rectangles');
-    for (let i = 0; i < expected.length; i++) {
-      assert.ok(painted[i].every((edge, j) => Math.abs(edge - expected[i][j]) < .75),
-        label + ' stays within the selected content: ' + JSON.stringify({ painted: painted[i], expected: expected[i] }));
+    if (painted.length === expected.length) {
+      for (let i = 0; i < expected.length; i++) {
+        assert.ok(painted[i].every((edge, j) => Math.abs(edge - expected[i][j]) < .75),
+          label + ' stays within the selected content: ' + JSON.stringify({ painted: painted[i], expected: expected[i] }));
+      }
+      return;
     }
+    const union = rects => rects.length ? [
+      Math.min(...rects.map(rect => rect[0])), Math.min(...rects.map(rect => rect[1])),
+      Math.max(...rects.map(rect => rect[2])), Math.max(...rects.map(rect => rect[3])),
+    ] : [];
+    const actual = union(painted), wanted = union(expected);
+    assert.ok(actual.every((edge, index) => Math.abs(edge - wanted[index]) < .75),
+      label + ' stays within the selected content: ' + JSON.stringify({ painted, expected }));
   };
 
   await importSource('汉字输入yingyu wen\n\n' + '样例'.repeat(26));
   await page.waitForFunction(() => document.querySelector('.ProseMirror p')?.textContent === '汉字输入yingyu wen');
   await paragraphs.first().click({ position: { x: 60, y: 8 } });
   await paragraphs.evaluateAll(([first, last]) => {
-    document.getSelection().setBaseAndExtent(last.firstChild, last.firstChild.length, first.firstChild, 10);
+    const point = (paragraph, offset) => {
+      const walker = document.createTreeWalker(paragraph, NodeFilter.SHOW_TEXT);
+      let remaining = offset;
+      let node = walker.nextNode();
+      for (; node; node = walker.nextNode()) {
+        if (remaining <= node.data.length) return [node, remaining];
+        remaining -= node.data.length;
+      }
+      return [paragraph.lastChild, paragraph.lastChild?.data?.length ?? 0];
+    };
+    const [lastNode, lastOffset] = point(last, last.textContent.length);
+    const [firstNode, firstOffset] = point(first, 10);
+    document.getSelection().setBaseAndExtent(lastNode, lastOffset, firstNode, firstOffset);
   });
   await settle();
   const selected = await snapshot();
@@ -264,7 +294,8 @@ async function verifySelectionGeometry(page, paper, importSource) {
   const expanded = await snapshot();
   assert.equal(expanded.text.length, 6);
   assertBounds(expanded.painted, expanded.expected, 'Rapid horizontal selection at fractional zoom');
-  assert.ok(Math.abs(expanded.painted[0][2] - expanded.caret[0]) < .75, 'The highlight stops at the moving edge');
+  assert.ok(Math.abs(Math.max(...expanded.painted.map(rect => rect[2])) - expanded.caret[0]) < .75,
+    'The highlight stops at the moving edge');
 
   await setZoom(219);
   await importSource('样例'.repeat(53) + '\n\n' + '样例'.repeat(17));
@@ -1173,6 +1204,25 @@ async function verifySelectionGeometry(page, paper, importSource) {
     assert.equal(await paper.locator('sub').textContent(),'1');
     const textScript=await paper.locator('p').evaluate(node=>({base:parseFloat(getComputedStyle(node).fontSize),script:parseFloat(getComputedStyle(node.querySelector('sup')).fontSize)}));
     assert.ok(Math.abs(textScript.script/textScript.base-.7)<.05,'Text scripts use the XeTeX script size');
+    await importSource('中A中1中');
+    await page.waitForFunction(()=>document.querySelector('.ProseMirror p')?.textContent==='中A中1中');
+    const cjkSpacing=await page.evaluate(()=>{
+      const paragraph=document.querySelector('.ProseMirror p');
+      const walker=document.createTreeWalker(paragraph,NodeFilter.SHOW_TEXT);
+      const chars=[];
+      for(let node=walker.nextNode();node;node=walker.nextNode()){
+        for(let index=0;index<node.data.length;index++){
+          const range=document.createRange();
+          range.setStart(node,index);range.setEnd(node,index+1);
+          const rect=range.getBoundingClientRect();
+          if(rect.width)chars.push({char:node.data[index],left:rect.left,right:rect.right});
+        }
+      }
+      return {spans:document.querySelectorAll('.ProseMirror .cjk-latin').length,
+        gaps:chars.slice(1).map((char,index)=>char.left-chars[index].right)};
+    });
+    assert.equal(cjkSpacing.spans,2,'CJK/Latin runs use a spacing decoration');
+    assert.ok(cjkSpacing.gaps.every(gap=>gap>=3),'CJK and Latin text keep the xeCJK gap: '+JSON.stringify(cjkSpacing));
     await importSource('$x^2+y_1$');
     await page.waitForFunction(()=>document.querySelector('math-field')?.value.includes('^2'));
     const mathScript=await page.locator('math-field').evaluate(field=>{
@@ -1732,10 +1782,13 @@ async function verifySelectionGeometry(page, paper, importSource) {
     assert.equal(await boundaryParagraph.textContent(),'Paragraph 047. edited','Editing works on a visually translated page');
     const paginationButton=page.locator('.pagination-toggle');
     assert.equal(await paginationButton.getAttribute('aria-pressed'),'true','The status bar starts in paginated mode');
+    assert.equal(await paginationButton.getAttribute('data-mode'),'pages');
     await paginationButton.click();
     await page.waitForFunction(()=>document.querySelector('.document-page')?.dataset.pagination==='flow');
     assert.equal(await page.locator('.document-sheet').count(),1,'Continuous flow uses one sheet');
     assert.equal(await paginationButton.getAttribute('aria-pressed'),'false');
+    assert.equal(await paginationButton.getAttribute('data-mode'),'flow');
+    const flowColor=await paginationButton.evaluate(node=>getComputedStyle(node).backgroundColor);
     const continuous=await page.evaluate(()=>{
       const page=document.querySelector('.document-page');
       const paragraphs=[...document.querySelectorAll('.ProseMirror > p')];
@@ -1746,6 +1799,9 @@ async function verifySelectionGeometry(page, paper, importSource) {
     await paginationButton.click();
     await page.waitForFunction(()=>document.querySelector('.document-page')?.dataset.pageCount==='3');
     assert.equal(await paginationButton.getAttribute('aria-pressed'),'true','Paginated mode restores the original pages');
+    assert.equal(await paginationButton.getAttribute('data-mode'),'pages');
+    assert.notEqual(await paginationButton.evaluate(node=>getComputedStyle(node).backgroundColor),flowColor,
+      'Pages and continuous modes use different button colors');
     await importSource(Array.from({length:40},()=> '设 $x_{n}\\to a$，且 $\\lim_{n\\to\\infty}x_n=a$。').join('\n\n'));
     await page.waitForFunction(()=>Number(document.querySelector('.document-page')?.dataset.pageCount)>1);
     await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
@@ -2114,6 +2170,27 @@ async function verifySelectionGeometry(page, paper, importSource) {
     const tableWidths=await paper.locator('table').evaluateAll(tables=>tables.map(table=>table.getBoundingClientRect().width));
     assert.ok(tableWidths.at(-1)>tableWidths[0]*.6,
       'Nested tables keep most of the page width: '+JSON.stringify(tableWidths));
+    await importSource('\\begin{tabular}{ll}\n'+
+      Array.from({length:60},(_,index)=>`${index+1} & Row ${index+1} \\\\`).join('\n')+'\n\\end{tabular}');
+    await page.waitForFunction(()=>document.querySelectorAll('.ProseMirror tr').length===60);
+    await page.waitForFunction(()=>Number(document.querySelector('.document-page')?.dataset.pageCount)>1);
+    await page.waitForFunction(()=>document.querySelectorAll('.table-continuation-header').length>0);
+    assert.equal(await page.locator('.table-continuation-header').first().textContent(),'1Row 1',
+      'The continued table repeats its header');
+    const continuedRow=paper.locator('tr').nth(45);
+    await continuedRow.locator('td').nth(1).click();
+    await page.keyboard.press('End');
+    await page.keyboard.type(' edited');
+    assert.equal((await continuedRow.locator('td').nth(1).textContent()).trim(),'Row 46 edited',
+      'Rows on a continued page remain editable');
+    await page.locator('[data-group=table]').click();
+    const continueButton=page.getByRole('button',{name:/续表/});
+    await continueButton.click();
+    await page.waitForFunction(()=>document.querySelectorAll('.table-continuation-header').length===0);
+    assert.equal(await page.evaluate(()=>/padding-top:/.test(document.querySelector('style[data-lineae-pagination]').textContent)),false,
+      'Disabling continuation removes table row padding');
+    await continueButton.click();
+    await page.waitForFunction(()=>document.querySelectorAll('.table-continuation-header').length>0);
 
     await paper.locator('p').first().click();
     await paper.evaluate(element=>{

@@ -88,3 +88,39 @@ export function planPagination(blocks, { pageHeight, pageGap, marginTop, marginB
 
   return { breaks, translations, pageCount: Math.max(1, pageIndex + 1) };
 }
+
+export function planTableRows(rows, {
+  top, pageHeight, pageGap, marginTop, marginBottom,
+  headerHeight = 0, repeatHeader = true,
+}) {
+  if (!rows.length) return { breaks:[], extra:0, pageCount:1 };
+  const pitch = pageHeight + pageGap;
+  const bodyHeight = pageHeight - marginTop - marginBottom;
+  const tolerance = .5;
+  const breaks = [];
+  let extra = 0;
+  let pageIndex = Math.max(0, Math.floor(top / pitch));
+  let bodyBottom = pageIndex * pitch + pageHeight - marginBottom;
+
+  for (let index = 0; index < rows.length; index++) {
+    const row = rows[index];
+    let rowTop = top + row.top + extra;
+    let rowBottom = rowTop + row.height;
+    if (rowBottom > bodyBottom + tolerance && row.height <= bodyHeight + tolerance) {
+      const nextPage = pageIndex + 1;
+      const bodyTop = nextPage * pitch + marginTop;
+      const header = repeatHeader && index > 0 ? headerHeight : 0;
+      const padding = Math.max(0, bodyTop + header - rowTop);
+      if (padding > .01) {
+        breaks.push({ row:index, padding, headerTop:bodyTop });
+        extra += padding;
+        pageIndex = nextPage;
+        bodyBottom = pageIndex * pitch + pageHeight - marginBottom;
+        rowTop += padding;
+        rowBottom += padding;
+      }
+    }
+    while (rowBottom > pageIndex * pitch + pageHeight - marginBottom + tolerance) pageIndex++;
+  }
+  return { breaks, extra, pageCount: Math.max(1, pageIndex + 1) };
+}

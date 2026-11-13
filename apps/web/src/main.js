@@ -833,7 +833,7 @@ const sourceView = createSourceWorkspace({
   render: text => load(text, false),
   metadata: () => ({name: filename, saved: savedSource}),
 });
-let documentParts=parseDocument('\\documentclass{article}\n\\usepackage{amsmath}\n\\begin{document}\n\\end{document}\n');
+let documentParts=parseDocument('\\documentclass{article}\n\\usepackage[margin=2.2cm]{geometry}\n\\usepackage{amsmath}\n\\begin{document}\n\\end{document}\n');
 let pageSetup=readPageSetup(documentParts.start);
 let typesetPagination;
 let pagePaper,pageOrientation,pageMarginPreset,pageMarginTop,pageMarginRight,pageMarginBottom,pageMarginLeft;
@@ -913,6 +913,7 @@ function renderMeta() {
 }
 renderMeta();
 typesetPagination=installTypesetPagination(documentPage,paper,metaBar);
+typesetPagination.setTableContinuation(config.value.interface.continuedTables);
 function recordFormulaLineBreaks(document) {
   if (documentPage.hidden) return false;
   let changed=false;
@@ -1485,6 +1486,18 @@ function updateSourceButton() {
   sourceButton.setAttribute('aria-pressed',String(!sourceView.hidden));
   sourceView.refresh();
 }
+let continueTablesButton;
+function updateContinueTablesButton(){
+  if(!continueTablesButton)return;
+  const enabled=typesetPagination.getTableContinuation();
+  continueTablesButton.textContent=enabled?t('续表 开','Continue on'):t('续表 关','Continue off');
+  continueTablesButton.setAttribute('aria-pressed',String(enabled));
+  const description=enabled
+    ? t('超过一页的表格自动拆分并重复表头','Split long tables across pages and repeat the header')
+    : t('表格不自动拆分','Keep long tables as one block');
+  continueTablesButton.dataset.tooltipZh=description;
+  continueTablesButton.dataset.tooltipEn=description;
+}
 const paginationButton=document.createElement('button');
 paginationButton.type='button';paginationButton.className='pagination-toggle';
 paginationButton.addEventListener('mousedown',event=>event.preventDefault());
@@ -1498,6 +1511,7 @@ function updatePaginationButton(){
   paginationButton.textContent=pages
     ? (chinese?'分页':'Pages')
     : (chinese?'连续流':'Continuous');
+  paginationButton.dataset.mode=pages?'pages':'flow';
   paginationButton.setAttribute('aria-pressed',String(pages));
   const description=pages
     ? (chinese?'切换到连续流预览':'Switch to continuous flow')
@@ -1758,6 +1772,13 @@ for(const [side,input] of [['top',pageMarginTop],['right',pageMarginRight],['bot
 });
 applyPageSetup();
 groupButton(tableGroup,'▦',()=>editor.chain().focus().insertTable({rows:2,cols:2,withHeaderRow:false}).run());
+continueTablesButton=groupButton(tableGroup,t('续表','Continue'),()=>{
+  const enabled=!typesetPagination.getTableContinuation();
+  typesetPagination.setTableContinuation(enabled);
+  config.updateInterface({continuedTables:enabled});
+  updateContinueTablesButton();
+});
+updateContinueTablesButton();
 groupButton(tableGroup,'＋ Row',addMatrixRow);
 groupButton(tableGroup,'＋ Column',addMatrixColumn);
 groupButton(tableGroup,'－ Row',()=>editor.chain().focus().deleteRow().run());
@@ -2105,6 +2126,7 @@ function updateLanguage() {
   updateThemeButton();
   updateSourceButton();
   updatePaginationButton();
+  updateContinueTablesButton();
   renderMeta();
   updateEnvironment();
   count.textContent=editor.getText().length+' '+t('字符','characters');

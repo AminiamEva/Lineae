@@ -158,6 +158,25 @@ function numberedHeadings(doc) {
   return DecorationSet.create(doc, decorations);
 }
 
+const CJK_CHAR = /[\u2E80-\u2FFF\u3040-\u30FF\u3400-\u4DBF\u4E00-\u9FFF\uAC00-\uD7AF\uF900-\uFAFF]/;
+function cjkLatinSpacing(doc) {
+  const decorations = [];
+  doc.descendants((node, position) => {
+    if (!node.isText || !node.text) return;
+    for (const match of node.text.matchAll(/[A-Za-z0-9]+/g)) {
+      const before = CJK_CHAR.test(node.text[match.index - 1] ?? '');
+      const after = CJK_CHAR.test(node.text[match.index + match[0].length] ?? '');
+      if (!before && !after) continue;
+      decorations.push(Decoration.inline(
+        position + match.index,
+        position + match.index + match[0].length,
+        { class: ['cjk-latin', before && 'cjk-latin-before', after && 'cjk-latin-after'].filter(Boolean).join(' ') },
+      ));
+    }
+  });
+  return DecorationSet.create(doc, decorations);
+}
+
 const clikeKeywords = 'abstract|as|async|await|break|case|catch|class|const|continue|default|delete|do|else|enum|export|extends|final|finally|for|from|function|goto|if|implements|import|in|instanceof|interface|let|namespace|new|package|private|protected|public|return|sealed|static|super|switch|this|throw|throws|try|type|typeof|var|void|while|with|yield|true|false|null|None|True|False|undefined|nil';
 function codeFamily(language) {
   const name = String(language ?? '').trim().toLowerCase();
@@ -361,6 +380,20 @@ export const PaperBehavior = Extension.create({
           apply: (transaction, previous) => transaction.docChanged ? numberedHeadings(transaction.doc) : previous,
         },
         props: { decorations(state) { return this.getState(state); } },
+      }),
+      new Plugin({
+        state: {
+          init: (_, state) => ({
+            text: state.doc.textBetween(0, state.doc.content.size, '\n', '\n'),
+            decorations: cjkLatinSpacing(state.doc),
+          }),
+          apply: (transaction, previous) => {
+            if (!transaction.docChanged) return previous;
+            const text = transaction.doc.textBetween(0, transaction.doc.content.size, '\n', '\n');
+            return text === previous.text ? previous : { text, decorations: cjkLatinSpacing(transaction.doc) };
+          },
+        },
+        props: { decorations(state) { return this.getState(state).decorations; } },
       }),
       new Plugin({
         props: {
