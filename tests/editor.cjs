@@ -565,6 +565,24 @@ async function verifySelectionGeometry(page, paper, importSource) {
       assert.ok(Math.abs(zoomedGeometry[dimension]/naturalGeometry[dimension]-afterZoom/100)<0.01,dimension+' must scale with the paper');
     }
     assert.equal(await page.locator('input[type=range]').inputValue(),'100');
+    const footerZoom = await page.evaluate(() => {
+      const control = document.querySelector('input[type=range]');
+      const before = Number(control.value);
+      document.querySelector('footer.document-status').dispatchEvent(
+        new WheelEvent('wheel',{deltaY:-40,ctrlKey:true,bubbles:true,cancelable:true}));
+      return { before, after: Number(control.value) };
+    });
+    assert.ok(footerZoom.after > footerZoom.before,
+      'Trackpad zoom over the status bar drives the document zoom');
+    await page.keyboard.press('Control+0');
+    const pinchZoom = await page.evaluate(() => {
+      for (let step = 0; step < 10; step += 1) {
+        window.dispatchEvent(new WheelEvent('wheel',{deltaY:-1,ctrlKey:true,cancelable:true}));
+      }
+      return Number(document.querySelector('input[type=range]').value);
+    });
+    assert.ok(pinchZoom > 100,'Small pinch deltas accumulate into a zoom change');
+    await page.keyboard.press('Control+0');
     await page.keyboard.press('Control+-');
     assert.equal(await page.locator('input[type=range]').inputValue(),'90');
     await page.keyboard.press('Control+=');

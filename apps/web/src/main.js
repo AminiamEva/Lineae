@@ -1628,7 +1628,10 @@ installKeybindings(window, {
     return shortcutActions[scope][command](context,event);
   },
 });
-document.querySelector('main').addEventListener('wheel', event => {
+// Trackpad pinch arrives as a ctrl+wheel event. Listening on the window keeps
+// the document zoom in charge everywhere in the app; otherwise the desktop
+// webview would zoom its own UI when the pointer is outside the paper.
+window.addEventListener('wheel', event => {
   if (!event.ctrlKey || !config.value.interface.zoomOnCtrlWheel) return;
   event.preventDefault();
   const units = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? window.innerHeight : 1;
