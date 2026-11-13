@@ -432,7 +432,7 @@ export const MathNode = Node.create({
 
       const field = document.createElement('math-field');
       field.setAttribute('default-mode', node.isBlock ? 'math' : 'inline-math');
-      field.textContent = mathEditorSource(node.attrs.latex);
+      field.textContent = mathEditorSource(node.attrs.latex, { inline:!node.isBlock });
       dom.append(handle, field);
       const numbers = document.createElement('span');
       numbers.className = 'math-equation-numbers';
@@ -528,7 +528,7 @@ export const MathNode = Node.create({
           field.dispatchEvent(new Event('input',{bubbles:true}));
           return;
         }
-        const latex=mathDocumentSource(field.value,node.attrs.latex);
+        const latex=mathDocumentSource(field.value,node.attrs.latex,{inline:!node.isBlock});
         if(node.attrs.latex===latex)return;
         const position = getPos();
         if (typeof position === 'number') {
@@ -770,8 +770,8 @@ export const MathNode = Node.create({
           node = next;
           dom.dataset.latex = node.attrs.latex;
           renderNumbers();
-          if (mathDocumentSource(field.value,node.attrs.latex) !== node.attrs.latex) {
-            const latex=mathEditorSource(node.attrs.latex);
+          if (mathDocumentSource(field.value,node.attrs.latex,{inline:!node.isBlock}) !== node.attrs.latex) {
+            const latex=mathEditorSource(node.attrs.latex,{inline:!node.isBlock});
             if (field.value !== latex) field.value=latex;
           }
           return true;

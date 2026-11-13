@@ -259,6 +259,15 @@ test('exports title and math structures with the required outer commands', () =>
   assert.equal((exportDocument(parts, '\\maketitle\n' + body).match(/\\maketitle/g) ?? []).length, 1);
 });
 
+test('uses side limits for inline operators without changing the source', () => {
+  const source = '\\lim_{x\\to0}f(x)+\\sum_{i=1}^n a_i';
+  const editing = mathEditorSource(source, { inline:true });
+  assert.equal(editing, '\\lim\\nolimits_{x\\to0}f(x)+\\sum\\nolimits_{i=1}^n a_i');
+  assert.equal(mathDocumentSource(editing, source, { inline:true }), source);
+  assert.equal(mathEditorSource('\\displaystyle{\\lim_{x\\to0}f(x)}', { inline:true }),
+    '\\displaystyle{\\lim_{x\\to0}f(x)}');
+});
+
 test('counts numbered alignment rows while skipping nested matrices and suppressed rows', () => {
   const latex = String.raw`\begin{align}a&=\begin{matrix}1\\2\end{matrix}\label{eq:a}\\b&=2\notag\\c&=3\end{align}`;
   assert.deepEqual(numberedMathRows({ latex }), [

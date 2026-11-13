@@ -36,8 +36,16 @@ function alignmentRows(body) {
   return rows;
 }
 
-export function mathEditorSource(latex) {
+const LIMIT_OPERATORS = 'limsup|liminf|lim|sum|prod|coprod|bigcup|bigcap|bigvee|bigwedge|bigoplus|bigotimes|bigodot|biguplus|bigsqcup|max|min|sup|inf|det|gcd|Pr';
+const limitOperator = new RegExp(`\\\\(${LIMIT_OPERATORS})(?![A-Za-z])(?!\\\\limits|\\\\nolimits)`, 'g');
+
+export function mathEditorSource(latex, { inline = false } = {}) {
   latex = latex.replace(/\\textasciicircum(?:\{\})?(?![a-zA-Z])/g, '\\text{ˆ}');
+  if (inline && !/\\(?:displaystyle|textstyle)\b/.test(latex)) {
+    // MathLive always stacks limits under these operators. TeX uses side
+    // limits in inline math, so force that layout for the editing view.
+    latex = latex.replace(limitOperator, '\\$1\\nolimits');
+  }
   const parts = alignmentParts(latex);
   if (!parts) return latex;
   const [, , environment, body] = parts;
@@ -45,8 +53,9 @@ export function mathEditorSource(latex) {
   return '\\begin{aligned}' + body + '\\end{aligned}';
 }
 
-export function mathDocumentSource(value, previous) {
+export function mathDocumentSource(value, previous, { inline = false } = {}) {
   value = value.replace(/\\text\{ˆ\}/g, '\\textasciicircum{}');
+  if (inline && !/\\nolimits(?![A-Za-z])/.test(previous)) value = value.replace(/\\nolimits(?![A-Za-z])/g, '');
   const body = /^\\begin\{aligned\}([\s\S]*)\\end\{aligned\}$/.exec(value)?.[1];
   const parts = alignmentParts(previous);
   return body === undefined || !parts ? value : parts[1] + body + parts[4];
