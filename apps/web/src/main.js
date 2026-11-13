@@ -534,8 +534,19 @@ const Shortcuts = Extension.create({
           this.editor.view.dispatch(this.editor.state.tr.insertText('    '));
           return true;
         }
-        if (listItemDepthAt(selection.$from)) return indentListItem(this.editor);
-        if (!selection.empty) return setParagraphIndent(this.editor,true);
+        if (listItemDepthAt(selection.$from)) {
+          if (indentListItem(this.editor)) return true;
+          // A single-item list has no previous sibling to sink under. Fall back
+          // to plain text indentation instead of letting Tab move the focus
+          // out of the editor.
+          this.editor.view.dispatch(this.editor.state.tr.insertText('    '));
+          return true;
+        }
+        if (!selection.empty) {
+          if (setParagraphIndent(this.editor,true)) return true;
+          this.editor.view.dispatch(this.editor.state.tr.insertText('    '));
+          return true;
+        }
         this.editor.view.dispatch(this.editor.state.tr.insertText('    '));
         return true;
       },
@@ -554,7 +565,12 @@ const Shortcuts = Extension.create({
           this.editor.view.dispatch(this.editor.state.tr.deleteSelection());
           return true;
         }
-        if (listItemDepthAt($from)) return this.editor.chain().focus().liftListItem('listItem').run();
+        if (listItemDepthAt($from)) {
+          // At the outermost level there is nothing left to lift; keep the
+          // focus in the editor instead of falling through to the browser.
+          this.editor.chain().focus().liftListItem('listItem').run();
+          return true;
+        }
         if (!selection.empty) return setParagraphIndent(this.editor,false);
         if (empty && !$from.parent.type.spec.code) {
           const spaces=/ {1,4}$/.exec($from.parent.textBetween(0,$from.parentOffset,'\0','\0'));
