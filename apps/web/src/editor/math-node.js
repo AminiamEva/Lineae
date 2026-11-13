@@ -173,6 +173,7 @@ const mathFieldStyle = `
   .ML__content { overflow: visible !important; scrollbar-width: none; }
   .ML__content::-webkit-scrollbar { display: none; }
   :host([data-lineae-editing]) [data-lineae-integrand] { background:light-dark(#e9f4ed,#304a3b); border-radius:.15em; }
+  :host([data-empty-matrix-cell]) .ML__caret { position:relative; }
   :host([data-empty-matrix-cell]) .ML__caret::after {
     content:""; position:absolute; inset:-.05em auto -.05em -.05em;
     width:.66em; border:1px solid currentColor; border-radius:.16em;
@@ -736,7 +737,6 @@ export const MathNode = Node.create({
         field.smartMode = false;
         if (smartFences !== undefined) field.smartFence = smartFences;
         field.smartSuperscript = false;
-        if (!field.value) field.placeholderSymbol = '';
         field.environmentPopoverPolicy = 'off';
         field.mathModeSpace = '\\space';
         installMathFieldStyle(field);
