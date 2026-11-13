@@ -1,0 +1,77 @@
+/* Source workspace shares the document's theme and type scale. */
+.tex-workspace {
+  --tex-paper: light-dark(#fafafc,#202228);
+  --tex-bar: light-dark(#fff,#26282f);
+  --tex-border: light-dark(#e5e7eb,#3c404a);
+  --tex-muted: light-dark(#637084,#acb4c3);
+  --tex-active: light-dark(#f0f2f8,#303441);
+  --tex-command: light-dark(#685596,#c3b2e8);
+  --tex-environment: light-dark(#476d95,#9dbfe6);
+  --tex-comment: light-dark(#67796e,#9eb5a5);
+  --tex-argument: light-dark(#896b51,#d5b99b);
+  --tex-math: light-dark(#525f95,#adb8ed);
+  width:min(100%,70rem); height:clamp(320px,calc(100dvh - 180px),960px);
+  margin:auto; display:flex; flex-direction:column; overflow:hidden;
+  background:var(--tex-paper); color:light-dark(#334155,#d8dce7);
+  border:1px solid var(--tex-border); border-radius:16px;
+  box-shadow:0 6px 24px #1b24400b;
+}
+.tex-workspace:focus-within {border-color:light-dark(#b8c2df,#596380)}
+.tex-head,.tex-foot {display:flex;align-items:center;flex:none;gap:9px;padding:0 18px;background:var(--tex-bar)}
+.tex-head {min-height:48px;border-bottom:1px solid var(--tex-border)}
+.tex-head>.ui-icon {color:var(--tex-muted);width:18px;height:18px}
+.tex-filename {font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tex-dirty {width:6px;height:6px;border-radius:50%;background:#a77b46;flex:none}
+.tex-actions {margin-left:auto;display:flex;gap:6px}
+.tex-actions button {display:grid;place-items:center;width:32px;height:32px;padding:0;border-radius:8px;background:transparent;color:var(--tex-muted)}
+.tex-actions button:hover,.tex-actions button[aria-pressed=true] {background:var(--tex-active)}
+.tex-actions .ui-icon {width:17px;height:17px}
+.tex-body {display:grid;grid-template-columns:minmax(0,1fr);flex:1;min-height:0}
+.tex-code,.tex-preview {min-width:0;min-height:0}
+.tex-code .cm-editor {height:100%;font-size:14px}
+.tex-code .cm-focused {outline:0}
+.tex-code .cm-scroller {overflow:auto;font:14px/1.7 "JetBrains Mono",SFMono-Regular,Consolas,monospace}
+.tex-code .cm-content {padding:18px 0;caret-color:var(--tex-command)}
+.tex-code .cm-line {padding-inline:20px}
+.tex-code .cm-gutters {background:var(--tex-paper);color:light-dark(#878994,#9499a8);border:none;padding-left:8px}
+.tex-code .cm-activeLine,.tex-code .cm-activeLineGutter {background:var(--tex-active)}
+.tex-code .cm-cursor {border-left-color:currentColor}
+.tex-code .cm-editor .cm-selectionBackground,.tex-code .cm-editor.cm-focused .cm-selectionBackground {background:light-dark(#dce2fa,#414b70)}
+.tex-code .cm-matchingBracket {outline:1px solid #9aa9cf;border-radius:2px}
+.tex-code .cm-panels {background:var(--tex-bar);color:inherit;border-color:var(--tex-border)}
+.tex-code .cm-search {font-size:12px;line-height:1.6;padding:7px 14px}
+.tex-code .cm-search input,.tex-code .cm-search button {max-width:100%;color:inherit;background:var(--tex-paper);border:1px solid var(--tex-border);border-radius:5px}
+.tex-foot {min-height:30px;font-size:11px;color:var(--tex-muted);border-top:1px solid var(--tex-border);font-variant-numeric:tabular-nums}
+.tex-format {margin-left:auto;white-space:nowrap}
+.tex-message {overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tex-workspace.is-expanded {position:fixed;inset:12px 12px 38px;width:auto;height:auto;z-index:9;animation:tex-enter .17s ease-out}
+body:has(.tex-workspace.is-expanded) {overflow:hidden}
+.tex-divider,.tex-preview {display:none}
+.tex-preview {overflow:auto;overscroll-behavior:contain;background:light-dark(#f2f3f6,#191b20);padding:clamp(8px,1.5vw,24px)}
+.tex-preview .document-page {width:100%;min-height:100%;padding:clamp(18px,6%,56px);cursor:default;zoom:1!important;pointer-events:none}
+.tex-preview .ProseMirror,.tex-preview #editor {min-height:0}
+.tex-preview-toggle {display:none}
+@media(min-width:900px){
+  .tex-workspace.is-expanded .tex-body {grid-template-columns:minmax(0,var(--tex-split,45%)) 9px minmax(0,1fr)}
+  .is-expanded .tex-divider,.is-expanded .tex-preview {display:block}
+  .tex-divider {background:linear-gradient(90deg,transparent 4px,var(--tex-border) 4px 5px,transparent 5px);cursor:col-resize;touch-action:none}
+  .tex-divider:is(:hover,:active,:focus-visible) {background:#a5b4fc77}
+}
+@media(max-width:899px){
+  .is-expanded.preview-only .tex-preview {display:block}
+  .is-expanded.preview-only .tex-code {display:none}
+  .tex-workspace.is-expanded {inset:6px 6px 38px}
+  main:has(.tex-workspace:not([hidden])) {padding-inline:8px}
+  .tex-head,.tex-foot {padding-inline:12px}
+  .tex-code .cm-line {padding-inline:12px}
+}
+.tex-modes {display:inline-flex;flex:none;gap:2px;padding:2px;border-radius:9px;background:light-dark(#eef0f4,#30333a)}
+.document-status .tex-modes button {box-shadow:none;padding:2px 8px;font:inherit;color:inherit;border-radius:7px;background:transparent;transition:background .16s,box-shadow .16s}
+.document-status .tex-modes button[aria-pressed=true] {background:light-dark(#fff,#474c58);box-shadow:0 1px 3px #18223b20}
+@keyframes tex-enter {from {opacity:.85;transform:translateY(3px)}}
+@media(prefers-reduced-motion:reduce){.tex-workspace.is-expanded{animation:none}.tex-modes button{transition:none}}
+@media(max-width:540px){
+  .document-status:has(.tex-modes) {gap:4px;padding-inline:6px}
+  .document-status:has(.tex-modes) input[type=range] {width:clamp(34px,12vw,64px);min-width:0}
+  .document-status:has(.tex-modes) #status {min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+}

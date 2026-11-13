@@ -1,3 +1,4 @@
+import { createSourceWorkspace } from './editor/source-workspace.js';
 import { installContextMenu } from './editor/context-menu.js';
 import { textCommands } from '../latex/inline.mjs';
 import { markerInput, listMarker } from '../latex/list-numbering.mjs';
@@ -694,7 +695,7 @@ let editingMath = null;
 document.addEventListener('focusin', event => {
   if (event.target.closest?.('.delimiter-input-embedded')) return;
   const field=event.composedPath().find(element=>element?.tagName==='MATH-FIELD');
-  if(field || paper.contains(event.target) || event.target.classList?.contains('source-view')) {
+  if(field || paper.contains(event.target) || event.target.closest?.('.tex-workspace')) {
     if(editingMath && editingMath!==field) editingMath.dispatchEvent(new Event('lineae-commit-fences'));
     editingMath=field ?? null;
   }
@@ -817,9 +818,11 @@ button('＋ Row',addMatrixRow);
 button('＋ Column',addMatrixColumn);
 button('$',()=>insertMath());
 button('$$',()=>insertMath(true)).dataset.shortcut='editor.insertDisplayMath';
-const sourceView=document.createElement('textarea');
-sourceView.className='source-view'; sourceView.hidden=true;
-documentPage.after(sourceView);
+const sourceView = createSourceWorkspace({
+  page: documentPage,
+  render: text => load(text, false),
+  metadata: () => ({name: filename, saved: savedSource}),
+});
 let documentParts=parseDocument('\\documentclass{article}\n\\usepackage{amsmath}\n\\begin{document}\n\\end{document}\n');
 let pageSetup=readPageSetup(documentParts.start);
 let pagePaper,pageOrientation,pageMarginPreset,pageMarginTop,pageMarginRight,pageMarginBottom,pageMarginLeft;
@@ -945,39 +948,46 @@ function identifyImportedBoxes(node) {
 function load(text, markSaved = true) {
   const parsed=parseDocument(text);
   if(!parsed)throw new Error(t('无法识别文档','Invalid document'));
-  clearProjectAssets();
+  if (markSaved) clearProjectAssets();
   citationLibrary.restoreState(readBibliographyMetadata(text));
   // Preserve imported source exactly. Unsupported blocks remain directly accessible in source mode.
   documentParts=parsed;
   const content=parsed.blocks.flatMap((block,index)=>importBlocks(index===0 && readMeta('title')
     ? block.replace(/^\s*\\maketitle\b[ \t]*(?:\r?\n|$)/,'') : block));
   for (const block of content) identifyImportedBoxes(block);
-  editor.commands.setContent({type:'doc',content:content.length?content:[{type:'paragraph'}]});
+  editor.chain().setMeta('addToHistory', false).setContent({type:'doc',content:content.length?content:[{type:'paragraph'}]}).run();
   refreshReferences(paper);syncTableAttributes();
   importedSource=text;importedSnapshot=JSON.stringify(editor.getJSON());
   if(markSaved) savedSource=text;
-  if(!sourceView.hidden) sourceView.value=text;
+  if (markSaved) sourceView.reset(text);
   renderMeta();
   pageSetup=readPageSetup(documentParts.start);
   applyPageSetup();
 }
-function toggleSourceView(){
-  if(sourceView.hidden) {
-    sourceView.value=source(); sourceView.hidden=false; documentPage.hidden=true;
+let returnedDraft;
+function setSourceMode(active) {
+  if (active === !sourceView.hidden) return;
+  if (active) {
+    const unchanged = returnedDraft?.doc === editor.state.doc && returnedDraft?.imported === importedSource && returnedDraft?.preamble === documentParts.start;
+    sourceView.open(unchanged ? returnedDraft.text : source());
   } else {
-    try {load(sourceView.value,false);sourceView.hidden=true;documentPage.hidden=false;editor.commands.focus();}
-    catch(error){document.querySelector('#status').hidden=false;document.querySelector('#status').textContent=error.message;}
+    try {
+      const text = sourceView.value;
+      if (text !== importedSource || importedSnapshot !== JSON.stringify(editor.getJSON())) load(text, false);
+      returnedDraft = {doc: editor.state.doc, imported: importedSource, preamble: documentParts.start, text};
+      sourceView.close();
+      editor.commands.focus();
+    } catch (error) {
+      sourceView.error(error.message);
+      return;
+    }
   }
   updateSourceButton();
+  updateEnvironment();
 }
 function locateMissingCitation(missing) {
-  const text = source();
-  sourceView.value = text;
-  sourceView.hidden = false;
-  documentPage.hidden = true;
-  sourceView.focus();
-  sourceView.setSelectionRange(missing.start, missing.start + missing.key.length);
-  updateSourceButton();
+  setSourceMode(true);
+  sourceView.select(missing.start, missing.start + missing.key.length);
 }
 document.querySelector('#download').disabled=false;
 async function downloadProject() {
@@ -1022,6 +1032,7 @@ async function saveDocument(saveAs=false) {
       fileHandle=handle;
       if(handle.name)filename=handle.name;
       savedSource=text;
+      sourceView.refresh();
       const status=document.querySelector('#status');
       status.hidden=false;status.textContent=t('已保存','Saved');
       return;
@@ -1058,7 +1069,7 @@ window.addEventListener('beforeunload',event=>{
 });
 document.querySelector('#file').addEventListener('change',async event=>{
   const file=event.target.files[0];if(!file)return;
-  try {fileHandle=null;load(new TextDecoder('utf-8',{fatal:true,ignoreBOM:true}).decode(await file.arrayBuffer()));filename=file.name;}
+  try {fileHandle=null;load(new TextDecoder('utf-8',{fatal:true,ignoreBOM:true}).decode(await file.arrayBuffer()));filename=file.name;sourceView.refresh();}
   catch(error){const status=document.querySelector('#status');status.hidden=false;status.textContent=error.message;}
 });
 const commands = document.createElement('div');
@@ -1431,20 +1442,34 @@ function updateThemeButton(){
   themeButton.dataset.tooltipEn=description;
   themeButton.replaceChildren(icon({light:'sun',dark:'moon',system:'system'}[theme.getPreference()]));
 }
-const sourceButton=document.createElement('button');
-sourceButton.type='button';sourceButton.className='source-toggle';
-sourceButton.setAttribute('aria-label','LaTeX');
-sourceButton.addEventListener('mousedown',event=>event.preventDefault());
-sourceButton.addEventListener('click',toggleSourceView);
-function updateSourceButton(){
-  const chinese=document.documentElement.lang.startsWith('zh');
-  sourceButton.textContent=sourceView.hidden?(chinese?'源码':'Source'):(chinese?'富文本':'Rich text');
-  const description=sourceView.hidden
-    ? (chinese?'切换到 LaTeX 源码视图':'Switch to the LaTeX source view')
-    : (chinese?'返回富文本编辑':'Return to rich-text editing');
-  sourceButton.dataset.tooltipZh=description;
-  sourceButton.dataset.tooltipEn=description;
+const modes = document.createElement('div');
+modes.className = 'tex-modes';
+modes.setAttribute('role','group');
+const [bodyButton,sourceButton] = [false,true].map(active => {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.dataset.sourceMode = active ? 'source' : 'body';
+  button.onclick = () => setSourceMode(active);
+  modes.append(button);
+  return button;
+});
+modes.addEventListener('keydown', event => {
+  if (!['ArrowLeft','ArrowRight','Home','End'].includes(event.key)) return;
+  event.preventDefault();
+  const source = ['ArrowRight','End'].includes(event.key);
+  setSourceMode(source);
+  (sourceView.hidden ? bodyButton : sourceButton).focus();
+});
+function updateSourceButton() {
+  for (const [key, group] of Object.entries(groups)) {
+    if (key !== 'files') group.inert = !sourceView.hidden;
+  }
+  modes.setAttribute('aria-label', t('编辑模式','Editing mode'));
+  bodyButton.textContent = t('正文','Document');
+  sourceButton.textContent = t('源码','Source');
+  bodyButton.setAttribute('aria-pressed',String(sourceView.hidden));
   sourceButton.setAttribute('aria-pressed',String(!sourceView.hidden));
+  sourceView.refresh();
 }
 function scale() {
   documentPage.style.zoom=Number(zoom.value)/100;
@@ -1649,7 +1674,7 @@ function updateEnvironment() {
   environment.textContent=[labels[name],...(field ? mathEnvironment(field) : [])].join(' › ');
   environment.dataset.environment=name;
 }
-footer.append(count,document.querySelector('#status'),environment,zoom,percent,themeButton,sourceButton);document.body.append(footer);scale();
+footer.append(count,document.querySelector('#status'),environment,zoom,percent,themeButton,modes);document.body.append(footer);scale();
 editor.on('transaction',updateEnvironment);
 document.addEventListener('focusin',updateEnvironment);paper.addEventListener('input',updateEnvironment);
 paper.addEventListener('selection-change',updateEnvironment,true);

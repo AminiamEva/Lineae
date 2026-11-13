@@ -197,7 +197,6 @@ main { padding:125px 24px 60px; overflow:auto; }
 .ProseMirror .toc-title { font-weight:600; margin-bottom:.3em; opacity:.8; }
 .ProseMirror .toc-entry { font-size:.95em; }
 .ProseMirror pre[data-raw] { white-space:pre-wrap; background:light-dark(#f4f4f6,#333); font:12px/1.5 monospace; padding:.5em; }
-.source-view { display:block; width:min(90vw,65rem); min-height:80vh; margin:auto; font:14px/1.6 monospace; border:1px solid light-dark(#ccc,#555); border-radius:8px; padding:1rem; }
 .document-status { position:fixed; inset:auto 0 0; display:flex; align-items:center; gap:6px; padding:1px 10px; min-height:22px; font-size:10px; background:light-dark(#fffffff2,#242426f2); border-top:1px solid light-dark(#e1e4ea,#3b3d42); backdrop-filter:blur(18px); z-index:4; }
 .document-status span { margin-right:auto; }
 .document-status button { padding:2px 9px; border-radius:999px; font-size:10px; background:light-dark(#eef0f4,#303238); box-shadow:inset 0 0 0 1px light-dark(#e1e5ec,#3d4048); transition:background-color .18s ease,transform .18s ease,box-shadow .18s ease; }

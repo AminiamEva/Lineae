@@ -433,10 +433,10 @@ async function verifySelectionGeometry(page, paper, importSource) {
     await page.getByRole('button',{name:'↷',exact:true}).click();
     assert.ok((await paper.locator('td').allTextContents())[1].includes('B'));
     await page.locator('[data-group=insert]').click();
-    await page.getByRole('button',{name:'LaTeX',exact:true}).click();
-    const source=await page.locator('.source-view').inputValue();
+    await page.locator('[data-source-mode="source"]').click();
+    const source=await page.locator('.tex-code .cm-content').innerText();
     assert.match(source,/\\begin\{tabular\}/);
-    await page.getByRole('button',{name:'LaTeX',exact:true}).click();
+    await page.locator('[data-source-mode="body"]').click();
     assert.ok(await paper.locator('table').count());
     await paper.locator('p').last().click();
     await page.keyboard.press('End');
@@ -1031,10 +1031,10 @@ async function verifySelectionGeometry(page, paper, importSource) {
     assert.equal(await page.locator('.command-candidates button').first().getAttribute('id'),'complete-gamma');
     await page.keyboard.press('Escape');
     await page.locator('[data-group=insert]').click();
-    await page.getByRole('button',{name:'LaTeX',exact:true}).click();
-    const editedSource=(await page.locator('.source-view').inputValue()).replace('\\end{document}','Unsaved regression text\n\\end{document}');
-    await page.locator('.source-view').fill(editedSource);
-    await page.getByRole('button',{name:'LaTeX',exact:true}).click();
+    await page.locator('[data-source-mode="source"]').click();
+    const editedSource=(await page.locator('.tex-code .cm-content').innerText()).replace('\\end{document}','Unsaved regression text\n\\end{document}');
+    await page.locator('.tex-code .cm-content').fill(editedSource);
+    await page.locator('[data-source-mode="body"]').click();
     assert.equal(await page.evaluate(()=>{
       const event=new Event('beforeunload',{cancelable:true});window.dispatchEvent(event);return event.defaultPrevented;
     }),true,'Switching views must not mark edits as saved');
@@ -1169,11 +1169,11 @@ async function verifySelectionGeometry(page, paper, importSource) {
     assert.equal(await metaTitleNode.textContent(),'Regression title');
     assert.equal(await metaAuthorNode.textContent(),'Regression author');
     await page.locator('[data-group=insert]').click();
-    await page.getByRole('button',{name:'LaTeX',exact:true}).click();
-    const metaSource=await page.locator('.source-view').inputValue();
+    await page.locator('[data-source-mode="source"]').click();
+    const metaSource=await page.locator('.tex-code .cm-content').innerText();
     assert.match(metaSource,/\\title\{Regression title\}/,'Editing the title writes it back to the document properties');
     assert.match(metaSource,/\\author\{Regression author\}/,'Editing the author writes it back to the document properties');
-    await page.getByRole('button',{name:'LaTeX',exact:true}).click();
+    await page.locator('[data-source-mode="body"]').click();
     await page.locator('#language').evaluate(element=>{element.value='zh-CN';element.dispatchEvent(new Event('change',{bubbles:true}));});
     await page.locator('[data-group=home]').click();
     await page.getByRole('button',{name:'↶',exact:true}).hover();
@@ -1191,11 +1191,11 @@ async function verifySelectionGeometry(page, paper, importSource) {
     await bodyCommand('frac');
     await page.keyboard.type('1');
     await page.locator('[data-group=insert]').click();
-    await page.getByRole('button',{name:'LaTeX',exact:true}).click();
-    const exportedMath=await page.locator('.source-view').inputValue();
+    await page.locator('[data-source-mode="source"]').click();
+    const exportedMath=await page.locator('.tex-code .cm-content').innerText();
     assert.match(exportedMath,/\\frac\{1\}\{\}/,'Editing placeholders do not leak into exported LaTeX');
     assert.ok(!exportedMath.includes('\\placeholder{}'),'Exported LaTeX has no MathLive placeholders');
-    await page.getByRole('button',{name:'LaTeX',exact:true}).click();
+    await page.locator('[data-source-mode="body"]').click();
     await importSource(String.raw`Lead $\mathbf{AB}+C$ tail`);
     await page.waitForFunction(()=>document.querySelector('math-field')?.value.includes('mathbf{AB}'));
     await paper.locator('p').click({position:{x:2,y:8}});
@@ -1699,9 +1699,9 @@ async function verifySelectionGeometry(page, paper, importSource) {
     await page.locator('.empty-box-preview').waitFor();
     await page.keyboard.type('Z');
     assert.deepEqual(await paper.locator('[data-boxed]').allTextContents(),['甲','Z','乙']);
-    await page.locator('.source-toggle').click();
-    assert.match(await page.locator('.source-view').inputValue(),/\\usepackage\{ctex\}/);
-    await page.locator('.source-toggle').click();
+    await page.locator('[data-source-mode="source"]').click();
+    assert.match(await page.locator('.tex-code .cm-content').innerText(),/\\usepackage\{ctex\}/);
+    await page.locator('[data-source-mode="body"]').click();
     await importSource('\\begin{quote}\nQuoted text.\n\\end{quote}');
     await paper.locator('blockquote p').click();
     await page.keyboard.press('Control+j');
@@ -1748,16 +1748,16 @@ async function verifySelectionGeometry(page, paper, importSource) {
       const main=document.querySelector('main');
       return main.scrollWidth<=main.clientWidth+1;
     }),'Long formulas do not add a page scrollbar');
-    await page.locator('.source-toggle').click();
-    assert.ok((await page.locator('.source-view').inputValue()).includes('\\newline\n$'+longFormula+'$'));
-    await page.locator('.source-toggle').click();
+    await page.locator('[data-source-mode="source"]').click();
+    assert.ok((await page.locator('.tex-code .cm-content').innerText()).includes('\\newline\n$'+longFormula+'$'));
+    await page.locator('[data-source-mode="body"]').click();
     const wrappedFormula='x+y+'.repeat(10)+'z';
     await importSource('W'.repeat(40)+'$'+wrappedFormula+'$');
     await page.waitForFunction(latex=>document.querySelector('[data-math-view]')?.dataset.latex===latex,wrappedFormula);
-    await page.locator('.source-toggle').click();
-    assert.ok((await page.locator('.source-view').inputValue()).includes('\\newline\n$'+wrappedFormula+'$'),
+    await page.locator('[data-source-mode="source"]').click();
+    assert.ok((await page.locator('.tex-code .cm-content').innerText()).includes('\\newline\n$'+wrappedFormula+'$'),
       'A formula that wraps naturally is recorded as \\newline even when it fits an empty line');
-    await page.locator('.source-toggle').click();
+    await page.locator('[data-source-mode="body"]').click();
     const nestedLists=Array.from({length:32},(_,index)=>index%2?'enumerate':'itemize');
     await importSource(nestedLists.map(kind=>'\\begin{'+kind+'}\n\\item Level\n').join('')+
       nestedLists.reverse().map(kind=>'\\end{'+kind+'}\n').join(''));
@@ -1790,9 +1790,9 @@ async function verifySelectionGeometry(page, paper, importSource) {
     await page.keyboard.press('ArrowRight');
     assert.ok(await paper.evaluate(element=>element===document.activeElement),'ArrowRight exits at the end of inline math');
     await page.keyboard.type('Q');
-    await page.locator('.source-toggle').click();
-    assert.match(await page.locator('.source-view').inputValue(),/\$x\$Q after/);
-    await page.locator('.source-toggle').click();
+    await page.locator('[data-source-mode="source"]').click();
+    assert.match(await page.locator('.tex-code .cm-content').innerText(),/\$x\$Q after/);
+    await page.locator('[data-source-mode="body"]').click();
     await importSource('Before $\\int_{0}^{1} x\\,dx$ after');
     await page.waitForFunction(()=>document.querySelector('[data-math-view]')?.dataset.latex==='\\int_{0}^{1} x\\,dx');
     const entryBox=await page.locator('math-field').boundingBox();
@@ -2214,6 +2214,7 @@ async function verifySelectionGeometry(page, paper, importSource) {
     await page.keyboard.type('$$');
     assert.ok(await paper.evaluate(element=>element===document.activeElement));
     assert.deepEqual(errors,[]);
+    await require('./source-workspace.cjs')(browserContext, page.url());
     console.log('Browser regressions passed');
   }finally{
     await browser.close();
