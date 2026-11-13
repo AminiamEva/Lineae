@@ -234,6 +234,11 @@ function insertMath(display = false, latex = '') {
   }
   insertFormula(editor, false, '', undefined, field => insertLiveMath(field, latex));
 }
+function insertDefaultTable() {
+  const inserted=editor.chain().focus().insertTable({rows:2,cols:2,withHeaderRow:false}).run();
+  if(inserted)editor.chain().focus().updateAttributes('table',{borderMode:'grid'}).run();
+  return inserted;
+}
 function insertEquation() {
   insertFormula(editor, true, '', undefined, field => insertLiveMath(field, '\\placeholder{}'), { delimiter:'equation' });
 }
@@ -707,7 +712,7 @@ editor.on('transaction', () => { headingMenu.value = String(editor.getAttributes
 tools.append(headingMenu);
 button('itemize',()=>editor.chain().focus().toggleBulletList().run());
 button('enumerate',()=>editor.chain().focus().toggleOrderedList().run());
-button('▦',()=>editor.chain().focus().insertTable({rows:2,cols:2,withHeaderRow:false}).run());
+button('▦',()=>insertDefaultTable());
 let editingMath = null;
 document.addEventListener('focusin', event => {
   if (event.target.closest?.('.delimiter-input-embedded')) return;
@@ -1151,7 +1156,7 @@ const structureCommands = {
   subsubsection: () => editor.chain().focus().setHeading({ level: 3 }).run(),
   itemize: () => editor.chain().focus().toggleBulletList().run(),
   enumerate: () => editor.chain().focus().toggleOrderedList().run(),
-  table: () => editor.chain().focus().insertTable({ rows: 2, cols: 2, withHeaderRow: false }).run(),
+  table: () => insertDefaultTable(),
   inline: () => insertMath(),
   equation: insertEquation,
   'equation*': () => insertFormula(editor,true,'',undefined,undefined,{delimiter:'equation*'}),
@@ -1778,7 +1783,7 @@ for(const [side,input] of [['top',pageMarginTop],['right',pageMarginRight],['bot
   else input.value=pageSetup.margins[side];
 });
 applyPageSetup();
-groupButton(tableGroup,'▦',()=>editor.chain().focus().insertTable({rows:2,cols:2,withHeaderRow:false}).run());
+groupButton(tableGroup,'▦',()=>insertDefaultTable());
 continueTablesButton=groupButton(tableGroup,t('续表','Continue'),()=>{
   const enabled=!typesetPagination.getTableContinuation();
   typesetPagination.setTableContinuation(enabled);
@@ -2166,3 +2171,4 @@ installContextMenu(editor, paper, language, message => {
   status.hidden = false;
   status.textContent = message;
 });
+

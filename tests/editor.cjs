@@ -469,6 +469,9 @@ async function verifySelectionGeometry(page, paper, importSource) {
     assert.equal(await paper.locator('li').count(),2,'Enter on an empty item leaves the list');
     assert.equal(await paper.evaluate(()=>document.querySelector('.ProseMirror').lastElementChild.tagName),'P');
     await page.getByRole('button',{name:'▦',exact:true}).click();
+    await page.waitForFunction(()=>document.querySelector('.ProseMirror table')?.dataset.borderMode==='grid');
+    assert.equal(await paper.locator('table').first().getAttribute('data-border-mode'),'grid',
+      'New tables default to a grid');
     await page.keyboard.type('A');
     await page.keyboard.press('Tab');
     await page.keyboard.type('B');
@@ -483,6 +486,8 @@ async function verifySelectionGeometry(page, paper, importSource) {
     await page.locator('[data-source-mode="source"]').click();
     const source=await page.locator('.tex-code .cm-content').innerText();
     assert.match(source,/\\begin\{tabular\}/);
+    assert.match(source,/\\hline/,'New tables export their grid rules');
+    assert.match(source,/\|l\|/,'New tables export vertical rules');
     await page.locator('[data-source-mode="body"]').click();
     assert.ok(await paper.locator('table').count());
     await paper.locator('p').last().click();
