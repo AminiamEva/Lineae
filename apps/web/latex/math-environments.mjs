@@ -48,8 +48,7 @@ export function mathEditorSource(latex, { inline = false } = {}) {
   }
   const parts = alignmentParts(latex);
   if (!parts) return latex;
-  const [, , environment, body] = parts;
-  if (environment === 'align' && alignmentRows(body).every(row => row.columns <= 2)) return latex;
+  const [, , , body] = parts;
   return '\\begin{aligned}' + body + '\\end{aligned}';
 }
 

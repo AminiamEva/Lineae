@@ -339,6 +339,11 @@ export const PaperBehavior = Extension.create({
           parseHTML: element => element.dataset.centered === 'true',
           renderHTML: attributes => attributes.centered ? { 'data-centered': 'true' } : {},
         },
+        align: {
+          default: null,
+          parseHTML: element => element.dataset.tableAlign ?? null,
+          renderHTML: attributes => attributes.align ? { 'data-table-align': attributes.align } : {},
+        },
       },
     }, {
       types: ['tableCell', 'tableHeader'],

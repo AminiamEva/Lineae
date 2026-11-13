@@ -736,6 +736,7 @@ export const MathNode = Node.create({
         field.smartMode = false;
         if (smartFences !== undefined) field.smartFence = smartFences;
         field.smartSuperscript = false;
+        if (!node.isBlock && !field.value) field.placeholderSymbol = '';
         field.environmentPopoverPolicy = 'off';
         field.mathModeSpace = '\\space';
         installMathFieldStyle(field);

@@ -1,6 +1,17 @@
+import { CellSelection } from '@tiptap/pm/tables';
 import { t } from '../ui/i18n.mjs';
 
 export function installTableHoverAddRow(editor, paper) {
+  const tableButton = document.createElement('button');
+  tableButton.type = 'button';
+  tableButton.className = 'table-select-handle';
+  tableButton.textContent = '⠿';
+  tableButton.dataset.tooltipZh = '选择表格';
+  tableButton.dataset.tooltipEn = 'Select table';
+  tableButton.setAttribute('aria-label', t('选择表格','Select table'));
+  tableButton.hidden = true;
+  document.body.append(tableButton);
+
   const rowButton = document.createElement('button');
   rowButton.type = 'button';
   rowButton.className = 'table-insert-row';
@@ -23,11 +34,14 @@ export function installTableHoverAddRow(editor, paper) {
 
   let rowPosition = null;
   let columnPosition = null;
+  let tableWrapper = null;
   let hideTimer = 0;
   const hide = () => {
     clearTimeout(hideTimer);
+    tableButton.hidden = true;
     rowButton.hidden = true;
     columnButton.hidden = true;
+    tableWrapper = null;
     rowPosition = null;
     columnPosition = null;
   };
@@ -41,6 +55,19 @@ export function installTableHoverAddRow(editor, paper) {
   };
 
   paper.addEventListener('mousemove', event => {
+    const wrapper = event.target.closest?.('.tableWrapper');
+    if (wrapper && paper.contains(wrapper)) {
+      clearTimeout(hideTimer);
+      tableWrapper = wrapper;
+      const table = wrapper.querySelector('table');
+      const rect = table.getBoundingClientRect();
+      tableButton.hidden = false;
+      tableButton.style.left = Math.max(4, rect.left - 24) + 'px';
+      tableButton.style.top = (rect.top + 2) + 'px';
+    } else {
+      tableButton.hidden = true;
+      tableWrapper = null;
+    }
     const cell = event.target.closest?.('td,th');
     if (!cell || !paper.contains(cell)) { scheduleHide(); return; }
     clearTimeout(hideTimer);
@@ -81,11 +108,44 @@ export function installTableHoverAddRow(editor, paper) {
   paper.addEventListener('mouseleave', scheduleHide);
   window.addEventListener('scroll', hide, { passive: true });
   window.addEventListener('resize', hide);
-  for (const button of [rowButton, columnButton]) {
+  for (const button of [tableButton, rowButton, columnButton]) {
     button.addEventListener('mousedown', event => event.preventDefault());
     button.addEventListener('mouseenter', () => clearTimeout(hideTimer));
     button.addEventListener('mouseleave', scheduleHide);
   }
+  tableButton.addEventListener('click', () => {
+    const wrapper = tableWrapper;
+    const table = wrapper?.querySelector('table');
+    if (!table || !editor.view.dom.contains(table)) return;
+    try {
+      let tableNode = null;
+      let tablePosition = null;
+      editor.state.doc.descendants((node, position) => {
+        if (tablePosition !== null || node.type.name !== 'table') return;
+        const dom = editor.view.nodeDOM(position);
+        const candidate = dom?.tagName === 'TABLE' ? dom : dom?.querySelector?.('table');
+        if (candidate === table) {
+          tableNode = node;
+          tablePosition = position;
+        }
+      });
+      if (!tableNode) return;
+      let firstCell = null, lastCell = null;
+      tableNode.descendants((node, position) => {
+        if (!['tableCell', 'tableHeader'].includes(node.type.name)) return;
+        const cellPosition = tablePosition + 1 + position;
+        if (firstCell === null) firstCell = cellPosition;
+        lastCell = cellPosition;
+      });
+      if (firstCell === null) return;
+      editor.view.dispatch(editor.state.tr
+        .setSelection(new CellSelection(editor.state.doc.resolve(firstCell), editor.state.doc.resolve(lastCell)))
+        .scrollIntoView());
+      editor.view.focus();
+    } finally {
+      hide();
+    }
+  });
   rowButton.addEventListener('click', () => {
     if (rowPosition === null) return;
     editor.commands.setTextSelection(rowPosition);

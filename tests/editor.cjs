@@ -482,6 +482,20 @@ async function verifySelectionGeometry(page, paper, importSource) {
     assert.ok(!(await paper.locator('td').allTextContents())[1].includes('B'));
     await page.getByRole('button',{name:'↷',exact:true}).click();
     assert.ok((await paper.locator('td').allTextContents())[1].includes('B'));
+    await paper.locator('table').hover();
+    await page.locator('.table-select-handle').waitFor({state:'visible'});
+    await page.locator('.table-select-handle').click();
+    assert.equal(await page.evaluate(()=>document.querySelector('.ProseMirror').editor.state.selection.constructor.name.includes('CellSelection')),true,
+      'The table handle selects the whole table');
+    await page.keyboard.press('Control+e');
+    await page.keyboard.press('i');
+    await page.waitForFunction(()=>document.querySelector('.ProseMirror table')?.dataset.tableAlign==='center');
+    await page.keyboard.press('Control+e');
+    await page.keyboard.press('r');
+    await page.waitForFunction(()=>document.querySelector('.ProseMirror table')?.dataset.tableAlign==='right');
+    await page.keyboard.press('Control+e');
+    await page.keyboard.press('l');
+    await page.waitForFunction(()=>document.querySelector('.ProseMirror table')?.dataset.tableAlign==='left');
     await page.locator('[data-group=insert]').click();
     await page.locator('[data-source-mode="source"]').click();
     const source=await page.locator('.tex-code .cm-content').innerText();
@@ -656,8 +670,11 @@ async function verifySelectionGeometry(page, paper, importSource) {
     await page.waitForFunction(()=>document.activeElement?.tagName==='MATH-FIELD');
     await page.keyboard.type('sin');
     assert.equal(await formula.evaluate(field=>field.value),'xsin');
-    await page.keyboard.type('__');
+    await page.keyboard.type('_');
+    await page.waitForTimeout(30);
+    await page.keyboard.type('_');
     assert.match(await formula.evaluate(field=>field.value),/\\_/);
+    await page.waitForTimeout(30);
     await page.keyboard.type('a_2');
     assert.match(await formula.evaluate(field=>field.value),/a_\{?2/);
     await formula.evaluate(field=>field.executeCommand('moveToMathfieldEnd'));
@@ -791,7 +808,7 @@ async function verifySelectionGeometry(page, paper, importSource) {
     await page.waitForFunction(()=>Boolean(document.querySelector('.ProseMirror .math-display')));
     assert.equal(await paper.locator('pre[data-raw]').count(),0,'align environment should parse');
     const alignField=page.locator('.ProseMirror math-field').last();
-    assert.match(await alignField.evaluate(field=>field.value),/\\begin\{align\}/);
+    assert.match(await alignField.evaluate(field=>field.value),/\\begin\{aligned\}/);
     assert.match(await alignField.evaluate(field=>field.value),/\\mathbf\{x\}/);
     await alignField.click();
     await alignField.evaluate(field=>field.focus());
@@ -1335,6 +1352,14 @@ async function verifySelectionGeometry(page, paper, importSource) {
     await page.keyboard.press('Backspace');
     await page.waitForFunction(()=>!document.querySelector('math-field')?.value.includes('\\int'));
     assert.equal(await integralField.evaluate(field=>field.value),'','Deleting an operator removes its empty body too');
+    await importSource('\\begin{align}x &= y\\\\longname &= q\\end{align}');
+    await page.waitForFunction(()=>document.querySelector('math-field')?.value.includes('\\begin{aligned}'));
+    assert.match(await page.locator('math-field').evaluate(field=>field.value),/x\s*&\s*=\s*y/,
+      'Align environments render through MathLive aligned layout');
+    await page.locator('[data-source-mode="source"]').click();
+    const alignSource=await page.locator('.tex-code .cm-content').innerText();
+    assert.match(alignSource,/\\begin\{align\}/,'Align source keeps its original environment');
+    await page.locator('[data-source-mode="body"]').click();
     await importSource('Body text');
     await page.waitForFunction(()=>document.querySelector('.ProseMirror')?.textContent==='Body text');
     assert.ok(await page.evaluate(()=>document.querySelector('.document-page > #document-meta')!==null),'Title and author render inside the page');
@@ -1913,6 +1938,12 @@ async function verifySelectionGeometry(page, paper, importSource) {
       element.dispatchEvent(new DragEvent('drop',{bubbles:true,cancelable:true,dataTransfer:transfer,clientX:rect.left+10,clientY:rect.top+10}));
     });
     await paper.locator('figure.document-image img').waitFor({state:'visible'});
+    await paper.locator('figure.document-image img').click();
+    await page.keyboard.press('Control+e');
+    await page.keyboard.press('i');
+    await page.waitForFunction(()=>document.querySelector('.document-image')?.dataset.align==='center');
+    assert.equal(await page.locator('.document-image').getAttribute('data-align'),'center',
+      'Ctrl+E I centers a selected image');
     await paper.locator('p').first().click();
     await page.keyboard.press('Control+a');
     await page.keyboard.press('Control+c');

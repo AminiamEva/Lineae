@@ -73,7 +73,7 @@ export function insertLocalImage(editor) {
 
 export const DocumentImage = Node.create({
   name:'documentImage', group:'block', atom:true, draggable:true,
-  addAttributes:()=>({path:{default:''},width:{default:null},figure:{default:false},placement:{default:null},centered:{default:false},caption:{default:null},label:{default:null}}),
+  addAttributes:()=>({path:{default:''},width:{default:null},figure:{default:false},placement:{default:null},centered:{default:false},align:{default:null},caption:{default:null},label:{default:null}}),
   parseHTML:()=>[{tag:'figure[data-document-image]',getAttrs:element=>{
     try {return {...JSON.parse(element.dataset.imageAttrs??'{}'),path:element.dataset.documentImage};}
     catch {return false;}
@@ -130,6 +130,8 @@ export const DocumentImage = Node.create({
         caption.textContent=node.attrs.caption??'';
         caption.hidden=node.attrs.caption===null && !node.attrs.figure;
         dom.dataset.centered=String(node.attrs.centered);
+        if(node.attrs.align)dom.dataset.align=node.attrs.align;
+        else delete dom.dataset.align;
         button.textContent=t('定位图片','Locate image')+' · '+node.attrs.path;
         const width=node.attrs.width;
         image.style.width=width?.endsWith('\\linewidth') ? `${Number.parseFloat(width)*100}%` : width ?? '';

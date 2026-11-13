@@ -58,8 +58,8 @@ keybindings:
   paragraph:
     toggleIndent: ctrl+i
   table:
-    addRow: ctrl+e r
-    addColumn: ctrl+e c
+    addRow: ctrl+e shift+r
+    addColumn: ctrl+e shift+c
   math:
     superscript: ctrl+6
     subscript: ctrl+-

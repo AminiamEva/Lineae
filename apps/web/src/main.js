@@ -668,6 +668,8 @@ function syncTableAttributes() {
     if (node.attrs.booktabs) table.dataset.booktabs = 'true';
     else delete table.dataset.booktabs;
     table.dataset.borderMode=node.attrs.borderMode??'';
+    if(node.attrs.align)table.dataset.tableAlign=node.attrs.align;
+    else delete table.dataset.tableAlign;
     table.style.setProperty('--table-rule-width',node.attrs.borderWidth??'1px');
   });
 }
@@ -1625,6 +1627,24 @@ function editMathAtSelection() {
   return true;
 }
 function setParagraphAlignment(align) {
+  const { selection }=editor.state;
+  if (selection instanceof NodeSelection && selection.node.type.name==='table') {
+    editor.view.dispatch(editor.state.tr.setNodeMarkup(selection.from,undefined,{
+      ...selection.node.attrs,align,
+    }));
+    editor.view.focus();
+    return true;
+  }
+  if (editor.isActive('table')) {
+    return editor.chain().focus().updateAttributes('table',{align}).run();
+  }
+  if (selection instanceof NodeSelection && selection.node.type.name==='documentImage') {
+    editor.view.dispatch(editor.state.tr.setNodeMarkup(selection.from,undefined,{
+      ...selection.node.attrs,align,centered:align==='center',
+    }));
+    editor.view.focus();
+    return true;
+  }
   if (!editor.isActive('paragraph')) return false;
   return editor.chain().focus().updateAttributes('paragraph',{align}).run();
 }
