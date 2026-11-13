@@ -256,13 +256,13 @@ button,select,.color-control { transition:background-color .14s ease,color .14s 
 .editor-context-menu .ui-icon { margin-right:8px; }
 
 /* XeLaTeX screen layout --------------------------------------------------- */
-@font-face { font-family:"Latin Modern Roman"; src:url("./assets/fonts/latin-modern/lmroman10-regular.otf") format("opentype"); font-style:normal; font-weight:400; font-display:swap; }
-@font-face { font-family:"Latin Modern Roman"; src:url("./assets/fonts/latin-modern/lmroman10-bold.otf") format("opentype"); font-style:normal; font-weight:700; font-display:swap; }
-@font-face { font-family:"Latin Modern Roman"; src:url("./assets/fonts/latin-modern/lmroman10-italic.otf") format("opentype"); font-style:italic; font-weight:400; font-display:swap; }
-@font-face { font-family:"Latin Modern Roman"; src:url("./assets/fonts/latin-modern/lmroman10-bolditalic.otf") format("opentype"); font-style:italic; font-weight:700; font-display:swap; }
-@font-face { font-family:"Latin Modern Roman 12"; src:url("./assets/fonts/latin-modern/lmroman12-bold.otf") format("opentype"); font-style:normal; font-weight:700; font-display:swap; }
-@font-face { font-family:"Latin Modern Roman Caps"; src:url("./assets/fonts/latin-modern/lmromancaps10-regular.otf") format("opentype"); font-style:normal; font-weight:400; font-display:swap; }
-@font-face { font-family:"Latin Modern Mono"; src:url("./assets/fonts/latin-modern/lmmono10-regular.otf") format("opentype"); font-style:normal; font-weight:400; font-display:swap; }
+@font-face { font-family:"Latin Modern Roman"; src:url("./assets/fonts/latin-modern/lmroman10-regular.otf") format("opentype"); font-style:normal; font-weight:400; font-display:swap; unicode-range:U+0000-024F,U+1E00-1EFF,U+2000-206F,U+20A0-20CF,U+2100-214F,U+2190-21FF,U+2200-22FF,U+2C60-2C7F,U+A720-A7FF; }
+@font-face { font-family:"Latin Modern Roman"; src:url("./assets/fonts/latin-modern/lmroman10-bold.otf") format("opentype"); font-style:normal; font-weight:700; font-display:swap; unicode-range:U+0000-024F,U+1E00-1EFF,U+2000-206F,U+20A0-20CF,U+2100-214F,U+2190-21FF,U+2200-22FF,U+2C60-2C7F,U+A720-A7FF; }
+@font-face { font-family:"Latin Modern Roman"; src:url("./assets/fonts/latin-modern/lmroman10-italic.otf") format("opentype"); font-style:italic; font-weight:400; font-display:swap; unicode-range:U+0000-024F,U+1E00-1EFF,U+2000-206F,U+20A0-20CF,U+2100-214F,U+2190-21FF,U+2200-22FF,U+2C60-2C7F,U+A720-A7FF; }
+@font-face { font-family:"Latin Modern Roman"; src:url("./assets/fonts/latin-modern/lmroman10-bolditalic.otf") format("opentype"); font-style:italic; font-weight:700; font-display:swap; unicode-range:U+0000-024F,U+1E00-1EFF,U+2000-206F,U+20A0-20CF,U+2100-214F,U+2190-21FF,U+2200-22FF,U+2C60-2C7F,U+A720-A7FF; }
+@font-face { font-family:"Latin Modern Roman 12"; src:url("./assets/fonts/latin-modern/lmroman12-bold.otf") format("opentype"); font-style:normal; font-weight:700; font-display:swap; unicode-range:U+0000-024F,U+1E00-1EFF,U+2000-206F,U+20A0-20CF,U+2100-214F,U+2190-21FF,U+2200-22FF,U+2C60-2C7F,U+A720-A7FF; }
+@font-face { font-family:"Latin Modern Roman Caps"; src:url("./assets/fonts/latin-modern/lmromancaps10-regular.otf") format("opentype"); font-style:normal; font-weight:400; font-display:swap; unicode-range:U+0000-024F,U+1E00-1EFF,U+2000-206F,U+20A0-20CF,U+2100-214F,U+2190-21FF,U+2200-22FF,U+2C60-2C7F,U+A720-A7FF; }
+@font-face { font-family:"Latin Modern Mono"; src:url("./assets/fonts/latin-modern/lmmono10-regular.otf") format("opentype"); font-style:normal; font-weight:400; font-display:swap; unicode-range:U+0000-024F,U+1E00-1EFF,U+2000-206F,U+20A0-20CF,U+2100-214F,U+2190-21FF,U+2200-22FF,U+2C60-2C7F,U+A720-A7FF; }
 
 .document-page {
   --page-gap:24px;
