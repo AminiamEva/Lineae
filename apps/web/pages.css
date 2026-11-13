@@ -300,7 +300,7 @@ button,select,.color-control { transition:background-color .14s ease,color .14s 
 .document-page[data-pagination="flow"] .document-page-number { display:none; }
 .table-continuation-header { position:absolute; z-index:0; pointer-events:none; background:light-dark(#fff,#242426); }
 .table-continuation-header table { width:100%; border-collapse:collapse; table-layout:fixed; }
-.table-continuation-header td { padding:0 5.9776pt; border-bottom:1px solid light-dark(#d5d9e1,#4a505c); font:var(--tex-font-size)/var(--tex-line-height) "Latin Modern Roman",serif; }
+.table-continuation-header td { padding:2px 5.9776pt; border-bottom:1px solid light-dark(#d5d9e1,#4a505c); font:var(--tex-font-size)/var(--tex-line-height) "Latin Modern Roman",serif; }
 .document-sheet { position:relative; flex:0 0 var(--page-height,11in); width:100%; background:light-dark(#fff,#242426); box-shadow:0 2px 14px #0002; }
 .document-page-number { position:absolute; left:50%; bottom:calc(var(--page-margin-bottom,42.070mm) - 31.77pt); translate:-50% 0; color:inherit; font:var(--tex-font-size)/var(--tex-line-height) "Latin Modern Roman",serif; }
 .document-page[data-page-style="empty"] .document-page-number { display:none; }
@@ -340,7 +340,7 @@ button,select,.color-control { transition:background-color .14s ease,color .14s 
 .document-page .ProseMirror .tableWrapper { width:max-content; max-width:100%; }
 .document-page .ProseMirror > .tableWrapper > table { min-width:0!important; }
 .document-page .ProseMirror > .tableWrapper col { width:auto!important; min-width:0!important; }
-.document-page .ProseMirror td,.document-page .ProseMirror th { min-width:0; border:0; padding:0 5.9776pt; line-height:var(--tex-line-height); }
+.document-page .ProseMirror td,.document-page .ProseMirror th { min-width:0; border:0; padding:2px 5.9776pt; line-height:var(--tex-line-height); }
 .document-page .ProseMirror table[data-border-mode="grid"] :is(td,th) { border:var(--table-rule-width) solid currentColor; }
 .document-page .ProseMirror table[data-border-mode="outer"] { border:var(--table-rule-width) solid currentColor; }
 .document-page .ProseMirror table[data-border-mode="horizontal"] :is(td,th) { border-block:var(--table-rule-width) solid currentColor; }
