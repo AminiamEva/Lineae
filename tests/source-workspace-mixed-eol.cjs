@@ -49,11 +49,9 @@ module.exports = async function checkMixedEol(context, url) {
     assert.deepEqual(before.tex,original,'Unedited mixed source ZIP is byte-identical');
     await change('Signal energy','Signal power');
     await change('E =','P =');
-    await panel.getByRole('button',{name:/查找与替换|Find and replace/}).click();
-    const commentSearch = panel.locator('input[name=search]');
-    await commentSearch.fill('% Nested braces');
-    await commentSearch.press('Enter');
-    await commentSearch.press('Escape');
+    const commentLine = content.locator('.cm-line').filter({hasText:/^% Nested braces, custom command/});
+    assert.equal(await commentLine.count(),1,'Original comment line is uniquely identified');
+    await commentLine.click({position:{x:2,y:5}});
     await content.press('Home');
     await page.keyboard.insertText('% 第四阶段：源码完整性');
     await page.keyboard.press('Enter');
@@ -95,4 +93,3 @@ module.exports = async function checkMixedEol(context, url) {
     await page.close();
   }
 };
-
