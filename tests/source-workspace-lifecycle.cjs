@@ -7,8 +7,10 @@ module.exports = async function checkLifecycle(context, url) {
     entryPoints: ['apps/web/src/editor/source-workspace.js'],
     bundle: true, format: 'iife', globalName: 'workspaceFixture', write: false,
   });
-  const tab = await context.newPage();
+  // Playwright's clock applies to every page in its browser context.
+  const isolated = await context.browser().newContext({viewport: {width: 1280, height: 900}});
   try {
+    const tab = await isolated.newPage();
     await tab.route(url, route => route.fulfill({
       contentType: 'text/html',
       body: '<main><article class="paper" style="display:grid"><p>Original body</p></article><footer></footer></main>',
@@ -87,7 +89,19 @@ module.exports = async function checkLifecycle(context, url) {
         try {
           const initial = await scenario.evaluate(s => s.state(false));
           const checkPage = (actual, phase, expected) => {
-            assert.deepEqual(actual, expected, label + ' ' + phase);
+            const differences = [];
+            for (const [key, value] of Object.entries(expected)) {
+              if (key === 'attributes') {
+                for (const name of new Set([...Object.keys(value), ...Object.keys(actual.attributes)])) {
+                  if (actual.attributes[name] !== value[name]) {
+                    differences.push({attribute: name, expected: value[name], actual: actual.attributes[name]});
+                  }
+                }
+              } else if (actual[key] !== value) {
+                differences.push({field: key, expected: value, actual: actual[key]});
+              }
+            }
+            assert.deepEqual(differences, [], label + ' ' + phase + ': ' + JSON.stringify(differences));
           };
           assert.deepEqual(initial.attributes, {
             class:'paper', style:'display:grid', ...(hidden ? {hidden, inert:''} : {}),
@@ -122,7 +136,8 @@ module.exports = async function checkLifecycle(context, url) {
         }
       }
     }
+    if (process.env.GITHUB_ACTIONS) console.log('::notice::Source workspace lifecycle passed all six restoration and input scenarios.');
   } finally {
-    await tab.close();
+    await isolated.close();
   }
 };

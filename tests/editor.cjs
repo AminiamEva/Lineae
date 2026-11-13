@@ -381,7 +381,6 @@ async function verifySelectionGeometry(page, paper, importSource) {
   const browser=await chromium.launch({headless:true});
   try{
     const browserContext=await browser.newContext({viewport:{width:1280,height:1400},permissions:['clipboard-read','clipboard-write']});
-    await require('./source-workspace-lifecycle.cjs')(browserContext, 'http://127.0.0.1:'+server.address().port+'/');
     const page=await browserContext.newPage();
     const errors=[];
     page.on('pageerror',error=>{errors.push(error.message);console.log('PAGE ERROR',error.message);});
@@ -2224,4 +2223,12 @@ async function verifySelectionGeometry(page, paper, importSource) {
     await browser.close();
     await new Promise(done=>server.close(done));
   }
-})().catch(error=>{console.error(error);process.exitCode=1;server.close();});
+})().catch(error=>{
+  console.error(error);
+  if (process.env.GITHUB_ACTIONS) {
+    const detail = String(error.stack || error).replaceAll('%','%25').replaceAll('\r','%0D').replaceAll('\n','%0A');
+    console.log('::error::'+detail);
+  }
+  process.exitCode=1;
+  server.close();
+});
