@@ -893,6 +893,16 @@ async function verifySelectionGeometry(page, paper, importSource) {
       'First margin paragraph. Second margin paragraph.','Left-margin drag selects whole paragraphs');
     assert.match(await page.evaluate(()=>getComputedStyle(document.querySelector('.document-page'),'::before').cursor),
       /^url\(/,'The left page margin shows the selection arrow cursor');
+    assert.deepEqual(await page.evaluate(async () => {
+      const cursor = getComputedStyle(document.querySelector('.document-page'),'::before').cursor;
+      const url = cursor.slice(4,cursor.indexOf(')')).replace(/^["']|["']$/g,'');
+      return new Promise(done => {
+        const image = new Image();
+        image.onload = () => done([image.naturalWidth,image.naturalHeight]);
+        image.onerror = () => done(null);
+        image.src = url;
+      });
+    }),[24,24],'The margin cursor is a decodable mirrored pointer');
     assert.equal(await page.locator('header .brand-link').getAttribute('href'),'https://github.com/AminiamEva/Lineae',
       'The wordmark links to the GitHub repository');
 
