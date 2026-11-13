@@ -381,6 +381,7 @@ async function verifySelectionGeometry(page, paper, importSource) {
   const browser=await chromium.launch({headless:true});
   try{
     const browserContext=await browser.newContext({viewport:{width:1280,height:1400},permissions:['clipboard-read','clipboard-write']});
+    await require('./source-workspace.cjs')(browserContext, 'http://127.0.0.1:'+server.address().port+'/');
     const page=await browserContext.newPage();
     const errors=[];
     page.on('pageerror',error=>{errors.push(error.message);console.log('PAGE ERROR',error.message);});
@@ -2217,7 +2218,6 @@ async function verifySelectionGeometry(page, paper, importSource) {
     await page.keyboard.type('$$');
     assert.ok(await paper.evaluate(element=>element===document.activeElement));
     assert.deepEqual(errors,[]);
-    await require('./source-workspace.cjs')(browserContext, page.url());
     console.log('Browser regressions passed');
   }finally{
     await browser.close();
