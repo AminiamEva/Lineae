@@ -7,6 +7,7 @@ import { search, searchKeymap, openSearchPanel, closeSearchPanel } from '@codemi
 import { tags } from '@lezer/highlight';
 import { icon } from './icons.js';
 import { t } from '../ui/i18n.mjs';
+import { sourceEolExtensions, sourceWithEndings } from './source-eol-state.js';
 
 const latex = StreamLanguage.define({
   ...stex,
@@ -70,7 +71,6 @@ export function createSourceWorkspace({ page, render, metadata }) {
     }, {}));
   }
   let view, original, timer, scrollTop = 0, scrollLeft = 0;
-  let lineEnding = "\n";
   let savedText, savedDoc;
   let lastRendered, expanded = false, previewOnly = false;
   const wide = matchMedia('(min-width: 900px)');
@@ -103,12 +103,10 @@ export function createSourceWorkspace({ page, render, metadata }) {
   });
   const expandButton = action('sourceExpand', () => expanded ? t('收起工作区','Collapse workspace') : t('展开工作区','Expand workspace'), () => setExpanded(!expanded));
 
-  let initialDoc, initialText;
   function value() {
     if (!view) return '';
     if (original !== undefined) return original;
-    if (initialDoc && view.state.doc.eq(initialDoc)) return initialText;
-    return view.state.doc.sliceString(0, view.state.doc.length, lineEnding);
+    return sourceWithEndings(view.state);
   }
   function refresh() {
     if (panel.hidden || !view) return;
@@ -119,7 +117,7 @@ export function createSourceWorkspace({ page, render, metadata }) {
       savedText = saved;
       savedDoc = view.state.toText(saved.replace(/\r\n?/g, '\n'));
     }
-    dirty.hidden = original !== undefined ? original === saved : view.state.doc.eq(savedDoc);
+    dirty.hidden = original !== undefined ? original === saved : view.state.doc.eq(savedDoc) && value() === saved;
     const cursor = view.state.selection.main.head;
     const line = view.state.doc.lineAt(cursor);
     position.textContent = t('行','Ln') + ' ' + line.number + '   ' + t('列','Col') + ' ' + (cursor - line.from + 1);
@@ -202,10 +200,10 @@ export function createSourceWorkspace({ page, render, metadata }) {
   function replace(text, reset = false) {
     if (view && !reset && value() === text) return;
     original = text;
-    lineEnding = text.match(/\r\n|\r|\n/)?.[0] ?? '\n';
     const state = EditorState.create({
       doc: text.replace(/\r\n?/g, '\n'),
       extensions: [
+        sourceEolExtensions(text),
 
         language.of(phrases()), lineNumbers(), highlightActiveLine(), highlightActiveLineGutter(), drawSelection(),
         EditorState.allowMultipleSelections.of(true), history(), search({top:true}),
@@ -223,8 +221,6 @@ export function createSourceWorkspace({ page, render, metadata }) {
         }),
       ],
     });
-    initialDoc = state.doc;
-    initialText = text;
     if (view) view.setState(state);
     else view = new EditorView({state, parent:code});
     scrollTop = scrollLeft = 0;

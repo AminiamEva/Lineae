@@ -7,6 +7,7 @@ const { createHash } = require('node:crypto');
 module.exports = async function checkSourceWorkspace(context, url) {
   await require('./source-workspace-mixed-eol.cjs')(context, url);
   await require('./source-workspace-lifecycle.cjs')(context, url);
+  await require('./source-workspace-eol-state.cjs')(context, url);
   const page = await context.newPage();
   try {
     await page.setViewportSize({width:1440,height:900});

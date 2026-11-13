@@ -47,7 +47,15 @@ module.exports = async function checkMixedEol(context, url) {
     await source.click();
     const before = await download('before-edit');
     assert.deepEqual(before.tex,original,'Unedited mixed source ZIP is byte-identical');
+    await page.screenshot({path:join(directory,'before-edit.png')});
     await change('Signal energy','Signal power');
+    await content.focus();
+    await page.keyboard.press('Control+z');
+    assert.deepEqual((await download('undo')).tex,original,'Undo restores original mixed source');
+    await content.focus();
+    await page.keyboard.press('Control+y');
+    assert.deepEqual((await download('redo')).tex,
+      Buffer.from(original.toString('utf8').replace('Signal energy','Signal power'),'utf8'));
     await change('E =','P =');
     const commentLine = content.locator('.cm-line').filter({hasText:/^% Nested braces, custom command/});
     assert.equal(await commentLine.count(),1,'Original comment line is uniquely identified');
@@ -58,6 +66,7 @@ module.exports = async function checkMixedEol(context, url) {
     await body.click();
     await source.click();
     await expand.click();
+    await page.screenshot({path:join(directory,'expanded.png')});
     const divider = panel.getByRole('separator');
     const box = await divider.boundingBox();
     await page.mouse.move(box.x+box.width/2,box.y+20);
@@ -72,6 +81,7 @@ module.exports = async function checkMixedEol(context, url) {
     const actual = await download('browser-actual');
     // Save the exact exported bytes before comparison, including a failed export.
     await writeFile(join(directory,'browser-actual.tex'),actual.tex);
+    await page.screenshot({path:join(directory,'after-edit.png')});
     await writeFile(join(directory,'browser-original.tex'),original);
     await writeFile(join(directory,'browser-expected.tex'),expected);
     const files = {'browser-original.tex':original,'browser-expected.tex':expected,

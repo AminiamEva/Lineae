@@ -380,7 +380,7 @@ async function verifySelectionGeometry(page, paper, importSource) {
   await new Promise(done=>server.listen(0,'127.0.0.1',done));
   const browser=await chromium.launch({headless:true});
   try{
-    const browserContext=await browser.newContext({viewport:{width:1280,height:1400},permissions:['clipboard-read','clipboard-write']});
+    const browserContext=await browser.newContext({locale:'en-US',viewport:{width:1280,height:1400},permissions:['clipboard-read','clipboard-write']});
     await require('./source-workspace.cjs')(browserContext, 'http://127.0.0.1:'+server.address().port+'/');
     const page=await browserContext.newPage();
     const errors=[];
