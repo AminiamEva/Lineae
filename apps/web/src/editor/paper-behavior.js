@@ -385,12 +385,15 @@ export const PaperBehavior = Extension.create({
         state: {
           init: (_, state) => ({
             text: state.doc.textBetween(0, state.doc.content.size, '\n', '\n'),
+            size: state.doc.content.size,
             decorations: cjkLatinSpacing(state.doc),
           }),
           apply: (transaction, previous) => {
             if (!transaction.docChanged) return previous;
             const text = transaction.doc.textBetween(0, transaction.doc.content.size, '\n', '\n');
-            return text === previous.text ? previous : { text, decorations: cjkLatinSpacing(transaction.doc) };
+            const size = transaction.doc.content.size;
+            if (text === previous.text && size === previous.size) return previous;
+            return { text, size, decorations: cjkLatinSpacing(transaction.doc) };
           },
         },
         props: { decorations(state) { return this.getState(state).decorations; } },
