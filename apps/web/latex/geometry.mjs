@@ -20,6 +20,8 @@ const NATIVE_MARGINS = Object.freeze({
   // absent.
   letter: Object.freeze({ top: '44.027mm', right: '47.456mm', bottom: '42.070mm', left: '47.191mm' }),
   a4: Object.freeze({ top: '44.379mm', right: '44.719mm', bottom: '42.448mm', left: '44.027mm' }),
+  a5: Object.freeze({ top: '45.082mm', right: '25.597mm', bottom: '43.313mm', left: '25.400mm' }),
+  legal: Object.freeze({ top: '44.379mm', right: '47.456mm', bottom: '42.003mm', left: '47.191mm' }),
 });
 export const DEFAULT_PAGE_SETUP = Object.freeze({
   paper: 'letter',

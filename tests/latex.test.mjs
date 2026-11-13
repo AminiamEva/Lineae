@@ -206,6 +206,10 @@ test('round-trips page geometry through the preamble', () => {
     paper: 'a4', orientation: 'portrait', margin: 'custom',
     margins: { top: '44.379mm', right: '44.719mm', bottom: '42.448mm', left: '44.027mm' },
   });
+  assert.deepEqual(readPageSetup('\\documentclass[a5paper]{article}\n'), {
+    paper: 'a5', orientation: 'portrait', margin: 'custom',
+    margins: { top: '45.082mm', right: '25.597mm', bottom: '43.313mm', left: '25.400mm' },
+  });
   const asymmetric = writePageSetup(preamble, { paper: 'a5', margins: { top: '1cm', right: '2cm', bottom: '3cm', left: '4cm' } });
   assert.match(asymmetric, /a5paper/);
   assert.match(asymmetric, /top=1cm/);
