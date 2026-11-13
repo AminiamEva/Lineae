@@ -334,12 +334,12 @@ export function installSpaceOverlay(editor, paper, { selectionFocus = null } = {
           if(child.matches?.('.label-node,.ProseMirror-trailingBreak'))continue;
           if(child.nodeType===Node.TEXT_NODE)range.selectNodeContents(child);else range.selectNode(child);
           rects.push(...Array.from(range.getClientRects()).map(local)
-            .filter(rect=>rect.width>0 && rect.top>=bounds.top-1 && rect.bottom<=bounds.bottom+1));
+            .filter(rect=>rect.width>0 && rect.bottom>=bounds.top-1 && rect.top<=bounds.bottom+1));
         }
         for (const atom of block.querySelectorAll('math-field,.ref-node,.cite-node,img')) {
           if (atom.closest('.label-node')) continue;
           const rect=local(atom.getBoundingClientRect());
-          if (rect.width>0 && rect.top>=bounds.top-1 && rect.bottom<=bounds.bottom+1) rects.push(rect);
+          if (rect.width>0 && rect.bottom>=bounds.top-1 && rect.top<=bounds.bottom+1) rects.push(rect);
         }
         const rect=rects.reduce((last, rect) => !last || rect.top>last.top+lineHeight/2 || (Math.abs(rect.top-last.top)<lineHeight/2 && rect.right>last.right) ? rect : last, null);
         const y=bounds.top+lineHeight/2;

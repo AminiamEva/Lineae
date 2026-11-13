@@ -34,7 +34,9 @@ keybindings:
     find: ctrl+f
     leaveEnvironment: ctrl+j
     leaveAllEnvironments: ctrl+shift+j
-    toggleContextMarker: ctrl+t
+    # Browsers reserve Ctrl+T for a new tab and cannot deliver it to the page.
+    # Ctrl+E T toggles heading, list, and bullet numbering as an alias.
+    toggleContextMarker: [ctrl+alt+t, ctrl+e t]
     ignoreBrowserZoomReset: null
     literalBacktick: alt+backtick
     undo: mod+z
@@ -64,7 +66,8 @@ keybindings:
     leaveFormula: ctrl+shift+j
     addRow: ctrl+e r
     addColumn: ctrl+e c
-    literalFence: ctrl+e t
+    toggleDisplayStyle: ctrl+e t
+    literalFence: ctrl+e shift+t
     left: ctrl+l
     right: ctrl+r
     frac: ctrl+f

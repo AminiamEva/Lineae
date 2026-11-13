@@ -13,11 +13,19 @@ export const MARGIN_PRESETS = Object.freeze({
 
 const SIDES = ['top', 'right', 'bottom', 'left'];
 const FALLBACK_MARGIN = MARGIN_PRESETS.normal;
+const NATIVE_MARGINS = Object.freeze({
+  // Standard 10 pt article.cls dimensions, converted from TeX points
+  // (72.27 pt/in) to physical millimetres. These are intentionally not the
+  // geometry package defaults: XeLaTeX uses the class layout when geometry is
+  // absent.
+  letter: Object.freeze({ top: '44.027mm', right: '47.456mm', bottom: '42.070mm', left: '47.191mm' }),
+  a4: Object.freeze({ top: '44.379mm', right: '44.719mm', bottom: '42.448mm', left: '44.027mm' }),
+});
 export const DEFAULT_PAGE_SETUP = Object.freeze({
-  paper: 'a4',
+  paper: 'letter',
   orientation: 'portrait',
-  margin: FALLBACK_MARGIN,
-  margins: Object.freeze({ top: FALLBACK_MARGIN, right: FALLBACK_MARGIN, bottom: FALLBACK_MARGIN, left: FALLBACK_MARGIN }),
+  margin: 'custom',
+  margins: NATIVE_MARGINS.letter,
 });
 
 function normalizeMargin(value) {
@@ -37,9 +45,18 @@ function commonMargin(margins) {
 
 export function readPageSetup(preamble = '') {
   const match = /\\usepackage(?:\[([^\]]*)\])?\{geometry\}/.exec(preamble);
-  const options = (match?.[1] ?? '').split(',').map(option => option.trim()).filter(Boolean);
-  const paper = options.includes('letterpaper') ? 'letter' : options.includes('legalpaper') ? 'legal' : options.includes('a5paper') ? 'a5' : 'a4';
-  const orientation = options.includes('landscape') ? 'landscape' : 'portrait';
+  const parseOptions = value => String(value ?? '').split(',').map(option => option.trim()).filter(Boolean);
+  const classOptions = parseOptions(/\\documentclass(?:\[([^\]]*)\])?\{[^{}]+\}/.exec(preamble)?.[1]);
+  const geometryOptions = parseOptions(match?.[1]);
+  const options = match ? geometryOptions : classOptions;
+  const layoutOptions = [...classOptions, ...geometryOptions];
+  const paperOption = layoutOptions.filter(option => /^(?:a4|a5|letter|legal)paper$/.test(option)).at(-1);
+  const paper = paperOption?.replace('paper', '') ?? 'letter';
+  const orientation = layoutOptions.filter(option => /^(?:landscape|portrait)$/.test(option)).at(-1) ?? 'portrait';
+  if (!match && orientation === 'portrait' && NATIVE_MARGINS[paper]) {
+    const margins = { ...NATIVE_MARGINS[paper] };
+    return { paper, orientation, margin: 'custom', margins };
+  }
   const uniform = options.find(option => /^margin=/.test(option))?.slice(7);
   const margins = Object.fromEntries(SIDES.map(side => [
     side,

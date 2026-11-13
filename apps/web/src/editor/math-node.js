@@ -229,6 +229,7 @@ function leaveEnvironment(field) {
 }
 
 export function toggleDisplayStyle(field) {
+  field.removeAttribute('data-lineae-default-displaystyle');
   const latex = field.value.trim();
   const grouped = /^\\displaystyle\{([\s\S]*)\}$/.exec(latex);
   const prefixed = /^\\displaystyle\s+([\s\S]*)$/.exec(latex);
@@ -265,8 +266,29 @@ function leaveFormula(editor, position, node, backward) {
   editor.view.dispatch(transaction);
 }
 
-const operatorPairs = { '!=':'\\ne', '>=':'\\ge', '<=':'\\le', '->':'\\to' };
+const operatorPairs = {
+  '!=':'\\ne', '>=':'\\ge',
+  '<-':'\\leftarrow', '->':'\\to',
+  '<=':'\\Leftarrow', '=>':'\\Rightarrow',
+};
+// Tab rotates an auto-inserted arrow counter-clockwise.
+const arrowTurns = {
+  '\\to':'\\uparrow',
+  '\\leftarrow':'\\downarrow',
+  '\\downarrow':'\\rightarrow',
+  '\\rightarrow':'\\uparrow',
+  '\\uparrow':'\\leftarrow',
+  '\\leftrightarrow':'\\updownarrow',
+  '\\updownarrow':'\\leftrightarrow',
+  '\\Leftarrow':'\\Downarrow',
+  '\\Downarrow':'\\Rightarrow',
+  '\\Rightarrow':'\\Uparrow',
+  '\\Uparrow':'\\Leftarrow',
+  '\\Leftrightarrow':'\\Updownarrow',
+  '\\Updownarrow':'\\Leftrightarrow',
+};
 const caretCollapsed = field => field.selection.ranges.every(([start,end]) => start === end);
+const emptyMath = value => !value || /^\\displaystyle\{\s*\}$/.test(value) || /^\\displaystyle\s*$/.test(value);
 
 function addDisplayLine(field) {
   const model = field._mathfield?.model;
@@ -471,6 +493,14 @@ export const MathNode = Node.create({
       field.addEventListener('lineae-commit-fences', () => commitUnclosedFences(field));
 
       field.addEventListener('input', () => {
+        if (field.hasAttribute('data-lineae-default-displaystyle') && field.value.trim() &&
+            !field.value.includes('\\') && !/^\\displaystyle\b/.test(field.value)) {
+          field.removeAttribute('data-lineae-default-displaystyle');
+          field.value = '\\displaystyle ' + field.value;
+          field.executeCommand('moveToMathfieldEnd');
+          field.dispatchEvent(new Event('input',{bubbles:true}));
+          return;
+        }
         const latex=mathDocumentSource(field.value,node.attrs.latex);
         if(node.attrs.latex===latex)return;
         const position = getPos();
@@ -490,6 +520,18 @@ export const MathNode = Node.create({
         if (event.isComposing || event.keyCode===229 || event.getModifierState?.('AltGraph')) return;
         const plain=!event.ctrlKey&&!event.metaKey&&!event.altKey;
         const consume=()=>{event.preventDefault();event.stopImmediatePropagation();};
+        if (plain && event.key === 'Tab' && replacedOperator?.arrow && caretCollapsed(field) &&
+            field.value === replacedOperator.after && field.position === replacedOperator.position) {
+          const next = arrowTurns[replacedOperator.arrow];
+          if (next) {
+            consume();
+            field.selection = { ranges:[[field.position - 1, field.position]] };
+            field.executeCommand(['insert', next]);
+            replacedOperator = { ...replacedOperator, after:field.value, position:field.position, arrow:next };
+            field.dispatchEvent(new Event('input',{bubbles:true}));
+            return;
+          }
+        }
         if (plain && event.key === 'Tab') {
           consume();
           pendingKey=null; pendingDollar=false; oneScript=null; replacedOperator=null;
@@ -527,7 +569,21 @@ export const MathNode = Node.create({
             return;
           }
         }
-        if (plain && ['=','>'].includes(event.key) && caretCollapsed(field) && field.position>0) {
+        if (plain && event.key === '>' && caretCollapsed(field) && field.position>0) {
+          const pair=[['\\leftarrow','\\leftrightarrow'],['\\Leftarrow','\\Leftrightarrow']]
+            .find(([command])=>field.value.endsWith(command));
+          if(pair) {
+            consume();
+            const before=replacedOperator?.before??field.value;
+            const selection=replacedOperator?.selection;
+            field.selection={ranges:[[field.position-1,field.position]]};
+            field.executeCommand(['insert',pair[1]]);
+            replacedOperator={before,selection,after:field.value,position:field.position,arrow:pair[1]};
+            field.dispatchEvent(new Event('input',{bubbles:true}));
+            return;
+          }
+        }
+        if (plain && ['=','>','-'].includes(event.key) && caretCollapsed(field) && field.position>0) {
           const end=field.position;
           const prefix=field.getValue(end-1,end);
           const replacement=operatorPairs[prefix+event.key];
@@ -538,7 +594,7 @@ export const MathNode = Node.create({
             const before=field.value, selection=structuredClone(field.selection);
             field.selection={ranges:[[end-1,field.position]]};
             field.executeCommand(['insert',replacement]);
-            replacedOperator={before,selection,after:field.value,position:field.position};
+            replacedOperator={before,selection,after:field.value,position:field.position,arrow:replacement};
             field.dispatchEvent(new Event('input',{bubbles:true}));
             return;
           }
@@ -606,14 +662,14 @@ export const MathNode = Node.create({
         if (plain && event.key === '$') {
           event.preventDefault();
           event.stopPropagation();
-          if (!field.value && !node.isBlock) {
+          if (emptyMath(field.value) && !node.isBlock) {
             const position = getPos();
             insertFormula(editor, true, '', { from: position, to: position + node.nodeSize });
           } else if (!node.isBlock || pendingDollar) finish(false);
           else pendingDollar=true;
           return;
         }
-        if (event.key === 'Backspace' && !field.value) {
+        if (event.key === 'Backspace' && emptyMath(field.value)) {
           event.preventDefault();
           event.stopPropagation();
           const position = getPos();

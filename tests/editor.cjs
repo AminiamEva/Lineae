@@ -10,7 +10,7 @@ const server=createServer(async(req,res)=>{
   if(!path.startsWith(root)){res.writeHead(403).end();return;}
   try{
     const data=await readFile(path);
-    res.setHeader('Content-Type',({'.html':'text/html','.js':'text/javascript','.mjs':'text/javascript','.css':'text/css','.woff2':'font/woff2'})[extname(path)]??'application/octet-stream');
+    res.setHeader('Content-Type',({'.html':'text/html','.js':'text/javascript','.mjs':'text/javascript','.css':'text/css','.woff2':'font/woff2','.otf':'font/otf'})[extname(path)]??'application/octet-stream');
     res.end(data);
   }catch{res.writeHead(404).end();}
 });
@@ -386,6 +386,10 @@ async function verifySelectionGeometry(page, paper, importSource) {
     const errors=[];
     page.on('pageerror',error=>{errors.push(error.message);console.log('PAGE ERROR',error.message);});
     await page.goto('http://127.0.0.1:'+server.address().port);
+    await page.evaluate(async()=>{
+      await document.fonts.load('10pt "Latin Modern Roman"');
+      await document.fonts.ready;
+    });
     const paper=page.locator('.ProseMirror');
     await paper.click();
     assert.equal(await paper.evaluate(element=>getComputedStyle(element).animationName),'none',
@@ -399,7 +403,8 @@ async function verifySelectionGeometry(page, paper, importSource) {
     await page.waitForFunction(()=>document.activeElement?.tagName==='MATH-FIELD');
     assert.equal(await page.locator('math-field').evaluate(field=>field.value),'');
     await page.keyboard.type('q');
-    assert.match(await page.locator('math-field').evaluate(field=>field.value),/q/);
+    await page.waitForFunction(()=>/^\\displaystyle\s+q$/.test(document.querySelector('math-field')?.value));
+    assert.match(await page.locator('math-field').evaluate(field=>field.value),/^\\displaystyle\s+q$/,'Inline formulas default to displaystyle');
     await page.keyboard.press('ArrowRight');
     await page.keyboard.press('End');
     await page.keyboard.press('Enter');
@@ -485,6 +490,7 @@ async function verifySelectionGeometry(page, paper, importSource) {
         name:'regression.tex',mimeType:'text/plain',
         buffer:Buffer.from('\\documentclass{article}\n\\begin{document}\n\n'+body+'\n\n\\end{document}\n'),
       });
+      await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
     };
     const editorChord = async key => {
       await page.keyboard.press('Control+e');
@@ -1167,6 +1173,65 @@ async function verifySelectionGeometry(page, paper, importSource) {
       return parseFloat(getComputedStyle(script).fontSize)/parseFloat(getComputedStyle(base).fontSize);
     });
     assert.ok(Math.abs(mathScript-.7)<.02,'Math scripts use the XeTeX script size');
+    await importSource('$x_{n_k}$');
+    await page.waitForFunction(()=>document.querySelector('math-field')?.value==='x_{n_k}');
+    const nestedScript=await page.evaluate(()=>{
+      const field=document.querySelector('math-field');
+      const spans=[...field.shadowRoot.querySelectorAll('.ML__content span')].filter(element=>element.textContent&&!element.children.length);
+      const size=text=>parseFloat(getComputedStyle(spans.find(element=>element.textContent===text)).fontSize);
+      return {script:size('n')/size('x'),scriptscript:size('k')/size('x')};
+    });
+    assert.ok(Math.abs(nestedScript.script-.7)<.02&&Math.abs(nestedScript.scriptscript-.5)<.02,
+      'Nested math scripts use the XeTeX 70% / 50% sizes: '+JSON.stringify(nestedScript));
+    const typeArrow=async keys=>{
+      await importSource('$ $');
+      await page.waitForFunction(()=>document.querySelector('math-field'));
+      const field=page.locator('math-field').last();
+      await field.click();
+      await field.evaluate(element=>{element.value='';element.position=0;});
+      await field.focus();
+      await page.keyboard.type(keys);
+      return field;
+    };
+    for (const [keys,command] of [['<-','\\leftarrow'],['<->','\\leftrightarrow'],['=>','\\Rightarrow'],['<=','\\Leftarrow'],['<=>','\\Leftrightarrow']]) {
+      const field=await typeArrow(keys);
+      assert.equal(await field.evaluate(element=>element.value),command,`${keys} becomes ${command}`);
+    }
+    let arrow=await typeArrow('<-');
+    assert.equal(await arrow.evaluate(element=>element.value),'\\leftarrow');
+    for (const command of ['\\downarrow','\\rightarrow','\\uparrow','\\leftarrow']) {
+      await page.keyboard.press('Tab');
+      await page.waitForFunction(expected=>document.querySelector('math-field')?.value===expected,command);
+    }
+    arrow=await typeArrow('<->');
+    await page.keyboard.press('Tab');
+    await page.waitForFunction(()=>document.querySelector('math-field')?.value==='\\updownarrow');
+    await page.keyboard.press('Tab');
+    await page.waitForFunction(()=>document.querySelector('math-field')?.value==='\\leftrightarrow');
+    arrow=await typeArrow('=>');
+    await page.keyboard.press('Tab');
+    await page.waitForFunction(()=>document.querySelector('math-field')?.value==='\\Uparrow');
+    await page.keyboard.press('Tab');
+    await page.waitForFunction(()=>document.querySelector('math-field')?.value==='\\Leftarrow');
+    await page.keyboard.press('Tab');
+    await page.waitForFunction(()=>document.querySelector('math-field')?.value==='\\Downarrow');
+    await page.keyboard.press('Tab');
+    await page.waitForFunction(()=>document.querySelector('math-field')?.value==='\\Rightarrow');
+    const inlineDisplay=await typeArrow('x');
+    assert.equal(await inlineDisplay.evaluate(field=>field.value),'x');
+    for (const [expected,label] of [['\\displaystyle{x}','Ctrl+E T toggles displaystyle on'],['x','Ctrl+E T toggles displaystyle off']]) {
+      await page.keyboard.press('Control+e');
+      await page.keyboard.press('t');
+      await page.waitForFunction(value=>document.querySelector('math-field')?.value===value,expected);
+      assert.equal(await page.locator('math-field').last().evaluate(field=>field.value),expected,label);
+    }
+    await importSource('\\begin{itemize}\\item First\\end{itemize}');
+    await paper.locator('li p').click();
+    const bulletMarker=await paper.locator('ul').getAttribute('data-marker');
+    await page.keyboard.press('Control+e');
+    await page.keyboard.press('t');
+    await page.waitForFunction(marker=>document.querySelector('.ProseMirror ul')?.getAttribute('data-marker')!==marker,bulletMarker);
+    assert.notEqual(await paper.locator('ul').getAttribute('data-marker'),bulletMarker,'Ctrl+E T cycles list numbering');
     await importSource('Body text');
     await page.waitForFunction(()=>document.querySelector('.ProseMirror')?.textContent==='Body text');
     assert.ok(await page.evaluate(()=>document.querySelector('.document-page > #document-meta')!==null),'Title and author render inside the page');
@@ -1248,7 +1313,7 @@ async function verifySelectionGeometry(page, paper, importSource) {
     assert.match(await chordField.evaluate(field=>field.value),/\\mathbf\{AB\}/,'Wrapping preserves selected math');
     await chordField.evaluate(field=>{field.focus();field.executeCommand('moveToMathfieldEnd');});
     await page.keyboard.press('Control+e');
-    await page.keyboard.press('t');
+    await page.keyboard.press('Shift+t');
     await page.keyboard.type('[');
     assert.match(await chordField.evaluate(field=>field.value),/\[$/,'Literal fence does not generate a pair');
     await importSource(String.raw`\LaTeX{} and \TeX{}`+'\n\n中文');
@@ -1612,6 +1677,54 @@ async function verifySelectionGeometry(page, paper, importSource) {
     assert.ok(equationNumbers.every(item=>item.increment.includes('lineae-equation')&&item.content.includes('counter(lineae-equation)')),'Equation environments use an ordered CSS counter');
     assert.deepEqual(await paper.locator('.ref-node').allTextContents(),['(2)','2']);
     assert.equal(await paper.locator('math-field').last().evaluate(field=>field.value),'y');
+    await importSource(Array.from({length:100},(_,index)=>`Paragraph ${String(index+1).padStart(3,'0')}.`).join('\n\n'));
+    await page.waitForFunction(()=>document.querySelector('.document-page')?.dataset.pageCount==='3');
+    const pagination=await page.evaluate(()=>{
+      const sheet=document.querySelector('.document-page');
+      const pages=[...sheet.querySelectorAll(':scope > .document-sheets > .document-sheet')].map(node=>node.getBoundingClientRect());
+      const paragraphs=[...document.querySelectorAll('.ProseMirror > p')];
+      const bounds=index=>paragraphs[index].getBoundingClientRect();
+      return {
+        pageSize:[pages[0].width,pages[0].height],
+        pageCount:pages.length,
+        pageOneLast:bounds(45).bottom,
+        pageTwoTop:pages[1].top,
+        pageTwoFirst:bounds(46).top,
+        pageTwoLast:bounds(91).bottom,
+        pageThreeTop:pages[2].top,
+        pageThreeFirst:bounds(92).top,
+        sheetsInsideEditor:document.querySelectorAll('.ProseMirror .document-sheet').length,
+        styledParagraphs:paragraphs.filter(node=>node.hasAttribute('style')).length,
+      };
+    });
+    assert.deepEqual(pagination.pageSize.map(Math.round),[816,1056],'The native article page matches XeLaTeX Letter output at 96 CSS dpi');
+    assert.equal(pagination.pageCount,3,'One hundred single-line paragraphs paginate like XeLaTeX');
+    assert.ok(pagination.pageOneLast<pagination.pageTwoTop&&pagination.pageTwoFirst>pagination.pageTwoTop&&
+      pagination.pageTwoLast<pagination.pageThreeTop&&pagination.pageThreeFirst>pagination.pageThreeTop,
+    'XeLaTeX page distribution is 46 / 46 / 8 without content in the page gaps: '+JSON.stringify(pagination));
+    assert.equal(pagination.sheetsInsideEditor,0,'Pagination does not insert nodes into the editable document');
+    assert.equal(pagination.styledParagraphs,0,'Pagination does not write layout state onto editable nodes');
+    const boundaryParagraph=paper.locator(':scope > p').nth(46);
+    await boundaryParagraph.click();
+    await page.keyboard.press('End');
+    await page.keyboard.insertText(' edited');
+    assert.equal(await boundaryParagraph.textContent(),'Paragraph 047. edited','Editing works on a visually translated page');
+    const paginationButton=page.locator('.pagination-toggle');
+    assert.equal(await paginationButton.getAttribute('aria-pressed'),'true','The status bar starts in paginated mode');
+    await paginationButton.click();
+    await page.waitForFunction(()=>document.querySelector('.document-page')?.dataset.pagination==='flow');
+    assert.equal(await page.locator('.document-sheet').count(),1,'Continuous flow uses one sheet');
+    assert.equal(await paginationButton.getAttribute('aria-pressed'),'false');
+    const continuous=await page.evaluate(()=>{
+      const page=document.querySelector('.document-page');
+      const paragraphs=[...document.querySelectorAll('.ProseMirror > p')];
+      return {height:page.getBoundingClientRect().height,first:paragraphs[0].getBoundingClientRect().top,
+        boundary:paragraphs[46].getBoundingClientRect().top};
+    });
+    assert.ok(continuous.boundary-continuous.first<950,'Continuous flow removes the page gap');
+    await paginationButton.click();
+    await page.waitForFunction(()=>document.querySelector('.document-page')?.dataset.pageCount==='3');
+    assert.equal(await paginationButton.getAttribute('aria-pressed'),'true','Paginated mode restores the original pages');
     await page.locator('[data-group=layout]').click();
     const layoutSelects=page.locator('#layout-panel select');
     await layoutSelects.nth(0).selectOption('a5');

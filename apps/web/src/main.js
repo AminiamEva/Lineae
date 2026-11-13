@@ -31,6 +31,7 @@ import { buildProjectZip, safeProjectPath, projectDependencies } from './editor/
 import { theoremNames } from '../latex/theorem.mjs';
 import { MultiSelection } from './editor/multi-selection.js';
 import { installSpaceOverlay } from './editor/space-overlay.js';
+import { installTypesetPagination } from './editor/typeset-pagination.js';
 import { wrapMathWithDelimiters } from '../latex/delimiters.mjs';
 import { readDelimiterPair } from './editor/delimiter-input.js';
 import { serialize, importBlocks } from './editor/latex-codec.js';
@@ -218,11 +219,20 @@ function insertLiveMath(field, latex, notify = true) {
   }
 }
 function insertMath(display = false, latex = '') {
-  if (!latex) return insertFormula(editor, display, '');
-  if (display && displayEnvironment(latex)) {
-    return insertFormula(editor,true,latex,undefined,field=>field.executeCommand('moveToNextPlaceholder'));
+  if (display) {
+    if (!latex) return insertFormula(editor, true, '');
+    if (displayEnvironment(latex)) {
+      return insertFormula(editor,true,latex,undefined,field=>field.executeCommand('moveToNextPlaceholder'));
+    }
+    return insertFormula(editor, true, '', undefined, field => insertLiveMath(field, latex));
   }
-  insertFormula(editor, display, '', undefined, field => insertLiveMath(field, latex));
+  if (!latex) {
+    return insertFormula(editor, false, '', undefined, field => {
+      field.toggleAttribute('data-lineae-default-displaystyle', true);
+      field.focus();
+    });
+  }
+  insertFormula(editor, false, '', undefined, field => insertLiveMath(field, latex));
 }
 function insertEquation() {
   insertFormula(editor, true, '', undefined, field => insertLiveMath(field, '\\placeholder{}'), { delimiter:'equation' });
@@ -825,6 +835,7 @@ const sourceView = createSourceWorkspace({
 });
 let documentParts=parseDocument('\\documentclass{article}\n\\usepackage{amsmath}\n\\begin{document}\n\\end{document}\n');
 let pageSetup=readPageSetup(documentParts.start);
+let typesetPagination;
 let pagePaper,pageOrientation,pageMarginPreset,pageMarginTop,pageMarginRight,pageMarginBottom,pageMarginLeft;
 function applyPageSetup(){
   const metrics=pageMetrics(pageSetup);
@@ -834,6 +845,7 @@ function applyPageSetup(){
   documentPage.style.setProperty('--page-margin-right',metrics.margins.right);
   documentPage.style.setProperty('--page-margin-bottom',metrics.margins.bottom);
   documentPage.style.setProperty('--page-margin-left',metrics.margins.left);
+  typesetPagination?.update(documentParts.start);
   if(pagePaper){
     pagePaper.value=pageSetup.paper;
     pageOrientation.value=pageSetup.orientation;
@@ -900,6 +912,7 @@ function renderMeta() {
   metaAuthor.dataset.placeholder=t('作者','Author');
 }
 renderMeta();
+typesetPagination=installTypesetPagination(documentPage,paper,metaBar);
 function recordFormulaLineBreaks(document) {
   if (documentPage.hidden) return false;
   let changed=false;
@@ -1397,6 +1410,7 @@ function runMathShortcut(command, field, event) {
     case 'addRow': fillMatrixAxis(field,'row'); return;
     case 'addColumn': fillMatrixAxis(field,'column'); return;
     case 'literalFence': armLiteralFence(field); return;
+    case 'toggleDisplayStyle': toggleDisplayStyle(field); return;
     case 'left': case 'right': chooseMathDelimiters(field,command==='right'); return;
   }
   const selected = field.selection.ranges.map(range => field.getValue(range)).join('');
@@ -1470,6 +1484,26 @@ function updateSourceButton() {
   bodyButton.setAttribute('aria-pressed',String(sourceView.hidden));
   sourceButton.setAttribute('aria-pressed',String(!sourceView.hidden));
   sourceView.refresh();
+}
+const paginationButton=document.createElement('button');
+paginationButton.type='button';paginationButton.className='pagination-toggle';
+paginationButton.addEventListener('mousedown',event=>event.preventDefault());
+paginationButton.addEventListener('click',()=>{
+  typesetPagination.toggle();
+  updatePaginationButton();
+});
+function updatePaginationButton(){
+  const chinese=document.documentElement.lang.startsWith('zh');
+  const pages=typesetPagination.getMode()==='pages';
+  paginationButton.textContent=pages
+    ? (chinese?'分页':'Pages')
+    : (chinese?'连续流':'Continuous');
+  paginationButton.setAttribute('aria-pressed',String(pages));
+  const description=pages
+    ? (chinese?'切换到连续流预览':'Switch to continuous flow')
+    : (chinese?'切换到分页预览':'Switch to paginated pages');
+  paginationButton.dataset.tooltipZh=description;
+  paginationButton.dataset.tooltipEn=description;
 }
 function scale() {
   documentPage.style.zoom=Number(zoom.value)/100;
@@ -1674,7 +1708,7 @@ function updateEnvironment() {
   environment.textContent=[labels[name],...(field ? mathEnvironment(field) : [])].join(' › ');
   environment.dataset.environment=name;
 }
-footer.append(count,document.querySelector('#status'),environment,zoom,percent,themeButton,modes);document.body.append(footer);scale();
+footer.append(count,document.querySelector('#status'),environment,zoom,percent,paginationButton,themeButton,modes);document.body.append(footer);scale();updatePaginationButton();
 editor.on('transaction',updateEnvironment);
 document.addEventListener('focusin',updateEnvironment);paper.addEventListener('input',updateEnvironment);
 paper.addEventListener('selection-change',updateEnvironment,true);
@@ -2070,6 +2104,7 @@ function updateLanguage() {
   tooltips?.setLanguage(language.value);
   updateThemeButton();
   updateSourceButton();
+  updatePaginationButton();
   renderMeta();
   updateEnvironment();
   count.textContent=editor.getText().length+' '+t('字符','characters');

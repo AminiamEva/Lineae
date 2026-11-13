@@ -35,28 +35,41 @@ export function installTableHoverAddRow(editor, paper) {
     clearTimeout(hideTimer);
     hideTimer = setTimeout(hide, 160);
   };
+  const positionIn = cell => {
+    try { return editor.view.posAtDOM(cell, 0); }
+    catch { return null; }
+  };
 
   paper.addEventListener('mousemove', event => {
     const cell = event.target.closest?.('td,th');
     if (!cell || !paper.contains(cell)) { scheduleHide(); return; }
     clearTimeout(hideTimer);
     const rect = cell.getBoundingClientRect();
+    const row = cell.parentElement;
+    // Hit testing can round a pointer at the last 2 CSS px of a row into the
+    // next row. Treat that top edge as the bottom edge of the previous row.
+    let target = cell;
+    let rowBottom = rect.bottom;
+    if (row.rowIndex > 0 && event.clientY <= rect.top + 7) {
+      target = row.previousElementSibling.cells[cell.cellIndex];
+      rowBottom = rect.top;
+    }
 
-    if (event.clientY >= rect.bottom - 7 && event.clientY <= rect.bottom + 3) {
-      const hit = editor.view.posAtCoords({ left: event.clientX, top: rect.bottom - 2 });
-      if (hit) {
-        rowPosition = hit.pos;
+    if (event.clientY >= rowBottom - 7 && event.clientY <= rowBottom + 3) {
+      const position = positionIn(target);
+      if (position !== null) {
+        rowPosition = position;
         const table = cell.closest('table').getBoundingClientRect();
         rowButton.hidden = false;
         rowButton.style.left = (table.left + table.width / 2) + 'px';
-        rowButton.style.top = (rect.bottom + 2) + 'px';
+        rowButton.style.top = (rowBottom + 2) + 'px';
       }
     }
 
     if (event.clientX >= rect.right - 7 && event.clientX <= rect.right + 3) {
-      const hit = editor.view.posAtCoords({ left: rect.right - 2, top: event.clientY });
-      if (hit) {
-        columnPosition = hit.pos;
+      const position = positionIn(cell);
+      if (position !== null) {
+        columnPosition = position;
         columnButton.hidden = false;
         columnButton.style.left = (rect.right + 2) + 'px';
         columnButton.style.top = (rect.top + rect.height / 2 - 11) + 'px';
