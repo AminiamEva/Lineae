@@ -1863,6 +1863,7 @@ async function verifySelectionGeometry(page, paper, importSource) {
         boundary:paragraphs[46].getBoundingClientRect().top};
     });
     assert.ok(continuous.boundary-continuous.first<950,'Continuous flow removes the page gap');
+    assert.ok(continuous.height>=1056-.5,'Continuous flow still shows at least one page length: '+continuous.height);
     await paginationButton.click();
     await page.waitForFunction(()=>document.querySelector('.document-page')?.dataset.pageCount==='3');
     assert.equal(await paginationButton.getAttribute('aria-pressed'),'true','Paginated mode restores the original pages');
