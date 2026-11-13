@@ -188,6 +188,10 @@ pub fn run() {
                 .inner_size(1280.0, 900.0)
                 .min_inner_size(960.0, 640.0)
                 .center()
+                // WebView2 drops ctrl+wheel and trackpad pinch gestures unless
+                // zoom control is enabled, so the page would never receive the
+                // wheel events that drive the document zoom.
+                .zoom_hotkeys_enabled(true)
                 .initialization_script(include_str!("bridge.js"))
                 .build()?;
             Ok(())
