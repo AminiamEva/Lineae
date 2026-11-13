@@ -474,8 +474,15 @@ const Shortcuts = Extension.create({
           return true;
         }
         if(!selection.empty)return false;
-        if(this.editor.commands.undoInputRule())return true;
         const $from=selection.$from;
+        if($from.parent.type.name==='paragraph' && $from.parentOffset===0 &&
+            ['center','right'].includes($from.parent.attrs.align)) {
+          this.editor.view.dispatch(this.editor.state.tr.setNodeMarkup($from.before(),undefined,{
+            ...$from.parent.attrs,align:'left',
+          }));
+          return true;
+        }
+        if(this.editor.commands.undoInputRule())return true;
         const node=$from.nodeBefore;
         if(['math','mathBlock'].includes(node?.type.name)) {
           // Treat a formula as one object: the first press selects it whole,

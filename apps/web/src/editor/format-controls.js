@@ -13,15 +13,24 @@ export function installFormatControls(editor, tools) {
   picker.addEventListener('input', () => editor.chain().focus().setMark('textStyle', { color: picker.value }).run());
   color.append(glyph, picker); tools.append(color);
   const menus = {};
+  const families = [
+    'Latin Modern Roman', 'Georgia', 'Times New Roman', 'Cambria', 'Palatino Linotype',
+    'SimSun', 'Songti SC', 'Arial', 'Segoe UI', 'Microsoft YaHei', 'Helvetica Neue',
+    'Verdana', 'Calibri', 'Latin Modern Mono', 'Consolas', 'Courier New', 'monospace',
+  ];
   for (const [attribute, values] of Object.entries({
-    fontFamily: ['Georgia', 'Arial', 'monospace'],
+    fontFamily: families,
     fontSize: [8,9,10,11,12,14,16,18,20,24,28,32,36,48,60,72].map(size => size + 'pt'),
   })) {
     const menu = document.createElement('select');
     menu.setAttribute('aria-label', attribute);
     menu.dataset.tooltipZh = attribute === 'fontFamily' ? '字体' : '字号';
     menu.dataset.tooltipEn = attribute === 'fontFamily' ? 'Font' : 'Size';
-    for (const value of values) menu.append(new Option(value, value));
+    for (const value of values) {
+      const option = new Option(value, value);
+      if (attribute === 'fontFamily') option.style.fontFamily = value;
+      menu.append(option);
+    }
     menu.addEventListener('change', () => editor.chain().focus().setMark('textStyle', { [attribute]: menu.value }).run());
     menus[attribute] = menu; tools.append(menu);
   }
@@ -30,8 +39,12 @@ export function installFormatControls(editor, tools) {
     picker.value = attrs.color ?? '#000000';
     glyph.style.borderBottomColor = picker.value;
     for (const [attribute, menu] of Object.entries(menus)) {
-      const value = attrs[attribute] ?? (attribute === 'fontFamily' ? 'Georgia' : '10pt');
-      if (![...menu.options].some(option => option.value === value)) menu.append(new Option(value, value));
+      const value = attrs[attribute] ?? (attribute === 'fontFamily' ? 'Latin Modern Roman' : '10pt');
+      if (![...menu.options].some(option => option.value === value)) {
+        const option = new Option(value, value);
+        if (attribute === 'fontFamily') option.style.fontFamily = value;
+        menu.append(option);
+      }
       menu.value = value;
     }
   }

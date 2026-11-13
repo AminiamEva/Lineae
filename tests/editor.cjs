@@ -565,6 +565,13 @@ async function verifySelectionGeometry(page, paper, importSource) {
     await page.waitForFunction(()=>document.querySelectorAll('.ProseMirror h1').length===3);
     assert.deepEqual(await paper.locator('[data-section-number]').evaluateAll(nodes=>nodes.map(node=>node.dataset.sectionNumber)),['1','1.1','1.1.1','2']);
     assert.equal(await paper.locator('h1').nth(1).getAttribute('data-section-number'),null);
+    await page.waitForFunction(()=>['H1','H2','H3'].every(label=>
+      [...document.querySelectorAll('.space-overlay text')].some(node=>node.textContent===label)));
+    const headingLabels=await page.evaluate(()=>[...document.querySelectorAll('.space-overlay text')]
+      .map(node=>node.textContent).filter(text=>/^H\d$/.test(text)));
+    assert.equal(headingLabels.length,5);
+    assert.deepEqual([...new Set(headingLabels)].sort(),['H1','H2','H3'],
+      'Headings get H_n margin marks');
 
     await importSource('Before\n\n\\[x\\]\n\nAfter');
     await page.waitForFunction(()=>document.querySelector('.ProseMirror > .math-display'));
@@ -574,6 +581,7 @@ async function verifySelectionGeometry(page, paper, importSource) {
     await page.getByRole('button',{name:'itemize',exact:true}).click();
     assert.deepEqual(await paper.locator(':scope > *').evaluateAll(nodes=>nodes.map(node=>node.tagName)),['P','DIV','UL']);
     assert.equal(await paper.locator('ul').textContent(),'After');
+    await page.waitForFunction(()=>[...document.querySelectorAll('.space-overlay text')].some(node=>node.textContent==='L1'));
     const toggles=await page.locator('math-field').evaluate(field=>
       [...field.shadowRoot.querySelectorAll('[part="menu-toggle"],[part="virtual-keyboard-toggle"]')]
         .map(toggle=>getComputedStyle(toggle).display));
@@ -868,6 +876,8 @@ async function verifySelectionGeometry(page, paper, importSource) {
 
     await importSource('\\begin{enumerate}\n\\item Outer\n\\begin{enumerate}\n\\item Inner\n\\end{enumerate}\n\\end{enumerate}');
     await page.waitForFunction(()=>document.querySelectorAll('.ProseMirror ol ol li').length===1);
+    await page.waitForFunction(()=>['E1','E2'].every(label=>
+      [...document.querySelectorAll('.space-overlay text')].some(node=>node.textContent===label)));
     await paper.locator('ol ol li').click();
     const caretInList=()=>page.evaluate(()=>Boolean((window.getSelection().anchorNode?.nodeType===3
       ? window.getSelection().anchorNode.parentElement
@@ -892,6 +902,15 @@ async function verifySelectionGeometry(page, paper, importSource) {
     await page.waitForFunction(()=>document.querySelectorAll('.ProseMirror ol li').length===1);
     await paper.locator('ol li').click();
     await page.keyboard.press('End');
+    const listStyle=await page.locator('.ProseMirror ol').getAttribute('data-label-style');
+    await page.keyboard.press('Control+e');
+    await page.keyboard.press('t');
+    await page.waitForFunction(previous=>{
+      const list=document.querySelector('.ProseMirror ol');
+      return list && list.getAttribute('data-label-style')!==previous;
+    },listStyle);
+    assert.notEqual(await page.locator('.ProseMirror ol').getAttribute('data-label-style'),listStyle,
+      'Ctrl+E T cycles list numbering');
     await page.keyboard.press('Tab');
     await page.waitForFunction(()=>document.querySelector('.ProseMirror ol li p')?.textContent==='Alone    ');
     assert.equal(await page.evaluate(()=>document.activeElement?.classList.contains('ProseMirror')),true,
@@ -1223,6 +1242,21 @@ async function verifySelectionGeometry(page, paper, importSource) {
     });
     assert.equal(cjkSpacing.spans,2,'CJK/Latin runs use a spacing decoration');
     assert.ok(cjkSpacing.gaps.every(gap=>gap>=3),'CJK and Latin text keep the xeCJK gap: '+JSON.stringify(cjkSpacing));
+    const fontSelect=page.locator('select[aria-label="fontFamily"]');
+    assert.ok(await fontSelect.locator('option').count()>=10,'The toolbar offers a broad font list');
+    const fontPreviews=await fontSelect.locator('option').evaluateAll(options=>options.map(option=>({
+      value:option.value,font:option.style.fontFamily,
+    })));
+    assert.ok(fontPreviews.find(option=>option.value==='Georgia')?.font.includes('Georgia'),
+      'Font options preview their own typeface');
+    await importSource('Font preview');
+    await page.locator('[data-group=home]').click();
+    await paper.locator('p').click();
+    await page.keyboard.press('Control+a');
+    await fontSelect.selectOption('Georgia');
+    assert.equal(await paper.locator('p').evaluate(paragraph=>[...paragraph.querySelectorAll('span')]
+      .some(span=>getComputedStyle(span).fontFamily.includes('Georgia'))),true,
+    'Choosing a font applies it immediately');
     await importSource('$x^2+y_1$');
     await page.waitForFunction(()=>document.querySelector('math-field')?.value.includes('^2'));
     const mathScript=await page.locator('math-field').evaluate(field=>{
@@ -1296,13 +1330,6 @@ async function verifySelectionGeometry(page, paper, importSource) {
     await page.keyboard.press('Backspace');
     await page.waitForFunction(()=>!document.querySelector('math-field')?.value.includes('\\int'));
     assert.equal(await integralField.evaluate(field=>field.value),'','Deleting an operator removes its empty body too');
-    await importSource('\\begin{itemize}\\item First\\end{itemize}');
-    await paper.locator('li p').click();
-    const bulletMarker=await paper.locator('ul').getAttribute('data-marker');
-    await page.keyboard.press('Control+e');
-    await page.keyboard.press('t');
-    await page.waitForFunction(marker=>document.querySelector('.ProseMirror ul')?.getAttribute('data-marker')!==marker,bulletMarker);
-    assert.notEqual(await paper.locator('ul').getAttribute('data-marker'),bulletMarker,'Ctrl+E T cycles list numbering');
     await importSource('Body text');
     await page.waitForFunction(()=>document.querySelector('.ProseMirror')?.textContent==='Body text');
     assert.ok(await page.evaluate(()=>document.querySelector('.document-page > #document-meta')!==null),'Title and author render inside the page');
@@ -1318,6 +1345,8 @@ async function verifySelectionGeometry(page, paper, importSource) {
     await page.waitForTimeout(100);
     assert.equal(await metaTitleNode.textContent(),'Regression title');
     assert.equal(await metaAuthorNode.textContent(),'Regression author');
+    await page.waitForFunction(()=>['T','A'].every(label=>
+      [...document.querySelectorAll('.space-overlay text')].some(node=>node.textContent===label)));
     await page.locator('[data-group=insert]').click();
     await page.locator('[data-source-mode="source"]').click();
     const metaSource=await page.locator('.tex-code .cm-content').innerText();
@@ -1379,6 +1408,14 @@ async function verifySelectionGeometry(page, paper, importSource) {
     assert.equal(await page.locator('.delimiter-ghost-slot').first().textContent(),'[');
     assert.equal(await page.locator('[data-math-view] .delimiter-input-embedded').count(),0);
     assert.equal(await page.locator('.delimiter-ghost-slot').last().evaluate(slot=>slot.classList.contains('is-active')),true);
+    const delimiterCaret=await page.locator('.delimiter-ghost-slot.is-active').evaluate(slot=>({
+      content:getComputedStyle(slot,'::after').content,
+      width:parseFloat(getComputedStyle(slot,'::after').width),
+      nativeHidden:[...slot.getRootNode().host.shadowRoot.querySelectorAll('.ML__caret,.ML__text-caret,.ML__latex-caret')]
+        .every(node=>getComputedStyle(node).visibility==='hidden'),
+    }));
+    assert.ok(delimiterCaret.content!=='none' && delimiterCaret.width>0 && delimiterCaret.nativeHidden,
+      'The delimiter caret sits on the active colored slot: '+JSON.stringify(delimiterCaret));
     await page.keyboard.type(')');
     await page.waitForFunction(()=>/^\\left\[.*\\right\)$/.test(document.querySelector('math-field')?.value));
     assert.match(await chordField.evaluate(field=>field.value),/\\mathbf\{AB\}/,'Wrapping preserves selected math');
@@ -2471,6 +2508,17 @@ async function verifySelectionGeometry(page, paper, importSource) {
       await editorChord(key);
       assert.equal(await paper.locator('p').first().getAttribute('data-align'),align);
     }
+    await importSource('Centered text');
+    await paper.locator('p').click();
+    await editorChord('i');
+    const centeredText=await paper.locator('p').first().textContent();
+    await paper.locator('p').first().click();
+    await page.keyboard.press('Home');
+    await page.keyboard.press('Backspace');
+    assert.equal(await paper.locator('p').first().getAttribute('data-align'),'left',
+      'Backspace at the start of centered text returns it to the left margin');
+    assert.equal(await paper.locator('p').first().textContent(),centeredText,
+      'Resetting the alignment does not delete text');
     await importSource('中文$x$汉字 and $y$ text');
     await paper.locator('.math-cjk-before.math-cjk-after').waitFor();
     assert.equal(await paper.locator('.math-cjk-before').count(),1);

@@ -387,6 +387,38 @@ export function installSpaceOverlay(editor, paper, { selectionFocus = null } = {
         }
       }
     }
+    const contentLeft=local(editor.view.dom.getBoundingClientRect()).left;
+    const label=(text,element)=>{
+      const rect=local(element.getBoundingClientRect());
+      if(rect.bottom<0 || rect.top>height)return;
+      const style=getComputedStyle(element);
+      const lineHeight=Number.parseFloat(style.lineHeight)||16;
+      const mark=shape('text',{
+        x:contentLeft-7,
+        y:rect.top+Math.min(lineHeight,rect.height)/2,
+        'font-size':Math.max(6,Math.min(9,lineHeight*.42)),
+        'font-family':'sans-serif',
+        'text-anchor':'end',
+        'dominant-baseline':'middle',
+        fill:color,
+      });
+      mark.textContent=text;
+      marksOverlay.append(mark);
+    };
+    for (const heading of editor.view.dom.querySelectorAll('h1,h2,h3')) {
+      label('H'+heading.tagName[1],heading);
+    }
+    for (const item of editor.view.dom.querySelectorAll('li')) {
+      const list=item.closest('ul,ol');
+      if(!list)continue;
+      let depth=0;
+      for(let node=list;node;node=node.parentElement?.closest('ul,ol')??null)depth++;
+      label((list.tagName==='OL'?'E':'L')+depth,item);
+    }
+    for (const [selector,text] of [['#document-meta .doc-title','T'],['#document-meta .doc-author','A']]) {
+      const element=page.querySelector(selector);
+      if(element?.textContent.trim())label(text,element);
+    }
   }
   function scheduleCaret(intent=null,activity=false) {
     if (intent==='edit' || intent==='edit-rapid' || intent==='composition' || !caretIntent) caretIntent=intent;

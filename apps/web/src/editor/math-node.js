@@ -179,10 +179,13 @@ const mathFieldStyle = `
     opacity:.45; pointer-events:none;
   }
   .delimiter-ghost { display:inline-flex; gap:.1em; pointer-events:none; vertical-align:baseline; }
-  .delimiter-ghost-slot { display:inline-flex; justify-content:center; align-items:center; width:.65em;
+  .delimiter-ghost-slot { position:relative; display:inline-flex; justify-content:center; align-items:center; width:.65em;
     height:1em; border-radius:.15em; line-height:1; color:inherit; background:light-dark(#e8effa,#37445c); }
   .delimiter-ghost-slot + .delimiter-ghost-slot { background:light-dark(#efe9f7,#483b58); }
   .delimiter-ghost-slot.is-active { box-shadow:inset 0 0 0 1px #749bd0; }
+  .delimiter-ghost-slot.is-active::after { content:""; position:absolute; left:50%; top:12%; bottom:12%; width:1.5px;
+    border-radius:1px; background:#2f6fd0; translate:-50% 0; animation:delimiter-caret-blink .9s steps(1) infinite; }
+  @keyframes delimiter-caret-blink { 0%,49% { opacity:1; } 50%,100% { opacity:0; } }
   :host([data-lineae-editing]) :is(.ML__mathbf, .ML__mathbfit, .ML__bb, .ML__cal, .ML__frak, .ML__script, .ML__sans, .ML__tt) {
     background: light-dark(rgba(77,124,179,.10), rgba(120,170,230,.18));
     border-radius: 2px;

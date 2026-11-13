@@ -38,7 +38,13 @@ export function serialize(node) {
         if (/^#[\da-f]{6}$/i.test(mark.attrs.color ?? '')) value='\\textcolor[HTML]{'+mark.attrs.color.slice(1)+'}{'+value+'}';
         const size=Number.parseFloat(mark.attrs.fontSize);
         if(size>=6 && size<=72)value='{\\fontsize{'+size+'}{'+Math.ceil(size*1.2)+'}\\selectfont '+value+'}';
-        const family={'Georgia':'\\rmfamily','Arial':'\\sffamily','monospace':'\\ttfamily'}[mark.attrs.fontFamily];
+        const family={
+          'Latin Modern Roman':'\\rmfamily','Georgia':'\\rmfamily','Times New Roman':'\\rmfamily',
+          'Cambria':'\\rmfamily','Palatino Linotype':'\\rmfamily','SimSun':'\\rmfamily','Songti SC':'\\rmfamily',
+          'Arial':'\\sffamily','Segoe UI':'\\sffamily','Microsoft YaHei':'\\sffamily',
+          'Helvetica Neue':'\\sffamily','Verdana':'\\sffamily','Calibri':'\\sffamily',
+          'Latin Modern Mono':'\\ttfamily','Consolas':'\\ttfamily','Courier New':'\\ttfamily','monospace':'\\ttfamily',
+        }[mark.attrs.fontFamily];
         if(family)value='{'+family+' '+value+'}';
       }
     }
