@@ -44,7 +44,7 @@ data, UI, bibliography, and Playwright suites, then builds the Tauri bundle.
 
 Builds upload an artifact named `lineae-desktop-<sha>` containing:
 
-- `Lineae_0.1.0_x64-setup.exe` (offline NSIS installer)
+- `Lineae_0.1.1_x64-setup.exe` (offline NSIS installer)
 - `Lineae-portable.zip` (portable executable and notes)
 
 Tag builds attach the artifacts to a GitHub release. Tags containing `preview` are published as prereleases; other tags publish a normal release.
@@ -103,7 +103,7 @@ request.
 
 ## Known limits
 
-- Preview version `0.1.0`; no update channel or release stability promise.
+- Preview version `0.1.1`; no update channel or release stability promise.
 - Authenticode signing runs only when the certificate secrets are configured; an
   unconfigured repository publishes unsigned binaries.
 - The portable executable assumes WebView2 is installed. The offline installer
