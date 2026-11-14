@@ -82,6 +82,8 @@
     if (!root) throw abortError();
     const operation = (operation, path, target, bytes, expected) => projectInvoke('project_operation', {root, operation, path, target, bytes, expected});
     return {root, name:fileName(root),
+      loadState:async()=>{const bytes=(await operation('load_state')).bytes;return bytes.length?JSON.parse(new TextDecoder().decode(new Uint8Array(bytes))):null;},
+      checkpoint:state=>operation('checkpoint',null,null,Array.from(new TextEncoder().encode(JSON.stringify(state)))),
       list:async () => (await operation('list')).entries,
       read:async path => new Uint8Array((await operation('read',path)).bytes),
       write:(path,bytes,expected) => operation('write',path,null,Array.from(bytes),expected && Array.from(expected)),

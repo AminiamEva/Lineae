@@ -4,7 +4,7 @@ import {RecoveryStore} from './recovery.mjs';
 
 /** File handles remain in the adapter; source strings are never newline-normalized. */
 export class Project {
-  constructor(adapter, id = crypto.randomUUID()) {
+  constructor(adapter, id = crypto.randomUUID(), storage = globalThis.localStorage) {
     this.id = id;
     this.adapter = adapter;
     this.files = new Map();
@@ -14,7 +14,9 @@ export class Project {
     this.treeVisible = false;
     this.config = {};
     this.scans = new Map(); this.dependencies = []; this.pathChanges = [];
-    this.recovery = adapter.root && globalThis.localStorage ? new RecoveryStore(globalThis.localStorage,adapter.root) : null;
+    this.recovery = adapter.root && storage ? new RecoveryStore(storage,adapter.root) : null;
+    this.storage=storage;this.metadataKey=adapter.root?'lineae:project-state:v1:'+adapter.root:null;this.persistenceError='';
+    this.pendingCheckpoint=Promise.resolve();this.diskRecovery=[];
   }
   async open() {
     const entries = await this.adapter.list();
@@ -30,13 +32,21 @@ export class Project {
     }
     this.files = files;
     this.directories = directories;
+    let metadata={};
+    try {metadata=JSON.parse(this.metadataKey && this.storage?.getItem(this.metadataKey) || '{}');}catch(error){this.persistenceError=error.message;}
+    if(this.adapter.loadState){try{const state=await this.adapter.loadState();if(state){if(!state.files || !Array.isArray(state.drafts))throw new Error('Invalid disk checkpoint');metadata=state;this.diskRecovery=state.drafts;}}catch(error){this.diskRecoveryError='Disk recovery failed; checkpoint retained: '+error.message;this.persistenceError=this.diskRecoveryError;}}
+    const identities=new Set();
+    for(const file of files.values()){const id=metadata?.files?.[file.path];if(typeof id==='string' && !identities.has(id))file.id=id;identities.add(file.id);}
     for(const file of files.values())this.scan(file);
     this.mainCandidates=[...files.values()].filter(file=>this.scans.get(file.id)?.document);
     const main = this.mainCandidates.find(file=>file.path==='main.tex') ?? this.mainCandidates[0] ?? files.get('main.tex') ?? [...files.values()].find(file => file.kind === 'tex');
     this.mainFileId = main?.id ?? null;
+    const selected=files.get(metadata?.main);
+    if(selected?.kind==='tex')this.mainFileId=selected.id;
     this.activeFileId = this.mainFileId;
     this.treeVisible = false;
     this.resolveDependencies();
+    this.persistMetadata();
     return this;
   }
   file(id) {
@@ -53,7 +63,18 @@ export class Project {
     this.scan(file); this.resolveDependencies();
     this.checkpoint();
   }
-  checkpoint() { this.recovery?.checkpoint(this.files.values()); }
+  checkpoint() { this.recovery?.checkpoint(this.files.values());this.persistMetadata(); }
+  persistMetadata() {
+    if(!this.metadataKey)return;
+    try {this.storage?.setItem(this.metadataKey,JSON.stringify({main:this.mainFileId?this.file(this.mainFileId).path:null,files:Object.fromEntries([...this.files.values()].map(file=>[file.path,file.id]))}));this.persistenceError=this.diskRecoveryError ?? '';}
+    catch(error){this.persistenceError='Project settings could not be persisted: '+error.message;}
+    if(this.adapter.checkpoint && !this.diskRecoveryError){
+      const state={main:this.mainFileId?this.file(this.mainFileId).path:null,files:Object.fromEntries([...this.files.values()].map(file=>[file.path,file.id])),drafts:[...this.files.values()].filter(file=>file.dirty).map(({path,saved,draft})=>({path,saved,draft}))};
+      // Preserve recovered versions until the user has chosen whether to restore.
+      if(this.diskRecovery.length)state.drafts=this.diskRecovery;
+      this.pendingCheckpoint=this.pendingCheckpoint.then(()=>this.adapter.checkpoint(state)).catch(error=>{this.persistenceError='Disk checkpoint failed: '+error.message;});
+    }
+  }
   restoreDrafts(drafts) {
     let restored=0;
     for(const draft of drafts){const file=this.files.get(draft.path);if(!file || file.draft===null)continue;
@@ -83,13 +104,15 @@ export class Project {
     for(const change of changes){const file=this.files.get(change.from);this.files.delete(change.from);file.path=change.to;this.files.set(change.to,file);}
     this.directories=this.directories.map(path=>path===source || path.startsWith(source+'/')?target+path.slice(source.length):path);
     this.pathChanges.push({source,target,changes,references:'not-rewritten'}); this.resolveDependencies();
-    this.checkpoint();
+    this.persistMetadata();
+    try {this.checkpoint();}catch(error){this.persistenceError='Move completed; draft checkpoint failed: '+error.message;}
     return changes;
   }
   activate(id) { this.file(id); this.activeFileId = id; }
   setMain(id) {
     if (this.file(id).kind !== 'tex') throw new TypeError('Main document must be a TeX file');
     this.mainFileId = id;
+    this.persistMetadata();
   }
   async save(id) {
     const file = this.file(id);
@@ -112,7 +135,7 @@ export class Project {
     const bytes = new TextEncoder().encode(text);
     await this.adapter.create(path, bytes);
     const file = {id:crypto.randomUUID(), path, kind:fileKind(path), bytes, saved:text, draft:text, dirty:false};
-    this.files.set(path, file); this.scan(file); this.resolveDependencies(); return file;
+    this.files.set(path, file); this.scan(file); this.resolveDependencies();this.persistMetadata(); return file;
   }
   async reload(id) {
     const file = this.file(id), bytes = await this.adapter.read(file.path);
@@ -136,6 +159,7 @@ export class Project {
     this.scans.delete(file.id); this.resolveDependencies();
     this.checkpoint();
     if (this.activeFileId === id) this.activeFileId = this.mainFileId;
+    this.persistMetadata();
   }
 }
 

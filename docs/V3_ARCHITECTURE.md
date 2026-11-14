@@ -1,5 +1,13 @@
 # V3 implementation contract and audit
 
+Finalization adds persistent native-root identities/main selection and Rust-backed
+.lineae-state.json snapshots. The real forced-Tauri-kill test demonstrated that
+localStorage alone was insufficient. Native checkpoint writes are queued and use
+the safe-save path; recovery promises only the last completed checkpoint. Corrupt
+state is retained. A named Windows mutex serializes cooperative Lineae processes
+for each canonical save path. See PHASE1_FINAL_ACCEPTANCE.md for tested boundaries,
+shared-snapshot limitations and the current upstream integration conflict.
+
 Resilience follow-up: native saves now stage and flush sibling bytes before
 ReplaceFileW, verify expected source bytes in Rust, and serialize own writes.
 This preserves the target in tested pre-replacement process exits; external

@@ -61,16 +61,19 @@ export function installProjectExplorer({footer, sessions}) {
     if (!next.mainFileId) throw new Error('目录中没有 .tex 文件 / No TeX file in this directory');
     let recoveryNotice='';
     try {
-      const drafts=next.recovery?.read() ?? [];
-      if(drafts.length && confirm('发现未保存草稿，恢复到编辑器？磁盘文件不会被改写。 / Restore recovered drafts?')) {
+      const drafts=next.diskRecovery.length?next.diskRecovery:next.recovery?.read() ?? [];
+      const summary=drafts.map(draft=>`${draft.path}: ${draft.draft.length} 字符 · ${next.files.get(draft.path)?.saved===draft.saved?'磁盘未变 / unchanged':'磁盘已变或缺失 / changed or missing'}`).join('\n');
+      if(drafts.length && confirm('恢复以下未保存草稿？磁盘文件不会被改写。 / Restore drafts?\n'+summary)) {
         const restored=next.restoreDrafts(drafts);recoveryNotice=`已恢复 ${restored}/${drafts.length} 个草稿；请核对磁盘冲突 / Recovered drafts`;
       }
+      next.diskRecovery=[];next.checkpoint();
     } catch(error) { recoveryNotice='草稿恢复失败 / Recovery unavailable: '+error.message; }
     sessions.begin();
     project = next; expanded.clear(); title.textContent = adapter.name ?? adapter.handle.name;
     sessions.open(project.file(project.mainFileId));
     visible(false); render();
     if(recoveryNotice){message.textContent=recoveryNotice;sessions.error(recoveryNotice);}
+    if(next.persistenceError){message.textContent=next.persistenceError;sessions.error(next.persistenceError);}
   }
   async function save() {
     capture();
@@ -84,6 +87,7 @@ export function installProjectExplorer({footer, sessions}) {
     if (!approveClose()) return false;
     project.checkpoint();
     project.recovery?.storage.removeItem(project.recovery.key);
+    project.diskRecovery=[];for(const file of project.files.values())file.dirty=false;project.checkpoint();
     project = null; sessions.end(); visible(false); render(); return true;
   }
   button(footer, '打开工程', open, 'project-open');
@@ -100,6 +104,7 @@ export function installProjectExplorer({footer, sessions}) {
     await project.move(path,target);
     sessions.open(project.file(project.activeFileId));
     message.textContent='路径已更新；LaTeX 引用路径尚未自动重写 / References require review';
+    if(project.persistenceError)message.textContent+=' · '+project.persistenceError;
   }
   button(actions, '重新加载', async () => {
     sessions.ensureIdle(); capture();

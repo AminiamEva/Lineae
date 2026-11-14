@@ -22,7 +22,7 @@ fn scoped(root:&Path, path:&str) -> Result<PathBuf,String> {
 fn list(root:&Path, directory:&Path, entries:&mut Vec<Entry>) -> Result<(),String> {
     for item in std::fs::read_dir(directory).map_err(|e|e.to_string())? {
         let item=item.map_err(|e|e.to_string())?;let path=item.path();
-        if item.file_name().to_string_lossy().starts_with(".lineae-save-"){continue;}
+        if item.file_name().to_string_lossy().starts_with(".lineae-save-") || item.file_name()==".lineae-state.json" {continue;}
         if item.file_type().map_err(|e|e.to_string())?.is_symlink(){continue;}
         let canonical=path.canonicalize().map_err(|e|e.to_string())?;
         if canonical != path {continue;}
@@ -52,6 +52,7 @@ pub fn project_operation(roots:State<'_,ProjectRoots>,root:String,operation:Stri
 fn safe_write(path:&Path, bytes:&[u8], expected:Option<&[u8]>) -> Result<(),String> {
     static WRITES:Mutex<()> = Mutex::new(());
     let _guard=WRITES.lock().map_err(|e|e.to_string())?;
+    let _process_guard=ProcessSaveLock::acquire(path)?;
     use std::io::{Read,Write};
     use std::os::windows::{fs::OpenOptionsExt,ffi::OsStrExt};
     let mut original=std::fs::OpenOptions::new().read(true).share_mode(1|4).open(path).map_err(|e|e.to_string())?;
@@ -76,6 +77,29 @@ fn safe_write(path:&Path, bytes:&[u8], expected:Option<&[u8]>) -> Result<(),Stri
     result
 }
 
+// All Lineae processes on this Windows desktop cooperate on the canonical path.
+struct ProcessSaveLock(*mut std::ffi::c_void);
+#[link(name="kernel32")]
+extern "system" {
+    fn CreateMutexW(attributes:*mut std::ffi::c_void,owner:i32,name:*const u16)->*mut std::ffi::c_void;
+    fn WaitForSingleObject(handle:*mut std::ffi::c_void,milliseconds:u32)->u32;
+    fn ReleaseMutex(handle:*mut std::ffi::c_void)->i32;
+    fn CloseHandle(handle:*mut std::ffi::c_void)->i32;
+}
+impl ProcessSaveLock {
+    fn acquire(path:&Path)->Result<Self,String>{
+        let mut hash=0xcbf29ce484222325u64;
+        for byte in path.to_string_lossy().to_lowercase().bytes(){hash^=byte as u64;hash=hash.wrapping_mul(0x100000001b3);}
+        let name:Vec<u16>=format!("Local\\LineaeSave-{hash:016x}").encode_utf16().chain(Some(0)).collect();
+        let handle=unsafe{CreateMutexW(std::ptr::null_mut(),0,name.as_ptr())};
+        if handle.is_null(){return Err(std::io::Error::last_os_error().to_string());}
+        let result=unsafe{WaitForSingleObject(handle,30000)};
+        if result!=0 && result!=0x80 {unsafe{CloseHandle(handle);};return Err("Project save lock unavailable; retry later".into());}
+        Ok(Self(handle))
+    }
+}
+impl Drop for ProcessSaveLock {fn drop(&mut self){unsafe{ReleaseMutex(self.0);CloseHandle(self.0);}}}
+
 #[cfg(test)]
 fn operate(roots:&ProjectRoots,root:String,operation:String,path:Option<String>,target:Option<String>,bytes:Option<Vec<u8>>) -> Result<Reply,String> {
     operate_checked(roots,root,operation,path,target,bytes,None)
@@ -85,6 +109,12 @@ fn operate_checked(roots:&ProjectRoots,root:String,operation:String,path:Option<
     if !roots.0.lock().map_err(|e|e.to_string())?.contains(&root){return Err("Project was not selected through a native dialog".into());}
     let mut reply=Reply::default();
     if operation=="list"{list(&root,&root,&mut reply.entries)?;return Ok(reply);}
+    if operation=="load_state" {let state=root.join(".lineae-state.json");if state.exists(){reply.bytes=std::fs::read(state).map_err(|e|e.to_string())?;}return Ok(reply);}
+    if operation=="checkpoint" {
+        let state=root.join(".lineae-state.json");let bytes=bytes.ok_or("Missing checkpoint bytes")?;
+        if !state.exists(){let file=std::fs::OpenOptions::new().write(true).create_new(true).open(&state).map_err(|e|e.to_string())?;drop(file);}
+        safe_write(&state,&bytes,None)?;return Ok(reply);
+    }
     let path=scoped(&root,&path.ok_or("Missing path")?)?;
     match operation.as_str(){
         "read"=>reply.bytes=std::fs::read(path).map_err(|e|e.to_string())?,
@@ -172,7 +202,20 @@ mod tests {
     }
     #[test]
     fn crash_writer_child() {
+        if let Some(path)=std::env::var_os("LINEAE_TEST_COMPETING_PATH") {
+            let result=safe_write(Path::new(&path),std::env::var("LINEAE_TEST_CONTENT").unwrap().as_bytes(),Some(b"original"));
+            std::process::exit(if result.is_ok(){0}else{23});
+        }
         if let Some(path)=std::env::var_os("LINEAE_TEST_CRASH_PATH") {let _=safe_write(Path::new(&path),b"replacement",Some(b"original"));panic!("Crash hook did not exit");}
+    }
+    #[test]
+    fn separate_processes_do_not_overwrite_the_same_baseline() {
+        let (_,root)=fixture();let path=root.join("process-race.tex");std::fs::write(&path,b"original").unwrap();
+        let spawn=|value:&str|std::process::Command::new(std::env::current_exe().unwrap()).args(["--exact","project::tests::crash_writer_child","--nocapture"])
+            .env("LINEAE_TEST_COMPETING_PATH",&path).env("LINEAE_TEST_CONTENT",value).spawn().unwrap();
+        let mut one=spawn("process one");let mut two=spawn("process two");
+        let mut codes=vec![one.wait().unwrap().code().unwrap(),two.wait().unwrap().code().unwrap()];codes.sort();
+        assert_eq!(codes,vec![0,23]);let actual=std::fs::read(path).unwrap();assert!(actual==b"process one" || actual==b"process two");
     }
     #[test]
     fn terminated_writer_leaves_original_and_can_save_after_restart() {

@@ -1,5 +1,14 @@
 # V3 checkpoint — 2026-11-14
 
+## Finalization checkpoint
+
+240 JS tests and 8 Rust test entries passed; browser/project tests and native
+debug build passed. Actual Tauri process-tree termination/recovery passed after
+fixing lost localStorage with Rust-backed disk checkpoints. Main selection and
+IDs persist. Final report/screenshots are in PHASE1_FINAL_ACCEPTANCE.md.
+Ready for Review is blocked by current origin/main integration conflict in
+apps/web/src/main.js. No push/PR; no Phase 2 development.
+
 ## Resilience follow-up
 
 Added native staging/replacement saves, Rust expected-byte checks, own-writer
