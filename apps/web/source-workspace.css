@@ -28,9 +28,9 @@
 .tex-actions .ui-icon {width:17px;height:17px}
 .tex-body {display:grid;grid-template-columns:minmax(0,1fr);flex:1;min-height:0}
 .tex-code,.tex-preview {min-width:0;min-height:0}
-.tex-code .cm-editor {height:100%;font-size:14px}
+.tex-code .cm-editor {height:100%;font-size:16px}
 .tex-code .cm-focused {outline:0}
-.tex-code .cm-scroller {overflow:auto;font:14px/1.7 "JetBrains Mono",SFMono-Regular,Consolas,monospace}
+.tex-code .cm-scroller {overflow:auto;font:16px/1.7 "JetBrains Mono",SFMono-Regular,Consolas,monospace}
 .tex-code .cm-content {padding:18px 0;caret-color:var(--tex-command)}
 .tex-code .cm-line {padding-inline:20px}
 .tex-code .cm-gutters {background:var(--tex-paper);color:light-dark(#878994,#9499a8);border:none;padding-left:8px}
@@ -83,8 +83,8 @@ body:has(.tex-workspace.is-expanded) {overflow:hidden}
   border-inline:0;box-shadow:none;
 }
 body:has(.tex-workspace:not([hidden])) {overflow:hidden}
-.tex-code .cm-editor {font-size:var(--tex-font-size,14px)}
-.tex-code .cm-scroller {font-size:var(--tex-font-size,14px);overscroll-behavior:contain}
+.tex-code .cm-editor {font-size:var(--tex-font-size,16px)}
+.tex-code .cm-scroller {font-size:var(--tex-font-size,16px);overscroll-behavior:contain}
 .tex-actions .tex-zoom-label {width:46px;font-size:12px;font-variant-numeric:tabular-nums}
 .tex-workspace .tex-preview .document-page {pointer-events:auto;cursor:text}
 .tex-workspace .tex-preview {padding:18px;scrollbar-gutter:stable}
@@ -96,8 +96,32 @@ body:has(.tex-workspace:not([hidden])) {overflow:hidden}
 .tex-code .cm-foldPlaceholder {background:var(--tex-active);border-color:var(--tex-border);color:var(--tex-muted)}
 .tex-code .cm-snippetField {background:#a5b4fc22}
 .ribbon [data-source-unavailable] {opacity:.35;cursor:not-allowed}
-.tex-preview::before {content:'Rich text · protected source blocks remain unchanged';display:block;color:var(--tex-muted);font-size:11px;margin-bottom:12px}
-html[lang^=zh] .tex-preview::before {content:'富文本 · 受保护的源码片段保持原样'}
+.tex-workspace .tex-preview .document-page {font-size:var(--rich-text-font-size,16px);line-height:1.5}
+.tex-workspace .tex-preview .ProseMirror {--tex-font-size:var(--rich-text-font-size,16px);--tex-line-height:calc(var(--rich-text-font-size,16px) * 1.5);line-height:1.5}
+.tex-rich-actions {display:flex;align-items:center;gap:6px;position:sticky;top:0;z-index:2;padding:4px 6px;margin-bottom:12px;border-radius:8px;background:var(--tex-bar);color:var(--tex-muted);font:12px/1.5 system-ui,sans-serif}
+.tex-rich-title {margin-right:auto}
+.tex-rich-actions button {display:grid;place-items:center;min-width:32px;height:32px;padding:0;border-radius:7px;background:transparent;color:inherit}
+.tex-rich-actions .tex-rich-zoom-label {min-width:46px;font-variant-numeric:tabular-nums}
+.tex-rich-actions button:hover {background:var(--tex-active)}
+.tex-rich-actions button:focus-visible {outline:2px solid var(--tex-command);outline-offset:2px}
+.tex-actions button:disabled,.tex-rich-actions button:disabled {opacity:.4;cursor:default}
+.tex-indent-setting {display:flex;align-items:center;gap:4px;margin-left:auto;white-space:nowrap;cursor:pointer}
+.tex-indent-setting input {margin:0;accent-color:var(--tex-command)}
+.tex-foot .tex-format {margin-left:0}
+.tex-modes {display:grid;grid-template-columns:repeat(3,minmax(0,1fr));width:222px;gap:2px;box-sizing:border-box}
+.document-status .tex-modes button {display:flex;justify-content:center;align-items:center;min-width:0;min-height:26px;padding:2px 4px;white-space:nowrap}
+.document-status .tex-modes button:hover {background:light-dark(#e0e5ee,#3e4350)}
+.document-status .tex-modes button:focus-visible {outline:2px solid light-dark(#685596,#c3b2e8);outline-offset:1px}
+@media(max-width:540px) {
+  .tex-head {gap:4px;padding-inline:8px}
+  .tex-actions {gap:2px;flex:none}
+  .tex-foot {gap:6px;padding-inline:8px}
+  .tex-foot .tex-format {display:none}
+  .tex-modes {width:204px}
+  .document-status:has(.tex-modes) .environment-tag {display:none}
+  .document-status:has([data-source-mode=body][aria-pressed=false]) > :is(input[type=range],output) {display:none}
+  .document-status:has(.tex-modes) > span:first-child {white-space:nowrap}
+}
 @media(max-width:899px) {
   .tex-workspace.is-expanded {inset:var(--tex-toolbar-bottom,110px) 0 36px}
   .tex-workspace.is-expanded .tex-body {grid-template-columns:minmax(0,1fr);grid-template-rows:minmax(0,1fr) minmax(0,1fr)}

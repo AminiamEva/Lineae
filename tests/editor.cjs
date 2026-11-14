@@ -10,7 +10,7 @@ const server=createServer(async(req,res)=>{
   if(!path.startsWith(root)){res.writeHead(403).end();return;}
   try{
     const data=await readFile(path);
-    res.setHeader('Content-Type',({'.html':'text/html','.js':'text/javascript','.mjs':'text/javascript','.css':'text/css','.woff2':'font/woff2','.otf':'font/otf'})[extname(path)]??'application/octet-stream');
+    res.setHeader('Content-Type',({'.html':'text/html','.js':'text/javascript','.mjs':'text/javascript','.css':'text/css','.svg':'image/svg+xml','.png':'image/png','.woff2':'font/woff2','.otf':'font/otf'})[extname(path)]??'application/octet-stream');
     res.end(data);
   }catch{res.writeHead(404).end();}
 });

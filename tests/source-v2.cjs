@@ -31,11 +31,11 @@ module.exports=async function checkV2(context,url) {
     equal(bounds.width,1440,'full available width');equal(bounds.y>=head.y+head.height,true,'toolbar stays visible');
     const richSize=await page.locator('.ProseMirror').evaluate(e=>getComputedStyle(e).fontSize);
     await content.focus();await page.keyboard.press('Control+0');await page.keyboard.press('Control+=');
-    equal(await page.locator('.tex-zoom-label').innerText(),'15px','font shortcut');
+    equal(await page.locator('.tex-zoom-label').innerText(),'17px','font shortcut');
     equal(await page.locator('.ProseMirror').evaluate(e=>getComputedStyle(e).fontSize),richSize,'rich font unaffected');
     for(let i=0;i<20;i++)await page.keyboard.press('Control+=');
-    equal(await page.locator('.tex-zoom-label').innerText(),'24px','upper bound');
-    for(let i=0;i<20;i++)await page.keyboard.press('Control+-');
+    equal(await page.locator('.tex-zoom-label').innerText(),'32px','upper bound');
+    for(let i=0;i<25;i++)await page.keyboard.press('Control+-');
     equal(await page.locator('.tex-zoom-label').innerText(),'11px','lower bound');
     await page.keyboard.press('Control+0');equal(await copy(),sample,'zoom never edits source');
     await page.locator('[data-source-mode=split]').click();
