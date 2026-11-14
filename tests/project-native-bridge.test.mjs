@@ -19,6 +19,9 @@ test('native bridge retains Chinese/space root and routes binary moves through s
  assert.deepEqual(Array.from(await adapter.read('image.png')),[0,255,13,10]);
  await adapter.write('main.tex',new Uint8Array([1,2]),new Uint8Array([3,4]));
  assert.deepEqual(Array.from(calls.at(-1).args.expected),[3,4]);
- await adapter.move('章节/a.tex','章节/b.tex');
+ await adapter.move('章节/a.tex','章节/b.tex',new Uint8Array([5,6]));
  assert.equal(calls.at(-1).args.root,adapter.root);assert.equal(calls.at(-1).args.target,'章节/b.tex');
+ assert.deepEqual(Array.from(calls.at(-1).args.expected),[5,6]);
+ await adapter.remove('章节/b.tex',new Uint8Array([5,6]));
+ assert.deepEqual(Array.from(calls.at(-1).args.expected),[5,6]);
 });

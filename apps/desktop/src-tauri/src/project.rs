@@ -20,13 +20,33 @@ pub struct Reply {
     bytes: Vec<u8>,
 }
 
-fn scoped(root: &Path, path: &str) -> Result<PathBuf, String> {
-    if path.contains('\\')
-        || path.contains(':')
-        || path
-            .split('/')
-            .any(|p| p == ".." || p == "." || p.starts_with(".lineae-"))
+fn reserved_metadata(name: &str) -> bool {
+    name.to_ascii_lowercase().starts_with(".lineae-")
+}
+
+fn valid_component(name: &str) -> bool {
+    if name.is_empty()
+        || name == "."
+        || name == ".."
+        || reserved_metadata(name)
+        || name.ends_with(['.', ' '])
+        || name.chars().any(|ch| ch < ' ' || "<>\"|?*".contains(ch))
     {
+        return false;
+    }
+    let stem = name.split('.').next().unwrap().to_ascii_uppercase();
+    if ["CON", "PRN", "AUX", "NUL"].contains(&stem.as_str()) {
+        return false;
+    }
+    !["COM", "LPT"].iter().any(|prefix| {
+        stem.strip_prefix(prefix).is_some_and(|suffix| {
+            ["1", "2", "3", "4", "5", "6", "7", "8", "9", "¹", "²", "³"].contains(&suffix)
+        })
+    })
+}
+
+fn scoped(root: &Path, path: &str) -> Result<PathBuf, String> {
+    if path.contains('\\') || path.contains(':') || path.split('/').any(|p| !valid_component(p)) {
         return Err("Invalid relative path".into());
     }
     let relative = Path::new(path);
@@ -56,7 +76,7 @@ fn list(root: &Path, directory: &Path, entries: &mut Vec<Entry>) -> Result<(), S
     for item in std::fs::read_dir(directory).map_err(|e| e.to_string())? {
         let item = item.map_err(|e| e.to_string())?;
         let path = item.path();
-        if item.file_name().to_string_lossy().starts_with(".lineae-") {
+        if reserved_metadata(&item.file_name().to_string_lossy()) {
             continue;
         }
         if item.file_type().map_err(|e| e.to_string())?.is_symlink() {
@@ -198,6 +218,85 @@ pub(super) fn safe_write(path: &Path, bytes: &[u8], expected: Option<&[u8]>) -> 
     result
 }
 
+// Validate and mutate the same open file identity. Denying write/delete sharing
+// closes the frontend-preflight race; a pathname lookup after validation would
+// allow an external editor to replace the file underneath the operation.
+fn mutate_entry(path: &Path, target: Option<&Path>, expected: Option<&[u8]>) -> Result<(), String> {
+    use std::io::Read;
+    use std::os::windows::{ffi::OsStrExt, fs::OpenOptionsExt, io::AsRawHandle};
+    let mut lock_paths = vec![path];
+    if let Some(target) = target {
+        lock_paths.push(target);
+    }
+    lock_paths.sort();
+    let _locks: Vec<_> = lock_paths
+        .into_iter()
+        .map(ProcessSaveLock::acquire)
+        .collect::<Result<_, _>>()?;
+    let mut file = std::fs::OpenOptions::new()
+        .access_mode(0x8000_0000 | 0x0001_0000) // GENERIC_READ | DELETE
+        .share_mode(1) // FILE_SHARE_READ only
+        .custom_flags(0x0200_0000) // FILE_FLAG_BACKUP_SEMANTICS (directories)
+        .open(path)
+        .map_err(|e| e.to_string())?;
+    if let Some(expected) = expected {
+        let mut current = Vec::new();
+        file.read_to_end(&mut current).map_err(|e| e.to_string())?;
+        if current != expected {
+            return Err("File changed on disk".into());
+        }
+    }
+    #[link(name = "kernel32")]
+    extern "system" {
+        fn SetFileInformationByHandle(
+            handle: *mut std::ffi::c_void,
+            class: i32,
+            info: *const std::ffi::c_void,
+            length: u32,
+        ) -> i32;
+    }
+    let success = if let Some(target) = target {
+        // FILE_RENAME_INFO uses a variable-length UTF-16 name. The allocation is
+        // word aligned and includes the full header and terminating code unit.
+        #[repr(C)]
+        struct RenameInfo {
+            flags: u32,
+            root: *mut std::ffi::c_void,
+            length: u32,
+            name: [u16; 1],
+        }
+        let name: Vec<u16> = target.as_os_str().encode_wide().collect();
+        let offset = std::mem::offset_of!(RenameInfo, name);
+        let size = offset + (name.len() + 1) * 2;
+        let mut buffer = vec![0usize; size.div_ceil(std::mem::size_of::<usize>())];
+        let info = buffer.as_mut_ptr().cast::<RenameInfo>();
+        unsafe {
+            // Zero flags means ReplaceIfExists = false: the kernel, rather than
+            // an earlier exists() probe, rejects a concurrently created target.
+            (*info).length = (name.len() * 2) as u32;
+            std::ptr::copy_nonoverlapping(
+                name.as_ptr(),
+                buffer.as_mut_ptr().cast::<u8>().add(offset).cast::<u16>(),
+                name.len(),
+            );
+            SetFileInformationByHandle(file.as_raw_handle(), 3, info.cast(), size as u32)
+        }
+    } else {
+        if file.metadata().map_err(|e| e.to_string())?.is_dir() {
+            return Err("Directory deletion is not supported".into());
+        }
+        let delete: u8 = 1; // FILE_DISPOSITION_INFO.DeleteFile
+        unsafe {
+            SetFileInformationByHandle(file.as_raw_handle(), 4, (&delete as *const u8).cast(), 1)
+        }
+    };
+    if success == 0 {
+        Err(std::io::Error::last_os_error().to_string())
+    } else {
+        Ok(())
+    }
+}
+
 // All Lineae processes on this Windows desktop cooperate on the canonical path.
 pub(super) struct ProcessSaveLock(*mut std::ffi::c_void);
 #[link(name = "kernel32")]
@@ -301,13 +400,13 @@ fn operate_checked(
             std::io::Write::write_all(&mut file, &bytes).map_err(|e| e.to_string())?;
         }
         "mkdir" => std::fs::create_dir(path).map_err(|e| e.to_string())?,
-        "remove" => std::fs::remove_file(path).map_err(|e| e.to_string())?,
+        "remove" => mutate_entry(&path, None, expected.as_deref())?,
         "move" => {
             let target = scoped(&root, &target.ok_or("Missing target")?)?;
             if target.exists() || target.starts_with(&path) {
                 return Err("Target exists or is inside source".into());
             }
-            std::fs::rename(path, target).map_err(|e| e.to_string())?;
+            mutate_entry(&path, Some(&target), expected.as_deref())?;
         }
         _ => return Err("Unknown project operation".into()),
     }
@@ -436,6 +535,102 @@ mod tests {
         call(&roots, &root, "mkdir", "folder", None, None).unwrap();
         assert!(call(&roots, &root, "move", "folder", Some("folder/inside"), None).is_err());
         assert!(call(&roots, &root, "read", "missing.tex", None, None).is_err());
+    }
+    #[test]
+    fn metadata_case_aliases_and_invalid_windows_names_are_rejected() {
+        let (roots, root) = fixture();
+        std::fs::write(root.join(".lineae-state-one.json"), b"private checkpoint").unwrap();
+        std::fs::write(root.join(".LINEAE-state-two.json"), b"private checkpoint").unwrap();
+        assert!(call(&roots, &root, "read", ".LINEAE-state-one.json", None, None).is_err());
+        let listing = call(&roots, &root, "list", "", None, None).unwrap();
+        assert!(
+            listing.entries.is_empty(),
+            "Recovery metadata must never enter the file tree"
+        );
+        for path in [
+            "NUL.tex",
+            "con",
+            "trailing.",
+            "trailing ",
+            "a//b.tex",
+            "a/",
+            "bad?.tex",
+        ] {
+            assert!(
+                scoped(&root, path).is_err(),
+                "Invalid path was accepted: {path}"
+            );
+        }
+    }
+    #[test]
+    fn native_remove_rechecks_the_editor_baseline() {
+        let (roots, root) = fixture();
+        std::fs::write(root.join("a.tex"), b"external edit").unwrap();
+        let result = operate_checked(
+            &roots,
+            root.to_string_lossy().into_owned(),
+            "remove".into(),
+            Some("a.tex".into()),
+            None,
+            None,
+            Some(b"old editor baseline".to_vec()),
+        );
+        assert!(
+            result.is_err(),
+            "Deletion must reject changes after frontend preflight"
+        );
+        assert_eq!(std::fs::read(root.join("a.tex")).unwrap(), b"external edit");
+    }
+    #[test]
+    fn native_move_rechecks_the_editor_baseline() {
+        let (roots, root) = fixture();
+        std::fs::write(root.join("a.tex"), b"external edit").unwrap();
+        let result = operate_checked(
+            &roots,
+            root.to_string_lossy().into_owned(),
+            "move".into(),
+            Some("a.tex".into()),
+            Some("b.tex".into()),
+            None,
+            Some(b"old editor baseline".to_vec()),
+        );
+        assert!(
+            result.is_err(),
+            "Move must reject changes after frontend preflight"
+        );
+        assert_eq!(std::fs::read(root.join("a.tex")).unwrap(), b"external edit");
+        assert!(!root.join("b.tex").exists());
+    }
+    #[test]
+    fn concurrent_moves_never_replace_a_new_destination() {
+        let (_, root) = fixture();
+        std::fs::write(root.join("one.tex"), b"one").unwrap();
+        std::fs::write(root.join("two.tex"), b"two").unwrap();
+        let barrier = std::sync::Arc::new(std::sync::Barrier::new(2));
+        let mut threads = Vec::new();
+        for (name, expected) in [("one.tex", b"one"), ("two.tex", b"two")] {
+            let source = root.join(name);
+            let target = root.join("destination.tex");
+            let barrier = barrier.clone();
+            threads.push(std::thread::spawn(move || {
+                // Both callers observed an absent destination before beginning.
+                assert!(!target.exists());
+                barrier.wait();
+                mutate_entry(&source, Some(&target), Some(expected))
+            }));
+        }
+        let succeeded = threads
+            .into_iter()
+            .filter_map(|thread| thread.join().unwrap().ok())
+            .count();
+        assert_eq!(succeeded, 1);
+        let destination = std::fs::read(root.join("destination.tex")).unwrap();
+        if destination == b"one" {
+            assert_eq!(std::fs::read(root.join("two.tex")).unwrap(), b"two");
+        } else {
+            assert_eq!(destination, b"two");
+            assert_eq!(std::fs::read(root.join("one.tex")).unwrap(), b"one");
+        }
     }
     #[test]
     fn permission_and_exclusive_locks_preserve_original() {
