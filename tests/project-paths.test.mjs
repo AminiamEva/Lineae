@@ -18,5 +18,5 @@ test('tree preserves file identity, dirty state, empty directories and resource 
   assert.equal(tree.children[2].fileId, 'one');
   assert.equal(tree.children[2].dirty, true);
   assert.equal(tree.children[0].children[0].fileId, 'two');
-  assert.equal(fileKind('figure.PDF'), 'image');
+  assert.equal(fileKind('figure.PDF'), 'pdf');
 });

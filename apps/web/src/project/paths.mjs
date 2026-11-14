@@ -9,7 +9,10 @@ export function projectPath(value, base = '') {
     if (part === '..') {
       if (!parts.length) throw new RangeError('Path escapes project root');
       parts.pop();
-    } else parts.push(part);
+    } else {
+      if(/[<>"|?*]/.test(part) || /[. ]$/.test(part) || /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)/i.test(part))throw new TypeError('Invalid filename');
+      parts.push(part);
+    }
   }
   if (!parts.length) throw new TypeError('Expected a file or directory path');
   return parts.join('/');
@@ -17,8 +20,8 @@ export function projectPath(value, base = '') {
 
 export function fileKind(path) {
   const extension = path.split('.').at(-1).toLowerCase();
-  return extension === 'tex' ? 'tex' : extension === 'bib' ? 'bib'
-    : ['png', 'jpg', 'jpeg', 'svg', 'pdf', 'webp', 'gif'].includes(extension) ? 'image' : 'resource';
+  return extension === 'tex' ? 'tex' : extension === 'bib' ? 'bib' : extension === 'pdf' ? 'pdf'
+    : ['png', 'jpg', 'jpeg', 'svg', 'webp', 'gif'].includes(extension) ? 'image' : 'resource';
 }
 
 /** The tree is derived from file records; file identity survives a rename. */

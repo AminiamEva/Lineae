@@ -5,6 +5,7 @@ use std::sync::Mutex;
 use serde::Serialize;
 use tauri::{AppHandle, State, WebviewUrl, WebviewWindowBuilder};
 use tauri_plugin_dialog::DialogExt;
+mod project;
 
 /// Paths the user has explicitly chosen in a native dialog during this session.
 /// Write commands only accept paths from this set, so the webview cannot touch
@@ -176,11 +177,14 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .manage(AllowedFiles::default())
+        .manage(project::ProjectRoots::default())
         .invoke_handler(tauri::generate_handler![
             open_tex,
             pick_save_tex,
             write_tex,
-            save_bytes
+            save_bytes,
+            project::open_project,
+            project::project_operation
         ])
         .setup(|app| {
             WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))

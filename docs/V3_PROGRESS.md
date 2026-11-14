@@ -1,6 +1,18 @@
 # V3 checkpoint — 2026-11-14
 
-This is an incomplete development checkpoint, not V3 acceptance.
+## Latest Phase 1.5
+
+Native Tauri project picker/adapter, bounded dependency initialization, semantic
+main candidates/user selection, file/directory rename and move are implemented.
+235 selected tests, Web build, new browser integration and V2 regression passed.
+Real Windows disk rename/move and unsaved-draft save-to-new-path were automated
+through the native IPC contract. Rust compiler/runtime and native dialog/manual
+permissions remain unverified; Phase 1 is not declared fully accepted. See the
+latest section in PHASE1_ACCEPTANCE_REPORT.md. No Phase 2 work, push or release.
+
+This is an incomplete development checkpoint, not V3 acceptance. The latest
+Phase 1 implementation and evidence are in PHASE1_ACCEPTANCE_REPORT.md. The
+foundation-only status below describes the previous checkpoint.
 
 ## Changes
 

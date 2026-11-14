@@ -1,5 +1,26 @@
 # V3 implementation contract and audit
 
+## Phase 1.5 additions
+
+The Tauri bridge selects directories with the existing dialog plugin and returns
+a project adapter. Rust retains authorized roots and validates every relative
+operation against the canonical selected root; listing skips symbolic/junction
+aliases. Browser File System Access remains a separate adapter. Native commands
+preserve byte content and use OS rename for files and directories.
+
+Project.move validates destination, affected saved bytes and directory membership,
+then calls the adapter before updating existing records in place. File IDs,
+drafts and CodeMirror states survive; pathChanges records old/new paths without
+rewriting TeX source. UI operations serialize disk mutations.
+
+Dependency metadata is bounded: literal input/include/graphics/Bib resource
+commands, known missing resources and pending macro paths. Source scans are
+cached per file ID and refreshed on changed content, not on file switches.
+Main candidates come from documentclass declarations with a main.tex fallback;
+the user can select another TeX file. This is not macro expansion or full Phase 2.
+Native compilation and native dialog/manual permission acceptance are pending;
+test results distinguish substituted IPC, OS disk, and browser native OPFS.
+
 Baseline: origin/main 8b3db67aeb7203a75b1b42b151aeef89ecdc643e.
 PR #14 was confirmed merged through GitHub API at 4531d2dc3c0ef67e322982f039a7ade890365d38.
 Branch: feat/project-multipage-bibliography. Isolated managed worktree: lineae-v3-project/Lineae-source-editor-pr.
@@ -66,11 +87,27 @@ Font embedding, release engineering and collaboration are deferred. Full TeX
 catcodes, package execution, arbitrary macros and exact TeX page breaking are
 not promised. Unsupported syntax must remain source-preserved and diagnosed.
 
-Current implementation is foundation-only: path normalization, derived trees,
-project draft records and a browser directory-handle read/write adapter. Saving
-checks current disk bytes and retains dirty drafts when writing fails. This is
-not atomic protection against an external write between the check and write.
-Main selection currently prefers main.tex, then the first TeX file; semantic
-main-document detection is pending. The adapter has not had real-browser disk
-acceptance. Explorer UI, editor session integration and new TeX semantics are
-not complete. Do not describe the planned architecture as shipped behavior.
+The explorer now consumes Project.tree directly, with native directory-handle
+reads/writes, file/directory creation, confirmed deletion and explicit disk reload.
+The bottom status bar's first child is the explorer toggle. Opening/reopening
+always resets visibility to hidden. Directory expansion is UI state, file content
+and dirty state are owned by Project.
+
+The existing CodeMirror view is reused. Each file stores its EditorState (including
+undo history, selection and EOL metadata), original source and scroll offsets.
+Project switches restore that state; the existing rich-text projection is rebuilt.
+Rich selection and Split preference are stored per file. Project files use Source
+or Split; standalone Document mode remains available outside projects. Bib files
+use source editing with preview disabled. Full bibliography-manager integration
+is pending. Binary resources are identified but not opened in a text editor.
+
+Fragment parsing is explicit and opt-in, used for project TeX files only. The
+temporary document wrapper is removed from parser results; projection offsets
+refer to child source bytes. Original mixed EOL bytes remain authoritative.
+
+Saving checks disk bytes and retains dirty drafts on failure. Reload discards a
+dirty draft only after confirmation. There remains a check/write race against an
+external writer. Creation also has a check/create race. Main selection still
+prefers main.tex, then the first TeX file. Semantic root detection, dependency
+initialization, filesystem watching, rename/move transactions and full native
+directory-picker acceptance are pending. See PHASE1_ACCEPTANCE_REPORT.md.

@@ -278,6 +278,19 @@ export function createSourceWorkspace({ page, render, metadata, onChange = () =>
   }, {signal:lifecycle.signal});
   return {
     destroy,
+    captureSession() {
+      clearTimeout(timer);
+      return view ? {state:view.state, original, top:view.scrollDOM.scrollTop, left:view.scrollDOM.scrollLeft} : null;
+    },
+    restoreSession(session, text) {
+      clearTimeout(timer);
+      if (session && view) { view.setState(session.state); original = session.original; }
+      else replace(text, true);
+      lastRendered = undefined;
+      if (session) { view.scrollDOM.scrollTop = session.top; view.scrollDOM.scrollLeft = session.left; }
+      refresh();
+      updatePreview();
+    },
     get hidden() { return panel.hidden; },
     get split() { return expanded; },
     get composing() { return view?.composing ?? false; },

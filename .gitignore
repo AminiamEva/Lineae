@@ -1,6 +1,8 @@
 node_modules/
 apps/web/editor.mjs
 apps/web/vendor/
+test-results/
+mathlive-*.tgz
 apps/desktop/node_modules/
 apps/desktop/dist/
 apps/desktop/src-tauri/target/

@@ -1,0 +1,18 @@
+#project-explorer {position:fixed;left:0;top:var(--tex-toolbar-bottom,125px);bottom:30px;width:230px;padding:12px;box-sizing:border-box;overflow:auto;z-index:11;background:light-dark(#f7f8fb,#25272c);border-right:1px solid light-dark(#dfe2e9,#454851);font-size:12px}
+#project-explorer[hidden] {display:none}
+#project-explorer strong {display:block;overflow-wrap:anywhere;margin-bottom:12px}
+.project-actions {display:flex;gap:5px;flex-wrap:wrap;margin-bottom:12px}
+.project-actions button {font-size:11px;padding:4px 6px}
+.project-file {display:block;text-align:left;width:100%;padding:5px 7px;background:transparent;border-radius:5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.project-file[aria-current=true] {background:light-dark(#dfe9fb,#344763)}
+#project-explorer details {padding-left:10px}
+#project-explorer summary {cursor:pointer;padding:5px 0}
+body.project-visible main {margin-left:230px}
+body.project-visible .tex-workspace,body.project-visible .tex-workspace.is-expanded {left:230px;width:auto}
+.document-status {z-index:12}
+body.project-visible main,.tex-workspace {transition:margin-left .15s ease,left .15s ease}
+#project-open {white-space:nowrap;flex-shrink:0}
+@media(max-width:600px) {.document-status{gap:3px;flex-wrap:nowrap}.document-status #status,.document-status .environment-tag,.document-status input[type=range],.document-status output{display:none}.document-status button{white-space:nowrap;flex-shrink:0}.document-status span{min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}}
+@media(prefers-reduced-motion:reduce){body.project-visible main,.tex-workspace{transition:none}}
+@media(max-width:600px) {#project-explorer{width:150px;padding:6px}body.project-visible main{margin-left:150px}body.project-visible .tex-workspace,body.project-visible .tex-workspace.is-expanded{left:150px}}
+@media print {#project-explorer{display:none!important}body.project-visible main{margin-left:0}}

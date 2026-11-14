@@ -13,6 +13,7 @@ import { PaperBehavior } from './editor/paper-behavior.js';
 import { MathNode, MathBlock, configureMathFences, focusInsertedOperator, insertFormula, isMathOperatorWithBody, mathEnvironment, toggleDisplayStyle } from './editor/math-node.js';
 import { Ref, Label, Cite, Footnote, TableOfContents, refreshReferences, collectReferenceLabels } from './editor/references.js';
 import { createCitationLibrary, openCitationPanel } from './editor/citation-library.js';
+import { installProjectExplorer } from './project/explorer.js';
 import { applyCitationRenames } from '../bib/index.mjs';
 import { chooseReference } from './editor/reference-index.js';
 import { installTableHoverAddRow } from './editor/table-hover.js';
@@ -844,10 +845,11 @@ button('＋ Row',addMatrixRow);
 button('＋ Column',addMatrixColumn);
 button('$',()=>insertMath());
 button('$$',()=>insertMath(true)).dataset.shortcut='editor.insertDisplayMath';
-let projection, syncApplying = false, syncPending = false, sourceToolbar;
+let projection, syncApplying = false, syncPending = false, sourceToolbar, projectExplorer, projectFileKind;
 const sourceView = createSourceWorkspace({
   page: documentPage,
   render: text => {
+    if (projectFileKind === 'bib') return;
     if (editor.view.composing) return false;
     const selection = editor.state.selection;
     syncApplying = true;
@@ -856,11 +858,11 @@ const sourceView = createSourceWorkspace({
       const max = editor.state.doc.content.size;
       editor.view.dispatch(editor.state.tr.setSelection(TextSelection.between(
         editor.state.doc.resolve(Math.min(selection.anchor,max)), editor.state.doc.resolve(Math.min(selection.head,max)))));
-      projection = sourceProjection(text,editor.getJSON());
+      projection = sourceProjection(text,editor.getJSON(), {fragment:projectFileKind === 'tex'});
       syncPending = false;
     } finally { syncApplying = false; }
   },
-  onChange: () => { syncPending = true; },
+  onChange: () => { syncPending = true; projectExplorer?.changed(); },
   onLayout: () => updateSourceButton(),
   metadata: () => ({name: filename, saved: savedSource}),
 });
@@ -893,7 +895,8 @@ editor.on('update', () => {
   importedSource = sourceView.value;
   importedSnapshot = JSON.stringify(editor.getJSON());
   documentParts = parseDocument(importedSource);
-  projection = sourceProjection(importedSource,editor.getJSON());
+  projection = sourceProjection(importedSource,editor.getJSON(), {fragment:projectFileKind === 'tex'});
+  projectExplorer?.changed();
   sourceView.error('');
 });
 let documentParts=parseDocument('\\documentclass{article}\n\\usepackage[margin=2.2cm]{geometry}\n\\usepackage{amsmath}\n\\begin{document}\n\\end{document}\n');
@@ -1025,7 +1028,7 @@ function identifyImportedBoxes(node) {
 function load(text, markSaved = true) {
   const wasApplying = syncApplying; syncApplying = true;
   try {
-  const parsed=parseDocument(text);
+  const parsed=parseDocument(text, {fragment:projectFileKind === 'tex'});
   if(!parsed)throw new Error(t('无法识别文档','Invalid document'));
   if (markSaved) clearProjectAssets();
   citationLibrary.restoreState(readBibliographyMetadata(text));
@@ -1046,6 +1049,7 @@ function load(text, markSaved = true) {
 }
 let returnedDraft;
 function setSourceMode(active) {
+  if (!active && projectExplorer?.active) { sourceView.error('工程文件请使用源码或 Split 模式 / Use Source or Split for project files'); return; }
   if (editor.view.composing || sourceView.composing) { sourceView.error(t("请先完成当前输入。","Finish the current composition before switching modes.")); return; }
   if (active === !sourceView.hidden) return;
   if (active) {
@@ -1102,6 +1106,7 @@ async function downloadProject() {
   }
 }
 async function saveDocument(saveAs=false) {
+  if (projectExplorer?.active && !saveAs) return projectExplorer.save();
   const text=sourceView.hidden?source():sourceView.value;
   if(window.showSaveFilePicker) {
     try {
@@ -1126,6 +1131,7 @@ async function saveDocument(saveAs=false) {
   await downloadProject();
 }
 async function openDocument() {
+  if (projectExplorer?.active && !projectExplorer.close()) return true;
   try {
     const [handle]=await window.showOpenFilePicker({types:[{description:'LaTeX',accept:{'text/plain':['.tex']}}],multiple:false});
     const file=await handle.getFile();
@@ -1138,7 +1144,7 @@ async function openDocument() {
     return false;
   }
 }
-document.querySelector('#download').addEventListener('click',downloadProject);
+document.querySelector('#download').addEventListener('click',()=>projectExplorer?.active?projectExplorer.save():downloadProject());
 document.querySelector('.open').addEventListener('click',event=>{
   if(!window.showOpenFilePicker)return;
   event.preventDefault();
@@ -1150,6 +1156,7 @@ window.addEventListener('beforeunload',event=>{
   event.returnValue='';
 });
 document.querySelector('#file').addEventListener('change',async event=>{
+  if (projectExplorer?.active && !projectExplorer.close()) return;
   const file=event.target.files[0];if(!file)return;
   try {fileHandle=null;load(new TextDecoder('utf-8',{fatal:true,ignoreBOM:true}).decode(await file.arrayBuffer()));filename=file.name;sourceView.refresh();}
   catch(error){const status=document.querySelector('#status');status.hidden=false;status.textContent=error.message;}
@@ -1532,7 +1539,7 @@ const [bodyButton,sourceButton,splitButton] = ['body','source','split'].map(mode
   const button = document.createElement('button');
   button.type = 'button';
   button.dataset.sourceMode = mode;
-  button.onclick = () => { setSourceMode(mode !== 'body'); if (mode !== 'body') sourceView.setSplit(mode === 'split'); };
+  button.onclick = () => { if (projectFileKind === 'bib' && mode !== 'source') return; setSourceMode(mode !== 'body'); if (mode !== 'body') sourceView.setSplit(mode === 'split'); };
   modes.append(button);
   return button;
 });
@@ -1815,6 +1822,42 @@ function updateEnvironment() {
   environment.dataset.environment=name;
 }
 footer.append(count,document.querySelector('#status'),environment,zoom,percent,paginationButton,themeButton,modes);document.body.append(footer);scale();updatePaginationButton();
+let standaloneSession;
+projectExplorer = installProjectExplorer({footer, sessions:{
+  ensureIdle() { if (editor.view.composing || sourceView.composing) throw new Error('请先完成当前输入 / Finish composition first'); },
+  text:() => sourceView.hidden ? source() : sourceView.value,
+  capture:() => ({...sourceView.captureSession(), split:sourceView.split, richSelection:{anchor:editor.state.selection.anchor, head:editor.state.selection.head}}),
+  approveOpen:() => (sourceView.hidden?source():sourceView.value) === savedSource || confirm('保留当前单文件草稿并打开工程？ / Keep the current single-file draft and open a project?'),
+  begin() {
+    if (!standaloneSession) standaloneSession = {text:sourceView.hidden?source():sourceView.value, filename, fileHandle, savedSource};
+  },
+  open(file) {
+    projectFileKind = file.kind;
+    returnedDraft = undefined; syncPending = false;
+    filename = file.path; fileHandle = null; savedSource = file.saved;
+    if (sourceView.hidden) sourceView.open(file.draft);
+    sourceView.restoreSession(file.session, file.draft);
+    if (file.session) sourceView.setSplit(file.kind !== 'bib' && file.session.split);
+    if (file.kind === 'tex' && file.session?.richSelection) {
+      const {anchor,head} = file.session.richSelection, max = editor.state.doc.content.size;
+      editor.view.dispatch(editor.state.tr.setSelection(TextSelection.between(editor.state.doc.resolve(Math.min(anchor,max)),editor.state.doc.resolve(Math.min(head,max)))));
+    }
+    if (file.kind === 'bib') sourceView.setSplit(false);
+    updateSourceButton();
+  },
+  saved(text) { savedSource = text; sourceView.refresh(); },
+  error(text) { const status = document.querySelector('#status'); status.hidden = false; status.textContent = text; },
+  end() {
+    projectFileKind = undefined; returnedDraft = undefined;
+    if (standaloneSession) {
+      const previous = standaloneSession; standaloneSession = null;
+      filename = previous.filename; fileHandle = previous.fileHandle;
+      load(previous.text); savedSource = previous.savedSource;
+      sourceView.restoreSession(null,previous.text);
+    }
+    updateSourceButton();
+  },
+}});
 editor.on('transaction',updateEnvironment);
 document.addEventListener('focusin',updateEnvironment);paper.addEventListener('input',updateEnvironment);
 paper.addEventListener('selection-change',updateEnvironment,true);
