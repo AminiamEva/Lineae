@@ -1,0 +1,27 @@
+{
+  "before": {
+    "bytes": 2252738,
+    "gzip": 537028
+  },
+  "after": {
+    "bytes": 2262659,
+    "gzip": 539635
+  },
+  "delta": {
+    "bytes": 9921,
+    "gzip": 2607
+  },
+  "beforeCss": {
+    "bytes": 7660,
+    "gzip": 2561
+  },
+  "afterCss": {
+    "bytes": 9611,
+    "gzip": 2827
+  },
+  "cssDelta": {
+    "bytes": 1951,
+    "gzip": 266
+  },
+  "dependenciesAdded": 0
+}
