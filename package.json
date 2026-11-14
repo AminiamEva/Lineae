@@ -4,6 +4,14 @@
     "build": "esbuild apps/web/src/main.js --bundle --format=esm --loader:.yaml=text --outfile=apps/web/editor.mjs"
   },
   "dependencies": {
+    "@codemirror/autocomplete": "6.18.7",
+    "@codemirror/commands": "6.8.1",
+    "@codemirror/language": "6.11.3",
+    "@codemirror/legacy-modes": "6.5.1",
+    "@codemirror/search": "6.5.11",
+    "@codemirror/state": "6.5.2",
+    "@codemirror/view": "6.38.6",
+    "@lezer/highlight": "1.2.1",
     "@tiptap/core": "2.11.5",
     "@tiptap/extension-table": "2.11.5",
     "@tiptap/extension-table-cell": "2.11.5",
@@ -12,14 +20,7 @@
     "@tiptap/pm": "2.11.5",
     "@tiptap/starter-kit": "2.11.5",
     "esbuild": "0.25.0",
-    "yaml": "2.9.1",
-    "@codemirror/state": "6.5.2",
-    "@codemirror/view": "6.38.6",
-    "@codemirror/language": "6.11.3",
-    "@codemirror/legacy-modes": "6.5.1",
-    "@codemirror/search": "6.5.11",
-    "@codemirror/commands": "6.8.1",
-    "@lezer/highlight": "1.2.1"
+    "yaml": "2.9.1"
   },
   "overrides": {
     "@tiptap/pm": "2.11.5",

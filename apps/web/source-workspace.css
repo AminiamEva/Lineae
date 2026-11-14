@@ -8,7 +8,7 @@
   --tex-command: light-dark(#685596,#c3b2e8);
   --tex-environment: light-dark(#476d95,#9dbfe6);
   --tex-comment: light-dark(#67796e,#9eb5a5);
-  --tex-argument: light-dark(#896b51,#d5b99b);
+  --tex-argument: light-dark(#527b80,#a6c7cd);
   --tex-math: light-dark(#525f95,#adb8ed);
   width:min(100%,70rem); height:clamp(320px,calc(100dvh - 180px),960px);
   margin:auto; display:flex; flex-direction:column; overflow:hidden;
@@ -74,4 +74,33 @@ body:has(.tex-workspace.is-expanded) {overflow:hidden}
   .document-status:has(.tex-modes) {gap:4px;padding-inline:6px}
   .document-status:has(.tex-modes) input[type=range] {width:clamp(34px,12vw,64px);min-width:0}
   .document-status:has(.tex-modes) #status {min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+}
+
+/* V2 uses the entire available workspace, below the existing ribbon. */
+.tex-workspace,.tex-workspace.is-expanded {
+  position:fixed;inset:var(--tex-toolbar-bottom,110px) 0 36px;
+  width:auto;height:auto;margin:0;border-radius:0;z-index:8;
+  border-inline:0;box-shadow:none;
+}
+body:has(.tex-workspace:not([hidden])) {overflow:hidden}
+.tex-code .cm-editor {font-size:var(--tex-font-size,14px)}
+.tex-code .cm-scroller {font-size:var(--tex-font-size,14px);overscroll-behavior:contain}
+.tex-actions .tex-zoom-label {width:46px;font-size:12px;font-variant-numeric:tabular-nums}
+.tex-workspace .tex-preview .document-page {pointer-events:auto;cursor:text}
+.tex-workspace .tex-preview {padding:18px;scrollbar-gutter:stable}
+.tex-actions button:focus-visible {outline:2px solid var(--tex-command);outline-offset:2px}
+.tex-code .cm-tooltip {border:1px solid var(--tex-border);border-radius:8px;background:var(--tex-bar);color:inherit;box-shadow:0 8px 24px #18223b18}
+.tex-code .cm-tooltip-autocomplete ul li[aria-selected] {background:var(--tex-active);color:inherit}
+.tex-code .cm-completionDetail {color:var(--tex-muted);font-size:.85em}
+.tex-code .tex-structure-error {text-decoration:underline wavy #b88866;text-underline-offset:4px}
+.tex-code .cm-foldPlaceholder {background:var(--tex-active);border-color:var(--tex-border);color:var(--tex-muted)}
+.tex-code .cm-snippetField {background:#a5b4fc22}
+.ribbon [data-source-unavailable] {opacity:.35;cursor:not-allowed}
+.tex-preview::before {content:'Rich text · protected source blocks remain unchanged';display:block;color:var(--tex-muted);font-size:11px;margin-bottom:12px}
+html[lang^=zh] .tex-preview::before {content:'富文本 · 受保护的源码片段保持原样'}
+@media(max-width:899px) {
+  .tex-workspace.is-expanded {inset:var(--tex-toolbar-bottom,110px) 0 36px}
+  .tex-workspace.is-expanded .tex-body {grid-template-columns:minmax(0,1fr);grid-template-rows:minmax(0,1fr) minmax(0,1fr)}
+  .tex-workspace.is-expanded .tex-preview {display:block;border-top:1px solid var(--tex-border)}
+  .tex-workspace.is-expanded .tex-preview-toggle {display:none}
 }

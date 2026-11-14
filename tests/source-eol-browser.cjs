@@ -17,7 +17,8 @@ const server=createServer(async(req,res)=>{
   await new Promise((done,reject)=>{server.once('error',reject);server.listen(0,'127.0.0.1',done);});
   let browser;
   try {
-    browser=await chromium.launch({headless:true});
+    const executablePath=process.env.LINEAE_CHROMIUM_EXECUTABLE;
+    browser=await chromium.launch({headless:true,...(executablePath&&{executablePath})});
     console.log('Windows Chromium',browser.version(),process.platform);
     const context=await browser.newContext({permissions:['clipboard-read','clipboard-write']});
     const errors=[]; context.on('page',page=>page.on('pageerror',e=>errors.push(e.stack)));

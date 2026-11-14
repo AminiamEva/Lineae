@@ -7,6 +7,8 @@ import { search, searchKeymap, openSearchPanel, closeSearchPanel } from '@codemi
 import { tags } from '@lezer/highlight';
 import { icon } from './icons.js';
 import { t } from '../ui/i18n.mjs';
+import { latexAssist, insertLatexSnippet } from './latex-assist.js';
+import { undo, redo, isolateHistory } from '@codemirror/commands';
 import { sourceEolExtensions, sourceWithEndings } from './source-eol-state.js';
 
 const latex = StreamLanguage.define({
@@ -32,7 +34,7 @@ function element(tag, className) {
   return node;
 }
 
-export function createSourceWorkspace({ page, render, metadata }) {
+export function createSourceWorkspace({ page, render, metadata, onChange = () => {}, onLayout = () => {} }) {
   const lifecycle = new AbortController();
   const panel = element('section', 'tex-workspace');
   panel.hidden = true;
@@ -72,7 +74,17 @@ export function createSourceWorkspace({ page, render, metadata }) {
   }
   let view, original, timer, scrollTop = 0, scrollLeft = 0;
   let savedText, savedDoc;
-  let lastRendered, expanded = false, previewOnly = false;
+  let lastRendered, expanded = false, previewOnly = false, receiving = false;
+  let fontSize = 14;
+  try { fontSize = Math.max(11, Math.min(24, Number(localStorage.getItem("lineae.sourceFontSize")) || 14)); } catch {}
+  function zoom(size) {
+    fontSize = Math.max(11, Math.min(24, size));
+    panel.style.setProperty("--tex-font-size", fontSize + "px");
+    zoomLabel.textContent = fontSize + "px";
+    try { localStorage.setItem("lineae.sourceFontSize", String(fontSize)); } catch {}
+    view?.requestMeasure();
+    return true;
+  }
   const wide = matchMedia('(min-width: 900px)');
   const buttons = [];
   function action(glyph, label, run, className = '') {
@@ -101,7 +113,16 @@ export function createSourceWorkspace({ page, render, metadata }) {
       message.textContent = t('已复制','Copied');
     } catch { message.textContent = t('复制失败，请使用键盘复制','Copy failed. Use the keyboard to copy.'); }
   });
-  const expandButton = action('sourceExpand', () => expanded ? t('收起工作区','Collapse workspace') : t('展开工作区','Expand workspace'), () => setExpanded(!expanded));
+  const zoomOut = action('sourceCollapse', () => t('缩小源码字号 (Ctrl+-)','Decrease code font (Ctrl+-)'), () => zoom(fontSize-1));
+  zoomOut.textContent = '−';
+  const zoomLabel = element('button', 'tex-zoom-label');
+  zoomLabel.type = 'button'; zoomLabel.title = 'Reset code font (Ctrl+0)';
+  zoomLabel.addEventListener('click', () => zoom(14), {signal:lifecycle.signal});
+  actions.append(zoomLabel);
+  const zoomIn = action('sourceExpand', () => t('放大源码字号 (Ctrl++)','Increase code font (Ctrl++)'), () => zoom(fontSize+1));
+  zoomIn.textContent = '+';
+  zoom(fontSize);
+  const expandButton = action('sourceExpand', () => expanded ? t('仅源码','Source only') : t('分栏编辑','Split editing'), () => setExpanded(!expanded));
 
   function value() {
     if (!view) return '';
@@ -130,11 +151,11 @@ export function createSourceWorkspace({ page, render, metadata }) {
   }
   function updatePreview() {
     clearTimeout(timer);
-    if (!expanded || panel.hidden || (!wide.matches && !previewOnly)) return;
+    if (panel.hidden || view?.composing) { if (!panel.hidden) timer = setTimeout(updatePreview, 120); return; }
     const text = value();
     if (text === lastRendered) { message.textContent = ''; return; }
     try {
-      render(text);
+      if (render(text) === false) { timer = setTimeout(updatePreview,120); return; }
       lastRendered = text;
       message.textContent = '';
     } catch (err) { message.textContent = err.message; }
@@ -156,7 +177,7 @@ export function createSourceWorkspace({ page, render, metadata }) {
     if (next) {
       preview.append(page);
       page.hidden = false;
-      page.inert = true;
+      page.inert = false;
 
     } else {
       page.hidden = true;
@@ -164,6 +185,7 @@ export function createSourceWorkspace({ page, render, metadata }) {
       anchor.after(page);
     }
     layout();
+    onLayout(expanded);
     focus();
   }
   wide.addEventListener('change', layout, {signal:lifecycle.signal});
@@ -172,7 +194,7 @@ export function createSourceWorkspace({ page, render, metadata }) {
     if (closeSearchPanel(view)) { e.preventDefault(); focus(); }
     else if (expanded) { e.preventDefault(); setExpanded(false); }
   }, {signal:lifecycle.signal});
-  let ratio = 45;
+  let ratio = 50;
   function setRatio(n) {
     ratio = Math.max(25, Math.min(75, n));
     panel.style.setProperty('--tex-split', ratio + '%');
@@ -184,7 +206,7 @@ export function createSourceWorkspace({ page, render, metadata }) {
   divider.setAttribute('aria-orientation','vertical');
   divider.setAttribute('aria-valuemin','25');
   divider.setAttribute('aria-valuemax','75');
-  setRatio(45);
+  setRatio(50);
   divider.onpointerdown = e => { divider.setPointerCapture(e.pointerId); e.preventDefault(); };
   divider.onpointermove = e => {
     if (!divider.hasPointerCapture(e.pointerId)) return;
@@ -207,7 +229,12 @@ export function createSourceWorkspace({ page, render, metadata }) {
 
         language.of(phrases()), lineNumbers(), highlightActiveLine(), highlightActiveLineGutter(), drawSelection(),
         EditorState.allowMultipleSelections.of(true), history(), search({top:true}),
-        indentOnInput(), bracketMatching(), latex, syntaxHighlighting(highlight),
+        indentOnInput(), bracketMatching(), latex, syntaxHighlighting(highlight), latexAssist(),
+        keymap.of([
+          {key:"Mod-=",run:()=>zoom(fontSize+1)}, {key:"Mod-+",run:()=>zoom(fontSize+1)},
+          {key:"Mod--",run:()=>zoom(fontSize-1)}, {key:"Mod-0",run:()=>zoom(14)},
+          {key:"Mod-h",run:openSearchPanel},
+        ]),
         EditorView.lineWrapping, keymap.of([...searchKeymap, ...historyKeymap, ...defaultKeymap, indentWithTab]),
         EditorView.contentAttributes.of({'aria-label':'LaTeX', spellcheck:'false'}),
         EditorView.updateListener.of(update => {
@@ -215,7 +242,7 @@ export function createSourceWorkspace({ page, render, metadata }) {
             original = undefined;
             message.textContent = '';
             clearTimeout(timer);
-            timer = setTimeout(updatePreview, 240);
+            if (!receiving) { onChange(value()); timer = setTimeout(updatePreview, 240); }
           }
           if (update.docChanged || update.selectionSet) refresh();
         }),
@@ -252,6 +279,20 @@ export function createSourceWorkspace({ page, render, metadata }) {
   return {
     destroy,
     get hidden() { return panel.hidden; },
+    get split() { return expanded; },
+    get composing() { return view?.composing ?? false; },
+    find() { if(view) openSearchPanel(view); },
+    setSplit(next) { if (!panel.hidden) setExpanded(next); },
+    flush: updatePreview,
+    insertLatexSnippet(spec) { if(view) insertLatexSnippet(view, spec); },
+    undo() { if(view) undo(view); }, redo() { if(view) redo(view); },
+    applyChanges(changes) {
+      const current = value();
+      const offset = n => current.slice(0,n).replace(/\r\n?/g,"\n").length;
+      receiving = true;
+      try { view.dispatch({changes:changes.map(c=>({from:offset(c.from),to:offset(c.to),insert:c.insert.replace(/\r\n?/g,"\n")})),annotations:isolateHistory.of("full"),userEvent:"input.rich"}); lastRendered = value(); }
+      finally { receiving = false; }
+    },
     get value() { return value(); },
     open(text) {
       if (lifecycle.signal.aborted) return;
@@ -259,7 +300,7 @@ export function createSourceWorkspace({ page, render, metadata }) {
       panel.hidden = false;
       replace(text);
       page.hidden = true;
-      lastRendered = text;
+      lastRendered = undefined;
       message.textContent = '';
       layout();
       focus();
