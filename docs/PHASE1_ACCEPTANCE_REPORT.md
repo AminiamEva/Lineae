@@ -1,5 +1,57 @@
 # Phase 1 implementation and acceptance — 2026-11-14
 
+## Native build and actual desktop validation (latest)
+
+The earlier missing-toolchain/native-picker gaps below are superseded by this
+section. Rust 1.100.0 MSVC was installed locally in test-results/toolchain using
+the official rustup distribution, without modifying system PATH. Existing Visual
+Studio 2017 C++ tools and Windows SDK were used. Cargo.lock now pins the actual
+resolved desktop dependencies. No release installer or signing was performed.
+
+Actual results:
+
+- Web build and staging: passed.
+- `cargo test --locked --manifest-path apps/desktop/src-tauri/Cargo.toml --lib`:
+  2 passed, 0 failed/ignored. These call production Rust operation logic on real
+  Windows disk: Chinese/space paths, BOM/mixed EOL and binary content, file and
+  directory moves, write/read/delete, scope denial, destination collision,
+  missing files, self-descendant moves and invalid payload preservation.
+- `cargo build --locked --manifest-path apps/desktop/src-tauri/Cargo.toml`:
+  passed; debug executable at apps/desktop/src-tauri/target/debug/lineae.exe.
+- 235 JavaScript tests passed with zero skips; project browser E2E and existing
+  V2 browser regressions passed again.
+- The freshly compiled Tauri app was actually launched. Windows UI automation
+  clicked Open Project, observed the real Windows folder dialog, selected
+  test-results/phase1/原生 工程, and observed main.tex load with the tree hidden.
+- Using that application's actual UI and Rust backend (no substituted IPC),
+  sections/method.tex was renamed to sections/renamed.tex, then moved to moved.tex.
+  The active editor path followed both changes. Text was added and saved.
+  Independent filesystem reads verified the new content, unchanged main.tex,
+  and absence of both old paths.
+- Reopening the native picker and cancelling with Escape closed the dialog
+  and preserved the active moved.tex content and project.
+
+Evidence: tool-observed native window/accessibility states in this chat;
+test-results/phase1/native-build.log, native-check.log, unit-regression.log,
+project-browser.log, v2-regression.log and the retained 原生 工程 fixture.
+Native UI actions were automated and observed, not a user-performed manual audit.
+Some UI captures initially lacked coordinate geometry; refreshing/activating
+the returned native window resolved this without modifying application code.
+
+Fix found during native testing work: a write/create request without bytes is
+now rejected before opening/truncating the destination. A Rust regression test
+proves an existing file remains intact. No compilation source errors remained.
+
+Still not claimed as verified: actual Windows access-denied and locked-file
+dialogs, physical Chinese IME, multi-process race/crash recovery, release build
+and installer. Browser-only directory rename/move and automatic TeX reference
+rewriting remain unsupported as previously documented. Core native happy-path
+acceptance is now verified; exhaustive Phase 1 acceptance is not declared.
+
+Reproduce: build Web assets first, then run
+`apps/desktop/scripts/check-native.ps1`; it uses system cargo or the local
+test toolchain and fails immediately on staging/test/build errors.
+
 Status: substantial integration implemented; full Phase 1 acceptance is pending.
 Latest Phase 1.5 checkpoint supersedes the remaining-feature list below:
 

@@ -1,5 +1,12 @@
 # V3 implementation contract and audit
 
+Native follow-up: the adapter is now compiled and tested with a pinned Cargo.lock.
+Production Rust disk tests exercise the same operation helper invoked by Tauri.
+The actual desktop UI has selected a Windows folder and completed file rename,
+move and save. Invalid write payloads are validated before opening a file.
+check-native.ps1 provides a repeatable locked test/debug-build gate. Permission,
+crash and concurrent-writer coverage remains limited; see acceptance report.
+
 ## Phase 1.5 additions
 
 The Tauri bridge selects directories with the existing dialog plugin and returns

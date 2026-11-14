@@ -1,5 +1,17 @@
 # V3 checkpoint — 2026-11-14
 
+## Native acceptance follow-up
+
+Rust/MSVC toolchain installed within ignored test-results; Cargo.lock added.
+Desktop debug build passed, 2 production-Rust disk tests passed, 235 JS tests
+and project/V2 browser regressions passed. Actual Tauri UI selected a Chinese
+space-path folder, preserved hidden-tree default, renamed/moved a child file,
+saved to the new disk path, and preserved the project on picker cancellation.
+Missing-byte write requests now reject before truncation. No user manual audit,
+Windows permission/locked-file interaction, release build or installer claim.
+See the latest native section of PHASE1_ACCEPTANCE_REPORT.md; older checkpoints
+below describe earlier states and their missing-toolchain note is superseded.
+
 ## Latest Phase 1.5
 
 Native Tauri project picker/adapter, bounded dependency initialization, semantic
