@@ -4,8 +4,8 @@ import { importBlocks, serialize } from './latex-codec.js';
 // This is a projection of the authoritative source, not a second document.
 // A rich edit may only replace a block whose original spelling round-trips
 // exactly. All other bytes (including comments, macros and separators) survive.
-export function sourceProjection(text, doc) {
-  const parsed = parseDocument(text);
+export function sourceProjection(text, doc, options) {
+  const parsed = parseDocument(text, options);
   if (!parsed) return null;
   let offset = parsed.start.length, index = 0;
   const blocks = parsed.blocks.map(raw => {

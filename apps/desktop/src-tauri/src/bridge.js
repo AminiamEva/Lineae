@@ -76,6 +76,25 @@
     return handle(path);
   };
 
+  window.lineaeProject = {async open() {
+    const projectInvoke = (command,args) => invoke(command,args).catch(error => {throw error instanceof Error ? error : new Error(String(error));});
+    const root = await projectInvoke('open_project');
+    if (!root) throw abortError();
+    const session=crypto.randomUUID();
+    const operation = (operation, path, target, bytes, expected) => projectInvoke('project_operation', {root, operation, path, target, bytes, expected});
+    return {root, session, name:fileName(root),
+      loadState:async()=>{const bytes=(await operation('load_state')).bytes;return bytes.length?JSON.parse(new TextDecoder().decode(new Uint8Array(bytes))):null;},
+      checkpoint:state=>operation('checkpoint',null,session,Array.from(new TextEncoder().encode(JSON.stringify(state)))),
+      acknowledge:version=>operation('ack_checkpoint',null,version.id,null,version.expected),
+      list:async () => (await operation('list')).entries,
+      read:async path => new Uint8Array((await operation('read',path)).bytes),
+      write:(path,bytes,expected) => operation('write',path,null,Array.from(bytes),expected && Array.from(expected)),
+      create:(path,bytes) => operation('create',path,null,Array.from(bytes)),
+      mkdir:path => operation('mkdir',path), remove:path => operation('remove',path),
+      move:(path,target) => operation('move',path,target),
+    };
+  }};
+
   async function saveBlob(url, suggestedName) {
     const response = await fetch(url);
     const bytes = Array.from(new Uint8Array(await response.arrayBuffer()));

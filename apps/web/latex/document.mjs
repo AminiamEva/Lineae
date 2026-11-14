@@ -2,9 +2,17 @@ const documentPattern = /^(.*?^\\begin\{document\}[ \t]*\r?\n)(.*)(^\\end\{docum
 export const plain = /^[^\\{}%$&#_^~\r\n]*$/;
 const literalEnvironments = new Set(['verbatim','verbatim*','lstlisting','minted']);
 
-export function parseDocument(source) {
+export function parseDocument(source, {fragment = false} = {}) {
   const match = source.match(documentPattern);
-  if (!match) return null;
+  if (!match) {
+    if (!fragment) return null;
+    const parsed = parseDocument('\\begin{document}\n' + source + '\n\\end{document}\n');
+    if (!parsed) return null;
+    let last = parsed.blocks.length - 1;
+    while (last > 0 && !parsed.blocks[last]) last--;
+    parsed.blocks[last] = parsed.blocks[last].slice(0,-1);
+    return {...parsed, start:'', end:'', eol:source.includes('\r\n')?'\r\n':'\n'};
+  }
   const [, start, body, end] = match;
 
   const blocks = [];
