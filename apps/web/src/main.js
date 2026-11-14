@@ -1858,7 +1858,11 @@ projectExplorer = installProjectExplorer({footer, sessions:{
   capture:() => ({...sourceView.captureSession(), split:sourceView.split, richSelection:{anchor:editor.state.selection.anchor, head:editor.state.selection.head}}),
   approveOpen:() => (sourceView.hidden?source():sourceView.value) === savedSource || confirm('保留当前单文件草稿并打开工程？ / Keep the current single-file draft and open a project?'),
   begin() {
-    if (!standaloneSession) standaloneSession = {text:sourceView.hidden?source():sourceView.value, filename, fileHandle, savedSource};
+    if (!standaloneSession) standaloneSession = {
+      text:sourceView.hidden?source():sourceView.value, filename, fileHandle, savedSource,
+      sourceVisible:!sourceView.hidden, sourceSession:sourceView.captureSession(), split:sourceView.split,
+      richState:editor.state,
+    };
   },
   open(file) {
     projectFileKind = file.kind;
@@ -1866,7 +1870,7 @@ projectExplorer = installProjectExplorer({footer, sessions:{
     filename = file.path; fileHandle = null; savedSource = file.saved;
     if (sourceView.hidden) sourceView.open(file.draft);
     sourceView.restoreSession(file.session, file.draft);
-    if (file.session) sourceView.setSplit(file.kind !== 'bib' && file.session.split);
+    sourceView.setSplit(file.kind !== 'bib' && file.session?.split === true);
     if (file.kind === 'tex' && file.session?.richSelection) {
       const {anchor,head} = file.session.richSelection, max = editor.state.doc.content.size;
       editor.view.dispatch(editor.state.tr.setSelection(TextSelection.between(editor.state.doc.resolve(Math.min(anchor,max)),editor.state.doc.resolve(Math.min(head,max)))));
@@ -1881,8 +1885,23 @@ projectExplorer = installProjectExplorer({footer, sessions:{
     if (standaloneSession) {
       const previous = standaloneSession; standaloneSession = null;
       filename = previous.filename; fileHandle = previous.fileHandle;
-      load(previous.text); savedSource = previous.savedSource;
-      sourceView.restoreSession(null,previous.text);
+      // The standalone workspace is suspended while a project is open. Restore
+      // its immutable editor states, including undo and selection, rather than
+      // treating the same draft as a newly imported document.
+      load(previous.text, false); savedSource = previous.savedSource;
+      sourceView.restoreSession(previous.sourceVisible ? previous.sourceSession : null, previous.text);
+      if (previous.sourceVisible) {
+        sourceView.setSplit(previous.split);
+        // Source edits may have had a preview render pending on project open.
+        // The restored CodeMirror state is authoritative; retain only the old
+        // rich selection, never overwrite its newly rebuilt projection.
+        const {anchor,head} = previous.richState.selection, max = editor.state.doc.content.size;
+        editor.view.dispatch(editor.state.tr.setSelection(TextSelection.between(
+          editor.state.doc.resolve(Math.min(anchor,max)),editor.state.doc.resolve(Math.min(head,max)))));
+      } else {
+        sourceView.close();
+        editor.view.updateState(previous.richState);
+      }
     }
     updateSourceButton();
   },

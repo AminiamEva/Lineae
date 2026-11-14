@@ -32,7 +32,7 @@ export function resolveMetadata(files, scans) {
       if(['input','include'].includes(raw.command) && !/\.[^/]+$/.test(path))path+='.tex';
       if(raw.command==='bibliography' && !path.endsWith('.bib'))path+='.bib';
       const candidate=files.get(path) ?? (raw.command==='includegraphics'?[...files.values()].find(file=>file.path?.replace(/\.[^/.]+$/,'')===path):null);
-      dependency.targetId=candidate?.id ?? null;dependency.status=candidate?'resolved':'missing';
+      dependency.targetId=candidate && !candidate.missing?candidate.id:null;dependency.status=candidate && !candidate.missing?'resolved':'missing';
       dependency.resolution='project-root-literal';
     }
     dependencies.push(dependency);

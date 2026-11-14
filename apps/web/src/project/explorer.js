@@ -1,8 +1,9 @@
 import {Project, DirectoryHandleAdapter} from './project.mjs';
 
 export function installProjectExplorer({footer, sessions}) {
-  let project = null, busy = false;
+  let project = null, busy = false, switching = false, treeSignature = '';
   const expanded = new Set();
+  const fileButtons = new Map();
   const panel = document.createElement('aside');
   panel.id = 'project-explorer'; panel.hidden = true;
   panel.setAttribute('aria-label', '项目文件 / Project files');
@@ -29,10 +30,14 @@ export function installProjectExplorer({footer, sessions}) {
   }
   async function run(action) {
     if (busy) return;
-    busy = true;
+    busy = true; panel.setAttribute('aria-busy','true');
     try { message.textContent = ''; await action(); }
     catch (error) { if (error.name !== 'AbortError') { message.textContent = error.message; sessions.error(error.message); } }
-    finally { busy = false; render(); }
+    finally { busy = false; panel.setAttribute('aria-busy','false'); render(); }
+  }
+  function show(file) {
+    switching = true;
+    try { sessions.open(file); } finally { switching = false; }
   }
   function capture() {
     if (!project?.activeFileId) return;
@@ -47,18 +52,21 @@ export function installProjectExplorer({footer, sessions}) {
     capture();
     const file = project.file(id);
     if (file.draft === null) { message.textContent = '资源文件 / Resource: ' + file.path; return; }
-    sessions.open(file);
+    if (id === project.activeFileId) return;
     project.activate(id);
+    show(file);
     render();
   }
   async function open() {
     sessions.ensureIdle();
     if (!approveClose()) return;
+    const previous = project;
+    const before = previous && new Map([...previous.files.values()].map(file=>[file.id,file.draft]));
+    const standaloneBefore = !previous && sessions.text();
     if (!project && !sessions.approveOpen()) return;
     if (!window.lineaeProject && !window.showDirectoryPicker) throw new Error('当前环境不支持目录读写，请使用桌面应用或支持 File System Access 的浏览器。');
     const adapter = window.lineaeProject ? await window.lineaeProject.open() : new DirectoryHandleAdapter(await window.showDirectoryPicker({mode:'readwrite'}));
     const next = await new Project(adapter).open();
-    if (!next.mainFileId) throw new Error('目录中没有 .tex 文件 / No TeX file in this directory');
     let recoveryNotice='';
     try {
       for(const version of next.recoveryVersions){
@@ -76,9 +84,18 @@ export function installProjectExplorer({footer, sessions}) {
       }
       next.diskRecovery=[];next.checkpoint();
     } catch(error) { recoveryNotice='草稿恢复失败 / Recovery unavailable: '+error.message; }
+    if (!next.mainFileId) throw new Error('目录中没有 .tex 文件或已确认恢复的 TeX 草稿 / No TeX file or restored TeX draft in this directory');
+    // The picker and directory scan may take time while the old editor remains
+    // usable. Confirm edits made since the first discard prompt before swapping.
+    if (previous) {
+      capture();
+      if ([...previous.files.values()].some(file=>before.get(file.id)!==file.draft) && !approveClose()) return;
+    } else if (sessions.text()!==standaloneBefore && !sessions.approveOpen()) return;
+    sessions.ensureIdle();
     sessions.begin();
     project = next; expanded.clear(); title.textContent = adapter.name ?? adapter.handle.name;
-    sessions.open(project.file(project.mainFileId));
+    treeSignature = '';
+    show(project.file(project.mainFileId));
     visible(false); render();
     if(recoveryNotice){message.textContent=recoveryNotice;sessions.error(recoveryNotice);}
     if(next.persistenceError){message.textContent=next.persistenceError;sessions.error(next.persistenceError);}
@@ -97,7 +114,9 @@ export function installProjectExplorer({footer, sessions}) {
     project.checkpoint();
     project.recovery?.storage.removeItem(project.recovery.key);
     project.diskRecovery=[];for(const file of project.files.values())file.dirty=false;project.checkpoint();
-    project = null; sessions.end(); visible(false); render(); return true;
+    project = null; switching = true;
+    try { sessions.end(); } finally { switching = false; }
+    visible(false); render(); return true;
   }
   button(footer, '打开工程', open, 'project-open');
   button(actions, '保存', save, 'project-save');
@@ -111,7 +130,16 @@ export function installProjectExplorer({footer, sessions}) {
     const target=prompt(move?'移动到项目内路径 / Move to path':'新路径 / Rename path',path);
     if(!target || target===path)return;
     await project.move(path,target);
-    sessions.open(project.file(project.activeFileId));
+    // Keep input accepted while the native operation was pending, including
+    // CodeMirror history/selection. The model retained the same file identity.
+    capture();
+    const change = project.pathChanges.at(-1);
+    if (change) for (const entry of [...expanded]) {
+      if (entry===change.source || entry.startsWith(change.source+'/')) {
+        expanded.delete(entry); expanded.add(change.target+entry.slice(change.source.length));
+      }
+    }
+    show(project.file(project.activeFileId));
     message.textContent='路径已更新；LaTeX 引用路径尚未自动重写 / References require review';
     if(project.persistenceError)message.textContent+=' · '+project.persistenceError;
   }
@@ -119,8 +147,17 @@ export function installProjectExplorer({footer, sessions}) {
     sessions.ensureIdle(); capture();
     const file = project.file(project.activeFileId);
     if (file.dirty && !confirm('放弃当前文件草稿并重新读取磁盘？ / Discard this draft and reload disk?')) return;
-    await project.reload(file.id); sessions.open(file);
+    await project.reload(file.id); show(file);
   }, 'project-reload');
+  button(actions, '刷新文件树', async () => {
+    sessions.ensureIdle(); capture();
+    const active = project.file(project.activeFileId);
+    const result = await project.refresh();
+    if (result.changed.includes(active.id)) show(active);
+    message.textContent = result.errors.length ? result.errors.map(item=>`${item.path}: ${item.message}`).join('\n')
+      : result.missing.length ? '磁盘中有文件缺失；已保留编辑内容 / Missing files; editor content retained'
+      : '文件树已刷新 / File tree refreshed';
+  }, 'project-refresh');
   button(actions, '新建文件', async () => {
     const path = prompt('新建 .tex 文件路径 / New .tex path');
     if (!path) return;
@@ -131,44 +168,72 @@ export function installProjectExplorer({footer, sessions}) {
     const path = prompt('目录路径 / Directory path'); if (path) await project.mkdir(path);
   }, 'project-mkdir');
   button(actions, '删除当前文件', async () => {
+    sessions.ensureIdle();
     capture();
     const file = project.file(project.activeFileId);
     if (file.id === project.mainFileId) throw new Error('不能删除当前主文档 / Cannot delete the main document');
     if (!confirm(`从磁盘删除 ${file.path}？此操作不可撤销。`)) return;
-    await project.remove(file.id);
-    sessions.open(project.file(project.mainFileId)); project.activate(project.mainFileId);
+    const result=await project.remove(file.id);
+    if (result?.retained) {
+      message.textContent='文件已删除；删除期间的新输入已保留为缺失文件草稿 / File deleted; new edits retained as a missing-file draft';
+      return;
+    }
+    project.activate(project.mainFileId); show(project.file(project.mainFileId));
   }, 'project-delete');
   function render() {
-    tree.replaceChildren(); actions.hidden = !project;
-    if (!project) { title.textContent = '项目 / Project'; diagnostics.textContent=''; return; }
+    actions.hidden = !project;
+    if (!project) { tree.replaceChildren();fileButtons.clear();treeSignature='';title.textContent = '项目 / Project'; diagnostics.textContent=''; return; }
     const missing=project.dependencies.filter(item=>item.status==='missing');
     const pending=project.dependencies.filter(item=>item.status==='pending');
     diagnostics.textContent=`依赖 ${project.dependencies.length} · 缺失 ${missing.length} · 待解析 ${pending.length}`;
     diagnostics.title=missing.map(item=>item.path).join('\n');
+    // Editing changes row state, not tree topology. Keep DOM nodes (and their
+    // focus, native details state and scroll position) until paths change.
+    const signature=JSON.stringify([project.directories,[...project.files.values()].map(file=>[file.id,file.path,file.kind])]);
+    if (signature!==treeSignature) {
+    const focusKey=tree.contains(document.activeElement)?document.activeElement.dataset.focusKey:null;
+    const scroll=panel.scrollTop;
+    tree.replaceChildren();fileButtons.clear();
     function append(node, parent) {
       for (const child of node.children) {
         if (child.kind === 'directory') {
           const details = document.createElement('details'), summary = document.createElement('summary');
-          details.open = expanded.has(child.path); summary.textContent = '▸ ' + child.name;
-          details.ontoggle = () => details.open ? expanded.add(child.path) : expanded.delete(child.path);
+          details.open = expanded.has(child.path); summary.textContent = child.name;
+          summary.title=child.path; summary.dataset.focusKey='directory:'+child.path;
+          details.ontoggle = () => {if(details.isConnected) details.open ? expanded.add(child.path) : expanded.delete(child.path);};
           details.append(summary); parent.append(details); append(child, details);
           if(project.adapter.move){button(details,'重命名目录',()=>relocate(child.path,false));button(details,'移动目录',()=>relocate(child.path,true));}
         } else {
-          const icons = {tex:'T', bib:'B', image:'▧', pdf:'PDF', resource:'◇'};
-          const node = button(parent, `${icons[child.kind]} ${child.name}${child.dirty ? ' ●' : ''}`, () => activate(child.fileId));
+          const node = button(parent, '', () => activate(child.fileId));
           node.dataset.path = child.path; node.className = 'project-file';
-          node.setAttribute('aria-current', String(child.fileId === project.activeFileId));
+          node.dataset.focusKey='file:'+child.fileId;fileButtons.set(child.fileId,node);
           node.title = child.path;
           if(project.adapter.move){button(parent,'重命名 '+child.name,()=>relocate(child.path,false));button(parent,'移动 '+child.name,()=>relocate(child.path,true));}
         }
       }
     }
     append(project.tree, tree);
+    treeSignature=signature;
+    if(focusKey){const target=[...tree.querySelectorAll('[data-focus-key]')].find(node=>node.dataset.focusKey===focusKey);target?.focus({preventScroll:true});}
+    panel.scrollTop=scroll;
+    }
+    const icons = {tex:'T', bib:'B', image:'▧', pdf:'PDF', resource:'◇'};
+    for(const file of project.files.values()) {
+      const node=fileButtons.get(file.id);
+      const label=`${icons[file.kind]} ${file.path.split('/').at(-1)}${file.dirty?' ●':''}${file.missing?' ⚠':''}`;
+      if(node.textContent!==label)node.textContent=label;
+      node.setAttribute('aria-current',String(file.id===project.activeFileId));
+      node.title=file.path+(file.missing?' · 磁盘文件缺失 / Missing on disk':'');
+    }
   }
   window.addEventListener('beforeunload', event => {
     if (dirty()) { event.preventDefault(); event.returnValue = ''; }
   });
   render();
-  return {get active() { return !!project; }, save:() => run(save), close,
-    changed() { if (project && !busy) { try { capture(); render(); } catch(error) {message.textContent='草稿检查点失败 / Draft checkpoint failed: '+error.message;sessions.error(message.textContent);} } }};
+  return {get active() { return !!project; }, save:() => run(save),
+    close() {
+      if (busy) { sessions.error('请等待当前文件操作完成 / Wait for the current file operation');return false; }
+      try {return close();}catch(error){sessions.error(error.message);return false;}
+    },
+    changed() { if (project && !switching) { try { capture(); render(); } catch(error) {message.textContent='草稿检查点失败 / Draft checkpoint failed: '+error.message;sessions.error(message.textContent);} } }};
 }

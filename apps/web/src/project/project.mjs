@@ -2,6 +2,10 @@ import {projectPath, fileKind, directoryTree} from './paths.mjs';
 import {scanDependencies, resolveMetadata} from './dependencies.mjs';
 import {RecoveryStore} from './recovery.mjs';
 
+const editable = kind => kind === 'tex' || kind === 'bib';
+const sameBytes = (left, right) => left.length === right.length && left.every((byte, index) => byte === right[index]);
+const decode = bytes => new TextDecoder('utf-8', {fatal:true, ignoreBOM:true}).decode(bytes);
+
 /** File handles remain in the adapter; source strings are never newline-normalized. */
 export class Project {
   constructor(adapter, id = crypto.randomUUID(), storage = globalThis.localStorage) {
@@ -17,6 +21,7 @@ export class Project {
     this.recovery = adapter.root && storage ? new RecoveryStore(storage,adapter.root+(adapter.session?':'+adapter.session:'')) : null;
     this.storage=storage;this.metadataKey=adapter.root?'lineae:project-state:v1:'+adapter.root:null;this.persistenceError='';
     this.pendingCheckpoint=Promise.resolve();this.diskRecovery=[];this.recoveryVersions=[];
+    this.pendingOperation=Promise.resolve();
   }
   async open() {
     const entries = await this.adapter.list();
@@ -35,6 +40,7 @@ export class Project {
     let metadata={};
     try {metadata=JSON.parse(this.metadataKey && this.storage?.getItem(this.metadataKey) || '{}');}catch(error){this.persistenceError=error.message;}
     if(this.adapter.loadState){try{const state=await this.adapter.loadState();if(state){if(!state.files || !Array.isArray(state.drafts))throw new Error('Invalid disk checkpoint');metadata=state;this.diskRecovery=state.drafts;this.recoveryVersions=state.recoveryVersions ?? [];}}catch(error){this.diskRecoveryError='Disk recovery failed; checkpoint retained: '+error.message;this.persistenceError=this.diskRecoveryError;}}
+    this.savedIdentities=metadata?.files ?? {};
     const identities=new Set();
     for(const file of files.values()){const id=metadata?.files?.[file.path];if(typeof id==='string' && !identities.has(id))file.id=id;identities.add(file.id);}
     for(const file of files.values())this.scan(file);
@@ -59,11 +65,20 @@ export class Project {
     if (file.draft === null || typeof source !== 'string') throw new TypeError('Not a text file');
     if(file.draft===source)return;
     file.draft = source;
+    file.revision = (file.revision ?? 0) + 1;
     file.dirty = source !== file.saved;
     this.scan(file); this.resolveDependencies();
     this.checkpoint();
   }
-  checkpoint() { this.recovery?.checkpoint(this.files.values());this.persistMetadata(); }
+  checkpoint() {
+    let recoveryError='';
+    try {this.recovery?.checkpoint(this.files.values());}
+    catch(error){recoveryError='Local draft checkpoint failed: '+error.message;}
+    // A local storage quota failure must not block the native durable journal
+    // or interrupt model bookkeeping after a successful disk operation.
+    this.persistMetadata();
+    if(recoveryError)this.persistenceError=[this.persistenceError,recoveryError].filter(Boolean).join(' · ');
+  }
   persistMetadata() {
     if(!this.metadataKey)return;
     try {this.storage?.setItem(this.metadataKey,JSON.stringify({main:this.mainFileId?this.file(this.mainFileId).path:null,files:Object.fromEntries([...this.files.values()].map(file=>[file.path,file.id]))}));this.persistenceError=this.diskRecoveryError ?? '';}
@@ -77,14 +92,33 @@ export class Project {
   }
   restoreDrafts(drafts) {
     let restored=0;
-    for(const draft of drafts){const file=this.files.get(draft.path);if(!file || file.draft===null)continue;
+    for(const draft of drafts){
+      const path=projectPath(draft.path);
+      if(typeof draft.saved!=='string' || typeof draft.draft!=='string')throw new Error('Invalid recovery draft');
+      let file=this.files.get(path);
+      if(!file && editable(fileKind(path))){
+        const previousId=this.savedIdentities?.[path];
+        const id=typeof previousId==='string' && ![...this.files.values()].some(item=>item.id===previousId)?previousId:crypto.randomUUID();
+        file={id,path,kind:fileKind(path),missing:true};this.files.set(path,file);
+      }
+      if(!file || !editable(file.kind))continue;
       Object.assign(file,{saved:draft.saved,draft:draft.draft,bytes:new TextEncoder().encode(draft.saved),dirty:draft.draft!==draft.saved});this.scan(file);restored++;
     }
+    if(!this.mainFileId)this.mainFileId=[...this.files.values()].find(file=>file.kind==='tex')?.id ?? null;
+    if(!this.activeFileId)this.activeFileId=this.mainFileId;
     this.resolveDependencies();return restored;
   }
-  scan(file) { if(file.kind==='tex') { try { this.scans.set(file.id,scanDependencies(file.draft)); } catch { this.scans.set(file.id,{document:false,dependencies:[],status:'pending'}); } } }
+  scan(file) { if(file.kind==='tex') { try { this.scans.set(file.id,scanDependencies(file.draft)); } catch { this.scans.set(file.id,{document:false,dependencies:[],status:'pending'}); } } else this.scans.delete(file.id); }
   resolveDependencies() { this.dependencies=resolveMetadata(this.files,this.scans); }
-  async move(source, target) {
+  // Serialize mutations of one project while allowing editing during disk I/O.
+  // A rejected operation must not prevent subsequent operations from running.
+  operation(action) {
+    const result=this.pendingOperation.then(action);
+    this.pendingOperation=result.catch(()=>{});
+    return result;
+  }
+  move(source, target) { return this.operation(()=>this.moveNow(source,target)); }
+  async moveNow(source, target) {
     source=projectPath(source); target=projectPath(target);
     if(source===target || target.startsWith(source+'/'))throw new Error('Cannot move into itself');
     if(this.files.has(target) || this.directories.includes(target))throw new Error('Target already exists');
@@ -93,15 +127,20 @@ export class Project {
     const parent=target.includes('/')?target.slice(0,target.lastIndexOf('/')):'';
     if(parent && !this.directories.includes(parent))throw new Error('Target directory does not exist');
     const affected=[...this.files.values()].filter(file=>file.path===source || directory && file.path.startsWith(source+'/'));
+    for(const file of affected){
+      const kind=fileKind(target+file.path.slice(source.length));
+      if(editable(kind)!==editable(file.kind))throw new Error('Cannot rename between editable and resource file types; preserve the extension');
+      if(file.id===this.mainFileId && kind!=='tex')throw new Error('Main document must remain a TeX file');
+    }
     if(directory){
       const known=[...affected.map(file=>file.path),...this.directories.filter(path=>path===source || path.startsWith(source+'/'))].sort();
       const disk=(await this.adapter.list()).map(entry=>entry.path).filter(path=>path===source || path.startsWith(source+'/')).sort();
       if(JSON.stringify(known)!==JSON.stringify(disk))throw new Error('Directory changed on disk; reopen the project before moving');
     }
     for(const file of affected){const disk=await this.adapter.read(file.path);if(disk.length!==file.bytes.length || disk.some((byte,index)=>byte!==file.bytes[index]))throw new Error('File changed on disk: '+file.path);}
-    await this.adapter.move(source,target);
+    await this.adapter.move(source,target,directory?undefined:affected[0].bytes);
     const changes=affected.map(file=>({fileId:file.id,from:file.path,to:target+file.path.slice(source.length)}));
-    for(const change of changes){const file=this.files.get(change.from);this.files.delete(change.from);file.path=change.to;this.files.set(change.to,file);}
+    for(const change of changes){const file=this.files.get(change.from);this.files.delete(change.from);file.path=change.to;file.kind=fileKind(change.to);this.files.set(change.to,file);this.scan(file);}
     this.directories=this.directories.map(path=>path===source || path.startsWith(source+'/')?target+path.slice(source.length):path);
     this.pathChanges.push({source,target,changes,references:'not-rewritten'}); this.resolveDependencies();
     this.persistMetadata();
@@ -114,8 +153,10 @@ export class Project {
     this.mainFileId = id;
     this.persistMetadata();
   }
-  async save(id) {
+  save(id) { return this.operation(()=>this.saveNow(id)); }
+  async saveNow(id) {
     const file = this.file(id);
+    if(file.missing)throw new Error('File missing on disk; refresh the project before saving: '+file.path);
     if (!file.dirty) return;
     const disk = await this.adapter.read(file.path);
     if (disk.length !== file.bytes.length || disk.some((value, index) => value !== file.bytes[index])) {
@@ -129,7 +170,8 @@ export class Project {
     this.checkpoint();
   }
   get tree() { return directoryTree(this.files.values(), this.directories); }
-  async create(value, text) {
+  create(value, text) { return this.operation(()=>this.createNow(value,text)); }
+  async createNow(value, text) {
     const path = projectPath(value);
     if (this.files.has(path) || this.directories.includes(path)) throw new Error('Path already exists');
     const bytes = new TextEncoder().encode(text);
@@ -137,29 +179,85 @@ export class Project {
     const file = {id:crypto.randomUUID(), path, kind:fileKind(path), bytes, saved:text, draft:text, dirty:false};
     this.files.set(path, file); this.scan(file); this.resolveDependencies();this.persistMetadata(); return file;
   }
-  async reload(id) {
-    const file = this.file(id), bytes = await this.adapter.read(file.path);
+  reload(id) { return this.operation(()=>this.reloadNow(id)); }
+  async reloadNow(id) {
+    const file = this.file(id), revision = file.revision ?? 0;
+    const bytes = await this.adapter.read(file.path);
     const text = new TextDecoder('utf-8',{fatal:true,ignoreBOM:true}).decode(bytes);
-    Object.assign(file,{bytes, saved:text, draft:text, dirty:false, session:null});
+    if((file.revision ?? 0)!==revision)throw new Error('Draft changed while reloading; kept your edits');
+    Object.assign(file,{bytes, saved:text, draft:text, dirty:false, session:null, missing:false});
     this.scan(file); this.resolveDependencies();
     this.checkpoint();
   }
-  async mkdir(value) {
+  mkdir(value) { return this.operation(()=>this.mkdirNow(value)); }
+  async mkdirNow(value) {
     const path = projectPath(value);
     if (this.files.has(path) || this.directories.includes(path)) throw new Error('Path already exists');
     await this.adapter.mkdir(path); this.directories.push(path);
   }
-  async remove(id) {
-    const file = this.file(id);
+  remove(id) { return this.operation(()=>this.removeNow(id)); }
+  async removeNow(id) {
+    const file = this.file(id), revision=file.revision ?? 0;
     if (id === this.mainFileId) throw new Error('Cannot delete main document');
     const disk = await this.adapter.read(file.path);
     if (disk.length !== file.bytes.length || disk.some((byte,index) => byte !== file.bytes[index])) throw new Error('File changed on disk');
-    await this.adapter.remove(file.path);
+    if((file.revision ?? 0)!==revision)throw new Error('Draft changed while deleting; kept the file');
+    await this.adapter.remove(file.path,file.bytes);
+    if((file.revision ?? 0)!==revision){
+      file.missing=true;this.checkpoint();
+      return {retained:true};
+    }
     this.files.delete(file.path);
     this.scans.delete(file.id); this.resolveDependencies();
-    this.checkpoint();
     if (this.activeFileId === id) this.activeFileId = this.mainFileId;
-    this.persistMetadata();
+    this.checkpoint();
+    return {retained:false};
+  }
+  refresh() { return this.operation(()=>this.refreshNow()); }
+  async refreshNow() {
+    // Paths establish identity. An external rename cannot safely be inferred
+    // from matching contents: preserve missing drafts and report the new path.
+    const entries=await this.adapter.list(), seen=new Set(), directories=[], pending=[];
+    const result={changed:[],added:[],removed:[],missing:[],errors:[]};
+    for(const entry of entries){
+      let path;
+      try {path=projectPath(entry.path);}catch(error){result.errors.push({path:entry.path,message:error.message});continue;}
+      if(entry.kind==='directory'){directories.push(path);continue;}
+      seen.add(path);
+      const file=this.files.get(path), revision=file?.revision ?? 0;
+      try {
+        const bytes=await this.adapter.read(path), kind=fileKind(path);
+        const text=editable(kind)?decode(bytes):null;
+        pending.push({path,file,revision,bytes,kind,text});
+      } catch(error){result.errors.push({path,message:error.message});}
+    }
+    // Publish once, with no further I/O awaits. Until refresh resolves the UI
+    // still displays the old source; advancing a baseline during another read
+    // would let new typing overwrite external edits without a conflict.
+    for(const {path,file,revision,bytes,kind,text} of pending){
+      if(!file){
+        const added={id:crypto.randomUUID(),path,kind,bytes,saved:text,draft:text,dirty:false};
+        this.files.set(path,added);this.scan(added);result.added.push(added.id);
+      } else {
+        file.missing=false;
+        if(!file.dirty && (file.revision ?? 0)===revision && !sameBytes(bytes,file.bytes)){
+          Object.assign(file,{bytes,saved:text,draft:text,session:null});
+          this.scan(file);result.changed.push(file.id);
+        }
+      }
+    }
+    for(const [path,file] of this.files){
+      if(seen.has(path))continue;
+      if(file.dirty || file.id===this.activeFileId || file.id===this.mainFileId || file.session){file.missing=true;result.missing.push(file.id);}
+      else {this.files.delete(path);this.scans.delete(file.id);result.removed.push(file.id);}
+    }
+    this.directories=directories;
+    this.mainCandidates=[...this.files.values()].filter(file=>this.scans.get(file.id)?.document);
+    const ids=new Set([...this.files.values()].map(file=>file.id));
+    if(!ids.has(this.mainFileId))this.mainFileId=(this.mainCandidates[0] ?? [...this.files.values()].find(file=>file.kind==='tex'))?.id ?? null;
+    if(!ids.has(this.activeFileId))this.activeFileId=this.mainFileId;
+    this.resolveDependencies();this.checkpoint();
+    return result;
   }
 }
 
@@ -170,6 +268,7 @@ export class DirectoryHandleAdapter {
     const entries = [];
     async function visit(handle, prefix) {
       for await (const [name, child] of handle.entries()) {
+        if(name.toLowerCase().startsWith('.lineae-'))continue;
         const path = projectPath(prefix + name);
         entries.push({path, kind:child.kind});
         if (child.kind === 'directory') await visit(child, path + '/');
@@ -191,7 +290,9 @@ export class DirectoryHandleAdapter {
     return {directory, name:segments.at(-1)};
   }
   async unused(directory, name) {
-    for await (const [entry] of directory.entries()) if (entry === name) throw new Error('Path already exists on disk');
+    // Windows directory handles can open an existing file through a case alias.
+    // Conservatively reject aliases on every browser, before create:true.
+    for await (const [entry] of directory.entries()) if (entry.toLowerCase() === name.toLowerCase()) throw new Error('Path already exists on disk');
   }
   async create(path, bytes) {
     const {directory,name} = await this.parent(path);
@@ -207,9 +308,12 @@ export class DirectoryHandleAdapter {
   }
   async remove(path) { const {directory,name} = await this.parent(path); await directory.removeEntry(name); }
   async read(path) { return new Uint8Array(await (await (await this.resolve(path)).getFile()).arrayBuffer()); }
-  async write(path, bytes) {
+  async write(path, bytes, expected) {
     const stream = await (await this.resolve(path)).createWritable();
-    try { await stream.write(bytes); await stream.close(); }
+    try {
+      if(expected && !sameBytes(await this.read(path),expected))throw new Error('File changed on disk: '+path);
+      await stream.write(bytes); await stream.close();
+    }
     catch (error) { await stream.abort().catch(() => {}); throw error; }
   }
 }

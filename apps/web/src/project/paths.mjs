@@ -10,7 +10,7 @@ export function projectPath(value, base = '') {
       if (!parts.length) throw new RangeError('Path escapes project root');
       parts.pop();
     } else {
-      if(part.startsWith('.lineae-'))throw new TypeError('Reserved project metadata path');
+      if(part.toLowerCase().startsWith('.lineae-'))throw new TypeError('Reserved project metadata path');
       if(/[<>"|?*]/.test(part) || /[. ]$/.test(part) || /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)/i.test(part))throw new TypeError('Invalid filename');
       parts.push(part);
     }
@@ -41,7 +41,7 @@ export function directoryTree(files, directories = []) {
   for (const file of files) {
     const path = projectPath(file.path), cut = path.lastIndexOf('/');
     directory(cut < 0 ? '' : path.slice(0, cut)).children.push({
-      kind: fileKind(path), path, name: path.slice(cut + 1), fileId: file.id, dirty: file.dirty === true,
+      kind: fileKind(path), path, name: path.slice(cut + 1), fileId: file.id, dirty: file.dirty === true, missing:file.missing === true,
     });
   }
   function sort(node) {
