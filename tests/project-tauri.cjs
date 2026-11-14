@@ -51,8 +51,33 @@ async function edit(path,text){await page.locator(`[data-path="${path}"]`).click
  await page.locator('[data-path="sections/introduction.tex"]').click();assert.match(await page.locator('.cm-content').innerText(),/Native intro draft/);
  await page.locator('#project-save').click();await page.waitForFunction(()=>document.querySelector('#project-explorer [role=status]').textContent.includes('Saved'));
  assert.match(await fs.readFile(resolve(fixture,'sections/introduction.tex'),'utf8'),/Native intro draft/);
+ // Regression: exercise the final bridge/Rust operations through real WebView2.
+ page.removeAllListeners('dialog');
+ page.on('dialog',dialog=>dialog.accept(dialog.type()==='prompt'?'sections/重命名 intro.tex':undefined));
+ await page.getByRole('button',{name:'重命名 introduction.tex',exact:true}).click();
+ await page.waitForFunction(()=>document.querySelector('.tex-filename')?.textContent.includes('sections/重命名 intro.tex'));
+ await edit('sections/重命名 intro.tex',' Native move draft');
+ page.removeAllListeners('dialog');
+ page.on('dialog',dialog=>dialog.accept(dialog.type()==='prompt'?'chapters/移动 intro.tex':undefined));
+ await page.getByRole('button',{name:'移动 重命名 intro.tex',exact:true}).click();
+ await page.waitForFunction(()=>document.querySelector('.tex-filename')?.textContent.includes('chapters/移动 intro.tex'));
+ assert.match(await page.locator('.cm-content').innerText(),/Native move draft/);
+ await page.locator('#project-save').click();
+ await page.waitForFunction(()=>document.querySelector('#project-explorer [role=status]').textContent.includes('Saved'));
+ assert.match(await fs.readFile(resolve(fixture,'chapters/移动 intro.tex'),'utf8'),/Native move draft/);
+ await assert.rejects(fs.stat(resolve(fixture,'sections/introduction.tex')),{code:'ENOENT'});
+ await assert.rejects(fs.stat(resolve(fixture,'sections/重命名 intro.tex')),{code:'ENOENT'});
+ const currentText=await page.locator('.cm-content').innerText();
+ // Keep partial evidence even when an operator cannot complete the OS dialog.
+ await page.screenshot({path:resolve(output,'native-moved-before-cancel.png')});
+ await fs.writeFile(resolve(output,'result.json'),JSON.stringify({passed:false,corePassed:true,fixture,pending:['native picker cancellation'],checks:['native picker twice','forced process-tree recovery','external conflict refusal','Chinese rename/move and saved bytes']},null,2));
+ console.log('PASS native core workflow; cancellation remains pending');
+ await page.locator('#project-open').click();
+ console.log('NATIVE_PICKER_CANCEL_READY');
+ await page.waitForFunction(()=>document.querySelector('#project-explorer').getAttribute('aria-busy')==='false',null,{timeout:180000});
+ assert.equal(await page.locator('.cm-content').innerText(),currentText);
  await page.screenshot({path:resolve(output,'recovered-desktop.png')});
- await fs.writeFile(resolve(output,'result.json'),JSON.stringify({passed:true,killedPid,fixture,checks:['actual native picker twice','hidden tree and leftmost toggle','multi-file drafts','Split preview','forced Tauri process tree termination','persisted file identities','confirmed recovery','external conflict refusal','unchanged-file recovered draft save']},null,2));
+ await fs.writeFile(resolve(output,'result.json'),JSON.stringify({passed:true,killedPid,fixture,checks:['actual native picker twice plus cancellation','hidden tree and leftmost toggle','multi-file drafts','Split preview','forced Tauri process tree termination','persisted file identities','confirmed recovery','external conflict refusal','unchanged-file recovered draft save','Chinese rename and move with dirty draft and new-path save']},null,2));
  console.log('PASS actual Tauri forced-termination/recovery and native filesystem acceptance');
  // The test owns this process tree and its fixtures; WebView2's CDP close alone
  // does not reliably end the native shell while recovered drafts are dirty.

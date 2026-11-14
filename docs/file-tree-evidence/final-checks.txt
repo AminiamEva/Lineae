@@ -1,0 +1,52 @@
+File Tree final local verification — 2026-11-14
+Node tests:
+ℹ tests 420
+ℹ suites 0
+ℹ pass 420
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 973.7444
+
+Rust and desktop build:
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 11.33s
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 12 filtered out; finished in 0.13s
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 12 filtered out; finished in 0.11s
+test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.21s
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 28.70s
+
+File tree browser:
+PASS hidden tree, leftmost toggle, rapid toggles, empty directory
+PASS typing retains tree nodes, expansion and CodeMirror instance
+PASS reopening same file preserves focused tree button
+PASS typing during native move preserves current draft and undo
+PASS nested expansion survives directory move and dirty Chinese file saves at new path
+PASS refresh reconciles external changes and preserves missing active draft
+PASS typing during reload is retained with explicit conflict
+PASS collisions and invalid paths leave editor and disk unchanged
+PASS delete confirmation, in-flight typing retention, and normal active-file deletion
+INFO refresh 200 added files 838ms
+PASS long names and large tree stay within sidebar, scroll and preserve editor
+PASS cancelled and empty directory opens retain the current project and draft
+11/11 File Tree browser scenarios passed
+
+Session browser:
+PASS: standalone Body draft, mode, selection and undo survive project open/close
+PASS: standalone Raw/Split draft, selection and undo survive project open/close
+PASS: pending source projection is current after returning from a project
+PASS: saving before the pending preview render preserves source-to-Split synchronization
+PASS: independent Raw/Split preference, rich undo and drafts across repeated file switching; stable CodeMirror view
+File-tree session E2E: 5/5 scenarios passed
+
+Existing project browser:
+PASS: draft checkpoint survives fresh page instance, restore confirmation and external-change conflict protection
+PASS: native bridge contract + real Windows disk UI rename/move, no-main.tex detection, unsaved draft retention, save at moved path
+PASS: native OPFS project lifecycle, hidden tree, toggle placement, drafts, Split, byte-exact mixed EOL save, conflict protection, reopen, four viewport layouts
+
+V2 browser:
+V2 browser assertions passed: 70
+V2.1 browser assertions: 61
+Browser regressions passed
+
+Native interactive run: PARTIAL ONLY; cancellation timeout retained in native-cancel-blocked.txt. No overall native-interactive pass claimed.

@@ -1,0 +1,7 @@
+NATIVE_PICKER_READY C:\Users\vertin\.codex\worktrees\lineae-v3-project\Lineae-source-editor-pr\test-results\phase1\desktop-final\Lineae-Phase1-Acceptance 中文-1794668537358
+NATIVE_PICKER_READY C:\Users\vertin\.codex\worktrees\lineae-v3-project\Lineae-source-editor-pr\test-results\phase1\desktop-final\Lineae-Phase1-Acceptance 中文-1794668537358
+NATIVE_PICKER_CANCEL_READY
+page.waitForFunction: Timeout 180000ms exceeded.
+    at C:\Users\vertin\.codex\worktrees\lineae-v3-project\Lineae-source-editor-pr\tests\project-tauri.cjs:73:13 {
+  name: 'TimeoutError'
+}

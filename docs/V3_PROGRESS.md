@@ -1,5 +1,28 @@
 # V3 checkpoint — 2026-11-14
 
+## File Tree bug bash
+
+19 reproduced issues repaired across model, native operations, tree DOM and
+editor sessions; details, failed-before evidence and boundaries are recorded in
+[FILE_TREE_BUG_AUDIT.md](FILE_TREE_BUG_AUDIT.md). In-flight move/reload/delete
+edits survive; refresh publishes baselines only after all reads; missing drafts
+remain recoverable; native file mutations validate and operate on the same
+handle without replacing a conflicting destination. Tree edits retain DOM and
+focus; standalone sessions and pending Split preview updates are preserved.
+
+Final automated checks: 420/420 Node tests, 13/13 Rust entries, 11/11 tree E2E
+and 5/5 session E2E scenarios; existing project/V2 browser regressions and locked
+desktop debug build passed. CI definitions include the new suites, but no
+follow-up remote CI result is claimed. Real native selection, recovery and
+Chinese rename/move/save reached their assertions; cancellation then timed out
+due to window targeting interference. Full interactive final-build rerun,
+native cancellation and physical IME remain pending, not passed.
+
+PR #16 was found already merged at audit start. Repairs remain on the existing
+feature branch; no duplicate PR, PR merge, release or protected-workspace change.
+Earlier Phase 1 reports below describe their own runs, not this audit's native
+cancellation result. No Phase 2 work was started.
+
 ## Review-ready integration
 
 User-approved merge 6ba780c integrates origin/main 4bd1165 and retains V2.1 zoom,
