@@ -144,9 +144,23 @@ function environmentEnter(view) {
 export function insertLatexSnippet(view, {text, selectionStart, selectionEnd}) {
   const {from,to} = view.state.selection.main;
   if (selectionStart === undefined) {
-    // Escape snippet delimiters in selected literal source.
-    const selected = view.state.doc.sliceString(from,to).replace(/[{}]/g,'\\$&');
-    if (selected) text = text.replace('${1}',() => '${1:'+selected+'}');
+    // Parse only the fixed template. Keep selected source in place so its
+    // literal syntax and per-separator EOL metadata never need reconstruction.
+    if (from !== to && text.includes('${1}')) {
+      snippet(text)({state:view.state, dispatch(tr) {
+        const field = tr.newSelection.main;
+        const end = tr.newDoc.length - (view.state.doc.length - to);
+        const prefix = tr.newDoc.sliceString(from,field.from);
+        const suffix = tr.newDoc.sliceString(field.to,end);
+        const fill = tr.state.changes({from:field.from,to:field.to,insert:view.state.doc.slice(from,to)});
+        view.dispatch({changes:[{from,insert:prefix},{from:to,insert:suffix}],
+          selection:{anchor:from+prefix.length,head:to+prefix.length},
+          effects:StateEffect.mapEffects(tr.effects,fill),
+          annotations:isolateHistory.of('full'),userEvent:'input'});
+      }},null,from,to);
+      view.focus();
+      return;
+    }
     view.dispatch({annotations:isolateHistory.of('before')});
     snippet(text)(view,null,from,to);
     view.dispatch({annotations:isolateHistory.of('after')});

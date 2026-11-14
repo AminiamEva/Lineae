@@ -83,6 +83,13 @@ module.exports=async function checkV2(context,url) {
     }
     await page.locator('[data-group=table]').click();equal(await page.locator('[data-source-action=merge]').isDisabled(),true,'unsupported toolbar operation disabled');
     await set('text');await page.keyboard.press('Control+a');await page.locator('[data-group=home]').click();await page.locator('[data-source-action=B]').filter({visible:true}).first().click();equal(await read(),'\\textbf{text}','selection wraps in snippet');
+    for (const selected of ['\\ref{sec:one}','${literal} \\custom{x}','a\nb']) {
+      await set(selected);await page.keyboard.press('Control+a');
+      await page.locator('[data-source-action=B]').filter({visible:true}).first().click();
+      equal(await read(),'\\textbf{'+selected+'}','literal selection wrapping');
+      await page.keyboard.press('Control+z');equal(await read(),selected,'wrapped selection undo');
+      await page.keyboard.press('Control+y');equal(await read(),'\\textbf{'+selected+'}','wrapped selection redo');
+    }
     await content.focus();await page.keyboard.press('Control+f');equal(await page.locator('.cm-search').isVisible(),true,'find');await page.keyboard.press('Escape');equal(await page.locator('.cm-search').count(),0,'escape closes find');
     // Restore original imported source before a real ZIP check.
     await page.locator('input[type=file]').setInputFiles({name:'v2.tex',mimeType:'text/plain',buffer:Buffer.from(sample)});

@@ -5,7 +5,32 @@ import {CompletionContext} from '@codemirror/autocomplete';
 import {parseDocument} from '../apps/web/latex/document.mjs';
 import {importBlocks} from '../apps/web/src/editor/latex-codec.js';
 import {sourceProjection,richSourceChanges} from '../apps/web/src/editor/source-sync.js';
-import {latexAssist,latexCompletion,scanLatex,commentAt} from '../apps/web/src/editor/latex-assist.js';
+import {latexAssist,latexCompletion,scanLatex,commentAt,insertLatexSnippet} from '../apps/web/src/editor/latex-assist.js';
+import {toolbarSnippets} from '../apps/web/src/editor/latex-snippets.js';
+import {history,undo,redo} from '@codemirror/commands';
+import {sourceEolExtensions,sourceWithEndings} from '../apps/web/src/editor/source-eol-state.js';
+
+test('toolbar wrapping preserves literal selections and one-step history',()=>{
+  for(const selected of ['text','\\ref{sec:one}','${literal} \\custom{x}','a\nb']) {
+    const view={state:EditorState.create({doc:selected,selection:{anchor:0,head:selected.length},extensions:[history(),latexAssist()]}),
+      dispatch(tr){view.state=tr.state??view.state.update(tr).state;},focus(){}};
+    insertLatexSnippet(view,{text:toolbarSnippets.B});
+    assert.equal(view.state.doc.toString(),'\\textbf{'+selected+'}');
+    assert.equal(view.state.sliceDoc(view.state.selection.main.from,view.state.selection.main.to),selected);
+    undo(view);assert.equal(view.state.doc.toString(),selected);
+    redo(view);assert.equal(view.state.doc.toString(),'\\textbf{'+selected+'}');
+  }
+});
+
+test('toolbar wrapping retains mixed separators through undo and redo',()=>{
+  const original='a\r\nb\nc\r\n', normalized=original.replace(/\r\n/g,'\n');
+  const view={state:EditorState.create({doc:normalized,selection:{anchor:0,head:normalized.length},extensions:[history(),...sourceEolExtensions(original)]}),
+    dispatch(tr){view.state=tr.state??view.state.update(tr).state;},focus(){}};
+  insertLatexSnippet(view,{text:toolbarSnippets.B});
+  assert.equal(sourceWithEndings(view.state),'\\textbf{'+original+'}');
+  undo(view);assert.equal(sourceWithEndings(view.state),original);
+  redo(view);assert.equal(sourceWithEndings(view.state),'\\textbf{'+original+'}');
+});
 
 const source = '\\documentclass{article}\r\n\\newcommand{\\foo}{X}\n\\begin{document}\nHello.\n\n% keep comment\r\n\\unknown{x}\n\nSecond.\r\n\\end{document}\r\n';
 const document = text => ({type:'doc',content:parseDocument(text).blocks.flatMap(importBlocks)});
