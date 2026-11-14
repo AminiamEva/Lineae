@@ -8,6 +8,7 @@ module.exports = async function checkSourceWorkspace(context, url) {
   await require('./source-workspace-mixed-eol.cjs')(context, url);
   await require('./source-workspace-lifecycle.cjs')(context, url);
   await require('./source-workspace-eol-state.cjs')(context, url);
+  await require('./source-v2.cjs')(context, url);
   const page = await context.newPage();
   try {
     await page.setViewportSize({width:1440,height:900});
@@ -136,7 +137,7 @@ module.exports = async function checkSourceWorkspace(context, url) {
     await documentMode.click();
     await source.click();
     await sameClipboardText(draft);
-    await button(/展开工作区|Expand workspace/).click();
+    await button(/展开工作区|Split editing/).click();
     const heading = panel.locator('.tex-preview .ProseMirror h1');
     await heading.filter({hasText:'Signal power'}).waitFor();
     const separator = panel.getByRole('separator');
@@ -160,15 +161,14 @@ module.exports = async function checkSourceWorkspace(context, url) {
     await screenshot('expanded-laptop');
     await page.setViewportSize({width:768,height:1024});
     assert.equal(await separator.isVisible(),false);
-    await button(/Document preview|文档预览/).waitFor({state:'visible'});
+    assert.ok(await panel.locator(".tex-preview").isVisible());
     assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
     await screenshot('expanded-tablet');
     await page.setViewportSize({width:390,height:844});
     await screenshot('expanded-mobile');
-    await button(/文档预览|Document preview/).click();
     assert.ok(await heading.isVisible());
+    assert.ok(await content.isVisible());
     assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
-    await button(/返回源码|Show source/).click();
     await content.press('Escape');
     await documentMode.click();
     await source.click();

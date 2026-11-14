@@ -1,0 +1,187 @@
+import { Prec, StateEffect, StateField } from '@codemirror/state';
+import { EditorView, keymap, Decoration } from '@codemirror/view';
+import { autocompletion, completionKeymap, acceptCompletion, snippetCompletion, snippet,
+  nextSnippetField, prevSnippetField, closeBrackets, closeBracketsKeymap } from '@codemirror/autocomplete';
+import { indentMore, indentLess, isolateHistory, invertedEffects } from '@codemirror/commands';
+import { foldService, foldGutter, foldKeymap, indentService, indentUnit } from '@codemirror/language';
+import { commandSnippets, environmentSnippet, environments } from './latex-snippets.js';
+
+export function commentAt(line) {
+  for (let i = 0; i < line.length; i++) {
+    if (line[i] === '\\') { i++; continue; }
+    if (line[i] === '%') return i;
+  }
+  return -1;
+}
+
+export function scanLatex(text) {
+  const stack = [], folds = [], errors = [], literals = [];
+  const pattern = /%[^\n]*|\\(?:begin|end)\{([^{}\n]+)\}|\\[^a-zA-Z]|[{}]/g;
+  let literal;
+  for (const match of text.matchAll(pattern)) {
+    const value = match[0], from = match.index, to = from + value.length;
+    if (literal) {
+      if (value === '\\end{' + literal.name + '}') {
+        literals.push({from:literal.from,to});
+        folds.push({from:literal.to,to:from}); literal = null;
+      }
+      continue;
+    }
+    if (value[0] === '%') continue;
+    if (/^\\begin\{(?:verbatim\*?|lstlisting|minted)\}/.test(value)) {
+      literal = {name:match[1],from,to}; continue;
+    }
+    if (value.startsWith('\\begin') || value === '{') stack.push({name:match[1] || '{',from,to});
+    else if (value.startsWith('\\end') || value === '}') {
+      const expected = match[1] || '{', open = stack.at(-1);
+      if (open?.name === expected) { stack.pop(); if (expected !== '{') folds.push({from:open.to,to:from}); }
+      else errors.push({from,to,message:'Unmatched ' + value});
+    }
+  }
+  if (literal) { literals.push({from:literal.from,to:text.length+1}); stack.push(literal); }
+  for (const open of stack) errors.push({from:open.from,to:open.to,message:'Unclosed ' + open.name});
+  return {folds,errors,literals};
+}
+
+const structure = StateField.define({
+  create: state => scanLatex(state.doc.toString()),
+  update: (value, tr) => tr.docChanged ? scanLatex(tr.newDoc.toString()) : value,
+  provide: field => EditorView.decorations.from(field, value => Decoration.set(
+    value.errors.map(error => Decoration.mark({class:'tex-structure-error',attributes:{title:error.message}}).range(error.from,error.to)), true)),
+});
+
+function excluded(state, pos) {
+  const line = state.doc.lineAt(pos), comment = commentAt(line.text);
+  return (comment >= 0 && pos >= line.from + comment) ||
+    state.field(structure).literals.some(range => pos > range.from && pos < range.to);
+}
+
+export function latexCompletion(context) {
+  if (excluded(context.state, context.pos)) return null;
+  const env = context.matchBefore(/\\begin\{[\w*]*\}?/);
+  if (env) return {from:env.from,to:context.pos,filter:false,options:environments
+    .filter(name => name.startsWith(env.text.slice(7).replace(/\}$/, '')))
+    .map(name => ({label:name,type:'type',detail:'Paired environment',apply(view, _option, from, to) {
+      if (view.state.doc.sliceString(to, to + 1) === '}') to++;
+      const rest = view.state.doc.sliceString(to);
+      const template = rest.trimStart().startsWith('\\end{' + name + '}') ? '\\begin{' + name + '}\n\t${1}' : environmentSnippet(name);
+      snippet(template)(view, null, from, to);
+    }}))};
+  const word = context.matchBefore(/\\[a-zA-Z]*/);
+  if (word) return {from:word.from, options:Object.entries(commandSnippets).map(([name,[template,detail]]) =>
+    snippetCompletion(template,{label:'\\' + name,type:'keyword',detail})), validFor:/^\\[a-zA-Z]*$/};
+  const reference = context.matchBefore(/\\(?:ref|eqref|cite)\{[^{}]*$/);
+  if (reference) {
+    const source = context.state.doc.toString();
+    const cite = reference.text.startsWith('\\cite');
+    const re = cite ? /\\bibitem(?:\[[^\]]*\])?\{([^}]+)\}/g : /\\label\{([^}]+)\}/g;
+    return {from:reference.from + reference.text.indexOf('{') + 1,
+      options:[...new Set([...source.matchAll(re)].map(m => m[1]))].map(label => ({label,type:'variable'}))};
+  }
+  return null;
+}
+
+const setPairs = StateEffect.define();
+const pairs = StateField.define({
+  create: () => [],
+  update(value, tr) {
+    let mapped = value.map(pair => ({...pair,from:tr.changes.mapPos(pair.from,1)}))
+      .filter(pair => tr.newDoc.sliceString(pair.from,pair.from + pair.close.length) === pair.close);
+    for (const effect of tr.effects) if (effect.is(setPairs)) mapped = effect.value;
+    return mapped;
+  },
+});
+
+function pairInput(view, from, to, text) {
+  if (view.composing || view.state.selection.ranges.length > 1) return false;
+  const {state} = view;
+  if (excluded(state,from)) {
+    // Consume normal input so the general bracket extension cannot pair here.
+    view.dispatch(state.update({changes:{from,to,insert:text},selection:{anchor:from+text.length},userEvent:'input.type'}));
+    return true;
+  }
+  const pair = state.field(pairs).find(p => p.from === from);
+  if (pair && from === to && text === '$' && pair.open === '$' && pair.close === '$' && state.doc.sliceString(from-1,from) === '$') {
+    view.dispatch({changes:{from,to,insert:'$$'},selection:{anchor:from+1},effects:setPairs.of([{from:from+1,close:'$$',open:'$$'}]),userEvent:'input.type'});
+    return true;
+  }
+  if (pair && from === to && pair.close.startsWith(text)) {
+    view.dispatch({selection:{anchor:from+text.length},effects:setPairs.of(state.field(pairs).filter(p=>p!==pair).concat(
+      pair.close.length > text.length ? [{...pair,from:from+text.length,close:pair.close.slice(text.length),open:''}] : []))});
+    return true;
+  }
+  const previous = state.doc.sliceString(Math.max(0,from-1),from);
+  let open, close;
+  if (text === '$' && previous !== '\\') {open='$';close='$';}
+  if (previous === '\\' && (text === '(' || text === '[')) {open='\\'+text;close=text === '(' ? '\\)' : '\\]';}
+  if (!close) return false;
+  const selected = state.doc.sliceString(from,to);
+  view.dispatch({changes:{from,to,insert:text+selected+close},selection:{anchor:from+text.length,head:from+text.length+selected.length},
+    effects:setPairs.of(state.field(pairs).concat({from:from+text.length+selected.length,open,close})),userEvent:'input.type'});
+  return true;
+}
+
+function deletePair(view) {
+  const {from,to} = view.state.selection.main;
+  if (from !== to) return false;
+  const pair = view.state.field(pairs).find(p=>p.from === from && p.open && view.state.doc.sliceString(from-p.open.length,from) === p.open);
+  if (!pair) return false;
+  view.dispatch({changes:{from:from-pair.open.length,to:from+pair.close.length},selection:{anchor:from-pair.open.length},userEvent:'delete.backward'});
+  return true;
+}
+
+function environmentEnter(view) {
+  const {from,to} = view.state.selection.main;
+  if (from !== to || excluded(view.state,from)) return false;
+  const line = view.state.doc.lineAt(from);
+  const match = line.text.slice(0,from-line.from).match(/^(\s*)\\begin\{([\w*]+)\}(?:\[[^\]]*\])?\s*$/);
+  if (!match || from !== line.to || view.state.field(structure).folds.some(f=>f.from <= from && f.from >= line.from)) return false;
+  const padding = match[1], unit = view.state.facet(indentUnit);
+  view.dispatch({changes:{from,insert:'\n'+padding+unit+'\n'+padding+'\\end{'+match[2]+'}'},selection:{anchor:from+1+padding.length+unit.length},userEvent:'input.type',annotations:isolateHistory.of('full')});
+  return true;
+}
+
+export function insertLatexSnippet(view, {text, selectionStart, selectionEnd}) {
+  const {from,to} = view.state.selection.main;
+  if (selectionStart === undefined) {
+    // Escape snippet delimiters in selected literal source.
+    const selected = view.state.doc.sliceString(from,to).replace(/[{}]/g,'\\$&');
+    if (selected) text = text.replace('${1}',() => '${1:'+selected+'}');
+    view.dispatch({annotations:isolateHistory.of('before')});
+    snippet(text)(view,null,from,to);
+    view.dispatch({annotations:isolateHistory.of('after')});
+  } else view.dispatch({changes:{from,to,insert:text},selection:{anchor:from+selectionStart,head:from+(selectionEnd??selectionStart)},annotations:isolateHistory.of('full'),userEvent:'input'});
+  view.focus();
+}
+
+export function latexAssist() {
+  return [structure, pairs, invertedEffects.of(tr=>tr.docChanged?[setPairs.of(tr.startState.field(pairs))]:[]), indentUnit.of('    '),
+    autocompletion({override:[latexCompletion],activateOnTyping:true}),
+    EditorStateLanguageData(), closeBrackets(),
+    Prec.highest(EditorView.inputHandler.of(pairInput)),
+    Prec.high(keymap.of([
+      {key:'Tab',run:view=>acceptCompletion(view)||nextSnippetField(view)||indentMore(view)},
+      {key:'Shift-Tab',run:view=>prevSnippetField(view)||indentLess(view)},
+      {key:'Backspace',run:deletePair}, {key:'Enter',run:environmentEnter},
+      ...completionKeymap,...closeBracketsKeymap,...foldKeymap,
+    ])),
+    foldGutter(), foldService.of((state,from,to)=>state.field(structure).folds.find(f=>f.from>=from && f.from<=to && state.doc.lineAt(f.to).number>state.doc.lineAt(from).number)),
+    indentService.of((context,pos)=>{
+      const line=context.state.doc.lineAt(pos), before=context.state.doc.sliceString(0,line.from);
+      if (excluded(context.state,pos)) return null;
+      let depth=0;
+      for (const raw of before.split('\n')) {
+        const at=commentAt(raw), text=at<0?raw:raw.slice(0,at);
+        depth += [...text.matchAll(/\\begin\{(?!document\})[^}]+\}/g)].length - [...text.matchAll(/\\end\{(?!document\})[^}]+\}/g)].length;
+      }
+      if (/^\s*\\end\{(?!document\})/.test(line.text)) depth--;
+      return Math.max(0,depth)*context.unit;
+    }),
+  ];
+}
+
+// Keep language data independent of the legacy stream parser's token state.
+import { EditorState } from '@codemirror/state';
+function EditorStateLanguageData() {
+  return EditorState.languageData.of(() => [{closeBrackets:{brackets:['(','[','{']},commentTokens:{line:'%'}}]);
+}

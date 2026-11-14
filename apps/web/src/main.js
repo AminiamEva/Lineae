@@ -1,3 +1,5 @@
+import { sourceProjection, richSourceChanges } from './editor/source-sync.js';
+import { installSourceToolbar } from './editor/source-toolbar.js';
 import { createSourceWorkspace } from './editor/source-workspace.js';
 import { installContextMenu } from './editor/context-menu.js';
 import { textCommands } from '../latex/inline.mjs';
@@ -682,7 +684,7 @@ const tools=document.querySelector('#insert');
 tools.replaceChildren();
 function button(label, action) {
   const control=document.createElement('button');
-  control.type='button'; control.textContent=label;
+  control.type='button'; control.textContent=label; control.dataset.sourceAction=label;
   control.addEventListener('mousedown',event=>event.preventDefault());
   control.addEventListener('click',action);
   tools.append(control);
@@ -842,10 +844,57 @@ button('＋ Row',addMatrixRow);
 button('＋ Column',addMatrixColumn);
 button('$',()=>insertMath());
 button('$$',()=>insertMath(true)).dataset.shortcut='editor.insertDisplayMath';
+let projection, syncApplying = false, syncPending = false, sourceToolbar;
 const sourceView = createSourceWorkspace({
   page: documentPage,
-  render: text => load(text, false),
+  render: text => {
+    if (editor.view.composing) return false;
+    const selection = editor.state.selection;
+    syncApplying = true;
+    try {
+      load(text, false);
+      const max = editor.state.doc.content.size;
+      editor.view.dispatch(editor.state.tr.setSelection(TextSelection.between(
+        editor.state.doc.resolve(Math.min(selection.anchor,max)), editor.state.doc.resolve(Math.min(selection.head,max)))));
+      projection = sourceProjection(text,editor.getJSON());
+      syncPending = false;
+    } finally { syncApplying = false; }
+  },
+  onChange: () => { syncPending = true; },
+  onLayout: () => updateSourceButton(),
   metadata: () => ({name: filename, saved: savedSource}),
+});
+paper.addEventListener('focusin', () => { if (!sourceView.hidden && syncPending) sourceView.flush(); });
+editor.registerPlugin(new Plugin({
+  props: {handleKeyDown(view,event) {
+    if (sourceView.hidden || event.isComposing || !(event.ctrlKey || event.metaKey) || event.altKey) return false;
+    if (event.key.toLowerCase() === 'z' || event.key.toLowerCase() === 'y') {
+      event.preventDefault();
+      if (event.key.toLowerCase() === 'y' || event.shiftKey) sourceView.redo(); else sourceView.undo();
+      sourceView.flush(); return true;
+    }
+    return false;
+  }},
+  filterTransaction(transaction) {
+    if (!transaction.docChanged || syncApplying || sourceView.hidden) return true;
+    const changes = !syncPending && richSourceChanges(projection,transaction.doc.toJSON());
+    if (!changes) {
+      sourceView.error(t('该修改无法无损回写，请在源码中编辑；原文已保留。','This edit cannot round-trip safely. Edit the source; original text is preserved.'));
+      return false;
+    }
+    return true;
+  },
+}));
+editor.on('update', () => {
+  if (syncApplying || sourceView.hidden) return;
+  const changes = richSourceChanges(projection,editor.getJSON());
+  if (!changes?.length) return;
+  sourceView.applyChanges(changes);
+  importedSource = sourceView.value;
+  importedSnapshot = JSON.stringify(editor.getJSON());
+  documentParts = parseDocument(importedSource);
+  projection = sourceProjection(importedSource,editor.getJSON());
+  sourceView.error('');
 });
 let documentParts=parseDocument('\\documentclass{article}\n\\usepackage[margin=2.2cm]{geometry}\n\\usepackage{amsmath}\n\\begin{document}\n\\end{document}\n');
 let pageSetup=readPageSetup(documentParts.start);
@@ -974,6 +1023,8 @@ function identifyImportedBoxes(node) {
   }
 }
 function load(text, markSaved = true) {
+  const wasApplying = syncApplying; syncApplying = true;
+  try {
   const parsed=parseDocument(text);
   if(!parsed)throw new Error(t('无法识别文档','Invalid document'));
   if (markSaved) clearProjectAssets();
@@ -991,13 +1042,16 @@ function load(text, markSaved = true) {
   renderMeta();
   pageSetup=readPageSetup(documentParts.start);
   applyPageSetup();
+  } finally { syncApplying = wasApplying; }
 }
 let returnedDraft;
 function setSourceMode(active) {
+  if (editor.view.composing || sourceView.composing) { sourceView.error(t("请先完成当前输入。","Finish the current composition before switching modes.")); return; }
   if (active === !sourceView.hidden) return;
   if (active) {
     const unchanged = returnedDraft?.doc === editor.state.doc && returnedDraft?.imported === importedSource && returnedDraft?.preamble === documentParts.start;
     sourceView.open(unchanged ? returnedDraft.text : source());
+    sourceToolbar?.sourceTarget();
   } else {
     try {
       const text = sourceView.value;
@@ -1474,30 +1528,35 @@ function updateThemeButton(){
 const modes = document.createElement('div');
 modes.className = 'tex-modes';
 modes.setAttribute('role','group');
-const [bodyButton,sourceButton] = [false,true].map(active => {
+const [bodyButton,sourceButton,splitButton] = ['body','source','split'].map(mode => {
   const button = document.createElement('button');
   button.type = 'button';
-  button.dataset.sourceMode = active ? 'source' : 'body';
-  button.onclick = () => setSourceMode(active);
+  button.dataset.sourceMode = mode;
+  button.onclick = () => { setSourceMode(mode !== 'body'); if (mode !== 'body') sourceView.setSplit(mode === 'split'); };
   modes.append(button);
   return button;
 });
 modes.addEventListener('keydown', event => {
   if (!['ArrowLeft','ArrowRight','Home','End'].includes(event.key)) return;
   event.preventDefault();
-  const source = ['ArrowRight','End'].includes(event.key);
-  setSourceMode(source);
-  (sourceView.hidden ? bodyButton : sourceButton).focus();
+  const buttons=[bodyButton,sourceButton,splitButton];
+  const index=buttons.indexOf(document.activeElement);
+  const next=event.key==='Home'?0:event.key==='End'?2:(index+(event.key==='ArrowRight'?1:2))%3;
+  buttons[next].click(); buttons[next].focus();
 });
 function updateSourceButton() {
   for (const [key, group] of Object.entries(groups)) {
-    if (key !== 'files') group.inert = !sourceView.hidden;
+    if (key !== 'files') group.inert = false;
   }
   modes.setAttribute('aria-label', t('编辑模式','Editing mode'));
   bodyButton.textContent = t('正文','Document');
   sourceButton.textContent = t('源码','Source');
   bodyButton.setAttribute('aria-pressed',String(sourceView.hidden));
-  sourceButton.setAttribute('aria-pressed',String(!sourceView.hidden));
+  sourceButton.setAttribute('aria-pressed',String(!sourceView.hidden && !sourceView.split));
+  splitButton.textContent = t('分栏','Split');
+  splitButton.setAttribute('aria-pressed',String(!sourceView.hidden && sourceView.split));
+  sourceToolbar?.refresh();
+  metaBar.inert = !sourceView.hidden;
   sourceView.refresh();
 }
 let continueTablesButton;
@@ -1690,8 +1749,8 @@ const shortcutActions = {
     },
     ignoreBrowserZoomReset: resetPageZoom,
     literalBacktick: () => editor.commands.insertContent('`'),
-    undo: () => editor.commands.undo(),
-    redo: () => editor.commands.redo(),
+    undo: () => {if(sourceView.hidden) return editor.commands.undo();sourceView.undo();sourceView.flush();},
+    redo: () => {if(sourceView.hidden) return editor.commands.redo();sourceView.redo();sourceView.flush();},
     toggleBold: () => editor.commands.toggleBold(),
     toggleItalic: () => editor.commands.toggleItalic(),
     toggleStrike: () => editor.commands.toggleStrike(),
@@ -1717,6 +1776,7 @@ const shortcutActions = {
 installKeybindings(window, {
   getBindings: () => config.bindings,
   getContext(event) {
+    if (event.target.closest?.(".tex-code")) return {element:event.target,scopes:["global"],only:"save"};
     const field = event.composedPath().find(node => node?.tagName === 'MATH-FIELD');
     if (field && paper.contains(field)) return { element:field, field, scopes:['math','global'] };
     if (documentFind.panel.contains(event.target)) return { element:documentFind.panel, scopes:['editor'], only:'find' };
@@ -1768,7 +1828,7 @@ const referenceGroup=document.createElement('div');referenceGroup.className='too
 const mathGroup=document.createElement('div');mathGroup.className='tools';
 function groupButton(container,label,action) {
   const control=document.createElement('button');
-  control.type='button';control.textContent=label;
+  control.type='button';control.textContent=label;control.dataset.sourceAction=label;
   control.addEventListener('mousedown',event=>event.preventDefault());
   control.addEventListener('click',action);
   container.append(control);
@@ -2175,6 +2235,13 @@ for(const name of Object.keys(groups)) {
   tab.addEventListener('click',()=>selectGroup(name));tabs.append(tab);
 }
 ribbon.append(tabs,files,home,insert,layoutGroup,tableGroup,formatGroup,referenceGroup,mathGroup);header.append(ribbon);tools.remove();
+groupButton(insert,'figure',()=>insertLocalImage(editor));
+sourceToolbar = installSourceToolbar({ribbon,groups,source:sourceView,rich:paper,heading:headingMenu});
+const workspaceHeaderSize = new ResizeObserver(() => {
+  document.documentElement.style.setProperty('--tex-toolbar-bottom', Math.ceil(header.getBoundingClientRect().bottom) + 'px');
+});
+workspaceHeaderSize.observe(header);
+window.addEventListener('pagehide', event => {if(!event.persisted) workspaceHeaderSize.disconnect();});
 decorateToolbar(ribbon);
 const tooltips=installTooltips(document.body,{document,language:language.value});
 for(const control of ribbon.querySelectorAll('button'))control.dataset.rovingItem='';
