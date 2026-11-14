@@ -13,9 +13,9 @@
 test at tests\project-tree-integrity.test.mjs:167:1
 ✖ refresh does not advance a visible file baseline while awaiting another file (35.2527ms)
   AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
-  
+
   true !== false
-  
+
       at TestContext.<anonymous> (file:///C:/Users/vertin/.codex/worktrees/lineae-v3-project/Lineae-source-editor-pr/tests/project-tree-integrity.test.mjs:176:37)
       at async Test.run (node:internal/test_runner/test:1409:7)
       at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {

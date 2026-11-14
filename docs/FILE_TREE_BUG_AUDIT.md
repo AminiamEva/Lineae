@@ -83,8 +83,9 @@ the earlier bug-bash run, not this final follow-up.
 Follow-up implementation: `246237f`. The non-destructive merge `ea289fa`
 establishes ancestry with merged Phase 1 main `5dabdc2`; main's tree matched
 the earlier Phase 1 baseline. Existing bug-bash commits remain in history.
-Delivery uses a new fix PR from the existing feature branch because PR #16 is
-already merged. No PR merge, release, force push or protected-workspace change.
+Delivery is [Ready for Review fix PR #17](https://github.com/AminiamEva/Lineae/pull/17)
+from the existing feature branch because PR #16 is already merged. No PR merge,
+release, force push or protected-workspace change.
 The native operator runner is `node tests/project-native-picker.cjs`; it prints
 each required selection/cancellation stage and preserves a separate result per
 run under `test-results/file-tree-native/`. It is not added to unattended CI.

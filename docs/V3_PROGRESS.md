@@ -19,6 +19,10 @@ preserved. This was operator-assisted real native UI acceptance, not mocked or
 unattended CI. Physical Chinese IME, touchpad and power-loss testing remain open.
 See [FILE_TREE_BUG_AUDIT.md](FILE_TREE_BUG_AUDIT.md) for evidence and limitations.
 
+Delivery: [Ready for Review fix PR #17](https://github.com/AminiamEva/Lineae/pull/17)
+is open from the existing feature branch. Implementation commit: `246237f`.
+No merge or release; local automated results are distinct from remote CI status.
+
 The following sections retain historical results. The native cancellation blocker
 there is superseded by the successful follow-up; earlier full native recovery and
 rename/move UI coverage is not represented as a new final-build UI rerun. No
