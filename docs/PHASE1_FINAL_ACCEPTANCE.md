@@ -4,6 +4,11 @@ Status: core implementation and combined-tree verification passed; ready for
 formal code review. Physical Chinese IME and storage-failure edge cases below
 remain explicitly unverified. This is review readiness, not a release claim.
 
+Review delivery: [PR #16 — feat: finalize Lineae V3 project workspace](https://github.com/AminiamEva/Lineae/pull/16)
+is open and non-Draft. The feature branch was pushed without force; no PR merge
+or release was performed. Implementation commit: 63194d6; subsequent delivery
+documentation commits do not change the verified application code.
+
 ## Baseline and integration gate
 
 Worktree: lineae-v3-project/Lineae-source-editor-pr.

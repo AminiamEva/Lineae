@@ -8,6 +8,8 @@ uses per-instance journals and guarded archival, preserving alternate drafts.
 406 Node tests and 9 Rust entries passed; combined browser and native builds
 passed. See PHASE1_FINAL_ACCEPTANCE.md for current results and manual limitations.
 Earlier blocked/single-snapshot notes below are superseded.
+Delivery: branch pushed, [Ready for Review PR #16](https://github.com/AminiamEva/Lineae/pull/16)
+created. No merge/release. Implementation commit 63194d6.
 
 ## Finalization checkpoint
 
