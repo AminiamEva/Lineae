@@ -1,5 +1,105 @@
 # File Tree bug bash — 2026-11-14
 
+## Directory concurrency follow-up
+
+The follow-up keeps the earlier failed-run evidence below and adds a native
+directory-move contract. The frontend sends the original full subtree inventory
+(including empty directories) and saved file bytes. Rust checks that inventory
+under a project-wide named mutex shared by Lineae instances, then performs the
+existing atomic no-replace root rename. Stale membership or content rejects the
+move without changing model paths. A native directory move without a manifest
+is rejected; ordinary single-file moves retain their expected-byte contract.
+
+Windows does not permit holding open descendant files across parent-directory
+rename, even with all sharing enabled (verified with a real filesystem probe).
+The implementation therefore does not claim an atomic snapshot against every
+external editor. It detects late changes after commit, reports committed status
+and a warning, and never attempts an unsafe rollback. The frontend updates the
+known stable IDs/paths first and reconciles membership afterwards. Existing
+editor bytes, saved text, drafts and sessions stay unchanged during that
+automatic reconciliation. Changed files get a visible warning and reject save
+until explicitly refreshed/reloaded; missing drafts remain recoverable. A failed
+post-commit scan is reported as a moved directory needing review, not a failed
+rename with the old paths still in use.
+
+Additional coverage includes late writes, additions/deletions, a rescan error,
+typing during reconciliation, and a real second Lineae process trying to save a
+descendant during the directory move. Move endpoints are verified against their
+actual Windows handle paths. The target parent stays open without delete
+sharing through validation and rename, preventing ordinary parent/ancestor
+replacement from redirecting a move. Tests include real junction replacement,
+parent rename attempts, and a source directory replaced with a regular file.
+A directory manifest cannot silently fall through to the single-file branch.
+
+The native picker is now explicitly parented to the invoking Lineae window.
+Previously it used the dialog library's unowned helper window; ownership is
+needed for predictable modal focus. This does not by itself prove cancellation
+passes: the actual interaction runner still requires a real cancellation.
+The new isolated native-picker runner
+observes and forwards the real bridge; it never fabricates a native return or
+substitutes the filesystem. Tauri's global core export is read-only in this
+build, so the recorded observation boundary is the existing project adapter.
+It copies the compiled executable and DLLs to a unique test folder and records
+the executable hash. A long operator wait no longer locks Cargo's build output.
+
+### Final follow-up verification — 2026-11-15
+
+| Check | Actual result |
+| --- | --- |
+| All Node tests, including real-disk model tests | 428/428 passed, zero skipped |
+| Native Windows Rust tests | 21/21 entries passed, zero ignored; includes real ACL denial, exclusive handles, independent writer processes and interrupted-save recovery |
+| File Tree browser scenarios | 12/12 passed, including concurrent directory changes and retained editor baselines |
+| File-session browser scenarios | 5/5 passed |
+| Existing project browser suite | All 3 groups passed: OPFS, real Windows disk bridge, recovery and mixed EOL |
+| V2/V2.1 browser regression | Passed; 70 and 61 assertions reported |
+| Web and locked Tauri desktop debug build | Passed |
+| Actual Windows native picker, latest build | All 3 checkpoints passed: standalone cancel; select this run's Chinese/space path; cancel with two dirty sessions |
+
+The actual native runner completed in `picker-1794671857171`. Both cancellations
+returned `AbortError` through the real adapter, and selection returned the real
+canonical Windows path. After the dirty cancellation it checked both drafts,
+active file/IDs, tree expansion, selection replacement and undo, Split preference,
+CodeMirror DOM identity, and unchanged on-disk content. Desktop automation clicked
+the real Windows controls; WebView2 automation performed the editor assertions.
+This was operator-assisted native acceptance, not an unattended CI test or a
+mocked dialog. The runner then closed only its own test process tree.
+
+The tested executable SHA-256 is
+`931562f370be4c9e0e85c4191a0f03192ee9dc0dd4ec6368e56a4d82ef008bb2`.
+Earlier failed attempts remain recorded: observer setup, window interference,
+and cancellation arriving during the selection stage. They are not passing runs.
+The final successful run supersedes the **cancellation** blocker below, but does
+not imply a new full native recovery/rename/move UI run: those flows have their
+earlier UI evidence plus this follow-up's fresh Rust and browser regressions.
+Physical Chinese IME composition, touchpad input and power-loss testing remain
+unverified; no keystroke injection is represented as those tests.
+
+Follow-up evidence: [results and logs](file-tree-evidence/followup-checks.txt),
+[native picker trace](file-tree-evidence/native-picker-result.json),
+[model failures before repair](file-tree-evidence/directory-contract-before.txt).
+Historical counts and cancellation failures later in this document describe
+the earlier bug-bash run, not this final follow-up.
+
+Follow-up implementation: `246237f`. The non-destructive merge `ea289fa`
+establishes ancestry with merged Phase 1 main `5dabdc2`; main's tree matched
+the earlier Phase 1 baseline. Existing bug-bash commits remain in history.
+Delivery uses a new fix PR from the existing feature branch because PR #16 is
+already merged. No PR merge, release, force push or protected-workspace change.
+The native operator runner is `node tests/project-native-picker.cjs`; it prints
+each required selection/cancellation stage and preserves a separate result per
+run under `test-results/file-tree-native/`. It is not added to unattended CI.
+
+### Follow-up findings
+
+| ID | Severity | Reproduction / root cause | Repair and verification |
+| --- | --- | --- | --- |
+| FT-20 | P0 | Change a descendant after the JS move preflight, or let a second Lineae process save while its parent is moved. Native directory moves had no saved subtree contract or shared project lock. | Require original membership/bytes in Rust, serialize cooperating instances, reject stale manifests. Real two-process and stale membership/content tests pass. |
+| FT-21 | P0 | Change/add/delete a descendant at directory commit. Updating paths alone hides the new membership; adopting disk bytes would silently advance an editor's saved baseline. | Commit known stable paths, reconcile membership while preserving all existing editor baselines, mark external conflicts and refuse stale save. Model and real-disk browser tests cover clean/dirty sessions, typing during reconciliation and failed scans. |
+| FT-22 | P1 | Replace a validated move parent with a junction, or replace the source directory with a file. Earlier pathname validation could address a different endpoint or fall through the file branch. | Verify opened handle paths, pin destination parent, retain directory intent. Real Windows junction/parent replacement and type-change tests pass. Arbitrary hostile reparse changes are not claimed fully prevented. |
+| FT-23 | P2 | Native folder dialog had no explicit Lineae owner and could appear as an independent helper window during acceptance. | Parent the picker to the invoking Tauri window. Actual current-build selection and both cancellation checkpoints pass; tool accessibility targeting remains imperfect and is not treated as a product defect. |
+
+![Two dirty sessions retained after native cancellation](file-tree-evidence/native-dirty-cancelled.png)
+
 This audit changes project reliability, not the math, bibliography, typography or
 release roadmap. Findings below were reproduced with tests before their fixes.
 The tree remains hidden on project open, and its toggle remains the first control
@@ -70,7 +170,7 @@ All rows are **fixed and automated-regression verified** unless qualified below.
 | FT-18 | P2 | Type or reopen the current file. Tree nodes were replaced, losing focused buttons and risking detached toggle events. | Update row status in place; no-op reopening the active file; preserve expansion/scroll and stable focus keys across topology changes. | tree E2E: DOM identity, focus, nesting; sessions E2E: stable CM view |
 | FT-19 | P2 | Open a never-visited file after another file was Split. It inherited Split without its own preference. | New files start Raw; visited files restore their own Split state. | sessions E2E: repeated switching and rich undo isolation |
 
-## Test matrix and actual execution
+## Original bug-bash test matrix and actual execution (historical)
 
 | Layer | Executed coverage | Result |
 | --- | --- | --- |
@@ -114,10 +214,12 @@ its log is kept separately from the final result.
 
 ## Remaining limitations / unresolved audit items
 
-- **Partial concurrency guarantee:** directory moves preflight descendants but
-  do not atomically lock the entire subtree against unrelated external apps.
-  File rename/delete baseline validation and destination no-replace are covered;
-  arbitrary descendant mutations during directory moves are not fully solved.
+- **Partial concurrency guarantee:** directory moves now validate a native subtree
+  manifest, serialize cooperating Lineae processes, and reconcile late external
+  changes without advancing editor baselines or rolling back a committed move.
+  They do not freeze unrelated applications across the entire subtree. Atomic
+  whole-subtree snapshots and every hostile in-place reparse-point race remain
+  outside the guarantee. Large binary manifests also incur memory/IPC overhead.
 - Browser File System Access lacks the native compare-and-mutate guarantee.
   Baseline checks reject observed conflicts, but arbitrary non-cooperating
   writers can still race the final browser commit. Native desktop is stronger.
@@ -165,7 +267,7 @@ Product files: `apps/web/src/project/{project.mjs,paths.mjs,dependencies.mjs,exp
 `apps/desktop/src-tauri/src/{project.rs,bridge.js}`.
 Tests: `tests/project-tree-integrity.test.mjs`, `tests/file-tree-browser.cjs`,
 `tests/file-tree-sessions.cjs`, `tests/project-native-bridge.test.mjs`,
-`tests/project-tauri.cjs`. CI: `.github/workflows/desktop.yml` now includes the
+`tests/project-tauri.cjs`, `tests/project-native-picker.cjs`. CI: `.github/workflows/desktop.yml` now includes the
 three project browser suites and native integrity tests. CI has not been run
 against this follow-up branch (PR #16 is already merged). Documentation: this
 report and `docs/V3_PROGRESS.md`.

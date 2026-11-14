@@ -1,5 +1,29 @@
 # V3 checkpoint — 2026-11-14
 
+## File Tree concurrency and native cancellation follow-up — 2026-11-15
+
+Directory moves now carry original subtree membership and saved bytes into the
+native layer, use a project-wide lock across cooperating Lineae processes, and
+verify/pin move endpoints. After a committed move, membership is reconciled while
+existing editor baselines, drafts and stable IDs are retained. Late external
+changes are visible and stale saves are refused; failed reconciliation does not
+pretend the disk move was rolled back. This does not claim atomic locking of all
+unrelated external programs or large-binary performance acceptance.
+
+428/428 Node tests, 21/21 Windows Rust entries, 12/12 tree E2E and 5/5 session
+E2E passed. Existing project and V2/V2.1 browser regressions, web build and locked
+Tauri desktop debug build also passed. The actual latest-build Windows picker
+passed standalone cancellation, Chinese/space directory selection, and dirty
+project cancellation with both drafts, selection, undo, Split and editor identity
+preserved. This was operator-assisted real native UI acceptance, not mocked or
+unattended CI. Physical Chinese IME, touchpad and power-loss testing remain open.
+See [FILE_TREE_BUG_AUDIT.md](FILE_TREE_BUG_AUDIT.md) for evidence and limitations.
+
+The following sections retain historical results. The native cancellation blocker
+there is superseded by the successful follow-up; earlier full native recovery and
+rename/move UI coverage is not represented as a new final-build UI rerun. No
+Phase 2 work or changes to the original font/zoom workspace were made.
+
 ## File Tree bug bash
 
 19 reproduced issues repaired across model, native operations, tree DOM and

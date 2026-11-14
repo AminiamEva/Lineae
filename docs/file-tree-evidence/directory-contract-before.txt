@@ -1,0 +1,146 @@
+✔ reload cannot replace edits made while the disk read is pending (29.1644ms)
+✔ rename updates editable file kind and dependency metadata without losing drafts or ID (13.6695ms)
+✔ refresh reconciles external additions and removals while retaining missing dirty sessions (36.7087ms)
+✔ refresh updates clean contents but never overwrites concurrent edits or their session (18.5998ms)
+✔ refresh retains a deleted clean active file and main identity until explicitly left (11.1418ms)
+✔ queued save and move serialize real disk operations and forward expected bytes (18.665ms)
+✔ browser project listing ignores native recovery metadata with any casing (1.023ms)
+✔ browser create refuses case aliases before opening an existing Windows file for writing (0.5495ms)
+✔ a recovery storage failure after deletion cannot leave a dangling active file (13.2038ms)
+✔ typing during deletion preflight aborts deletion before touching the real file (11.6394ms)
+✔ typing during committed deletion remains in a missing draft session (10.6954ms)
+✔ confirmed recovery retains missing-path drafts without recreating disk files (8.4221ms)
+✔ missing clean files cannot claim saved and retained missing dependency targets remain missing (11.3181ms)
+✔ refresh does not advance a visible file baseline while awaiting another file (16.3671ms)
+✖ directory moves forward a complete saved-byte manifest including resources and empty directories (23.849ms)
+✖ late directory modify is refused without changing model paths or drafts (15.5327ms)
+✖ late directory add is refused without changing model paths or drafts (15.6507ms)
+✖ late directory delete is refused without changing model paths or drafts (15.1408ms)
+✖ committed directory reconciliation discovers arrivals without advancing displayed baselines (20.4593ms)
+✖ committed directory move retains paths and reports reconciliation failure without false rollback (18.7369ms)
+ℹ tests 20
+ℹ suites 0
+ℹ pass 14
+ℹ fail 6
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 460.5661
+
+✖ failing tests:
+
+test at tests\project-tree-integrity.test.mjs:182:1
+✖ directory moves forward a complete saved-byte manifest including resources and empty directories (23.849ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:
+  + actual - expected
+  
+  + undefined
+  - [
+  -   {
+  -     kind: 'directory',
+  -     path: '第一章'
+  -   },
+  -   {
+  -     kind: 'directory',
+  -     path: '第一章/empty'
+  -   },
+  -   {
+  -     bytes: [
+  -       0,
+  -       255,
+  -       13,
+  -       10
+  -     ],
+  -     kind: 'file',
+  -     path: '第一章/image.png'
+  -   },
+  -   {
+  -     bytes: [
+  -       77,
+  -       101,
+  -       116,
+  -       104,
+  -       111,
+  -       100,
+  -       13,
+  -       10
+  -     ],
+  -     kind: 'file',
+  -     path: '第一章/研究方法.tex'
+  -   }
+  - ]
+  
+      at TestContext.<anonymous> (file:///C:/Users/vertin/.codex/worktrees/lineae-v3-project/Lineae-source-editor-pr/tests/project-tree-integrity.test.mjs:189:10)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: [ { path: '第一章', kind: 'directory' }, { path: '第一章/empty', kind: 'directory' }, { path: '第一章/image.png', kind: 'file', bytes: [Array] }, { path: '第一章/研究方法.tex', kind: 'file', bytes: [Array] } ],
+    operator: 'deepStrictEqual',
+    diff: 'simple'
+  }
+
+test at tests\project-tree-integrity.test.mjs:200:49
+✖ late directory modify is refused without changing model paths or drafts (15.5327ms)
+  AssertionError [ERR_ASSERTION]: Missing expected rejection.
+      at async TestContext.<anonymous> (file:///C:/Users/vertin/.codex/worktrees/lineae-v3-project/Lineae-source-editor-pr/tests/project-tree-integrity.test.mjs:218:20)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: /changed on disk/,
+    operator: 'rejects',
+    diff: 'simple'
+  }
+
+test at tests\project-tree-integrity.test.mjs:200:49
+✖ late directory add is refused without changing model paths or drafts (15.6507ms)
+  AssertionError [ERR_ASSERTION]: Missing expected rejection.
+      at async TestContext.<anonymous> (file:///C:/Users/vertin/.codex/worktrees/lineae-v3-project/Lineae-source-editor-pr/tests/project-tree-integrity.test.mjs:218:20)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: /changed on disk/,
+    operator: 'rejects',
+    diff: 'simple'
+  }
+
+test at tests\project-tree-integrity.test.mjs:200:49
+✖ late directory delete is refused without changing model paths or drafts (15.1408ms)
+  AssertionError [ERR_ASSERTION]: Missing expected rejection.
+      at async TestContext.<anonymous> (file:///C:/Users/vertin/.codex/worktrees/lineae-v3-project/Lineae-source-editor-pr/tests/project-tree-integrity.test.mjs:218:20)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: /changed on disk/,
+    operator: 'rejects',
+    diff: 'simple'
+  }
+
+test at tests\project-tree-integrity.test.mjs:224:1
+✖ committed directory reconciliation discovers arrivals without advancing displayed baselines (20.4593ms)
+  Error: No post-move reconciliation
+      at file:///C:/Users/vertin/.codex/worktrees/lineae-v3-project/Lineae-source-editor-pr/tests/project-tree-integrity.test.mjs:236:63
+      at async TestContext.<anonymous> (file:///C:/Users/vertin/.codex/worktrees/lineae-v3-project/Lineae-source-editor-pr/tests/project-tree-integrity.test.mjs:236:3)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+
+test at tests\project-tree-integrity.test.mjs:246:1
+✖ committed directory move retains paths and reports reconciliation failure without false rollback (18.7369ms)
+  AssertionError [ERR_ASSERTION]: The "string" argument must be of type string. Received type undefined (undefined)
+      at TestContext.<anonymous> (file:///C:/Users/vertin/.codex/worktrees/lineae-v3-project/Lineae-source-editor-pr/tests/project-tree-integrity.test.mjs:252:10)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: /Access denied during rescan/,
+    operator: 'match',
+    diff: 'simple'
+  }
