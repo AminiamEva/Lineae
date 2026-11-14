@@ -69,6 +69,20 @@ module.exports=async function checkV2(context,url) {
     await set('');await page.keyboard.type('\\begin{ite');await page.locator('.cm-tooltip-autocomplete').waitFor();await page.waitForTimeout(150);await page.keyboard.press('Tab');
     equal(await read(),'\\begin{itemize}\n    \n\\end{itemize}','paired environment completion');
     await set('\\begin{align}');await page.keyboard.press('Enter');equal(await read(),'\\begin{align}\n    \n\\end{align}','manual environment Enter');
+    await set('\\begin{enum}');await page.keyboard.press('Enter');
+    equal((await read()).includes('\\end{enum}'),false,'abbreviated environment Enter does not insert a mismatched closer');
+    await set('\\begin{enum}\n\\end{enum}');
+    await page.evaluate(()=>{
+      const view=v2Fixture.EditorView.findFromDOM(document.querySelector('.cm-editor'));
+      const text=view.state.doc.toString();
+      view.dispatch({selection:{anchor:text.indexOf('\\begin{enum}')+'\\begin{enum}'.length}});
+      view.focus();
+    });
+    await page.keyboard.press('Control+Space');
+    await page.locator('.cm-tooltip-autocomplete').waitFor();
+    await page.waitForTimeout(150);
+    await page.keyboard.press('Enter');
+    equal(await read(),'\\begin{enumerate}\n\\end{enumerate}','existing environment closer is renamed');
     await set('\\begin{itemize}\n    \\item x');await page.keyboard.press('Enter');
     equal((await read()).endsWith('\n    '),true,'environment indentation');
     await set('\\begin{itemize}\n    \\item x\n\\end{itemize}');

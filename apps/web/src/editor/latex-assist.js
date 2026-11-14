@@ -59,14 +59,30 @@ function excluded(state, pos) {
 export function latexCompletion(context) {
   if (excluded(context.state, context.pos)) return null;
   const env = context.matchBefore(/\\begin\{[\w*]*\}?/);
-  if (env) return {from:env.from,to:context.pos,filter:false,options:environments
-    .filter(name => name.startsWith(env.text.slice(7).replace(/\}$/, '')))
+  if (env) {
+    const typed = env.text.slice(7).replace(/\}$/, '');
+    return {from:env.from,to:context.pos,filter:false,options:environments
+    .filter(name => name.startsWith(typed))
     .map(name => ({label:name,type:'type',detail:'Paired environment',apply(view, _option, from, to) {
       if (view.state.doc.sliceString(to, to + 1) === '}') to++;
+      const begin = '\\begin{' + name + '}';
       const rest = view.state.doc.sliceString(to);
-      const template = rest.trimStart().startsWith('\\end{' + name + '}') ? '\\begin{' + name + '}\n\t${1}' : environmentSnippet(name);
-      snippet(template)(view, null, from, to);
+      const end = /^(\s*)\\end\{([^{}]+)\}/.exec(rest);
+      if (end && typed && (end[2] === name || end[2].startsWith(typed))) {
+        // The document may already contain a closer for the abbreviated name.
+        // Rename it instead of inserting a second, unmatched environment.
+        const endStart = to + end.index + end[1].length;
+        const endEnd = endStart + end[0].length - end[1].length;
+        view.dispatch({
+          changes: [{from,to,insert:begin}, {from:endStart,to:endEnd,insert:'\\end{' + name + '}'}],
+          selection: {anchor:from + begin.length},
+          userEvent: 'input.complete',
+        });
+        return;
+      }
+      snippet(environmentSnippet(name))(view, null, from, to);
     }}))};
+  }
   const word = context.matchBefore(/\\[a-zA-Z]*/);
   if (word) return {from:word.from, options:Object.entries(commandSnippets).map(([name,[template,detail]]) =>
     snippetCompletion(template,{label:'\\' + name,type:'keyword',detail})), validFor:/^\\[a-zA-Z]*$/};
@@ -136,6 +152,9 @@ function environmentEnter(view) {
   const line = view.state.doc.lineAt(from);
   const match = line.text.slice(0,from-line.from).match(/^(\s*)\\begin\{([\w*]+)\}(?:\[[^\]]*\])?\s*$/);
   if (!match || from !== line.to || view.state.field(structure).folds.some(f=>f.from <= from && f.from >= line.from)) return false;
+  // An abbreviated name such as "enum" should be finished by the completion
+  // popup instead of receiving a closer for the prefix itself.
+  if (environments.some(name => name !== match[2] && name.startsWith(match[2]))) return false;
   const padding = match[1], unit = view.state.facet(indentUnit);
   view.dispatch({changes:{from,insert:'\n'+padding+unit+'\n'+padding+'\\end{'+match[2]+'}'},selection:{anchor:from+1+padding.length+unit.length},userEvent:'input.type',annotations:isolateHistory.of('full')});
   return true;

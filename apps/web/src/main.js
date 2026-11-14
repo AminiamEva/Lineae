@@ -288,7 +288,9 @@ function outdentCurrentLine(editor) {
     return true;
   }
   if ($from.parent.type.name === 'paragraph' && (($from.parent.attrs.indentLevel ?? 0) > 0)) {
-    editor.view.dispatch(editor.state.tr.setNodeMarkup($from.before(), undefined, { ...$from.parent.attrs, indentLevel:0 }));
+    editor.view.dispatch(editor.state.tr.setNodeMarkup($from.before(), undefined, {
+      ...$from.parent.attrs, indentLevel:0, indent:true,
+    }));
   }
   return true;
 }
@@ -505,7 +507,9 @@ const Shortcuts = Extension.create({
           const indentLevel=paragraph.attrs.indentLevel??0;
           if(indentLevel>0) {
             const position=$from.before();
-            this.editor.view.dispatch(this.editor.state.tr.setNodeMarkup(position,undefined,{...paragraph.attrs,indentLevel:0}));
+            this.editor.view.dispatch(this.editor.state.tr.setNodeMarkup(position,undefined,{
+              ...paragraph.attrs,indentLevel:0,indent:true,
+            }));
             this.editor.view.focus();
             return true;
           }
