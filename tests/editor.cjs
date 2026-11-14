@@ -10,7 +10,7 @@ const server=createServer(async(req,res)=>{
   if(!path.startsWith(root)){res.writeHead(403).end();return;}
   try{
     const data=await readFile(path);
-    res.setHeader('Content-Type',({'.html':'text/html','.js':'text/javascript','.mjs':'text/javascript','.css':'text/css','.woff2':'font/woff2','.otf':'font/otf'})[extname(path)]??'application/octet-stream');
+    res.setHeader('Content-Type',({'.html':'text/html','.js':'text/javascript','.mjs':'text/javascript','.css':'text/css','.svg':'image/svg+xml','.png':'image/png','.woff2':'font/woff2','.otf':'font/otf'})[extname(path)]??'application/octet-stream');
     res.end(data);
   }catch{res.writeHead(404).end();}
 });
@@ -2332,6 +2332,11 @@ async function verifySelectionGeometry(page, paper, importSource) {
     await page.keyboard.press('Backspace');
     assert.equal(await paper.locator(':scope > p[data-indent-level]').count(),0,
       'A second Backspace returns to the page margin');
+    assert.equal(await paper.locator(':scope > p').last().getAttribute('data-indent'),'true',
+      'Returning to the page margin restores the paragraph first-line indent');
+    await page.keyboard.type('continuation');
+    assert.ok(await paper.locator(':scope > p').last().evaluate(node=>parseFloat(getComputedStyle(node).textIndent)>0),
+      'The restored paragraph uses the document first-line indent');
 
     await importSource('Nested tables');
     await paper.locator('p').last().click();

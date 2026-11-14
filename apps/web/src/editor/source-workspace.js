@@ -10,6 +10,7 @@ import { t } from '../ui/i18n.mjs';
 import { latexAssist, insertLatexSnippet } from './latex-assist.js';
 import { undo, redo, isolateHistory } from '@codemirror/commands';
 import { sourceEolExtensions, sourceWithEndings } from './source-eol-state.js';
+import { clampFont, FONT_DEFAULT, FONT_MIN, FONT_MAX, installFontWheel } from './editor-font.mjs';
 
 const latex = StreamLanguage.define({
   ...stex,
@@ -53,10 +54,21 @@ export function createSourceWorkspace({ page, render, metadata, onChange = () =>
   const message = element('span', 'tex-message');
   message.setAttribute('role', 'status');
   const format = element('span', 'tex-format');
+  let indentOnSave = true;
+  try { indentOnSave = localStorage.getItem('lineae.indentOnSave') !== 'false'; } catch {}
+  const indentLabel = element('label', 'tex-indent-setting');
+  const indentCheckbox = document.createElement('input');
+  indentCheckbox.type = 'checkbox'; indentCheckbox.checked = indentOnSave;
+  indentCheckbox.addEventListener('change', () => {
+    indentOnSave = indentCheckbox.checked;
+    try { localStorage.setItem('lineae.indentOnSave', String(indentOnSave)); } catch {}
+  }, {signal:lifecycle.signal});
+  indentLabel.append(indentCheckbox, t('保存时缩进', 'Indent on save'));
+  indentLabel.title = t('仅调整安全的行首缩进；关闭可保留原始格式', 'Adjust safe leading indentation only; disable to preserve original formatting');
   format.textContent = 'LaTeX  ·  UTF-8';
   head.append(icon('sourceFile'), filename, dirty, actions);
   body.append(code, divider, preview);
-  foot.append(position, message, format);
+  foot.append(position, message, indentLabel, format);
   panel.append(head, body, foot);
   const anchor = document.createComment('document page');
   page.before(anchor);
@@ -75,12 +87,18 @@ export function createSourceWorkspace({ page, render, metadata, onChange = () =>
   let view, original, timer, scrollTop = 0, scrollLeft = 0;
   let savedText, savedDoc;
   let lastRendered, expanded = false, previewOnly = false, receiving = false;
-  let fontSize = 14;
-  try { fontSize = Math.max(11, Math.min(24, Number(localStorage.getItem("lineae.sourceFontSize")) || 14)); } catch {}
+  let fontSize = FONT_DEFAULT, richTextFontSize = FONT_DEFAULT;
+  try {
+    fontSize = clampFont(localStorage.getItem('lineae.sourceFontSize'));
+    richTextFontSize = clampFont(localStorage.getItem('lineae.richTextFontSize'));
+  } catch {}
   function zoom(size) {
-    fontSize = Math.max(11, Math.min(24, size));
+    fontSize = clampFont(size);
     panel.style.setProperty("--tex-font-size", fontSize + "px");
     zoomLabel.textContent = fontSize + "px";
+    zoomLabel.setAttribute('aria-label', t('恢复源码默认字号：','Reset code font: ') + fontSize + 'px');
+    zoomOut.disabled = fontSize === FONT_MIN;
+    zoomIn.disabled = fontSize === FONT_MAX;
     try { localStorage.setItem("lineae.sourceFontSize", String(fontSize)); } catch {}
     view?.requestMeasure();
     return true;
@@ -117,11 +135,48 @@ export function createSourceWorkspace({ page, render, metadata, onChange = () =>
   zoomOut.textContent = '−';
   const zoomLabel = element('button', 'tex-zoom-label');
   zoomLabel.type = 'button'; zoomLabel.title = 'Reset code font (Ctrl+0)';
-  zoomLabel.addEventListener('click', () => zoom(14), {signal:lifecycle.signal});
+  zoomLabel.addEventListener('click', () => zoom(FONT_DEFAULT), {signal:lifecycle.signal});
   actions.append(zoomLabel);
   const zoomIn = action('sourceExpand', () => t('放大源码字号 (Ctrl++)','Increase code font (Ctrl++)'), () => zoom(fontSize+1));
   zoomIn.textContent = '+';
   zoom(fontSize);
+  installFontWheel(code, amount => zoom(fontSize + amount), lifecycle.signal);
+  const richActions = element('div', 'tex-rich-actions');
+  richActions.setAttribute('role', 'group');
+  richActions.setAttribute('aria-label', 'Rich text font');
+  const richTitle = element('span', 'tex-rich-title');
+  richTitle.textContent = t('富文本', 'Rich text');
+  richActions.append(richTitle);
+  function richButton(text, label, run) {
+    const button = element('button', '');
+    button.type = 'button'; button.textContent = text;
+    button.title = label; button.setAttribute('aria-label', label);
+    button.addEventListener('click', run, {signal:lifecycle.signal});
+    richActions.append(button);
+    return button;
+  }
+  const richOut = richButton('−', t('缩小富文本字号 (Ctrl+-)', 'Decrease rich text font (Ctrl+-)'), () => zoomRich(richTextFontSize - 1));
+  const richLabel = richButton('', t('恢复富文本默认字号 (Ctrl+0)', 'Reset rich text font (Ctrl+0)'), () => zoomRich(FONT_DEFAULT));
+  richLabel.className = 'tex-rich-zoom-label';
+  const richIn = richButton('+', t('放大富文本字号 (Ctrl++)', 'Increase rich text font (Ctrl++)'), () => zoomRich(richTextFontSize + 1));
+  preview.append(richActions);
+  function zoomRich(size) {
+    richTextFontSize = clampFont(size);
+    panel.style.setProperty('--rich-text-font-size', richTextFontSize + 'px');
+    richLabel.textContent = richTextFontSize + 'px';
+    richOut.disabled = richTextFontSize === FONT_MIN;
+    richIn.disabled = richTextFontSize === FONT_MAX;
+    try { localStorage.setItem('lineae.richTextFontSize', String(richTextFontSize)); } catch {}
+    return true;
+  }
+  zoomRich(richTextFontSize);
+  installFontWheel(preview, amount => zoomRich(richTextFontSize + amount), lifecycle.signal);
+  preview.addEventListener('keydown', event => {
+    if (!(event.ctrlKey || event.metaKey) || event.altKey || event.isComposing ||
+        !['+', '=', '-', '0'].includes(event.key)) return;
+    event.preventDefault(); event.stopPropagation();
+    zoomRich(event.key === '0' ? FONT_DEFAULT : richTextFontSize + (event.key === '-' ? -1 : 1));
+  }, {capture:true, signal:lifecycle.signal});
   const expandButton = action('sourceExpand', () => expanded ? t('仅源码','Source only') : t('分栏编辑','Split editing'), () => setExpanded(!expanded));
 
   function value() {
@@ -232,7 +287,7 @@ export function createSourceWorkspace({ page, render, metadata, onChange = () =>
         indentOnInput(), bracketMatching(), latex, syntaxHighlighting(highlight), latexAssist(),
         keymap.of([
           {key:"Mod-=",run:()=>zoom(fontSize+1)}, {key:"Mod-+",run:()=>zoom(fontSize+1)},
-          {key:"Mod--",run:()=>zoom(fontSize-1)}, {key:"Mod-0",run:()=>zoom(14)},
+          {key:"Mod--",run:()=>zoom(fontSize-1)}, {key:"Mod-0",run:()=>zoom(FONT_DEFAULT)},
           {key:"Mod-h",run:openSearchPanel},
         ]),
         EditorView.lineWrapping, keymap.of([...searchKeymap, ...historyKeymap, ...defaultKeymap, indentWithTab]),
@@ -294,6 +349,7 @@ export function createSourceWorkspace({ page, render, metadata, onChange = () =>
     get hidden() { return panel.hidden; },
     get split() { return expanded; },
     get composing() { return view?.composing ?? false; },
+    get indentOnSave() { return indentOnSave; },
     find() { if(view) openSearchPanel(view); },
     setSplit(next) { if (!panel.hidden) setExpanded(next); },
     flush: updatePreview,
@@ -305,6 +361,14 @@ export function createSourceWorkspace({ page, render, metadata, onChange = () =>
       receiving = true;
       try { view.dispatch({changes:changes.map(c=>({from:offset(c.from),to:offset(c.to),insert:c.insert.replace(/\r\n?/g,"\n")})),annotations:isolateHistory.of("full"),userEvent:"input.rich"}); lastRendered = value(); }
       finally { receiving = false; }
+    },
+    indent(changes) {
+      if (!view || !changes.length || view.composing) return false;
+      // Formatter offsets are logical LF positions. Each change is confined
+      // to one line, so the EOL StateField retains every original separator.
+      view.dispatch({changes, annotations:isolateHistory.of('full'), userEvent:'input.indent'});
+      updatePreview();
+      return true;
     },
     get value() { return value(); },
     open(text) {

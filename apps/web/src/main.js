@@ -1,6 +1,7 @@
 import { sourceProjection, richSourceChanges } from './editor/source-sync.js';
 import { installSourceToolbar } from './editor/source-toolbar.js';
 import { createSourceWorkspace } from './editor/source-workspace.js';
+import { indentLatex } from './editor/latex-indent.mjs';
 import { installContextMenu } from './editor/context-menu.js';
 import { textCommands } from '../latex/inline.mjs';
 import { markerInput, listMarker } from '../latex/list-numbering.mjs';
@@ -288,7 +289,9 @@ function outdentCurrentLine(editor) {
     return true;
   }
   if ($from.parent.type.name === 'paragraph' && (($from.parent.attrs.indentLevel ?? 0) > 0)) {
-    editor.view.dispatch(editor.state.tr.setNodeMarkup($from.before(), undefined, { ...$from.parent.attrs, indentLevel:0 }));
+    editor.view.dispatch(editor.state.tr.setNodeMarkup($from.before(), undefined, {
+      ...$from.parent.attrs, indentLevel:0, indent:true,
+    }));
   }
   return true;
 }
@@ -505,7 +508,9 @@ const Shortcuts = Extension.create({
           const indentLevel=paragraph.attrs.indentLevel??0;
           if(indentLevel>0) {
             const position=$from.before();
-            this.editor.view.dispatch(this.editor.state.tr.setNodeMarkup(position,undefined,{...paragraph.attrs,indentLevel:0}));
+            this.editor.view.dispatch(this.editor.state.tr.setNodeMarkup(position,undefined,{
+              ...paragraph.attrs,indentLevel:0,indent:true,
+            }));
             this.editor.view.focus();
             return true;
           }
@@ -1105,8 +1110,26 @@ async function downloadProject() {
     status.hidden=false;status.textContent=error.message;
   }
 }
+function prepareExplicitSave() {
+  // Explicit Save/Save As only. ZIP export and ordinary updates remain byte-faithful.
+  // Do not interrupt an IME composition with a formatting transaction.
+  if (sourceView.composing || editor.view.composing) throw new Error('请先完成当前输入 / Finish composition before saving');
+  if (sourceView.indentOnSave && projectFileKind !== 'bib') {
+    const formatted = indentLatex(sourceView.hidden ? source() : sourceView.value);
+    if (formatted.changes.length) {
+      if (sourceView.hidden) {
+        // Mount the existing authoritative source editor to retain one undo history.
+        // Restore Rich Text mode after the same transaction used by Source/Split.
+        setSourceMode(true);
+        sourceView.indent(formatted.changes);
+        setSourceMode(false);
+      } else sourceView.indent(formatted.changes);
+    }
+  }
+}
 async function saveDocument(saveAs=false) {
   if (projectExplorer?.active && !saveAs) return projectExplorer.save();
+  prepareExplicitSave();
   const text=sourceView.hidden?source():sourceView.value;
   if(window.showSaveFilePicker) {
     try {
@@ -1784,6 +1807,10 @@ installKeybindings(window, {
   getBindings: () => config.bindings,
   getContext(event) {
     if (event.target.closest?.(".tex-code")) return {element:event.target,scopes:["global"],only:"save"};
+    // Let the pane's local font handler own these keys before the global
+    // capture-phase router can turn them into whole-document zoom actions.
+    if (event.target.closest?.('.tex-preview') && (event.ctrlKey || event.metaKey) &&
+        !event.altKey && ['+', '=', '-', '0'].includes(event.key)) return {element:event.target,scopes:[]};
     const field = event.composedPath().find(node => node?.tagName === 'MATH-FIELD');
     if (field && paper.contains(field)) return { element:field, field, scopes:['math','global'] };
     if (documentFind.panel.contains(event.target)) return { element:documentFind.panel, scopes:['editor'], only:'find' };
@@ -1804,7 +1831,7 @@ installKeybindings(window, {
 // the document zoom in charge everywhere in the app; otherwise the desktop
 // webview would zoom its own UI when the pointer is outside the paper.
 window.addEventListener('wheel', event => {
-  if (!event.ctrlKey || !config.value.interface.zoomOnCtrlWheel) return;
+  if (event.defaultPrevented || !event.ctrlKey || !config.value.interface.zoomOnCtrlWheel) return;
   event.preventDefault();
   const units = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? window.innerHeight : 1;
   const speed = event.deltaMode === 0 && Math.abs(event.deltaY) < 50 ? 0.24 : 0.12;
@@ -1824,6 +1851,7 @@ function updateEnvironment() {
 footer.append(count,document.querySelector('#status'),environment,zoom,percent,paginationButton,themeButton,modes);document.body.append(footer);scale();updatePaginationButton();
 let standaloneSession;
 projectExplorer = installProjectExplorer({footer, sessions:{
+  prepareSave:prepareExplicitSave,
   ensureIdle() { if (editor.view.composing || sourceView.composing) throw new Error('请先完成当前输入 / Finish composition first'); },
   text:() => sourceView.hidden ? source() : sourceView.value,
   capture:() => ({...sourceView.captureSession(), split:sourceView.split, richSelection:{anchor:editor.state.selection.anchor, head:editor.state.selection.head}}),
