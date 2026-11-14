@@ -1,5 +1,76 @@
 # Phase 1 implementation and acceptance — 2026-11-14
 
+## Resilience follow-up (latest)
+
+Implemented fixes:
+
+- Native save now writes a unique sibling staging file, flushes it with sync_all,
+  then calls Windows ReplaceFileW. It no longer truncates the original before
+  writing. Failed saves remove only their own staging file. A killed process can
+  leave a staging file; reserved .lineae-save-* files are excluded from project
+  enumeration and retained rather than deleting potentially useful evidence.
+- The native adapter sends expected original bytes. Rust compares those bytes
+  with the opened target immediately before staging. Writes from this process
+  are serialized. Its open original denies concurrent write handles; delete
+  sharing is necessary for replacement. Windows ACL and lock errors propagate.
+- Native string rejections are normalized to Error objects so explorer error
+  feedback includes the actual reason.
+- Native-root project drafts receive synchronous localStorage checkpoints on
+  content changes and state transitions. Reopening the same selected root asks
+  before restoring text drafts. Recovery retains original baseline bytes, so an
+  externally changed file still conflicts on save. Successful saves clear clean
+  drafts; explicit project close discards recovery after the existing confirmation.
+  Storage quota errors are shown rather than silently treated as protection.
+
+Automated evidence:
+
+- 7 Rust test entries passed, zero ignored. One entry is the child-process crash
+  helper; the parent spawns that helper and checks its deliberate exit code 92.
+  A child exits after staging is synced but before replacement: original bytes
+  remain intact and a subsequent save succeeds.
+- Actual Windows ACL deny-write/delete on a newly created test file rejected a
+  save and preserved original bytes. The temporary deny ACE was removed afterward.
+  Separate read-only attribute and exclusive share_mode(0) tests rejected save,
+  read and move attempts as applicable, preserving the original.
+- Two competing threads supplied the same baseline; exactly one write succeeded.
+  A subsequent stale-baseline write was rejected. This verifies intra-process
+  serialization and expected-content checks, not arbitrary external cooperation.
+- 238 JS tests passed, zero skipped. Project browser E2E additionally verified
+  a checkpoint surviving a fresh page instance, confirmation-based restoration,
+  and rejection of save after external disk modification. It still uses the
+  documented native IPC contract substitute for this browser-only recovery test.
+- Web build, final native debug build and V2 regression passed. An initial native
+  rebuild failed because the previous acceptance executable was still running.
+  It was normally closed (no forced termination), then the locked native test/build
+  gate passed. See resilience-build-final.log and resilience-v2.log.
+
+Local evidence: test-results/phase1/resilience-native.log, resilience-js.log,
+resilience-browser.log, resilience-build.log, resilience-build-final.log,
+resilience-v2.log. Tests create
+dedicated fixtures; no user files or original font/zoom workspace were changed.
+
+Remaining limits (not claimed as passed):
+
+- Physical Chinese IME, human permission/error-dialog presentation and broader
+  accessibility remain manual checks. ACL enforcement itself was automated.
+- Atomic replacement protects old/new content against the tested process exit;
+  power failure, filesystem failure and termination during every OS phase were
+  not tested. This is not a guarantee against all storage failures.
+- An external process with delete sharing can replace a path between native
+  validation and replacement. Cross-process compare-and-swap and races during
+  rename/delete are not fully solved. Other applications need not respect our
+  process mutex.
+- Recovery is best effort: it depends on available localStorage and the same
+  native root identity. Browser-handle projects do not have this recovery key.
+  Editor history/selection are not persisted through a crash. A crash between a
+  filesystem rename and checkpoint update can leave a draft at an old path;
+  unmatched entries remain in recovery storage. Missing files are not recreated
+  automatically. No end-to-end forced Tauri process kill with draft recovery was
+  performed; the tested page restart and native writer exit are separate checks.
+
+Phase 1's tested safety coverage has expanded; exhaustive crash/concurrency and
+manual IME acceptance is still not declared. No later feature phase was started.
+
 ## Native build and actual desktop validation (latest)
 
 The earlier missing-toolchain/native-picker gaps below are superseded by this

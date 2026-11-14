@@ -22,6 +22,7 @@ fn scoped(root:&Path, path:&str) -> Result<PathBuf,String> {
 fn list(root:&Path, directory:&Path, entries:&mut Vec<Entry>) -> Result<(),String> {
     for item in std::fs::read_dir(directory).map_err(|e|e.to_string())? {
         let item=item.map_err(|e|e.to_string())?;let path=item.path();
+        if item.file_name().to_string_lossy().starts_with(".lineae-save-"){continue;}
         if item.file_type().map_err(|e|e.to_string())?.is_symlink(){continue;}
         let canonical=path.canonicalize().map_err(|e|e.to_string())?;
         if canonical != path {continue;}
@@ -42,11 +43,44 @@ pub async fn open_project(app:AppHandle, roots:State<'_,ProjectRoots>) -> Result
     Ok(Some(path.to_string_lossy().into_owned()))
 }
 #[tauri::command]
-pub fn project_operation(roots:State<'_,ProjectRoots>,root:String,operation:String,path:Option<String>,target:Option<String>,bytes:Option<Vec<u8>>) -> Result<Reply,String> {
-    operate(&roots, root, operation, path, target, bytes)
+pub fn project_operation(roots:State<'_,ProjectRoots>,root:String,operation:String,path:Option<String>,target:Option<String>,bytes:Option<Vec<u8>>,expected:Option<Vec<u8>>) -> Result<Reply,String> {
+    operate_checked(&roots, root, operation, path, target, bytes,expected)
 }
 
+// A sibling staging file is flushed before Windows atomically replaces the target.
+// The open original denies other writers; delete-sharing is required by ReplaceFileW.
+fn safe_write(path:&Path, bytes:&[u8], expected:Option<&[u8]>) -> Result<(),String> {
+    static WRITES:Mutex<()> = Mutex::new(());
+    let _guard=WRITES.lock().map_err(|e|e.to_string())?;
+    use std::io::{Read,Write};
+    use std::os::windows::{fs::OpenOptionsExt,ffi::OsStrExt};
+    let mut original=std::fs::OpenOptions::new().read(true).share_mode(1|4).open(path).map_err(|e|e.to_string())?;
+    let mut current=Vec::new();original.read_to_end(&mut current).map_err(|e|e.to_string())?;
+    if let Some(expected)=expected {if expected!=current{return Err("File changed on disk".into());}}
+    let stamp=std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
+    let temporary=path.with_file_name(format!(".lineae-save-{}-{}",std::process::id(),stamp));
+    let result=(||{
+        let mut staged=std::fs::OpenOptions::new().write(true).create_new(true).open(&temporary).map_err(|e|e.to_string())?;
+        staged.write_all(bytes).and_then(|_|staged.sync_all()).map_err(|e|e.to_string())?;drop(staged);
+        #[cfg(test)]
+        if std::env::var_os("LINEAE_TEST_CRASH_AFTER_STAGE").is_some(){std::process::exit(92);}
+        #[link(name="kernel32")]
+        extern "system" {fn ReplaceFileW(replaced:*const u16,replacement:*const u16,backup:*const u16,flags:u32,exclude:*mut std::ffi::c_void,reserved:*mut std::ffi::c_void)->i32;}
+        let target:Vec<u16>=path.as_os_str().encode_wide().chain(Some(0)).collect();
+        let source:Vec<u16>=temporary.as_os_str().encode_wide().chain(Some(0)).collect();
+        if unsafe{ReplaceFileW(target.as_ptr(),source.as_ptr(),std::ptr::null(),0,std::ptr::null_mut(),std::ptr::null_mut())}==0{return Err(std::io::Error::last_os_error().to_string());}
+        Ok(())
+    })();
+    // Only our uniquely named staging file is removed; a failed save retains target.
+    if result.is_err(){let _=std::fs::remove_file(&temporary);}
+    result
+}
+
+#[cfg(test)]
 fn operate(roots:&ProjectRoots,root:String,operation:String,path:Option<String>,target:Option<String>,bytes:Option<Vec<u8>>) -> Result<Reply,String> {
+    operate_checked(roots,root,operation,path,target,bytes,None)
+}
+fn operate_checked(roots:&ProjectRoots,root:String,operation:String,path:Option<String>,target:Option<String>,bytes:Option<Vec<u8>>,expected:Option<Vec<u8>>) -> Result<Reply,String> {
     let root=PathBuf::from(root);
     if !roots.0.lock().map_err(|e|e.to_string())?.contains(&root){return Err("Project was not selected through a native dialog".into());}
     let mut reply=Reply::default();
@@ -54,7 +88,7 @@ fn operate(roots:&ProjectRoots,root:String,operation:String,path:Option<String>,
     let path=scoped(&root,&path.ok_or("Missing path")?)?;
     match operation.as_str(){
         "read"=>reply.bytes=std::fs::read(path).map_err(|e|e.to_string())?,
-        "write"=>{let bytes=bytes.ok_or("Missing bytes")?;let mut file=std::fs::OpenOptions::new().write(true).truncate(true).open(path).map_err(|e|e.to_string())?;std::io::Write::write_all(&mut file,&bytes).map_err(|e|e.to_string())?;},
+        "write"=>{let bytes=bytes.ok_or("Missing bytes")?;safe_write(&path,&bytes,expected.as_deref())?;},
         "create"=>{let bytes=bytes.ok_or("Missing bytes")?;let mut file=std::fs::OpenOptions::new().write(true).create_new(true).open(path).map_err(|e|e.to_string())?;std::io::Write::write_all(&mut file,&bytes).map_err(|e|e.to_string())?;},
         "mkdir"=>std::fs::create_dir(path).map_err(|e|e.to_string())?,
         "remove"=>std::fs::remove_file(path).map_err(|e|e.to_string())?,
@@ -110,5 +144,55 @@ mod tests {
         call(&roots,&root,"mkdir","folder",None,None).unwrap();
         assert!(call(&roots,&root,"move","folder",Some("folder/inside"),None).is_err());
         assert!(call(&roots,&root,"read","missing.tex",None,None).is_err());
+    }
+    #[test]
+    fn permission_and_exclusive_locks_preserve_original() {
+        use std::os::windows::fs::OpenOptionsExt;
+        let (roots,root)=fixture();let path=root.join("locked.tex");std::fs::write(&path,b"original").unwrap();
+        let exclusive=std::fs::OpenOptions::new().read(true).write(true).share_mode(0).open(&path).unwrap();
+        assert!(call(&roots,&root,"read","locked.tex",None,None).is_err());
+        assert!(call(&roots,&root,"write","locked.tex",None,Some(b"wrong".to_vec())).is_err());
+        assert!(call(&roots,&root,"move","locked.tex",Some("moved.tex"),None).is_err());
+        drop(exclusive);assert_eq!(std::fs::read(&path).unwrap(),b"original");
+        let mut permissions=std::fs::metadata(&path).unwrap().permissions();permissions.set_readonly(true);std::fs::set_permissions(&path,permissions).unwrap();
+        let result=safe_write(&path,b"wrong",Some(b"original"));
+        let mut permissions=std::fs::metadata(&path).unwrap().permissions();permissions.set_readonly(false);std::fs::set_permissions(&path,permissions).unwrap();
+        assert!(result.is_err());assert_eq!(std::fs::read(&path).unwrap(),b"original");
+    }
+    #[test]
+    fn competing_expected_writes_and_external_changes() {
+        let (_,root)=fixture();let path=root.join("race.tex");std::fs::write(&path,b"old").unwrap();
+        let barrier=std::sync::Arc::new(std::sync::Barrier::new(2));
+        let mut threads=Vec::new();
+        for bytes in [b"one",b"two"] {let path=path.clone();let barrier=barrier.clone();threads.push(std::thread::spawn(move||{barrier.wait();safe_write(&path,bytes,Some(b"old"))}));}
+        let passed=threads.into_iter().map(|thread|thread.join().unwrap().is_ok()).filter(|ok|*ok).count();
+        assert_eq!(passed,1);
+        assert!(safe_write(&path,b"stale",Some(b"old")).is_err());
+        let actual=std::fs::read(path).unwrap();assert!(actual==b"one" || actual==b"two");
+    }
+    #[test]
+    fn crash_writer_child() {
+        if let Some(path)=std::env::var_os("LINEAE_TEST_CRASH_PATH") {let _=safe_write(Path::new(&path),b"replacement",Some(b"original"));panic!("Crash hook did not exit");}
+    }
+    #[test]
+    fn terminated_writer_leaves_original_and_can_save_after_restart() {
+        let (_,root)=fixture();let path=root.join("crash.tex");std::fs::write(&path,b"original").unwrap();
+        let status=std::process::Command::new(std::env::current_exe().unwrap()).args(["--exact","project::tests::crash_writer_child","--nocapture"])
+            .env("LINEAE_TEST_CRASH_PATH",&path).env("LINEAE_TEST_CRASH_AFTER_STAGE","1").status().unwrap();
+        assert_eq!(status.code(),Some(92));assert_eq!(std::fs::read(&path).unwrap(),b"original");
+        safe_write(&path,b"after restart",Some(b"original")).unwrap();
+        assert_eq!(std::fs::read(path).unwrap(),b"after restart");
+    }
+    #[test]
+    fn windows_acl_denial_preserves_disk() {
+        let (_,root)=fixture();let path=root.join("acl.tex");std::fs::write(&path,b"original").unwrap();
+        let identity=std::process::Command::new("whoami").output().unwrap();assert!(identity.status.success());
+        let user=String::from_utf8(identity.stdout).unwrap().trim().to_string();
+        let deny=std::process::Command::new("icacls").arg(&path).args(["/deny",&format!("{}:(W,D)",user)]).output().unwrap();
+        assert!(deny.status.success(),"ACL setup failed: {:?}",deny);
+        let result=safe_write(&path,b"wrong",Some(b"original"));
+        let restore=std::process::Command::new("icacls").arg(&path).args(["/remove:d",&user]).output().unwrap();
+        assert!(restore.status.success(),"ACL restore failed: {:?}",restore);
+        assert!(result.is_err());assert_eq!(std::fs::read(path).unwrap(),b"original");
     }
 }

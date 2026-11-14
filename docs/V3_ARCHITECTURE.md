@@ -1,5 +1,14 @@
 # V3 implementation contract and audit
 
+Resilience follow-up: native saves now stage and flush sibling bytes before
+ReplaceFileW, verify expected source bytes in Rust, and serialize own writes.
+This preserves the target in tested pre-replacement process exits; external
+delete-sharing replacement races remain. Native project source drafts use a
+localStorage RecoveryStore keyed by selected root, restored only on confirmation
+with the original disk baseline retained. Recovery is text-only and best effort;
+it does not persist CodeMirror history and does not replace filesystem saves.
+Native error strings are normalized at the bridge for visible UI feedback.
+
 Native follow-up: the adapter is now compiled and tested with a pinned Cargo.lock.
 Production Rust disk tests exercise the same operation helper invoked by Tauri.
 The actual desktop UI has selected a Windows folder and completed file rename,

@@ -1,5 +1,6 @@
 import {projectPath, fileKind, directoryTree} from './paths.mjs';
 import {scanDependencies, resolveMetadata} from './dependencies.mjs';
+import {RecoveryStore} from './recovery.mjs';
 
 /** File handles remain in the adapter; source strings are never newline-normalized. */
 export class Project {
@@ -13,6 +14,7 @@ export class Project {
     this.treeVisible = false;
     this.config = {};
     this.scans = new Map(); this.dependencies = []; this.pathChanges = [];
+    this.recovery = adapter.root && globalThis.localStorage ? new RecoveryStore(globalThis.localStorage,adapter.root) : null;
   }
   async open() {
     const entries = await this.adapter.list();
@@ -49,6 +51,15 @@ export class Project {
     file.draft = source;
     file.dirty = source !== file.saved;
     this.scan(file); this.resolveDependencies();
+    this.checkpoint();
+  }
+  checkpoint() { this.recovery?.checkpoint(this.files.values()); }
+  restoreDrafts(drafts) {
+    let restored=0;
+    for(const draft of drafts){const file=this.files.get(draft.path);if(!file || file.draft===null)continue;
+      Object.assign(file,{saved:draft.saved,draft:draft.draft,bytes:new TextEncoder().encode(draft.saved),dirty:draft.draft!==draft.saved});this.scan(file);restored++;
+    }
+    this.resolveDependencies();return restored;
   }
   scan(file) { if(file.kind==='tex') { try { this.scans.set(file.id,scanDependencies(file.draft)); } catch { this.scans.set(file.id,{document:false,dependencies:[],status:'pending'}); } } }
   resolveDependencies() { this.dependencies=resolveMetadata(this.files,this.scans); }
@@ -72,6 +83,7 @@ export class Project {
     for(const change of changes){const file=this.files.get(change.from);this.files.delete(change.from);file.path=change.to;this.files.set(change.to,file);}
     this.directories=this.directories.map(path=>path===source || path.startsWith(source+'/')?target+path.slice(source.length):path);
     this.pathChanges.push({source,target,changes,references:'not-rewritten'}); this.resolveDependencies();
+    this.checkpoint();
     return changes;
   }
   activate(id) { this.file(id); this.activeFileId = id; }
@@ -87,10 +99,11 @@ export class Project {
       throw new Error(`File changed on disk: ${file.path}`);
     }
     const draft = file.draft, bytes = new TextEncoder().encode(draft);
-    await this.adapter.write(file.path, bytes);
+    await this.adapter.write(file.path, bytes, file.bytes);
     file.bytes = bytes;
     file.saved = draft;
     file.dirty = file.draft !== draft;
+    this.checkpoint();
   }
   get tree() { return directoryTree(this.files.values(), this.directories); }
   async create(value, text) {
@@ -106,6 +119,7 @@ export class Project {
     const text = new TextDecoder('utf-8',{fatal:true,ignoreBOM:true}).decode(bytes);
     Object.assign(file,{bytes, saved:text, draft:text, dirty:false, session:null});
     this.scan(file); this.resolveDependencies();
+    this.checkpoint();
   }
   async mkdir(value) {
     const path = projectPath(value);
@@ -120,6 +134,7 @@ export class Project {
     await this.adapter.remove(file.path);
     this.files.delete(file.path);
     this.scans.delete(file.id); this.resolveDependencies();
+    this.checkpoint();
     if (this.activeFileId === id) this.activeFileId = this.mainFileId;
   }
 }

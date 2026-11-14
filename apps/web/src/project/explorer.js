@@ -59,10 +59,18 @@ export function installProjectExplorer({footer, sessions}) {
     const adapter = window.lineaeProject ? await window.lineaeProject.open() : new DirectoryHandleAdapter(await window.showDirectoryPicker({mode:'readwrite'}));
     const next = await new Project(adapter).open();
     if (!next.mainFileId) throw new Error('目录中没有 .tex 文件 / No TeX file in this directory');
+    let recoveryNotice='';
+    try {
+      const drafts=next.recovery?.read() ?? [];
+      if(drafts.length && confirm('发现未保存草稿，恢复到编辑器？磁盘文件不会被改写。 / Restore recovered drafts?')) {
+        const restored=next.restoreDrafts(drafts);recoveryNotice=`已恢复 ${restored}/${drafts.length} 个草稿；请核对磁盘冲突 / Recovered drafts`;
+      }
+    } catch(error) { recoveryNotice='草稿恢复失败 / Recovery unavailable: '+error.message; }
     sessions.begin();
     project = next; expanded.clear(); title.textContent = adapter.name ?? adapter.handle.name;
     sessions.open(project.file(project.mainFileId));
     visible(false); render();
+    if(recoveryNotice){message.textContent=recoveryNotice;sessions.error(recoveryNotice);}
   }
   async function save() {
     capture();
@@ -74,6 +82,8 @@ export function installProjectExplorer({footer, sessions}) {
   function close() {
     sessions.ensureIdle();
     if (!approveClose()) return false;
+    project.checkpoint();
+    project.recovery?.storage.removeItem(project.recovery.key);
     project = null; sessions.end(); visible(false); render(); return true;
   }
   button(footer, '打开工程', open, 'project-open');
@@ -146,5 +156,5 @@ export function installProjectExplorer({footer, sessions}) {
   });
   render();
   return {get active() { return !!project; }, save:() => run(save), close,
-    changed() { if (project && !busy) { capture(); render(); } }};
+    changed() { if (project && !busy) { try { capture(); render(); } catch(error) {message.textContent='草稿检查点失败 / Draft checkpoint failed: '+error.message;sessions.error(message.textContent);} } }};
 }

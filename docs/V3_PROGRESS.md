@@ -1,5 +1,16 @@
 # V3 checkpoint — 2026-11-14
 
+## Resilience follow-up
+
+Added native staging/replacement saves, Rust expected-byte checks, own-writer
+serialization, visible native errors and confirmed local draft recovery for native
+roots. 7 Rust test entries and 238 JS tests passed. Real ACL/read-only/exclusive
+lock, competing thread writes and a writer subprocess exit were exercised.
+Browser recovery E2E passed. Full manual IME, all cross-process races and full
+Tauri-kill draft recovery are not claimed; see latest acceptance report.
+Final locked native debug build and V2 browser regression also passed. The
+previous acceptance app was closed normally to release its executable lock.
+
 ## Native acceptance follow-up
 
 Rust/MSVC toolchain installed within ignored test-results; Cargo.lock added.

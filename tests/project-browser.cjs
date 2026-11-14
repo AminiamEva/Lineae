@@ -138,6 +138,24 @@ const server = createServer(async(req,res) => {
     await page.waitForFunction(()=>document.querySelector('#project-explorer [role=status]').textContent.includes('Saved'));
     assert.equal(await readFile(resolve(diskRoot,'destination/moved.tex'),'utf8'),'Method.\r\nUnsaved 中文');
     await assert.rejects(readFile(resolve(diskRoot,'sections/method.tex')),{code:'ENOENT'});
+    await code.click();await page.keyboard.press('Control+End');await page.keyboard.insertText(' Recovered draft');
+    assert.ok(await page.evaluate(()=>Object.keys(localStorage).some(key=>key.startsWith('lineae:project-recovery:'))));
+    await writeFile(resolve(diskRoot,'destination/moved.tex'),'external after interruption');
+    page.once('dialog',dialog=>dialog.accept());
+    await page.reload();await page.locator('#project-open').waitFor();
+    await page.evaluate(()=>{window.__TAURI_INTERNALS__={invoke:window.nativeInvoke};});
+    await page.addScriptTag({content:await readFile('apps/desktop/src-tauri/src/bridge.js','utf8')});
+    page.once('dialog',dialog=>dialog.accept());
+    await page.locator('#project-open').click();
+    await page.waitForFunction(()=>document.querySelector('.tex-filename')?.textContent.includes('paper.tex'));
+    await page.locator('#project-toggle').click();
+    await page.locator('#project-explorer summary').filter({hasText:'destination'}).click();
+    await page.locator('[data-path="destination/moved.tex"]').click();
+    assert.match(await code.innerText(),/Recovered draft/);
+    await page.locator('#project-save').click();
+    await page.waitForFunction(()=>document.querySelector('#project-explorer [role=status]').textContent.includes('changed on disk'));
+    assert.equal(await readFile(resolve(diskRoot,'destination/moved.tex'),'utf8'),'external after interruption');
+    console.log('PASS: draft checkpoint survives fresh page instance, restore confirmation and external-change conflict protection');
     console.log('PASS: native bridge contract + real Windows disk UI rename/move, no-main.tex detection, unsaved draft retention, save at moved path');
     console.log('PASS: native OPFS project lifecycle, hidden tree, toggle placement, drafts, Split, byte-exact mixed EOL save, conflict protection, reopen, four viewport layouts');
   } finally { await browser.close(); server.close(); }

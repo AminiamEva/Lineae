@@ -77,13 +77,14 @@
   };
 
   window.lineaeProject = {async open() {
-    const root = await invoke('open_project');
+    const projectInvoke = (command,args) => invoke(command,args).catch(error => {throw error instanceof Error ? error : new Error(String(error));});
+    const root = await projectInvoke('open_project');
     if (!root) throw abortError();
-    const operation = (operation, path, target, bytes) => invoke('project_operation', {root, operation, path, target, bytes});
+    const operation = (operation, path, target, bytes, expected) => projectInvoke('project_operation', {root, operation, path, target, bytes, expected});
     return {root, name:fileName(root),
       list:async () => (await operation('list')).entries,
       read:async path => new Uint8Array((await operation('read',path)).bytes),
-      write:(path,bytes) => operation('write',path,null,Array.from(bytes)),
+      write:(path,bytes,expected) => operation('write',path,null,Array.from(bytes),expected && Array.from(expected)),
       create:(path,bytes) => operation('create',path,null,Array.from(bytes)),
       mkdir:path => operation('mkdir',path), remove:path => operation('remove',path),
       move:(path,target) => operation('move',path,target),
