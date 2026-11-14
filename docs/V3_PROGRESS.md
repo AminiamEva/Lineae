@@ -1,5 +1,16 @@
 # V3 checkpoint — 2026-11-14
 
+## PR #17 Windows CI — 2026-11-15
+
+[Remote run 43614263127](https://github.com/AminiamEva/Lineae/actions/runs/43614263127)
+passed completely for repair head `fc45db3`: data/UI/Bib tests, V2/project/tree/
+session browser suites, 21 Rust entries, Windows packaging and artifact upload.
+The initial failure was a browser-test OPFS snapshot race during indentation
+save; the test now waits for the existing save-completion signal before exact
+disk comparison. Local CI-version Chromium regressions also passed, including
+428 Node tests, 12 tree and 5 session scenarios. See FILE_TREE_BUG_AUDIT.md for
+failure evidence and run links. PR remains open; no merge or release.
+
 ## File Tree concurrency and native cancellation follow-up — 2026-11-15
 
 Directory moves now carry original subtree membership and saved bytes into the

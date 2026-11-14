@@ -1,0 +1,7 @@
+PR #17 Windows CI failure, run 43613857873, head f9f1dbfb94276e91ea849d2b1948955d1cd160da.
+Remote full log retained locally in test-results/pr17-ci/initial-windows.log.
+
+2026-11-14T16:08:51.9160362Z ##[group]Run node tests/project-browser.cjs
+2026-11-14T16:08:53.8359039Z page.evaluate: NotReadableError: The requested file could not be read, typically due to permission problems that have occurred after a reference to a file was acquired.
+2026-11-14T16:08:53.8359919Z     at D:\a\Lineae\Lineae\tests\project-browser.cjs:59:29
+2026-11-14T16:08:53.9418424Z ##[error]Process completed with exit code 1.

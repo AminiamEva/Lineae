@@ -12,9 +12,23 @@ the byte equality assertion and real OPFS writes remain unchanged. No delay,
 exception swallowing or retry was added.
 
 With CI's Chromium headless shell 141 / Playwright build 1194 installed locally,
-the repaired project browser suite passed all three groups. Remote rerun results
-will be recorded after completion. Raw initial failure and local rerun logs are
-retained under `test-results/pr17-ci/`.
+the repaired project browser suite passed all three groups. The local follow-up
+also passed all 428 Node tests, 12 tree scenarios, 5 session scenarios and the
+full V2/V2.1 browser regression.
+
+Remote rerun [43614263127](https://github.com/AminiamEva/Lineae/actions/runs/43614263127)
+**completed successfully**, testing repair head
+`fc45db3b050d0c4c0749cd380e404c5dba0d2193` through GitHub's PR merge ref
+`1cb778e5c9dad44b9225982e5dca09ccd46a054e`. Data/UI/Bib tests, all browser
+suites, 21/21 Rust entries, Windows package build, artifact collection and upload
+passed. Signing and tagged release steps were correctly skipped for this PR;
+no release was published. No failing test was removed or bypassed.
+
+Raw initial failure and local/remote rerun logs are retained under
+`test-results/pr17-ci/`. Committed excerpts:
+[initial failure](file-tree-evidence/pr17-ci-before.txt) and
+[successful rerun](file-tree-evidence/pr17-ci-after.txt). This result does not
+change the separately listed physical IME, touchpad or power-loss limitations.
 
 ## Directory concurrency follow-up
 
