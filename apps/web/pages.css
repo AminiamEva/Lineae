@@ -289,7 +289,7 @@ button,select,.color-control { transition:background-color .14s ease,color .14s 
   padding:var(--page-margin-top,44.027mm) var(--page-margin-right,47.456mm) var(--page-margin-bottom,42.070mm) var(--page-margin-left,47.191mm);
   background:transparent;
   box-shadow:none;
-  font-family:"Latin Modern Roman","Songti SC",SimSun,serif;
+  font-family:var(--tex-font-family,"Latin Modern Roman"),var(--tex-cjk-font-family,"Songti SC",SimSun),serif;
   font-size:var(--tex-font-size);
   line-height:var(--tex-line-height);
   font-kerning:normal;
@@ -306,9 +306,9 @@ button,select,.color-control { transition:background-color .14s ease,color .14s 
 .document-page[data-pagination="flow"] .document-page-number { display:none; }
 .table-continuation-header { position:absolute; z-index:0; pointer-events:none; background:light-dark(#fff,#242426); }
 .table-continuation-header table { width:100%; border-collapse:collapse; table-layout:fixed; }
-.table-continuation-header td { padding:2px 5.9776pt; border-bottom:1px solid light-dark(#d5d9e1,#4a505c); font:var(--tex-font-size)/var(--tex-line-height) "Latin Modern Roman",serif; }
+.table-continuation-header td { padding:2px 5.9776pt; border-bottom:1px solid light-dark(#d5d9e1,#4a505c); font:var(--tex-font-size)/var(--tex-line-height) var(--tex-font-family,"Latin Modern Roman"),var(--tex-cjk-font-family,"Songti SC",SimSun),serif; }
 .document-sheet { position:relative; flex:0 0 var(--page-height,11in); width:100%; background:light-dark(#fff,#242426); box-shadow:0 2px 14px #0002; }
-.document-page-number { position:absolute; left:50%; bottom:calc(var(--page-margin-bottom,42.070mm) - 31.77pt); translate:-50% 0; color:inherit; font:var(--tex-font-size)/var(--tex-line-height) "Latin Modern Roman",serif; }
+.document-page-number { position:absolute; left:50%; bottom:calc(var(--page-margin-bottom,42.070mm) - 31.77pt); translate:-50% 0; color:inherit; font:var(--tex-font-size)/var(--tex-line-height) var(--tex-font-family,"Latin Modern Roman"),var(--tex-cjk-font-family,"Songti SC",SimSun),serif; }
 .document-page[data-page-style="empty"] .document-page-number { display:none; }
 .document-page[data-page-style="headings"] .document-page-number { inset:30mm var(--page-margin-right) auto auto; translate:0; }
 #document-meta,#editor { position:relative; z-index:1; }
@@ -316,7 +316,9 @@ button,select,.color-control { transition:background-color .14s ease,color .14s 
 .document-page:hover > #document-meta[data-empty="true"],#document-meta[data-empty="true"]:focus-within { opacity:.32; }
 #document-meta[data-empty="true"] :is(.doc-title,.doc-author) { min-height:1.2em; font-size:.8em; }
 #editor,.document-page .ProseMirror { min-height:var(--editor-min-height,1.2em); }
-.document-page .ProseMirror { line-height:var(--tex-line-height); text-align:justify; hyphens:auto; counter-reset:lineae-equation lineae-theorem; }
+.document-page .ProseMirror { line-height:var(--tex-line-height); text-align:justify; hyphens:auto; line-break:strict; counter-reset:lineae-equation lineae-theorem; }
+.document-page .ProseMirror .pagination-line-break { display:block; width:0; margin:0; padding:0; pointer-events:none; user-select:none; }
+.document-page[data-pagination-measuring] .pagination-line-break { display:none; }
 /* XeCJK inserts about 1/3 em between CJK and Latin letters or digits. */
 .document-page .ProseMirror .cjk-latin.cjk-latin-before { margin-inline-start:.333em; }
 .document-page .ProseMirror .cjk-latin.cjk-latin-after { margin-inline-end:.333em; }
@@ -325,7 +327,7 @@ button,select,.color-control { transition:background-color .14s ease,color .14s 
 .document-page .ProseMirror > :is(h1,h2,h3) + p[data-indent="true"],
 .document-page .ProseMirror :is(li,td,th,[data-theorem]) p { text-indent:0; }
 
-.document-page .ProseMirror h1 { margin:3.5ex 0 2.3ex; font:700 1.44em/1.2 "Latin Modern Roman 12","Latin Modern Roman",serif; }
+.document-page .ProseMirror h1 { margin:3.5ex 0 2.3ex; font:700 1.44em/1.2 var(--tex-heading-font-family,"Latin Modern Roman 12","Latin Modern Roman"),serif; }
 .document-page .ProseMirror h2 { margin:3.25ex 0 1.5ex; font-size:1.2em; line-height:1.2; font-weight:700; }
 .document-page .ProseMirror h3 { margin:3.25ex 0 1.5ex; font-size:1em; line-height:1.2; font-weight:700; }
 .document-page .ProseMirror > :is(h1,h2,h3):first-child { margin-top:0; }
@@ -375,4 +377,4 @@ button,select,.color-control { transition:background-color .14s ease,color .14s 
 .document-page .ProseMirror [data-theorem="proof"]::after { display:inline; float:right; }
 .document-page .ProseMirror .math-display { margin:9.9626pt 0 5.9776pt; }
 .document-page .ProseMirror > .math-display:first-child { margin-top:0; }
-.document-page .ProseMirror code,.document-page .ProseMirror pre { font-family:"Latin Modern Mono",monospace; }
+.document-page .ProseMirror code,.document-page .ProseMirror pre { font-family:var(--tex-mono-font-family,"Latin Modern Mono"),monospace; }

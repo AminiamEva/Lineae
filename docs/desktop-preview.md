@@ -49,6 +49,39 @@ Builds upload an artifact named `lineae-desktop-<sha>` containing:
 
 Tag builds attach the artifacts to a GitHub release. Tags containing `preview` are published as prereleases; other tags publish a normal release.
 
+## Code signing
+
+Tag builds sign the app, NSIS uninstaller, and final installer with Authenticode
+when the repository provides these secrets:
+
+- `WINDOWS_CERTIFICATE`: base64-encoded PKCS#12 (`.pfx`) code-signing certificate.
+- `WINDOWS_CERTIFICATE_PASSWORD`: password for that `.pfx` file.
+- `WINDOWS_TIMESTAMP_URL`: optional RFC 3161 timestamp server; defaults to
+  `http://timestamp.digicert.com`.
+
+Tauri invokes `sign-windows.ps1` before embedding the app in NSIS and again for
+the uninstaller and installer. The script signs with SHA-256 and an RFC 3161
+timestamp, and verifies every invocation with `signtool verify /pa`. The workflow
+also verifies the final standalone executable and installer before packaging.
+When `WINDOWS_CERTIFICATE` is absent the command is a no-op and the build logs a
+notice, so pull-request and untagged builds stay unsigned.
+
+A publicly trusted signing certificate must be obtained separately; GitHub
+Actions cannot create a trusted publisher identity. Cloud HSM services such as
+Azure Trusted Signing require an alternative `signCommand`. Once the three PFX
+secrets exist, any `v*` tag publishes signed artifacts without further changes.
+
+Configure the secrets locally without pasting the certificate or password into
+an issue or chat:
+
+```powershell
+pwsh apps/desktop/scripts/configure-signing.ps1 -Certificate C:\secure\lineae.pfx
+```
+
+The script prompts for the password, verifies that the PFX contains a private
+key and permits code signing, then sends all three values to GitHub through
+`gh secret set`. It does not print the certificate or password.
+
 ## Acceptance checklist
 
 Use the CI-built artifacts, not a local build.
@@ -69,7 +102,9 @@ request.
 
 ## Known limits
 
-- Preview version `0.1.0`; no signing, update channel, or release stability promise.
+- Preview version `0.1.0`; no update channel or release stability promise.
+- Authenticode signing runs only when the certificate secrets are configured; an
+  unconfigured repository publishes unsigned binaries.
 - The portable executable assumes WebView2 is installed. The offline installer
   installs it when missing.
 - Only UTF-8 `.tex` files are accepted; malformed input is reported in the status bar.

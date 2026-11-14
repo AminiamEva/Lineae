@@ -675,7 +675,10 @@ async function verifySelectionGeometry(page, paper, importSource) {
     await page.keyboard.type('_');
     assert.match(await formula.evaluate(field=>field.value),/\\_/);
     await page.waitForTimeout(30);
-    await page.keyboard.type('a_2');
+    for (const key of ['a','_','2']) {
+      await page.keyboard.type(key);
+      await page.waitForTimeout(30);
+    }
     assert.match(await formula.evaluate(field=>field.value),/a_\{?2/);
     await formula.evaluate(field=>field.executeCommand('moveToMathfieldEnd'));
     await formula.focus();
@@ -1815,6 +1818,25 @@ async function verifySelectionGeometry(page, paper, importSource) {
     assert.ok(equationNumbers.every(item=>item.increment.includes('lineae-equation')&&item.content.includes('counter(lineae-equation)')),'Equation environments use an ordered CSS counter');
     assert.deepEqual(await paper.locator('.ref-node').allTextContents(),['(2)','2']);
     assert.equal(await paper.locator('math-field').last().evaluate(field=>field.value),'y');
+    await importSource('\\begin{equation}x=1\\tag{A}\\end{equation}\n\n\\begin{align}a&=b\\tag{2.1}\\label{eq:a}\\\\c&=d\\notag\\end{align}');
+    await page.waitForFunction(()=>document.querySelectorAll('.math-display').length===2);
+    assert.equal(await page.evaluate(()=>[...document.querySelectorAll('math-field')].some(field=>/\\\\tag|\\\\notag|\\\\label/.test(field.value))),false,
+      'MathLive never receives \\tag, \\notag or \\label');
+    assert.deepEqual(await paper.locator('.math-equation-tag').allTextContents(),['(A)','(2.1)'],
+      'Equation tags render in the number column');
+    assert.equal(await paper.locator('.math-equation-number').count(),0,
+      'Tagged and suppressed rows do not use the automatic counter');
+    await page.locator('[data-source-mode="source"]').click();
+    const taggedSource=await page.locator('.tex-code .cm-content').innerText();
+    assert.match(taggedSource,/\\tag\{A\}/);
+    assert.match(taggedSource,/\\tag\{2\.1\}/);
+    assert.match(taggedSource,/\\label\{eq:a\}/);
+    assert.match(taggedSource,/\\notag/);
+    await page.locator('[data-source-mode="body"]').click();
+    await importSource('See \\eqref{eq:a}.\n\n\\begin{align}a&=b\\tag{2.1}\\label{eq:a}\\end{align}');
+    await page.waitForFunction(()=>document.querySelector('.ref-node')?.textContent==='(2.1)');
+    assert.equal(await paper.locator('.ref-node').textContent(),'(2.1)',
+      'References resolve a tagged equation to its custom tag');
     await importSource(Array.from({length:100},(_,index)=>`Paragraph ${String(index+1).padStart(3,'0')}.`).join('\n\n'));
     await page.waitForFunction(()=>document.querySelector('.document-page')?.dataset.pageCount==='3');
     const pagination=await page.evaluate(()=>{
@@ -1870,6 +1892,82 @@ async function verifySelectionGeometry(page, paper, importSource) {
     assert.equal(await paginationButton.getAttribute('data-mode'),'pages');
     assert.notEqual(await paginationButton.evaluate(node=>getComputedStyle(node).backgroundColor),flowColor,
       'Pages and continuous modes use different button colors');
+    await page.locator('input[type=file]').setInputFiles({
+      name:'fonts.tex',mimeType:'text/plain',
+      buffer:Buffer.from('\\documentclass[12pt]{article}\n\\usepackage{fontspec}\n\\setmainfont{Arial}\n\\setmonofont{Courier New}\n\\linespread{1.2}\n\\begin{document}\n\nBody text.\n\n\\end{document}\n'),
+    });
+    await page.waitForFunction(()=>document.querySelector('.document-page')?.dataset.documentClass==='article'&&
+      document.querySelector('.ProseMirror')?.textContent.includes('Body text'));
+    const fontProfile=await page.evaluate(()=>{
+      const page=document.querySelector('.document-page');
+      const style=getComputedStyle(page);
+      return {family:style.fontFamily,fontSize:parseFloat(style.fontSize),lineHeight:parseFloat(style.lineHeight),
+        mono:page.style.getPropertyValue('--tex-mono-font-family'),
+        cjk:page.style.getPropertyValue('--tex-cjk-font-family')};
+    });
+    assert.match(fontProfile.family,/Arial/,'fontspec main font is applied');
+    assert.match(fontProfile.family,/Latin Modern Roman/,'Latin Modern remains the fallback');
+    assert.ok(Math.abs(fontProfile.lineHeight/fontProfile.fontSize-1.45)<.02,
+      'linespread scales the 12pt baseline: '+JSON.stringify(fontProfile));
+    assert.match(fontProfile.mono,/Courier New/,'fontspec mono font is applied');
+    assert.match(fontProfile.cjk,/Songti SC/,'CJK falls back to the system Song font');
+    await page.locator('input[type=file]').setInputFiles({
+      name:'ctex-fonts.tex',mimeType:'text/plain',
+      buffer:Buffer.from('\\documentclass[fontset=fandol]{ctexart}\n\\begin{document}\n\n中文测试。\n\n\\end{document}\n'),
+    });
+    await page.waitForFunction(()=>document.querySelector('.document-page')?.dataset.documentClass==='ctexart'&&
+      document.querySelector('.ProseMirror')?.textContent.includes('中文测试'));
+    assert.match(await page.evaluate(()=>document.querySelector('.document-page').style.getPropertyValue('--tex-cjk-font-family')),
+      /FandolSong/,'ctex fontset selects the matching CJK font');
+    const longParagraph=Array.from({length:1200},(_,index)=>`word${index}`).join(' ');
+    await importSource(longParagraph);
+    await page.waitForFunction(()=>Number(document.querySelector('.document-page')?.dataset.pageCount)>1&&
+      document.querySelectorAll('.pagination-line-break').length>0);
+    assert.equal(await page.evaluate(async()=>{
+      const before=document.querySelector('.pagination-line-break');
+      await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
+      return before===document.querySelector('.pagination-line-break');
+    }),true,'Stable pagination reuses its line-break decorations');
+    const linePagination=await page.evaluate(expected=>{
+      const page=document.querySelector('.document-page');
+      const paragraph=document.querySelector('.ProseMirror > p');
+      const zoom=page.getBoundingClientRect().width/page.offsetWidth;
+      const style=getComputedStyle(page);
+      const top=parseFloat(style.paddingTop)*zoom;
+      const bottom=parseFloat(style.paddingBottom)*zoom;
+      const bodies=[...page.querySelectorAll(':scope > .document-sheets > .document-sheet')].map(sheet=>{
+        const rect=sheet.getBoundingClientRect();
+        return {top:rect.top+top,bottom:rect.bottom-bottom};
+      });
+      const walker=document.createTreeWalker(paragraph,NodeFilter.SHOW_TEXT);
+      const lines=[];
+      for(let node=walker.nextNode();node;node=walker.nextNode()) {
+        const range=document.createRange();range.selectNodeContents(node);
+        lines.push(...[...range.getClientRects()].filter(rect=>rect.width>.1).map(rect=>({top:rect.top,bottom:rect.bottom})));
+      }
+      const outside=lines.filter(line=>!bodies.some(body=>{
+        const middle=(line.top+line.bottom)/2;
+        return middle>=body.top-3&&middle<=body.bottom+3;
+      }));
+      const editor=document.querySelector('.ProseMirror').editor;
+      return {breaks:document.querySelectorAll('.pagination-line-break').length,outside,
+        paragraphs:editor.state.doc.childCount,text:editor.state.doc.textContent,
+        styled:paragraph.hasAttribute('style')};
+    },longParagraph);
+    assert.ok(linePagination.breaks>=1,'A long paragraph receives visual line-level page breaks');
+    assert.deepEqual(linePagination.outside,[],'Long-paragraph lines stay out of page margins and gaps');
+    assert.equal(linePagination.paragraphs,1,'Line pagination does not split the ProseMirror paragraph');
+    assert.equal(linePagination.text,longParagraph,'Line pagination does not alter document text');
+    assert.equal(linePagination.styled,false,'Line pagination does not write style attributes onto the paragraph');
+    await page.evaluate(()=>document.querySelector('.ProseMirror').editor.commands.focus('end'));
+    await page.keyboard.insertText(' edited');
+    assert.ok((await paper.locator(':scope > p').textContent()).endsWith(' edited'),
+      'Editing works after a visual line page break');
+    await paginationButton.click();
+    await page.waitForFunction(()=>document.querySelector('.document-page')?.dataset.pagination==='flow');
+    assert.equal(await page.locator('.pagination-line-break').count(),0,'Continuous flow removes line page breaks');
+    await paginationButton.click();
+    await page.waitForFunction(()=>document.querySelector('.document-page')?.dataset.pagination==='pages');
     await importSource(Array.from({length:40},()=> '设 $x_{n}\\to a$，且 $\\lim_{n\\to\\infty}x_n=a$。').join('\n\n'));
     await page.waitForFunction(()=>Number(document.querySelector('.document-page')?.dataset.pageCount)>1);
     await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));

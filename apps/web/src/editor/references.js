@@ -40,8 +40,8 @@ export function collectReferenceLabels(doc) {
     if (node.type.name==='mathBlock') {
       for (const row of numberedMathRows(node.attrs)) {
         if (row.unnumbered) continue;
-        equationNumber++;
-        current={number:String(equationNumber),title:node.attrs.latex,kind:'equation'};
+        const number = row.tag ?? String(++equationNumber);
+        current={number,title:node.attrs.latex,kind:'equation'};
         add(row.label ?? (row.index === (node.attrs.labelRow ?? 0) ? node.attrs.label : null),current);
       }
     }

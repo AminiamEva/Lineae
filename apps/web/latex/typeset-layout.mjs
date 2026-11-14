@@ -4,19 +4,91 @@ function cssPoints(texPoints) {
   return `${(texPoints * TEX_POINT_SCALE).toFixed(4)}pt`;
 }
 
+function points(value) {
+  return `${Number.parseFloat(value.toFixed(4))}pt`;
+}
+
+const ctexFontsets = {
+  fandol: 'FandolSong',
+  windows: 'SimSun',
+  mac: 'Songti SC',
+  ubuntu: 'Noto Serif CJK SC',
+  adobe: 'Source Han Serif SC',
+};
+
+// fontspec accepts either a family name or a font file name. Map the Latin
+// Modern files that ship with TeX distributions back to their family name so
+// the editor uses the installed system font instead of a file path.
+function fontFamily(raw) {
+  if (!raw) return null;
+  let name = raw.trim().replace(/^["']+|["']+$/g, '').replace(/^\{|\}$/g, '').trim();
+  name = name.replace(/^.*[\\/]/, '');
+  const base = name.replace(/\.(?:otf|ttf|ttc|woff2?)$/i, '');
+  if (/^lmroman/i.test(base)) return 'Latin Modern Roman';
+  if (/^lmmono/i.test(base)) return 'Latin Modern Mono';
+  if (/^lmsans/i.test(base)) return 'Latin Modern Sans';
+  return base.replace(/-(?:regular|bold|italic|bolditalic|medium|light|book)$/i, '')
+    .replace(/[_-]+/g, ' ').trim() || null;
+}
+
+function commandArgument(source, command) {
+  const match = new RegExp('\\\\' + command + '\\s*(?:\\[[^\\]]*\\]\\s*)?\\{([^{}]*)\\}').exec(source);
+  return match?.[1] ?? null;
+}
+
+function ctexFontset(preamble, options) {
+  const fromClass = options.find(option => option.startsWith('fontset='))?.slice('fontset='.length);
+  const fromPackage = /\\usepackage\s*\[([^\]]*)\]\s*\{ctex\}/.exec(preamble)?.[1]
+    ?.split(',').map(option => option.trim()).find(option => option.startsWith('fontset='))
+    ?.slice('fontset='.length);
+  return ctexFontsets[(fromClass ?? fromPackage ?? '').trim().toLowerCase()] ?? null;
+}
+
+function readFonts(preamble, options) {
+  const fontset = ctexFontset(preamble, options);
+  return {
+    serif: fontFamily(commandArgument(preamble, 'setmainfont')),
+    mono: fontFamily(commandArgument(preamble, 'setmonofont')),
+    cjk: fontFamily(commandArgument(preamble, 'setCJKmainfont')) ?? fontset ?? null,
+  };
+}
+
+function readLinespread(preamble) {
+  const spread = /\\linespread\s*\{([\d.]+)\}/.exec(preamble)?.[1]
+    ?? /\\renewcommand\s*\{?\s*\\baselinestretch\s*\}?\s*\{([\d.]+)\}/.exec(preamble)?.[1];
+  const value = Number.parseFloat(spread ?? '1');
+  return Number.isFinite(value) && value > 0 ? value : 1;
+}
+
+function readFontsize(preamble) {
+  const match = /\\fontsize\s*\{([\d.]+)(?:pt)?\}\s*\{([\d.]+)(?:pt)?\}/.exec(preamble);
+  if (!match) return null;
+  const size = Number.parseFloat(match[1]);
+  const baseline = Number.parseFloat(match[2]);
+  return Number.isFinite(size) && Number.isFinite(baseline) ? { size, baseline } : null;
+}
+
 export function typesetProfile(preamble = '') {
   const match = /\\documentclass(?:\[([^\]]*)\])?\{([^{}]+)\}/.exec(preamble);
   const options = (match?.[1] ?? '').split(',').map(option => option.trim()).filter(Boolean);
   const className = (match?.[2] ?? 'article').trim().toLowerCase();
   const pageNumbers = !/\\pagestyle\s*\{empty\}/.test(preamble);
+  const fonts = readFonts(preamble, options);
+  const linespread = readLinespread(preamble);
+  const explicit = readFontsize(preamble);
 
   if (className === 'ctexart') {
+    const classSize = options.includes('12pt') ? 12 : options.includes('11pt') ? 11 : options.includes('10pt') ? 10 : null;
+    const classBaseline = classSize === 12 ? 14.5 : classSize === 11 ? 13.6 : 12;
     return {
       className,
-      fontSize: '10.5pt',
-      lineHeight: '15.75pt',
-      paragraphIndent: '21pt',
+      fontSize: explicit ? cssPoints(explicit.size) : classSize ? cssPoints(classSize) : '10.5pt',
+      lineHeight: explicit ? cssPoints(explicit.baseline * linespread)
+        : classSize ? cssPoints(classBaseline * linespread) : points(15.75 * linespread),
+      paragraphIndent: classSize === 12 ? cssPoints(18) : classSize === 11 ? cssPoints(17)
+        : classSize === 10 ? cssPoints(15) : '21pt',
       pageStyle: pageNumbers ? 'headings' : 'empty',
+      fonts,
     };
   }
 
@@ -25,10 +97,11 @@ export function typesetProfile(preamble = '') {
   const indent = size === 12 ? 18 : size === 11 ? 17 : 15;
   return {
     className,
-    fontSize: cssPoints(size),
-    lineHeight: cssPoints(baseline),
+    fontSize: explicit ? cssPoints(explicit.size) : cssPoints(size),
+    lineHeight: cssPoints((explicit?.baseline ?? baseline) * linespread),
     paragraphIndent: cssPoints(indent),
     pageStyle: pageNumbers ? 'plain' : 'empty',
+    fonts,
   };
 }
 
@@ -55,7 +128,7 @@ export function planPagination(blocks, { pageHeight, pageGap, marginTop, marginB
     let bodyTop = pageIndex * pitch + marginTop;
     let bodyBottom = pageIndex * pitch + pageHeight - marginBottom;
     const next = blocks[index + 1];
-    const groupBottom = block.keepWithNext && next ? next.top + next.height + translation : bottom;
+    let groupBottom = block.keepWithNext && next ? next.top + next.height + translation : bottom;
     const groupHeight = groupBottom - top;
     const canMove = block.height <= bodyHeight + tolerance && groupHeight <= bodyHeight + tolerance;
 
@@ -66,17 +139,34 @@ export function planPagination(blocks, { pageHeight, pageGap, marginTop, marginB
       translation += space;
       top += space;
       bottom += space;
+      groupBottom += space;
     }
 
     if (canMove && top > bodyTop + tolerance && groupBottom > bodyBottom + tolerance) {
+      // Move a keep-with-previous chain as a unit when it fits on the next
+      // page. This covers display formulas and the first two lines of a
+      // paragraph without changing the editable document.
+      let breakIndex = index;
+      let anchorTop = top;
+      if (block.keepWithPrevious && index > 0) {
+        let candidate = index - 1;
+        while (candidate > 0 && blocks[candidate - 1].keepWithNext) candidate--;
+        const candidateTop = blocks[candidate].top + translations[candidate];
+        if (candidateTop > bodyTop + tolerance &&
+            groupBottom - candidateTop <= bodyHeight + tolerance) {
+          breakIndex = candidate;
+          anchorTop = candidateTop;
+        }
+      }
       pageIndex++;
       bodyTop = pageIndex * pitch + marginTop;
       bodyBottom = pageIndex * pitch + pageHeight - marginBottom;
-      const space = bodyTop - top;
+      const space = bodyTop - anchorTop;
       translation += space;
+      for (let moved = breakIndex; moved < index; moved++) translations[moved] += space;
       top += space;
       bottom += space;
-      breaks.push({ index, space, page: pageIndex + 1 });
+      breaks.push({ index: breakIndex, space, page: pageIndex + 1 });
     }
 
     translations[index] = translation;

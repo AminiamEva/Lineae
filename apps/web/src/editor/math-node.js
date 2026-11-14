@@ -443,10 +443,15 @@ export const MathNode = Node.create({
       function renderNumbers() {
         if (!node.isBlock) return;
         const rows = numberedMathRows(node.attrs);
-        dom.dataset.numbered = String(rows.some(row => !row.unnumbered));
+        dom.dataset.numbered = String(rows.some(row => row.tag !== undefined || !row.unnumbered));
         numbers.replaceChildren(...rows.map(row => {
           const number = document.createElement('span');
-          if (!row.unnumbered) number.className = 'math-equation-number';
+          if (row.tag !== undefined) {
+            number.className = 'math-equation-tag';
+            number.textContent = row.tagStar ? row.tag : '(' + row.tag + ')';
+          } else if (!row.unnumbered) {
+            number.className = 'math-equation-number';
+          }
           return number;
         }));
       }

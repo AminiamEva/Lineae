@@ -926,7 +926,7 @@ function renderMeta() {
   metaAuthor.dataset.placeholder=t('作者','Author');
 }
 renderMeta();
-typesetPagination=installTypesetPagination(documentPage,paper,metaBar);
+typesetPagination=installTypesetPagination(documentPage,paper,metaBar,editor);
 typesetPagination.setTableContinuation(config.value.interface.continuedTables);
 function recordFormulaLineBreaks(document) {
   if (documentPage.hidden) return false;

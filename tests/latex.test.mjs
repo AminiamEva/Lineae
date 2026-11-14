@@ -278,6 +278,35 @@ test('counts numbered alignment rows while skipping nested matrices and suppress
   assert.deepEqual(numberedMathRows({ latex: latex.replaceAll('{align}', '{align*}') }), []);
 });
 
+test('round-trips equation tags and suppressed numbers through the editor', () => {
+  const align = String.raw`\begin{align}a&=b\tag{2.1}\label{eq:a}\\c&=d\notag\\e&=f\tag*{$\ast$}\end{align}`;
+  const editing = mathEditorSource(align);
+  assert.equal(editing, String.raw`\begin{aligned}a&=b\\c&=d\\e&=f\end{aligned}`);
+  assert.equal(mathDocumentSource(editing, align), align);
+  assert.deepEqual(numberedMathRows({ latex: align }), [
+    { index: 0, label: 'eq:a', tag: '2.1' },
+    { index: 1, label: null, unnumbered: true },
+    { index: 2, label: null, tag: '$\\ast$', tagStar: true },
+  ]);
+  const equation = String.raw`x=1\tag{A}`;
+  assert.equal(mathEditorSource(equation), 'x=1');
+  assert.equal(mathDocumentSource('x=1', equation), String.raw`x=1\tag{A}`);
+  assert.deepEqual(numberedMathRows({ latex: equation, delimiter: 'equation' }), [
+    { index: 0, label: null, tag: 'A' },
+  ]);
+  assert.deepEqual(numberedMathRows({ latex: String.raw`\begin{align*}a&=b\\c&=d\tag{B}\end{align*}` }), [
+    { index: 0, label: null, unnumbered: true },
+    { index: 1, label: null, tag: 'B' },
+  ]);
+  assert.deepEqual(numberedMathRows({ latex: 'x', delimiter: 'equation*' }), []);
+  assert.deepEqual(numberedMathRows({ latex: String.raw`x\tag{C}`, delimiter: 'equation*' }), [
+    { index: 0, label: null, tag: 'C' },
+  ]);
+  assert.equal(mathEditorSource(String.raw`x\label{eq:x}`), 'x');
+  assert.equal(mathDocumentSource('x', String.raw`x\label{eq:x}`), String.raw`x\label{eq:x}`);
+  assert.equal(mathEditorSource(String.raw`x\label{eq:inline}`, { inline:true }), String.raw`x\label{eq:inline}`);
+});
+
 test('extends an alignment without losing the exported environment', () => {
   const input = '\\begin{alignat*}{1}a&b\\\\c&d\\end{alignat*}';
   const extended = appendAlignmentPair(input);
