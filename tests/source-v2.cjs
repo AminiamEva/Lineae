@@ -17,6 +17,10 @@ module.exports=async function checkV2(context,url) {
     await page.locator('[data-source-mode=source]').click();
     const content=page.locator('.cm-content');
     const read=()=>page.evaluate(()=>v2Fixture.EditorView.findFromDOM(document.querySelector('.cm-editor')).state.doc.toString());
+    const caretLine=()=>page.evaluate(()=>{
+      const view=v2Fixture.EditorView.findFromDOM(document.querySelector('.cm-editor'));
+      return view.state.doc.lineAt(view.state.selection.main.head).text;
+    });
     const set=async text=>{
       await page.evaluate(text=>{const v=v2Fixture.EditorView.findFromDOM(document.querySelector('.cm-editor'));v.dispatch({changes:{from:0,to:v.state.doc.length,insert:text},selection:{anchor:text.length}});v.focus();},text);
       await page.keyboard.press('Escape');
@@ -68,6 +72,7 @@ module.exports=async function checkV2(context,url) {
     equal(await read(),'\\section{}','command completion');
     await set('');await page.keyboard.type('\\begin{ite');await page.locator('.cm-tooltip-autocomplete').waitFor();await page.waitForTimeout(150);await page.keyboard.press('Tab');
     equal(await read(),'\\begin{itemize}\n    \n\\end{itemize}','paired environment completion');
+    equal(await caretLine(),'    ','completion moves the caret to the indented body line');
     await set('\\begin{align}');await page.keyboard.press('Enter');equal(await read(),'\\begin{align}\n    \n\\end{align}','manual environment Enter');
     await set('\\begin{enum}');await page.keyboard.press('Enter');
     equal((await read()).includes('\\end{enum}'),false,'abbreviated environment Enter does not insert a mismatched closer');
@@ -82,7 +87,8 @@ module.exports=async function checkV2(context,url) {
     await page.locator('.cm-tooltip-autocomplete').waitFor();
     await page.waitForTimeout(150);
     await page.keyboard.press('Enter');
-    equal(await read(),'\\begin{enumerate}\n\\end{enumerate}','existing environment closer is renamed');
+    equal(await read(),'\\begin{enumerate}\n    \n\\end{enumerate}','existing environment closer is renamed');
+    equal(await caretLine(),'    ','renaming an environment moves the caret to the indented body line');
     await set('\\begin{itemize}\n    \\item x');await page.keyboard.press('Enter');
     equal((await read()).endsWith('\n    '),true,'environment indentation');
     await set('\\begin{itemize}\n    \\item x\n\\end{itemize}');

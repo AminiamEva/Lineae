@@ -73,9 +73,23 @@ export function latexCompletion(context) {
         // Rename it instead of inserting a second, unmatched environment.
         const endStart = to + end.index + end[1].length;
         const endEnd = endStart + end[0].length - end[1].length;
+        const unit = view.state.facet(indentUnit);
+        let body = view.state.doc.sliceString(to, endStart);
+        let lead;
+        const firstLine = /^(\r?\n)([ \t]*)/.exec(body);
+        if (firstLine) {
+          const indent = firstLine[2] || unit;
+          const rest = body.slice(firstLine[0].length);
+          body = firstLine[1] + indent + (rest.trim() ? rest : firstLine[1]);
+          lead = firstLine[1].length + indent.length;
+        } else {
+          const eol = '\n';
+          body = eol + unit + (body.trim() ? body : eol);
+          lead = eol.length + unit.length;
+        }
         view.dispatch({
-          changes: [{from,to,insert:begin}, {from:endStart,to:endEnd,insert:'\\end{' + name + '}'}],
-          selection: {anchor:from + begin.length},
+          changes: {from,to:endEnd,insert:begin + body + '\\end{' + name + '}'},
+          selection: {anchor:from + begin.length + lead},
           userEvent: 'input.complete',
         });
         return;
