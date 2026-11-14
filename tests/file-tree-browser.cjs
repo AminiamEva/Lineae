@@ -23,7 +23,7 @@ const server = createServer(async(req,res) => {
   const browser=await chromium.launch({headless:true,executablePath:process.env.LINEAE_CHROMIUM_EXECUTABLE});
   const page=await browser.newPage({viewport:{width:1440,height:900}});
   const errors=[],results=[];page.on('pageerror',error=>errors.push(error.message));
-  let gate,release,gateOperation='move',entered;
+  let gate,release,gateOperation='move',entered,afterMove;
   const local=name=>{const target=path.resolve(root,name);assert.ok(target.startsWith(root+path.sep));return target;};
   await page.exposeFunction('diskOperation',async(op,a,b,bytes)=>{
     if(op===gateOperation && gate){const waiting=gate;gate=null;entered?.();await waiting;}
@@ -37,7 +37,7 @@ const server = createServer(async(req,res) => {
     if(op==='create'){await fs.writeFile(local(a),Buffer.from(bytes),{flag:'wx'});return;}
     if(op==='mkdir'){await fs.mkdir(local(a));return;}
     if(op==='remove'){await fs.unlink(local(a));return;}
-    if(op==='move'){await assert.rejects(fs.stat(local(b)),{code:'ENOENT'});await fs.rename(local(a),local(b));return;}
+    if(op==='move'){await assert.rejects(fs.stat(local(b)),{code:'ENOENT'});await fs.rename(local(a),local(b));return afterMove?.(a,b);}
     throw Error(op);
   });
   await page.addInitScript(()=>{window.lineaeProject={async open(){return {name:'FileTree-Test 中文',root:'file-tree-test',
@@ -205,6 +205,37 @@ const server = createServer(async(req,res) => {
       await page.waitForFunction(()=>document.querySelector('#project-explorer [role=status]').textContent.includes('No TeX'));
       assert.equal(await code.innerText(),current);
       await page.evaluate(()=>window.lineaeProject.open=window.normalProjectOpen);
+    });
+    await check('directory commit reconciles concurrent disk changes without advancing editor baselines',async()=>{
+      const summary=page.locator('#project-explorer summary').filter({hasText:/^sections$/});
+      if(!await summary.evaluate(node=>node.parentElement.open))await summary.click();
+      await page.locator('[data-path="sections/experiment.tex"]').click();
+      await code.click();await page.keyboard.press('Control+End');await page.keyboard.insertText(' retained directory draft');
+      const draft=await code.innerText();
+      const identity=await page.locator('[data-path="sections/experiment.tex"]').getAttribute('data-focus-key');
+      afterMove=async(from,to)=>{
+        assert.equal(from,'sections');
+        await fs.writeFile(local(to+'/experiment.tex'),'Concurrent external revision\r\n');
+        await fs.writeFile(local(to+'/late-added.tex'),'Late added file.\n');
+        await fs.unlink(local(to+'/introduction.tex'));
+        return {reconciliationRequired:true,warning:'Directory moved; concurrent changes detected'};
+      };
+      page.once('dialog',dialog=>dialog.accept('chapters/moved sections'));
+      await summary.locator('..').getByRole('button',{name:'移动目录',exact:true}).last().click();
+      await page.waitForFunction(()=>document.querySelector('.tex-filename')?.textContent.includes('chapters/moved sections/experiment.tex'));
+      afterMove=null;
+      assert.equal(await code.innerText(),draft);
+      assert.equal(await page.locator('[data-path="chapters/moved sections/experiment.tex"]').getAttribute('data-focus-key'),identity);
+      assert.match(await page.locator('[data-path="chapters/moved sections/experiment.tex"]').getAttribute('title'),/Changed on disk/);
+      assert.equal(await page.locator('[data-path="chapters/moved sections/late-added.tex"]').count(),1);
+      assert.match(await page.locator('#project-explorer [role=status]').innerText(),/concurrent|changed|变/);
+      await page.locator('#project-save').click();
+      await page.waitForFunction(()=>/changed on disk|conflict/i.test(document.querySelector('#project-explorer [role=status]').textContent));
+      assert.equal(await fs.readFile(local('chapters/moved sections/experiment.tex'),'utf8'),'Concurrent external revision\r\n');
+      await assert.rejects(fs.stat(local('sections')),{code:'ENOENT'});
+      await page.locator('#project-refresh').click();
+      await page.waitForFunction(()=>/changed on disk|Missing files/.test(document.querySelector('#project-explorer [role=status]').textContent));
+      assert.equal(await code.innerText(),draft);
     });
     await page.evaluate(async()=>{await Promise.all(document.querySelector('.tex-workspace').getAnimations().map(animation=>animation.finished));});
     await page.screenshot({path:path.join(output,process.env.FILE_TREE_BASELINE?'before.png':'after.png')});

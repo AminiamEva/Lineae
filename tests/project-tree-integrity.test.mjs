@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtemp, mkdir, readFile, writeFile, readdir, unlink, rename} from 'node:fs/promises';
+import {mkdtemp, mkdir, readFile, writeFile, readdir, unlink, rename, stat} from 'node:fs/promises';
 import {join, resolve} from 'node:path';
 import {Project, DirectoryHandleAdapter} from '../apps/web/src/project/project.mjs';
 import {projectPath} from '../apps/web/src/project/paths.mjs';
@@ -177,4 +177,91 @@ test('refresh does not advance a visible file baseline while awaiting another fi
   assert.equal(main.saved,oldText);assert.equal(main.draft,oldText+'\nTyping in the still visible editor');
   await assert.rejects(project.save(main.id),/changed on disk/);
   assert.equal(await readFile(join(root,main.path),'utf8'),'External main revision');
+});
+
+test('directory moves forward a complete saved-byte manifest including resources and empty directories',async()=>{
+  const {project,adapter,root}=await fixture();
+  await mkdir(join(root,'第一章/empty'));await writeFile(join(root,'第一章/image.png'),new Uint8Array([0,255,13,10]));await project.refresh();
+  const file=project.files.get('第一章/研究方法.tex');project.edit(file.id,'Unsaved text must not enter the disk baseline');
+  const move=adapter.move;let manifest;
+  adapter.move=async(from,to,bytes,tree)=>{assert.equal(bytes,undefined);manifest=tree;return move(from,to);};
+  await project.move('第一章','移动 目录');
+  assert.deepEqual(manifest,[
+    {path:'第一章',kind:'directory'},
+    {path:'第一章/empty',kind:'directory'},
+    {path:'第一章/image.png',kind:'file',bytes:[0,255,13,10]},
+    {path:'第一章/研究方法.tex',kind:'file',bytes:Array.from(encode('Method\r\n'))},
+  ]);
+  assert.equal(project.file(file.id),file);assert.equal(file.draft,'Unsaved text must not enter the disk baseline');
+});
+
+// This adapter is a real-disk contract test for the native manifest boundary;
+// Rust has separate same-process/cross-process tests for its actual guard.
+for(const mutation of ['modify','add','delete'])test(`late directory ${mutation} is refused without changing model paths or drafts`,async()=>{
+  const {project,adapter,root}=await fixture(),file=project.files.get('第一章/研究方法.tex');
+  project.edit(file.id,'Keep draft');project.activate(file.id);file.session={selection:5};
+  const started=gate(),finish=gate(),move=adapter.move;
+  adapter.move=async(from,to,bytes,tree)=>{
+    started.release();await finish.promise;
+    if(tree){
+      const actual=(await adapter.list()).filter(entry=>entry.path===from || entry.path.startsWith(from+'/')).sort((a,b)=>a.path.localeCompare(b.path));
+      const expected=tree.map(({path,kind})=>({path,kind})).sort((a,b)=>a.path.localeCompare(b.path));
+      if(JSON.stringify(actual)!==JSON.stringify(expected))throw new Error('Directory changed on disk');
+      for(const item of tree)if(item.kind==='file' && !Buffer.from(await adapter.read(item.path)).equals(Buffer.from(item.bytes)))throw new Error('Directory changed on disk');
+    }
+    return move(from,to);
+  };
+  const pending=project.move('第一章','moved');await started.promise;
+  if(mutation==='modify')await writeFile(join(root,file.path),'Changed outside');
+  if(mutation==='add')await writeFile(join(root,'第一章/arrival.tex'),'New outside');
+  if(mutation==='delete')await unlink(join(root,file.path));
+  finish.release();await assert.rejects(pending,/changed on disk/);
+  assert.equal(file.path,'第一章/研究方法.tex');assert.equal(file.draft,'Keep draft');assert.equal(file.session.selection,5);
+  assert.equal(project.activeFileId,file.id);assert.equal(project.pathChanges.length,0);
+  assert.equal((await stat(join(root,'第一章'))).isDirectory(),true);await assert.rejects(stat(join(root,'moved')),{code:'ENOENT'});
+});
+
+test('committed directory reconciliation discovers arrivals without advancing displayed baselines',async()=>{
+  const {project,adapter,root}=await fixture(),file=project.files.get('第一章/研究方法.tex'),baseline=file.saved;
+  project.activate(file.id);file.session={selection:2};
+  const move=adapter.move,read=adapter.read,started=gate(),finish=gate();
+  adapter.move=async(from,to)=>{
+    await move(from,to);await writeFile(join(root,'moved/研究方法.tex'),'External revision after rename');
+    await writeFile(join(root,'moved/zz-arrival.tex'),'Arrived after rename');
+    return {reconciliationRequired:true,warning:'Directory changed during move'};
+  };
+  adapter.read=async path=>{const bytes=await read(path);if(path==='moved/zz-arrival.tex'){started.release();await finish.promise;}return bytes;};
+  const pending=project.move('第一章','moved');
+  // Older implementations did not reconcile at all; fail promptly on that path.
+  await Promise.race([started.promise,pending.then(()=>{throw new Error('No post-move reconciliation');})]);
+  project.edit(file.id,baseline+' typing during reconciliation');finish.release();await pending;
+  assert.equal(file.path,'moved/研究方法.tex');assert.equal(project.file(file.id),file);assert.equal(file.session.selection,2);
+  assert.equal(file.saved,baseline);assert.deepEqual(file.bytes,encode(baseline));assert.equal(file.externalChanged,true);
+  assert.equal(file.draft,baseline+' typing during reconciliation');assert.equal(project.files.get('moved/zz-arrival.tex').draft,'Arrived after rename');
+  assert.equal(project.pathChanges.at(-1).reconciliationRequired,true);assert.match(project.pathChanges.at(-1).warning,/changed|修改/i);
+  await assert.rejects(project.save(file.id),/changed on disk/);
+  assert.equal(await readFile(join(root,file.path),'utf8'),'External revision after rename');
+});
+
+test('committed directory move retains paths and reports reconciliation failure without false rollback',async()=>{
+  const {project,adapter,root}=await fixture(),file=project.files.get('第一章/研究方法.tex'),move=adapter.move;
+  project.edit(file.id,'Keep committed move draft');
+  adapter.move=async(from,to)=>{await move(from,to);adapter.list=async()=>{throw new Error('Access denied during rescan');};return {reconciliationRequired:true,warning:'Post-move read failed'};};
+  const changes=await project.move('第一章','moved');
+  assert.equal(changes[0].to,'moved/研究方法.tex');assert.equal(file.path,'moved/研究方法.tex');assert.equal(file.draft,'Keep committed move draft');
+  assert.match(project.pathChanges.at(-1).warning,/Access denied during rescan/);
+  assert.equal(project.pathChanges.at(-1).reconciliationRequired,true);
+  assert.equal(await readFile(join(root,file.path),'utf8'),'Method\r\n');
+  await assert.rejects(stat(join(root,'第一章')),{code:'ENOENT'});
+});
+
+test('directory post-move deletion retains the dirty active session at its committed path',async()=>{
+  const {project,adapter,root}=await fixture(),file=project.files.get('第一章/研究方法.tex'),move=adapter.move;
+  project.edit(file.id,'Draft survives external deletion');project.activate(file.id);file.session={selection:7};
+  adapter.move=async(from,to)=>{await move(from,to);await unlink(join(root,'moved/研究方法.tex'));return {reconciliationRequired:true,warning:'Child disappeared during move'};};
+  await project.move('第一章','moved');
+  assert.equal(project.file(file.id),file);assert.equal(file.path,'moved/研究方法.tex');assert.equal(file.missing,true);
+  assert.equal(file.draft,'Draft survives external deletion');assert.equal(project.activeFileId,file.id);assert.equal(file.session.selection,7);
+  assert.equal(project.pathChanges.at(-1).reconciliationRequired,true);await assert.rejects(project.save(file.id),/missing on disk/);
+  await assert.rejects(stat(join(root,file.path)),{code:'ENOENT'});
 });

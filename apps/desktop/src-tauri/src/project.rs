@@ -1,4 +1,4 @@
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::{
     collections::HashSet,
     path::{Component, Path, PathBuf},
@@ -15,9 +15,22 @@ pub struct Entry {
     kind: String,
 }
 #[derive(Debug, Serialize, Default)]
+#[serde(rename_all = "camelCase")]
 pub struct Reply {
     entries: Vec<Entry>,
     bytes: Vec<u8>,
+    reconciliation_required: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    warning: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+struct MoveEntry {
+    path: String,
+    kind: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    bytes: Option<Vec<u8>>,
 }
 
 fn reserved_metadata(name: &str) -> bool {
@@ -107,10 +120,11 @@ fn list(root: &Path, directory: &Path, entries: &mut Vec<Entry>) -> Result<(), S
 #[tauri::command]
 pub async fn open_project(
     app: AppHandle,
+    window: tauri::Window,
     roots: State<'_, ProjectRoots>,
 ) -> Result<Option<String>, String> {
     let (sender, receiver) = tokio::sync::oneshot::channel();
-    app.dialog().file().pick_folder(move |folder| {
+    app.dialog().file().set_parent(&window).pick_folder(move |folder| {
         let _ = sender.send(folder);
     });
     let Some(folder) = receiver.await.map_err(|e| e.to_string())? else {
@@ -222,6 +236,53 @@ pub(super) fn safe_write(path: &Path, bytes: &[u8], expected: Option<&[u8]>) -> 
 // closes the frontend-preflight race; a pathname lookup after validation would
 // allow an external editor to replace the file underneath the operation.
 fn mutate_entry(path: &Path, target: Option<&Path>, expected: Option<&[u8]>) -> Result<(), String> {
+    mutate_entry_checked(path, target, expected, || Ok(()))
+}
+
+fn verify_handle_path(file: &std::fs::File, expected: &Path) -> Result<(), String> {
+    use std::os::windows::{ffi::OsStringExt, fs::MetadataExt, io::AsRawHandle};
+    if file
+        .metadata()
+        .map_err(|e| e.to_string())?
+        .file_attributes()
+        & 0x400
+        != 0
+    {
+        return Err("Linked path replaced a move endpoint; move refused".into());
+    }
+    #[link(name = "kernel32")]
+    extern "system" {
+        fn GetFinalPathNameByHandleW(
+            handle: *mut std::ffi::c_void,
+            name: *mut u16,
+            length: u32,
+            flags: u32,
+        ) -> u32;
+    }
+    let size =
+        unsafe { GetFinalPathNameByHandleW(file.as_raw_handle(), std::ptr::null_mut(), 0, 0) };
+    if size == 0 {
+        return Err(std::io::Error::last_os_error().to_string());
+    }
+    let mut name = vec![0u16; size as usize];
+    let length =
+        unsafe { GetFinalPathNameByHandleW(file.as_raw_handle(), name.as_mut_ptr(), size, 0) };
+    if length == 0 || length >= size {
+        return Err("Cannot verify move endpoint handle".into());
+    }
+    let actual = PathBuf::from(std::ffi::OsString::from_wide(&name[..length as usize]));
+    if actual != expected {
+        return Err("Move endpoint changed after path validation".into());
+    }
+    Ok(())
+}
+
+fn mutate_entry_checked(
+    path: &Path,
+    target: Option<&Path>,
+    expected: Option<&[u8]>,
+    before: impl FnOnce() -> Result<(), String>,
+) -> Result<(), String> {
     use std::io::Read;
     use std::os::windows::{ffi::OsStrExt, fs::OpenOptionsExt, io::AsRawHandle};
     let mut lock_paths = vec![path];
@@ -233,18 +294,43 @@ fn mutate_entry(path: &Path, target: Option<&Path>, expected: Option<&[u8]>) -> 
         .into_iter()
         .map(ProcessSaveLock::acquire)
         .collect::<Result<_, _>>()?;
+    // Pin the destination directory object, not just its earlier pathname.
+    // GENERIC_READ plus deny-delete is required: READ_ATTRIBUTES-only handles
+    // do not prevent a parent rename on Windows. Allow data writes so the
+    // kernel can add our new child. Retain the handle through the final rename.
+    let destination_parent = if let Some(target) = target {
+        let parent = target.parent().ok_or("Missing target parent")?;
+        let directory = std::fs::OpenOptions::new()
+            .read(true)
+            .share_mode(1 | 2)
+            .custom_flags(0x0200_0000 | 0x0020_0000)
+            .open(parent)
+            .map_err(|e| e.to_string())?;
+        verify_handle_path(&directory, parent)?;
+        Some(directory)
+    } else {
+        None
+    };
     let mut file = std::fs::OpenOptions::new()
         .access_mode(0x8000_0000 | 0x0001_0000) // GENERIC_READ | DELETE
         .share_mode(1) // FILE_SHARE_READ only
-        .custom_flags(0x0200_0000) // FILE_FLAG_BACKUP_SEMANTICS (directories)
+        .custom_flags(0x0200_0000 | 0x0020_0000) // BACKUP_SEMANTICS | OPEN_REPARSE_POINT
         .open(path)
         .map_err(|e| e.to_string())?;
+    verify_handle_path(&file, path)?;
     if let Some(expected) = expected {
         let mut current = Vec::new();
         file.read_to_end(&mut current).map_err(|e| e.to_string())?;
         if current != expected {
             return Err("File changed on disk".into());
         }
+    }
+    // Keep this exact root identity open while validating the subtree. Replacing
+    // or deleting the source directory cannot redirect our later rename.
+    before()?;
+    verify_handle_path(&file, path)?;
+    if let (Some(target), Some(parent)) = (target, destination_parent.as_ref()) {
+        verify_handle_path(parent, target.parent().unwrap())?;
     }
     #[link(name = "kernel32")]
     extern "system" {
@@ -297,6 +383,125 @@ fn mutate_entry(path: &Path, target: Option<&Path>, expected: Option<&[u8]>) -> 
     }
 }
 
+fn move_snapshot(root: &Path, directory: &Path) -> Result<Vec<MoveEntry>, String> {
+    fn visit(root: &Path, path: &Path, result: &mut Vec<MoveEntry>) -> Result<(), String> {
+        let metadata = std::fs::symlink_metadata(path).map_err(|e| e.to_string())?;
+        if metadata.file_type().is_symlink()
+            || path.canonicalize().map_err(|e| e.to_string())? != path
+        {
+            return Err("Directory contains a linked path; move refused".into());
+        }
+        let relative = path
+            .strip_prefix(root)
+            .map_err(|e| e.to_string())?
+            .to_string_lossy()
+            .replace('\\', "/");
+        if relative.split('/').any(|part| !valid_component(part)) {
+            return Err("Directory contains a reserved or unsupported path; move refused".into());
+        }
+        let directory = metadata.is_dir();
+        result.push(MoveEntry {
+            path: relative,
+            kind: if directory { "directory" } else { "file" }.into(),
+            bytes: if directory {
+                None
+            } else {
+                Some(std::fs::read(path).map_err(|e| e.to_string())?)
+            },
+        });
+        if directory {
+            for entry in std::fs::read_dir(path).map_err(|e| e.to_string())? {
+                visit(root, &entry.map_err(|e| e.to_string())?.path(), result)?;
+            }
+        }
+        Ok(())
+    }
+    let mut result = Vec::new();
+    visit(root, directory, &mut result)?;
+    result.sort_by(|a, b| a.path.cmp(&b.path));
+    Ok(result)
+}
+
+fn move_directory(
+    root: &Path,
+    source: &Path,
+    target: &Path,
+    manifest: &[u8],
+    after_validation: impl FnOnce(),
+) -> Result<Reply, String> {
+    let mut expected: Vec<MoveEntry> = serde_json::from_slice(manifest)
+        .map_err(|e| format!("Invalid directory move manifest: {e}"))?;
+    let source_relative = source
+        .strip_prefix(root)
+        .map_err(|e| e.to_string())?
+        .to_string_lossy()
+        .replace('\\', "/");
+    let target_relative = target
+        .strip_prefix(root)
+        .map_err(|e| e.to_string())?
+        .to_string_lossy()
+        .replace('\\', "/");
+    let mut names = HashSet::new();
+    for entry in &expected {
+        if !(entry.path == source_relative
+            || entry.path.starts_with(&(source_relative.clone() + "/")))
+            || !names.insert(entry.path.clone())
+            || entry.path.split('/').any(|part| !valid_component(part))
+            || !matches!(
+                (entry.kind.as_str(), &entry.bytes),
+                ("directory", None) | ("file", Some(_))
+            )
+        {
+            return Err("Invalid directory move manifest entry".into());
+        }
+    }
+    if !expected
+        .iter()
+        .any(|entry| entry.path == source_relative && entry.kind == "directory")
+    {
+        return Err("Directory move manifest must include the source directory".into());
+    }
+    expected.sort_by(|a, b| a.path.cmp(&b.path));
+    mutate_entry_checked(source, Some(target), None, || {
+        if move_snapshot(root, source)? != expected {
+            return Err("Directory changed on disk; refresh before moving".into());
+        }
+        after_validation();
+        Ok(())
+    })?;
+    // Windows refuses directory rename with open descendant handles. Thus this
+    // is NOT an atomic subtree snapshot against unrelated external processes.
+    // The root rename is committed: never roll it back or return an ordinary
+    // failure that would leave the frontend using the old paths. Reconcile and
+    // keep original editor baselines so late external changes cannot be saved over.
+    for entry in &mut expected {
+        entry.path = target_relative.clone() + &entry.path[source_relative.len()..];
+    }
+    expected.sort_by(|a, b| a.path.cmp(&b.path));
+    let mut reply = Reply {
+        reconciliation_required: true,
+        ..Default::default()
+    };
+    match move_snapshot(root, target) {
+        Ok(actual) => {
+            if actual != expected {
+                reply.warning=Some("Directory moved, but external changes were detected; refresh and review before saving".into());
+            }
+            reply.entries = actual
+                .into_iter()
+                .map(|entry| Entry {
+                    path: entry.path,
+                    kind: entry.kind,
+                })
+                .collect();
+        }
+        Err(error) => {
+            reply.warning = Some(format!("Directory moved; reconciliation failed: {error}"))
+        }
+    }
+    Ok(reply)
+}
+
 // All Lineae processes on this Windows desktop cooperate on the canonical path.
 pub(super) struct ProcessSaveLock(*mut std::ffi::c_void);
 #[link(name = "kernel32")]
@@ -311,7 +516,7 @@ extern "system" {
     fn CloseHandle(handle: *mut std::ffi::c_void) -> i32;
 }
 impl ProcessSaveLock {
-    pub(super) fn acquire(path: &Path) -> Result<Self, String> {
+    fn open(path: &Path) -> Result<*mut std::ffi::c_void, String> {
         let mut hash = 0xcbf29ce484222325u64;
         for byte in path.to_string_lossy().to_lowercase().bytes() {
             hash ^= byte as u64;
@@ -325,6 +530,10 @@ impl ProcessSaveLock {
         if handle.is_null() {
             return Err(std::io::Error::last_os_error().to_string());
         }
+        Ok(handle)
+    }
+    pub(super) fn acquire(path: &Path) -> Result<Self, String> {
+        let handle = Self::open(path)?;
         let result = unsafe { WaitForSingleObject(handle, 30000) };
         if result != 0 && result != 0x80 {
             unsafe {
@@ -369,10 +578,6 @@ fn operate_checked(
         return Err("Project was not selected through a native dialog".into());
     }
     let mut reply = Reply::default();
-    if operation == "list" {
-        list(&root, &root, &mut reply.entries)?;
-        return Ok(reply);
-    }
     if ["load_state", "checkpoint", "ack_checkpoint"].contains(&operation.as_str()) {
         reply.bytes = super::project_checkpoints::operate(
             &root,
@@ -381,6 +586,13 @@ fn operate_checked(
             bytes,
             expected,
         )?;
+        return Ok(reply);
+    }
+    // Same canonical root key across Lineae processes. A directory mutation
+    // cannot interleave with another Lineae create/read/write/remove operation.
+    let _project_guard = ProcessSaveLock::acquire(&root)?;
+    if operation == "list" {
+        list(&root, &root, &mut reply.entries)?;
         return Ok(reply);
     }
     let path = scoped(&root, &path.ok_or("Missing path")?)?;
@@ -405,6 +617,17 @@ fn operate_checked(
             let target = scoped(&root, &target.ok_or("Missing target")?)?;
             if target.exists() || target.starts_with(&path) {
                 return Err("Target exists or is inside source".into());
+            }
+            if path.is_dir() || bytes.is_some() {
+                return move_directory(
+                    &root,
+                    &path,
+                    &target,
+                    bytes
+                        .as_deref()
+                        .ok_or("Directory move requires a manifest")?,
+                    || {},
+                );
             }
             mutate_entry(&path, Some(&target), expected.as_deref())?;
         }
@@ -469,7 +692,17 @@ mod tests {
             None,
         )
         .unwrap();
-        call(&roots, &root, "move", "章节", Some("目录 空格"), None).unwrap();
+        let manifest =
+            serde_json::to_vec(&move_snapshot(&root, &root.join("章节")).unwrap()).unwrap();
+        call(
+            &roots,
+            &root,
+            "move",
+            "章节",
+            Some("目录 空格"),
+            Some(manifest),
+        )
+        .unwrap();
         assert_eq!(
             call(&roots, &root, "read", "目录 空格/b.tex", None, None)
                 .unwrap()
@@ -497,6 +730,236 @@ mod tests {
             .any(|entry| entry.path == "目录 空格/b.tex"));
         call(&roots, &root, "remove", "目录 空格/b.tex", None, None).unwrap();
         assert!(!root.join("目录 空格/b.tex").exists());
+    }
+    #[test]
+    fn directory_move_rejects_stale_bytes_membership_and_missing_manifest() {
+        let (roots, root) = fixture();
+        let source = root.join("source");
+        std::fs::create_dir(&source).unwrap();
+        std::fs::create_dir(source.join("empty")).unwrap();
+        std::fs::write(source.join("child.tex"), b"original").unwrap();
+        let manifest = serde_json::to_vec(&move_snapshot(&root, &source).unwrap()).unwrap();
+        assert!(call(&roots, &root, "move", "source", Some("target"), None).is_err());
+        std::fs::write(source.join("child.tex"), b"external revision").unwrap();
+        let result = call(
+            &roots,
+            &root,
+            "move",
+            "source",
+            Some("target"),
+            Some(manifest.clone()),
+        );
+        assert!(result.unwrap_err().contains("changed on disk"));
+        assert_eq!(
+            std::fs::read(source.join("child.tex")).unwrap(),
+            b"external revision"
+        );
+        std::fs::write(source.join("child.tex"), b"original").unwrap();
+        std::fs::write(source.join("new.tex"), b"new external file").unwrap();
+        assert!(call(
+            &roots,
+            &root,
+            "move",
+            "source",
+            Some("target"),
+            Some(manifest.clone())
+        )
+        .is_err());
+        std::fs::remove_file(source.join("new.tex")).unwrap();
+        std::fs::remove_dir(source.join("empty")).unwrap();
+        assert!(call(
+            &roots,
+            &root,
+            "move",
+            "source",
+            Some("target"),
+            Some(manifest)
+        )
+        .is_err());
+        assert!(source.exists());
+        assert!(!root.join("target").exists());
+    }
+    #[test]
+    fn directory_manifest_cannot_move_a_file_replacing_the_source_directory() {
+        let (roots, root) = fixture();
+        let source = root.join("source");
+        std::fs::create_dir(&source).unwrap();
+        let manifest = serde_json::to_vec(&move_snapshot(&root, &source).unwrap()).unwrap();
+        std::fs::rename(&source, root.join("original-directory")).unwrap();
+        std::fs::write(&source, b"external replacement file").unwrap();
+        let result = call(
+            &roots,
+            &root,
+            "move",
+            "source",
+            Some("target"),
+            Some(manifest),
+        );
+        assert!(result.unwrap_err().contains("changed on disk"));
+        assert_eq!(
+            std::fs::read(&source).unwrap(),
+            b"external replacement file"
+        );
+        assert!(!root.join("target").exists());
+    }
+    #[test]
+    fn directory_move_reports_committed_late_changes_without_rollback_or_overwrite() {
+        for mutation in ["write", "add", "delete"] {
+            let (_roots, root) = fixture();
+            let source = root.join("source");
+            let target = root.join("target");
+            std::fs::create_dir(&source).unwrap();
+            std::fs::write(source.join("child.tex"), b"original").unwrap();
+            let manifest = serde_json::to_vec(&move_snapshot(&root, &source).unwrap()).unwrap();
+            let reply = move_directory(&root, &source, &target, &manifest, || {
+                match mutation {
+                    "write" => {
+                        std::fs::write(source.join("child.tex"), b"external revision").unwrap()
+                    }
+                    "add" => std::fs::write(source.join("new.tex"), b"new external file").unwrap(),
+                    _ => std::fs::remove_file(source.join("child.tex")).unwrap(),
+                }
+                // The root is pinned to the same handle while descendants are checked.
+                assert!(std::fs::rename(&source, root.join("hijacked")).is_err());
+            })
+            .unwrap();
+            assert!(reply.reconciliation_required);
+            assert!(reply.warning.unwrap().contains("external changes"));
+            assert!(!source.exists());
+            assert!(target.is_dir());
+            match mutation {
+                "write" => assert_eq!(
+                    std::fs::read(target.join("child.tex")).unwrap(),
+                    b"external revision"
+                ),
+                "add" => assert_eq!(
+                    std::fs::read(target.join("new.tex")).unwrap(),
+                    b"new external file"
+                ),
+                _ => assert!(!target.join("child.tex").exists()),
+            }
+        }
+    }
+    #[test]
+    fn directory_move_reports_committed_snapshot_failure_and_rejects_hidden_entries() {
+        let (roots, root) = fixture();
+        let source = root.join("source");
+        let target = root.join("target");
+        std::fs::create_dir(&source).unwrap();
+        std::fs::write(source.join("child.tex"), b"original").unwrap();
+        let manifest = serde_json::to_vec(&move_snapshot(&root, &source).unwrap()).unwrap();
+        // A new reserved entry was absent from the validated model. No rollback
+        // is attempted once the root rename succeeds, and all bytes survive.
+        let reply = move_directory(&root, &source, &target, &manifest, || {
+            std::fs::write(source.join(".lineae-unknown"), b"do not delete").unwrap();
+        })
+        .unwrap();
+        assert!(reply.reconciliation_required);
+        assert!(reply.warning.unwrap().contains("reconciliation failed"));
+        assert_eq!(
+            std::fs::read(target.join(".lineae-unknown")).unwrap(),
+            b"do not delete"
+        );
+        assert!(call(
+            &roots,
+            &root,
+            "move",
+            "target",
+            Some("another"),
+            Some(manifest)
+        )
+        .is_err());
+        assert!(target.exists());
+    }
+    #[test]
+    fn directory_manifest_rejects_duplicate_outside_and_incomplete_entries() {
+        let (roots, root) = fixture();
+        std::fs::create_dir(root.join("source")).unwrap();
+        for manifest in [
+            r#"[]"#,
+            r#"[{"path":"source","kind":"directory"},{"path":"source","kind":"directory"}]"#,
+            r#"[{"path":"source","kind":"directory"},{"path":"elsewhere","kind":"file","bytes":[]}]"#,
+            r#"[{"path":"source","kind":"directory","bytes":[]}]"#,
+        ] {
+            assert!(call(
+                &roots,
+                &root,
+                "move",
+                "source",
+                Some("target"),
+                Some(manifest.as_bytes().to_vec())
+            )
+            .is_err());
+        }
+        assert!(root.join("source").exists());
+        assert!(!root.join("target").exists());
+    }
+    #[test]
+    fn directory_move_pins_destination_parent_during_validation() {
+        let (_, root) = fixture();
+        let source = root.join("source");
+        let parent = root.join("destination");
+        std::fs::create_dir(&source).unwrap();
+        std::fs::create_dir(&parent).unwrap();
+        std::fs::write(source.join("child.tex"), b"original").unwrap();
+        let manifest = serde_json::to_vec(&move_snapshot(&root, &source).unwrap()).unwrap();
+        let reply = move_directory(&root, &source, &parent.join("moved"), &manifest, || {
+            assert!(std::fs::rename(&parent, root.join("replaced-parent")).is_err());
+            assert!(std::fs::rename(&root, root.with_extension("replaced-root")).is_err());
+        })
+        .unwrap();
+        assert!(reply.warning.is_none());
+        assert!(!root.join("replaced-parent").exists());
+        assert_eq!(
+            std::fs::read(parent.join("moved/child.tex")).unwrap(),
+            b"original"
+        );
+    }
+    #[test]
+    fn stale_move_paths_reject_junction_replacement_without_touching_outside_files() {
+        fn junction(link: &Path, target: &Path) {
+            let output = std::process::Command::new("cmd.exe")
+                .args(["/c", "mklink", "/J"])
+                .arg(link)
+                .arg(target)
+                .output()
+                .unwrap();
+            assert!(
+                output.status.success(),
+                "junction creation failed: {:?}",
+                output
+            );
+        }
+        let (_, root) = fixture();
+        let (_, outside) = fixture();
+        let source = root.join("source");
+        let parent = root.join("destination");
+        std::fs::create_dir(&source).unwrap();
+        std::fs::create_dir(&parent).unwrap();
+        std::fs::write(source.join("child.tex"), b"original").unwrap();
+        let manifest = serde_json::to_vec(&move_snapshot(&root, &source).unwrap()).unwrap();
+        // Simulate a destination changed after scoped() but before opening it.
+        std::fs::rename(&parent, root.join("old-destination")).unwrap();
+        junction(&parent, &outside);
+        assert!(move_directory(&root, &source, &parent.join("moved"), &manifest, || {}).is_err());
+        assert!(source.exists());
+        assert!(!outside.join("moved").exists());
+        // Simulate a source ancestor switched to a junction after scoped(). The
+        // final file handle path must match the previously scoped canonical path.
+        std::fs::write(outside.join("child.tex"), b"outside").unwrap();
+        std::fs::rename(&source, root.join("old-source")).unwrap();
+        junction(&source, &outside);
+        assert!(mutate_entry(
+            &source.join("child.tex"),
+            Some(&root.join("stolen.tex")),
+            Some(b"outside")
+        )
+        .is_err());
+        assert_eq!(
+            std::fs::read(outside.join("child.tex")).unwrap(),
+            b"outside"
+        );
+        assert!(!root.join("stolen.tex").exists());
     }
     #[test]
     fn scope_conflicts_and_invalid_payload_preserve_disk() {
@@ -694,6 +1157,29 @@ mod tests {
     }
     #[test]
     fn crash_writer_child() {
+        if let Some(root) = std::env::var_os("LINEAE_TEST_MOVING_PROJECT") {
+            let root = PathBuf::from(root);
+            // Prove this process sees the parent's existing named mutex rather
+            // than relying on a timing assumption about whether a write started.
+            let handle = ProcessSaveLock::open(&root).unwrap();
+            assert_eq!(unsafe { WaitForSingleObject(handle, 0) }, 258);
+            unsafe {
+                CloseHandle(handle);
+            }
+            std::fs::write(root.join("child-ready"), b"root lock observed").unwrap();
+            let roots = ProjectRoots::default();
+            roots.0.lock().unwrap().insert(root.clone());
+            let result = operate_checked(
+                &roots,
+                root.to_string_lossy().into_owned(),
+                "write".into(),
+                Some("source/child.tex".into()),
+                None,
+                Some(b"child update".to_vec()),
+                Some(b"original".to_vec()),
+            );
+            std::process::exit(if result.is_ok() { 0 } else { 23 });
+        }
         if let Some(root) = std::env::var_os("LINEAE_TEST_CHECKPOINT_ROOT") {
             let id = std::env::var("LINEAE_TEST_CHECKPOINT_SESSION").unwrap();
             for revision in 0..10 {
@@ -784,6 +1270,46 @@ mod tests {
             .file_name()
             .to_string_lossy()
             .starts_with(".lineae-archive-instance-two-")));
+    }
+    #[test]
+    fn directory_move_serializes_another_process_saving_a_descendant() {
+        let (roots, root) = fixture();
+        std::fs::create_dir(root.join("source")).unwrap();
+        std::fs::write(root.join("source/child.tex"), b"original").unwrap();
+        let manifest =
+            serde_json::to_vec(&move_snapshot(&root, &root.join("source")).unwrap()).unwrap();
+        let guard = ProcessSaveLock::acquire(&root).unwrap();
+        let mut child = std::process::Command::new(std::env::current_exe().unwrap())
+            .args(["--exact", "project::tests::crash_writer_child"])
+            .env("LINEAE_TEST_MOVING_PROJECT", &root)
+            .spawn()
+            .unwrap();
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        while !root.join("child-ready").exists() {
+            if child.try_wait().unwrap().is_some() || std::time::Instant::now() > deadline {
+                let _ = child.kill();
+                panic!("child did not observe project lock");
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        let moved = call(
+            &roots,
+            &root,
+            "move",
+            "source",
+            Some("target"),
+            Some(manifest),
+        )
+        .unwrap();
+        assert!(moved.warning.is_none());
+        assert!(moved.reconciliation_required);
+        drop(guard);
+        assert_eq!(child.wait().unwrap().code(), Some(23));
+        assert!(!root.join("source").exists());
+        assert_eq!(
+            std::fs::read(root.join("target/child.tex")).unwrap(),
+            b"original"
+        );
     }
     #[test]
     fn separate_processes_do_not_overwrite_the_same_baseline() {

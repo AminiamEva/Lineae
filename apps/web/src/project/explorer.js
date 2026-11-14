@@ -141,6 +141,7 @@ export function installProjectExplorer({footer, sessions}) {
     }
     show(project.file(project.activeFileId));
     message.textContent='路径已更新；LaTeX 引用路径尚未自动重写 / References require review';
+    if(change?.warning)message.textContent+=' · '+change.warning;
     if(project.persistenceError)message.textContent+=' · '+project.persistenceError;
   }
   button(actions, '重新加载', async () => {
@@ -156,6 +157,7 @@ export function installProjectExplorer({footer, sessions}) {
     if (result.changed.includes(active.id)) show(active);
     message.textContent = result.errors.length ? result.errors.map(item=>`${item.path}: ${item.message}`).join('\n')
       : result.missing.length ? '磁盘中有文件缺失；已保留编辑内容 / Missing files; editor content retained'
+      : result.conflicts.length ? '磁盘文件已改变；已保留草稿，请核对后重新加载 / Files changed on disk; drafts retained, review before reloading'
       : '文件树已刷新 / File tree refreshed';
   }, 'project-refresh');
   button(actions, '新建文件', async () => {
@@ -220,10 +222,10 @@ export function installProjectExplorer({footer, sessions}) {
     const icons = {tex:'T', bib:'B', image:'▧', pdf:'PDF', resource:'◇'};
     for(const file of project.files.values()) {
       const node=fileButtons.get(file.id);
-      const label=`${icons[file.kind]} ${file.path.split('/').at(-1)}${file.dirty?' ●':''}${file.missing?' ⚠':''}`;
+      const label=`${icons[file.kind]} ${file.path.split('/').at(-1)}${file.dirty?' ●':''}${file.missing || file.externalChanged?' ⚠':''}`;
       if(node.textContent!==label)node.textContent=label;
       node.setAttribute('aria-current',String(file.id===project.activeFileId));
-      node.title=file.path+(file.missing?' · 磁盘文件缺失 / Missing on disk':'');
+      node.title=file.path+(file.missing?' · 磁盘文件缺失 / Missing on disk':file.externalChanged?' · 磁盘文件已改变 / Changed on disk':'');
     }
   }
   window.addEventListener('beforeunload', event => {

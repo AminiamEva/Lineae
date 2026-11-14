@@ -127,6 +127,12 @@ export class Project {
     const parent=target.includes('/')?target.slice(0,target.lastIndexOf('/')):'';
     if(parent && !this.directories.includes(parent))throw new Error('Target directory does not exist');
     const affected=[...this.files.values()].filter(file=>file.path===source || directory && file.path.startsWith(source+'/'));
+    // The native boundary receives the original membership and saved bytes,
+    // never draft text or a fresh disk snapshot that would hide outside edits.
+    const expectedTree=directory?[
+      ...this.directories.filter(path=>path===source || path.startsWith(source+'/')).map(path=>({path,kind:'directory'})),
+      ...affected.map(file=>({path:file.path,kind:'file',bytes:Array.from(file.bytes)})),
+    ].sort((a,b)=>a.path<b.path?-1:a.path>b.path?1:0):undefined;
     for(const file of affected){
       const kind=fileKind(target+file.path.slice(source.length));
       if(editable(kind)!==editable(file.kind))throw new Error('Cannot rename between editable and resource file types; preserve the extension');
@@ -138,12 +144,28 @@ export class Project {
       if(JSON.stringify(known)!==JSON.stringify(disk))throw new Error('Directory changed on disk; reopen the project before moving');
     }
     for(const file of affected){const disk=await this.adapter.read(file.path);if(disk.length!==file.bytes.length || disk.some((byte,index)=>byte!==file.bytes[index]))throw new Error('File changed on disk: '+file.path);}
-    await this.adapter.move(source,target,directory?undefined:affected[0].bytes);
+    const outcome=await this.adapter.move(source,target,directory?undefined:affected[0].bytes,expectedTree);
     const changes=affected.map(file=>({fileId:file.id,from:file.path,to:target+file.path.slice(source.length)}));
     for(const change of changes){const file=this.files.get(change.from);this.files.delete(change.from);file.path=change.to;file.kind=fileKind(change.to);this.files.set(change.to,file);this.scan(file);}
     this.directories=this.directories.map(path=>path===source || path.startsWith(source+'/')?target+path.slice(source.length):path);
-    this.pathChanges.push({source,target,changes,references:'not-rewritten'}); this.resolveDependencies();
+    const change={source,target,changes,references:'not-rewritten',reconciliationRequired:outcome?.reconciliationRequired===true,warning:outcome?.warning ?? ''};
+    this.pathChanges.push(change); this.resolveDependencies();
     this.persistMetadata();
+    if(directory){
+      // Native success means the rename committed. Publish known path changes
+      // first; rescan failures must not pretend it rolled back. Existing editor
+      // baselines stay unchanged until an explicit refresh/reload can show them.
+      try {
+        const result=await this.refreshNow({preserveExisting:true});
+        if(result.conflicts.length || result.missing.length || result.added.length || result.removed.length || result.errors.length){
+          change.reconciliationRequired=true;
+          change.warning=[change.warning,'移动后检测到目录变化，请检查文件树并重新加载冲突文件 / Directory changed during move; review files and reload conflicts',...result.errors.map(item=>`${item.path}: ${item.message}`)].filter(Boolean).join(' · ');
+        }
+      } catch(error){
+        change.reconciliationRequired=true;
+        change.warning=[change.warning,'路径已移动，但目录核对失败 / Move committed; reconciliation failed: '+error.message].filter(Boolean).join(' · ');
+      }
+    }
     try {this.checkpoint();}catch(error){this.persistenceError='Move completed; draft checkpoint failed: '+error.message;}
     return changes;
   }
@@ -157,6 +179,7 @@ export class Project {
   async saveNow(id) {
     const file = this.file(id);
     if(file.missing)throw new Error('File missing on disk; refresh the project before saving: '+file.path);
+    if(file.externalChanged)throw new Error('File changed on disk; reload before saving: '+file.path);
     if (!file.dirty) return;
     const disk = await this.adapter.read(file.path);
     if (disk.length !== file.bytes.length || disk.some((value, index) => value !== file.bytes[index])) {
@@ -185,7 +208,7 @@ export class Project {
     const bytes = await this.adapter.read(file.path);
     const text = new TextDecoder('utf-8',{fatal:true,ignoreBOM:true}).decode(bytes);
     if((file.revision ?? 0)!==revision)throw new Error('Draft changed while reloading; kept your edits');
-    Object.assign(file,{bytes, saved:text, draft:text, dirty:false, session:null, missing:false});
+    Object.assign(file,{bytes, saved:text, draft:text, dirty:false, session:null, missing:false, externalChanged:false});
     this.scan(file); this.resolveDependencies();
     this.checkpoint();
   }
@@ -214,11 +237,11 @@ export class Project {
     return {retained:false};
   }
   refresh() { return this.operation(()=>this.refreshNow()); }
-  async refreshNow() {
+  async refreshNow({preserveExisting=false}={}) {
     // Paths establish identity. An external rename cannot safely be inferred
     // from matching contents: preserve missing drafts and report the new path.
     const entries=await this.adapter.list(), seen=new Set(), directories=[], pending=[];
-    const result={changed:[],added:[],removed:[],missing:[],errors:[]};
+    const result={changed:[],added:[],removed:[],missing:[],errors:[],conflicts:[]};
     for(const entry of entries){
       let path;
       try {path=projectPath(entry.path);}catch(error){result.errors.push({path:entry.path,message:error.message});continue;}
@@ -240,10 +263,12 @@ export class Project {
         this.files.set(path,added);this.scan(added);result.added.push(added.id);
       } else {
         file.missing=false;
-        if(!file.dirty && (file.revision ?? 0)===revision && !sameBytes(bytes,file.bytes)){
-          Object.assign(file,{bytes,saved:text,draft:text,session:null});
+        file.externalChanged=!sameBytes(bytes,file.bytes);
+        if(!preserveExisting && !file.dirty && (file.revision ?? 0)===revision && file.externalChanged){
+          Object.assign(file,{bytes,saved:text,draft:text,session:null,externalChanged:false});
           this.scan(file);result.changed.push(file.id);
         }
+        if(file.externalChanged)result.conflicts.push(file.id);
       }
     }
     for(const [path,file] of this.files){
