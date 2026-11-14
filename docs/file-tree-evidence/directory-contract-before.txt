@@ -33,7 +33,7 @@ test at tests\project-tree-integrity.test.mjs:182:1
 ✖ directory moves forward a complete saved-byte manifest including resources and empty directories (23.849ms)
   AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:
   + actual - expected
-  
+
   + undefined
   - [
   -   {
@@ -69,7 +69,7 @@ test at tests\project-tree-integrity.test.mjs:182:1
   -     path: '第一章/研究方法.tex'
   -   }
   - ]
-  
+
       at TestContext.<anonymous> (file:///C:/Users/vertin/.codex/worktrees/lineae-v3-project/Lineae-source-editor-pr/tests/project-tree-integrity.test.mjs:189:10)
       at async Test.run (node:internal/test_runner/test:1409:7)
       at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
