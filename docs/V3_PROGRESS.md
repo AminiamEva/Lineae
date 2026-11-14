@@ -1,5 +1,67 @@
 # V3 checkpoint — 2026-11-14
 
+## PR #17 Windows CI — 2026-11-15
+
+[Remote run 43614263127](https://github.com/AminiamEva/Lineae/actions/runs/43614263127)
+passed completely for repair head `fc45db3`: data/UI/Bib tests, V2/project/tree/
+session browser suites, 21 Rust entries, Windows packaging and artifact upload.
+The initial failure was a browser-test OPFS snapshot race during indentation
+save; the test now waits for the existing save-completion signal before exact
+disk comparison. Local CI-version Chromium regressions also passed, including
+428 Node tests, 12 tree and 5 session scenarios. See FILE_TREE_BUG_AUDIT.md for
+failure evidence and run links. PR remains open; no merge or release.
+
+## File Tree concurrency and native cancellation follow-up — 2026-11-15
+
+Directory moves now carry original subtree membership and saved bytes into the
+native layer, use a project-wide lock across cooperating Lineae processes, and
+verify/pin move endpoints. After a committed move, membership is reconciled while
+existing editor baselines, drafts and stable IDs are retained. Late external
+changes are visible and stale saves are refused; failed reconciliation does not
+pretend the disk move was rolled back. This does not claim atomic locking of all
+unrelated external programs or large-binary performance acceptance.
+
+428/428 Node tests, 21/21 Windows Rust entries, 12/12 tree E2E and 5/5 session
+E2E passed. Existing project and V2/V2.1 browser regressions, web build and locked
+Tauri desktop debug build also passed. The actual latest-build Windows picker
+passed standalone cancellation, Chinese/space directory selection, and dirty
+project cancellation with both drafts, selection, undo, Split and editor identity
+preserved. This was operator-assisted real native UI acceptance, not mocked or
+unattended CI. Physical Chinese IME, touchpad and power-loss testing remain open.
+See [FILE_TREE_BUG_AUDIT.md](FILE_TREE_BUG_AUDIT.md) for evidence and limitations.
+
+Delivery: [Ready for Review fix PR #17](https://github.com/AminiamEva/Lineae/pull/17)
+is open from the existing feature branch. Implementation commit: `246237f`.
+No merge or release; local automated results are distinct from remote CI status.
+
+The following sections retain historical results. The native cancellation blocker
+there is superseded by the successful follow-up; earlier full native recovery and
+rename/move UI coverage is not represented as a new final-build UI rerun. No
+Phase 2 work or changes to the original font/zoom workspace were made.
+
+## File Tree bug bash
+
+19 reproduced issues repaired across model, native operations, tree DOM and
+editor sessions; details, failed-before evidence and boundaries are recorded in
+[FILE_TREE_BUG_AUDIT.md](FILE_TREE_BUG_AUDIT.md). In-flight move/reload/delete
+edits survive; refresh publishes baselines only after all reads; missing drafts
+remain recoverable; native file mutations validate and operate on the same
+handle without replacing a conflicting destination. Tree edits retain DOM and
+focus; standalone sessions and pending Split preview updates are preserved.
+
+Final automated checks: 420/420 Node tests, 13/13 Rust entries, 11/11 tree E2E
+and 5/5 session E2E scenarios; existing project/V2 browser regressions and locked
+desktop debug build passed. CI definitions include the new suites, but no
+follow-up remote CI result is claimed. Real native selection, recovery and
+Chinese rename/move/save reached their assertions; cancellation then timed out
+due to window targeting interference. Full interactive final-build rerun,
+native cancellation and physical IME remain pending, not passed.
+
+PR #16 was found already merged at audit start. Repairs remain on the existing
+feature branch; no duplicate PR, PR merge, release or protected-workspace change.
+Earlier Phase 1 reports below describe their own runs, not this audit's native
+cancellation result. No Phase 2 work was started.
+
 ## Review-ready integration
 
 User-approved merge 6ba780c integrates origin/main 4bd1165 and retains V2.1 zoom,

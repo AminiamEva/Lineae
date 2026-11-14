@@ -1,0 +1,56 @@
+PR #17 Windows run 43614263127: completed / success.
+Repair head fc45db3b050d0c4c0749cd380e404c5dba0d2193; PR merge ref 1cb778e5c9dad44b9225982e5dca09ccd46a054e.
+https://github.com/AminiamEva/Lineae/actions/runs/43614263127
+
+Set up job: success
+Run actions/checkout@v4: success
+Run actions/setup-node@v4: success
+Run npm ci --no-audit --no-fund: success
+Run npm run build: success
+Vendor MathLive: success
+Data tests: success
+UI tests: success
+Bib backend tests: success
+Install Chromium: success
+Browser regressions: success
+Project workspace regressions: success
+File tree interaction regressions: success
+Project session regressions: success
+Run dtolnay/rust-toolchain@stable: success
+Run Swatinem/rust-cache@v2: success
+Install desktop CLI: success
+Stage native test assets: success
+Native project integrity tests: success
+Prepare Windows signing certificate: skipped
+Build Windows packages: success
+Verify Windows signatures: skipped
+Remove signing certificate: success
+Collect desktop artifacts: success
+Run actions/upload-artifact@v4: success
+Publish tagged release: skipped
+Post Run Swatinem/rust-cache@v2: success
+Post Run actions/setup-node@v4: success
+Post Run actions/checkout@v4: success
+Complete job: success
+
+Remote log excerpts:
+2026-11-14T16:13:17.2301821Z Browser regressions passed
+2026-11-14T16:13:21.4258303Z PASS: native bridge contract + real Windows disk UI rename/move, no-main.tex detection, unsaved draft retention, save at moved path
+2026-11-14T16:13:21.4259533Z PASS: native OPFS project lifecycle, hidden tree, toggle placement, drafts, Split, byte-exact mixed EOL save, conflict protection, reopen, four viewport layouts
+2026-11-14T16:13:26.3634214Z 12/12 File Tree browser scenarios passed
+2026-11-14T16:13:30.7651364Z File-tree session E2E: 5/5 scenarios passed
+2026-11-14T16:16:02.2426516Z test result: ok. 21 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.31s
+2026-11-14T16:19:28.4133321Z Artifact lineae-desktop-1cb778e5c9dad44b9225982e5dca09ccd46a054e has been successfully uploaded! Final size is 225696911 bytes. Artifact ID is 14122030288
+
+Local CI-browser rerun:
+ℹ tests 428
+ℹ suites 0
+ℹ pass 428
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1018.9757
+PASS: draft checkpoint survives fresh page instance, restore confirmation and external-change conflict protection
+PASS: native bridge contract + real Windows disk UI rename/move, no-main.tex detection, unsaved draft retention, save at moved path
+PASS: native OPFS project lifecycle, hidden tree, toggle placement, drafts, Split, byte-exact mixed EOL save, conflict protection, reopen, four viewport layouts

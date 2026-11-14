@@ -55,7 +55,11 @@ const server = createServer(async(req,res) => {
     assert.equal(disk, '\\documentclass{article}\r\n\\begin{document}\nMain text.\r\n\\end{document}\r\n% 草稿');
     await page.locator('.tex-indent-setting input').check();
     await page.locator('#project-save').click();
-    await page.waitForFunction(async()=> {try{return (await (await (await testDirectory.getFileHandle('main.tex')).getFile()).text()).includes('  Main text.');}catch(error){if(error.name==='NotFoundError')return false;throw error;}});
+    // Wait for the save transaction to close its writable stream before taking
+    // an OPFS File snapshot. Polling disk contents during commit can invalidate
+    // that snapshot on Windows Chromium and produce NotReadableError.
+    await page.waitForFunction(() => document.querySelector('#project-explorer').getAttribute('aria-busy')==='false'
+      && document.querySelector('#project-explorer [role=status]').textContent.includes('Saved'));
     assert.equal(await page.evaluate(async()=> (await (await testDirectory.getFileHandle('main.tex')).getFile()).text()),disk.replace('Main text.','  Main text.'));
     await page.locator('.tex-indent-setting input').uncheck();
     await page.evaluate(async () => { const w = await (await testDirectory.getFileHandle('main.tex')).createWritable(); await w.write('external'); await w.close(); });

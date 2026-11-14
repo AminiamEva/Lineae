@@ -1,5 +1,41 @@
 # V3 implementation contract and audit
 
+## Current File Tree mutation contract — 2026-11-15
+
+The following historical checkpoints are superseded where they conflict with
+this contract and the current FILE_TREE_BUG_AUDIT.md results.
+
+- `Project` serializes disk operations while synchronous draft edits continue.
+  File IDs and editor sessions survive path changes. Refresh stages reads before
+  publication; revision checks prevent stale reads from replacing newer input.
+- `adapter.move(source, target, expectedBytes, expectedTree)` carries the original
+  saved baseline. Directory entries include every known descendant, empty
+  directory and file's saved bytes; the native bridge encodes the manifest as
+  UTF-8 JSON in the move command's `bytes` field. Single-file operations use
+  `expected` bytes. This is not a fresh snapshot that blesses external changes.
+- Rust uses the canonical project-root mutex across cooperating instances, then
+  validates the directory manifest while retaining the source handle. It verifies
+  native endpoint identities, pins the destination parent, and commits with an
+  atomic no-replace rename. A committed directory move always returns
+  `reconciliationRequired`; post-commit errors are warnings, never false rollback.
+- After commit, Project updates known paths before rescanning membership. Automatic
+  reconciliation preserves existing saved bytes, text, drafts and sessions, even
+  for clean visible files. `externalChanged` marks mismatched disk bytes, appears
+  in the tree, and blocks save. Explicit safe refresh/reload adopts disk content.
+  `pathChanges` carries warnings and stable-ID old/new paths for a future resolver;
+  TeX reference rewriting remains unimplemented.
+- The native picker belongs to its invoking Tauri window. Cancellation does not
+  replace the active project. Actual latest-build native selection and both clean
+  and dirty cancellation passed; the unattended browser suites test a separate
+  adapter boundary. Physical IME and power-loss acceptance remain unverified.
+
+This guarantees cooperation between Lineae instances and conflict detection,
+not an atomic snapshot against all external programs. Browser filesystem APIs
+have weaker mutation guarantees. Full subtree bytes add memory/IPC cost; huge
+binary projects and hostile reparse-point mutation are not fully covered.
+
+## Earlier implementation checkpoints
+
 Review-ready integration: main 4bd1165 is merged. Explicit-save preparation is
 shared by standalone and project saves, retaining upstream indentation/zoom and
 completion behavior. Native project_checkpoints.rs owns per-session journals,

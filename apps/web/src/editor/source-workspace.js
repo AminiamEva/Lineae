@@ -334,7 +334,9 @@ export function createSourceWorkspace({ page, render, metadata, onChange = () =>
   return {
     destroy,
     captureSession() {
-      clearTimeout(timer);
+      // Taking a snapshot must not cancel a pending source-to-preview render:
+      // save, close confirmation and clicking a resource can keep this file
+      // active. Actual file restoration and teardown cancel their old timer.
       return view ? {state:view.state, original, top:view.scrollDOM.scrollTop, left:view.scrollDOM.scrollLeft} : null;
     },
     restoreSession(session, text) {

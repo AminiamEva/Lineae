@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import vm from 'node:vm';
 const source=await readFile(new URL('../apps/desktop/src-tauri/src/bridge.js',import.meta.url),'utf8');
-function bridge(invoke){const window={__TAURI_INTERNALS__:{invoke}};const Anchor=function(){};Anchor.prototype.click=()=>{};vm.runInNewContext(source,{window,HTMLAnchorElement:Anchor,DOMException,Uint8Array,console,crypto:globalThis.crypto});return window.lineaeProject;}
+function bridge(invoke){const window={__TAURI_INTERNALS__:{invoke}};const Anchor=function(){};Anchor.prototype.click=()=>{};vm.runInNewContext(source,{window,HTMLAnchorElement:Anchor,DOMException,Uint8Array,TextEncoder,TextDecoder,console,crypto:globalThis.crypto});return window.lineaeProject;}
 test('native picker cancellation and failure propagate without fabricating a project',async()=>{
  await assert.rejects(bridge(async()=>null).open(),{name:'AbortError'});
  await assert.rejects(bridge(async()=>{throw new Error('dialog failed');}).open(),/dialog failed/);
@@ -19,6 +19,19 @@ test('native bridge retains Chinese/space root and routes binary moves through s
  assert.deepEqual(Array.from(await adapter.read('image.png')),[0,255,13,10]);
  await adapter.write('main.tex',new Uint8Array([1,2]),new Uint8Array([3,4]));
  assert.deepEqual(Array.from(calls.at(-1).args.expected),[3,4]);
- await adapter.move('章节/a.tex','章节/b.tex');
+ await adapter.move('章节/a.tex','章节/b.tex',new Uint8Array([5,6]));
  assert.equal(calls.at(-1).args.root,adapter.root);assert.equal(calls.at(-1).args.target,'章节/b.tex');
+ assert.deepEqual(Array.from(calls.at(-1).args.expected),[5,6]);
+ await adapter.remove('章节/b.tex',new Uint8Array([5,6]));
+ assert.deepEqual(Array.from(calls.at(-1).args.expected),[5,6]);
+});
+test('native bridge sends directory baseline manifests and preserves committed reconciliation warnings',async()=>{
+ let request;
+ const response={entries:[],bytes:[],reconciliationRequired:true,warning:'Directory changed during move'};
+ const adapter=await bridge(async(command,args)=>{if(command==='open_project')return 'C:\\中文 项目';request=args;return response;}).open();
+ const manifest=[{path:'章节',kind:'directory'},{path:'章节/a.tex',kind:'file',bytes:[65,13,10]},{path:'章节/empty',kind:'directory'}];
+ const result=await adapter.move('章节','new 章节',undefined,manifest);
+ assert.equal(request.operation,'move');assert.equal(request.path,'章节');assert.equal(request.target,'new 章节');
+ assert.deepEqual(JSON.parse(new TextDecoder().decode(new Uint8Array(request.bytes))),manifest);
+ assert.equal(request.expected,undefined);assert.equal(result.reconciliationRequired,true);assert.equal(result.warning,response.warning);
 });

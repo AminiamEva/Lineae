@@ -1,5 +1,11 @@
 # Phase 1 implementation and acceptance — 2026-11-14
 
+PR #17 CI follow-up (2026-11-15): [Windows run 43614263127](https://github.com/AminiamEva/Lineae/actions/runs/43614263127)
+passed all automated test/build/package steps for fix `fc45db3`. The OPFS
+browser-test snapshot race is corrected without weakening disk assertions.
+Current details, failure evidence and remaining manual acceptance items are in
+[FILE_TREE_BUG_AUDIT.md](FILE_TREE_BUG_AUDIT.md). No merge or release.
+
 Latest finalization evidence and readiness status are in
 [PHASE1_FINAL_ACCEPTANCE.md](PHASE1_FINAL_ACCEPTANCE.md). It supersedes historical
 missing-persistence/Tauri-kill notes below: actual process-tree recovery now passed

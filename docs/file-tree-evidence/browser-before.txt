@@ -1,0 +1,14 @@
+PASS hidden tree, leftmost toggle, rapid toggles, empty directory
+FAIL typing retains tree nodes, expansion and CodeMirror instance: tree summary was replaced on edit
+
+false !== true
+
+FAIL reopening same file preserves focused tree button: Expected values to be strictly equal:
+
+false !== true
+
+FAIL typing during native move preserves current draft and undo: The input did not match the regular expression /before move during move/. Input:
+
+'Method.\n before move'
+
+1/4 File Tree browser scenarios passed

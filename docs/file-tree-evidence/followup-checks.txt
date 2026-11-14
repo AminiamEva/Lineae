@@ -1,0 +1,111 @@
+Follow-up actual execution, 2026-11-14/15; original failure logs retained.
+
+ALL NODE TESTS
+ℹ tests 428
+ℹ suites 0
+ℹ pass 428
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1096.8701
+
+native-build-final.log
+   Compiling lineae v0.1.1 (C:\Users\vertin\.codex\worktrees\lineae-v3-project\Lineae-source-editor-pr\apps\desktop\src-tauri)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 11.94s
+     Running unittests src\lib.rs (apps\desktop\src-tauri\target\debug\build\lineae/996f52d43503ef8a\out\lineae_lib-996f52d43503ef8a.exe)
+
+running 21 tests
+test project::tests::crash_writer_child ... ok
+test project::tests::metadata_case_aliases_and_invalid_windows_names_are_rejected ... ok
+test project::tests::native_remove_rechecks_the_editor_baseline ... ok
+test project::tests::native_move_rechecks_the_editor_baseline ... ok
+test project::tests::directory_manifest_rejects_duplicate_outside_and_incomplete_entries ... ok
+test project::tests::concurrent_moves_never_replace_a_new_destination ... ok
+test project::tests::directory_manifest_cannot_move_a_file_replacing_the_source_directory ... ok
+test project::tests::competing_expected_writes_and_external_changes ... ok
+test project::tests::scope_conflicts_and_invalid_payload_preserve_disk ... ok
+test project::tests::directory_move_reports_committed_snapshot_failure_and_rejects_hidden_entries ... ok
+test project::tests::permission_and_exclusive_locks_preserve_original ... ok
+
+running 1 test
+test project::tests::directory_move_pins_destination_parent_during_validation ... ok
+test project::tests::directory_move_rejects_stale_bytes_membership_and_missing_manifest ... ok
+test project::tests::native_disk_lifecycle_unicode_binary_and_moves ... ok
+
+running 1 test
+test project::tests::directory_move_reports_committed_late_changes_without_rollback_or_overwrite ... ok
+
+running 1 test
+test project::tests::terminated_writer_leaves_original_and_can_save_after_restart ... ok
+
+running 1 test
+test project::tests::directory_move_serializes_another_process_saving_a_descendant ... ok
+test project::tests::crash_writer_child ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 20 filtered out; finished in 0.07s
+
+
+running 1 test
+
+running 1 test
+test project::tests::separate_processes_do_not_overwrite_the_same_baseline ... ok
+test project::tests::windows_acl_denial_preserves_disk ... ok
+test project::tests::stale_move_paths_reject_junction_replacement_without_touching_outside_files ... ok
+test project::tests::crash_writer_child ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 20 filtered out; finished in 0.06s
+
+test project::tests::independent_process_checkpoints_survive_saves_and_stale_acknowledgement ... ok
+
+test result: ok. 21 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.19s
+
+   Compiling lineae v0.1.1 (C:\Users\vertin\.codex\worktrees\lineae-v3-project\Lineae-source-editor-pr\apps\desktop\src-tauri)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 28.41s
+
+file-tree-browser.log
+PASS hidden tree, leftmost toggle, rapid toggles, empty directory
+PASS typing retains tree nodes, expansion and CodeMirror instance
+PASS reopening same file preserves focused tree button
+PASS typing during native move preserves current draft and undo
+PASS nested expansion survives directory move and dirty Chinese file saves at new path
+PASS refresh reconciles external changes and preserves missing active draft
+PASS typing during reload is retained with explicit conflict
+PASS collisions and invalid paths leave editor and disk unchanged
+PASS delete confirmation, in-flight typing retention, and normal active-file deletion
+INFO refresh 200 added files 828ms
+PASS long names and large tree stay within sidebar, scroll and preserve editor
+PASS cancelled and empty directory opens retain the current project and draft
+PASS directory commit reconciles concurrent disk changes without advancing editor baselines
+12/12 File Tree browser scenarios passed
+
+file-tree-sessions.log
+PASS: standalone Body draft, mode, selection and undo survive project open/close
+PASS: standalone Raw/Split draft, selection and undo survive project open/close
+PASS: pending source projection is current after returning from a project
+PASS: saving before the pending preview render preserves source-to-Split synchronization
+PASS: independent Raw/Split preference, rich undo and drafts across repeated file switching; stable CodeMirror view
+File-tree session E2E: 5/5 scenarios passed
+
+project-browser.log
+PASS: draft checkpoint survives fresh page instance, restore confirmation and external-change conflict protection
+PASS: native bridge contract + real Windows disk UI rename/move, no-main.tex detection, unsaved draft retention, save at moved path
+PASS: native OPFS project lifecycle, hidden tree, toggle placement, drafts, Split, byte-exact mixed EOL save, conflict protection, reopen, four viewport layouts
+
+native-picker-acceptance.log
+NATIVE_PICKER_APP {"pid":15124,"output":"C:\\Users\\vertin\\.codex\\worktrees\\lineae-v3-project\\Lineae-source-editor-pr\\test-results\\file-tree-native\\picker-1794671857171","executable":"C:\\Users\\vertin\\.codex\\worktrees\\lineae-v3-project\\Lineae-source-editor-pr\\test-results\\file-tree-native\\picker-1794671857171\\app\\lineae.exe","sha256":"931562f370be4c9e0e85c4191a0f03192ee9dc0dd4ec6368e56a4d82ef008bb2"}
+NATIVE_PICKER_OBSERVER lineaeProject.open (Tauri core export read-only)
+NATIVE_PICKER_CANCEL_READY standalone-cancel C:\Users\vertin\.codex\worktrees\lineae-v3-project\Lineae-source-editor-pr\test-results\file-tree-native\picker-1794671857171\测试工程 with spaces
+NATIVE_PICKER_SELECT_READY choose-chinese-project C:\Users\vertin\.codex\worktrees\lineae-v3-project\Lineae-source-editor-pr\test-results\file-tree-native\picker-1794671857171\测试工程 with spaces
+NATIVE_PICKER_CANCEL_READY dirty-project-cancel C:\Users\vertin\.codex\worktrees\lineae-v3-project\Lineae-source-editor-pr\test-results\file-tree-native\picker-1794671857171\测试工程 with spaces
+PASS actual native picker selection and both cancellation scenarios C:\Users\vertin\.codex\worktrees\lineae-v3-project\Lineae-source-editor-pr\test-results\file-tree-native\picker-1794671857171
+
+V2/V2.1:
+V2 browser assertions passed: 70
+V2.1 browser assertions: 61
+Browser regressions passed
+
+Native dialog interaction used real Windows controls; editor assertions used actual Tauri WebView2.
+Latest native executable SHA-256 is recorded in native-picker-result.json.
+Exact canonical selected root was additionally checked against the fixture from the recorded trace.
+Physical IME/touchpad/power loss and arbitrary hostile filesystem races are not claimed verified.

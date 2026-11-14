@@ -1,0 +1,63 @@
+   Compiling lineae v0.1.1 (C:\Users\vertin\.codex\worktrees\lineae-v3-project\Lineae-source-editor-pr\apps\desktop\src-tauri)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 37.53s
+     Running unittests src\lib.rs (apps\desktop\src-tauri\target\debug\build\lineae/996f52d43503ef8a\out\lineae_lib-996f52d43503ef8a.exe)
+
+running 12 tests
+test project::tests::crash_writer_child ... ok
+test project::tests::native_remove_rechecks_the_editor_baseline ... FAILED
+test project::tests::native_move_rechecks_the_editor_baseline ... FAILED
+test project::tests::competing_expected_writes_and_external_changes ... ok
+test project::tests::metadata_case_aliases_and_invalid_windows_names_are_rejected ... FAILED
+test project::tests::scope_conflicts_and_invalid_payload_preserve_disk ... ok
+
+running 1 test
+test project::tests::permission_and_exclusive_locks_preserve_original ... ok
+
+running 1 test
+test project::tests::native_disk_lifecycle_unicode_binary_and_moves ... ok
+
+running 1 test
+test project::tests::terminated_writer_leaves_original_and_can_save_after_restart ... ok
+
+running 1 test
+
+running 1 test
+test project::tests::separate_processes_do_not_overwrite_the_same_baseline ... ok
+test project::tests::windows_acl_denial_preserves_disk ... ok
+test project::tests::crash_writer_child ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 11 filtered out; finished in 0.24s
+
+test project::tests::crash_writer_child ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 11 filtered out; finished in 0.24s
+
+test project::tests::independent_process_checkpoints_survive_saves_and_stale_acknowledgement ... ok
+
+failures:
+
+---- project::tests::native_remove_rechecks_the_editor_baseline stdout ----
+
+thread 'project::tests::native_remove_rechecks_the_editor_baseline' (33992) panicked at src\project.rs:458:9:
+Deletion must reject changes after frontend preflight
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- project::tests::native_move_rechecks_the_editor_baseline stdout ----
+
+thread 'project::tests::native_move_rechecks_the_editor_baseline' (2700) panicked at src\project.rs:467:9:
+Move must reject changes after frontend preflight
+
+---- project::tests::metadata_case_aliases_and_invalid_windows_names_are_rejected stdout ----
+
+thread 'project::tests::metadata_case_aliases_and_invalid_windows_names_are_rejected' (27272) panicked at src\project.rs:445:9:
+assertion failed: call(&roots, &root, "read", ".LINEAE-state-one.json", None, None).is_err()
+
+
+failures:
+    project::tests::metadata_case_aliases_and_invalid_windows_names_are_rejected
+    project::tests::native_move_rechecks_the_editor_baseline
+    project::tests::native_remove_rechecks_the_editor_baseline
+
+test result: FAILED. 9 passed; 3 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.34s
+
+error: test failed, to rerun pass `--lib`
