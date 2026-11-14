@@ -1,5 +1,14 @@
 # V3 implementation contract and audit
 
+Review-ready integration: main 4bd1165 is merged. Explicit-save preparation is
+shared by standalone and project saves, retaining upstream indentation/zoom and
+completion behavior. Native project_checkpoints.rs owns per-session journals,
+enumeration and byte-guarded archival under a project-wide named mutex. New
+sessions never overwrite another session's draft journal. The explorer asks per
+version and flushes the selected draft into its own journal before acknowledging
+the original. Unselected versions and archives remain on disk. Legacy single
+checkpoints are read and archived through the same version guard.
+
 Finalization adds persistent native-root identities/main selection and Rust-backed
 .lineae-state.json snapshots. The real forced-Tauri-kill test demonstrated that
 localStorage alone was insufficient. Native checkpoint writes are queued and use

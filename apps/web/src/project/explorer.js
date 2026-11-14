@@ -61,7 +61,15 @@ export function installProjectExplorer({footer, sessions}) {
     if (!next.mainFileId) throw new Error('目录中没有 .tex 文件 / No TeX file in this directory');
     let recoveryNotice='';
     try {
-      const drafts=next.diskRecovery.length?next.diskRecovery:next.recovery?.read() ?? [];
+      for(const version of next.recoveryVersions){
+        const detail=version.drafts.map(draft=>`${draft.path}: ${draft.draft.length} 字符 · ${next.files.get(draft.path)?.saved===draft.saved?'磁盘未变':'磁盘已变或缺失'}\n${draft.draft.slice(0,160)}`).join('\n\n');
+        if(confirm(`恢复版本 ${version.id}？同名草稿会替换当前编辑器草稿；其他版本仍保留。\nRestore this version?\n${detail}`)){
+          next.restoreDrafts(version.drafts);next.diskRecovery=[];next.checkpoint();await next.pendingCheckpoint;
+          if(next.persistenceError)throw new Error(next.persistenceError);
+          await adapter.acknowledge(version);recoveryNotice='已恢复选择的版本；原检查点已归档 / Selected checkpoint restored and archived';
+        }
+      }
+      const drafts=next.diskRecovery.length?next.diskRecovery:adapter.loadState?[]:next.recovery?.read() ?? [];
       const summary=drafts.map(draft=>`${draft.path}: ${draft.draft.length} 字符 · ${next.files.get(draft.path)?.saved===draft.saved?'磁盘未变 / unchanged':'磁盘已变或缺失 / changed or missing'}`).join('\n');
       if(drafts.length && confirm('恢复以下未保存草稿？磁盘文件不会被改写。 / Restore drafts?\n'+summary)) {
         const restored=next.restoreDrafts(drafts);recoveryNotice=`已恢复 ${restored}/${drafts.length} 个草稿；请核对磁盘冲突 / Recovered drafts`;
@@ -76,6 +84,7 @@ export function installProjectExplorer({footer, sessions}) {
     if(next.persistenceError){message.textContent=next.persistenceError;sessions.error(next.persistenceError);}
   }
   async function save() {
+    if(sessions.prepareSave && !sessions.prepareSave())return;
     capture();
     const file = project.file(project.activeFileId);
     await project.save(file.id);

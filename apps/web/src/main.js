@@ -1113,7 +1113,7 @@ async function downloadProject() {
 function prepareExplicitSave() {
   // Explicit Save/Save As only. ZIP export and ordinary updates remain byte-faithful.
   // Do not interrupt an IME composition with a formatting transaction.
-  if (sourceView.composing || editor.view.composing) throw new Error('请先完成当前输入 / Finish composition before saving');
+  if (sourceView.composing || editor.view.composing) return false;
   if (sourceView.indentOnSave && projectFileKind !== 'bib') {
     const formatted = indentLatex(sourceView.hidden ? source() : sourceView.value);
     if (formatted.changes.length) {
@@ -1126,10 +1126,11 @@ function prepareExplicitSave() {
       } else sourceView.indent(formatted.changes);
     }
   }
+  return true;
 }
 async function saveDocument(saveAs=false) {
   if (projectExplorer?.active && !saveAs) return projectExplorer.save();
-  prepareExplicitSave();
+  if (!prepareExplicitSave()) return;
   const text=sourceView.hidden?source():sourceView.value;
   if(window.showSaveFilePicker) {
     try {

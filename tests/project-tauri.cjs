@@ -6,7 +6,7 @@ const fs=require('node:fs/promises');
 const {resolve}=require('node:path');
 const assert=require('node:assert/strict');
 const output=resolve('test-results/phase1/desktop-final');
-const fixture=resolve(output,'Lineae-Phase1-Acceptance 中文');
+const fixture=resolve(output,'Lineae-Phase1-Acceptance 中文-'+Date.now());
 let child,browser,page;
 async function start(){
  child=spawn(resolve('apps/desktop/src-tauri/target/debug/lineae.exe'),[],{env:{...process.env,WEBVIEW2_USER_DATA_FOLDER:resolve(output,'webview-profile'),WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS:'--remote-debugging-port=9235'},stdio:'ignore'});
@@ -38,8 +38,9 @@ async function edit(path,text){await page.locator(`[data-path="${path}"]`).click
  const checkpoint=await page.evaluate(()=>Object.entries(localStorage).filter(([key])=>key.startsWith('lineae:project-')));
  assert.ok(checkpoint.some(([key,value])=>key.includes('recovery')&&value.includes('Native intro draft')&&value.includes('Native method draft')));
  const metadata=checkpoint.find(([key])=>key.includes('project-state'))[1];
- for(let n=0;n<100;n++){try{const saved=JSON.parse(await fs.readFile(resolve(fixture,'.lineae-state.json'),'utf8'));if(JSON.stringify(saved.drafts).includes('Native intro draft')&&JSON.stringify(saved.drafts).includes('Native method draft'))break;}catch{}await new Promise(done=>setTimeout(done,100));}
- assert.equal(JSON.parse(await fs.readFile(resolve(fixture,'.lineae-state.json'),'utf8')).drafts.length,2);
+ async function journalReady(){for(const name of await fs.readdir(fixture)){if(!name.startsWith('.lineae-state-'))continue;try{const state=JSON.parse(await fs.readFile(resolve(fixture,name),'utf8'));if(JSON.stringify(state.drafts).includes('Native intro draft')&&JSON.stringify(state.drafts).includes('Native method draft'))return true;}catch{}}return false;}
+ for(let n=0;n<100 && !await journalReady();n++)await new Promise(done=>setTimeout(done,100));
+ assert.ok(await journalReady());
  const killedPid=child.pid;execFileSync('taskkill',['/PID',String(killedPid),'/T','/F']);await new Promise(done=>setTimeout(done,1000));
  browser=null;await fs.writeFile(resolve(fixture,'sections/method.tex'),'external editor changed after kill');
  await start();

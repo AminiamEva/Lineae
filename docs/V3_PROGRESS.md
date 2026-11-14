@@ -1,5 +1,14 @@
 # V3 checkpoint — 2026-11-14
 
+## Review-ready integration
+
+User-approved merge 6ba780c integrates origin/main 4bd1165 and retains V2.1 zoom,
+save indentation and environment completion alongside project sessions. Recovery
+uses per-instance journals and guarded archival, preserving alternate drafts.
+406 Node tests and 9 Rust entries passed; combined browser and native builds
+passed. See PHASE1_FINAL_ACCEPTANCE.md for current results and manual limitations.
+Earlier blocked/single-snapshot notes below are superseded.
+
 ## Finalization checkpoint
 
 240 JS tests and 8 Rust test entries passed; browser/project tests and native

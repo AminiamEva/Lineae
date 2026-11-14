@@ -14,9 +14,9 @@ export class Project {
     this.treeVisible = false;
     this.config = {};
     this.scans = new Map(); this.dependencies = []; this.pathChanges = [];
-    this.recovery = adapter.root && storage ? new RecoveryStore(storage,adapter.root) : null;
+    this.recovery = adapter.root && storage ? new RecoveryStore(storage,adapter.root+(adapter.session?':'+adapter.session:'')) : null;
     this.storage=storage;this.metadataKey=adapter.root?'lineae:project-state:v1:'+adapter.root:null;this.persistenceError='';
-    this.pendingCheckpoint=Promise.resolve();this.diskRecovery=[];
+    this.pendingCheckpoint=Promise.resolve();this.diskRecovery=[];this.recoveryVersions=[];
   }
   async open() {
     const entries = await this.adapter.list();
@@ -34,7 +34,7 @@ export class Project {
     this.directories = directories;
     let metadata={};
     try {metadata=JSON.parse(this.metadataKey && this.storage?.getItem(this.metadataKey) || '{}');}catch(error){this.persistenceError=error.message;}
-    if(this.adapter.loadState){try{const state=await this.adapter.loadState();if(state){if(!state.files || !Array.isArray(state.drafts))throw new Error('Invalid disk checkpoint');metadata=state;this.diskRecovery=state.drafts;}}catch(error){this.diskRecoveryError='Disk recovery failed; checkpoint retained: '+error.message;this.persistenceError=this.diskRecoveryError;}}
+    if(this.adapter.loadState){try{const state=await this.adapter.loadState();if(state){if(!state.files || !Array.isArray(state.drafts))throw new Error('Invalid disk checkpoint');metadata=state;this.diskRecovery=state.drafts;this.recoveryVersions=state.recoveryVersions ?? [];}}catch(error){this.diskRecoveryError='Disk recovery failed; checkpoint retained: '+error.message;this.persistenceError=this.diskRecoveryError;}}
     const identities=new Set();
     for(const file of files.values()){const id=metadata?.files?.[file.path];if(typeof id==='string' && !identities.has(id))file.id=id;identities.add(file.id);}
     for(const file of files.values())this.scan(file);

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import vm from 'node:vm';
 const source=await readFile(new URL('../apps/desktop/src-tauri/src/bridge.js',import.meta.url),'utf8');
-function bridge(invoke){const window={__TAURI_INTERNALS__:{invoke}};const Anchor=function(){};Anchor.prototype.click=()=>{};vm.runInNewContext(source,{window,HTMLAnchorElement:Anchor,DOMException,Uint8Array,console});return window.lineaeProject;}
+function bridge(invoke){const window={__TAURI_INTERNALS__:{invoke}};const Anchor=function(){};Anchor.prototype.click=()=>{};vm.runInNewContext(source,{window,HTMLAnchorElement:Anchor,DOMException,Uint8Array,console,crypto:globalThis.crypto});return window.lineaeProject;}
 test('native picker cancellation and failure propagate without fabricating a project',async()=>{
  await assert.rejects(bridge(async()=>null).open(),{name:'AbortError'});
  await assert.rejects(bridge(async()=>{throw new Error('dialog failed');}).open(),/dialog failed/);

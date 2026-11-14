@@ -1,20 +1,21 @@
 # Phase 1 final acceptance — 2026-11-14
 
-Status: local core verification passed; **Ready for Review is blocked** by
-integration with the newly advanced upstream main. No branch push or PR was made.
+Status: core implementation and combined-tree verification passed; ready for
+formal code review. Physical Chinese IME and storage-failure edge cases below
+remain explicitly unverified. This is review readiness, not a release claim.
 
 ## Baseline and integration gate
 
 Worktree: lineae-v3-project/Lineae-source-editor-pr.
 Branch: feat/project-multipage-bibliography. Starting commit: ad04942.
 Implementation base: 8b3db67, including V2 PR #14.
-Latest origin/main: 4bd1165950c2cf9799215cf877d13e778e0dba00, now including PR #15
-and environment-completion fixes. `git merge-tree --write-tree HEAD origin/main`
-reported a conflict in apps/web/src/main.js. This was an object-only preview:
-no upstream merge, branch switch or worktree overwrite was performed.
-Latest-main combined behavior has not been tested. Integration requires direction
-under the user's prohibition on merging others' changes. Do not equate branch
-tests with successful latest-main integration or create a falsely ready PR.
+Integrated origin/main 4bd1165950c2cf9799215cf877d13e778e0dba00 with user approval
+in merge commit 6ba780c. The main.js save conflict was resolved by sharing the
+explicit-save preparation step with project saving. Independent rich/source
+zoom, safe save indentation, paragraph indentation and environment completion
+are retained. Project Bib source is not passed through the LaTeX indenter.
+Composition guards remain in effect. Both opt-out byte fidelity and opt-in
+project save indentation were exercised. No upstream commits were rewritten.
 
 The old font/zoom directory was inspected read-only; no task writes targeted it.
 Its branch has independently advanced to fix/latex-environment-completion-pairing,
@@ -28,10 +29,17 @@ so this report does not claim that unrelated concurrent work stayed unchanged.
 - A Windows named mutex coordinates cooperative Lineae processes saving the same
   canonical path. Rust rechecks the expected bytes while holding that mutex.
 - The real Tauri kill test exposed loss of unflushed WebView2 localStorage.
-  Native projects now also write .lineae-state.json through the Rust staging and
-  replacement path. It contains identities, selected main and text draft snapshots.
-  This reserved internal file is excluded from project enumeration. It is plaintext
-  and should be excluded from source-control/share workflows.
+  Native projects now write independent .lineae-state-<session>.json journals
+  through the Rust staging/replacement path. They contain identities, selected
+  main and text draft snapshots. Initial creation is staged and synced as well.
+  Reserved .lineae-* files are excluded from enumeration and user file operations.
+  They are plaintext and should be excluded from source-control/share workflows.
+- Each instance has its own random session identity. Reopening enumerates pending
+  versions separately, shows a preview, and asks before restoring each version.
+  Same-path alternatives are never silently merged. After a selected version has
+  been written to the current journal, its original is archived with a timestamp.
+  Archival verifies the original bytes under a cross-process checkpoint lock;
+  newer checkpoints are retained. Declined versions remain available.
 - Checkpoint writes are queued; crashes can lose changes newer than the last
   completed checkpoint. Corrupt checkpoint data is retained and reported, with
   disk checkpoint overwrite disabled for that session. Source files still open.
@@ -57,11 +65,14 @@ so this report does not claim that unrelated concurrent work stayed unchanged.
 
 ## Tests actually run
 
-- 240 selected JavaScript tests: passed, zero skipped (238 baseline plus persisted
-  identity/main-choice and unreadable checkpoint tests).
-- 8 Rust test entries: passed, zero ignored. Includes real ACL denial, exclusive
+- All 406 discovered JavaScript .test.mjs tests: passed, zero skipped, including
+  the upstream V2.1 suites, UI, EOL, compatibility parsing, Bib and project tests.
+- 9 Rust test entries: passed, zero ignored. Includes real ACL denial, exclusive
   locks, two threads and two independent native test processes using one baseline.
   One entry is a child-process helper; parent tests check its exit codes/results.
+  Two independent processes write ten revisions each to different journals. Both
+  survive; clearing one leaves the other available. A stale acknowledgement is
+  rejected; a matching acknowledged checkpoint is archived without data deletion.
 - Project browser E2E: passed, including real OS-disk rename/move through a
   substituted native IPC contract. This category is not native-shell evidence.
 - Actual Tauri test: passed. Native picker operated twice by Windows UI automation;
@@ -71,10 +82,12 @@ so this report does not claim that unrelated concurrent work stayed unchanged.
   drafts, verified identities, rejected an externally changed file and saved the
   unchanged-file recovered draft. Checkpoints were verified on disk before kill.
 - Web build and locked native debug build: passed. No installer/release build.
-- V2 browser regression: final rerun passed, recorded in final-v2.log.
+- V2/V2.1 browser regression passed (70 V2 and 61 V2.1 assertions are reported
+  inside the complete suite). Source lifecycle, toolbar, mixed EOL, independent
+  zoom, indentation and completion regressions were exercised.
 
-Local logs: test-results/phase1/final-js.log, final-native.log, final-browser.log,
-final-v2.log, final-tauri.log. Machine-readable desktop result:
+Local logs: test-results/phase1/review-all-node.log, review-build.log,
+review-browser.log, review-v2.log, review-tauri-final.log. Machine-readable desktop result:
 test-results/phase1/desktop-final/result.json. Native UI picker interaction is
 operator-assisted automation, not a fully unattended test or human manual audit.
 The test driver cleans up only the test-owned process tree; fixtures remain.
@@ -91,16 +104,16 @@ no TeX rendering equivalence or compilation support is claimed.
 
 ## Remaining limitations and classification
 
-Blocking review readiness: upstream-main conflict and untested combined behavior.
-No push/Ready PR until that gate is resolved.
+No known core test failures remain on the integrated branch. The items below are
+explicit review/coverage limitations, not fabricated passes.
 
 Known safety/coverage limits, not represented as passed:
 
 - An unrelated application using delete sharing can replace a path between
   validation and replacement. The named mutex coordinates Lineae, not all editors.
-- Checkpoint storage is currently one latest snapshot per project root; independent
-  simultaneous instances do not have separate draft histories. Source-file saves
-  are protected, but multi-instance recovery snapshots can supersede one another.
+- Each live session still keeps its latest snapshot rather than a full edit
+  history. Archived/declined journals are retained and may require manual cleanup.
+  This preserves alternate instance drafts at the cost of extra disk space.
 - Rename/delete races, crash between a move and metadata checkpoint, disk-full
   behavior, all OS replacement phases and sudden power failure are not exhaustively
   verified. Interrupted staging files are retained, hidden from the tree.
@@ -112,7 +125,6 @@ Known safety/coverage limits, not represented as passed:
   Physical IME and broader manual accessibility testing remain non-blocking
   manual items; no fabricated pass is recorded.
 
-Next work is to reconcile the editor integration with current main, repeat all
-checks on the combined tree, and assess the multi-instance draft snapshot limit
-before declaring final readiness. Phase 2 should then add a structured dependency
+Next work after review is manual IME/accessibility acceptance and recovery archive
+management. Phase 2 should then add a structured dependency
 resolver and project compilation entry; no Phase 2 implementation was started.

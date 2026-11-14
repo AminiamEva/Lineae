@@ -6,6 +6,7 @@ use serde::Serialize;
 use tauri::{AppHandle, State, WebviewUrl, WebviewWindowBuilder};
 use tauri_plugin_dialog::DialogExt;
 mod project;
+mod project_checkpoints;
 
 /// Paths the user has explicitly chosen in a native dialog during this session.
 /// Write commands only accept paths from this set, so the webview cannot touch

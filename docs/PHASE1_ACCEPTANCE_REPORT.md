@@ -1,10 +1,12 @@
 # Phase 1 implementation and acceptance — 2026-11-14
 
-Latest finalization evidence and current readiness gate are in
+Latest finalization evidence and readiness status are in
 [PHASE1_FINAL_ACCEPTANCE.md](PHASE1_FINAL_ACCEPTANCE.md). It supersedes historical
 missing-persistence/Tauri-kill notes below: actual process-tree recovery now passed
-after adding Rust-backed disk checkpoints. Latest-main integration is blocked by
-a main.js conflict; no push or Ready PR has been made.
+after adding Rust-backed disk checkpoints. The main.js conflict that blocked
+latest-main integration in the prior checkpoint has now been resolved
+with user-approved merge 6ba780c. Combined tests and independent-session recovery
+verification passed. Historical sections below describe earlier checkpoints.
 
 ## Resilience follow-up (latest)
 

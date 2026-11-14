@@ -10,6 +10,7 @@ export function projectPath(value, base = '') {
       if (!parts.length) throw new RangeError('Path escapes project root');
       parts.pop();
     } else {
+      if(part.startsWith('.lineae-'))throw new TypeError('Reserved project metadata path');
       if(/[<>"|?*]/.test(part) || /[. ]$/.test(part) || /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)/i.test(part))throw new TypeError('Invalid filename');
       parts.push(part);
     }

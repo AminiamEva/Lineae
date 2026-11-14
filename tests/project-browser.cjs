@@ -32,6 +32,7 @@ const server = createServer(async(req,res) => {
     });
     await page.locator('#project-open').click();
     await page.waitForFunction(() => document.querySelector('.tex-filename')?.textContent.includes('main.tex'));
+    await page.locator('.tex-indent-setting input').uncheck();
     assert.equal(await page.locator('#project-explorer').isVisible(), false);
     assert.equal(await page.locator('.document-status > :first-child').getAttribute('id'), 'project-toggle');
     await page.locator('#project-toggle').click();
@@ -52,6 +53,11 @@ const server = createServer(async(req,res) => {
     await page.waitForFunction(() => document.querySelector('#project-explorer [role=status]').textContent.includes('Saved'));
     const disk = await page.evaluate(async () => (await (await testDirectory.getFileHandle('main.tex')).getFile()).text());
     assert.equal(disk, '\\documentclass{article}\r\n\\begin{document}\nMain text.\r\n\\end{document}\r\n% 草稿');
+    await page.locator('.tex-indent-setting input').check();
+    await page.locator('#project-save').click();
+    await page.waitForFunction(async()=> {try{return (await (await (await testDirectory.getFileHandle('main.tex')).getFile()).text()).includes('  Main text.');}catch(error){if(error.name==='NotFoundError')return false;throw error;}});
+    assert.equal(await page.evaluate(async()=> (await (await testDirectory.getFileHandle('main.tex')).getFile()).text()),disk.replace('Main text.','  Main text.'));
+    await page.locator('.tex-indent-setting input').uncheck();
     await page.evaluate(async () => { const w = await (await testDirectory.getFileHandle('main.tex')).createWritable(); await w.write('external'); await w.close(); });
     await code.click(); await page.keyboard.press('Control+End'); await page.keyboard.insertText(' conflict draft');
     await page.locator('#project-save').click();
@@ -106,9 +112,16 @@ const server = createServer(async(req,res) => {
       if(command==='open_project')return diskRoot;
       assert.equal(command,'project_operation');assert.equal(args.root,diskRoot);
       const target=path=>{const result=resolve(diskRoot,path);assert.ok(result.startsWith(diskRoot+require('node:path').sep));return result;};
+      if(args.operation==='checkpoint'){await writeFile(target('.lineae-state-'+args.target+'.json'),Uint8Array.from(args.bytes));return {};}
+      if(args.operation==='load_state'){
+        let state={files:{},drafts:[]};const versions=[];
+        for(const name of (await readdir(diskRoot)).filter(name=>name.startsWith('.lineae-state-'))){const raw=await readFile(target(name));state=JSON.parse(raw);if(state.drafts.length)versions.push({id:name.slice(14,-5),drafts:state.drafts,expected:Array.from(raw)});}
+        state.drafts=[];state.recoveryVersions=versions;return {bytes:Array.from(Buffer.from(JSON.stringify(state)))};
+      }
+      if(args.operation==='ack_checkpoint'){const path=target('.lineae-state-'+args.target+'.json');assert.deepEqual(Array.from(await readFile(path)),args.expected);await rename(path,target('.lineae-archive-'+args.target+'.json'));return {};}
       if(args.operation==='list'){
         const entries=[];
-        async function visit(path=''){for(const entry of await readdir(resolve(diskRoot,path),{withFileTypes:true})){const name=path?path+'/'+entry.name:entry.name;entries.push({path:name,kind:entry.isDirectory()?'directory':'file'});if(entry.isDirectory())await visit(name);}}
+        async function visit(path=''){for(const entry of await readdir(resolve(diskRoot,path),{withFileTypes:true})){if(entry.name.startsWith('.lineae-'))continue;const name=path?path+'/'+entry.name:entry.name;entries.push({path:name,kind:entry.isDirectory()?'directory':'file'});if(entry.isDirectory())await visit(name);}}
         await visit();return {entries,bytes:[]};
       }
       if(args.operation==='read')return {bytes:Array.from(await readFile(target(args.path)))};
