@@ -1,5 +1,21 @@
 # File Tree bug bash — 2026-11-14
 
+## PR #17 Windows CI follow-up — 2026-11-15
+
+Initial remote run [43613857873](https://github.com/AminiamEva/Lineae/actions/runs/43613857873)
+failed at `tests/project-browser.cjs:59` with OPFS `NotReadableError`. The
+indentation-save test polled disk text while the save was committing, then took
+another File snapshot without waiting for completion. Windows Chromium can
+invalidate that snapshot across the write. The test now awaits the existing
+`aria-busy=false` and successful-save status before reading exact disk bytes;
+the byte equality assertion and real OPFS writes remain unchanged. No delay,
+exception swallowing or retry was added.
+
+With CI's Chromium headless shell 141 / Playwright build 1194 installed locally,
+the repaired project browser suite passed all three groups. Remote rerun results
+will be recorded after completion. Raw initial failure and local rerun logs are
+retained under `test-results/pr17-ci/`.
+
 ## Directory concurrency follow-up
 
 The follow-up keeps the earlier failed-run evidence below and adds a native
