@@ -63,8 +63,9 @@ Tauri invokes `sign-windows.ps1` before embedding the app in NSIS and again for
 the uninstaller and installer. The script signs with SHA-256 and an RFC 3161
 timestamp, and verifies every invocation with `signtool verify /pa`. The workflow
 also verifies the final standalone executable and installer before packaging.
-When `WINDOWS_CERTIFICATE` is absent the command is a no-op and the build logs a
-notice, so pull-request and untagged builds stay unsigned.
+When `WINDOWS_CERTIFICATE` is absent a `preview` tag builds unsigned artifacts,
+while a formal tag fails before the build so a release cannot be published
+without a signature. Pull-request and branch builds never require a certificate.
 
 A publicly trusted signing certificate must be obtained separately; GitHub
 Actions cannot create a trusted publisher identity. Cloud HSM services such as

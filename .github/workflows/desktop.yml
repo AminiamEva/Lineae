@@ -55,8 +55,11 @@ jobs:
           WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
         run: |
           if (-not $env:WINDOWS_CERTIFICATE) {
-            Write-Host "::notice::WINDOWS_CERTIFICATE is not configured; publishing unsigned binaries."
-            exit 0
+            if ($env:GITHUB_REF_NAME -match 'preview') {
+              Write-Host "::notice::Preview build without a signing certificate."
+              exit 0
+            }
+            throw "Formal release $env:GITHUB_REF_NAME requires WINDOWS_CERTIFICATE. Run apps/desktop/scripts/configure-signing.ps1 first."
           }
           $pfx = Join-Path $env:RUNNER_TEMP "lineae-signing.pfx"
           [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:WINDOWS_CERTIFICATE))
