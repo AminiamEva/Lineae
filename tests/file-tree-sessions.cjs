@@ -102,7 +102,7 @@ async function openProject(page) {
     await page.keyboard.press('ArrowDown'); await page.keyboard.press('ArrowDown'); await page.keyboard.press('End');
     await page.keyboard.insertText(' Saved source edit');
     await page.evaluate(() => document.querySelector('#project-save').click());
-    await page.waitForFunction(() => document.querySelector('#project-explorer [role="status"]').textContent.includes('Saved'));
+    await page.waitForFunction(() => document.querySelector('#project-explorer > [role="status"]').textContent.includes('Saved'));
     await page.waitForFunction(() => document.querySelector('.tex-preview .ProseMirror').textContent.includes('Saved source edit'), null, {timeout:3000});
     passed++; console.log('PASS: saving before the pending preview render preserves source-to-Split synchronization');
     assert.equal(await page.locator('.tex-preview .ProseMirror').evaluate(node=>!!node.closest('[inert]')),true,'Split remains read only');

@@ -47,10 +47,10 @@ async function edit(path,text){await page.locator(`[data-path="${path}"]`).click
  await start();
  const restoredMetadata=await page.evaluate(()=>Object.entries(localStorage).find(([key])=>key.includes('project-state'))[1]);assert.equal(restoredMetadata,metadata);
  await page.locator('[data-path="sections/method.tex"]').click();assert.match(await page.locator('.cm-content').innerText(),/Native method draft/);
- await page.locator('#project-save').click();await page.waitForFunction(()=>document.querySelector('#project-explorer [role=status]').textContent.includes('changed on disk'));
+ await page.locator('#project-save').click();await page.waitForFunction(()=>document.querySelector('#project-explorer > [role=status]').textContent.includes('changed on disk'));
  assert.equal(await fs.readFile(resolve(fixture,'sections/method.tex'),'utf8'),'external editor changed after kill');
  await page.locator('[data-path="sections/introduction.tex"]').click();assert.match(await page.locator('.cm-content').innerText(),/Native intro draft/);
- await page.locator('#project-save').click();await page.waitForFunction(()=>document.querySelector('#project-explorer [role=status]').textContent.includes('Saved'));
+ await page.locator('#project-save').click();await page.waitForFunction(()=>document.querySelector('#project-explorer > [role=status]').textContent.includes('Saved'));
  assert.match(await fs.readFile(resolve(fixture,'sections/introduction.tex'),'utf8'),/Native intro draft/);
  // Regression: exercise the final bridge/Rust operations through real WebView2.
  page.removeAllListeners('dialog');
@@ -64,7 +64,7 @@ async function edit(path,text){await page.locator(`[data-path="${path}"]`).click
  await page.waitForFunction(()=>document.querySelector('.tex-filename')?.textContent.includes('chapters/移动 intro.tex'));
  assert.match(await page.locator('.cm-content').innerText(),/Native move draft/);
  await page.locator('#project-save').click();
- await page.waitForFunction(()=>document.querySelector('#project-explorer [role=status]').textContent.includes('Saved'));
+ await page.waitForFunction(()=>document.querySelector('#project-explorer > [role=status]').textContent.includes('Saved'));
  assert.match(await fs.readFile(resolve(fixture,'chapters/移动 intro.tex'),'utf8'),/Native move draft/);
  await assert.rejects(fs.stat(resolve(fixture,'sections/introduction.tex')),{code:'ENOENT'});
  await assert.rejects(fs.stat(resolve(fixture,'sections/重命名 intro.tex')),{code:'ENOENT'});

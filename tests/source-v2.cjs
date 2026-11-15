@@ -110,7 +110,7 @@ module.exports=async function checkV2(context,url) {
     await set('text');await page.keyboard.press('Control+a');await revealToolbar(page); await page.locator('[data-group=home]').click();await page.locator('[data-source-action=B]').filter({visible:true}).first().click();equal(await read(),'\\textbf{text}','selection wraps in snippet');
     for (const selected of ['\\ref{sec:one}','${literal} \\custom{x}','a\nb']) {
       await set(selected);await page.keyboard.press('Control+a');
-      await page.locator('[data-source-action=B]').filter({visible:true}).first().click();
+      await revealToolbar(page); await page.locator('[data-source-action=B]').filter({visible:true}).first().click();
       equal(await read(),'\\textbf{'+selected+'}','literal selection wrapping');
       await page.keyboard.press('Control+z');equal(await read(),selected,'wrapped selection undo');
       await page.keyboard.press('Control+y');equal(await read(),'\\textbf{'+selected+'}','wrapped selection redo');

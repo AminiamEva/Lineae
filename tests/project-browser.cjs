@@ -148,7 +148,7 @@ async function clickOpenProject(page) {
     await page.locator('[data-path="main.tex"]').click();
     assert.match(await code.innerText(), /草稿/);
     await page.locator('#project-save').click();
-    await page.waitForFunction(() => document.querySelector('#project-explorer [role=status]').textContent.includes('Saved'));
+    await page.waitForFunction(() => document.querySelector('#project-explorer > [role=status]').textContent.includes('Saved'));
     const disk = await page.evaluate(async () => (await (await testDirectory.getFileHandle('main.tex')).getFile()).text());
     assert.equal(disk, '\\documentclass{article}\r\n\\begin{document}\nMain text.\r\n\\end{document}\r\n% 草稿');
     await setIndentOnSave(page,true);
@@ -157,7 +157,7 @@ async function clickOpenProject(page) {
     // an OPFS File snapshot. Polling disk contents during commit can invalidate
     // that snapshot on Windows Chromium and produce NotReadableError.
     await page.waitForFunction(() => document.querySelector('#project-explorer').getAttribute('aria-busy')==='false'
-      && document.querySelector('#project-explorer [role=status]').textContent.includes('Saved'));
+      && document.querySelector('#project-explorer > [role=status]').textContent.includes('Saved'));
     assert.equal(await page.evaluate(async()=> (await (await testDirectory.getFileHandle('main.tex')).getFile()).text()),disk.replace('Main text.','  Main text.'));
     assert.equal(await page.locator('[data-source-mode=split]').getAttribute('aria-pressed'),'false','Opening a project never activates Split');
     await page.locator('[data-source-mode=source]').click();
@@ -165,7 +165,7 @@ async function clickOpenProject(page) {
     await page.evaluate(async () => { const w = await (await testDirectory.getFileHandle('main.tex')).createWritable(); await w.write('external'); await w.close(); });
     await code.click(); await page.keyboard.press('Control+End'); await page.keyboard.insertText(' conflict draft');
     await page.locator('#project-save').click();
-    await page.waitForFunction(() => document.querySelector('#project-explorer [role=status]').textContent.includes('changed on disk'));
+    await page.waitForFunction(() => document.querySelector('#project-explorer > [role=status]').textContent.includes('changed on disk'));
     assert.equal(await page.evaluate(async () => (await (await testDirectory.getFileHandle('main.tex')).getFile()).text()), 'external');
     await page.locator('[data-path="sections/intro.tex"]').click();
     assert.match(await code.innerText(), /Child draft/);
@@ -200,7 +200,7 @@ async function clickOpenProject(page) {
     assert.match(await code.innerText(), /@book/);
     await code.click(); await page.keyboard.press('Control+End'); await page.keyboard.insertText('% bib edit');
     await page.locator('#project-save').click();
-    await page.waitForFunction(() => document.querySelector('#project-explorer [role=status]').textContent.includes('Saved'));
+    await page.waitForFunction(() => document.querySelector('#project-explorer > [role=status]').textContent.includes('Saved'));
     assert.match(await page.evaluate(async () => (await (await testDirectory.getFileHandle('refs.bib')).getFile()).text()), /bib edit/);
     page.once('dialog',dialog => dialog.accept());
     await page.locator('#project-close').click();
@@ -257,12 +257,12 @@ async function clickOpenProject(page) {
     await contextMenu.getByRole('menuitem',{name:/^(移动|Move)$/}).click();
     await page.waitForFunction(()=>document.querySelector('.tex-filename')?.textContent.includes('destination/moved.tex'));
     await page.locator('#project-save').click();
-    await page.waitForFunction(()=>document.querySelector('#project-explorer [role=status]').textContent.includes('Saved'));
+    await page.waitForFunction(()=>document.querySelector('#project-explorer > [role=status]').textContent.includes('Saved'));
     assert.equal(await readFile(resolve(diskRoot,'destination/moved.tex'),'utf8'),'Method.\r\nUnsaved 中文');
     await page.locator('[data-path="paper.tex"]').click();
     assert.match(await code.innerText(),/\\input\{destination\/moved\}/);
     await page.locator('#project-save').click();
-    await page.waitForFunction(()=>document.querySelector('#project-explorer [role=status]').textContent.includes('Saved'));
+    await page.waitForFunction(()=>document.querySelector('#project-explorer > [role=status]').textContent.includes('Saved'));
     assert.match(await readFile(resolve(diskRoot,'paper.tex'),'utf8'),/\\input\{destination\/moved\}/);
     await assert.rejects(readFile(resolve(diskRoot,'sections/method.tex')),{code:'ENOENT'});
     const destination=page.locator('#project-explorer summary').filter({hasText:/^destination$/});
@@ -275,7 +275,7 @@ async function clickOpenProject(page) {
     await page.keyboard.press('Control+z');assert.match(await code.innerText(),/\\input\{destination\/moved\}/);
     await page.keyboard.press('Control+y');assert.match(await code.innerText(),/\\input\{destination\/final\}/);
     await page.locator('#project-save').click();
-    await page.waitForFunction(()=>document.querySelector('#project-explorer [role=status]').textContent.includes('Saved'));
+    await page.waitForFunction(()=>document.querySelector('#project-explorer > [role=status]').textContent.includes('Saved'));
     assert.match(await readFile(resolve(diskRoot,'paper.tex'),'utf8'),/\\input\{destination\/final\}/);
     await page.locator('[data-path="destination/final.tex"]').click();
     await code.click();await page.keyboard.press('Control+End');await page.keyboard.insertText(' Recovered draft');
@@ -293,7 +293,7 @@ async function clickOpenProject(page) {
     await page.locator('[data-path="destination/final.tex"]').click();
     assert.match(await code.innerText(),/Recovered draft/);
     await page.locator('#project-save').click();
-    await page.waitForFunction(()=>document.querySelector('#project-explorer [role=status]').textContent.includes('changed on disk'));
+    await page.waitForFunction(()=>document.querySelector('#project-explorer > [role=status]').textContent.includes('changed on disk'));
     assert.equal(await readFile(resolve(diskRoot,'destination/final.tex'),'utf8'),'external after interruption');
     console.log('PASS: draft checkpoint survives fresh page instance, restore confirmation and external-change conflict protection');
     console.log('PASS: native bridge contract + real Windows disk UI rename/move, no-main.tex detection, unsaved draft retention, save at moved path');

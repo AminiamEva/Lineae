@@ -109,7 +109,7 @@ async function clickOpenProject(page) {
       await page.waitForFunction(()=>document.querySelector('.tex-filename')?.textContent.includes('chapters/renamed.tex'));
       assert.match(await code.innerText(),/before move during move/);
       await page.locator('#project-save').click();
-      await page.waitForFunction(()=>document.querySelector('#project-explorer [role=status]').textContent.includes('Saved'));
+      await page.waitForFunction(()=>document.querySelector('#project-explorer > [role=status]').textContent.includes('Saved'));
       assert.match(await fs.readFile(local('chapters/renamed.tex'),'utf8'),/before move during move/);
       await assert.rejects(fs.stat(local('sections/method.tex')),{code:'ENOENT'});
       await page.screenshot({path:path.join(output,'move-draft-after.png')});
@@ -126,7 +126,7 @@ async function clickOpenProject(page) {
       assert.equal(await page.locator('#project-explorer summary').filter({hasText:/^中文 章节$/}).evaluate(node=>node.parentElement.open),true);
       assert.match(await code.innerText(),/中文草稿/);
       await page.locator('#project-save').click();
-      await page.waitForFunction(()=>document.querySelector('#project-explorer [role=status]').textContent.includes('Saved'));
+      await page.waitForFunction(()=>document.querySelector('#project-explorer > [role=status]').textContent.includes('Saved'));
       assert.equal(await fs.readFile(local('chapters/中文 章节/研究方法.tex'),'utf8'),'研究方法。\r\n 中文草稿');
     });
     await check('refresh reconciles external changes and preserves missing active draft',async()=>{
@@ -139,7 +139,7 @@ async function clickOpenProject(page) {
       assert.match(await page.locator('[data-path="main.tex"]').getAttribute('title'),/Missing/);
       assert.match(await code.innerText(),/retained/);
       await page.locator('#project-save').click();
-      await page.waitForFunction(()=>/missing on disk|ENOENT/.test(document.querySelector('#project-explorer [role=status]').textContent));
+      await page.waitForFunction(()=>/missing on disk|ENOENT/.test(document.querySelector('#project-explorer > [role=status]').textContent));
       await assert.rejects(fs.stat(local('main.tex')),{code:'ENOENT'});
       await fs.rename(local('external-main.tex'),local('main.tex'));
       await treeMenu(page.locator('.project-tree'),/^(刷新文件树|Refresh tree)$/);
@@ -155,7 +155,7 @@ async function clickOpenProject(page) {
       await treeMenu(page.locator('.project-file[aria-current=true]'),/^(重新加载|Reload)$/);await started;
       await code.click();await page.keyboard.press('Control+End');await page.keyboard.insertText(' while reloading');
       release();entered=null;
-      await page.waitForFunction(()=>document.querySelector('#project-explorer [role=status]').textContent.includes('Draft changed'));
+      await page.waitForFunction(()=>document.querySelector('#project-explorer > [role=status]').textContent.includes('Draft changed'));
       assert.match(await code.innerText(),/while reloading/);
       assert.equal(await fs.readFile(local('added externally.tex'),'utf8'),'Updated outside.\r\n');
       gateOperation='move';
@@ -164,7 +164,7 @@ async function clickOpenProject(page) {
       for(const destination of ['main.tex','../escaped.tex','chapters\\bad.tex','CON.tex']){
         page.once('dialog',dialog=>dialog.accept(destination));
         await treeMenu(page.locator('[data-path="added externally.tex"]'),/^(重命名|Rename)$/);
-        await page.waitForFunction(()=>document.querySelector('#project-explorer [role=status]').textContent.length>0);
+        await page.waitForFunction(()=>document.querySelector('#project-explorer > [role=status]').textContent.length>0);
         assert.match(await code.innerText(),/while reloading/);
         assert.equal(await fs.readFile(local('added externally.tex'),'utf8'),'Updated outside.\r\n');
       }
@@ -181,7 +181,7 @@ async function clickOpenProject(page) {
       page.once('dialog',dialog=>dialog.accept());await treeMenu(page.locator('.project-file[aria-current=true]'),/^(删除|Delete)$/);await started;
       await code.click();await page.keyboard.press('Control+End');await page.keyboard.insertText(' typed during delete');
       release();entered=null;gateOperation='move';
-      await page.waitForFunction(()=>document.querySelector('#project-explorer [role=status]').textContent.includes('new edits retained'));
+      await page.waitForFunction(()=>document.querySelector('#project-explorer > [role=status]').textContent.includes('new edits retained'));
       assert.match(await code.innerText(),/typed during delete/);
       assert.match(await page.locator('[data-path="delete-test.tex"]').getAttribute('title'),/Missing/);
       await assert.rejects(fs.stat(local('delete-test.tex')),{code:'ENOENT'});
@@ -218,7 +218,7 @@ async function clickOpenProject(page) {
       assert.equal(await code.innerText(),current);
       await page.evaluate(()=>{window.lineaeProject.open=async()=>({name:'Empty',root:'empty-project',list:async()=>[]});});
       page.once('dialog',dialog=>dialog.accept());await clickOpenProject(page);
-      await page.waitForFunction(()=>document.querySelector('#project-explorer [role=status]').textContent.includes('No TeX'));
+      await page.waitForFunction(()=>document.querySelector('#project-explorer > [role=status]').textContent.includes('No TeX'));
       assert.equal(await code.innerText(),current);
       await page.evaluate(()=>window.lineaeProject.open=window.normalProjectOpen);
     });
@@ -244,15 +244,15 @@ async function clickOpenProject(page) {
       assert.equal(await page.locator('[data-path="chapters/moved sections/experiment.tex"]').getAttribute('data-focus-key'),identity);
       assert.match(await page.locator('[data-path="chapters/moved sections/experiment.tex"]').getAttribute('title'),/Changed on disk/);
       assert.equal(await page.locator('[data-path="chapters/moved sections/late-added.tex"]').count(),1);
-      assert.match(await page.locator('#project-explorer [role=status]').innerText(),/concurrent|changed|变/);
+      assert.match(await page.locator('#project-explorer > [role=status]').innerText(),/concurrent|changed|变/);
       await page.locator('#project-save').click();
-      await page.waitForFunction(()=>/changed on disk|conflict/i.test(document.querySelector('#project-explorer [role=status]').textContent));
+      await page.waitForFunction(()=>/changed on disk|conflict/i.test(document.querySelector('#project-explorer > [role=status]').textContent));
       assert.equal(await fs.readFile(local('chapters/moved sections/experiment.tex'),'utf8'),'Concurrent external revision\r\n');
       await assert.rejects(fs.stat(local('sections')),{code:'ENOENT'});
       await treeMenu(page.locator('.project-tree'),/^(刷新文件树|Refresh tree)$/);
       await page.waitForFunction(()=>document.querySelector('#project-explorer').getAttribute('aria-busy')==='false');
       assert.match(await page.locator('[data-path="chapters/moved sections/experiment.tex"]').getAttribute('title'),/Changed on disk/,'Refresh retains the unresolved external-change marker');
-      assert.ok((await page.locator('#project-explorer [role=status]').textContent()).length>0,'Refresh reports its result');
+      assert.ok((await page.locator('#project-explorer > [role=status]').textContent()).length>0,'Refresh reports its result');
       assert.equal(await code.innerText(),draft);
     });
     await page.evaluate(async()=>{await Promise.all(document.querySelector('.tex-workspace').getAnimations().map(animation=>animation.finished));});
