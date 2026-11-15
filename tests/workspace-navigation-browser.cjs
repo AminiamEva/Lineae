@@ -42,9 +42,10 @@ const server=createServer(async(req,res)=>{
   await page.locator('[data-source-mode=split]').click();
   await page.locator('.project-tree').click({button:'right'});await page.getByRole('menuitem',{name:/^(新建文件|New file)$/}).click();
   await createTreeEntry(page,'chapter.tex');assert.equal(await page.locator('[data-source-mode=split]').getAttribute('aria-pressed'),'true','New file preserves Split');
-  await page.locator('[data-source-mode=body]').click();await page.locator('.ProseMirror').click();await page.keyboard.insertText('Chapter heading');
+  await page.locator('.cm-content').click();await page.keyboard.insertText('\\section{Chapter heading}\nChapter body.');await page.locator('[data-source-mode=body]').click();
+  await page.locator('#sidebar-outline [data-heading-position]').filter({hasText:'Chapter heading'}).waitFor();
   await page.locator('.project-file[data-path="main.tex"]').click();assert.equal(await page.locator('[data-source-mode=body]').getAttribute('aria-pressed'),'true','Existing file preserves Document');
-  await page.locator('[data-include-target]').selectOption('chapter.tex');await page.locator('[data-include-add]').click();
+  await page.locator('[data-include-target]').selectOption({label:'chapter.tex'});await page.locator('[data-include-add]').click();
   await page.locator('[data-project-region][data-file-path="chapter.tex"]').waitFor();
   assert.match(await page.locator('.ProseMirror').innerText(),/Chapter heading/);
   await page.locator('.include-row [aria-label="Remove reference (keep file)"]').click();

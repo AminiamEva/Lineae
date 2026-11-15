@@ -2458,6 +2458,7 @@ async function verifySelectionGeometry(page, paper, importSource) {
     await importSource('Custom preferences');
     await page.waitForFunction(()=>document.querySelector('.ProseMirror p')?.textContent==='Custom preferences');
     await revealToolbar(page); await page.locator('[data-group=files]').click();
+    await page.locator('#settings-open').click();
     const configFile = page.waitForEvent('filechooser');
     await page.getByRole('button',{name:/^(Import YAML|导入 YAML)$/}).click();
     await (await configFile).setFiles({
@@ -2479,6 +2480,7 @@ async function verifySelectionGeometry(page, paper, importSource) {
     assert.equal(profile.interface.theme,'dark');
     assert.equal(profile.keybindings.editor.insertDisplayMath,'ctrl+q c');
     assert.equal(profile.editing.autoReplaceLigatures,true);
+    await page.locator('#settings-close').click();
     await paper.locator('p').click();
     await page.keyboard.press('End');
     await page.keyboard.type(' office ');
