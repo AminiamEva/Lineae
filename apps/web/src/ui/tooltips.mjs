@@ -1,3 +1,5 @@
+import { localizeText, normalizeLanguage } from './i18n.mjs';
+
 let tooltipCounter = 0;
 
 export function normalizeTooltip(value) {
@@ -13,7 +15,7 @@ export function normalizeTooltip(value) {
 
 export function tooltipText(value, language = 'zh-CN') {
   const tooltip = normalizeTooltip(value);
-  return language === 'zh-CN' ? (tooltip.zh || tooltip.en) : (tooltip.en || tooltip.zh);
+  return localizeText(tooltip.zh || tooltip.en, tooltip.en || tooltip.zh, language);
 }
 
 export function parseTooltipDataset(dataset = {}) {
@@ -59,7 +61,7 @@ export function installTooltips(root, {
   tip.style.font = '12px/1.4 system-ui, sans-serif';
   tip.style.boxShadow = '0 2px 10px rgb(0 0 0 / 20%)';
   (doc.body ?? root).append(tip);
-  let lang = language === 'en' ? 'en' : 'zh-CN';
+  let lang = normalizeLanguage(language);
   let active = null;
   let pendingTimer = null;
 
@@ -137,7 +139,7 @@ export function installTooltips(root, {
     element: tip,
     hide,
     setLanguage(next) {
-      lang = next === 'en' ? 'en' : 'zh-CN';
+      lang = normalizeLanguage(next);
       if (active) render(active);
     },
     destroy() {

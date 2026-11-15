@@ -91,7 +91,7 @@ export const DocumentImage = Node.create({
       const caption=document.createElement('figcaption');
       caption.contentEditable='true';
       caption.spellcheck=false;
-      caption.dataset.placeholder=t('题注','Caption');
+      caption.dataset.zhPlaceholder='题注';caption.dataset.enPlaceholder='Caption';caption.dataset.placeholder=t('题注','Caption');
       caption.addEventListener('keydown',event=>{
         if(event.key==='Enter'){event.preventDefault();caption.blur();}
       });
@@ -102,9 +102,9 @@ export const DocumentImage = Node.create({
       const controls=document.createElement('div');
       controls.className='document-image-controls';
       const size=document.createElement('button');
-      size.type='button';size.textContent=t('尺寸','Size');
+      size.type='button';size.dataset.zh='尺寸';size.dataset.en='Size';size.textContent=t('尺寸','Size');
       const editCaption=document.createElement('button');
-      editCaption.type='button';editCaption.textContent=t('题注','Caption');
+      editCaption.type='button';editCaption.dataset.zh='题注';editCaption.dataset.en='Caption';editCaption.textContent=t('题注','Caption');
       controls.append(size,editCaption);
       function update(patch, expected) {
         if (!dom.isConnected || node !== expected) return;
@@ -132,7 +132,9 @@ export const DocumentImage = Node.create({
         dom.dataset.centered=String(node.attrs.centered);
         if(node.attrs.align)dom.dataset.align=node.attrs.align;
         else delete dom.dataset.align;
-        button.textContent=t('定位图片','Locate image')+' · '+node.attrs.path;
+        button.dataset.zh='定位图片 · '+node.attrs.path;
+        button.dataset.en='Locate image · '+node.attrs.path;
+        button.textContent=t(button.dataset.zh,button.dataset.en);
         const width=node.attrs.width;
         image.style.width=width?.endsWith('\\linewidth') ? `${Number.parseFloat(width)*100}%` : width ?? '';
       };

@@ -1,6 +1,7 @@
 import {projectPath, fileKind, directoryTree} from './paths.mjs';
 import {scanDependencies, resolveMetadata} from './dependencies.mjs';
 import {RecoveryStore} from './recovery.mjs';
+import {t} from '../ui/i18n.mjs';
 
 const editable = kind => kind === 'tex' || kind === 'bib';
 const sameBytes = (left, right) => left.length === right.length && left.every((byte, index) => byte === right[index]);
@@ -159,11 +160,11 @@ export class Project {
         const result=await this.refreshNow({preserveExisting:true});
         if(result.conflicts.length || result.missing.length || result.added.length || result.removed.length || result.errors.length){
           change.reconciliationRequired=true;
-          change.warning=[change.warning,'移动后检测到目录变化，请检查文件树并重新加载冲突文件 / Directory changed during move; review files and reload conflicts',...result.errors.map(item=>`${item.path}: ${item.message}`)].filter(Boolean).join(' · ');
+          change.warning=[change.warning,t('移动后检测到目录变化，请检查文件树并重新加载冲突文件','Directory changed during move; review files and reload conflicts'),...result.errors.map(item=>`${item.path}: ${item.message}`)].filter(Boolean).join(' · ');
         }
       } catch(error){
         change.reconciliationRequired=true;
-        change.warning=[change.warning,'路径已移动，但目录核对失败 / Move committed; reconciliation failed: '+error.message].filter(Boolean).join(' · ');
+        change.warning=[change.warning,t('路径已移动，但目录核对失败','Move committed; reconciliation failed')+': '+error.message].filter(Boolean).join(' · ');
       }
     }
     try {this.checkpoint();}catch(error){this.persistenceError='Move completed; draft checkpoint failed: '+error.message;}

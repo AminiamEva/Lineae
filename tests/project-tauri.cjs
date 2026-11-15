@@ -13,7 +13,7 @@ async function start(){
  for(let n=0;n<150;n++){try{browser=await chromium.connectOverCDP('http://127.0.0.1:9235');break;}catch{await new Promise(done=>setTimeout(done,200));}}
  assert.ok(browser,'WebView2 CDP did not start');
  for(let n=0;n<100;n++){page=browser.contexts()[0]?.pages().find(p=>p.url().includes('tauri.localhost'));if(page)break;await new Promise(done=>setTimeout(done,200));}
- assert.ok(page);await page.locator('#project-open').waitFor();
+ assert.ok(page);await page.locator('[data-group=files]').click();await page.locator('#project-open').waitFor();
  page.on('dialog',dialog=>dialog.accept());
  await page.locator('#project-open').click();
  console.log('NATIVE_PICKER_READY '+fixture);
@@ -54,12 +54,12 @@ async function edit(path,text){await page.locator(`[data-path="${path}"]`).click
  // Regression: exercise the final bridge/Rust operations through real WebView2.
  page.removeAllListeners('dialog');
  page.on('dialog',dialog=>dialog.accept(dialog.type()==='prompt'?'sections/重命名 intro.tex':undefined));
- await page.getByRole('button',{name:'重命名 introduction.tex',exact:true}).click();
+ await page.getByRole('button',{name:/^(重命名 introduction\.tex|Rename introduction\.tex)$/}).click();
  await page.waitForFunction(()=>document.querySelector('.tex-filename')?.textContent.includes('sections/重命名 intro.tex'));
  await edit('sections/重命名 intro.tex',' Native move draft');
  page.removeAllListeners('dialog');
  page.on('dialog',dialog=>dialog.accept(dialog.type()==='prompt'?'chapters/移动 intro.tex':undefined));
- await page.getByRole('button',{name:'移动 重命名 intro.tex',exact:true}).click();
+ await page.getByRole('button',{name:/^(移动 重命名 intro\.tex|Move 重命名 intro\.tex)$/}).click();
  await page.waitForFunction(()=>document.querySelector('.tex-filename')?.textContent.includes('chapters/移动 intro.tex'));
  assert.match(await page.locator('.cm-content').innerText(),/Native move draft/);
  await page.locator('#project-save').click();
@@ -72,7 +72,7 @@ async function edit(path,text){await page.locator(`[data-path="${path}"]`).click
  await page.screenshot({path:resolve(output,'native-moved-before-cancel.png')});
  await fs.writeFile(resolve(output,'result.json'),JSON.stringify({passed:false,corePassed:true,fixture,pending:['native picker cancellation'],checks:['native picker twice','forced process-tree recovery','external conflict refusal','Chinese rename/move and saved bytes']},null,2));
  console.log('PASS native core workflow; cancellation remains pending');
- await page.locator('#project-open').click();
+ await page.locator('[data-group=files]').click();await page.locator('#project-open').click();
  console.log('NATIVE_PICKER_CANCEL_READY');
  await page.waitForFunction(()=>document.querySelector('#project-explorer').getAttribute('aria-busy')==='false',null,{timeout:180000});
  assert.equal(await page.locator('.cm-content').innerText(),currentText);

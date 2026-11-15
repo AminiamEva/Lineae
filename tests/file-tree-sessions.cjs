@@ -20,6 +20,7 @@ async function fixture(browser) {
   const page = await browser.newPage({viewport:{width:1440, height:900}});
   page.on('dialog', dialog => dialog.accept());
   await page.goto('http://127.0.0.1:' + server.address().port);
+  await page.locator('[data-group=files]').click();
   await page.locator('#project-open').waitFor();
   await page.locator('input[type=file]').setInputFiles({name:'standalone.tex', mimeType:'text/plain', buffer:Buffer.from(original)});
   await page.evaluate(async () => {
@@ -34,6 +35,7 @@ async function fixture(browser) {
   return page;
 }
 async function openProject(page) {
+  await page.locator('[data-group=files]').click();
   await page.locator('#project-open').click();
   await page.waitForFunction(() => document.querySelector('.tex-filename')?.textContent === 'main.tex');
   await page.locator('#project-toggle').click();

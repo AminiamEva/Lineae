@@ -13,6 +13,10 @@ const server = createServer(async(req,res) => {
   try { res.setHeader('Content-Type', {'.html':'text/html','.mjs':'text/javascript','.js':'text/javascript','.css':'text/css'}[path.extname(target)] || 'application/octet-stream'); res.end(await fs.readFile(target)); }
   catch { res.writeHead(404).end(); }
 });
+async function clickOpenProject(page) {
+  await page.locator('[data-group=files]').click();
+  await page.locator('#project-open').click();
+}
 (async()=>{
   await fs.mkdir(output,{recursive:true});
   const root = await fs.mkdtemp(path.join(output,'FileTree-Test 中文 '));
@@ -46,7 +50,7 @@ const server = createServer(async(req,res) => {
     mkdir:p=>window.diskOperation('mkdir',p),remove:p=>window.diskOperation('remove',p),move:(a,b)=>window.diskOperation('move',a,b)};}};});
   try {
     await page.goto('http://127.0.0.1:'+server.address().port);
-    await page.locator('#project-open').click();
+    await clickOpenProject(page);
     await page.waitForFunction(()=>document.querySelector('.tex-filename')?.textContent.includes('main.tex'));
     await page.locator('.tex-indent-setting input').uncheck();
     const code=page.locator('.cm-content');
@@ -88,7 +92,7 @@ const server = createServer(async(req,res) => {
       await code.click();await page.keyboard.press('Control+End');await page.keyboard.insertText(' before move');
       gate=new Promise(done=>release=done);
       page.once('dialog',dialog=>dialog.accept('chapters/renamed.tex'));
-      await page.getByRole('button',{name:'移动 method.tex',exact:true}).click();
+      await page.getByRole('button',{name:/^(移动 method\.tex|Move method\.tex)$/}).click();
       await code.click();await page.keyboard.press('Control+End');await page.keyboard.insertText(' during move');
       release();
       await page.waitForFunction(()=>document.querySelector('.tex-filename')?.textContent.includes('chapters/renamed.tex'));
@@ -105,7 +109,7 @@ const server = createServer(async(req,res) => {
       await code.click();await page.keyboard.press('Control+End');await page.keyboard.insertText(' 中文草稿');
       const directory=page.locator('#project-explorer details').filter({has:page.locator('summary').filter({hasText:/^第一章$/})});
       page.once('dialog',dialog=>dialog.accept('chapters/中文 章节'));
-      await directory.getByRole('button',{name:'移动目录',exact:true}).click();
+      await directory.getByRole('button',{name:/^(移动目录|Move folder)$/}).click();
       await page.waitForFunction(()=>document.querySelector('.tex-filename')?.textContent.includes('chapters/中文 章节/研究方法.tex'));
       await page.locator('#project-explorer summary').filter({hasText:/^chapters$/}).click();
       assert.equal(await page.locator('#project-explorer summary').filter({hasText:/^中文 章节$/}).evaluate(node=>node.parentElement.open),true);
@@ -148,7 +152,7 @@ const server = createServer(async(req,res) => {
     await check('collisions and invalid paths leave editor and disk unchanged',async()=>{
       for(const destination of ['main.tex','../escaped.tex','chapters\\bad.tex','CON.tex']){
         page.once('dialog',dialog=>dialog.accept(destination));
-        await page.getByRole('button',{name:'重命名 added externally.tex',exact:true}).click();
+        await page.getByRole('button',{name:/^(重命名 added externally\.tex|Rename added externally\.tex)$/}).click();
         await page.waitForFunction(()=>document.querySelector('#project-explorer [role=status]').textContent.length>0);
         assert.match(await code.innerText(),/while reloading/);
         assert.equal(await fs.readFile(local('added externally.tex'),'utf8'),'Updated outside.\r\n');
@@ -197,11 +201,11 @@ const server = createServer(async(req,res) => {
     await check('cancelled and empty directory opens retain the current project and draft',async()=>{
       const current=await code.innerText();
       await page.evaluate(()=>{window.normalProjectOpen=window.lineaeProject.open;window.lineaeProject.open=async()=>{throw new DOMException('Cancelled','AbortError');};});
-      page.once('dialog',dialog=>dialog.accept());await page.locator('#project-open').click();
+      page.once('dialog',dialog=>dialog.accept());await clickOpenProject(page);
       await page.waitForFunction(()=>document.querySelector('#project-explorer').getAttribute('aria-busy')==='false');
       assert.equal(await code.innerText(),current);
       await page.evaluate(()=>{window.lineaeProject.open=async()=>({name:'Empty',root:'empty-project',list:async()=>[]});});
-      page.once('dialog',dialog=>dialog.accept());await page.locator('#project-open').click();
+      page.once('dialog',dialog=>dialog.accept());await clickOpenProject(page);
       await page.waitForFunction(()=>document.querySelector('#project-explorer [role=status]').textContent.includes('No TeX'));
       assert.equal(await code.innerText(),current);
       await page.evaluate(()=>window.lineaeProject.open=window.normalProjectOpen);
@@ -221,7 +225,7 @@ const server = createServer(async(req,res) => {
         return {reconciliationRequired:true,warning:'Directory moved; concurrent changes detected'};
       };
       page.once('dialog',dialog=>dialog.accept('chapters/moved sections'));
-      await summary.locator('..').getByRole('button',{name:'移动目录',exact:true}).last().click();
+      await summary.locator('..').getByRole('button',{name:/^(移动目录|Move folder)$/}).last().click();
       await page.waitForFunction(()=>document.querySelector('.tex-filename')?.textContent.includes('chapters/moved sections/experiment.tex'));
       afterMove=null;
       assert.equal(await code.innerText(),draft);

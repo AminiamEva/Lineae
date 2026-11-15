@@ -9,7 +9,9 @@ export function installFormatControls(editor, tools) {
   color.dataset.tooltipEn = 'Text color';
   const glyph = document.createElement('span'); glyph.textContent = 'A';
   const picker = document.createElement('input');
-  picker.type = 'color'; picker.setAttribute('aria-label', t('文字颜色','Text color'));
+  picker.type = 'color';
+  picker.dataset.zhTitle = '文字颜色'; picker.dataset.enTitle = 'Text color';
+  picker.setAttribute('aria-label', t('文字颜色','Text color'));
   picker.addEventListener('input', () => editor.chain().focus().setMark('textStyle', { color: picker.value }).run());
   color.append(glyph, picker); tools.append(color);
   const menus = {};
@@ -23,9 +25,12 @@ export function installFormatControls(editor, tools) {
     fontSize: [8,9,10,11,12,14,16,18,20,24,28,32,36,48,60,72].map(size => size + 'pt'),
   })) {
     const menu = document.createElement('select');
-    menu.setAttribute('aria-label', attribute);
-    menu.dataset.tooltipZh = attribute === 'fontFamily' ? '字体' : '字号';
-    menu.dataset.tooltipEn = attribute === 'fontFamily' ? 'Font' : 'Size';
+    const [zh,en] = attribute === 'fontFamily' ? ['字体','Font'] : ['字号','Size'];
+    menu.dataset.formatAttribute = attribute;
+    menu.dataset.zhTitle = zh; menu.dataset.enTitle = en;
+    menu.setAttribute('aria-label', t(zh,en));
+    menu.dataset.tooltipZh = zh;
+    menu.dataset.tooltipEn = en;
     for (const value of values) {
       const option = new Option(value, value);
       if (attribute === 'fontFamily') option.style.fontFamily = value;

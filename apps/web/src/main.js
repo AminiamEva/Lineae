@@ -56,7 +56,7 @@ import { createThemeController } from './ui/theme.mjs';
 import { installTooltips } from './ui/tooltips.mjs';
 import { installRovingFocus } from './ui/keyboard-nav.mjs';
 import { fadeIn } from './ui/motion.mjs';
-import { getLanguage, localize, setLanguage, t } from './ui/i18n.mjs';
+import { getLanguage, localize, normalizeLanguage, setLanguage, t } from './ui/i18n.mjs';
 
 const citationLibrary = createCitationLibrary();
 
@@ -190,8 +190,10 @@ const config = createConfigStore(defaultConfigYaml, {
 });
 function configuredLanguage() {
   const value = config.value.interface.language;
-  if (value !== 'auto') return value;
-  return navigator.language?.toLowerCase().startsWith('zh') ? 'zh-CN' : 'en';
+  if (value !== 'auto') return normalizeLanguage(value);
+  const tag = navigator.language?.toLowerCase() ?? '';
+  if (!tag.startsWith('zh')) return 'en';
+  return normalizeLanguage(tag);
 }
 setLanguage(configuredLanguage());
 const theme=createThemeController({root:document.documentElement,storage:null,preference:config.value.interface.theme});
@@ -979,8 +981,8 @@ editMeta(metaTitle,'title');editMeta(metaAuthor,'author');
 function renderMeta() {
   metaTitle.textContent=readMeta('title');
   metaAuthor.textContent=readMeta('author');
-  metaTitle.dataset.placeholder=t('标题','Title');
-  metaAuthor.dataset.placeholder=t('作者','Author');
+  metaTitle.dataset.zhPlaceholder='标题';metaTitle.dataset.enPlaceholder='Title';metaTitle.dataset.placeholder=t('标题','Title');
+  metaAuthor.dataset.zhPlaceholder='作者';metaAuthor.dataset.enPlaceholder='Author';metaAuthor.dataset.placeholder=t('作者','Author');
 }
 renderMeta();
 typesetPagination=installTypesetPagination(documentPage,paper,metaBar,editor);
@@ -1054,7 +1056,7 @@ function load(text, markSaved = true) {
 }
 let returnedDraft;
 function setSourceMode(active) {
-  if (!active && projectExplorer?.active) { sourceView.error('工程文件请使用源码或 Split 模式 / Use Source or Split for project files'); return; }
+  if (!active && projectExplorer?.active) { sourceView.error(t('工程文件请使用源码或 Split 模式','Use Source or Split for project files')); return; }
   if (editor.view.composing || sourceView.composing) { sourceView.error(t("请先完成当前输入。","Finish the current composition before switching modes.")); return; }
   if (active === !sourceView.hidden) return;
   if (active) {
@@ -1548,12 +1550,11 @@ themeButton.addEventListener('click',()=>{
   theme.set(next);updateThemeButton();
 });
 function updateThemeButton(){
-  const chinese=document.documentElement.lang.startsWith('zh');
   const label={light:['浅色','Light'],dark:['深色','Dark'],system:['跟随系统','System']}[theme.getPreference()];
-  const description=(chinese?'主题：':'Theme: ')+label[chinese?0:1];
+  const description=t('主题：','Theme: ')+t(label[0],label[1]);
   themeButton.setAttribute('aria-label',description);
-  themeButton.dataset.tooltipZh=description;
-  themeButton.dataset.tooltipEn=description;
+  themeButton.dataset.tooltipZh='主题：'+label[0];
+  themeButton.dataset.tooltipEn='Theme: '+label[1];
   themeButton.replaceChildren(icon({light:'sun',dark:'moon',system:'system'}[theme.getPreference()]));
 }
 const modes = document.createElement('div');
@@ -1596,11 +1597,8 @@ function updateContinueTablesButton(){
   const enabled=typesetPagination.getTableContinuation();
   continueTablesButton.textContent=enabled?t('续表 开','Continue on'):t('续表 关','Continue off');
   continueTablesButton.setAttribute('aria-pressed',String(enabled));
-  const description=enabled
-    ? t('超过一页的表格自动拆分并重复表头','Split long tables across pages and repeat the header')
-    : t('表格不自动拆分','Keep long tables as one block');
-  continueTablesButton.dataset.tooltipZh=description;
-  continueTablesButton.dataset.tooltipEn=description;
+  continueTablesButton.dataset.tooltipZh=enabled?'超过一页的表格自动拆分并重复表头':'表格不自动拆分';
+  continueTablesButton.dataset.tooltipEn=enabled?'Split long tables across pages and repeat the header':'Keep long tables as one block';
 }
 const paginationButton=document.createElement('button');
 paginationButton.type='button';paginationButton.className='pagination-toggle';
@@ -1610,18 +1608,12 @@ paginationButton.addEventListener('click',()=>{
   updatePaginationButton();
 });
 function updatePaginationButton(){
-  const chinese=document.documentElement.lang.startsWith('zh');
   const pages=typesetPagination.getMode()==='pages';
-  paginationButton.textContent=pages
-    ? (chinese?'分页':'Pages')
-    : (chinese?'连续流':'Continuous');
+  paginationButton.textContent=pages?t('分页','Pages'):t('连续流','Continuous');
   paginationButton.dataset.mode=pages?'pages':'flow';
   paginationButton.setAttribute('aria-pressed',String(pages));
-  const description=pages
-    ? (chinese?'切换到连续流预览':'Switch to continuous flow')
-    : (chinese?'切换到分页预览':'Switch to paginated pages');
-  paginationButton.dataset.tooltipZh=description;
-  paginationButton.dataset.tooltipEn=description;
+  paginationButton.dataset.tooltipZh=pages?'切换到连续流预览':'切换到分页预览';
+  paginationButton.dataset.tooltipEn=pages?'Switch to continuous flow':'Switch to paginated pages';
 }
 function scale() {
   documentPage.style.zoom=Number(zoom.value)/100;
@@ -1851,12 +1843,12 @@ function updateEnvironment() {
 }
 footer.append(count,document.querySelector('#status'),environment,zoom,percent,paginationButton,themeButton,modes);document.body.append(footer);scale();updatePaginationButton();
 let standaloneSession;
-projectExplorer = installProjectExplorer({footer, sessions:{
+projectExplorer = installProjectExplorer({footer, filePanel:document.querySelector('header .tools'), sessions:{
   prepareSave:prepareExplicitSave,
-  ensureIdle() { if (editor.view.composing || sourceView.composing) throw new Error('请先完成当前输入 / Finish composition first'); },
+  ensureIdle() { if (editor.view.composing || sourceView.composing) throw new Error(t('请先完成当前输入','Finish composition first')); },
   text:() => sourceView.hidden ? source() : sourceView.value,
   capture:() => ({...sourceView.captureSession(), split:sourceView.split, richSelection:{anchor:editor.state.selection.anchor, head:editor.state.selection.head}}),
-  approveOpen:() => (sourceView.hidden?source():sourceView.value) === savedSource || confirm('保留当前单文件草稿并打开工程？ / Keep the current single-file draft and open a project?'),
+  approveOpen:() => (sourceView.hidden?source():sourceView.value) === savedSource || confirm(t('保留当前单文件草稿并打开工程？','Keep the current single-file draft and open a project?')),
   begin() {
     if (!standaloneSession) standaloneSession = {
       text:sourceView.hidden?source():sourceView.value, filename, fileHandle, savedSource,
@@ -1917,9 +1909,12 @@ const layoutGroup=document.createElement('div');layoutGroup.className='tools';la
 const formatGroup=document.createElement('div');formatGroup.className='tools';
 const referenceGroup=document.createElement('div');referenceGroup.className='tools';
 const mathGroup=document.createElement('div');mathGroup.className='tools';
-function groupButton(container,label,action) {
+function groupButton(container,label,action,sourceAction) {
   const control=document.createElement('button');
-  control.type='button';control.textContent=label;control.dataset.sourceAction=label;
+  const [zh,en]=Array.isArray(label)?label:[label,label];
+  control.type='button';control.dataset.sourceAction=sourceAction??zh;
+  if(Array.isArray(label)){control.dataset.zh=zh;control.dataset.en=en;}
+  control.textContent=Array.isArray(label)?t(zh,en):label;
   control.addEventListener('mousedown',event=>event.preventDefault());
   control.addEventListener('click',action);
   container.append(control);
@@ -1955,22 +1950,22 @@ for(const [side,input] of [['top',pageMarginTop],['right',pageMarginRight],['bot
 });
 applyPageSetup();
 groupButton(tableGroup,'▦',()=>insertDefaultTable());
-continueTablesButton=groupButton(tableGroup,t('续表','Continue'),()=>{
+continueTablesButton=groupButton(tableGroup,['续表','Continue'],()=>{
   const enabled=!typesetPagination.getTableContinuation();
   typesetPagination.setTableContinuation(enabled);
   config.updateInterface({continuedTables:enabled});
   updateContinueTablesButton();
 });
 updateContinueTablesButton();
-groupButton(tableGroup,'＋ Row',addMatrixRow);
-groupButton(tableGroup,'＋ Column',addMatrixColumn);
-groupButton(tableGroup,'－ Row',()=>editor.chain().focus().deleteRow().run());
-groupButton(tableGroup,'－ Column',()=>editor.chain().focus().deleteColumn().run());
-groupButton(tableGroup,'删除表格',()=>editor.chain().focus().deleteTable().run());
-groupButton(tableGroup,'merge',()=>editor.chain().focus().mergeCells().run());
-groupButton(tableGroup,'split',()=>editor.chain().focus().splitCell().run());
+groupButton(tableGroup,['＋ 行','＋ Row'],addMatrixRow,'＋ Row');
+groupButton(tableGroup,['＋ 列','＋ Column'],addMatrixColumn,'＋ Column');
+groupButton(tableGroup,['－ 行','－ Row'],()=>editor.chain().focus().deleteRow().run(),'－ Row');
+groupButton(tableGroup,['－ 列','－ Column'],()=>editor.chain().focus().deleteColumn().run(),'－ Column');
+groupButton(tableGroup,['删除表格','Delete table'],()=>editor.chain().focus().deleteTable().run());
+groupButton(tableGroup,['合并','Merge'],()=>editor.chain().focus().mergeCells().run(),'merge');
+groupButton(tableGroup,['拆分','Split'],()=>editor.chain().focus().splitCell().run(),'split');
 groupButton(tableGroup,'booktabs',()=>{if(editor.isActive('table'))editor.chain().focus().updateAttributes('table',{booktabs:!editor.getAttributes('table').booktabs}).run();});
-groupButton(tableGroup,t('题注','Caption'),async()=>{
+groupButton(tableGroup,['题注','Caption'],async()=>{
   if(!editor.isActive('table'))return;
   const value=await askText(t('表格题注（LaTeX）','Table caption (LaTeX)'),editor.getAttributes('table').caption??'');
   if(value!==null)editor.chain().focus().updateAttributes('table',{caption:value||null,centered:true,placement:editor.getAttributes('table').placement??'htbp'}).run();
@@ -1980,29 +1975,29 @@ groupButton(tableGroup,'label',async()=>{
   const value=await askText(t('表格标签键','Table label key'),editor.getAttributes('table').label??'');
   if(value!==null)editor.chain().focus().updateAttributes('table',{label:value||null}).run();
 });
-groupButton(tableGroup,t('边框','Borders'),async()=>{
+groupButton(tableGroup,['边框','Borders'],async()=>{
   if(!editor.isActive('table'))return;
   const mode=await askText(t('边框：grid 全部、outer 外框、horizontal 横线、none 无','Borders: grid, outer, horizontal, none'),editor.getAttributes('table').borderMode??'grid');
   if(mode && ['grid','outer','horizontal','none'].includes(mode)) editor.chain().focus().updateAttributes('table',{borderMode:mode,booktabs:false}).run();
 });
-groupButton(tableGroup,t('线宽','Rule width'),async()=>{
+groupButton(tableGroup,['线宽','Rule width'],async()=>{
   if(!editor.isActive('table'))return;
   const width=await askText(t('表格线宽（例如 0.8pt）','Table rule width (e.g. 0.8pt)'),editor.getAttributes('table').borderWidth??'0.4pt');
   if(width!==null && (!width || /^\d+(?:\.\d+)?pt$/.test(width))) editor.chain().focus().updateAttributes('table',{borderWidth:width||null}).run();
 });
-for(const [label,align] of [['左','left'],['中','center'],['右','right']]) groupButton(tableGroup,label,()=>{
+for(const [label,align] of [[['左','Left'],'left'],[['中','Center'],'center'],[['右','Right'],'right']]) groupButton(tableGroup,label,()=>{
   if(!editor.isActive('table'))return;
   const type=editor.isActive('tableHeader')?'tableHeader':'tableCell';
   editor.chain().focus().updateAttributes(type,{align}).run();
 });
 groupButton(formatGroup,'B',()=>editor.chain().focus().toggleBold().run());
-for (const [align,label] of [['left',t('左对齐','Align left')],['right',t('右对齐','Align right')],['center',t('居中','Center')]]) {
+for (const [align,label] of [['left',['左对齐','Align left']],['right',['右对齐','Align right']],['center',['居中','Center']]]) {
   groupButton(formatGroup,label,()=>setParagraphAlignment(align));
 }
 groupButton(formatGroup,'I',()=>editor.chain().focus().toggleItalic().run());
 groupButton(formatGroup,'U',()=>editor.chain().focus().toggleMark('underline').run());
 groupButton(formatGroup,'S',()=>editor.chain().focus().toggleStrike().run());
-groupButton(formatGroup,t('清除格式','Clear formatting'),()=>editor.chain().focus().unsetAllMarks().run());
+groupButton(formatGroup,['清除格式','Clear formatting'],()=>editor.chain().focus().unsetAllMarks().run());
 groupButton(formatGroup,'code',()=>editor.chain().focus().toggleCode().run());
 groupButton(formatGroup,'quote',()=>editor.chain().focus().toggleBlockquote().run());
 groupButton(formatGroup,'hr',()=>editor.chain().focus().setHorizontalRule().run());
@@ -2031,9 +2026,9 @@ function setListStyle(style) {
   else if(editor.isActive('bulletList'))editor.chain().focus().updateAttributes('bulletList',{marker:style}).run();
 }
 groupButton(formatGroup,'1.',()=>setListStyle('decimal'));
-groupButton(formatGroup,t('切换标记','Cycle marker'),()=>{ editor.view.focus(); shortcutActions.editor.toggleContextMarker(); }).dataset.shortcut='editor.toggleContextMarker';
-groupButton(formatGroup,t('列表降一级','Indent list item'),()=>indentListItem(editor));
-groupButton(formatGroup,t('列表升一级','Outdent list item'),()=>editor.chain().focus().liftListItem('listItem').run());
+groupButton(formatGroup,['切换标记','Cycle marker'],()=>{ editor.view.focus(); shortcutActions.editor.toggleContextMarker(); }).dataset.shortcut='editor.toggleContextMarker';
+groupButton(formatGroup,['列表降一级','Indent list item'],()=>indentListItem(editor));
+groupButton(formatGroup,['列表升一级','Outdent list item'],()=>editor.chain().focus().liftListItem('listItem').run());
 groupButton(formatGroup,'a.',()=>setListStyle('lower-alpha'));
 groupButton(formatGroup,'A.',()=>setListStyle('upper-alpha'));
 groupButton(formatGroup,'I.',()=>setListStyle('upper-roman'));
@@ -2156,8 +2151,8 @@ async function editFormulaLabel() {
 }
 groupButton(mathGroup,'equation label',editFormulaLabel);
 groupButton(mathGroup,'frac',()=>insertMath(false,'\\frac{\\placeholder{}}{\\placeholder{}}'));
-groupButton(mathGroup,t('公式换行','Math line break'),()=>activeMath()?.dispatchEvent(new Event('lineae-math-newline')));
-groupButton(mathGroup,t('退出公式','Exit formula'),()=>activeMath()?.dispatchEvent(new Event('lineae-leave-formula'))).dataset.shortcut='math.leaveFormula';
+groupButton(mathGroup,['公式换行','Math line break'],()=>activeMath()?.dispatchEvent(new Event('lineae-math-newline')));
+groupButton(mathGroup,['退出公式','Exit formula'],()=>activeMath()?.dispatchEvent(new Event('lineae-leave-formula'))).dataset.shortcut='math.leaveFormula';
 for (const [label,command,latex] of [
   ['sqrt','sqrt','\\sqrt{\\placeholder{}}'],
   ['ⁿ√','indexedRoot','\\sqrt[\\placeholder{}]{\\placeholder{}}'],
@@ -2173,7 +2168,7 @@ for (const [label,command,latex] of [
 }
 groupButton(mathGroup,'\\left',()=>chooseMathDelimiters(activeMath()));
 groupButton(mathGroup,'\\right',()=>chooseMathDelimiters(activeMath(),true));
-groupButton(mathGroup,'单括号 / Literal fence',()=>armLiteralFence(activeMath()));
+groupButton(mathGroup,['单括号','Literal fence'],()=>armLiteralFence(activeMath()));
 groupButton(mathGroup,'matrix',()=>insertMath(false,matrixSource('matrix')));
 groupButton(mathGroup,'cases',()=>insertMath(true,'\\begin{cases}\\placeholder{} & \\placeholder{}\\\\ \\placeholder{} & \\placeholder{}\\end{cases}'));
 groupButton(mathGroup,'align',structureCommands.align);
@@ -2184,15 +2179,15 @@ const ribbon=document.createElement('div');ribbon.className='ribbon';
 const tabs=document.createElement('nav');tabs.className='ribbon-tabs';
 const home=document.createElement('div');home.className='tools';
 const insert=document.createElement('div');insert.className='tools';
-groupButton(insert,t('图片','Image'),()=>insertLocalImage(editor));
-groupButton(insert,t('代码块','Code block'),async()=>{
+groupButton(insert,['图片','Image'],()=>insertLocalImage(editor));
+groupButton(insert,['代码块','Code block'],async()=>{
   const language=await askText(t('代码语言，例如 Python、Java 或 C++','Code language, e.g. Python, Java or C++'),editor.getAttributes('codeBlock').language??'');
   if(language===null || (language && !/^[A-Za-z0-9+_-]+$/.test(language))) return;
   if(editor.isActive('codeBlock')) editor.chain().focus().updateAttributes('codeBlock',{language:language||null}).run();
   else editor.chain().focus().setCodeBlock({language:language||null}).run();
 });
 const files=header.querySelector('.tools');
-const attachFolder=groupButton(files,t('关联资源目录','Attach asset folder'),()=>{
+const attachFolder=groupButton(files,['关联资源目录','Attach asset folder'],()=>{
   const picker=document.createElement('input');
   picker.type='file';picker.webkitdirectory=true;
   picker.addEventListener('change',()=>{
@@ -2210,9 +2205,9 @@ for(const control of [...tools.children]) {
 const groups={files,home,insert,layout:layoutGroup,table:tableGroup,format:formatGroup,reference:referenceGroup,math:mathGroup};
 const captions={files:['文件','File'],home:['主页','Home'],insert:['插入','Insert'],layout:['布局','Layout'],table:['表格','Table'],format:['格式','Format'],reference:['引用','Reference'],math:['数学','Math']};
 const language=document.querySelector('#language');
-const findButton=groupButton(home,t('查找','Find'),documentFind.show);
+const findButton=groupButton(home,['查找','Find'],documentFind.show);
 findButton.dataset.shortcut='editor.find';
-const importConfig=groupButton(files,t('导入 YAML','Import YAML'),()=>{
+const importConfig=groupButton(files,['导入 YAML','Import YAML'],()=>{
   const picker=document.createElement('input');
   picker.type='file';
   picker.accept='.yaml,.yml,application/yaml,text/yaml';
@@ -2231,13 +2226,13 @@ const importConfig=groupButton(files,t('导入 YAML','Import YAML'),()=>{
   },{once:true});
   picker.click();
 });
-const exportConfig=groupButton(files,t('导出 YAML','Export YAML'),()=>{
+const exportConfig=groupButton(files,['导出 YAML','Export YAML'],()=>{
   saveZoom();
   const url=URL.createObjectURL(new Blob([config.exportYaml()],{type:'application/yaml;charset=utf-8'}));
   const a=document.createElement('a');a.href=url;a.download='config.yaml';a.click();
   setTimeout(()=>URL.revokeObjectURL(url),1000);
 });
-const saveAsButton=groupButton(files,t('另存为','Save as'),()=>saveDocument(true));
+const saveAsButton=groupButton(files,['另存为','Save as'],()=>saveDocument(true));
 saveAsButton.dataset.tool='saveAs';
 let releaseFileNavigation;
 function updateFileTools() {
@@ -2265,6 +2260,8 @@ function updateShortcutHints() {
   for (const control of ribbon.querySelectorAll('[data-shortcut]')) {
     const [scope,command]=control.dataset.shortcut.split('.');
     const binding=config.bindings.scopes.get(scope)?.find(entry=>entry.command===command);
+    control.dataset.tooltipZh=control.dataset.tooltipBaseZh??control.dataset.tooltipZh??'';
+    control.dataset.tooltipEn=control.dataset.tooltipBaseEn??control.dataset.tooltipEn??'';
     if (!binding) continue;
     const shortcut=[binding.first,binding.second].filter(Boolean).map(format).join(' ');
     control.dataset.tooltipZh+=' · '+shortcut;
@@ -2274,17 +2271,9 @@ function updateShortcutHints() {
 language.value=configuredLanguage();
 function updateLanguage() {
   setLanguage(language.value);
-  const chinese=language.value==='zh-CN';
-  document.documentElement.lang=language.value;
+  document.documentElement.lang=getLanguage();
   localize(document);
-  for(const tab of tabs.children)tab.textContent=captions[tab.dataset.group][chinese?0:1];
-  download.textContent=chinese?'下载项目 .zip':'Download project .zip';
-  saveAsButton.textContent=chinese?'另存为':'Save as';
-  attachFolder.textContent=chinese?'关联资源目录':'Attach asset folder';
-  importConfig.textContent=chinese?'导入 YAML':'Import YAML';
-  exportConfig.textContent=chinese?'导出 YAML':'Export YAML';
-  findButton.textContent=chinese?'查找':'Find';
-  header.querySelector('.open span').textContent=chinese?'打开 .tex':'Open .tex';
+  for(const tab of tabs.children)tab.textContent=t(captions[tab.dataset.group][0],captions[tab.dataset.group][1]);
   commands.setAttribute('aria-label',t('LaTeX 补全','LaTeX completion'));
   filter.placeholder=t('LaTeX 命令','LaTeX command');
   filter.setAttribute('aria-label',filter.placeholder);
@@ -2306,6 +2295,11 @@ function updateLanguage() {
   pageMarginBottom.setAttribute('aria-label',t('下边距','Bottom margin'));
   pageMarginLeft.setAttribute('aria-label',t('左边距','Left margin'));
   tooltips?.setLanguage(language.value);
+  projectExplorer?.relocalize?.();
+  documentFind.relocalize();
+  sourceView.relocalize();
+  applyToolbarDescriptions(ribbon);
+  updateShortcutHints();
   updateThemeButton();
   updateSourceButton();
   updatePaginationButton();
@@ -2313,8 +2307,6 @@ function updateLanguage() {
   renderMeta();
   updateEnvironment();
   count.textContent=editor.getText().length+' '+t('字符','characters');
-  applyToolbarDescriptions(ribbon);
-  updateShortcutHints();
 }
 function selectGroup(name) {
   for(const [key,panel] of Object.entries(groups)) panel.hidden=key!==name;

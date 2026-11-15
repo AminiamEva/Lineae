@@ -10,6 +10,14 @@ const server = createServer(async(req,res) => {
   try { res.setHeader('Content-Type', {'.html':'text/html','.mjs':'text/javascript','.js':'text/javascript','.css':'text/css','.svg':'image/svg+xml'}[extname(path)] || 'application/octet-stream'); res.end(await readFile(path)); }
   catch { res.writeHead(404).end(); }
 });
+async function showFilePanel(page) {
+  await page.locator('[data-group=files]').click();
+  await page.locator('#project-open').waitFor();
+}
+async function clickOpenProject(page) {
+  await showFilePanel(page);
+  await page.locator('#project-open').click();
+}
 (async () => {
   await new Promise(done => server.listen(0,'127.0.0.1',done));
   const browser = await chromium.launch({headless:true,executablePath:process.env.LINEAE_CHROMIUM_EXECUTABLE});
@@ -17,7 +25,7 @@ const server = createServer(async(req,res) => {
     const page = await browser.newPage({viewport:{width:1440,height:900}});
     const errors = []; page.on('pageerror',error => errors.push(error.message));
     await page.goto('http://127.0.0.1:'+server.address().port);
-    await page.locator('#project-open').waitFor();
+    await showFilePanel(page);
     // Only the native picker is substituted. All handles and disk operations below
     // are Chromium's real origin-private filesystem, not an in-memory adapter.
     await page.evaluate(async () => {
@@ -30,7 +38,7 @@ const server = createServer(async(req,res) => {
       await put(testDirectory,'refs.bib','@book{key, title={中文}}\r\n');
       window.showDirectoryPicker = async () => testDirectory;
     });
-    await page.locator('#project-open').click();
+    await clickOpenProject(page);
     await page.waitForFunction(() => document.querySelector('.tex-filename')?.textContent.includes('main.tex'));
     await page.locator('.tex-indent-setting input').uncheck();
     assert.equal(await page.locator('#project-explorer').isVisible(), false);
@@ -101,7 +109,7 @@ const server = createServer(async(req,res) => {
     assert.match(await page.evaluate(async () => (await (await testDirectory.getFileHandle('refs.bib')).getFile()).text()), /bib edit/);
     page.once('dialog',dialog => dialog.accept());
     await page.locator('#project-close').click();
-    await page.locator('#project-open').click();
+    await clickOpenProject(page);
     await page.waitForFunction(() => document.querySelector('.cm-content').textContent.includes('external'));
     assert.equal(await page.locator('#project-explorer').isVisible(), false);
     assert.deepEqual(errors, []);
@@ -138,18 +146,18 @@ const server = createServer(async(req,res) => {
     });
     await page.evaluate(()=>{window.__TAURI_INTERNALS__={invoke:window.nativeInvoke};});
     await page.addScriptTag({content:await readFile('apps/desktop/src-tauri/src/bridge.js','utf8')});
-    await page.locator('#project-open').click();
+    await clickOpenProject(page);
     await page.waitForFunction(()=>document.querySelector('.tex-filename')?.textContent.includes('paper.tex'));
     await page.locator('#project-toggle').click();
     await page.locator('#project-explorer summary').filter({hasText:'sections'}).click();
     await page.locator('[data-path="sections/method.tex"]').click();
     await code.click();await page.keyboard.press('Control+End');await page.keyboard.insertText('Unsaved 中文');
     page.once('dialog',dialog=>dialog.accept('sections/renamed.tex'));
-    await page.getByRole('button',{name:'重命名 method.tex',exact:true}).click();
+    await page.getByRole('button',{name:/^(重命名 method\.tex|Rename method\.tex)$/}).click();
     await page.locator('[data-path="sections/renamed.tex"]').waitFor();
     assert.match(await code.innerText(),/Unsaved 中文/);
     page.once('dialog',dialog=>dialog.accept('destination/moved.tex'));
-    await page.getByRole('button',{name:'移动 renamed.tex',exact:true}).click();
+    await page.getByRole('button',{name:/^(移动 renamed\.tex|Move renamed\.tex)$/}).click();
     await page.waitForFunction(()=>document.querySelector('.tex-filename')?.textContent.includes('destination/moved.tex'));
     await page.locator('#project-save').click();
     await page.waitForFunction(()=>document.querySelector('#project-explorer [role=status]').textContent.includes('Saved'));
@@ -159,11 +167,11 @@ const server = createServer(async(req,res) => {
     assert.ok(await page.evaluate(()=>Object.keys(localStorage).some(key=>key.startsWith('lineae:project-recovery:'))));
     await writeFile(resolve(diskRoot,'destination/moved.tex'),'external after interruption');
     page.once('dialog',dialog=>dialog.accept());
-    await page.reload();await page.locator('#project-open').waitFor();
+    await page.reload();await showFilePanel(page);
     await page.evaluate(()=>{window.__TAURI_INTERNALS__={invoke:window.nativeInvoke};});
     await page.addScriptTag({content:await readFile('apps/desktop/src-tauri/src/bridge.js','utf8')});
     page.once('dialog',dialog=>dialog.accept());
-    await page.locator('#project-open').click();
+    await clickOpenProject(page);
     await page.waitForFunction(()=>document.querySelector('.tex-filename')?.textContent.includes('paper.tex'));
     await page.locator('#project-toggle').click();
     await page.locator('#project-explorer summary').filter({hasText:'destination'}).click();

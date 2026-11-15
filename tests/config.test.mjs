@@ -25,6 +25,12 @@ test('round-trips preferences as YAML', () => {
   assert.deepEqual(parseYaml(toYaml(config)), config);
 });
 
+test('accepts mainland traditional Chinese as an interface language', () => {
+  const store = createConfigStore(defaults);
+  store.importYaml('interface:\n  language: zh-Hant\n');
+  assert.equal(store.value.interface.language, 'zh-Hant');
+});
+
 test('merges preference overrides deeply', () => {
   const base = { interface: { language: 'auto', zoom: 100 }, keybindings: { math: { a: 'b' } } };
   const merged = mergeConfig(base, { interface: { language: 'en' } });

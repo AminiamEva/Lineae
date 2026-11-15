@@ -85,6 +85,13 @@ export function createSourceWorkspace({ page, render, metadata, onChange = () =>
     }, {}));
   }
   let view, original, timer, scrollTop = 0, scrollLeft = 0;
+  function syncInterfaceLanguage() {
+    const next = document.documentElement.lang;
+    if (view && next !== interfaceLanguage) {
+      interfaceLanguage = next;
+      view.dispatch({effects:language.reconfigure(phrases())});
+    }
+  }
   let savedText, savedDoc;
   let lastRendered, expanded = false, previewOnly = false, receiving = false;
   let fontSize = FONT_DEFAULT, richTextFontSize = FONT_DEFAULT;
@@ -92,11 +99,15 @@ export function createSourceWorkspace({ page, render, metadata, onChange = () =>
     fontSize = clampFont(localStorage.getItem('lineae.sourceFontSize'));
     richTextFontSize = clampFont(localStorage.getItem('lineae.richTextFontSize'));
   } catch {}
+  function updateZoomLabel() {
+    zoomLabel.textContent = fontSize + 'px';
+    zoomLabel.title = t('恢复源码默认字号：','Reset code font: ') + fontSize + 'px';
+    zoomLabel.setAttribute('aria-label', zoomLabel.title);
+  }
   function zoom(size) {
     fontSize = clampFont(size);
     panel.style.setProperty("--tex-font-size", fontSize + "px");
-    zoomLabel.textContent = fontSize + "px";
-    zoomLabel.setAttribute('aria-label', t('恢复源码默认字号：','Reset code font: ') + fontSize + 'px');
+    updateZoomLabel();
     zoomOut.disabled = fontSize === FONT_MIN;
     zoomIn.disabled = fontSize === FONT_MAX;
     try { localStorage.setItem("lineae.sourceFontSize", String(fontSize)); } catch {}
@@ -134,7 +145,7 @@ export function createSourceWorkspace({ page, render, metadata, onChange = () =>
   const zoomOut = action('sourceCollapse', () => t('缩小源码字号 (Ctrl+-)','Decrease code font (Ctrl+-)'), () => zoom(fontSize-1));
   zoomOut.textContent = '−';
   const zoomLabel = element('button', 'tex-zoom-label');
-  zoomLabel.type = 'button'; zoomLabel.title = 'Reset code font (Ctrl+0)';
+  zoomLabel.type = 'button';
   zoomLabel.addEventListener('click', () => zoom(FONT_DEFAULT), {signal:lifecycle.signal});
   actions.append(zoomLabel);
   const zoomIn = action('sourceExpand', () => t('放大源码字号 (Ctrl++)','Increase code font (Ctrl++)'), () => zoom(fontSize+1));
@@ -143,22 +154,24 @@ export function createSourceWorkspace({ page, render, metadata, onChange = () =>
   installFontWheel(code, amount => zoom(fontSize + amount), lifecycle.signal);
   const richActions = element('div', 'tex-rich-actions');
   richActions.setAttribute('role', 'group');
-  richActions.setAttribute('aria-label', 'Rich text font');
+  richActions.setAttribute('aria-label', t('富文本字号', 'Rich text font'));
   const richTitle = element('span', 'tex-rich-title');
   richTitle.textContent = t('富文本', 'Rich text');
   richActions.append(richTitle);
+  const richButtons = [];
   function richButton(text, label, run) {
     const button = element('button', '');
     button.type = 'button'; button.textContent = text;
-    button.title = label; button.setAttribute('aria-label', label);
+    button.title = label(); button.setAttribute('aria-label', button.title);
     button.addEventListener('click', run, {signal:lifecycle.signal});
+    richButtons.push([button, label]);
     richActions.append(button);
     return button;
   }
-  const richOut = richButton('−', t('缩小富文本字号 (Ctrl+-)', 'Decrease rich text font (Ctrl+-)'), () => zoomRich(richTextFontSize - 1));
-  const richLabel = richButton('', t('恢复富文本默认字号 (Ctrl+0)', 'Reset rich text font (Ctrl+0)'), () => zoomRich(FONT_DEFAULT));
+  const richOut = richButton('−', () => t('缩小富文本字号 (Ctrl+-)', 'Decrease rich text font (Ctrl+-)'), () => zoomRich(richTextFontSize - 1));
+  const richLabel = richButton('', () => t('恢复富文本默认字号 (Ctrl+0)', 'Reset rich text font (Ctrl+0)'), () => zoomRich(FONT_DEFAULT));
   richLabel.className = 'tex-rich-zoom-label';
-  const richIn = richButton('+', t('放大富文本字号 (Ctrl++)', 'Increase rich text font (Ctrl++)'), () => zoomRich(richTextFontSize + 1));
+  const richIn = richButton('+', () => t('放大富文本字号 (Ctrl++)', 'Increase rich text font (Ctrl++)'), () => zoomRich(richTextFontSize + 1));
   preview.append(richActions);
   function zoomRich(size) {
     richTextFontSize = clampFont(size);
@@ -257,7 +270,7 @@ export function createSourceWorkspace({ page, render, metadata, onChange = () =>
   }
   divider.tabIndex = 0;
   divider.setAttribute('role','separator');
-  divider.setAttribute('aria-label','LaTeX / Preview');
+  divider.setAttribute('aria-label',t('LaTeX / 预览','LaTeX / Preview'));
   divider.setAttribute('aria-orientation','vertical');
   divider.setAttribute('aria-valuemin','25');
   divider.setAttribute('aria-valuemax','75');
@@ -401,12 +414,21 @@ export function createSourceWorkspace({ page, render, metadata, onChange = () =>
       focus();
     },
     refresh() {
-      const next = document.documentElement.lang;
-      if (view && next !== interfaceLanguage) {
-        interfaceLanguage = next;
-        view.dispatch({effects:language.reconfigure(phrases())});
-      }
+      syncInterfaceLanguage();
       refresh();
+    },
+    relocalize() {
+      syncInterfaceLanguage();
+      updateZoomLabel();
+      divider.setAttribute('aria-label',t('LaTeX / 预览','LaTeX / Preview'));
+      richTitle.textContent = t('富文本', 'Rich text');
+      richActions.setAttribute('aria-label', t('富文本字号', 'Rich text font'));
+      for (const [button, label] of richButtons) {
+        button.title = label(); button.setAttribute('aria-label', button.title);
+      }
+      indentLabel.replaceChildren(indentCheckbox, t('保存时缩进', 'Indent on save'));
+      indentLabel.title = t('仅调整安全的行首缩进；关闭可保留原始格式', 'Adjust safe leading indentation only; disable to preserve original formatting');
+      if (!panel.hidden) refresh();
     },
     error(text) { message.textContent = text; },
   };

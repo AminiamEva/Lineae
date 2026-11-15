@@ -241,6 +241,8 @@ export const TableOfContents = Node.create({
         dom.replaceChildren();
         const title = document.createElement('div');
         title.className = 'toc-title';
+        title.dataset.zh = '目录';
+        title.dataset.en = 'Contents';
         title.textContent = t('目录','Contents');
         dom.append(title);
         for (const item of outline(editor.state.doc)) {

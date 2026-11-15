@@ -762,8 +762,8 @@ async function verifySelectionGeometry(page, paper, importSource) {
     assert.ok(literals.includes('/') && !literals.includes('frac'),literals);
     await page.locator('[data-group=home]').click();
     await paper.locator(':scope > p').first().click({clickCount:3,position:{x:4,y:8}});
-    await page.locator('select[aria-label="fontSize"]').selectOption('18pt');
-    assert.equal(await page.locator('select[aria-label="fontSize"]').inputValue(),'18pt');
+    await page.locator('select[data-format-attribute="fontSize"]').selectOption('18pt');
+    assert.equal(await page.locator('select[data-format-attribute="fontSize"]').inputValue(),'18pt');
 
     const fixtures={
       'text/text-paragraphs.tex':'Same paragraph, new line.',
@@ -1268,7 +1268,7 @@ async function verifySelectionGeometry(page, paper, importSource) {
     });
     assert.equal(cjkSpacing.spans,2,'CJK/Latin runs use a spacing decoration');
     assert.ok(cjkSpacing.gaps.every(gap=>gap>=3),'CJK and Latin text keep the xeCJK gap: '+JSON.stringify(cjkSpacing));
-    const fontSelect=page.locator('select[aria-label="fontFamily"]');
+    const fontSelect=page.locator('select[data-format-attribute="fontFamily"]');
     assert.ok(await fontSelect.locator('option').count()>=10,'The toolbar offers a broad font list');
     const fontPreviews=await fontSelect.locator('option').evaluateAll(options=>options.map(option=>({
       value:option.value,font:option.style.fontFamily,
@@ -1388,10 +1388,24 @@ async function verifySelectionGeometry(page, paper, importSource) {
     assert.match(metaSource,/\\author\{Regression author\}/,'Editing the author writes it back to the document properties');
     await page.locator('[data-source-mode="body"]').click();
     await page.locator('#language').evaluate(element=>{element.value='zh-CN';element.dispatchEvent(new Event('change',{bubbles:true}));});
+    assert.equal(await page.locator('#project-open').textContent(),'打开工程');
+    assert.equal(await page.locator('#project-open').evaluate(button=>button.parentElement===document.querySelector('.ribbon > .tools')),true,
+      'Open project is in the File panel');
+    assert.equal(await page.locator('footer #project-open').count(),0,'Open project is not in the status bar');
     await page.locator('[data-group=home]').click();
     await page.getByRole('button',{name:'↶',exact:true}).hover();
     await page.waitForFunction(()=>document.querySelector('.lineae-tooltip')?.textContent.includes('撤销'));
+    await page.locator('#language').evaluate(element=>{element.value='zh-Hant';element.dispatchEvent(new Event('change',{bubbles:true}));});
+    assert.equal(await page.locator('#project-open').textContent(),'打開工程');
+    assert.equal(await page.locator('[data-group=home]').textContent(),'主頁');
+    assert.equal(await page.locator('.doc-title').getAttribute('data-placeholder'),'標題');
+    assert.equal(await page.locator('.table-select-handle').getAttribute('aria-label'),'選擇表格');
+    assert.equal(await page.locator('.document-find [data-action=replace]').textContent(),'替換');
+    assert.equal(await page.locator('.tex-divider').getAttribute('aria-label'),'LaTeX / 預覽');
+    await page.getByRole('button',{name:'↶',exact:true}).hover();
+    await page.waitForFunction(()=>document.querySelector('.lineae-tooltip')?.textContent.includes('撤銷'));
     await page.locator('#language').evaluate(element=>{element.value='en';element.dispatchEvent(new Event('change',{bubbles:true}));});
+    assert.equal(await page.locator('#project-open').textContent(),'Open project');
     await page.getByRole('button',{name:'↶',exact:true}).hover();
     await page.waitForFunction(()=>document.querySelector('.lineae-tooltip')?.textContent.includes('Undo'));
     await page.locator('#language').evaluate(element=>{element.value='zh-CN';element.dispatchEvent(new Event('change',{bubbles:true}));});
@@ -1509,7 +1523,7 @@ async function verifySelectionGeometry(page, paper, importSource) {
       .map(button=>button.textContent.trim()||button.getAttribute('aria-label')));
     assert.deepEqual(missingTooltips,[],'Every toolbar button has a tooltip');
     await page.locator('[data-group=table]').click();
-    const mergeButton=page.getByRole('button',{name:'merge',exact:true});
+    const mergeButton=page.getByRole('button',{name:/^(合并|Merge)$/});
     await mergeButton.hover();
     const tooltip=page.locator('.lineae-tooltip');
     await page.waitForTimeout(150);
@@ -2272,7 +2286,7 @@ async function verifySelectionGeometry(page, paper, importSource) {
     await importSource('Code blocks');
     await paper.locator('p').last().click();
     await page.locator('[data-group=insert]').click();
-    await page.getByRole('button',{name:'Code block',exact:true}).click();
+    await page.getByRole('button',{name:/^(代码块|Code block)$/}).click();
     const languageDialog=page.locator('.editor-dialog input');
     await languageDialog.fill('yaml');
     await languageDialog.press('Enter');
@@ -2300,7 +2314,7 @@ async function verifySelectionGeometry(page, paper, importSource) {
     await importSource('Python code');
     await paper.locator('p').last().click();
     await page.locator('[data-group=insert]').click();
-    await page.getByRole('button',{name:'Code block',exact:true}).click();
+    await page.getByRole('button',{name:/^(代码块|Code block)$/}).click();
     await languageDialog.fill('python');
     await languageDialog.press('Enter');
     await page.waitForFunction(()=>document.querySelector('.ProseMirror pre[data-language="python"]'));

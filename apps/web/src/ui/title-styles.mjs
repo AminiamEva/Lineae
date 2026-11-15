@@ -1,3 +1,5 @@
+import { localizeText, normalizeLanguage } from './i18n.mjs';
+
 export const TITLE_STYLES = Object.freeze([
   {
     id: 'document-title', zh: '文档标题', en: 'Document title', tag: 'h1',
@@ -39,8 +41,7 @@ const TAGS = new Set(['h1', 'h2', 'h3', 'h4', 'p', 'span']);
 const STYLE_KEYS = new Set(['fontSize', 'fontWeight', 'lineHeight', 'margin', 'letterSpacing', 'textTransform', 'textAlign', 'color']);
 
 export function titleStyleOptions(language = 'zh-CN') {
-  const key = language === 'zh-CN' ? 'zh' : 'en';
-  return TITLE_STYLES.map(style => ({ id: style.id, label: style[key] }));
+  return TITLE_STYLES.map(style => ({ id: style.id, label: localizeText(style.zh, style.en, language) }));
 }
 
 export function resolveTitleStyle(id) {
@@ -91,18 +92,18 @@ export function validateTitleStyles(styles = TITLE_STYLES) {
 }
 
 export function titleStyleControlModel({ value = 'body', language = 'zh-CN', open = false, activeId = value } = {}) {
-  const key = language === 'zh-CN' ? 'zh' : 'en';
   const current = resolveTitleStyle(value) ? value : TITLE_STYLE_IDS[0];
   const active = resolveTitleStyle(activeId) ? activeId : current;
+  const label = style => localizeText(style.zh, style.en, language);
   return {
     value: current,
     language,
     open: Boolean(open),
     activeId: active,
-    label: resolveTitleStyle(current)[key],
+    label: label(resolveTitleStyle(current)),
     options: TITLE_STYLES.map(style => ({
       id: style.id,
-      label: style[key],
+      label: label(style),
       selected: style.id === current,
       active: style.id === active,
       tabIndex: style.id === active ? 0 : -1,
@@ -150,7 +151,7 @@ export function createTitleStyleControl({ document: doc = globalThis.document, l
   let lang = language;
   const labelFor = id => {
     const style = resolveTitleStyle(id);
-    return style ? style[lang === 'zh-CN' ? 'zh' : 'en'] : '';
+    return style ? localizeText(style.zh, style.en, lang) : '';
   };
   const items = TITLE_STYLES.map(style => {
     const item = doc.createElement('li');
@@ -166,10 +167,10 @@ export function createTitleStyleControl({ document: doc = globalThis.document, l
 
   function render() {
     button.textContent = labelFor(current) + ' ▾';
-    button.setAttribute('aria-label', lang === 'zh-CN' ? '标题样式：' + labelFor(current) : 'Title style: ' + labelFor(current));
+    button.setAttribute('aria-label', localizeText('标题样式：', 'Title style: ', lang) + labelFor(current));
     button.setAttribute('aria-expanded', String(open));
     list.hidden = !open;
-    list.setAttribute('aria-label', lang === 'zh-CN' ? '标题样式' : 'Title style');
+    list.setAttribute('aria-label', localizeText('标题样式', 'Title style', lang));
     for (const item of items) {
       const selected = item.id === current;
       item.element.textContent = labelFor(item.id);
@@ -237,7 +238,7 @@ export function createTitleStyleControl({ document: doc = globalThis.document, l
     element: root,
     getValue: () => current,
     setValue: id => commit(id, false),
-    setLanguage: next => { lang = next === 'en' ? 'en' : 'zh-CN'; render(); return lang; },
+    setLanguage: next => { lang = normalizeLanguage(next); render(); return lang; },
     setOpen,
     isOpen: () => open,
     handleKey,

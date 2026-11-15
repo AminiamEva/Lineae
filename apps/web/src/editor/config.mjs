@@ -40,7 +40,7 @@ function checkKeys(defaults, override, path = '') {
 function validateConfig(settings) {
   const { interface: ui, editing, keybindings } = settings;
   if (settings.version !== 2) throw new Error('Unsupported configuration version');
-  if (!['auto', 'en', 'zh-CN'].includes(ui.language)) throw new Error('Invalid interface.language');
+  if (!['auto', 'en', 'zh-CN', 'zh-Hant'].includes(ui.language)) throw new Error('Invalid interface.language');
   if (!themes.includes(ui.theme)) throw new Error('Invalid interface.theme');
   if (!Number.isInteger(ui.zoom) || ui.zoom < 50 || ui.zoom > 300) throw new Error('Zoom must be an integer from 50 to 300');
   if (!Array.isArray(ui.toolbar) || new Set(ui.toolbar).size !== ui.toolbar.length ||

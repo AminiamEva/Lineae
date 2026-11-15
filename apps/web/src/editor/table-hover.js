@@ -8,6 +8,8 @@ export function installTableHoverAddRow(editor, paper) {
   tableButton.textContent = '⠿';
   tableButton.dataset.tooltipZh = '选择表格';
   tableButton.dataset.tooltipEn = 'Select table';
+  tableButton.dataset.zhTitle = '选择表格';
+  tableButton.dataset.enTitle = 'Select table';
   tableButton.setAttribute('aria-label', t('选择表格','Select table'));
   tableButton.hidden = true;
   document.body.append(tableButton);
@@ -18,6 +20,8 @@ export function installTableHoverAddRow(editor, paper) {
   rowButton.textContent = '+';
   rowButton.dataset.tooltipZh = '在下方插入行';
   rowButton.dataset.tooltipEn = 'Insert row below';
+  rowButton.dataset.zhTitle = '在下方插入行';
+  rowButton.dataset.enTitle = 'Insert row below';
   rowButton.setAttribute('aria-label', t('在下方插入行','Insert row below'));
   rowButton.hidden = true;
   document.body.append(rowButton);
@@ -28,6 +32,8 @@ export function installTableHoverAddRow(editor, paper) {
   columnButton.textContent = '+';
   columnButton.dataset.tooltipZh = '在右侧插入列';
   columnButton.dataset.tooltipEn = 'Insert column right';
+  columnButton.dataset.zhTitle = '在右侧插入列';
+  columnButton.dataset.enTitle = 'Insert column right';
   columnButton.setAttribute('aria-label', t('在右侧插入列','Insert column right'));
   columnButton.hidden = true;
   document.body.append(columnButton);

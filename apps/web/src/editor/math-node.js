@@ -423,6 +423,8 @@ export const MathNode = Node.create({
       handle.setAttribute('aria-label', t('拖动公式','Drag formula'));
       handle.dataset.tooltipZh = '拖动公式';
       handle.dataset.tooltipEn = 'Drag formula';
+      handle.dataset.zhTitle = '拖动公式';
+      handle.dataset.enTitle = 'Drag formula';
       handle.draggable = true;
       handle.dataset.dragHandle = '';
       handle.addEventListener('mousedown', () => editor.commands.setNodeSelection(getPos()));
