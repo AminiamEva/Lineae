@@ -279,7 +279,7 @@ export function installProjectExplorer({footer, filePanel, sessions}) {
     const bounds=contextMenu.getBoundingClientRect();
     contextMenu.style.left=Math.max(6,Math.min(x,window.innerWidth-bounds.width-6))+'px';
     contextMenu.style.top=Math.max(6,Math.min(y,window.innerHeight-bounds.height-6))+'px';
-    contextMenu.querySelector('button')?.focus();
+    contextMenu.querySelector('button')?.focus({preventScroll:true});
   }
   tree.addEventListener('contextmenu',showContextMenu);
   tree.addEventListener('keydown',event=>{if(event.key==='ContextMenu' || (event.shiftKey && event.key==='F10'))showContextMenu(event);});

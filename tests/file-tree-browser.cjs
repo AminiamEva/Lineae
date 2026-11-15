@@ -89,6 +89,7 @@ async function clickOpenProject(page) {
     });
     const treeMenu=async(target,name)=>{
       await page.waitForFunction(()=>document.querySelector('#project-explorer').getAttribute('aria-busy')==='false');
+      await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
       await target.dispatchEvent('contextmenu',{bubbles:true,clientX:150,clientY:200});
       await page.locator('#project-context-menu').getByRole('menuitem',{name}).click();
     };
