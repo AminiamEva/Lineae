@@ -2141,6 +2141,7 @@ projectExplorer = installProjectExplorer({footer, filePanel:document.querySelect
       // treating the same draft as a newly imported document.
       load(previous.text, false); savedSource = previous.savedSource;
       sourceModeEntry=previous.modeHistory.entry;sourceModeCommits=[...previous.modeHistory.commits];sourceModeRedos=[...previous.modeHistory.redos];
+      if(previous.sourceVisible && sourceView.hidden)sourceView.open(previous.text);
       sourceView.restoreSession(previous.sourceVisible ? previous.sourceSession : null, previous.text);
       if (previous.sourceVisible) {
         sourceView.setSplit(previous.split);
