@@ -196,9 +196,9 @@ export function createSourceWorkspace({ page, render, metadata, onChange = () =>
     return sourceWithEndings(view.state);
   }
   function refresh() {
-    if (panel.hidden || !view) return;
     const { name, saved } = metadata();
     filename.textContent = name;
+    if (panel.hidden || !view) return;
     preview.setAttribute('aria-label', t('文档预览','Document preview'));
     if (savedText !== saved) {
       savedText = saved;
