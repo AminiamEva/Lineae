@@ -1037,7 +1037,12 @@ function updatePageSetup(patch){
   if (!sourceView.hidden) {
     const old=sourceView.value;
     const next=writePageSetup(old,pageSetup);
-    if(old!==next)sourceView.applyChanges([{from:0,to:old.length,insert:next}]);
+    if(old!==next){
+      let from=0,to=old.length,end=next.length;
+      while(from<to && from<end && old[from]===next[from])from++;
+      while(to>from && end>from && old[to-1]===next[end-1]){to--;end--;}
+      sourceView.applyChanges([{from,to,insert:next.slice(from,end)}]);
+    }
     sourceView.flush();
   } else {
     editor.view.dispatch(closeHistory(editor.state.tr).setDocAttribute('layoutPreamble',preamble));
