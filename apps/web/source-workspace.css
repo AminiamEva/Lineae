@@ -184,3 +184,4 @@ body:not(.source-workspace-visible) main,body.toolbar-collapsed:not(.source-work
 .settings-panel textarea{box-sizing:border-box;width:100%;font:12px/1.5 Consolas,monospace;margin-top:8px;}
 .settings-actions{position:sticky;bottom:-20px;display:flex;gap:8px;justify-content:flex-end;padding:12px 0;background:light-dark(#fbfcff,#262930);}
 .settings-panel [role=alert]{color:light-dark(#b33737,#efa2a2);font-size:12px;}
+body.source-workspace-visible header{z-index:13;}
