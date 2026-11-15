@@ -385,3 +385,8 @@ button,select,.color-control { transition:background-color .14s ease,color .14s 
 .document-page .ProseMirror .math-display { margin:9.9626pt 0 5.9776pt; }
 .document-page .ProseMirror > .math-display:first-child { margin-top:0; }
 .document-page .ProseMirror code,.document-page .ProseMirror pre { font-family:var(--tex-mono-font-family,"Latin Modern Mono"),monospace; }
+
+.ProseMirror [data-project-region]{position:relative;min-height:1em;}
+.ProseMirror [data-project-region]::before{content:attr(data-file-path);display:block;font:10px/1.3 system-ui;color:var(--muted,#888);opacity:.65;user-select:none;pointer-events:none;margin-block:10px 3px;border-top:1px dashed #8884;}
+.outline-file{font-weight:600;opacity:.7;}
+@media print{.ProseMirror [data-project-region]::before{display:none;}}

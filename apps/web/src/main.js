@@ -1,6 +1,9 @@
+import {scanDependencies} from './project/dependencies.mjs';
+import {composeProject,projectDocumentEdits} from './project/include-document.mjs';
 import { sourceProjection, richSourceChanges } from './editor/source-sync.js';
 import { installSourceToolbar } from './editor/source-toolbar.js';
 import { createSourceWorkspace } from './editor/source-workspace.js';
+import { DEFAULT_DOCUMENT_SOURCE } from './editor/default-document.mjs';
 import { indentLatex } from './editor/latex-indent.mjs';
 import { installContextMenu } from './editor/context-menu.js';
 import { textCommands } from '../latex/inline.mjs';
@@ -156,6 +159,12 @@ const TextCommand = Mark.create({
 function insertTextCommand(name) {
   editor.chain().focus().insertContent({ type: 'text', text: textCommands[name], marks: [{ type: 'textCommand', attrs: { name } }] }).run();
 }
+const ProjectRegion = Node.create({
+  name:'projectRegion',group:'block',content:'block+',isolating:true,defining:true,
+  addAttributes:()=>({regionKey:{default:''},path:{default:''}}),
+  parseHTML:()=>[{tag:'section[data-project-region]'}],
+  renderHTML:({node})=>['section',{'data-project-region':node.attrs.regionKey,'data-file-path':node.attrs.path},0],
+});
 const TheoremBlock = Node.create({
   name:'theoremBlock',group:'block',content:'block+',defining:true,
   addAttributes:()=>({kind:{default:'theorem'},title:{default:null}}),
@@ -628,7 +637,7 @@ paper.before(documentPage);documentPage.append(paper);
 paper.replaceChildren();
 editor=new Editor({
   element:paper,
-  extensions:[ConfigurableStarterKit.configure({heading:{levels:[1,2,3]},codeBlock:false}),LanguageCodeBlock,MultiSelection,PaperBehavior,TextStyle,TextCommand,Underline,Superscript,Subscript,SmallCaps,Boxed,Table.configure({resizable:true}),TableRow,TableCell,TableHeader,Raw,DocumentImage,TheoremBlock,DescriptionList,DescriptionItem,MathNode,MathBlock,Ref,Cite,Footnote,Label,TableOfContents,Shortcuts],
+  extensions:[ProjectRegion,Extension.create({name:'pageLayoutHistory',addGlobalAttributes(){return [{types:['doc'],attributes:{layoutPreamble:{default:null,rendered:false}}}];}}),ConfigurableStarterKit.configure({heading:{levels:[1,2,3]},codeBlock:false}),LanguageCodeBlock,MultiSelection,PaperBehavior,TextStyle,TextCommand,Underline,Superscript,Subscript,SmallCaps,Boxed,Table.configure({resizable:true}),TableRow,TableCell,TableHeader,Raw,DocumentImage,TheoremBlock,DescriptionList,DescriptionItem,MathNode,MathBlock,Ref,Cite,Footnote,Label,TableOfContents,Shortcuts],
   content:'<p></p>',
 });
 function installMarginSelection(editor,page,paper) {
@@ -861,6 +870,7 @@ button('＋ Row',addMatrixRow);
 button('＋ Column',addMatrixColumn);
 button('$',()=>insertMath());
 button('$$',()=>insertMath(true)).dataset.shortcut='editor.insertDisplayMath';
+let projectComposition=null;
 let projection, syncApplying = false, syncPending = false, sourceToolbar, projectExplorer, projectFileKind, preferredProjectSource = true;
 const sourceView = createSourceWorkspace({
   page: documentPage,
@@ -889,6 +899,7 @@ function restoreSourceCheckpoint(text) {
   const max=editor.state.doc.content.size;
   editor.view.dispatch(editor.state.tr.setSelection(TextSelection.between(
     editor.state.doc.resolve(Math.min(selection.anchor,max)),editor.state.doc.resolve(Math.min(selection.head,max)))));
+  showProjectComposition();
   editor.commands.focus();
 }
 function undoDocument() {
@@ -922,6 +933,11 @@ editor.registerPlugin(new Plugin({
   }},
   filterTransaction(transaction) {
     if (!transaction.docChanged || syncApplying) return true;
+    if(projectComposition){
+      const valid=projectDocumentEdits(projectComposition,transaction.doc.toJSON());
+      if(!valid)sourceView.error(t('请在对应文件的源码中修改此结构','Edit this structure in its source file'));
+      return !!valid;
+    }
     if(sourceView.hidden && !(projectExplorer?.active && projectFileKind==='tex'))return true;
     const changes = !syncPending && richSourceChanges(projection,transaction.doc.toJSON());
     if (!changes) {
@@ -933,6 +949,27 @@ editor.registerPlugin(new Plugin({
 }));
 editor.on('update', () => {
   if (syncApplying) return;
+  if(projectComposition){
+    const updates=projectDocumentEdits(projectComposition,editor.getJSON());
+    if(updates){
+      for(const [id,text] of updates)projectExplorer.model.edit(id,text);
+      const text=updates.get(projectComposition.rootId);
+      if(text!==undefined)sourceView.reset(text);
+      projectExplorer.changed();
+    }
+    return;
+  }
+  const preamble=editor.state.doc.attrs.layoutPreamble;
+  if (typeof preamble==='string' && preamble!==documentParts.start) {
+    const previous=documentParts.start;
+    documentParts.start=preamble;
+    if(importedSource?.startsWith(previous))importedSource=preamble+importedSource.slice(previous.length);
+    if(projectExplorer?.active){
+      const old=sourceView.value;
+      if(old.startsWith(previous))sourceView.applyChanges([{from:0,to:previous.length,insert:preamble}]);
+    }
+    pageSetup=readPageSetup(preamble);applyPageSetup();projectExplorer?.changed();
+  }
   if(sourceView.hidden && !(projectExplorer?.active && projectFileKind==='tex'))return;
   const changes = richSourceChanges(projection,editor.getJSON());
   if (!changes?.length) return;
@@ -944,7 +981,7 @@ editor.on('update', () => {
   projectExplorer?.changed();
   sourceView.error('');
 });
-let documentParts=parseDocument('\\documentclass{article}\n\\usepackage[margin=2.2cm]{geometry}\n\\usepackage{amsmath}\n\\begin{document}\n\\end{document}\n');
+let documentParts=parseDocument(DEFAULT_DOCUMENT_SOURCE);
 let pageSetup=readPageSetup(documentParts.start);
 let typesetPagination;
 let pagePaper,pageOrientation,pageMarginPreset,pageMarginTop,pageMarginRight,pageMarginBottom,pageMarginLeft;
@@ -968,13 +1005,25 @@ function applyPageSetup(){
   }
 }
 function updatePageSetup(patch){
+  if (!sourceView.hidden) {
+    sourceView.flush();
+    pageSetup=readPageSetup(parseDocument(sourceView.value,{fragment:true})?.start??'');
+  }
+
   if(patch.margins)pageSetup={...pageSetup,...patch,margins:{...pageSetup.margins,...patch.margins}};
   else if(patch.margin)pageSetup={...pageSetup,...patch,margins:{top:patch.margin,right:patch.margin,bottom:patch.margin,left:patch.margin}};
   else pageSetup={...pageSetup,...patch};
   const sides=Object.values(pageSetup.margins);
   pageSetup.margin=sides.every(value=>value===sides[0])?sides[0]:'custom';
-  documentParts.start=writePageSetup(documentParts.start,pageSetup);
-  if(importedSource)importedSource=writePageSetup(importedSource,pageSetup);
+  const preamble=writePageSetup(documentParts.start,pageSetup);
+  if (!sourceView.hidden) {
+    const old=sourceView.value;
+    const next=writePageSetup(old,pageSetup);
+    if(old!==next)sourceView.applyChanges([{from:0,to:old.length,insert:next}]);
+    sourceView.flush();
+  } else {
+    editor.view.dispatch(closeHistory(editor.state.tr).setDocAttribute('layoutPreamble',preamble));
+  }
   applyPageSetup();
 }
 let filename='lineae.tex';
@@ -1054,6 +1103,7 @@ function recordFormulaLineBreaks(document) {
   return changed;
 }
 function source() {
+  if(projectComposition)return projectExplorer.model.file(projectComposition.rootId).draft;
   const document=editor.getJSON();
   const untouched=importedSnapshot===JSON.stringify(document);
   const bareMath=document.content.some(node=>node.type==='mathBlock' && !node.attrs.delimiter &&
@@ -1071,6 +1121,7 @@ function identifyImportedBoxes(node) {
   }
 }
 function load(text, markSaved = true) {
+  projectComposition=null;
   const wasApplying = syncApplying; syncApplying = true;
   try {
   const parsed=parseDocument(text, {fragment:projectFileKind === 'tex'});
@@ -1082,7 +1133,7 @@ function load(text, markSaved = true) {
   const content=parsed.blocks.flatMap((block,index)=>importBlocks(index===0 && readMeta('title')
     ? block.replace(/^\s*\\maketitle\b[ \t]*(?:\r?\n|$)/,'') : block));
   for (const block of content) identifyImportedBoxes(block);
-  editor.chain().setMeta('addToHistory', false).setContent({type:'doc',content:content.length?content:[{type:'paragraph'}]}).run();
+  editor.chain().setMeta('addToHistory', false).setContent({type:'doc',attrs:{layoutPreamble:parsed.start},content:content.length?content:[{type:'paragraph'}]}).run();
   refreshReferences(paper);syncTableAttributes();
   importedSource=text;importedSnapshot=JSON.stringify(editor.getJSON());
   if(markSaved) savedSource=text;
@@ -1099,6 +1150,9 @@ function setSourceMode(active) {
   if (active === !sourceView.hidden) return;
   if(projectExplorer?.active)preferredProjectSource=active;
   if (active) {
+    if(projectComposition){
+      const text=source();projectComposition=null;load(text,false);
+    }
     const unchanged = returnedDraft?.doc === editor.state.doc && returnedDraft?.imported === importedSource && returnedDraft?.preamble === documentParts.start;
     sourceModeEntry=unchanged ? returnedDraft.text : source();
     sourceView.open(sourceModeEntry);
@@ -1114,6 +1168,7 @@ function setSourceMode(active) {
       sourceModeEntry=undefined;
       returnedDraft = {doc: editor.state.doc, imported: importedSource, preamble: documentParts.start, text};
       sourceView.close();
+      showProjectComposition();
       editor.commands.focus();
     } catch (error) {
       sourceView.error(error.message);
@@ -1898,20 +1953,92 @@ function updateEnvironment() {
   environment.dataset.environment=name;
 }
 footer.append(count,document.querySelector('#status'),environment,zoom,percent,paginationButton,themeButton,modes);document.body.append(footer);scale();updatePaginationButton();
+function showProjectComposition() {
+  if(!projectExplorer?.active || !sourceView.hidden || projectFileKind!=='tex')return;
+  const model=projectExplorer.model;
+  const composed=composeProject(model,model.activeFileId);
+  if(composed.regions.length<=1 && !composed.issues.length)return;
+  if(composed.issues.length){sourceView.error(composed.issues.join('; '));return;}
+  syncApplying=true;
+  try{
+    editor.chain().setMeta('addToHistory',false).setContent({type:'doc',attrs:editor.state.doc.attrs,content:composed.content}).run();
+    projectComposition=composed;
+    refreshReferences(paper);documentOutline.relocalize();
+    const list=documentOutline.panel.querySelector('.document-outline-list');
+    const edges=scanDependencies(model.file(model.activeFileId).draft).dependencies.filter(d=>['input','include'].includes(d.command)&&d.status==='literal');
+    const management=document.createElement('div');management.className='include-management';
+    edges.forEach((edge,index)=>{
+      const row=document.createElement('div');row.textContent=edge.command+' · '+edge.path+' ';
+      for(const direction of [-1,1]){
+        const button=document.createElement('button');button.type='button';button.textContent=direction<0?'↑':'↓';
+        button.title=direction<0?t('前移文件','Move file earlier'):t('后移文件','Move file later');
+        button.disabled=index+direction<0||index+direction>=edges.length;
+        button.onclick=()=>documentOutline.panel.dispatchEvent(new CustomEvent('lineae-move-include',{detail:{index,direction}}));row.append(button);
+      }
+      management.append(row);
+    });
+    list?.prepend(management);
+  }finally{syncApplying=false;}
+}
+function editIncludeSource(transform){
+  if(!projectExplorer?.active || projectFileKind!=='tex')return;
+  if(editor.view.composing || sourceView.composing)return;
+  const before=sourceView.hidden?source():sourceView.value;
+  const after=transform(before);
+  if(after===before)return;
+  const model=projectExplorer.model;
+  const file=model.file(model.activeFileId);
+  model.edit(file.id,after);
+  if(!sourceView.hidden){sourceView.applyChanges([{from:0,to:before.length,insert:after}]);sourceView.flush();}
+  else {
+    projectComposition=null;load(after,false);sourceView.reset(after);
+    sourceModeCommits.push({before,after,afterDoc:editor.state.doc,afterPreamble:documentParts.start});sourceModeRedos=[];
+    showProjectComposition();
+    const checkpoint=sourceModeCommits.at(-1);checkpoint.afterDoc=editor.state.doc;
+  }
+  projectExplorer.changed();
+}
+function appendInclude(id){
+  const model=projectExplorer?.model;if(!model)return;
+  const file=model.file(id);
+  if(file.kind!=='tex'||id===model.activeFileId || /[\\{}%#]/.test(file.path))return;
+  editIncludeSource(text=>{
+    const parsed=parseDocument(text,{fragment:true});if(!parsed)return text;
+    const at=text.length-parsed.end.length;
+    return text.slice(0,at)+'\n\\input{'+file.path+'}\n'+text.slice(at);
+  });
+}
+documentOutline.panel.addEventListener('dragover',event=>{
+  if(event.dataTransfer.types.includes('application/x-lineae-file'))event.preventDefault();
+});
+documentOutline.panel.addEventListener('drop',event=>{
+  const id=event.dataTransfer.getData('application/x-lineae-file');if(!id)return;
+  event.preventDefault();appendInclude(id);
+});
+documentOutline.panel.addEventListener('lineae-move-include',event=>{
+  const {index,direction}=event.detail;
+  editIncludeSource(text=>{
+    const edges=scanDependencies(text).dependencies.filter(d=>['input','include'].includes(d.command)&&d.status==='literal');
+    const a=edges[index],b=edges[index+direction];if(!a||!b)return text;
+    const first=a.start<b.start?a:b,last=a.start<b.start?b:a;
+    return text.slice(0,first.start)+text.slice(last.start,last.to+1)+text.slice(first.to+1,last.start)+text.slice(first.start,first.to+1)+text.slice(last.to+1);
+  });
+});
 let standaloneSession;
 projectExplorer = installProjectExplorer({footer, filePanel:document.querySelector('header .tools'), sessions:{
   prepareSave:prepareExplicitSave,
+  includeFile:appendInclude,
   ensureIdle() { if (editor.view.composing || sourceView.composing) throw new Error(t('请先完成当前输入','Finish composition first')); },
   text:() => sourceView.hidden ? source() : sourceView.value,
   capture:text => {
     if(sourceView.hidden && sourceView.value!==text)sourceView.reset(text);
     return {...sourceView.captureSession(),split:sourceView.split,sourceVisible:!sourceView.hidden,
-      richSelection:{anchor:editor.state.selection.anchor,head:editor.state.selection.head},richState:editor.state,richSource:text,
+      richSelection:{anchor:editor.state.selection.anchor,head:editor.state.selection.head},richState:projectComposition?null:editor.state,richSource:text,
       modeHistory:{entry:sourceModeEntry,commits:[...sourceModeCommits],redos:[...sourceModeRedos]}};
   },
   applyChanges:changes => sourceView.applyChanges(changes),
-  approveOpen:creating => (sourceView.hidden?source():sourceView.value) === savedSource || confirm(creating
-    ? t('保留当前单文件草稿并新建工程？','Keep the current single-file draft and create a project?')
+  approveOpen:newOrOpen => (sourceView.hidden?source():sourceView.value) === savedSource || confirm(newOrOpen
+    ? t('保留当前单文件草稿并新建或打开工程？','Keep the current single-file draft and create or open a project?')
     : t('保留当前单文件草稿并打开工程？','Keep the current single-file draft and open a project?')),
   begin() {
     if (!standaloneSession) standaloneSession = {
@@ -1946,10 +2073,12 @@ projectExplorer = installProjectExplorer({footer, filePanel:document.querySelect
     }
     if (file.kind === 'bib') sourceView.setSplit(false);
     updateSourceButton();
+    showProjectComposition();
   },
   saved(text) { savedSource = text; sourceView.refresh(); },
   error(text) { const status = document.querySelector('#status'); status.hidden = false; status.textContent = text; },
   end() {
+    projectComposition=null;
     projectFileKind = undefined; returnedDraft = undefined;
     if (standaloneSession) {
       const previous = standaloneSession; standaloneSession = null;

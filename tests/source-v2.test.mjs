@@ -61,7 +61,7 @@ test('splitting one safe paragraph preserves surrounding protected blocks',()=>{
 test('an empty rich projection can begin a document',()=>{
   const text='\\begin{document}\n\n\\end{document}\n',doc={type:'doc',content:[{type:'paragraph'}]};
   const projection=sourceProjection(text,doc);doc.content[0].content=[{type:'text',text:'Hello'}];
-  assert.ok(apply(text,richSourceChanges(projection,doc)).includes('Hello'));
+  assert.equal(apply(text,richSourceChanges(projection,doc)),'\\begin{document}\nHello\n\\end{document}\n');
 });
 test('nested environments fold and mismatches are diagnosed; literal bodies are ignored',()=>{
   const result=scanLatex('\\begin{document}\n\\begin{itemize}\n\\item {x}\n\\end{itemize}\n\\end{document}');

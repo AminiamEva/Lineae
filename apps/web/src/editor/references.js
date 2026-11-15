@@ -293,7 +293,14 @@ export function installDocumentOutline(editor) {
     for(const item of items){if(item.position<selection)current=item;else break;}
     const focused=document.activeElement?.dataset?.headingPosition;
     list.replaceChildren();
-    if(!items.length){const empty=document.createElement('p');empty.textContent=t('文档中没有标题','No headings in this document');list.append(empty);return;}
+    editor.state.doc.forEach((node,position)=>{
+      if(node.type.name!=='projectRegion')return;
+      const file=document.createElement('button');file.type='button';file.className='outline-file';
+      file.textContent=node.attrs.path;
+      file.addEventListener('click',()=>{editor.commands.setTextSelection(position+2);editor.commands.scrollIntoView();});
+      list.append(file);
+    });
+    if(!items.length && !list.childElementCount){const empty=document.createElement('p');empty.textContent=t('文档中没有标题','No headings in this document');list.append(empty);return;}
     for(const item of items){
       const control=document.createElement('button');control.type='button';control.dataset.headingPosition=String(item.position);
       control.style.paddingInlineStart=(8+(item.level-1)*14)+'px';
