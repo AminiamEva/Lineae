@@ -888,6 +888,7 @@ const sourceView = createSourceWorkspace({
       syncPending = false;
     } finally { syncApplying = false; }
   },
+  onPreviewZoom: value => setZoom(value),
   onChange: () => { syncPending = true; projectExplorer?.changed(); },
   onLayout: () => updateSourceButton(),
   metadata: () => ({name: filename, saved: savedSource}),
@@ -1745,6 +1746,7 @@ function updatePaginationButton(){
 }
 function scale() {
   documentPage.style.zoom=Number(zoom.value)/100;
+  sourceView.setPreviewZoom(Number(zoom.value));
   percent.textContent=zoom.value+'%';
   requestAnimationFrame(()=>{
     const brand=document.querySelector('header h1');
@@ -1969,7 +1971,7 @@ function updateEnvironment() {
   environment.textContent=[labels[name],...(field ? mathEnvironment(field) : [])].join(' › ');
   environment.dataset.environment=name;
 }
-footer.append(count,document.querySelector('#status'),environment,zoom,percent,paginationButton,themeButton,modes);document.body.append(footer);scale();updatePaginationButton();
+footer.append(count,document.querySelector('#status'),environment,zoom,percent,paginationButton,themeButton,modes);document.body.append(footer);sourceView.mountStatus(footer);scale();updatePaginationButton();
 function showProjectComposition() {
   if(!projectExplorer?.active || !sourceView.hidden || projectFileKind!=='tex')return;
   const model=projectExplorer.model;
@@ -2079,6 +2081,7 @@ projectExplorer = installProjectExplorer({footer, filePanel:document.querySelect
     ? t('保留当前单文件草稿并新建或打开工程？','Keep the current single-file draft and create or open a project?')
     : t('保留当前单文件草稿并打开工程？','Keep the current single-file draft and open a project?')),
   begin() {
+    preferredProjectSource=!sourceView.hidden;
     if (!standaloneSession) standaloneSession = {
       text:sourceView.hidden?source():sourceView.value, filename, fileHandle, savedSource,
       sourceVisible:!sourceView.hidden, sourceSession:sourceView.captureSession(), split:sourceView.split,
@@ -2105,7 +2108,7 @@ projectExplorer = installProjectExplorer({footer, filePanel:document.querySelect
     if(sourceVisible){
       if(sourceView.hidden)sourceView.open(file.draft);
       sourceView.restoreSession(session,file.draft);
-      sourceView.setSplit(file.kind!=='bib' && session?.split===true);
+      sourceView.setSplit(false);
     }else{
       sourceView.close();sourceView.restoreSession(session,file.draft);editor.commands.focus();
     }
@@ -2567,13 +2570,34 @@ function selectGroup(name) {
 for(const name of Object.keys(groups)) {
   const tab=document.createElement('button');tab.type='button';tab.dataset.group=name;
   tab.addEventListener('mousedown',event=>event.preventDefault());
-  tab.addEventListener('click',()=>selectGroup(name));tabs.append(tab);
+  tab.addEventListener('click',()=>{toolbarCollapsed=false;updateToolbarCollapse();selectGroup(name);});tabs.append(tab);
 }
 ribbon.append(tabs,files,home,insert,layoutGroup,tableGroup,formatGroup,referenceGroup,mathGroup);header.append(ribbon);tools.remove();
 groupButton(insert,'figure',()=>insertLocalImage(editor));
 sourceToolbar = installSourceToolbar({ribbon,groups,source:sourceView,rich:paper,heading:headingMenu});
+const toolbarCollapse=document.createElement('button');
+toolbarCollapse.type='button';toolbarCollapse.id='toolbar-collapse';
+let toolbarCollapsed=false;
+function updateToolbarCollapse(){
+  document.body.classList.toggle('toolbar-collapsed',toolbarCollapsed);
+  toolbarCollapse.textContent=toolbarCollapsed?'⌄':'⌃';
+  toolbarCollapse.title=toolbarCollapsed?t('展开工具栏','Expand toolbar'):t('折叠工具栏','Collapse toolbar');
+  toolbarCollapse.setAttribute('aria-label',toolbarCollapse.title);
+  toolbarCollapse.setAttribute('aria-expanded',String(!toolbarCollapsed));
+  const host=sourceView.hidden?header:document.querySelector('.tex-head');
+  host.append(ribbon,toolbarCollapse);
+  document.documentElement.style.setProperty('--tex-toolbar-bottom',!sourceView.hidden?'0px':Math.ceil(header.getBoundingClientRect().bottom)+'px');
+}
+toolbarCollapse.onclick=()=>{toolbarCollapsed=!toolbarCollapsed;updateToolbarCollapse();};
+let lastSourceVisible=false;
+const workspaceModeObserver=new MutationObserver(()=>{
+  const visible=!sourceView.hidden;
+  if(visible!==lastSourceVisible){lastSourceVisible=visible;if(visible)toolbarCollapsed=true;updateToolbarCollapse();}
+});
+workspaceModeObserver.observe(document.querySelector('.tex-workspace'),{attributes:true,attributeFilter:['hidden']});
+updateToolbarCollapse();
 const workspaceHeaderSize = new ResizeObserver(() => {
-  document.documentElement.style.setProperty('--tex-toolbar-bottom', Math.ceil(header.getBoundingClientRect().bottom) + 'px');
+  document.documentElement.style.setProperty('--tex-toolbar-bottom', (!sourceView.hidden?0:Math.ceil(header.getBoundingClientRect().bottom)) + 'px');
 });
 workspaceHeaderSize.observe(header);
 window.addEventListener('pagehide', event => {if(!event.persisted) workspaceHeaderSize.disconnect();});

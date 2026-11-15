@@ -27,3 +27,11 @@ body.project-visible main,.tex-workspace {transition:margin-left .15s ease,left 
 @media(prefers-reduced-motion:reduce){body.project-visible main,.tex-workspace{transition:none}}
 @media(max-width:600px) {#project-explorer{width:150px;padding:calc(var(--tex-toolbar-bottom,125px) + 6px) 6px 6px}body.project-visible main{margin-left:150px}body.project-visible .tex-workspace,body.project-visible .tex-workspace.is-expanded{left:150px}}
 @media print {#project-explorer{display:none!important}body.project-visible main{margin-left:0}}
+
+#project-explorer{padding-top:76px;}
+#project-explorer>strong{padding-right:62px;min-height:24px;line-height:24px;margin-bottom:4px;}
+#project-explorer>.project-actions{position:absolute;top:76px;right:8px;gap:2px;margin:0;}
+#project-explorer>.project-actions button{font-size:10px;padding:3px 4px;}
+#project-explorer>p:not([role=status]){font-size:10px;opacity:.65;margin:3px 0 8px;}
+body.project-visible header .brand{top:0;}
+@media(max-width:600px){#project-explorer{padding-top:66px}#project-explorer>.project-actions{top:66px}#project-explorer>strong{padding-right:0}.project-actions button{max-width:56px;overflow:hidden}}

@@ -226,7 +226,7 @@ export function installProjectExplorer({footer, filePanel, sessions}) {
     project.setMain(id);message.textContent=t('已设置主文档','Main document updated');render();
   }
   button(filePanel ?? footer,['打开工程','Open project'],()=>open(false),'project-open');
-  const newProjectButton=button(filePanel ?? footer,['新建/打开工程','New/Open project'],()=>open(true),'project-new');
+  const newProjectButton=button(filePanel ?? footer,['新建工程','New project'],()=>open(true),'project-new');
   button(actions,['保存','Save'],save,'project-save');
   button(actions,['关闭工程','Close project'],close,'project-close');
   const emptyState=document.createElement('div');emptyState.className='project-empty';

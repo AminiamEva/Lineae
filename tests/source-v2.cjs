@@ -32,7 +32,7 @@ module.exports=async function checkV2(context,url) {
     };
     equal(await copy(),sample,'source opens byte-exact');
     const bounds=await page.locator('.tex-workspace').boundingBox(),head=await page.locator('header').boundingBox();
-    equal(bounds.width,1440,'full available width');equal(bounds.y>=head.y+head.height,true,'toolbar stays visible');
+    equal(bounds.width,1440,'full available width');equal(await page.locator('.tex-head .ribbon').count(),1,'toolbar shares the file title row');
     const richSize=await page.locator('.ProseMirror').evaluate(e=>getComputedStyle(e).fontSize);
     await content.focus();await page.keyboard.press('Control+0');await page.keyboard.press('Control+=');
     equal(await page.locator('.tex-zoom-label').innerText(),'17px','font shortcut');
