@@ -52,7 +52,7 @@ async function clickOpenProject(page) {
     await page.locator('#project-toggle').click();
     await page.locator('#project-new').click();
     await page.waitForFunction(()=>document.querySelector('.tex-filename')?.textContent==='main.tex');
-    assert.match(await page.evaluate(async()=>(await (await newProjectDirectory.getFileHandle('main.tex')).getFile()).text()),/\\documentclass\{article\}[\s\S]*\\begin\{document\}/);
+    assert.match(await page.evaluate(async()=>(await (await newProjectDirectory.getFileHandle('main.tex')).getFile()).text()),/\\documentclass(?:\[a4paper\])?\{article\}[\s\S]*\\begin\{document\}/);
     assert.equal(await page.locator('#project-new').isHidden(),true,'New/Open project is hidden while a project is open');
     await page.locator('[data-source-mode="split"]').click();
     const splitPage=page.locator('.tex-preview .document-page');
@@ -131,7 +131,10 @@ async function clickOpenProject(page) {
     await page.locator('[data-source-mode="split"]').click();
     await page.locator('.tex-preview .ProseMirror').getByText('Child paragraph.').waitFor();
     const rich = page.locator('.tex-preview .ProseMirror');
-    await rich.click(); await page.keyboard.press('Control+End'); await page.keyboard.insertText(' Rich edit');
+    assert.equal(await rich.evaluate(node=>!!node.closest('[inert]')),true,'Split preview is read only');
+    await page.locator('[data-source-mode="body"]').click();
+    await page.locator('.ProseMirror').click();await page.keyboard.press('Control+End');await page.keyboard.insertText(' Rich edit');
+    await page.locator('[data-source-mode="source"]').click();
     await page.waitForFunction(() => document.querySelector('.cm-content').textContent.includes('Rich edit'));
     await code.click(); await page.keyboard.press('Control+End'); await page.keyboard.insertText('Child draft');
     await page.locator('[data-path="main.tex"]').click();

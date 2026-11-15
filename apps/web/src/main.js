@@ -895,6 +895,7 @@ const sourceView = createSourceWorkspace({
 let sourceModeEntry,sourceModeCommits=[],sourceModeRedos=[];
 function restoreSourceCheckpoint(text) {
   const selection=editor.state.selection;
+  if(projectExplorer?.active)projectExplorer.model.edit(projectExplorer.model.activeFileId,text);
   load(text,false);sourceView.reset(text);
   const max=editor.state.doc.content.size;
   editor.view.dispatch(editor.state.tr.setSelection(TextSelection.between(

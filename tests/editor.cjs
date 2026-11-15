@@ -2064,6 +2064,11 @@ async function verifySelectionGeometry(page, paper, importSource) {
       return ['--page-width','--page-height','--page-margin-top','--page-margin-right'].map(name=>page.style.getPropertyValue(name));
     });
     assert.deepEqual(pageLayout,['210mm','148mm','1.27cm','1.27cm'],'Layout controls update the page metrics');
+    await page.keyboard.press('Control+z');
+    assert.notEqual(await layoutSelects.nth(2).inputValue(),'narrow','Undo restores the previous margins');
+    await page.keyboard.press('Control+y');
+    assert.equal(await layoutSelects.nth(2).inputValue(),'narrow','Redo restores the margin change');
+
     const pageNumberGap=()=>page.evaluate(()=>{
       const sheet=document.querySelector('.document-sheet');
       const number=document.querySelector('.document-page-number');
