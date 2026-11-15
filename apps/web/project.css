@@ -72,3 +72,4 @@ body.project-visible header .brand{top:0;}
 .document-page .ProseMirror > [data-project-region] > h1:first-child{position:relative;top:-3.75pt;}
 .document-page .ProseMirror > [data-project-region] > h1+h2,.document-page .ProseMirror > [data-project-region] > h2+h3{margin-top:0;}
 .document-page .ProseMirror > [data-project-region] > .math-display:first-child{margin-top:0;}
+.document-page .ProseMirror :is(h1,h2,h3)+p[data-indent="true"][data-explicit-indent="true"]{text-indent:var(--tex-paragraph-indent);}
