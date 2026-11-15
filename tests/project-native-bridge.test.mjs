@@ -25,8 +25,11 @@ test('native bridge retains Chinese/space root and routes binary moves through s
  await adapter.move('章节/a.tex','章节/b.tex',new Uint8Array([5,6]));
  assert.equal(calls.at(-1).args.root,adapter.root);assert.equal(calls.at(-1).args.target,'章节/b.tex');
  assert.deepEqual(Array.from(calls.at(-1).args.expected),[5,6]);
- await adapter.remove('章节/b.tex',new Uint8Array([5,6]));
- assert.deepEqual(Array.from(calls.at(-1).args.expected),[5,6]);
+  await adapter.remove('章节/b.tex',new Uint8Array([5,6]));
+  assert.deepEqual(Array.from(calls.at(-1).args.expected),[5,6]);
+  const removal=[{path:'章节',kind:'directory'},{path:'章节/a.tex',kind:'file',bytes:[1,2]}];
+  await adapter.remove('章节',undefined,removal);
+  assert.deepEqual(JSON.parse(new TextDecoder().decode(new Uint8Array(calls.at(-1).args.bytes))),removal);
 });
 test('native bridge sends directory baseline manifests and preserves committed reconciliation warnings',async()=>{
  let request;

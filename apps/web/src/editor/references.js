@@ -5,7 +5,7 @@ import { numberedMathRows } from '../../latex/math-environments.mjs';
 export function outline(doc) {
   const counters = [0, 0, 0];
   const items = [];
-  doc.descendants(node => {
+  doc.descendants((node,position) => {
     if (node.type.name !== 'heading') return;
     const level = node.attrs.level;
     if (level < 1 || level > counters.length) return;
@@ -15,7 +15,7 @@ export function outline(doc) {
       counters.fill(0, level);
       number = counters.slice(0, level).join('.');
     }
-    items.push({ level, number, text: node.textContent, label: node.attrs.label || null });
+    items.push({ level, number, text: node.textContent, label: node.attrs.label || null, position });
   });
   return items;
 }
@@ -31,23 +31,29 @@ export function collectReferenceLabels(doc) {
     if(!key || seen.has(key))return;
     seen.add(key);labels.push({key,...details});
   }
-  doc.descendants(node => {
+  doc.descendants((node,position) => {
     if(node.type.name==='heading') {
       const heading=headings[headingIndex++];
-      if(heading?.number)current={number:heading.number,title:heading.text,kind:'heading'};
+      current={number:heading?.number||null,title:heading?.text??node.textContent,kind:'heading',position};
       add(node.attrs.label,current);
     }
     if (node.type.name==='mathBlock') {
       for (const row of numberedMathRows(node.attrs)) {
         if (row.unnumbered) continue;
         const number = row.tag ?? String(++equationNumber);
-        current={number,title:node.attrs.latex,kind:'equation'};
+        current={number,title:node.attrs.latex,kind:'equation',position};
         add(row.label ?? (row.index === (node.attrs.labelRow ?? 0) ? node.attrs.label : null),current);
       }
     }
-    if (node.type.name==='label') add(node.attrs.key,current);
+    if (node.type.name==='label') add(node.attrs.key,{...current,kind:'label',position});
   });
   return labels;
+}
+
+function navigateTo(editor,target) {
+  if(!target || typeof target.position!=='number')return;
+  if(target.kind==='equation')editor.chain().focus().setNodeSelection(target.position).scrollIntoView().run();
+  else editor.chain().focus().setTextSelection(Math.min(target.position+1,editor.state.doc.content.size)).scrollIntoView().run();
 }
 
 export const Ref = Node.create({
@@ -64,9 +70,11 @@ export const Ref = Node.create({
       const dom = document.createElement('span');
       dom.className = 'ref-node';
       dom.contentEditable = 'false';
+      let target=null;
       const render = () => {
         dom.dataset.refView = node.attrs.key;
-        const number = collectReferenceLabels(editor.state.doc).find(item=>item.key===node.attrs.key)?.number ?? null;
+        target=collectReferenceLabels(editor.state.doc).find(item=>item.key===node.attrs.key)??null;
+        const number = target?.number ?? null;
         dom.textContent = node.attrs.equation ? `(${number??'?'})` : number ?? '?';
         dom.classList.toggle('missing', !number);
         dom.dataset.tooltip = (node.attrs.equation?'\\eqref{':'\\ref{') + node.attrs.key + '}';
@@ -78,6 +86,7 @@ export const Ref = Node.create({
         if (typeof position !== 'number') return;
         event.preventDefault();
         event.stopPropagation();
+        if(event.ctrlKey || event.metaKey){navigateTo(editor,target);return;}
         editor.commands.setNodeSelection(position);
       });
       return {
@@ -248,14 +257,18 @@ export const TableOfContents = Node.create({
         for (const item of outline(editor.state.doc)) {
           const row = document.createElement('div');
           row.className = 'toc-entry';
+          row.setAttribute('role','link');row.tabIndex=0;row.dataset.headingPosition=String(item.position);
           row.style.paddingLeft = (item.level - 1) + 'em';
           row.textContent = (item.number ? item.number + '  ' : '') + item.text;
+          const jump=()=>navigateTo(editor,item);
+          row.addEventListener('click',jump);
+          row.addEventListener('keydown',event=>{if(event.key==='Enter' || event.key===' '){event.preventDefault();jump();}});
           dom.append(row);
         }
       };
       render();
       dom.refreshToc = render;
-      return { dom, ignoreMutation: () => true };
+      return { dom, ignoreMutation: () => true, stopEvent:event=>Boolean(event.target.closest?.('.toc-entry')) };
     };
   },
 });
@@ -263,4 +276,42 @@ export const TableOfContents = Node.create({
 export function refreshReferences(root) {
   root.querySelectorAll('[data-ref-view]').forEach(element => element.refreshRef?.());
   root.querySelectorAll('[data-toc-view]').forEach(element => element.refreshToc?.());
+}
+
+export function installDocumentOutline(editor) {
+  const panel=document.createElement('aside');panel.id='document-outline';panel.className='document-outline';panel.hidden=true;
+  panel.setAttribute('aria-label',t('文档大纲','Document outline'));
+  const header=document.createElement('div');header.className='document-outline-header';
+  const title=document.createElement('strong');
+  const close=document.createElement('button');close.type='button';close.textContent='×';
+  const list=document.createElement('div');list.className='document-outline-list';
+  header.append(title,close);panel.append(header,list);document.body.append(panel);
+  function render() {
+    if(panel.hidden)return;
+    const items=outline(editor.state.doc),selection=editor.state.selection.from;
+    let current=null;
+    for(const item of items){if(item.position<selection)current=item;else break;}
+    const focused=document.activeElement?.dataset?.headingPosition;
+    list.replaceChildren();
+    if(!items.length){const empty=document.createElement('p');empty.textContent=t('文档中没有标题','No headings in this document');list.append(empty);return;}
+    for(const item of items){
+      const control=document.createElement('button');control.type='button';control.dataset.headingPosition=String(item.position);
+      control.style.paddingInlineStart=(8+(item.level-1)*14)+'px';
+      control.textContent=(item.number?item.number+'  ':'')+item.text;
+      control.setAttribute('aria-current',String(item===current));
+      control.addEventListener('click',()=>navigateTo(editor,item));list.append(control);
+    }
+    if(focused)list.querySelector(`[data-heading-position="${focused}"]`)?.focus({preventScroll:true});
+  }
+  function relocalize() {
+    title.textContent=t('文档大纲','Document outline');
+    close.setAttribute('aria-label',t('关闭大纲','Close outline'));
+    panel.setAttribute('aria-label',t('文档大纲','Document outline'));render();
+  }
+  function hide(){panel.hidden=true;editor.view.focus();}
+  function show(){panel.hidden=false;relocalize();}
+  close.addEventListener('click',hide);
+  document.addEventListener('keydown',event=>{if(event.key==='Escape'&&!panel.hidden){event.preventDefault();hide();}},true);
+  editor.on('transaction',render);relocalize();
+  return {panel,show,hide,relocalize};
 }

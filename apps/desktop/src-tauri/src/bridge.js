@@ -90,7 +90,9 @@
       read:async path => new Uint8Array((await operation('read',path)).bytes),
       write:(path,bytes,expected) => operation('write',path,null,Array.from(bytes),expected && Array.from(expected)),
       create:(path,bytes) => operation('create',path,null,Array.from(bytes)),
-      mkdir:path => operation('mkdir',path), remove:(path,expected) => operation('remove',path,null,null,expected && Array.from(expected)),
+      mkdir:path => operation('mkdir',path),
+      remove:(path,expected,expectedTree) => operation('remove',path,null,
+        expectedTree && Array.from(new TextEncoder().encode(JSON.stringify(expectedTree))),expected && Array.from(expected)),
       move:(path,target,expected,expectedTree) => operation('move',path,target,
         expectedTree && Array.from(new TextEncoder().encode(JSON.stringify(expectedTree))),expected && Array.from(expected)),
     };

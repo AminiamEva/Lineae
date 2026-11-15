@@ -422,6 +422,18 @@ fn move_snapshot(root: &Path, directory: &Path) -> Result<Vec<MoveEntry>, String
     Ok(result)
 }
 
+fn remove_directory(root: &Path, directory: &Path, manifest: &[u8]) -> Result<Reply, String> {
+    let mut expected: Vec<MoveEntry> = serde_json::from_slice(manifest)
+        .map_err(|e| format!("Invalid directory removal manifest: {e}"))?;
+    expected.sort_by(|a, b| a.path.cmp(&b.path));
+    let actual = move_snapshot(root, directory)?;
+    if actual != expected {
+        return Err("Directory changed on disk; removal refused".into());
+    }
+    std::fs::remove_dir_all(directory).map_err(|e| e.to_string())?;
+    Ok(Reply::default())
+}
+
 fn move_directory(
     root: &Path,
     source: &Path,
@@ -612,7 +624,16 @@ fn operate_checked(
             std::io::Write::write_all(&mut file, &bytes).map_err(|e| e.to_string())?;
         }
         "mkdir" => std::fs::create_dir(path).map_err(|e| e.to_string())?,
-        "remove" => mutate_entry(&path, None, expected.as_deref())?,
+        "remove" => {
+            if path.is_dir() {
+                return remove_directory(
+                    &root,
+                    &path,
+                    bytes.as_deref().ok_or("Directory removal requires a manifest")?,
+                );
+            }
+            mutate_entry(&path, None, expected.as_deref())?;
+        }
         "move" => {
             let target = scoped(&root, &target.ok_or("Missing target")?)?;
             if target.exists() || target.starts_with(&path) {
@@ -730,6 +751,22 @@ mod tests {
             .any(|entry| entry.path == "目录 空格/b.tex"));
         call(&roots, &root, "remove", "目录 空格/b.tex", None, None).unwrap();
         assert!(!root.join("目录 空格/b.tex").exists());
+    }
+    #[test]
+    fn directory_removal_requires_an_exact_manifest() {
+        let (roots, root) = fixture();
+        let source = root.join("trash");
+        std::fs::create_dir(&source).unwrap();
+        std::fs::create_dir(source.join("empty")).unwrap();
+        std::fs::write(source.join("child.tex"), b"original").unwrap();
+        assert!(call(&roots, &root, "remove", "trash", None, None).is_err());
+        let stale = serde_json::to_vec(&move_snapshot(&root, &source).unwrap()).unwrap();
+        std::fs::write(source.join("child.tex"), b"external").unwrap();
+        assert!(call(&roots, &root, "remove", "trash", None, Some(stale)).is_err());
+        assert!(source.exists());
+        let current = serde_json::to_vec(&move_snapshot(&root, &source).unwrap()).unwrap();
+        call(&roots, &root, "remove", "trash", None, Some(current)).unwrap();
+        assert!(!source.exists());
     }
     #[test]
     fn directory_move_rejects_stale_bytes_membership_and_missing_manifest() {

@@ -12,7 +12,7 @@ import { installFormatControls } from './editor/format-controls.js';
 import { decorateToolbar, applyToolbarDescriptions, icon } from './editor/icons.js';
 import { PaperBehavior } from './editor/paper-behavior.js';
 import { MathNode, MathBlock, configureMathFences, focusInsertedOperator, insertFormula, isMathOperatorWithBody, mathEnvironment, toggleDisplayStyle } from './editor/math-node.js';
-import { Ref, Label, Cite, Footnote, TableOfContents, refreshReferences, collectReferenceLabels } from './editor/references.js';
+import { Ref, Label, Cite, Footnote, TableOfContents, refreshReferences, collectReferenceLabels, installDocumentOutline } from './editor/references.js';
 import { createCitationLibrary, openCitationPanel } from './editor/citation-library.js';
 import { installProjectExplorer } from './project/explorer.js';
 import { applyCitationRenames } from '../bib/index.mjs';
@@ -321,9 +321,17 @@ function listItemLevelAt($pos) {
   for(let depth=$pos.depth;depth>0;depth--) if($pos.node(depth).type.name==='listItem') level++;
   return level;
 }
+function maximumListDepth() {
+  const width=editor.view.dom.getBoundingClientRect().width;
+  const font=Number.parseFloat(getComputedStyle(editor.view.dom).fontSize)||16;
+  return Math.max(1,Math.min(10,Math.floor((width/font-12)/2)));
+}
 function indentListItem(editor) {
-  const { $from }=editor.state.selection;
-  return listItemLevelAt($from)<10 && editor.chain().focus().sinkListItem('listItem').run();
+  const {state}=editor,levels=[listItemLevelAt(state.selection.$from)];
+  state.doc.nodesBetween(state.selection.from,state.selection.to,(node,position)=>{
+    if(node.type.name==='listItem')levels.push(listItemLevelAt(state.doc.resolve(position+1)));
+  });
+  return Math.max(...levels)<maximumListDepth() && editor.chain().focus().sinkListItem('listItem').run();
 }
 function wholeBlockSelection(selection) {
   if (selection.empty) return false;
@@ -688,6 +696,7 @@ syncTableAttributes();
 installTableHoverAddRow(editor, paper);
 installImageDrop(editor,paper);
 const documentFind = installDocumentFind(editor);
+const documentOutline = installDocumentOutline(editor);
 const tools=document.querySelector('#insert');
 tools.replaceChildren();
 function button(label, action) {
@@ -698,8 +707,8 @@ function button(label, action) {
   tools.append(control);
   return control;
 }
-button('↶',()=>editor.chain().focus().undo().run());
-button('↷',()=>editor.chain().focus().redo().run());
+button('↶',undoDocument);
+button('↷',redoDocument);
 const boldButton=button('B',()=>editor.chain().focus().toggleBold().run());
 const italicButton=button('I',()=>editor.chain().focus().toggleItalic().run());
 const underlineButton=button('U',()=>editor.chain().focus().toggleMark('underline').run());
@@ -873,6 +882,33 @@ const sourceView = createSourceWorkspace({
   onLayout: () => updateSourceButton(),
   metadata: () => ({name: filename, saved: savedSource}),
 });
+let sourceModeEntry,sourceModeCommits=[],sourceModeRedos=[];
+function restoreSourceCheckpoint(text) {
+  const selection=editor.state.selection;
+  load(text,false);sourceView.reset(text);
+  const max=editor.state.doc.content.size;
+  editor.view.dispatch(editor.state.tr.setSelection(TextSelection.between(
+    editor.state.doc.resolve(Math.min(selection.anchor,max)),editor.state.doc.resolve(Math.min(selection.head,max)))));
+  editor.commands.focus();
+}
+function undoDocument() {
+  if(!sourceView.hidden){sourceView.undo();sourceView.flush();return true;}
+  const checkpoint=sourceModeCommits.at(-1);
+  if(checkpoint && editor.state.doc===checkpoint.afterDoc && documentParts.start===checkpoint.afterPreamble){
+    sourceModeCommits.pop();sourceModeRedos.push(checkpoint);restoreSourceCheckpoint(checkpoint.before);
+    checkpoint.beforeDoc=editor.state.doc;checkpoint.beforePreamble=documentParts.start;return true;
+  }
+  return editor.commands.undo();
+}
+function redoDocument() {
+  if(!sourceView.hidden){sourceView.redo();sourceView.flush();return true;}
+  const checkpoint=sourceModeRedos.at(-1);
+  if(checkpoint && editor.state.doc===checkpoint.beforeDoc && documentParts.start===checkpoint.beforePreamble){
+    sourceModeRedos.pop();sourceModeCommits.push(checkpoint);restoreSourceCheckpoint(checkpoint.after);
+    checkpoint.afterDoc=editor.state.doc;checkpoint.afterPreamble=documentParts.start;return true;
+  }
+  return editor.commands.redo();
+}
 paper.addEventListener('focusin', () => { if (!sourceView.hidden && syncPending) sourceView.flush(); });
 editor.registerPlugin(new Plugin({
   props: {handleKeyDown(view,event) {
@@ -1037,7 +1073,7 @@ function load(text, markSaved = true) {
   try {
   const parsed=parseDocument(text, {fragment:projectFileKind === 'tex'});
   if(!parsed)throw new Error(t('无法识别文档','Invalid document'));
-  if (markSaved) clearProjectAssets();
+  if (markSaved) {clearProjectAssets();sourceModeEntry=undefined;sourceModeCommits=[];sourceModeRedos=[];}
   citationLibrary.restoreState(readBibliographyMetadata(text));
   // Preserve imported source exactly. Unsupported blocks remain directly accessible in source mode.
   documentParts=parsed;
@@ -1061,12 +1097,17 @@ function setSourceMode(active) {
   if (active === !sourceView.hidden) return;
   if (active) {
     const unchanged = returnedDraft?.doc === editor.state.doc && returnedDraft?.imported === importedSource && returnedDraft?.preamble === documentParts.start;
-    sourceView.open(unchanged ? returnedDraft.text : source());
+    sourceModeEntry=unchanged ? returnedDraft.text : source();
+    sourceView.open(sourceModeEntry);
     sourceToolbar?.sourceTarget();
   } else {
     try {
       const text = sourceView.value;
       if (text !== importedSource || importedSnapshot !== JSON.stringify(editor.getJSON())) load(text, false);
+      if(sourceModeEntry!==undefined && sourceModeEntry!==text){
+        sourceModeCommits.push({before:sourceModeEntry,after:text,afterDoc:editor.state.doc,afterPreamble:documentParts.start});sourceModeRedos=[];
+      }
+      sourceModeEntry=undefined;
       returnedDraft = {doc: editor.state.doc, imported: importedSource, preamble: documentParts.start, text};
       sourceView.close();
       editor.commands.focus();
@@ -1083,7 +1124,17 @@ function locateMissingCitation(missing) {
   sourceView.select(missing.start, missing.start + missing.key.length);
 }
 document.querySelector('#download').disabled=false;
-async function downloadProject() {
+function confirmMathPlaceholders() {
+  const text=sourceView.hidden?null:sourceView.value;
+  let count=text?(text.match(/\\placeholder\{/g)?.length??0):0;
+  if(text===null)editor.state.doc.descendants(node=>{
+    if(['math','mathBlock'].includes(node.type.name))count+=(node.attrs.latex?.match(/\\placeholder\{/g)?.length??0);
+  });
+  return !count || confirm(t(`仍有 ${count} 个公式占位符未填写；保存后这些位置将留空。是否继续？`,
+    `${count} formula placeholders are unfinished and will be empty after saving. Continue?`));
+}
+async function downloadProject(checkPlaceholders=true) {
+  if(checkPlaceholders && !confirmMathPlaceholders())return;
   const text=sourceView.hidden?source():sourceView.value;
   const status=document.querySelector('#status');
   try {
@@ -1116,6 +1167,7 @@ function prepareExplicitSave() {
   // Explicit Save/Save As only. ZIP export and ordinary updates remain byte-faithful.
   // Do not interrupt an IME composition with a formatting transaction.
   if (sourceView.composing || editor.view.composing) return false;
+  if (!confirmMathPlaceholders()) return false;
   if (sourceView.indentOnSave && projectFileKind !== 'bib') {
     const formatted = indentLatex(sourceView.hidden ? source() : sourceView.value);
     if (formatted.changes.length) {
@@ -1154,7 +1206,7 @@ async function saveDocument(saveAs=false) {
       console.warn(t('保存','Save'),error);
     }
   }
-  await downloadProject();
+  await downloadProject(false);
 }
 async function openDocument() {
   if (projectExplorer?.active && !projectExplorer.close()) return true;
@@ -1772,8 +1824,8 @@ const shortcutActions = {
     },
     ignoreBrowserZoomReset: resetPageZoom,
     literalBacktick: () => editor.commands.insertContent('`'),
-    undo: () => {if(sourceView.hidden) return editor.commands.undo();sourceView.undo();sourceView.flush();},
-    redo: () => {if(sourceView.hidden) return editor.commands.redo();sourceView.redo();sourceView.flush();},
+    undo: undoDocument,
+    redo: redoDocument,
     toggleBold: () => editor.commands.toggleBold(),
     toggleItalic: () => editor.commands.toggleItalic(),
     toggleStrike: () => editor.commands.toggleStrike(),
@@ -1848,6 +1900,7 @@ projectExplorer = installProjectExplorer({footer, filePanel:document.querySelect
   ensureIdle() { if (editor.view.composing || sourceView.composing) throw new Error(t('请先完成当前输入','Finish composition first')); },
   text:() => sourceView.hidden ? source() : sourceView.value,
   capture:() => ({...sourceView.captureSession(), split:sourceView.split, richSelection:{anchor:editor.state.selection.anchor, head:editor.state.selection.head}}),
+  applyChanges:changes => sourceView.applyChanges(changes),
   approveOpen:creating => (sourceView.hidden?source():sourceView.value) === savedSource || confirm(creating
     ? t('保留当前单文件草稿并新建工程？','Keep the current single-file draft and create a project?')
     : t('保留当前单文件草稿并打开工程？','Keep the current single-file draft and open a project?')),
@@ -2113,6 +2166,7 @@ groupButton(referenceGroup,'toc',()=>{
   if(editor.isActive('tableOfContents'))editor.chain().focus().deleteSelection().run();
   else editor.chain().focus().insertContent({type:'tableOfContents'}).run();
 });
+groupButton(referenceGroup,['大纲','Outline'],documentOutline.show);
 groupButton(referenceGroup,'short',async()=>{
   if(!editor.isActive('heading'))return;
   const value=await askText(t('短标题','Short title'),editor.getAttributes('heading').shortTitle??'');
@@ -2299,6 +2353,7 @@ function updateLanguage() {
   tooltips?.setLanguage(language.value);
   projectExplorer?.relocalize?.();
   documentFind.relocalize();
+  documentOutline.relocalize();
   sourceView.relocalize();
   applyToolbarDescriptions(ribbon);
   updateShortcutHints();

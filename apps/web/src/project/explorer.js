@@ -162,13 +162,21 @@ export function installProjectExplorer({footer, filePanel, sessions}) {
     // CodeMirror history/selection. The model retained the same file identity.
     capture();
     const change = project.pathChanges.at(-1);
+    const references=project.rewriteMovedReferences(change);
+    const activeRewrite=references.files.find(file=>file.fileId===project.activeFileId);
+    if(activeRewrite && sessions.applyChanges){
+      sessions.applyChanges(activeRewrite.changes);
+      project.file(project.activeFileId).session=sessions.capture();
+    }
     if (change) for (const entry of [...expanded]) {
       if (entry===change.source || entry.startsWith(change.source+'/')) {
         expanded.delete(entry); expanded.add(change.target+entry.slice(change.source.length));
       }
     }
     show(project.file(project.activeFileId));
-    message.textContent=t('路径已更新；LaTeX 引用路径尚未自动重写','Paths updated; LaTeX references need review');
+    message.textContent=references.count
+      ? t(`路径已更新；已重写 ${references.count} 处 LaTeX 引用，请保存受影响文件`,`Paths updated; rewrote ${references.count} LaTeX references. Save the affected files.`)
+      : t('路径已更新；未发现可安全重写的字面量引用','Paths updated; no literal references required rewriting');
     if(change?.warning)message.textContent+=' · '+change.warning;
     if(project.persistenceError)message.textContent+=' · '+project.persistenceError;
   }
@@ -200,6 +208,22 @@ export function installProjectExplorer({footer, filePanel, sessions}) {
       return;
     }
     if(active)show(project.file(project.activeFileId));
+  }
+  async function deleteDirectory(path) {
+    sessions.ensureIdle();capture();
+    const files=[...project.files.values()].filter(file=>file.path.startsWith(path+'/'));
+    if(files.some(file=>file.id===project.mainFileId))throw new Error(t('不能删除包含主文档的目录','Cannot delete a directory containing the main document'));
+    const dirty=files.filter(file=>file.dirty).length;
+    const zhDetail=dirty?`，其中 ${dirty} 个文件有未保存修改`:'';
+    const enDetail=dirty?`, including ${dirty} files with unsaved changes`:'';
+    if(!confirm(t(`从磁盘删除目录 ${path} 及其中 ${files.length} 个文件${zhDetail}？此操作不可撤销。`,
+      `Delete ${path} and its ${files.length} files from disk${enDetail}? This cannot be undone.`)))return;
+    const active=project.activeFileId,result=await project.removeDirectory(path);
+    for(const entry of [...expanded])if(entry===path || entry.startsWith(path+'/'))expanded.delete(entry);
+    if(active!==project.activeFileId || result.retained.includes(active))show(project.file(project.activeFileId));
+    message.textContent=result.retained.length
+      ? t(`目录已删除；删除期间的新输入保留为 ${result.retained.length} 个缺失文件草稿`,`Directory deleted; new edits were retained as ${result.retained.length} missing-file drafts`)
+      : t('目录已删除','Directory deleted');
   }
   function setMainFile(id) {
     project.setMain(id);message.textContent=t('已设置主文档','Main document updated');render();
@@ -253,6 +277,9 @@ export function installProjectExplorer({footer, filePanel, sessions}) {
       contextSeparator();
       contextAction(['重命名目录','Rename folder'],()=>relocate(directory,false));
       contextAction(['移动目录','Move folder'],()=>relocate(directory,true));
+      contextAction(['删除目录','Delete folder'],()=>deleteDirectory(directory));
+    } else if(directory){
+      contextSeparator();contextAction(['删除目录','Delete folder'],()=>deleteDirectory(directory));
     }
     contextSeparator();contextAction(['刷新文件树','Refresh tree'],refreshTree);
     contextMenu.hidden=false;

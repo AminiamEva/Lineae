@@ -1,5 +1,5 @@
 import {projectPath, fileKind, directoryTree} from './paths.mjs';
-import {scanDependencies, resolveMetadata} from './dependencies.mjs';
+import {dependencyMatchesPath, dependencySpelling, scanDependencies, resolveMetadata} from './dependencies.mjs';
 import {RecoveryStore} from './recovery.mjs';
 import {t} from '../ui/i18n.mjs';
 
@@ -149,7 +149,7 @@ export class Project {
     const changes=affected.map(file=>({fileId:file.id,from:file.path,to:target+file.path.slice(source.length)}));
     for(const change of changes){const file=this.files.get(change.from);this.files.delete(change.from);file.path=change.to;file.kind=fileKind(change.to);this.files.set(change.to,file);this.scan(file);}
     this.directories=this.directories.map(path=>path===source || path.startsWith(source+'/')?target+path.slice(source.length):path);
-    const change={source,target,changes,references:'not-rewritten',reconciliationRequired:outcome?.reconciliationRequired===true,warning:outcome?.warning ?? ''};
+    const change={source,target,changes,references:{status:'pending',count:0,files:[]},reconciliationRequired:outcome?.reconciliationRequired===true,warning:outcome?.warning ?? ''};
     this.pathChanges.push(change); this.resolveDependencies();
     this.persistMetadata();
     if(directory){
@@ -169,6 +169,32 @@ export class Project {
     }
     try {this.checkpoint();}catch(error){this.persistenceError='Move completed; draft checkpoint failed: '+error.message;}
     return changes;
+  }
+  rewriteMovedReferences(change=this.pathChanges.at(-1)) {
+    if(!change?.changes?.length)return {status:'unchanged',count:0,files:[]};
+    let count=0;const files=[];
+    for(const file of this.files.values()){
+      if(typeof file.draft!=='string')continue;
+      const patches=[];
+      for(const dependency of scanDependencies(file.draft).dependencies){
+        if(dependency.status!=='literal')continue;
+        const moved=change.changes.find(item=>dependencyMatchesPath(dependency.command,dependency.path,item.from));
+        if(!moved)continue;
+        const insert=dependencySpelling(dependency.command,dependency.path,moved.to);
+        if(insert!==dependency.path)patches.push({from:dependency.from,to:dependency.to,insert});
+      }
+      if(!patches.length)continue;
+      let next=file.draft;
+      for(const patch of patches.sort((left,right)=>right.from-left.from))next=next.slice(0,patch.from)+patch.insert+next.slice(patch.to);
+      if(next===file.draft)continue;
+      file.draft=next;file.revision=(file.revision??0)+1;file.dirty=file.draft!==file.saved;
+      if(file.id!==this.activeFileId)file.session=null;
+      this.scan(file);count+=patches.length;files.push({fileId:file.id,path:file.path,count:patches.length,
+        changes:[...patches].sort((left,right)=>left.from-right.from)});
+    }
+    if(count){this.resolveDependencies();this.checkpoint();}
+    change.references={status:count?'rewritten':'unchanged',count,files};
+    return change.references;
   }
   activate(id) { this.file(id); this.activeFileId = id; }
   setMain(id) {
@@ -236,6 +262,35 @@ export class Project {
     if (this.activeFileId === id) this.activeFileId = this.mainFileId;
     this.checkpoint();
     return {retained:false};
+  }
+  removeDirectory(value) { return this.operation(()=>this.removeDirectoryNow(value)); }
+  async removeDirectoryNow(value) {
+    const path=projectPath(value);
+    if(!this.directories.includes(path))throw new Error('Directory does not exist');
+    const files=[...this.files.values()].filter(file=>file.path.startsWith(path+'/'));
+    if(files.some(file=>file.id===this.mainFileId))throw new Error('Cannot delete a directory containing the main document');
+    const directories=this.directories.filter(item=>item===path || item.startsWith(path+'/'));
+    const revisions=new Map(files.map(file=>[file.id,file.revision??0]));
+    const expectedTree=[
+      ...directories.map(path=>({path,kind:'directory'})),
+      ...files.map(file=>({path:file.path,kind:'file',bytes:Array.from(file.bytes)})),
+    ].sort((left,right)=>left.path.localeCompare(right.path,'en'));
+    const known=expectedTree.map(item=>item.path+'\0'+item.kind);
+    const disk=(await this.adapter.list()).filter(item=>item.path===path || item.path.startsWith(path+'/'))
+      .sort((left,right)=>left.path.localeCompare(right.path,'en')).map(item=>item.path+'\0'+item.kind);
+    if(JSON.stringify(known)!==JSON.stringify(disk))throw new Error('Directory changed on disk; refresh before deleting');
+    for(const file of files){const bytes=await this.adapter.read(file.path);if(!sameBytes(bytes,file.bytes))throw new Error('File changed on disk: '+file.path);}
+    await this.adapter.remove(path,undefined,expectedTree);
+    const retained=[];
+    for(const file of files){
+      if((file.revision??0)!==revisions.get(file.id)){file.missing=true;retained.push(file.id);continue;}
+      this.files.delete(file.path);this.scans.delete(file.id);
+    }
+    this.directories=this.directories.filter(item=>item!==path && !item.startsWith(path+'/'));
+    if(![...this.files.values()].some(file=>file.id===this.activeFileId))this.activeFileId=this.mainFileId;
+    this.mainCandidates=[...this.files.values()].filter(file=>this.scans.get(file.id)?.document);
+    this.resolveDependencies();this.checkpoint();
+    return {retained,removed:files.filter(file=>!retained.includes(file.id)).map(file=>file.id)};
   }
   refresh() { return this.operation(()=>this.refreshNow()); }
   async refreshNow({preserveExisting=false}={}) {
@@ -332,7 +387,10 @@ export class DirectoryHandleAdapter {
     const {directory,name} = await this.parent(path);
     await this.unused(directory,name); await directory.getDirectoryHandle(name,{create:true});
   }
-  async remove(path) { const {directory,name} = await this.parent(path); await directory.removeEntry(name); }
+  async remove(path,expected,expectedTree) {
+    const {directory,name}=await this.parent(path);
+    await directory.removeEntry(name,{recursive:Array.isArray(expectedTree)});
+  }
   async read(path) { return new Uint8Array(await (await (await this.resolve(path)).getFile()).arrayBuffer()); }
   async write(path, bytes, expected) {
     const stream = await (await this.resolve(path)).createWritable();

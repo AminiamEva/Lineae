@@ -40,7 +40,7 @@ async function clickOpenProject(page) {
     if(op==='write'){await fs.writeFile(local(a),Buffer.from(bytes));return;}
     if(op==='create'){await fs.writeFile(local(a),Buffer.from(bytes),{flag:'wx'});return;}
     if(op==='mkdir'){await fs.mkdir(local(a));return;}
-    if(op==='remove'){await fs.unlink(local(a));return;}
+    if(op==='remove'){const target=local(a),metadata=await fs.stat(target);if(metadata.isDirectory())await fs.rm(target,{recursive:true});else await fs.unlink(target);return;}
     if(op==='move'){await assert.rejects(fs.stat(local(b)),{code:'ENOENT'});await fs.rename(local(a),local(b));return afterMove?.(a,b);}
     throw Error(op);
   });

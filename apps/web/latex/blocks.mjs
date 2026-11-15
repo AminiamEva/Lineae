@@ -207,7 +207,7 @@ export function importBlock(block) {
           type: 'tableRow',
           content: row.cells.map((cell, index) => ({
             type: 'tableCell',
-            attrs: { colspan: row.spans?.[index] ?? 1, rowspan: 1, align: row.aligns?.[index] ?? tabular.specs[index]?.align ?? null },
+            attrs: { colspan: row.spans?.[index] ?? 1, rowspan: row.rowspans?.[index] ?? 1, align: row.aligns?.[index] ?? tabular.specs[row.columnIndexes?.[index]??index]?.align ?? null },
             content: [{ type: 'paragraph', content: cell.trim() ? (inlineContent(cell) ?? [{ type: 'text', text: cell.trim() }]) : [] }],
           })),
         })),
@@ -229,7 +229,7 @@ export function importBlock(block) {
         type: 'tableRow',
         content: row.cells.map((cell, index) => ({
           type: 'tableCell',
-          attrs: { colspan: row.spans?.[index] ?? 1, rowspan: 1, align: row.aligns?.[index] ?? table.specs[index]?.align ?? null },
+          attrs: { colspan: row.spans?.[index] ?? 1, rowspan: row.rowspans?.[index] ?? 1, align: row.aligns?.[index] ?? table.specs[row.columnIndexes?.[index]??index]?.align ?? null },
           content: [{ type: 'paragraph', content: cell.trim() ? (inlineContent(cell) ?? [{ type: 'text', text: cell.trim() }]) : [] }],
         })),
       })),

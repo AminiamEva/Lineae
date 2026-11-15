@@ -353,3 +353,22 @@ test('keeps booktabs rules and alignment around editable cells', async () => {
   assert.match(serializeTable(table, '\n'), /\\midrule\n3 & 2/);
   assert.deepEqual(resolvePackages('', source).map(rule => rule.name), ['booktabs']);
 });
+test('imports and exports editable multirow cells with their package dependency', async () => {
+  const {parseTable,serializeTable}=await import('../apps/web/latex/tables.mjs');
+  const source=['\\begin{tabular}{lc}','\\multirow{2}{*}{A} & B \\\\',' & C \\\\','\\end{tabular}'].join('\n');
+  const table=parseTable(source);
+  assert.equal(table.rows[0].rowspans[0],2);
+  assert.deepEqual(table.rows[1].cells,['C']);
+  assert.match(serializeTable(table,'\n'),/\\multirow\{2\}\{\*\}\{A\}/);
+  const node=importBlocks(source)[0];
+  assert.equal(node.content[0].content[0].attrs.rowspan,2);
+  assert.match(serialize(node),/\\multirow\{2\}\{\*\}\{A\}/);
+  assert.deepEqual(resolvePackages('',serialize(node)).map(rule=>rule.name),['multirow']);
+});
+test('keeps common decorated and repeated table column specifications editable', async()=>{
+  const {parseTable,serializeTable}=await import('../apps/web/latex/tables.mjs');
+  const source=['\\begin{tabular}{>{\\raggedright\\arraybackslash}p{3cm}*{2}{c}}','A & B & C \\\\','\\end{tabular}'].join('\n');
+  const table=parseTable(source);
+  assert.equal(table.specs.length,3);assert.equal(table.specs[0].width,'3cm');
+  assert.equal(serializeTable(table,'\n'),source);
+});

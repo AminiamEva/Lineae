@@ -556,6 +556,17 @@ async function verifySelectionGeometry(page, paper, importSource) {
       await page.keyboard.press('Control+e');
       await page.keyboard.press(key);
     };
+    await importSource('Mode before');
+    await page.locator('[data-source-mode="source"]').click();
+    await page.locator('.tex-code .cm-line').filter({hasText:'Mode before'}).click();
+    await page.keyboard.press('Home');await page.keyboard.press('Shift+End');await page.keyboard.insertText('Mode after');
+    await page.locator('[data-source-mode="body"]').click();
+    await page.waitForFunction(()=>document.querySelector('.ProseMirror')?.textContent.includes('Mode after'));
+    await paper.locator('p').click();
+    await page.keyboard.press('Control+z');
+    await page.waitForFunction(()=>document.querySelector('.ProseMirror')?.textContent.includes('Mode before'));
+    await page.keyboard.press('Control+y');
+    await page.waitForFunction(()=>document.querySelector('.ProseMirror')?.textContent.includes('Mode after'));
     await importSource('Alpha beta gamma delta epsilon.\n\nAlpha beta gamma delta epsilon.');
     await page.waitForFunction(()=>document.querySelectorAll('.ProseMirror > p').length===2 &&
       document.querySelector('.ProseMirror > p').textContent.startsWith('Alpha'));
@@ -592,6 +603,17 @@ async function verifySelectionGeometry(page, paper, importSource) {
     assert.equal(headingLabels.length,5);
     assert.deepEqual([...new Set(headingLabels)].sort(),['H1','H2','H3'],
       'Headings get H_n margin marks');
+    await page.locator('[data-group=reference]').click();
+    await page.getByRole('button',{name:/^(大纲|Outline)$/}).click();
+    const outlinePanel=page.locator('#document-outline');
+    assert.equal(await outlinePanel.isVisible(),true);
+    assert.equal(await outlinePanel.locator('.document-outline-list button').count(),5);
+    await outlinePanel.getByRole('button',{name:/Second$/}).click();
+    assert.equal(await paper.evaluate(element=>element.editor.state.selection.$from.parent.type.name==='heading'
+      && element.editor.state.selection.$from.parent.textContent==='Second'),true,'Outline navigation moves the rich-text caret');
+    assert.equal(await outlinePanel.getByRole('button',{name:/Second$/}).getAttribute('aria-current'),'true');
+    await page.keyboard.press('Escape');
+    assert.equal(await outlinePanel.isVisible(),false);
 
     await importSource('Before\n\n\\[x\\]\n\nAfter');
     await page.waitForFunction(()=>document.querySelector('.ProseMirror > .math-display'));
@@ -744,6 +766,9 @@ async function verifySelectionGeometry(page, paper, importSource) {
     const afterColumnChord=await formula.evaluate(field=>field.value);
     assert.ok((afterColumnChord.match(/&/g)??[]).length>(afterRowChord.match(/&/g)??[]).length,'Ctrl+E C adds a matrix column');
     assert.deepEqual(await matrixCell(),beforeColumnCell,'Adding a column leaves the caret in its original cell');
+    const placeholderWarning=new Promise(resolve=>page.once('dialog',async dialog=>{resolve(dialog.message());await dialog.dismiss();}));
+    await page.locator('[data-group=files]').click();await page.locator('#download').click();
+    assert.match(await placeholderWarning,/placeholders|占位符/,'Export warns before dropping unfinished formula placeholders');
 
     await importSource('First $x$ end\n\nDestination');
     await page.locator('.math-drag-handle').hover();
@@ -797,6 +822,9 @@ async function verifySelectionGeometry(page, paper, importSource) {
     });
     await page.waitForFunction(()=>document.querySelectorAll('.ProseMirror h1[data-short-title="Short"]').length===1);
     assert.ok(await paper.locator('.toc-block').count(),'contents block is editable');
+    await paper.locator('.toc-entry').first().click();
+    assert.equal(await paper.evaluate(element=>element.editor.state.selection.$from.parent.type.name==='heading'
+      && element.editor.state.selection.$from.parent.textContent==='A longer section title'),true,'Contents entries navigate to their heading');
     await page.locator('input[type=file]').setInputFiles({
       name:'fixture.tex',mimeType:'text/plain',buffer:await readFile('tests/fixtures/tex-compat/headings/headings-label-ref.tex'),
     });
@@ -805,6 +833,9 @@ async function verifySelectionGeometry(page, paper, importSource) {
     assert.equal(await paper.locator('.ref-node').textContent(),'1');
     assert.equal(await paper.locator('.ref-node').getAttribute('title'),null,'References use the shared tooltip');
     assert.match(await paper.locator('.ref-node').getAttribute('data-tooltip'),/\\ref\{sec:target\}/);
+    await paper.locator('.ref-node').dispatchEvent('mousedown',{ctrlKey:true,bubbles:true,cancelable:true});
+    assert.equal(await paper.evaluate(element=>element.editor.state.selection.$from.parent.type.name==='heading'
+      && element.editor.state.selection.$from.parent.textContent.includes('Target')),true,'Ctrl+click follows a cross-reference');
     await page.locator('input[type=file]').setInputFiles({
       name:'align.tex',mimeType:'text/plain',
       buffer:Buffer.from('\\documentclass{article}\n\\begin{document}\n\\begin{align}\n\\mathbf{x} &= 1 \\\\\n\\end{align}\n\\end{document}\n'),
@@ -856,6 +887,9 @@ async function verifySelectionGeometry(page, paper, importSource) {
     await page.waitForFunction(()=>document.querySelectorAll('.ProseMirror table[data-booktabs="true"]').length===1);
     await loadFixture('tables/tables-paragraph-cell.tex');
     await page.waitForFunction(()=>document.querySelector('.ProseMirror table')?.getAttribute('data-columns')==='p{3cm}l');
+    await importSource('\\begin{tabular}{lc}\n\\multirow{2}{*}{A} & B \\\\\n & C \\\\\n\\end{tabular}');
+    await page.waitForFunction(()=>document.querySelector('.ProseMirror td[rowspan="2"]'));
+    assert.equal(await paper.locator('pre[data-raw]').count(),0,'Basic multirow tables remain visually editable');
     await loadFixture('lists/lists-paragraphs.tex');
     await page.waitForFunction(()=>document.querySelectorAll('.ProseMirror li p').length===2);
 
@@ -877,6 +911,18 @@ async function verifySelectionGeometry(page, paper, importSource) {
     await page.locator('.editor-dialog input').fill('◦');
     await page.locator('.editor-dialog button[type=submit]').click();
     await page.waitForFunction(()=>document.querySelector('.ProseMirror ul')?.getAttribute('data-marker')==='◦');
+
+    await importSource('\\begin{itemize}\n\\item One\n\\item Two\n\\item Three\n\\end{itemize}');
+    await paper.evaluate(element=>{
+      const positions=[];element.editor.state.doc.descendants((node,position)=>{if(node.type.name==='listItem')positions.push(position);});
+      const last=element.editor.state.doc.nodeAt(positions[2]);
+      element.editor.commands.setTextSelection({from:positions[1]+1,to:positions[2]+last.nodeSize-1});
+    });
+    await page.locator('[data-group=format]').click();
+    await page.getByRole('button',{name:/^(列表降一级|Indent list item)$/}).click();
+    assert.equal(await paper.locator('ul > li:first-child > ul > li').count(),2,'A contiguous multi-item selection indents together');
+    await page.keyboard.press('Control+z');
+    assert.equal(await paper.locator('ul > li:first-child > ul').count(),0,'One undo restores the multi-item list level');
 
     await importSource('Plain line');
     await page.locator('.ProseMirror > p').click();
