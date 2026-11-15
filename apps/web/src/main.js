@@ -1967,6 +1967,7 @@ footer.append(count,document.querySelector('#status'),environment,zoom,percent,p
 function showProjectComposition() {
   if(!projectExplorer?.active || !sourceView.hidden || projectFileKind!=='tex')return;
   const model=projectExplorer.model;
+  if(projectComposition?.rootId===model.activeFileId)return;
   const composed=composeProject(model,model.activeFileId);
   if(composed.regions.length<=1 && !composed.issues.length)return;
   if(composed.issues.length){sourceView.error(composed.issues.join('; '));return;}
@@ -2054,7 +2055,8 @@ projectExplorer = installProjectExplorer({footer, filePanel:document.querySelect
   capture:text => {
     if(sourceView.hidden && sourceView.value!==text)sourceView.reset(text);
     return {...sourceView.captureSession(),split:sourceView.split,sourceVisible:!sourceView.hidden,
-      richSelection:{anchor:editor.state.selection.anchor,head:editor.state.selection.head},richState:projectComposition?null:editor.state,richSource:text,
+      richSelection:{anchor:editor.state.selection.anchor,head:editor.state.selection.head},richState:editor.state,richSource:text,
+      composition:projectComposition,compositionSources:projectComposition?[...projectExplorer.model.files.values()].map(f=>[f.id,f.draft]):null,
       modeHistory:{entry:sourceModeEntry,commits:[...sourceModeCommits],redos:[...sourceModeRedos]}};
   },
   applyChanges:changes => sourceView.applyChanges(changes),
@@ -2076,7 +2078,11 @@ projectExplorer = installProjectExplorer({footer, filePanel:document.querySelect
     sourceModeEntry=session?.modeHistory?.entry;sourceModeCommits=[...(session?.modeHistory?.commits??[])];sourceModeRedos=[...(session?.modeHistory?.redos??[])];
     if(file.kind==='tex'){
       load(file.draft,false);
-      if(session?.richState && session.richSource===file.draft){
+      const compositionCurrent=!session?.composition || session.compositionSources?.every(([id,text])=>{
+        try{return projectExplorer.model.file(id).draft===text;}catch{return false;}
+      });
+      if(session?.richState && session.richSource===file.draft && compositionCurrent){
+        projectComposition=session.composition??null;
         editor.view.updateState(session.richState);importedSnapshot=JSON.stringify(editor.getJSON());refreshReferences(paper);syncTableAttributes();
       }
       projection=sourceProjection(file.draft,editor.getJSON(),{fragment:true});
