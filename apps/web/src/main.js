@@ -861,7 +861,7 @@ button('＋ Row',addMatrixRow);
 button('＋ Column',addMatrixColumn);
 button('$',()=>insertMath());
 button('$$',()=>insertMath(true)).dataset.shortcut='editor.insertDisplayMath';
-let projection, syncApplying = false, syncPending = false, sourceToolbar, projectExplorer, projectFileKind;
+let projection, syncApplying = false, syncPending = false, sourceToolbar, projectExplorer, projectFileKind, preferredProjectSource = true;
 const sourceView = createSourceWorkspace({
   page: documentPage,
   render: text => {
@@ -921,7 +921,8 @@ editor.registerPlugin(new Plugin({
     return false;
   }},
   filterTransaction(transaction) {
-    if (!transaction.docChanged || syncApplying || sourceView.hidden) return true;
+    if (!transaction.docChanged || syncApplying) return true;
+    if(sourceView.hidden && !(projectExplorer?.active && projectFileKind==='tex'))return true;
     const changes = !syncPending && richSourceChanges(projection,transaction.doc.toJSON());
     if (!changes) {
       sourceView.error(t('该修改无法无损回写，请在源码中编辑；原文已保留。','This edit cannot round-trip safely. Edit the source; original text is preserved.'));
@@ -931,7 +932,8 @@ editor.registerPlugin(new Plugin({
   },
 }));
 editor.on('update', () => {
-  if (syncApplying || sourceView.hidden) return;
+  if (syncApplying) return;
+  if(sourceView.hidden && !(projectExplorer?.active && projectFileKind==='tex'))return;
   const changes = richSourceChanges(projection,editor.getJSON());
   if (!changes?.length) return;
   sourceView.applyChanges(changes);
@@ -1092,9 +1094,10 @@ function load(text, markSaved = true) {
 }
 let returnedDraft;
 function setSourceMode(active) {
-  if (!active && projectExplorer?.active) { sourceView.error(t('工程文件请使用源码或 Split 模式','Use Source or Split for project files')); return; }
+  if (!active && projectFileKind==='bib') {sourceView.error(t('BibTeX 文件只能使用源码模式','BibTeX files use Source mode'));return;}
   if (editor.view.composing || sourceView.composing) { sourceView.error(t("请先完成当前输入。","Finish the current composition before switching modes.")); return; }
   if (active === !sourceView.hidden) return;
+  if(projectExplorer?.active)preferredProjectSource=active;
   if (active) {
     const unchanged = returnedDraft?.doc === editor.state.doc && returnedDraft?.imported === importedSource && returnedDraft?.preamble === documentParts.start;
     sourceModeEntry=unchanged ? returnedDraft.text : source();
@@ -1104,6 +1107,7 @@ function setSourceMode(active) {
     try {
       const text = sourceView.value;
       if (text !== importedSource || importedSnapshot !== JSON.stringify(editor.getJSON())) load(text, false);
+      projection=sourceProjection(text,editor.getJSON(),{fragment:projectFileKind==='tex'});syncPending=false;
       if(sourceModeEntry!==undefined && sourceModeEntry!==text){
         sourceModeCommits.push({before:sourceModeEntry,after:text,afterDoc:editor.state.doc,afterPreamble:documentParts.start});sourceModeRedos=[];
       }
@@ -1899,7 +1903,12 @@ projectExplorer = installProjectExplorer({footer, filePanel:document.querySelect
   prepareSave:prepareExplicitSave,
   ensureIdle() { if (editor.view.composing || sourceView.composing) throw new Error(t('请先完成当前输入','Finish composition first')); },
   text:() => sourceView.hidden ? source() : sourceView.value,
-  capture:() => ({...sourceView.captureSession(), split:sourceView.split, richSelection:{anchor:editor.state.selection.anchor, head:editor.state.selection.head}}),
+  capture:text => {
+    if(sourceView.hidden && sourceView.value!==text)sourceView.reset(text);
+    return {...sourceView.captureSession(),split:sourceView.split,sourceVisible:!sourceView.hidden,
+      richSelection:{anchor:editor.state.selection.anchor,head:editor.state.selection.head},richState:editor.state,richSource:text,
+      modeHistory:{entry:sourceModeEntry,commits:[...sourceModeCommits],redos:[...sourceModeRedos]}};
+  },
   applyChanges:changes => sourceView.applyChanges(changes),
   approveOpen:creating => (sourceView.hidden?source():sourceView.value) === savedSource || confirm(creating
     ? t('保留当前单文件草稿并新建工程？','Keep the current single-file draft and create a project?')
@@ -1908,18 +1917,31 @@ projectExplorer = installProjectExplorer({footer, filePanel:document.querySelect
     if (!standaloneSession) standaloneSession = {
       text:sourceView.hidden?source():sourceView.value, filename, fileHandle, savedSource,
       sourceVisible:!sourceView.hidden, sourceSession:sourceView.captureSession(), split:sourceView.split,
-      richState:editor.state,
+      richState:editor.state,modeHistory:{entry:sourceModeEntry,commits:[...sourceModeCommits],redos:[...sourceModeRedos]},
     };
   },
   open(file) {
     projectFileKind = file.kind;
     returnedDraft = undefined; syncPending = false;
     filename = file.path; fileHandle = null; savedSource = file.saved;
-    if (sourceView.hidden) sourceView.open(file.draft);
-    sourceView.restoreSession(file.session, file.draft);
-    sourceView.setSplit(file.kind !== 'bib' && file.session?.split === true);
-    if (file.kind === 'tex' && file.session?.richSelection) {
-      const {anchor,head} = file.session.richSelection, max = editor.state.doc.content.size;
+    const session=file.session,sourceVisible=file.kind==='bib' || (session?.sourceVisible??preferredProjectSource);
+    sourceModeEntry=session?.modeHistory?.entry;sourceModeCommits=[...(session?.modeHistory?.commits??[])];sourceModeRedos=[...(session?.modeHistory?.redos??[])];
+    if(file.kind==='tex'){
+      load(file.draft,false);
+      if(session?.richState && session.richSource===file.draft){
+        editor.view.updateState(session.richState);importedSnapshot=JSON.stringify(editor.getJSON());refreshReferences(paper);syncTableAttributes();
+      }
+      projection=sourceProjection(file.draft,editor.getJSON(),{fragment:true});
+    }
+    if(sourceVisible){
+      if(sourceView.hidden)sourceView.open(file.draft);
+      sourceView.restoreSession(session,file.draft);
+      sourceView.setSplit(file.kind!=='bib' && session?.split===true);
+    }else{
+      sourceView.close();sourceView.restoreSession(session,file.draft);editor.commands.focus();
+    }
+    if (file.kind === 'tex' && session?.richSelection && !session.richState) {
+      const {anchor,head} = session.richSelection, max = editor.state.doc.content.size;
       editor.view.dispatch(editor.state.tr.setSelection(TextSelection.between(editor.state.doc.resolve(Math.min(anchor,max)),editor.state.doc.resolve(Math.min(head,max)))));
     }
     if (file.kind === 'bib') sourceView.setSplit(false);
@@ -1936,6 +1958,7 @@ projectExplorer = installProjectExplorer({footer, filePanel:document.querySelect
       // its immutable editor states, including undo and selection, rather than
       // treating the same draft as a newly imported document.
       load(previous.text, false); savedSource = previous.savedSource;
+      sourceModeEntry=previous.modeHistory.entry;sourceModeCommits=[...previous.modeHistory.commits];sourceModeRedos=[...previous.modeHistory.redos];
       sourceView.restoreSession(previous.sourceVisible ? previous.sourceSession : null, previous.text);
       if (previous.sourceVisible) {
         sourceView.setSplit(previous.split);
@@ -1950,6 +1973,7 @@ projectExplorer = installProjectExplorer({footer, filePanel:document.querySelect
         editor.view.updateState(previous.richState);
       }
     }
+    preferredProjectSource=true;
     updateSourceButton();
   },
 }});

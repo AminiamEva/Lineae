@@ -93,6 +93,10 @@ async function clickOpenProject(page) {
     await page.locator('.tex-indent-setting input').uncheck();
     assert.equal(await page.locator('#project-explorer').isVisible(), false);
     assert.equal(await page.locator('.document-status > :first-child').getAttribute('id'), 'project-toggle');
+    await page.locator('[data-source-mode="body"]').click();
+    assert.equal(await page.locator('.tex-workspace').isHidden(),true,'Project TeX files can use Document mode');
+    const documentEditor=page.locator('.document-page .ProseMirror');
+    await documentEditor.locator('p').last().click();await page.keyboard.press('End');await page.keyboard.insertText(' Body draft');
     await page.locator('#project-toggle').click();
     const joinedChrome = await page.evaluate(() => {
       const panel = document.querySelector('#project-explorer').getBoundingClientRect();
@@ -105,7 +109,17 @@ async function clickOpenProject(page) {
       };
     });
     assert.deepEqual(joinedChrome,{panelTop:0,brandContained:true,brandOnTop:true},'File tree and wordmark form one continuous left rail');
-    await page.locator('#project-explorer summary').click();
+    const sections=page.locator('#project-explorer summary').filter({hasText:/^sections$/});
+    if(!await sections.evaluate(node=>node.parentElement.open))await sections.click();
+    await page.locator('[data-path="sections/intro.tex"]').click();
+    assert.match(await documentEditor.innerText(),/Child paragraph/);
+    assert.equal(await page.locator('.tex-workspace').isHidden(),true,'Document mode persists while switching project files');
+    await page.locator('[data-path="main.tex"]').click();
+    assert.match(await documentEditor.innerText(),/Body draft/);
+    await documentEditor.click();await page.keyboard.press('Control+z');assert.doesNotMatch(await documentEditor.innerText(),/Body draft/);
+    await page.keyboard.press('Control+y');assert.match(await documentEditor.innerText(),/Body draft/);
+    await page.keyboard.press('Control+z');
+    await page.locator('[data-source-mode="source"]').click();
     const code = page.locator('.cm-content');
     await code.click(); await page.keyboard.press('Control+End'); await page.keyboard.insertText('% 草稿');
     await page.locator('[data-path="sections/intro.tex"]').click();

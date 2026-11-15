@@ -52,7 +52,7 @@ export function installProjectExplorer({footer, filePanel, sessions}) {
     if (!project?.activeFileId) return;
     const file = project.file(project.activeFileId);
     project.edit(file.id, sessions.text());
-    file.session = sessions.capture();
+    file.session = sessions.capture(file.draft);
   }
   function dirty() { capture(); return project && [...project.files.values()].some(file => file.dirty); }
   function approveClose() { return !dirty() || confirm(t('项目中有未保存修改，放弃这些修改？','Discard unsaved project changes?')); }
@@ -166,7 +166,7 @@ export function installProjectExplorer({footer, filePanel, sessions}) {
     const activeRewrite=references.files.find(file=>file.fileId===project.activeFileId);
     if(activeRewrite && sessions.applyChanges){
       sessions.applyChanges(activeRewrite.changes);
-      project.file(project.activeFileId).session=sessions.capture();
+      const active=project.file(project.activeFileId);active.session=sessions.capture(active.draft);
     }
     if (change) for (const entry of [...expanded]) {
       if (entry===change.source || entry.startsWith(change.source+'/')) {
