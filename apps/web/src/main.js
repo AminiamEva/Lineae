@@ -2,7 +2,6 @@ import {installProjectNavigation} from './project/navigation.js';
 import {ProjectWorkspaceState} from './project/workspace-state.mjs';
 import {exitProjectHeading} from './project/editing.js';
 import {addReference,includeEdges,referenceTarget,wouldCycle} from './project/include-operations.mjs';
-import {scanDependencies,dependencyMatchesPath} from './project/dependencies.mjs';
 import {ProjectDocumentSession} from './project/document-session.mjs';
 import {installFloatingToolbar} from './ui/floating-toolbar.js';
 import {installSettingsPanel} from './ui/settings-panel.js';
@@ -2567,8 +2566,6 @@ ribbon.append(tabs,files,home,insert,layoutGroup,tableGroup,formatGroup,referenc
 groupButton(insert,'figure',()=>insertLocalImage(editor));
 sourceToolbar = installSourceToolbar({ribbon,groups,source:sourceView,rich:paper,heading:headingMenu});
 const toolbarController=installFloatingToolbar({header,ribbon,sourceView,getAutoHide:()=>sourceView.hidden?config.value.interface.toolbarAutoHide:config.value.interface.sourceToolbarAutoHide});
-const toolbarCollapse=toolbarController.button;
-function updateToolbarCollapse(){toolbarController.show();}
 const settingsPanel=installSettingsPanel({config,onApply:applyImportedPreferences,onImport:()=>importConfig.click(),onExport:()=>exportConfig.click(),getDocument:()=>{sourceView.flush();return documentParts.start?structuredClone(pageSetup):null;},applyDocument:updatePageSetup});
 const settingsButton=document.createElement('button');settingsButton.id='settings-open';settingsButton.type='button';settingsButton.textContent='⚙';settingsButton.onclick=()=>settingsPanel.show();footer.insertBefore(settingsButton,themeButton);
 document.addEventListener('lineae-open-settings',()=>settingsPanel.show());

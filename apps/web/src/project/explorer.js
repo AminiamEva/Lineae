@@ -157,7 +157,6 @@ export function installProjectExplorer({footer, filePanel, sessions}) {
     visible(false); render(); return true;
   }
   const parentPath = path => path.includes('/') ? path.slice(0,path.lastIndexOf('/')) : '';
-  const suggestedPath = (base,name) => base ? base+'/'+name : name;
   function createEntry(base,folder){
     sessions.ensureIdle();capture();sections.files.section.open=true;visible(true);
     const parent=base?[...tree.querySelectorAll('summary[data-path]')].find(n=>n.dataset.path===base)?.parentElement:tree;

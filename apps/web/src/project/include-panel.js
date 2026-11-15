@@ -8,7 +8,7 @@ export function installIncludePanel({container,getProject,edit,openFile}){
   add.type='submit';add.dataset.includeAdd='';form.append(select,kind,add);
   const list=document.createElement('div');list.className='include-list';const status=document.createElement('p');status.setAttribute('role','status');
   container.append(form,list,status);
-  let signature='',pendingFocus;
+  let signature='';
   function perform(change){try{status.textContent='';edit(change);}catch(e){status.textContent=e.message;}}
   function insert(id,index){const p=getProject();if(!p)return;const file=p.file(id);
     if(wouldCycle(p,p.activeFileId,id)){status.textContent=t('该引用会形成循环','This reference would create a cycle');return;}
