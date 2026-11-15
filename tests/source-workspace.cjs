@@ -155,7 +155,7 @@ module.exports = async function checkSourceWorkspace(context, url) {
     await page.keyboard.press('Control+v');
     await page.waitForTimeout(300);
     await screenshot('split');
-    const cursor = await panel.locator('.tex-position').innerText();
+    const cursor = await page.locator('.document-status .tex-position').innerText();
     await page.setViewportSize({width:1280,height:800});
     assert.ok(await separator.isVisible());
     assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
@@ -181,13 +181,13 @@ module.exports = async function checkSourceWorkspace(context, url) {
       }
     }
     assert.equal(actual,edited);
-    assert.equal(await panel.locator('.tex-position').innerText(),cursor);
+    assert.equal(await page.locator('.document-status .tex-position').innerText(),cursor);
     await content.focus();
     await page.keyboard.press('Control+a');
     await page.keyboard.insertText('\\begin{document}\nunfinished');
     await documentMode.click();
     assert.ok(await panel.isVisible());
-    assert.match(await panel.locator('.tex-message').innerText(),/无法识别|Invalid/i);
+    assert.match(await page.locator('.document-status .tex-message').innerText(),/无法识别|Invalid/i);
     await sameClipboardText('\\begin{document}\nunfinished');
   } finally {
     await page.close();
