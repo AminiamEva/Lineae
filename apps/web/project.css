@@ -56,3 +56,19 @@ body.project-visible header .brand{top:0;}
 .project-inline-entry{padding:3px 0;}
 .project-inline-entry input{box-sizing:border-box;width:100%;min-width:0;border:1px solid #7194d4;border-radius:3px;padding:4px;font:inherit;background:light-dark(#fff,#30343e);color:inherit;}
 .project-inline-entry small{display:block;font-size:10px;color:light-dark(#b33737,#ee9c9c);}
+
+.project-diagnostics{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:10px;line-height:1.4;margin:0 0 4px;color:light-dark(#6a7381,#b0b6c0);}
+
+.ProseMirror [data-project-region]{position:relative;min-height:1em;}
+.ProseMirror [data-project-region]::before{content:attr(data-file-path);display:block;font:10px/1.3 system-ui;color:var(--muted,#888);opacity:.65;user-select:none;pointer-events:none;margin-block:10px 3px;border-top:1px dashed #8884;}
+.outline-file{font-weight:600;opacity:.7;}
+@media print{.ProseMirror [data-project-region]::before{display:none;}}
+
+/* File wrappers preserve the existing direct-child document rules. */
+.document-page .ProseMirror > [data-project-region] > p[data-indent="true"]{text-indent:var(--tex-paragraph-indent);}
+.document-page .ProseMirror > [data-project-region] > :is(h1,h2,h3)+p[data-indent="true"]{text-indent:0;}
+.document-page .ProseMirror p[data-explicit-indent="true"]{text-indent:var(--tex-paragraph-indent);}
+.document-page .ProseMirror > [data-project-region] > :is(h1,h2,h3):first-child{margin-top:0;}
+.document-page .ProseMirror > [data-project-region] > h1:first-child{position:relative;top:-3.75pt;}
+.document-page .ProseMirror > [data-project-region] > h1+h2,.document-page .ProseMirror > [data-project-region] > h2+h3{margin-top:0;}
+.document-page .ProseMirror > [data-project-region] > .math-display:first-child{margin-top:0;}

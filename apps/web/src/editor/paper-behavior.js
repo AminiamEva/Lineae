@@ -277,6 +277,7 @@ export const PaperBehavior = Extension.create({
           parseHTML: element => element.dataset.indent !== 'false',
           renderHTML: attributes => ({ 'data-indent': String(attributes.indent) }),
         },
+        explicitIndent: {default:false,keepOnSplit:false,parseHTML:element=>element.dataset.explicitIndent==='true',renderHTML:({explicitIndent})=>explicitIndent?{'data-explicit-indent':'true'}:{}},
         indentLevel: {
           default: 0,
           parseHTML: element => Number(element.dataset.indentLevel) || 0,

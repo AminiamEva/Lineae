@@ -17,8 +17,8 @@ const server=createServer(async(req,res)=>{
   page.on('pageerror',e=>errors.push(e.message));await page.goto('http://127.0.0.1:'+server.address().port);
   await page.locator('.ProseMirror').waitFor();
   await page.locator('.ProseMirror').click();await page.keyboard.insertText('Document typing');await page.waitForTimeout(1100);
-  assert.equal(await page.locator('.ribbon').isVisible(),true,'Document toolbar stays open while typing');
-  await page.locator('#toolbar-collapse').click();assert.equal(await page.locator('.ribbon').isVisible(),false,'Document allows manual folding');await revealToolbar(page);
+  assert.equal(await page.locator('#toolbar-collapse').evaluate(node=>node.getAttribute('aria-expanded')==='true'),true,'Document toolbar stays open while typing');
+  await page.locator('#toolbar-collapse').click();assert.equal(await page.locator('#toolbar-collapse').evaluate(node=>node.getAttribute('aria-expanded')==='true'),false,'Document allows manual folding');await revealToolbar(page);
   await page.locator('#settings-open').click();
   assert.equal(await page.locator('[data-setting="editing.indentOnSave"]').isChecked(),true);
   assert.equal(await page.locator('[data-setting="interface.toolbarAutoHide"]').isChecked(),false);
@@ -26,13 +26,14 @@ const server=createServer(async(req,res)=>{
   assert.equal(await page.locator('.document-status .tex-indent-setting').count(),0);
   await page.locator('#settings-close').click();
   await page.locator('[data-source-mode=split]').click();await page.waitForTimeout(50);
-  assert.equal(await page.locator('.ribbon').isVisible(),false,'Split toolbar initially folds');
+  assert.equal(await page.locator('#toolbar-collapse').evaluate(node=>node.getAttribute('aria-expanded')==='true'),false,'Split toolbar initially folds');
+  assert.equal(await page.locator('.ribbon-tabs').isVisible(),true,'Tabs remain visible when folded');
   await page.evaluate(async()=>{const storage=await navigator.storage.getDirectory();window.folder=await storage.getDirectoryHandle('workspace-navigation',{create:true});window.showDirectoryPicker=async()=>folder;});
   await revealToolbar(page);await page.locator('[data-group=files]').click();
   page.once('dialog',d=>d.accept());await page.locator('#project-new').click();
   await page.waitForFunction(()=>document.querySelector('.project-file[data-path="main.tex"]'));
   assert.equal(await page.locator('[data-source-mode=body]').getAttribute('aria-pressed'),'true','Opening project always enters Document');
-  assert.equal(await page.locator('.ribbon').isVisible(),true,'Project Document toolbar starts open');
+  assert.equal(await page.locator('#toolbar-collapse').evaluate(node=>node.getAttribute('aria-expanded')==='true'),true,'Project Document toolbar starts open');
   const disk=await page.evaluate(async()=>(await (await folder.getFileHandle('main.tex')).getFile()).text());
   assert.match(disk,/\\usepackage\[margin=2\.2cm\]\{geometry\}/,'Fresh project writes Normal margins');
   await page.locator('#settings-open').click();assert.equal(await page.locator('[data-document-setting=marginPreset]').inputValue(),'normal');

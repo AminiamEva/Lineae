@@ -1,3 +1,6 @@
+import {installProjectContextMenu} from './context-menu.js';
+import {promptTreeEntry} from './tree-entry.js';
+import {installProjectTree} from './tree-view.js';
 import {Project, DirectoryHandleAdapter} from './project.mjs';
 import {localize, t} from '../ui/i18n.mjs';
 import {sidebarSection} from '../ui/sidebar-section.js';
@@ -6,20 +9,23 @@ import {projectPath} from './paths.mjs';
 import {DEFAULT_DOCUMENT_SOURCE} from '../editor/default-document.mjs';
 
 export function installProjectExplorer({footer, filePanel, sessions}) {
-  let project = null, busy = false, switching = false, treeSignature = '';
+  let project = null, busy = false, switching = false;
   const expanded = new Set();
-  const fileButtons = new Map();
+
   const panel = document.createElement('aside');
   panel.id = 'project-explorer'; panel.hidden = true;
   panel.setAttribute('aria-label', t('项目文件','Project files'));
   const title = document.createElement('strong');
   const actions = document.createElement('div'); actions.className = 'project-actions';
   const tree = document.createElement('div'); tree.className = 'project-tree';
-  const diagnostics = document.createElement('p');
+  const treeView=installProjectTree({tree,panel,expanded,activate,run});
+  const diagnostics = document.createElement('p');diagnostics.className='project-diagnostics';
   const message = document.createElement('p'); message.setAttribute('role','status');
   const contextMenu = document.createElement('div');
   contextMenu.id = 'project-context-menu'; contextMenu.className = 'project-context-menu';
   contextMenu.setAttribute('role','menu');contextMenu.setAttribute('aria-label',t('文件操作','File actions'));contextMenu.hidden = true;
+  const menu=installProjectContextMenu({contextMenu,panel,run});
+  const closeContextMenu=menu.close,contextAction=menu.action,contextSeparator=menu.separator;
   panel.append(title,actions,message);document.body.append(panel,contextMenu);
   const sectionOptions={getState:()=>sessions.preferences().interface.sidebar,onToggle:(key,open)=>sessions.sidebarChanged(key,open)};
   const sections={
@@ -125,7 +131,7 @@ export function installProjectExplorer({footer, filePanel, sessions}) {
     sessions.ensureIdle();
     sessions.begin();
     project = next; expanded.clear(); title.textContent = adapter.name ?? adapter.handle?.name ?? t('工程','Project');
-    treeSignature = '';
+    treeView.invalidate();
     show(project.file(project.mainFileId));
     visible(false); render();
     if(recoveryNotice){message.textContent=recoveryNotice;sessions.error(recoveryNotice);}
@@ -156,27 +162,12 @@ export function installProjectExplorer({footer, filePanel, sessions}) {
     sessions.ensureIdle();capture();sections.files.section.open=true;visible(true);
     const parent=base?[...tree.querySelectorAll('summary[data-path]')].find(n=>n.dataset.path===base)?.parentElement:tree;
     if(parent?.tagName==='DETAILS')parent.open=true;
-    return new Promise(resolve=>{
-      const row=document.createElement('form');row.className='project-inline-entry';
-      const input=document.createElement('input');input.dataset.projectName='';input.value=folder?'new-folder':'new.tex';input.autocomplete='off';input.spellcheck=false;
-      input.setAttribute('aria-label',folder?t('新建目录名称','New folder name'):t('新建文件名称','New file name'));
-      const error=document.createElement('small');error.setAttribute('role','alert');row.append(input,error);(parent??tree).append(row);
-      let done=false;
-      const cancel=()=>{if(done)return;done=true;row.remove();resolve();};
-      row.onsubmit=async event=>{
-        event.preventDefault();if(done||input.disabled)return;
-        try{
-          const target=projectPath(input.value.trim(),base);
-          if(!folder&&!target.endsWith('.tex'))throw new Error(t('文件名需要 .tex 扩展名','Use a .tex filename'));
-          input.disabled=true;
-          if(folder){await project.mkdir(target);expanded.add(target);}
-          else{const file=await project.create(target,'');capture();project.activate(file.id);expanded.add(parentPath(file.path));show(file);}
-          cancel();
-        }catch(e){input.disabled=false;error.textContent=e.message;input.focus();}
-      };
-      input.onkeydown=event=>{event.stopPropagation();if(event.key==='Escape'){event.preventDefault();cancel();}};
-      input.focus();input.select();
-    });
+    return promptTreeEntry({parent:parent??tree,folder,submit:async value=>{
+      const target=projectPath(value,base);
+      if(!folder&&!target.endsWith('.tex'))throw new Error(t('文件名需要 .tex 扩展名','Use a .tex filename'));
+      if(folder){await project.mkdir(target);expanded.add(target);}
+      else{const file=await project.create(target,'');capture();project.activate(file.id);expanded.add(parentPath(file.path));show(file);}
+    }});
   }
   const createFile=(base='')=>createEntry(base,false);
   const createDirectory=(base='')=>createEntry(base,true);
@@ -261,17 +252,6 @@ export function installProjectExplorer({footer, filePanel, sessions}) {
   button(actions,['关闭工程','Close project'],close,'project-close');
   const emptyState=document.createElement('div');emptyState.className='project-empty';
   button(emptyState,['新建/打开工程','New/Open project'],()=>open(true),'project-new-empty');
-  function closeContextMenu() { contextMenu.hidden=true;contextMenu.replaceChildren();delete contextMenu.dataset.path; }
-  function contextAction(label,action) {
-    const [zh,en]=label;
-    const control=document.createElement('button');control.type='button';control.setAttribute('role','menuitem');
-    control.dataset.zh=zh;control.dataset.en=en;control.textContent=t(zh,en);
-    control.addEventListener('click',()=>{closeContextMenu();run(action);});
-    contextMenu.append(control);return control;
-  }
-  function contextSeparator() {
-    const separator=document.createElement('hr');separator.setAttribute('role','separator');contextMenu.append(separator);
-  }
   function showContextMenu(event) {
     if(!project || event.target.closest?.('button:not(.project-file)'))return;
     const fileNode=event.target.closest?.('.project-file');
@@ -301,78 +281,23 @@ export function installProjectExplorer({footer, filePanel, sessions}) {
       contextSeparator();contextAction(['删除目录','Delete folder'],()=>deleteDirectory(directory));
     }
     contextSeparator();contextAction(['刷新文件树','Refresh tree'],refreshTree);
-    contextMenu.hidden=false;
-    const target=event.target.getBoundingClientRect();
-    const x=event.clientX || target.left+12, y=event.clientY || target.bottom;
-    const bounds=contextMenu.getBoundingClientRect();
-    contextMenu.style.left=Math.max(6,Math.min(x,window.innerWidth-bounds.width-6))+'px';
-    contextMenu.style.top=Math.max(6,Math.min(y,window.innerHeight-bounds.height-6))+'px';
-    contextMenu.querySelector('button')?.focus({preventScroll:true});
+    menu.position(event);
   }
   tree.addEventListener('contextmenu',showContextMenu);
   tree.addEventListener('keydown',event=>{if(event.key==='ContextMenu' || (event.shiftKey && event.key==='F10'))showContextMenu(event);});
-  contextMenu.addEventListener('contextmenu',event=>event.preventDefault());
-  contextMenu.addEventListener('keydown',event=>{
-    if(event.target.matches('input,textarea') || !['ArrowDown','ArrowUp','Home','End'].includes(event.key))return;
-    event.preventDefault();const items=[...contextMenu.querySelectorAll('button')],current=items.indexOf(document.activeElement);
-    const next=event.key==='Home'?0:event.key==='End'?items.length-1:(current+(event.key==='ArrowDown'?1:items.length-1))%items.length;
-    items[next]?.focus();
-  });
-  document.addEventListener('pointerdown',event=>{if(!contextMenu.hidden&&!contextMenu.contains(event.target))closeContextMenu();});
-  document.addEventListener('keydown',event=>{if(event.key==='Escape')closeContextMenu();});
-  window.addEventListener('resize',closeContextMenu);panel.addEventListener('scroll',closeContextMenu);
   function render() {
     includes.render();for(const section of Object.values(sections))section.relocalize();localize(sections.citations.content);
     panel.dataset.state=project?'open':'empty';newProjectButton.hidden=Boolean(project);
     actions.hidden = !project;
     if (!project) {
-      closeContextMenu();tree.replaceChildren(emptyState);localize(emptyState);
-      fileButtons.clear();treeSignature='';title.textContent=t('项目','Project');diagnostics.textContent='';return;
+      closeContextMenu();treeView.clear(emptyState);localize(emptyState);
+      treeView.invalidate();title.textContent=t('项目','Project');diagnostics.textContent='';return;
     }
     const missing=project.dependencies.filter(item=>item.status==='missing');
     const pending=project.dependencies.filter(item=>item.status==='pending');
-    diagnostics.textContent=t('依赖','Dependencies')+' '+project.dependencies.length+' · '+t('缺失','missing')+' '+missing.length+' · '+t('待解析','pending')+' '+pending.length;
+    diagnostics.textContent=t('依赖','Deps')+' '+project.dependencies.length+' · '+t('缺失','Missing')+' '+missing.length+' · '+t('待定','Pending')+' '+pending.length;
     diagnostics.title=missing.map(item=>item.path).join('\n');
-    // Editing changes row state, not tree topology. Keep DOM nodes (and their
-    // focus, native details state and scroll position) until paths change.
-    const signature=JSON.stringify([project.directories,[...project.files.values()].map(file=>[file.id,file.path,file.kind])]);
-    if (signature!==treeSignature) {
-    const focusKey=tree.contains(document.activeElement)?document.activeElement.dataset.focusKey:null;
-    const scroll=panel.scrollTop;
-    tree.replaceChildren();fileButtons.clear();
-    function append(node, parent) {
-      for (const child of node.children) {
-        if (child.kind === 'directory') {
-          const details = document.createElement('details'), summary = document.createElement('summary');
-          details.open = expanded.has(child.path); summary.textContent = child.name;
-          summary.title=child.path;summary.setAttribute('aria-haspopup','menu');summary.dataset.path=child.path;summary.dataset.focusKey='directory:'+child.path;
-          details.ontoggle = () => {if(details.isConnected) details.open ? expanded.add(child.path) : expanded.delete(child.path);};
-          details.append(summary); parent.append(details); append(child, details);
-
-        } else {
-          const node = button(parent, '', () => activate(child.fileId));
-          node.draggable=project.file(child.fileId).kind==='tex';
-          node.addEventListener('dragstart',event=>{event.dataTransfer.setData('application/x-lineae-file',child.fileId);event.dataTransfer.effectAllowed='copy';});
-          node.dataset.path = child.path;node.dataset.fileId=child.fileId;node.className='project-file';node.setAttribute('aria-haspopup','menu');
-          node.dataset.focusKey='file:'+child.fileId;fileButtons.set(child.fileId,node);
-          node.title = child.path;
-
-        }
-      }
-    }
-    append(project.tree, tree);
-    treeSignature=signature;
-    if(focusKey){const target=[...tree.querySelectorAll('[data-focus-key]')].find(node=>node.dataset.focusKey===focusKey);target?.focus({preventScroll:true});}
-    panel.scrollTop=scroll;
-    }
-    const icons = {tex:'T', bib:'B', image:'▧', pdf:'PDF', resource:'◇'};
-    for(const file of project.files.values()) {
-      const node=fileButtons.get(file.id);
-      const label=`${icons[file.kind]} ${file.path.split('/').at(-1)}${file.dirty?' ●':''}${file.missing || file.externalChanged?' ⚠':''}`;
-      if(node.textContent!==label)node.textContent=label;
-      node.setAttribute('aria-current',String(file.id===project.activeFileId));
-      node.title=file.path+(file.missing?' · '+t('磁盘文件缺失','Missing on disk'):file.externalChanged?' · '+t('磁盘文件已改变','Changed on disk'):'');
-    }
+    treeView.render(project);
   }
   window.addEventListener('beforeunload', event => {
     if (dirty()) { event.preventDefault(); event.returnValue = ''; }
@@ -393,7 +318,7 @@ export function installProjectExplorer({footer, filePanel, sessions}) {
       toggle.title = t('显示/隐藏项目文件','Toggle project files');
       toggle.setAttribute('aria-label', toggle.title);
       localize(panel);
-      treeSignature = '';
+      treeView.invalidate();
       render();
     }};
 }

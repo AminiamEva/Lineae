@@ -6,9 +6,10 @@ export function installFloatingToolbar({header,ribbon,sourceView,getAutoHide}){
   let hidden=false,timer,sourceActive=!sourceView.hidden;
   function measure(){document.documentElement.style.setProperty('--tex-toolbar-bottom',sourceView.hidden?Math.ceil(header.getBoundingClientRect().bottom)+'px':'0px');}
   function setHidden(value){
-    hidden=Boolean(value);holder.classList.toggle('is-hidden',hidden);ribbon.inert=hidden;
+    hidden=Boolean(value);holder.classList.toggle('is-hidden',hidden);
+    for(const group of ribbon.querySelectorAll(':scope > .tools'))group.inert=hidden;
     document.body.classList.toggle('toolbar-collapsed',hidden);
-    button.textContent=hidden?'v':'⌃';button.title=hidden?t('显示工具栏','Show toolbar'):t('隐藏工具栏','Hide toolbar');
+    button.textContent='v';button.title=hidden?t('显示工具栏','Show toolbar'):t('隐藏工具栏','Hide toolbar');
     button.setAttribute('aria-label',button.title);button.setAttribute('aria-expanded',String(!hidden));measure();
   }
   function show(){clearTimeout(timer);setHidden(false);}

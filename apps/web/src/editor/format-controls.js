@@ -41,10 +41,15 @@ export function installFormatControls(editor, tools) {
   }
   function sync() {
     const attrs = editor.getAttributes('textStyle');
+    const {$from}=editor.state.selection;
+    const block=$from.depth?editor.view.nodeDOM($from.before()):editor.view.dom;
+    const style=getComputedStyle(block?.nodeType===1?block:editor.view.dom);
+    const family=style.fontFamily.split(',')[0].trim().replace(/["']/g,'');
+    const points=Number((Number.parseFloat(style.fontSize)*72/96).toFixed(2));
     picker.value = attrs.color ?? '#000000';
     glyph.style.borderBottomColor = picker.value;
     for (const [attribute, menu] of Object.entries(menus)) {
-      const value = attrs[attribute] ?? (attribute === 'fontFamily' ? 'Latin Modern Roman' : '10pt');
+      const value = attrs[attribute] ?? (attribute === 'fontFamily' ? family : points+'pt');
       if (![...menu.options].some(option => option.value === value)) {
         const option = new Option(value, value);
         if (attribute === 'fontFamily') option.style.fontFamily = value;
@@ -53,5 +58,7 @@ export function installFormatControls(editor, tools) {
       menu.value = value;
     }
   }
-  editor.on('transaction', sync); sync();
+  editor.on('transaction',()=>{sync();requestAnimationFrame(sync);});
+  const observer=new MutationObserver(()=>requestAnimationFrame(sync));observer.observe(editor.view.dom.closest('.document-page'),{attributes:true,attributeFilter:['style']});
+  editor.on('destroy',()=>observer.disconnect());sync();
 }

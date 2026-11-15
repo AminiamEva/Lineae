@@ -19,10 +19,15 @@ export function sourceProjection(text, doc, options) {
     index += count;
     return block;
   });
-  if (!index && doc.content.length === 1 && doc.content[0].type === 'paragraph' && !doc.content[0].content?.length) {
+  const emptyParagraph=node=>node.type==='paragraph'&&!node.content?.length&&!serialize(node).trim();
+  if(index>0 && index<doc.content.length && doc.content.slice(index).every(emptyParagraph)){
+    const last=blocks.findLast(block=>block.count>0);
+    if(last?.editable){last.count+=doc.content.length-index;last.snapshot=JSON.stringify(doc.content.slice(last.index));index=doc.content.length;}
+  }
+  if (!index && doc.content.length && doc.content.every(emptyParagraph)) {
     blocks.splice(0, blocks.length, {from:parsed.start.length,to:text.length-parsed.end.length,
-      index:0,count:1,raw:parsed.blocks.join(''),editable:true,snapshot:JSON.stringify(doc.content)});
-    index = 1;
+      index:0,count:doc.content.length,raw:parsed.blocks.join(''),editable:true,snapshot:JSON.stringify(doc.content)});
+    index = doc.content.length;
   }
   return index === doc.content.length ? { text, blocks, count: index } : null;
 }
@@ -35,7 +40,7 @@ export function richSourceChanges(projection, doc) {
     let first=0, oldEnd=before.length, newEnd=doc.content.length;
     while(first<oldEnd && first<newEnd && same(before[first],doc.content[first])) first++;
     while(oldEnd>first && newEnd>first && same(before[oldEnd-1],doc.content[newEnd-1])) {oldEnd--;newEnd--;}
-    const block=projection.blocks.find(b=>b.editable && first>=b.index && oldEnd<=b.index+b.count && first<b.index+b.count);
+    const block=projection.blocks.find(b=>b.editable && first>=b.index && oldEnd<=b.index+b.count && first<=b.index+b.count);
     if (!block) return null;
     const nodes=doc.content.slice(block.index,block.index+block.count+doc.content.length-before.length);
     return patchBlock(block,nodes);

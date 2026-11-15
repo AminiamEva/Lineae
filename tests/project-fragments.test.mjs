@@ -22,3 +22,21 @@ test('fragment rich edits use child-file offsets without introducing a document 
   for(const change of [...changes].reverse()) result=result.slice(0,change.from)+change.insert+result.slice(change.to);
   assert.equal(result,'Changed paragraph.\r\n');
 });
+
+function applyChanges(text,changes){assert.ok(changes);return changes.toReversed().reduce((value,change)=>value.slice(0,change.from)+change.insert+value.slice(change.to),text);}
+test('append after the final heading and continue typing through empty paragraphs',()=>{
+ let source='\\section{Heading}\n';
+ const initial={content:parseDocument(source,{fragment:true}).blocks.flatMap(importBlocks)};
+ const doc=structuredClone(initial);doc.content.push({type:'paragraph'});
+ source=applyChanges(source,richSourceChanges(sourceProjection(source,initial,{fragment:true}),doc));
+ const projection=sourceProjection(source,doc,{fragment:true});assert.ok(projection);
+ doc.content[1].content=[{type:'text',text:'Typed after heading'}];
+ source=applyChanges(source,richSourceChanges(projection,doc));assert.match(source,/Typed after heading/);
+});
+test('escaped characters stay editable across successive project patches',()=>{
+ let source='',doc={content:[{type:'paragraph'}]},projection=sourceProjection(source,doc,{fragment:true});
+ for(const text of ['#','#a','#a正文','#a正文!']){
+  doc=structuredClone(doc);doc.content[0].content=[{type:'text',text}];source=applyChanges(source,richSourceChanges(projection,doc));projection=sourceProjection(source,doc,{fragment:true});assert.ok(projection);
+ }
+ assert.match(source,/\\#a正文!/);
+});

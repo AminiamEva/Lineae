@@ -72,7 +72,7 @@ export function serialize(node) {
     }
     case 'documentImage': return serializeImage(node.attrs);
     case 'paragraph': {
-      const body=(node.attrs?.indent === false ? '\\noindent ' : '') + content;
+      const body=(node.attrs?.indent === false ? '\\noindent ' : node.attrs?.explicitIndent ? '\\indent ' : '') + content;
       const command={left:'raggedright',right:'raggedleft',center:'centering'}[node.attrs?.align];
       return (command ? '{\\'+command+' '+body+'\\par}' : body)+'\n\n';
     }

@@ -1,5 +1,9 @@
+import {installProjectNavigation} from './project/navigation.js';
+import {ProjectWorkspaceState} from './project/workspace-state.mjs';
+import {exitProjectHeading} from './project/editing.js';
+import {addReference,includeEdges,referenceTarget,wouldCycle} from './project/include-operations.mjs';
 import {scanDependencies,dependencyMatchesPath} from './project/dependencies.mjs';
-import {composeProject,projectDocumentEdits} from './project/include-document.mjs';
+import {ProjectDocumentSession} from './project/document-session.mjs';
 import {installFloatingToolbar} from './ui/floating-toolbar.js';
 import {installSettingsPanel} from './ui/settings-panel.js';
 import { sourceProjection, richSourceChanges } from './editor/source-sync.js';
@@ -575,7 +579,7 @@ const Shortcuts = Extension.create({
         }
         return false;
       },
-      Enter:()=>applyCodeFenceLanguage(this.editor)||exitEmptyListItem(this.editor),
+      Enter:()=>Boolean(projectExplorer?.active && this.editor.state.selection.empty && this.editor.state.selection.$from.parentOffset===this.editor.state.selection.$from.parent.content.size && exitProjectHeading(this.editor))||applyCodeFenceLanguage(this.editor)||exitEmptyListItem(this.editor),
       Tab:()=>{
         if(this.editor.isActive('table'))return false;
         if (this.editor.isActive('codeBlock')) {
@@ -872,8 +876,8 @@ button('＋ Row',addMatrixRow);
 button('＋ Column',addMatrixColumn);
 button('$',()=>insertMath());
 button('$$',()=>insertMath(true)).dataset.shortcut='editor.insertDisplayMath';
-let projectComposition=null;
-let projection, syncApplying = false, syncPending = false, sourceToolbar, projectExplorer, projectFileKind, preferredProjectSource = true, openingProject = false, projectMode = 'body';
+const projectDocument=new ProjectDocumentSession();
+let projection, syncApplying = false, syncPending = false, sourceToolbar, projectExplorer, projectFileKind;
 const sourceView = createSourceWorkspace({
   page: documentPage,
   getPreferences:()=>config.value,
@@ -939,8 +943,8 @@ editor.registerPlugin(new Plugin({
   }},
   filterTransaction(transaction) {
     if (!transaction.docChanged || syncApplying) return true;
-    if(projectComposition){
-      const valid=projectDocumentEdits(projectComposition,transaction.doc.toJSON());
+    if(projectDocument.composition){
+      const valid=projectDocument.changes(transaction.doc.toJSON());
       if(!valid)sourceView.error(t('请在对应文件的源码中修改此结构','Edit this structure in its source file'));
       return !!valid;
     }
@@ -955,11 +959,11 @@ editor.registerPlugin(new Plugin({
 }));
 editor.on('update', () => {
   if (syncApplying) return;
-  if(projectComposition){
-    const updates=projectDocumentEdits(projectComposition,editor.getJSON());
+  if(projectDocument.composition){
+    const updates=projectDocument.changes(editor.getJSON());
     if(updates){
-      const rootId=projectComposition.rootId;
-      const original=projectComposition.sources.get(rootId);
+      const rootId=projectDocument.composition.rootId;
+      const original=projectDocument.composition.sources.get(rootId);
       const oldPreamble=parseDocument(original,{fragment:true})?.start??'';
       const storedLayout=editor.state.doc.attrs.layoutPreamble;
   const preamble=typeof storedLayout==='string' && JSON.stringify(readPageSetup(storedLayout))!==JSON.stringify(readPageSetup(documentParts.start)) ? writePageSetup(documentParts.start,readPageSetup(storedLayout)) : documentParts.start;
@@ -970,7 +974,7 @@ editor.on('update', () => {
         documentParts.start=preamble;pageSetup=readPageSetup(preamble);applyPageSetup();
       }
       for(const [id,text] of updates)projectExplorer.model.edit(id,text);
-      const text=updates.get(projectComposition.rootId);
+      const text=updates.get(projectDocument.composition.rootId);
       if(text!==undefined)sourceView.reset(text);
       projectExplorer.changed();
     }
@@ -1130,7 +1134,7 @@ function recordFormulaLineBreaks(document) {
   return changed;
 }
 function source() {
-  if(projectComposition)return projectExplorer.model.file(projectComposition.rootId).draft;
+  if(projectDocument.composition)return projectExplorer.model.file(projectDocument.composition.rootId).draft;
   const document=editor.getJSON();
   const untouched=importedSnapshot===JSON.stringify(document);
   const bareMath=document.content.some(node=>node.type==='mathBlock' && !node.attrs.delimiter &&
@@ -1148,7 +1152,7 @@ function identifyImportedBoxes(node) {
   }
 }
 function load(text, markSaved = true) {
-  projectComposition=null;
+  projectDocument.composition=null;
   const wasApplying = syncApplying; syncApplying = true;
   try {
   const parsed=parseDocument(text, {fragment:projectFileKind === 'tex'});
@@ -1175,10 +1179,10 @@ function setSourceMode(active) {
   if (!active && projectFileKind==='bib') {sourceView.error(t('BibTeX 文件只能使用源码模式','BibTeX files use Source mode'));return;}
   if (editor.view.composing || sourceView.composing) { sourceView.error(t("请先完成当前输入。","Finish the current composition before switching modes.")); return; }
   if (active === !sourceView.hidden) return;
-  if(projectExplorer?.active){preferredProjectSource=active;projectMode=active?'source':'body';}
+  if(projectExplorer?.active)projectWorkspace.select(active?'source':'body',projectFileKind);
   if (active) {
-    if(projectComposition){
-      const text=source();projectComposition=null;load(text,false);
+    if(projectDocument.composition){
+      const text=source();projectDocument.composition=null;load(text,false);
     }
     const unchanged = returnedDraft?.doc === editor.state.doc && returnedDraft?.imported === importedSource && returnedDraft?.preamble === documentParts.start;
     sourceModeEntry=unchanged ? returnedDraft.text : source();
@@ -1437,6 +1441,8 @@ const structureCommands = {
   textsc: () => editor.chain().focus().toggleMark('smallcaps').run(),
   fbox: () => spaceOverlay.toggleBox(),
   find: () => documentFind.show(),
+  input:()=>requestProjectInclude('input'),
+  include:()=>requestProjectInclude('include'),
   settings:()=>settingsPanel.show(),
   projectincludes:()=>projectExplorer.showIncludes(),
   outline:()=>projectExplorer.showOutline(),
@@ -1705,7 +1711,7 @@ const [bodyButton,sourceButton,splitButton] = ['body','source','split'].map(mode
   const button = document.createElement('button');
   button.type = 'button';
   button.dataset.sourceMode = mode;
-  button.onclick = () => { if (projectFileKind === 'bib' && mode !== 'source') return; setSourceMode(mode !== 'body'); if (mode !== 'body') sourceView.setSplit(mode === 'split'); if(projectExplorer?.active && projectFileKind!=='bib')projectMode=mode; };
+  button.onclick = () => { if (projectFileKind === 'bib' && mode !== 'source') return; setSourceMode(mode !== 'body'); if (mode !== 'body') sourceView.setSplit(mode === 'split'); if(projectExplorer?.active)projectWorkspace.select(mode,projectFileKind); };
   modes.append(button);
   return button;
 });
@@ -1782,6 +1788,7 @@ function setZoom(value) {
 zoom.addEventListener('input', () => setZoom(Number(zoom.value)));
 zoom.addEventListener('change',saveZoom);
 function leaveTextEnvironment() {
+  if(projectExplorer?.active && exitProjectHeading(editor))return true;
   if (editor.isActive('codeBlock')) return exitCode(editor.state,editor.view.dispatch);
   if (editor.isActive('code')) return editor.commands.unsetCode();
   for (const mark of ['boxed','smallcaps','superscript','subscript','bold','italic','underline','strike']) {
@@ -1987,20 +1994,14 @@ footer.append(count,document.querySelector('#status'),environment,zoom,percent,p
 function showProjectComposition() {
   if(!projectExplorer?.active || !sourceView.hidden || projectFileKind!=='tex')return;
   const model=projectExplorer.model;
-  if(projectComposition?.rootId===model.activeFileId)return;
-  const composed=composeProject(model,model.activeFileId);
+  if(projectDocument.composition?.rootId===model.activeFileId)return;
+  const composed=projectDocument.compose(model,model.activeFileId);
   if(composed.regions.length<=1 && !composed.issues.length)return;
   if(composed.issues.length){sourceView.error(composed.issues.join('; '));return;}
   syncApplying=true;
   try{
     editor.chain().setMeta('addToHistory',false).setContent({type:'doc',attrs:editor.state.doc.attrs,content:composed.content}).run();
-    const hydrated=editor.getJSON().content;
-    composed.regions.forEach((region,index)=>{
-      region.doc={type:'doc',content:hydrated[index].content};
-      const text=composed.sources.get(region.id).slice(region.from,region.to);
-      region.projection=sourceProjection(text,region.doc,{fragment:true});
-    });
-    projectComposition=composed;
+    projectDocument.hydrate(composed,editor.getJSON());
     refreshReferences(paper);documentOutline.relocalize();
 
   }finally{syncApplying=false;}
@@ -2016,62 +2017,38 @@ function editIncludeSource(transform){
   model.edit(file.id,after);
   if(!sourceView.hidden){sourceView.applyChanges([{from:0,to:before.length,insert:after}]);sourceView.flush();}
   else {
-    projectComposition=null;load(after,false);sourceView.reset(after);
+    projectDocument.composition=null;load(after,false);sourceView.reset(after);
     sourceModeCommits.push({before,after,afterDoc:editor.state.doc,afterPreamble:documentParts.start});sourceModeRedos=[];
     showProjectComposition();
     const checkpoint=sourceModeCommits.at(-1);checkpoint.afterDoc=editor.state.doc;
   }
   projectExplorer.changed();
 }
-function appendInclude(id,beforePath){
+async function requestProjectInclude(command){
+  const model=projectExplorer?.model;if(!model){projectExplorer.showIncludes();return;}
+  const path=await askText(t('引用 TeX 文件路径','TeX file to include'));
+  if(!path)return;
+  const target=[...model.files.values()].find(file=>file.kind==='tex'&&(file.path===path||file.path===path+'.tex'));
+  if(!target){sourceView.error(t('项目中没有该 TeX 文件','No such TeX file in this project'));return;}
+  appendInclude(target.id,undefined,command);
+}
+function appendInclude(id,beforePath,command='input'){
   const model=projectExplorer?.model;if(!model)return;
   const file=model.file(id);
-  if(file.kind!=='tex'||id===model.activeFileId || /[\\{}%#]/.test(file.path))return;
+  if(file.kind!=='tex'||wouldCycle(model,model.activeFileId,id)){sourceView.error(t('该引用会形成循环','This reference would create a cycle'));return;}
   editIncludeSource(text=>{
-    const parsed=parseDocument(text,{fragment:true});if(!parsed)return text;
-    const edge=beforePath && scanDependencies(text).dependencies.find(d=>['input','include'].includes(d.command)&&dependencyMatchesPath(d.command,d.path,beforePath));
-    const at=edge?.start??(text.length-parsed.end.length);
-    return text.slice(0,at)+'\n\\input{'+file.path+'}\n'+text.slice(at);
+    const index=beforePath?includeEdges(text).findIndex(edge=>referenceTarget(model,edge)?.path===beforePath):-1;
+    return addReference(text,file.path,command,index<0?undefined:index);
   });
 }
-documentOutline.panel.addEventListener('lineae-outline-navigate',event=>{
-  if(sourceView.hidden)return;
-  event.preventDefault();sourceView.flush();
-  const index=editor.state.doc.resolve(Math.min(event.detail.position,editor.state.doc.content.size)).index(0);
-  const block=projection?.blocks.find(block=>index>=block.index && index<block.index+block.count);
-  if(block){const offset=block.from+Math.max(0,block.raw.indexOf('\\'));sourceView.select(offset,offset);}
-});
-documentOutline.panel.addEventListener('dragover',event=>{
-  if(event.dataTransfer.types.includes('application/x-lineae-file'))event.preventDefault();
-});
-documentOutline.panel.addEventListener('drop',event=>{
-  const id=event.dataTransfer.getData('application/x-lineae-file');if(!id)return;
-  event.preventDefault();appendInclude(id,event.target.closest?.('[data-outline-file]')?.dataset.outlineFile);
-});
-paper.addEventListener('dragover',event=>{
-  if(event.dataTransfer.types.includes('application/x-lineae-file')){event.preventDefault();event.stopImmediatePropagation();}
-},true);
-paper.addEventListener('drop',event=>{
-  const id=event.dataTransfer.getData('application/x-lineae-file');if(!id)return;
-  event.preventDefault();event.stopImmediatePropagation();
-  appendInclude(id,event.target.closest?.('[data-file-path]')?.dataset.filePath);
-},true);
-documentOutline.panel.addEventListener('lineae-move-include',event=>{
-  const {index,direction}=event.detail;
-  editIncludeSource(text=>{
-    const edges=scanDependencies(text).dependencies.filter(d=>['input','include'].includes(d.command)&&d.status==='literal');
-    const a=edges[index],b=edges[index+direction];if(!a||!b)return text;
-    const first=a.start<b.start?a:b,last=a.start<b.start?b:a;
-    return text.slice(0,first.start)+text.slice(last.start,last.to+1)+text.slice(first.to+1,last.start)+text.slice(first.start,first.to+1)+text.slice(last.to+1);
-  });
-});
-let standaloneSession;
+installProjectNavigation({outline:documentOutline.panel,paper,sourceView,editor,getProjection:()=>projection,appendInclude,editIncludeSource});
+const projectWorkspace=new ProjectWorkspaceState();
 projectExplorer = installProjectExplorer({footer, filePanel:document.querySelector('header .tools'), sessions:{
   prepareSave:prepareExplicitSave,
   outline:documentOutline,preferences:()=>config.value,
   sidebarChanged:(key,open)=>config.updateInterface({sidebar:{[key]:open}}),
   editIncludes:editIncludeSource,citations:()=>manageCitations(),
-  saveFileIds:()=>projectComposition?[...new Set(projectComposition.regions.map(region=>region.id))]:null,
+  saveFileIds:()=>projectDocument.composition?[...new Set(projectDocument.composition.regions.map(region=>region.id))]:null,
   includeFile:appendInclude,
   ensureIdle() { if (editor.view.composing || sourceView.composing) throw new Error(t('请先完成当前输入','Finish composition first')); },
   text:() => sourceView.hidden ? source() : sourceView.value,
@@ -2079,7 +2056,7 @@ projectExplorer = installProjectExplorer({footer, filePanel:document.querySelect
     if(sourceView.hidden && sourceView.value!==text)sourceView.reset(text);
     return {...sourceView.captureSession(),split:sourceView.split,sourceVisible:!sourceView.hidden,
       richSelection:{anchor:editor.state.selection.anchor,head:editor.state.selection.head},richState:editor.state,richSource:text,
-      composition:projectComposition,compositionSources:projectComposition?[...projectExplorer.model.files.values()].map(f=>[f.id,f.draft]):null,
+      composition:projectDocument.composition,compositionSources:projectDocument.composition?[...projectExplorer.model.files.values()].map(f=>[f.id,f.draft]):null,
       modeHistory:{entry:sourceModeEntry,commits:[...sourceModeCommits],redos:[...sourceModeRedos]}};
   },
   applyChanges:changes => sourceView.applyChanges(changes),
@@ -2087,19 +2064,17 @@ projectExplorer = installProjectExplorer({footer, filePanel:document.querySelect
     ? t('保留当前单文件草稿并新建或打开工程？','Keep the current single-file draft and create or open a project?')
     : t('保留当前单文件草稿并打开工程？','Keep the current single-file draft and open a project?')),
   begin() {
-    openingProject=true;projectMode='body';
-    preferredProjectSource=!sourceView.hidden;
-    if (!standaloneSession) standaloneSession = {
+    projectWorkspace.begin(()=>({
       text:sourceView.hidden?source():sourceView.value, filename, fileHandle, savedSource,
       sourceVisible:!sourceView.hidden, sourceSession:sourceView.captureSession(), split:sourceView.split,
       richState:editor.state,modeHistory:{entry:sourceModeEntry,commits:[...sourceModeCommits],redos:[...sourceModeRedos]},
-    };
+    }));
   },
   open(file) {
     projectFileKind = file.kind;
     returnedDraft = undefined; syncPending = false;
     filename = file.path; fileHandle = null; savedSource = file.saved;
-    const session=file.session,sourceVisible=file.kind==='bib' || projectMode!=='body';
+    const session=file.session,sourceVisible=projectWorkspace.modeFor(file.kind)!=='body';
     sourceModeEntry=session?.modeHistory?.entry;sourceModeCommits=[...(session?.modeHistory?.commits??[])];sourceModeRedos=[...(session?.modeHistory?.redos??[])];
     if(file.kind==='tex'){
       load(file.draft,false);
@@ -2107,7 +2082,7 @@ projectExplorer = installProjectExplorer({footer, filePanel:document.querySelect
         try{return projectExplorer.model.file(id).draft===text;}catch{return false;}
       });
       if(session?.richState && session.richSource===file.draft && compositionCurrent){
-        projectComposition=session.composition??null;
+        projectDocument.composition=session.composition??null;
         editor.view.updateState(session.richState);importedSnapshot=JSON.stringify(editor.getJSON());refreshReferences(paper);syncTableAttributes();
       }
       projection=sourceProjection(file.draft,editor.getJSON(),{fragment:true});
@@ -2115,7 +2090,7 @@ projectExplorer = installProjectExplorer({footer, filePanel:document.querySelect
     if(sourceVisible){
       if(sourceView.hidden)sourceView.open(file.draft);
       sourceView.restoreSession(session,file.draft);
-      sourceView.setSplit(file.kind!=='bib' && projectMode==='split');
+      sourceView.setSplit(projectWorkspace.modeFor(file.kind)==='split');
     }else{
       sourceView.close();sourceView.restoreSession(session,file.draft);editor.commands.focus();
     }
@@ -2126,15 +2101,15 @@ projectExplorer = installProjectExplorer({footer, filePanel:document.querySelect
     if (file.kind === 'bib') sourceView.setSplit(false);
     updateSourceButton();
     showProjectComposition();
-    openingProject=false;
+
   },
   saved(text) { savedSource = text; sourceView.refresh(); },
   error(text) { const status = document.querySelector('#status'); status.hidden = false; status.textContent = text; },
   end() {
-    projectComposition=null;
+    projectDocument.composition=null;
     projectFileKind = undefined; returnedDraft = undefined;
-    if (standaloneSession) {
-      const previous = standaloneSession; standaloneSession = null;
+    const previous=projectWorkspace.end();
+    if(previous){
       filename = previous.filename; fileHandle = previous.fileHandle;
       // The standalone workspace is suspended while a project is open. Restore
       // its immutable editor states, including undo and selection, rather than
@@ -2156,7 +2131,7 @@ projectExplorer = installProjectExplorer({footer, filePanel:document.querySelect
         editor.view.updateState(previous.richState);
       }
     }
-    preferredProjectSource=true;
+
     updateSourceButton();
   },
 }});

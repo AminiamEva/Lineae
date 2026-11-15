@@ -1,5 +1,5 @@
 const assert=require('node:assert/strict');
-async function revealToolbar(page){if(!await page.locator('.ribbon').isVisible())await page.locator('#toolbar-collapse').click();}
+async function revealToolbar(page){if(await page.locator('#toolbar-collapse').getAttribute('aria-expanded')==='false')await page.locator('#toolbar-collapse').click();}
 async function setIndentOnSave(page,enabled){
   await page.locator('#settings-open').click();
   const control=page.locator('[data-setting="editing.indentOnSave"]');
