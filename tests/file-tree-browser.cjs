@@ -71,10 +71,10 @@ async function clickOpenProject(page) {
         throw error;
       } finally {clearTimeout(timeout);}
     }
-    await check('hidden tree, leftmost toggle, rapid toggles, empty directory',async()=>{
-      assert.equal(await page.locator('#project-explorer').isVisible(),false);
+    await check('visible tree, leftmost toggle, rapid toggles, empty directory',async()=>{
+      assert.equal(await page.locator('#project-explorer').isVisible(),true);
       assert.equal(await page.locator('.document-status > :first-child').getAttribute('id'),'project-toggle');
-      await page.evaluate(()=>{for(let n=0;n<21;n++)document.querySelector('#project-toggle').click();});
+      await page.evaluate(()=>{for(let n=0;n<22;n++)document.querySelector('#project-toggle').click();});
       assert.equal(await page.locator('#project-explorer').isVisible(),true);
       assert.equal(await page.locator('#project-toggle').getAttribute('aria-expanded'),'true');
       await page.locator('#project-explorer summary').filter({hasText:'empty-folder'}).waitFor();

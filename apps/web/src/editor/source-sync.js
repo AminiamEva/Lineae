@@ -1,3 +1,4 @@
+import {paragraphSpelling} from './source-spelling.mjs';
 import {includeEmptyParagraphs,ownsEditedRange,blockWhitespace,splitEditableBoundaries} from './source-boundaries.mjs';
 import { parseDocument } from '../../latex/document.mjs';
 import { importBlocks, serialize } from './latex-codec.js';
@@ -13,8 +14,9 @@ export function sourceProjection(text, doc, options) {
     const count = importBlocks(raw).length;
     const nodes = doc.content.slice(index, index + count);
     const canonical = nodes.map(serialize).join('').trim();
-    const block = { from: offset, to: offset + raw.length, index, count, raw,
-      editable: count > 0 && !nodes.some(node => node.type === 'raw') && raw.trim() === canonical,
+    const spelling=paragraphSpelling(raw,canonical,nodes);
+    const block = { spelling, from: offset, to: offset + raw.length, index, count, raw,
+      editable: count > 0 && !nodes.some(node => node.type === 'raw') && (raw.trim() === canonical || !!spelling),
       snapshot: JSON.stringify(nodes) };
     offset += raw.length;
     index += count;
@@ -57,7 +59,9 @@ function patchBlock(block,nodes) {
     // Prove the new block also round-trips through the existing importer.
     const parsed = parseDocument('\\begin{document}\n' + body + '\n\\end{document}\n');
     if (!parsed || parsed.blocks.flatMap(importBlocks).map(serialize).join('').trim() !== body) return null;
-    const next = leading + body + trailing;
+    const originalBody=block.spelling&&body.startsWith(block.spelling.canonical)
+      ? block.spelling.original+body.slice(block.spelling.canonical.length) : body;
+    const next = leading + originalBody + trailing;
     // A minimal patch preserves untouched line endings inside a changed block.
     let a = 0, b = block.raw.length, c = next.length;
     while (a < b && a < c && block.raw[a] === next[a]) a++;

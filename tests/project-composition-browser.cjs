@@ -28,7 +28,7 @@ const server=createServer(async(req,res)=>{
   await page.waitForFunction(()=>document.querySelector('.tex-filename')?.textContent==='main.tex');
   await page.locator('[data-source-mode=body]').click();
   await page.waitForFunction(()=>document.querySelectorAll('[data-project-region]').length===7);
-  await page.locator('#project-toggle').click();
+  if(!await page.locator('#project-explorer').isVisible())await page.locator('#project-toggle').click();
   await page.locator('.project-file[data-path="d.tex"]').dragTo(page.locator('[data-file-path="b.tex"]').first());
   await page.waitForFunction(()=>document.querySelectorAll('[data-project-region]').length===9);
   assert.deepEqual(await page.locator('[data-file-path]').evaluateAll(nodes=>nodes.filter(n=>['a.tex','b.tex','c.tex','d.tex'].includes(n.dataset.filePath)).map(n=>n.dataset.filePath)),['a.tex','d.tex','b.tex','c.tex']);

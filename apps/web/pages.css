@@ -39,7 +39,7 @@ main { padding:125px 24px 60px; overflow:auto; }
 /* Word-style selection area: the left page margin shows the mirror image of
    the normal pointer (pointing up-right into the text), matching the
    whole-paragraph drag. */
-.document-page::before { content:""; position:absolute; inset-block:0; inset-inline-start:0; width:var(--page-margin-left,22mm); cursor:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24'%3E%3Cpath d='M22 2v17l-5-4.5-2.5 6.5L11 19.5 13.5 13H7z' fill='%23000' stroke='%23fff' stroke-width='1.5' stroke-linejoin='round'/%3E%3C/svg%3E") 22 2, default; }
+.document-page::before { content:""; position:absolute; inset-block:0; inset-inline-start:0; width:var(--page-margin-left,22mm); cursor:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16'%3E%3Cpath d='M1.5 5.5h7V2l6 6-6 6v-3.5h-7z' fill='%23000' stroke='%23fff' stroke-width='1.2'/%3E%3C/svg%3E") 15 8, default; }
 #editor { min-height:calc(var(--page-height,297mm) - var(--page-margin-top,22mm) - var(--page-margin-bottom,22mm)); outline:none; }
 .ProseMirror { min-height:250mm; outline:none; overflow-wrap:anywhere; white-space:pre-wrap; }
 .ProseMirror p { margin:0; }

@@ -1,3 +1,4 @@
+import {paragraphSpelling} from './source-spelling.mjs';
 import {serialize} from './latex-codec.js';
 
 const empty = node => node.type === 'paragraph' && !node.content?.length && !serialize(node).trim();
@@ -38,16 +39,22 @@ export function splitEditableBoundaries(blocks,doc){
       if(node.type==='raw')return [block];
       const canonical=serialize(node).trim();
       if(!canonical)return [block];
-      const start=block.raw.indexOf(canonical,cursor);
-      if(start<0||block.raw.slice(cursor,start).trim())return [block];
-      matches.push({start,end:start+canonical.length});
-      cursor=start+canonical.length;
+      let start=block.raw.indexOf(canonical,cursor),spelling=null,length=canonical.length;
+      if(start<0){
+        const tail=block.raw.slice(cursor),body=tail.trim();
+        spelling=paragraphSpelling(body,canonical,[node]);
+        if(!spelling)return [block];
+        start=cursor+tail.length-tail.trimStart().length;length=body.length;
+      }
+      if(block.raw.slice(cursor,start).trim())return [block];
+      matches.push({start,end:start+length,spelling});
+      cursor=start+length;
     }
     if(block.raw.slice(cursor).trim())return [block];
     return nodes.map((node,index)=>{
       const from=index?matches[index].start:0;
       const to=matches[index+1]?.start??block.raw.length;
-      return {from:block.from+from,to:block.from+to,index:block.index+index,count:1,
+      return {spelling:matches[index].spelling,from:block.from+from,to:block.from+to,index:block.index+index,count:1,
         raw:block.raw.slice(from,to),editable:true,snapshot:JSON.stringify([node])};
     });
   });

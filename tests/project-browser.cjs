@@ -65,7 +65,7 @@ async function clickOpenProject(page) {
     const blankLine=page.locator('.tex-code .cm-line').filter({hasText:/^$/}).first();await blankLine.click();await page.keyboard.insertText('Split source');
     await page.waitForFunction(()=>document.querySelector('.tex-preview .ProseMirror')?.textContent.includes('Split source'));
     await page.keyboard.press('Control+z');
-    await page.locator('#project-toggle').click();
+    if(!await page.locator('#project-explorer').isVisible())await page.locator('#project-toggle').click();
     const treeBox=await page.locator('.project-tree').boundingBox();
     await page.locator('.project-tree').click({button:'right',position:{x:treeBox.width/2,y:treeBox.height-8}});
     const contextMenu=page.locator('#project-context-menu');
@@ -101,13 +101,13 @@ async function clickOpenProject(page) {
     assert.equal(await page.locator('[data-source-mode=split]').getAttribute('aria-pressed'),'false','Opening a project never activates Split');
     await page.locator('[data-source-mode=source]').click();
     await setIndentOnSave(page,false);
-    assert.equal(await page.locator('#project-explorer').isVisible(), false);
+    assert.equal(await page.locator('#project-explorer').isVisible(), true);
     assert.equal(await page.locator('.document-status > :first-child').getAttribute('id'), 'project-toggle');
     await page.locator('[data-source-mode="body"]').click();
     assert.equal(await page.locator('.tex-workspace').isHidden(),true,'Project TeX files can use Document mode');
     const documentEditor=page.locator('.document-page .ProseMirror');
     await documentEditor.locator('p').last().click();await page.keyboard.press('End');await page.keyboard.insertText(' Body draft');
-    await page.locator('#project-toggle').click();
+    if(!await page.locator('#project-explorer').isVisible())await page.locator('#project-toggle').click();
     const joinedChrome = await page.evaluate(() => {
       const panel = document.querySelector('#project-explorer').getBoundingClientRect();
       const brand = document.querySelector('header .brand').getBoundingClientRect();
@@ -206,7 +206,7 @@ async function clickOpenProject(page) {
     await page.locator('#project-close').click();
     await clickOpenProject(page);
     await page.waitForFunction(() => document.querySelector('.cm-content').textContent.includes('external'));
-    assert.equal(await page.locator('#project-explorer').isVisible(), false);
+    assert.equal(await page.locator('#project-explorer').isVisible(), true,'Reopening also reveals the file tree');
     assert.deepEqual(errors, []);
     // Native IPC contract backed by real Windows files; this does not test Rust
     // compilation or the native dialog itself.
@@ -243,7 +243,7 @@ async function clickOpenProject(page) {
     await page.addScriptTag({content:await readFile('apps/desktop/src-tauri/src/bridge.js','utf8')});
     await clickOpenProject(page);
     await page.waitForFunction(()=>document.querySelector('.tex-filename')?.textContent.includes('paper.tex'));
-    await page.locator('#project-toggle').click();
+    if(!await page.locator('#project-explorer').isVisible())await page.locator('#project-toggle').click();
     await page.locator('#project-explorer summary').filter({hasText:'sections'}).click();
     await page.locator('[data-path="sections/method.tex"]').click();
     await code.click();await page.keyboard.press('Control+End');await page.keyboard.insertText('Unsaved 中文');
@@ -288,7 +288,7 @@ async function clickOpenProject(page) {
     page.once('dialog',dialog=>dialog.accept());
     await clickOpenProject(page);
     await page.waitForFunction(()=>document.querySelector('.tex-filename')?.textContent.includes('paper.tex'));
-    await page.locator('#project-toggle').click();
+    if(!await page.locator('#project-explorer').isVisible())await page.locator('#project-toggle').click();
     await page.locator('#project-explorer summary').filter({hasText:'destination'}).click();
     await page.locator('[data-path="destination/final.tex"]').click();
     assert.match(await code.innerText(),/Recovered draft/);

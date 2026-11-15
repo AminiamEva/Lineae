@@ -39,7 +39,7 @@ async function openProject(page) {
   await revealToolbar(page); await page.locator('[data-group=files]').click();
   await page.locator('#project-open').click();
   await page.waitForFunction(() => document.querySelector('.tex-filename')?.textContent === 'main.tex');
-  await page.locator('#project-toggle').click();
+  if(!await page.locator('#project-explorer').isVisible())await page.locator('#project-toggle').click();
 }
 (async () => {
   await mkdir(evidence, {recursive:true});
@@ -90,7 +90,7 @@ async function openProject(page) {
     await page.keyboard.insertText(' Pending source edit');
     await page.evaluate(() => document.querySelector('#project-open').click());
     await page.waitForFunction(() => document.querySelector('.tex-filename')?.textContent === 'main.tex');
-    await page.locator('#project-toggle').click();
+    if(!await page.locator('#project-explorer').isVisible())await page.locator('#project-toggle').click();
     await page.locator('#project-close').click();
     assert.match(await page.locator('.tex-preview .ProseMirror').innerText(), /Pending source edit/, 'Returning to Split renders source edits whose preview was pending at project open');
     passed++; console.log('PASS: pending source projection is current after returning from a project');

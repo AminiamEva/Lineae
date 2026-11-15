@@ -1045,7 +1045,7 @@ async function verifySelectionGeometry(page, paper, importSource) {
         image.onerror = () => done(null);
         image.src = url;
       });
-    }),[24,24],'The margin cursor is a decodable mirrored pointer');
+    }),[16,16],'The original right-arrow margin cursor is decodable');
     assert.equal(await page.locator('header .brand-link').getAttribute('href'),'https://github.com/AminiamEva/Lineae',
       'The wordmark links to the GitHub repository');
 

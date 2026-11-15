@@ -30,7 +30,7 @@ const server=createServer(async(req,res)=>{
   await mkdir('test-results',{recursive:true});await page.screenshot({path:'test-results/project-default.png'});
   assert.equal(await page.locator('#toolbar-collapse svg').count(),1);assert.equal(await page.locator('#toolbar-collapse').textContent(),'');
   assert.ok(await page.locator('#settings-open').evaluate(node=>node.getBoundingClientRect().left<100),'Settings is on the left');
-  await page.locator('#project-toggle').click();
+  if(!await page.locator('#project-explorer').isVisible())await page.locator('#project-toggle').click();
   assert.ok(await page.locator('#sidebar-files .sidebar-section-content').evaluate(node=>node.getBoundingClientRect().height>=150));
   for(const id of ['sidebar-files','sidebar-includes','sidebar-outline']){
    const prevented=await page.locator('#'+id+' summary').first().evaluate(node=>!node.dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,cancelable:true,clientX:50,clientY:180})));

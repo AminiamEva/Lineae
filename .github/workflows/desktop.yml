@@ -40,6 +40,8 @@ jobs:
         run: node --test "tests/bib/**/*.test.mjs"
       - name: Install Chromium
         run: npx playwright install --only-shell chromium
+      - name: Project reopen editing and source selection
+        run: node tests/project-reopen-browser.cjs
       - name: Project usability and folded includes
         run: node tests/project-usability-browser.cjs
       - name: Upload project screenshots

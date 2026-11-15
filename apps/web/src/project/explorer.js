@@ -120,7 +120,7 @@ export function installProjectExplorer({footer, filePanel, sessions}) {
     project = next; expanded.clear(); title.textContent = adapter.name ?? adapter.handle?.name ?? t('工程','Project');
     treeView.invalidate();
     show(project.file(project.mainFileId));
-    visible(false); render();
+    sessions.sidebarChanged('files',true); sections.files.section.open=true; visible(true); render();
     if(recoveryNotice){message.textContent=recoveryNotice;sessions.error(recoveryNotice);}
     if(next.persistenceError){message.textContent=next.persistenceError;sessions.error(next.persistenceError);}
   }
