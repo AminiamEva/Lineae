@@ -613,8 +613,9 @@ async function verifySelectionGeometry(page, paper, importSource) {
     assert.equal(await paper.evaluate(element=>element.editor.state.selection.$from.parent.type.name==='heading'
       && element.editor.state.selection.$from.parent.textContent==='Second'),true,'Outline navigation moves the rich-text caret');
     assert.equal(await outlinePanel.getByRole('button',{name:/Second$/}).getAttribute('aria-current'),'true');
-    await page.keyboard.press('Escape');
+    await page.locator('#sidebar-outline > summary').click();
     assert.equal(await outlinePanel.isVisible(),false);
+    await page.locator('#project-toggle').click();
 
     await importSource('Before\n\n\\[x\\]\n\nAfter');
     await page.waitForFunction(()=>document.querySelector('.ProseMirror > .math-display'));
