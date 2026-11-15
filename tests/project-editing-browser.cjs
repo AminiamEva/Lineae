@@ -46,7 +46,7 @@ const server=createServer(async(req,res)=>{
   await page.locator('[data-project-region][data-file-path="child.tex"]').waitFor();
   const child=page.locator('[data-file-path="child.tex"] p').first();await child.click();await page.keyboard.press('End');await page.keyboard.type(' editing');await page.keyboard.press('Enter');await page.keyboard.insertText('New child paragraph');
   assert.match(await page.locator('[data-file-path="child.tex"]').innerText(),/New child paragraph/);
-  await page.locator('#toolbar-collapse').click();assert.equal(await page.locator('.ribbon-tabs').isVisible(),true);assert.equal(await page.locator('#toolbar-collapse').textContent(),'v');assert.equal(await page.locator('.ribbon>.tools').filter({visible:true}).count(),0);
+  await page.locator('#toolbar-collapse').click();assert.equal(await page.locator('.ribbon-tabs').isVisible(),true);assert.equal(await page.locator('#toolbar-collapse svg').count(),1);assert.equal(await page.locator('.ribbon>.tools').filter({visible:true}).count(),0);
   await page.locator('[data-group=layout]').click();
   for(const input of await page.locator('#layout-panel input').all())assert.equal(await input.evaluate(node=>node.getBoundingClientRect().width<=64.1),true);
   if(!await page.locator('#project-explorer').isVisible())await page.locator('#project-toggle').click();

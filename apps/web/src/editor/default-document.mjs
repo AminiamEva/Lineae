@@ -4,6 +4,8 @@ export function createDefaultDocument() {
     '\\documentclass[a4paper]{article}',
     '\\usepackage[margin=' + MARGIN_PRESETS.normal + ']{geometry}',
     '\\usepackage{amsmath}',
+    '\\usepackage{indentfirst}',
+    '\\usepackage{docmute}',
     '\\begin{document}',
     '',
     '\\end{document}',

@@ -1,3 +1,4 @@
+import {icon} from '../editor/icons.js';
 import {t} from '../ui/i18n.mjs';
 import {includeEdges,referenceTarget,wouldCycle,addReference,removeReference,setReferenceKind,moveReference} from './include-operations.mjs';
 
@@ -28,20 +29,23 @@ export function installIncludePanel({container,getProject,edit,openFile}) {
   container.append(form,list,status);
   let listKey = '';
   let targetsKey = '';
+  let folded=new Set();
+  document.addEventListener('lineae-project-fold-state',event=>{folded=new Set(event.detail.paths);render();});
 
-  function change(operation) {
+  function change(operation,owner) {
     status.textContent = '';
-    try { edit(operation); } catch (error) { status.textContent = error.message; }
+    try { edit(operation,owner); } catch (error) { status.textContent = error.message; }
   }
-  function insert(id, before) {
+  function insert(id, before,owner) {
     const project = getProject();
     if (!project || !id) return;
-    if (wouldCycle(project,project.activeFileId,id)) {
+    owner??=project.activeFileId;
+    if (wouldCycle(project,owner,id)) {
       status.textContent = t('该引用会形成循环','This reference would create a cycle');
       return;
     }
     const file = project.file(id);
-    change(text => addReference(text,file.path,kind.value,before));
+    change(text => addReference(text,file.path,kind.value,before),owner);
   }
   form.addEventListener('submit',event => { event.preventDefault(); insert(target.value); });
   container.addEventListener('dragover',event => { if (accepts(event.dataTransfer)) event.preventDefault(); });
@@ -54,20 +58,26 @@ export function installIncludePanel({container,getProject,edit,openFile}) {
     const row = event.target.closest('[data-include-index]');
     const index = row ? Number(row.dataset.includeIndex) : undefined;
     const dragged = event.dataTransfer.getData(INCLUDE_DRAG);
-    if (dragged !== '') {
-      const end = includeEdges(project.file(project.activeFileId).draft).length - 1;
-      change(text => moveReference(text,Number(dragged),index ?? end));
-    } else insert(event.dataTransfer.getData(FILE_DRAG),index);
+    if(dragged!==''){
+      let from;try{from=JSON.parse(dragged);}catch{return;}
+      const owner=row?.dataset.includeOwner??project.activeFileId;
+      if(from.owner!==owner)return;
+      const end=includeEdges(project.file(owner).draft).length-1;
+      change(text=>moveReference(text,from.index,index??end),owner);
+    }else insert(event.dataTransfer.getData(FILE_DRAG),index,row?.dataset.includeOwner);
+
   });
 
-  function rowFor(project, reference, index, count) {
+  function rowFor(project, reference, index, count,owner,depth=0) {
     const row = document.createElement('div');
     row.className = 'include-row';
     row.dataset.includeIndex = index;
+    row.dataset.includeOwner=owner;
+    row.style.setProperty('--include-depth',depth);
     const editable = reference.status === 'literal';
     row.draggable = editable;
     row.addEventListener('dragstart',event => {
-      event.dataTransfer.setData(INCLUDE_DRAG,String(index));
+      event.dataTransfer.setData(INCLUDE_DRAG,JSON.stringify({owner,index}));
       event.dataTransfer.effectAllowed = 'move';
     });
     const file = referenceTarget(project,reference);
@@ -81,8 +91,14 @@ export function installIncludePanel({container,getProject,edit,openFile}) {
     select.value = reference.command;
     select.disabled = !editable;
     select.setAttribute('aria-label',t('引用类型','Reference type'));
-    select.addEventListener('change',() => change(text => setReferenceKind(text,index,select.value)));
-    row.append(link,select);
+    select.addEventListener('change',() => change(text => setReferenceKind(text,index,select.value),owner));
+    const drag=document.createElement('span');drag.className='include-drag-handle';drag.append(icon('drag'));drag.draggable=true;drag.tabIndex=0;drag.setAttribute('role','button');drag.setAttribute('aria-label',t('拖动排序；Alt 加上下键移动','Drag to reorder; Alt+Up/Down to move'));
+    drag.addEventListener('keydown',event=>{if(event.altKey&&['ArrowUp','ArrowDown'].includes(event.key)){event.preventDefault();const next=index+(event.key==='ArrowUp'?-1:1);if(next>=0&&next<count)change(text=>moveReference(text,index,next),owner);}});
+    const fold=document.createElement('button');fold.type='button';fold.dataset.includeFold='';fold.append(icon('chevronDown'));
+    fold.setAttribute('aria-label',folded.has(file?.path)?t('展开引用内容','Expand included content'):t('折叠引用内容','Collapse included content'));
+    fold.setAttribute('aria-expanded',String(!folded.has(file?.path)));fold.disabled=!file;
+    fold.addEventListener('click',()=>document.dispatchEvent(new CustomEvent('lineae-toggle-project-file',{detail:{path:file.path}})));
+    row.append(drag,fold,link,select);
     const actions = [
       {symbol:'↑',label:t('前移','Move earlier'),disabled:index === 0,apply:text => moveReference(text,index,index - 1)},
       {symbol:'↓',label:t('后移','Move later'),disabled:index === count - 1,apply:text => moveReference(text,index,index + 1)},
@@ -91,11 +107,12 @@ export function installIncludePanel({container,getProject,edit,openFile}) {
     for (const action of actions) {
       const button = document.createElement('button');
       button.type = 'button';
-      button.textContent = action.symbol;
+      button.append(icon(action.symbol==='×'?'delete':action.symbol==='↑'?'chevronUp':'chevronDown'));
       button.title = action.label;
       button.setAttribute('aria-label',action.label);
       button.disabled = !editable || Boolean(action.disabled);
-      button.addEventListener('click',() => change(action.apply));
+      button.dataset.includeAction=action.symbol==='×'?'remove':action.symbol==='↑'?'up':'down';
+      button.addEventListener('click',() => change(action.apply,owner));
       row.append(button);
     }
     if (!editable || !file || file.missing) {
@@ -123,10 +140,21 @@ export function installIncludePanel({container,getProject,edit,openFile}) {
       if (candidates.some(candidate => candidate.id === selected)) target.value = selected;
     }
     const references = file?.kind === 'tex' ? includeEdges(file.draft) : [];
-    const signature = JSON.stringify([file?.id,references.map(reference => [reference.command,reference.path,reference.status,referenceTarget(project,reference)?.id]),document.documentElement.lang]);
+    const signature = JSON.stringify([file?.id,Array.from(project?.files.values()??[],entry=>[entry.id,includeEdges(entry.draft??'')]),[...folded],document.documentElement.lang]);
     if (signature === listKey) return;
     listKey = signature;
-    list.replaceChildren(...references.map((reference,index) => rowFor(project,reference,index,references.length)));
+    const rows=[];
+    function appendReferences(owner,depth,ancestry){
+      if(ancestry.has(owner))return;
+      const edges=includeEdges(project.file(owner).draft??'');
+      edges.forEach((reference,index)=>{
+        rows.push(rowFor(project,reference,index,edges.length,owner,depth));
+        const child=referenceTarget(project,reference);
+        if(child&&!child.missing)appendReferences(child.id,depth+1,new Set(ancestry).add(owner));
+      });
+    }
+    if(file?.kind==='tex')appendReferences(file.id,0,new Set());
+    list.replaceChildren(...rows);
     if (!references.length) {
       const empty = document.createElement('p');
       empty.className = 'sidebar-empty';

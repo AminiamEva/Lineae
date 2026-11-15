@@ -1,3 +1,5 @@
+import {projectInputSource} from './project/input-support.mjs';
+import {installProjectPresentation} from './project/presentation.js';
 import {ProjectRegion} from './project/region-node.js';
 import {canIndentList} from './project/list-policy.js';
 import {createCompositionController} from './project/composition-controller.js';
@@ -981,6 +983,7 @@ let pageSetup=readPageSetup(documentParts.start);
 let typesetPagination;
 let pagePaper,pageOrientation,pageMarginPreset,pageMarginTop,pageMarginRight,pageMarginBottom,pageMarginLeft;
 function applyPageSetup(){
+  documentPage.dataset.indentFirst=String(new RegExp("\\\\usepackage(?:\\[[^\\]]*\\])?\\{[^}]*\\bindentfirst\\b[^}]*\\}").test(documentParts.start));
   const metrics=pageMetrics(pageSetup);
   documentPage.style.setProperty('--page-width',metrics.width);
   documentPage.style.setProperty('--page-height',metrics.height);
@@ -1115,6 +1118,8 @@ function load(text, markSaved = true) {
   importedSource=text;importedSnapshot=JSON.stringify(editor.getJSON());
   if(markSaved) savedSource=text;
   if (markSaved) sourceView.reset(text);
+  projection=sourceProjection(text,editor.getJSON(),{fragment:projectFileKind==='tex'});
+  syncPending=false;
   renderMeta();
   pageSetup=readPageSetup(documentParts.start);
   applyPageSetup();
@@ -1204,6 +1209,11 @@ function prepareExplicitSave() {
   // Do not interrupt an IME composition with a formatting transaction.
   if (sourceView.composing || editor.view.composing) return false;
   if (!confirmMathPlaceholders()) return false;
+  if(projectExplorer?.active&&projectFileKind==='tex'){
+    const current=sourceView.hidden?source():sourceView.value;
+    const next=projectInputSource(projectExplorer.model,projectExplorer.model.activeFileId,current);
+    if(next!==current)editIncludeSource(()=>next);
+  }
   if (sourceView.indentOnSave && projectFileKind !== 'bib') {
     const formatted = indentLatex(sourceView.hidden ? source() : sourceView.value);
     if (formatted.changes.length) {
@@ -1668,6 +1678,7 @@ modes.addEventListener('keydown', event => {
   buttons[next].click(); buttons[next].focus();
 });
 function updateSourceButton() {
+  if(sourceView.hidden)documentPage.inert=false;
   for (const [key, group] of Object.entries(groups)) {
     if (key !== 'files') group.inert = false;
   }
@@ -1947,7 +1958,11 @@ const compositionController=createCompositionController({
       refreshReferences(paper);documentOutline.relocalize();
     }finally{syncApplying=false;}
   },
-  replace(before,after,show){
+  replace(before,after,show,owner){
+    if(owner!==projectExplorer.model.activeFileId){
+      if(sourceView.hidden){const root=projectExplorer.model.file(projectExplorer.model.activeFileId).draft;projectDocument.clear();load(root,false);sourceView.reset(root);show();}
+      return;
+    }
     if(!sourceView.hidden){sourceView.applyChanges([{from:0,to:before.length,insert:after}]);sourceView.flush();return;}
     projectDocument.clear();load(after,false);sourceView.reset(after);
     const checkpoint={before,after,afterDoc:editor.state.doc,afterPreamble:documentParts.start};
@@ -1956,7 +1971,7 @@ const compositionController=createCompositionController({
   },
 });
 function showProjectComposition(){return compositionController.show();}
-function editIncludeSource(transform){return compositionController.edit(transform);}
+function editIncludeSource(transform,owner){return compositionController.edit(transform,owner);}
 function requestProjectInclude(command){return compositionController.request(command);}
 function appendInclude(id,beforePath,command){return compositionController.append(id,beforePath,command);}
 installProjectNavigation({outline:documentOutline.panel,paper,sourceView,editor,getProjection:()=>projection,appendInclude,editIncludeSource});
@@ -1977,6 +1992,10 @@ projectExplorer = installProjectExplorer({footer, filePanel:document.querySelect
       richSelection:{anchor:editor.state.selection.anchor,head:editor.state.selection.head},
       ...captureRichSession(editor,projectDocument.composition,projectExplorer.model,text),
       modeHistory:copyModeHistory(sourceModeEntry,sourceModeCommits,sourceModeRedos)};
+  },
+  focusNewFile(file){
+    if(sourceView.hidden){editor.view.dispatch(editor.state.tr.setSelection(Selection.atStart(editor.state.doc)));editor.commands.focus();}
+    else {const parsed=parseDocument(file.draft,{fragment:true});const offset=parsed?.start.length??0;sourceView.select(offset,offset);}
   },
   applyChanges:changes => sourceView.applyChanges(changes),
   approveOpen:newOrOpen => (sourceView.hidden?source():sourceView.value) === savedSource || confirm(newOrOpen
@@ -2054,6 +2073,7 @@ projectExplorer = installProjectExplorer({footer, filePanel:document.querySelect
     updateSourceButton();
   },
 }});
+installProjectPresentation({editor,page:documentPage,getComposition:()=>projectDocument.composition,requestLayout:()=>typesetPagination?.refresh(),ensureDocument:()=>{if(!sourceView.hidden)setSourceMode(false);showProjectComposition();}});
 editor.on('transaction',updateEnvironment);
 document.addEventListener('focusin',updateEnvironment);paper.addEventListener('input',updateEnvironment);
 paper.addEventListener('selection-change',updateEnvironment,true);
@@ -2393,7 +2413,6 @@ const exportConfig=groupButton(files,['导出 YAML','Export YAML'],()=>{
   setTimeout(()=>URL.revokeObjectURL(url),1000);
 });
 exportConfig.hidden=true;
-groupButton(files,['设置','Settings'],()=>settingsPanel.show());
 const saveAsButton=groupButton(files,['另存为','Save as'],()=>saveDocument(true));
 saveAsButton.dataset.tool='saveAs';
 let releaseFileNavigation;
@@ -2487,7 +2506,7 @@ groupButton(insert,'figure',()=>insertLocalImage(editor));
 sourceToolbar = installSourceToolbar({ribbon,groups,source:sourceView,rich:paper,heading:headingMenu});
 const toolbarController=installFloatingToolbar({header,ribbon,sourceView,getAutoHide:()=>sourceView.hidden?config.value.interface.toolbarAutoHide:config.value.interface.sourceToolbarAutoHide});
 const settingsPanel=installSettingsPanel({config,onApply:applyImportedPreferences,onImport:()=>importConfig.click(),onExport:()=>exportConfig.click(),getDocument:()=>{sourceView.flush();return documentParts.start?structuredClone(pageSetup):null;},applyDocument:updatePageSetup});
-const settingsButton=document.createElement('button');settingsButton.id='settings-open';settingsButton.type='button';settingsButton.textContent='⚙';settingsButton.onclick=()=>settingsPanel.show();footer.insertBefore(settingsButton,themeButton);
+const settingsButton=document.createElement('button');settingsButton.id='settings-open';settingsButton.type='button';settingsButton.append(icon('settings'));settingsButton.onclick=()=>settingsPanel.show();footer.insertBefore(settingsButton,footer.querySelector(':scope>.tex-foot')??count);
 document.addEventListener('lineae-open-settings',()=>settingsPanel.show());
 document.addEventListener('lineae-open-outline',()=>projectExplorer.showOutline());
 document.addEventListener('lineae-open-includes',()=>projectExplorer.showIncludes());

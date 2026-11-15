@@ -43,7 +43,7 @@ const server=createServer(async(req,res)=>{
   await page.locator('[data-source-mode=split]').click();
   await page.locator('.project-tree').click({button:'right'});await page.getByRole('menuitem',{name:/^(新建文件|New file)$/}).click();
   await createTreeEntry(page,'chapter.tex');assert.equal(await page.locator('[data-source-mode=split]').getAttribute('aria-pressed'),'true','New file preserves Split');
-  await page.locator('.cm-content').click();await page.keyboard.insertText('\\section{Chapter heading}\nChapter body.');await page.locator('[data-source-mode=body]').click();
+  assert.equal(await page.evaluate(()=>!!document.activeElement.closest('.tex-code')),true,'New Source file focuses the document body');await page.keyboard.insertText('\\section{Chapter heading}\nChapter body.');await page.locator('[data-source-mode=body]').click();
   await page.locator('#sidebar-outline [data-heading-position]').filter({hasText:'Chapter heading'}).waitFor();
   await page.locator('.project-file[data-path="main.tex"]').click();assert.equal(await page.locator('[data-source-mode=body]').getAttribute('aria-pressed'),'true','Existing file preserves Document');
   await page.locator('[data-include-target]').selectOption({label:'chapter.tex'});await page.locator('[data-include-add]').click();

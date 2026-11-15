@@ -323,6 +323,7 @@ export function installSpaceOverlay(editor, paper, { selectionFocus = null } = {
       height:rect.height/zoom,
     });
     for (const block of editor.view.dom.querySelectorAll('p,h1,h2,h3,pre')) {
+      if(block.closest('[data-project-region]')&&(!block.getClientRects().length||getComputedStyle(block).visibility==='hidden'))continue;
       const bounds=local(block.getBoundingClientRect());
       if(bounds.bottom<0 || bounds.top>height || bounds.right<0 || bounds.left>width)continue;
       if (block.tagName==='P') {
@@ -406,9 +407,11 @@ export function installSpaceOverlay(editor, paper, { selectionFocus = null } = {
       marksOverlay.append(mark);
     };
     for (const heading of editor.view.dom.querySelectorAll('h1,h2,h3')) {
+      if(page.dataset.projectFolding==='true'&&getComputedStyle(heading).visibility==='hidden')continue;
       label('H'+heading.tagName[1],heading);
     }
     for (const item of editor.view.dom.querySelectorAll('li')) {
+      if(page.dataset.projectFolding==='true'&&getComputedStyle(item).visibility==='hidden')continue;
       const list=item.closest('ul,ol');
       if(!list)continue;
       let depth=0;

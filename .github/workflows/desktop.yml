@@ -40,6 +40,17 @@ jobs:
         run: node --test "tests/bib/**/*.test.mjs"
       - name: Install Chromium
         run: npx playwright install --only-shell chromium
+      - name: Project usability and folded includes
+        run: node tests/project-usability-browser.cjs
+      - name: Upload project screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: project-ui-screenshots
+          path: test-results/*.png
+          if-no-files-found: ignore
+      - name: Project rendering parity
+        run: node tests/project-render-parity-browser.cjs
       - name: Project editing boundary regressions
         run: node tests/project-editing-browser.cjs
       - name: Workspace navigation regressions

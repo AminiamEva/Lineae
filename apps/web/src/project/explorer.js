@@ -1,3 +1,4 @@
+import {DEFAULT_DOCUMENT_SOURCE} from '../editor/default-document.mjs';
 import {updateMovedReferences,removeDirectoryWithNotice} from './mutation-presentation.js';
 import {newProjectIntent,seedNewProject} from './opening.js';
 import {createProjectSidebar} from './sidebar.js';
@@ -151,7 +152,7 @@ export function installProjectExplorer({footer, filePanel, sessions}) {
       const target=projectPath(value,base);
       if(!folder&&!target.endsWith('.tex'))throw new Error(t('文件名需要 .tex 扩展名','Use a .tex filename'));
       if(folder){await project.mkdir(target);expanded.add(target);}
-      else{const file=await project.create(target,'');capture();project.activate(file.id);expanded.add(parentPath(file.path));show(file);}
+      else{const file=await project.create(target,DEFAULT_DOCUMENT_SOURCE);capture();project.activate(file.id);expanded.add(parentPath(file.path));show(file);sessions.focusNewFile?.(file);}
     }});
   }
   const createFile=(base='')=>createEntry(base,false);
@@ -219,7 +220,33 @@ export function installProjectExplorer({footer, filePanel, sessions}) {
   const emptyState=document.createElement('div');emptyState.className='project-empty';
   button(emptyState,['新建/打开工程','New/Open project'],()=>open(true),'project-new-empty');
   function showContextMenu(event) {
-    if(!project || event.target.closest?.('button:not(.project-file)'))return;
+    event.preventDefault();
+    if(!project)return;
+    const referenceRow=event.target.closest?.('[data-include-index]');
+    if(referenceRow){
+      closeContextMenu();
+      const addItem=(labels,selector)=>{const button=referenceRow.querySelector(selector);if(button&&!button.disabled)contextAction(labels,()=>button.click());};
+      addItem(['打开引用文件','Open included file'],'.include-file');
+      addItem(['折叠/展开引用内容','Collapse/expand included content'],'[data-include-fold]');
+      contextSeparator();
+      addItem(['前移引用','Move reference earlier'],'[data-include-action=up]');
+      addItem(['后移引用','Move reference later'],'[data-include-action=down]');
+      addItem(['移除引用（保留文件）','Remove reference (keep file)'],'[data-include-action=remove]');
+      menu.position(event);return;
+    }
+    const sidebar=event.target.closest?.('.sidebar-section');
+    if(sidebar&&sidebar.id!=='sidebar-files'){
+      closeContextMenu();
+      const heading=event.target.closest?.('[data-heading-position],.outline-file');
+      if(heading)contextAction(['跳转到此处','Go to this location'],()=>heading.click());
+      if(sidebar.id==='sidebar-includes'){
+        contextAction(['添加文件引用','Add file reference'],()=>includes.show());
+        contextAction(['展开全部引用内容','Expand all included content'],()=>document.dispatchEvent(new Event('lineae-expand-project-files')));
+      }
+      if(sidebar.id==='sidebar-citations')contextAction(['管理参考文献','Manage references'],sessions.citations);
+      contextAction(['折叠面板','Collapse panel'],()=>{sidebar.open=false;});
+      menu.position(event);return;
+    }
     const fileNode=event.target.closest?.('.project-file');
     const directoryNode=fileNode?null:event.target.closest?.('summary[data-path]');
     const file=fileNode?project.file(fileNode.dataset.fileId):null;
@@ -232,8 +259,8 @@ export function installProjectExplorer({footer, filePanel, sessions}) {
     }
     menu.position(event);
   }
-  tree.addEventListener('contextmenu',showContextMenu);
-  tree.addEventListener('keydown',event=>{if(event.key==='ContextMenu' || (event.shiftKey && event.key==='F10'))showContextMenu(event);});
+  panel.addEventListener('contextmenu',showContextMenu);
+  panel.addEventListener('keydown',event=>{if(event.key==='ContextMenu' || (event.shiftKey && event.key==='F10'))showContextMenu(event);});
   function render() {
     sidebar.render();
     panel.dataset.state=project?'open':'empty';newProjectButton.hidden=Boolean(project);

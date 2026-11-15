@@ -1,3 +1,4 @@
+import {icon} from '../editor/icons.js';
 import {t} from './i18n.mjs';
 
 export function installFloatingToolbar({header,ribbon,sourceView,getAutoHide}) {
@@ -6,7 +7,8 @@ export function installFloatingToolbar({header,ribbon,sourceView,getAutoHide}) {
   const button = document.createElement('button');
   button.id = 'toolbar-collapse';
   button.type = 'button';
-  button.textContent = 'v';
+  button.append(icon('chevronDown'));
+  button.dataset.icon='chevron-down';
   holder.append(ribbon,button);
   header.append(holder);
 

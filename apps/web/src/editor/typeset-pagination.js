@@ -1,3 +1,4 @@
+import {documentLayoutBlocks} from '../project/fold-layout.mjs';
 import { planPagination, planTableRows, typesetProfile } from '../../latex/typeset-layout.mjs';
 import { Plugin, PluginKey } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
@@ -251,6 +252,7 @@ export function installTypesetPagination(page, paper, meta, editor) {
   function layout() {
     frame = 0;
     if (page.hidden || !editable.isConnected) return;
+    window.dispatchEvent(new Event('lineae-before-layout'));
     const emptyMeta = !meta.textContent.trim();
     meta.dataset.empty = String(emptyMeta);
     page.dataset.pagination = mode;
@@ -264,6 +266,21 @@ export function installTypesetPagination(page, paper, meta, editor) {
     clearHeaderClones();
     renderSheets(1);
 
+    const {elements:children,selectors:blockSelectors}=documentLayoutBlocks(editable);
+    const baseRules=[];
+    children.forEach((element,index)=>{
+      if(!element.closest('[data-project-region]'))return;
+      const selector='.document-page .ProseMirror>'+blockSelectors[index].replace('>','[data-project-region]>');
+      const previous=children[index-1]?.tagName??'';
+      if(/^H[1-3]$/.test(element.tagName)){
+        const following=(previous==='H1'&&element.tagName==='H2')||(previous==='H2'&&element.tagName==='H3');
+        baseRules.push(selector+'{margin-top:'+(index===0||following?'0':element.tagName==='H1'?'3.5ex':'3.25ex')+';'+(element.tagName==='H1'?'position:relative;top:'+(index===0?'-3.75pt':'0')+';':'')+'}');
+        if(element.tagName==='H1'&&children[index+1]?.tagName==='H2')baseRules.push(selector+'{margin-bottom:4.15pt}');
+      }
+      if(element.tagName==='P'&&element.dataset.indent==='true'&&element.dataset.explicitIndent!=='true'&&/^H[1-3]$/.test(previous))baseRules.push(selector+'[data-indent=true]{text-indent:'+(page.dataset.indentFirst==='true'?'var(--tex-paragraph-indent)':'0')+'}');
+      if(index===0&&element.matches('.math-display'))baseRules.push(selector+'{margin-top:0}');
+    });
+    paginationStyle.textContent=baseRules.join('\n');
     const pageRect = page.getBoundingClientRect();
     const zoom = pageRect.width / page.offsetWidth || 1;
     const computed = getComputedStyle(page);
@@ -272,7 +289,6 @@ export function installTypesetPagination(page, paper, meta, editor) {
     const marginTop = parseFloat(computed.paddingTop);
     const marginBottom = parseFloat(computed.paddingBottom);
     const geometry = { pageHeight, pageGap, marginTop, marginBottom };
-    const children = [...editable.children];
     const blocks = children.map((element, index) => {
       const rect = unscaledRect(element, pageRect, zoom);
       const block = {
@@ -356,12 +372,12 @@ export function installTypesetPagination(page, paper, meta, editor) {
       }
     }
     setLineBreaks(pageBreaks);
-    const rules = translations.map((distance, index) => distance > .01
-      ? `.document-page .ProseMirror > :nth-child(${index + 1}){translate:0 ${distance.toFixed(3)}px}`
-      : '').filter(Boolean);
+    const rules = baseRules.concat(translations.map((distance, index) => distance > .01
+      ? `.document-page .ProseMirror > ${blockSelectors[index]}{translate:0 ${distance.toFixed(3)}px}`
+      : '').filter(Boolean));
     for (const [index, tablePlan] of tablePlans) {
       for (const entry of tablePlan.breaks) {
-        rules.push(`.document-page .ProseMirror > :nth-child(${index + 1}) > table > tbody > tr:nth-child(${entry.row + 1}) > :is(td,th){padding-top:${entry.padding.toFixed(3)}px}`);
+        rules.push(`.document-page .ProseMirror > ${blockSelectors[index]} > table > tbody > tr:nth-child(${entry.row + 1}) > :is(td,th){padding-top:${entry.padding.toFixed(3)}px}`);
       }
     }
     paginationStyle.textContent = rules.join('\n');

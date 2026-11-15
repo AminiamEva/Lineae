@@ -30,7 +30,7 @@ export function composeProject(project, rootId) {
     const append = end => {
       const region = regionFor(source,position,end,file,String(result.regions.length));
       result.regions.push(region);
-      result.content.push({type:'projectRegion',attrs:{regionKey:region.key,path:file.path},content:region.doc.content});
+      result.content.push({type:'projectRegion',attrs:{regionKey:region.key,path:file.path,trail:[...ancestry].map(parent=>project.file(parent).path)},content:region.doc.content});
     };
     const nextAncestry = new Set(ancestry).add(id);
     for (const reference of includeEdges(source)) {
@@ -55,7 +55,7 @@ export function projectDocumentEdits(composition, doc) {
     const node = doc.content[index];
     if (node.type !== 'projectRegion' || node.attrs?.regionKey !== region.key) return null;
     const changes = richSourceChanges(region.projection,{type:'doc',content:node.content ?? []});
-    if (!changes) return null;
+    if(!changes)return null;
     const owned = changesByFile.get(region.id) ?? [];
     owned.push(...changes.map(change => ({...change,from:region.from + change.from,to:region.from + change.to})));
     changesByFile.set(region.id,owned);

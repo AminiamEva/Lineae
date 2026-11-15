@@ -12,13 +12,14 @@ export function createCompositionController(port){
     if(composed.issues.length){port.report(composed.issues.join('; '));return;}
     if(composed.regions.length>1)port.present(composed);
   }
-  function edit(transform){
+  function edit(transform,ownerId){
     if(!editable())return false;
-    const before=port.read(),after=transform(before);
-    if(after===before)return false;
     const project=model();
-    project.edit(project.activeFileId,after);
-    port.replace(before,after,show);
+    const owner=ownerId??project.activeFileId;
+    const before=owner===project.activeFileId?port.read():project.file(owner).draft,after=transform(before);
+    if(after===before)return false;
+    project.edit(owner,after);
+    port.replace(before,after,show,owner);
     port.explorer().changed();
     return true;
   }

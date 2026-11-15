@@ -2,6 +2,11 @@ import { t } from '../ui/i18n.mjs';
 
 // A single stroke-based icon family shared by toolbar and contextual actions.
 const paths = {
+  drag:'M8 5h.01M16 5h.01M8 12h.01M16 12h.01M8 19h.01M16 19h.01',
+  chevronUp:'M6 15l6-6 6 6',
+  chevronDown:'M6 9l6 6 6-6',
+  settings:'M12 2v4M12 18v4M2 12h4M18 12h4M4.9 4.9l2.8 2.8M16.3 16.3l2.8 2.8M4.9 19.1l2.8-2.8M16.3 7.7l2.8-2.8 M12 6a6 6 0 1 0 0 12 6 6 0 0 0 0-12 M12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6',
+
   sourceFile:'M5 3h9l5 5v13H5z M14 3v6h5 M8 13h8 M8 16h5',
   sourceFind:'M16 16l5 5 M18 10a8 8 0 1 1-16 0 8 8 0 0 1 16 0',
   sourceExpand:'M4 9V4h5 M15 4h5v5 M20 15v5h-5 M9 20H4v-5',

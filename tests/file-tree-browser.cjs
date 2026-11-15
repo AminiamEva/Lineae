@@ -172,10 +172,12 @@ async function clickOpenProject(page) {
     await check('delete confirmation, in-flight typing retention, and normal active-file deletion',async()=>{
       await treeMenu(page.locator('.project-tree'),/^(新建文件|New file)$/);
       await createTreeEntry(page,"delete-test.tex");
+      const createdTemplate=await fs.readFile(local('delete-test.tex'),'utf8');
+      assert.match(createdTemplate,/documentclass/);assert.match(createdTemplate,/margin=2\.2cm/);
       await page.locator('[data-path="delete-test.tex"]').click();
       await code.click();await page.keyboard.insertText('draft to delete');
       page.once('dialog',dialog=>dialog.dismiss());await treeMenu(page.locator('.project-file[aria-current=true]'),/^(删除|Delete)$/);
-      assert.equal(await fs.readFile(local('delete-test.tex'),'utf8'),'');
+      assert.equal(await fs.readFile(local('delete-test.tex'),'utf8'),createdTemplate,'Canceling deletion leaves the initial template bytes untouched');
       gateOperation='remove';gate=new Promise(done=>release=done);
       const started=new Promise(done=>entered=done);
       page.once('dialog',dialog=>dialog.accept());await treeMenu(page.locator('.project-file[aria-current=true]'),/^(删除|Delete)$/);await started;
