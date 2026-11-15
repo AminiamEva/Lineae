@@ -1168,6 +1168,7 @@ function load(text, markSaved = true) {
 }
 let returnedDraft;
 function setSourceMode(active) {
+  document.body.dataset.sourceDebug=JSON.stringify({active,hidden:sourceView.hidden,richComposing:editor.view.composing,sourceComposing:sourceView.composing});
   if (!active && projectFileKind==='bib') {sourceView.error(t('BibTeX 文件只能使用源码模式','BibTeX files use Source mode'));return;}
   if (editor.view.composing || sourceView.composing) { sourceView.error(t("请先完成当前输入。","Finish the current composition before switching modes.")); return; }
   if (active === !sourceView.hidden) return;

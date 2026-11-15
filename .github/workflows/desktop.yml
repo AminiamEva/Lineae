@@ -42,10 +42,10 @@ jobs:
         run: npx playwright install --only-shell chromium
       - name: Continuous project Document regressions
         run: node tests/project-composition-browser.cjs
-      - name: Browser regressions
-        run: node tests/editor.cjs
       - name: Project workspace regressions
         run: node tests/project-browser.cjs
+      - name: Browser regressions
+        run: node tests/editor.cjs
       - name: File tree interaction regressions
         run: node tests/file-tree-browser.cjs
       - name: Project session regressions

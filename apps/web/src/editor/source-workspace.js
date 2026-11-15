@@ -391,6 +391,7 @@ export function createSourceWorkspace({ page, render, metadata, onChange = () =>
     },
     get value() { return value(); },
     open(text) {
+      panel.dataset.sourceTrace='open '+new Error().stack;
       if (lifecycle.signal.aborted) return;
       pageState ??= {hidden:page.getAttribute('hidden'), inert:page.inert};
       panel.hidden = false;
@@ -403,6 +404,7 @@ export function createSourceWorkspace({ page, render, metadata, onChange = () =>
       view.scrollDOM.scrollTo(scrollLeft, scrollTop);
     },
     close() {
+      panel.dataset.sourceTrace='close '+new Error().stack;
       if (panel.hidden || lifecycle.signal.aborted) return;
       clearTimeout(timer);
       scrollTop = view.scrollDOM.scrollTop;
