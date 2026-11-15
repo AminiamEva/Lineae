@@ -32,7 +32,7 @@ const server=createServer(async(req,res)=>{
   await child.click();await page.keyboard.press('End');await page.keyboard.insertText(' EDIT');
   await page.keyboard.press('Control+z');assert.equal(await child.textContent(),'B child.');
   await page.keyboard.press('Control+y');assert.match(await child.textContent(),/EDIT/);
-  await page.locator('#project-save').click();
+  await page.keyboard.press('Control+s');
   await page.waitForFunction(()=>document.querySelector('#project-explorer [role=status]')?.textContent.includes('Saved'));
   const disk=await page.evaluate(async()=>{
    const get=async name=>(await (await folder.getFileHandle(name)).getFile()).text();
