@@ -320,7 +320,7 @@ export function installProjectExplorer({footer, filePanel, sessions}) {
 
         } else {
           const node = button(parent, '', () => activate(child.fileId));
-          node.draggable=child.kind==='tex';
+          node.draggable=project.file(child.fileId).kind==='tex';
           node.addEventListener('dragstart',event=>{event.dataTransfer.setData('application/x-lineae-file',child.fileId);event.dataTransfer.effectAllowed='copy';});
           node.dataset.path = child.path;node.dataset.fileId=child.fileId;node.className='project-file';node.setAttribute('aria-haspopup','menu');
           node.dataset.focusKey='file:'+child.fileId;fileButtons.set(child.fileId,node);

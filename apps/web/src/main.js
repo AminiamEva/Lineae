@@ -953,6 +953,16 @@ editor.on('update', () => {
   if(projectComposition){
     const updates=projectDocumentEdits(projectComposition,editor.getJSON());
     if(updates){
+      const rootId=projectComposition.rootId;
+      const original=projectComposition.sources.get(rootId);
+      const oldPreamble=parseDocument(original,{fragment:true})?.start??'';
+      const preamble=editor.state.doc.attrs.layoutPreamble;
+      if(typeof preamble==='string' && preamble!==oldPreamble){
+        updates.set(rootId,preamble+updates.get(rootId).slice(oldPreamble.length));
+      }
+      if(typeof preamble==='string' && preamble!==documentParts.start){
+        documentParts.start=preamble;pageSetup=readPageSetup(preamble);applyPageSetup();
+      }
       for(const [id,text] of updates)projectExplorer.model.edit(id,text);
       const text=updates.get(projectComposition.rootId);
       if(text!==undefined)sourceView.reset(text);
@@ -1963,6 +1973,12 @@ function showProjectComposition() {
   syncApplying=true;
   try{
     editor.chain().setMeta('addToHistory',false).setContent({type:'doc',attrs:editor.state.doc.attrs,content:composed.content}).run();
+    const hydrated=editor.getJSON().content;
+    composed.regions.forEach((region,index)=>{
+      region.doc={type:'doc',content:hydrated[index].content};
+      const text=composed.sources.get(region.id).slice(region.from,region.to);
+      region.projection=sourceProjection(text,region.doc,{fragment:true});
+    });
     projectComposition=composed;
     refreshReferences(paper);documentOutline.relocalize();
 
