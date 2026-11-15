@@ -120,7 +120,8 @@ export function installProjectExplorer({footer, filePanel, sessions}) {
     if(sessions.prepareSave && !sessions.prepareSave())return;
     capture();
     const file = project.file(project.activeFileId);
-    for(const dirtyFile of project.files.values())if(dirtyFile.dirty)await project.save(dirtyFile.id);
+    const saveIds=sessions.saveFileIds?.()??[file.id];
+    for(const id of saveIds)if(project.file(id).dirty)await project.save(id);
     capture();
     sessions.saved(file.saved); message.textContent = t('已保存','Saved'); render();
   }

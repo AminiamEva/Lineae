@@ -2071,6 +2071,7 @@ documentOutline.panel.addEventListener('lineae-move-include',event=>{
 let standaloneSession;
 projectExplorer = installProjectExplorer({footer, filePanel:document.querySelector('header .tools'), sessions:{
   prepareSave:prepareExplicitSave,
+  saveFileIds:()=>projectComposition?[...new Set(projectComposition.regions.map(region=>region.id))]:null,
   includeFile:appendInclude,
   ensureIdle() { if (editor.view.composing || sourceView.composing) throw new Error(t('请先完成当前输入','Finish composition first')); },
   text:() => sourceView.hidden ? source() : sourceView.value,
