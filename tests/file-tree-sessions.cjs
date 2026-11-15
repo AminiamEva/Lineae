@@ -104,8 +104,8 @@ async function openProject(page) {
     await page.waitForFunction(() => document.querySelector('#project-explorer [role="status"]').textContent.includes('Saved'));
     await page.waitForFunction(() => document.querySelector('.tex-preview .ProseMirror').textContent.includes('Saved source edit'), null, {timeout:3000});
     passed++; console.log('PASS: saving before the pending preview render preserves source-to-Split synchronization');
-    await page.locator('.tex-preview .ProseMirror').click();
-    await page.keyboard.press('Control+End'); await page.keyboard.insertText(' Main rich draft');
+    assert.equal(await page.locator('.tex-preview .ProseMirror').evaluate(node=>!!node.closest('[inert]')),true,'Split remains read only');
+    await page.locator('.tex-preview .ProseMirror').evaluate(node=>{const editor=node.editor;editor.commands.insertContentAt(editor.state.doc.content.size-1,' Main rich draft');});
     await page.waitForFunction(() => document.querySelector('.cm-content').textContent.includes('Main rich draft'));
     await page.evaluate(() => { window.originalCodeMirrorNode = document.querySelector('.cm-editor'); });
     await page.locator('[data-path="child.tex"]').click();
@@ -115,7 +115,7 @@ async function openProject(page) {
     assert.equal(await page.locator('[data-source-mode="split"]').getAttribute('aria-pressed'), 'true');
     assert.match(await code.innerText(), /Main rich draft/);
     assert.doesNotMatch(await code.innerText(), /Child own draft/);
-    await page.locator('.tex-preview .ProseMirror').focus(); await page.keyboard.press('Control+z');
+    await code.focus(); await page.keyboard.press('Control+z');
     assert.doesNotMatch(await code.innerText(), /Main rich draft/, 'Split undo applies only to the active file');
     await page.locator('[data-path="child.tex"]').click();
     assert.match(await code.innerText(), /Child own draft/);
