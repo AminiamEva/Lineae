@@ -136,6 +136,8 @@ async function clickOpenProject(page) {
     await page.locator('.ProseMirror').click();await page.keyboard.press('Control+End');await page.keyboard.insertText(' Rich edit');
     await page.locator('[data-source-mode="source"]').click();
     await page.waitForFunction(() => document.querySelector('.cm-content').textContent.includes('Rich edit'));
+    await page.locator('[data-source-mode=source]').click();
+    await page.waitForFunction(()=>!document.querySelector('.tex-workspace').hidden);
     await code.click(); await page.keyboard.press('Control+End'); await page.keyboard.insertText('Child draft');
     await page.locator('[data-path="main.tex"]').click();
     assert.match(await code.innerText(), /草稿/);
