@@ -43,13 +43,17 @@ module.exports=async function checkV2(context,url) {
     equal(await page.locator('.tex-zoom-label').innerText(),'11px','lower bound');
     await page.keyboard.press('Control+0');equal(await copy(),sample,'zoom never edits source');
     await page.locator('[data-source-mode=split]').click();
-    equal(await page.locator('.tex-preview .ProseMirror').isEditable(),true,'existing rich editor is editable');
+    equal(await page.locator('.tex-preview .ProseMirror').evaluate(node=>!!node.closest('[inert]')),true,'Split preview blocks user editing');
     equal(await page.locator('.tex-divider').getAttribute('aria-valuenow'),'50','initial equal split');
     await page.locator('.tex-divider').press('ArrowRight');equal(await page.locator('.tex-divider').getAttribute('aria-valuenow'),'52','keyboard resize');
     const richParagraph=page.locator('.ProseMirror p').filter({hasText:'Hello world.'});
-    await richParagraph.click();await page.keyboard.press('Home');await page.keyboard.insertText('Edited ');
+    await richParagraph.evaluate(node=>{
+      const editor=node.closest('.ProseMirror').editor;let at;
+      editor.state.doc.descendants((child,pos)=>{if(child.isTextblock && child.textContent==='Hello world.')at=pos+1;});
+      editor.commands.insertContentAt(at,'Edited ');
+    });
     equal(await copy(),sample.replace('Hello world.','Edited Hello world.'),'rich edit patches only exact source span');
-    await richParagraph.click();await page.keyboard.press('Control+z');
+    await content.focus();await page.keyboard.press('Control+z');
     await page.waitForFunction(()=>document.querySelector('.ProseMirror').textContent.includes('Hello world.')&&!document.querySelector('.ProseMirror').textContent.includes('Edited'));
     equal(await copy(),sample,'rich undo uses shared byte-faithful source history');
     await content.focus();await page.keyboard.press('Control+y');await page.waitForTimeout(350);
@@ -114,7 +118,11 @@ module.exports=async function checkV2(context,url) {
     // Restore original imported source before a real ZIP check.
     await page.locator('input[type=file]').setInputFiles({name:'v2.tex',mimeType:'text/plain',buffer:Buffer.from(sample)});
     await page.locator('[data-source-mode=body]').click();await page.locator('[data-source-mode=split]').click();
-    await page.locator('.ProseMirror p').filter({hasText:'Hello world.'}).click();await page.keyboard.press('End');await page.keyboard.insertText(' More.');
+    await page.locator('.ProseMirror p').filter({hasText:'Hello world.'}).evaluate(node=>{
+      const editor=node.closest('.ProseMirror').editor;let at;
+      editor.state.doc.descendants((child,pos)=>{if(child.isTextblock && child.textContent==='Hello world.')at=pos+1+child.content.size;});
+      editor.commands.insertContentAt(at,' More.');
+    });
     const expected=sample.replace('Hello world.','Hello world. More.');
     await page.locator('[data-group=files]').click();const downloading=page.waitForEvent('download');await page.locator('#download').click();const zip=await readFile(await (await downloading).path());
     const nameLength=zip.readUInt16LE(26),extraLength=zip.readUInt16LE(28),length=zip.readUInt32LE(18);

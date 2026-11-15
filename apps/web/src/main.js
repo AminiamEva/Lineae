@@ -1965,8 +1965,13 @@ function showProjectComposition() {
     editor.chain().setMeta('addToHistory',false).setContent({type:'doc',attrs:editor.state.doc.attrs,content:composed.content}).run();
     projectComposition=composed;
     refreshReferences(paper);documentOutline.relocalize();
+
+  }finally{syncApplying=false;}
+}
+documentOutline.panel.addEventListener('lineae-outline-render',()=>{
+ if(!projectComposition)return;
     const list=documentOutline.panel.querySelector('.document-outline-list');
-    const edges=scanDependencies(model.file(model.activeFileId).draft).dependencies.filter(d=>['input','include'].includes(d.command)&&d.status==='literal');
+    const edges=scanDependencies(projectExplorer.model.file(projectExplorer.model.activeFileId).draft).dependencies.filter(d=>['input','include'].includes(d.command)&&d.status==='literal');
     const management=document.createElement('div');management.className='include-management';
     edges.forEach((edge,index)=>{
       const row=document.createElement('div');row.textContent=edge.command+' · '+edge.path+' ';
@@ -1979,8 +1984,7 @@ function showProjectComposition() {
       management.append(row);
     });
     list?.prepend(management);
-  }finally{syncApplying=false;}
-}
+});
 function editIncludeSource(transform){
   if(!projectExplorer?.active || projectFileKind!=='tex')return;
   if(editor.view.composing || sourceView.composing)return;

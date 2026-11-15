@@ -308,6 +308,7 @@ export function installDocumentOutline(editor) {
       control.setAttribute('aria-current',String(item===current));
       control.addEventListener('click',()=>navigateTo(editor,item));list.append(control);
     }
+    panel.dispatchEvent(new Event('lineae-outline-render'));
     if(focused)list.querySelector(`[data-heading-position="${focused}"]`)?.focus({preventScroll:true});
   }
   function relocalize() {
