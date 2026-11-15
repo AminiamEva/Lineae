@@ -4,7 +4,7 @@ export function installFloatingToolbar({header,ribbon,sourceView,getAutoHide}){
   const button=document.createElement('button');button.type='button';button.id='toolbar-collapse';
   holder.append(ribbon,button);header.append(holder);
   let hidden=false,timer,sourceActive=!sourceView.hidden;
-  function measure(){document.documentElement.style.setProperty('--tex-toolbar-bottom',sourceView.hidden?Math.ceil(header.getBoundingClientRect().bottom)+'px':'0px');}
+  function measure(){document.documentElement.style.setProperty('--tex-toolbar-bottom',(Math.ceil(holder.getBoundingClientRect().bottom)+6)+'px');}
   function setHidden(value){
     hidden=Boolean(value);holder.classList.toggle('is-hidden',hidden);
     for(const group of ribbon.querySelectorAll(':scope > .tools'))group.inert=hidden;
