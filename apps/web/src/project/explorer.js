@@ -1,7 +1,6 @@
 import {Project, DirectoryHandleAdapter} from './project.mjs';
 import {localize, t} from '../ui/i18n.mjs';
-
-const initialProjectSource = '\\documentclass{article}\n\n\\begin{document}\n\n\\end{document}\n';
+import {DEFAULT_DOCUMENT_SOURCE} from '../editor/default-document.mjs';
 
 export function installProjectExplorer({footer, filePanel, sessions}) {
   let project = null, busy = false, switching = false, treeSignature = '';
@@ -66,23 +65,21 @@ export function installProjectExplorer({footer, filePanel, sessions}) {
     show(file);
     render();
   }
-  async function open(createNew = false) {
+  async function open(newOrOpen = false) {
     sessions.ensureIdle();
     if (!approveClose()) return;
     const previous = project;
     const before = previous && new Map([...previous.files.values()].map(file=>[file.id,file.draft]));
     const standaloneBefore = !previous && sessions.text();
-    if (!project && !sessions.approveOpen(createNew)) return;
+    if (!project && !sessions.approveOpen(newOrOpen)) return;
     if (!window.lineaeProject && !window.showDirectoryPicker) throw new Error(t('当前环境不支持目录读写，请使用桌面应用或支持 File System Access 的浏览器。','This browser cannot write to a directory. Use the desktop app or a browser with File System Access.'));
     const adapter = window.lineaeProject ? await window.lineaeProject.open() : new DirectoryHandleAdapter(await window.showDirectoryPicker({mode:'readwrite'}));
-    const rejectNonEmpty=()=>{throw new Error(t('请选择空目录新建工程；已有目录请使用“打开工程”。','Choose an empty folder for a new project; use Open project for an existing folder.'));};
-    if(createNew && (await adapter.list()).length)rejectNonEmpty();
+    const selectedEntries=newOrOpen?await adapter.list():null;
+    let createNew=Boolean(newOrOpen && !selectedEntries.length);
     const next = await new Project(adapter).open();
+    if(createNew && (next.diskRecovery.length || next.recoveryVersions.length || next.diskRecoveryError))createNew=false;
     if(createNew){
-      if(next.files.size || next.directories.length || next.diskRecovery.length || next.recoveryVersions.length || next.diskRecoveryError) {
-        rejectNonEmpty();
-      }
-      const main=await next.create('main.tex',initialProjectSource);
+      const main=await next.create('main.tex',DEFAULT_DOCUMENT_SOURCE);
       next.setMain(main.id);next.activate(main.id);
     }
     let recoveryNotice='';
@@ -108,7 +105,7 @@ export function installProjectExplorer({footer, filePanel, sessions}) {
     if (previous) {
       capture();
       if ([...previous.files.values()].some(file=>before.get(file.id)!==file.draft) && !approveClose()) return;
-    } else if (sessions.text()!==standaloneBefore && !sessions.approveOpen(createNew)) return;
+    } else if (sessions.text()!==standaloneBefore && !sessions.approveOpen(newOrOpen)) return;
     sessions.ensureIdle();
     sessions.begin();
     project = next; expanded.clear(); title.textContent = adapter.name ?? adapter.handle?.name ?? t('工程','Project');
@@ -122,7 +119,7 @@ export function installProjectExplorer({footer, filePanel, sessions}) {
     if(sessions.prepareSave && !sessions.prepareSave())return;
     capture();
     const file = project.file(project.activeFileId);
-    await project.save(file.id);
+    for(const dirtyFile of project.files.values())if(dirtyFile.dirty)await project.save(dirtyFile.id);
     capture();
     sessions.saved(file.saved); message.textContent = t('已保存','Saved'); render();
   }
@@ -229,20 +226,11 @@ export function installProjectExplorer({footer, filePanel, sessions}) {
     project.setMain(id);message.textContent=t('已设置主文档','Main document updated');render();
   }
   button(filePanel ?? footer,['打开工程','Open project'],()=>open(false),'project-open');
-  const newProjectButton=button(filePanel ?? footer,['新建工程','New project'],()=>open(true),'project-new');
+  const newProjectButton=button(filePanel ?? footer,['新建/打开工程','New/Open project'],()=>open(true),'project-new');
   button(actions,['保存','Save'],save,'project-save');
   button(actions,['关闭工程','Close project'],close,'project-close');
-  button(actions,['主文档','Main document'],async()=>{
-    const path=prompt(t('主文档路径','Main document'),project.file(project.mainFileId).path);
-    if(path){const file=project.files.get(path);if(!file)throw new Error(t('文件不存在','File not found'));setMainFile(file.id);}
-  },'project-main');
-  button(actions,['重新加载','Reload'],()=>reloadFile(project.activeFileId),'project-reload');
-  button(actions,['刷新文件树','Refresh tree'],refreshTree,'project-refresh');
-  button(actions,['新建文件','New file'],()=>createFile(),'project-create');
-  button(actions,['新建目录','New folder'],()=>createDirectory(),'project-mkdir');
-  button(actions,['删除当前文件','Delete file'],()=>deleteFile(project.activeFileId),'project-delete');
   const emptyState=document.createElement('div');emptyState.className='project-empty';
-  button(emptyState,['新建工程','New project'],()=>open(true),'project-new-empty');
+  button(emptyState,['新建/打开工程','New/Open project'],()=>open(true),'project-new-empty');
   function closeContextMenu() { contextMenu.hidden=true;contextMenu.replaceChildren();delete contextMenu.dataset.path; }
   function contextAction(label,action) {
     const [zh,en]=label;
@@ -266,6 +254,7 @@ export function installProjectExplorer({footer, filePanel, sessions}) {
     contextAction(['新建目录','New folder'],()=>createDirectory(base));
     if(file){
       contextSeparator();
+      if(file.kind==='tex' && file.id!==project.activeFileId)contextAction(['追加到当前文档','Append to current document'],()=>sessions.includeFile(file.id));
       if(file.kind==='tex' && file.id!==project.mainFileId)contextAction(['设为主文档','Set as main document'],()=>setMainFile(file.id));
       if(file.draft!==null)contextAction(['重新加载','Reload'],()=>reloadFile(file.id));
       if(project.adapter.move){
@@ -328,16 +317,15 @@ export function installProjectExplorer({footer, filePanel, sessions}) {
           summary.title=child.path;summary.setAttribute('aria-haspopup','menu');summary.dataset.path=child.path;summary.dataset.focusKey='directory:'+child.path;
           details.ontoggle = () => {if(details.isConnected) details.open ? expanded.add(child.path) : expanded.delete(child.path);};
           details.append(summary); parent.append(details); append(child, details);
-          if(project.adapter.move){button(details,['重命名目录','Rename folder'],()=>relocate(child.path,false));button(details,['移动目录','Move folder'],()=>relocate(child.path,true));}
+
         } else {
           const node = button(parent, '', () => activate(child.fileId));
+          node.draggable=project.file(child.fileId).kind==='tex';
+          node.addEventListener('dragstart',event=>{event.dataTransfer.setData('application/x-lineae-file',child.fileId);event.dataTransfer.effectAllowed='copy';});
           node.dataset.path = child.path;node.dataset.fileId=child.fileId;node.className='project-file';node.setAttribute('aria-haspopup','menu');
           node.dataset.focusKey='file:'+child.fileId;fileButtons.set(child.fileId,node);
           node.title = child.path;
-          if(project.adapter.move){
-            button(parent,[`重命名 ${child.name}`,`Rename ${child.name}`],()=>relocate(child.path,false));
-            button(parent,[`移动 ${child.name}`,`Move ${child.name}`],()=>relocate(child.path,true));
-          }
+
         }
       }
     }
@@ -359,7 +347,7 @@ export function installProjectExplorer({footer, filePanel, sessions}) {
     if (dirty()) { event.preventDefault(); event.returnValue = ''; }
   });
   render();
-  return {get active() { return !!project; }, save:() => run(save),
+  return {get model(){return project;},get active() { return !!project; }, save:() => run(save),
     close() {
       if (busy) { sessions.error(t('请等待当前文件操作完成','Wait for the current file operation'));return false; }
       try {return close();}catch(error){sessions.error(error.message);return false;}

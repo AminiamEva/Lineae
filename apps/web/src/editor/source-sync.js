@@ -54,8 +54,9 @@ export function richSourceChanges(projection, doc) {
 
 function patchBlock(block,nodes) {
     if (nodes.some(node => node.type === 'raw')) return null;
-    const leading = block.raw.match(/^\s*/)[0];
-    const trailing = block.raw.slice(leading.length).match(/\s*$/)[0];
+    const whitespaceOnly=!block.raw.trim();
+    const leading = whitespaceOnly?'':block.raw.match(/^\s*/)[0];
+    const trailing = whitespaceOnly?block.raw:block.raw.slice(leading.length).match(/\s*$/)[0];
     const body = nodes.map(serialize).join('').trim();
     // Prove the new block also round-trips through the existing importer.
     const parsed = parseDocument('\\begin{document}\n' + body + '\n\\end{document}\n');

@@ -69,7 +69,7 @@ module.exports = async (context,url) => {
     equal(await left.innerText(),'11px','lower bound');
     await wheel('.cm-content',120);equal(await left.innerText(),'11px','wheel lower clamp');
     await left.click();
-    await page.locator('.tex-preview .ProseMirror').focus();await page.keyboard.press('Control+=');
+    await page.locator('.tex-preview').focus();await page.keyboard.press('Control+=');
     equal(await sizes(),['16px','18px'],'rich keyboard independent');
     await page.keyboard.press('Control+0');equal(await right.innerText(),'16px','rich keyboard reset');
     for(let n=0;n<20;n++)await page.keyboard.press('Control+=');

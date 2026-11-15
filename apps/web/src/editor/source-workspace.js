@@ -245,7 +245,7 @@ export function createSourceWorkspace({ page, render, metadata, onChange = () =>
     if (next) {
       preview.append(page);
       page.hidden = false;
-      page.inert = false;
+      page.inert = true;
 
     } else {
       page.hidden = true;

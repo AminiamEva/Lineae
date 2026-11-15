@@ -86,7 +86,8 @@ body:has(.tex-workspace:not([hidden])) {overflow:hidden}
 .tex-code .cm-editor {font-size:var(--tex-font-size,16px)}
 .tex-code .cm-scroller {font-size:var(--tex-font-size,16px);overscroll-behavior:contain}
 .tex-actions .tex-zoom-label {width:46px;font-size:12px;font-variant-numeric:tabular-nums}
-.tex-workspace .tex-preview .document-page {pointer-events:auto;cursor:text}
+.tex-workspace .tex-preview .document-page {pointer-events:none;cursor:default}
+.tex-workspace .tex-preview .document-page::before {cursor:default}
 .tex-workspace .tex-preview {padding:18px;scrollbar-gutter:stable}
 .tex-actions button:focus-visible {outline:2px solid var(--tex-command);outline-offset:2px}
 .tex-code .cm-tooltip {border:1px solid var(--tex-border);border-radius:8px;background:var(--tex-bar);color:inherit;box-shadow:0 8px 24px #18223b18}

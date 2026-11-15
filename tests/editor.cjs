@@ -1435,7 +1435,7 @@ async function verifySelectionGeometry(page, paper, importSource) {
     await page.locator('[data-source-mode="body"]').click();
     await page.locator('#language').evaluate(element=>{element.value='zh-CN';element.dispatchEvent(new Event('change',{bubbles:true}));});
     assert.equal(await page.locator('#project-open').textContent(),'打开工程');
-    assert.equal(await page.locator('#project-new').textContent(),'新建工程');
+    assert.equal(await page.locator('#project-new').textContent(),'新建/打开工程');
     assert.equal(await page.locator('#project-open').evaluate(button=>button.parentElement===document.querySelector('.ribbon > .tools')),true,
       'Open project is in the File panel');
     assert.equal(await page.locator('footer #project-open').count(),0,'Open project is not in the status bar');
@@ -1453,7 +1453,7 @@ async function verifySelectionGeometry(page, paper, importSource) {
     await page.waitForFunction(()=>document.querySelector('.lineae-tooltip')?.textContent.includes('撤銷'));
     await page.locator('#language').evaluate(element=>{element.value='en';element.dispatchEvent(new Event('change',{bubbles:true}));});
     assert.equal(await page.locator('#project-open').textContent(),'Open project');
-    assert.equal(await page.locator('#project-new').textContent(),'New project');
+    assert.equal(await page.locator('#project-new').textContent(),'New/Open project');
     await page.getByRole('button',{name:'↶',exact:true}).hover();
     await page.waitForFunction(()=>document.querySelector('.lineae-tooltip')?.textContent.includes('Undo'));
     await page.locator('#language').evaluate(element=>{element.value='zh-CN';element.dispatchEvent(new Event('change',{bubbles:true}));});
@@ -2064,6 +2064,11 @@ async function verifySelectionGeometry(page, paper, importSource) {
       return ['--page-width','--page-height','--page-margin-top','--page-margin-right'].map(name=>page.style.getPropertyValue(name));
     });
     assert.deepEqual(pageLayout,['210mm','148mm','1.27cm','1.27cm'],'Layout controls update the page metrics');
+    await page.keyboard.press('Control+z');
+    assert.notEqual(await layoutSelects.nth(2).inputValue(),'narrow','Undo restores the previous margins');
+    await page.keyboard.press('Control+y');
+    assert.equal(await layoutSelects.nth(2).inputValue(),'narrow','Redo restores the margin change');
+
     const pageNumberGap=()=>page.evaluate(()=>{
       const sheet=document.querySelector('.document-sheet');
       const number=document.querySelector('.document-page-number');
