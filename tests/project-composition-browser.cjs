@@ -20,13 +20,17 @@ const server=createServer(async(req,res)=>{
    const root=await navigator.storage.getDirectory();window.folder=await root.getDirectoryHandle('composed',{create:true});
    const put=async(name,text)=>{const h=await folder.getFileHandle(name,{create:true}),w=await h.createWritable();await w.write(text);await w.close();};
    await put('main.tex','\\documentclass{article}\n\\begin{document}\nRoot.\n\n\\input{a}\n\n\\include{b}\n\n\\input{c}\n\\end{document}\n');
-   for(const name of ['a','b','c'])await put(name+'.tex',name.toUpperCase()+' child.\n');
+   for(const name of ['a','b','c','d'])await put(name+'.tex',name.toUpperCase()+' child.\n');
    window.showDirectoryPicker=async()=>folder;
   });
   await page.locator('[data-group=files]').click();await page.locator('#project-open').click();
   await page.waitForFunction(()=>document.querySelector('.tex-filename')?.textContent==='main.tex');
   await page.locator('[data-source-mode=body]').click();
   await page.waitForFunction(()=>document.querySelectorAll('[data-project-region]').length===7);
+  await page.locator('#project-toggle').click();
+  await page.locator('.project-file[data-path="d.tex"]').dragTo(page.locator('[data-file-path="b.tex"]').first());
+  await page.waitForFunction(()=>document.querySelectorAll('[data-project-region]').length===9);
+  assert.deepEqual(await page.locator('[data-file-path]').evaluateAll(nodes=>nodes.filter(n=>['a.tex','b.tex','c.tex','d.tex'].includes(n.dataset.filePath)).map(n=>n.dataset.filePath)),['a.tex','d.tex','b.tex','c.tex']);
   const child=page.locator('[data-file-path="b.tex"] p').first();
   assert.equal(await child.textContent(),'B child.');
   await child.click();await page.keyboard.press('End');await page.keyboard.insertText(' EDIT');

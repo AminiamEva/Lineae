@@ -1,4 +1,4 @@
-import {scanDependencies} from './project/dependencies.mjs';
+import {scanDependencies,dependencyMatchesPath} from './project/dependencies.mjs';
 import {composeProject,projectDocumentEdits} from './project/include-document.mjs';
 import { sourceProjection, richSourceChanges } from './editor/source-sync.js';
 import { installSourceToolbar } from './editor/source-toolbar.js';
@@ -2020,13 +2020,14 @@ function editIncludeSource(transform){
   }
   projectExplorer.changed();
 }
-function appendInclude(id){
+function appendInclude(id,beforePath){
   const model=projectExplorer?.model;if(!model)return;
   const file=model.file(id);
   if(file.kind!=='tex'||id===model.activeFileId || /[\\{}%#]/.test(file.path))return;
   editIncludeSource(text=>{
     const parsed=parseDocument(text,{fragment:true});if(!parsed)return text;
-    const at=text.length-parsed.end.length;
+    const edge=beforePath && scanDependencies(text).dependencies.find(d=>['input','include'].includes(d.command)&&dependencyMatchesPath(d.command,d.path,beforePath));
+    const at=edge?.start??(text.length-parsed.end.length);
     return text.slice(0,at)+'\n\\input{'+file.path+'}\n'+text.slice(at);
   });
 }
@@ -2035,8 +2036,16 @@ documentOutline.panel.addEventListener('dragover',event=>{
 });
 documentOutline.panel.addEventListener('drop',event=>{
   const id=event.dataTransfer.getData('application/x-lineae-file');if(!id)return;
-  event.preventDefault();appendInclude(id);
+  event.preventDefault();appendInclude(id,event.target.closest?.('[data-outline-file]')?.dataset.outlineFile);
 });
+paper.addEventListener('dragover',event=>{
+  if(event.dataTransfer.types.includes('application/x-lineae-file')){event.preventDefault();event.stopImmediatePropagation();}
+},true);
+paper.addEventListener('drop',event=>{
+  const id=event.dataTransfer.getData('application/x-lineae-file');if(!id)return;
+  event.preventDefault();event.stopImmediatePropagation();
+  appendInclude(id,event.target.closest?.('[data-file-path]')?.dataset.filePath);
+},true);
 documentOutline.panel.addEventListener('lineae-move-include',event=>{
   const {index,direction}=event.detail;
   editIncludeSource(text=>{

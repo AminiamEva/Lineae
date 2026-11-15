@@ -296,7 +296,7 @@ export function installDocumentOutline(editor) {
     editor.state.doc.forEach((node,position)=>{
       if(node.type.name!=='projectRegion')return;
       const file=document.createElement('button');file.type='button';file.className='outline-file';
-      file.textContent=node.attrs.path;
+      file.textContent=node.attrs.path;file.dataset.outlineFile=node.attrs.path;
       file.addEventListener('click',()=>{editor.commands.setTextSelection(position+2);editor.commands.scrollIntoView();});
       list.append(file);
     });
