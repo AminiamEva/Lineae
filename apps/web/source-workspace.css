@@ -141,7 +141,7 @@ body:has(.tex-workspace:not([hidden])) {overflow:hidden}
 .document-status .tex-indent-setting{margin-left:auto;}
 .tex-foot[hidden],.tex-rich-actions[hidden]{display:none!important;}
 .source-workspace-visible .document-status>span:first-of-type{display:none;}
-body.toolbar-collapsed .ribbon{display:none;}
+
 #toolbar-collapse{pointer-events:auto;display:grid;place-items:center;width:26px;height:26px;padding:0;border-radius:7px;flex:none;}
 header>#toolbar-collapse{position:absolute;right:4px;top:0;}
 body.source-workspace-visible:not(.project-visible) header h1{display:none;}
@@ -159,3 +159,5 @@ body.toolbar-collapsed .ribbon>.tools{display:none!important;}
 .tex-head .ribbon-tabs button{padding:3px 6px;font-size:11px;}
 .tex-head>.ui-icon{order:0;}
 @media(max-width:700px){.tex-head>.ribbon{order:5;flex-basis:100%;max-width:none}.tex-head>.tex-actions{margin-left:auto}}
+
+body.toolbar-collapsed:not(.source-workspace-visible) main{padding-top:68px}

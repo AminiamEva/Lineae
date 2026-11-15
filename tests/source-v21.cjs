@@ -88,8 +88,8 @@ module.exports = async (context,url) => {
     await margins.selectOption('narrow');
     assert.match(await read(),/1[.]27cm/,'Source layout control writes geometry');
     await content.focus();await page.keyboard.press('Control+z');equal(await read(),source,'Source layout undo preserves original bytes');
-    await page.keyboard.press('Control+y');assert.match(await read(),/1[.]27cm/,'Source layout redo');
-    await page.keyboard.press('Control+z');
+    await content.focus();await page.keyboard.press('Control+y');assert.match(await read(),/1[.]27cm/,'Source layout redo');
+    await content.focus();await page.keyboard.press('Control+z');
     // The native API is substituted only at the I/O boundary. Ctrl+S executes
     // the real production formatter, CodeMirror transaction and save pipeline.
     await page.evaluate(()=>{window.v21Writes=[];window.showSaveFilePicker=async()=>({name:'v21.tex',createWritable:async()=>({write:async text=>window.v21Writes.push(text),close:async()=>{}})});});
