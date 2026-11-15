@@ -20,8 +20,8 @@ export function installSourceToolbar({ribbon, groups, source, rich, heading}) {
       if (name === 'files') continue;
       group.inert = false;
       for (const control of group.querySelectorAll('button,input,select')) {
-        const supported = control === heading || ['↶','↷','Find','查找'].includes(key(control)) || Object.hasOwn(templates,key(control));
-        const preambleControl = name === 'layout' || ['title','author','short','cite'].includes(key(control));
+        const supported = name === 'layout' || control === heading || ['↶','↷','Find','查找'].includes(key(control)) || Object.hasOwn(templates,key(control));
+        const preambleControl = ['title','author','short','cite'].includes(key(control));
         if ((active && !supported) || (!source.hidden && !active && preambleControl)) {
           if (!disabled.has(control)) disabled.set(control,control.disabled);
           control.disabled = true;
@@ -40,7 +40,7 @@ export function installSourceToolbar({ribbon, groups, source, rich, heading}) {
       key(control) === '↶' ? source.undo() : source.redo(); source.flush(); return;
     }
     if (!isSource()) return;
-    if (!control || !ribbon.contains(control) || control.closest('.ribbon-tabs') || control.dataset.group || groups.files.contains(control)) return;
+    if (!control || !ribbon.contains(control) || control.closest('.ribbon-tabs') || control.dataset.group || groups.files.contains(control) || groups.layout.contains(control)) return;
     event.preventDefault(); event.stopImmediatePropagation();
     const action = key(control);
     if (action === '↶') source.undo();
