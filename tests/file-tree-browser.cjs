@@ -83,6 +83,10 @@ async function clickOpenProject(page) {
       assert.equal(await page.evaluate(()=>window.codeDOM===document.querySelector('.cm-editor')),true);
       assert.equal(await sections.evaluate(node=>node.parentElement.open),true);
     });
+    const treeMenu=async(target,name)=>{
+      await target.dispatchEvent('contextmenu',{bubbles:true,clientX:150,clientY:200});
+      await page.locator('#project-context-menu').getByRole('menuitem',{name}).click();
+    };
     await check('reopening same file preserves focused tree button',async()=>{
       const current=page.locator('[data-path="main.tex"]');await current.click();
       assert.equal(await current.evaluate(node=>node===document.activeElement),true);
@@ -92,7 +96,7 @@ async function clickOpenProject(page) {
       await code.click();await page.keyboard.press('Control+End');await page.keyboard.insertText(' before move');
       gate=new Promise(done=>release=done);
       page.once('dialog',dialog=>dialog.accept('chapters/renamed.tex'));
-      await page.getByRole('button',{name:/^(移动 method\.tex|Move method\.tex)$/}).click();
+      await treeMenu(page.locator('[data-path="sections/method.tex"]'),/^(移动|Move)$/);
       await code.click();await page.keyboard.press('Control+End');await page.keyboard.insertText(' during move');
       release();
       await page.waitForFunction(()=>document.querySelector('.tex-filename')?.textContent.includes('chapters/renamed.tex'));
@@ -109,7 +113,7 @@ async function clickOpenProject(page) {
       await code.click();await page.keyboard.press('Control+End');await page.keyboard.insertText(' 中文草稿');
       const directory=page.locator('#project-explorer details').filter({has:page.locator('summary').filter({hasText:/^第一章$/})});
       page.once('dialog',dialog=>dialog.accept('chapters/中文 章节'));
-      await directory.getByRole('button',{name:/^(移动目录|Move folder)$/}).click();
+      await treeMenu(directory.locator('summary').first(),/^(移动目录|Move folder)$/);
       await page.waitForFunction(()=>document.querySelector('.tex-filename')?.textContent.includes('chapters/中文 章节/研究方法.tex'));
       await page.locator('#project-explorer summary').filter({hasText:/^chapters$/}).click();
       assert.equal(await page.locator('#project-explorer summary').filter({hasText:/^中文 章节$/}).evaluate(node=>node.parentElement.open),true);
@@ -123,7 +127,7 @@ async function clickOpenProject(page) {
       await code.click();await page.keyboard.press('Control+End');await page.keyboard.insertText(' retained');
       await fs.rename(local('main.tex'),local('external-main.tex'));
       await fs.writeFile(local('added externally.tex'),'External file.\n');
-      await page.locator('#project-refresh').click();
+      await treeMenu(page.locator('.project-tree'),/^(刷新文件树|Refresh tree)$/);
       await page.locator('[data-path="added externally.tex"]').waitFor();
       assert.match(await page.locator('[data-path="main.tex"]').getAttribute('title'),/Missing/);
       assert.match(await code.innerText(),/retained/);
@@ -131,17 +135,17 @@ async function clickOpenProject(page) {
       await page.waitForFunction(()=>/missing on disk|ENOENT/.test(document.querySelector('#project-explorer [role=status]').textContent));
       await assert.rejects(fs.stat(local('main.tex')),{code:'ENOENT'});
       await fs.rename(local('external-main.tex'),local('main.tex'));
-      await page.locator('#project-refresh').click();
+      await treeMenu(page.locator('.project-tree'),/^(刷新文件树|Refresh tree)$/);
       await page.waitForFunction(()=>!document.querySelector('[data-path="main.tex"]').title.includes('Missing'));
       await page.locator('[data-path="added externally.tex"]').click();
       await fs.writeFile(local('added externally.tex'),'Updated outside.\r\n');
-      await page.locator('#project-refresh').click();
+      await treeMenu(page.locator('.project-tree'),/^(刷新文件树|Refresh tree)$/);
       await page.waitForFunction(()=>document.querySelector('.cm-content').textContent.includes('Updated outside.'));
     });
     await check('typing during reload is retained with explicit conflict',async()=>{
       gateOperation='read';gate=new Promise(done=>release=done);
       const started=new Promise(done=>entered=done);
-      await page.locator('#project-reload').click();await started;
+      await treeMenu(page.locator('.project-file[aria-current=true]'),/^(重新加载|Reload)$/);await started;
       await code.click();await page.keyboard.press('Control+End');await page.keyboard.insertText(' while reloading');
       release();entered=null;
       await page.waitForFunction(()=>document.querySelector('#project-explorer [role=status]').textContent.includes('Draft changed'));
@@ -152,7 +156,7 @@ async function clickOpenProject(page) {
     await check('collisions and invalid paths leave editor and disk unchanged',async()=>{
       for(const destination of ['main.tex','../escaped.tex','chapters\\bad.tex','CON.tex']){
         page.once('dialog',dialog=>dialog.accept(destination));
-        await page.getByRole('button',{name:/^(重命名 added externally\.tex|Rename added externally\.tex)$/}).click();
+        await treeMenu(page.locator('[data-path="added externally.tex"]'),/^(重命名|Rename)$/);
         await page.waitForFunction(()=>document.querySelector('#project-explorer [role=status]').textContent.length>0);
         assert.match(await code.innerText(),/while reloading/);
         assert.equal(await fs.readFile(local('added externally.tex'),'utf8'),'Updated outside.\r\n');
@@ -160,14 +164,14 @@ async function clickOpenProject(page) {
     });
     await check('delete confirmation, in-flight typing retention, and normal active-file deletion',async()=>{
       page.once('dialog',dialog=>dialog.accept('delete-test.tex'));
-      await page.locator('#project-create').click();
+      await treeMenu(page.locator('.project-tree'),/^(新建文件|New file)$/);
       await page.locator('[data-path="delete-test.tex"]').click();
       await code.click();await page.keyboard.insertText('draft to delete');
-      page.once('dialog',dialog=>dialog.dismiss());await page.locator('#project-delete').click();
+      page.once('dialog',dialog=>dialog.dismiss());await treeMenu(page.locator('.project-file[aria-current=true]'),/^(删除|Delete)$/);
       assert.equal(await fs.readFile(local('delete-test.tex'),'utf8'),'');
       gateOperation='remove';gate=new Promise(done=>release=done);
       const started=new Promise(done=>entered=done);
-      page.once('dialog',dialog=>dialog.accept());await page.locator('#project-delete').click();await started;
+      page.once('dialog',dialog=>dialog.accept());await treeMenu(page.locator('.project-file[aria-current=true]'),/^(删除|Delete)$/);await started;
       await code.click();await page.keyboard.press('Control+End');await page.keyboard.insertText(' typed during delete');
       release();entered=null;gateOperation='move';
       await page.waitForFunction(()=>document.querySelector('#project-explorer [role=status]').textContent.includes('new edits retained'));
@@ -175,8 +179,8 @@ async function clickOpenProject(page) {
       assert.match(await page.locator('[data-path="delete-test.tex"]').getAttribute('title'),/Missing/);
       await assert.rejects(fs.stat(local('delete-test.tex')),{code:'ENOENT'});
       page.once('dialog',dialog=>dialog.accept('normal-delete.tex'));
-      await page.locator('#project-create').click();await page.locator('[data-path="normal-delete.tex"]').click();
-      page.once('dialog',dialog=>dialog.accept());await page.locator('#project-delete').click();
+      await treeMenu(page.locator('.project-tree'),/^(新建文件|New file)$/);await page.locator('[data-path="normal-delete.tex"]').click();
+      page.once('dialog',dialog=>dialog.accept());await treeMenu(page.locator('.project-file[aria-current=true]'),/^(删除|Delete)$/);
       await page.waitForFunction(()=>!document.querySelector('[data-path="normal-delete.tex"]'));
       assert.equal(await page.locator('[data-path="main.tex"]').getAttribute('aria-current'),'true');
     });
@@ -184,7 +188,7 @@ async function clickOpenProject(page) {
       const longName='very-long-file-name-'.repeat(8)+'.tex';
       await fs.writeFile(local(longName),'Long name.');
       for(let n=0;n<200;n++)await fs.writeFile(local('empty-folder/file-'+n+'.tex'),'File '+n);
-      const start=Date.now();await page.locator('#project-refresh').click();
+      const start=Date.now();await treeMenu(page.locator('.project-tree'),/^(刷新文件树|Refresh tree)$/);
       await page.locator('[data-path="'+longName+'"]').waitFor();
       console.log('INFO refresh 200 added files '+(Date.now()-start)+'ms');
       assert.equal(await page.locator('#project-explorer').evaluate(node=>node.scrollWidth<=node.clientWidth+1),true,'sidebar content overflows horizontally');
@@ -225,7 +229,7 @@ async function clickOpenProject(page) {
         return {reconciliationRequired:true,warning:'Directory moved; concurrent changes detected'};
       };
       page.once('dialog',dialog=>dialog.accept('chapters/moved sections'));
-      await summary.locator('..').getByRole('button',{name:/^(移动目录|Move folder)$/}).last().click();
+      await treeMenu(summary,/^(移动目录|Move folder)$/);
       await page.waitForFunction(()=>document.querySelector('.tex-filename')?.textContent.includes('chapters/moved sections/experiment.tex'));
       afterMove=null;
       assert.equal(await code.innerText(),draft);
@@ -237,7 +241,7 @@ async function clickOpenProject(page) {
       await page.waitForFunction(()=>/changed on disk|conflict/i.test(document.querySelector('#project-explorer [role=status]').textContent));
       assert.equal(await fs.readFile(local('chapters/moved sections/experiment.tex'),'utf8'),'Concurrent external revision\r\n');
       await assert.rejects(fs.stat(local('sections')),{code:'ENOENT'});
-      await page.locator('#project-refresh').click();
+      await treeMenu(page.locator('.project-tree'),/^(刷新文件树|Refresh tree)$/);
       await page.waitForFunction(()=>/changed on disk|Missing files/.test(document.querySelector('#project-explorer [role=status]').textContent));
       assert.equal(await code.innerText(),draft);
     });
