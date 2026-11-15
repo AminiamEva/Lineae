@@ -1,0 +1,57 @@
+const {revealToolbar,setIndentOnSave,createTreeEntry}=require('./workspace-ui-helpers.cjs');
+const {chromium}=require('playwright');
+const {createServer}=require('node:http');
+const {readFile,mkdir}=require('node:fs/promises');
+const {resolve,extname,sep}=require('node:path');
+const assert=require('node:assert/strict');
+const root=resolve('apps/web');
+const server=createServer(async(req,res)=>{
+ const path=resolve(root,'.'+new URL(req.url,'http://localhost').pathname.replace(/\/$/,'/index.html'));
+ if(!path.startsWith(root+sep))return res.writeHead(403).end();
+ try{res.setHeader('Content-Type',{'.js':'text/javascript','.mjs':'text/javascript','.css':'text/css','.html':'text/html','.svg':'image/svg+xml'}[extname(path)]??'application/octet-stream');res.end(await readFile(path));}catch{res.writeHead(404).end();}
+});
+
+
+(async()=>{
+ await new Promise(done=>server.listen(0,'127.0.0.1',done));const browser=await chromium.launch({headless:true});
+ try{
+  const page=await browser.newPage({viewport:{width:1600,height:1100}}),errors=[];page.on('pageerror',e=>errors.push(e.message));
+  await page.goto('http://127.0.0.1:'+server.address().port);
+  await page.evaluate(async()=>{
+   const storage=await navigator.storage.getDirectory();window.folder=await storage.getDirectoryHandle('separators',{create:true});
+   const put=async(name,text)=>{const w=await(await folder.getFileHandle(name,{create:true})).createWritable();await w.write(text);await w.close();};
+   window.rootSource='\\documentclass[a4paper]{article}\n\\usepackage[margin=2.2cm]{geometry}\n\\usepackage{indentfirst}\n\\usepackage{docmute}\n\\begin{document}\n\\section{Main heading}\n\nMain body.\n\n\\input{child}\n\\end{document}\n';
+   window.childSource='\\documentclass{article}\n\\begin{document}\n\\section{Child heading}\n\nChild body.\n\nMath $x+1$.\n\\end{document}\n';
+   await put('main.tex',rootSource);await put('child.tex',childSource);window.showDirectoryPicker=async()=>folder;
+  });
+  await revealToolbar(page);await page.locator('[data-group=files]').click();await page.locator('#project-open').click();await page.locator('[data-file-path="child.tex"] h1').waitFor();await setIndentOnSave(page,false);
+  const paper=page.locator('.ProseMirror'),documentPage=page.locator('.document-page');
+  const owner=()=>paper.evaluate(node=>{const {$from}=node.editor.state.selection;for(let d=$from.depth;d>0;d--)if($from.node(d).type.name==='projectRegion')return $from.node(d).attrs.path;return document.querySelector('.project-file[aria-current=true]')?.dataset.path;});
+  const geometry=()=>documentPage.evaluate(node=>({width:node.offsetWidth,height:node.querySelector('.document-sheet')?.offsetHeight,paperWidth:node.style.getPropertyValue('--page-width'),paperHeight:node.style.getPropertyValue('--page-height'),left:getComputedStyle(node).paddingLeft,right:getComputedStyle(node).paddingRight,zoom:getComputedStyle(node).zoom}));
+  const mainGeometry=await geometry();assert.equal(mainGeometry.paperWidth,'210mm');
+  assert.equal(await page.locator('.project-return-boundary').count(),0,'No Continue button remains');assert.ok(await page.locator('.project-file-separator').count()>=2);
+  const childTail=paper.locator('[data-file-path="child.tex"] p').last();await childTail.click();await page.keyboard.press('End');await page.keyboard.press('Control+Shift+j');assert.equal(await owner(),'child.tex','Ctrl+Shift+J does not exit the file');
+  await page.keyboard.press('ArrowRight');assert.equal(await owner(),'main.tex','ArrowRight crosses the final separator into main');
+  const caret=await paper.evaluate(node=>node.editor.view.coordsAtPos(node.editor.state.selection.head).top);const divider=page.locator('.project-file-separator[data-source-path="main.tex"][data-boundary-kind=return]');const info=await paper.evaluate(node=>{const root=node.querySelector('[data-active-empty-region]'),r=n=>n?.getBoundingClientRect().toJSON();return {caret:node.editor.view.coordsAtPos(node.editor.state.selection.head),selection:node.editor.state.selection.toJSON(),parent:node.editor.state.selection.$from.parent.type.name,root:r(root),style:root?.style.cssText,position:root&&getComputedStyle(root).position,paragraph:r(root?.querySelector('p')),paper:r(node),line:r(document.querySelector('.project-file-separator[data-source-path="main.tex"][data-boundary-kind=return]'))};});assert.ok(info.paragraph.top>=info.line.bottom&&info.caret.top+1>=info.line.top,'The parent input row is after the gray divider (allowing subpixel font overhang): '+JSON.stringify(info));
+  await page.keyboard.press('ArrowLeft');assert.equal(await owner(),'child.tex');await page.keyboard.press('ArrowDown');assert.equal(await owner(),'main.tex','ArrowDown crosses the separator');await page.keyboard.press('ArrowUp');assert.equal(await owner(),'child.tex');
+  await page.keyboard.press('Control+Alt+j');assert.equal(await owner(),'main.tex');
+  await childTail.click();await page.keyboard.press('End');const line=await divider.boundingBox();await page.mouse.click(line.x+100,line.y+7);assert.equal(await owner(),'main.tex','Clicking after the divider selects the parent file');
+  await page.keyboard.insertText('After separator.');await page.keyboard.press('Control+s');await page.waitForFunction(()=>document.querySelector('#project-explorer>[role=status]').textContent==='Saved');
+  const read=()=>page.evaluate(async()=>{const get=async p=>(await(await folder.getFileHandle(p)).getFile()).text();return {main:await get('main.tex'),child:await get('child.tex'),original:childSource};});
+  let saved=await read();assert.match(saved.main,/After separator/);assert.equal(saved.child,saved.original);
+  await paper.locator('[data-file-path="child.tex"] math-field').click();await page.waitForFunction(()=>{const field=document.querySelector('[data-file-path="child.tex"] math-field');return field?.hasFocus()&&document.activeElement===field;},null,{timeout:5000});await page.keyboard.press('Control+Shift+j');assert.equal(await owner(),'child.tex','Existing math exit stays inside its source file');
+  await paper.locator('[data-file-path="child.tex"] math-field').click();await page.waitForFunction(()=>{const field=document.querySelector('[data-file-path="child.tex"] math-field');return field?.hasFocus()&&document.activeElement===field;},null,{timeout:5000});await page.keyboard.press('Control+Alt+j');assert.equal(await owner(),'main.tex','Explicit file exit also works from math');
+  const blank=()=>paper.evaluate(node=>{const blocks=[...node.querySelectorAll('p,h1,h2,h3,.math-display')].filter(n=>n.textContent.trim()&&n.getClientRects().length&&getComputedStyle(n).visibility!=='hidden');return {x:node.getBoundingClientRect().left+120,y:Math.max(...blocks.map(n=>n.getBoundingClientRect().bottom))+45};});
+  await childTail.click();await page.keyboard.press('End');let point=await blank();await page.mouse.dblclick(point.x,point.y);assert.equal(await owner(),'main.tex');await page.keyboard.insertText('Double-click main.');assert.equal(await paper.locator(':scope>[data-project-region]').count(),await paper.locator(':scope>*').count(),'Double click does not insert an unowned top-level paragraph');
+  await page.keyboard.press('Control+s');await page.waitForFunction(()=>document.querySelector('#project-explorer>[role=status]').textContent==='Saved');saved=await read();assert.match(saved.main,/Double-click main/);assert.equal(saved.child,saved.original);
+  await page.locator('.project-file[data-path="child.tex"]').click();assert.deepEqual(await geometry(),mainGeometry,'Standalone child view uses the main document paper, margins and zoom');
+  await paper.locator('p').last().click();await page.keyboard.press('End');point=await blank();await page.mouse.dblclick(point.x,point.y);await page.waitForFunction(()=>document.querySelector('.project-file[aria-current=true]')?.dataset.path==='main.tex');assert.equal(await owner(),'main.tex');await page.keyboard.insertText('From child blank.');await page.keyboard.press('Control+s');await page.waitForFunction(()=>document.querySelector('#project-explorer>[role=status]').textContent==='Saved');saved=await read();assert.match(saved.main,/From child blank/);assert.equal(saved.child,saved.original);
+  await page.locator('.project-file[data-path="child.tex"]').click();await paper.locator('p').last().click();await page.keyboard.press('End');await page.keyboard.press('Control+Alt+j');assert.equal(await page.locator('.project-file[aria-current=true]').getAttribute('data-path'),'main.tex');assert.equal(await owner(),'main.tex');
+  await page.locator('.project-file[data-path="child.tex"]').click();await revealToolbar(page);await page.locator('[data-group=layout]').click();await page.locator('#layout-panel select').first().selectOption('a5');assert.equal((await geometry()).paperWidth,'148mm');
+  await paper.locator('p').last().click();await page.keyboard.press('Control+z');assert.equal((await geometry()).paperWidth,'210mm','Shared layout change is undoable from the child');await page.keyboard.press('Control+y');assert.equal((await geometry()).paperWidth,'148mm');
+  await page.keyboard.press('Control+s');await page.waitForFunction(()=>document.querySelector('#project-explorer>[role=status]').textContent==='Saved');saved=await read();assert.match(saved.main,/a5paper/);assert.equal(saved.child,saved.original,'Shared layout writes only to main');
+  await page.locator('.project-file[data-path="main.tex"]').click();assert.equal((await geometry()).paperWidth,'148mm');await paper.locator('[data-file-path="main.tex"] p').last().click();await page.keyboard.press('End');await page.keyboard.insertText(' Preserved main edit.');await page.keyboard.press('Control+s');await page.waitForFunction(()=>document.querySelector('#project-explorer>[role=status]').textContent==='Saved');await page.locator('.project-file[data-path="child.tex"]').click();await paper.locator('p').last().click();await page.keyboard.press('Control+z');assert.equal((await geometry()).paperWidth,'210mm');await page.keyboard.press('Control+s');await page.waitForFunction(()=>document.querySelector('#project-explorer>[role=status]').textContent==='Saved');saved=await read();assert.match(saved.main,/Preserved main edit/,'Undoing shared layout preserves later edits in main');assert.match(saved.main,/a4paper/);await page.keyboard.press('Control+y');await page.keyboard.press('Control+s');await page.waitForFunction(()=>document.querySelector('#project-explorer>[role=status]').textContent==='Saved');saved=await read();assert.match(saved.main,/Preserved main edit/);assert.match(saved.main,/a5paper/);assert.equal(saved.child,saved.original);assert.equal((await geometry()).paperWidth,'148mm');await page.locator('[data-source-mode=split]').click();assert.equal((await geometry()).paperWidth,'148mm');assert.equal(await documentPage.getAttribute('inert'),'');
+  await mkdir('test-results',{recursive:true});await page.screenshot({path:'test-results/project-shared-paper.png'});await page.locator('[data-source-mode=body]').click();await page.locator('.project-file[data-path="main.tex"]').click();await page.screenshot({path:'test-results/project-separators.png'});
+  assert.deepEqual(errors,[]);console.log('PASS: gray separators, arrow/click ownership, Ctrl+Alt+J with no Ctrl+Shift+J file exit, preserved math exit, bottom double-click to main, shared project paper and layout undo/save');
+ }finally{await browser.close();server.close();}
+})().catch(e=>{console.error(e);process.exitCode=1;server.close();});

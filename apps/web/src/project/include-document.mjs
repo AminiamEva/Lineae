@@ -5,17 +5,20 @@ import {includeEdges,referenceTarget} from './include-operations.mjs';
 
 export function regionProjection(region,source,doc){
   const count=(source.match(/\r\n|\r|\n/g)??[]).length;
-  const emptyPrefix=region.continuation&&!source.trim()?source+region.eol.repeat(Math.max(0,2-count)):undefined;
-  return sourceProjection(source,doc,{fragment:true,emptyPrefix,emptySuffix:emptyPrefix===undefined?undefined:region.eol});
+  const empty=!source.trim()&&(region.continuation||region.beforeReference);
+  const separated=source+region.eol.repeat(Math.max(0,2-count));
+  const emptyPrefix=empty?(region.continuation?separated:''):undefined;
+  const emptySuffix=empty?(region.beforeReference?(region.continuation?region.eol.repeat(2):separated):region.eol):undefined;
+  return sourceProjection(source,doc,{fragment:true,emptyPrefix,emptySuffix});
 }
 
-function regionFor(text, from, to, file, key, continuation) {
+function regionFor(text, from, to, file, key, continuation, beforeReference) {
   const source = text.slice(from,to);
   const document = parseDocument(source,{fragment:true});
   const nodes = document?.blocks.flatMap(importBlocks) ?? [{type:'raw',attrs:{latex:source}}];
   if (!nodes.length) nodes.push({type:'paragraph'});
   const doc = {type:'doc',content:nodes};
-  const region={key,id:file.id,path:file.path,from,to,doc,continuation,eol:text.includes('\r\n')?'\r\n':'\n'};
+  const region={key,id:file.id,path:file.path,from,to,doc,continuation,beforeReference,eol:text.includes('\r\n')?'\r\n':'\n'};
   region.projection=regionProjection(region,source,doc);
   return region;
 }
@@ -35,8 +38,8 @@ export function composeProject(project, rootId) {
     const start = document.start.length;
     const limit = source.length - document.end.length;
     let position = start;
-    const append = end => {
-      const region = regionFor(source,position,end,file,String(result.regions.length),position>start);
+    const append = (end,beforeReference=false) => {
+      const region = regionFor(source,position,end,file,String(result.regions.length),position>start,beforeReference);
       result.regions.push(region);
       result.content.push({type:'projectRegion',attrs:{regionKey:region.key,path:file.path,trail:[...ancestry].map(parent=>project.file(parent).path)},content:region.doc.content});
     };
@@ -44,7 +47,7 @@ export function composeProject(project, rootId) {
     for (const reference of includeEdges(source)) {
       const end = reference.end ?? reference.to + 1;
       if (reference.start < start || end > limit) continue;
-      append(reference.start);
+      append(reference.start,true);
       const child = referenceTarget(project,reference);
       if (reference.status === 'literal' && child && !child.missing) visit(child.id,nextAncestry);
       else result.issues.push('Unresolved include: ' + reference.path);

@@ -44,6 +44,7 @@ keybindings:
     find: ctrl+f
     leaveEnvironment: ctrl+j
     leaveAllEnvironments: ctrl+shift+j
+    leaveFile: ctrl+alt+j
     # Browsers reserve Ctrl+T for a new tab and cannot deliver it to the page.
     # Ctrl+E T toggles heading, list, and bullet numbering as an alias.
     toggleContextMarker: [ctrl+alt+t, ctrl+e t]
@@ -74,6 +75,7 @@ keybindings:
     subscript: ctrl+-
     leaveEnvironment: [ctrl+0, ctrl+j]
     leaveFormula: ctrl+shift+j
+    leaveFile: ctrl+alt+j
     addRow: ctrl+e r
     addColumn: ctrl+e c
     toggleDisplayStyle: ctrl+e t

@@ -279,7 +279,7 @@ export function installProjectExplorer({footer, filePanel, sessions}) {
     if (dirty()) { event.preventDefault(); event.returnValue = ''; }
   });
   render();
-  return {get model(){return project;},get active() { return !!project; }, save:() => run(save),
+  return {get model(){return project;},get active() { return !!project; }, save:() => run(save),openFile:id=>run(()=>activate(id)),
     close() {
       if (busy) { sessions.error(t('请等待当前文件操作完成','Wait for the current file operation'));return false; }
       try {return close();}catch(error){sessions.error(error.message);return false;}

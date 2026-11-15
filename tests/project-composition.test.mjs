@@ -45,3 +45,14 @@ test('continuation after a final input belongs to the parent with a real paragra
     assert.equal(projectDocumentEdits(c,{content:c.content}).get('0'),root,'Choosing a boundary without typing leaves source unchanged');
   }
 });
+
+test('editing an empty parent slot before or between inputs creates source paragraph boundaries',()=>{
+  const root='\\documentclass{article}\n\\begin{document}\n\\input{a}\n\\input{b}\n\\end{document}\n';
+  const p=fixture([['main.tex',root],['a.tex','A.\n'],['b.tex','B.\n']]),c=composeProject(p,'0');
+  const doc=structuredClone({content:c.content});
+  doc.content[0].content=[{type:'paragraph',content:[{type:'text',text:'Before.'}]}];
+  doc.content[2].content=[{type:'paragraph',content:[{type:'text',text:'Between.'}]}];
+  const changes=projectDocumentEdits(c,doc);assert.ok(changes);
+  assert.equal(changes.get('0'),'\\documentclass{article}\n\\begin{document}\nBefore.\n\n\\input{a}\n\nBetween.\n\n\\input{b}\n\\end{document}\n');
+  assert.equal(changes.get('1'),'A.\n');assert.equal(changes.get('2'),'B.\n');
+});

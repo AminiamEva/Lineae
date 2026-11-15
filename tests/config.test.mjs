@@ -14,6 +14,10 @@ test('parses the shipped YAML config', () => {
   assert.equal(config.keybindings.editor.insertDisplayMath, 'ctrl+e c');
   assert.equal(config.keybindings.editor.toggleBox, 'ctrl+e b');
   assert.equal(config.keybindings.math.superscript, 'ctrl+6');
+  assert.equal(config.keybindings.editor.leaveFile,'ctrl+alt+j');
+  assert.equal(config.keybindings.math.leaveFile,'ctrl+alt+j');
+  assert.equal(config.keybindings.editor.leaveAllEnvironments,'ctrl+shift+j');
+  assert.equal(config.keybindings.math.leaveFormula,'ctrl+shift+j');
 });
 
 test('round-trips preferences as YAML', () => {

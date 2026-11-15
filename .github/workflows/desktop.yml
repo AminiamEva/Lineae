@@ -46,6 +46,8 @@ jobs:
         run: node --test "tests/bib/**/*.test.mjs"
       - name: Install Chromium
         run: npx playwright install --only-shell chromium
+      - name: Project separators and shared paper
+        run: node tests/project-separator-browser.cjs
       - name: Project source boundaries and marker layout
         run: node tests/project-boundary-browser.cjs
       - name: Project reopen editing and source selection

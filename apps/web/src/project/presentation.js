@@ -2,7 +2,7 @@ import {foldPagePlan,documentLayoutBlocks} from './fold-layout.mjs';
 import {icon} from '../editor/icons.js';
 import {t} from '../ui/i18n.mjs';
 
-export function installProjectPresentation({editor,page,getComposition,requestLayout,ensureDocument}){
+export function installProjectPresentation({editor,page,getComposition,requestLayout,ensureDocument,getProject=()=>null,openMain=()=>{}}){
   const layer=document.createElement('div');layer.className='project-source-overlay';layer.contentEditable='false';
   const style=document.createElement('style');style.dataset.projectPresentation='';
   page.append(style,layer);
@@ -97,23 +97,18 @@ export function installProjectPresentation({editor,page,getComposition,requestLa
       if(!own.length&&inPage>=pageHeight-Number.parseFloat(computed.paddingBottom)-8)contentTop=(Math.floor(contentTop/pitch)+1)*pitch+Number.parseFloat(computed.paddingTop);
       const top=contentTop-plan.shift(contentTop);
       emptyAnchors.set(region.key,top-documentTop);
-      const badge=document.createElement(region.continuation?'button':'span');
+      if(index>0&&composition.regions[index-1].path!==region.path){
+        const separator=document.createElement('div');separator.className='project-file-separator';separator.setAttribute('role','separator');separator.setAttribute('aria-label',region.path);separator.dataset.targetRegion=region.key;separator.dataset.sourcePath=region.path;separator.dataset.boundaryKind=region.continuation?'return':'enter';separator.style.cssText='left:'+marginLeft+'px;right:'+marginRight+'px;top:'+(top-2)+'px';layer.append(separator);
+      }
+      const badge=document.createElement('span');
       badge.className='project-source-badge';badge.dataset.sourcePath=region.path;badge.dataset.regionKey=region.key;
       badge.dataset.preferredTop=String(top);badge.style.top=top+'px';
-      if(region.continuation){
-        badge.type='button';badge.classList.add('project-return-boundary');badge.append(icon('redo'));
-        const caption=document.createElement('span');caption.textContent=t('继续 ','Resume ')+region.path;badge.append(caption);
-        badge.title=t('结束前面的引用，继续编辑 ','Finish the included file and continue editing ')+region.path;
-        badge.setAttribute('aria-label',badge.title);badge.addEventListener('mousedown',event=>event.preventDefault());badge.addEventListener('click',()=>activateRegion(region.key));
-      }else{
-        const caption=document.createElement(own.length?'span':'button');caption.textContent=region.path;
-        if(!own.length){caption.type='button';caption.className='project-empty-entry';caption.dataset.editPath=region.path;caption.setAttribute('aria-label',t('编辑 ','Edit ')+region.path);caption.addEventListener('mousedown',event=>event.preventDefault());caption.onclick=()=>activateRegion(region.key);}
-        badge.append(caption);
-        badge.title=t('来源文件：','Source file: ')+region.path;
-        if(region.path!==composition.regions[0]?.path){
-          const button=document.createElement('button');button.type='button';button.append(icon('chevronDown'));
-          button.setAttribute('aria-label',t('折叠引用内容','Collapse included content'));button.onclick=()=>toggle(region.path);badge.prepend(button);
-        }
+      const caption=document.createElement(!own.length&&!region.continuation?'button':'span');caption.textContent=region.path;
+      if(caption.tagName==='BUTTON'){caption.type='button';caption.className='project-empty-entry';caption.dataset.editPath=region.path;caption.setAttribute('aria-label',t('编辑 ','Edit ')+region.path);caption.addEventListener('mousedown',event=>event.preventDefault());caption.onclick=()=>activateRegion(region.key);}
+      badge.append(caption);badge.title=t('来源文件：','Source file: ')+region.path;
+      if(!region.continuation&&region.path!==composition.regions[0]?.path){
+        const button=document.createElement('button');button.type='button';button.append(icon('chevronDown'));
+        button.setAttribute('aria-label',t('折叠引用内容','Collapse included content'));button.onclick=()=>toggle(region.path);badge.prepend(button);
       }
       layer.append(badge);
     }
@@ -141,22 +136,103 @@ export function installProjectPresentation({editor,page,getComposition,requestLa
     for(let depth=selection.$from.depth;depth>0;depth--)if(selection.$from.node(depth).type.name==='projectRegion'){key=selection.$from.node(depth).attrs.regionKey;break;}
     for(const element of editor.view.dom.querySelectorAll('[data-project-region]')){
       if(element.dataset.projectRegion===key&&element.dataset.emptyRegion==='true'){
-        element.dataset.activeEmptyRegion='true';element.style.setProperty('--project-empty-top',(emptyAnchors.get(key)??0)+'px');
+        element.dataset.activeEmptyRegion='true';element.style.setProperty('--project-empty-top',emptyTop(key)+'px');
       }else{delete element.dataset.activeEmptyRegion;element.style.removeProperty('--project-empty-top');}
     }
   }
-  function activateRegion(key){
+  function emptyTop(key){
+    if(root===getComposition()?.rootId&&emptyAnchors.has(key))return emptyAnchors.get(key);
+    const rect=editor.view.dom.getBoundingClientRect(),zoom=page.getBoundingClientRect().width/page.offsetWidth||1;
+    const previous=documentLayoutBlocks(editor.view.dom).elements.findLast(element=>Number(element.closest('[data-project-region]')?.dataset.projectRegion)<Number(key)&&getComputedStyle(element).visibility!=='hidden');
+    return previous?(previous.getBoundingClientRect().bottom-rect.top)/zoom:0;
+  }
+  function activateRegion(key,{end=false}={}){
     let target=null;
     editor.state.doc.forEach((region,start)=>{
-      if(region.attrs.regionKey!==key||target!==null)return;
-      region.descendants((node,offset)=>{if(target===null&&node.isTextblock)target=start+offset+2;});
+      if(region.attrs.regionKey!==key)return;
+      region.descendants((node,offset)=>{if(node.isTextblock&&(target===null||end))target=start+offset+2+(end?node.content.size:0);});
     });
-    if(target===null)return;
+    if(target===null)return false;
     const element=[...editor.view.dom.children].find(node=>node.dataset.projectRegion===key);
-    if(element?.dataset.emptyRegion==='true'){element.dataset.activeEmptyRegion='true';element.style.setProperty('--project-empty-top',(emptyAnchors.get(key)??0)+'px');}
+    if(element?.dataset.emptyRegion==='true'){element.dataset.activeEmptyRegion='true';element.style.setProperty('--project-empty-top',emptyTop(key)+'px');}
     editor.commands.setTextSelection(target);
-    editor.view.focus();editor.view.dispatch(editor.state.tr.scrollIntoView());
+    editor.view.focus();editor.view.dispatch(editor.state.tr.scrollIntoView());return true;
   }
+  function regionEntries(){
+    const entries=[];editor.state.doc.forEach((node,start)=>{if(node.type.name==='projectRegion')entries.push({node,start,key:node.attrs.regionKey,path:node.attrs.path});});return entries;
+  }
+  function selectedRegion(){
+    const selection=editor.state.selection;
+    for(let d=selection.$from.depth;d>0;d--)if(selection.$from.node(d).type.name==='projectRegion')return selection.$from.node(d).attrs.regionKey;
+    return null;
+  }
+  function canExitFile(element=null){
+    const project=getProject(),composition=getComposition(),key=element?.closest('[data-project-region]')?.dataset.projectRegion??selectedRegion();
+    const region=composition?.regions.find(item=>item.key===key);
+    return !!(region&&region.id!==composition.rootId||project&&project.activeFileId!==project.mainFileId);
+  }
+  function exitFile(){
+    let composition=getComposition(),entries=regionEntries(),index=entries.findIndex(entry=>entry.key===selectedRegion());
+    if(index>=0&&entries[index].node.attrs.trail?.length){
+      const parent=entries[index].node.attrs.trail.at(-1),target=entries.slice(index+1).find(entry=>entry.path===parent);
+      if(target)return activateRegion(target.key);
+    }
+    const project=getProject();
+    if(!project)return false;
+    if(project.activeFileId!==project.mainFileId){
+      const path=project.file(project.activeFileId).path;openMain();composition=getComposition();entries=regionEntries();
+      index=entries.findLastIndex(entry=>entry.path===path);
+      if(index>=0){const parent=entries[index].node.attrs.trail?.at(-1),target=entries.slice(index+1).find(entry=>entry.path===parent);if(target)return activateRegion(target.key);}
+      if(composition){const target=composition.regions.findLast(region=>region.id===composition.rootId);if(target)return activateRegion(target.key,{end:true});}
+      editor.commands.setTextSelection(editor.state.doc.content.size);editor.view.focus();
+    }
+    return true;
+  }
+  function appendToMain(){
+    const project=getProject();if(!project)return false;
+    if(project.activeFileId!==project.mainFileId)openMain();
+    if(project.activeFileId!==project.mainFileId)return false;
+    const composition=getComposition(),tail=composition?.regions.findLast(region=>region.id===composition.rootId);
+    const entry=tail?regionEntries().find(item=>item.key===tail.key):null;
+    const node=entry?.node??editor.state.doc;
+    if(node.lastChild?.type.name==='paragraph'&&!node.lastChild.content.size){
+      if(tail)return activateRegion(tail.key,{end:true});
+      editor.commands.setTextSelection(editor.state.doc.content.size-1);editor.view.focus();return true;
+    }
+    const position=entry?entry.start+node.nodeSize-1:node.content.size;
+    const tr=editor.state.tr.insert(position,editor.schema.nodes.paragraph.create());
+    editor.view.dispatch(tr);editor.commands.setTextSelection(position+1);editor.view.focus();return true;
+  }
+  function blankPoint(event){
+    if(!getProject()||page.hidden||event.target.closest?.('button,input,select,a,math-field,.project-fold-placeholder'))return false;
+    const paperRect=editor.view.dom.getBoundingClientRect();if(event.clientX<paperRect.left||event.clientX>paperRect.right)return false;
+    const block=event.target.closest?.('p,h1,h2,h3,pre,table,.math-display');
+    if(block?.textContent.trim()){const r=block.getBoundingClientRect();if(event.clientY>=r.top&&event.clientY<=r.bottom)return false;}
+    return true;
+  }
+  page.addEventListener('mousedown',event=>{
+    if(event.button!==0||!getComposition()||!blankPoint(event))return;
+    const lines=[...layer.querySelectorAll('.project-file-separator')].filter(line=>line.getBoundingClientRect().top<event.clientY);
+    const line=lines.at(-1);if(!line||line.dataset.boundaryKind!=='return')return;
+    const entry=regionEntries().find(item=>item.key===line.dataset.targetRegion);if(!entry||entry.node.textContent)return;
+    event.preventDefault();event.stopImmediatePropagation();activateRegion(entry.key);
+  },true);
+  page.addEventListener('dblclick',event=>{
+    if(!blankPoint(event))return;
+    const visible=documentLayoutBlocks(editor.view.dom).elements.filter(element=>element.getClientRects().length&&getComputedStyle(element).visibility!=='hidden');
+    const bottom=Math.max(editor.view.dom.getBoundingClientRect().top,...visible.map(element=>element.getBoundingClientRect().bottom));
+    if(event.clientY<bottom)return;
+    if(appendToMain()){event.preventDefault();event.stopImmediatePropagation();}
+  },true);
+  editor.view.dom.addEventListener('keydown',event=>{
+    if(event.isComposing||event.keyCode===229||event.shiftKey||event.ctrlKey||event.metaKey||event.altKey||event.target.closest?.('math-field')||!editor.state.selection.empty)return;
+    const forward=['ArrowRight','ArrowDown'].includes(event.key),backward=['ArrowLeft','ArrowUp'].includes(event.key);if(!forward&&!backward)return;
+    const entries=regionEntries(),index=entries.findIndex(entry=>entry.key===selectedRegion());if(index<0)return;
+    const current=entries[index],points=[];current.node.descendants((node,offset)=>{if(node.isTextblock)points.push({from:current.start+offset+2,to:current.start+offset+2+node.content.size});});
+    const head=editor.state.selection.head,edge=forward?points.at(-1):points[0];if(!edge)return;
+    const atEdge=event.key==='ArrowRight'?head===edge.to:event.key==='ArrowLeft'?head===edge.from:forward?head>=edge.from&&editor.view.endOfTextblock('down'):head<=edge.to&&editor.view.endOfTextblock('up');
+    const target=entries[index+(forward?1:-1)];if(atEdge&&target&&!folded.has(target.path)&&activateRegion(target.key,{end:backward})){event.preventDefault();event.stopImmediatePropagation();}
+  },true);
   function normalizeGap(){
     if(adjusting||!getComposition())return false;
     const selection=editor.state.selection;
@@ -195,5 +271,5 @@ export function installProjectPresentation({editor,page,getComposition,requestLa
     if(point){adjusting=true;try{editor.commands.setTextSelection(selection.empty?(backwards?point.to:point.from):{anchor:selection.anchor,head:backwards?point.to:point.from});}finally{adjusting=false;}}
   });
   editor.on('transaction',transaction=>{if(transaction.transaction.docChanged)refresh();queueMicrotask(()=>{normalizeGap();syncEmptySelection();});});
-  return {toggle,expandAll(){folded.clear();broadcast();refresh();}};
+  return {toggle,exitFile,canExitFile,appendToMain,expandAll(){folded.clear();broadcast();refresh();}};
 }

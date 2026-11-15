@@ -5,6 +5,8 @@ import { closeHistory } from '@tiptap/pm/history';
 import { t } from '../ui/i18n.mjs';
 import { mathDocumentSource, mathEditorSource, numberedMathRows } from '../../latex/math-environments.mjs';
 
+let mathPointerField=null;
+if(typeof document!=='undefined')document.addEventListener('pointerdown',event=>{mathPointerField=event.composedPath().find(node=>node?.tagName==='MATH-FIELD')??null;},true);
 let smartFences;
 export function configureMathFences(value) { smartFences = value; }
 
@@ -511,7 +513,11 @@ export const MathNode = Node.create({
           }
         }
         requestAnimationFrame(() => {
-          if (field.isConnected && focusRequest===pointerFocus) field.focus();
+          if(field.isConnected&&focusRequest===pointerFocus&&mathPointerField===field){
+            if(field.hasFocus()&&field.ownerDocument.activeElement!==field){
+              const selection=structuredClone(field.selection);field.blur();field.focus();field.selection=selection;
+            }else field.focus();
+          }
         });
       },true);
       field.addEventListener('focus', () => field.setAttribute('data-lineae-editing',''));

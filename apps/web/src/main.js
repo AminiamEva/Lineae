@@ -1,3 +1,4 @@
+import {projectLayoutPreamble} from './project/page-context.mjs';
 import {projectInputSource} from './project/input-support.mjs';
 import {installProjectPresentation} from './project/presentation.js';
 import {ProjectRegion} from './project/region-node.js';
@@ -5,7 +6,7 @@ import {canIndentList} from './project/list-policy.js';
 import {createCompositionController} from './project/composition-controller.js';
 import {applicationCommandActions} from './editor/application-commands.js';
 import {captureRichSession,restoreRichSession,copyModeHistory,readModeHistory} from './project/rich-session.js';
-import {changePageLayout,PageLayoutHistory} from './editor/page-layout-history.js';
+import {changePageLayout,mergePageLayout,PageLayoutHistory} from './editor/page-layout-history.js';
 import {setParagraphIndent,paragraphHasIndent} from './editor/paragraph-format.js';
 import {installProjectNavigation} from './project/navigation.js';
 import {ProjectWorkspaceState} from './project/workspace-state.mjs';
@@ -852,7 +853,7 @@ button('＋ Column',addMatrixColumn);
 button('$',()=>insertMath());
 button('$$',()=>insertMath(true)).dataset.shortcut='editor.insertDisplayMath';
 const projectDocument=new ProjectDocumentSession();
-let projection, syncApplying = false, syncPending = false, sourceToolbar, projectExplorer, projectFileKind;
+let projection, syncApplying = false, syncPending = false, sourceToolbar, projectExplorer, projectFileKind, projectPresentation;
 const sourceView = createSourceWorkspace({
   page: documentPage,
   getPreferences:()=>config.value,
@@ -877,7 +878,17 @@ const sourceView = createSourceWorkspace({
   metadata: () => ({name: filename, saved: savedSource}),
 });
 let sourceModeEntry,sourceModeCommits=[],sourceModeRedos=[];
-function restoreSourceCheckpoint(text) {
+function checkpointLayoutMatches(checkpoint,expected){
+  if(!checkpoint.owner||checkpoint.owner===projectExplorer?.model?.activeFileId)return true;
+  const current=projectExplorer.model.file(checkpoint.owner).draft;
+  return JSON.stringify(readPageSetup(parseDocument(current,{fragment:true})?.start??''))===JSON.stringify(readPageSetup(parseDocument(expected,{fragment:true})?.start??''));
+}
+function restoreSourceCheckpoint(text,owner,expected) {
+  if(owner&&projectExplorer?.active&&owner!==projectExplorer.model.activeFileId){
+    const current=projectExplorer.model.file(owner).draft;
+    const next=current===expected?text:writePageSetup(current,readPageSetup(parseDocument(text,{fragment:true})?.start??''));
+    projectExplorer.model.edit(owner,next);applyPageSetup();projectExplorer.changed();if(sourceView.hidden)editor.view.focus();return;
+  }
   const selection=editor.state.selection;
   if(projectExplorer?.active)projectExplorer.model.edit(projectExplorer.model.activeFileId,text);
   load(text,false);sourceView.reset(text);
@@ -888,21 +899,23 @@ function restoreSourceCheckpoint(text) {
   editor.commands.focus();
 }
 function undoDocument() {
-  if(!sourceView.hidden){sourceView.undo();sourceView.flush();return true;}
   const checkpoint=sourceModeCommits.at(-1);
-  if(checkpoint && editor.state.doc===checkpoint.afterDoc && documentParts.start===checkpoint.afterPreamble){
-    sourceModeCommits.pop();sourceModeRedos.push(checkpoint);restoreSourceCheckpoint(checkpoint.before);
+  if(!sourceView.hidden&&!(checkpoint?.owner&&checkpoint.sourceText===sourceView.value)){sourceView.undo();sourceView.flush();return true;}
+  if(checkpoint && editor.state.doc===checkpoint.afterDoc && documentParts.start===checkpoint.afterPreamble&&checkpointLayoutMatches(checkpoint,checkpoint.after)){
+    sourceModeCommits.pop();sourceModeRedos.push(checkpoint);restoreSourceCheckpoint(checkpoint.before,checkpoint.owner,checkpoint.after);
     checkpoint.beforeDoc=editor.state.doc;checkpoint.beforePreamble=documentParts.start;return true;
   }
+  if(!sourceView.hidden){sourceView.undo();sourceView.flush();return true;}
   return editor.commands.undo();
 }
 function redoDocument() {
-  if(!sourceView.hidden){sourceView.redo();sourceView.flush();return true;}
   const checkpoint=sourceModeRedos.at(-1);
-  if(checkpoint && editor.state.doc===checkpoint.beforeDoc && documentParts.start===checkpoint.beforePreamble){
-    sourceModeRedos.pop();sourceModeCommits.push(checkpoint);restoreSourceCheckpoint(checkpoint.after);
+  if(!sourceView.hidden&&!(checkpoint?.owner&&checkpoint.sourceText===sourceView.value)){sourceView.redo();sourceView.flush();return true;}
+  if(checkpoint && editor.state.doc===checkpoint.beforeDoc && documentParts.start===checkpoint.beforePreamble&&checkpointLayoutMatches(checkpoint,checkpoint.before)){
+    sourceModeRedos.pop();sourceModeCommits.push(checkpoint);restoreSourceCheckpoint(checkpoint.after,checkpoint.owner,checkpoint.before);
     checkpoint.afterDoc=editor.state.doc;checkpoint.afterPreamble=documentParts.start;return true;
   }
+  if(!sourceView.hidden){sourceView.redo();sourceView.flush();return true;}
   return editor.commands.redo();
 }
 paper.addEventListener('focusin', () => { if (!sourceView.hidden && syncPending) sourceView.flush(); });
@@ -983,7 +996,9 @@ let pageSetup=readPageSetup(documentParts.start);
 let typesetPagination;
 let pagePaper,pageOrientation,pageMarginPreset,pageMarginTop,pageMarginRight,pageMarginBottom,pageMarginLeft;
 function applyPageSetup(){
-  documentPage.dataset.indentFirst=String(new RegExp("\\\\usepackage(?:\\[[^\\]]*\\])?\\{[^}]*\\bindentfirst\\b[^}]*\\}").test(documentParts.start));
+  const layoutPreamble=projectFileKind==='tex'?projectLayoutPreamble(projectExplorer?.model,documentParts.start):documentParts.start;
+  if(layoutPreamble!==documentParts.start)pageSetup=readPageSetup(layoutPreamble);
+  documentPage.dataset.indentFirst=String(new RegExp("\\\\usepackage(?:\\[[^\\]]*\\])?\\{[^}]*\\bindentfirst\\b[^}]*\\}").test(layoutPreamble));
   const metrics=pageMetrics(pageSetup);
   documentPage.style.setProperty('--page-width',metrics.width);
   documentPage.style.setProperty('--page-height',metrics.height);
@@ -991,7 +1006,7 @@ function applyPageSetup(){
   documentPage.style.setProperty('--page-margin-right',metrics.margins.right);
   documentPage.style.setProperty('--page-margin-bottom',metrics.margins.bottom);
   documentPage.style.setProperty('--page-margin-left',metrics.margins.left);
-  typesetPagination?.update(documentParts.start);
+  typesetPagination?.update(layoutPreamble);
   if(pagePaper){
     pagePaper.value=pageSetup.paper;
     pageOrientation.value=pageSetup.orientation;
@@ -1003,6 +1018,17 @@ function applyPageSetup(){
   }
 }
 function updatePageSetup(patch){
+  const project=projectExplorer?.model;
+  if(projectFileKind==='tex'&&project&&project.activeFileId!==project.mainFileId){
+    if(sourceView.composing||editor.view.composing)return;
+    if(!sourceView.hidden)sourceView.flush();
+    const owner=project.mainFileId,before=project.file(owner).draft;
+    const preamble=parseDocument(before,{fragment:true})?.start;
+    if(!preamble)return;
+    const after=writePageSetup(before,mergePageLayout(readPageSetup(preamble),patch));
+    if(after!==before){project.edit(owner,after);sourceModeCommits.push({owner,before,after,afterDoc:editor.state.doc,afterPreamble:documentParts.start,sourceText:sourceView.value});sourceModeRedos=[];}
+    applyPageSetup();projectExplorer.changed();return;
+  }
   pageSetup=changePageLayout({editor,sourceView,current:pageSetup,preamble:documentParts.start,patch});
   applyPageSetup();
 }
@@ -1610,6 +1636,7 @@ function runMathShortcut(command, field, event) {
     case 'subscript': field.executeCommand('moveToSubscript'); return;
     case 'leaveEnvironment': field.dispatchEvent(new Event('lineae-leave-math-environment')); return;
     case 'leaveFormula': field.dispatchEvent(new Event('lineae-leave-formula')); return;
+    case 'leaveFile': if(projectPresentation?.canExitFile(field)){field.dispatchEvent(new Event('lineae-leave-formula'));return projectPresentation.exitFile();}return !!projectExplorer?.active;
     case 'addRow': fillMatrixAxis(field,'row'); return;
     case 'addColumn': fillMatrixAxis(field,'column'); return;
     case 'literalFence': armLiteralFence(field); return;
@@ -1861,6 +1888,7 @@ const shortcutActions = {
     find: documentFind.show,
     leaveEnvironment: leaveTextEnvironment,
     leaveAllEnvironments: leaveAllTextEnvironments,
+    leaveFile:()=>projectPresentation?.exitFile()??false,
     toggleContextMarker: () => {
       const { $from }=editor.state.selection;
       for (let depth=$from.depth;depth>0;depth--) {
@@ -1982,7 +2010,7 @@ projectExplorer = installProjectExplorer({footer, filePanel:document.querySelect
   outline:documentOutline,preferences:()=>config.value,
   sidebarChanged:(key,open)=>config.updateInterface({sidebar:{[key]:open}}),
   editIncludes:editIncludeSource,citations:()=>manageCitations(),
-  saveFileIds:()=>projectDocument.composition?[...new Set(projectDocument.composition.regions.map(region=>region.id))]:null,
+  saveFileIds:()=>{const project=projectExplorer.model;const ids=projectDocument.composition?projectDocument.composition.regions.map(region=>region.id):[project.activeFileId];if([...sourceModeCommits,...sourceModeRedos].some(item=>item.owner===project.mainFileId)&&project.file(project.mainFileId).dirty)ids.push(project.mainFileId);return [...new Set(ids)];},
   includeFile:appendInclude,
   ensureIdle() { if (editor.view.composing || sourceView.composing) throw new Error(t('请先完成当前输入','Finish composition first')); },
   text:() => sourceView.hidden ? source() : sourceView.value,
@@ -2073,7 +2101,7 @@ projectExplorer = installProjectExplorer({footer, filePanel:document.querySelect
     updateSourceButton();
   },
 }});
-installProjectPresentation({editor,page:documentPage,getComposition:()=>projectDocument.composition,requestLayout:()=>typesetPagination?.refresh(),ensureDocument:()=>{if(!sourceView.hidden)setSourceMode(false);showProjectComposition();}});
+projectPresentation=installProjectPresentation({editor,page:documentPage,getProject:()=>projectExplorer.model,openMain:()=>projectExplorer.openFile(projectExplorer.model.mainFileId),getComposition:()=>projectDocument.composition,requestLayout:()=>typesetPagination?.refresh(),ensureDocument:()=>{if(!sourceView.hidden)setSourceMode(false);showProjectComposition();}});
 editor.on('transaction',updateEnvironment);
 document.addEventListener('focusin',updateEnvironment);paper.addEventListener('input',updateEnvironment);
 paper.addEventListener('selection-change',updateEnvironment,true);
