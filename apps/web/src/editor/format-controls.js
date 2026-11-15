@@ -45,7 +45,7 @@ export function installFormatControls(editor, tools) {
     const block=$from.depth?editor.view.nodeDOM($from.before()):editor.view.dom;
     const style=getComputedStyle(block?.nodeType===1?block:editor.view.dom);
     const family=style.fontFamily.split(',')[0].trim().replace(/["']/g,'');
-    const points=Number((Number.parseFloat(style.fontSize)*72/96).toFixed(2));
+    const points=Number((Number.parseFloat(style.fontSize)*72.27/96).toFixed(2));
     picker.value = attrs.color ?? '#000000';
     glyph.style.borderBottomColor = picker.value;
     for (const [attribute, menu] of Object.entries(menus)) {

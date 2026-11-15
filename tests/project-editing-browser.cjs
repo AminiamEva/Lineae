@@ -27,7 +27,7 @@ const server=createServer(async(req,res)=>{
   await page.keyboard.press('Enter');await page.keyboard.insertText('Second');assert.match(await paper.innerText(),/Second/);
   await revealToolbar(page);await page.locator('[data-group=home]').click();await page.locator('select[aria-label="Paragraph style"]').selectOption('1');
   await page.keyboard.press('End');
-  const font=await paper.locator('h1').evaluate(node=>({family:getComputedStyle(node).fontFamily,size:Number.parseFloat(getComputedStyle(node).fontSize)*72/96,weight:getComputedStyle(node).fontWeight}));
+  const font=await paper.locator('h1').evaluate(node=>({family:getComputedStyle(node).fontFamily,size:Number.parseFloat(getComputedStyle(node).fontSize)*72.27/96,weight:getComputedStyle(node).fontWeight}));
   assert.match(font.family,/Georgia/);assert.match(font.family,/SimSun/);assert.equal(font.weight,'700');
   assert.ok(Math.abs(Number.parseFloat(await page.locator('[data-format-attribute=fontSize]').inputValue())-font.size)<.02,'Size menu reflects heading size');
   assert.equal(await page.locator('[data-format-attribute=fontFamily]').inputValue(),'Georgia');
