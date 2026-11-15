@@ -871,7 +871,7 @@ button('＋ Column',addMatrixColumn);
 button('$',()=>insertMath());
 button('$$',()=>insertMath(true)).dataset.shortcut='editor.insertDisplayMath';
 let projectComposition=null;
-let projection, syncApplying = false, syncPending = false, sourceToolbar, projectExplorer, projectFileKind, preferredProjectSource = true;
+let projection, syncApplying = false, syncPending = false, sourceToolbar, projectExplorer, projectFileKind, preferredProjectSource = true, openingProject = false;
 const sourceView = createSourceWorkspace({
   page: documentPage,
   render: text => {
@@ -2086,6 +2086,7 @@ projectExplorer = installProjectExplorer({footer, filePanel:document.querySelect
     ? t('保留当前单文件草稿并新建或打开工程？','Keep the current single-file draft and create or open a project?')
     : t('保留当前单文件草稿并打开工程？','Keep the current single-file draft and open a project?')),
   begin() {
+    openingProject=true;
     preferredProjectSource=!sourceView.hidden;
     if (!standaloneSession) standaloneSession = {
       text:sourceView.hidden?source():sourceView.value, filename, fileHandle, savedSource,
@@ -2113,7 +2114,7 @@ projectExplorer = installProjectExplorer({footer, filePanel:document.querySelect
     if(sourceVisible){
       if(sourceView.hidden)sourceView.open(file.draft);
       sourceView.restoreSession(session,file.draft);
-      sourceView.setSplit(false);
+      sourceView.setSplit(!openingProject && session?.split===true);
     }else{
       sourceView.close();sourceView.restoreSession(session,file.draft);editor.commands.focus();
     }
@@ -2124,6 +2125,7 @@ projectExplorer = installProjectExplorer({footer, filePanel:document.querySelect
     if (file.kind === 'bib') sourceView.setSplit(false);
     updateSourceButton();
     showProjectComposition();
+    openingProject=false;
   },
   saved(text) { savedSource = text; sourceView.refresh(); },
   error(text) { const status = document.querySelector('#status'); status.hidden = false; status.textContent = text; },

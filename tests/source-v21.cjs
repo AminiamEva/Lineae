@@ -96,7 +96,7 @@ module.exports = async (context,url) => {
     await page.evaluate(()=>{window.v21Writes=[];window.showSaveFilePicker=async()=>({name:'v21.tex',createWritable:async()=>({write:async text=>window.v21Writes.push(text),close:async()=>{}})});});
     const save=async()=>{const n=await page.evaluate(()=>window.v21Writes.length);await content.focus();await page.keyboard.press('Control+s');await page.waitForFunction(n=>window.v21Writes.length>n,n);return page.evaluate(()=>window.v21Writes.at(-1));};
     const before=await read(), expected=indentLatex(before).text;
-    await page.evaluate(()=>{const v=v21Fixture.EditorView.findFromDOM(document.querySelector('.cm-editor'));const p=v.state.doc.toString().indexOf('Hello');v.dispatch({selection:{anchor:p,head:p+5}});});
+    await page.evaluate(()=>{const v=v21Fixture.EditorView.findFromDOM(document.querySelector('.cm-editor'));const p=v.state.doc.toString().indexOf('Hello');v.dispatch({selection:{anchor:p,head:p+5}});v.focus();});
     equal(await save(),expected,'real save writes formatted text');
     equal(await read(),expected,'save syncs actual editor');
     equal(await page.evaluate(()=>{const s=v21Fixture.EditorView.findFromDOM(document.querySelector('.cm-editor')).state;return s.sliceDoc(s.selection.main.from,s.selection.main.to);}), 'Hello','selection mapped');

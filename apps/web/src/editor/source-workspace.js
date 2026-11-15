@@ -121,6 +121,7 @@ export function createSourceWorkspace({ page, render, metadata, onChange = () =>
     const button = element('button', className);
     button.type = 'button';
     button.append(icon(glyph));
+    button.addEventListener('mousedown',event=>event.preventDefault(),{signal:lifecycle.signal});
     button.addEventListener('click', run, {signal:lifecycle.signal});
     actions.append(button);
     buttons.push([button, label]);
@@ -408,6 +409,8 @@ export function createSourceWorkspace({ page, render, metadata, onChange = () =>
       scrollLeft = view.scrollDOM.scrollLeft;
       if (expanded) setExpanded(false);
       panel.hidden = true;
+      foot.hidden=true;
+      document.body.classList.remove('source-workspace-visible');
       restorePage();
     },
     reset(text) { if (!lifecycle.signal.aborted) { lastRendered = text; replace(text, true); } },
