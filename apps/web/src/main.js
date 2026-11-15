@@ -990,7 +990,7 @@ editor.on('update', () => {
   sourceView.applyChanges(changes);
   importedSource = sourceView.value;
   importedSnapshot = JSON.stringify(editor.getJSON());
-  documentParts = parseDocument(importedSource);
+  documentParts = parseDocument(importedSource,{fragment:projectFileKind==='tex'});
   projection = sourceProjection(importedSource,editor.getJSON(), {fragment:projectFileKind === 'tex'});
   projectExplorer?.changed();
   sourceView.error('');
