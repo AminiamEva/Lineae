@@ -246,7 +246,9 @@ async function clickOpenProject(page) {
       assert.equal(await fs.readFile(local('chapters/moved sections/experiment.tex'),'utf8'),'Concurrent external revision\r\n');
       await assert.rejects(fs.stat(local('sections')),{code:'ENOENT'});
       await treeMenu(page.locator('.project-tree'),/^(刷新文件树|Refresh tree)$/);
-      await page.waitForFunction(()=>/changed on disk|Missing files/.test(document.querySelector('#project-explorer [role=status]').textContent));
+      await page.waitForFunction(()=>document.querySelector('#project-explorer').getAttribute('aria-busy')==='false');
+      assert.match(await page.locator('[data-path="chapters/moved sections/experiment.tex"]').getAttribute('title'),/Changed on disk/,'Refresh retains the unresolved external-change marker');
+      assert.ok((await page.locator('#project-explorer [role=status]').textContent()).length>0,'Refresh reports its result');
       assert.equal(await code.innerText(),draft);
     });
     await page.evaluate(async()=>{await Promise.all(document.querySelector('.tex-workspace').getAnimations().map(animation=>animation.finished));});
