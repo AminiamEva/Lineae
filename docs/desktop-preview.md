@@ -1,6 +1,6 @@
-# Lineae desktop preview
+# Lineae desktop
 
-The desktop preview wraps the existing `apps/web` editor in a Tauri 2 shell. It is
+The desktop app wraps the existing `apps/web` editor in a Tauri 2 shell. It is
 built and packaged only on GitHub Actions Windows runners; local development is
 limited to editing source and installing CI artifacts.
 
@@ -44,10 +44,11 @@ data, UI, bibliography, and Playwright suites, then builds the Tauri bundle.
 
 Builds upload an artifact named `lineae-desktop-<sha>` containing:
 
-- `Lineae_0.1.1_x64-setup.exe` (offline NSIS installer)
+- `Lineae_0.2.0_x64-setup.exe` (offline NSIS installer)
 - `Lineae-portable.zip` (portable executable and notes)
+- `SHA256SUMS.txt` (SHA-256 checksums)
 
-Tag builds attach the artifacts to a GitHub release. Tags containing `preview` are published as prereleases; other tags publish a normal release.
+Tag builds attach the artifacts to a GitHub release. A manual run may also set `release_tag` to publish a matching version after all checks and packaging. Publication stays draft until the installer, portable ZIP and checksums are uploaded and verified. Preview tags publish prereleases; stable tags publish normal releases.
 
 ## Code signing
 
@@ -63,9 +64,12 @@ Tauri invokes `sign-windows.ps1` before embedding the app in NSIS and again for
 the uninstaller and installer. The script signs with SHA-256 and an RFC 3161
 timestamp, and verifies every invocation with `signtool verify /pa`. The workflow
 also verifies the final standalone executable and installer before packaging.
-When `WINDOWS_CERTIFICATE` is absent a `preview` tag builds unsigned artifacts,
-while a formal tag fails before the build so a release cannot be published
-without a signature. Pull-request and branch builds never require a certificate.
+When `WINDOWS_CERTIFICATE` is absent, a `preview` tag builds unsigned artifacts.
+A formal release requires a certificate by default; a manual release may explicitly
+set `allow_unsigned: true` after the publisher has chosen unsigned distribution.
+The workflow verifies that these binaries are unsigned and the release notes must
+disclose that status. v0.2.0 uses this explicit unsigned path, as v0.1.0 did.
+Pull-request and branch builds never require a certificate.
 
 A publicly trusted signing certificate must be obtained separately; GitHub
 Actions cannot create a trusted publisher identity. Cloud HSM services such as
@@ -103,11 +107,11 @@ request.
 
 ## Known limits
 
-- Preview version `0.1.1`; no update channel or release stability promise.
-- Authenticode signing runs only when the certificate secrets are configured; an
-  unconfigured repository publishes unsigned binaries.
+- Current release: [v0.2.0](releases/v0.2.0.md); no automatic update channel.
+- v0.2.0 is explicitly unsigned. Other stable releases still require a certificate
+  or a deliberate unsigned release request.
 - The portable executable assumes WebView2 is installed. The offline installer
   installs it when missing.
-- Only UTF-8 `.tex` files are accepted; malformed input is reported in the status bar.
+- Text editing expects UTF-8 `.tex` / `.bib`; binary assets are preserved, not opened as text.
 - The web version remains the primary target and continues to deploy through
   `pages.yml`.

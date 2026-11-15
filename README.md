@@ -108,23 +108,23 @@ See [Editor Architecture](docs/EDITOR_ARCHITECTURE.md) for implementation detail
 
 ## Development status
 
-Lineae is a working prototype, not a finished editor. The distinction between what is already usable and what remains planned is important.
+Lineae is an early-stage editor. The [v0.2.0 release notes](docs/releases/v0.2.0.md) describe the Windows release and its limits. The distinction between what is already usable and what remains planned is important.
 
 | Area | Status |
 | --- | --- |
 | Browser editor | Usable prototype with rich-text editing, equations, document structures, and interface preferences |
 | LaTeX interoperability | Import and export for a defined subset; unsupported constructs are preserved where possible |
 | Bibliography | Standalone BibTeX/BibLaTeX module with its own API and acceptance tests |
-| Source fidelity | Unmodified files can be preserved; reliable local updates after visual edits are still in development |
+| Source fidelity | Guarded local source patches for supported rich edits; untouched bytes and mixed line endings are preserved; unsupported structures remain available in Source |
 | Editor–PDF visual fidelity | A core design goal; systematic comparison with compiled TeX output is not yet implemented |
-| Multi-file projects | Not yet supported as a complete project workflow |
+| Multi-file projects | File tree, native folder operations, per-file sessions and editable input/include composition with source ownership guards |
 | TeX compilation and PDF preview | Not integrated |
-| Desktop application | Windows x64 preview (Tauri 2) with native dialogs and block-level pagination |
-| Precise pagination | Page geometry and block placement calibrated to XeLaTeX; line-level splitting not implemented |
+| Desktop application | Windows x64 v0.2.0 (Tauri 2), offline installer and portable ZIP; unsigned distribution |
+| Precise pagination | Page geometry and pagination remain under calibration against XeLaTeX; full compiled-output parity is not claimed |
 
 The immediate work is centred on three areas: making equation input and navigation more reliable; improving source preservation, mode switching, and editing history; and tightening the behaviour of ordinary document editing, including selection, clipboard operations, and long-document navigation.
 
-After these foundations are stable, the project can move towards multi-file project handling, an independent TeX compilation interface, and PDF preview. Comparing the editor view with compiled output—and progressively aligning fonts, spacing, line breaks, and page geometry—is a core direction, not an optional preview enhancement. Source-to-PDF navigation and line-level pagination remain future work, not current features; desktop packaging is available as a preview. The [implementation roadmap](docs/IMPLEMENTATION_ROADMAP.md) records the more detailed priorities and acceptance criteria.
+After these foundations are stable, the project can continue improving multi-file editing and add an independent TeX compilation interface and PDF preview. Comparing the editor view with compiled output—and progressively aligning fonts, spacing, line breaks, and page geometry—is a core direction, not an optional preview enhancement. Source-to-PDF navigation remains future work; desktop packages are published with the release. The [implementation roadmap](docs/IMPLEMENTATION_ROADMAP.md) records the more detailed priorities and acceptance criteria.
 
 ## Getting started
 
@@ -185,14 +185,15 @@ node tests/editor.cjs
 
 The GitHub Actions workflow builds the application, runs the LaTeX and bibliography test suites, prepares MathLive, runs the browser regression suite, and deploys the site to GitHub Pages.
 
-## Desktop preview
+## Desktop
 
-A Windows x64 preview built with Tauri 2 lives in `apps/desktop`. It reuses the
+The Windows x64 app built with Tauri 2 lives in `apps/desktop`.
+Download the installer or portable ZIP from [v0.2.0](https://github.com/AminiamEva/Lineae/releases/tag/v0.2.0). This release is unsigned; see the release notes and checksums. It reuses the
 browser editor, adds native open/save/save-as dialogs, and exports projects through
 the existing ZIP pipeline. Builds and packaging run only on GitHub Actions; see
 [docs/desktop-preview.md](docs/desktop-preview.md) for artifacts and acceptance
 steps. Compilation, file watching, and auto-update are intentionally out of scope
-for this preview.
+for this release.
 
 ## Contributing
 
