@@ -956,7 +956,8 @@ editor.on('update', () => {
       const rootId=projectComposition.rootId;
       const original=projectComposition.sources.get(rootId);
       const oldPreamble=parseDocument(original,{fragment:true})?.start??'';
-      const preamble=editor.state.doc.attrs.layoutPreamble;
+      const storedLayout=editor.state.doc.attrs.layoutPreamble;
+  const preamble=typeof storedLayout==='string' && JSON.stringify(readPageSetup(storedLayout))!==JSON.stringify(readPageSetup(documentParts.start)) ? writePageSetup(documentParts.start,readPageSetup(storedLayout)) : documentParts.start;
       if(typeof preamble==='string' && preamble!==oldPreamble){
         updates.set(rootId,preamble+updates.get(rootId).slice(oldPreamble.length));
       }
@@ -970,7 +971,8 @@ editor.on('update', () => {
     }
     return;
   }
-  const preamble=editor.state.doc.attrs.layoutPreamble;
+  const storedLayout=editor.state.doc.attrs.layoutPreamble;
+  const preamble=typeof storedLayout==='string' && JSON.stringify(readPageSetup(storedLayout))!==JSON.stringify(readPageSetup(documentParts.start)) ? writePageSetup(documentParts.start,readPageSetup(storedLayout)) : documentParts.start;
   if (typeof preamble==='string' && preamble!==documentParts.start) {
     const previous=documentParts.start;
     documentParts.start=preamble;
@@ -1016,6 +1018,10 @@ function applyPageSetup(){
   }
 }
 function updatePageSetup(patch){
+  if(editor.state.doc.attrs.layoutPreamble===null){
+    syncApplying=true;
+    try{editor.view.dispatch(editor.state.tr.setDocAttribute('layoutPreamble',documentParts.start).setMeta('addToHistory',false));}finally{syncApplying=false;}
+  }
   if (!sourceView.hidden) {
     sourceView.flush();
     pageSetup=readPageSetup(parseDocument(sourceView.value,{fragment:true})?.start??'');
