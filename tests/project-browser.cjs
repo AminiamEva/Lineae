@@ -44,6 +44,17 @@ async function clickOpenProject(page) {
     assert.equal(await page.locator('#project-explorer').isVisible(), false);
     assert.equal(await page.locator('.document-status > :first-child').getAttribute('id'), 'project-toggle');
     await page.locator('#project-toggle').click();
+    const joinedChrome = await page.evaluate(() => {
+      const panel = document.querySelector('#project-explorer').getBoundingClientRect();
+      const brand = document.querySelector('header .brand').getBoundingClientRect();
+      const topmost = document.elementFromPoint(brand.left + brand.width / 2, brand.top + brand.height / 2);
+      return {
+        panelTop: panel.top,
+        brandContained: brand.left >= panel.left && brand.right <= panel.right,
+        brandOnTop: Boolean(topmost?.closest('.brand')),
+      };
+    });
+    assert.deepEqual(joinedChrome,{panelTop:0,brandContained:true,brandOnTop:true},'File tree and wordmark form one continuous left rail');
     await page.locator('#project-explorer summary').click();
     const code = page.locator('.cm-content');
     await code.click(); await page.keyboard.press('Control+End'); await page.keyboard.insertText('% 草稿');
