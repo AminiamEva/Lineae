@@ -139,7 +139,6 @@ async function clickOpenProject(page) {
     await page.locator('[data-source-mode="source"]').click();
     await page.waitForFunction(() => document.querySelector('.cm-content').textContent.includes('Rich edit'));
     await page.locator('[data-source-mode=source]').click();
-    console.log('PAGE ERRORS',errors);console.log('SOURCE SWITCH DIAGNOSTIC',await page.evaluate(()=>({debug:document.body.dataset.sourceDebug,trace:document.querySelector('.tex-workspace').dataset.sourceTrace,hidden:document.querySelector('.tex-workspace').hidden,message:document.querySelector('.tex-message').textContent,composing:document.querySelector('.ProseMirror').editor.view.composing,mode:document.querySelector('[data-source-mode=source]').getAttribute('aria-pressed')})));
     await page.waitForFunction(()=>!document.querySelector('.tex-workspace').hidden);
     await code.click(); await page.keyboard.press('Control+End'); await page.keyboard.insertText('Child draft');
     await page.locator('[data-path="main.tex"]').click();
