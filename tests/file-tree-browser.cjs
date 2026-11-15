@@ -52,6 +52,8 @@ async function clickOpenProject(page) {
     await page.goto('http://127.0.0.1:'+server.address().port);
     await clickOpenProject(page);
     await page.waitForFunction(()=>document.querySelector('.tex-filename')?.textContent.includes('main.tex'));
+    assert.equal(await page.locator('[data-source-mode=split]').getAttribute('aria-pressed'),'false','Opening a project never activates Split');
+    await page.locator('[data-source-mode=source]').click();
     await page.locator('.tex-indent-setting input').uncheck();
     const code=page.locator('.cm-content');
     async function check(name,action){

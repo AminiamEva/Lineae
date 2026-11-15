@@ -94,6 +94,8 @@ async function clickOpenProject(page) {
     await page.locator('#project-toggle').click();
     await page.locator('#project-new-empty').click();
     await page.waitForFunction(() => document.querySelector('.tex-filename')?.textContent.includes('main.tex'));
+    assert.equal(await page.locator('[data-source-mode=split]').getAttribute('aria-pressed'),'false','Opening a project never activates Split');
+    await page.locator('[data-source-mode=source]').click();
     await page.locator('.tex-indent-setting input').uncheck();
     assert.equal(await page.locator('#project-explorer').isVisible(), false);
     assert.equal(await page.locator('.document-status > :first-child').getAttribute('id'), 'project-toggle');
@@ -154,6 +156,8 @@ async function clickOpenProject(page) {
     await page.waitForFunction(() => document.querySelector('#project-explorer').getAttribute('aria-busy')==='false'
       && document.querySelector('#project-explorer [role=status]').textContent.includes('Saved'));
     assert.equal(await page.evaluate(async()=> (await (await testDirectory.getFileHandle('main.tex')).getFile()).text()),disk.replace('Main text.','  Main text.'));
+    assert.equal(await page.locator('[data-source-mode=split]').getAttribute('aria-pressed'),'false','Opening a project never activates Split');
+    await page.locator('[data-source-mode=source]').click();
     await page.locator('.tex-indent-setting input').uncheck();
     await page.evaluate(async () => { const w = await (await testDirectory.getFileHandle('main.tex')).createWritable(); await w.write('external'); await w.close(); });
     await code.click(); await page.keyboard.press('Control+End'); await page.keyboard.insertText(' conflict draft');

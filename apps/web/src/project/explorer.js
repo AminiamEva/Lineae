@@ -75,6 +75,7 @@ export function installProjectExplorer({footer, filePanel, sessions}) {
     if (!window.lineaeProject && !window.showDirectoryPicker) throw new Error(t('当前环境不支持目录读写，请使用桌面应用或支持 File System Access 的浏览器。','This browser cannot write to a directory. Use the desktop app or a browser with File System Access.'));
     const adapter = window.lineaeProject ? await window.lineaeProject.open() : new DirectoryHandleAdapter(await window.showDirectoryPicker({mode:'readwrite'}));
     const selectedEntries=newOrOpen?await adapter.list():null;
+    if(newOrOpen==='create' && selectedEntries.length)throw new Error(t('新建工程请选择空目录','Choose an empty folder for a new project'));
     let createNew=Boolean(newOrOpen && !selectedEntries.length);
     const next = await new Project(adapter).open();
     if(createNew && (next.diskRecovery.length || next.recoveryVersions.length || next.diskRecoveryError))createNew=false;
@@ -226,7 +227,7 @@ export function installProjectExplorer({footer, filePanel, sessions}) {
     project.setMain(id);message.textContent=t('已设置主文档','Main document updated');render();
   }
   button(filePanel ?? footer,['打开工程','Open project'],()=>open(false),'project-open');
-  const newProjectButton=button(filePanel ?? footer,['新建工程','New project'],()=>open(true),'project-new');
+  const newProjectButton=button(filePanel ?? footer,['新建工程','New project'],()=>open('create'),'project-new');
   button(actions,['保存','Save'],save,'project-save');
   button(actions,['关闭工程','Close project'],close,'project-close');
   const emptyState=document.createElement('div');emptyState.className='project-empty';
