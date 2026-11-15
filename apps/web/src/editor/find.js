@@ -1,3 +1,4 @@
+import {findResultText} from '../ui/localized-control.mjs';
 import { t } from '../ui/i18n.mjs';
 import { Plugin, PluginKey } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';

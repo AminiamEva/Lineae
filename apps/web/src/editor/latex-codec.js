@@ -1,3 +1,4 @@
+import {richTableRow,wrapCell} from '../../latex/table-spans.mjs';
 import { importBlock, importBlocks } from '../../latex/blocks.mjs';
 import { listLabel } from '../../latex/list-numbering.mjs';
 import { textCommands } from '../../latex/inline.mjs';
@@ -15,19 +16,6 @@ const escape = text => text.replace(/[\u00A0\\{}%$&#_^~§¶•…–—‘’“
 
 // MathLive placeholders are editing aids with no LaTeX meaning.
 const withoutPlaceholders = latex => latex.replace(/\\placeholder\{[^{}]*\}/g, '');
-
-function serializeTableRow(row,occupied,columnCount) {
-  const values=[];let column=0;
-  for(const cell of row.content??[]){
-    while(column<columnCount && occupied[column]>0){values.push('');occupied[column]--;column++;}
-    values.push(serialize(cell));
-    const colspan=cell.attrs.colspan??1,rowspan=cell.attrs.rowspan??1;
-    if(rowspan>1)for(let offset=0;offset<colspan;offset++)occupied[column+offset]=rowspan-1;
-    column+=colspan;
-  }
-  while(column<columnCount){if(occupied[column]>0)occupied[column]--;values.push('');column++;}
-  return values.join(' & ')+' \\\\\n';
-}
 
 export function serialize(node) {
   const content = (node.content ?? []).map(serialize).join('');
@@ -142,7 +130,7 @@ export function serialize(node) {
       node.content.forEach((row, index) => {
         if (border === 'grid' || border === 'horizontal' || (border==='outer' && index===0)) body += '\\hline\n';
         if (!border && node.attrs.booktabs && index === 0) body += '\\toprule\n';
-        body += serializeTableRow(row,occupied,columnCount);
+        body += richTableRow(row,occupied,serialize);
         if (!border && node.attrs.booktabs && index === 0 && node.content.length > 1) body += '\\midrule\n';
       });
       if (border && border!=='none') body += '\\hline\n';
@@ -162,15 +150,7 @@ export function serialize(node) {
     case 'tableCell':
     case 'tableHeader': {
       const value = (node.content ?? []).map(serialize).join('').trim();
-      const span = node.attrs.colspan ?? 1;
-      const rowspan=node.attrs.rowspan??1;
-      let result=value;
-      if(rowspan>1)result='\\multirow{'+rowspan+'}{*}{'+result+'}';
-      if (span > 1) {
-        const align = node.attrs.align === 'center' ? 'c' : node.attrs.align === 'right' ? 'r' : 'l';
-        result='\\multicolumn{' + span + '}{' + align + '}{' + result + '}';
-      }
-      return result;
+      return wrapCell(value,node.attrs.colspan??1,node.attrs.rowspan??1,node.attrs.align);
     }
     default: return content;
   }

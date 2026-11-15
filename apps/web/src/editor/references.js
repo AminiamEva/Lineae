@@ -1,3 +1,4 @@
+import {createOutlinePanel} from '../ui/outline-panel.js';
 import { Node } from '@tiptap/core';
 import { t } from '../ui/i18n.mjs';
 import { numberedMathRows } from '../../latex/math-environments.mjs';
@@ -51,9 +52,12 @@ export function collectReferenceLabels(doc) {
 }
 
 function navigateTo(editor,target) {
-  if(!target || typeof target.position!=='number')return;
-  if(target.kind==='equation')editor.chain().focus().setNodeSelection(target.position).scrollIntoView().run();
-  else editor.chain().focus().setTextSelection(Math.min(target.position+1,editor.state.doc.content.size)).scrollIntoView().run();
+  if(!Number.isInteger(target?.position))return false;
+  const position=Math.max(0,Math.min(target.position,editor.state.doc.content.size));
+  const chain=editor.chain().focus();
+  if(target.kind==='equation')chain.setNodeSelection(position);
+  else chain.setTextSelection(Math.min(position+1,editor.state.doc.content.size));
+  return chain.scrollIntoView().run();
 }
 
 export const Ref = Node.create({
@@ -279,47 +283,5 @@ export function refreshReferences(root) {
 }
 
 export function installDocumentOutline(editor) {
-  const panel=document.createElement('aside');panel.id='document-outline';panel.className='document-outline';panel.hidden=true;
-  panel.setAttribute('aria-label',t('文档大纲','Document outline'));
-  const header=document.createElement('div');header.className='document-outline-header';
-  const title=document.createElement('strong');
-  const close=document.createElement('button');close.type='button';close.textContent='×';
-  const list=document.createElement('div');list.className='document-outline-list';
-  header.append(title,close);panel.append(header,list);document.body.append(panel);
-  function render() {
-    if(panel.hidden)return;
-    const items=outline(editor.state.doc),selection=editor.state.selection.from;
-    let current=null;
-    for(const item of items){if(item.position<selection)current=item;else break;}
-    const focused=document.activeElement?.dataset?.headingPosition;
-    list.replaceChildren();
-    editor.state.doc.forEach((node,position)=>{
-      if(node.type.name!=='projectRegion')return;
-      const file=document.createElement('button');file.type='button';file.className='outline-file';
-      file.textContent=node.attrs.path;file.dataset.outlineFile=node.attrs.path;
-      file.addEventListener('click',()=>{editor.commands.setTextSelection(position+2);editor.commands.scrollIntoView();});
-      list.append(file);
-    });
-    if(!items.length && !list.childElementCount){const empty=document.createElement('p');empty.textContent=t('文档中没有标题','No headings in this document');list.append(empty);return;}
-    for(const item of items){
-      const control=document.createElement('button');control.type='button';control.dataset.headingPosition=String(item.position);
-      control.style.paddingInlineStart=(8+(item.level-1)*14)+'px';
-      control.textContent=(item.number?item.number+'  ':'')+item.text;
-      control.setAttribute('aria-current',String(item===current));
-      control.addEventListener('click',()=>{const event=new CustomEvent('lineae-outline-navigate',{cancelable:true,detail:item});if(panel.dispatchEvent(event))navigateTo(editor,item);});list.append(control);
-    }
-    panel.dispatchEvent(new Event('lineae-outline-render'));
-    if(focused)list.querySelector(`[data-heading-position="${focused}"]`)?.focus({preventScroll:true});
-  }
-  function relocalize() {
-    title.textContent=t('文档大纲','Document outline');
-    close.setAttribute('aria-label',t('关闭大纲','Close outline'));
-    panel.setAttribute('aria-label',t('文档大纲','Document outline'));render();
-  }
-  function hide(){const section=panel.closest('.sidebar-section');if(section)section.open=false;else panel.hidden=true;editor.view.focus();}
-  function show(){panel.hidden=false;const section=panel.closest('.sidebar-section');if(section){section.open=true;panel.dispatchEvent(new Event('lineae-show-sidebar',{bubbles:true}));}relocalize();}
-  close.addEventListener('click',hide);
-  document.addEventListener('keydown',event=>{if(event.key==='Escape'&&!panel.hidden&&!panel.closest('.sidebar-section')){event.preventDefault();hide();}},true);
-  editor.on('transaction',render);relocalize();
-  return {panel,show,hide,relocalize};
+  return createOutlinePanel(editor,{readOutline:outline,navigate:navigateTo});
 }

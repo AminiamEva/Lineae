@@ -1,3 +1,4 @@
+import {migrateVersion,migrateStoredPreferences} from './config-migrations.mjs';
 import { parseDocument, stringify } from 'yaml';
 import { compileKeybindings } from './keybindings.mjs';
 
@@ -71,23 +72,6 @@ function validateConfig(settings) {
   }
 }
 
-function migrateLegacyConfig(config) {
-  if (config.version !== 1) return config;
-  const ui = config.interface ?? {};
-  const preferences = { version: 2, interface: {} };
-  if (ui.language !== undefined) preferences.interface.language = ui.language;
-  if (ui.zoom !== undefined) preferences.interface.zoom = ui.zoom;
-  const math = {};
-  for (const [key, command] of Object.entries(config.keybindings?.math ?? {})) {
-    if (!/^ctrl\+[^+\s]+$/.test(key)) continue;
-    if (command === 'moveToSuperscript') math.superscript = key;
-    if (command === 'moveToSubscript') math.subscript = key;
-    if (command === 'moveAfterParent') math.leaveEnvironment = [...new Set([key, 'ctrl+j'])];
-  }
-  if (Object.keys(math).length) preferences.keybindings = { math };
-  return preferences;
-}
-
 export function createConfigStore(defaultYaml, { storage, isMac = false, onError = () => {} } = {}) {
   const defaults = parseYaml(defaultYaml);
   let overrides = {};
@@ -115,23 +99,18 @@ export function createConfigStore(defaultYaml, { storage, isMac = false, onError
   try {
     const saved = storage?.getItem(storageKey);
     const parsed = saved ? parseYaml(saved) : {};
-    const migrated = migrateLegacyConfig(parsed);
-    const legacyTheme = storage?.getItem('lineae.theme');
-    const migrateTheme = themes.includes(legacyTheme) && !Object.hasOwn(migrated.interface ?? {}, 'theme');
-    if (migrateTheme) migrated.interface = { ...migrated.interface, theme: legacyTheme };
-    let legacyPreferences=false;
-    const font=storage?.getItem('lineae.sourceFontSize'),indent=storage?.getItem('lineae.indentOnSave');
-    if(font!==undefined && font!==null && !Object.hasOwn(migrated.interface??{},'sourceFontSize')){migrated.interface={...migrated.interface,sourceFontSize:Math.max(11,Math.min(32,Number(font)||16))};legacyPreferences=true;}
-    if(indent!==undefined && indent!==null && !Object.hasOwn(migrated.editing??{},'indentOnSave')){migrated.editing={...migrated.editing,indentOnSave:indent!=='false'};legacyPreferences=true;}
-    apply(migrated);
-    if(legacyPreferences){persist();storage?.removeItem('lineae.sourceFontSize');storage?.removeItem('lineae.indentOnSave');}
-    if (migrated !== parsed || migrateTheme) persist();
+    const migration = migrateStoredPreferences(parsed,storage);
+    apply(migration.profile);
+    if (migration.changed) {
+      persist();
+      for (const key of migration.removals) storage?.removeItem(key);
+    }
   } catch (error) { onError(error); }
 
   return {
     get value() { return settings; },
     get bindings() { return bindings; },
-    importYaml(text) { apply(migrateLegacyConfig(parseYaml(text))); persist(); },
+    importYaml(text) { apply(migrateVersion(parseYaml(text))); persist(); },
     exportYaml() { return toYaml(settings); },
     updateInterface(patch) {
       checkKeys(defaults.interface, patch, 'interface.');

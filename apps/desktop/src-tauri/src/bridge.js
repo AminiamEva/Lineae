@@ -76,6 +76,11 @@
     return handle(path);
   };
 
+  function directoryRemovalPayload(entries) {
+    if (!entries) return undefined;
+    return Array.from(new TextEncoder().encode(JSON.stringify(entries)));
+  }
+
   window.lineaeProject = {async open() {
     const projectInvoke = (command,args) => invoke(command,args).catch(error => {throw error instanceof Error ? error : new Error(String(error));});
     const root = await projectInvoke('open_project');
@@ -92,7 +97,7 @@
       create:(path,bytes) => operation('create',path,null,Array.from(bytes)),
       mkdir:path => operation('mkdir',path),
       remove:(path,expected,expectedTree) => operation('remove',path,null,
-        expectedTree && Array.from(new TextEncoder().encode(JSON.stringify(expectedTree))),expected && Array.from(expected)),
+        directoryRemovalPayload(expectedTree),expected && Array.from(expected)),
       move:(path,target,expected,expectedTree) => operation('move',path,target,
         expectedTree && Array.from(new TextEncoder().encode(JSON.stringify(expectedTree))),expected && Array.from(expected)),
     };

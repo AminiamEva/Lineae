@@ -1,7 +1,7 @@
+import {removeProjectDirectory,rewriteProjectReferences} from './project-actions.mjs';
 import {projectPath, fileKind, directoryTree} from './paths.mjs';
-import {dependencyMatchesPath, dependencySpelling, scanDependencies, resolveMetadata} from './dependencies.mjs';
+import {scanDependencies, resolveMetadata} from './dependencies.mjs';
 import {RecoveryStore} from './recovery.mjs';
-import {t} from '../ui/i18n.mjs';
 
 const editable = kind => kind === 'tex' || kind === 'bib';
 const sameBytes = (left, right) => left.length === right.length && left.every((byte, index) => byte === right[index]);
@@ -160,42 +160,17 @@ export class Project {
         const result=await this.refreshNow({preserveExisting:true});
         if(result.conflicts.length || result.missing.length || result.added.length || result.removed.length || result.errors.length){
           change.reconciliationRequired=true;
-          change.warning=[change.warning,t('移动后检测到目录变化，请检查文件树并重新加载冲突文件','Directory changed during move; review files and reload conflicts'),...result.errors.map(item=>`${item.path}: ${item.message}`)].filter(Boolean).join(' · ');
+          change.warning=[change.warning,'移动后检测到目录变化，请检查文件树并重新加载冲突文件 / Directory changed during move; review files and reload conflicts',...result.errors.map(item=>`${item.path}: ${item.message}`)].filter(Boolean).join(' · ');
         }
       } catch(error){
         change.reconciliationRequired=true;
-        change.warning=[change.warning,t('路径已移动，但目录核对失败','Move committed; reconciliation failed')+': '+error.message].filter(Boolean).join(' · ');
+        change.warning=[change.warning,'路径已移动，但目录核对失败 / Move committed; reconciliation failed: '+error.message].filter(Boolean).join(' · ');
       }
     }
     try {this.checkpoint();}catch(error){this.persistenceError='Move completed; draft checkpoint failed: '+error.message;}
     return changes;
   }
-  rewriteMovedReferences(change=this.pathChanges.at(-1)) {
-    if(!change?.changes?.length)return {status:'unchanged',count:0,files:[]};
-    let count=0;const files=[];
-    for(const file of this.files.values()){
-      if(typeof file.draft!=='string')continue;
-      const patches=[];
-      for(const dependency of scanDependencies(file.draft).dependencies){
-        if(dependency.status!=='literal')continue;
-        const moved=change.changes.find(item=>dependencyMatchesPath(dependency.command,dependency.path,item.from));
-        if(!moved)continue;
-        const insert=dependencySpelling(dependency.command,dependency.path,moved.to);
-        if(insert!==dependency.path)patches.push({from:dependency.from,to:dependency.to,insert});
-      }
-      if(!patches.length)continue;
-      let next=file.draft;
-      for(const patch of patches.sort((left,right)=>right.from-left.from))next=next.slice(0,patch.from)+patch.insert+next.slice(patch.to);
-      if(next===file.draft)continue;
-      file.draft=next;file.revision=(file.revision??0)+1;file.dirty=file.draft!==file.saved;
-      if(file.id!==this.activeFileId)file.session=null;
-      this.scan(file);count+=patches.length;files.push({fileId:file.id,path:file.path,count:patches.length,
-        changes:[...patches].sort((left,right)=>left.from-right.from)});
-    }
-    if(count){this.resolveDependencies();this.checkpoint();}
-    change.references={status:count?'rewritten':'unchanged',count,files};
-    return change.references;
-  }
+  rewriteMovedReferences(change) { return rewriteProjectReferences(this,change); }
   activate(id) { this.file(id); this.activeFileId = id; }
   setMain(id) {
     if (this.file(id).kind !== 'tex') throw new TypeError('Main document must be a TeX file');
@@ -264,34 +239,7 @@ export class Project {
     return {retained:false};
   }
   removeDirectory(value) { return this.operation(()=>this.removeDirectoryNow(value)); }
-  async removeDirectoryNow(value) {
-    const path=projectPath(value);
-    if(!this.directories.includes(path))throw new Error('Directory does not exist');
-    const files=[...this.files.values()].filter(file=>file.path.startsWith(path+'/'));
-    if(files.some(file=>file.id===this.mainFileId))throw new Error('Cannot delete a directory containing the main document');
-    const directories=this.directories.filter(item=>item===path || item.startsWith(path+'/'));
-    const revisions=new Map(files.map(file=>[file.id,file.revision??0]));
-    const expectedTree=[
-      ...directories.map(path=>({path,kind:'directory'})),
-      ...files.map(file=>({path:file.path,kind:'file',bytes:Array.from(file.bytes)})),
-    ].sort((left,right)=>left.path.localeCompare(right.path,'en'));
-    const known=expectedTree.map(item=>item.path+'\0'+item.kind);
-    const disk=(await this.adapter.list()).filter(item=>item.path===path || item.path.startsWith(path+'/'))
-      .sort((left,right)=>left.path.localeCompare(right.path,'en')).map(item=>item.path+'\0'+item.kind);
-    if(JSON.stringify(known)!==JSON.stringify(disk))throw new Error('Directory changed on disk; refresh before deleting');
-    for(const file of files){const bytes=await this.adapter.read(file.path);if(!sameBytes(bytes,file.bytes))throw new Error('File changed on disk: '+file.path);}
-    await this.adapter.remove(path,undefined,expectedTree);
-    const retained=[];
-    for(const file of files){
-      if((file.revision??0)!==revisions.get(file.id)){file.missing=true;retained.push(file.id);continue;}
-      this.files.delete(file.path);this.scans.delete(file.id);
-    }
-    this.directories=this.directories.filter(item=>item!==path && !item.startsWith(path+'/'));
-    if(![...this.files.values()].some(file=>file.id===this.activeFileId))this.activeFileId=this.mainFileId;
-    this.mainCandidates=[...this.files.values()].filter(file=>this.scans.get(file.id)?.document);
-    this.resolveDependencies();this.checkpoint();
-    return {retained,removed:files.filter(file=>!retained.includes(file.id)).map(file=>file.id)};
-  }
+  removeDirectoryNow(value) { return removeProjectDirectory(this,value); }
   refresh() { return this.operation(()=>this.refreshNow()); }
   async refreshNow({preserveExisting=false}={}) {
     // Paths establish identity. An external rename cannot safely be inferred
@@ -342,4 +290,62 @@ export class Project {
   }
 }
 
-export {DirectoryHandleAdapter} from './directory-adapter.mjs';
+/** Browser File System Access adapter. Unsupported browsers must report capability absence. */
+export class DirectoryHandleAdapter {
+  constructor(handle) { this.handle = handle; }
+  async list() {
+    const entries = [];
+    async function visit(handle, prefix) {
+      for await (const [name, child] of handle.entries()) {
+        if(name.toLowerCase().startsWith('.lineae-'))continue;
+        const path = projectPath(prefix + name);
+        entries.push({path, kind:child.kind});
+        if (child.kind === 'directory') await visit(child, path + '/');
+      }
+    }
+    await visit(this.handle, '');
+    return entries;
+  }
+  async resolve(path) {
+    const segments = projectPath(path).split('/');
+    let directory = this.handle;
+    for (const segment of segments.slice(0, -1)) directory = await directory.getDirectoryHandle(segment);
+    return directory.getFileHandle(segments.at(-1));
+  }
+  async parent(path) {
+    const segments = projectPath(path).split('/');
+    let directory = this.handle;
+    for (const segment of segments.slice(0,-1)) directory = await directory.getDirectoryHandle(segment);
+    return {directory, name:segments.at(-1)};
+  }
+  async unused(directory, name) {
+    // Windows directory handles can open an existing file through a case alias.
+    // Conservatively reject aliases on every browser, before create:true.
+    for await (const [entry] of directory.entries()) if (entry.toLowerCase() === name.toLowerCase()) throw new Error('Path already exists on disk');
+  }
+  async create(path, bytes) {
+    const {directory,name} = await this.parent(path);
+    await this.unused(directory,name);
+    const handle = await directory.getFileHandle(name,{create:true});
+    const stream = await handle.createWritable();
+    try { await stream.write(bytes); await stream.close(); }
+    catch (error) { await stream.abort().catch(() => {}); throw error; }
+  }
+  async mkdir(path) {
+    const {directory,name} = await this.parent(path);
+    await this.unused(directory,name); await directory.getDirectoryHandle(name,{create:true});
+  }
+  async remove(path,expected,expectedTree) {
+    const {directory,name}=await this.parent(path);
+    await directory.removeEntry(name,{recursive:Array.isArray(expectedTree)});
+  }
+  async read(path) { return new Uint8Array(await (await (await this.resolve(path)).getFile()).arrayBuffer()); }
+  async write(path, bytes, expected) {
+    const stream = await (await this.resolve(path)).createWritable();
+    try {
+      if(expected && !sameBytes(await this.read(path),expected))throw new Error('File changed on disk: '+path);
+      await stream.write(bytes); await stream.close();
+    }
+    catch (error) { await stream.abort().catch(() => {}); throw error; }
+  }
+}

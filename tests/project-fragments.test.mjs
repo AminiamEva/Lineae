@@ -40,3 +40,18 @@ test('escaped characters stay editable across successive project patches',()=>{
  }
  assert.match(source,/\\#a正文!/);
 });
+
+test('heading and first paragraph retain their original separator during indentation',()=>{
+ const text='\\documentclass{article}\n\\begin{document}\n\\section{Heading}\nFirst paragraph.\n\nSecond paragraph.\n\\end{document}\n';
+ const parsed=parseDocument(text,{fragment:true});
+ const content=parsed.blocks.flatMap(importBlocks);
+ const doc={type:'doc',content};
+ const projection=sourceProjection(text,doc,{fragment:true});
+ const next=structuredClone(doc);
+ const first=next.content.find(node=>node.type==='paragraph'&&node.content?.some(child=>child.text==='First paragraph.'));
+ first.attrs={...first.attrs,indent:true,explicitIndent:true};
+ const changes=richSourceChanges(projection,next);
+ assert.ok(changes);
+ const actual=changes.sort((a,b)=>b.from-a.from).reduce((value,change)=>value.slice(0,change.from)+change.insert+value.slice(change.to),text);
+ assert.equal(actual,text.replace('First paragraph.','\\indent First paragraph.'));
+});

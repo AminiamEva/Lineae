@@ -1,3 +1,4 @@
+import {createPreviewControls,labelSourceZoom} from './source-presentation.js';
 import { Compartment, EditorState } from '@codemirror/state';
 import { EditorView, keymap, lineNumbers, highlightActiveLine, highlightActiveLineGutter, drawSelection } from '@codemirror/view';
 import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands';
@@ -76,21 +77,17 @@ export function createSourceWorkspace({ page, render, metadata, onChange = () =>
   }
   let view, original, timer, scrollTop = 0, scrollLeft = 0;
   function syncInterfaceLanguage() {
+    if (!view) return;
     const next = document.documentElement.lang;
-    if (view && next !== interfaceLanguage) {
-      interfaceLanguage = next;
-      view.dispatch({effects:language.reconfigure(phrases())});
-    }
+    if (next === interfaceLanguage) return;
+    view.dispatch({effects:language.reconfigure(phrases())});
+    interfaceLanguage = next;
   }
   let savedText, savedDoc;
   let lastRendered, expanded = false, previewOnly = false, receiving = false;
   let fontSize = FONT_DEFAULT;
   fontSize=clampFont(getPreferences()?.interface.sourceFontSize??FONT_DEFAULT);
-  function updateZoomLabel() {
-    zoomLabel.textContent = fontSize + 'px';
-    zoomLabel.title = t('恢复源码默认字号：','Reset code font: ') + fontSize + 'px';
-    zoomLabel.setAttribute('aria-label', zoomLabel.title);
-  }
+  function updateZoomLabel() { labelSourceZoom(zoomLabel,fontSize); }
   function zoom(size) {
     fontSize = clampFont(size);
     panel.style.setProperty("--tex-font-size", fontSize + "px");
@@ -140,41 +137,10 @@ export function createSourceWorkspace({ page, render, metadata, onChange = () =>
   zoomIn.textContent = '+';
   zoom(fontSize);
   installFontWheel(code, amount => zoom(fontSize + amount), lifecycle.signal);
-  const richActions = element('div', 'tex-rich-actions');
-  richActions.setAttribute('role', 'group');
-  richActions.setAttribute('aria-label', t('页面缩放', 'Page zoom'));
-  const richTitle = element('span', 'tex-rich-title');
-  richTitle.textContent = t('预览', 'Preview');
-  richActions.append(richTitle);
-  const richButtons = [];
-  function richButton(text, label, run) {
-    const button = element('button', '');
-    button.type = 'button'; button.textContent = text;
-    button.title = label(); button.setAttribute('aria-label', button.title);
-    button.addEventListener('click', run, {signal:lifecycle.signal});
-    richButtons.push([button, label]);
-    richActions.append(button);
-    return button;
-  }
-  let previewPercent=100;
-  const richOut=richButton('−',()=>t('缩小页面','Zoom page out'),()=>onPreviewZoom(previewPercent-10));
-  const richLabel=richButton('100%',()=>t('恢复页面默认大小','Reset page zoom'),()=>onPreviewZoom(100));
-  richLabel.className='tex-rich-zoom-label';
-  const richIn=richButton('+',()=>t('放大页面','Zoom page in'),()=>onPreviewZoom(previewPercent+10));
-  richTitle.textContent=t('预览','Preview');
-  head.append(richActions);
-  function setPreviewZoom(value){
-    previewPercent=Math.max(50,Math.min(300,Number(value)||100));
-    panel.style.setProperty('--preview-zoom',previewPercent/100);
-    richLabel.textContent=previewPercent+'%';
-    richOut.disabled=previewPercent<=50;richIn.disabled=previewPercent>=300;
-  }
-  installFontWheel(preview,amount=>onPreviewZoom(previewPercent+amount*5),lifecycle.signal);
-  preview.addEventListener('keydown',event=>{
-    if(!(event.ctrlKey||event.metaKey)||event.altKey||event.isComposing||!['+','=','-','0'].includes(event.key))return;
-    event.preventDefault();event.stopPropagation();
-    onPreviewZoom(event.key==='0'?100:previewPercent+(event.key==='-'?-10:10));
-  },{capture:true,signal:lifecycle.signal});
+  const previewControls=createPreviewControls({panel,head,preview,onChange:onPreviewZoom,
+    installWheel:callback=>installFontWheel(preview,callback,lifecycle.signal),signal:lifecycle.signal});
+  const richActions=previewControls.element;
+  const setPreviewZoom=previewControls.setZoom;
   const expandButton = action('sourceExpand', () => expanded ? t('仅源码','Source only') : t('分栏编辑','Split editing'), () => setExpanded(!expanded));
 
   function value() {
@@ -414,11 +380,7 @@ export function createSourceWorkspace({ page, render, metadata, onChange = () =>
       syncInterfaceLanguage();
       updateZoomLabel();
       divider.setAttribute('aria-label',t('LaTeX / 预览','LaTeX / Preview'));
-      richTitle.textContent = t('预览', 'Preview');
-      richActions.setAttribute('aria-label', t('页面缩放', 'Page zoom'));
-      for (const [button, label] of richButtons) {
-        button.title = label(); button.setAttribute('aria-label', button.title);
-      }
+      previewControls.relocalize();
       if (!panel.hidden) refresh();
     },
     error(text) { message.textContent = text; },

@@ -1,3 +1,4 @@
+import {localizedTitle} from '../ui/localized-control.mjs';
 import { Node } from '@tiptap/core';
 import { TextSelection } from '@tiptap/pm/state';
 import { closeHistory } from '@tiptap/pm/history';

@@ -1,3 +1,4 @@
+import {localizedTitle} from '../ui/localized-control.mjs';
 import { CellSelection } from '@tiptap/pm/tables';
 import { t } from '../ui/i18n.mjs';
 

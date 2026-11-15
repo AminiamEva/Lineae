@@ -86,8 +86,7 @@ body:has(.tex-workspace:not([hidden])) {overflow:hidden}
 .tex-code .cm-editor {font-size:var(--tex-font-size,16px)}
 .tex-code .cm-scroller {font-size:var(--tex-font-size,16px);overscroll-behavior:contain}
 .tex-actions .tex-zoom-label {width:46px;font-size:12px;font-variant-numeric:tabular-nums}
-.tex-workspace .tex-preview .document-page {pointer-events:none;cursor:default}
-.tex-workspace .tex-preview .document-page::before {cursor:default}
+.tex-workspace .tex-preview .document-page {pointer-events:auto;cursor:text}
 .tex-workspace .tex-preview {padding:18px;scrollbar-gutter:stable}
 .tex-actions button:focus-visible {outline:2px solid var(--tex-command);outline-offset:2px}
 .tex-code .cm-tooltip {border:1px solid var(--tex-border);border-radius:8px;background:var(--tex-bar);color:inherit;box-shadow:0 8px 24px #18223b18}
@@ -97,6 +96,8 @@ body:has(.tex-workspace:not([hidden])) {overflow:hidden}
 .tex-code .cm-foldPlaceholder {background:var(--tex-active);border-color:var(--tex-border);color:var(--tex-muted)}
 .tex-code .cm-snippetField {background:#a5b4fc22}
 .ribbon [data-source-unavailable] {opacity:.35;cursor:not-allowed}
+.tex-workspace .tex-preview .document-page {font-size:var(--rich-text-font-size,16px);line-height:1.5}
+.tex-workspace .tex-preview .ProseMirror {--tex-font-size:var(--rich-text-font-size,16px);--tex-line-height:calc(var(--rich-text-font-size,16px) * 1.5);line-height:1.5}
 .tex-rich-actions {display:flex;align-items:center;gap:6px;position:sticky;top:0;z-index:2;padding:4px 6px;margin-bottom:12px;border-radius:8px;background:var(--tex-bar);color:var(--tex-muted);font:12px/1.5 system-ui,sans-serif}
 .tex-rich-title {margin-right:auto}
 .tex-rich-actions button {display:grid;place-items:center;min-width:32px;height:32px;padding:0;border-radius:7px;background:transparent;color:inherit}
@@ -128,63 +129,61 @@ body:has(.tex-workspace:not([hidden])) {overflow:hidden}
   .tex-workspace.is-expanded .tex-preview-toggle {display:none}
 }
 
-/* Preview uses physical page geometry and the same percentage zoom as Document. */
-.tex-workspace .tex-preview .document-page{width:var(--page-width,210mm);min-height:var(--page-height,297mm);padding:var(--page-margin-top,22mm) var(--page-margin-right,22mm) var(--page-margin-bottom,22mm) var(--page-margin-left,22mm);zoom:var(--preview-zoom,1)!important;flex:none;}
-.tex-workspace .tex-preview{padding:16px;overflow:auto;}
-.tex-head{min-height:38px;padding-inline:12px;gap:8px;}
-.tex-head .tex-actions{gap:2px;}
-.tex-head .tex-actions button,.tex-head .tex-rich-actions button{height:26px;min-width:26px;}
-.tex-head .tex-rich-actions{position:static;margin:0;padding:0 6px;border-left:1px solid var(--tex-border);border-radius:0;gap:2px;}
-.tex-head .tex-rich-title{font-size:11px;margin:0 4px 0 0;}
-.document-status .tex-foot{border:0;background:transparent;padding:0;min-height:0;gap:8px;min-width:0;font:inherit;flex:1;}
-.document-status .tex-foot .tex-message{max-width:20vw;}
-.document-status .tex-indent-setting{margin-left:auto;}
-.tex-foot[hidden],.tex-rich-actions[hidden]{display:none!important;}
-.source-workspace-visible .document-status>span:first-of-type{display:none;}
-
-#toolbar-collapse{pointer-events:auto;display:grid;place-items:center;width:26px;height:26px;padding:0;border-radius:7px;flex:none;}
-header>#toolbar-collapse{position:absolute;right:4px;top:0;}
-body.source-workspace-visible:not(.project-visible) header h1{display:none;}
-@media(max-width:700px){.tex-rich-title,.document-status .tex-format{display:none}.tex-head{gap:3px;padding-inline:6px}.tex-head .tex-filename{max-width:100px}.document-status .tex-indent-setting{font-size:9px}}
-
-body.toolbar-collapsed .ribbon{display:block;}
-body.toolbar-collapsed .ribbon>.tools{display:none!important;}
-.tex-head{flex-wrap:wrap;}
-.tex-head>.ribbon{order:1;flex:1;min-width:200px;max-width:700px;padding:3px;border-radius:9px;border:0;box-shadow:none;background:transparent;backdrop-filter:none;}
-.tex-head>.tex-filename{order:0;max-width:160px;}
-.tex-head>.tex-dirty{order:0;}
-.tex-head>.tex-actions{order:2;margin-left:auto;}
-.tex-head>.tex-rich-actions{order:3;}
-.tex-head>#toolbar-collapse{order:4;}
-.tex-head .ribbon-tabs button{padding:3px 6px;font-size:11px;}
-.tex-head>.ui-icon{order:0;}
-@media(max-width:700px){.tex-head>.ribbon{order:5;flex-basis:100%;max-width:none}.tex-head>.tex-actions{margin-left:auto}}
-
-body.toolbar-collapsed:not(.source-workspace-visible) main{padding-top:68px}
-
-/* One floating toolbar, centered over the available editing surface in every mode. */
-:root{--sidebar-width:0px;}body.project-visible{--sidebar-width:230px;}
-header .floating-toolbar{pointer-events:auto;position:relative;display:flex;justify-content:center;max-width:calc(100vw - var(--sidebar-width) - 24px);transform:translateX(calc(var(--sidebar-width)/2));}
-header .floating-toolbar>.ribbon{padding-right:32px;max-width:min(960px,calc(100vw - var(--sidebar-width) - 24px));}
-header .floating-toolbar>#toolbar-collapse{position:absolute;right:5px;top:4px;width:24px;height:24px;}
-header .floating-toolbar.is-hidden{height:auto;}
-header .floating-toolbar.is-hidden>.ribbon{display:block!important;}
-header .floating-toolbar.is-hidden .ribbon>.tools{display:none!important;}
-
-body:not(.source-workspace-visible) main,body.toolbar-collapsed:not(.source-workspace-visible) main{padding-top:76px;}
-@media(max-width:600px){body.project-visible{--sidebar-width:150px;}}
-@media(prefers-reduced-motion:no-preference){.floating-toolbar{transition:opacity .15s ease;}.sidebar-section-content{animation:tex-enter .12s ease-out;}}
-.settings-panel{box-sizing:border-box;width:min(720px,calc(100vw - 24px));max-height:86dvh;border:1px solid light-dark(#d9dfe9,#444a55);border-radius:18px;padding:20px;background:light-dark(#fbfcff,#262930);color:inherit;box-shadow:0 16px 70px #0004;}
-.settings-panel::backdrop{background:#0004;backdrop-filter:blur(3px);}
-.settings-panel h2{margin:0 0 14px;font:600 18px system-ui;}
-.settings-panel details{margin:7px 0;border:1px solid light-dark(#e2e6ed,#414751);border-radius:8px;padding:8px;}
-.settings-panel summary{cursor:pointer;font:600 12px system-ui;padding:2px;}
-.setting-row{display:grid;grid-template-columns:minmax(0,1fr) minmax(90px,46%);gap:12px;align-items:center;margin:8px 0;font:12px system-ui;}
-.setting-row input,.setting-row select{box-sizing:border-box;min-width:0;width:100%;font:12px system-ui;}
-.setting-row input[type=checkbox]{justify-self:end;width:16px;height:16px;}
-.settings-panel textarea{box-sizing:border-box;width:100%;font:12px/1.5 Consolas,monospace;margin-top:8px;}
-.settings-actions{position:sticky;bottom:-20px;display:flex;gap:8px;justify-content:flex-end;padding:12px 0;background:light-dark(#fbfcff,#262930);}
-.settings-panel [role=alert]{color:light-dark(#b33737,#efa2a2);font-size:12px;}
-body.source-workspace-visible header{z-index:13;}
-
-header .floating-toolbar #layout-panel input{box-sizing:border-box;min-width:0;flex:0 1 64px;max-width:64px;padding:4px 5px;border:1px solid var(--tex-border,#d8dce5);border-radius:6px;font:12px system-ui;}
+/* AminiamEva workspace chrome: source/preview geometry is independent of fonts. */
+.tex-workspace .tex-preview .document-page {
+  width:var(--page-width,210mm); min-height:var(--page-height,297mm);
+  padding:var(--page-margin-top,22mm) var(--page-margin-right,22mm) var(--page-margin-bottom,22mm) var(--page-margin-left,22mm);
+  zoom:var(--preview-zoom,1)!important; flex:none;
+  font-size:var(--tex-font-size);line-height:var(--tex-line-height);
+  pointer-events:none;cursor:default;
+}
+.tex-workspace .tex-preview .document-page::before {cursor:default;}
+.tex-workspace .tex-preview {padding:16px;overflow:auto;}
+.tex-workspace .tex-preview .ProseMirror {--tex-font-size:inherit;--tex-line-height:inherit;line-height:var(--tex-line-height);}
+.tex-foot[hidden],.tex-rich-actions[hidden] {display:none!important;}
+.source-workspace-visible .document-status>span:first-of-type {display:none;}
+.tex-head {min-height:38px;padding-inline:12px;gap:8px;flex-wrap:wrap;}
+.tex-head>.tex-filename {max-width:160px;}
+.tex-head>.tex-actions {margin-left:auto;gap:2px;}
+.tex-head .tex-actions button,.tex-head .tex-rich-actions button {height:26px;min-width:26px;}
+.tex-head .tex-rich-actions {position:static;margin:0;padding:0 6px;border-left:1px solid var(--tex-border);border-radius:0;gap:2px;}
+.tex-head .tex-rich-title {font-size:11px;margin:0 4px 0 0;}
+.document-status .tex-foot {padding:0;gap:6px;background:transparent;border:0;min-width:0;min-height:0;flex:1;font:inherit;}
+.document-status .tex-position {white-space:nowrap;}
+.document-status .tex-message {max-width:min(420px,30vw);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.document-status button[aria-pressed] {transition:color .14s ease,border-color .14s ease;}
+body.source-workspace-visible header {z-index:13;}
+body.source-workspace-visible:not(.project-visible) header h1 {display:none;}
+body:not(.source-workspace-visible) main {padding-top:76px;}
+:root {--sidebar-width:0px;}
+body.project-visible {--sidebar-width:230px;}
+header .floating-toolbar {position:relative;display:flex;justify-content:center;pointer-events:auto;max-width:calc(100vw - var(--sidebar-width) - 24px);transform:translateX(calc(var(--sidebar-width)/2));}
+header .floating-toolbar>.ribbon {padding-right:32px;max-width:min(960px,calc(100vw - var(--sidebar-width) - 24px));}
+header .floating-toolbar>#toolbar-collapse {position:absolute;right:5px;top:4px;width:24px;height:24px;display:grid;place-items:center;padding:0;border-radius:7px;pointer-events:auto;}
+header .floating-toolbar.is-hidden>.ribbon {display:block;}
+header .floating-toolbar.is-hidden .ribbon>.tools {display:none!important;}
+header .floating-toolbar #layout-panel input {box-sizing:border-box;min-width:0;flex:0 1 64px;max-width:64px;padding:4px 5px;border:1px solid var(--tex-border,#d8dce5);border-radius:6px;font:12px system-ui;}
+@media(max-width:700px) {.tex-head{gap:3px;padding-inline:6px;}.tex-head>.tex-filename{max-width:100px;}.tex-rich-title{display:none;}}
+@media(max-width:600px) {body.project-visible{--sidebar-width:150px;}}
+/* Fonts are inherited from the document, including its explicit CJK family. */
+.document-page .ProseMirror h1 {font-family:var(--tex-heading-font-family,"Latin Modern Roman 12","Latin Modern Roman"),var(--tex-cjk-font-family,"Songti SC",SimSun),serif;}
+/* Outline is also usable outside a project as a floating navigation panel. */
+.document-outline {position:fixed;inset:var(--tex-toolbar-bottom,104px) 16px auto auto;z-index:15;width:min(280px,calc(100vw - 32px));max-height:calc(100vh - var(--tex-toolbar-bottom,104px) - 42px);overflow:auto;padding:8px;border:1px solid light-dark(#d8dce5,#4b4f58);border-radius:12px;background:light-dark(#fffffff5,#292a2ff5);box-shadow:0 8px 28px #0003;backdrop-filter:blur(16px);}
+.document-outline-header {display:flex;align-items:center;justify-content:space-between;gap:8px;padding:2px 4px 7px;}
+.document-outline-header button {padding:2px 8px;}
+.document-outline-list {display:flex;flex-direction:column;gap:2px;}
+.document-outline-list button {width:100%;overflow:hidden;padding-block:5px;border-radius:6px;background:transparent;text-align:left;text-overflow:ellipsis;white-space:nowrap;}
+.document-outline-list button:hover,.document-outline-list button[aria-current=true] {background:light-dark(#e8f1ff,#343d50);}
+.document-outline-list p {margin:8px;opacity:.7;}
+/* Settings uses form controls backed by the YAML schema. */
+.settings-panel {box-sizing:border-box;width:min(720px,calc(100vw - 24px));max-height:86dvh;border:1px solid light-dark(#d9dfe9,#444a55);border-radius:18px;padding:20px;background:light-dark(#fbfcff,#262930);color:inherit;box-shadow:0 16px 70px #0004;}
+.settings-panel::backdrop {background:#0004;backdrop-filter:blur(3px);}
+.settings-panel h2 {margin:0 0 14px;font:600 18px system-ui;}
+.settings-panel details {margin:7px 0;border:1px solid light-dark(#e2e6ed,#414751);border-radius:8px;padding:8px;}
+.settings-panel summary {cursor:pointer;font:600 12px system-ui;padding:2px;}
+.setting-row {display:grid;grid-template-columns:minmax(0,1fr) minmax(90px,46%);gap:12px;align-items:center;margin:8px 0;font:12px system-ui;}
+.setting-row input,.setting-row select {box-sizing:border-box;min-width:0;width:100%;font:12px system-ui;}
+.setting-row input[type=checkbox] {justify-self:end;width:16px;height:16px;}
+.settings-panel textarea {box-sizing:border-box;width:100%;font:12px/1.5 Consolas,monospace;margin-top:8px;}
+.settings-actions {position:sticky;bottom:-20px;display:flex;gap:8px;justify-content:flex-end;padding:12px 0;background:light-dark(#fbfcff,#262930);}
+.settings-panel [role=alert] {color:light-dark(#b33737,#efa2a2);font-size:12px;}

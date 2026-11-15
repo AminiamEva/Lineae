@@ -1,40 +1,38 @@
-# Project 与当日改动重构（2026-11-15，UTC+8）
+# 2026-11-15 自有新增代码重写
 
-核对范围为当日从 1ff8d00 到 2384689 的提交，覆盖原生工程 IO、工程会话、双语界面、表格兼容、页面布局历史、源码界面、设置和工程侧栏。重构保留已有的数据完整性规则和入口。
+以 UTC+8 的 2026-11-15 为日期范围，以 PR #17 合并后的 1ff8d00 为差异基线，仅处理 AminiamEva 新增代码。zhumohan632-rgb 的 PR 实现保留；02fe38f 曾做的整体模型替换已由 db7fd6d 撤回。
 
-## 职责边界
+## 保留的上游实现
 
-| 层 | 代码 | 责任 |
-|---|---|---|
-| 文件系统 | directory-adapter.mjs、原生 project.rs / bridge.js | 读写字节、路径约束、并发冲突与原子操作 |
-| 工程模型 | project.mjs、dependencies.mjs、paths.mjs、recovery.mjs | 文件身份、草稿、依赖、恢复和磁盘操作队列 |
-| 工作区会话 | workspace-state.mjs | 工程统一模式、BibTeX 例外、进入工程的 Document 默认值、单文件工作区挂起与恢复 |
-| Document 所有权 | document-session.mjs、include-document.mjs | 文件来源、区域边界与各文件的最小源码补丁 |
-| 编辑器适配 | editing.js、navigation.js | 工程标题退出、显式缩进、导航和文件拖放；不拥有编辑器全局输入或渲染规则 |
-| 文件引用 | include-operations.mjs、include-panel.js | 统一 input/include 添加、排序、删除和循环检查 |
-| 工程界面 | explorer.js、tree-view.js、tree-entry.js、context-menu.js | 协调动作，渲染树，行内命名，菜单键盘行为 |
-| 外围界面 | floating-toolbar.js、settings-panel.js、sidebar-section.js | 功能区折叠、配置和可折叠分区 |
+- project.mjs 的文件身份、操作队列、恢复、持久化、移动后目录核对和 DirectoryHandleAdapter 主体。
+- paths.mjs、依赖扫描循环、Source 同步算法、CodeMirror 编辑与历史主体。
+- 文件树渲染原有行为、原生磁盘安全操作和原生测试。目录适配器和 Rust 测试已回到原位置。
+- 原有富文本和公式输入主体、字体资源、OpenCC 署名字表、既有回归测试。
 
-main.js 通过适配器连接工程与既有编辑器。原生完整性测试提取为 project_tests.rs，继续测试同一套私有 IO 实现。浏览器目录适配器保留 project.mjs 的兼容导出。
+## 自有实现的职责
 
-## 已明确的行为约束
+| 功能 | 实现 |
+|---|---|
+| 新工程与文件树操作 | opening、context-actions、tree-entry、context-menu、sidebar、mutation-presentation |
+| 目录删除与路径重写扩展 | project-actions、reference-paths；通过原模型接口调用 |
+| 连续多文件 Document | include-document、document-session、composition-controller、rich-session |
+| include/input 的图形化操作 | include-operations、include-panel、navigation |
+| 模式与列表策略 | workspace-state、list-policy |
+| 空文档同步边界 | source-boundaries；不替换上游同步算法 |
+| 页面设置和历史 | default-document、page-layout-history、settings-values |
+| 标题退出与显式首段缩进 | editing、paragraph-format；原 Tab 空格行为保留 |
+| 字体状态 | selection-typography、format-controls；从实际选区读取字体与 TeX 点 |
+| 外围功能区与设置 | floating-toolbar、settings-panel、sidebar-section、source-presentation |
+| 大纲与引用导航 | outline-panel；既有 ToC/引用模型沿用，导航扩展接入 |
+| 复杂表格扩展 | table-spans；原简单列解析与分行入口保留 |
+| 中英繁体 | i18n、traditional、config-migrations、localized-control；字表与文案数据保留 |
 
-- Document 默认展开；Source / Split 默认仅折叠功能区。标签行与 v 开关始终可用。
-- 工程打开后正文可连续输入、中文输入、删除和回车；空段落不因缺少 TeX 字符而使回写投影失效。
-- 标题末尾回车及 Ctrl+J 回到正文，生成可回写的显式 indent。源码导入的既有缩进规则保持。
-- 字体控件从当前选区格式或块的计算样式读取，不用固定字体与 10pt 冒充实际样式。标题沿用现有字号与字重，补齐文档指定的 CJK 回退。
-- 文件来源标记与 Project 包装层的样式位于 project.css；其块继承既有正文、标题和公式样式。
-- 所有 include GUI、命令菜单和拖放使用统一操作与循环检查，删除引用保留原文件。
-- 不格式化未编辑源码，不删除未知宏、注释或原始行尾；跨文件边界的非法结构修改仍被拒绝。
+HTML、YAML、包依赖以及图标/工具提示的文案映射是声明数据，保留其有效配置，不为制造差异而改动资源或上游控件主体。自己的样式集中于 project.css 与 source-workspace.css 的扩展区；pages.css 回到基线。
 
-## 当日其他改动的验证覆盖
+## 验收约束
 
-- config / settings：YAML 校验、旧偏好迁移、快捷键冲突与导入导出。
-- i18n / traditional / tooltips / title-styles：中英繁体和逐字转换测试。
-- blocks / packages / tables / codec：导入导出、multirow、列定义与包依赖测试。
-- source-workspace / source-toolbar / source-sync：字节保留、双模式历史、只读 Split、百分比预览。
-- bridge / native IO / recovery：目录清单、并发编辑、路径重写、原子写入和取消行为。
+Document 默认展开，Source/Split 默认仅折叠下排，标签和 v 保留；Normal 默认模板一致；布局修改进入撤销；Split 只读且按百分比缩放；新文件继承当前模式。工程打开后能连续编辑，标题 Enter/Ctrl+J 生成可回写的显式缩进；已有标题首段通过 Ctrl+I 和 indent/noindent 命令也能改变缩进。
 
-## 验证入口
+原始源文件中的未编辑字节、未知命令与行尾继续受保护。include 编辑归属原文件，图形操作检查循环，不删除被引用文件。磁盘冲突、操作中的新输入与恢复检查继续沿用并验证原有安全语义。
 
-GitHub Actions 执行数据、UI、Bib、Project 编辑边界、工作区导航、连续 Document、文件树、完整编辑器、工程会话及 Rust 原生测试，最后远端生成 Windows 包。禁止本地构建的要求继续生效。
+只在 GitHub Actions 构建与验证，不本地构建。最终提交、回归和部署结果见 REWRITE_2026-11-15_STATUS.md。

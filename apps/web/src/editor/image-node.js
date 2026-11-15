@@ -1,3 +1,4 @@
+import {localizedLabel,localizedPlaceholder} from '../ui/localized-control.mjs';
 import { Node } from '@tiptap/core';
 import { t } from '../ui/i18n.mjs';
 import { askText } from './dialog.js';
@@ -91,7 +92,7 @@ export const DocumentImage = Node.create({
       const caption=document.createElement('figcaption');
       caption.contentEditable='true';
       caption.spellcheck=false;
-      caption.dataset.zhPlaceholder='题注';caption.dataset.enPlaceholder='Caption';caption.dataset.placeholder=t('题注','Caption');
+      localizedPlaceholder(caption,'题注','Caption');
       caption.addEventListener('keydown',event=>{
         if(event.key==='Enter'){event.preventDefault();caption.blur();}
       });
@@ -102,9 +103,9 @@ export const DocumentImage = Node.create({
       const controls=document.createElement('div');
       controls.className='document-image-controls';
       const size=document.createElement('button');
-      size.type='button';size.dataset.zh='尺寸';size.dataset.en='Size';size.textContent=t('尺寸','Size');
+      size.type='button';localizedLabel(size,'尺寸','Size');
       const editCaption=document.createElement('button');
-      editCaption.type='button';editCaption.dataset.zh='题注';editCaption.dataset.en='Caption';editCaption.textContent=t('题注','Caption');
+      editCaption.type='button';localizedLabel(editCaption,'题注','Caption');
       controls.append(size,editCaption);
       function update(patch, expected) {
         if (!dom.isConnected || node !== expected) return;
@@ -132,9 +133,7 @@ export const DocumentImage = Node.create({
         dom.dataset.centered=String(node.attrs.centered);
         if(node.attrs.align)dom.dataset.align=node.attrs.align;
         else delete dom.dataset.align;
-        button.dataset.zh='定位图片 · '+node.attrs.path;
-        button.dataset.en='Locate image · '+node.attrs.path;
-        button.textContent=t(button.dataset.zh,button.dataset.en);
+        localizedLabel(button,'定位图片 · '+node.attrs.path,'Locate image · '+node.attrs.path);
         const width=node.attrs.width;
         image.style.width=width?.endsWith('\\linewidth') ? `${Number.parseFloat(width)*100}%` : width ?? '';
       };

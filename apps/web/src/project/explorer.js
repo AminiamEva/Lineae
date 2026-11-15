@@ -1,12 +1,13 @@
+import {updateMovedReferences,removeDirectoryWithNotice} from './mutation-presentation.js';
+import {newProjectIntent,seedNewProject} from './opening.js';
+import {createProjectSidebar} from './sidebar.js';
+import {projectContextActions} from './context-actions.js';
 import {installProjectContextMenu} from './context-menu.js';
 import {promptTreeEntry} from './tree-entry.js';
 import {installProjectTree} from './tree-view.js';
 import {Project, DirectoryHandleAdapter} from './project.mjs';
 import {localize, t} from '../ui/i18n.mjs';
-import {sidebarSection} from '../ui/sidebar-section.js';
-import {installIncludePanel} from './include-panel.js';
 import {projectPath} from './paths.mjs';
-import {DEFAULT_DOCUMENT_SOURCE} from '../editor/default-document.mjs';
 
 export function installProjectExplorer({footer, filePanel, sessions}) {
   let project = null, busy = false, switching = false;
@@ -26,19 +27,10 @@ export function installProjectExplorer({footer, filePanel, sessions}) {
   contextMenu.setAttribute('role','menu');contextMenu.setAttribute('aria-label',t('文件操作','File actions'));contextMenu.hidden = true;
   const menu=installProjectContextMenu({contextMenu,panel,run});
   const closeContextMenu=menu.close,contextAction=menu.action,contextSeparator=menu.separator;
-  panel.append(title,actions,message);document.body.append(panel,contextMenu);
-  const sectionOptions={getState:()=>sessions.preferences().interface.sidebar,onToggle:(key,open)=>sessions.sidebarChanged(key,open)};
-  const sections={
-    files:sidebarSection(panel,'files',['文件树','File tree'],sectionOptions),
-    includes:sidebarSection(panel,'includes',['文件引用','File includes'],sectionOptions),
-    outline:sidebarSection(panel,'outline',['大纲','Outline'],sectionOptions),
-    citations:sidebarSection(panel,'citations',['文献','Citations'],sectionOptions),
-  };
-  sections.files.content.append(diagnostics,tree);
-  sections.outline.content.append(sessions.outline.panel);sessions.outline.panel.hidden=false;
-  const citeButton=document.createElement('button');citeButton.type='button';citeButton.dataset.zh='管理参考文献';citeButton.dataset.en='Manage references';citeButton.onclick=sessions.citations;sections.citations.content.append(citeButton);
-  const includes=installIncludePanel({container:sections.includes.content,getProject:()=>project,edit:sessions.editIncludes,openFile:id=>run(()=>activate(id))});
-  panel.addEventListener('lineae-show-sidebar',()=>visible(true));
+  const sidebar=createProjectSidebar({panel,title,actions,message,tree,diagnostics,sessions,
+    getProject:()=>project,openFile:id=>run(()=>activate(id)),show:visible});
+  const {sections,includes}=sidebar;
+  document.body.append(panel,contextMenu);
   const toggle = document.createElement('button'); toggle.id = 'project-toggle';
   toggle.textContent = '▤'; toggle.title = t('显示/隐藏项目文件','Toggle project files');
   toggle.setAttribute('aria-label', toggle.title); toggle.setAttribute('aria-controls', panel.id);
@@ -95,15 +87,9 @@ export function installProjectExplorer({footer, filePanel, sessions}) {
     if (!project && !sessions.approveOpen(newOrOpen)) return;
     if (!window.lineaeProject && !window.showDirectoryPicker) throw new Error(t('当前环境不支持目录读写，请使用桌面应用或支持 File System Access 的浏览器。','This browser cannot write to a directory. Use the desktop app or a browser with File System Access.'));
     const adapter = window.lineaeProject ? await window.lineaeProject.open() : new DirectoryHandleAdapter(await window.showDirectoryPicker({mode:'readwrite'}));
-    const selectedEntries=newOrOpen?await adapter.list():null;
-    if(newOrOpen==='create' && selectedEntries.length)throw new Error(t('新建工程请选择空目录','Choose an empty folder for a new project'));
-    let createNew=Boolean(newOrOpen && !selectedEntries.length);
+    const createNew=await newProjectIntent(adapter,newOrOpen);
     const next = await new Project(adapter).open();
-    if(createNew && (next.diskRecovery.length || next.recoveryVersions.length || next.diskRecoveryError))createNew=false;
-    if(createNew){
-      const main=await next.create('main.tex',DEFAULT_DOCUMENT_SOURCE);
-      next.setMain(main.id);next.activate(main.id);
-    }
+    await seedNewProject(next,createNew);
     let recoveryNotice='';
     try {
       for(const version of next.recoveryVersions){
@@ -179,21 +165,14 @@ export function installProjectExplorer({footer, filePanel, sessions}) {
     // CodeMirror history/selection. The model retained the same file identity.
     capture();
     const change = project.pathChanges.at(-1);
-    const references=project.rewriteMovedReferences(change);
-    const activeRewrite=references.files.find(file=>file.fileId===project.activeFileId);
-    if(activeRewrite && sessions.applyChanges){
-      sessions.applyChanges(activeRewrite.changes);
-      const active=project.file(project.activeFileId);active.session=sessions.capture(active.draft);
-    }
+    const notice=updateMovedReferences(project,sessions);
     if (change) for (const entry of [...expanded]) {
       if (entry===change.source || entry.startsWith(change.source+'/')) {
         expanded.delete(entry); expanded.add(change.target+entry.slice(change.source.length));
       }
     }
     show(project.file(project.activeFileId));
-    message.textContent=references.count
-      ? t(`路径已更新；已重写 ${references.count} 处 LaTeX 引用，请保存受影响文件`,`Paths updated; rewrote ${references.count} LaTeX references. Save the affected files.`)
-      : t('路径已更新；未发现可安全重写的字面量引用','Paths updated; no literal references required rewriting');
+    message.textContent=notice;
     if(change?.warning)message.textContent+=' · '+change.warning;
     if(project.persistenceError)message.textContent+=' · '+project.persistenceError;
   }
@@ -228,19 +207,7 @@ export function installProjectExplorer({footer, filePanel, sessions}) {
   }
   async function deleteDirectory(path) {
     sessions.ensureIdle();capture();
-    const files=[...project.files.values()].filter(file=>file.path.startsWith(path+'/'));
-    if(files.some(file=>file.id===project.mainFileId))throw new Error(t('不能删除包含主文档的目录','Cannot delete a directory containing the main document'));
-    const dirty=files.filter(file=>file.dirty).length;
-    const zhDetail=dirty?`，其中 ${dirty} 个文件有未保存修改`:'';
-    const enDetail=dirty?`, including ${dirty} files with unsaved changes`:'';
-    if(!confirm(t(`从磁盘删除目录 ${path} 及其中 ${files.length} 个文件${zhDetail}？此操作不可撤销。`,
-      `Delete ${path} and its ${files.length} files from disk${enDetail}? This cannot be undone.`)))return;
-    const active=project.activeFileId,result=await project.removeDirectory(path);
-    for(const entry of [...expanded])if(entry===path || entry.startsWith(path+'/'))expanded.delete(entry);
-    if(active!==project.activeFileId || result.retained.includes(active))show(project.file(project.activeFileId));
-    message.textContent=result.retained.length
-      ? t(`目录已删除；删除期间的新输入保留为 ${result.retained.length} 个缺失文件草稿`,`Directory deleted; new edits were retained as ${result.retained.length} missing-file drafts`)
-      : t('目录已删除','Directory deleted');
+    message.textContent=await removeDirectoryWithNotice({project,path,sessions,expanded,show,confirm});
   }
   function setMainFile(id) {
     project.setMain(id);message.textContent=t('已设置主文档','Main document updated');render();
@@ -259,33 +226,16 @@ export function installProjectExplorer({footer, filePanel, sessions}) {
     const directory=directoryNode?.dataset.path ?? '';
     const base=file?parentPath(file.path):directory;
     event.preventDefault();closeContextMenu();contextMenu.dataset.path=file?.path ?? directory;
-    contextAction(['新建文件','New file'],()=>createFile(base));
-    contextAction(['新建目录','New folder'],()=>createDirectory(base));
-    if(file){
-      contextSeparator();
-      if(file.kind==='tex' && file.id!==project.activeFileId)contextAction(['追加到当前文档','Append to current document'],()=>sessions.includeFile(file.id));
-      if(file.kind==='tex' && file.id!==project.mainFileId)contextAction(['设为主文档','Set as main document'],()=>setMainFile(file.id));
-      if(file.draft!==null)contextAction(['重新加载','Reload'],()=>reloadFile(file.id));
-      if(project.adapter.move){
-        contextAction(['重命名','Rename'],()=>relocate(file.path,false));
-        contextAction(['移动','Move'],()=>relocate(file.path,true));
-      }
-      if(file.id!==project.mainFileId)contextAction(['删除','Delete'],()=>deleteFile(file.id));
-    } else if(directory && project.adapter.move){
-      contextSeparator();
-      contextAction(['重命名目录','Rename folder'],()=>relocate(directory,false));
-      contextAction(['移动目录','Move folder'],()=>relocate(directory,true));
-      contextAction(['删除目录','Delete folder'],()=>deleteDirectory(directory));
-    } else if(directory){
-      contextSeparator();contextAction(['删除目录','Delete folder'],()=>deleteDirectory(directory));
+    const commands={createFile,createDirectory,includeFile:sessions.includeFile,setMainFile,reloadFile,relocate,deleteFile,deleteDirectory,refreshTree};
+    for(const item of projectContextActions(project,file,directory,commands)){
+      if(item.separator)contextSeparator();else contextAction(item.label,item.run);
     }
-    contextSeparator();contextAction(['刷新文件树','Refresh tree'],refreshTree);
     menu.position(event);
   }
   tree.addEventListener('contextmenu',showContextMenu);
   tree.addEventListener('keydown',event=>{if(event.key==='ContextMenu' || (event.shiftKey && event.key==='F10'))showContextMenu(event);});
   function render() {
-    includes.render();for(const section of Object.values(sections))section.relocalize();localize(sections.citations.content);
+    sidebar.render();
     panel.dataset.state=project?'open':'empty';newProjectButton.hidden=Boolean(project);
     actions.hidden = !project;
     if (!project) {
