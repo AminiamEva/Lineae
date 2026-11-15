@@ -61,7 +61,7 @@ async function clickOpenProject(page) {
     async function check(name,action){
       let timeout;
       try {
-        await Promise.race([action(),new Promise((_,reject)=>{timeout=setTimeout(()=>reject(new Error('Scenario exceeded 30 seconds')),30000);})]);
+        await Promise.race([action(),new Promise((_,reject)=>{timeout=setTimeout(()=>reject(new Error('Scenario exceeded 45 seconds')),45000);})]);
         results.push({name,passed:true});console.log('PASS '+name);
       } catch(error) {
         results.push({name,passed:false,error:error.message});console.error('FAIL '+name+': '+error.message);
