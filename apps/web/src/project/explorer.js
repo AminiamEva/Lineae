@@ -191,8 +191,8 @@ export function installProjectExplorer({footer, filePanel, sessions}) {
     const result = await project.refresh();
     if (result.changed.includes(active.id)) show(active);
     message.textContent = result.errors.length ? result.errors.map(item=>`${item.path}: ${item.message}`).join('\n')
-      : result.missing.length ? t('磁盘中有文件缺失；已保留编辑内容','Missing files; editor content retained')
-      : result.conflicts.length ? t('磁盘文件已改变；已保留草稿，请核对后重新加载','Files changed on disk; drafts retained, review before reloading')
+      : (result.missing.length || [...project.files.values()].some(file=>file.missing)) ? t('磁盘中有文件缺失；已保留编辑内容','Missing files; editor content retained')
+      : (result.conflicts.length || [...project.files.values()].some(file=>file.externalChanged)) ? t('磁盘文件已改变；已保留草稿，请核对后重新加载','Files changed on disk; drafts retained, review before reloading')
       : t('文件树已刷新','File tree refreshed');
   }
   async function deleteFile(id) {

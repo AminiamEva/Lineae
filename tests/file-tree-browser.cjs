@@ -61,7 +61,7 @@ async function clickOpenProject(page) {
     async function check(name,action){
       let timeout;
       try {
-        await Promise.race([action(),new Promise((_,reject)=>{timeout=setTimeout(()=>reject(new Error('Scenario exceeded 45 seconds')),30000);})]);
+        await Promise.race([action(),new Promise((_,reject)=>{timeout=setTimeout(()=>reject(new Error('Scenario exceeded 30 seconds')),30000);})]);
         results.push({name,passed:true});console.log('PASS '+name);
       } catch(error) {
         results.push({name,passed:false,error:error.message});console.error('FAIL '+name+': '+error.message);
@@ -233,11 +233,8 @@ async function clickOpenProject(page) {
         return {reconciliationRequired:true,warning:'Directory moved; concurrent changes detected'};
       };
       page.once('dialog',dialog=>dialog.accept('chapters/moved sections'));
-      console.log('DIRECTORY STEP before menu');
       await treeMenu(summary,/^(移动目录|Move folder)$/);
-      console.log('DIRECTORY STEP after menu');
       await page.waitForFunction(()=>document.querySelector('.tex-filename')?.textContent.includes('chapters/moved sections/experiment.tex'));
-      console.log('DIRECTORY STEP renamed');
       afterMove=null;
       assert.equal(await code.innerText(),draft);
       assert.equal(await page.locator('[data-path="chapters/moved sections/experiment.tex"]').getAttribute('data-focus-key'),identity);
@@ -247,7 +244,6 @@ async function clickOpenProject(page) {
       await page.locator('#project-save').click();
       await page.waitForFunction(()=>/changed on disk|conflict/i.test(document.querySelector('#project-explorer [role=status]').textContent));
       assert.equal(await fs.readFile(local('chapters/moved sections/experiment.tex'),'utf8'),'Concurrent external revision\r\n');
-      console.log('DIRECTORY STEP conflict protected');
       await assert.rejects(fs.stat(local('sections')),{code:'ENOENT'});
       await treeMenu(page.locator('.project-tree'),/^(刷新文件树|Refresh tree)$/);
       await page.waitForFunction(()=>/changed on disk|Missing files/.test(document.querySelector('#project-explorer [role=status]').textContent));
