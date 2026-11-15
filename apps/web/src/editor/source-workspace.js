@@ -35,7 +35,7 @@ function element(tag, className) {
   return node;
 }
 
-export function createSourceWorkspace({ page, render, metadata, onChange = () => {}, onLayout = () => {}, onPreviewZoom = () => {} }) {
+export function createSourceWorkspace({ page, render, metadata, onChange = () => {}, onLayout = () => {}, onPreviewZoom = () => {}, getPreferences = () => null, onSourceFontChange = () => {} }) {
   const lifecycle = new AbortController();
   const panel = element('section', 'tex-workspace');
   panel.hidden = true;
@@ -54,21 +54,10 @@ export function createSourceWorkspace({ page, render, metadata, onChange = () =>
   const message = element('span', 'tex-message');
   message.setAttribute('role', 'status');
   const format = element('span', 'tex-format');
-  let indentOnSave = true;
-  try { indentOnSave = localStorage.getItem('lineae.indentOnSave') !== 'false'; } catch {}
-  const indentLabel = element('label', 'tex-indent-setting');
-  const indentCheckbox = document.createElement('input');
-  indentCheckbox.type = 'checkbox'; indentCheckbox.checked = indentOnSave;
-  indentCheckbox.addEventListener('change', () => {
-    indentOnSave = indentCheckbox.checked;
-    try { localStorage.setItem('lineae.indentOnSave', String(indentOnSave)); } catch {}
-  }, {signal:lifecycle.signal});
-  indentLabel.append(indentCheckbox, t('保存时缩进', 'Indent on save'));
-  indentLabel.title = t('仅调整安全的行首缩进；关闭可保留原始格式', 'Adjust safe leading indentation only; disable to preserve original formatting');
-  format.textContent = 'LaTeX  ·  UTF-8';
+  const indentOnSave=()=>getPreferences()?.editing.indentOnSave??true;
   head.append(icon('sourceFile'), filename, dirty, actions);
   body.append(code, divider, preview);
-  foot.append(position, message, indentLabel, format);
+  foot.append(position, message);
   foot.hidden=true;
   panel.append(head, body, foot);
   const anchor = document.createComment('document page');
@@ -96,10 +85,7 @@ export function createSourceWorkspace({ page, render, metadata, onChange = () =>
   let savedText, savedDoc;
   let lastRendered, expanded = false, previewOnly = false, receiving = false;
   let fontSize = FONT_DEFAULT;
-  try {
-    fontSize = clampFont(localStorage.getItem('lineae.sourceFontSize'));
-
-  } catch {}
+  fontSize=clampFont(getPreferences()?.interface.sourceFontSize??FONT_DEFAULT);
   function updateZoomLabel() {
     zoomLabel.textContent = fontSize + 'px';
     zoomLabel.title = t('恢复源码默认字号：','Reset code font: ') + fontSize + 'px';
@@ -111,7 +97,7 @@ export function createSourceWorkspace({ page, render, metadata, onChange = () =>
     updateZoomLabel();
     zoomOut.disabled = fontSize === FONT_MIN;
     zoomIn.disabled = fontSize === FONT_MAX;
-    try { localStorage.setItem("lineae.sourceFontSize", String(fontSize)); } catch {}
+    onSourceFontChange(fontSize);
     view?.requestMeasure();
     return true;
   }
@@ -368,7 +354,8 @@ export function createSourceWorkspace({ page, render, metadata, onChange = () =>
     get hidden() { return panel.hidden; },
     get split() { return expanded; },
     get composing() { return view?.composing ?? false; },
-    get indentOnSave() { return indentOnSave; },
+    get indentOnSave() { return indentOnSave(); },
+    configure(){zoom(getPreferences()?.interface.sourceFontSize??FONT_DEFAULT);},
     find() { if(view) openSearchPanel(view); },
     setSplit(next) { if (!panel.hidden) setExpanded(next); },
     flush: updatePreview,
@@ -432,8 +419,6 @@ export function createSourceWorkspace({ page, render, metadata, onChange = () =>
       for (const [button, label] of richButtons) {
         button.title = label(); button.setAttribute('aria-label', button.title);
       }
-      indentLabel.replaceChildren(indentCheckbox, t('保存时缩进', 'Indent on save'));
-      indentLabel.title = t('仅调整安全的行首缩进；关闭可保留原始格式', 'Adjust safe leading indentation only; disable to preserve original formatting');
       if (!panel.hidden) refresh();
     },
     error(text) { message.textContent = text; },

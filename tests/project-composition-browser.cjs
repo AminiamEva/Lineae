@@ -1,3 +1,4 @@
+const {revealToolbar,setIndentOnSave,createTreeEntry}=require('./workspace-ui-helpers.cjs');
 const {chromium}=require('playwright');
 const {createServer}=require('node:http');
 const {readFile}=require('node:fs/promises');
@@ -23,7 +24,7 @@ const server=createServer(async(req,res)=>{
    for(const name of ['a','b','c','d'])await put(name+'.tex',name.toUpperCase()+' child.\n');
    window.showDirectoryPicker=async()=>folder;
   });
-  await page.locator('[data-group=files]').click();await page.locator('#project-open').click();
+  await revealToolbar(page); await page.locator('[data-group=files]').click();await page.locator('#project-open').click();
   await page.waitForFunction(()=>document.querySelector('.tex-filename')?.textContent==='main.tex');
   await page.locator('[data-source-mode=body]').click();
   await page.waitForFunction(()=>document.querySelectorAll('[data-project-region]').length===7);

@@ -1,3 +1,4 @@
+const {revealToolbar,setIndentOnSave,createTreeEntry}=require('./workspace-ui-helpers.cjs');
 // Real Chromium editor + real OS fixtures. The adapter boundary is substituted;
 // operation gates deliberately exercise in-flight edits, not timing sleeps.
 const {chromium} = require('playwright');
@@ -14,7 +15,7 @@ const server = createServer(async(req,res) => {
   catch { res.writeHead(404).end(); }
 });
 async function clickOpenProject(page) {
-  await page.locator('[data-group=files]').click();
+  await revealToolbar(page); await page.locator('[data-group=files]').click();
   await page.locator('#project-open').click();
   await page.locator('.project-file[aria-current=true]').waitFor({state:'attached'});
   await page.locator('[data-source-mode=source]').click();
@@ -56,7 +57,7 @@ async function clickOpenProject(page) {
     await page.waitForFunction(()=>document.querySelector('.tex-filename')?.textContent.includes('main.tex'));
     assert.equal(await page.locator('[data-source-mode=split]').getAttribute('aria-pressed'),'false','Opening a project never activates Split');
     await page.locator('[data-source-mode=source]').click();
-    await page.locator('.tex-indent-setting input').uncheck();
+    await setIndentOnSave(page,false);
     const code=page.locator('.cm-content');
     async function check(name,action){
       let timeout;
@@ -117,7 +118,7 @@ async function clickOpenProject(page) {
       await page.locator('#project-explorer summary').filter({hasText:'第一章'}).click();
       await page.locator('[data-path="第一章/研究方法.tex"]').click();
       await code.click();await page.keyboard.press('Control+End');await page.keyboard.insertText(' 中文草稿');
-      const directory=page.locator('#project-explorer details').filter({has:page.locator('summary').filter({hasText:/^第一章$/})});
+      const directory=page.locator('.project-tree details').filter({has:page.locator('summary').filter({hasText:/^第一章$/})});
       page.once('dialog',dialog=>dialog.accept('chapters/中文 章节'));
       await treeMenu(directory.locator('summary').first(),/^(移动目录|Move folder)$/);
       await page.waitForFunction(()=>document.querySelector('.tex-filename')?.textContent.includes('chapters/中文 章节/研究方法.tex'));
@@ -169,8 +170,8 @@ async function clickOpenProject(page) {
       }
     });
     await check('delete confirmation, in-flight typing retention, and normal active-file deletion',async()=>{
-      page.once('dialog',dialog=>dialog.accept('delete-test.tex'));
       await treeMenu(page.locator('.project-tree'),/^(新建文件|New file)$/);
+      await createTreeEntry(page,"delete-test.tex");
       await page.locator('[data-path="delete-test.tex"]').click();
       await code.click();await page.keyboard.insertText('draft to delete');
       page.once('dialog',dialog=>dialog.dismiss());await treeMenu(page.locator('.project-file[aria-current=true]'),/^(删除|Delete)$/);
@@ -184,8 +185,9 @@ async function clickOpenProject(page) {
       assert.match(await code.innerText(),/typed during delete/);
       assert.match(await page.locator('[data-path="delete-test.tex"]').getAttribute('title'),/Missing/);
       await assert.rejects(fs.stat(local('delete-test.tex')),{code:'ENOENT'});
-      page.once('dialog',dialog=>dialog.accept('normal-delete.tex'));
-      await treeMenu(page.locator('.project-tree'),/^(新建文件|New file)$/);await page.locator('[data-path="normal-delete.tex"]').click();
+      await treeMenu(page.locator('.project-tree'),/^(新建文件|New file)$/);
+      await createTreeEntry(page,"normal-delete.tex");
+      await page.locator('[data-path="normal-delete.tex"]').click();
       page.once('dialog',dialog=>dialog.accept());await treeMenu(page.locator('.project-file[aria-current=true]'),/^(删除|Delete)$/);
       await page.waitForFunction(()=>!document.querySelector('[data-path="normal-delete.tex"]'));
       assert.equal(await page.locator('[data-path="main.tex"]').getAttribute('aria-current'),'true');

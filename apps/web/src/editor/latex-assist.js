@@ -98,8 +98,8 @@ export function latexCompletion(context) {
     }}))};
   }
   const word = context.matchBefore(/\\[a-zA-Z]*/);
-  if (word) return {from:word.from, options:Object.entries(commandSnippets).map(([name,[template,detail]]) =>
-    snippetCompletion(template,{label:'\\' + name,type:'keyword',detail})), validFor:/^\\[a-zA-Z]*$/};
+  if (word) return {from:word.from, options:[...['settings','outline','projectincludes'].map(name=>({label:'\\'+name,type:'keyword',apply(view,completion,from,to){view.dispatch({changes:{from,to,insert:''}});document.dispatchEvent(new Event('lineae-open-'+({projectincludes:'includes'}[name]??name)));}})),...Object.entries(commandSnippets).map(([name,[template,detail]]) =>
+    snippetCompletion(template,{label:'\\' + name,type:'keyword',detail}))], validFor:/^\\[a-zA-Z]*$/};
   const reference = context.matchBefore(/\\(?:ref|eqref|cite)\{[^{}]*$/);
   if (reference) {
     const source = context.state.doc.toString();

@@ -1,3 +1,4 @@
+const {revealToolbar,setIndentOnSave,createTreeEntry}=require('./workspace-ui-helpers.cjs');
 const {chromium} = require('playwright');
 const {createServer} = require('node:http');
 const {readFile, mkdir} = require('node:fs/promises');
@@ -20,7 +21,7 @@ async function fixture(browser) {
   const page = await browser.newPage({viewport:{width:1440, height:900}});
   page.on('dialog', dialog => dialog.accept());
   await page.goto('http://127.0.0.1:' + server.address().port);
-  await page.locator('[data-group=files]').click();
+  await revealToolbar(page); await page.locator('[data-group=files]').click();
   await page.locator('#project-open').waitFor();
   await page.locator('input[type=file]').setInputFiles({name:'standalone.tex', mimeType:'text/plain', buffer:Buffer.from(original)});
   await page.evaluate(async () => {
@@ -35,7 +36,7 @@ async function fixture(browser) {
   return page;
 }
 async function openProject(page) {
-  await page.locator('[data-group=files]').click();
+  await revealToolbar(page); await page.locator('[data-group=files]').click();
   await page.locator('#project-open').click();
   await page.waitForFunction(() => document.querySelector('.tex-filename')?.textContent === 'main.tex');
   await page.locator('#project-toggle').click();
@@ -70,7 +71,7 @@ async function openProject(page) {
     const positionBefore = await page.locator('.tex-position').innerText();
     const sourceBefore = await code.innerText();
     await openProject(page);
-    assert.equal(await page.locator('[data-source-mode="source"]').getAttribute('aria-pressed'), 'true', 'A first project file starts in Raw mode independently of the standalone mode');
+    assert.equal(await page.locator('[data-source-mode="body"]').getAttribute('aria-pressed'), 'true', 'Opening a project always starts in Document');
     await page.locator('#project-close').click();
     assert.equal(await page.locator('[data-source-mode="split"]').getAttribute('aria-pressed'), 'true', 'Standalone Split mode is restored');
     assert.equal(await code.innerText(), sourceBefore);
@@ -96,7 +97,7 @@ async function openProject(page) {
 
     await openProject(page);
     await page.locator('[data-source-mode="split"]').click();
-    await page.locator('.tex-indent-setting input').uncheck();
+    await setIndentOnSave(page,false);
     await code.click(); await page.keyboard.press('Control+Home');
     await page.keyboard.press('ArrowDown'); await page.keyboard.press('ArrowDown'); await page.keyboard.press('End');
     await page.keyboard.insertText(' Saved source edit');
@@ -109,7 +110,7 @@ async function openProject(page) {
     await page.waitForFunction(() => document.querySelector('.cm-content').textContent.includes('Main rich draft'));
     await page.evaluate(() => { window.originalCodeMirrorNode = document.querySelector('.cm-editor'); });
     await page.locator('[data-path="child.tex"]').click();
-    assert.equal(await page.locator('[data-source-mode="source"]').getAttribute('aria-pressed'), 'true', 'Unvisited files start in Raw, not the preceding file\'s Split mode');
+    assert.equal(await page.locator('[data-source-mode="split"]').getAttribute('aria-pressed'), 'true', 'Newly visited files retain the project Split mode');
     await code.click(); await page.keyboard.press('Control+End'); await page.keyboard.insertText(' Child own draft');
     await page.locator('[data-path="main.tex"]').click();
     assert.equal(await page.locator('[data-source-mode="split"]').getAttribute('aria-pressed'), 'true');

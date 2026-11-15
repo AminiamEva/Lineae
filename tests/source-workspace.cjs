@@ -1,3 +1,4 @@
+const {revealToolbar,setIndentOnSave,createTreeEntry}=require('./workspace-ui-helpers.cjs');
 const assert = require('node:assert/strict');
 const { mkdir, writeFile, readFile } = require('node:fs/promises');
 const { join } = require('node:path');
@@ -55,7 +56,7 @@ module.exports = async function checkSourceWorkspace(context, url) {
     };
     const evidence = async (expected, label) => {
       const {source, readback} = await read();
-      await page.locator('[data-group=files]').click();
+      await revealToolbar(page); await page.locator('[data-group=files]').click();
       const downloading = page.waitForEvent('download');
       await page.locator('#download').click();
       const zip = await readFile(await (await downloading).path());

@@ -1,3 +1,4 @@
+const {revealToolbar,setIndentOnSave,createTreeEntry}=require('./workspace-ui-helpers.cjs');
 const { chromium } = require('playwright');
 const { expect } = require('playwright/test');
 const { createServer } = require('node:http');
@@ -453,7 +454,7 @@ async function verifySelectionGeometry(page, paper, importSource) {
     assert.ok(Math.abs(emptyDisplayOffset)<1,'An empty-line display formula starts on the current line: '+emptyDisplayOffset);
     await page.keyboard.press('Backspace');
     assert.equal(await page.locator('.math-display').count(),0);
-    await page.locator('[data-group=insert]').click();
+    await revealToolbar(page); await page.locator('[data-group=insert]').click();
     await page.getByRole('button',{name:'itemize',exact:true}).click();
     await page.keyboard.type('one');
     await page.keyboard.press('Enter');
@@ -478,7 +479,7 @@ async function verifySelectionGeometry(page, paper, importSource) {
     await page.keyboard.type('B');
     const cells=await paper.locator('td').allTextContents();
     assert.ok(cells[0].includes('A') && cells[1].includes('B'),JSON.stringify(cells));
-    await page.locator('[data-group=home]').click();
+    await revealToolbar(page); await page.locator('[data-group=home]').click();
     await page.getByRole('button',{name:'↶',exact:true}).click();
     assert.ok(!(await paper.locator('td').allTextContents())[1].includes('B'));
     await page.getByRole('button',{name:'↷',exact:true}).click();
@@ -497,7 +498,7 @@ async function verifySelectionGeometry(page, paper, importSource) {
     await page.keyboard.press('Control+e');
     await page.keyboard.press('l');
     await page.waitForFunction(()=>document.querySelector('.ProseMirror table')?.dataset.tableAlign==='left');
-    await page.locator('[data-group=insert]').click();
+    await revealToolbar(page); await page.locator('[data-group=insert]').click();
     await page.locator('[data-source-mode="source"]').click();
     const source=await page.locator('.tex-code .cm-content').innerText();
     assert.match(source,/\\begin\{tabular\}/);
@@ -603,7 +604,7 @@ async function verifySelectionGeometry(page, paper, importSource) {
     assert.equal(headingLabels.length,5);
     assert.deepEqual([...new Set(headingLabels)].sort(),['H1','H2','H3'],
       'Headings get H_n margin marks');
-    await page.locator('[data-group=reference]').click();
+    await revealToolbar(page); await page.locator('[data-group=reference]').click();
     await page.getByRole('button',{name:/^(大纲|Outline)$/}).click();
     const outlinePanel=page.locator('#document-outline');
     assert.equal(await outlinePanel.isVisible(),true);
@@ -619,7 +620,7 @@ async function verifySelectionGeometry(page, paper, importSource) {
     await page.waitForFunction(()=>document.querySelector('.ProseMirror > .math-display'));
     await paper.locator(':scope > p').last().click();
     await page.keyboard.press('End');
-    await page.locator('[data-group=insert]').click();
+    await revealToolbar(page); await page.locator('[data-group=insert]').click();
     await page.getByRole('button',{name:'itemize',exact:true}).click();
     assert.deepEqual(await paper.locator(':scope > *').evaluateAll(nodes=>nodes.map(node=>node.tagName)),['P','DIV','UL']);
     assert.equal(await paper.locator('ul').textContent(),'After');
@@ -722,7 +723,7 @@ async function verifySelectionGeometry(page, paper, importSource) {
     await page.keyboard.type('\\');await completion.locator('input').fill('matrix');await completion.locator('input').focus();await page.keyboard.press('Enter');
     assert.ok(!(await formula.evaluate(field=>field.value)).includes('&'));
     const initialPlaceholders=(await formula.evaluate(field=>field.value)).match(/\\placeholder\{\}/g)?.length??0;
-    await page.locator('[data-group=insert]').click();
+    await revealToolbar(page); await page.locator('[data-group=insert]').click();
     await page.getByRole('button',{name:'＋ Row',exact:true}).click();
     assert.match(await formula.evaluate(field=>field.value),/\\\\/);
     const rowPlaceholders=(await formula.evaluate(field=>field.value)).match(/\\placeholder\{\}/g)?.length??0;
@@ -767,7 +768,7 @@ async function verifySelectionGeometry(page, paper, importSource) {
     assert.ok((afterColumnChord.match(/&/g)??[]).length>(afterRowChord.match(/&/g)??[]).length,'Ctrl+E C adds a matrix column');
     assert.deepEqual(await matrixCell(),beforeColumnCell,'Adding a column leaves the caret in its original cell');
     const placeholderWarning=new Promise(resolve=>page.once('dialog',async dialog=>{resolve(dialog.message());await dialog.dismiss();}));
-    await page.locator('[data-group=files]').click();await page.locator('#download').click();
+    await revealToolbar(page); await page.locator('[data-group=files]').click();await page.locator('#download').click();
     assert.match(await placeholderWarning,/placeholders|占位符/,'Export warns before dropping unfinished formula placeholders');
 
     await importSource('First $x$ end\n\nDestination');
@@ -785,7 +786,7 @@ async function verifySelectionGeometry(page, paper, importSource) {
     await page.keyboard.type('//');
     const literals=await formula.evaluate(field=>field.value);
     assert.ok(literals.includes('/') && !literals.includes('frac'),literals);
-    await page.locator('[data-group=home]').click();
+    await revealToolbar(page); await page.locator('[data-group=home]').click();
     await paper.locator(':scope > p').first().click({clickCount:3,position:{x:4,y:8}});
     await page.locator('select[data-format-attribute="fontSize"]').selectOption('18pt');
     assert.equal(await page.locator('select[data-format-attribute="fontSize"]').inputValue(),'18pt');
@@ -896,7 +897,7 @@ async function verifySelectionGeometry(page, paper, importSource) {
     await loadFixture('lists/lists-enumerate.tex');
     await page.waitForFunction(()=>document.querySelectorAll('.ProseMirror ol li').length===3);
     await page.locator('.ProseMirror ol li').first().click();
-    await page.locator('[data-group=format]').click();
+    await revealToolbar(page); await page.locator('[data-group=format]').click();
     await page.getByRole('button',{name:'a.',exact:true}).click();
     await page.waitForFunction(()=>document.querySelector('.ProseMirror ol')?.getAttribute('data-label-style')==='lower-alpha');
     await page.getByRole('button',{name:'甲',exact:true}).click();
@@ -905,7 +906,7 @@ async function verifySelectionGeometry(page, paper, importSource) {
     await loadFixture('lists/lists-itemize.tex');
     await page.waitForFunction(()=>document.querySelectorAll('.ProseMirror ul li').length===3);
     await page.locator('.ProseMirror ul li').first().click();
-    await page.locator('[data-group=format]').click();
+    await revealToolbar(page); await page.locator('[data-group=format]').click();
     await page.getByRole('button',{name:'•',exact:true}).click();
     await page.waitForFunction(()=>Boolean(document.querySelector('.editor-dialog')));
     await page.locator('.editor-dialog input').fill('◦');
@@ -918,7 +919,7 @@ async function verifySelectionGeometry(page, paper, importSource) {
       const last=element.editor.state.doc.nodeAt(positions[2]);
       element.editor.commands.setTextSelection({from:positions[1]+1,to:positions[2]+last.nodeSize-1});
     });
-    await page.locator('[data-group=format]').click();
+    await revealToolbar(page); await page.locator('[data-group=format]').click();
     await page.getByRole('button',{name:/^(列表降一级|Indent list item)$/}).click();
     assert.equal(await paper.locator('ul > li:first-child > ul > li').count(),2,'A contiguous multi-item selection indents together');
     await page.keyboard.press('Control+z');
@@ -1088,7 +1089,7 @@ async function verifySelectionGeometry(page, paper, importSource) {
     assert.match(await page.evaluate(()=>window.__savedText),/\\documentclass/,'Ctrl+S saves to the local file');
     assert.equal(await page.evaluate(()=>window.__savePickerCalls),1,'Ctrl+S reuses the existing handle');
 
-    await page.locator('[data-group=files]').click();
+    await revealToolbar(page); await page.locator('[data-group=files]').click();
     await page.locator('[data-tool=saveAs]').click();
     await page.waitForFunction(()=>window.__savePickerCalls===2);
     await page.waitForFunction(()=>window.__savedText.includes('\\documentclass'));
@@ -1143,7 +1144,7 @@ async function verifySelectionGeometry(page, paper, importSource) {
     await paper.locator('p').first().click();
     await page.keyboard.press('End');
     await page.keyboard.type('Anchor');
-    await page.locator('[data-group=reference]').click();
+    await revealToolbar(page); await page.locator('[data-group=reference]').click();
     await page.getByRole('button',{name:'label',exact:true}).click();
     await page.waitForFunction(()=>Boolean(document.querySelector('.editor-dialog')));
     await page.locator('.editor-dialog input').fill('sec:new');
@@ -1181,7 +1182,7 @@ async function verifySelectionGeometry(page, paper, importSource) {
     await page.locator('.command-menu input').fill('gamma');
     assert.equal(await page.locator('.command-candidates button').first().getAttribute('id'),'complete-gamma');
     await page.keyboard.press('Escape');
-    await page.locator('[data-group=insert]').click();
+    await revealToolbar(page); await page.locator('[data-group=insert]').click();
     await page.locator('[data-source-mode="source"]').click();
     const editedSource=(await page.locator('.tex-code .cm-content').innerText()).replace('\\end{document}','Unsaved regression text\n\\end{document}');
     await page.locator('.tex-code .cm-content').fill(editedSource);
@@ -1322,7 +1323,7 @@ async function verifySelectionGeometry(page, paper, importSource) {
     assert.ok(fontPreviews.find(option=>option.value==='Georgia')?.font.includes('Georgia'),
       'Font options preview their own typeface');
     await importSource('Font preview');
-    await page.locator('[data-group=home]').click();
+    await revealToolbar(page); await page.locator('[data-group=home]').click();
     await paper.locator('p').click();
     await page.keyboard.press('Control+a');
     await fontSelect.selectOption('Georgia');
@@ -1427,7 +1428,7 @@ async function verifySelectionGeometry(page, paper, importSource) {
     assert.equal(await metaAuthorNode.textContent(),'Regression author');
     await page.waitForFunction(()=>['T','A'].every(label=>
       [...document.querySelectorAll('.space-overlay text')].some(node=>node.textContent===label)));
-    await page.locator('[data-group=insert]').click();
+    await revealToolbar(page); await page.locator('[data-group=insert]').click();
     await page.locator('[data-source-mode="source"]').click();
     const metaSource=await page.locator('.tex-code .cm-content').innerText();
     assert.match(metaSource,/\\title\{Regression title\}/,'Editing the title writes it back to the document properties');
@@ -1440,7 +1441,7 @@ async function verifySelectionGeometry(page, paper, importSource) {
     assert.equal(await page.locator('#project-open').evaluate(button=>button.parentElement===document.querySelector('.ribbon > .tools')),true,
       'Open project is in the File panel');
     assert.equal(await page.locator('footer #project-open').count(),0,'Open project is not in the status bar');
-    await page.locator('[data-group=home]').click();
+    await revealToolbar(page); await page.locator('[data-group=home]').click();
     await page.getByRole('button',{name:'↶',exact:true}).hover();
     await page.waitForFunction(()=>document.querySelector('.lineae-tooltip')?.textContent.includes('撤销'));
     await page.locator('#language').evaluate(element=>{element.value='zh-Hant';element.dispatchEvent(new Event('change',{bubbles:true}));});
@@ -1466,7 +1467,7 @@ async function verifySelectionGeometry(page, paper, importSource) {
     assert.equal(await page.evaluate(()=>document.documentElement.dataset.theme),'dark','Theme control applies the selected theme');
     await bodyCommand('frac');
     await page.keyboard.type('1');
-    await page.locator('[data-group=insert]').click();
+    await revealToolbar(page); await page.locator('[data-group=insert]').click();
     await page.locator('[data-source-mode="source"]').click();
     const exportedMath=await page.locator('.tex-code .cm-content').innerText();
     assert.match(exportedMath,/\\frac\{1\}\{\}/,'Editing placeholders do not leak into exported LaTeX');
@@ -1563,7 +1564,7 @@ async function verifySelectionGeometry(page, paper, importSource) {
     }
     const beforeToolbarSum=await page.locator('math-field').first().evaluate(field=>field.value);
     const mathCount=await page.locator('math-field').count();
-    await page.locator('[data-group=math]').click();
+    await revealToolbar(page); await page.locator('[data-group=math]').click();
     await page.getByRole('button',{name:'sum',exact:true}).click();
     await page.waitForFunction(previous=>document.querySelector('math-field')?.value!==previous,beforeToolbarSum);
     assert.equal(await page.locator('math-field').count(),mathCount,'The sum button edits the active formula');
@@ -1571,7 +1572,7 @@ async function verifySelectionGeometry(page, paper, importSource) {
       .filter(button=>!button.dataset.tooltipZh&&!button.dataset.tooltip)
       .map(button=>button.textContent.trim()||button.getAttribute('aria-label')));
     assert.deepEqual(missingTooltips,[],'Every toolbar button has a tooltip');
-    await page.locator('[data-group=table]').click();
+    await revealToolbar(page); await page.locator('[data-group=table]').click();
     const mergeButton=page.getByRole('button',{name:/^(合并|Merge)$/});
     await mergeButton.hover();
     const tooltip=page.locator('.lineae-tooltip');
@@ -1643,7 +1644,7 @@ async function verifySelectionGeometry(page, paper, importSource) {
     await page.keyboard.type('return 42');
     assert.equal(await paper.locator('pre code').textContent(),'return 42');
     assert.equal(await paper.locator('pre .code-token-keyword').textContent(),'return');
-    await page.locator('[data-group=insert]').click();
+    await revealToolbar(page); await page.locator('[data-group=insert]').click();
     await page.getByRole('button',{name:/^(代码块|Code block)$/}).click();
     await page.locator('.editor-dialog input').fill('Python');
     await page.locator('.editor-dialog button[type=submit]').click();
@@ -1839,7 +1840,7 @@ async function verifySelectionGeometry(page, paper, importSource) {
     });
     assert.equal(labelPlacement.position,'absolute','Labels do not occupy text width');
     assert.ok(labelPlacement.left>=labelPlacement.pageLeft&&labelPlacement.right<=labelPlacement.contentLeft,'Labels sit in the left page margin: '+JSON.stringify(labelPlacement));
-    await page.locator('[data-group=reference]').click();
+    await revealToolbar(page); await page.locator('[data-group=reference]').click();
     await page.getByRole('button',{name:'ref',exact:true}).click();
     await page.waitForFunction(()=>Boolean(document.querySelector('.reference-dialog')));
     assert.match(await page.locator('.reference-dialog select').textContent(),/sec:first/,'Reference dialog lists existing labels');
@@ -1848,14 +1849,14 @@ async function verifySelectionGeometry(page, paper, importSource) {
     await page.waitForFunction(()=>document.querySelectorAll('.ref-node').length===2);
     await importSource('Footnote here');
     await page.waitForFunction(()=>document.querySelector('.ProseMirror p')?.textContent==='Footnote here');
-    await page.locator('[data-group=reference]').click();
+    await revealToolbar(page); await page.locator('[data-group=reference]').click();
     await page.getByRole('button',{name:'fn',exact:true}).click();
     await page.locator('.editor-dialog input').fill('A note');
     await page.locator('.editor-dialog button[type=submit]').click();
     await page.waitForFunction(()=>document.querySelector('.ProseMirror .footnote-node')?.textContent==='1');
     await importSource('Citation here');
     await page.waitForFunction(()=>document.querySelector('.ProseMirror p')?.textContent==='Citation here');
-    await page.locator('[data-group=reference]').click();
+    await revealToolbar(page); await page.locator('[data-group=reference]').click();
     const [citationChooser] = await Promise.all([
       page.waitForEvent('filechooser'),
       page.getByRole('button',{name:'cite',exact:true}).click(),
@@ -2055,7 +2056,7 @@ async function verifySelectionGeometry(page, paper, importSource) {
       });
     });
     assert.deepEqual(pageOverflow,[],'Mixed math paragraphs never cross the page body: '+JSON.stringify(pageOverflow));
-    await page.locator('[data-group=layout]').click();
+    await revealToolbar(page); await page.locator('[data-group=layout]').click();
     const layoutSelects=page.locator('#layout-panel select');
     await layoutSelects.nth(0).selectOption('a5');
     await layoutSelects.nth(1).selectOption('landscape');
@@ -2121,14 +2122,14 @@ async function verifySelectionGeometry(page, paper, importSource) {
       return false;
     });
     await page.keyboard.press('ArrowRight');
-    await page.locator('[data-group=reference]').click();
+    await revealToolbar(page); await page.locator('[data-group=reference]').click();
     const bibChooser=page.waitForEvent('filechooser');
     await page.getByRole('button',{name:'cite',exact:true}).click();
     await (await bibChooser).setFiles({name:'works.bib',mimeType:'text/plain',buffer:Buffer.from('@misc{example,title={Example}}')});
     await page.locator('.citation-dialog select').selectOption('example');
     await page.locator('.citation-dialog button[type=submit]').click();
     await paper.locator('.cite-node').waitFor();
-    await page.locator('[data-group=files]').click();
+    await revealToolbar(page); await page.locator('[data-group=files]').click();
     const downloading=page.waitForEvent('download');
     await page.locator('#download').click();
     const downloaded=await downloading;
@@ -2219,7 +2220,7 @@ async function verifySelectionGeometry(page, paper, importSource) {
     for (const width of [1280,390]) {
       await page.setViewportSize({width,height:1400});
       for (const group of ['files','home','insert','layout','table','format','reference','math']) {
-        await page.locator(`[data-group=${group}]`).click();
+        await revealToolbar(page); await page.locator(`[data-group=${group}]`).click();
         const layout=await page.locator('.ribbon').evaluate(element=>{
           const panel=[...element.querySelectorAll('.tools')].find(node=>!node.hidden);
           const bounds=element.getBoundingClientRect();
@@ -2270,7 +2271,7 @@ async function verifySelectionGeometry(page, paper, importSource) {
     })));
     await paper.getByText('Extra',{exact:true}).click();
     await page.keyboard.press('End');
-    await page.locator('[data-group=format]').click();
+    await revealToolbar(page); await page.locator('[data-group=format]').click();
     const indentList=page.getByRole('button',{name:/^(Indent list item|列表降一级)$/});
     await indentList.click();
     assert.equal(await deepestDepth(),10,'Lists can sink to the tenth level');
@@ -2321,7 +2322,7 @@ async function verifySelectionGeometry(page, paper, importSource) {
     await page.waitForFunction(()=>document.querySelector('[data-math-view]')?.dataset.latex==='a+b');
     await page.locator('math-field').evaluate(field=>{field.focus();field.executeCommand('moveToMathfieldEnd');});
     await page.waitForFunction(()=>document.activeElement?.tagName==='MATH-FIELD');
-    await page.locator('[data-group=math]').click();
+    await revealToolbar(page); await page.locator('[data-group=math]').click();
     await page.getByRole('button',{name:'\\left',exact:true}).click();
     await page.waitForSelector('.delimiter-ghost');
     const ghostPlace=await page.locator('.delimiter-ghost').evaluate(preview=>{
@@ -2339,7 +2340,7 @@ async function verifySelectionGeometry(page, paper, importSource) {
     assert.equal(await page.locator('.delimiter-ghost').count(),0,'The highlights disappear after both delimiters are typed');
     await importSource('Code blocks');
     await paper.locator('p').last().click();
-    await page.locator('[data-group=insert]').click();
+    await revealToolbar(page); await page.locator('[data-group=insert]').click();
     await page.getByRole('button',{name:/^(代码块|Code block)$/}).click();
     const languageDialog=page.locator('.editor-dialog input');
     await languageDialog.fill('yaml');
@@ -2367,7 +2368,7 @@ async function verifySelectionGeometry(page, paper, importSource) {
     assert.ok(await page.evaluate(()=>document.activeElement?.classList.contains('ProseMirror')),'Shift+Tab keeps editor focus');
     await importSource('Python code');
     await paper.locator('p').last().click();
-    await page.locator('[data-group=insert]').click();
+    await revealToolbar(page); await page.locator('[data-group=insert]').click();
     await page.getByRole('button',{name:/^(代码块|Code block)$/}).click();
     await languageDialog.fill('python');
     await languageDialog.press('Enter');
@@ -2382,7 +2383,7 @@ async function verifySelectionGeometry(page, paper, importSource) {
     await importSource('Plain text');
     await paper.locator('p').last().click();
     await page.keyboard.press('End');
-    await page.locator('[data-group=format]').click();
+    await revealToolbar(page); await page.locator('[data-group=format]').click();
     await page.getByRole('button',{name:'box',exact:true}).click();
     await page.waitForTimeout(50);
     await page.keyboard.press('Escape');
@@ -2408,7 +2409,7 @@ async function verifySelectionGeometry(page, paper, importSource) {
 
     await importSource('Nested tables');
     await paper.locator('p').last().click();
-    await page.locator('[data-group=table]').click();
+    await revealToolbar(page); await page.locator('[data-group=table]').click();
     for (let level=0;level<4;level++) {
       await page.getByRole('button',{name:'▦',exact:true}).click();
       await page.waitForTimeout(80);
@@ -2429,7 +2430,7 @@ async function verifySelectionGeometry(page, paper, importSource) {
     await page.keyboard.type(' edited');
     assert.equal((await continuedRow.locator('td').nth(1).textContent()).trim(),'Row 46 edited',
       'Rows on a continued page remain editable');
-    await page.locator('[data-group=table]').click();
+    await revealToolbar(page); await page.locator('[data-group=table]').click();
     const continueButton=page.getByRole('button',{name:/续表/});
     await continueButton.click();
     await page.waitForFunction(()=>document.querySelectorAll('.table-continuation-header').length===0);
@@ -2448,7 +2449,7 @@ async function verifySelectionGeometry(page, paper, importSource) {
     await paper.locator('figure.document-image img').waitFor({state:'visible'});
     const clipboardImageName=await paper.locator('figure.document-image img').getAttribute('alt');
     assert.match(clipboardImageName,/^clipboard-.*\.png$/);
-    await page.locator('[data-group=files]').click();
+    await revealToolbar(page); await page.locator('[data-group=files]').click();
     const clipboardDownload=page.waitForEvent('download');
     await page.locator('#download').click();
     assert.ok((await readFile(await (await clipboardDownload).path())).includes(Buffer.from(clipboardImageName)),
@@ -2456,7 +2457,7 @@ async function verifySelectionGeometry(page, paper, importSource) {
 
     await importSource('Custom preferences');
     await page.waitForFunction(()=>document.querySelector('.ProseMirror p')?.textContent==='Custom preferences');
-    await page.locator('[data-group=files]').click();
+    await revealToolbar(page); await page.locator('[data-group=files]').click();
     const configFile = page.waitForEvent('filechooser');
     await page.getByRole('button',{name:/^(Import YAML|导入 YAML)$/}).click();
     await (await configFile).setFiles({

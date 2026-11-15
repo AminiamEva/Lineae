@@ -1,3 +1,4 @@
+const {revealToolbar,setIndentOnSave,createTreeEntry}=require('./workspace-ui-helpers.cjs');
 // Operator-assisted Windows dialog acceptance in the actual Tauri/WebView2 app.
 // The native bridge is observed and forwarded unchanged; neither picker nor
 // filesystem is mocked. Frozen Tauri exports are observed at the adapter boundary.
@@ -31,7 +32,7 @@ async function snapshot(){return page.evaluate(()=>({
 async function picker(stage,kind){
   result.stage=stage;await record();
   const count=await page.evaluate(()=>window.pickerTrace.filter(item=>item.command==='open_project').length);
-  await page.locator('[data-group=files]').click();
+  await revealToolbar(page); await page.locator('[data-group=files]').click();
   await page.locator('#project-open').click();
   await page.waitForFunction(count=>window.pickerTrace.filter(item=>item.command==='open_project').length===count+1,count);
   console.log(`${kind==='cancel'?'NATIVE_PICKER_CANCEL_READY':'NATIVE_PICKER_SELECT_READY'} ${stage} ${fixture}`);
@@ -65,7 +66,7 @@ async function picker(stage,kind){
   for(let n=0;n<150;n++){try{browser=await chromium.connectOverCDP('http://127.0.0.1:9237');break;}catch{await new Promise(done=>setTimeout(done,200));}}
   assert.ok(browser,'Actual WebView2 CDP did not start');
   for(let n=0;n<100;n++){page=browser.contexts()[0]?.pages().find(page=>page.url().includes('tauri.localhost'));if(page)break;await new Promise(done=>setTimeout(done,200));}
-  assert.ok(page);await page.locator('[data-group=files]').click();await page.locator('#project-open').waitFor();
+  assert.ok(page);await revealToolbar(page); await page.locator('[data-group=files]').click();await page.locator('#project-open').waitFor();
   page.on('dialog',dialog=>{console.log('WEB_DIALOG '+dialog.type()+' '+dialog.message().split('\n')[0]);dialog.accept();});
   result.observer=await page.evaluate(()=>{
     window.pickerTrace=[];

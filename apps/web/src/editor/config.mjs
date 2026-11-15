@@ -41,6 +41,7 @@ function validateConfig(settings) {
   const { interface: ui, editing, keybindings } = settings;
   if (settings.version !== 2) throw new Error('Unsupported configuration version');
   if (!['auto', 'en', 'zh-CN', 'zh-Hant'].includes(ui.language)) throw new Error('Invalid interface.language');
+  if (!Number.isInteger(ui.sourceFontSize) || ui.sourceFontSize<11 || ui.sourceFontSize>32) throw new Error('Source font must be between 11 and 32 px');
   if (!themes.includes(ui.theme)) throw new Error('Invalid interface.theme');
   if (!Number.isInteger(ui.zoom) || ui.zoom < 50 || ui.zoom > 300) throw new Error('Zoom must be an integer from 50 to 300');
   if (!Array.isArray(ui.toolbar) || new Set(ui.toolbar).size !== ui.toolbar.length ||
@@ -50,6 +51,10 @@ function validateConfig(settings) {
     'interface.continuedTables': ui.continuedTables,
     'interface.formattingMarks': ui.formattingMarks,
     'interface.caretMotion': ui.caretMotion,
+    'interface.toolbarAutoHide':ui.toolbarAutoHide,
+    'interface.sourceToolbarAutoHide':ui.sourceToolbarAutoHide,
+    ...Object.fromEntries(Object.entries(ui.sidebar).map(([key,value])=>['interface.sidebar.'+key,value])),
+    'editing.indentOnSave':editing.indentOnSave,
     'editing.smartFences': editing.smartFences,
     'editing.autoReplaceLigatures': editing.autoReplaceLigatures,
   })) {
@@ -114,7 +119,12 @@ export function createConfigStore(defaultYaml, { storage, isMac = false, onError
     const legacyTheme = storage?.getItem('lineae.theme');
     const migrateTheme = themes.includes(legacyTheme) && !Object.hasOwn(migrated.interface ?? {}, 'theme');
     if (migrateTheme) migrated.interface = { ...migrated.interface, theme: legacyTheme };
+    let legacyPreferences=false;
+    const font=storage?.getItem('lineae.sourceFontSize'),indent=storage?.getItem('lineae.indentOnSave');
+    if(font!==undefined && font!==null && !Object.hasOwn(migrated.interface??{},'sourceFontSize')){migrated.interface={...migrated.interface,sourceFontSize:Math.max(11,Math.min(32,Number(font)||16))};legacyPreferences=true;}
+    if(indent!==undefined && indent!==null && !Object.hasOwn(migrated.editing??{},'indentOnSave')){migrated.editing={...migrated.editing,indentOnSave:indent!=='false'};legacyPreferences=true;}
     apply(migrated);
+    if(legacyPreferences){persist();storage?.removeItem('lineae.sourceFontSize');storage?.removeItem('lineae.indentOnSave');}
     if (migrated !== parsed || migrateTheme) persist();
   } catch (error) { onError(error); }
 

@@ -74,3 +74,16 @@ test('importing a conflicting or malformed profile keeps the active profile', ()
   assert.throws(() => store.importYaml('interface:\n  zoom: [120\n'));
   assert.equal(store.exportYaml(),previous);
 });
+
+test('mode-specific toolbar defaults and YAML source preferences', () => {
+ const store=createConfigStore(defaults);
+ assert.equal(store.value.interface.toolbarAutoHide,false);
+ assert.equal(store.value.interface.sourceToolbarAutoHide,true);
+ assert.equal(store.value.editing.indentOnSave,true);
+ store.importYaml('interface:\n  sourceFontSize: 21\n  sidebar:\n    includes: false\nediting:\n  indentOnSave: false\n');
+ assert.equal(store.value.interface.sourceFontSize,21);
+ assert.equal(store.value.interface.sidebar.files,true);
+ assert.equal(store.value.interface.sidebar.includes,false);
+ assert.equal(store.value.editing.indentOnSave,false);
+ assert.throws(()=>store.importYaml('interface:\n  sourceToolbarAutoHide: wrong\n'));
+});

@@ -1,3 +1,4 @@
+const {revealToolbar,setIndentOnSave,createTreeEntry}=require('./workspace-ui-helpers.cjs');
 const assert = require('node:assert/strict');
 const {build} = require('esbuild');
 const {mkdir,writeFile,readFile} = require('node:fs/promises');
@@ -73,17 +74,18 @@ module.exports = async (context,url) => {
     equal(await page.locator('.document-status .tex-foot').count(),1,'source metadata belongs to the shared status bar');
     equal(await page.locator('.tex-workspace .tex-foot').count(),0,'no duplicate source footer');
     equal(await page.locator('.tex-head .tex-rich-actions').count(),1,'preview controls share the file title bar');
+    await revealToolbar(page);
     await page.locator('#toolbar-collapse').click();
-    equal(await page.locator('#toolbar-collapse').getAttribute('aria-expanded'),'true','toolbar expands');
+    equal(await page.locator('#toolbar-collapse').getAttribute('aria-expanded'),'false','toolbar hides');
     await page.locator('#toolbar-collapse').click();
-    equal(await page.locator('#toolbar-collapse').getAttribute('aria-expanded'),'false','toolbar collapses');
+    equal(await page.locator('#toolbar-collapse').getAttribute('aria-expanded'),'true','toolbar reopens');
     equal(await read(),source,'zoom and layout preserve source bytes');
     await page.reload();await inject();await open();equal(await sizes(),['16px','100%'],'remount preserves shared zoom');
-    await page.evaluate(()=>{localStorage.setItem('lineae.sourceFontSize','99');localStorage.setItem('lineae.richTextFontSize','8');});
+    await page.evaluate(()=>{localStorage.setItem('lineae.config',(localStorage.getItem('lineae.config')??'').replace(/^\s*sourceFontSize:.*$/gm,''));localStorage.setItem('lineae.sourceFontSize','99');localStorage.setItem('lineae.richTextFontSize','8');});
     await page.reload();await inject();await open();equal(await sizes(),['32px','100%'],'obsolete preview font preference is ignored');
     await left.click();await right.click();
 
-    await page.locator('[data-group=layout]').click();
+    await revealToolbar(page); await page.locator('[data-group=layout]').click();
     const margins=page.locator('#layout-panel select').nth(2);
     await margins.selectOption('narrow');
     assert.match(await read(),/1[.]27cm/,'Source layout control writes geometry');
@@ -103,8 +105,8 @@ module.exports = async (context,url) => {
     equal(await save(),expected,'second save idempotent');
     await content.focus();await page.keyboard.press('Control+z');equal(await read(),before,'save indentation is one undo');
     await content.focus();await page.keyboard.press('Control+y');equal(await read(),expected,'redo exact');
-    await open(before);await page.locator('.tex-indent-setting input').uncheck();equal(await save(),before,'opt out preserves formatting');
-    await page.locator('.tex-indent-setting input').check();
+    await open(before);await setIndentOnSave(page,false);equal(await save(),before,'opt out preserves formatting');
+    await setIndentOnSave(page,true);
     await page.locator('[data-source-mode=body]').click();await page.locator('.ProseMirror').focus();
     const writesBefore=await page.evaluate(()=>window.v21Writes.length);await page.keyboard.press('Control+s');await page.waitForFunction(n=>window.v21Writes.length>n,writesBefore);
     equal(await page.evaluate(()=>window.v21Writes.at(-1)),expected,'Rich Text save formats source');

@@ -1,3 +1,4 @@
+const {revealToolbar,setIndentOnSave,createTreeEntry}=require('./workspace-ui-helpers.cjs');
 const {chromium} = require('playwright');
 const {createServer} = require('node:http');
 const {readFile, mkdir, mkdtemp, writeFile, readdir, rename, stat} = require('node:fs/promises');
@@ -11,7 +12,7 @@ const server = createServer(async(req,res) => {
   catch { res.writeHead(404).end(); }
 });
 async function showFilePanel(page) {
-  await page.locator('[data-group=files]').click();
+  await revealToolbar(page); await page.locator('[data-group=files]').click();
   await page.locator('#project-open').waitFor();
 }
 async function clickOpenProject(page) {
@@ -71,8 +72,8 @@ async function clickOpenProject(page) {
     await contextMenu.waitFor();
     assert.equal(await contextMenu.getByRole('menuitem',{name:/^(新建文件|New file)$/}).count(),1);
     assert.equal(await contextMenu.getByRole('menuitem',{name:/^(新建目录|New folder)$/}).count(),1);
-    page.once('dialog',dialog=>dialog.accept('context.tex'));
     await contextMenu.getByRole('menuitem',{name:/^(新建文件|New file)$/}).click();
+    await createTreeEntry(page,"context.tex");
     await page.locator('[data-path="context.tex"]').waitFor();
     await page.locator('[data-path="context.tex"]').click({button:'right'});
     assert.equal(await contextMenu.getByRole('menuitem',{name:/^(设为主文档|Set as main document)$/}).count(),1);
@@ -80,11 +81,12 @@ async function clickOpenProject(page) {
     assert.equal(await contextMenu.getByRole('menuitem',{name:/^(删除|Delete)$/}).count(),1);
     await page.keyboard.press('Escape');
     await page.locator('.project-tree').click({button:'right',position:{x:treeBox.width/2,y:treeBox.height-8}});
-    page.once('dialog',dialog=>dialog.accept('trash'));
     await contextMenu.getByRole('menuitem',{name:/^(新建目录|New folder)$/}).click();
+    await createTreeEntry(page,"trash");
     const trash=page.locator('#project-explorer summary').filter({hasText:/^trash$/});await trash.waitFor();
-    await trash.click({button:'right'});page.once('dialog',dialog=>dialog.accept('trash/inside.tex'));
+    await trash.click({button:'right'});
     await contextMenu.getByRole('menuitem',{name:/^(新建文件|New file)$/}).click();
+    await createTreeEntry(page,'inside.tex');
     await page.locator('[data-path="trash/inside.tex"]').waitFor();
     await trash.click({button:'right'});page.once('dialog',dialog=>dialog.accept());
     await contextMenu.getByRole('menuitem',{name:/^(删除目录|Delete folder)$/}).click();
@@ -98,7 +100,7 @@ async function clickOpenProject(page) {
     await page.waitForFunction(() => document.querySelector('.tex-filename')?.textContent.includes('main.tex'));
     assert.equal(await page.locator('[data-source-mode=split]').getAttribute('aria-pressed'),'false','Opening a project never activates Split');
     await page.locator('[data-source-mode=source]').click();
-    await page.locator('.tex-indent-setting input').uncheck();
+    await setIndentOnSave(page,false);
     assert.equal(await page.locator('#project-explorer').isVisible(), false);
     assert.equal(await page.locator('.document-status > :first-child').getAttribute('id'), 'project-toggle');
     await page.locator('[data-source-mode="body"]').click();
@@ -149,7 +151,7 @@ async function clickOpenProject(page) {
     await page.waitForFunction(() => document.querySelector('#project-explorer [role=status]').textContent.includes('Saved'));
     const disk = await page.evaluate(async () => (await (await testDirectory.getFileHandle('main.tex')).getFile()).text());
     assert.equal(disk, '\\documentclass{article}\r\n\\begin{document}\nMain text.\r\n\\end{document}\r\n% 草稿');
-    await page.locator('.tex-indent-setting input').check();
+    await setIndentOnSave(page,true);
     await page.locator('#project-save').click();
     // Wait for the save transaction to close its writable stream before taking
     // an OPFS File snapshot. Polling disk contents during commit can invalidate
@@ -159,7 +161,7 @@ async function clickOpenProject(page) {
     assert.equal(await page.evaluate(async()=> (await (await testDirectory.getFileHandle('main.tex')).getFile()).text()),disk.replace('Main text.','  Main text.'));
     assert.equal(await page.locator('[data-source-mode=split]').getAttribute('aria-pressed'),'false','Opening a project never activates Split');
     await page.locator('[data-source-mode=source]').click();
-    await page.locator('.tex-indent-setting input').uncheck();
+    await setIndentOnSave(page,false);
     await page.evaluate(async () => { const w = await (await testDirectory.getFileHandle('main.tex')).createWritable(); await w.write('external'); await w.close(); });
     await code.click(); await page.keyboard.press('Control+End'); await page.keyboard.insertText(' conflict draft');
     await page.locator('#project-save').click();
@@ -182,8 +184,8 @@ async function clickOpenProject(page) {
     await page.locator('#project-toggle').click();
     const openTreeBox=await page.locator('.project-tree').boundingBox();
     await page.locator('.project-tree').click({button:'right',position:{x:openTreeBox.width/2,y:openTreeBox.height-8}});
-    page.once('dialog',dialog => dialog.accept('new.tex'));
     await contextMenu.getByRole('menuitem',{name:/^(新建文件|New file)$/}).click();
+    await createTreeEntry(page,"new.tex");
     await page.locator('[data-path="new.tex"]').waitFor();
     await page.locator('[data-path="new.tex"]').click({button:'right'});
     page.once('dialog',dialog => dialog.dismiss());

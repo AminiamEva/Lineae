@@ -1,5 +1,7 @@
 import {scanDependencies,dependencyMatchesPath} from './project/dependencies.mjs';
 import {composeProject,projectDocumentEdits} from './project/include-document.mjs';
+import {installFloatingToolbar} from './ui/floating-toolbar.js';
+import {installSettingsPanel} from './ui/settings-panel.js';
 import { sourceProjection, richSourceChanges } from './editor/source-sync.js';
 import { installSourceToolbar } from './editor/source-toolbar.js';
 import { createSourceWorkspace } from './editor/source-workspace.js';
@@ -871,9 +873,11 @@ button('＋ Column',addMatrixColumn);
 button('$',()=>insertMath());
 button('$$',()=>insertMath(true)).dataset.shortcut='editor.insertDisplayMath';
 let projectComposition=null;
-let projection, syncApplying = false, syncPending = false, sourceToolbar, projectExplorer, projectFileKind, preferredProjectSource = true, openingProject = false;
+let projection, syncApplying = false, syncPending = false, sourceToolbar, projectExplorer, projectFileKind, preferredProjectSource = true, openingProject = false, projectMode = 'body';
 const sourceView = createSourceWorkspace({
   page: documentPage,
+  getPreferences:()=>config.value,
+  onSourceFontChange:value=>{if(config.value.interface.sourceFontSize!==value)config.updateInterface({sourceFontSize:value});},
   render: text => {
     if (projectFileKind === 'bib') return;
     if (editor.view.composing) return false;
@@ -1171,7 +1175,7 @@ function setSourceMode(active) {
   if (!active && projectFileKind==='bib') {sourceView.error(t('BibTeX 文件只能使用源码模式','BibTeX files use Source mode'));return;}
   if (editor.view.composing || sourceView.composing) { sourceView.error(t("请先完成当前输入。","Finish the current composition before switching modes.")); return; }
   if (active === !sourceView.hidden) return;
-  if(projectExplorer?.active)preferredProjectSource=active;
+  if(projectExplorer?.active){preferredProjectSource=active;projectMode=active?'source':'body';}
   if (active) {
     if(projectComposition){
       const text=source();projectComposition=null;load(text,false);
@@ -1433,6 +1437,9 @@ const structureCommands = {
   textsc: () => editor.chain().focus().toggleMark('smallcaps').run(),
   fbox: () => spaceOverlay.toggleBox(),
   find: () => documentFind.show(),
+  settings:()=>settingsPanel.show(),
+  projectincludes:()=>projectExplorer.showIncludes(),
+  outline:()=>projectExplorer.showOutline(),
   importconfig: () => importConfig.click(),
   exportconfig: () => exportConfig.click(),
   textsuperscript: () => editor.chain().focus().toggleMark('superscript').run(),
@@ -1698,7 +1705,7 @@ const [bodyButton,sourceButton,splitButton] = ['body','source','split'].map(mode
   const button = document.createElement('button');
   button.type = 'button';
   button.dataset.sourceMode = mode;
-  button.onclick = () => { if (projectFileKind === 'bib' && mode !== 'source') return; setSourceMode(mode !== 'body'); if (mode !== 'body') sourceView.setSplit(mode === 'split'); };
+  button.onclick = () => { if (projectFileKind === 'bib' && mode !== 'source') return; setSourceMode(mode !== 'body'); if (mode !== 'body') sourceView.setSplit(mode === 'split'); if(projectExplorer?.active && projectFileKind!=='bib')projectMode=mode; };
   modes.append(button);
   return button;
 });
@@ -1998,23 +2005,6 @@ function showProjectComposition() {
 
   }finally{syncApplying=false;}
 }
-documentOutline.panel.addEventListener('lineae-outline-render',()=>{
- if(!projectComposition)return;
-    const list=documentOutline.panel.querySelector('.document-outline-list');
-    const edges=scanDependencies(projectExplorer.model.file(projectExplorer.model.activeFileId).draft).dependencies.filter(d=>['input','include'].includes(d.command)&&d.status==='literal');
-    const management=document.createElement('div');management.className='include-management';
-    edges.forEach((edge,index)=>{
-      const row=document.createElement('div');row.textContent=edge.command+' · '+edge.path+' ';
-      for(const direction of [-1,1]){
-        const button=document.createElement('button');button.type='button';button.textContent=direction<0?'↑':'↓';
-        button.title=direction<0?t('前移文件','Move file earlier'):t('后移文件','Move file later');
-        button.disabled=index+direction<0||index+direction>=edges.length;
-        button.onclick=()=>documentOutline.panel.dispatchEvent(new CustomEvent('lineae-move-include',{detail:{index,direction}}));row.append(button);
-      }
-      management.append(row);
-    });
-    list?.prepend(management);
-});
 function editIncludeSource(transform){
   if(!projectExplorer?.active || projectFileKind!=='tex')return;
   if(editor.view.composing || sourceView.composing)return;
@@ -2044,6 +2034,13 @@ function appendInclude(id,beforePath){
     return text.slice(0,at)+'\n\\input{'+file.path+'}\n'+text.slice(at);
   });
 }
+documentOutline.panel.addEventListener('lineae-outline-navigate',event=>{
+  if(sourceView.hidden)return;
+  event.preventDefault();sourceView.flush();
+  const index=editor.state.doc.resolve(Math.min(event.detail.position,editor.state.doc.content.size)).index(0);
+  const block=projection?.blocks.find(block=>index>=block.index && index<block.index+block.count);
+  if(block){const offset=block.from+Math.max(0,block.raw.indexOf('\\'));sourceView.select(offset,offset);}
+});
 documentOutline.panel.addEventListener('dragover',event=>{
   if(event.dataTransfer.types.includes('application/x-lineae-file'))event.preventDefault();
 });
@@ -2071,6 +2068,9 @@ documentOutline.panel.addEventListener('lineae-move-include',event=>{
 let standaloneSession;
 projectExplorer = installProjectExplorer({footer, filePanel:document.querySelector('header .tools'), sessions:{
   prepareSave:prepareExplicitSave,
+  outline:documentOutline,preferences:()=>config.value,
+  sidebarChanged:(key,open)=>config.updateInterface({sidebar:{[key]:open}}),
+  editIncludes:editIncludeSource,citations:()=>manageCitations(),
   saveFileIds:()=>projectComposition?[...new Set(projectComposition.regions.map(region=>region.id))]:null,
   includeFile:appendInclude,
   ensureIdle() { if (editor.view.composing || sourceView.composing) throw new Error(t('请先完成当前输入','Finish composition first')); },
@@ -2087,7 +2087,7 @@ projectExplorer = installProjectExplorer({footer, filePanel:document.querySelect
     ? t('保留当前单文件草稿并新建或打开工程？','Keep the current single-file draft and create or open a project?')
     : t('保留当前单文件草稿并打开工程？','Keep the current single-file draft and open a project?')),
   begin() {
-    openingProject=true;
+    openingProject=true;projectMode='body';
     preferredProjectSource=!sourceView.hidden;
     if (!standaloneSession) standaloneSession = {
       text:sourceView.hidden?source():sourceView.value, filename, fileHandle, savedSource,
@@ -2099,7 +2099,7 @@ projectExplorer = installProjectExplorer({footer, filePanel:document.querySelect
     projectFileKind = file.kind;
     returnedDraft = undefined; syncPending = false;
     filename = file.path; fileHandle = null; savedSource = file.saved;
-    const session=file.session,sourceVisible=file.kind==='bib' || (session?.sourceVisible??preferredProjectSource);
+    const session=file.session,sourceVisible=file.kind==='bib' || projectMode!=='body';
     sourceModeEntry=session?.modeHistory?.entry;sourceModeCommits=[...(session?.modeHistory?.commits??[])];sourceModeRedos=[...(session?.modeHistory?.redos??[])];
     if(file.kind==='tex'){
       load(file.draft,false);
@@ -2115,7 +2115,7 @@ projectExplorer = installProjectExplorer({footer, filePanel:document.querySelect
     if(sourceVisible){
       if(sourceView.hidden)sourceView.open(file.draft);
       sourceView.restoreSession(session,file.draft);
-      sourceView.setSplit(!openingProject && session?.split===true);
+      sourceView.setSplit(file.kind!=='bib' && projectMode==='split');
     }else{
       sourceView.close();sourceView.restoreSession(session,file.draft);editor.commands.focus();
     }
@@ -2324,7 +2324,7 @@ groupButton(referenceGroup,'fn',async()=>{
   const value=await askText(t('脚注内容','Footnote text'));
   if(value)editor.chain().focus().insertContent({type:'footnote',attrs:{text:value}}).run();
 });
-groupButton(referenceGroup,'cite',async()=>{
+async function manageCitations(){
   try{
     const documentBefore=editor.state.doc;
     const entry=await openCitationPanel({
@@ -2367,7 +2367,9 @@ groupButton(referenceGroup,'cite',async()=>{
     document.querySelector('#status').hidden=false;
     document.querySelector('#status').textContent=error.message;
   }
-});
+}
+groupButton(referenceGroup,'cite',manageCitations);
+
 groupButton(referenceGroup,'toc',()=>{
   if(editor.isActive('tableOfContents'))editor.chain().focus().deleteSelection().run();
   else editor.chain().focus().insertContent({type:'tableOfContents'}).run();
@@ -2488,18 +2490,21 @@ const importConfig=groupButton(files,['导入 YAML','Import YAML'],()=>{
   },{once:true});
   picker.click();
 });
+importConfig.hidden=true;
 const exportConfig=groupButton(files,['导出 YAML','Export YAML'],()=>{
   saveZoom();
   const url=URL.createObjectURL(new Blob([config.exportYaml()],{type:'application/yaml;charset=utf-8'}));
   const a=document.createElement('a');a.href=url;a.download='config.yaml';a.click();
   setTimeout(()=>URL.revokeObjectURL(url),1000);
 });
+exportConfig.hidden=true;
+groupButton(files,['设置','Settings'],()=>settingsPanel.show());
 const saveAsButton=groupButton(files,['另存为','Save as'],()=>saveDocument(true));
 saveAsButton.dataset.tool='saveAs';
 let releaseFileNavigation;
 function updateFileTools() {
   const order=config.value.interface.toolbar;
-  for (const control of files.querySelectorAll('[data-tool]')) control.hidden=!order.includes(control.dataset.tool);
+  for (const control of files.querySelectorAll('[data-tool]')) control.hidden=control.dataset.tool==='language'||!order.includes(control.dataset.tool);
   for (const name of order) files.insertBefore(files.querySelector(`[data-tool="${name}"]`),importConfig);
   releaseFileNavigation?.();
   releaseFileNavigation=installRovingFocus(files,{onActivate:control=>control.click()});
@@ -2513,6 +2518,8 @@ function applyImportedPreferences() {
   const { smartFences }=config.value.editing;
   configureMathFences(smartFences);
   for (const field of paper.querySelectorAll('math-field')) field.smartFence=smartFences;
+  sourceView.configure();
+  toolbarController.refresh();
   updateFileTools();
   updateLanguage();
 }
@@ -2560,7 +2567,7 @@ function updateLanguage() {
   projectExplorer?.relocalize?.();
   documentFind.relocalize();
   documentOutline.relocalize();
-  sourceView.relocalize();
+  sourceView.relocalize();toolbarController.relocalize();settingsPanel.relocalize();settingsButton.title=t('设置','Settings');settingsButton.setAttribute('aria-label',settingsButton.title);
   applyToolbarDescriptions(ribbon);
   updateShortcutHints();
   updateThemeButton();
@@ -2578,37 +2585,19 @@ function selectGroup(name) {
 for(const name of Object.keys(groups)) {
   const tab=document.createElement('button');tab.type='button';tab.dataset.group=name;
   tab.addEventListener('mousedown',event=>event.preventDefault());
-  tab.addEventListener('click',()=>{toolbarCollapsed=false;updateToolbarCollapse();selectGroup(name);});tabs.append(tab);
+  tab.addEventListener('click',()=>{toolbarController.show();selectGroup(name);});tabs.append(tab);
 }
 ribbon.append(tabs,files,home,insert,layoutGroup,tableGroup,formatGroup,referenceGroup,mathGroup);header.append(ribbon);tools.remove();
 groupButton(insert,'figure',()=>insertLocalImage(editor));
 sourceToolbar = installSourceToolbar({ribbon,groups,source:sourceView,rich:paper,heading:headingMenu});
-const toolbarCollapse=document.createElement('button');
-toolbarCollapse.type='button';toolbarCollapse.id='toolbar-collapse';
-let toolbarCollapsed=false;
-function updateToolbarCollapse(){
-  document.body.classList.toggle('toolbar-collapsed',toolbarCollapsed);
-  toolbarCollapse.textContent=toolbarCollapsed?'⌄':'⌃';
-  toolbarCollapse.title=toolbarCollapsed?t('展开工具栏','Expand toolbar'):t('折叠工具栏','Collapse toolbar');
-  toolbarCollapse.setAttribute('aria-label',toolbarCollapse.title);
-  toolbarCollapse.setAttribute('aria-expanded',String(!toolbarCollapsed));
-  const host=sourceView.hidden?header:document.querySelector('.tex-head');
-  host.append(ribbon,toolbarCollapse);
-  document.documentElement.style.setProperty('--tex-toolbar-bottom',!sourceView.hidden?'0px':Math.ceil(header.getBoundingClientRect().bottom)+'px');
-}
-toolbarCollapse.onclick=()=>{toolbarCollapsed=!toolbarCollapsed;updateToolbarCollapse();};
-let lastSourceVisible=false;
-const workspaceModeObserver=new MutationObserver(()=>{
-  const visible=!sourceView.hidden;
-  if(visible!==lastSourceVisible){lastSourceVisible=visible;if(visible)toolbarCollapsed=true;updateToolbarCollapse();}
-});
-workspaceModeObserver.observe(document.querySelector('.tex-workspace'),{attributes:true,attributeFilter:['hidden']});
-updateToolbarCollapse();
-const workspaceHeaderSize = new ResizeObserver(() => {
-  document.documentElement.style.setProperty('--tex-toolbar-bottom', (!sourceView.hidden?0:Math.ceil(header.getBoundingClientRect().bottom)) + 'px');
-});
-workspaceHeaderSize.observe(header);
-window.addEventListener('pagehide', event => {if(!event.persisted) workspaceHeaderSize.disconnect();});
+const toolbarController=installFloatingToolbar({header,ribbon,sourceView,getAutoHide:()=>sourceView.hidden?config.value.interface.toolbarAutoHide:config.value.interface.sourceToolbarAutoHide});
+const toolbarCollapse=toolbarController.button;
+function updateToolbarCollapse(){toolbarController.show();}
+const settingsPanel=installSettingsPanel({config,onApply:applyImportedPreferences,onImport:()=>importConfig.click(),onExport:()=>exportConfig.click(),getDocument:()=>{sourceView.flush();return documentParts.start?structuredClone(pageSetup):null;},applyDocument:updatePageSetup});
+const settingsButton=document.createElement('button');settingsButton.id='settings-open';settingsButton.type='button';settingsButton.textContent='⚙';settingsButton.onclick=()=>settingsPanel.show();footer.insertBefore(settingsButton,themeButton);
+document.addEventListener('lineae-open-settings',()=>settingsPanel.show());
+document.addEventListener('lineae-open-outline',()=>projectExplorer.showOutline());
+document.addEventListener('lineae-open-includes',()=>projectExplorer.showIncludes());
 decorateToolbar(ribbon);
 const tooltips=installTooltips(document.body,{document,language:language.value});
 for(const control of ribbon.querySelectorAll('button'))control.dataset.rovingItem='';

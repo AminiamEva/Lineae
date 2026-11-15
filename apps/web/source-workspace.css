@@ -161,3 +161,26 @@ body.toolbar-collapsed .ribbon>.tools{display:none!important;}
 @media(max-width:700px){.tex-head>.ribbon{order:5;flex-basis:100%;max-width:none}.tex-head>.tex-actions{margin-left:auto}}
 
 body.toolbar-collapsed:not(.source-workspace-visible) main{padding-top:68px}
+
+/* One floating toolbar, centered over the available editing surface in every mode. */
+:root{--sidebar-width:0px;}body.project-visible{--sidebar-width:230px;}
+header .floating-toolbar{pointer-events:auto;position:relative;display:flex;justify-content:center;max-width:calc(100vw - var(--sidebar-width) - 24px);transform:translateX(calc(var(--sidebar-width)/2));}
+header .floating-toolbar>.ribbon{padding-right:32px;max-width:min(960px,calc(100vw - var(--sidebar-width) - 24px));}
+header .floating-toolbar>#toolbar-collapse{position:absolute;right:5px;top:4px;width:24px;height:24px;}
+header .floating-toolbar.is-hidden{width:36px;height:22px;border-radius:0 0 10px 10px;background:light-dark(#ffffffd9,#303139dd);box-shadow:0 2px 8px #0001;}
+header .floating-toolbar.is-hidden>.ribbon{display:none!important;}
+header .floating-toolbar.is-hidden>#toolbar-collapse{position:static;}
+body:not(.source-workspace-visible) main,body.toolbar-collapsed:not(.source-workspace-visible) main{padding-top:76px;}
+@media(max-width:600px){body.project-visible{--sidebar-width:150px;}}
+@media(prefers-reduced-motion:no-preference){.floating-toolbar{transition:opacity .15s ease;}.sidebar-section-content{animation:tex-enter .12s ease-out;}}
+.settings-panel{box-sizing:border-box;width:min(720px,calc(100vw - 24px));max-height:86dvh;border:1px solid light-dark(#d9dfe9,#444a55);border-radius:18px;padding:20px;background:light-dark(#fbfcff,#262930);color:inherit;box-shadow:0 16px 70px #0004;}
+.settings-panel::backdrop{background:#0004;backdrop-filter:blur(3px);}
+.settings-panel h2{margin:0 0 14px;font:600 18px system-ui;}
+.settings-panel details{margin:7px 0;border:1px solid light-dark(#e2e6ed,#414751);border-radius:8px;padding:8px;}
+.settings-panel summary{cursor:pointer;font:600 12px system-ui;padding:2px;}
+.setting-row{display:grid;grid-template-columns:minmax(0,1fr) minmax(90px,46%);gap:12px;align-items:center;margin:8px 0;font:12px system-ui;}
+.setting-row input,.setting-row select{box-sizing:border-box;min-width:0;width:100%;font:12px system-ui;}
+.setting-row input[type=checkbox]{justify-self:end;width:16px;height:16px;}
+.settings-panel textarea{box-sizing:border-box;width:100%;font:12px/1.5 Consolas,monospace;margin-top:8px;}
+.settings-actions{position:sticky;bottom:-20px;display:flex;gap:8px;justify-content:flex-end;padding:12px 0;background:light-dark(#fbfcff,#262930);}
+.settings-panel [role=alert]{color:light-dark(#b33737,#efa2a2);font-size:12px;}

@@ -306,7 +306,7 @@ export function installDocumentOutline(editor) {
       control.style.paddingInlineStart=(8+(item.level-1)*14)+'px';
       control.textContent=(item.number?item.number+'  ':'')+item.text;
       control.setAttribute('aria-current',String(item===current));
-      control.addEventListener('click',()=>navigateTo(editor,item));list.append(control);
+      control.addEventListener('click',()=>{const event=new CustomEvent('lineae-outline-navigate',{cancelable:true,detail:item});if(panel.dispatchEvent(event))navigateTo(editor,item);});list.append(control);
     }
     panel.dispatchEvent(new Event('lineae-outline-render'));
     if(focused)list.querySelector(`[data-heading-position="${focused}"]`)?.focus({preventScroll:true});
@@ -316,10 +316,10 @@ export function installDocumentOutline(editor) {
     close.setAttribute('aria-label',t('关闭大纲','Close outline'));
     panel.setAttribute('aria-label',t('文档大纲','Document outline'));render();
   }
-  function hide(){panel.hidden=true;editor.view.focus();}
-  function show(){panel.hidden=false;relocalize();}
+  function hide(){const section=panel.closest('.sidebar-section');if(section)section.open=false;else panel.hidden=true;editor.view.focus();}
+  function show(){panel.hidden=false;const section=panel.closest('.sidebar-section');if(section){section.open=true;panel.dispatchEvent(new Event('lineae-show-sidebar',{bubbles:true}));}relocalize();}
   close.addEventListener('click',hide);
-  document.addEventListener('keydown',event=>{if(event.key==='Escape'&&!panel.hidden){event.preventDefault();hide();}},true);
+  document.addEventListener('keydown',event=>{if(event.key==='Escape'&&!panel.hidden&&!panel.closest('.sidebar-section')){event.preventDefault();hide();}},true);
   editor.on('transaction',render);relocalize();
   return {panel,show,hide,relocalize};
 }

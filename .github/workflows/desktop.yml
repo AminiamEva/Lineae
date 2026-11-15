@@ -40,6 +40,8 @@ jobs:
         run: node --test "tests/bib/**/*.test.mjs"
       - name: Install Chromium
         run: npx playwright install --only-shell chromium
+      - name: Workspace navigation regressions
+        run: node tests/workspace-navigation-browser.cjs
       - name: Continuous project Document regressions
         run: node tests/project-composition-browser.cjs
       - name: File tree interaction regressions

@@ -1,3 +1,4 @@
+const {revealToolbar,setIndentOnSave,createTreeEntry}=require('./workspace-ui-helpers.cjs');
 const assert=require('node:assert/strict');
 const {build}=require('esbuild');
 const {readFile,mkdir}=require('node:fs/promises');
@@ -32,7 +33,7 @@ module.exports=async function checkV2(context,url) {
     };
     equal(await copy(),sample,'source opens byte-exact');
     const bounds=await page.locator('.tex-workspace').boundingBox(),head=await page.locator('header').boundingBox();
-    equal(bounds.width,1440,'full available width');equal(await page.locator('.tex-head .ribbon').count(),1,'toolbar shares the file title row');
+    equal(bounds.width,1440,'full available width');equal(await page.locator('header .floating-toolbar .ribbon').count(),1,'toolbar floats above the editing surface');
     const richSize=await page.locator('.ProseMirror').evaluate(e=>getComputedStyle(e).fontSize);
     await content.focus();await page.keyboard.press('Control+0');await page.keyboard.press('Control+=');
     equal(await page.locator('.tex-zoom-label').innerText(),'17px','font shortcut');
@@ -99,14 +100,14 @@ module.exports=async function checkV2(context,url) {
     const unfolded=await read();await page.locator('.cm-foldGutter .cm-gutterElement').filter({hasText:'⌄'}).first().click();
     equal(await page.locator('.cm-foldPlaceholder').count(),1,'environment folds');equal(await read(),unfolded,'fold does not change bytes');
     for(const [name,group] of [['itemize','insert'],['enumerate','insert'],['equation','math'],['align','math'],['figure','insert'],['▦','table']]) {
-      await set('');await page.locator('[data-group='+group+']').click();
+      await set('');await revealToolbar(page); await page.locator('[data-group='+group+']').click();
       const control=page.locator('[data-source-action="'+name+'"]').filter({visible:true});
       await control.first().click();const text=await read();equal(text.includes('\\begin{'+(name==='▦'?'table':name)+'}'),true,'toolbar '+name);
       equal(await content.evaluate(e=>e.contains(document.activeElement)||e===document.activeElement),true,'snippet keeps focus');
       await page.keyboard.press('Control+z');equal(await read(),'','snippet has one undo step');
     }
-    await page.locator('[data-group=table]').click();equal(await page.locator('[data-source-action=merge]').isDisabled(),true,'unsupported toolbar operation disabled');
-    await set('text');await page.keyboard.press('Control+a');await page.locator('[data-group=home]').click();await page.locator('[data-source-action=B]').filter({visible:true}).first().click();equal(await read(),'\\textbf{text}','selection wraps in snippet');
+    await revealToolbar(page); await page.locator('[data-group=table]').click();equal(await page.locator('[data-source-action=merge]').isDisabled(),true,'unsupported toolbar operation disabled');
+    await set('text');await page.keyboard.press('Control+a');await revealToolbar(page); await page.locator('[data-group=home]').click();await page.locator('[data-source-action=B]').filter({visible:true}).first().click();equal(await read(),'\\textbf{text}','selection wraps in snippet');
     for (const selected of ['\\ref{sec:one}','${literal} \\custom{x}','a\nb']) {
       await set(selected);await page.keyboard.press('Control+a');
       await page.locator('[data-source-action=B]').filter({visible:true}).first().click();
@@ -124,7 +125,7 @@ module.exports=async function checkV2(context,url) {
       editor.commands.insertContentAt(at,' More.');
     });
     const expected=sample.replace('Hello world.','Hello world. More.');
-    await page.locator('[data-group=files]').click();const downloading=page.waitForEvent('download');await page.locator('#download').click();const zip=await readFile(await (await downloading).path());
+    await revealToolbar(page); await page.locator('[data-group=files]').click();const downloading=page.waitForEvent('download');await page.locator('#download').click();const zip=await readFile(await (await downloading).path());
     const nameLength=zip.readUInt16LE(26),extraLength=zip.readUInt16LE(28),length=zip.readUInt32LE(18);
     equal(zip.subarray(30+nameLength+extraLength,30+nameLength+extraLength+length),Buffer.from(expected),'real ZIP after rich edit preserves mixed EOL and macros');
     if(process.env.LINEAE_SCREENSHOTS){await mkdir(process.env.LINEAE_SCREENSHOTS,{recursive:true});await page.screenshot({path:join(process.env.LINEAE_SCREENSHOTS,'v2-split.png')});}

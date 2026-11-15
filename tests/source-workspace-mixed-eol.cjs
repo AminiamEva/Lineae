@@ -1,3 +1,4 @@
+const {revealToolbar,setIndentOnSave,createTreeEntry}=require('./workspace-ui-helpers.cjs');
 const assert = require('node:assert/strict');
 const {readFile, writeFile, mkdir} = require('node:fs/promises');
 const {join} = require('node:path');
@@ -25,7 +26,7 @@ module.exports = async function checkMixedEol(context, url) {
     const directory = join(process.env.LINEAE_EOL_ARTIFACTS || tmpdir(),'lineae-mixed-eol');
     await mkdir(directory,{recursive:true});
     const download = async name => {
-      await page.locator('[data-group=files]').click();
+      await revealToolbar(page); await page.locator('[data-group=files]').click();
       const pending = page.waitForEvent('download');
       await page.locator('#download').click();
       const zip = await readFile(await (await pending).path());

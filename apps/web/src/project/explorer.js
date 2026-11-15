@@ -1,5 +1,8 @@
 import {Project, DirectoryHandleAdapter} from './project.mjs';
 import {localize, t} from '../ui/i18n.mjs';
+import {sidebarSection} from '../ui/sidebar-section.js';
+import {installIncludePanel} from './include-panel.js';
+import {projectPath} from './paths.mjs';
 import {DEFAULT_DOCUMENT_SOURCE} from '../editor/default-document.mjs';
 
 export function installProjectExplorer({footer, filePanel, sessions}) {
@@ -17,7 +20,19 @@ export function installProjectExplorer({footer, filePanel, sessions}) {
   const contextMenu = document.createElement('div');
   contextMenu.id = 'project-context-menu'; contextMenu.className = 'project-context-menu';
   contextMenu.setAttribute('role','menu');contextMenu.setAttribute('aria-label',t('文件操作','File actions'));contextMenu.hidden = true;
-  panel.append(title, actions, diagnostics, tree, message); document.body.append(panel,contextMenu);
+  panel.append(title,actions,message);document.body.append(panel,contextMenu);
+  const sectionOptions={getState:()=>sessions.preferences().interface.sidebar,onToggle:(key,open)=>sessions.sidebarChanged(key,open)};
+  const sections={
+    files:sidebarSection(panel,'files',['文件树','File tree'],sectionOptions),
+    includes:sidebarSection(panel,'includes',['文件引用','File includes'],sectionOptions),
+    outline:sidebarSection(panel,'outline',['大纲','Outline'],sectionOptions),
+    citations:sidebarSection(panel,'citations',['文献','Citations'],sectionOptions),
+  };
+  sections.files.content.append(diagnostics,tree);
+  sections.outline.content.append(sessions.outline.panel);sessions.outline.panel.hidden=false;
+  const citeButton=document.createElement('button');citeButton.type='button';citeButton.dataset.zh='管理参考文献';citeButton.dataset.en='Manage references';citeButton.onclick=sessions.citations;sections.citations.content.append(citeButton);
+  const includes=installIncludePanel({container:sections.includes.content,getProject:()=>project,edit:sessions.editIncludes,openFile:id=>run(()=>activate(id))});
+  panel.addEventListener('lineae-show-sidebar',()=>visible(true));
   const toggle = document.createElement('button'); toggle.id = 'project-toggle';
   toggle.textContent = '▤'; toggle.title = t('显示/隐藏项目文件','Toggle project files');
   toggle.setAttribute('aria-label', toggle.title); toggle.setAttribute('aria-controls', panel.id);
@@ -137,21 +152,34 @@ export function installProjectExplorer({footer, filePanel, sessions}) {
   }
   const parentPath = path => path.includes('/') ? path.slice(0,path.lastIndexOf('/')) : '';
   const suggestedPath = (base,name) => base ? base+'/'+name : name;
-  async function createFile(base='') {
-    sessions.ensureIdle();capture();
-    const path=prompt(t('新建 .tex 文件路径','New .tex file path'),suggestedPath(base,'new.tex'));
-    if(!path)return;
-    if(!path.endsWith('.tex'))throw new Error(t('请使用 .tex 扩展名','Use a .tex extension'));
-    const file=await project.create(path,'');
-    // Preserve input accepted while the disk operation was pending before
-    // switching the shared editor to the newly created file.
-    capture();project.activate(file.id);expanded.add(parentPath(file.path));show(file);
+  function createEntry(base,folder){
+    sessions.ensureIdle();capture();sections.files.section.open=true;visible(true);
+    const parent=base?[...tree.querySelectorAll('summary[data-path]')].find(n=>n.dataset.path===base)?.parentElement:tree;
+    if(parent?.tagName==='DETAILS')parent.open=true;
+    return new Promise(resolve=>{
+      const row=document.createElement('form');row.className='project-inline-entry';
+      const input=document.createElement('input');input.dataset.projectName='';input.value=folder?'new-folder':'new.tex';input.autocomplete='off';input.spellcheck=false;
+      input.setAttribute('aria-label',folder?t('新建目录名称','New folder name'):t('新建文件名称','New file name'));
+      const error=document.createElement('small');error.setAttribute('role','alert');row.append(input,error);(parent??tree).append(row);
+      let done=false;
+      const cancel=()=>{if(done)return;done=true;row.remove();resolve();};
+      row.onsubmit=async event=>{
+        event.preventDefault();if(done||input.disabled)return;
+        try{
+          const target=projectPath(input.value.trim(),base);
+          if(!folder&&!target.endsWith('.tex'))throw new Error(t('文件名需要 .tex 扩展名','Use a .tex filename'));
+          input.disabled=true;
+          if(folder){await project.mkdir(target);expanded.add(target);}
+          else{const file=await project.create(target,'');capture();project.activate(file.id);expanded.add(parentPath(file.path));show(file);}
+          cancel();
+        }catch(e){input.disabled=false;error.textContent=e.message;input.focus();}
+      };
+      input.onkeydown=event=>{event.stopPropagation();if(event.key==='Escape'){event.preventDefault();cancel();}};
+      input.focus();input.select();
+    });
   }
-  async function createDirectory(base='') {
-    sessions.ensureIdle();capture();
-    const path=prompt(t('目录路径','Directory path'),suggestedPath(base,'new-folder'));
-    if(path){await project.mkdir(path);expanded.add(path);}
-  }
+  const createFile=(base='')=>createEntry(base,false);
+  const createDirectory=(base='')=>createEntry(base,true);
   async function relocate(path, move) {
     sessions.ensureIdle();capture();
     const target=prompt(move?t('移动到项目内路径','Move to path'):t('新路径','Rename path'),path);
@@ -285,7 +313,7 @@ export function installProjectExplorer({footer, filePanel, sessions}) {
   tree.addEventListener('keydown',event=>{if(event.key==='ContextMenu' || (event.shiftKey && event.key==='F10'))showContextMenu(event);});
   contextMenu.addEventListener('contextmenu',event=>event.preventDefault());
   contextMenu.addEventListener('keydown',event=>{
-    if(!['ArrowDown','ArrowUp','Home','End'].includes(event.key))return;
+    if(event.target.matches('input,textarea') || !['ArrowDown','ArrowUp','Home','End'].includes(event.key))return;
     event.preventDefault();const items=[...contextMenu.querySelectorAll('button')],current=items.indexOf(document.activeElement);
     const next=event.key==='Home'?0:event.key==='End'?items.length-1:(current+(event.key==='ArrowDown'?1:items.length-1))%items.length;
     items[next]?.focus();
@@ -294,6 +322,7 @@ export function installProjectExplorer({footer, filePanel, sessions}) {
   document.addEventListener('keydown',event=>{if(event.key==='Escape')closeContextMenu();});
   window.addEventListener('resize',closeContextMenu);panel.addEventListener('scroll',closeContextMenu);
   function render() {
+    includes.render();for(const section of Object.values(sections))section.relocalize();localize(sections.citations.content);
     panel.dataset.state=project?'open':'empty';newProjectButton.hidden=Boolean(project);
     actions.hidden = !project;
     if (!project) {
@@ -355,6 +384,8 @@ export function installProjectExplorer({footer, filePanel, sessions}) {
       try {return close();}catch(error){sessions.error(error.message);return false;}
     },
     changed() { if (project && !switching) { try { capture(); render(); } catch(error) {message.textContent=t('草稿检查点失败','Draft checkpoint failed')+': '+error.message;sessions.error(message.textContent);} } },
+    showIncludes(){visible(true);sections.includes.section.open=true;includes.show();},
+    showOutline(){visible(true);sections.outline.section.open=true;sessions.outline.show();},
     relocalize() {
       closeContextMenu();
       panel.setAttribute('aria-label', t('项目文件','Project files'));
