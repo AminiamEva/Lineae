@@ -17,6 +17,8 @@ async function showFilePanel(page) {
 async function clickOpenProject(page) {
   await showFilePanel(page);
   await page.locator('#project-open').click();
+  await page.locator('.project-file[aria-current=true]').waitFor({state:'attached'});
+  await page.locator('[data-source-mode=source]').click();
 }
 (async () => {
   await new Promise(done => server.listen(0,'127.0.0.1',done));

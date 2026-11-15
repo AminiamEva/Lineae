@@ -16,6 +16,8 @@ const server = createServer(async(req,res) => {
 async function clickOpenProject(page) {
   await page.locator('[data-group=files]').click();
   await page.locator('#project-open').click();
+  await page.locator('.project-file[aria-current=true]').waitFor({state:'attached'});
+  await page.locator('[data-source-mode=source]').click();
 }
 (async()=>{
   await fs.mkdir(output,{recursive:true});
