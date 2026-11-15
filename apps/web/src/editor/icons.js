@@ -110,6 +110,8 @@ const descriptions = {
   '打开 .tex':{zh:'打开 .tex 文件',en:'Open a .tex file'},
   'Open project':{zh:'打开项目目录',en:'Open a project directory'},
   '打开工程':{zh:'打开项目目录',en:'Open a project directory'},
+  'New project':{zh:'在空目录中新建工程',en:'Create a project in an empty folder'},
+  '新建工程':{zh:'在空目录中新建工程',en:'Create a project in an empty folder'},
   'Save .tex':{zh:'保存当前 .tex 文件',en:'Save the current .tex file'},
   '保存 .tex':{zh:'保存当前 .tex 文件',en:'Save the current .tex file'},
   code:{zh:'行内代码',en:'Inline code'},

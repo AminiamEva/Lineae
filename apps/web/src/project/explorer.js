@@ -1,6 +1,8 @@
 import {Project, DirectoryHandleAdapter} from './project.mjs';
 import {localize, t} from '../ui/i18n.mjs';
 
+const initialProjectSource = '\\documentclass{article}\n\n\\begin{document}\n\n\\end{document}\n';
+
 export function installProjectExplorer({footer, filePanel, sessions}) {
   let project = null, busy = false, switching = false, treeSignature = '';
   const expanded = new Set();
@@ -10,10 +12,13 @@ export function installProjectExplorer({footer, filePanel, sessions}) {
   panel.setAttribute('aria-label', t('项目文件','Project files'));
   const title = document.createElement('strong');
   const actions = document.createElement('div'); actions.className = 'project-actions';
-  const tree = document.createElement('div');
+  const tree = document.createElement('div'); tree.className = 'project-tree';
   const diagnostics = document.createElement('p');
   const message = document.createElement('p'); message.setAttribute('role','status');
-  panel.append(title, actions, diagnostics, tree, message); document.body.append(panel);
+  const contextMenu = document.createElement('div');
+  contextMenu.id = 'project-context-menu'; contextMenu.className = 'project-context-menu';
+  contextMenu.setAttribute('role','menu');contextMenu.setAttribute('aria-label',t('文件操作','File actions'));contextMenu.hidden = true;
+  panel.append(title, actions, diagnostics, tree, message); document.body.append(panel,contextMenu);
   const toggle = document.createElement('button'); toggle.id = 'project-toggle';
   toggle.textContent = '▤'; toggle.title = t('显示/隐藏项目文件','Toggle project files');
   toggle.setAttribute('aria-label', toggle.title); toggle.setAttribute('aria-controls', panel.id);
@@ -61,16 +66,25 @@ export function installProjectExplorer({footer, filePanel, sessions}) {
     show(file);
     render();
   }
-  async function open() {
+  async function open(createNew = false) {
     sessions.ensureIdle();
     if (!approveClose()) return;
     const previous = project;
     const before = previous && new Map([...previous.files.values()].map(file=>[file.id,file.draft]));
     const standaloneBefore = !previous && sessions.text();
-    if (!project && !sessions.approveOpen()) return;
+    if (!project && !sessions.approveOpen(createNew)) return;
     if (!window.lineaeProject && !window.showDirectoryPicker) throw new Error(t('当前环境不支持目录读写，请使用桌面应用或支持 File System Access 的浏览器。','This browser cannot write to a directory. Use the desktop app or a browser with File System Access.'));
     const adapter = window.lineaeProject ? await window.lineaeProject.open() : new DirectoryHandleAdapter(await window.showDirectoryPicker({mode:'readwrite'}));
+    const rejectNonEmpty=()=>{throw new Error(t('请选择空目录新建工程；已有目录请使用“打开工程”。','Choose an empty folder for a new project; use Open project for an existing folder.'));};
+    if(createNew && (await adapter.list()).length)rejectNonEmpty();
     const next = await new Project(adapter).open();
+    if(createNew){
+      if(next.files.size || next.directories.length || next.diskRecovery.length || next.recoveryVersions.length || next.diskRecoveryError) {
+        rejectNonEmpty();
+      }
+      const main=await next.create('main.tex',initialProjectSource);
+      next.setMain(main.id);next.activate(main.id);
+    }
     let recoveryNotice='';
     try {
       for(const version of next.recoveryVersions){
@@ -94,10 +108,10 @@ export function installProjectExplorer({footer, filePanel, sessions}) {
     if (previous) {
       capture();
       if ([...previous.files.values()].some(file=>before.get(file.id)!==file.draft) && !approveClose()) return;
-    } else if (sessions.text()!==standaloneBefore && !sessions.approveOpen()) return;
+    } else if (sessions.text()!==standaloneBefore && !sessions.approveOpen(createNew)) return;
     sessions.ensureIdle();
     sessions.begin();
-    project = next; expanded.clear(); title.textContent = adapter.name ?? adapter.handle.name;
+    project = next; expanded.clear(); title.textContent = adapter.name ?? adapter.handle?.name ?? t('工程','Project');
     treeSignature = '';
     show(project.file(project.mainFileId));
     visible(false); render();
@@ -122,13 +136,23 @@ export function installProjectExplorer({footer, filePanel, sessions}) {
     try { sessions.end(); } finally { switching = false; }
     visible(false); render(); return true;
   }
-  button(filePanel ?? footer, ['打开工程','Open project'], open, 'project-open');
-  button(actions, ['保存','Save'], save, 'project-save');
-  button(actions, ['关闭工程','Close project'], close, 'project-close');
-  button(actions, ['主文档','Main document'], async () => {
-    const path=prompt(t('主文档路径','Main document'),project.file(project.mainFileId).path);
-    if(path) {const file=project.files.get(path);if(!file)throw new Error(t('文件不存在','File not found'));project.setMain(file.id);}
-  }, 'project-main');
+  const parentPath = path => path.includes('/') ? path.slice(0,path.lastIndexOf('/')) : '';
+  const suggestedPath = (base,name) => base ? base+'/'+name : name;
+  async function createFile(base='') {
+    sessions.ensureIdle();capture();
+    const path=prompt(t('新建 .tex 文件路径','New .tex file path'),suggestedPath(base,'new.tex'));
+    if(!path)return;
+    if(!path.endsWith('.tex'))throw new Error(t('请使用 .tex 扩展名','Use a .tex extension'));
+    const file=await project.create(path,'');
+    // Preserve input accepted while the disk operation was pending before
+    // switching the shared editor to the newly created file.
+    capture();project.activate(file.id);expanded.add(parentPath(file.path));show(file);
+  }
+  async function createDirectory(base='') {
+    sessions.ensureIdle();capture();
+    const path=prompt(t('目录路径','Directory path'),suggestedPath(base,'new-folder'));
+    if(path){await project.mkdir(path);expanded.add(path);}
+  }
   async function relocate(path, move) {
     sessions.ensureIdle();capture();
     const target=prompt(move?t('移动到项目内路径','Move to path'):t('新路径','Rename path'),path);
@@ -148,13 +172,13 @@ export function installProjectExplorer({footer, filePanel, sessions}) {
     if(change?.warning)message.textContent+=' · '+change.warning;
     if(project.persistenceError)message.textContent+=' · '+project.persistenceError;
   }
-  button(actions, ['重新加载','Reload'], async () => {
+  async function reloadFile(id) {
     sessions.ensureIdle(); capture();
-    const file = project.file(project.activeFileId);
+    const file = project.file(id), active=id===project.activeFileId;
     if (file.dirty && !confirm(t('放弃当前文件草稿并重新读取磁盘？','Discard this draft and reload from disk?'))) return;
-    await project.reload(file.id); show(file);
-  }, 'project-reload');
-  button(actions, ['刷新文件树','Refresh tree'], async () => {
+    await project.reload(file.id); if(active)show(file);
+  }
+  async function refreshTree() {
     sessions.ensureIdle(); capture();
     const active = project.file(project.activeFileId);
     const result = await project.refresh();
@@ -163,20 +187,11 @@ export function installProjectExplorer({footer, filePanel, sessions}) {
       : result.missing.length ? t('磁盘中有文件缺失；已保留编辑内容','Missing files; editor content retained')
       : result.conflicts.length ? t('磁盘文件已改变；已保留草稿，请核对后重新加载','Files changed on disk; drafts retained, review before reloading')
       : t('文件树已刷新','File tree refreshed');
-  }, 'project-refresh');
-  button(actions, ['新建文件','New file'], async () => {
-    const path = prompt(t('新建 .tex 文件路径','New .tex file path'));
-    if (!path) return;
-    if (!path.endsWith('.tex')) throw new Error(t('请使用 .tex 扩展名','Use a .tex extension'));
-    await project.create(path, '');
-  }, 'project-create');
-  button(actions, ['新建目录','New folder'], async () => {
-    const path = prompt(t('目录路径','Directory path')); if (path) await project.mkdir(path);
-  }, 'project-mkdir');
-  button(actions, ['删除当前文件','Delete file'], async () => {
+  }
+  async function deleteFile(id) {
     sessions.ensureIdle();
     capture();
-    const file = project.file(project.activeFileId);
+    const file = project.file(id), active=id===project.activeFileId;
     if (file.id === project.mainFileId) throw new Error(t('不能删除当前主文档','Cannot delete the main document'));
     if (!confirm(t('从磁盘删除','Delete from disk')+' '+file.path+t('？此操作不可撤销。','? This cannot be undone.'))) return;
     const result=await project.remove(file.id);
@@ -184,11 +199,89 @@ export function installProjectExplorer({footer, filePanel, sessions}) {
       message.textContent=t('文件已删除；删除期间的新输入已保留为缺失文件草稿','File deleted; new edits retained as a missing-file draft');
       return;
     }
-    project.activate(project.mainFileId); show(project.file(project.mainFileId));
-  }, 'project-delete');
+    if(active)show(project.file(project.activeFileId));
+  }
+  function setMainFile(id) {
+    project.setMain(id);message.textContent=t('已设置主文档','Main document updated');render();
+  }
+  button(filePanel ?? footer,['打开工程','Open project'],()=>open(false),'project-open');
+  const newProjectButton=button(filePanel ?? footer,['新建工程','New project'],()=>open(true),'project-new');
+  button(actions,['保存','Save'],save,'project-save');
+  button(actions,['关闭工程','Close project'],close,'project-close');
+  button(actions,['主文档','Main document'],async()=>{
+    const path=prompt(t('主文档路径','Main document'),project.file(project.mainFileId).path);
+    if(path){const file=project.files.get(path);if(!file)throw new Error(t('文件不存在','File not found'));setMainFile(file.id);}
+  },'project-main');
+  button(actions,['重新加载','Reload'],()=>reloadFile(project.activeFileId),'project-reload');
+  button(actions,['刷新文件树','Refresh tree'],refreshTree,'project-refresh');
+  button(actions,['新建文件','New file'],()=>createFile(),'project-create');
+  button(actions,['新建目录','New folder'],()=>createDirectory(),'project-mkdir');
+  button(actions,['删除当前文件','Delete file'],()=>deleteFile(project.activeFileId),'project-delete');
+  const emptyState=document.createElement('div');emptyState.className='project-empty';
+  button(emptyState,['新建工程','New project'],()=>open(true),'project-new-empty');
+  function closeContextMenu() { contextMenu.hidden=true;contextMenu.replaceChildren();delete contextMenu.dataset.path; }
+  function contextAction(label,action) {
+    const [zh,en]=label;
+    const control=document.createElement('button');control.type='button';control.setAttribute('role','menuitem');
+    control.dataset.zh=zh;control.dataset.en=en;control.textContent=t(zh,en);
+    control.addEventListener('click',()=>{closeContextMenu();run(action);});
+    contextMenu.append(control);return control;
+  }
+  function contextSeparator() {
+    const separator=document.createElement('hr');separator.setAttribute('role','separator');contextMenu.append(separator);
+  }
+  function showContextMenu(event) {
+    if(!project || event.target.closest?.('button:not(.project-file)'))return;
+    const fileNode=event.target.closest?.('.project-file');
+    const directoryNode=fileNode?null:event.target.closest?.('summary[data-path]');
+    const file=fileNode?project.file(fileNode.dataset.fileId):null;
+    const directory=directoryNode?.dataset.path ?? '';
+    const base=file?parentPath(file.path):directory;
+    event.preventDefault();closeContextMenu();contextMenu.dataset.path=file?.path ?? directory;
+    contextAction(['新建文件','New file'],()=>createFile(base));
+    contextAction(['新建目录','New folder'],()=>createDirectory(base));
+    if(file){
+      contextSeparator();
+      if(file.kind==='tex' && file.id!==project.mainFileId)contextAction(['设为主文档','Set as main document'],()=>setMainFile(file.id));
+      if(file.draft!==null)contextAction(['重新加载','Reload'],()=>reloadFile(file.id));
+      if(project.adapter.move){
+        contextAction(['重命名','Rename'],()=>relocate(file.path,false));
+        contextAction(['移动','Move'],()=>relocate(file.path,true));
+      }
+      if(file.id!==project.mainFileId)contextAction(['删除','Delete'],()=>deleteFile(file.id));
+    } else if(directory && project.adapter.move){
+      contextSeparator();
+      contextAction(['重命名目录','Rename folder'],()=>relocate(directory,false));
+      contextAction(['移动目录','Move folder'],()=>relocate(directory,true));
+    }
+    contextSeparator();contextAction(['刷新文件树','Refresh tree'],refreshTree);
+    contextMenu.hidden=false;
+    const target=event.target.getBoundingClientRect();
+    const x=event.clientX || target.left+12, y=event.clientY || target.bottom;
+    const bounds=contextMenu.getBoundingClientRect();
+    contextMenu.style.left=Math.max(6,Math.min(x,window.innerWidth-bounds.width-6))+'px';
+    contextMenu.style.top=Math.max(6,Math.min(y,window.innerHeight-bounds.height-6))+'px';
+    contextMenu.querySelector('button')?.focus();
+  }
+  tree.addEventListener('contextmenu',showContextMenu);
+  tree.addEventListener('keydown',event=>{if(event.key==='ContextMenu' || (event.shiftKey && event.key==='F10'))showContextMenu(event);});
+  contextMenu.addEventListener('contextmenu',event=>event.preventDefault());
+  contextMenu.addEventListener('keydown',event=>{
+    if(!['ArrowDown','ArrowUp','Home','End'].includes(event.key))return;
+    event.preventDefault();const items=[...contextMenu.querySelectorAll('button')],current=items.indexOf(document.activeElement);
+    const next=event.key==='Home'?0:event.key==='End'?items.length-1:(current+(event.key==='ArrowDown'?1:items.length-1))%items.length;
+    items[next]?.focus();
+  });
+  document.addEventListener('pointerdown',event=>{if(!contextMenu.hidden&&!contextMenu.contains(event.target))closeContextMenu();});
+  document.addEventListener('keydown',event=>{if(event.key==='Escape')closeContextMenu();});
+  window.addEventListener('resize',closeContextMenu);panel.addEventListener('scroll',closeContextMenu);
   function render() {
+    panel.dataset.state=project?'open':'empty';newProjectButton.hidden=Boolean(project);
     actions.hidden = !project;
-    if (!project) { tree.replaceChildren();fileButtons.clear();treeSignature='';title.textContent = t('项目','Project'); diagnostics.textContent=''; return; }
+    if (!project) {
+      closeContextMenu();tree.replaceChildren(emptyState);localize(emptyState);
+      fileButtons.clear();treeSignature='';title.textContent=t('项目','Project');diagnostics.textContent='';return;
+    }
     const missing=project.dependencies.filter(item=>item.status==='missing');
     const pending=project.dependencies.filter(item=>item.status==='pending');
     diagnostics.textContent=t('依赖','Dependencies')+' '+project.dependencies.length+' · '+t('缺失','missing')+' '+missing.length+' · '+t('待解析','pending')+' '+pending.length;
@@ -205,13 +298,13 @@ export function installProjectExplorer({footer, filePanel, sessions}) {
         if (child.kind === 'directory') {
           const details = document.createElement('details'), summary = document.createElement('summary');
           details.open = expanded.has(child.path); summary.textContent = child.name;
-          summary.title=child.path; summary.dataset.focusKey='directory:'+child.path;
+          summary.title=child.path;summary.setAttribute('aria-haspopup','menu');summary.dataset.path=child.path;summary.dataset.focusKey='directory:'+child.path;
           details.ontoggle = () => {if(details.isConnected) details.open ? expanded.add(child.path) : expanded.delete(child.path);};
           details.append(summary); parent.append(details); append(child, details);
           if(project.adapter.move){button(details,['重命名目录','Rename folder'],()=>relocate(child.path,false));button(details,['移动目录','Move folder'],()=>relocate(child.path,true));}
         } else {
           const node = button(parent, '', () => activate(child.fileId));
-          node.dataset.path = child.path; node.className = 'project-file';
+          node.dataset.path = child.path;node.dataset.fileId=child.fileId;node.className='project-file';node.setAttribute('aria-haspopup','menu');
           node.dataset.focusKey='file:'+child.fileId;fileButtons.set(child.fileId,node);
           node.title = child.path;
           if(project.adapter.move){
@@ -246,7 +339,9 @@ export function installProjectExplorer({footer, filePanel, sessions}) {
     },
     changed() { if (project && !switching) { try { capture(); render(); } catch(error) {message.textContent=t('草稿检查点失败','Draft checkpoint failed')+': '+error.message;sessions.error(message.textContent);} } },
     relocalize() {
+      closeContextMenu();
       panel.setAttribute('aria-label', t('项目文件','Project files'));
+      contextMenu.setAttribute('aria-label',t('文件操作','File actions'));
       toggle.title = t('显示/隐藏项目文件','Toggle project files');
       toggle.setAttribute('aria-label', toggle.title);
       localize(panel);

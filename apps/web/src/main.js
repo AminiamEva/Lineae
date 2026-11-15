@@ -1848,7 +1848,9 @@ projectExplorer = installProjectExplorer({footer, filePanel:document.querySelect
   ensureIdle() { if (editor.view.composing || sourceView.composing) throw new Error(t('请先完成当前输入','Finish composition first')); },
   text:() => sourceView.hidden ? source() : sourceView.value,
   capture:() => ({...sourceView.captureSession(), split:sourceView.split, richSelection:{anchor:editor.state.selection.anchor, head:editor.state.selection.head}}),
-  approveOpen:() => (sourceView.hidden?source():sourceView.value) === savedSource || confirm(t('保留当前单文件草稿并打开工程？','Keep the current single-file draft and open a project?')),
+  approveOpen:creating => (sourceView.hidden?source():sourceView.value) === savedSource || confirm(creating
+    ? t('保留当前单文件草稿并新建工程？','Keep the current single-file draft and create a project?')
+    : t('保留当前单文件草稿并打开工程？','Keep the current single-file draft and open a project?')),
   begin() {
     if (!standaloneSession) standaloneSession = {
       text:sourceView.hidden?source():sourceView.value, filename, fileHandle, savedSource,

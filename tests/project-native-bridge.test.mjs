@@ -16,8 +16,11 @@ test('native bridge retains Chinese/space root and routes binary moves through s
  const calls=[];
  const api=bridge(async(command,args)=>{calls.push({command,args});return command==='open_project'?'C:\\中文 项目':{entries:[],bytes:[0,255,13,10]};});
  const adapter=await api.open();assert.equal(adapter.root,'C:\\中文 项目');
- assert.deepEqual(Array.from(await adapter.read('image.png')),[0,255,13,10]);
- await adapter.write('main.tex',new Uint8Array([1,2]),new Uint8Array([3,4]));
+  assert.deepEqual(Array.from(await adapter.read('image.png')),[0,255,13,10]);
+  await adapter.create('main.tex',new Uint8Array([7,8]));
+  assert.equal(calls.at(-1).args.operation,'create');assert.deepEqual(Array.from(calls.at(-1).args.bytes),[7,8]);
+  await adapter.mkdir('sections');assert.equal(calls.at(-1).args.operation,'mkdir');
+  await adapter.write('main.tex',new Uint8Array([1,2]),new Uint8Array([3,4]));
  assert.deepEqual(Array.from(calls.at(-1).args.expected),[3,4]);
  await adapter.move('章节/a.tex','章节/b.tex',new Uint8Array([5,6]));
  assert.equal(calls.at(-1).args.root,adapter.root);assert.equal(calls.at(-1).args.target,'章节/b.tex');

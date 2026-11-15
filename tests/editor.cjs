@@ -1389,6 +1389,7 @@ async function verifySelectionGeometry(page, paper, importSource) {
     await page.locator('[data-source-mode="body"]').click();
     await page.locator('#language').evaluate(element=>{element.value='zh-CN';element.dispatchEvent(new Event('change',{bubbles:true}));});
     assert.equal(await page.locator('#project-open').textContent(),'打开工程');
+    assert.equal(await page.locator('#project-new').textContent(),'新建工程');
     assert.equal(await page.locator('#project-open').evaluate(button=>button.parentElement===document.querySelector('.ribbon > .tools')),true,
       'Open project is in the File panel');
     assert.equal(await page.locator('footer #project-open').count(),0,'Open project is not in the status bar');
@@ -1406,6 +1407,7 @@ async function verifySelectionGeometry(page, paper, importSource) {
     await page.waitForFunction(()=>document.querySelector('.lineae-tooltip')?.textContent.includes('撤銷'));
     await page.locator('#language').evaluate(element=>{element.value='en';element.dispatchEvent(new Event('change',{bubbles:true}));});
     assert.equal(await page.locator('#project-open').textContent(),'Open project');
+    assert.equal(await page.locator('#project-new').textContent(),'New project');
     await page.getByRole('button',{name:'↶',exact:true}).hover();
     await page.waitForFunction(()=>document.querySelector('.lineae-tooltip')?.textContent.includes('Undo'));
     await page.locator('#language').evaluate(element=>{element.value='zh-CN';element.dispatchEvent(new Event('change',{bubbles:true}));});
