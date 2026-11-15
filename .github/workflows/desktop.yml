@@ -1,10 +1,16 @@
 name: Desktop Preview
+run-name: ${{ inputs.checks_only && 'Web regression checks' || 'Desktop preview' }}
 
 on:
   pull_request:
   push:
     tags: ["v*"]
   workflow_dispatch:
+    inputs:
+      checks_only:
+        description: Run web regression checks without desktop packaging
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -40,6 +46,8 @@ jobs:
         run: node --test "tests/bib/**/*.test.mjs"
       - name: Install Chromium
         run: npx playwright install --only-shell chromium
+      - name: Project source boundaries and marker layout
+        run: node tests/project-boundary-browser.cjs
       - name: Project reopen editing and source selection
         run: node tests/project-reopen-browser.cjs
       - name: Project usability and folded includes
@@ -68,17 +76,22 @@ jobs:
       - name: Project session regressions
         run: node tests/file-tree-sessions.cjs
       - uses: dtolnay/rust-toolchain@stable
+        if: ${{ !inputs.checks_only }}
       - uses: Swatinem/rust-cache@v2
+        if: ${{ !inputs.checks_only }}
         with:
           workspaces: apps/desktop/src-tauri -> target
       - name: Install desktop CLI
+        if: ${{ !inputs.checks_only }}
         run: npm ci --prefix apps/desktop --no-audit --no-fund
       - name: Stage native test assets
+        if: ${{ !inputs.checks_only }}
         run: node apps/desktop/scripts/stage.mjs
       - name: Native project integrity tests
+        if: ${{ !inputs.checks_only }}
         run: cargo test --locked --manifest-path apps/desktop/src-tauri/Cargo.toml --lib
       - name: Prepare Windows signing certificate
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: ${{ !inputs.checks_only && (startsWith(github.ref, 'refs/tags/v')) }}
         shell: pwsh
         env:
           WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
@@ -94,12 +107,13 @@ jobs:
           [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:WINDOWS_CERTIFICATE))
           "WINDOWS_CERTIFICATE_PATH=$pfx" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
       - name: Build Windows packages
+        if: ${{ !inputs.checks_only }}
         env:
           WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
           WINDOWS_TIMESTAMP_URL: ${{ secrets.WINDOWS_TIMESTAMP_URL }}
         run: npm --prefix apps/desktop run tauri build
       - name: Verify Windows signatures
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: ${{ !inputs.checks_only && (startsWith(github.ref, 'refs/tags/v')) }}
         shell: pwsh
         run: |
           if (-not $env:WINDOWS_CERTIFICATE_PATH) { exit 0 }
@@ -113,13 +127,14 @@ jobs:
             if ($LASTEXITCODE -ne 0) { throw "Signature verification failed for $file" }
           }
       - name: Remove signing certificate
-        if: always()
+        if: ${{ !inputs.checks_only && (always()) }}
         shell: pwsh
         run: |
           if ($env:WINDOWS_CERTIFICATE_PATH) {
             Remove-Item $env:WINDOWS_CERTIFICATE_PATH -Force -ErrorAction SilentlyContinue
           }
       - name: Collect desktop artifacts
+        if: ${{ !inputs.checks_only }}
         shell: pwsh
         run: |
           $target = "apps/desktop/src-tauri/target/release"
@@ -137,12 +152,13 @@ jobs:
           Compress-Archive -Path "$out/Lineae-portable.exe","$out/PORTABLE.txt" -DestinationPath "$out/Lineae-portable.zip"
           Remove-Item "$out/Lineae-portable.exe","$out/PORTABLE.txt"
       - uses: actions/upload-artifact@v4
+        if: ${{ !inputs.checks_only }}
         with:
           name: lineae-desktop-${{ github.sha }}
           path: artifacts/*
           if-no-files-found: error
       - name: Publish tagged release
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: ${{ !inputs.checks_only && (startsWith(github.ref, 'refs/tags/v')) }}
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}

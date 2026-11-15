@@ -24,6 +24,7 @@ export function sourceProjection(text, doc, options) {
   });
   const editableBlocks=splitEditableBoundaries(blocks,doc);
   index = includeEmptyParagraphs(editableBlocks,index,parsed,text,doc);
+  if(options?.emptyPrefix!==undefined&&!text.trim()&&editableBlocks.length===1){editableBlocks[0].emptyPrefix=options.emptyPrefix;editableBlocks[0].emptySuffix=options.emptySuffix;}
   return index === doc.content.length ? { text, blocks:editableBlocks, count: index } : null;
 }
 
@@ -54,7 +55,7 @@ export function richSourceChanges(projection, doc) {
 
 function patchBlock(block,nodes) {
     if (nodes.some(node => node.type === 'raw')) return null;
-    const [leading,trailing] = blockWhitespace(block.raw);
+    const [leading,trailing] = block.emptyPrefix!==undefined&&!block.raw.trim()?[block.emptyPrefix,block.emptySuffix??'']:blockWhitespace(block.raw);
     const body = nodes.map(serialize).join('').trim();
     // Prove the new block also round-trips through the existing importer.
     const parsed = parseDocument('\\begin{document}\n' + body + '\n\\end{document}\n');

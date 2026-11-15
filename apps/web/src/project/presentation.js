@@ -6,6 +6,7 @@ export function installProjectPresentation({editor,page,getComposition,requestLa
   const layer=document.createElement('div');layer.className='project-source-overlay';layer.contentEditable='false';
   const style=document.createElement('style');style.dataset.projectPresentation='';
   page.append(style,layer);
+  const emptyAnchors=new Map();
   let root=null,folded=new Set(),layoutPending=false,adjusting=false,lastHead=0;
   const broadcast=()=>document.dispatchEvent(new CustomEvent('lineae-project-fold-state',{detail:{paths:[...folded]}}));
   function reset(){
@@ -82,21 +83,80 @@ export function installProjectPresentation({editor,page,getComposition,requestLa
       if(plan.skipped.length)placeholder.textContent+=' · '+t('隐藏页 ','Hidden pages ')+plan.skipped.map(page=>page+1).join(', ');
       placeholder.addEventListener('click',()=>toggle(part.path));layer.append(placeholder);
     }
-    const seen=new Set();
-    for(const box of boxes){
-      if(!box.region||seen.has(box.region.key)||[...folded].some(path=>box.path===path||box.trail.includes(path)))continue;
-      seen.add(box.region.key);
-      const badge=document.createElement('span');badge.className='project-source-badge';badge.dataset.sourcePath=box.path;
-      badge.style.top=(box.from-plan.shift(box.from))+'px';badge.textContent=box.path;
-      badge.title=t('来源文件：','Source file: ')+box.path;
-      const rootPath=composition.regions[0]?.path;
-      if(box.path!==rootPath){
-        const button=document.createElement('button');button.type='button';button.append(icon('chevronDown'));
-        button.setAttribute('aria-label',t('折叠引用内容','Collapse included content'));button.onclick=()=>toggle(box.path);badge.prepend(button);
+    emptyAnchors.clear();
+    const documentTop=(editor.view.dom.getBoundingClientRect().top-rect.top)/zoom;
+    for(const [index,region] of composition.regions.entries()){
+      const own=boxes.filter(box=>box.region?.key===region.key);
+      const node=editor.state.doc.child(index);
+      if([...folded].some(path=>node.attrs.path===path||node.attrs.trail?.includes(path)))continue;
+      const previous=boxes.findLast(box=>Number(box.region?.key)<index);
+      if(!own.length&&!region.continuation&&region.path===composition.regions[0]?.path)continue;
+      let contentTop=own[0]?.from??previous?.to??Number.parseFloat(computed.paddingTop);
+      const pitch=pageHeight+(Number.parseFloat(computed.getPropertyValue('--page-gap'))||0);
+      const inPage=contentTop%pitch;
+      if(!own.length&&inPage>=pageHeight-Number.parseFloat(computed.paddingBottom)-8)contentTop=(Math.floor(contentTop/pitch)+1)*pitch+Number.parseFloat(computed.paddingTop);
+      const top=contentTop-plan.shift(contentTop);
+      emptyAnchors.set(region.key,top-documentTop);
+      const badge=document.createElement(region.continuation?'button':'span');
+      badge.className='project-source-badge';badge.dataset.sourcePath=region.path;badge.dataset.regionKey=region.key;
+      badge.dataset.preferredTop=String(top);badge.style.top=top+'px';
+      if(region.continuation){
+        badge.type='button';badge.classList.add('project-return-boundary');badge.append(icon('redo'));
+        const caption=document.createElement('span');caption.textContent=t('继续 ','Resume ')+region.path;badge.append(caption);
+        badge.title=t('结束前面的引用，继续编辑 ','Finish the included file and continue editing ')+region.path;
+        badge.setAttribute('aria-label',badge.title);badge.addEventListener('mousedown',event=>event.preventDefault());badge.addEventListener('click',()=>activateRegion(region.key));
+      }else{
+        const caption=document.createElement(own.length?'span':'button');caption.textContent=region.path;
+        if(!own.length){caption.type='button';caption.className='project-empty-entry';caption.dataset.editPath=region.path;caption.setAttribute('aria-label',t('编辑 ','Edit ')+region.path);caption.addEventListener('mousedown',event=>event.preventDefault());caption.onclick=()=>activateRegion(region.key);}
+        badge.append(caption);
+        badge.title=t('来源文件：','Source file: ')+region.path;
+        if(region.path!==composition.regions[0]?.path){
+          const button=document.createElement('button');button.type='button';button.append(icon('chevronDown'));
+          button.setAttribute('aria-label',t('折叠引用内容','Collapse included content'));button.onclick=()=>toggle(region.path);badge.prepend(button);
+        }
       }
       layer.append(badge);
     }
+    syncEmptySelection();arrangeMarkers();
+
   });
+  function arrangeMarkers(){
+    if(!getComposition()||page.hidden)return;
+    const pageRect=page.getBoundingClientRect(),zoom=pageRect.width/page.offsetWidth||1;
+    const occupied=[...page.querySelectorAll('[data-structure-marker],.label-node')].filter(node=>node.getClientRects().length&&getComputedStyle(node).visibility!=='hidden').map(node=>node.getBoundingClientRect());
+    for(const badge of layer.querySelectorAll('.project-source-badge')){
+      let top=Number(badge.dataset.preferredTop);badge.style.top=top+'px';
+      for(let tries=0;tries<occupied.length+1;tries++){
+        const rect=badge.getBoundingClientRect();
+        const conflicts=occupied.filter(other=>rect.left<other.right+2&&rect.right>other.left-2&&rect.top<other.bottom+2&&rect.bottom>other.top-2);
+        if(!conflicts.length)break;
+        top=Math.max(...conflicts.map(other=>(other.bottom-pageRect.top)/zoom))+3;badge.style.top=top+'px';
+      }
+      occupied.push(badge.getBoundingClientRect());
+    }
+  }
+  page.addEventListener('lineae-markers-layout',arrangeMarkers);
+  function syncEmptySelection(){
+    const selection=editor.state.selection;let key=null;
+    for(let depth=selection.$from.depth;depth>0;depth--)if(selection.$from.node(depth).type.name==='projectRegion'){key=selection.$from.node(depth).attrs.regionKey;break;}
+    for(const element of editor.view.dom.querySelectorAll('[data-project-region]')){
+      if(element.dataset.projectRegion===key&&element.dataset.emptyRegion==='true'){
+        element.dataset.activeEmptyRegion='true';element.style.setProperty('--project-empty-top',(emptyAnchors.get(key)??0)+'px');
+      }else{delete element.dataset.activeEmptyRegion;element.style.removeProperty('--project-empty-top');}
+    }
+  }
+  function activateRegion(key){
+    let target=null;
+    editor.state.doc.forEach((region,start)=>{
+      if(region.attrs.regionKey!==key||target!==null)return;
+      region.descendants((node,offset)=>{if(target===null&&node.isTextblock)target=start+offset+2;});
+    });
+    if(target===null)return;
+    const element=[...editor.view.dom.children].find(node=>node.dataset.projectRegion===key);
+    if(element?.dataset.emptyRegion==='true'){element.dataset.activeEmptyRegion='true';element.style.setProperty('--project-empty-top',(emptyAnchors.get(key)??0)+'px');}
+    editor.commands.setTextSelection(target);
+    editor.view.focus();editor.view.dispatch(editor.state.tr.scrollIntoView());
+  }
   function normalizeGap(){
     if(adjusting||!getComposition())return false;
     const selection=editor.state.selection;
@@ -117,6 +177,7 @@ export function installProjectPresentation({editor,page,getComposition,requestLa
   }
   editor.view.dom.addEventListener('click',normalizeGap);
   editor.on('selectionUpdate',()=>{
+    syncEmptySelection();
     if(adjusting||normalizeGap())return;
     const selection=editor.state.selection;
     let owner;
@@ -133,6 +194,6 @@ export function installProjectPresentation({editor,page,getComposition,requestLa
     const point=target??(backwards?positions[0]:positions.at(-1));
     if(point){adjusting=true;try{editor.commands.setTextSelection(selection.empty?(backwards?point.to:point.from):{anchor:selection.anchor,head:backwards?point.to:point.from});}finally{adjusting=false;}}
   });
-  editor.on('transaction',transaction=>{if(transaction.transaction.docChanged)refresh();queueMicrotask(normalizeGap);});
+  editor.on('transaction',transaction=>{if(transaction.transaction.docChanged)refresh();queueMicrotask(()=>{normalizeGap();syncEmptySelection();});});
   return {toggle,expandAll(){folded.clear();broadcast();refresh();}};
 }

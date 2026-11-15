@@ -3,13 +3,21 @@ import {importBlocks} from '../editor/latex-codec.js';
 import {sourceProjection,richSourceChanges} from '../editor/source-sync.js';
 import {includeEdges,referenceTarget} from './include-operations.mjs';
 
-function regionFor(text, from, to, file, key) {
+export function regionProjection(region,source,doc){
+  const count=(source.match(/\r\n|\r|\n/g)??[]).length;
+  const emptyPrefix=region.continuation&&!source.trim()?source+region.eol.repeat(Math.max(0,2-count)):undefined;
+  return sourceProjection(source,doc,{fragment:true,emptyPrefix,emptySuffix:emptyPrefix===undefined?undefined:region.eol});
+}
+
+function regionFor(text, from, to, file, key, continuation) {
   const source = text.slice(from,to);
   const document = parseDocument(source,{fragment:true});
   const nodes = document?.blocks.flatMap(importBlocks) ?? [{type:'raw',attrs:{latex:source}}];
   if (!nodes.length) nodes.push({type:'paragraph'});
   const doc = {type:'doc',content:nodes};
-  return {key, id:file.id, path:file.path, from, to, doc, projection:sourceProjection(source,doc,{fragment:true})};
+  const region={key,id:file.id,path:file.path,from,to,doc,continuation,eol:text.includes('\r\n')?'\r\n':'\n'};
+  region.projection=regionProjection(region,source,doc);
+  return region;
 }
 
 export function composeProject(project, rootId) {
@@ -28,7 +36,7 @@ export function composeProject(project, rootId) {
     const limit = source.length - document.end.length;
     let position = start;
     const append = end => {
-      const region = regionFor(source,position,end,file,String(result.regions.length));
+      const region = regionFor(source,position,end,file,String(result.regions.length),position>start);
       result.regions.push(region);
       result.content.push({type:'projectRegion',attrs:{regionKey:region.key,path:file.path,trail:[...ancestry].map(parent=>project.file(parent).path)},content:region.doc.content});
     };

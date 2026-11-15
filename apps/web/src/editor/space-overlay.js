@@ -399,6 +399,7 @@ export function installSpaceOverlay(editor, paper, { selectionFocus = null } = {
         y:rect.top+Math.min(lineHeight,rect.height)/2,
         'font-size':Math.max(6,Math.min(9,lineHeight*.42)),
         'font-family':'sans-serif',
+        'data-structure-marker':text,
         'text-anchor':'end',
         'dominant-baseline':'middle',
         fill:color,
@@ -422,6 +423,7 @@ export function installSpaceOverlay(editor, paper, { selectionFocus = null } = {
       const element=page.querySelector(selector);
       if(element?.textContent.trim())label(text,element);
     }
+    page.dispatchEvent(new Event('lineae-markers-layout'));
   }
   function scheduleCaret(intent=null,activity=false) {
     if (intent==='edit' || intent==='edit-rapid' || intent==='composition' || !caretIntent) caretIntent=intent;

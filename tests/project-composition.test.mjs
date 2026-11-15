@@ -32,3 +32,16 @@ test('missing includes are retained in authoritative source and diagnosed',()=>{
   assert.ok(c.issues.length);
   assert.equal(c.sources.get('0'),p.file('0').draft);
 });
+
+test('continuation after a final input belongs to the parent with a real paragraph break',()=>{
+  for(const eol of ['\n','\r\n']){
+    const root=['\\documentclass{article}','\\begin{document}','Root.','','\\input{child}','\\end{document}',''].join(eol);
+    const p=fixture([['main.tex',root],['child.tex','Child.'+eol]]),c=composeProject(p,'0');
+    assert.equal(c.regions.at(-1).continuation,true);
+    const doc=structuredClone({content:c.content});doc.content.at(-1).content=[{type:'paragraph',content:[{type:'text',text:'Parent continuation.'}]}];
+    const changes=projectDocumentEdits(c,doc);assert.ok(changes);
+    assert.equal(changes.get('1'),'Child.'+eol);
+    assert.equal(changes.get('0'),root.replace('\\input{child}'+eol,'\\input{child}'+eol+eol+'Parent continuation.'+eol));
+    assert.equal(projectDocumentEdits(c,{content:c.content}).get('0'),root,'Choosing a boundary without typing leaves source unchanged');
+  }
+});
