@@ -1,3 +1,4 @@
+import {richTableRow,wrapCell} from '../../latex/table-spans.mjs';
 import { importBlock, importBlocks } from '../../latex/blocks.mjs';
 import { listLabel } from '../../latex/list-numbering.mjs';
 import { textCommands } from '../../latex/inline.mjs';
@@ -38,7 +39,13 @@ export function serialize(node) {
         if (/^#[\da-f]{6}$/i.test(mark.attrs.color ?? '')) value='\\textcolor[HTML]{'+mark.attrs.color.slice(1)+'}{'+value+'}';
         const size=Number.parseFloat(mark.attrs.fontSize);
         if(size>=6 && size<=72)value='{\\fontsize{'+size+'}{'+Math.ceil(size*1.2)+'}\\selectfont '+value+'}';
-        const family={'Georgia':'\\rmfamily','Arial':'\\sffamily','monospace':'\\ttfamily'}[mark.attrs.fontFamily];
+        const family={
+          'Latin Modern Roman':'\\rmfamily','Georgia':'\\rmfamily','Times New Roman':'\\rmfamily',
+          'Cambria':'\\rmfamily','Palatino Linotype':'\\rmfamily','SimSun':'\\rmfamily','Songti SC':'\\rmfamily',
+          'Arial':'\\sffamily','Segoe UI':'\\sffamily','Microsoft YaHei':'\\sffamily',
+          'Helvetica Neue':'\\sffamily','Verdana':'\\sffamily','Calibri':'\\sffamily',
+          'Latin Modern Mono':'\\ttfamily','Consolas':'\\ttfamily','Courier New':'\\ttfamily','monospace':'\\ttfamily',
+        }[mark.attrs.fontFamily];
         if(family)value='{'+family+' '+value+'}';
       }
     }
@@ -53,7 +60,7 @@ export function serialize(node) {
     }
     case 'documentImage': return serializeImage(node.attrs);
     case 'paragraph': {
-      const body=(node.attrs?.indent === false ? '\\noindent ' : '') + content;
+      const body=(node.attrs?.indent === false ? '\\noindent ' : node.attrs?.explicitIndent ? '\\indent ' : '') + content;
       const command={left:'raggedright',right:'raggedleft',center:'centering'}[node.attrs?.align];
       return (command ? '{\\'+command+' '+body+'\\par}' : body)+'\n\n';
     }
@@ -111,6 +118,8 @@ export function serialize(node) {
     case 'hardBreak': return '\\\\\n';
     case 'table': {
       let columns = node.attrs.columns || 'l'.repeat(node.content[0]?.content.length ?? 1);
+      const columnCount=(node.content[0]?.content??[]).reduce((total,cell)=>total+(cell.attrs.colspan??1),0)||1;
+      const occupied=Array(columnCount).fill(0);
       const border = node.attrs.borderMode;
       if (border) {
         columns = columns.replace(/\|/g,'');
@@ -121,7 +130,7 @@ export function serialize(node) {
       node.content.forEach((row, index) => {
         if (border === 'grid' || border === 'horizontal' || (border==='outer' && index===0)) body += '\\hline\n';
         if (!border && node.attrs.booktabs && index === 0) body += '\\toprule\n';
-        body += serialize(row);
+        body += richTableRow(row,occupied,serialize);
         if (!border && node.attrs.booktabs && index === 0 && node.content.length > 1) body += '\\midrule\n';
       });
       if (border && border!=='none') body += '\\hline\n';
@@ -141,12 +150,7 @@ export function serialize(node) {
     case 'tableCell':
     case 'tableHeader': {
       const value = (node.content ?? []).map(serialize).join('').trim();
-      const span = node.attrs.colspan ?? 1;
-      if (span > 1) {
-        const align = node.attrs.align === 'center' ? 'c' : node.attrs.align === 'right' ? 'r' : 'l';
-        return '\\multicolumn{' + span + '}{' + align + '}{' + value + '}';
-      }
-      return value;
+      return wrapCell(value,node.attrs.colspan??1,node.attrs.rowspan??1,node.attrs.align);
     }
     default: return content;
   }

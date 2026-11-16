@@ -35,6 +35,7 @@ test('Word-style numbering preserves the marker and starting number in TeX', () 
     }
   }
   assert.equal(listMarker(markerInput.exec('word. ')),null);
+  assert.equal(listMarker(markerInput.exec(' ')),null,'a single space must not start a list');
 });
 
 test('exports theorem and proof environments and a path-safe project ZIP', async () => {
@@ -198,8 +199,16 @@ test('round-trips page geometry through the preamble', () => {
   });
   const defaults = readPageSetup('\\documentclass{article}\n');
   assert.deepEqual(defaults, {
-    paper: 'a4', orientation: 'portrait', margin: '2.2cm',
-    margins: { top: '2.2cm', right: '2.2cm', bottom: '2.2cm', left: '2.2cm' },
+    paper: 'letter', orientation: 'portrait', margin: 'custom',
+    margins: { top: '44.027mm', right: '47.456mm', bottom: '42.070mm', left: '47.191mm' },
+  });
+  assert.deepEqual(readPageSetup('\\documentclass[a4paper]{article}\n'), {
+    paper: 'a4', orientation: 'portrait', margin: 'custom',
+    margins: { top: '44.379mm', right: '44.719mm', bottom: '42.448mm', left: '44.027mm' },
+  });
+  assert.deepEqual(readPageSetup('\\documentclass[a5paper]{article}\n'), {
+    paper: 'a5', orientation: 'portrait', margin: 'custom',
+    margins: { top: '45.082mm', right: '25.597mm', bottom: '43.313mm', left: '25.400mm' },
   });
   const asymmetric = writePageSetup(preamble, { paper: 'a5', margins: { top: '1cm', right: '2cm', bottom: '3cm', left: '4cm' } });
   assert.match(asymmetric, /a5paper/);
@@ -250,6 +259,15 @@ test('exports title and math structures with the required outer commands', () =>
   assert.equal((exportDocument(parts, '\\maketitle\n' + body).match(/\\maketitle/g) ?? []).length, 1);
 });
 
+test('uses side limits for inline operators without changing the source', () => {
+  const source = '\\lim_{x\\to0}f(x)+\\sum_{i=1}^n a_i';
+  const editing = mathEditorSource(source, { inline:true });
+  assert.equal(editing, '\\lim\\nolimits_{x\\to0}f(x)+\\sum\\nolimits_{i=1}^n a_i');
+  assert.equal(mathDocumentSource(editing, source, { inline:true }), source);
+  assert.equal(mathEditorSource('\\displaystyle{\\lim_{x\\to0}f(x)}', { inline:true }),
+    '\\displaystyle{\\lim_{x\\to0}f(x)}');
+});
+
 test('counts numbered alignment rows while skipping nested matrices and suppressed rows', () => {
   const latex = String.raw`\begin{align}a&=\begin{matrix}1\\2\end{matrix}\label{eq:a}\\b&=2\notag\\c&=3\end{align}`;
   assert.deepEqual(numberedMathRows({ latex }), [
@@ -258,6 +276,35 @@ test('counts numbered alignment rows while skipping nested matrices and suppress
     { index: 2, label: null },
   ]);
   assert.deepEqual(numberedMathRows({ latex: latex.replaceAll('{align}', '{align*}') }), []);
+});
+
+test('round-trips equation tags and suppressed numbers through the editor', () => {
+  const align = String.raw`\begin{align}a&=b\tag{2.1}\label{eq:a}\\c&=d\notag\\e&=f\tag*{$\ast$}\end{align}`;
+  const editing = mathEditorSource(align);
+  assert.equal(editing, String.raw`\begin{aligned}a&=b\\c&=d\\e&=f\end{aligned}`);
+  assert.equal(mathDocumentSource(editing, align), align);
+  assert.deepEqual(numberedMathRows({ latex: align }), [
+    { index: 0, label: 'eq:a', tag: '2.1' },
+    { index: 1, label: null, unnumbered: true },
+    { index: 2, label: null, tag: '$\\ast$', tagStar: true },
+  ]);
+  const equation = String.raw`x=1\tag{A}`;
+  assert.equal(mathEditorSource(equation), 'x=1');
+  assert.equal(mathDocumentSource('x=1', equation), String.raw`x=1\tag{A}`);
+  assert.deepEqual(numberedMathRows({ latex: equation, delimiter: 'equation' }), [
+    { index: 0, label: null, tag: 'A' },
+  ]);
+  assert.deepEqual(numberedMathRows({ latex: String.raw`\begin{align*}a&=b\\c&=d\tag{B}\end{align*}` }), [
+    { index: 0, label: null, unnumbered: true },
+    { index: 1, label: null, tag: 'B' },
+  ]);
+  assert.deepEqual(numberedMathRows({ latex: 'x', delimiter: 'equation*' }), []);
+  assert.deepEqual(numberedMathRows({ latex: String.raw`x\tag{C}`, delimiter: 'equation*' }), [
+    { index: 0, label: null, tag: 'C' },
+  ]);
+  assert.equal(mathEditorSource(String.raw`x\label{eq:x}`), 'x');
+  assert.equal(mathDocumentSource('x', String.raw`x\label{eq:x}`), String.raw`x\label{eq:x}`);
+  assert.equal(mathEditorSource(String.raw`x\label{eq:inline}`, { inline:true }), String.raw`x\label{eq:inline}`);
 });
 
 test('extends an alignment without losing the exported environment', () => {
@@ -305,4 +352,23 @@ test('keeps booktabs rules and alignment around editable cells', async () => {
   table.rows[1].cells[0] = '3 ';
   assert.match(serializeTable(table, '\n'), /\\midrule\n3 & 2/);
   assert.deepEqual(resolvePackages('', source).map(rule => rule.name), ['booktabs']);
+});
+test('imports and exports editable multirow cells with their package dependency', async () => {
+  const {parseTable,serializeTable}=await import('../apps/web/latex/tables.mjs');
+  const source=['\\begin{tabular}{lc}','\\multirow{2}{*}{A} & B \\\\',' & C \\\\','\\end{tabular}'].join('\n');
+  const table=parseTable(source);
+  assert.equal(table.rows[0].rowspans[0],2);
+  assert.deepEqual(table.rows[1].cells,['C']);
+  assert.match(serializeTable(table,'\n'),/\\multirow\{2\}\{\*\}\{A\}/);
+  const node=importBlocks(source)[0];
+  assert.equal(node.content[0].content[0].attrs.rowspan,2);
+  assert.match(serialize(node),/\\multirow\{2\}\{\*\}\{A\}/);
+  assert.deepEqual(resolvePackages('',serialize(node)).map(rule=>rule.name),['multirow']);
+});
+test('keeps common decorated and repeated table column specifications editable', async()=>{
+  const {parseTable,serializeTable}=await import('../apps/web/latex/tables.mjs');
+  const source=['\\begin{tabular}{>{\\raggedright\\arraybackslash}p{3cm}*{2}{c}}','A & B & C \\\\','\\end{tabular}'].join('\n');
+  const table=parseTable(source);
+  assert.equal(table.specs.length,3);assert.equal(table.specs[0].width,'3cm');
+  assert.equal(serializeTable(table,'\n'),source);
 });

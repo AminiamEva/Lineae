@@ -30,6 +30,9 @@ function measureRange(range, pageRect, zoom, rects) {
   while (pending.length) {
     const node = pending.pop();
     if (!range.intersectsNode(node)) continue;
+    const element=node.nodeType===Node.ELEMENT_NODE?node:node.parentElement;
+    const region=element?.closest?.('[data-project-region]');
+    if(region&&getComputedStyle(region).visibility==='hidden')continue;
     if (node.nodeType === Node.TEXT_NODE) {
       segment.setStart(node, node === range.startContainer ? range.startOffset : 0);
       segment.setEnd(node, node === range.endContainer ? range.endOffset : node.length);

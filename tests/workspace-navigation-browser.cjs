@@ -1,0 +1,61 @@
+const {revealToolbar,createTreeEntry}=require('./workspace-ui-helpers.cjs');
+const {chromium}=require('playwright');
+const {createServer}=require('node:http');
+const {readFile}=require('node:fs/promises');
+const {resolve,extname,sep}=require('node:path');
+const assert=require('node:assert/strict');
+const root=resolve('apps/web');
+const server=createServer(async(req,res)=>{
+ const path=resolve(root,'.'+new URL(req.url,'http://localhost').pathname.replace(/\/$/,'/index.html'));
+ if(!path.startsWith(root+sep))return res.writeHead(403).end();
+ try{res.setHeader('Content-Type',{'.js':'text/javascript','.mjs':'text/javascript','.css':'text/css','.html':'text/html'}[extname(path)]??'application/octet-stream');res.end(await readFile(path));}catch{res.writeHead(404).end();}
+});
+(async()=>{
+ await new Promise(done=>server.listen(0,'127.0.0.1',done));const browser=await chromium.launch({headless:true});
+ try{
+  const page=await browser.newPage({viewport:{width:1440,height:1000}}),errors=[];
+  page.on('pageerror',e=>errors.push(e.message));await page.goto('http://127.0.0.1:'+server.address().port);
+  await page.locator('.ProseMirror').waitFor();
+  await page.locator('.ProseMirror').click();await page.keyboard.insertText('Document typing');await page.waitForTimeout(1100);
+  assert.equal(await page.locator('#toolbar-collapse').evaluate(node=>node.getAttribute('aria-expanded')==='true'),true,'Document toolbar stays open while typing');
+  await page.locator('#toolbar-collapse').click();assert.equal(await page.locator('#toolbar-collapse').evaluate(node=>node.getAttribute('aria-expanded')==='true'),false,'Document allows manual folding');await revealToolbar(page);
+  await page.locator('#settings-open').click();
+  assert.equal(await page.locator('[data-setting="editing.indentOnSave"]').isChecked(),true);
+  assert.equal(await page.locator('[data-setting="interface.toolbarAutoHide"]').isChecked(),false);
+  assert.equal(await page.locator('[data-setting="interface.sourceToolbarAutoHide"]').isChecked(),true);
+  assert.equal(await page.locator('.document-status .tex-indent-setting').count(),0);
+  await page.locator('#settings-close').click();
+  await page.locator('[data-source-mode=split]').click();await page.waitForTimeout(50);
+  assert.equal(await page.locator('#toolbar-collapse').evaluate(node=>node.getAttribute('aria-expanded')==='true'),false,'Split toolbar initially folds');
+  assert.equal(await page.locator('.ribbon-tabs').isVisible(),true,'Tabs remain visible when folded');
+  await page.evaluate(async()=>{const storage=await navigator.storage.getDirectory();window.folder=await storage.getDirectoryHandle('workspace-navigation',{create:true});window.showDirectoryPicker=async()=>folder;});
+  await revealToolbar(page);await page.locator('[data-group=files]').click();
+  page.once('dialog',d=>d.accept());await page.locator('#project-new').click();
+  await page.waitForFunction(()=>document.querySelector('.project-file[data-path="main.tex"]'));
+  assert.equal(await page.locator('[data-source-mode=body]').getAttribute('aria-pressed'),'true','Opening project always enters Document');
+  assert.equal(await page.locator('#toolbar-collapse').evaluate(node=>node.getAttribute('aria-expanded')==='true'),true,'Project Document toolbar starts open');
+  const disk=await page.evaluate(async()=>(await (await folder.getFileHandle('main.tex')).getFile()).text());
+  assert.match(disk,/\\usepackage\[margin=2\.2cm\]\{geometry\}/,'Fresh project writes Normal margins');
+  await page.locator('#settings-open').click();assert.equal(await page.locator('[data-document-setting=marginPreset]').inputValue(),'normal');
+  await page.locator('#settings-close').click();
+  if(!await page.locator('#project-explorer').isVisible())await page.locator('#project-toggle').click();
+  for(const key of ['files','includes','outline','citations'])assert.equal(await page.locator('#sidebar-'+key+'>summary').count(),1);
+  await page.locator('[data-source-mode=split]').click();
+  await page.locator('.project-tree').click({button:'right'});await page.getByRole('menuitem',{name:/^(新建文件|New file)$/}).click();
+  await createTreeEntry(page,'chapter.tex');assert.equal(await page.locator('[data-source-mode=split]').getAttribute('aria-pressed'),'true','New file preserves Split');
+  assert.equal(await page.evaluate(()=>!!document.activeElement.closest('.tex-code')),true,'New Source file focuses the document body');await page.keyboard.insertText('\\section{Chapter heading}\nChapter body.');await page.locator('[data-source-mode=body]').click();
+  await page.locator('#sidebar-outline [data-heading-position]').filter({hasText:'Chapter heading'}).waitFor();
+  await page.locator('.project-file[data-path="main.tex"]').click();assert.equal(await page.locator('[data-source-mode=body]').getAttribute('aria-pressed'),'true','Existing file preserves Document');
+  await page.locator('[data-include-target]').selectOption({label:'chapter.tex'});await page.locator('[data-include-add]').click();
+  await page.locator('[data-project-region][data-file-path="chapter.tex"]').waitFor();
+  assert.match(await page.locator('.ProseMirror').innerText(),/Chapter heading/);
+  await page.locator('.include-row [aria-label="Remove reference (keep file)"]').click();
+  await page.waitForFunction(()=>!document.querySelector('[data-project-region][data-file-path="chapter.tex"]'));
+  assert.equal(await page.locator('.project-file[data-path="chapter.tex"]').count(),1);
+  await page.locator('#sidebar-includes>summary').click();await page.locator('#settings-open').click();
+  assert.equal(await page.locator('[data-setting="interface.sidebar.includes"]').isChecked(),false,'Section state is stored in YAML');await page.locator('#settings-close').click();
+  const ribbonBox=await page.locator('.floating-toolbar').boundingBox(),sidebarBox=await page.locator('#project-explorer').boundingBox();
+  assert.ok(Math.abs(ribbonBox.x+ribbonBox.width/2-(1440+sidebarBox.width)/2)<2,'Toolbar centered over editing surface');
+  assert.deepEqual(errors,[]);console.log('PASS: mode-aware toolbar, settings, Normal template, inline create, global mode, include graph, sidebar');
+ }finally{await browser.close();server.close();}
+})().catch(e=>{console.error(e);process.exitCode=1;server.close();});

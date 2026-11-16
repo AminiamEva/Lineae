@@ -158,6 +158,25 @@ function numberedHeadings(doc) {
   return DecorationSet.create(doc, decorations);
 }
 
+const CJK_CHAR = /[\u2E80-\u2FFF\u3040-\u30FF\u3400-\u4DBF\u4E00-\u9FFF\uAC00-\uD7AF\uF900-\uFAFF]/;
+function cjkLatinSpacing(doc) {
+  const decorations = [];
+  doc.descendants((node, position) => {
+    if (!node.isText || !node.text) return;
+    for (const match of node.text.matchAll(/[A-Za-z0-9]+/g)) {
+      const before = CJK_CHAR.test(node.text[match.index - 1] ?? '');
+      const after = CJK_CHAR.test(node.text[match.index + match[0].length] ?? '');
+      if (!before && !after) continue;
+      decorations.push(Decoration.inline(
+        position + match.index,
+        position + match.index + match[0].length,
+        { class: ['cjk-latin', before && 'cjk-latin-before', after && 'cjk-latin-after'].filter(Boolean).join(' ') },
+      ));
+    }
+  });
+  return DecorationSet.create(doc, decorations);
+}
+
 const clikeKeywords = 'abstract|as|async|await|break|case|catch|class|const|continue|default|delete|do|else|enum|export|extends|final|finally|for|from|function|goto|if|implements|import|in|instanceof|interface|let|namespace|new|package|private|protected|public|return|sealed|static|super|switch|this|throw|throws|try|type|typeof|var|void|while|with|yield|true|false|null|None|True|False|undefined|nil';
 function codeFamily(language) {
   const name = String(language ?? '').trim().toLowerCase();
@@ -258,6 +277,7 @@ export const PaperBehavior = Extension.create({
           parseHTML: element => element.dataset.indent !== 'false',
           renderHTML: attributes => ({ 'data-indent': String(attributes.indent) }),
         },
+        explicitIndent: {default:false,keepOnSplit:false,parseHTML:element=>element.dataset.explicitIndent==='true',renderHTML:({explicitIndent})=>explicitIndent?{'data-explicit-indent':'true'}:{}},
         indentLevel: {
           default: 0,
           parseHTML: element => Number(element.dataset.indentLevel) || 0,
@@ -320,6 +340,11 @@ export const PaperBehavior = Extension.create({
           parseHTML: element => element.dataset.centered === 'true',
           renderHTML: attributes => attributes.centered ? { 'data-centered': 'true' } : {},
         },
+        align: {
+          default: null,
+          parseHTML: element => element.dataset.tableAlign ?? null,
+          renderHTML: attributes => attributes.align ? { 'data-table-align': attributes.align } : {},
+        },
       },
     }, {
       types: ['tableCell', 'tableHeader'],
@@ -361,6 +386,45 @@ export const PaperBehavior = Extension.create({
           apply: (transaction, previous) => transaction.docChanged ? numberedHeadings(transaction.doc) : previous,
         },
         props: { decorations(state) { return this.getState(state); } },
+      }),
+      new Plugin({
+        state: {
+          init: (_, state) => ({
+            text: state.doc.textBetween(0, state.doc.content.size, '\n', '\n'),
+            size: state.doc.content.size,
+            decorations: cjkLatinSpacing(state.doc),
+          }),
+          apply: (transaction, previous) => {
+            if (!transaction.docChanged) return previous;
+            const text = transaction.doc.textBetween(0, transaction.doc.content.size, '\n', '\n');
+            const size = transaction.doc.content.size;
+            if (text === previous.text && size === previous.size) return previous;
+            return { text, size, decorations: cjkLatinSpacing(transaction.doc) };
+          },
+        },
+        props: { decorations(state) { return this.getState(state).decorations; } },
+      }),
+      new Plugin({
+        props: {
+          decorations(state) {
+            const { from, to } = state.selection;
+            if (from === to) return null;
+            const decorations = [];
+            state.doc.nodesBetween(from, to, (node, position) => {
+              if (node.type.name !== 'listItem') return;
+              // Only the item's own paragraph participates in the marker
+              // highlight, so selecting a nested item does not light up every
+              // ancestor list marker.
+              const ownEnd = position + 1 + (node.firstChild?.nodeSize ?? 0);
+              if (to <= position + 1 || from >= ownEnd) return;
+              const parent = state.doc.resolve(position).parent;
+              const attrs = { class: 'list-item-selected' };
+              if (parent.type.name === 'bulletList') attrs['data-selected-marker'] = parent.attrs.marker ?? '•';
+              decorations.push(Decoration.node(position, position + node.nodeSize, attrs));
+            });
+            return DecorationSet.create(state.doc, decorations);
+          },
+        },
       }),
       new Plugin({
         appendTransaction(transactions, oldState, state) {

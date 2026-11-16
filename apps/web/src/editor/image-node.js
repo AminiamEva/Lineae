@@ -1,3 +1,4 @@
+import {localizedLabel,localizedPlaceholder} from '../ui/localized-control.mjs';
 import { Node } from '@tiptap/core';
 import { t } from '../ui/i18n.mjs';
 import { askText } from './dialog.js';
@@ -73,7 +74,7 @@ export function insertLocalImage(editor) {
 
 export const DocumentImage = Node.create({
   name:'documentImage', group:'block', atom:true, draggable:true,
-  addAttributes:()=>({path:{default:''},width:{default:null},figure:{default:false},placement:{default:null},centered:{default:false},caption:{default:null},label:{default:null}}),
+  addAttributes:()=>({path:{default:''},width:{default:null},figure:{default:false},placement:{default:null},centered:{default:false},align:{default:null},caption:{default:null},label:{default:null}}),
   parseHTML:()=>[{tag:'figure[data-document-image]',getAttrs:element=>{
     try {return {...JSON.parse(element.dataset.imageAttrs??'{}'),path:element.dataset.documentImage};}
     catch {return false;}
@@ -91,7 +92,7 @@ export const DocumentImage = Node.create({
       const caption=document.createElement('figcaption');
       caption.contentEditable='true';
       caption.spellcheck=false;
-      caption.dataset.placeholder=t('题注','Caption');
+      localizedPlaceholder(caption,'题注','Caption');
       caption.addEventListener('keydown',event=>{
         if(event.key==='Enter'){event.preventDefault();caption.blur();}
       });
@@ -102,9 +103,9 @@ export const DocumentImage = Node.create({
       const controls=document.createElement('div');
       controls.className='document-image-controls';
       const size=document.createElement('button');
-      size.type='button';size.textContent=t('尺寸','Size');
+      size.type='button';localizedLabel(size,'尺寸','Size');
       const editCaption=document.createElement('button');
-      editCaption.type='button';editCaption.textContent=t('题注','Caption');
+      editCaption.type='button';localizedLabel(editCaption,'题注','Caption');
       controls.append(size,editCaption);
       function update(patch, expected) {
         if (!dom.isConnected || node !== expected) return;
@@ -130,7 +131,9 @@ export const DocumentImage = Node.create({
         caption.textContent=node.attrs.caption??'';
         caption.hidden=node.attrs.caption===null && !node.attrs.figure;
         dom.dataset.centered=String(node.attrs.centered);
-        button.textContent=t('定位图片','Locate image')+' · '+node.attrs.path;
+        if(node.attrs.align)dom.dataset.align=node.attrs.align;
+        else delete dom.dataset.align;
+        localizedLabel(button,'定位图片 · '+node.attrs.path,'Locate image · '+node.attrs.path);
         const width=node.attrs.width;
         image.style.width=width?.endsWith('\\linewidth') ? `${Number.parseFloat(width)*100}%` : width ?? '';
       };

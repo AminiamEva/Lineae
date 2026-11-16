@@ -1,0 +1,8 @@
+
+> build
+> esbuild apps/web/src/main.js --bundle --format=esm --loader:.yaml=text --outfile=apps/web/editor.mjs
+
+
+  apps\web\editor.mjs  2.2mb
+
+Done in 284ms

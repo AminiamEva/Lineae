@@ -14,6 +14,10 @@ test('parses the shipped YAML config', () => {
   assert.equal(config.keybindings.editor.insertDisplayMath, 'ctrl+e c');
   assert.equal(config.keybindings.editor.toggleBox, 'ctrl+e b');
   assert.equal(config.keybindings.math.superscript, 'ctrl+6');
+  assert.equal(config.keybindings.editor.leaveFile,'ctrl+alt+j');
+  assert.equal(config.keybindings.math.leaveFile,'ctrl+alt+j');
+  assert.equal(config.keybindings.editor.leaveAllEnvironments,'ctrl+shift+j');
+  assert.equal(config.keybindings.math.leaveFormula,'ctrl+shift+j');
 });
 
 test('round-trips preferences as YAML', () => {
@@ -23,6 +27,12 @@ test('round-trips preferences as YAML', () => {
     keybindings: { editor: { insertDisplayMath: ['ctrl+e c', 'ctrl+alt+c'], toggleBox: null } },
   };
   assert.deepEqual(parseYaml(toYaml(config)), config);
+});
+
+test('accepts mainland traditional Chinese as an interface language', () => {
+  const store = createConfigStore(defaults);
+  store.importYaml('interface:\n  language: zh-Hant\n');
+  assert.equal(store.value.interface.language, 'zh-Hant');
 });
 
 test('merges preference overrides deeply', () => {
@@ -67,4 +77,17 @@ test('importing a conflicting or malformed profile keeps the active profile', ()
   assert.throws(() => store.importYaml('keybindings:\n  editor:\n    toggleBox: ctrl+e c\n'),/Conflicting shortcuts/);
   assert.throws(() => store.importYaml('interface:\n  zoom: [120\n'));
   assert.equal(store.exportYaml(),previous);
+});
+
+test('mode-specific toolbar defaults and YAML source preferences', () => {
+ const store=createConfigStore(defaults);
+ assert.equal(store.value.interface.toolbarAutoHide,false);
+ assert.equal(store.value.interface.sourceToolbarAutoHide,true);
+ assert.equal(store.value.editing.indentOnSave,true);
+ store.importYaml('interface:\n  sourceFontSize: 21\n  sidebar:\n    includes: false\nediting:\n  indentOnSave: false\n');
+ assert.equal(store.value.interface.sourceFontSize,21);
+ assert.equal(store.value.interface.sidebar.files,true);
+ assert.equal(store.value.interface.sidebar.includes,false);
+ assert.equal(store.value.editing.indentOnSave,false);
+ assert.throws(()=>store.importYaml('interface:\n  sourceToolbarAutoHide: wrong\n'));
 });

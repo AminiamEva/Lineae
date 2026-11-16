@@ -3,7 +3,7 @@ import { icon } from './icons.js';
 import { promptDialog, askText } from './dialog.js';
 import { toggleDisplayStyle } from './math-node.js';
 import { popIn } from '../ui/motion.mjs';
-import { t } from '../ui/i18n.mjs';
+import { localizeText, t } from '../ui/i18n.mjs';
 
 function selectedMath(context) {
   const ranges = context.field.selection.ranges;
@@ -238,7 +238,7 @@ export function installContextMenu(editor, paper, language, reportError) {
       control.type = 'button';
       control.setAttribute('role', 'menuitem');
       control.dataset.command = command.id;
-      control.textContent = command.labels[language.value === 'zh-CN' ? 0 : 1];
+      control.textContent = localizeText(command.labels[0], command.labels[1], language.value);
       control.prepend(icon(command.id.startsWith('delete') || command.id.startsWith('remove') ? 'delete' :
         command.id.toLowerCase().includes('column') ? 'column' : command.id.toLowerCase().includes('row') ? 'row' : command.id));
       control.disabled = command.enabled === false;
@@ -247,9 +247,8 @@ export function installContextMenu(editor, paper, language, reportError) {
         close();
         try { await command.run(); }
         catch (error) {
-          reportError(language.value === 'zh-CN'
-            ? '操作未完成。剪贴板操作也可使用 Ctrl+C、Ctrl+X 或 Ctrl+V。'
-            : 'The action could not finish. You can also use Ctrl+C, Ctrl+X or Ctrl+V.');
+          reportError(localizeText('操作未完成。剪贴板操作也可使用 Ctrl+C、Ctrl+X 或 Ctrl+V。',
+            'The action could not finish. You can also use Ctrl+C, Ctrl+X or Ctrl+V.', language.value));
         }
       });
       menu.append(control);

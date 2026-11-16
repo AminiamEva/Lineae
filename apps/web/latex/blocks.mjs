@@ -1,3 +1,4 @@
+import {importedCellAttributes} from './table-spans.mjs';
 import { parseInline, textCommands } from './inline.mjs';
 import { parseTable } from './tables.mjs';
 import { parseImageBlock } from './images.mjs';
@@ -207,7 +208,7 @@ export function importBlock(block) {
           type: 'tableRow',
           content: row.cells.map((cell, index) => ({
             type: 'tableCell',
-            attrs: { colspan: row.spans?.[index] ?? 1, rowspan: 1, align: row.aligns?.[index] ?? tabular.specs[index]?.align ?? null },
+            attrs: importedCellAttributes(row,index,tabular.specs),
             content: [{ type: 'paragraph', content: cell.trim() ? (inlineContent(cell) ?? [{ type: 'text', text: cell.trim() }]) : [] }],
           })),
         })),
@@ -229,7 +230,7 @@ export function importBlock(block) {
         type: 'tableRow',
         content: row.cells.map((cell, index) => ({
           type: 'tableCell',
-          attrs: { colspan: row.spans?.[index] ?? 1, rowspan: 1, align: row.aligns?.[index] ?? table.specs[index]?.align ?? null },
+          attrs: importedCellAttributes(row,index,table.specs),
           content: [{ type: 'paragraph', content: cell.trim() ? (inlineContent(cell) ?? [{ type: 'text', text: cell.trim() }]) : [] }],
         })),
       })),
@@ -237,7 +238,7 @@ export function importBlock(block) {
   }
   const indentation = /^\\(noindent|indent)(?![A-Za-z])[ \t]*/.exec(text);
   const content = inlineContent(indentation ? text.slice(indentation[0].length) : text);
-  if (content) return { type: 'paragraph', ...(indentation && { attrs: { indent: indentation[1] === 'indent' } }), content };
+  if (content) return { type: 'paragraph', ...(indentation && { attrs: { indent: indentation[1] === 'indent', ...(indentation[1]==='indent'&&{explicitIndent:true}) } }), content };
   return { type: 'raw', attrs: { source: block } };
 }
 

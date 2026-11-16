@@ -1,3 +1,4 @@
+import {findResultText} from '../ui/localized-control.mjs';
 import { t } from '../ui/i18n.mjs';
 import { Plugin, PluginKey } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
@@ -21,6 +22,7 @@ function collectMatches(doc, query) {
 export function installDocumentFind(editor) {
   let query = '';
   let activeFrom = -1;
+  let resultStatus = '';
   const plugin = new Plugin({
     key: new PluginKey('lineaeFind'),
     props: {
@@ -74,6 +76,7 @@ export function installDocumentFind(editor) {
     const matches = collectMatches(editor.state.doc, query);
     if (!matches.length) {
       activeFrom = -1;
+      resultStatus = query ? 'none' : '';
       status.textContent = query ? t('无匹配','No matches') : '';
       refresh();
       return;
@@ -84,6 +87,7 @@ export function installDocumentFind(editor) {
       : matches.findLastIndex(match => match.to <= from);
     const current = index < 0 ? (direction > 0 ? 0 : matches.length - 1) : index;
     activeFrom = matches[current].from;
+    resultStatus = '';
     editor.chain().setTextSelection(matches[current]).scrollIntoView().run();
     refresh();
     status.textContent = `${current + 1} / ${matches.length}`;
@@ -107,6 +111,7 @@ export function installDocumentFind(editor) {
     const matches = collectMatches(editor.state.doc, query);
     if (!matches.length) {
       activeFrom = -1;
+      resultStatus = query ? 'none' : '';
       status.textContent = query ? t('无匹配','No matches') : '';
       refresh();
       return;
@@ -117,6 +122,7 @@ export function installDocumentFind(editor) {
     }
     editor.view.dispatch(transaction);
     activeFrom = -1;
+    resultStatus = 'all';
     status.textContent = t('已全部替换','All replaced');
     refresh();
   }
@@ -145,7 +151,7 @@ export function installDocumentFind(editor) {
   replace.addEventListener('click', replaceOne);
   replaceAll.addEventListener('click', replaceEvery);
   close.addEventListener('click', dismiss);
-  function show() {
+  function relocalize() {
     const findLabel = t('查找正文','Find in document');
     input.setAttribute('aria-label', findLabel);
     input.placeholder = findLabel;
@@ -156,9 +162,14 @@ export function installDocumentFind(editor) {
     previous.setAttribute('aria-label', t('上一处','Previous match'));
     next.setAttribute('aria-label', t('下一处','Next match'));
     close.setAttribute('aria-label', t('关闭查找','Close find'));
+    if (resultStatus === 'none') status.textContent = t('无匹配','No matches');
+    else if (resultStatus === 'all') status.textContent = t('已全部替换','All replaced');
+  }
+  function show() {
+    relocalize();
     panel.hidden = false;
     input.focus();
     input.select();
   }
-  return { panel, show };
+  return { panel, show, relocalize };
 }

@@ -8,6 +8,7 @@ const dependencies = [
   { name: 'mathtools', pattern: /\\begin\{(?:[dr]cases|drcases|multlined|[pbBvV]smallmatrix)\*?\}/ },
   { name: 'xcolor', pattern: /\\(?:textcolor|colorbox|definecolor)\b/ },
   { name: 'booktabs', pattern: /\\(?:toprule|midrule|bottomrule|cmidrule)\b/ },
+  { name: 'multirow', pattern: /\\multirow\b/ },
   { name: 'enumitem', pattern: /\\begin\{(?:itemize|enumerate)\}\[/ },
   { name: 'alphalph', pattern: /\\(?:alphalph|AlphAlph)\b/ },
   { name: 'zhnumber', pattern: /\\(?:chinese|zhnum)\b/ },

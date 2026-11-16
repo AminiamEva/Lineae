@@ -25,7 +25,7 @@ jobs:
       - uses: actions/configure-pages@v5
       - run: npm ci --no-audit --no-fund
       - run: npm run build
-      - run: node --test tests/latex.test.mjs tests/config.test.mjs
+      - run: node --test tests/latex.test.mjs tests/config.test.mjs tests/ui/i18n.test.mjs tests/typeset-layout.test.mjs
       - run: node --test tests/bib/*.test.mjs tests/bib/*/*.test.mjs
       - name: Package the formula editor
         run: |
@@ -39,6 +39,7 @@ jobs:
       - run: node tests/editor.cjs
       - name: Version browser assets
         run: |
+          sed -i "s|./source-workspace.css|./source-workspace.css?v=${GITHUB_SHA}|; s|./project.css|./project.css?v=${GITHUB_SHA}|" apps/web/index.html
           sed -i "s|./pages.css|./pages.css?v=${GITHUB_SHA}|; s|./editor.mjs|./editor.mjs?v=${GITHUB_SHA}|" apps/web/index.html
           sed -i "s|\.mjs';|.mjs?v=${GITHUB_SHA}';|" apps/web/editor.mjs
       - uses: actions/upload-pages-artifact@v3

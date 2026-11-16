@@ -24,12 +24,17 @@ import {
   readFileSync,
   rmSync,
   writeFileSync,
+  cpSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { parseBib, serializeBib } from '../../apps/web/bib/index.mjs';
+import { ACCEPTANCE_CASES } from './acceptance/manifest.mjs';
 
 const KEEP = process.argv.includes('--keep');
+const ACCEPTANCE = process.argv.includes('--acceptance');
+const OUT_ARG = process.argv.find(value => value.startsWith('--out='));
+const OUT_DIR = OUT_ARG ? resolve(OUT_ARG.slice('--out='.length)) : null;
 const CASES = [
   { name: 'bibtex', backend: 'bibtex', directory: join('tests', 'bib', 'xelatex', 'bibtex') },
   { name: 'biblatex', backend: 'biber', directory: join('tests', 'bib', 'xelatex', 'biblatex') },
@@ -49,6 +54,14 @@ function resolveTool(name) {
     }
   }
   return null;
+}
+
+/** @param {string|null} command */
+function version(command) {
+  if (!command) return null;
+  const flag = command.includes('pdf') ? '-v' : '--version';
+  const result = spawnSync(command, [flag], { encoding: 'utf8', timeout: 15000 });
+  return result.status === 0 ? (result.stdout || result.stderr).split(/\r?\n/)[0] : null;
 }
 
 /**
@@ -99,10 +112,19 @@ if (!TOOLS.xelatex) {
   console.log('  node tests/bib/verify-xelatex.mjs');
   process.exitCode = 2;
 } else {
-  const work = mkdtempSync(join(tmpdir(), 'lineae-bib-xelatex-'));
+  const work = OUT_DIR ?? mkdtempSync(join(tmpdir(), 'lineae-bib-xelatex-'));
+  if (OUT_DIR) mkdirSync(work, { recursive: true });
   console.log(`Work directory: ${work}`);
   let failures = 0;
   let skipped = 0;
+  const report = {
+    tools: Object.fromEntries(Object.entries(TOOLS).map(([name, command]) => [name, {
+      command,
+      version: version(command),
+    }])),
+    cases: [],
+    browserPreview: 'not-run: browser preview has no TeX layout engine',
+  };
   try {
     for (const testCase of CASES) {
       const backendTool = testCase.backend === 'bibtex' ? TOOLS.bibtex : TOOLS.biber;
@@ -110,6 +132,7 @@ if (!TOOLS.xelatex) {
       if (!backendTool) {
         console.log(`UNVERIFIED: ${testCase.backend} is not installed; case skipped.`);
         skipped += 1;
+        report.cases.push({ name: testCase.name, status: 'UNVERIFIED', reason: `${testCase.backend} missing` });
         continue;
       }
       const refsPath = join(testCase.directory, 'refs.bib');
@@ -139,6 +162,7 @@ if (!TOOLS.xelatex) {
       if (bblOriginal !== bblRound) {
         console.error('FAIL: .bbl differs after round-trip.');
         failures += 1;
+        report.cases.push({ name: testCase.name, status: 'FAIL', reason: '.bbl differs after round-trip' });
         continue;
       }
       if (TOOLS.pdftotext) {
@@ -159,19 +183,71 @@ if (!TOOLS.xelatex) {
         if (textOriginal !== textRound) {
           console.error('FAIL: PDF text differs after round-trip.');
           failures += 1;
+          report.cases.push({ name: testCase.name, status: 'FAIL', reason: 'PDF text differs after round-trip' });
           continue;
         }
         console.log('PASS: .bbl and PDF text are identical.');
+        report.cases.push({ name: testCase.name, status: 'PASS', backend: testCase.backend, output: work });
       } else {
         console.log('PASS: .bbl is identical (pdftotext not installed; PDF text comparison skipped).');
+        report.cases.push({ name: testCase.name, status: 'PASS', backend: testCase.backend, output: work, pdfText: 'skipped' });
+      }
+    }
+    if (ACCEPTANCE) {
+      for (const testCase of ACCEPTANCE_CASES) {
+        const directory = join(work, 'acceptance', testCase.name);
+        mkdirSync(directory, { recursive: true });
+        cpSync(testCase.directory, directory, { recursive: true });
+        if (testCase.newline === 'crlf') {
+          for (const name of ['main.tex', 'refs.bib']) {
+            const file = join(directory, name);
+            writeFileSync(file, readFileSync(file, 'utf8').replace(/\r\n|\n/g, '\r\n'));
+          }
+        }
+        const logPath = join(directory, 'compile.log');
+        writeFileSync(logPath, '');
+        try {
+          compile(directory, testCase.backend, logPath);
+          const log = readFileSync(logPath, 'utf8');
+          if (testCase.expectedFailure) {
+            if (!testCase.expectedFailure.test(log)) {
+              failures += 1;
+              report.cases.push({ name: testCase.name, status: 'FAIL', reason: 'expected failure diagnostic not found', output: directory });
+            } else {
+              report.cases.push({ name: testCase.name, status: 'PASS', expected: 'failure', output: directory });
+            }
+          } else {
+            const pdfText = TOOLS.pdftotext
+              ? spawnSync(TOOLS.pdftotext, ['main.pdf', '-'], { cwd: directory, encoding: 'utf8' }).stdout
+              : '';
+            const missing = (testCase.expectedText ?? []).filter(text => !pdfText.includes(text));
+            if (missing.length) {
+              failures += 1;
+              report.cases.push({ name: testCase.name, status: 'FAIL', reason: `PDF text missing: ${missing.join(', ')}`, output: directory });
+            } else {
+              report.cases.push({ name: testCase.name, status: 'PASS', backend: testCase.backend, output: directory });
+            }
+          }
+        } catch (error) {
+          const log = readFileSync(logPath, 'utf8');
+          if (testCase.expectedFailure && testCase.expectedFailure.test(log)) {
+            report.cases.push({ name: testCase.name, status: 'PASS', expected: 'failure', output: directory });
+          } else {
+            failures += 1;
+            report.cases.push({ name: testCase.name, status: 'FAIL', reason: error.message, output: directory });
+          }
+        }
       }
     }
   } catch (error) {
     console.error(`FAIL: ${error.message}`);
     failures += 1;
   } finally {
-    if (!KEEP) rmSync(work, { recursive: true, force: true });
-    else console.log(`Kept work directory: ${work}`);
+    if (OUT_DIR || KEEP) {
+      writeFileSync(join(work, 'acceptance-report.json'), JSON.stringify(report, null, 2));
+      console.log(`Kept work directory: ${work}`);
+    }
+    if (!KEEP && !OUT_DIR) rmSync(work, { recursive: true, force: true });
   }
   if (failures > 0) process.exitCode = 1;
   else if (skipped === CASES.length) process.exitCode = 2;

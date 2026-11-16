@@ -1,0 +1,36 @@
+{
+  "passed": true,
+  "stage": "complete",
+  "checks": [
+    "Standalone native cancellation completes through the actual bridge and preserves editor",
+    "Real Chinese/space directory selected, tree defaults hidden, two dirty sessions and Split established",
+    "Dirty native cancellation preserves file IDs, tree, active file, selection, undo, both drafts, Split and CodeMirror identity; disk remains unchanged"
+  ],
+  "fixture": "C:\\Users\\vertin\\.codex\\worktrees\\lineae-v3-project\\Lineae-source-editor-pr\\test-results\\file-tree-native\\picker-1794671857171\\测试工程 with spaces",
+  "executable": "C:\\Users\\vertin\\.codex\\worktrees\\lineae-v3-project\\Lineae-source-editor-pr\\test-results\\file-tree-native\\picker-1794671857171\\app\\lineae.exe",
+  "executableSha256": "931562f370be4c9e0e85c4191a0f03192ee9dc0dd4ec6368e56a4d82ef008bb2",
+  "pid": 15124,
+  "observer": "lineaeProject.open (Tauri core export read-only)",
+  "ipc": [
+    {
+      "command": "open_project",
+      "boundary": "adapter",
+      "state": "cancelled",
+      "errorName": "AbortError",
+      "error": "AbortError: The user aborted a request."
+    },
+    {
+      "command": "open_project",
+      "boundary": "adapter",
+      "state": "resolved",
+      "value": "\\\\?\\C:\\Users\\vertin\\.codex\\worktrees\\lineae-v3-project\\Lineae-source-editor-pr\\test-results\\file-tree-native\\picker-1794671857171\\测试工程 with spaces"
+    },
+    {
+      "command": "open_project",
+      "boundary": "adapter",
+      "state": "cancelled",
+      "errorName": "AbortError",
+      "error": "AbortError: The user aborted a request."
+    }
+  ]
+}

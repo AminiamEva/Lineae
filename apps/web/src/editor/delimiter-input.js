@@ -27,6 +27,10 @@ function readInlineDelimiterPair(formulaView, rightFirst) {
     const controllers = new AbortController();
     const { signal } = controllers;
     const slots = [slot, other];
+    const caretStyle = document.createElement('style');
+    caretStyle.dataset.lineaeDelimiter = '';
+    caretStyle.textContent = '.ML__caret,.ML__text-caret,.ML__latex-caret{visibility:hidden!important}';
+    root.append(caretStyle);
     const paint = () => {
       slots.forEach((element, index) => {
         element.textContent = values[index];
@@ -36,6 +40,7 @@ function readInlineDelimiterPair(formulaView, rightFirst) {
     const close = pair => {
       controllers.abort();
       observer.disconnect();
+      caretStyle.remove();
       ghost.remove();
       resolve(pair);
     };
