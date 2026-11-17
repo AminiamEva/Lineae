@@ -5,7 +5,7 @@
 [![Contributors](https://img.shields.io/github/contributors/AminiamEva/Lineae?style=flat-square)](https://github.com/AminiamEva/Lineae/graphs/contributors)
 [![Last Commit](https://img.shields.io/github/last-commit/AminiamEva/Lineae?style=flat-square)](https://github.com/AminiamEva/Lineae/commits/main/)
 
-<p align="center"><img src="apps/web/assets/brand/lineae-lockup.svg" alt="Lineæ" width="540"></p>
+<p align="center"><img src="apps/web/assets/brand/lineae-logo.png" alt="" width="96" height="96"> &nbsp; <picture><source media="(prefers-color-scheme: dark)" srcset="apps/web/assets/brand/lineae-new-dark.png"><img src="apps/web/assets/brand/lineae-new-light.png" alt="Lineæ" width="207" height="96"></picture></p>
 
 # Lineae
 
@@ -112,12 +112,12 @@ Lineae 已经越过纯界面原型阶段，但距离完整的 LaTeX 编辑环境
 | 编辑画面与 PDF 排版一致性 | 核心设计目标；尚未建立与真实 TeX 编译结果的系统化对照和校准 |
 | 多文件项目 | 支持工程文件树、原生目录操作、独立文件会话、input/include 连续编辑与源文件归属保护 |
 | TeX 编译、PDF 预览与 SyncTeX | 尚未集成 |
-| 桌面端 | Windows x64 v0.2.0 正式版（Tauri 2），提供未签名安装包和便携版 |
+| 桌面端 | Windows x64 v0.2.1 正式版（Tauri 2），提供未签名安装包和便携版 |
 | 精确分页 | 页面几何与分页持续按 XeLaTeX 校准；尚不宣称与任意编译结果完全一致 |
 
 眼下的开发重点主要有三项：一是把公式输入、光标移动和矩阵等复杂结构的编辑行为做得更可靠；二是改善源码保真、模式切换和撤销重做，避免局部编辑影响文档其他部分；三是继续打磨正文选择、剪贴板、查找和长文档编辑等基础体验。
 
-后续将继续完善多文件编辑，推进独立的 TeX 编译接口与 PDF 预览，并以实际编译结果为依据，逐步解决编辑区和成稿在字体、间距、断行、页面布局上的差异。**提高编辑画面与最终排版的一致性，是 Lineae 的主线目标，而不是附加的预览功能。** 源码与 PDF 的双向定位仍属于后续工作；桌面端已提供 v0.2.0 发行包。更细的功能拆分、优先级和验收条件见 [实现路线图](docs/IMPLEMENTATION_ROADMAP.md)。
+后续将继续完善多文件编辑，推进独立的 TeX 编译接口与 PDF 预览，并以实际编译结果为依据，逐步解决编辑区和成稿在字体、间距、断行、页面布局上的差异。**提高编辑画面与最终排版的一致性，是 Lineae 的主线目标，而不是附加的预览功能。** 源码与 PDF 的双向定位仍属于后续工作；桌面端已提供 v0.2.1 发行包。更细的功能拆分、优先级和验收条件见 [实现路线图](docs/IMPLEMENTATION_ROADMAP.md)。
 
 ## 本地运行
 
@@ -182,7 +182,7 @@ GitHub Actions 会自动构建应用、运行 LaTeX 和文献模块测试、准�
 
 ## 桌面版
 
-`apps/desktop` 是用 Tauri 2 构建的 Windows x64 桌面版。[v0.2.0 正式版](https://github.com/AminiamEva/Lineae/releases/tag/v0.2.0)提供离线安装包和便携版；本版未签名，具体说明与校验值见发行页。它复用浏览器编辑器，增加了原生的打开、保存和另存为对话框，并沿用现有的 ZIP 流程导出项目。构建和打包只在 GitHub Actions 上运行；产物清单和验收步骤见 [docs/desktop-preview.md](docs/desktop-preview.md)。编译、文件监听和自动更新不在这个版本的范围内。
+`apps/desktop` 是用 Tauri 2 构建的 Windows x64 桌面版。[v0.2.1 正式版](https://github.com/AminiamEva/Lineae/releases/tag/v0.2.1)提供离线安装包和便携版；本版未签名，具体说明与校验值见发行页。它复用浏览器编辑器，增加了原生的打开、保存和另存为对话框，并沿用现有的 ZIP 流程导出项目。构建和打包只在 GitHub Actions 上运行；产物清单和验收步骤见 [docs/desktop-preview.md](docs/desktop-preview.md)。编译、文件监听和自动更新不在这个版本的范围内。
 
 ## 参与项目
 
