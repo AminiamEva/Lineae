@@ -192,6 +192,8 @@ export const DocumentImage = Node.create({
           }
           image.style.width='100%';
           image.style.height='';
+          const resized=factor.toFixed(3)+'\\textwidth';
+          window.dispatchEvent(new CustomEvent('lineae-image-resize',{detail:{width:resized,wrapWidth:node.attrs.wrap?resized:undefined}}));
           resizeFactor=factor;
           changed=true;
         };

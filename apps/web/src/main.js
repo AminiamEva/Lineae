@@ -710,6 +710,28 @@ function syncTableAttributes() {
     if (node.attrs.booktabs) table.dataset.booktabs = 'true';
     else delete table.dataset.booktabs;
     table.dataset.borderMode=node.attrs.borderMode??'';
+    if(node.attrs.leftRule)table.dataset.leftRule='true';
+    else delete table.dataset.leftRule;
+    if(node.attrs.rightRule)table.dataset.rightRule='true';
+    else delete table.dataset.rightRule;
+    table.dataset.verticalFirstRow=node.attrs.verticalFirstRow===false?'false':'true';
+    if(node.attrs.topRule)table.dataset.topRule='true';
+    else delete table.dataset.topRule;
+    if(node.attrs.bottomRule)table.dataset.bottomRule='true';
+    else delete table.dataset.bottomRule;
+    if(node.attrs.midRuleMode&&node.attrs.midRuleMode!=='none')table.dataset.midRuleMode=node.attrs.midRuleMode;
+    else delete table.dataset.midRuleMode;
+    table.dataset.ruleStyle=node.attrs.ruleStyle??'solid';
+    table.dataset.arrayStretch=String(node.attrs.arrayStretch??1);
+    table.dataset.tableScale=String(node.attrs.tableScale??1);
+    table.dataset.tableFontSize=node.attrs.fontSize??'';
+    if(node.attrs.captionEnabled)table.dataset.captionEnabled='true';
+    else delete table.dataset.captionEnabled;
+    table.style.setProperty('--table-line-width',node.attrs.ruleWidth??node.attrs.borderWidth??'0.4pt');
+    table.style.setProperty('--table-array-stretch',String(node.attrs.arrayStretch??1));
+    const fontSizes={small:'0.9em',footnotesize:'0.8em',scriptsize:'0.7em'};
+    table.style.setProperty('--table-font-size',fontSizes[node.attrs.fontSize]??node.attrs.fontSize??'inherit');
+    table.style.setProperty('--table-scale',String(node.attrs.tableScale??1));
     if(node.attrs.columnLayout)table.dataset.columnLayout=node.attrs.columnLayout;
     else delete table.dataset.columnLayout;
     if(node.attrs.columnRules)table.dataset.columnRules='true';
@@ -2033,6 +2055,8 @@ function updateSelectedImageAttrs(patch){
   if(current?.type.name!=='documentImage')return false;
   const clean=Object.fromEntries(Object.entries(patch).filter(([,value])=>value!==undefined));
   editor.view.dispatch(editor.state.tr.setNodeMarkup(imageSelection,undefined,{...current.attrs,...clean}));
+  const updated=editor.state.doc.nodeAt(imageSelection);
+  if(updated?.type.name==='documentImage')imagePanel?.setValues?.(updated.attrs);
   return true;
 }
 function sortParagraphs(mode) {
@@ -2485,6 +2509,106 @@ for(const [label,align] of [[['左','Left'],'left'],[['中','Center'],'center'],
   const type=editor.isActive('tableHeader')?'tableHeader':'tableCell';
   editor.chain().focus().updateAttributes(type,{align}).run();
 });
+function tableOption(label,control){
+  const field=document.createElement('label');
+  field.className='table-option';
+  const text=document.createElement('span');
+  text.textContent=label;
+  control.setAttribute('aria-label',label);
+  field.append(text,control);
+  return field;
+}
+function tableSection(title){
+  const section=document.createElement('section');
+  section.className='table-style-group';
+  const heading=document.createElement('div');
+  heading.className='table-style-group-title';
+  heading.textContent=title;
+  const body=document.createElement('div');
+  body.className='table-style-group-body';
+  section.append(heading,body);
+  tableGroup.append(section);
+  return body;
+}
+const tableCaptionSection=tableSection('表格样式');
+const tableCaptionEnabled=document.createElement('input');tableCaptionEnabled.type='checkbox';
+const tableCaptionInput=document.createElement('input');tableCaptionInput.type='text';tableCaptionInput.placeholder='Caption';
+tableCaptionEnabled.setAttribute('aria-label',t('启用表格题注','Enable table caption'));
+tableCaptionInput.setAttribute('aria-label',t('表格题注','Table caption'));
+const tableCaptionToggleField=document.createElement('label');tableCaptionToggleField.className='table-option';
+const tableCaptionToggleText=document.createElement('span');tableCaptionToggleText.textContent=t('题注','Caption');
+tableCaptionToggleField.append(tableCaptionEnabled,tableCaptionToggleText);
+const tableCaptionField=document.createElement('div');tableCaptionField.className='table-caption-field';tableCaptionField.append(tableCaptionInput);
+tableCaptionSection.append(tableCaptionToggleField,tableCaptionField);
+const tableRuleSection=tableSection('样式');
+const tableLeftRule=document.createElement('input');tableLeftRule.type='checkbox';
+const tableRightRule=document.createElement('input');tableRightRule.type='checkbox';
+const tableVerticalFirstRow=document.createElement('input');tableVerticalFirstRow.type='checkbox';
+const tableTopRule=document.createElement('input');tableTopRule.type='checkbox';
+const tableBottomRule=document.createElement('input');tableBottomRule.type='checkbox';
+const tableRuleStyle=document.createElement('select');
+for(const [value,label] of [['solid','实线'],['dashed','虚线'],['dotted','点线'],['double','双线']])tableRuleStyle.append(new Option(t(label,value),value));
+const tableRuleWidth=document.createElement('select');
+for(const value of ['0.2pt','0.4pt','0.8pt','1pt'])tableRuleWidth.append(new Option(value,value));
+const tableMidRule=document.createElement('select');
+tableMidRule.append(new Option(t('无','None'),'none'),new Option(t('首行下方','After first row'),'first'),new Option(t('所有行下方','All rows'),'all'));
+const tableRuleGrid=document.createElement('div');tableRuleGrid.className='table-options-grid';
+tableRuleGrid.append(
+  tableOption(t('左竖线','Left rule'),tableLeftRule),
+  tableOption(t('右竖线','Right rule'),tableRightRule),
+  tableOption(t('竖线含首行','Rules in first row'),tableVerticalFirstRow),
+  tableOption(t('上边线','Top rule'),tableTopRule),
+  tableOption(t('下边线','Bottom rule'),tableBottomRule),
+  tableOption(t('中间线','Middle rule'),tableMidRule),
+  tableOption(t('线型','Line style'),tableRuleStyle),
+  tableOption(t('线宽','Line width'),tableRuleWidth),
+);
+tableRuleSection.append(tableRuleGrid);
+const tableStretchSection=tableSection('伸缩');
+const tableArrayStretch=document.createElement('input');tableArrayStretch.type='number';tableArrayStretch.min='0.5';tableArrayStretch.max='3';tableArrayStretch.step='0.1';tableArrayStretch.value='1';
+const tableFontSize=document.createElement('select');
+for(const [value,label] of [['','默认'],['small','small'],['footnotesize','footnotesize'],['scriptsize','scriptsize'],['10pt','10pt'],['9pt','9pt']])tableFontSize.append(new Option(t(label,value),value));
+const tableScale=document.createElement('input');tableScale.type='number';tableScale.min='0.3';tableScale.max='1.5';tableScale.step='0.05';tableScale.value='1';
+const tableStretchGrid=document.createElement('div');tableStretchGrid.className='table-options-grid';
+tableStretchGrid.append(
+  tableOption(t('行距','Row stretch'),tableArrayStretch),
+  tableOption(t('字号','Font size'),tableFontSize),
+  tableOption(t('缩放','Scale'),tableScale),
+);
+tableStretchSection.append(tableStretchGrid);
+function updateTableAttributes(patch){
+  const lineKeys=['leftRule','rightRule','verticalFirstRow','topRule','bottomRule','midRuleMode','ruleStyle','ruleWidth'];
+  if(Object.keys(patch).some(key=>lineKeys.includes(key)))patch={...patch,borderMode:null,booktabs:false};
+  if(editor.isActive('table'))editor.chain().focus().updateAttributes('table',patch).run();
+}
+function syncTableControls(){
+  const attrs=editor.isActive('table')?editor.getAttributes('table'):null;
+  const disabled=!attrs;
+  tableCaptionEnabled.checked=Boolean(attrs?.captionEnabled??(attrs?.caption!=null));
+  tableCaptionInput.disabled=disabled||!tableCaptionEnabled.checked;
+  tableCaptionInput.value=attrs?.caption??'';
+  tableLeftRule.checked=Boolean(attrs?.leftRule);
+  tableRightRule.checked=Boolean(attrs?.rightRule);
+  tableVerticalFirstRow.checked=attrs?.verticalFirstRow!==false;
+  tableTopRule.checked=Boolean(attrs?.topRule);
+  tableBottomRule.checked=Boolean(attrs?.bottomRule);
+  tableMidRule.value=attrs?.midRuleMode??'none';
+  tableRuleStyle.value=attrs?.ruleStyle??'solid';
+  tableRuleWidth.value=attrs?.ruleWidth??(attrs?.borderWidth??'0.4pt');
+  tableArrayStretch.value=attrs?.arrayStretch??'1';
+  tableFontSize.value=attrs?.fontSize??'';
+  tableScale.value=attrs?.tableScale??'1';
+}
+tableCaptionEnabled.addEventListener('change',()=>updateTableAttributes({captionEnabled:tableCaptionEnabled.checked,caption:tableCaptionEnabled.checked?(editor.getAttributes('table').caption??''):null,centered:true,placement:editor.getAttributes('table').placement??'htbp'}));
+tableCaptionInput.addEventListener('input',()=>{if(editor.isActive('table'))updateTableAttributes({caption:tableCaptionInput.value,captionEnabled:true,centered:true});});
+for(const [control,key] of [[tableLeftRule,'leftRule'],[tableRightRule,'rightRule'],[tableVerticalFirstRow,'verticalFirstRow'],[tableTopRule,'topRule'],[tableBottomRule,'bottomRule']])control.addEventListener('change',()=>updateTableAttributes({[key]:control.checked}));
+tableMidRule.addEventListener('change',()=>updateTableAttributes({midRuleMode:tableMidRule.value}));
+tableRuleStyle.addEventListener('change',()=>updateTableAttributes({ruleStyle:tableRuleStyle.value}));
+tableRuleWidth.addEventListener('change',()=>updateTableAttributes({ruleWidth:tableRuleWidth.value}));
+tableArrayStretch.addEventListener('change',()=>updateTableAttributes({arrayStretch:Number(tableArrayStretch.value)||1}));
+tableFontSize.addEventListener('change',()=>updateTableAttributes({fontSize:tableFontSize.value||null}));
+tableScale.addEventListener('change',()=>updateTableAttributes({tableScale:Number(tableScale.value)||1}));
+editor.on('transaction',syncTableControls);editor.on('selectionUpdate',syncTableControls);syncTableControls();
 groupButton(formatGroup,'B',()=>editor.chain().focus().toggleBold().run());
 for (const [align,label] of [['left',['左对齐','Align left']],['right',['右对齐','Align right']],['center',['居中','Center']]]) {
   groupButton(formatGroup,label,()=>setParagraphAlignment(align));
@@ -2965,6 +3089,17 @@ for(const name of Object.keys(groups)) {
 }
 const imageTab=tabs.querySelector('[data-group=image]');
 if(imageTab)imageTab.hidden=true;
+const tableTab=tabs.querySelector('[data-group=table]');
+if(tableTab)tableTab.hidden=true;
+function syncTableTab(){
+  if(!tableTab)return;
+  const active=sourceView.hidden&&editor.isActive('table');
+  tableTab.hidden=!active;
+  if(active)syncTableControls();
+  else if(ribbon.dataset.ribbonPage==='table')selectGroup('home');
+}
+editor.on('selectionUpdate',syncTableTab);
+editor.on('transaction',({transaction})=>{if(transaction.selectionSet)syncTableTab();});
 function currentImageSelection(){
   const selection=editor.state.selection;
   return selection instanceof NodeSelection && selection.node.type.name==='documentImage'

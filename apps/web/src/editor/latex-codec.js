@@ -135,27 +135,39 @@ export function serialize(node) {
       const columnCount=(node.content[0]?.content??[]).reduce((total,cell)=>total+(cell.attrs.colspan??1),0)||1;
       const occupied=Array(columnCount).fill(0);
       const border = node.attrs.borderMode;
-      if (border) {
-        columns = columns.replace(/\|/g,'');
-        if (border === 'outer') columns='|'+columns+'|';
-        if (border === 'grid') columns='|'+columns.replace(/([pmb]\{[^{}]*\}|[lcr])/g,'$1|');
-      }
+      columns = columns.replace(/\|/g,'');
+      if (border === 'outer' || border === 'grid') columns='|'+columns;
+      if (border === 'outer' || border === 'grid' || node.attrs.rightRule) columns=columns+'|';
+      if (border === 'grid') columns=columns.replace(/([pmb]\{[^{}]*\}|[lcr])(?!\|)/g,'$1|').replace(/\|\|/g,'|');
+      if (node.attrs.leftRule && !columns.startsWith('|')) columns='|'+columns;
       let body = '';
+      const customRules = !border && (node.attrs.topRule || node.attrs.bottomRule || node.attrs.midRuleMode !== 'none');
       node.content.forEach((row, index) => {
         if (border === 'grid' || border === 'horizontal' || (border==='outer' && index===0)) body += '\\hline\n';
-        if (!border && node.attrs.booktabs && index === 0) body += '\\toprule\n';
+        if (!border && !customRules && node.attrs.booktabs && index === 0) body += '\\toprule\n';
+        if (customRules && index === 0 && node.attrs.topRule) body += '\\toprule\n';
         body += richTableRow(row,occupied,serialize);
-        if (!border && node.attrs.booktabs && index === 0 && node.content.length > 1) body += '\\midrule\n';
+        const mid = node.attrs.midRuleMode;
+        if (!border && !customRules && node.attrs.booktabs && index === 0 && node.content.length > 1) body += '\\midrule\n';
+        if (customRules && index < node.content.length - 1 && (mid === 'all' || (mid === 'first' && index === 0))) body += '\\midrule\n';
       });
       if (border && border!=='none') body += '\\hline\n';
-      if (!border && node.attrs.booktabs) body += '\\bottomrule\n';
+      if (!border && !customRules && node.attrs.booktabs) body += '\\bottomrule\n';
+      if (customRules && node.attrs.bottomRule) body += '\\bottomrule\n';
       let tabular='\\begin{tabular}{' + columns + '}\n' + body + '\\end{tabular}';
+      if (node.attrs.arrayStretch && Number(node.attrs.arrayStretch) !== 1) tabular='{\\renewcommand{\\arraystretch}{'+node.attrs.arrayStretch+'}\n'+tabular+'\n}';
+      if (node.attrs.fontSize && /^(small|footnotesize|scriptsize)$/.test(node.attrs.fontSize)) tabular='{\\'+node.attrs.fontSize+' '+tabular+'}';
+      else if (node.attrs.fontSize && /^\d+(?:\.\d+)?pt$/.test(node.attrs.fontSize)) {
+        const points=Number.parseFloat(node.attrs.fontSize);
+        tabular='{\\fontsize{'+node.attrs.fontSize+'}{'+(points*1.2).toFixed(1)+'pt}\\selectfont '+tabular+'}';
+      }
       if (/^\d+(?:\.\d+)?pt$/.test(node.attrs.borderWidth??''))
         tabular='{\\setlength{\\arrayrulewidth}{'+node.attrs.borderWidth+'}\n'+tabular+'\n}';
-      if (node.attrs.caption!=null || node.attrs.label || node.attrs.centered || node.attrs.placement)
+      const hasCaption = node.attrs.captionEnabled || node.attrs.caption!=null;
+      if (hasCaption || node.attrs.label || node.attrs.centered || node.attrs.placement)
         return '\\begin{table}'+(node.attrs.placement?'['+node.attrs.placement+']':'')+'\n'
           +(node.attrs.centered?'\\centering\n':'')
-          +(node.attrs.caption!=null?'\\caption{'+node.attrs.caption+'}\n':'')
+          +(hasCaption?'\\caption{'+(node.attrs.caption??'')+'}\n':'')
           +(node.attrs.label?'\\label{'+node.attrs.label+'}\n':'')
           +tabular+'\n\\end{table}\n\n';
       return tabular+'\n\n';

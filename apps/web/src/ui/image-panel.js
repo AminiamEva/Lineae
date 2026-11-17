@@ -184,6 +184,12 @@ export function installImagePanel({onUpdate, onReplace, onSpacing, getSpacing}) 
   ],['image-spacing','image-appearance','image-layout','image-transform']);
 
   function setPath(value){path.textContent=value||'';}
+  function setDimensions(widthValue,wrapValue){
+    const w=dimensions(widthValue);
+    width.number.value=w.number;
+    width.unit.value=w.unit;
+    if(wrapValue!==undefined)wrapWidth.value=wrapValue;
+  }
   function setValues(next){
     attrs=next;
     if(!next)return;
@@ -265,7 +271,11 @@ export function installImagePanel({onUpdate, onReplace, onSpacing, getSpacing}) 
   });
   resetSpacing.addEventListener('click',()=>onSpacing?.({...IMAGE_DEFAULTS}));
   replace.addEventListener('click',()=>onReplace?.());
-  return {panel,setValues,setPath,setSpacing(values){for(const [name,input] of Object.entries(spacingInputs))input.value=spacingNumber(values[name]);}};
+  window.addEventListener('lineae-image-resize',event=>{
+    if(panel.hidden)return;
+    setDimensions(event.detail?.width,event.detail?.wrapWidth);
+  });
+  return {panel,setValues,setPath,setDimensions,setSpacing(values){for(const [name,input] of Object.entries(spacingInputs))input.value=spacingNumber(values[name]);}};
 }
 
 const IMAGE_DEFAULTS = Object.freeze({textfloatsep:'20pt plus 2pt minus 4pt',intextsep:'12pt plus 2pt minus 2pt',floatsep:'12pt plus 2pt minus 2pt'});

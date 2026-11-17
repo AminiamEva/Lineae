@@ -1573,6 +1573,10 @@ async function verifySelectionGeometry(page, paper, importSource) {
       .filter(button=>!button.dataset.tooltipZh&&!button.dataset.tooltip)
       .map(button=>button.textContent.trim()||button.getAttribute('aria-label')));
     assert.deepEqual(missingTooltips,[],'Every toolbar button has a tooltip');
+    await importSource(String.raw`\begin{tabular}{lc}
+A & B \\
+\end{tabular}`);
+    await paper.locator('td').first().click();
     await revealToolbar(page); await page.locator('[data-group=table]').click();
     const mergeButton=page.getByRole('button',{name:/^(合并|Merge)$/});
     await mergeButton.hover();
@@ -2410,7 +2414,7 @@ async function verifySelectionGeometry(page, paper, importSource) {
 
     await importSource('Nested tables');
     await paper.locator('p').last().click();
-    await revealToolbar(page); await page.locator('[data-group=table]').click();
+    await revealToolbar(page); await page.locator('[data-group=insert]').click();
     for (let level=0;level<4;level++) {
       await page.getByRole('button',{name:'▦',exact:true}).click();
       await page.waitForTimeout(80);
