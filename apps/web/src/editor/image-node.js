@@ -1,8 +1,7 @@
 import {localizedLabel,localizedPlaceholder} from '../ui/localized-control.mjs';
 import { Node } from '@tiptap/core';
 import { t } from '../ui/i18n.mjs';
-import { askText } from './dialog.js';
-import { imageWidthPattern, relativeImageWidth } from '../../latex/images.mjs';
+import { relativeImageWidth } from '../../latex/images.mjs';
 import { rememberAsset } from './project-assets.js';
 
 const previews = new Map();
@@ -162,9 +161,7 @@ export const DocumentImage = Node.create({
       captionText.addEventListener('click',()=>captionText.focus());
       const controls=document.createElement('div');
       controls.className='document-image-controls';
-      const size=document.createElement('button');
-      size.type='button';localizedLabel(size,'尺寸','Size');
-      controls.append(size);
+      controls.hidden=true;
       function update(patch, expected) {
         if (!dom.isConnected || node !== expected) return;
         const position=getPos();
@@ -187,7 +184,12 @@ export const DocumentImage = Node.create({
           if(!horizontal&&vertical)width=startWidth*(startHeight+vertical)/startHeight;
           width=Math.max(24,Math.min(pageWidth,width));
           const factor=Math.max(.03,Math.min(1,width/pageWidth));
-          imageFrame.style.width=node.attrs.wrap?relativeImageWidth(factor.toFixed(3)+'\\textwidth',node.attrs.wrapWidth||'0.4\\textwidth'):`${factor*100}%`;
+          if(node.attrs.wrap){
+            dom.style.width=`${factor*100}%`;
+            imageFrame.style.width='100%';
+          }else{
+            imageFrame.style.width=`${factor*100}%`;
+          }
           image.style.width='100%';
           image.style.height='';
           resizeFactor=factor;
@@ -197,16 +199,12 @@ export const DocumentImage = Node.create({
           window.removeEventListener('pointermove',move);
           window.removeEventListener('pointerup',finish);
           if(!changed||resizeFactor===null)return;
-          update({width:resizeFactor.toFixed(3)+'\\textwidth',height:null},node);
+          const width=resizeFactor.toFixed(3)+'\\textwidth';
+          update(node.attrs.wrap?{width,wrapWidth:width,height:null}:{width,height:null},node);
         };
         window.addEventListener('pointermove',move);
         window.addEventListener('pointerup',finish,{once:true,capture:true});
       }
-      size.addEventListener('click',async()=>{
-        const expected=node;
-        const width=await askText(t('图片宽度，例如 0.5\\linewidth 或 6cm','Image width, e.g. 0.5\\linewidth or 6cm'),node.attrs.width??'');
-        if(width!==null && (!width || imageWidthPattern.test(width))) update({width:width||null},expected);
-      });
       const refresh=()=>{
         const preview=previews.get(node.attrs.path);
         const cssDimension=value => {
@@ -229,6 +227,7 @@ export const DocumentImage = Node.create({
         dom.dataset.captionNumbered=caption.dataset.captionNumbered;
         dom.dataset.centered=String(node.attrs.centered);        dom.dataset.figure=String(Boolean(node.attrs.figure));
         dom.dataset.wrap=String(Boolean(node.attrs.wrap));
+        dom.dataset.wrapSide=node.attrs.wrapSide??'r';
         dom.dataset.captionPosition=node.attrs.captionPosition??'below';
         if(node.attrs.wrap){
           dom.style.float=node.attrs.wrapSide==='l'||node.attrs.wrapSide==='L'?'left':'right';

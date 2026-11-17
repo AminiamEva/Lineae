@@ -83,6 +83,8 @@ main { padding:125px 24px 60px; overflow:auto; }
 .document-image img { display:block; max-width:100%; height:auto; }
 .document-image-frame { position:relative; display:block; max-width:100%; }
 .document-image[data-wrap="true"] .document-image-frame { max-width:none; }
+.document-image[data-wrap="true"]:is([data-wrap-side="r"],[data-wrap-side="R"],[data-wrap-side="i"],[data-wrap-side="I"],[data-wrap-side="o"],[data-wrap-side="O"]) .document-image-frame { margin-inline-start:auto; margin-inline-end:0; }
+.document-image[data-wrap="true"]:is([data-wrap-side="l"],[data-wrap-side="L"]) .document-image-frame { margin-inline-start:0; margin-inline-end:auto; }
 .document-image[data-centered="true"] .document-image-frame { margin-inline:auto; }
 .document-image[data-align="center"] .document-image-frame { margin-inline:auto; }
 .document-image[data-align="right"] .document-image-frame { margin-inline-start:auto; margin-inline-end:0; }
