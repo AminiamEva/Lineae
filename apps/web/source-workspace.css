@@ -10,7 +10,7 @@
   --tex-comment: light-dark(#67796e,#9eb5a5);
   --tex-argument: light-dark(#527b80,#a6c7cd);
   --tex-math: light-dark(#525f95,#adb8ed);
-  width:min(100%,70rem); height:clamp(320px,calc(100dvh - 180px),960px);
+  width:min(100%,70rem); height:clamp(320px,calc(100dvh - var(--tex-toolbar-bottom,180px) - 42px),960px);
   margin:auto; display:flex; flex-direction:column; overflow:hidden;
   background:var(--tex-paper); color:light-dark(#334155,#d8dce7);
   border:1px solid var(--tex-border); border-radius:16px;
@@ -155,7 +155,7 @@ body:has(.tex-workspace:not([hidden])) {overflow:hidden}
 .document-status button[aria-pressed] {transition:color .14s ease,border-color .14s ease;}
 body.source-workspace-visible header {z-index:13;}
 body.source-workspace-visible:not(.project-visible) header h1 {display:none;}
-body:not(.source-workspace-visible) main {padding-top:76px;}
+body:not(.source-workspace-visible) main {padding-top:calc(var(--tex-toolbar-bottom,76px) + 10px);}
 :root {--sidebar-width:0px;}
 body.project-visible {--sidebar-width:230px;}
 header .floating-toolbar {position:relative;display:flex;justify-content:center;pointer-events:auto;max-width:calc(100vw - var(--sidebar-width) - 24px);transform:translateX(calc(var(--sidebar-width)/2));}

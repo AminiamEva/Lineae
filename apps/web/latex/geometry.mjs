@@ -23,6 +23,25 @@ const NATIVE_MARGINS = Object.freeze({
   a5: Object.freeze({ top: '45.082mm', right: '25.597mm', bottom: '43.313mm', left: '25.400mm' }),
   legal: Object.freeze({ top: '44.379mm', right: '47.456mm', bottom: '42.003mm', left: '47.191mm' }),
 });
+
+// geometry.sty defaults: hscale = vscale = 0.7, hratio = 1:1,
+// vratio = 2:3 (top:bottom). The resulting body margins are 15% of the
+// paper width on each side and 12%/18% of the paper height at top/bottom.
+// These are the values XeLaTeX produces for \usepackage{geometry} with no
+// margin-related options.
+function geometryDefaultMargins(paper, orientation) {
+  const size = PAGE_PAPERS[paper] ?? PAGE_PAPERS.a4;
+  const number = value => Number.parseFloat(value);
+  const width = number(orientation === 'landscape' ? size.height : size.width);
+  const height = number(orientation === 'landscape' ? size.width : size.height);
+  const side = (width * 0.15).toFixed(3) + 'mm';
+  return Object.freeze({
+    top: (height * 0.12).toFixed(3) + 'mm',
+    right: side,
+    bottom: (height * 0.18).toFixed(3) + 'mm',
+    left: side,
+  });
+}
 export const DEFAULT_PAGE_SETUP = Object.freeze({
   paper: 'letter',
   orientation: 'portrait',
@@ -59,11 +78,19 @@ export function readPageSetup(preamble = '') {
     const margins = { ...NATIVE_MARGINS[paper] };
     return { paper, orientation, margin: 'custom', margins };
   }
-  const uniform = options.find(option => /^margin=/.test(option))?.slice(7);
-  const margins = Object.fromEntries(SIDES.map(side => [
-    side,
-    options.find(option => new RegExp('^' + side + '=').test(option))?.slice(side.length + 1) ?? uniform ?? FALLBACK_MARGIN,
-  ]));
+  const defaults = match ? geometryDefaultMargins(paper, orientation) : Object.fromEntries(
+    SIDES.map(side => [side, FALLBACK_MARGIN]));
+  const optionValue = name => options.find(option => new RegExp('^' + name + '=').test(option))?.slice(name.length + 1);
+  const uniform = optionValue('margin');
+  const hmargin = optionValue('hmargin');
+  const vmargin = optionValue('vmargin');
+  const margins = Object.fromEntries(SIDES.map(side => {
+    const horizontal = side === 'left' || side === 'right';
+    return [side, optionValue(side)
+      ?? (horizontal ? hmargin : vmargin)
+      ?? uniform
+      ?? defaults[side]];
+  }));
   const normalized = Object.fromEntries(SIDES.map(side => [side, normalizeMargin(margins[side])]));
   return { paper, orientation, margin: commonMargin(normalized), margins: normalized };
 }

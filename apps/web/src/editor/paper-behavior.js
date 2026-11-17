@@ -3,9 +3,33 @@ import { Fragment, Slice } from '@tiptap/pm/model';
 import { Plugin, TextSelection } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import { listMarkerCSS } from '../../latex/list-numbering.mjs';
+import { t } from '../ui/i18n.mjs';
 
-function paperFormatting() {
-  let session = null;
+function tableCaptionWidget(caption) {
+  const element=document.createElement('div');
+  element.className='table-caption-widget';
+  element.dataset.captionNumbered='true';
+  const label=document.createElement('span');
+  label.className='table-caption-label';
+  label.dataset.captionName=document.querySelector('.document-page')?.dataset.captionLanguage==='zh'?t('表','Table'):'Table';
+  const text=document.createElement('span');
+  text.className='table-caption-text';
+  text.textContent=caption;
+  element.append(label,text);
+  requestAnimationFrame(() => {
+    if (!element.isConnected) return;
+    const style=getComputedStyle(text);
+    const context=document.createElement('canvas').getContext('2d');
+    if (!context) return;
+    context.font=[style.fontStyle,style.fontWeight,style.fontSize,style.fontFamily].join(' ');
+    const labelWidth=label.getBoundingClientRect().width;
+    const gap=Number.parseFloat(getComputedStyle(element).columnGap)||0;
+    element.dataset.captionStyle=!caption||labelWidth+gap+context.measureText(caption).width<=element.clientWidth+0.5?'single':'multi';
+  });
+  return element;
+}
+
+function paperFormatting() {  let session = null;
   let composing = false;
   let preeditDOM = null;
   function compositionAnchor(view) {
@@ -267,8 +291,8 @@ export const PaperBehavior = Extension.create({
       attributes: {
         align: {
           default: null,
-          parseHTML: element => ['left','center','right'].includes(element.dataset.align) ? element.dataset.align : null,
-          renderHTML: ({align}) => ['left','center','right'].includes(align)
+          parseHTML: element => ['left','center','right','justify'].includes(element.dataset.align) ? element.dataset.align : null,
+          renderHTML: ({align}) => ['left','center','right','justify'].includes(align)
             ? { 'data-align':align, style:'text-align:'+align } : {},
         },
         indent: {
@@ -284,6 +308,36 @@ export const PaperBehavior = Extension.create({
           renderHTML: attributes => attributes.indentLevel
             ? { 'data-indent-level': String(attributes.indentLevel), style: `margin-left:${attributes.indentLevel * 2}em` }
             : {},
+        },
+        lineSpacing: {
+          default: null,
+          parseHTML: element => Number(element.dataset.lineSpacing) || null,
+          renderHTML: ({lineSpacing}) => lineSpacing && lineSpacing !== 1
+            ? { 'data-line-spacing': String(lineSpacing), style: `line-height:${lineSpacing}` } : {},
+        },
+        spaceBefore: {
+          default: null,
+          parseHTML: element => element.dataset.spaceBefore ?? null,
+          renderHTML: ({spaceBefore}) => spaceBefore
+            ? { 'data-space-before': spaceBefore, style: `margin-top:${spaceBefore}` } : {},
+        },
+        spaceAfter: {
+          default: null,
+          parseHTML: element => element.dataset.spaceAfter ?? null,
+          renderHTML: ({spaceAfter}) => spaceAfter
+            ? { 'data-space-after': spaceAfter, style: `margin-bottom:${spaceAfter}` } : {},
+        },
+        shading: {
+          default: null,
+          parseHTML: element => element.dataset.shading ?? null,
+          renderHTML: ({shading}) => shading
+            ? { 'data-shading': shading, style: `background-color:${shading}` } : {},
+        },
+        border: {
+          default: false,
+          parseHTML: element => element.dataset.paragraphBorder === 'true',
+          renderHTML: ({border}) => border
+            ? { 'data-paragraph-border': 'true', style: 'border:1px solid currentColor;padding:.15em .3em' } : {},
         },
       },
     }, {
@@ -314,6 +368,16 @@ export const PaperBehavior = Extension.create({
           default: null,
           parseHTML: element => element.dataset.columns ?? null,
           renderHTML: attributes => attributes.columns ? { 'data-columns': attributes.columns } : {},
+        },
+        columnLayout: {
+          default: null,
+          parseHTML: element => element.dataset.columnLayout ?? null,
+          renderHTML: attributes => attributes.columnLayout ? { 'data-column-layout': attributes.columnLayout } : {},
+        },
+        columnRules: {
+          default: false,
+          parseHTML: element => element.dataset.columnRules === 'true',
+          renderHTML: attributes => attributes.columnRules ? { 'data-column-rules': 'true' } : {},
         },
         booktabs: {
           default: false,
@@ -347,12 +411,49 @@ export const PaperBehavior = Extension.create({
         },
       },
     }, {
+      types: ['tableRow'],
+      attributes: {
+        rules: {
+          default: null,
+          parseHTML: element => {
+            try { return element.dataset.rules ? JSON.parse(element.dataset.rules) : null; }
+            catch { return null; }
+          },
+          renderHTML: attributes => {
+            const rule = (attributes.rules ?? []).find(value => /^\\?(toprule|midrule|bottomrule)$/.test(String(value)));
+            const data = attributes.rules?.length ? { 'data-rules': JSON.stringify(attributes.rules) } : {};
+            if (rule) data['data-booktabs-rule'] = String(rule).replace(/^\\/,'');
+            return data;
+          },
+        },
+      },
+    }, {
       types: ['tableCell', 'tableHeader'],
       attributes: {
         align: {
           default: null,
           parseHTML: element => element.dataset.align ?? null,
           renderHTML: attributes => attributes.align ? { 'data-align': attributes.align, style: 'text-align:' + attributes.align } : {},
+        },
+        paddingLeft: {
+          default: null,
+          parseHTML: element => element.dataset.paddingLeft ?? null,
+          renderHTML: attributes => attributes.paddingLeft ? { 'data-padding-left': attributes.paddingLeft, style: 'padding-left:' + attributes.paddingLeft } : {},
+        },
+        paddingRight: {
+          default: null,
+          parseHTML: element => element.dataset.paddingRight ?? null,
+          renderHTML: attributes => attributes.paddingRight ? { 'data-padding-right': attributes.paddingRight, style: 'padding-right:' + attributes.paddingRight } : {},
+        },
+        ruleLeft: {
+          default: false,
+          parseHTML: element => element.dataset.ruleLeft === 'true',
+          renderHTML: attributes => attributes.ruleLeft ? { 'data-rule-left': 'true' } : {},
+        },
+        ruleRight: {
+          default: false,
+          parseHTML: element => element.dataset.ruleRight === 'true',
+          renderHTML: attributes => attributes.ruleRight ? { 'data-rule-right': 'true' } : {},
         },
       },
     }, {
@@ -380,6 +481,19 @@ export const PaperBehavior = Extension.create({
   addProseMirrorPlugins() {
     return [
       paperFormatting(),
+      new Plugin({
+        props: {
+          decorations(state) {
+            const widgets = [];
+            state.doc.descendants((node, position) => {
+              if (node.type.name === 'table' && node.attrs.caption) {
+                widgets.push(Decoration.widget(position, tableCaptionWidget(node.attrs.caption), {side:-1}));
+              }
+            });
+            return widgets.length ? DecorationSet.create(state.doc, widgets) : null;
+          },
+        },
+      }),
       new Plugin({
         state: {
           init: (_, state) => numberedHeadings(state.doc),

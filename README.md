@@ -5,7 +5,7 @@
 [![Contributors](https://img.shields.io/github/contributors/AminiamEva/Lineae?style=flat-square)](https://github.com/AminiamEva/Lineae/graphs/contributors)
 [![Last Commit](https://img.shields.io/github/last-commit/AminiamEva/Lineae?style=flat-square)](https://github.com/AminiamEva/Lineae/commits/main/)
 
-<p align="center"><picture><source media="(prefers-color-scheme: dark)" srcset="apps/web/assets/brand/lineae-new-dark.png"><img src="apps/web/assets/brand/lineae-new-light.png" alt="Lineæ" width="540"></picture></p>
+<p align="center"><picture><source media="(prefers-color-scheme: dark)" srcset="apps/web/assets/brand/lineae-new-dark.png?v=20261117"><img src="apps/web/assets/brand/lineae-new-light.png?v=20261117" alt="Lineæ" width="540"></picture></p>
 
 # Lineae
 

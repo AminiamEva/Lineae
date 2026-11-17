@@ -1,5 +1,6 @@
 import {documentLayoutBlocks} from '../project/fold-layout.mjs';
 import { planPagination, planTableRows, typesetProfile } from '../../latex/typeset-layout.mjs';
+import { readPageFurniture, pageFurnitureText, furnitureSlots } from '../../latex/page-furniture.mjs';
 import { Plugin, PluginKey } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
 
@@ -119,14 +120,18 @@ export function installTypesetPagination(page, paper, meta, editor) {
 
   let frame = 0;
   let profile = typesetProfile();
+  let furniture = readPageFurniture();
+  let maketitle = false;
   let lineBreaks = [];
+  let lineBreaksDoc = null;
   installLineBreaks(editor);
 
   function setLineBreaks(entries) {
-    const same = entries.length === lineBreaks.length && entries.every((entry, index) =>
+    const same = lineBreaksDoc === editor.state.doc && entries.length === lineBreaks.length && entries.every((entry, index) =>
       entry.position === lineBreaks[index].position && Math.abs(entry.height - lineBreaks[index].height) < .01);
     if (same) return;
     lineBreaks = entries;
+    lineBreaksDoc = editor.state.doc;
     editor.view.dispatch(editor.state.tr.setMeta(lineBreakKey, entries));
   }
   let translations = [];
@@ -200,15 +205,62 @@ export function installTypesetPagination(page, paper, meta, editor) {
     }
   }
 
+  function furnitureElement(kind, slots, pageNumber, force = false, marks = {}) {
+    if (!force && (!slots || !Object.values(slots).some(Boolean))) return null;
+    const container = document.createElement('div');
+    container.className = `document-page-${kind}`;
+    for (const slot of ['left', 'center', 'right']) {
+      const item = document.createElement('span');
+      item.className = `document-page-${kind}-${slot}`;
+      item.textContent = pageFurnitureText(slots[slot], pageNumber, marks);
+      container.append(item);
+    }
+    return container;
+  }
+
+  function pageMarks(pageIndex) {
+    const headings = [...editable.querySelectorAll('h1,h2,h3')].map(element => {
+      const rect = element.getBoundingClientRect();
+      return {text: element.textContent, top: rect.top};
+    });
+    if (!headings.length) return {left:'', right:''};
+    const sheet = sheets.firstElementChild;
+    if (!sheet) return {left:'', right:''};
+    const pageRect = page.getBoundingClientRect();
+    const zoom = pageRect.width / page.offsetWidth || 1;
+    const pitch = sheet.offsetHeight + (Number.parseFloat(getComputedStyle(page).getPropertyValue('--page-gap')) || 0);
+    const indexed = headings.map(heading => ({
+      ...heading,
+      page: Math.max(0, Math.floor((heading.top - pageRect.top) / zoom / pitch)),
+    }));
+    const current = indexed.filter(heading => heading.page <= pageIndex).at(-1) ?? indexed[0];
+    const next = indexed.find(heading => heading.page > pageIndex);
+    return {left: current.text, right: (next ?? current).text};
+  }
+
   function renderSheets(count) {
     if (count === sheetCount) return;
     sheets.replaceChildren(...Array.from({ length: count }, (_, index) => {
       const sheet = document.createElement('div');
       sheet.className = 'document-sheet';
-      const number = document.createElement('span');
-      number.className = 'document-page-number';
-      number.textContent = String(index + 1);
-      sheet.append(number);
+      const pageNumber = index + 1;
+      const marks = pageMarks(index);
+      const plainTitlePage = maketitle && index === 0;
+      const headerSlots = plainTitlePage ? {} : furnitureSlots(furniture, 'header', pageNumber);
+      const footerSlots = plainTitlePage ? {} : furnitureSlots(furniture, 'footer', pageNumber);
+      const header = furnitureElement('header', headerSlots, pageNumber,
+        Object.values(headerSlots).some(Boolean) || (!plainTitlePage && furniture.rules.headWidth !== '0pt'), marks);
+      const footer = furnitureElement('footer', footerSlots, pageNumber,
+        Object.values(footerSlots).some(Boolean) || (!plainTitlePage && furniture.rules.footWidth !== '0pt'), marks);
+      if (furniture.style === 'fancy' && !plainTitlePage) {
+        if (header) sheet.append(header);
+        if (footer) sheet.append(footer);
+      } else {
+        const number = document.createElement('span');
+        number.className = 'document-page-number';
+        number.textContent = String(pageNumber);
+        sheet.append(number);
+      }
       return sheet;
     }));
     sheetCount = count;
@@ -216,8 +268,14 @@ export function installTypesetPagination(page, paper, meta, editor) {
 
   function applyProfile(preamble) {
     profile = typesetProfile(preamble);
+    furniture = readPageFurniture(preamble);
     page.dataset.documentClass = profile.className;
-    page.dataset.pageStyle = profile.pageStyle;
+    page.dataset.pageStyle = furniture.style === 'fancy' ? 'fancy' : profile.pageStyle;
+    page.style.setProperty('--page-head-rule-width', furniture.rules.headWidth);
+    page.style.setProperty('--page-head-rule-color', furniture.rules.headColor);
+    page.style.setProperty('--page-foot-rule-width', furniture.rules.footWidth);
+    page.style.setProperty('--page-foot-rule-color', furniture.rules.footColor);
+    sheetCount = 0;
     page.style.setProperty('--tex-font-size', profile.fontSize);
     page.style.setProperty('--tex-line-height', profile.lineHeight);
     page.style.setProperty('--tex-paragraph-indent', profile.paragraphIndent);
@@ -300,6 +358,9 @@ export function installTypesetPagination(page, paper, meta, editor) {
       };
       block.lines = element.tagName === 'P' ? paragraphLines(editor, element, block, pageRect, zoom) : null;
       return block;
+    });
+    children.forEach((element, index) => {
+      if (element.matches('.page-break, [data-page-break]') && blocks[index + 1]) blocks[index + 1].forceBreak = true;
     });
 
     const virtual = [];
@@ -424,6 +485,14 @@ export function installTypesetPagination(page, paper, meta, editor) {
       schedule();
     },
     refresh: schedule,
+    setMaketitle(value) {
+      const next = Boolean(value);
+      if (next !== maketitle) {
+        maketitle = next;
+        sheetCount = 0;
+      }
+      schedule();
+    },
     getMode: () => mode,
     getTableContinuation: () => continuedTables,
     setTableContinuation(enabled) {

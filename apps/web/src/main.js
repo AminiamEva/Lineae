@@ -14,6 +14,9 @@ import {exitProjectHeading} from './project/editing.js';
 import {ProjectDocumentSession} from './project/document-session.mjs';
 import {installFloatingToolbar} from './ui/floating-toolbar.js';
 import {installSettingsPanel} from './ui/settings-panel.js';
+import { buildHomeRibbon } from './ui/home-ribbon.js';
+import { buildRibbonGroups } from './ui/ribbon-groups.js';
+import {installHeaderFooterPanel} from './ui/header-footer-panel.js';
 import { sourceProjection, richSourceChanges } from './editor/source-sync.js';
 import { installSourceToolbar } from './editor/source-toolbar.js';
 import { createSourceWorkspace } from './editor/source-workspace.js';
@@ -26,6 +29,9 @@ import { closeHistory } from '@tiptap/pm/history';
 import { exitCode } from '@tiptap/pm/commands';
 import { mathFontStyles, applyMathFont } from './editor/math-formatting.js';
 import { installFormatControls } from './editor/format-controls.js';
+import { selectionTypography } from './editor/selection-typography.js';
+import { createClipboard } from './editor/clipboard.js';
+import { installFormatPainter } from './editor/format-painter.js';
 import { decorateToolbar, applyToolbarDescriptions, icon } from './editor/icons.js';
 import { PaperBehavior } from './editor/paper-behavior.js';
 import { MathNode, MathBlock, configureMathFences, focusInsertedOperator, insertFormula, isMathOperatorWithBody, mathEnvironment, toggleDisplayStyle } from './editor/math-node.js';
@@ -40,7 +46,11 @@ import { installKeybindings } from './editor/keybindings.mjs';
 import defaultConfigYaml from '../config.yaml';
 import { askText } from './editor/dialog.js';
 import { installDocumentFind } from './editor/find.js';
-import { DocumentImage, insertLocalImage, installImageDrop } from './editor/image-node.js';
+import { DocumentImage, insertLocalImage, replaceLocalImage, installImageDrop } from './editor/image-node.js';
+import { installImagePanel } from './ui/image-panel.js';
+import { MultiColumn } from './editor/multi-column.js';
+import { readGlobalColumns, writeGlobalColumns } from '../latex/columns.mjs';
+import { readImageSpacing, writeImageSpacing, IMAGE_SPACING_DEFAULTS } from '../latex/images.mjs';
 import {
   clearProjectAssets,
   projectAssets,
@@ -68,6 +78,7 @@ import { parseDocument } from '../latex/document.mjs';
 import { exportDocument, hasTitleCommand } from '../latex/packages.mjs';
 import { appendAlignmentPair, displayEnvironment, numberedMathRows } from '../latex/math-environments.mjs';
 import { MARGIN_PRESETS, readPageSetup, writePageSetup, pageMetrics } from '../latex/geometry.mjs';
+import { readPageFurniture, writePageFurniture } from '../latex/page-furniture.mjs';
 import { mathSymbols } from '../latex/math-symbols.mjs';
 import { createThemeController } from './ui/theme.mjs';
 import { installTooltips } from './ui/tooltips.mjs';
@@ -90,6 +101,7 @@ const TextStyle = Mark.create({
   name:'textStyle',
   addAttributes:()=>({
     color:{default:null,parseHTML:element=>cssColor(element.style.color)},
+    backgroundColor:{default:null,parseHTML:element=>cssColor(element.style.backgroundColor)},
     fontFamily:{default:null,parseHTML:element=>element.style.fontFamily?.replace(/["']/g,'')||null},
     fontSize:{default:null,parseHTML:element=>cssSize(element.style.fontSize)},
   }),
@@ -101,7 +113,16 @@ const TextStyle = Mark.create({
   },0],
 });
 const Underline = Mark.create({
-  name:'underline',parseHTML:()=>[{tag:'u'}],renderHTML:()=>['u',0],
+  name:'underline',
+  addAttributes:()=>({
+    style:{default:'single',parseHTML:element=>element.dataset.underlineStyle??'single',
+      renderHTML:({style})=>style&&style!=='single'?{'data-underline-style':style}:{}},
+  }),
+  parseHTML:()=>[{tag:'u'}],
+  renderHTML:({mark,HTMLAttributes})=>['u',{
+    ...HTMLAttributes,
+    ...(mark.attrs.style&&mark.attrs.style!=='single'?{'data-underline-style':mark.attrs.style}:{}),
+  },0],
 });
 const Superscript = Mark.create({
   name:'superscript',parseHTML:()=>[{tag:'sup'}],renderHTML:()=>['sup',0],
@@ -117,6 +138,18 @@ const Boxed = Mark.create({
   name:'boxed',parseHTML:()=>[{tag:'span[data-boxed]'}],
   addAttributes:()=>({boxId:{default:null,parseHTML:element=>element.dataset.boxId??null}}),
   renderHTML:({mark})=>['span',{'data-boxed':'','data-box-id':mark.attrs.boxId,style:'border:1px solid currentColor;padding:0 .2em'},0],
+});
+const Circled = Mark.create({
+  name:'circled',parseHTML:()=>[{tag:'span[data-circled]'}],
+  renderHTML:()=>['span',{'data-circled':'',style:'display:inline-flex;align-items:center;justify-content:center;min-width:1.35em;height:1.35em;border:1px solid currentColor;border-radius:50%;line-height:1;padding:0 .12em'},0],
+});
+const PageBreak = Node.create({
+  name:'pageBreak',
+  group:'block',
+  atom:true,
+  selectable:true,
+  parseHTML:()=>[{tag:'div[data-page-break]'}],
+  renderHTML:()=>['div',{'data-page-break':'','class':'page-break'}],
 });
 function withoutModShortcuts(extension) {
   return extension.extend({
@@ -619,7 +652,7 @@ paper.before(documentPage);documentPage.append(paper);
 paper.replaceChildren();
 editor=new Editor({
   element:paper,
-  extensions:[ProjectRegion,PageLayoutHistory,ConfigurableStarterKit.configure({heading:{levels:[1,2,3]},codeBlock:false}),LanguageCodeBlock,MultiSelection,PaperBehavior,TextStyle,TextCommand,Underline,Superscript,Subscript,SmallCaps,Boxed,Table.configure({resizable:true}),TableRow,TableCell,TableHeader,Raw,DocumentImage,TheoremBlock,DescriptionList,DescriptionItem,MathNode,MathBlock,Ref,Cite,Footnote,Label,TableOfContents,Shortcuts],
+  extensions:[ProjectRegion,PageLayoutHistory,ConfigurableStarterKit.configure({heading:{levels:[1,2,3]},codeBlock:false}),LanguageCodeBlock,MultiSelection,PaperBehavior,TextStyle,TextCommand,Underline,Superscript,Subscript,SmallCaps,Boxed,Circled,PageBreak,MultiColumn,Table.configure({resizable:true}),TableRow,TableCell,TableHeader,Raw,DocumentImage,TheoremBlock,DescriptionList,DescriptionItem,MathNode,MathBlock,Ref,Cite,Footnote,Label,TableOfContents,Shortcuts],
   content:'<p></p>',
 });
 function installMarginSelection(editor,page,paper) {
@@ -677,9 +710,14 @@ function syncTableAttributes() {
     if (node.attrs.booktabs) table.dataset.booktabs = 'true';
     else delete table.dataset.booktabs;
     table.dataset.borderMode=node.attrs.borderMode??'';
+    if(node.attrs.columnLayout)table.dataset.columnLayout=node.attrs.columnLayout;
+    else delete table.dataset.columnLayout;
+    if(node.attrs.columnRules)table.dataset.columnRules='true';
+    else delete table.dataset.columnRules;
     if(node.attrs.align)table.dataset.tableAlign=node.attrs.align;
     else delete table.dataset.tableAlign;
-    table.style.setProperty('--table-rule-width',node.attrs.borderWidth??'1px');
+    table.style.setProperty('--table-rule-width',node.attrs.borderWidth??'0.4pt');
+    table.style.setProperty('--arrayrulewidth',node.attrs.borderWidth??'0.4pt');
   });
 }
 editor.on('update',()=>{refreshReferences(paper);syncTableAttributes();});
@@ -708,7 +746,8 @@ editor.on('transaction',()=>{
     button.setAttribute('aria-pressed',String(editor.isActive(mark)));
   }
 });
-installFormatControls(editor, tools);
+let editingMath = null;
+installFormatControls(editor, tools, {isUnavailable:()=>Boolean(activeMath())});
 const headingMenu = document.createElement('select');
 headingMenu.setAttribute('aria-label', t('段落样式','Paragraph style'));
 const textStyleOption = new Option(t('正文','Text'), '0');
@@ -725,7 +764,6 @@ tools.append(headingMenu);
 button('itemize',()=>editor.chain().focus().toggleBulletList().run());
 button('enumerate',()=>editor.chain().focus().toggleOrderedList().run());
 button('▦',()=>insertDefaultTable());
-let editingMath = null;
 document.addEventListener('focusin', event => {
   if (event.target.closest?.('.delimiter-input-embedded')) return;
   const field=event.composedPath().find(element=>element?.tagName==='MATH-FIELD');
@@ -994,11 +1032,73 @@ editor.on('update', () => {
 let documentParts=parseDocument(DEFAULT_DOCUMENT_SOURCE);
 let pageSetup=readPageSetup(documentParts.start);
 let typesetPagination;
-let pagePaper,pageOrientation,pageMarginPreset,pageMarginTop,pageMarginRight,pageMarginBottom,pageMarginLeft;
+let headerFooterPanel;
+let imagePanel;
+let imageSelection = null;
+let pagePaper,pageOrientation,pageMarginPreset,pageMarginTop,pageMarginRight,pageMarginBottom,pageMarginLeft,layoutColumns,layoutLocalColumns;
+function applyFurnitureState(state){
+  const before=documentParts.start;
+  const after=writePageFurniture(before,state);
+  if(after===before)return;
+  if(!sourceView.hidden){
+    const current=sourceView.value;
+    const preamble=parseDocument(current,{fragment:true})?.start??'';
+    sourceView.applyChanges([{from:0,to:preamble.length,insert:after}]);
+    sourceView.flush();
+  }
+  documentParts.start=after;
+  if(importedSource?.startsWith(before))importedSource=after+importedSource.slice(before.length);
+  if(JSON.stringify(editor.state.doc.attrs.pageFurniture)!==JSON.stringify(state)){
+    editor.view.dispatch(closeHistory(editor.state.tr).setDocAttribute('pageFurniture',state));
+  }
+  if(projection)projection=sourceProjection(importedSource??source(),editor.getJSON(),{fragment:projectFileKind==='tex'});
+  pageSetup=readPageSetup(documentParts.start);
+  applyPageSetup();
+  projectExplorer?.changed();
+}
+function updateImageSpacing(spacing){
+  const before=documentParts.start;
+  const after=writeImageSpacing(before,spacing);
+  if(after===before)return;
+  if(!sourceView.hidden){
+    const current=sourceView.value;
+    const preamble=parseDocument(current,{fragment:true})?.start??'';
+    sourceView.applyChanges([{from:0,to:preamble.length,insert:after}]);
+    sourceView.flush();
+  }
+  documentParts.start=after;
+  if(importedSource?.startsWith(before))importedSource=after+importedSource.slice(before.length);
+  applyPageSetup();
+  projectExplorer?.changed();
+}
+function updateGlobalColumns(count){
+  const before=documentParts.start;
+  const after=writeGlobalColumns(before,count);
+  if(after===before)return;
+  if(!sourceView.hidden){
+    const current=sourceView.value;
+    const preamble=parseDocument(current,{fragment:true})?.start??'';
+    sourceView.applyChanges([{from:0,to:preamble.length,insert:after}]);
+    sourceView.flush();
+  }
+  documentParts.start=after;
+  if(importedSource?.startsWith(before))importedSource=after+importedSource.slice(before.length);
+  applyPageSetup();
+}
 function applyPageSetup(){
   const layoutPreamble=projectFileKind==='tex'?projectLayoutPreamble(projectExplorer?.model,documentParts.start):documentParts.start;
   if(layoutPreamble!==documentParts.start)pageSetup=readPageSetup(layoutPreamble);
   documentPage.dataset.indentFirst=String(new RegExp("\\\\usepackage(?:\\[[^\\]]*\\])?\\{[^}]*\\bindentfirst\\b[^}]*\\}").test(layoutPreamble));
+  const imageSpacing=readImageSpacing(layoutPreamble);
+  const spacingCss=value=>String(value??'').match(/-?\d+(?:\.\d+)?(?:pt|mm|cm|in)/)?.[0]??'0pt';
+  documentPage.style.setProperty('--image-textfloatsep',spacingCss(imageSpacing.textfloatsep));
+  documentPage.style.setProperty('--image-intextsep',spacingCss(imageSpacing.intextsep));
+  documentPage.style.setProperty('--image-floatsep',spacingCss(imageSpacing.floatsep));
+  imagePanel?.setSpacing?.(imageSpacing);
+  const globalColumns=readGlobalColumns(layoutPreamble);
+  documentPage.dataset.globalColumns=String(globalColumns);
+  documentPage.dataset.captionLanguage=/\\usepackage(?:\[[^\]]*\])?\{ctex\}/.test(layoutPreamble)?'zh':'en';
+  if(layoutColumns)layoutColumns.value=String(globalColumns);
   const metrics=pageMetrics(pageSetup);
   documentPage.style.setProperty('--page-width',metrics.width);
   documentPage.style.setProperty('--page-height',metrics.height);
@@ -1007,6 +1107,8 @@ function applyPageSetup(){
   documentPage.style.setProperty('--page-margin-bottom',metrics.margins.bottom);
   documentPage.style.setProperty('--page-margin-left',metrics.margins.left);
   typesetPagination?.update(layoutPreamble);
+  typesetPagination?.setMaketitle(/\\maketitle\b/.test((documentParts.blocks??[]).join('\n')));
+  if(headerFooterPanel && !headerFooterPanel.active)headerFooterPanel.refresh();
   if(pagePaper){
     pagePaper.value=pageSetup.paper;
     pageOrientation.value=pageSetup.orientation;
@@ -1139,7 +1241,7 @@ function load(text, markSaved = true) {
   const content=parsed.blocks.flatMap((block,index)=>importBlocks(index===0 && readMeta('title')
     ? block.replace(/^\s*\\maketitle\b[ \t]*(?:\r?\n|$)/,'') : block));
   for (const block of content) identifyImportedBoxes(block);
-  editor.chain().setMeta('addToHistory', false).setContent({type:'doc',attrs:{layoutPreamble:parsed.start},content:content.length?content:[{type:'paragraph'}]}).run();
+  editor.chain().setMeta('addToHistory', false).setContent({type:'doc',attrs:{layoutPreamble:parsed.start,pageFurniture:readPageFurniture(parsed.start)},content:content.length?content:[{type:'paragraph'}]}).run();
   refreshReferences(paper);syncTableAttributes();
   importedSource=text;importedSnapshot=JSON.stringify(editor.getJSON());
   if(markSaved) savedSource=text;
@@ -1156,6 +1258,7 @@ function setSourceMode(active) {
   if (!active && projectFileKind==='bib') {sourceView.error(t('BibTeX 文件只能使用源码模式','BibTeX files use Source mode'));return;}
   if (editor.view.composing || sourceView.composing) { sourceView.error(t("请先完成当前输入。","Finish the current composition before switching modes.")); return; }
   if (active === !sourceView.hidden) return;
+  if(active && headerFooterMode)setHeaderFooterMode(false);
   if(projectExplorer?.active)projectWorkspace.select(active?'source':'body',projectFileKind);
   if (active) {
     if(projectDocument.composition){
@@ -1178,6 +1281,8 @@ function setSourceMode(active) {
       sourceView.close();
       showProjectComposition();
       editor.commands.focus();
+      requestAnimationFrame(() => requestAnimationFrame(() => typesetPagination?.refresh()));
+      setTimeout(() => typesetPagination?.refresh(),120);
     } catch (error) {
       sourceView.error(error.message);
       return;
@@ -1185,6 +1290,7 @@ function setSourceMode(active) {
   }
   updateSourceButton();
   updateEnvironment();
+  syncImageTab?.();
 }
 function locateMissingCitation(missing) {
   setSourceMode(true);
@@ -1839,8 +1945,44 @@ function editMathAtSelection() {
   field.executeCommand('moveToMathfieldEnd');
   return true;
 }
+function selectedParagraphPositions() {
+  const { selection } = editor.state;
+  const positions = [];
+  if (selection.empty) {
+    for (let depth = selection.$from.depth; depth > 0; depth--) {
+      if (selection.$from.node(depth).type.name === 'paragraph') {
+        positions.push(selection.$from.before(depth));
+        break;
+      }
+    }
+  } else {
+    editor.state.doc.nodesBetween(selection.from,selection.to,(node,position) => {
+      if (node.type.name !== 'paragraph') return true;
+      positions.push(position);
+      return false;
+    });
+  }
+  return [...new Set(positions)];
+}
+function updateSelectedParagraphs(attributes) {
+  const positions = selectedParagraphPositions();
+  if (!positions.length) return false;
+  const transaction = editor.state.tr;
+  for (const position of positions) {
+    const node = transaction.doc.nodeAt(position);
+    if (node?.type.name === 'paragraph') {
+      transaction.setNodeMarkup(position,undefined,{...node.attrs,...attributes});
+    }
+  }
+  if (!transaction.docChanged) return false;
+  editor.view.dispatch(transaction);
+  editor.view.focus();
+  return true;
+}
 function setParagraphAlignment(align) {
   const { selection }=editor.state;
+  if (align==='justify' && (editor.isActive('table') ||
+      (selection instanceof NodeSelection && ['table','documentImage'].includes(selection.node.type.name)))) return false;
   if (selection instanceof NodeSelection && selection.node.type.name==='table') {
     editor.view.dispatch(editor.state.tr.setNodeMarkup(selection.from,undefined,{
       ...selection.node.attrs,align,
@@ -1859,7 +2001,71 @@ function setParagraphAlignment(align) {
     return true;
   }
   if (!editor.isActive('paragraph')) return false;
-  return editor.chain().focus().updateAttributes('paragraph',{align}).run();
+  return updateSelectedParagraphs({align});
+}
+function indentSelectedParagraph(direction) {
+  if (editor.isActive('listItem')) {
+    return direction > 0
+      ? indentListItem(editor)
+      : editor.chain().focus().liftListItem('listItem').run();
+  }
+  return setParagraphIndent(editor,direction > 0);
+}
+function insertMultiColumn(count=2) {  const {from,to}=editor.state.selection;
+  const doc=editor.state.doc;
+  let start,end;
+  try {
+    start=doc.resolve(from).before(1);
+    end=doc.resolve(to).after(1);
+  } catch {
+    return false;
+  }
+  if(end<=start)return false;
+  const content=doc.slice(start,end).content;
+  const node=content.size
+    ? editor.schema.nodes.multiColumn.create({count},content)
+    : editor.schema.nodes.multiColumn.create({count},[editor.schema.nodes.paragraph.create()]);
+  return editor.chain().focus().insertContentAt({from:start,to:end},node).run();
+}
+function updateSelectedImageAttrs(patch){
+  if(imageSelection===null)return false;
+  const current=editor.state.doc.nodeAt(imageSelection);
+  if(current?.type.name!=='documentImage')return false;
+  const clean=Object.fromEntries(Object.entries(patch).filter(([,value])=>value!==undefined));
+  editor.view.dispatch(editor.state.tr.setNodeMarkup(imageSelection,undefined,{...current.attrs,...clean}));
+  return true;
+}
+function sortParagraphs(mode) {
+  const { from,to }=editor.state.selection;
+  const items=[];
+  editor.state.doc.forEach((node,offset) => {
+    const end=offset+node.nodeSize;
+    if (end<=from || offset>=to) return;
+    items.push({node,offset});
+  });
+  if (items.length<2 || items.some(item=>item.node.type.name!=='paragraph')) return false;
+  let collator;
+  try {
+    collator = mode==='alphabet' ? new Intl.Collator(undefined,{sensitivity:'base'})
+      : mode==='stroke' ? new Intl.Collator('zh-Hans-u-co-stroke',{usage:'sort'})
+        : new Intl.Collator('zh-Hans',{usage:'sort'});
+  } catch {
+    collator = new Intl.Collator('zh-Hans',{usage:'sort'});
+  }
+  const sorted=[...items].sort((left,right) => {
+    if (mode==='alphabet') {
+      const leftLatin=/^[\x00-\x7F]/.test(left.node.textContent) ? 0 : 1;
+      const rightLatin=/^[\x00-\x7F]/.test(right.node.textContent) ? 0 : 1;
+      if (leftLatin!==rightLatin) return leftLatin-rightLatin;
+    }
+    return collator.compare(left.node.textContent,right.node.textContent);
+  });
+  if (sorted.every((item,index) => item===items[index])) return false;
+  const first=items[0].offset;
+  const last=items.at(-1).offset+items.at(-1).node.nodeSize;
+  editor.view.dispatch(editor.state.tr.replaceWith(first,last,sorted.map(item=>item.node)).scrollIntoView());
+  editor.view.focus();
+  return true;
 }
 function zoomByKeyboard(amount, {field}) {
   if (field) return false;
@@ -2109,7 +2315,8 @@ paper.addEventListener('lineae-math-position',updateEnvironment);
 updateEnvironment();
 editor.on('update',()=>{count.textContent=editor.getText().length+' '+t('字符','characters');});
 const tableGroup=document.createElement('div');tableGroup.className='tools';
-const layoutGroup=document.createElement('div');layoutGroup.className='tools';layoutGroup.id='layout-panel';
+const layoutGroup=document.createElement('div');layoutGroup.className='tools home-ribbon layout-ribbon';layoutGroup.id='layout-panel';
+let syncLayoutParagraph;
 const formatGroup=document.createElement('div');formatGroup.className='tools';
 const referenceGroup=document.createElement('div');referenceGroup.className='tools';
 const mathGroup=document.createElement('div');mathGroup.className='tools';
@@ -2134,16 +2341,98 @@ for(const value of ['normal','narrow','wide','custom'])pageMarginPreset.append(n
 pageMarginPreset.setAttribute('aria-label',t('页边距预设','Margin preset'));
 function marginInput(label){
   const input=document.createElement('input');
-  input.type='text';input.style.width='64px';input.setAttribute('aria-label',label);
+  input.type='text';input.style.width='64px';input.setAttribute('aria-label',label);input.placeholder=label;
   return input;
 }
 pageMarginTop=marginInput(t('上边距','Top margin'));
 pageMarginRight=marginInput(t('右边距','Right margin'));
 pageMarginBottom=marginInput(t('下边距','Bottom margin'));
 pageMarginLeft=marginInput(t('左边距','Left margin'));
-layoutGroup.append(pagePaper,pageOrientation,pageMarginPreset,pageMarginTop,pageMarginRight,pageMarginBottom,pageMarginLeft);
+layoutColumns=document.createElement('select');
+layoutColumns.setAttribute('aria-label',t('全局分栏','Global columns'));
+layoutColumns.append(new Option(t('1 栏','1 column'),'1'),new Option(t('2 栏（twocolumn）','2 columns (twocolumn)'),'2'));
+layoutLocalColumns=document.createElement('select');
+layoutLocalColumns.setAttribute('aria-label',t('局部分栏','Local columns'));
+for(const value of ['2','3','4'])layoutLocalColumns.append(new Option(t(value+' 栏',value+' columns'),value));
+const insertColumnsButton=document.createElement('button');
+insertColumnsButton.type='button';
+insertColumnsButton.textContent=t('应用到选区','Apply to selection');
+const layoutPageSetup=document.createElement('section');
+layoutPageSetup.className='layout-group';
+layoutPageSetup.id='layout-page-setup';
+const layoutPageSetupTitle=document.createElement('div');
+layoutPageSetupTitle.className='layout-group-title';
+layoutPageSetupTitle.dataset.zh='页面设置';
+layoutPageSetupTitle.dataset.en='Page Setup';
+layoutPageSetupTitle.textContent=t('页面设置','Page Setup');
+const layoutPageSetupControls=document.createElement('div');
+layoutPageSetupControls.className='layout-group-controls';
+const paperLabel=document.createElement('label');
+paperLabel.className='layout-field';
+paperLabel.append(t('纸张大小','Paper size'),pagePaper);
+const orientationLabel=document.createElement('label');
+orientationLabel.className='layout-field';
+orientationLabel.append(t('纸张方向','Orientation'),pageOrientation);
+const marginLabel=document.createElement('label');
+marginLabel.className='layout-field';
+marginLabel.append(t('页边距','Margins'),pageMarginPreset);
+layoutPageSetupControls.append(paperLabel,orientationLabel,marginLabel);
+for(const [sideText,input] of [[t('上边距','Top'),pageMarginTop],[t('右边距','Right'),pageMarginRight],[t('下边距','Bottom'),pageMarginBottom],[t('左边距','Left'),pageMarginLeft]]){
+  const field=document.createElement('label');
+  field.className='layout-field layout-margin-field';
+  const caption=document.createElement('span');
+  caption.textContent=sideText;
+  field.append(caption,input);
+  layoutPageSetupControls.append(field);
+}
+const columnsField=document.createElement('label');
+columnsField.className='layout-field';
+const columnsCaption=document.createElement('span');
+columnsCaption.textContent=t('全局分栏','Global columns');
+columnsField.append(columnsCaption,layoutColumns);
+const localColumnsField=document.createElement('label');
+localColumnsField.className='layout-field';
+const localColumnsCaption=document.createElement('span');
+localColumnsCaption.textContent=t('局部分栏','Local columns');
+localColumnsField.append(localColumnsCaption,layoutLocalColumns,insertColumnsButton);
+layoutPageSetupControls.append(columnsField,localColumnsField);
+layoutPageSetup.append(layoutPageSetupTitle,layoutPageSetupControls);
+const layoutParagraph=document.createElement('section');
+layoutParagraph.className='layout-group';
+layoutParagraph.id='layout-paragraph';
+const layoutParagraphTitle=document.createElement('div');
+layoutParagraphTitle.className='layout-group-title';
+layoutParagraphTitle.dataset.zh='段落';
+layoutParagraphTitle.dataset.en='Paragraph';
+layoutParagraphTitle.textContent=t('段落','Paragraph');
+const layoutParagraphControls=document.createElement('div');
+layoutParagraphControls.className='layout-group-controls';
+const layoutIndentDecrease=groupButton(layoutParagraphControls,['减少缩进','Decrease indent'],()=>indentSelectedParagraph(-1));
+const layoutIndentIncrease=groupButton(layoutParagraphControls,['增加缩进','Increase indent'],()=>indentSelectedParagraph(1));
+const layoutBefore=document.createElement('select');
+layoutBefore.setAttribute('aria-label',t('段前间距','Space before'));
+layoutBefore.append(new Option(t('段前 0pt','Before 0pt'),'0pt'),new Option(t('段前 6pt','Before 6pt'),'6pt'),new Option(t('段前 12pt','Before 12pt'),'12pt'));
+const layoutAfter=document.createElement('select');
+layoutAfter.setAttribute('aria-label',t('段后间距','Space after'));
+layoutAfter.append(new Option(t('段后 0pt','After 0pt'),'0pt'),new Option(t('段后 6pt','After 6pt'),'6pt'),new Option(t('段后 12pt','After 12pt'),'12pt'));
+layoutBefore.addEventListener('change',()=>updateSelectedParagraphs({spaceBefore:layoutBefore.value==='0pt'?null:layoutBefore.value}));
+layoutAfter.addEventListener('change',()=>updateSelectedParagraphs({spaceAfter:layoutAfter.value==='0pt'?null:layoutAfter.value}));
+layoutParagraphControls.append(layoutBefore,layoutAfter);
+layoutParagraph.append(layoutParagraphTitle,layoutParagraphControls);
+buildRibbonGroups(layoutGroup,[
+  {id:'layout-page-setup',zh:'页面设置',en:'Page Setup',iconName:'layout',width:620,body:layoutPageSetupControls},
+  {id:'layout-paragraph',zh:'段落',en:'Paragraph',iconName:'paragraph',width:280,body:layoutParagraphControls},
+],['layout-paragraph','layout-page-setup']);
+syncLayoutParagraph=()=>{
+  if(!layoutBefore||!layoutAfter)return;
+  const attrs=editor.getAttributes('paragraph');
+  layoutBefore.value=attrs.spaceBefore??'0pt';
+  layoutAfter.value=attrs.spaceAfter??'0pt';
+};
 pagePaper.addEventListener('change',()=>updatePageSetup({paper:pagePaper.value}));
 pageOrientation.addEventListener('change',()=>updatePageSetup({orientation:pageOrientation.value}));
+layoutColumns.addEventListener('change',()=>updateGlobalColumns(layoutColumns.value));
+insertColumnsButton.addEventListener('click',()=>insertMultiColumn(Number(layoutLocalColumns.value)||2));
 pageMarginPreset.addEventListener('change',()=>{
   if(MARGIN_PRESETS[pageMarginPreset.value])updatePageSetup({margin:MARGIN_PRESETS[pageMarginPreset.value]});
 });
@@ -2152,6 +2441,8 @@ for(const [side,input] of [['top',pageMarginTop],['right',pageMarginRight],['bot
   if(/^\d+(?:\.\d+)?(?:mm|cm|in|pt)$/.test(value))updatePageSetup({margins:{[side]:value}});
   else input.value=pageSetup.margins[side];
 });
+editor.on('transaction',()=>syncLayoutParagraph?.());
+editor.on('selectionUpdate',()=>syncLayoutParagraph?.());
 applyPageSetup();
 groupButton(tableGroup,'▦',()=>insertDefaultTable());
 continueTablesButton=groupButton(tableGroup,['续表','Continue'],()=>{
@@ -2410,10 +2701,131 @@ for(const control of [...tools.children]) {
   (control.hasAttribute('data-home') || control.tagName==='SELECT' || ['↶','↷','B','I','U','H'].includes(control.textContent)?home:insert).append(control);
 }
 const groups={files,home,insert,layout:layoutGroup,table:tableGroup,format:formatGroup,reference:referenceGroup,math:mathGroup};
-const captions={files:['文件','File'],home:['主页','Home'],insert:['插入','Insert'],layout:['布局','Layout'],table:['表格','Table'],format:['格式','Format'],reference:['引用','Reference'],math:['数学','Math']};
+headerFooterPanel=installHeaderFooterPanel({
+  readState:()=>readPageFurniture(documentParts.start),
+  onChange:applyFurnitureState,
+});
+groups.headerFooter=headerFooterPanel.panel;
+headerFooterPanel.refresh();
+imagePanel=installImagePanel({
+  getSpacing:()=>readImageSpacing(documentParts.start),
+  onSpacing:updateImageSpacing,
+  onReplace:()=>{if(imageSelection!==null)replaceLocalImage(editor,imageSelection);},
+  onUpdate:patch=>updateSelectedImageAttrs(patch),
+});
+groups.image=imagePanel.panel;
+imagePanel.setSpacing(readImageSpacing(documentParts.start));
+const captions={files:['文件','File'],home:['主页','Home'],insert:['插入','Insert'],layout:['布局','Layout'],table:['表格','Table'],format:['格式','Format'],reference:['引用','Reference'],math:['数学','Math'],headerFooter:['页眉页脚','Header & Footer'],image:['图片','Image']};
 const language=document.querySelector('#language');
-const findButton=groupButton(home,['查找','Find'],documentFind.show);
-findButton.dataset.shortcut='editor.find';
+const fontFamilyControl=home.querySelector('[data-format-attribute="fontFamily"]');
+const fontSizeControl=home.querySelector('[data-format-attribute="fontSize"]');
+const colorControl=home.querySelector('.color-control');
+const clipboard=createClipboard(editor,{getField:activeMath});
+let formatPainter;
+let clipboardStatusTimer;
+function reportClipboardError(error){
+  const status=document.querySelector('#status');
+  status.hidden=false;
+  status.textContent=error?.message??t('剪贴板操作失败','Clipboard operation failed');
+  clearTimeout(clipboardStatusTimer);
+  clipboardStatusTimer=setTimeout(()=>{status.hidden=true;},4000);
+}
+const textOnly = callback => (...args) => activeMath() ? false : callback(...args);
+function changeFontSize(direction) {
+  if (activeMath()) return false;
+  const sizes=[8,9,10,11,12,14,16,18,20,24,28,32,36,48,60,72];
+  const current=Number.parseFloat(selectionTypography(editor).fontSize)||10;
+  const next=direction>0
+    ? sizes.find(size => size>current+0.01)
+    : [...sizes].reverse().find(size => size<current-0.01);
+  if (!next) return false;
+  return editor.chain().focus().setMark('textStyle',{fontSize:next+'pt'}).run();
+}
+const homeRibbon=buildHomeRibbon(home,{actions:{
+  copy:()=>clipboard.copy().catch(reportClipboardError),
+  cut:()=>clipboard.cut().catch(reportClipboardError),
+  paste:mode=>clipboard.paste(mode).catch(reportClipboardError),
+  formatPainter:event=>formatPainter?.activate(event),
+  undo:undoDocument,
+  redo:redoDocument,
+  bold:textOnly(()=>editor.chain().focus().toggleBold().run()),
+  italic:textOnly(()=>editor.chain().focus().toggleItalic().run()),
+  underline:textOnly(()=>editor.chain().focus().toggleMark('underline').run()),
+  underlineStyle:textOnly(style=>editor.chain().focus().setMark('underline',{style}).run()),
+  strike:textOnly(()=>editor.chain().focus().toggleStrike().run()),
+  subscript:textOnly(()=>editor.chain().focus().toggleMark('subscript').run()),
+  superscript:textOnly(()=>editor.chain().focus().toggleMark('superscript').run()),
+  clearFormatting:textOnly(()=>editor.chain().focus().unsetAllMarks().run()),
+  characterBorder:textOnly(()=>spaceOverlay.toggleBox()),
+  fontGrow:textOnly(()=>changeFontSize(1)),
+  fontShrink:textOnly(()=>changeFontSize(-1)),
+  highlight:textOnly(color=>editor.chain().focus().setMark('textStyle',{backgroundColor:color??null}).run()),
+  circled:textOnly(()=>editor.chain().focus().toggleMark('circled').run()),
+  bullets:()=>editor.chain().focus().toggleBulletList().run(),
+  numbering:()=>editor.chain().focus().toggleOrderedList().run(),
+  bulletStyle:marker=>setListStyle(marker),
+  numberStyle:style=>setListStyle(style),
+  indentDecrease:()=>indentSelectedParagraph(-1),
+  indentIncrease:()=>indentSelectedParagraph(1),
+  alignLeft:()=>setParagraphAlignment('left'),
+  alignCenter:()=>setParagraphAlignment('center'),
+  alignRight:()=>setParagraphAlignment('right'),
+  alignJustify:()=>setParagraphAlignment('justify'),
+  lineSpacing:value=>updateSelectedParagraphs({lineSpacing:value&&value!==1?value:null}),
+  paragraphSpacing:(before,after)=>updateSelectedParagraphs({spaceBefore:before??null,spaceAfter:after??null}),
+  paragraphShading:color=>updateSelectedParagraphs({shading:color??null}),
+  paragraphBorder:()=>{
+    const position=selectedParagraphPositions()[0];
+    const border=Boolean(position!==undefined && editor.state.doc.nodeAt(position)?.attrs.border);
+    return updateSelectedParagraphs({border:!border});
+  },
+  sort:mode=>sortParagraphs(mode),
+  formattingMarks:()=>{
+    config.updateInterface({formattingMarks:!config.value.interface.formattingMarks});
+    updateEditorDisplayPreferences();
+    syncHomeToolbar();
+  },
+  style:level=>{
+    headingMenu.value=String(level);
+    headingMenu.dispatchEvent(new Event('change',{bubbles:true}));
+  },
+  find:documentFind.show,
+}});
+formatPainter=installFormatPainter(editor,{button:homeRibbon.refs.formatPainter,getField:activeMath});
+if (fontFamilyControl) homeRibbon.slots.font.prepend(fontFamilyControl);
+if (fontSizeControl) homeRibbon.slots.font.insertBefore(fontSizeControl,fontFamilyControl?.nextSibling??homeRibbon.slots.font.firstChild);
+if (colorControl) homeRibbon.slots.color.append(colorControl);
+homeRibbon.slots.styleSelect.append(headingMenu);
+homeRibbon.refs.find.dataset.shortcut='editor.find';
+function syncHomeToolbar() {
+  if (!sourceView.hidden) return;
+  const pressed=(control,value)=>control?.setAttribute('aria-pressed',String(Boolean(value)));
+  pressed(homeRibbon.refs.bold,editor.isActive('bold'));
+  pressed(homeRibbon.refs.italic,editor.isActive('italic'));
+  pressed(homeRibbon.refs.underline,editor.isActive('underline'));
+  pressed(homeRibbon.refs.strike,editor.isActive('strike'));
+  pressed(homeRibbon.refs.subscript,editor.isActive('subscript'));
+  pressed(homeRibbon.refs.superscript,editor.isActive('superscript'));
+  pressed(homeRibbon.refs.highlight,Boolean(editor.getAttributes('textStyle').backgroundColor));
+  pressed(homeRibbon.refs.circled,editor.isActive('circled'));
+  const textBlocked=Boolean(activeMath());
+  for (const name of ['bold','italic','underline','strike','subscript','superscript','clearFormatting','characterBorder','highlight','circled','fontGrow','fontShrink']) {
+    if (homeRibbon.refs[name]) homeRibbon.refs[name].disabled=textBlocked;
+  }
+  pressed(homeRibbon.refs.bullets,editor.isActive('bulletList'));
+  pressed(homeRibbon.refs.numbering,editor.isActive('orderedList'));
+  pressed(homeRibbon.refs.formattingMarks,config.value.interface.formattingMarks);
+  const align=editor.getAttributes('paragraph').align??'left';
+  for (const key of ['left','center','right','justify']) pressed(homeRibbon.refs.align[key],align===key);
+  pressed(homeRibbon.refs.shading,Boolean(editor.getAttributes('paragraph').shading));
+  pressed(homeRibbon.refs.border,Boolean(editor.getAttributes('paragraph').border));
+  const level=editor.getAttributes('heading').level??0;
+  for (const [value,control] of homeRibbon.refs.styles) pressed(control,value===level);
+}
+editor.on('transaction',syncHomeToolbar);
+document.addEventListener('focusin',()=>{ if(sourceView.hidden) syncHomeToolbar(); },true);
+document.addEventListener('focusout',()=>{ if(sourceView.hidden) setTimeout(syncHomeToolbar,0); },true);
+syncHomeToolbar();
 const importConfig=groupButton(files,['导入 YAML','Import YAML'],()=>{
   const picker=document.createElement('input');
   picker.type='file';
@@ -2489,6 +2901,8 @@ function updateLanguage() {
   filter.placeholder=t('LaTeX 命令','LaTeX command');
   filter.setAttribute('aria-label',filter.placeholder);
   headingMenu.setAttribute('aria-label',t('段落样式','Paragraph style'));
+  const styleLabels=[['正文','Normal'],['标题 1','Heading 1'],['标题 2','Heading 2'],['标题 3','Heading 3']];
+  [...headingMenu.options].forEach((option,index)=>{if(styleLabels[index])option.text=t(...styleLabels[index]);});
   pagePaper.setAttribute('aria-label',t('纸张','Paper'));
   pageOrientation.replaceChildren(new Option(t('纵向','Portrait'),'portrait'),new Option(t('横向','Landscape'),'landscape'));
   pageOrientation.value=pageSetup.orientation;
@@ -2518,18 +2932,59 @@ function updateLanguage() {
   updateContinueTablesButton();
   renderMeta();
   updateEnvironment();
+  syncHomeToolbar();
+  homeRibbon.refreshLayout?.();
   count.textContent=editor.getText().length+' '+t('字符','characters');
 }
+let headerFooterMode=false;
+function setHeaderFooterMode(active){
+  if(active===headerFooterMode)return;
+  if(active && !sourceView.hidden)setSourceMode(false);
+  headerFooterMode=active;
+  documentPage.classList.toggle('header-footer-mode',active);
+  editor.setEditable(!active);
+  if(active){
+    headerFooterPanel.enter();
+  }else{
+    headerFooterPanel.leave();
+    if(sourceView.hidden)editor.chain().focus().run();
+  }
+}
 function selectGroup(name) {
+  ribbon.dataset.ribbonPage=name;
   for(const [key,panel] of Object.entries(groups)) panel.hidden=key!==name;
   for(const tab of tabs.children)tab.setAttribute('aria-pressed',String(tab.dataset.group===name));
+  setHeaderFooterMode(name==='headerFooter');
+  groups[name]?.refreshLayout?.();
+  if(name==='home')homeRibbon.refreshLayout?.();
 }
 for(const name of Object.keys(groups)) {
   const tab=document.createElement('button');tab.type='button';tab.dataset.group=name;
   tab.addEventListener('mousedown',event=>event.preventDefault());
   tab.addEventListener('click',()=>{toolbarController.show();selectGroup(name);});tabs.append(tab);
 }
-ribbon.append(tabs,files,home,insert,layoutGroup,tableGroup,formatGroup,referenceGroup,mathGroup);header.append(ribbon);tools.remove();
+const imageTab=tabs.querySelector('[data-group=image]');
+if(imageTab)imageTab.hidden=true;
+function currentImageSelection(){
+  const selection=editor.state.selection;
+  return selection instanceof NodeSelection && selection.node.type.name==='documentImage'
+    ? {position:selection.from,node:selection.node} : null;
+}
+function syncImageTab(){
+  if(!imageTab)return;
+  const found=sourceView.hidden ? currentImageSelection() : null;
+  imageSelection=found?.position??null;
+  imageTab.hidden=!found;
+  if(found){
+    imagePanel.setValues(found.node.attrs);
+    if(ribbon.dataset.ribbonPage!=='image' && ribbon.dataset.ribbonPage!=='headerFooter')selectGroup('image');
+  }else if(ribbon.dataset.ribbonPage==='image'){
+    selectGroup('home');
+  }
+}
+editor.on('selectionUpdate',syncImageTab);
+editor.on('transaction',({transaction})=>{if(transaction.selectionSet)syncImageTab();});
+ribbon.append(tabs,files,home,insert,layoutGroup,tableGroup,formatGroup,referenceGroup,mathGroup,imagePanel.panel,headerFooterPanel.panel);header.append(ribbon);tools.remove();
 groupButton(insert,'figure',()=>insertLocalImage(editor));
 sourceToolbar = installSourceToolbar({ribbon,groups,source:sourceView,rich:paper,heading:headingMenu});
 const toolbarController=installFloatingToolbar({header,ribbon,sourceView,getAutoHide:()=>sourceView.hidden?config.value.interface.toolbarAutoHide:config.value.interface.sourceToolbarAutoHide});
@@ -2540,7 +2995,7 @@ document.addEventListener('lineae-open-outline',()=>projectExplorer.showOutline(
 document.addEventListener('lineae-open-includes',()=>projectExplorer.showIncludes());
 decorateToolbar(ribbon);
 const tooltips=installTooltips(document.body,{document,language:language.value});
-for(const control of ribbon.querySelectorAll('button'))control.dataset.rovingItem='';
+for(const control of ribbon.querySelectorAll('button')) if(!control.closest('.ribbon-menu')) control.dataset.rovingItem='';
 installRovingFocus(tabs,{initial:Object.keys(groups).indexOf('home'),onActivate:control=>control.click()});
 for(const [name,panel] of Object.entries(groups)) {
   if (name!=='files') installRovingFocus(panel,{onActivate:control=>control.click()});

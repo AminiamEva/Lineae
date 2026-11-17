@@ -1,7 +1,8 @@
 import {t} from '../ui/i18n.mjs';
 import {FONT_FAMILIES,selectionTypography} from './selection-typography.js';
 
-export function installFormatControls(editor, parent) {
+export function installFormatControls(editor, parent, {isUnavailable = () => false} = {}) {
+  const unavailable = () => Boolean(isUnavailable());
   const color = document.createElement('label');
   color.className = 'color-control';
   color.dataset.home = '';
@@ -14,7 +15,7 @@ export function installFormatControls(editor, parent) {
   picker.dataset.zhTitle = '文字颜色';
   picker.dataset.enTitle = 'Text color';
   picker.setAttribute('aria-label',t('文字颜色','Text color'));
-  picker.addEventListener('input',() => editor.chain().focus().setMark('textStyle',{color:picker.value}).run());
+  picker.addEventListener('input',() => { if (!unavailable()) editor.chain().focus().setMark('textStyle',{color:picker.value}).run(); });
   color.append(glyph,picker);
   parent.append(color);
 
@@ -35,7 +36,7 @@ export function installFormatControls(editor, parent) {
     [menu.dataset.tooltipZh,menu.dataset.tooltipEn] = definition.labels;
     menu.setAttribute('aria-label',t(...definition.labels));
     for (const value of definition.values) appendOption(menu,definition.attribute,value);
-    menu.addEventListener('change',() => editor.chain().focus().setMark('textStyle',{[definition.attribute]:menu.value}).run());
+    menu.addEventListener('change',() => { if (!unavailable()) editor.chain().focus().setMark('textStyle',{[definition.attribute]:menu.value}).run(); });
     menus.set(definition.attribute,menu);
     parent.append(menu);
   }
@@ -56,11 +57,27 @@ export function installFormatControls(editor, parent) {
     cancelAnimationFrame(frame);
     frame = requestAnimationFrame(synchronize);
   }
+  function refreshDisabled() {
+    const blocked = unavailable();
+    picker.disabled = blocked;
+    color.classList.toggle('is-unavailable',blocked);
+    for (const menu of menus.values()) menu.disabled = blocked;
+  }
+  refreshDisabled();
+  const onFocus = () => requestAnimationFrame(refreshDisabled);
+  document.addEventListener('focusin',onFocus,true);
+  document.addEventListener('focusout',onFocus,true);
   editor.on('transaction',() => { synchronize(); schedule(); });
   const observer = new MutationObserver(schedule);
   const page = editor.view.dom.closest('.document-page');
   if (page) observer.observe(page,{attributes:true,attributeFilter:['style']});
-  editor.on('destroy',() => { disposed = true; observer.disconnect(); cancelAnimationFrame(frame); });
+  editor.on('destroy',() => {
+    disposed = true;
+    observer.disconnect();
+    cancelAnimationFrame(frame);
+    document.removeEventListener('focusin',onFocus,true);
+    document.removeEventListener('focusout',onFocus,true);
+  });
   synchronize();
-  return {synchronize};
+  return {synchronize,refreshDisabled};
 }
