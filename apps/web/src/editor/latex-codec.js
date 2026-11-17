@@ -140,6 +140,7 @@ export function serialize(node) {
       if (border === 'outer' || border === 'grid' || node.attrs.rightRule) columns=columns+'|';
       if (border === 'grid') columns=columns.replace(/([pmb]\{[^{}]*\}|[lcr])(?!\|)/g,'$1|').replace(/\|\|/g,'|');
       if (node.attrs.leftRule && !columns.startsWith('|')) columns='|'+columns;
+      if (node.attrs.middleVerticalRule) columns=columns.replace(/([lcr])(?=[lcr])/g,'$1|');
       let body = '';
       const customRules = !border && (node.attrs.topRule || node.attrs.bottomRule || node.attrs.midRuleMode !== 'none');
       node.content.forEach((row, index) => {
@@ -161,6 +162,7 @@ export function serialize(node) {
         const points=Number.parseFloat(node.attrs.fontSize);
         tabular='{\\fontsize{'+node.attrs.fontSize+'}{'+(points*1.2).toFixed(1)+'pt}\\selectfont '+tabular+'}';
       }
+      if (node.attrs.tableScale && Number(node.attrs.tableScale) !== 1) tabular='\\scalebox{'+node.attrs.tableScale+'}{'+tabular+'}';
       if (/^\d+(?:\.\d+)?pt$/.test(node.attrs.borderWidth??''))
         tabular='{\\setlength{\\arrayrulewidth}{'+node.attrs.borderWidth+'}\n'+tabular+'\n}';
       const hasCaption = node.attrs.captionEnabled || node.attrs.caption!=null;

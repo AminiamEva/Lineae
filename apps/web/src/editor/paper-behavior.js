@@ -30,8 +30,10 @@ function tableCaptionWidget(caption) {
 }
 
 function tableLineControlsPlugin() {
-  let overlay=null,current=null,position=null;
-  function hide(){overlay?.remove();overlay=null;current=null;position=null;}
+  let overlay=null,current=null,position=null,hideTimer=0;
+  function hide(){clearTimeout(hideTimer);hideTimer=0;overlay?.remove();overlay=null;current=null;position=null;}
+  function scheduleHide(){clearTimeout(hideTimer);hideTimer=setTimeout(hide,260);}
+  function keepVisible(){clearTimeout(hideTimer);hideTimer=0;}
   function show(view,table){
     hide();
     let pos=view.posAtDOM(table,0);
@@ -77,10 +79,12 @@ function tableLineControlsPlugin() {
       element.append(button);
     }
     document.body.append(element);overlay=element;
+    element.addEventListener('mouseenter',keepVisible);
+    element.addEventListener('mouseleave',scheduleHide);
   }
   return new Plugin({props:{handleDOMEvents:{
-    mouseover(view,event){const table=event.target.closest?.('table');if(!table||table.closest('.ProseMirror')!==view.dom)return false;if(current===table)return false;show(view,table);return false;},
-    mouseout(view,event){if(!current)return false;if(current.contains(event.relatedTarget)||overlay?.contains(event.relatedTarget))return false;hide();return false;},
+    mouseover(view,event){const table=event.target.closest?.('table');if(!table||table.closest('.ProseMirror')!==view.dom)return false;if(current===table){keepVisible();return false;}show(view,table);return false;},
+    mouseout(view,event){if(!current)return false;if(current.contains(event.relatedTarget)||overlay?.contains(event.relatedTarget)){keepVisible();return false;}scheduleHide();return false;},
   }}});
 }
 
@@ -468,6 +472,11 @@ export const PaperBehavior = Extension.create({
           default: false,
           parseHTML: element => element.dataset.rightRule === 'true',
           renderHTML: attributes => attributes.rightRule ? { 'data-right-rule': 'true' } : {},
+        },
+        middleVerticalRule: {
+          default: false,
+          parseHTML: element => element.dataset.middleVerticalRule === 'true',
+          renderHTML: attributes => attributes.middleVerticalRule ? { 'data-middle-vertical-rule': 'true' } : {},
         },
         verticalFirstRow: {
           default: true,

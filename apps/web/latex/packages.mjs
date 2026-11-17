@@ -13,7 +13,7 @@ const dependencies = [
   { name: 'enumitem', pattern: /\\begin\{(?:itemize|enumerate)\}\[/ },
   { name: 'alphalph', pattern: /\\(?:alphalph|AlphAlph)\b/ },
   { name: 'zhnumber', pattern: /\\(?:chinese|zhnum|zhnumber)\b/ },
-  { name: 'graphicx', pattern: /\\includegraphics\b/ },
+  { name: 'graphicx', pattern: /\\(?:includegraphics|scalebox|resizebox)\b/ },
   { name: 'multicol', pattern: /\\begin\{multicols\}/ },
   { name: 'adjustbox', pattern: /\\adjustbox\b/ },
   { name: 'caption', pattern: /\\caption\*/ },

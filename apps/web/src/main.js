@@ -714,6 +714,8 @@ function syncTableAttributes() {
     else delete table.dataset.leftRule;
     if(node.attrs.rightRule)table.dataset.rightRule='true';
     else delete table.dataset.rightRule;
+    if(node.attrs.middleVerticalRule)table.dataset.middleVerticalRule='true';
+    else delete table.dataset.middleVerticalRule;
     table.dataset.verticalFirstRow=node.attrs.verticalFirstRow===false?'false':'true';
     if(node.attrs.topRule)table.dataset.topRule='true';
     else delete table.dataset.topRule;
@@ -2543,6 +2545,7 @@ tableCaptionSection.append(tableCaptionToggleField,tableCaptionField);
 const tableRuleSection=tableSection('样式');
 const tableLeftRule=document.createElement('input');tableLeftRule.type='checkbox';
 const tableRightRule=document.createElement('input');tableRightRule.type='checkbox';
+const tableMiddleVerticalRule=document.createElement('input');tableMiddleVerticalRule.type='checkbox';
 const tableVerticalFirstRow=document.createElement('input');tableVerticalFirstRow.type='checkbox';
 const tableTopRule=document.createElement('input');tableTopRule.type='checkbox';
 const tableBottomRule=document.createElement('input');tableBottomRule.type='checkbox';
@@ -2556,6 +2559,7 @@ const tableRuleGrid=document.createElement('div');tableRuleGrid.className='table
 tableRuleGrid.append(
   tableOption(t('左竖线','Left rule'),tableLeftRule),
   tableOption(t('右竖线','Right rule'),tableRightRule),
+  tableOption(t('中间竖线','Middle vertical rule'),tableMiddleVerticalRule),
   tableOption(t('竖线含首行','Rules in first row'),tableVerticalFirstRow),
   tableOption(t('上边线','Top rule'),tableTopRule),
   tableOption(t('下边线','Bottom rule'),tableBottomRule),
@@ -2576,19 +2580,20 @@ tableStretchGrid.append(
   tableOption(t('缩放','Scale'),tableScale),
 );
 tableStretchSection.append(tableStretchGrid);
-function updateTableAttributes(patch){
-  const lineKeys=['leftRule','rightRule','verticalFirstRow','topRule','bottomRule','midRuleMode','ruleStyle','ruleWidth'];
+function updateTableAttributes(patch,focus=true){
+  const lineKeys=['leftRule','rightRule','middleVerticalRule','verticalFirstRow','topRule','bottomRule','midRuleMode','ruleStyle','ruleWidth'];
   if(Object.keys(patch).some(key=>lineKeys.includes(key)))patch={...patch,borderMode:null,booktabs:false};
-  if(editor.isActive('table'))editor.chain().focus().updateAttributes('table',patch).run();
+  if(editor.isActive('table'))(focus?editor.chain().focus():editor.chain()).updateAttributes('table',patch).run();
 }
 function syncTableControls(){
   const attrs=editor.isActive('table')?editor.getAttributes('table'):null;
   const disabled=!attrs;
   tableCaptionEnabled.checked=Boolean(attrs?.captionEnabled??(attrs?.caption!=null));
   tableCaptionInput.disabled=disabled||!tableCaptionEnabled.checked;
-  tableCaptionInput.value=attrs?.caption??'';
+  if(document.activeElement!==tableCaptionInput)tableCaptionInput.value=attrs?.caption??'';
   tableLeftRule.checked=Boolean(attrs?.leftRule);
   tableRightRule.checked=Boolean(attrs?.rightRule);
+  tableMiddleVerticalRule.checked=Boolean(attrs?.middleVerticalRule);
   tableVerticalFirstRow.checked=attrs?.verticalFirstRow!==false;
   tableTopRule.checked=Boolean(attrs?.topRule);
   tableBottomRule.checked=Boolean(attrs?.bottomRule);
@@ -2600,8 +2605,8 @@ function syncTableControls(){
   tableScale.value=attrs?.tableScale??'1';
 }
 tableCaptionEnabled.addEventListener('change',()=>updateTableAttributes({captionEnabled:tableCaptionEnabled.checked,caption:tableCaptionEnabled.checked?(editor.getAttributes('table').caption??''):null,centered:true,placement:editor.getAttributes('table').placement??'htbp'}));
-tableCaptionInput.addEventListener('input',()=>{if(editor.isActive('table'))updateTableAttributes({caption:tableCaptionInput.value,captionEnabled:true,centered:true});});
-for(const [control,key] of [[tableLeftRule,'leftRule'],[tableRightRule,'rightRule'],[tableVerticalFirstRow,'verticalFirstRow'],[tableTopRule,'topRule'],[tableBottomRule,'bottomRule']])control.addEventListener('change',()=>updateTableAttributes({[key]:control.checked}));
+tableCaptionInput.addEventListener('input',()=>{if(editor.isActive('table'))updateTableAttributes({caption:tableCaptionInput.value,captionEnabled:true,centered:true},false);});
+for(const [control,key] of [[tableLeftRule,'leftRule'],[tableRightRule,'rightRule'],[tableMiddleVerticalRule,'middleVerticalRule'],[tableVerticalFirstRow,'verticalFirstRow'],[tableTopRule,'topRule'],[tableBottomRule,'bottomRule']])control.addEventListener('change',()=>updateTableAttributes({[key]:control.checked}));
 tableMidRule.addEventListener('change',()=>updateTableAttributes({midRuleMode:tableMidRule.value}));
 tableRuleStyle.addEventListener('change',()=>updateTableAttributes({ruleStyle:tableRuleStyle.value}));
 tableRuleWidth.addEventListener('change',()=>updateTableAttributes({ruleWidth:tableRuleWidth.value}));
