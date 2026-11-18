@@ -9,9 +9,10 @@ body { margin:0; }
 [hidden] { display:none!important; }
 header { position:fixed; inset:12px 12px auto; display:flex; justify-content:center; z-index:5; pointer-events:none; }
 header h1 { position:absolute; left:20px; top:4px; margin:0; width:126px; line-height:0; transition:opacity .18s; pointer-events:auto; }
-header .brand-link { display:block; cursor:pointer; }
+header .brand-link { display:flex; align-items:center; gap:6px; cursor:pointer; }
+header .brand-logo { width:30px; height:30px; }
 header .brand-link:hover { opacity:.82; }
-header .brand-wordmark { display:block; width:100%; height:auto; }
+header .brand-wordmark { display:block; width:90px; height:auto; }
 header .brand-wordmark-dark { display:none; }
 :root[data-theme="dark"] header .brand-wordmark-light { display:none; }
 :root[data-theme="dark"] header .brand-wordmark-dark { display:block; }
@@ -99,6 +100,7 @@ main { padding:125px 24px 60px; overflow:auto; }
 .document-image[data-align="left"] .document-image-frame { margin-inline:0 auto; }
 .image-resize-handle { position:absolute; z-index:4; width:9px; height:9px; border:1px solid light-dark(#2f6fb7,#9cc7ff); border-radius:2px; background:light-dark(#fff,#1f2733); opacity:0; pointer-events:none; touch-action:none; }
 .document-image:hover .image-resize-handle,.document-image.ProseMirror-selectednode .image-resize-handle { opacity:1; pointer-events:auto; }
+.document-image[data-small-image="true"] .image-resize-handle { display:none; }
 .image-resize-handle[data-resize-dir="nw"] { left:-5px; top:-5px; cursor:nwse-resize; }
 .image-resize-handle[data-resize-dir="n"] { left:50%; top:-5px; margin-left:-4px; cursor:ns-resize; }
 .image-resize-handle[data-resize-dir="ne"] { right:-5px; top:-5px; cursor:nesw-resize; }
@@ -178,6 +180,7 @@ main { padding:125px 24px 60px; overflow:auto; }
 .ProseMirror h2 { font-size:1.4em; }
 .ProseMirror :is(ul,ol) { padding-inline-start:2.5em; margin-block:8pt; }
 .ProseMirror :is(ul,ol) > li { padding-inline-start:.5em; }
+.ProseMirror :is(ul,ol) :is(ul,ol) :is(ul,ol) :is(ul,ol) > li { padding-inline-start:0; }
 .ProseMirror :is(ul,ol) > li + li { margin-block-start:4pt; }
 .ProseMirror ul { list-style-type:disc; }
 .ProseMirror ul ul { list-style-type:"–"; }
@@ -191,6 +194,7 @@ main { padding:125px 24px 60px; overflow:auto; }
 .ProseMirror :is(ul,ol) :is(ul,ol) { padding-inline-start:2.2em; }
 .ProseMirror :is(ul,ol) :is(ul,ol) :is(ul,ol) { padding-inline-start:1.87em; }
 .ProseMirror :is(ul,ol) :is(ul,ol) :is(ul,ol) :is(ul,ol) { padding-inline-start:1.7em; }
+.ProseMirror :is(ul,ol) :is(ul,ol) :is(ul,ol) :is(ul,ol) :is(ul,ol) { padding-inline-start:clamp(0px,100% - 10em,1.5em); }
 /* Imported lists can be deeper than the editor's ten visible levels. */
 .ProseMirror :is(ul,ol) :is(ul,ol) :is(ul,ol) :is(ul,ol) :is(ul,ol) :is(ul,ol) :is(ul,ol) :is(ul,ol) :is(ul,ol) :is(ul,ol) :is(ul,ol) {
   padding-inline-start:0;
@@ -508,6 +512,7 @@ button,select,.color-control { transition:background-color .14s ease,color .14s 
 .document-page .ProseMirror :is(ul,ol) :is(ul,ol) { margin:3.9851pt 0; padding-inline-start:clamp(0px,100% - 10em,19.9253pt); }
 .document-page .ProseMirror :is(ul,ol) :is(ul,ol) :is(ul,ol) { padding-inline-start:18.6301pt; }
 .document-page .ProseMirror :is(ul,ol) :is(ul,ol) :is(ul,ol) :is(ul,ol) { padding-inline-start:16.9365pt; }
+.document-page .ProseMirror :is(ul,ol) :is(ul,ol) :is(ul,ol) :is(ul,ol) :is(ul,ol) { padding-inline-start:clamp(0px,100% - 10em,14pt); }
 
 .table-style-group { display:flex; flex-direction:column; gap:4px; min-width:150px; padding:3px 7px; border-inline-end:1px solid light-dark(#e2e5eb,#3f4249); }
 .table-style-group:last-child { border-inline-end:0; }

@@ -174,6 +174,8 @@ export const DocumentImage = Node.create({
       const imageFrame=document.createElement('div');
       imageFrame.className='document-image-frame';
       imageFrame.append(image);
+      const syncHandleVisibility=()=>{dom.dataset.smallImage=String(image.naturalWidth>0&&image.naturalWidth<24);};
+      image.addEventListener('load',syncHandleVisibility);
       const resizeDirs=['nw','n','ne','e','se','s','sw','w'];
       const resizeHandles=resizeDirs.map(direction=>{
         const handle=document.createElement('span');
@@ -282,6 +284,7 @@ export const DocumentImage = Node.create({
         button.hidden=Boolean(preview);
         if(preview)image.src=preview;
         image.alt=node.attrs.path;
+        syncHandleVisibility();
         captionText.textContent=node.attrs.caption??'';
         caption.hidden=!(node.attrs.captionEnabled ?? (node.attrs.caption!==null));
         caption.dataset.captionNumbered=String(Boolean(node.attrs.captionEnabled && node.attrs.captionNumbered!==false));

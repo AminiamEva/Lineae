@@ -44,7 +44,7 @@ data, UI, bibliography, and Playwright suites, then builds the Tauri bundle.
 
 Builds upload an artifact named `lineae-desktop-<sha>` containing:
 
-- `Lineae_0.2.0_x64-setup.exe` (offline NSIS installer)
+- `Lineae_0.2.1_x64-setup.exe` (offline NSIS installer)
 - `Lineae-portable.zip` (portable executable and notes)
 - `SHA256SUMS.txt` (SHA-256 checksums)
 
@@ -107,7 +107,7 @@ request.
 
 ## Known limits
 
-- Current release: [v0.2.0](releases/v0.2.0.md); no automatic update channel.
+- Current release: [v0.2.1](releases/v0.2.1.md); no automatic update channel.
 - v0.2.0 is explicitly unsigned. Other stable releases still require a certificate
   or a deliberate unsigned release request.
 - The portable executable assumes WebView2 is installed. The offline installer

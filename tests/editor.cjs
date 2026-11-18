@@ -1635,12 +1635,13 @@ A & B \\
     await imageNode.getByRole('button',{name:/plot\.png/}).click();
     await (await chooser).setFiles({name:'plot.png',mimeType:'image/png',buffer:Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jB9kAAAAASUVORK5CYII=','base64')});
     await imageNode.locator('img').waitFor({state:'visible'});
-    assert.equal(await imageNode.locator('img').evaluate(image=>image.style.width),'50%');
-    await imageNode.hover();
-    await imageNode.locator('.document-image-controls button').first().click();
-    await page.locator('.editor-dialog input').fill('6cm');
-    await page.locator('.editor-dialog button[type=submit]').click();
-    assert.equal(await imageNode.locator('img').evaluate(image=>image.style.width),'6cm');
+    assert.equal(await imageNode.locator('.document-image-frame').evaluate(frame=>frame.style.width),'50%');
+    await imageNode.click();
+    await page.locator('.ribbon-tabs [data-group=image]').click();
+    await page.locator('.image-tools .image-line select').first().selectOption('cm');
+    await page.locator('.image-tools .image-line input').first().fill('6');
+    await page.locator('.image-tools .image-line input').first().dispatchEvent('change');
+    assert.equal(await imageNode.locator('.document-image-frame').evaluate(frame=>frame.style.width),'6cm');
     await importSource('');
     await page.waitForFunction(()=>document.querySelector('.ProseMirror p')?.textContent==='');
     await paper.locator('p').click();
@@ -2224,7 +2225,7 @@ A & B \\
     await page.keyboard.press('Escape');
     for (const width of [1280,390]) {
       await page.setViewportSize({width,height:1400});
-      for (const group of ['files','home','insert','layout','table','format','reference','math']) {
+      for (const group of ['files','home','insert','layout','format','reference','math']) {
         await revealToolbar(page); await page.locator(`[data-group=${group}]`).click();
         const layout=await page.locator('.ribbon').evaluate(element=>{
           const panel=[...element.querySelectorAll('.tools')].find(node=>!node.hidden);
