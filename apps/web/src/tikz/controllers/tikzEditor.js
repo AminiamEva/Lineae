@@ -10,7 +10,7 @@ import { exportTikz } from './exportController.js';
 export class TikzEditor {
   constructor({ getTextwidthCm } = {}) {
     this.getTextwidthCm = getTextwidthCm || (() => 15);
-    this.items = []; this.selected = null;
+    this.items = []; this.selected = null; this.selection = [];
     this.tool = 'select'; this.placingDef = null;
     this.wirePts = [];
     this.snapEnabled = true;
@@ -26,7 +26,7 @@ export class TikzEditor {
   restore(snap) {
     const byUid = new Map(this.items.map(i => [i.uid, i]));
     this.items = snap.map(s => { const it = byUid.get(s.uid) || s; Object.assign(it, s); return it; });
-    this.selected = null; this.recomputeSnap(); this.render();
+    this.selected = null; this.selection = []; this.recomputeSnap(); this.render();
   }
   undo() { if (!this.history.length) return; this.future.push(this.snapshot()); this.restore(this.history.pop()); }
   redo() { if (!this.future.length) return; this.history.push(this.snapshot()); this.restore(this.future.pop()); }
@@ -81,7 +81,6 @@ export class TikzEditor {
             </div>
             <div class="tikz-selection-info"></div>
             <div class="tikz-property-panel"></div>
-            <label class="tikz-field">${this.t('文字内容', 'Text')}
             <div class="tikz-props">
               <div class="tikz-props-title">${this.t('视图', 'View')}</div>
               <label class="tikz-field">${this.t('网格(cm)', 'Grid (cm)')}
@@ -304,7 +303,7 @@ export class TikzEditor {
     if (tool === 'delete') return this.deleteSelected();
     if (tool === 'undo') return this.undo();
     if (tool === 'redo') return this.redo();
-    if (tool === 'clear') { this.pushHistory(); this.items = []; this.selected = null; this.recomputeSnap(); this.render(); return; }
+    if (tool === 'clear') { this.pushHistory(); this.items = []; this.selected = null; this.selection = []; this.recomputeSnap(); this.render(); return; }
     if (tool === 'fit') { this.canvas.fit(); return; }
     this.tool = tool; this.placingDef = null; this.wirePts = [];
     this.svg.style.cursor = tool === 'pan' ? 'grab' : tool === 'eraser' ? 'not-allowed' : 'crosshair';
@@ -316,12 +315,13 @@ export class TikzEditor {
     if (!item) return;
     this.pushHistory();
     this.items = this.items.filter(candidate => candidate !== item);
-    if (this.selected === item) this.selected = null;
+    this.selection = this.selection.filter(candidate => candidate !== item);
+    if (this.selected === item) this.selected = this.selection[this.selection.length - 1] || null;
     this._drag = null; this._resize = null;
     this.recomputeSnap();
     this.render();
   }
-  deleteSelected() { this.erase(this.selected); }
+  deleteSelected() { if (this.selection.length > 1) { this.pushHistory(); this.items = this.items.filter(item => !this.selection.includes(item)); this.selection = []; this.selected = null; this.recomputeSnap(); this.render(); } else this.erase(this.selected); }
 
   contentBBox() {
     const xs = this.items.flatMap(i => i.kind === 'wire' ? i.pts.map(p => p.x) : [i.x]);
@@ -384,7 +384,7 @@ export class TikzEditor {
         : new PathComponent(def, raw.x, raw.y);
       const p = this.snapItem(item, raw);
       item.moveTo(p.x, p.y);
-      this.items.push(item); this.selected = item; this.placingDef = null;
+      this.items.push(item); this.selected = item; this.selection = [item]; this.placingDef = null;
       this.pushHistory();
       this.recomputeSnap(); this.render();
       return;
@@ -397,7 +397,7 @@ export class TikzEditor {
     if (this.tool === 'text') {
       if (!txt.trim()) { this.setStatus(this.t('请先填写文字内容', 'Enter text first')); return; }
       const size = +this.overlay.querySelector('.tikz-text-size').value || 12;
-      this.items.push(new TextItem(txt, size, raw.x, raw.y));
+      const textItem = new TextItem(txt, size, raw.x, raw.y); this.items.push(textItem); this.selected = textItem; this.selection = [textItem];
       this.pushHistory(); this.render(); return;
     }
     // select tool: adjustment handles first, then the actual symbol
@@ -406,8 +406,15 @@ export class TikzEditor {
     const target = e.target?.closest?.('[data-uid]');
     const targetItem = target ? this.items.find(item => String(item.uid) === target.getAttribute('data-uid')) : null;
     const hit = targetItem || this.hitTest(raw);
-    this.selected = hit; this.render();
-    if (hit) this._drag = { item: hit, sx: raw.x, sy: raw.y, ox: hit.x, oy: hit.y, opts: hit.pts?.map(p => ({ ...p })) };
+    if (hit && e.shiftKey) {
+      this.selection = this.selection.includes(hit) ? this.selection.filter(item => item !== hit) : [...this.selection, hit];
+      this.selected = this.selection[this.selection.length - 1] || null;
+    } else {
+      this.selection = hit ? [hit] : [];
+      this.selected = hit;
+    }
+    this.render();
+    if (hit && this.selection.length === 1) this._drag = { item: hit, sx: raw.x, sy: raw.y, ox: hit.x, oy: hit.y, opts: hit.pts?.map(p => ({ ...p })) };
   }
 
   pointerMove(e) {
@@ -472,7 +479,7 @@ export class TikzEditor {
         return t ? { comp: t.owner, ti: t.ti } : null;
       };
       w.setEnds(attach(this.wirePts[0]), attach(this.wirePts[this.wirePts.length - 1]));
-      this.items.push(w); this.selected = w; this.pushHistory();
+      this.items.push(w); this.selected = w; this.selection = [w]; this.pushHistory();
     }
     this.wirePts = []; this._wirePreview = null;
     this.recomputeSnap(); this.render();
@@ -640,6 +647,164 @@ export class TikzEditor {
     this._skipPropertyPanel = false;
   }
 
+  selectionBBox() {
+    const boxes = this.selection.map(item => item.bbox?.()).filter(Boolean);
+    if (!boxes.length) return null;
+    const x = Math.min(...boxes.map(box => box.x));
+    const y = Math.min(...boxes.map(box => box.y));
+    const right = Math.max(...boxes.map(box => box.x + box.w));
+    const bottom = Math.max(...boxes.map(box => box.y + box.h));
+    return { x, y, w: right - x, h: bottom - y };
+  }
+
+  rotateSelection(degrees) {
+    if (!this.selection.length) return;
+    this.pushHistory();
+    for (const item of this.selection) item.rotateBy?.(degrees);
+    this.recomputeSnap(); this.refreshProperties();
+  }
+
+  flipSelection(vertical) {
+    if (!this.selection.length) return;
+    this.pushHistory();
+    for (const item of this.selection) {
+      if (vertical) item.flipY = !item.flipY;
+      else item.mirror = !item.mirror;
+    }
+    this.recomputeSnap(); this.refreshProperties();
+  }
+
+  reorderSelection(mode) {
+    const selected = new Set(this.selection);
+    if (!selected.size) return;
+    this.pushHistory();
+    const rest = this.items.filter(item => !selected.has(item));
+    if (mode === 'front') rest.push(...this.selection);
+    else if (mode === 'back') rest.unshift(...this.selection);
+    else {
+      const ordered = [...this.items];
+      const indices = ordered.map((item, index) => selected.has(item) ? index : -1).filter(index => index >= 0);
+      const sorted = indices.sort((a, b) => mode === 'forward' ? b - a : a - b);
+      for (const index of sorted) {
+        const target = mode === 'forward' ? Math.min(ordered.length - 1, index + 1) : Math.max(0, index - 1);
+        [ordered[index], ordered[target]] = [ordered[target], ordered[index]];
+      }
+      this.items = ordered;
+      this.refreshProperties();
+      return;
+    }
+    this.items = rest;
+    this.refreshProperties();
+  }
+
+  alignSelection(mode, horizontal) {
+    const boxes = this.selection.map(item => ({ item, box: item.bbox?.() })).filter(entry => entry.box);
+    if (boxes.length < 2) return;
+    this.pushHistory();
+    const min = Math.min(...boxes.map(entry => horizontal ? entry.box.x : entry.box.y));
+    const max = Math.max(...boxes.map(entry => horizontal ? entry.box.x + entry.box.w : entry.box.y + entry.box.h));
+    for (const { item, box } of boxes) {
+      const target = mode === 'start' ? min : mode === 'end' ? max - (horizontal ? box.w : box.h) : (min + max) / 2 - (horizontal ? box.w : box.h) / 2;
+      if (horizontal) item.moveTo?.(target, item.y);
+      else item.moveTo?.(item.x, target);
+    }
+    this.recomputeSnap(); this.refreshProperties();
+  }
+
+  distributeSelection(mode, horizontal) {
+    const entries = this.selection.map(item => ({ item, box: item.bbox?.() })).filter(entry => entry.box);
+    if (entries.length < 3) return;
+    this.pushHistory();
+    entries.sort((a, b) => horizontal ? a.box.x - b.box.x : a.box.y - b.box.y);
+    if (mode === 'center') {
+      const first = entries[0], last = entries[entries.length - 1];
+      const start = horizontal ? first.box.x + first.box.w / 2 : first.box.y + first.box.h / 2;
+      const end = horizontal ? last.box.x + last.box.w / 2 : last.box.y + last.box.h / 2;
+      const step = (end - start) / (entries.length - 1);
+      entries.forEach((entry, index) => {
+        if (index === 0 || index === entries.length - 1) return;
+        const target = start + step * index - (horizontal ? entry.box.w : entry.box.h) / 2;
+        if (horizontal) entry.item.moveTo?.(target, entry.item.y);
+        else entry.item.moveTo?.(entry.item.x, target);
+      });
+    } else {
+      const total = entries.reduce((sum, entry) => sum + (horizontal ? entry.box.w : entry.box.h), 0);
+      const span = horizontal
+        ? entries[entries.length - 1].box.x + entries[entries.length - 1].box.w - entries[0].box.x
+        : entries[entries.length - 1].box.y + entries[entries.length - 1].box.h - entries[0].box.y;
+      const gap = (span - total) / (entries.length - 1);
+      let cursor = horizontal ? entries[0].box.x : entries[0].box.y;
+      for (const entry of entries) {
+        if (horizontal) entry.item.moveTo?.(cursor, entry.item.y);
+        else entry.item.moveTo?.(entry.item.x, cursor);
+        cursor += (horizontal ? entry.box.w : entry.box.h) + gap;
+      }
+    }
+    this.recomputeSnap(); this.refreshProperties();
+  }
+
+  buildMultiPropertyPanel() {
+    const panel = this.overlay?.querySelector('.tikz-property-panel');
+    if (!panel) return;
+    panel.replaceChildren();
+    const manipulation = this.propertySection(panel, this.t('操作', 'Manipulation'));
+    const grid = document.createElement('div'); grid.className = 'tikz-prop-grid cols-2'; manipulation.append(grid);
+    this.propertyButton(grid, '↻ 90°', () => this.rotateSelection(90));
+    this.propertyButton(grid, '↺ 90°', () => this.rotateSelection(-90));
+    this.propertyButton(grid, '↻ 45°', () => this.rotateSelection(45));
+    this.propertyButton(grid, '↺ 45°', () => this.rotateSelection(-45));
+    this.propertyButton(grid, 'Flip H', () => this.flipSelection(false));
+    this.propertyButton(grid, 'Flip V', () => this.flipSelection(true));
+
+    const ordering = this.propertySection(panel, this.t('层级', 'Ordering'));
+    const orderGrid = document.createElement('div'); orderGrid.className = 'tikz-prop-grid cols-2'; ordering.append(orderGrid);
+    this.propertyButton(orderGrid, 'Foreground', () => this.reorderSelection('front'));
+    this.propertyButton(orderGrid, 'Background', () => this.reorderSelection('back'));
+    this.propertyButton(orderGrid, 'Forward', () => this.reorderSelection('forward'));
+    this.propertyButton(orderGrid, 'Backward', () => this.reorderSelection('backward'));
+
+    const grouping = this.propertySection(panel, this.t('分组', 'Grouping'));
+    const groupButton = this.propertyButton(grouping, 'Group', () => {});
+    groupButton.disabled = true;
+    groupButton.title = 'GroupComponent is not available in the Lineae editor.';
+
+    const align = this.propertySection(panel, this.t('对齐', 'Align'));
+    const alignGrid = document.createElement('div'); alignGrid.className = 'tikz-prop-grid cols-3'; align.append(alignGrid);
+    for (const [label, mode] of [['Left', 'start'], ['Center', 'center'], ['Right', 'end']]) this.propertyButton(alignGrid, label, () => this.alignSelection(mode, true));
+    for (const [label, mode] of [['Top', 'start'], ['Middle', 'center'], ['Bottom', 'end']]) this.propertyButton(alignGrid, label, () => this.alignSelection(mode, false));
+
+    const distribute = this.propertySection(panel, this.t('分布', 'Distribute'));
+    const distributeGrid = document.createElement('div'); distributeGrid.className = 'tikz-prop-grid cols-2'; distribute.append(distributeGrid);
+    this.propertyButton(distributeGrid, 'Center H', () => this.distributeSelection('center', true));
+    this.propertyButton(distributeGrid, 'Spacing H', () => this.distributeSelection('spacing', true));
+    this.propertyButton(distributeGrid, 'Center V', () => this.distributeSelection('center', false));
+    this.propertyButton(distributeGrid, 'Spacing V', () => this.distributeSelection('spacing', false));
+
+    const shared = this.propertySection(panel, this.t('共有属性', 'Shared properties'));
+    for (const [key, label] of [['label', 'Label'], ['value', 'Value']]) {
+      if (!this.selection.every(item => key in item)) continue;
+      const input = document.createElement('input');
+      input.type = 'text';
+      input.value = this.selection.every(item => (item[key] || '') === (this.selection[0][key] || '')) ? (this.selection[0][key] || '') : '';
+      input.placeholder = this.t('批量设置', 'Set all');
+      input.oninput = () => { for (const item of this.selection) item[key] = input.value; this.refreshProperties(); };
+      this.propertyField(shared, label, input);
+    }
+    for (const [key, label] of [['strokeColor', 'Stroke'], ['fillColor', 'Fill']]) {
+      if (!this.selection.every(item => key in item)) continue;
+      const color = document.createElement('input');
+      color.type = 'color';
+      color.value = this.selection[0][key] || (key === 'strokeColor' ? '#222222' : '#ffffff');
+      color.oninput = () => { for (const item of this.selection) item[key] = color.value; this.refreshProperties(); };
+      this.propertyField(shared, label, color);
+    }
+
+    const info = this.propertySection(panel, this.t('信息', 'Info'));
+    const line = document.createElement('div'); line.className = 'tikz-info-line';
+    line.textContent = `${this.selection.length} selected · ${this.t('共有属性批量编辑', 'editing shared properties')}`;
+    info.append(line);
+  }
+
   buildPropertyPanel(p) {
     const panel = this.overlay?.querySelector('.tikz-property-panel');
     if (!panel) return;
@@ -778,11 +943,21 @@ export class TikzEditor {
     const p = this.selected;
     const selection = this.overlay.querySelector('.tikz-selection-info');
     if (selection) {
-      const box = p?.bbox?.();
-      const size = box ? '  ' + (box.w / PX_PER_CM).toFixed(2) + '×' + (box.h / PX_PER_CM).toFixed(2) + ' cm' : '';
-      selection.textContent = p
-        ? (p.def?.name || p.kind) + '  x=' + p.x.toFixed(1) + ' y=' + p.y.toFixed(1) + size
-        : this.t('未选择元件', 'No selection');
+      if (this.selection.length > 1) {
+        const box = this.selectionBBox();
+        const size = box ? '  ' + (box.w / PX_PER_CM).toFixed(2) + '×' + (box.h / PX_PER_CM).toFixed(2) + ' cm' : '';
+        selection.textContent = this.selection.length + this.t(' 个元件', ' selected') + size;
+      } else {
+        const box = p?.bbox?.();
+        const size = box ? '  ' + (box.w / PX_PER_CM).toFixed(2) + '×' + (box.h / PX_PER_CM).toFixed(2) + ' cm' : '';
+        selection.textContent = p
+          ? (p.def?.name || p.kind) + '  x=' + p.x.toFixed(1) + ' y=' + p.y.toFixed(1) + size
+          : this.t('未选择元件', 'No selection');
+      }
+    }
+    if (this.selection.length > 1) {
+      if (!this._skipPropertyPanel) this.buildMultiPropertyPanel();
+      return;
     }
     if (!this._skipPropertyPanel) this.buildPropertyPanel(p);
     const options = this.overlay.querySelector('.tikz-options');
@@ -829,6 +1004,7 @@ export class TikzEditor {
   }
 
   render() {
+    for (const item of this.items) item.selected = this.selection.includes(item);
     this.syncProps();
     const nodes = [];
     for (const it of this.items) nodes.push(it.toSvg(PX_PER_CM));

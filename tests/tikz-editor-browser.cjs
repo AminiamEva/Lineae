@@ -92,6 +92,16 @@ const server = createServer(async (request, response) => {
     await page.waitForTimeout(250);
     assert.equal(await page.locator('.tikz-layer-items > [data-uid]').last().locator('line').count(), 2, 'path endpoints are connected to the natural symbol with two leads');
 
+    // Multi-selection exposes the Designer selection form.
+    const firstItem = await page.locator('.tikz-layer-items > [data-uid]').nth(0).boundingBox();
+    await page.keyboard.down('Shift');
+    await page.mouse.click(firstItem.x + firstItem.width / 2, firstItem.y + firstItem.height / 2);
+    await page.keyboard.up('Shift');
+    await page.waitForTimeout(250);
+    assert.match(await page.locator('.tikz-selection-info').innerText(), /2 selected/);
+    const multiPanel = await page.locator('.tikz-property-panel').innerText();
+    for (const heading of ['Align', 'Distribute', 'Shared properties']) assert.ok(multiPanel.includes(heading));
+
     // Missing artwork fallback: American voltage source shows +/- and exposes
     // both polarity points as snap points.
     await place('Sources and generators', 'Voltage source (american)', .70, .70);

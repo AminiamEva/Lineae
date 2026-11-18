@@ -77,4 +77,11 @@
 - Text：label、value、path voltage/current、文本对齐、字号。
 - Stroke/Fill：颜色、线宽；Node/Path/Rect/Wire 均同步到 SVG 与 TikZ。
 - 所有动态输入使用 refreshProperties，避免每次输入重建面板丢失焦点。
+## 2026-11-19 多选属性面板
+
+- Shift+点击支持多选。
+- 多选时显示 Manipulation、Ordering、Grouping、Align、Distribute、Shared properties、Info。
+- 支持批量旋转、翻转、层级调整、水平/垂直对齐、中心/间距分布。
+- Shared properties 支持批量设置 Label、Value、Stroke、Fill。
+- Grouping 在当前组件模型中没有 GroupComponent，按钮保留但明确禁用。
 
