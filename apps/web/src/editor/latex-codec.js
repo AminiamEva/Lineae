@@ -78,11 +78,12 @@ export function serialize(node) {
       return body+'\n\n';
     }
     case 'heading': {
-      const name = ['section','subsection','subsubsection'][Math.min(node.attrs.level,3)-1];
+      const name = node.attrs.command==='chapter'?'chapter':['section','subsection','subsubsection'][Math.min(node.attrs.level,3)-1];
       const short = node.attrs.shortTitle ? '[' + node.attrs.shortTitle + ']' : '';
       const label = node.attrs.label ? '\\label{' + node.attrs.label + '}' : '';
       return '\\' + name + (node.attrs.numbered === false ? '*' : '') + short + '{' + content + '}' + label + '\n\n';
     }
+    case 'appendixStart': return '\\appendix\n\n';
     case 'tableOfContents': return '\\tableofcontents\n\n';
     case 'pageBreak': return '\\newpage\n\n';
     case 'multiColumn': return '\\begin{multicols}{' + (node.attrs.count ?? 2) + '}\n' + content + '\\end{multicols}\n\n';
