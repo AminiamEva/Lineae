@@ -14,6 +14,8 @@ const dependencies = [
   { name: 'alphalph', pattern: /\\(?:alphalph|AlphAlph)\b/ },
   { name: 'zhnumber', pattern: /\\(?:chinese|zhnum|zhnumber)\b/ },
   { name: 'graphicx', pattern: /\\(?:includegraphics|scalebox|resizebox)\b/ },
+  { name: 'tikz', pattern: /\\begin\{tikzpicture\}/, satisfies: ['circuitikz'] },
+  { name: 'circuitikz', pattern: /\\(?:node|to)\[[^\]]*(?:ground|rground|sground|nground|vcc|vee|ocirc|diamondpole)\b/ },
   { name: 'multicol', pattern: /\\begin\{multicols\}/ },
   { name: 'adjustbox', pattern: /\\adjustbox\b/ },
   { name: 'caption', pattern: /\\caption\*/ },

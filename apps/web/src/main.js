@@ -86,6 +86,7 @@ import { installTooltips } from './ui/tooltips.mjs';
 import { installRovingFocus } from './ui/keyboard-nav.mjs';
 import { fadeIn } from './ui/motion.mjs';
 import { getLanguage, localize, normalizeLanguage, setLanguage, t } from './ui/i18n.mjs';
+import { TikzEditor } from './tikz/controllers/tikzEditor.js';
 
 const citationLibrary = createCitationLibrary();
 
@@ -2830,6 +2831,14 @@ groupButton(insert,['代码块','Code block'],async()=>{
   if(language===null || (language && !/^[A-Za-z0-9+_-]+$/.test(language))) return;
   if(editor.isActive('codeBlock')) editor.chain().focus().updateAttributes('codeBlock',{language:language||null}).run();
   else editor.chain().focus().setCodeBlock({language:language||null}).run();
+});
+groupButton(insert,['TikZ','TikZ'],()=>{
+  try{
+    const editorEl=document.querySelector('.document-page .ProseMirror');
+    const textwidthCm=editorEl?editorEl.clientWidth*2.54/96:15;
+    const tikz=new TikzEditor({getTextwidthCm:()=>textwidthCm});
+    tikz.open(code=>{ if(code) editor.chain().focus().insertContent({type:'codeBlock',attrs:{language:'tikz'},content:[{type:'text',text:code}]}).run(); });
+  }catch(error){ console.error(error); alert('TikZ editor failed: '+(error?.message||error)); }
 });
 const files=header.querySelector('.tools');
 const attachFolder=groupButton(files,['关联资源目录','Attach asset folder'],()=>{

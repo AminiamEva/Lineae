@@ -60,6 +60,7 @@ export function serialize(node) {
     case 'theoremBlock': return '\\begin{'+node.attrs.kind+'}'+(node.attrs.title?'['+node.attrs.title+']':'')+'\n'+content.trimEnd()+'\n\\end{'+node.attrs.kind+'}\n\n';
     case 'codeBlock': {
       const language=node.attrs?.language;
+      if(language==='tikz') return (node.content??[]).map(child=>child.text??'').join('')+'\n\n';
       const option=/^[A-Za-z0-9+_-]+$/.test(language??'') ? '[language='+language+']' : '';
       return '\\begin{lstlisting}'+option+'\n'+(node.content??[]).map(child=>child.text??'').join('')+'\n\\end{lstlisting}\n\n';
     }
