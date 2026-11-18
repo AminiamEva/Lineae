@@ -60,3 +60,12 @@
 - `tests/tikz-export.test.mjs` 覆盖全部 402 个定义、有限 pin 坐标、NPN/Transformer/VCO
   的 pin 与样式切换，以及路径 adjustment points。
 
+## 2026-11-18 正文预览与交互补全
+
+- `TikzEditor` 增加选择、Pan（左键拖动画布）、Eraser、Undo/Redo/Clear/Fit 工具。
+- 右侧栏增加选择摘要（元件名、位置、物理尺寸）、网格吸附开关和完整工具组。
+- American voltage source 缺失的 artwork 使用圆加正负号 fallback；`+`、`-` 也注册为 snap points。
+- 共 36 个 symbols.svg 缺失 ID 使用最近 artwork alias，避免空白元件。
+- 新增 `preview-renderer.js`：在正文的 `tikz`/`circuitikz` code block 前插入只读 SVG 预览，不替换原有 code block 编辑内核。
+- TikZ 坐标改为真实 cm 单位；默认 bipole pin spacing 约 1.12 cm，与 LaTeX 默认 resistor body 实测一致。
+
