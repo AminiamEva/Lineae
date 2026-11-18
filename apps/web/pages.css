@@ -495,7 +495,7 @@ button,select,.color-control { transition:background-color .14s ease,color .14s 
 .document-page .ProseMirror > :is(h1,h2,h3) + p[data-indent="true"],
 .document-page .ProseMirror :is(li,td,th,[data-theorem]) p { text-indent:0; }
 
-.document-page .ProseMirror h1 { margin:3.5ex 0 2.3ex; font:700 1.44em/1.2 var(--tex-heading-font-family,"Latin Modern Roman 12","Latin Modern Roman"),serif; }
+.document-page .ProseMirror h1 { margin:3.5ex 0 2.3ex; font:700 1.44em/1.2 var(--tex-heading-font-family,"Latin Modern Roman 12","Latin Modern Roman"),var(--tex-cjk-font-family,"FandolSong"),serif; }
 .document-page .ProseMirror h2 { margin:3.25ex 0 1.5ex; font-size:1.2em; line-height:1.2; font-weight:700; }
 .document-page .ProseMirror h3 { margin:3.25ex 0 1.5ex; font-size:1em; line-height:1.2; font-weight:700; }
 .document-page .ProseMirror > :is(h1,h2,h3):first-child { margin-top:0; }

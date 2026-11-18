@@ -1,3 +1,4 @@
+import {fandolPunctuation} from './fandol-punctuation.mjs';
 import {paragraphParameters,texDimension} from './paragraph-parameters.mjs';
 import {englishHyphenation} from './english-hyphenation.mjs';
 import {TextSelection,Plugin,PluginKey} from '@tiptap/pm/state';
@@ -51,7 +52,7 @@ function tokensFor(editor,node,start,element,options){
     }
     if(chinese&&cjkPunctuation.test(value)){
       const font=[local.fontStyle,local.fontWeight,local.fontSize,cjkFamily].join(' ');context.font=font;
-      const metrics=context.measureText(value),em=parseFloat(local.fontSize),left=Math.max(0,-metrics.actualBoundingBoxLeft),right=Math.max(0,metrics.width-metrics.actualBoundingBoxRight);
+      const metrics=context.measureText(value),em=parseFloat(local.fontSize),bounds=fandolPunctuation[Number(local.fontWeight)>=600?'bold':'regular'][value],left=bounds?bounds.left*em:Math.max(0,-metrics.actualBoundingBoxLeft),right=bounds?bounds.right*em:Math.max(0,metrics.width-metrics.actualBoundingBoxRight);
       const before=opening.test(value)?left:0,after=closing.test(value)?right:0;
       if(before)emit({type:'glue',width:before,stretch:0,shrink:Math.min(em/2,before),from,to:from,cjk:true});
       emit({type:'box',width:metrics.width-before-after,from,to:from+value.length,punctuation:true,before,after,font});
