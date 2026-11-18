@@ -105,3 +105,22 @@ test('all 402 library definitions construct snap points and TikZ commands', () =
   assert.equal(nodes, 153);
   assert.equal(paths, 249);
 });
+
+test('every variant style is selectable and exports its own TikZ options', () => {
+  const defs = parseLibrary(readFileSync(new URL('../apps/web/assets/tikz-symbols.svg', import.meta.url), 'utf8')).defs;
+  let variants = 0;
+  for (const def of defs) {
+    for (const variant of def.variants) {
+      const item = def.kind === 'node' ? new comp.NodeSymbol(def, 0, 0) : def.kind === 'path' ? new comp.PathComponent(def, 0, 0) : null;
+      if (!item) continue;
+      item.options = [...variant.options];
+      assert.equal(item.variant().id, variant.id, `variant selected: ${def.name}/${variant.id}`);
+      const code = item.toTikZ(value => value, value => value);
+      for (const option of variant.options) {
+        if (option) assert.ok(code.includes(option), `TikZ option present: ${def.name}/${variant.id}/${option}`);
+      }
+      variants++;
+    }
+  }
+  assert.ok(variants > 1000, 'all symbol variants are covered');
+});
