@@ -790,7 +790,7 @@ headingMenu.append(textStyleOption);
 for (const [value, label] of [['1','section'],['2','subsection'],['3','subsubsection']]) headingMenu.append(new Option(label, value));
 headingMenu.addEventListener('change', () => {
   const level = Number(headingMenu.value);
-  if (level) editor.chain().focus().setHeading({ level }).run();
+  if (level) editor.chain().focus().setHeading({ level, command:null }).run();
   else editor.chain().focus().setParagraph().run();
 });
 editor.on('transaction', () => { headingMenu.value = String(editor.getAttributes('heading').level ?? 0); });
@@ -1511,9 +1511,9 @@ const structureCommands = {
   noindent: () => { editor.view.focus(); return setParagraphIndent(editor,false); },
   par: () => editor.chain().focus().splitBlock().run(),
   ...Object.fromEntries(Object.keys(theoremNames).map(kind=>[kind,()=>editor.chain().focus().wrapIn('theoremBlock',{kind}).run()])),
-  section: () => editor.chain().focus().setHeading({ level: 1 }).run(),
-  subsection: () => editor.chain().focus().setHeading({ level: 2 }).run(),
-  subsubsection: () => editor.chain().focus().setHeading({ level: 3 }).run(),
+  section: () => editor.chain().focus().setHeading({ level: 1, command:null }).run(),
+  subsection: () => editor.chain().focus().setHeading({ level: 2, command:null }).run(),
+  subsubsection: () => editor.chain().focus().setHeading({ level: 3, command:null }).run(),
   itemize: () => editor.chain().focus().toggleBulletList().run(),
   enumerate: () => editor.chain().focus().toggleOrderedList().run(),
   table: () => insertDefaultTable(),
@@ -2164,9 +2164,9 @@ const shortcutActions = {
     toggleBulletList: () => editor.commands.toggleBulletList(),
     toggleOrderedList: () => editor.commands.toggleOrderedList(),
     paragraph: () => editor.commands.setParagraph(),
-    section: () => editor.commands.toggleHeading({level:1}),
-    subsection: () => editor.commands.toggleHeading({level:2}),
-    subsubsection: () => editor.commands.toggleHeading({level:3}),
+    section: () => editor.commands.toggleHeading({level:1,command:null}),
+    subsection: () => editor.commands.toggleHeading({level:2,command:null}),
+    subsubsection: () => editor.commands.toggleHeading({level:3,command:null}),
     hardBreak: () => editor.commands.setHardBreak(),
   },
   paragraph: {
