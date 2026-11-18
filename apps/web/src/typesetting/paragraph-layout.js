@@ -99,6 +99,8 @@ export function installParagraphLayout(editor){
     const entries=[],options=paragraphParameters(preamble);let signature=preamble;
     editor.state.doc.descendants((node,start)=>{
       if(node.type.name!=='paragraph'||!node.content.size)return;
+      // xeCJK punctuation/glue needs its own calibrated typesetter; keep native editing until available.
+      if(cjk.test(node.textContent))return false;
       const element=editor.view.nodeDOM(start);if(!element?.offsetWidth||getComputedStyle(element).visibility==='hidden')return false;
       const style=getComputedStyle(element);
       if((node.attrs.align&&node.attrs.align!=='justify')||(!element.hasAttribute('data-tex-paragraph')&&!['justify','start'].includes(style.textAlign))||element.closest('[data-columns],.image-wrap-left,.image-wrap-right')||element.querySelector('.document-image'))return false;
