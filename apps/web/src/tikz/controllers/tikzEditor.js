@@ -780,6 +780,12 @@ export class TikzEditor {
     this.propertyButton(distributeGrid, 'Center V', () => this.distributeSelection('center', false));
     this.propertyButton(distributeGrid, 'Spacing V', () => this.distributeSelection('spacing', false));
 
+    if (this.selection.every(item => item.def?.id === this.selection[0].def?.id) && this.selection[0].def) {
+      const styleSection = this.propertySection(panel, this.t('组件样式', 'Component style'));
+      const body = document.createElement('div'); body.className = 'tikz-options'; styleSection.append(body);
+      this.populateStyleOptions(body, this.selection[0], this.selection);
+    }
+
     const shared = this.propertySection(panel, this.t('共有属性', 'Shared properties'));
     for (const [key, label] of [['label', 'Label'], ['value', 'Value']]) {
       if (!this.selection.every(item => key in item)) continue;
@@ -803,6 +809,46 @@ export class TikzEditor {
     const line = document.createElement('div'); line.className = 'tikz-info-line';
     line.textContent = `${this.selection.length} selected · ${this.t('共有属性批量编辑', 'editing shared properties')}`;
     info.append(line);
+  }
+
+  populateStyleOptions(container, primary, targets = [primary]) {
+    if (!container || !primary?.def) return;
+    container.replaceChildren();
+    const selected = new Set(primary.options || []);
+    const addField = (labelText, control) => {
+      const label = document.createElement('label');
+      label.className = 'tikz-field tikz-option-field';
+      const span = document.createElement('span'); span.textContent = labelText;
+      label.append(span, control); container.append(label);
+    };
+    const apply = () => {
+      for (const target of targets) {
+        target.options = [...selected];
+        this.recompose(target);
+      }
+    };
+    for (const enumDef of primary.def.enums || []) {
+      const select = document.createElement('select');
+      if (enumDef.selectNone !== false) select.append(new Option(this.t('默认', 'Default'), ''));
+      for (const choice of enumDef.options) select.append(new Option(choice.display || choice.name, choice.name));
+      const current = enumDef.options.find(choice => selected.has(choice.name));
+      select.value = current?.name || (enumDef.selectNone === false ? enumDef.options[0]?.name || '' : '');
+      select.onchange = () => {
+        for (const choice of enumDef.options) selected.delete(choice.name);
+        if (select.value) selected.add(select.value);
+        apply();
+      };
+      addField(enumDef.display || enumDef.name, select);
+    }
+    for (const option of primary.def.options || []) {
+      const checkbox = document.createElement('input');
+      checkbox.type = 'checkbox'; checkbox.checked = selected.has(option.name);
+      checkbox.onchange = () => {
+        if (checkbox.checked) selected.add(option.name); else selected.delete(option.name);
+        apply();
+      };
+      addField(option.display || option.name, checkbox);
+    }
   }
 
   buildPropertyPanel(p) {
@@ -877,27 +923,62 @@ export class TikzEditor {
       }
     }
 
-    const textSection = this.propertySection(panel, this.t('文本', 'Text'));
+    const labelSection = this.propertySection(panel, this.t('标签', 'Label'));
     for (const [key, label] of [['label', 'Label'], ['value', 'Value']]) {
       const input = document.createElement('input');
       input.type = 'text'; input.value = p[key] || '';
       input.oninput = () => { p[key] = input.value; this.refreshProperties(); };
-      this.propertyField(textSection, label, input);
+      this.propertyField(labelSection, label, input);
     }
     if (p.kind === 'path') {
-      for (const [key, label] of [['voltage', 'Voltage v'], ['current', 'Current i']]) {
+      for (const [sectionTitle, key, label] of [['电压', 'voltage', 'Voltage v'], ['电流', 'current', 'Current i']]) {
+        const section = this.propertySection(panel, this.t(sectionTitle, sectionTitle === '电压' ? 'Voltage' : 'Current'));
         const input = document.createElement('input');
         input.type = 'text'; input.value = p[key] || '';
         input.oninput = () => { p[key] = input.value; this.refreshProperties(); };
-        this.propertyField(textSection, label, input);
+        this.propertyField(section, label, input);
       }
     }
+    const textSection = this.propertySection(panel, this.t('文本', 'Text'));
     if (p.kind === 'text') {
+      const content = document.createElement('input');
+      content.type = 'text'; content.value = p.text || '';
+      content.oninput = () => { p.text = content.value; this.refreshProperties(); };
+      this.propertyField(textSection, 'Text content', content);
       const align = document.createElement('select');
       for (const value of ['left', 'center', 'right']) align.append(new Option(value, value));
       align.value = p.align || 'center';
       align.onchange = () => { p.align = align.value; this.refreshProperties(); };
       this.propertyField(textSection, 'Align', align);
+    }
+    if (p.kind === 'rect') {
+      const area = document.createElement('textarea');
+      area.rows = 2; area.value = p.label || '';
+      area.oninput = () => { p.label = area.value; this.refreshProperties(); };
+      this.propertyField(textSection, 'Text area', area);
+      const fontSize = document.createElement('input');
+      fontSize.type = 'number'; fontSize.min = '5'; fontSize.max = '96'; fontSize.step = '0.5'; fontSize.value = String(p.fontSize || 12);
+      fontSize.onchange = () => { p.fontSize = Math.max(5, Number(fontSize.value) || 12); this.refreshProperties(); };
+      this.propertyField(textSection, 'Font size', fontSize);
+      for (const [key, label, values] of [['align', 'Align', ['left', 'center', 'right', 'justify']], ['justify', 'Justify', ['top', 'center', 'bottom']]]) {
+        const select = document.createElement('select');
+        for (const value of values) select.append(new Option(value, value));
+        select.value = p[key] || values[1];
+        select.onchange = () => { p[key] = select.value; this.refreshProperties(); };
+        this.propertyField(textSection, label, select);
+      }
+      const innerSep = document.createElement('input');
+      innerSep.type = 'number'; innerSep.min = '0'; innerSep.max = '20'; innerSep.step = '0.5'; innerSep.value = String(p.innerSep ?? 5);
+      innerSep.onchange = () => { p.innerSep = Math.max(0, Number(innerSep.value) || 0); this.refreshProperties(); };
+      this.propertyField(textSection, 'Inner sep', innerSep);
+      const textColor = document.createElement('input');
+      textColor.type = 'color'; textColor.value = p.textColor || '#222222';
+      textColor.oninput = () => { p.textColor = textColor.value; this.refreshProperties(); };
+      this.propertyField(textSection, 'Text color', textColor);
+      const hyphen = document.createElement('input');
+      hyphen.type = 'checkbox'; hyphen.checked = !!p.useHyphenation;
+      hyphen.onchange = () => { p.useHyphenation = hyphen.checked; this.refreshProperties(); };
+      this.propertyField(textSection, 'Hyphenation', hyphen);
     }
     if ('size' in p) {
       const size = document.createElement('input');
@@ -961,38 +1042,8 @@ export class TikzEditor {
     }
     if (!this._skipPropertyPanel) this.buildPropertyPanel(p);
     const options = this.overlay.querySelector('.tikz-options');
-    if (!options) return;
-    options.replaceChildren();
-    if (!p?.def) return;
-    const selected = new Set(p.options || []);
-    const addField = (labelText, control) => {
-      const label = document.createElement('label');
-      label.className = 'tikz-field tikz-option-field';
-      const span = document.createElement('span'); span.textContent = labelText;
-      label.append(span, control); options.append(label);
-    };
-    for (const enumDef of p.def.enums || []) {
-      const select = document.createElement('select');
-      if (enumDef.selectNone !== false) select.append(new Option(this.t('默认', 'Default'), ''));
-      for (const choice of enumDef.options) select.append(new Option(choice.display || choice.name, choice.name));
-      const current = enumDef.options.find(choice => selected.has(choice.name));
-      select.value = current?.name || (enumDef.selectNone === false ? enumDef.options[0]?.name || '' : '');
-      select.onchange = () => {
-        for (const choice of enumDef.options) selected.delete(choice.name);
-        if (select.value) selected.add(select.value);
-        p.options = [...selected]; this.recompose(p);
-      };
-      addField(enumDef.display || enumDef.name, select);
-    }
-    for (const option of p.def.options || []) {
-      const checkbox = document.createElement('input');
-      checkbox.type = 'checkbox'; checkbox.checked = selected.has(option.name);
-      checkbox.onchange = () => {
-        if (checkbox.checked) selected.add(option.name); else selected.delete(option.name);
-        p.options = [...selected]; this.recompose(p);
-      };
-      addField(option.display || option.name, checkbox);
-    }
+    if (!options || !p?.def) return;
+    this.populateStyleOptions(options, p);
   }
 
   recompose(item) {

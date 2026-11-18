@@ -398,6 +398,13 @@ export class RectComponent extends Component {
     this.label = '';
     this.round = !!def.round;
     this.shape = def.shape || '';
+    this.fontSize = 12;
+    this.align = 'center';
+    this.justify = 'center';
+    this.innerSep = 5;
+    this.useHyphenation = false;
+    this.showPlaceholder = false;
+    this.textColor = null;
   }
   terminals() { return []; }
   adjustPoints() {
@@ -442,7 +449,11 @@ export class RectComponent extends Component {
     else element = svg('rect', { x: -this.w / 2, y: -this.h / 2, width: this.w, height: this.h, ...style });
     g.append(element);
     if (this.label) {
-      g.append(svg('text', { 'text-anchor': 'middle', 'dominant-baseline': 'middle', 'font-size': 12, 'font-family': 'serif', fill: '#222' }));
+      const anchor = this.align === 'left' ? 'start' : this.align === 'right' ? 'end' : 'middle';
+      const baseline = this.justify === 'top' ? 'hanging' : this.justify === 'bottom' ? 'text-after-edge' : 'middle';
+      const x = this.align === 'left' ? -this.w / 2 + this.innerSep : this.align === 'right' ? this.w / 2 - this.innerSep : 0;
+      const y = this.justify === 'top' ? -this.h / 2 + this.innerSep : this.justify === 'bottom' ? this.h / 2 - this.innerSep : 0;
+      g.append(svg('text', { x, y, 'text-anchor': anchor, 'dominant-baseline': baseline, 'font-size': this.fontSize, 'font-family': 'serif', fill: this.textColor || '#222' }));
       g.lastChild.textContent = this.label;
     }
     return g;
@@ -450,7 +461,17 @@ export class RectComponent extends Component {
   bbox() { return { x: this.x - this.w / 2, y: this.y - this.h / 2, w: this.w, h: this.h }; }
   toTikZ(X, Y) {
     const cm = value => (value / 37.7952755906).toFixed(3);
-    return `\\node[draw, ${this.def.tikz}, minimum width=${cm(this.w)}cm, minimum height=${cm(this.h)}cm${this.rotate ? `, rotate=${this.rotate}` : ''}] at (${X(this.x)},${Y(this.y)}) {${this.label ? '$' + this.label + '$' : ''}};`;
+    const options = [];
+    if (this.rotate) options.push('rotate=' + this.rotate);
+    options.push(`align=${this.align}`);
+    options.push(`font=\\fontsize{${this.fontSize}}{${(this.fontSize * 1.2).toFixed(1)}}\\selectfont`);
+    options.push(`inner sep=${this.innerSep}pt`);
+    if (this.textColor) options.push('text=' + this.textColor);
+    if (this.strokeColor) options.push('draw=' + this.strokeColor);
+    if (this.fillColor) options.push('fill=' + this.fillColor);
+    if (this.lineWidth) options.push('line width=' + this.lineWidth + 'pt');
+    if (this.useHyphenation) options.push('text width=' + cm(this.w) + 'cm');
+    return `\\node[draw, ${this.def.tikz}, minimum width=${cm(this.w)}cm, minimum height=${cm(this.h)}cm${options.length ? ', ' + options.join(', ') : ''}] at (${X(this.x)},${Y(this.y)}) {${this.label ? this.label : ''}};`;
   }
 }
 
