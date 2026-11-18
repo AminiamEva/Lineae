@@ -448,13 +448,14 @@ export class RectComponent extends Component {
     else if (this.round) element = svg('ellipse', { rx: this.w / 2, ry: this.h / 2, ...style });
     else element = svg('rect', { x: -this.w / 2, y: -this.h / 2, width: this.w, height: this.h, ...style });
     g.append(element);
-    if (this.label) {
+    if (this.label || this.showPlaceholder) {
       const anchor = this.align === 'left' ? 'start' : this.align === 'right' ? 'end' : 'middle';
       const baseline = this.justify === 'top' ? 'hanging' : this.justify === 'bottom' ? 'text-after-edge' : 'middle';
       const x = this.align === 'left' ? -this.w / 2 + this.innerSep : this.align === 'right' ? this.w / 2 - this.innerSep : 0;
       const y = this.justify === 'top' ? -this.h / 2 + this.innerSep : this.justify === 'bottom' ? this.h / 2 - this.innerSep : 0;
       g.append(svg('text', { x, y, 'text-anchor': anchor, 'dominant-baseline': baseline, 'font-size': this.fontSize, 'font-family': 'serif', fill: this.textColor || '#222' }));
-      g.lastChild.textContent = this.label;
+      g.lastChild.textContent = this.label || 'Text';
+      if (this.showPlaceholder && !this.label) g.lastChild.setAttribute('fill', '#9aa4b5');
     }
     return g;
   }

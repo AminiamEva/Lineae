@@ -17,6 +17,10 @@ export class TikzEditor {
     this.onDone = null;
     this.history = []; this.future = [];
     this.envSettings = { voltages: 'european', voltageConvention: 'noold', labelOrientation: 'smart' };
+    try {
+      const saved = JSON.parse(localStorage.getItem('lineae.tikz.environment') || 'null');
+      if (saved && typeof saved === 'object') this.envSettings = { ...this.envSettings, ...saved };
+    } catch { /* localStorage may be unavailable */ }
   }
 
   snapshot() {
@@ -785,10 +789,15 @@ export class TikzEditor {
     return preamble;
   }
 
+  saveEnvironment() {
+    try { localStorage.setItem('lineae.tikz.environment', JSON.stringify(this.envSettings)); } catch { /* ignore */ }
+  }
+
   applyEnvironmentPreset(name) {
     if (name === 'american') this.envSettings = { ...this.envSettings, voltages: 'american' };
     else if (name === 'european') this.envSettings = { ...this.envSettings, voltages: 'european' };
     else this.envSettings = { voltages: 'european', voltageConvention: 'noold', labelOrientation: 'smart' };
+    this.saveEnvironment();
     this.buildViewPropertyPanel();
   }
 
@@ -811,7 +820,7 @@ export class TikzEditor {
       const select = document.createElement('select');
       for (const [value, text] of entries) select.append(new Option(text, value));
       select.value = this.envSettings[key];
-      select.onchange = () => { this.envSettings[key] = select.value; };
+      select.onchange = () => { this.envSettings[key] = select.value; this.saveEnvironment(); };
       this.propertyField(environment, label, select);
     }
     const info = document.createElement('div');
@@ -879,7 +888,33 @@ export class TikzEditor {
       color.oninput = () => { for (const item of this.selection) item[key] = color.value; this.refreshProperties(); };
       this.propertyField(shared, label, color);
     }
-
+    if (this.selection.every(item => 'scaleValue' in item)) {
+      const scale = document.createElement('input');
+      scale.type = 'number'; scale.min = '0.1'; scale.max = '10'; scale.step = '0.05';
+      const same = this.selection.every(item => item.scaleValue === this.selection[0].scaleValue);
+      scale.value = same ? String(this.selection[0].scaleValue || 1) : '';
+      scale.placeholder = this.t('批量设置', 'Set all');
+      scale.onchange = () => { const value = Math.max(.1, Math.min(10, Number(scale.value) || 1)); for (const item of this.selection) item.scaleValue = value; this.recomputeSnap(); this.refreshProperties(); };
+      this.propertyField(shared, 'Scale', scale);
+    }
+    if (this.selection.every(item => 'lineWidth' in item)) {
+      const width = document.createElement('input');
+      width.type = 'number'; width.min = '0'; width.max = '10'; width.step = '0.1';
+      const same = this.selection.every(item => item.lineWidth === this.selection[0].lineWidth);
+      width.value = same ? String(this.selection[0].lineWidth ?? '') : '';
+      width.placeholder = this.t('批量设置', 'Set all');
+      width.onchange = () => { const value = width.value ? Number(width.value) : null; for (const item of this.selection) item.lineWidth = value; this.refreshProperties(); };
+      this.propertyField(shared, 'Line width', width);
+    }
+    for (const [key, label] of [['mirror', 'Mirror'], ['invert', 'Invert'], ['flipY', 'Flip V']]) {
+      if (!this.selection.every(item => key in item)) continue;
+      const checkbox = document.createElement('input');
+      checkbox.type = 'checkbox';
+      checkbox.checked = this.selection.every(item => !!item[key]);
+      checkbox.indeterminate = this.selection.some(item => !!item[key]) && !checkbox.checked;
+      checkbox.onchange = () => { for (const item of this.selection) item[key] = checkbox.checked; this.refreshProperties(); };
+      this.propertyField(shared, label, checkbox);
+    }
 
     const info = this.propertySection(panel, this.t('信息', 'Info'));
     const line = document.createElement('div'); line.className = 'tikz-info-line';
@@ -1055,6 +1090,10 @@ export class TikzEditor {
       hyphen.type = 'checkbox'; hyphen.checked = !!p.useHyphenation;
       hyphen.onchange = () => { p.useHyphenation = hyphen.checked; this.refreshProperties(); };
       this.propertyField(textSection, 'Hyphenation', hyphen);
+      const placeholder = document.createElement('input');
+      placeholder.type = 'checkbox'; placeholder.checked = !!p.showPlaceholder;
+      placeholder.onchange = () => { p.showPlaceholder = placeholder.checked; this.refreshProperties(); };
+      this.propertyField(textSection, 'Placeholder', placeholder);
     }
     if ('size' in p) {
       const size = document.createElement('input');
