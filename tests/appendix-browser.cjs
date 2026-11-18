@@ -38,6 +38,17 @@ const server=createServer(async(req,res)=>{
   const chapterPages=async()=>paper.locator('h1[data-heading-command=chapter]').evaluateAll(nodes=>{const page=document.querySelector('.document-page'),sheets=page.querySelector('.document-sheets'),zoom=page.getBoundingClientRect().width/page.offsetWidth,pitch=sheets.firstElementChild.offsetHeight+parseFloat(getComputedStyle(page).getPropertyValue('--page-gap'));return nodes.map(n=>Math.floor((n.getBoundingClientRect().top-page.getBoundingClientRect().top)/zoom/pitch)+1);});
   await page.waitForTimeout(250);let pages=await chapterPages();assert.ok(pages[1]>pages[0]&&pages[2]>pages[1],JSON.stringify(pages));
   await load(chapterSource.replace('{report}','{book}'));await page.waitForTimeout(250);pages=await chapterPages();assert.ok(pages.every(number=>number%2===1),JSON.stringify(pages));assert.ok(pages[1]>pages[0]&&pages[2]>pages[1]);
+  const chapterReference=JSON.parse(await readFile('tests/fixtures/chapter-xelatex.json','utf8'));
+  for(const fixture of chapterReference.cases){
+    await load(fixture.source);await page.evaluate(()=>document.fonts.ready);await page.waitForTimeout(250);
+    const actual=await paper.locator('h1[data-heading-command=chapter]').evaluateAll(nodes=>{
+      const page=document.querySelector('.document-page'),origin=page.getBoundingClientRect(),zoom=origin.width/page.offsetWidth,pitch=page.querySelector('.document-sheets').firstElementChild.offsetHeight+parseFloat(getComputedStyle(page).getPropertyValue('--page-gap'));
+      return nodes.map(node=>{const range=document.createRange();range.selectNodeContents(node.firstChild);const rect=range.getBoundingClientRect(),style=getComputedStyle(node),canvas=document.createElement('canvas').getContext('2d');canvas.font=[style.fontStyle,style.fontWeight,style.fontSize,style.fontFamily].join(' ');const metrics=canvas.measureText(node.textContent),index=Math.floor((node.getBoundingClientRect().top-origin.top)/zoom/pitch);return {text:node.textContent,page:index+1,x:(rect.left-origin.left)/zoom,baseline:(rect.top-origin.top)/zoom-index*pitch+metrics.fontBoundingBoxAscent};});
+    });
+    console.log('CHAPTER '+JSON.stringify({kind:fixture.kind,expected:fixture.chapters,actual}));
+    assert.deepEqual(actual.map(h=>h.page),fixture.chapters.map(h=>h.page));
+    for(let i=0;i<actual.length;i++){assert.ok(Math.abs(actual[i].x-fixture.chapters[i].x*4/3)<1,'Chapter horizontal position');assert.ok(Math.abs(actual[i].baseline-fixture.chapters[i].baseline*4/3)<1,'Chapter baseline differs from XeLaTeX: '+JSON.stringify(actual[i]));}
+  }
   assert.deepEqual(errors,[]);console.log('PASS: appendix imports, chapter/section reset, nested numbering, reference target, zero-flow marker, rich editing, undo/redo and source round-trip');
  }finally{await browser.close();server.close();}
 })().catch(error=>{console.error(error);process.exitCode=1;server.close();});
