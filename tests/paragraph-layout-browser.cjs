@@ -37,7 +37,7 @@ const server=createServer(async(req,res)=>{
  if(i)assert.ok(Math.abs((line.y-evidence.lines[0].y)-(expected[1]-fixture.lines[0].bbox[1])*4/3)<.5,'Baseline spacing differs from XeLaTeX');
  }
  const sourceText=fixture.source;await page.locator('.ProseMirror p').first().click();await page.keyboard.press('End');await page.keyboard.type(' sample');await page.keyboard.press('Control+z');
- await page.locator('[data-source-mode=source]').click();assert.equal(await code.innerText(),sourceText.trimEnd(),'View layout and undo preserve source text');await page.locator('[data-source-mode=body]').click();
+ await page.locator('[data-source-mode=source]').click();assert.equal((await code.innerText()).trimEnd(),sourceText.trimEnd(),'View layout and undo preserve source text');await page.locator('[data-source-mode=body]').click();
  }
  assert.deepEqual(errors,[]);
  }finally{await browser.close();server.close();}

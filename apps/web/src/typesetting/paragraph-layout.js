@@ -1,3 +1,4 @@
+import {paragraphParameters,texDimension} from './paragraph-parameters.mjs';
 import Hypher from 'hypher';
 import enUS from 'hyphenation.en-us';
 import {Plugin,PluginKey} from '@tiptap/pm/state';
@@ -18,11 +19,7 @@ function measure(text,style){
   context.font=font;const width=context.measureText(text).width+Math.max(0,text.length-1)*(parseFloat(style.letterSpacing)||0);
   if(metricCache.size>10000)metricCache.clear();metricCache.set(id,width);return width;
 }
-function optionsFrom(preamble){
-  const value=(name,fallback)=>{const re=new RegExp('\\\\'+name+'\\s*(?:=\\s*)?(-?\\d+)\\b'),match=preamble.match(re);return match?Number(match[1]):fallback;};
-  return {pretolerance:value('pretolerance',100),tolerance:value('tolerance',200),linePenalty:value('linepenalty',10),hyphenPenalty:value('hyphenpenalty',50),adjDemerits:value('adjdemerits',10000),doubleHyphenDemerits:value('doublehyphendemerits',10000),finalHyphenDemerits:value('finalhyphendemerits',5000)};
-}
-function tokensFor(editor,node,start,element){
+function tokensFor(editor,node,start,element,options){
   const runs=[],atoms=new Map();let text='';
   node.forEach((child,offset)=>{
     const from=start+1+offset;
@@ -46,13 +43,15 @@ function tokensFor(editor,node,start,element){
     }
     if(value==='\n'){emit({type:'glue',width:0,stretch:1e10,shrink:0,from,to:from});emit({type:'penalty',width:0,cost:-10000,from:from+1,to:from+1,forced:true});continue;}
     if(/^\s+$/u.test(value)&&value!=='\u00a0'){
-      const space=measure(' ',local);emit({type:'glue',width:space,stretch:space/2,shrink:space/3,from,to:from+value.length});continue;
+      const space=measure(' ',local),em=parseFloat(local.fontSize),skip=options.spaceSkip;
+      const custom=skip&&texDimension(skip.width,em)!==0;emit({type:'glue',width:custom?texDimension(skip.width,em):space,stretch:custom?texDimension(skip.stretch,em):space/2,shrink:custom?texDimension(skip.shrink,em):space/3,from,to:from+value.length});continue;
     }
     if(/^[A-Za-z]{5,}$/.test(value)){
-      const parts=hyphenator.hyphenate(value);let position=0;
+      const exception=options.exceptions.get(value.toLowerCase());
+      const parts=exception?exception.map((part,i)=>value.slice(exception.slice(0,i).join('').length,exception.slice(0,i+1).join('').length)):hyphenator.hyphenate(value);let position=0;
       for(let i=0;i<parts.length;i++){
         const part=parts[i];emit({type:'box',width:width(value.slice(0,position+part.length),at)-width(value.slice(0,position),at),from:from+position,to:from+position+part.length});position+=part.length;
-        if(i<parts.length-1)emit({type:'penalty',width:measure('-',styleAt(at+position)),cost:50,hyphen:true,from:from+position,to:from+position});
+        if(i<parts.length-1&&position>=options.leftHyphenMin&&value.length-position>=options.rightHyphenMin)emit({type:'penalty',width:measure('-',styleAt(at+position)),cost:options.hyphenPenalty,hyphen:true,from:from+position,to:from+position});
       }
     }else emit({type:'box',width:width(value,at),from,to:from+value.length});
     const next=pieces[n+1]?.[0];
@@ -73,14 +72,14 @@ export function installParagraphLayout(editor){
   editor.registerPlugin(new Plugin({key,state:{init:()=>DecorationSet.empty,apply(tr,previous){return tr.getMeta(key)??previous.map(tr.mapping,tr.doc);}},props:{decorations:state=>key.getState(state)}}));
   function layout(preamble=current){
     current=preamble;if(running||editor.view.composing)return;
-    const entries=[],options=optionsFrom(preamble);let signature=preamble;
+    const entries=[],options=paragraphParameters(preamble);let signature=preamble;
     editor.state.doc.descendants((node,start)=>{
       if(node.type.name!=='paragraph'||!node.content.size)return;
       const element=editor.view.nodeDOM(start);if(!element?.offsetWidth||getComputedStyle(element).visibility==='hidden')return false;
       const style=getComputedStyle(element);
       if((node.attrs.align&&node.attrs.align!=='justify')||(!element.hasAttribute('data-tex-paragraph')&&!['justify','start'].includes(style.textAlign))||element.closest('[data-columns],.image-wrap-left,.image-wrap-right')||element.querySelector('.document-image'))return false;
       const {items}=tokensFor(editor,node,start,element),width=element.getBoundingClientRect().width/(element.closest('.document-page').getBoundingClientRect().width/element.closest('.document-page').offsetWidth||1)-parseFloat(style.paddingLeft)-parseFloat(style.paddingRight)-parseFloat(style.borderLeftWidth)-parseFloat(style.borderRightWidth),indent=parseFloat(style.textIndent)||0;
-      const plan=optimumParagraph(items,line=>width-(line===0?indent:0),options);
+      const plan=optimumParagraph(items,line=>width-(line===0?indent:0),{...options,emergencyStretch:options.emergency?texDimension(options.emergency,parseFloat(style.fontSize)):0});
       if(!plan||plan.lines.length===1)return false;
       entries.push(Decoration.node(start,start+node.nodeSize,{'data-tex-paragraph':'true',style:'white-space:nowrap;text-align:left;hyphens:none;overflow-wrap:normal;word-break:normal'}));
       for(const [lineNumber,line] of plan.lines.entries()){
