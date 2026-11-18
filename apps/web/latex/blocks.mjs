@@ -1,3 +1,4 @@
+import {counterDeclarationAt} from './counter-declarations.mjs';
 import {importedCellAttributes} from './table-spans.mjs';
 import { parseInline, textCommands } from './inline.mjs';
 import { parseTable } from './tables.mjs';
@@ -259,6 +260,8 @@ export function importBlock(block) {
   if (image) return image;
   const headingMatch = text.match(/^\\(chapter|section|subsection|subsubsection)(\*?)(?:\[([^\]]*)\])?\{([^{}]*)\}(?:[ \t]*\\label\{([^{}]*)\})?$/);
   if (headingMatch) return heading(headingMatch[1], headingMatch[2], headingMatch[3], headingMatch[4], headingMatch[5]);
+  const declaration=counterDeclarationAt(text,0);
+  if(declaration?.to===text.length)return {type:'counterDirective',attrs:{latex:declaration.latex}};
   if (text === '\\appendix') return {type:'appendixStart'};
   if (text === '\\tableofcontents') return { type: 'tableOfContents' };
   if (/^\\(?:newpage|clearpage|pagebreak)(?:\[[^\]]*\])?$/.test(text)) return { type: 'pageBreak' };
@@ -405,23 +408,25 @@ function topLevelCommand(text, index) {
   return depth===0;
 }
 function importSegment(block) {
-  const nodes = [];
-  let cursor = 0;
-  structural.lastIndex = 0;
-  let match;
-  while ((match = structural.exec(block))) {
-    if((match[1]==='appendix'||match[2]==='chapter')&&!topLevelCommand(block,match.index))continue;
-    const before = importBlock(block.slice(cursor, match.index));
-    if (before) nodes.push(before);
-    if(match[1]==='appendix')nodes.push({type:'appendixStart'});
-    else if (match[1] === 'tableofcontents') nodes.push({ type: 'tableOfContents' });
-    else if (match[7]) nodes.push({ type: 'pageBreak' });
-    else nodes.push(heading(match[2], match[3], match[4], match[5], match[6]));
-    cursor = match.index + match[0].length;
+  const events=[...block.matchAll(structural)].filter(match=>!((match[1]==='appendix'||match[2]==='chapter')&&!topLevelCommand(block,match.index))).map(match=>({from:match.index,to:match.index+match[0].length,match}));
+  for(const match of block.matchAll(/\\(?:renewcommand|newcommand|setcounter|numberwithin|counterwithin|counterwithout)\b/g)){
+    if(!topLevelCommand(block,match.index))continue;
+    const declaration=counterDeclarationAt(block,match.index);
+    if(declaration)events.push({from:declaration.from,to:declaration.to,node:{type:'counterDirective',attrs:{latex:declaration.latex}}});
   }
-  const after = importBlock(block.slice(cursor));
-  if (after) nodes.push(after);
-  return nodes;
+  events.sort((a,b)=>a.from-b.from);const nodes=[];let cursor=0;
+  for(const event of events){
+    if(event.from<cursor)continue;
+    const before=importBlock(block.slice(cursor,event.from));if(before)nodes.push(before);
+    const match=event.match;
+    if(event.node)nodes.push(event.node);
+    else if(match[1]==='appendix')nodes.push({type:'appendixStart'});
+    else if(match[1]==='tableofcontents')nodes.push({type:'tableOfContents'});
+    else if(match[7])nodes.push({type:'pageBreak'});
+    else nodes.push(heading(match[2],match[3],match[4],match[5],match[6]));
+    cursor=event.to;
+  }
+  const after=importBlock(block.slice(cursor));if(after)nodes.push(after);return nodes;
 }
 
 export function importBlocks(block) {

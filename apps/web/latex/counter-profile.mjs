@@ -41,7 +41,7 @@ export function formatCounter(name,counters,profile,appendix=false,seen=new Set(
   seen=new Set(seen).add(name);
   const primary=profile.chapters?'chapter':'section';
   let format=profile.formats[name];
-  if(appendix&&name===primary)format='\\Alph{'+name+'}';
+  if(appendix&&name===primary&&format===undefined)format='\\Alph{'+name+'}';
   if(format===undefined){
     if(name==='chapter'||name==='section'&&!profile.chapters)format='\\arabic{'+name+'}';
     else if(['section','subsection','subsubsection'].includes(name))format='\\the'+({section:'chapter',subsection:'section',subsubsection:'subsection'}[name])+'.\\arabic{'+name+'}';

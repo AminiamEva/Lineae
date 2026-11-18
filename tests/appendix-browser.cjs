@@ -50,6 +50,11 @@ const server=createServer(async(req,res)=>{
     assert.deepEqual(actual.map(h=>h.page),fixture.chapters.map(h=>h.page));
     for(let i=0;i<actual.length;i++){assert.ok(Math.abs(actual[i].x-fixture.chapters[i].x*4/3)<1,'Chapter horizontal position');assert.ok(Math.abs(actual[i].baseline-fixture.chapters[i].baseline*4/3)<1,'Chapter baseline differs from XeLaTeX: '+JSON.stringify(actual[i]));}
   }
+  await load('\\documentclass{report}\n\\begin{document}\n\\appendix\n\\renewcommand{\\appendixname}{Supplement}\n\\renewcommand{\\thechapter}{S-\\Alph{chapter}}\n\\chapter{Proofs}\n\n\\setcounter{equation}{4}\n\n\\begin{equation}x\\label{custom:equation}\\end{equation}\n\nSee \\ref{custom:equation}.\n\\end{document}\n');
+  assert.equal(await paper.locator('[data-chapter-label]').getAttribute('data-chapter-label'),'Supplement S-A');
+  assert.equal(await paper.locator('.ref-node').textContent(),'S-A.5');
+  assert.equal(await paper.locator('.math-equation-number').getAttribute('data-equation-value'),'S-A.5');
+  assert.equal(await paper.locator('[data-counter-directive]').count(),3);
   assert.deepEqual(errors,[]);console.log('PASS: appendix imports, chapter/section reset, nested numbering, reference target, zero-flow marker, rich editing, undo/redo and source round-trip');
  }finally{await browser.close();server.close();}
 })().catch(error=>{console.error(error);process.exitCode=1;server.close();});

@@ -286,6 +286,14 @@ export function installTypesetPagination(page, paper, meta, editor) {
     page.style.setProperty('--tex-paragraph-indent', profile.paragraphIndent);
     const quote = name => '"' + String(name).replaceAll('"', '') + '"';
     const stack = (...names) => names.filter(Boolean).map(quote).join(',');
+    const classOptions=/\\documentclass\s*(?:\[([^\]]*)\])?/.exec(preamble)?.[1]??'';
+    const classSize=/(?:^|,)\s*12pt\s*(?:,|$)/.test(classOptions)?12:/(?:^|,)\s*11pt\s*(?:,|$)/.test(classOptions)?11:10;
+    const texPx=96/72.27;
+    // Standard classes place chapter text on fixed 25/30pt baseline grids,
+    // after topskip + 50pt. Compensate the browser's centered line strut.
+    page.style.setProperty('--tex-chapter-top-padding',(55+classSize)*texPx+'px');
+    page.style.setProperty('--tex-chapter-label-size',(classSize===12?24.88:20.74)*texPx+'px');
+    page.style.setProperty('--tex-chapter-label-line-height',(classSize===12?30:25)*texPx+'px');
     const fonts = profile.fonts ?? {};
     page.style.setProperty('--tex-font-family', fonts.serif
       ? stack(fonts.serif, 'Latin Modern Roman') : '"Latin Modern Roman"');

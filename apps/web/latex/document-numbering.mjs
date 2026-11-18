@@ -1,3 +1,4 @@
+import {counterDeclarationAt,applyCounterDeclaration} from './counter-declarations.mjs';
 import {counterProfile,formatCounter} from './counter-profile.mjs';
 import {headingOutline} from './heading-numbering.mjs';
 import {numberedMathRows} from './math-environments.mjs';
@@ -8,7 +9,8 @@ export function documentNumbers(doc){
  const counters={chapter:0,section:0,subsection:0,subsubsection:0,equation:0,figure:0,table:0},objects=new Map(),labels=[];let appendix=false,current={number:null,title:'',kind:'label'};
  const add=(key,details)=>{if(key&&!labels.some(item=>item.key===key))labels.push({key,...details});};
  doc.descendants((node,position,parent)=>{
-  if(node.type.name==='appendixStart'){appendix=true;counters.chapter=profile.chapters?0:counters.chapter;counters.section=0;counters.subsection=0;return false;}
+  if(node.type.name==='counterDirective'){const declaration=counterDeclarationAt(node.attrs.latex,0);if(declaration)applyCounterDeclaration(profile,counters,declaration);return false;}
+  if(node.type.name==='appendixStart'){appendix=true;delete profile.formats[profile.chapters?'chapter':'section'];counters.chapter=profile.chapters?0:counters.chapter;counters.section=0;counters.subsection=0;return false;}
   const heading=headings.get(position);
   if(heading){
    if(heading.number){

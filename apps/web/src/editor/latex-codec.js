@@ -83,6 +83,7 @@ export function serialize(node) {
       const label = node.attrs.label ? '\\label{' + node.attrs.label + '}' : '';
       return '\\' + name + (node.attrs.numbered === false ? '*' : '') + short + '{' + content + '}' + label + '\n\n';
     }
+    case 'counterDirective': return node.attrs.latex+'\n\n';
     case 'appendixStart': return '\\appendix\n\n';
     case 'tableOfContents': return '\\tableofcontents\n\n';
     case 'pageBreak': return '\\newpage\n\n';
