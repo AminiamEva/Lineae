@@ -1,4 +1,3 @@
-const {revealToolbar,setIndentOnSave,createTreeEntry}=require('./workspace-ui-helpers.cjs');
 const {chromium}=require('playwright');
 const {createServer}=require('node:http');
 const {readFile}=require('node:fs/promises');
@@ -24,6 +23,9 @@ const server=createServer(async(req,res)=>{
   assert.equal(await paper.locator('.ref-node').textContent(),'A');
   await paper.locator('p').filter({hasText:'Appendix body.'}).click();await page.keyboard.press('End');await page.keyboard.insertText(' Edited');assert.match(await paper.innerText(),/Edited/);await page.keyboard.press('Control+z');assert.ok(!(await paper.innerText()).includes('Edited'));await page.keyboard.press('Control+y');assert.match(await paper.innerText(),/Edited/);
   await page.locator('[data-source-mode=source]').click();assert.match(await page.locator('.cm-content').innerText(),/\\appendix/);await page.locator('[data-source-mode=body]').click();assert.equal(await paper.locator('h1').nth(1).getAttribute('data-section-number'),'A');
+  await page.evaluate(()=>{const editor=document.querySelector('.ProseMirror').editor;let target;editor.state.doc.descendants((node,pos)=>{if(node.type.name==='appendixStart')target=pos;});editor.commands.setNodeSelection(target);editor.commands.focus();});
+  await page.keyboard.press('Backspace');assert.equal(await paper.locator('[data-appendix-start]').count(),0);assert.deepEqual(await paper.locator('[data-section-number]').evaluateAll(nodes=>nodes.map(n=>n.dataset.sectionNumber)),['1','2','2.1','3']);
+  await page.keyboard.press('Control+z');assert.equal(await paper.locator('[data-appendix-start]').count(),1);assert.equal(await paper.locator('h1').nth(1).getAttribute('data-section-number'),'A');
   const chapterSource='\\documentclass{report}\n\\begin{document}\n\\chapter{Main}\n\n\\section{Body}\n\n\\appendix\n\\chapter{Proofs}\\label{app:chapter}\n\n\\section{Detail}\n\n\\chapter{Data}\n\\end{document}\n';await load(chapterSource);
   assert.deepEqual(await paper.locator('[data-section-number]').evaluateAll(nodes=>nodes.map(n=>n.dataset.sectionNumber)),['1','1.1','A','A.1','B']);
   assert.deepEqual(errors,[]);console.log('PASS: appendix imports, chapter/section reset, nested numbering, reference target, zero-flow marker, rich editing, undo/redo and source round-trip');

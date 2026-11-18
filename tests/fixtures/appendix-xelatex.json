@@ -1,0 +1,10 @@
+{
+  "engine": "XeLaTeX, TeX Live 2023, aliyun1",
+  "compiled": "2026-11-18",
+  "body": "main heading, appendix switch, proof heading, detail subsection, data heading",
+  "labels": {
+    "article": [["main","1"],["proof","A"],["detail","A.1"],["data","B"]],
+    "report": [["main","1"],["proof","A"],["detail","A.0.1"],["data","B"]],
+    "book": [["main","1"],["proof","A"],["detail","A.0.1"],["data","B"]]
+  }
+}

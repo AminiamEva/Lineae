@@ -1,3 +1,4 @@
+import {readFileSync} from 'node:fs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {importBlocks,serialize} from '../apps/web/src/editor/latex-codec.js';
@@ -21,4 +22,14 @@ test('report and book appendices reset chapters while sections retain the chapte
 test('a second appendix command resets counters; stars do not consume letters',()=>{
  const d=document('\\appendix\n\\section*{Notes}\n\\section{A}\n\\section{B}\n\\appendix\n\\section{Restart}');
  assert.deepEqual(headingOutline(d).map(n=>n.number),['','A','B','A']);
+});
+
+test('appendix reference values agree with actual XeLaTeX compilation',()=>{
+ const reference=JSON.parse(readFileSync(new URL('./fixtures/appendix-xelatex.json',import.meta.url),'utf8'));
+ for(const [kind,labels] of Object.entries(reference.labels)){
+  const primary=kind==='article'?'section':'chapter';
+  const source='\\'+primary+'{Main}\n\\appendix\n\\'+primary+'{Proofs}\n\\subsection{Detail}\n\\'+primary+'{Data}';
+  const d=document(source,'\\documentclass{'+kind+'}');
+  assert.deepEqual(headingOutline(d).map(item=>item.number),labels.map(pair=>pair[1]));
+ }
 });
