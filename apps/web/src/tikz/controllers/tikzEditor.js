@@ -49,10 +49,10 @@ export class TikzEditor {
       <div class="tikz-window">
         <div class="tikz-header">
           <span class="tikz-title">TikZ / CircuiTikZ</span>
-          <label class="tikz-zoom-label">${this.t('画布宽度', 'Canvas width')}</label>
-          <input type="range" class="tikz-zoom-slider" min="0.1" max="1.5" step="0.01" value="0.6">
-          <input type="number" class="tikz-zoom-input" min="0.1" max="1.5" step="0.01" value="0.6">
-          <span class="tikz-zoom-unit">\textwidth</span>
+          <label class="tikz-zoom-label">${this.t('缩放', 'Zoom')}</label>
+          <input type="range" class="tikz-zoom-slider" min="10" max="400" step="5" value="100">
+          <input type="number" class="tikz-zoom-input" min="10" max="400" step="5" value="100">
+          <span class="tikz-zoom-unit">%</span>
           <span class="tikz-spacer"></span>
           <button class="tikz-finish">${this.t('插入', 'Insert')}</button>
           <button class="tikz-exit">${this.t('退出', 'Exit')}</button>
@@ -116,15 +116,15 @@ export class TikzEditor {
 
     o.querySelector('.tikz-exit').onclick = () => this.close();
     o.querySelector('.tikz-finish').onclick = () => {
-      const code = exportTikz(this.items, { widthFraction: this.canvas.widthFraction(), textwidthCm: this.canvas.textwidthCm });
+      const code = exportTikz(this.items);
       this.close(); this.onDone?.(code);
     };
     const slider = o.querySelector('.tikz-zoom-slider'), input = o.querySelector('.tikz-zoom-input');
-    this.canvas.onZoomChange = (k, frac) => {
-      const v = Math.round(frac * 100) / 100;
-      slider.value = v; input.value = v;
+    this.canvas.onZoomChange = (percent) => {
+      const value = Math.round(percent);
+      slider.value = String(value); input.value = String(value);
       const ro = o.querySelector('.tikz-zoom-readout');
-      if (ro) ro.textContent = Math.round(k * 100) + '%';
+      if (ro) ro.textContent = value + '%';
     };
     o.querySelector('.tikz-prop-label').oninput = e => { if (this.selected?.options) { this.selected.label = e.target.value; } };
     o.querySelector('.tikz-prop-value').oninput = e => { if (this.selected?.options) { this.selected.value = e.target.value; } };
@@ -132,14 +132,11 @@ export class TikzEditor {
     o.querySelector('.tikz-grid-size').onchange = e => { this.snap.gridStep = +e.target.value * PX_PER_CM; this.canvas.drawGrid(); };
     o.querySelector('.tikz-grid-show').onchange = e => { this.canvas.layers.grid.style.display = e.target.checked ? '' : 'none'; };
     o.querySelector('.tikz-snap-show').onchange = e => { this.snapEnabled = e.target.checked; };
-    const setFromFraction = v => {
-      v = Math.min(1.5, Math.max(0.1, +v || 0.6));
-      const contentPx = Math.max(600, this.contentBBox().w);
-      this.canvas.contentWidthPx = contentPx;
-      this.canvas.setZoom(v * this.canvas.textwidthCm * PX_PER_CM / contentPx);
+    const setZoomPercent = value => {
+      this.canvas.setZoomPercent(value);
     };
-    slider.oninput = () => setFromFraction(slider.value);
-    input.onchange = () => setFromFraction(input.value);
+    slider.oninput = () => setZoomPercent(slider.value);
+    input.onchange = () => setZoomPercent(input.value);
 
     o.querySelectorAll('.tikz-tools button').forEach(b => b.onclick = () => this.useTool(b.dataset.tool));
     this.buildTree();

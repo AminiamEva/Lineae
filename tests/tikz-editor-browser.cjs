@@ -32,7 +32,7 @@ const server = createServer(async (request, response) => {
 
     const symbols = page.locator('.tikz-tree .tikz-sym');
     assert.equal(await symbols.count(), 410, 'Basic + 402 library symbols are listed');
-    assert.equal(await page.locator('.tikz-zoom-slider').inputValue(), '0.6', 'default physical width is 0.6 textwidth');
+    assert.equal(await page.locator('.tikz-zoom-slider').inputValue(), '100', 'default zoom is 100% of one textwidth');
 
     const canvas = page.locator('.tikz-canvas');
     const box = await canvas.boundingBox();
@@ -91,7 +91,7 @@ const server = createServer(async (request, response) => {
     // Missing artwork fallback: American voltage source shows +/- and exposes
     // both polarity points as snap points.
     await place('Sources and generators', 'Voltage source (american)', .70, .70);
-    assert.equal(await page.locator('.tikz-layer-items circle').count(), 6, 'voltage source has START/END, +/- snap points and two adjustment handles');
+    assert.equal(await page.locator('.tikz-layer-items circle').count(), 7, 'voltage source has START/END, +/- snap points and two adjustment handles');
     const voltageBox = await page.locator('.tikz-layer-items > [data-uid]').last().boundingBox();
     await page.locator('.tikz-tools button[data-tool=eraser]').click();
     await page.mouse.click(voltageBox.x + voltageBox.width / 2, voltageBox.y + voltageBox.height / 2);
@@ -112,7 +112,7 @@ const server = createServer(async (request, response) => {
     await page.waitForTimeout(900);
     assert.equal(await page.locator('.tikz-code-preview-svg').count(), 1, 'inserted CircuiTikZ has an incremental SVG preview');
     const tikz = await page.locator('.ProseMirror pre code').innerText();
-    assert.match(tikz, /\\resizebox\{0\.6\\textwidth\}/);
+    assert.doesNotMatch(tikz, /\\resizebox\{/);
     assert.match(tikz, /\\node\[npn, bodydiode\]/);
     assert.match(tikz, /\\node\[transformer, cute\]/);
     assert.match(tikz, /\\draw .* to\[vco, box\]/);

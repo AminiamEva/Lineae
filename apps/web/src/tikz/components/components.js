@@ -255,7 +255,7 @@ export class PathComponent extends Component {
     if (this.def.fillable) use.setAttribute('fill', 'none');
     if (this.selected) use.setAttribute('color', '#2f6fed');
     const hasArtwork = variant.id && document.getElementById(variant.id);
-    if (hasArtwork) symbol.append(use);
+    if (hasArtwork && !isAmericanVoltage(this.def)) symbol.append(use);
     else if (isAmericanVoltage(this.def)) symbol.append(sourceFallback(variant, this.def));
     g.append(symbol);
     const { start, end } = variantStartEnd(variant);

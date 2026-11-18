@@ -32,7 +32,7 @@
 
 ## P4 尺寸标定（0.6\textwidth 匹配）
 - [x] 建立恒定 px↔cm 标定常数（查参考 `exportController.ts` 的坐标换算常数并沿用），100% 视图下 1cm = 常数 px；symbol 默认尺寸按 circuitikz 默认物理尺寸反推 px。
-- [x] 导出换算与显示换算共用同一常数，保证「slider=0.6 时导出图实际宽度 = 0.6\textwidth」且编辑器内视觉大小与导出一致（用户第 4 点）。
+- [x] 2026-11-19 起改为页面缩放模型：100% = 一个 `\textwidth`；导出默认使用真实 cm 坐标、不再用 `\resizebox` 强制 0.6；编辑器 100% 与自然 LaTeX 尺寸一致。
 
 ## P5 连线与导出
 - [x] 连线起止吸附端子；导出用 circuitikz `to[...]`，跨接点可用 `(a) to[short] (b)` 或坐标直连（与参考 `exportController` 一致）。

@@ -147,8 +147,10 @@ function renderInto(root, code, defs) {
   const width = Math.max(1, bounds.maxX - bounds.minX);
   const height = Math.max(1, bounds.maxY - bounds.minY);
   svg.setAttribute('viewBox', `${bounds.minX - 8} ${bounds.minY - 8} ${width + 16} ${height + 16}`);
+  const widthCm = (width + 16) / PX_PER_CM;
   const fraction = /\\resizebox\{\s*([\d.]+)\\textwidth\s*\}/.exec(code)?.[1];
-  svg.style.width = fraction ? `${Math.min(1, Math.max(.1, Number(fraction))) * 100}%` : '100%';
+  const displayFraction = fraction ? Number(fraction) : Math.min(1, widthCm / 15);
+  svg.style.width = `${Math.min(1, Math.max(.05, displayFraction)) * 100}%`;
   svg.setAttribute('height', String(Math.max(60, Math.min(420, height + 16))));
   return svg;
 }

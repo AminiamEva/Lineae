@@ -12,32 +12,38 @@ export class CanvasController {
       svg.append(g);
       this.layers[name] = g;
     }
-    this.view = { x: 60, y: 60, k: 1 };   // single source of truth for zoom
-    this.contentWidthPx = 600;            // logical content width (grows with content)
+    this.view = { x: 0, y: 20, k: 1 };    // single source of truth for zoom
+    this.zoomPercent = 100;
     this.textwidthCm = 15;
     this.onZoomChange = null;             // slider sync callback
     svg.addEventListener('wheel', e => { e.preventDefault(); this.zoom(e.deltaY < 0 ? 1.12 : 1 / 1.12, e); }, { passive: false });
   }
 
-  // zoom fraction shown in the top slider: physical width of content / textwidth
-  widthFraction() { return this.contentWidthCm() / this.textwidthCm; }
-  contentWidthCm() { return this.contentWidthPx / this.PX_PER_CM * this.view.k; }
+  // 100% means exactly one textwidth fits in the canvas viewport.  This is a
+  // page zoom, not the old "fraction of textwidth" export setting.
   get PX_PER_CM() { return 37.7952755906; }
-
-  setTextwidthCm(v) { this.textwidthCm = v || 15; this.emitZoom(); }
-  emitZoom() { this.onZoomChange?.(this.view.k, this.widthFraction()); }
-
+  baseScale() {
+    const width = this.svg.getBoundingClientRect().width;
+    return width > 2 ? width / (this.textwidthCm * this.PX_PER_CM) : 1;
+  }
+  setTextwidthCm(v) { this.textwidthCm = v || 15; this.setZoomPercent(this.zoomPercent); }
+  emitZoom() { this.onZoomChange?.(this.zoomPercent, this.view.k); }
+  setZoomPercent(percent) {
+    this.zoomPercent = Math.min(400, Math.max(10, Number(percent) || 100));
+    this.view.k = this.baseScale() * this.zoomPercent / 100;
+    this.apply(); this.emitZoom();
+  }
   zoom(f, e) {
     const before = e ? this.toWorld(e.clientX, e.clientY) : null;
-    this.view.k = Math.min(16, Math.max(0.08, this.view.k * f));
+    this.setZoomPercent(this.zoomPercent * f);
     if (before) {
       const after = this.toWorld(e.clientX, e.clientY);
       this.view.x += (after.x - before.x) * this.view.k;
       this.view.y += (after.y - before.y) * this.view.k;
     }
-    this.apply(); this.emitZoom();
+    this.apply();
   }
-  setZoom(k) { this.view.k = Math.min(16, Math.max(0.08, k)); this.apply(); this.emitZoom(); }
+  setZoom(k) { this.setZoomPercent(k / this.baseScale() * 100); }
 
   toWorld(clientX, clientY) {
     const pt = this.svg.createSVGPoint(); pt.x = clientX; pt.y = clientY;
@@ -56,18 +62,10 @@ export class CanvasController {
   fit() {
     const r = this.svg.getBoundingClientRect();
     this.svg.setAttribute('viewBox', `0 0 ${r.width} ${r.height}`);
-    // Keep the default exported width at 0.6\textwidth.  The canvas viewport
-    // and the exported width are two different things: changing this factor
-    // changes the physical content size, while the grid scrolled around it
-    // remains in centimetres.
-    const initialFraction = 0.6;
-    this.contentWidthPx = initialFraction * this.textwidthCm * this.PX_PER_CM;
-    this.view = {
-      x: 80,
-      y: 80,
-      k: 1,
-    };
-    this.apply(); this.emitZoom();
+    // At 100% the visible canvas spans exactly one textwidth.
+    this.view = { x: 0, y: 20, k: 1 };
+    this.setZoomPercent(100);
+    this.apply();
   }
 
   drawGrid() {
