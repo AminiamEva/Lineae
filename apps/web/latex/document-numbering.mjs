@@ -27,7 +27,7 @@ export function documentNumbers(doc){
    });objects.set(position,{kind:'equation',rows});
   }
   const kind=node.type.name==='table'?'table':['documentImage','subfigures'].includes(node.type.name)?'figure':null;
-  if(kind&&parent?.type.name!=='subfigures'&&(node.attrs.captionEnabled??node.attrs.caption!==null)&&node.attrs.captionNumbered!==false){
+  if(kind&&parent?.type.name!=='subfigures'&&(kind==='table'?Boolean(node.attrs.captionEnabled||node.attrs.caption):(node.attrs.captionEnabled??typeof node.attrs.caption==='string'))&&node.attrs.captionNumbered!==false){
    counters[kind]++;const number=formatCounter(kind,counters,profile,appendix);current={number,title:node.attrs.caption??'',kind,position};objects.set(position,current);add(node.attrs.label,current);
   }
   if(node.type.name==='label')add(node.attrs.key,{...current,position});
