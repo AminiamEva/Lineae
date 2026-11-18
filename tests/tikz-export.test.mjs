@@ -84,3 +84,24 @@ test('node and path components expose every named pin as snap points', () => {
   assert.match(code, /^\\draw \(50,50\) to\[vco/);
   assert.match(code, /\);$/);
 });
+
+test('all 402 library definitions construct snap points and TikZ commands', () => {
+  const defs = parseLibrary(readFileSync(new URL('../apps/web/assets/tikz-symbols.svg', import.meta.url), 'utf8')).defs;
+  let nodes = 0, paths = 0;
+  for (const def of defs) {
+    if (def.kind === 'node') {
+      const node = new comp.NodeSymbol(def, 0, 0);
+      assert.ok(node.terminals().length >= 1, 'node terminals: ' + def.name);
+      assert.match(node.toTikZ(value => value, value => value), /^\\node\[/);
+      nodes++;
+    } else if (def.kind === 'path') {
+      const path = new comp.PathComponent(def, 0, 0);
+      assert.ok(path.terminals().length >= 2, 'path terminals: ' + def.name);
+      assert.match(path.toTikZ(value => value, value => value), /^\\draw /);
+      for (const point of path.adjustPoints()) assert.ok(Number.isFinite(point.x) && Number.isFinite(point.y));
+      paths++;
+    }
+  }
+  assert.equal(nodes, 153);
+  assert.equal(paths, 249);
+});
