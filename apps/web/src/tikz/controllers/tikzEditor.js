@@ -324,6 +324,9 @@ export class TikzEditor {
   // transformer by A1/A2/B1/B2, not merely by its centre.
   snapItem(item, desired) {
     const terminals = item.terminals?.() || [];
+    // Node symbols also expose their centre as an additional moving snap
+    // point in the reference designer; it is not a fixed anchor of the symbol.
+    if (item.kind === 'node') terminals.push({ dx: 0, dy: 0, name: 'center' });
     if (!terminals.length) return this.snap.snap(desired);
     let best = null;
     for (const terminal of terminals) {
