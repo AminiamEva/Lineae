@@ -88,8 +88,29 @@ const server = createServer(async (request, response) => {
     await page.waitForTimeout(250);
     assert.equal(await page.locator('.tikz-layer-items > [data-uid]').last().locator('line').count(), 2, 'path endpoints are connected to the natural symbol with two leads');
 
+    // Missing artwork fallback: American voltage source shows +/- and exposes
+    // both polarity points as snap points.
+    await place('Sources and generators', 'Voltage source (american)', .70, .70);
+    assert.equal(await page.locator('.tikz-layer-items circle').count(), 6, 'voltage source has START/END, +/- snap points and two adjustment handles');
+    const voltageBox = await page.locator('.tikz-layer-items > [data-uid]').last().boundingBox();
+    await page.locator('.tikz-tools button[data-tool=eraser]').click();
+    await page.mouse.click(voltageBox.x + voltageBox.width / 2, voltageBox.y + voltageBox.height / 2);
+    await page.waitForTimeout(250);
+    assert.equal(await page.locator('.tikz-layer-items > [data-uid]').count(), 6, 'eraser removes only the voltage source');
+
+    // Pan tool changes the canvas transform rather than moving a component.
+    const beforePan = await page.locator('.tikz-layer-items').getAttribute('transform');
+    await page.locator('.tikz-tools button[data-tool=pan]').click();
+    await page.mouse.move(box.x + 400, box.y + 500);
+    await page.mouse.down();
+    await page.mouse.move(box.x + 460, box.y + 540, { steps: 6 });
+    await page.mouse.up();
+    await page.waitForTimeout(200);
+    assert.notEqual(await page.locator('.tikz-layer-items').getAttribute('transform'), beforePan, 'pan changes the view transform');
+
     await page.locator('.tikz-finish').click();
-    await page.waitForTimeout(400);
+    await page.waitForTimeout(900);
+    assert.equal(await page.locator('.tikz-code-preview-svg').count(), 1, 'inserted CircuiTikZ has an incremental SVG preview');
     const tikz = await page.locator('.ProseMirror pre code').innerText();
     assert.match(tikz, /\\resizebox\{0\.6\\textwidth\}/);
     assert.match(tikz, /\\node\[npn, bodydiode\]/);

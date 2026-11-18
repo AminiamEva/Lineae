@@ -1108,11 +1108,13 @@ body.format-painter-active .ProseMirror * { cursor:copy; }
 .tikz-sym:hover { background:light-dark(#eef2f8,#2a3448); }
 .tikz-canvas-wrap { flex:1; position:relative; min-width:0; background:light-dark(#fafbfd,#171d29); }
 .tikz-canvas { width:100%; height:100%; display:block; outline:none; cursor:crosshair; }
+.tikz-canvas.is-panning { cursor:grabbing; }
 .tikz-status { position:absolute; left:10px; bottom:8px; font-size:11px; color:light-dark(#8b95a7,#7d879c); pointer-events:none; }
 .tikz-side { width:190px; padding:10px; border-inline-start:1px solid light-dark(#e3e7ee,#333c4e); display:flex; flex-direction:column; gap:8px; font-size:12px; }
 .tikz-tools { display:grid; grid-template-columns:1fr 1fr; gap:6px; }
 .tikz-tools button { padding:5px 4px; border:1px solid light-dark(#d5dbe5,#3a4356); border-radius:6px; background:inherit; color:inherit; cursor:pointer; font-size:12px; }
 .tikz-tools button.active { border-color:#2f6fed; color:#2f6fed; }
+.tikz-selection-info { min-height:1.2em; color:light-dark(#687386,#aab3c1); font-size:10px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .tikz-field { display:flex; flex-direction:column; gap:3px; color:light-dark(#687386,#aab3c1); }
 .tikz-field input,.tikz-field select { padding:3px 6px; border:1px solid light-dark(#d5dbe5,#3a4356); border-radius:6px; background:inherit; color:inherit; font-size:12px; }
 
@@ -1131,6 +1133,9 @@ body.format-painter-active .ProseMirror * { cursor:copy; }
 .tikz-option-field input[type=checkbox] { margin:0; }
 .tikz-option-field select { min-width:0; flex:1; }
 .tikz-zoom-readout { font-size:11px; color:light-dark(#8b95a7,#7d879c); }
+.tikz-code-preview { display:block; margin:.55em 0; padding:6px 8px; border:1px solid light-dark(#dce2ec,#3a4356); border-radius:6px; background:light-dark(#fbfcfe,#202632); overflow:hidden; }
+.tikz-code-preview-svg { display:block; max-width:100%; height:auto; }
+.tikz-code-preview:empty { display:none; }
 .tikz-field input:disabled { opacity:.45; }
 
 .tikz-icon-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:4px; padding:4px 2px 8px; }

@@ -92,6 +92,48 @@ function parseVariant(attrsText, inner = '') {
   };
 }
 
+
+// A handful of entries in the upstream metadata reference symbols that are
+// absent from this snapshot of symbols.svg.  Keep those components usable by
+// aliasing them to the closest artwork family; the original TikZ name and all
+// pins/options remain unchanged.
+const SYMBOL_ALIASES = {
+  'node_op-amp': 'node_plain-amp',
+  'node_en-amp': 'node_plain-mono-amp',
+  'node_fd-op-amp': 'node_plain-amp',
+  'node_gm-amp': 'node_plain-amp',
+  'node_inst-amp': 'node_plain-amp',
+  'node_fd-inst-amp': 'node_plain-amp',
+  'node_inst-amp-ra': 'node_plain-amp',
+  'node_double-bipole': 'node_transformer_american',
+  'node_european-and-port': 'node_american-and-port',
+  'node_european-or-port': 'node_american-or-port',
+  'node_european-nand-port': 'node_american-nand-port',
+  'node_european-nor-port': 'node_american-nor-port',
+  'node_european-xor-port': 'node_american-xor-port',
+  'node_european-xnor-port': 'node_american-xnor-port',
+  'node_european-buffer-port': 'node_american-buffer-port',
+  'node_european-not-port': 'node_american-not-port',
+  'node_latch': 'node_american-buffer-port',
+  'node_flipflop-SR': 'node_american-buffer-port',
+  'node_flipflop-D': 'node_american-buffer-port',
+  'node_flipflop-T': 'node_american-buffer-port',
+  'node_flipflop-JK': 'node_american-buffer-port',
+  'path_varistor': 'path_thermistor',
+  'path_thermistor-ptc': 'path_thermistor',
+  'path_thermistor-ntc': 'path_thermistor',
+  'path_ecapacitor': 'path_capacitor',
+  'path_ammeter': 'path_rmeter',
+  'path_voltmeter': 'path_rmeter',
+  'path_ohmmeter': 'path_rmeter',
+  'path_adc': 'path_amp',
+  'path_dac': 'path_amp',
+  'path_dsp': 'path_amp',
+  'path_fft': 'path_amp',
+  'path_phaseshifter': 'path_amp',
+  'path_vphaseshifter': 'path_amp',
+};
+
 export function variantFor(def, selectedOptions = []) {
   if (!def?.variants?.length) {
     return {
@@ -133,6 +175,12 @@ export function parseLibrary(svgText) {
       variants.push(parseVariant(variantMatch[1], variantMatch[2] || ''));
     }
     if (!variants.length) variants.push(parseVariant(''));
+    const availableSymbols = new Set([...svgText.matchAll(/<symbol\s+id="([^"]+)"/g)].map(match => match[1]));
+    for (const variant of variants) {
+      if (variant.id && !availableSymbols.has(variant.id) && SYMBOL_ALIASES[variant.id]) {
+        variant.id = SYMBOL_ALIASES[variant.id];
+      }
+    }
     if (!variants.some(variant => variant.pins.length)) {
       // Legacy/unit-test metadata may place pins directly after a self-closing
       // <variant/> element; accept it as the first variant's pin list.

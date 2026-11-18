@@ -124,3 +124,14 @@ test('every variant style is selectable and exports its own TikZ options', () =>
   }
   assert.ok(variants > 1000, 'all symbol variants are covered');
 });
+
+test('default bipole physical length is calibrated in centimetres', () => {
+  const defs = parseLibrary(readFileSync(new URL('../apps/web/assets/tikz-symbols.svg', import.meta.url), 'utf8')).defs;
+  const resistor = defs.find(def => def.name === 'Resistor (american)');
+  const part = new comp.PathComponent(resistor, 0, 0);
+  const cm = Math.abs(part.end.x - part.start.x) / PX_PER_CM;
+  assert.ok(Math.abs(cm - 1.12) < .03, 'default resistor pin spacing is about 1.12 cm; got ' + cm);
+  const code = exportTikz([part], { widthFraction: .6 });
+  assert.match(code, /\\resizebox\{0\.6\\textwidth\}/);
+  assert.match(code, /\\draw \(0,0\) to\[american resistor\] \(1\.12,0\)/);
+});

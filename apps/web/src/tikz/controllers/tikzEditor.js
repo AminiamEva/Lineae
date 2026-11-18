@@ -13,6 +13,7 @@ export class TikzEditor {
     this.items = []; this.selected = null;
     this.tool = 'select'; this.placingDef = null;
     this.wirePts = [];
+    this.snapEnabled = true;
     this.onDone = null;
     this.history = []; this.future = [];
   }
@@ -71,8 +72,14 @@ export class TikzEditor {
               <button data-tool="wire">${this.t('连线', 'Wire')}</button>
               <button data-tool="text">${this.t('文字', 'Text')}</button>
               <button data-tool="rotate">${this.t('旋转90°', 'Rot 90°')}</button>
+              <button data-tool="undo">Undo</button><button data-tool="redo">Redo</button>
+              <button data-tool="pan">Pan</button>
+              <button data-tool="eraser">Erase</button>
               <button data-tool="delete">${this.t('删除', 'Delete')}</button>
+              <button data-tool="clear">Clear</button>
+              <button data-tool="fit">Fit</button>
             </div>
+            <div class="tikz-selection-info"></div>
             <label class="tikz-field">${this.t('文字内容', 'Text')}
               <input type="text" class="tikz-text-input" placeholder="R_1"></label>
             <label class="tikz-field">${this.t('字号(pt)', 'Size (pt)')}
@@ -94,6 +101,7 @@ export class TikzEditor {
               <label class="tikz-field">${this.t('网格(cm)', 'Grid (cm)')}
                 <select class="tikz-grid-size"><option value="0.25">0.25</option><option value="0.5" selected>0.5</option><option value="1">1</option></select></label>
               <label class="tikz-field tikz-mirror-row"><input type="checkbox" class="tikz-grid-show" checked>${this.t('显示网格', 'Show grid')}</label>
+              <label class="tikz-field tikz-mirror-row"><input type="checkbox" class="tikz-snap-show" checked>${this.t('吸附网格/引脚', 'Snap to grid/pins')}</label>
               <div class="tikz-zoom-readout">100%</div>
             </div>
           </div>
@@ -123,6 +131,7 @@ export class TikzEditor {
     o.querySelector('.tikz-prop-mirror').onchange = e => { if (this.selected?.options) { this.selected.mirror = e.target.checked; } };
     o.querySelector('.tikz-grid-size').onchange = e => { this.snap.gridStep = +e.target.value * PX_PER_CM; this.canvas.drawGrid(); };
     o.querySelector('.tikz-grid-show').onchange = e => { this.canvas.layers.grid.style.display = e.target.checked ? '' : 'none'; };
+    o.querySelector('.tikz-snap-show').onchange = e => { this.snapEnabled = e.target.checked; };
     const setFromFraction = v => {
       v = Math.min(1.5, Math.max(0.1, +v || 0.6));
       const contentPx = Math.max(600, this.contentBBox().w);
@@ -238,6 +247,23 @@ export class TikzEditor {
     svg.setAttribute('width', '40'); svg.setAttribute('height', '26');
     const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
     svg.append(g);
+    if (def.source === 'isVoltage' && !document.getElementById(def.id)) {
+      svg.setAttribute('viewBox', '0 0 40 40');
+      const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+      for (const [key, value] of Object.entries({ cx: 20, cy: 20, r: 15, fill: 'none', stroke: '#333', 'stroke-width': 2 })) circle.setAttribute(key, value);
+      g.append(circle);
+      for (const [y, plus] of [[13, true], [27, false]]) {
+        const h = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+        for (const [key, value] of Object.entries({ x1: 15, y1: y, x2: 25, y2: y, stroke: '#333', 'stroke-width': 2 })) h.setAttribute(key, value);
+        g.append(h);
+        if (plus) {
+          const v = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+          for (const [key, value] of Object.entries({ x1: 20, y1: y - 5, x2: 20, y2: y + 5, stroke: '#333', 'stroke-width': 2 })) v.setAttribute(key, value);
+          g.append(v);
+        }
+      }
+      return svg;
+    }
     const stroke = { fill: 'none', stroke: '#333', 'stroke-width': 2, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' };
     const setA = (el, attrs) => { for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v); return el; };
     if (def.id && (def.kind === 'node' || def.kind === 'path')) {
@@ -296,12 +322,26 @@ export class TikzEditor {
   useTool(tool) {
     if (tool === 'rotate') return this.rotateSelected();
     if (tool === 'delete') return this.deleteSelected();
+    if (tool === 'undo') return this.undo();
+    if (tool === 'redo') return this.redo();
+    if (tool === 'clear') { this.pushHistory(); this.items = []; this.selected = null; this.recomputeSnap(); this.render(); return; }
+    if (tool === 'fit') { this.canvas.fit(); return; }
     this.tool = tool; this.placingDef = null; this.wirePts = [];
+    this.svg.style.cursor = tool === 'pan' ? 'grab' : tool === 'eraser' ? 'not-allowed' : 'crosshair';
     this.overlay.querySelectorAll('.tikz-tools button').forEach(b => b.classList.toggle('active', b.dataset.tool === tool));
     this.render();
   }
   rotateSelected() { if (this.selected && this.selected.rotateBy) { this.pushHistory(); this.selected.rotateBy(90); this.render(); } }
-  deleteSelected() { if (this.selected) { this.pushHistory(); this.items = this.items.filter(i => i !== this.selected); this.selected = null; this.recomputeSnap(); this.render(); } }
+  erase(item) {
+    if (!item) return;
+    this.pushHistory();
+    this.items = this.items.filter(candidate => candidate !== item);
+    if (this.selected === item) this.selected = null;
+    this._drag = null; this._resize = null;
+    this.recomputeSnap();
+    this.render();
+  }
+  deleteSelected() { this.erase(this.selected); }
 
   contentBBox() {
     const xs = this.items.flatMap(i => i.kind === 'wire' ? i.pts.map(p => p.x) : [i.x]);
@@ -323,6 +363,7 @@ export class TikzEditor {
   // important CircuiTikZ-Designer behaviour: a transistor snaps by B/C/E, a
   // transformer by A1/A2/B1/B2, not merely by its centre.
   snapItem(item, desired) {
+    if (!this.snapEnabled) return desired;
     const terminals = item.terminals?.() || [];
     // Node symbols also expose their centre as an additional moving snap
     // point in the reference designer; it is not a fixed anchor of the symbol.
@@ -341,6 +382,18 @@ export class TikzEditor {
   // ---------- pointer interaction ----------
   pointerDown(e) {
     const raw = this.canvas.toWorld(e.clientX, e.clientY);
+    if (this.tool === 'pan' || e.button === 1 || e.button === 2) {
+      this._pan = { x: e.clientX, y: e.clientY, vx: this.canvas.view.x, vy: this.canvas.view.y };
+      this.svg.classList.add('is-panning');
+      e.preventDefault();
+      return;
+    }
+    if (this.tool === 'eraser') {
+      const target = e.target?.closest?.('[data-uid]');
+      const item = target ? this.items.find(candidate => String(candidate.uid) === target.getAttribute('data-uid')) : this.hitTest(raw);
+      this.erase(item);
+      return;
+    }
     if (this.tool === 'select' || this.placingDef) { /* handled below */ }
     if (this.placingDef) {
       const raw = this.canvas.toWorld(e.clientX, e.clientY);
@@ -380,8 +433,14 @@ export class TikzEditor {
 
   pointerMove(e) {
     const raw = this.canvas.toWorld(e.clientX, e.clientY);
+    if (this._pan) {
+      this.canvas.view.x = this._pan.vx + (e.clientX - this._pan.x);
+      this.canvas.view.y = this._pan.vy + (e.clientY - this._pan.y);
+      this.canvas.apply();
+      return;
+    }
     if (this._resize) {
-      const p = this.snap.snap(raw);
+      const p = this.snapEnabled ? this.snap.snap(raw) : raw;
       if (this._resize.method === 'setAdjustPoint') this._resize.item[this._resize.method](this._resize.key, p);
       else this._resize.item[this._resize.method](p);
       this.recomputeSnap(); this.render();
@@ -416,7 +475,12 @@ export class TikzEditor {
     this.canvas.setGhost([]);
   }
 
-  pointerUp() { if (this._drag || this._resize) this.pushHistory(); this._drag = null; this._resize = null; this._wirePreview = null; this._guides = null; this._lastSnap = null; this.render(); }
+  pointerUp() {
+    if (this._pan) { this._pan = null; this.svg.classList.remove('is-panning'); return; }
+    if (this._drag || this._resize) this.pushHistory();
+    this._drag = null; this._resize = null; this._wirePreview = null; this._guides = null; this._lastSnap = null;
+    this.render();
+  }
 
   finishWire() {
     // Double-click/Enter can add the same grid point twice; never emit
@@ -544,6 +608,14 @@ export class TikzEditor {
       this.overlay.querySelector('.tikz-prop-label').value = p.label || '';
       this.overlay.querySelector('.tikz-prop-value').value = p.value || '';
       this.overlay.querySelector('.tikz-prop-mirror').checked = !!p.mirror;
+    }
+    const selection = this.overlay.querySelector('.tikz-selection-info');
+    if (selection) {
+      const box = p?.bbox?.();
+      const size = box ? '  ' + (box.w / PX_PER_CM).toFixed(2) + '×' + (box.h / PX_PER_CM).toFixed(2) + ' cm' : '';
+      selection.textContent = p
+        ? (p.def?.name || p.kind) + '  x=' + p.x.toFixed(1) + ' y=' + p.y.toFixed(1) + size
+        : this.t('未选择元件', 'No selection');
     }
     const options = this.overlay.querySelector('.tikz-options');
     if (!options) return;

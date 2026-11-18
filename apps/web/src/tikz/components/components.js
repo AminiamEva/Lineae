@@ -138,6 +138,26 @@ export class NodeSymbol extends Component {
   }
 }
 
+
+function isAmericanVoltage(def) {
+  return def?.source === 'isVoltage' && /american.*voltage source|american controlled voltage source/i.test(def.tikz || '');
+}
+
+function sourceFallback(variant, def) {
+  const [vx, vy, vw, vh] = variant.viewBox;
+  const cx = variant.mid[0], cy = variant.mid[1];
+  const radius = Math.max(6, Math.min(vw, vh) / 2 - 1);
+  const g = svg('g', { transform: `translate(${-cx},${-cy})` });
+  g.append(svg('circle', { cx, cy, r: radius, fill: 'none', stroke: '#222', 'stroke-width': 1.1 }));
+  const signSize = radius * .42;
+  const margin = 8;
+  for (const [y, plus] of [[cy - margin, true], [cy + margin, false]]) {
+    g.append(svg('line', { x1: cx - signSize, y1: y, x2: cx + signSize, y2: y, stroke: '#222', 'stroke-width': 1.2 }));
+    if (plus) g.append(svg('line', { x1: cx, y1: y - signSize, x2: cx, y2: y + signSize, stroke: '#222', 'stroke-width': 1.2 }));
+  }
+  return g;
+}
+
 export class PathComponent extends Component {
   constructor(def, x, y) {
     super('path', x, y);
@@ -181,6 +201,12 @@ export class PathComponent extends Component {
       const world = this.pinWorld(pin);
       points.push({ dx: world.x - this.start.x, dy: world.y - this.start.y, name: pin.name, comp: this, ti: index + 2 });
     });
+    if (isAmericanVoltage(this.def) && !variant.pins.some(pin => pin.name === '+' || pin.name === '-')) {
+      for (const [name, y] of [['+', -8], ['-', 8]]) {
+        const world = this.localToWorld({ x: 0, y });
+        points.push({ dx: world.x - this.start.x, dy: world.y - this.start.y, name, comp: this, ti: points.length });
+      }
+    }
     return points;
   }
   adjustPoints() {
@@ -228,7 +254,9 @@ export class PathComponent extends Component {
     use.setAttribute('transform', `translate(${-variant.mid[0]},${-variant.mid[1]})`);
     if (this.def.fillable) use.setAttribute('fill', 'none');
     if (this.selected) use.setAttribute('color', '#2f6fed');
-    symbol.append(use);
+    const hasArtwork = variant.id && document.getElementById(variant.id);
+    if (hasArtwork) symbol.append(use);
+    else if (isAmericanVoltage(this.def)) symbol.append(sourceFallback(variant, this.def));
     g.append(symbol);
     const { start, end } = variantStartEnd(variant);
     const stroke = this.selected ? '#2f6fed' : '#222';
