@@ -61,7 +61,7 @@ function tokensFor(editor,node,start,element,options){
         emit({type:'penalty',width:0,cost:10000,from,to:from});
         emit({type:'glue',width:pair.width*em,stretch:pair.stretch*em,shrink:pair.shrink*em,from,to:from,cjk:true});
       }
-      if(before&&!pair)emit({type:'glue',width:before,stretch:0,shrink:Math.min(em/2,before),from,to:from,cjk:true});
+      if(before&&!pair&&n>0&&previous!=='\n')emit({type:'glue',width:before,stretch:0,shrink:Math.min(em/2,before),from,to:from,cjk:true});
       emit({type:'box',width:metrics.width-before-after,from,to:from+value.length,punctuation:true,before,after,font});
       if(after)emit({type:'glue',width:after,stretch:0,shrink:Math.min(em/2,after),from:from+value.length,to:from+value.length,cjk:true});
     }else if(/^[A-Za-z]{5,}$/.test(value)){
