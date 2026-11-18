@@ -2249,14 +2249,14 @@ A & B \\
       return main.scrollWidth<=main.clientWidth+1;
     }),'Long formulas do not add a page scrollbar');
     await page.locator('[data-source-mode="source"]').click();
-    assert.ok((await page.locator('.tex-code .cm-content').innerText()).includes('\\newline\n$'+longFormula+'$'));
+    assert.ok((await page.locator('.tex-code .cm-content').innerText()).includes('Lead $'+longFormula+'$'),'Visual formula wrapping preserves original source');
     await page.locator('[data-source-mode="body"]').click();
     const wrappedFormula='x+y+'.repeat(10)+'z';
     await importSource('W'.repeat(40)+'$'+wrappedFormula+'$');
     await page.waitForFunction(latex=>document.querySelector('[data-math-view]')?.dataset.latex===latex,wrappedFormula);
     await page.locator('[data-source-mode="source"]').click();
-    assert.ok((await page.locator('.tex-code .cm-content').innerText()).includes('\\newline\n$'+wrappedFormula+'$'),
-      'A formula that wraps naturally is recorded as \\newline even when it fits an empty line');
+    assert.ok((await page.locator('.tex-code .cm-content').innerText()).includes('W'.repeat(40)+'$'+wrappedFormula+'$'),
+      'A visual formula wrap does not inject explicit TeX newlines');
     await page.locator('[data-source-mode="body"]').click();
     const nestedLists=Array.from({length:32},(_,index)=>index%2?'enumerate':'itemize');
     await importSource(nestedLists.map(kind=>'\\begin{'+kind+'}\n\\item Level\n').join('')+

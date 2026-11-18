@@ -1220,41 +1220,13 @@ function renderMeta() {
 renderMeta();
 typesetPagination=installTypesetPagination(documentPage,paper,metaBar,editor);
 typesetPagination.setTableContinuation(config.value.interface.continuedTables);
-function recordFormulaLineBreaks(document) {
-  if (documentPage.hidden) return false;
-  let changed=false;
-  editor.state.doc.forEach((paragraph,position,index)=>{
-    if (paragraph.type.name!=='paragraph') return;
-    paragraph.forEach((node,offset,childIndex)=>{
-      if (node.type.name!=='math') return;
-      const start=position+1+offset;
-      const startsLine=childIndex===0||paragraph.child(childIndex-1).type.name==='hardBreak';
-      let breakBefore=false;
-      if (!startsLine) {
-        const formula=editor.view.nodeDOM(start)?.getBoundingClientRect();
-        if (formula?.width) {
-          const preceding=editor.view.coordsAtPos(start-1,1);
-          // The browser wraps an inline-block that does not fit the remaining
-          // space. TeX does not, so record the same break as \newline.
-          breakBefore=formula.left<=preceding.left+.5;
-        }
-      }
-      if (Boolean(node.attrs.breakBefore)!==breakBefore) {
-        const target=document.content[index].content[childIndex];
-        target.attrs={...target.attrs,breakBefore:breakBefore||null};
-        changed=true;
-      }
-    });
-  });
-  return changed;
-}
 function source() {
   if(projectDocument.composition)return projectExplorer.model.file(projectDocument.composition.rootId).draft;
   const document=editor.getJSON();
   const untouched=importedSnapshot===JSON.stringify(document);
   const bareMath=document.content.some(node=>node.type==='mathBlock' && !node.attrs.delimiter &&
     /^\\begin\{(?:[dr]?cases|drcases|aligned|alignedat|gathered|split|[pbBvV]?(?:small)?matrix|array|darray|subarray|multlined)\}/.test(node.attrs.latex));
-  if (!recordFormulaLineBreaks(document) && untouched && !bareMath && (!readMeta('title') || hasTitleCommand(importedSource))) return importedSource;
+  if (untouched && !bareMath && (!readMeta('title') || hasTitleCommand(importedSource))) return importedSource;
   return exportDocument(documentParts,serialize(document),{chineseTypesetting:true});
 }
 savedSource=source();
