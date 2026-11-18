@@ -24,13 +24,20 @@ const server=createServer(async(req,res)=>{
   const lines=new Map();let previousLine=null;const walk=document.createTreeWalker(node,NodeFilter.SHOW_TEXT);
   while(walk.nextNode()){
    const text=walk.currentNode;if(text.parentElement.closest('.ProseMirror-widget'))continue;
-   for(let index=0;index<text.length;index++){const range=document.createRange();range.setStart(text,index);range.setEnd(text,index+1);const r=range.getBoundingClientRect();if(/\s/.test(text.data[index])){if(previousLine!==null)lines.get(previousLine).text+=text.data[index];continue;}if(!r.width&&!r.height)continue;const key=Math.round(r.top*10)/10;if(key===null)continue;previousLine=key;if(!lines.has(key))lines.set(key,{text:'',x:r.left,right:r.right});const line=lines.get(key);line.text+=text.data[index];line.right=Math.max(line.right,r.right);}
+   for(let index=0;index<text.length;index++){const range=document.createRange();range.setStart(text,index);range.setEnd(text,index+1);const r=range.getBoundingClientRect();if(/\s/.test(text.data[index])){if(previousLine!==null)lines.get(previousLine).text+=text.data[index];continue;}if(!r.width&&!r.height)continue;const key=Math.round(r.top*10)/10;if(key===null)continue;previousLine=key;if(!lines.has(key))lines.set(key,{text:'',x:r.left,right:r.right,y:r.top});const line=lines.get(key);line.text+=text.data[index];line.right=Math.max(line.right,r.right);}
   }
-  for(const hyphen of node.querySelectorAll('.tex-discretionary-hyphen')){const r=hyphen.getBoundingClientRect();const match=[...lines.keys()].sort((a,b)=>Math.abs(a-r.top)-Math.abs(b-r.top))[0];if(match!==undefined)lines.get(match).text+='-';}
+  for(const hyphen of node.querySelectorAll('.tex-discretionary-hyphen')){const r=hyphen.getBoundingClientRect();const match=[...lines.keys()].sort((a,b)=>Math.abs(a-r.top)-Math.abs(b-r.top))[0];if(match!==undefined){lines.get(match).text+='-';lines.get(match).right=Math.max(lines.get(match).right,r.right);}}
   return {width:node.clientWidth,style:getComputedStyle(node).font,optimized:node.hasAttribute('data-tex-paragraph'),lines:[...lines.values()].filter(line=>line.text.trim()).map(line=>({...line,text:line.text.trim().normalize('NFKC')}))};
  });
  console.log('PARAGRAPH '+JSON.stringify({margin:fixture.margin,expected:fixture.lines,evidence}));
  assert.equal(evidence.optimized,true);assert.deepEqual(evidence.lines.map(line=>line.text),fixture.lines.map(line=>line.text),'Line endings must match the XeLaTeX reference at margin '+fixture.margin);
+ for(let i=0;i<fixture.lines.length;i++){
+ const line=evidence.lines[i],expected=fixture.lines[i].bbox;
+ assert.ok(Math.abs((line.right-line.x)-(expected[2]-expected[0])*4/3)<1,'Line width differs from XeLaTeX: '+JSON.stringify({margin:fixture.margin,line:i,actual:line.right-line.x,expected:(expected[2]-expected[0])*4/3}));
+ if(i)assert.ok(Math.abs((line.y-evidence.lines[0].y)-(expected[1]-fixture.lines[0].bbox[1])*4/3)<.5,'Baseline spacing differs from XeLaTeX');
+ }
+ const sourceText=fixture.source;await page.locator('.ProseMirror p').first().click();await page.keyboard.press('End');await page.keyboard.type(' sample');await page.keyboard.press('Control+z');
+ await page.locator('[data-source-mode=source]').click();assert.equal(await code.innerText(),sourceText.trimEnd(),'View layout and undo preserve source text');await page.locator('[data-source-mode=body]').click();
  }
  assert.deepEqual(errors,[]);
  }finally{await browser.close();server.close();}

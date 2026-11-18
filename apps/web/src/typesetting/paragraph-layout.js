@@ -81,19 +81,19 @@ export function installParagraphLayout(editor){
       if((node.attrs.align&&node.attrs.align!=='justify')||(!element.hasAttribute('data-tex-paragraph')&&!['justify','start'].includes(style.textAlign))||element.closest('[data-columns],.image-wrap-left,.image-wrap-right')||element.querySelector('.document-image'))return false;
       const {items}=tokensFor(editor,node,start,element),width=element.getBoundingClientRect().width/(element.closest('.document-page').getBoundingClientRect().width/element.closest('.document-page').offsetWidth||1)-parseFloat(style.paddingLeft)-parseFloat(style.paddingRight)-parseFloat(style.borderLeftWidth)-parseFloat(style.borderRightWidth),indent=parseFloat(style.textIndent)||0;
       const plan=optimumParagraph(items,line=>width-(line===0?indent:0),options);
-      if(!plan)return false;
+      if(!plan||plan.lines.length===1)return false;
       entries.push(Decoration.node(start,start+node.nodeSize,{'data-tex-paragraph':'true',style:'white-space:nowrap;text-align:left;hyphens:none;overflow-wrap:normal;word-break:normal'}));
       for(const [lineNumber,line] of plan.lines.entries()){
         const last=lineNumber===plan.lines.length-1;
         for(let index=line.start;index<line.end;index++){
           const item=items[index];if(item.type!=='glue'||item.stretch>=1e10)continue;
           const size=Math.max(0,item.width+(last?0:line.ratio*(line.ratio<0?item.shrink:item.stretch)));
-          if(item.to>item.from)entries.push(Decoration.inline(item.from,item.to,{class:'tex-word-glue',style:'display:inline-block;white-space:pre;width:'+size+'px;text-indent:0;font-size:0'}));
+          if(item.to>item.from)entries.push(Decoration.inline(item.from,item.to,{class:'tex-word-glue',style:'white-space:pre;word-spacing:'+(size/(item.to-item.from)-measure(' ',style))+'px;text-indent:0'}));
           else if(size)entries.push(widget(item.from,'tex-interchar-glue',size));
         }
         const end=items[line.end];
         if(!last){
-          if(end.type==='glue'&&end.to>end.from)entries.push(Decoration.inline(end.from,end.to,{class:'tex-word-glue',style:'display:inline-block;width:0;font-size:0'}));
+          if(end.type==='glue'&&end.to>end.from)entries.push(Decoration.inline(end.from,end.to,{class:'tex-word-glue',style:'font-size:0;line-height:0'}));
           if(end.hyphen)entries.push(widget(end.from,'tex-discretionary-hyphen'));
           // A visual break is a view decoration, never a hardBreak/source edit.
           if(!end.forced)entries.push(widget(end.to,'tex-paragraph-break'));
