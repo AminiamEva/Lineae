@@ -10,6 +10,7 @@ const closing=/^[、。，．？！：；）］｝〉》」』】…,.!?;:)]$/u,
 const canvas=typeof document==='undefined'?null:document.createElement('canvas');
 const context=canvas?.getContext('2d');
 const metricCache=new Map();
+if(typeof document!=='undefined')document.fonts?.addEventListener('loadingdone',()=>metricCache.clear());
 function measure(text,style){
   const font=style.font||[style.fontStyle,style.fontWeight,style.fontSize,style.fontFamily].join(' ');
   const id=font+'|'+style.letterSpacing+'|'+text;
@@ -50,7 +51,7 @@ function tokensFor(editor,node,start,element){
     if(/^[A-Za-z]{5,}$/.test(value)){
       const parts=hyphenator.hyphenate(value);let position=0;
       for(let i=0;i<parts.length;i++){
-        const part=parts[i];emit({type:'box',width:width(part,at+position),from:from+position,to:from+position+part.length});position+=part.length;
+        const part=parts[i];emit({type:'box',width:width(value.slice(0,position+part.length),at)-width(value.slice(0,position),at),from:from+position,to:from+position+part.length});position+=part.length;
         if(i<parts.length-1)emit({type:'penalty',width:measure('-',styleAt(at+position)),cost:50,hyphen:true,from:from+position,to:from+position});
       }
     }else emit({type:'box',width:width(value,at),from,to:from+value.length});
