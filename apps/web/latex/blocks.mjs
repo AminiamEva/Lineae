@@ -393,20 +393,27 @@ function splitParagraphs(block) {
 }
 
 // Structural switches in comments or macro arguments must remain source text.
-function topLevelCommand(text, index) {
-  let depth=0;
+function topLevelCommand(text,index){
+  let depth=0,math=null;const environments=[];
   for(let i=0;i<index;i++){
     if(text[i]==='%'){
-      const end=text.indexOf('\n',i);
-      if(end<0||end>=index)return false;
-      i=end;
+      const end=text.indexOf('\n',i);if(end<0||end>=index)return false;i=end;
     }else if(text[i]==='\\'){
-      if(!/[A-Za-z]/.test(text[i+1]??''))i++;
+      const environment=/^\\(begin|end)\{([^}]+)\}/.exec(text.slice(i));
+      const verb=/^\\verb\*?([^A-Za-z\s])/.exec(text.slice(i));
+      if(environment){if(environment[1]==='begin')environments.push(environment[2]);else environments.pop();i+=environment[0].length-1;}
+      else if(verb){const end=text.indexOf(verb[1],i+verb[0].length);if(end<0||end>=index)return false;i=end;}
+      else if(text[i+1]==='['||text[i+1]==='('){math=text[i+1];i++;}
+      else if(text[i+1]===']'||text[i+1]===')'){math=null;i++;}
+      else if(!/[A-Za-z]/.test(text[i+1]??''))i++;
+    }else if(text[i]==='$'){
+      const delimiter=text[i+1]==='$'?'$$':'$';math=math===delimiter?null:delimiter;i+=delimiter.length-1;
     }else if(text[i]==='{')depth++;
     else if(text[i]==='}')depth--;
   }
-  return depth===0;
+  return depth===0&&!math&&!environments.length;
 }
+
 function importSegment(block) {
   const events=[...block.matchAll(structural)].filter(match=>!((match[1]==='appendix'||match[2]==='chapter')&&!topLevelCommand(block,match.index))).map(match=>({from:match.index,to:match.index+match[0].length,match}));
   for(const match of block.matchAll(/\\(?:renewcommand|newcommand|setcounter|numberwithin|counterwithin|counterwithout)\b/g)){

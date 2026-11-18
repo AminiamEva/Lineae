@@ -39,3 +39,8 @@ test('commented and unexpanded appendix switches do not change numbering',()=>{
  }
  assert.ok(importBlocks('\\% visible percent\n\\appendix').some(node=>node.type==='appendixStart'));
 });
+test('counter declarations inside math and verbatim remain in their original source container',()=>{
+ for(const source of ['\\[\\setcounter{equation}{4}x\\]','\\verb|\\setcounter{section}{9}|']){
+  assert.ok(importBlocks(source).every(node=>node.type!=='counterDirective'));
+ }
+});
