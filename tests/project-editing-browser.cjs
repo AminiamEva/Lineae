@@ -13,7 +13,7 @@ const server=createServer(async(req,res)=>{
 (async()=>{
  await new Promise(done=>server.listen(0,'127.0.0.1',done));const browser=await chromium.launch({headless:true});
  try{
-  const page=await browser.newPage({viewport:{width:1440,height:1000}}),errors=[];page.on('pageerror',e=>errors.push(e.message));
+  const page=await browser.newPage({viewport:{width:1440,height:1000},locale:'en-US'}),errors=[];page.on('pageerror',e=>errors.push(e.message));
   await page.goto('http://127.0.0.1:'+server.address().port);
   await page.evaluate(async()=>{
    const storage=await navigator.storage.getDirectory();window.folder=await storage.getDirectoryHandle('project-editing',{create:true});
@@ -26,7 +26,7 @@ const server=createServer(async(req,res)=>{
   const paper=page.locator('.ProseMirror');assert.equal(await paper.evaluate(node=>!!node.closest('[inert]')),false);
   await paper.click();await page.keyboard.type('#a');await page.keyboard.insertText('中文');assert.equal(await paper.locator('p').first().textContent(),'#a中文');
   await page.keyboard.press('Enter');await page.keyboard.insertText('Second');assert.match(await paper.innerText(),/Second/);
-  await revealToolbar(page);await page.locator('[data-group=home]').click();await page.locator('select[aria-label="Paragraph style"]').selectOption('1');
+  await revealToolbar(page);await page.locator('[data-group=home]').click();const headingCard=page.locator('.style-card[data-style-level="1"]');if(!await headingCard.isVisible())await page.evaluate(()=>document.querySelector('[data-ribbon-group-toggle="styles"]').click());await page.evaluate(()=>document.querySelector('.style-card[data-style-level="1"]').click());
   await page.keyboard.press('End');
   const font=await paper.locator('h1').evaluate(node=>({family:getComputedStyle(node).fontFamily,size:Number.parseFloat(getComputedStyle(node).fontSize)*72.27/96,weight:getComputedStyle(node).fontWeight}));
   assert.match(font.family,/Georgia/);assert.match(font.family,/SimSun/);assert.equal(font.weight,'700');
