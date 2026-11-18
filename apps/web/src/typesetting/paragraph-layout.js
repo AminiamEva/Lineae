@@ -27,7 +27,7 @@ function tokensFor(editor,node,start,element){
     const from=start+1+offset;
     if(child.isText){
       const point=editor.view.domAtPos(from),dom=point.node.nodeType===3?point.node.parentElement:point.node;
-      runs.push({from:text.length,to:text.length+child.text.length,style:getComputedStyle(dom)});text+=child.text;
+      runs.push({from:text.length,to:text.length+child.text.length,style:getComputedStyle(dom.closest('.tex-word-glue')?.parentElement??dom)});text+=child.text;
     }else if(child.type.name==='hardBreak'){text+='\n';}
     else if(child.isInline){const dom=editor.view.nodeDOM(from);atoms.set(text.length,{from,size:child.nodeSize,width:dom?.getBoundingClientRect().width??0});text+='\ufffc'.repeat(child.nodeSize);}
   });
@@ -77,7 +77,7 @@ export function installParagraphLayout(editor){
       if(node.type.name!=='paragraph'||!node.content.size)return;
       const element=editor.view.nodeDOM(start);if(!element?.offsetWidth||getComputedStyle(element).visibility==='hidden')return false;
       const style=getComputedStyle(element);
-      if(!['justify','start'].includes(style.textAlign)||element.closest('[data-columns],.image-wrap-left,.image-wrap-right')||element.querySelector('.document-image'))return false;
+      if((node.attrs.align&&node.attrs.align!=='justify')||(!element.hasAttribute('data-tex-paragraph')&&!['justify','start'].includes(style.textAlign))||element.closest('[data-columns],.image-wrap-left,.image-wrap-right')||element.querySelector('.document-image'))return false;
       const {items}=tokensFor(editor,node,start,element),width=element.clientWidth,indent=parseFloat(style.textIndent)||0;
       const plan=optimumParagraph(items,line=>width-(line===0?indent:0),options);
       if(!plan)return false;
