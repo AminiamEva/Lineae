@@ -549,22 +549,12 @@ export function buildHomeRibbon(panel,{actions = {}} = {}) {
   const styles = group(panel,'styles','样式','Styles','styles');
   const galleryRow = styles.row();
   refs.styles = styleGallery(galleryRow,(level) => run('style')?.(level));
-  const stylePane = button({iconName:'stylePane',zh:'样式面板',en:'Styles pane',hintZh:'展开样式面板，管理正文和标题样式',hintEn:'Open the styles pane to manage body and heading styles',disabled:true,className:'rb-style-pane'});
-  galleryRow.append(stylePane);
-  const styleSelectSlot = document.createElement('div');
-  styleSelectSlot.className = 'rb-style-select';
-  styles.body.append(styleSelectSlot);
 
   const editing = group(panel,'editing','编辑','Editing','find');
   const editingRow = editing.row();
   refs.find = button({iconName:'find',zh:'查找',en:'Find',hintZh:'在文档中查找文本',hintEn:'Find text in the document',large:true,action:run('find'),sourceAction:'Find'});
   editingRow.append(refs.find);
-  const editingStack = stack(editingRow);
-  editingStack.append(
-    button({iconName:'replace',zh:'替换',en:'Replace',hintZh:'替换文本或使用正则表达式',hintEn:'Replace text, optionally with regular expressions',disabled:true,text:true,className:'rb-wide'}),
-    button({iconName:'selectObjects',zh:'选择',en:'Select',hintZh:'选择全部、相似格式或同类对象',hintEn:'Select all, similar formatting or objects of one kind',disabled:true,text:true,className:'rb-wide'}),
-  );
 
   const responsive = installResponsiveGroups(panel,groupStates);
-  return {panel,refs,groups:groupStates,refreshLayout:responsive.refresh,slots:{font:fontControlsRow,color:colorSlot,styleSelect:styleSelectSlot}};
+  return {panel,refs,groups:groupStates,refreshLayout:responsive.refresh,slots:{font:fontControlsRow,color:colorSlot}};
 }

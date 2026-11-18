@@ -99,7 +99,31 @@ export function parseImageBlock(source) {  const text = String(source ?? '').tri
       captionPosition:captionIndex>=0&&captionIndex<imageIndex?'above':'below',
       label:/\\label\{([^{}\r\n]+)\}/.exec(inner)?.[1]??null}};
   }
-  const figure = /^\\begin\{figure\}(?:\[([^\]]*)\])?\s*([\s\S]*?)\s*\\end\{figure\}$/.exec(text);
+  const subfigureMatch = /^\\begin\{figure\}(?:\[([^\]]*)\])?\s*([\s\S]*?)\\end\{figure\}$/.exec(text);
+  if (subfigureMatch && /\\begin\{subfigure\}/.test(subfigureMatch[2])) {
+    const inner = subfigureMatch[2];
+    const subs = [];
+    const subRe = /\\begin\{subfigure\}\{([^{}]*)\}([\s\S]*?)\\end\{subfigure\}/g;
+    let sub;
+    while ((sub = subRe.exec(inner)) !== null) {
+      const body = sub[2];
+      const graphic = parseImageMarkup(/\\includegraphics(?:\[[^\]]*\])?\{[^{}\\\r\n%]+\}/.exec(body)?.[0] ?? '');
+      if (!graphic) continue;
+      const cap = /\\caption(\*)?\{([^{}\r\n]*)\}/.exec(body);
+      subs.push({ type:'documentImage', attrs:{ ...graphic.attrs,
+        width:/\\textwidth$/.test(sub[1]) ? sub[1] : '0.48\\textwidth',
+        caption:cap?.[2] ?? null, captionEnabled:Boolean(cap), captionNumbered:cap ? !cap[1] : true,
+        figure:false, centered:true, wrap:false } });
+    }
+    if (!subs.length) return null;
+    const tail = inner.slice(inner.lastIndexOf('\\end{subfigure}'));
+    const mainCap = /\\caption(\*)?\{([^{}\r\n]*)\}/.exec(tail);
+    return { type:'subfigures', attrs:{
+      placement:subfigureMatch[1] || null, fixed:subfigureMatch[1]?.includes('H') || false,
+      caption:mainCap?.[2] ?? null, captionEnabled:Boolean(mainCap), captionNumbered:mainCap ? !mainCap[1] : true,
+      label:/\\label\{([^{}\r\n]+)\}/.exec(tail)?.[1] ?? null }, content:subs };
+  }
+  const figure = /^\\begin\{figure\}(?:\[([^\]]*)\])?\s*([\s\S]*?)\\end\{figure\}$/.exec(text);
   if (figure) {
     const inner = figure[2];
     const imageMatch = /\\includegraphics(?:\[[^\]]*\])?\{[^{}\\\r\n%]+\}/.exec(inner);
@@ -157,7 +181,7 @@ function cropOptions(attrs) {
   return 'trim=' + trim.map(value => value || '0cm').join(' ') + ',clip';
 }
 
-export function serializeImage(attrs) {
+function serializeGraphic(attrs) {
   const options = graphicsOptions(attrs);
   let graphic = '\\includegraphics' + (options.length ? '[' + options.join(',') + ']' : '') + '{' + attrs.path + '}';
   if (attrs.flipH) graphic = '\\reflectbox{' + graphic + '}';
@@ -175,10 +199,36 @@ export function serializeImage(attrs) {
   if (/^#[\da-f]{6}$/i.test(attrs.background ?? '')) {
     graphic = '\\colorbox[HTML]{' + attrs.background.slice(1).toUpperCase() + '}{' + graphic + '}';
   }
-  const captionEnabled = attrs.captionEnabled ?? (attrs.caption !== null && attrs.caption !== undefined);
-  const caption = captionEnabled
+  return graphic;
+}
+
+function captionEnabled(attrs) {
+  return attrs.captionEnabled ?? (attrs.caption !== null && attrs.caption !== undefined);
+}
+
+function captionLine(attrs) {
+  return captionEnabled(attrs)
     ? '\\caption' + (attrs.captionNumbered === false ? '*' : '') + '{' + (attrs.caption ?? '') + '}\n'
     : '';
+}
+
+export function serializeSubfigures(attrs, children) {
+  const subs = children.map((child, index) => {
+    const width = /^\d+(?:\.\d+)?\\textwidth$/.test(child.attrs.width ?? '') ? child.attrs.width : '0.48\\textwidth';
+    const cap = captionEnabled(child.attrs) ? '\\caption{' + (child.attrs.caption ?? '') + '}\n' : '';
+    return '\\begin{subfigure}{' + width + '}\n\\centering\n' + serializeGraphic({...child.attrs, width:null, height:null, scale:null})
+      + '\n' + cap + '\\end{subfigure}' + (index < children.length - 1 ? '\\hfill\n' : '\n');
+  }).join('');
+  const body = subs + captionLine(attrs);
+  const placement = attrs.fixed ? 'H' : attrs.placement;
+  return '\\begin{figure}' + (placement ? '[' + placement + ']' : '') + '\n\\centering\n'
+    + body + (body.endsWith('\n') ? '' : '\n') + (attrs.label ? '\\label{' + attrs.label + '}\n' : '')
+    + '\\end{figure}\n\n';
+}
+
+export function serializeImage(attrs) {
+  const graphic = serializeGraphic(attrs);
+  const caption = captionLine(attrs);
   const label = attrs.label ? '\\label{' + attrs.label + '}\n' : '';
   if (attrs.wrap) {
     const lines = attrs.wrapLines ? '[' + attrs.wrapLines + ']' : '';
@@ -202,12 +252,13 @@ export const IMAGE_SPACING_DEFAULTS = Object.freeze({
   textfloatsep: '20pt plus 2pt minus 4pt',
   intextsep: '12pt plus 2pt minus 2pt',
   floatsep: '12pt plus 2pt minus 2pt',
+  columnsep: '10pt',
 });
 
 export function readImageSpacing(preamble = '') {
   const value = name => new RegExp('\\\\setlength\\s*\\{\\\\' + name + '\\}\\s*\\{([^}]*)\\}').exec(preamble)?.[1]?.trim()
     ?? IMAGE_SPACING_DEFAULTS[name];
-  return {textfloatsep:value('textfloatsep'),intextsep:value('intextsep'),floatsep:value('floatsep')};
+  return {textfloatsep:value('textfloatsep'),intextsep:value('intextsep'),floatsep:value('floatsep'),columnsep:value('columnsep')};
 }
 
 export function writeImageSpacing(preamble = '', spacing = {}) {

@@ -83,6 +83,66 @@ export function replaceLocalImage(editor, position) {
   });
 }
 
+export function insertSubfigures(editor) {
+  const sub = index => ({
+    type:'documentImage',
+    attrs:{figure:false,centered:false,width:'0.48\\textwidth',captionEnabled:true,caption:''},
+  });
+  editor.chain().focus().insertContent({type:'subfigures',content:[sub(0),sub(1)]}).run();
+}
+
+export const Subfigures = Node.create({
+  name:'subfigures', group:'block', content:'documentImage+', defining:true,
+  addAttributes:()=>({
+    placement:{default:null},fixed:{default:false},
+    caption:{default:null},captionEnabled:{default:false},captionNumbered:{default:true},
+    label:{default:null},
+  }),
+  parseHTML(){return [{tag:'div[data-subfigures]'}];},
+  renderHTML({HTMLAttributes}){return ['div',mergeAttributes(HTMLAttributes,{'data-subfigures':'true'}),0];},
+  addNodeView(){
+    return ({node,editor,getPos})=>{
+      const dom=document.createElement('div');
+      dom.className='document-subfigures';
+      dom.dataset.subfigures='true';
+      const row=document.createElement('div');
+      row.className='subfigures-row';
+      const caption=document.createElement('figcaption');
+      caption.className='document-subfigures-caption';
+      caption.contentEditable='false';
+      const captionLabel=document.createElement('span');
+      captionLabel.className='caption-label';
+      const captionText=document.createElement('span');
+      captionText.className='caption-text';
+      captionText.contentEditable='true';
+      captionText.setAttribute('data-placeholder','Caption');
+      caption.append(captionLabel,captionText);
+      dom.append(row,caption);
+      const refresh=()=>{
+        const enabled=node.attrs.captionEnabled ?? (node.attrs.caption!==null);
+        caption.hidden=!enabled;
+        captionLabel.textContent=enabled?(node.attrs.captionNumbered===false?'Figure:':'Figure 1:').replace('1',captionNumber(getPos()))+' ':'';
+        captionText.textContent=node.attrs.caption??'';
+        captionText.addEventListener('input',()=>{
+          const pos=getPos();
+          if(typeof pos!=='number')return;
+          editor.view.dispatch(editor.state.tr.setNodeMarkup(pos,undefined,{...node.attrs,caption:captionText.textContent,captionEnabled:true}));
+        },{once:true});
+      };
+      function captionNumber(pos){
+        if(typeof pos!=='number')return'1';
+        let count=0;
+        editor.state.doc.nodesBetween(0,pos,n=>{if(n.type.name==='subfigures')count++;return true;});
+        return String(count+1);
+      }
+      captionText.addEventListener('blur',()=>refresh());
+      refresh();
+      return {dom,contentDOM:row,stopEvent:event=>caption.contains(event.target),
+        update(next){if(next.type!==node.type)return false;node=next;refresh();return true;}};
+    };
+  },
+});
+
 export const DocumentImage = Node.create({
   name:'documentImage', group:'block', atom:true, draggable:true,
   addAttributes:()=>({
@@ -184,16 +244,16 @@ export const DocumentImage = Node.create({
           if(!horizontal&&vertical)width=startWidth*(startHeight+vertical)/startHeight;
           width=Math.max(24,Math.min(pageWidth,width));
           const factor=Math.max(.03,Math.min(1,width/pageWidth));
+          const resized=factor.toFixed(3)+'\\textwidth';
           if(node.attrs.wrap){
             dom.style.width=`${factor*100}%`;
-            imageFrame.style.width='100%';
+            imageFrame.style.width=node.attrs.width?relativeImageWidth(node.attrs.width,resized):'100%';
           }else{
             imageFrame.style.width=`${factor*100}%`;
           }
           image.style.width='100%';
           image.style.height='';
-          const resized=factor.toFixed(3)+'\\textwidth';
-          window.dispatchEvent(new CustomEvent('lineae-image-resize',{detail:{width:resized,wrapWidth:node.attrs.wrap?resized:undefined}}));
+          window.dispatchEvent(new CustomEvent('lineae-image-resize',{detail:{width:node.attrs.wrap?(node.attrs.width??resized):resized,wrapWidth:node.attrs.wrap?resized:undefined}}));
           resizeFactor=factor;
           changed=true;
         };
@@ -209,6 +269,9 @@ export const DocumentImage = Node.create({
       }
       const refresh=()=>{
         const preview=previews.get(node.attrs.path);
+        let subIndex=-1;
+        try{const $pos=editor.state.doc.resolve(getPos());if($pos.parent.type.name==='subfigures')subIndex=$pos.index();}catch{}
+        dom.dataset.subfigure=String(subIndex>=0);
         const cssDimension=value => {
           if(!value)return '';
           const match=/^(\d+(?:\.\d+)?)(\\textwidth|\\linewidth|\\columnwidth|cm|mm|pt|in)$/.exec(value);
@@ -228,21 +291,26 @@ export const DocumentImage = Node.create({
         captionLabel.dataset.captionName=caption.dataset.captionName;
         dom.dataset.captionNumbered=caption.dataset.captionNumbered;
         dom.dataset.centered=String(node.attrs.centered);        dom.dataset.figure=String(Boolean(node.attrs.figure));
+        dom.dataset.placement=node.attrs.placement??'';
         dom.dataset.wrap=String(Boolean(node.attrs.wrap));
         dom.dataset.wrapSide=node.attrs.wrapSide??'r';
         dom.dataset.captionPosition=node.attrs.captionPosition??'below';
-        if(node.attrs.wrap){
+        if(subIndex>=0)captionLabel.textContent='('+String.fromCharCode(97+subIndex)+') ';
+        if(node.attrs.wrap&&subIndex<0){
           dom.style.float=node.attrs.wrapSide==='l'||node.attrs.wrapSide==='L'?'left':'right';
           dom.style.width=cssDimension(node.attrs.wrapWidth||'0.4\\textwidth');
-          dom.style.margin=node.attrs.wrapSide==='l'||node.attrs.wrapSide==='L'?'0 1em 1em 0':'0 0 1em 1em';
+          dom.style.margin='';
         }else{
           dom.style.float='';dom.style.width='';dom.style.margin='';
-        }        if(node.attrs.align)dom.dataset.align=node.attrs.align;
+        }        if(subIndex>=0)dom.style.width=cssDimension(node.attrs.width||'0.48\\textwidth');
+        if(node.attrs.align)dom.dataset.align=node.attrs.align;
         else delete dom.dataset.align;
         localizedLabel(button,'定位图片 · '+node.attrs.path,'Locate image · '+node.attrs.path);
-        const imageWidth=node.attrs.wrap
-          ? relativeImageWidth(node.attrs.width,node.attrs.wrapWidth||'0.4\\textwidth')
-          : cssDimension(node.attrs.width);
+        const imageWidth=subIndex>=0
+          ? '100%'
+          : node.attrs.wrap
+            ? relativeImageWidth(node.attrs.width,node.attrs.wrapWidth||'0.4\\textwidth')
+            : cssDimension(node.attrs.width);
         imageFrame.style.width=imageWidth||'max-content';
         image.style.width=imageWidth?'100%':'';
         image.style.height=cssDimension(node.attrs.height);

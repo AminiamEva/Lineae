@@ -31,9 +31,6 @@ export function installHeaderFooterPanel({readState, onChange}) {
   panel.className = 'tools header-footer-tools';
   panel.hidden = true;
 
-  const intro = document.createElement('p');
-  intro.className = 'hf-intro';
-  label(intro,'页眉页脚编辑模式：正文作为上下文参考，修改会写成 fancyhdr 声明。','Header/footer mode: the body is context only; edits are written as fancyhdr declarations.');
 
   const switches = document.createElement('div');
   switches.className = 'hf-switches';
@@ -133,7 +130,6 @@ export function installHeaderFooterPanel({readState, onChange}) {
   scopeSelect.append(new Option(t('应用于全文','Apply to document'),'document'),new Option(t('应用于本节','Apply to section'),'section'));
   scope.append(scopeLabel,scopeSelect);
 
-  panel.append(intro,switches,grid,fields,rules,scope);
 
   let state = null;
   let active = false;

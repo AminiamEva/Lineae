@@ -2,7 +2,7 @@ import {richTableRow,wrapCell} from '../../latex/table-spans.mjs';
 import { importBlock, importBlocks } from '../../latex/blocks.mjs';
 import { listLabel, bulletLabel } from '../../latex/list-numbering.mjs';
 import { textCommands } from '../../latex/inline.mjs';
-import { serializeImage } from '../../latex/images.mjs';
+import { serializeImage, serializeSubfigures } from '../../latex/images.mjs';
 import { alignmentLabel, displayEnvironment } from '../../latex/math-environments.mjs';
 export { importBlock, importBlocks };
 
@@ -64,6 +64,7 @@ export function serialize(node) {
       return '\\begin{lstlisting}'+option+'\n'+(node.content??[]).map(child=>child.text??'').join('')+'\n\\end{lstlisting}\n\n';
     }
     case 'documentImage': return serializeImage(node.attrs);
+    case 'subfigures': return serializeSubfigures(node.attrs, node.content.toJSON());
     case 'paragraph': {
       let body=(node.attrs?.indent === false ? '\\noindent ' : node.attrs?.explicitIndent ? '\\indent ' : '') + content;
       const command={left:'raggedright',right:'raggedleft',center:'centering',justify:'justifying'}[node.attrs?.align];

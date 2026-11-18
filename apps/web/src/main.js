@@ -46,8 +46,9 @@ import { installKeybindings } from './editor/keybindings.mjs';
 import defaultConfigYaml from '../config.yaml';
 import { askText } from './editor/dialog.js';
 import { installDocumentFind } from './editor/find.js';
-import { DocumentImage, insertLocalImage, replaceLocalImage, installImageDrop } from './editor/image-node.js';
+import { DocumentImage, Subfigures, insertLocalImage, insertSubfigures, replaceLocalImage, installImageDrop } from './editor/image-node.js';
 import { installImagePanel } from './ui/image-panel.js';
+import { installSubfigurePanel } from './ui/subfigure-panel.js';
 import { MultiColumn } from './editor/multi-column.js';
 import { readGlobalColumns, writeGlobalColumns } from '../latex/columns.mjs';
 import { readImageSpacing, writeImageSpacing, IMAGE_SPACING_DEFAULTS } from '../latex/images.mjs';
@@ -652,7 +653,7 @@ paper.before(documentPage);documentPage.append(paper);
 paper.replaceChildren();
 editor=new Editor({
   element:paper,
-  extensions:[ProjectRegion,PageLayoutHistory,ConfigurableStarterKit.configure({heading:{levels:[1,2,3]},codeBlock:false}),LanguageCodeBlock,MultiSelection,PaperBehavior,TextStyle,TextCommand,Underline,Superscript,Subscript,SmallCaps,Boxed,Circled,PageBreak,MultiColumn,Table.configure({resizable:true}),TableRow,TableCell,TableHeader,Raw,DocumentImage,TheoremBlock,DescriptionList,DescriptionItem,MathNode,MathBlock,Ref,Cite,Footnote,Label,TableOfContents,Shortcuts],
+  extensions:[ProjectRegion,PageLayoutHistory,ConfigurableStarterKit.configure({heading:{levels:[1,2,3]},codeBlock:false}),LanguageCodeBlock,MultiSelection,PaperBehavior,TextStyle,TextCommand,Underline,Superscript,Subscript,SmallCaps,Boxed,Circled,PageBreak,MultiColumn,Table.configure({resizable:true}),TableRow,TableCell,TableHeader,Raw,DocumentImage,TheoremBlock,DescriptionList,DescriptionItem,MathNode,MathBlock,Ref,Cite,Footnote,Label,Subfigures,TableOfContents,Shortcuts],
   content:'<p></p>',
 });
 function installMarginSelection(editor,page,paper) {
@@ -760,15 +761,23 @@ function button(label, action) {
   tools.append(control);
   return control;
 }
-button('↶',undoDocument);
-button('↷',redoDocument);
+const undoButton=button('↶',undoDocument);
+const redoButton=button('↷',redoDocument);
 const boldButton=button('B',()=>editor.chain().focus().toggleBold().run());
 const italicButton=button('I',()=>editor.chain().focus().toggleItalic().run());
 const underlineButton=button('U',()=>editor.chain().focus().toggleMark('underline').run());
+function syncUndoButtons(){
+  try{
+    const source=!sourceView.hidden;
+    undoButton.disabled=!(source?sourceModeCommits.length||sourceView.canUndo?.():editor.can().undo());
+    redoButton.disabled=!(source?sourceModeRedos.length||sourceView.canRedo?.():editor.can().redo());
+  }catch{}
+}
 editor.on('transaction',()=>{
   for(const [button,mark] of [[boldButton,'bold'],[italicButton,'italic'],[underlineButton,'underline']]) {
     button.setAttribute('aria-pressed',String(editor.isActive(mark)));
   }
+  syncUndoButtons();
 });
 let editingMath = null;
 installFormatControls(editor, tools, {isUnavailable:()=>Boolean(activeMath())});
@@ -784,7 +793,7 @@ headingMenu.addEventListener('change', () => {
   else editor.chain().focus().setParagraph().run();
 });
 editor.on('transaction', () => { headingMenu.value = String(editor.getAttributes('heading').level ?? 0); });
-tools.append(headingMenu);
+// 旧工具栏不再挂载 headingMenu（样式下拉已从主页-样式移除）。
 button('itemize',()=>editor.chain().focus().toggleBulletList().run());
 button('enumerate',()=>editor.chain().focus().toggleOrderedList().run());
 button('▦',()=>insertDefaultTable());
@@ -965,22 +974,24 @@ function undoDocument() {
   if(!sourceView.hidden&&!(checkpoint?.owner&&checkpoint.sourceText===sourceView.value)){sourceView.undo();sourceView.flush();return true;}
   if(checkpoint && editor.state.doc===checkpoint.afterDoc && documentParts.start===checkpoint.afterPreamble&&checkpointLayoutMatches(checkpoint,checkpoint.after)){
     sourceModeCommits.pop();sourceModeRedos.push(checkpoint);restoreSourceCheckpoint(checkpoint.before,checkpoint.owner,checkpoint.after);
+  syncUndoButtons();
     checkpoint.beforeDoc=editor.state.doc;checkpoint.beforePreamble=documentParts.start;return true;
   }
-  if(!sourceView.hidden){sourceView.undo();sourceView.flush();return true;}
-  return editor.commands.undo();
+  if(!sourceView.hidden){sourceView.undo();sourceView.flush();syncUndoButtons();return true;}
+  const done=editor.commands.undo();syncUndoButtons();return done;
 }
 function redoDocument() {
   const checkpoint=sourceModeRedos.at(-1);
   if(!sourceView.hidden&&!(checkpoint?.owner&&checkpoint.sourceText===sourceView.value)){sourceView.redo();sourceView.flush();return true;}
   if(checkpoint && editor.state.doc===checkpoint.beforeDoc && documentParts.start===checkpoint.beforePreamble&&checkpointLayoutMatches(checkpoint,checkpoint.before)){
     sourceModeRedos.pop();sourceModeCommits.push(checkpoint);restoreSourceCheckpoint(checkpoint.after,checkpoint.owner,checkpoint.before);
+  syncUndoButtons();
     checkpoint.afterDoc=editor.state.doc;checkpoint.afterPreamble=documentParts.start;return true;
   }
-  if(!sourceView.hidden){sourceView.redo();sourceView.flush();return true;}
-  return editor.commands.redo();
+  if(!sourceView.hidden){sourceView.redo();sourceView.flush();syncUndoButtons();return true;}
+  const done=editor.commands.redo();syncUndoButtons();return done;
 }
-paper.addEventListener('focusin', () => { if (!sourceView.hidden && syncPending) sourceView.flush(); });
+paper.addEventListener('focusin', () => { if (!sourceView.hidden && syncPending) sourceView.flush(); syncUndoButtons(); });
 editor.registerPlugin(new Plugin({
   props: {handleKeyDown(view,event) {
     if (sourceView.hidden || event.isComposing || !(event.ctrlKey || event.metaKey) || event.altKey) return false;
@@ -1118,11 +1129,12 @@ function applyPageSetup(){
   documentPage.style.setProperty('--image-textfloatsep',spacingCss(imageSpacing.textfloatsep));
   documentPage.style.setProperty('--image-intextsep',spacingCss(imageSpacing.intextsep));
   documentPage.style.setProperty('--image-floatsep',spacingCss(imageSpacing.floatsep));
+  documentPage.style.setProperty('--image-columnsep',spacingCss(imageSpacing.columnsep));
   imagePanel?.setSpacing?.(imageSpacing);
   const globalColumns=readGlobalColumns(layoutPreamble);
   documentPage.dataset.globalColumns=String(globalColumns);
   documentPage.dataset.captionLanguage=/\\usepackage(?:\[[^\]]*\])?\{ctex\}/.test(layoutPreamble)?'zh':'en';
-  if(layoutColumns)layoutColumns.value=String(globalColumns);
+  // if(layoutColumns)layoutColumns.value=String(globalColumns);
   const metrics=pageMetrics(pageSetup);
   documentPage.style.setProperty('--page-width',metrics.width);
   documentPage.style.setProperty('--page-height',metrics.height);
@@ -1152,7 +1164,8 @@ function updatePageSetup(patch){
     const preamble=parseDocument(before,{fragment:true})?.start;
     if(!preamble)return;
     const after=writePageSetup(before,mergePageLayout(readPageSetup(preamble),patch));
-    if(after!==before){project.edit(owner,after);sourceModeCommits.push({owner,before,after,afterDoc:editor.state.doc,afterPreamble:documentParts.start,sourceText:sourceView.value});sourceModeRedos=[];}
+    if(after!==before){project.edit(owner,after);sourceModeCommits.push({owner,before,after,afterDoc:editor.state.doc,afterPreamble:documentParts.start,sourceText:sourceView.value});
+syncUndoButtons();sourceModeRedos=[];}
     applyPageSetup();projectExplorer.changed();return;
   }
   pageSetup=changePageLayout({editor,sourceView,current:pageSetup,preamble:documentParts.start,patch});
@@ -1299,6 +1312,7 @@ function setSourceMode(active) {
       projection=sourceProjection(text,editor.getJSON(),{fragment:projectFileKind==='tex'});syncPending=false;
       if(sourceModeEntry!==undefined && sourceModeEntry!==text){
         sourceModeCommits.push({before:sourceModeEntry,after:text,afterDoc:editor.state.doc,afterPreamble:documentParts.start});sourceModeRedos=[];
+syncUndoButtons();
       }
       sourceModeEntry=undefined;
       returnedDraft = {doc: editor.state.doc, imported: importedSource, preamble: documentParts.start, text};
@@ -2227,6 +2241,7 @@ const compositionController=createCompositionController({
     projectDocument.clear();load(after,false);sourceView.reset(after);
     const checkpoint={before,after,afterDoc:editor.state.doc,afterPreamble:documentParts.start};
     sourceModeCommits.push(checkpoint);sourceModeRedos=[];
+syncUndoButtons();
     show();checkpoint.afterDoc=editor.state.doc;
   },
 });
@@ -2374,9 +2389,10 @@ pageMarginTop=marginInput(t('上边距','Top margin'));
 pageMarginRight=marginInput(t('右边距','Right margin'));
 pageMarginBottom=marginInput(t('下边距','Bottom margin'));
 pageMarginLeft=marginInput(t('左边距','Left margin'));
-layoutColumns=document.createElement('select');
-layoutColumns.setAttribute('aria-label',t('全局分栏','Global columns'));
-layoutColumns.append(new Option(t('1 栏','1 column'),'1'),new Option(t('2 栏（twocolumn）','2 columns (twocolumn)'),'2'));
+// 全局分栏：正文页渲染内核（typeset-pagination.js）暂不接受修改，此控件注销，待内核改造方案获批后恢复。
+// layoutColumns=document.createElement('select');
+// layoutColumns.setAttribute('aria-label',t('全局分栏','Global columns'));
+// layoutColumns.append(new Option(t('1 栏','1 column'),'1'),new Option(t('2 栏（twocolumn）','2 columns (twocolumn)'),'2'));
 layoutLocalColumns=document.createElement('select');
 layoutLocalColumns.setAttribute('aria-label',t('局部分栏','Local columns'));
 for(const value of ['2','3','4'])layoutLocalColumns.append(new Option(t(value+' 栏',value+' columns'),value));
@@ -2411,17 +2427,18 @@ for(const [sideText,input] of [[t('上边距','Top'),pageMarginTop],[t('右边�
   field.append(caption,input);
   layoutPageSetupControls.append(field);
 }
-const columnsField=document.createElement('label');
-columnsField.className='layout-field';
-const columnsCaption=document.createElement('span');
-columnsCaption.textContent=t('全局分栏','Global columns');
-columnsField.append(columnsCaption,layoutColumns);
+// const columnsField=document.createElement('label');
+// columnsField.className='layout-field';
+// const columnsCaption=document.createElement('span');
+// columnsCaption.textContent=t('全局分栏','Global columns');
+// columnsField.append(columnsCaption,layoutColumns);
 const localColumnsField=document.createElement('label');
 localColumnsField.className='layout-field';
 const localColumnsCaption=document.createElement('span');
 localColumnsCaption.textContent=t('局部分栏','Local columns');
 localColumnsField.append(localColumnsCaption,layoutLocalColumns,insertColumnsButton);
-layoutPageSetupControls.append(columnsField,localColumnsField);
+// layoutPageSetupControls.append(columnsField,localColumnsField);
+layoutPageSetupControls.append(localColumnsField);
 layoutPageSetup.append(layoutPageSetupTitle,layoutPageSetupControls);
 const layoutParagraph=document.createElement('section');
 layoutParagraph.className='layout-group';
@@ -2457,7 +2474,7 @@ syncLayoutParagraph=()=>{
 };
 pagePaper.addEventListener('change',()=>updatePageSetup({paper:pagePaper.value}));
 pageOrientation.addEventListener('change',()=>updatePageSetup({orientation:pageOrientation.value}));
-layoutColumns.addEventListener('change',()=>updateGlobalColumns(layoutColumns.value));
+// layoutColumns.addEventListener('change',()=>updateGlobalColumns(layoutColumns.value));
 insertColumnsButton.addEventListener('click',()=>insertMultiColumn(Number(layoutLocalColumns.value)||2));
 pageMarginPreset.addEventListener('change',()=>{
   if(MARGIN_PRESETS[pageMarginPreset.value])updatePageSetup({margin:MARGIN_PRESETS[pageMarginPreset.value]});
@@ -2807,6 +2824,7 @@ const tabs=document.createElement('nav');tabs.className='ribbon-tabs';
 const home=document.createElement('div');home.className='tools';
 const insert=document.createElement('div');insert.className='tools';
 groupButton(insert,['图片','Image'],()=>insertLocalImage(editor));
+groupButton(insert,['子图','Subfigure'],()=>insertSubfigures(editor));
 groupButton(insert,['代码块','Code block'],async()=>{
   const language=await askText(t('代码语言，例如 Python、Java 或 C++','Code language, e.g. Python, Java or C++'),editor.getAttributes('codeBlock').language??'');
   if(language===null || (language && !/^[A-Za-z0-9+_-]+$/.test(language))) return;
@@ -2843,8 +2861,11 @@ imagePanel=installImagePanel({
   onUpdate:patch=>updateSelectedImageAttrs(patch),
 });
 groups.image=imagePanel.panel;
+let subfigurePanel=null;
+subfigurePanel=installSubfigurePanel({onUpdate:patch=>updateSelectedSubfigureAttrs(patch)});
+groups.subfigure=subfigurePanel.panel;
 imagePanel.setSpacing(readImageSpacing(documentParts.start));
-const captions={files:['文件','File'],home:['主页','Home'],insert:['插入','Insert'],layout:['布局','Layout'],table:['表格','Table'],format:['格式','Format'],reference:['引用','Reference'],math:['数学','Math'],headerFooter:['页眉页脚','Header & Footer'],image:['图片','Image']};
+const captions={files:['文件','File'],home:['主页','Home'],insert:['插入','Insert'],layout:['布局','Layout'],table:['表格','Table'],format:['格式','Format'],reference:['引用','Reference'],math:['数学','Math'],headerFooter:['页眉页脚','Header & Footer'],image:['图片','Image'],subfigure:['子图','Subfigure']};
 const language=document.querySelector('#language');
 const fontFamilyControl=home.querySelector('[data-format-attribute="fontFamily"]');
 const fontSizeControl=home.querySelector('[data-format-attribute="fontSize"]');
@@ -2924,7 +2945,7 @@ formatPainter=installFormatPainter(editor,{button:homeRibbon.refs.formatPainter,
 if (fontFamilyControl) homeRibbon.slots.font.prepend(fontFamilyControl);
 if (fontSizeControl) homeRibbon.slots.font.insertBefore(fontSizeControl,fontFamilyControl?.nextSibling??homeRibbon.slots.font.firstChild);
 if (colorControl) homeRibbon.slots.color.append(colorControl);
-homeRibbon.slots.styleSelect.append(headingMenu);
+// styleSelect 槽已移除：headingMenu 仅由源码模式工具栏使用。
 homeRibbon.refs.find.dataset.shortcut='editor.find';
 function syncHomeToolbar() {
   if (!sourceView.hidden) return;
@@ -3094,6 +3115,8 @@ for(const name of Object.keys(groups)) {
 }
 const imageTab=tabs.querySelector('[data-group=image]');
 if(imageTab)imageTab.hidden=true;
+const subfigureTab=tabs.querySelector('[data-group=subfigure]');
+if(subfigureTab)subfigureTab.hidden=true;
 const tableTab=tabs.querySelector('[data-group=table]');
 if(tableTab)tableTab.hidden=true;
 function syncTableTab(){
@@ -3110,11 +3133,22 @@ function currentImageSelection(){
   return selection instanceof NodeSelection && selection.node.type.name==='documentImage'
     ? {position:selection.from,node:selection.node} : null;
 }
+function updateSelectedSubfigureAttrs(patch){
+  const selection=editor.state.selection;
+  if(!(selection instanceof NodeSelection)||selection.node.type.name!=='subfigures')return;
+  editor.commands.updateAttributes('subfigures',patch);
+  subfigurePanel?.setValues({...selection.node.attrs,...patch});
+}
 function syncImageTab(){
   if(!imageTab)return;
   const found=sourceView.hidden ? currentImageSelection() : null;
   imageSelection=found?.position??null;
   imageTab.hidden=!found;
+  const subSel=sourceView.hidden&&editor.state.selection instanceof NodeSelection&&editor.state.selection.node.type.name==='subfigures'?editor.state.selection.node:null;
+  if(subfigureTab)subfigureTab.hidden=!subSel;
+  subfigurePanel?.setValues(subSel?.attrs??null);
+  if(subSel&&ribbon.dataset.ribbonPage!=='subfigure'&&ribbon.dataset.ribbonPage!=='headerFooter')selectGroup('subfigure');
+  else if(!subSel&&ribbon.dataset.ribbonPage==='subfigure')selectGroup('home');
   if(found){
     imagePanel.setValues(found.node.attrs);
     if(ribbon.dataset.ribbonPage!=='image' && ribbon.dataset.ribbonPage!=='headerFooter')selectGroup('image');
@@ -3124,7 +3158,7 @@ function syncImageTab(){
 }
 editor.on('selectionUpdate',syncImageTab);
 editor.on('transaction',({transaction})=>{if(transaction.selectionSet)syncImageTab();});
-ribbon.append(tabs,files,home,insert,layoutGroup,tableGroup,formatGroup,referenceGroup,mathGroup,imagePanel.panel,headerFooterPanel.panel);header.append(ribbon);tools.remove();
+ribbon.append(tabs,files,home,insert,layoutGroup,tableGroup,formatGroup,referenceGroup,mathGroup,imagePanel.panel,subfigurePanel.panel,headerFooterPanel.panel);header.append(ribbon);tools.remove();
 groupButton(insert,'figure',()=>insertLocalImage(editor));
 sourceToolbar = installSourceToolbar({ribbon,groups,source:sourceView,rich:paper,heading:headingMenu});
 const toolbarController=installFloatingToolbar({header,ribbon,sourceView,getAutoHide:()=>sourceView.hidden?config.value.interface.toolbarAutoHide:config.value.interface.sourceToolbarAutoHide});

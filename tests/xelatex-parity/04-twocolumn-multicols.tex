@@ -1,0 +1,10 @@
+% 基准：columnsep 10pt；末页平衡；multicols 局部平衡多栏
+\documentclass[10pt]{article}
+\usepackage{multicol}
+\begin{document}
+\begin{multicols}{2}
+Local two-column text that balances at the end of the environment.
+\columnbreak
+Forced column break text.
+\end{multicols}
+\end{document}

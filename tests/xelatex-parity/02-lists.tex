@@ -1,0 +1,31 @@
+% 基准：labelsep 0.5em；leftmargin 2.5/2.2/1.87/1.7em；topsep 8pt；itemsep 4pt
+\documentclass[10pt]{article}
+\begin{document}
+\begin{itemize}
+  \item First level bullet
+  \item Another item with two paragraphs.
+
+    Second paragraph of the item.
+  \begin{itemize}
+    \item Second level dash
+    \begin{itemize}
+      \item Third level asterisk
+      \begin{itemize}
+        \item Fourth level periodcentered
+      \end{itemize}
+    \end{itemize}
+  \end{itemize}
+\end{itemize}
+\begin{enumerate}
+  \item Numbered one
+  \begin{enumerate}
+    \item Lettered (a)
+    \begin{enumerate}
+      \item Roman i.
+      \begin{enumerate}
+        \item Alpha A.
+      \end{enumerate}
+    \end{enumerate}
+  \end{enumerate}
+\end{enumerate}
+\end{document}

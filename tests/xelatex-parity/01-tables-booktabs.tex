@@ -1,0 +1,20 @@
+% 基准：booktabs 横线宽 0.8pt/0.5pt，间距 0.4em/0.65em；tabcolsep 6pt
+\documentclass[10pt]{article}
+\usepackage{booktabs}
+\begin{document}
+\begin{table}[htbp]
+  \centering
+  \caption{Rule spacing reference}
+  \label{tab:rules}
+  \begin{tabular}{lcr}
+    \toprule
+    Alpha & Beta & Gamma \\
+    \midrule
+    1 & 2.5 & three \\
+    four & 5 & 6 \\
+    \cmidrule(lr){1-2}
+    seven & eight & 9 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+\end{document}
