@@ -1,1 +1,295 @@
-{"engine": "XeTeX XeTeX 3.141592653-2.6-0.999995 (TeX Live 2023/Debian)", "cases": [{"margin": 22, "source": "\\documentclass[a4paper]{article}\n\\usepackage{fontspec}\n\\setmainfont{Latin Modern Roman}\n\\usepackage[left=22mm,right=22mm,top=22mm,bottom=22mm]{geometry}\n\\pagestyle{empty}\n\\begin{document}\nThe paragraph breaking algorithm considers the complete sequence of words before choosing its line endings. Typography is a system of interdependent decisions, including hyphenation, flexible spaces, and the relationship between consecutive lines. A local decision which fills the current line can create an unnecessarily loose following line. Mathematical documents require consistent composition across different widths, without inserting explicit newlines into the original source.\n\\end{document}\n", "text": "The paragraph breaking algorithm considers the complete sequence of words before choosing its line endings. Typography is a system of interdependent decisions, including hyphenation, flexible spaces, and the relationship between consecutive lines. A local decision which fills the current line can create an unnecessarily loose following line. Mathematical documents require consistent composition across different widths, without inserting explicit newlines into the original source.", "lines": [{"text": "The paragraph breaking algorithm considers the complete sequence of words before choosing its line", "bbox": [77.306, 61.097146, 532.9057, 75.21415]}, {"text": "endings. Typography is a system of interdependent decisions, including hyphenation, flexible spaces, and the", "bbox": [62.362, 73.05215, 532.90567, 87.16915]}, {"text": "relationship between consecutive lines. A local decision which fills the current line can create an unnecessarily", "bbox": [62.362, 85.00715, 532.90567, 99.12415]}, {"text": "loose following line. Mathematical documents require consistent composition across different widths, without", "bbox": [62.362, 96.96215, 532.9056, 111.079158]}, {"text": "inserting explicit newlines into the original source.", "bbox": [62.362, 108.91815, 281.79823, 123.03516]}]}, {"margin": 45, "source": "\\documentclass[a4paper]{article}\n\\usepackage{fontspec}\n\\setmainfont{Latin Modern Roman}\n\\usepackage[left=45mm,right=45mm,top=22mm,bottom=22mm]{geometry}\n\\pagestyle{empty}\n\\begin{document}\nThe paragraph breaking algorithm considers the complete sequence of words before choosing its line endings. Typography is a system of interdependent decisions, including hyphenation, flexible spaces, and the relationship between consecutive lines. A local decision which fills the current line can create an unnecessarily loose following line. Mathematical documents require consistent composition across different widths, without inserting explicit newlines into the original source.\n\\end{document}\n", "text": "The paragraph breaking algorithm considers the complete sequence of words before choosing its line endings. Typography is a system of interdependent decisions, including hyphenation, flexible spaces, and the relationship between consecutive lines. A local decision which fills the current line can create an unnecessarily loose following line. Mathematical documents require consistent composition across different widths, without inserting explicit newlines into the original source.", "lines": [{"text": "The paragraph breaking algorithm considers the complete sequence of words", "bbox": [142.50299, 61.097146, 467.72218, 75.21415]}, {"text": "before choosing its line endings. Typography is a system of interdependent", "bbox": [127.559, 73.05215, 467.72203, 87.16915]}, {"text": "decisions, including hyphenation, flexible spaces, and the relationship between", "bbox": [127.559, 85.00715, 467.72206, 99.12415]}, {"text": "consecutive lines. A local decision which fills the current line can create an", "bbox": [127.559, 96.96215, 467.71217, 111.079158]}, {"text": "unnecessarily loose following line. Mathematical documents require consistent", "bbox": [127.559, 108.91815, 467.7221, 123.03516]}, {"text": "composition across different widths, without inserting explicit newlines into the", "bbox": [127.559, 120.87316, 467.71208, 134.99018]}, {"text": "original source.", "bbox": [127.559, 132.82816, 193.5413, 146.94516]}]}, {"margin": 65, "source": "\\documentclass[a4paper]{article}\n\\usepackage{fontspec}\n\\setmainfont{Latin Modern Roman}\n\\usepackage[left=65mm,right=65mm,top=22mm,bottom=22mm]{geometry}\n\\pagestyle{empty}\n\\begin{document}\nThe paragraph breaking algorithm considers the complete sequence of words before choosing its line endings. Typography is a system of interdependent decisions, including hyphenation, flexible spaces, and the relationship between consecutive lines. A local decision which fills the current line can create an unnecessarily loose following line. Mathematical documents require consistent composition across different widths, without inserting explicit newlines into the original source.\n\\end{document}\n", "text": "The paragraph breaking algorithm considers the complete sequence of words before choosing its line endings. Typography is a system of interdependent decisions, including hyphenation, flexible spaces, and the relationship between consecutive lines. A local decision which fills the current line can create an unnecessarily loose following line. Mathematical documents require consistent composition across different widths, without inserting explicit newlines into the original source.", "lines": [{"text": "The paragraph breaking algorithm considers the", "bbox": [199.196, 61.097146, 411.02076, 75.21415]}, {"text": "complete sequence of words before choosing its line", "bbox": [184.252, 73.05215, 411.0207, 87.16915]}, {"text": "endings. Typography is a system of interdependent", "bbox": [184.252, 85.00715, 411.03068, 99.12415]}, {"text": "decisions, including hyphenation, flexible spaces, and", "bbox": [184.252, 96.96215, 411.02067, 111.079158]}, {"text": "the relationship between consecutive lines. A local", "bbox": [184.252, 108.91815, 411.02067, 123.03516]}, {"text": "decision which fills the current line can create an un-", "bbox": [184.252, 120.87316, 411.02073, 134.99018]}, {"text": "necessarily loose following line. Mathematical docu-", "bbox": [184.252, 132.82816, 411.0207, 146.94516]}, {"text": "ments require consistent composition across different", "bbox": [184.252, 144.78318, 411.03068, 158.90018]}, {"text": "widths, without inserting explicit newlines into the", "bbox": [184.252, 156.73816, 411.02076, 170.85517]}, {"text": "original source.", "bbox": [184.252, 168.69318, 250.2343, 182.81018]}]}]}
+{
+  "engine": "XeTeX XeTeX 3.141592653-2.6-0.999995 (TeX Live 2023/Debian)",
+  "cases": [
+    {
+      "margin": 22,
+      "source": "\\documentclass[a4paper]{article}\n\\usepackage{fontspec}\n\\setmainfont{Latin Modern Roman}\n\\usepackage[left=22mm,right=22mm,top=22mm,bottom=22mm]{geometry}\n\\pagestyle{empty}\n\\begin{document}\nThe paragraph breaking algorithm considers the complete sequence of words before choosing its line endings. Typography is a system of interdependent decisions, including hyphenation, flexible spaces, and the relationship between consecutive lines. A local decision which fills the current line can create an unnecessarily loose following line. Mathematical documents require consistent composition across different widths, without inserting explicit newlines into the original source.\n\\end{document}\n",
+      "text": "The paragraph breaking algorithm considers the complete sequence of words before choosing its line endings. Typography is a system of interdependent decisions, including hyphenation, flexible spaces, and the relationship between consecutive lines. A local decision which fills the current line can create an unnecessarily loose following line. Mathematical documents require consistent composition across different widths, without inserting explicit newlines into the original source.",
+      "lines": [
+        {
+          "text": "The paragraph breaking algorithm considers the complete sequence of words before choosing its line",
+          "bbox": [
+            77.306,
+            61.097146,
+            532.9057,
+            75.21415
+          ]
+        },
+        {
+          "text": "endings. Typography is a system of interdependent decisions, including hyphenation, flexible spaces, and the",
+          "bbox": [
+            62.362,
+            73.05215,
+            532.90567,
+            87.16915
+          ]
+        },
+        {
+          "text": "relationship between consecutive lines. A local decision which fills the current line can create an unnecessarily",
+          "bbox": [
+            62.362,
+            85.00715,
+            532.90567,
+            99.12415
+          ]
+        },
+        {
+          "text": "loose following line. Mathematical documents require consistent composition across different widths, without",
+          "bbox": [
+            62.362,
+            96.96215,
+            532.9056,
+            111.079158
+          ]
+        },
+        {
+          "text": "inserting explicit newlines into the original source.",
+          "bbox": [
+            62.362,
+            108.91815,
+            281.79823,
+            123.03516
+          ]
+        }
+      ]
+    },
+    {
+      "margin": 45,
+      "source": "\\documentclass[a4paper]{article}\n\\usepackage{fontspec}\n\\setmainfont{Latin Modern Roman}\n\\usepackage[left=45mm,right=45mm,top=22mm,bottom=22mm]{geometry}\n\\pagestyle{empty}\n\\begin{document}\nThe paragraph breaking algorithm considers the complete sequence of words before choosing its line endings. Typography is a system of interdependent decisions, including hyphenation, flexible spaces, and the relationship between consecutive lines. A local decision which fills the current line can create an unnecessarily loose following line. Mathematical documents require consistent composition across different widths, without inserting explicit newlines into the original source.\n\\end{document}\n",
+      "text": "The paragraph breaking algorithm considers the complete sequence of words before choosing its line endings. Typography is a system of interdependent decisions, including hyphenation, flexible spaces, and the relationship between consecutive lines. A local decision which fills the current line can create an unnecessarily loose following line. Mathematical documents require consistent composition across different widths, without inserting explicit newlines into the original source.",
+      "lines": [
+        {
+          "text": "The paragraph breaking algorithm considers the complete sequence of words",
+          "bbox": [
+            142.50299,
+            61.097146,
+            467.72218,
+            75.21415
+          ]
+        },
+        {
+          "text": "before choosing its line endings. Typography is a system of interdependent",
+          "bbox": [
+            127.559,
+            73.05215,
+            467.72203,
+            87.16915
+          ]
+        },
+        {
+          "text": "decisions, including hyphenation, flexible spaces, and the relationship between",
+          "bbox": [
+            127.559,
+            85.00715,
+            467.72206,
+            99.12415
+          ]
+        },
+        {
+          "text": "consecutive lines. A local decision which fills the current line can create an",
+          "bbox": [
+            127.559,
+            96.96215,
+            467.71217,
+            111.079158
+          ]
+        },
+        {
+          "text": "unnecessarily loose following line. Mathematical documents require consistent",
+          "bbox": [
+            127.559,
+            108.91815,
+            467.7221,
+            123.03516
+          ]
+        },
+        {
+          "text": "composition across different widths, without inserting explicit newlines into the",
+          "bbox": [
+            127.559,
+            120.87316,
+            467.71208,
+            134.99018
+          ]
+        },
+        {
+          "text": "original source.",
+          "bbox": [
+            127.559,
+            132.82816,
+            193.5413,
+            146.94516
+          ]
+        }
+      ]
+    },
+    {
+      "margin": 65,
+      "source": "\\documentclass[a4paper]{article}\n\\usepackage{fontspec}\n\\setmainfont{Latin Modern Roman}\n\\usepackage[left=65mm,right=65mm,top=22mm,bottom=22mm]{geometry}\n\\pagestyle{empty}\n\\begin{document}\nThe paragraph breaking algorithm considers the complete sequence of words before choosing its line endings. Typography is a system of interdependent decisions, including hyphenation, flexible spaces, and the relationship between consecutive lines. A local decision which fills the current line can create an unnecessarily loose following line. Mathematical documents require consistent composition across different widths, without inserting explicit newlines into the original source.\n\\end{document}\n",
+      "text": "The paragraph breaking algorithm considers the complete sequence of words before choosing its line endings. Typography is a system of interdependent decisions, including hyphenation, flexible spaces, and the relationship between consecutive lines. A local decision which fills the current line can create an unnecessarily loose following line. Mathematical documents require consistent composition across different widths, without inserting explicit newlines into the original source.",
+      "lines": [
+        {
+          "text": "The paragraph breaking algorithm considers the",
+          "bbox": [
+            199.196,
+            61.097146,
+            411.02076,
+            75.21415
+          ]
+        },
+        {
+          "text": "complete sequence of words before choosing its line",
+          "bbox": [
+            184.252,
+            73.05215,
+            411.0207,
+            87.16915
+          ]
+        },
+        {
+          "text": "endings. Typography is a system of interdependent",
+          "bbox": [
+            184.252,
+            85.00715,
+            411.03068,
+            99.12415
+          ]
+        },
+        {
+          "text": "decisions, including hyphenation, flexible spaces, and",
+          "bbox": [
+            184.252,
+            96.96215,
+            411.02067,
+            111.079158
+          ]
+        },
+        {
+          "text": "the relationship between consecutive lines. A local",
+          "bbox": [
+            184.252,
+            108.91815,
+            411.02067,
+            123.03516
+          ]
+        },
+        {
+          "text": "decision which fills the current line can create an un-",
+          "bbox": [
+            184.252,
+            120.87316,
+            411.02073,
+            134.99018
+          ]
+        },
+        {
+          "text": "necessarily loose following line. Mathematical docu-",
+          "bbox": [
+            184.252,
+            132.82816,
+            411.0207,
+            146.94516
+          ]
+        },
+        {
+          "text": "ments require consistent composition across different",
+          "bbox": [
+            184.252,
+            144.78318,
+            411.03068,
+            158.90018
+          ]
+        },
+        {
+          "text": "widths, without inserting explicit newlines into the",
+          "bbox": [
+            184.252,
+            156.73816,
+            411.02076,
+            170.85517
+          ]
+        },
+        {
+          "text": "original source.",
+          "bbox": [
+            184.252,
+            168.69318,
+            250.2343,
+            182.81018
+          ]
+        }
+      ]
+    },
+    {
+      "name": "custom-spaceskip",
+      "margin": 45,
+      "source": "\\documentclass[a4paper]{article}\n\\usepackage{fontspec}\n\\setmainfont{Latin Modern Roman}\n\\usepackage[left=45mm,right=45mm,top=22mm,bottom=22mm]{geometry}\n\\spaceskip=4pt plus 2pt minus 1pt\n\\pagestyle{empty}\n\\begin{document}\nThe paragraph breaking algorithm considers the complete sequence of words before choosing its line endings. Typography is a system of interdependent decisions, including hyphenation, flexible spaces, and the relationship between consecutive lines. A local decision which fills the current line can create an unnecessarily loose following line. Mathematical documents require consistent composition across different widths, without inserting explicit newlines into the original source.\n\\end{document}\n",
+      "text": "The paragraph breaking algorithm considers the complete sequence of words before choosing its line endings. Typography is a system of interdependent decisions, including hyphenation, flexible spaces, and the relationship between consecutive lines. A local decision which fills the current line can create an unnecessarily loose following line. Mathematical documents require consistent composition across different widths, without inserting explicit newlines into the original source.",
+      "lines": [
+        {
+          "text": "The paragraph breaking algorithm considers the complete sequence of",
+          "bbox": [
+            142.50299,
+            61.097146,
+            467.71223,
+            75.21415
+          ]
+        },
+        {
+          "text": "words before choosing its line endings. Typography is a system of interde-",
+          "bbox": [
+            127.559,
+            73.05215,
+            467.72203,
+            87.16915
+          ]
+        },
+        {
+          "text": "pendent decisions, including hyphenation, flexible spaces, and the relationship",
+          "bbox": [
+            127.559,
+            85.00715,
+            467.71205,
+            99.12415
+          ]
+        },
+        {
+          "text": "between consecutive lines. A local decision which fills the current line can",
+          "bbox": [
+            127.559,
+            96.96215,
+            467.71217,
+            111.079158
+          ]
+        },
+        {
+          "text": "create an unnecessarily loose following line. Mathematical documents require",
+          "bbox": [
+            127.559,
+            108.91815,
+            467.7121,
+            123.03516
+          ]
+        },
+        {
+          "text": "consistent composition across different widths, without inserting explicit new-",
+          "bbox": [
+            127.559,
+            120.87316,
+            467.71205,
+            134.99018
+          ]
+        },
+        {
+          "text": "lines into the original source.",
+          "bbox": [
+            127.559,
+            132.82816,
+            256.3156,
+            146.94516
+          ]
+        }
+      ]
+    }
+  ]
+}
