@@ -282,8 +282,14 @@ export class OpenComponent extends Component {
       { dx: this.gap, dy: 0, name: 'END', comp: this, ti: 1 },
     ];
   }
-  adjustPoints() { return [{ key: 'end', x: this.end.x, y: this.end.y }]; }
-  setEndFrom(point) { this.gap = Math.max(10, Math.hypot(point.x - this.start.x, point.y - this.start.y)); this.end = { x: this.start.x + this.gap, y: this.start.y }; }
+  adjustPoints() {
+    return [
+      { key: 'start', x: this.start.x, y: this.start.y },
+      { key: 'end', x: this.end.x, y: this.end.y },
+    ];
+  }
+  setStartFrom(point) { this.start = { x: point.x, y: point.y }; this.x = point.x; this.y = point.y; }
+  setEndFrom(point) { this.end = { x: point.x, y: point.y }; this.gap = Math.hypot(point.x - this.start.x, point.y - this.start.y); }
   setGapFrom(point) { this.setEndFrom(point); }
   setLengthFrom(point) { this.setEndFrom(point); }
   moveTo(x, y) {

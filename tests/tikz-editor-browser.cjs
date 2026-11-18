@@ -70,6 +70,12 @@ const server = createServer(async (request, response) => {
     await page.waitForTimeout(250);
     assert.equal(await page.locator('.tikz-layer-items circle').count(), 6, 'VCO box adds four side pins');
 
+    // Basic adjustment points: rectangle has four corners; open has two ends.
+    await place('Basic', 'Rectangle', .70, .20);
+    assert.equal(await page.locator('.tikz-layer-items circle[fill="#ffb020"]').count(), 4, 'rectangle exposes four corners');
+    await place('Basic', 'Open', .70, .40);
+    assert.equal(await page.locator('.tikz-layer-items circle[fill="#ffb020"]').count(), 2, 'open exposes both ends');
+
     // Path: resistor endpoints produce leads when dragged apart.
     await place('Resistive bipoles', 'Resistor (american)', .55, .60);
     const endpoints = page.locator('.tikz-layer-items circle[fill="#ffb020"]');
