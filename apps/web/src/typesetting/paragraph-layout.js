@@ -1,3 +1,4 @@
+import {fandolPairs} from './fandol-pairs.mjs';
 import {fandolPunctuation} from './fandol-punctuation.mjs';
 import {paragraphParameters,texDimension} from './paragraph-parameters.mjs';
 import {englishHyphenation} from './english-hyphenation.mjs';
@@ -54,7 +55,13 @@ function tokensFor(editor,node,start,element,options){
       const font=[local.fontStyle,local.fontWeight,local.fontSize,cjkFamily].join(' ');context.font=font;
       const metrics=context.measureText(value),em=parseFloat(local.fontSize),bounds=fandolPunctuation[Number(local.fontWeight)>=600?'bold':'regular'][value],left=bounds?bounds.left*em:Math.max(0,-metrics.actualBoundingBoxLeft),right=bounds?bounds.right*em:Math.max(0,metrics.width-metrics.actualBoundingBoxRight);
       const before=opening.test(value)?left:0,after=closing.test(value)?right:0;
-      if(before)emit({type:'glue',width:before,stretch:0,shrink:Math.min(em/2,before),from,to:from,cjk:true});
+      const previous=pieces[n-1]?.[0],pair=cjkPunctuation.test(previous??'')?fandolPairs[Number(local.fontWeight)>=600?'bold':'regular'][previous+value]:null;
+      if(pair){
+        while(items.at(-1)?.type==='glue'&&items.at(-1).from===from)items.pop();
+        emit({type:'penalty',width:0,cost:10000,from,to:from});
+        emit({type:'glue',width:pair.width*em,stretch:pair.stretch*em,shrink:pair.shrink*em,from,to:from,cjk:true});
+      }
+      if(before&&!pair)emit({type:'glue',width:before,stretch:0,shrink:Math.min(em/2,before),from,to:from,cjk:true});
       emit({type:'box',width:metrics.width-before-after,from,to:from+value.length,punctuation:true,before,after,font});
       if(after)emit({type:'glue',width:after,stretch:0,shrink:Math.min(em/2,after),from:from+value.length,to:from+value.length,cjk:true});
     }else if(/^[A-Za-z]{5,}$/.test(value)){
@@ -67,7 +74,7 @@ function tokensFor(editor,node,start,element,options){
     }else emit({type:'box',width:width(value,at),from,to:from+value.length});
     updateFactor(value.at(-1));
     const next=pieces[n+1]?.[0];
-    if(next&&value!=='\u00a0'&&next!=='\u00a0'&&!/\s/.test(next)&&!closing.test(next)&&!opening.test(value)&&(cjk.test(value)||cjk.test(next)||cjkPunctuation.test(value)||cjkPunctuation.test(next))){
+    if(next&&!(cjkPunctuation.test(value)&&cjkPunctuation.test(next))&&value!=='\u00a0'&&next!=='\u00a0'&&!/\s/.test(next)&&!closing.test(next)&&!opening.test(value)&&(cjk.test(value)||cjk.test(next)||cjkPunctuation.test(value)||cjkPunctuation.test(next))){
       const mixed=(cjk.test(value)&&/^[A-Za-z0-9]/.test(next))||(/[A-Za-z0-9]$/.test(value)&&cjk.test(next));
       const space=mixed?measure(' ',local):0;
       emit({type:'glue',width:space,stretch:mixed?space/2:baseline*.08,shrink:mixed?space/3:0,from:from+value.length,to:from+value.length,cjk:true});
@@ -79,7 +86,7 @@ function tokensFor(editor,node,start,element,options){
   return {items,style};
 }
 function widget(position,classes,width=0){
-  return Decoration.widget(position,()=>{const span=document.createElement('span');span.className=classes;span.contentEditable='false';span.setAttribute('aria-hidden','true');if(width)span.style.width=width+'px';return span;},{side:-1,key:classes+position+':'+width,ignoreSelection:true});
+  return Decoration.widget(position,()=>{const span=document.createElement('span');span.className=classes;span.contentEditable='false';span.setAttribute('aria-hidden','true');if(width){span.style.width=Math.max(0,width)+'px';if(width<0)span.style.marginLeft=width+'px';}return span;},{side:-1,key:classes+position+':'+width,ignoreSelection:true});
 }
 export function installParagraphLayout(editor){
   let current='',lastSignature='',running=false,preferredX=null;
@@ -127,7 +134,7 @@ export function installParagraphLayout(editor){
           const item=items[index];
           if(item.punctuation)entries.push(Decoration.inline(item.from,item.to,{class:'tex-cjk-punctuation',style:'font:'+item.font+';line-height:0;margin-left:'+(-item.before)+'px;margin-right:'+(-item.after)+'px'}));
           if(item.type!=='glue'||item.stretch>=1e10)continue;
-          const size=Math.max(0,item.width+(last?0:line.ratio*(line.ratio<0?item.shrink:item.stretch)));
+          const adjusted=item.width+(last?0:line.ratio*(line.ratio<0?item.shrink:item.stretch)),size=item.cjk?adjusted:Math.max(0,adjusted);
           if(item.to>item.from)entries.push(Decoration.inline(item.from,item.to,{class:'tex-word-glue',style:'white-space:pre;word-spacing:'+(size/(item.to-item.from)-measure(' ',style))+'px;text-indent:0'}));
           else if(size)entries.push(widget(item.from,'tex-interchar-glue',size));
         }
