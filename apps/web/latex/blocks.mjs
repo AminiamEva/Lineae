@@ -389,12 +389,28 @@ function splitParagraphs(block) {
   return parts;
 }
 
+// Structural switches in comments or macro arguments must remain source text.
+function topLevelCommand(text, index) {
+  let depth=0;
+  for(let i=0;i<index;i++){
+    if(text[i]==='%'){
+      const end=text.indexOf('\n',i);
+      if(end<0||end>=index)return false;
+      i=end;
+    }else if(text[i]==='\\'){
+      if(!/[A-Za-z]/.test(text[i+1]??''))i++;
+    }else if(text[i]==='{')depth++;
+    else if(text[i]==='}')depth--;
+  }
+  return depth===0;
+}
 function importSegment(block) {
   const nodes = [];
   let cursor = 0;
   structural.lastIndex = 0;
   let match;
   while ((match = structural.exec(block))) {
+    if((match[1]==='appendix'||match[2]==='chapter')&&!topLevelCommand(block,match.index))continue;
     const before = importBlock(block.slice(cursor, match.index));
     if (before) nodes.push(before);
     if(match[1]==='appendix')nodes.push({type:'appendixStart'});

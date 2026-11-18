@@ -33,3 +33,9 @@ test('appendix reference values agree with actual XeLaTeX compilation',()=>{
   assert.deepEqual(headingOutline(d).map(item=>item.number),labels.map(pair=>pair[1]));
  }
 });
+test('commented and unexpanded appendix switches do not change numbering',()=>{
+ for(const source of ['% \\appendix','\\newcommand{\\startappendix}{\\appendix}']){
+  assert.ok(importBlocks(source).every(node=>node.type!=='appendixStart'));
+ }
+ assert.ok(importBlocks('\\% visible percent\n\\appendix').some(node=>node.type==='appendixStart'));
+});
