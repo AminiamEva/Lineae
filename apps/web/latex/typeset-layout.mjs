@@ -133,7 +133,8 @@ export function planPagination(blocks, { pageHeight, pageGap, marginTop, marginB
     const canMove = block.height <= bodyHeight + tolerance && groupHeight <= bodyHeight + tolerance;
 
     if (block.forceBreak) {
-      const nextPage = pageIndex + 1;
+      let nextPage = pageIndex + 1;
+      if(block.forceBreak==='odd'&&nextPage%2!==0)nextPage++;
       const nextTop = nextPage * pitch + marginTop;
       if (top < nextTop - tolerance) {
         const space = nextTop - top;

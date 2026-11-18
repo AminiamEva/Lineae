@@ -28,6 +28,16 @@ const server=createServer(async(req,res)=>{
   await page.keyboard.press('Control+z');assert.equal(await paper.locator('[data-appendix-start]').count(),1);assert.equal(await paper.locator('h1').nth(1).getAttribute('data-section-number'),'A');
   const chapterSource='\\documentclass{report}\n\\begin{document}\n\\chapter{Main}\n\n\\section{Body}\n\n\\appendix\n\\chapter{Proofs}\\label{app:chapter}\n\n\\section{Detail}\n\n\\chapter{Data}\n\\end{document}\n';await load(chapterSource);
   assert.deepEqual(await paper.locator('[data-section-number]').evaluateAll(nodes=>nodes.map(n=>n.dataset.sectionNumber)),['1','1.1','A','A.1','B']);
+  const numberedSource='\\documentclass{report}\n\\usepackage{amsmath,graphicx}\n\\renewcommand{\\appendixname}{Supplement}\n\\begin{document}\n\\chapter{Main}\n\\begin{equation}x\\label{e:main}\\end{equation}\n\\appendix\n\\chapter{Proofs}\n\\begin{equation}y\\label{e:app}\\end{equation}\n\\begin{figure}\\includegraphics[width=1cm]{missing.png}\\caption{Image}\\label{f:app}\\end{figure}\n\\begin{table}\\caption{Values}\\label{t:app}\\begin{tabular}{c}1\\end{tabular}\\end{table}\nSee \\ref{e:app}, \\ref{f:app}, \\ref{t:app}.\n\\chapter{Data}\n\\begin{equation}z\\end{equation}\n\\end{document}\n';
+  await load(numberedSource);await page.waitForFunction(()=>document.querySelectorAll('.math-equation-number[data-equation-value]').length===3);
+  assert.deepEqual(await paper.locator('.math-equation-number').evaluateAll(nodes=>nodes.map(n=>n.dataset.equationValue)),['1.1','A.1','B.1']);
+  assert.deepEqual(await paper.locator('.ref-node').allTextContents(),['A.1','A.1','A.1']);
+  assert.equal(await paper.locator('.document-caption-label').getAttribute('data-caption-value'),'A.1');
+  assert.equal(await paper.locator('.table-caption-label').getAttribute('data-caption-value'),'A.1');
+  assert.equal(await paper.locator('h1[data-heading-command=chapter]').nth(1).getAttribute('data-chapter-label'),'Supplement A');
+  const chapterPages=async()=>paper.locator('h1[data-heading-command=chapter]').evaluateAll(nodes=>{const page=document.querySelector('.document-page'),sheets=page.querySelector('.document-sheets'),zoom=page.getBoundingClientRect().width/page.offsetWidth,pitch=sheets.firstElementChild.offsetHeight+parseFloat(getComputedStyle(page).getPropertyValue('--page-gap'));return nodes.map(n=>Math.floor((n.getBoundingClientRect().top-page.getBoundingClientRect().top)/zoom/pitch)+1);});
+  await page.waitForTimeout(250);let pages=await chapterPages();assert.ok(pages[1]>pages[0]&&pages[2]>pages[1],JSON.stringify(pages));
+  await load(chapterSource.replace('{report}','{book}'));await page.waitForTimeout(250);pages=await chapterPages();assert.ok(pages.every(number=>number%2===1),JSON.stringify(pages));assert.ok(pages[1]>pages[0]&&pages[2]>pages[1]);
   assert.deepEqual(errors,[]);console.log('PASS: appendix imports, chapter/section reset, nested numbering, reference target, zero-flow marker, rich editing, undo/redo and source round-trip');
  }finally{await browser.close();server.close();}
 })().catch(error=>{console.error(error);process.exitCode=1;server.close();});

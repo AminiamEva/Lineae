@@ -1,3 +1,4 @@
+import {counterProfile} from '../../latex/counter-profile.mjs';
 import {installParagraphLayout} from '../typesetting/paragraph-layout.js';
 import {documentLayoutBlocks} from '../project/fold-layout.mjs';
 import { planPagination, planTableRows, typesetProfile } from '../../latex/typeset-layout.mjs';
@@ -335,7 +336,7 @@ export function installTypesetPagination(page, paper, meta, editor) {
       if(!element.closest('[data-project-region]'))return;
       const selector='.document-page .ProseMirror>'+blockSelectors[index].replace('>','[data-project-region]>');
       const previous=children[index-1]?.tagName??'';
-      if(/^H[1-3]$/.test(element.tagName)){
+      if(/^H[1-3]$/.test(element.tagName)&&element.dataset.headingCommand!=='chapter'){
         const following=(previous==='H1'&&element.tagName==='H2')||(previous==='H2'&&element.tagName==='H3');
         baseRules.push(selector+'{margin-top:'+(index===0||following?'0':element.tagName==='H1'?'3.5ex':'3.25ex')+';'+(element.tagName==='H1'?'position:relative;top:'+(index===0?'-3.75pt':'0')+';':'')+'}');
         if(element.tagName==='H1'&&children[index+1]?.tagName==='H2')baseRules.push(selector+'{margin-bottom:4.15pt}');
@@ -369,6 +370,14 @@ export function installTypesetPagination(page, paper, meta, editor) {
       if (element.matches('.page-break, [data-page-break]') && blocks[index + 1]) blocks[index + 1].forceBreak = true;
     });
 
+    const chapterProfile=counterProfile(paragraphPreamble);
+    if(chapterProfile.chapters){
+      children.forEach((element,index)=>{
+        if(element.dataset.headingCommand!=='chapter')return;
+        const preceding=children.slice(0,index).some(node=>!node.matches('[data-appendix-start],.page-break,[data-page-break]')&&(node.textContent.trim()||node.querySelector('math-field,img,table')));
+        if(preceding)blocks[index].forceBreak=chapterProfile.openRight?'odd':true;
+      });
+    }
     const virtual = [];
     const blockItems = blocks.map((block, blockIndex) => {
       const items = [];

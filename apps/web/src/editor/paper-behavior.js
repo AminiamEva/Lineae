@@ -1,3 +1,4 @@
+import {documentNumbers} from '../../latex/document-numbering.mjs';
 import {headingOutline} from '../../latex/heading-numbering.mjs';
 import { Extension } from '@tiptap/core';
 import { Fragment, Slice } from '@tiptap/pm/model';
@@ -6,12 +7,13 @@ import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import { listMarkerCSS } from '../../latex/list-numbering.mjs';
 import { t } from '../ui/i18n.mjs';
 
-function tableCaptionWidget(caption) {
+function tableCaptionWidget(caption,number) {
   const element=document.createElement('div');
   element.className='table-caption-widget';
   element.dataset.captionNumbered='true';
   const label=document.createElement('span');
   label.className='table-caption-label';
+  if(number)label.dataset.captionValue=number;
   label.dataset.captionName=document.querySelector('.document-page')?.dataset.captionLanguage==='zh'?t('表','Table'):'Table';
   const text=document.createElement('span');
   text.className='table-caption-text';
@@ -229,7 +231,7 @@ function paperFormatting() {  let session = null;
 function numberedHeadings(doc){
  return DecorationSet.create(doc,headingOutline(doc).filter(item=>item.number).map(item=>{
   const node=doc.nodeAt(item.position);
-  return Decoration.node(item.position,item.position+node.nodeSize,{'data-section-number':item.number,...(item.appendix?{'data-appendix-heading':'true'}:{})});
+  return Decoration.node(item.position,item.position+node.nodeSize,{'data-section-number':item.number,...(item.chapterLabel?{'data-chapter-label':item.chapterLabel}:{}),...(item.appendix?{'data-appendix-heading':'true'}:{})});
  }));
 }
 
@@ -605,7 +607,7 @@ export const PaperBehavior = Extension.create({
             const widgets = [];
             state.doc.descendants((node, position) => {
               if (node.type.name === 'table' && (node.attrs.captionEnabled || node.attrs.caption)) {
-                widgets.push(Decoration.widget(position, tableCaptionWidget(node.attrs.caption ?? ''), {side:-1}));
+                widgets.push(Decoration.widget(position, tableCaptionWidget(node.attrs.caption ?? '',documentNumbers(state.doc).objects.get(position)?.number), {side:-1}));
               }
             });
             return widgets.length ? DecorationSet.create(state.doc, widgets) : null;

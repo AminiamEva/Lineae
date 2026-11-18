@@ -746,7 +746,7 @@ function syncTableAttributes() {
     table.style.setProperty('--arrayrulewidth',node.attrs.borderWidth??'0.4pt');
   });
 }
-editor.on('update',()=>{refreshReferences(paper);syncTableAttributes();});
+editor.on('update',()=>{refreshReferences(paper,editor);syncTableAttributes();});
 syncTableAttributes();
 installTableHoverAddRow(editor, paper);
 installImageDrop(editor,paper);
@@ -1252,7 +1252,7 @@ function load(text, markSaved = true) {
     ? block.replace(/^\s*\\maketitle\b[ \t]*(?:\r?\n|$)/,'') : block));
   for (const block of content) identifyImportedBoxes(block);
   editor.chain().setMeta('addToHistory', false).setContent({type:'doc',attrs:{layoutPreamble:parsed.start,pageFurniture:readPageFurniture(parsed.start)},content:content.length?content:[{type:'paragraph'}]}).command(({tr})=>{tr.setDocAttribute('layoutPreamble',parsed.start);tr.setDocAttribute('pageFurniture',readPageFurniture(parsed.start));return true;}).run();
-  refreshReferences(paper);syncTableAttributes();
+  refreshReferences(paper,editor);syncTableAttributes();
   importedSource=text;importedSnapshot=JSON.stringify(editor.getJSON());
   if(markSaved) savedSource=text;
   if (markSaved) sourceView.reset(text);
@@ -2204,7 +2204,7 @@ const compositionController=createCompositionController({
     try{
       editor.chain().setMeta('addToHistory',false).setContent({type:'doc',attrs:editor.state.doc.attrs,content:composed.content}).run();
       projectDocument.hydrate(composed,editor.getJSON());
-      refreshReferences(paper);documentOutline.relocalize();
+      refreshReferences(paper,editor);documentOutline.relocalize();
     }finally{syncApplying=false;}
   },
   replace(before,after,show,owner){
@@ -2269,7 +2269,7 @@ projectExplorer = installProjectExplorer({footer, filePanel:document.querySelect
     if(file.kind==='tex'){
       load(file.draft,false);
       if(restoreRichSession(editor,session,file,projectExplorer.model,projectDocument)){
-        importedSnapshot=JSON.stringify(editor.getJSON());refreshReferences(paper);syncTableAttributes();
+        importedSnapshot=JSON.stringify(editor.getJSON());refreshReferences(paper,editor);syncTableAttributes();
       }
       projection=sourceProjection(file.draft,editor.getJSON(),{fragment:true});
     }
