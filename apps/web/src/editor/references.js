@@ -250,6 +250,22 @@ export const TableOfContents = Node.create({
       dom.className = 'toc-block';
       dom.dataset.tocView = '';
       dom.contentEditable = 'false';
+      let rows = [];
+      const updatePages = () => {
+        const page = editor.view.dom.closest('.document-page');
+        const sheet = page?.querySelector('.document-sheet');
+        if (!page || !sheet) return;
+        const pageRect = page.getBoundingClientRect();
+        const pitch = sheet.offsetHeight + (Number.parseFloat(getComputedStyle(page).getPropertyValue('--page-gap')) || 0);
+        const zoom = pageRect.width / page.offsetWidth || 1;
+        for (const row of rows) {
+          let node;
+          try { node = editor.view.nodeDOM(row.position); } catch { node = null; }
+          const rect = node?.getBoundingClientRect?.();
+          const index = rect?.height ? Math.floor((rect.top - pageRect.top) / zoom / pitch) : -1;
+          row.page.textContent = index >= 0 ? String(index + 1) : '';
+        }
+      };
       const render = () => {
         dom.replaceChildren();
         const title = document.createElement('div');
@@ -258,21 +274,40 @@ export const TableOfContents = Node.create({
         title.dataset.en = 'Contents';
         title.textContent = t('目录','Contents');
         dom.append(title);
-        for (const item of outline(editor.state.doc)) {
+        rows = outline(editor.state.doc).map(item => {
           const row = document.createElement('div');
           row.className = 'toc-entry';
-          row.setAttribute('role','link');row.tabIndex=0;row.dataset.headingPosition=String(item.position);
+          row.setAttribute('role','link');
+          row.tabIndex = 0;
+          row.dataset.headingPosition = String(item.position);
           row.style.paddingLeft = (item.level - 1) + 'em';
-          row.textContent = (item.number ? item.number + '  ' : '') + item.text;
+          const content = document.createElement('span');
+          content.className = 'toc-entry-text';
+          content.textContent = (item.number ? item.number + '  ' : '') + item.text;
+          const leader = document.createElement('span');
+          leader.className = 'toc-leader';
+          leader.setAttribute('aria-hidden','true');
+          const pageNumber = document.createElement('span');
+          pageNumber.className = 'toc-page';
           const jump=()=>navigateTo(editor,item);
           row.addEventListener('click',jump);
           row.addEventListener('keydown',event=>{if(event.key==='Enter' || event.key===' '){event.preventDefault();jump();}});
+          row.append(content,leader,pageNumber);
           dom.append(row);
-        }
+          return {position:item.position,page:pageNumber};
+        });
+        updatePages();
       };
       render();
+      const layout = () => updatePages();
+      window.addEventListener('lineae-layout',layout);
       dom.refreshToc = render;
-      return { dom, ignoreMutation: () => true, stopEvent:event=>Boolean(event.target.closest?.('.toc-entry')) };
+      return {
+        dom,
+        ignoreMutation: () => true,
+        stopEvent:event=>Boolean(event.target.closest?.('.toc-entry')),
+        destroy:()=>window.removeEventListener('lineae-layout',layout),
+      };
     };
   },
 });

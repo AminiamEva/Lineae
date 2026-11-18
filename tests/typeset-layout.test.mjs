@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import { planPagination, planTableRows, typesetProfile } from '../apps/web/latex/typeset-layout.mjs';
+import { readPageSetup } from '../apps/web/latex/geometry.mjs';
 
 test('derives XeLaTeX article and ctex typography profiles', () => {
   const fonts = { serif: null, mono: null, cjk: null };
@@ -56,6 +57,15 @@ test('reads fontspec, ctex, linespread and fontsize declarations', () => {
   const sized = typesetProfile('\\documentclass{article}\n\\fontsize{12}{15}\\selectfont');
   assert.equal(sized.fontSize, '11.9552pt');
   assert.equal(sized.lineHeight, '14.9440pt');
+});
+
+test('maps geometry package defaults and explicit margins', () => {
+  assert.deepEqual(readPageSetup('\\documentclass[a4paper,10pt]{article}\n\\usepackage{geometry}\n').margins, {
+    top: '35.640mm', right: '31.500mm', bottom: '53.460mm', left: '31.500mm',
+  });
+  assert.deepEqual(readPageSetup('\\documentclass[a4paper,10pt]{article}\n\\usepackage[top=2cm,hmargin=3cm]{geometry}\n').margins, {
+    top: '2cm', right: '3cm', bottom: '53.460mm', left: '3cm',
+  });
 });
 
 test('paginates at block boundaries without changing document nodes', () => {

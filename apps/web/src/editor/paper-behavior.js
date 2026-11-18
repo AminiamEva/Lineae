@@ -3,9 +3,92 @@ import { Fragment, Slice } from '@tiptap/pm/model';
 import { Plugin, TextSelection } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import { listMarkerCSS } from '../../latex/list-numbering.mjs';
+import { t } from '../ui/i18n.mjs';
 
-function paperFormatting() {
-  let session = null;
+function tableCaptionWidget(caption) {
+  const element=document.createElement('div');
+  element.className='table-caption-widget';
+  element.dataset.captionNumbered='true';
+  const label=document.createElement('span');
+  label.className='table-caption-label';
+  label.dataset.captionName=document.querySelector('.document-page')?.dataset.captionLanguage==='zh'?t('表','Table'):'Table';
+  const text=document.createElement('span');
+  text.className='table-caption-text';
+  text.textContent=caption;
+  element.append(label,text);
+  requestAnimationFrame(() => {
+    if (!element.isConnected) return;
+    const style=getComputedStyle(text);
+    const context=document.createElement('canvas').getContext('2d');
+    if (!context) return;
+    context.font=[style.fontStyle,style.fontWeight,style.fontSize,style.fontFamily].join(' ');
+    const labelWidth=label.getBoundingClientRect().width;
+    const gap=Number.parseFloat(getComputedStyle(element).columnGap)||0;
+    element.dataset.captionStyle=!caption||labelWidth+gap+context.measureText(caption).width<=element.clientWidth+0.5?'single':'multi';
+  });
+  return element;
+}
+
+function tableLineControlsPlugin() {
+  let overlay=null,current=null,position=null,hideTimer=0;
+  function hide(){clearTimeout(hideTimer);hideTimer=0;overlay?.remove();overlay=null;current=null;position=null;}
+  function scheduleHide(){clearTimeout(hideTimer);hideTimer=setTimeout(hide,260);}
+  function keepVisible(){clearTimeout(hideTimer);hideTimer=0;}
+  function show(view,table){
+    hide();
+    let pos=view.posAtDOM(table,0);
+    let node=view.state.doc.nodeAt(pos);
+    if(node?.type.name!=='table'){pos=Math.max(0,pos-1);node=view.state.doc.nodeAt(pos);}
+    if(node?.type.name!=='table')return;
+    current=table;position=pos;
+    const element=document.createElement('div');
+    element.className='table-line-controls';
+    const bounds=table.getBoundingClientRect();
+    element.style.left=bounds.left+'px';element.style.top=bounds.top+'px';element.style.width=bounds.width+'px';element.style.height=bounds.height+'px';
+    const rows=[...table.querySelectorAll('tr')];
+    for(let index=0;index<rows.length;index++){
+      const rect=rows[index].getBoundingClientRect();
+      const button=document.createElement('button');
+      button.type='button';button.className='table-line-toggle table-line-horizontal';button.textContent='—';
+      button.title=t('切换该行上方的横向分割线','Toggle horizontal rule above this row');
+      button.style.top=(rect.top-bounds.top-7)+'px';
+      button.addEventListener('mousedown',event=>event.preventDefault());
+      button.addEventListener('click',event=>{event.preventDefault();event.stopPropagation();
+        const attrs=view.state.doc.nodeAt(position)?.attrs??{};
+        const patch=index===0?{topRule:!attrs.topRule}:index===rows.length-1?{bottomRule:!attrs.bottomRule}:{midRuleMode:attrs.midRuleMode==='none'?'all':attrs.midRuleMode==='all'?'first':'none'};
+        view.dispatch(view.state.tr.setNodeMarkup(position,undefined,{...attrs,...patch,borderMode:null,booktabs:false}));
+        hide();
+      });
+      element.append(button);
+    }
+    const cells=[...table.querySelectorAll('tr:first-child > th,tr:first-child > td')];
+    for(let index=0;index<cells.length;index++){
+      if(index!==0&&index!==cells.length-1)continue;
+      const rect=cells[index].getBoundingClientRect();
+      const button=document.createElement('button');
+      button.type='button';button.className='table-line-toggle table-line-vertical';button.textContent='│';
+      button.title=t('切换该列左侧的纵向分割线','Toggle vertical rule left of this column');
+      button.style.left=(rect.left-bounds.left-7)+'px';
+      button.addEventListener('mousedown',event=>event.preventDefault());
+      button.addEventListener('click',event=>{event.preventDefault();event.stopPropagation();
+        if(index!==0&&index!==cells.length-1)return;
+        const attrs=view.state.doc.nodeAt(position)?.attrs??{};
+        view.dispatch(view.state.tr.setNodeMarkup(position,undefined,{...attrs,[index===0?'leftRule':'rightRule']:!attrs[index===0?'leftRule':'rightRule'],borderMode:null,booktabs:false}));
+        hide();
+      });
+      element.append(button);
+    }
+    document.body.append(element);overlay=element;
+    element.addEventListener('mouseenter',keepVisible);
+    element.addEventListener('mouseleave',scheduleHide);
+  }
+  return new Plugin({props:{handleDOMEvents:{
+    mouseover(view,event){const table=event.target.closest?.('table');if(!table||table.closest('.ProseMirror')!==view.dom)return false;if(current===table){keepVisible();return false;}show(view,table);return false;},
+    mouseout(view,event){if(!current)return false;if(current.contains(event.relatedTarget)||overlay?.contains(event.relatedTarget)){keepVisible();return false;}scheduleHide();return false;},
+  }}});
+}
+
+function paperFormatting() {  let session = null;
   let composing = false;
   let preeditDOM = null;
   function compositionAnchor(view) {
@@ -267,8 +350,8 @@ export const PaperBehavior = Extension.create({
       attributes: {
         align: {
           default: null,
-          parseHTML: element => ['left','center','right'].includes(element.dataset.align) ? element.dataset.align : null,
-          renderHTML: ({align}) => ['left','center','right'].includes(align)
+          parseHTML: element => ['left','center','right','justify'].includes(element.dataset.align) ? element.dataset.align : null,
+          renderHTML: ({align}) => ['left','center','right','justify'].includes(align)
             ? { 'data-align':align, style:'text-align:'+align } : {},
         },
         indent: {
@@ -284,6 +367,36 @@ export const PaperBehavior = Extension.create({
           renderHTML: attributes => attributes.indentLevel
             ? { 'data-indent-level': String(attributes.indentLevel), style: `margin-left:${attributes.indentLevel * 2}em` }
             : {},
+        },
+        lineSpacing: {
+          default: null,
+          parseHTML: element => Number(element.dataset.lineSpacing) || null,
+          renderHTML: ({lineSpacing}) => lineSpacing && lineSpacing !== 1
+            ? { 'data-line-spacing': String(lineSpacing), style: `line-height:${lineSpacing}` } : {},
+        },
+        spaceBefore: {
+          default: null,
+          parseHTML: element => element.dataset.spaceBefore ?? null,
+          renderHTML: ({spaceBefore}) => spaceBefore
+            ? { 'data-space-before': spaceBefore, style: `margin-top:${spaceBefore}` } : {},
+        },
+        spaceAfter: {
+          default: null,
+          parseHTML: element => element.dataset.spaceAfter ?? null,
+          renderHTML: ({spaceAfter}) => spaceAfter
+            ? { 'data-space-after': spaceAfter, style: `margin-bottom:${spaceAfter}` } : {},
+        },
+        shading: {
+          default: null,
+          parseHTML: element => element.dataset.shading ?? null,
+          renderHTML: ({shading}) => shading
+            ? { 'data-shading': shading, style: `background-color:${shading}` } : {},
+        },
+        border: {
+          default: false,
+          parseHTML: element => element.dataset.paragraphBorder === 'true',
+          renderHTML: ({border}) => border
+            ? { 'data-paragraph-border': 'true', style: 'border:1px solid currentColor;padding:.15em .3em' } : {},
         },
       },
     }, {
@@ -315,6 +428,16 @@ export const PaperBehavior = Extension.create({
           parseHTML: element => element.dataset.columns ?? null,
           renderHTML: attributes => attributes.columns ? { 'data-columns': attributes.columns } : {},
         },
+        columnLayout: {
+          default: null,
+          parseHTML: element => element.dataset.columnLayout ?? null,
+          renderHTML: attributes => attributes.columnLayout ? { 'data-column-layout': attributes.columnLayout } : {},
+        },
+        columnRules: {
+          default: false,
+          parseHTML: element => element.dataset.columnRules === 'true',
+          renderHTML: attributes => attributes.columnRules ? { 'data-column-rules': 'true' } : {},
+        },
         booktabs: {
           default: false,
           parseHTML: element => element.dataset.booktabs === 'true',
@@ -340,10 +463,92 @@ export const PaperBehavior = Extension.create({
           parseHTML: element => element.dataset.centered === 'true',
           renderHTML: attributes => attributes.centered ? { 'data-centered': 'true' } : {},
         },
+        leftRule: {
+          default: false,
+          parseHTML: element => element.dataset.leftRule === 'true',
+          renderHTML: attributes => attributes.leftRule ? { 'data-left-rule': 'true' } : {},
+        },
+        rightRule: {
+          default: false,
+          parseHTML: element => element.dataset.rightRule === 'true',
+          renderHTML: attributes => attributes.rightRule ? { 'data-right-rule': 'true' } : {},
+        },
+        middleVerticalRule: {
+          default: false,
+          parseHTML: element => element.dataset.middleVerticalRule === 'true',
+          renderHTML: attributes => attributes.middleVerticalRule ? { 'data-middle-vertical-rule': 'true' } : {},
+        },
+        verticalFirstRow: {
+          default: true,
+          parseHTML: element => element.dataset.verticalFirstRow !== 'false',
+          renderHTML: attributes => attributes.verticalFirstRow === false ? { 'data-vertical-first-row': 'false' } : {},
+        },
+        topRule: {
+          default: false,
+          parseHTML: element => element.dataset.topRule === 'true',
+          renderHTML: attributes => attributes.topRule ? { 'data-top-rule': 'true' } : {},
+        },
+        bottomRule: {
+          default: false,
+          parseHTML: element => element.dataset.bottomRule === 'true',
+          renderHTML: attributes => attributes.bottomRule ? { 'data-bottom-rule': 'true' } : {},
+        },
+        midRuleMode: {
+          default: 'none',
+          parseHTML: element => element.dataset.midRuleMode ?? 'none',
+          renderHTML: attributes => attributes.midRuleMode && attributes.midRuleMode !== 'none' ? { 'data-mid-rule-mode': attributes.midRuleMode } : {},
+        },
+        ruleStyle: {
+          default: 'solid',
+          parseHTML: element => element.dataset.ruleStyle ?? 'solid',
+          renderHTML: attributes => ({ 'data-rule-style': attributes.ruleStyle ?? 'solid' }),
+        },
+        ruleWidth: {
+          default: null,
+          parseHTML: element => element.dataset.ruleWidth ?? null,
+          renderHTML: attributes => attributes.ruleWidth ? { 'data-rule-width': attributes.ruleWidth } : {},
+        },
+        arrayStretch: {
+          default: 1,
+          parseHTML: element => Number(element.dataset.arrayStretch) || 1,
+          renderHTML: attributes => ({ 'data-array-stretch': String(attributes.arrayStretch ?? 1) }),
+        },
+        fontSize: {
+          default: null,
+          parseHTML: element => element.dataset.tableFontSize ?? null,
+          renderHTML: attributes => attributes.fontSize ? { 'data-table-font-size': attributes.fontSize } : {},
+        },
+        tableScale: {
+          default: 1,
+          parseHTML: element => Number(element.dataset.tableScale) || 1,
+          renderHTML: attributes => ({ 'data-table-scale': String(attributes.tableScale ?? 1) }),
+        },
+        captionEnabled: {
+          default: false,
+          parseHTML: element => element.dataset.captionEnabled === 'true',
+          renderHTML: attributes => attributes.captionEnabled ? { 'data-caption-enabled': 'true' } : {},
+        },
         align: {
           default: null,
           parseHTML: element => element.dataset.tableAlign ?? null,
           renderHTML: attributes => attributes.align ? { 'data-table-align': attributes.align } : {},
+        },
+      },
+    }, {
+      types: ['tableRow'],
+      attributes: {
+        rules: {
+          default: null,
+          parseHTML: element => {
+            try { return element.dataset.rules ? JSON.parse(element.dataset.rules) : null; }
+            catch { return null; }
+          },
+          renderHTML: attributes => {
+            const rule = (attributes.rules ?? []).find(value => /^\\?(toprule|midrule|bottomrule)$/.test(String(value)));
+            const data = attributes.rules?.length ? { 'data-rules': JSON.stringify(attributes.rules) } : {};
+            if (rule) data['data-booktabs-rule'] = String(rule).replace(/^\\/,'');
+            return data;
+          },
         },
       },
     }, {
@@ -353,6 +558,26 @@ export const PaperBehavior = Extension.create({
           default: null,
           parseHTML: element => element.dataset.align ?? null,
           renderHTML: attributes => attributes.align ? { 'data-align': attributes.align, style: 'text-align:' + attributes.align } : {},
+        },
+        paddingLeft: {
+          default: null,
+          parseHTML: element => element.dataset.paddingLeft ?? null,
+          renderHTML: attributes => attributes.paddingLeft ? { 'data-padding-left': attributes.paddingLeft, style: 'padding-left:' + attributes.paddingLeft } : {},
+        },
+        paddingRight: {
+          default: null,
+          parseHTML: element => element.dataset.paddingRight ?? null,
+          renderHTML: attributes => attributes.paddingRight ? { 'data-padding-right': attributes.paddingRight, style: 'padding-right:' + attributes.paddingRight } : {},
+        },
+        ruleLeft: {
+          default: false,
+          parseHTML: element => element.dataset.ruleLeft === 'true',
+          renderHTML: attributes => attributes.ruleLeft ? { 'data-rule-left': 'true' } : {},
+        },
+        ruleRight: {
+          default: false,
+          parseHTML: element => element.dataset.ruleRight === 'true',
+          renderHTML: attributes => attributes.ruleRight ? { 'data-rule-right': 'true' } : {},
         },
       },
     }, {
@@ -380,6 +605,20 @@ export const PaperBehavior = Extension.create({
   addProseMirrorPlugins() {
     return [
       paperFormatting(),
+      tableLineControlsPlugin(),
+      new Plugin({
+        props: {
+          decorations(state) {
+            const widgets = [];
+            state.doc.descendants((node, position) => {
+              if (node.type.name === 'table' && (node.attrs.captionEnabled || node.attrs.caption)) {
+                widgets.push(Decoration.widget(position, tableCaptionWidget(node.attrs.caption ?? ''), {side:-1}));
+              }
+            });
+            return widgets.length ? DecorationSet.create(state.doc, widgets) : null;
+          },
+        },
+      }),
       new Plugin({
         state: {
           init: (_, state) => numberedHeadings(state.doc),

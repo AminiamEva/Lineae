@@ -99,14 +99,13 @@ module.exports=async function checkV2(context,url) {
     await set('\\begin{itemize}\n    \\item x\n\\end{itemize}');
     const unfolded=await read();await page.locator('.cm-foldGutter .cm-gutterElement').filter({hasText:'⌄'}).first().click();
     equal(await page.locator('.cm-foldPlaceholder').count(),1,'environment folds');equal(await read(),unfolded,'fold does not change bytes');
-    for(const [name,group] of [['itemize','insert'],['enumerate','insert'],['equation','math'],['align','math'],['figure','insert'],['▦','table']]) {
+    for(const [name,group] of [['itemize','insert'],['enumerate','insert'],['equation','math'],['align','math'],['figure','insert'],['▦','insert']]) {
       await set('');await revealToolbar(page); await page.locator('[data-group='+group+']').click();
       const control=page.locator('[data-source-action="'+name+'"]').filter({visible:true});
       await control.first().click();const text=await read();equal(text.includes('\\begin{'+(name==='▦'?'table':name)+'}'),true,'toolbar '+name);
       equal(await content.evaluate(e=>e.contains(document.activeElement)||e===document.activeElement),true,'snippet keeps focus');
       await page.keyboard.press('Control+z');equal(await read(),'','snippet has one undo step');
     }
-    await revealToolbar(page); await page.locator('[data-group=table]').click();equal(await page.locator('[data-source-action=merge]').isDisabled(),true,'unsupported toolbar operation disabled');
     await set('text');await page.keyboard.press('Control+a');await revealToolbar(page); await page.locator('[data-group=home]').click();await page.locator('[data-source-action=B]').filter({visible:true}).first().click();equal(await read(),'\\textbf{text}','selection wraps in snippet');
     for (const selected of ['\\ref{sec:one}','${literal} \\custom{x}','a\nb']) {
       await set(selected);await page.keyboard.press('Control+a');

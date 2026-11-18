@@ -132,6 +132,21 @@ export function planPagination(blocks, { pageHeight, pageGap, marginTop, marginB
     const groupHeight = groupBottom - top;
     const canMove = block.height <= bodyHeight + tolerance && groupHeight <= bodyHeight + tolerance;
 
+    if (block.forceBreak) {
+      const nextPage = pageIndex + 1;
+      const nextTop = nextPage * pitch + marginTop;
+      if (top < nextTop - tolerance) {
+        const space = nextTop - top;
+        translation += space;
+        top += space;
+        bottom += space;
+        groupBottom += space;
+      }
+      pageIndex = Math.max(pageIndex, nextPage);
+      bodyTop = pageIndex * pitch + marginTop;
+      bodyBottom = pageIndex * pitch + pageHeight - marginBottom;
+    }
+
     // After an oversized block, resume at the next body rather than placing
     // the following block in the page gap.
     if (top < bodyTop - tolerance) {

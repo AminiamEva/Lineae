@@ -306,8 +306,12 @@ export function installSpaceOverlay(editor, paper, { selectionFocus = null } = {
   function drawMarks() {
     marksFrame=0;
     const {pageRect,zoom}=measurePage(page);
-    overlay.hidden=!enabled || !pageRect.width || !pageRect.height;
-    if (overlay.hidden) return;
+    const visible=enabled && pageRect.width && pageRect.height;
+    marksOverlay.style.display=visible?'':'none';
+    if (!visible) {
+      marksOverlay.replaceChildren();
+      return;
+    }
     const width=page.clientWidth;
     const height=page.clientHeight;
     overlay.setAttribute('viewBox',`0 0 ${width} ${height}`);
