@@ -1,12 +1,23 @@
-# TeX 段落排版层
+# TeX 段落排版与附录
 
-实现放在 src/typesetting，断行和词间距由段落全局 boxes/glue/penalties 决策，以视图装饰接入编辑器。不会把显示换行写入 TeX，也不改 planPagination。英文断词使用 TeX Live 原始 hyphen.tex 表；源文件及其许可声明随项目保留。支持 TeX pt、spaceskip、罚值、断词例外和最小长度。
+段落排版在 `src/typesetting` 中实现，以 boxes/glue/penalties 计算整段断行，通过 ProseMirror 视图装饰绘制。显示换行和分页不写入 TeX 源码；中文合成输入期间不重建排版装饰。纸张测量保留小数 CSS 尺寸，避免缩放和跨页坐标累积取整误差。
 
-服务器 XeTeX 2023 生成的参考数据记录在 tests/fixtures/paragraph-layout/xelatex-reference.json，含三种宽度和自定义 spaceskip。测试逐行比较正文、连字符、行宽和行距，再验证编辑撤销后的源码、工程、分页、选区与输入法。
+英文使用 TeX Live 原始 hyphen.tex 的断词模式，保留源文件与许可；支持 TeX 尺寸、spaceskip、断行罚值和断词例外。中文默认 quanjiao 标点使用与编译端相同的 FandolSong 字体，并从 XeTeX 测量常用标点的字形边界和相邻标点 glue，包含普通和粗体数据。未知 CJK 字体、其他标点模式及自定义 CJK glue 暂时保留原有排版路径，不将该范围报告为严格一致。
 
-仍不能宣称任意 XeLaTeX 文档逐行一致：xeCJK 标点压缩与不同 CJK 字体度量、任意字体的全部 fontdimen、其他语言断词、宏展开后的局部断行参数、浮动绕排和多栏需进一步权威对照。现有实现对不支持或无法找到合法断行的段落保留浏览器路径。上述范围不得被报告成完整 XeLaTeX 排版兼容。
-## Appendix
+Fandol 字体原始文件来自 [CTAN Fandol](https://ctan.org/tex-archive/fonts/fandol)，源字体由 TeX Live 提供，服务器上的 woff2 工具仅转换分发格式。完整许可和原始 README 随字体保存。
 
-支持 \\appendix 结构切换、article 的 A/A.1 编号，以及 report/book/ctexbook/ctexrep 的章附录编号；大纲、目录、交叉引用共用编号逻辑。标记不占正文高度，保留原始命令和撤销历史。章标题的独立分页、章级公式/图表计数与宏包自定义附录样式仍需另行对照，不应宣称完整文档类视觉兼容。
+附录以零高度结构节点保留 `\appendix`。章、节、公式、图、表、目录和交叉引用共用计数规则；article 的公式默认连续，report/book 的公式与题注随章重置。支持 `\numberwithin`、`\counterwithin`、`\counterwithout`，以及已识别计数器的 `\setcounter` 和 `\renewcommand`。这些声明可放在导言或正文；正文声明独立保存、按出现位置生效并可撤销，不改变正文排版高度。book 默认奇数页起章，openany/report 使用下一页；标准 10/11/12pt 章标题按相应基线参数排放。
 
-中文段落尚未完成 xeCJK 权威校准，因此暂时维持原有浏览器排版，避免影响中文选区与输入。
+## 对照和回归
+
+所有构建与测试在远程 Actions 执行；真实 XeLaTeX 参考在 aliyun1 的临时目录生成，不修改原有文献样例目录。
+
+- `xelatex-reference.json`：四组英文参考，逐行正文、连字符、行宽、行距与编辑撤销后的源码。
+- `xecjk-reference.json`：不同页宽下的纯汉字、标点、中英混排、括号引号参考。
+- `chapter-xelatex.json`：report/book × 10/11/12pt 的章标题页码、水平位置与基线。
+- 附录浏览器回归：编号、题注引用、正文样式声明、标记删除和撤销、Source/Document 往返。
+- 中文浏览器回归：公式后首次拼音、后续预编辑、提交与撤销；同时保留完整工程及编辑器回归。
+
+## 保证范围
+
+对照证明的是参考所覆盖的字体、文档类和参数配置。尚未实现完整 TeX 宏展开器；任意宏包重新定义的章节版式、其他字体的全部 fontdimen、其他语言的断词规则，以及浮动绕排和多栏的任意组合，不能据此宣称逐行逐页完全一致。未支持声明保留原始源码，不进行猜测性源码改写。
