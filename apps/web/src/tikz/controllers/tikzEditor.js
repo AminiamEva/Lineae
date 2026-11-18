@@ -914,6 +914,15 @@ export class TikzEditor {
       color.oninput = () => { for (const item of this.selection) item[key] = color.value; this.refreshProperties(); };
       this.propertyField(shared, label, color);
     }
+    if (this.selection.every(item => 'fillOpacity' in item)) {
+      const opacity = document.createElement('input');
+      opacity.type = 'number'; opacity.min = '0'; opacity.max = '1'; opacity.step = '0.05';
+      const same = this.selection.every(item => item.fillOpacity === this.selection[0].fillOpacity);
+      opacity.value = same && this.selection[0].fillOpacity != null ? String(this.selection[0].fillOpacity) : '';
+      opacity.placeholder = '1';
+      opacity.onchange = () => { const value = opacity.value === '' ? null : Math.max(0, Math.min(1, Number(opacity.value))); for (const item of this.selection) item.fillOpacity = value; this.refreshProperties(); };
+      this.propertyField(shared, 'Fill opacity', opacity);
+    }
     if (this.selection.every(item => 'scaleValue' in item)) {
       const scale = document.createElement('input');
       scale.type = 'number'; scale.min = '0.1'; scale.max = '10'; scale.step = '0.05';
@@ -1053,7 +1062,7 @@ export class TikzEditor {
       const arrows = this.propertySection(panel, this.t('箭头', 'Arrows'));
       for (const [key, label] of [['arrowStart', 'Start'], ['arrowEnd', 'End']]) {
         const select = document.createElement('select');
-        for (const [value, text] of [['none', 'none'], ['->', 'latex'], ['-o', 'circle'], ['-*', 'dot'], ['-|', 'bar']]) select.append(new Option(text, value));
+        for (const [value, text] of [['none', 'none'], ['stealth', 'stealth'], ['stealthR', 'stealth reversed'], ['latex', 'latex'], ['latexR', 'latex reversed'], ['to', 'to'], ['toR', 'to reversed'], ['line', 'line']]) select.append(new Option(text, value));
         select.value = p[key] || 'none';
         select.onchange = () => { p[key] = select.value === 'none' ? null : select.value; this.refreshProperties(); };
         this.propertyField(arrows, label, select);
@@ -1142,6 +1151,12 @@ export class TikzEditor {
     fillColor.type = 'color'; fillColor.value = p.fillColor || '#ffffff';
     fillColor.oninput = () => { p.fillColor = fillColor.value; this.refreshProperties(); };
     this.propertyField(fill, 'Color', fillColor);
+    const fillOpacity = document.createElement('input');
+    fillOpacity.type = 'number'; fillOpacity.min = '0'; fillOpacity.max = '1'; fillOpacity.step = '0.05';
+    fillOpacity.value = p.fillOpacity == null ? '' : String(p.fillOpacity);
+    fillOpacity.placeholder = '1';
+    fillOpacity.onchange = () => { p.fillOpacity = fillOpacity.value === '' ? null : Math.max(0, Math.min(1, Number(fillOpacity.value))); this.refreshProperties(); };
+    this.propertyField(fill, 'Opacity', fillOpacity);
 
     if (p.def) {
       const styleSection = this.propertySection(panel, this.t('组件样式', 'Component style'));

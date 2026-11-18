@@ -53,6 +53,7 @@ export class Component {
     this.flipY = false;
     this.strokeColor = null;
     this.fillColor = null;
+    this.fillOpacity = null;
     this.lineWidth = null;
   }
   moveTo(x, y) { this.x = x; this.y = y; }
@@ -119,6 +120,7 @@ export class NodeSymbol extends Component {
     if (this.def.fillable && !this.fillColor) use.setAttribute('fill', 'none');
     if (this.strokeColor) use.setAttribute('stroke', this.strokeColor);
     if (this.fillColor) use.setAttribute('fill', this.fillColor);
+    if (this.fillOpacity != null) use.setAttribute('fill-opacity', String(this.fillOpacity));
     if (this.lineWidth) use.setAttribute('stroke-width', String(this.lineWidth));
     if (this.selected) use.setAttribute('color', '#2f6fed');
     g.append(use);
@@ -146,6 +148,7 @@ export class NodeSymbol extends Component {
     if (this.scaleValue !== 1 && !this.mirror && !this.flipY) words.push('scale=' + this.scaleValue);
     if (this.strokeColor) words.push('draw=' + this.strokeColor);
     if (this.fillColor) words.push('fill=' + this.fillColor);
+    if (this.fillOpacity != null) words.push('fill opacity=' + this.fillOpacity);
     if (this.lineWidth) words.push('line width=' + this.lineWidth + 'pt');
     return `\\node[${words.join(', ')}] at (${X(this.x)},${Y(this.y)}) {};`;
   }
@@ -280,6 +283,7 @@ export class PathComponent extends Component {
     if (this.def.fillable && !this.fillColor) use.setAttribute('fill', 'none');
     if (this.strokeColor) use.setAttribute('stroke', this.strokeColor);
     if (this.fillColor) use.setAttribute('fill', this.fillColor);
+    if (this.fillOpacity != null) use.setAttribute('fill-opacity', String(this.fillOpacity));
     if (this.lineWidth) use.setAttribute('stroke-width', String(this.lineWidth));
     if (this.selected) use.setAttribute('color', '#2f6fed');
     const hasArtwork = variant.id && document.getElementById(variant.id);
@@ -317,6 +321,7 @@ export class PathComponent extends Component {
     if (this.scaleValue !== 1) words.push('scale=' + this.scaleValue);
     if (this.strokeColor) words.push('draw=' + this.strokeColor);
     if (this.fillColor) words.push('fill=' + this.fillColor);
+    if (this.fillOpacity != null) words.push('fill opacity=' + this.fillOpacity);
     if (this.lineWidth) words.push('line width=' + this.lineWidth + 'pt');
     if (this.voltage) words.push(`v={$${this.voltage}$}`);
     if (this.current) words.push(`i={$${this.current}$}`);
@@ -442,7 +447,7 @@ export class RectComponent extends Component {
   toSvg() {
     const g = svg('g', { 'data-uid': this.uid, transform: `translate(${this.x},${this.y})${this.rotate ? ` rotate(${this.rotate})` : ''}` });
     const path = this.bodyShape();
-    const style = { fill: this.fillColor || 'none', stroke: this.strokeColor || (this.selected ? '#2f6fed' : '#222'), 'stroke-width': this.lineWidth || 2 };
+    const style = { fill: this.fillColor || 'none', 'fill-opacity': this.fillOpacity ?? 1, stroke: this.strokeColor || (this.selected ? '#2f6fed' : '#222'), 'stroke-width': this.lineWidth || 2 };
     let element;
     if (path) element = svg('path', { d: path, ...style });
     else if (this.round) element = svg('ellipse', { rx: this.w / 2, ry: this.h / 2, ...style });
@@ -470,6 +475,7 @@ export class RectComponent extends Component {
     if (this.textColor) options.push('text=' + this.textColor);
     if (this.strokeColor) options.push('draw=' + this.strokeColor);
     if (this.fillColor) options.push('fill=' + this.fillColor);
+    if (this.fillOpacity != null) options.push('fill opacity=' + this.fillOpacity);
     if (this.lineWidth) options.push('line width=' + this.lineWidth + 'pt');
     if (this.useHyphenation) options.push('text width=' + cm(this.w) + 'cm');
     return `\\node[draw, ${this.def.tikz}, minimum width=${cm(this.w)}cm, minimum height=${cm(this.h)}cm${options.length ? ', ' + options.join(', ') : ''}] at (${X(this.x)},${Y(this.y)}) {${this.label ? this.label : ''}};`;
@@ -559,6 +565,7 @@ export class Wire extends Component {
     const pl = svg('polyline', {
       points: this.pts.map(p => `${p.x},${p.y}`).join(' '),
       fill: this.fillColor || 'none',
+      'fill-opacity': this.fillOpacity ?? 1,
       stroke: this.strokeColor || (this.selected ? '#2f6fed' : '#222'),
       'stroke-width': this.lineWidth || 2,
       'stroke-linejoin': 'round',
@@ -574,6 +581,13 @@ export class Wire extends Component {
       const pb = i === n - 2 && nameB ? `(${nameB})` : `(${X(this.pts[i + 1].x)},${Y(this.pts[i + 1].y)})`;
       segments.push(`${pa} to[short] ${pb}`);
     }
-    return `\\draw ${segments.join(' ')};`;
+    const tips = { stealth: 'stealth', stealthR: 'stealth reversed', latex: 'latex', latexR: 'latex reversed', to: 'to', toR: 'to reversed', line: '|' };
+    const arrowOptions = [];
+    if (this.arrowStart) arrowOptions.push((tips[this.arrowStart] || this.arrowStart) + '-');
+    if (this.arrowEnd) {
+      if (!arrowOptions.length) arrowOptions.push('-');
+      arrowOptions.push(tips[this.arrowEnd] || this.arrowEnd);
+    }
+    return `\\draw${arrowOptions.length ? `[${arrowOptions.join('')}]` : ''} ${segments.join(' ')};`;
   }
 }
