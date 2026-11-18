@@ -113,6 +113,18 @@ export class NodeSymbol extends Component {
     if (this.selected) use.setAttribute('color', '#2f6fed');
     g.append(use);
     if (this.selected) g.setAttribute('opacity', '0.88');
+    if (this.label || this.value) {
+      const text = svg('text', {
+        x: 0,
+        y: variant.viewBox[3] - variant.mid[1] + 13,
+        'text-anchor': 'middle',
+        'font-size': 11,
+        'font-family': 'serif',
+        fill: this.selected ? '#2f6fed' : '#222',
+      });
+      text.textContent = this.label || this.value;
+      g.append(text);
+    }
     return g;
   }
   toTikZ(X, Y) {
@@ -220,6 +232,15 @@ export class PathComponent extends Component {
     g.append(symbol);
     const { start, end } = variantStartEnd(variant);
     const stroke = this.selected ? '#2f6fed' : '#222';
+    if (this.label || this.value) {
+      const text = svg('text', {
+        x: mid.x, y: mid.y - 9,
+        'text-anchor': 'middle', 'font-size': 11, 'font-family': 'serif',
+        fill: this.selected ? '#2f6fed' : '#222',
+      });
+      text.textContent = this.label || this.value;
+      g.append(text);
+    }
     if (start && end) {
       const a = this.symbolPoint(start), b = this.symbolPoint(end);
       const startLine = this.mirror ? b : a;
