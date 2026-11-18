@@ -34,7 +34,8 @@ function tokensFor(editor,node,start,element,options){
   const width=(value,offset)=>{
     let result=0;for(const run of runs){const from=Math.max(offset,run.from),to=Math.min(offset+value.length,run.to);if(to>from)result+=measure(value.slice(from-offset,to-offset),run.style);}return result;
   };
-  const items=[];const emit=item=>items.push(item);
+  const items=[];const emit=item=>items.push(item);let spaceFactor=1000;
+  const updateFactor=character=>{const code=/[A-Z]/.test(character)?999:/[.!?]/.test(character)?3000:character===':'?2000:character===';'?1500:character===','?1250:/[)\]\"']/.test(character)?0:1000;if(code)spaceFactor=code>1000&&spaceFactor<1000?1000:code;};
   const pieces=[...text.matchAll(/[A-Za-z]+|[^\S\n\u00a0]+|\n|[^]/gu)];
   for(let n=0;n<pieces.length;n++){
     const match=pieces[n],value=match[0],at=match.index,from=start+1+at,local=styleAt(at);
@@ -44,7 +45,7 @@ function tokensFor(editor,node,start,element,options){
     if(value==='\n'){emit({type:'glue',width:0,stretch:1e10,shrink:0,from,to:from});emit({type:'penalty',width:0,cost:-10000,from:from+1,to:from+1,forced:true});continue;}
     if(/^\s+$/u.test(value)&&value!=='\u00a0'){
       const space=measure(' ',local),em=parseFloat(local.fontSize),skip=options.spaceSkip;
-      const custom=skip&&texDimension(skip.width,em)!==0;emit({type:'glue',width:custom?texDimension(skip.width,em):space,stretch:custom?texDimension(skip.stretch,em):space/2,shrink:custom?texDimension(skip.shrink,em):space/3,from,to:from+value.length});continue;
+      const custom=skip&&texDimension(skip.width,em)!==0,factor=options.frenchSpacing?1:spaceFactor/1000;emit({type:'glue',width:custom?texDimension(skip.width,em):space+(spaceFactor>=2000&&!options.frenchSpacing?space/3:0),stretch:(custom?texDimension(skip.stretch,em):space/2)*factor,shrink:(custom?texDimension(skip.shrink,em):space/3)/factor,from,to:from+value.length});continue;
     }
     if(/^[A-Za-z]{5,}$/.test(value)){
       const exception=options.exceptions.get(value.toLowerCase());
@@ -54,6 +55,7 @@ function tokensFor(editor,node,start,element,options){
         if(i<parts.length-1&&position>=options.leftHyphenMin&&value.length-position>=options.rightHyphenMin)emit({type:'penalty',width:measure('-',styleAt(at+position)),cost:options.hyphenPenalty,hyphen:true,from:from+position,to:from+position});
       }
     }else emit({type:'box',width:width(value,at),from,to:from+value.length});
+    updateFactor(value.at(-1));
     const next=pieces[n+1]?.[0];
     if(next&&value!=='\u00a0'&&next!=='\u00a0'&&!closing.test(next)&&!opening.test(value)&&(cjk.test(value)||cjk.test(next))){
       const em=parseFloat(local.fontSize);emit({type:'glue',width:0,stretch:em*.1,shrink:0,from:from+value.length,to:from+value.length,cjk:true});

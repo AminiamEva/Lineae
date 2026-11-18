@@ -34,7 +34,12 @@ export function optimumParagraph(items,widths,options={}){
       }
       const added=[...best.values()];
       if(last)final=added;
-      active=forced?added:active.concat(added);
+      active=forced?added:active.filter(previous=>{
+        // Nonnegative box/glue widths make this lower bound monotonic.
+        // Do not retain paths that cannot fit even after all allowed shrink.
+        const start=previous.next;
+        return sums[0][end]-sums[0][start]-(sums[2][end]-sums[2][start])<=width(previous.line);
+      }).concat(added);
     }
     if(!final.length)return null;
     let node=final.reduce((a,b)=>a.cost<b.cost?a:b),lines=[];
