@@ -1279,7 +1279,7 @@ function load(text, markSaved = true) {
   const content=parsed.blocks.flatMap((block,index)=>importBlocks(index===0 && readMeta('title')
     ? block.replace(/^\s*\\maketitle\b[ \t]*(?:\r?\n|$)/,'') : block));
   for (const block of content) identifyImportedBoxes(block);
-  editor.chain().setMeta('addToHistory', false).setContent({type:'doc',attrs:{layoutPreamble:parsed.start,pageFurniture:readPageFurniture(parsed.start)},content:content.length?content:[{type:'paragraph'}]}).run();
+  editor.chain().setMeta('addToHistory', false).setContent({type:'doc',attrs:{layoutPreamble:parsed.start,pageFurniture:readPageFurniture(parsed.start)},content:content.length?content:[{type:'paragraph'}]}).command(({tr})=>{tr.setDocAttribute('layoutPreamble',parsed.start);tr.setDocAttribute('pageFurniture',readPageFurniture(parsed.start));return true;}).run();
   refreshReferences(paper);syncTableAttributes();
   importedSource=text;importedSnapshot=JSON.stringify(editor.getJSON());
   if(markSaved) savedSource=text;

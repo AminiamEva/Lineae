@@ -25,7 +25,7 @@ const server=createServer(async(req,res)=>{
   await paper.locator('p').filter({hasText:'Appendix body.'}).click();await page.keyboard.press('End');await page.keyboard.insertText(' Edited');assert.match(await paper.innerText(),/Edited/);await page.keyboard.press('Control+z');assert.ok(!(await paper.innerText()).includes('Edited'));await page.keyboard.press('Control+y');assert.match(await paper.innerText(),/Edited/);
   await page.locator('[data-source-mode=source]').click();assert.match(await page.locator('.cm-content').innerText(),/\\appendix/);await page.locator('[data-source-mode=body]').click();assert.equal(await paper.locator('h1').nth(1).getAttribute('data-section-number'),'A');
   const chapterSource='\\documentclass{report}\n\\begin{document}\n\\chapter{Main}\n\n\\section{Body}\n\n\\appendix\n\\chapter{Proofs}\\label{app:chapter}\n\n\\section{Detail}\n\n\\chapter{Data}\n\\end{document}\n';await load(chapterSource);
-  console.log('chapter DOM',await paper.innerHTML());assert.deepEqual(await paper.locator('[data-section-number]').evaluateAll(nodes=>nodes.map(n=>n.dataset.sectionNumber)),['1','1.1','A','A.1','B']);
+  assert.deepEqual(await paper.locator('[data-section-number]').evaluateAll(nodes=>nodes.map(n=>n.dataset.sectionNumber)),['1','1.1','A','A.1','B']);
   assert.deepEqual(errors,[]);console.log('PASS: appendix imports, chapter/section reset, nested numbering, reference target, zero-flow marker, rich editing, undo/redo and source round-trip');
  }finally{await browser.close();server.close();}
 })().catch(error=>{console.error(error);process.exitCode=1;server.close();});
