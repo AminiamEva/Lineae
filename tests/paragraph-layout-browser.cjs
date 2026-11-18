@@ -21,13 +21,13 @@ const server=createServer(async(req,res)=>{
  await page.locator('[data-source-mode=source]').click();const code=page.locator('.cm-content');await code.click();await page.keyboard.press('Control+a');await page.keyboard.insertText(fixture.source);await page.locator('[data-source-mode=body]').click();
  await page.evaluate(()=>document.fonts.ready);await page.waitForTimeout(300);
  const evidence=await page.locator('.ProseMirror p').first().evaluate(node=>{
-  const lines=new Map(),walk=document.createTreeWalker(node,NodeFilter.SHOW_TEXT);
+  const lines=new Map();let previousLine=null;const walk=document.createTreeWalker(node,NodeFilter.SHOW_TEXT);
   while(walk.nextNode()){
    const text=walk.currentNode;if(text.parentElement.closest('.ProseMirror-widget'))continue;
-   for(let index=0;index<text.length;index++){const range=document.createRange();range.setStart(text,index);range.setEnd(text,index+1);const r=range.getBoundingClientRect();const key=Math.round(r.top*10)/10;if(!lines.has(key))lines.set(key,{text:'',x:r.left,right:r.right});const line=lines.get(key);line.text+=text.data[index];line.right=Math.max(line.right,r.right);}
+   for(let index=0;index<text.length;index++){const range=document.createRange();range.setStart(text,index);range.setEnd(text,index+1);const r=range.getBoundingClientRect();if(!r.width&&!r.height)continue;const key=/\s/.test(text.data[index])?previousLine:Math.round(r.top*10)/10;if(key===null)continue;previousLine=key;if(!lines.has(key))lines.set(key,{text:'',x:r.left,right:r.right});const line=lines.get(key);line.text+=text.data[index];line.right=Math.max(line.right,r.right);}
   }
   for(const hyphen of node.querySelectorAll('.tex-discretionary-hyphen')){const r=hyphen.getBoundingClientRect();const match=[...lines.keys()].sort((a,b)=>Math.abs(a-r.top)-Math.abs(b-r.top))[0];if(match!==undefined)lines.get(match).text+='-';}
-  return {width:node.clientWidth,style:getComputedStyle(node).font,optimized:node.hasAttribute('data-tex-paragraph'),lines:[...lines.values()].map(line=>({...line,text:line.text.trim().normalize('NFKC')}))};
+  return {width:node.clientWidth,style:getComputedStyle(node).font,optimized:node.hasAttribute('data-tex-paragraph'),lines:[...lines.values()].filter(line=>line.text.trim()).map(line=>({...line,text:line.text.trim().normalize('NFKC')}))};
  });
  console.log('PARAGRAPH '+JSON.stringify({margin:fixture.margin,expected:fixture.lines,evidence}));
  assert.equal(evidence.optimized,true);assert.deepEqual(evidence.lines.map(line=>line.text),fixture.lines.map(line=>line.text),'Line endings must match the XeLaTeX reference at margin '+fixture.margin);
