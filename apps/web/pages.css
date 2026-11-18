@@ -1104,3 +1104,8 @@ body.format-painter-active .ProseMirror * { cursor:copy; }
 .document-page .ProseMirror h1[data-heading-command="chapter"]{position:relative;top:0;margin:0 0 39.8506pt;padding-top:49.8132pt;font-size:24.7871pt;line-height:29.8879pt;font-weight:700;}
 .document-page .ProseMirror h1[data-heading-command="chapter"]::before{content:none;}
 .document-page .ProseMirror h1[data-heading-command="chapter"][data-chapter-label]::before{content:attr(data-chapter-label);display:block;margin:0 0 19.9253pt;font-size:20.6625pt;line-height:24.9066pt;}
+@font-face{font-family:"FandolSong";font-style:normal;font-weight:400;src:url("./assets/fonts/fandol/FandolSong-Regular.woff2") format("woff2");font-display:swap;}
+@font-face{font-family:"FandolSong";font-style:normal;font-weight:700;src:url("./assets/fonts/fandol/FandolSong-Bold.woff2") format("woff2");font-display:swap;}
+
+.document-page .ProseMirror p[data-tex-paragraph]{text-autospace:no-autospace;}
+.document-page .ProseMirror p[data-tex-paragraph] .cjk-latin{margin-inline:0;}

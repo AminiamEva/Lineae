@@ -49,7 +49,8 @@ function readFonts(preamble, options) {
   return {
     serif: fontFamily(commandArgument(preamble, 'setmainfont')),
     mono: fontFamily(commandArgument(preamble, 'setmonofont')),
-    cjk: fontFamily(commandArgument(preamble, 'setCJKmainfont')) ?? fontset ?? null,
+    cjk: fontFamily(commandArgument(preamble, 'setCJKmainfont')) ?? fontset
+      ?? (/\\documentclass(?:\[[^\]]*\])?\{ctex|\\usepackage(?:\[[^\]]*\])?\{[^}]*ctex/.test(preamble)?'FandolSong':null),
   };
 }
 

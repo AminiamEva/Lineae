@@ -1,0 +1,344 @@
+{
+  "engine": "XeLaTeX TeX Live 2023, xeCJK 3.9.1, FandolSong-Regular",
+  "cases": [
+    {
+      "name": "han",
+      "margin": 45,
+      "source": "\\documentclass{article}\n\\usepackage{fontspec,xeCJK}\n\\usepackage[a4paper,margin=45mm]{geometry}\n\\setmainfont{Latin Modern Roman}\n\\setCJKmainfont{FandolSong-Regular.otf}\n\\begin{document}\n中文排版应当根据整段内容决定每一行的位置并使编辑与编译采用相同的断行规则中文排版应当根据整段内容决定每一行的位置并使编辑与编译采用相同的断行规则中文排版应当根据整段内容决定每一行的位置并使编辑与编译采用相同的断行规则\n\\end{document}\n",
+      "lines": [
+        {
+          "text": "中文排版应当根据整段内容决定每一行的位置并使编辑与编译采用相同的",
+          "bbox": [
+            142.50299,
+            127.77858,
+            467.71208,
+            140.27169
+          ]
+        },
+        {
+          "text": "断行规则中文排版应当根据整段内容决定每一行的位置并使编辑与编译采用相",
+          "bbox": [
+            127.559,
+            139.73358,
+            467.71195,
+            152.22669
+          ]
+        },
+        {
+          "text": "同的断行规则中文排版应当根据整段内容决定每一行的位置并使编辑与编译采",
+          "bbox": [
+            127.559,
+            151.68859,
+            467.71195,
+            164.18169
+          ]
+        },
+        {
+          "text": "用相同的断行规则",
+          "bbox": [
+            127.559,
+            163.64359,
+            207.25981,
+            176.13669
+          ]
+        }
+      ]
+    },
+    {
+      "name": "han",
+      "margin": 65,
+      "source": "\\documentclass{article}\n\\usepackage{fontspec,xeCJK}\n\\usepackage[a4paper,margin=65mm]{geometry}\n\\setmainfont{Latin Modern Roman}\n\\setCJKmainfont{FandolSong-Regular.otf}\n\\begin{document}\n中文排版应当根据整段内容决定每一行的位置并使编辑与编译采用相同的断行规则中文排版应当根据整段内容决定每一行的位置并使编辑与编译采用相同的断行规则中文排版应当根据整段内容决定每一行的位置并使编辑与编译采用相同的断行规则\n\\end{document}\n",
+      "lines": [
+        {
+          "text": "中文排版应当根据整段内容决定每一行的位置并",
+          "bbox": [
+            199.196,
+            184.47158,
+            411.02073,
+            196.96468
+          ]
+        },
+        {
+          "text": "使编辑与编译采用相同的断行规则中文排版应当根",
+          "bbox": [
+            184.252,
+            196.42658,
+            411.0206,
+            208.91968
+          ]
+        },
+        {
+          "text": "据整段内容决定每一行的位置并使编辑与编译采用",
+          "bbox": [
+            184.252,
+            208.38158,
+            411.0206,
+            220.87468
+          ]
+        },
+        {
+          "text": "相同的断行规则中文排版应当根据整段内容决定每",
+          "bbox": [
+            184.252,
+            220.33658,
+            411.0206,
+            232.82968
+          ]
+        },
+        {
+          "text": "一行的位置并使编辑与编译采用相同的断行规则",
+          "bbox": [
+            184.252,
+            232.29158,
+            393.46653,
+            244.78469
+          ]
+        }
+      ]
+    },
+    {
+      "name": "punctuation",
+      "margin": 45,
+      "source": "\\documentclass{article}\n\\usepackage{fontspec,xeCJK}\n\\usepackage[a4paper,margin=45mm]{geometry}\n\\setmainfont{Latin Modern Roman}\n\\setCJKmainfont{FandolSong-Regular.otf}\n\\begin{document}\n中文排版需要处理标点，不能让句号出现在行首。整段文字应该采用统一的断行规则，同时保留中文输入和选择行为。中文排版需要处理标点，不能让句号出现在行首。整段文字应该采用统一的断行规则，同时保留中文输入和选择行为。中文排版需要处理标点，不能让句号出现在行首。整段文字应该采用统一的断行规则，同时保留中文输入和选择行为。\n\\end{document}\n",
+      "lines": [
+        {
+          "text": "中文排版需要处理标点，不能让句号出现在行首。整段文字应该采用统一",
+          "bbox": [
+            142.50299,
+            127.77858,
+            467.71195,
+            140.27169
+          ]
+        },
+        {
+          "text": "的断行规则，同时保留中文输入和选择行为。中文排版需要处理标点，不能让",
+          "bbox": [
+            127.559,
+            139.73358,
+            467.71189,
+            152.22669
+          ]
+        },
+        {
+          "text": "句号出现在行首。整段文字应该采用统一的断行规则，同时保留中文输入和选",
+          "bbox": [
+            127.559,
+            151.68859,
+            467.71189,
+            164.18169
+          ]
+        },
+        {
+          "text": "择行为。中文排版需要处理标点，不能让句号出现在行首。整段文字应该采用",
+          "bbox": [
+            127.559,
+            163.64359,
+            467.71189,
+            176.13669
+          ]
+        },
+        {
+          "text": "统一的断行规则，同时保留中文输入和选择行为。",
+          "bbox": [
+            127.559,
+            175.59859,
+            346.73619,
+            188.09169
+          ]
+        }
+      ]
+    },
+    {
+      "name": "punctuation",
+      "margin": 65,
+      "source": "\\documentclass{article}\n\\usepackage{fontspec,xeCJK}\n\\usepackage[a4paper,margin=65mm]{geometry}\n\\setmainfont{Latin Modern Roman}\n\\setCJKmainfont{FandolSong-Regular.otf}\n\\begin{document}\n中文排版需要处理标点，不能让句号出现在行首。整段文字应该采用统一的断行规则，同时保留中文输入和选择行为。中文排版需要处理标点，不能让句号出现在行首。整段文字应该采用统一的断行规则，同时保留中文输入和选择行为。中文排版需要处理标点，不能让句号出现在行首。整段文字应该采用统一的断行规则，同时保留中文输入和选择行为。\n\\end{document}\n",
+      "lines": [
+        {
+          "text": "中文排版需要处理标点，不能让句号出现在行首。",
+          "bbox": [
+            199.196,
+            184.47158,
+            417.44657,
+            196.96468
+          ]
+        },
+        {
+          "text": "整段文字应该采用统一的断行规则，同时保留中文",
+          "bbox": [
+            184.252,
+            196.42658,
+            411.0206,
+            208.91968
+          ]
+        },
+        {
+          "text": "输入和选择行为。中文排版需要处理标点，不能让句",
+          "bbox": [
+            184.252,
+            208.38158,
+            411.03056,
+            220.87468
+          ]
+        },
+        {
+          "text": "号出现在行首。整段文字应该采用统一的断行规则，",
+          "bbox": [
+            184.252,
+            220.33658,
+            417.91465,
+            232.82968
+          ]
+        },
+        {
+          "text": "同时保留中文输入和选择行为。中文排版需要处理",
+          "bbox": [
+            184.252,
+            232.29158,
+            411.0206,
+            244.78469
+          ]
+        },
+        {
+          "text": "标点，不能让句号出现在行首。整段文字应该采用统",
+          "bbox": [
+            184.252,
+            244.24658,
+            411.03056,
+            256.7397
+          ]
+        },
+        {
+          "text": "一的断行规则，同时保留中文输入和选择行为。",
+          "bbox": [
+            184.252,
+            256.20259,
+            393.46653,
+            268.69566
+          ]
+        }
+      ]
+    },
+    {
+      "name": "mixed",
+      "margin": 45,
+      "source": "\\documentclass{article}\n\\usepackage{fontspec,xeCJK}\n\\usepackage[a4paper,margin=45mm]{geometry}\n\\setmainfont{Latin Modern Roman}\n\\setCJKmainfont{FandolSong-Regular.otf}\n\\begin{document}\n中文 typography 应当采用 paragraph breaking 规则保持一致，中文与 English words 之间需要正确的弹性间距。中文 typography 应当采用 paragraph breaking 规则保持一致，中文与 English words 之间需要正确的弹性间距。中文 typography 应当采用 paragraph breaking 规则保持一致，中文与 English words 之间需要正确的弹性间距。\n\\end{document}\n",
+      "lines": [
+        {
+          "text": "中文 typography 应当采用 paragraph breaking 规则保持一致，中文与",
+          "bbox": [
+            142.50299,
+            126.29415,
+            467.708,
+            140.41117
+          ]
+        },
+        {
+          "text": "English words 之间需要正确的弹性间距。中文 typography 应当采用 paragraph",
+          "bbox": [
+            127.55904,
+            138.24916,
+            467.71653,
+            152.36617
+          ]
+        },
+        {
+          "text": "breaking 规则保持一致，中文与 English words 之间需要正确的弹性间距。中",
+          "bbox": [
+            127.55905,
+            150.20417,
+            467.7153,
+            164.32117
+          ]
+        },
+        {
+          "text": "文 typography 应当采用 paragraph breaking 规则保持一致，中文与 English",
+          "bbox": [
+            127.55907,
+            162.15917,
+            467.7168,
+            176.27617
+          ]
+        },
+        {
+          "text": "words 之间需要正确的弹性间距。",
+          "bbox": [
+            127.55908,
+            174.11417,
+            275.69328,
+            188.23117
+          ]
+        }
+      ]
+    },
+    {
+      "name": "mixed",
+      "margin": 65,
+      "source": "\\documentclass{article}\n\\usepackage{fontspec,xeCJK}\n\\usepackage[a4paper,margin=65mm]{geometry}\n\\setmainfont{Latin Modern Roman}\n\\setCJKmainfont{FandolSong-Regular.otf}\n\\begin{document}\n中文 typography 应当采用 paragraph breaking 规则保持一致，中文与 English words 之间需要正确的弹性间距。中文 typography 应当采用 paragraph breaking 规则保持一致，中文与 English words 之间需要正确的弹性间距。中文 typography 应当采用 paragraph breaking 规则保持一致，中文与 English words 之间需要正确的弹性间距。\n\\end{document}\n",
+      "lines": [
+        {
+          "text": "中文 typography 应当采用 paragraph breaking",
+          "bbox": [
+            199.196,
+            182.98715,
+            411.01823,
+            197.10416
+          ]
+        },
+        {
+          "text": "规则保持一致，中文与 English words 之间需要正确",
+          "bbox": [
+            184.252,
+            194.94216,
+            411.0235,
+            209.05916
+          ]
+        },
+        {
+          "text": "的弹性间距。中文 typography 应当采用 paragraph",
+          "bbox": [
+            184.25199,
+            206.89716,
+            411.02348,
+            221.01416
+          ]
+        },
+        {
+          "text": "breaking 规则保持一致，中文与 English words 之",
+          "bbox": [
+            184.25199,
+            218.85216,
+            411.0236,
+            232.96916
+          ]
+        },
+        {
+          "text": "间需要正确的弹性间距。中文 typography 应当采用",
+          "bbox": [
+            184.252,
+            230.80716,
+            411.0186,
+            244.92417
+          ]
+        },
+        {
+          "text": "paragraph breaking 规则保持一致，中文与 English",
+          "bbox": [
+            184.252,
+            242.76216,
+            411.0237,
+            256.87916
+          ]
+        },
+        {
+          "text": "words 之间需要正确的弹性间距。",
+          "bbox": [
+            184.252,
+            254.71814,
+            332.38618,
+            268.83515
+          ]
+        }
+      ]
+    }
+  ]
+}
