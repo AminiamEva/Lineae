@@ -47,6 +47,10 @@ const server = createServer(async (request, response) => {
     // Node: NPN has B/C/E; bodydiode adds two body pins.
     await place('Transistors', 'NPN', .35, .30);
     assert.equal(await page.locator('.tikz-layer-items circle').count(), 3, 'NPN exposes B/C/E');
+    const panelText = await page.locator('.tikz-property-panel').innerText();
+    for (const heading of ['Manipulation', 'Ordering', 'Options', 'Text', 'Stroke', 'Fill', 'Component style', 'Info']) {
+      assert.ok(panelText.includes(heading), 'property panel includes ' + heading);
+    }
     const bodydiode = page.locator('.tikz-options input[type=checkbox]').nth(2);
     await bodydiode.check();
     await page.waitForTimeout(250);

@@ -68,4 +68,13 @@
 - 共 36 个 symbols.svg 缺失 ID 使用最近 artwork alias，避免空白元件。
 - 新增 `preview-renderer.js`：在正文的 `tikz`/`circuitikz` code block 前插入只读 SVG 预览，不替换原有 code block 编辑内核。
 - TikZ 坐标改为真实 cm 单位；默认 bipole pin spacing 约 1.12 cm，与 LaTeX 默认 resistor body 实测一致。
+## 2026-11-19 右侧属性面板迁移
+
+- 新增 Designer 风格分组：Manipulation、Ordering、Options、Text、Stroke、Fill、Component style、Info。
+- Manipulation：旋转 90°/45°、水平/垂直翻转、缩放、X/Y 位置。
+- Ordering：Foreground / Background / Forward / Backward。
+- Options：Mirror、Invert、START/END pole，Wire 起止箭头。
+- Text：label、value、path voltage/current、文本对齐、字号。
+- Stroke/Fill：颜色、线宽；Node/Path/Rect/Wire 均同步到 SVG 与 TikZ。
+- 所有动态输入使用 refreshProperties，避免每次输入重建面板丢失焦点。
 

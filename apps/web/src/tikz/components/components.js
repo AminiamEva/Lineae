@@ -49,6 +49,11 @@ export class Component {
     this.y = y;
     this.rotate = 0;
     this.selected = false;
+    this.scaleValue = 1;
+    this.flipY = false;
+    this.strokeColor = null;
+    this.fillColor = null;
+    this.lineWidth = null;
   }
   moveTo(x, y) { this.x = x; this.y = y; }
   moveBy(dx, dy) { this.moveTo(this.x + dx, this.y + dy); }
@@ -72,7 +77,9 @@ export class NodeSymbol extends Component {
   }
   variant() { return variantOf(this.def, this.options); }
   localToWorld(point) {
-    const rotated = rotatePoint(this.mirror ? -point.x : point.x, point.y, this.rotate);
+    const sx = (this.mirror ? -1 : 1) * this.scaleValue;
+    const sy = (this.flipY ? -1 : 1) * this.scaleValue;
+    const rotated = rotatePoint(point.x * sx, point.y * sy, this.rotate);
     return { x: this.x + rotated.x, y: this.y + rotated.y };
   }
   pinWorld(pin) {
@@ -105,11 +112,14 @@ export class NodeSymbol extends Component {
   toSvg() {
     const variant = this.variant();
     const g = svg('g', { 'data-uid': this.uid });
-    g.setAttribute('transform', `translate(${this.x},${this.y})${this.rotate ? ` rotate(${this.rotate})` : ''}${this.mirror ? ' scale(-1,1)' : ''}`);
+    g.setAttribute('transform', `translate(${this.x},${this.y})${this.rotate ? ` rotate(${this.rotate})` : ''}${this.mirror || this.flipY || this.scaleValue !== 1 ? ` scale(${this.mirror ? -this.scaleValue : this.scaleValue},${this.flipY ? -this.scaleValue : this.scaleValue})` : ''}`);
     const use = svg('use');
     use.setAttribute('href', '#' + (variant.id || this.def.id));
     use.setAttribute('transform', `translate(${-variant.mid[0]},${-variant.mid[1]})`);
-    if (this.def.fillable) use.setAttribute('fill', 'none');
+    if (this.def.fillable && !this.fillColor) use.setAttribute('fill', 'none');
+    if (this.strokeColor) use.setAttribute('stroke', this.strokeColor);
+    if (this.fillColor) use.setAttribute('fill', this.fillColor);
+    if (this.lineWidth) use.setAttribute('stroke-width', String(this.lineWidth));
     if (this.selected) use.setAttribute('color', '#2f6fed');
     g.append(use);
     if (this.selected) g.setAttribute('opacity', '0.88');
@@ -131,9 +141,12 @@ export class NodeSymbol extends Component {
     const words = optionWords([...this.def.tikz ? [this.def.tikz] : [], ...this.variant().options]);
     if (this.label) words.push(`label={$${this.label}$}`);
     if (this.rotate) words.push('rotate=' + this.rotate);
-    if (this.mirror) words.push('xscale=-1');
-    if (this.scale.x !== 1) words.push('xscale=' + this.scale.x);
-    if (this.scale.y !== 1) words.push('yscale=' + this.scale.y);
+    if (this.mirror) words.push('xscale=' + (-this.scaleValue));
+    if (this.flipY) words.push('yscale=' + (-this.scaleValue));
+    if (this.scaleValue !== 1 && !this.mirror && !this.flipY) words.push('scale=' + this.scaleValue);
+    if (this.strokeColor) words.push('draw=' + this.strokeColor);
+    if (this.fillColor) words.push('fill=' + this.fillColor);
+    if (this.lineWidth) words.push('line width=' + this.lineWidth + 'pt');
     return `\\node[${words.join(', ')}] at (${X(this.x)},${Y(this.y)}) {};`;
   }
 }
@@ -165,6 +178,8 @@ export class PathComponent extends Component {
     this.options = [...(variantOf(def, []).options || [])];
     this.label = '';
     this.value = '';
+    this.voltage = '';
+    this.current = '';
     this.mirror = false;
     this.invert = false;
     const variant = this.variant();
@@ -180,8 +195,9 @@ export class PathComponent extends Component {
   }
   get midpoint() { return { x: (this.start.x + this.end.x) / 2, y: (this.start.y + this.end.y) / 2 }; }
   localToWorld(point) {
-    const x = this.mirror ? -point.x : point.x;
-    const rotated = rotatePoint(x, point.y, -this.angle);
+    const x = (this.mirror ? -point.x : point.x) * this.scaleValue;
+    const y = (this.flipY ? -point.y : point.y) * this.scaleValue;
+    const rotated = rotatePoint(x, y, -this.angle);
     const mid = this.midpoint;
     return { x: mid.x + rotated.x, y: mid.y + rotated.y };
   }
@@ -222,6 +238,15 @@ export class PathComponent extends Component {
     this.x = x; this.y = y;
   }
   moveBy(dx, dy) { this.moveTo(this.start.x + dx, this.start.y + dy); }
+  rotateBy(degrees) {
+    const mid = this.midpoint;
+    const rotate = point => {
+      const p = rotatePoint(point.x - mid.x, point.y - mid.y, degrees);
+      return { x: mid.x + p.x, y: mid.y + p.y };
+    };
+    this.start = rotate(this.start); this.end = rotate(this.end);
+    this.x = this.start.x; this.y = this.start.y;
+  }
   setStartFrom(point) { this.start = { x: point.x, y: point.y }; this.x = point.x; this.y = point.y; }
   setEndFrom(point) { this.end = { x: point.x, y: point.y }; }
   setLengthFrom(point) { this.setEndFrom(point); }
@@ -247,12 +272,15 @@ export class PathComponent extends Component {
     const variant = this.variant();
     const g = svg('g', { 'data-uid': this.uid });
     const mid = this.midpoint;
-    const transform = `translate(${mid.x},${mid.y})${this.angle ? ` rotate(${-this.angle})` : ''}${this.mirror ? ' scale(-1,1)' : ''}`;
+    const transform = `translate(${mid.x},${mid.y})${this.angle ? ` rotate(${-this.angle})` : ''}${this.mirror || this.flipY || this.scaleValue !== 1 ? ` scale(${this.mirror ? -this.scaleValue : this.scaleValue},${this.flipY ? -this.scaleValue : this.scaleValue})` : ''}`;
     const symbol = svg('g', { transform });
     const use = svg('use');
     use.setAttribute('href', '#' + (variant.id || this.def.id));
     use.setAttribute('transform', `translate(${-variant.mid[0]},${-variant.mid[1]})`);
-    if (this.def.fillable) use.setAttribute('fill', 'none');
+    if (this.def.fillable && !this.fillColor) use.setAttribute('fill', 'none');
+    if (this.strokeColor) use.setAttribute('stroke', this.strokeColor);
+    if (this.fillColor) use.setAttribute('fill', this.fillColor);
+    if (this.lineWidth) use.setAttribute('stroke-width', String(this.lineWidth));
     if (this.selected) use.setAttribute('color', '#2f6fed');
     const hasArtwork = variant.id && document.getElementById(variant.id);
     if (hasArtwork && !isAmericanVoltage(this.def)) symbol.append(use);
@@ -286,6 +314,13 @@ export class PathComponent extends Component {
     if (this.value) words.push(`v=$${this.value}$`);
     if (this.mirror) words.push('mirror');
     if (this.invert) words.push('invert');
+    if (this.scaleValue !== 1) words.push('scale=' + this.scaleValue);
+    if (this.strokeColor) words.push('draw=' + this.strokeColor);
+    if (this.fillColor) words.push('fill=' + this.fillColor);
+    if (this.lineWidth) words.push('line width=' + this.lineWidth + 'pt');
+    if (this.voltage) words.push(`v={$${this.voltage}$}`);
+    if (this.current) words.push(`i={$${this.current}$}`);
+    if (this.poleStart || this.poleEnd) words.push(`${this.poleStart || ''}-${this.poleEnd || ''}`);
     return words.length ? ', ' + words.join(', ') : '';
   }
   toTikZ(X, Y) {
@@ -315,6 +350,15 @@ export class OpenComponent extends Component {
       { key: 'start', x: this.start.x, y: this.start.y },
       { key: 'end', x: this.end.x, y: this.end.y },
     ];
+  }
+  rotateBy(degrees) {
+    const mid = this.midpoint;
+    const rotate = point => {
+      const p = rotatePoint(point.x - mid.x, point.y - mid.y, degrees);
+      return { x: mid.x + p.x, y: mid.y + p.y };
+    };
+    this.start = rotate(this.start); this.end = rotate(this.end);
+    this.x = this.start.x; this.y = this.start.y;
   }
   setStartFrom(point) { this.start = { x: point.x, y: point.y }; this.x = point.x; this.y = point.y; }
   setEndFrom(point) { this.end = { x: point.x, y: point.y }; this.gap = Math.hypot(point.x - this.start.x, point.y - this.start.y); }
@@ -391,7 +435,7 @@ export class RectComponent extends Component {
   toSvg() {
     const g = svg('g', { 'data-uid': this.uid, transform: `translate(${this.x},${this.y})${this.rotate ? ` rotate(${this.rotate})` : ''}` });
     const path = this.bodyShape();
-    const style = { fill: 'none', stroke: this.selected ? '#2f6fed' : '#222', 'stroke-width': 2 };
+    const style = { fill: this.fillColor || 'none', stroke: this.strokeColor || (this.selected ? '#2f6fed' : '#222'), 'stroke-width': this.lineWidth || 2 };
     let element;
     if (path) element = svg('path', { d: path, ...style });
     else if (this.round) element = svg('ellipse', { rx: this.w / 2, ry: this.h / 2, ...style });
@@ -411,9 +455,9 @@ export class RectComponent extends Component {
 }
 
 export class TextItem extends Component {
-  constructor(text, size, x, y) { super('text', x, y); this.text = text; this.size = size || 12; }
+  constructor(text, size, x, y) { super('text', x, y); this.text = text; this.size = size || 12; this.align = 'center'; }
   toSvg() {
-    const t = svg('text', { x: this.x, y: this.y, 'font-size': `${this.size}pt`, 'font-family': '"Latin Modern Roman", serif', fill: this.selected ? '#2f6fed' : '#111', 'data-uid': this.uid });
+    const t = svg('text', { x: this.x, y: this.y, 'text-anchor': this.align === 'left' ? 'start' : this.align === 'right' ? 'end' : 'middle', 'font-size': `${this.size}pt`, 'font-family': '"Latin Modern Roman", serif', fill: this.selected ? '#2f6fed' : '#111', 'data-uid': this.uid });
     t.textContent = this.text;
     return t;
   }
@@ -429,6 +473,8 @@ export class Wire extends Component {
     this.pts = pts;
     this.endA = null;
     this.endB = null;
+    this.arrowStart = null;
+    this.arrowEnd = null;
   }
   moveBy(dx, dy) { this.pts = this.pts.map(p => ({ x: p.x + dx, y: p.y + dy })); this.x = this.pts[0].x; this.y = this.pts[0].y; }
   adjustPoints() { return this.pts.map((point, index) => ({ key: 'vertex-' + index, x: point.x, y: point.y })); }
@@ -441,9 +487,9 @@ export class Wire extends Component {
   toSvg() {
     const pl = svg('polyline', {
       points: this.pts.map(p => `${p.x},${p.y}`).join(' '),
-      fill: 'none',
-      stroke: this.selected ? '#2f6fed' : '#222',
-      'stroke-width': 2,
+      fill: this.fillColor || 'none',
+      stroke: this.strokeColor || (this.selected ? '#2f6fed' : '#222'),
+      'stroke-width': this.lineWidth || 2,
       'stroke-linejoin': 'round',
       'data-uid': this.uid,
     });

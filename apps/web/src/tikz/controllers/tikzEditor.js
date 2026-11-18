@@ -80,22 +80,8 @@ export class TikzEditor {
               <button data-tool="fit">Fit</button>
             </div>
             <div class="tikz-selection-info"></div>
+            <div class="tikz-property-panel"></div>
             <label class="tikz-field">${this.t('文字内容', 'Text')}
-              <input type="text" class="tikz-text-input" placeholder="R_1"></label>
-            <label class="tikz-field">${this.t('字号(pt)', 'Size (pt)')}
-              <input type="number" class="tikz-text-size" value="12" min="6" max="72"></label>
-            <div class="tikz-props">
-              <div class="tikz-props-title">${this.t('元件属性', 'Component')}</div>
-              <label class="tikz-field">${this.t('标签 l=', 'Label l=')}
-                <input type="text" class="tikz-prop-label" placeholder="R_1"></label>
-              <label class="tikz-field">${this.t('数值 v=', 'Value v=')}
-                <input type="text" class="tikz-prop-value" placeholder="5V"></label>
-              <label class="tikz-field tikz-mirror-row"><input type="checkbox" class="tikz-prop-mirror">${this.t('镜像 mirror', 'Mirror')}</label>
-            </div>
-            <div class="tikz-props">
-              <div class="tikz-props-title">${this.t('组件样式', 'Component style')}</div>
-              <div class="tikz-options"></div>
-            </div>
             <div class="tikz-props">
               <div class="tikz-props-title">${this.t('视图', 'View')}</div>
               <label class="tikz-field">${this.t('网格(cm)', 'Grid (cm)')}
@@ -126,9 +112,6 @@ export class TikzEditor {
       const ro = o.querySelector('.tikz-zoom-readout');
       if (ro) ro.textContent = value + '%';
     };
-    o.querySelector('.tikz-prop-label').oninput = e => { if (this.selected?.options) { this.selected.label = e.target.value; } };
-    o.querySelector('.tikz-prop-value').oninput = e => { if (this.selected?.options) { this.selected.value = e.target.value; } };
-    o.querySelector('.tikz-prop-mirror').onchange = e => { if (this.selected?.options) { this.selected.mirror = e.target.checked; } };
     o.querySelector('.tikz-grid-size').onchange = e => { this.snap.gridStep = +e.target.value * PX_PER_CM; this.canvas.drawGrid(); };
     o.querySelector('.tikz-grid-show').onchange = e => { this.canvas.layers.grid.style.display = e.target.checked ? '' : 'none'; };
     o.querySelector('.tikz-snap-show').onchange = e => { this.snapEnabled = e.target.checked; };
@@ -412,7 +395,6 @@ export class TikzEditor {
       return;
     }
     if (this.tool === 'text') {
-      const txt = this.overlay.querySelector('.tikz-text-input').value;
       if (!txt.trim()) { this.setStatus(this.t('请先填写文字内容', 'Enter text first')); return; }
       const size = +this.overlay.querySelector('.tikz-text-size').value || 12;
       this.items.push(new TextItem(txt, size, raw.x, raw.y));
@@ -596,16 +578,204 @@ export class TikzEditor {
     this.canvas.setPreview([...nodes, ...this.renderSnapIndicator()]);
   }
 
+  propertySection(panel, title) {
+    const section = document.createElement('section');
+    section.className = 'tikz-prop-section';
+    const heading = document.createElement('div');
+    heading.className = 'tikz-props-title';
+    heading.textContent = title;
+    const body = document.createElement('div');
+    body.className = 'tikz-prop-section-body';
+    section.append(heading, body);
+    panel.append(section);
+    return body;
+  }
+
+  propertyButton(parent, label, action, active = false) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'tikz-prop-button' + (active ? ' active' : '');
+    button.textContent = label;
+    button.addEventListener('mousedown', event => event.preventDefault());
+    button.addEventListener('click', action);
+    parent.append(button);
+    return button;
+  }
+
+  propertyField(parent, labelText, control) {
+    const field = document.createElement('label');
+    field.className = 'tikz-field tikz-option-field';
+    const span = document.createElement('span');
+    span.textContent = labelText;
+    field.append(span, control);
+    parent.append(field);
+    return field;
+  }
+
+  reorderItem(item, mode) {
+    const index = this.items.indexOf(item);
+    if (index < 0) return;
+    this.pushHistory();
+    const next = [...this.items];
+    next.splice(index, 1);
+    if (mode === 'front') next.push(item);
+    else if (mode === 'back') next.unshift(item);
+    else if (mode === 'forward') next.splice(Math.min(next.length, index + 1), 0, item);
+    else next.splice(Math.max(0, index - 1), 0, item);
+    this.items = next;
+    this.render();
+  }
+
+  mutateSelected(action) {
+    if (!this.selected) return;
+    this.pushHistory();
+    action(this.selected);
+    this.recomputeSnap();
+    this.refreshProperties();
+  }
+
+  refreshProperties() {
+    this._skipPropertyPanel = true;
+    this.render();
+    this._skipPropertyPanel = false;
+  }
+
+  buildPropertyPanel(p) {
+    const panel = this.overlay?.querySelector('.tikz-property-panel');
+    if (!panel) return;
+    panel.replaceChildren();
+    if (!p) return;
+
+    const manipulation = this.propertySection(panel, this.t('操作', 'Manipulation'));
+    const rotation = document.createElement('div');
+    rotation.className = 'tikz-prop-grid cols-2';
+    manipulation.append(rotation);
+    this.propertyButton(rotation, '↻ 90°', () => this.mutateSelected(item => item.rotateBy?.(90)));
+    this.propertyButton(rotation, '↺ 90°', () => this.mutateSelected(item => item.rotateBy?.(-90)));
+    this.propertyButton(rotation, '↻ 45°', () => this.mutateSelected(item => item.rotateBy?.(45)));
+    this.propertyButton(rotation, '↺ 45°', () => this.mutateSelected(item => item.rotateBy?.(-45)));
+    this.propertyButton(rotation, 'Flip H', () => this.mutateSelected(item => { item.mirror = !item.mirror; }));
+    this.propertyButton(rotation, 'Flip V', () => this.mutateSelected(item => { item.flipY = !item.flipY; }));
+    const scale = document.createElement('input');
+    scale.type = 'number'; scale.min = '0.1'; scale.max = '10'; scale.step = '0.05'; scale.value = String(p.scaleValue || 1);
+    scale.onchange = () => { p.scaleValue = Math.max(.1, Math.min(10, Number(scale.value) || 1)); this.recomputeSnap(); this.refreshProperties(); };
+    this.propertyField(manipulation, 'Scale', scale);
+    const positionGrid = document.createElement('div');
+    positionGrid.className = 'tikz-prop-grid cols-2';
+    manipulation.append(positionGrid);
+    for (const [key, label] of [['x', 'X'], ['y', 'Y']]) {
+      const input = document.createElement('input');
+      input.type = 'number'; input.step = '0.1'; input.value = Number(p[key] || 0).toFixed(2);
+      input.onchange = () => { p.moveTo?.(key === 'x' ? Number(input.value) || 0 : p.x, key === 'y' ? Number(input.value) || 0 : p.y); this.recomputeSnap(); this.refreshProperties(); };
+      this.propertyField(positionGrid, label, input);
+    }
+
+    const ordering = this.propertySection(panel, this.t('层级', 'Ordering'));
+    const orderGrid = document.createElement('div');
+    orderGrid.className = 'tikz-prop-grid cols-2';
+    ordering.append(orderGrid);
+    this.propertyButton(orderGrid, 'Foreground', () => this.reorderItem(p, 'front'));
+    this.propertyButton(orderGrid, 'Background', () => this.reorderItem(p, 'back'));
+    this.propertyButton(orderGrid, 'Forward', () => this.reorderItem(p, 'forward'));
+    this.propertyButton(orderGrid, 'Backward', () => this.reorderItem(p, 'backward'));
+
+    if (p.def?.name || p.def?.id) {
+      const options = this.propertySection(panel, this.t('选项', 'Options'));
+      if (p.def.kind === 'path' && p.def.pins?.some(pin => pin.name === 'START')) {
+        const poleChoices = [['none', 'none'], ['*', 'circ'], ['o', 'ocirc'], ['d', 'diamond'], ['od', 'odiamond'], ['square', 'square']];
+        for (const [key, label] of [['poleStart', 'Start'], ['poleEnd', 'End']]) {
+          const select = document.createElement('select');
+          for (const [value, text] of poleChoices) select.append(new Option(text, value));
+          select.value = p[key] || 'none';
+          select.onchange = () => { p[key] = select.value === 'none' ? null : select.value; this.refreshProperties(); };
+          this.propertyField(options, label, select);
+        }
+      }
+      const mirror = document.createElement('input');
+      mirror.type = 'checkbox'; mirror.checked = !!p.mirror;
+      mirror.onchange = () => { p.mirror = mirror.checked; this.refreshProperties(); };
+      this.propertyField(options, 'Mirror', mirror);
+      const invert = document.createElement('input');
+      invert.type = 'checkbox'; invert.checked = !!p.invert;
+      invert.onchange = () => { p.invert = invert.checked; this.refreshProperties(); };
+      this.propertyField(options, 'Invert', invert);
+    }
+
+    if (p.kind === 'wire') {
+      const arrows = this.propertySection(panel, this.t('箭头', 'Arrows'));
+      for (const [key, label] of [['arrowStart', 'Start'], ['arrowEnd', 'End']]) {
+        const select = document.createElement('select');
+        for (const [value, text] of [['none', 'none'], ['->', 'latex'], ['-o', 'circle'], ['-*', 'dot'], ['-|', 'bar']]) select.append(new Option(text, value));
+        select.value = p[key] || 'none';
+        select.onchange = () => { p[key] = select.value === 'none' ? null : select.value; this.refreshProperties(); };
+        this.propertyField(arrows, label, select);
+      }
+    }
+
+    const textSection = this.propertySection(panel, this.t('文本', 'Text'));
+    for (const [key, label] of [['label', 'Label'], ['value', 'Value']]) {
+      const input = document.createElement('input');
+      input.type = 'text'; input.value = p[key] || '';
+      input.oninput = () => { p[key] = input.value; this.refreshProperties(); };
+      this.propertyField(textSection, label, input);
+    }
+    if (p.kind === 'path') {
+      for (const [key, label] of [['voltage', 'Voltage v'], ['current', 'Current i']]) {
+        const input = document.createElement('input');
+        input.type = 'text'; input.value = p[key] || '';
+        input.oninput = () => { p[key] = input.value; this.refreshProperties(); };
+        this.propertyField(textSection, label, input);
+      }
+    }
+    if (p.kind === 'text') {
+      const align = document.createElement('select');
+      for (const value of ['left', 'center', 'right']) align.append(new Option(value, value));
+      align.value = p.align || 'center';
+      align.onchange = () => { p.align = align.value; this.refreshProperties(); };
+      this.propertyField(textSection, 'Align', align);
+    }
+    if ('size' in p) {
+      const size = document.createElement('input');
+      size.type = 'number'; size.min = '6'; size.max = '96'; size.value = String(p.size || 12);
+      size.onchange = () => { p.size = Math.max(6, Number(size.value) || 12); this.refreshProperties(); };
+      this.propertyField(textSection, 'Font size', size);
+    }
+
+    const stroke = this.propertySection(panel, this.t('描边', 'Stroke'));
+    const strokeColor = document.createElement('input');
+    strokeColor.type = 'color'; strokeColor.value = p.strokeColor || '#222222';
+    strokeColor.oninput = () => { p.strokeColor = strokeColor.value; this.refreshProperties(); };
+    this.propertyField(stroke, 'Color', strokeColor);
+    const lineWidth = document.createElement('input');
+    lineWidth.type = 'number'; lineWidth.min = '0'; lineWidth.max = '10'; lineWidth.step = '0.1'; lineWidth.value = String(p.lineWidth || '');
+    lineWidth.onchange = () => { p.lineWidth = lineWidth.value ? Number(lineWidth.value) : null; this.refreshProperties(); };
+    this.propertyField(stroke, 'Width', lineWidth);
+    const fill = this.propertySection(panel, this.t('填充', 'Fill'));
+    const fillColor = document.createElement('input');
+    fillColor.type = 'color'; fillColor.value = p.fillColor || '#ffffff';
+    fillColor.oninput = () => { p.fillColor = fillColor.value; this.refreshProperties(); };
+    this.propertyField(fill, 'Color', fillColor);
+
+    if (p.def) {
+      const styleSection = this.propertySection(panel, this.t('组件样式', 'Component style'));
+      const styleBody = document.createElement('div');
+      styleBody.className = 'tikz-options';
+      styleSection.append(styleBody);
+    }
+
+    const info = this.propertySection(panel, this.t('信息', 'Info'));
+    const id = document.createElement('div');
+    id.className = 'tikz-info-line';
+    id.textContent = 'ID: ' + (p.def?.tikz || p.kind || '');
+    const pins = document.createElement('div');
+    pins.className = 'tikz-info-line';
+    pins.textContent = 'Anchors: ' + (p.terminals?.().length || 0) + ' · Adjust: ' + (p.adjustPoints?.().length || 0);
+    info.append(id, pins);
+  }
+
   syncProps() {
     if (!this.overlay) return;
-    const p = this.selected && this.selected.options ? this.selected : null;
-    const set = (sel, v) => { const el = this.overlay.querySelector(sel); if (el) el.disabled = !p; };
-    set('.tikz-prop-label'); set('.tikz-prop-value'); set('.tikz-prop-mirror');
-    if (p) {
-      this.overlay.querySelector('.tikz-prop-label').value = p.label || '';
-      this.overlay.querySelector('.tikz-prop-value').value = p.value || '';
-      this.overlay.querySelector('.tikz-prop-mirror').checked = !!p.mirror;
-    }
+    const p = this.selected;
     const selection = this.overlay.querySelector('.tikz-selection-info');
     if (selection) {
       const box = p?.bbox?.();
@@ -614,6 +784,7 @@ export class TikzEditor {
         ? (p.def?.name || p.kind) + '  x=' + p.x.toFixed(1) + ' y=' + p.y.toFixed(1) + size
         : this.t('未选择元件', 'No selection');
     }
+    if (!this._skipPropertyPanel) this.buildPropertyPanel(p);
     const options = this.overlay.querySelector('.tikz-options');
     if (!options) return;
     options.replaceChildren();
