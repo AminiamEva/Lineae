@@ -39,6 +39,19 @@ const server=createServer(async(req,res)=>{
  const sourceText=fixture.source;await page.locator('.ProseMirror p').first().click();await page.keyboard.press('End');await page.keyboard.type(' sample');await page.keyboard.press('Control+z');
  await page.locator('[data-source-mode=source]').click();assert.equal((await code.innerText()).trimEnd(),sourceText.trimEnd(),'View layout and undo preserve source text');await page.locator('[data-source-mode=body]').click();
  }
+ const imeSource=reference.cases[0].source.replace(/中文排版[\s\S]*?(?=\n\\end\{document\})/,'中文$x$正文'+('中文输入应当保持光标位置稳定并允许连续编辑'.repeat(5)));
+ await page.locator('[data-source-mode=source]').click();const imeCode=page.locator('.cm-content');await imeCode.click();await page.keyboard.press('Control+a');await page.keyboard.insertText(imeSource);await page.locator('[data-source-mode=body]').click();await page.evaluate(()=>document.fonts.ready);
+ await page.locator('.math-inline').waitFor();await page.evaluate(()=>{const editor=document.querySelector('.ProseMirror').editor;let after;editor.state.doc.descendants((node,pos)=>{if(node.type.name==='math')after=pos+node.nodeSize;});editor.commands.focus();editor.commands.setTextSelection(after);});
+ await page.waitForFunction(()=>document.querySelector('.ProseMirror').editor.view.hasFocus());
+ const originalText=await page.evaluate(()=>document.querySelector('.ProseMirror').editor.state.doc.textContent),cdp=await page.context().newCDPSession(page);
+ await cdp.send('Input.imeSetComposition',{text:'z',selectionStart:1,selectionEnd:1});
+ const imeCaret=await page.evaluate(()=>{const selection=window.getSelection(),range=selection.getRangeAt(0).cloneRange();range.collapse(false);const caret=range.getBoundingClientRect(),formula=document.querySelector('.math-inline').getBoundingClientRect();return {caret:{left:caret.left,top:caret.top},formula:{right:formula.right,top:formula.top},text:document.querySelector('.ProseMirror').editor.state.doc.textContent};});
+ assert.ok(imeCaret.caret.left>=imeCaret.formula.right-2&&Math.abs(imeCaret.caret.top-imeCaret.formula.top)<25,JSON.stringify(imeCaret));
+ await cdp.send('Input.imeSetComposition',{text:'zhong',selectionStart:5,selectionEnd:5});await cdp.send('Input.insertText',{text:'中'});
+ assert.equal(await page.evaluate(()=>document.querySelector('.ProseMirror').editor.state.doc.textContent),originalText.replace('中文正文','中文中正文'));
+ assert.equal(await page.locator('.math-inline').getAttribute('data-latex'),'x');
+ await page.keyboard.press('Control+z');assert.equal(await page.evaluate(()=>document.querySelector('.ProseMirror').editor.state.doc.textContent),originalText);
+ await cdp.detach();
  assert.deepEqual(errors,[]);
  }finally{await browser.close();server.close();}
 })().catch(error=>{console.error(error);process.exitCode=1;server.close();});

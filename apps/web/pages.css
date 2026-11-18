@@ -1110,3 +1110,5 @@ body.format-painter-active .ProseMirror * { cursor:copy; }
 .document-page .ProseMirror p[data-tex-paragraph]{text-autospace:no-autospace;}
 .document-page .ProseMirror p[data-tex-paragraph] .cjk-latin{margin-inline:0;}
 .ProseMirror [data-counter-directive]{height:0;min-height:0;margin:0;padding:0;font-size:0;line-height:0;}
+
+.document-page .ProseMirror p[data-tex-paragraph] .math-inline:is(.math-cjk-before,.math-cjk-after){margin-inline:0;}

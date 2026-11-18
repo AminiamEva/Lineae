@@ -1,3 +1,4 @@
+import {layoutScale} from './layout-geometry.js';
 import {fandolPairs} from './fandol-pairs.mjs';
 import {fandolPunctuation} from './fandol-punctuation.mjs';
 import {paragraphParameters,texDimension} from './paragraph-parameters.mjs';
@@ -29,9 +30,9 @@ function tokensFor(editor,node,start,element,options){
       const point=editor.view.domAtPos(from),dom=point.node.nodeType===3?point.node.parentElement:point.node;
       runs.push({from:text.length,to:text.length+child.text.length,style:getComputedStyle(dom.closest('.tex-word-glue,.tex-cjk-punctuation')?.parentElement??dom)});text+=child.text;
     }else if(child.type.name==='hardBreak'){text+='\n';}
-    else if(child.isInline){const dom=editor.view.nodeDOM(from);atoms.set(text.length,{from,size:child.nodeSize,width:dom?.getBoundingClientRect().width??0});text+='\ufffc'.repeat(child.nodeSize);}
+    else if(child.isInline){const dom=editor.view.nodeDOM(from);atoms.set(text.length,{from,kind:child.type.name,size:child.nodeSize,width:dom?.getBoundingClientRect().width??0});text+='\ufffc'.repeat(child.nodeSize);}
   });
-  const style=getComputedStyle(element),zoom=element.getBoundingClientRect().width/element.offsetWidth||1;
+  const style=getComputedStyle(element),zoom=layoutScale(element.closest('.document-page'));
   const styleAt=offset=>runs.find(run=>offset>=run.from&&offset<run.to)?.style??style;
   const width=(value,offset)=>{
     let result=0;for(const run of runs){const from=Math.max(offset,run.from),to=Math.min(offset+value.length,run.to);if(to>from)result+=measure(value.slice(from-offset,to-offset),run.style);}return result;
@@ -44,7 +45,9 @@ function tokensFor(editor,node,start,element,options){
   for(let n=0;n<pieces.length;n++){
     const match=pieces[n],value=match[0],at=match.index,from=start+1+at,local=styleAt(at);
     if(value==='\ufffc'){
-      const atom=atoms.get(at);if(atom)emit({type:'box',width:atom.width/zoom,from,to:from+atom.size});continue;
+      const atom=atoms.get(at);if(atom)emit({type:'box',width:atom.width/zoom,from,to:from+atom.size});
+      if(atom?.kind==='math'&&cjk.test(pieces[n+1]?.[0]??'')){const space=measure(' ',local);emit({type:'glue',width:space,stretch:space/2,shrink:space/3,from:from+atom.size,to:from+atom.size,cjk:true});}
+      continue;
     }
     if(value==='\n'){emit({type:'glue',width:0,stretch:1e10,shrink:0,from,to:from});emit({type:'penalty',width:0,cost:-10000,from:from+1,to:from+1,forced:true});continue;}
     if(/^\s+$/u.test(value)&&value!=='\u00a0'){
@@ -75,7 +78,7 @@ function tokensFor(editor,node,start,element,options){
     updateFactor(value.at(-1));
     const next=pieces[n+1]?.[0];
     if(next&&!(cjkPunctuation.test(value)&&cjkPunctuation.test(next))&&value!=='\u00a0'&&next!=='\u00a0'&&!/\s/.test(next)&&!closing.test(next)&&!opening.test(value)&&(cjk.test(value)||cjk.test(next)||cjkPunctuation.test(value)||cjkPunctuation.test(next))){
-      const mixed=(cjk.test(value)&&/^[A-Za-z0-9]/.test(next))||(/[A-Za-z0-9]$/.test(value)&&cjk.test(next));
+      const mixed=(cjk.test(value)&&(/^[A-Za-z0-9]/.test(next)||atoms.get(pieces[n+1]?.index)?.kind==='math'))||(/[A-Za-z0-9]$/.test(value)&&cjk.test(next));
       const space=mixed?measure(' ',local):0;
       emit({type:'glue',width:space,stretch:mixed?space/2:baseline*.08,shrink:mixed?space/3:0,from:from+value.length,to:from+value.length,cjk:true});
     }
@@ -124,7 +127,7 @@ export function installParagraphLayout(editor){
       const element=editor.view.nodeDOM(start);if(!element?.offsetWidth||getComputedStyle(element).visibility==='hidden')return false;
       const style=getComputedStyle(element);
       if((node.attrs.align&&node.attrs.align!=='justify')||(!element.hasAttribute('data-tex-paragraph')&&!['justify','start'].includes(style.textAlign))||element.closest('[data-columns],.image-wrap-left,.image-wrap-right')||element.querySelector('.document-image'))return false;
-      const {items}=tokensFor(editor,node,start,element,options),width=element.getBoundingClientRect().width/(element.closest('.document-page').getBoundingClientRect().width/element.closest('.document-page').offsetWidth||1)-parseFloat(style.paddingLeft)-parseFloat(style.paddingRight)-parseFloat(style.borderLeftWidth)-parseFloat(style.borderRightWidth),indent=parseFloat(style.textIndent)||0;
+      const {items}=tokensFor(editor,node,start,element,options),width=element.getBoundingClientRect().width/layoutScale(element.closest('.document-page'))-parseFloat(style.paddingLeft)-parseFloat(style.paddingRight)-parseFloat(style.borderLeftWidth)-parseFloat(style.borderRightWidth),indent=parseFloat(style.textIndent)||0;
       const plan=optimumParagraph(items,line=>width-(line===0?indent:0),{...options,emergencyStretch:options.emergency?texDimension(options.emergency,parseFloat(style.fontSize)):0});
       if(!plan||(plan.lines.length===1&&!cjk.test(node.textContent)))return false;
       entries.push(Decoration.node(start,start+node.nodeSize,{'data-tex-paragraph':'true'}));

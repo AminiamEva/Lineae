@@ -1,3 +1,4 @@
+import {layoutScale} from '../typesetting/layout-geometry.js';
 import {counterProfile} from '../../latex/counter-profile.mjs';
 import {installParagraphLayout} from '../typesetting/paragraph-layout.js';
 import {documentLayoutBlocks} from '../project/fold-layout.mjs';
@@ -231,8 +232,8 @@ export function installTypesetPagination(page, paper, meta, editor) {
     const sheet = sheets.firstElementChild;
     if (!sheet) return {left:'', right:''};
     const pageRect = page.getBoundingClientRect();
-    const zoom = pageRect.width / page.offsetWidth || 1;
-    const pitch = sheet.offsetHeight + (Number.parseFloat(getComputedStyle(page).getPropertyValue('--page-gap')) || 0);
+    const zoom = layoutScale(page);
+    const pitch = sheet.getBoundingClientRect().height/zoom + (Number.parseFloat(getComputedStyle(page).getPropertyValue('--page-gap')) || 0);
     const indexed = headings.map(heading => ({
       ...heading,
       page: Math.max(0, Math.floor((heading.top - pageRect.top) / zoom / pitch)),
@@ -355,9 +356,9 @@ export function installTypesetPagination(page, paper, meta, editor) {
     paginationStyle.textContent=baseRules.join('\n');
     paragraphLayout.layout(paragraphPreamble);
     const pageRect = page.getBoundingClientRect();
-    const zoom = pageRect.width / page.offsetWidth || 1;
+    const zoom = layoutScale(page);
     const computed = getComputedStyle(page);
-    const pageHeight = sheets.firstElementChild.offsetHeight;
+    const pageHeight = sheets.firstElementChild.getBoundingClientRect().height/zoom;
     const pageGap = parseFloat(computed.getPropertyValue('--page-gap')) || 0;
     const marginTop = parseFloat(computed.paddingTop);
     const marginBottom = parseFloat(computed.paddingBottom);
