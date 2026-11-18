@@ -1,7 +1,7 @@
 import {paragraphParameters,texDimension} from './paragraph-parameters.mjs';
 import Hypher from 'hypher';
 import enUS from 'hyphenation.en-us';
-import {Plugin,PluginKey} from '@tiptap/pm/state';
+import {TextSelection,Plugin,PluginKey} from '@tiptap/pm/state';
 import {Decoration,DecorationSet} from '@tiptap/pm/view';
 import {optimumParagraph} from './optimum-paragraph.mjs';
 
@@ -70,8 +70,31 @@ function widget(position,classes,width=0){
   return Decoration.widget(position,()=>{const span=document.createElement('span');span.className=classes;span.contentEditable='false';span.setAttribute('aria-hidden','true');if(width)span.style.width=width+'px';return span;},{side:-1,key:classes+position+':'+width,ignoreSelection:true});
 }
 export function installParagraphLayout(editor){
-  let current='',lastSignature='',running=false;
-  editor.registerPlugin(new Plugin({key,state:{init:()=>DecorationSet.empty,apply(tr,previous){return tr.getMeta(key)??previous.map(tr.mapping,tr.doc);}},props:{decorations:state=>key.getState(state)}}));
+  let current='',lastSignature='',running=false,preferredX=null;
+  editor.view.dom.addEventListener('pointerdown',()=>{preferredX=null;});
+  editor.on('transaction',({transaction})=>{if(transaction.docChanged)preferredX=null;});
+  editor.registerPlugin(new Plugin({key,state:{init:()=>DecorationSet.empty,apply(tr,previous){return tr.getMeta(key)??previous.map(tr.mapping,tr.doc);}},props:{decorations:state=>key.getState(state),handleKeyDown(view,event){
+    if(event.isComposing||event.ctrlKey||event.metaKey||event.altKey||!['ArrowUp','ArrowDown'].includes(event.key)||event.target.closest?.('math-field')||!view.dom.querySelector('[data-tex-paragraph]')){if(!['Shift','Control','Alt','Meta'].includes(event.key))preferredX=null;return false;}
+    const selection=view.state.selection;if(!selection.$head.parent.isTextblock)return false;
+    const direction=event.key==='ArrowUp'?-1:1,origin=view.coordsAtPos(selection.head,1);
+    preferredX??=origin.left;
+    const candidates=[];
+    view.state.doc.descendants((node,start)=>{
+      if(!node.isTextblock)return;
+      const element=view.nodeDOM(start),bounds=element?.getBoundingClientRect();if(!bounds||!bounds.height||getComputedStyle(element).visibility==='hidden')return false;
+      if(direction<0&&bounds.top>=origin.bottom||direction>0&&bounds.bottom<=origin.top)return false;
+      for(let offset=0;offset<=node.content.size;offset++){
+        const position=start+1+offset,rect=view.coordsAtPos(position,1);
+        if(direction*(rect.top-origin.top)<=Math.max(2,(origin.bottom-origin.top)*.3))continue;
+        candidates.push({position,rect,distance:Math.abs(rect.left-preferredX)});
+      }
+      return false;
+    });
+    if(!candidates.length)return true;
+    const nearest=direction<0?Math.max(...candidates.map(item=>item.rect.top)):Math.min(...candidates.map(item=>item.rect.top));
+    const target=candidates.filter(item=>Math.abs(item.rect.top-nearest)<2).sort((a,b)=>a.distance-b.distance)[0];
+    view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc,event.shiftKey?selection.anchor:target.position,target.position)).scrollIntoView());return true;
+  }}}));
   function layout(preamble=current){
     current=preamble;if(running||editor.view.composing)return;
     const entries=[],options=paragraphParameters(preamble);let signature=preamble;
