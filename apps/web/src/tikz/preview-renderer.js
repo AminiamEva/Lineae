@@ -43,8 +43,8 @@ function cleanCode(code) {
   let text = String(code || '').replace(/^\s*%/, '');
   text = text.replace(/^\\resizebox\{[^{}]*\}\{!\}\{%?/, '');
   text = text.replace(/%\}\s*$/, '');
-  const begin = text.indexOf('\\begin{tikzpicture}');
-  const end = text.lastIndexOf('\\end{tikzpicture}');
+  const begin = text.search(/\\begin\{(?:tikzpicture|circuitikz)\}/);
+  const end = text.lastIndexOf('\\end{tikzpicture}') >= 0 ? text.lastIndexOf('\\end{tikzpicture}') : text.lastIndexOf('\\end{circuitikz}');
   if (begin >= 0 && end > begin) text = text.slice(begin, end);
   return text.replace(/%.*$/gm, '').trim();
 }

@@ -362,7 +362,7 @@ export function importBlock(block) {
     return { type: 'paragraph', ...(Object.keys(attrs).length && { attrs }), content };
   }
   const tikzBlock=block.trim().replace(/^\\resizebox\{[^{}]*\}\{!\}\{%?\s*/,'').replace(/%?\s*\}$/,'');
-  if(/^\\begin\{tikzpicture\}[\s\S]*\\end\{tikzpicture\}$/.test(tikzBlock)) return {type:'codeBlock',attrs:{language:'tikz'},content:[{type:'text',text:tikzBlock}]};
+  if(/^\\begin\{(?:tikzpicture|circuitikz)\}[\s\S]*\\end\{(?:tikzpicture|circuitikz)\}$/.test(tikzBlock)) return {type:'codeBlock',attrs:{language:'tikz'},content:[{type:'text',text:tikzBlock}]};
   return { type: 'raw', attrs: { source: block } };
 }
 
