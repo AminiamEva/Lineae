@@ -1,25 +1,10 @@
+import {headingOutline} from '../../latex/heading-numbering.mjs';
 import {createOutlinePanel} from '../ui/outline-panel.js';
 import { Node } from '@tiptap/core';
 import { t } from '../ui/i18n.mjs';
 import { numberedMathRows } from '../../latex/math-environments.mjs';
 
-export function outline(doc) {
-  const counters = [0, 0, 0];
-  const items = [];
-  doc.descendants((node,position) => {
-    if (node.type.name !== 'heading') return;
-    const level = node.attrs.level;
-    if (level < 1 || level > counters.length) return;
-    let number = '';
-    if (node.attrs.numbered !== false) {
-      counters[level - 1]++;
-      counters.fill(0, level);
-      number = counters.slice(0, level).join('.');
-    }
-    items.push({ level, number, text: node.textContent, label: node.attrs.label || null, position });
-  });
-  return items;
-}
+export const outline=headingOutline;
 
 export function collectReferenceLabels(doc) {
   const labels = [];

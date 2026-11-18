@@ -57,7 +57,8 @@ function heading(name, star, short, title, label) {
   return {
     type: 'heading',
     attrs: {
-      level: headingLevels.indexOf(name) + 1,
+      level:name==='chapter'?1:headingLevels.indexOf(name)+1,
+      ...(name==='chapter'?{command:'chapter'}:{}),
       numbered: !star,
       ...(short !== undefined ? { shortTitle: short } : {}),
       ...(label ? { label } : {}),
@@ -256,8 +257,9 @@ export function importBlock(block) {
   if (!text) return null;
   const image = parseImageBlock(text);
   if (image) return image;
-  const headingMatch = text.match(/^\\(section|subsection|subsubsection)(\*?)(?:\[([^\]]*)\])?\{([^{}]*)\}(?:[ \t]*\\label\{([^{}]*)\})?$/);
+  const headingMatch = text.match(/^\\(chapter|section|subsection|subsubsection)(\*?)(?:\[([^\]]*)\])?\{([^{}]*)\}(?:[ \t]*\\label\{([^{}]*)\})?$/);
   if (headingMatch) return heading(headingMatch[1], headingMatch[2], headingMatch[3], headingMatch[4], headingMatch[5]);
+  if (text === '\\appendix') return {type:'appendixStart'};
   if (text === '\\tableofcontents') return { type: 'tableOfContents' };
   if (/^\\(?:newpage|clearpage|pagebreak)(?:\[[^\]]*\])?$/.test(text)) return { type: 'pageBreak' };
   if (text === '\\hrule') return { type: 'horizontalRule' };
@@ -364,7 +366,7 @@ export function importBlock(block) {
   return { type: 'raw', attrs: { source: block } };
 }
 
-const structural = /\\(tableofcontents)\b|\\(section|subsection|subsubsection)(\*?)(?:\[([^\]]*)\])?\{([^{}]*)\}(?:[ \t]*\\label\{([^{}]*)\})?|\\(newpage|clearpage|pagebreak)\b/g;
+const structural = /\\(tableofcontents|appendix)\b|\\(chapter|section|subsection|subsubsection)(\*?)(?:\[([^\]]*)\])?\{([^{}]*)\}(?:[ \t]*\\label\{([^{}]*)\})?|\\(newpage|clearpage|pagebreak)\b/g;
 
 function splitParagraphs(block) {
   const parts = [];
@@ -395,7 +397,8 @@ function importSegment(block) {
   while ((match = structural.exec(block))) {
     const before = importBlock(block.slice(cursor, match.index));
     if (before) nodes.push(before);
-    if (match[1] === 'tableofcontents') nodes.push({ type: 'tableOfContents' });
+    if(match[1]==='appendix')nodes.push({type:'appendixStart'});
+    else if (match[1] === 'tableofcontents') nodes.push({ type: 'tableOfContents' });
     else if (match[7]) nodes.push({ type: 'pageBreak' });
     else nodes.push(heading(match[2], match[3], match[4], match[5], match[6]));
     cursor = match.index + match[0].length;
