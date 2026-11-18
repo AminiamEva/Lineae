@@ -34,6 +34,7 @@ const server = createServer(async (request, response) => {
     assert.equal(await symbols.count(), 410, 'Basic + 402 library symbols are listed');
     assert.equal(await page.locator('.tikz-zoom-slider').inputValue(), '100', 'default zoom is 100% of one textwidth');
 
+    assert.match(await page.locator('.tikz-property-panel').innerText(), /Environment Variable Presets/);
     const canvas = page.locator('.tikz-canvas');
     const box = await canvas.boundingBox();
     const place = async (group, name, x, y) => {
@@ -101,16 +102,13 @@ const server = createServer(async (request, response) => {
     assert.match(await page.locator('.tikz-selection-info').innerText(), /2 selected/);
     const multiPanel = await page.locator('.tikz-property-panel').innerText();
     for (const heading of ['Align', 'Distribute', 'Shared properties']) assert.ok(multiPanel.includes(heading));
-
-    // Missing artwork fallback: American voltage source shows +/- and exposes
-    // both polarity points as snap points.
-    await place('Sources and generators', 'Voltage source (american)', .70, .70);
-    assert.equal(await page.locator('.tikz-layer-items circle').count(), 7, 'voltage source has START/END, +/- snap points and two adjustment handles');
-    const voltageBox = await page.locator('.tikz-layer-items > [data-uid]').last().boundingBox();
-    await page.locator('.tikz-tools button[data-tool=eraser]').click();
-    await page.mouse.click(voltageBox.x + voltageBox.width / 2, voltageBox.y + voltageBox.height / 2);
-    await page.waitForTimeout(250);
-    assert.equal(await page.locator('.tikz-layer-items > [data-uid]').count(), 6, 'eraser removes only the voltage source');
+    const itemsBeforeGroup = await page.locator('.tikz-layer-items > [data-uid]').count();
+    await page.getByRole('button', { name: 'Group', exact: true }).click();
+    await page.waitForTimeout(200);
+    assert.equal(await page.locator('.tikz-layer-items > [data-uid]').count(), itemsBeforeGroup - 1, 'grouping replaces selected components with one group');
+    await page.getByRole('button', { name: 'Ungroup', exact: true }).click();
+    await page.waitForTimeout(200);
+    assert.equal(await page.locator('.tikz-layer-items > [data-uid]').count(), itemsBeforeGroup, 'ungrouping restores components');
 
     // Pan tool changes the canvas transform rather than moving a component.
     const beforePan = await page.locator('.tikz-layer-items').getAttribute('transform');

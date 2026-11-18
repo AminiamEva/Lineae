@@ -1,7 +1,7 @@
 // Pure TikZ export (testable in Node).
 export const PX_PER_CM = 37.7952755906;
 
-export function exportTikz(items) {
+export function exportTikz(items, { environment = [], ctikzset = [] } = {}) {
   const xs = items.flatMap(item => {
     if (item.kind === 'wire') return item.pts.map(point => point.x);
     if (item.kind === 'path') return [item.start?.x ?? item.x, item.end?.x ?? item.x].filter(Number.isFinite);
@@ -39,6 +39,8 @@ export function exportTikz(items) {
     else lines.push(i.toTikZ(X, Y));
   }
   lines.unshift(...coords);
-  return `\\begin{tikzpicture}\n${lines.join('\n')}\n\\end{tikzpicture}`;
+  const env = environment.length ? `[${environment.join(', ')}]` : '';
+  const preamble = ctikzset.map(entry => `\\ctikzset{${entry}}`).join('\n');
+  return `${preamble ? preamble + '\n' : ''}\\begin{tikzpicture}${env}\n${lines.join('\n')}\n\\end{tikzpicture}`;
 }
 function rnd(v) { return (Math.round(v * 1000) / 1000).toString(); }

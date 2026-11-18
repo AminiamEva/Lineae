@@ -3,7 +3,7 @@
 //   controllers (canvas/zoom) + snapDrag (grid & terminal snapping) + components.
 import { CanvasController } from './canvasController.js';
 import { PX_PER_CM, SnapController } from './snapDrag.js';
-import { NodeSymbol, PathComponent, OpenComponent, RectComponent, TextItem, Wire } from '../components/components.js';
+import { NodeSymbol, PathComponent, OpenComponent, RectComponent, TextItem, Wire, GroupComponent } from '../components/components.js';
 import { parseLibrary, BASIC_COMPONENTS, GROUP_LABELS } from '../components/symbols-meta.js';
 import { exportTikz } from './exportController.js';
 
@@ -16,6 +16,7 @@ export class TikzEditor {
     this.snapEnabled = true;
     this.onDone = null;
     this.history = []; this.future = [];
+    this.envSettings = { voltages: 'european', voltageConvention: 'noold', labelOrientation: 'smart' };
   }
 
   snapshot() {
@@ -38,6 +39,7 @@ export class TikzEditor {
     this.buildDom();
     this.canvas.setTextwidthCm(this.getTextwidthCm());
     this.canvas.fit();
+    this.render();
   }
   close() { this.overlay?.remove(); this.overlay = null; }
 
@@ -101,7 +103,7 @@ export class TikzEditor {
 
     o.querySelector('.tikz-exit').onclick = () => this.close();
     o.querySelector('.tikz-finish').onclick = () => {
-      const code = exportTikz(this.items);
+      const code = exportTikz(this.items, { environment: this.environmentOptions(), ctikzset: this.environmentPreamble() });
       this.close(); this.onDone?.(code);
     };
     const slider = o.querySelector('.tikz-zoom-slider'), input = o.querySelector('.tikz-zoom-input');
@@ -657,6 +659,29 @@ export class TikzEditor {
     return { x, y, w: right - x, h: bottom - y };
   }
 
+  groupSelection() {
+    if (this.selection.length < 2) return;
+    this.pushHistory();
+    const selected = [...this.selection];
+    const firstIndex = Math.min(...selected.map(item => this.items.indexOf(item)).filter(index => index >= 0));
+    const group = new GroupComponent(selected);
+    this.items = this.items.filter(item => !selected.includes(item));
+    this.items.splice(Math.max(0, firstIndex), 0, group);
+    this.selection = [group]; this.selected = group;
+    this.recomputeSnap(); this.render();
+  }
+
+  ungroupSelection() {
+    const group = this.selected;
+    if (!group || group.kind !== 'group') return;
+    this.pushHistory();
+    const index = this.items.indexOf(group);
+    if (index >= 0) this.items.splice(index, 1, ...group.items);
+    this.selection = [...group.items];
+    this.selected = this.selection[this.selection.length - 1] || null;
+    this.recomputeSnap(); this.render();
+  }
+
   rotateSelection(degrees) {
     if (!this.selection.length) return;
     this.pushHistory();
@@ -743,6 +768,58 @@ export class TikzEditor {
     this.recomputeSnap(); this.refreshProperties();
   }
 
+  environmentOptions() {
+    const options = [];
+    const voltages = { american: 'american voltages', european: 'european voltages', straight: 'straight voltages', raised: 'raised voltages' };
+    if (this.envSettings.voltages && this.envSettings.voltages !== 'european') options.push(voltages[this.envSettings.voltages]);
+    const convention = { old: 'voltage dir=old', RP: 'voltage dir=RP', EF: 'voltage dir=EF', noold: 'voltage dir=nold' };
+    if (this.envSettings.voltageConvention && this.envSettings.voltageConvention !== 'noold') options.push(convention[this.envSettings.voltageConvention]);
+    return options.filter(Boolean);
+  }
+
+  environmentPreamble() {
+    const preamble = [];
+    if (this.envSettings.labelOrientation && this.envSettings.labelOrientation !== 'smart') {
+      preamble.push('label/align=' + this.envSettings.labelOrientation);
+    }
+    return preamble;
+  }
+
+  applyEnvironmentPreset(name) {
+    if (name === 'american') this.envSettings = { ...this.envSettings, voltages: 'american' };
+    else if (name === 'european') this.envSettings = { ...this.envSettings, voltages: 'european' };
+    else this.envSettings = { voltages: 'european', voltageConvention: 'noold', labelOrientation: 'smart' };
+    this.buildViewPropertyPanel();
+  }
+
+  buildViewPropertyPanel() {
+    const panel = this.overlay?.querySelector('.tikz-property-panel');
+    if (!panel) return;
+    panel.replaceChildren();
+    const presets = this.propertySection(panel, this.t('环境变量预设', 'Environment Variable Presets'));
+    const presetGrid = document.createElement('div'); presetGrid.className = 'tikz-prop-grid cols-3'; presets.append(presetGrid);
+    this.propertyButton(presetGrid, 'Default', () => this.applyEnvironmentPreset('default'));
+    this.propertyButton(presetGrid, 'American', () => this.applyEnvironmentPreset('american'));
+    this.propertyButton(presetGrid, 'European', () => this.applyEnvironmentPreset('european'));
+    const environment = this.propertySection(panel, this.t('环境变量', 'Environment Variables'));
+    const choices = [
+      ['voltages', 'Voltage Style', [['american', 'American Voltages'], ['european', 'European Voltages'], ['straight', 'Straight Voltages'], ['raised', 'Raised Voltages']]],
+      ['voltageConvention', 'Voltage Convention', [['old', 'Old'], ['RP', 'RP'], ['EF', 'EF'], ['noold', 'No Old']]],
+      ['labelOrientation', 'Label Orientation', [['smart', 'Smart'], ['rotate', 'Rotate'], ['straight', 'Straight']]],
+    ];
+    for (const [key, label, entries] of choices) {
+      const select = document.createElement('select');
+      for (const [value, text] of entries) select.append(new Option(text, value));
+      select.value = this.envSettings[key];
+      select.onchange = () => { this.envSettings[key] = select.value; };
+      this.propertyField(environment, label, select);
+    }
+    const info = document.createElement('div');
+    info.className = 'tikz-info-line';
+    info.textContent = this.t('未选择元件：这里编辑整张图的 CircuiTikZ 环境。', 'No selection: edit the drawing environment.');
+    panel.append(info);
+  }
+
   buildMultiPropertyPanel() {
     const panel = this.overlay?.querySelector('.tikz-property-panel');
     if (!panel) return;
@@ -764,9 +841,7 @@ export class TikzEditor {
     this.propertyButton(orderGrid, 'Backward', () => this.reorderSelection('backward'));
 
     const grouping = this.propertySection(panel, this.t('分组', 'Grouping'));
-    const groupButton = this.propertyButton(grouping, 'Group', () => {});
-    groupButton.disabled = true;
-    groupButton.title = 'GroupComponent is not available in the Lineae editor.';
+    this.propertyButton(grouping, 'Group', () => this.groupSelection());
 
     const align = this.propertySection(panel, this.t('对齐', 'Align'));
     const alignGrid = document.createElement('div'); alignGrid.className = 'tikz-prop-grid cols-3'; align.append(alignGrid);
@@ -804,6 +879,7 @@ export class TikzEditor {
       color.oninput = () => { for (const item of this.selection) item[key] = color.value; this.refreshProperties(); };
       this.propertyField(shared, label, color);
     }
+
 
     const info = this.propertySection(panel, this.t('信息', 'Info'));
     const line = document.createElement('div'); line.className = 'tikz-info-line';
@@ -1009,6 +1085,11 @@ export class TikzEditor {
       styleSection.append(styleBody);
     }
 
+    if (p.kind === 'group') {
+      const grouping = this.propertySection(panel, this.t('分组', 'Grouping'));
+      this.propertyButton(grouping, 'Ungroup', () => this.ungroupSelection());
+    }
+
     const info = this.propertySection(panel, this.t('信息', 'Info'));
     const id = document.createElement('div');
     id.className = 'tikz-info-line';
@@ -1038,6 +1119,10 @@ export class TikzEditor {
     }
     if (this.selection.length > 1) {
       if (!this._skipPropertyPanel) this.buildMultiPropertyPanel();
+      return;
+    }
+    if (!p) {
+      if (!this._skipPropertyPanel) this.buildViewPropertyPanel();
       return;
     }
     if (!this._skipPropertyPanel) this.buildPropertyPanel(p);

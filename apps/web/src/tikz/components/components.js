@@ -488,6 +488,55 @@ export class TextItem extends Component {
   }
 }
 
+export class GroupComponent extends Component {
+  constructor(items) {
+    super('group', 0, 0);
+    this.items = items || [];
+    this.kind = 'group';
+    this.label = 'Group';
+    this.updatePosition();
+  }
+  updatePosition() {
+    const box = this.bbox();
+    this.x = box ? box.x + box.w / 2 : 0;
+    this.y = box ? box.y + box.h / 2 : 0;
+  }
+  bbox() {
+    const boxes = this.items.map(item => item.bbox?.()).filter(Boolean);
+    if (!boxes.length) return null;
+    const x = Math.min(...boxes.map(box => box.x));
+    const y = Math.min(...boxes.map(box => box.y));
+    const right = Math.max(...boxes.map(box => box.x + box.w));
+    const bottom = Math.max(...boxes.map(box => box.y + box.h));
+    return { x, y, w: right - x, h: bottom - y };
+  }
+  terminals() { return []; }
+  adjustPoints() { return []; }
+  moveTo(x, y) {
+    const dx = x - this.x, dy = y - this.y;
+    for (const item of this.items) item.moveBy?.(dx, dy);
+    this.x = x; this.y = y;
+  }
+  moveBy(dx, dy) { this.moveTo(this.x + dx, this.y + dy); }
+  rotateBy(degrees) {
+    const cx = this.x, cy = this.y;
+    for (const item of this.items) {
+      const point = rotatePoint(item.x - cx, item.y - cy, degrees);
+      item.moveTo?.(cx + point.x, cy + point.y);
+      item.rotateBy?.(degrees);
+    }
+    this.updatePosition();
+  }
+  toSvg() {
+    const g = svg('g', { 'data-uid': this.uid });
+    for (const item of this.items) g.append(item.toSvg());
+    return g;
+  }
+  toTikZ(X, Y) {
+    return this.items.map(item => item.toTikZ(X, Y)).join('\n');
+  }
+}
+
 export class Wire extends Component {
   constructor(pts) {
     super('wire', pts[0].x, pts[0].y);
