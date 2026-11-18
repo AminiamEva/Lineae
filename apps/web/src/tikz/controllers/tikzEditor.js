@@ -880,6 +880,32 @@ export class TikzEditor {
       input.oninput = () => { for (const item of this.selection) item[key] = input.value; this.refreshProperties(); };
       this.propertyField(shared, label, input);
     }
+    for (const [key, label] of [['voltage', 'Voltage v'], ['current', 'Current i'], ['textColor', 'Text color']]) {
+      if (!this.selection.every(item => key in item)) continue;
+      if (key === 'textColor') {
+        const color = document.createElement('input');
+        color.type = 'color'; color.value = this.selection[0][key] || '#222222';
+        color.oninput = () => { for (const item of this.selection) item[key] = color.value; this.refreshProperties(); };
+        this.propertyField(shared, label, color);
+      } else {
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.value = this.selection.every(item => (item[key] || '') === (this.selection[0][key] || '')) ? (this.selection[0][key] || '') : '';
+        input.placeholder = this.t('批量设置', 'Set all');
+        input.oninput = () => { for (const item of this.selection) item[key] = input.value; this.refreshProperties(); };
+        this.propertyField(shared, label, input);
+      }
+    }
+    for (const [key, label] of [['size', 'Font size'], ['fontSize', 'Font size']]) {
+      if (!this.selection.every(item => key in item)) continue;
+      const input = document.createElement('input');
+      input.type = 'number'; input.min = '5'; input.max = '96'; input.step = '0.5';
+      const same = this.selection.every(item => item[key] === this.selection[0][key]);
+      input.value = same ? String(this.selection[0][key] ?? '') : '';
+      input.placeholder = this.t('批量设置', 'Set all');
+      input.onchange = () => { const value = Math.max(5, Number(input.value) || 12); for (const item of this.selection) item[key] = value; this.refreshProperties(); };
+      this.propertyField(shared, label, input);
+    }
     for (const [key, label] of [['strokeColor', 'Stroke'], ['fillColor', 'Fill']]) {
       if (!this.selection.every(item => key in item)) continue;
       const color = document.createElement('input');
