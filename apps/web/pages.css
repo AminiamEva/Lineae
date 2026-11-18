@@ -1088,3 +1088,7 @@ body.format-painter-active .ProseMirror * { cursor:copy; }
 .document-subfigures-caption .caption-label { white-space:nowrap; }
 .document-subfigures-caption .caption-text { min-width:0; text-align:justify; overflow-wrap:anywhere; }
 .document-subfigures-caption .caption-text:empty::before { content:attr(data-placeholder); opacity:.35; }
+
+.tex-paragraph-break{display:block;height:0;line-height:0;pointer-events:none;}
+.tex-interchar-glue{display:inline-block;height:0;text-indent:0;pointer-events:none;}
+.tex-discretionary-hyphen::before{content:"-";}
