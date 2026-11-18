@@ -47,3 +47,16 @@
 
 > 全部完成（2026-11-18）：目录镜像、全量符号树、吸附+指示、对齐辅助线、撤销/重做、
 > 可调尺寸（path/open/ellipse）、标定、导出、tests/tikz-export.test.mjs。
+
+## 2026-11-18 重新核对（参考仓库 + manual）
+
+- `symbols.svg` 的 pin 缺省坐标必须按 0 处理；旧解析产生的 `NaN` 已消除。
+- `variant` 的 `mid`、`viewBox`、全部 `pin`、`textpos`、`options` 已按参考数据解析。
+- Node 元件的所有命名 pin 都是 snap point；移动/放置时额外允许中心点参与吸附。
+- Path 元件保持自然尺寸，START/END 是 adjustment points，其余 pin 是 snap points；
+  不再把整个符号横向拉伸到鼠标距离。
+- 样式选项来自 variant 的 `<options>` / `<enumopt>`；选择样式会切换 variant，并同步
+  pin、引线、样式属性和 TikZ 选项。
+- `tests/tikz-export.test.mjs` 覆盖全部 402 个定义、有限 pin 坐标、NPN/Transformer/VCO
+  的 pin 与样式切换，以及路径 adjustment points。
+
