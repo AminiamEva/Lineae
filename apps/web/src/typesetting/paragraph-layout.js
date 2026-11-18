@@ -107,7 +107,7 @@ export function installParagraphLayout(editor){
       const {items}=tokensFor(editor,node,start,element,options),width=element.getBoundingClientRect().width/(element.closest('.document-page').getBoundingClientRect().width/element.closest('.document-page').offsetWidth||1)-parseFloat(style.paddingLeft)-parseFloat(style.paddingRight)-parseFloat(style.borderLeftWidth)-parseFloat(style.borderRightWidth),indent=parseFloat(style.textIndent)||0;
       const plan=optimumParagraph(items,line=>width-(line===0?indent:0),{...options,emergencyStretch:options.emergency?texDimension(options.emergency,parseFloat(style.fontSize)):0});
       if(!plan||plan.lines.length===1)return false;
-      entries.push(Decoration.node(start,start+node.nodeSize,{'data-tex-paragraph':'true',style:'white-space:nowrap;text-align:left;hyphens:none;overflow-wrap:normal;word-break:normal'}));
+      entries.push(Decoration.node(start,start+node.nodeSize,{'data-tex-paragraph':'true'}));
       for(const [lineNumber,line] of plan.lines.entries()){
         const last=lineNumber===plan.lines.length-1;
         for(let index=line.start;index<line.end;index++){
