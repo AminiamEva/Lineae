@@ -21,8 +21,6 @@
     "@tiptap/pm": "2.11.5",
     "@tiptap/starter-kit": "2.11.5",
     "esbuild": "0.25.0",
-    "hyphenation.en-us": "0.2.1",
-    "hypher": "0.2.5",
     "yaml": "2.9.1"
   },
   "overrides": {

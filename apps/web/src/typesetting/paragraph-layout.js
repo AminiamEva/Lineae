@@ -1,11 +1,10 @@
 import {paragraphParameters,texDimension} from './paragraph-parameters.mjs';
-import Hypher from 'hypher';
-import enUS from 'hyphenation.en-us';
+import {englishHyphenation} from './english-hyphenation.mjs';
 import {TextSelection,Plugin,PluginKey} from '@tiptap/pm/state';
 import {Decoration,DecorationSet} from '@tiptap/pm/view';
 import {optimumParagraph} from './optimum-paragraph.mjs';
 
-const key=new PluginKey('texParagraphLayout'),hyphenator=new Hypher(enUS);
+const key=new PluginKey('texParagraphLayout');
 const cjk=/[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/u;
 const closing=/^[、。，．？！：；）］｝〉》」』】…,.!?;:)]$/u,opening=/[（［｛〈《「『【(\[]$/u;
 const canvas=typeof document==='undefined'?null:document.createElement('canvas');
@@ -49,7 +48,7 @@ function tokensFor(editor,node,start,element,options){
     }
     if(/^[A-Za-z]{5,}$/.test(value)){
       const exception=options.exceptions.get(value.toLowerCase());
-      const parts=exception?exception.map((part,i)=>value.slice(exception.slice(0,i).join('').length,exception.slice(0,i+1).join('').length)):hyphenator.hyphenate(value);let position=0;
+      const parts=exception?exception.map((part,i)=>value.slice(exception.slice(0,i).join('').length,exception.slice(0,i+1).join('').length)):englishHyphenation(value,{leftMin:options.leftHyphenMin,rightMin:options.rightHyphenMin});let position=0;
       for(let i=0;i<parts.length;i++){
         const part=parts[i];emit({type:'box',width:width(value.slice(0,position+part.length),at)-width(value.slice(0,position),at),from:from+position,to:from+position+part.length});position+=part.length;
         if(i<parts.length-1&&position>=options.leftHyphenMin&&value.length-position>=options.rightHyphenMin)emit({type:'penalty',width:measure('-',styleAt(at+position)),cost:options.hyphenPenalty,hyphen:true,from:from+position,to:from+position});
