@@ -89,6 +89,9 @@ export function serialize(node) {
       return '\\' + name + (node.attrs.numbered === false ? '*' : '') + short + '{' + content + '}' + label + '\n\n';
     }
     case 'appendixStart': return '\\appendix\n\n';
+    case 'layoutCommand': return node.attrs.command + '\n\n';
+    case 'lipsum': return '\\lipsum[' + (node.attrs.range || '1-7') + ']';
+    case 'matterStart': return '\\' + (node.attrs.matter || 'main') + '\n\n';
     case 'tableOfContents': return '\\tableofcontents\n\n';
     case 'pageBreak': return '\\newpage\n\n';
     case 'multiColumn': return '\\begin{multicols}{' + (node.attrs.count ?? 2) + '}\n' + content + '\\end{multicols}\n\n';

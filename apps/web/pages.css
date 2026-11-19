@@ -1186,6 +1186,12 @@ body.format-painter-active .ProseMirror * { cursor:copy; }
   font-size: 2.26em; font-weight: 700; line-height: 1.2;
   margin: calc(50pt - 3.5ex) 0 40pt; counter-increment: lineae-chapter;
 }
+.document-page[data-frontmatter="true"] .ProseMirror h1:first-of-type::before,
+.document-page[data-has-backmatter="true"] .ProseMirror h1:last-of-type::before,
+.document-page[data-frontmatter="true"] .ProseMirror h1:first-of-type::before,
+.document-page[data-has-backmatter="true"] .ProseMirror h1:last-of-type::before,
+.document-page[data-frontmatter="true"] .ProseMirror h1:first-of-type::before,
+.document-page[data-has-backmatter="true"] .ProseMirror h1:last-of-type::before { content:none; }
 .document-page[data-document-class="book"] .ProseMirror h1::before,
 .document-page[data-document-class="report"] .ProseMirror h1::before {
   content: "Chapter " counter(lineae-chapter);
@@ -1205,6 +1211,11 @@ body.format-painter-active .ProseMirror * { cursor:copy; }
 .tex-discretionary-hyphen::before{content:"-";}
 
 .ProseMirror [data-appendix-start]{position:relative;height:0;min-height:0;margin:0;padding:0;font-size:0;line-height:0;}
+.ProseMirror [data-matter-start]{display:none;height:0;min-height:0;margin:0;padding:0;font-size:0;line-height:0;}
+.ProseMirror [data-layout-command]{display:none;height:0;min-height:0;margin:0;padding:0;font-size:0;line-height:0;}
+.lipsum-content{display:block;}
+.lipsum-paragraph{display:block;margin:0 0 .8em;white-space:normal;text-align:justify;hyphens:auto;}
+.lipsum-paragraph:last-child{margin-bottom:0;}
 .ProseMirror [data-appendix-start]::before{content:'\\appendix';position:absolute;right:calc(100% + 28px);font:9px/1.2 system-ui;color:#88909a;white-space:nowrap;}
 @media print{.ProseMirror [data-appendix-start]::before{display:none;}}
 .document-page .ProseMirror p[data-tex-paragraph]{white-space:nowrap;text-align:left;hyphens:none;overflow-wrap:normal;word-break:normal;}

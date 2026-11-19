@@ -251,7 +251,7 @@ export function installTypesetPagination(page, paper, meta, editor) {
       const sheet = document.createElement('div');
       sheet.className = 'document-sheet';
       const frontmatter = page.dataset.frontmatter === 'true';
-      const mainStart = frontmatter && chapterPages.size ? Math.min(...chapterPages) : null;
+      const mainStart = page.dataset.mainStart ? Number(page.dataset.mainStart) : null;
       const display = displayPageNumber(index, { frontmatter, mainStart });
       sheet.dataset.parity = display.value % 2 ? 'odd' : 'even';
       const pageNumber = display.value;
@@ -466,19 +466,60 @@ export function installTypesetPagination(page, paper, meta, editor) {
     paginationStyle.textContent = rules.join('\n');
 
     const pitch = pageHeight + pageGap;
-    chapterPages = new Set();
-    if (chaptered) children.forEach((element, index) => {
-      if (element.tagName !== 'H1' || !blocks[index]) return;
+    let mainStartPage = null;
+    let backStartPage = null;
+    let hasFrontmatterMarker = false;
+    children.forEach((element, index) => {
+      const matter = element.matches?.('[data-matter-start]') ? element.getAttribute('data-matter-start') : null;
+      if (!matter || !blocks[index]) return;
       const pageIndex = Math.min(plan.pageCount - 1, Math.max(0, Math.round((blocks[index].top + (translations[index] || 0) - marginTop) / pitch)));
+      if (matter === 'front') hasFrontmatterMarker = true;
+      if (matter === 'main') mainStartPage = pageIndex;
+      if (matter === 'back') backStartPage = pageIndex;
+    });
+    chapterPages = new Set();
+    editable.querySelectorAll('h1').forEach((element) => {
+      const rect = unscaledRect(element, pageRect, zoom);
+      const pageIndex = Math.min(plan.pageCount - 1, Math.max(0, Math.floor((rect.top - marginTop) / pitch)));
       chapterPages.add(pageIndex);
     });
-    const frontmatter = page.dataset.frontmatter === 'true';
-    const mainStart = frontmatter && chapterPages.size ? Math.min(...chapterPages) : null;
-    if (chaptered) children.forEach((element, index) => {
-      if (element.tagName !== 'H1' || !blocks[index]) return;
-      const pageIndex = Math.min(plan.pageCount - 1, Math.max(0, Math.round((blocks[index].top + (translations[index] || 0) - marginTop) / pitch)));
-      element.dataset.matter = frontmatter && pageIndex < mainStart ? 'front' : 'main';
+    // The mainmatter marker often sits on the last front-matter page.  Arabic
+    // numbering starts at the first chapter after that marker, not at the
+    // marker's own page.
+    let currentMatter = null;
+    let firstMainChapter = null;
+    children.forEach((element) => {
+      if (element.matches?.('[data-matter-start]')) {
+        currentMatter = element.getAttribute('data-matter-start');
+        return;
+      }
+      if (element.tagName !== 'H1' || currentMatter !== 'main' || firstMainChapter !== null) return;
+      const rect = unscaledRect(element, pageRect, zoom);
+      firstMainChapter = Math.min(plan.pageCount - 1, Math.max(0, Math.floor((rect.top - marginTop) / pitch)));
     });
+    if (firstMainChapter !== null) mainStartPage = firstMainChapter;
+    // Find the first chapter after the explicit mainmatter marker in DOM
+    // order.  This is more reliable than guessing from chapter page sets when
+    // a front-matter chapter and the marker share a page boundary.
+    const mainMarker = editable.querySelector('[data-matter-start="main"]');
+    if (mainMarker) {
+      const nextChapter = [...editable.querySelectorAll('h1')].find(element =>
+        Boolean(mainMarker.compareDocumentPosition(element) & Node.DOCUMENT_POSITION_FOLLOWING));
+      if (nextChapter) {
+        const rect = unscaledRect(nextChapter, pageRect, zoom);
+        mainStartPage = Math.min(plan.pageCount - 1, Math.max(0, Math.floor((rect.top - marginTop) / pitch)));
+      }
+    }
+    if (hasFrontmatterMarker) page.dataset.frontmatter = 'true';
+    if (mainStartPage === null) delete page.dataset.mainStart;
+    else page.dataset.mainStart = String(mainStartPage);
+    if (backStartPage === null) delete page.dataset.backStart;
+    else page.dataset.backStart = String(backStartPage);
+    page.dataset.hasBackmatter = String(backStartPage !== null);
+    const frontmatter = page.dataset.frontmatter === 'true';
+    // Keep layout metadata off the contenteditable headings: writing data
+    // attributes there makes ProseMirror re-observe the control during every
+    // pagination pass and can detach a paragraph mid-click.
     const stackHeight = plan.pageCount * pageHeight + (plan.pageCount - 1) * pageGap;
     const editorTop = unscaledRect(editable, pageRect, zoom).top;
     const lastBodyBottom = (plan.pageCount - 1) * pitch + pageHeight - marginBottom;

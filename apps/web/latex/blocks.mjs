@@ -27,6 +27,7 @@ function inlineContent(text) {
     return parts.flatMap(part => {
       if (typeof part === 'string') return part ? [{ type: 'text', text: part, marks }] : [];
       if (part.textCommand) return [{ type: 'text', text: textCommands[part.textCommand], marks: [...marks, { type: 'textCommand', attrs: { name: part.textCommand } }] }];
+      if (part.lipsum !== undefined) return [{ type: 'lipsum', attrs: { range: part.lipsum } }];
       if (part.math !== undefined) return [{ type: 'math', attrs: { latex: part.math, display: false, delimiter: part.delimiters[0] } }];
       if (part.ref !== undefined) return [{ type: 'ref', attrs: { key: part.ref, ...(part.equation && {equation:true}) } }];
       if (part.cite !== undefined) return [{ type: 'cite', attrs: { key: part.cite } }];
@@ -268,6 +269,8 @@ export function importBlock(block) {
   const headingMatch = text.match(new RegExp('^\\\\(' + headingNames + ')(\\*?)(?:\\[([^\\]]*)\\])?\\{([^{}]*)\\}(?:[ \\t]*\\\\label\\{([^{}]*)\\})?$'));
   if (headingMatch) return heading(headingMatch[1], headingMatch[2], headingMatch[3], headingMatch[4], headingMatch[5]);
   if (text === '\\appendix') return {type:'appendixStart'};
+  const matter = /^\\(frontmatter|mainmatter|backmatter)$/.exec(text);
+  if (matter) return {type:'matterStart',attrs:{matter:matter[1].replace('matter','')||'main'}};
   if (text === '\\tableofcontents') return { type: 'tableOfContents' };
   if (/^\\(?:newpage|clearpage|pagebreak)(?:\[[^\]]*\])?$/.test(text)) return { type: 'pageBreak' };
   if (text === '\\hrule') return { type: 'horizontalRule' };
@@ -378,7 +381,7 @@ export function importBlock(block) {
 
 function structuralPattern() {
   const names = headingBase ? headingBase + '|section|subsection|subsubsection' : 'chapter|section|subsection|subsubsection';
-  const source = String.raw`\\(tableofcontents|appendix)\b|\\(${names})(\*?)(?:\[([^\]]*)\])?\{([^{}]*)\}(?:[ \t]*\\label\{([^{}]*)\})?|\\(newpage|clearpage|pagebreak)\b`;
+  const source = String.raw`\\(tableofcontents|appendix|frontmatter|mainmatter|backmatter)\b|\\(${names})(\*?)(?:\[([^\]]*)\])?\{([^{}]*)\}(?:[ \t]*\\label\{([^{}]*)\})?|\\(newpage|clearpage|pagebreak)\b`;
   return new RegExp(source, 'g');
 }
 
@@ -418,23 +421,40 @@ function topLevelCommand(text, index) {
   }
   return depth===0;
 }
+function importLayoutCommands(text) {
+  const nodes = [];
+  let cursor = 0;
+  const pattern = /\\(?:pagestyle|thispagestyle)\{[^{}]*\}|\\(?:maketitle)\b|\\mbox\{\}/g;
+  let match;
+  while ((match = pattern.exec(text))) {
+    const before = importBlock(text.slice(cursor, match.index));
+    if (before) nodes.push(...(Array.isArray(before) ? before : [before]));
+    nodes.push({ type: 'layoutCommand', attrs: { command: match[0] } });
+    cursor = match.index + match[0].length;
+  }
+  const after = importBlock(text.slice(cursor));
+  if (after) nodes.push(...(Array.isArray(after) ? after : [after]));
+  return nodes;
+}
+
 function importSegment(block) {
   const nodes = [];
   let cursor = 0;
   const structural = structuralPattern();
   let match;
   while ((match = structural.exec(block))) {
-    if((match[1]==='appendix'||match[2]==='chapter')&&!topLevelCommand(block,match.index))continue;
-    const before = importBlock(block.slice(cursor, match.index));
-    if (before) nodes.push(before);
+    if((match[1]==='appendix'||match[1]==='frontmatter'||match[1]==='mainmatter'||match[1]==='backmatter'||match[2]==='chapter')&&!topLevelCommand(block,match.index))continue;
+    const before = importLayoutCommands(block.slice(cursor, match.index));
+    nodes.push(...before);
     if(match[1]==='appendix')nodes.push({type:'appendixStart'});
+    else if(['frontmatter','mainmatter','backmatter'].includes(match[1]))nodes.push({type:'matterStart',attrs:{matter:match[1].replace('matter','')||'main'}});
     else if (match[1] === 'tableofcontents') nodes.push({ type: 'tableOfContents' });
     else if (match[7]) nodes.push({ type: 'pageBreak' });
     else nodes.push(heading(match[2], match[3], match[4], match[5], match[6]));
     cursor = match.index + match[0].length;
   }
-  const after = importBlock(block.slice(cursor));
-  if (after) nodes.push(after);
+  const after = importLayoutCommands(block.slice(cursor));
+  nodes.push(...after);
   return nodes;
 }
 

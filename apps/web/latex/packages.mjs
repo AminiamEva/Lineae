@@ -33,6 +33,12 @@ function withoutComments(source) {
   return source.replace(/\\[\\%]|%[^\r\n]*/g, match => match.startsWith('%') ? '' : match);
 }
 
+export function usesCtex(preamble) {
+  const source = withoutComments(preamble || '');
+  return /\\documentclass\s*(?:\[[^\]]*\]\s*)?\{ctex(?:art|rep|book|beamer)\}/.test(source) ||
+    /\\(?:usepackage|RequirePackage)\s*(?:\[[^\]]*\]\s*)?\{ctex\}/.test(source);
+}
+
 export function hasTitleCommand(source) {
   return /\\maketitle\b/.test(withoutComments(source));
 }

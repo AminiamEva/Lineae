@@ -54,6 +54,9 @@ export function parseInline(source, depth = 0) {
     const newline = rest.match(/^[ \t]*\r?\n[ \t]*/);
     if (newline) { nodes.push(' '); cursor += newline[0].length; continue; }
 
+    const lipsum = rest.match(/^\\lipsum(?:\[([^\]]*)\])?[ \t]*/);
+    if (lipsum) { nodes.push({ lipsum: lipsum[1] || '1-7' }); cursor += lipsum[0].length; continue; }
+
     const text = rest.match(/^[^\\{}%$&#_^~\r\n]+/);
     const math = rest.match(/^\$([^$\r\n]+)\$/) ?? rest.match(/^\\\(([^\r\n]+?)\\\)/);
     if (text || math) {
