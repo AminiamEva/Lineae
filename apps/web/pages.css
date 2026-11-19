@@ -1149,3 +1149,30 @@ body.format-painter-active .ProseMirror * { cursor:copy; }
 .tikz-icon-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:4px; padding:4px 2px 8px; }
 .tikz-tree .tikz-sym { display:flex; align-items:center; justify-content:center; padding:4px 2px; }
 .tikz-tree .tikz-sym:hover { background:light-dark(#eef2f8,#2a3448); }
+
+/* TikZ block in the document body: paper-white background and figure-like spacing.
+   A compiled tikzpicture sits on the paper with \\intextsep (12pt) breathing room;
+   the code block inherits the paper background (transparent in both color themes). */
+.document-page .ProseMirror pre[data-language="tikz"] { background:transparent; border-radius:0; margin:var(--image-intextsep,12pt) auto; padding:.5em .75em; text-align:center; }
+.document-page .ProseMirror pre[data-language="tikz"] code { background:transparent; }
+
+/* Math floating toolbar & matrix context menu (new feature, additive) */
+.math-float-toolbar { position:fixed; z-index:1300; display:flex; align-items:center; gap:5px; padding:5px 7px; background:light-dark(#fff,#242c3d); border:1px solid light-dark(#d5dbe5,#3a4356); border-radius:8px; box-shadow:0 6px 24px rgba(0,0,0,.22); flex-wrap:wrap; max-width:340px; }
+.mft-colors { display:grid; grid-template-columns:repeat(4,16px); gap:3px; }
+.mft-swatch { width:16px; height:16px; border:1px solid light-dark(#c3cad6,#4a5568); border-radius:3px; cursor:pointer; padding:0; }
+.mft-swatch:hover { outline:2px solid #2f6fed; }
+.mft-btn { padding:3px 8px; border:1px solid light-dark(#d5dbe5,#3a4356); border-radius:5px; background:inherit; color:inherit; font-size:12px; cursor:pointer; }
+.mft-btn:hover { background:light-dark(#eef2f8,#2f3a52); }
+.mft-size { padding:2px 4px; border:1px solid light-dark(#d5dbe5,#3a4356); border-radius:5px; background:inherit; color:inherit; font-size:12px; max-width:118px; }
+.mft-fonts { display:flex; gap:2px; flex-wrap:wrap; max-width:120px; }
+.mft-font { width:22px; height:22px; font-size:15px; line-height:1; border:1px solid transparent; border-radius:4px; background:inherit; color:inherit; cursor:pointer; padding:0; }
+.mft-font:hover { border-color:#2f6fed; }
+.mft-accents { position:absolute; top:calc(100% + 4px); left:0; display:grid; grid-template-columns:repeat(5,30px); gap:3px; padding:6px; background:light-dark(#fff,#242c3d); border:1px solid light-dark(#d5dbe5,#3a4356); border-radius:8px; box-shadow:0 6px 24px rgba(0,0,0,.22); z-index:1301; }
+.math-float-toolbar { position:fixed; }
+.mft-accent { width:30px; height:28px; font-size:15px; border:1px solid transparent; border-radius:4px; background:inherit; color:inherit; cursor:pointer; padding:0; }
+.mft-accent:hover { border-color:#2f6fed; }
+.mft-glyph.mft-over { text-decoration:overline; }
+.math-matrix-menu { position:fixed; z-index:1302; min-width:180px; display:flex; flex-direction:column; padding:5px; background:light-dark(#fff,#242c3d); border:1px solid light-dark(#d5dbe5,#3a4356); border-radius:8px; box-shadow:0 8px 28px rgba(0,0,0,.25); }
+.mfm-item { text-align:start; padding:5px 10px; border:0; border-radius:5px; background:inherit; color:inherit; font-size:12.5px; cursor:pointer; }
+.mfm-item:hover { background:light-dark(#eef2f8,#2f3a52); }
+.mfm-envs { display:grid; grid-template-columns:1fr 1fr; border-top:1px solid light-dark(#e3e7ee,#333c4e); margin-top:3px; padding-top:3px; }

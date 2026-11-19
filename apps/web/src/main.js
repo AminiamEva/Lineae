@@ -2840,6 +2840,7 @@ groupButton(insert,['TikZ','TikZ'],()=>{
     tikz.open(code=>{ if(code) editor.chain().focus().insertContent({type:'codeBlock',attrs:{language:'tikz'},content:[{type:'text',text:code}]}).run(); });
   }catch(error){ console.error(error); alert('TikZ editor failed: '+(error?.message||error)); }
 });
+import { installMathFloatToolbar } from './ui/math-float-toolbar.js';
 const files=header.querySelector('.tools');
 const attachFolder=groupButton(files,['关联资源目录','Attach asset folder'],()=>{
   const picker=document.createElement('input');
@@ -3171,6 +3172,7 @@ ribbon.append(tabs,files,home,insert,layoutGroup,tableGroup,formatGroup,referenc
 groupButton(insert,'figure',()=>insertLocalImage(editor));
 sourceToolbar = installSourceToolbar({ribbon,groups,source:sourceView,rich:paper,heading:headingMenu});
 const toolbarController=installFloatingToolbar({header,ribbon,sourceView,getAutoHide:()=>sourceView.hidden?config.value.interface.toolbarAutoHide:config.value.interface.sourceToolbarAutoHide});
+installMathFloatToolbar({ editor });
 const settingsPanel=installSettingsPanel({config,onApply:applyImportedPreferences,onImport:()=>importConfig.click(),onExport:()=>exportConfig.click(),getDocument:()=>{sourceView.flush();return documentParts.start?structuredClone(pageSetup):null;},applyDocument:updatePageSetup});
 const settingsButton=document.createElement('button');settingsButton.id='settings-open';settingsButton.type='button';settingsButton.append(icon('settings'));settingsButton.onclick=()=>settingsPanel.show();footer.insertBefore(settingsButton,footer.querySelector(':scope>.tex-foot')??count);
 document.addEventListener('lineae-open-settings',()=>settingsPanel.show());
