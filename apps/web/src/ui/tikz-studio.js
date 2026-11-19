@@ -13,11 +13,17 @@ function loadEngine() {
     const base = new URL('/vendor/mp-tikz-wasm/bundles/', location.href).href;
     return mod.MetaPost.create({
       bundleBaseUrl: base,
-      bundles: ['core', 'cm-tfm', 'cm-type1', 'tex-plain', 'latex-core', 'latex-extra', 'tikz-snapshot'],
+      bundles: [
+        'core', 'cm-tfm', 'cm-type1', 'lm-fonts', 'ps-fonts', 'tex-plain',
+        'latex-core', 'latex-extra', 'tikz-snapshot', 'luatex',
+        'opentype', 'otf-fonts', 'ghostscript', 'classico', 'latex-doc',
+      ],
+      ghostscript: true,
+      ghostscriptBaseUrl: new URL('/vendor/mp-tikz-wasm/ghostscript/', location.href).href,
       worker: false,
       cache: 'indexeddb',
       logLevel: 'error',
-      timeoutMs: 60000,
+      timeoutMs: 120000,
     });
   })().catch(error => { enginePromise = null; throw error; });
   return enginePromise;
@@ -29,11 +35,46 @@ const SAMPLE = String.raw`\begin{tikzpicture}[scale=1]
   \node[draw, rounded corners] at (3,1) {TikZ};
 \end{tikzpicture}`;
 
+function needsLuaTex(source) {
+  return /\usegdlibrary|graphdrawing|\directlua|\latelua|luacode|fontspec|unicode-math/.test(source);
+}
+
+function tikzDocument(source, figures) {
+  if (figures.isCompleteDocument(source)) return { document: source, engine: needsLuaTex(source) ? 'lualatex' : 'auto' };
+  const lines = source.split(/\r?\n/);
+  const packages = [];
+  const libraries = [];
+  const gdlibraries = [];
+  const preamble = [];
+  const bodyLines = [];
+  for (const line of lines) {
+    let m = /^\s*\\(?:usepackage|RequirePackage)(?:\[[^\]]*\])?\{([^{}]+)\}/.exec(line);
+    if (m) { packages.push(...m[1].split(',').map(s => s.trim()).filter(Boolean)); continue; }
+    m = /^\s*\\usetikzlibrary\{([^{}]+)\}/.exec(line);
+    if (m) { libraries.push(...m[1].split(',').map(s => s.trim()).filter(Boolean)); continue; }
+    m = /^\s*\\usegdlibrary\{([^{}]+)\}/.exec(line);
+    if (m) { gdlibraries.push(...m[1].split(',').map(s => s.trim()).filter(Boolean)); continue; }
+    if (/^\s*\\(?:tikzset|pgfplotsset|setlength|def|newcommand|renewcommand|DeclareMathOperator|color|definecolor)/.test(line)) {
+      preamble.push(line); continue;
+    }
+    bodyLines.push(line);
+  }
+  const body = bodyLines.join('\n').trim();
+  const document = figures.wrapTikz(body, {
+    packages: packages.join(','),
+    libraries: libraries.join(','),
+    gdlibraries: gdlibraries.join(','),
+    preamble: preamble.join('\n'),
+  });
+  return { document, engine: needsLuaTex(document) ? 'lualatex' : 'auto' };
+}
+
 export async function renderTikz(source) {
   if (svgCache.has(source)) return svgCache.get(source);
   const engine = await loadEngine();
-  const { wrapTikz } = await import(new URL('/vendor/mp-tikz-wasm/figures.js', location.href).href);
-  const result = await engine.latex(wrapTikz(source));
+  const figures = await import(new URL('/vendor/mp-tikz-wasm/figures.js', location.href).href);
+  const { document, engine: texEngine } = tikzDocument(source, figures);
+  const result = await engine.latex(document, { engine: texEngine });
   const rendered = {
     svg: result.status === 'ok' && result.pages?.length ? result.pages[0] : '',
     status: result.status,
