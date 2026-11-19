@@ -6,6 +6,7 @@ import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import { listMarkerCSS } from '../../latex/list-numbering.mjs';
 import { t } from '../ui/i18n.mjs';
 import { tikzPreviewWidget } from '../tikz/preview-renderer.js';
+import { generalTikzPreviewWidget } from '../ui/tikz-studio.js';
 
 function tableCaptionWidget(caption) {
   const element=document.createElement('div');
@@ -322,7 +323,9 @@ function formattingMarks(doc) {
       }
     }
     if (node.type.name === 'codeBlock') {
-      if (node.attrs.language === 'tikz' || node.attrs.language === 'circuitikz') {
+      if (node.attrs.language === 'tikz-general') {
+        decorations.push(Decoration.widget(position, generalTikzPreviewWidget(node.textContent), { side: -1 }));
+      } else if (node.attrs.language === 'tikz' || node.attrs.language === 'circuitikz') {
         decorations.push(Decoration.widget(position, tikzPreviewWidget(node.textContent), { side: -1 }));
       }
       const tokenPattern = codeTokenRegex(codeFamily(node.attrs.language));

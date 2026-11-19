@@ -2815,15 +2815,19 @@ groupButton(insert,['代码块','Code block'],async()=>{
   if(editor.isActive('codeBlock')) editor.chain().focus().updateAttributes('codeBlock',{language:language||null}).run();
   else editor.chain().focus().setCodeBlock({language:language||null}).run();
 });
-groupButton(insert,['TikZ','TikZ'],()=>{
+groupButton(insert,['CircuiTikZ','CircuiTikZ'],()=>{
   try{
     const editorEl=document.querySelector('.document-page .ProseMirror');
     const textwidthCm=editorEl?editorEl.clientWidth*2.54/96:15;
     const tikz=new TikzEditor({getTextwidthCm:()=>textwidthCm});
     tikz.open(code=>{ if(code) editor.chain().focus().insertContent({type:'codeBlock',attrs:{language:'tikz'},content:[{type:'text',text:code}]}).run(); });
-  }catch(error){ console.error(error); alert('TikZ editor failed: '+(error?.message||error)); }
+  }catch(error){ console.error(error); alert('CircuiTikZ editor failed: '+(error?.message||error)); }
 });
+groupButton(insert,['TikZ','TikZ'],()=>openTikzStudio({
+  onInsert: code => editor.chain().focus().insertContent({type:'codeBlock',attrs:{language:'tikz-general'},content:[{type:'text',text:code}]}).run(),
+}));
 import { installMathFloatToolbar } from './ui/math-float-toolbar.js';
+import { openTikzStudio } from './ui/tikz-studio.js';
 const files=header.querySelector('.tools');
 const attachFolder=groupButton(files,['关联资源目录','Attach asset folder'],()=>{
   const picker=document.createElement('input');
