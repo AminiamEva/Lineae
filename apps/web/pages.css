@@ -1247,7 +1247,15 @@ body.format-painter-active .ProseMirror * { cursor:copy; }
 .tikz-studio-header button:hover { background:light-dark(#e8edf5,#2f3a52); }
 .tikz-studio-insert { background:#2f6fed !important; border-color:#2f6fed !important; color:#fff !important; }
 .tikz-studio-body { flex:1; min-height:0; display:grid; grid-template-columns:minmax(320px,1fr) minmax(320px,1fr); }
-.tikz-studio-code { width:100%; height:100%; resize:none; border:0; outline:0; padding:16px; box-sizing:border-box; background:light-dark(#f7f8fb,#171d29); color:inherit; font:14px/1.55 ui-monospace,SFMono-Regular,Consolas,monospace; tab-size:2; }
+.tikz-studio-editor { min-height:0; display:grid; grid-template-rows:28px minmax(80px,var(--library-size,240px)) 7px 28px minmax(120px,1fr); background:light-dark(#f7f8fb,#171d29); border-right:1px solid light-dark(#e3e7ee,#333c4e); }
+.tikz-studio-pane-title { display:flex; align-items:center; padding:0 14px; font-size:11px; font-weight:600; letter-spacing:.02em; color:light-dark(#687386,#aab3c1); background:light-dark(#eef1f6,#1d2533); border-bottom:1px solid light-dark(#e3e7ee,#333c4e); }
+.tikz-studio-code-shell { position:relative; min-height:0; overflow:hidden; }
+.tikz-studio-code, .tikz-studio-libraries { width:100%; height:100%; resize:none; border:0; outline:0; padding:16px; box-sizing:border-box; background:transparent; color:inherit; font:14px/1.55 ui-monospace,SFMono-Regular,Consolas,monospace; tab-size:2; white-space:pre; overflow:auto; position:relative; z-index:1; }
+.tikz-studio-highlight { position:absolute; inset:0; z-index:0; padding:16px; box-sizing:border-box; overflow:hidden; pointer-events:none; white-space:pre; color:transparent; font:14px/1.55 ui-monospace,SFMono-Regular,Consolas,monospace; tab-size:2; }
+.tikz-studio-highlight-line { display:block; min-height:1.55em; }
+.tikz-studio-highlight-line.duplicate { background:rgba(220,38,38,.22); border-radius:2px; }
+.tikz-studio-divider { position:relative; cursor:row-resize; touch-action:none; background:light-dark(#eef1f6,#1d2533); border-block:1px solid light-dark(#e3e7ee,#333c4e); }
+.tikz-studio-divider::after { content:""; position:absolute; left:50%; top:2px; width:34px; height:1px; margin-left:-17px; background:light-dark(#b8c1d1,#5b677c); box-shadow:0 2px 0 light-dark(#b8c1d1,#5b677c); }
 .tikz-studio-preview-wrap { position:relative; min-width:0; min-height:0; overflow:auto; background:light-dark(#fff,#111722); }
 .tikz-studio-preview { min-height:100%; padding:20px; box-sizing:border-box; transform-origin:top left; transition:transform .12s ease-out; }
 .tikz-studio-preview svg { max-width:none; height:auto; }

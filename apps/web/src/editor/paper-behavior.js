@@ -165,11 +165,11 @@ function paperFormatting() {  let session = null;
       preeditDOM = null;
     } }),
     state: {
-      init: (_, state) => formattingMarks(state.doc),
+      init: (_, state) => formattingMarks(state.doc, state.doc.attrs.layoutPreamble || ''),
       apply(transaction, previous) {
         // Preserve the browser's text node and its neighbors during preedit.
         if (composing) return transaction.docChanged ? previous.map(transaction.mapping, transaction.doc) : previous;
-        return transaction.docChanged || transaction.getMeta(plugin) ? formattingMarks(transaction.doc) : previous;
+        return transaction.docChanged || transaction.getMeta(plugin) ? formattingMarks(transaction.doc, transaction.doc.attrs.layoutPreamble || '') : previous;
       },
     },
     props:{
@@ -296,7 +296,7 @@ function codeTokenRegex(family) {
         + '|(?<function>\\b[A-Za-z_$][\\w$]*(?=\\s*\\())', 'g');
   }
 }
-function formattingMarks(doc) {
+function formattingMarks(doc, preamble = '') {
   const decorations = [];
   doc.descendants((node, position, parent, index) => {
     if (node.type.name==='math' && parent) {
@@ -324,7 +324,7 @@ function formattingMarks(doc) {
     }
     if (node.type.name === 'codeBlock') {
       if (node.attrs.language === 'tikz-general') {
-        decorations.push(Decoration.widget(position, generalTikzPreviewWidget(node.textContent), { side: -1 }));
+        decorations.push(Decoration.widget(position, generalTikzPreviewWidget(node.textContent, preamble), { side: -1 }));
       } else if (node.attrs.language === 'tikz' || node.attrs.language === 'circuitikz') {
         decorations.push(Decoration.widget(position, tikzPreviewWidget(node.textContent), { side: -1 }));
       }

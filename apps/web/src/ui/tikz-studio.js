@@ -29,11 +29,23 @@ function loadEngine() {
   return enginePromise;
 }
 
+const SAMPLE_LIBRARIES = String.raw`\usetikzlibrary{arrows.meta}`;
 const SAMPLE = String.raw`\begin{tikzpicture}[scale=1]
   \draw[->, thick] (0,0) -- (2,1) node[right] {$x^2$};
   \draw[blue, thick] (0,0) circle (1);
   \node[draw, rounded corners] at (3,1) {TikZ};
 \end{tikzpicture}`;
+
+function previewPreamble(preamble) {
+  const allowed = /(?:tikz|pgf|pgfplots|amsmath|amssymb|mathtools|xcolor|graphicx)/;
+  return preamble
+    .replace(/^\s*\\documentclass(?:\[[^\]]*\])?\{[^{}]+\}[^\n]*(?:\r?\n|$)/gm, '')
+    .replace(/\\begin\{document\}/g, '')
+    .replace(/\\end\{document\}/g, '')
+    .replace(/^\s*\\(?:usepackage|RequirePackage)(?:\[[^\]]*\])?\{([^{}]*)\}[^\n]*(?:\r?\n|$)/gm, (line, names) =>
+      names.split(',').some(name => allowed.test(name.trim())) ? line : '')
+    .trim();
+}
 
 function needsLuaTex(source) {
   return /\usegdlibrary|graphdrawing|\directlua|\latelua|luacode|fontspec|unicode-math/.test(source);
@@ -79,25 +91,65 @@ function splitTikzFragment(source) {
   return { preamble, blocks, body: body.join('\n').trim() };
 }
 
-function stripDocumentWrapper(source) {
-  return source
-    .replace(/^\s*\\documentclass(?:\[[^\]]*\])?\{[^{}]+\}[^\n]*(?:\r?\n|$)/m, '')
-    .replace(/\\begin\{document\}/g, '')
-    .replace(/\\end\{document\}/g, '')
-    .trim();
+function macroName(block) {
+  let match = /^\s*\\(?:newcommand|renewcommand|providecommand|DeclareRobustCommand)\*?\s*\{?\s*\\([A-Za-z@]+)/m.exec(block);
+  if (match) return match[1];
+  match = /^\s*\\(?:New|Renew|Provide|Declare)DocumentCommand\s*\{?\s*\\([A-Za-z@]+)/m.exec(block);
+  if (match) return match[1];
+  match = /^\s*\\(?:def|gdef|edef|xdef)\s*\\([A-Za-z@]+)/m.exec(block);
+  if (match) return match[1];
+  match = /^\s*\\(?:newenvironment|renewenvironment)\s*\{([^{}]+)\}/m.exec(block);
+  return match?.[1] || null;
 }
 
-function fragmentForInsertion(source) {
-  const complete = /\\documentclass|\\bye\b/.test(source);
-  const unwrapped = complete ? stripDocumentWrapper(source) : source.trim();
-  const { blocks, body } = splitTikzFragment(unwrapped);
-  // \usepackage is only legal in the preamble of the host document.  Keep
-  // library loads and macro definitions, which are valid in the body, but do
-  // not inject a second package-loading block into the document.
-  const safePreamble = blocks
-    .filter(block => !/^\s*\\(?:usepackage|RequirePackage)\b/.test(block))
-    .join('\n');
-  return [safePreamble, body].filter(Boolean).join('\n').trim();
+function scanStaging(source) {
+  const lines = source.split(/\r?\n/);
+  const macros = [];
+  const libraries = [];
+  for (const match of source.matchAll(/\\usetikzlibrary(?:\[[^\]]*\])?\{([^{}]+)\}/g)) {
+    libraries.push(...match[1].split(',').map(item => item.trim()).filter(Boolean));
+  }
+  for (let index = 0; index < lines.length; index++) {
+    const line = lines[index];
+    if (!PREAMBLE_COMMAND.test(line)) continue;
+    const block = [line];
+    let balance = braceBalance(line);
+    while (balance > 0 && index + 1 < lines.length) {
+      index++;
+      block.push(lines[index]);
+      balance += braceBalance(lines[index]);
+    }
+    const name = macroName(block.join('\n'));
+    if (name) macros.push({ name, text: block.join('\n'), startLine: index - block.length + 2, endLine: index + 1 });
+  }
+  return { libraries: [...new Set(libraries)], macros };
+}
+
+function markDuplicateLines(textarea, ranges) {
+  const shell = textarea.closest('.tikz-studio-code-shell');
+  const highlight = shell?.querySelector('.tikz-studio-highlight');
+  if (!highlight) return;
+  const marked = new Set();
+  for (const range of ranges) {
+    for (let line = range.startLine; line <= range.endLine; line++) marked.add(line);
+  }
+  const lines = textarea.value.split(/\r?\n/);
+  highlight.replaceChildren();
+  lines.forEach((line, index) => {
+    const element = document.createElement('span');
+    element.className = 'tikz-studio-highlight-line' + (marked.has(index + 1) ? ' duplicate' : '');
+    element.textContent = line || ' ';
+    highlight.append(element);
+  });
+  highlight.scrollTop = textarea.scrollTop;
+  highlight.scrollLeft = textarea.scrollLeft;
+}
+
+function syncHighlightScroll(textarea) {
+  const highlight = textarea.closest('.tikz-studio-code-shell')?.querySelector('.tikz-studio-highlight');
+  if (!highlight) return;
+  highlight.scrollTop = textarea.scrollTop;
+  highlight.scrollLeft = textarea.scrollLeft;
 }
 
 function tikzDocument(source, figures) {
@@ -107,26 +159,30 @@ function tikzDocument(source, figures) {
   return { document, engine: needsLuaTex(document) ? 'lualatex' : 'auto' };
 }
 
-export async function renderTikz(source) {
-  if (svgCache.has(source)) return svgCache.get(source);
+export async function renderTikz(source, preamble = '') {
+  const cacheKey = source + '\0' + preamble;
+  if (svgCache.has(cacheKey)) return svgCache.get(cacheKey);
   const engine = await loadEngine();
   const figures = await import(new URL('/vendor/mp-tikz-wasm/figures.js', location.href).href);
-  const { document, engine: texEngine } = tikzDocument(source, figures);
+  const complete = /\\documentclass|\\bye\b/.test(source);
+  const prefix = previewPreamble(preamble);
+  const combined = complete || !prefix ? source : `${prefix}\n${source}`;
+  const { document, engine: texEngine } = tikzDocument(combined, figures);
   const result = await engine.latex(document, { engine: texEngine });
   const rendered = {
     svg: result.status === 'ok' && result.pages?.length ? result.pages[0] : '',
     status: result.status,
     diagnostics: result.diagnostics || [],
   };
-  if (rendered.svg) svgCache.set(source, rendered);
+  if (rendered.svg) svgCache.set(cacheKey, rendered);
   return rendered;
 }
 
-export function generalTikzPreviewWidget(source) {
+export function generalTikzPreviewWidget(source, preamble = '') {
   const root = document.createElement('div');
   root.className = 'tikz-code-preview tikz-general-preview';
   root.textContent = 'TikZ';
-  renderTikz(source).then(result => {
+  renderTikz(source, preamble).then(result => {
     if (!result.svg) { root.textContent = result.diagnostics?.map(item => item.message).join('\n') || 'TikZ'; return; }
     const svg = document.createElement('div');
     svg.innerHTML = result.svg;
@@ -149,7 +205,19 @@ export function openTikzStudio({ onInsert } = {}) {
         <button type="button" class="tikz-studio-close">${t('关闭', 'Close')}</button>
       </div>
       <div class="tikz-studio-body">
-        <textarea class="tikz-studio-code" spellcheck="false" aria-label="TikZ code"></textarea>
+        <div class="tikz-studio-editor">
+          <div class="tikz-studio-pane-title">${t('库与宏定义', 'Libraries & newcommands')}</div>
+          <div class="tikz-studio-code-shell">
+            <div class="tikz-studio-highlight" aria-hidden="true"></div>
+            <textarea class="tikz-studio-libraries" spellcheck="false" wrap="off" aria-label="TikZ libraries and newcommands"></textarea>
+          </div>
+          <div class="tikz-studio-divider" role="separator" aria-orientation="horizontal" tabindex="0"></div>
+          <div class="tikz-studio-pane-title">${t('TikZ 图形', 'TikZ picture')}</div>
+          <div class="tikz-studio-code-shell">
+            <div class="tikz-studio-highlight" aria-hidden="true"></div>
+            <textarea class="tikz-studio-code" spellcheck="false" wrap="off" aria-label="TikZ code"></textarea>
+          </div>
+        </div>
         <div class="tikz-studio-preview-wrap">
           <div class="tikz-studio-preview" aria-live="polite"></div>
           <div class="tikz-studio-status"></div>
@@ -158,8 +226,12 @@ export function openTikzStudio({ onInsert } = {}) {
     </div>`;
   document.body.append(overlay);
   const code = overlay.querySelector('.tikz-studio-code');
+  const libraries = overlay.querySelector('.tikz-studio-libraries');
+  const editor = overlay.querySelector('.tikz-studio-editor');
+  const divider = overlay.querySelector('.tikz-studio-divider');
   const preview = overlay.querySelector('.tikz-studio-preview');
   const status = overlay.querySelector('.tikz-studio-status');
+  libraries.value = SAMPLE_LIBRARIES;
   code.value = SAMPLE;
   code.focus();
   let zoom = 1;
@@ -173,7 +245,7 @@ export function openTikzStudio({ onInsert } = {}) {
     const current = ++version;
     clearTimeout(timer);
     timer = setTimeout(async () => {
-      const source = code.value.trim();
+      const source = [libraries.value, code.value].filter(value => value.trim()).join('\n').trim();
       if (!source) { preview.replaceChildren(); setStatus(''); return; }
       setStatus(t('正在渲染…', 'Rendering…'));
       try {
@@ -198,6 +270,37 @@ export function openTikzStudio({ onInsert } = {}) {
     }, 350);
   };
   code.addEventListener('input', render);
+  libraries.addEventListener('input', () => {
+    const highlight = libraries.closest('.tikz-studio-code-shell')?.querySelector('.tikz-studio-highlight');
+    highlight?.replaceChildren();
+    render();
+  });
+  for (const textarea of [code, libraries]) {
+    textarea.addEventListener('scroll', () => syncHighlightScroll(textarea));
+  }
+
+  let dragging = false;
+  divider.addEventListener('pointerdown', event => {
+    dragging = true;
+    divider.setPointerCapture(event.pointerId);
+    event.preventDefault();
+  });
+  divider.addEventListener('pointermove', event => {
+    if (!dragging) return;
+    const rect = editor.getBoundingClientRect();
+    const top = Math.max(80, Math.min(event.clientY - rect.top - 28, rect.height - 28 - 7 - 28 - 120));
+    editor.style.setProperty('--library-size', `${top}px`);
+  });
+  const endDrag = () => { dragging = false; };
+  divider.addEventListener('pointerup', endDrag);
+  divider.addEventListener('pointercancel', endDrag);
+  divider.addEventListener('keydown', event => {
+    if (!['ArrowUp', 'ArrowDown'].includes(event.key)) return;
+    event.preventDefault();
+    const current = parseFloat(getComputedStyle(editor).getPropertyValue('--library-size')) || 220;
+    const next = Math.max(80, Math.min(current + (event.key === 'ArrowDown' ? 24 : -24), editor.getBoundingClientRect().height - 183));
+    editor.style.setProperty('--library-size', `${next}px`);
+  });
   preview.addEventListener('wheel', event => {
     if (!lastSvg || event.deltaY === 0) return;
     event.preventDefault();
@@ -210,10 +313,23 @@ export function openTikzStudio({ onInsert } = {}) {
   };
   overlay.querySelector('.tikz-studio-close').onclick = close;
   overlay.querySelector('.tikz-studio-insert').onclick = () => {
-    const source = fragmentForInsertion(code.value.trim());
-    if (!source) return;
+    const staging = scanStaging(libraries.value);
+    const body = code.value.trim();
+    if (!staging.macros.length && !staging.libraries.length && !body) return;
+    const result = onInsert?.({
+      libraries: staging.libraries,
+      macros: staging.macros,
+      body,
+    });
+    if (result?.duplicates?.length) {
+      const duplicateLines = staging.macros
+        .filter(macro => result.duplicates.includes(macro.name))
+        .map(({ startLine, endLine }) => ({ startLine, endLine }));
+      markDuplicateLines(libraries, duplicateLines);
+      setStatus(`${t('名称已被使用：', 'Already defined: ')}${result.duplicates.join(', ')}`);
+      return;
+    }
     close();
-    onInsert?.(source);
   };
   overlay.addEventListener('pointerdown', event => { if (event.target === overlay) close(); });
   overlay.addEventListener('keydown', event => { if (event.key === 'Escape') close(); });

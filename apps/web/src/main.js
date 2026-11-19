@@ -1110,8 +1110,85 @@ function updateImageSpacing(spacing){
   applyPageSetup();
   projectExplorer?.changed();
 }
-function updateGlobalColumns(count){
-  const before=documentParts.start;
+function tikzMacroNames(source) {
+  const names = new Set();
+  const pattern = /\\(?:newcommand|renewcommand|providecommand|DeclareRobustCommand|NewDocumentCommand|RenewDocumentCommand|ProvideDocumentCommand|DeclareDocumentCommand|def|gdef|edef|xdef)\*?\s*\{?\s*\\([A-Za-z@]+)/g;
+  for (const match of source.matchAll(pattern)) names.add(match[1]);
+  for (const match of source.matchAll(/\\(?:newenvironment|renewenvironment)\s*\{([^{}]+)\}/g)) names.add(match[1]);
+  return names;
+}
+
+function tikzLibraries(source) {
+  const names = [];
+  for (const match of source.matchAll(/\\usetikzlibrary(?:\[[^\]]*\])?\{([^{}]+)\}/g)) {
+    names.push(...match[1].split(',').map(item => item.trim()).filter(Boolean));
+  }
+  return names;
+}
+
+function applyTikzPreamble(after) {
+  const before = documentParts.start;
+  if (after === before) return;
+  if (!sourceView.hidden) {
+    const current = sourceView.value;
+    const preamble = parseDocument(current, { fragment: true })?.start ?? '';
+    sourceView.applyChanges([{ from: 0, to: preamble.length, insert: after }]);
+    sourceView.flush();
+  }
+  documentParts.start = after;
+  if (importedSource?.startsWith(before)) importedSource = after + importedSource.slice(before.length);
+  if (editor.state.doc.attrs.layoutPreamble !== after) {
+    editor.view.dispatch(closeHistory(editor.state.tr).setDocAttribute('layoutPreamble', after));
+  }
+  pageSetup = readPageSetup(documentParts.start);
+  applyPageSetup();
+  projectExplorer?.changed();
+}
+
+function insertTikzStudioBlock({ libraries = [], macros = [], body = '' } = {}) {
+  body = body
+    .replace(/^\s*\\documentclass(?:\[[^\]]*\])?\{[^{}]+\}[^\n]*(?:\r?\n|$)/m, '')
+    .replace(/^\s*\\(?:usepackage|RequirePackage)(?:\[[^\]]*\])?\{[^{}]*\}[^\n]*(?:\r?\n|$)/gm, '')
+    .replace(/\\begin\{document\}/g, '')
+    .replace(/\\end\{document\}/g, '')
+    .trim();
+  const before = documentParts.start;
+  const existingMacros = tikzMacroNames(before);
+  const seen = new Set();
+  const duplicates = [];
+  for (const macro of macros) {
+    if (existingMacros.has(macro.name) || seen.has(macro.name)) duplicates.push(macro.name);
+    seen.add(macro.name);
+  }
+  if (duplicates.length) return { duplicates: [...new Set(duplicates)] };
+
+  const allLibraries = [...new Set([...tikzLibraries(before), ...libraries])]
+    .sort((a, b) => a.localeCompare(b));
+  const sortedMacros = [...macros].sort((a, b) => a.name.localeCompare(b.name)).map(macro => macro.text.trim());
+  const beginAt = before.indexOf('\\begin{document}');
+  if (beginAt >= 0) {
+    let preamble = before.slice(0, beginAt)
+      .replace(/\\usetikzlibrary(?:\[[^\]]*\])?\{[^{}]*\}[ \t]*(?:\r?\n)?/g, '');
+    const additions = [
+      allLibraries.length ? `\\usetikzlibrary{${allLibraries.join(',')}}` : '',
+      ...sortedMacros,
+    ].filter(Boolean).join('\n');
+    const after = preamble.replace(/\s+$/, '') + (additions ? `\n${additions}` : '') + '\n' + before.slice(beginAt);
+    applyTikzPreamble(after);
+  } else {
+    body = [allLibraries.length ? `\\usetikzlibrary{${allLibraries.join(',')}}` : '', ...sortedMacros, body]
+      .filter(Boolean).join('\n');
+  }
+  if (body.trim()) {
+    editor.chain().focus().insertContent({
+      type: 'codeBlock', attrs: { language: 'tikz-general' },
+      content: [{ type: 'text', text: body.trim() }],
+    }).run();
+  }
+  return { ok: true };
+}
+
+function updateGlobalColumns(count){  const before=documentParts.start;
   const after=writeGlobalColumns(before,count);
   if(after===before)return;
   if(!sourceView.hidden){
@@ -2824,7 +2901,7 @@ groupButton(insert,['CircuiTikZ','CircuiTikZ'],()=>{
   }catch(error){ console.error(error); alert('CircuiTikZ editor failed: '+(error?.message||error)); }
 });
 groupButton(insert,['TikZ','TikZ'],()=>openTikzStudio({
-  onInsert: code => editor.chain().focus().insertContent({type:'codeBlock',attrs:{language:'tikz-general'},content:[{type:'text',text:code}]}).run(),
+  onInsert: payload => insertTikzStudioBlock(payload),
 }));
 import { installMathFloatToolbar } from './ui/math-float-toolbar.js';
 import { openTikzStudio } from './ui/tikz-studio.js';
