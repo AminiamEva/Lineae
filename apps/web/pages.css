@@ -83,7 +83,7 @@ main { padding:125px 24px 60px; overflow:auto; }
 .document-image { margin:var(--image-intextsep,12pt) 0; }
 .document-image[data-figure="true"] { margin-block:var(--image-textfloatsep,20pt); }
 .document-image[data-figure="true"][data-wrap="true"] { margin-block:var(--image-intextsep,12pt); }
-.document-image[data-wrap="true"] { margin-block-start:calc(var(--image-intextsep,12pt) + 4pt); }
+.document-image[data-wrap="true"] { margin-block-start:0; }
 .document-image[data-figure="true"]:is([data-placement="h"],[data-placement="H"]) { margin-block:var(--image-intextsep,12pt); }
 .document-image[data-figure="true"]:has(+ .document-image[data-figure="true"]) { margin-block-end:var(--image-floatsep,12pt); }
 .document-image[data-figure="true"] + .document-image[data-figure="true"] { margin-block-start:var(--image-floatsep,12pt); }
@@ -1219,3 +1219,19 @@ body.format-painter-active .ProseMirror * { cursor:copy; }
 .ProseMirror [data-appendix-start]::before{content:'\\appendix';position:absolute;right:calc(100% + 28px);font:9px/1.2 system-ui;color:#88909a;white-space:nowrap;}
 @media print{.ProseMirror [data-appendix-start]::before{display:none;}}
 .document-page .ProseMirror p[data-tex-paragraph]{white-space:nowrap;text-align:left;hyphens:none;overflow-wrap:normal;word-break:normal;}
+
+/* New TeX template dialog (new feature, additive) */
+.tex-template-overlay { position:fixed; inset:0; background:rgba(15,20,30,.45); z-index:1250; display:flex; align-items:center; justify-content:center; }
+.tex-template-window { width:560px; max-width:92vw; background:light-dark(#fff,#1c2230); color:light-dark(#1a1d24,#dfe3ea); border-radius:10px; box-shadow:0 12px 48px rgba(0,0,0,.35); padding:0 0 14px; }
+.tex-template-head { display:flex; align-items:center; justify-content:space-between; padding:12px 18px; font-weight:600; font-size:15px; border-bottom:1px solid light-dark(#e3e7ee,#333c4e); }
+.tex-template-close { border:0; background:inherit; color:inherit; font-size:15px; cursor:pointer; padding:2px 8px; border-radius:6px; }
+.tex-template-close:hover { background:light-dark(#eef2f8,#2a3448); }
+.tex-template-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:14px; padding:18px; }
+.tex-template-card { display:flex; flex-direction:column; align-items:center; gap:6px; padding:10px 8px 12px; border:1px solid light-dark(#d5dbe5,#3a4356); border-radius:8px; background:inherit; color:inherit; cursor:pointer; }
+.tex-template-card:hover { border-color:#2f6fed; background:light-dark(#f5f8fd,#232c40); }
+.tex-template-preview { display:flex; justify-content:center; }
+.tex-template-name { font-weight:600; font-size:13px; }
+.tex-template-desc { font-size:11px; color:light-dark(#687386,#aab3c1); text-align:center; }
+.tex-template-foot { display:flex; justify-content:center; padding-top:12px; border-top:1px solid light-dark(#e3e7ee,#333c4e); }
+.tex-template-more { padding:5px 18px; border:1px solid light-dark(#d5dbe5,#3a4356); border-radius:6px; background:inherit; color:inherit; font-size:12.5px; cursor:pointer; }
+.tex-template-more:hover { background:light-dark(#eef2f8,#2f3a52); }
