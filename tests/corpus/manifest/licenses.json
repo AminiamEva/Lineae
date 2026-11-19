@@ -1,0 +1,222 @@
+{
+  "CC-BY-4.0": {
+    "name": "Creative Commons Attribution 4.0 International",
+    "spdx": "CC-BY-4.0",
+    "url": "https://creativecommons.org/licenses/by/4.0/legalcode",
+    "redistributable": true,
+    "commercial_use": true,
+    "modifications_allowed": true,
+    "attribution_required": true,
+    "share_alike": false,
+    "notes": "Requires attribution, license notice and indication of changes. Applies only to material the licensor actually controls."
+  },
+  "CC-BY-SA-4.0": {
+    "name": "Creative Commons Attribution-ShareAlike 4.0 International",
+    "spdx": "CC-BY-SA-4.0",
+    "url": "https://creativecommons.org/licenses/by-sa/4.0/legalcode",
+    "redistributable": true,
+    "commercial_use": true,
+    "modifications_allowed": true,
+    "attribution_required": true,
+    "share_alike": true,
+    "notes": "Derivative distributions must use the same license. Attribution required."
+  },
+  "CC-BY-SA-2.5": {
+    "name": "Creative Commons Attribution-ShareAlike 2.5 Generic",
+    "spdx": "CC-BY-SA-2.5",
+    "url": "https://creativecommons.org/licenses/by-sa/2.5/legalcode",
+    "redistributable": true,
+    "commercial_use": true,
+    "modifications_allowed": true,
+    "attribution_required": true,
+    "share_alike": true,
+    "notes": "Used by Hefferon's Linear Algebra repository LICENSE (GFDL or CC BY-SA 2.5 at the user's choice)."
+  },
+  "CC-BY-SA-3.0": {
+    "name": "Creative Commons Attribution-ShareAlike 3.0 Unported",
+    "spdx": "CC-BY-SA-3.0",
+    "url": "https://creativecommons.org/licenses/by-sa/3.0/legalcode",
+    "redistributable": true,
+    "commercial_use": true,
+    "modifications_allowed": true,
+    "attribution_required": true,
+    "share_alike": true,
+    "notes": "Used by some Stack Exchange posts before the 4.0 migration."
+  },
+  "CC-BY-NC-SA-4.0": {
+    "name": "Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International",
+    "spdx": "CC-BY-NC-SA-4.0",
+    "url": "https://creativecommons.org/licenses/by-nc-sa/4.0/legalcode",
+    "redistributable": false,
+    "commercial_use": false,
+    "modifications_allowed": true,
+    "attribution_required": true,
+    "share_alike": true,
+    "notes": "NonCommercial restriction. Not suitable for a public corpus offered as part of a commercial product; keep local_only_review until counsel approves. Policy: NonCommercial works stay local_only_review and are not published in the public corpus repo."
+  },
+  "CC-BY-NC-4.0": {
+    "name": "Creative Commons Attribution-NonCommercial 4.0 International",
+    "spdx": "CC-BY-NC-4.0",
+    "url": "https://creativecommons.org/licenses/by-nc/4.0/legalcode",
+    "redistributable": false,
+    "commercial_use": false,
+    "modifications_allowed": true,
+    "attribution_required": true,
+    "share_alike": false,
+    "notes": "NonCommercial restriction. local_only_review by policy. Policy: NonCommercial works stay local_only_review and are not published in the public corpus repo."
+  },
+  "GFDL-1.2": {
+    "name": "GNU Free Documentation License 1.2",
+    "spdx": "GFDL-1.2-only",
+    "url": "https://www.gnu.org/licenses/old-licenses/fdl-1.2.txt",
+    "redistributable": true,
+    "commercial_use": true,
+    "modifications_allowed": true,
+    "attribution_required": true,
+    "share_alike": true,
+    "notes": "Requires preservation of copyright and license notices, and of invariant sections if declared. Verify per project whether invariant sections or cover texts are specified."
+  },
+  "MIT": {
+    "name": "MIT License",
+    "spdx": "MIT",
+    "url": "https://opensource.org/license/mit",
+    "redistributable": true,
+    "commercial_use": true,
+    "modifications_allowed": true,
+    "attribution_required": true,
+    "share_alike": false,
+    "notes": "Permissive, but a repository-level MIT license does not automatically cover third-party files committed to subdirectories."
+  },
+  "LPPL-1.3c": {
+    "name": "LaTeX Project Public License 1.3c",
+    "spdx": "LPPL-1.3c",
+    "url": "https://www.latex-project.org/lppl/lppl-1-3c/",
+    "redistributable": true,
+    "commercial_use": true,
+    "modifications_allowed": true,
+    "attribution_required": true,
+    "share_alike": false,
+    "notes": "Distribution of modified files requires renaming under some conditions; retained unmodified package files are redistributable."
+  },
+  "ARXIV-NONEXCLUSIVE-1.0": {
+    "name": "arXiv nonexclusive-distrib 1.0",
+    "spdx": "LicenseRef-arXiv-nonexclusive-distrib-1.0",
+    "url": "https://arxiv.org/licenses/nonexclusive-distrib/1.0/",
+    "redistributable": false,
+    "commercial_use": false,
+    "modifications_allowed": false,
+    "attribution_required": true,
+    "share_alike": false,
+    "notes": "arXiv's default license grants arXiv the right to distribute; it does not grant the public redistribution rights. Local test use only."
+  },
+  "ARXIV-CC-BY-4.0": {
+    "name": "Creative Commons Attribution 4.0 International (arXiv selection)",
+    "spdx": "CC-BY-4.0",
+    "url": "https://creativecommons.org/licenses/by/4.0/legalcode",
+    "redistributable": true,
+    "commercial_use": true,
+    "modifications_allowed": true,
+    "attribution_required": true,
+    "share_alike": false,
+    "notes": "Author selected CC BY 4.0 on arXiv. Confirmed from the article's abs page at download time."
+  },
+  "ARXIV-CC-BY-SA-4.0": {
+    "name": "Creative Commons Attribution-ShareAlike 4.0 International (arXiv selection)",
+    "spdx": "CC-BY-SA-4.0",
+    "url": "https://creativecommons.org/licenses/by-sa/4.0/legalcode",
+    "redistributable": true,
+    "commercial_use": true,
+    "modifications_allowed": true,
+    "attribution_required": true,
+    "share_alike": true,
+    "notes": "Author selected CC BY-SA 4.0 on arXiv. Confirmed from the article's abs page at download time."
+  },
+  "ARXIV-CC0-1.0": {
+    "name": "CC0 1.0 Universal (arXiv selection)",
+    "spdx": "CC0-1.0",
+    "url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "redistributable": true,
+    "commercial_use": true,
+    "modifications_allowed": true,
+    "attribution_required": false,
+    "share_alike": false,
+    "notes": "Public-domain dedication selected by the author."
+  },
+  "SE-CC-BY-SA-4.0": {
+    "name": "Stack Exchange content, CC BY-SA 4.0",
+    "spdx": "CC-BY-SA-4.0",
+    "url": "https://creativecommons.org/licenses/by-sa/4.0/legalcode",
+    "redistributable": true,
+    "commercial_use": true,
+    "modifications_allowed": true,
+    "attribution_required": true,
+    "share_alike": true,
+    "notes": "Per-post content_license reported by the Stack Exchange API. Attribution to the author and link to the post are required; adaptations must be shared alike."
+  },
+  "SE-CC-BY-SA-3.0": {
+    "name": "Stack Exchange content, CC BY-SA 3.0",
+    "spdx": "CC-BY-SA-3.0",
+    "url": "https://creativecommons.org/licenses/by-sa/3.0/legalcode",
+    "redistributable": true,
+    "commercial_use": true,
+    "modifications_allowed": true,
+    "attribution_required": true,
+    "share_alike": true,
+    "notes": "Per-post content_license reported by the Stack Exchange API. Attribution to the author and link to the post are required."
+  },
+  "SE-CC-BY-SA-2.5": {
+    "name": "Stack Exchange content, CC BY-SA 2.5",
+    "spdx": "CC-BY-SA-2.5",
+    "url": "https://creativecommons.org/licenses/by-sa/2.5/legalcode",
+    "redistributable": true,
+    "commercial_use": true,
+    "modifications_allowed": true,
+    "attribution_required": true,
+    "share_alike": true,
+    "notes": "Per-post content_license reported by the Stack Exchange API. Attribution to the author and link to the post are required."
+  },
+  "TUGBOAT-AUTHOR": {
+    "name": "TUGboat article, copyright held by the author(s)",
+    "spdx": "LicenseRef-TUGboat-author",
+    "url": "https://tug.org/TUGboat/",
+    "redistributable": false,
+    "commercial_use": false,
+    "modifications_allowed": false,
+    "attribution_required": true,
+    "share_alike": false,
+    "notes": "TUGboat states that copyright remains with the authors. Online PDF availability is not a redistribution license. Per-article written permission is required before any public redistribution."
+  },
+  "GPL-3.0": {
+    "name": "GNU General Public License v3.0",
+    "spdx": "GPL-3.0-only",
+    "url": "https://www.gnu.org/licenses/gpl-3.0.txt",
+    "redistributable": true,
+    "commercial_use": true,
+    "modifications_allowed": true,
+    "attribution_required": true,
+    "share_alike": true,
+    "notes": "Copyleft; source redistribution must remain GPL. Documentation and code may carry different licenses."
+  },
+  "GPL-2.0": {
+    "name": "GNU General Public License v2.0",
+    "spdx": "GPL-2.0-only",
+    "url": "https://www.gnu.org/licenses/old-licenses/gpl-2.0.txt",
+    "redistributable": true,
+    "commercial_use": true,
+    "modifications_allowed": true,
+    "attribution_required": true,
+    "share_alike": true,
+    "notes": "Copyleft; source redistribution must remain GPL."
+  },
+  "NOASSERTION": {
+    "name": "Unverified or mixed licensing",
+    "spdx": "NOASSERTION",
+    "url": "",
+    "redistributable": false,
+    "commercial_use": false,
+    "modifications_allowed": false,
+    "attribution_required": true,
+    "share_alike": false,
+    "notes": "Repository or page exists but licensing is absent, contradictory, or does not cover all files. Metadata only until reviewed."
+  }
+}
