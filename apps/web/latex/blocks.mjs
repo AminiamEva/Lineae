@@ -27,6 +27,7 @@ function inlineContent(text) {
     return parts.flatMap(part => {
       if (typeof part === 'string') return part ? [{ type: 'text', text: part, marks }] : [];
       if (part.textCommand) return [{ type: 'text', text: textCommands[part.textCommand], marks: [...marks, { type: 'textCommand', attrs: { name: part.textCommand } }] }];
+      if (part.lipsum !== undefined) return [{ type: 'lipsum', attrs: { range: part.lipsum } }];
       if (part.math !== undefined) return [{ type: 'math', attrs: { latex: part.math, display: false, delimiter: part.delimiters[0] } }];
       if (part.ref !== undefined) return [{ type: 'ref', attrs: { key: part.ref, ...(part.equation && {equation:true}) } }];
       if (part.cite !== undefined) return [{ type: 'cite', attrs: { key: part.cite } }];
@@ -50,15 +51,22 @@ function inlineContent(text) {
   try { return convert(parsed); } catch { return null; }
 }
 
-const headingLevels = ['section', 'subsection', 'subsubsection'];
+let headingBase = null;
+export function setHeadingBase(name) { headingBase = name; }
+const headingLevels = () => headingBase
+  ? [headingBase, 'section', 'subsection', 'subsubsection']
+  : ['section', 'subsection', 'subsubsection'];
 
 function heading(name, star, short, title, label) {
   const content = inlineContent(title) ?? (title ? [{ type: 'text', text: title }] : []);
   return {
     type: 'heading',
     attrs: {
-      level:name==='chapter'?1:headingLevels.indexOf(name)+1,
-      ...(name==='chapter'?{command:'chapter'}:{}),
+      level: name === 'chapter' ? 1 : headingLevels().indexOf(name) + 1,
+      // Keep the source command for heading numbering.  In book/report,
+      // \section has level 2 but must still be treated as a section, not a
+      // subsection, when the outline builds 1.1 / A.1 numbers.
+      command: name,
       numbered: !star,
       ...(short !== undefined ? { shortTitle: short } : {}),
       ...(label ? { label } : {}),
@@ -257,9 +265,12 @@ export function importBlock(block) {
   if (!text) return null;
   const image = parseImageBlock(text);
   if (image) return image;
-  const headingMatch = text.match(/^\\(chapter|section|subsection|subsubsection)(\*?)(?:\[([^\]]*)\])?\{([^{}]*)\}(?:[ \t]*\\label\{([^{}]*)\})?$/);
+  const headingNames = headingBase ? headingBase + '|section|subsection|subsubsection' : 'chapter|section|subsection|subsubsection';
+  const headingMatch = text.match(new RegExp('^\\\\(' + headingNames + ')(\\*?)(?:\\[([^\\]]*)\\])?\\{([^{}]*)\\}(?:[ \\t]*\\\\label\\{([^{}]*)\\})?$'));
   if (headingMatch) return heading(headingMatch[1], headingMatch[2], headingMatch[3], headingMatch[4], headingMatch[5]);
   if (text === '\\appendix') return {type:'appendixStart'};
+  const matter = /^\\(frontmatter|mainmatter|backmatter)$/.exec(text);
+  if (matter) return {type:'matterStart',attrs:{matter:matter[1].replace('matter','')||'main'}};
   if (text === '\\tableofcontents') return { type: 'tableOfContents' };
   if (/^\\(?:newpage|clearpage|pagebreak)(?:\[[^\]]*\])?$/.test(text)) return { type: 'pageBreak' };
   if (text === '\\hrule') return { type: 'horizontalRule' };
@@ -363,10 +374,16 @@ export function importBlock(block) {
     };
     return { type: 'paragraph', ...(Object.keys(attrs).length && { attrs }), content };
   }
+  const tikzBlock=block.trim().replace(/^\\resizebox\{[^{}]*\}\{!\}\{%?\s*/,'').replace(/%?\s*\}$/,'');
+  if(/^\\begin\{(?:tikzpicture|circuitikz)\}[\s\S]*\\end\{(?:tikzpicture|circuitikz)\}$/.test(tikzBlock)) return {type:'codeBlock',attrs:{language:'tikz'},content:[{type:'text',text:tikzBlock}]};
   return { type: 'raw', attrs: { source: block } };
 }
 
-const structural = /\\(tableofcontents|appendix)\b|\\(chapter|section|subsection|subsubsection)(\*?)(?:\[([^\]]*)\])?\{([^{}]*)\}(?:[ \t]*\\label\{([^{}]*)\})?|\\(newpage|clearpage|pagebreak)\b/g;
+function structuralPattern() {
+  const names = headingBase ? headingBase + '|section|subsection|subsubsection' : 'chapter|section|subsection|subsubsection';
+  const source = String.raw`\\(tableofcontents|appendix|frontmatter|mainmatter|backmatter)\b|\\(${names})(\*?)(?:\[([^\]]*)\])?\{([^{}]*)\}(?:[ \t]*\\label\{([^{}]*)\})?|\\(newpage|clearpage|pagebreak)\b`;
+  return new RegExp(source, 'g');
+}
 
 function splitParagraphs(block) {
   const parts = [];
@@ -404,23 +421,59 @@ function topLevelCommand(text, index) {
   }
   return depth===0;
 }
-function importSegment(block) {
+function importLayoutCommands(text) {
   const nodes = [];
   let cursor = 0;
-  structural.lastIndex = 0;
+  const pattern = /\\(?:pagestyle|thispagestyle)\{[^{}]*\}|\\(?:maketitle)\b|\\mbox\{\}/g;
+  let match;
+  while ((match = pattern.exec(text))) {
+    const before = importBlock(text.slice(cursor, match.index));
+    if (before) nodes.push(...(Array.isArray(before) ? before : [before]));
+    nodes.push({ type: 'layoutCommand', attrs: { command: match[0] } });
+    cursor = match.index + match[0].length;
+  }
+  const after = importBlock(text.slice(cursor));
+  if (after) nodes.push(...(Array.isArray(after) ? after : [after]));
+  return nodes;
+}
+
+function importSegment(block) {
+  const nodes = [];
+  const imagePattern = /\\begin\{figure\}[\s\S]*?\\end\{figure\}|\\begin\{wrapfigure\}[\s\S]*?\\end\{wrapfigure\}/g;
+  let imageMatch;
+  let imageCursor = 0;
+  while ((imageMatch = imagePattern.exec(block))) {
+    const before = block.slice(imageCursor, imageMatch.index);
+    if (before.trim()) nodes.push(...importSegment(before));
+    const image = parseImageBlock(imageMatch[0]);
+    if (image) nodes.push(image);
+    else {
+      const raw = importBlock(imageMatch[0]);
+      if (raw) nodes.push(raw);
+    }
+    imageCursor = imageMatch.index + imageMatch[0].length;
+  }
+  if (imageCursor > 0) {
+    const after = block.slice(imageCursor);
+    if (after.trim()) nodes.push(...importSegment(after));
+    return nodes;
+  }
+  let cursor = 0;
+  const structural = structuralPattern();
   let match;
   while ((match = structural.exec(block))) {
-    if((match[1]==='appendix'||match[2]==='chapter')&&!topLevelCommand(block,match.index))continue;
-    const before = importBlock(block.slice(cursor, match.index));
-    if (before) nodes.push(before);
+    if((match[1]==='appendix'||match[1]==='frontmatter'||match[1]==='mainmatter'||match[1]==='backmatter'||match[2]==='chapter')&&!topLevelCommand(block,match.index))continue;
+    const before = importLayoutCommands(block.slice(cursor, match.index));
+    nodes.push(...before);
     if(match[1]==='appendix')nodes.push({type:'appendixStart'});
+    else if(['frontmatter','mainmatter','backmatter'].includes(match[1]))nodes.push({type:'matterStart',attrs:{matter:match[1].replace('matter','')||'main'}});
     else if (match[1] === 'tableofcontents') nodes.push({ type: 'tableOfContents' });
     else if (match[7]) nodes.push({ type: 'pageBreak' });
     else nodes.push(heading(match[2], match[3], match[4], match[5], match[6]));
     cursor = match.index + match[0].length;
   }
-  const after = importBlock(block.slice(cursor));
-  if (after) nodes.push(after);
+  const after = importLayoutCommands(block.slice(cursor));
+  nodes.push(...after);
   return nodes;
 }
 

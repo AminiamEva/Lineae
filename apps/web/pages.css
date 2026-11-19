@@ -1089,11 +1089,133 @@ body.format-painter-active .ProseMirror * { cursor:copy; }
 .document-subfigures-caption .caption-text { min-width:0; text-align:justify; overflow-wrap:anywhere; }
 .document-subfigures-caption .caption-text:empty::before { content:attr(data-placeholder); opacity:.35; }
 
+/* TikZ editor modal (new feature, additive) */
+.tikz-overlay { position:fixed; inset:0; background:rgba(15,20,30,.45); z-index:1200; display:flex; align-items:center; justify-content:center; }
+.tikz-window { width:96vw; height:94vh; background:light-dark(#fff,#1c2230); color:light-dark(#1a1d24,#dfe3ea); border-radius:10px; box-shadow:0 12px 48px rgba(0,0,0,.35); display:flex; flex-direction:column; overflow:hidden; }
+.tikz-header { display:flex; align-items:center; gap:8px; padding:8px 14px; border-bottom:1px solid light-dark(#e3e7ee,#333c4e); font-size:13px; }
+.tikz-title { font-weight:600; margin-inline-end:10px; }
+.tikz-zoom-label { color:light-dark(#687386,#aab3c1); }
+.tikz-zoom-slider { width:180px; }
+.tikz-zoom-input { width:64px; padding:2px 6px; border:1px solid light-dark(#d5dbe5,#3a4356); border-radius:6px; background:inherit; color:inherit; font-size:12px; }
+.tikz-zoom-unit { color:light-dark(#687386,#aab3c1); }
+.tikz-spacer { flex:1; }
+.tikz-header button { padding:4px 14px; border:1px solid light-dark(#d5dbe5,#3a4356); border-radius:6px; background:light-dark(#f5f7fb,#263043); color:inherit; cursor:pointer; font-size:12px; }
+.tikz-header button:hover { background:light-dark(#e8edf5,#2f3a52); }
+.tikz-finish { background:#2f6fed !important; color:#fff !important; border-color:#2f6fed !important; }
+.tikz-body { flex:1; display:flex; min-height:0; }
+.tikz-palette { width:76px; overflow-y:auto; padding:8px; display:flex; flex-direction:column; gap:6px; border-inline-end:1px solid light-dark(#e3e7ee,#333c4e); }
+.tikz-sym { display:flex; align-items:center; justify-content:center; padding:4px; border:1px solid light-dark(#e3e7ee,#333c4e); border-radius:6px; background:inherit; cursor:pointer; }
+.tikz-sym:hover { background:light-dark(#eef2f8,#2a3448); }
+.tikz-canvas-wrap { flex:1; position:relative; min-width:0; background:light-dark(#fafbfd,#171d29); }
+.tikz-canvas { width:100%; height:100%; display:block; outline:none; cursor:crosshair; }
+.tikz-canvas.is-panning { cursor:grabbing; }
+.tikz-status { position:absolute; left:10px; bottom:8px; font-size:11px; color:light-dark(#8b95a7,#7d879c); pointer-events:none; }
+.tikz-side { width:220px; padding:10px; border-inline-start:1px solid light-dark(#e3e7ee,#333c4e); display:flex; flex-direction:column; gap:8px; font-size:12px; overflow-y:auto; }
+.tikz-tools { display:grid; grid-template-columns:1fr 1fr; gap:6px; }
+.tikz-tools button { padding:5px 4px; border:1px solid light-dark(#d5dbe5,#3a4356); border-radius:6px; background:inherit; color:inherit; cursor:pointer; font-size:12px; }
+.tikz-tools button.active { border-color:#2f6fed; color:#2f6fed; }
+.tikz-selection-info { min-height:1.2em; color:light-dark(#687386,#aab3c1); font-size:10px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.tikz-field { display:flex; flex-direction:column; gap:3px; color:light-dark(#687386,#aab3c1); }
+.tikz-field input,.tikz-field select { padding:3px 6px; border:1px solid light-dark(#d5dbe5,#3a4356); border-radius:6px; background:inherit; color:inherit; font-size:12px; }
+
+.tikz-sidebar { width:190px; overflow-y:auto; padding:8px; border-inline-end:1px solid light-dark(#e3e7ee,#333c4e); display:flex; flex-direction:column; gap:6px; }
+.tikz-search { padding:4px 8px; border:1px solid light-dark(#d5dbe5,#3a4356); border-radius:6px; background:inherit; color:inherit; font-size:12px; }
+.tikz-tree details { margin-bottom:4px; }
+.tikz-tree summary { cursor:pointer; font-weight:600; font-size:12px; padding:3px 2px; color:light-dark(#3a4356,#c5cdd9); }
+.tikz-tree .tikz-sym { display:block; width:100%; text-align:start; margin:2px 0; padding:4px 8px; font-size:12px; }
+
+.tikz-props { border-top:1px solid light-dark(#e3e7ee,#333c4e); padding-top:8px; display:flex; flex-direction:column; gap:6px; }
+.tikz-props-title { font-size:11px; font-weight:600; color:light-dark(#687386,#aab3c1); }
+.tikz-mirror-row { flex-direction:row; align-items:center; gap:6px; }
+.tikz-options { display:flex; flex-direction:column; gap:5px; max-height:190px; overflow:auto; }
+.tikz-property-panel { display:flex; flex-direction:column; gap:6px; }
+.tikz-prop-section { border-top:1px solid light-dark(#e3e7ee,#333c4e); padding-top:6px; }
+.tikz-prop-section-body { display:flex; flex-direction:column; gap:5px; }
+.tikz-prop-grid { display:grid; gap:4px; }
+.tikz-prop-grid.cols-2 { grid-template-columns:1fr 1fr; }
+.tikz-prop-button { padding:3px 5px; border:1px solid light-dark(#d5dbe5,#3a4356); border-radius:5px; background:inherit; color:inherit; cursor:pointer; font-size:11px; }
+.tikz-prop-button:hover,.tikz-prop-button.active { border-color:#2f6fed; color:#2f6fed; }
+.tikz-info-line { font-size:10px; color:light-dark(#687386,#aab3c1); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.tikz-option-field { flex-direction:row; align-items:center; gap:6px; }
+.tikz-option-field > span { flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.tikz-option-field input[type=checkbox] { margin:0; }
+.tikz-option-field select { min-width:0; flex:1; }
+.tikz-zoom-readout { font-size:11px; color:light-dark(#8b95a7,#7d879c); }
+.tikz-code-preview { display:block; margin:.55em 0; padding:6px 8px; border:1px solid light-dark(#dce2ec,#3a4356); border-radius:6px; background:light-dark(#fbfcfe,#202632); overflow:hidden; }
+.tikz-code-preview-svg { display:block; max-width:100%; height:auto; }
+.tikz-code-preview:empty { display:none; }
+.tikz-field input:disabled { opacity:.45; }
+
+.tikz-icon-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:4px; padding:4px 2px 8px; }
+.tikz-tree .tikz-sym { display:flex; align-items:center; justify-content:center; padding:4px 2px; }
+.tikz-tree .tikz-sym:hover { background:light-dark(#eef2f8,#2a3448); }
+
+/* TikZ block in the document body: paper-white background and figure-like spacing.
+   A compiled tikzpicture sits on the paper with \\intextsep (12pt) breathing room;
+   the code block inherits the paper background (transparent in both color themes). */
+.document-page .ProseMirror pre[data-language="tikz"] { background:transparent; border-radius:0; margin:var(--image-intextsep,12pt) auto; padding:.5em .75em; text-align:center; }
+.document-page .ProseMirror pre[data-language="tikz"] code { background:transparent; }
+
+/* Math floating toolbar & matrix context menu (new feature, additive) */
+.math-float-toolbar { position:fixed; z-index:1300; display:flex; align-items:center; gap:5px; padding:5px 7px; background:light-dark(#fff,#242c3d); border:1px solid light-dark(#d5dbe5,#3a4356); border-radius:8px; box-shadow:0 6px 24px rgba(0,0,0,.22); flex-wrap:wrap; max-width:340px; }
+.mft-colors { display:grid; grid-template-columns:repeat(4,16px); gap:3px; }
+.mft-swatch { width:16px; height:16px; border:1px solid light-dark(#c3cad6,#4a5568); border-radius:3px; cursor:pointer; padding:0; }
+.mft-swatch:hover { outline:2px solid #2f6fed; }
+.mft-btn { padding:3px 8px; border:1px solid light-dark(#d5dbe5,#3a4356); border-radius:5px; background:inherit; color:inherit; font-size:12px; cursor:pointer; }
+.mft-btn:hover { background:light-dark(#eef2f8,#2f3a52); }
+.mft-size { padding:2px 4px; border:1px solid light-dark(#d5dbe5,#3a4356); border-radius:5px; background:inherit; color:inherit; font-size:12px; max-width:118px; }
+.mft-fonts { display:flex; gap:2px; flex-wrap:wrap; max-width:120px; }
+.mft-font { width:22px; height:22px; font-size:15px; line-height:1; border:1px solid transparent; border-radius:4px; background:inherit; color:inherit; cursor:pointer; padding:0; }
+.mft-font:hover { border-color:#2f6fed; }
+.mft-accents { position:absolute; top:calc(100% + 4px); left:0; display:grid; grid-template-columns:repeat(5,30px); gap:3px; padding:6px; background:light-dark(#fff,#242c3d); border:1px solid light-dark(#d5dbe5,#3a4356); border-radius:8px; box-shadow:0 6px 24px rgba(0,0,0,.22); z-index:1301; }
+.math-float-toolbar { position:fixed; }
+.mft-accent { width:30px; height:28px; font-size:15px; border:1px solid transparent; border-radius:4px; background:inherit; color:inherit; cursor:pointer; padding:0; }
+.mft-accent:hover { border-color:#2f6fed; }
+.mft-glyph.mft-over { text-decoration:overline; }
+.math-matrix-menu { position:fixed; z-index:1302; min-width:180px; display:flex; flex-direction:column; padding:5px; background:light-dark(#fff,#242c3d); border:1px solid light-dark(#d5dbe5,#3a4356); border-radius:8px; box-shadow:0 8px 28px rgba(0,0,0,.25); }
+.mfm-item { text-align:start; padding:5px 10px; border:0; border-radius:5px; background:inherit; color:inherit; font-size:12.5px; cursor:pointer; }
+.mfm-item:hover { background:light-dark(#eef2f8,#2f3a52); }
+.mfm-envs { display:grid; grid-template-columns:1fr 1fr; border-top:1px solid light-dark(#e3e7ee,#333c4e); margin-top:3px; padding-top:3px; }
+
+/* Book / Report chapter headings and twoside furniture (new feature, additive).
+   Measured against XeLaTeX: chapter = \Huge (24.88pt @ 11pt ≈ 2.26em) bold,
+   beforeskip 50pt, afterskip 40pt; "Chapter N" label is generated by LaTeX
+   and only for numbered (mainmatter) chapters. */
+.document-page[data-document-class="book"] .ProseMirror h1,
+.document-page[data-document-class="report"] .ProseMirror h1 {
+  font-size: 2.26em; font-weight: 700; line-height: 1.2;
+  margin: calc(50pt - 3.5ex) 0 40pt; counter-increment: lineae-chapter;
+}
+.document-page[data-frontmatter="true"] .ProseMirror h1:first-of-type::before,
+.document-page[data-has-backmatter="true"] .ProseMirror h1:last-of-type::before,
+.document-page[data-frontmatter="true"] .ProseMirror h1:first-of-type::before,
+.document-page[data-has-backmatter="true"] .ProseMirror h1:last-of-type::before,
+.document-page[data-frontmatter="true"] .ProseMirror h1:first-of-type::before,
+.document-page[data-has-backmatter="true"] .ProseMirror h1:last-of-type::before { content:none; }
+.document-page[data-document-class="book"] .ProseMirror h1::before,
+.document-page[data-document-class="report"] .ProseMirror h1::before {
+  content: "Chapter " counter(lineae-chapter);
+  display: block;
+}
+.document-page[data-document-class="book"] .ProseMirror h1[data-matter="front"]::before,
+.document-page[data-document-class="report"] .ProseMirror h1[data-matter="front"]::before {
+  content: none;
+}
+.document-page[data-document-class="book"] .ProseMirror,
+.document-page[data-document-class="report"] .ProseMirror { counter-reset: lineae-chapter; }
+/* twoside: mirror furniture margins on even sheets (body column mirroring deferred) */
+.document-page .document-sheet[data-parity="even"] .document-page-header { left:var(--page-margin-right,47.456mm); right:var(--page-margin-left,47.191mm); }
+.document-page .document-sheet[data-parity="even"] .document-page-footer { left:var(--page-margin-right,47.456mm); right:var(--page-margin-left,47.191mm); }
 .tex-paragraph-break{display:block;height:0;line-height:0;pointer-events:none;}
 .tex-interchar-glue{display:inline-block;height:0;text-indent:0;pointer-events:none;}
 .tex-discretionary-hyphen::before{content:"-";}
 
 .ProseMirror [data-appendix-start]{position:relative;height:0;min-height:0;margin:0;padding:0;font-size:0;line-height:0;}
+.ProseMirror [data-matter-start]{display:none;height:0;min-height:0;margin:0;padding:0;font-size:0;line-height:0;}
+.ProseMirror [data-layout-command]{display:none;height:0;min-height:0;margin:0;padding:0;font-size:0;line-height:0;}
+.lipsum-content{display:block;}
+.lipsum-paragraph{display:block;margin:0 0 .8em;white-space:normal;text-align:justify;hyphens:auto;}
+.lipsum-paragraph:last-child{margin-bottom:0;}
 .ProseMirror [data-appendix-start]::before{content:'\\appendix';position:absolute;right:calc(100% + 28px);font:9px/1.2 system-ui;color:#88909a;white-space:nowrap;}
 @media print{.ProseMirror [data-appendix-start]::before{display:none;}}
 .document-page .ProseMirror p[data-tex-paragraph]{white-space:nowrap;text-align:left;hyphens:none;overflow-wrap:normal;word-break:normal;}

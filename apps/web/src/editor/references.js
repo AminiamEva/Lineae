@@ -3,6 +3,8 @@ import {createOutlinePanel} from '../ui/outline-panel.js';
 import { Node } from '@tiptap/core';
 import { t } from '../ui/i18n.mjs';
 import { numberedMathRows } from '../../latex/math-environments.mjs';
+import { usesCtex } from '../../latex/packages.mjs';
+import { displayPageNumber } from '../../latex/document-numbering.mjs';
 
 export const outline=headingOutline;
 
@@ -243,13 +245,21 @@ export const TableOfContents = Node.create({
         const pageRect = page.getBoundingClientRect();
         const pitch = sheet.offsetHeight + (Number.parseFloat(getComputedStyle(page).getPropertyValue('--page-gap')) || 0);
         const zoom = pageRect.width / page.offsetWidth || 1;
-        for (const row of rows) {
-          let node;
-          try { node = editor.view.nodeDOM(row.position); } catch { node = null; }
+        const headingElements = [...editor.view.dom.querySelectorAll('h1,h2,h3')];
+        rows.forEach((row, rowIndex) => {
+          const node = headingElements[rowIndex];
           const rect = node?.getBoundingClientRect?.();
-          const index = rect?.height ? Math.floor((rect.top - pageRect.top) / zoom / pitch) : -1;
-          row.page.textContent = index >= 0 ? String(index + 1) : '';
-        }
+          const index = node?.getAttribute?.('data-page-index') != null
+            ? Number(node.getAttribute('data-page-index'))
+            : rect?.height ? Math.floor((rect.top - pageRect.top) / zoom / pitch) : -1;
+          const mainStart = page.dataset.mainStart ? Number(page.dataset.mainStart) : null;
+          const frontmatter = page.dataset.frontmatter === 'true' || mainStart !== null;
+          const pageIndex = row.matter === 'main' && mainStart !== null && index >= 0 && index < mainStart
+            ? mainStart : index;
+          row.page.textContent = pageIndex >= 0
+            ? displayPageNumber(pageIndex, { frontmatter, mainStart }).text
+            : '';
+        });
       };
       const render = () => {
         dom.replaceChildren();
@@ -257,7 +267,8 @@ export const TableOfContents = Node.create({
         title.className = 'toc-title';
         title.dataset.zh = '目录';
         title.dataset.en = 'Contents';
-        title.textContent = t('目录','Contents');
+        const preamble = editor.state.doc.attrs.layoutPreamble || '';
+        title.textContent = usesCtex(preamble) ? '目录' : 'Contents';
         dom.append(title);
         rows = outline(editor.state.doc).map(item => {
           const row = document.createElement('div');
@@ -279,7 +290,7 @@ export const TableOfContents = Node.create({
           row.addEventListener('keydown',event=>{if(event.key==='Enter' || event.key===' '){event.preventDefault();jump();}});
           row.append(content,leader,pageNumber);
           dom.append(row);
-          return {position:item.position,page:pageNumber};
+          return {position:item.position,page:pageNumber,matter:item.matter};
         });
         updatePages();
       };

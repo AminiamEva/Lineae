@@ -17,6 +17,8 @@ const escape = text => text.replace(/[\u00A0\\{}%$&#_^~§¶•…–—‘’“
 // MathLive placeholders are editing aids with no LaTeX meaning.
 const withoutPlaceholders = latex => latex.replace(/\\placeholder\{[^{}]*\}/g, '');
 
+let serializationClass = 'article';
+export function setSerializationClass(name) { serializationClass = (name || 'article').toLowerCase(); }
 export function serialize(node) {
   const content = (node.content ?? []).map(serialize).join('');
   if (node.type === 'text') {
@@ -60,6 +62,7 @@ export function serialize(node) {
     case 'theoremBlock': return '\\begin{'+node.attrs.kind+'}'+(node.attrs.title?'['+node.attrs.title+']':'')+'\n'+content.trimEnd()+'\n\\end{'+node.attrs.kind+'}\n\n';
     case 'codeBlock': {
       const language=node.attrs?.language;
+      if(language==='tikz') return (node.content??[]).map(child=>child.text??'').join('')+'\n\n';
       const option=/^[A-Za-z0-9+_-]+$/.test(language??'') ? '[language='+language+']' : '';
       return '\\begin{lstlisting}'+option+'\n'+(node.content??[]).map(child=>child.text??'').join('')+'\n\\end{lstlisting}\n\n';
     }
@@ -78,12 +81,17 @@ export function serialize(node) {
       return body+'\n\n';
     }
     case 'heading': {
-      const name = node.attrs.command==='chapter'?'chapter':['section','subsection','subsubsection'][Math.min(node.attrs.level,3)-1];
+      const chaptered = serializationClass === 'book' || serializationClass === 'report';
+      const names = chaptered ? ['chapter','section','subsection'] : ['section','subsection','subsubsection'];
+      const name = node.attrs.command === 'chapter' ? 'chapter' : names[Math.min(Math.max(node.attrs.level,1),3)-1];
       const short = node.attrs.shortTitle ? '[' + node.attrs.shortTitle + ']' : '';
       const label = node.attrs.label ? '\\label{' + node.attrs.label + '}' : '';
       return '\\' + name + (node.attrs.numbered === false ? '*' : '') + short + '{' + content + '}' + label + '\n\n';
     }
     case 'appendixStart': return '\\appendix\n\n';
+    case 'layoutCommand': return node.attrs.command + '\n\n';
+    case 'lipsum': return '\\lipsum[' + (node.attrs.range || '1-7') + ']';
+    case 'matterStart': return '\\' + (node.attrs.matter || 'main') + '\n\n';
     case 'tableOfContents': return '\\tableofcontents\n\n';
     case 'pageBreak': return '\\newpage\n\n';
     case 'multiColumn': return '\\begin{multicols}{' + (node.attrs.count ?? 2) + '}\n' + content + '\\end{multicols}\n\n';

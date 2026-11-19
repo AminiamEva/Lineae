@@ -1,4 +1,5 @@
-import {AppendixStart} from './editor/appendix.js';
+import {AppendixStart,MatterStart,LayoutCommand} from './editor/appendix.js';
+import {Lipsum} from './editor/lipsum.js';
 import {projectLayoutPreamble} from './project/page-context.mjs';
 import {projectInputSource} from './project/input-support.mjs';
 import {installProjectPresentation} from './project/presentation.js';
@@ -67,7 +68,8 @@ import { installSpaceOverlay } from './editor/space-overlay.js';
 import { installTypesetPagination } from './editor/typeset-pagination.js';
 import { wrapMathWithDelimiters } from '../latex/delimiters.mjs';
 import { readDelimiterPair } from './editor/delimiter-input.js';
-import { serialize, importBlocks } from './editor/latex-codec.js';
+import { serialize, importBlocks, setSerializationClass } from './editor/latex-codec.js';
+import { setHeadingBase } from '../latex/blocks.mjs';
 import { Editor, Node, Extension, Mark, mergeAttributes, wrappingInputRule } from '@tiptap/core';
 import StarterKit from '@tiptap/starter-kit';
 import CodeBlock from '@tiptap/extension-code-block';
@@ -87,6 +89,7 @@ import { installTooltips } from './ui/tooltips.mjs';
 import { installRovingFocus } from './ui/keyboard-nav.mjs';
 import { fadeIn } from './ui/motion.mjs';
 import { getLanguage, localize, normalizeLanguage, setLanguage, t } from './ui/i18n.mjs';
+import { TikzEditor } from './tikz/controllers/tikzEditor.js';
 
 const citationLibrary = createCitationLibrary();
 
@@ -654,7 +657,7 @@ paper.before(documentPage);documentPage.append(paper);
 paper.replaceChildren();
 editor=new Editor({
   element:paper,
-  extensions:[AppendixStart,ProjectRegion,PageLayoutHistory,ConfigurableStarterKit.configure({heading:{levels:[1,2,3]},codeBlock:false}),LanguageCodeBlock,MultiSelection,PaperBehavior,TextStyle,TextCommand,Underline,Superscript,Subscript,SmallCaps,Boxed,Circled,PageBreak,MultiColumn,Table.configure({resizable:true}),TableRow,TableCell,TableHeader,Raw,DocumentImage,TheoremBlock,DescriptionList,DescriptionItem,MathNode,MathBlock,Ref,Cite,Footnote,Label,Subfigures,TableOfContents,Shortcuts],
+  extensions:[AppendixStart,MatterStart,LayoutCommand,Lipsum,ProjectRegion,PageLayoutHistory,ConfigurableStarterKit.configure({heading:{levels:[1,2,3]},codeBlock:false}),LanguageCodeBlock,MultiSelection,PaperBehavior,TextStyle,TextCommand,Underline,Superscript,Subscript,SmallCaps,Boxed,Circled,PageBreak,MultiColumn,Table.configure({resizable:true}),TableRow,TableCell,TableHeader,Raw,DocumentImage,TheoremBlock,DescriptionList,DescriptionItem,MathNode,MathBlock,Ref,Cite,Footnote,Label,Subfigures,TableOfContents,Shortcuts],
   content:'<p></p>',
 });
 function installMarginSelection(editor,page,paper) {
@@ -1246,10 +1249,16 @@ function load(text, markSaved = true) {
   if(!parsed)throw new Error(t('无法识别文档','Invalid document'));
   if (markSaved) {clearProjectAssets();sourceModeEntry=undefined;sourceModeCommits=[];sourceModeRedos=[];}
   citationLibrary.restoreState(readBibliographyMetadata(text));
+  // The book/report heading mapping must be active before blocks are imported;
+  // applyProfile() runs later, during pagination, which is too late for the
+  // initial \chapter -> heading conversion.
+  const documentClass = (/\\documentclass(?:\[[^\]]*\])?\{([^}]+)\}/.exec(parsed.start)?.[1] || 'article').toLowerCase();
+  setSerializationClass(documentClass);
+  setHeadingBase(documentClass === 'book' || documentClass === 'report' ? 'chapter' : null);
   // Preserve imported source exactly. Unsupported blocks remain directly accessible in source mode.
   documentParts=parsed;
   const content=parsed.blocks.flatMap((block,index)=>importBlocks(index===0 && readMeta('title')
-    ? block.replace(/^\s*\\maketitle\b[ \t]*(?:\r?\n|$)/,'') : block));
+    ? block.replace(/^\s*\\maketitle\b[ \t]*(?:\r?\n|$)/gm,'') : block));
   for (const block of content) identifyImportedBoxes(block);
   editor.chain().setMeta('addToHistory', false).setContent({type:'doc',attrs:{layoutPreamble:parsed.start,pageFurniture:readPageFurniture(parsed.start)},content:content.length?content:[{type:'paragraph'}]}).command(({tr})=>{tr.setDocAttribute('layoutPreamble',parsed.start);tr.setDocAttribute('pageFurniture',readPageFurniture(parsed.start));return true;}).run();
   refreshReferences(paper);syncTableAttributes();
@@ -2806,6 +2815,15 @@ groupButton(insert,['代码块','Code block'],async()=>{
   if(editor.isActive('codeBlock')) editor.chain().focus().updateAttributes('codeBlock',{language:language||null}).run();
   else editor.chain().focus().setCodeBlock({language:language||null}).run();
 });
+groupButton(insert,['TikZ','TikZ'],()=>{
+  try{
+    const editorEl=document.querySelector('.document-page .ProseMirror');
+    const textwidthCm=editorEl?editorEl.clientWidth*2.54/96:15;
+    const tikz=new TikzEditor({getTextwidthCm:()=>textwidthCm});
+    tikz.open(code=>{ if(code) editor.chain().focus().insertContent({type:'codeBlock',attrs:{language:'tikz'},content:[{type:'text',text:code}]}).run(); });
+  }catch(error){ console.error(error); alert('TikZ editor failed: '+(error?.message||error)); }
+});
+import { installMathFloatToolbar } from './ui/math-float-toolbar.js';
 const files=header.querySelector('.tools');
 const attachFolder=groupButton(files,['关联资源目录','Attach asset folder'],()=>{
   const picker=document.createElement('input');
@@ -3137,6 +3155,7 @@ ribbon.append(tabs,files,home,insert,layoutGroup,tableGroup,formatGroup,referenc
 groupButton(insert,'figure',()=>insertLocalImage(editor));
 sourceToolbar = installSourceToolbar({ribbon,groups,source:sourceView,rich:paper,heading:headingMenu});
 const toolbarController=installFloatingToolbar({header,ribbon,sourceView,getAutoHide:()=>sourceView.hidden?config.value.interface.toolbarAutoHide:config.value.interface.sourceToolbarAutoHide});
+installMathFloatToolbar({ editor });
 const settingsPanel=installSettingsPanel({config,onApply:applyImportedPreferences,onImport:()=>importConfig.click(),onExport:()=>exportConfig.click(),getDocument:()=>{sourceView.flush();return documentParts.start?structuredClone(pageSetup):null;},applyDocument:updatePageSetup});
 const settingsButton=document.createElement('button');settingsButton.id='settings-open';settingsButton.type='button';settingsButton.append(icon('settings'));settingsButton.onclick=()=>settingsPanel.show();footer.insertBefore(settingsButton,footer.querySelector(':scope>.tex-foot')??count);
 document.addEventListener('lineae-open-settings',()=>settingsPanel.show());

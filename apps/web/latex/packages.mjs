@@ -14,6 +14,8 @@ const dependencies = [
   { name: 'alphalph', pattern: /\\(?:alphalph|AlphAlph)\b/ },
   { name: 'zhnumber', pattern: /\\(?:chinese|zhnum|zhnumber)\b/ },
   { name: 'graphicx', pattern: /\\(?:includegraphics|scalebox|resizebox)\b/ },
+  { name: 'tikz', pattern: /\\begin\{tikzpicture\}/, satisfies: ['circuitikz'] },
+  { name: 'circuitikz', pattern: /\\(?:node|to)\[[^\]]*(?:ground|rground|sground|nground|vcc|vee|ocirc|diamondpole)\b/ },
   { name: 'multicol', pattern: /\\begin\{multicols\}/ },
   { name: 'adjustbox', pattern: /\\adjustbox\b/ },
   { name: 'caption', pattern: /\\caption\*/ },
@@ -29,6 +31,12 @@ const dependencies = [
 
 function withoutComments(source) {
   return source.replace(/\\[\\%]|%[^\r\n]*/g, match => match.startsWith('%') ? '' : match);
+}
+
+export function usesCtex(preamble) {
+  const source = withoutComments(preamble || '');
+  return /\\documentclass\s*(?:\[[^\]]*\]\s*)?\{ctex(?:art|rep|book|beamer)\}/.test(source) ||
+    /\\(?:usepackage|RequirePackage)\s*(?:\[[^\]]*\]\s*)?\{ctex\}/.test(source);
 }
 
 export function hasTitleCommand(source) {

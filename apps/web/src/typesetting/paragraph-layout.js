@@ -104,8 +104,35 @@ export function installParagraphLayout(editor){
       const element=editor.view.nodeDOM(start);if(!element?.offsetWidth||getComputedStyle(element).visibility==='hidden')return false;
       const style=getComputedStyle(element);
       if((node.attrs.align&&node.attrs.align!=='justify')||(!element.hasAttribute('data-tex-paragraph')&&!['justify','start'].includes(style.textAlign))||element.closest('[data-columns],.image-wrap-left,.image-wrap-right')||element.querySelector('.document-image'))return false;
-      const {items}=tokensFor(editor,node,start,element,options),width=element.getBoundingClientRect().width/(element.closest('.document-page').getBoundingClientRect().width/element.closest('.document-page').offsetWidth||1)-parseFloat(style.paddingLeft)-parseFloat(style.paddingRight)-parseFloat(style.borderLeftWidth)-parseFloat(style.borderRightWidth),indent=parseFloat(style.textIndent)||0;
-      const plan=optimumParagraph(items,line=>width-(line===0?indent:0),{...options,emergencyStretch:options.emergency?texDimension(options.emergency,parseFloat(style.fontSize)):0});
+      const {items}=tokensFor(editor,node,start,element,options);
+      const page=element.closest('.document-page');
+      const zoom=page?page.getBoundingClientRect().width/page.offsetWidth:1;
+      const elementRect=element.getBoundingClientRect();
+      const baseWidth=elementRect.width/zoom-parseFloat(style.paddingLeft)-parseFloat(style.paddingRight)-parseFloat(style.borderLeftWidth)-parseFloat(style.borderRightWidth);
+      const indent=parseFloat(style.textIndent)||0;
+      const lineHeight=(parseFloat(getComputedStyle(element).lineHeight)||parseFloat(style.fontSize)*1.2||16)*zoom;
+      const wraps=[...editor.view.dom.querySelectorAll('.document-image[data-wrap="true"]')].map(image=>{
+        const rect=image.getBoundingClientRect();
+        return {rect,side:image.dataset.wrapSide||'r'};
+      });
+      // Let CSS float the text around a wrapfigure paragraph.  The TeX
+      // paragraph pass emits manual line breaks and would otherwise put every
+      // line at the full column width, underneath the float.  Native float
+      // wrapping is the shape model the DOM already exposes.
+      if (wraps.some(wrap => wrap.rect.bottom > elementRect.top + .5 && wrap.rect.top < elementRect.bottom - .5)) return false;
+      const widthAt=line=>{
+        const top=elementRect.top+line*lineHeight;
+        const bottom=top+lineHeight;
+        let available=baseWidth;
+        for(const wrap of wraps){
+          if(wrap.rect.bottom<=top+.5||wrap.rect.top>=bottom-.5)continue;
+          const cut=(wrap.rect.width/zoom)+10;
+          if(/[rRiIoO]/.test(wrap.side))available-=cut;
+          else if(/[lL]/.test(wrap.side))available-=cut;
+        }
+        return Math.max(24,available);
+      };
+      const plan=optimumParagraph(items,line=>widthAt(line)-(line===0?indent:0),{...options,emergencyStretch:options.emergency?texDimension(options.emergency,parseFloat(style.fontSize)):0});
       if(!plan||plan.lines.length===1)return false;
       entries.push(Decoration.node(start,start+node.nodeSize,{'data-tex-paragraph':'true'}));
       for(const [lineNumber,line] of plan.lines.entries()){
@@ -124,7 +151,7 @@ export function installParagraphLayout(editor){
           if(!end.forced)entries.push(widget(end.to,'tex-paragraph-break'));
         }
       }
-      signature+='|'+start+':'+width+':'+items.map(item=>item.width.toFixed(3)).join(',')+':'+plan.lines.map(line=>line.end+','+line.ratio.toFixed(5)).join(';');
+      signature+='|'+start+':'+baseWidth+':'+wraps.map(w=>w.rect.top.toFixed(1)+','+w.rect.bottom.toFixed(1)+','+w.side).join(';')+':'+items.map(item=>item.width.toFixed(3)).join(',')+':'+plan.lines.map(line=>line.end+','+line.ratio.toFixed(5)).join(';');
       return false;
     });
     if(signature===lastSignature)return;lastSignature=signature;
