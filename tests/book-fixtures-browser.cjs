@@ -2,7 +2,9 @@
 const { createServer } = require('node:http');
 const { readFile } = require('node:fs/promises');
 const { resolve, extname, sep } = require('node:path');
+const { existsSync } = require('node:fs');
 const assert = require('node:assert/strict');
+if (!existsSync('bookreporttest/test_book.tex')) { console.log('SKIP book/report fixtures: bookreporttest is not present'); process.exit(0); }
 const root=resolve('apps/web');
 const server=createServer(async(req,res)=>{const pn=new URL(req.url,'http://localhost').pathname.replace(/\/$/,'/index.html');const p=resolve(root,'.'+pn);if(!p.startsWith(root+sep))return res.writeHead(403).end();try{res.setHeader('Content-Type',{'.js':'text/javascript','.mjs':'text/javascript','.css':'text/css','.html':'text/html','.svg':'image/svg+xml'}[extname(p)]??'application/octet-stream');res.end(await readFile(p));}catch{res.writeHead(404).end();}});
 (async()=>{await new Promise(d=>server.listen(0,'127.0.0.1',d));const browser=await chromium.launch({headless:true});try{const page=await browser.newPage({viewport:{width:1440,height:1000},locale:'en-US'});const errors=[];page.on('pageerror',e=>errors.push(e.message));await page.goto(`http://127.0.0.1:${server.address().port}`,{waitUntil:'networkidle'});await page.waitForTimeout(700);
