@@ -1,4 +1,4 @@
-export const imageWidthPattern = /^\d+(?:\.\d+)?(?:\\textwidth|\\linewidth|\\columnwidth|cm|mm|pt|in)$/;
+export const imageWidthPattern = /^(?:\d+(?:\.\d+)?)?(?:\\textwidth|\\linewidth|\\columnwidth|cm|mm|pt|in)$/;
 
 function dimension(value) {
   return imageWidthPattern.test(String(value ?? '').trim()) ? String(value).trim() : null;
@@ -67,14 +67,16 @@ function parseImageMarkup(source) {
 }
 
 export function relativeImageWidth(width, containerWidth) {
-  const image = /^(\d+(?:\.\d+)?)(\\textwidth|\\linewidth|\\columnwidth|cm|mm|pt|in)$/.exec(String(width ?? ''));
+  const image = /^(\d*(?:\.\d+)?)(\\textwidth|\\linewidth|\\columnwidth|cm|mm|pt|in)$/.exec(String(width ?? ''));
   if (!image) return '';
+  const amount = image[1] ? Number(image[1]) : 1;
   if (!image[2].startsWith('\\')) return width;
   const container = /^(\d+(?:\.\d+)?)(\\textwidth|\\linewidth|\\columnwidth|cm|mm|pt|in)$/.exec(String(containerWidth ?? ''));
+  if (image[2] === '\\linewidth' || image[2] === '\\columnwidth') return `${amount * 100}%`;
   if (container && container[2].startsWith('\\') && Number(container[1]) > 0) {
-    return `${(Number(image[1]) / Number(container[1])) * 100}%`;
+    return `${(amount / Number(container[1])) * 100}%`;
   }
-  return `${Number(image[1]) * 100}%`;
+  return `${amount * 100}%`;
 }
 
 export function parseImageBlock(source) {  const text = String(source ?? '').trim();
@@ -98,6 +100,11 @@ export function parseImageBlock(source) {  const text = String(source ?? '').tri
       captionEnabled:Boolean(captionMatch),captionNumbered:captionMatch? !captionMatch[1]:true,
       captionPosition:captionIndex>=0&&captionIndex<imageIndex?'above':'below',
       label:/\\label\{([^{}\r\n]+)\}/.exec(inner)?.[1]??null}};
+  }
+  const centerMatch = /^\\begin\{center\}\s*([\s\S]*?)\s*\\end\{center\}$/.exec(text);
+  if (centerMatch) {
+    const centeredImage = parseImageMarkup(centerMatch[1].trim());
+    if (centeredImage) return {...centeredImage,attrs:{...centeredImage.attrs,centered:true,align:'center'}};
   }
   const subfigureMatch = /^\\begin\{figure\}(?:\[([^\]]*)\])?\s*([\s\S]*?)\\end\{figure\}$/.exec(text);
   if (subfigureMatch && /\\begin\{subfigure\}/.test(subfigureMatch[2])) {

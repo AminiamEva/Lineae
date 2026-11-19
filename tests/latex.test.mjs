@@ -136,6 +136,8 @@ test('keeps wrapfigure and includegraphics textwidth factors independent', () =>
   assert.equal(relativeImageWidth('0.4\\textwidth','0.4\\textwidth'),'100%');
   assert.equal(relativeImageWidth('0.2\\textwidth','0.4\\textwidth'),'50%');
   assert.equal(relativeImageWidth('6cm','0.4\\textwidth'),'6cm');
+  assert.equal(relativeImageWidth('\\linewidth','0.4\\textwidth'),'100%');
+  assert.equal(relativeImageWidth('0.8\\linewidth','0.4\\textwidth'),'80%');
   const source=['\\begin{wrapfigure}{r}{0.4\\textwidth}','\\includegraphics[width=0.4\\textwidth]{pic.png}','\\caption{Long caption}','\\end{wrapfigure}'].join('\n');
   const [node]=importBlocks(source);
   assert.equal(node.type,'documentImage');

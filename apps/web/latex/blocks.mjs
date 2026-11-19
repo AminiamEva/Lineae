@@ -439,6 +439,25 @@ function importLayoutCommands(text) {
 
 function importSegment(block) {
   const nodes = [];
+  const imagePattern = /\\begin\{figure\}[\s\S]*?\\end\{figure\}|\\begin\{wrapfigure\}[\s\S]*?\\end\{wrapfigure\}/g;
+  let imageMatch;
+  let imageCursor = 0;
+  while ((imageMatch = imagePattern.exec(block))) {
+    const before = block.slice(imageCursor, imageMatch.index);
+    if (before.trim()) nodes.push(...importSegment(before));
+    const image = parseImageBlock(imageMatch[0]);
+    if (image) nodes.push(image);
+    else {
+      const raw = importBlock(imageMatch[0]);
+      if (raw) nodes.push(raw);
+    }
+    imageCursor = imageMatch.index + imageMatch[0].length;
+  }
+  if (imageCursor > 0) {
+    const after = block.slice(imageCursor);
+    if (after.trim()) nodes.push(...importSegment(after));
+    return nodes;
+  }
   let cursor = 0;
   const structural = structuralPattern();
   let match;
