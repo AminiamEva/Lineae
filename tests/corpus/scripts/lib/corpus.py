@@ -106,9 +106,16 @@ def sha256_file(path: Path) -> str:
 
 
 def sha256_tree(root: Path) -> str:
-    """Deterministic digest over relative paths and file bytes."""
+    """Deterministic digest over relative paths and file bytes.
+
+    Sorting Path objects is platform dependent: Windows compares case-folded
+    names, POSIX compares raw bytes. Order by the POSIX relative string so a
+    tree hashed on one host verifies on another.
+    """
     digest = hashlib.sha256()
-    for path in sorted(p for p in root.rglob("*") if p.is_file()):
+    files = sorted((p for p in root.rglob("*") if p.is_file()),
+                   key=lambda p: p.relative_to(root).as_posix())
+    for path in files:
         rel = path.relative_to(root).as_posix()
         digest.update(rel.encode("utf-8"))
         digest.update(b"\0")
