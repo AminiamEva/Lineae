@@ -1200,3 +1200,11 @@ body.format-painter-active .ProseMirror * { cursor:copy; }
 /* twoside: mirror furniture margins on even sheets (body column mirroring deferred) */
 .document-page .document-sheet[data-parity="even"] .document-page-header { left:var(--page-margin-right,47.456mm); right:var(--page-margin-left,47.191mm); }
 .document-page .document-sheet[data-parity="even"] .document-page-footer { left:var(--page-margin-right,47.456mm); right:var(--page-margin-left,47.191mm); }
+.tex-paragraph-break{display:block;height:0;line-height:0;pointer-events:none;}
+.tex-interchar-glue{display:inline-block;height:0;text-indent:0;pointer-events:none;}
+.tex-discretionary-hyphen::before{content:"-";}
+
+.ProseMirror [data-appendix-start]{position:relative;height:0;min-height:0;margin:0;padding:0;font-size:0;line-height:0;}
+.ProseMirror [data-appendix-start]::before{content:'\\appendix';position:absolute;right:calc(100% + 28px);font:9px/1.2 system-ui;color:#88909a;white-space:nowrap;}
+@media print{.ProseMirror [data-appendix-start]::before{display:none;}}
+.document-page .ProseMirror p[data-tex-paragraph]{white-space:nowrap;text-align:left;hyphens:none;overflow-wrap:normal;word-break:normal;}

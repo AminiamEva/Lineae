@@ -1,3 +1,4 @@
+import {AppendixStart} from './editor/appendix.js';
 import {projectLayoutPreamble} from './project/page-context.mjs';
 import {projectInputSource} from './project/input-support.mjs';
 import {installProjectPresentation} from './project/presentation.js';
@@ -655,7 +656,7 @@ paper.before(documentPage);documentPage.append(paper);
 paper.replaceChildren();
 editor=new Editor({
   element:paper,
-  extensions:[ProjectRegion,PageLayoutHistory,ConfigurableStarterKit.configure({heading:{levels:[1,2,3]},codeBlock:false}),LanguageCodeBlock,MultiSelection,PaperBehavior,TextStyle,TextCommand,Underline,Superscript,Subscript,SmallCaps,Boxed,Circled,PageBreak,MultiColumn,Table.configure({resizable:true}),TableRow,TableCell,TableHeader,Raw,DocumentImage,TheoremBlock,DescriptionList,DescriptionItem,MathNode,MathBlock,Ref,Cite,Footnote,Label,Subfigures,TableOfContents,Shortcuts],
+  extensions:[AppendixStart,ProjectRegion,PageLayoutHistory,ConfigurableStarterKit.configure({heading:{levels:[1,2,3]},codeBlock:false}),LanguageCodeBlock,MultiSelection,PaperBehavior,TextStyle,TextCommand,Underline,Superscript,Subscript,SmallCaps,Boxed,Circled,PageBreak,MultiColumn,Table.configure({resizable:true}),TableRow,TableCell,TableHeader,Raw,DocumentImage,TheoremBlock,DescriptionList,DescriptionItem,MathNode,MathBlock,Ref,Cite,Footnote,Label,Subfigures,TableOfContents,Shortcuts],
   content:'<p></p>',
 });
 function installMarginSelection(editor,page,paper) {
@@ -791,7 +792,7 @@ headingMenu.append(textStyleOption);
 for (const [value, label] of [['1','section'],['2','subsection'],['3','subsubsection']]) headingMenu.append(new Option(label, value));
 headingMenu.addEventListener('change', () => {
   const level = Number(headingMenu.value);
-  if (level) editor.chain().focus().setHeading({ level }).run();
+  if (level) editor.chain().focus().setHeading({ level, command:null }).run();
   else editor.chain().focus().setParagraph().run();
 });
 editor.on('transaction', () => { headingMenu.value = String(editor.getAttributes('heading').level ?? 0); });
@@ -1221,41 +1222,13 @@ function renderMeta() {
 renderMeta();
 typesetPagination=installTypesetPagination(documentPage,paper,metaBar,editor);
 typesetPagination.setTableContinuation(config.value.interface.continuedTables);
-function recordFormulaLineBreaks(document) {
-  if (documentPage.hidden) return false;
-  let changed=false;
-  editor.state.doc.forEach((paragraph,position,index)=>{
-    if (paragraph.type.name!=='paragraph') return;
-    paragraph.forEach((node,offset,childIndex)=>{
-      if (node.type.name!=='math') return;
-      const start=position+1+offset;
-      const startsLine=childIndex===0||paragraph.child(childIndex-1).type.name==='hardBreak';
-      let breakBefore=false;
-      if (!startsLine) {
-        const formula=editor.view.nodeDOM(start)?.getBoundingClientRect();
-        if (formula?.width) {
-          const preceding=editor.view.coordsAtPos(start-1,1);
-          // The browser wraps an inline-block that does not fit the remaining
-          // space. TeX does not, so record the same break as \newline.
-          breakBefore=formula.left<=preceding.left+.5;
-        }
-      }
-      if (Boolean(node.attrs.breakBefore)!==breakBefore) {
-        const target=document.content[index].content[childIndex];
-        target.attrs={...target.attrs,breakBefore:breakBefore||null};
-        changed=true;
-      }
-    });
-  });
-  return changed;
-}
 function source() {
   if(projectDocument.composition)return projectExplorer.model.file(projectDocument.composition.rootId).draft;
   const document=editor.getJSON();
   const untouched=importedSnapshot===JSON.stringify(document);
   const bareMath=document.content.some(node=>node.type==='mathBlock' && !node.attrs.delimiter &&
     /^\\begin\{(?:[dr]?cases|drcases|aligned|alignedat|gathered|split|[pbBvV]?(?:small)?matrix|array|darray|subarray|multlined)\}/.test(node.attrs.latex));
-  if (!recordFormulaLineBreaks(document) && untouched && !bareMath && (!readMeta('title') || hasTitleCommand(importedSource))) return importedSource;
+  if (untouched && !bareMath && (!readMeta('title') || hasTitleCommand(importedSource))) return importedSource;
   return exportDocument(documentParts,serialize(document),{chineseTypesetting:true});
 }
 savedSource=source();
@@ -1286,7 +1259,7 @@ function load(text, markSaved = true) {
   const content=parsed.blocks.flatMap((block,index)=>importBlocks(index===0 && readMeta('title')
     ? block.replace(/^\s*\\maketitle\b[ \t]*(?:\r?\n|$)/,'') : block));
   for (const block of content) identifyImportedBoxes(block);
-  editor.chain().setMeta('addToHistory', false).setContent({type:'doc',attrs:{layoutPreamble:parsed.start,pageFurniture:readPageFurniture(parsed.start)},content:content.length?content:[{type:'paragraph'}]}).run();
+  editor.chain().setMeta('addToHistory', false).setContent({type:'doc',attrs:{layoutPreamble:parsed.start,pageFurniture:readPageFurniture(parsed.start)},content:content.length?content:[{type:'paragraph'}]}).command(({tr})=>{tr.setDocAttribute('layoutPreamble',parsed.start);tr.setDocAttribute('pageFurniture',readPageFurniture(parsed.start));return true;}).run();
   refreshReferences(paper);syncTableAttributes();
   importedSource=text;importedSnapshot=JSON.stringify(editor.getJSON());
   if(markSaved) savedSource=text;
@@ -1512,13 +1485,15 @@ for (const name of mathSymbols) {
   if (/^[A-Za-z]+$/.test(name) && !(name in formulaCommands)) formulaCommands[name] = '\\' + name;
 }
 const structureCommands = {
+  appendix:()=>editor.chain().focus().insertContent({type:'appendixStart'}).run(),
+  chapter:()=>editor.chain().focus().setHeading({level:1}).updateAttributes('heading',{command:'chapter'}).run(),
   indent: () => { editor.view.focus(); return setParagraphIndent(editor,true); },
   noindent: () => { editor.view.focus(); return setParagraphIndent(editor,false); },
   par: () => editor.chain().focus().splitBlock().run(),
   ...Object.fromEntries(Object.keys(theoremNames).map(kind=>[kind,()=>editor.chain().focus().wrapIn('theoremBlock',{kind}).run()])),
-  section: () => editor.chain().focus().setHeading({ level: 1 }).run(),
-  subsection: () => editor.chain().focus().setHeading({ level: 2 }).run(),
-  subsubsection: () => editor.chain().focus().setHeading({ level: 3 }).run(),
+  section: () => editor.chain().focus().setHeading({ level: 1, command:null }).run(),
+  subsection: () => editor.chain().focus().setHeading({ level: 2, command:null }).run(),
+  subsubsection: () => editor.chain().focus().setHeading({ level: 3, command:null }).run(),
   itemize: () => editor.chain().focus().toggleBulletList().run(),
   enumerate: () => editor.chain().focus().toggleOrderedList().run(),
   table: () => insertDefaultTable(),
@@ -2169,9 +2144,9 @@ const shortcutActions = {
     toggleBulletList: () => editor.commands.toggleBulletList(),
     toggleOrderedList: () => editor.commands.toggleOrderedList(),
     paragraph: () => editor.commands.setParagraph(),
-    section: () => editor.commands.toggleHeading({level:1}),
-    subsection: () => editor.commands.toggleHeading({level:2}),
-    subsubsection: () => editor.commands.toggleHeading({level:3}),
+    section: () => editor.commands.toggleHeading({level:1,command:null}),
+    subsection: () => editor.commands.toggleHeading({level:2,command:null}),
+    subsubsection: () => editor.commands.toggleHeading({level:3,command:null}),
     hardBreak: () => editor.commands.setHardBreak(),
   },
   paragraph: {

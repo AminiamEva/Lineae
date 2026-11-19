@@ -1,3 +1,4 @@
+import {headingOutline} from '../../latex/heading-numbering.mjs';
 import { Extension } from '@tiptap/core';
 import { Fragment, Slice } from '@tiptap/pm/model';
 import { Plugin, TextSelection } from '@tiptap/pm/state';
@@ -226,20 +227,11 @@ function paperFormatting() {  let session = null;
   return plugin;
 }
 
-function numberedHeadings(doc) {
-  const counters = [0, 0, 0];
-  const decorations = [];
-  doc.descendants((node, position) => {
-    if (node.type.name !== 'heading' || node.attrs.numbered === false) return;
-    const level = node.attrs.level;
-    if (level > counters.length) return;
-    counters[level - 1]++;
-    counters.fill(0, level);
-    decorations.push(Decoration.node(position, position + node.nodeSize, {
-      'data-section-number': counters.slice(0, level).join('.'),
-    }));
-  });
-  return DecorationSet.create(doc, decorations);
+function numberedHeadings(doc){
+ return DecorationSet.create(doc,headingOutline(doc).filter(item=>item.number).map(item=>{
+  const node=doc.nodeAt(item.position);
+  return Decoration.node(item.position,item.position+node.nodeSize,{'data-section-number':item.number,...(item.appendix?{'data-appendix-heading':'true'}:{})});
+ }));
 }
 
 const CJK_CHAR = /[\u2E80-\u2FFF\u3040-\u30FF\u3400-\u4DBF\u4E00-\u9FFF\uAC00-\uD7AF\uF900-\uFAFF]/;
@@ -406,6 +398,7 @@ export const PaperBehavior = Extension.create({
     }, {
       types: ['heading'],
       attributes: {
+        command:{default:null,parseHTML:element=>element.dataset.headingCommand??null,renderHTML:({command})=>command?{'data-heading-command':command}:{}},
         numbered: {
           default: true,
           parseHTML: element => element.dataset.numbered !== 'false',

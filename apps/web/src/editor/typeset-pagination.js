@@ -1,3 +1,4 @@
+import {installParagraphLayout} from '../typesetting/paragraph-layout.js';
 import {documentLayoutBlocks} from '../project/fold-layout.mjs';
 import { planPagination, planTableRows, typesetProfile } from '../../latex/typeset-layout.mjs';
 import { setSerializationClass } from './latex-codec.js';
@@ -113,6 +114,8 @@ function paragraphLines(editor, element, block, pageRect, zoom) {
 
 export function installTypesetPagination(page, paper, meta, editor) {
   const editable = paper.querySelector('.ProseMirror');
+  const paragraphLayout=installParagraphLayout(editor);
+  let paragraphPreamble='';
   const sheets = document.createElement('div');
   sheets.className = 'document-sheets';
   sheets.setAttribute('aria-hidden', 'true');
@@ -276,6 +279,7 @@ export function installTypesetPagination(page, paper, meta, editor) {
   }
 
   function applyProfile(preamble) {
+    paragraphPreamble=preamble;
     profile = typesetProfile(preamble);
     furniture = readPageFurniture(preamble);
     page.dataset.documentClass = profile.className;
@@ -306,6 +310,7 @@ export function installTypesetPagination(page, paper, meta, editor) {
   }
 
   function layoutFlow() {
+    paragraphLayout.layout(paragraphPreamble);
     paginationStyle.textContent = '';
     translations = [];
     setLineBreaks([]);
@@ -351,6 +356,7 @@ export function installTypesetPagination(page, paper, meta, editor) {
       if(index===0&&element.matches('.math-display'))baseRules.push(selector+'{margin-top:0}');
     });
     paginationStyle.textContent=baseRules.join('\n');
+    paragraphLayout.layout(paragraphPreamble);
     const pageRect = page.getBoundingClientRect();
     const zoom = pageRect.width / page.offsetWidth || 1;
     const computed = getComputedStyle(page);
