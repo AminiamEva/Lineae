@@ -39,33 +39,71 @@ function needsLuaTex(source) {
   return /\usegdlibrary|graphdrawing|\directlua|\latelua|luacode|fontspec|unicode-math/.test(source);
 }
 
+const PREAMBLE_COMMAND = /^\s*\\(?:usepackage|RequirePackage|usetikzlibrary|usegdlibrary|newcommand|renewcommand|providecommand|DeclareRobustCommand|newenvironment|renewenvironment|NewDocumentCommand|RenewDocumentCommand|ProvideDocumentCommand|DeclareDocumentCommand|DeclareMathOperator|newtheorem|def|gdef|edef|xdef|let|newcounter|newlength|setlength|tikzset|pgfplotsset|colorlet|definecolor)\b/;
+
+function braceBalance(text) {
+  let depth = 0;
+  let escaped = false;
+  let comment = false;
+  for (const character of text) {
+    if (comment) { if (character === '\n') comment = false; continue; }
+    if (escaped) { escaped = false; continue; }
+    if (character === '\\') { escaped = true; continue; }
+    if (character === '%') { comment = true; continue; }
+    if (character === '{') depth++;
+    else if (character === '}') depth--;
+  }
+  return depth;
+}
+
+// Split a fragment into complete preamble declarations and the drawing body.
+// A line-based split is not enough for \newcommand: its replacement text is a
+// balanced brace group that may span any number of lines.
+function splitTikzFragment(source) {
+  const lines = source.split(/\r?\n/);
+  const blocks = [];
+  const body = [];
+  for (let index = 0; index < lines.length; index++) {
+    const line = lines[index];
+    if (!PREAMBLE_COMMAND.test(line)) { body.push(line); continue; }
+    const block = [line];
+    let balance = braceBalance(line);
+    while (balance > 0 && index + 1 < lines.length) {
+      index++;
+      block.push(lines[index]);
+      balance += braceBalance(lines[index]);
+    }
+    blocks.push(block.join('\n'));
+  }
+  const preamble = blocks.join('\n').trim();
+  return { preamble, blocks, body: body.join('\n').trim() };
+}
+
+function stripDocumentWrapper(source) {
+  return source
+    .replace(/^\s*\\documentclass(?:\[[^\]]*\])?\{[^{}]+\}[^\n]*(?:\r?\n|$)/m, '')
+    .replace(/\\begin\{document\}/g, '')
+    .replace(/\\end\{document\}/g, '')
+    .trim();
+}
+
+function fragmentForInsertion(source) {
+  const complete = /\\documentclass|\\bye\b/.test(source);
+  const unwrapped = complete ? stripDocumentWrapper(source) : source.trim();
+  const { blocks, body } = splitTikzFragment(unwrapped);
+  // \usepackage is only legal in the preamble of the host document.  Keep
+  // library loads and macro definitions, which are valid in the body, but do
+  // not inject a second package-loading block into the document.
+  const safePreamble = blocks
+    .filter(block => !/^\s*\\(?:usepackage|RequirePackage)\b/.test(block))
+    .join('\n');
+  return [safePreamble, body].filter(Boolean).join('\n').trim();
+}
+
 function tikzDocument(source, figures) {
   if (figures.isCompleteDocument(source)) return { document: source, engine: needsLuaTex(source) ? 'lualatex' : 'auto' };
-  const lines = source.split(/\r?\n/);
-  const packages = [];
-  const libraries = [];
-  const gdlibraries = [];
-  const preamble = [];
-  const bodyLines = [];
-  for (const line of lines) {
-    let m = /^\s*\\(?:usepackage|RequirePackage)(?:\[[^\]]*\])?\{([^{}]+)\}/.exec(line);
-    if (m) { packages.push(...m[1].split(',').map(s => s.trim()).filter(Boolean)); continue; }
-    m = /^\s*\\usetikzlibrary\{([^{}]+)\}/.exec(line);
-    if (m) { libraries.push(...m[1].split(',').map(s => s.trim()).filter(Boolean)); continue; }
-    m = /^\s*\\usegdlibrary\{([^{}]+)\}/.exec(line);
-    if (m) { gdlibraries.push(...m[1].split(',').map(s => s.trim()).filter(Boolean)); continue; }
-    if (/^\s*\\(?:tikzset|pgfplotsset|setlength|def|newcommand|renewcommand|DeclareMathOperator|color|definecolor)/.test(line)) {
-      preamble.push(line); continue;
-    }
-    bodyLines.push(line);
-  }
-  const body = bodyLines.join('\n').trim();
-  const document = figures.wrapTikz(body, {
-    packages: packages.join(','),
-    libraries: libraries.join(','),
-    gdlibraries: gdlibraries.join(','),
-    preamble: preamble.join('\n'),
-  });
+  const { preamble, body } = splitTikzFragment(source);
+  const document = figures.wrapTikz(body, { preamble });
   return { document, engine: needsLuaTex(document) ? 'lualatex' : 'auto' };
 }
 
@@ -172,7 +210,7 @@ export function openTikzStudio({ onInsert } = {}) {
   };
   overlay.querySelector('.tikz-studio-close').onclick = close;
   overlay.querySelector('.tikz-studio-insert').onclick = () => {
-    const source = code.value.trim();
+    const source = fragmentForInsertion(code.value.trim());
     if (!source) return;
     close();
     onInsert?.(source);
