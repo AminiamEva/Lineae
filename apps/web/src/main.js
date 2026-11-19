@@ -66,7 +66,8 @@ import { installSpaceOverlay } from './editor/space-overlay.js';
 import { installTypesetPagination } from './editor/typeset-pagination.js';
 import { wrapMathWithDelimiters } from '../latex/delimiters.mjs';
 import { readDelimiterPair } from './editor/delimiter-input.js';
-import { serialize, importBlocks } from './editor/latex-codec.js';
+import { serialize, importBlocks, setSerializationClass } from './editor/latex-codec.js';
+import { setHeadingBase } from '../latex/blocks.mjs';
 import { Editor, Node, Extension, Mark, mergeAttributes, wrappingInputRule } from '@tiptap/core';
 import StarterKit from '@tiptap/starter-kit';
 import CodeBlock from '@tiptap/extension-code-block';
@@ -1274,6 +1275,12 @@ function load(text, markSaved = true) {
   if(!parsed)throw new Error(t('无法识别文档','Invalid document'));
   if (markSaved) {clearProjectAssets();sourceModeEntry=undefined;sourceModeCommits=[];sourceModeRedos=[];}
   citationLibrary.restoreState(readBibliographyMetadata(text));
+  // The book/report heading mapping must be active before blocks are imported;
+  // applyProfile() runs later, during pagination, which is too late for the
+  // initial \chapter -> heading conversion.
+  const documentClass = (/\\documentclass(?:\[[^\]]*\])?\{([^}]+)\}/.exec(parsed.start)?.[1] || 'article').toLowerCase();
+  setSerializationClass(documentClass);
+  setHeadingBase(documentClass === 'book' || documentClass === 'report' ? 'chapter' : null);
   // Preserve imported source exactly. Unsupported blocks remain directly accessible in source mode.
   documentParts=parsed;
   const content=parsed.blocks.flatMap((block,index)=>importBlocks(index===0 && readMeta('title')

@@ -17,6 +17,8 @@ const escape = text => text.replace(/[\u00A0\\{}%$&#_^~§¶•…–—‘’“
 // MathLive placeholders are editing aids with no LaTeX meaning.
 const withoutPlaceholders = latex => latex.replace(/\\placeholder\{[^{}]*\}/g, '');
 
+let serializationClass = 'article';
+export function setSerializationClass(name) { serializationClass = (name || 'article').toLowerCase(); }
 export function serialize(node) {
   const content = (node.content ?? []).map(serialize).join('');
   if (node.type === 'text') {
@@ -79,7 +81,9 @@ export function serialize(node) {
       return body+'\n\n';
     }
     case 'heading': {
-      const name = ['section','subsection','subsubsection'][Math.min(node.attrs.level,3)-1];
+      const chaptered = serializationClass === 'book' || serializationClass === 'report';
+      const names = chaptered ? ['chapter','section','subsection'] : ['section','subsection','subsubsection'];
+      const name = names[Math.min(Math.max(node.attrs.level,1),3)-1];
       const short = node.attrs.shortTitle ? '[' + node.attrs.shortTitle + ']' : '';
       const label = node.attrs.label ? '\\label{' + node.attrs.label + '}' : '';
       return '\\' + name + (node.attrs.numbered === false ? '*' : '') + short + '{' + content + '}' + label + '\n\n';

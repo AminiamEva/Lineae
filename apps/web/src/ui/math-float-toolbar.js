@@ -196,21 +196,28 @@ export function installMathFloatToolbar({ editor }) {
     const sel = editor.state.selection;
     return isMathSel(sel) ? { pos: sel.from, node: sel.node } : null;
   };
+  const selectedLatex = (field, range) => {
+    try { return field.getValue(range) ?? ''; }
+    catch { return ''; }
+  };
+
   const applyLatex = fn => {
     if (!current) return;
     if (current.partial) {
       const { field } = current;
-      const [from, to] = current.range;
-      const value = field.value ?? '';
-      const selected = value.slice(from, to);
+      const selected = selectedLatex(field, current.range);
       if (!selected) return;
       const replacement = fn(selected);
       if (replacement === selected) return;
       holdToolbarUntil = performance.now() + 1000;
-      field.value = value.slice(0, from) + replacement + value.slice(to);
+      field.insert(replacement, { selection: 'item' });
       field.dispatchEvent(new Event('input', { bubbles: true }));
       field.focus();
-      field.selection = { ranges: [[from, from + replacement.length]], direction: 'forward' };
+      setTimeout(() => {
+        if (!current?.partial || current.field !== field || !field.isConnected) return;
+        const [from, to] = field.selection?.ranges?.[0] ?? [0, 0];
+        if (from === to) hide(true);
+      }, 1050);
       return;
     }
     const latex = fn(current.node.attrs.latex ?? '');
@@ -319,7 +326,8 @@ export function installMathFloatToolbar({ editor }) {
     const node = editor.state.doc.nodeAt(detail.position);
     if (!node || !['math', 'mathBlock'].includes(node.type.name)) return hide();
     const [from, to] = [detail.from, detail.to];
-    if (from === to || !isCompleteMathSelection(detail.field.value ?? '', from, to)) return hide();
+    const selected = selectedLatex(detail.field, [from, to]);
+    if (!selected || !isCompleteMathSelection(selected, 0, selected.length)) return hide();
     current = {
       pos: detail.position,
       node,
@@ -328,7 +336,7 @@ export function installMathFloatToolbar({ editor }) {
       range: [from, to],
     };
     buildBarOnce();
-    fillFonts((detail.field.value ?? '').slice(from, to));
+    fillFonts(selected);
     bar.querySelector('.mft-accents').hidden = true;
     const rect = detail.field.getBoundingClientRect();
     if (!rect) return hide();

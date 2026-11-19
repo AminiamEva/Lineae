@@ -50,14 +50,18 @@ function inlineContent(text) {
   try { return convert(parsed); } catch { return null; }
 }
 
-const headingLevels = ['section', 'subsection', 'subsubsection'];
+let headingBase = null;
+export function setHeadingBase(name) { headingBase = name; }
+const headingLevels = () => headingBase
+  ? [headingBase, 'section', 'subsection', 'subsubsection']
+  : ['section', 'subsection', 'subsubsection'];
 
 function heading(name, star, short, title, label) {
   const content = inlineContent(title) ?? (title ? [{ type: 'text', text: title }] : []);
   return {
     type: 'heading',
     attrs: {
-      level: headingLevels.indexOf(name) + 1,
+      level: headingLevels().indexOf(name) + 1,
       numbered: !star,
       ...(short !== undefined ? { shortTitle: short } : {}),
       ...(label ? { label } : {}),
@@ -256,7 +260,8 @@ export function importBlock(block) {
   if (!text) return null;
   const image = parseImageBlock(text);
   if (image) return image;
-  const headingMatch = text.match(/^\\(section|subsection|subsubsection)(\*?)(?:\[([^\]]*)\])?\{([^{}]*)\}(?:[ \t]*\\label\{([^{}]*)\})?$/);
+  const headingNames = headingBase ? headingBase + '|section|subsection|subsubsection' : 'section|subsection|subsubsection';
+  const headingMatch = text.match(new RegExp('^\\\\(' + headingNames + ')(\\*?)(?:\\[([^\\]]*)\\])?\\{([^{}]*)\\}(?:[ \\t]*\\\\label\\{([^{}]*)\\})?$'));
   if (headingMatch) return heading(headingMatch[1], headingMatch[2], headingMatch[3], headingMatch[4], headingMatch[5]);
   if (text === '\\tableofcontents') return { type: 'tableOfContents' };
   if (/^\\(?:newpage|clearpage|pagebreak)(?:\[[^\]]*\])?$/.test(text)) return { type: 'pageBreak' };
@@ -366,7 +371,11 @@ export function importBlock(block) {
   return { type: 'raw', attrs: { source: block } };
 }
 
-const structural = /\\(tableofcontents)\b|\\(section|subsection|subsubsection)(\*?)(?:\[([^\]]*)\])?\{([^{}]*)\}(?:[ \t]*\\label\{([^{}]*)\})?|\\(newpage|clearpage|pagebreak)\b/g;
+function structuralPattern() {
+  const names = headingBase ? headingBase + '|section|subsection|subsubsection' : 'section|subsection|subsubsection';
+  const source = String.raw`\\(tableofcontents)\b|\\(${names})(\*?)(?:\[([^\]]*)\])?\{([^{}]*)\}(?:[ \t]*\\label\{([^{}]*)\})?|\\(newpage|clearpage|pagebreak)\b`;
+  return new RegExp(source, 'g');
+}
 
 function splitParagraphs(block) {
   const parts = [];
@@ -392,7 +401,7 @@ function splitParagraphs(block) {
 function importSegment(block) {
   const nodes = [];
   let cursor = 0;
-  structural.lastIndex = 0;
+  const structural = structuralPattern();
   let match;
   while ((match = structural.exec(block))) {
     const before = importBlock(block.slice(cursor, match.index));

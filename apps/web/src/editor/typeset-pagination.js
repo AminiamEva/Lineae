@@ -1,10 +1,14 @@
 import {documentLayoutBlocks} from '../project/fold-layout.mjs';
 import { planPagination, planTableRows, typesetProfile } from '../../latex/typeset-layout.mjs';
+import { setSerializationClass } from './latex-codec.js';
+import { setHeadingBase } from '../../latex/blocks.mjs';
 import { readPageFurniture, pageFurnitureText, furnitureSlots } from '../../latex/page-furniture.mjs';
+import { displayPageNumber } from '../../latex/document-numbering.mjs';
 import { Plugin, PluginKey } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
 
 const lineBreakKey = new PluginKey('lineaePaginationLineBreaks');
+let chapterPages = new Set();
 const graphemeSegmenter = typeof Intl.Segmenter === 'function'
   ? new Intl.Segmenter(undefined, { granularity:'grapheme' }) : null;
 
@@ -243,22 +247,27 @@ export function installTypesetPagination(page, paper, meta, editor) {
     sheets.replaceChildren(...Array.from({ length: count }, (_, index) => {
       const sheet = document.createElement('div');
       sheet.className = 'document-sheet';
-      const pageNumber = index + 1;
+      const frontmatter = page.dataset.frontmatter === 'true';
+      const mainStart = frontmatter && chapterPages.size ? Math.min(...chapterPages) : null;
+      const display = displayPageNumber(index, { frontmatter, mainStart });
+      sheet.dataset.parity = display.value % 2 ? 'odd' : 'even';
+      const pageNumber = display.value;
+      const plainChapter = chapterPages.has(index);
       const marks = pageMarks(index);
       const plainTitlePage = maketitle && index === 0;
-      const headerSlots = plainTitlePage ? {} : furnitureSlots(furniture, 'header', pageNumber);
-      const footerSlots = plainTitlePage ? {} : furnitureSlots(furniture, 'footer', pageNumber);
+      const headerSlots = (plainTitlePage || plainChapter) ? {} : furnitureSlots(furniture, 'header', pageNumber);
+      const footerSlots = (plainTitlePage || plainChapter) ? {} : furnitureSlots(furniture, 'footer', pageNumber);
       const header = furnitureElement('header', headerSlots, pageNumber,
         Object.values(headerSlots).some(Boolean) || (!plainTitlePage && furniture.rules.headWidth !== '0pt'), marks);
       const footer = furnitureElement('footer', footerSlots, pageNumber,
         Object.values(footerSlots).some(Boolean) || (!plainTitlePage && furniture.rules.footWidth !== '0pt'), marks);
-      if (furniture.style === 'fancy' && !plainTitlePage) {
+      if (furniture.style === 'fancy' && !plainTitlePage && !plainChapter) {
         if (header) sheet.append(header);
         if (footer) sheet.append(footer);
       } else {
         const number = document.createElement('span');
         number.className = 'document-page-number';
-        number.textContent = String(pageNumber);
+        number.textContent = display.text;
         sheet.append(number);
       }
       return sheet;
@@ -270,6 +279,9 @@ export function installTypesetPagination(page, paper, meta, editor) {
     profile = typesetProfile(preamble);
     furniture = readPageFurniture(preamble);
     page.dataset.documentClass = profile.className;
+    page.dataset.frontmatter = String(/\\frontmatter/.test(preamble));
+    setSerializationClass(profile.className);
+    setHeadingBase(profile.className === 'book' || profile.className === 'report' ? 'chapter' : null);
     page.dataset.pageStyle = furniture.style === 'fancy' ? 'fancy' : profile.pageStyle;
     page.style.setProperty('--page-head-rule-width', furniture.rules.headWidth);
     page.style.setProperty('--page-head-rule-color', furniture.rules.headColor);
@@ -362,6 +374,10 @@ export function installTypesetPagination(page, paper, meta, editor) {
     children.forEach((element, index) => {
       if (element.matches('.page-break, [data-page-break]') && blocks[index + 1]) blocks[index + 1].forceBreak = true;
     });
+    const chaptered = page.dataset.documentClass === 'book' || page.dataset.documentClass === 'report';
+    if (chaptered) children.forEach((element, index) => {
+      if (element.tagName === 'H1' && index > 0 && blocks[index]) blocks[index].forceBreak = true;
+    });
 
     const virtual = [];
     const blockItems = blocks.map((block, blockIndex) => {
@@ -444,6 +460,19 @@ export function installTypesetPagination(page, paper, meta, editor) {
     paginationStyle.textContent = rules.join('\n');
 
     const pitch = pageHeight + pageGap;
+    chapterPages = new Set();
+    if (chaptered) children.forEach((element, index) => {
+      if (element.tagName !== 'H1' || !blocks[index]) return;
+      const pageIndex = Math.min(plan.pageCount - 1, Math.max(0, Math.round((blocks[index].top + (translations[index] || 0) - marginTop) / pitch)));
+      chapterPages.add(pageIndex);
+    });
+    const frontmatter = page.dataset.frontmatter === 'true';
+    const mainStart = frontmatter && chapterPages.size ? Math.min(...chapterPages) : null;
+    if (chaptered) children.forEach((element, index) => {
+      if (element.tagName !== 'H1' || !blocks[index]) return;
+      const pageIndex = Math.min(plan.pageCount - 1, Math.max(0, Math.round((blocks[index].top + (translations[index] || 0) - marginTop) / pitch)));
+      element.dataset.matter = frontmatter && pageIndex < mainStart ? 'front' : 'main';
+    });
     const stackHeight = plan.pageCount * pageHeight + (plan.pageCount - 1) * pageGap;
     const editorTop = unscaledRect(editable, pageRect, zoom).top;
     const lastBodyBottom = (plan.pageCount - 1) * pitch + pageHeight - marginBottom;
