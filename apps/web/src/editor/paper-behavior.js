@@ -6,7 +6,7 @@ import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import { listMarkerCSS } from '../../latex/list-numbering.mjs';
 import { t } from '../ui/i18n.mjs';
 import { tikzPreviewWidget } from '../tikz/preview-renderer.js';
-import { generalTikzPreviewWidget } from '../ui/tikz-studio.js';
+import { generalTikzPreviewWidget, openTikzStudio, tikzStagingFromPreamble } from '../ui/tikz-studio.js';
 
 function tableCaptionWidget(caption) {
   const element=document.createElement('div');
@@ -91,7 +91,20 @@ function tableLineControlsPlugin() {
   }}});
 }
 
-function paperFormatting() {  let session = null;
+let paperEditor = null;
+
+function replaceTikzCode(editor, position, body) {
+  if (!editor) return;
+  const node = editor.state.doc.nodeAt(position);
+  if (node?.type.name !== 'codeBlock') return;
+  const text = body.trim();
+  const transaction = editor.state.tr.replaceWith(position + 1, position + node.nodeSize - 1, editor.state.schema.text(text));
+  editor.view.dispatch(transaction);
+}
+
+function paperFormatting(editor = null) {
+  paperEditor = editor;
+  let session = null;
   let composing = false;
   let preeditDOM = null;
   function compositionAnchor(view) {
@@ -324,7 +337,11 @@ function formattingMarks(doc, preamble = '') {
     }
     if (node.type.name === 'codeBlock') {
       if (node.attrs.language === 'tikz-general') {
-        decorations.push(Decoration.widget(position, generalTikzPreviewWidget(node.textContent, preamble), { side: -1 }));
+        decorations.push(Decoration.widget(position, generalTikzPreviewWidget(node.textContent, preamble, () => openTikzStudio({
+          initialLibraries: tikzStagingFromPreamble(preamble),
+          initialBody: node.textContent,
+          onInsert: ({ body }) => replaceTikzCode(paperEditor, position, body),
+        })), { side: -1 }));
       } else if (node.attrs.language === 'tikz' || node.attrs.language === 'circuitikz') {
         decorations.push(Decoration.widget(position, tikzPreviewWidget(node.textContent), { side: -1 }));
       }
@@ -604,7 +621,7 @@ export const PaperBehavior = Extension.create({
   },
   addProseMirrorPlugins() {
     return [
-      paperFormatting(),
+      paperFormatting(this.editor),
       tableLineControlsPlugin(),
       new Plugin({
         props: {

@@ -178,10 +178,18 @@ export async function renderTikz(source, preamble = '') {
   return rendered;
 }
 
-export function generalTikzPreviewWidget(source, preamble = '') {
+export function generalTikzPreviewWidget(source, preamble = '', onOpen = null) {
   const root = document.createElement('div');
   root.className = 'tikz-code-preview tikz-general-preview';
   root.textContent = 'TikZ';
+  if (onOpen) {
+    root.title = t('双击编辑 TikZ', 'Double-click to edit TikZ');
+    root.addEventListener('dblclick', event => {
+      event.preventDefault();
+      event.stopPropagation();
+      onOpen();
+    });
+  }
   renderTikz(source, preamble).then(result => {
     if (!result.svg) { root.textContent = result.diagnostics?.map(item => item.message).join('\n') || 'TikZ'; return; }
     const svg = document.createElement('div');
@@ -192,7 +200,15 @@ export function generalTikzPreviewWidget(source, preamble = '') {
   return root;
 }
 
-export function openTikzStudio({ onInsert } = {}) {
+export function tikzStagingFromPreamble(preamble) {
+  const { libraries, macros } = scanStaging(preamble || '');
+  const lines = [];
+  if (libraries.length) lines.push(`\\usetikzlibrary{${[...new Set(libraries)].sort((a, b) => a.localeCompare(b)).join(',')}}`);
+  lines.push(...[...macros].sort((a, b) => a.name.localeCompare(b.name)).map(macro => macro.text.trim()));
+  return lines.join('\n');
+}
+
+export function openTikzStudio({ onInsert, initialLibraries, initialBody } = {}) {
   const overlay = document.createElement('div');
   overlay.className = 'tikz-studio-overlay';
   overlay.innerHTML = `
@@ -231,8 +247,8 @@ export function openTikzStudio({ onInsert } = {}) {
   const divider = overlay.querySelector('.tikz-studio-divider');
   const preview = overlay.querySelector('.tikz-studio-preview');
   const status = overlay.querySelector('.tikz-studio-status');
-  libraries.value = SAMPLE_LIBRARIES;
-  code.value = SAMPLE;
+  libraries.value = initialLibraries ?? SAMPLE_LIBRARIES;
+  code.value = initialBody ?? SAMPLE;
   code.focus();
   let zoom = 1;
   let version = 0;

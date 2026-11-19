@@ -60,11 +60,20 @@ const topAfter=await libraries.evaluate(el=>el.closest('.tikz-studio-code-shell'
 assert.ok(topAfter>topBefore+20,'divider increases the libraries pane');
 // insertion moves libraries/macros out of the block and keeps only the picture.
 await libraries.fill(knotLibraries);await code.fill(knotPicture);await page.waitForTimeout(1000);await page.locator('.tikz-studio-insert').click();await page.waitForTimeout(500);
-const inserted=await page.locator('pre[data-language="tikz-general"]').innerText();
+const inserted=await page.locator('pre[data-language="tikz-general"]').evaluate(el=>el.textContent);assert.equal(await page.locator('pre[data-language="tikz-general"]').evaluate(el=>getComputedStyle(el).display),'none');assert.equal(await page.locator('.tikz-general-preview').evaluate(el=>getComputedStyle(el).borderTopWidth),'0px');assert.equal(await page.locator('.tikz-general-preview').evaluate(el=>getComputedStyle(el).backgroundColor),'rgba(0, 0, 0, 0)');
 assert.doesNotMatch(inserted, /\\documentclass|\\begin\{document\}|\\end\{document\}/);
 assert.doesNotMatch(inserted, /\\usepackage|\\usetikzlibrary|\\newcommand/);
 assert.match(inserted, /\\begin\{tikzpicture\}/);
 await page.locator('.tikz-general-preview svg').waitFor({state:'visible',timeout:120000});
+await page.locator('.tikz-general-preview').first().dblclick();
+await page.locator('.tikz-studio-window').waitFor({state:'visible'});
+assert.match(await page.locator('.tikz-studio-libraries').inputValue(), /\\usetikzlibrary\{knots\}/);
+assert.match(await page.locator('.tikz-studio-code').inputValue(), /\\begin\{tikzpicture\}/);
+await page.locator('.tikz-studio-code').fill(String.raw`\begin{tikzpicture}\draw (0,0) -- (2,0);\end{tikzpicture}`);
+await page.locator('.tikz-studio-insert').click();
+await page.waitForTimeout(500);
+assert.equal(await page.locator('pre[data-language="tikz-general"]').count(),1);
+assert.match(await page.locator('pre[data-language="tikz-general"]').evaluate(el=>el.textContent), /-- \(2,0\)/);
 // inserting the same macro again must highlight its block and keep the dialog open.
 await page.getByRole('button',{name:'TikZ',exact:true}).click();await page.locator('.tikz-studio-window').waitFor({state:'visible'});await libraries.fill(knotLibraries);await code.fill(knotPicture);await page.waitForTimeout(1000);await page.locator('.tikz-studio-insert').click();await page.waitForTimeout(500);
 assert.match(await page.locator('.tikz-studio-status').innerText(), /Already defined: motif/);
