@@ -84,12 +84,7 @@ main { padding:125px 24px 60px; overflow:auto; }
 .document-image[data-figure="true"] { margin-block:var(--image-textfloatsep,20pt); }
 .document-image[data-figure="true"][data-wrap="true"] { margin-block:var(--image-intextsep,12pt); }
 .document-image[data-wrap="true"] { margin-block-start:calc(var(--image-intextsep,12pt) + 4pt); }
-/* The float margin alone leaves a gap above the float that inline text can
-   flow into.  Move the following paragraph by the same amount so the
-   standard intextsep remains empty above both the image and the first line. */
-.document-page .ProseMirror .document-image[data-wrap="true"] + p {
-  margin-block-start:calc(var(--image-intextsep,12pt) + 4pt);
-}
+
 .document-image[data-figure="true"]:is([data-placement="h"],[data-placement="H"]) { margin-block:var(--image-intextsep,12pt); }
 .document-image[data-figure="true"]:has(+ .document-image[data-figure="true"]) { margin-block-end:var(--image-floatsep,12pt); }
 .document-image[data-figure="true"] + .document-image[data-figure="true"] { margin-block-start:var(--image-floatsep,12pt); }
