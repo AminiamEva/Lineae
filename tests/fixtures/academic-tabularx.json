@@ -1,0 +1,16 @@
+{
+  "description": "Synthetic parser regression cases.",
+  "tables": [
+    {
+      "line": 38,
+      "source": "\\begin{table}[H]\n\\centering\n\\caption{Material sample 38}\n\\label{tab:demo-38}\n\\begin{tabularx}{\\textwidth}{>{\\centering\\arraybackslash}p{0.085\\textwidth}X>{\\centering\\arraybackslash}p{0.085\\textwidth}X}\n\\toprule\nIndex & Component name & Count & Trial description \\\\\n\\midrule\n1 & Test component 1 & 7 & Run 1 \\\\\n2 & Test component 2 & 14 & Run 2 \\\\\n3 & Test component 3 & 21 & Run 3 \\\\\n4 & Test component 4 & 28 & Run 4 \\\\\n5 & Test component 5 & 35 & Run 5 \\\\\n6 & Test component 6 & 42 & Run 6 \\\\\n7 & Test component 7 & 49 & Run 7 \\\\\n8 & Test component 8 & 56 & Run 8 \\\\\n9 & Test component 9 & 63 & Run 9 \\\\\n10 & Test component 10 & 70 & Run 10 \\\\\n11 & Test component 11 & 77 & Run 11 \\\\\n12 & Test component 12 & 84 & Run 12 \\\\\n13 & Test component 13 & 91 & Run 13 \\\\\n14 & Test component 14 & 98 & Run 14 \\\\\n15 & Test component 15 & 105 & Run 15 \\\\\n16 & Test component 16 & 112 & Run 16 \\\\\n17 & Test component 17 & 119 & Run 17 \\\\\n18 & Test component 18 & 126 & Run 18 \\\\\n19 & Test component 19 & 133 & Run 19 \\\\\n20 & Test component 20 & 140 & Run 20 \\\\\n21 & Test component 21 & 147 & Run 21 \\\\\n22 & Test component 22 & 154 & Run 22 \\\\\n23 & Test component 23 & 161 & Run 23 \\\\\n24 & Test component 24 & 168 & Run 24 \\\\\n25 & Test component 25 & 175 & Run 25 \\\\\n26 & Test component 26 & 182 & Run 26 \\\\\n27 & Test component 27 & 189 & Run 27 \\\\\n29 & Final entry & \\multicolumn{2}{c}{Complete} \\\\\n\\bottomrule\n\\end{tabularx}\n\\end{table}",
+      "placement": "H",
+      "caption": "Material sample 38",
+      "label": "tab:demo-38",
+      "centered": true,
+      "nested": false,
+      "inner": "\\begin{tabularx}{\\textwidth}{>{\\centering\\arraybackslash}p{0.085\\textwidth}X>{\\centering\\arraybackslash}p{0.085\\textwidth}X}\n\\toprule\nIndex & Component name & Count & Trial description \\\\\n\\midrule\n1 & Test component 1 & 7 & Run 1 \\\\\n2 & Test component 2 & 14 & Run 2 \\\\\n3 & Test component 3 & 21 & Run 3 \\\\\n4 & Test component 4 & 28 & Run 4 \\\\\n5 & Test component 5 & 35 & Run 5 \\\\\n6 & Test component 6 & 42 & Run 6 \\\\\n7 & Test component 7 & 49 & Run 7 \\\\\n8 & Test component 8 & 56 & Run 8 \\\\\n9 & Test component 9 & 63 & Run 9 \\\\\n10 & Test component 10 & 70 & Run 10 \\\\\n11 & Test component 11 & 77 & Run 11 \\\\\n12 & Test component 12 & 84 & Run 12 \\\\\n13 & Test component 13 & 91 & Run 13 \\\\\n14 & Test component 14 & 98 & Run 14 \\\\\n15 & Test component 15 & 105 & Run 15 \\\\\n16 & Test component 16 & 112 & Run 16 \\\\\n17 & Test component 17 & 119 & Run 17 \\\\\n18 & Test component 18 & 126 & Run 18 \\\\\n19 & Test component 19 & 133 & Run 19 \\\\\n20 & Test component 20 & 140 & Run 20 \\\\\n21 & Test component 21 & 147 & Run 21 \\\\\n22 & Test component 22 & 154 & Run 22 \\\\\n23 & Test component 23 & 161 & Run 23 \\\\\n24 & Test component 24 & 168 & Run 24 \\\\\n25 & Test component 25 & 175 & Run 25 \\\\\n26 & Test component 26 & 182 & Run 26 \\\\\n27 & Test component 27 & 189 & Run 27 \\\\\n29 & Final entry & \\multicolumn{2}{c}{Complete} \\\\\n\\bottomrule\n\\end{tabularx}",
+      "expectedRows": 29
+    }
+  ]
+}

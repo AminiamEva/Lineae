@@ -3,8 +3,12 @@ import { importBlock, importBlocks } from '../../latex/blocks.mjs';
 import { listLabel, bulletLabel } from '../../latex/list-numbering.mjs';
 import { textCommands } from '../../latex/inline.mjs';
 import { serializeImage, serializeSubfigures } from '../../latex/images.mjs';
+import {serializeReference,serializeHeadingLabel} from '../../latex/reference-commands.mjs';
 import { alignmentLabel, displayEnvironment } from '../../latex/math-environments.mjs';
 export { importBlock, importBlocks };
+export {parseTableFloat} from '../../latex/table-floats.mjs';
+import {serializeTblr,serializeSourceTable} from '../../latex/tblr.mjs';
+import {serializeTextEnvironment} from '../../latex/text-environments.mjs';
 
 const escape = text => text.replace(/[\u00A0\\{}%$&#_^~§¶•…–—‘’“”®™©]/g, char => ({
   '\\': '\\textbackslash{}', '~': '\\textasciitilde{}', '^': '\\textasciicircum{}', '\u00A0': '~',
@@ -20,7 +24,14 @@ const withoutPlaceholders = latex => latex.replace(/\\placeholder\{[^{}]*\}/g, '
 let serializationClass = 'article';
 export function setSerializationClass(name) { serializationClass = (name || 'article').toLowerCase(); }
 export function serialize(node) {
-  const content = (node.content ?? []).map(serialize).join('');
+  const content = (node.content ?? []).map((child,index,children) => {
+    const value = serialize(child);
+    // Raw owns its exact bytes. A parent owns any new block separator needed
+    // when composing nodes, so serializing Raw alone never normalizes its EOLs.
+    if (child.type !== 'raw' || index === children.length-1 || /(?:\r?\n)[ \t]*(?:\r?\n)[ \t]*$/.test(value)) return value;
+    const ending = value.match(/\r?\n[ \t]*$/)?.[0];
+    return value + (ending ? (ending.startsWith('\r\n') ? '\r\n' : '\n') : '\n\n');
+  }).join('');
   if (node.type === 'text') {
     const command = node.marks?.find(mark => mark.type === 'textCommand')?.attrs?.name;
     const glyph=Object.hasOwn(textCommands,command) ? textCommands[command] : '';
@@ -85,7 +96,7 @@ export function serialize(node) {
       const names = chaptered ? ['chapter','section','subsection'] : ['section','subsection','subsubsection'];
       const name = node.attrs.command === 'chapter' ? 'chapter' : names[Math.min(Math.max(node.attrs.level,1),3)-1];
       const short = node.attrs.shortTitle ? '[' + node.attrs.shortTitle + ']' : '';
-      const label = node.attrs.label ? '\\label{' + node.attrs.label + '}' : '';
+      const label = serializeHeadingLabel(node.attrs);
       return '\\' + name + (node.attrs.numbered === false ? '*' : '') + short + '{' + content + '}' + label + '\n\n';
     }
     case 'appendixStart': return '\\appendix\n\n';
@@ -95,7 +106,9 @@ export function serialize(node) {
     case 'tableOfContents': return '\\tableofcontents\n\n';
     case 'pageBreak': return '\\newpage\n\n';
     case 'multiColumn': return '\\begin{multicols}{' + (node.attrs.count ?? 2) + '}\n' + content + '\\end{multicols}\n\n';
-    case 'blockquote': return '\\begin{quote}\n' + content + '\\end{quote}\n\n';
+    case 'blockquote': return node.attrs?.environmentSource
+      ? serializeTextEnvironment(node,serialize)??node.attrs.environmentSource.source
+      : '\\begin{quote}\n' + content + '\\end{quote}\n\n';
     case 'horizontalRule': return '\\hrule\n\n';
     case 'bulletList': {
       const marker = bulletLabel(node.attrs.marker);
@@ -134,13 +147,15 @@ export function serialize(node) {
       if (node.attrs.delimiter === '\\(') return prefix + '\\(' + latex + '\\)';
       return prefix + (node.attrs.display ? '\\[' + latex + '\\]' : '$' + latex + '$');
     }
-    case 'ref': return (node.attrs.equation ? '\\eqref{' : '\\ref{') + node.attrs.key + '}';
-    case 'cite': return '\\cite{' + node.attrs.key + '}';
+    case 'ref': return serializeReference(node.attrs,'ref');
+    case 'cite': return serializeReference(node.attrs,'cite');
     case 'footnote': return '\\footnote{' + node.attrs.text + '}';
-    case 'label': return '\\label{' + node.attrs.key + '}';
-    case 'raw': return node.attrs.source.replace(/\n+$/, '') + '\n\n';
+    case 'label': return serializeReference(node.attrs,'label');
+    case 'raw': return node.attrs.source;
     case 'hardBreak': return '\\\\\n';
     case 'table': {
+      if(node.attrs.tblr)return serializeTblr(node,serialize)??node.attrs.tblr.source;
+      if(node.attrs.tabularx)return serializeSourceTable(node,serialize,'tabularx')??node.attrs.tabularx.source;
       let columns = node.attrs.columns || 'l'.repeat(node.content[0]?.content.length ?? 1);
       const columnCount=(node.content[0]?.content??[]).reduce((total,cell)=>total+(cell.attrs.colspan??1),0)||1;
       const occupied=Array(columnCount).fill(0);

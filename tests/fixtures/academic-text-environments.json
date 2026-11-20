@@ -1,0 +1,15 @@
+{
+  "description": "Synthetic parser regression cases.",
+  "environments": [
+    {
+      "line": 1,
+      "environment": "abstract",
+      "source": "\\begin{abstract}\n\\textbf{Trial summary.} The target is $k_0$.\n\nIndependent demonstration paragraph 2.\n\nIndependent demonstration paragraph 3.\n\nIndependent demonstration paragraph 4.\n\nIndependent demonstration paragraph 5.\n\nIndependent demonstration paragraph 6.\n\nIndependent demonstration paragraph 7.\n\\end{abstract}"
+    },
+    {
+      "line": 18,
+      "environment": "center",
+      "source": "\\begin{center}\n\\textbf{Trial heading}\n\\end{center}"
+    }
+  ]
+}

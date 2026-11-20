@@ -125,13 +125,20 @@ export function installProjectExplorer({footer, filePanel, sessions}) {
     if(next.persistenceError){message.textContent=next.persistenceError;sessions.error(next.persistenceError);}
   }
   async function save() {
-    if(sessions.prepareSave && !sessions.prepareSave())return;
-    capture();
+    const snapshot=sessions.prepareSave();
+    if(!snapshot)return;
     const file = project.file(project.activeFileId);
+    project.edit(file.id,snapshot.original);
     const saveIds=sessions.saveFileIds?.()??[file.id];
-    for(const id of saveIds)if(project.file(id).dirty)await project.save(id);
-    capture();
-    sessions.saved(file.saved); message.textContent = t('已保存','Saved'); render();
+    for(const id of saveIds){
+      if(id===file.id){
+        if(file.dirty || snapshot.text!==file.saved)await project.save(id,snapshot.text);
+        sessions.saved(file.saved);
+        snapshot.commit();
+        capture();
+      }else if(project.file(id).dirty)await project.save(id);
+    }
+    message.textContent = t('已保存','Saved'); render();
   }
   function close() {
     sessions.ensureIdle();

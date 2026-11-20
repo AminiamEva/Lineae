@@ -1,10 +1,10 @@
 import {localizedLabel,localizedPlaceholder} from '../ui/localized-control.mjs';
 import { Node } from '@tiptap/core';
 import { t } from '../ui/i18n.mjs';
-import { relativeImageWidth } from '../../latex/images.mjs';
-import { rememberAsset } from './project-assets.js';
+import { askText } from './dialog.js';
+import { imageWidthPattern, relativeImageWidth } from '../../latex/images.mjs';
+import { rememberAsset, resolveImageAsset, onAssetsChanged } from './project-assets.js';
 
-const previews = new Map();
 const rasterTypes = new Set(['image/png','image/jpeg','image/webp','image/gif','image/avif']);
 let measureContext = null;
 
@@ -21,11 +21,6 @@ function chooseFile(callback) {
 
 function remember(path, file) {
   rememberAsset(path,file);
-  const previous = previews.get(path);
-  if (previous) URL.revokeObjectURL(previous);
-  const preview = URL.createObjectURL(file);
-  previews.set(path, preview);
-  return preview;
 }
 
 export function installImageDrop(editor, paper) {
@@ -146,7 +141,7 @@ export const Subfigures = Node.create({
 export const DocumentImage = Node.create({
   name:'documentImage', group:'block', atom:true, draggable:true,
   addAttributes:()=>({
-    path:{default:''},width:{default:null},height:{default:null},scale:{default:null},
+    figureSource:{default:null},path:{default:''},width:{default:null},height:{default:null},scale:{default:null},
     angle:{default:null},origin:{default:null},keepAspect:{default:true},
     flipH:{default:false},flipV:{default:false},
     figure:{default:false},placement:{default:null},fixed:{default:false},
@@ -171,6 +166,9 @@ export const DocumentImage = Node.create({
       dom.className='document-image';
       dom.contentEditable='false';
       const image=document.createElement('img');
+      const resourceStatus=document.createElement('div');
+      resourceStatus.setAttribute('role','status');
+      let previewFile=null,previewURL=null,resourceState='missing',destroyed=false;
       const imageFrame=document.createElement('div');
       imageFrame.className='document-image-frame';
       imageFrame.append(image);
@@ -269,25 +267,54 @@ export const DocumentImage = Node.create({
         window.addEventListener('pointermove',move);
         window.addEventListener('pointerup',finish,{once:true,capture:true});
       }
+
+      const size=document.createElement('button');
+      size.type='button';
+      localizedLabel(size,'图片宽度','Image width');
+      controls.append(size);
+      dom.addEventListener('mouseenter',()=>{controls.hidden=false;});
+      dom.addEventListener('mouseleave',()=>{controls.hidden=true;});
+      size.addEventListener('click',async()=>{
+        const expected=node;
+        const width=await askText(t('图片宽度，例如 0.5\\linewidth 或 6cm','Image width, e.g. 0.5\\linewidth or 6cm'),node.attrs.width??'');
+        if(width!==null && (!width || imageWidthPattern.test(width))) update({width:width||null},expected);
+      });
+      const showResourceState=()=>{
+        dom.dataset.resourceState=resourceState;
+        image.hidden=resourceState!=='ready';
+        button.hidden=resourceState==='ready';
+        resourceStatus.hidden=resourceState==='ready';
+        const labels={missing:['资源缺失：','Missing image resource: '],loading:['正在加载图片：','Loading image: '],
+          error:['无法读取图片：','Cannot decode image: '],unsupported:['资源已保留，无法预览：','Resource retained; preview unavailable: ']};
+        const label=labels[resourceState];
+        if(label)localizedLabel(resourceStatus,label[0]+node.attrs.path,label[1]+node.attrs.path);
+      };
       const refresh=()=>{
-        const preview=previews.get(node.attrs.path);
+        const file=resolveImageAsset(node.attrs.path);
+        if(file!==previewFile) {
+          if(previewURL)URL.revokeObjectURL(previewURL);
+          previewURL=null;previewFile=file;image.removeAttribute('src');
+          resourceState=file?'unsupported':'missing';
+          if(file && (rasterTypes.has(file.type) || ((!file.type || file.type==='application/octet-stream') && /\.(png|jpe?g|webp|gif|avif)$/i.test(file.name??node.attrs.path)))) {
+            previewURL=URL.createObjectURL(file);resourceState='loading';image.src=previewURL;
+          }
+        }
+        showResourceState();
         let subIndex=-1;
         try{const $pos=editor.state.doc.resolve(getPos());if($pos.parent.type.name==='subfigures')subIndex=$pos.index();}catch{}
         dom.dataset.subfigure=String(subIndex>=0);
         const cssDimension=value => {
           if(!value)return '';
-          const match=/^(\d+(?:\.\d+)?)(\\textwidth|\\linewidth|\\columnwidth|cm|mm|pt|in)$/.exec(value);
+          const match=/^(\d*(?:\.\d+)?)(\\textwidth|\\linewidth|\\columnwidth|cm|mm|pt|in)$/.exec(value);
           if(!match)return '';
-          return match[2].startsWith('\\') ? `${Number(match[1])*100}%` : value;
+          return match[2].startsWith('\\') ? `${Number(match[1]||1)*100}%` : value;
         };
-        image.hidden=!preview;
-        button.hidden=Boolean(preview);
-        if(preview)image.src=preview;
         image.alt=node.attrs.path;
         syncHandleVisibility();
         captionText.textContent=node.attrs.caption??'';
-        caption.hidden=!(node.attrs.captionEnabled ?? (node.attrs.caption!==null));
-        caption.dataset.captionNumbered=String(Boolean(node.attrs.captionEnabled && node.attrs.captionNumbered!==false));
+        const captionEnabled=node.attrs.captionEnabled;
+        caption.hidden=!captionEnabled;
+        caption.dataset.captionNumbered=String(Boolean(captionEnabled && node.attrs.captionNumbered!==false));
         const captionLanguage=editor.view.dom.closest('.document-page')?.dataset.captionLanguage==='zh'?'zh':'en';
         caption.dataset.captionName=captionLanguage==='zh'?t('图','Figure'):'Figure';
         captionText.setAttribute('data-placeholder',captionLanguage==='zh'?t('题注','Caption'):'Caption');
@@ -333,17 +360,20 @@ export const DocumentImage = Node.create({
         else dom.insertBefore(caption,controls);
         requestAnimationFrame(measureCaption);
       };
+      image.addEventListener('load',()=>{if(!destroyed && previewURL && image.currentSrc===previewURL){resourceState='ready';showResourceState();}});
+      image.addEventListener('error',()=>{if(!destroyed && previewURL && image.getAttribute('src')===previewURL){resourceState='error';showResourceState();}});
+      const unsubscribe=onAssetsChanged(refresh);
       button.addEventListener('click',()=>chooseFile(file=>{remember(node.attrs.path,file);refresh();}));
       image.addEventListener('click',event=>{
         if(event.target!==image||event.defaultPrevented)return;
         const position=getPos();
         if(typeof position==='number')editor.commands.setNodeSelection(position);
       });
-      dom.append(imageFrame,button,caption,controls);
+      dom.append(imageFrame,resourceStatus,button,caption,controls);
       const captionObserver=new ResizeObserver(()=>requestAnimationFrame(measureCaption));
       captionObserver.observe(caption);
       refresh();
-      return {dom,stopEvent:event=>button.contains(event.target)||controls.contains(event.target)||caption.contains(event.target)||resizeHandles.some(handle=>handle.contains(event.target)),update(next){if(next.type!==node.type)return false;node=next;refresh();return true;},destroy(){captionObserver.disconnect();}};
+      return {dom,stopEvent:event=>button.contains(event.target)||controls.contains(event.target)||caption.contains(event.target)||resizeHandles.some(handle=>handle.contains(event.target)),update(next){if(next.type!==node.type)return false;node=next;refresh();return true;},destroy(){captionObserver.disconnect();destroyed=true;unsubscribe();if(previewURL)URL.revokeObjectURL(previewURL);}};
     };
   },
 });

@@ -8,7 +8,7 @@ import {canIndentList} from './project/list-policy.js';
 import {createCompositionController} from './project/composition-controller.js';
 import {applicationCommandActions} from './editor/application-commands.js';
 import {captureRichSession,restoreRichSession,copyModeHistory,readModeHistory} from './project/rich-session.js';
-import {changePageLayout,mergePageLayout,PageLayoutHistory} from './editor/page-layout-history.js';
+import {changePageLayout,mergePageLayout,PageLayoutHistory,textPatch} from './editor/page-layout-history.js';
 import {setParagraphIndent,paragraphHasIndent} from './editor/paragraph-format.js';
 import {installProjectNavigation} from './project/navigation.js';
 import {ProjectWorkspaceState} from './project/workspace-state.mjs';
@@ -19,7 +19,7 @@ import {installSettingsPanel} from './ui/settings-panel.js';
 import { buildHomeRibbon } from './ui/home-ribbon.js';
 import { buildRibbonGroups } from './ui/ribbon-groups.js';
 import {installHeaderFooterPanel} from './ui/header-footer-panel.js';
-import { sourceProjection, richSourceChanges } from './editor/source-sync.js';
+import { sourceProjection, richSourceChanges, standaloneParagraphDraft } from './editor/source-sync.js';
 import { installSourceToolbar } from './editor/source-toolbar.js';
 import { createSourceWorkspace } from './editor/source-workspace.js';
 import { DEFAULT_DOCUMENT_SOURCE } from './editor/default-document.mjs';
@@ -68,7 +68,9 @@ import { installSpaceOverlay } from './editor/space-overlay.js';
 import { installTypesetPagination } from './editor/typeset-pagination.js';
 import { wrapMathWithDelimiters } from '../latex/delimiters.mjs';
 import { readDelimiterPair } from './editor/delimiter-input.js';
-import { serialize, importBlocks, setSerializationClass } from './editor/latex-codec.js';
+import { serialize, importBlocks, parseTableFloat, setSerializationClass } from './editor/latex-codec.js';
+import {TblrSource} from './editor/tblr-extension.js';
+import {TabularxSource,syncTabularxWidths} from './editor/tabularx-extension.js';
 import { setHeadingBase } from '../latex/blocks.mjs';
 import { Editor, Node, Extension, Mark, mergeAttributes, wrappingInputRule } from '@tiptap/core';
 import StarterKit from '@tiptap/starter-kit';
@@ -79,7 +81,7 @@ import TableCell from '@tiptap/extension-table-cell';
 import TableHeader from '@tiptap/extension-table-header';
 import { Plugin, Selection, NodeSelection, TextSelection } from '@tiptap/pm/state';
 import { parseDocument } from '../latex/document.mjs';
-import { exportDocument, hasTitleCommand } from '../latex/packages.mjs';
+import { exportDocument } from '../latex/packages.mjs';
 import { appendAlignmentPair, displayEnvironment, numberedMathRows } from '../latex/math-environments.mjs';
 import { MARGIN_PRESETS, readPageSetup, writePageSetup, pageMetrics } from '../latex/geometry.mjs';
 import { readPageFurniture, writePageFurniture } from '../latex/page-furniture.mjs';
@@ -221,8 +223,20 @@ const TheoremBlock = Node.create({
 const Raw = Node.create({
   name:'raw', group:'block', atom:true,
   addAttributes:()=>({source:{default:''}}),
-  parseHTML:()=>[{tag:'pre[data-raw]'}],
-  renderHTML:({node})=>['pre',{'data-raw':'',contenteditable:'false'},node.attrs.source],
+  parseHTML:()=>[{tag:'pre[data-raw]',priority:1000,getAttrs:element=>{
+    try {
+      const source=JSON.parse(element.getAttribute('data-raw-source'));
+      return {source:typeof source==='string'?source:element.textContent};
+    } catch { return {source:element.textContent}; }
+  }}],
+  // HTML parsers normalize literal CRLF text; JSON in an attribute preserves it.
+  renderHTML:({node})=>{
+    const float=parseTableFloat(node.attrs.source);
+    return ['pre',{'data-raw':'','data-raw-source':JSON.stringify(node.attrs.source),contenteditable:'false',
+      ...(float && {'data-table-float':float.environment,'data-table-placement':float.placement,
+        'data-table-caption':float.caption,'data-table-label':float.label,'data-table-centered':String(float.centered)}),
+    },node.attrs.source];
+  },
 });
 const DescriptionList = Node.create({
   name:'descriptionList', group:'block', content:'descriptionItem+',
@@ -657,7 +671,7 @@ paper.before(documentPage);documentPage.append(paper);
 paper.replaceChildren();
 editor=new Editor({
   element:paper,
-  extensions:[AppendixStart,MatterStart,LayoutCommand,Lipsum,ProjectRegion,PageLayoutHistory,ConfigurableStarterKit.configure({heading:{levels:[1,2,3]},codeBlock:false}),LanguageCodeBlock,MultiSelection,PaperBehavior,TextStyle,TextCommand,Underline,Superscript,Subscript,SmallCaps,Boxed,Circled,PageBreak,MultiColumn,Table.configure({resizable:true}),TableRow,TableCell,TableHeader,Raw,DocumentImage,TheoremBlock,DescriptionList,DescriptionItem,MathNode,MathBlock,Ref,Cite,Footnote,Label,Subfigures,TableOfContents,Shortcuts],
+  extensions:[AppendixStart,MatterStart,LayoutCommand,Lipsum,ProjectRegion,PageLayoutHistory,ConfigurableStarterKit.configure({heading:{levels:[1,2,3]},codeBlock:false}),LanguageCodeBlock,MultiSelection,PaperBehavior,TextStyle,TextCommand,Underline,Superscript,Subscript,SmallCaps,Boxed,Circled,PageBreak,MultiColumn,Table.configure({resizable:true}),TableRow,TableCell,TableHeader,TblrSource,TabularxSource,Raw,DocumentImage,TheoremBlock,DescriptionList,DescriptionItem,MathNode,MathBlock,Ref,Cite.configure({library:citationLibrary}),Footnote,Label,Subfigures,TableOfContents,Shortcuts],
   content:'<p></p>',
 });
 function installMarginSelection(editor,page,paper) {
@@ -710,6 +724,9 @@ function syncTableAttributes() {
     const dom = editor.view.nodeDOM(position);
     const table = dom?.tagName === 'TABLE' ? dom : dom?.querySelector?.('table');
     if (!table) return;
+    syncTabularxWidths(table,node.attrs.tabularx);
+    if(node.attrs.tblr)table.dataset.tblr='';
+    else delete table.dataset.tblr;
     if (node.attrs.columns) table.dataset.columns = node.attrs.columns;
     else delete table.dataset.columns;
     if (node.attrs.booktabs) table.dataset.booktabs = 'true';
@@ -936,6 +953,9 @@ const sourceView = createSourceWorkspace({
   render: text => {
     if (projectFileKind === 'bib') return;
     if (editor.view.composing) return false;
+    // Opening Split can request the preview that load() has just mounted.
+    if (!projectExplorer?.active && !syncPending && text === importedSource &&
+        projection?.text === text && importedSnapshot === JSON.stringify(editor.getJSON())) return;
     const selection = editor.state.selection;
     syncApplying = true;
     try {
@@ -996,7 +1016,45 @@ function redoDocument() {
   const done=editor.commands.redo();syncUndoButtons();return done;
 }
 paper.addEventListener('focusin', () => { if (!sourceView.hidden && syncPending) sourceView.flush(); syncUndoButtons(); });
+function usesSourceProjection() {
+  let referenceSource=false;
+  editor.state.doc.descendants(node=>{if(node.attrs.sourceCommand||node.attrs.labelSource||node.attrs.environmentSource)referenceSource=true;});
+  return referenceSource || !sourceView.hidden || (projectExplorer?.active && projectFileKind==='tex') ||
+    editor.getJSON().content.some(node=>node.type==='raw'||node.attrs?.tblr||node.attrs?.tabularx||node.attrs?.figureSource);
+}
+// Limit standalone writeback to text edits within one top-level paragraph.
+function standaloneParagraphEdit(tr) {
+  if (!sourceView.hidden || projectExplorer?.active || importedSource===null) return -1;
+  const {before,doc}=tr;
+  if (!before.sameMarkup(doc) || before.childCount!==doc.childCount) return -1;
+  const start=before.content.findDiffStart(doc.content);
+  if (start===null) return -1;
+  const end=before.content.findDiffEnd(doc.content);
+  const a=before.resolve(start), b=doc.resolve(start);
+  if (a.depth!==1 || b.depth!==1 || a.parent.type.name!=='paragraph' || !a.parent.sameMarkup(b.parent) ||
+      a.parent.textContent===b.parent.textContent) return -1;
+  // Identical runs can make the diff endpoints overlap on insertion/deletion.
+  const oldEnd=Math.max(start,end.a), newEnd=Math.max(start,end.b);
+  // Introducing a new formatting mark is an authoring command (for example,
+  // creating a new box), with its own package-generation behavior.
+  const priorRuns=a.parent.content.content;
+  const inline = a.sameParent(before.resolve(oldEnd)) && b.sameParent(doc.resolve(newEnd)) &&
+    a.parent.content.cut(a.parentOffset,oldEnd-a.start()).content.every(node=>node.isText) &&
+    b.parent.content.cut(b.parentOffset,newEnd-b.start()).content.every(node=>node.isText &&
+      (!node.marks.length || priorRuns.some(run=>run.sameMarkup(node))));
+  return inline ? a.index(0) : -1;
+}
+function refuseStandaloneWriteback() {
+  const status=document.querySelector('#status');
+  status.hidden=false;
+  status.textContent=t('该修改无法无损回写，请在源码中编辑；原文已保留。','This edit cannot round-trip safely. Edit the source; original text is preserved.');
+  return false;
+}
 editor.registerPlugin(new Plugin({
+  state: {
+    init:()=>false,
+    apply:tr=>!!(tr.getMeta('standaloneParagraph') || tr.getMeta('appendedTransaction')?.getMeta('standaloneParagraph')),
+  },
   props: {handleKeyDown(view,event) {
     if (sourceView.hidden || event.isComposing || !(event.ctrlKey || event.metaKey) || event.altKey) return false;
     if (event.key.toLowerCase() === 'z' || event.key.toLowerCase() === 'y') {
@@ -1006,14 +1064,28 @@ editor.registerPlugin(new Plugin({
     }
     return false;
   }},
-  filterTransaction(transaction) {
+  filterTransaction(transaction,state) {
     if (!transaction.docChanged || syncApplying) return true;
+    // A plugin may append transactions before Tiptap emits the original update.
+    // Its extra document changes have no authority over the approved source range.
+    if(state!==editor.state && this.getState(state) && !transaction.doc.eq(state.doc))return refuseStandaloneWriteback();
     if(projectDocument.composition){
       const valid=projectDocument.changes(transaction.doc.toJSON());
       if(!valid)sourceView.error(t('请在对应文件的源码中修改此结构','Edit this structure in its source file'));
       return !!valid;
     }
-    if(sourceView.hidden && !(projectExplorer?.active && projectFileKind==='tex'))return true;
+    if(!usesSourceProjection()) {
+      const index=standaloneParagraphEdit(transaction);
+      if (index<0) return true;
+      const current=transaction.before.toJSON();
+      const prepared=!syncPending && transaction.before===editor.state.doc &&
+        standaloneParagraphDraft(importedSource,projection,importedSnapshot,current,transaction.doc.toJSON(),index);
+      if (prepared) {
+        transaction.setMeta('standaloneParagraph',prepared);
+        return true;
+      }
+      return refuseStandaloneWriteback();
+    }
     const changes = !syncPending && richSourceChanges(projection,transaction.doc.toJSON());
     if (!changes) {
       sourceView.error(t('该修改无法无损回写，请在源码中编辑；原文已保留。','This edit cannot round-trip safely. Edit the source; original text is preserved.'));
@@ -1022,8 +1094,17 @@ editor.registerPlugin(new Plugin({
     return true;
   },
 }));
-editor.on('update', () => {
+editor.on('update', ({transaction}) => {
   if (syncApplying) return;
+  const paragraph=transaction.getMeta('standaloneParagraph');
+  if (paragraph && editor.state.doc.eq(transaction.doc)) {
+    if(sourceView.value===importedSource)sourceView.applyChanges(paragraph.changes);
+    importedSource=paragraph.draft;
+    importedSnapshot=JSON.stringify(editor.getJSON());
+    documentParts=parseDocument(importedSource);
+    projection=paragraph.projection;
+    return;
+  }
   if(projectDocument.composition){
     const updates=projectDocument.changes(editor.getJSON());
     if(updates){
@@ -1057,7 +1138,7 @@ editor.on('update', () => {
     }
     pageSetup=readPageSetup(preamble);applyPageSetup();projectExplorer?.changed();
   }
-  if(sourceView.hidden && !(projectExplorer?.active && projectFileKind==='tex'))return;
+  if(!usesSourceProjection())return;
   const changes = richSourceChanges(projection,editor.getJSON());
   if (!changes?.length) return;
   sourceView.applyChanges(changes);
@@ -1178,6 +1259,7 @@ syncUndoButtons();sourceModeRedos=[];}
 let filename='lineae.tex';
 let fileHandle=null;
 let savedSource='';
+let documentGeneration=0;
 let importedSource=null;
 let importedSnapshot=null;
 function readMeta(key) {
@@ -1199,6 +1281,7 @@ function persistCitationState() {
   const metadata = writeBibliographyMetadata(documentParts.start, citationLibrary.exportState({ paths }));
   documentParts.start = metadata;
   if (importedSource) importedSource = writeBibliographyMetadata(importedSource, citationLibrary.exportState({ paths }));
+  refreshReferences(paper);
 }
 const metaBar=document.createElement('section');metaBar.id='document-meta';
 const metaTitle=document.createElement('div');metaTitle.className='doc-title';
@@ -1227,9 +1310,9 @@ function source() {
   if(projectDocument.composition)return projectExplorer.model.file(projectDocument.composition.rootId).draft;
   const document=editor.getJSON();
   const untouched=importedSnapshot===JSON.stringify(document);
-  const bareMath=document.content.some(node=>node.type==='mathBlock' && !node.attrs.delimiter &&
-    /^\\begin\{(?:[dr]?cases|drcases|aligned|alignedat|gathered|split|[pbBvV]?(?:small)?matrix|array|darray|subarray|multlined)\}/.test(node.attrs.latex));
-  if (untouched && !bareMath && (!readMeta('title') || hasTitleCommand(importedSource))) return importedSource;
+  // Viewing an imported document must not repair its TeX or serialize visual
+  // wrapping. Safe rich edits already update this source and its snapshot.
+  if (untouched) return importedSource;
   return exportDocument(documentParts,serialize(document),{chineseTypesetting:true});
 }
 savedSource=source();
@@ -1263,7 +1346,7 @@ function load(text, markSaved = true) {
   editor.chain().setMeta('addToHistory', false).setContent({type:'doc',attrs:{layoutPreamble:parsed.start,pageFurniture:readPageFurniture(parsed.start)},content:content.length?content:[{type:'paragraph'}]}).command(({tr})=>{tr.setDocAttribute('layoutPreamble',parsed.start);tr.setDocAttribute('pageFurniture',readPageFurniture(parsed.start));return true;}).run();
   refreshReferences(paper);syncTableAttributes();
   importedSource=text;importedSnapshot=JSON.stringify(editor.getJSON());
-  if(markSaved) savedSource=text;
+  if(markSaved) {savedSource=text;documentGeneration++;}
   if (markSaved) sourceView.reset(text);
   projection=sourceProjection(text,editor.getJSON(),{fragment:projectFileKind==='tex'});
   syncPending=false;
@@ -1326,9 +1409,9 @@ function confirmMathPlaceholders() {
   return !count || confirm(t(`仍有 ${count} 个公式占位符未填写；保存后这些位置将留空。是否继续？`,
     `${count} formula placeholders are unfinished and will be empty after saving. Continue?`));
 }
-async function downloadProject(checkPlaceholders=true) {
+async function downloadProject(checkPlaceholders=true, snapshot, nameAtSave=filename) {
   if(checkPlaceholders && !confirmMathPlaceholders())return;
-  const text=sourceView.hidden?source():sourceView.value;
+  const text=snapshot ?? (sourceView.hidden?source():sourceView.value);
   const status=document.querySelector('#status');
   try {
     const assets=new Map(projectAssets().filter(([path])=>safeProjectPath(path)));
@@ -1338,7 +1421,7 @@ async function downloadProject(checkPlaceholders=true) {
     for(const path of dependencies) {
       const actual=assets.has(path)?path:[...assets.keys()].find(key=>key.replace(/\.[^.\/]+$/,'')===path);
       if(!actual) {missing.push(path);continue;}
-      if(required.has(actual) || actual===filename)continue;
+      if(required.has(actual) || actual===nameAtSave)continue;
       const file=assets.get(actual);
       required.set(actual,file);
       if(actual.endsWith('.tex'))for(const dependency of projectDependencies(await file.text()))dependencies.add(dependency);
@@ -1347,7 +1430,7 @@ async function downloadProject(checkPlaceholders=true) {
       status.hidden=false;status.textContent=t('缺少项目资源','Missing project assets')+': '+missing.join(', ');
       return;
     }
-    const name=safeProjectPath(filename)?filename:'lineae.tex';
+    const name=safeProjectPath(nameAtSave)?nameAtSave:'lineae.tex';
     const zip=await buildProjectZip([[name,text],...[...required].filter(([path])=>path!==name)]);
     const url=URL.createObjectURL(zip);
     const a=document.createElement('a');a.href=url;a.download=name.replace(/\.tex$/i,'')+'.zip';a.click();
@@ -1357,54 +1440,75 @@ async function downloadProject(checkPlaceholders=true) {
   }
 }
 function prepareExplicitSave() {
-  // Explicit Save/Save As only. ZIP export and ordinary updates remain byte-faithful.
-  // Do not interrupt an IME composition with a formatting transaction.
-  if (sourceView.composing || editor.view.composing) return false;
-  if (!confirmMathPlaceholders()) return false;
-  if(projectExplorer?.active&&projectFileKind==='tex'){
-    const current=sourceView.hidden?source():sourceView.value;
-    const next=projectInputSource(projectExplorer.model,projectExplorer.model.activeFileId,current);
-    if(next!==current)editIncludeSource(()=>next);
-  }
-  if (sourceView.indentOnSave && projectFileKind !== 'bib') {
-    const formatted = indentLatex(sourceView.hidden ? source() : sourceView.value);
-    if (formatted.changes.length) {
-      if (sourceView.hidden) {
-        // Mount the existing authoritative source editor to retain one undo history.
-        // Restore Rich Text mode after the same transaction used by Source/Split.
-        setSourceMode(true);
-        sourceView.indent(formatted.changes);
-        setSourceMode(false);
-      } else sourceView.indent(formatted.changes);
+  if (sourceView.composing || editor.view.composing || !confirmMathPlaceholders()) return null;
+  const readDraft=()=>sourceView.hidden ? source() : sourceView.value;
+  const original=readDraft();
+  const project=projectExplorer?.model;
+  const input=project && projectFileKind==='tex' ? projectInputSource(project,project.activeFileId,original) : original;
+  const formatted=sourceView.indentOnSave && projectFileKind!=='bib' ? indentLatex(input) : null;
+  const generation=documentGeneration;
+  const isCurrentDocument=()=>generation===documentGeneration;
+  return {
+    original, text:formatted?.text ?? input, isCurrentDocument,
+    commit() {
+      // The saved snapshot is authoritative on disk. Only apply its changes
+      // to the editor if it still holds that snapshot's original source.
+      if(!isCurrentDocument() || sourceView.composing || editor.view.composing || readDraft()!==original)return;
+      if(input===original && !formatted?.changes.length)return;
+      // CodeMirror positions count a CRLF pair as one logical newline.
+      const preamble=input===original ? [] : textPatch(original.replace(/\r\n?/g,'\n'),input.replace(/\r\n?/g,'\n'));
+      const rich=sourceView.hidden;
+      if(rich)setSourceMode(true);
+      sourceView.applySaveFormatting(preamble,formatted?.changes ?? [],input);
+      if(rich)setSourceMode(false);
     }
-  }
-  return true;
+  };
 }
+let savingFile=false;
 async function saveDocument(saveAs=false) {
   if (projectExplorer?.active && !saveAs) return projectExplorer.save();
-  if (!prepareExplicitSave()) return;
-  const text=sourceView.hidden?source():sourceView.value;
+  if (savingFile) {
+    const status=document.querySelector('#status');
+    status.hidden=false;status.textContent=t('正在保存，请稍候','Save in progress');
+    return;
+  }
+  const snapshot=prepareExplicitSave();
+  if (!snapshot) return;
+  savingFile=true;
+  try {await writeDocument(snapshot,saveAs);}
+  finally {savingFile=false;}
+}
+async function writeDocument(snapshot,saveAs) {
+  const name=filename;
+  const status=document.querySelector('#status');
   if(window.showSaveFilePicker) {
+    let handle=saveAs?null:fileHandle;
     try {
-      let handle=saveAs?null:fileHandle;
-      if(!handle)handle=await window.showSaveFilePicker({suggestedName:filename,types:[{description:'LaTeX',accept:{'text/plain':['.tex']}}]});
+      if(!handle)handle=await window.showSaveFilePicker({suggestedName:name,types:[{description:'LaTeX',accept:{'text/plain':['.tex']}}]});
       let writable;
       try { writable=await handle.createWritable(); }
       catch { await handle.requestPermission?.({mode:'readwrite'}); writable=await handle.createWritable(); }
-      await writable.write(text);await writable.close();
-      fileHandle=handle;
-      if(handle.name)filename=handle.name;
-      savedSource=text;
-      sourceView.refresh();
-      const status=document.querySelector('#status');
-      status.hidden=false;status.textContent=t('已保存','Saved');
-      return;
+      try {await writable.write(snapshot.text);await writable.close();}
+      catch(error){try {await writable.abort?.();} catch {} throw error;}
     } catch(error) {
-      if(error?.name==='AbortError')return;
+      if(!snapshot.isCurrentDocument())return;
+      status.hidden=false;
+      if(error?.name==='AbortError'){status.textContent=t('已取消保存','Save cancelled');return;}
+      status.textContent=t('保存失败','Save failed')+' · '+String(error?.message ?? error);
       console.warn(t('保存','Save'),error);
+      await downloadProject(false,snapshot.text,name);
+      return;
     }
+    if(!snapshot.isCurrentDocument())return;
+    fileHandle=handle;
+    if(handle.name)filename=handle.name;
+    savedSource=snapshot.text;
+    snapshot.commit();
+    sourceView.refresh();
+    status.hidden=false;status.textContent=t('已保存','Saved');
+    return;
   }
-  await downloadProject(false);
+  await downloadProject(false,snapshot.text,name);
 }
 async function openDocument() {
   if (projectExplorer?.active && !projectExplorer.close()) return true;
@@ -2269,6 +2373,7 @@ projectExplorer = installProjectExplorer({footer, filePanel:document.querySelect
     };
   },
   open(file) {
+    documentGeneration++;
     projectFileKind = file.kind;
     returnedDraft = undefined; syncPending = false;
     filename = file.path; fileHandle = null; savedSource = file.saved;
@@ -2301,6 +2406,7 @@ projectExplorer = installProjectExplorer({footer, filePanel:document.querySelect
   saved(text) { savedSource = text; sourceView.refresh(); },
   error(text) { const status = document.querySelector('#status'); status.hidden = false; status.textContent = text; },
   end() {
+    documentGeneration++;
     projectDocument.composition=null;
     projectFileKind = undefined; returnedDraft = undefined;
     projectWorkspace.select('body');
@@ -2730,6 +2836,8 @@ async function manageCitations(){
   }catch(error){
     document.querySelector('#status').hidden=false;
     document.querySelector('#status').textContent=error.message;
+  }finally{
+    refreshReferences(paper);
   }
 }
 groupButton(referenceGroup,'cite',manageCitations);

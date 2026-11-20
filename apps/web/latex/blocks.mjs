@@ -4,6 +4,13 @@ import { parseTable } from './tables.mjs';
 import { parseImageBlock } from './images.mjs';
 import { theoremParts } from './theorem.mjs';
 import { listStyleForLabel, bulletMarker } from './list-numbering.mjs';
+import {sourceStructure} from './source-structure.mjs';
+import {parseDocument} from './document.mjs';
+import {headingAt} from './headings.mjs';
+import {parseTableFloat} from './table-floats.mjs';
+import {importTblr,environmentEnd,trivia} from './tblr.mjs';
+import {importTabularx} from './tabularx.mjs';
+import {importTextEnvironment} from './text-environments.mjs';
 
 function importedTableCells(row,specs,layout) {
   return row.cells.map((cell,index) => {
@@ -20,8 +27,10 @@ function importedTableCells(row,specs,layout) {
   });
 }
 
-function inlineContent(text) {
-  const parsed = parseInline(text);
+const rawNode = source => ({type:'raw', attrs:{source}});
+
+function inlineContent(text, groups=false) {
+  const parsed = parseInline(text,0,{groups});
   if (!parsed) return null;
   function convert(parts, marks = []) {
     return parts.flatMap(part => {
@@ -29,10 +38,10 @@ function inlineContent(text) {
       if (part.textCommand) return [{ type: 'text', text: textCommands[part.textCommand], marks: [...marks, { type: 'textCommand', attrs: { name: part.textCommand } }] }];
       if (part.lipsum !== undefined) return [{ type: 'lipsum', attrs: { range: part.lipsum } }];
       if (part.math !== undefined) return [{ type: 'math', attrs: { latex: part.math, display: false, delimiter: part.delimiters[0] } }];
-      if (part.ref !== undefined) return [{ type: 'ref', attrs: { key: part.ref, ...(part.equation && {equation:true}) } }];
-      if (part.cite !== undefined) return [{ type: 'cite', attrs: { key: part.cite } }];
+      if (part.ref !== undefined) return [{ type: 'ref', attrs: { key: part.ref, ...part.referenceAttrs, ...(part.equation && {equation:true}) } }];
+      if (part.cite !== undefined) return [{ type: 'cite', attrs: { key: part.cite, ...part.referenceAttrs } }];
       if (part.footnote !== undefined) return [{ type: 'footnote', attrs: { text: part.footnote } }];
-      if (part.label !== undefined) return [{ type: 'label', attrs: { key: part.label } }];
+      if (part.label !== undefined) return [{ type: 'label', attrs: { key: part.label, ...part.referenceAttrs } }];
       if (part.hardBreak) return [{ type: 'hardBreak' }];
       const type = { strong: 'bold', em: 'italic', u: 'underline', strike: 'strike', code: 'code', sup: 'superscript', sub: 'subscript', textsc: 'smallcaps', fbox: 'boxed', circled: 'circled' }[part.tag];
       if (type) {
@@ -57,8 +66,9 @@ const headingLevels = () => headingBase
   ? [headingBase, 'section', 'subsection', 'subsubsection']
   : ['section', 'subsection', 'subsubsection'];
 
-function heading(name, star, short, title, label) {
-  const content = inlineContent(title) ?? (title ? [{ type: 'text', text: title }] : []);
+function heading(name, star, short, title, label, labelSource) {
+  const content = inlineContent(title);
+  if (!content) return null;
   return {
     type: 'heading',
     attrs: {
@@ -70,6 +80,7 @@ function heading(name, star, short, title, label) {
       numbered: !star,
       ...(short !== undefined ? { shortTitle: short } : {}),
       ...(label ? { label } : {}),
+      ...(labelSource ? { labelSource } : {}),
     },
     content,
   };
@@ -101,6 +112,7 @@ function splitListItems(body) {
     if (token.startsWith('\\begin')) { depth++; continue; }
     if (token.startsWith('\\end')) { depth = Math.max(0, depth - 1); continue; }
     if (depth !== 0) continue;
+    if (start === null && body.slice(0,match.index).trim()) return null;
     if (start !== null) items.push(body.slice(start, match.index));
     start = match.index + token.length;
   }
@@ -110,12 +122,13 @@ function splitListItems(body) {
 }
 
 function paragraphs(text) {
-  return text.split(/\n\s*\n/).map(part => part.trim()).filter(Boolean).map(part => {
+  const nodes=text.split(/\n\s*\n/).map(part => part.trim()).filter(Boolean).map(part => {
     const imported=importBlock(part);
     return imported?.type==='paragraph'
       ? imported
-      : {type:'paragraph',content:inlineContent(part)??[{type:'text',text:part}]};
+      : {type:'paragraph',content:inlineContent(part) ?? undefined};
   });
+  return nodes.every(node=>node.content) ? nodes : null;
 }
 
 function itemParts(content) {
@@ -125,7 +138,11 @@ function itemParts(content) {
   let match;
   while ((match = pattern.exec(content))) {
     const before = content.slice(cursor, match.index).trim();
-    if (before) parts.push(...paragraphs(before));
+    if (before) {
+      const nodes = paragraphs(before);
+      if (!nodes) return null;
+      parts.push(...nodes);
+    }
     const end = matchingListEnd(content, match.index, match[1]);
     if (end < 0) return null;
     const close = '\\end{' + match[1] + '}';
@@ -136,7 +153,11 @@ function itemParts(content) {
     pattern.lastIndex = cursor;
   }
   const after = content.slice(cursor).trim();
-  if (after) parts.push(...paragraphs(after));
+  if (after) {
+    const nodes = paragraphs(after);
+    if (!nodes) return null;
+    parts.push(...nodes);
+  }
   return parts.length ? parts : [{ type: 'paragraph' }];
 }
 
@@ -259,15 +280,17 @@ function unwrapParagraphWrappers(block) {
   return {text,attrs};
 }
 
-export function importBlock(block) {
+export function importBlock(block, options={}) {
+  if((options.environmentDepth??0)>32)return rawNode(block);
+  const textEnvironment=importTextEnvironment(block,source=>importBlocks(source,{groups:true,environmentDepth:(options.environmentDepth??0)+1}));
+  if(textEnvironment)return textEnvironment;
   const wrapped = unwrapParagraphWrappers(block);
   const text = wrapped.text;
   if (!text) return null;
-  const image = parseImageBlock(text);
+  const image = parseImageBlock(block);
   if (image) return image;
-  const headingNames = headingBase ? headingBase + '|section|subsection|subsubsection' : 'chapter|section|subsection|subsubsection';
-  const headingMatch = text.match(new RegExp('^\\\\(' + headingNames + ')(\\*?)(?:\\[([^\\]]*)\\])?\\{([^{}]*)\\}(?:[ \\t]*\\\\label\\{([^{}]*)\\})?$'));
-  if (headingMatch) return heading(headingMatch[1], headingMatch[2], headingMatch[3], headingMatch[4], headingMatch[5]);
+  const title = headingAt(text,0,headingBase);
+  if (title && title.end===text.length) return heading(title.name,title.star,title.short,title.title,title.label,title.labelSource) ?? rawNode(block);
   if (text === '\\appendix') return {type:'appendixStart'};
   const matter = /^\\(frontmatter|mainmatter|backmatter)$/.exec(text);
   if (matter) return {type:'matterStart',attrs:{matter:matter[1].replace('matter','')||'main'}};
@@ -296,19 +319,25 @@ export function importBlock(block) {
   const quote = text.match(/^\\begin\{quote\}([\s\S]*?)\\end\{quote\}$/);
   if (quote) {
     const content = paragraphs(quote[1]);
+    if (!content) return rawNode(block);
     return { type: 'blockquote', content: content.length ? content : [{ type: 'paragraph' }] };
   }
   const list = parseListBlock(text);
   if (list) return list;
-  const tableFloat = /^\\begin\{(table\*?)\}(?:\[([^\]]*)\])?([\s\S]*?)\\end\{\1\}$/.exec(text);
+  const tblr=importTblr(block,inlineContent);
+  if(tblr)return tblr;
+  const tabularx=importTabularx(block,inlineContent);
+  if(tabularx)return tabularx;
+  const tableFloat = parseTableFloat(text);
   if (tableFloat) {
-    const inner = tableFloat[3];
+    const inner = tableFloat.body;
     const start = inner.indexOf('\\begin{tabular}');
     const end = inner.lastIndexOf('\\end{tabular}');
     const tabular = start >= 0 && end > start ? parseTable(inner.slice(start, end + '\\end{tabular}'.length)) : null;
     if (tabular) {
-      const caption = /\\caption\{([^{}]*)\}/.exec(inner);
-      const label = /\\label\{([^{}]*)\}/.exec(inner);
+      const outside = inner.slice(0,start) + inner.slice(end + '\\end{tabular}'.length);
+      if (outside.replace(/\\centering\b|\\(?:caption|label)\{[^{}]*\}/g,'').trim()) return rawNode(block);
+      if (tabular.rows.some(row => row.cells.some(cell => !inlineContent(cell.trim())))) return rawNode(block);
       const booktabs = tabular.rows.some(row => row.rules.some(rule => /toprule|midrule|bottomrule/.test(rule))) ||
         tabular.trailing.some(rule => /toprule|midrule|bottomrule/.test(rule));
       const ends = tabular.rows[0].rules.includes('\\hline') && tabular.trailing.includes('\\hline');
@@ -321,10 +350,10 @@ export function importBlock(block) {
           columns: tabular.columns, booktabs, borderMode,
           columnLayout: JSON.stringify(tabular.columnLayout?.boundaries??[]),
           columnRules: tabular.columnLayout?.boundaries?.some(boundary=>boundary.rules>0||boundary.at) || false,
-          caption: caption?.[1] ?? null,
-          label: label?.[1] ?? null,
-          placement: tableFloat[2] || null,
-          centered: /\\centering\b/.test(inner),
+          caption: tableFloat.caption,
+          label: tableFloat.label,
+          placement: tableFloat.placement,
+          centered: tableFloat.centered,
         },
           content: tabular.rows.map(row => ({
             type: 'tableRow',
@@ -340,6 +369,7 @@ export function importBlock(block) {
   }
   const table = parseTable(text);
   if (table) {
+    if (table.rows.some(row => row.cells.some(cell => !inlineContent(cell.trim())))) return rawNode(block);
     const booktabs = table.rows.some(row => row.rules.some(rule => /toprule|midrule|bottomrule/.test(rule))) ||
       table.trailing.some(rule => /toprule|midrule|bottomrule/.test(rule));
     const ends = table.rows[0].rules.includes('\\hline') && table.trailing.includes('\\hline');
@@ -363,7 +393,7 @@ export function importBlock(block) {
     };
   }
   const indentation = /^\\(noindent|indent)(?![A-Za-z])[ \t]*/.exec(text);
-  const content = inlineContent(indentation ? text.slice(indentation[0].length) : text);
+  const content = inlineContent(indentation ? text.slice(indentation[0].length) : text,options.groups);
   if (content) {
     const attrs = {
       ...wrapped.attrs,
@@ -379,108 +409,79 @@ export function importBlock(block) {
   return { type: 'raw', attrs: { source: block } };
 }
 
-function structuralPattern() {
-  const names = headingBase ? headingBase + '|section|subsection|subsubsection' : 'chapter|section|subsection|subsubsection';
-  const source = String.raw`\\(tableofcontents|appendix|frontmatter|mainmatter|backmatter)\b|\\(${names})(\*?)(?:\[([^\]]*)\])?\{([^{}]*)\}(?:[ \t]*\\label\{([^{}]*)\})?|\\(newpage|clearpage|pagebreak)\b`;
-  return new RegExp(source, 'g');
-}
-
 function splitParagraphs(block) {
   const parts = [];
   let start = 0;
-  let depth = 0;
-  let groups = 0;
-  const tokens = /\\(begin|end)\{[^{}]+\}|\\par\b|\\.|[{}]/g;
-  let match;
-  while ((match = tokens.exec(block))) {
-    if (match[1] === 'begin') depth++;
-    else if (match[1] === 'end') depth = Math.max(0, depth - 1);
-    else if (match[0] === '{') groups++;
-    else if (match[0] === '}') groups = Math.max(0, groups - 1);
-    else if (match[0] === '\\par' && depth === 0 && groups === 0) {
-      parts.push(block.slice(start, match.index));
-      start = match.index + match[0].length;
+  for (const token of sourceStructure(block)) {
+    if (token.value === '\\par' && token.topLevel) {
+      parts.push(block.slice(start, token.index));
+      start = token.end;
     }
   }
   parts.push(block.slice(start));
   return parts;
 }
 
-// Structural switches in comments or macro arguments must remain source text.
-function topLevelCommand(text, index) {
-  let depth=0;
-  for(let i=0;i<index;i++){
-    if(text[i]==='%'){
-      const end=text.indexOf('\n',i);
-      if(end<0||end>=index)return false;
-      i=end;
-    }else if(text[i]==='\\'){
-      if(!/[A-Za-z]/.test(text[i+1]??''))i++;
-    }else if(text[i]==='{')depth++;
-    else if(text[i]==='}')depth--;
-  }
-  return depth===0;
-}
-function importLayoutCommands(text) {
+function importSegment(block,options) {
   const nodes = [];
   let cursor = 0;
-  const pattern = /\\(?:pagestyle|thispagestyle)\{[^{}]*\}|\\(?:maketitle)\b|\\mbox\{\}/g;
-  let match;
-  while ((match = pattern.exec(text))) {
-    const before = importBlock(text.slice(cursor, match.index));
-    if (before) nodes.push(...(Array.isArray(before) ? before : [before]));
-    nodes.push({ type: 'layoutCommand', attrs: { command: match[0] } });
-    cursor = match.index + match[0].length;
-  }
-  const after = importBlock(text.slice(cursor));
-  if (after) nodes.push(...(Array.isArray(after) ? after : [after]));
-  return nodes;
-}
-
-function importSegment(block) {
-  const nodes = [];
-  const imagePattern = /\\begin\{figure\}[\s\S]*?\\end\{figure\}|\\begin\{wrapfigure\}[\s\S]*?\\end\{wrapfigure\}/g;
-  let imageMatch;
-  let imageCursor = 0;
-  while ((imageMatch = imagePattern.exec(block))) {
-    const before = block.slice(imageCursor, imageMatch.index);
-    if (before.trim()) nodes.push(...importSegment(before));
-    const image = parseImageBlock(imageMatch[0]);
-    if (image) nodes.push(image);
-    else {
-      const raw = importBlock(imageMatch[0]);
-      if (raw) nodes.push(raw);
+  for (const token of sourceStructure(block)) {
+    if (!token.topLevel || token.index<cursor) continue;
+    // Split outer source-backed environments without losing their separators.
+    // The scanner
+    // keeps nested environments, macro arguments and literal content opaque.
+    const floating=token.kind==='begin' && /^\\begin\{(figure\*?|wrapfigure|table\*?|tblr|tabularx|abstract|center|equation\*?)\}$/.exec(token.value);
+    const closing=floating && environmentEnd(block,token.index,floating[1]);
+    if(closing) {
+      const prefix=block.slice(cursor,token.index);
+      const start=prefix.trim()?token.index:cursor;
+      if(prefix.trim()) {
+        const before=trivia(prefix)===prefix.length?rawNode(prefix):importBlock(prefix,options);
+        if(before)nodes.push(before);
+      }
+      // Whitespace remains owned by the original environment source. Comments
+      // between environments stay opaque rather than being discarded as text.
+      const end=closing.end+(block.slice(closing.end).match(/^\s*/)?.[0].length??0);
+      nodes.push(importBlock(block.slice(start,end),options));
+      cursor=trivia(block,end);
+      if(cursor>end)nodes.push(rawNode(block.slice(end,cursor)));
+      continue;
     }
-    imageCursor = imageMatch.index + imageMatch[0].length;
+    if (token.kind==='displayMath') {
+      const before=importBlock(block.slice(cursor,token.index),options);
+      if(before)nodes.push(before);
+      nodes.push({type:'mathBlock',attrs:{latex:token.latex,display:true,delimiter:token.delimiter}});
+      cursor=token.end;
+      continue;
+    }
+    if (token.kind!=='command') continue;
+    const toc=token.value==='\\tableofcontents';
+    const title=toc ? null : headingAt(block,token.index,headingBase);
+    const structural=/^\\(?:appendix|frontmatter|mainmatter|backmatter|newpage|clearpage|pagebreak)$/.test(token.value);
+    const layout=/^\\(?:pagestyle|thispagestyle)\{[^{}]*\}|^\\(?:maketitle\b|mbox\{\})/.exec(block.slice(token.index));
+    if (!toc && !title && !structural && !layout) continue;
+    const before = importBlock(block.slice(cursor, token.index),options);
+    if (before) nodes.push(before);
+    if (toc) nodes.push({ type: 'tableOfContents' });
+    else if(structural)nodes.push(importBlock(token.value,options));
+    else if(layout)nodes.push({type:'layoutCommand',attrs:{command:layout[0]}});
+    else nodes.push(heading(title.name,title.star,title.short,title.title,title.label,title.labelSource) ?? rawNode(block.slice(token.index,title.end)));
+    cursor = title?.end ?? (layout ? token.index+layout[0].length : token.end);
   }
-  if (imageCursor > 0) {
-    const after = block.slice(imageCursor);
-    if (after.trim()) nodes.push(...importSegment(after));
-    return nodes;
-  }
-  let cursor = 0;
-  const structural = structuralPattern();
-  let match;
-  while ((match = structural.exec(block))) {
-    if((match[1]==='appendix'||match[1]==='frontmatter'||match[1]==='mainmatter'||match[1]==='backmatter'||match[2]==='chapter')&&!topLevelCommand(block,match.index))continue;
-    const before = importLayoutCommands(block.slice(cursor, match.index));
-    nodes.push(...before);
-    if(match[1]==='appendix')nodes.push({type:'appendixStart'});
-    else if(['frontmatter','mainmatter','backmatter'].includes(match[1]))nodes.push({type:'matterStart',attrs:{matter:match[1].replace('matter','')||'main'}});
-    else if (match[1] === 'tableofcontents') nodes.push({ type: 'tableOfContents' });
-    else if (match[7]) nodes.push({ type: 'pageBreak' });
-    else nodes.push(heading(match[2], match[3], match[4], match[5], match[6]));
-    cursor = match.index + match[0].length;
-  }
-  const after = importLayoutCommands(block.slice(cursor));
-  nodes.push(...after);
+  const after = importBlock(block.slice(cursor),options);
+  if (after) nodes.push(after);
   return nodes;
 }
 
-export function importBlocks(block) {
+export function importBlocks(block, options={}) {
+  if (Array.from(sourceStructure(block)).some(token => token.kind === 'invalid')) return [rawNode(block)];
+  if((options.environmentDepth??0)>32)return [rawNode(block)];
+  const textEnvironment=importTextEnvironment(block,source=>importBlocks(source,{groups:true,environmentDepth:(options.environmentDepth??0)+1}));
+  if(textEnvironment)return [textEnvironment];
   const theorem=theoremParts(block);
   if(theorem) {
-    const content=theorem.body.split(/\r?\n[ \t]*\r?\n/).map(part=>importBlock(part)).filter(Boolean);
+    const content=parseDocument(theorem.body,{fragment:true}).blocks.flatMap(importBlocks);
+    if (content.some(node => node.type === 'raw')) return [rawNode(block)];
     return [{type:'theoremBlock',attrs:{kind:theorem.kind,title:theorem.title},content:content.length?content:[{type:'paragraph'}]}];
   }
   const ruledTable = /^\{\\setlength\{\\arrayrulewidth\}\{(\d+(?:\.\d+)?pt)\}\s*(\\begin\{tabular\}[\s\S]*\\end\{tabular\})\s*\}$/.exec(block.trim());
@@ -490,5 +491,5 @@ export function importBlocks(block) {
   }
   const listing = /^\\begin\{lstlisting\}(?:\[language=([A-Za-z0-9+_-]+)\])?\r?\n([\s\S]*?)\r?\n\\end\{lstlisting\}$/.exec(block.trim());
   if (listing) return [{type:'codeBlock',attrs:{language:listing[1]??null},content:listing[2]?[{type:'text',text:listing[2]}]:[]}];
-  return splitParagraphs(block).flatMap(importSegment);
+  return splitParagraphs(block).flatMap(part=>importSegment(part,options));
 }
