@@ -1,0 +1,587 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Lineae · Windows / macOS 快捷键决策表</title>
+<style>
+:root{color-scheme:light;--bg:#f4f3ee;--paper:#fff;--ink:#252d29;--muted:#616b64;--line:#dcded7;--accent:#315b46;--soft:#eaf1eb;--warn:#8c5112;--bad:#a92e36}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.6 system-ui,-apple-system,"Segoe UI",sans-serif}
+main{max-width:1500px;margin:auto;padding:36px 24px 70px}h1{font-size:30px;line-height:1.3;margin:6px 0 12px;letter-spacing:-.7px}h2{font-size:18px;margin:0 0 10px}
+.eyebrow{color:var(--accent);font-size:12px;letter-spacing:2px;font-weight:700}.muted,small{color:var(--muted)}.intro{max-width:950px;margin-bottom:20px}
+.panel{background:var(--paper);border:1px solid var(--line);border-radius:14px;padding:20px;margin:16px 0}.row{display:flex;flex-wrap:wrap;align-items:center;gap:10px}.between{justify-content:space-between}
+button,select,input,textarea{font:inherit;color:inherit;border:1px solid #b9c2b8;background:white;border-radius:7px;padding:7px 10px}
+button{cursor:pointer}button:hover{background:var(--soft)}button:disabled{cursor:default;opacity:.5}button.primary{background:var(--accent);color:white;border-color:var(--accent)}
+:focus-visible{outline:3px solid #9fc1aa;outline-offset:2px}textarea{resize:vertical;width:100%;min-height:72px;line-height:1.5}textarea:disabled{background:#f3f4f1;color:#777}
+label{display:block}code,kbd{font:12px/1.6 ui-monospace,SFMono-Regular,Consolas,monospace;background:#f0f2ed;border-radius:4px;padding:2px 4px;overflow-wrap:anywhere}
+.tag{display:inline-block;font-size:11px;padding:2px 7px;border:1px solid var(--line);border-radius:20px;background:#f7f8f4;margin:3px 4px 3px 0}.tag.config{background:var(--soft);color:var(--accent)}
+.tag.entry,.tag.builtin{color:var(--warn);background:#fff6e8}.notice{color:var(--warn)}.error{color:var(--bad)}#summary{font-weight:600;color:var(--accent)}#storage{font-size:12px}
+details{margin-top:12px}summary{cursor:pointer;font-weight:600}ul{padding-left:22px}.filters{position:sticky;top:0;z-index:2;box-shadow:0 3px 14px #2030250b}
+.filters input{flex:1;min-width:200px}.table-wrap{overflow-x:auto;border:1px solid var(--line);border-radius:12px;background:white}
+table{border-collapse:collapse;width:100%;min-width:1080px;table-layout:fixed}th{text-align:left;font-size:12px;color:var(--muted);background:#f0f2ec}
+th,td{padding:14px;vertical-align:top;border-bottom:1px solid var(--line)}th:nth-child(1){width:24%}th:nth-child(2){width:17%}th:nth-child(3){width:36%}th:nth-child(4){width:23%}
+td strong{display:block;font-size:15px}td small{display:block;margin:5px 0}.defaults{white-space:pre-line;font:12px/1.7 ui-monospace,Consolas,monospace;overflow-wrap:anywhere}
+.binding-head{display:flex;gap:7px;margin-bottom:8px}.binding-head select{flex:1;min-width:0}.notes{min-height:66px;font-size:13px}.issues{font-size:12px;white-space:pre-line;margin-top:6px}
+tr[data-error=true]{background:#fff7f6}tr[data-warning=true]:not([data-error=true]){background:#fffdf5}tr[hidden]{display:none}.group-heading td{background:#eaf0e7;font-weight:700;padding:9px 14px}
+#message{min-height:24px;white-space:pre-line}dialog{border:1px solid var(--line);border-radius:16px;max-width:540px;width:calc(100% - 32px);padding:26px;box-shadow:0 20px 80px #0002}
+dialog::backdrop{background:#18281f66}#record-value{display:block;padding:20px;margin:14px 0;font:20px ui-monospace,Consolas,monospace;background:var(--soft);min-height:72px}
+footer{margin-top:24px;font-size:12px;color:var(--muted)}@media(max-width:700px){main{padding:22px 12px}h1{font-size:24px}.panel{padding:15px}.filters{position:static}}
+@media print{.filters,.actions,.binding-head button,dialog{display:none}main{padding:0}body{background:white}.table-wrap{overflow:visible}table{min-width:0;font-size:10px}th,td{padding:6px}.panel{break-inside:avoid}textarea{border:0}}
+</style>
+</head>
+<body>
+<main>
+<div class="eyebrow">LINEAE / SHORTCUT WORKSHEET</div>
+<h1>先决定操作，再决定按键。</h1>
+<p class="intro muted">Windows 与 macOS 各填一份，分别导出 JSON 发回来。可以选择<strong>不绑定</strong>，也可以先留作<strong>待决定</strong>。这是一张离线需求表，不会执行编辑命令，也不会改变 Lineae 的实际配置。</p>
+<p class="notice">这是收集 2026-11-20 方案时的功能与默认键位快照。该方案现已接入，内建操作也已支持 YAML；最新默认值请以 <code>apps/web/config.yaml</code> 为准，不要把下面的历史默认值误当作当前配置。</p>
+<section class="panel">
+  <div class="row between">
+    <label>当前填写的平台
+      <select id="platform"><option value="windows">Windows</option><option value="macos">macOS</option></select>
+    </label>
+    <div><div id="summary" aria-live="polite"></div><div id="storage" class="muted"></div></div>
+  </div>
+  <details>
+    <summary>怎么填写 · 功能核对范围 · 快捷键语法</summary>
+    <ul>
+      <li>每项可选「待决定 / 沿用现状 / 不绑定 / 自定义」；两平台的选择、按键和备注彼此独立。未决定不会被当作“不绑定”。</li>
+      <li>自定义按键可手填或录制：<code>ctrl+shift+m</code>；两段连按：<code>ctrl+k ctrl+m</code>；多个备选快捷键<strong>每行一个</strong>。Mac 可写 <code>cmd</code>、<code>option</code>，会规范为 <code>meta</code>、<code>alt</code>。</li>
+      <li><code>mod</code> 仅在运行时按平台变为 Ctrl / ⌘。当前配置明确写了 <code>ctrl</code> 的键，在 Mac 上仍为 Control。这里展示的是仓库默认值，不是你浏览器里可能已修改的设置。</li>
+      <li>「现已支持自定义」是现有 YAML 命令；「快捷键待接入」表示<strong>功能入口已实现</strong>，但尚无配置命令；「内建按键」由 CodeMirror、MathLive 或系统处理。后两类的选择是后续实现需求，不会假装已经生效。</li>
+      <li>同一作用域的重复键、单键与两段连按的前缀冲突会标红。不同作用域会按实际重叠情形提示；正文与公式可复用。系统/浏览器保留键只做提醒，网页无法保证拦截。</li>
+      <li>源码区有自己的键位系统，不会因为修改正文快捷键而自动跟着改。表格里的公式使用公式作用域；普通表格单元格使用正文/表格作用域。</li>
+      <li>清空自定义输入不等于“不绑定”：要取消请明确选“不绑定”。导出包含<strong>全部项目</strong>，不受当前筛选影响。</li>
+    </ul>
+    <p id="provenance" class="muted"></p>
+    <p class="muted">功能清单按用户可见操作粒度整理；不穷举每个 LaTeX 符号、TikZ 元件或右键菜单参数。未合并的 Jeff-Giff PR #25 不在核对范围；PDF/TeX 编译等不存在的入口未列为已完成。</p>
+  </details>
+</section>
+<section class="panel actions">
+  <div class="row">
+    <button id="export" class="primary">导出当前平台 JSON</button>
+    <button id="import">导入 JSON 继续填写</button><input id="import-file" type="file" accept=".json,application/json" hidden>
+    <button id="keep-pending">未决定项 → 沿用现状</button>
+    <button id="none-pending">未决定项 → 不绑定</button>
+    <button id="reset">清空当前平台</button>
+  </div>
+  <label style="margin-top:14px">这个平台的总体偏好 / 想补充的操作
+    <textarea id="platform-notes" maxlength="8000" placeholder="例如：尽量使用 ⌘；Control 留给公式；某些组合和输入法冲突；希望再增加哪些操作……"></textarea>
+  </label>
+  <div id="message" role="status" aria-live="polite"></div>
+  <small>有错误或未决定项也可以导出草稿，文件会带上诊断信息。带回来的 JSON 是需求清单，不是可直接导入 Lineae 的 YAML。</small>
+</section>
+<section class="panel filters">
+  <div class="row">
+    <input id="search" type="search" aria-label="搜索功能" placeholder="搜索功能、命令 ID、快捷键、备注……">
+    <select id="group" aria-label="功能分类"><option value="">全部分类</option></select>
+    <select id="kind" aria-label="接入状态"><option value="">全部接入状态</option><option value="config">现已支持自定义</option><option value="entry">快捷键待接入</option><option value="builtin">内建按键</option></select>
+    <select id="decision-filter" aria-label="决策状态"><option value="">全部决策状态</option><option value="pending">待决定</option><option value="keep">沿用现状</option><option value="none">不绑定</option><option value="custom">自定义</option><option value="issues">有提醒 / 错误</option></select>
+  </div>
+  <div class="row between" style="margin-top:10px"><span id="visible-count" class="muted"></span><span id="issue-count" aria-live="polite"></span></div>
+</section>
+<div class="table-wrap"><table>
+  <thead><tr><th>已实现的功能 / 适用范围</th><th>当前仓库默认</th><th>你的决定 / 期望快捷键</th><th>备注 / 用途或冲突</th></tr></thead>
+  <tbody id="features"></tbody>
+</table></div>
+<section class="panel">
+  <h2>已经存在，但不适合逐项分配快捷键的能力</h2>
+  <ul id="capabilities"></ul>
+  <p class="muted">希望把某种自动行为变成开关或新命令，可写在总体备注中。下面这些说明不算未决定项。</p>
+</section>
+<footer>纯本地 HTML · 无外部脚本、字体、统计或网络请求 · 浏览器草稿不是备份，请务必导出 JSON。复制此 HTML 到 Mac 后双击即可使用。</footer>
+</main>
+<dialog id="recorder" aria-labelledby="record-title">
+  <h2 id="record-title">录制快捷键</h2>
+  <p id="record-target"></p>
+  <label>录制长度 <select id="record-length"><option value="1">一个组合键</option><option value="2">两段连按</option></select></label>
+  <output id="record-value">请按快捷键</output>
+  <p class="muted">Esc 取消；只按修饰键不计入。系统保留键可能收不到，可取消后手工填写。录制只在此弹窗内生效。</p>
+  <div class="row"><button id="record-use" class="primary" disabled>使用此按键</button><button id="record-clear">重新录制</button><button id="record-cancel">取消</button></div>
+</dialog>
+<script id="catalog" type="application/json">
+{
+  "version": 1,
+  "baseRevision": "331805e7d83d91a2d80d96b99934e5681c8e8604",
+  "reviewedAt": "2026-11-20",
+  "sources": ["apps/web/config.yaml", "apps/web/src/main.js", "apps/web/src/editor/keybindings.mjs", "apps/web/src/editor/source-workspace.js", "apps/web/src/editor/math-node.js", "apps/web/src/project/explorer.js", "apps/web/src/ui/"],
+  "defaults": {
+    "global": {"save":["ctrl+s","meta+s"],"zoomIn":["ctrl+=","meta+=","ctrl+plus","meta+plus","ctrl+shift+plus","meta+shift+plus"],"zoomOut":["ctrl+-","meta+-"],"zoomReset":"ctrl+0"},
+    "editor": {"insertDisplayMath":"ctrl+e c","toggleBox":"ctrl+e b","editMath":"ctrl+e e","alignLeft":"ctrl+e l","alignRight":"ctrl+e r","alignCenter":"ctrl+e i","find":"ctrl+f","leaveEnvironment":"ctrl+j","leaveAllEnvironments":"ctrl+shift+j","leaveFile":"ctrl+alt+j","toggleContextMarker":["ctrl+alt+t","ctrl+e t"],"ignoreBrowserZoomReset":null,"literalBacktick":"alt+backtick","undo":"mod+z","redo":["mod+y","mod+shift+z"],"toggleBold":"mod+b","toggleItalic":"mod+i","toggleStrike":"mod+shift+s","toggleCode":null,"toggleCodeBlock":"mod+alt+c","toggleBlockquote":null,"toggleBulletList":"mod+shift+8","toggleOrderedList":"mod+shift+7","paragraph":"mod+alt+0","section":"mod+alt+1","subsection":"mod+alt+2","subsubsection":"mod+alt+3","hardBreak":"mod+enter"},
+    "paragraph": {"toggleIndent":"ctrl+i"},
+    "table": {"addRow":"ctrl+e shift+r","addColumn":"ctrl+e shift+c"},
+    "math": {"superscript":"ctrl+6","subscript":"ctrl+-","leaveEnvironment":["ctrl+0","ctrl+j"],"leaveFormula":"ctrl+shift+j","leaveFile":"ctrl+alt+j","addRow":"ctrl+e r","addColumn":"ctrl+e c","toggleDisplayStyle":"ctrl+e t","literalFence":"ctrl+e shift+t","left":"ctrl+l","right":"ctrl+r","frac":"ctrl+f","sqrt":"ctrl+2","indexedRoot":"ctrl+shift+2","int":"ctrl+i","matrix":"ctrl+m","pmatrix":"ctrl+shift+m","bmatrix":"ctrl+alt+m","Bmatrix":"ctrl+alt+shift+m","sum":["ctrl+shift+s","ctrl+alt+s"],"prod":"ctrl+shift+p","iint":"ctrl+shift+i","iiint":"ctrl+alt+shift+i","oint":"alt+i","oiint":"alt+shift+i","undo":"ctrl+z","redo":"ctrl+y"}
+  },
+  "labels": {
+    "global.save":["保存文档 / 当前工程","文件与工程","全局保存入口；工程打开时保存工程。源码区也可保存。"],
+    "global.zoomIn":["放大文档","视图与界面","文档缩放；源码与预览有各自的字号/缩放处理。"],
+    "global.zoomOut":["缩小文档","视图与界面","公式中 Ctrl+- 默认优先进入下标。"],
+    "global.zoomReset":["恢复文档缩放","视图与界面","公式中 Ctrl+0 默认优先退出当前结构。"],
+    "editor.insertDisplayMath":["插入行间公式","公式插入","正文中插入独立公式块。"],
+    "editor.toggleBox":["切换文本 / 段落方框","正文格式","现有 space overlay 方框入口。"],
+    "editor.editMath":["进入当前位置的公式","公式插入","从正文光标进入相邻公式编辑。"],
+    "editor.alignLeft":["段落左对齐","正文格式","作用于正文段落。"],
+    "editor.alignRight":["段落右对齐","正文格式","作用于正文段落。"],
+    "editor.alignCenter":["段落居中","正文格式","作用于正文段落。"],
+    "editor.find":["正文查找","编辑与导航","正文查找面板；源码查找另列。"],
+    "editor.leaveEnvironment":["退出当前正文环境","编辑与导航","离开列表等当前结构。"],
+    "editor.leaveAllEnvironments":["退出全部正文环境","编辑与导航","回到外围正文。"],
+    "editor.leaveFile":["退出当前引用文件","文件与工程","连续工程 Document 中返回父文件边界。"],
+    "editor.toggleContextMarker":["切换标题编号 / 列表标记","正文结构","依当前标题、列表上下文切换。"],
+    "editor.ignoreBrowserZoomReset":["恢复缩放（旧兼容命令）","视图与界面","与 global.zoomReset 功能重复；当前未绑定，可选择保持不绑定。"],
+    "editor.literalBacktick":["输入字面反引号","正文格式","避免当作结构输入规则处理。"],
+    "editor.undo":["撤销正文编辑","编辑与导航","使用文档历史。"],
+    "editor.redo":["重做正文编辑","编辑与导航","当前有多个默认键。"],
+    "editor.toggleBold":["粗体","正文格式","切换选区 / 后续输入的粗体。"],
+    "editor.toggleItalic":["斜体","正文格式","Mac 的 Command 与段落 Control+i 不相同。"],
+    "editor.toggleStrike":["删除线","正文格式","切换删除线。"],
+    "editor.toggleCode":["行内代码","正文格式","功能已实现，当前未配置快捷键。"],
+    "editor.toggleCodeBlock":["代码块","正文结构","快捷键切换代码块；工具栏还可指定语言。"],
+    "editor.toggleBlockquote":["引用段落","正文结构","quote 环境；当前未配置快捷键。"],
+    "editor.toggleBulletList":["无序列表","正文结构","切换 itemize。"],
+    "editor.toggleOrderedList":["有序列表","正文结构","切换 enumerate。"],
+    "editor.paragraph":["转换为正文段落","正文结构","清除当前标题级别。"],
+    "editor.section":["一级标题","正文结构","section；保留文档结构语义。"],
+    "editor.subsection":["二级标题","正文结构","subsection。"],
+    "editor.subsubsection":["三级标题","正文结构","subsubsection。"],
+    "editor.hardBreak":["段内硬换行","编辑与导航","不新建段落的换行。"],
+    "paragraph.toggleIndent":["切换段首缩进","正文格式","只在段落上下文；Windows 上会覆盖同上下文的正文 Ctrl+i 斜体。"],
+    "table.addRow":["表格增加行","表格","普通表格单元格作用域；公式中的增行另列。"],
+    "table.addColumn":["表格增加列","表格","普通表格单元格作用域。"],
+    "math.superscript":["进入上标","公式编辑","进入公式上标位置。"],
+    "math.subscript":["进入下标","公式编辑","进入公式下标位置；会覆盖全局 Ctrl+-。"],
+    "math.leaveEnvironment":["退出当前公式结构","公式编辑","如退出分式、根号、上下标的当前组。"],
+    "math.leaveFormula":["退出公式回到正文","公式编辑","将焦点交还正文编辑器。"],
+    "math.leaveFile":["从公式退出引用文件","文件与工程","工程内的公式上下文。"],
+    "math.addRow":["矩阵 / 对齐环境增加行","公式编辑","按光标所在矩阵处理；非矩阵且在表格中时回退为表格增行。"],
+    "math.addColumn":["矩阵增加列 / 对齐增加一组","公式编辑","保留光标单元格；非矩阵且在表格中时回退为表格增列。"],
+    "math.toggleDisplayStyle":["切换 display style","公式编辑","不等于把行内公式改成独立公式块。"],
+    "math.literalFence":["输入不自动配对的单括号","公式编辑","现有单括号入口。"],
+    "math.left":["选择左侧定界符","公式编辑","打开左括号 / 定界符选择。"],
+    "math.right":["选择右侧定界符","公式编辑","打开右括号 / 定界符选择。"],
+    "math.frac":["插入分式","公式编辑","含可编辑的分子、分母占位。"],
+    "math.sqrt":["插入平方根","公式编辑","含根式占位。"],
+    "math.indexedRoot":["插入带次数根式","公式编辑","n 次根。"],
+    "math.int":["插入积分","公式编辑","含运算主体占位。"],
+    "math.matrix":["插入无括号矩阵","公式编辑","matrix。"],
+    "math.pmatrix":["插入圆括号矩阵","公式编辑","pmatrix。"],
+    "math.bmatrix":["插入方括号矩阵","公式编辑","bmatrix。"],
+    "math.Bmatrix":["插入花括号矩阵","公式编辑","Bmatrix；区分命令大小写。"],
+    "math.sum":["插入求和","公式编辑","含上下限与运算主体导航。"],
+    "math.prod":["插入连乘","公式编辑","prod。"],
+    "math.iint":["插入二重积分","公式编辑","iint。"],
+    "math.iiint":["插入三重积分","公式编辑","iiint。"],
+    "math.oint":["插入闭合积分","公式编辑","oint。"],
+    "math.oiint":["插入二重闭合积分","公式编辑","oiint。"],
+    "math.undo":["公式上下文撤销","公式编辑","当前命令走文档撤销历史；不自动继承正文的 mod+z。"],
+    "math.redo":["公式上下文重做","公式编辑","当前默认是明确的 Ctrl+y，Mac 也一样。"]
+  },
+  "entries": [
+    ["file.open","打开单个 .tex 文档","文件与工程","global","文件工具栏的打开入口。","apps/web/src/main.js"],
+    ["file.saveAs","文档另存为","文件与工程","global","保存为另一个文件；与当前保存分开。","apps/web/src/main.js"],
+    ["file.download","下载文档资源包 / 工程","文件与工程","global","现有下载 / 工程保存入口，不是 PDF 导出。","apps/web/src/main.js"],
+    ["file.assets","关联图片等资源目录","文件与工程","global","浏览器目录选择；桌面行为受平台能力限制。","apps/web/src/main.js"],
+    ["project.new","新建工程","文件与工程","global","已实现工程入口；浏览器与桌面文件系统能力有差异。","apps/web/src/project/explorer.js"],
+    ["project.open","打开工程","文件与工程","global","打开目录工程。","apps/web/src/project/explorer.js"],
+    ["project.close","关闭工程","文件与工程","global","关闭工程并返回原工作区。","apps/web/src/project/explorer.js"],
+    ["project.files","打开 / 折叠文件面板","文件与工程","global","现有文件树侧栏。","apps/web/src/project/explorer.js"],
+    ["project.includes","打开引用文件导航","文件与工程","global","input / include 文件导航侧栏。","apps/web/src/editor/application-commands.js"],
+    ["project.expandIncludes","展开全部引用内容","文件与工程","editor","连续工程 Document 的展开入口。","apps/web/src/project/explorer.js"],
+    ["view.body","切换 Document 正文模式","视图与界面","global","模式切换按钮。","apps/web/src/main.js"],
+    ["view.source","切换 Source 源码模式","视图与界面","global","源码单栏工作区。","apps/web/src/main.js"],
+    ["view.split","切换 Split 分栏模式","视图与界面","global","源码与预览分栏。","apps/web/src/main.js"],
+    ["view.settings","打开设置","视图与界面","global","设置面板 / settings 应用命令。","apps/web/src/editor/application-commands.js"],
+    ["view.outline","显示文档大纲","视图与界面","global","标题树导航。","apps/web/src/main.js"],
+    ["view.ribbon","折叠 / 展开工具栏","视图与界面","global","已有工具栏折叠按钮。","apps/web/src/main.js"],
+    ["view.formattingMarks","显示 / 隐藏格式标记","视图与界面","global","已有 ¶ 按钮与 interface.formattingMarks 设置。","apps/web/src/main.js"],
+    ["view.caretMotion","切换光标动画设置","视图与界面","global","已存在的显示偏好开关，不代表已接入快捷键。","apps/web/src/ui/settings-panel.js"],
+    ["format.underline","下划线","正文格式","editor","已实现工具栏入口；当前可配置命令表中没有独立项。","apps/web/src/main.js"],
+    ["format.clear","清除文字格式","正文格式","editor","unsetAllMarks。","apps/web/src/main.js"],
+    ["format.superscript","正文上标","正文格式","editor","不是公式的上标结构。","apps/web/src/main.js"],
+    ["format.subscript","正文下标","正文格式","editor","不是公式的下标结构。","apps/web/src/main.js"],
+    ["format.smallcaps","小型大写字母","正文格式","editor","Small caps。","apps/web/src/main.js"],
+    ["format.painter","格式刷","正文格式","editor","已实现的格式刷工具；快捷键需定义激活语义。","apps/web/src/editor/format-painter.js"],
+    ["format.font","打开字体选择","正文格式","editor","字体选择控件；不是对每个字体单独绑定。","apps/web/src/editor/format-controls.js"],
+    ["format.size","打开字号选择","正文格式","editor","字号选择控件。","apps/web/src/editor/format-controls.js"],
+    ["paragraph.indentMore","增加段落缩进","正文格式","editor","布局页签按钮。","apps/web/src/main.js"],
+    ["paragraph.indentLess","减少段落缩进","正文格式","editor","布局页签按钮。","apps/web/src/main.js"],
+    ["structure.description","插入描述列表","正文结构","editor","description 列表。","apps/web/src/main.js"],
+    ["structure.indentList","列表降一级","正文结构","editor","已有工具栏入口。","apps/web/src/main.js"],
+    ["structure.outdentList","列表升一级","正文结构","editor","已有工具栏入口。","apps/web/src/main.js"],
+    ["structure.listStyle","选择列表编号 / 项目标记样式","正文结构","editor","阿拉伯数字、字母、罗马数字、天干及自定义项目符号。","apps/web/src/main.js"],
+    ["structure.rule","插入水平分隔线","正文结构","editor","hr 工具栏入口。","apps/web/src/main.js"],
+    ["structure.codeLanguage","插入 / 设置代码块语言","正文结构","editor","可选 Python、Java、C++ 等语言；与快捷键切换代码块分开。","apps/web/src/main.js"],
+    ["reference.label","插入 / 修改标签","引用与文献","editor","标题、正文、公式标签按上下文处理。","apps/web/src/main.js"],
+    ["reference.ref","插入交叉引用","引用与文献","editor","选择已有标签或输入键。","apps/web/src/main.js"],
+    ["reference.eqref","插入公式引用","引用与文献","editor","eqref。","apps/web/src/main.js"],
+    ["reference.footnote","插入脚注","引用与文献","editor","脚注编辑入口。","apps/web/src/main.js"],
+    ["reference.citations","打开文献管理 / 插入引用","引用与文献","global","现有文献面板；含 .bib 导入、检索、编辑、引用与参考文献插入等。","apps/web/src/editor/citation-library.js"],
+    ["reference.toc","插入 / 删除目录","引用与文献","editor","toc 工具栏入口。","apps/web/src/main.js"],
+    ["reference.shortTitle","修改标题的短标题","引用与文献","editor","只在标题上下文有效。","apps/web/src/main.js"],
+    ["reference.title","修改文档标题","引用与文献","editor","文档元信息。","apps/web/src/main.js"],
+    ["reference.author","修改文档作者","引用与文献","editor","文档元信息。","apps/web/src/main.js"],
+    ["table.insert","插入普通表格","表格","editor","已有表格按钮。","apps/web/src/main.js"],
+    ["table.deleteRow","删除表格当前行","表格","table","已有工具栏 / 右键入口。","apps/web/src/main.js"],
+    ["table.deleteColumn","删除表格当前列","表格","table","已有工具栏 / 右键入口。","apps/web/src/main.js"],
+    ["table.delete","删除整个表格","表格","table","不是单行、单列删除。","apps/web/src/main.js"],
+    ["table.merge","合并单元格","表格","table","需满足表格选区条件。","apps/web/src/main.js"],
+    ["table.split","拆分单元格","表格","table","拆分合并单元格。","apps/web/src/main.js"],
+    ["table.booktabs","切换 booktabs 样式","表格","table","已有 booktabs 按钮。","apps/web/src/main.js"],
+    ["table.caption","编辑表格题注","表格","table","已有题注控件 / 对话框。","apps/web/src/main.js"],
+    ["table.label","编辑表格标签","表格","table","已有标签入口。","apps/web/src/main.js"],
+    ["table.borders","编辑表格边框 / 线型 / 线宽","表格","table","已有边框、分隔线与样式控件。","apps/web/src/main.js"],
+    ["table.alignLeft","单元格左对齐","表格","table","与正文段落对齐区分。","apps/web/src/main.js"],
+    ["table.alignCenter","单元格居中","表格","table","与正文段落对齐区分。","apps/web/src/main.js"],
+    ["table.alignRight","单元格右对齐","表格","table","与正文段落对齐区分。","apps/web/src/main.js"],
+    ["table.continue","切换跨页续表","表格","editor","已有续表按钮。","apps/web/src/main.js"],
+    ["table.scale","编辑表格行距 / 字号 / 缩放","表格","table","已有伸缩控件。","apps/web/src/main.js"],
+    ["formula.inline","插入行内公式","公式插入","editor","$ 按钮；正文输入 $ 的内建行为另列。","apps/web/src/main.js"],
+    ["formula.equation","插入带编号 equation","公式插入","editor","已有 equation 按钮。","apps/web/src/main.js"],
+    ["formula.label","修改公式标签","公式编辑","math","编号公式 / 对齐环境中的标签入口。","apps/web/src/main.js"],
+    ["formula.cases","插入分段函数 cases","公式插入","editor","已有 cases 按钮。","apps/web/src/main.js"],
+    ["formula.align","插入编号 align 环境","公式插入","editor","已有 align 结构命令。","apps/web/src/main.js"],
+    ["formula.alignStar","插入不编号 align* 环境","公式插入","editor","已有 align* 结构命令。","apps/web/src/main.js"],
+    ["formula.newline","公式内增加显示行","公式编辑","math","已有公式换行按钮；Enter 内建行为另列。","apps/web/src/main.js"],
+    ["image.insert","插入本地图片","图片与绘图","editor","已有图片选择入口。","apps/web/src/main.js"],
+    ["image.replace","替换选中图片","图片与绘图","image","图片面板已有替换入口。","apps/web/src/ui/image-panel.js"],
+    ["image.properties","编辑图片尺寸 / 题注 / 浮动参数","图片与绘图","image","图片面板及拖拽调整。","apps/web/src/ui/image-panel.js"],
+    ["image.subfigure","插入子图组","图片与绘图","editor","已有子图按钮与属性面板。","apps/web/src/ui/subfigure-panel.js"],
+    ["drawing.tikz","打开 TikZ / CircuiTikZ 编辑器","图片与绘图","editor","已合并的绘图编辑入口；不包含未合并 PR 的变化。","apps/web/src/main.js"],
+    ["layout.paper","选择纸张 / 方向 / 页边距","页面布局","editor","已有页面设置控件，建议绑定为聚焦此面板。","apps/web/src/main.js"],
+    ["layout.spacing","编辑段前 / 段后间距","页面布局","editor","已有段落布局控件。","apps/web/src/main.js"],
+    ["layout.columns","对选区应用局部分栏","页面布局","editor","已有 2 / 3 / 4 栏控件；全局分栏 UI 当前被注销，不列为可用。","apps/web/src/main.js"],
+    ["layout.furniture","打开页眉 / 页脚设置","页面布局","editor","已有页眉页脚面板。","apps/web/src/ui/header-footer-panel.js"],
+    ["config.import","导入 YAML 配置","视图与界面","global","已有文件工具栏入口。","apps/web/src/main.js"],
+    ["config.export","导出 YAML 配置","视图与界面","global","已有文件工具栏入口。","apps/web/src/main.js"]
+  ],
+  "builtins": [
+    ["system.copy","复制","编辑与导航","global",["mod+c"],"浏览器 / 系统标准行为；网页不能保证可禁用系统键。"],
+    ["system.cut","剪切","编辑与导航","global",["mod+x"],"浏览器 / 系统标准行为。"],
+    ["system.paste","粘贴","编辑与导航","global",["mod+v"],"受剪贴板权限和系统约束。"],
+    ["system.selectAll","全选当前编辑区域","编辑与导航","global",["mod+a"],"由当前聚焦的正文、源码或公式编辑器处理。"],
+    ["source.find","源码查找","源码编辑","source",["mod+f"],"CodeMirror 搜索键位。"],
+    ["source.replace","源码查找 / 替换面板","源码编辑","source",["mod+h"],"当前源码区显式定义。"],
+    ["source.undo","撤销源码编辑","源码编辑","source",["mod+z"],"CodeMirror 独立历史，不是正文历史。"],
+    ["source.redo","重做源码编辑","源码编辑","source",["mod+shift+z"],"CodeMirror 历史；部分平台另有备选键。"],
+    ["source.zoomIn","增大源码字号","源码编辑","source",["mod+equal","mod+plus"],"只影响源码字号。"],
+    ["source.zoomOut","减小源码字号","源码编辑","source",["mod+minus"],"只影响源码字号。"],
+    ["source.zoomReset","恢复源码字号","源码编辑","source",["mod+0"],"只影响源码字号。"],
+    ["source.indent","源码缩进","源码编辑","source",["tab"],"CodeMirror 的 indentWithTab。"],
+    ["source.complete","源码命令 / 片段补全","源码编辑","source",["ctrl+space"],"CodeMirror 补全入口；可能与输入法 / 系统快捷键冲突。"],
+    ["math.palette","打开公式命令补全","公式编辑","math",["backslash"],"输入反斜杠打开现有命令菜单。"],
+    ["math.nextSlot","下一个公式占位位置","公式编辑","math",["tab"],"现有内建导航；刚插入箭头后 Tab 优先旋转箭头。"],
+    ["math.previousSlot","上一个公式占位位置","公式编辑","math",["shift+tab"],"公式占位导航。"],
+    ["math.enterLine","显示公式内换行","公式编辑","math",["enter"],"仅在行间公式；与正文 Enter 不同。"],
+    ["math.eraseObject","选中 / 删除空运算符","公式编辑","math",["backspace","delete"],"第一下选中，第二下删除；不是普通输入命令。"],
+    ["editor.dollar","输入 $ 进入公式","公式插入","editor",["$"],"现有输入规则。请在备注说明是否希望保留，而不是把 $ 当作可配置组合键。"]
+  ],
+  "capabilities": [
+    "TeX 导入 / 导出、Source / Document / Split 切换及源码同步；未知或不完整结构按源码保留，并不代表任意宏都能可视化编辑。",
+    "目录工程、文件树、input/include 导航、连续文档与文件边界、引用内容折叠及资源关联。具体文件系统权限取决于浏览器 / 桌面环境。",
+    "学术 LaTeX 解析：标题、附录编号、引用、图片 / 子图、表格浮动、tabularx / tblr 和文本环境等，保留受支持结构的源信息。",
+    "公式自动配对、结构占位、命令补全与上下标导航；<= / != / >= 等关系符号转换，以及箭头补全和旋转。",
+    "行内公式后的标点粘连、公式对象两步删除、矩阵新单元格占位与光标保持等编辑行为。",
+    "纸张与页边距、分页、段落排版、跨页续表、页眉页脚；不是本机 TeX 编译或 PDF 导出承诺。",
+    "图片资源与尺寸调整、子图属性、已合并的 TikZ / CircuiTikZ 绘图编辑器。",
+    "文献库 / BibTeX 数据编辑、引用插入与检查，以及标题树和交叉引用导航。",
+    "界面语言、主题、源码字号、工具栏 / 侧栏偏好、格式标记与光标动画等设置。",
+    "外部测试语料的下载 / 校验脚本属于开发测试工具，不是编辑器中的可分配快捷键功能。"
+  ]
+}
+</script>
+<script>
+'use strict';
+const catalog=JSON.parse(document.getElementById('catalog').textContent);
+const $=id=>document.getElementById(id);
+const kinds={config:'现已支持自定义',entry:'快捷键待接入',builtin:'内建按键'};
+const scopes={global:'全局',editor:'正文',paragraph:'段落',table:'普通表格单元格',math:'公式',source:'源码',image:'选中图片'};
+const decisions={pending:'待决定',keep:'沿用现状',none:'不绑定',custom:'自定义'};
+const features=[];
+for(const [scope,commands] of Object.entries(catalog.defaults)){
+  for(const [command,value] of Object.entries(commands)){
+    const id=scope+'.'+command;
+    const [title,group,description]=catalog.labels[id];
+    features.push({id,title,group,description,scope,kind:'config',defaults:value===null?[]:[value].flat(),source:'apps/web/config.yaml'});
+  }
+}
+for(const [id,title,group,scope,description,source] of catalog.entries)
+  features.push({id,title,group,scope,description,source,kind:'entry',defaults:[]});
+for(const [id,title,group,scope,defaults,description] of catalog.builtins)
+  features.push({id,title,group,scope,defaults,description,kind:'builtin',source:scope==='source'?'apps/web/src/editor/source-workspace.js':'编辑器 / 系统内建'});
+const byId=new Map(features.map(feature=>[feature.id,feature]));
+const groups=[...new Set(features.map(feature=>feature.group))];
+features.sort((a,b)=>groups.indexOf(a.group)-groups.indexOf(b.group));
+const profiles={windows:{commands:Object.create(null),notes:''},macos:{commands:Object.create(null),notes:''}};
+let platform=/mac/i.test(navigator.platform)?'macos':'windows';
+let diagnostics=new Map();
+let storageAvailable=true;
+let rows=new Map();
+let recording=null;
+let strokes=[];
+const storageKey='lineae.shortcut-planner.v1';
+const aliases={control:'ctrl',cmd:'meta',command:'meta',option:'alt','-':'minus','=':'equal','+':'plus','`':'backtick',backslash:'\\',' ':'space'};
+const modifiers=['ctrl','alt','shift','meta'];
+function canonical(token){const lower=token.toLowerCase();return aliases[lower]??lower;}
+function canonicalStroke(input){
+  const parts=input.toLowerCase().split('+').map(canonical);
+  const key=parts.pop();
+  const held=parts.map(part=>part==='mod'?(platform==='macos'?'meta':'ctrl'):part);
+  if(!key||modifiers.includes(key)||held.some(part=>!modifiers.includes(part))||new Set(held).size!==held.length||
+      !(/^[\p{L}\p{N}\p{P}\p{S}]$/u.test(key)||/^(f[1-9]|f1\d|f2[0-4]|arrow(up|down|left|right)|enter|escape|tab|home|end|page(up|down)|backspace|delete|backtick|backslash|minus|equal|plus|space)$/.test(key)))
+    throw new Error('无法识别按键：'+input+'。加号键请写 plus，减号写 minus。');
+  return [...modifiers.filter(part=>held.includes(part)),key].join('+');
+}
+function parseBindings(text,requireModifier=true){
+  const lines=text.split(/\r?\n/).map(line=>line.trim()).filter(Boolean);
+  if(!lines.length)throw new Error('自定义尚未填写。若不需要快捷键，请选“不绑定”。');
+  const values=lines.map(line=>{
+    const parts=line.split(/\s+/).map(canonicalStroke);
+    if(parts.length>2)throw new Error('最多两段连按：'+line);
+    if(requireModifier&&(!/^(ctrl|alt|meta)\+|^f\d+$/.test(parts[0].replace(/^shift\+/,''))||parts[1]==='escape'))
+      throw new Error('配置命令的第一段需要 Ctrl / Alt / Cmd 或功能键；普通字符、Tab 等只能记录为内建行为的变更需求。');
+    return parts.join(' ');
+  });
+  if(new Set(values).size!==values.length)throw new Error('同一功能重复填写了相同按键。');
+  return values;
+}
+function currentBindings(feature){
+  return feature.defaults.map(binding=>binding.split(/\s+/).map(canonicalStroke).join(' '));
+}
+function choice(id){return profiles[platform].commands[id]??{decision:'pending',input:'',notes:''};}
+function message(text,error=false){$('message').textContent=text;$('message').className=error?'error':'';}
+function validateChoice(value){
+  if(!value||!Object.hasOwn(decisions,value.decision)||typeof value.input!=='string'||value.input.length>1000||
+      typeof value.notes!=='string'||value.notes.length>2000)throw new Error('文件中的决策格式不正确。');
+  return {decision:value.decision,input:value.input,notes:value.notes};
+}
+function readProfile(value){
+  if(!value||typeof value.notes!=='string'||value.notes.length>8000||!value.commands||typeof value.commands!=='object'||Array.isArray(value.commands))
+    throw new Error('文件中的平台数据不正确。');
+  const commands=Object.create(null);
+  for(const [id,entry] of Object.entries(value.commands))if(byId.has(id))commands[id]=validateChoice(entry);
+  return {notes:value.notes,commands};
+}
+try{
+  const saved=localStorage.getItem(storageKey);
+  if(saved){
+    const data=JSON.parse(saved);
+    for(const os of ['windows','macos'])if(data[os])profiles[os]=readProfile(data[os]);
+  }
+}catch(error){storageAvailable=false;message('本地草稿不可用或已损坏。仍可填写和导出；请用 JSON 文件备份。',true);}
+function save(){
+  try{localStorage.setItem(storageKey,JSON.stringify(profiles));storageAvailable=true;}
+  catch(error){storageAvailable=false;}
+  $('storage').textContent=storageAvailable?'已在此浏览器保存独立草稿 · 请另行导出 JSON 备份':'无法自动保存草稿 · 请及时导出 JSON';
+}
+function updateChoice(id,patch){
+  profiles[platform].commands[id]={...choice(id),...patch};
+  save();analyze();filter();
+}
+function addIssue(id,severity,text){
+  if(!diagnostics.has(id))diagnostics.set(id,[]);
+  const issues=diagnostics.get(id);
+  if(!issues.some(issue=>issue.text===text))issues.push({severity,text});
+}
+const contexts={global:['text','paragraph','table','image','math','source'],editor:['text','paragraph','table','image'],paragraph:['paragraph','table'],table:['table'],image:['image'],math:['math'],source:['source']};
+function overlaps(a,b){return contexts[a].some(context=>contexts[b].includes(context));}
+function conflicts(a,b){
+  const left=a.split(' '),right=b.split(' ');
+  return left[0]===right[0]&&(!left[1]||!right[1]||left[1]===right[1]);
+}
+function reserved(binding){
+  const first=binding.split(' ')[0];
+  if(platform==='macos'&&/^meta\+(?:q|w|t|n|h|space|tab)$/.test(first))return '可能被 macOS / 浏览器保留；网页不保证能收到。';
+  if(platform==='macos'&&/^(?:ctrl|alt)\+space$/.test(first))return '可能与输入法 / Spotlight 设置冲突。';
+  if(platform==='windows'&&(/meta\+/.test(first)||/^(?:alt\+(?:f4|tab)|ctrl\+(?:w|t|n|l|r))$/.test(first)))return '可能被 Windows / 浏览器保留；请在目标应用验证。';
+  return '';
+}
+function analyze(){
+  diagnostics=new Map();
+  const assigned=[];
+  for(const feature of features){
+    const selected=choice(feature.id);
+    if(selected.decision==='none'&&feature.kind==='builtin')
+      addIssue(feature.id,'warning','取消内建 / 系统键需单独实现，网页可能无法禁用。');
+    if(selected.decision==='pending'||selected.decision==='none')continue;
+    let bindings;
+    try{bindings=selected.decision==='keep'?currentBindings(feature):parseBindings(selected.input,feature.kind==='config');}
+    catch(error){addIssue(feature.id,'error',error.message);continue;}
+    for(const binding of bindings){
+      const warning=reserved(binding);if(warning)addIssue(feature.id,'warning',warning);
+      assigned.push({feature,binding});
+    }
+    if(selected.decision==='custom'&&feature.kind!=='config')
+      addIssue(feature.id,'warning','此功能尚不支持这类自定义；导出的是待实现需求。');
+  }
+  for(let i=0;i<assigned.length;i++)for(let j=i+1;j<assigned.length;j++){
+    const a=assigned[i],b=assigned[j];
+    if(a.feature.id===b.feature.id||!overlaps(a.feature.scope,b.feature.scope)||!conflicts(a.binding,b.binding))continue;
+    const same=a.feature.scope===b.feature.scope;
+    const severity=same?'error':'warning';
+    addIssue(a.feature.id,severity,(same?'同作用域冲突':'跨作用域可能覆盖')+'：'+b.feature.title+'（'+a.binding+' ↔ '+b.binding+'）');
+    addIssue(b.feature.id,severity,(same?'同作用域冲突':'跨作用域可能覆盖')+'：'+a.feature.title+'（'+b.binding+' ↔ '+a.binding+'）');
+  }
+  let errorCount=0,warningCount=0;
+  for(const feature of features){
+    const issues=diagnostics.get(feature.id)??[];
+    const error=issues.some(issue=>issue.severity==='error');
+    const warning=issues.some(issue=>issue.severity==='warning');
+    if(error)errorCount++;if(warning)warningCount++;
+    const row=rows.get(feature.id);
+    if(row){
+      row.tr.dataset.error=String(error);row.tr.dataset.warning=String(warning);
+      row.issues.textContent=issues.map(issue=>(issue.severity==='error'?'错误：':'提醒：')+issue.text).join('\n');
+      row.issues.className='issues '+(error?'error':'notice');
+    }
+  }
+  const pending=features.filter(feature=>choice(feature.id).decision==='pending').length;
+  $('summary').textContent=(platform==='macos'?'macOS':'Windows')+' · '+features.length+' 项操作 · 已决定 '+(features.length-pending)+' · 待决定 '+pending;
+  $('issue-count').textContent=errorCount+' 项错误 · '+warningCount+' 项提醒';
+}
+function element(tag,text,className){
+  const node=document.createElement(tag);if(text!==undefined)node.textContent=text;if(className)node.className=className;return node;
+}
+function render(){
+  rows=new Map();$('features').replaceChildren();$('platform').value=platform;
+  $('platform-notes').value=profiles[platform].notes;
+  for(const group of groups){
+    const heading=element('tr',undefined,'group-heading');heading.dataset.group=group;
+    const cell=element('td',group);cell.colSpan=4;heading.append(cell);$('features').append(heading);
+    for(const feature of features.filter(item=>item.group===group)){
+      const selected=choice(feature.id),tr=element('tr');tr.dataset.id=feature.id;tr.dataset.group=group;
+      const info=element('td');info.append(element('strong',feature.title),element('span',kinds[feature.kind],'tag '+feature.kind),element('span',scopes[feature.scope],'tag'),element('small',feature.description),element('code',feature.id));
+      info.title='核对入口：'+feature.source;
+      const defaults=element('td');
+      defaults.append(element('div',currentBindings(feature).join('\n')||(feature.kind==='entry'?'无独立配置键':'当前未绑定'),'defaults'));
+      if(feature.kind==='builtin')defaults.append(element('small','内建行为，不能直接套用 YAML 自定义。'));
+      if(feature.kind==='entry')defaults.append(element('small','功能已实现；后续需新增快捷键路由。'));
+      const editor=element('td'),head=element('div',undefined,'binding-head'),select=element('select');
+      select.setAttribute('aria-label',feature.title+'：决定');
+      for(const [value,label] of Object.entries(decisions))select.add(new Option(label,value));
+      select.value=selected.decision;
+      const record=element('button','录制');record.type='button';record.setAttribute('aria-label','录制：'+feature.title);
+      const input=element('textarea');input.value=selected.input;input.maxLength=1000;input.spellcheck=false;
+      input.placeholder=platform==='macos'?'例如 meta+shift+m\n或 ctrl+k ctrl+m':'例如 ctrl+shift+m\n或 ctrl+k ctrl+m';
+      input.setAttribute('aria-label',feature.title+'：期望快捷键');input.disabled=selected.decision!=='custom';
+      const issues=element('div',undefined,'issues');
+      select.addEventListener('change',()=>{input.disabled=select.value!=='custom';updateChoice(feature.id,{decision:select.value});});
+      input.addEventListener('input',()=>updateChoice(feature.id,{input:input.value}));
+      record.addEventListener('click',()=>startRecording(feature.id));
+      head.append(select,record);editor.append(head,input,issues);
+      const note=element('td'),notes=element('textarea');notes.className='notes';notes.maxLength=2000;notes.value=selected.notes;
+      notes.placeholder='例如：保留给输入法；此处应与正文共用；优先级……';notes.setAttribute('aria-label',feature.title+'：备注');
+      notes.addEventListener('input',()=>updateChoice(feature.id,{notes:notes.value}));note.append(notes);
+      tr.append(info,defaults,editor,note);$('features').append(tr);rows.set(feature.id,{tr,select,input,issues});
+    }
+  }
+  analyze();filter();
+  $('storage').textContent=storageAvailable?'已启用此浏览器的独立草稿 · 请导出 JSON 备份':'无法自动保存草稿 · 请及时导出 JSON';
+}
+function filter(){
+  const query=$('search').value.trim().toLowerCase(),group=$('group').value,kind=$('kind').value,decision=$('decision-filter').value;
+  let visible=0;const visibleGroups=new Set();
+  for(const feature of features){
+    const selected=choice(feature.id);
+    const matches=(!group||feature.group===group)&&(!kind||feature.kind===kind)&&
+      (!decision||(decision==='issues'?diagnostics.has(feature.id):selected.decision===decision))&&
+      (!query||[feature.title,feature.id,feature.description,currentBindings(feature).join(' '),selected.input,selected.notes].join(' ').toLowerCase().includes(query));
+    rows.get(feature.id).tr.hidden=!matches;
+    if(matches){visible++;visibleGroups.add(feature.group);}
+  }
+  for(const heading of document.querySelectorAll('.group-heading'))heading.hidden=!visibleGroups.has(heading.dataset.group);
+  $('visible-count').textContent='显示 '+visible+' / '+features.length+' 项';
+}
+function exportProfile(){
+  analyze();
+  const commands=features.map(feature=>{
+    const selected=choice(feature.id);
+    const entry={id:feature.id,title:feature.title,scope:feature.scope,kind:feature.kind,...selected,currentBindings:currentBindings(feature),integrationRequired:feature.kind!=='config',diagnostics:diagnostics.get(feature.id)??[]};
+    if(selected.decision!=='pending'){
+      try{entry.requestedBindings=selected.decision==='none'?null:selected.decision==='keep'?currentBindings(feature):parseBindings(selected.input,feature.kind==='config');}
+      catch(error){entry.invalid=true;}
+    }
+    return entry;
+  });
+  return {schema:'lineae.shortcut-plan',version:1,platform,baseRevision:catalog.baseRevision,reviewedAt:catalog.reviewedAt,exportedAt:new Date().toISOString(),notes:profiles[platform].notes,commands};
+}
+function download(){
+  const data=exportProfile();
+  const blob=new Blob([JSON.stringify(data,null,2)+'\n'],{type:'application/json'});
+  const url=URL.createObjectURL(blob),a=element('a');
+  a.href=url;a.download='lineae-shortcuts-'+platform+'-'+new Date().toISOString().slice(0,10)+'.json';
+  document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);
+  message('已请求下载 '+a.download+'。请确认文件已保存在本地；这份文件可以发回来，不必截图。');
+}
+async function importFile(file){
+  try{
+    if(file.size>1000000)throw new Error('文件超过 1 MB，不像本工具导出的配置表。');
+    const data=JSON.parse(await file.text());
+    if(data.schema!=='lineae.shortcut-plan'||data.version!==1||!['windows','macos'].includes(data.platform)||!Array.isArray(data.commands))
+      throw new Error('请选择此工具导出的 Windows / macOS JSON。');
+    const commands=Object.create(null);let unknown=0;
+    for(const entry of data.commands){
+      if(!byId.has(entry.id)){unknown++;continue;}
+      if(Object.hasOwn(commands,entry.id))throw new Error('文件中有重复命令：'+entry.id);
+      commands[entry.id]=validateChoice(entry);
+    }
+    const next=readProfile({commands,notes:data.notes});
+    if(!confirm('将覆盖 '+(data.platform==='macos'?'macOS':'Windows')+' 的当前草稿。继续？'))return;
+    profiles[data.platform]=next;platform=data.platform;save();render();
+    message('已导入 '+data.commands.length+' 项记录。'+(unknown?'忽略 '+unknown+' 项此版本没有的命令。':'')+(data.baseRevision!==catalog.baseRevision?' 注意：文件的仓库基线与本表不同，请核对。':''));
+  }catch(error){message('导入失败：'+error.message,true);}
+}
+function startRecording(id){
+  recording=id;strokes=[];$('record-target').textContent=byId.get(id).title+' · '+(platform==='macos'?'macOS':'Windows');
+  $('record-value').textContent='请按快捷键';$('record-use').disabled=true;$('recorder').showModal();$('record-clear').focus();
+}
+function resetRecording(){strokes=[];$('record-value').textContent='请按快捷键';$('record-use').disabled=true;}
+$('recorder').addEventListener('keydown',event=>{
+  if(event.key==='Escape'){event.preventDefault();$('recorder').close();return;}
+  if(event.isComposing||event.getModifierState?.('AltGraph'))return;
+  if(['Control','Shift','Alt','Meta'].includes(event.key))return;
+  if(!event.ctrlKey&&!event.altKey&&!event.metaKey&&
+      (event.target.tagName==='SELECT'||event.target.tagName==='BUTTON'&&['Enter',' '].includes(event.key)))return;
+  if(event.key==='Tab'&&!event.ctrlKey&&!event.altKey&&!event.metaKey)return;
+  event.preventDefault();event.stopPropagation();if(event.repeat)return;
+  let key=event.key;
+  if(event.shiftKey&&/^Digit\d$/.test(event.code)&&!/^\d$/.test(key))key=event.code.slice(-1);
+  if((event.ctrlKey||event.altKey||event.metaKey)&&/^Key[A-Z]$/.test(event.code)&&!/^[a-z]$/i.test(key))key=event.code.slice(-1);
+  const flags=[event.ctrlKey,event.altKey,event.shiftKey,event.metaKey];
+  const stroke=[...modifiers.filter((part,index)=>flags[index]),canonical(key)].join('+');
+  if(strokes.length>=Number($('record-length').value))strokes=[];
+  strokes.push(stroke);$('record-value').textContent=strokes.join(' ');
+  $('record-use').disabled=strokes.length!==Number($('record-length').value);
+});
+$('record-use').addEventListener('click',()=>{
+  if(!recording||!strokes.length)return;
+  updateChoice(recording,{decision:'custom',input:strokes.join(' ')});$('recorder').close();render();
+});
+$('record-clear').addEventListener('click',resetRecording);
+$('record-length').addEventListener('change',resetRecording);
+$('record-cancel').addEventListener('click',()=>$('recorder').close());
+$('recorder').addEventListener('close',()=>{recording=null;});
+$('platform').addEventListener('change',()=>{platform=$('platform').value;render();message('已切换到 '+(platform==='macos'?'macOS':'Windows')+'，另一平台的草稿保持不变。');});
+$('platform-notes').addEventListener('input',()=>{profiles[platform].notes=$('platform-notes').value;save();});
+for(const id of ['search','group','kind','decision-filter'])$(id).addEventListener('input',filter);
+for(const group of groups)$('group').add(new Option(group,group));
+$('export').addEventListener('click',download);
+$('import').addEventListener('click',()=>$('import-file').click());
+$('import-file').addEventListener('change',async()=>{const file=$('import-file').files[0];if(file)await importFile(file);$('import-file').value='';});
+function fillPending(decision){
+  if(!confirm('仅将当前平台的全部未决定项设为“'+decisions[decision]+'”（包含被筛选隐藏的项目）。继续？'))return;
+  for(const feature of features)if(choice(feature.id).decision==='pending')
+    profiles[platform].commands[feature.id]={...choice(feature.id),decision};
+  save();render();message('已更新未决定项；已有选择和另一平台未改变。');
+}
+$('keep-pending').addEventListener('click',()=>fillPending('keep'));
+$('none-pending').addEventListener('click',()=>fillPending('none'));
+$('reset').addEventListener('click',()=>{
+  if(!confirm('清空当前平台的选择与备注？不会清除另一平台。'))return;
+  profiles[platform]={commands:Object.create(null),notes:''};save();render();message('当前平台已恢复为全部待决定。');
+});
+$('provenance').textContent='核对日期：'+catalog.reviewedAt+'；仓库基线：'+catalog.baseRevision.slice(0,7)+'。核对文件：'+catalog.sources.join('、')+'。';
+for(const text of catalog.capabilities)$('capabilities').append(element('li',text));
+render();
+</script>
+</body>
+</html>

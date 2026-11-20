@@ -90,7 +90,7 @@ module.exports = async (context,url) => {
     await margins.selectOption('narrow');
     assert.match(await read(),/1[.]27cm/,'Source layout control writes geometry');
     await content.focus();await page.keyboard.press('Control+z');equal(await read(),source,'Source layout undo preserves original bytes');
-    await content.focus();await page.keyboard.press('Control+y');assert.match(await read(),/1[.]27cm/,'Source layout redo');
+    await content.focus();await page.keyboard.press('Control+Shift+z');assert.match(await read(),/1[.]27cm/,'Source layout redo');
     await content.focus();await page.keyboard.press('Control+z');
     await open(source);
     // The native API is substituted only at the I/O boundary. Ctrl+S executes
@@ -104,7 +104,7 @@ module.exports = async (context,url) => {
     equal(await page.evaluate(()=>{const s=v21Fixture.EditorView.findFromDOM(document.querySelector('.cm-editor')).state;return s.sliceDoc(s.selection.main.from,s.selection.main.to);}), 'Hello','selection mapped');
     equal(await save(),expected,'second save idempotent');
     await content.focus();await page.keyboard.press('Control+z');equal(await read(),before,'save indentation is one undo');
-    await content.focus();await page.keyboard.press('Control+y');equal(await read(),expected,'redo exact');
+    await content.focus();await page.keyboard.press('Control+Shift+z');equal(await read(),expected,'redo exact');
     await open(before);await setIndentOnSave(page,false);equal(await save(),before,'opt out preserves formatting');
     await setIndentOnSave(page,true);
     await page.locator('[data-source-mode=body]').click();await page.locator('.ProseMirror').focus();
@@ -155,7 +155,7 @@ module.exports = async (context,url) => {
       equal(await page.locator('.tex-dirty').isVisible(),true,fault+' retains dirty flag');
       equal(await page.locator('.tex-filename').innerText(),'v21.tex',fault+' retains filename');
       await content.focus();await page.keyboard.press('Control+z');equal(await read(),before,fault+' preserves previous undo');
-      await content.focus();await page.keyboard.press('Control+y');equal(await read(),draft,fault+' preserves redo');
+      await content.focus();await page.keyboard.press('Control+Shift+z');equal(await read(),draft,fault+' preserves redo');
       if(fault==='indent-disabled')await setIndentOnSave(page,true);
     }
     await open(before);
@@ -225,7 +225,7 @@ module.exports = async (context,url) => {
     equal(stored,rootFormatted,'project root formatted on disk');
     equal(await read(),stored,'project preamble and mixed endings match disk');
     await content.focus();await page.keyboard.press('Control+z');equal(await read(),rootSource,'one undo restores entire original project source');
-    await content.focus();await page.keyboard.press('Control+y');equal(await read(),stored,'redo preserves inserted and existing separators');
+    await content.focus();await page.keyboard.press('Control+Shift+z');equal(await read(),stored,'redo preserves inserted and existing separators');
     equal(errors,[],'no browser errors');
     console.log('V2.1 browser assertions: '+assertions);
   } finally {await page.close();}

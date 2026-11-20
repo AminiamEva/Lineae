@@ -26,35 +26,53 @@ editing:
     fl: ﬂ
     ffi: ﬃ
     ffl: ﬄ
-# Separate two strokes with a space. Use a list for alternatives or null to disable.
+# macOS plan 2026-11-20. mod = Command on macOS, Ctrl on Windows.
+# Separate two strokes with a space. Lists are alternatives; null disables a command.
+# Plain keys are supported for editor-native actions. Duplicate platform aliases
+# for the same command are collapsed after resolving mod.
 keybindings:
   chordTimeoutMs: 1500
   global:
-    save: [ctrl+s, meta+s]
-    zoomIn: [ctrl+=, meta+=, ctrl+plus, meta+plus, ctrl+shift+plus, meta+shift+plus]
-    zoomOut: [ctrl+-, meta+-]
-    zoomReset: ctrl+0
+    save: [ctrl+s, mod+s]
+    open: [mod+o, ctrl+o]
+    saveAs: [mod+shift+s, ctrl+shift+s]
+    newProject: [mod+shift+n, ctrl+shift+n]
+    openProject: [mod+shift+o, ctrl+shift+o]
+    toggleFiles: mod+p
+    documentMode: mod+e 1
+    sourceMode: mod+e 2
+    splitMode: mod+e 3
+    settings: [mod+comma, ctrl+comma]
+    toggleRibbon: mod+alt+r
+    formattingMarks: mod+8
+    zoomIn: [ctrl+equal, mod+equal, ctrl+plus, mod+plus, ctrl+shift+plus, mod+shift+plus]
+    zoomOut: [ctrl+minus, mod+minus]
+    zoomReset: [mod+0, ctrl+0]
   editor:
-    insertDisplayMath: ctrl+e c
-    toggleBox: ctrl+e b
-    editMath: ctrl+e e
-    alignLeft: ctrl+e l
-    alignRight: ctrl+e r
-    alignCenter: ctrl+e i
-    find: ctrl+f
-    leaveEnvironment: ctrl+j
-    leaveAllEnvironments: ctrl+shift+j
-    leaveFile: ctrl+alt+j
+    insertDisplayMath: mod+f
+    insertInlineMath: mod+shift+f
+    insertEquation: mod+alt+f
+    insertCases: mod+e shift+c
+    toggleBox: mod+e b
+    editMath: mod+e e
+    alignLeft: mod+e l
+    alignRight: mod+e r
+    alignCenter: mod+e i
+    find: mod+e f
+    leaveEnvironment: [mod+j, ctrl+j]
+    leaveAllEnvironments: [mod+shift+j, ctrl+shift+j]
+    leaveFile: [mod+alt+j, ctrl+alt+j]
     # Browsers reserve Ctrl+T for a new tab and cannot deliver it to the page.
     # Ctrl+E T toggles heading, list, and bullet numbering as an alias.
-    toggleContextMarker: [ctrl+alt+t, ctrl+e t]
+    toggleContextMarker: [mod+e t, mod+alt+t]
     ignoreBrowserZoomReset: null
     literalBacktick: alt+backtick
     undo: mod+z
     redo: [mod+y, mod+shift+z]
     toggleBold: mod+b
-    toggleItalic: mod+i
-    toggleStrike: mod+shift+s
+    toggleItalic: null
+    toggleStrike: null
+    toggleUnderline: null
     toggleCode: null
     toggleCodeBlock: mod+alt+c
     toggleBlockquote: null
@@ -65,36 +83,65 @@ keybindings:
     subsection: mod+alt+2
     subsubsection: mod+alt+3
     hardBreak: mod+enter
+    dollar: '$'
+    toggleSuperscript: [mod+6, ctrl+6]
+    toggleSubscript: [mod+shift+minus, ctrl+shift+minus]
+    codeLanguage: mod+e shift+l
+    insertTable: mod+shift+6
+    openTikz: mod+shift+t
   paragraph:
-    toggleIndent: ctrl+i
+    toggleIndent: [mod+i, ctrl+i]
   table:
-    addRow: ctrl+e shift+r
-    addColumn: ctrl+e shift+c
+    addRow: mod+e shift+r
+    addColumn: mod+e shift+c
+    deleteRow: mod+e x
+    deleteColumn: mod+e y
   math:
-    superscript: ctrl+6
-    subscript: ctrl+-
-    leaveEnvironment: [ctrl+0, ctrl+j]
-    leaveFormula: ctrl+shift+j
-    leaveFile: ctrl+alt+j
-    addRow: ctrl+e r
-    addColumn: ctrl+e c
-    toggleDisplayStyle: ctrl+e t
-    literalFence: ctrl+e shift+t
-    left: ctrl+l
-    right: ctrl+r
-    frac: ctrl+f
-    sqrt: ctrl+2
-    indexedRoot: ctrl+shift+2
-    int: ctrl+i
-    matrix: ctrl+m
-    pmatrix: ctrl+shift+m
-    bmatrix: ctrl+alt+m
-    Bmatrix: ctrl+alt+shift+m
-    sum: [ctrl+shift+s, ctrl+alt+s]
-    prod: ctrl+shift+p
-    iint: ctrl+shift+i
-    iiint: ctrl+alt+shift+i
+    superscript: [mod+6, ctrl+6]
+    subscript: [mod+minus, ctrl+minus]
+    leaveEnvironment: [mod+j, ctrl+j]
+    leaveFormula: [mod+shift+j, ctrl+shift+j]
+    leaveFile: [mod+alt+j, ctrl+alt+j]
+    addRow: mod+e r
+    addColumn: mod+e c
+    toggleDisplayStyle: mod+e t
+    literalFence: mod+e shift+p
+    left: mod+l
+    right: mod+r
+    frac: mod+f
+    sqrt: [mod+2, ctrl+2]
+    indexedRoot: [mod+shift+2, ctrl+shift+2]
+    int: mod+i
+    matrix: [mod+shift+m, ctrl+shift+m]
+    pmatrix: [mod+m, ctrl+m]
+    bmatrix: [mod+alt+m, ctrl+alt+m]
+    Bmatrix: [mod+alt+shift+m, ctrl+alt+shift+m]
+    sum: [mod+shift+s, ctrl+shift+s, ctrl+alt+s]
+    prod: mod+shift+p
+    iint: [mod+shift+i, ctrl+shift+i]
+    iiint: [mod+alt+shift+i, ctrl+alt+shift+i]
     oint: alt+i
     oiint: alt+shift+i
-    undo: ctrl+z
-    redo: ctrl+y
+    undo: mod+z
+    redo: mod+y
+    palette: backslash
+    nextSlot: tab
+    previousSlot: shift+tab
+    enterLine: enter
+    eraseObject: [backspace, delete]
+  source:
+    find: mod+f
+    replace: mod+h
+    undo: mod+z
+    redo: mod+shift+z
+    zoomIn: [mod+equal, mod+plus]
+    zoomOut: mod+minus
+    zoomReset: mod+0
+    indent: tab
+    outdent: shift+tab
+    complete: ctrl+space
+  system:
+    copy: mod+c
+    cut: mod+x
+    paste: mod+v
+    selectAll: mod+a

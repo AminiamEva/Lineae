@@ -2,7 +2,7 @@ import {applicationCompletionOptions} from './application-commands.js';
 import { Prec, StateEffect, StateField } from '@codemirror/state';
 import { EditorView, keymap, Decoration } from '@codemirror/view';
 import { autocompletion, completionKeymap, acceptCompletion, snippetCompletion, snippet,
-  nextSnippetField, prevSnippetField, closeBrackets, closeBracketsKeymap } from '@codemirror/autocomplete';
+  nextSnippetField, prevSnippetField, closeBrackets, closeBracketsKeymap, startCompletion } from '@codemirror/autocomplete';
 import { indentMore, indentLess, isolateHistory, invertedEffects } from '@codemirror/commands';
 import { foldService, foldGutter, foldKeymap, indentService, indentUnit } from '@codemirror/language';
 import { commandSnippets, environmentSnippet, environments } from './latex-snippets.js';
@@ -202,16 +202,18 @@ export function insertLatexSnippet(view, {text, selectionStart, selectionEnd}) {
   view.focus();
 }
 
-export function latexAssist() {
+export function latexAssist({configurableKeys=false}={}) {
   return [structure, pairs, invertedEffects.of(tr=>tr.docChanged?[setPairs.of(tr.startState.field(pairs))]:[]), indentUnit.of('    '),
-    autocompletion({override:[latexCompletion],activateOnTyping:true}),
+    autocompletion({override:[latexCompletion],activateOnTyping:true,defaultKeymap:false}),
     EditorStateLanguageData(), closeBrackets(),
     Prec.highest(EditorView.inputHandler.of(pairInput)),
     Prec.high(keymap.of([
-      {key:'Tab',run:view=>acceptCompletion(view)||nextSnippetField(view)||indentMore(view)},
-      {key:'Shift-Tab',run:view=>prevSnippetField(view)||indentLess(view)},
+      ...(!configurableKeys ? [
+        {key:'Tab',run:view=>acceptCompletion(view)||nextSnippetField(view)||indentMore(view)},
+        {key:'Shift-Tab',run:view=>prevSnippetField(view)||indentLess(view)},
+      ] : []),
       {key:'Backspace',run:deletePair}, {key:'Enter',run:environmentEnter},
-      ...completionKeymap,...closeBracketsKeymap,...foldKeymap,
+      ...completionKeymap.filter(binding=>!configurableKeys||binding.run!==startCompletion),...closeBracketsKeymap,...foldKeymap,
     ])),
     foldGutter(), foldService.of((state,from,to)=>state.field(structure).folds.find(f=>f.from>=from && f.from<=to && state.doc.lineAt(f.to).number>state.doc.lineAt(from).number)),
     indentService.of((context,pos)=>{

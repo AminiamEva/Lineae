@@ -1,7 +1,8 @@
 import {createPreviewControls,labelSourceZoom} from './source-presentation.js';
 import { Compartment, EditorState } from '@codemirror/state';
 import { EditorView, keymap, lineNumbers, highlightActiveLine, highlightActiveLineGutter, drawSelection } from '@codemirror/view';
-import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands';
+import { defaultKeymap, history, historyKeymap, indentMore, indentLess, selectAll } from '@codemirror/commands';
+import { acceptCompletion, startCompletion, nextSnippetField, prevSnippetField } from '@codemirror/autocomplete';
 import { StreamLanguage, HighlightStyle, syntaxHighlighting, bracketMatching, indentOnInput } from '@codemirror/language';
 import { stex } from '@codemirror/legacy-modes/mode/stex';
 import { search, searchKeymap, openSearchPanel, closeSearchPanel } from '@codemirror/search';
@@ -36,7 +37,7 @@ function element(tag, className) {
   return node;
 }
 
-export function createSourceWorkspace({ page, render, metadata, onChange = () => {}, onLayout = () => {}, onPreviewZoom = () => {}, getPreferences = () => null, onSourceFontChange = () => {} }) {
+export function createSourceWorkspace({ page, render, metadata, onChange = () => {}, onLayout = () => {}, onPreviewZoom = () => {}, getPreferences = () => null, onSourceFontChange = () => {}, configurableKeys = false }) {
   const lifecycle = new AbortController();
   const panel = element('section', 'tex-workspace');
   panel.hidden = true;
@@ -251,13 +252,14 @@ export function createSourceWorkspace({ page, render, metadata, onChange = () =>
 
         language.of(phrases()), lineNumbers(), highlightActiveLine(), highlightActiveLineGutter(), drawSelection(),
         EditorState.allowMultipleSelections.of(true), history(), search({top:true}),
-        indentOnInput(), bracketMatching(), latex, syntaxHighlighting(highlight), latexAssist(),
-        keymap.of([
-          {key:"Mod-=",run:()=>zoom(fontSize+1)}, {key:"Mod-+",run:()=>zoom(fontSize+1)},
-          {key:"Mod--",run:()=>zoom(fontSize-1)}, {key:"Mod-0",run:()=>zoom(FONT_DEFAULT)},
-          {key:"Mod-h",run:openSearchPanel},
-        ]),
-        EditorView.lineWrapping, keymap.of([...searchKeymap, ...historyKeymap, ...defaultKeymap, indentWithTab]),
+        indentOnInput(), bracketMatching(), latex, syntaxHighlighting(highlight), latexAssist({configurableKeys}),
+        ...(!configurableKeys?[keymap.of([
+          {key:'Mod-=',run:()=>zoom(fontSize+1)},{key:'Mod-+',run:()=>zoom(fontSize+1)},
+          {key:'Mod--',run:()=>zoom(fontSize-1)},{key:'Mod-0',run:()=>zoom(FONT_DEFAULT)},
+          {key:'Mod-h',run:openSearchPanel},
+        ])]:[]),
+        EditorView.lineWrapping, keymap.of([...searchKeymap, ...historyKeymap, ...defaultKeymap]
+          .filter(binding=>!configurableKeys||![openSearchPanel,undo,redo,selectAll].includes(binding.run))),
         EditorView.contentAttributes.of({'aria-label':'LaTeX', spellcheck:'false'}),
         EditorView.updateListener.of(update => {
           if (update.docChanged) {
@@ -320,9 +322,26 @@ export function createSourceWorkspace({ page, render, metadata, onChange = () =>
     get hidden() { return panel.hidden; },
     get split() { return expanded; },
     get composing() { return view?.composing ?? false; },
+    get editorView() { return view; },
     get indentOnSave() { return indentOnSave(); },
     configure(){zoom(getPreferences()?.interface.sourceFontSize??FONT_DEFAULT);},
     find() { if(view) openSearchPanel(view); },
+    runShortcut(command) {
+      if(!view)return false;
+      switch(command) {
+        case 'find': case 'replace': return openSearchPanel(view);
+        case 'undo': return undo(view);
+        case 'redo': return redo(view);
+        case 'zoomIn': return zoom(fontSize+1);
+        case 'zoomOut': return zoom(fontSize-1);
+        case 'zoomReset': return zoom(FONT_DEFAULT);
+        case 'indent': return acceptCompletion(view)||nextSnippetField(view)||indentMore(view);
+        case 'outdent': return prevSnippetField(view)||indentLess(view);
+        case 'complete': return startCompletion(view);
+        case 'selectAll': return selectAll(view);
+        default: return false;
+      }
+    },
     setSplit(next) { if (!panel.hidden) setExpanded(next); },
     flush: updatePreview,
     insertLatexSnippet(spec) { if(view) insertLatexSnippet(view, spec); },
