@@ -40,8 +40,7 @@ export const outline=headingOutline;
 export function collectReferenceLabels(doc) {
   const labels = [];
   const seen = new Map();
-  const headings=outline(doc);
-  let headingIndex=0;
+  const headings=new Map(outline(doc).map(item=>[item.position,item]));
   let equationNumber=0;
   const floats={figure:0,table:0};
   let current={number:null,title:'',kind:'label'};
@@ -52,7 +51,7 @@ export function collectReferenceLabels(doc) {
   }
   doc.descendants((node,position) => {
     if(node.type.name==='heading') {
-      const heading=headings[headingIndex++];
+      const heading=headings.get(position);
       current={number:heading?.number||null,title:heading?.text??node.textContent,kind:'heading',position};
       add(node.attrs.label,current);
     }

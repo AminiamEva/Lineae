@@ -134,22 +134,14 @@ function applyVerticalCells(tr,rows,rules){
   }
   return tr;
 }
-function commitTableRules(view,position,table,rows,horizontal,vertical){
-  let columns=vertical.columns;
-  vertical.rules.forEach((on,index)=>{columns=setColumnRule(columns,index,on);});
-  let tr=view.state.tr;
-  rows.forEach((row,index)=>tr=tr.setNodeMarkup(row.pos,undefined,{...row.node.attrs,rules:horizontal[index]}));
-  tr=applyVerticalCells(tr,rows,vertical.rules);
-  const attrs={...table.attrs,columns,columnRules:vertical.rules.some(Boolean),horizontalRuleMode:'explicit',booktabs:true,topRule:false,bottomRule:false,midRuleMode:'none',leftRule:false,rightRule:false,middleVerticalRule:false,borderMode:null,trailingRules:horizontal[rows.length]};
+function updateColumnLayout(table,columns,attrs){
   try {
     const layout=JSON.parse(table.attrs.columnLayout||'[]');
-    if(Array.isArray(layout)&&layout.length===vertical.rules.length){
-      const boundaries=columnBoundaries(columns);
-      attrs.columnLayout=JSON.stringify(boundaries.map((entry,index)=>({...layout[index],rules:entry.rules})));
-    }
+    if(!Array.isArray(layout))return;
+    const boundaries=columnBoundaries(columns);
+    if(layout.length!==boundaries.length)return;
+    attrs.columnLayout=JSON.stringify(boundaries.map((entry,index)=>({...layout[index],rules:entry.rules})));
   } catch {}
-  tr.setNodeMarkup(position,undefined,attrs);
-  view.dispatch(tr);
 }
 function toggleHorizontalRule(view,position,boundary){
   const table=view.state.doc.nodeAt(position);
@@ -159,7 +151,30 @@ function toggleHorizontalRule(view,position,boundary){
   horizontal[boundary]=hasLineRule(current)
     ? current.filter(rule=>!tableRulePattern.test(String(rule)))
     : [...current,ruleForBoundary(boundary,count)];
-  commitTableRules(view,position,table,rows,horizontal,effectiveVerticalRules(table,rows));
+  const base=rows.map(row=>[...(row.node.attrs.rules??[])]);
+  base.push([...(table.attrs.trailingRules??[])]);
+  const materialize=horizontal.some((rules,index)=>rules.some(rule=>!base[index].includes(rule)));
+  const attrs={...table.attrs,horizontalRuleMode:'explicit',booktabs:true,topRule:false,bottomRule:false,midRuleMode:'none',borderMode:null};
+  let tr=view.state.tr;
+  if(materialize){
+    rows.forEach((row,index)=>tr=tr.setNodeMarkup(row.pos,undefined,{...row.node.attrs,rules:horizontal[index]}));
+    attrs.trailingRules=horizontal[count];
+  }else if(boundary<count){
+    tr=tr.setNodeMarkup(rows[boundary].pos,undefined,{...rows[boundary].node.attrs,rules:horizontal[boundary]});
+  }else{
+    attrs.trailingRules=horizontal[count];
+  }
+  if(table.attrs.borderMode==='grid'||table.attrs.borderMode==='outer'){
+    const vertical=effectiveVerticalRules(table,rows);
+    let columns=vertical.columns;
+    vertical.rules.forEach((on,index)=>{columns=setColumnRule(columns,index,on);});
+    tr=applyVerticalCells(tr,rows,vertical.rules);
+    attrs.columns=columns;attrs.columnRules=vertical.rules.some(Boolean);
+    attrs.leftRule=false;attrs.rightRule=false;attrs.middleVerticalRule=false;
+    updateColumnLayout(table,columns,attrs);
+  }
+  tr.setNodeMarkup(position,undefined,attrs);
+  view.dispatch(tr);
 }
 function toggleVerticalRule(view,position,boundary){
   const table=view.state.doc.nodeAt(position);
@@ -167,7 +182,38 @@ function toggleVerticalRule(view,position,boundary){
   const rows=tableRowEntries(view,position);
   const vertical=effectiveVerticalRules(table,rows);
   vertical.rules[boundary]=!vertical.rules[boundary];
-  commitTableRules(view,position,table,rows,effectiveHorizontalRules(table,rows),vertical);
+  let columns=vertical.columns;
+  vertical.rules.forEach((on,index)=>{columns=setColumnRule(columns,index,on);});
+  const base=columnBoundaries(table.attrs.columns||'l'.repeat(rows[0]?.node.childCount??1)).map(entry=>entry.rules>0);
+  const materialize=vertical.rules.some((on,index)=>on&&!base[index]);
+  const attrs={...table.attrs,columns,columnRules:vertical.rules.some(Boolean),leftRule:false,rightRule:false,middleVerticalRule:false};
+  let tr=view.state.tr;
+  if(materialize){
+    tr=applyVerticalCells(tr,rows,vertical.rules);
+  }else{
+    for(const row of rows){
+      let column=0;
+      for(const cell of tableCellEntries(row)){
+        const start=column,span=cell.node.attrs.colspan??1,end=start+span;
+        column=end;
+        const key=boundary===vertical.rules.length-1&&end===vertical.rules.length-1?'ruleRight':boundary===start?'ruleLeft':null;
+        if(!key)continue;
+        const cellAttrs={...cell.node.attrs};
+        if(vertical.rules[boundary])cellAttrs[key]=true;else delete cellAttrs[key];
+        tr=tr.setNodeMarkup(cell.pos,undefined,cellAttrs);
+      }
+    }
+  }
+  if(table.attrs.borderMode){
+    const horizontal=effectiveHorizontalRules(table,rows);
+    rows.forEach((row,index)=>tr=tr.setNodeMarkup(row.pos,undefined,{...row.node.attrs,rules:horizontal[index]}));
+    attrs.trailingRules=horizontal[rows.length];
+    attrs.horizontalRuleMode='explicit';attrs.booktabs=true;attrs.topRule=false;attrs.bottomRule=false;attrs.midRuleMode='none';
+  }
+  attrs.borderMode=null;
+  updateColumnLayout(table,columns,attrs);
+  tr.setNodeMarkup(position,undefined,attrs);
+  view.dispatch(tr);
 }
 function tableLineControlsPlugin() {
   let overlay=null,current=null,position=null,hideTimer=0;

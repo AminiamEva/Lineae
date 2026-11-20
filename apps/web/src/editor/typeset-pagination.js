@@ -1,6 +1,7 @@
 import {installParagraphLayout} from '../typesetting/paragraph-layout.js';
 import {documentLayoutBlocks} from '../project/fold-layout.mjs';
 import { planPagination, planTableRows, typesetProfile } from '../../latex/typeset-layout.mjs';
+import { setSerializationClass } from './latex-codec.js';
 import { readPageFurniture, pageFurnitureText, furnitureSlots } from '../../latex/page-furniture.mjs';
 import { displayPageNumber } from '../../latex/document-numbering.mjs';
 import { setHeadingBase } from '../../latex/blocks.mjs';
@@ -309,6 +310,7 @@ export function installTypesetPagination(page, paper, meta, editor) {
     furniture = readPageFurniture(preamble);
     page.dataset.documentClass = profile.className;
     page.dataset.frontmatter = String(/\\frontmatter/.test(preamble));
+    setSerializationClass(profile.className);
     setHeadingBase(profile.className === 'book' || profile.className === 'report' ? 'chapter' : null);
     page.dataset.pageStyle = ['fancy','empty','plain','headings'].includes(furniture.style)
       ? furniture.style : profile.pageStyle;

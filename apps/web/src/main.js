@@ -8,7 +8,7 @@ import {canIndentList} from './project/list-policy.js';
 import {createCompositionController} from './project/composition-controller.js';
 import {applicationCommandActions} from './editor/application-commands.js';
 import {captureRichSession,restoreRichSession,copyModeHistory,readModeHistory} from './project/rich-session.js';
-import {changePageLayout,mergePageLayout,PageLayoutHistory} from './editor/page-layout-history.js';
+import {changePageLayout,mergePageLayout,PageLayoutHistory,textPatch} from './editor/page-layout-history.js';
 import {setParagraphIndent,paragraphHasIndent} from './editor/paragraph-format.js';
 import {installProjectNavigation} from './project/navigation.js';
 import {ProjectWorkspaceState} from './project/workspace-state.mjs';
@@ -19,7 +19,7 @@ import {installSettingsPanel} from './ui/settings-panel.js';
 import { buildHomeRibbon } from './ui/home-ribbon.js';
 import { buildRibbonGroups } from './ui/ribbon-groups.js';
 import {installHeaderFooterPanel} from './ui/header-footer-panel.js';
-import { sourceProjection, richSourceChanges } from './editor/source-sync.js';
+import { sourceProjection, richSourceChanges, standaloneParagraphDraft } from './editor/source-sync.js';
 import { installSourceToolbar } from './editor/source-toolbar.js';
 import { createSourceWorkspace } from './editor/source-workspace.js';
 import { DEFAULT_DOCUMENT_SOURCE } from './editor/default-document.mjs';
@@ -37,6 +37,7 @@ import { installFormatPainter } from './editor/format-painter.js';
 import { decorateToolbar, applyToolbarDescriptions, icon } from './editor/icons.js';
 import { PaperBehavior } from './editor/paper-behavior.js';
 import { MathNode, MathBlock, configureMathFences, focusInsertedOperator, insertFormula, isMathOperatorWithBody, mathEnvironment, toggleDisplayStyle } from './editor/math-node.js';
+import { MathGlue } from './editor/math-glue.js';
 import { Ref, Label, Cite, Footnote, TableOfContents, refreshReferences, collectReferenceLabels, installDocumentOutline } from './editor/references.js';
 import { createCitationLibrary, openCitationPanel } from './editor/citation-library.js';
 import { installProjectExplorer } from './project/explorer.js';
@@ -68,10 +69,10 @@ import { installSpaceOverlay } from './editor/space-overlay.js';
 import { installTypesetPagination } from './editor/typeset-pagination.js';
 import { wrapMathWithDelimiters } from '../latex/delimiters.mjs';
 import { readDelimiterPair } from './editor/delimiter-input.js';
-import { serialize, importBlocks, setSerializationClass } from './editor/latex-codec.js';
-import { setHeadingBase } from '../latex/blocks.mjs';
+import { serialize, importBlocks, parseTableFloat, setSerializationClass } from './editor/latex-codec.js';
 import {TblrSource} from './editor/tblr-extension.js';
-import {TabularxSource} from './editor/tabularx-extension.js';
+import {TabularxSource,syncTabularxWidths} from './editor/tabularx-extension.js';
+import { setHeadingBase } from '../latex/blocks.mjs';
 import { Editor, Node, Extension, Mark, mergeAttributes, wrappingInputRule } from '@tiptap/core';
 import StarterKit from '@tiptap/starter-kit';
 import CodeBlock from '@tiptap/extension-code-block';
@@ -81,7 +82,7 @@ import TableCell from '@tiptap/extension-table-cell';
 import TableHeader from '@tiptap/extension-table-header';
 import { Plugin, Selection, NodeSelection, TextSelection } from '@tiptap/pm/state';
 import { parseDocument } from '../latex/document.mjs';
-import { exportDocument, hasTitleCommand } from '../latex/packages.mjs';
+import { exportDocument } from '../latex/packages.mjs';
 import { appendAlignmentPair, displayEnvironment, numberedMathRows } from '../latex/math-environments.mjs';
 import { MARGIN_PRESETS, readPageSetup, writePageSetup, pageMetrics } from '../latex/geometry.mjs';
 import { readPageFurniture, writePageFurniture } from '../latex/page-furniture.mjs';
@@ -223,8 +224,20 @@ const TheoremBlock = Node.create({
 const Raw = Node.create({
   name:'raw', group:'block', atom:true,
   addAttributes:()=>({source:{default:''}}),
-  parseHTML:()=>[{tag:'pre[data-raw]'}],
-  renderHTML:({node})=>['pre',{'data-raw':'',contenteditable:'false'},node.attrs.source],
+  parseHTML:()=>[{tag:'pre[data-raw]',priority:1000,getAttrs:element=>{
+    try {
+      const source=JSON.parse(element.getAttribute('data-raw-source'));
+      return {source:typeof source==='string'?source:element.textContent};
+    } catch { return {source:element.textContent}; }
+  }}],
+  // HTML parsers normalize literal CRLF text; JSON in an attribute preserves it.
+  renderHTML:({node})=>{
+    const float=parseTableFloat(node.attrs.source);
+    return ['pre',{'data-raw':'','data-raw-source':JSON.stringify(node.attrs.source),contenteditable:'false',
+      ...(float && {'data-table-float':float.environment,'data-table-placement':float.placement,
+        'data-table-caption':float.caption,'data-table-label':float.label,'data-table-centered':String(float.centered)}),
+    },node.attrs.source];
+  },
 });
 const DescriptionList = Node.create({
   name:'descriptionList', group:'block', content:'descriptionItem+',
@@ -536,6 +549,21 @@ const Shortcuts = Extension.create({
         }
         if(this.editor.commands.undoInputRule())return true;
         const node=$from.nodeBefore;
+        // A hard break with an empty line after it keeps the paragraph one line
+        // tall. Deleting the last character of that line also removes the break,
+        // so the text returns to the previous line instead of leaving a gap.
+        if($from.parentOffset===$from.parent.content.size) {
+          const parent=$from.parent;
+          const last=parent.childCount>0?parent.child(parent.childCount-1):null;
+          const before=parent.childCount>1?parent.child(parent.childCount-2):null;
+          const trailingBreak=last?.type.name==='hardBreak'?last
+            :last?.isText&&last.nodeSize===1&&before?.type.name==='hardBreak'?before:null;
+          if(trailingBreak) {
+            const from=selection.from-(last?.type.name==='hardBreak'?last.nodeSize:last.nodeSize+trailingBreak.nodeSize);
+            this.editor.view.dispatch(this.editor.state.tr.delete(from,selection.from).scrollIntoView());
+            return true;
+          }
+        }
         if(['math','mathBlock'].includes(node?.type.name)) {
           // Treat a formula as one object: the first press selects it whole,
           // the next press lets ProseMirror delete the selection.
@@ -659,7 +687,7 @@ paper.before(documentPage);documentPage.append(paper);
 paper.replaceChildren();
 editor=new Editor({
   element:paper,
-  extensions:[AppendixStart,MatterStart,LayoutCommand,Lipsum,ProjectRegion,PageLayoutHistory,ConfigurableStarterKit.configure({heading:{levels:[1,2,3]},codeBlock:false}),LanguageCodeBlock,MultiSelection,PaperBehavior,TextStyle,TextCommand,Underline,Superscript,Subscript,SmallCaps,Boxed,Circled,PageBreak,MultiColumn,Table.configure({resizable:true}),TableRow,TableCell,TableHeader,TblrSource,TabularxSource,Raw,DocumentImage,TheoremBlock,DescriptionList,DescriptionItem,MathNode,MathBlock,Ref,Cite,Footnote,Label,Subfigures,TableOfContents,Shortcuts],
+  extensions:[AppendixStart,MatterStart,LayoutCommand,Lipsum,ProjectRegion,PageLayoutHistory,ConfigurableStarterKit.configure({heading:{levels:[1,2,3]},codeBlock:false}),LanguageCodeBlock,MultiSelection,PaperBehavior,TextStyle,TextCommand,Underline,Superscript,Subscript,SmallCaps,Boxed,Circled,PageBreak,MultiColumn,Table.configure({resizable:true}),TableRow,TableCell,TableHeader,TblrSource,TabularxSource,Raw,DocumentImage,TheoremBlock,DescriptionList,DescriptionItem,MathNode,MathBlock,MathGlue,Ref,Cite.configure({library:citationLibrary}),Footnote,Label,Subfigures,TableOfContents,Shortcuts],
   content:'<p></p>',
 });
 function installMarginSelection(editor,page,paper) {
@@ -712,6 +740,9 @@ function syncTableAttributes() {
     const dom = editor.view.nodeDOM(position);
     const table = dom?.tagName === 'TABLE' ? dom : dom?.querySelector?.('table');
     if (!table) return;
+    syncTabularxWidths(table,node.attrs.tabularx);
+    if(node.attrs.tblr)table.dataset.tblr='';
+    else delete table.dataset.tblr;
     if (node.attrs.columns) table.dataset.columns = node.attrs.columns;
     else delete table.dataset.columns;
     if (node.attrs.booktabs) table.dataset.booktabs = 'true';
@@ -826,24 +857,6 @@ function activeMath() {
   if(document.activeElement?.tagName==='MATH-FIELD') return document.activeElement;
   return editingMath?.isConnected ? editingMath : null;
 }
-function matrixCells(value) {
-  const match=value.match(/\\begin\{(pmatrix|bmatrix|Bmatrix|vmatrix|Vmatrix|matrix|array)\}/);
-  if(!match)return null;
-  const name=match[1], open=match[0], close='\\end{'+name+'}';
-  const start=match.index+open.length, end=value.lastIndexOf(close);
-  if(end<start)return null;
-  let body=value.slice(start,end);
-  if(/\\(?:begin|end)\{/.test(body))return null;
-  const spec=name==='array'?(body.match(/^\s*\{[^{}]*\}/)?.[0]??''):'';
-  body=body.slice(spec.length);
-  return {
-    prefix:value.slice(0,match.index), open, spec, close, suffix:value.slice(end+close.length),
-    rows:body.split(/\\\\/).map(row=>row.split(/(?<!\\)&/)),
-  };
-}
-function joinMatrix(info) {
-  return info.prefix+info.open+info.spec+info.rows.map(row=>row.join(' & ')).join('\\\\')+info.close+info.suffix;
-}
 function mathPositionPath(model, offset) {
   const path=[];
   for (let atom=model.at(offset); atom?.parent; atom=atom.parent) {
@@ -883,58 +896,78 @@ function addAlignmentPair(field) {
   ));
   return true;
 }
-function fillMatrixAxis(field, axis) {
-  if (axis==='column' && addAlignmentPair(field)) return;
-  const before=matrixCells(field.value);
+function arrayAtCaret(field) {
   const model=field._mathfield?.model;
+  if(!model)return null;
+  for(let atom=model.at(field.position);atom;atom=atom.parent) {
+    if(atom.type==='array')return atom;
+  }
+  return null;
+}
+function emptyCell(array,row,col) {
+  const branch=array.branch([row,col]);
+  return Array.isArray(branch)&&branch.length===1&&branch[0]?.type==='first';
+}
+// Add a row or column to the matrix that holds the caret. MathLive inserts the
+// structure; the cells it leaves empty get a visible placeholder box. Doing this
+// on the model keeps the change local: rewriting field.value reparsed the whole
+// formula and could land the box in a different matrix.
+// Returns false when the caret is not inside a matrix, so the caller can apply
+// the command to the surrounding table instead.
+function fillMatrixAxis(field, axis) {
+  if (axis==='column' && addAlignmentPair(field)) return true;
+  field.focus();
+  const model=field._mathfield?.model;
+  const array=arrayAtCaret(field);
+  const branch=model?.at(field.position)?.parentBranch;
+  const caret=Array.isArray(branch)?branch:null;
+  if (!array || !caret) return false;
+  const [row,col]=caret;
   const selection=structuredClone(field.selection);
-  const original=model && selection.ranges.map(range=>range.map(offset=>model.at(offset)));
+  const original=selection.ranges.map(range=>range.map(offset=>model.at(offset)));
   field.executeCommand(axis==='row'?'addRowAfter':'addColumnAfter');
-  if (original && model===field._mathfield?.model) {
-    const ranges=original.map(range=>range.map(atom=>model.offsetOf(atom)));
-    if (ranges.every(range=>range.every(offset=>offset>=0))) field.selection={...selection,ranges};
-  }
-  if(!before)return;
-  const after=matrixCells(field.value);
-  if(!after)return;
-  let changed=false;
-  if(axis==='column') {
-    const oldRow=before.rows[0], newRow=after.rows[0];
-    let index=-1;
-    for(let i=0;i<newRow.length;i++) {
-      const trial=newRow.filter((_,j)=>j!==i);
-      if(trial.length===oldRow.length&&trial.every((cell,j)=>cell===oldRow[j])) { index=i; break; }
-    }
-    if(index<0)index=newRow.findIndex(cell=>!cell.trim());
-    if(index<0)return;
-    for(const row of after.rows) {
-      if(!row[index]?.trim()) { row[index]=' \\placeholder{} '; changed=true; }
-    }
+  // MathLive may replace the array atom when the structure changes, so look it
+  // up again instead of mutating the one captured before the command.
+  const updated=arrayAtCaret(field) ?? array;
+  const rows=updated.rowCount, cols=updated.colCount;
+  const added=[];
+  if (axis==='row') {
+    const target=Math.min(row+1,rows-1);
+    for (let column=0;column<cols;column++) added.push([target,column]);
   } else {
-    let index=-1;
-    for(let i=0;i<after.rows.length;i++) {
-      const trial=after.rows.filter((_,j)=>j!==i);
-      if(trial.length===before.rows.length&&trial.every((row,j)=>
-        row.length===before.rows[j].length&&row.every((cell,k)=>cell===before.rows[j][k]))) { index=i; break; }
-    }
-    if(index<0)index=after.rows.length-1;
-    for(let i=0;i<after.rows[index].length;i++) {
-      if(!after.rows[index][i].trim()) { after.rows[index][i]=' \\placeholder{} '; changed=true; }
-    }
+    const target=Math.min(col+1,cols-1);
+    for (let line=0;line<rows;line++) added.push([line,target]);
   }
-  if(!changed)return;
-  preserveMathSelection(field,()=>{field.value=joinMatrix(after);});
+  for (const [line,column] of added) {
+    if (!emptyCell(updated,line,column)) continue;
+    const offset=model.offsetOf(updated.branch([line,column])[0]);
+    if (offset<0) continue;
+    field.position=offset;
+    field.executeCommand(['insert','\\placeholder{}']);
+  }
+  // Keep the caret where the author left it; only the new cells are filled.
+  const ranges=original.map(range=>range.map(atom=>model.offsetOf(atom)));
+  if (ranges.every(range=>range.every(offset=>offset>=0))) field.selection={...selection,ranges};
   field.dispatchEvent(new Event('input',{bubbles:true}));
+  return true;
+}
+// Ctrl+E R / C inside a table cell that holds a formula: the formula has no
+// matrix to grow, so the command belongs to the table around it.
+function editTableAxis(axis) {
+  if (!editor.isActive('table')) return;
+  const chain=editor.chain().focus();
+  if (axis==='row') chain.addRowAfter().run();
+  else chain.addColumnAfter().run();
 }
 function addMatrixRow() {
   const field=activeMath();
-  if(field)fillMatrixAxis(field,'row');
-  else editor.chain().focus().addRowAfter().run();
+  if(!field) { editor.chain().focus().addRowAfter().run(); return; }
+  if(!fillMatrixAxis(field,'row')) editTableAxis('row');
 }
 function addMatrixColumn() {
   const field=activeMath();
-  if(field)fillMatrixAxis(field,'column');
-  else editor.chain().focus().addColumnAfter().run();
+  if(!field) { editor.chain().focus().addColumnAfter().run(); return; }
+  if(!fillMatrixAxis(field,'column')) editTableAxis('column');
 }
 button('＋ Row',addMatrixRow);
 button('＋ Column',addMatrixColumn);
@@ -949,6 +982,9 @@ const sourceView = createSourceWorkspace({
   render: text => {
     if (projectFileKind === 'bib') return;
     if (editor.view.composing) return false;
+    // Opening Split can request the preview that load() has just mounted.
+    if (!projectExplorer?.active && !syncPending && text === importedSource &&
+        projection?.text === text && importedSnapshot === JSON.stringify(editor.getJSON())) return;
     const selection = editor.state.selection;
     syncApplying = true;
     try {
@@ -1009,7 +1045,45 @@ function redoDocument() {
   const done=editor.commands.redo();syncUndoButtons();return done;
 }
 paper.addEventListener('focusin', () => { if (!sourceView.hidden && syncPending) sourceView.flush(); syncUndoButtons(); });
+function usesSourceProjection() {
+  let referenceSource=false;
+  editor.state.doc.descendants(node=>{if(node.attrs.sourceCommand||node.attrs.labelSource||node.attrs.environmentSource)referenceSource=true;});
+  return referenceSource || !sourceView.hidden || (projectExplorer?.active && projectFileKind==='tex') ||
+    editor.getJSON().content.some(node=>node.type==='raw'||node.attrs?.tblr||node.attrs?.tabularx||node.attrs?.figureSource);
+}
+// Limit standalone writeback to text edits within one top-level paragraph.
+function standaloneParagraphEdit(tr) {
+  if (!sourceView.hidden || projectExplorer?.active || importedSource===null) return -1;
+  const {before,doc}=tr;
+  if (!before.sameMarkup(doc) || before.childCount!==doc.childCount) return -1;
+  const start=before.content.findDiffStart(doc.content);
+  if (start===null) return -1;
+  const end=before.content.findDiffEnd(doc.content);
+  const a=before.resolve(start), b=doc.resolve(start);
+  if (a.depth!==1 || b.depth!==1 || a.parent.type.name!=='paragraph' || !a.parent.sameMarkup(b.parent) ||
+      a.parent.textContent===b.parent.textContent) return -1;
+  // Identical runs can make the diff endpoints overlap on insertion/deletion.
+  const oldEnd=Math.max(start,end.a), newEnd=Math.max(start,end.b);
+  // Introducing a new formatting mark is an authoring command (for example,
+  // creating a new box), with its own package-generation behavior.
+  const priorRuns=a.parent.content.content;
+  const inline = a.sameParent(before.resolve(oldEnd)) && b.sameParent(doc.resolve(newEnd)) &&
+    a.parent.content.cut(a.parentOffset,oldEnd-a.start()).content.every(node=>node.isText) &&
+    b.parent.content.cut(b.parentOffset,newEnd-b.start()).content.every(node=>node.isText &&
+      (!node.marks.length || priorRuns.some(run=>run.sameMarkup(node))));
+  return inline ? a.index(0) : -1;
+}
+function refuseStandaloneWriteback() {
+  const status=document.querySelector('#status');
+  status.hidden=false;
+  status.textContent=t('该修改无法无损回写，请在源码中编辑；原文已保留。','This edit cannot round-trip safely. Edit the source; original text is preserved.');
+  return false;
+}
 editor.registerPlugin(new Plugin({
+  state: {
+    init:()=>false,
+    apply:tr=>!!(tr.getMeta('standaloneParagraph') || tr.getMeta('appendedTransaction')?.getMeta('standaloneParagraph')),
+  },
   props: {handleKeyDown(view,event) {
     if (sourceView.hidden || event.isComposing || !(event.ctrlKey || event.metaKey) || event.altKey) return false;
     if (event.key.toLowerCase() === 'z' || event.key.toLowerCase() === 'y') {
@@ -1019,24 +1093,47 @@ editor.registerPlugin(new Plugin({
     }
     return false;
   }},
-  filterTransaction(transaction) {
+  filterTransaction(transaction,state) {
     if (!transaction.docChanged || syncApplying) return true;
+    // A plugin may append transactions before Tiptap emits the original update.
+    // Its extra document changes have no authority over the approved source range.
+    if(state!==editor.state && this.getState(state) && !transaction.doc.eq(state.doc))return refuseStandaloneWriteback();
     if(projectDocument.composition){
       const valid=projectDocument.changes(transaction.doc.toJSON());
       if(!valid)sourceView.error(t('请在对应文件的源码中修改此结构','Edit this structure in its source file'));
       return !!valid;
     }
-    if(sourceView.hidden && !(projectExplorer?.active && projectFileKind==='tex'))return true;
+    if(!usesSourceProjection()) {
+      const index=standaloneParagraphEdit(transaction);
+      if (index<0) return true;
+      const current=transaction.before.toJSON();
+      const prepared=!syncPending && transaction.before===editor.state.doc &&
+        standaloneParagraphDraft(importedSource,projection,importedSnapshot,current,transaction.doc.toJSON(),index);
+      if (prepared) {
+        transaction.setMeta('standaloneParagraph',prepared);
+        return true;
+      }
+      return refuseStandaloneWriteback();
+    }
     const changes = !syncPending && richSourceChanges(projection,transaction.doc.toJSON());
     if (!changes) {
-      sourceView.error(t('该修改无法无损回写，请在源码中编辑；原文已保留。','This edit cannot round-trip safely. Edit the source; original text is preserved.'));
+      sourceView.error(t('该修改无法无损回写，请在源码中编辑；原文已保留','This edit cannot round-trip safely. Edit the source; original text is preserved.'));
       return false;
     }
     return true;
   },
 }));
-editor.on('update', () => {
+editor.on('update', ({transaction}) => {
   if (syncApplying) return;
+  const paragraph=transaction.getMeta('standaloneParagraph');
+  if (paragraph && editor.state.doc.eq(transaction.doc)) {
+    if(sourceView.value===importedSource)sourceView.applyChanges(paragraph.changes);
+    importedSource=paragraph.draft;
+    importedSnapshot=JSON.stringify(editor.getJSON());
+    documentParts=parseDocument(importedSource);
+    projection=paragraph.projection;
+    return;
+  }
   if(projectDocument.composition){
     const updates=projectDocument.changes(editor.getJSON());
     if(updates){
@@ -1070,7 +1167,7 @@ editor.on('update', () => {
     }
     pageSetup=readPageSetup(preamble);applyPageSetup();projectExplorer?.changed();
   }
-  if(sourceView.hidden && !(projectExplorer?.active && projectFileKind==='tex'))return;
+  if(!usesSourceProjection())return;
   const changes = richSourceChanges(projection,editor.getJSON());
   if (!changes?.length) return;
   sourceView.applyChanges(changes);
@@ -1269,6 +1366,7 @@ syncUndoButtons();sourceModeRedos=[];}
 let filename='lineae.tex';
 let fileHandle=null;
 let savedSource='';
+let documentGeneration=0;
 let importedSource=null;
 let importedSnapshot=null;
 function readMeta(key) {
@@ -1290,6 +1388,7 @@ function persistCitationState() {
   const metadata = writeBibliographyMetadata(documentParts.start, citationLibrary.exportState({ paths }));
   documentParts.start = metadata;
   if (importedSource) importedSource = writeBibliographyMetadata(importedSource, citationLibrary.exportState({ paths }));
+  refreshReferences(paper);
 }
 const metaBar=document.createElement('section');metaBar.id='document-meta';
 const metaTitle=document.createElement('div');metaTitle.className='doc-title';
@@ -1318,9 +1417,9 @@ function source() {
   if(projectDocument.composition)return projectExplorer.model.file(projectDocument.composition.rootId).draft;
   const document=editor.getJSON();
   const untouched=importedSnapshot===JSON.stringify(document);
-  const bareMath=document.content.some(node=>node.type==='mathBlock' && !node.attrs.delimiter &&
-    /^\\begin\{(?:[dr]?cases|drcases|aligned|alignedat|gathered|split|[pbBvV]?(?:small)?matrix|array|darray|subarray|multlined)\}/.test(node.attrs.latex));
-  if (untouched && !bareMath && (!readMeta('title') || hasTitleCommand(importedSource))) return importedSource;
+  // Viewing an imported document must not repair its TeX or serialize visual
+  // wrapping. Safe rich edits already update this source and its snapshot.
+  if (untouched) return importedSource;
   return exportDocument(documentParts,serialize(document),{chineseTypesetting:true});
 }
 savedSource=source();
@@ -1340,6 +1439,9 @@ function load(text, markSaved = true) {
   if(!parsed)throw new Error(t('无法识别文档','Invalid document'));
   if (markSaved) {clearProjectAssets();sourceModeEntry=undefined;sourceModeCommits=[];sourceModeRedos=[];}
   citationLibrary.restoreState(readBibliographyMetadata(text));
+  // The book/report heading mapping must be active before blocks are imported;
+  // applyProfile() runs later, during pagination, which is too late for the
+  // initial \chapter -> heading conversion.
   const documentClass = (/\\documentclass(?:\[[^\]]*\])?\{([^}]+)\}/.exec(parsed.start)?.[1] || 'article').toLowerCase();
   setSerializationClass(documentClass);
   setHeadingBase(documentClass === 'book' || documentClass === 'report' ? 'chapter' : null);
@@ -1351,7 +1453,7 @@ function load(text, markSaved = true) {
   editor.chain().setMeta('addToHistory', false).setContent({type:'doc',attrs:{layoutPreamble:parsed.start,pageFurniture:readPageFurniture(parsed.start)},content:content.length?content:[{type:'paragraph'}]}).command(({tr})=>{tr.setDocAttribute('layoutPreamble',parsed.start);tr.setDocAttribute('pageFurniture',readPageFurniture(parsed.start));return true;}).run();
   refreshReferences(paper);syncTableAttributes();
   importedSource=text;importedSnapshot=JSON.stringify(editor.getJSON());
-  if(markSaved) savedSource=text;
+  if(markSaved) {savedSource=text;documentGeneration++;}
   if (markSaved) sourceView.reset(text);
   projection=sourceProjection(text,editor.getJSON(),{fragment:projectFileKind==='tex'});
   syncPending=false;
@@ -1417,9 +1519,9 @@ function confirmMathPlaceholders() {
   return !count || confirm(t(`仍有 ${count} 个公式占位符未填写；保存后这些位置将留空。是否继续？`,
     `${count} formula placeholders are unfinished and will be empty after saving. Continue?`));
 }
-async function downloadProject(checkPlaceholders=true) {
+async function downloadProject(checkPlaceholders=true, snapshot, nameAtSave=filename) {
   if(checkPlaceholders && !confirmMathPlaceholders())return;
-  const text=sourceView.hidden?source():sourceView.value;
+  const text=snapshot ?? (sourceView.hidden?source():sourceView.value);
   const status=document.querySelector('#status');
   try {
     const assets=new Map(projectAssets().filter(([path])=>safeProjectPath(path)));
@@ -1429,7 +1531,7 @@ async function downloadProject(checkPlaceholders=true) {
     for(const path of dependencies) {
       const actual=assets.has(path)?path:[...assets.keys()].find(key=>key.replace(/\.[^.\/]+$/,'')===path);
       if(!actual) {missing.push(path);continue;}
-      if(required.has(actual) || actual===filename)continue;
+      if(required.has(actual) || actual===nameAtSave)continue;
       const file=assets.get(actual);
       required.set(actual,file);
       if(actual.endsWith('.tex'))for(const dependency of projectDependencies(await file.text()))dependencies.add(dependency);
@@ -1438,7 +1540,7 @@ async function downloadProject(checkPlaceholders=true) {
       status.hidden=false;status.textContent=t('缺少项目资源','Missing project assets')+': '+missing.join(', ');
       return;
     }
-    const name=safeProjectPath(filename)?filename:'lineae.tex';
+    const name=safeProjectPath(nameAtSave)?nameAtSave:'lineae.tex';
     const zip=await buildProjectZip([[name,text],...[...required].filter(([path])=>path!==name)]);
     const url=URL.createObjectURL(zip);
     const a=document.createElement('a');a.href=url;a.download=name.replace(/\.tex$/i,'')+'.zip';a.click();
@@ -1448,54 +1550,75 @@ async function downloadProject(checkPlaceholders=true) {
   }
 }
 function prepareExplicitSave() {
-  // Explicit Save/Save As only. ZIP export and ordinary updates remain byte-faithful.
-  // Do not interrupt an IME composition with a formatting transaction.
-  if (sourceView.composing || editor.view.composing) return false;
-  if (!confirmMathPlaceholders()) return false;
-  if(projectExplorer?.active&&projectFileKind==='tex'){
-    const current=sourceView.hidden?source():sourceView.value;
-    const next=projectInputSource(projectExplorer.model,projectExplorer.model.activeFileId,current);
-    if(next!==current)editIncludeSource(()=>next);
-  }
-  if (sourceView.indentOnSave && projectFileKind !== 'bib') {
-    const formatted = indentLatex(sourceView.hidden ? source() : sourceView.value);
-    if (formatted.changes.length) {
-      if (sourceView.hidden) {
-        // Mount the existing authoritative source editor to retain one undo history.
-        // Restore Rich Text mode after the same transaction used by Source/Split.
-        setSourceMode(true);
-        sourceView.indent(formatted.changes);
-        setSourceMode(false);
-      } else sourceView.indent(formatted.changes);
+  if (sourceView.composing || editor.view.composing || !confirmMathPlaceholders()) return null;
+  const readDraft=()=>sourceView.hidden ? source() : sourceView.value;
+  const original=readDraft();
+  const project=projectExplorer?.model;
+  const input=project && projectFileKind==='tex' ? projectInputSource(project,project.activeFileId,original) : original;
+  const formatted=sourceView.indentOnSave && projectFileKind!=='bib' ? indentLatex(input) : null;
+  const generation=documentGeneration;
+  const isCurrentDocument=()=>generation===documentGeneration;
+  return {
+    original, text:formatted?.text ?? input, isCurrentDocument,
+    commit() {
+      // The saved snapshot is authoritative on disk. Only apply its changes
+      // to the editor if it still holds that snapshot's original source.
+      if(!isCurrentDocument() || sourceView.composing || editor.view.composing || readDraft()!==original)return;
+      if(input===original && !formatted?.changes.length)return;
+      // CodeMirror positions count a CRLF pair as one logical newline.
+      const preamble=input===original ? [] : textPatch(original.replace(/\r\n?/g,'\n'),input.replace(/\r\n?/g,'\n'));
+      const rich=sourceView.hidden;
+      if(rich)setSourceMode(true);
+      sourceView.applySaveFormatting(preamble,formatted?.changes ?? [],input);
+      if(rich)setSourceMode(false);
     }
-  }
-  return true;
+  };
 }
+let savingFile=false;
 async function saveDocument(saveAs=false) {
   if (projectExplorer?.active && !saveAs) return projectExplorer.save();
-  if (!prepareExplicitSave()) return;
-  const text=sourceView.hidden?source():sourceView.value;
+  if (savingFile) {
+    const status=document.querySelector('#status');
+    status.hidden=false;status.textContent=t('正在保存，请稍候','Save in progress');
+    return;
+  }
+  const snapshot=prepareExplicitSave();
+  if (!snapshot) return;
+  savingFile=true;
+  try {await writeDocument(snapshot,saveAs);}
+  finally {savingFile=false;}
+}
+async function writeDocument(snapshot,saveAs) {
+  const name=filename;
+  const status=document.querySelector('#status');
   if(window.showSaveFilePicker) {
+    let handle=saveAs?null:fileHandle;
     try {
-      let handle=saveAs?null:fileHandle;
-      if(!handle)handle=await window.showSaveFilePicker({suggestedName:filename,types:[{description:'LaTeX',accept:{'text/plain':['.tex']}}]});
+      if(!handle)handle=await window.showSaveFilePicker({suggestedName:name,types:[{description:'LaTeX',accept:{'text/plain':['.tex']}}]});
       let writable;
       try { writable=await handle.createWritable(); }
       catch { await handle.requestPermission?.({mode:'readwrite'}); writable=await handle.createWritable(); }
-      await writable.write(text);await writable.close();
-      fileHandle=handle;
-      if(handle.name)filename=handle.name;
-      savedSource=text;
-      sourceView.refresh();
-      const status=document.querySelector('#status');
-      status.hidden=false;status.textContent=t('已保存','Saved');
-      return;
+      try {await writable.write(snapshot.text);await writable.close();}
+      catch(error){try {await writable.abort?.();} catch {} throw error;}
     } catch(error) {
-      if(error?.name==='AbortError')return;
+      if(!snapshot.isCurrentDocument())return;
+      status.hidden=false;
+      if(error?.name==='AbortError'){status.textContent=t('已取消保存','Save cancelled');return;}
+      status.textContent=t('保存失败','Save failed')+' · '+String(error?.message ?? error);
       console.warn(t('保存','Save'),error);
+      await downloadProject(false,snapshot.text,name);
+      return;
     }
+    if(!snapshot.isCurrentDocument())return;
+    fileHandle=handle;
+    if(handle.name)filename=handle.name;
+    savedSource=snapshot.text;
+    snapshot.commit();
+    sourceView.refresh();
+    status.hidden=false;status.textContent=t('已保存','Saved');
+    return;
   }
-  await downloadProject(false);
+  await downloadProject(false,snapshot.text,name);
 }
 async function openDocument() {
   if (projectExplorer?.active && !projectExplorer.close()) return true;
@@ -1856,8 +1979,8 @@ function runMathShortcut(command, field, event) {
     case 'leaveEnvironment': field.dispatchEvent(new Event('lineae-leave-math-environment')); return;
     case 'leaveFormula': field.dispatchEvent(new Event('lineae-leave-formula')); return;
     case 'leaveFile': if(projectPresentation?.canExitFile(field)){field.dispatchEvent(new Event('lineae-leave-formula'));return projectPresentation.exitFile();}return !!projectExplorer?.active;
-    case 'addRow': fillMatrixAxis(field,'row'); return;
-    case 'addColumn': fillMatrixAxis(field,'column'); return;
+    case 'addRow': if (!fillMatrixAxis(field,'row')) editTableAxis('row'); return;
+    case 'addColumn': if (!fillMatrixAxis(field,'column')) editTableAxis('column'); return;
     case 'literalFence': armLiteralFence(field); return;
     case 'toggleDisplayStyle': toggleDisplayStyle(field); return;
     case 'left': case 'right': chooseMathDelimiters(field,command==='right'); return;
@@ -2360,6 +2483,7 @@ projectExplorer = installProjectExplorer({footer, filePanel:document.querySelect
     };
   },
   open(file) {
+    documentGeneration++;
     projectFileKind = file.kind;
     returnedDraft = undefined; syncPending = false;
     filename = file.path; fileHandle = null; savedSource = file.saved;
@@ -2392,6 +2516,7 @@ projectExplorer = installProjectExplorer({footer, filePanel:document.querySelect
   saved(text) { savedSource = text; sourceView.refresh(); },
   error(text) { const status = document.querySelector('#status'); status.hidden = false; status.textContent = text; },
   end() {
+    documentGeneration++;
     projectDocument.composition=null;
     projectFileKind = undefined; returnedDraft = undefined;
     projectWorkspace.select('body');
@@ -2819,6 +2944,8 @@ async function manageCitations(){
   }catch(error){
     document.querySelector('#status').hidden=false;
     document.querySelector('#status').textContent=error.message;
+  }finally{
+    refreshReferences(paper);
   }
 }
 groupButton(referenceGroup,'cite',manageCitations);
@@ -2904,19 +3031,15 @@ groupButton(insert,['代码块','Code block'],async()=>{
   if(editor.isActive('codeBlock')) editor.chain().focus().updateAttributes('codeBlock',{language:language||null}).run();
   else editor.chain().focus().setCodeBlock({language:language||null}).run();
 });
-groupButton(insert,['CircuiTikZ','CircuiTikZ'],()=>{
+groupButton(insert,['TikZ','TikZ'],()=>{
   try{
     const editorEl=document.querySelector('.document-page .ProseMirror');
     const textwidthCm=editorEl?editorEl.clientWidth*2.54/96:15;
     const tikz=new TikzEditor({getTextwidthCm:()=>textwidthCm});
     tikz.open(code=>{ if(code) editor.chain().focus().insertContent({type:'codeBlock',attrs:{language:'tikz'},content:[{type:'text',text:code}]}).run(); });
-  }catch(error){ console.error(error); alert('CircuiTikZ editor failed: '+(error?.message||error)); }
+  }catch(error){ console.error(error); alert('TikZ editor failed: '+(error?.message||error)); }
 });
-groupButton(insert,['TikZ','TikZ'],()=>openTikzStudio({
-  onInsert: payload => insertTikzStudioBlock(payload),
-}));
 import { installMathFloatToolbar } from './ui/math-float-toolbar.js';
-import { openTikzStudio } from './ui/tikz-studio.js';
 const files=header.querySelector('.tools');
 const attachFolder=groupButton(files,['关联资源目录','Attach asset folder'],()=>{
   const picker=document.createElement('input');

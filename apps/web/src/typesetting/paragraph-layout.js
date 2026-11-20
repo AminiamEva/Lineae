@@ -128,6 +128,8 @@ export function installParagraphLayout(editor){
       const page=element.closest('.document-page');
       const zoom=page?page.getBoundingClientRect().width/page.offsetWidth:1;
       const elementRect=element.getBoundingClientRect();
+      const elementTranslationY=elementTranslateY(element)*zoom;
+      const elementTop=elementRect.top-elementTranslationY;
       const baseWidth=elementRect.width/zoom-parseFloat(style.paddingLeft)-parseFloat(style.paddingRight)-parseFloat(style.borderLeftWidth)-parseFloat(style.borderRightWidth);
       const indent=parseFloat(style.textIndent)||0;
       const lineHeight=(parseFloat(getComputedStyle(element).lineHeight)||parseFloat(style.fontSize)*1.2||16)*zoom;
@@ -144,7 +146,7 @@ export function installParagraphLayout(editor){
       // Wrapfig narrows the paragraph at the float, including the declaration
       // line, while the float itself keeps its CSS shape.  Keeping the TeX
       // paragraph pass active here aligns the break points with XeLaTeX.
-      const widthAt=line=>wrapLineWidthAt(line,{elementTop:elementRect.top,lineHeight,baseWidth,wraps,zoom});
+      const widthAt=line=>wrapLineWidthAt(line,{elementTop,lineHeight,baseWidth,wraps,zoom});
       const plan=optimumParagraph(items,line=>widthAt(line)-(line===0?indent:0),{...options,emergencyStretch:options.emergency?texDimension(options.emergency,parseFloat(style.fontSize)):0});
       if(!plan||plan.lines.length===1)return false;
       entries.push(Decoration.node(start,start+node.nodeSize,{'data-tex-paragraph':'true'}));
