@@ -1,13 +1,23 @@
 version: 2
 interface:
+  sourceFontSize: 16
+  toolbarAutoHide: false
+  sourceToolbarAutoHide: true
+  sidebar:
+    files: true
+    includes: true
+    outline: true
+    citations: false
   language: auto
   theme: system
   zoom: 100
   zoomOnCtrlWheel: true
+  continuedTables: true
   formattingMarks: true
   caretMotion: true
   toolbar: [open, saveAs, download, language, assets]
 editing:
+  indentOnSave: true
   smartFences: true
   autoReplaceLigatures: false
   ligatures:
@@ -33,7 +43,11 @@ keybindings:
     alignCenter: ctrl+e i
     find: ctrl+f
     leaveEnvironment: ctrl+j
-    toggleContextMarker: ctrl+t
+    leaveAllEnvironments: ctrl+shift+j
+    leaveFile: ctrl+alt+j
+    # Browsers reserve Ctrl+T for a new tab and cannot deliver it to the page.
+    # Ctrl+E T toggles heading, list, and bullet numbering as an alias.
+    toggleContextMarker: [ctrl+alt+t, ctrl+e t]
     ignoreBrowserZoomReset: null
     literalBacktick: alt+backtick
     undo: mod+z
@@ -54,16 +68,18 @@ keybindings:
   paragraph:
     toggleIndent: ctrl+i
   table:
-    addRow: ctrl+e r
-    addColumn: ctrl+e c
+    addRow: ctrl+e shift+r
+    addColumn: ctrl+e shift+c
   math:
     superscript: ctrl+6
     subscript: ctrl+-
     leaveEnvironment: [ctrl+0, ctrl+j]
     leaveFormula: ctrl+shift+j
+    leaveFile: ctrl+alt+j
     addRow: ctrl+e r
     addColumn: ctrl+e c
-    literalFence: ctrl+e t
+    toggleDisplayStyle: ctrl+e t
+    literalFence: ctrl+e shift+t
     left: ctrl+l
     right: ctrl+r
     frac: ctrl+f

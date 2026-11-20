@@ -1,53 +1,50 @@
+import {headingOutline} from '../../latex/heading-numbering.mjs';
+import {createOutlinePanel} from '../ui/outline-panel.js';
 import { Node } from '@tiptap/core';
 import { t } from '../ui/i18n.mjs';
 import { numberedMathRows } from '../../latex/math-environments.mjs';
+import { usesCtex } from '../../latex/packages.mjs';
+import { displayPageNumber } from '../../latex/document-numbering.mjs';
 
-export function outline(doc) {
-  const counters = [0, 0, 0];
-  const items = [];
-  doc.descendants(node => {
-    if (node.type.name !== 'heading') return;
-    const level = node.attrs.level;
-    if (level < 1 || level > counters.length) return;
-    let number = '';
-    if (node.attrs.numbered !== false) {
-      counters[level - 1]++;
-      counters.fill(0, level);
-      number = counters.slice(0, level).join('.');
-    }
-    items.push({ level, number, text: node.textContent, label: node.attrs.label || null });
-  });
-  return items;
-}
+export const outline=headingOutline;
 
 export function collectReferenceLabels(doc) {
   const labels = [];
   const seen = new Set();
-  const headings=outline(doc);
-  let headingIndex=0;
+  const headings=new Map(outline(doc).map(item=>[item.position,item]));
+
   let equationNumber=0;
   let current={number:null,title:'',kind:'label'};
   function add(key,details) {
     if(!key || seen.has(key))return;
     seen.add(key);labels.push({key,...details});
   }
-  doc.descendants(node => {
+  doc.descendants((node,position) => {
     if(node.type.name==='heading') {
-      const heading=headings[headingIndex++];
-      if(heading?.number)current={number:heading.number,title:heading.text,kind:'heading'};
+      const heading=headings.get(position);
+      current={number:heading?.number||null,title:heading?.text??node.textContent,kind:'heading',position};
       add(node.attrs.label,current);
     }
     if (node.type.name==='mathBlock') {
       for (const row of numberedMathRows(node.attrs)) {
         if (row.unnumbered) continue;
-        equationNumber++;
-        current={number:String(equationNumber),title:node.attrs.latex,kind:'equation'};
+        const number = row.tag ?? String(++equationNumber);
+        current={number,title:node.attrs.latex,kind:'equation',position};
         add(row.label ?? (row.index === (node.attrs.labelRow ?? 0) ? node.attrs.label : null),current);
       }
     }
-    if (node.type.name==='label') add(node.attrs.key,current);
+    if (node.type.name==='label') add(node.attrs.key,{...current,kind:'label',position});
   });
   return labels;
+}
+
+function navigateTo(editor,target) {
+  if(!Number.isInteger(target?.position))return false;
+  const position=Math.max(0,Math.min(target.position,editor.state.doc.content.size));
+  const chain=editor.chain().focus();
+  if(target.kind==='equation')chain.setNodeSelection(position);
+  else chain.setTextSelection(Math.min(position+1,editor.state.doc.content.size));
+  return chain.scrollIntoView().run();
 }
 
 export const Ref = Node.create({
@@ -64,9 +61,11 @@ export const Ref = Node.create({
       const dom = document.createElement('span');
       dom.className = 'ref-node';
       dom.contentEditable = 'false';
+      let target=null;
       const render = () => {
         dom.dataset.refView = node.attrs.key;
-        const number = collectReferenceLabels(editor.state.doc).find(item=>item.key===node.attrs.key)?.number ?? null;
+        target=collectReferenceLabels(editor.state.doc).find(item=>item.key===node.attrs.key)??null;
+        const number = target?.number ?? null;
         dom.textContent = node.attrs.equation ? `(${number??'?'})` : number ?? '?';
         dom.classList.toggle('missing', !number);
         dom.dataset.tooltip = (node.attrs.equation?'\\eqref{':'\\ref{') + node.attrs.key + '}';
@@ -78,6 +77,7 @@ export const Ref = Node.create({
         if (typeof position !== 'number') return;
         event.preventDefault();
         event.stopPropagation();
+        if(event.ctrlKey || event.metaKey){navigateTo(editor,target);return;}
         editor.commands.setNodeSelection(position);
       });
       return {
@@ -237,23 +237,73 @@ export const TableOfContents = Node.create({
       dom.className = 'toc-block';
       dom.dataset.tocView = '';
       dom.contentEditable = 'false';
+      let rows = [];
+      const updatePages = () => {
+        const page = editor.view.dom.closest('.document-page');
+        const sheet = page?.querySelector('.document-sheet');
+        if (!page || !sheet) return;
+        const pageRect = page.getBoundingClientRect();
+        const pitch = sheet.offsetHeight + (Number.parseFloat(getComputedStyle(page).getPropertyValue('--page-gap')) || 0);
+        const zoom = pageRect.width / page.offsetWidth || 1;
+        const headingElements = [...editor.view.dom.querySelectorAll('h1,h2,h3')];
+        rows.forEach((row, rowIndex) => {
+          const node = headingElements[rowIndex];
+          const rect = node?.getBoundingClientRect?.();
+          const index = node?.getAttribute?.('data-page-index') != null
+            ? Number(node.getAttribute('data-page-index'))
+            : rect?.height ? Math.floor((rect.top - pageRect.top) / zoom / pitch) : -1;
+          const mainStart = page.dataset.mainStart ? Number(page.dataset.mainStart) : null;
+          const frontmatter = page.dataset.frontmatter === 'true' || mainStart !== null;
+          const pageIndex = row.matter === 'main' && mainStart !== null && index >= 0 && index < mainStart
+            ? mainStart : index;
+          row.page.textContent = pageIndex >= 0
+            ? displayPageNumber(pageIndex, { frontmatter, mainStart }).text
+            : '';
+        });
+      };
       const render = () => {
         dom.replaceChildren();
         const title = document.createElement('div');
         title.className = 'toc-title';
-        title.textContent = t('目录','Contents');
+        title.dataset.zh = '目录';
+        title.dataset.en = 'Contents';
+        const preamble = editor.state.doc.attrs.layoutPreamble || '';
+        title.textContent = usesCtex(preamble) ? '目录' : 'Contents';
         dom.append(title);
-        for (const item of outline(editor.state.doc)) {
+        rows = outline(editor.state.doc).map(item => {
           const row = document.createElement('div');
           row.className = 'toc-entry';
+          row.setAttribute('role','link');
+          row.tabIndex = 0;
+          row.dataset.headingPosition = String(item.position);
           row.style.paddingLeft = (item.level - 1) + 'em';
-          row.textContent = (item.number ? item.number + '  ' : '') + item.text;
+          const content = document.createElement('span');
+          content.className = 'toc-entry-text';
+          content.textContent = (item.number ? item.number + '  ' : '') + item.text;
+          const leader = document.createElement('span');
+          leader.className = 'toc-leader';
+          leader.setAttribute('aria-hidden','true');
+          const pageNumber = document.createElement('span');
+          pageNumber.className = 'toc-page';
+          const jump=()=>navigateTo(editor,item);
+          row.addEventListener('click',jump);
+          row.addEventListener('keydown',event=>{if(event.key==='Enter' || event.key===' '){event.preventDefault();jump();}});
+          row.append(content,leader,pageNumber);
           dom.append(row);
-        }
+          return {position:item.position,page:pageNumber,matter:item.matter};
+        });
+        updatePages();
       };
       render();
+      const layout = () => updatePages();
+      window.addEventListener('lineae-layout',layout);
       dom.refreshToc = render;
-      return { dom, ignoreMutation: () => true };
+      return {
+        dom,
+        ignoreMutation: () => true,
+        stopEvent:event=>Boolean(event.target.closest?.('.toc-entry')),
+        destroy:()=>window.removeEventListener('lineae-layout',layout),
+      };
     };
   },
 });
@@ -261,4 +311,8 @@ export const TableOfContents = Node.create({
 export function refreshReferences(root) {
   root.querySelectorAll('[data-ref-view]').forEach(element => element.refreshRef?.());
   root.querySelectorAll('[data-toc-view]').forEach(element => element.refreshToc?.());
+}
+
+export function installDocumentOutline(editor) {
+  return createOutlinePanel(editor,{readOutline:outline,navigate:navigateTo});
 }

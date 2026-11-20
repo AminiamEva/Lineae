@@ -8,6 +8,7 @@ import { serialize } from '../apps/web/src/editor/latex-codec.js';
 import { importBlocks } from '../apps/web/latex/blocks.mjs';
 import { listMarker, markerInput } from '../apps/web/latex/list-numbering.mjs';
 import { buildProjectZip, projectDependencies } from '../apps/web/src/editor/project-zip.mjs';
+import { relativeImageWidth } from '../apps/web/latex/images.mjs';
 
 test('paragraph alignment round-trips without leaking into the next paragraph', () => {
   for (const align of ['left','center','right']) {
@@ -35,6 +36,54 @@ test('Word-style numbering preserves the marker and starting number in TeX', () 
     }
   }
   assert.equal(listMarker(markerInput.exec('word. ')),null);
+  assert.equal(listMarker(markerInput.exec(' ')),null,'a single space must not start a list');
+});
+
+test('list labels use XeLaTeX-safe commands', () => {
+  const item={type:'listItem',content:[{type:'paragraph',content:[{type:'text',text:'Item'}]}]};
+  const bullet=serialize({type:'bulletList',attrs:{marker:'▪'},content:[item]});
+  assert.match(bullet,/\\raisebox\{\.25ex\}\{\\rule\{\.45em\}\{\.45em\}\}/);
+  assert.equal(importBlocks(bullet)[0].attrs.marker,'▪');
+
+  const ordered=serialize({type:'orderedList',attrs:{labelStyle:'cjk-ideographic-comma'},content:[item]});
+  assert.match(ordered,/\\zhnumber\{\\arabic\*\}/);
+  assert.doesNotMatch(ordered,/\\zhnum\{/);
+  const packages=resolvePackages('',ordered).map(rule=>rule.name);
+  assert.ok(packages.includes('enumitem'));
+  assert.ok(packages.includes('zhnumber'));
+});
+
+test('font marks round-trip XeLaTeX commands', () => {
+  const node={type:'paragraph',content:[{type:'text',text:'X',marks:[
+    {type:'circled'},
+    {type:'underline',attrs:{style:'double'}},
+    {type:'textStyle',attrs:{backgroundColor:'#fff3a3',color:'#c00000',fontSize:'11pt'}},
+  ]}]};
+  const output=serialize(node);
+  assert.match(output,/\\textcircled\{/);
+  assert.match(output,/\\uuline\{/);
+  assert.match(output,/\\colorbox\[HTML\]\{fff3a3\}/i);
+  const [restored]=importBlocks(output);
+  const marks=restored.content[0].marks;
+  assert.ok(marks.some(mark=>mark.type==='circled'));
+  assert.ok(marks.some(mark=>mark.type==='underline'&&mark.attrs.style==='double'));
+  assert.ok(marks.some(mark=>mark.type==='textStyle'&&mark.attrs.backgroundColor?.toLowerCase()==='#fff3a3'));
+  const packages=resolvePackages('',output).map(rule=>rule.name);
+  assert.ok(packages.includes('ulem'));
+  assert.ok(packages.includes('xcolor'));
+});
+
+test('paragraph formatting inside list items round-trips', () => {
+  const [list]=importBlocks('\\begin{itemize}\n\\item {\\colorbox{yellow}{\\parbox{\\linewidth}{Shaded}}}\n\\end{itemize}');
+  const paragraph=list.content[0].content[0];
+  assert.equal(paragraph.attrs.shading,'yellow');
+  const output=serialize(list);
+  assert.match(output,/\\colorbox\{yellow\}/);
+  const [restored]=importBlocks(output);
+  assert.equal(restored.content[0].content[0].attrs.shading,'yellow');
+
+  const [quote]=importBlocks('\\begin{quote}\n{\\colorbox{yellow}{\\parbox{\\linewidth}{Shaded}}}\n\\end{quote}');
+  assert.equal(quote.content[0].attrs.shading,'yellow');
 });
 
 test('exports theorem and proof environments and a path-safe project ZIP', async () => {
@@ -83,13 +132,30 @@ test('recognizes full text control words without consuming unknown commands', ()
   assert.ok(resolvePackages('',serialize(paragraph)).some(rule=>rule.name==='textcomp'));
 });
 
+test('keeps wrapfigure and includegraphics textwidth factors independent', () => {
+  assert.equal(relativeImageWidth('0.4\\textwidth','0.4\\textwidth'),'100%');
+  assert.equal(relativeImageWidth('0.2\\textwidth','0.4\\textwidth'),'50%');
+  assert.equal(relativeImageWidth('6cm','0.4\\textwidth'),'6cm');
+  assert.equal(relativeImageWidth('\\linewidth','0.4\\textwidth'),'100%');
+  assert.equal(relativeImageWidth('0.8\\linewidth','0.4\\textwidth'),'80%');
+  const source=['\\begin{wrapfigure}{r}{0.4\\textwidth}','\\includegraphics[width=0.4\\textwidth]{pic.png}','\\caption{Long caption}','\\end{wrapfigure}'].join('\n');
+  const [node]=importBlocks(source);
+  assert.equal(node.type,'documentImage');
+  assert.equal(node.attrs.wrap,true);
+  assert.equal(node.attrs.wrapWidth,'0.4\\textwidth');
+  assert.equal(node.attrs.width,'0.4\\textwidth');
+  assert.equal(node.attrs.caption,'Long caption');
+  assert.match(serialize(node),/\\begin\{wrapfigure\}\{r\}\{0\.4\\textwidth\}/);
+});
+
 test('preserves local image paths and supported widths and requests graphicx', () => {
   const image = String.raw`\includegraphics[width=0.5\linewidth]{figures/plot.png}`;
   const [node] = importBlocks(image);
   assert.equal(node.type, 'documentImage');
   assert.equal(serialize(node).trim(), image);
   assert.ok(resolvePackages('',image).some(rule=>rule.name==='graphicx'));
-  assert.equal(importBlocks(String.raw`\includegraphics[angle=90]{plot.png}`)[0].type,'raw');
+  assert.equal(importBlocks(String.raw`\includegraphics[angle=90]{plot.png}`)[0].type,'documentImage');
+  assert.equal(importBlocks(String.raw`\includegraphics[angle=90]{plot.png}`)[0].attrs.angle,'90');
   const figure=['\\begin{figure}[ht]','\\centering',image,'\\caption{Plot}','\\label{fig:plot}','\\end{figure}'].join('\n');
   assert.equal(serialize(importBlocks(figure)[0]).trim(),figure);
 });
@@ -198,8 +264,16 @@ test('round-trips page geometry through the preamble', () => {
   });
   const defaults = readPageSetup('\\documentclass{article}\n');
   assert.deepEqual(defaults, {
-    paper: 'a4', orientation: 'portrait', margin: '2.2cm',
-    margins: { top: '2.2cm', right: '2.2cm', bottom: '2.2cm', left: '2.2cm' },
+    paper: 'letter', orientation: 'portrait', margin: 'custom',
+    margins: { top: '44.027mm', right: '47.456mm', bottom: '42.070mm', left: '47.191mm' },
+  });
+  assert.deepEqual(readPageSetup('\\documentclass[a4paper]{article}\n'), {
+    paper: 'a4', orientation: 'portrait', margin: 'custom',
+    margins: { top: '44.379mm', right: '44.719mm', bottom: '42.448mm', left: '44.027mm' },
+  });
+  assert.deepEqual(readPageSetup('\\documentclass[a5paper]{article}\n'), {
+    paper: 'a5', orientation: 'portrait', margin: 'custom',
+    margins: { top: '45.082mm', right: '25.597mm', bottom: '43.313mm', left: '25.400mm' },
   });
   const asymmetric = writePageSetup(preamble, { paper: 'a5', margins: { top: '1cm', right: '2cm', bottom: '3cm', left: '4cm' } });
   assert.match(asymmetric, /a5paper/);
@@ -250,6 +324,15 @@ test('exports title and math structures with the required outer commands', () =>
   assert.equal((exportDocument(parts, '\\maketitle\n' + body).match(/\\maketitle/g) ?? []).length, 1);
 });
 
+test('uses side limits for inline operators without changing the source', () => {
+  const source = '\\lim_{x\\to0}f(x)+\\sum_{i=1}^n a_i';
+  const editing = mathEditorSource(source, { inline:true });
+  assert.equal(editing, '\\lim\\nolimits_{x\\to0}f(x)+\\sum\\nolimits_{i=1}^n a_i');
+  assert.equal(mathDocumentSource(editing, source, { inline:true }), source);
+  assert.equal(mathEditorSource('\\displaystyle{\\lim_{x\\to0}f(x)}', { inline:true }),
+    '\\displaystyle{\\lim_{x\\to0}f(x)}');
+});
+
 test('counts numbered alignment rows while skipping nested matrices and suppressed rows', () => {
   const latex = String.raw`\begin{align}a&=\begin{matrix}1\\2\end{matrix}\label{eq:a}\\b&=2\notag\\c&=3\end{align}`;
   assert.deepEqual(numberedMathRows({ latex }), [
@@ -258,6 +341,35 @@ test('counts numbered alignment rows while skipping nested matrices and suppress
     { index: 2, label: null },
   ]);
   assert.deepEqual(numberedMathRows({ latex: latex.replaceAll('{align}', '{align*}') }), []);
+});
+
+test('round-trips equation tags and suppressed numbers through the editor', () => {
+  const align = String.raw`\begin{align}a&=b\tag{2.1}\label{eq:a}\\c&=d\notag\\e&=f\tag*{$\ast$}\end{align}`;
+  const editing = mathEditorSource(align);
+  assert.equal(editing, String.raw`\begin{aligned}a&=b\\c&=d\\e&=f\end{aligned}`);
+  assert.equal(mathDocumentSource(editing, align), align);
+  assert.deepEqual(numberedMathRows({ latex: align }), [
+    { index: 0, label: 'eq:a', tag: '2.1' },
+    { index: 1, label: null, unnumbered: true },
+    { index: 2, label: null, tag: '$\\ast$', tagStar: true },
+  ]);
+  const equation = String.raw`x=1\tag{A}`;
+  assert.equal(mathEditorSource(equation), 'x=1');
+  assert.equal(mathDocumentSource('x=1', equation), String.raw`x=1\tag{A}`);
+  assert.deepEqual(numberedMathRows({ latex: equation, delimiter: 'equation' }), [
+    { index: 0, label: null, tag: 'A' },
+  ]);
+  assert.deepEqual(numberedMathRows({ latex: String.raw`\begin{align*}a&=b\\c&=d\tag{B}\end{align*}` }), [
+    { index: 0, label: null, unnumbered: true },
+    { index: 1, label: null, tag: 'B' },
+  ]);
+  assert.deepEqual(numberedMathRows({ latex: 'x', delimiter: 'equation*' }), []);
+  assert.deepEqual(numberedMathRows({ latex: String.raw`x\tag{C}`, delimiter: 'equation*' }), [
+    { index: 0, label: null, tag: 'C' },
+  ]);
+  assert.equal(mathEditorSource(String.raw`x\label{eq:x}`), 'x');
+  assert.equal(mathDocumentSource('x', String.raw`x\label{eq:x}`), String.raw`x\label{eq:x}`);
+  assert.equal(mathEditorSource(String.raw`x\label{eq:inline}`, { inline:true }), String.raw`x\label{eq:inline}`);
 });
 
 test('extends an alignment without losing the exported environment', () => {
@@ -296,6 +408,20 @@ test('places font support before the class and color support before the document
   assert.equal(exportDocument(parseDocument(result), body), result);
 });
 
+test('tracks tabcolsep, @{} removal and column rules instead of flattening the tabular spec', async () => {
+  const { parseTable } = await import('../apps/web/latex/tables.mjs');
+  const ruled = parseTable(['\\begin{tabular}{|c|c|}', 'A & B \\\\', '\\end{tabular}'].join('\n'));
+  assert.equal(ruled.columnLayout.boundaries[0].rules, 1);
+  assert.equal(ruled.columnLayout.boundaries[1].rules, 1);
+  assert.equal(ruled.columnLayout.boundaries[2].rules, 1);
+  const at = parseTable(['\\begin{tabular}{@{}c@{}c@{}}', 'A & B \\\\', '\\end{tabular}'].join('\n'));
+  assert.equal(at.columnLayout.boundaries[0].tabcolsep, false);
+  assert.equal(at.columnLayout.boundaries[1].tabcolsep, false);
+  assert.equal(at.columnLayout.boundaries[2].tabcolsep, false);
+  const middle = parseTable(['\\begin{tabular}{c@{}c}', 'A & B \\\\', '\\end{tabular}'].join('\n'));
+  assert.equal(middle.columnLayout.boundaries[1].tabcolsep, false);
+});
+
 test('keeps booktabs rules and alignment around editable cells', async () => {
   const { parseTable, serializeTable } = await import('../apps/web/latex/tables.mjs');
   const source = ['\\begin{tabular}{lc}', '\\toprule', 'A & B \\\\', '\\midrule', '1 & 2 \\\\', '\\bottomrule', '\\end{tabular}'].join('\n');
@@ -305,4 +431,23 @@ test('keeps booktabs rules and alignment around editable cells', async () => {
   table.rows[1].cells[0] = '3 ';
   assert.match(serializeTable(table, '\n'), /\\midrule\n3 & 2/);
   assert.deepEqual(resolvePackages('', source).map(rule => rule.name), ['booktabs']);
+});
+test('imports and exports editable multirow cells with their package dependency', async () => {
+  const {parseTable,serializeTable}=await import('../apps/web/latex/tables.mjs');
+  const source=['\\begin{tabular}{lc}','\\multirow{2}{*}{A} & B \\\\',' & C \\\\','\\end{tabular}'].join('\n');
+  const table=parseTable(source);
+  assert.equal(table.rows[0].rowspans[0],2);
+  assert.deepEqual(table.rows[1].cells,['C']);
+  assert.match(serializeTable(table,'\n'),/\\multirow\{2\}\{\*\}\{A\}/);
+  const node=importBlocks(source)[0];
+  assert.equal(node.content[0].content[0].attrs.rowspan,2);
+  assert.match(serialize(node),/\\multirow\{2\}\{\*\}\{A\}/);
+  assert.deepEqual(resolvePackages('',serialize(node)).map(rule=>rule.name),['multirow']);
+});
+test('keeps common decorated and repeated table column specifications editable', async()=>{
+  const {parseTable,serializeTable}=await import('../apps/web/latex/tables.mjs');
+  const source=['\\begin{tabular}{>{\\raggedright\\arraybackslash}p{3cm}*{2}{c}}','A & B & C \\\\','\\end{tabular}'].join('\n');
+  const table=parseTable(source);
+  assert.equal(table.specs.length,3);assert.equal(table.specs[0].width,'3cm');
+  assert.equal(serializeTable(table,'\n'),source);
 });

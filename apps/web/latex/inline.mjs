@@ -54,6 +54,9 @@ export function parseInline(source, depth = 0) {
     const newline = rest.match(/^[ \t]*\r?\n[ \t]*/);
     if (newline) { nodes.push(' '); cursor += newline[0].length; continue; }
 
+    const lipsum = rest.match(/^\\lipsum(?:\[([^\]]*)\])?[ \t]*/);
+    if (lipsum) { nodes.push({ lipsum: lipsum[1] || '1-7' }); cursor += lipsum[0].length; continue; }
+
     const text = rest.match(/^[^\\{}%$&#_^~\r\n]+/);
     const math = rest.match(/^\$([^$\r\n]+)\$/) ?? rest.match(/^\\\(([^\r\n]+?)\\\)/);
     if (text || math) {
@@ -75,17 +78,20 @@ export function parseInline(source, depth = 0) {
     if (label) { nodes.push({ label: label[1] }); cursor += label[0].length; continue; }
 
     const emphasis = rest.match(/^\\(textbf|textit|emph|textsl|sout|underline)\{/);
+    const underline = rest.match(/^\\(uline|uuline|uwave)\{/);
+    const circled = rest.match(/^\\textcircled\{/);
     const plain = rest.match(plainPattern);
     const style = rest.match(stylePattern);
     const script = rest.match(scriptPattern);
     const fontCommand = rest.match(/^\\(texttt|textsf|textrm)\{/);
     const color = rest.match(/^\\textcolor\[HTML\]\{([0-9a-f]{6})\}\{/i);
+    const background = rest.match(/^\\colorbox\[HTML\]\{([0-9a-f]{6})\}\{/i);
     const points = rest.match(/^\{\\fontsize\{(\d{1,2})\}\{\d{1,2}\}\\selectfont /);
     const group = rest.match(/^\{(\\[A-Za-z]+) /);
     const family = group && Object.keys(fontFamilies).find(key => fontFamilies[key] === group[1]);
     const size = group && Object.keys(fontSizes).find(key => fontSizes[key] === group[1]);
-    if (!emphasis && !plain && !style && !script && !fontCommand && !color && !family && !size && !points) return null;
-    const start = (emphasis ?? plain ?? style ?? script ?? fontCommand ?? color ?? points ?? group)[0].length;
+    if (!emphasis && !underline && !circled && !plain && !style && !script && !fontCommand && !color && !background && !family && !size && !points) return null;
+    const start = (emphasis ?? underline ?? circled ?? plain ?? style ?? script ?? fontCommand ?? color ?? background ?? points ?? group)[0].length;
     let balance = 1;
     let end = start;
     for (; end < rest.length && balance; end++) {
@@ -103,6 +109,16 @@ export function parseInline(source, depth = 0) {
       cursor += end;
       continue;
     }
+    if (underline) {
+      nodes.push({tag:'u',underlineStyle:{uline:'single',uuline:'double',uwave:'wavy'}[underline[1]],children});
+      cursor += end;
+      continue;
+    }
+    if (circled) {
+      nodes.push({tag:'circled',children});
+      cursor += end;
+      continue;
+    }
     if (script) {
       nodes.push({ tag: script[1] === 'textsuperscript' ? 'sup' : 'sub', children });
       cursor += end;
@@ -112,8 +128,8 @@ export function parseInline(source, depth = 0) {
     nodes.push({
       tag: emphasis ? { textbf: 'strong', textit: 'em', emph: 'em', textsl: 'em', sout: 'strike', underline: 'u' }[emphasis[1]] : monospace ? 'code' : undefined,
       points: points?.[1],
-      attribute: fontCommand && !monospace ? 'face' : color ? 'color' : family ? 'face' : size ? 'size' : null,
-      value: fontCommand && !monospace ? { textsf: 'Arial', textrm: 'Georgia' }[fontCommand[1]] : color ? '#' + color[1] : family || size,
+      attribute: fontCommand && !monospace ? 'face' : color ? 'color' : background ? 'background' : family ? 'face' : size ? 'size' : null,
+      value: fontCommand && !monospace ? { textsf: 'Arial', textrm: 'Georgia' }[fontCommand[1]] : color ? '#' + color[1] : background ? '#' + background[1] : family || size,
       children,
     });
     cursor += end;

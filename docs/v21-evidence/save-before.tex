@@ -1,0 +1,15 @@
+\documentclass{article}
+\usepackage{amsmath}
+\usepackage{fontspec}
+\newfontfamily\han{Microsoft YaHei}
+\newcommand{\norm}[1]{\left\lVert #1 \right\rVert}
+% 第四阶段：源码完整性
+% Nested braces, custom command, CJK and display math.
+\begin{document}
+\section{Signal power}
+{\han 信号能量与观测窗口}
+\begin{equation}
+  P = \norm{\frac{x_{1}}{\sqrt{1+x_{2}^{2}}}}^{2}.
+\end{equation}
+Special characters: \% \& \_ \# \$.
+\end{document}

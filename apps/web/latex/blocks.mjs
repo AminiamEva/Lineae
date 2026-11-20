@@ -1,8 +1,24 @@
+import {importedCellAttributes} from './table-spans.mjs';
 import { parseInline, textCommands } from './inline.mjs';
 import { parseTable } from './tables.mjs';
 import { parseImageBlock } from './images.mjs';
 import { theoremParts } from './theorem.mjs';
-import { listStyleForLabel } from './list-numbering.mjs';
+import { listStyleForLabel, bulletMarker } from './list-numbering.mjs';
+
+function importedTableCells(row,specs,layout) {
+  return row.cells.map((cell,index) => {
+    const attrs=importedCellAttributes(row,index,specs);
+    const start=row.columnIndexes?.[index]??index;
+    const end=start+(row.spans?.[index]??1);
+    const left=layout?.boundaries?.[start];
+    const right=layout?.boundaries?.[end];
+    if(left&&!left.tabcolsep)attrs.paddingLeft='0pt';
+    if(right&&!right.tabcolsep)attrs.paddingRight='0pt';
+    if(left?.rules)attrs.ruleLeft='true';
+    if(right?.rules&&end>=specs.length)attrs.ruleRight='true';
+    return attrs;
+  });
+}
 
 function inlineContent(text) {
   const parsed = parseInline(text);
@@ -11,16 +27,22 @@ function inlineContent(text) {
     return parts.flatMap(part => {
       if (typeof part === 'string') return part ? [{ type: 'text', text: part, marks }] : [];
       if (part.textCommand) return [{ type: 'text', text: textCommands[part.textCommand], marks: [...marks, { type: 'textCommand', attrs: { name: part.textCommand } }] }];
+      if (part.lipsum !== undefined) return [{ type: 'lipsum', attrs: { range: part.lipsum } }];
       if (part.math !== undefined) return [{ type: 'math', attrs: { latex: part.math, display: false, delimiter: part.delimiters[0] } }];
       if (part.ref !== undefined) return [{ type: 'ref', attrs: { key: part.ref, ...(part.equation && {equation:true}) } }];
       if (part.cite !== undefined) return [{ type: 'cite', attrs: { key: part.cite } }];
       if (part.footnote !== undefined) return [{ type: 'footnote', attrs: { text: part.footnote } }];
       if (part.label !== undefined) return [{ type: 'label', attrs: { key: part.label } }];
       if (part.hardBreak) return [{ type: 'hardBreak' }];
-      const type = { strong: 'bold', em: 'italic', u: 'underline', strike: 'strike', code: 'code', sup: 'superscript', sub: 'subscript', textsc: 'smallcaps', fbox: 'boxed' }[part.tag];
-      if (type) return convert(part.children, [...marks, { type }]);
+      const type = { strong: 'bold', em: 'italic', u: 'underline', strike: 'strike', code: 'code', sup: 'superscript', sub: 'subscript', textsc: 'smallcaps', fbox: 'boxed', circled: 'circled' }[part.tag];
+      if (type) {
+        const mark = type === 'underline' && part.underlineStyle
+          ? { type, attrs: { style: part.underlineStyle } } : { type };
+        return convert(part.children, [...marks, mark]);
+      }
       const attrs = part.points ? { fontSize: part.points + 'pt' } :
         part.attribute === 'color' ? { color: part.value } :
+        part.attribute === 'background' ? { backgroundColor: part.value } :
         part.attribute === 'face' ? { fontFamily: part.value } : null;
       if (!attrs) throw new Error('Unsupported inline formatting');
       return convert(part.children, [...marks, { type: 'textStyle', attrs }]);
@@ -29,14 +51,22 @@ function inlineContent(text) {
   try { return convert(parsed); } catch { return null; }
 }
 
-const headingLevels = ['section', 'subsection', 'subsubsection'];
+let headingBase = null;
+export function setHeadingBase(name) { headingBase = name; }
+const headingLevels = () => headingBase
+  ? [headingBase, 'section', 'subsection', 'subsubsection']
+  : ['section', 'subsection', 'subsubsection'];
 
 function heading(name, star, short, title, label) {
   const content = inlineContent(title) ?? (title ? [{ type: 'text', text: title }] : []);
   return {
     type: 'heading',
     attrs: {
-      level: headingLevels.indexOf(name) + 1,
+      level: name === 'chapter' ? 1 : headingLevels().indexOf(name) + 1,
+      // Keep the source command for heading numbering.  In book/report,
+      // \section has level 2 but must still be treated as a section, not a
+      // subsection, when the outline builds 1.1 / A.1 numbers.
+      command: name,
       numbered: !star,
       ...(short !== undefined ? { shortTitle: short } : {}),
       ...(label ? { label } : {}),
@@ -80,10 +110,12 @@ function splitListItems(body) {
 }
 
 function paragraphs(text) {
-  return text.split(/\n\s*\n/).map(part => part.trim()).filter(Boolean).map(part => ({
-    type: 'paragraph',
-    content: inlineContent(part) ?? [{ type: 'text', text: part }],
-  }));
+  return text.split(/\n\s*\n/).map(part => part.trim()).filter(Boolean).map(part => {
+    const imported=importBlock(part);
+    return imported?.type==='paragraph'
+      ? imported
+      : {type:'paragraph',content:inlineContent(part)??[{type:'text',text:part}]};
+  });
 }
 
 function itemParts(content) {
@@ -137,7 +169,7 @@ function parseListBlock(text) {
     if (env === 'enumerate') {
       const style=listStyleForLabel(option);
       if (style) attrs.labelStyle=style;
-    } else if (env === 'itemize') attrs.marker = { '\\ensuremath{\\circ}':'◦', '\\rule{.45em}{.45em}':'▪' }[option] ?? option;
+    } else if (env === 'itemize') attrs.marker = bulletMarker(option);
   }
   const start = open[2]?.match(/(?:^|,)\s*start\s*=\s*([1-9]\d*)\s*(?:,|$)/)?.[1];
   if (env === 'enumerate' && start) attrs.start = Number(start);
@@ -145,22 +177,108 @@ function parseListBlock(text) {
   return { type: env === 'itemize' ? 'bulletList' : 'orderedList', attrs, content };
 }
 
-export function importBlock(block) {
-  const alignment=/^\{\\(raggedright|raggedleft|centering)\s+([\s\S]*?)\\par\}$/.exec(block.trim());
-  if (alignment) {
-    const paragraph=importBlock(alignment[2]);
-    if (paragraph?.type==='paragraph') {
-      return {...paragraph,attrs:{...paragraph.attrs,align:{raggedright:'left',raggedleft:'right',centering:'center'}[alignment[1]]}};
+function bracedGroup(text,start) {
+  if (text[start] !== '{') return null;
+  let depth = 0;
+  for (let index = start; index < text.length; index++) {
+    if (text[index] === '\\') { index++; continue; }
+    if (text[index] === '{') depth++;
+    else if (text[index] === '}') {
+      depth--;
+      if (!depth) return {inner:text.slice(start + 1,index),end:index + 1};
     }
   }
-  const text = block.trim();
+  return null;
+}
+
+function unwrapParagraphBorder(text) {
+  if (!text.startsWith('{\\fbox{')) return null;
+  const fbox = bracedGroup(text,6);
+  if (!fbox || fbox.end !== text.length - 1) return null;
+  const prefix = '\\parbox{\\linewidth}{';
+  if (!fbox.inner.startsWith(prefix)) return null;
+  const body = bracedGroup(fbox.inner,prefix.length - 1);
+  if (!body || body.end !== fbox.inner.length) return null;
+  return {inner:body.inner,attrs:{border:true}};
+}
+
+function unwrapParagraphShading(text) {
+  if (!text.startsWith('{\\colorbox{')) return null;
+  const color = bracedGroup(text,10);
+  if (!color) return null;
+  const parbox = bracedGroup(text,color.end);
+  if (!parbox || parbox.end !== text.length - 1) return null;
+  const prefix = '\\parbox{\\linewidth}{';
+  if (!parbox.inner.startsWith(prefix)) return null;
+  const body = bracedGroup(parbox.inner,prefix.length - 1);
+  if (!body || body.end !== parbox.inner.length) return null;
+  return {inner:body.inner,attrs:{shading:color.inner.trim()}};
+}
+
+function unwrapParagraphSpacing(text) {
+  if (!text.startsWith('{\\vspace*{')) return null;
+  const before = bracedGroup(text,9);
+  if (!before) return null;
+  const marker = '\\par\\vspace*{';
+  const at = text.lastIndexOf(marker);
+  if (at < before.end) return null;
+  const after = bracedGroup(text,at + marker.length - 1);
+  if (!after || after.end !== text.length - 1) return null;
+  const normalize = value => value.trim() === '0pt' ? null : value.trim();
+  return {
+    inner:text.slice(before.end,at),
+    attrs:{spaceBefore:normalize(before.inner),spaceAfter:normalize(after.inner)},
+  };
+}
+
+function unwrapParagraphLineSpacing(text) {
+  const match = /^\{\\linespread\{([0-9.]+)\}\\selectfont ([\s\S]*)\\par\}$/.exec(text);
+  if (!match) return null;
+  const value = Number(match[1]);
+  if (!Number.isFinite(value) || value <= 0) return null;
+  return {inner:match[2],attrs:{lineSpacing:value}};
+}
+
+function unwrapParagraphAlignment(text) {
+  const match = /^\{\\(raggedright|raggedleft|centering|justifying) ([\s\S]*)\\par\}$/.exec(text);
+  if (!match) return null;
+  const align = {raggedright:'left',raggedleft:'right',centering:'center',justifying:'justify'}[match[1]];
+  return {inner:match[2],attrs:{align}};
+}
+
+function unwrapParagraphWrappers(block) {
+  let text = block.trim();
+  let attrs = {};
+  for (;;) {
+    const wrapper = unwrapParagraphBorder(text) ?? unwrapParagraphShading(text) ??
+      unwrapParagraphSpacing(text) ?? unwrapParagraphLineSpacing(text) ?? unwrapParagraphAlignment(text);
+    if (!wrapper) break;
+    attrs = {...attrs,...wrapper.attrs};
+    text = wrapper.inner.trim();
+  }
+  return {text,attrs};
+}
+
+export function importBlock(block) {
+  const wrapped = unwrapParagraphWrappers(block);
+  const text = wrapped.text;
   if (!text) return null;
   const image = parseImageBlock(text);
   if (image) return image;
-  const headingMatch = text.match(/^\\(section|subsection|subsubsection)(\*?)(?:\[([^\]]*)\])?\{([^{}]*)\}(?:[ \t]*\\label\{([^{}]*)\})?$/);
+  const headingNames = headingBase ? headingBase + '|section|subsection|subsubsection' : 'chapter|section|subsection|subsubsection';
+  const headingMatch = text.match(new RegExp('^\\\\(' + headingNames + ')(\\*?)(?:\\[([^\\]]*)\\])?\\{([^{}]*)\\}(?:[ \\t]*\\\\label\\{([^{}]*)\\})?$'));
   if (headingMatch) return heading(headingMatch[1], headingMatch[2], headingMatch[3], headingMatch[4], headingMatch[5]);
+  if (text === '\\appendix') return {type:'appendixStart'};
+  const matter = /^\\(frontmatter|mainmatter|backmatter)$/.exec(text);
+  if (matter) return {type:'matterStart',attrs:{matter:matter[1].replace('matter','')||'main'}};
   if (text === '\\tableofcontents') return { type: 'tableOfContents' };
+  if (/^\\(?:newpage|clearpage|pagebreak)(?:\[[^\]]*\])?$/.test(text)) return { type: 'pageBreak' };
   if (text === '\\hrule') return { type: 'horizontalRule' };
+  const multicol = text.match(/^\\begin\{multicols\*?\}\{(\d+)\}([\s\S]*?)\\end\{multicols\*?\}$/);
+  if (multicol) {
+    const content = importBlocks(multicol[2].trim());
+    return {type:'multiColumn',attrs:{count:Math.max(2,Math.min(4,Number(multicol[1])||2))},content:content.length?content:[{type:'paragraph'}]};
+  }
   const math = text.match(/^\\\[([\s\S]*?)\\\]$/) ?? text.match(/^\$\$([\s\S]*?)\$\$$/) ?? text.match(/^\\begin\{equation\*?\}([\s\S]*?)\\end\{equation\*?\}$/);
   if (math) {
     const delimiter = text.startsWith('$$') ? '$$' : text.match(/^\\begin\{(equation\*?)\}/)?.[1] ?? '\\[';
@@ -177,8 +295,7 @@ export function importBlock(block) {
   if (environment) return { type: 'mathBlock', attrs: { latex: text + (text.endsWith('\\end{' + environment[1] + '}') ? '' : '\\end{' + environment[1] + '}'), display: true } };
   const quote = text.match(/^\\begin\{quote\}([\s\S]*?)\\end\{quote\}$/);
   if (quote) {
-    const paragraphs = quote[1].split(/\n\s*\n/).map(part => part.trim()).filter(Boolean);
-    const content = paragraphs.map(part => ({ type: 'paragraph', content: inlineContent(part) ?? [{ type: 'text', text: part }] }));
+    const content = paragraphs(quote[1]);
     return { type: 'blockquote', content: content.length ? content : [{ type: 'paragraph' }] };
   }
   const list = parseListBlock(text);
@@ -194,23 +311,30 @@ export function importBlock(block) {
       const label = /\\label\{([^{}]*)\}/.exec(inner);
       const booktabs = tabular.rows.some(row => row.rules.some(rule => /toprule|midrule|bottomrule/.test(rule))) ||
         tabular.trailing.some(rule => /toprule|midrule|bottomrule/.test(rule));
+      const ends = tabular.rows[0].rules.includes('\\hline') && tabular.trailing.includes('\\hline');
+      const all = ends && tabular.rows.every(row=>row.rules.includes('\\hline'));
+      const vertical = tabular.columns.startsWith('|') && tabular.columns.endsWith('|');
+      const borderMode = all && vertical ? 'grid' : all ? 'horizontal' : ends && vertical ? 'outer' : null;
       return {
         type: 'table',
         attrs: {
-          columns: tabular.columns, booktabs,
+          columns: tabular.columns, booktabs, borderMode,
+          columnLayout: JSON.stringify(tabular.columnLayout?.boundaries??[]),
+          columnRules: tabular.columnLayout?.boundaries?.some(boundary=>boundary.rules>0||boundary.at) || false,
           caption: caption?.[1] ?? null,
           label: label?.[1] ?? null,
           placement: tableFloat[2] || null,
           centered: /\\centering\b/.test(inner),
         },
-        content: tabular.rows.map(row => ({
-          type: 'tableRow',
-          content: row.cells.map((cell, index) => ({
-            type: 'tableCell',
-            attrs: { colspan: row.spans?.[index] ?? 1, rowspan: 1, align: row.aligns?.[index] ?? tabular.specs[index]?.align ?? null },
-            content: [{ type: 'paragraph', content: cell.trim() ? (inlineContent(cell) ?? [{ type: 'text', text: cell.trim() }]) : [] }],
+          content: tabular.rows.map(row => ({
+            type: 'tableRow',
+            attrs: { rules: row.rules ?? [] },
+            content: row.cells.map((cell, index) => ({
+              type: 'tableCell',
+              attrs: importedTableCells(row, tabular.specs, tabular.columnLayout)[index],
+              content: [{ type: 'paragraph', content: cell.trim() ? (inlineContent(cell) ?? [{ type: 'text', text: cell.trim() }]) : [] }],
+            })),
           })),
-        })),
       };
     }
   }
@@ -224,12 +348,15 @@ export function importBlock(block) {
     const borderMode = all && vertical ? 'grid' : all ? 'horizontal' : ends && vertical ? 'outer' : null;
     return {
       type: 'table',
-      attrs: { columns: table.columns, booktabs, borderMode },
+      attrs: { columns: table.columns, booktabs, borderMode,
+        columnLayout: JSON.stringify(table.columnLayout?.boundaries??[]),
+        columnRules: table.columnLayout?.boundaries?.some(boundary=>boundary.rules>0||boundary.at) || false },
       content: table.rows.map(row => ({
         type: 'tableRow',
+        attrs: { rules: row.rules ?? [] },
         content: row.cells.map((cell, index) => ({
           type: 'tableCell',
-          attrs: { colspan: row.spans?.[index] ?? 1, rowspan: 1, align: row.aligns?.[index] ?? table.specs[index]?.align ?? null },
+          attrs: importedTableCells(row, table.specs, table.columnLayout)[index],
           content: [{ type: 'paragraph', content: cell.trim() ? (inlineContent(cell) ?? [{ type: 'text', text: cell.trim() }]) : [] }],
         })),
       })),
@@ -237,11 +364,26 @@ export function importBlock(block) {
   }
   const indentation = /^\\(noindent|indent)(?![A-Za-z])[ \t]*/.exec(text);
   const content = inlineContent(indentation ? text.slice(indentation[0].length) : text);
-  if (content) return { type: 'paragraph', ...(indentation && { attrs: { indent: indentation[1] === 'indent' } }), content };
+  if (content) {
+    const attrs = {
+      ...wrapped.attrs,
+      ...(indentation && {
+        indent: indentation[1] === 'indent',
+        ...(indentation[1] === 'indent' && {explicitIndent:true}),
+      }),
+    };
+    return { type: 'paragraph', ...(Object.keys(attrs).length && { attrs }), content };
+  }
+  const tikzBlock=block.trim().replace(/^\\resizebox\{[^{}]*\}\{!\}\{%?\s*/,'').replace(/%?\s*\}$/,'');
+  if(/^\\begin\{(?:tikzpicture|circuitikz)\}[\s\S]*\\end\{(?:tikzpicture|circuitikz)\}$/.test(tikzBlock)) return {type:'codeBlock',attrs:{language:'tikz'},content:[{type:'text',text:tikzBlock}]};
   return { type: 'raw', attrs: { source: block } };
 }
 
-const structural = /\\(tableofcontents)\b|\\(section|subsection|subsubsection)(\*?)(?:\[([^\]]*)\])?\{([^{}]*)\}(?:[ \t]*\\label\{([^{}]*)\})?/g;
+function structuralPattern() {
+  const names = headingBase ? headingBase + '|section|subsection|subsubsection' : 'chapter|section|subsection|subsubsection';
+  const source = String.raw`\\(tableofcontents|appendix|frontmatter|mainmatter|backmatter)\b|\\(${names})(\*?)(?:\[([^\]]*)\])?\{([^{}]*)\}(?:[ \t]*\\label\{([^{}]*)\})?|\\(newpage|clearpage|pagebreak)\b`;
+  return new RegExp(source, 'g');
+}
 
 function splitParagraphs(block) {
   const parts = [];
@@ -264,20 +406,74 @@ function splitParagraphs(block) {
   return parts;
 }
 
-function importSegment(block) {
+// Structural switches in comments or macro arguments must remain source text.
+function topLevelCommand(text, index) {
+  let depth=0;
+  for(let i=0;i<index;i++){
+    if(text[i]==='%'){
+      const end=text.indexOf('\n',i);
+      if(end<0||end>=index)return false;
+      i=end;
+    }else if(text[i]==='\\'){
+      if(!/[A-Za-z]/.test(text[i+1]??''))i++;
+    }else if(text[i]==='{')depth++;
+    else if(text[i]==='}')depth--;
+  }
+  return depth===0;
+}
+function importLayoutCommands(text) {
   const nodes = [];
   let cursor = 0;
-  structural.lastIndex = 0;
+  const pattern = /\\(?:pagestyle|thispagestyle)\{[^{}]*\}|\\(?:maketitle)\b|\\mbox\{\}/g;
+  let match;
+  while ((match = pattern.exec(text))) {
+    const before = importBlock(text.slice(cursor, match.index));
+    if (before) nodes.push(...(Array.isArray(before) ? before : [before]));
+    nodes.push({ type: 'layoutCommand', attrs: { command: match[0] } });
+    cursor = match.index + match[0].length;
+  }
+  const after = importBlock(text.slice(cursor));
+  if (after) nodes.push(...(Array.isArray(after) ? after : [after]));
+  return nodes;
+}
+
+function importSegment(block) {
+  const nodes = [];
+  const imagePattern = /\\begin\{figure\}[\s\S]*?\\end\{figure\}|\\begin\{wrapfigure\}[\s\S]*?\\end\{wrapfigure\}/g;
+  let imageMatch;
+  let imageCursor = 0;
+  while ((imageMatch = imagePattern.exec(block))) {
+    const before = block.slice(imageCursor, imageMatch.index);
+    if (before.trim()) nodes.push(...importSegment(before));
+    const image = parseImageBlock(imageMatch[0]);
+    if (image) nodes.push(image);
+    else {
+      const raw = importBlock(imageMatch[0]);
+      if (raw) nodes.push(raw);
+    }
+    imageCursor = imageMatch.index + imageMatch[0].length;
+  }
+  if (imageCursor > 0) {
+    const after = block.slice(imageCursor);
+    if (after.trim()) nodes.push(...importSegment(after));
+    return nodes;
+  }
+  let cursor = 0;
+  const structural = structuralPattern();
   let match;
   while ((match = structural.exec(block))) {
-    const before = importBlock(block.slice(cursor, match.index));
-    if (before) nodes.push(before);
-    if (match[1] === 'tableofcontents') nodes.push({ type: 'tableOfContents' });
+    if((match[1]==='appendix'||match[1]==='frontmatter'||match[1]==='mainmatter'||match[1]==='backmatter'||match[2]==='chapter')&&!topLevelCommand(block,match.index))continue;
+    const before = importLayoutCommands(block.slice(cursor, match.index));
+    nodes.push(...before);
+    if(match[1]==='appendix')nodes.push({type:'appendixStart'});
+    else if(['frontmatter','mainmatter','backmatter'].includes(match[1]))nodes.push({type:'matterStart',attrs:{matter:match[1].replace('matter','')||'main'}});
+    else if (match[1] === 'tableofcontents') nodes.push({ type: 'tableOfContents' });
+    else if (match[7]) nodes.push({ type: 'pageBreak' });
     else nodes.push(heading(match[2], match[3], match[4], match[5], match[6]));
     cursor = match.index + match[0].length;
   }
-  const after = importBlock(block.slice(cursor));
-  if (after) nodes.push(after);
+  const after = importLayoutCommands(block.slice(cursor));
+  nodes.push(...after);
   return nodes;
 }
 

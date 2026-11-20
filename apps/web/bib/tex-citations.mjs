@@ -245,7 +245,19 @@ export function scanTexCitations(texSource) {
   }
 
   const nociteAll = citations.some(citation => citation.command === 'nocite' && citation.keys.some(key => key.key === '*'));
-  return { citations, bibliography, bibliographyStyle, resources, printBibliography, nociteAll, maskedSource: masked };
+  const bibtex = bibliography.length > 0 || Boolean(bibliographyStyle);
+  const biblatex = resources.length > 0 || printBibliography.length > 0;
+  const mode = bibtex && biblatex ? 'mixed' : biblatex ? 'biblatex' : bibtex ? 'bibtex' : 'unknown';
+  return {
+    citations,
+    bibliography,
+    bibliographyStyle,
+    resources,
+    printBibliography,
+    nociteAll,
+    mode,
+    maskedSource: masked,
+  };
 }
 
 /** @param {string} source @param {number} index */

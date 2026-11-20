@@ -1,0 +1,10 @@
+{
+  "beforeBytes": 452,
+  "afterBytes": 464,
+  "beforeSha256": "e4015aadd42c20ca1c590e8511bbe43b6c08539f7ee0ba7cb4df6b4825dacd4e",
+  "afterSha256": "5771341b81c48bc54f8252f24392b7d4fd99e2a8da659b8b6548c29a92fb539d",
+  "beforeEolSha256": "2795d675cba72e728505ecb7b32146164491962ccbb3f013cbac375f686c48f7",
+  "afterEolSha256": "2795d675cba72e728505ecb7b32146164491962ccbb3f013cbac375f686c48f7",
+  "nonIndentSha256": "6ddbffc2e5b705e400ed4e670c94eec71e28626f37e6dcefa8a4388871fcc89f",
+  "afterNonIndentSha256": "6ddbffc2e5b705e400ed4e670c94eec71e28626f37e6dcefa8a4388871fcc89f"
+}

@@ -1,5 +1,17 @@
+import { t } from '../ui/i18n.mjs';
+
 // A single stroke-based icon family shared by toolbar and contextual actions.
 const paths = {
+  drag:'M8 5h.01M16 5h.01M8 12h.01M16 12h.01M8 19h.01M16 19h.01',
+  chevronUp:'M6 15l6-6 6 6',
+  chevronDown:'M6 9l6 6 6-6',
+  settings:'M12 2v4M12 18v4M2 12h4M18 12h4M4.9 4.9l2.8 2.8M16.3 16.3l2.8 2.8M4.9 19.1l2.8-2.8M16.3 7.7l2.8-2.8 M12 6a6 6 0 1 0 0 12 6 6 0 0 0 0-12 M12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6',
+
+  sourceFile:'M5 3h9l5 5v13H5z M14 3v6h5 M8 13h8 M8 16h5',
+  sourceFind:'M16 16l5 5 M18 10a8 8 0 1 1-16 0 8 8 0 0 1 16 0',
+  sourceExpand:'M4 9V4h5 M15 4h5v5 M20 15v5h-5 M9 20H4v-5',
+  sourceCollapse:'M9 4v5H4 M15 4v5h5 M20 15h-5v5 M4 15h5v5',
+  documentPreview:'M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0z',
   sun:'M12 3v2M12 19v2M3 12h2m14 0h2M5.6 5.6 7 7m10 10 1.4 1.4M18.4 5.6 17 7M7 17l-1.4 1.4M16 12a4 4 0 1 1-8 0 4 4 0 0 1 8 0z',
   moon:'M20 15.5A8.5 8.5 0 0 1 8.5 4a8.5 8.5 0 1 0 11.5 11.5z',
   system:'M4 5h16v11H4zM9 20h6m-3-4v4',
@@ -49,6 +61,33 @@ const paths = {
   citation:'M5 5h5v6H5zM14 5h5v6h-5zM8 11l-2 6m11-6-2 6',
   equation:'M5 6h14M5 12h14M5 18h14M8 3v6M16 15v6',
   short:'M4 6h16M4 12h10M4 18h7',
+  formatPainter:'M4 20h4l9-9-4-4-9 9v4zM14 6l4-4 4 4-4 4M6 16l2 2',
+  fontGrow:'M3 19 9 5l6 14M5 14h8M19 16V8m-3 3 3-3 3 3',
+  fontShrink:'M3 19 9 5l6 14M5 14h8M19 8v8m-3-3 3 3 3-3',
+  clearFormat:'M6 4h12M8 4 5 20M15 4l-2 10M15 15l6 6m0-6-6 6',
+  highlight:'M9 14 4 19v1h5l5-5M9 14l7-7 4 4-7 7zM3 22h18',
+  charBorder:'M4 4h16v16H4zM9 16V8h3a2.5 2.5 0 0 1 0 5H9',
+  circledChar:'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18M9 16V8h3a2.5 2.5 0 0 1 0 5H9',
+  numberedList:'M9 6h12M9 12h12M9 18h12M4 4h2v4M4 8h3M4 14h3l-3 4h3',
+  multilevelList:'M9 6h12M12 12h9M15 18h6M3 5h3v4M3 14h3l-3 4h3',
+  justify:'M4 6h16M4 10h16M4 14h16M4 18h16',
+  indentIncrease:'M4 6h16M10 12h10M4 18h16M4 9l4 3-4 3',
+  indentDecrease:'M4 6h16M10 12h10M4 18h16M8 9l-4 3 4 3',
+  lineSpacing:'M4 5h16M4 12h16M4 19h16M20 7l2 3-2 3M20 11l2 3-2 3',
+  paragraphSpacing:'M5 4h14M5 9h14M12 12v8m-3-3 3 3 3-3',
+  sortAZ:'M4 6h8M4 12h6M4 18h4M17 6l3-3 3 3M20 3v16M17 18l3 3 3-3',
+  shading:'M5 13 12 6l7 7-7 7zM19 13c0 2 2 3 2 5a2 2 0 1 1-4 0c0-2 2-3 2-5',
+  paragraphBorders:'M4 4h16v16H4zM4 9h16M4 15h16',
+  find:'M16 16l5 5M18 10a8 8 0 1 1-16 0 8 8 0 0 1 16 0',
+  replace:'M4 7h12l-3-3m3 3-3 3M20 17H8l3-3m-3 3 3 3',
+  selectObjects:'M4 4h5v5H4zM15 4h5v5h-5zM4 15h5v5H4zM15 15h5v5h-5zM9 9h6v6H9z',
+  stylePane:'M5 4v16M9 7h10M9 12h10M9 17h7',
+  superscript:'M3 5h7M6.5 5v9M18 5v5m-3-2.5 3 3 3-3',
+  subscript:'M3 5h7M6.5 5v9M18 4v5m-3 2.5 3-3 3 3',
+  pilcrow:'M13 4H9a4 4 0 0 0 0 8h4M13 4v16M17 4v16',
+  font:'M5 19 11 5l6 14M7 14h8',
+  paragraph:'M4 6h16M7 12h10M4 18h16',
+  styles:'M4 17 14 7l3 3-10 10H4zM13 6l3-3 3 3-3 3M5 21h14',
 };
 export function icon(name) {
   const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');
@@ -85,6 +124,28 @@ const descriptions = {
   S:{zh:'删除线',en:'Strikethrough'},
   'Clear formatting':{zh:'清除字符格式',en:'Clear character formatting'},
   '清除格式':{zh:'清除字符格式',en:'Clear character formatting'},
+  'Continue':{zh:'续表',en:'Continue on the next page'},
+  '续表':{zh:'续表',en:'Continue on the next page'},
+  'Cycle marker':{zh:'切换列表标记',en:'Cycle the list marker'},
+  '切换标记':{zh:'切换列表标记',en:'Cycle the list marker'},
+  'Indent list item':{zh:'增加列表缩进',en:'Indent the list item'},
+  '列表降一级':{zh:'增加列表缩进',en:'Indent the list item'},
+  'Outdent list item':{zh:'减少列表缩进',en:'Outdent the list item'},
+  '列表升一级':{zh:'减少列表缩进',en:'Outdent the list item'},
+  'Math line break':{zh:'在公式内换行',en:'Insert a line break in the formula'},
+  '公式换行':{zh:'在公式内换行',en:'Insert a line break in the formula'},
+  'Exit formula':{zh:'离开当前公式',en:'Leave the current formula'},
+  '退出公式':{zh:'离开当前公式',en:'Leave the current formula'},
+  'Save as':{zh:'另存为新的 .tex 文件',en:'Save as a new .tex file'},
+  '另存为':{zh:'另存为新的 .tex 文件',en:'Save as a new .tex file'},
+  'Open .tex':{zh:'打开 .tex 文件',en:'Open a .tex file'},
+  '打开 .tex':{zh:'打开 .tex 文件',en:'Open a .tex file'},
+  'Open project':{zh:'打开项目目录',en:'Open a project directory'},
+  '打开工程':{zh:'打开项目目录',en:'Open a project directory'},
+  'New/Open project':{zh:'选择空目录新建工程或打开现有工程',en:'Create a project in an empty folder or open an existing project'},
+  '新建/打开工程':{zh:'选择空目录新建工程或打开现有工程',en:'Create a project in an empty folder or open an existing project'},
+  'Save .tex':{zh:'保存当前 .tex 文件',en:'Save the current .tex file'},
+  '保存 .tex':{zh:'保存当前 .tex 文件',en:'Save the current .tex file'},
   code:{zh:'行内代码',en:'Inline code'},
   quote:{zh:'引用块',en:'Block quote'},
   hr:{zh:'水平分隔线',en:'Horizontal rule'},
@@ -110,12 +171,18 @@ const descriptions = {
   enumerate:{zh:'编号列表',en:'Numbered list'},
   '▦':{zh:'插入表格',en:'Insert a table'},
   '＋ Row':{zh:'在下方插入行',en:'Insert a row below'},
+  '＋ 行':{zh:'在下方插入行',en:'Insert a row below'},
   '＋ Column':{zh:'在右侧插入列',en:'Insert a column to the right'},
+  '＋ 列':{zh:'在右侧插入列',en:'Insert a column to the right'},
   '－ Row':{zh:'删除当前行',en:'Delete the current row'},
+  '－ 行':{zh:'删除当前行',en:'Delete the current row'},
   '－ Column':{zh:'删除当前列',en:'Delete the current column'},
+  '－ 列':{zh:'删除当前列',en:'Delete the current column'},
   '删除表格':{zh:'删除整个表格',en:'Delete the whole table'},
   merge:{zh:'合并选中的单元格',en:'Merge selected cells'},
+  '合并':{zh:'合并选中的单元格',en:'Merge selected cells'},
   split:{zh:'拆分当前单元格',en:'Split the current cell'},
+  '拆分':{zh:'拆分当前单元格',en:'Split the current cell'},
   booktabs:{zh:'使用 booktabs 三线表样式',en:'Use booktabs-style rules'},
   Caption:{zh:'设置表格题注',en:'Set the table caption'},
   '题注':{zh:'设置表格题注',en:'Set the table caption'},
@@ -133,15 +200,19 @@ const descriptions = {
   fn:{zh:'插入脚注',en:'Insert a footnote'},
   cite:{zh:'插入文献引用',en:'Insert a citation'},
   toc:{zh:'插入目录',en:'Insert a table of contents'},
+  Outline:{zh:'打开文档大纲',en:'Open the document outline'},
+  '大纲':{zh:'打开文档大纲',en:'Open the document outline'},
   short:{zh:'设置短标题',en:'Set a short title'},
   title:{zh:'设置文档标题',en:'Set the document title'},
   author:{zh:'设置文档作者',en:'Set the document author'},
   '$':{zh:'插入行内公式',en:'Insert an inline formula'},
   '$$':{zh:'插入独立公式',en:'Insert a display formula'},
+  figure:{zh:'插入 figure 环境',en:'Insert a figure environment'},
   equation:{zh:'插入编号公式环境',en:'Insert a numbered equation'},
   'equation label':{zh:'给当前公式添加标签',en:'Add a label to the current equation'},
   frac:{zh:'插入分数',en:'Insert a fraction'},
   sqrt:{zh:'插入根号',en:'Insert a square root'},
+  'ⁿ√':{zh:'插入 n 次根式',en:'Insert an nth root'},
   sum:{zh:'插入求和符号',en:'Insert a summation'},
   int:{zh:'插入积分符号',en:'Insert an integral'},
   '\\prod':{zh:'插入连乘符号',en:'Insert a product'},
@@ -152,26 +223,31 @@ const descriptions = {
   '\\left':{zh:'插入自适应左括号',en:'Insert a scalable left delimiter'},
   '\\right':{zh:'插入自适应右括号',en:'Insert a scalable right delimiter'},
   '单括号 / Literal fence':{zh:'输入不与自动配对关联的括号',en:'Insert a literal fence without auto-pairing'},
+  '单括号':{zh:'输入不与自动配对关联的括号',en:'Insert a literal fence without auto-pairing'},
+  'Literal fence':{zh:'输入不与自动配对关联的括号',en:'Insert a literal fence without auto-pairing'},
   matrix:{zh:'插入矩阵',en:'Insert a matrix'},
   cases:{zh:'插入分段函数',en:'Insert a cases environment'},
   align:{zh:'插入对齐公式',en:'Insert an align environment'},
+  'align*':{zh:'插入无编号对齐公式',en:'Insert an unnumbered align environment'},
 };
 
 function setDescription(control, description) {
   if (!description) return;
   control.dataset.tooltipZh=description.zh;
   control.dataset.tooltipEn=description.en;
+  control.dataset.tooltipBaseZh=description.zh;
+  control.dataset.tooltipBaseEn=description.en;
 }
 
 export function applyToolbarDescriptions(root) {
   for (const control of root.querySelectorAll('button')) {
-    const label=control.textContent.trim();
+    const label=(control.dataset.zh ?? control.textContent).trim();
     const key=control.dataset.group||control.dataset.tool||control.getAttribute('aria-label')||label;
     const description=descriptions[key]??descriptions[label];
     if (description) setDescription(control,description);
     else if (!control.dataset.tooltipZh&&!control.dataset.tooltip) {
       const fallback=label||control.getAttribute('aria-label')||'';
-      if (fallback) setDescription(control,{zh:fallback,en:fallback});
+      if (fallback) setDescription(control,{zh:fallback,en:control.dataset.en??fallback});
     }
   }
 }
@@ -181,10 +257,14 @@ export function decorateToolbar(root) {
     B:['bold','粗体 / Bold',false],I:['italic','斜体 / Italic',false],U:['underline','下划线 / Underline',false],S:['strike','删除线 / Strikethrough',false],
     itemize:['list','itemize',true],enumerate:['list','enumerate',true],
     code:['code','code',true],quote:['quote','quote',true],hr:['hr','hr',false],desc:['desc','desc',true],
+    'Code block':['code','代码块 / Code block',true],'代码块':['code','代码块 / Code block',true],
     sc:['title','小型大写 / Small caps',true],box:['borders','文本框 / Boxed text',true],
-    label:['label','label',true],ref:['ref','ref',true],eqref:['ref','eqref',true],refs:['ref','refs',true],cite:['citation','cite',true],toc:['toc','toc',true],short:['short','short',true],title:['title','title',true],author:['author','author',true],
+    label:['label','label',true],ref:['ref','ref',true],eqref:['ref','eqref',true],refs:['ref','refs',true],cite:['citation','cite',true],toc:['toc','toc',true],
+    '大纲':['toc','大纲 / Outline',true],short:['short','short',true],title:['title','title',true],author:['author','author',true],
     '▦':['table','▦',false],'＋ Row':['row','＋ Row',true],'＋ Column':['column','＋ Column',true],
-    merge:['merge','merge',true],split:['split','split',true],booktabs:['booktabs','booktabs',true],
+    '＋ 行':['row','＋ 行 / ＋ Row',true],'＋ 列':['column','＋ 列 / ＋ Column',true],
+    merge:['merge','merge',true],split:['split','split',true],
+    '合并':['merge','合并 / Merge',true],'拆分':['split','拆分 / Split',true],booktabs:['booktabs','booktabs',true],
     '左':['left','左 / Left',false],'中':['center','中 / Center',false],'右':['right','右 / Right',false],
     frac:['frac','frac',true],sqrt:['sqrt','sqrt',true],sum:['sum','sum',true],int:['int','int',true],
     matrix:['matrix','matrix',true],cases:['cases','cases',true],align:['align','align',true],equation:['equation','equation',true],
@@ -193,10 +273,11 @@ export function decorateToolbar(root) {
     '线宽':['ruler','线宽 / Rule width',true],'Rule width':['ruler','线宽 / Rule width',true],
     '$':['math','$',true],'$$':['math','$$',true],LaTeX:['code','LaTeX',true]};
   for(const control of root.querySelectorAll('button')) {
-    const label=control.textContent, entry=map[label]; if(!entry)continue;
+    const label=control.dataset.zh ? t(control.dataset.zh,control.dataset.en) : control.textContent;
+    const entry=map[control.dataset.zh] ?? map[label] ?? map[control.textContent]; if(!entry)continue;
     control.setAttribute('aria-label',label);
     const [zh,en]=entry[1].split(' / ');
-    control.dataset.tooltipZh=zh;control.dataset.tooltipEn=en??zh;
+    setDescription(control,{zh,en:en??zh});
     control.classList.add('icon-button');
     control.replaceChildren(icon(entry[0]));
     if(entry[2])control.append(document.createTextNode(label));

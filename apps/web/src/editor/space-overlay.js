@@ -41,6 +41,8 @@ export function installSpaceOverlay(editor, paper, { selectionFocus = null } = {
   let caretActivity = false;
   let rowDirection;
   let pendingEdit = null;
+  let lastEditTransactionAt = 0;
+  let editBurst = 0;
   let arrowOrigin = null;
 
   function boxEdge(preferNext=false) {
@@ -304,8 +306,12 @@ export function installSpaceOverlay(editor, paper, { selectionFocus = null } = {
   function drawMarks() {
     marksFrame=0;
     const {pageRect,zoom}=measurePage(page);
-    overlay.hidden=!enabled || !pageRect.width || !pageRect.height;
-    if (overlay.hidden) return;
+    const visible=enabled && pageRect.width && pageRect.height;
+    marksOverlay.style.display=visible?'':'none';
+    if (!visible) {
+      marksOverlay.replaceChildren();
+      return;
+    }
     const width=page.clientWidth;
     const height=page.clientHeight;
     overlay.setAttribute('viewBox',`0 0 ${width} ${height}`);
@@ -321,6 +327,7 @@ export function installSpaceOverlay(editor, paper, { selectionFocus = null } = {
       height:rect.height/zoom,
     });
     for (const block of editor.view.dom.querySelectorAll('p,h1,h2,h3,pre')) {
+      if(block.closest('[data-project-region]')&&(!block.getClientRects().length||getComputedStyle(block).visibility==='hidden'))continue;
       const bounds=local(block.getBoundingClientRect());
       if(bounds.bottom<0 || bounds.top>height || bounds.right<0 || bounds.left>width)continue;
       if (block.tagName==='P') {
@@ -332,12 +339,12 @@ export function installSpaceOverlay(editor, paper, { selectionFocus = null } = {
           if(child.matches?.('.label-node,.ProseMirror-trailingBreak'))continue;
           if(child.nodeType===Node.TEXT_NODE)range.selectNodeContents(child);else range.selectNode(child);
           rects.push(...Array.from(range.getClientRects()).map(local)
-            .filter(rect=>rect.width>0 && rect.top>=bounds.top-1 && rect.bottom<=bounds.bottom+1));
+            .filter(rect=>rect.width>0 && rect.bottom>=bounds.top-1 && rect.top<=bounds.bottom+1));
         }
         for (const atom of block.querySelectorAll('math-field,.ref-node,.cite-node,img')) {
           if (atom.closest('.label-node')) continue;
           const rect=local(atom.getBoundingClientRect());
-          if (rect.width>0 && rect.top>=bounds.top-1 && rect.bottom<=bounds.bottom+1) rects.push(rect);
+          if (rect.width>0 && rect.bottom>=bounds.top-1 && rect.top<=bounds.bottom+1) rects.push(rect);
         }
         const rect=rects.reduce((last, rect) => !last || rect.top>last.top+lineHeight/2 || (Math.abs(rect.top-last.top)<lineHeight/2 && rect.right>last.right) ? rect : last, null);
         const y=bounds.top+lineHeight/2;
@@ -385,9 +392,45 @@ export function installSpaceOverlay(editor, paper, { selectionFocus = null } = {
         }
       }
     }
+    const contentLeft=local(editor.view.dom.getBoundingClientRect()).left;
+    const label=(text,element)=>{
+      const rect=local(element.getBoundingClientRect());
+      if(rect.bottom<0 || rect.top>height)return;
+      const style=getComputedStyle(element);
+      const lineHeight=Number.parseFloat(style.lineHeight)||16;
+      const mark=shape('text',{
+        x:contentLeft-7,
+        y:rect.top+Math.min(lineHeight,rect.height)/2,
+        'font-size':Math.max(6,Math.min(9,lineHeight*.42)),
+        'font-family':'sans-serif',
+        'data-structure-marker':text,
+        'text-anchor':'end',
+        'dominant-baseline':'middle',
+        fill:color,
+      });
+      mark.textContent=text;
+      marksOverlay.append(mark);
+    };
+    for (const heading of editor.view.dom.querySelectorAll('h1,h2,h3')) {
+      if(page.dataset.projectFolding==='true'&&getComputedStyle(heading).visibility==='hidden')continue;
+      label('H'+heading.tagName[1],heading);
+    }
+    for (const item of editor.view.dom.querySelectorAll('li')) {
+      if(page.dataset.projectFolding==='true'&&getComputedStyle(item).visibility==='hidden')continue;
+      const list=item.closest('ul,ol');
+      if(!list)continue;
+      let depth=0;
+      for(let node=list;node;node=node.parentElement?.closest('ul,ol')??null)depth++;
+      label((list.tagName==='OL'?'E':'L')+depth,item);
+    }
+    for (const [selector,text] of [['#document-meta .doc-title','T'],['#document-meta .doc-author','A']]) {
+      const element=page.querySelector(selector);
+      if(element?.textContent.trim())label(text,element);
+    }
+    page.dispatchEvent(new Event('lineae-markers-layout'));
   }
   function scheduleCaret(intent=null,activity=false) {
-    if (intent==='edit' || intent==='composition' || !caretIntent) caretIntent=intent;
+    if (intent==='edit' || intent==='edit-rapid' || intent==='composition' || !caretIntent) caretIntent=intent;
     caretActivity ||= activity;
     if (!caretFrame) caretFrame=requestAnimationFrame(drawCaret);
   }
@@ -409,6 +452,8 @@ export function installSpaceOverlay(editor, paper, { selectionFocus = null } = {
     caretOrigin=null;
     rowDirection=undefined;
     pendingEdit=null;
+    lastEditTransactionAt=0;
+    editBurst=0;
     textCaret.hide();
     hidePreeditCaret();
   }
@@ -419,7 +464,10 @@ export function installSpaceOverlay(editor, paper, { selectionFocus = null } = {
       if (!composing && !editor.view.composing && caretIntent!=='composition') {
         if (edit?.doc===transaction.before && performance.now()<edit.expires) {
           caretOrigin=edit.origin ?? caretOrigin;
-          scheduleCaret('edit',true);
+          const now=performance.now();
+          editBurst=now-lastEditTransactionAt<120?editBurst+1:1;
+          lastEditTransactionAt=now;
+          scheduleCaret(editBurst>=4?'edit-rapid':'edit',true);
         } else yieldCaret();
       }
       scheduleMarks();
@@ -498,6 +546,9 @@ export function installSpaceOverlay(editor, paper, { selectionFocus = null } = {
   window.addEventListener('focus',()=>scheduleCaret(null,true),{signal});
   window.addEventListener('scroll',scheduleLayout,{capture:true,passive:true,signal});
   window.addEventListener('resize',scheduleLayout,{signal});
+  // Pagination changes block translations through a stylesheet, which is not
+  // observable from the page subtree.
+  window.addEventListener('lineae-layout',scheduleLayout,{signal});
   paper.addEventListener('load',scheduleLayout,{capture:true,signal});
   document.fonts?.addEventListener('loadingdone',scheduleLayout,{signal});
   textCaret.watchPreferences(()=>scheduleCaret(),signal);

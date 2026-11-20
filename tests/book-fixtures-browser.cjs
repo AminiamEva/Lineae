@@ -1,0 +1,13 @@
+﻿const { chromium } = require('playwright');
+const { createServer } = require('node:http');
+const { readFile } = require('node:fs/promises');
+const { resolve, extname, sep } = require('node:path');
+const assert = require('node:assert/strict');
+const root=resolve('apps/web');
+const server=createServer(async(req,res)=>{const pn=new URL(req.url,'http://localhost').pathname.replace(/\/$/,'/index.html');const p=resolve(root,'.'+pn);if(!p.startsWith(root+sep))return res.writeHead(403).end();try{res.setHeader('Content-Type',{'.js':'text/javascript','.mjs':'text/javascript','.css':'text/css','.html':'text/html','.svg':'image/svg+xml'}[extname(p)]??'application/octet-stream');res.end(await readFile(p));}catch{res.writeHead(404).end();}});
+(async()=>{await new Promise(d=>server.listen(0,'127.0.0.1',d));const browser=await chromium.launch({headless:true});try{const page=await browser.newPage({viewport:{width:1440,height:1000},locale:'en-US'});const errors=[];page.on('pageerror',e=>errors.push(e.message));await page.goto(`http://127.0.0.1:${server.address().port}`,{waitUntil:'networkidle'});await page.waitForTimeout(700);
+const load=async file=>{await page.locator('input[type=file]').setInputFiles({name:file,mimeType:'text/plain',buffer:Buffer.from(await readFile('bookreporttest/'+file))});await page.waitForTimeout(1200);};
+await load('test_book.tex');assert.equal(await page.locator('.toc-title').textContent(),'目录');assert.equal(await page.locator('.toc-entry').filter({hasText:'前言'}).count()>0,true);assert.match(await page.locator('.toc-entry').filter({hasText:'前言'}).innerText(),/ii/);assert.match(await page.locator('.toc-entry').filter({hasText:'正文第一章'}).innerText(),/1/);
+await load('test_book_header_en.tex');assert.equal(await page.locator('.toc-title').textContent(),'Contents');assert.ok(await page.locator('.lipsum-paragraph').count()>=20);assert.ok(await page.locator('.ProseMirror [data-matter-start]').count()>=2);
+await load('test_report.tex');assert.equal(await page.locator('.toc-title').textContent(),'目录');assert.equal(await page.locator('.ProseMirror h1').first().getAttribute('data-section-number'),'1');
+assert.deepEqual(errors,[]);console.log('PASS book/report fixtures');}finally{await browser.close();server.close();}})().catch(e=>{console.error(e);process.exitCode=1;server.close();});

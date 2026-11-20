@@ -1,6 +1,8 @@
 node_modules/
 apps/web/editor.mjs
 apps/web/vendor/
+test-results/
+mathlive-*.tgz
 apps/desktop/node_modules/
 apps/desktop/dist/
 apps/desktop/src-tauri/target/
@@ -11,3 +13,9 @@ tests/corpus/data/
 tests/corpus/reports/
 tests/corpus/manifest/manifest.jsonl
 tests/corpus/.cache/
+
+# AGENTS.md scratch areas: quarantine, local caches, permission-repair backups
+.trash/
+.cache/
+.tmp/
+.acl-recovery/

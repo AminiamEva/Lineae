@@ -12,6 +12,7 @@ test('tooltip labels normalize strings and bilingual objects', () => {
   assert.deepEqual(normalizeTooltip({ zh: ' 保存 ', en: ' Save ' }), { zh: '保存', en: 'Save' });
   assert.deepEqual(normalizeTooltip(null), { zh: '', en: '' });
   assert.equal(tooltipText({ zh: '保存', en: 'Save' }, 'zh-CN'), '保存');
+  assert.equal(tooltipText({ zh: '设置标签', en: 'Set label' }, 'zh-Hant'), '設置標籤');
   assert.equal(tooltipText({ zh: '保存', en: 'Save' }, 'en'), 'Save');
   assert.equal(tooltipText({ zh: '', en: 'Save' }, 'zh-CN'), 'Save');
   assert.equal(tooltipText({ zh: '保存', en: '' }, 'en'), '保存');

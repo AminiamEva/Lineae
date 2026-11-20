@@ -1,0 +1,15 @@
+% 基准：headrulewidth 0.4pt、footrulewidth 0pt；maketitle 页 plain 无页眉
+\documentclass[10pt,twoside]{article}
+\usepackage{fancyhdr}
+\pagestyle{fancy}
+\fancyhead[LE,RO]{\thepage}
+\fancyhead[RE]{\leftmark}
+\fancyhead[LO]{\rightmark}
+\fancyfoot[C]{\thepage}
+\title{Title Page Test}
+\author{Lineae}
+\begin{document}
+\maketitle
+\section{First Section}
+Content on the second page shows headers.
+\end{document}

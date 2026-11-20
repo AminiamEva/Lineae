@@ -1,4 +1,4 @@
-import { plain } from './document.mjs';
+import {columnSpecs,placeRow,serializeSpanningRow} from './table-spans.mjs';
 
 function parseColumns(spec) {
   const columns = [];
@@ -38,14 +38,55 @@ function splitCells(line) {
   return cells;
 }
 
-function parseCell(raw) {
-  const text = raw.trim();
-  const multi = text.match(/^\\multicolumn\{(\d+)\}\{([^{}]*)\}\{([\s\S]*)\}$/);
-  if (multi) {
-    const align = multi[2].includes('c') ? 'center' : multi[2].includes('r') ? 'right' : multi[2].includes('l') ? 'left' : null;
-    return { text: multi[3].trim(), colspan: Number(multi[1]), align };
+export function parseColumnLayout(columns, specs) {
+  const boundaries = Array.from({length:specs.length + 1}, () => ({tabcolsep:true, rules:0, at:false, bang:false}));
+  let column = 0;
+  let pending = {rules:0, at:false, bang:false};
+  const commit = () => {
+    const boundary = boundaries[column];
+    if (!boundary) return;
+    boundary.rules += pending.rules;
+    boundary.at = boundary.at || pending.at;
+    boundary.tabcolsep = boundary.tabcolsep && !pending.at;
+    boundary.bang = boundary.bang || pending.bang;
+    pending = {rules:0, at:false, bang:false};
+  };
+  for (let index = 0; index < columns.length;) {
+    const char = columns[index];
+    if (char === ' ' || char === '\t') { index++; continue; }
+    if (char === '|') { pending.rules++; index++; continue; }
+    if (char === '@' || char === '!') {
+      const match = columns.slice(index).match(/^[@!]\{[^{}]*\}/);
+      if (!match) return null;
+      if (char === '@') pending.at = true;
+      else pending.bang = true;
+      index += match[0].length;
+      continue;
+    }
+    if (char === '>' || char === '<') {
+      const match = columns.slice(index).match(/^[<>]\{[^{}]*\}/);
+      if (!match) return null;
+      index += match[0].length;
+      continue;
+    }
+    if (char === 'l' || char === 'c' || char === 'r') {
+      commit(); column++; index++; continue;
+    }
+    const width = columns.slice(index).match(/^[pmb]\{[^{}]*\}/);
+    if (width) { commit(); column++; index += width[0].length; continue; }
+    if (char === '*') {
+      const count = columns.slice(index).match(/^\*\{(\d+)\}\{([^{}]*)\}/);
+      if (!count) return null;
+      const repeated = columnSpecs(count[2]);
+      index += count[0].length;
+      column += Number(count[1]) * (repeated?.length ?? 1);
+      continue;
+    }
+    if (char === ' ' || char === '\t') { index++; continue; }
+    return null;
   }
-  return { text, colspan: 1, align: null };
+  commit();
+  return {boundaries};
 }
 
 export function parseTable(source) {
@@ -59,11 +100,13 @@ export function parseTable(source) {
   }
   if (depth) return null;
   const columns = source.slice(begin.length, index - 1);
-  const specs = parseColumns(columns);
+  const specs = parseColumns(columns) ?? columnSpecs(columns);
   if (!specs) return null;
+  const columnLayout = parseColumnLayout(columns, specs);
+  if (!columnLayout) return null;
   const match = source.slice(index).match(/^\r?\n([\s\S]*?)\r?\n\\end\{tabular\}$/);
   if (!match) return null;
-  const rows = [];
+  const rows = [],occupied=Array(specs.length).fill(0);
   const trailing = [];
   for (const line of match[1].split(/\r?\n/)) {
     const text = line.trim();
@@ -71,33 +114,25 @@ export function parseTable(source) {
       trailing.push(text);
       continue;
     }
-    const parsed = splitCells(line.replace(/[ \t]*\\\\[ \t]*$/, '')).map(parseCell);
-    if (parsed.some(cell => !plain.test(cell.text))) return null;
-    if (parsed.reduce((total, cell) => total + cell.colspan, 0) !== specs.length) return null;
+    const cells=placeRow(splitCells(line.replace(/[ \t]*\\\\[ \t]*$/,'')),occupied);
+    if(!cells)return null;
     rows.push({
-      cells: parsed.map(cell => cell.text),
-      spans: parsed.map(cell => cell.colspan),
-      aligns: parsed.map(cell => cell.align),
+      cells: cells.map(cell => cell.text),
+      spans: cells.map(cell => cell.colspan),
+      rowspans: cells.map(cell => cell.rowspan),
+      columnIndexes: cells.map(cell => cell.column),
+      aligns: cells.map(cell => cell.align),
       rules: trailing.splice(0),
     });
   }
-  return rows.length ? { columns, specs, rows, trailing } : null;
-}
-
-function alignSpec(align, spec) {
-  const value = align ?? spec?.align;
-  return value === 'center' ? 'c' : value === 'right' ? 'r' : 'l';
+  return rows.length ? { columns, specs, columnLayout, rows, trailing } : null;
 }
 
 export function serializeTable({ columns, specs, rows, trailing }, eol) {
   const lines = ['\\begin{tabular}{' + columns + '}'];
   for (const row of rows) {
     lines.push(...row.rules);
-    const cells = row.cells.map((cell, index) => {
-      const span = row.spans?.[index] ?? 1;
-      if (span > 1) return '\\multicolumn{' + span + '}{' + alignSpec(row.aligns?.[index], specs?.[index]) + '}{' + cell.trim() + '}';
-      return cell.trim();
-    });
+    const cells=serializeSpanningRow(row,specs);
     lines.push(cells.join(' & ') + ' \\\\');
   }
   lines.push(...trailing, '\\end{tabular}');

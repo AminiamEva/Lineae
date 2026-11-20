@@ -1,9 +1,12 @@
+import {localizedTitle} from '../ui/localized-control.mjs';
 import { Node } from '@tiptap/core';
 import { TextSelection } from '@tiptap/pm/state';
 import { closeHistory } from '@tiptap/pm/history';
 import { t } from '../ui/i18n.mjs';
 import { mathDocumentSource, mathEditorSource, numberedMathRows } from '../../latex/math-environments.mjs';
 
+let mathPointerField=null;
+if(typeof document!=='undefined')document.addEventListener('pointerdown',event=>{mathPointerField=event.composedPath().find(node=>node?.tagName==='MATH-FIELD')??null;},true);
 let smartFences;
 export function configureMathFences(value) { smartFences = value; }
 
@@ -84,7 +87,8 @@ export function mathEnvironment(field) {
   return labels;
 }
 
-function deleteIntegralAtEmptyLimit(field) {  if (field.selection.ranges.some(([start,end])=>start!==end)) return false;
+function deleteIntegralAtEmptyLimit(field) {
+  if (field.selection.ranges.some(([start,end])=>start!==end)) return false;
   const model=field._mathfield?.model;
   const cursor=model?.at(field.position);
   const branch=cursor?.parentBranch;
@@ -106,17 +110,24 @@ function deleteIntegralAtEmptyLimit(field) {  if (field.selection.ranges.some(([
 
 // An operator that was just inserted owns an empty \mathord body. Deleting
 // inside it selects the whole operator first, so a second press removes it as
-// one object instead of nibbling at its placeholder.
+// one object instead of nibbling at its placeholder. The caret can sit either
+// in the body or right behind the operator, where scripts attach.
 function emptyOperatorRange(field) {
   const model=field._mathfield?.model;
   if (!model) return null;
   const caret=model.at(field.position);
   if (!caret) return null;
-  const group=caret.command==='\\mathord' ? caret : caret.parent;
-  if (group?.command!=='\\mathord') return null;
-  const left=group.leftSibling;
-  const operator=left?.type==='subsup' ? left.leftSibling : left;
-  if (!isMathOperatorWithBody(operator?.command?.slice(1))) return null;
+  let operator=null, group=null;
+  if (caret.command==='\\mathord' || caret.parent?.command==='\\mathord') {
+    group=caret.command==='\\mathord' ? caret : caret.parent;
+    const left=group.leftSibling;
+    operator=left?.type==='subsup' ? left.leftSibling : left;
+  } else if (isMathOperatorWithBody(caret.command?.slice(1))) {
+    operator=caret;
+    const right=operator.rightSibling;
+    group=right?.command==='\\mathord' ? right : null;
+  }
+  if (!group || !isMathOperatorWithBody(operator?.command?.slice(1))) return null;
   const children=group.branch('body') ?? [];
   if (children.some(child=>child.type!=='first'&&child.type!=='placeholder')) return null;
   const start=operator.leftSibling ? model.offsetOf(operator.leftSibling) : 0;
@@ -178,16 +189,20 @@ const mathFieldStyle = `
   .ML__content { overflow: visible !important; scrollbar-width: none; }
   .ML__content::-webkit-scrollbar { display: none; }
   :host([data-lineae-editing]) [data-lineae-integrand] { background:light-dark(#e9f4ed,#304a3b); border-radius:.15em; }
+  :host([data-empty-matrix-cell]) .ML__caret { position:relative; }
   :host([data-empty-matrix-cell]) .ML__caret::after {
     content:""; position:absolute; inset:-.05em auto -.05em -.05em;
     width:.66em; border:1px solid currentColor; border-radius:.16em;
     opacity:.45; pointer-events:none;
   }
   .delimiter-ghost { display:inline-flex; gap:.1em; pointer-events:none; vertical-align:baseline; }
-  .delimiter-ghost-slot { display:inline-flex; justify-content:center; align-items:center; width:.65em;
+  .delimiter-ghost-slot { position:relative; display:inline-flex; justify-content:center; align-items:center; width:.65em;
     height:1em; border-radius:.15em; line-height:1; color:inherit; background:light-dark(#e8effa,#37445c); }
   .delimiter-ghost-slot + .delimiter-ghost-slot { background:light-dark(#efe9f7,#483b58); }
   .delimiter-ghost-slot.is-active { box-shadow:inset 0 0 0 1px #749bd0; }
+  .delimiter-ghost-slot.is-active::after { content:""; position:absolute; left:50%; top:12%; bottom:12%; width:1.5px;
+    border-radius:1px; background:#2f6fd0; translate:-50% 0; animation:delimiter-caret-blink .9s steps(1) infinite; }
+  @keyframes delimiter-caret-blink { 0%,49% { opacity:1; } 50%,100% { opacity:0; } }
   :host([data-lineae-editing]) :is(.ML__mathbf, .ML__mathbfit, .ML__bb, .ML__cal, .ML__frak, .ML__script, .ML__sans, .ML__tt) {
     background: light-dark(rgba(77,124,179,.10), rgba(120,170,230,.18));
     border-radius: 2px;
@@ -282,6 +297,7 @@ function unwrapBraces(value) {
 }
 
 export function toggleDisplayStyle(field) {
+  field.removeAttribute('data-lineae-default-displaystyle');
   const latex = unwrapBraces(field.value);
   const grouped = /^\\displaystyle\{([\s\S]*)\}$/.exec(latex);
   const prefixed = /^\\displaystyle\s*([\s\S]*)$/.exec(latex);
@@ -321,8 +337,29 @@ function leaveFormula(editor, position, node, backward) {
 }
 
 // Typing "<" then "=" produces the relation symbol, matching the other pairs.
-const operatorPairs = { '!=':'\\ne', '>=':'\\ge', '<=':'\\le', '->':'\\to' };
+const operatorPairs = {
+  '!=':'\\ne', '>=':'\\ge',
+  '<-':'\\leftarrow', '->':'\\to',
+  '<=':'\\le', '=>':'\\Rightarrow',
+};
+// Tab rotates an auto-inserted arrow counter-clockwise.
+const arrowTurns = {
+  '\\to':'\\uparrow',
+  '\\leftarrow':'\\downarrow',
+  '\\downarrow':'\\rightarrow',
+  '\\rightarrow':'\\uparrow',
+  '\\uparrow':'\\leftarrow',
+  '\\leftrightarrow':'\\updownarrow',
+  '\\updownarrow':'\\leftrightarrow',
+  '\\Leftarrow':'\\Downarrow',
+  '\\Downarrow':'\\Rightarrow',
+  '\\Rightarrow':'\\Uparrow',
+  '\\Uparrow':'\\Leftarrow',
+  '\\Leftrightarrow':'\\Updownarrow',
+  '\\Updownarrow':'\\Leftrightarrow',
+};
 const caretCollapsed = field => field.selection.ranges.every(([start,end]) => start === end);
+const emptyMath = value => !value || /^\\displaystyle\{\s*\}$/.test(value) || /^\\displaystyle\s*$/.test(value);
 
 function addDisplayLine(field) {
   const model = field._mathfield?.model;
@@ -426,6 +463,8 @@ export const MathNode = Node.create({
       handle.setAttribute('aria-label', t('拖动公式','Drag formula'));
       handle.dataset.tooltipZh = '拖动公式';
       handle.dataset.tooltipEn = 'Drag formula';
+      handle.dataset.zhTitle = '拖动公式';
+      handle.dataset.enTitle = 'Drag formula';
       handle.draggable = true;
       handle.dataset.dragHandle = '';
       handle.addEventListener('mousedown', () => editor.commands.setNodeSelection(getPos()));
@@ -439,17 +478,22 @@ export const MathNode = Node.create({
 
       const field = document.createElement('math-field');
       field.setAttribute('default-mode', node.isBlock ? 'math' : 'inline-math');
-      field.textContent = mathEditorSource(node.attrs.latex);
+      field.textContent = mathEditorSource(node.attrs.latex, { inline:!node.isBlock });
       dom.append(handle, field);
       const numbers = document.createElement('span');
       numbers.className = 'math-equation-numbers';
       function renderNumbers() {
         if (!node.isBlock) return;
         const rows = numberedMathRows(node.attrs);
-        dom.dataset.numbered = String(rows.some(row => !row.unnumbered));
+        dom.dataset.numbered = String(rows.some(row => row.tag !== undefined || !row.unnumbered));
         numbers.replaceChildren(...rows.map(row => {
           const number = document.createElement('span');
-          if (!row.unnumbered) number.className = 'math-equation-number';
+          if (row.tag !== undefined) {
+            number.className = 'math-equation-tag';
+            number.textContent = row.tagStar ? row.tag : '(' + row.tag + ')';
+          } else if (!row.unnumbered) {
+            number.className = 'math-equation-number';
+          }
           return number;
         }));
       }
@@ -507,7 +551,15 @@ export const MathNode = Node.create({
           }
         }
         requestAnimationFrame(() => {
-          if (field.isConnected && focusRequest===pointerFocus) field.focus();
+          if(field.isConnected&&focusRequest===pointerFocus&&mathPointerField===field){
+            if(field.hasFocus()&&field.ownerDocument.activeElement!==field){
+              const selection=structuredClone(field.selection);field.blur();field.focus();field.selection=selection;
+            }else field.focus();
+            // Moving a table row can leave MathLive's focus flag set while its
+            // native keyboard sink is blurred. Restore the actual DOM focus.
+            if(field.ownerDocument.activeElement!==field)
+              field.shadowRoot?.querySelector('[part~="keyboard-sink"]')?.focus({preventScroll:true});
+          }
         });
       },true);
       field.addEventListener('focus', () => {
@@ -529,11 +581,24 @@ export const MathNode = Node.create({
           scriptCleanupQueued=false;
           if(field.isConnected && caretCollapsed(field))clearEmptyScripts(field,field.hasFocus());
         });
+        queueMicrotask(()=>{
+          if(!field.isConnected)return;
+          const [from,to]=field.selection?.ranges?.[0]??[field.position,field.position];
+          window.dispatchEvent(new CustomEvent('lineae-math-selection', {detail:{field, position:getPos(), from, to, collapsed:from===to}}));
+        });
       });
       field.addEventListener('lineae-commit-fences', () => commitUnclosedFences(field));
 
       field.addEventListener('input', () => {
-        const latex=mathDocumentSource(field.value,node.attrs.latex);
+        if (field.hasAttribute('data-lineae-default-displaystyle') && field.value.trim() &&
+            !field.value.includes('\\') && !/^\\displaystyle\b/.test(field.value)) {
+          field.removeAttribute('data-lineae-default-displaystyle');
+          field.value = '\\displaystyle ' + field.value;
+          field.executeCommand('moveToMathfieldEnd');
+          field.dispatchEvent(new Event('input',{bubbles:true}));
+          return;
+        }
+        const latex=mathDocumentSource(field.value,node.attrs.latex,{inline:!node.isBlock});
         if(node.attrs.latex===latex)return;
         const position = getPos();
         if (typeof position === 'number') {
@@ -552,6 +617,18 @@ export const MathNode = Node.create({
         if (event.isComposing || event.keyCode===229 || event.getModifierState?.('AltGraph')) return;
         const plain=!event.ctrlKey&&!event.metaKey&&!event.altKey;
         const consume=()=>{event.preventDefault();event.stopImmediatePropagation();};
+        if (plain && event.key === 'Tab' && replacedOperator?.arrow && caretCollapsed(field) &&
+            field.value === replacedOperator.after && field.position === replacedOperator.position) {
+          const next = arrowTurns[replacedOperator.arrow];
+          if (next) {
+            consume();
+            field.selection = { ranges:[[field.position - 1, field.position]] };
+            field.executeCommand(['insert', next]);
+            replacedOperator = { ...replacedOperator, after:field.value, position:field.position, arrow:next };
+            field.dispatchEvent(new Event('input',{bubbles:true}));
+            return;
+          }
+        }
         if (plain && event.key === 'Tab') {
           consume();
           pendingKey=null; pendingDollar=false; oneScript=null; replacedOperator=null;
@@ -589,7 +666,21 @@ export const MathNode = Node.create({
             return;
           }
         }
-        if (plain && ['=','>'].includes(event.key) && caretCollapsed(field) && field.position>0) {
+        if (plain && event.key === '>' && caretCollapsed(field) && field.position>0) {
+          const pair=[['\\leftarrow','\\leftrightarrow'],['\\Leftarrow','\\Leftrightarrow'],['\\le','\\Leftrightarrow']]
+            .find(([command])=>field.value.endsWith(command));
+          if(pair) {
+            consume();
+            const before=replacedOperator?.before??field.value;
+            const selection=replacedOperator?.selection;
+            field.selection={ranges:[[field.position-1,field.position]]};
+            field.executeCommand(['insert',pair[1]]);
+            replacedOperator={before,selection,after:field.value,position:field.position,arrow:pair[1]};
+            field.dispatchEvent(new Event('input',{bubbles:true}));
+            return;
+          }
+        }
+        if (plain && ['=','>','-'].includes(event.key) && caretCollapsed(field) && field.position>0) {
           const end=field.position;
           const prefix=field.getValue(end-1,end);
           const replacement=operatorPairs[prefix+event.key];
@@ -600,7 +691,7 @@ export const MathNode = Node.create({
             const before=field.value, selection=structuredClone(field.selection);
             field.selection={ranges:[[end-1,field.position]]};
             field.executeCommand(['insert',replacement]);
-            replacedOperator={before,selection,after:field.value,position:field.position};
+            replacedOperator={before,selection,after:field.value,position:field.position,arrow:replacement};
             field.dispatchEvent(new Event('input',{bubbles:true}));
             return;
           }
@@ -675,14 +766,14 @@ export const MathNode = Node.create({
         if (plain && event.key === '$') {
           event.preventDefault();
           event.stopPropagation();
-          if (!field.value && !node.isBlock) {
+          if (emptyMath(field.value) && !node.isBlock) {
             const position = getPos();
             insertFormula(editor, true, '', { from: position, to: position + node.nodeSize });
           } else if (!node.isBlock || pendingDollar) finish(false);
           else pendingDollar=true;
           return;
         }
-        if (event.key === 'Backspace' && !field.value) {
+        if (event.key === 'Backspace' && emptyMath(field.value)) {
           event.preventDefault();
           event.stopPropagation();
           const position = getPos();
@@ -751,8 +842,8 @@ export const MathNode = Node.create({
           node = next;
           dom.dataset.latex = node.attrs.latex;
           renderNumbers();
-          if (mathDocumentSource(field.value,node.attrs.latex) !== node.attrs.latex) {
-            const latex=mathEditorSource(node.attrs.latex);
+          if (mathDocumentSource(field.value,node.attrs.latex,{inline:!node.isBlock}) !== node.attrs.latex) {
+            const latex=mathEditorSource(node.attrs.latex,{inline:!node.isBlock});
             if (field.value !== latex) field.value=latex;
           }
           return true;

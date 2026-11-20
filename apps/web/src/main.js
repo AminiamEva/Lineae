@@ -1,3 +1,29 @@
+import {AppendixStart,MatterStart,LayoutCommand} from './editor/appendix.js';
+import {Lipsum} from './editor/lipsum.js';
+import {projectLayoutPreamble} from './project/page-context.mjs';
+import {projectInputSource} from './project/input-support.mjs';
+import {installProjectPresentation} from './project/presentation.js';
+import {ProjectRegion} from './project/region-node.js';
+import {canIndentList} from './project/list-policy.js';
+import {createCompositionController} from './project/composition-controller.js';
+import {applicationCommandActions} from './editor/application-commands.js';
+import {captureRichSession,restoreRichSession,copyModeHistory,readModeHistory} from './project/rich-session.js';
+import {changePageLayout,mergePageLayout,PageLayoutHistory} from './editor/page-layout-history.js';
+import {setParagraphIndent,paragraphHasIndent} from './editor/paragraph-format.js';
+import {installProjectNavigation} from './project/navigation.js';
+import {ProjectWorkspaceState} from './project/workspace-state.mjs';
+import {exitProjectHeading} from './project/editing.js';
+import {ProjectDocumentSession} from './project/document-session.mjs';
+import {installFloatingToolbar} from './ui/floating-toolbar.js';
+import {installSettingsPanel} from './ui/settings-panel.js';
+import { buildHomeRibbon } from './ui/home-ribbon.js';
+import { buildRibbonGroups } from './ui/ribbon-groups.js';
+import {installHeaderFooterPanel} from './ui/header-footer-panel.js';
+import { sourceProjection, richSourceChanges } from './editor/source-sync.js';
+import { installSourceToolbar } from './editor/source-toolbar.js';
+import { createSourceWorkspace } from './editor/source-workspace.js';
+import { DEFAULT_DOCUMENT_SOURCE } from './editor/default-document.mjs';
+import { indentLatex } from './editor/latex-indent.mjs';
 import { installContextMenu } from './editor/context-menu.js';
 import { textCommands } from '../latex/inline.mjs';
 import { markerInput, listMarker } from '../latex/list-numbering.mjs';
@@ -5,12 +31,17 @@ import { closeHistory } from '@tiptap/pm/history';
 import { exitCode } from '@tiptap/pm/commands';
 import { mathFontStyles, applyMathFont } from './editor/math-formatting.js';
 import { installFormatControls } from './editor/format-controls.js';
+import { selectionTypography } from './editor/selection-typography.js';
+import { createClipboard } from './editor/clipboard.js';
+import { installFormatPainter } from './editor/format-painter.js';
 import { decorateToolbar, applyToolbarDescriptions, icon } from './editor/icons.js';
 import { PaperBehavior } from './editor/paper-behavior.js';
 import { MathNode, MathBlock, configureMathFences, focusInsertedOperator, insertFormula, isMathOperatorWithBody, mathEnvironment, toggleDisplayStyle } from './editor/math-node.js';
 import { MathGlue } from './editor/math-glue.js';
-import { Ref, Label, Cite, Footnote, TableOfContents, refreshReferences, collectReferenceLabels } from './editor/references.js';
-import { insertCitationDialog } from './editor/citation-dialog.js';
+import { Ref, Label, Cite, Footnote, TableOfContents, refreshReferences, collectReferenceLabels, installDocumentOutline } from './editor/references.js';
+import { createCitationLibrary, openCitationPanel } from './editor/citation-library.js';
+import { installProjectExplorer } from './project/explorer.js';
+import { applyCitationRenames } from '../bib/index.mjs';
 import { chooseReference } from './editor/reference-index.js';
 import { installTableHoverAddRow } from './editor/table-hover.js';
 import { createConfigStore } from './editor/config.mjs';
@@ -18,15 +49,28 @@ import { installKeybindings } from './editor/keybindings.mjs';
 import defaultConfigYaml from '../config.yaml';
 import { askText } from './editor/dialog.js';
 import { installDocumentFind } from './editor/find.js';
-import { DocumentImage, insertLocalImage, installImageDrop } from './editor/image-node.js';
-import { projectAssets, rememberAsset } from './editor/project-assets.js';
+import { DocumentImage, Subfigures, insertLocalImage, insertSubfigures, replaceLocalImage, installImageDrop } from './editor/image-node.js';
+import { installImagePanel } from './ui/image-panel.js';
+import { installSubfigurePanel } from './ui/subfigure-panel.js';
+import { MultiColumn } from './editor/multi-column.js';
+import { readGlobalColumns, writeGlobalColumns } from '../latex/columns.mjs';
+import { readImageSpacing, writeImageSpacing, IMAGE_SPACING_DEFAULTS } from '../latex/images.mjs';
+import {
+  clearProjectAssets,
+  projectAssets,
+  readBibliographyMetadata,
+  rememberAsset,
+  writeBibliographyMetadata,
+} from './editor/project-assets.js';
 import { buildProjectZip, safeProjectPath, projectDependencies } from './editor/project-zip.mjs';
 import { theoremNames } from '../latex/theorem.mjs';
 import { MultiSelection } from './editor/multi-selection.js';
 import { installSpaceOverlay } from './editor/space-overlay.js';
+import { installTypesetPagination } from './editor/typeset-pagination.js';
 import { wrapMathWithDelimiters } from '../latex/delimiters.mjs';
 import { readDelimiterPair } from './editor/delimiter-input.js';
-import { serialize, importBlocks } from './editor/latex-codec.js';
+import { serialize, importBlocks, setSerializationClass } from './editor/latex-codec.js';
+import { setHeadingBase } from '../latex/blocks.mjs';
 import { Editor, Node, Extension, Mark, mergeAttributes, wrappingInputRule } from '@tiptap/core';
 import StarterKit from '@tiptap/starter-kit';
 import CodeBlock from '@tiptap/extension-code-block';
@@ -34,17 +78,21 @@ import Table from '@tiptap/extension-table';
 import TableRow from '@tiptap/extension-table-row';
 import TableCell from '@tiptap/extension-table-cell';
 import TableHeader from '@tiptap/extension-table-header';
-import { Plugin, Selection, NodeSelection } from '@tiptap/pm/state';
+import { Plugin, Selection, NodeSelection, TextSelection } from '@tiptap/pm/state';
 import { parseDocument } from '../latex/document.mjs';
 import { exportDocument, hasTitleCommand } from '../latex/packages.mjs';
 import { appendAlignmentPair, displayEnvironment, numberedMathRows } from '../latex/math-environments.mjs';
 import { MARGIN_PRESETS, readPageSetup, writePageSetup, pageMetrics } from '../latex/geometry.mjs';
+import { readPageFurniture, writePageFurniture } from '../latex/page-furniture.mjs';
 import { mathSymbols } from '../latex/math-symbols.mjs';
 import { createThemeController } from './ui/theme.mjs';
 import { installTooltips } from './ui/tooltips.mjs';
 import { installRovingFocus } from './ui/keyboard-nav.mjs';
 import { fadeIn } from './ui/motion.mjs';
-import { getLanguage, localize, setLanguage, t } from './ui/i18n.mjs';
+import { getLanguage, localize, normalizeLanguage, setLanguage, t } from './ui/i18n.mjs';
+import { TikzEditor } from './tikz/controllers/tikzEditor.js';
+
+const citationLibrary = createCitationLibrary();
 
 const cssColor = value => {
   const rgb=/^rgba?\(\s*(\d+)[,\s]+(\d+)[,\s]+(\d+)/i.exec(value??'');
@@ -59,6 +107,7 @@ const TextStyle = Mark.create({
   name:'textStyle',
   addAttributes:()=>({
     color:{default:null,parseHTML:element=>cssColor(element.style.color)},
+    backgroundColor:{default:null,parseHTML:element=>cssColor(element.style.backgroundColor)},
     fontFamily:{default:null,parseHTML:element=>element.style.fontFamily?.replace(/["']/g,'')||null},
     fontSize:{default:null,parseHTML:element=>cssSize(element.style.fontSize)},
   }),
@@ -70,7 +119,16 @@ const TextStyle = Mark.create({
   },0],
 });
 const Underline = Mark.create({
-  name:'underline',parseHTML:()=>[{tag:'u'}],renderHTML:()=>['u',0],
+  name:'underline',
+  addAttributes:()=>({
+    style:{default:'single',parseHTML:element=>element.dataset.underlineStyle??'single',
+      renderHTML:({style})=>style&&style!=='single'?{'data-underline-style':style}:{}},
+  }),
+  parseHTML:()=>[{tag:'u'}],
+  renderHTML:({mark,HTMLAttributes})=>['u',{
+    ...HTMLAttributes,
+    ...(mark.attrs.style&&mark.attrs.style!=='single'?{'data-underline-style':mark.attrs.style}:{}),
+  },0],
 });
 const Superscript = Mark.create({
   name:'superscript',parseHTML:()=>[{tag:'sup'}],renderHTML:()=>['sup',0],
@@ -86,6 +144,18 @@ const Boxed = Mark.create({
   name:'boxed',parseHTML:()=>[{tag:'span[data-boxed]'}],
   addAttributes:()=>({boxId:{default:null,parseHTML:element=>element.dataset.boxId??null}}),
   renderHTML:({mark})=>['span',{'data-boxed':'','data-box-id':mark.attrs.boxId,style:'border:1px solid currentColor;padding:0 .2em'},0],
+});
+const Circled = Mark.create({
+  name:'circled',parseHTML:()=>[{tag:'span[data-circled]'}],
+  renderHTML:()=>['span',{'data-circled':'',style:'display:inline-flex;align-items:center;justify-content:center;min-width:1.35em;height:1.35em;border:1px solid currentColor;border-radius:50%;line-height:1;padding:0 .12em'},0],
+});
+const PageBreak = Node.create({
+  name:'pageBreak',
+  group:'block',
+  atom:true,
+  selectable:true,
+  parseHTML:()=>[{tag:'div[data-page-break]'}],
+  renderHTML:()=>['div',{'data-page-break':'','class':'page-break'}],
 });
 function withoutModShortcuts(extension) {
   return extension.extend({
@@ -176,8 +246,10 @@ const config = createConfigStore(defaultConfigYaml, {
 });
 function configuredLanguage() {
   const value = config.value.interface.language;
-  if (value !== 'auto') return value;
-  return navigator.language?.toLowerCase().startsWith('zh') ? 'zh-CN' : 'en';
+  if (value !== 'auto') return normalizeLanguage(value);
+  const tag = navigator.language?.toLowerCase() ?? '';
+  if (!tag.startsWith('zh')) return 'en';
+  return normalizeLanguage(tag);
 }
 setLanguage(configuredLanguage());
 const theme=createThemeController({root:document.documentElement,storage:null,preference:config.value.interface.theme});
@@ -209,11 +281,25 @@ function insertLiveMath(field, latex, notify = true) {
   }
 }
 function insertMath(display = false, latex = '') {
-  if (!latex) return insertFormula(editor, display, '');
-  if (display && displayEnvironment(latex)) {
-    return insertFormula(editor,true,latex,undefined,field=>field.executeCommand('moveToNextPlaceholder'));
+  if (display) {
+    if (!latex) return insertFormula(editor, true, '');
+    if (displayEnvironment(latex)) {
+      return insertFormula(editor,true,latex,undefined,field=>field.executeCommand('moveToNextPlaceholder'));
+    }
+    return insertFormula(editor, true, '', undefined, field => insertLiveMath(field, latex));
   }
-  insertFormula(editor, display, '', undefined, field => insertLiveMath(field, latex));
+  if (!latex) {
+    return insertFormula(editor, false, '', undefined, field => {
+      field.toggleAttribute('data-lineae-default-displaystyle', true);
+      field.focus();
+    });
+  }
+  insertFormula(editor, false, '', undefined, field => insertLiveMath(field, latex));
+}
+function insertDefaultTable() {
+  const inserted=editor.chain().focus().insertTable({rows:2,cols:2,withHeaderRow:false}).run();
+  if(inserted)editor.chain().focus().updateAttributes('table',{borderMode:'grid'}).run();
+  return inserted;
 }
 function insertEquation() {
   insertFormula(editor, true, '', undefined, field => insertLiveMath(field, '\\placeholder{}'), { delimiter:'equation' });
@@ -261,7 +347,9 @@ function outdentCurrentLine(editor) {
     return true;
   }
   if ($from.parent.type.name === 'paragraph' && (($from.parent.attrs.indentLevel ?? 0) > 0)) {
-    editor.view.dispatch(editor.state.tr.setNodeMarkup($from.before(), undefined, { ...$from.parent.attrs, indentLevel:0 }));
+    editor.view.dispatch(editor.state.tr.setNodeMarkup($from.before(), undefined, {
+      ...$from.parent.attrs, indentLevel:0, indent:true,
+    }));
   }
   return true;
 }
@@ -280,11 +368,74 @@ function replaceTypedLigatures(view, from, to, text, defaultTransaction) {
   view.dispatch(closeHistory(view.state.tr.insertText(replacement + text, from - word.length, to)));
   return true;
 }
+function listItemDepthAt($pos) {
+  for(let depth=$pos.depth;depth>0;depth--) if($pos.node(depth).type.name==='listItem') return depth;
+  return 0;
+}
+function listItemLevelAt($pos) {
+  let level=0;
+  for(let depth=$pos.depth;depth>0;depth--) if($pos.node(depth).type.name==='listItem') level++;
+  return level;
+}
 function indentListItem(editor) {
-  const { $from }=editor.state.selection;
-  let depth=0;
-  for(let level=1;level<=$from.depth;level++) if($from.node(level).type.name==='listItem') depth++;
-  return depth>0 && depth<10 && editor.chain().focus().sinkListItem('listItem').run();
+  return canIndentList(editor,listItemLevelAt) && editor.chain().focus().sinkListItem('listItem').run();
+}
+function wholeBlockSelection(selection) {
+  if (selection.empty) return false;
+  let blocks=0, whole=true;
+  selection.$from.doc.nodesBetween(selection.from,selection.to,(node,position)=>{
+    if (!node.isTextblock) return;
+    blocks++;
+    if (position+1<selection.from || position+node.nodeSize-1>selection.to) whole=false;
+    return false;
+  });
+  return blocks>0 && whole;
+}
+function exitEmptyListItem(editor) {
+  const { selection }=editor.state;
+  if (!selection.empty) return false;
+  const $from=selection.$from;
+  if ($from.parent.type.name!=='paragraph' || $from.parent.content.size) return false;
+  const itemDepth=listItemDepthAt($from);
+  if (!itemDepth) return false;
+  const item=$from.node(itemDepth);
+  const hasNestedList=item.content.content.some(child=>['bulletList','orderedList'].includes(child.type.name));
+  if (item.textContent.trim() || hasNestedList) return false;
+  let listLevels=0;
+  for (let depth=1;depth<=$from.depth;depth++) {
+    if (['bulletList','orderedList'].includes($from.node(depth).type.name)) listLevels++;
+  }
+  editor.view.focus();
+  let lifted=false;
+  while (editor.commands.liftEmptyBlock()) lifted=true;
+  if (!lifted) return false;
+  const position=editor.state.selection.$from.before();
+  const paragraph=editor.state.doc.nodeAt(position);
+  if (paragraph?.type.name==='paragraph') {
+    editor.view.dispatch(editor.state.tr.setNodeMarkup(position,undefined,{
+      ...paragraph.attrs, indent:false, indentLevel:listLevels,
+    }));
+  }
+  return true;
+}
+const codeFenceLanguages = new Set(('bash c cpp csharp css dart dockerfile elixir erlang go haskell html ini '+
+  'java javascript js json jsonc kotlin latex less lua makefile markdown md perl php plaintext py python r ruby '+
+  'rust sass scala scss shell sql swift tex toml typescript ts vue xml yaml yml zig').split(' '));
+function applyCodeFenceLanguage(editor) {
+  const { selection }=editor.state;
+  if (!selection.empty) return false;
+  const $from=selection.$from;
+  if ($from.parent.type.name!=='codeBlock') return false;
+  const text=$from.parent.textContent;
+  const language=text.trim().toLowerCase();
+  if ($from.parentOffset!==text.length || !codeFenceLanguages.has(language)) return false;
+  const position=$from.before();
+  const transaction=editor.state.tr
+    .delete(position+1,position+1+text.length)
+    .setNodeMarkup(position,undefined,{...$from.parent.attrs,language});
+  transaction.setSelection(TextSelection.create(transaction.doc,position+1));
+  editor.view.dispatch(transaction);
+  return true;
 }
 const Shortcuts = Extension.create({
   name:'documentShortcuts',
@@ -374,8 +525,15 @@ const Shortcuts = Extension.create({
           return true;
         }
         if(!selection.empty)return false;
-        if(this.editor.commands.undoInputRule())return true;
         const $from=selection.$from;
+        if($from.parent.type.name==='paragraph' && $from.parentOffset===0 &&
+            ['center','right'].includes($from.parent.attrs.align)) {
+          this.editor.view.dispatch(this.editor.state.tr.setNodeMarkup($from.before(),undefined,{
+            ...$from.parent.attrs,align:'left',
+          }));
+          return true;
+        }
+        if(this.editor.commands.undoInputRule())return true;
         const node=$from.nodeBefore;
         // A hard break with an empty line after it keeps the paragraph one line
         // tall. Deleting the last character of that line also removes the break,
@@ -405,7 +563,9 @@ const Shortcuts = Extension.create({
           const indentLevel=paragraph.attrs.indentLevel??0;
           if(indentLevel>0) {
             const position=$from.before();
-            this.editor.view.dispatch(this.editor.state.tr.setNodeMarkup(position,undefined,{...paragraph.attrs,indentLevel:0}));
+            this.editor.view.dispatch(this.editor.state.tr.setNodeMarkup(position,undefined,{
+              ...paragraph.attrs,indentLevel:0,indent:true,
+            }));
             this.editor.view.focus();
             return true;
           }
@@ -449,17 +609,55 @@ const Shortcuts = Extension.create({
         }
         return false;
       },
+      Enter:()=>Boolean(projectExplorer?.active && this.editor.state.selection.empty && this.editor.state.selection.$from.parentOffset===this.editor.state.selection.$from.parent.content.size && exitProjectHeading(this.editor))||applyCodeFenceLanguage(this.editor)||exitEmptyListItem(this.editor),
       Tab:()=>{
         if(this.editor.isActive('table'))return false;
         if (this.editor.isActive('codeBlock')) {
           return this.editor.commands.insertContent(' '.repeat(indentWidthAt(this.editor.state.selection.$from)));
+        }
+        const { selection }=this.editor.state;
+        if (!selection.empty && !wholeBlockSelection(selection)) {
+          this.editor.view.dispatch(this.editor.state.tr.insertText('    '));
+          return true;
+        }
+        if (listItemDepthAt(selection.$from)) {
+          if (indentListItem(this.editor)) return true;
+          // A single-item list has no previous sibling to sink under. Fall back
+          // to plain text indentation instead of letting Tab move the focus
+          // out of the editor.
+          this.editor.view.dispatch(this.editor.state.tr.insertText('    '));
+          return true;
+        }
+        if (!selection.empty) {
+          if (setParagraphIndent(this.editor,true)) return true;
+          this.editor.view.dispatch(this.editor.state.tr.insertText('    '));
+          return true;
         }
         this.editor.view.dispatch(this.editor.state.tr.insertText('    '));
         return true;
       },
       'Shift-Tab':()=>{
         if(this.editor.isActive('table'))return false;
-        const { $from, empty }=this.editor.state.selection;
+        const { selection }=this.editor.state;
+        const { $from, empty }=selection;
+        if (this.editor.isActive('codeBlock')) {
+          if (empty && !$from.parent.type.spec.code) {
+            const spaces=/ {1,4}$/.exec($from.parent.textBetween(0,$from.parentOffset,'\0','\0'));
+            if (spaces) this.editor.view.dispatch(this.editor.state.tr.delete($from.pos-spaces[0].length,$from.pos));
+          } else outdentCurrentLine(this.editor);
+          return true;
+        }
+        if (!selection.empty && !wholeBlockSelection(selection)) {
+          this.editor.view.dispatch(this.editor.state.tr.deleteSelection());
+          return true;
+        }
+        if (listItemDepthAt($from)) {
+          // At the outermost level there is nothing left to lift; keep the
+          // focus in the editor instead of falling through to the browser.
+          this.editor.chain().focus().liftListItem('listItem').run();
+          return true;
+        }
+        if (!selection.empty) return setParagraphIndent(this.editor,false);
         if (empty && !$from.parent.type.spec.code) {
           const spaces=/ {1,4}$/.exec($from.parent.textBetween(0,$from.parentOffset,'\0','\0'));
           if (spaces) this.editor.view.dispatch(this.editor.state.tr.delete($from.pos-spaces[0].length,$from.pos));
@@ -475,9 +673,53 @@ paper.before(documentPage);documentPage.append(paper);
 paper.replaceChildren();
 editor=new Editor({
   element:paper,
-  extensions:[ConfigurableStarterKit.configure({heading:{levels:[1,2,3]},codeBlock:false}),LanguageCodeBlock,MultiSelection,PaperBehavior,TextStyle,TextCommand,Underline,Superscript,Subscript,SmallCaps,Boxed,Table.configure({resizable:true}),TableRow,TableCell,TableHeader,Raw,DocumentImage,TheoremBlock,DescriptionList,DescriptionItem,MathNode,MathBlock,MathGlue,Ref,Cite,Footnote,Label,TableOfContents,Shortcuts],
+  extensions:[AppendixStart,MatterStart,LayoutCommand,Lipsum,ProjectRegion,PageLayoutHistory,ConfigurableStarterKit.configure({heading:{levels:[1,2,3]},codeBlock:false}),LanguageCodeBlock,MultiSelection,PaperBehavior,TextStyle,TextCommand,Underline,Superscript,Subscript,SmallCaps,Boxed,Circled,PageBreak,MultiColumn,Table.configure({resizable:true}),TableRow,TableCell,TableHeader,Raw,DocumentImage,TheoremBlock,DescriptionList,DescriptionItem,MathNode,MathBlock,MathGlue,Ref,Cite,Footnote,Label,Subfigures,TableOfContents,Shortcuts],
   content:'<p></p>',
 });
+function installMarginSelection(editor,page,paper) {
+  let drag=null;
+  const blockAt=(clientY)=>{
+    const paperRect=paper.getBoundingClientRect();
+    const hit=editor.view.posAtCoords({left:paperRect.left+2,top:clientY});
+    if (!hit) return null;
+    const $pos=editor.state.doc.resolve(Math.max(0,Math.min(hit.pos,editor.state.doc.content.size)));
+    let depth=$pos.depth;
+    while(depth>0 && !$pos.node(depth).isTextblock) depth--;
+    if (!depth) return null;
+    return {from:$pos.before(depth)+1,to:$pos.after(depth)-1};
+  };
+  const extend=(clientY)=>{
+    if (!drag) return;
+    const block=blockAt(clientY);
+    if (!block) return;
+    const doc=editor.state.doc;
+    const from=Math.min(drag.from,block.from), to=Math.max(drag.to,block.to);
+    editor.view.dispatch(editor.state.tr
+      .setSelection(TextSelection.between(doc.resolve(from),doc.resolve(to)))
+      .scrollIntoView());
+  };
+  page.addEventListener('mousedown',event=>{
+    if (event.button!==0 || event.isComposing) return;
+    const paperRect=paper.getBoundingClientRect();
+    const pageRect=page.getBoundingClientRect();
+    if (event.clientX>=paperRect.left || event.clientX<pageRect.left) return;
+    const block=blockAt(event.clientY);
+    if (!block) return;
+    event.preventDefault();
+    drag={...block};
+    editor.view.focus();
+    extend(event.clientY);
+    const move=pointer=>{ if(pointer.buttons)extend(pointer.clientY); };
+    const finish=()=>{
+      document.removeEventListener('mousemove',move,true);
+      document.removeEventListener('mouseup',finish,true);
+      drag=null;
+    };
+    document.addEventListener('mousemove',move,true);
+    document.addEventListener('mouseup',finish,true);
+  });
+}
+installMarginSelection(editor,documentPage,paper);
 function syncTableAttributes() {
   editor.state.doc.descendants((node, position) => {
     if (node.type.name !== 'table') return;
@@ -489,7 +731,38 @@ function syncTableAttributes() {
     if (node.attrs.booktabs) table.dataset.booktabs = 'true';
     else delete table.dataset.booktabs;
     table.dataset.borderMode=node.attrs.borderMode??'';
-    table.style.setProperty('--table-rule-width',node.attrs.borderWidth??'1px');
+    if(node.attrs.leftRule)table.dataset.leftRule='true';
+    else delete table.dataset.leftRule;
+    if(node.attrs.rightRule)table.dataset.rightRule='true';
+    else delete table.dataset.rightRule;
+    if(node.attrs.middleVerticalRule)table.dataset.middleVerticalRule='true';
+    else delete table.dataset.middleVerticalRule;
+    table.dataset.verticalFirstRow=node.attrs.verticalFirstRow===false?'false':'true';
+    if(node.attrs.topRule)table.dataset.topRule='true';
+    else delete table.dataset.topRule;
+    if(node.attrs.bottomRule)table.dataset.bottomRule='true';
+    else delete table.dataset.bottomRule;
+    if(node.attrs.midRuleMode&&node.attrs.midRuleMode!=='none')table.dataset.midRuleMode=node.attrs.midRuleMode;
+    else delete table.dataset.midRuleMode;
+    table.dataset.ruleStyle=node.attrs.ruleStyle??'solid';
+    table.dataset.arrayStretch=String(node.attrs.arrayStretch??1);
+    table.dataset.tableScale=String(node.attrs.tableScale??1);
+    table.dataset.tableFontSize=node.attrs.fontSize??'';
+    if(node.attrs.captionEnabled)table.dataset.captionEnabled='true';
+    else delete table.dataset.captionEnabled;
+    table.style.setProperty('--table-line-width',node.attrs.ruleWidth??node.attrs.borderWidth??'0.4pt');
+    table.style.setProperty('--table-array-stretch',String(node.attrs.arrayStretch??1));
+    const fontSizes={small:'0.9em',footnotesize:'0.8em',scriptsize:'0.7em'};
+    table.style.setProperty('--table-font-size',fontSizes[node.attrs.fontSize]??node.attrs.fontSize??'inherit');
+    table.style.setProperty('--table-scale',String(node.attrs.tableScale??1));
+    if(node.attrs.columnLayout)table.dataset.columnLayout=node.attrs.columnLayout;
+    else delete table.dataset.columnLayout;
+    if(node.attrs.columnRules)table.dataset.columnRules='true';
+    else delete table.dataset.columnRules;
+    if(node.attrs.align)table.dataset.tableAlign=node.attrs.align;
+    else delete table.dataset.tableAlign;
+    table.style.setProperty('--table-rule-width',node.attrs.borderWidth??'0.4pt');
+    table.style.setProperty('--arrayrulewidth',node.attrs.borderWidth??'0.4pt');
   });
 }
 editor.on('update',()=>{refreshReferences(paper);syncTableAttributes();});
@@ -497,27 +770,37 @@ syncTableAttributes();
 installTableHoverAddRow(editor, paper);
 installImageDrop(editor,paper);
 const documentFind = installDocumentFind(editor);
+const documentOutline = installDocumentOutline(editor);
 const tools=document.querySelector('#insert');
 tools.replaceChildren();
 function button(label, action) {
   const control=document.createElement('button');
-  control.type='button'; control.textContent=label;
+  control.type='button'; control.textContent=label; control.dataset.sourceAction=label;
   control.addEventListener('mousedown',event=>event.preventDefault());
   control.addEventListener('click',action);
   tools.append(control);
   return control;
 }
-button('↶',()=>editor.chain().focus().undo().run());
-button('↷',()=>editor.chain().focus().redo().run());
+const undoButton=button('↶',undoDocument);
+const redoButton=button('↷',redoDocument);
 const boldButton=button('B',()=>editor.chain().focus().toggleBold().run());
 const italicButton=button('I',()=>editor.chain().focus().toggleItalic().run());
 const underlineButton=button('U',()=>editor.chain().focus().toggleMark('underline').run());
+function syncUndoButtons(){
+  try{
+    const source=!sourceView.hidden;
+    undoButton.disabled=!(source?sourceModeCommits.length||sourceView.canUndo?.():editor.can().undo());
+    redoButton.disabled=!(source?sourceModeRedos.length||sourceView.canRedo?.():editor.can().redo());
+  }catch{}
+}
 editor.on('transaction',()=>{
   for(const [button,mark] of [[boldButton,'bold'],[italicButton,'italic'],[underlineButton,'underline']]) {
     button.setAttribute('aria-pressed',String(editor.isActive(mark)));
   }
+  syncUndoButtons();
 });
-installFormatControls(editor, tools);
+let editingMath = null;
+installFormatControls(editor, tools, {isUnavailable:()=>Boolean(activeMath())});
 const headingMenu = document.createElement('select');
 headingMenu.setAttribute('aria-label', t('段落样式','Paragraph style'));
 const textStyleOption = new Option(t('正文','Text'), '0');
@@ -526,19 +809,18 @@ headingMenu.append(textStyleOption);
 for (const [value, label] of [['1','section'],['2','subsection'],['3','subsubsection']]) headingMenu.append(new Option(label, value));
 headingMenu.addEventListener('change', () => {
   const level = Number(headingMenu.value);
-  if (level) editor.chain().focus().setHeading({ level }).run();
+  if (level) editor.chain().focus().setHeading({ level, command:null }).run();
   else editor.chain().focus().setParagraph().run();
 });
 editor.on('transaction', () => { headingMenu.value = String(editor.getAttributes('heading').level ?? 0); });
-tools.append(headingMenu);
+// 旧工具栏不再挂载 headingMenu（样式下拉已从主页-样式移除）。
 button('itemize',()=>editor.chain().focus().toggleBulletList().run());
 button('enumerate',()=>editor.chain().focus().toggleOrderedList().run());
-button('▦',()=>editor.chain().focus().insertTable({rows:2,cols:2,withHeaderRow:false}).run());
-let editingMath = null;
+button('▦',()=>insertDefaultTable());
 document.addEventListener('focusin', event => {
   if (event.target.closest?.('.delimiter-input-embedded')) return;
   const field=event.composedPath().find(element=>element?.tagName==='MATH-FIELD');
-  if(field || paper.contains(event.target) || event.target.classList?.contains('source-view')) {
+  if(field || paper.contains(event.target) || event.target.closest?.('.tex-workspace')) {
     if(editingMath && editingMath!==field) editingMath.dispatchEvent(new Event('lineae-commit-fences'));
     editingMath=field ?? null;
   }
@@ -663,13 +945,218 @@ button('＋ Row',addMatrixRow);
 button('＋ Column',addMatrixColumn);
 button('$',()=>insertMath());
 button('$$',()=>insertMath(true)).dataset.shortcut='editor.insertDisplayMath';
-const sourceView=document.createElement('textarea');
-sourceView.className='source-view'; sourceView.hidden=true;
-documentPage.after(sourceView);
-let documentParts=parseDocument('\\documentclass{article}\n\\usepackage{amsmath}\n\\begin{document}\n\\end{document}\n');
+const projectDocument=new ProjectDocumentSession();
+let projection, syncApplying = false, syncPending = false, sourceToolbar, projectExplorer, projectFileKind, projectPresentation;
+const sourceView = createSourceWorkspace({
+  page: documentPage,
+  getPreferences:()=>config.value,
+  onSourceFontChange:value=>{if(config.value.interface.sourceFontSize!==value)config.updateInterface({sourceFontSize:value});},
+  render: text => {
+    if (projectFileKind === 'bib') return;
+    if (editor.view.composing) return false;
+    const selection = editor.state.selection;
+    syncApplying = true;
+    try {
+      load(text, false);
+      const max = editor.state.doc.content.size;
+      editor.view.dispatch(editor.state.tr.setSelection(TextSelection.between(
+        editor.state.doc.resolve(Math.min(selection.anchor,max)), editor.state.doc.resolve(Math.min(selection.head,max)))));
+      projection = sourceProjection(text,editor.getJSON(), {fragment:projectFileKind === 'tex'});
+      syncPending = false;
+    } finally { syncApplying = false; }
+  },
+  onPreviewZoom: value => setZoom(value),
+  onChange: () => { syncPending = true; projectExplorer?.changed(); },
+  onLayout: () => updateSourceButton(),
+  metadata: () => ({name: filename, saved: savedSource}),
+});
+let sourceModeEntry,sourceModeCommits=[],sourceModeRedos=[];
+function checkpointLayoutMatches(checkpoint,expected){
+  if(!checkpoint.owner||checkpoint.owner===projectExplorer?.model?.activeFileId)return true;
+  const current=projectExplorer.model.file(checkpoint.owner).draft;
+  return JSON.stringify(readPageSetup(parseDocument(current,{fragment:true})?.start??''))===JSON.stringify(readPageSetup(parseDocument(expected,{fragment:true})?.start??''));
+}
+function restoreSourceCheckpoint(text,owner,expected) {
+  if(owner&&projectExplorer?.active&&owner!==projectExplorer.model.activeFileId){
+    const current=projectExplorer.model.file(owner).draft;
+    const next=current===expected?text:writePageSetup(current,readPageSetup(parseDocument(text,{fragment:true})?.start??''));
+    projectExplorer.model.edit(owner,next);applyPageSetup();projectExplorer.changed();if(sourceView.hidden)editor.view.focus();return;
+  }
+  const selection=editor.state.selection;
+  if(projectExplorer?.active)projectExplorer.model.edit(projectExplorer.model.activeFileId,text);
+  load(text,false);sourceView.reset(text);
+  const max=editor.state.doc.content.size;
+  editor.view.dispatch(editor.state.tr.setSelection(TextSelection.between(
+    editor.state.doc.resolve(Math.min(selection.anchor,max)),editor.state.doc.resolve(Math.min(selection.head,max)))));
+  showProjectComposition();
+  editor.commands.focus();
+}
+function undoDocument() {
+  const checkpoint=sourceModeCommits.at(-1);
+  if(!sourceView.hidden&&!(checkpoint?.owner&&checkpoint.sourceText===sourceView.value)){sourceView.undo();sourceView.flush();return true;}
+  if(checkpoint && editor.state.doc===checkpoint.afterDoc && documentParts.start===checkpoint.afterPreamble&&checkpointLayoutMatches(checkpoint,checkpoint.after)){
+    sourceModeCommits.pop();sourceModeRedos.push(checkpoint);restoreSourceCheckpoint(checkpoint.before,checkpoint.owner,checkpoint.after);
+  syncUndoButtons();
+    checkpoint.beforeDoc=editor.state.doc;checkpoint.beforePreamble=documentParts.start;return true;
+  }
+  if(!sourceView.hidden){sourceView.undo();sourceView.flush();syncUndoButtons();return true;}
+  const done=editor.commands.undo();syncUndoButtons();return done;
+}
+function redoDocument() {
+  const checkpoint=sourceModeRedos.at(-1);
+  if(!sourceView.hidden&&!(checkpoint?.owner&&checkpoint.sourceText===sourceView.value)){sourceView.redo();sourceView.flush();return true;}
+  if(checkpoint && editor.state.doc===checkpoint.beforeDoc && documentParts.start===checkpoint.beforePreamble&&checkpointLayoutMatches(checkpoint,checkpoint.before)){
+    sourceModeRedos.pop();sourceModeCommits.push(checkpoint);restoreSourceCheckpoint(checkpoint.after,checkpoint.owner,checkpoint.before);
+  syncUndoButtons();
+    checkpoint.afterDoc=editor.state.doc;checkpoint.afterPreamble=documentParts.start;return true;
+  }
+  if(!sourceView.hidden){sourceView.redo();sourceView.flush();syncUndoButtons();return true;}
+  const done=editor.commands.redo();syncUndoButtons();return done;
+}
+paper.addEventListener('focusin', () => { if (!sourceView.hidden && syncPending) sourceView.flush(); syncUndoButtons(); });
+editor.registerPlugin(new Plugin({
+  props: {handleKeyDown(view,event) {
+    if (sourceView.hidden || event.isComposing || !(event.ctrlKey || event.metaKey) || event.altKey) return false;
+    if (event.key.toLowerCase() === 'z' || event.key.toLowerCase() === 'y') {
+      event.preventDefault();
+      if (event.key.toLowerCase() === 'y' || event.shiftKey) sourceView.redo(); else sourceView.undo();
+      sourceView.flush(); return true;
+    }
+    return false;
+  }},
+  filterTransaction(transaction) {
+    if (!transaction.docChanged || syncApplying) return true;
+    if(projectDocument.composition){
+      const valid=projectDocument.changes(transaction.doc.toJSON());
+      if(!valid)sourceView.error(t('请在对应文件的源码中修改此结构','Edit this structure in its source file'));
+      return !!valid;
+    }
+    if(sourceView.hidden && !(projectExplorer?.active && projectFileKind==='tex'))return true;
+    const changes = !syncPending && richSourceChanges(projection,transaction.doc.toJSON());
+    if (!changes) {
+      sourceView.error(t('该修改无法无损回写，请在源码中编辑；原文已保留。','This edit cannot round-trip safely. Edit the source; original text is preserved.'));
+      return false;
+    }
+    return true;
+  },
+}));
+editor.on('update', () => {
+  if (syncApplying) return;
+  if(projectDocument.composition){
+    const updates=projectDocument.changes(editor.getJSON());
+    if(updates){
+      const rootId=projectDocument.composition.rootId;
+      const original=projectDocument.composition.sources.get(rootId);
+      const oldPreamble=parseDocument(original,{fragment:true})?.start??'';
+      const storedLayout=editor.state.doc.attrs.layoutPreamble;
+  const preamble=typeof storedLayout==='string' && JSON.stringify(readPageSetup(storedLayout))!==JSON.stringify(readPageSetup(documentParts.start)) ? writePageSetup(documentParts.start,readPageSetup(storedLayout)) : documentParts.start;
+      if(typeof preamble==='string' && preamble!==oldPreamble){
+        updates.set(rootId,preamble+updates.get(rootId).slice(oldPreamble.length));
+      }
+      if(typeof preamble==='string' && preamble!==documentParts.start){
+        documentParts.start=preamble;pageSetup=readPageSetup(preamble);applyPageSetup();
+      }
+      for(const [id,text] of updates)projectExplorer.model.edit(id,text);
+      const text=updates.get(projectDocument.composition.rootId);
+      if(text!==undefined)sourceView.reset(text);
+      projectExplorer.changed();
+    }
+    return;
+  }
+  const storedLayout=editor.state.doc.attrs.layoutPreamble;
+  const preamble=typeof storedLayout==='string' && JSON.stringify(readPageSetup(storedLayout))!==JSON.stringify(readPageSetup(documentParts.start)) ? writePageSetup(documentParts.start,readPageSetup(storedLayout)) : documentParts.start;
+  if (typeof preamble==='string' && preamble!==documentParts.start) {
+    const previous=documentParts.start;
+    documentParts.start=preamble;
+    if(importedSource?.startsWith(previous))importedSource=preamble+importedSource.slice(previous.length);
+    if(projectExplorer?.active){
+      const old=sourceView.value;
+      if(old.startsWith(previous))sourceView.applyChanges([{from:0,to:previous.length,insert:preamble}]);
+    }
+    pageSetup=readPageSetup(preamble);applyPageSetup();projectExplorer?.changed();
+  }
+  if(sourceView.hidden && !(projectExplorer?.active && projectFileKind==='tex'))return;
+  const changes = richSourceChanges(projection,editor.getJSON());
+  if (!changes?.length) return;
+  sourceView.applyChanges(changes);
+  importedSource = sourceView.value;
+  importedSnapshot = JSON.stringify(editor.getJSON());
+  documentParts = parseDocument(importedSource,{fragment:projectFileKind==='tex'});
+  projection = sourceProjection(importedSource,editor.getJSON(), {fragment:projectFileKind === 'tex'});
+  projectExplorer?.changed();
+  sourceView.error('');
+});
+let documentParts=parseDocument(DEFAULT_DOCUMENT_SOURCE);
 let pageSetup=readPageSetup(documentParts.start);
-let pagePaper,pageOrientation,pageMarginPreset,pageMarginTop,pageMarginRight,pageMarginBottom,pageMarginLeft;
+let typesetPagination;
+let headerFooterPanel;
+let imagePanel;
+let imageSelection = null;
+let pagePaper,pageOrientation,pageMarginPreset,pageMarginTop,pageMarginRight,pageMarginBottom,pageMarginLeft,layoutColumns,layoutLocalColumns;
+function applyFurnitureState(state){
+  const before=documentParts.start;
+  const after=writePageFurniture(before,state);
+  if(after===before)return;
+  if(!sourceView.hidden){
+    const current=sourceView.value;
+    const preamble=parseDocument(current,{fragment:true})?.start??'';
+    sourceView.applyChanges([{from:0,to:preamble.length,insert:after}]);
+    sourceView.flush();
+  }
+  documentParts.start=after;
+  if(importedSource?.startsWith(before))importedSource=after+importedSource.slice(before.length);
+  if(JSON.stringify(editor.state.doc.attrs.pageFurniture)!==JSON.stringify(state)){
+    editor.view.dispatch(closeHistory(editor.state.tr).setDocAttribute('pageFurniture',state));
+  }
+  if(projection)projection=sourceProjection(importedSource??source(),editor.getJSON(),{fragment:projectFileKind==='tex'});
+  pageSetup=readPageSetup(documentParts.start);
+  applyPageSetup();
+  projectExplorer?.changed();
+}
+function updateImageSpacing(spacing){
+  const before=documentParts.start;
+  const after=writeImageSpacing(before,spacing);
+  if(after===before)return;
+  if(!sourceView.hidden){
+    const current=sourceView.value;
+    const preamble=parseDocument(current,{fragment:true})?.start??'';
+    sourceView.applyChanges([{from:0,to:preamble.length,insert:after}]);
+    sourceView.flush();
+  }
+  documentParts.start=after;
+  if(importedSource?.startsWith(before))importedSource=after+importedSource.slice(before.length);
+  applyPageSetup();
+  projectExplorer?.changed();
+}
+function updateGlobalColumns(count){
+  const before=documentParts.start;
+  const after=writeGlobalColumns(before,count);
+  if(after===before)return;
+  if(!sourceView.hidden){
+    const current=sourceView.value;
+    const preamble=parseDocument(current,{fragment:true})?.start??'';
+    sourceView.applyChanges([{from:0,to:preamble.length,insert:after}]);
+    sourceView.flush();
+  }
+  documentParts.start=after;
+  if(importedSource?.startsWith(before))importedSource=after+importedSource.slice(before.length);
+  applyPageSetup();
+}
 function applyPageSetup(){
+  const layoutPreamble=projectFileKind==='tex'?projectLayoutPreamble(projectExplorer?.model,documentParts.start):documentParts.start;
+  if(layoutPreamble!==documentParts.start)pageSetup=readPageSetup(layoutPreamble);
+  documentPage.dataset.indentFirst=String(new RegExp("\\\\usepackage(?:\\[[^\\]]*\\])?\\{[^}]*\\bindentfirst\\b[^}]*\\}").test(layoutPreamble));
+  const imageSpacing=readImageSpacing(layoutPreamble);
+  const spacingCss=value=>String(value??'').match(/-?\d+(?:\.\d+)?(?:pt|mm|cm|in)/)?.[0]??'0pt';
+  documentPage.style.setProperty('--image-textfloatsep',spacingCss(imageSpacing.textfloatsep));
+  documentPage.style.setProperty('--image-intextsep',spacingCss(imageSpacing.intextsep));
+  documentPage.style.setProperty('--image-floatsep',spacingCss(imageSpacing.floatsep));
+  documentPage.style.setProperty('--image-columnsep',spacingCss(imageSpacing.columnsep));
+  imagePanel?.setSpacing?.(imageSpacing);
+  const globalColumns=readGlobalColumns(layoutPreamble);
+  documentPage.dataset.globalColumns=String(globalColumns);
+  documentPage.dataset.captionLanguage=/\\usepackage(?:\[[^\]]*\])?\{ctex\}/.test(layoutPreamble)?'zh':'en';
+  // if(layoutColumns)layoutColumns.value=String(globalColumns);
   const metrics=pageMetrics(pageSetup);
   documentPage.style.setProperty('--page-width',metrics.width);
   documentPage.style.setProperty('--page-height',metrics.height);
@@ -677,6 +1164,9 @@ function applyPageSetup(){
   documentPage.style.setProperty('--page-margin-right',metrics.margins.right);
   documentPage.style.setProperty('--page-margin-bottom',metrics.margins.bottom);
   documentPage.style.setProperty('--page-margin-left',metrics.margins.left);
+  typesetPagination?.update(layoutPreamble);
+  typesetPagination?.setMaketitle(/\\maketitle\b/.test((documentParts.blocks??[]).join('\n')));
+  if(headerFooterPanel && !headerFooterPanel.active)headerFooterPanel.refresh();
   if(pagePaper){
     pagePaper.value=pageSetup.paper;
     pageOrientation.value=pageSetup.orientation;
@@ -688,13 +1178,19 @@ function applyPageSetup(){
   }
 }
 function updatePageSetup(patch){
-  if(patch.margins)pageSetup={...pageSetup,...patch,margins:{...pageSetup.margins,...patch.margins}};
-  else if(patch.margin)pageSetup={...pageSetup,...patch,margins:{top:patch.margin,right:patch.margin,bottom:patch.margin,left:patch.margin}};
-  else pageSetup={...pageSetup,...patch};
-  const sides=Object.values(pageSetup.margins);
-  pageSetup.margin=sides.every(value=>value===sides[0])?sides[0]:'custom';
-  documentParts.start=writePageSetup(documentParts.start,pageSetup);
-  if(importedSource)importedSource=writePageSetup(importedSource,pageSetup);
+  const project=projectExplorer?.model;
+  if(projectFileKind==='tex'&&project&&project.activeFileId!==project.mainFileId){
+    if(sourceView.composing||editor.view.composing)return;
+    if(!sourceView.hidden)sourceView.flush();
+    const owner=project.mainFileId,before=project.file(owner).draft;
+    const preamble=parseDocument(before,{fragment:true})?.start;
+    if(!preamble)return;
+    const after=writePageSetup(before,mergePageLayout(readPageSetup(preamble),patch));
+    if(after!==before){project.edit(owner,after);sourceModeCommits.push({owner,before,after,afterDoc:editor.state.doc,afterPreamble:documentParts.start,sourceText:sourceView.value});
+syncUndoButtons();sourceModeRedos=[];}
+    applyPageSetup();projectExplorer.changed();return;
+  }
+  pageSetup=changePageLayout({editor,sourceView,current:pageSetup,preamble:documentParts.start,patch});
   applyPageSetup();
 }
 let filename='lineae.tex';
@@ -716,6 +1212,12 @@ function writeMeta(key,value) {
   if(importedSource)importedSource=apply(importedSource);
   renderMeta();
 }
+function persistCitationState() {
+  const paths = projectDependencies(source()).filter(path => path.endsWith('.bib'));
+  const metadata = writeBibliographyMetadata(documentParts.start, citationLibrary.exportState({ paths }));
+  documentParts.start = metadata;
+  if (importedSource) importedSource = writeBibliographyMetadata(importedSource, citationLibrary.exportState({ paths }));
+}
 const metaBar=document.createElement('section');metaBar.id='document-meta';
 const metaTitle=document.createElement('div');metaTitle.className='doc-title';
 const metaAuthor=document.createElement('div');metaAuthor.className='doc-author';
@@ -733,44 +1235,19 @@ editMeta(metaTitle,'title');editMeta(metaAuthor,'author');
 function renderMeta() {
   metaTitle.textContent=readMeta('title');
   metaAuthor.textContent=readMeta('author');
-  metaTitle.dataset.placeholder=t('标题','Title');
-  metaAuthor.dataset.placeholder=t('作者','Author');
+  metaTitle.dataset.zhPlaceholder='标题';metaTitle.dataset.enPlaceholder='Title';metaTitle.dataset.placeholder=t('标题','Title');
+  metaAuthor.dataset.zhPlaceholder='作者';metaAuthor.dataset.enPlaceholder='Author';metaAuthor.dataset.placeholder=t('作者','Author');
 }
 renderMeta();
-function recordFormulaLineBreaks(document) {
-  if (documentPage.hidden) return false;
-  let changed=false;
-  editor.state.doc.forEach((paragraph,position,index)=>{
-    if (paragraph.type.name!=='paragraph') return;
-    paragraph.forEach((node,offset,childIndex)=>{
-      if (node.type.name!=='math') return;
-      const start=position+1+offset;
-      const startsLine=childIndex===0||paragraph.child(childIndex-1).type.name==='hardBreak';
-      let breakBefore=false;
-      if (!startsLine) {
-        const formula=editor.view.nodeDOM(start)?.getBoundingClientRect();
-        if (formula?.width) {
-          const preceding=editor.view.coordsAtPos(start-1,1);
-          // The browser wraps an inline-block that does not fit the remaining
-          // space. TeX does not, so record the same break as \newline.
-          breakBefore=formula.left<=preceding.left+.5;
-        }
-      }
-      if (Boolean(node.attrs.breakBefore)!==breakBefore) {
-        const target=document.content[index].content[childIndex];
-        target.attrs={...target.attrs,breakBefore:breakBefore||null};
-        changed=true;
-      }
-    });
-  });
-  return changed;
-}
+typesetPagination=installTypesetPagination(documentPage,paper,metaBar,editor);
+typesetPagination.setTableContinuation(config.value.interface.continuedTables);
 function source() {
+  if(projectDocument.composition)return projectExplorer.model.file(projectDocument.composition.rootId).draft;
   const document=editor.getJSON();
   const untouched=importedSnapshot===JSON.stringify(document);
   const bareMath=document.content.some(node=>node.type==='mathBlock' && !node.attrs.delimiter &&
     /^\\begin\{(?:[dr]?cases|drcases|aligned|alignedat|gathered|split|[pbBvV]?(?:small)?matrix|array|darray|subarray|multlined)\}/.test(node.attrs.latex));
-  if (!recordFormulaLineBreaks(document) && untouched && !bareMath && (!readMeta('title') || hasTitleCommand(importedSource))) return importedSource;
+  if (untouched && !bareMath && (!readMeta('title') || hasTitleCommand(importedSource))) return importedSource;
   return exportDocument(documentParts,serialize(document),{chineseTypesetting:true});
 }
 savedSource=source();
@@ -783,33 +1260,92 @@ function identifyImportedBoxes(node) {
   }
 }
 function load(text, markSaved = true) {
-  const parsed=parseDocument(text);
+  projectDocument.composition=null;
+  const wasApplying = syncApplying; syncApplying = true;
+  try {
+  const parsed=parseDocument(text, {fragment:projectFileKind === 'tex'});
   if(!parsed)throw new Error(t('无法识别文档','Invalid document'));
+  if (markSaved) {clearProjectAssets();sourceModeEntry=undefined;sourceModeCommits=[];sourceModeRedos=[];}
+  citationLibrary.restoreState(readBibliographyMetadata(text));
+  // The book/report heading mapping must be active before blocks are imported;
+  // applyProfile() runs later, during pagination, which is too late for the
+  // initial \chapter -> heading conversion.
+  const documentClass = (/\\documentclass(?:\[[^\]]*\])?\{([^}]+)\}/.exec(parsed.start)?.[1] || 'article').toLowerCase();
+  setSerializationClass(documentClass);
+  setHeadingBase(documentClass === 'book' || documentClass === 'report' ? 'chapter' : null);
   // Preserve imported source exactly. Unsupported blocks remain directly accessible in source mode.
   documentParts=parsed;
   const content=parsed.blocks.flatMap((block,index)=>importBlocks(index===0 && readMeta('title')
-    ? block.replace(/^\s*\\maketitle\b[ \t]*(?:\r?\n|$)/,'') : block));
+    ? block.replace(/^\s*\\maketitle\b[ \t]*(?:\r?\n|$)/gm,'') : block));
   for (const block of content) identifyImportedBoxes(block);
-  editor.commands.setContent({type:'doc',content:content.length?content:[{type:'paragraph'}]});
+  editor.chain().setMeta('addToHistory', false).setContent({type:'doc',attrs:{layoutPreamble:parsed.start,pageFurniture:readPageFurniture(parsed.start)},content:content.length?content:[{type:'paragraph'}]}).command(({tr})=>{tr.setDocAttribute('layoutPreamble',parsed.start);tr.setDocAttribute('pageFurniture',readPageFurniture(parsed.start));return true;}).run();
   refreshReferences(paper);syncTableAttributes();
   importedSource=text;importedSnapshot=JSON.stringify(editor.getJSON());
   if(markSaved) savedSource=text;
-  if(!sourceView.hidden) sourceView.value=text;
+  if (markSaved) sourceView.reset(text);
+  projection=sourceProjection(text,editor.getJSON(),{fragment:projectFileKind==='tex'});
+  syncPending=false;
   renderMeta();
   pageSetup=readPageSetup(documentParts.start);
   applyPageSetup();
+  } finally { syncApplying = wasApplying; }
 }
-function toggleSourceView(){
-  if(sourceView.hidden) {
-    sourceView.value=source(); sourceView.hidden=false; documentPage.hidden=true;
+let returnedDraft;
+function setSourceMode(active) {
+  if (!active && projectFileKind==='bib') {sourceView.error(t('BibTeX 文件只能使用源码模式','BibTeX files use Source mode'));return;}
+  if (editor.view.composing || sourceView.composing) { sourceView.error(t("请先完成当前输入。","Finish the current composition before switching modes.")); return; }
+  if (active === !sourceView.hidden) return;
+  if(active && headerFooterMode)setHeaderFooterMode(false);
+  if(projectExplorer?.active)projectWorkspace.select(active?'source':'body',projectFileKind);
+  if (active) {
+    if(projectDocument.composition){
+      const text=source();projectDocument.composition=null;load(text,false);
+    }
+    const unchanged = returnedDraft?.doc === editor.state.doc && returnedDraft?.imported === importedSource && returnedDraft?.preamble === documentParts.start;
+    sourceModeEntry=unchanged ? returnedDraft.text : source();
+    sourceView.open(sourceModeEntry);
+    sourceToolbar?.sourceTarget();
   } else {
-    try {load(sourceView.value,false);sourceView.hidden=true;documentPage.hidden=false;editor.commands.focus();}
-    catch(error){document.querySelector('#status').hidden=false;document.querySelector('#status').textContent=error.message;}
+    try {
+      const text = sourceView.value;
+      if (text !== importedSource || importedSnapshot !== JSON.stringify(editor.getJSON())) load(text, false);
+      projection=sourceProjection(text,editor.getJSON(),{fragment:projectFileKind==='tex'});syncPending=false;
+      if(sourceModeEntry!==undefined && sourceModeEntry!==text){
+        sourceModeCommits.push({before:sourceModeEntry,after:text,afterDoc:editor.state.doc,afterPreamble:documentParts.start});sourceModeRedos=[];
+syncUndoButtons();
+      }
+      sourceModeEntry=undefined;
+      returnedDraft = {doc: editor.state.doc, imported: importedSource, preamble: documentParts.start, text};
+      sourceView.close();
+      showProjectComposition();
+      editor.commands.focus();
+      requestAnimationFrame(() => requestAnimationFrame(() => typesetPagination?.refresh()));
+      setTimeout(() => typesetPagination?.refresh(),120);
+    } catch (error) {
+      sourceView.error(error.message);
+      return;
+    }
   }
   updateSourceButton();
+  updateEnvironment();
+  syncImageTab?.();
+}
+function locateMissingCitation(missing) {
+  setSourceMode(true);
+  sourceView.select(missing.start, missing.start + missing.key.length);
 }
 document.querySelector('#download').disabled=false;
-async function downloadProject() {
+function confirmMathPlaceholders() {
+  const text=sourceView.hidden?null:sourceView.value;
+  let count=text?(text.match(/\\placeholder\{/g)?.length??0):0;
+  if(text===null)editor.state.doc.descendants(node=>{
+    if(['math','mathBlock'].includes(node.type.name))count+=(node.attrs.latex?.match(/\\placeholder\{/g)?.length??0);
+  });
+  return !count || confirm(t(`仍有 ${count} 个公式占位符未填写；保存后这些位置将留空。是否继续？`,
+    `${count} formula placeholders are unfinished and will be empty after saving. Continue?`));
+}
+async function downloadProject(checkPlaceholders=true) {
+  if(checkPlaceholders && !confirmMathPlaceholders())return;
   const text=sourceView.hidden?source():sourceView.value;
   const status=document.querySelector('#status');
   try {
@@ -838,7 +1374,33 @@ async function downloadProject() {
     status.hidden=false;status.textContent=error.message;
   }
 }
+function prepareExplicitSave() {
+  // Explicit Save/Save As only. ZIP export and ordinary updates remain byte-faithful.
+  // Do not interrupt an IME composition with a formatting transaction.
+  if (sourceView.composing || editor.view.composing) return false;
+  if (!confirmMathPlaceholders()) return false;
+  if(projectExplorer?.active&&projectFileKind==='tex'){
+    const current=sourceView.hidden?source():sourceView.value;
+    const next=projectInputSource(projectExplorer.model,projectExplorer.model.activeFileId,current);
+    if(next!==current)editIncludeSource(()=>next);
+  }
+  if (sourceView.indentOnSave && projectFileKind !== 'bib') {
+    const formatted = indentLatex(sourceView.hidden ? source() : sourceView.value);
+    if (formatted.changes.length) {
+      if (sourceView.hidden) {
+        // Mount the existing authoritative source editor to retain one undo history.
+        // Restore Rich Text mode after the same transaction used by Source/Split.
+        setSourceMode(true);
+        sourceView.indent(formatted.changes);
+        setSourceMode(false);
+      } else sourceView.indent(formatted.changes);
+    }
+  }
+  return true;
+}
 async function saveDocument(saveAs=false) {
+  if (projectExplorer?.active && !saveAs) return projectExplorer.save();
+  if (!prepareExplicitSave()) return;
   const text=sourceView.hidden?source():sourceView.value;
   if(window.showSaveFilePicker) {
     try {
@@ -851,6 +1413,7 @@ async function saveDocument(saveAs=false) {
       fileHandle=handle;
       if(handle.name)filename=handle.name;
       savedSource=text;
+      sourceView.refresh();
       const status=document.querySelector('#status');
       status.hidden=false;status.textContent=t('已保存','Saved');
       return;
@@ -859,9 +1422,10 @@ async function saveDocument(saveAs=false) {
       console.warn(t('保存','Save'),error);
     }
   }
-  await downloadProject();
+  await downloadProject(false);
 }
 async function openDocument() {
+  if (projectExplorer?.active && !projectExplorer.close()) return true;
   try {
     const [handle]=await window.showOpenFilePicker({types:[{description:'LaTeX',accept:{'text/plain':['.tex']}}],multiple:false});
     const file=await handle.getFile();
@@ -874,7 +1438,7 @@ async function openDocument() {
     return false;
   }
 }
-document.querySelector('#download').addEventListener('click',downloadProject);
+document.querySelector('#download').addEventListener('click',()=>projectExplorer?.active?projectExplorer.save():downloadProject());
 document.querySelector('.open').addEventListener('click',event=>{
   if(!window.showOpenFilePicker)return;
   event.preventDefault();
@@ -886,8 +1450,9 @@ window.addEventListener('beforeunload',event=>{
   event.returnValue='';
 });
 document.querySelector('#file').addEventListener('change',async event=>{
+  if (projectExplorer?.active && !projectExplorer.close()) return;
   const file=event.target.files[0];if(!file)return;
-  try {fileHandle=null;load(new TextDecoder('utf-8',{fatal:true,ignoreBOM:true}).decode(await file.arrayBuffer()));filename=file.name;}
+  try {fileHandle=null;load(new TextDecoder('utf-8',{fatal:true,ignoreBOM:true}).decode(await file.arrayBuffer()));filename=file.name;sourceView.refresh();}
   catch(error){const status=document.querySelector('#status');status.hidden=false;status.textContent=error.message;}
 });
 const commands = document.createElement('div');
@@ -939,16 +1504,18 @@ for (const name of mathSymbols) {
   if (/^[A-Za-z]+$/.test(name) && !(name in formulaCommands)) formulaCommands[name] = '\\' + name;
 }
 const structureCommands = {
-  indent: () => editor.chain().focus().updateAttributes('paragraph',{indent:true}).run(),
-  noindent: () => editor.chain().focus().updateAttributes('paragraph',{indent:false}).run(),
+  appendix:()=>editor.chain().focus().insertContent({type:'appendixStart'}).run(),
+  chapter:()=>editor.chain().focus().setHeading({level:1}).updateAttributes('heading',{command:'chapter'}).run(),
+  indent: () => { editor.view.focus(); return setParagraphIndent(editor,true); },
+  noindent: () => { editor.view.focus(); return setParagraphIndent(editor,false); },
   par: () => editor.chain().focus().splitBlock().run(),
   ...Object.fromEntries(Object.keys(theoremNames).map(kind=>[kind,()=>editor.chain().focus().wrapIn('theoremBlock',{kind}).run()])),
-  section: () => editor.chain().focus().setHeading({ level: 1 }).run(),
-  subsection: () => editor.chain().focus().setHeading({ level: 2 }).run(),
-  subsubsection: () => editor.chain().focus().setHeading({ level: 3 }).run(),
+  section: () => editor.chain().focus().setHeading({ level: 1, command:null }).run(),
+  subsection: () => editor.chain().focus().setHeading({ level: 2, command:null }).run(),
+  subsubsection: () => editor.chain().focus().setHeading({ level: 3, command:null }).run(),
   itemize: () => editor.chain().focus().toggleBulletList().run(),
   enumerate: () => editor.chain().focus().toggleOrderedList().run(),
-  table: () => editor.chain().focus().insertTable({ rows: 2, cols: 2, withHeaderRow: false }).run(),
+  table: () => insertDefaultTable(),
   inline: () => insertMath(),
   equation: insertEquation,
   'equation*': () => insertFormula(editor,true,'',undefined,undefined,{delimiter:'equation*'}),
@@ -1002,6 +1569,9 @@ const structureCommands = {
   textsc: () => editor.chain().focus().toggleMark('smallcaps').run(),
   fbox: () => spaceOverlay.toggleBox(),
   find: () => documentFind.show(),
+  input:()=>requestProjectInclude('input'),
+  include:()=>requestProjectInclude('include'),
+  ...applicationCommandActions(),
   importconfig: () => importConfig.click(),
   exportconfig: () => exportConfig.click(),
   textsuperscript: () => editor.chain().focus().toggleMark('superscript').run(),
@@ -1212,9 +1782,11 @@ function runMathShortcut(command, field, event) {
     case 'subscript': field.executeCommand('moveToSubscript'); return;
     case 'leaveEnvironment': field.dispatchEvent(new Event('lineae-leave-math-environment')); return;
     case 'leaveFormula': field.dispatchEvent(new Event('lineae-leave-formula')); return;
+    case 'leaveFile': if(projectPresentation?.canExitFile(field)){field.dispatchEvent(new Event('lineae-leave-formula'));return projectPresentation.exitFile();}return !!projectExplorer?.active;
     case 'addRow': if (!fillMatrixAxis(field,'row')) editTableAxis('row'); return;
     case 'addColumn': if (!fillMatrixAxis(field,'column')) editTableAxis('column'); return;
     case 'literalFence': armLiteralFence(field); return;
+    case 'toggleDisplayStyle': toggleDisplayStyle(field); return;
     case 'left': case 'right': chooseMathDelimiters(field,command==='right'); return;
   }
   const selected = field.selection.ranges.map(range => field.getValue(range)).join('');
@@ -1252,31 +1824,75 @@ themeButton.addEventListener('click',()=>{
   theme.set(next);updateThemeButton();
 });
 function updateThemeButton(){
-  const chinese=document.documentElement.lang.startsWith('zh');
   const label={light:['浅色','Light'],dark:['深色','Dark'],system:['跟随系统','System']}[theme.getPreference()];
-  const description=(chinese?'主题：':'Theme: ')+label[chinese?0:1];
+  const description=t('主题：','Theme: ')+t(label[0],label[1]);
   themeButton.setAttribute('aria-label',description);
-  themeButton.dataset.tooltipZh=description;
-  themeButton.dataset.tooltipEn=description;
+  themeButton.dataset.tooltipZh='主题：'+label[0];
+  themeButton.dataset.tooltipEn='Theme: '+label[1];
   themeButton.replaceChildren(icon({light:'sun',dark:'moon',system:'system'}[theme.getPreference()]));
 }
-const sourceButton=document.createElement('button');
-sourceButton.type='button';sourceButton.className='source-toggle';
-sourceButton.setAttribute('aria-label','LaTeX');
-sourceButton.addEventListener('mousedown',event=>event.preventDefault());
-sourceButton.addEventListener('click',toggleSourceView);
-function updateSourceButton(){
-  const chinese=document.documentElement.lang.startsWith('zh');
-  sourceButton.textContent=sourceView.hidden?(chinese?'源码':'Source'):(chinese?'富文本':'Rich text');
-  const description=sourceView.hidden
-    ? (chinese?'切换到 LaTeX 源码视图':'Switch to the LaTeX source view')
-    : (chinese?'返回富文本编辑':'Return to rich-text editing');
-  sourceButton.dataset.tooltipZh=description;
-  sourceButton.dataset.tooltipEn=description;
-  sourceButton.setAttribute('aria-pressed',String(!sourceView.hidden));
+const modes = document.createElement('div');
+modes.className = 'tex-modes';
+modes.setAttribute('role','group');
+const [bodyButton,sourceButton,splitButton] = ['body','source','split'].map(mode => {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.dataset.sourceMode = mode;
+  button.onclick = () => { if (projectFileKind === 'bib' && mode !== 'source') return; setSourceMode(mode !== 'body'); if (mode !== 'body') sourceView.setSplit(mode === 'split'); if(projectExplorer?.active)projectWorkspace.select(mode,projectFileKind); };
+  modes.append(button);
+  return button;
+});
+modes.addEventListener('keydown', event => {
+  if (!['ArrowLeft','ArrowRight','Home','End'].includes(event.key)) return;
+  event.preventDefault();
+  const buttons=[bodyButton,sourceButton,splitButton];
+  const index=buttons.indexOf(document.activeElement);
+  const next=event.key==='Home'?0:event.key==='End'?2:(index+(event.key==='ArrowRight'?1:2))%3;
+  buttons[next].click(); buttons[next].focus();
+});
+function updateSourceButton() {
+  if(sourceView.hidden)documentPage.inert=false;
+  for (const [key, group] of Object.entries(groups)) {
+    if (key !== 'files') group.inert = false;
+  }
+  modes.setAttribute('aria-label', t('编辑模式','Editing mode'));
+  bodyButton.textContent = t('正文','Document');
+  sourceButton.textContent = t('源码','Source');
+  bodyButton.setAttribute('aria-pressed',String(sourceView.hidden));
+  sourceButton.setAttribute('aria-pressed',String(!sourceView.hidden && !sourceView.split));
+  splitButton.textContent = t('分栏','Split');
+  splitButton.setAttribute('aria-pressed',String(!sourceView.hidden && sourceView.split));
+  sourceToolbar?.refresh();
+  metaBar.inert = !sourceView.hidden;
+  sourceView.refresh();
+}
+let continueTablesButton;
+function updateContinueTablesButton(){
+  if(!continueTablesButton)return;
+  const enabled=typesetPagination.getTableContinuation();
+  continueTablesButton.textContent=enabled?t('续表 开','Continue on'):t('续表 关','Continue off');
+  continueTablesButton.setAttribute('aria-pressed',String(enabled));
+  continueTablesButton.dataset.tooltipZh=enabled?'超过一页的表格自动拆分并重复表头':'表格不自动拆分';
+  continueTablesButton.dataset.tooltipEn=enabled?'Split long tables across pages and repeat the header':'Keep long tables as one block';
+}
+const paginationButton=document.createElement('button');
+paginationButton.type='button';paginationButton.className='pagination-toggle';
+paginationButton.addEventListener('mousedown',event=>event.preventDefault());
+paginationButton.addEventListener('click',()=>{
+  typesetPagination.toggle();
+  updatePaginationButton();
+});
+function updatePaginationButton(){
+  const pages=typesetPagination.getMode()==='pages';
+  paginationButton.textContent=pages?t('分页','Pages'):t('连续流','Continuous');
+  paginationButton.dataset.mode=pages?'pages':'flow';
+  paginationButton.setAttribute('aria-pressed',String(pages));
+  paginationButton.dataset.tooltipZh=pages?'切换到连续流预览':'切换到分页预览';
+  paginationButton.dataset.tooltipEn=pages?'Switch to continuous flow':'Switch to paginated pages';
 }
 function scale() {
   documentPage.style.zoom=Number(zoom.value)/100;
+  sourceView.setPreviewZoom(Number(zoom.value));
   percent.textContent=zoom.value+'%';
   requestAnimationFrame(()=>{
     const brand=document.querySelector('header h1');
@@ -1300,6 +1916,7 @@ function setZoom(value) {
 zoom.addEventListener('input', () => setZoom(Number(zoom.value)));
 zoom.addEventListener('change',saveZoom);
 function leaveTextEnvironment() {
+  if(projectExplorer?.active && exitProjectHeading(editor))return true;
   if (editor.isActive('codeBlock')) return exitCode(editor.state,editor.view.dispatch);
   if (editor.isActive('code')) return editor.commands.unsetCode();
   for (const mark of ['boxed','smallcaps','superscript','subscript','bold','italic','underline','strike']) {
@@ -1322,6 +1939,22 @@ function leaveTextEnvironment() {
     return true;
   }
   return false;
+}
+function leaveAllTextEnvironments() {
+  if (editor.isActive('codeBlock')) return exitCode(editor.state,editor.view.dispatch);
+  const { $from }=editor.state.selection;
+  let outerDepth=0;
+  for (let depth=1; depth<=$from.depth; depth++) {
+    if (['blockquote','theoremBlock','bulletList','orderedList','descriptionList','table'].includes($from.node(depth).type.name)) outerDepth=depth;
+  }
+  if (!outerDepth) return leaveTextEnvironment();
+  const after=$from.after(outerDepth);
+  const tr=editor.state.tr;
+  if (!tr.doc.resolve(after).nodeAfter) tr.insert(after,editor.schema.nodes.paragraph.create());
+  tr.setSelection(Selection.near(tr.doc.resolve(after),1));
+  editor.view.dispatch(tr.scrollIntoView());
+  editor.view.focus();
+  return true;
 }
 function formulaAtSelection() {
   let { selection } = editor.state;
@@ -1352,9 +1985,129 @@ function editMathAtSelection() {
   field.executeCommand('moveToMathfieldEnd');
   return true;
 }
+function selectedParagraphPositions() {
+  const { selection } = editor.state;
+  const positions = [];
+  if (selection.empty) {
+    for (let depth = selection.$from.depth; depth > 0; depth--) {
+      if (selection.$from.node(depth).type.name === 'paragraph') {
+        positions.push(selection.$from.before(depth));
+        break;
+      }
+    }
+  } else {
+    editor.state.doc.nodesBetween(selection.from,selection.to,(node,position) => {
+      if (node.type.name !== 'paragraph') return true;
+      positions.push(position);
+      return false;
+    });
+  }
+  return [...new Set(positions)];
+}
+function updateSelectedParagraphs(attributes) {
+  const positions = selectedParagraphPositions();
+  if (!positions.length) return false;
+  const transaction = editor.state.tr;
+  for (const position of positions) {
+    const node = transaction.doc.nodeAt(position);
+    if (node?.type.name === 'paragraph') {
+      transaction.setNodeMarkup(position,undefined,{...node.attrs,...attributes});
+    }
+  }
+  if (!transaction.docChanged) return false;
+  editor.view.dispatch(transaction);
+  editor.view.focus();
+  return true;
+}
 function setParagraphAlignment(align) {
+  const { selection }=editor.state;
+  if (align==='justify' && (editor.isActive('table') ||
+      (selection instanceof NodeSelection && ['table','documentImage'].includes(selection.node.type.name)))) return false;
+  if (selection instanceof NodeSelection && selection.node.type.name==='table') {
+    editor.view.dispatch(editor.state.tr.setNodeMarkup(selection.from,undefined,{
+      ...selection.node.attrs,align,
+    }));
+    editor.view.focus();
+    return true;
+  }
+  if (editor.isActive('table')) {
+    return editor.chain().focus().updateAttributes('table',{align}).run();
+  }
+  if (selection instanceof NodeSelection && selection.node.type.name==='documentImage') {
+    editor.view.dispatch(editor.state.tr.setNodeMarkup(selection.from,undefined,{
+      ...selection.node.attrs,align,centered:align==='center',
+    }));
+    editor.view.focus();
+    return true;
+  }
   if (!editor.isActive('paragraph')) return false;
-  return editor.chain().focus().updateAttributes('paragraph',{align}).run();
+  return updateSelectedParagraphs({align});
+}
+function indentSelectedParagraph(direction) {
+  if (editor.isActive('listItem')) {
+    return direction > 0
+      ? indentListItem(editor)
+      : editor.chain().focus().liftListItem('listItem').run();
+  }
+  return setParagraphIndent(editor,direction > 0);
+}
+function insertMultiColumn(count=2) {  const {from,to}=editor.state.selection;
+  const doc=editor.state.doc;
+  let start,end;
+  try {
+    start=doc.resolve(from).before(1);
+    end=doc.resolve(to).after(1);
+  } catch {
+    return false;
+  }
+  if(end<=start)return false;
+  const content=doc.slice(start,end).content;
+  const node=content.size
+    ? editor.schema.nodes.multiColumn.create({count},content)
+    : editor.schema.nodes.multiColumn.create({count},[editor.schema.nodes.paragraph.create()]);
+  return editor.chain().focus().insertContentAt({from:start,to:end},node).run();
+}
+function updateSelectedImageAttrs(patch){
+  if(imageSelection===null)return false;
+  const current=editor.state.doc.nodeAt(imageSelection);
+  if(current?.type.name!=='documentImage')return false;
+  const clean=Object.fromEntries(Object.entries(patch).filter(([,value])=>value!==undefined));
+  editor.view.dispatch(editor.state.tr.setNodeMarkup(imageSelection,undefined,{...current.attrs,...clean}));
+  const updated=editor.state.doc.nodeAt(imageSelection);
+  if(updated?.type.name==='documentImage')imagePanel?.setValues?.(updated.attrs);
+  return true;
+}
+function sortParagraphs(mode) {
+  const { from,to }=editor.state.selection;
+  const items=[];
+  editor.state.doc.forEach((node,offset) => {
+    const end=offset+node.nodeSize;
+    if (end<=from || offset>=to) return;
+    items.push({node,offset});
+  });
+  if (items.length<2 || items.some(item=>item.node.type.name!=='paragraph')) return false;
+  let collator;
+  try {
+    collator = mode==='alphabet' ? new Intl.Collator(undefined,{sensitivity:'base'})
+      : mode==='stroke' ? new Intl.Collator('zh-Hans-u-co-stroke',{usage:'sort'})
+        : new Intl.Collator('zh-Hans',{usage:'sort'});
+  } catch {
+    collator = new Intl.Collator('zh-Hans',{usage:'sort'});
+  }
+  const sorted=[...items].sort((left,right) => {
+    if (mode==='alphabet') {
+      const leftLatin=/^[\x00-\x7F]/.test(left.node.textContent) ? 0 : 1;
+      const rightLatin=/^[\x00-\x7F]/.test(right.node.textContent) ? 0 : 1;
+      if (leftLatin!==rightLatin) return leftLatin-rightLatin;
+    }
+    return collator.compare(left.node.textContent,right.node.textContent);
+  });
+  if (sorted.every((item,index) => item===items[index])) return false;
+  const first=items[0].offset;
+  const last=items.at(-1).offset+items.at(-1).node.nodeSize;
+  editor.view.dispatch(editor.state.tr.replaceWith(first,last,sorted.map(item=>item.node)).scrollIntoView());
+  editor.view.focus();
+  return true;
 }
 function zoomByKeyboard(amount, {field}) {
   if (field) return false;
@@ -1382,6 +2135,8 @@ const shortcutActions = {
     alignCenter: () => setParagraphAlignment('center'),
     find: documentFind.show,
     leaveEnvironment: leaveTextEnvironment,
+    leaveAllEnvironments: leaveAllTextEnvironments,
+    leaveFile:()=>projectPresentation?.exitFile()??false,
     toggleContextMarker: () => {
       const { $from }=editor.state.selection;
       for (let depth=$from.depth;depth>0;depth--) {
@@ -1397,8 +2152,8 @@ const shortcutActions = {
     },
     ignoreBrowserZoomReset: resetPageZoom,
     literalBacktick: () => editor.commands.insertContent('`'),
-    undo: () => editor.commands.undo(),
-    redo: () => editor.commands.redo(),
+    undo: undoDocument,
+    redo: redoDocument,
     toggleBold: () => editor.commands.toggleBold(),
     toggleItalic: () => editor.commands.toggleItalic(),
     toggleStrike: () => editor.commands.toggleStrike(),
@@ -1408,13 +2163,13 @@ const shortcutActions = {
     toggleBulletList: () => editor.commands.toggleBulletList(),
     toggleOrderedList: () => editor.commands.toggleOrderedList(),
     paragraph: () => editor.commands.setParagraph(),
-    section: () => editor.commands.toggleHeading({level:1}),
-    subsection: () => editor.commands.toggleHeading({level:2}),
-    subsubsection: () => editor.commands.toggleHeading({level:3}),
+    section: () => editor.commands.toggleHeading({level:1,command:null}),
+    subsection: () => editor.commands.toggleHeading({level:2,command:null}),
+    subsubsection: () => editor.commands.toggleHeading({level:3,command:null}),
     hardBreak: () => editor.commands.setHardBreak(),
   },
   paragraph: {
-    toggleIndent: () => editor.commands.updateAttributes('paragraph',{indent:editor.getAttributes('paragraph').indent === false}),
+    toggleIndent: () => setParagraphIndent(editor,!paragraphHasIndent(editor)),
   },
   table: {
     addRow: () => editor.commands.addRowAfter(),
@@ -1424,6 +2179,11 @@ const shortcutActions = {
 installKeybindings(window, {
   getBindings: () => config.bindings,
   getContext(event) {
+    if (event.target.closest?.(".tex-code")) return {element:event.target,scopes:["global"],only:"save"};
+    // Let the pane's local font handler own these keys before the global
+    // capture-phase router can turn them into whole-document zoom actions.
+    if (event.target.closest?.('.tex-preview') && (event.ctrlKey || event.metaKey) &&
+        !event.altKey && ['+', '=', '-', '0'].includes(event.key)) return {element:event.target,scopes:[]};
     const field = event.composedPath().find(node => node?.tagName === 'MATH-FIELD');
     if (field && paper.contains(field)) return { element:field, field, scopes:['math','global'] };
     if (documentFind.panel.contains(event.target)) return { element:documentFind.panel, scopes:['editor'], only:'find' };
@@ -1440,8 +2200,11 @@ installKeybindings(window, {
     return shortcutActions[scope][command](context,event);
   },
 });
-document.querySelector('main').addEventListener('wheel', event => {
-  if (!event.ctrlKey || !config.value.interface.zoomOnCtrlWheel) return;
+// Trackpad pinch arrives as a ctrl+wheel event. Listening on the window keeps
+// the document zoom in charge everywhere in the app; otherwise the desktop
+// webview would zoom its own UI when the pointer is outside the paper.
+window.addEventListener('wheel', event => {
+  if (event.defaultPrevented || !event.ctrlKey || !config.value.interface.zoomOnCtrlWheel) return;
   event.preventDefault();
   const units = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? window.innerHeight : 1;
   const speed = event.deltaMode === 0 && Math.abs(event.deltaY) < 50 ? 0.24 : 0.12;
@@ -1458,7 +2221,136 @@ function updateEnvironment() {
   environment.textContent=[labels[name],...(field ? mathEnvironment(field) : [])].join(' › ');
   environment.dataset.environment=name;
 }
-footer.append(count,document.querySelector('#status'),environment,zoom,percent,themeButton,sourceButton);document.body.append(footer);scale();
+footer.append(count,document.querySelector('#status'),environment,zoom,percent,paginationButton,themeButton,modes);document.body.append(footer);sourceView.mountStatus(footer);scale();updatePaginationButton();
+const compositionController=createCompositionController({
+  explorer:()=>projectExplorer,fileKind:()=>projectFileKind,session:projectDocument,
+  sourceHidden:()=>sourceView.hidden,composing:()=>editor.view.composing||sourceView.composing,
+  read:()=>sourceView.hidden?source():sourceView.value,report:text=>sourceView.error(text),ask:askText,
+  present(composed){
+    syncApplying=true;
+    try{
+      editor.chain().setMeta('addToHistory',false).setContent({type:'doc',attrs:editor.state.doc.attrs,content:composed.content}).run();
+      projectDocument.hydrate(composed,editor.getJSON());
+      refreshReferences(paper);documentOutline.relocalize();
+    }finally{syncApplying=false;}
+  },
+  replace(before,after,show,owner){
+    if(owner!==projectExplorer.model.activeFileId){
+      if(sourceView.hidden){const root=projectExplorer.model.file(projectExplorer.model.activeFileId).draft;projectDocument.clear();load(root,false);sourceView.reset(root);show();}
+      return;
+    }
+    if(!sourceView.hidden){sourceView.applyChanges([{from:0,to:before.length,insert:after}]);sourceView.flush();return;}
+    projectDocument.clear();load(after,false);sourceView.reset(after);
+    const checkpoint={before,after,afterDoc:editor.state.doc,afterPreamble:documentParts.start};
+    sourceModeCommits.push(checkpoint);sourceModeRedos=[];
+syncUndoButtons();
+    show();checkpoint.afterDoc=editor.state.doc;
+  },
+});
+function showProjectComposition(){return compositionController.show();}
+function editIncludeSource(transform,owner){return compositionController.edit(transform,owner);}
+function requestProjectInclude(command){return compositionController.request(command);}
+function appendInclude(id,beforePath,command){return compositionController.append(id,beforePath,command);}
+installProjectNavigation({outline:documentOutline.panel,paper,sourceView,editor,getProjection:()=>projection,appendInclude,editIncludeSource});
+const projectWorkspace=new ProjectWorkspaceState();
+let standaloneSession;
+projectExplorer = installProjectExplorer({footer, filePanel:document.querySelector('header .tools'), sessions:{
+  prepareSave:prepareExplicitSave,
+  outline:documentOutline,preferences:()=>config.value,
+  sidebarChanged:(key,open)=>config.updateInterface({sidebar:{[key]:open}}),
+  editIncludes:editIncludeSource,citations:()=>manageCitations(),
+  saveFileIds:()=>{const project=projectExplorer.model;const ids=projectDocument.composition?projectDocument.composition.regions.map(region=>region.id):[project.activeFileId];if([...sourceModeCommits,...sourceModeRedos].some(item=>item.owner===project.mainFileId)&&project.file(project.mainFileId).dirty)ids.push(project.mainFileId);return [...new Set(ids)];},
+  includeFile:appendInclude,
+  ensureIdle() { if (editor.view.composing || sourceView.composing) throw new Error(t('请先完成当前输入','Finish composition first')); },
+  text:() => sourceView.hidden ? source() : sourceView.value,
+  capture:text => {
+    if(sourceView.hidden && sourceView.value!==text)sourceView.reset(text);
+    return {...sourceView.captureSession(),split:sourceView.split,sourceVisible:!sourceView.hidden,
+      richSelection:{anchor:editor.state.selection.anchor,head:editor.state.selection.head},
+      ...captureRichSession(editor,projectDocument.composition,projectExplorer.model,text),
+      modeHistory:copyModeHistory(sourceModeEntry,sourceModeCommits,sourceModeRedos)};
+  },
+  focusNewFile(file){
+    if(sourceView.hidden){editor.view.dispatch(editor.state.tr.setSelection(Selection.atStart(editor.state.doc)));editor.commands.focus();}
+    else {const parsed=parseDocument(file.draft,{fragment:true});const offset=parsed?.start.length??0;sourceView.select(offset,offset);}
+  },
+  applyChanges:changes => sourceView.applyChanges(changes),
+  approveOpen:newOrOpen => (sourceView.hidden?source():sourceView.value) === savedSource || confirm(newOrOpen
+    ? t('保留当前单文件草稿并新建或打开工程？','Keep the current single-file draft and create or open a project?')
+    : t('保留当前单文件草稿并打开工程？','Keep the current single-file draft and open a project?')),
+  begin() {
+    projectWorkspace.select('body');
+    if (!standaloneSession) standaloneSession = {
+      text:sourceView.hidden?source():sourceView.value, filename, fileHandle, savedSource,
+      sourceVisible:!sourceView.hidden, sourceSession:sourceView.captureSession(), split:sourceView.split,
+      richState:editor.state,modeHistory:copyModeHistory(sourceModeEntry,sourceModeCommits,sourceModeRedos),
+    };
+  },
+  open(file) {
+    projectFileKind = file.kind;
+    returnedDraft = undefined; syncPending = false;
+    filename = file.path; fileHandle = null; savedSource = file.saved;
+    const session=file.session,sourceVisible=projectWorkspace.modeFor(file.kind)!=='body';
+    const history=readModeHistory(session?.modeHistory);
+    sourceModeEntry=history.entry;sourceModeCommits=history.commits;sourceModeRedos=history.redos;
+    if(file.kind==='tex'){
+      load(file.draft,false);
+      if(restoreRichSession(editor,session,file,projectExplorer.model,projectDocument)){
+        importedSnapshot=JSON.stringify(editor.getJSON());refreshReferences(paper);syncTableAttributes();
+      }
+      projection=sourceProjection(file.draft,editor.getJSON(),{fragment:true});
+    }
+    if(sourceVisible){
+      if(sourceView.hidden)sourceView.open(file.draft);
+      sourceView.restoreSession(session,file.draft);
+      sourceView.setSplit(projectWorkspace.modeFor(file.kind)==='split');
+    }else{
+      sourceView.close();sourceView.restoreSession(session,file.draft);editor.commands.focus();
+    }
+    if (file.kind === 'tex' && session?.richSelection && !session.richState) {
+      const {anchor,head} = session.richSelection, max = editor.state.doc.content.size;
+      editor.view.dispatch(editor.state.tr.setSelection(TextSelection.between(editor.state.doc.resolve(Math.min(anchor,max)),editor.state.doc.resolve(Math.min(head,max)))));
+    }
+    if (file.kind === 'bib') sourceView.setSplit(false);
+    updateSourceButton();
+    showProjectComposition();
+
+  },
+  saved(text) { savedSource = text; sourceView.refresh(); },
+  error(text) { const status = document.querySelector('#status'); status.hidden = false; status.textContent = text; },
+  end() {
+    projectDocument.composition=null;
+    projectFileKind = undefined; returnedDraft = undefined;
+    projectWorkspace.select('body');
+    if (standaloneSession) {
+      const previous = standaloneSession; standaloneSession = null;
+      filename = previous.filename; fileHandle = previous.fileHandle;
+      // The standalone workspace is suspended while a project is open. Restore
+      // its immutable editor states, including undo and selection, rather than
+      // treating the same draft as a newly imported document.
+      load(previous.text, false); savedSource = previous.savedSource;
+      const history=readModeHistory(previous.modeHistory);
+      sourceModeEntry=history.entry;sourceModeCommits=history.commits;sourceModeRedos=history.redos;
+      if(previous.sourceVisible && sourceView.hidden)sourceView.open(previous.text);
+      sourceView.restoreSession(previous.sourceVisible ? previous.sourceSession : null, previous.text);
+      if (previous.sourceVisible) {
+        sourceView.setSplit(previous.split);
+        // Source edits may have had a preview render pending on project open.
+        // The restored CodeMirror state is authoritative; retain only the old
+        // rich selection, never overwrite its newly rebuilt projection.
+        const {anchor,head} = previous.richState.selection, max = editor.state.doc.content.size;
+        editor.view.dispatch(editor.state.tr.setSelection(TextSelection.between(
+          editor.state.doc.resolve(Math.min(anchor,max)),editor.state.doc.resolve(Math.min(head,max)))));
+      } else {
+        sourceView.close();
+        editor.view.updateState(previous.richState);
+      }
+    }
+
+    updateSourceButton();
+  },
+}});
+projectPresentation=installProjectPresentation({editor,page:documentPage,getProject:()=>projectExplorer.model,openMain:()=>projectExplorer.openFile(projectExplorer.model.mainFileId),getComposition:()=>projectDocument.composition,requestLayout:()=>typesetPagination?.refresh(),ensureDocument:()=>{if(!sourceView.hidden)setSourceMode(false);showProjectComposition();}});
 editor.on('transaction',updateEnvironment);
 document.addEventListener('focusin',updateEnvironment);paper.addEventListener('input',updateEnvironment);
 paper.addEventListener('selection-change',updateEnvironment,true);
@@ -1466,13 +2358,17 @@ paper.addEventListener('lineae-math-position',updateEnvironment);
 updateEnvironment();
 editor.on('update',()=>{count.textContent=editor.getText().length+' '+t('字符','characters');});
 const tableGroup=document.createElement('div');tableGroup.className='tools';
-const layoutGroup=document.createElement('div');layoutGroup.className='tools';layoutGroup.id='layout-panel';
+const layoutGroup=document.createElement('div');layoutGroup.className='tools home-ribbon layout-ribbon';layoutGroup.id='layout-panel';
+let syncLayoutParagraph;
 const formatGroup=document.createElement('div');formatGroup.className='tools';
 const referenceGroup=document.createElement('div');referenceGroup.className='tools';
 const mathGroup=document.createElement('div');mathGroup.className='tools';
-function groupButton(container,label,action) {
+function groupButton(container,label,action,sourceAction) {
   const control=document.createElement('button');
-  control.type='button';control.textContent=label;
+  const [zh,en]=Array.isArray(label)?label:[label,label];
+  control.type='button';control.dataset.sourceAction=sourceAction??zh;
+  if(Array.isArray(label)){control.dataset.zh=zh;control.dataset.en=en;}
+  control.textContent=Array.isArray(label)?t(zh,en):label;
   control.addEventListener('mousedown',event=>event.preventDefault());
   control.addEventListener('click',action);
   container.append(control);
@@ -1488,16 +2384,100 @@ for(const value of ['normal','narrow','wide','custom'])pageMarginPreset.append(n
 pageMarginPreset.setAttribute('aria-label',t('页边距预设','Margin preset'));
 function marginInput(label){
   const input=document.createElement('input');
-  input.type='text';input.style.width='64px';input.setAttribute('aria-label',label);
+  input.type='text';input.style.width='64px';input.setAttribute('aria-label',label);input.placeholder=label;
   return input;
 }
 pageMarginTop=marginInput(t('上边距','Top margin'));
 pageMarginRight=marginInput(t('右边距','Right margin'));
 pageMarginBottom=marginInput(t('下边距','Bottom margin'));
 pageMarginLeft=marginInput(t('左边距','Left margin'));
-layoutGroup.append(pagePaper,pageOrientation,pageMarginPreset,pageMarginTop,pageMarginRight,pageMarginBottom,pageMarginLeft);
+// 全局分栏：正文页渲染内核（typeset-pagination.js）暂不接受修改，此控件注销，待内核改造方案获批后恢复。
+// layoutColumns=document.createElement('select');
+// layoutColumns.setAttribute('aria-label',t('全局分栏','Global columns'));
+// layoutColumns.append(new Option(t('1 栏','1 column'),'1'),new Option(t('2 栏（twocolumn）','2 columns (twocolumn)'),'2'));
+layoutLocalColumns=document.createElement('select');
+layoutLocalColumns.setAttribute('aria-label',t('局部分栏','Local columns'));
+for(const value of ['2','3','4'])layoutLocalColumns.append(new Option(t(value+' 栏',value+' columns'),value));
+const insertColumnsButton=document.createElement('button');
+insertColumnsButton.type='button';
+insertColumnsButton.textContent=t('应用到选区','Apply to selection');
+const layoutPageSetup=document.createElement('section');
+layoutPageSetup.className='layout-group';
+layoutPageSetup.id='layout-page-setup';
+const layoutPageSetupTitle=document.createElement('div');
+layoutPageSetupTitle.className='layout-group-title';
+layoutPageSetupTitle.dataset.zh='页面设置';
+layoutPageSetupTitle.dataset.en='Page Setup';
+layoutPageSetupTitle.textContent=t('页面设置','Page Setup');
+const layoutPageSetupControls=document.createElement('div');
+layoutPageSetupControls.className='layout-group-controls';
+const paperLabel=document.createElement('label');
+paperLabel.className='layout-field';
+paperLabel.append(t('纸张大小','Paper size'),pagePaper);
+const orientationLabel=document.createElement('label');
+orientationLabel.className='layout-field';
+orientationLabel.append(t('纸张方向','Orientation'),pageOrientation);
+const marginLabel=document.createElement('label');
+marginLabel.className='layout-field';
+marginLabel.append(t('页边距','Margins'),pageMarginPreset);
+layoutPageSetupControls.append(paperLabel,orientationLabel,marginLabel);
+for(const [sideText,input] of [[t('上边距','Top'),pageMarginTop],[t('右边距','Right'),pageMarginRight],[t('下边距','Bottom'),pageMarginBottom],[t('左边距','Left'),pageMarginLeft]]){
+  const field=document.createElement('label');
+  field.className='layout-field layout-margin-field';
+  const caption=document.createElement('span');
+  caption.textContent=sideText;
+  field.append(caption,input);
+  layoutPageSetupControls.append(field);
+}
+// const columnsField=document.createElement('label');
+// columnsField.className='layout-field';
+// const columnsCaption=document.createElement('span');
+// columnsCaption.textContent=t('全局分栏','Global columns');
+// columnsField.append(columnsCaption,layoutColumns);
+const localColumnsField=document.createElement('label');
+localColumnsField.className='layout-field';
+const localColumnsCaption=document.createElement('span');
+localColumnsCaption.textContent=t('局部分栏','Local columns');
+localColumnsField.append(localColumnsCaption,layoutLocalColumns,insertColumnsButton);
+// layoutPageSetupControls.append(columnsField,localColumnsField);
+layoutPageSetupControls.append(localColumnsField);
+layoutPageSetup.append(layoutPageSetupTitle,layoutPageSetupControls);
+const layoutParagraph=document.createElement('section');
+layoutParagraph.className='layout-group';
+layoutParagraph.id='layout-paragraph';
+const layoutParagraphTitle=document.createElement('div');
+layoutParagraphTitle.className='layout-group-title';
+layoutParagraphTitle.dataset.zh='段落';
+layoutParagraphTitle.dataset.en='Paragraph';
+layoutParagraphTitle.textContent=t('段落','Paragraph');
+const layoutParagraphControls=document.createElement('div');
+layoutParagraphControls.className='layout-group-controls';
+const layoutIndentDecrease=groupButton(layoutParagraphControls,['减少缩进','Decrease indent'],()=>indentSelectedParagraph(-1));
+const layoutIndentIncrease=groupButton(layoutParagraphControls,['增加缩进','Increase indent'],()=>indentSelectedParagraph(1));
+const layoutBefore=document.createElement('select');
+layoutBefore.setAttribute('aria-label',t('段前间距','Space before'));
+layoutBefore.append(new Option(t('段前 0pt','Before 0pt'),'0pt'),new Option(t('段前 6pt','Before 6pt'),'6pt'),new Option(t('段前 12pt','Before 12pt'),'12pt'));
+const layoutAfter=document.createElement('select');
+layoutAfter.setAttribute('aria-label',t('段后间距','Space after'));
+layoutAfter.append(new Option(t('段后 0pt','After 0pt'),'0pt'),new Option(t('段后 6pt','After 6pt'),'6pt'),new Option(t('段后 12pt','After 12pt'),'12pt'));
+layoutBefore.addEventListener('change',()=>updateSelectedParagraphs({spaceBefore:layoutBefore.value==='0pt'?null:layoutBefore.value}));
+layoutAfter.addEventListener('change',()=>updateSelectedParagraphs({spaceAfter:layoutAfter.value==='0pt'?null:layoutAfter.value}));
+layoutParagraphControls.append(layoutBefore,layoutAfter);
+layoutParagraph.append(layoutParagraphTitle,layoutParagraphControls);
+buildRibbonGroups(layoutGroup,[
+  {id:'layout-page-setup',zh:'页面设置',en:'Page Setup',iconName:'layout',width:620,body:layoutPageSetupControls},
+  {id:'layout-paragraph',zh:'段落',en:'Paragraph',iconName:'paragraph',width:280,body:layoutParagraphControls},
+],['layout-paragraph','layout-page-setup']);
+syncLayoutParagraph=()=>{
+  if(!layoutBefore||!layoutAfter)return;
+  const attrs=editor.getAttributes('paragraph');
+  layoutBefore.value=attrs.spaceBefore??'0pt';
+  layoutAfter.value=attrs.spaceAfter??'0pt';
+};
 pagePaper.addEventListener('change',()=>updatePageSetup({paper:pagePaper.value}));
 pageOrientation.addEventListener('change',()=>updatePageSetup({orientation:pageOrientation.value}));
+// layoutColumns.addEventListener('change',()=>updateGlobalColumns(layoutColumns.value));
+insertColumnsButton.addEventListener('click',()=>insertMultiColumn(Number(layoutLocalColumns.value)||2));
 pageMarginPreset.addEventListener('change',()=>{
   if(MARGIN_PRESETS[pageMarginPreset.value])updatePageSetup({margin:MARGIN_PRESETS[pageMarginPreset.value]});
 });
@@ -1506,17 +2486,26 @@ for(const [side,input] of [['top',pageMarginTop],['right',pageMarginRight],['bot
   if(/^\d+(?:\.\d+)?(?:mm|cm|in|pt)$/.test(value))updatePageSetup({margins:{[side]:value}});
   else input.value=pageSetup.margins[side];
 });
+editor.on('transaction',()=>syncLayoutParagraph?.());
+editor.on('selectionUpdate',()=>syncLayoutParagraph?.());
 applyPageSetup();
-groupButton(tableGroup,'▦',()=>editor.chain().focus().insertTable({rows:2,cols:2,withHeaderRow:false}).run());
-groupButton(tableGroup,'＋ Row',addMatrixRow);
-groupButton(tableGroup,'＋ Column',addMatrixColumn);
-groupButton(tableGroup,'－ Row',()=>editor.chain().focus().deleteRow().run());
-groupButton(tableGroup,'－ Column',()=>editor.chain().focus().deleteColumn().run());
-groupButton(tableGroup,'删除表格',()=>editor.chain().focus().deleteTable().run());
-groupButton(tableGroup,'merge',()=>editor.chain().focus().mergeCells().run());
-groupButton(tableGroup,'split',()=>editor.chain().focus().splitCell().run());
+groupButton(tableGroup,'▦',()=>insertDefaultTable());
+continueTablesButton=groupButton(tableGroup,['续表','Continue'],()=>{
+  const enabled=!typesetPagination.getTableContinuation();
+  typesetPagination.setTableContinuation(enabled);
+  config.updateInterface({continuedTables:enabled});
+  updateContinueTablesButton();
+});
+updateContinueTablesButton();
+groupButton(tableGroup,['＋ 行','＋ Row'],addMatrixRow,'＋ Row');
+groupButton(tableGroup,['＋ 列','＋ Column'],addMatrixColumn,'＋ Column');
+groupButton(tableGroup,['－ 行','－ Row'],()=>editor.chain().focus().deleteRow().run(),'－ Row');
+groupButton(tableGroup,['－ 列','－ Column'],()=>editor.chain().focus().deleteColumn().run(),'－ Column');
+groupButton(tableGroup,['删除表格','Delete table'],()=>editor.chain().focus().deleteTable().run());
+groupButton(tableGroup,['合并','Merge'],()=>editor.chain().focus().mergeCells().run(),'merge');
+groupButton(tableGroup,['拆分','Split'],()=>editor.chain().focus().splitCell().run(),'split');
 groupButton(tableGroup,'booktabs',()=>{if(editor.isActive('table'))editor.chain().focus().updateAttributes('table',{booktabs:!editor.getAttributes('table').booktabs}).run();});
-groupButton(tableGroup,t('题注','Caption'),async()=>{
+groupButton(tableGroup,['题注','Caption'],async()=>{
   if(!editor.isActive('table'))return;
   const value=await askText(t('表格题注（LaTeX）','Table caption (LaTeX)'),editor.getAttributes('table').caption??'');
   if(value!==null)editor.chain().focus().updateAttributes('table',{caption:value||null,centered:true,placement:editor.getAttributes('table').placement??'htbp'}).run();
@@ -1526,29 +2515,132 @@ groupButton(tableGroup,'label',async()=>{
   const value=await askText(t('表格标签键','Table label key'),editor.getAttributes('table').label??'');
   if(value!==null)editor.chain().focus().updateAttributes('table',{label:value||null}).run();
 });
-groupButton(tableGroup,t('边框','Borders'),async()=>{
+groupButton(tableGroup,['边框','Borders'],async()=>{
   if(!editor.isActive('table'))return;
   const mode=await askText(t('边框：grid 全部、outer 外框、horizontal 横线、none 无','Borders: grid, outer, horizontal, none'),editor.getAttributes('table').borderMode??'grid');
   if(mode && ['grid','outer','horizontal','none'].includes(mode)) editor.chain().focus().updateAttributes('table',{borderMode:mode,booktabs:false}).run();
 });
-groupButton(tableGroup,t('线宽','Rule width'),async()=>{
+groupButton(tableGroup,['线宽','Rule width'],async()=>{
   if(!editor.isActive('table'))return;
   const width=await askText(t('表格线宽（例如 0.8pt）','Table rule width (e.g. 0.8pt)'),editor.getAttributes('table').borderWidth??'0.4pt');
   if(width!==null && (!width || /^\d+(?:\.\d+)?pt$/.test(width))) editor.chain().focus().updateAttributes('table',{borderWidth:width||null}).run();
 });
-for(const [label,align] of [['左','left'],['中','center'],['右','right']]) groupButton(tableGroup,label,()=>{
+for(const [label,align] of [[['左','Left'],'left'],[['中','Center'],'center'],[['右','Right'],'right']]) groupButton(tableGroup,label,()=>{
   if(!editor.isActive('table'))return;
   const type=editor.isActive('tableHeader')?'tableHeader':'tableCell';
   editor.chain().focus().updateAttributes(type,{align}).run();
 });
+function tableOption(label,control){
+  const field=document.createElement('label');
+  field.className='table-option';
+  const text=document.createElement('span');
+  text.textContent=label;
+  control.setAttribute('aria-label',label);
+  field.append(text,control);
+  return field;
+}
+function tableSection(title){
+  const section=document.createElement('section');
+  section.className='table-style-group';
+  const heading=document.createElement('div');
+  heading.className='table-style-group-title';
+  heading.textContent=title;
+  const body=document.createElement('div');
+  body.className='table-style-group-body';
+  section.append(heading,body);
+  tableGroup.append(section);
+  return body;
+}
+const tableCaptionSection=tableSection('表格样式');
+const tableCaptionEnabled=document.createElement('input');tableCaptionEnabled.type='checkbox';
+const tableCaptionInput=document.createElement('input');tableCaptionInput.type='text';tableCaptionInput.placeholder='Caption';
+tableCaptionEnabled.setAttribute('aria-label',t('启用表格题注','Enable table caption'));
+tableCaptionInput.setAttribute('aria-label',t('表格题注','Table caption'));
+const tableCaptionToggleField=document.createElement('label');tableCaptionToggleField.className='table-option';
+const tableCaptionToggleText=document.createElement('span');tableCaptionToggleText.textContent=t('题注','Caption');
+tableCaptionToggleField.append(tableCaptionEnabled,tableCaptionToggleText);
+const tableCaptionField=document.createElement('div');tableCaptionField.className='table-caption-field';tableCaptionField.append(tableCaptionInput);
+tableCaptionSection.append(tableCaptionToggleField,tableCaptionField);
+const tableRuleSection=tableSection('样式');
+const tableLeftRule=document.createElement('input');tableLeftRule.type='checkbox';
+const tableRightRule=document.createElement('input');tableRightRule.type='checkbox';
+const tableMiddleVerticalRule=document.createElement('input');tableMiddleVerticalRule.type='checkbox';
+const tableVerticalFirstRow=document.createElement('input');tableVerticalFirstRow.type='checkbox';
+const tableTopRule=document.createElement('input');tableTopRule.type='checkbox';
+const tableBottomRule=document.createElement('input');tableBottomRule.type='checkbox';
+const tableRuleStyle=document.createElement('select');
+for(const [value,label] of [['solid','实线'],['dashed','虚线'],['dotted','点线'],['double','双线']])tableRuleStyle.append(new Option(t(label,value),value));
+const tableRuleWidth=document.createElement('select');
+for(const value of ['0.2pt','0.4pt','0.8pt','1pt'])tableRuleWidth.append(new Option(value,value));
+const tableMidRule=document.createElement('select');
+tableMidRule.append(new Option(t('无','None'),'none'),new Option(t('首行下方','After first row'),'first'),new Option(t('所有行下方','All rows'),'all'));
+const tableRuleGrid=document.createElement('div');tableRuleGrid.className='table-options-grid';
+tableRuleGrid.append(
+  tableOption(t('左竖线','Left rule'),tableLeftRule),
+  tableOption(t('右竖线','Right rule'),tableRightRule),
+  tableOption(t('中间竖线','Middle vertical rule'),tableMiddleVerticalRule),
+  tableOption(t('竖线含首行','Rules in first row'),tableVerticalFirstRow),
+  tableOption(t('上边线','Top rule'),tableTopRule),
+  tableOption(t('下边线','Bottom rule'),tableBottomRule),
+  tableOption(t('中间线','Middle rule'),tableMidRule),
+  tableOption(t('线型','Line style'),tableRuleStyle),
+  tableOption(t('线宽','Line width'),tableRuleWidth),
+);
+tableRuleSection.append(tableRuleGrid);
+const tableStretchSection=tableSection('伸缩');
+const tableArrayStretch=document.createElement('input');tableArrayStretch.type='number';tableArrayStretch.min='0.5';tableArrayStretch.max='3';tableArrayStretch.step='0.1';tableArrayStretch.value='1';
+const tableFontSize=document.createElement('select');
+for(const [value,label] of [['','默认'],['small','small'],['footnotesize','footnotesize'],['scriptsize','scriptsize'],['10pt','10pt'],['9pt','9pt']])tableFontSize.append(new Option(t(label,value),value));
+const tableScale=document.createElement('input');tableScale.type='number';tableScale.min='0.3';tableScale.max='1.5';tableScale.step='0.05';tableScale.value='1';
+const tableStretchGrid=document.createElement('div');tableStretchGrid.className='table-options-grid';
+tableStretchGrid.append(
+  tableOption(t('行距','Row stretch'),tableArrayStretch),
+  tableOption(t('字号','Font size'),tableFontSize),
+  tableOption(t('缩放','Scale'),tableScale),
+);
+tableStretchSection.append(tableStretchGrid);
+function updateTableAttributes(patch,focus=true){
+  const lineKeys=['leftRule','rightRule','middleVerticalRule','verticalFirstRow','topRule','bottomRule','midRuleMode','ruleStyle','ruleWidth'];
+  if(Object.keys(patch).some(key=>lineKeys.includes(key)))patch={...patch,borderMode:null,booktabs:false};
+  if(editor.isActive('table'))(focus?editor.chain().focus():editor.chain()).updateAttributes('table',patch).run();
+}
+function syncTableControls(){
+  const attrs=editor.isActive('table')?editor.getAttributes('table'):null;
+  const disabled=!attrs;
+  tableCaptionEnabled.checked=Boolean(attrs?.captionEnabled??(attrs?.caption!=null));
+  tableCaptionInput.disabled=disabled||!tableCaptionEnabled.checked;
+  if(document.activeElement!==tableCaptionInput)tableCaptionInput.value=attrs?.caption??'';
+  tableLeftRule.checked=Boolean(attrs?.leftRule);
+  tableRightRule.checked=Boolean(attrs?.rightRule);
+  tableMiddleVerticalRule.checked=Boolean(attrs?.middleVerticalRule);
+  tableVerticalFirstRow.checked=attrs?.verticalFirstRow!==false;
+  tableTopRule.checked=Boolean(attrs?.topRule);
+  tableBottomRule.checked=Boolean(attrs?.bottomRule);
+  tableMidRule.value=attrs?.midRuleMode??'none';
+  tableRuleStyle.value=attrs?.ruleStyle??'solid';
+  tableRuleWidth.value=attrs?.ruleWidth??(attrs?.borderWidth??'0.4pt');
+  tableArrayStretch.value=attrs?.arrayStretch??'1';
+  tableFontSize.value=attrs?.fontSize??'';
+  tableScale.value=attrs?.tableScale??'1';
+}
+tableCaptionEnabled.addEventListener('change',()=>updateTableAttributes({captionEnabled:tableCaptionEnabled.checked,caption:tableCaptionEnabled.checked?(editor.getAttributes('table').caption??''):null,centered:true,placement:editor.getAttributes('table').placement??'htbp'}));
+tableCaptionInput.addEventListener('input',()=>{if(editor.isActive('table'))updateTableAttributes({caption:tableCaptionInput.value,captionEnabled:true,centered:true},false);});
+for(const [control,key] of [[tableLeftRule,'leftRule'],[tableRightRule,'rightRule'],[tableMiddleVerticalRule,'middleVerticalRule'],[tableVerticalFirstRow,'verticalFirstRow'],[tableTopRule,'topRule'],[tableBottomRule,'bottomRule']])control.addEventListener('change',()=>updateTableAttributes({[key]:control.checked}));
+tableMidRule.addEventListener('change',()=>updateTableAttributes({midRuleMode:tableMidRule.value}));
+tableRuleStyle.addEventListener('change',()=>updateTableAttributes({ruleStyle:tableRuleStyle.value}));
+tableRuleWidth.addEventListener('change',()=>updateTableAttributes({ruleWidth:tableRuleWidth.value}));
+tableArrayStretch.addEventListener('change',()=>updateTableAttributes({arrayStretch:Number(tableArrayStretch.value)||1}));
+tableFontSize.addEventListener('change',()=>updateTableAttributes({fontSize:tableFontSize.value||null}));
+tableScale.addEventListener('change',()=>updateTableAttributes({tableScale:Number(tableScale.value)||1}));
+editor.on('transaction',syncTableControls);editor.on('selectionUpdate',syncTableControls);syncTableControls();
 groupButton(formatGroup,'B',()=>editor.chain().focus().toggleBold().run());
-for (const [align,label] of [['left',t('左对齐','Align left')],['right',t('右对齐','Align right')],['center',t('居中','Center')]]) {
+for (const [align,label] of [['left',['左对齐','Align left']],['right',['右对齐','Align right']],['center',['居中','Center']]]) {
   groupButton(formatGroup,label,()=>setParagraphAlignment(align));
 }
 groupButton(formatGroup,'I',()=>editor.chain().focus().toggleItalic().run());
 groupButton(formatGroup,'U',()=>editor.chain().focus().toggleMark('underline').run());
 groupButton(formatGroup,'S',()=>editor.chain().focus().toggleStrike().run());
-groupButton(formatGroup,t('清除格式','Clear formatting'),()=>editor.chain().focus().unsetAllMarks().run());
+groupButton(formatGroup,['清除格式','Clear formatting'],()=>editor.chain().focus().unsetAllMarks().run());
 groupButton(formatGroup,'code',()=>editor.chain().focus().toggleCode().run());
 groupButton(formatGroup,'quote',()=>editor.chain().focus().toggleBlockquote().run());
 groupButton(formatGroup,'hr',()=>editor.chain().focus().setHorizontalRule().run());
@@ -1577,9 +2669,9 @@ function setListStyle(style) {
   else if(editor.isActive('bulletList'))editor.chain().focus().updateAttributes('bulletList',{marker:style}).run();
 }
 groupButton(formatGroup,'1.',()=>setListStyle('decimal'));
-groupButton(formatGroup,t('切换标记','Cycle marker'),()=>{ editor.view.focus(); shortcutActions.editor.toggleContextMarker(); }).dataset.shortcut='editor.toggleContextMarker';
-groupButton(formatGroup,t('列表降一级','Indent list item'),()=>indentListItem(editor));
-groupButton(formatGroup,t('列表升一级','Outdent list item'),()=>editor.chain().focus().liftListItem('listItem').run());
+groupButton(formatGroup,['切换标记','Cycle marker'],()=>{ editor.view.focus(); shortcutActions.editor.toggleContextMarker(); }).dataset.shortcut='editor.toggleContextMarker';
+groupButton(formatGroup,['列表降一级','Indent list item'],()=>indentListItem(editor));
+groupButton(formatGroup,['列表升一级','Outdent list item'],()=>editor.chain().focus().liftListItem('listItem').run());
 groupButton(formatGroup,'a.',()=>setListStyle('lower-alpha'));
 groupButton(formatGroup,'A.',()=>setListStyle('upper-alpha'));
 groupButton(formatGroup,'I.',()=>setListStyle('upper-roman'));
@@ -1614,35 +2706,57 @@ groupButton(referenceGroup,'fn',async()=>{
   const value=await askText(t('脚注内容','Footnote text'));
   if(value)editor.chain().focus().insertContent({type:'footnote',attrs:{text:value}}).run();
 });
-groupButton(referenceGroup,'cite',async()=>{
+async function manageCitations(){
   try{
     const documentBefore=editor.state.doc;
-    const citation=await insertCitationDialog();
-    if(!citation || editor.state.doc!==documentBefore)return;
-    const {key,file}=citation;
-    if(!/^[\p{L}\p{N}_. -]+\.bib$/iu.test(file.name))throw new Error(t('文献文件名不受支持','Unsupported bibliography filename'));
+    const entry=await openCitationPanel({
+      library: citationLibrary,
+      texSource: source(),
+      onLocateMissing: locateMissingCitation,
+      onChange: persistCitationState,
+      onRename: ({ oldKey, newKey }) => {
+        const applied = applyCitationRenames(source(), { [oldKey]: newKey });
+        if (applied.count) load(applied.text, false);
+      },
+      onInsertCitation: ({ command }) => {
+        editor.chain().focus().insertContent(command).run();
+      },
+      onInsertBibliography: ({ command }) => {
+        editor.chain().focus().insertContent(command).run();
+      },
+    });
+    if(!entry || editor.state.doc!==documentBefore)return;
+    const {key,file:sourcePath,blob}=entry;
+    const sourceName=sourcePath.split('/').at(-1);
+    if(!/^[\p{L}\p{N}_. -]+\.bib$/iu.test(sourceName))throw new Error(t('文献文件名不受支持','Unsupported bibliography filename'));
     const tex=source();
     const resources=[...tex.matchAll(/\\addbibresource(?:\[[^\]]*\])?\{([^{}]+)\}/g)].map(match=>match[1]);
     const classic=[...tex.matchAll(/\\bibliography\{([^{}]+)\}/g)].flatMap(match=>match[1].split(',').map(name=>name.trim()).filter(Boolean).map(name=>name.endsWith('.bib')?name:name+'.bib'));
-    const linked=[...resources,...classic].filter(path=>path.split('/').at(-1)===file.name);
+    const linked=[...resources,...classic].filter(path=>path.split('/').at(-1)===sourceName);
     if(linked.length>1 || (!linked.length && classic.length))throw new Error(t('请关联文档中声明的文献文件','Attach the bibliography declared in the document'));
-    rememberAsset(linked[0]??file.name,file);
+    const linkedPath=linked[0]??sourcePath;
+    if (linkedPath !== sourcePath) citationLibrary.setSourcePath(sourcePath, linkedPath);
+    rememberAsset(linkedPath,blob);
     if(!linked.length) {
       const eol=documentParts.eol;
       const hasBiblatex=/\\(?:usepackage|RequirePackage)(?:\[[^\]]*\])?\{[^{}]*\bbiblatex\b[^{}]*\}/.test(documentParts.start);
-      const declarations=(hasBiblatex?'':'\\usepackage{biblatex}'+eol)+'\\addbibresource{'+file.name+'}'+eol;
+      const declarations=(hasBiblatex?'':'\\usepackage{biblatex}'+eol)+'\\addbibresource{'+sourceName+'}'+eol;
       documentParts={...documentParts,start:documentParts.start.replace(/^\\begin\{document\}/m,()=>declarations+'\\begin{document}')};
     }
+    persistCitationState();
     editor.chain().focus().insertContent({type:'cite',attrs:{key}}).run();
   }catch(error){
     document.querySelector('#status').hidden=false;
     document.querySelector('#status').textContent=error.message;
   }
-});
+}
+groupButton(referenceGroup,'cite',manageCitations);
+
 groupButton(referenceGroup,'toc',()=>{
   if(editor.isActive('tableOfContents'))editor.chain().focus().deleteSelection().run();
   else editor.chain().focus().insertContent({type:'tableOfContents'}).run();
 });
+groupButton(referenceGroup,['大纲','Outline'],documentOutline.show);
 groupButton(referenceGroup,'short',async()=>{
   if(!editor.isActive('heading'))return;
   const value=await askText(t('短标题','Short title'),editor.getAttributes('heading').shortTitle??'');
@@ -1683,8 +2797,8 @@ async function editFormulaLabel() {
 }
 groupButton(mathGroup,'equation label',editFormulaLabel);
 groupButton(mathGroup,'frac',()=>insertMath(false,'\\frac{\\placeholder{}}{\\placeholder{}}'));
-groupButton(mathGroup,t('公式换行','Math line break'),()=>activeMath()?.dispatchEvent(new Event('lineae-math-newline')));
-groupButton(mathGroup,t('退出公式','Exit formula'),()=>activeMath()?.dispatchEvent(new Event('lineae-leave-formula'))).dataset.shortcut='math.leaveFormula';
+groupButton(mathGroup,['公式换行','Math line break'],()=>activeMath()?.dispatchEvent(new Event('lineae-math-newline')));
+groupButton(mathGroup,['退出公式','Exit formula'],()=>activeMath()?.dispatchEvent(new Event('lineae-leave-formula'))).dataset.shortcut='math.leaveFormula';
 for (const [label,command,latex] of [
   ['sqrt','sqrt','\\sqrt{\\placeholder{}}'],
   ['ⁿ√','indexedRoot','\\sqrt[\\placeholder{}]{\\placeholder{}}'],
@@ -1700,7 +2814,7 @@ for (const [label,command,latex] of [
 }
 groupButton(mathGroup,'\\left',()=>chooseMathDelimiters(activeMath()));
 groupButton(mathGroup,'\\right',()=>chooseMathDelimiters(activeMath(),true));
-groupButton(mathGroup,'单括号 / Literal fence',()=>armLiteralFence(activeMath()));
+groupButton(mathGroup,['单括号','Literal fence'],()=>armLiteralFence(activeMath()));
 groupButton(mathGroup,'matrix',()=>insertMath(false,matrixSource('matrix')));
 groupButton(mathGroup,'cases',()=>insertMath(true,'\\begin{cases}\\placeholder{} & \\placeholder{}\\\\ \\placeholder{} & \\placeholder{}\\end{cases}'));
 groupButton(mathGroup,'align',structureCommands.align);
@@ -1711,15 +2825,25 @@ const ribbon=document.createElement('div');ribbon.className='ribbon';
 const tabs=document.createElement('nav');tabs.className='ribbon-tabs';
 const home=document.createElement('div');home.className='tools';
 const insert=document.createElement('div');insert.className='tools';
-groupButton(insert,t('图片','Image'),()=>insertLocalImage(editor));
-groupButton(insert,t('代码块','Code block'),async()=>{
+groupButton(insert,['图片','Image'],()=>insertLocalImage(editor));
+groupButton(insert,['子图','Subfigure'],()=>insertSubfigures(editor));
+groupButton(insert,['代码块','Code block'],async()=>{
   const language=await askText(t('代码语言，例如 Python、Java 或 C++','Code language, e.g. Python, Java or C++'),editor.getAttributes('codeBlock').language??'');
   if(language===null || (language && !/^[A-Za-z0-9+_-]+$/.test(language))) return;
   if(editor.isActive('codeBlock')) editor.chain().focus().updateAttributes('codeBlock',{language:language||null}).run();
   else editor.chain().focus().setCodeBlock({language:language||null}).run();
 });
+groupButton(insert,['TikZ','TikZ'],()=>{
+  try{
+    const editorEl=document.querySelector('.document-page .ProseMirror');
+    const textwidthCm=editorEl?editorEl.clientWidth*2.54/96:15;
+    const tikz=new TikzEditor({getTextwidthCm:()=>textwidthCm});
+    tikz.open(code=>{ if(code) editor.chain().focus().insertContent({type:'codeBlock',attrs:{language:'tikz'},content:[{type:'text',text:code}]}).run(); });
+  }catch(error){ console.error(error); alert('TikZ editor failed: '+(error?.message||error)); }
+});
+import { installMathFloatToolbar } from './ui/math-float-toolbar.js';
 const files=header.querySelector('.tools');
-const attachFolder=groupButton(files,t('关联资源目录','Attach asset folder'),()=>{
+const attachFolder=groupButton(files,['关联资源目录','Attach asset folder'],()=>{
   const picker=document.createElement('input');
   picker.type='file';picker.webkitdirectory=true;
   picker.addEventListener('change',()=>{
@@ -1735,11 +2859,135 @@ for(const control of [...tools.children]) {
   (control.hasAttribute('data-home') || control.tagName==='SELECT' || ['↶','↷','B','I','U','H'].includes(control.textContent)?home:insert).append(control);
 }
 const groups={files,home,insert,layout:layoutGroup,table:tableGroup,format:formatGroup,reference:referenceGroup,math:mathGroup};
-const captions={files:['文件','File'],home:['主页','Home'],insert:['插入','Insert'],layout:['布局','Layout'],table:['表格','Table'],format:['格式','Format'],reference:['引用','Reference'],math:['数学','Math']};
+headerFooterPanel=installHeaderFooterPanel({
+  readState:()=>readPageFurniture(documentParts.start),
+  onChange:applyFurnitureState,
+});
+groups.headerFooter=headerFooterPanel.panel;
+headerFooterPanel.refresh();
+imagePanel=installImagePanel({
+  getSpacing:()=>readImageSpacing(documentParts.start),
+  onSpacing:updateImageSpacing,
+  onReplace:()=>{if(imageSelection!==null)replaceLocalImage(editor,imageSelection);},
+  onUpdate:patch=>updateSelectedImageAttrs(patch),
+});
+groups.image=imagePanel.panel;
+let subfigurePanel=null;
+subfigurePanel=installSubfigurePanel({onUpdate:patch=>updateSelectedSubfigureAttrs(patch)});
+groups.subfigure=subfigurePanel.panel;
+imagePanel.setSpacing(readImageSpacing(documentParts.start));
+const captions={files:['文件','File'],home:['主页','Home'],insert:['插入','Insert'],layout:['布局','Layout'],table:['表格','Table'],format:['格式','Format'],reference:['引用','Reference'],math:['数学','Math'],headerFooter:['页眉页脚','Header & Footer'],image:['图片','Image'],subfigure:['子图','Subfigure']};
 const language=document.querySelector('#language');
-const findButton=groupButton(home,t('查找','Find'),documentFind.show);
-findButton.dataset.shortcut='editor.find';
-const importConfig=groupButton(files,t('导入 YAML','Import YAML'),()=>{
+const fontFamilyControl=home.querySelector('[data-format-attribute="fontFamily"]');
+const fontSizeControl=home.querySelector('[data-format-attribute="fontSize"]');
+const colorControl=home.querySelector('.color-control');
+const clipboard=createClipboard(editor,{getField:activeMath});
+let formatPainter;
+let clipboardStatusTimer;
+function reportClipboardError(error){
+  const status=document.querySelector('#status');
+  status.hidden=false;
+  status.textContent=error?.message??t('剪贴板操作失败','Clipboard operation failed');
+  clearTimeout(clipboardStatusTimer);
+  clipboardStatusTimer=setTimeout(()=>{status.hidden=true;},4000);
+}
+const textOnly = callback => (...args) => activeMath() ? false : callback(...args);
+function changeFontSize(direction) {
+  if (activeMath()) return false;
+  const sizes=[8,9,10,11,12,14,16,18,20,24,28,32,36,48,60,72];
+  const current=Number.parseFloat(selectionTypography(editor).fontSize)||10;
+  const next=direction>0
+    ? sizes.find(size => size>current+0.01)
+    : [...sizes].reverse().find(size => size<current-0.01);
+  if (!next) return false;
+  return editor.chain().focus().setMark('textStyle',{fontSize:next+'pt'}).run();
+}
+const homeRibbon=buildHomeRibbon(home,{actions:{
+  copy:()=>clipboard.copy().catch(reportClipboardError),
+  cut:()=>clipboard.cut().catch(reportClipboardError),
+  paste:mode=>clipboard.paste(mode).catch(reportClipboardError),
+  formatPainter:event=>formatPainter?.activate(event),
+  undo:undoDocument,
+  redo:redoDocument,
+  bold:textOnly(()=>editor.chain().focus().toggleBold().run()),
+  italic:textOnly(()=>editor.chain().focus().toggleItalic().run()),
+  underline:textOnly(()=>editor.chain().focus().toggleMark('underline').run()),
+  underlineStyle:textOnly(style=>editor.chain().focus().setMark('underline',{style}).run()),
+  strike:textOnly(()=>editor.chain().focus().toggleStrike().run()),
+  subscript:textOnly(()=>editor.chain().focus().toggleMark('subscript').run()),
+  superscript:textOnly(()=>editor.chain().focus().toggleMark('superscript').run()),
+  clearFormatting:textOnly(()=>editor.chain().focus().unsetAllMarks().run()),
+  characterBorder:textOnly(()=>spaceOverlay.toggleBox()),
+  fontGrow:textOnly(()=>changeFontSize(1)),
+  fontShrink:textOnly(()=>changeFontSize(-1)),
+  highlight:textOnly(color=>editor.chain().focus().setMark('textStyle',{backgroundColor:color??null}).run()),
+  circled:textOnly(()=>editor.chain().focus().toggleMark('circled').run()),
+  bullets:()=>editor.chain().focus().toggleBulletList().run(),
+  numbering:()=>editor.chain().focus().toggleOrderedList().run(),
+  bulletStyle:marker=>setListStyle(marker),
+  numberStyle:style=>setListStyle(style),
+  indentDecrease:()=>indentSelectedParagraph(-1),
+  indentIncrease:()=>indentSelectedParagraph(1),
+  alignLeft:()=>setParagraphAlignment('left'),
+  alignCenter:()=>setParagraphAlignment('center'),
+  alignRight:()=>setParagraphAlignment('right'),
+  alignJustify:()=>setParagraphAlignment('justify'),
+  lineSpacing:value=>updateSelectedParagraphs({lineSpacing:value&&value!==1?value:null}),
+  paragraphSpacing:(before,after)=>updateSelectedParagraphs({spaceBefore:before??null,spaceAfter:after??null}),
+  paragraphShading:color=>updateSelectedParagraphs({shading:color??null}),
+  paragraphBorder:()=>{
+    const position=selectedParagraphPositions()[0];
+    const border=Boolean(position!==undefined && editor.state.doc.nodeAt(position)?.attrs.border);
+    return updateSelectedParagraphs({border:!border});
+  },
+  sort:mode=>sortParagraphs(mode),
+  formattingMarks:()=>{
+    config.updateInterface({formattingMarks:!config.value.interface.formattingMarks});
+    updateEditorDisplayPreferences();
+    syncHomeToolbar();
+  },
+  style:level=>{
+    headingMenu.value=String(level);
+    headingMenu.dispatchEvent(new Event('change',{bubbles:true}));
+  },
+  find:documentFind.show,
+}});
+formatPainter=installFormatPainter(editor,{button:homeRibbon.refs.formatPainter,getField:activeMath});
+if (fontFamilyControl) homeRibbon.slots.font.prepend(fontFamilyControl);
+if (fontSizeControl) homeRibbon.slots.font.insertBefore(fontSizeControl,fontFamilyControl?.nextSibling??homeRibbon.slots.font.firstChild);
+if (colorControl) homeRibbon.slots.color.append(colorControl);
+// styleSelect 槽已移除：headingMenu 仅由源码模式工具栏使用。
+homeRibbon.refs.find.dataset.shortcut='editor.find';
+function syncHomeToolbar() {
+  if (!sourceView.hidden) return;
+  const pressed=(control,value)=>control?.setAttribute('aria-pressed',String(Boolean(value)));
+  pressed(homeRibbon.refs.bold,editor.isActive('bold'));
+  pressed(homeRibbon.refs.italic,editor.isActive('italic'));
+  pressed(homeRibbon.refs.underline,editor.isActive('underline'));
+  pressed(homeRibbon.refs.strike,editor.isActive('strike'));
+  pressed(homeRibbon.refs.subscript,editor.isActive('subscript'));
+  pressed(homeRibbon.refs.superscript,editor.isActive('superscript'));
+  pressed(homeRibbon.refs.highlight,Boolean(editor.getAttributes('textStyle').backgroundColor));
+  pressed(homeRibbon.refs.circled,editor.isActive('circled'));
+  const textBlocked=Boolean(activeMath());
+  for (const name of ['bold','italic','underline','strike','subscript','superscript','clearFormatting','characterBorder','highlight','circled','fontGrow','fontShrink']) {
+    if (homeRibbon.refs[name]) homeRibbon.refs[name].disabled=textBlocked;
+  }
+  pressed(homeRibbon.refs.bullets,editor.isActive('bulletList'));
+  pressed(homeRibbon.refs.numbering,editor.isActive('orderedList'));
+  pressed(homeRibbon.refs.formattingMarks,config.value.interface.formattingMarks);
+  const align=editor.getAttributes('paragraph').align??'left';
+  for (const key of ['left','center','right','justify']) pressed(homeRibbon.refs.align[key],align===key);
+  pressed(homeRibbon.refs.shading,Boolean(editor.getAttributes('paragraph').shading));
+  pressed(homeRibbon.refs.border,Boolean(editor.getAttributes('paragraph').border));
+  const level=editor.getAttributes('heading').level??0;
+  for (const [value,control] of homeRibbon.refs.styles) pressed(control,value===level);
+}
+editor.on('transaction',syncHomeToolbar);
+document.addEventListener('focusin',()=>{ if(sourceView.hidden) syncHomeToolbar(); },true);
+document.addEventListener('focusout',()=>{ if(sourceView.hidden) setTimeout(syncHomeToolbar,0); },true);
+syncHomeToolbar();
+const importConfig=groupButton(files,['导入 YAML','Import YAML'],()=>{
   const picker=document.createElement('input');
   picker.type='file';
   picker.accept='.yaml,.yml,application/yaml,text/yaml';
@@ -1758,18 +3006,20 @@ const importConfig=groupButton(files,t('导入 YAML','Import YAML'),()=>{
   },{once:true});
   picker.click();
 });
-const exportConfig=groupButton(files,t('导出 YAML','Export YAML'),()=>{
+importConfig.hidden=true;
+const exportConfig=groupButton(files,['导出 YAML','Export YAML'],()=>{
   saveZoom();
   const url=URL.createObjectURL(new Blob([config.exportYaml()],{type:'application/yaml;charset=utf-8'}));
   const a=document.createElement('a');a.href=url;a.download='config.yaml';a.click();
   setTimeout(()=>URL.revokeObjectURL(url),1000);
 });
-const saveAsButton=groupButton(files,t('另存为','Save as'),()=>saveDocument(true));
+exportConfig.hidden=true;
+const saveAsButton=groupButton(files,['另存为','Save as'],()=>saveDocument(true));
 saveAsButton.dataset.tool='saveAs';
 let releaseFileNavigation;
 function updateFileTools() {
   const order=config.value.interface.toolbar;
-  for (const control of files.querySelectorAll('[data-tool]')) control.hidden=!order.includes(control.dataset.tool);
+  for (const control of files.querySelectorAll('[data-tool]')) control.hidden=control.dataset.tool==='language'||!order.includes(control.dataset.tool);
   for (const name of order) files.insertBefore(files.querySelector(`[data-tool="${name}"]`),importConfig);
   releaseFileNavigation?.();
   releaseFileNavigation=installRovingFocus(files,{onActivate:control=>control.click()});
@@ -1783,6 +3033,8 @@ function applyImportedPreferences() {
   const { smartFences }=config.value.editing;
   configureMathFences(smartFences);
   for (const field of paper.querySelectorAll('math-field')) field.smartFence=smartFences;
+  sourceView.configure();
+  toolbarController.refresh();
   updateFileTools();
   updateLanguage();
 }
@@ -1792,6 +3044,8 @@ function updateShortcutHints() {
   for (const control of ribbon.querySelectorAll('[data-shortcut]')) {
     const [scope,command]=control.dataset.shortcut.split('.');
     const binding=config.bindings.scopes.get(scope)?.find(entry=>entry.command===command);
+    control.dataset.tooltipZh=control.dataset.tooltipBaseZh??control.dataset.tooltipZh??'';
+    control.dataset.tooltipEn=control.dataset.tooltipBaseEn??control.dataset.tooltipEn??'';
     if (!binding) continue;
     const shortcut=[binding.first,binding.second].filter(Boolean).map(format).join(' ');
     control.dataset.tooltipZh+=' · '+shortcut;
@@ -1801,21 +3055,15 @@ function updateShortcutHints() {
 language.value=configuredLanguage();
 function updateLanguage() {
   setLanguage(language.value);
-  const chinese=language.value==='zh-CN';
-  document.documentElement.lang=language.value;
+  document.documentElement.lang=getLanguage();
   localize(document);
-  for(const tab of tabs.children)tab.textContent=captions[tab.dataset.group][chinese?0:1];
-  download.textContent=chinese?'下载项目 .zip':'Download project .zip';
-  saveAsButton.textContent=chinese?'另存为':'Save as';
-  attachFolder.textContent=chinese?'关联资源目录':'Attach asset folder';
-  importConfig.textContent=chinese?'导入 YAML':'Import YAML';
-  exportConfig.textContent=chinese?'导出 YAML':'Export YAML';
-  findButton.textContent=chinese?'查找':'Find';
-  header.querySelector('.open span').textContent=chinese?'打开 .tex':'Open .tex';
+  for(const tab of tabs.children)tab.textContent=t(captions[tab.dataset.group][0],captions[tab.dataset.group][1]);
   commands.setAttribute('aria-label',t('LaTeX 补全','LaTeX completion'));
   filter.placeholder=t('LaTeX 命令','LaTeX command');
   filter.setAttribute('aria-label',filter.placeholder);
   headingMenu.setAttribute('aria-label',t('段落样式','Paragraph style'));
+  const styleLabels=[['正文','Normal'],['标题 1','Heading 1'],['标题 2','Heading 2'],['标题 3','Heading 3']];
+  [...headingMenu.options].forEach((option,index)=>{if(styleLabels[index])option.text=t(...styleLabels[index]);});
   pagePaper.setAttribute('aria-label',t('纸张','Paper'));
   pageOrientation.replaceChildren(new Option(t('纵向','Portrait'),'portrait'),new Option(t('横向','Landscape'),'landscape'));
   pageOrientation.value=pageSetup.orientation;
@@ -1833,27 +3081,107 @@ function updateLanguage() {
   pageMarginBottom.setAttribute('aria-label',t('下边距','Bottom margin'));
   pageMarginLeft.setAttribute('aria-label',t('左边距','Left margin'));
   tooltips?.setLanguage(language.value);
-  updateThemeButton();
-  updateSourceButton();
-  renderMeta();
-  updateEnvironment();
-  count.textContent=editor.getText().length+' '+t('字符','characters');
+  projectExplorer?.relocalize?.();
+  documentFind.relocalize();
+  documentOutline.relocalize();
+  sourceView.relocalize();toolbarController.relocalize();settingsPanel.relocalize();settingsButton.title=t('设置','Settings');settingsButton.setAttribute('aria-label',settingsButton.title);
   applyToolbarDescriptions(ribbon);
   updateShortcutHints();
+  updateThemeButton();
+  updateSourceButton();
+  updatePaginationButton();
+  updateContinueTablesButton();
+  renderMeta();
+  updateEnvironment();
+  syncHomeToolbar();
+  homeRibbon.refreshLayout?.();
+  count.textContent=editor.getText().length+' '+t('字符','characters');
+}
+let headerFooterMode=false;
+function setHeaderFooterMode(active){
+  if(active===headerFooterMode)return;
+  if(active && !sourceView.hidden)setSourceMode(false);
+  headerFooterMode=active;
+  documentPage.classList.toggle('header-footer-mode',active);
+  editor.setEditable(!active);
+  if(active){
+    headerFooterPanel.enter();
+  }else{
+    headerFooterPanel.leave();
+    if(sourceView.hidden)editor.chain().focus().run();
+  }
 }
 function selectGroup(name) {
+  ribbon.dataset.ribbonPage=name;
   for(const [key,panel] of Object.entries(groups)) panel.hidden=key!==name;
   for(const tab of tabs.children)tab.setAttribute('aria-pressed',String(tab.dataset.group===name));
+  setHeaderFooterMode(name==='headerFooter');
+  groups[name]?.refreshLayout?.();
+  if(name==='home')homeRibbon.refreshLayout?.();
 }
 for(const name of Object.keys(groups)) {
   const tab=document.createElement('button');tab.type='button';tab.dataset.group=name;
   tab.addEventListener('mousedown',event=>event.preventDefault());
-  tab.addEventListener('click',()=>selectGroup(name));tabs.append(tab);
+  tab.addEventListener('click',()=>{toolbarController.show();selectGroup(name);});tabs.append(tab);
 }
-ribbon.append(tabs,files,home,insert,layoutGroup,tableGroup,formatGroup,referenceGroup,mathGroup);header.append(ribbon);tools.remove();
+const imageTab=tabs.querySelector('[data-group=image]');
+if(imageTab)imageTab.hidden=true;
+const subfigureTab=tabs.querySelector('[data-group=subfigure]');
+if(subfigureTab)subfigureTab.hidden=true;
+const tableTab=tabs.querySelector('[data-group=table]');
+if(tableTab)tableTab.hidden=true;
+function syncTableTab(){
+  if(!tableTab)return;
+  const active=sourceView.hidden&&editor.isActive('table');
+  tableTab.hidden=!active;
+  if(active)syncTableControls();
+  else if(ribbon.dataset.ribbonPage==='table')selectGroup('home');
+}
+editor.on('selectionUpdate',syncTableTab);
+editor.on('transaction',({transaction})=>{if(transaction.selectionSet)syncTableTab();});
+function currentImageSelection(){
+  const selection=editor.state.selection;
+  return selection instanceof NodeSelection && selection.node.type.name==='documentImage'
+    ? {position:selection.from,node:selection.node} : null;
+}
+function updateSelectedSubfigureAttrs(patch){
+  const selection=editor.state.selection;
+  if(!(selection instanceof NodeSelection)||selection.node.type.name!=='subfigures')return;
+  editor.commands.updateAttributes('subfigures',patch);
+  subfigurePanel?.setValues({...selection.node.attrs,...patch});
+}
+function syncImageTab(){
+  if(!imageTab)return;
+  const found=sourceView.hidden ? currentImageSelection() : null;
+  imageSelection=found?.position??null;
+  imageTab.hidden=!found;
+  const subSel=sourceView.hidden&&editor.state.selection instanceof NodeSelection&&editor.state.selection.node.type.name==='subfigures'?editor.state.selection.node:null;
+  if(subfigureTab)subfigureTab.hidden=!subSel;
+  subfigurePanel?.setValues(subSel?.attrs??null);
+  if(subSel&&ribbon.dataset.ribbonPage!=='subfigure'&&ribbon.dataset.ribbonPage!=='headerFooter')selectGroup('subfigure');
+  else if(!subSel&&ribbon.dataset.ribbonPage==='subfigure')selectGroup('home');
+  if(found){
+    imagePanel.setValues(found.node.attrs);
+    if(ribbon.dataset.ribbonPage!=='image' && ribbon.dataset.ribbonPage!=='headerFooter')selectGroup('image');
+  }else if(ribbon.dataset.ribbonPage==='image'){
+    selectGroup('home');
+  }
+}
+editor.on('selectionUpdate',syncImageTab);
+editor.on('transaction',({transaction})=>{if(transaction.selectionSet)syncImageTab();});
+ribbon.append(tabs,files,home,insert,layoutGroup,tableGroup,formatGroup,referenceGroup,mathGroup,imagePanel.panel,subfigurePanel.panel,headerFooterPanel.panel);header.append(ribbon);tools.remove();
+groupButton(insert,'figure',()=>insertLocalImage(editor));
+sourceToolbar = installSourceToolbar({ribbon,groups,source:sourceView,rich:paper,heading:headingMenu});
+const toolbarController=installFloatingToolbar({header,ribbon,sourceView,getAutoHide:()=>sourceView.hidden?config.value.interface.toolbarAutoHide:config.value.interface.sourceToolbarAutoHide});
+installMathFloatToolbar({ editor });
+const settingsPanel=installSettingsPanel({config,onApply:applyImportedPreferences,onImport:()=>importConfig.click(),onExport:()=>exportConfig.click(),getDocument:()=>{sourceView.flush();return documentParts.start?structuredClone(pageSetup):null;},applyDocument:updatePageSetup});
+const settingsButton=document.createElement('button');settingsButton.id='settings-open';settingsButton.type='button';settingsButton.append(icon('settings'));settingsButton.onclick=()=>settingsPanel.show();footer.insertBefore(settingsButton,footer.querySelector(':scope>.tex-foot')??count);
+document.addEventListener('lineae-open-settings',()=>settingsPanel.show());
+document.addEventListener('lineae-open-outline',()=>projectExplorer.showOutline());
+document.addEventListener('lineae-open-includes',()=>projectExplorer.showIncludes());
 decorateToolbar(ribbon);
 const tooltips=installTooltips(document.body,{document,language:language.value});
-for(const control of ribbon.querySelectorAll('button'))control.dataset.rovingItem='';
+for(const control of ribbon.querySelectorAll('button')) if(!control.closest('.ribbon-menu')) control.dataset.rovingItem='';
 installRovingFocus(tabs,{initial:Object.keys(groups).indexOf('home'),onActivate:control=>control.click()});
 for(const [name,panel] of Object.entries(groups)) {
   if (name!=='files') installRovingFocus(panel,{onActivate:control=>control.click()});
@@ -1867,3 +3195,4 @@ installContextMenu(editor, paper, language, message => {
   status.hidden = false;
   status.textContent = message;
 });
+

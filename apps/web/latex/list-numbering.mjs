@@ -4,15 +4,32 @@ const counters = {
   decimal:'\\arabic*', 'lower-alpha':'\\protect\\alphalph{\\arabic*}', 'upper-alpha':'\\protect\\AlphAlph{\\arabic*}',
   'lower-roman':'\\roman*', 'upper-roman':'\\Roman*',
   'cjk-heavenly-stem':'\\protect\\lineaeStem{\\arabic*}',
-  'cjk-ideographic':'\\protect\\zhnum{\\arabic*}',
+  'cjk-ideographic':'\\protect\\zhnumber{\\arabic*}',
   'circled-decimal':'\\protect\\textcircled{\\arabic*}',
 };
+const bulletCommands = {
+  '•':'\\textbullet',
+  '◦':'\\ensuremath{\\circ}',
+  '▪':'\\raisebox{.25ex}{\\rule{.45em}{.45em}}',
+  '–':'\\textendash',
+  '*':'\\textasteriskcentered',
+};
+const bulletGlyphs = Object.fromEntries(Object.entries(bulletCommands).map(([glyph,command]) => [command,glyph]));
+bulletGlyphs['\\rule{.45em}{.45em}'] = '▪';
+bulletGlyphs['\\rule[.25ex]{.45em}{.45em}'] = '▪';
+export function bulletLabel(marker) {
+  return marker ? (bulletCommands[marker] ?? marker) : null;
+}
+export function bulletMarker(label) {
+  return bulletGlyphs[label] ?? label ?? null;
+}
 const forms={dot:['','.'],parens:['(',')'],paren:['',')'],comma:['','、'],bare:['','']};
 const roman=/^M{0,3}(?:CM|CD|D?C{0,3})(?:XC|XL|L?X{0,3})(?:IX|IV|V?I{0,3})$/;
 
 export function listMarker(match) {
   const [,open,raw,end]=match;
   const token=/^[①-⑳]$/u.test(raw) ? raw : raw.normalize('NFKC');
+  if (!token) return null;
   if (open && ![')', '）'].includes(end)) return null;
   const suffix=open ? 'parens' : end===')'||end==='）' ? 'paren' : end==='、' ? 'comma' : end ? 'dot' : 'bare';
   let style='decimal', start=Number(token);

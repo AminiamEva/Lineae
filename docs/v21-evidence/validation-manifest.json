@@ -1,0 +1,24 @@
+{
+  "base": "8b3db67aeb7203a75b1b42b151aeef89ecdc643e",
+  "node": "v24.22.1",
+  "chromium": "Microsoft Edge 157.0.4341.46",
+  "nodeTests": 391,
+  "v2BrowserAssertions": 66,
+  "v21BrowserAssertions": 61,
+  "lifecycleCases": 6,
+  "files": {
+    "apps/web/source-workspace.css": "b7d86c5d7bd3545c642840e92c2be1657e85339b8049265459ccce809c91d307",
+    "apps/web/src/editor/editor-font.mjs": "55d385380b4267a659e29803510c3198aa6dea1437d22762665e8deaa7858d54",
+    "apps/web/src/editor/latex-indent.mjs": "754349b96dd13e34d13522c7dc71ae3b17114a0baf06572871c5e84fd9d8510a",
+    "apps/web/src/editor/source-workspace.js": "120500f0b33582647758039c06210efedf6e9c3975f3ee3660c2f450894ba194",
+    "apps/web/src/main.js": "5114767cb393c8b53415c6761104bdcdc243621a171b6539e459615d775c38e6",
+    "tests/editor.cjs": "3220c1fd2dd0529c38712d46e21651ca058adf87b7aa21bd7106600d4f1cd581",
+    "tests/measure-v21-bundle.cjs": "b8cbf67b1def9a3c592143be313329bcf7763443c63d085640584f15ec5d565e",
+    "tests/run-source-browser.cjs": "e11956a0c276ef11cd1d817bf64ceddd77442ad7cc064fdb49e750082f947495",
+    "tests/source-v2.cjs": "0027765f33d9e8f8d1f788eaf170028ec97fa718d4c3fb718be22734748ca9a9",
+    "tests/source-v21.cjs": "2e324c79d1171faaa865647d098c263baa9414e1bdb6b2849db17a9c6b0929ed",
+    "tests/source-v21.test.mjs": "7844bd92e744b1cbfc20f213156b7c418cfaac55f13003cf8f77f5ec9959765c",
+    "tests/source-workspace.cjs": "01d10c37442e85364e39bcb6fa78b6a77998c2f172e9344667cec9a62885f831"
+  },
+  "bundleSha256": "3ded30384a5c3112bff2db7738bd2375947357e97ddb9a6ab8a70503521f2dc1"
+}
