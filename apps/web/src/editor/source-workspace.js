@@ -10,7 +10,7 @@ import { icon } from './icons.js';
 import { t } from '../ui/i18n.mjs';
 import { latexAssist, insertLatexSnippet } from './latex-assist.js';
 import { undo, redo, isolateHistory } from '@codemirror/commands';
-import { sourceEolExtensions, sourceWithEndings } from './source-eol-state.js';
+import { preserveSourceEndings, sourceEolExtensions, sourceWithEndings } from './source-eol-state.js';
 import { clampFont, FONT_DEFAULT, FONT_MIN, FONT_MAX, installFontWheel } from './editor-font.mjs';
 
 const latex = StreamLanguage.define({
@@ -334,11 +334,14 @@ export function createSourceWorkspace({ page, render, metadata, onChange = () =>
       try { view.dispatch({changes:changes.map(c=>({from:offset(c.from),to:offset(c.to),insert:c.insert.replace(/\r\n?/g,"\n")})),annotations:isolateHistory.of("full"),userEvent:"input.rich"}); lastRendered = value(); }
       finally { receiving = false; }
     },
-    indent(changes) {
-      if (!view || !changes.length || view.composing) return false;
-      // Formatter offsets are logical LF positions. Each change is confined
-      // to one line, so the EOL StateField retains every original separator.
-      view.dispatch({changes, annotations:isolateHistory.of('full'), userEvent:'input.indent'});
+    applySaveFormatting(preamble, changes, input) {
+      if (!view || view.composing) return false;
+      // Indent offsets refer to the source after any project preamble insertion.
+      // Only that insertion can introduce a line ending. Keep its exact bytes.
+      view.dispatch({changes:preamble}, {
+        sequential:true, changes, effects:preamble.length ? preserveSourceEndings(input) : [],
+        annotations:isolateHistory.of('full'), userEvent:'input.indent'
+      });
       updatePreview();
       return true;
     },

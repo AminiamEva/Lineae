@@ -126,6 +126,30 @@ test('preserves the bytes of an untouched document, including CRLF and opaque en
   assert.equal(exportDocument(doc, doc.blocks.join('')), source);
 });
 
+for (const [name, beginEol, bodyEol, suffix] of [
+  ['LF', '\n', '\n', '% note\n'],
+  ['CRLF', '\r\n', '\r\n', '% note\r\n'],
+  ['mixed line endings', '\r\n', '\n', ' \t% 注释\r\n% after\n'],
+  ['no final newline', '\n', '\r\n', '%'],
+]) {
+  test('preserves a document closing comment with ' + name, () => {
+    const body = 'Text.' + bodyEol;
+    const end = '\\end{document}' + suffix;
+    const source = '\\begin{document}' + beginEol + body + end;
+    const parsed = parseDocument(source);
+    assert.ok(parsed);
+    assert.equal(parsed.blocks.join(''), body);
+    assert.equal(parsed.end, end);
+    assert.equal(exportDocument(parsed, body), source);
+  });
+}
+
+test('rejects non-comment text on the document closing line', () => {
+  for (const suffix of ['text', '\\% escaped']) {
+    assert.equal(parseDocument('\\begin{document}\nText.\n\\end{document}' + suffix), null);
+  }
+});
+
 test('serializes raw blocks with a blank line before following text', () => {
   const doc = {
     type: 'doc',

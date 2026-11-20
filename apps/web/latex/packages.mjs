@@ -16,7 +16,7 @@ const dependencies = [
   { name: 'amsthm', pattern: /\\begin\{proof\}/ },
   { name: 'listings', pattern: /\\begin\{lstlisting\}/ },
   { name: 'textcomp', pattern: /\\(?:textdegree|textcelsius|textmu|textohm|textcent|textyen|texteuro|textperthousand|textnumero)\b/ },
-  { name: 'hyperref', pattern: /\\(?:href|url|hyperref)\b/, satisfies: ['url'], onlyUrl: /\\(?:href|hyperref)\b/ },
+  { name: 'hyperref', pattern: /\\(?:href|url|hyperref|autoref)\b/, satisfies: ['url'], onlyUrl: /\\(?:href|hyperref|autoref)\b/ },
   { name: 'fix-cm', pattern: /\\fontsize\s*\{[^{}]+\}\s*\{[^{}]+\}\s*\\selectfont\b/,
     satisfies: ['fontspec', 'lmodern'], beforeClass: true },
 ];

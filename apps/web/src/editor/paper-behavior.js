@@ -263,6 +263,22 @@ export const PaperBehavior = Extension.create({
   name: 'paperBehavior',
   addGlobalAttributes() {
     return [{
+      types:['blockquote'],
+      attributes:{
+        latexEnvironment:{
+          default:null,
+          parseHTML:element=>['abstract','center'].includes(element.dataset.latexEnvironment)?element.dataset.latexEnvironment:null,
+          renderHTML:({latexEnvironment})=>latexEnvironment?{'data-latex-environment':latexEnvironment}:{},
+        },
+        environmentSource:{
+          default:null,
+          parseHTML:element=>{
+            try{const saved=JSON.parse(element.dataset.environmentSource??'null');return saved&&typeof saved.source==='string'&&Array.isArray(saved.parts)&&Number.isInteger(saved.count)?saved:null;}catch{return null;}
+          },
+          renderHTML:({environmentSource})=>environmentSource?{'data-environment-source':JSON.stringify(environmentSource)}:{},
+        },
+      },
+    },{
       types: ['paragraph'],
       attributes: {
         align: {
@@ -298,6 +314,11 @@ export const PaperBehavior = Extension.create({
           default: null,
           parseHTML: element => element.dataset.shortTitle ?? null,
           renderHTML: attributes => attributes.shortTitle ? { 'data-short-title': attributes.shortTitle } : {},
+        },
+        labelSource: {
+          default:null,
+          parseHTML:element=>{try{return JSON.parse(element.dataset.labelSource??'null');}catch{return null;}},
+          renderHTML:attributes=>attributes.labelSource?{'data-label-source':JSON.stringify(attributes.labelSource)}:{},
         },
         label: {
           default: null,

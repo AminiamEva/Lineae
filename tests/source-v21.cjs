@@ -114,18 +114,67 @@ module.exports = async (context,url) => {
     await page.locator('[data-source-mode=split]').click();equal(await read(),expected,'Rich Text save retained after switching');
 
     // Save fallback must export the formatted snapshot; a plain ZIP export
-    // keeps the original bytes. Cancellation leaves the transaction undoable.
+    // keeps the original bytes. An unconfirmed download must leave the draft intact.
     await open(before);
     await page.evaluate(()=>{window.showSaveFilePicker=undefined;});
     const fallback=page.waitForEvent('download');await content.focus();await page.keyboard.press('Control+s');
     const zip=await readFile(await (await fallback).path());
     const start=30+zip.readUInt16LE(26)+zip.readUInt16LE(28);
     equal(zip.subarray(start,start+zip.readUInt32LE(18)).toString(),expected,'save fallback ZIP formats');
+    equal(await read(),before,'fallback download leaves the draft unchanged');
+    const cm = () => page.evaluate(() => {
+      const {doc,selection}=v21Fixture.EditorView.findFromDOM(document.querySelector('.cm-editor')).state;
+      return {text:doc.toString(),selection:selection.toJSON()};
+    });
+    // Exercise Save As, including retry on permission failure, and errors from
+    // both writable stages (the native bridge performs its write on close).
+    for(const fault of ['cancel','permission','write','close','indent-disabled']){
+      await open(before);
+      if(fault==='indent-disabled')await setIndentOnSave(page,false);
+      await content.focus();await page.keyboard.press('Control+End');await page.keyboard.insertText('%draft');
+      await page.keyboard.press('Shift+ArrowLeft');
+      const draft=await read(), state=await cm();
+      await page.evaluate(fault=>{
+        window.v21Fault=false;
+        const fail=()=>{window.v21Fault=true;throw new DOMException('injected '+fault,fault==='cancel'?'AbortError':'NotAllowedError');};
+        window.showSaveFilePicker=async()=>{
+          if(fault==='cancel')fail();
+          return {name:'unconfirmed.tex',requestPermission:async()=>'denied',createWritable:async()=>{
+            if(fault==='permission')fail();
+            return {write:async()=>{if(fault!=='close')fail();},close:async()=>fail()};
+          }};
+        };
+      },fault);
+      await revealToolbar(page);await page.locator('[data-group=files]').click();
+      const downloaded=fault==='cancel'?null:page.waitForEvent('download');
+      await page.locator('[data-tool=saveAs]').click();
+      await page.waitForFunction(()=>window.v21Fault);
+      if(downloaded)await downloaded;
+      equal(await read(),draft,fault+' preserves exact dirty draft');
+      equal(await cm(),state,fault+' preserves selection');
+      equal(await page.locator('.tex-dirty').isVisible(),true,fault+' retains dirty flag');
+      equal(await page.locator('.tex-filename').innerText(),'v21.tex',fault+' retains filename');
+      await content.focus();await page.keyboard.press('Control+z');equal(await read(),before,fault+' preserves previous undo');
+      await content.focus();await page.keyboard.press('Control+y');equal(await read(),draft,fault+' preserves redo');
+      if(fault==='indent-disabled')await setIndentOnSave(page,true);
+    }
     await open(before);
-    await page.evaluate(()=>{window.showSaveFilePicker=async()=>{throw new DOMException('Cancelled','AbortError');};});
+    await page.evaluate(()=>{
+      window.v21Release=null;
+      window.showSaveFilePicker=async()=>({name:'race.tex',createWritable:async()=>({
+        write:async text=>{window.v21Pending=text;},
+        close:()=>new Promise(resolve=>{window.v21Release=resolve;})
+      })});
+    });
     await content.focus();await page.keyboard.press('Control+s');
-    equal(await read(),expected,'cancelled save keeps reviewable formatting');
-    await content.focus();await page.keyboard.press('Control+z');equal(await read(),before,'cancelled save indentation can be undone');
+    await page.waitForFunction(()=>!!window.v21Release);
+    equal(await read(),before,'pending write leaves draft untouched');
+    equal(await page.evaluate(()=>window.v21Pending),expected,'write receives immutable formatted snapshot');
+    await content.focus();await page.keyboard.press('Control+End');await page.keyboard.insertText('%later');
+    await page.evaluate(()=>window.v21Release());
+    await page.waitForFunction(()=>document.querySelector('.tex-filename').innerText==='race.tex');
+    equal(await read(),before+'%later','late completion preserves new input without formatting it');
+    equal(await page.locator('.tex-dirty').isVisible(),true,'later input remains dirty');
     await page.evaluate(()=>{window.showSaveFilePicker=async()=>({name:'v21.tex',createWritable:async()=>({write:async text=>window.v21Writes.push(text),close:async()=>{}})});});
 
     const mixed=Buffer.from(require('./fixtures/source-workspace-mixed-eol.json').expected.base64,'base64').toString();
@@ -150,6 +199,33 @@ module.exports = async (context,url) => {
       equal(await page.locator('[data-source-mode=source]').evaluate(e=>getComputedStyle(e).outlineStyle),'solid','visible focus '+width);
       if(evidence)await page.screenshot({path:join(evidence,`viewport-${width}x${height}.png`)});
     }
+    // A project root can acquire a docmute preamble at save time. Exercise
+    // the browser filesystem and assert the same mixed separators on both sides.
+    await page.setViewportSize({width:1440,height:1000});
+    const rootSource='\\documentclass{article}\r\n\\begin{document}\nBefore\r\n\\input{part}\n\\end{document}';
+    const rootFormatted=indentLatex(rootSource.replace('\\begin{document}','\\usepackage{docmute}\r\n\\begin{document}')).text;
+    await page.evaluate(async rootSource=>{
+      const root=await (await navigator.storage.getDirectory()).getDirectoryHandle(crypto.randomUUID(),{create:true});
+      for(const [name,text] of [['main.tex',rootSource],['part.tex','\\begin{document}\npart\n\\end{document}']]){
+        const writable=await (await root.getFileHandle(name,{create:true})).createWritable();
+        await writable.write(text);await writable.close();
+      }
+      window.showDirectoryPicker=async()=>root;
+    },rootSource);
+    await revealToolbar(page);await page.locator('[data-group=files]').click();
+    await page.locator('#project-open').click();
+    await page.locator('.project-file[aria-current=true]').waitFor({state:'attached'});
+    await page.locator('[data-source-mode=source]').click();
+    await page.locator('#project-save').click();
+    await page.waitForFunction(()=>document.querySelector('#project-explorer').getAttribute('aria-busy')==='false');
+    const stored=await page.evaluate(async()=>{
+      const handle=await (await window.showDirectoryPicker()).getFileHandle('main.tex');
+      return (await handle.getFile()).text();
+    });
+    equal(stored,rootFormatted,'project root formatted on disk');
+    equal(await read(),stored,'project preamble and mixed endings match disk');
+    await content.focus();await page.keyboard.press('Control+z');equal(await read(),rootSource,'one undo restores entire original project source');
+    await content.focus();await page.keyboard.press('Control+y');equal(await read(),stored,'redo preserves inserted and existing separators');
     equal(errors,[],'no browser errors');
     console.log('V2.1 browser assertions: '+assertions);
   } finally {await page.close();}

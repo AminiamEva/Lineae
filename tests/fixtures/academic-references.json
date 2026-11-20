@@ -1,0 +1,83 @@
+{
+  "description": "Synthetic parser regression cases.",
+  "references": [
+    {
+      "line": 1,
+      "source": "\\autoref{fig:demo-1}",
+      "command": "autoref",
+      "key": "fig:demo-1"
+    },
+    {
+      "line": 2,
+      "source": "\\autoref{fig:demo-2}",
+      "command": "autoref",
+      "key": "fig:demo-2"
+    },
+    {
+      "line": 3,
+      "source": "\\autoref{fig:demo-3}",
+      "command": "autoref",
+      "key": "fig:demo-3"
+    },
+    {
+      "line": 4,
+      "source": "\\autoref{fig:demo-4}",
+      "command": "autoref",
+      "key": "fig:demo-4"
+    },
+    {
+      "line": 5,
+      "source": "\\autoref{fig:demo-5}",
+      "command": "autoref",
+      "key": "fig:demo-5"
+    },
+    {
+      "line": 6,
+      "source": "\\autoref{fig:demo-6}",
+      "command": "autoref",
+      "key": "fig:demo-6"
+    },
+    {
+      "line": 7,
+      "source": "\\autoref{fig:demo-7}",
+      "command": "autoref",
+      "key": "fig:demo-7"
+    },
+    {
+      "line": 8,
+      "source": "\\autoref{fig:demo-8}",
+      "command": "autoref",
+      "key": "fig:demo-8"
+    },
+    {
+      "line": 9,
+      "source": "\\autoref{fig:demo-9}",
+      "command": "autoref",
+      "key": "fig:demo-9"
+    },
+    {
+      "line": 10,
+      "source": "\\autoref{fig:demo-10}",
+      "command": "autoref",
+      "key": "fig:demo-10"
+    },
+    {
+      "line": 11,
+      "source": "\\autoref{fig:demo-11}",
+      "command": "autoref",
+      "key": "fig:demo-11"
+    },
+    {
+      "line": 12,
+      "source": "\\autoref{fig:demo-8}",
+      "command": "autoref",
+      "key": "fig:demo-8"
+    },
+    {
+      "line": 13,
+      "source": "\\cite{synthetic-demo-citation}",
+      "command": "cite",
+      "key": "synthetic-demo-citation"
+    }
+  ]
+}

@@ -311,7 +311,7 @@ export function installSpaceOverlay(editor, paper, { selectionFocus = null } = {
     const width=page.clientWidth;
     const height=page.clientHeight;
     overlay.setAttribute('viewBox',`0 0 ${width} ${height}`);
-    marksOverlay.replaceChildren();
+    const marks=document.createDocumentFragment();
     const color='rgba(128,128,128,.58)';
     const range=document.createRange();
     const local=rect=>({
@@ -354,11 +354,11 @@ export function installSpaceOverlay(editor, paper, { selectionFocus = null } = {
           fill:color,
         });
         mark.textContent='¶';
-        marksOverlay.append(mark);
+        marks.append(mark);
         if(indent>0) {
           const end=bounds.left+indent-4;
-          marksOverlay.append(shape('line',{x1:bounds.left+2,y1:y,x2:end,y2:y,stroke:color,'stroke-width':1}));
-          marksOverlay.append(shape('line',{x1:end,y1:y-3,x2:end,y2:y+3,stroke:color,'stroke-width':1}));
+          marks.append(shape('line',{x1:bounds.left+2,y1:y,x2:end,y2:y,stroke:color,'stroke-width':1}));
+          marks.append(shape('line',{x1:end,y1:y-3,x2:end,y2:y+3,stroke:color,'stroke-width':1}));
         }
       }
       const walker=document.createTreeWalker(block,NodeFilter.SHOW_TEXT,{
@@ -374,12 +374,12 @@ export function installSpaceOverlay(editor, paper, { selectionFocus = null } = {
           const y=(rect.top+rect.bottom)/2;
           if(match[0]==='\t') {
             const end=rect.right-2;
-            marksOverlay.append(shape('path',{
+            marks.append(shape('path',{
               d:`M ${rect.left+2} ${y} L ${end} ${y} L ${end-3} ${y-3} M ${end} ${y} L ${end-3} ${y+3}`,
               fill:'none',stroke:color,'stroke-width':1,
             }));
           } else {
-            marksOverlay.append(shape('circle',{
+            marks.append(shape('circle',{
               cx:x,cy:y,r:Math.max(.8,Math.min(2,rect.height*.057)),
               fill:match[0]==='\u00a0'?'none':color,
               stroke:match[0]==='\u00a0'?color:'none','stroke-width':1,
@@ -405,7 +405,7 @@ export function installSpaceOverlay(editor, paper, { selectionFocus = null } = {
         fill:color,
       });
       mark.textContent=text;
-      marksOverlay.append(mark);
+      marks.append(mark);
     };
     for (const heading of editor.view.dom.querySelectorAll('h1,h2,h3')) {
       if(page.dataset.projectFolding==='true'&&getComputedStyle(heading).visibility==='hidden')continue;
@@ -423,6 +423,7 @@ export function installSpaceOverlay(editor, paper, { selectionFocus = null } = {
       const element=page.querySelector(selector);
       if(element?.textContent.trim())label(text,element);
     }
+    marksOverlay.replaceChildren(marks);
     page.dispatchEvent(new Event('lineae-markers-layout'));
   }
   function scheduleCaret(intent=null,activity=false) {

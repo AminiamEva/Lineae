@@ -415,6 +415,9 @@ async function verifySelectionGeometry(page, paper, importSource) {
   try{
     const browserContext=await browser.newContext({locale:'en-US',viewport:{width:1280,height:1400},permissions:['clipboard-read','clipboard-write']});
     await require('./source-workspace.cjs')(browserContext, 'http://127.0.0.1:'+server.address().port+'/');
+    await require('./source-split-reuse.cjs')(browserContext, 'http://127.0.0.1:'+server.address().port+'/');
+    await require('./source-standalone-paragraph.cjs')(browserContext, 'http://127.0.0.1:'+server.address().port+'/');
+    await require('./source-marker-batching.cjs')(browserContext, 'http://127.0.0.1:'+server.address().port+'/');
     const page=await browserContext.newPage();
     const errors=[];
     page.on('pageerror',error=>{errors.push(error.message);console.log('PAGE ERROR',error.message);});
@@ -2231,6 +2234,13 @@ async function verifySelectionGeometry(page, paper, importSource) {
       }
     }
     await page.setViewportSize({width:1280,height:1400});
+    const assertUntouchedFormulaSource=async body=>{
+      await page.evaluate(()=>{navigator.clipboard.writeText=async text=>{window.formulaSourceCopy=text;};});
+      await page.locator('.tex-actions button').nth(2).click();
+      assert.equal(await page.evaluate(()=>window.formulaSourceCopy),
+        '\\documentclass{article}\n\\begin{document}\n\n'+body+'\n\n\\end{document}\n',
+        'Visual formula wrapping must not change any byte of an unedited document');
+    };
     const longFormula='x+y+'.repeat(160)+'z';
     await importSource('Lead $'+longFormula+'$\n\n\\['+longFormula+'\\]');
     await page.waitForFunction(latex=>[...document.querySelectorAll('.ProseMirror [data-math-view]')].filter(node=>node.dataset.latex===latex).length===2,longFormula);
@@ -2244,14 +2254,13 @@ async function verifySelectionGeometry(page, paper, importSource) {
       return main.scrollWidth<=main.clientWidth+1;
     }),'Long formulas do not add a page scrollbar');
     await page.locator('[data-source-mode="source"]').click();
-    assert.ok((await page.locator('.tex-code .cm-content').innerText()).includes('\\newline\n$'+longFormula+'$'));
+    await assertUntouchedFormulaSource('Lead $'+longFormula+'$\n\n\\['+longFormula+'\\]');
     await page.locator('[data-source-mode="body"]').click();
     const wrappedFormula='x+y+'.repeat(10)+'z';
     await importSource('W'.repeat(40)+'$'+wrappedFormula+'$');
     await page.waitForFunction(latex=>document.querySelector('[data-math-view]')?.dataset.latex===latex,wrappedFormula);
     await page.locator('[data-source-mode="source"]').click();
-    assert.ok((await page.locator('.tex-code .cm-content').innerText()).includes('\\newline\n$'+wrappedFormula+'$'),
-      'A formula that wraps naturally is recorded as \\newline even when it fits an empty line');
+    await assertUntouchedFormulaSource('W'.repeat(40)+'$'+wrappedFormula+'$');
     await page.locator('[data-source-mode="body"]').click();
     const nestedLists=Array.from({length:32},(_,index)=>index%2?'enumerate':'itemize');
     await importSource(nestedLists.map(kind=>'\\begin{'+kind+'}\n\\item Level\n').join('')+

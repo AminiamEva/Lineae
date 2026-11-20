@@ -3,9 +3,8 @@ import { Node } from '@tiptap/core';
 import { t } from '../ui/i18n.mjs';
 import { askText } from './dialog.js';
 import { imageWidthPattern } from '../../latex/images.mjs';
-import { rememberAsset } from './project-assets.js';
+import { rememberAsset, resolveImageAsset, onAssetsChanged } from './project-assets.js';
 
-const previews = new Map();
 const rasterTypes = new Set(['image/png','image/jpeg','image/webp','image/gif','image/avif']);
 
 function chooseFile(callback) {
@@ -21,11 +20,6 @@ function chooseFile(callback) {
 
 function remember(path, file) {
   rememberAsset(path,file);
-  const previous = previews.get(path);
-  if (previous) URL.revokeObjectURL(previous);
-  const preview = URL.createObjectURL(file);
-  previews.set(path, preview);
-  return preview;
 }
 
 export function installImageDrop(editor, paper) {
@@ -74,7 +68,7 @@ export function insertLocalImage(editor) {
 
 export const DocumentImage = Node.create({
   name:'documentImage', group:'block', atom:true, draggable:true,
-  addAttributes:()=>({path:{default:''},width:{default:null},figure:{default:false},placement:{default:null},centered:{default:false},align:{default:null},caption:{default:null},label:{default:null}}),
+  addAttributes:()=>({path:{default:''},width:{default:null},figure:{default:false},placement:{default:null},centered:{default:false},align:{default:null},caption:{default:null},label:{default:null},figureSource:{default:null}}),
   parseHTML:()=>[{tag:'figure[data-document-image]',getAttrs:element=>{
     try {return {...JSON.parse(element.dataset.imageAttrs??'{}'),path:element.dataset.documentImage};}
     catch {return false;}
@@ -87,6 +81,9 @@ export const DocumentImage = Node.create({
       dom.className='document-image';
       dom.contentEditable='false';
       const image=document.createElement('img');
+      const resourceStatus=document.createElement('div');
+      resourceStatus.setAttribute('role','status');
+      let previewFile=null,previewURL=null,resourceState='missing',destroyed=false;
       const button=document.createElement('button');
       button.type='button';
       const caption=document.createElement('figcaption');
@@ -122,11 +119,27 @@ export const DocumentImage = Node.create({
         const text=await askText(t('题注（LaTeX）','Caption (LaTeX)'),node.attrs.caption??'');
         if(text!==null && !/[{}%\r\n]/.test(text))update({figure:true,caption:text||null},expected);
       });
+      const showResourceState=()=>{
+        dom.dataset.resourceState=resourceState;
+        image.hidden=resourceState!=='ready';
+        button.hidden=resourceState==='ready';
+        resourceStatus.hidden=resourceState==='ready';
+        const labels={missing:['资源缺失：','Missing image resource: '],loading:['正在加载图片：','Loading image: '],
+          error:['无法读取图片：','Cannot decode image: '],unsupported:['资源已保留，无法预览：','Resource retained; preview unavailable: ']};
+        const label=labels[resourceState];
+        if(label)localizedLabel(resourceStatus,label[0]+node.attrs.path,label[1]+node.attrs.path);
+      };
       const refresh=()=>{
-        const preview=previews.get(node.attrs.path);
-        image.hidden=!preview;
-        button.hidden=Boolean(preview);
-        if(preview)image.src=preview;
+        const file=resolveImageAsset(node.attrs.path);
+        if(file!==previewFile) {
+          if(previewURL)URL.revokeObjectURL(previewURL);
+          previewURL=null;previewFile=file;image.removeAttribute('src');
+          resourceState=file?'unsupported':'missing';
+          if(file && (rasterTypes.has(file.type) || ((!file.type || file.type==='application/octet-stream') && /\.(png|jpe?g|webp|gif|avif)$/i.test(file.name??node.attrs.path)))) {
+            previewURL=URL.createObjectURL(file);resourceState='loading';image.src=previewURL;
+          }
+        }
+        showResourceState();
         image.alt=node.attrs.path;
         caption.textContent=node.attrs.caption??'';
         caption.hidden=node.attrs.caption===null && !node.attrs.figure;
@@ -135,12 +148,18 @@ export const DocumentImage = Node.create({
         else delete dom.dataset.align;
         localizedLabel(button,'定位图片 · '+node.attrs.path,'Locate image · '+node.attrs.path);
         const width=node.attrs.width;
-        image.style.width=width?.endsWith('\\linewidth') ? `${Number.parseFloat(width)*100}%` : width ?? '';
+        const relative=/^([\d.]*)\\(?:linewidth|textwidth)$/.exec(width??'');
+        image.style.width=relative ? `${Number(relative[1]||1)*100}%` : imageWidthPattern.test(width??'') ? width : '';
       };
+      image.addEventListener('load',()=>{if(!destroyed && previewURL && image.currentSrc===previewURL){resourceState='ready';showResourceState();}});
+      image.addEventListener('error',()=>{if(!destroyed && previewURL && image.getAttribute('src')===previewURL){resourceState='error';showResourceState();}});
+      const unsubscribe=onAssetsChanged(refresh);
       button.addEventListener('click',()=>chooseFile(file=>{remember(node.attrs.path,file);refresh();}));
-      dom.append(image,button,caption,controls);
+      dom.append(image,resourceStatus,button,caption,controls);
       refresh();
-      return {dom,stopEvent:event=>button.contains(event.target)||controls.contains(event.target)||caption.contains(event.target),update(next){if(next.type!==node.type)return false;node=next;refresh();return true;}};
+      return {dom,stopEvent:event=>button.contains(event.target)||controls.contains(event.target)||caption.contains(event.target),
+        update(next){if(next.type!==node.type)return false;node=next;refresh();return true;},
+        destroy(){destroyed=true;unsubscribe();if(previewURL)URL.revokeObjectURL(previewURL);}};
     };
   },
 });
