@@ -542,6 +542,7 @@ async function verifySelectionGeometry(page, paper, importSource) {
     await paper.locator('td').first().click({button:'right'});
     assert.equal(await context.locator('[data-command="delete-table"]').isVisible(),true);
     await page.keyboard.press('Escape');
+
     const beforeZoom=Number(await page.locator('input[type=range]').inputValue());
     await paper.evaluate(element=>element.dispatchEvent(new WheelEvent('wheel',{deltaY:-80,ctrlKey:true,bubbles:true,cancelable:true})));
     const afterZoom=Number(await page.locator('input[type=range]').inputValue());
@@ -584,6 +585,19 @@ async function verifySelectionGeometry(page, paper, importSource) {
     await page.keyboard.press('Enter');
     await page.waitForFunction(()=>document.querySelector('math-field')?.value.includes('\\in'));
     assert.match(await formula.evaluate(field=>field.value),/\\in(?!fty|t)/);
+    // A blank subscript survives the command palette: the chosen command has to
+    // land inside the subscript, not at the base level.
+    await formula.evaluate(field=>{field.value='a';field.dispatchEvent(new Event('input',{bubbles:true}));field.focus();field.position=field.lastOffset;});
+    await page.waitForFunction(()=>document.activeElement?.tagName==='MATH-FIELD');
+    await page.waitForFunction(()=>document.querySelector('.command-menu')?.hidden===true);
+    await page.keyboard.type('_');
+    await page.keyboard.type('\\');
+    await completion.locator('input').fill('lambda');
+    await completion.locator('input').focus();
+    await page.keyboard.press('Enter');
+    await page.waitForFunction(()=>document.querySelector('math-field')?.value.includes('\\lambda'));
+    assert.match(await formula.evaluate(field=>field.value),/a_\{?\\lambda/,
+      'Command completion keeps the subscript: '+await formula.evaluate(field=>field.value));
     await formula.click({button:'right'});
     await context.locator('[data-command="display-style"]').click();
     assert.match(await formula.evaluate(field=>field.value),/^\\displaystyle/);
@@ -639,6 +653,33 @@ async function verifySelectionGeometry(page, paper, importSource) {
     const afterColumnChord=await formula.evaluate(field=>field.value);
     assert.ok((afterColumnChord.match(/&/g)??[]).length>(afterRowChord.match(/&/g)??[]).length,'Ctrl+E C adds a matrix column');
     assert.deepEqual(await matrixCell(),beforeColumnCell,'Adding a column leaves the caret in its original cell');
+
+    // A second matrix in the same formula must not receive the box: the old
+    // implementation rewrote the whole field from the first matrix it found.
+    const firstMatrix='\\begin{pmatrix}a & \\\\c & d\\end{pmatrix}';
+    await formula.evaluate((field,latex)=>{field.value=latex;field.dispatchEvent(new Event('input',{bubbles:true}));},
+      firstMatrix+' + \\begin{pmatrix}a & b\\\\c & d\\end{pmatrix}');
+    await formula.evaluate(field=>{
+      const model=field._mathfield.model;
+      const arrays=[];
+      for(let i=0;i<=field.lastOffset;i++)
+        for(let atom=model.at(i);atom;atom=atom.parent)
+          if(atom.type==='array'&&atom.parent?.type==='root'&&!arrays.includes(atom)) arrays.push(atom);
+      arrays.sort((left,right)=>model.offsetOf(left)-model.offsetOf(right));
+      field.focus();
+      field.position=model.offsetOf(arrays[1].branch([0,0])[0]);
+    });
+    await page.getByRole('button',{name:'＋ Column',exact:true}).click();
+    const splitMatrices=await formula.evaluate(field=>field.value);
+    const [leftMatrix,rightMatrix]=splitMatrices.split('+');
+    assert.ok(!leftMatrix.includes('\\placeholder{}'),'Adding a column leaves the first matrix alone: '+splitMatrices);
+    assert.match(rightMatrix,/\\placeholder\{\}/,'The new column lands in the caret matrix: '+splitMatrices);
+
+    await importSource('设函数 $f(x)$，对于任意 $x$，都有结论。');
+    await page.waitForFunction(()=>document.querySelectorAll('.math-glue').length===2);
+    const glued=await page.evaluate(()=>[...document.querySelectorAll('.math-glue')]
+      .every(element=>element.previousElementSibling?.hasAttribute('data-math')));
+    assert.ok(glued,'A word joiner glues punctuation to the preceding formula');
 
     await importSource('First $x$ end\n\nDestination');
     await page.locator('.math-drag-handle').hover();
@@ -962,7 +1003,7 @@ async function verifySelectionGeometry(page, paper, importSource) {
     await displayField.click({button:'right'});
     await page.waitForFunction(()=>!document.querySelector('.editor-context-menu').hidden);
     await context.locator('[data-command="display-style"]').click();
-    assert.equal(await displayField.evaluate(field=>field.value),'\\displaystyle{\\sum}','Display style wraps the whole formula');
+    assert.match(await displayField.evaluate(field=>field.value),/\\displaystyle[\s\S]*\\sum\\mathord\{\\placeholder\{\}\}/,'Display style applies to the operator and its operand slot');
     await displayField.focus();
     await page.keyboard.type('\\');
     await page.waitForFunction(()=>!document.querySelector('.command-menu').hidden);
@@ -976,7 +1017,11 @@ async function verifySelectionGeometry(page, paper, importSource) {
     assert.equal(await displayField.evaluate(field=>[...field.shadowRoot.querySelectorAll('.ML__op-symbol.ML__large-op')].length),2,'Display style applies to later input');
     await importSource('$\\mathbf{x+y}$');
     await page.waitForFunction(()=>document.querySelector('math-field'));
-    assert.ok(await page.locator('math-field').first().evaluate(field=>[...field.shadowRoot.querySelectorAll('.ML__mathbf')].every(element=>getComputedStyle(element).backgroundColor!=='rgba(0, 0, 0, 0)')),'Font commands highlight their content');
+    const boldField=page.locator('math-field').first();
+    await boldField.click();
+    await boldField.evaluate(field=>field.focus());
+    await page.waitForFunction(()=>document.activeElement?.matches('math-field[data-lineae-editing]'));
+    assert.ok(await boldField.evaluate(field=>[...field.shadowRoot.querySelectorAll('.ML__mathbf')].every(element=>getComputedStyle(element).backgroundColor!=='rgba(0, 0, 0, 0)')),'Font commands highlight their content during editing');
     await importSource('$x+\\text{abc}+y$');
     await page.waitForFunction(()=>document.querySelector('math-field'));
     const textEnvField=page.locator('math-field').first();
@@ -1225,8 +1270,8 @@ async function verifySelectionGeometry(page, paper, importSource) {
     assert.deepEqual(await paper.evaluate(element=>Array.from(element.children).map(child=>child.matches('.math-display')?'math':child.tagName)),['PRE','P','math','P']);
     const integral=page.locator('math-field');
     await page.keyboard.press('Control+i');
-    await integral.evaluate(field=>field.executeCommand('moveToMathfieldStart'));
-    await page.keyboard.press('ArrowRight');
+    assert.equal(await integral.evaluate(field=>field._mathfield.model.at(field.position)?.command),'\\int',
+      'Integral insertion leaves the caret on the operator side of the operand');
     await page.keyboard.type('_i');
     await page.keyboard.press('Control+j');
     await integral.evaluate(field=>field.executeCommand('moveToMathfieldEnd'));
@@ -1840,7 +1885,45 @@ async function verifySelectionGeometry(page, paper, importSource) {
     for(let index=0;index<3;index++) await page.keyboard.press('Backspace');
     assert.equal(await integralWithLimit.evaluate(field=>field.value),'','Backspacing through an empty limit removes the integral');
     await importSource('\\[\\int\\mathord{x}\\]');
-    await paper.locator('math-field [data-lineae-integrand]').first().waitFor();
+    const operandField=paper.locator('math-field').first();
+    const operandMark=operandField.locator('[data-lineae-integrand]').first();
+    await operandMark.waitFor();
+    await operandField.click();
+    await operandField.evaluate(field=>field.focus());
+    await page.waitForFunction(()=>document.activeElement?.matches('math-field[data-lineae-editing]'));
+    assert.notEqual(await operandMark.evaluate(el=>getComputedStyle(el).backgroundColor),'rgba(0, 0, 0, 0)');
+    await operandField.evaluate(field=>field.blur());
+    assert.equal(await operandMark.evaluate(el=>getComputedStyle(el).backgroundColor),'rgba(0, 0, 0, 0)');
+    await importSource('\\[\\frac{\\placeholder{}}{\\placeholder{}}\\]');
+    const slotField=paper.locator('math-field').first();
+    await slotField.evaluate(field=>{field.focus();field.position=0;});
+    await page.waitForFunction(()=>document.activeElement?.matches('math-field[data-lineae-editing]'));
+    const slotBranch=()=>slotField.evaluate(field=>{
+      const model=field._mathfield.model;
+      const atom=model.at(field.selection.ranges[0][1]);
+      for(let child=atom;child?.parent;child=child.parent) {
+        if (child.parent.type==='genfrac') return child.parentBranch;
+      }
+      return {value:field.value,selection:field.selection,atoms:Array.from({length:field.lastOffset+1},(_,offset)=>{
+        const item=model.at(offset);
+        return [item.type,item.parentBranch];
+      })};
+    });
+    await page.keyboard.press('Tab');
+    assert.equal(await slotBranch(),'above');
+    await page.keyboard.press('Tab');
+    assert.equal(await slotBranch(),'below');
+    await page.keyboard.press('Shift+Tab');
+    assert.equal(await slotBranch(),'above');
+    assert.equal(await slotField.evaluate(field=>field.hasFocus()),true);
+    await importSource('\\[x\\]');
+    const directOperand=paper.locator('math-field').first();
+    await directOperand.evaluate(field=>{field.focus();field.position=field.lastOffset;});
+    await page.keyboard.press('Control+Shift+s');
+    assert.equal(await directOperand.evaluate(field=>field._mathfield.model.at(field.position)?.command),'\\sum');
+    await page.keyboard.type('k');
+    assert.match(await directOperand.evaluate(field=>field.value),/\\sum\\mathord\{k\}/,
+      'Typing without limits replaces the empty operand slot');
     await importSource('\\begin{enumerate}\\item 2\\begin{enumerate}\\item 3\\begin{enumerate}\\item 4\\end{enumerate}\\end{enumerate}\\end{enumerate}\n\n\\noindent');
     await page.waitForFunction(()=>document.querySelectorAll('.ProseMirror li').length===3);
     await paper.locator(':scope > p').last().click();
@@ -2021,6 +2104,93 @@ async function verifySelectionGeometry(page, paper, importSource) {
     assert.match(await display.evaluate(field=>field.value),/\\begin\{gathered\}a\s*\\\\\s*b/);
     await page.keyboard.type('$$');
     assert.ok(await paper.evaluate(element=>element===document.activeElement));
+
+    // Ctrl+E R / C with the caret inside a formula in a table cell belongs to the
+    // table: the formula must not be turned into a displaylines matrix.
+    await importSource('\\begin{tabular}{ll}\n & \\\\\n & \\\\\n\\end{tabular}');
+    await page.waitForFunction(()=>Boolean(document.querySelector('.ProseMirror table')));
+    await paper.locator('td').first().click();
+    await page.keyboard.type('$');
+    await page.waitForFunction(()=>document.activeElement?.tagName==='MATH-FIELD');
+    await page.keyboard.type('x');
+    const cellFormula=paper.locator('math-field').first();
+    const cellFormulaValue=await cellFormula.evaluate(field=>field.value);
+    const tableRows=await paper.locator('table tr').count();
+    await page.keyboard.press('Control+e');
+    await page.keyboard.press('r');
+    await page.waitForFunction(expected=>document.querySelectorAll('.ProseMirror table tr').length===expected,tableRows+1);
+    assert.equal(await cellFormula.evaluate(field=>field.value),cellFormulaValue,
+      'The table row chord leaves the cell formula alone');
+    const tableCells=await paper.locator('table td, table th').count();
+    await paper.locator('math-field').first().click();
+    await page.keyboard.press('Control+e');
+    await page.keyboard.press('c');
+    await page.waitForFunction(expected=>document.querySelectorAll('.ProseMirror table td, .ProseMirror table th').length>expected,tableCells);
+    await paper.locator('td').last().click();
+
+    // Deleting the last character of a line that follows a hard break also
+    // removes the break, so the paragraph collapses instead of keeping a blank
+    // line whose height never recovers.
+    await importSource('Alpha');
+    await page.waitForFunction(()=>document.querySelector('.ProseMirror > p')?.textContent==='Alpha');
+    await paper.locator(':scope > p').first().click();
+    await page.keyboard.press('End');
+    await page.keyboard.press('Control+Enter');
+    await page.keyboard.type('x');
+    const paragraphHeight=()=>paper.locator(':scope > p').first()
+      .evaluate(element=>Math.round(element.getBoundingClientRect().height));
+    const brokenHeight=await paragraphHeight();
+    await page.keyboard.press('Backspace');
+    await page.waitForFunction(height=>document.querySelector('.ProseMirror > p').getBoundingClientRect().height<height,brokenHeight);
+    assert.equal(await paper.locator(':scope > p').first().locator('br').count(),0,
+      'The trailing hard break is removed with the text');
+
+    // An operator whose body is still empty is selected first and removed whole
+    // on the second press, instead of leaving its placeholder behind.
+    await importSource('\\[x\\]');
+    await page.waitForFunction(()=>Boolean(document.querySelector('.math-display math-field')));
+    const limitOperatorField=paper.locator('.math-display math-field').first();
+    await limitOperatorField.evaluate(field=>{
+      field.value='\\int\\mathord{\\placeholder{}}';
+      field.dispatchEvent(new Event('input',{bubbles:true}));
+    });
+    await page.waitForTimeout(80);
+    await limitOperatorField.click();
+    await limitOperatorField.evaluate(field=>{
+      field.focus();
+      const model=field._mathfield.model;
+      const group=model.root.branch('body').find(atom=>atom.command==='\\mathord');
+      const placeholder=group?.branch('body')?.find(atom=>atom.type==='placeholder');
+      field.position=placeholder?model.offsetOf(placeholder):field.lastOffset;
+    });
+    const limitOperatorValue=await limitOperatorField.evaluate(field=>field.value);
+    await limitOperatorField.press('Backspace');
+    await page.waitForFunction(()=>{
+      const field=document.querySelector('.math-display math-field');
+      const range=field?.selection?.ranges?.[0];
+      return Boolean(range&&range[0]!==range[1]);
+    });
+    assert.equal(await limitOperatorField.evaluate(field=>field.value),limitOperatorValue,
+      'The first Backspace selects the empty operator instead of deleting part of it');
+    await limitOperatorField.press('Backspace');
+    await page.waitForFunction(()=>{
+      const field=document.querySelector('.math-display math-field');
+      return !field||field.value==='';
+    });
+
+    // Display style keeps typing inside the styled expression and must not
+    // duplicate absolute-value bars.
+    await importSource('$\\left|a\\right|+\\left|b\\right|$');
+    await page.waitForFunction(()=>document.querySelector('math-field')?.value.includes('\\left|'));
+    const styleField=paper.locator('math-field').first();
+    await styleField.click({button:'right'});
+    await page.locator('[data-command="display-style"]').click();
+    await page.waitForFunction(()=>document.querySelector('math-field')?.value.startsWith('\\displaystyle'));
+    await page.keyboard.type('c');
+    const styledValue=await styleField.evaluate(field=>field.value);
+    assert.match(styledValue,/\\displaystyle[\s\S]*c\s*\}+$/,'Typing continues inside the display-style formula: '+styledValue);
+    assert.equal((styledValue.match(/\\left\|/g)||[]).length,2,'Display style does not duplicate absolute-value bars: '+styledValue);
+
     assert.deepEqual(errors,[]);
     console.log('Browser regressions passed');
   }finally{

@@ -7,7 +7,8 @@ import { mathFontStyles, applyMathFont } from './editor/math-formatting.js';
 import { installFormatControls } from './editor/format-controls.js';
 import { decorateToolbar, applyToolbarDescriptions, icon } from './editor/icons.js';
 import { PaperBehavior } from './editor/paper-behavior.js';
-import { MathNode, MathBlock, configureMathFences, insertFormula, mathEnvironment, toggleDisplayStyle } from './editor/math-node.js';
+import { MathNode, MathBlock, configureMathFences, focusInsertedOperator, insertFormula, isMathOperatorWithBody, mathEnvironment, toggleDisplayStyle } from './editor/math-node.js';
+import { MathGlue } from './editor/math-glue.js';
 import { Ref, Label, Cite, Footnote, TableOfContents, refreshReferences, collectReferenceLabels } from './editor/references.js';
 import { insertCitationDialog } from './editor/citation-dialog.js';
 import { chooseReference } from './editor/reference-index.js';
@@ -188,7 +189,13 @@ let editor;
 function insertLiveMath(field, latex, notify = true) {
   const apply = () => {
     if (!field.isConnected) return;
-    field.executeCommand(['insert', latex]);
+    const name = /^\\([a-z]+)(?=$|\\mathord\{)/.exec(latex)?.[1];
+    const operator = isMathOperatorWithBody(name);
+    const start = field.selection.ranges[0]?.[0] ?? field.position;
+    const source = operator && latex === '\\'+name
+      ? latex+'\\mathord{\\placeholder{}}' : latex;
+    field.executeCommand(['insert', source]);
+    if (operator) focusInsertedOperator(field, start);
     if (latex === '\\text{x}') {
       const end = field.selection?.ranges?.[0]?.[1];
       if (end > 0) field.selection = { ranges: [[end - 1, end]], direction: 'none' };
@@ -370,6 +377,21 @@ const Shortcuts = Extension.create({
         if(this.editor.commands.undoInputRule())return true;
         const $from=selection.$from;
         const node=$from.nodeBefore;
+        // A hard break with an empty line after it keeps the paragraph one line
+        // tall. Deleting the last character of that line also removes the break,
+        // so the text returns to the previous line instead of leaving a gap.
+        if($from.parentOffset===$from.parent.content.size) {
+          const parent=$from.parent;
+          const last=parent.childCount>0?parent.child(parent.childCount-1):null;
+          const before=parent.childCount>1?parent.child(parent.childCount-2):null;
+          const trailingBreak=last?.type.name==='hardBreak'?last
+            :last?.isText&&last.nodeSize===1&&before?.type.name==='hardBreak'?before:null;
+          if(trailingBreak) {
+            const from=selection.from-(last?.type.name==='hardBreak'?last.nodeSize:last.nodeSize+trailingBreak.nodeSize);
+            this.editor.view.dispatch(this.editor.state.tr.delete(from,selection.from).scrollIntoView());
+            return true;
+          }
+        }
         if(['math','mathBlock'].includes(node?.type.name)) {
           // Treat a formula as one object: the first press selects it whole,
           // the next press lets ProseMirror delete the selection.
@@ -453,7 +475,7 @@ paper.before(documentPage);documentPage.append(paper);
 paper.replaceChildren();
 editor=new Editor({
   element:paper,
-  extensions:[ConfigurableStarterKit.configure({heading:{levels:[1,2,3]},codeBlock:false}),LanguageCodeBlock,MultiSelection,PaperBehavior,TextStyle,TextCommand,Underline,Superscript,Subscript,SmallCaps,Boxed,Table.configure({resizable:true}),TableRow,TableCell,TableHeader,Raw,DocumentImage,TheoremBlock,DescriptionList,DescriptionItem,MathNode,MathBlock,Ref,Cite,Footnote,Label,TableOfContents,Shortcuts],
+  extensions:[ConfigurableStarterKit.configure({heading:{levels:[1,2,3]},codeBlock:false}),LanguageCodeBlock,MultiSelection,PaperBehavior,TextStyle,TextCommand,Underline,Superscript,Subscript,SmallCaps,Boxed,Table.configure({resizable:true}),TableRow,TableCell,TableHeader,Raw,DocumentImage,TheoremBlock,DescriptionList,DescriptionItem,MathNode,MathBlock,MathGlue,Ref,Cite,Footnote,Label,TableOfContents,Shortcuts],
   content:'<p></p>',
 });
 function syncTableAttributes() {
@@ -525,24 +547,6 @@ function activeMath() {
   if(document.activeElement?.tagName==='MATH-FIELD') return document.activeElement;
   return editingMath?.isConnected ? editingMath : null;
 }
-function matrixCells(value) {
-  const match=value.match(/\\begin\{(pmatrix|bmatrix|Bmatrix|vmatrix|Vmatrix|matrix|array)\}/);
-  if(!match)return null;
-  const name=match[1], open=match[0], close='\\end{'+name+'}';
-  const start=match.index+open.length, end=value.lastIndexOf(close);
-  if(end<start)return null;
-  let body=value.slice(start,end);
-  if(/\\(?:begin|end)\{/.test(body))return null;
-  const spec=name==='array'?(body.match(/^\s*\{[^{}]*\}/)?.[0]??''):'';
-  body=body.slice(spec.length);
-  return {
-    prefix:value.slice(0,match.index), open, spec, close, suffix:value.slice(end+close.length),
-    rows:body.split(/\\\\/).map(row=>row.split(/(?<!\\)&/)),
-  };
-}
-function joinMatrix(info) {
-  return info.prefix+info.open+info.spec+info.rows.map(row=>row.join(' & ')).join('\\\\')+info.close+info.suffix;
-}
 function mathPositionPath(model, offset) {
   const path=[];
   for (let atom=model.at(offset); atom?.parent; atom=atom.parent) {
@@ -582,58 +586,78 @@ function addAlignmentPair(field) {
   ));
   return true;
 }
-function fillMatrixAxis(field, axis) {
-  if (axis==='column' && addAlignmentPair(field)) return;
-  const before=matrixCells(field.value);
+function arrayAtCaret(field) {
   const model=field._mathfield?.model;
+  if(!model)return null;
+  for(let atom=model.at(field.position);atom;atom=atom.parent) {
+    if(atom.type==='array')return atom;
+  }
+  return null;
+}
+function emptyCell(array,row,col) {
+  const branch=array.branch([row,col]);
+  return Array.isArray(branch)&&branch.length===1&&branch[0]?.type==='first';
+}
+// Add a row or column to the matrix that holds the caret. MathLive inserts the
+// structure; the cells it leaves empty get a visible placeholder box. Doing this
+// on the model keeps the change local: rewriting field.value reparsed the whole
+// formula and could land the box in a different matrix.
+// Returns false when the caret is not inside a matrix, so the caller can apply
+// the command to the surrounding table instead.
+function fillMatrixAxis(field, axis) {
+  if (axis==='column' && addAlignmentPair(field)) return true;
+  field.focus();
+  const model=field._mathfield?.model;
+  const array=arrayAtCaret(field);
+  const branch=model?.at(field.position)?.parentBranch;
+  const caret=Array.isArray(branch)?branch:null;
+  if (!array || !caret) return false;
+  const [row,col]=caret;
   const selection=structuredClone(field.selection);
-  const original=model && selection.ranges.map(range=>range.map(offset=>model.at(offset)));
+  const original=selection.ranges.map(range=>range.map(offset=>model.at(offset)));
   field.executeCommand(axis==='row'?'addRowAfter':'addColumnAfter');
-  if (original && model===field._mathfield?.model) {
-    const ranges=original.map(range=>range.map(atom=>model.offsetOf(atom)));
-    if (ranges.every(range=>range.every(offset=>offset>=0))) field.selection={...selection,ranges};
-  }
-  if(!before)return;
-  const after=matrixCells(field.value);
-  if(!after)return;
-  let changed=false;
-  if(axis==='column') {
-    const oldRow=before.rows[0], newRow=after.rows[0];
-    let index=-1;
-    for(let i=0;i<newRow.length;i++) {
-      const trial=newRow.filter((_,j)=>j!==i);
-      if(trial.length===oldRow.length&&trial.every((cell,j)=>cell===oldRow[j])) { index=i; break; }
-    }
-    if(index<0)index=newRow.findIndex(cell=>!cell.trim());
-    if(index<0)return;
-    for(const row of after.rows) {
-      if(!row[index]?.trim()) { row[index]=' \\placeholder{} '; changed=true; }
-    }
+  // MathLive may replace the array atom when the structure changes, so look it
+  // up again instead of mutating the one captured before the command.
+  const updated=arrayAtCaret(field) ?? array;
+  const rows=updated.rowCount, cols=updated.colCount;
+  const added=[];
+  if (axis==='row') {
+    const target=Math.min(row+1,rows-1);
+    for (let column=0;column<cols;column++) added.push([target,column]);
   } else {
-    let index=-1;
-    for(let i=0;i<after.rows.length;i++) {
-      const trial=after.rows.filter((_,j)=>j!==i);
-      if(trial.length===before.rows.length&&trial.every((row,j)=>
-        row.length===before.rows[j].length&&row.every((cell,k)=>cell===before.rows[j][k]))) { index=i; break; }
-    }
-    if(index<0)index=after.rows.length-1;
-    for(let i=0;i<after.rows[index].length;i++) {
-      if(!after.rows[index][i].trim()) { after.rows[index][i]=' \\placeholder{} '; changed=true; }
-    }
+    const target=Math.min(col+1,cols-1);
+    for (let line=0;line<rows;line++) added.push([line,target]);
   }
-  if(!changed)return;
-  preserveMathSelection(field,()=>{field.value=joinMatrix(after);});
+  for (const [line,column] of added) {
+    if (!emptyCell(updated,line,column)) continue;
+    const offset=model.offsetOf(updated.branch([line,column])[0]);
+    if (offset<0) continue;
+    field.position=offset;
+    field.executeCommand(['insert','\\placeholder{}']);
+  }
+  // Keep the caret where the author left it; only the new cells are filled.
+  const ranges=original.map(range=>range.map(atom=>model.offsetOf(atom)));
+  if (ranges.every(range=>range.every(offset=>offset>=0))) field.selection={...selection,ranges};
   field.dispatchEvent(new Event('input',{bubbles:true}));
+  return true;
+}
+// Ctrl+E R / C inside a table cell that holds a formula: the formula has no
+// matrix to grow, so the command belongs to the table around it.
+function editTableAxis(axis) {
+  if (!editor.isActive('table')) return;
+  const chain=editor.chain().focus();
+  if (axis==='row') chain.addRowAfter().run();
+  else chain.addColumnAfter().run();
 }
 function addMatrixRow() {
   const field=activeMath();
-  if(field)fillMatrixAxis(field,'row');
-  else editor.chain().focus().addRowAfter().run();
+  if(!field) { editor.chain().focus().addRowAfter().run(); return; }
+  if(!fillMatrixAxis(field,'row')) editTableAxis('row');
 }
 function addMatrixColumn() {
   const field=activeMath();
-  if(field)fillMatrixAxis(field,'column');
-  else editor.chain().focus().addColumnAfter().run();
+  if(!field) { editor.chain().focus().addColumnAfter().run(); return; }
+  if(!fillMatrixAxis(field,'column')) editTableAxis('column');
 }
 button('＋ Row',addMatrixRow);
 button('＋ Column',addMatrixColumn);
@@ -1188,8 +1212,8 @@ function runMathShortcut(command, field, event) {
     case 'subscript': field.executeCommand('moveToSubscript'); return;
     case 'leaveEnvironment': field.dispatchEvent(new Event('lineae-leave-math-environment')); return;
     case 'leaveFormula': field.dispatchEvent(new Event('lineae-leave-formula')); return;
-    case 'addRow': fillMatrixAxis(field,'row'); return;
-    case 'addColumn': fillMatrixAxis(field,'column'); return;
+    case 'addRow': if (!fillMatrixAxis(field,'row')) editTableAxis('row'); return;
+    case 'addColumn': if (!fillMatrixAxis(field,'column')) editTableAxis('column'); return;
     case 'literalFence': armLiteralFence(field); return;
     case 'left': case 'right': chooseMathDelimiters(field,command==='right'); return;
   }
@@ -1199,7 +1223,7 @@ function runMathShortcut(command, field, event) {
   else if (command==='frac') insertLiveMath(field, `\\frac{${selected || slot}}{${slot}}`);
   else if (command==='sqrt') insertLiveMath(field, `\\sqrt{${selected || slot}}`);
   else if (command==='indexedRoot') insertLiveMath(field, `\\sqrt[${slot}]{${selected || slot}}`);
-  else if (/^(?:i{1,3}nt|oi{1,3}nt|sum|prod)$/.test(command)) {
+  else if (isMathOperatorWithBody(command)) {
     insertLiveMath(field, `\\${command}\\mathord{${selected || slot}}`);
   }
   else insertLiveMath(field, '\\'+command);
