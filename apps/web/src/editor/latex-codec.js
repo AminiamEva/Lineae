@@ -1,6 +1,6 @@
 import {richTableRow,wrapCell} from '../../latex/table-spans.mjs';
 import { importBlock, importBlocks } from '../../latex/blocks.mjs';
-import { listLabel, bulletLabel } from '../../latex/list-numbering.mjs';
+import { listLabel } from '../../latex/list-numbering.mjs';
 import { textCommands } from '../../latex/inline.mjs';
 import { serializeImage, serializeSubfigures } from '../../latex/images.mjs';
 import { alignmentLabel, displayEnvironment } from '../../latex/math-environments.mjs';
@@ -67,7 +67,7 @@ export function serialize(node) {
       return '\\begin{lstlisting}'+option+'\n'+(node.content??[]).map(child=>child.text??'').join('')+'\n\\end{lstlisting}\n\n';
     }
     case 'documentImage': return serializeImage(node.attrs);
-    case 'subfigures': return serializeSubfigures(node.attrs, node.content.toJSON());
+    case 'subfigures': return serializeSubfigures(node.attrs, (node.content ?? []).map(child => ({attrs: child.attrs})));
     case 'paragraph': {
       let body=(node.attrs?.indent === false ? '\\noindent ' : node.attrs?.explicitIndent ? '\\indent ' : '') + content;
       const command={left:'raggedright',right:'raggedleft',center:'centering',justify:'justifying'}[node.attrs?.align];
@@ -98,7 +98,7 @@ export function serialize(node) {
     case 'blockquote': return '\\begin{quote}\n' + content + '\\end{quote}\n\n';
     case 'horizontalRule': return '\\hrule\n\n';
     case 'bulletList': {
-      const marker = bulletLabel(node.attrs.marker);
+      const marker = { '◦':'\\ensuremath{\\circ}', '▪':'\\rule{.45em}{.45em}' }[node.attrs.marker] ?? node.attrs.marker;
       const open = marker ? '\\begin{itemize}[label=' + marker + ']' : '\\begin{itemize}';
       return open + '\n' + content + '\\end{itemize}\n\n';
     }
@@ -145,25 +145,40 @@ export function serialize(node) {
       const columnCount=(node.content[0]?.content??[]).reduce((total,cell)=>total+(cell.attrs.colspan??1),0)||1;
       const occupied=Array(columnCount).fill(0);
       const border = node.attrs.borderMode;
-      columns = columns.replace(/\|/g,'');
-      if (border === 'outer' || border === 'grid') columns='|'+columns;
-      if (border === 'outer' || border === 'grid' || node.attrs.rightRule) columns=columns+'|';
-      if (border === 'grid') columns=columns.replace(/([pmb]\{[^{}]*\}|[lcr])(?!\|)/g,'$1|').replace(/\|\|/g,'|');
-      if (node.attrs.leftRule && !columns.startsWith('|')) columns='|'+columns;
-      if (node.attrs.middleVerticalRule) columns=columns.replace(/([lcr])(?=[lcr])/g,'$1|');
+      const managedRules = Boolean(border || node.attrs.leftRule || node.attrs.rightRule || node.attrs.middleVerticalRule);
+      if (managedRules) {
+        columns = columns.replace(/\|/g,'');
+        if (border === 'outer' || border === 'grid') columns='|'+columns;
+        if (border === 'outer' || border === 'grid' || node.attrs.rightRule) columns=columns+'|';
+        if (border === 'grid') columns=columns.replace(/([pmb]\{[^{}]*\}|[lcr])(?!\|)/g,'$1|').replace(/\|\|/g,'|');
+        if (node.attrs.leftRule && !columns.startsWith('|')) columns='|'+columns;
+        if (node.attrs.middleVerticalRule) columns=columns.replace(/([lcr])(?=[lcr])/g,'$1|');
+      }
+      const midRuleMode = node.attrs.midRuleMode ?? 'none';
+      const explicitHorizontal = node.attrs.horizontalRuleMode === 'explicit';
+      const customRules = !border && !explicitHorizontal && (node.attrs.topRule || node.attrs.bottomRule || midRuleMode !== 'none');
+      const storedRules = !border && (explicitHorizontal || (!customRules && (
+        node.content.some(row => (row.attrs?.rules ?? []).some(rule => /^\\(?:toprule|midrule|bottomrule|hline|cmidrule)/.test(String(rule)))) ||
+        (node.attrs.trailingRules ?? []).some(rule => /^\\(?:toprule|midrule|bottomrule|hline|cmidrule)/.test(String(rule)))
+      )));
+      const ruleLine = rule => {
+        const value=String(rule).trim();
+        return value ? (value.startsWith('\\') ? value : '\\'+value)+'\n' : '';
+      };
       let body = '';
-      const customRules = !border && (node.attrs.topRule || node.attrs.bottomRule || node.attrs.midRuleMode !== 'none');
       node.content.forEach((row, index) => {
         if (border === 'grid' || border === 'horizontal' || (border==='outer' && index===0)) body += '\\hline\n';
-        if (!border && !customRules && node.attrs.booktabs && index === 0) body += '\\toprule\n';
+        else if (storedRules) body += (row.attrs?.rules ?? []).map(ruleLine).join('');
+        else if (!border && !customRules && node.attrs.booktabs && index === 0) body += '\\toprule\n';
         if (customRules && index === 0 && node.attrs.topRule) body += '\\toprule\n';
         body += richTableRow(row,occupied,serialize);
-        const mid = node.attrs.midRuleMode;
+        if (storedRules) return;
         if (!border && !customRules && node.attrs.booktabs && index === 0 && node.content.length > 1) body += '\\midrule\n';
-        if (customRules && index < node.content.length - 1 && (mid === 'all' || (mid === 'first' && index === 0))) body += '\\midrule\n';
+        if (customRules && index < node.content.length - 1 && (midRuleMode === 'all' || (midRuleMode === 'first' && index === 0))) body += '\\midrule\n';
       });
       if (border && border!=='none') body += '\\hline\n';
-      if (!border && !customRules && node.attrs.booktabs) body += '\\bottomrule\n';
+      if (storedRules) body += (node.attrs.trailingRules ?? []).map(ruleLine).join('');
+      else if (!border && !customRules && node.attrs.booktabs) body += '\\bottomrule\n';
       if (customRules && node.attrs.bottomRule) body += '\\bottomrule\n';
       let tabular='\\begin{tabular}{' + columns + '}\n' + body + '\\end{tabular}';
       if (node.attrs.arrayStretch && Number(node.attrs.arrayStretch) !== 1) tabular='{\\renewcommand{\\arraystretch}{'+node.attrs.arrayStretch+'}\n'+tabular+'\n}';

@@ -297,6 +297,7 @@ export const DocumentImage = Node.create({
         dom.dataset.placement=node.attrs.placement??'';
         dom.dataset.wrap=String(Boolean(node.attrs.wrap));
         dom.dataset.wrapSide=node.attrs.wrapSide??'r';
+        dom.dataset.wrapOverhang=node.attrs.wrapOverhang??'';
         dom.dataset.captionPosition=node.attrs.captionPosition??'below';
         if(subIndex>=0)captionLabel.textContent='('+String.fromCharCode(97+subIndex)+') ';
         if(node.attrs.wrap&&subIndex<0){

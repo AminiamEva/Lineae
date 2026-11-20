@@ -32,6 +32,143 @@ function tableCaptionWidget(caption) {
   return element;
 }
 
+const tableRulePattern=/^\\(?:toprule|midrule|bottomrule|hline|cmidrule)/;
+function tableRowEntries(view,position){
+  const table=view.state.doc.nodeAt(position),rows=[];
+  let offset=1;
+  table?.forEach(row=>{rows.push({node:row,pos:position+offset});offset+=row.nodeSize;});
+  return rows;
+}
+function tableCellEntries(row){
+  const cells=[];let offset=1;
+  row.node.forEach(cell=>{cells.push({node:cell,pos:row.pos+offset});offset+=cell.nodeSize;});
+  return cells;
+}
+function skipColumnGroup(columns,start){
+  let depth=0;
+  for(let index=start;index<columns.length;index++){
+    if(columns[index]==='\\'){index++;continue;}
+    if(columns[index]==='{')depth++;
+    else if(columns[index]==='}'&&--depth===0)return index+1;
+  }
+  return columns.length;
+}
+function columnBoundaries(columns){
+  const boundaries=[];let depth=0,rules=0,pending=null,index=0,i=0;
+  while(i<columns.length){
+    const char=columns[i];
+    if(char==='\\'){i+=2;continue;}
+    if(char==='{'){depth++;i++;continue;}
+    if(char==='}'){depth--;i++;continue;}
+    if(depth>0){i++;continue;}
+    if(char==='|'){rules++;i++;continue;}
+    if(('@!<>'.includes(char))&&columns[i+1]==='{'){if(pending===null)pending=i;i=skipColumnGroup(columns,i+1);continue;}
+    if(char==='*'&&columns[i+1]==='{'){if(pending===null)pending=i;boundaries.push({position:pending,rules,index});rules=0;pending=null;index++;i=skipColumnGroup(columns,i+1);if(columns[i]==='{')i=skipColumnGroup(columns,i);continue;}
+    boundaries.push({position:pending??i,rules,index});rules=0;pending=null;index++;
+    if('pmb'.includes(char)&&columns[i+1]==='{')i=skipColumnGroup(columns,i+1);
+    else i++;
+  }
+  boundaries.push({position:columns.length,rules,index});
+  return boundaries;
+}
+function hasLineRule(rules){
+  return rules.some(rule=>tableRulePattern.test(String(rule)));
+}
+function ruleForBoundary(boundary,count){
+  return boundary===0?'\\toprule':boundary===count?'\\bottomrule':'\\midrule';
+}
+function setColumnRule(columns,boundary,on){
+  const entry=columnBoundaries(columns)[boundary];
+  if(!entry)return columns;
+  if(on)return entry.rules>0?columns:columns.slice(0,entry.position)+'|'+columns.slice(entry.position);
+  return columns.slice(0,entry.position).replace(/\|+\s*$/,'')+columns.slice(entry.position);
+}
+function effectiveHorizontalRules(table,rows){
+  const result=rows.map(row=>[...(row.node.attrs.rules??[])]);
+  result.push([...(table.attrs.trailingRules??[])]);
+  const add=(index,rule)=>{if(!hasLineRule(result[index]))result[index].push(rule);};
+  const attrs=table.attrs;
+  if(attrs.topRule)add(0,'\\toprule');
+  if(attrs.bottomRule)add(result.length-1,'\\bottomrule');
+  if(attrs.midRuleMode==='all')for(let index=1;index<result.length-1;index++)add(index,'\\midrule');
+  if(attrs.midRuleMode==='first'&&result.length>2)add(1,'\\midrule');
+  if(attrs.borderMode==='grid'||attrs.borderMode==='horizontal'){
+    add(0,'\\toprule');add(result.length-1,'\\bottomrule');
+    for(let index=1;index<result.length-1;index++)add(index,'\\midrule');
+  }else if(attrs.borderMode==='outer'){
+    add(0,'\\toprule');add(result.length-1,'\\bottomrule');
+  }
+  if(attrs.horizontalRuleMode!=='explicit'&&attrs.booktabs&&!attrs.borderMode&&
+      !attrs.topRule&&!attrs.bottomRule&&attrs.midRuleMode==='none'){
+    const stored=result.some(hasLineRule);
+    add(0,'\\toprule');add(result.length-1,'\\bottomrule');
+    if(!stored&&result.length>2)add(1,'\\midrule');
+  }
+  return result;
+}
+function effectiveVerticalRules(table,rows){
+  const columns=table.attrs.columns||'l'.repeat(rows[0]?.node.childCount??1);
+  const boundaries=columnBoundaries(columns);
+  const rules=boundaries.map(entry=>entry.rules>0);
+  if(table.attrs.leftRule)rules[0]=true;
+  if(table.attrs.rightRule)rules[rules.length-1]=true;
+  if(table.attrs.middleVerticalRule)for(let index=1;index<rules.length-1;index++)rules[index]=true;
+  if(table.attrs.borderMode==='grid'||table.attrs.borderMode==='outer'){
+    rules[0]=true;rules[rules.length-1]=true;
+    if(table.attrs.borderMode==='grid')for(let index=1;index<rules.length-1;index++)rules[index]=true;
+  }
+  return {columns,boundaries,rules};
+}
+function applyVerticalCells(tr,rows,rules){
+  const count=rules.length-1;
+  for(const row of rows){
+    let column=0;
+    for(const cell of tableCellEntries(row)){
+      const start=column,span=cell.node.attrs.colspan??1,end=start+span;
+      column=end;
+      const attrs={...cell.node.attrs};
+      if(rules[start])attrs.ruleLeft=true;else delete attrs.ruleLeft;
+      if(end===count&&rules[count])attrs.ruleRight=true;else delete attrs.ruleRight;
+      tr=tr.setNodeMarkup(cell.pos,undefined,attrs);
+    }
+  }
+  return tr;
+}
+function commitTableRules(view,position,table,rows,horizontal,vertical){
+  let columns=vertical.columns;
+  vertical.rules.forEach((on,index)=>{columns=setColumnRule(columns,index,on);});
+  let tr=view.state.tr;
+  rows.forEach((row,index)=>tr=tr.setNodeMarkup(row.pos,undefined,{...row.node.attrs,rules:horizontal[index]}));
+  tr=applyVerticalCells(tr,rows,vertical.rules);
+  const attrs={...table.attrs,columns,columnRules:vertical.rules.some(Boolean),horizontalRuleMode:'explicit',booktabs:true,topRule:false,bottomRule:false,midRuleMode:'none',leftRule:false,rightRule:false,middleVerticalRule:false,borderMode:null,trailingRules:horizontal[rows.length]};
+  try {
+    const layout=JSON.parse(table.attrs.columnLayout||'[]');
+    if(Array.isArray(layout)&&layout.length===vertical.rules.length){
+      const boundaries=columnBoundaries(columns);
+      attrs.columnLayout=JSON.stringify(boundaries.map((entry,index)=>({...layout[index],rules:entry.rules})));
+    }
+  } catch {}
+  tr.setNodeMarkup(position,undefined,attrs);
+  view.dispatch(tr);
+}
+function toggleHorizontalRule(view,position,boundary){
+  const table=view.state.doc.nodeAt(position);
+  if(table?.type.name!=='table')return;
+  const rows=tableRowEntries(view,position),count=rows.length;
+  const horizontal=effectiveHorizontalRules(table,rows),current=horizontal[boundary]??[];
+  horizontal[boundary]=hasLineRule(current)
+    ? current.filter(rule=>!tableRulePattern.test(String(rule)))
+    : [...current,ruleForBoundary(boundary,count)];
+  commitTableRules(view,position,table,rows,horizontal,effectiveVerticalRules(table,rows));
+}
+function toggleVerticalRule(view,position,boundary){
+  const table=view.state.doc.nodeAt(position);
+  if(table?.type.name!=='table')return;
+  const rows=tableRowEntries(view,position);
+  const vertical=effectiveVerticalRules(table,rows);
+  vertical.rules[boundary]=!vertical.rules[boundary];
+  commitTableRules(view,position,table,rows,effectiveHorizontalRules(table,rows),vertical);
+}
 function tableLineControlsPlugin() {
   let overlay=null,current=null,position=null,hideTimer=0;
   function hide(){clearTimeout(hideTimer);hideTimer=0;overlay?.remove();overlay=null;current=null;position=null;}
@@ -49,36 +186,35 @@ function tableLineControlsPlugin() {
     const bounds=table.getBoundingClientRect();
     element.style.left=bounds.left+'px';element.style.top=bounds.top+'px';element.style.width=bounds.width+'px';element.style.height=bounds.height+'px';
     const rows=[...table.querySelectorAll('tr')];
-    for(let index=0;index<rows.length;index++){
-      const rect=rows[index].getBoundingClientRect();
+    const rowBoundaries=rows.map(row=>row.getBoundingClientRect().top);
+    rowBoundaries.push(rows.at(-1)?.getBoundingClientRect().bottom??bounds.bottom);
+    const tableNode=view.state.doc.nodeAt(position);
+    const rowEntries=tableRowEntries(view,position);
+    const horizontal=effectiveHorizontalRules(tableNode,rowEntries);
+    const vertical=effectiveVerticalRules(tableNode,rowEntries);
+    for(let index=0;index<rowBoundaries.length;index++){
+      const active=hasLineRule(horizontal[index]??[]);
       const button=document.createElement('button');
-      button.type='button';button.className='table-line-toggle table-line-horizontal';button.textContent='—';
-      button.title=t('切换该行上方的横向分割线','Toggle horizontal rule above this row');
-      button.style.top=(rect.top-bounds.top-7)+'px';
+      button.type='button';button.className='table-line-toggle table-line-horizontal';button.textContent=active?'-':'+';
+      button.title=t(active?'隐藏该横向分割线':'显示该横向分割线',active?'Hide this horizontal rule':'Show this horizontal rule');
+      button.style.left=(bounds.width+5)+'px';
+      button.style.top=( rowBoundaries[index]-bounds.top-7.5)+'px';
       button.addEventListener('mousedown',event=>event.preventDefault());
-      button.addEventListener('click',event=>{event.preventDefault();event.stopPropagation();
-        const attrs=view.state.doc.nodeAt(position)?.attrs??{};
-        const patch=index===0?{topRule:!attrs.topRule}:index===rows.length-1?{bottomRule:!attrs.bottomRule}:{midRuleMode:attrs.midRuleMode==='none'?'all':attrs.midRuleMode==='all'?'first':'none'};
-        view.dispatch(view.state.tr.setNodeMarkup(position,undefined,{...attrs,...patch,borderMode:null,booktabs:false}));
-        hide();
-      });
+      button.addEventListener('click',event=>{event.preventDefault();event.stopPropagation();toggleHorizontalRule(view,position,index);hide();});
       element.append(button);
     }
-    const cells=[...table.querySelectorAll('tr:first-child > th,tr:first-child > td')];
-    for(let index=0;index<cells.length;index++){
-      if(index!==0&&index!==cells.length-1)continue;
-      const rect=cells[index].getBoundingClientRect();
+    const cells=[...rows[0]?.children??[]];
+    const columnBoundariesX=[];
+    cells.forEach((cell,index)=>{const rect=cell.getBoundingClientRect();if(index===0)columnBoundariesX.push(rect.left);columnBoundariesX.push(rect.right);});
+    for(let index=0;index<columnBoundariesX.length;index++){
+      const active=Boolean(vertical.rules[index]);
       const button=document.createElement('button');
-      button.type='button';button.className='table-line-toggle table-line-vertical';button.textContent='│';
-      button.title=t('切换该列左侧的纵向分割线','Toggle vertical rule left of this column');
-      button.style.left=(rect.left-bounds.left-7)+'px';
+      button.type='button';button.className='table-line-toggle table-line-vertical';button.textContent=active?'-':'+';
+      button.title=t(active?'隐藏该纵向分割线':'显示该纵向分割线',active?'Hide this vertical rule':'Show this vertical rule');
+      button.style.left=(columnBoundariesX[index]-bounds.left-7.5)+'px';
+      button.style.top=(bounds.height+5)+'px';
       button.addEventListener('mousedown',event=>event.preventDefault());
-      button.addEventListener('click',event=>{event.preventDefault();event.stopPropagation();
-        if(index!==0&&index!==cells.length-1)return;
-        const attrs=view.state.doc.nodeAt(position)?.attrs??{};
-        view.dispatch(view.state.tr.setNodeMarkup(position,undefined,{...attrs,[index===0?'leftRule':'rightRule']:!attrs[index===0?'leftRule':'rightRule'],borderMode:null,booktabs:false}));
-        hide();
-      });
+      button.addEventListener('click',event=>{event.preventDefault();event.stopPropagation();toggleVerticalRule(view,position,index);hide();});
       element.append(button);
     }
     document.body.append(element);overlay=element;
@@ -90,7 +226,6 @@ function tableLineControlsPlugin() {
     mouseout(view,event){if(!current)return false;if(current.contains(event.relatedTarget)||overlay?.contains(event.relatedTarget)){keepVisible();return false;}scheduleHide();return false;},
   }}});
 }
-
 let paperEditor = null;
 
 function replaceTikzCode(editor, position, body) {
@@ -454,6 +589,27 @@ export const PaperBehavior = Extension.create({
           default: false,
           parseHTML: element => element.dataset.columnRules === 'true',
           renderHTML: attributes => attributes.columnRules ? { 'data-column-rules': 'true' } : {},
+        },
+        trailingRules: {
+          default: null,
+          parseHTML: element => {
+            try { return element.dataset.trailingRules ? JSON.parse(element.dataset.trailingRules) : null; }
+            catch { return null; }
+          },
+          renderHTML: attributes => {
+            if (!attributes.trailingRules?.length) return {};
+            const rule=(attributes.trailingRules??[]).find(value=>/^\\?(toprule|midrule|bottomrule|hline)$/.test(String(value)));
+            return {
+              'data-trailing-rules': JSON.stringify(attributes.trailingRules),
+              ...(rule ? {'data-trailing-rule':String(rule).replace(/^\\/,'')} : {}),
+            };
+          },
+        },
+        horizontalRuleMode: {
+          default: null,
+          parseHTML: element => element.dataset.horizontalRuleMode ?? null,
+          renderHTML: attributes => attributes.horizontalRuleMode
+            ? { 'data-horizontal-rule-mode': attributes.horizontalRuleMode } : {},
         },
         booktabs: {
           default: false,

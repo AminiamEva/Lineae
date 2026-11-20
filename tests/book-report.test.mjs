@@ -1,7 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { toRoman, displayPageNumber } from '../apps/web/latex/document-numbering.mjs';
-import { importBlock, setHeadingBase } from '../apps/web/latex/blocks.mjs';
 import { serialize, setSerializationClass } from '../apps/web/src/editor/latex-codec.js';
 
 test('roman + mainmatter restart numbering', () => {
@@ -14,18 +13,6 @@ test('roman + mainmatter restart numbering', () => {
   assert.equal(art.text, '5'); assert.equal(art.value, 5);
 });
 
-test('report: \\chapter imports as heading level 1, \\section as level 2', () => {
-  setHeadingBase('chapter');
-  const ch = importBlock('\\chapter{引言}');
-  assert.equal(ch.attrs.level, 1);
-  assert.equal(ch.content[0].text, '引言');
-  const se = importBlock('\\section{排版基础}');
-  assert.equal(se.attrs.level, 2);
-  setHeadingBase(null);
-  const art = importBlock('\\section{保持一级}');
-  assert.equal(art.attrs.level, 1);
-});
-
 test('report/book: heading levels export as chapter/section/subsection', () => {
   setSerializationClass('report');
   const h = (level, text) => serialize({ type: 'heading', content: [{ type: 'text', text }], attrs: { level, text, numbered: true, shortTitle: null, label: null } });
@@ -34,4 +21,28 @@ test('report/book: heading levels export as chapter/section/subsection', () => {
   assert.equal(h(3, '字体'), '\\subsection{字体}\n\n');
   setSerializationClass('article');
   assert.equal(h(1, '保持'), '\\section{保持}\n\n');
+});
+
+test('book matter markers, chapter headings and layout commands survive import', async () => {
+  const { importBlocks, setHeadingBase } = await import('../apps/web/latex/blocks.mjs');
+  setHeadingBase('chapter');
+  const nodes = importBlocks([
+    '\\frontmatter',
+    '\\chapter{Preface}',
+    '\\mainmatter',
+    '\\chapter{Main}',
+    '\\section{Details}',
+    '\\maketitle',
+  ].join('\n\n'));
+  assert.deepEqual(nodes.map(node => node.type), [
+    'matterStart', 'heading', 'matterStart', 'heading', 'heading', 'layoutCommand',
+  ]);
+  const matter = nodes.filter(node => node.type === 'matterStart').map(node => node.attrs.matter);
+  assert.deepEqual(matter, ['front', 'main']);
+  assert.equal(nodes[1].attrs.level, 1);
+  assert.equal(nodes[1].attrs.command, 'chapter');
+  assert.equal(nodes[4].attrs.level, 2);
+  assert.equal(nodes[5].attrs.command, '\\maketitle');
+  setHeadingBase(null);
+  setSerializationClass('article');
 });

@@ -1,10 +1,9 @@
 import {installParagraphLayout} from '../typesetting/paragraph-layout.js';
 import {documentLayoutBlocks} from '../project/fold-layout.mjs';
 import { planPagination, planTableRows, typesetProfile } from '../../latex/typeset-layout.mjs';
-import { setSerializationClass } from './latex-codec.js';
-import { setHeadingBase } from '../../latex/blocks.mjs';
 import { readPageFurniture, pageFurnitureText, furnitureSlots } from '../../latex/page-furniture.mjs';
 import { displayPageNumber } from '../../latex/document-numbering.mjs';
+import { setHeadingBase } from '../../latex/blocks.mjs';
 import { Plugin, PluginKey } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
 
@@ -67,18 +66,32 @@ function unscaledRect(element, pageRect, zoom) {
   };
 }
 
-function paragraphLines(editor, element, block, pageRect, zoom) {
+function elementTranslateY(element) {
+  const value = getComputedStyle(element).translate;
+  if (!value || value === 'none') return 0;
+  const parts = value.match(/-?(?:\d+\.?\d*|\.\d+)(?:px)?/g) ?? [];
+  return parts.length > 1 ? Number.parseFloat(parts[1]) || 0 : 0;
+}
+
+function untranslatedRect(element, pageRect, zoom) {
+  const rect = unscaledRect(element, pageRect, zoom);
+  return {...rect, top:rect.top - elementTranslateY(element)};
+}
+
+function paragraphLines(editor, element, block, pageRect, zoom, translationY = 0) {
   if (!element.textContent || block.height < (parseFloat(getComputedStyle(element).lineHeight) || 0) * 1.5) return null;
   let from, to;
   try {
-    from = editor.view.posAtDOM(element, 0);
-    to = editor.view.posAtDOM(element, element.childNodes.length);
+    const position = editor.view.posAtDOM(element, 0);
+    const parent = editor.state.doc.resolve(position).parent;
+    from = editor.state.doc.resolve(position).start();
+    to = from + parent.content.size;
   } catch {
     return null;
   }
   if (!Number.isInteger(from) || !Number.isInteger(to) || to <= from) return null;
   const topAt = position => {
-    try { return (editor.view.coordsAtPos(position, 1).top - pageRect.top) / zoom; }
+    try { return (editor.view.coordsAtPos(position, 1).top - pageRect.top) / zoom - translationY; }
     catch { return Number.NaN; }
   };
   const firstTop = topAt(from);
@@ -106,10 +119,20 @@ function paragraphLines(editor, element, block, pageRect, zoom) {
   }
   if (starts.length < 2) return null;
   const bottom = block.top + block.height;
+  if (starts.some(line => line.top > bottom + 1)) return null;
   return starts.map((line, index) => ({
     ...line,
     height: Math.max(1, (starts[index + 1]?.top ?? bottom) - line.top),
   }));
+}
+
+export function columnPlacement(blockTop, translation, {columnBody, pageHeight, pageGap, marginTop}) {
+  const pseudoTop = (blockTop - marginTop) + translation;
+  const columnIndex = Math.max(0, Math.floor(pseudoTop / columnBody));
+  const pageIndex = Math.floor(columnIndex / 2);
+  const offset = pseudoTop - columnIndex * columnBody;
+  const realTop = pageIndex * (pageHeight + pageGap) + marginTop + offset;
+  return {translation:realTop - blockTop, column:columnIndex % 2, page:pageIndex};
 }
 
 export function installTypesetPagination(page, paper, meta, editor) {
@@ -130,21 +153,23 @@ export function installTypesetPagination(page, paper, meta, editor) {
   let furniture = readPageFurniture();
   let maketitle = false;
   let lineBreaks = [];
-  let lineBreaksDoc = null;
   installLineBreaks(editor);
 
   function setLineBreaks(entries) {
-    const same = lineBreaksDoc === editor.state.doc && entries.length === lineBreaks.length && entries.every((entry, index) =>
+    const same = entries.length === lineBreaks.length && entries.every((entry, index) =>
       entry.position === lineBreaks[index].position && Math.abs(entry.height - lineBreaks[index].height) < .01);
     if (same) return;
     lineBreaks = entries;
-    lineBreaksDoc = editor.state.doc;
     editor.view.dispatch(editor.state.tr.setMeta(lineBreakKey, entries));
   }
   let translations = [];
   let sheetCount = 0;
   let mode = 'pages';
+  let paused = false;
   let continuedTables = true;
+  let lastLayoutDoc = null;
+  let lastLayoutSignature = '';
+  let forceLayout = true;
   let headerClones = [];
 
   function clearHeaderClones() {
@@ -284,9 +309,9 @@ export function installTypesetPagination(page, paper, meta, editor) {
     furniture = readPageFurniture(preamble);
     page.dataset.documentClass = profile.className;
     page.dataset.frontmatter = String(/\\frontmatter/.test(preamble));
-    setSerializationClass(profile.className);
     setHeadingBase(profile.className === 'book' || profile.className === 'report' ? 'chapter' : null);
-    page.dataset.pageStyle = furniture.style === 'fancy' ? 'fancy' : profile.pageStyle;
+    page.dataset.pageStyle = ['fancy','empty','plain','headings'].includes(furniture.style)
+      ? furniture.style : profile.pageStyle;
     page.style.setProperty('--page-head-rule-width', furniture.rules.headWidth);
     page.style.setProperty('--page-head-rule-color', furniture.rules.headColor);
     page.style.setProperty('--page-foot-rule-width', furniture.rules.footWidth);
@@ -324,9 +349,21 @@ export function installTypesetPagination(page, paper, meta, editor) {
     window.dispatchEvent(new CustomEvent('lineae-layout'));
   }
 
+  function layoutSignature() {
+    const imageHeights = [...editable.querySelectorAll('.document-image')]
+      .map(element => Math.round(element.getBoundingClientRect().height)).join(',');
+    const tableHeights = [...editable.querySelectorAll('.tableWrapper')]
+      .map(element => Math.round(element.getBoundingClientRect().height)).join(',');
+    return [
+      paragraphPreamble, mode, continuedTables, page.dataset.globalColumns,
+      page.offsetWidth, page.offsetHeight, editable.clientWidth, editable.scrollHeight,
+      imageHeights, tableHeights, furniture.style,
+    ].join('|');
+  }
+
   function layout() {
     frame = 0;
-    if (page.hidden || !editable.isConnected) return;
+    if (paused || page.hidden || !editable.isConnected) return;
     window.dispatchEvent(new Event('lineae-before-layout'));
     const emptyMeta = !meta.textContent.trim();
     meta.dataset.empty = String(emptyMeta);
@@ -335,6 +372,10 @@ export function installTypesetPagination(page, paper, meta, editor) {
       layoutFlow();
       return;
     }
+    const signature = layoutSignature();
+    if (!forceLayout && lastLayoutDoc === editor.state.doc && lastLayoutSignature === signature) return;
+    lastLayoutDoc = editor.state.doc;
+    forceLayout = false;
     paginationStyle.textContent = '';
     translations = [];
     page.dataset.paginationMeasuring = '';
@@ -342,10 +383,14 @@ export function installTypesetPagination(page, paper, meta, editor) {
     renderSheets(1);
 
     const {elements:children,selectors:blockSelectors}=documentLayoutBlocks(editable);
+    const columnsMode = page.dataset.globalColumns === '2';
     const baseRules=[];
     children.forEach((element,index)=>{
-      if(!element.closest('[data-project-region]'))return;
-      const selector='.document-page .ProseMirror>'+blockSelectors[index].replace('>','[data-project-region]>');
+      const inProject=Boolean(element.closest('[data-project-region]'));
+      const selector='.document-page .ProseMirror>'
+        +(inProject?blockSelectors[index].replace('>','[data-project-region]>'):blockSelectors[index]);
+      if(columnsMode) baseRules.push(selector+'{width:calc(50% - 1em);margin-left:0}');
+      if(!inProject)return;
       const previous=children[index-1]?.tagName??'';
       if(/^H[1-3]$/.test(element.tagName)){
         const following=(previous==='H1'&&element.tagName==='H2')||(previous==='H2'&&element.tagName==='H3');
@@ -366,7 +411,8 @@ export function installTypesetPagination(page, paper, meta, editor) {
     const marginBottom = parseFloat(computed.paddingBottom);
     const geometry = { pageHeight, pageGap, marginTop, marginBottom };
     const blocks = children.map((element, index) => {
-      const rect = unscaledRect(element, pageRect, zoom);
+      const translationY = elementTranslateY(element);
+      const rect = untranslatedRect(element, pageRect, zoom);
       const block = {
         top: rect.top,
         height: element.tagName === 'P' && !element.textContent ? 0 : rect.height,
@@ -374,90 +420,111 @@ export function installTypesetPagination(page, paper, meta, editor) {
         keepWithPrevious: element.matches('.math-display'),
         table: element.matches('.tableWrapper') ? tableMeta(element, pageRect, zoom) : null,
       };
-      block.lines = element.tagName === 'P' ? paragraphLines(editor, element, block, pageRect, zoom) : null;
+      block.lines = !columnsMode && element.tagName === 'P'
+        ? paragraphLines(editor, element, block, pageRect, zoom, translationY) : null;
       return block;
     });
+    const chaptered = page.dataset.documentClass === 'book' || page.dataset.documentClass === 'report';
     children.forEach((element, index) => {
       if (element.matches('.page-break, [data-page-break]') && blocks[index + 1]) blocks[index + 1].forceBreak = true;
-    });
-    const chaptered = page.dataset.documentClass === 'book' || page.dataset.documentClass === 'report';
-    if (chaptered) children.forEach((element, index) => {
-      if (element.tagName === 'H1' && index > 0 && blocks[index]) blocks[index].forceBreak = true;
+      if (chaptered && element.tagName === 'H1' && index > 0 && blocks[index]) blocks[index].forceBreak = true;
     });
 
+    let plan, tablePlans = new Map(), blockItems = [];
     const virtual = [];
-    const blockItems = blocks.map((block, blockIndex) => {
-      const items = [];
-      if (block.lines) {
-        block.lines.forEach((line, lineIndex) => {
+    const columnBody = pageHeight - marginTop - marginBottom;
+    if (columnsMode) {
+      plan = planPagination(
+        blocks.map(block => ({...block, top: block.top - marginTop})),
+        {pageHeight: columnBody, pageGap: 0, marginTop: 0, marginBottom: 0});
+    } else {
+      blockItems = blocks.map((block, blockIndex) => {
+        const items = [];
+        if (block.lines) {
+          block.lines.forEach((line, lineIndex) => {
+            items.push(virtual.length);
+            virtual.push({
+              top: line.top,
+              height: line.height,
+              blockIndex,
+              lineIndex,
+              position: line.position,
+              keepWithNext: lineIndex === 0 || lineIndex === block.lines.length - 2,
+              keepWithPrevious: lineIndex === 1,
+            });
+          });
+        } else {
           items.push(virtual.length);
-          virtual.push({
-            top: line.top,
-            height: line.height,
-            blockIndex,
-            lineIndex,
-            position: line.position,
-            keepWithNext: lineIndex === 0 || lineIndex === block.lines.length - 2,
-            keepWithPrevious: lineIndex === 1,
-          });
-        });
-      } else {
-        items.push(virtual.length);
-        virtual.push({ ...block, blockIndex });
-      }
-      return items;
-    });
-
-    let plan = planPagination(virtual, geometry);
-    let tablePlans = new Map();
-    for (let pass = 0; pass < 3; pass++) {
-      const sized = virtual.map(item => {
-        const extra = tablePlans.get(item.blockIndex)?.extra ?? 0;
-        return extra && blocks[item.blockIndex].table ? { ...item, height:item.height + extra } : item;
-      });
-      plan = planPagination(sized, geometry);
-      const next = new Map();
-      let changed = false;
-      if (continuedTables) {
-        for (let index = 0; index < blocks.length; index++) {
-          const block = blocks[index];
-          if (!block.table) continue;
-          const rows = planTableRows(block.table.rows, {
-            ...geometry,
-            top: block.top + plan.translations[blockItems[index][0]] + block.table.tableTop,
-            headerHeight: block.table.headerHeight,
-            repeatHeader: true,
-          });
-          next.set(index, rows);
-          if (Math.abs((tablePlans.get(index)?.extra ?? 0) - rows.extra) > .5) changed = true;
+          virtual.push({ ...block, blockIndex });
         }
+        return items;
+      });
+
+      plan = planPagination(virtual, geometry);
+      for (let pass = 0; pass < 3; pass++) {
+        const sized = virtual.map(item => {
+          const extra = tablePlans.get(item.blockIndex)?.extra ?? 0;
+          return extra && blocks[item.blockIndex].table ? { ...item, height:item.height + extra } : item;
+        });
+        plan = planPagination(sized, geometry);
+        const next = new Map();
+        let changed = false;
+        if (continuedTables) {
+          for (let index = 0; index < blocks.length; index++) {
+            const block = blocks[index];
+            if (!block.table) continue;
+            const rows = planTableRows(block.table.rows, {
+              ...geometry,
+              top: block.top + plan.translations[blockItems[index][0]] + block.table.tableTop,
+              headerHeight: block.table.headerHeight,
+              repeatHeader: true,
+            });
+            next.set(index, rows);
+            if (Math.abs((tablePlans.get(index)?.extra ?? 0) - rows.extra) > .5) changed = true;
+          }
+        }
+        tablePlans = next;
+        if (!changed) break;
       }
-      tablePlans = next;
-      if (!changed) break;
     }
 
     const pageBreaks = [];
     translations = Array(blocks.length).fill(0);
-    let naturalGap = 0;
-    for (let blockIndex = 0; blockIndex < blocks.length; blockIndex++) {
-      const items = blockItems[blockIndex];
-      translations[blockIndex] = plan.translations[items[0]] - naturalGap;
-      if (!blocks[blockIndex].lines) continue;
-      let previous = plan.translations[items[0]];
-      for (const itemIndex of items.slice(1)) {
-        const desired = plan.translations[itemIndex];
-        const gap = desired - previous;
-        if (gap > .01) {
-          pageBreaks.push({ position:virtual[itemIndex].position, height:gap });
-          naturalGap += gap;
+    const columnIndexes = Array(blocks.length).fill(0);
+    if (columnsMode) {
+      blocks.forEach((block, index) => {
+        const placement = columnPlacement(block.top, plan.translations[index], {
+          columnBody, pageHeight, pageGap, marginTop,
+        });
+        translations[index] = placement.translation;
+        columnIndexes[index] = placement.column;
+      });
+    } else {
+      let naturalGap = 0;
+      for (let blockIndex = 0; blockIndex < blocks.length; blockIndex++) {
+        const items = blockItems[blockIndex];
+        translations[blockIndex] = plan.translations[items[0]] - naturalGap;
+        if (!blocks[blockIndex].lines) continue;
+        let previous = plan.translations[items[0]];
+        for (const itemIndex of items.slice(1)) {
+          const desired = plan.translations[itemIndex];
+          const gap = desired - previous;
+          if (gap > .01) {
+            pageBreaks.push({ position:virtual[itemIndex].position, height:gap });
+            naturalGap += gap;
+          }
+          previous = desired;
         }
-        previous = desired;
       }
     }
     setLineBreaks(pageBreaks);
-    const rules = baseRules.concat(translations.map((distance, index) => distance > .01
-      ? `.document-page .ProseMirror > ${blockSelectors[index]}{translate:0 ${distance.toFixed(3)}px}`
-      : '').filter(Boolean));
+    const rules = baseRules.concat(translations.map((distance, index) => {
+      if (!columnsMode && distance <= .01) return '';
+      const margin = columnsMode
+        ? (columnIndexes[index] % 2 ? 'margin-left:calc(50% + 1em);' : 'margin-left:0;')
+        : '';
+      return `.document-page .ProseMirror > ${blockSelectors[index]}{${margin}translate:0 ${distance.toFixed(3)}px}`;
+    }).filter(Boolean));
     for (const [index, tablePlan] of tablePlans) {
       for (const entry of tablePlan.breaks) {
         rules.push(`.document-page .ProseMirror > ${blockSelectors[index]} > table > tbody > tr:nth-child(${entry.row + 1}) > :is(td,th){padding-top:${entry.padding.toFixed(3)}px}`);
@@ -466,48 +533,49 @@ export function installTypesetPagination(page, paper, meta, editor) {
     paginationStyle.textContent = rules.join('\n');
 
     const pitch = pageHeight + pageGap;
+    const pageIndexFor = index => {
+      if (!blocks[index]) return 0;
+      if (columnsMode) {
+        return Math.min(plan.pageCount - 1, columnPlacement(blocks[index].top, plan.translations[index], {
+          columnBody, pageHeight, pageGap, marginTop,
+        }).page);
+      }
+      return Math.min(plan.pageCount - 1, Math.max(0,
+        Math.round((blocks[index].top + (translations[index] || 0) - marginTop) / pitch)));
+    };
     let mainStartPage = null;
     let backStartPage = null;
     let hasFrontmatterMarker = false;
     children.forEach((element, index) => {
       const matter = element.matches?.('[data-matter-start]') ? element.getAttribute('data-matter-start') : null;
-      if (!matter || !blocks[index]) return;
-      const pageIndex = Math.min(plan.pageCount - 1, Math.max(0, Math.round((blocks[index].top + (translations[index] || 0) - marginTop) / pitch)));
+      if (!matter) return;
+      const pageIndex = pageIndexFor(index);
       if (matter === 'front') hasFrontmatterMarker = true;
       if (matter === 'main') mainStartPage = pageIndex;
       if (matter === 'back') backStartPage = pageIndex;
     });
     chapterPages = new Set();
-    editable.querySelectorAll('h1').forEach((element) => {
-      const rect = unscaledRect(element, pageRect, zoom);
-      const pageIndex = Math.min(plan.pageCount - 1, Math.max(0, Math.floor((rect.top - marginTop) / pitch)));
-      chapterPages.add(pageIndex);
+    children.forEach((element, index) => {
+      if (element.tagName === 'H1') chapterPages.add(pageIndexFor(index));
     });
-    // The mainmatter marker often sits on the last front-matter page.  Arabic
-    // numbering starts at the first chapter after that marker, not at the
-    // marker's own page.
     let currentMatter = null;
     let firstMainChapter = null;
-    children.forEach((element) => {
+    children.forEach((element, index) => {
       if (element.matches?.('[data-matter-start]')) {
         currentMatter = element.getAttribute('data-matter-start');
         return;
       }
       if (element.tagName !== 'H1' || currentMatter !== 'main' || firstMainChapter !== null) return;
-      const rect = unscaledRect(element, pageRect, zoom);
-      firstMainChapter = Math.min(plan.pageCount - 1, Math.max(0, Math.floor((rect.top - marginTop) / pitch)));
+      firstMainChapter = pageIndexFor(index);
     });
     if (firstMainChapter !== null) mainStartPage = firstMainChapter;
-    // Find the first chapter after the explicit mainmatter marker in DOM
-    // order.  This is more reliable than guessing from chapter page sets when
-    // a front-matter chapter and the marker share a page boundary.
     const mainMarker = editable.querySelector('[data-matter-start="main"]');
     if (mainMarker) {
       const nextChapter = [...editable.querySelectorAll('h1')].find(element =>
         Boolean(mainMarker.compareDocumentPosition(element) & Node.DOCUMENT_POSITION_FOLLOWING));
       if (nextChapter) {
-        const rect = unscaledRect(nextChapter, pageRect, zoom);
-        mainStartPage = Math.min(plan.pageCount - 1, Math.max(0, Math.floor((rect.top - marginTop) / pitch)));
+        const index = children.indexOf(nextChapter);
+        if (index >= 0) mainStartPage = pageIndexFor(index);
       }
     }
     if (hasFrontmatterMarker) page.dataset.frontmatter = 'true';
@@ -516,19 +584,18 @@ export function installTypesetPagination(page, paper, meta, editor) {
     if (backStartPage === null) delete page.dataset.backStart;
     else page.dataset.backStart = String(backStartPage);
     page.dataset.hasBackmatter = String(backStartPage !== null);
-    const frontmatter = page.dataset.frontmatter === 'true';
-    // Keep layout metadata off the contenteditable headings: writing data
-    // attributes there makes ProseMirror re-observe the control during every
-    // pagination pass and can detach a paragraph mid-click.
-    const stackHeight = plan.pageCount * pageHeight + (plan.pageCount - 1) * pageGap;
+
+    const pageCount = columnsMode ? Math.max(1, Math.ceil(plan.pageCount / 2)) : plan.pageCount;
+    const stackHeight = pageCount * pageHeight + (pageCount - 1) * pageGap;
     const editorTop = unscaledRect(editable, pageRect, zoom).top;
-    const lastBodyBottom = (plan.pageCount - 1) * pitch + pageHeight - marginBottom;
+    const lastBodyBottom = (pageCount - 1) * pitch + pageHeight - marginBottom;
     page.style.setProperty('--page-stack-height', `${stackHeight}px`);
     page.style.setProperty('--editor-min-height', `${Math.max(0, lastBodyBottom - editorTop)}px`);
-    page.dataset.pageCount = String(plan.pageCount);
-    renderSheets(plan.pageCount);
+    page.dataset.pageCount = String(pageCount);
+    renderSheets(pageCount);
     renderTableHeaders(tablePlans, blocks);
     delete page.dataset.paginationMeasuring;
+    lastLayoutSignature = layoutSignature();
     window.dispatchEvent(new CustomEvent('lineae-layout'));
   }
 
@@ -558,26 +625,51 @@ export function installTypesetPagination(page, paper, meta, editor) {
   return {
     update(preamble) {
       applyProfile(preamble);
+      forceLayout = true;
+      schedule();
+    },
+    setMaketitle(value) {
+      const next = Boolean(value);
+      if (next === maketitle) return;
+      maketitle = next;
+      sheetCount = 0;
+      forceLayout = true;
       schedule();
     },
     refresh: schedule,
-    setMaketitle(value) {
-      const next = Boolean(value);
-      if (next !== maketitle) {
-        maketitle = next;
-        sheetCount = 0;
-      }
+    reset() {
+      if (frame) cancelAnimationFrame(frame);
+      frame = 0;
+      paginationStyle.textContent = '';
+      translations = [];
+      sheetCount = 0;
+      clearHeaderClones();
+      delete page.dataset.paginationMeasuring;
+      setLineBreaks([]);
+      forceLayout = true;
       schedule();
+    },
+    pause(value = true) {
+      paused = Boolean(value);
+      if (paused && frame) cancelAnimationFrame(frame);
+      if (paused) frame = 0;
+      else {
+        forceLayout = true;
+        schedule();
+      }
+      return paused;
     },
     getMode: () => mode,
     getTableContinuation: () => continuedTables,
     setTableContinuation(enabled) {
       continuedTables = Boolean(enabled);
+      forceLayout = true;
       schedule();
       return continuedTables;
     },
     setMode(next) {
       mode = next === 'flow' ? 'flow' : 'pages';
+      forceLayout = true;
       schedule();
       return mode;
     },

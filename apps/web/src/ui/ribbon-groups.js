@@ -102,7 +102,7 @@ export function installResponsiveGroups(panel, states, priority = [...states].re
   function availableWidth() {
     const width = window.innerWidth;
     const sidebar = Number.parseFloat(getComputedStyle(document.body).getPropertyValue('--sidebar-width')) || 0;
-    const max = Math.min(1080, Math.max(300, width - sidebar - 260), width - sidebar - 24);
+    const max = Math.min(1320, Math.max(300, width - sidebar - 160), width - sidebar - 24);
     return Math.max(0, max - 24);
   }
 

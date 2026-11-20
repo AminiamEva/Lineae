@@ -99,6 +99,7 @@ export function parseImageBlock(source) {  const text = String(source ?? '').tri
       wrapOverhang:wrap[3]||null,wrapLines:wrap[1]||null,figure:false,caption:captionMatch?.[2]??null,
       captionEnabled:Boolean(captionMatch),captionNumbered:captionMatch? !captionMatch[1]:true,
       captionPosition:captionIndex>=0&&captionIndex<imageIndex?'above':'below',
+      centered:/\\centering\b/.test(inner),
       label:/\\label\{([^{}\r\n]+)\}/.exec(inner)?.[1]??null}};
   }
   const centerMatch = /^\\begin\{center\}\s*([\s\S]*?)\s*\\end\{center\}$/.exec(text);
@@ -243,6 +244,7 @@ export function serializeImage(attrs) {
     const body = attrs.captionPosition === 'above' ? caption + graphic : graphic + '\n' + caption;
     return '\\begin{wrapfigure}' + lines + '{' + (attrs.wrapSide ?? 'r') + '}' + overhang
       + '{' + (attrs.wrapWidth ?? '0.4\\textwidth') + '}\n'
+      + (attrs.centered ? '\\centering\n' : '')
       + body + (body.endsWith('\n') ? '' : '\n') + label + '\\end{wrapfigure}\n\n';
   }
   if (!attrs.figure) return graphic + '\n\n';

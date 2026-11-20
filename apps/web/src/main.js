@@ -743,6 +743,11 @@ function syncTableAttributes() {
     else delete table.dataset.columnLayout;
     if(node.attrs.columnRules)table.dataset.columnRules='true';
     else delete table.dataset.columnRules;
+    if(node.attrs.horizontalRuleMode)table.dataset.horizontalRuleMode=node.attrs.horizontalRuleMode;
+    else delete table.dataset.horizontalRuleMode;
+    const trailingRule=(node.attrs.trailingRules??[]).find(rule=>/^\\?(toprule|midrule|bottomrule|hline)$/.test(String(rule)));
+    if(trailingRule)table.dataset.trailingRule=String(trailingRule).replace(/^\\/,'');
+    else delete table.dataset.trailingRule;
     if(node.attrs.align)table.dataset.tableAlign=node.attrs.align;
     else delete table.dataset.tableAlign;
     table.style.setProperty('--table-rule-width',node.attrs.borderWidth??'0.4pt');
@@ -773,8 +778,14 @@ const underlineButton=button('U',()=>editor.chain().focus().toggleMark('underlin
 function syncUndoButtons(){
   try{
     const source=!sourceView.hidden;
-    undoButton.disabled=!(source?sourceModeCommits.length||sourceView.canUndo?.():editor.can().undo());
-    redoButton.disabled=!(source?sourceModeRedos.length||sourceView.canRedo?.():editor.can().redo());
+    const canUndo=source?sourceModeCommits.length||sourceView.canUndo?.():editor.can().undo();
+    const canRedo=source?sourceModeRedos.length||sourceView.canRedo?.():editor.can().redo();
+    undoButton.disabled=!canUndo;
+    redoButton.disabled=!canRedo;
+    if(homeRibbon?.refs){
+      homeRibbon.refs.undo.disabled=!canUndo;
+      homeRibbon.refs.redo.disabled=!canRedo;
+    }
   }catch{}
 }
 editor.on('transaction',()=>{
@@ -1072,6 +1083,7 @@ let documentParts=parseDocument(DEFAULT_DOCUMENT_SOURCE);
 let pageSetup=readPageSetup(documentParts.start);
 let typesetPagination;
 let headerFooterPanel;
+let homeRibbon;
 let imagePanel;
 let imageSelection = null;
 let pagePaper,pageOrientation,pageMarginPreset,pageMarginTop,pageMarginRight,pageMarginBottom,pageMarginLeft,layoutColumns,layoutLocalColumns;
@@ -1215,7 +1227,7 @@ function applyPageSetup(){
   const globalColumns=readGlobalColumns(layoutPreamble);
   documentPage.dataset.globalColumns=String(globalColumns);
   documentPage.dataset.captionLanguage=/\\usepackage(?:\[[^\]]*\])?\{ctex\}/.test(layoutPreamble)?'zh':'en';
-  // if(layoutColumns)layoutColumns.value=String(globalColumns);
+  if(layoutColumns)layoutColumns.value=String(globalColumns);
   const metrics=pageMetrics(pageSetup);
   documentPage.style.setProperty('--page-width',metrics.width);
   documentPage.style.setProperty('--page-height',metrics.height);
@@ -1326,9 +1338,6 @@ function load(text, markSaved = true) {
   if(!parsed)throw new Error(t('无法识别文档','Invalid document'));
   if (markSaved) {clearProjectAssets();sourceModeEntry=undefined;sourceModeCommits=[];sourceModeRedos=[];}
   citationLibrary.restoreState(readBibliographyMetadata(text));
-  // The book/report heading mapping must be active before blocks are imported;
-  // applyProfile() runs later, during pagination, which is too late for the
-  // initial \chapter -> heading conversion.
   const documentClass = (/\\documentclass(?:\[[^\]]*\])?\{([^}]+)\}/.exec(parsed.start)?.[1] || 'article').toLowerCase();
   setSerializationClass(documentClass);
   setHeadingBase(documentClass === 'book' || documentClass === 'report' ? 'chapter' : null);
@@ -1355,6 +1364,7 @@ function setSourceMode(active) {
   if (editor.view.composing || sourceView.composing) { sourceView.error(t("请先完成当前输入。","Finish the current composition before switching modes.")); return; }
   if (active === !sourceView.hidden) return;
   if(active && headerFooterMode)setHeaderFooterMode(false);
+  if(active)typesetPagination?.pause(true);
   if(projectExplorer?.active)projectWorkspace.select(active?'source':'body',projectFileKind);
   if (active) {
     if(projectDocument.composition){
@@ -1378,6 +1388,8 @@ syncUndoButtons();
       sourceView.close();
       showProjectComposition();
       editor.commands.focus();
+      typesetPagination?.reset();
+      typesetPagination?.pause(false);
       requestAnimationFrame(() => requestAnimationFrame(() => typesetPagination?.refresh()));
       setTimeout(() => typesetPagination?.refresh(),120);
     } catch (error) {
@@ -2450,10 +2462,9 @@ pageMarginTop=marginInput(t('上边距','Top margin'));
 pageMarginRight=marginInput(t('右边距','Right margin'));
 pageMarginBottom=marginInput(t('下边距','Bottom margin'));
 pageMarginLeft=marginInput(t('左边距','Left margin'));
-// 全局分栏：正文页渲染内核（typeset-pagination.js）暂不接受修改，此控件注销，待内核改造方案获批后恢复。
-// layoutColumns=document.createElement('select');
-// layoutColumns.setAttribute('aria-label',t('全局分栏','Global columns'));
-// layoutColumns.append(new Option(t('1 栏','1 column'),'1'),new Option(t('2 栏（twocolumn）','2 columns (twocolumn)'),'2'));
+layoutColumns=document.createElement('select');
+layoutColumns.setAttribute('aria-label',t('全局分栏','Global columns'));
+layoutColumns.append(new Option(t('1 栏','1 column'),'1'),new Option(t('2 栏（twocolumn）','2 columns (twocolumn)'),'2'));
 layoutLocalColumns=document.createElement('select');
 layoutLocalColumns.setAttribute('aria-label',t('局部分栏','Local columns'));
 for(const value of ['2','3','4'])layoutLocalColumns.append(new Option(t(value+' 栏',value+' columns'),value));
@@ -2488,18 +2499,17 @@ for(const [sideText,input] of [[t('上边距','Top'),pageMarginTop],[t('右边�
   field.append(caption,input);
   layoutPageSetupControls.append(field);
 }
-// const columnsField=document.createElement('label');
-// columnsField.className='layout-field';
-// const columnsCaption=document.createElement('span');
-// columnsCaption.textContent=t('全局分栏','Global columns');
-// columnsField.append(columnsCaption,layoutColumns);
+const columnsField=document.createElement('label');
+columnsField.className='layout-field';
+const columnsCaption=document.createElement('span');
+columnsCaption.textContent=t('全局分栏','Global columns');
+columnsField.append(columnsCaption,layoutColumns);
 const localColumnsField=document.createElement('label');
 localColumnsField.className='layout-field';
 const localColumnsCaption=document.createElement('span');
 localColumnsCaption.textContent=t('局部分栏','Local columns');
 localColumnsField.append(localColumnsCaption,layoutLocalColumns,insertColumnsButton);
-// layoutPageSetupControls.append(columnsField,localColumnsField);
-layoutPageSetupControls.append(localColumnsField);
+layoutPageSetupControls.append(columnsField,localColumnsField);
 layoutPageSetup.append(layoutPageSetupTitle,layoutPageSetupControls);
 const layoutParagraph=document.createElement('section');
 layoutParagraph.className='layout-group';
@@ -2524,8 +2534,8 @@ layoutAfter.addEventListener('change',()=>updateSelectedParagraphs({spaceAfter:l
 layoutParagraphControls.append(layoutBefore,layoutAfter);
 layoutParagraph.append(layoutParagraphTitle,layoutParagraphControls);
 buildRibbonGroups(layoutGroup,[
-  {id:'layout-page-setup',zh:'页面设置',en:'Page Setup',iconName:'layout',width:620,body:layoutPageSetupControls},
-  {id:'layout-paragraph',zh:'段落',en:'Paragraph',iconName:'paragraph',width:280,body:layoutParagraphControls},
+  {id:'layout-page-setup',zh:'页面设置',en:'Page Setup',iconName:'layout',width:840,body:layoutPageSetupControls},
+  {id:'layout-paragraph',zh:'段落',en:'Paragraph',iconName:'paragraph',width:300,body:layoutParagraphControls},
 ],['layout-paragraph','layout-page-setup']);
 syncLayoutParagraph=()=>{
   if(!layoutBefore||!layoutAfter)return;
@@ -2535,7 +2545,7 @@ syncLayoutParagraph=()=>{
 };
 pagePaper.addEventListener('change',()=>updatePageSetup({paper:pagePaper.value}));
 pageOrientation.addEventListener('change',()=>updatePageSetup({orientation:pageOrientation.value}));
-// layoutColumns.addEventListener('change',()=>updateGlobalColumns(layoutColumns.value));
+layoutColumns.addEventListener('change',()=>updateGlobalColumns(layoutColumns.value));
 insertColumnsButton.addEventListener('click',()=>insertMultiColumn(Number(layoutLocalColumns.value)||2));
 pageMarginPreset.addEventListener('change',()=>{
   if(MARGIN_PRESETS[pageMarginPreset.value])updatePageSetup({margin:MARGIN_PRESETS[pageMarginPreset.value]});
@@ -2660,7 +2670,7 @@ tableStretchGrid.append(
 tableStretchSection.append(tableStretchGrid);
 function updateTableAttributes(patch,focus=true){
   const lineKeys=['leftRule','rightRule','middleVerticalRule','verticalFirstRow','topRule','bottomRule','midRuleMode','ruleStyle','ruleWidth'];
-  if(Object.keys(patch).some(key=>lineKeys.includes(key)))patch={...patch,borderMode:null,booktabs:false};
+  if(Object.keys(patch).some(key=>lineKeys.includes(key)))patch={...patch,borderMode:null,booktabs:false,horizontalRuleMode:null};
   if(editor.isActive('table'))(focus?editor.chain().focus():editor.chain()).updateAttributes('table',patch).run();
 }
 function syncTableControls(){
@@ -2965,7 +2975,7 @@ function changeFontSize(direction) {
   if (!next) return false;
   return editor.chain().focus().setMark('textStyle',{fontSize:next+'pt'}).run();
 }
-const homeRibbon=buildHomeRibbon(home,{actions:{
+homeRibbon=buildHomeRibbon(home,{actions:{
   copy:()=>clipboard.copy().catch(reportClipboardError),
   cut:()=>clipboard.cut().catch(reportClipboardError),
   paste:mode=>clipboard.paste(mode).catch(reportClipboardError),
@@ -3252,6 +3262,7 @@ for(const [name,panel] of Object.entries(groups)) {
 const download=document.querySelector('#download');
 language.addEventListener('change',()=>{config.updateInterface({language:language.value});updateLanguage();});
 updateFileTools();updateLanguage();selectGroup('home');
+syncUndoButtons();
 
 installContextMenu(editor, paper, language, message => {
   const status = document.querySelector('#status');

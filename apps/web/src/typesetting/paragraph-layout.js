@@ -9,6 +9,17 @@ const cjk=/[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul
 const closing=/^[、。，．？！：；）］｝〉》」』】…,.!?;:)]$/u,opening=/[（［｛〈《「『【(\[]$/u;
 const canvas=typeof document==='undefined'?null:document.createElement('canvas');
 const context=canvas?.getContext('2d');
+function cssLengthPx(value){
+  const match=/^\s*(\d+(?:\.\d+)?)\s*(px|pt|in|cm|mm)\s*$/.exec(String(value??''));
+  if(!match)return 0;
+  return Number(match[1])*{px:1,pt:4/3,in:96,cm:96/2.54,mm:96/25.4}[match[2]];
+}
+function elementTranslateY(element){
+  const value=getComputedStyle(element).translate;
+  if(!value||value==='none')return 0;
+  const parts=value.match(/-?(?:\d+\.?\d*|\.\d+)(?:px)?/g)??[];
+  return parts.length>1?Number.parseFloat(parts[1])||0:0;
+}
 const metricCache=new Map();
 if(typeof document!=='undefined')document.fonts?.addEventListener('loadingdone',()=>metricCache.clear());
 function measure(text,style){
@@ -68,6 +79,15 @@ function tokensFor(editor,node,start,element,options){
 function widget(position,classes,width=0){
   return Decoration.widget(position,()=>{const span=document.createElement('span');span.className=classes;span.contentEditable='false';span.setAttribute('aria-hidden','true');if(width)span.style.width=width+'px';return span;},{side:-1,key:classes+position+':'+width,ignoreSelection:true});
 }
+export function wrapLineWidthAt(line,{elementTop,lineHeight,baseWidth,wraps,zoom=1}){
+  const top=elementTop+line*lineHeight,bottom=top+lineHeight;
+  let available=baseWidth;
+  for(const wrap of wraps){
+    if(!(line===0&&wrap.forceLineZero)&&(wrap.rect.bottom<=top+.5||wrap.rect.top>=bottom-.5))continue;
+    available-=(wrap.rect.width/zoom)+(wrap.columnsep ?? 10)-(wrap.overhang ?? 0);
+  }
+  return Math.max(24,available);
+}
 export function installParagraphLayout(editor){
   let current='',lastSignature='',running=false,preferredX=null;
   editor.view.dom.addEventListener('pointerdown',()=>{preferredX=null;});
@@ -112,26 +132,19 @@ export function installParagraphLayout(editor){
       const indent=parseFloat(style.textIndent)||0;
       const lineHeight=(parseFloat(getComputedStyle(element).lineHeight)||parseFloat(style.fontSize)*1.2||16)*zoom;
       const wraps=[...editor.view.dom.querySelectorAll('.document-image[data-wrap="true"]')].map(image=>{
-        const rect=image.getBoundingClientRect();
-        return {rect,side:image.dataset.wrapSide||'r'};
+        const rawRect=image.getBoundingClientRect();
+        const translationY=elementTranslateY(image)*zoom;
+        const rect={...rawRect,top:rawRect.top-translationY,bottom:rawRect.bottom-translationY};
+        const imageStyle=getComputedStyle(image);
+        const side=image.dataset.wrapSide||'r';
+        const columnsep=parseFloat(/^[lL]$/.test(side)?imageStyle.marginInlineEnd:imageStyle.marginInlineStart)||0;
+        const overhang=cssLengthPx(image.dataset.wrapOverhang);
+        return {rect,side,columnsep,overhang,forceLineZero:image.nextElementSibling===element};
       });
-      // Let CSS float the text around a wrapfigure paragraph.  The TeX
-      // paragraph pass emits manual line breaks and would otherwise put every
-      // line at the full column width, underneath the float.  Native float
-      // wrapping is the shape model the DOM already exposes.
-      if (wraps.some(wrap => wrap.rect.bottom > elementRect.top + .5 && wrap.rect.top < elementRect.bottom - .5)) return false;
-      const widthAt=line=>{
-        const top=elementRect.top+line*lineHeight;
-        const bottom=top+lineHeight;
-        let available=baseWidth;
-        for(const wrap of wraps){
-          if(wrap.rect.bottom<=top+.5||wrap.rect.top>=bottom-.5)continue;
-          const cut=(wrap.rect.width/zoom)+10;
-          if(/[rRiIoO]/.test(wrap.side))available-=cut;
-          else if(/[lL]/.test(wrap.side))available-=cut;
-        }
-        return Math.max(24,available);
-      };
+      // Wrapfig narrows the paragraph at the float, including the declaration
+      // line, while the float itself keeps its CSS shape.  Keeping the TeX
+      // paragraph pass active here aligns the break points with XeLaTeX.
+      const widthAt=line=>wrapLineWidthAt(line,{elementTop:elementRect.top,lineHeight,baseWidth,wraps,zoom});
       const plan=optimumParagraph(items,line=>widthAt(line)-(line===0?indent:0),{...options,emergencyStretch:options.emergency?texDimension(options.emergency,parseFloat(style.fontSize)):0});
       if(!plan||plan.lines.length===1)return false;
       entries.push(Decoration.node(start,start+node.nodeSize,{'data-tex-paragraph':'true'}));

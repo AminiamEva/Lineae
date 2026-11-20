@@ -129,6 +129,10 @@ export function installHeaderFooterPanel({readState, onChange}) {
   const scopeSelect = document.createElement('select');
   scopeSelect.append(new Option(t('应用于全文','Apply to document'),'document'),new Option(t('应用于本节','Apply to section'),'section'));
   scope.append(scopeLabel,scopeSelect);
+  const controls = document.createElement('div');
+  controls.className = 'hf-controls';
+  controls.append(switches,fields,rules,scope);
+  panel.append(controls,grid);
 
 
   let state = null;

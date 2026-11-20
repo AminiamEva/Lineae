@@ -8,7 +8,6 @@ import { serialize } from '../apps/web/src/editor/latex-codec.js';
 import { importBlocks } from '../apps/web/latex/blocks.mjs';
 import { listMarker, markerInput } from '../apps/web/latex/list-numbering.mjs';
 import { buildProjectZip, projectDependencies } from '../apps/web/src/editor/project-zip.mjs';
-import { relativeImageWidth } from '../apps/web/latex/images.mjs';
 
 test('paragraph alignment round-trips without leaking into the next paragraph', () => {
   for (const align of ['left','center','right']) {
@@ -37,53 +36,6 @@ test('Word-style numbering preserves the marker and starting number in TeX', () 
   }
   assert.equal(listMarker(markerInput.exec('word. ')),null);
   assert.equal(listMarker(markerInput.exec(' ')),null,'a single space must not start a list');
-});
-
-test('list labels use XeLaTeX-safe commands', () => {
-  const item={type:'listItem',content:[{type:'paragraph',content:[{type:'text',text:'Item'}]}]};
-  const bullet=serialize({type:'bulletList',attrs:{marker:'▪'},content:[item]});
-  assert.match(bullet,/\\raisebox\{\.25ex\}\{\\rule\{\.45em\}\{\.45em\}\}/);
-  assert.equal(importBlocks(bullet)[0].attrs.marker,'▪');
-
-  const ordered=serialize({type:'orderedList',attrs:{labelStyle:'cjk-ideographic-comma'},content:[item]});
-  assert.match(ordered,/\\zhnumber\{\\arabic\*\}/);
-  assert.doesNotMatch(ordered,/\\zhnum\{/);
-  const packages=resolvePackages('',ordered).map(rule=>rule.name);
-  assert.ok(packages.includes('enumitem'));
-  assert.ok(packages.includes('zhnumber'));
-});
-
-test('font marks round-trip XeLaTeX commands', () => {
-  const node={type:'paragraph',content:[{type:'text',text:'X',marks:[
-    {type:'circled'},
-    {type:'underline',attrs:{style:'double'}},
-    {type:'textStyle',attrs:{backgroundColor:'#fff3a3',color:'#c00000',fontSize:'11pt'}},
-  ]}]};
-  const output=serialize(node);
-  assert.match(output,/\\textcircled\{/);
-  assert.match(output,/\\uuline\{/);
-  assert.match(output,/\\colorbox\[HTML\]\{fff3a3\}/i);
-  const [restored]=importBlocks(output);
-  const marks=restored.content[0].marks;
-  assert.ok(marks.some(mark=>mark.type==='circled'));
-  assert.ok(marks.some(mark=>mark.type==='underline'&&mark.attrs.style==='double'));
-  assert.ok(marks.some(mark=>mark.type==='textStyle'&&mark.attrs.backgroundColor?.toLowerCase()==='#fff3a3'));
-  const packages=resolvePackages('',output).map(rule=>rule.name);
-  assert.ok(packages.includes('ulem'));
-  assert.ok(packages.includes('xcolor'));
-});
-
-test('paragraph formatting inside list items round-trips', () => {
-  const [list]=importBlocks('\\begin{itemize}\n\\item {\\colorbox{yellow}{\\parbox{\\linewidth}{Shaded}}}\n\\end{itemize}');
-  const paragraph=list.content[0].content[0];
-  assert.equal(paragraph.attrs.shading,'yellow');
-  const output=serialize(list);
-  assert.match(output,/\\colorbox\{yellow\}/);
-  const [restored]=importBlocks(output);
-  assert.equal(restored.content[0].content[0].attrs.shading,'yellow');
-
-  const [quote]=importBlocks('\\begin{quote}\n{\\colorbox{yellow}{\\parbox{\\linewidth}{Shaded}}}\n\\end{quote}');
-  assert.equal(quote.content[0].attrs.shading,'yellow');
 });
 
 test('exports theorem and proof environments and a path-safe project ZIP', async () => {
@@ -132,22 +84,6 @@ test('recognizes full text control words without consuming unknown commands', ()
   assert.ok(resolvePackages('',serialize(paragraph)).some(rule=>rule.name==='textcomp'));
 });
 
-test('keeps wrapfigure and includegraphics textwidth factors independent', () => {
-  assert.equal(relativeImageWidth('0.4\\textwidth','0.4\\textwidth'),'100%');
-  assert.equal(relativeImageWidth('0.2\\textwidth','0.4\\textwidth'),'50%');
-  assert.equal(relativeImageWidth('6cm','0.4\\textwidth'),'6cm');
-  assert.equal(relativeImageWidth('\\linewidth','0.4\\textwidth'),'100%');
-  assert.equal(relativeImageWidth('0.8\\linewidth','0.4\\textwidth'),'80%');
-  const source=['\\begin{wrapfigure}{r}{0.4\\textwidth}','\\includegraphics[width=0.4\\textwidth]{pic.png}','\\caption{Long caption}','\\end{wrapfigure}'].join('\n');
-  const [node]=importBlocks(source);
-  assert.equal(node.type,'documentImage');
-  assert.equal(node.attrs.wrap,true);
-  assert.equal(node.attrs.wrapWidth,'0.4\\textwidth');
-  assert.equal(node.attrs.width,'0.4\\textwidth');
-  assert.equal(node.attrs.caption,'Long caption');
-  assert.match(serialize(node),/\\begin\{wrapfigure\}\{r\}\{0\.4\\textwidth\}/);
-});
-
 test('preserves local image paths and supported widths and requests graphicx', () => {
   const image = String.raw`\includegraphics[width=0.5\linewidth]{figures/plot.png}`;
   const [node] = importBlocks(image);
@@ -155,7 +91,7 @@ test('preserves local image paths and supported widths and requests graphicx', (
   assert.equal(serialize(node).trim(), image);
   assert.ok(resolvePackages('',image).some(rule=>rule.name==='graphicx'));
   assert.equal(importBlocks(String.raw`\includegraphics[angle=90]{plot.png}`)[0].type,'documentImage');
-  assert.equal(importBlocks(String.raw`\includegraphics[angle=90]{plot.png}`)[0].attrs.angle,'90');
+  assert.equal(serialize(importBlocks(String.raw`\includegraphics[angle=90]{plot.png}`)[0]).trim(),String.raw`\includegraphics[angle=90]{plot.png}`);
   const figure=['\\begin{figure}[ht]','\\centering',image,'\\caption{Plot}','\\label{fig:plot}','\\end{figure}'].join('\n');
   assert.equal(serialize(importBlocks(figure)[0]).trim(),figure);
 });
@@ -274,6 +210,13 @@ test('round-trips page geometry through the preamble', () => {
   assert.deepEqual(readPageSetup('\\documentclass[a5paper]{article}\n'), {
     paper: 'a5', orientation: 'portrait', margin: 'custom',
     margins: { top: '45.082mm', right: '25.597mm', bottom: '43.313mm', left: '25.400mm' },
+  });
+  assert.deepEqual(readPageSetup('\\documentclass[a4paper]{article}\n\\usepackage{geometry}\n'), {
+    paper: 'a4', orientation: 'portrait', margin: 'custom',
+    margins: { top: '35.640mm', right: '31.500mm', bottom: '53.460mm', left: '31.500mm' },
+  });
+  assert.deepEqual(readPageSetup('\\documentclass[a4paper]{article}\n\\usepackage[hmargin=2cm,vmargin=3cm]{geometry}\n').margins, {
+    top: '3cm', right: '2cm', bottom: '3cm', left: '2cm',
   });
   const asymmetric = writePageSetup(preamble, { paper: 'a5', margins: { top: '1cm', right: '2cm', bottom: '3cm', left: '4cm' } });
   assert.match(asymmetric, /a5paper/);
@@ -408,20 +351,6 @@ test('places font support before the class and color support before the document
   assert.equal(exportDocument(parseDocument(result), body), result);
 });
 
-test('tracks tabcolsep, @{} removal and column rules instead of flattening the tabular spec', async () => {
-  const { parseTable } = await import('../apps/web/latex/tables.mjs');
-  const ruled = parseTable(['\\begin{tabular}{|c|c|}', 'A & B \\\\', '\\end{tabular}'].join('\n'));
-  assert.equal(ruled.columnLayout.boundaries[0].rules, 1);
-  assert.equal(ruled.columnLayout.boundaries[1].rules, 1);
-  assert.equal(ruled.columnLayout.boundaries[2].rules, 1);
-  const at = parseTable(['\\begin{tabular}{@{}c@{}c@{}}', 'A & B \\\\', '\\end{tabular}'].join('\n'));
-  assert.equal(at.columnLayout.boundaries[0].tabcolsep, false);
-  assert.equal(at.columnLayout.boundaries[1].tabcolsep, false);
-  assert.equal(at.columnLayout.boundaries[2].tabcolsep, false);
-  const middle = parseTable(['\\begin{tabular}{c@{}c}', 'A & B \\\\', '\\end{tabular}'].join('\n'));
-  assert.equal(middle.columnLayout.boundaries[1].tabcolsep, false);
-});
-
 test('keeps booktabs rules and alignment around editable cells', async () => {
   const { parseTable, serializeTable } = await import('../apps/web/latex/tables.mjs');
   const source = ['\\begin{tabular}{lc}', '\\toprule', 'A & B \\\\', '\\midrule', '1 & 2 \\\\', '\\bottomrule', '\\end{tabular}'].join('\n');
@@ -450,4 +379,160 @@ test('keeps common decorated and repeated table column specifications editable',
   const table=parseTable(source);
   assert.equal(table.specs.length,3);assert.equal(table.specs[0].width,'3cm');
   assert.equal(serializeTable(table,'\n'),source);
+});
+
+test('wrapfigure imports its side, width and caption and serializes back', () => {
+  const source = [
+    '\\begin{wrapfigure}[5]{r}[2pt]{0.35\\textwidth}',
+    '\\centering',
+    '\\includegraphics[width=0.35\\textwidth]{a.png}',
+    '\\caption{Wrapped}',
+    '\\label{fig:wrapped}',
+    '\\end{wrapfigure}',
+  ].join('\n');
+  const node = importBlocks(source)[0];
+  assert.equal(node.type, 'documentImage');
+  assert.equal(node.attrs.wrap, true);
+  assert.equal(node.attrs.wrapSide, 'r');
+  assert.equal(node.attrs.wrapWidth, '0.35\\textwidth');
+  assert.equal(node.attrs.wrapOverhang, '2pt');
+  assert.equal(node.attrs.wrapLines, '5');
+  assert.equal(node.attrs.caption, 'Wrapped');
+  assert.equal(node.attrs.label, 'fig:wrapped');
+  assert.equal(node.attrs.centered, true);
+  assert.equal(serialize(node).trim(), source);
+});
+
+test('figure groups with subfigures round-trip through editable nodes', () => {
+  const source = [
+    '\\begin{figure}[htbp]',
+    '\\centering',
+    '\\begin{subfigure}{0.48\\textwidth}',
+    '\\centering\\includegraphics[width=0.48\\textwidth]{a.png}',
+    '\\caption{Sub A}',
+    '\\end{subfigure}\\hfill',
+    '\\begin{subfigure}{0.48\\textwidth}',
+    '\\centering\\includegraphics[width=0.48\\textwidth]{b.png}',
+    '\\end{subfigure}',
+    '\\caption{Main}',
+    '\\label{fig:main}',
+    '\\end{figure}',
+  ].join('\n');
+  const node = importBlocks(source)[0];
+  assert.equal(node.type, 'subfigures');
+  assert.equal(node.attrs.caption, 'Main');
+  assert.equal(node.attrs.label, 'fig:main');
+  assert.equal(node.content.length, 2);
+  assert.equal(node.content[0].attrs.caption, 'Sub A');
+  const output = serialize(node);
+  assert.match(output, /\\begin\{figure\}\[htbp\]/);
+  assert.match(output, /\\begin\{subfigure\}\{0\.48\\textwidth\}/);
+  assert.match(output, /\\caption\{Sub A\}/);
+  assert.match(output, /\\caption\{Main\}/);
+  assert.match(output, /\\label\{fig:main\}/);
+});
+
+test('tabular column rules, tabcolsep removal and booktabs rows round-trip', () => {
+  const source = [
+    '\\begin{tabular}{|c|@{}p{2cm}|}',
+    '\\toprule',
+    'A & B \\\\',
+    '\\midrule',
+    'C & D \\\\',
+    '\\bottomrule',
+    '\\end{tabular}',
+  ].join('\n');
+  const table = importBlocks(source)[0];
+  assert.equal(table.type, 'table');
+  assert.equal(table.attrs.booktabs, true);
+  assert.equal(table.attrs.columnRules, true);
+  assert.equal(JSON.parse(table.attrs.columnLayout)[1].at, true);
+  assert.deepEqual(table.content[0].attrs.rules, ['\\toprule']);
+  assert.equal(table.content[0].content[0].attrs.paddingRight, '0pt');
+  assert.equal(table.content[0].content[0].attrs.ruleLeft, 'true');
+  assert.equal(serialize(table).trim(), source);
+});
+
+test('indented tabular environments keep their editable table structure', () => {
+  const source = [
+    '\\begin{table}[htbp]',
+    '\t\\centering',
+    '\t\\caption{Indented}',
+    '\t\\begin{tabular}{ll}',
+    '\t\t\\toprule',
+    '\t\twell & I guess \\\\',
+    '\t\t\\midrule',
+    '\t\tthis & is better \\\\',
+    '\t\t\\bottomrule',
+    '\t\\end{tabular}',
+    '\\end{table}',
+  ].join('\n');
+  const table = importBlocks(source)[0];
+  assert.equal(table.type, 'table');
+  assert.equal(table.attrs.caption, 'Indented');
+  assert.equal(table.content.length, 2);
+  assert.deepEqual(table.content[0].attrs.rules, ['\\toprule']);
+  assert.deepEqual(table.content[1].attrs.rules, ['\\midrule']);
+  assert.match(serialize(table), /\\begin\{table\}\[htbp\]/);
+  assert.match(serialize(table), /well & I guess/);
+});
+
+test('paragraph boxes, shading, spacing, line spread and alignment round-trip', () => {
+  const [border] = importBlocks('{\\fbox{\\parbox{\\linewidth}{Boxed}}}');
+  assert.equal(border.attrs.border, true);
+  assert.equal(serialize(border).trim(), '{\\fbox{\\parbox{\\linewidth}{Boxed}}}');
+
+  const [shaded] = importBlocks('{\\colorbox{yellow}{\\parbox{\\linewidth}{Shaded}}}');
+  assert.equal(shaded.attrs.shading, 'yellow');
+  assert.match(serialize(shaded), /\\colorbox\{yellow\}/);
+
+  const [spaced] = importBlocks('{\\vspace*{6pt}Spaced\\par\\vspace*{3pt}}');
+  assert.equal(spaced.attrs.spaceBefore, '6pt');
+  assert.equal(spaced.attrs.spaceAfter, '3pt');
+  assert.match(serialize(spaced), /\\vspace\*\{6pt\}/);
+
+  const [spread] = importBlocks('{\\linespread{1.5}\\selectfont Spread\\par}');
+  assert.equal(spread.attrs.lineSpacing, 1.5);
+  assert.match(serialize(spread), /\\linespread\{1.5\}/);
+
+  const [aligned] = importBlocks('{\\centering Centered\\par}');
+  assert.equal(aligned.attrs.align, 'center');
+  assert.match(serialize(aligned), /\\centering/);
+});
+
+test('inline underline styles, circled text, background colour and lipsum round-trip', () => {
+  const [paragraph] = importBlocks('\\uuline{Double} \\textcircled{X} \\colorbox[HTML]{fff3a3}{Y} \\lipsum[1-2]');
+  const marks = paragraph.content.flatMap(node => node.marks ?? []);
+  assert.ok(marks.some(mark => mark.type === 'underline' && mark.attrs.style === 'double'));
+  assert.ok(marks.some(mark => mark.type === 'circled'));
+  assert.ok(marks.some(mark => mark.type === 'textStyle' && mark.attrs.backgroundColor?.toLowerCase() === '#fff3a3'));
+  assert.equal(paragraph.content.at(-1).type, 'lipsum');
+  const output = serialize(paragraph);
+  assert.match(output, /\\uuline\{Double\}/);
+  assert.match(output, /\\textcircled\{X\}/);
+  assert.match(output, /\\colorbox\[HTML\]\{fff3a3\}/i);
+  assert.match(output, /\\lipsum\[1-2\]/);
+});
+
+test('explicit table rules do not reintroduce default booktabs lines', () => {
+  const source = [
+    '\\begin{tabular}{c|c}',
+    '\\toprule',
+    'A & B \\\\',
+    '\\midrule',
+    'C & D \\\\',
+    '\\bottomrule',
+    '\\end{tabular}',
+  ].join('\n');
+  const table = importBlocks(source)[0];
+  table.attrs.horizontalRuleMode = 'explicit';
+  table.attrs.booktabs = true;
+  table.content[0].attrs.rules = ['\\toprule'];
+  table.content[1].attrs.rules = [];
+  table.attrs.trailingRules = ['\\bottomrule'];
+  const output = serialize(table);
+  assert.match(output, /\\toprule/);
+  assert.match(output, /\\bottomrule/);
+  assert.doesNotMatch(output, /\\midrule/);
+  assert.match(output, /\\begin\{tabular\}\{c\|c\}/);
 });

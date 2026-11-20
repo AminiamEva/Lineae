@@ -283,10 +283,9 @@ function styleGallery(parent,onStyle) {
   gallery.setAttribute('aria-label',t('样式库','Style gallery'));
   const definitions = [
     {level:0,zh:'正文',en:'Normal',align:'left'},
-    {level:null,zh:'无间隔',en:'No spacing',align:'left',disabled:true,style:'no-spacing'},
-    {level:1,zh:'标题1',en:'Heading 1',align:'left'},
-    {level:2,zh:'标题2',en:'Heading 2',align:'left'},
-    {level:3,zh:'标题3',en:'Heading 3',align:'left'},
+    {level:1,zh:'标题1',en:'section',align:'left'},
+    {level:2,zh:'标题2',en:'subsect',align:'left'},
+    {level:3,zh:'标题3',en:'subsub',align:'left'},
   ];
   const controls = new Map();
   for (const definition of definitions) {
@@ -321,8 +320,8 @@ function installResponsiveGroups(panel,states) {
     const width = window.innerWidth;
     const sidebar = Number.parseFloat(getComputedStyle(document.body).getPropertyValue('--sidebar-width')) || 0;
     const max = Math.min(
-      1080,
-      Math.max(300,width - sidebar - 260),
+      1320,
+      Math.max(300,width - sidebar - 160),
       width - sidebar - 24,
     );
     // Ribbon padding/border and the group panel's own horizontal padding.
@@ -415,12 +414,13 @@ export function buildHomeRibbon(panel,{actions = {}} = {}) {
     {separator:true},
     {zh:'选择性粘贴…',en:'Paste special…',disabled:true},
   ]);
-  const clipboardTools = stack(clipboardRow);
+  const clipboardActions = stack(clipboardRow);
+  const clipboardTools = row(clipboardActions);
   refs.cut = button({iconName:'cut',zh:'剪切',en:'Cut',hintZh:'剪切选区并放入剪贴板',hintEn:'Cut the selection to the clipboard',action:run('cut')});
   refs.copy = button({iconName:'copy',zh:'复制',en:'Copy',hintZh:'复制选区到剪贴板',hintEn:'Copy the selection to the clipboard',action:run('copy')});
   refs.formatPainter = button({iconName:'formatPainter',zh:'格式刷',en:'Format painter',hintZh:'单击应用一次格式，双击连续应用；Esc 取消',hintEn:'Click to apply formatting once, double-click to keep applying; Esc cancels',action:event => run('formatPainter')?.(event)});
   clipboardTools.append(refs.cut,refs.copy,refs.formatPainter);
-  const historyTools = stack(clipboardRow);
+  const historyTools = row(clipboardActions);
   refs.undo = button({iconName:'undo',zh:'撤销',en:'Undo',hintZh:'撤销上一步操作',hintEn:'Undo the last action',action:run('undo'),sourceAction:'↶'});
   refs.redo = button({iconName:'redo',zh:'重做',en:'Redo',hintZh:'重做已撤销的操作',hintEn:'Redo the last undone action',action:run('redo'),sourceAction:'↷'});
   for (const [control,symbol] of [[refs.undo,'↶'],[refs.redo,'↷']]) {
@@ -531,7 +531,7 @@ export function buildHomeRibbon(panel,{actions = {}} = {}) {
     refs.align[key] = button({iconName,zh,en,hintZh,hintEn,action:run('align'+key[0].toUpperCase()+key.slice(1))});
     paragraphAlign.append(refs.align[key]);
   }
-  const paragraphMarks = paragraph.row();
+  const paragraphMarks = paragraphAlign;
   const shading = button({iconName:'shading',zh:'段落底纹',en:'Paragraph shading',hintZh:'给整个段落添加背景色',hintEn:'Add a background colour to the paragraph',action:run('paragraphShading') ? () => run('paragraphShading')('yellow') : undefined});
   refs.shading = splitControl(paragraphMarks,shading,[
     {zh:'无底纹',en:'No shading',action:run('paragraphShading') ? () => run('paragraphShading')(null) : undefined},
