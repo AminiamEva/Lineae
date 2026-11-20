@@ -554,9 +554,7 @@ export const MathNode = Node.create({
         }
         requestAnimationFrame(() => {
           if(field.isConnected&&focusRequest===pointerFocus&&mathPointerField===field){
-            if(field.hasFocus()&&field.ownerDocument.activeElement!==field){
-              const selection=structuredClone(field.selection);field.blur();field.focus();field.selection=selection;
-            }else field.focus();
+            field.focus();
             // Moving a table row can leave MathLive's focus flag set while its
             // native keyboard sink is blurred. Restore the actual DOM focus.
             if(field.ownerDocument.activeElement!==field)
