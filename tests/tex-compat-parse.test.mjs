@@ -129,16 +129,20 @@ test('boxed expressions and extended alignment environments stay renderable math
   }
 });
 
-test('all 1000 complex renderer samples import as editable math blocks', async () => {
+test('complex renderer samples preserve incomplete source and import when explicitly closed', async () => {
   const { readFile } = await import('node:fs/promises');
   const corpus = await readFile('tests/fixtures/tex-compat/math/complex-renderer-1000.jsonl', 'utf8');
   const samples = corpus.trim().split(/\r?\n/).map(line => JSON.parse(line));
   assert.equal(samples.length, 1000);
   for (const sample of samples) {
-    const [node] = importBlocks(sample.latex);
+    // Some renderer fragments omit the final aligned environment delimiter.
+    // The importer must not silently repair source; close it only for this test.
+    const closed = sample.latex.endsWith('\\end{aligned}');
+    if (!closed) assert.deepEqual(importBlocks(sample.latex), [{ type: 'raw', attrs: { source: sample.latex } }], sample.id);
+    const latex = sample.latex + (closed ? '' : '\\end{aligned}');
+    const [node] = importBlocks(latex);
     assert.equal(node?.type, 'mathBlock', sample.id);
-    assert.ok(node.attrs.latex.startsWith(sample.latex), sample.id);
-    assert.match(node.attrs.latex, /\\end\{aligned\}$/ , sample.id);
+    assert.equal(node.attrs.latex, latex, sample.id);
   }
 });
 

@@ -1,4 +1,104 @@
-export const imageWidthPattern = /^(?:\d+(?:\.\d+)?)?(?:\\textwidth|\\linewidth|\\columnwidth|cm|mm|pt|in)$/;
+import {sourceStructure} from './source-structure.mjs';
+import {group,trivia,clean,environmentEnd} from './tblr.mjs';
+
+export const imageWidthPattern = /^(?:(?:\d+(?:\.\d+)?|\.\d+)?\\(?:linewidth|textwidth|columnwidth)|(?:\d+(?:\.\d+)?|\.\d+)(?:cm|mm|pt|in))$/;
+
+// A single-image float is editable using the existing image node. Every other
+// construct stays Raw: never flatten subfigures or silently drop unknown code.
+function figureParts(source) {
+  const opening=/^\s*\\begin\{(figure\*?)\}/.exec(source);
+  if(!opening || [...sourceStructure(source)].some(t=>t.kind==='invalid'))return null;
+  const closing=environmentEnd(source,source.indexOf('\\begin'),opening[1]);
+  if(!closing || source.slice(closing.end).trim())return null;
+  const attrs={figure:true,placement:null,centered:false,align:null,caption:null,label:null,width:null,captionEnabled:false,captionNumbered:true,captionPosition:'below'};
+  const spans={},commands={};let cursor=trivia(source,opening[0].length),graphicsEnd;
+  if(source[cursor]==='[') {
+    const option=group(source,cursor,'[',']');if(!option)return null;
+    attrs.placement=option.value;spans.placement={from:cursor+1,to:option.end-1};
+    commands.placement={from:cursor,to:option.end};cursor=trivia(source,option.end);
+  }
+  while(cursor<closing.start) {
+    const from=cursor,command=/^\\(includegraphics|caption|label|centering|raggedleft|raggedright)(?![A-Za-z])/.exec(source.slice(cursor));
+    if(!command)return null;
+    cursor+=command[0].length;
+    const name=command[1];
+    if(['centering','raggedleft','raggedright'].includes(name)) {
+      if(spans.align)return null;
+      attrs.align={centering:'center',raggedleft:'right',raggedright:'left'}[name];
+      attrs.centered=attrs.align==='center';spans.align=commands.align={from,to:cursor};
+    } else {
+      const key=name==='includegraphics'?'path':name;
+      if(spans[key])return null;
+      if(name==='includegraphics')graphicsEnd=cursor;
+      if(name==='caption') {
+        attrs.captionEnabled=true;
+        attrs.captionNumbered=source[cursor]!=='*';
+        if(!attrs.captionNumbered)cursor++;
+      }
+      cursor=trivia(source,cursor);
+      if(name!=='label' && source[cursor]==='[') {
+        const option=group(source,cursor,'[',']');if(!option)return null;
+        if(name==='includegraphics') {
+          const start=trivia(source,cursor+1),keyMatch=/^width\s*=/.exec(source.slice(start,option.end-1));
+          if(!keyMatch)return null;
+          let valueStart=trivia(source,start+keyMatch[0].length),valueEnd=option.end-1;
+          const wrapped=group(source,valueStart);
+          if(wrapped && trivia(source,wrapped.end)===valueEnd){valueStart++;valueEnd=wrapped.end-1;}
+          const width=clean(source.slice(valueStart,valueEnd));
+          if(!imageWidthPattern.test(width))return null;
+          valueStart=trivia(source,valueStart);
+          if(source.slice(valueStart,valueStart+width.length)!==width)return null;
+          attrs.width=width;spans.width={from:valueStart,to:valueStart+width.length};commands.width={from:cursor,to:option.end};
+        }
+        cursor=trivia(source,option.end);
+      }
+      const arg=group(source,cursor);if(!arg)return null;
+      if(key==='path' && !/^[^{}\\\r\n%]+$/.test(arg.value))return null;
+      attrs[key]=arg.value;spans[key]={from:cursor+1,to:arg.end-1};cursor=arg.end;
+      commands[key]={from,to:cursor};
+    }
+    cursor=trivia(source,cursor);
+  }
+  if(cursor!==closing.start || !spans.path)return null;
+  if(commands.caption&&commands.caption.from<commands.path.from)attrs.captionPosition='above';
+  return {attrs,spans,commands,graphicsEnd,close:closing.start,placementEnd:opening[0].length};
+}
+
+// Patch only known arguments; comments, indentation, optional captions and EOLs
+// outside those arguments remain exact. null means the rich edit is unsafe.
+export function serializeSourceFigure(attrs) {
+  const source=attrs.figureSource,parsed=typeof source==='string'?figureParts(source):null;
+  if(!parsed || !attrs.figure)return null;
+  if(attrs.wrap || attrs.height || attrs.scale || attrs.angle || attrs.origin ||
+      attrs.flipH || attrs.flipV || attrs.border || attrs.background ||
+      attrs.cropLeft || attrs.cropRight || attrs.cropTop || attrs.cropBottom ||
+      (attrs.captionPosition && attrs.captionPosition!==parsed.attrs.captionPosition) ||
+      (attrs.captionNumbered!==undefined && attrs.captionNumbered!==parsed.attrs.captionNumbered) ||
+      (attrs.caption===parsed.attrs.caption && attrs.captionEnabled!==undefined &&
+        attrs.captionEnabled!==parsed.attrs.captionEnabled))return null;
+  const target={...attrs,placement:attrs.fixed && !attrs.placement ? 'H' : attrs.placement,align:attrs.align??(attrs.centered?'center':null)};
+  const edits=[],eol=source.includes('\r\n')?'\r\n':'\n';
+  const alignment={center:'\\centering',right:'\\raggedleft',left:'\\raggedright'};
+  for(const key of ['placement','path','width','caption','label','align']) {
+    const value=target[key]??null;if(value===parsed.attrs[key])continue;
+    if(value!==null && typeof value!=='string')return null;
+    if(key==='width' && value!==null && !imageWidthPattern.test(value))return null;
+    if(key==='path' && (value===null || !/^[^{}\\\r\n%]+$/.test(value)))return null;
+    if(key==='align' && value!==null && !alignment[value])return null;
+    if(parsed.spans[key]) {
+      edits.push({...((value===null)?parsed.commands[key]:parsed.spans[key]),value:value===null?'':key==='align'?alignment[value]:value});
+    } else if(value!==null) {
+      const at=key==='width'?parsed.graphicsEnd:key==='placement'?parsed.placementEnd:parsed.close;
+      const insert=key==='width'?'[width='+value+']':key==='placement'?'['+value+']':
+        eol+(key==='align'?alignment[value]:'\\'+key+'{'+value+'}')+eol;
+      edits.push({from:at,to:at,value:insert});
+    }
+  }
+  const result=edits.sort((a,b)=>b.from-a.from).reduce((s,e)=>s.slice(0,e.from)+e.value+s.slice(e.to),source);
+  const check=figureParts(result);
+  if(!check || ['placement','path','width','caption','label','align'].some(key=>check.attrs[key] !== (target[key]??null)))return null;
+  return result;
+}
 
 function dimension(value) {
   return imageWidthPattern.test(String(value ?? '').trim()) ? String(value).trim() : null;
@@ -79,7 +179,10 @@ export function relativeImageWidth(width, containerWidth) {
   return `${amount * 100}%`;
 }
 
-export function parseImageBlock(source) {  const text = String(source ?? '').trim();
+export function parseImageBlock(source) {
+  const precise=figureParts(source);
+  if(precise)return {type:'documentImage',attrs:{...precise.attrs,figureSource:source}};
+  const text = String(source ?? '').trim();
   const wrap = /^\\begin\{wrapfigure\}(?:\[([^\]]*)\])?\{([rRlLiIoO])\}(?:\[([^\]]*)\])?\{([^{}]*)\}([\s\S]*?)\s*\\end\{wrapfigure\}$/.exec(text);
   if (wrap) {
     const inner = wrap[5];
@@ -151,7 +254,7 @@ export function parseImageBlock(source) {  const text = String(source ?? '').tri
       .replace(/\\label\{[^{}]*\}/g,'')
       .trim();
     const parsedImage = parseImageMarkup(imageExpression) ?? image;
-    return {
+    const node = {
       ...parsedImage,
       attrs:{
         ...parsedImage.attrs,
@@ -167,6 +270,8 @@ export function parseImageBlock(source) {  const text = String(source ?? '').tri
         label,
       },
     };
+    // Accept advanced floats only when the complete original is represented.
+    return serializeImage(node.attrs).trim()===text ? node : null;
   }
   return parseImageMarkup(text);
 }
@@ -234,6 +339,7 @@ export function serializeSubfigures(attrs, children) {
 }
 
 export function serializeImage(attrs) {
+  if(attrs.figureSource)return serializeSourceFigure(attrs)??attrs.figureSource;
   const graphic = serializeGraphic(attrs);
   const caption = captionLine(attrs);
   const label = attrs.label ? '\\label{' + attrs.label + '}\n' : '';

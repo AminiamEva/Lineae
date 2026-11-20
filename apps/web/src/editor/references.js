@@ -3,6 +3,35 @@ import {createOutlinePanel} from '../ui/outline-panel.js';
 import { Node } from '@tiptap/core';
 import { t } from '../ui/i18n.mjs';
 import { numberedMathRows } from '../../latex/math-environments.mjs';
+import {referenceCommand,serializeReference} from '../../latex/reference-commands.mjs';
+import {sourceStructure} from '../../latex/source-structure.mjs';
+import {environmentEnd} from '../../latex/tblr.mjs';
+
+function hasNumberedCaption(attrs) {
+  if(attrs.caption===null || attrs.caption===undefined)return false;
+  const source=attrs.figureSource??attrs.tblr?.source??attrs.tabularx?.source;
+  const opening=typeof source==='string'?/^\s*\\begin\{((?:figure|table)\*?)\}/.exec(source):null;
+  const closing=opening?environmentEnd(source,source.indexOf('\\begin'),opening[1]):null;
+  if(closing) {
+    const body=source.slice(opening[0].length,closing.start);
+    for(const token of sourceStructure(body))if(token.topLevel && token.value==='\\caption')return body[token.end]!=='*';
+  }
+  return true;
+}
+
+const commandAttributes=()=>({key:{default:''},command:{default:null},sourceCommand:{default:null},starred:{default:false}});
+function htmlAttrs(dom,fallback) {
+  try{return {...fallback,...JSON.parse(dom.dataset.referenceAttrs??'{}')};}catch{return false;}
+}
+
+export function citationTargets(keys,library) {
+  const entries=new Map((library?.entries??[]).map(entry=>[entry.key,entry]));
+  const conflicts=library?.conflicts;
+  return keys.split(',').map(key=>{
+    key=key.trim();const entry=entries.get(key)??null;
+    return {key,entry,status:entry?'resolved':conflicts?.has(key)?'ambiguous':'missing'};
+  });
+}
 import { usesCtex } from '../../latex/packages.mjs';
 import { displayPageNumber } from '../../latex/document-numbering.mjs';
 
@@ -10,14 +39,16 @@ export const outline=headingOutline;
 
 export function collectReferenceLabels(doc) {
   const labels = [];
-  const seen = new Set();
+  const seen = new Map();
   const headings=new Map(outline(doc).map(item=>[item.position,item]));
 
   let equationNumber=0;
+  const floats={figure:0,table:0};
   let current={number:null,title:'',kind:'label'};
   function add(key,details) {
-    if(!key || seen.has(key))return;
-    seen.add(key);labels.push({key,...details});
+    if(!key)return;
+    if(seen.has(key)){Object.assign(seen.get(key),{ambiguous:true,number:null,position:null});return;}
+    const label={key,...details};seen.set(key,label);labels.push(label);
   }
   doc.descendants((node,position) => {
     if(node.type.name==='heading') {
@@ -33,7 +64,14 @@ export function collectReferenceLabels(doc) {
         add(row.label ?? (row.index === (node.attrs.labelRow ?? 0) ? node.attrs.label : null),current);
       }
     }
-    if (node.type.name==='label') add(node.attrs.key,{...current,kind:'label',position});
+    if(node.type.name==='documentImage' || node.type.name==='table') {
+      const kind=node.type.name==='table'?'table':'figure';
+      const captioned=hasNumberedCaption(node.attrs);
+      current={kind,position,number:captioned?String(++floats[kind]):null,title:node.attrs.caption??node.attrs.path??''};
+      add(node.attrs.label,current);
+    }
+    if(node.type.name==='raw')current={kind:'label',number:null,title:'',position:null};
+    if (node.type.name==='label') add(node.attrs.key,current.kind==='label'?{...current,position}:current);
   });
   return labels;
 }
@@ -42,7 +80,7 @@ function navigateTo(editor,target) {
   if(!Number.isInteger(target?.position))return false;
   const position=Math.max(0,Math.min(target.position,editor.state.doc.content.size));
   const chain=editor.chain().focus();
-  if(target.kind==='equation')chain.setNodeSelection(position);
+  if(['equation','figure','table'].includes(target.kind))chain.setNodeSelection(position);
   else chain.setTextSelection(Math.min(position+1,editor.state.doc.content.size));
   return chain.scrollIntoView().run();
 }
@@ -53,9 +91,9 @@ export const Ref = Node.create({
   inline: true,
   atom: true,
   selectable: true,
-  addAttributes: () => ({ key: { default: '' }, equation: { default:false } }),
-  parseHTML: () => [{ tag: 'span[data-ref]', getAttrs: dom => ({ key: dom.dataset.ref, equation:dom.dataset.eqref==='true' }) }],
-  renderHTML: ({ node }) => ['span', { 'data-ref': node.attrs.key, 'data-eqref':String(node.attrs.equation) }, (node.attrs.equation?'\\eqref{':'\\ref{') + node.attrs.key + '}'],
+  addAttributes: () => ({...commandAttributes(),equation:{default:false}}),
+  parseHTML: () => [{ tag: 'span[data-ref]', getAttrs: dom => htmlAttrs(dom,{key:dom.dataset.ref,equation:dom.dataset.eqref==='true'}) }],
+  renderHTML: ({ node }) => ['span', { 'data-ref': node.attrs.key, 'data-eqref':String(node.attrs.equation),'data-reference-attrs':JSON.stringify(node.attrs) }, serializeReference(node.attrs)],
   addNodeView() {
     return ({ node, editor, getPos }) => {
       const dom = document.createElement('span');
@@ -66,9 +104,12 @@ export const Ref = Node.create({
         dom.dataset.refView = node.attrs.key;
         target=collectReferenceLabels(editor.state.doc).find(item=>item.key===node.attrs.key)??null;
         const number = target?.number ?? null;
-        dom.textContent = node.attrs.equation ? `(${number??'?'})` : number ?? '?';
-        dom.classList.toggle('missing', !number);
-        dom.dataset.tooltip = (node.attrs.equation?'\\eqref{':'\\ref{') + node.attrs.key + '}';
+        const command=referenceCommand(node.attrs),page=command==='pageref';
+        const names={heading:t('节','Section'),figure:t('图','Figure'),table:t('表','Table'),equation:t('公式','Equation')};
+        dom.dataset.referenceState=target?.ambiguous?'ambiguous':!target?'missing':page?'page-unavailable':number?'resolved':'unnumbered';
+        dom.textContent=page?'?':command==='eqref'?`(${number??'?'})`:command==='autoref'&&number?(names[target.kind]??'')+' '+number:number??'?';
+        dom.classList.toggle('missing', !number || page);
+        dom.dataset.tooltip=serializeReference(node.attrs)+(page?' — '+t('页码需由 LaTeX 编译确定','Page number requires LaTeX compilation'):'');
       };
       render();
       dom.refreshRef = render;
@@ -148,10 +189,12 @@ export const Cite = Node.create({
   inline: true,
   atom: true,
   selectable: true,
-  addAttributes: () => ({ key: { default: '' } }),
-  parseHTML: () => [{ tag: 'span[data-cite]', getAttrs: dom => ({ key: dom.dataset.cite }) }],
-  renderHTML: ({ node }) => ['span', { 'data-cite': node.attrs.key }, '[' + node.attrs.key + ']'],
+  addOptions:()=>({library:null}),
+  addAttributes: commandAttributes,
+  parseHTML: () => [{ tag: 'span[data-cite]', getAttrs: dom => htmlAttrs(dom,{key:dom.dataset.cite}) }],
+  renderHTML: ({ node }) => ['span', { 'data-cite': node.attrs.key,'data-reference-attrs':JSON.stringify(node.attrs) }, '[' + node.attrs.key + ']'],
   addNodeView() {
+    const library=this.options.library;
     return ({ node, editor, getPos }) => {
       const dom = document.createElement('span');
       dom.className = 'cite-node';
@@ -159,9 +202,14 @@ export const Cite = Node.create({
       const render = () => {
         dom.dataset.citeView = node.attrs.key;
         dom.textContent = '[' + node.attrs.key + ']';
-        dom.dataset.tooltip = '\\cite{' + node.attrs.key + '}';
+        const targets=citationTargets(node.attrs.key,library),unresolved=targets.filter(target=>target.status!=='resolved');
+        dom.dataset.referenceState=unresolved.some(t=>t.status==='ambiguous')?'ambiguous':unresolved.length?'missing':'resolved';
+        dom.dataset.missingKeys=JSON.stringify(unresolved.map(t=>t.key));
+        dom.classList.toggle('missing',unresolved.length>0);
+        dom.dataset.tooltip=serializeReference(node.attrs,'cite')+targets.filter(t=>t.entry).map(t=>'\n'+[t.entry.author,t.entry.title,t.entry.year].filter(Boolean).join(' — ')).join('');
       };
       render();
+      dom.refreshCite=render;
       dom.addEventListener('mousedown', event => {
         const position = getPos();
         if (typeof position !== 'number') return;
@@ -189,9 +237,9 @@ export const Label = Node.create({
   inline: true,
   atom: true,
   selectable: true,
-  addAttributes: () => ({ key: { default: '' } }),
-  parseHTML: () => [{ tag: 'span[data-label-node]', getAttrs: dom => ({ key: dom.dataset.labelNode }) }],
-  renderHTML: ({ node }) => ['span', { 'data-label-node': node.attrs.key }, '#' + node.attrs.key],
+  addAttributes: commandAttributes,
+  parseHTML: () => [{ tag: 'span[data-label-node]', getAttrs: dom => htmlAttrs(dom,{key:dom.dataset.labelNode}) }],
+  renderHTML: ({ node }) => ['span', { 'data-label-node': node.attrs.key,'data-reference-attrs':JSON.stringify(node.attrs) }, '#' + node.attrs.key],
   addNodeView() {
     return ({ node, editor, getPos }) => {
       const dom = document.createElement('span');
@@ -200,7 +248,7 @@ export const Label = Node.create({
       const render = () => {
         dom.dataset.labelView = node.attrs.key;
         dom.textContent = '#' + node.attrs.key;
-        dom.dataset.tooltip = '\\label{' + node.attrs.key + '}';
+        dom.dataset.tooltip = serializeReference(node.attrs,'label');
       };
       render();
       dom.addEventListener('mousedown', event => {
@@ -310,6 +358,7 @@ export const TableOfContents = Node.create({
 
 export function refreshReferences(root) {
   root.querySelectorAll('[data-ref-view]').forEach(element => element.refreshRef?.());
+  root.querySelectorAll('[data-cite-view]').forEach(element => element.refreshCite?.());
   root.querySelectorAll('[data-toc-view]').forEach(element => element.refreshToc?.());
 }
 

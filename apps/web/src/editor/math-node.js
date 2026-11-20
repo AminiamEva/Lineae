@@ -434,8 +434,10 @@ export const MathNode = Node.create({
     display: { default: false },
     id: { default: null, rendered: false },
   }),
-  parseHTML: () => [{ tag: 'span[data-math]', getAttrs: dom => ({ latex: dom.dataset.latex ?? dom.textContent }) }],
-  renderHTML: ({ node }) => ['span', { 'data-math': '', 'data-latex': node.attrs.latex }, node.attrs.latex],
+  parseHTML: () => [{ tag: 'span[data-math]', getAttrs: dom => ({ latex: dom.dataset.latex ?? dom.textContent,
+    delimiter:dom.dataset.mathDelimiter??null,display:dom.dataset.mathDisplay==='true' }) }],
+  renderHTML: ({ node }) => ['span', { 'data-math': '', 'data-latex': node.attrs.latex,
+    'data-math-delimiter':node.attrs.delimiter,'data-math-display':String(node.attrs.display) }, node.attrs.latex],
   // Plain-text clipboard output keeps the source so formulas survive a copy.
   renderText: ({ node }) => node.attrs.display ? '\\[' + node.attrs.latex + '\\]' : '$' + node.attrs.latex + '$',
   addNodeView() {

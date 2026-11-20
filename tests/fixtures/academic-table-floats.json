@@ -1,0 +1,347 @@
+{
+  "description": "Synthetic parser regression cases.",
+  "tables": [
+    {
+      "line": 1,
+      "source": "\\begin{table}[H]\n\\centering\n\\caption{Material sample 1}\n\\label{tab:demo-1}\n\\begin{tblr}{colspec={X[c] X[c] X[c]},rows={c,m},row{1}={font=\\bfseries,c},hlines,vlines}\nSample 1-0-0 & Sample 1-0-1 & Sample 1-0-2 \\\\\n\\SetCell[c=2]{c} Sample 1-1-0 & Sample 1-1-1 & Sample 1-1-2 \\\\\nSample 1-2-0 & Sample 1-2-1 & $k_{3}+a$\n\\end{tblr}\n\\end{table}",
+      "placement": "H",
+      "caption": "Material sample 1",
+      "label": "tab:demo-1",
+      "centered": true,
+      "nested": false
+    },
+    {
+      "line": 2,
+      "source": "\\begin{table}[H]\n\\centering\n\\caption{Material sample 2}\n\\label{tab:demo-2}\n\\begin{tblr}{colspec={X[l] X[l]},hlines}\nSample 2-0-0 & Sample 2-0-1 \\\\\nSample 2-1-0 & Sample 2-1-1 \\\\\nSample 2-2-0 & Sample 2-2-1 \\\\\nSample 2-3-0 & Sample 2-3-1\n\\end{tblr}\n\\end{table}",
+      "placement": "H",
+      "caption": "Material sample 2",
+      "label": "tab:demo-2",
+      "centered": true,
+      "nested": false
+    },
+    {
+      "line": 3,
+      "source": "\\begin{table}[H]\n\\centering\n\\caption{Material sample 3}\n\\label{tab:demo-3}\n\\begin{tblr}{colspec={X[r] X[r] X[r] X[r]},vlines}\nSample 3-0-0 & Sample 3-0-1 & Sample 3-0-2 & Sample 3-0-3 \\\\\n\\SetCell[c=2]{c} Sample 3-1-0 & Sample 3-1-1 & Sample 3-1-2 & Sample 3-1-3\n\\end{tblr}\n\\end{table}",
+      "placement": "H",
+      "caption": "Material sample 3",
+      "label": "tab:demo-3",
+      "centered": true,
+      "nested": false
+    },
+    {
+      "line": 4,
+      "source": "\\begin{table}[H]\n\\centering\n\\caption{Material sample 4}\n\\label{tab:demo-4}\n\\begin{tblr}{colspec={l l l l l},rowsep=2pt}\nSample 4-0-0 & Sample 4-0-1 & Sample 4-0-2 & Sample 4-0-3 & Sample 4-0-4 \\\\\nSample 4-1-0 & Sample 4-1-1 & Sample 4-1-2 & Sample 4-1-3 & Sample 4-1-4 \\\\\nSample 4-2-0 & Sample 4-2-1 & Sample 4-2-2 & Sample 4-2-3 & $k_{3}+a$\n\\end{tblr}\n\\end{table}",
+      "placement": "H",
+      "caption": "Material sample 4",
+      "label": "tab:demo-4",
+      "centered": true,
+      "nested": false
+    },
+    {
+      "line": 5,
+      "source": "\\begin{table}[H]\n\\centering\n\\caption{Material sample 5}\n\\label{tab:demo-5}\n\\begin{tblr}{colspec={c c},row{1}={font=\\bfseries}}\nSample 5-0-0 & Sample 5-0-1 \\\\\n\\SetCell[c=2]{c} Sample 5-1-0 & Sample 5-1-1 \\\\\nSample 5-2-0 & Sample 5-2-1 \\\\\nSample 5-3-0 & Sample 5-3-1\n\\end{tblr}\n\\end{table}",
+      "placement": "H",
+      "caption": "Material sample 5",
+      "label": "tab:demo-5",
+      "centered": true,
+      "nested": false
+    },
+    {
+      "line": 6,
+      "source": "\\begin{table}[H]\n\\centering\n\\caption{Material sample 6}\n\\label{tab:demo-6}\n\\begin{tblr}{colspec={X[c] X[c] X[c]},hline{1,3}={0.8pt}}\nSample 6-0-0 & Sample 6-0-1 & Sample 6-0-2 \\\\\nSample 6-1-0 & Sample 6-1-1 & Sample 6-1-2\n\\end{tblr}\n\\end{table}",
+      "placement": "H",
+      "caption": "Material sample 6",
+      "label": "tab:demo-6",
+      "centered": true,
+      "nested": false
+    },
+    {
+      "line": 7,
+      "source": "\\begin{table}[H]\n\\centering\n\\caption{Material sample 7}\n\\label{tab:demo-7}\n\\begin{tblr}{colspec={X[c] X[c] X[c]},rows={c,m},row{1}={font=\\bfseries,c},hlines,vlines}\nSample 7-0-0 & Sample 7-0-1 & Sample 7-0-2 \\\\\n\\SetCell[c=2]{c} Sample 7-1-0 & Sample 7-1-1 & Sample 7-1-2 \\\\\nSample 7-2-0 & Sample 7-2-1 & $k_{3}+a$\n\\end{tblr}\n\\end{table}",
+      "placement": "H",
+      "caption": "Material sample 7",
+      "label": "tab:demo-7",
+      "centered": true,
+      "nested": false
+    },
+    {
+      "line": 8,
+      "source": "\\begin{table}[H]\n\\centering\n\\caption{Material sample 8}\n\\label{tab:demo-8}\n\\begin{tblr}{colspec={X[l] X[l]},hlines}\nSample 8-0-0 & Sample 8-0-1 \\\\\nSample 8-1-0 & Sample 8-1-1 \\\\\nSample 8-2-0 & Sample 8-2-1 \\\\\nSample 8-3-0 & Sample 8-3-1\n\\end{tblr}\n\\end{table}",
+      "placement": "H",
+      "caption": "Material sample 8",
+      "label": "tab:demo-8",
+      "centered": true,
+      "nested": false
+    },
+    {
+      "line": 9,
+      "source": "\\begin{table}[H]\n\\centering\n\\caption{Material sample 9}\n\\label{tab:demo-9}\n\\begin{tblr}{colspec={X[r] X[r] X[r] X[r]},vlines}\nSample 9-0-0 & Sample 9-0-1 & Sample 9-0-2 & Sample 9-0-3 \\\\\n\\SetCell[c=2]{c} Sample 9-1-0 & Sample 9-1-1 & Sample 9-1-2 & Sample 9-1-3\n\\end{tblr}\n\\end{table}",
+      "placement": "H",
+      "caption": "Material sample 9",
+      "label": "tab:demo-9",
+      "centered": true,
+      "nested": false
+    },
+    {
+      "line": 10,
+      "source": "\\begin{table}[H]\n\\centering\n\\caption{Material sample 10}\n\\label{tab:demo-10}\n\\begin{tblr}{colspec={l l l l l},rowsep=2pt}\nSample 10-0-0 & Sample 10-0-1 & Sample 10-0-2 & Sample 10-0-3 & Sample 10-0-4 \\\\\nSample 10-1-0 & Sample 10-1-1 & Sample 10-1-2 & Sample 10-1-3 & Sample 10-1-4 \\\\\nSample 10-2-0 & Sample 10-2-1 & Sample 10-2-2 & Sample 10-2-3 & $k_{3}+a$\n\\end{tblr}\n\\end{table}",
+      "placement": "H",
+      "caption": "Material sample 10",
+      "label": "tab:demo-10",
+      "centered": true,
+      "nested": false
+    },
+    {
+      "line": 11,
+      "source": "\\begin{table}[H]\n\\centering\n\\caption{Material sample 11}\n\\label{tab:demo-11}\n\\begin{tblr}{colspec={c c},row{1}={font=\\bfseries}}\nSample 11-0-0 & Sample 11-0-1 \\\\\n\\SetCell[c=2]{c} Sample 11-1-0 & Sample 11-1-1 \\\\\nSample 11-2-0 & Sample 11-2-1 \\\\\nSample 11-3-0 & Sample 11-3-1\n\\end{tblr}\n\\end{table}",
+      "placement": "H",
+      "caption": "Material sample 11",
+      "label": "tab:demo-11",
+      "centered": true,
+      "nested": false
+    },
+    {
+      "line": 12,
+      "source": "\\begin{table}[H]\n\\centering\n\\caption{Material sample 12}\n\\label{tab:demo-12}\n\\begin{tblr}{colspec={X[c] X[c] X[c]},hline{1,3}={0.8pt}}\nSample 12-0-0 & Sample 12-0-1 & Sample 12-0-2 \\\\\nSample 12-1-0 & Sample 12-1-1 & Sample 12-1-2\n\\end{tblr}\n\\end{table}",
+      "placement": "H",
+      "caption": "Material sample 12",
+      "label": "tab:demo-12",
+      "centered": true,
+      "nested": false
+    },
+    {
+      "line": 13,
+      "source": "\\begin{table}[H]\n\\centering\n\\caption{Material sample 13}\n\\label{tab:demo-13}\n\\begin{tblr}{colspec={X[c] X[c] X[c]},rows={c,m},row{1}={font=\\bfseries,c},hlines,vlines}\nSample 13-0-0 & Sample 13-0-1 & Sample 13-0-2 \\\\\n\\SetCell[c=2]{c} Sample 13-1-0 & Sample 13-1-1 & Sample 13-1-2 \\\\\nSample 13-2-0 & Sample 13-2-1 & $k_{3}+a$\n\\end{tblr}\n\\end{table}",
+      "placement": "H",
+      "caption": "Material sample 13",
+      "label": "tab:demo-13",
+      "centered": true,
+      "nested": false
+    },
+    {
+      "line": 14,
+      "source": "\\begin{table}[H]\n\\centering\n\\caption{Material sample 14}\n\\label{tab:demo-14}\n\\begin{tblr}{colspec={X[l] X[l]},hlines}\nSample 14-0-0 & Sample 14-0-1 \\\\\nSample 14-1-0 & Sample 14-1-1 \\\\\nSample 14-2-0 & Sample 14-2-1 \\\\\nSample 14-3-0 & Sample 14-3-1\n\\end{tblr}\n\\end{table}",
+      "placement": "H",
+      "caption": "Material sample 14",
+      "label": "tab:demo-14",
+      "centered": true,
+      "nested": false
+    },
+    {
+      "line": 15,
+      "source": "\\begin{table}[H]\n\\centering\n\\caption{Material sample 15}\n\\label{tab:demo-15}\n\\begin{tblr}{colspec={X[r] X[r] X[r] X[r]},vlines}\nSample 15-0-0 & Sample 15-0-1 & Sample 15-0-2 & Sample 15-0-3 \\\\\n\\SetCell[c=2]{c} Sample 15-1-0 & Sample 15-1-1 & Sample 15-1-2 & Sample 15-1-3\n\\end{tblr}\n\\end{table}",
+      "placement": "H",
+      "caption": "Material sample 15",
+      "label": "tab:demo-15",
+      "centered": true,
+      "nested": false
+    },
+    {
+      "line": 16,
+      "source": "\\begin{table}[H]\n\\centering\n\\caption{Material sample 16}\n\\label{tab:demo-16}\n\\begin{tblr}{colspec={l l l l l},rowsep=2pt}\nSample 16-0-0 & Sample 16-0-1 & Sample 16-0-2 & Sample 16-0-3 & Sample 16-0-4 \\\\\nSample 16-1-0 & Sample 16-1-1 & Sample 16-1-2 & Sample 16-1-3 & Sample 16-1-4 \\\\\nSample 16-2-0 & Sample 16-2-1 & Sample 16-2-2 & Sample 16-2-3 & $k_{3}+a$\n\\end{tblr}\n\\end{table}",
+      "placement": "H",
+      "caption": "Material sample 16",
+      "label": "tab:demo-16",
+      "centered": true,
+      "nested": false
+    },
+    {
+      "line": 17,
+      "source": "\\begin{table}[H]\n\\centering\n\\caption{Material sample 17}\n\\label{tab:demo-17}\n\\begin{tblr}{colspec={c c},row{1}={font=\\bfseries}}\nSample 17-0-0 & Sample 17-0-1 \\\\\n\\SetCell[c=2]{c} Sample 17-1-0 & Sample 17-1-1 \\\\\nSample 17-2-0 & Sample 17-2-1 \\\\\nSample 17-3-0 & Sample 17-3-1\n\\end{tblr}\n\\end{table}",
+      "placement": "H",
+      "caption": "Material sample 17",
+      "label": "tab:demo-17",
+      "centered": true,
+      "nested": false
+    },
+    {
+      "line": 18,
+      "source": "\\begin{table}[H]\n\\centering\n\\caption{Material sample 18}\n\\label{tab:demo-18}\n\\begin{tblr}{colspec={X[c] X[c] X[c]},hline{1,3}={0.8pt}}\nSample 18-0-0 & Sample 18-0-1 & Sample 18-0-2 \\\\\nSample 18-1-0 & Sample 18-1-1 & Sample 18-1-2\n\\end{tblr}\n\\end{table}",
+      "placement": "H",
+      "caption": "Material sample 18",
+      "label": "tab:demo-18",
+      "centered": true,
+      "nested": false
+    },
+    {
+      "line": 19,
+      "source": "\\begin{table}[H]\n\\centering\n\\caption{Material sample 19}\n\\label{tab:demo-19}\n\\begin{tblr}{colspec={X[c] X[c] X[c]},rows={c,m},row{1}={font=\\bfseries,c},hlines,vlines}\nSample 19-0-0 & Sample 19-0-1 & Sample 19-0-2 \\\\\n\\SetCell[c=2]{c} Sample 19-1-0 & Sample 19-1-1 & Sample 19-1-2 \\\\\nSample 19-2-0 & Sample 19-2-1 & $k_{3}+a$\n\\end{tblr}\n\\end{table}",
+      "placement": "H",
+      "caption": "Material sample 19",
+      "label": "tab:demo-19",
+      "centered": true,
+      "nested": false
+    },
+    {
+      "line": 20,
+      "source": "\\begin{table}[H]\n\\centering\n\\caption{Material sample 20}\n\\label{tab:demo-20}\n\\begin{tblr}{colspec={X[l] X[l]},hlines}\nSample 20-0-0 & Sample 20-0-1 \\\\\nSample 20-1-0 & Sample 20-1-1 \\\\\nSample 20-2-0 & Sample 20-2-1 \\\\\nSample 20-3-0 & Sample 20-3-1\n\\end{tblr}\n\\end{table}",
+      "placement": "H",
+      "caption": "Material sample 20",
+      "label": "tab:demo-20",
+      "centered": true,
+      "nested": false
+    },
+    {
+      "line": 21,
+      "source": "\\begin{table}[H]\n\\centering\n\\caption{Material sample 21}\n\\label{tab:demo-21}\n\\begin{tblr}{colspec={X[r] X[r] X[r] X[r]},vlines}\nSample 21-0-0 & Sample 21-0-1 & Sample 21-0-2 & Sample 21-0-3 \\\\\n\\SetCell[c=2]{c} Sample 21-1-0 & Sample 21-1-1 & Sample 21-1-2 & Sample 21-1-3\n\\end{tblr}\n\\end{table}",
+      "placement": "H",
+      "caption": "Material sample 21",
+      "label": "tab:demo-21",
+      "centered": true,
+      "nested": false
+    },
+    {
+      "line": 22,
+      "source": "\\begin{table}[H]\n\\centering\n\\caption{Material sample 22}\n\\label{tab:demo-22}\n\\begin{tblr}{colspec={l l l l l},rowsep=2pt}\nSample 22-0-0 & Sample 22-0-1 & Sample 22-0-2 & Sample 22-0-3 & Sample 22-0-4 \\\\\nSample 22-1-0 & Sample 22-1-1 & Sample 22-1-2 & Sample 22-1-3 & Sample 22-1-4 \\\\\nSample 22-2-0 & Sample 22-2-1 & Sample 22-2-2 & Sample 22-2-3 & $k_{3}+a$\n\\end{tblr}\n\\end{table}",
+      "placement": "H",
+      "caption": "Material sample 22",
+      "label": "tab:demo-22",
+      "centered": true,
+      "nested": false
+    },
+    {
+      "line": 23,
+      "source": "\\begin{table}[H]\n\\centering\n\\caption{Material sample 23}\n\\label{tab:demo-23}\n\\begin{tblr}{colspec={c c},row{1}={font=\\bfseries}}\nSample 23-0-0 & Sample 23-0-1 \\\\\n\\SetCell[c=2]{c} Sample 23-1-0 & Sample 23-1-1 \\\\\nSample 23-2-0 & Sample 23-2-1 \\\\\nSample 23-3-0 & Sample 23-3-1\n\\end{tblr}\n\\end{table}",
+      "placement": "H",
+      "caption": "Material sample 23",
+      "label": "tab:demo-23",
+      "centered": true,
+      "nested": false
+    },
+    {
+      "line": 24,
+      "source": "\\begin{table}[H]\n\\centering\n\\caption{Material sample 24}\n\\label{tab:demo-24}\n\\begin{tblr}{colspec={X[c] X[c] X[c]},hline{1,3}={0.8pt}}\nSample 24-0-0 & Sample 24-0-1 & Sample 24-0-2 \\\\\nSample 24-1-0 & Sample 24-1-1 & Sample 24-1-2\n\\end{tblr}\n\\end{table}",
+      "placement": "H",
+      "caption": "Material sample 24",
+      "label": "tab:demo-24",
+      "centered": true,
+      "nested": false
+    },
+    {
+      "line": 25,
+      "source": "\\begin{table}[H]\n\\centering\n\\caption{Material sample 25}\n\\label{tab:demo-25}\n\\begin{tblr}{colspec={X[c] X[c] X[c]},rows={c,m},row{1}={font=\\bfseries,c},hlines,vlines}\nSample 25-0-0 & Sample 25-0-1 & Sample 25-0-2 \\\\\n\\SetCell[c=2]{c} Sample 25-1-0 & Sample 25-1-1 & Sample 25-1-2 \\\\\nSample 25-2-0 & Sample 25-2-1 & $k_{3}+a$\n\\end{tblr}\n\\end{table}",
+      "placement": "H",
+      "caption": "Material sample 25",
+      "label": "tab:demo-25",
+      "centered": true,
+      "nested": false
+    },
+    {
+      "line": 26,
+      "source": "\\begin{table}[H]\n\\centering\n\\caption{Material sample 26}\n\\label{tab:demo-26}\n\\begin{tblr}{colspec={X[l] X[l]},hlines}\nSample 26-0-0 & Sample 26-0-1 \\\\\nSample 26-1-0 & Sample 26-1-1 \\\\\nSample 26-2-0 & Sample 26-2-1 \\\\\nSample 26-3-0 & Sample 26-3-1\n\\end{tblr}\n\\end{table}",
+      "placement": "H",
+      "caption": "Material sample 26",
+      "label": "tab:demo-26",
+      "centered": true,
+      "nested": false
+    },
+    {
+      "line": 27,
+      "source": "\\begin{table}[H]\n\\centering\n\\caption{Material sample 27}\n\\label{tab:demo-27}\n\\begin{tblr}{colspec={X[r] X[r] X[r] X[r]},vlines}\nSample 27-0-0 & Sample 27-0-1 & Sample 27-0-2 & Sample 27-0-3 \\\\\n\\SetCell[c=2]{c} Sample 27-1-0 & Sample 27-1-1 & Sample 27-1-2 & Sample 27-1-3\n\\end{tblr}\n\\end{table}",
+      "placement": "H",
+      "caption": "Material sample 27",
+      "label": "tab:demo-27",
+      "centered": true,
+      "nested": false
+    },
+    {
+      "line": 28,
+      "source": "\\begin{table}[H]\n\\centering\n\\caption{Material sample 28}\n\\label{tab:demo-28}\n\\begin{tblr}{colspec={l l l l l},rowsep=2pt}\nSample 28-0-0 & Sample 28-0-1 & Sample 28-0-2 & Sample 28-0-3 & Sample 28-0-4 \\\\\nSample 28-1-0 & Sample 28-1-1 & Sample 28-1-2 & Sample 28-1-3 & Sample 28-1-4 \\\\\nSample 28-2-0 & Sample 28-2-1 & Sample 28-2-2 & Sample 28-2-3 & $k_{3}+a$\n\\end{tblr}\n\\end{table}",
+      "placement": "H",
+      "caption": "Material sample 28",
+      "label": "tab:demo-28",
+      "centered": true,
+      "nested": false
+    },
+    {
+      "line": 29,
+      "source": "\\begin{table}[H]\n\\centering\n\\caption{Material sample 29}\n\\label{tab:demo-29}\n\\begin{tblr}{colspec={c c},row{1}={font=\\bfseries}}\nSample 29-0-0 & Sample 29-0-1 \\\\\n\\SetCell[c=2]{c} Sample 29-1-0 & Sample 29-1-1 \\\\\nSample 29-2-0 & Sample 29-2-1 \\\\\nSample 29-3-0 & Sample 29-3-1\n\\end{tblr}\n\\end{table}",
+      "placement": "H",
+      "caption": "Material sample 29",
+      "label": "tab:demo-29",
+      "centered": true,
+      "nested": false
+    },
+    {
+      "line": 30,
+      "source": "\\begin{table}[H]\n\\centering\n\\caption{Material sample 30}\n\\label{tab:demo-30}\n\\begin{tblr}{colspec={X[c] X[c] X[c]},hline{1,3}={0.8pt}}\nSample 30-0-0 & Sample 30-0-1 & Sample 30-0-2 \\\\\nSample 30-1-0 & Sample 30-1-1 & Sample 30-1-2\n\\end{tblr}\n\\end{table}",
+      "placement": "H",
+      "caption": "Material sample 30",
+      "label": "tab:demo-30",
+      "centered": true,
+      "nested": false
+    },
+    {
+      "line": 31,
+      "source": "\\begin{table}[H]\n\\centering\n\\caption{Material sample 31}\n\\label{tab:demo-31}\n\\begin{tblr}{colspec={X[c] X[c] X[c]},rows={c,m},row{1}={font=\\bfseries,c},hlines,vlines}\nSample 31-0-0 & Sample 31-0-1 & Sample 31-0-2 \\\\\n\\SetCell[c=2]{c} Sample 31-1-0 & Sample 31-1-1 & Sample 31-1-2 \\\\\nSample 31-2-0 & Sample 31-2-1 & $k_{3}+a$\n\\end{tblr}\n\\end{table}",
+      "placement": "H",
+      "caption": "Material sample 31",
+      "label": "tab:demo-31",
+      "centered": true,
+      "nested": false
+    },
+    {
+      "line": 32,
+      "source": "\\begin{table}[H]\n\\centering\n\\caption{Material sample 32}\n\\label{tab:demo-32}\n\\begin{tblr}{colspec={X[l] X[l]},hlines}\nSample 32-0-0 & Sample 32-0-1 \\\\\nSample 32-1-0 & Sample 32-1-1 \\\\\nSample 32-2-0 & Sample 32-2-1 \\\\\nSample 32-3-0 & Sample 32-3-1\n\\end{tblr}\n\\end{table}",
+      "placement": "H",
+      "caption": "Material sample 32",
+      "label": "tab:demo-32",
+      "centered": true,
+      "nested": false
+    },
+    {
+      "line": 33,
+      "source": "\\begin{table}[H]\n\\centering\n\\caption{Material sample 33}\n\\label{tab:demo-33}\n\\begin{tblr}{colspec={X[r] X[r] X[r] X[r]},vlines}\nSample 33-0-0 & Sample 33-0-1 & Sample 33-0-2 & Sample 33-0-3 \\\\\n\\SetCell[c=2]{c} Sample 33-1-0 & Sample 33-1-1 & Sample 33-1-2 & Sample 33-1-3\n\\end{tblr}\n\\end{table}",
+      "placement": "H",
+      "caption": "Material sample 33",
+      "label": "tab:demo-33",
+      "centered": true,
+      "nested": false
+    },
+    {
+      "line": 34,
+      "source": "\\begin{table}[H]\n\\centering\n\\caption{Material sample 34}\n\\label{tab:demo-34}\n\\begin{tblr}{colspec={l l l l l},rowsep=2pt}\nSample 34-0-0 & Sample 34-0-1 & Sample 34-0-2 & Sample 34-0-3 & Sample 34-0-4 \\\\\nSample 34-1-0 & Sample 34-1-1 & Sample 34-1-2 & Sample 34-1-3 & Sample 34-1-4 \\\\\nSample 34-2-0 & Sample 34-2-1 & Sample 34-2-2 & Sample 34-2-3 & $k_{3}+a$\n\\end{tblr}\n\\end{table}",
+      "placement": "H",
+      "caption": "Material sample 34",
+      "label": "tab:demo-34",
+      "centered": true,
+      "nested": false
+    },
+    {
+      "line": 35,
+      "source": "\\begin{table}[H]\n\\centering\n\\caption{Material sample 35}\n\\label{tab:demo-35}\n\\begin{tblr}{colspec={c c},row{1}={font=\\bfseries}}\nSample 35-0-0 & Sample 35-0-1 \\\\\n\\SetCell[c=2]{c} Sample 35-1-0 & Sample 35-1-1 \\\\\nSample 35-2-0 & Sample 35-2-1 \\\\\nSample 35-3-0 & Sample 35-3-1\n\\end{tblr}\n\\end{table}",
+      "placement": "H",
+      "caption": "Material sample 35",
+      "label": "tab:demo-35",
+      "centered": true,
+      "nested": false
+    },
+    {
+      "line": 36,
+      "source": "\\begin{table}[H]\n\\centering\n\\caption{Material sample 36}\n\\label{tab:demo-36}\n\\begin{tblr}{colspec={X[c] X[c] X[c]},hline{1,3}={0.8pt}}\nSample 36-0-0 & Sample 36-0-1 & Sample 36-0-2 \\\\\nSample 36-1-0 & Sample 36-1-1 & Sample 36-1-2\n\\end{tblr}\n\\end{table}",
+      "placement": "H",
+      "caption": "Material sample 36",
+      "label": "tab:demo-36",
+      "centered": true,
+      "nested": false
+    },
+    {
+      "line": 37,
+      "source": "\\begin{table}[H]\n\\centering\n\\caption{Material sample 37}\n\\label{tab:demo-37}\n\\begin{table}[H]\n\\begin{tblr}{colspec={X[c] X[c] X[c]},hline{1,3}={0.8pt}}\nSample 36-0-0 & Sample 36-0-1 & Sample 36-0-2 \\\\\nSample 36-1-0 & Sample 36-1-1 & Sample 36-1-2\n\\end{tblr}\n\\end{table}\n\\begin{table}[H]\n\\begin{tblr}{colspec={X[c] X[c] X[c]},rows={c,m},row{1}={font=\\bfseries,c},hlines,vlines}\nSample 37-0-0 & Sample 37-0-1 & Sample 37-0-2 \\\\\n\\SetCell[c=2]{c} Sample 37-1-0 & Sample 37-1-1 & Sample 37-1-2 \\\\\nSample 37-2-0 & Sample 37-2-1 & $k_{3}+a$\n\\end{tblr}\n\\end{table}\n\\end{table}",
+      "placement": "H",
+      "caption": "Material sample 37",
+      "label": "tab:demo-37",
+      "centered": true,
+      "nested": true
+    },
+    {
+      "line": 38,
+      "source": "\\begin{table}[H]\n\\centering\n\\caption{Material sample 38}\n\\label{tab:demo-38}\n\\begin{tabularx}{\\textwidth}{>{\\centering\\arraybackslash}p{0.085\\textwidth}X>{\\centering\\arraybackslash}p{0.085\\textwidth}X}\n\\toprule\nIndex & Component name & Count & Trial description \\\\\n\\midrule\n1 & Test component 1 & 7 & Run 1 \\\\\n2 & Test component 2 & 14 & Run 2 \\\\\n3 & Test component 3 & 21 & Run 3 \\\\\n4 & Test component 4 & 28 & Run 4 \\\\\n5 & Test component 5 & 35 & Run 5 \\\\\n6 & Test component 6 & 42 & Run 6 \\\\\n7 & Test component 7 & 49 & Run 7 \\\\\n8 & Test component 8 & 56 & Run 8 \\\\\n9 & Test component 9 & 63 & Run 9 \\\\\n10 & Test component 10 & 70 & Run 10 \\\\\n11 & Test component 11 & 77 & Run 11 \\\\\n12 & Test component 12 & 84 & Run 12 \\\\\n13 & Test component 13 & 91 & Run 13 \\\\\n14 & Test component 14 & 98 & Run 14 \\\\\n15 & Test component 15 & 105 & Run 15 \\\\\n16 & Test component 16 & 112 & Run 16 \\\\\n17 & Test component 17 & 119 & Run 17 \\\\\n18 & Test component 18 & 126 & Run 18 \\\\\n19 & Test component 19 & 133 & Run 19 \\\\\n20 & Test component 20 & 140 & Run 20 \\\\\n21 & Test component 21 & 147 & Run 21 \\\\\n22 & Test component 22 & 154 & Run 22 \\\\\n23 & Test component 23 & 161 & Run 23 \\\\\n24 & Test component 24 & 168 & Run 24 \\\\\n25 & Test component 25 & 175 & Run 25 \\\\\n26 & Test component 26 & 182 & Run 26 \\\\\n27 & Test component 27 & 189 & Run 27 \\\\\n29 & Final entry & \\multicolumn{2}{c}{Complete} \\\\\n\\bottomrule\n\\end{tabularx}\n\\end{table}",
+      "placement": "H",
+      "caption": "Material sample 38",
+      "label": "tab:demo-38",
+      "centered": true,
+      "nested": false
+    }
+  ]
+}

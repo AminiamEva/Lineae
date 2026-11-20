@@ -35,6 +35,10 @@ export function sourceEolExtensions(source) {
   ];
 }
 
+export function preserveSourceEndings(source) {
+  return restoreEndings.of(sourceEndings(source));
+}
+
 export function sourceWithEndings(state) {
   return serializeSource(state.doc.toString(), state.field(endingsField));
 }

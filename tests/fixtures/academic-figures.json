@@ -1,0 +1,93 @@
+{
+  "description": "Synthetic parser regression cases.",
+  "figures": [
+    {
+      "line": 1,
+      "source": "\\begin{figure}[H]\n\\centering\n\\includegraphics[width=0.6\\linewidth]{figures/demo-1.png}\n\\caption{Demo specimen 1}\n\\label{fig:demo-1}\n\\end{figure}",
+      "path": "figures/demo-1.png",
+      "width": "0.6\\linewidth",
+      "caption": "Demo specimen 1",
+      "label": "fig:demo-1"
+    },
+    {
+      "line": 2,
+      "source": "\\begin{figure}[H]\n\\centering\n\\includegraphics[width=\\textwidth]{figures/demo-2.png}\n\\caption{Demo specimen 2}\n\\label{fig:demo-2}\n\\end{figure}",
+      "path": "figures/demo-2.png",
+      "width": "\\textwidth",
+      "caption": "Demo specimen 2",
+      "label": "fig:demo-2"
+    },
+    {
+      "line": 3,
+      "source": "\\begin{figure}[H]\n\\centering\n\\includegraphics[width=0.8\\textwidth]{figures/demo-3.png}\n\\caption{Demo specimen 3}\n\\label{fig:demo-3}\n\\end{figure}",
+      "path": "figures/demo-3.png",
+      "width": "0.8\\textwidth",
+      "caption": "Demo specimen 3",
+      "label": "fig:demo-3"
+    },
+    {
+      "line": 4,
+      "source": "\\begin{figure}[H]\n\\centering\n\\includegraphics[width=6cm]{figures/demo-4.png}\n\\caption{Demo specimen 4}\n\\label{fig:demo-4}\n\\end{figure}",
+      "path": "figures/demo-4.png",
+      "width": "6cm",
+      "caption": "Demo specimen 4",
+      "label": "fig:demo-4"
+    },
+    {
+      "line": 5,
+      "source": "\\begin{figure}[H]\n\\centering\n\\includegraphics[width=0.6\\linewidth]{figures/demo-5.png}\n\\caption{Demo specimen 5}\n\\label{fig:demo-5}\n\\end{figure}",
+      "path": "figures/demo-5.png",
+      "width": "0.6\\linewidth",
+      "caption": "Demo specimen 5",
+      "label": "fig:demo-5"
+    },
+    {
+      "line": 6,
+      "source": "\\begin{figure}[H]\n\\centering\n\\includegraphics[width=\\textwidth]{figures/demo-6.png}\n\\caption{Demo specimen 6}\n\\label{fig:demo-6}\n\\end{figure}",
+      "path": "figures/demo-6.png",
+      "width": "\\textwidth",
+      "caption": "Demo specimen 6",
+      "label": "fig:demo-6"
+    },
+    {
+      "line": 7,
+      "source": "\\begin{figure}[H]\n\\centering\n\\includegraphics[width=0.8\\textwidth]{figures/demo-7.png}\n\\caption{Demo specimen 7}\n\\label{fig:demo-7}\n\\end{figure}",
+      "path": "figures/demo-7.png",
+      "width": "0.8\\textwidth",
+      "caption": "Demo specimen 7",
+      "label": "fig:demo-7"
+    },
+    {
+      "line": 8,
+      "source": "\\begin{figure}[H]\n\\centering\n\\includegraphics[width=6cm]{figures/demo-8.png}\n\\caption{Demo specimen 8}\n\\label{fig:demo-8}\n\\end{figure}",
+      "path": "figures/demo-8.png",
+      "width": "6cm",
+      "caption": "Demo specimen 8",
+      "label": "fig:demo-8"
+    },
+    {
+      "line": 9,
+      "source": "\\begin{figure}[H]\n\\centering\n\\includegraphics[width=0.6\\linewidth]{figures/demo-9.png}\n\\caption{Demo specimen 9}\n\\label{fig:demo-9}\n\\end{figure}",
+      "path": "figures/demo-9.png",
+      "width": "0.6\\linewidth",
+      "caption": "Demo specimen 9",
+      "label": "fig:demo-9"
+    },
+    {
+      "line": 10,
+      "source": "\\begin{figure}[H]\n\\centering\n\\includegraphics[width=\\textwidth]{figures/demo-10.png}\n\\caption{Demo specimen 10}\n\\label{fig:demo-10}\n\\end{figure}",
+      "path": "figures/demo-10.png",
+      "width": "\\textwidth",
+      "caption": "Demo specimen 10",
+      "label": "fig:demo-10"
+    },
+    {
+      "line": 11,
+      "source": "\\begin{figure}[H]\n\\centering\n\\includegraphics[width=0.8\\textwidth]{figures/demo-11.png}\n\\caption{Demo specimen 11}\n\\label{fig:demo-11}\n\\end{figure}",
+      "path": "figures/demo-11.png",
+      "width": "0.8\\textwidth",
+      "caption": "Demo specimen 11",
+      "label": "fig:demo-11"
+    }
+  ]
+}

@@ -42,3 +42,24 @@ test('external changes and write failures preserve drafts', async () => {
   assert.equal(file.draft, 'draft');
   assert.equal(file.dirty, true);
 });
+
+test('project writes a prepared snapshot even for a clean file and preserves concurrent edits', async () => {
+  const {adapter,disk} = fixture();
+  const project = await new Project(adapter).open();
+  const file = project.file(project.mainFileId);
+  const original = file.draft, formatted = '  ' + original;
+  adapter.write = async () => {throw new Error('permission denied');};
+  await assert.rejects(project.save(file.id, formatted), /permission denied/);
+  assert.equal(file.draft, original);
+  assert.equal(file.saved, original);
+  assert.equal(file.dirty, false);
+  adapter.write = async (path,bytes) => {
+    project.edit(file.id, original + 'later');
+    disk.set(path,bytes);
+  };
+  await project.save(file.id, formatted);
+  assert.equal(new TextDecoder().decode(disk.get(file.path)), formatted);
+  assert.equal(file.saved, formatted);
+  assert.equal(file.draft, original + 'later');
+  assert.equal(file.dirty, true);
+});
