@@ -272,7 +272,22 @@ export function serializeSourceTable(node,serialize,name) {
     if(!original||cellShape(cell)!==original.shape)return null;
     const value=cell.content.map(serialize).join('').trim(),before=original.content.map(serialize).join('').trim();
     if(value===before)continue;
-    if(original.protected)return null;
+    if(original.protected || !Number.isInteger(original.from) || !Number.isInteger(original.to) ||
+        original.from<0 || original.to<original.from || original.to>saved.source.length ||
+        (edits.length && original.from<edits.at(-1).to))return null;
+    const raw=saved.source.slice(original.from,original.to);
+    if(raw!==before) {
+      // An exact end-of-text insertion can retain known invisible TeX.
+      // Other non-canonical spellings have no verified mapping.
+      const tail=/^([^\\{}%\r\n]*)\\(?:mbox|hbox|textup|textmd|textnormal)\{([^\\{}%\r\n]+)\}$/.exec(raw);
+      const breakTail=/^([^\\{}%\r\n]*)\\nolinebreak[ \t]*([^\\{}%\r\n]+)$/.exec(raw);
+      const parts=tail??breakTail, append=value.slice(before.length);
+      if(!parts || before!==parts[1]+parts[2] || !value.startsWith(before) ||
+          !append || /[\\{}%&$#_^~\r\n]/.test(append))return null;
+      const at=original.to-(tail?1:0);
+      edits.push({from:at,to:at,value:append});
+      continue;
+    }
     const tokens=delimiters(value,['&','\\\\']);if(!tokens)return null;
     edits.push({from:original.from,to:original.to,value:tokens.length?'{'+value+'}':value});
   }

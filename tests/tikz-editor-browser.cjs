@@ -27,7 +27,7 @@ const server = createServer(async (request, response) => {
     await page.goto(`http://127.0.0.1:${server.address().port}`, { waitUntil: 'networkidle' });
     await page.waitForTimeout(500);
     await page.locator('.ribbon-tabs [data-group=insert]').click();
-    await page.getByRole('button', { name: /CircuiTikZ/ }).click();
+    await page.getByRole('button', { name: /TikZ/ }).click();
     await page.waitForTimeout(900);
 
     const symbols = page.locator('.tikz-tree .tikz-sym');

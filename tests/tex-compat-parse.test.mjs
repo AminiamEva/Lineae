@@ -115,6 +115,37 @@ test('inline math commands and block math environments stay editable', () => {
   assert.match(align[0].attrs.latex, /\\mathbf\{x\}/);
 });
 
+test('boxed expressions and extended alignment environments stay renderable math blocks', () => {
+  for (const environment of [
+    String.raw`\begin{aligned}\boxed{x+y}=z\end{aligned}`,
+    String.raw`\begin{xalignat}{2}a&=b & c&=d\end{xalignat}`,
+    String.raw`\begin{xxalignat}{2}a&=b & c&=d\end{xxalignat}`,
+    String.raw`\begin{multlined}a+b\\c+d\end{multlined}`,
+    String.raw`\begin{empheq}{align}a&=b\end{empheq}`,
+  ]) {
+    const [node] = importBlocks(environment);
+    assert.equal(node?.type, 'mathBlock', environment);
+    assert.equal(node.attrs.latex, environment);
+  }
+});
+
+test('complex renderer samples preserve incomplete source and import when explicitly closed', async () => {
+  const { readFile } = await import('node:fs/promises');
+  const corpus = await readFile('tests/fixtures/tex-compat/math/complex-renderer-1000.jsonl', 'utf8');
+  const samples = corpus.trim().split(/\r?\n/).map(line => JSON.parse(line));
+  assert.equal(samples.length, 1000);
+  for (const sample of samples) {
+    // Some renderer fragments omit the final aligned environment delimiter.
+    // The importer must not silently repair source; close it only for this test.
+    const closed = sample.latex.endsWith('\\end{aligned}');
+    if (!closed) assert.deepEqual(importBlocks(sample.latex), [{ type: 'raw', attrs: { source: sample.latex } }], sample.id);
+    const latex = sample.latex + (closed ? '' : '\\end{aligned}');
+    const [node] = importBlocks(latex);
+    assert.equal(node?.type, 'mathBlock', sample.id);
+    assert.equal(node.attrs.latex, latex, sample.id);
+  }
+});
+
 test('lists and tables in fixtures 11-20 are structured without raw fallback', () => {
   const files = [
     'lists/lists-itemize.tex', 'lists/lists-enumerate.tex', 'lists/lists-nested.tex',

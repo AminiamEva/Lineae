@@ -27,11 +27,11 @@ function skipTrivia(source,index) {
   trivia.lastIndex=index;trivia.exec(source);return trivia.lastIndex;
 }
 
-export function headingAt(source,index=0) {
-  const command=/\\(section|subsection|subsubsection)(?![A-Za-z])([*]?)/y;
+export function headingAt(source,index=0,base=null) {
+  const command=/\\([A-Za-z]+)(\*?)/y;
   command.lastIndex=index;
   const match=command.exec(source);
-  if(!match)return null;
+  if(!match || !['chapter','section','subsection','subsubsection',base].includes(match[1]))return null;
   let cursor=skipTrivia(source,command.lastIndex),short;
   if(source[cursor]==='[') {
     const optional=argument(source,cursor,'[',']');

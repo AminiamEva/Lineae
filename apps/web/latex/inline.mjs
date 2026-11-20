@@ -20,7 +20,7 @@ const textCommandPattern = /^\\([A-Za-z]+)(?:\{\}|[ \t]+)?/;
 const plainPattern = /^\\(textup|textmd|textnormal|mbox|hbox)\{/;
 const stylePattern = /^\\(textsc|fbox)\{/;
 const scriptPattern = /^\\(textsuperscript|textsubscript)\{/;
-const ignoredPattern = /^\\(?:noindent|indent|smallskip|medskip|bigskip|newpage|clearpage|pagebreak|nolinebreak|hspace|vspace)(?:\{[^{}]*\})?[ \t]*/;
+const ignoredPattern = /^\\(?:noindent|indent|smallskip|medskip|bigskip|newpage|clearpage|pagebreak|nolinebreak|hspace|vspace)(?![A-Za-z])(?:\{[^{}]*\})?[ \t]*/;
 
 import {referenceAt} from './reference-commands.mjs';
 import {group as balancedGroup} from './tblr.mjs';

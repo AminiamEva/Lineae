@@ -66,5 +66,19 @@ module.exports=async function(context,url) {
     assert.equal(rows,actual[0].content.length);
     assert.deepEqual(errors,[]);
     console.log('tblr browser: PASS unsupported structural edit preserves source');
+    for (const [body, expected] of [
+      [String.raw`A\nolinebreak B`, String.raw`A\nolinebreak BQ`],
+      [String.raw`A\mbox{B}`, String.raw`A\mbox{BQ}`],
+    ]) {
+      const sample = '\\begin{document}\r\n\\begin{tblr}{X}'+body+'\\end{tblr}\n\\end{document}';
+      await open(sample);
+      await page.locator('[data-source-mode=body]').click();
+      await page.locator('.ProseMirror td p').click();
+      await page.keyboard.press('End');
+      await page.keyboard.insertText('Q');
+      await page.locator('[data-source-mode=source]').click();
+      assert.equal(await read(),sample.replace(body,expected));
+    }
+    console.log('tblr browser: PASS real cell edits keep layout commands and nested boxes');
   }finally{await page.close();}
 };

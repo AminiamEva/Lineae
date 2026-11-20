@@ -1,0 +1,1073 @@
+{
+  "version": 1,
+  "fixtures": [
+    {
+      "id": "text-paragraphs",
+      "file": "text/text-paragraphs.tex",
+      "category": "text",
+      "engine": "pdflatex",
+      "passes": 1,
+      "packages": [],
+      "labels": {
+        "zh": "段落与换行",
+        "en": "Paragraphs and line breaks"
+      },
+      "expected": {
+        "zh": [
+          "两个段落",
+          "第二段中显式换行"
+        ],
+        "en": [
+          "Two paragraphs",
+          "An explicit line break inside the second paragraph"
+        ]
+      },
+      "preserve": [
+        "First paragraph.",
+        "Second paragraph.\\\\"
+      ]
+    },
+    {
+      "id": "text-escaped",
+      "file": "text/text-escaped.tex",
+      "category": "text",
+      "engine": "pdflatex",
+      "passes": 1,
+      "packages": [],
+      "labels": {
+        "zh": "转义字符",
+        "en": "Escaped characters"
+      },
+      "expected": {
+        "zh": [
+          "首段显示七个字面特殊字符",
+          "第二段显示反斜杠"
+        ],
+        "en": [
+          "Seven literal special characters appear in the first paragraph",
+          "The second paragraph displays a backslash"
+        ]
+      },
+      "preserve": [
+        "Symbols: \\% \\& \\_ \\# \\$ \\{ \\}.",
+        "Backslash: \\textbackslash{}."
+      ]
+    },
+    {
+      "id": "text-emphasis",
+      "file": "text/text-emphasis.tex",
+      "category": "text",
+      "engine": "pdflatex",
+      "passes": 1,
+      "packages": [],
+      "labels": {
+        "zh": "嵌套强调",
+        "en": "Nested emphasis"
+      },
+      "expected": {
+        "zh": [
+          "粗体内有强调文字",
+          "第二段有斜体内嵌粗斜体"
+        ],
+        "en": [
+          "Bold text contains emphasized text",
+          "The second paragraph nests bold italic text inside italic text"
+        ]
+      },
+      "preserve": [
+        "Plain \\textbf{bold \\emph{emphasized}} plain.",
+        "\\textit{Italic \\textbf{bold italic}}."
+      ]
+    },
+    {
+      "id": "text-comments",
+      "file": "text/text-comments.tex",
+      "category": "text",
+      "engine": "pdflatex",
+      "passes": 1,
+      "packages": [],
+      "labels": {
+        "zh": "注释",
+        "en": "Comments"
+      },
+      "expected": {
+        "zh": [
+          "首段输出Visiblejoined，注释不显示",
+          "第二段显示25%和Next sentence"
+        ],
+        "en": [
+          "The first paragraph reads Visiblejoined without the comment",
+          "The second paragraph contains 25% and Next sentence"
+        ]
+      },
+      "preserve": [
+        "Visible% hidden tail",
+        "joined."
+      ]
+    },
+    {
+      "id": "text-unicode",
+      "file": "text/text-unicode.tex",
+      "category": "text",
+      "engine": "xelatex",
+      "passes": 1,
+      "packages": [],
+      "labels": {
+        "zh": "中英文",
+        "en": "Chinese and English"
+      },
+      "expected": {
+        "zh": [
+          "中文字符和标点完整显示",
+          "英文是独立第二段"
+        ],
+        "en": [
+          "Chinese characters and punctuation remain intact",
+          "English forms a separate second paragraph"
+        ]
+      },
+      "preserve": [
+        "中文段落：数学论文。",
+        "English paragraph: mathematics."
+      ]
+    },
+    {
+      "id": "headings-levels",
+      "file": "headings/headings-levels.tex",
+      "category": "headings",
+      "engine": "pdflatex",
+      "passes": 1,
+      "packages": [],
+      "labels": {
+        "zh": "标题层级",
+        "en": "Heading levels"
+      },
+      "expected": {
+        "zh": [
+          "编号依次为1、1.1、1.1.1",
+          "三个标题保持各自层级"
+        ],
+        "en": [
+          "Numbers are 1, 1.1 and 1.1.1",
+          "The three headings retain distinct levels"
+        ]
+      },
+      "preserve": [
+        "\\section{Main}",
+        "\\subsection{Part}"
+      ]
+    },
+    {
+      "id": "headings-starred",
+      "file": "headings/headings-starred.tex",
+      "category": "headings",
+      "engine": "pdflatex",
+      "passes": 1,
+      "packages": [],
+      "labels": {
+        "zh": "无编号标题",
+        "en": "Starred headings"
+      },
+      "expected": {
+        "zh": [
+          "First与Second编号为1和2",
+          "Aside无编号且不增加计数"
+        ],
+        "en": [
+          "First and Second are numbered 1 and 2",
+          "Aside is unnumbered and does not increment the counter"
+        ]
+      },
+      "preserve": [
+        "\\section{First}",
+        "\\section*{Aside}"
+      ]
+    },
+    {
+      "id": "headings-short-title",
+      "file": "headings/headings-short-title.tex",
+      "category": "headings",
+      "engine": "pdflatex",
+      "passes": 2,
+      "packages": [],
+      "labels": {
+        "zh": "短标题",
+        "en": "Short title"
+      },
+      "expected": {
+        "zh": [
+          "正文标题为完整长标题",
+          "目录条目使用Short"
+        ],
+        "en": [
+          "The body heading uses the full long title",
+          "The contents entry uses Short"
+        ]
+      },
+      "preserve": [
+        "\\tableofcontents",
+        "\\section[Short]{A longer section title}"
+      ]
+    },
+    {
+      "id": "headings-label-ref",
+      "file": "headings/headings-label-ref.tex",
+      "category": "headings",
+      "engine": "pdflatex",
+      "passes": 2,
+      "packages": [],
+      "labels": {
+        "zh": "交叉引用",
+        "en": "Cross reference"
+      },
+      "expected": {
+        "zh": [
+          "Target编号为1",
+          "引用解析为1而非问号"
+        ],
+        "en": [
+          "Target is numbered 1",
+          "The reference resolves to 1 instead of question marks"
+        ]
+      },
+      "preserve": [
+        "\\section{Target}\\label{sec:target}",
+        "See Section~\\ref{sec:target}."
+      ]
+    },
+    {
+      "id": "headings-toc",
+      "file": "headings/headings-toc.tex",
+      "category": "headings",
+      "engine": "pdflatex",
+      "passes": 2,
+      "packages": [],
+      "labels": {
+        "zh": "目录",
+        "en": "Contents"
+      },
+      "expected": {
+        "zh": [
+          "目录含First和Child",
+          "目录层级编号分别为1和1.1"
+        ],
+        "en": [
+          "Contents include First and Child",
+          "Contents levels are numbered 1 and 1.1"
+        ]
+      },
+      "preserve": [
+        "\\tableofcontents",
+        "\\section{First}"
+      ]
+    },
+    {
+      "id": "lists-itemize",
+      "file": "lists/lists-itemize.tex",
+      "category": "lists",
+      "engine": "pdflatex",
+      "passes": 1,
+      "packages": [],
+      "labels": {
+        "zh": "无序列表",
+        "en": "Bulleted list"
+      },
+      "expected": {
+        "zh": [
+          "恰好三个列表项",
+          "项目符号而非数字编号"
+        ],
+        "en": [
+          "Exactly three items",
+          "Bullet markers rather than numeric numbering"
+        ]
+      },
+      "preserve": [
+        "\\begin{itemize}",
+        "\\item Apple"
+      ]
+    },
+    {
+      "id": "lists-enumerate",
+      "file": "lists/lists-enumerate.tex",
+      "category": "lists",
+      "engine": "pdflatex",
+      "passes": 1,
+      "packages": [],
+      "labels": {
+        "zh": "有序列表",
+        "en": "Numbered list"
+      },
+      "expected": {
+        "zh": [
+          "恰好三个列表项",
+          "编号依次为1、2、3"
+        ],
+        "en": [
+          "Exactly three items",
+          "Numbers are 1, 2 and 3"
+        ]
+      },
+      "preserve": [
+        "\\begin{enumerate}",
+        "\\item Alpha"
+      ]
+    },
+    {
+      "id": "lists-nested",
+      "file": "lists/lists-nested.tex",
+      "category": "lists",
+      "engine": "pdflatex",
+      "passes": 1,
+      "packages": [],
+      "labels": {
+        "zh": "嵌套列表",
+        "en": "Nested lists"
+      },
+      "expected": {
+        "zh": [
+          "外层两个编号项",
+          "首项内嵌两个无序项"
+        ],
+        "en": [
+          "Two numbered outer items",
+          "The first item contains two bulleted inner items"
+        ]
+      },
+      "preserve": [
+        "\\begin{enumerate}",
+        "\\item Outer"
+      ]
+    },
+    {
+      "id": "lists-description",
+      "file": "lists/lists-description.tex",
+      "category": "lists",
+      "engine": "pdflatex",
+      "passes": 1,
+      "packages": [],
+      "labels": {
+        "zh": "描述列表",
+        "en": "Description list"
+      },
+      "expected": {
+        "zh": [
+          "Domain和Range为标签",
+          "标签后分别显示Inputs和Outputs"
+        ],
+        "en": [
+          "Domain and Range are labels",
+          "Inputs and Outputs follow their respective labels"
+        ]
+      },
+      "preserve": [
+        "\\begin{description}",
+        "\\item[Domain] Inputs."
+      ]
+    },
+    {
+      "id": "lists-paragraphs",
+      "file": "lists/lists-paragraphs.tex",
+      "category": "lists",
+      "engine": "pdflatex",
+      "passes": 1,
+      "packages": [],
+      "labels": {
+        "zh": "列表项内段落",
+        "en": "Paragraphs in an item"
+      },
+      "expected": {
+        "zh": [
+          "仅一个项目符号",
+          "该项内部有两个段落"
+        ],
+        "en": [
+          "Only one bullet marker",
+          "The single item contains two paragraphs"
+        ]
+      },
+      "preserve": [
+        "\\begin{itemize}",
+        "\\item First paragraph."
+      ]
+    },
+    {
+      "id": "tables-basic",
+      "file": "tables/tables-basic.tex",
+      "category": "tables",
+      "engine": "pdflatex",
+      "passes": 1,
+      "packages": [],
+      "labels": {
+        "zh": "基础表格",
+        "en": "Basic table"
+      },
+      "expected": {
+        "zh": [
+          "2行2列",
+          "没有自动表头"
+        ],
+        "en": [
+          "2 rows and 2 columns",
+          "No automatic header"
+        ]
+      },
+      "preserve": [
+        "\\begin{tabular}{ll}",
+        "1 & 2 \\\\"
+      ]
+    },
+    {
+      "id": "tables-alignment",
+      "file": "tables/tables-alignment.tex",
+      "category": "tables",
+      "engine": "pdflatex",
+      "passes": 1,
+      "packages": [],
+      "labels": {
+        "zh": "列对齐",
+        "en": "Column alignment"
+      },
+      "expected": {
+        "zh": [
+          "2行3列",
+          "三列分别左中右对齐"
+        ],
+        "en": [
+          "2 rows and 3 columns",
+          "Columns align left, center and right"
+        ]
+      },
+      "preserve": [
+        "\\begin{tabular}{lcr}",
+        "Left & Center & Right \\\\"
+      ]
+    },
+    {
+      "id": "tables-multicolumn",
+      "file": "tables/tables-multicolumn.tex",
+      "category": "tables",
+      "engine": "pdflatex",
+      "passes": 1,
+      "packages": [],
+      "labels": {
+        "zh": "跨列",
+        "en": "Spanning columns"
+      },
+      "expected": {
+        "zh": [
+          "Combined跨两列居中",
+          "第二行A和B独立"
+        ],
+        "en": [
+          "Combined spans two columns centered",
+          "Second-row A and B are separate"
+        ]
+      },
+      "preserve": [
+        "\\begin{tabular}{ll}",
+        "\\multicolumn{2}{c}{Combined} \\\\"
+      ]
+    },
+    {
+      "id": "tables-booktabs",
+      "file": "tables/tables-booktabs.tex",
+      "category": "tables",
+      "engine": "pdflatex",
+      "passes": 1,
+      "packages": [
+        "booktabs"
+      ],
+      "labels": {
+        "zh": "三线表",
+        "en": "Booktabs"
+      },
+      "expected": {
+        "zh": [
+          "有顶中底三条横线",
+          "Name/A与Value/1分属两列"
+        ],
+        "en": [
+          "Top middle and bottom rules appear",
+          "Name/A and Value/1 occupy separate columns"
+        ]
+      },
+      "preserve": [
+        "\\begin{tabular}{lr}",
+        "\\toprule"
+      ]
+    },
+    {
+      "id": "tables-paragraph-cell",
+      "file": "tables/tables-paragraph-cell.tex",
+      "category": "tables",
+      "engine": "pdflatex",
+      "passes": 1,
+      "packages": [],
+      "labels": {
+        "zh": "段落单元格",
+        "en": "Paragraph cell"
+      },
+      "expected": {
+        "zh": [
+          "首列宽3厘米并折行",
+          "X和Y分属两行"
+        ],
+        "en": [
+          "First column wraps at 3 cm",
+          "X and Y occupy separate rows"
+        ]
+      },
+      "preserve": [
+        "\\begin{tabular}{p{3cm}l}",
+        "This is a deliberately long sentence that wraps within a narrow paragraph column. & X \\\\"
+      ]
+    },
+    {
+      "id": "math-inline-display",
+      "file": "math/math-inline-display.tex",
+      "category": "math",
+      "engine": "pdflatex",
+      "passes": 1,
+      "packages": [],
+      "labels": {
+        "zh": "行内行间",
+        "en": "Inline and display"
+      },
+      "expected": {
+        "zh": [
+          "x+1位于句内",
+          "y=x平方独立居中无编号"
+        ],
+        "en": [
+          "x+1 remains within the sentence",
+          "y=x squared is separately centered without a number"
+        ]
+      },
+      "preserve": [
+        "Inline $x+1$ stays in this sentence.",
+        "\\[ y=x^2 \\]"
+      ]
+    },
+    {
+      "id": "math-displaystyle",
+      "file": "math/math-displaystyle.tex",
+      "category": "math",
+      "engine": "pdflatex",
+      "passes": 1,
+      "packages": [],
+      "labels": {
+        "zh": "显示样式",
+        "en": "Display style"
+      },
+      "expected": {
+        "zh": [
+          "两个分式均在行内",
+          "首分式为显示样式，第二为紧凑文本样式"
+        ],
+        "en": [
+          "Both fractions remain inline",
+          "First fraction uses display style and second compact text style"
+        ]
+      },
+      "preserve": [
+        "Display style: $\\displaystyle\\frac{1}{2}$.",
+        "Text style: $\\textstyle\\frac{1}{2}$."
+      ]
+    },
+    {
+      "id": "math-scripts",
+      "file": "math/math-scripts.tex",
+      "category": "math",
+      "engine": "pdflatex",
+      "passes": 1,
+      "packages": [
+        "amsmath"
+      ],
+      "labels": {
+        "zh": "上下标",
+        "en": "Scripts"
+      },
+      "expected": {
+        "zh": [
+          "x有下标i和上标2，y有上标n+1",
+          "下划线是字面符号"
+        ],
+        "en": [
+          "x has subscript i and superscript 2; y has superscript n+1",
+          "Underscore is literal"
+        ]
+      },
+      "preserve": [
+        "$x_i^2 + y^{n+1}$",
+        "Literal underscore: $\\text{\\_}$."
+      ]
+    },
+    {
+      "id": "math-relations",
+      "file": "math/math-relations.tex",
+      "category": "math",
+      "engine": "pdflatex",
+      "passes": 1,
+      "packages": [
+        "amssymb"
+      ],
+      "labels": {
+        "zh": "集合关系",
+        "en": "Set relations"
+      },
+      "expected": {
+        "zh": [
+          "第一行有属于和不属于",
+          "第二行有子集或等于及空集变体"
+        ],
+        "en": [
+          "First line has membership and nonmembership",
+          "Second has subset-or-equal and the empty-set variant"
+        ]
+      },
+      "preserve": [
+        "$x\\in A,\\quad y\\notin A$",
+        "$A\\subseteq B,\\quad C=\\varnothing$"
+      ]
+    },
+    {
+      "id": "math-operators",
+      "file": "math/math-operators.tex",
+      "category": "math",
+      "engine": "pdflatex",
+      "passes": 1,
+      "packages": [],
+      "labels": {
+        "zh": "算子界限",
+        "en": "Operator limits"
+      },
+      "expected": {
+        "zh": [
+          "第一式lim/int/sum不自动增加界限",
+          "第二式保留显式极限条件和积分求和界限"
+        ],
+        "en": [
+          "First display adds no bounds to lim/int/sum",
+          "Second preserves explicit limit condition and integration/summation bounds"
+        ]
+      },
+      "preserve": [
+        "\\sin x,\\quad \\lim f(x),\\quad \\int f(x)\\,dx,\\quad \\sum a_n",
+        "\\lim_{x\\to 0}f(x),\\quad \\int_0^1 x\\,dx,\\quad \\sum_{n=1}^{3}n"
+      ]
+    },
+    {
+      "id": "matrices-single",
+      "file": "matrices/matrices-single.tex",
+      "category": "matrices",
+      "engine": "pdflatex",
+      "passes": 1,
+      "packages": [
+        "amsmath"
+      ],
+      "labels": {
+        "zh": "单格矩阵",
+        "en": "Single matrix"
+      },
+      "expected": {
+        "zh": [
+          "恰好1行1列",
+          "圆括号内仅a"
+        ],
+        "en": [
+          "Exactly 1 row and 1 column",
+          "Parentheses enclose only a"
+        ]
+      },
+      "preserve": [
+        "\\begin{pmatrix}",
+        "a\\end{pmatrix}"
+      ]
+    },
+    {
+      "id": "matrices-rectangular",
+      "file": "matrices/matrices-rectangular.tex",
+      "category": "matrices",
+      "engine": "pdflatex",
+      "passes": 1,
+      "packages": [
+        "amsmath"
+      ],
+      "labels": {
+        "zh": "矩形矩阵",
+        "en": "Rectangular matrix"
+      },
+      "expected": {
+        "zh": [
+          "恰好2行3列",
+          "两行分别123和456"
+        ],
+        "en": [
+          "Exactly 2 rows and 3 columns",
+          "Rows contain 1,2,3 and 4,5,6"
+        ]
+      },
+      "preserve": [
+        "\\begin{pmatrix}",
+        "1 & 2 & 3 \\\\"
+      ]
+    },
+    {
+      "id": "matrices-empty-cells",
+      "file": "matrices/matrices-empty-cells.tex",
+      "category": "matrices",
+      "engine": "pdflatex",
+      "passes": 1,
+      "packages": [
+        "amsmath"
+      ],
+      "labels": {
+        "zh": "空格矩阵",
+        "en": "Empty cells"
+      },
+      "expected": {
+        "zh": [
+          "仍为2行3列，空白不增行列",
+          "非空格为(1,1)a、(1,3)c、(2,2)b"
+        ],
+        "en": [
+          "Remains 2 by 3; whitespace adds no rows or columns",
+          "Nonempty cells are (1,1)a, (1,3)c, (2,2)b"
+        ]
+      },
+      "preserve": [
+        "a &   & c \\\\",
+        "  & b &  "
+      ]
+    },
+    {
+      "id": "matrices-delimiters",
+      "file": "matrices/matrices-delimiters.tex",
+      "category": "matrices",
+      "engine": "pdflatex",
+      "passes": 1,
+      "packages": [
+        "amsmath"
+      ],
+      "labels": {
+        "zh": "矩阵括号",
+        "en": "Matrix delimiters"
+      },
+      "expected": {
+        "zh": [
+          "有三个1乘1矩阵",
+          "依次为圆括号方括号单竖线"
+        ],
+        "en": [
+          "Three 1 by 1 matrices",
+          "Delimiters are parentheses, brackets, single bars"
+        ]
+      },
+      "preserve": [
+        "\\begin{pmatrix}a\\end{pmatrix}\\quad",
+        "\\begin{bmatrix}b\\end{bmatrix}\\quad"
+      ]
+    },
+    {
+      "id": "matrices-nested",
+      "file": "matrices/matrices-nested.tex",
+      "category": "matrices",
+      "engine": "pdflatex",
+      "passes": 1,
+      "packages": [
+        "amsmath"
+      ],
+      "labels": {
+        "zh": "嵌套矩阵",
+        "en": "Nested matrix"
+      },
+      "expected": {
+        "zh": [
+          "外矩阵2乘2",
+          "左上内矩阵2乘2且不改变外列数"
+        ],
+        "en": [
+          "Outer matrix is 2 by 2",
+          "Upper-left inner matrix is 2 by 2 and does not alter outer columns"
+        ]
+      },
+      "preserve": [
+        "\\begin{pmatrix}",
+        "{\\begin{smallmatrix}a&b\\\\c&d\\end{smallmatrix}} & e \\\\"
+      ]
+    },
+    {
+      "id": "environments-align",
+      "file": "environments/environments-align.tex",
+      "category": "environments",
+      "engine": "pdflatex",
+      "passes": 1,
+      "packages": [
+        "amsmath"
+      ],
+      "labels": {
+        "zh": "编号对齐",
+        "en": "Numbered alignment"
+      },
+      "expected": {
+        "zh": [
+          "两行在等号对齐",
+          "分别编号1和2"
+        ],
+        "en": [
+          "Two rows align at equals signs",
+          "Numbered 1 and 2"
+        ]
+      },
+      "preserve": [
+        "\\begin{align}",
+        "a &= b+c \\\\"
+      ]
+    },
+    {
+      "id": "environments-align-star",
+      "file": "environments/environments-align-star.tex",
+      "category": "environments",
+      "engine": "pdflatex",
+      "passes": 1,
+      "packages": [
+        "amsmath"
+      ],
+      "labels": {
+        "zh": "无编号对齐",
+        "en": "Unnumbered alignment"
+      },
+      "expected": {
+        "zh": [
+          "两行在等号对齐",
+          "均不显示编号"
+        ],
+        "en": [
+          "Two rows align at equals signs",
+          "Neither has a number"
+        ]
+      },
+      "preserve": [
+        "\\begin{align*}",
+        "a &= b+c \\\\"
+      ]
+    },
+    {
+      "id": "environments-cases",
+      "file": "environments/environments-cases.tex",
+      "category": "environments",
+      "engine": "pdflatex",
+      "passes": 1,
+      "packages": [
+        "amsmath"
+      ],
+      "labels": {
+        "zh": "分段函数",
+        "en": "Cases"
+      },
+      "expected": {
+        "zh": [
+          "左侧单个大花括号",
+          "非负时x，负值时负x"
+        ],
+        "en": [
+          "Single large brace on the left",
+          "x for nonnegative inputs and negative x for negative inputs"
+        ]
+      },
+      "preserve": [
+        "f(x)=\\begin{cases}",
+        "x & x\\geq 0,\\\\"
+      ]
+    },
+    {
+      "id": "environments-theorem",
+      "file": "environments/environments-theorem.tex",
+      "category": "environments",
+      "engine": "pdflatex",
+      "passes": 1,
+      "packages": [
+        "amsthm"
+      ],
+      "labels": {
+        "zh": "定理",
+        "en": "Theorem"
+      },
+      "expected": {
+        "zh": [
+          "标题为Theorem 1",
+          "正文为默认plain样式斜体"
+        ],
+        "en": [
+          "Heading is Theorem 1",
+          "Body is italic in default plain style"
+        ]
+      },
+      "preserve": [
+        "\\begin{theorem}",
+        "Every integer is either even or odd."
+      ]
+    },
+    {
+      "id": "environments-proof",
+      "file": "environments/environments-proof.tex",
+      "category": "environments",
+      "engine": "pdflatex",
+      "passes": 1,
+      "packages": [
+        "amsthm"
+      ],
+      "labels": {
+        "zh": "证明",
+        "en": "Proof"
+      },
+      "expected": {
+        "zh": [
+          "以Proof标题开始",
+          "结尾有空心结束符"
+        ],
+        "en": [
+          "Starts with Proof heading",
+          "Ends with hollow proof-end symbol"
+        ]
+      },
+      "preserve": [
+        "\\begin{proof}",
+        "Since $1+1=2$, the claim follows."
+      ]
+    },
+    {
+      "id": "macros-newcommand",
+      "file": "macros/macros-newcommand.tex",
+      "category": "macros",
+      "engine": "pdflatex",
+      "passes": 1,
+      "packages": [],
+      "labels": {
+        "zh": "单参数宏",
+        "en": "One-argument macro"
+      },
+      "expected": {
+        "zh": [
+          "x和y为数学粗体",
+          "宏调用语法不显示"
+        ],
+        "en": [
+          "x and y are mathematical bold",
+          "Invocation syntax is not printed"
+        ]
+      },
+      "preserve": [
+        "\\newcommand{\\vect}[1]{\\mathbf{#1}}",
+        "$\\vect{x}+\\vect{y}$"
+      ]
+    },
+    {
+      "id": "macros-optional",
+      "file": "macros/macros-optional.tex",
+      "category": "macros",
+      "engine": "pdflatex",
+      "passes": 1,
+      "packages": [],
+      "labels": {
+        "zh": "可选参数",
+        "en": "Optional argument"
+      },
+      "expected": {
+        "zh": [
+          "默认调用为x平方",
+          "显式调用为y立方"
+        ],
+        "en": [
+          "Default call gives x squared",
+          "Explicit call gives y cubed"
+        ]
+      },
+      "preserve": [
+        "\\newcommand{\\power}[2][2]{#2^{#1}}",
+        "$\\power{x}$"
+      ]
+    },
+    {
+      "id": "macros-renewcommand",
+      "file": "macros/macros-renewcommand.tex",
+      "category": "macros",
+      "engine": "pdflatex",
+      "passes": 1,
+      "packages": [],
+      "labels": {
+        "zh": "重定义",
+        "en": "Redefinition"
+      },
+      "expected": {
+        "zh": [
+          "宏显示New而非Old",
+          "后续段落普通文字"
+        ],
+        "en": [
+          "Macro prints New not Old",
+          "Following paragraph is ordinary text"
+        ]
+      },
+      "preserve": [
+        "\\newcommand{\\word}{Old}",
+        "\\word"
+      ]
+    },
+    {
+      "id": "macros-local-scope",
+      "file": "macros/macros-local-scope.tex",
+      "category": "macros",
+      "engine": "pdflatex",
+      "passes": 1,
+      "packages": [],
+      "labels": {
+        "zh": "局部作用域",
+        "en": "Local scope"
+      },
+      "expected": {
+        "zh": [
+          "依次显示Global Local Global",
+          "组内重定义不泄漏"
+        ],
+        "en": [
+          "Prints Global Local Global in order",
+          "Local redefinition does not escape its group"
+        ]
+      },
+      "preserve": [
+        "\\newcommand{\\word}{Global}",
+        "\\word"
+      ]
+    },
+    {
+      "id": "macros-preservation",
+      "file": "macros/macros-preservation.tex",
+      "category": "macros",
+      "engine": "pdflatex",
+      "passes": 1,
+      "packages": [],
+      "labels": {
+        "zh": "源码保真",
+        "en": "Source preservation"
+      },
+      "expected": {
+        "zh": [
+          "两段显示(a,b)和(c,d)",
+          "注释不显示但源码注释宏定义空白须保留"
+        ],
+        "en": [
+          "Paragraphs display (a,b) and (c,d)",
+          "Comments are invisible but source comments definitions and whitespace must remain"
+        ]
+      },
+      "preserve": [
+        "% Preamble comment: preserve me.",
+        "\\newcommand{\\pair}[2]{(#1,#2)}",
+        "\\pair{a}{b}   % trailing spaces before comment are intentional",
+        "  \\pair {c}{d}"
+      ]
+    }
+  ]
+}
