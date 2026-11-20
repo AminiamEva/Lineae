@@ -2582,7 +2582,10 @@ A & B \\
     const editingBackground=await operandMark.evaluate(el=>getComputedStyle(el).backgroundColor);
     assert.ok(editingBackground && editingBackground!=='rgba(0, 0, 0, 0)',
       'Formula operands highlight while editing: '+editingBackground);
+    // MathLive delays native focus; do not blur during that transition.
+    await page.waitForFunction(()=>!document.querySelector('math-field')?._mathfield?.focusBlurInProgress);
     await operandField.evaluate(field=>field.blur());
+    await page.waitForFunction(()=>!document.querySelector('math-field')?.hasAttribute('data-lineae-editing'));
     const blurredBackground=await operandMark.evaluate(el=>getComputedStyle(el).backgroundColor);
     assert.ok(blurredBackground===''||blurredBackground==='rgba(0, 0, 0, 0)',
       'The operand highlight clears when editing ends: '+blurredBackground);
@@ -2635,7 +2638,8 @@ A & B \\
     const inline=paper.locator('math-field');
     await inline.click();
     await inline.evaluate(field=>{field.position=field.lastOffset;});
-    await page.waitForFunction(()=>document.activeElement?.tagName==='MATH-FIELD');
+    await page.waitForFunction(()=>document.activeElement?.tagName==='MATH-FIELD' &&
+      !document.activeElement._mathfield?.focusBlurInProgress);
     await page.keyboard.press('Shift+Digit1');
     await page.waitForFunction(()=>document.activeElement?.value?.endsWith('!'));
     await page.keyboard.press('Equal');
