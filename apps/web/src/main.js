@@ -1277,16 +1277,13 @@ function insertTikzStudioBlock({ libraries = [], macros = [], declarations = '',
   const allLibraries = [...new Set([...tikzLibraries(before), ...libraries])]
     .sort((a, b) => a.localeCompare(b));
   const sortedMacros = [...macros].sort((a, b) => a.name.localeCompare(b.name)).map(macro => macro.text.trim());
-  const declarationLines = String(declarations || '')
+  const declarationText = String(declarations || '')
     .replace(/^\s*\\documentclass(?:\[[^\]]*\])?\{[^{}]+\}[^\n]*(?:\r?\n|$)/gm, '')
     .replace(/\\begin\{document\}/g, '')
     .replace(/\\end\{document\}/g, '')
-    .split(/\r?\n/)
-    .map(line => line.trim())
-    .filter(Boolean)
-    .filter(line => !/^\\usetikzlibrary\b/.test(line))
-    .filter(line => !before.includes(line));
-  const preambleAdditions = declarationLines.length ? declarationLines : sortedMacros;
+    .replace(/^\s*\\usetikzlibrary(?:\[[^\]]*\])?\{[^{}]*\}[ \t]*$/gm, '')
+    .trim();
+  const preambleAdditions = declarationText ? [declarationText] : sortedMacros;
   const beginAt = before.indexOf('\\begin{document}');
   if (beginAt >= 0) {
     let preamble = before.slice(0, beginAt)
