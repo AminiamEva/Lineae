@@ -95,6 +95,21 @@ const server = createServer(async (request, response) => {
     await page.mouse.up();
     await page.waitForTimeout(250);
     assert.equal(await page.locator('.tikz-layer-items > [data-uid]').last().locator('line').count(), 2, 'path endpoints are connected to the natural symbol with two leads');
+    assert.equal(await page.locator('.tikz-layer-items > [data-uid]').last().locator('line').first().getAttribute('stroke-width'), '1', 'path leads use the hairline wire width');
+
+    // Instruments must keep the artwork fill so their letter glyphs stay visible.
+    await place('Instruments', 'Ampere meter', .25, .72);
+    const meter = page.locator('.tikz-layer-items > [data-uid]').last();
+    assert.equal(await meter.locator('use').first().getAttribute('href'), '#path_ammeter', 'meter renders the real symbol artwork');
+    assert.equal(await meter.locator('use').first().getAttribute('fill'), null, 'meter artwork is not stripped of its fill');
+
+    // American voltage source uses the real artwork (plus/minus signs) instead of a fallback.
+    await place('Sources and generators', 'Voltage source (american)', .25, .82);
+    const source = page.locator('.tikz-layer-items > [data-uid]').last();
+    assert.equal(await source.locator('use').first().getAttribute('href'), '#path_american-voltage-source', 'american voltage source renders the real artwork');
+    assert.equal(await source.locator('use').first().getAttribute('fill'), null, 'voltage source artwork keeps its sign fill');
+    assert.equal(await source.locator('circle').count(), 0, 'no fallback circle is drawn for the voltage source');
+
 
     // Multi-selection exposes the Designer selection form.
     const firstItem = await page.locator('.tikz-layer-items > [data-uid]').nth(0).boundingBox();

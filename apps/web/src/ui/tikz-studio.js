@@ -194,7 +194,7 @@ export async function renderTikz(source, preamble = '') {
 export function generalTikzPreviewWidget(source, preamble = '', onOpen = null) {
   const root = document.createElement('div');
   root.className = 'tikz-code-preview tikz-general-preview';
-  root.textContent = 'TikZ';
+  root.textContent = t('TikZ 渲染中…', 'TikZ rendering…');
   if (onOpen) {
     root.title = t('双击编辑 TikZ', 'Double-click to edit TikZ');
     root.addEventListener('dblclick', event => {
