@@ -593,7 +593,7 @@ async function verifySelectionGeometry(page, paper, importSource) {
     await page.keyboard.press('Escape');
     await page.keyboard.type('!');
     assert.equal(await paper.locator('code').count(),0,'Ctrl+E no longer toggles inline code');
-    await editorChord('c');
+    await page.keyboard.press('Control+f');
     await page.waitForFunction(()=>document.activeElement?.closest('.math-display'));
     assert.equal(await paper.locator('.math-display math-field').evaluate(field=>field.value),'');
     await importSource('\\section{First}\n\n\\subsection{Child}\n\n\\subsubsection{Detail}\n\n\\section*{Unnumbered}\n\n\\section{Second}');
@@ -1334,8 +1334,8 @@ async function verifySelectionGeometry(page, paper, importSource) {
       for(let i=0;i<=field.lastOffset;i++)if(field.getValue(i,i+1)==='c'){field.position=i+1;break;}
     });
     await textEnvField.focus();
-    await page.keyboard.press('Control+0');
-    assert.notEqual(await textEnvField.evaluate(field=>field.mode),'text','Ctrl+0 leaves the text environment');
+    await page.keyboard.press('Control+j');
+    assert.notEqual(await textEnvField.evaluate(field=>field.mode),'text','Ctrl+J leaves the text environment');
     await importSource('H\\textsuperscript{2}O and x\\textsubscript{1}');
     await page.waitForFunction(()=>document.querySelector('.ProseMirror sup')&&document.querySelector('.ProseMirror sub'));
     assert.equal(await paper.locator('sup').textContent(),'2');
@@ -1538,9 +1538,9 @@ async function verifySelectionGeometry(page, paper, importSource) {
     assert.ok(await chordField.evaluate(field=>field.position===field.lastOffset));
     await chordField.evaluate(field=>{field.position=1;});
     const chordZoom=await page.locator('input[type=range]').inputValue();
-    await page.keyboard.press('Control+0');
+    await page.keyboard.press('Control+j');
     assert.equal(await page.locator('input[type=range]').inputValue(),chordZoom);
-    assert.ok(await chordField.evaluate(field=>field.position>1 && field.position<field.lastOffset),'Ctrl+0 leaves the style run without jumping to the formula end');
+    assert.ok(await chordField.evaluate(field=>field.position>1 && field.position<field.lastOffset),'Ctrl+J leaves the style run without jumping to the formula end');
     const exitedPosition=await chordField.evaluate(field=>{const position=field.position;field.position=1;return position;});
     await page.keyboard.press('Control+j');
     assert.equal(await chordField.evaluate(field=>field.position),exitedPosition);
@@ -1569,7 +1569,7 @@ async function verifySelectionGeometry(page, paper, importSource) {
     assert.match(await chordField.evaluate(field=>field.value),/\\mathbf\{AB\}/,'Wrapping preserves selected math');
     await chordField.evaluate(field=>{field.focus();field.executeCommand('moveToMathfieldEnd');});
     await page.keyboard.press('Control+e');
-    await page.keyboard.press('Shift+t');
+    await page.keyboard.press('Shift+p');
     await page.keyboard.type('[');
     assert.match(await chordField.evaluate(field=>field.value),/\[$/,'Literal fence does not generate a pair');
     await importSource(String.raw`\LaTeX{} and \TeX{}`+'\n\n中文');
@@ -1581,7 +1581,7 @@ async function verifySelectionGeometry(page, paper, importSource) {
     await importSource('Find word and word.\n\n$z$');
     await page.waitForFunction(()=>document.querySelector('.ProseMirror p')?.textContent==='Find word and word.');
     await paper.locator('p').first().click();
-    await page.keyboard.press('Control+f');
+    await editorChord('f');
     const find=page.locator('.document-find');
     await find.locator('input').first().fill('word');
     assert.equal(await find.locator('output').textContent(),'1 / 2');
@@ -1601,10 +1601,10 @@ async function verifySelectionGeometry(page, paper, importSource) {
     await page.waitForFunction(()=>document.querySelector('math-field')?.value.includes('\\frac'));
     assert.match(await page.locator('math-field').evaluate(field=>field.value),/\\frac/);
     assert.equal(await find.isVisible(),false);
-    await page.keyboard.press('Control+m');
+    await page.keyboard.press('Control+Shift+m');
     await page.waitForFunction(()=>document.querySelector('math-field')?.value.includes('\\begin{matrix}'));
     assert.match(await page.locator('math-field').evaluate(field=>field.value),/\\begin\{matrix\}/);
-    for (const [shortcut,environment] of [['Control+Shift+m','pmatrix'],['Control+Alt+m','bmatrix'],['Control+Shift+Alt+m','Bmatrix']]) {
+    for (const [shortcut,environment] of [['Control+m','pmatrix'],['Control+Alt+m','bmatrix'],['Control+Shift+Alt+m','Bmatrix']]) {
       await page.keyboard.press(shortcut);
       await page.waitForFunction(name=>document.querySelector('math-field')?.value.includes('\\begin{'+name+'}'),environment);
     }
@@ -1924,7 +1924,7 @@ A & B \\
     await importSource('alpha beta alpha');
     await page.waitForFunction(()=>document.querySelector('.ProseMirror p')?.textContent==='alpha beta alpha');
     await paper.locator('p').click();
-    await page.keyboard.press('Control+f');
+    await editorChord('f');
     const findPanel=page.locator('.document-find');
     await findPanel.locator('input').first().fill('alpha');
     await findPanel.locator('.document-find-row input').fill('gamma');
@@ -2548,8 +2548,8 @@ A & B \\
     assert.match(await paper.locator('p').textContent(),/oﬃce/,'The imported ligature option applies to typed prose');
     await page.keyboard.press('Control+z');
     assert.match(await paper.locator('p').textContent(),/office$/,'Undo restores the original letters');
-    await editorChord('c');
-    assert.equal(await paper.locator('math-field').count(),0,'The old chord no longer inserts a display formula');
+    await page.keyboard.press('Control+f');
+    assert.equal(await paper.locator('math-field').count(),0,'The previous binding no longer inserts a display formula');
     await page.keyboard.press('Control+q');
     await page.keyboard.press('c');
     await page.waitForFunction(()=>document.activeElement?.closest('.math-display'));
@@ -2651,6 +2651,9 @@ A & B \\
     assert.equal(await paper.evaluate(element=>element.editor.state.storedMarks),null,
       'Leaving a formula does not arm a stored-mark cursor that can restart composition');
     await page.bringToFront();
+    // Headless Chromium's IME client can lag behind DOM focus on Linux.
+    // Let the contenteditable focus reach the browser before sending CDP input.
+    await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
     const ime=await browserContext.newCDPSession(page);
     await ime.send('Input.imeSetComposition',{text:'zhong',selectionStart:5,selectionEnd:5});
     await page.waitForFunction(()=>document.querySelector('.ProseMirror p')?.textContent.endsWith('zhong'));

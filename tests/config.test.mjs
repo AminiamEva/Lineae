@@ -11,13 +11,15 @@ test('parses the shipped YAML config', () => {
   assert.equal(config.interface.language, 'auto');
   assert.equal(config.interface.zoom, 100);
   assert.deepEqual(config.interface.toolbar, ['open', 'saveAs', 'download', 'language', 'assets']);
-  assert.equal(config.keybindings.editor.insertDisplayMath, 'ctrl+e c');
-  assert.equal(config.keybindings.editor.toggleBox, 'ctrl+e b');
-  assert.equal(config.keybindings.math.superscript, 'ctrl+6');
-  assert.equal(config.keybindings.editor.leaveFile,'ctrl+alt+j');
-  assert.equal(config.keybindings.math.leaveFile,'ctrl+alt+j');
-  assert.equal(config.keybindings.editor.leaveAllEnvironments,'ctrl+shift+j');
-  assert.equal(config.keybindings.math.leaveFormula,'ctrl+shift+j');
+  assert.equal(config.keybindings.editor.insertDisplayMath, 'mod+f');
+  assert.equal(config.keybindings.editor.toggleBox, 'mod+e b');
+  assert.deepEqual(config.keybindings.math.superscript, ['mod+6','ctrl+6']);
+  assert.deepEqual(config.keybindings.editor.leaveFile,['mod+alt+j','ctrl+alt+j']);
+  assert.deepEqual(config.keybindings.math.leaveFile,['mod+alt+j','ctrl+alt+j']);
+  assert.deepEqual(config.keybindings.editor.leaveAllEnvironments,['mod+shift+j','ctrl+shift+j']);
+  assert.deepEqual(config.keybindings.math.leaveFormula,['mod+shift+j','ctrl+shift+j']);
+  assert.equal(config.keybindings.editor.toggleItalic,null);
+  assert.equal(config.keybindings.editor.toggleStrike,null);
 });
 
 test('round-trips preferences as YAML', () => {
@@ -57,7 +59,7 @@ test('migrates saved preferences and the old theme into one YAML file', () => {
   assert.equal(store.value.interface.zoom,130);
   assert.equal(store.value.interface.theme,'dark');
   assert.equal(store.value.keybindings.math.superscript,'ctrl+7');
-  assert.equal(store.value.keybindings.editor.toggleBox,'ctrl+e b');
+  assert.equal(store.value.keybindings.editor.toggleBox,'mod+e b');
   assert.equal(values.has('lineae.theme'),false);
   assert.equal(parseYaml(values.get('lineae.config')).version,2);
   const bindings = store.bindings;
@@ -74,7 +76,7 @@ test('importing a conflicting or malformed profile keeps the active profile', ()
   assert.ok(store.bindings.scopes.get('editor').some(entry => entry.command==='insertDisplayMath' && entry.first==='ctrl+q'));
   assert.ok(!store.bindings.scopes.get('editor').some(entry => entry.command==='toggleBox'));
   const previous = store.exportYaml();
-  assert.throws(() => store.importYaml('keybindings:\n  editor:\n    toggleBox: ctrl+e c\n'),/Conflicting shortcuts/);
+  assert.throws(() => store.importYaml('keybindings:\n  editor:\n    toggleBox: ctrl+e e\n'),/Conflicting shortcuts/);
   assert.throws(() => store.importYaml('interface:\n  zoom: [120\n'));
   assert.equal(store.exportYaml(),previous);
 });

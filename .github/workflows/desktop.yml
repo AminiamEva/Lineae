@@ -95,6 +95,8 @@ jobs:
         run: node tests/project-browser.cjs
       - name: Browser regressions
         run: node tests/editor.cjs
+      - name: Platform shortcuts and YAML native bindings
+        run: node tests/shortcuts-browser.cjs
       - name: Project session regressions
         run: node tests/file-tree-sessions.cjs
       - uses: dtolnay/rust-toolchain@stable

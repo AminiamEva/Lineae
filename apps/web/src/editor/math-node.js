@@ -115,7 +115,8 @@ function deleteIntegralAtEmptyLimit(field) {
 function emptyOperatorRange(field) {
   const model=field._mathfield?.model;
   if (!model) return null;
-  const caret=model.at(field.position);
+  const [from,to]=field.selection.ranges[0]??[field.position,field.position];
+  const caret=model.at(from===to?field.position:to);
   if (!caret) return null;
   let operator=null, group=null;
   if (caret.command==='\\mathord' || caret.parent?.command==='\\mathord') {
@@ -613,28 +614,39 @@ export const MathNode = Node.create({
         try { if (leaveEnvironment(field)) clearEmptyScripts(field); }
         finally { leavingStructure = false; }
       });
+      field.addEventListener('lineae-math-builtin', event => {
+        const {command,backward}=event.detail;
+        if(command==='palette') {
+          commandPalette=true;
+          dom.dispatchEvent(new CustomEvent('lineae-math-command',{bubbles:true,detail:{field}}));
+        } else if(command==='nextSlot'||command==='previousSlot') {
+          const next=command==='nextSlot'&&replacedOperator?.arrow&&caretCollapsed(field)&&
+            field.value===replacedOperator.after&&field.position===replacedOperator.position
+            ?arrowTurns[replacedOperator.arrow]:null;
+          if(next) {
+            field.selection={ranges:[[field.position-1,field.position]]};
+            field.executeCommand(['insert',next]);
+            replacedOperator={...replacedOperator,after:field.value,position:field.position,arrow:next};
+            field.dispatchEvent(new Event('input',{bubbles:true}));
+          } else {
+            pendingKey=null;pendingDollar=false;oneScript=null;replacedOperator=null;
+            navigateEmptyMathSlot(field,command==='previousSlot');
+          }
+        } else if(command==='enterLine') {
+          if(!node.isBlock)return;
+          field.focus();addDisplayLine(field);
+        } else if(command==='eraseObject') {
+          // Let normal deletion and replacement undo continue in keydown when
+          // there is no empty operator. Only the structural action is bound.
+          if(replacedOperator)return;
+          if(!(backward&&deleteIntegralAtEmptyLimit(field))&&!selectEmptyOperator(field,backward))return;
+        } else return;
+        event.detail.handled=true;
+      });
       field.addEventListener('keydown', event => {
         if (event.isComposing || event.keyCode===229 || event.getModifierState?.('AltGraph')) return;
         const plain=!event.ctrlKey&&!event.metaKey&&!event.altKey;
         const consume=()=>{event.preventDefault();event.stopImmediatePropagation();};
-        if (plain && event.key === 'Tab' && replacedOperator?.arrow && caretCollapsed(field) &&
-            field.value === replacedOperator.after && field.position === replacedOperator.position) {
-          const next = arrowTurns[replacedOperator.arrow];
-          if (next) {
-            consume();
-            field.selection = { ranges:[[field.position - 1, field.position]] };
-            field.executeCommand(['insert', next]);
-            replacedOperator = { ...replacedOperator, after:field.value, position:field.position, arrow:next };
-            field.dispatchEvent(new Event('input',{bubbles:true}));
-            return;
-          }
-        }
-        if (plain && event.key === 'Tab') {
-          consume();
-          pendingKey=null; pendingDollar=false; oneScript=null; replacedOperator=null;
-          navigateEmptyMathSlot(field, event.shiftKey);
-          return;
-        }
         if (plain && Array.from(event.key).length === 1 && !['^','_','$'].includes(event.key)) {
           enterEmptyOperatorBody(field);
         }
@@ -696,20 +708,7 @@ export const MathNode = Node.create({
             return;
           }
         }
-        if (plain && node.isBlock && event.key==='Enter') {
-          consume(); addDisplayLine(field); return;
-        }
-        if (event.key==='Backspace' && !event.ctrlKey && !event.metaKey && !event.altKey && deleteIntegralAtEmptyLimit(field)) {
-          event.preventDefault();
-          event.stopImmediatePropagation();
-          return;
-        }
-        if ((event.key==='Backspace'||event.key==='Delete') && !event.ctrlKey && !event.metaKey && !event.altKey &&
-            selectEmptyOperator(field,event.key==='Backspace')) {
-          event.preventDefault();
-          event.stopImmediatePropagation();
-          return;
-        }
+        if (plain && node.isBlock && event.key==='Enter') { consume(); return; }
         if ((event.key === 'ArrowRight' || event.key === 'ArrowLeft') &&
             !event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey &&
             field.selection.ranges.every(([start,end])=>start===end)) {
@@ -756,13 +755,6 @@ export const MathNode = Node.create({
           return;
         }
         if (!['Shift', 'Control', 'Alt', 'Meta'].includes(event.key)) pendingKey = null;
-        if (event.key === '\\' && !event.ctrlKey && !event.altKey && !event.metaKey) {
-          event.preventDefault();
-          event.stopPropagation();
-          commandPalette = true;
-          dom.dispatchEvent(new CustomEvent('lineae-math-command', { bubbles: true, detail: { field } }));
-          return;
-        }
         if (plain && event.key === '$') {
           event.preventDefault();
           event.stopPropagation();

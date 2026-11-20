@@ -42,8 +42,17 @@ async function writeRich(info) {
   await writeText(info.text);
 }
 
-export function createClipboard(editor,{getField = () => null} = {}) {
+export function createClipboard(editor,{getField = () => null, getSource = () => null} = {}) {
   async function copy({cut = false} = {}) {
+    const source=getSource();
+    if(source?.hasFocus) {
+      const state=source.state;
+      const text=state.selection.ranges.map(range=>state.sliceDoc(range.from,range.to)).join('\n');
+      if(!text)return false;
+      await writeText(text);
+      if(cut&&source.state===state)source.dispatch({...state.replaceSelection(''),userEvent:'delete.cut'});
+      return true;
+    }
     const field = getField();
     if (field) {
       const selected = selectedMath(field);
@@ -117,6 +126,14 @@ export function createClipboard(editor,{getField = () => null} = {}) {
   }
 
   async function paste(mode = 'keep') {
+    const source=getSource();
+    if(source?.hasFocus) {
+      const state=source.state;
+      const {text}=await read();
+      if(!text||source.state!==state||!source.hasFocus)return false;
+      source.dispatch({...state.replaceSelection(text),userEvent:'input.paste'});
+      return true;
+    }
     const field = getField();
     if (field) {
       const {text} = await read();

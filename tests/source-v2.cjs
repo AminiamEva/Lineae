@@ -57,7 +57,7 @@ module.exports=async function checkV2(context,url) {
     await content.focus();await page.keyboard.press('Control+z');
     await page.waitForFunction(()=>document.querySelector('.ProseMirror').textContent.includes('Hello world.')&&!document.querySelector('.ProseMirror').textContent.includes('Edited'));
     equal(await copy(),sample,'rich undo uses shared byte-faithful source history');
-    await content.focus();await page.keyboard.press('Control+y');await page.waitForTimeout(350);
+    await content.focus();await page.keyboard.press('Control+Shift+z');await page.waitForTimeout(350);
     equal(await copy(),sample.replace('Hello world.','Edited Hello world.'),'source redo restores rich edit');
     const beforeProtected=await copy();
     await page.locator('.ProseMirror').evaluate(e=>{
@@ -112,7 +112,7 @@ module.exports=async function checkV2(context,url) {
       await revealToolbar(page); await page.locator('[data-source-action=B]').filter({visible:true}).first().click();
       equal(await read(),'\\textbf{'+selected+'}','literal selection wrapping');
       await page.keyboard.press('Control+z');equal(await read(),selected,'wrapped selection undo');
-      await page.keyboard.press('Control+y');equal(await read(),'\\textbf{'+selected+'}','wrapped selection redo');
+      await page.keyboard.press('Control+Shift+z');equal(await read(),'\\textbf{'+selected+'}','wrapped selection redo');
     }
     await content.focus();await page.keyboard.press('Control+f');equal(await page.locator('.cm-search').isVisible(),true,'find');await page.keyboard.press('Escape');equal(await page.locator('.cm-search').count(),0,'escape closes find');
     // Restore original imported source before a real ZIP check.
