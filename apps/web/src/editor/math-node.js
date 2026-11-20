@@ -87,33 +87,6 @@ export function mathEnvironment(field) {
   return labels;
 }
 
-function emptyOperatorBody(atom) {
-  if (atom?.command !== '\\mathord') return null;
-  const children = atom.body ?? [];
-  return children.length && children.every(child => child.type === 'first' || child.type === 'placeholder')
-    ? atom : null;
-}
-
-function deleteOperatorWithEmptyBody(field) {
-  if (!caretCollapsed(field)) return false;
-  const model = field._mathfield?.model;
-  if (!model) return false;
-  const caret = model.at(field.position);
-  if (!caret) return false;
-  const group = emptyOperatorBody(caret) ?? emptyOperatorBody(caret.rightSibling) ?? emptyOperatorBody(caret.parent);
-  const operator = group && bodyOperator(group);
-  if (!operator) return false;
-  const start = model.offsetOf(operator);
-  if (start < 0) return false;
-  if (!model.contentWillChange({ inputType:'deleteContentBackward' })) return true;
-  model.deferNotifications({ content:true, selection:true, type:'deleteContentBackward' }, () => {
-    group.parent.removeChild(group);
-    operator.parent.removeChild(operator);
-    model.position = start;
-  });
-  return true;
-}
-
 function deleteIntegralAtEmptyLimit(field) {
   if (field.selection.ranges.some(([start,end])=>start!==end)) return false;
   const model=field._mathfield?.model;
@@ -132,6 +105,46 @@ function deleteIntegralAtEmptyLimit(field) {
     operator.parent.removeChild(operator);
     model.position=start;
   });
+  return true;
+}
+
+// An operator that was just inserted owns an empty \mathord body. Deleting
+// inside it selects the whole operator first, so a second press removes it as
+// one object instead of nibbling at its placeholder. The caret can sit either
+// in the body or right behind the operator, where scripts attach.
+function emptyOperatorRange(field) {
+  const model=field._mathfield?.model;
+  if (!model) return null;
+  const caret=model.at(field.position);
+  if (!caret) return null;
+  let operator=null, group=null;
+  if (caret.command==='\\mathord' || caret.parent?.command==='\\mathord') {
+    group=caret.command==='\\mathord' ? caret : caret.parent;
+    const left=group.leftSibling;
+    operator=left?.type==='subsup' ? left.leftSibling : left;
+  } else if (isMathOperatorWithBody(caret.command?.slice(1))) {
+    operator=caret;
+    const right=operator.rightSibling;
+    group=right?.command==='\\mathord' ? right : null;
+  }
+  if (!group || !isMathOperatorWithBody(operator?.command?.slice(1))) return null;
+  const children=group.branch('body') ?? [];
+  if (children.some(child=>child.type!=='first'&&child.type!=='placeholder')) return null;
+  const start=operator.leftSibling ? model.offsetOf(operator.leftSibling) : 0;
+  const end=model.offsetOf(group);
+  return start>=0&&end>start ? [start,end] : null;
+}
+function selectEmptyOperator(field, backward) {
+  const range=emptyOperatorRange(field);
+  if (!range) return false;
+  const [start,end]=range;
+  const [from,to]=field.selection.ranges[0] ?? [field.position,field.position];
+  if (from===start&&to===end) {
+    field.executeCommand(backward?'deleteBackward':'deleteForward');
+    return true;
+  }
+  if (from!==to) return false;
+  field.selection={ranges:[[start,end]],direction:backward?'backward':'forward'};
   return true;
 }
 
@@ -262,11 +275,32 @@ function leaveEnvironment(field) {
   return JSON.stringify(field.selection.ranges) !== before;
 }
 
+// MathLive serializes a styled formula as {\displaystyle{...}} once it is
+// re-parsed, so unwrapping has to look through redundant outer braces.
+function unwrapBraces(value) {
+  let text = value.trim();
+  while (text.startsWith('{') && text.endsWith('}')) {
+    let depth = 0;
+    let closesAtEnd = true;
+    for (let index = 0; index < text.length; index++) {
+      if (text[index] === '\\') { index++; continue; }
+      if (text[index] === '{') depth++;
+      else if (text[index] === '}') {
+        depth--;
+        if (depth === 0 && index < text.length - 1) { closesAtEnd = false; break; }
+      }
+    }
+    if (!closesAtEnd) break;
+    text = text.slice(1, -1).trim();
+  }
+  return text;
+}
+
 export function toggleDisplayStyle(field) {
   field.removeAttribute('data-lineae-default-displaystyle');
-  const latex = field.value.trim();
+  const latex = unwrapBraces(field.value);
   const grouped = /^\\displaystyle\{([\s\S]*)\}$/.exec(latex);
-  const prefixed = /^\\displaystyle\s+([\s\S]*)$/.exec(latex);
+  const prefixed = /^\\displaystyle\s*([\s\S]*)$/.exec(latex);
   field.focus();
   if (grouped || prefixed) {
     field.value = (grouped ? grouped[1] : prefixed[1]).trim();
@@ -278,10 +312,12 @@ export function toggleDisplayStyle(field) {
   }
   field.value = '\\displaystyle{' + latex + '}';
   field.executeCommand('moveToMathfieldEnd');
-  const position = Math.max(0, field.lastOffset - 1);
-  field.position = position;
+  // The two closing braces of the wrapper are offsets of their own; the caret
+  // belongs two steps earlier, inside the styled body, so typing keeps editing
+  // the formula instead of appending after it.
+  field.position = Math.max(0, field.lastOffset - 2);
   field.dispatchEvent(new Event('input', { bubbles: true }));
-  requestAnimationFrame(() => { if (field.isConnected) { field.focus(); field.position = Math.min(position, field.lastOffset); } });
+  requestAnimationFrame(() => { if (field.isConnected) { field.focus(); field.position = Math.max(0, field.lastOffset - 2); } });
   return true;
 }
 
@@ -300,10 +336,11 @@ function leaveFormula(editor, position, node, backward) {
   editor.view.dispatch(transaction);
 }
 
+// Typing "<" then "=" produces the relation symbol, matching the other pairs.
 const operatorPairs = {
   '!=':'\\ne', '>=':'\\ge',
   '<-':'\\leftarrow', '->':'\\to',
-  '<=':'\\Leftarrow', '=>':'\\Rightarrow',
+  '<=':'\\le', '=>':'\\Rightarrow',
 };
 // Tab rotates an auto-inserted arrow counter-clockwise.
 const arrowTurns = {
@@ -469,6 +506,7 @@ export const MathNode = Node.create({
       let pendingKey = null;
       let pendingDollar = false;
       let oneScript = null;
+      let commandPalette = false;
       let exitedStyleAt = null;
       let replacedOperator = null;
       let pointerFocus = 0;
@@ -519,15 +557,24 @@ export const MathNode = Node.create({
             if(field.hasFocus()&&field.ownerDocument.activeElement!==field){
               const selection=structuredClone(field.selection);field.blur();field.focus();field.selection=selection;
             }else field.focus();
+            // Moving a table row can leave MathLive's focus flag set while its
+            // native keyboard sink is blurred. Restore the actual DOM focus.
+            if(field.ownerDocument.activeElement!==field)
+              field.shadowRoot?.querySelector('[part~="keyboard-sink"]')?.focus({preventScroll:true});
           }
         });
       },true);
-      field.addEventListener('focus', () => field.setAttribute('data-lineae-editing',''));
+      field.addEventListener('focus', () => {
+        commandPalette = false;
+        field.setAttribute('data-lineae-editing','');
+      });
       field.addEventListener('compositionstart', () => enterEmptyOperatorBody(field), true);
       field.addEventListener('blur', () => {
         field.removeAttribute('data-lineae-editing');
         pendingKey=null; pendingDollar=false; oneScript=null; replacedOperator=null;
-        queueMicrotask(()=>{if(field.isConnected&&!field.hasFocus())clearEmptyScripts(field);});
+        // The command palette takes focus, so a blank subscript typed with "_"
+        // must survive until the chosen command is inserted into it.
+        queueMicrotask(()=>{if(field.isConnected&&!field.hasFocus()&&!commandPalette)clearEmptyScripts(field);});
       });
       field.addEventListener('selection-change',()=>{
         if (scriptCleanupQueued) return;
@@ -622,7 +669,7 @@ export const MathNode = Node.create({
           }
         }
         if (plain && event.key === '>' && caretCollapsed(field) && field.position>0) {
-          const pair=[['\\leftarrow','\\leftrightarrow'],['\\Leftarrow','\\Leftrightarrow']]
+          const pair=[['\\leftarrow','\\leftrightarrow'],['\\Leftarrow','\\Leftrightarrow'],['\\le','\\Leftrightarrow']]
             .find(([command])=>field.value.endsWith(command));
           if(pair) {
             consume();
@@ -654,12 +701,13 @@ export const MathNode = Node.create({
         if (plain && node.isBlock && event.key==='Enter') {
           consume(); addDisplayLine(field); return;
         }
-        if (event.key==='Backspace' && !event.ctrlKey && !event.metaKey && !event.altKey && deleteOperatorWithEmptyBody(field)) {
+        if (event.key==='Backspace' && !event.ctrlKey && !event.metaKey && !event.altKey && deleteIntegralAtEmptyLimit(field)) {
           event.preventDefault();
           event.stopImmediatePropagation();
           return;
         }
-        if (event.key==='Backspace' && !event.ctrlKey && !event.metaKey && !event.altKey && deleteIntegralAtEmptyLimit(field)) {
+        if ((event.key==='Backspace'||event.key==='Delete') && !event.ctrlKey && !event.metaKey && !event.altKey &&
+            selectEmptyOperator(field,event.key==='Backspace')) {
           event.preventDefault();
           event.stopImmediatePropagation();
           return;
@@ -713,6 +761,7 @@ export const MathNode = Node.create({
         if (event.key === '\\' && !event.ctrlKey && !event.altKey && !event.metaKey) {
           event.preventDefault();
           event.stopPropagation();
+          commandPalette = true;
           dom.dispatchEvent(new CustomEvent('lineae-math-command', { bubbles: true, detail: { field } }));
           return;
         }

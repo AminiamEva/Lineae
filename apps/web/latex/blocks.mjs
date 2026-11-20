@@ -314,7 +314,7 @@ export function importBlock(block, options={}) {
     const label = trailing?.[1] ?? leading?.[2];
     return { type: 'mathBlock', attrs: { latex, display: true, delimiter, ...(label && {label}) } };
   }
-  const environment = text.match(/^\\begin\{(align\*?|alignat\*?|flalign\*?|eqnarray\*?|gather\*?|multline\*?|displaymath|math|split|aligned|alignedat|gathered|cases|dcases|drcases|rcases|[pbBvV]?matrix|[pbBvV]?smallmatrix|array|darray|subarray)\}([\s\S]*?)\\end\{\1\}$/);
+  const environment = text.match(/^\\begin\{(align\*?|alignat\*?|flalign\*?|xalignat\*?|xxalignat\*?|IEEEeqnarray|eqnarray\*?|gather\*?|multline\*?|multlined|displaymath|math|split|aligned|alignedat|gathered|cases|dcases|drcases|rcases|[pbBvV]?matrix|[pbBvV]?smallmatrix|array|darray|subarray|empheq)\}([\s\S]*?)\\end\{\1\}$/);
   if (environment) return { type: 'mathBlock', attrs: { latex: text, display: true } };
   const quote = text.match(/^\\begin\{quote\}([\s\S]*?)\\end\{quote\}$/);
   if (quote) {
