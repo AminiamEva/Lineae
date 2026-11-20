@@ -45,7 +45,7 @@ import { applyCitationRenames } from '../bib/index.mjs';
 import { chooseReference } from './editor/reference-index.js';
 import { installTableHoverAddRow } from './editor/table-hover.js';
 import { createConfigStore } from './editor/config.mjs';
-import { installKeybindings } from './editor/keybindings.mjs';
+import { compileKeybindings, installKeybindings } from './editor/keybindings.mjs';
 import defaultConfigYaml from '../config.yaml';
 import { askText } from './editor/dialog.js';
 import { installDocumentFind } from './editor/find.js';
@@ -253,9 +253,10 @@ const DescriptionItem = Node.create({
 function browserStorage() {
   try { return window.localStorage; } catch { return null; }
 }
+const isMac = /Mac|iPhone|iPad|iPod/.test(navigator.platform);
 const config = createConfigStore(defaultConfigYaml, {
   storage: browserStorage(),
-  isMac: /Mac|iPhone|iPad|iPod/.test(navigator.platform),
+  isMac,
   onError: error => console.warn(t('配置','Configuration'),error),
 });
 function configuredLanguage() {
@@ -480,7 +481,9 @@ const Shortcuts = Extension.create({
       if (parent.type.name === 'codeBlock') return false;
       if (replaceTypedLigatures(view,from,to,text,defaultTransaction)) return true;
       if(text==='\\') {showCommands();return true;}
-      if(text!=='$')return false;
+      const mathInput=config.bindings.scopes.get('editor').some(binding=>binding.command==='dollar' &&
+        !binding.second && binding.first===text);
+      if(!mathInput)return false;
       const previous=view.state.doc.resolve(from).nodeBefore;
       if(previous?.type.name==='math' && !previous.attrs.latex && !previous.attrs.display) {
         insertFormula(editor, true, '', { from: from - previous.nodeSize, to: from });
@@ -965,6 +968,7 @@ button('$$',()=>insertMath(true)).dataset.shortcut='editor.insertDisplayMath';
 const projectDocument=new ProjectDocumentSession();
 let projection, syncApplying = false, syncPending = false, sourceToolbar, projectExplorer, projectFileKind, projectPresentation;
 const sourceView = createSourceWorkspace({
+  configurableKeys: true,
   page: documentPage,
   getPreferences:()=>config.value,
   onSourceFontChange:value=>{if(config.value.interface.sourceFontSize!==value)config.updateInterface({sourceFontSize:value});},
@@ -1878,6 +1882,11 @@ function armLiteralFence(field) {
   },options);
 }
 function runMathShortcut(command, field, event) {
+  if (['palette','nextSlot','previousSlot','enterLine','eraseObject'].includes(command)) {
+    const detail={command,backward:event.key!=='Delete',handled:false};
+    field.dispatchEvent(new CustomEvent('lineae-math-builtin',{detail}));
+    return detail.handled;
+  }
   if (event.repeat && !['undo','redo','leaveEnvironment','superscript','subscript'].includes(command)) return;
   switch (command) {
     case 'undo': editor.commands.undo(); return;
@@ -2135,7 +2144,10 @@ function setParagraphAlignment(align) {
     return true;
   }
   if (editor.isActive('table')) {
-    return editor.chain().focus().updateAttributes('table',{align}).run();
+    if(selection.isRowSelection?.()&&selection.isColSelection?.())
+      return editor.chain().focus().updateAttributes('table',{align}).run();
+    const type=editor.isActive('tableHeader')?'tableHeader':'tableCell';
+    return editor.chain().focus().updateAttributes(type,{align}).run();
   }
   if (selection instanceof NodeSelection && selection.node.type.name==='documentImage') {
     editor.view.dispatch(editor.state.tr.setNodeMarkup(selection.from,undefined,{
@@ -2213,25 +2225,43 @@ function sortParagraphs(mode) {
   editor.view.focus();
   return true;
 }
-function zoomByKeyboard(amount, {field}) {
-  if (field) return false;
+function zoomByKeyboard(amount, {source}={}) {
+  if(source)return false;
   setZoom(Number(zoom.value)+amount);
   saveZoom();
 }
-function resetPageZoom({field}) {
-  if (field) return false;
+function resetPageZoom({source}={}) {
+  if(source)return false;
   setZoom(100);
   saveZoom();
 }
 const shortcutActions = {
   global: {
     save: (_context,event) => { if (!event.repeat) saveDocument(); },
+    open: () => document.querySelector('#file').click(),
+    saveAs: () => saveDocument(true),
+    newProject: () => document.querySelector('#project-new')?.click(),
+    openProject: () => document.querySelector('#project-open')?.click(),
+    toggleFiles: () => document.querySelector('#project-toggle')?.click(),
+    documentMode: () => bodyButton.click(),
+    sourceMode: () => sourceButton.click(),
+    splitMode: () => splitButton.click(),
+    settings: () => settingsPanel.show(),
+    toggleRibbon: () => document.querySelector('#toolbar-collapse')?.click(),
+    formattingMarks: () => formattingMarks.click(),
     zoomIn: context => zoomByKeyboard(10,context),
     zoomOut: context => zoomByKeyboard(-10,context),
     zoomReset: resetPageZoom,
   },
   editor: {
     insertDisplayMath: () => insertMath(true),
+    insertInlineMath: () => insertMath(),
+    insertEquation,
+    insertCases: () => insertMath(true,'\\begin{cases}\\placeholder{} & \\placeholder{}\\\\ \\placeholder{} & \\placeholder{}\\end{cases}'),
+    dollar: (_context,event) => {
+      if(event.key.length===1&&!event.ctrlKey&&!event.metaKey&&!event.altKey)return 'native';
+      insertMath();
+    },
     toggleBox: () => spaceOverlay.toggleBox(),
     editMath: editMathAtSelection,
     alignLeft: () => setParagraphAlignment('left'),
@@ -2260,6 +2290,7 @@ const shortcutActions = {
     redo: redoDocument,
     toggleBold: () => editor.commands.toggleBold(),
     toggleItalic: () => editor.commands.toggleItalic(),
+    toggleUnderline: () => editor.commands.toggleMark('underline'),
     toggleStrike: () => editor.commands.toggleStrike(),
     toggleCode: () => editor.commands.toggleCode(),
     toggleCodeBlock: () => editor.commands.toggleCodeBlock(),
@@ -2271,6 +2302,11 @@ const shortcutActions = {
     subsection: () => editor.commands.toggleHeading({level:2,command:null}),
     subsubsection: () => editor.commands.toggleHeading({level:3,command:null}),
     hardBreak: () => editor.commands.setHardBreak(),
+    toggleSuperscript: () => editor.commands.toggleMark('superscript'),
+    toggleSubscript: () => editor.commands.toggleMark('subscript'),
+    codeLanguage: () => codeLanguageButton.click(),
+    insertTable: insertDefaultTable,
+    openTikz: () => tikzButton.click(),
   },
   paragraph: {
     toggleIndent: () => setParagraphIndent(editor,!paragraphHasIndent(editor)),
@@ -2278,29 +2314,54 @@ const shortcutActions = {
   table: {
     addRow: () => editor.commands.addRowAfter(),
     addColumn: () => editor.commands.addColumnAfter(),
+    deleteRow: () => editor.commands.deleteRow(),
+    deleteColumn: () => editor.commands.deleteColumn(),
   },
 };
+const nativeBindings=compileKeybindings({
+  system:{copy:'mod+c',cut:'mod+x',paste:'mod+v',selectAll:'mod+a'},
+  source:{find:'mod+f',replace:'mod+h',undo:'mod+z',redo:['mod+y','mod+shift+z'],complete:'ctrl+space',
+    indent:'tab',outdent:'shift+tab',zoomIn:['mod+equal','mod+plus'],zoomOut:'mod+minus',zoomReset:'mod+0'},
+  math:{undo:['ctrl+z','meta+z'],redo:['ctrl+y','meta+y','ctrl+shift+z','meta+shift+z'],
+    palette:'backslash',nextSlot:'tab',previousSlot:'shift+tab'},
+},{isMac});
 installKeybindings(window, {
   getBindings: () => config.bindings,
+  nativeBindings,
   getContext(event) {
-    if (event.target.closest?.(".tex-code")) return {element:event.target,scopes:["global"],only:"save"};
+    if (event.target.closest?.('.tex-code .cm-content'))
+      return {element:sourceView.editorView?.contentDOM,source:true,scopes:['source','system','global']};
+    if (event.target.closest?.('.tex-code'))return {element:event.target,scopes:['global'],only:'save'};
     // Let the pane's local font handler own these keys before the global
     // capture-phase router can turn them into whole-document zoom actions.
     if (event.target.closest?.('.tex-preview') && (event.ctrlKey || event.metaKey) &&
         !event.altKey && ['+', '=', '-', '0'].includes(event.key)) return {element:event.target,scopes:[]};
     const field = event.composedPath().find(node => node?.tagName === 'MATH-FIELD');
-    if (field && paper.contains(field)) return { element:field, field, scopes:['math','global'] };
+    if (field && paper.contains(field)) return { element:field, field, scopes:['math','system','global'] };
     if (documentFind.panel.contains(event.target)) return { element:documentFind.panel, scopes:['editor'], only:'find' };
     if (!editor.view.hasFocus()) return { element:document.activeElement, scopes:['global'] };
     if (editor.view.composing) return { element:editor.view.dom, scopes:[] };
     editor.view.domObserver.flush();
-    const scopes = ['editor','global'];
+    const scopes = ['editor','system','global'];
     if (editor.isActive('paragraph')) scopes.unshift('paragraph');
     if (editor.isActive('table')) scopes.unshift('table');
     return { element:editor.view.dom, scopes };
   },
   run({scope,command},context,event) {
     if (scope === 'math') return runMathShortcut(command,context.field,event);
+    if (scope === 'source') return sourceView.runShortcut(command);
+    if (scope === 'system') {
+      if(command==='selectAll') {
+        if(context.source)return sourceView.runShortcut('selectAll');
+        if(context.field)return context.field.executeCommand('selectAll');
+        return editor.commands.selectAll();
+      }
+      const key={copy:'c',cut:'x',paste:'v'}[command];
+      if(!event.altKey&&!event.shiftKey&&event.key.toLowerCase()===key&&
+          (isMac?event.metaKey&&!event.ctrlKey:event.ctrlKey&&!event.metaKey))return 'native';
+      clipboard[command]().catch(reportClipboardError);
+      return true;
+    }
     return shortcutActions[scope][command](context,event);
   },
 });
@@ -2935,13 +2996,13 @@ const home=document.createElement('div');home.className='tools';
 const insert=document.createElement('div');insert.className='tools';
 groupButton(insert,['图片','Image'],()=>insertLocalImage(editor));
 groupButton(insert,['子图','Subfigure'],()=>insertSubfigures(editor));
-groupButton(insert,['代码块','Code block'],async()=>{
+const codeLanguageButton=groupButton(insert,['代码块','Code block'],async()=>{
   const language=await askText(t('代码语言，例如 Python、Java 或 C++','Code language, e.g. Python, Java or C++'),editor.getAttributes('codeBlock').language??'');
   if(language===null || (language && !/^[A-Za-z0-9+_-]+$/.test(language))) return;
   if(editor.isActive('codeBlock')) editor.chain().focus().updateAttributes('codeBlock',{language:language||null}).run();
   else editor.chain().focus().setCodeBlock({language:language||null}).run();
 });
-groupButton(insert,['TikZ','TikZ'],()=>{
+const tikzButton=groupButton(insert,['TikZ','TikZ'],()=>{
   try{
     const editorEl=document.querySelector('.document-page .ProseMirror');
     const textwidthCm=editorEl?editorEl.clientWidth*2.54/96:15;
@@ -2989,7 +3050,7 @@ const language=document.querySelector('#language');
 const fontFamilyControl=home.querySelector('[data-format-attribute="fontFamily"]');
 const fontSizeControl=home.querySelector('[data-format-attribute="fontSize"]');
 const colorControl=home.querySelector('.color-control');
-const clipboard=createClipboard(editor,{getField:activeMath});
+const clipboard=createClipboard(editor,{getField:activeMath,getSource:()=>sourceView.editorView});
 let formatPainter;
 let clipboardStatusTimer;
 function reportClipboardError(error){

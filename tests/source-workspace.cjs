@@ -121,7 +121,7 @@ module.exports = async function checkSourceWorkspace(context, url) {
     await page.keyboard.press('Control+z');
     await sameClipboardText(sample);
     await content.focus();
-    await page.keyboard.press('Control+y');
+    await page.keyboard.press('Control+Shift+z');
     await sameClipboardText('% added\n'+sample);
     await content.focus();
     await page.keyboard.press('Control+Home');

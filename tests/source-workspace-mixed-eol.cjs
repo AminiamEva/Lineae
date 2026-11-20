@@ -54,7 +54,7 @@ module.exports = async function checkMixedEol(context, url) {
     await page.keyboard.press('Control+z');
     assert.deepEqual((await download('undo')).tex,original,'Undo restores original mixed source');
     await content.focus();
-    await page.keyboard.press('Control+y');
+    await page.keyboard.press('Control+Shift+z');
     assert.deepEqual((await download('redo')).tex,
       Buffer.from(original.toString('utf8').replace('Signal energy','Signal power'),'utf8'));
     await change('E =','P =');
