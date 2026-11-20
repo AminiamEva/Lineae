@@ -552,7 +552,12 @@ function formattingMarks(doc, preamble = '') {
           onInsert: ({ body }) => replaceTikzCode(paperEditor, position, body),
         })), { side: -1 }));
       } else if (node.attrs.language === 'tikz' || node.attrs.language === 'circuitikz') {
-        decorations.push(Decoration.widget(position, tikzPreviewWidget(node.textContent), { side: -1 }));
+        const circuitPreamble = `${tikzStagingFromPreamble(preamble)}\n\\usepackage{circuitikz}`.trim();
+        decorations.push(Decoration.widget(position, tikzPreviewWidget(node.textContent, () => openTikzStudio({
+          initialLibraries: circuitPreamble,
+          initialBody: node.textContent,
+          onInsert: ({ body }) => replaceTikzCode(paperEditor, position, body),
+        })), { side: -1 }));
       }
       const tokenPattern = codeTokenRegex(codeFamily(node.attrs.language));
       for (const match of node.textContent.matchAll(tokenPattern)) {

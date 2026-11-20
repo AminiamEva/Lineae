@@ -155,10 +155,18 @@ function renderInto(root, code, defs) {
   return svg;
 }
 
-export function tikzPreviewWidget(code) {
+export function tikzPreviewWidget(code, onOpen = null) {
   const root = document.createElement('div');
   root.className = 'tikz-code-preview';
   root.contentEditable = 'false';
+  if (onOpen) {
+    root.title = 'Double-click to edit';
+    root.addEventListener('dblclick', event => {
+      event.preventDefault();
+      event.stopPropagation();
+      onOpen();
+    });
+  }
   const source = cleanCode(code);
   if (!source) { root.hidden = true; return root; }
   if (cache.has(source)) {

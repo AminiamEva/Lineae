@@ -27,7 +27,7 @@ const server = createServer(async (request, response) => {
     await page.goto(`http://127.0.0.1:${server.address().port}`, { waitUntil: 'networkidle' });
     await page.waitForTimeout(500);
     await page.locator('.ribbon-tabs [data-group=insert]').click();
-    await page.getByRole('button', { name: /TikZ/ }).click();
+    await page.getByRole('button', { name: 'CircuiTikZ', exact: true }).click();
     await page.waitForTimeout(900);
 
     const symbols = page.locator('.tikz-tree .tikz-sym');
@@ -128,6 +128,10 @@ const server = createServer(async (request, response) => {
     assert.match(tikz, /\\node\[npn, bodydiode\]/);
     assert.match(tikz, /\\node\[transformer, cute\]/);
     assert.match(tikz, /\\draw .* to\[vco, box\]/);
+    await page.locator('.tikz-code-preview').dblclick();
+    await page.locator('.tikz-studio-window').waitFor({ state: 'visible' });
+    assert.match(await page.locator('.tikz-studio-code').inputValue(), /\\begin\{tikzpicture\}/, 'double-click imports the current CircuiTikZ source');
+    await page.locator('.tikz-studio-close').click();
     assert.deepEqual(errors, [], 'TikZ editor has no page errors');
     console.log('TikZ editor browser regressions passed');
   } finally {

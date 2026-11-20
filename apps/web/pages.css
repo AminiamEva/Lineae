@@ -1158,7 +1158,7 @@ body.format-painter-active .ProseMirror * { cursor:copy; }
 .tikz-option-field input[type=checkbox] { margin:0; }
 .tikz-option-field select { min-width:0; flex:1; }
 .tikz-zoom-readout { font-size:11px; color:light-dark(#8b95a7,#7d879c); }
-.tikz-code-preview { display:block; margin:.55em 0; padding:6px 8px; border:1px solid light-dark(#dce2ec,#3a4356); border-radius:6px; background:light-dark(#fbfcfe,#202632); overflow:hidden; }
+.tikz-code-preview { display:block; margin:var(--image-intextsep,12pt) 0; padding:0; border:0; background:transparent; text-align:center; overflow:visible; }
 .tikz-code-preview-svg { display:block; max-width:100%; height:auto; }
 .tikz-code-preview:empty { display:none; }
 .document-page .ProseMirror pre[data-language="tikz-general"] { display:none; }
