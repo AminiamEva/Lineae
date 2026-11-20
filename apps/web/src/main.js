@@ -3093,6 +3093,7 @@ const ribbon=document.createElement('div');ribbon.className='ribbon';
 const tabs=document.createElement('nav');tabs.className='ribbon-tabs';
 const home=document.createElement('div');home.className='tools';
 const insert=document.createElement('div');insert.className='tools';
+groupButton(insert,['分页','New page'],()=>editor.chain().focus().insertContent({type:'pageBreak'}).run());
 groupButton(insert,['图片','Image'],()=>insertLocalImage(editor));
 groupButton(insert,['子图','Subfigure'],()=>insertSubfigures(editor));
 const codeLanguageButton=groupButton(insert,['代码块','Code block'],async()=>{
