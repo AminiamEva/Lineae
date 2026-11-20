@@ -639,6 +639,11 @@ export function installTypesetPagination(page, paper, meta, editor) {
       schedule();
     },
     refresh: schedule,
+    invalidate() {
+      paragraphLayout.invalidate();
+      forceLayout = true;
+      schedule();
+    },
     reset() {
       if (frame) cancelAnimationFrame(frame);
       frame = 0;

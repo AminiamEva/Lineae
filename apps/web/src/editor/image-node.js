@@ -173,7 +173,10 @@ export const DocumentImage = Node.create({
       imageFrame.className='document-image-frame';
       imageFrame.append(image);
       const syncHandleVisibility=()=>{dom.dataset.smallImage=String(image.naturalWidth>0&&image.naturalWidth<24);};
-      image.addEventListener('load',syncHandleVisibility);
+      image.addEventListener('load',()=>{
+        syncHandleVisibility();
+        window.dispatchEvent(new Event('lineae-image-layout'));
+      });
       const resizeDirs=['nw','n','ne','e','se','s','sw','w'];
       const resizeHandles=resizeDirs.map(direction=>{
         const handle=document.createElement('span');

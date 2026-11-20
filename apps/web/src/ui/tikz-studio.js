@@ -37,7 +37,7 @@ const SAMPLE = String.raw`\begin{tikzpicture}[scale=1]
 \end{tikzpicture}`;
 
 function previewPreamble(preamble) {
-  const allowed = /(?:tikz|pgf|pgfplots|amsmath|amssymb|mathtools|xcolor|graphicx)/;
+  const allowed = /(?:tikz|circuitikz|pgf|pgfplots|amsmath|amsfonts|amssymb|mathtools|xcolor|graphicx)/;
   return preamble
     .replace(/^\s*\\documentclass(?:\[[^\]]*\])?\{[^{}]+\}[^\n]*(?:\r?\n|$)/gm, '')
     .replace(/\\begin\{document\}/g, '')
@@ -51,7 +51,7 @@ function needsLuaTex(source) {
   return /\usegdlibrary|graphdrawing|\directlua|\latelua|luacode|fontspec|unicode-math/.test(source);
 }
 
-const PREAMBLE_COMMAND = /^\s*\\(?:usepackage|RequirePackage|usetikzlibrary|usegdlibrary|newcommand|renewcommand|providecommand|DeclareRobustCommand|newenvironment|renewenvironment|NewDocumentCommand|RenewDocumentCommand|ProvideDocumentCommand|DeclareDocumentCommand|DeclareMathOperator|newtheorem|def|gdef|edef|xdef|let|newcounter|newlength|setlength|tikzset|pgfplotsset|colorlet|definecolor)\b/;
+const PREAMBLE_COMMAND = /^\s*\\(?:usepackage|RequirePackage|usetikzlibrary|usegdlibrary|usepgfplotslibrary|usepgflibrary|newcommand|renewcommand|providecommand|DeclareRobustCommand|newenvironment|renewenvironment|NewDocumentCommand|RenewDocumentCommand|ProvideDocumentCommand|DeclareDocumentCommand|DeclareMathOperator|newtheorem|def|gdef|edef|xdef|let|newcounter|newlength|setlength|tikzset|tikzstyle|ctikzset|pgfplotsset|pgfkeys|pgfqkeys|pgfdeclarelayer|pgfsetlayers|colorlet|definecolor|providecolor|DeclareGraphicsExtensions|graphicspath|newfontfamily|setmainfont|setsansfont|setmonofont)\b/;
 
 function braceBalance(text) {
   let depth = 0;
@@ -152,6 +152,19 @@ function syncHighlightScroll(textarea) {
   highlight.scrollLeft = textarea.scrollLeft;
 }
 
+// Accept a complete standalone document in the code pane and expose its
+// preamble declarations and drawing body separately.
+function splitStandaloneDocument(source) {
+  const text = String(source || '');
+  const begin = text.search(/\\begin\{document\}/);
+  const end = text.lastIndexOf('\\end{document}');
+  if (begin < 0 || end < begin) return null;
+  const preamble = text.slice(0, begin)
+    .replace(/^\s*\\documentclass(?:\[[^\]]*\])?\{[^{}]+\}[^\n]*(?:\r?\n|$)/gm, '')
+    .trim();
+  return { preamble, body: text.slice(begin + '\\begin{document}'.length, end).trim() };
+}
+
 function tikzDocument(source, figures) {
   if (figures.isCompleteDocument(source)) return { document: source, engine: needsLuaTex(source) ? 'lualatex' : 'auto' };
   const { preamble, body } = splitTikzFragment(source);
@@ -200,12 +213,12 @@ export function generalTikzPreviewWidget(source, preamble = '', onOpen = null) {
   return root;
 }
 
-export function tikzStagingFromPreamble(preamble) {
-  const { libraries, macros } = scanStaging(preamble || '');
-  const lines = [];
-  if (libraries.length) lines.push(`\\usetikzlibrary{${[...new Set(libraries)].sort((a, b) => a.localeCompare(b)).join(',')}}`);
-  lines.push(...[...macros].sort((a, b) => a.name.localeCompare(b.name)).map(macro => macro.text.trim()));
-  return lines.join('\n');
+export function tikzStagingFromPreamble(preamble = '') {
+  const cleaned = String(preamble || '')
+    .replace(/^\s*\\documentclass(?:\[[^\]]*\])?\{[^{}]+\}[^\n]*(?:\r?\n|$)/gm, '')
+    .replace(/\\begin\{document\}/g, '')
+    .replace(/\\end\{document\}/g, '');
+  return splitTikzFragment(cleaned).preamble;
 }
 
 export function openTikzStudio({ onInsert, initialLibraries, initialBody } = {}) {
@@ -222,10 +235,10 @@ export function openTikzStudio({ onInsert, initialLibraries, initialBody } = {})
       </div>
       <div class="tikz-studio-body">
         <div class="tikz-studio-editor">
-          <div class="tikz-studio-pane-title">${t('库与宏定义', 'Libraries & newcommands')}</div>
+          <div class="tikz-studio-pane-title">${t('前导声明', 'Preamble declarations')}</div>
           <div class="tikz-studio-code-shell">
             <div class="tikz-studio-highlight" aria-hidden="true"></div>
-            <textarea class="tikz-studio-libraries" spellcheck="false" wrap="off" aria-label="TikZ libraries and newcommands"></textarea>
+            <textarea class="tikz-studio-libraries" spellcheck="false" wrap="off" aria-label="TikZ preamble declarations"></textarea>
           </div>
           <div class="tikz-studio-divider" role="separator" aria-orientation="horizontal" tabindex="0"></div>
           <div class="tikz-studio-pane-title">${t('TikZ 图形', 'TikZ picture')}</div>
@@ -261,7 +274,9 @@ export function openTikzStudio({ onInsert, initialLibraries, initialBody } = {})
     const current = ++version;
     clearTimeout(timer);
     timer = setTimeout(async () => {
-      const source = [libraries.value, code.value].filter(value => value.trim()).join('\n').trim();
+      const full = splitStandaloneDocument(code.value);
+      const source = (full ? [full.preamble, full.body] : [libraries.value, code.value])
+        .filter(value => value.trim()).join('\n').trim();
       if (!source) { preview.replaceChildren(); setStatus(''); return; }
       setStatus(t('正在渲染…', 'Rendering…'));
       try {
@@ -329,12 +344,15 @@ export function openTikzStudio({ onInsert, initialLibraries, initialBody } = {})
   };
   overlay.querySelector('.tikz-studio-close').onclick = close;
   overlay.querySelector('.tikz-studio-insert').onclick = () => {
-    const staging = scanStaging(libraries.value);
-    const body = code.value.trim();
+    const full = splitStandaloneDocument(code.value);
+    const declarations = full ? full.preamble : libraries.value;
+    const staging = scanStaging(declarations);
+    const body = full ? full.body : code.value.trim();
     if (!staging.macros.length && !staging.libraries.length && !body) return;
     const result = onInsert?.({
       libraries: staging.libraries,
       macros: staging.macros,
+      declarations,
       body,
     });
     if (result?.duplicates?.length) {

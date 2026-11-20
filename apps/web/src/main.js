@@ -93,6 +93,7 @@ import { installRovingFocus } from './ui/keyboard-nav.mjs';
 import { fadeIn } from './ui/motion.mjs';
 import { getLanguage, localize, normalizeLanguage, setLanguage, t } from './ui/i18n.mjs';
 import { TikzEditor } from './tikz/controllers/tikzEditor.js';
+import { openTikzStudio } from './ui/tikz-studio.js';
 
 const citationLibrary = createCitationLibrary();
 
@@ -1256,7 +1257,7 @@ function applyTikzPreamble(after) {
   projectExplorer?.changed();
 }
 
-function insertTikzStudioBlock({ libraries = [], macros = [], body = '' } = {}) {
+function insertTikzStudioBlock({ libraries = [], macros = [], declarations = '', body = '' } = {}) {
   body = body
     .replace(/^\s*\\documentclass(?:\[[^\]]*\])?\{[^{}]+\}[^\n]*(?:\r?\n|$)/m, '')
     .replace(/^\s*\\(?:usepackage|RequirePackage)(?:\[[^\]]*\])?\{[^{}]*\}[^\n]*(?:\r?\n|$)/gm, '')
@@ -1276,18 +1277,28 @@ function insertTikzStudioBlock({ libraries = [], macros = [], body = '' } = {}) 
   const allLibraries = [...new Set([...tikzLibraries(before), ...libraries])]
     .sort((a, b) => a.localeCompare(b));
   const sortedMacros = [...macros].sort((a, b) => a.name.localeCompare(b.name)).map(macro => macro.text.trim());
+  const declarationLines = String(declarations || '')
+    .replace(/^\s*\\documentclass(?:\[[^\]]*\])?\{[^{}]+\}[^\n]*(?:\r?\n|$)/gm, '')
+    .replace(/\\begin\{document\}/g, '')
+    .replace(/\\end\{document\}/g, '')
+    .split(/\r?\n/)
+    .map(line => line.trim())
+    .filter(Boolean)
+    .filter(line => !/^\\usetikzlibrary\b/.test(line))
+    .filter(line => !before.includes(line));
+  const preambleAdditions = declarationLines.length ? declarationLines : sortedMacros;
   const beginAt = before.indexOf('\\begin{document}');
   if (beginAt >= 0) {
     let preamble = before.slice(0, beginAt)
       .replace(/\\usetikzlibrary(?:\[[^\]]*\])?\{[^{}]*\}[ \t]*(?:\r?\n)?/g, '');
     const additions = [
       allLibraries.length ? `\\usetikzlibrary{${allLibraries.join(',')}}` : '',
-      ...sortedMacros,
+      ...preambleAdditions,
     ].filter(Boolean).join('\n');
     const after = preamble.replace(/\s+$/, '') + (additions ? `\n${additions}` : '') + '\n' + before.slice(beginAt);
     applyTikzPreamble(after);
   } else {
-    body = [allLibraries.length ? `\\usetikzlibrary{${allLibraries.join(',')}}` : '', ...sortedMacros, body]
+    body = [allLibraries.length ? `\\usetikzlibrary{${allLibraries.join(',')}}` : '', ...preambleAdditions, body]
       .filter(Boolean).join('\n');
   }
   if (body.trim()) {
@@ -1413,6 +1424,7 @@ function renderMeta() {
 renderMeta();
 typesetPagination=installTypesetPagination(documentPage,paper,metaBar,editor);
 typesetPagination.setTableContinuation(config.value.interface.continuedTables);
+window.addEventListener('lineae-image-layout',()=>typesetPagination?.invalidate());
 function source() {
   if(projectDocument.composition)return projectExplorer.model.file(projectDocument.composition.rootId).draft;
   const document=editor.getJSON();
@@ -3031,12 +3043,19 @@ groupButton(insert,['代码块','Code block'],async()=>{
   if(editor.isActive('codeBlock')) editor.chain().focus().updateAttributes('codeBlock',{language:language||null}).run();
   else editor.chain().focus().setCodeBlock({language:language||null}).run();
 });
-groupButton(insert,['TikZ','TikZ'],()=>{
+groupButton(insert,['CircuiTikZ','CircuiTikZ'],()=>{
   try{
     const editorEl=document.querySelector('.document-page .ProseMirror');
     const textwidthCm=editorEl?editorEl.clientWidth*2.54/96:15;
     const tikz=new TikzEditor({getTextwidthCm:()=>textwidthCm});
     tikz.open(code=>{ if(code) editor.chain().focus().insertContent({type:'codeBlock',attrs:{language:'tikz'},content:[{type:'text',text:code}]}).run(); });
+  }catch(error){ console.error(error); alert('CircuiTikZ editor failed: '+(error?.message||error)); }
+});
+groupButton(insert,['TikZ','TikZ'],()=>{
+  try{
+    openTikzStudio({
+      onInsert:payload=>insertTikzStudioBlock(payload),
+    });
   }catch(error){ console.error(error); alert('TikZ editor failed: '+(error?.message||error)); }
 });
 import { installMathFloatToolbar } from './ui/math-float-toolbar.js';

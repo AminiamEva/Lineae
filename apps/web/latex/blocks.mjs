@@ -430,7 +430,7 @@ function importSegment(block,options) {
     // Split outer source-backed environments without losing their separators.
     // The scanner
     // keeps nested environments, macro arguments and literal content opaque.
-    const floating=token.kind==='begin' && /^\\begin\{(figure\*?|wrapfigure|table\*?|tblr|tabularx|abstract|center|equation\*?)\}$/.exec(token.value);
+    const floating=token.kind==='begin' && /^\\begin\{(figure\*?|wrapfigure|table\*?|tabular\*?|tblr|tabularx|abstract|center|equation\*?)\}$/.exec(token.value);
     const closing=floating && environmentEnd(block,token.index,floating[1]);
     if(closing) {
       const prefix=block.slice(cursor,token.index);

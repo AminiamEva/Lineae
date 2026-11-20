@@ -4,6 +4,7 @@ import { SnapController, SnapPoint, PX_PER_CM } from '../apps/web/src/tikz/contr
 import * as comp from '../apps/web/src/tikz/components/components.js';
 import { parseLibrary, BASIC_COMPONENTS, GROUP_LABELS } from '../apps/web/src/tikz/components/symbols-meta.js';
 import { exportTikz } from '../apps/web/src/tikz/controllers/exportController.js';
+import { tikzStagingFromPreamble } from '../apps/web/src/ui/tikz-studio.js';
 import { readFileSync } from 'node:fs';
 
 const FIXTURE = `<svg xmlns="http://www.w3.org/2000/svg"><metadata><component type="node" display="Ground" tikzName="ground" group="Grounds and supply voltages" class=" ground">
@@ -134,4 +135,16 @@ test('default bipole physical length is calibrated in centimetres', () => {
   const code = exportTikz([part], { widthFraction: .6 });
   assert.doesNotMatch(code, /\\resizebox\{/);
   assert.match(code, /\\draw \(0,0\) to\[american resistor\] \(1\.12,0\)/);
+});
+
+test('TikZ staging keeps packages and pgfplots declarations', () => {
+  const preamble = String.raw`\documentclass[border=3pt]{standalone}
+\usepackage{amsmath,pgfplots}
+\pgfplotsset{compat=1.18}
+\usetikzlibrary{arrows.meta}`;
+  const staging = tikzStagingFromPreamble(preamble);
+  assert.match(staging, /\\usepackage\{amsmath,pgfplots\}/);
+  assert.match(staging, /\\pgfplotsset\{compat=1\.18\}/);
+  assert.match(staging, /\\usetikzlibrary\{arrows\.meta\}/);
+  assert.doesNotMatch(staging, /documentclass/);
 });
