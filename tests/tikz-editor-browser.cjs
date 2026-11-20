@@ -130,9 +130,10 @@ const server = createServer(async (request, response) => {
     assert.match(tikz, /\\node\[transformer, cute\]/);
     assert.match(tikz, /\\draw .* to\[vco, box\]/);
     await page.locator('.tikz-code-preview').dblclick();
-    await page.locator('.tikz-studio-window').waitFor({ state: 'visible' });
-    assert.match(await page.locator('.tikz-studio-code').inputValue(), /\\begin\{tikzpicture\}/, 'double-click imports the current CircuiTikZ source');
-    await page.locator('.tikz-studio-close').click();
+    await page.locator('.tikz-window').waitFor({ state: 'visible' });
+    await page.waitForFunction(() => document.querySelectorAll('.tikz-layer-items > [data-uid]').length > 0);
+    assert.ok(await page.locator('.tikz-layer-items > [data-uid]').count() > 0, 'double-click opens the CircuiTikZ editor with the current drawing');
+    await page.locator('.tikz-exit').click();
     assert.deepEqual(errors, [], 'TikZ editor has no page errors');
     console.log('TikZ editor browser regressions passed');
   } finally {

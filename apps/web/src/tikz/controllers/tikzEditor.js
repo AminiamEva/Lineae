@@ -38,14 +38,69 @@ export class TikzEditor {
 
   t(zh, en) { return (document.documentElement.lang || '').startsWith('zh') ? zh : en; }
 
-  open(onDone) {
+  open(onDone, initialCode = '') {
     this.onDone = onDone;
     this.buildDom();
     this.canvas.setTextwidthCm(this.getTextwidthCm());
     this.canvas.fit();
     this.render();
+    this.loadSymbolArtwork().then(() => {
+      if (initialCode) this.importTikz(initialCode);
+      this.canvas.fit();
+      this.render();
+    });
   }
   close() { this.overlay?.remove(); this.overlay = null; }
+
+  importTikz(source) {
+    const text = String(source || '').replace(/^\s*\\resizebox\{[^{}]*\}\{!\}\{%?/, '').replace(/%\}\s*$/, '');
+    const body = text
+      .replace(/^[\s\S]*?\\begin\{tikzpicture\}(?:\[[^\]]*\])?/, '')
+      .replace(/\\end\{tikzpicture\}[\s\S]*$/, '')
+      .replace(/\\ctikzset\{[^{}]*\}\s*/g, '');
+    this.items = [];
+    this.unparsed = [];
+    const coordinates = new Map();
+    const scale = PX_PER_CM;
+    const pointOf = raw => {
+      const value = String(raw || '').trim();
+      if (coordinates.has(value)) return coordinates.get(value);
+      const match = /^([+-]?\d*\.?\d+)\s*,\s*([+-]?\d*\.?\d+)$/.exec(value);
+      if (!match) return null;
+      return { x: Number(match[1]) * scale + 60, y: -Number(match[2]) * scale + 60 };
+    };
+    const defs = this.componentDefs || BASIC_COMPONENTS;
+    const findDef = style => defs.find(def => def.tikz === style) || defs.find(def => def.name === style) || null;
+
+    for (const match of body.matchAll(/\\coordinate\s*\(([^)]+)\)\s*at\s*\(([^)]+)\)\s*;/g)) {
+      const point = pointOf(match[2]);
+      if (point) coordinates.set(match[1].trim(), point);
+    }
+
+    for (const match of body.matchAll(/\\node\s*\[([^\]]*)\]\s*at\s*\(([^)]+)\)\s*\{([\s\S]*?)\}\s*;/g)) {
+      const point = pointOf(match[2]);
+      const options = match[1].split(',').map(value => value.trim()).filter(Boolean);
+      const def = findDef(options[0]);
+      if (!point || !def) { this.unparsed.push(match[0]); continue; }
+      const item = def.kind === 'node' ? new NodeSymbol(def, point.x, point.y)
+        : def.kind === 'open' ? new OpenComponent(def, point.x, point.y)
+        : def.kind === 'rect' ? new RectComponent(def, point.x, point.y)
+        : new PathComponent(def, point.x, point.y);
+      item.options = options.slice(1);
+      const label = match[3].trim();
+      if (label) item.label = label.replace(/^\$|\$$/g, '');
+      this.items.push(item);
+    }
+
+    for (const match of body.matchAll(/\\draw\s*([\s\S]*?);/g)) {
+      const tokens = [...match[1].matchAll(/\(([^)]+)\)|to\[([^\]]*)\]/g)];
+      const points = tokens.filter(token => token[1] !== undefined).map(token => pointOf(token[1])).filter(Boolean);
+      if (points.length < 2) { this.unparsed.push(`\\draw ${match[1]};`); continue; }
+      this.items.push(new Wire(points));
+    }
+    this.recomputeSnap?.();
+    this.render?.();
+  }
 
   buildDom() {
     this.close();
@@ -107,7 +162,10 @@ export class TikzEditor {
 
     o.querySelector('.tikz-exit').onclick = () => this.close();
     o.querySelector('.tikz-finish').onclick = () => {
-      const code = exportTikz(this.items, { environment: this.environmentOptions(), ctikzset: this.environmentPreamble() });
+      let code = exportTikz(this.items, { environment: this.environmentOptions(), ctikzset: this.environmentPreamble() });
+      if (this.unparsed?.length) {
+        code = code.replace(/\\end\{tikzpicture\}\s*$/, this.unparsed.join('\n') + '\n\\end{tikzpicture}');
+      }
       this.close(); this.onDone?.(code);
     };
     const slider = o.querySelector('.tikz-zoom-slider'), input = o.querySelector('.tikz-zoom-input');
@@ -128,7 +186,6 @@ export class TikzEditor {
 
     o.querySelectorAll('.tikz-tools button').forEach(b => b.onclick = () => this.useTool(b.dataset.tool));
     this.buildTree();
-    this.loadSymbolArtwork();
 
     let pan = null;
     this.svg.addEventListener('pointerdown', e => {
