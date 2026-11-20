@@ -80,7 +80,18 @@ export class TikzEditor {
     for (const match of body.matchAll(/\\node\s*\[([^\]]*)\]\s*at\s*\(([^)]+)\)\s*\{([\s\S]*?)\}\s*;/g)) {
       const point = pointOf(match[2]);
       const options = match[1].split(',').map(value => value.trim()).filter(Boolean);
-      const def = findDef(options[0]);
+      let def = findDef(options[0]);
+      if (!def && options.includes('draw')) {
+        const width = Number(/(?:minimum width)\s*=\s*([\d.]+)\s*cm/.exec(match[1])?.[1]) || 1;
+        const height = Number(/(?:minimum height)\s*=\s*([\d.]+)\s*cm/.exec(match[1])?.[1]) || 1;
+        const ellipse = options.includes('ellipse');
+        const trapezium = options.includes('trapezium');
+        def = {
+          kind: 'rect', tikz: ellipse ? 'ellipse' : trapezium ? 'trapezium' : 'rectangle',
+          name: 'draw', w: width * PX_PER_CM, h: height * PX_PER_CM,
+          round: ellipse, shape: trapezium ? 'trapezoid' : '', anchor: [0, 0], id: '',
+        };
+      }
       if (!point || !def) { this.unparsed.push(match[0]); continue; }
       const item = def.kind === 'node' ? new NodeSymbol(def, point.x, point.y)
         : def.kind === 'open' ? new OpenComponent(def, point.x, point.y)
@@ -94,9 +105,39 @@ export class TikzEditor {
 
     for (const match of body.matchAll(/\\draw\s*([\s\S]*?);/g)) {
       const tokens = [...match[1].matchAll(/\(([^)]+)\)|to\[([^\]]*)\]/g)];
-      const points = tokens.filter(token => token[1] !== undefined).map(token => pointOf(token[1])).filter(Boolean);
-      if (points.length < 2) { this.unparsed.push(`\\draw ${match[1]};`); continue; }
-      this.items.push(new Wire(points));
+      let previous = null;
+      let style = null;
+      let added = false;
+      for (const token of tokens) {
+        if (token[1] === undefined) { style = token[2]; continue; }
+        const point = pointOf(token[1]);
+        if (!point) { previous = null; style = null; continue; }
+        if (previous) {
+          const options = String(style || '').split(',').map(value => value.trim()).filter(Boolean);
+          const def = options.length ? findDef(options[0]) : null;
+          if (def && ['path', 'open', 'rect'].includes(def.kind)) {
+            const item = def.kind === 'open' ? new OpenComponent(def, previous.x, previous.y)
+              : def.kind === 'rect' ? new RectComponent(def, previous.x, previous.y)
+              : new PathComponent(def, previous.x, previous.y);
+            item.start = { ...previous };
+            item.end = { ...point };
+            item.x = previous.x;
+            item.y = previous.y;
+            item.options = options.slice(1);
+            const label = /(?:^|,)\s*l\s*=\s*\$([^$]*)\$/.exec(style || '')?.[1];
+            const value = /(?:^|,)\s*v\s*=\s*\$([^$]*)\$/.exec(style || '')?.[1];
+            if (label) item.label = label;
+            if (value) item.value = value;
+            this.items.push(item);
+          } else {
+            this.items.push(new Wire([{ ...previous }, { ...point }]));
+          }
+          added = true;
+        }
+        previous = point;
+        style = null;
+      }
+      if (!added) this.unparsed.push(`\\draw ${match[1]};`);
     }
     this.recomputeSnap?.();
     this.render?.();
