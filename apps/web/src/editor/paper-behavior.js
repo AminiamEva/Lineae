@@ -5,7 +5,6 @@ import { NodeSelection, Plugin, TextSelection } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import { listMarkerCSS } from '../../latex/list-numbering.mjs';
 import { t } from '../ui/i18n.mjs';
-import { tikzPreviewWidget } from '../tikz/preview-renderer.js';
 import { generalTikzPreviewWidget, openTikzStudio, tikzStagingFromPreamble } from '../ui/tikz-studio.js';
 
 function tableCaptionWidget(caption) {
@@ -553,7 +552,7 @@ function formattingMarks(doc, preamble = '') {
         })), { side: -1 }));
       } else if (node.attrs.language === 'tikz' || node.attrs.language === 'circuitikz') {
         const circuitPreamble = `${tikzStagingFromPreamble(preamble)}\n\\usepackage{circuitikz}`.trim();
-        decorations.push(Decoration.widget(position, tikzPreviewWidget(node.textContent, () => openTikzStudio({
+        decorations.push(Decoration.widget(position, generalTikzPreviewWidget(node.textContent, circuitPreamble, () => openTikzStudio({
           initialLibraries: circuitPreamble,
           initialBody: node.textContent,
           onInsert: ({ body }) => replaceTikzCode(paperEditor, position, body),

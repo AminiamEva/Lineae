@@ -121,8 +121,9 @@ const server = createServer(async (request, response) => {
     assert.notEqual(await page.locator('.tikz-layer-items').getAttribute('transform'), beforePan, 'pan changes the view transform');
 
     await page.locator('.tikz-finish').click();
-    await page.waitForTimeout(900);
-    assert.equal(await page.locator('.tikz-code-preview-svg').count(), 1, 'inserted CircuiTikZ has an incremental SVG preview');
+    await page.locator('.tikz-general-preview svg').waitFor({ state: 'visible', timeout: 120000 });
+    assert.equal(await page.locator('.tikz-general-preview svg').count(), 1, 'inserted CircuiTikZ has a complete TeX-rendered preview');
+    assert.equal(await page.locator('.ProseMirror pre[data-language="tikz"]').isHidden(), true, 'source code block stays out of the document body');
     const tikz = await page.locator('.ProseMirror pre code').innerText();
     assert.doesNotMatch(tikz, /\\resizebox\{/);
     assert.match(tikz, /\\node\[npn, bodydiode\]/);

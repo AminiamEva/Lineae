@@ -1161,7 +1161,9 @@ body.format-painter-active .ProseMirror * { cursor:copy; }
 .tikz-code-preview { display:block; margin:var(--image-intextsep,12pt) 0; padding:0; border:0; background:transparent; text-align:center; overflow:visible; }
 .tikz-code-preview-svg { display:block; max-width:100%; height:auto; }
 .tikz-code-preview:empty { display:none; }
-.document-page .ProseMirror pre[data-language="tikz-general"] { display:none; }
+.document-page .ProseMirror pre[data-language="tikz-general"],
+.document-page .ProseMirror pre[data-language="tikz"],
+.document-page .ProseMirror pre[data-language="circuitikz"] { display:none; }
 .document-page .tikz-general-preview { margin:var(--image-intextsep,12pt) 0; padding:0; border:0; border-radius:0; background:transparent; text-align:center; overflow:visible; }
 .document-page .tikz-general-preview svg { display:block; max-width:100%; height:auto; margin:0 auto; }
 .tikz-general-preview:has(+ .ProseMirror-selectednode),
