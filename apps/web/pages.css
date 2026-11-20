@@ -1123,8 +1123,8 @@ body.format-painter-active .ProseMirror * { cursor:copy; }
 .tikz-palette { width:76px; overflow-y:auto; padding:8px; display:flex; flex-direction:column; gap:6px; border-inline-end:1px solid light-dark(#e3e7ee,#333c4e); }
 .tikz-sym { display:flex; align-items:center; justify-content:center; padding:4px; border:1px solid light-dark(#e3e7ee,#333c4e); border-radius:6px; background:inherit; cursor:pointer; }
 .tikz-sym:hover { background:light-dark(#eef2f8,#2a3448); }
-.tikz-canvas-wrap { flex:1; position:relative; min-width:0; background:light-dark(#fafbfd,#171d29); }
-.tikz-canvas { width:100%; height:100%; display:block; outline:none; cursor:crosshair; }
+.tikz-canvas-wrap { flex:1; position:relative; min-width:0; background:#fff; }
+.tikz-canvas { width:100%; height:100%; display:block; outline:none; cursor:crosshair; background:#fff; }
 .tikz-canvas.is-panning { cursor:grabbing; }
 .tikz-status { position:absolute; left:10px; bottom:8px; font-size:11px; color:light-dark(#8b95a7,#7d879c); pointer-events:none; }
 .tikz-side { width:220px; padding:10px; border-inline-start:1px solid light-dark(#e3e7ee,#333c4e); display:flex; flex-direction:column; gap:8px; font-size:12px; overflow-y:auto; }

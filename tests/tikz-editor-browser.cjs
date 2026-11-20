@@ -33,6 +33,9 @@ const server = createServer(async (request, response) => {
     const symbols = page.locator('.tikz-tree .tikz-sym');
     assert.equal(await symbols.count(), 410, 'Basic + 402 library symbols are listed');
     assert.equal(await page.locator('.tikz-zoom-slider').inputValue(), '100', 'default zoom is 100% of one textwidth');
+    assert.equal(await page.locator('.tikz-layer-grid circle').count(), 0, 'canvas uses a line grid, not a dot grid');
+    assert.ok(await page.locator('.tikz-layer-grid path').count() >= 2, 'minor and major grid lines are rendered');
+    assert.equal(await page.locator('.tikz-canvas-wrap').evaluate(element => getComputedStyle(element).backgroundColor), 'rgb(255, 255, 255)', 'editor canvas has a white background');
 
     assert.match(await page.locator('.tikz-property-panel').innerText(), /Environment Variable Presets/);
     const canvas = page.locator('.tikz-canvas');
