@@ -3,16 +3,24 @@ import { theoremNames } from './theorem.mjs';
 // Each rule describes a feature emitted by the editor or recognized in source.
 // Dependencies are added only when that feature appears in the document body.
 const dependencies = [
-  { name: 'ulem', pattern: /\\sout\b/ },
+  { name: 'ulem', pattern: /\\(?:sout|uline|uuline|uwave|dashuline|dotuline)\b/ },
   { name: 'amsmath', pattern: /\\(?:begin\{(?:align|alignat|flalign|gather|multline|equation|split|aligned|alignedat|gathered|cases|[pbBvV]?(?:small)?matrix)\*?\}|(?:dfrac|tfrac|text|operatorname|eqref)\b)/ },
   { name: 'mathtools', pattern: /\\begin\{(?:[dr]cases|drcases|multlined|[pbBvV]smallmatrix)\*?\}/ },
-  { name: 'xcolor', pattern: /\\(?:textcolor|colorbox|definecolor)\b/ },
+  { name: 'xcolor', pattern: /\\(?:textcolor|colorbox|fcolorbox|definecolor)\b/ },
+  { name: 'ragged2e', pattern: /\\justifying\b/ },
   { name: 'booktabs', pattern: /\\(?:toprule|midrule|bottomrule|cmidrule)\b/ },
   { name: 'multirow', pattern: /\\multirow\b/ },
   { name: 'enumitem', pattern: /\\begin\{(?:itemize|enumerate)\}\[/ },
   { name: 'alphalph', pattern: /\\(?:alphalph|AlphAlph)\b/ },
-  { name: 'zhnumber', pattern: /\\(?:chinese|zhnum)\b/ },
-  { name: 'graphicx', pattern: /\\includegraphics\b/ },
+  { name: 'zhnumber', pattern: /\\(?:chinese|zhnum|zhnumber)\b/ },
+  { name: 'graphicx', pattern: /\\(?:includegraphics|scalebox|resizebox)\b/ },
+  { name: 'tikz', pattern: /\\begin\{tikzpicture\}/, satisfies: ['circuitikz'] },
+  { name: 'circuitikz', pattern: /\\(?:node|to)\[[^\]]*(?:ground|rground|sground|nground|vcc|vee|ocirc|diamondpole)\b/ },
+  { name: 'multicol', pattern: /\\begin\{multicols\}/ },
+  { name: 'adjustbox', pattern: /\\adjustbox\b/ },
+  { name: 'caption', pattern: /\\caption\*/ },
+  { name: 'wrapfig', pattern: /\\begin\{wrapfigure\}/ },
+  { name: 'float', pattern: /\\begin\{figure\}\[H\]/ },
   { name: 'amsthm', pattern: /\\begin\{proof\}/ },
   { name: 'listings', pattern: /\\begin\{lstlisting\}/ },
   { name: 'textcomp', pattern: /\\(?:textdegree|textcelsius|textmu|textohm|textcent|textyen|texteuro|textperthousand|textnumero)\b/ },
@@ -23,6 +31,12 @@ const dependencies = [
 
 function withoutComments(source) {
   return source.replace(/\\[\\%]|%[^\r\n]*/g, match => match.startsWith('%') ? '' : match);
+}
+
+export function usesCtex(preamble) {
+  const source = withoutComments(preamble || '');
+  return /\\documentclass\s*(?:\[[^\]]*\]\s*)?\{ctex(?:art|rep|book|beamer)\}/.test(source) ||
+    /\\(?:usepackage|RequirePackage)\s*(?:\[[^\]]*\]\s*)?\{ctex\}/.test(source);
 }
 
 export function hasTitleCommand(source) {
@@ -47,7 +61,7 @@ export function resolvePackages(preamble, body, { chineseTypesetting=false } = {
   const cleanPreamble=withoutComments(preamble);
   const chineseClass=/\\documentclass\s*(?:\[[^\]]*\]\s*)?\{ctex(?:art|rep|book|beamer)\}/.test(cleanPreamble);
   if (chineseTypesetting && !chineseClass && !existing.has('ctex') && !existing.has('xeCJK') &&
-      /\p{Script=Han}|\\(?:lineaeStem|zhnum)\b/u.test(cleanPreamble + source)) required.push({name:'ctex'});
+      /\p{Script=Han}|\\(?:lineaeStem|zhnum|zhnumber)\b/u.test(cleanPreamble + source)) required.push({name:'ctex'});
   return required;
 }
 

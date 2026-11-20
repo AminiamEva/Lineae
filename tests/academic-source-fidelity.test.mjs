@@ -1,23 +1,19 @@
-// Run explicitly: node --test tests/academic-known-issues.cjs
-const test = require('node:test');
-const assert = require('node:assert/strict');
+// Regression specifications for draft PR source-fidelity issues.
+import test from 'node:test';
+import assert from 'node:assert/strict';
 
-const codec = import('../apps/web/src/editor/latex-codec.js');
-const document = import('../apps/web/latex/document.mjs');
-const sync = import('../apps/web/src/editor/source-sync.js');
+import {importBlocks,serialize} from '../apps/web/src/editor/latex-codec.js';
+import {parseDocument} from '../apps/web/latex/document.mjs';
+import {sourceProjection,richSourceChanges} from '../apps/web/src/editor/source-sync.js';
 
 const samples = [
   ['tblr preserves the line break command', String.raw`A\nolinebreak B`, 'BQ', 0],
-  ['tblr preserves an unknown command with a recognized prefix', String.raw`A\indentcustom B`, 'BQ', 0],
   ['tblr preserves the box around an edited token', String.raw`A\mbox{B}`, 'BQ', 0],
   ['tabularx inserts text without duplicating cell whitespace', String.raw`A&  \\Z&Y`, '  Q\\\\', 1],
 ];
 
 for (const [name, body, replacement, column] of samples) {
-  test(name, async () => {
-    const {importBlocks} = await codec;
-    const {parseDocument} = await document;
-    const {sourceProjection, richSourceChanges} = await sync;
+  test(name, () => {
     const open = column ? String.raw`\begin{tabularx}{\textwidth}{XX}` : String.raw`\begin{tblr}{X}`;
     const close = column ? String.raw`\end{tabularx}` : String.raw`\end{tblr}`;
     const source = '\\begin{document}\r\n' + open + body + close + '\n\\end{document}';
@@ -34,9 +30,14 @@ for (const [name, body, replacement, column] of samples) {
   });
 }
 
-test('consecutive equation environments do not capture the paragraph between them', async () => {
-  const {importBlocks} = await codec;
-  const {parseDocument} = await document;
+test('unknown command with a recognized prefix remains completely Raw', () => {
+  const source = '\\begin{tblr}{X}A\\indentcustom B\\end{tblr}';
+  const nodes = importBlocks(source);
+  assert.deepEqual(nodes,[{type:'raw',attrs:{source}}]);
+  assert.equal(serialize(nodes[0]),source);
+});
+
+test('consecutive equation environments do not capture the paragraph between them', () => {
   const source = '\\begin{document}\r\n\\begin{equation}a=b\\end{equation}\r\nMiddle prose.\n\\begin{equation}c=d\\end{equation}\n\\end{document}';
   const nodes = parseDocument(source).blocks.flatMap(importBlocks);
   assert.deepEqual(nodes.map(node=>node.type),['mathBlock','paragraph','mathBlock']);

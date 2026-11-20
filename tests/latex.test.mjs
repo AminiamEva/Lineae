@@ -8,6 +8,7 @@ import { serialize } from '../apps/web/src/editor/latex-codec.js';
 import { importBlocks } from '../apps/web/latex/blocks.mjs';
 import { listMarker, markerInput } from '../apps/web/latex/list-numbering.mjs';
 import { buildProjectZip, projectDependencies } from '../apps/web/src/editor/project-zip.mjs';
+import { relativeImageWidth } from '../apps/web/latex/images.mjs';
 
 test('paragraph alignment round-trips without leaking into the next paragraph', () => {
   for (const align of ['left','center','right']) {
@@ -36,6 +37,53 @@ test('Word-style numbering preserves the marker and starting number in TeX', () 
   }
   assert.equal(listMarker(markerInput.exec('word. ')),null);
   assert.equal(listMarker(markerInput.exec(' ')),null,'a single space must not start a list');
+});
+
+test('list labels use XeLaTeX-safe commands', () => {
+  const item={type:'listItem',content:[{type:'paragraph',content:[{type:'text',text:'Item'}]}]};
+  const bullet=serialize({type:'bulletList',attrs:{marker:'▪'},content:[item]});
+  assert.match(bullet,/\\raisebox\{\.25ex\}\{\\rule\{\.45em\}\{\.45em\}\}/);
+  assert.equal(importBlocks(bullet)[0].attrs.marker,'▪');
+
+  const ordered=serialize({type:'orderedList',attrs:{labelStyle:'cjk-ideographic-comma'},content:[item]});
+  assert.match(ordered,/\\zhnumber\{\\arabic\*\}/);
+  assert.doesNotMatch(ordered,/\\zhnum\{/);
+  const packages=resolvePackages('',ordered).map(rule=>rule.name);
+  assert.ok(packages.includes('enumitem'));
+  assert.ok(packages.includes('zhnumber'));
+});
+
+test('font marks round-trip XeLaTeX commands', () => {
+  const node={type:'paragraph',content:[{type:'text',text:'X',marks:[
+    {type:'circled'},
+    {type:'underline',attrs:{style:'double'}},
+    {type:'textStyle',attrs:{backgroundColor:'#fff3a3',color:'#c00000',fontSize:'11pt'}},
+  ]}]};
+  const output=serialize(node);
+  assert.match(output,/\\textcircled\{/);
+  assert.match(output,/\\uuline\{/);
+  assert.match(output,/\\colorbox\[HTML\]\{fff3a3\}/i);
+  const [restored]=importBlocks(output);
+  const marks=restored.content[0].marks;
+  assert.ok(marks.some(mark=>mark.type==='circled'));
+  assert.ok(marks.some(mark=>mark.type==='underline'&&mark.attrs.style==='double'));
+  assert.ok(marks.some(mark=>mark.type==='textStyle'&&mark.attrs.backgroundColor?.toLowerCase()==='#fff3a3'));
+  const packages=resolvePackages('',output).map(rule=>rule.name);
+  assert.ok(packages.includes('ulem'));
+  assert.ok(packages.includes('xcolor'));
+});
+
+test('paragraph formatting inside list items round-trips', () => {
+  const [list]=importBlocks('\\begin{itemize}\n\\item {\\colorbox{yellow}{\\parbox{\\linewidth}{Shaded}}}\n\\end{itemize}');
+  const paragraph=list.content[0].content[0];
+  assert.equal(paragraph.attrs.shading,'yellow');
+  const output=serialize(list);
+  assert.match(output,/\\colorbox\{yellow\}/);
+  const [restored]=importBlocks(output);
+  assert.equal(restored.content[0].content[0].attrs.shading,'yellow');
+
+  const [quote]=importBlocks('\\begin{quote}\n{\\colorbox{yellow}{\\parbox{\\linewidth}{Shaded}}}\n\\end{quote}');
+  assert.equal(quote.content[0].attrs.shading,'yellow');
 });
 
 test('exports theorem and proof environments and a path-safe project ZIP', async () => {
@@ -84,13 +132,30 @@ test('recognizes full text control words without consuming unknown commands', ()
   assert.ok(resolvePackages('',serialize(paragraph)).some(rule=>rule.name==='textcomp'));
 });
 
+test('keeps wrapfigure and includegraphics textwidth factors independent', () => {
+  assert.equal(relativeImageWidth('0.4\\textwidth','0.4\\textwidth'),'100%');
+  assert.equal(relativeImageWidth('0.2\\textwidth','0.4\\textwidth'),'50%');
+  assert.equal(relativeImageWidth('6cm','0.4\\textwidth'),'6cm');
+  assert.equal(relativeImageWidth('\\linewidth','0.4\\textwidth'),'100%');
+  assert.equal(relativeImageWidth('0.8\\linewidth','0.4\\textwidth'),'80%');
+  const source=['\\begin{wrapfigure}{r}{0.4\\textwidth}','\\includegraphics[width=0.4\\textwidth]{pic.png}','\\caption{Long caption}','\\end{wrapfigure}'].join('\n');
+  const [node]=importBlocks(source);
+  assert.equal(node.type,'documentImage');
+  assert.equal(node.attrs.wrap,true);
+  assert.equal(node.attrs.wrapWidth,'0.4\\textwidth');
+  assert.equal(node.attrs.width,'0.4\\textwidth');
+  assert.equal(node.attrs.caption,'Long caption');
+  assert.match(serialize(node),/\\begin\{wrapfigure\}\{r\}\{0\.4\\textwidth\}/);
+});
+
 test('preserves local image paths and supported widths and requests graphicx', () => {
   const image = String.raw`\includegraphics[width=0.5\linewidth]{figures/plot.png}`;
   const [node] = importBlocks(image);
   assert.equal(node.type, 'documentImage');
   assert.equal(serialize(node).trim(), image);
   assert.ok(resolvePackages('',image).some(rule=>rule.name==='graphicx'));
-  assert.equal(importBlocks(String.raw`\includegraphics[angle=90]{plot.png}`)[0].type,'raw');
+  assert.equal(importBlocks(String.raw`\includegraphics[angle=90]{plot.png}`)[0].type,'documentImage');
+  assert.equal(importBlocks(String.raw`\includegraphics[angle=90]{plot.png}`)[0].attrs.angle,'90');
   const figure=['\\begin{figure}[ht]','\\centering',image,'\\caption{Plot}','\\label{fig:plot}','\\end{figure}'].join('\n');
   assert.equal(serialize(importBlocks(figure)[0]).trim(),figure);
 });
@@ -365,6 +430,20 @@ test('places font support before the class and color support before the document
   assert.match(result, /^\\RequirePackage\{fix-cm\}\n\\documentclass/);
   assert.match(result, /\\usepackage\{xcolor\}\n\\begin\{document\}/);
   assert.equal(exportDocument(parseDocument(result), body), result);
+});
+
+test('tracks tabcolsep, @{} removal and column rules instead of flattening the tabular spec', async () => {
+  const { parseTable } = await import('../apps/web/latex/tables.mjs');
+  const ruled = parseTable(['\\begin{tabular}{|c|c|}', 'A & B \\\\', '\\end{tabular}'].join('\n'));
+  assert.equal(ruled.columnLayout.boundaries[0].rules, 1);
+  assert.equal(ruled.columnLayout.boundaries[1].rules, 1);
+  assert.equal(ruled.columnLayout.boundaries[2].rules, 1);
+  const at = parseTable(['\\begin{tabular}{@{}c@{}c@{}}', 'A & B \\\\', '\\end{tabular}'].join('\n'));
+  assert.equal(at.columnLayout.boundaries[0].tabcolsep, false);
+  assert.equal(at.columnLayout.boundaries[1].tabcolsep, false);
+  assert.equal(at.columnLayout.boundaries[2].tabcolsep, false);
+  const middle = parseTable(['\\begin{tabular}{c@{}c}', 'A & B \\\\', '\\end{tabular}'].join('\n'));
+  assert.equal(middle.columnLayout.boundaries[1].tabcolsep, false);
 });
 
 test('keeps booktabs rules and alignment around editable cells', async () => {

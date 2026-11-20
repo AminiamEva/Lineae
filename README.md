@@ -5,7 +5,7 @@
 [![Contributors](https://img.shields.io/github/contributors/AminiamEva/Lineae?style=flat-square)](https://github.com/AminiamEva/Lineae/graphs/contributors)
 [![Last Commit](https://img.shields.io/github/last-commit/AminiamEva/Lineae?style=flat-square)](https://github.com/AminiamEva/Lineae/commits/main/)
 
-<p align="center"><img src="apps/web/assets/brand/lineae-lockup.svg" alt="Lineæ" width="540"></p>
+<p align="center"><img src="apps/web/assets/brand/lineae-logo.png" alt="" width="96" height="96"> &nbsp; <picture><source media="(prefers-color-scheme: dark)" srcset="apps/web/assets/brand/lineae-new-dark.png"><img src="apps/web/assets/brand/lineae-new-light.png" alt="Lineæ" width="207" height="96"></picture></p>
 
 # Lineae
 
@@ -108,7 +108,7 @@ See [Editor Architecture](docs/EDITOR_ARCHITECTURE.md) for implementation detail
 
 ## Development status
 
-Lineae is an early-stage editor. The [v0.2.0 release notes](docs/releases/v0.2.0.md) describe the Windows release and its limits. The distinction between what is already usable and what remains planned is important.
+Lineae is an early-stage editor. The [v0.2.1 release notes](docs/releases/v0.2.1.md) describe the Windows release and its limits. The distinction between what is already usable and what remains planned is important.
 
 | Area | Status |
 | --- | --- |
@@ -119,7 +119,7 @@ Lineae is an early-stage editor. The [v0.2.0 release notes](docs/releases/v0.2.0
 | Editor–PDF visual fidelity | A core design goal; systematic comparison with compiled TeX output is not yet implemented |
 | Multi-file projects | File tree, native folder operations, per-file sessions and editable input/include composition with source ownership guards |
 | TeX compilation and PDF preview | Not integrated |
-| Desktop application | Windows x64 v0.2.0 (Tauri 2), offline installer and portable ZIP; unsigned distribution |
+| Desktop application | Windows x64 v0.2.1 (Tauri 2), offline installer and portable ZIP; unsigned distribution |
 | Precise pagination | Page geometry and pagination remain under calibration against XeLaTeX; full compiled-output parity is not claimed |
 
 The immediate work is centred on three areas: making equation input and navigation more reliable; improving source preservation, mode switching, and editing history; and tightening the behaviour of ordinary document editing, including selection, clipboard operations, and long-document navigation.
@@ -188,7 +188,7 @@ The GitHub Actions workflow builds the application, runs the LaTeX and bibliogra
 ## Desktop
 
 The Windows x64 app built with Tauri 2 lives in `apps/desktop`.
-Download the installer or portable ZIP from [v0.2.0](https://github.com/AminiamEva/Lineae/releases/tag/v0.2.0). This release is unsigned; see the release notes and checksums. It reuses the
+Download the installer or portable ZIP from [v0.2.1](https://github.com/AminiamEva/Lineae/releases/tag/v0.2.1). This release is unsigned; see the release notes and checksums. It reuses the
 browser editor, adds native open/save/save-as dialogs, and exports projects through
 the existing ZIP pipeline. Builds and packaging run only on GitHub Actions; see
 [docs/desktop-preview.md](docs/desktop-preview.md) for artifacts and acceptance

@@ -43,6 +43,9 @@ export function changePageLayout({editor,sourceView,current,preamble,patch}) {
 export const PageLayoutHistory=Extension.create({
   name:'pageLayoutHistory',
   addGlobalAttributes(){
-    return [{types:['doc'],attributes:{layoutPreamble:{default:null,rendered:false}}}];
+    return [{types:['doc'],attributes:{
+      layoutPreamble:{default:null,rendered:false},
+      pageFurniture:{default:null,rendered:false},
+    }}];
   },
 });

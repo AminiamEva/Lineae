@@ -7,3 +7,9 @@ apps/desktop/node_modules/
 apps/desktop/dist/
 apps/desktop/src-tauri/target/
 apps/desktop/src-tauri/gen/
+
+# AGENTS.md scratch areas: quarantine, local caches, permission-repair backups
+.trash/
+.cache/
+.tmp/
+.acl-recovery/

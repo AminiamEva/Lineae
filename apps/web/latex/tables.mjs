@@ -38,6 +38,57 @@ function splitCells(line) {
   return cells;
 }
 
+export function parseColumnLayout(columns, specs) {
+  const boundaries = Array.from({length:specs.length + 1}, () => ({tabcolsep:true, rules:0, at:false, bang:false}));
+  let column = 0;
+  let pending = {rules:0, at:false, bang:false};
+  const commit = () => {
+    const boundary = boundaries[column];
+    if (!boundary) return;
+    boundary.rules += pending.rules;
+    boundary.at = boundary.at || pending.at;
+    boundary.tabcolsep = boundary.tabcolsep && !pending.at;
+    boundary.bang = boundary.bang || pending.bang;
+    pending = {rules:0, at:false, bang:false};
+  };
+  for (let index = 0; index < columns.length;) {
+    const char = columns[index];
+    if (char === ' ' || char === '\t') { index++; continue; }
+    if (char === '|') { pending.rules++; index++; continue; }
+    if (char === '@' || char === '!') {
+      const match = columns.slice(index).match(/^[@!]\{[^{}]*\}/);
+      if (!match) return null;
+      if (char === '@') pending.at = true;
+      else pending.bang = true;
+      index += match[0].length;
+      continue;
+    }
+    if (char === '>' || char === '<') {
+      const match = columns.slice(index).match(/^[<>]\{[^{}]*\}/);
+      if (!match) return null;
+      index += match[0].length;
+      continue;
+    }
+    if (char === 'l' || char === 'c' || char === 'r') {
+      commit(); column++; index++; continue;
+    }
+    const width = columns.slice(index).match(/^[pmb]\{[^{}]*\}/);
+    if (width) { commit(); column++; index += width[0].length; continue; }
+    if (char === '*') {
+      const count = columns.slice(index).match(/^\*\{(\d+)\}\{([^{}]*)\}/);
+      if (!count) return null;
+      const repeated = columnSpecs(count[2]);
+      index += count[0].length;
+      column += Number(count[1]) * (repeated?.length ?? 1);
+      continue;
+    }
+    if (char === ' ' || char === '\t') { index++; continue; }
+    return null;
+  }
+  commit();
+  return {boundaries};
+}
+
 export function parseTable(source) {
   const begin = '\\begin{tabular}{';
   if (!source.startsWith(begin)) return null;
@@ -51,6 +102,8 @@ export function parseTable(source) {
   const columns = source.slice(begin.length, index - 1);
   const specs = parseColumns(columns) ?? columnSpecs(columns);
   if (!specs) return null;
+  const columnLayout = parseColumnLayout(columns, specs);
+  if (!columnLayout) return null;
   const match = source.slice(index).match(/^\r?\n([\s\S]*?)\r?\n\\end\{tabular\}$/);
   if (!match) return null;
   const rows = [],occupied=Array(specs.length).fill(0);
@@ -72,7 +125,7 @@ export function parseTable(source) {
       rules: trailing.splice(0),
     });
   }
-  return rows.length ? { columns, specs, rows, trailing } : null;
+  return rows.length ? { columns, specs, columnLayout, rows, trailing } : null;
 }
 
 export function serializeTable({ columns, specs, rows, trailing }, eol) {

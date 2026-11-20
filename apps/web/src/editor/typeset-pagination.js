@@ -1,9 +1,15 @@
+import {installParagraphLayout} from '../typesetting/paragraph-layout.js';
 import {documentLayoutBlocks} from '../project/fold-layout.mjs';
 import { planPagination, planTableRows, typesetProfile } from '../../latex/typeset-layout.mjs';
+import { setSerializationClass } from './latex-codec.js';
+import { setHeadingBase } from '../../latex/blocks.mjs';
+import { readPageFurniture, pageFurnitureText, furnitureSlots } from '../../latex/page-furniture.mjs';
+import { displayPageNumber } from '../../latex/document-numbering.mjs';
 import { Plugin, PluginKey } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
 
 const lineBreakKey = new PluginKey('lineaePaginationLineBreaks');
+let chapterPages = new Set();
 const graphemeSegmenter = typeof Intl.Segmenter === 'function'
   ? new Intl.Segmenter(undefined, { granularity:'grapheme' }) : null;
 
@@ -108,6 +114,8 @@ function paragraphLines(editor, element, block, pageRect, zoom) {
 
 export function installTypesetPagination(page, paper, meta, editor) {
   const editable = paper.querySelector('.ProseMirror');
+  const paragraphLayout=installParagraphLayout(editor);
+  let paragraphPreamble='';
   const sheets = document.createElement('div');
   sheets.className = 'document-sheets';
   sheets.setAttribute('aria-hidden', 'true');
@@ -119,14 +127,18 @@ export function installTypesetPagination(page, paper, meta, editor) {
 
   let frame = 0;
   let profile = typesetProfile();
+  let furniture = readPageFurniture();
+  let maketitle = false;
   let lineBreaks = [];
+  let lineBreaksDoc = null;
   installLineBreaks(editor);
 
   function setLineBreaks(entries) {
-    const same = entries.length === lineBreaks.length && entries.every((entry, index) =>
+    const same = lineBreaksDoc === editor.state.doc && entries.length === lineBreaks.length && entries.every((entry, index) =>
       entry.position === lineBreaks[index].position && Math.abs(entry.height - lineBreaks[index].height) < .01);
     if (same) return;
     lineBreaks = entries;
+    lineBreaksDoc = editor.state.doc;
     editor.view.dispatch(editor.state.tr.setMeta(lineBreakKey, entries));
   }
   let translations = [];
@@ -200,24 +212,86 @@ export function installTypesetPagination(page, paper, meta, editor) {
     }
   }
 
+  function furnitureElement(kind, slots, pageNumber, force = false, marks = {}) {
+    if (!force && (!slots || !Object.values(slots).some(Boolean))) return null;
+    const container = document.createElement('div');
+    container.className = `document-page-${kind}`;
+    for (const slot of ['left', 'center', 'right']) {
+      const item = document.createElement('span');
+      item.className = `document-page-${kind}-${slot}`;
+      item.textContent = pageFurnitureText(slots[slot], pageNumber, marks);
+      container.append(item);
+    }
+    return container;
+  }
+
+  function pageMarks(pageIndex) {
+    const headings = [...editable.querySelectorAll('h1,h2,h3')].map(element => {
+      const rect = element.getBoundingClientRect();
+      return {text: element.textContent, top: rect.top};
+    });
+    if (!headings.length) return {left:'', right:''};
+    const sheet = sheets.firstElementChild;
+    if (!sheet) return {left:'', right:''};
+    const pageRect = page.getBoundingClientRect();
+    const zoom = pageRect.width / page.offsetWidth || 1;
+    const pitch = sheet.offsetHeight + (Number.parseFloat(getComputedStyle(page).getPropertyValue('--page-gap')) || 0);
+    const indexed = headings.map(heading => ({
+      ...heading,
+      page: Math.max(0, Math.floor((heading.top - pageRect.top) / zoom / pitch)),
+    }));
+    const current = indexed.filter(heading => heading.page <= pageIndex).at(-1) ?? indexed[0];
+    const next = indexed.find(heading => heading.page > pageIndex);
+    return {left: current.text, right: (next ?? current).text};
+  }
+
   function renderSheets(count) {
     if (count === sheetCount) return;
     sheets.replaceChildren(...Array.from({ length: count }, (_, index) => {
       const sheet = document.createElement('div');
       sheet.className = 'document-sheet';
-      const number = document.createElement('span');
-      number.className = 'document-page-number';
-      number.textContent = String(index + 1);
-      sheet.append(number);
+      const frontmatter = page.dataset.frontmatter === 'true';
+      const mainStart = page.dataset.mainStart ? Number(page.dataset.mainStart) : null;
+      const display = displayPageNumber(index, { frontmatter, mainStart });
+      sheet.dataset.parity = display.value % 2 ? 'odd' : 'even';
+      const pageNumber = display.value;
+      const plainChapter = chapterPages.has(index);
+      const marks = pageMarks(index);
+      const plainTitlePage = maketitle && index === 0;
+      const headerSlots = (plainTitlePage || plainChapter) ? {} : furnitureSlots(furniture, 'header', pageNumber);
+      const footerSlots = (plainTitlePage || plainChapter) ? {} : furnitureSlots(furniture, 'footer', pageNumber);
+      const header = furnitureElement('header', headerSlots, pageNumber,
+        Object.values(headerSlots).some(Boolean) || (!plainTitlePage && furniture.rules.headWidth !== '0pt'), marks);
+      const footer = furnitureElement('footer', footerSlots, pageNumber,
+        Object.values(footerSlots).some(Boolean) || (!plainTitlePage && furniture.rules.footWidth !== '0pt'), marks);
+      if (furniture.style === 'fancy' && !plainTitlePage && !plainChapter) {
+        if (header) sheet.append(header);
+        if (footer) sheet.append(footer);
+      } else {
+        const number = document.createElement('span');
+        number.className = 'document-page-number';
+        number.textContent = display.text;
+        sheet.append(number);
+      }
       return sheet;
     }));
     sheetCount = count;
   }
 
   function applyProfile(preamble) {
+    paragraphPreamble=preamble;
     profile = typesetProfile(preamble);
+    furniture = readPageFurniture(preamble);
     page.dataset.documentClass = profile.className;
-    page.dataset.pageStyle = profile.pageStyle;
+    page.dataset.frontmatter = String(/\\frontmatter/.test(preamble));
+    setSerializationClass(profile.className);
+    setHeadingBase(profile.className === 'book' || profile.className === 'report' ? 'chapter' : null);
+    page.dataset.pageStyle = furniture.style === 'fancy' ? 'fancy' : profile.pageStyle;
+    page.style.setProperty('--page-head-rule-width', furniture.rules.headWidth);
+    page.style.setProperty('--page-head-rule-color', furniture.rules.headColor);
+    page.style.setProperty('--page-foot-rule-width', furniture.rules.footWidth);
+    page.style.setProperty('--page-foot-rule-color', furniture.rules.footColor);
+    sheetCount = 0;
     page.style.setProperty('--tex-font-size', profile.fontSize);
     page.style.setProperty('--tex-line-height', profile.lineHeight);
     page.style.setProperty('--tex-paragraph-indent', profile.paragraphIndent);
@@ -236,6 +310,7 @@ export function installTypesetPagination(page, paper, meta, editor) {
   }
 
   function layoutFlow() {
+    paragraphLayout.layout(paragraphPreamble);
     paginationStyle.textContent = '';
     translations = [];
     setLineBreaks([]);
@@ -281,6 +356,7 @@ export function installTypesetPagination(page, paper, meta, editor) {
       if(index===0&&element.matches('.math-display'))baseRules.push(selector+'{margin-top:0}');
     });
     paginationStyle.textContent=baseRules.join('\n');
+    paragraphLayout.layout(paragraphPreamble);
     const pageRect = page.getBoundingClientRect();
     const zoom = pageRect.width / page.offsetWidth || 1;
     const computed = getComputedStyle(page);
@@ -300,6 +376,13 @@ export function installTypesetPagination(page, paper, meta, editor) {
       };
       block.lines = element.tagName === 'P' ? paragraphLines(editor, element, block, pageRect, zoom) : null;
       return block;
+    });
+    children.forEach((element, index) => {
+      if (element.matches('.page-break, [data-page-break]') && blocks[index + 1]) blocks[index + 1].forceBreak = true;
+    });
+    const chaptered = page.dataset.documentClass === 'book' || page.dataset.documentClass === 'report';
+    if (chaptered) children.forEach((element, index) => {
+      if (element.tagName === 'H1' && index > 0 && blocks[index]) blocks[index].forceBreak = true;
     });
 
     const virtual = [];
@@ -383,6 +466,60 @@ export function installTypesetPagination(page, paper, meta, editor) {
     paginationStyle.textContent = rules.join('\n');
 
     const pitch = pageHeight + pageGap;
+    let mainStartPage = null;
+    let backStartPage = null;
+    let hasFrontmatterMarker = false;
+    children.forEach((element, index) => {
+      const matter = element.matches?.('[data-matter-start]') ? element.getAttribute('data-matter-start') : null;
+      if (!matter || !blocks[index]) return;
+      const pageIndex = Math.min(plan.pageCount - 1, Math.max(0, Math.round((blocks[index].top + (translations[index] || 0) - marginTop) / pitch)));
+      if (matter === 'front') hasFrontmatterMarker = true;
+      if (matter === 'main') mainStartPage = pageIndex;
+      if (matter === 'back') backStartPage = pageIndex;
+    });
+    chapterPages = new Set();
+    editable.querySelectorAll('h1').forEach((element) => {
+      const rect = unscaledRect(element, pageRect, zoom);
+      const pageIndex = Math.min(plan.pageCount - 1, Math.max(0, Math.floor((rect.top - marginTop) / pitch)));
+      chapterPages.add(pageIndex);
+    });
+    // The mainmatter marker often sits on the last front-matter page.  Arabic
+    // numbering starts at the first chapter after that marker, not at the
+    // marker's own page.
+    let currentMatter = null;
+    let firstMainChapter = null;
+    children.forEach((element) => {
+      if (element.matches?.('[data-matter-start]')) {
+        currentMatter = element.getAttribute('data-matter-start');
+        return;
+      }
+      if (element.tagName !== 'H1' || currentMatter !== 'main' || firstMainChapter !== null) return;
+      const rect = unscaledRect(element, pageRect, zoom);
+      firstMainChapter = Math.min(plan.pageCount - 1, Math.max(0, Math.floor((rect.top - marginTop) / pitch)));
+    });
+    if (firstMainChapter !== null) mainStartPage = firstMainChapter;
+    // Find the first chapter after the explicit mainmatter marker in DOM
+    // order.  This is more reliable than guessing from chapter page sets when
+    // a front-matter chapter and the marker share a page boundary.
+    const mainMarker = editable.querySelector('[data-matter-start="main"]');
+    if (mainMarker) {
+      const nextChapter = [...editable.querySelectorAll('h1')].find(element =>
+        Boolean(mainMarker.compareDocumentPosition(element) & Node.DOCUMENT_POSITION_FOLLOWING));
+      if (nextChapter) {
+        const rect = unscaledRect(nextChapter, pageRect, zoom);
+        mainStartPage = Math.min(plan.pageCount - 1, Math.max(0, Math.floor((rect.top - marginTop) / pitch)));
+      }
+    }
+    if (hasFrontmatterMarker) page.dataset.frontmatter = 'true';
+    if (mainStartPage === null) delete page.dataset.mainStart;
+    else page.dataset.mainStart = String(mainStartPage);
+    if (backStartPage === null) delete page.dataset.backStart;
+    else page.dataset.backStart = String(backStartPage);
+    page.dataset.hasBackmatter = String(backStartPage !== null);
+    const frontmatter = page.dataset.frontmatter === 'true';
+    // Keep layout metadata off the contenteditable headings: writing data
+    // attributes there makes ProseMirror re-observe the control during every
+    // pagination pass and can detach a paragraph mid-click.
     const stackHeight = plan.pageCount * pageHeight + (plan.pageCount - 1) * pageGap;
     const editorTop = unscaledRect(editable, pageRect, zoom).top;
     const lastBodyBottom = (plan.pageCount - 1) * pitch + pageHeight - marginBottom;
@@ -424,6 +561,14 @@ export function installTypesetPagination(page, paper, meta, editor) {
       schedule();
     },
     refresh: schedule,
+    setMaketitle(value) {
+      const next = Boolean(value);
+      if (next !== maketitle) {
+        maketitle = next;
+        sheetCount = 0;
+      }
+      schedule();
+    },
     getMode: () => mode,
     getTableContinuation: () => continuedTables,
     setTableContinuation(enabled) {

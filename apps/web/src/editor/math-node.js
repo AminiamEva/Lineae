@@ -536,6 +536,11 @@ export const MathNode = Node.create({
           scriptCleanupQueued=false;
           if(field.isConnected && caretCollapsed(field))clearEmptyScripts(field,field.hasFocus());
         });
+        queueMicrotask(()=>{
+          if(!field.isConnected)return;
+          const [from,to]=field.selection?.ranges?.[0]??[field.position,field.position];
+          window.dispatchEvent(new CustomEvent('lineae-math-selection', {detail:{field, position:getPos(), from, to, collapsed:from===to}}));
+        });
       });
       field.addEventListener('lineae-commit-fences', () => commitUnclosedFences(field));
 

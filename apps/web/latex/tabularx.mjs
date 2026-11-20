@@ -106,7 +106,7 @@ export function parseTabularx(source) {
     let column=0;const row=[];
     for(const raw of rawRows[r]) {
       if(column>=specs.length)return null;
-      let begin=trivia(raw.raw),end=raw.raw.trimEnd().length,span=1,spec=specs[column],override=null;
+      let begin=trivia(raw.raw),end=Math.max(begin,raw.raw.trimEnd().length),span=1,spec=specs[column],override=null;
       const command=/^\\multicolumn(?![A-Za-z])/.exec(raw.raw.slice(begin));
       if(command) {
         const count=group(raw.raw,trivia(raw.raw,begin+command[0].length));
