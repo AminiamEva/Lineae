@@ -1,7 +1,7 @@
 import {headingOutline} from '../../latex/heading-numbering.mjs';
 import { Extension } from '@tiptap/core';
 import { Fragment, Slice } from '@tiptap/pm/model';
-import { Plugin, TextSelection } from '@tiptap/pm/state';
+import { NodeSelection, Plugin, TextSelection } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import { listMarkerCSS } from '../../latex/list-numbering.mjs';
 import { t } from '../ui/i18n.mjs';
@@ -281,6 +281,34 @@ function replaceTikzCode(editor, position, body) {
   const text = body.trim();
   const transaction = editor.state.tr.replaceWith(position + 1, position + node.nodeSize - 1, editor.state.schema.text(text));
   editor.view.dispatch(transaction);
+}
+
+function tikzBackspaceSelectionPlugin() {
+  const isTikz = node => node?.type.name === 'codeBlock' &&
+    ['tikz-general', 'tikz', 'circuitikz'].includes(node.attrs.language);
+  return new Plugin({
+    props: {
+      handleKeyDown(view, event) {
+        if (event.key !== 'Backspace' || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return false;
+        const selection = view.state.selection;
+        if (!selection.empty) return false;
+        const {$from} = selection;
+        let position = null;
+        if (isTikz($from.parent) &&
+            ($from.parentOffset === 0 || $from.parentOffset === $from.parent.content.size)) {
+          position = $from.before();
+        } else if ($from.parentOffset === 0) {
+          const blockStart = $from.before();
+          const previous = $from.doc.resolve(blockStart).nodeBefore;
+          if (isTikz(previous)) position = blockStart - previous.nodeSize;
+        }
+        if (position === null) return false;
+        event.preventDefault();
+        view.dispatch(view.state.tr.setSelection(NodeSelection.create(view.state.doc, position)).scrollIntoView());
+        return true;
+      },
+    },
+  });
 }
 
 function paperFormatting(editor = null) {
@@ -845,6 +873,7 @@ export const PaperBehavior = Extension.create({
   addProseMirrorPlugins() {
     return [
       paperFormatting(this.editor),
+      tikzBackspaceSelectionPlugin(),
       new Plugin({
         props: {
           decorations(state) {

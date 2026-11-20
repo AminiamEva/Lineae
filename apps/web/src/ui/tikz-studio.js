@@ -213,12 +213,26 @@ export function generalTikzPreviewWidget(source, preamble = '', onOpen = null) {
   return root;
 }
 
+const TIKZ_STAGING_PACKAGE = /^(?:tikz|tikz-cd|circuitikz|pgf|pgfplots|amsmath|amsfonts|amssymb|mathtools|xcolor|graphicx|calc|chemfig)$/;
+const TIKZ_STAGING_LAYOUT_COMMAND = /^\s*\\(?:geometry|pagestyle|thispagestyle|fancyhf|fancyfoot|fancyhead|fancypagestyle|renewcommand\s*\{\\headrule|renewcommand\s*\{\\footrule)/;
+
+function filterStagingBlock(block) {
+  const packageLine = /^(\s*\\(?:usepackage|RequirePackage)(?:\[[^\]]*\])?\{)([^}]*)(\})/;
+  const match = packageLine.exec(block);
+  if (match) {
+    const names = match[2].split(',').map(name => name.trim()).filter(name => TIKZ_STAGING_PACKAGE.test(name));
+    return names.length ? match[1] + names.join(',') + match[3] : null;
+  }
+  if (TIKZ_STAGING_LAYOUT_COMMAND.test(block)) return null;
+  return block;
+}
+
 export function tikzStagingFromPreamble(preamble = '') {
   const cleaned = String(preamble || '')
     .replace(/^\s*\\documentclass(?:\[[^\]]*\])?\{[^{}]+\}[^\n]*(?:\r?\n|$)/gm, '')
     .replace(/\\begin\{document\}/g, '')
     .replace(/\\end\{document\}/g, '');
-  return splitTikzFragment(cleaned).preamble;
+  return splitTikzFragment(cleaned).blocks.map(filterStagingBlock).filter(Boolean).join('\n');
 }
 
 export function openTikzStudio({ onInsert, initialLibraries, initialBody } = {}) {

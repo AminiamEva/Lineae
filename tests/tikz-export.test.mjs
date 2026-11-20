@@ -148,3 +148,17 @@ test('TikZ staging keeps packages and pgfplots declarations', () => {
   assert.match(staging, /\\usetikzlibrary\{arrows\.meta\}/);
   assert.doesNotMatch(staging, /documentclass/);
 });
+
+test('TikZ staging filters document-only packages and layout commands', () => {
+  const preamble = String.raw`\documentclass{article}
+\usepackage[margin=2.2cm]{geometry}
+\usepackage{ctex}
+\usepackage{fancyhdr}
+\usepackage{pgfplots}
+\pgfplotsset{compat=1.18}
+\pagestyle{fancy}
+\fancyfoot[L]{ss}`;
+  const staging = tikzStagingFromPreamble(preamble);
+  assert.match(staging, /\\usepackage\{pgfplots\}/);
+  assert.doesNotMatch(staging, /geometry|ctex|fancyhdr|pagestyle|fancyfoot/);
+});

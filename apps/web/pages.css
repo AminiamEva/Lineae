@@ -1164,6 +1164,10 @@ body.format-painter-active .ProseMirror * { cursor:copy; }
 .document-page .ProseMirror pre[data-language="tikz-general"] { display:none; }
 .document-page .tikz-general-preview { margin:var(--image-intextsep,12pt) 0; padding:0; border:0; border-radius:0; background:transparent; text-align:center; overflow:visible; }
 .document-page .tikz-general-preview svg { display:block; max-width:100%; height:auto; margin:0 auto; }
+.tikz-general-preview:has(+ .ProseMirror-selectednode),
+.tikz-code-preview:has(+ .ProseMirror-selectednode),
+.ProseMirror-selectednode + .tikz-general-preview,
+.ProseMirror-selectednode + .tikz-code-preview { outline:2px solid light-dark(#2f6fed,#8ab4ff); outline-offset:2px; }
 .tikz-field input:disabled { opacity:.45; }
 
 .tikz-icon-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:4px; padding:4px 2px 8px; }
