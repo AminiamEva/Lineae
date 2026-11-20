@@ -2651,6 +2651,9 @@ A & B \\
     assert.equal(await paper.evaluate(element=>element.editor.state.storedMarks),null,
       'Leaving a formula does not arm a stored-mark cursor that can restart composition');
     await page.bringToFront();
+    // Headless Chromium's IME client can lag behind DOM focus on Linux.
+    // Let the contenteditable focus reach the browser before sending CDP input.
+    await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
     const ime=await browserContext.newCDPSession(page);
     await ime.send('Input.imeSetComposition',{text:'zhong',selectionStart:5,selectionEnd:5});
     await page.waitForFunction(()=>document.querySelector('.ProseMirror p')?.textContent.endsWith('zhong'));
