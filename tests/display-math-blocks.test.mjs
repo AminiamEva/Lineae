@@ -1,0 +1,95 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {importBlocks,serialize} from '../apps/web/src/editor/latex-codec.js';
+import {parseDocument} from '../apps/web/latex/document.mjs';
+import {sourceProjection,richSourceChanges} from '../apps/web/src/editor/source-sync.js';
+const text=n=>(n.content??[]).map(c=>c.text??'').join('');
+const wrap=s=>'\\begin{document}\r\n'+s+'\n\\end{document}\r\n';
+
+for(const [open,close] of [['$$','$$'],['\\[','\\]']]) {
+  for(const latex of ['x^2', '\r\nx=1\n+y\r\n', '\n x=1\r\n\n+y\n', String.raw`\begin{aligned}x&=1\\[6pt]y&=2\end{aligned}`]) {
+    test('extract '+open+' '+JSON.stringify(latex),()=>{
+      const source='Before.'+open+latex+close+'After.';
+      for(const nodes of [importBlocks(source),parseDocument(wrap(source)).blocks.flatMap(importBlocks)]) {
+        assert.deepEqual(nodes.map(n=>n.type),['paragraph','mathBlock','paragraph']);
+        assert.equal(text(nodes[0]),'Before.');assert.equal(text(nodes[2]),'After.');
+        assert.deepEqual(nodes[1].attrs,{latex,display:true,delimiter:open});
+        assert.equal(serialize(nodes[1]),open+latex+close+'\n\n');
+      }
+    });
+  }
+  test('adjacent '+open+' displays remain separate',()=>{
+    const nodes=importBlocks(open+'a'+close+open+'b'+close);
+    assert.deepEqual(nodes.map(n=>n.type),['mathBlock','mathBlock']);
+    assert.deepEqual(nodes.map(n=>n.attrs.latex),['a','b']);
+  });
+  test('mixed inline and '+open+' display math retain delimiters',()=>{
+    const nodes=importBlocks('Before $a$ '+open+'b'+close+' after \\(c\\).');
+    assert.deepEqual(nodes.map(n=>n.type),['paragraph','mathBlock','paragraph']);
+    assert.equal(nodes[0].content.find(n=>n.type==='math').attrs.delimiter,'$');
+    assert.equal(nodes[2].content.find(n=>n.type==='math').attrs.delimiter,'\\(');
+  });
+  test('mixed EOL projection with '+open+' patches only neighboring text',()=>{
+    const source=wrap('Before.\r\n'+open+'\r\nx+y\n'+close+'\nAfter.\r\n\n\\unknown{keep}');
+    const doc={type:'doc',content:parseDocument(source).blocks.flatMap(importBlocks)};
+    assert.deepEqual(doc.content.map(n=>n.type),['paragraph','mathBlock','paragraph','raw']);
+    const projection=sourceProjection(source,doc);assert.ok(projection);
+    assert.deepEqual(richSourceChanges(projection,doc),[]);
+    doc.content[0].content[0].text='Edited.';
+    const changes=richSourceChanges(projection,doc);assert.ok(changes);
+    assert.equal(changes.toReversed().reduce((s,c)=>s.slice(0,c.from)+c.insert+s.slice(c.to),source),source.replace('Before.','Edited.'));
+  });
+}
+test('ordinary inline math remains inline',()=>{
+  const [p]=importBlocks(String.raw`A $x$ B \(y\) C`);
+  assert.equal(p.type,'paragraph');assert.deepEqual(p.content.filter(n=>n.type==='math').map(n=>n.attrs.latex),['x','y']);
+});
+test('line break optional spacing is not a display opener',()=>{
+  for(const source of [String.raw`A\\[6pt]B`,String.raw`A\\[0.5em]B`]) {
+    const nodes=importBlocks(source);assert.equal(nodes.length,1);assert.equal(nodes[0].type,'paragraph');
+    assert.equal(nodes[0].content.filter(n=>n.type==='hardBreak').length,1);
+  }
+  const lone=String.raw`A\[6pt]B`;
+  assert.deepEqual(importBlocks(lone),[{type:'raw',attrs:{source:lone}}]);
+});
+test('backslash parity distinguishes line break followed by display',()=>{
+  const nodes=importBlocks(String.raw`A\\\[x\]B`);
+  assert.deepEqual(nodes.map(n=>n.type),['paragraph','mathBlock','paragraph']);
+  assert.equal(nodes[1].attrs.latex,'x');
+});
+test('escaped dollars never create display blocks',()=>{
+  const nodes=importBlocks(String.raw`Price \$\$ and $x$`);
+  assert.deepEqual(nodes.map(n=>n.type),['paragraph']);
+  assert.equal(nodes[0].content.filter(n=>n.type==='math').length,1);
+});
+test('comments cannot end displays or introduce headings',()=>{
+  for(const [open,close] of [['$$','$$'],['\\[','\\]']]) {
+    const latex='a % '+close+' \\section{fake}\r\n+b';
+    const nodes=importBlocks('Before.'+open+latex+close+'After.');
+    assert.deepEqual(nodes.map(n=>n.type),['paragraph','mathBlock','paragraph']);
+    assert.equal(nodes[1].attrs.latex,latex);
+  }
+});
+for(const source of [
+  String.raw`\begin{future}A $$x$$ \[y\]\end{future}`,
+  String.raw`\newcommand{\x}{A $$x$$ \[y\]}`,
+  String.raw`\unknown{A $$x$$ \[y\]}`,
+  String.raw`A $$unclosed`,String.raw`A \[unclosed`,
+  String.raw`A \[x$$ B`,String.raw`A $$x\] B`,
+])test('unsafe or opaque source remains Raw: '+source,()=>{
+  assert.deepEqual(importBlocks(source),[{type:'raw',attrs:{source}}]);
+  const parsed=parseDocument(wrap(source));assert.equal(parsed.start+parsed.blocks.join('')+parsed.end,wrap(source));
+});
+test('literal environments retain apparent delimiters as code',()=>{
+  const source='\\begin{lstlisting}\n$$x$$ \\[y\\]\n\\end{lstlisting}';
+  assert.equal(importBlocks(source)[0].type,'codeBlock');
+});
+test('headings and math are not extracted from inside inline math',()=>{
+  const source=String.raw`A $\text{\section{fake}}$ B \(\text{\[fake\]}\)`;
+  const nodes=importBlocks(source);assert.deepEqual(nodes.map(n=>n.type),['paragraph']);
+  assert.equal(nodes[0].content.filter(n=>n.type==='math').length,2);
+});
+test('top-level heading followed immediately by a display retains both structures',()=>{
+  const nodes=importBlocks(String.raw`\section{\textbf{Title}}Text.$$x$$Tail.`);
+  assert.deepEqual(nodes.map(n=>n.type),['heading','paragraph','mathBlock','paragraph']);
+});

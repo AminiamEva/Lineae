@@ -2,9 +2,13 @@ import {richTableRow,wrapCell} from '../../latex/table-spans.mjs';
 import { importBlock, importBlocks } from '../../latex/blocks.mjs';
 import { listLabel } from '../../latex/list-numbering.mjs';
 import { textCommands } from '../../latex/inline.mjs';
-import { serializeImage, serializeSubfigures } from '../../latex/images.mjs';
+import { serializeImage } from '../../latex/images.mjs';
+import {serializeReference,serializeHeadingLabel} from '../../latex/reference-commands.mjs';
 import { alignmentLabel, displayEnvironment } from '../../latex/math-environments.mjs';
 export { importBlock, importBlocks };
+export {parseTableFloat} from '../../latex/table-floats.mjs';
+import {serializeTblr,serializeSourceTable} from '../../latex/tblr.mjs';
+import {serializeTextEnvironment} from '../../latex/text-environments.mjs';
 
 const escape = text => text.replace(/[\u00A0\\{}%$&#_^~§¶•…–—‘’“”®™©]/g, char => ({
   '\\': '\\textbackslash{}', '~': '\\textasciitilde{}', '^': '\\textasciicircum{}', '\u00A0': '~',
@@ -19,8 +23,16 @@ const withoutPlaceholders = latex => latex.replace(/\\placeholder\{[^{}]*\}/g, '
 
 let serializationClass = 'article';
 export function setSerializationClass(name) { serializationClass = (name || 'article').toLowerCase(); }
+
 export function serialize(node) {
-  const content = (node.content ?? []).map(serialize).join('');
+  const content = (node.content ?? []).map((child,index,children) => {
+    const value = serialize(child);
+    // Raw owns its exact bytes. A parent owns any new block separator needed
+    // when composing nodes, so serializing Raw alone never normalizes its EOLs.
+    if (child.type !== 'raw' || index === children.length-1 || /(?:\r?\n)[ \t]*(?:\r?\n)[ \t]*$/.test(value)) return value;
+    const ending = value.match(/\r?\n[ \t]*$/)?.[0];
+    return value + (ending ? (ending.startsWith('\r\n') ? '\r\n' : '\n') : '\n\n');
+  }).join('');
   if (node.type === 'text') {
     const command = node.marks?.find(mark => mark.type === 'textCommand')?.attrs?.name;
     const glyph=Object.hasOwn(textCommands,command) ? textCommands[command] : '';
@@ -32,18 +44,13 @@ export function serialize(node) {
       if (mark.type === 'italic') value = '\\textit{' + value + '}';
       if (mark.type === 'strike') value = '\\sout{' + value + '}';
       if (mark.type === 'code') value = '\\texttt{' + value + '}';
-      if (mark.type === 'underline') {
-        const command={double:'uuline',wavy:'uwave'}[mark.attrs?.style]??'underline';
-        value='\\'+command+'{'+value+'}';
-      }
+      if (mark.type === 'underline') value = '\\underline{' + value + '}';
       if (mark.type === 'superscript') value = '\\textsuperscript{' + value + '}';
       if (mark.type === 'subscript') value = '\\textsubscript{' + value + '}';
       if (mark.type === 'smallcaps') value = '\\textsc{' + value + '}';
       if (mark.type === 'boxed') value = '\\fbox{' + value + '}';
-      if (mark.type === 'circled') value = '\\textcircled{' + value + '}';
       if (mark.type === 'textStyle') {
         if (/^#[\da-f]{6}$/i.test(mark.attrs.color ?? '')) value='\\textcolor[HTML]{'+mark.attrs.color.slice(1)+'}{'+value+'}';
-        if (/^#[\da-f]{6}$/i.test(mark.attrs.backgroundColor ?? '')) value='\\colorbox[HTML]{'+mark.attrs.backgroundColor.slice(1)+'}{'+value+'}';
         const size=Number.parseFloat(mark.attrs.fontSize);
         if(size>=6 && size<=72)value='{\\fontsize{'+size+'}{'+Math.ceil(size*1.2)+'}\\selectfont '+value+'}';
         const family={
@@ -62,40 +69,25 @@ export function serialize(node) {
     case 'theoremBlock': return '\\begin{'+node.attrs.kind+'}'+(node.attrs.title?'['+node.attrs.title+']':'')+'\n'+content.trimEnd()+'\n\\end{'+node.attrs.kind+'}\n\n';
     case 'codeBlock': {
       const language=node.attrs?.language;
-      if(language==='tikz') return (node.content??[]).map(child=>child.text??'').join('')+'\n\n';
       const option=/^[A-Za-z0-9+_-]+$/.test(language??'') ? '[language='+language+']' : '';
       return '\\begin{lstlisting}'+option+'\n'+(node.content??[]).map(child=>child.text??'').join('')+'\n\\end{lstlisting}\n\n';
     }
     case 'documentImage': return serializeImage(node.attrs);
-    case 'subfigures': return serializeSubfigures(node.attrs, (node.content ?? []).map(child => ({attrs: child.attrs})));
     case 'paragraph': {
-      let body=(node.attrs?.indent === false ? '\\noindent ' : node.attrs?.explicitIndent ? '\\indent ' : '') + content;
-      const command={left:'raggedright',right:'raggedleft',center:'centering',justify:'justifying'}[node.attrs?.align];
-      if (command) body='{\\'+command+' '+body+'\\par}';
-      const lineSpacing=Number(node.attrs?.lineSpacing);
-      if (lineSpacing && lineSpacing!==1) body='{\\linespread{'+lineSpacing+'}\\selectfont '+body+'\\par}';
-      const spaceBefore=node.attrs?.spaceBefore, spaceAfter=node.attrs?.spaceAfter;
-      if (spaceBefore || spaceAfter) body='{\\vspace*{'+(spaceBefore??'0pt')+'}'+body+'\\par\\vspace*{'+(spaceAfter??'0pt')+'}}';
-      if (node.attrs?.shading) body='{\\colorbox{'+node.attrs.shading+'}{\\parbox{\\linewidth}{'+body+'}}}';
-      if (node.attrs?.border) body='{\\fbox{\\parbox{\\linewidth}{'+body+'}}}';
-      return body+'\n\n';
+      const body=(node.attrs?.indent === false ? '\\noindent ' : node.attrs?.explicitIndent ? '\\indent ' : '') + content;
+      const command={left:'raggedright',right:'raggedleft',center:'centering'}[node.attrs?.align];
+      return (command ? '{\\'+command+' '+body+'\\par}' : body)+'\n\n';
     }
     case 'heading': {
-      const chaptered = serializationClass === 'book' || serializationClass === 'report';
-      const names = chaptered ? ['chapter','section','subsection'] : ['section','subsection','subsubsection'];
-      const name = node.attrs.command === 'chapter' ? 'chapter' : names[Math.min(Math.max(node.attrs.level,1),3)-1];
+      const name = ['section','subsection','subsubsection'][Math.min(node.attrs.level,3)-1];
       const short = node.attrs.shortTitle ? '[' + node.attrs.shortTitle + ']' : '';
-      const label = node.attrs.label ? '\\label{' + node.attrs.label + '}' : '';
+      const label = serializeHeadingLabel(node.attrs);
       return '\\' + name + (node.attrs.numbered === false ? '*' : '') + short + '{' + content + '}' + label + '\n\n';
     }
-    case 'appendixStart': return '\\appendix\n\n';
-    case 'layoutCommand': return node.attrs.command + '\n\n';
-    case 'lipsum': return '\\lipsum[' + (node.attrs.range || '1-7') + ']';
-    case 'matterStart': return '\\' + (node.attrs.matter || 'main') + '\n\n';
     case 'tableOfContents': return '\\tableofcontents\n\n';
-    case 'pageBreak': return '\\newpage\n\n';
-    case 'multiColumn': return '\\begin{multicols}{' + (node.attrs.count ?? 2) + '}\n' + content + '\\end{multicols}\n\n';
-    case 'blockquote': return '\\begin{quote}\n' + content + '\\end{quote}\n\n';
+    case 'blockquote': return node.attrs?.environmentSource
+      ? serializeTextEnvironment(node,serialize)??node.attrs.environmentSource.source
+      : '\\begin{quote}\n' + content + '\\end{quote}\n\n';
     case 'horizontalRule': return '\\hrule\n\n';
     case 'bulletList': {
       const marker = { '◦':'\\ensuremath{\\circ}', '▪':'\\rule{.45em}{.45em}' }[node.attrs.marker] ?? node.attrs.marker;
@@ -134,67 +126,40 @@ export function serialize(node) {
       if (node.attrs.delimiter === '\\(') return prefix + '\\(' + latex + '\\)';
       return prefix + (node.attrs.display ? '\\[' + latex + '\\]' : '$' + latex + '$');
     }
-    case 'ref': return (node.attrs.equation ? '\\eqref{' : '\\ref{') + node.attrs.key + '}';
-    case 'cite': return '\\cite{' + node.attrs.key + '}';
+    case 'ref': return serializeReference(node.attrs,'ref');
+    case 'cite': return serializeReference(node.attrs,'cite');
     case 'footnote': return '\\footnote{' + node.attrs.text + '}';
-    case 'label': return '\\label{' + node.attrs.key + '}';
-    case 'raw': return node.attrs.source.replace(/\n+$/, '') + '\n\n';
+    case 'label': return serializeReference(node.attrs,'label');
+    case 'raw': return node.attrs.source;
     case 'hardBreak': return '\\\\\n';
     case 'table': {
+      if(node.attrs.tblr)return serializeTblr(node,serialize)??node.attrs.tblr.source;
+      if(node.attrs.tabularx)return serializeSourceTable(node,serialize,'tabularx')??node.attrs.tabularx.source;
       let columns = node.attrs.columns || 'l'.repeat(node.content[0]?.content.length ?? 1);
       const columnCount=(node.content[0]?.content??[]).reduce((total,cell)=>total+(cell.attrs.colspan??1),0)||1;
       const occupied=Array(columnCount).fill(0);
       const border = node.attrs.borderMode;
-      const managedRules = Boolean(border || node.attrs.leftRule || node.attrs.rightRule || node.attrs.middleVerticalRule);
-      if (managedRules) {
+      if (border) {
         columns = columns.replace(/\|/g,'');
-        if (border === 'outer' || border === 'grid') columns='|'+columns;
-        if (border === 'outer' || border === 'grid' || node.attrs.rightRule) columns=columns+'|';
-        if (border === 'grid') columns=columns.replace(/([pmb]\{[^{}]*\}|[lcr])(?!\|)/g,'$1|').replace(/\|\|/g,'|');
-        if (node.attrs.leftRule && !columns.startsWith('|')) columns='|'+columns;
-        if (node.attrs.middleVerticalRule) columns=columns.replace(/([lcr])(?=[lcr])/g,'$1|');
+        if (border === 'outer') columns='|'+columns+'|';
+        if (border === 'grid') columns='|'+columns.replace(/([pmb]\{[^{}]*\}|[lcr])/g,'$1|');
       }
-      const midRuleMode = node.attrs.midRuleMode ?? 'none';
-      const explicitHorizontal = node.attrs.horizontalRuleMode === 'explicit';
-      const customRules = !border && !explicitHorizontal && (node.attrs.topRule || node.attrs.bottomRule || midRuleMode !== 'none');
-      const storedRules = !border && (explicitHorizontal || (!customRules && (
-        node.content.some(row => (row.attrs?.rules ?? []).some(rule => /^\\(?:toprule|midrule|bottomrule|hline|cmidrule)/.test(String(rule)))) ||
-        (node.attrs.trailingRules ?? []).some(rule => /^\\(?:toprule|midrule|bottomrule|hline|cmidrule)/.test(String(rule)))
-      )));
-      const ruleLine = rule => {
-        const value=String(rule).trim();
-        return value ? (value.startsWith('\\') ? value : '\\'+value)+'\n' : '';
-      };
       let body = '';
       node.content.forEach((row, index) => {
         if (border === 'grid' || border === 'horizontal' || (border==='outer' && index===0)) body += '\\hline\n';
-        else if (storedRules) body += (row.attrs?.rules ?? []).map(ruleLine).join('');
-        else if (!border && !customRules && node.attrs.booktabs && index === 0) body += '\\toprule\n';
-        if (customRules && index === 0 && node.attrs.topRule) body += '\\toprule\n';
+        if (!border && node.attrs.booktabs && index === 0) body += '\\toprule\n';
         body += richTableRow(row,occupied,serialize);
-        if (storedRules) return;
-        if (!border && !customRules && node.attrs.booktabs && index === 0 && node.content.length > 1) body += '\\midrule\n';
-        if (customRules && index < node.content.length - 1 && (midRuleMode === 'all' || (midRuleMode === 'first' && index === 0))) body += '\\midrule\n';
+        if (!border && node.attrs.booktabs && index === 0 && node.content.length > 1) body += '\\midrule\n';
       });
       if (border && border!=='none') body += '\\hline\n';
-      if (storedRules) body += (node.attrs.trailingRules ?? []).map(ruleLine).join('');
-      else if (!border && !customRules && node.attrs.booktabs) body += '\\bottomrule\n';
-      if (customRules && node.attrs.bottomRule) body += '\\bottomrule\n';
+      if (!border && node.attrs.booktabs) body += '\\bottomrule\n';
       let tabular='\\begin{tabular}{' + columns + '}\n' + body + '\\end{tabular}';
-      if (node.attrs.arrayStretch && Number(node.attrs.arrayStretch) !== 1) tabular='{\\renewcommand{\\arraystretch}{'+node.attrs.arrayStretch+'}\n'+tabular+'\n}';
-      if (node.attrs.fontSize && /^(small|footnotesize|scriptsize)$/.test(node.attrs.fontSize)) tabular='{\\'+node.attrs.fontSize+' '+tabular+'}';
-      else if (node.attrs.fontSize && /^\d+(?:\.\d+)?pt$/.test(node.attrs.fontSize)) {
-        const points=Number.parseFloat(node.attrs.fontSize);
-        tabular='{\\fontsize{'+node.attrs.fontSize+'}{'+(points*1.2).toFixed(1)+'pt}\\selectfont '+tabular+'}';
-      }
-      if (node.attrs.tableScale && Number(node.attrs.tableScale) !== 1) tabular='\\scalebox{'+node.attrs.tableScale+'}{'+tabular+'}';
       if (/^\d+(?:\.\d+)?pt$/.test(node.attrs.borderWidth??''))
         tabular='{\\setlength{\\arrayrulewidth}{'+node.attrs.borderWidth+'}\n'+tabular+'\n}';
-      const hasCaption = node.attrs.captionEnabled || node.attrs.caption!=null;
-      if (hasCaption || node.attrs.label || node.attrs.centered || node.attrs.placement)
+      if (node.attrs.caption!=null || node.attrs.label || node.attrs.centered || node.attrs.placement)
         return '\\begin{table}'+(node.attrs.placement?'['+node.attrs.placement+']':'')+'\n'
           +(node.attrs.centered?'\\centering\n':'')
-          +(hasCaption?'\\caption{'+(node.attrs.caption??'')+'}\n':'')
+          +(node.attrs.caption!=null?'\\caption{'+node.attrs.caption+'}\n':'')
           +(node.attrs.label?'\\label{'+node.attrs.label+'}\n':'')
           +tabular+'\n\\end{table}\n\n';
       return tabular+'\n\n';

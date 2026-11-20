@@ -22,12 +22,20 @@ const stylePattern = /^\\(textsc|fbox)\{/;
 const scriptPattern = /^\\(textsuperscript|textsubscript)\{/;
 const ignoredPattern = /^\\(?:noindent|indent|smallskip|medskip|bigskip|newpage|clearpage|pagebreak|nolinebreak|hspace|vspace)(?:\{[^{}]*\})?[ \t]*/;
 
-export function parseInline(source, depth = 0) {
+import {referenceAt} from './reference-commands.mjs';
+import {group as balancedGroup} from './tblr.mjs';
+
+export function parseInline(source, depth = 0, options = {}) {
   if (depth > 40) return null;
   const nodes = [];
   let cursor = 0;
   while (cursor < source.length) {
     const rest = source.slice(cursor);
+    if(options.groups && rest[0]==='{') {
+      const arg=balancedGroup(rest,0);if(!arg)return null;
+      const children=parseInline(arg.value,depth+1,options);if(!children)return null;
+      nodes.push(...children);cursor+=arg.end;continue;
+    }
 
     const comment = rest.match(/^%[^\r\n]*(?:\r?\n)?/);
     if (comment) { cursor += comment[0].length; continue; }
@@ -68,14 +76,12 @@ export function parseInline(source, depth = 0) {
     const footnote = rest.match(/^\\footnote\{([^{}\r\n]*)\}/);
     if (footnote) { nodes.push({ footnote: footnote[1] }); cursor += footnote[0].length; continue; }
 
-    const reference = rest.match(/^\\(eqref|ref)\{([^{}\r\n]+)\}/);
-    if (reference) { nodes.push({ ref: reference[2], ...(reference[1]==='eqref' && {equation:true}) }); cursor += reference[0].length; continue; }
-
-    const citation = rest.match(/^\\cite\{([^{}\r\n]+)\}/);
-    if (citation) { nodes.push({ cite: citation[1] }); cursor += citation[0].length; continue; }
-
-    const label = rest.match(/^\\label\{([^{}\r\n]+)\}/);
-    if (label) { nodes.push({ label: label[1] }); cursor += label[0].length; continue; }
+    const reference=referenceAt(rest);
+    if(reference) {
+      const {kind,key,command,starred,sourceCommand}=reference;
+      nodes.push({[kind]:key,referenceAttrs:{command,starred,sourceCommand},...(command==='eqref'&&{equation:true})});
+      cursor+=reference.end;continue;
+    }
 
     const emphasis = rest.match(/^\\(textbf|textit|emph|textsl|sout|underline)\{/);
     const underline = rest.match(/^\\(uline|uuline|uwave)\{/);
@@ -101,7 +107,7 @@ export function parseInline(source, depth = 0) {
       else if (rest[end] === '}') balance--;
     }
     if (balance) return null;
-    const children = parseInline(rest.slice(start, end - 1), depth + 1);
+    const children = parseInline(rest.slice(start, end - 1), depth + 1, options);
     if (!children) return null;
     if (plain) { nodes.push(...children); cursor += end; continue; }
     if (style) {

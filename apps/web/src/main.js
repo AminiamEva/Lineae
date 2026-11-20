@@ -70,6 +70,8 @@ import { wrapMathWithDelimiters } from '../latex/delimiters.mjs';
 import { readDelimiterPair } from './editor/delimiter-input.js';
 import { serialize, importBlocks, setSerializationClass } from './editor/latex-codec.js';
 import { setHeadingBase } from '../latex/blocks.mjs';
+import {TblrSource} from './editor/tblr-extension.js';
+import {TabularxSource} from './editor/tabularx-extension.js';
 import { Editor, Node, Extension, Mark, mergeAttributes, wrappingInputRule } from '@tiptap/core';
 import StarterKit from '@tiptap/starter-kit';
 import CodeBlock from '@tiptap/extension-code-block';
@@ -657,7 +659,7 @@ paper.before(documentPage);documentPage.append(paper);
 paper.replaceChildren();
 editor=new Editor({
   element:paper,
-  extensions:[AppendixStart,MatterStart,LayoutCommand,Lipsum,ProjectRegion,PageLayoutHistory,ConfigurableStarterKit.configure({heading:{levels:[1,2,3]},codeBlock:false}),LanguageCodeBlock,MultiSelection,PaperBehavior,TextStyle,TextCommand,Underline,Superscript,Subscript,SmallCaps,Boxed,Circled,PageBreak,MultiColumn,Table.configure({resizable:true}),TableRow,TableCell,TableHeader,Raw,DocumentImage,TheoremBlock,DescriptionList,DescriptionItem,MathNode,MathBlock,Ref,Cite,Footnote,Label,Subfigures,TableOfContents,Shortcuts],
+  extensions:[AppendixStart,MatterStart,LayoutCommand,Lipsum,ProjectRegion,PageLayoutHistory,ConfigurableStarterKit.configure({heading:{levels:[1,2,3]},codeBlock:false}),LanguageCodeBlock,MultiSelection,PaperBehavior,TextStyle,TextCommand,Underline,Superscript,Subscript,SmallCaps,Boxed,Circled,PageBreak,MultiColumn,Table.configure({resizable:true}),TableRow,TableCell,TableHeader,TblrSource,TabularxSource,Raw,DocumentImage,TheoremBlock,DescriptionList,DescriptionItem,MathNode,MathBlock,Ref,Cite,Footnote,Label,Subfigures,TableOfContents,Shortcuts],
   content:'<p></p>',
 });
 function installMarginSelection(editor,page,paper) {

@@ -44,3 +44,14 @@
 - Area: `apps/web/pages.css`
 - Fix: the gap is the outer `.document-image[data-wrap]` margin, not figure/image padding. Top margin is `\intextsep + 0.5 × line-height` so the image top sits near the second wrapped line's midline; bottom uses `2.25 × line-height` margin plus `1.1 × line-height` padding, because a float's margin alone does not extend its wrapping box. The side gap now uses the actual `\columnsep` (10pt in article) from the computed margin instead of a hard-coded 10px; overhang is subtracted when present.
 - Verified against XeLaTeX output: the first wrapped line starts 13.8 pt below the image top in the reference, and the updated Lineae layout matches within about 0.3 pt.
+
+## PR #26 table model: removed interactive table capabilities
+
+- Status: accepted trade-off in the PR #26 merge.
+- Table architecture: PR #26 is now authoritative. It keeps the original table source and patches cell source ranges (`tblr`, `tabularx`, table floats) instead of rebuilding a semantic table model.
+- Removed/deferred:
+  - per-edge table line toggle buttons;
+  - row/cell rule attrs (`rules`, `trailingRules`, `horizontalRuleMode`);
+  - cell `ruleLeft`/`ruleRight` and column-rule interactions that depended on the semantic AST;
+  - table margin/height edits that assumed the semantic table serializer.
+- Consequence: complex source-preserving tables remain editable, but the previous visual edge-toggle interactions are no longer available. Any replacement must be rebuilt on PR #26 source ranges and must not mutate the semantic table rule attrs.

@@ -1,13 +1,21 @@
 const files = new Map();
+const listeners = new Set();
 const BIB_METADATA_PREFIX = '% lineae-bib-state:';
 
 export function rememberAsset(path,file) {
   if (typeof path !== 'string' || !path || !file) return false;
   files.set(path,file);
+  for(const listener of listeners)listener();
   return true;
 }
 export function projectAssets() { return [...files.entries()]; }
-export function clearProjectAssets() { files.clear(); }
+export function clearProjectAssets() { files.clear();for(const listener of listeners)listener(); }
+export function onAssetsChanged(listener) { listeners.add(listener);return ()=>listeners.delete(listener); }
+export function resolveImageAsset(path) {
+  if(files.has(path))return files.get(path);
+  const matches=[...files].filter(([key])=>key.replace(/\.[^./]+$/,'')===path);
+  return matches.length===1?matches[0][1]:null;
+}
 
 function encode(value) {
   const bytes = new TextEncoder().encode(value);

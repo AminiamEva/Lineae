@@ -177,17 +177,17 @@ export class Project {
     this.mainFileId = id;
     this.persistMetadata();
   }
-  save(id) { return this.operation(()=>this.saveNow(id)); }
-  async saveNow(id) {
+  save(id, snapshot) { return this.operation(()=>this.saveNow(id,snapshot)); }
+  async saveNow(id,snapshot) {
     const file = this.file(id);
     if(file.missing)throw new Error('File missing on disk; refresh the project before saving: '+file.path);
     if(file.externalChanged)throw new Error('File changed on disk; reload before saving: '+file.path);
-    if (!file.dirty) return;
+    if (!file.dirty && (snapshot===undefined || snapshot===file.saved)) return;
     const disk = await this.adapter.read(file.path);
     if (disk.length !== file.bytes.length || disk.some((value, index) => value !== file.bytes[index])) {
       throw new Error(`File changed on disk: ${file.path}`);
     }
-    const draft = file.draft, bytes = new TextEncoder().encode(draft);
+    const draft = snapshot ?? file.draft, bytes = new TextEncoder().encode(draft);
     await this.adapter.write(file.path, bytes, file.bytes);
     file.bytes = bytes;
     file.saved = draft;
