@@ -178,6 +178,87 @@ export const MATH_ACCENTS = [
   ['tilde', 'ã'], ['vec', 'a⃗'], ['widehat', 'â', 'over'], ['widetilde', 'ã', 'over'], ['overline', 'a', 'over'],
 ];
 
+const UNARY_WRAPPERS = new Set([
+  'boxed', 'underline', 'mathbf', 'mathit', 'mathrm', 'mathsf', 'mathtt',
+  'mathcal', 'mathscr', 'mathbb', 'mathfrak', 'boldsymbol', 'pmb',
+  'hat', 'widehat', 'tilde', 'widetilde', 'bar', 'overline', 'vec',
+  'acute', 'grave', 'breve', 'check', 'ddot', 'dot',
+]);
+const FONT_COMMANDS = new Set([...MATH_FONTS_ALPHA, ...MATH_FONTS_SYMBOL].map(([cmd]) => cmd));
+const SIZE_PREFIX = /^\s*\\(?:displaystyle|textstyle|scriptstyle|scriptscriptstyle)\s*/;
+
+// Match a formatting wrapper that spans the entire expression, e.g.
+// \underline{a}, \mathbf{a}, \textcolor{red}{a}.  Returns null for anything
+// that is not a single wrapper command enclosing the whole string.
+function matchOuterWrapper(latex) {
+  const lead = /^\s*/.exec(latex)[0].length;
+  const rest = latex.slice(lead);
+  const match = /^\\([A-Za-z]+)/.exec(rest);
+  if (!match) return null;
+  const cmd = match[1];
+  if (cmd !== 'textcolor' && !UNARY_WRAPPERS.has(cmd)) return null;
+  let index = match[0].length;
+  const groups = [];
+  while (true) {
+    while (index < rest.length && /\s/.test(rest[index])) index++;
+    if (rest[index] !== '{') break;
+    const start = index;
+    let depth = 0;
+    for (; index < rest.length; index++) {
+      if (rest[index] === '{') depth++;
+      else if (rest[index] === '}' && --depth === 0) { index++; break; }
+    }
+    if (depth !== 0) return null;
+    groups.push(rest.slice(start + 1, index - 1));
+  }
+  if (!groups.length) return null;
+  if (cmd === 'textcolor' ? groups.length < 2 : groups.length !== 1) return null;
+  const after = rest.slice(index);
+  if (after.trim()) return null;
+  return { lead, cmd, groups, body: groups[groups.length - 1], after };
+}
+
+function removeCommandFromWrapperChain(latex, commands) {
+  const size = SIZE_PREFIX.exec(latex);
+  if (size) {
+    const inner = removeCommandFromWrapperChain(latex.slice(size[0].length), commands);
+    if (inner === null) return null;
+    return latex.slice(0, size[0].length) + inner;
+  }
+  const wrapper = matchOuterWrapper(latex);
+  if (!wrapper) return null;
+  if (commands.has(wrapper.cmd)) {
+    return latex.slice(0, wrapper.lead) + wrapper.body + wrapper.after;
+  }
+  const inner = removeCommandFromWrapperChain(wrapper.body, commands);
+  if (inner === null) return null;
+  const args = wrapper.groups.slice(0, -1).map(group => `{${group}}`).join('');
+  return latex.slice(0, wrapper.lead) + `\\${wrapper.cmd}${args}{${inner}}` + wrapper.after;
+}
+
+// Wrap unless the command already frames the whole expression, in which case
+// remove it (Word-like underline/bold toggles).
+export function toggleWrapMath(latex, wrapper, arg) {
+  if (!latex) return latex;
+  const removed = removeCommandFromWrapperChain(latex, new Set([wrapper]));
+  if (removed !== null) return removed;
+  const open = arg === undefined ? `\\${wrapper}{` : `\\${wrapper}{${arg}}{`;
+  return open + latex + '}';
+}
+
+// Strip every math font command while preserving colors, sizes and accents.
+export function clearMathFont(latex) {
+  let result = latex;
+  let changed = false;
+  while (true) {
+    const next = removeCommandFromWrapperChain(result, FONT_COMMANDS);
+    if (next === null) break;
+    result = next;
+    changed = true;
+  }
+  return changed ? result : latex;
+}
+
 export function installMathFloatToolbar({ editor }) {
   const bar = document.createElement('div');
   bar.className = 'math-float-toolbar';
@@ -251,8 +332,7 @@ export function installMathFloatToolbar({ editor }) {
     }
     bar.append(grid);
     bar.append(mk('mft-btn', t('框', 'Box'), () => applyLatex(l => wrapMath(l, 'boxed')), t('加包围框 \\boxed', 'Add \\boxed frame')));
-    bar.append(mk('mft-btn', t('下划线', 'U'), () => applyLatex(l => wrapMath(l, 'underline')), t('下划线 \\underline', '\\underline')));
-    bar.append(mk('mft-btn', t('粗体', 'B'), () => applyLatex(l => wrapMath(l, 'mathbf')), t('粗体 \\mathbf', 'Bold \\mathbf')));
+    bar.append(mk('mft-btn mft-underline', t('下划线', 'U'), () => applyLatex(l => toggleWrapMath(l, 'underline')), t('下划线 \\underline（再次点击取消）', 'Underline \\underline (click again to remove)')));
     const size = document.createElement('select');
     size.className = 'mft-size';
     for (const s of MATH_SIZES) { const o = document.createElement('option'); o.value = s; o.textContent = s.replace('style', ''); size.append(o); }
@@ -293,6 +373,13 @@ export function installMathFloatToolbar({ editor }) {
       b.addEventListener('click', () => applyLatex(l => wrapMath(l, cmd)));
       fonts.append(b);
     }
+    const clear = document.createElement('button');
+    clear.type = 'button'; clear.className = 'mft-font mft-clear'; clear.textContent = '×';
+    clear.title = t('清除字体样式', 'Clear font style');
+    clear.setAttribute('aria-label', clear.title);
+    clear.addEventListener('mousedown', e => e.preventDefault());
+    clear.addEventListener('click', () => applyLatex(l => clearMathFont(l)));
+    fonts.append(clear);
   }
 
   function position(el, rect) {

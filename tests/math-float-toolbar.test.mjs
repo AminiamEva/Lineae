@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { wrapMath, setMathColor, setMathSize, detectMatrixEnv, switchMatrixEnv, matrixAddRow, matrixAddColumn, classifyContent, isCompleteMathSelection, LATEX_COLORS, MATH_FONTS_ALPHA, MATH_FONTS_SYMBOL, MATH_ACCENTS, MATH_SIZES } from '../apps/web/src/ui/math-float-toolbar.js';
+import { wrapMath, toggleWrapMath, clearMathFont, setMathColor, setMathSize, detectMatrixEnv, switchMatrixEnv, matrixAddRow, matrixAddColumn, classifyContent, isCompleteMathSelection, LATEX_COLORS, MATH_FONTS_ALPHA, MATH_FONTS_SYMBOL, MATH_ACCENTS, MATH_SIZES } from '../apps/web/src/ui/math-float-toolbar.js';
 
 test('latex transforms', () => {
   assert.equal(wrapMath('a+b', 'boxed'), '\\boxed{a+b}');
@@ -11,6 +11,25 @@ test('latex transforms', () => {
   assert.equal(setMathSize('\\scriptstyle a', 'displaystyle'), 'a');
   assert.equal(setMathSize('\\scriptstyle a', 'scriptstyle'), '\\scriptstyle a');
 });
+
+test('underline toggles off and nested wrappers are preserved', () => {
+  assert.equal(toggleWrapMath('a', 'underline'), '\\underline{a}');
+  assert.equal(toggleWrapMath('\\underline{a}', 'underline'), 'a');
+  assert.equal(toggleWrapMath('\\mathbf{\\underline{a}}', 'underline'), '\\mathbf{a}');
+  assert.equal(toggleWrapMath('\\textcolor{red}{\\underline{a}}', 'underline'), '\\textcolor{red}{a}');
+  assert.equal(toggleWrapMath('\\underline{a}+b', 'underline'), '\\underline{\\underline{a}+b}');
+});
+
+test('clear font strips math font commands only', () => {
+  assert.equal(clearMathFont('\\mathbf{x}'), 'x');
+  assert.equal(clearMathFont('\\mathit{\\mathbf{x}}'), 'x');
+  assert.equal(clearMathFont('\\textcolor{red}{\\mathbf{x}}'), '\\textcolor{red}{x}');
+  assert.equal(clearMathFont('\\underline{\\boldsymbol{\\alpha}}'), '\\underline{\\alpha}');
+  assert.equal(clearMathFont('\\displaystyle \\mathsf{A}'), '\\displaystyle A');
+  assert.equal(clearMathFont('\\alpha'), '\\alpha');
+  assert.equal(clearMathFont('x+y'), 'x+y');
+});
+
 
 test('partial selections require complete LaTeX objects', () => {
   assert.equal(isCompleteMathSelection('abc', 0, 1), true);

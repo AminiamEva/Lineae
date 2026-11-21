@@ -17,4 +17,16 @@ await page.waitForTimeout(400);
 await bar.locator('.mft-swatch[data-color=lime]').click();
 await page.waitForFunction(()=>document.querySelector('math-field')?.value.includes('textcolor'));
 assert.equal(await field2.evaluate(el=>el.value),'\\textcolor{lime}{\\mathbb{sdf}}');
+// U toggles off on the second click, and the clear button strips math fonts.
+await field2.evaluate(el=>el.executeCommand('selectAll'));await page.waitForTimeout(400);
+await bar.locator('.mft-underline').click();
+await page.waitForFunction(()=>document.querySelector('math-field')?.value.startsWith('\\underline'));
+assert.equal(await field2.evaluate(el=>el.value),'\\underline{\\textcolor{lime}{\\mathbb{sdf}}}');
+await field2.evaluate(el=>el.executeCommand('selectAll'));await page.waitForTimeout(400);
+await bar.locator('.mft-underline').click();
+await page.waitForFunction(()=>document.querySelector('math-field')?.value==='\\textcolor{lime}{\\mathbb{sdf}}');
+await field2.evaluate(el=>el.executeCommand('selectAll'));await page.waitForTimeout(400);
+await bar.locator('.mft-clear').click();
+await page.waitForFunction(()=>document.querySelector('math-field')?.value==='\\textcolor{lime}{sdf}');
+assert.equal(await field2.evaluate(el=>el.value),'\\textcolor{lime}{sdf}');
 assert.deepEqual(errors,[]);console.log('PASS partial math toolbar');}finally{await browser.close();server.close();}})().catch(e=>{console.error(e);process.exit(1);});

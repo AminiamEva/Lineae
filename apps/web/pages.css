@@ -1193,6 +1193,8 @@ body.format-painter-active .ProseMirror * { cursor:copy; }
 .mft-fonts { display:flex; gap:2px; flex-wrap:wrap; max-width:120px; }
 .mft-font { width:22px; height:22px; font-size:15px; line-height:1; border:1px solid transparent; border-radius:4px; background:inherit; color:inherit; cursor:pointer; padding:0; }
 .mft-font:hover { border-color:#2f6fed; }
+.mft-clear { font-size:17px; color:light-dark(#8a94a6,#9aa4b5); }
+.mft-clear:hover { color:#c0392b; border-color:#c0392b; }
 .mft-accents { position:absolute; top:calc(100% + 4px); left:0; display:grid; grid-template-columns:repeat(5,30px); gap:3px; padding:6px; background:light-dark(#fff,#242c3d); border:1px solid light-dark(#d5dbe5,#3a4356); border-radius:8px; box-shadow:0 6px 24px rgba(0,0,0,.22); z-index:1301; }
 .math-float-toolbar { position:fixed; }
 .mft-accent { width:30px; height:28px; font-size:15px; border:1px solid transparent; border-radius:4px; background:inherit; color:inherit; cursor:pointer; padding:0; }
