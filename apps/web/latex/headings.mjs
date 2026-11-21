@@ -31,7 +31,7 @@ export function headingAt(source,index=0,base=null) {
   const command=/\\([A-Za-z]+)(\*?)/y;
   command.lastIndex=index;
   const match=command.exec(source);
-  if(!match || !['chapter','section','subsection','subsubsection',base].includes(match[1]))return null;
+  if(!match || !['part','chapter','section','subsection','subsubsection',base].includes(match[1]))return null;
   let cursor=skipTrivia(source,command.lastIndex),short;
   if(source[cursor]==='[') {
     const optional=argument(source,cursor,'[',']');

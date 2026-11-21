@@ -13,6 +13,8 @@ export class TikzEditor {
     this.items = []; this.selected = null; this.selection = [];
     this.tool = 'select'; this.placingDef = null;
     this.wirePts = [];
+    this.wirePlacingDirection = { x: 1, y: 0 };
+    this._wirePreviewPath = [];
     this.snapEnabled = true;
     this.onDone = null;
     this.history = []; this.future = [];
@@ -38,14 +40,110 @@ export class TikzEditor {
 
   t(zh, en) { return (document.documentElement.lang || '').startsWith('zh') ? zh : en; }
 
-  open(onDone) {
+  open(onDone, initialCode = '') {
     this.onDone = onDone;
     this.buildDom();
     this.canvas.setTextwidthCm(this.getTextwidthCm());
     this.canvas.fit();
     this.render();
+    this.loadSymbolArtwork().then(() => {
+      if (initialCode) this.importTikz(initialCode);
+      this.canvas.fit();
+      this.render();
+    });
   }
   close() { this.overlay?.remove(); this.overlay = null; }
+
+  importTikz(source) {
+    const text = String(source || '').replace(/^\s*\\resizebox\{[^{}]*\}\{!\}\{%?/, '').replace(/%\}\s*$/, '');
+    const body = text
+      .replace(/^[\s\S]*?\\begin\{tikzpicture\}(?:\[[^\]]*\])?/, '')
+      .replace(/\\end\{tikzpicture\}[\s\S]*$/, '')
+      .replace(/\\ctikzset\{[^{}]*\}\s*/g, '');
+    this.items = [];
+    this.unparsed = [];
+    const coordinates = new Map();
+    const scale = PX_PER_CM;
+    const pointOf = raw => {
+      const value = String(raw || '').trim();
+      if (coordinates.has(value)) return coordinates.get(value);
+      const match = /^([+-]?\d*\.?\d+)\s*,\s*([+-]?\d*\.?\d+)$/.exec(value);
+      if (!match) return null;
+      return { x: Number(match[1]) * scale + 60, y: -Number(match[2]) * scale + 60 };
+    };
+    const defs = this.componentDefs || BASIC_COMPONENTS;
+    const findDef = style => defs.find(def => def.tikz === style) || defs.find(def => def.name === style) || null;
+
+    for (const match of body.matchAll(/\\coordinate\s*\(([^)]+)\)\s*at\s*\(([^)]+)\)\s*;/g)) {
+      const point = pointOf(match[2]);
+      if (point) coordinates.set(match[1].trim(), point);
+    }
+
+    for (const match of body.matchAll(/\\node\s*\[([^\]]*)\]\s*at\s*\(([^)]+)\)\s*\{([\s\S]*?)\}\s*;/g)) {
+      const point = pointOf(match[2]);
+      const options = match[1].split(',').map(value => value.trim()).filter(Boolean);
+      let def = findDef(options[0]);
+      if (!def && options.includes('draw')) {
+        const width = Number(/(?:minimum width)\s*=\s*([\d.]+)\s*cm/.exec(match[1])?.[1]) || 1;
+        const height = Number(/(?:minimum height)\s*=\s*([\d.]+)\s*cm/.exec(match[1])?.[1]) || 1;
+        const ellipse = options.includes('ellipse');
+        const trapezium = options.includes('trapezium');
+        def = {
+          kind: 'rect', tikz: ellipse ? 'ellipse' : trapezium ? 'trapezium' : 'rectangle',
+          name: 'draw', w: width * PX_PER_CM, h: height * PX_PER_CM,
+          round: ellipse, shape: trapezium ? 'trapezoid' : '', anchor: [0, 0], id: '',
+        };
+      }
+      if (!point || !def) { this.unparsed.push(match[0]); continue; }
+      const item = def.kind === 'node' ? new NodeSymbol(def, point.x, point.y)
+        : def.kind === 'open' ? new OpenComponent(def, point.x, point.y)
+        : def.kind === 'rect' ? new RectComponent(def, point.x, point.y)
+        : new PathComponent(def, point.x, point.y);
+      item.options = options.slice(1);
+      const label = match[3].trim();
+      if (label) item.label = label.replace(/^\$|\$$/g, '');
+      this.items.push(item);
+    }
+
+    for (const match of body.matchAll(/\\draw\s*([\s\S]*?);/g)) {
+      const tokens = [...match[1].matchAll(/\(([^)]+)\)|to\[([^\]]*)\]/g)];
+      let previous = null;
+      let style = null;
+      let added = false;
+      for (const token of tokens) {
+        if (token[1] === undefined) { style = token[2]; continue; }
+        const point = pointOf(token[1]);
+        if (!point) { previous = null; style = null; continue; }
+        if (previous) {
+          const options = String(style || '').split(',').map(value => value.trim()).filter(Boolean);
+          const def = options.length ? findDef(options[0]) : null;
+          if (def && ['path', 'open', 'rect'].includes(def.kind)) {
+            const item = def.kind === 'open' ? new OpenComponent(def, previous.x, previous.y)
+              : def.kind === 'rect' ? new RectComponent(def, previous.x, previous.y)
+              : new PathComponent(def, previous.x, previous.y);
+            item.start = { ...previous };
+            item.end = { ...point };
+            item.x = previous.x;
+            item.y = previous.y;
+            item.options = options.slice(1);
+            const label = /(?:^|,)\s*l\s*=\s*\$([^$]*)\$/.exec(style || '')?.[1];
+            const value = /(?:^|,)\s*v\s*=\s*\$([^$]*)\$/.exec(style || '')?.[1];
+            if (label) item.label = label;
+            if (value) item.value = value;
+            this.items.push(item);
+          } else {
+            this.items.push(new Wire([{ ...previous }, { ...point }]));
+          }
+          added = true;
+        }
+        previous = point;
+        style = null;
+      }
+      if (!added) this.unparsed.push(`\\draw ${match[1]};`);
+    }
+    this.recomputeSnap?.();
+    this.render?.();
+  }
 
   buildDom() {
     this.close();
@@ -107,7 +205,10 @@ export class TikzEditor {
 
     o.querySelector('.tikz-exit').onclick = () => this.close();
     o.querySelector('.tikz-finish').onclick = () => {
-      const code = exportTikz(this.items, { environment: this.environmentOptions(), ctikzset: this.environmentPreamble() });
+      let code = exportTikz(this.items, { environment: this.environmentOptions(), ctikzset: this.environmentPreamble() });
+      if (this.unparsed?.length) {
+        code = code.replace(/\\end\{tikzpicture\}\s*$/, this.unparsed.join('\n') + '\n\\end{tikzpicture}');
+      }
       this.close(); this.onDone?.(code);
     };
     const slider = o.querySelector('.tikz-zoom-slider'), input = o.querySelector('.tikz-zoom-input');
@@ -117,7 +218,7 @@ export class TikzEditor {
       const ro = o.querySelector('.tikz-zoom-readout');
       if (ro) ro.textContent = value + '%';
     };
-    o.querySelector('.tikz-grid-size').onchange = e => { this.snap.gridStep = +e.target.value * PX_PER_CM; this.canvas.drawGrid(); };
+    o.querySelector('.tikz-grid-size').onchange = e => { this.snap.gridStep = +e.target.value * PX_PER_CM; this.canvas.setGridStepCm(+e.target.value); };
     o.querySelector('.tikz-grid-show').onchange = e => { this.canvas.layers.grid.style.display = e.target.checked ? '' : 'none'; };
     o.querySelector('.tikz-snap-show').onchange = e => { this.snapEnabled = e.target.checked; };
     const setZoomPercent = value => {
@@ -128,7 +229,6 @@ export class TikzEditor {
 
     o.querySelectorAll('.tikz-tools button').forEach(b => b.onclick = () => this.useTool(b.dataset.tool));
     this.buildTree();
-    this.loadSymbolArtwork();
 
     let pan = null;
     this.svg.addEventListener('pointerdown', e => {
@@ -311,7 +411,7 @@ export class TikzEditor {
     if (tool === 'redo') return this.redo();
     if (tool === 'clear') { this.pushHistory(); this.items = []; this.selected = null; this.selection = []; this.recomputeSnap(); this.render(); return; }
     if (tool === 'fit') { this.canvas.fit(); return; }
-    this.tool = tool; this.placingDef = null; this.wirePts = [];
+    this.tool = tool; this.placingDef = null; this.wirePts = []; this.wirePlacingDirection = { x: 1, y: 0 }; this._wirePreviewPath = [];
     this.svg.style.cursor = tool === 'pan' ? 'grab' : tool === 'eraser' ? 'not-allowed' : 'crosshair';
     this.overlay.querySelectorAll('.tikz-tools button').forEach(b => b.classList.toggle('active', b.dataset.tool === tool));
     this.render();
@@ -396,7 +496,20 @@ export class TikzEditor {
       return;
     }
     if (this.tool === 'wire') {
-      this.wirePts.push(this.snap.snap(raw));
+      const point = this.snap.snap(raw);
+      if (!this.wirePts.length) {
+        this.wirePts.push(point);
+        this.wirePlacingDirection = { x: 1, y: 0 };
+      } else {
+        const previous = this.wirePts[this.wirePts.length - 1];
+        const path = this._wirePreviewPath.length
+          ? this._wirePreviewPath
+          : this.wireSegmentPath(previous, point, this.wirePlacingDirection);
+        for (const p of path.slice(1)) this.wirePts.push({ ...p });
+        this.wirePlacingDirection = { x: 1, y: 0 };
+      }
+      this._wirePreview = null;
+      this._wirePreviewPath = [];
       this.renderPreview();
       return;
     }
@@ -421,6 +534,27 @@ export class TikzEditor {
     }
     this.render();
     if (hit && this.selection.length === 1) this._drag = { item: hit, sx: raw.x, sy: raw.y, ox: hit.x, oy: hit.y, opts: hit.pts?.map(p => ({ ...p })) };
+  }
+
+  wireDirectionVec(rel, lastDirection) {
+    const direction = { ...lastDirection };
+    if (rel.y !== 0 && rel.x * lastDirection.x < 0) {
+      direction.x = 0;
+      direction.y = Math.sign(rel.y);
+    } else if (rel.x !== 0 && rel.y * lastDirection.y < 0) {
+      direction.x = Math.sign(rel.x);
+      direction.y = 0;
+    }
+    return direction;
+  }
+
+  wireSegmentPath(from, to, direction) {
+    if (direction.x !== 0 && direction.y === 0) {
+      if (from.x !== to.x && from.y !== to.y) return [from, { x: to.x, y: from.y }, to];
+    } else if (direction.x === 0 && direction.y !== 0) {
+      if (from.x !== to.x && from.y !== to.y) return [from, { x: from.x, y: to.y }, to];
+    }
+    return [from, to];
   }
 
   pointerMove(e) {
@@ -463,14 +597,23 @@ export class TikzEditor {
       return;
     }
     if (this.placingDef) { this._lastSnap = this.snap.snap(raw); this.canvas.setGhost([...this.ghostNodes(raw), ...this.renderSnapIndicator()]); return; }
-    if (this.tool === 'wire' && this.wirePts.length) { this._wirePreview = raw; this._lastSnap = this.snap.snap(raw); this.renderPreview(); return; }
+    if (this.tool === 'wire' && this.wirePts.length) {
+      const point = this.snap.snap(raw);
+      const previous = this.wirePts[this.wirePts.length - 1];
+      this.wirePlacingDirection = this.wireDirectionVec({ x: point.x - previous.x, y: point.y - previous.y }, this.wirePlacingDirection);
+      this._wirePreview = point;
+      this._wirePreviewPath = this.wireSegmentPath(previous, point, this.wirePlacingDirection);
+      this._lastSnap = point;
+      this.renderPreview();
+      return;
+    }
     this.canvas.setGhost([]);
   }
 
   pointerUp() {
     if (this._pan) { this._pan = null; this.svg.classList.remove('is-panning'); return; }
     if (this._drag || this._resize) this.pushHistory();
-    this._drag = null; this._resize = null; this._wirePreview = null; this._guides = null; this._lastSnap = null;
+    this._drag = null; this._resize = null; this._wirePreview = null; this._wirePreviewPath = []; this._guides = null; this._lastSnap = null;
     this.render();
   }
 
@@ -487,7 +630,7 @@ export class TikzEditor {
       w.setEnds(attach(this.wirePts[0]), attach(this.wirePts[this.wirePts.length - 1]));
       this.items.push(w); this.selected = w; this.selection = [w]; this.pushHistory();
     }
-    this.wirePts = []; this._wirePreview = null;
+    this.wirePts = []; this._wirePreview = null; this._wirePreviewPath = [];
     this.recomputeSnap(); this.render();
   }
 
@@ -574,7 +717,9 @@ export class TikzEditor {
   renderPreview() {
     const { SVGNS } = { SVGNS: 'http://www.w3.org/2000/svg' };
     const nodes = [];
-    const pts = [...this.wirePts, ...(this._wirePreview ? [this.snap.snap(this._wirePreview)] : [])];
+    const pts = this._wirePreviewPath.length
+      ? [...this.wirePts.slice(0, -1), ...this._wirePreviewPath]
+      : [...this.wirePts];
     if (pts.length >= 2) {
       const pl = document.createElementNS(SVGNS, 'polyline');
       pl.setAttribute('points', pts.map(q => `${q.x},${q.y}`).join(' '));

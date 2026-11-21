@@ -216,3 +216,13 @@ Made with [contrib.rocks](https://contrib.rocks).
 ---
 
 *Lineae — where writing meets typesetting.*
+## General TikZ studio
+
+The **Insert → TikZ** dialog uses the prebuilt `mp-tikz-wasm` runtime (LGPL-3.0-or-later). Its large WASM/TeX bundle is intentionally kept out of the source tree. Install it once before using the general TikZ dialog or the `tikz-general` body preview:
+
+```bash
+npm run vendor:tikz
+```
+
+This downloads the pinned release into `apps/web/vendor/mp-tikz-wasm/`; see `scripts/install-mp-tikz-wasm.mjs` and the vendor `LICENSE` / `NOTICE.md`.
+

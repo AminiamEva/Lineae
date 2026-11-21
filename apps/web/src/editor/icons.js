@@ -55,6 +55,7 @@ const paths = {
   center:'M4 6h16M7 12h10M4 18h16',
   right:'M4 6h16M10 12h10M4 18h16',
   image:'M3 4h18v16H3zM5 17l4-5 3 3 3-4 4 6M15 8h.01',
+  crop:'M6 2v14a2 2 0 0 0 2 2h14M2 6h14a2 2 0 0 1 2 2v14',
   folder:'M3 6h7l2 2h9v11H3z',
   borders:'M4 4h16v16H4zM4 12h16M12 4v16',
   ruler:'M3 7h18v10H3zM7 7v4m4-4v3m4-3v4m4-4v3',

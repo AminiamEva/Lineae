@@ -35,3 +35,20 @@ test('report/book: heading levels export as chapter/section/subsection', () => {
   setSerializationClass('article');
   assert.equal(h(1, '保持'), '\\section{保持}\n\n');
 });
+
+test('book/report: \\part imports and round-trips as a level-1 heading', () => {
+  setHeadingBase('chapter');
+  const part = importBlock('\\part{第一部}');
+  assert.equal(part.type, 'heading');
+  assert.equal(part.attrs.level, 1);
+  assert.equal(part.attrs.command, 'part');
+  assert.equal(part.content[0].text, '第一部');
+  setSerializationClass('book');
+  assert.equal(serialize(part), '\\part{第一部}\n\n');
+  setSerializationClass('article');
+  setHeadingBase(null);
+  const articlePart = importBlock('\\part{Part One}');
+  assert.equal(articlePart.type, 'heading');
+  assert.equal(articlePart.attrs.command, 'part');
+  assert.equal(articlePart.attrs.level, 1);
+});

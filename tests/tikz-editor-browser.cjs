@@ -27,12 +27,15 @@ const server = createServer(async (request, response) => {
     await page.goto(`http://127.0.0.1:${server.address().port}`, { waitUntil: 'networkidle' });
     await page.waitForTimeout(500);
     await page.locator('.ribbon-tabs [data-group=insert]').click();
-    await page.getByRole('button', { name: /TikZ/ }).click();
+    await page.getByRole('button', { name: 'CircuiTikZ', exact: true }).click();
     await page.waitForTimeout(900);
 
     const symbols = page.locator('.tikz-tree .tikz-sym');
     assert.equal(await symbols.count(), 410, 'Basic + 402 library symbols are listed');
     assert.equal(await page.locator('.tikz-zoom-slider').inputValue(), '100', 'default zoom is 100% of one textwidth');
+    assert.equal(await page.locator('.tikz-layer-grid circle').count(), 0, 'canvas uses a line grid, not a dot grid');
+    assert.ok(await page.locator('.tikz-layer-grid path').count() >= 2, 'minor and major grid lines are rendered');
+    assert.equal(await page.locator('.tikz-canvas-wrap').evaluate(element => getComputedStyle(element).backgroundColor), 'rgb(255, 255, 255)', 'editor canvas has a white background');
 
     assert.match(await page.locator('.tikz-property-panel').innerText(), /Environment Variable Presets/);
     const canvas = page.locator('.tikz-canvas');
@@ -92,6 +95,21 @@ const server = createServer(async (request, response) => {
     await page.mouse.up();
     await page.waitForTimeout(250);
     assert.equal(await page.locator('.tikz-layer-items > [data-uid]').last().locator('line').count(), 2, 'path endpoints are connected to the natural symbol with two leads');
+    assert.equal(await page.locator('.tikz-layer-items > [data-uid]').last().locator('line').first().getAttribute('stroke-width'), '1', 'path leads use the hairline wire width');
+
+    // Instruments must keep the artwork fill so their letter glyphs stay visible.
+    await place('Instruments', 'Ampere meter', .25, .72);
+    const meter = page.locator('.tikz-layer-items > [data-uid]').last();
+    assert.equal(await meter.locator('use').first().getAttribute('href'), '#path_ammeter', 'meter renders the real symbol artwork');
+    assert.equal(await meter.locator('use').first().getAttribute('fill'), null, 'meter artwork is not stripped of its fill');
+
+    // American voltage source uses the real artwork (plus/minus signs) instead of a fallback.
+    await place('Sources and generators', 'Voltage source (american)', .25, .82);
+    const source = page.locator('.tikz-layer-items > [data-uid]').last();
+    assert.equal(await source.locator('use').first().getAttribute('href'), '#path_american-voltage-source', 'american voltage source renders the real artwork');
+    assert.equal(await source.locator('use').first().getAttribute('fill'), null, 'voltage source artwork keeps its sign fill');
+    assert.equal(await source.locator('circle').count(), 0, 'no fallback circle is drawn for the voltage source');
+
 
     // Multi-selection exposes the Designer selection form.
     const firstItem = await page.locator('.tikz-layer-items > [data-uid]').nth(0).boundingBox();
@@ -121,13 +139,19 @@ const server = createServer(async (request, response) => {
     assert.notEqual(await page.locator('.tikz-layer-items').getAttribute('transform'), beforePan, 'pan changes the view transform');
 
     await page.locator('.tikz-finish').click();
-    await page.waitForTimeout(900);
-    assert.equal(await page.locator('.tikz-code-preview-svg').count(), 1, 'inserted CircuiTikZ has an incremental SVG preview');
+    await page.locator('.tikz-general-preview svg').waitFor({ state: 'visible', timeout: 120000 });
+    assert.equal(await page.locator('.tikz-general-preview svg').count(), 1, 'inserted CircuiTikZ has a complete TeX-rendered preview');
+    assert.equal(await page.locator('.ProseMirror pre[data-language="tikz"]').isHidden(), true, 'source code block stays out of the document body');
     const tikz = await page.locator('.ProseMirror pre code').innerText();
     assert.doesNotMatch(tikz, /\\resizebox\{/);
     assert.match(tikz, /\\node\[npn, bodydiode\]/);
     assert.match(tikz, /\\node\[transformer, cute\]/);
     assert.match(tikz, /\\draw .* to\[vco, box\]/);
+    await page.locator('.tikz-code-preview').dblclick();
+    await page.locator('.tikz-window').waitFor({ state: 'visible' });
+    await page.waitForFunction(() => document.querySelectorAll('.tikz-layer-items > [data-uid]').length > 0);
+    assert.ok(await page.locator('.tikz-layer-items > [data-uid]').count() > 0, 'double-click opens the CircuiTikZ editor with the current drawing');
+    await page.locator('.tikz-exit').click();
     assert.deepEqual(errors, [], 'TikZ editor has no page errors');
     console.log('TikZ editor browser regressions passed');
   } finally {

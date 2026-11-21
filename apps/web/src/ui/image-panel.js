@@ -1,4 +1,5 @@
 import { t } from './i18n.mjs';
+import { icon } from '../editor/icons.js';
 import { buildRibbonGroups } from './ribbon-groups.js';
 
 function labelText(element, zh, en) {
@@ -17,7 +18,7 @@ function spacingNumber(value) {
   return String(value ?? '').match(/\d+(?:\.\d+)?/)?.[0] ?? '';
 }
 
-export function installImagePanel({onUpdate, onReplace, onSpacing, getSpacing}) {
+export function installImagePanel({onUpdate, onReplace, onSpacing, getSpacing, onCrop, onGroup, onUngroup}) {
   const panel = document.createElement('div');
   panel.className = 'tools home-ribbon image-tools';
   panel.hidden = true;
@@ -140,13 +141,11 @@ export function installImagePanel({onUpdate, onReplace, onSpacing, getSpacing}) 
   const appearance=document.createElement('section');appearance.className='image-group';
   const appearanceTitle=document.createElement('div');appearanceTitle.className='image-group-title';labelText(appearanceTitle,'裁剪与外观','Crop & appearance');
   const appearanceGrid=document.createElement('div');appearanceGrid.className='image-grid';
-  const borders=document.createElement('div');borders.className='image-crop';
-  for(const side of ['left','bottom','right','top']){
-    const field=document.createElement('label');field.className='image-field';
-    const caption=document.createElement('span');labelText(caption,side==='left'?'左裁':side==='bottom'?'下裁':side==='right'?'右裁':'上裁',side);
-    const input=document.createElement('input');input.type='text';input.placeholder='0cm';
-    field.append(caption,input);borders.append(field);field.dataset.crop=side;
-  }
+  const cropButton=document.createElement('button');cropButton.type='button';cropButton.className='image-crop-button';
+  cropButton.dataset.zhTitle='裁剪图片';cropButton.dataset.enTitle='Crop image';
+  cropButton.title=t('裁剪图片','Crop image');cropButton.setAttribute('aria-label',cropButton.title);
+  cropButton.append(icon('crop'));
+  cropButton.addEventListener('click',()=>onCrop?.());
   const borderField=document.createElement('label');borderField.className='image-check';
   const border=document.createElement('input');border.type='checkbox';
   const borderCaption=document.createElement('span');labelText(borderCaption,'边框','Border');borderField.append(border,borderCaption);
@@ -157,7 +156,7 @@ export function installImagePanel({onUpdate, onReplace, onSpacing, getSpacing}) 
   const background=document.createElement('input');background.type='color';background.value='#ffffff';
   const useBackground=document.createElement('input');useBackground.type='checkbox';
   backgroundField.append(bgCaption,useBackground,background);
-  appearanceGrid.append(borders,borderField,borderWidth,borderColor,backgroundField);
+  appearanceGrid.append(cropButton,borderField,borderWidth,borderColor,backgroundField);
   appearance.append(appearanceTitle,appearanceGrid);
 
   const spacing=document.createElement('section');spacing.className='image-group';
@@ -176,12 +175,51 @@ export function installImagePanel({onUpdate, onReplace, onSpacing, getSpacing}) 
   panel.append(header);
   const spacingBody=document.createElement('div');
   spacingBody.append(spacingGrid,resetSpacing);
-  buildRibbonGroups(panel,[
+
+  const groupingButton=document.createElement('button');
+  groupingButton.type='button';groupingButton.className='image-group-button';
+  groupingButton.append(icon('image'));
+  const groupingLabel=document.createElement('span');
+  labelText(groupingLabel,'组合为子图','Combine as subfigure');
+  groupingButton.append(groupingLabel);
+  const groupingBody=document.createElement('div');
+  groupingBody.className='image-grouping-body';
+  groupingBody.append(groupingButton);
+  const ribbonGroups=buildRibbonGroups(panel,[
     {id:'image-transform',zh:'基础变换',en:'Transform',iconName:'image',width:310,body:basicGrid},
     {id:'image-layout',zh:'布局与题注',en:'Layout & caption',iconName:'layout',width:300,body:layoutGrid},
     {id:'image-appearance',zh:'裁剪与外观',en:'Crop & appearance',iconName:'settings',width:300,body:appearanceGrid},
     {id:'image-spacing',zh:'全局图片间距',en:'Global image spacing',iconName:'paragraph',width:220,body:spacingBody},
-  ],['image-spacing','image-appearance','image-layout','image-transform']);
+    {id:'image-grouping',zh:'子图',en:'Subfigure',iconName:'image',width:175,body:groupingBody},
+  ],['image-spacing','image-appearance','image-layout','image-transform','image-grouping']);
+  const groupingGroups=ribbonGroups.filter(state=>state.id!=='image-grouping');
+  let multiCount=0,groupMode='none';
+  function setMultiSelection(count){
+    multiCount=Number(count)||0;
+    const active=multiCount>0;
+    panel.dataset.multiSelection=String(multiCount);
+    for(const state of groupingGroups){
+      state.section.classList.toggle('is-disabled',active);
+      state.body.inert=active||state.section.classList.contains('is-collapsed');
+    }
+    replace.disabled=active;
+    if(active)path.textContent=t(multiCount+' 张图片',multiCount+' images');
+  }
+  function setGroupState(mode){
+    groupMode=mode==='ungroup'?'ungroup':mode==='group'?'group':'none';
+    const ungroup=groupMode==='ungroup';
+    const zh=ungroup?'解除组合':'组合为子图',en=ungroup?'Ungroup':'Combine as subfigure';
+    labelText(groupingLabel,zh,en);
+    groupingButton.dataset.mode=groupMode;
+    groupingButton.dataset.zhTitle=zh;groupingButton.dataset.enTitle=en;
+    groupingButton.title=t(zh,en);groupingButton.setAttribute('aria-label',t(zh,en));
+    groupingButton.disabled=groupMode==='none';
+  }
+  groupingButton.addEventListener('click',()=>{
+    if(groupMode==='ungroup')onUngroup?.();
+    else if(groupMode==='group')onGroup?.();
+  });
+  setGroupState('none');
 
   function setPath(value){path.textContent=value||'';}
   function setDimensions(widthValue,wrapValue){
@@ -190,7 +228,68 @@ export function installImagePanel({onUpdate, onReplace, onSpacing, getSpacing}) 
     width.unit.value=w.unit;
     if(wrapValue!==undefined)wrapWidth.value=wrapValue;
   }
-  function setValues(next){
+  let metrics={naturalWidth:0,naturalHeight:0,textWidth:0};
+  const cmToPx=37.7952755906;
+  function pxFromValue(number,unit){
+    if(number==='')return null;
+    const value=Number(number);
+    if(!Number.isFinite(value))return null;
+    if(unit==='\\textwidth'||unit==='\\linewidth'||unit==='\\columnwidth')return metrics.textWidth?value*metrics.textWidth:null;
+    if(unit==='cm')return value*cmToPx;
+    if(unit==='mm')return value*cmToPx/10;
+    if(unit==='pt')return value*96/72.27;
+    if(unit==='in')return value*96;
+    return null;
+  }
+  function valueFromPx(px,unit){
+    if(!(px>0))return '';
+    let value;
+    if(unit==='\\textwidth'||unit==='\\linewidth'||unit==='\\columnwidth'){
+      if(!metrics.textWidth)return '';
+      value=px/metrics.textWidth;
+    }else if(unit==='cm')value=px/cmToPx;
+    else if(unit==='mm')value=px*10/cmToPx;
+    else if(unit==='pt')value=px*72.27/96;
+    else if(unit==='in')value=px/96;
+    else return '';
+    return String(Math.round(value*1000)/1000);
+  }
+  function syncAspect(changed){
+    if(!keep.checked)return null;
+    const {naturalWidth,naturalHeight}=metrics;
+    if(!naturalWidth||!naturalHeight)return null;
+    if(changed==='scale'){
+      const percent=Number(scale.value);
+      if(!(percent>0))return null;
+      const widthValue=valueFromPx(naturalWidth*percent/100,width.unit.value);
+      const heightValue=valueFromPx(naturalHeight*percent/100,height.unit.value);
+      if(widthValue===''||heightValue==='')return null;
+      width.number.value=widthValue;height.number.value=heightValue;
+      return {width:widthValue+width.unit.value,height:heightValue+height.unit.value,scale:percent===100?null:String(percent/100)};
+    }
+    const aspect=naturalWidth/naturalHeight;
+    if(changed==='height'){
+      const heightPx=pxFromValue(height.number.value,height.unit.value);
+      if(!(heightPx>0))return null;
+      const widthPx=heightPx*aspect;
+      const widthValue=valueFromPx(widthPx,width.unit.value);
+      if(widthValue==='')return null;
+      const percent=Math.round(widthPx/naturalWidth*100);
+      width.number.value=widthValue;
+      scale.value=String(percent);scaleOutput.textContent=scale.value+'%';
+      return {width:widthValue+width.unit.value,height:height.number.value+height.unit.value,scale:percent===100?null:String(percent/100)};
+    }
+    const widthPx=pxFromValue(width.number.value,width.unit.value);
+    if(!(widthPx>0))return null;
+    const heightValue=valueFromPx(widthPx/aspect,height.unit.value);
+    if(heightValue==='')return null;
+    const percent=Math.round(widthPx/naturalWidth*100);
+    height.number.value=heightValue;
+    scale.value=String(percent);scaleOutput.textContent=scale.value+'%';
+    return {width:width.number.value+width.unit.value,height:heightValue+height.unit.value,scale:percent===100?null:String(percent/100)};
+  }
+  function setValues(next,nextMetrics){
+    if(nextMetrics)metrics={...metrics,...nextMetrics};
     attrs=next;
     if(!next)return;
     setPath(next.path);
@@ -203,7 +302,9 @@ export function installImagePanel({onUpdate, onReplace, onSpacing, getSpacing}) 
     keep.checked=next.keepAspect!==false;
     flipH.setAttribute('aria-pressed',String(Boolean(next.flipH)));flipV.setAttribute('aria-pressed',String(Boolean(next.flipV)));
     figure.checked=Boolean(next.figure);
-    captionEnabled.checked=Boolean(next.captionEnabled ?? (next.caption !== null && next.caption !== undefined));
+    const captionOn=Boolean(next.captionEnabled ?? (next.caption !== null && next.caption !== undefined));
+    captionEnabled.checked=captionOn;
+    for(const control of [captionNumbered,captionPosition,label])control.disabled=!captionOn;
     captionNumbered.checked=next.captionNumbered !== false;
     const placementValue=next.fixed?'H':(next.placement??'');
     if(placementValue && ![...placement.options].some(option=>option.value===placementValue))placement.append(new Option(placementValue,placementValue));
@@ -216,10 +317,6 @@ export function installImagePanel({onUpdate, onReplace, onSpacing, getSpacing}) 
     wrapWidth.value=next.wrapWidth??'0.4\\textwidth';
     wrapOverhang.value=next.wrapOverhang??'';
     wrapLines.value=next.wrapLines??'';
-    for(const side of ['left','bottom','right','top']){
-      const input=borders.querySelector('[data-crop="'+side+'"] input');
-      input.value=next['crop'+side[0].toUpperCase()+side.slice(1)]??'';
-    }
     border.checked=Boolean(next.border);
     borderWidth.value=next.borderWidth??'0.4pt';
     borderColor.value=next.borderColor??'#000000';
@@ -232,18 +329,29 @@ export function installImagePanel({onUpdate, onReplace, onSpacing, getSpacing}) 
   function updateDimension(which){
     const number=which==='width'?width.number:height.number;
     const unit=which==='width'?width.unit:height.unit;
-    update({[which]:number.value===''?null:number.value+unit.value});
+    if(number.value===''){update({[which]:null});return;}
+    const synced=syncAspect(which);
+    update(synced??{[which]:number.value+unit.value});
   }
   width.number.addEventListener('input',()=>updateDimension('width'));width.unit.addEventListener('change',()=>updateDimension('width'));
   height.number.addEventListener('input',()=>updateDimension('height'));height.unit.addEventListener('change',()=>updateDimension('height'));
-  scale.addEventListener('input',()=>{scaleOutput.textContent=scale.value+'%';update({scale:scale.value==='100'?null:String(Number(scale.value)/100)});});
+  scale.addEventListener('input',()=>{
+    scaleOutput.textContent=scale.value+'%';
+    if(scale.value===''){update({scale:null});return;}
+    const synced=syncAspect('scale');
+    update(synced??{scale:scale.value==='100'?null:String(Number(scale.value)/100)});
+  });
   angle.addEventListener('input',()=>update({angle:angle.value===''?null:angle.value}));
   origin.addEventListener('change',()=>update({origin:origin.value}));
   keep.addEventListener('change',()=>update({keepAspect:keep.checked}));
   flipH.addEventListener('click',()=>{const value=!attrs?.flipH;update({flipH:value});flipH.setAttribute('aria-pressed',String(value));});
   flipV.addEventListener('click',()=>{const value=!attrs?.flipV;update({flipV:value});flipV.setAttribute('aria-pressed',String(value));});
   figure.addEventListener('change',()=>update({figure:figure.checked}));
-  captionEnabled.addEventListener('change',()=>update({captionEnabled:captionEnabled.checked,figure:captionEnabled.checked?true:figure.checked}));
+  captionEnabled.addEventListener('change',()=>{
+    const on=captionEnabled.checked;
+    for(const control of [captionNumbered,captionPosition,label])control.disabled=!on;
+    update({captionEnabled:on,figure:on?true:figure.checked});
+  });
   captionNumbered.addEventListener('change',()=>update({captionNumbered:captionNumbered.checked}));
   placement.addEventListener('change',()=>update({placement:placement.value==='H'?null:placement.value||null,fixed:placement.value==='H'}));
   align.addEventListener('change',()=>update({align:align.value||null,centered:align.value==='center'}));
@@ -254,11 +362,6 @@ export function installImagePanel({onUpdate, onReplace, onSpacing, getSpacing}) 
   wrapWidth.addEventListener('change',()=>{if(wrapWidth.value.trim())update({wrapWidth:wrapWidth.value.trim()});});
   wrapOverhang.addEventListener('change',()=>update({wrapOverhang:wrapOverhang.value.trim()||null}));
   wrapLines.addEventListener('change',()=>update({wrapLines:wrapLines.value||null}));
-  borders.addEventListener('input',event=>{
-    if(event.target.tagName!=='INPUT')return;
-    const side=event.target.closest('[data-crop]')?.dataset.crop;
-    if(side)update({['crop'+side[0].toUpperCase()+side.slice(1)]:event.target.value||null});
-  });
   border.addEventListener('change',()=>update({border:border.checked}));
   borderWidth.addEventListener('change',()=>update({borderWidth:borderWidth.value}));
   borderColor.addEventListener('input',()=>update({borderColor:borderColor.value}));
@@ -275,7 +378,7 @@ export function installImagePanel({onUpdate, onReplace, onSpacing, getSpacing}) 
     if(panel.hidden)return;
     setDimensions(event.detail?.width,event.detail?.wrapWidth);
   });
-  return {panel,setValues,setPath,setDimensions,setSpacing(values){for(const [name,input] of Object.entries(spacingInputs))input.value=spacingNumber(values[name]);}};
+  return {panel,setValues,setPath,setDimensions,setMultiSelection,setGroupState,setSpacing(values){for(const [name,input] of Object.entries(spacingInputs))input.value=spacingNumber(values[name]);}};
 }
 
 const IMAGE_DEFAULTS = Object.freeze({textfloatsep:'20pt plus 2pt minus 4pt',intextsep:'12pt plus 2pt minus 2pt',floatsep:'12pt plus 2pt minus 2pt'});

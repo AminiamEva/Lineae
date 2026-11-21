@@ -117,7 +117,6 @@ export class NodeSymbol extends Component {
     const use = svg('use');
     use.setAttribute('href', '#' + (variant.id || this.def.id));
     use.setAttribute('transform', `translate(${-variant.mid[0]},${-variant.mid[1]})`);
-    if (this.def.fillable && !this.fillColor) use.setAttribute('fill', 'none');
     if (this.strokeColor) use.setAttribute('stroke', this.strokeColor);
     if (this.fillColor) use.setAttribute('fill', this.fillColor);
     if (this.fillOpacity != null) use.setAttribute('fill-opacity', String(this.fillOpacity));
@@ -157,21 +156,6 @@ export class NodeSymbol extends Component {
 
 function isAmericanVoltage(def) {
   return def?.source === 'isVoltage' && /american.*voltage source|american controlled voltage source/i.test(def.tikz || '');
-}
-
-function sourceFallback(variant, def) {
-  const [vx, vy, vw, vh] = variant.viewBox;
-  const cx = variant.mid[0], cy = variant.mid[1];
-  const radius = Math.max(6, Math.min(vw, vh) / 2 - 1);
-  const g = svg('g', { transform: `translate(${-cx},${-cy})` });
-  g.append(svg('circle', { cx, cy, r: radius, fill: 'none', stroke: '#222', 'stroke-width': 1.1 }));
-  const signSize = radius * .42;
-  const margin = 8;
-  for (const [y, plus] of [[cy - margin, true], [cy + margin, false]]) {
-    g.append(svg('line', { x1: cx - signSize, y1: y, x2: cx + signSize, y2: y, stroke: '#222', 'stroke-width': 1.2 }));
-    if (plus) g.append(svg('line', { x1: cx, y1: y - signSize, x2: cx, y2: y + signSize, stroke: '#222', 'stroke-width': 1.2 }));
-  }
-  return g;
 }
 
 export class PathComponent extends Component {
@@ -280,15 +264,13 @@ export class PathComponent extends Component {
     const use = svg('use');
     use.setAttribute('href', '#' + (variant.id || this.def.id));
     use.setAttribute('transform', `translate(${-variant.mid[0]},${-variant.mid[1]})`);
-    if (this.def.fillable && !this.fillColor) use.setAttribute('fill', 'none');
     if (this.strokeColor) use.setAttribute('stroke', this.strokeColor);
     if (this.fillColor) use.setAttribute('fill', this.fillColor);
     if (this.fillOpacity != null) use.setAttribute('fill-opacity', String(this.fillOpacity));
     if (this.lineWidth) use.setAttribute('stroke-width', String(this.lineWidth));
     if (this.selected) use.setAttribute('color', '#2f6fed');
     const hasArtwork = variant.id && document.getElementById(variant.id);
-    if (hasArtwork && !isAmericanVoltage(this.def)) symbol.append(use);
-    else if (isAmericanVoltage(this.def)) symbol.append(sourceFallback(variant, this.def));
+    if (hasArtwork) symbol.append(use);
     g.append(symbol);
     const { start, end } = variantStartEnd(variant);
     const stroke = this.selected ? '#2f6fed' : '#222';
@@ -306,7 +288,7 @@ export class PathComponent extends Component {
       const startLine = this.mirror ? b : a;
       const endLine = this.mirror ? a : b;
       for (const [from, to] of [[this.start, startLine], [this.end, endLine]]) {
-        const line = svg('line', { x1: from.x, y1: from.y, x2: to.x, y2: to.y, stroke, 'stroke-width': 1.5 });
+        const line = svg('line', { x1: from.x, y1: from.y, x2: to.x, y2: to.y, stroke, 'stroke-width': 1 });
         g.insertBefore(line, symbol);
       }
     }
@@ -379,10 +361,10 @@ export class OpenComponent extends Component {
   toSvg() {
     const g = svg('g', { 'data-uid': this.uid });
     const stroke = this.selected ? '#2f6fed' : '#222';
-    const line = (x1, x2) => svg('line', { x1, y1: this.start.y, x2, y2: this.start.y, stroke, 'stroke-width': 2 });
+    const line = (x1, x2) => svg('line', { x1, y1: this.start.y, x2, y2: this.start.y, stroke, 'stroke-width': 1 });
     g.append(line(this.start.x - 4, this.start.x), line(this.end.x, this.end.x + 4));
     for (const x of [this.start.x, this.end.x]) {
-      g.append(svg('circle', { cx: x, cy: this.start.y, r: 4, fill: 'none', stroke, 'stroke-width': 2 }));
+      g.append(svg('circle', { cx: x, cy: this.start.y, r: 4, fill: 'none', stroke, 'stroke-width': 1 }));
     }
     return g;
   }
@@ -567,7 +549,7 @@ export class Wire extends Component {
       fill: this.fillColor || 'none',
       'fill-opacity': this.fillOpacity ?? 1,
       stroke: this.strokeColor || (this.selected ? '#2f6fed' : '#222'),
-      'stroke-width': this.lineWidth || 2,
+      'stroke-width': this.lineWidth || 1,
       'stroke-linejoin': 'round',
       'data-uid': this.uid,
     });

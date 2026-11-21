@@ -17,6 +17,7 @@ import {ProjectDocumentSession} from './project/document-session.mjs';
 import {installFloatingToolbar} from './ui/floating-toolbar.js';
 import {installSettingsPanel} from './ui/settings-panel.js';
 import { buildHomeRibbon } from './ui/home-ribbon.js';
+import { activeStyleKey, documentClassFromSource } from './ui/style-presets.mjs';
 import { buildRibbonGroups } from './ui/ribbon-groups.js';
 import {installHeaderFooterPanel} from './ui/header-footer-panel.js';
 import { sourceProjection, richSourceChanges, standaloneParagraphDraft } from './editor/source-sync.js';
@@ -49,7 +50,7 @@ import { compileKeybindings, installKeybindings } from './editor/keybindings.mjs
 import defaultConfigYaml from '../config.yaml';
 import { askText } from './editor/dialog.js';
 import { installDocumentFind } from './editor/find.js';
-import { DocumentImage, Subfigures, insertLocalImage, insertSubfigures, replaceLocalImage, installImageDrop } from './editor/image-node.js';
+import { DocumentImage, Subfigures, insertLocalImage, insertSubfigures, replaceLocalImage, startImageCrop, installImageDrop } from './editor/image-node.js';
 import { installImagePanel } from './ui/image-panel.js';
 import { installSubfigurePanel } from './ui/subfigure-panel.js';
 import { MultiColumn } from './editor/multi-column.js';
@@ -93,6 +94,7 @@ import { installRovingFocus } from './ui/keyboard-nav.mjs';
 import { fadeIn } from './ui/motion.mjs';
 import { getLanguage, localize, normalizeLanguage, setLanguage, t } from './ui/i18n.mjs';
 import { TikzEditor } from './tikz/controllers/tikzEditor.js';
+import { openTikzStudio } from './ui/tikz-studio.js';
 
 const citationLibrary = createCitationLibrary();
 
@@ -779,6 +781,11 @@ function syncTableAttributes() {
     else delete table.dataset.columnLayout;
     if(node.attrs.columnRules)table.dataset.columnRules='true';
     else delete table.dataset.columnRules;
+    if(node.attrs.horizontalRuleMode)table.dataset.horizontalRuleMode=node.attrs.horizontalRuleMode;
+    else delete table.dataset.horizontalRuleMode;
+    const trailingRule=(node.attrs.trailingRules??[]).find(rule=>/^\\?(toprule|midrule|bottomrule|hline)$/.test(String(rule)));
+    if(trailingRule)table.dataset.trailingRule=String(trailingRule).replace(/^\\/,'');
+    else delete table.dataset.trailingRule;
     if(node.attrs.align)table.dataset.tableAlign=node.attrs.align;
     else delete table.dataset.tableAlign;
     table.style.setProperty('--table-rule-width',node.attrs.borderWidth??'0.4pt');
@@ -809,8 +816,14 @@ const underlineButton=button('U',()=>editor.chain().focus().toggleMark('underlin
 function syncUndoButtons(){
   try{
     const source=!sourceView.hidden;
-    undoButton.disabled=!(source?sourceModeCommits.length||sourceView.canUndo?.():editor.can().undo());
-    redoButton.disabled=!(source?sourceModeRedos.length||sourceView.canRedo?.():editor.can().redo());
+    const canUndo=source?sourceModeCommits.length||sourceView.canUndo?.():editor.can().undo();
+    const canRedo=source?sourceModeRedos.length||sourceView.canRedo?.():editor.can().redo();
+    undoButton.disabled=!canUndo;
+    redoButton.disabled=!canRedo;
+    if(homeRibbon?.refs){
+      homeRibbon.refs.undo.disabled=!canUndo;
+      homeRibbon.refs.redo.disabled=!canRedo;
+    }
   }catch{}
 }
 editor.on('transaction',()=>{
@@ -1110,7 +1123,7 @@ editor.registerPlugin(new Plugin({
     }
     const changes = !syncPending && richSourceChanges(projection,transaction.doc.toJSON());
     if (!changes) {
-      sourceView.error(t('该修改无法无损回写，请在源码中编辑；原文已保留。','This edit cannot round-trip safely. Edit the source; original text is preserved.'));
+      sourceView.error(t('该修改无法无损回写，请在源码中编辑；原文已保留','This edit cannot round-trip safely. Edit the source; original text is preserved.'));
       return false;
     }
     return true;
@@ -1175,6 +1188,7 @@ let documentParts=parseDocument(DEFAULT_DOCUMENT_SOURCE);
 let pageSetup=readPageSetup(documentParts.start);
 let typesetPagination;
 let headerFooterPanel;
+let homeRibbon;
 let imagePanel;
 let imageSelection = null;
 let pagePaper,pageOrientation,pageMarginPreset,pageMarginTop,pageMarginRight,pageMarginBottom,pageMarginLeft,layoutColumns,layoutLocalColumns;
@@ -1213,8 +1227,92 @@ function updateImageSpacing(spacing){
   applyPageSetup();
   projectExplorer?.changed();
 }
-function updateGlobalColumns(count){
-  const before=documentParts.start;
+function tikzMacroNames(source) {
+  const names = new Set();
+  const pattern = /\\(?:newcommand|renewcommand|providecommand|DeclareRobustCommand|NewDocumentCommand|RenewDocumentCommand|ProvideDocumentCommand|DeclareDocumentCommand|def|gdef|edef|xdef)\*?\s*\{?\s*\\([A-Za-z@]+)/g;
+  for (const match of source.matchAll(pattern)) names.add(match[1]);
+  for (const match of source.matchAll(/\\(?:newenvironment|renewenvironment)\s*\{([^{}]+)\}/g)) names.add(match[1]);
+  return names;
+}
+
+function tikzLibraries(source) {
+  const names = [];
+  for (const match of source.matchAll(/\\usetikzlibrary(?:\[[^\]]*\])?\{([^{}]+)\}/g)) {
+    names.push(...match[1].split(',').map(item => item.trim()).filter(Boolean));
+  }
+  return names;
+}
+
+function applyTikzPreamble(after) {
+  const before = documentParts.start;
+  if (after === before) return;
+  if (!sourceView.hidden) {
+    const current = sourceView.value;
+    const preamble = parseDocument(current, { fragment: true })?.start ?? '';
+    sourceView.applyChanges([{ from: 0, to: preamble.length, insert: after }]);
+    sourceView.flush();
+  }
+  documentParts.start = after;
+  if (importedSource?.startsWith(before)) importedSource = after + importedSource.slice(before.length);
+  if (editor.state.doc.attrs.layoutPreamble !== after) {
+    editor.view.dispatch(closeHistory(editor.state.tr).setDocAttribute('layoutPreamble', after));
+  }
+  pageSetup = readPageSetup(documentParts.start);
+  applyPageSetup();
+  projectExplorer?.changed();
+}
+
+function insertTikzStudioBlock({ libraries = [], macros = [], declarations = '', body = '' } = {}) {
+  body = body
+    .replace(/^\s*\\documentclass(?:\[[^\]]*\])?\{[^{}]+\}[^\n]*(?:\r?\n|$)/m, '')
+    .replace(/^\s*\\(?:usepackage|RequirePackage)(?:\[[^\]]*\])?\{[^{}]*\}[^\n]*(?:\r?\n|$)/gm, '')
+    .replace(/\\begin\{document\}/g, '')
+    .replace(/\\end\{document\}/g, '')
+    .trim();
+  const before = documentParts.start;
+  const existingMacros = tikzMacroNames(before);
+  const seen = new Set();
+  const duplicates = [];
+  for (const macro of macros) {
+    if (existingMacros.has(macro.name) || seen.has(macro.name)) duplicates.push(macro.name);
+    seen.add(macro.name);
+  }
+  if (duplicates.length) return { duplicates: [...new Set(duplicates)] };
+
+  const allLibraries = [...new Set([...tikzLibraries(before), ...libraries])]
+    .sort((a, b) => a.localeCompare(b));
+  const sortedMacros = [...macros].sort((a, b) => a.name.localeCompare(b.name)).map(macro => macro.text.trim());
+  const declarationText = String(declarations || '')
+    .replace(/^\s*\\documentclass(?:\[[^\]]*\])?\{[^{}]+\}[^\n]*(?:\r?\n|$)/gm, '')
+    .replace(/\\begin\{document\}/g, '')
+    .replace(/\\end\{document\}/g, '')
+    .replace(/^\s*\\usetikzlibrary(?:\[[^\]]*\])?\{[^{}]*\}[ \t]*$/gm, '')
+    .trim();
+  const preambleAdditions = declarationText ? [declarationText] : sortedMacros;
+  const beginAt = before.indexOf('\\begin{document}');
+  if (beginAt >= 0) {
+    let preamble = before.slice(0, beginAt)
+      .replace(/\\usetikzlibrary(?:\[[^\]]*\])?\{[^{}]*\}[ \t]*(?:\r?\n)?/g, '');
+    const additions = [
+      allLibraries.length ? `\\usetikzlibrary{${allLibraries.join(',')}}` : '',
+      ...preambleAdditions,
+    ].filter(Boolean).join('\n');
+    const after = preamble.replace(/\s+$/, '') + (additions ? `\n${additions}` : '') + '\n' + before.slice(beginAt);
+    applyTikzPreamble(after);
+  } else {
+    body = [allLibraries.length ? `\\usetikzlibrary{${allLibraries.join(',')}}` : '', ...preambleAdditions, body]
+      .filter(Boolean).join('\n');
+  }
+  if (body.trim()) {
+    editor.chain().focus().insertContent({
+      type: 'codeBlock', attrs: { language: 'tikz-general' },
+      content: [{ type: 'text', text: body.trim() }],
+    }).run();
+  }
+  return { ok: true };
+}
+
+function updateGlobalColumns(count){  const before=documentParts.start;
   const after=writeGlobalColumns(before,count);
   if(after===before)return;
   if(!sourceView.hidden){
@@ -1241,7 +1339,7 @@ function applyPageSetup(){
   const globalColumns=readGlobalColumns(layoutPreamble);
   documentPage.dataset.globalColumns=String(globalColumns);
   documentPage.dataset.captionLanguage=/\\usepackage(?:\[[^\]]*\])?\{ctex\}/.test(layoutPreamble)?'zh':'en';
-  // if(layoutColumns)layoutColumns.value=String(globalColumns);
+  if(layoutColumns)layoutColumns.value=String(globalColumns);
   const metrics=pageMetrics(pageSetup);
   documentPage.style.setProperty('--page-width',metrics.width);
   documentPage.style.setProperty('--page-height',metrics.height);
@@ -1328,6 +1426,7 @@ function renderMeta() {
 renderMeta();
 typesetPagination=installTypesetPagination(documentPage,paper,metaBar,editor);
 typesetPagination.setTableContinuation(config.value.interface.continuedTables);
+window.addEventListener('lineae-image-layout',()=>{typesetPagination?.invalidate();syncImageTab?.();});
 function source() {
   if(projectDocument.composition)return projectExplorer.model.file(projectDocument.composition.rootId).draft;
   const document=editor.getJSON();
@@ -1357,9 +1456,11 @@ function load(text, markSaved = true) {
   // The book/report heading mapping must be active before blocks are imported;
   // applyProfile() runs later, during pagination, which is too late for the
   // initial \chapter -> heading conversion.
-  const documentClass = (/\\documentclass(?:\[[^\]]*\])?\{([^}]+)\}/.exec(parsed.start)?.[1] || 'article').toLowerCase();
+  const documentClass = documentClassFromSource(parsed.start);
   setSerializationClass(documentClass);
   setHeadingBase(documentClass === 'book' || documentClass === 'report' ? 'chapter' : null);
+  // Project include fragments have no preamble; keep the class of the main file.
+  if (/\\documentclass/.test(parsed.start)) homeRibbon?.setDocumentClass?.(documentClass);
   // Preserve imported source exactly. Unsupported blocks remain directly accessible in source mode.
   documentParts=parsed;
   const content=parsed.blocks.flatMap((block,index)=>importBlocks(index===0 && readMeta('title')
@@ -1383,6 +1484,7 @@ function setSourceMode(active) {
   if (editor.view.composing || sourceView.composing) { sourceView.error(t("请先完成当前输入。","Finish the current composition before switching modes.")); return; }
   if (active === !sourceView.hidden) return;
   if(active && headerFooterMode)setHeaderFooterMode(false);
+  if(active)typesetPagination?.pause(true);
   if(projectExplorer?.active)projectWorkspace.select(active?'source':'body',projectFileKind);
   if (active) {
     if(projectDocument.composition){
@@ -1406,6 +1508,8 @@ syncUndoButtons();
       sourceView.close();
       showProjectComposition();
       editor.commands.focus();
+      typesetPagination?.reset();
+      typesetPagination?.pause(false);
       requestAnimationFrame(() => requestAnimationFrame(() => typesetPagination?.refresh()));
       setTimeout(() => typesetPagination?.refresh(),120);
     } catch (error) {
@@ -2558,10 +2662,9 @@ pageMarginTop=marginInput(t('上边距','Top margin'));
 pageMarginRight=marginInput(t('右边距','Right margin'));
 pageMarginBottom=marginInput(t('下边距','Bottom margin'));
 pageMarginLeft=marginInput(t('左边距','Left margin'));
-// 全局分栏：正文页渲染内核（typeset-pagination.js）暂不接受修改，此控件注销，待内核改造方案获批后恢复。
-// layoutColumns=document.createElement('select');
-// layoutColumns.setAttribute('aria-label',t('全局分栏','Global columns'));
-// layoutColumns.append(new Option(t('1 栏','1 column'),'1'),new Option(t('2 栏（twocolumn）','2 columns (twocolumn)'),'2'));
+layoutColumns=document.createElement('select');
+layoutColumns.setAttribute('aria-label',t('全局分栏','Global columns'));
+layoutColumns.append(new Option(t('1 栏','1 column'),'1'),new Option(t('2 栏（twocolumn）','2 columns (twocolumn)'),'2'));
 layoutLocalColumns=document.createElement('select');
 layoutLocalColumns.setAttribute('aria-label',t('局部分栏','Local columns'));
 for(const value of ['2','3','4'])layoutLocalColumns.append(new Option(t(value+' 栏',value+' columns'),value));
@@ -2596,18 +2699,17 @@ for(const [sideText,input] of [[t('上边距','Top'),pageMarginTop],[t('右边�
   field.append(caption,input);
   layoutPageSetupControls.append(field);
 }
-// const columnsField=document.createElement('label');
-// columnsField.className='layout-field';
-// const columnsCaption=document.createElement('span');
-// columnsCaption.textContent=t('全局分栏','Global columns');
-// columnsField.append(columnsCaption,layoutColumns);
+const columnsField=document.createElement('label');
+columnsField.className='layout-field';
+const columnsCaption=document.createElement('span');
+columnsCaption.textContent=t('全局分栏','Global columns');
+columnsField.append(columnsCaption,layoutColumns);
 const localColumnsField=document.createElement('label');
 localColumnsField.className='layout-field';
 const localColumnsCaption=document.createElement('span');
 localColumnsCaption.textContent=t('局部分栏','Local columns');
 localColumnsField.append(localColumnsCaption,layoutLocalColumns,insertColumnsButton);
-// layoutPageSetupControls.append(columnsField,localColumnsField);
-layoutPageSetupControls.append(localColumnsField);
+layoutPageSetupControls.append(columnsField,localColumnsField);
 layoutPageSetup.append(layoutPageSetupTitle,layoutPageSetupControls);
 const layoutParagraph=document.createElement('section');
 layoutParagraph.className='layout-group';
@@ -2632,8 +2734,8 @@ layoutAfter.addEventListener('change',()=>updateSelectedParagraphs({spaceAfter:l
 layoutParagraphControls.append(layoutBefore,layoutAfter);
 layoutParagraph.append(layoutParagraphTitle,layoutParagraphControls);
 buildRibbonGroups(layoutGroup,[
-  {id:'layout-page-setup',zh:'页面设置',en:'Page Setup',iconName:'layout',width:620,body:layoutPageSetupControls},
-  {id:'layout-paragraph',zh:'段落',en:'Paragraph',iconName:'paragraph',width:280,body:layoutParagraphControls},
+  {id:'layout-page-setup',zh:'页面设置',en:'Page Setup',iconName:'layout',width:840,body:layoutPageSetupControls},
+  {id:'layout-paragraph',zh:'段落',en:'Paragraph',iconName:'paragraph',width:300,body:layoutParagraphControls},
 ],['layout-paragraph','layout-page-setup']);
 syncLayoutParagraph=()=>{
   if(!layoutBefore||!layoutAfter)return;
@@ -2643,7 +2745,7 @@ syncLayoutParagraph=()=>{
 };
 pagePaper.addEventListener('change',()=>updatePageSetup({paper:pagePaper.value}));
 pageOrientation.addEventListener('change',()=>updatePageSetup({orientation:pageOrientation.value}));
-// layoutColumns.addEventListener('change',()=>updateGlobalColumns(layoutColumns.value));
+layoutColumns.addEventListener('change',()=>updateGlobalColumns(layoutColumns.value));
 insertColumnsButton.addEventListener('click',()=>insertMultiColumn(Number(layoutLocalColumns.value)||2));
 pageMarginPreset.addEventListener('change',()=>{
   if(MARGIN_PRESETS[pageMarginPreset.value])updatePageSetup({margin:MARGIN_PRESETS[pageMarginPreset.value]});
@@ -2768,7 +2870,7 @@ tableStretchGrid.append(
 tableStretchSection.append(tableStretchGrid);
 function updateTableAttributes(patch,focus=true){
   const lineKeys=['leftRule','rightRule','middleVerticalRule','verticalFirstRow','topRule','bottomRule','midRuleMode','ruleStyle','ruleWidth'];
-  if(Object.keys(patch).some(key=>lineKeys.includes(key)))patch={...patch,borderMode:null,booktabs:false};
+  if(Object.keys(patch).some(key=>lineKeys.includes(key)))patch={...patch,borderMode:null,booktabs:false,horizontalRuleMode:null};
   if(editor.isActive('table'))(focus?editor.chain().focus():editor.chain()).updateAttributes('table',patch).run();
 }
 function syncTableControls(){
@@ -2994,6 +3096,7 @@ const ribbon=document.createElement('div');ribbon.className='ribbon';
 const tabs=document.createElement('nav');tabs.className='ribbon-tabs';
 const home=document.createElement('div');home.className='tools';
 const insert=document.createElement('div');insert.className='tools';
+groupButton(insert,['分页','New page'],()=>editor.chain().focus().insertContent({type:'pageBreak'}).run());
 groupButton(insert,['图片','Image'],()=>insertLocalImage(editor));
 groupButton(insert,['子图','Subfigure'],()=>insertSubfigures(editor));
 const codeLanguageButton=groupButton(insert,['代码块','Code block'],async()=>{
@@ -3002,12 +3105,19 @@ const codeLanguageButton=groupButton(insert,['代码块','Code block'],async()=>
   if(editor.isActive('codeBlock')) editor.chain().focus().updateAttributes('codeBlock',{language:language||null}).run();
   else editor.chain().focus().setCodeBlock({language:language||null}).run();
 });
-const tikzButton=groupButton(insert,['TikZ','TikZ'],()=>{
+groupButton(insert,['CircuiTikZ','CircuiTikZ'],()=>{
   try{
     const editorEl=document.querySelector('.document-page .ProseMirror');
     const textwidthCm=editorEl?editorEl.clientWidth*2.54/96:15;
     const tikz=new TikzEditor({getTextwidthCm:()=>textwidthCm});
     tikz.open(code=>{ if(code) editor.chain().focus().insertContent({type:'codeBlock',attrs:{language:'tikz'},content:[{type:'text',text:code}]}).run(); });
+  }catch(error){ console.error(error); alert('CircuiTikZ editor failed: '+(error?.message||error)); }
+});
+const tikzButton=groupButton(insert,['TikZ','TikZ'],()=>{
+  try{
+    openTikzStudio({
+      onInsert:payload=>insertTikzStudioBlock(payload),
+    });
   }catch(error){ console.error(error); alert('TikZ editor failed: '+(error?.message||error)); }
 });
 import { installMathFloatToolbar } from './ui/math-float-toolbar.js';
@@ -3038,11 +3148,14 @@ imagePanel=installImagePanel({
   getSpacing:()=>readImageSpacing(documentParts.start),
   onSpacing:updateImageSpacing,
   onReplace:()=>{if(imageSelection!==null)replaceLocalImage(editor,imageSelection);},
+  onCrop:()=>{if(imageSelection!==null)startImageCrop(editor,imageSelection);},
+  onGroup:groupSelectedImages,
+  onUngroup:ungroupSelectedImages,
   onUpdate:patch=>updateSelectedImageAttrs(patch),
 });
 groups.image=imagePanel.panel;
 let subfigurePanel=null;
-subfigurePanel=installSubfigurePanel({onUpdate:patch=>updateSelectedSubfigureAttrs(patch)});
+subfigurePanel=installSubfigurePanel({onUpdate:patch=>updateSelectedSubfigureAttrs(patch),onUngroup:ungroupSelectedImages});
 groups.subfigure=subfigurePanel.panel;
 imagePanel.setSpacing(readImageSpacing(documentParts.start));
 const captions={files:['文件','File'],home:['主页','Home'],insert:['插入','Insert'],layout:['布局','Layout'],table:['表格','Table'],format:['格式','Format'],reference:['引用','Reference'],math:['数学','Math'],headerFooter:['页眉页脚','Header & Footer'],image:['图片','Image'],subfigure:['子图','Subfigure']};
@@ -3071,7 +3184,7 @@ function changeFontSize(direction) {
   if (!next) return false;
   return editor.chain().focus().setMark('textStyle',{fontSize:next+'pt'}).run();
 }
-const homeRibbon=buildHomeRibbon(home,{actions:{
+homeRibbon=buildHomeRibbon(home,{documentClass:documentClassFromSource(documentParts.start),actions:{
   copy:()=>clipboard.copy().catch(reportClipboardError),
   cut:()=>clipboard.cut().catch(reportClipboardError),
   paste:mode=>clipboard.paste(mode).catch(reportClipboardError),
@@ -3115,9 +3228,11 @@ const homeRibbon=buildHomeRibbon(home,{actions:{
     updateEditorDisplayPreferences();
     syncHomeToolbar();
   },
-  style:level=>{
-    headingMenu.value=String(level);
-    headingMenu.dispatchEvent(new Event('change',{bubbles:true}));
+  style:preset=>{
+    const level=Number(typeof preset==='number'?preset:preset?.level??0);
+    if(!level)return editor.chain().focus().setParagraph().run();
+    const command=typeof preset==='object'?preset?.command??null:null;
+    return editor.chain().focus().setHeading({level,command:null}).updateAttributes('heading',{command}).run();
   },
   find:documentFind.show,
 }});
@@ -3149,8 +3264,9 @@ function syncHomeToolbar() {
   for (const key of ['left','center','right','justify']) pressed(homeRibbon.refs.align[key],align===key);
   pressed(homeRibbon.refs.shading,Boolean(editor.getAttributes('paragraph').shading));
   pressed(homeRibbon.refs.border,Boolean(editor.getAttributes('paragraph').border));
-  const level=editor.getAttributes('heading').level??0;
-  for (const [value,control] of homeRibbon.refs.styles) pressed(control,value===level);
+  const heading=editor.getAttributes('heading');
+  const activeStyle=activeStyleKey(heading,homeRibbon.refs.stylePresets??[]);
+  for (const [key,control] of homeRibbon.refs.styles) pressed(control,key===activeStyle);
 }
 editor.on('transaction',syncHomeToolbar);
 document.addEventListener('focusin',()=>{ if(sourceView.hidden) syncHomeToolbar(); },true);
@@ -3313,6 +3429,72 @@ function currentImageSelection(){
   return selection instanceof NodeSelection && selection.node.type.name==='documentImage'
     ? {position:selection.from,node:selection.node} : null;
 }
+function selectedImageBlocks(){
+  const selection=editor.state.selection;
+  if(!sourceView.hidden||selection instanceof NodeSelection||selection.empty)return [];
+  const from=selection.from,to=selection.to,blocks=[];
+  editor.state.doc.forEach((node,offset)=>{
+    if(offset>=from&&offset+node.nodeSize<=to)blocks.push({node,position:offset});
+  });
+  return blocks.length>1&&blocks.every(({node})=>node.type.name==='documentImage')?blocks:[];
+}
+function subfiguresAncestor(position){
+  const $pos=editor.state.doc.resolve(position);
+  for(let depth=$pos.depth;depth>0;depth-=1){
+    if($pos.node(depth).type.name==='subfigures')return $pos.before(depth);
+  }
+  return null;
+}
+function groupSelectedImages(){
+  const blocks=selectedImageBlocks();
+  if(blocks.length<2)return false;
+  const width=(Math.min(0.48,0.94/blocks.length)).toFixed(2)+'\\textwidth';
+  const children=blocks.map(({node})=>editor.schema.nodes.documentImage.create({
+    ...node.attrs,
+    figure:false,wrap:false,figureSource:null,placement:null,fixed:false,
+    centered:true,align:'center',height:null,scale:null,width,
+  }));
+  const subfigures=editor.schema.nodes.subfigures.create({
+    placement:null,fixed:false,caption:null,captionEnabled:false,captionNumbered:true,label:null,
+  },children);
+  const from=blocks[0].position,to=blocks.at(-1).position+blocks.at(-1).node.nodeSize;
+  const transaction=editor.state.tr.replaceWith(from,to,subfigures);
+  try{transaction.setSelection(NodeSelection.create(transaction.doc,from));}catch{}
+  editor.view.dispatch(transaction.scrollIntoView());
+  return true;
+}
+function ungroupSubfigures(position){
+  const node=editor.state.doc.nodeAt(position);
+  if(node?.type.name!=='subfigures')return false;
+  const source=node.content.content;
+  const mainCaption=node.attrs.captionEnabled||node.attrs.caption!=null?node.attrs.caption:null;
+  const mainLabel=node.attrs.label??null;
+  const images=source.map((child,index)=>{
+    const attrs={...child.attrs};
+    if(index===source.length-1){
+      if(mainCaption!=null&&!(attrs.captionEnabled&&attrs.caption)){attrs.caption=mainCaption;attrs.captionEnabled=true;}
+      if(mainLabel&&!attrs.label)attrs.label=mainLabel;
+    }
+    const figure=Boolean(attrs.captionEnabled||attrs.caption!=null||attrs.label);
+    return editor.schema.nodes.documentImage.create({
+      ...attrs,figure,wrap:false,figureSource:null,placement:null,fixed:false,centered:true,
+    });
+  });
+  const transaction=editor.state.tr.replaceWith(position,position+node.nodeSize,images);
+  try{transaction.setSelection(NodeSelection.create(transaction.doc,position));}catch{}
+  editor.view.dispatch(transaction.scrollIntoView());
+  return true;
+}
+function ungroupSelectedImages(){
+  const selection=editor.state.selection;
+  if(selection instanceof NodeSelection&&selection.node.type.name==='subfigures')return ungroupSubfigures(selection.from);
+  const found=currentImageSelection();
+  if(found){
+    const parent=subfiguresAncestor(found.position);
+    if(parent!==null)return ungroupSubfigures(parent);
+  }
+  return false;
+}
 function updateSelectedSubfigureAttrs(patch){
   const selection=editor.state.selection;
   if(!(selection instanceof NodeSelection)||selection.node.type.name!=='subfigures')return;
@@ -3323,17 +3505,39 @@ function syncImageTab(){
   if(!imageTab)return;
   const found=sourceView.hidden ? currentImageSelection() : null;
   imageSelection=found?.position??null;
-  imageTab.hidden=!found;
+  const multi=sourceView.hidden && !found ? selectedImageBlocks() : [];
+  imageTab.hidden=!found&&multi.length<2;
   const subSel=sourceView.hidden&&editor.state.selection instanceof NodeSelection&&editor.state.selection.node.type.name==='subfigures'?editor.state.selection.node:null;
   if(subfigureTab)subfigureTab.hidden=!subSel;
   subfigurePanel?.setValues(subSel?.attrs??null);
   if(subSel&&ribbon.dataset.ribbonPage!=='subfigure'&&ribbon.dataset.ribbonPage!=='headerFooter')selectGroup('subfigure');
   else if(!subSel&&ribbon.dataset.ribbonPage==='subfigure')selectGroup('home');
   if(found){
-    imagePanel.setValues(found.node.attrs);
+    imagePanel.setMultiSelection(0);
+    imagePanel.setPath(found.node.attrs.path);
+    const figure=editor.view.nodeDOM(found.position);
+    const imageElement=figure?.querySelector?.('img');
+    const frame=figure?.querySelector?.('.document-image-frame');
+    const relativeWidth=/^(\d+(?:\.\d+)?)\\(?:textwidth|linewidth|columnwidth)$/.exec(String(found.node.attrs.width??''));
+    const fullWidth=imageElement?.offsetWidth||frame?.clientWidth;
+    const textWidth=fullWidth&&relativeWidth&&Number(relativeWidth[1])>0
+      ? fullWidth/Number(relativeWidth[1])
+      : figure?.closest?.('.ProseMirror')?.clientWidth||editor.view.dom.clientWidth||0;
+    imagePanel.setValues(found.node.attrs,{
+      naturalWidth:imageElement?.naturalWidth||0,
+      naturalHeight:imageElement?.naturalHeight||0,
+      textWidth,
+    });
+    imagePanel.setGroupState(subfiguresAncestor(found.position)!==null?'ungroup':'none');
     if(ribbon.dataset.ribbonPage!=='image' && ribbon.dataset.ribbonPage!=='headerFooter')selectGroup('image');
-  }else if(ribbon.dataset.ribbonPage==='image'){
-    selectGroup('home');
+  }else if(multi.length>=2){
+    imagePanel.setMultiSelection(multi.length);
+    imagePanel.setGroupState('group');
+    if(ribbon.dataset.ribbonPage!=='image' && ribbon.dataset.ribbonPage!=='headerFooter')selectGroup('image');
+  }else{
+    imagePanel.setMultiSelection(0);
+    imagePanel.setGroupState('none');
+    if(ribbon.dataset.ribbonPage==='image')selectGroup('home');
   }
 }
 editor.on('selectionUpdate',syncImageTab);
@@ -3358,10 +3562,10 @@ for(const [name,panel] of Object.entries(groups)) {
 const download=document.querySelector('#download');
 language.addEventListener('change',()=>{config.updateInterface({language:language.value});updateLanguage();});
 updateFileTools();updateLanguage();selectGroup('home');
+syncUndoButtons();
 
 installContextMenu(editor, paper, language, message => {
   const status = document.querySelector('#status');
   status.hidden = false;
   status.textContent = message;
 });
-

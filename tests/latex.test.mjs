@@ -475,3 +475,12 @@ test('keeps common decorated and repeated table column specifications editable',
   assert.equal(table.specs.length,3);assert.equal(table.specs[0].width,'3cm');
   assert.equal(serializeTable(table,'\n'),source);
 });
+
+test('a tabular pasted directly after text is split into paragraph and table', async()=>{
+  const {importBlocks}=await import('../apps/web/latex/blocks.mjs');
+  const source=['Before.','\\begin{tabular}{c|c}','\\toprule','A & B \\\\','\\midrule','C & D \\\\','\\bottomrule','\\end{tabular}'].join('\n');
+  const nodes=importBlocks(source);
+  assert.deepEqual(nodes.map(node=>node.type),['paragraph','table']);
+  assert.equal(nodes[0].content[0].text,'Before.');
+  assert.equal(nodes[1].content.length,2);
+});
