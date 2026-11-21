@@ -17,6 +17,7 @@ import {ProjectDocumentSession} from './project/document-session.mjs';
 import {installFloatingToolbar} from './ui/floating-toolbar.js';
 import {installSettingsPanel} from './ui/settings-panel.js';
 import { buildHomeRibbon } from './ui/home-ribbon.js';
+import { activeStyleKey, documentClassFromSource } from './ui/style-presets.mjs';
 import { buildRibbonGroups } from './ui/ribbon-groups.js';
 import {installHeaderFooterPanel} from './ui/header-footer-panel.js';
 import { sourceProjection, richSourceChanges, standaloneParagraphDraft } from './editor/source-sync.js';
@@ -1455,9 +1456,11 @@ function load(text, markSaved = true) {
   // The book/report heading mapping must be active before blocks are imported;
   // applyProfile() runs later, during pagination, which is too late for the
   // initial \chapter -> heading conversion.
-  const documentClass = (/\\documentclass(?:\[[^\]]*\])?\{([^}]+)\}/.exec(parsed.start)?.[1] || 'article').toLowerCase();
+  const documentClass = documentClassFromSource(parsed.start);
   setSerializationClass(documentClass);
   setHeadingBase(documentClass === 'book' || documentClass === 'report' ? 'chapter' : null);
+  // Project include fragments have no preamble; keep the class of the main file.
+  if (/\\documentclass/.test(parsed.start)) homeRibbon?.setDocumentClass?.(documentClass);
   // Preserve imported source exactly. Unsupported blocks remain directly accessible in source mode.
   documentParts=parsed;
   const content=parsed.blocks.flatMap((block,index)=>importBlocks(index===0 && readMeta('title')
@@ -3178,7 +3181,7 @@ function changeFontSize(direction) {
   if (!next) return false;
   return editor.chain().focus().setMark('textStyle',{fontSize:next+'pt'}).run();
 }
-homeRibbon=buildHomeRibbon(home,{actions:{
+homeRibbon=buildHomeRibbon(home,{documentClass:documentClassFromSource(documentParts.start),actions:{
   copy:()=>clipboard.copy().catch(reportClipboardError),
   cut:()=>clipboard.cut().catch(reportClipboardError),
   paste:mode=>clipboard.paste(mode).catch(reportClipboardError),
@@ -3222,9 +3225,11 @@ homeRibbon=buildHomeRibbon(home,{actions:{
     updateEditorDisplayPreferences();
     syncHomeToolbar();
   },
-  style:level=>{
-    headingMenu.value=String(level);
-    headingMenu.dispatchEvent(new Event('change',{bubbles:true}));
+  style:preset=>{
+    const level=Number(typeof preset==='number'?preset:preset?.level??0);
+    if(!level)return editor.chain().focus().setParagraph().run();
+    const command=typeof preset==='object'?preset?.command??null:null;
+    return editor.chain().focus().setHeading({level,command:null}).updateAttributes('heading',{command}).run();
   },
   find:documentFind.show,
 }});
@@ -3256,8 +3261,9 @@ function syncHomeToolbar() {
   for (const key of ['left','center','right','justify']) pressed(homeRibbon.refs.align[key],align===key);
   pressed(homeRibbon.refs.shading,Boolean(editor.getAttributes('paragraph').shading));
   pressed(homeRibbon.refs.border,Boolean(editor.getAttributes('paragraph').border));
-  const level=editor.getAttributes('heading').level??0;
-  for (const [value,control] of homeRibbon.refs.styles) pressed(control,value===level);
+  const heading=editor.getAttributes('heading');
+  const activeStyle=activeStyleKey(heading,homeRibbon.refs.stylePresets??[]);
+  for (const [key,control] of homeRibbon.refs.styles) pressed(control,key===activeStyle);
 }
 editor.on('transaction',syncHomeToolbar);
 document.addEventListener('focusin',()=>{ if(sourceView.hidden) syncHomeToolbar(); },true);

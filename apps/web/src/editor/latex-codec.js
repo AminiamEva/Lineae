@@ -94,7 +94,9 @@ export function serialize(node) {
     case 'heading': {
       const chaptered = serializationClass === 'book' || serializationClass === 'report';
       const names = chaptered ? ['chapter','section','subsection'] : ['section','subsection','subsubsection'];
-      const name = node.attrs.command === 'chapter' ? 'chapter' : names[Math.min(Math.max(node.attrs.level,1),3)-1];
+      const name = node.attrs.command === 'part' ? 'part'
+        : node.attrs.command === 'chapter' ? 'chapter'
+        : names[Math.min(Math.max(node.attrs.level,1),3)-1];
       const short = node.attrs.shortTitle ? '[' + node.attrs.shortTitle + ']' : '';
       const label = serializeHeadingLabel(node.attrs);
       return '\\' + name + (node.attrs.numbered === false ? '*' : '') + short + '{' + content + '}' + label + '\n\n';

@@ -1230,7 +1230,26 @@ body.format-painter-active .ProseMirror * { cursor:copy; }
   content: none;
 }
 .document-page[data-document-class="book"] .ProseMirror,
-.document-page[data-document-class="report"] .ProseMirror { counter-reset: lineae-chapter; }
+.document-page[data-document-class="report"] .ProseMirror { counter-reset: lineae-chapter lineae-part; }
+/* \part: centred display heading that numbers with Roman numerals and restarts
+   chapter numbering, matching book/report output. */
+.document-page[data-document-class="book"] .ProseMirror h1[data-heading-command="part"],
+.document-page[data-document-class="report"] .ProseMirror h1[data-heading-command="part"] {
+  font-size: 2.6em; font-weight: 700; line-height: 1.2; text-align: center;
+  margin: 4ex 0 3ex; counter-increment: lineae-part; counter-reset: lineae-chapter;
+}
+.document-page[data-document-class="book"] .ProseMirror h1[data-heading-command="part"]::before,
+.document-page[data-document-class="report"] .ProseMirror h1[data-heading-command="part"]::before {
+  content: "Part " counter(lineae-part, upper-roman); display: block;
+}
+.document-page[data-document-class="book"] .ProseMirror h1[data-heading-command="part"][data-numbered="false"],
+.document-page[data-document-class="report"] .ProseMirror h1[data-heading-command="part"][data-numbered="false"] {
+  counter-increment: none;
+}
+.document-page[data-document-class="book"] .ProseMirror h1[data-heading-command="part"][data-numbered="false"]::before,
+.document-page[data-document-class="report"] .ProseMirror h1[data-heading-command="part"][data-numbered="false"]::before {
+  content: none;
+}
 /* twoside: mirror furniture margins on even sheets (body column mirroring deferred) */
 .document-page .document-sheet[data-parity="even"] .document-page-header { left:var(--page-margin-right,47.456mm); right:var(--page-margin-left,47.191mm); }
 .document-page .document-sheet[data-parity="even"] .document-page-footer { left:var(--page-margin-right,47.456mm); right:var(--page-margin-left,47.191mm); }

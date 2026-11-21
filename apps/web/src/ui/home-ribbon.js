@@ -1,5 +1,6 @@
 import { t } from './i18n.mjs';
 import { icon } from '../editor/icons.js';
+import { homeStylePresets } from './style-presets.mjs';
 
 const openMenus = new Set();
 
@@ -276,35 +277,29 @@ function group(panel,id,zh,en,iconName) {
   return state;
 }
 
-function styleGallery(parent,onStyle) {
+function styleGallery(parent,onStyle,presets) {
   const gallery = document.createElement('div');
   gallery.className = 'style-gallery';
   gallery.setAttribute('role','group');
   gallery.setAttribute('aria-label',t('样式库','Style gallery'));
-  const definitions = [
-    {level:0,zh:'正文',en:'Normal',align:'left'},
-    {level:1,zh:'标题1',en:'section',align:'left'},
-    {level:2,zh:'标题2',en:'subsect',align:'left'},
-    {level:3,zh:'标题3',en:'subsub',align:'left'},
-  ];
   const controls = new Map();
-  for (const definition of definitions) {
+  for (const definition of presets) {
     const card = document.createElement('button');
     card.type = 'button';
     card.className = 'style-card';
-    card.dataset.styleLevel = definition.level === null ? 'none' : String(definition.level);
-    if (definition.style) card.dataset.style = definition.style;
-    describe(card,{zh:definition.zh,en:definition.en,hintZh:t('应用样式','Apply style')+'：'+definition.zh,hintEn:'Apply style: '+definition.en});
+    card.dataset.styleLevel = String(definition.level);
+    card.dataset.style = definition.key;
+    describe(card,{zh:definition.zh,en:definition.en,hintZh:definition.hintZh,hintEn:definition.hintEn});
     card.setAttribute('aria-pressed','false');
-    card.disabled = Boolean(definition.disabled) || !onStyle;
+    card.disabled = !onStyle;
     card.addEventListener('mousedown',event => event.preventDefault());
-    if (!card.disabled) card.addEventListener('click',event => { event.preventDefault(); onStyle(definition.level); });
+    if (!card.disabled) card.addEventListener('click',event => { event.preventDefault(); onStyle(definition); });
     const preview = document.createElement('span');
     preview.className = 'style-preview';
-    localizedLabel(preview,definition.zh,definition.en);
+    localizedLabel(preview,definition.previewZh ?? definition.zh,definition.previewEn ?? definition.en);
     card.append(preview);
     gallery.append(card);
-    if (definition.level !== null) controls.set(definition.level,card);
+    controls.set(definition.key,card);
   }
   parent.append(gallery);
   return controls;
@@ -385,7 +380,7 @@ function installResponsiveGroups(panel,states) {
   };
 }
 
-export function buildHomeRibbon(panel,{actions = {}} = {}) {
+export function buildHomeRibbon(panel,{actions = {},documentClass = 'article'} = {}) {
   const run = name => (typeof actions[name] === 'function' ? actions[name] : undefined);
   const refs = {align:{},styles:new Map()};
   panelElement = panel;
@@ -548,7 +543,14 @@ export function buildHomeRibbon(panel,{actions = {}} = {}) {
 
   const styles = group(panel,'styles','样式','Styles','styles');
   const galleryRow = styles.row();
-  refs.styles = styleGallery(galleryRow,(level) => run('style')?.(level));
+  let styleClass = documentClass;
+  function renderStyleGallery() {
+    galleryRow.replaceChildren();
+    const presets = homeStylePresets(styleClass);
+    refs.stylePresets = presets;
+    refs.styles = styleGallery(galleryRow,definition => run('style')?.(definition),presets);
+  }
+  renderStyleGallery();
 
   const editing = group(panel,'editing','编辑','Editing','find');
   const editingRow = editing.row();
@@ -556,5 +558,15 @@ export function buildHomeRibbon(panel,{actions = {}} = {}) {
   editingRow.append(refs.find);
 
   const responsive = installResponsiveGroups(panel,groupStates);
-  return {panel,refs,groups:groupStates,refreshLayout:responsive.refresh,slots:{font:fontControlsRow,color:colorSlot}};
+  return {
+    panel,refs,groups:groupStates,refreshLayout:responsive.refresh,
+    slots:{font:fontControlsRow,color:colorSlot},
+    setDocumentClass(name) {
+      if (String(name || 'article').toLowerCase() === String(styleClass).toLowerCase()) return refs.styles;
+      styleClass = name;
+      renderStyleGallery();
+      responsive.refresh?.();
+      return refs.styles;
+    },
+  };
 }
