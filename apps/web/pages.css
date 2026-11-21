@@ -136,6 +136,24 @@ main { padding:125px 24px 60px; overflow:auto; }
 .document-image.ProseMirror-selectednode { outline:2px solid #4d90ee; outline-offset:2px; }
 .document-image-controls { position:absolute; inset:0 0 auto auto; display:flex; gap:4px; opacity:0; }
 .document-image:hover .document-image-controls,.document-image:focus-within .document-image-controls { opacity:1; }
+.document-image.is-cropping .image-resize-handle,
+.document-image.is-cropping .document-image-controls { display:none; }
+.image-crop-layer { position:absolute; inset:0; z-index:9; pointer-events:none; }
+.image-crop-mask { position:absolute; background:rgba(16,21,30,.55); pointer-events:none; }
+.image-crop-box { position:absolute; border:1px dashed #fff; box-shadow:0 0 0 1px rgba(0,0,0,.65); pointer-events:none; }
+.image-crop-handle { position:absolute; width:12px; height:12px; border:1px solid light-dark(#2f6fed,#9cc7ff); border-radius:2px; background:light-dark(#fff,#1f2733); pointer-events:auto; touch-action:none; z-index:11; }
+.image-crop-handle[data-crop-dir="nw"] { left:-6px; top:-6px; cursor:nwse-resize; }
+.image-crop-handle[data-crop-dir="n"] { left:50%; top:-6px; margin-left:-6px; cursor:ns-resize; }
+.image-crop-handle[data-crop-dir="ne"] { right:-6px; top:-6px; cursor:nesw-resize; }
+.image-crop-handle[data-crop-dir="e"] { right:-6px; top:50%; margin-top:-6px; cursor:ew-resize; }
+.image-crop-handle[data-crop-dir="se"] { right:-6px; bottom:-6px; cursor:nwse-resize; }
+.image-crop-handle[data-crop-dir="s"] { left:50%; bottom:-6px; margin-left:-6px; cursor:ns-resize; }
+.image-crop-handle[data-crop-dir="sw"] { left:-6px; bottom:-6px; cursor:nesw-resize; }
+.image-crop-handle[data-crop-dir="w"] { left:-6px; top:50%; margin-top:-6px; cursor:ew-resize; }
+.image-crop-actions { position:absolute; top:4px; right:4px; display:flex; gap:4px; pointer-events:auto; z-index:12; }
+.image-crop-actions button { width:26px; height:26px; padding:0; border-radius:5px; font-size:13px; font-weight:700; line-height:1; }
+.image-crop-actions .image-crop-apply { color:#fff; background:light-dark(#2f6fed,#3d7ff0); }
+.image-crop-actions .image-crop-cancel { color:inherit; background:light-dark(#f3f5f8,#2c313a); }
 .ProseMirror pre:has(>code) { position:relative; padding:.5em .75em; background:light-dark(#f4f5f7,#303035); border-radius:5px; white-space:pre-wrap; text-autospace:no-autospace; font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; }
 .ProseMirror pre[data-language] { padding-top:1.55em; }
 .ProseMirror pre[data-language]::before { content:attr(data-language); position:absolute; top:.35em; right:.6em; font:10px/1.3 ui-monospace,SFMono-Regular,monospace; letter-spacing:.02em; color:light-dark(#8a909a,#8f959f); pointer-events:none; user-select:none; }
@@ -683,9 +701,11 @@ button,select,.color-control { transition:background-color .14s ease,color .14s 
 .layout-ribbon .ribbon-group-body button:hover,
 .image-tools .ribbon-group-body button:hover,
 .image-tools .image-header button:hover { background:light-dark(#e5ecfb,#414955); }
-.image-crop { display:flex; gap:5px; }
-.image-crop .image-field { min-width:56px; }
-.image-crop input { width:56px; }
+.image-crop-button { display:inline-flex; align-items:center; justify-content:center; width:28px; height:28px; padding:0; }
+.image-crop-button .ui-icon { width:17px; height:17px; }
+.image-tools :is(input,select):disabled { opacity:.42; }
+.image-tools .image-field:has(:disabled) > span:first-child,
+.image-tools .image-check:has(:disabled) { opacity:.55; }
 .image-tools input[type=color] { width:26px; height:23px; padding:1px; }
 .layout-ribbon .ribbon-group-body,
 .image-tools .ribbon-group-body { padding:2px 2px 1px; }
@@ -698,7 +718,6 @@ button,select,.color-control { transition:background-color .14s ease,color .14s 
 .image-tools .image-field > span:first-child { white-space:nowrap; }
 .image-tools .image-line input { width:44px; }
 .image-tools .image-line select { width:70px; }
-.image-tools .image-crop { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); }
 .image-tools .image-grid { align-items:center; }
 .layout-ribbon .layout-field { flex-direction:row; align-items:center; gap:4px; }
 .layout-ribbon .layout-field > span { white-space:nowrap; }
@@ -713,8 +732,6 @@ button,select,.color-control { transition:background-color .14s ease,color .14s 
   .image-grid { gap:4px; }
   .image-field { flex:1 1 30%; }
   .image-wide { flex-basis:100%; }
-  .image-crop { flex-wrap:wrap; }
-  .image-crop .image-field { flex:1 1 20%; }
 }
 
 /* Word-style Home ribbon ------------------------------------------------ */

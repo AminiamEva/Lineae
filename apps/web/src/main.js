@@ -50,7 +50,7 @@ import { compileKeybindings, installKeybindings } from './editor/keybindings.mjs
 import defaultConfigYaml from '../config.yaml';
 import { askText } from './editor/dialog.js';
 import { installDocumentFind } from './editor/find.js';
-import { DocumentImage, Subfigures, insertLocalImage, insertSubfigures, replaceLocalImage, installImageDrop } from './editor/image-node.js';
+import { DocumentImage, Subfigures, insertLocalImage, insertSubfigures, replaceLocalImage, startImageCrop, installImageDrop } from './editor/image-node.js';
 import { installImagePanel } from './ui/image-panel.js';
 import { installSubfigurePanel } from './ui/subfigure-panel.js';
 import { MultiColumn } from './editor/multi-column.js';
@@ -1426,7 +1426,7 @@ function renderMeta() {
 renderMeta();
 typesetPagination=installTypesetPagination(documentPage,paper,metaBar,editor);
 typesetPagination.setTableContinuation(config.value.interface.continuedTables);
-window.addEventListener('lineae-image-layout',()=>typesetPagination?.invalidate());
+window.addEventListener('lineae-image-layout',()=>{typesetPagination?.invalidate();syncImageTab?.();});
 function source() {
   if(projectDocument.composition)return projectExplorer.model.file(projectDocument.composition.rootId).draft;
   const document=editor.getJSON();
@@ -3148,6 +3148,7 @@ imagePanel=installImagePanel({
   getSpacing:()=>readImageSpacing(documentParts.start),
   onSpacing:updateImageSpacing,
   onReplace:()=>{if(imageSelection!==null)replaceLocalImage(editor,imageSelection);},
+  onCrop:()=>{if(imageSelection!==null)startImageCrop(editor,imageSelection);},
   onUpdate:patch=>updateSelectedImageAttrs(patch),
 });
 groups.image=imagePanel.panel;
@@ -3443,7 +3444,19 @@ function syncImageTab(){
   if(subSel&&ribbon.dataset.ribbonPage!=='subfigure'&&ribbon.dataset.ribbonPage!=='headerFooter')selectGroup('subfigure');
   else if(!subSel&&ribbon.dataset.ribbonPage==='subfigure')selectGroup('home');
   if(found){
-    imagePanel.setValues(found.node.attrs);
+    imagePanel.setPath(found.node.attrs.path);
+    const figure=editor.view.nodeDOM(found.position);
+    const imageElement=figure?.querySelector?.('img');
+    const frame=figure?.querySelector?.('.document-image-frame');
+    const relativeWidth=/^(\d+(?:\.\d+)?)\\(?:textwidth|linewidth|columnwidth)$/.exec(String(found.node.attrs.width??''));
+    const textWidth=frame?.clientWidth&&relativeWidth&&Number(relativeWidth[1])>0
+      ? frame.clientWidth/Number(relativeWidth[1])
+      : figure?.closest?.('.ProseMirror')?.clientWidth||editor.view.dom.clientWidth||0;
+    imagePanel.setValues(found.node.attrs,{
+      naturalWidth:imageElement?.naturalWidth||0,
+      naturalHeight:imageElement?.naturalHeight||0,
+      textWidth,
+    });
     if(ribbon.dataset.ribbonPage!=='image' && ribbon.dataset.ribbonPage!=='headerFooter')selectGroup('image');
   }else if(ribbon.dataset.ribbonPage==='image'){
     selectGroup('home');

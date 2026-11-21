@@ -280,7 +280,7 @@ function graphicsOptions(attrs) {
   const options = [];
   if (attrs.width) options.push('width=' + attrs.width);
   if (attrs.height) options.push('height=' + attrs.height);
-  if (attrs.scale) options.push('scale=' + attrs.scale);
+  if (attrs.scale && !attrs.width && !attrs.height) options.push('scale=' + attrs.scale);
   if (attrs.angle) options.push('angle=' + attrs.angle);
   if (attrs.origin) options.push('origin=' + attrs.origin);
   if (attrs.keepAspect && attrs.width && attrs.height) options.push('keepaspectratio');
