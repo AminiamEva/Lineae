@@ -54,6 +54,7 @@ const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR
 
     // Crop is a single button that enters the interactive crop overlay.
     assert.equal(await page.locator('.image-crop').count(), 0, 'numeric crop fields are gone');
+    const beforeCrop = await imageNode.locator('.document-image-frame').evaluate(frame => ({ width: frame.clientWidth, height: frame.clientHeight }));
     await page.locator('.image-crop-button').click();
     await page.locator('.image-crop-layer').waitFor({ state: 'visible' });
     assert.equal(await page.locator('.image-crop-mask').count(), 4);
@@ -64,19 +65,33 @@ const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR
     await page.mouse.move(handle.x - 24, handle.y + handle.height / 2, { steps: 6 });
     await page.mouse.up();
     await page.locator('.image-crop-apply').click();
-    await page.waitForFunction(() => document.querySelector('.document-image img')?.style.clipPath.includes('inset'));
+    await page.waitForFunction(width => document.querySelector('.document-image-frame')?.clientWidth < width, beforeCrop.width);
+    const cropGeometry = await imageNode.locator('.document-image-frame').evaluate(frame => {
+      const image = frame.querySelector('img');
+      const style = getComputedStyle(frame);
+      return { width: frame.clientWidth, height: frame.clientHeight, overflow: style.overflow, position: getComputedStyle(image).position, left: image.style.left, top: image.style.top, clip: image.style.clipPath };
+    });
+    assert.ok(cropGeometry.width < beforeCrop.width, 'the frame shrinks to the visible cropped width');
+    assert.equal(cropGeometry.height, beforeCrop.height, 'a horizontal crop keeps the full height');
+    assert.notEqual(cropGeometry.overflow, 'hidden', 'resize handles stay usable outside the frame');
+    assert.match(cropGeometry.clip, /^inset\(/, 'cropped pixels stay hidden');
+    assert.equal(cropGeometry.position, 'absolute', 'the image keeps its uncropped size inside the frame');
+    assert.equal(cropGeometry.left, '0px', 'an east-only crop does not shift the image');
+    assert.equal(cropGeometry.top, '0px');
     const attrs = await page.locator('.ProseMirror').evaluate(element => element.editor.getJSON().content.find(node => node.type === 'documentImage').attrs);
     assert.match(attrs.cropRight, /cm$/, 'crop is stored as a LaTeX length');
     assert.ok(Number.parseFloat(attrs.cropRight) > 0, 'dragging the east handle crops from the right');
 
-    // The context menu exposes the same crop action.
+    // The context menu exposes the same crop action; re-entering restores the full image for editing.
     await imageNode.click({ button: 'right' });
     const menu = page.locator('.editor-context-menu');
     await menu.locator('[data-command="image-crop"]').waitFor();
     await menu.locator('[data-command="image-crop"]').click();
     await page.locator('.image-crop-layer').waitFor({ state: 'visible' });
+    await page.waitForFunction(width => document.querySelector('.document-image-frame')?.clientWidth > width, cropGeometry.width);
     await page.keyboard.press('Escape');
     await page.locator('.image-crop-layer').waitFor({ state: 'hidden' });
+    await page.waitForFunction(width => document.querySelector('.document-image-frame')?.clientWidth === width, cropGeometry.width);
 
     // With keep-aspect-ratio on, width, height and scale move together.
     const widthNumber = page.locator('.image-tools .image-line input').nth(0);

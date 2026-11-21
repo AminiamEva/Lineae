@@ -3519,8 +3519,9 @@ function syncImageTab(){
     const imageElement=figure?.querySelector?.('img');
     const frame=figure?.querySelector?.('.document-image-frame');
     const relativeWidth=/^(\d+(?:\.\d+)?)\\(?:textwidth|linewidth|columnwidth)$/.exec(String(found.node.attrs.width??''));
-    const textWidth=frame?.clientWidth&&relativeWidth&&Number(relativeWidth[1])>0
-      ? frame.clientWidth/Number(relativeWidth[1])
+    const fullWidth=imageElement?.offsetWidth||frame?.clientWidth;
+    const textWidth=fullWidth&&relativeWidth&&Number(relativeWidth[1])>0
+      ? fullWidth/Number(relativeWidth[1])
       : figure?.closest?.('.ProseMirror')?.clientWidth||editor.view.dom.clientWidth||0;
     imagePanel.setValues(found.node.attrs,{
       naturalWidth:imageElement?.naturalWidth||0,

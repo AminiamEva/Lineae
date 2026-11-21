@@ -343,11 +343,11 @@ export const DocumentImage = Node.create({
       }
       function enterCropMode(){
         if(cropping)return;
-        const {width,height}=cropSize();
-        if(!width||!height)return;
         cropping=true;
+        refresh();
+        const {width,height}=cropSize();
+        if(!width||!height){cropping=false;return;}
         cropInsets=currentCropInsets();
-        image.style.clipPath='';
         cropLayer.hidden=false;
         dom.classList.add('is-cropping');
         layoutCrop();
@@ -477,10 +477,17 @@ export const DocumentImage = Node.create({
           : node.attrs.wrap
             ? relativeImageWidth(node.attrs.width,node.attrs.wrapWidth||'0.4\\textwidth')
             : cssDimension(node.attrs.width);
+        // Clear any previous crop geometry before measuring the full image.
+        imageFrame.style.height='';
+        imageFrame.style.overflow='';
+        image.style.position='';
+        image.style.left='';
+        image.style.top='';
         imageFrame.style.width=imageWidth||'max-content';
         image.style.width=imageWidth?'100%':'';
         image.style.height=cssDimension(node.attrs.height);
         image.style.maxWidth='100%';
+        image.style.clipPath='';
         const transforms=[];
         if(node.attrs.angle)transforms.push(`rotate(${node.attrs.angle}deg)`);
         if(node.attrs.scale && !node.attrs.width && !node.attrs.height)transforms.push(`scale(${node.attrs.scale})`);
@@ -489,14 +496,29 @@ export const DocumentImage = Node.create({
         image.style.transform=transforms.join(' ');
         image.style.transformOrigin={c:'center',l:'left center',r:'right center',t:'center top',b:'center bottom',lt:'left top',lb:'left bottom',rt:'right top',rb:'right bottom'}[node.attrs.origin??'c']??'center';
         const crops=[node.attrs.cropTop,node.attrs.cropRight,node.attrs.cropBottom,node.attrs.cropLeft];
-        image.style.clipPath=!cropping&&crops.some(Boolean) ? `inset(${crops.map(value=>value||'0').join(' ')})` : '';
+        const cropLeft=cropPx(node.attrs.cropLeft),cropRight=cropPx(node.attrs.cropRight);
+        const cropTop=cropPx(node.attrs.cropTop),cropBottom=cropPx(node.attrs.cropBottom);
+        const fullWidth=imageFrame.clientWidth,fullHeight=imageFrame.clientHeight;
+        if(!cropping&&crops.some(Boolean)&&fullWidth>0&&fullHeight>0){
+          const visibleWidth=Math.max(1,fullWidth-cropLeft-cropRight);
+          const visibleHeight=Math.max(1,fullHeight-cropTop-cropBottom);
+          imageFrame.style.width=visibleWidth+'px';
+          imageFrame.style.height=visibleHeight+'px';
+          image.style.position='absolute';
+          image.style.left=(-cropLeft)+'px';
+          image.style.top=(-cropTop)+'px';
+          image.style.width=fullWidth+'px';
+          image.style.height=fullHeight+'px';
+          image.style.maxWidth='none';
+          image.style.clipPath=`inset(${cropTop}px ${cropRight}px ${cropBottom}px ${cropLeft}px)`;
+        }
         dom.style.border=node.attrs.border ? `${node.attrs.borderWidth||'0.4pt'} solid ${node.attrs.borderColor||'#000000'}` : '';
         dom.style.background=node.attrs.background||'';
         if(node.attrs.captionPosition==='above') dom.insertBefore(caption,imageFrame);
         else dom.insertBefore(caption,controls);
         requestAnimationFrame(measureCaption);
       };
-      image.addEventListener('load',()=>{if(!destroyed && previewURL && image.currentSrc===previewURL){resourceState='ready';showResourceState();}});
+      image.addEventListener('load',()=>{if(!destroyed && previewURL && image.currentSrc===previewURL){resourceState='ready';showResourceState();refresh();}});
       image.addEventListener('error',()=>{if(!destroyed && previewURL && image.getAttribute('src')===previewURL){resourceState='error';showResourceState();}});
       const unsubscribe=onAssetsChanged(refresh);
       button.addEventListener('click',()=>chooseFile(file=>{remember(node.attrs.path,file);refresh();}));
@@ -555,8 +577,20 @@ export const DocumentImage = Node.create({
       dom.append(imageFrame,resourceStatus,button,caption,controls);
       const captionObserver=new ResizeObserver(()=>requestAnimationFrame(measureCaption));
       captionObserver.observe(caption);
+      let layoutWidth=dom.clientWidth,layoutFrame=0;
+      const layoutObserver=new ResizeObserver(()=>{
+        const width=dom.clientWidth;
+        if(Math.abs(width-layoutWidth)<.5)return;
+        layoutWidth=width;
+        if(layoutFrame)return;
+        layoutFrame=requestAnimationFrame(()=>{
+          layoutFrame=0;
+          if(dom.isConnected)refresh();
+        });
+      });
+      layoutObserver.observe(dom);
       refresh();
-      return {dom,stopEvent:event=>button.contains(event.target)||controls.contains(event.target)||caption.contains(event.target)||cropLayer.contains(event.target)||resizeHandles.some(handle=>handle.contains(event.target)),update(next){if(next.type!==node.type)return false;node=next;refresh();return true;},destroy(){captionObserver.disconnect();destroyed=true;document.removeEventListener('keydown',cropKeydown,true);unsubscribe();if(previewURL)URL.revokeObjectURL(previewURL);}};
+      return {dom,stopEvent:event=>button.contains(event.target)||controls.contains(event.target)||caption.contains(event.target)||cropLayer.contains(event.target)||resizeHandles.some(handle=>handle.contains(event.target)),update(next){if(next.type!==node.type)return false;node=next;refresh();return true;},destroy(){captionObserver.disconnect();layoutObserver.disconnect();if(layoutFrame)cancelAnimationFrame(layoutFrame);destroyed=true;document.removeEventListener('keydown',cropKeydown,true);unsubscribe();if(previewURL)URL.revokeObjectURL(previewURL);}};
     };
   },
 });
