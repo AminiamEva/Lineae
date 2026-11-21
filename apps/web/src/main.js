@@ -3149,11 +3149,13 @@ imagePanel=installImagePanel({
   onSpacing:updateImageSpacing,
   onReplace:()=>{if(imageSelection!==null)replaceLocalImage(editor,imageSelection);},
   onCrop:()=>{if(imageSelection!==null)startImageCrop(editor,imageSelection);},
+  onGroup:groupSelectedImages,
+  onUngroup:ungroupSelectedImages,
   onUpdate:patch=>updateSelectedImageAttrs(patch),
 });
 groups.image=imagePanel.panel;
 let subfigurePanel=null;
-subfigurePanel=installSubfigurePanel({onUpdate:patch=>updateSelectedSubfigureAttrs(patch)});
+subfigurePanel=installSubfigurePanel({onUpdate:patch=>updateSelectedSubfigureAttrs(patch),onUngroup:ungroupSelectedImages});
 groups.subfigure=subfigurePanel.panel;
 imagePanel.setSpacing(readImageSpacing(documentParts.start));
 const captions={files:['文件','File'],home:['主页','Home'],insert:['插入','Insert'],layout:['布局','Layout'],table:['表格','Table'],format:['格式','Format'],reference:['引用','Reference'],math:['数学','Math'],headerFooter:['页眉页脚','Header & Footer'],image:['图片','Image'],subfigure:['子图','Subfigure']};
@@ -3427,6 +3429,72 @@ function currentImageSelection(){
   return selection instanceof NodeSelection && selection.node.type.name==='documentImage'
     ? {position:selection.from,node:selection.node} : null;
 }
+function selectedImageBlocks(){
+  const selection=editor.state.selection;
+  if(!sourceView.hidden||selection instanceof NodeSelection||selection.empty)return [];
+  const from=selection.from,to=selection.to,blocks=[];
+  editor.state.doc.forEach((node,offset)=>{
+    if(offset>=from&&offset+node.nodeSize<=to)blocks.push({node,position:offset});
+  });
+  return blocks.length>1&&blocks.every(({node})=>node.type.name==='documentImage')?blocks:[];
+}
+function subfiguresAncestor(position){
+  const $pos=editor.state.doc.resolve(position);
+  for(let depth=$pos.depth;depth>0;depth-=1){
+    if($pos.node(depth).type.name==='subfigures')return $pos.before(depth);
+  }
+  return null;
+}
+function groupSelectedImages(){
+  const blocks=selectedImageBlocks();
+  if(blocks.length<2)return false;
+  const width=(Math.min(0.48,0.94/blocks.length)).toFixed(2)+'\\textwidth';
+  const children=blocks.map(({node})=>editor.schema.nodes.documentImage.create({
+    ...node.attrs,
+    figure:false,wrap:false,figureSource:null,placement:null,fixed:false,
+    centered:true,align:'center',height:null,scale:null,width,
+  }));
+  const subfigures=editor.schema.nodes.subfigures.create({
+    placement:null,fixed:false,caption:null,captionEnabled:false,captionNumbered:true,label:null,
+  },children);
+  const from=blocks[0].position,to=blocks.at(-1).position+blocks.at(-1).node.nodeSize;
+  const transaction=editor.state.tr.replaceWith(from,to,subfigures);
+  try{transaction.setSelection(NodeSelection.create(transaction.doc,from));}catch{}
+  editor.view.dispatch(transaction.scrollIntoView());
+  return true;
+}
+function ungroupSubfigures(position){
+  const node=editor.state.doc.nodeAt(position);
+  if(node?.type.name!=='subfigures')return false;
+  const source=node.content.content;
+  const mainCaption=node.attrs.captionEnabled||node.attrs.caption!=null?node.attrs.caption:null;
+  const mainLabel=node.attrs.label??null;
+  const images=source.map((child,index)=>{
+    const attrs={...child.attrs};
+    if(index===source.length-1){
+      if(mainCaption!=null&&!(attrs.captionEnabled&&attrs.caption)){attrs.caption=mainCaption;attrs.captionEnabled=true;}
+      if(mainLabel&&!attrs.label)attrs.label=mainLabel;
+    }
+    const figure=Boolean(attrs.captionEnabled||attrs.caption!=null||attrs.label);
+    return editor.schema.nodes.documentImage.create({
+      ...attrs,figure,wrap:false,figureSource:null,placement:null,fixed:false,centered:true,
+    });
+  });
+  const transaction=editor.state.tr.replaceWith(position,position+node.nodeSize,images);
+  try{transaction.setSelection(NodeSelection.create(transaction.doc,position));}catch{}
+  editor.view.dispatch(transaction.scrollIntoView());
+  return true;
+}
+function ungroupSelectedImages(){
+  const selection=editor.state.selection;
+  if(selection instanceof NodeSelection&&selection.node.type.name==='subfigures')return ungroupSubfigures(selection.from);
+  const found=currentImageSelection();
+  if(found){
+    const parent=subfiguresAncestor(found.position);
+    if(parent!==null)return ungroupSubfigures(parent);
+  }
+  return false;
+}
 function updateSelectedSubfigureAttrs(patch){
   const selection=editor.state.selection;
   if(!(selection instanceof NodeSelection)||selection.node.type.name!=='subfigures')return;
@@ -3437,13 +3505,15 @@ function syncImageTab(){
   if(!imageTab)return;
   const found=sourceView.hidden ? currentImageSelection() : null;
   imageSelection=found?.position??null;
-  imageTab.hidden=!found;
+  const multi=sourceView.hidden && !found ? selectedImageBlocks() : [];
+  imageTab.hidden=!found&&multi.length<2;
   const subSel=sourceView.hidden&&editor.state.selection instanceof NodeSelection&&editor.state.selection.node.type.name==='subfigures'?editor.state.selection.node:null;
   if(subfigureTab)subfigureTab.hidden=!subSel;
   subfigurePanel?.setValues(subSel?.attrs??null);
   if(subSel&&ribbon.dataset.ribbonPage!=='subfigure'&&ribbon.dataset.ribbonPage!=='headerFooter')selectGroup('subfigure');
   else if(!subSel&&ribbon.dataset.ribbonPage==='subfigure')selectGroup('home');
   if(found){
+    imagePanel.setMultiSelection(0);
     imagePanel.setPath(found.node.attrs.path);
     const figure=editor.view.nodeDOM(found.position);
     const imageElement=figure?.querySelector?.('img');
@@ -3457,9 +3527,16 @@ function syncImageTab(){
       naturalHeight:imageElement?.naturalHeight||0,
       textWidth,
     });
+    imagePanel.setGroupState(subfiguresAncestor(found.position)!==null?'ungroup':'none');
     if(ribbon.dataset.ribbonPage!=='image' && ribbon.dataset.ribbonPage!=='headerFooter')selectGroup('image');
-  }else if(ribbon.dataset.ribbonPage==='image'){
-    selectGroup('home');
+  }else if(multi.length>=2){
+    imagePanel.setMultiSelection(multi.length);
+    imagePanel.setGroupState('group');
+    if(ribbon.dataset.ribbonPage!=='image' && ribbon.dataset.ribbonPage!=='headerFooter')selectGroup('image');
+  }else{
+    imagePanel.setMultiSelection(0);
+    imagePanel.setGroupState('none');
+    if(ribbon.dataset.ribbonPage==='image')selectGroup('home');
   }
 }
 editor.on('selectionUpdate',syncImageTab);

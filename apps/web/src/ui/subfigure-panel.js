@@ -1,4 +1,7 @@
-export function installSubfigurePanel({ onUpdate }) {
+import { t } from './i18n.mjs';
+import { createRibbonGroup } from './ribbon-groups.js';
+
+export function installSubfigurePanel({ onUpdate, onUngroup }) {
   const panel = document.createElement('div');
   panel.className = 'tools home-ribbon subfigure-tools';
   panel.hidden = true;
@@ -38,6 +41,17 @@ export function installSubfigurePanel({ onUpdate }) {
   row('位置', placement);
   row('标签', label);
 
+  const grouping = createRibbonGroup(panel,{id:'subfigure-grouping',zh:'子图',en:'Subfigure',iconName:'image',width:150});
+  const ungroup = document.createElement('button');
+  ungroup.type = 'button';
+  ungroup.className = 'subfigure-ungroup';
+  ungroup.dataset.zh = '解除组合';
+  ungroup.dataset.en = 'Ungroup';
+  ungroup.textContent = t('解除组合','Ungroup');
+  ungroup.disabled = true;
+  ungroup.addEventListener('click', () => onUngroup?.());
+  grouping.body.append(ungroup);
+
   let syncing = false;
   function setValues(attrs) {
     syncing = true;
@@ -46,6 +60,7 @@ export function installSubfigurePanel({ onUpdate }) {
     placement.value = attrs?.placement ?? '';
     label.value = attrs?.label ?? '';
     caption.disabled = !captionEnabled.checked;
+    ungroup.disabled = !attrs;
     syncing = false;
   }
 

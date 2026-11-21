@@ -7,6 +7,7 @@ import { rememberAsset, resolveImageAsset, onAssetsChanged } from './project-ass
 
 const rasterTypes = new Set(['image/png','image/jpeg','image/webp','image/gif','image/avif']);
 let measureContext = null;
+let suppressImageClickUntil = 0;
 
 function chooseFile(callback) {
   const input = document.createElement('input');
@@ -500,9 +501,56 @@ export const DocumentImage = Node.create({
       const unsubscribe=onAssetsChanged(refresh);
       button.addEventListener('click',()=>chooseFile(file=>{remember(node.attrs.path,file);refresh();}));
       image.addEventListener('click',event=>{
+        if(performance.now()<suppressImageClickUntil){event.preventDefault();return;}
         if(event.target!==image||event.defaultPrevented)return;
         const position=getPos();
         if(typeof position==='number')editor.commands.setNodeSelection(position);
+      });
+      imageFrame.addEventListener('mousedown',event=>{
+        if(event.button!==0||cropping)return;
+        if(event.target.closest?.('.image-resize-handle, .image-crop-layer, .document-image-controls'))return;
+        const startPos=getPos();
+        if(typeof startPos!=='number')return;
+        event.preventDefault();event.stopPropagation();
+        const startX=event.clientX,startY=event.clientY;
+        const startAfter=startPos+node.nodeSize;
+        const blocks=[];
+        editor.state.doc.forEach((child,offset)=>{
+          if(child.type.name!=='documentImage')return;
+          const rect=editor.view.nodeDOM(offset)?.getBoundingClientRect?.();
+          if(rect&&rect.height)blocks.push({position:offset,size:child.nodeSize,rect});
+        });
+        let moved=false,lastRange='',focused=false;
+        const move=pointer=>{
+          if(!moved&&Math.hypot(pointer.clientX-startX,pointer.clientY-startY)<4)return;
+          if(!blocks.length)return;
+          const upward=pointer.clientY<startY;
+          let target=upward?blocks[0]:blocks.at(-1);
+          if(upward){
+            for(const block of blocks){
+              if(pointer.clientY<=block.rect.bottom){target=block;break;}
+            }
+          }else{
+            for(const block of blocks){
+              if(pointer.clientY>=block.rect.top)target=block;
+            }
+          }
+          const from=upward?Math.min(target.position,startPos):startPos;
+          const to=upward?startAfter:Math.max(target.position+target.size,startAfter);
+          if(from>=to)return;
+          const key=from+':'+to;
+          if(key===lastRange)return;
+          lastRange=key;moved=true;
+          if(!focused){editor.view.focus();focused=true;}
+          editor.commands.setTextSelection({from,to});
+        };
+        const finish=()=>{
+          document.removeEventListener('mousemove',move,true);
+          document.removeEventListener('mouseup',finish,true);
+          if(moved)suppressImageClickUntil=performance.now()+300;
+        };
+        document.addEventListener('mousemove',move,true);
+        document.addEventListener('mouseup',finish,{once:true,capture:true});
       });
       dom.append(imageFrame,resourceStatus,button,caption,controls);
       const captionObserver=new ResizeObserver(()=>requestAnimationFrame(measureCaption));

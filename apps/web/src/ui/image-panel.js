@@ -18,7 +18,7 @@ function spacingNumber(value) {
   return String(value ?? '').match(/\d+(?:\.\d+)?/)?.[0] ?? '';
 }
 
-export function installImagePanel({onUpdate, onReplace, onSpacing, getSpacing, onCrop}) {
+export function installImagePanel({onUpdate, onReplace, onSpacing, getSpacing, onCrop, onGroup, onUngroup}) {
   const panel = document.createElement('div');
   panel.className = 'tools home-ribbon image-tools';
   panel.hidden = true;
@@ -175,12 +175,51 @@ export function installImagePanel({onUpdate, onReplace, onSpacing, getSpacing, o
   panel.append(header);
   const spacingBody=document.createElement('div');
   spacingBody.append(spacingGrid,resetSpacing);
-  buildRibbonGroups(panel,[
+
+  const groupingButton=document.createElement('button');
+  groupingButton.type='button';groupingButton.className='image-group-button';
+  groupingButton.append(icon('image'));
+  const groupingLabel=document.createElement('span');
+  labelText(groupingLabel,'组合为子图','Combine as subfigure');
+  groupingButton.append(groupingLabel);
+  const groupingBody=document.createElement('div');
+  groupingBody.className='image-grouping-body';
+  groupingBody.append(groupingButton);
+  const ribbonGroups=buildRibbonGroups(panel,[
     {id:'image-transform',zh:'基础变换',en:'Transform',iconName:'image',width:310,body:basicGrid},
     {id:'image-layout',zh:'布局与题注',en:'Layout & caption',iconName:'layout',width:300,body:layoutGrid},
     {id:'image-appearance',zh:'裁剪与外观',en:'Crop & appearance',iconName:'settings',width:300,body:appearanceGrid},
     {id:'image-spacing',zh:'全局图片间距',en:'Global image spacing',iconName:'paragraph',width:220,body:spacingBody},
-  ],['image-spacing','image-appearance','image-layout','image-transform']);
+    {id:'image-grouping',zh:'子图',en:'Subfigure',iconName:'image',width:175,body:groupingBody},
+  ],['image-spacing','image-appearance','image-layout','image-transform','image-grouping']);
+  const groupingGroups=ribbonGroups.filter(state=>state.id!=='image-grouping');
+  let multiCount=0,groupMode='none';
+  function setMultiSelection(count){
+    multiCount=Number(count)||0;
+    const active=multiCount>0;
+    panel.dataset.multiSelection=String(multiCount);
+    for(const state of groupingGroups){
+      state.section.classList.toggle('is-disabled',active);
+      state.body.inert=active||state.section.classList.contains('is-collapsed');
+    }
+    replace.disabled=active;
+    if(active)path.textContent=t(multiCount+' 张图片',multiCount+' images');
+  }
+  function setGroupState(mode){
+    groupMode=mode==='ungroup'?'ungroup':mode==='group'?'group':'none';
+    const ungroup=groupMode==='ungroup';
+    const zh=ungroup?'解除组合':'组合为子图',en=ungroup?'Ungroup':'Combine as subfigure';
+    labelText(groupingLabel,zh,en);
+    groupingButton.dataset.mode=groupMode;
+    groupingButton.dataset.zhTitle=zh;groupingButton.dataset.enTitle=en;
+    groupingButton.title=t(zh,en);groupingButton.setAttribute('aria-label',t(zh,en));
+    groupingButton.disabled=groupMode==='none';
+  }
+  groupingButton.addEventListener('click',()=>{
+    if(groupMode==='ungroup')onUngroup?.();
+    else if(groupMode==='group')onGroup?.();
+  });
+  setGroupState('none');
 
   function setPath(value){path.textContent=value||'';}
   function setDimensions(widthValue,wrapValue){
@@ -339,7 +378,7 @@ export function installImagePanel({onUpdate, onReplace, onSpacing, getSpacing, o
     if(panel.hidden)return;
     setDimensions(event.detail?.width,event.detail?.wrapWidth);
   });
-  return {panel,setValues,setPath,setDimensions,setSpacing(values){for(const [name,input] of Object.entries(spacingInputs))input.value=spacingNumber(values[name]);}};
+  return {panel,setValues,setPath,setDimensions,setMultiSelection,setGroupState,setSpacing(values){for(const [name,input] of Object.entries(spacingInputs))input.value=spacingNumber(values[name]);}};
 }
 
 const IMAGE_DEFAULTS = Object.freeze({textfloatsep:'20pt plus 2pt minus 4pt',intextsep:'12pt plus 2pt minus 2pt',floatsep:'12pt plus 2pt minus 2pt'});

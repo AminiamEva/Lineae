@@ -78,7 +78,7 @@ export function serialize(node) {
       return '\\begin{lstlisting}'+option+'\n'+(node.content??[]).map(child=>child.text??'').join('')+'\n\\end{lstlisting}\n\n';
     }
     case 'documentImage': return serializeImage(node.attrs);
-    case 'subfigures': return serializeSubfigures(node.attrs, node.content.toJSON());
+    case 'subfigures': return serializeSubfigures(node.attrs, Array.isArray(node.content) ? node.content : node.content.toJSON());
     case 'paragraph': {
       let body=(node.attrs?.indent === false ? '\\noindent ' : node.attrs?.explicitIndent ? '\\indent ' : '') + content;
       const command={left:'raggedright',right:'raggedleft',center:'centering',justify:'justifying'}[node.attrs?.align];

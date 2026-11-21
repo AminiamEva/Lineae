@@ -233,7 +233,7 @@ export function installContextMenu(editor, paper, language, reportError) {
     activeField = event.composedPath().find(element => element?.tagName === 'MATH-FIELD') ?? null;
     let imagePosition = null;
     if (!activeField) {
-      const figure = event.target?.closest?.('figure[data-document-image]');
+      const figure = event.target?.closest?.('figure.document-image');
       if (figure) {
         try {
           const position = editor.view.posAtDOM(figure, 0);

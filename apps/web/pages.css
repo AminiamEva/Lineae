@@ -719,6 +719,11 @@ button,select,.color-control { transition:background-color .14s ease,color .14s 
 .image-tools .image-line input { width:44px; }
 .image-tools .image-line select { width:70px; }
 .image-tools .image-grid { align-items:center; }
+.image-tools .ribbon-group.is-disabled { opacity:.45; pointer-events:none; }
+.image-grouping-body { display:flex; align-items:center; justify-content:center; padding:4px 6px; }
+.image-group-button { display:inline-flex; align-items:center; gap:6px; padding:5px 8px; }
+.subfigure-tools .subfigure-ungroup { padding:5px 10px; }
+.subfigure-tools .subfigure-ungroup:disabled { opacity:.4; cursor:default; }
 .layout-ribbon .layout-field { flex-direction:row; align-items:center; gap:4px; }
 .layout-ribbon .layout-field > span { white-space:nowrap; }
 .layout-ribbon .layout-group-controls { gap:4px; }
