@@ -37,6 +37,17 @@ test('plain native keys, aliases, uppercase letters and null all compile',()=>{
   assert.throws(()=>compileKeybindings({source:{a:'ctrl+k',b:'ctrl+k m'}}),/Conflicting shortcuts/);
 });
 
+test('Mac web fallbacks follow configured shortcuts and preserve explicit remaps',()=>{
+  const mac=createConfigStore(defaults,{isMac:true,macWeb:true});
+  const entries=(scope,command)=>mac.bindings.scopes.get(scope).filter(entry=>entry.command===command);
+  assert.ok(entries('global','splitMode').some(entry=>entry.first==='ctrl+e' && entry.second==='3'));
+  assert.ok(entries('source','replace').some(entry=>entry.first==='ctrl+e' && entry.second==='h'));
+  mac.importYaml('keybindings:\n  source:\n    replace: null\n    undo: ctrl+e f\n');
+  assert.equal(entries('source','replace').length,0);
+  assert.equal(entries('source','find').some(entry=>entry.first==='ctrl+e'),false);
+  assert.ok(entries('source','undo').some(entry=>entry.first==='ctrl+e' && entry.second==='f'));
+});
+
 test('all worksheet builtin actions have YAML keys, and a rejected profile is atomic',()=>{
   const store=createConfigStore(defaults);
   const builtins=JSON.parse(/<script id="catalog" type="application\/json">([\s\S]*?)<\/script>/.exec(

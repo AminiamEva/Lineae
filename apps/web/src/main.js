@@ -253,10 +253,11 @@ const DescriptionItem = Node.create({
 function browserStorage() {
   try { return window.localStorage; } catch { return null; }
 }
-const isMac = /Mac|iPhone|iPad|iPod/.test(navigator.platform);
+const isMac = /Mac|iPhone|iPad|iPod/i.test(navigator.platform || navigator.userAgentData?.platform || navigator.userAgent);
 const config = createConfigStore(defaultConfigYaml, {
   storage: browserStorage(),
   isMac,
+  macWeb: !window.__TAURI_INTERNALS__,
   onError: error => console.warn(t('配置','Configuration'),error),
 });
 function configuredLanguage() {
@@ -3275,15 +3276,18 @@ function applyImportedPreferences() {
   updateLanguage();
 }
 function updateShortcutHints() {
-  const display={ctrl:'Ctrl',meta:'Meta',alt:'Alt',shift:'Shift',equal:'=',plus:'+',minus:'−'};
+  const display={ctrl:'Ctrl',meta:isMac?'Cmd':'Meta',alt:'Alt',shift:'Shift',equal:'=',plus:'+',minus:'−'};
   const format=stroke=>stroke.split('+').map(key=>display[key] ?? key.toUpperCase()).join('+');
   for (const control of ribbon.querySelectorAll('[data-shortcut]')) {
     const [scope,command]=control.dataset.shortcut.split('.');
-    const binding=config.bindings.scopes.get(scope)?.find(entry=>entry.command===command);
-    control.dataset.tooltipZh=control.dataset.tooltipBaseZh??control.dataset.tooltipZh??'';
-    control.dataset.tooltipEn=control.dataset.tooltipBaseEn??control.dataset.tooltipEn??'';
+    const bindings=config.bindings.scopes.get(scope)?.filter(entry=>entry.command===command);
+    const binding=bindings?.[0];
+    control.dataset.tooltipZh=control.dataset.tooltipBaseZh??=control.dataset.tooltipZh??'';
+    control.dataset.tooltipEn=control.dataset.tooltipBaseEn??=control.dataset.tooltipEn??'';
     if (!binding) continue;
-    const shortcut=[binding.first,binding.second].filter(Boolean).map(format).join(' ');
+    const alternative=isMac && bindings.find(entry=>entry!==binding && entry.first==='ctrl+e' && entry.second);
+    const shortcut=[binding,alternative].filter(Boolean)
+      .map(entry=>[entry.first,entry.second].filter(Boolean).map(format).join(' ')).join(' / ');
     control.dataset.tooltipZh+=' · '+shortcut;
     control.dataset.tooltipEn+=' · '+shortcut;
   }

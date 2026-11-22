@@ -72,12 +72,12 @@ function validateConfig(settings) {
   }
 }
 
-export function createConfigStore(defaultYaml, { storage, isMac = false, onError = () => {} } = {}) {
+export function createConfigStore(defaultYaml, { storage, isMac = false, macWeb = false, onError = () => {} } = {}) {
   const defaults = parseYaml(defaultYaml);
   let overrides = {};
   let settings = defaults;
   validateConfig(settings);
-  let bindings = compileKeybindings(settings.keybindings, { isMac });
+  let bindings = compileKeybindings(settings.keybindings, { isMac, macWeb });
 
   function persist() {
     try {
@@ -90,7 +90,7 @@ export function createConfigStore(defaultYaml, { storage, isMac = false, onError
     checkKeys(defaults, next);
     const merged = mergeConfig(defaults, next);
     validateConfig(merged);
-    const compiled = compileKeybindings(merged.keybindings, { isMac });
+    const compiled = compileKeybindings(merged.keybindings, { isMac, macWeb });
     overrides = next;
     settings = merged;
     bindings = compiled;

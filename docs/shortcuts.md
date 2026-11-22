@@ -101,6 +101,18 @@ keybindings:
 
 浏览器 / 操作系统可能优先占用 Command+P、Command+Shift+T、Command+H 等键。
 网页不能保证收到这些事件，也不能改变应用外的系统快捷键。
+Mac 网页端可先按 Control+E，再按下表中的第二键。原有的 Command+E 连按也可以用 Control+E 起头。
+
+| 功能 | 第二键 |
+| --- | --- |
+| 正文 / 源码 / 分栏 | 1 / 2 / 3 |
+| 文件侧栏 / 打开文档 / 设置 | P / O / 逗号 |
+| 新建项目 / 打开项目 | Shift+N / Shift+O |
+| 显示公式 / 行内公式 / 编号公式 | Shift+F / Shift+I / Shift+E |
+| 正文查找 / 打开 TikZ 编辑器 | F / Shift+T |
+| 公式中的分式 / 左定界符 / 右定界符 | F / L / Shift+R |
+| 源码查找 / 替换 / 补全 | F / H / 空格 |
+
 自定义剪贴板键仍受安全上下文、权限和浏览器能力限制，失败会显示错误。
 
 `tests/keybindings.test.mjs` 验证配置、别名、冲突和所有内建命令的禁用。
