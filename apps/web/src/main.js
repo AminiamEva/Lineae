@@ -1,5 +1,6 @@
 import {AppendixStart,MatterStart,LayoutCommand} from './editor/appendix.js';
 import {Lipsum} from './editor/lipsum.js';
+import {CounterDirective} from './editor/counter-directive.js';
 import {projectLayoutPreamble} from './project/page-context.mjs';
 import {projectInputSource} from './project/input-support.mjs';
 import {installProjectPresentation} from './project/presentation.js';
@@ -709,7 +710,7 @@ paper.before(documentPage);documentPage.append(paper);
 paper.replaceChildren();
 editor=new Editor({
   element:paper,
-  extensions:[AppendixStart,MatterStart,LayoutCommand,Lipsum,ProjectRegion,PageLayoutHistory,ConfigurableStarterKit.configure({heading:{levels:[1,2,3]},codeBlock:false}),LanguageCodeBlock,MultiSelection,PaperBehavior,TextStyle,TextCommand,Underline,Superscript,Subscript,SmallCaps,Boxed,Circled,PageBreak,MultiColumn,HistoryTable.configure({resizable:true}),TableRow,TableCell,TableHeader,TblrSource,TabularxSource,Raw,DocumentImage,TheoremBlock,DescriptionList,DescriptionItem,MathNode,MathBlock,MathGlue,Ref,Cite.configure({library:citationLibrary}),Footnote,Label,Subfigures,TableOfContents,Shortcuts],
+  extensions:[CounterDirective,AppendixStart,MatterStart,LayoutCommand,Lipsum,ProjectRegion,PageLayoutHistory,ConfigurableStarterKit.configure({heading:{levels:[1,2,3]},codeBlock:false}),LanguageCodeBlock,MultiSelection,PaperBehavior,TextStyle,TextCommand,Underline,Superscript,Subscript,SmallCaps,Boxed,Circled,PageBreak,MultiColumn,HistoryTable.configure({resizable:true}),TableRow,TableCell,TableHeader,TblrSource,TabularxSource,Raw,DocumentImage,TheoremBlock,DescriptionList,DescriptionItem,MathNode,MathBlock,MathGlue,Ref,Cite.configure({library:citationLibrary}),Footnote,Label,Subfigures,TableOfContents,Shortcuts],
   content:'<p></p>',
 });
 function installMarginSelection(editor,page,paper) {
@@ -809,7 +810,7 @@ function syncTableAttributes() {
     table.style.setProperty('--arrayrulewidth',node.attrs.borderWidth??'0.4pt');
   });
 }
-editor.on('update',()=>{refreshReferences(paper);syncTableAttributes();});
+editor.on('update',()=>{refreshReferences(paper,editor);syncTableAttributes();});
 syncTableAttributes();
 installTableHoverAddRow(editor, paper);
 installImageDrop(editor,paper);
@@ -1075,6 +1076,7 @@ function restoreSourceCheckpoint(text,owner,expected) {
   editor.commands.focus();
 }
 function undoDocument() {
+  if(sourceView.hidden&&!editor.view.composing)editor.view.domObserver.flush();
   const checkpoint=sourceModeCommits.at(-1);
   if(!sourceView.hidden&&!(checkpoint?.owner&&checkpoint.sourceText===sourceView.value)){sourceView.undo();sourceView.flush();return true;}
   if(checkpoint && editor.state.doc===checkpoint.afterDoc && documentParts.start===checkpoint.afterPreamble&&checkpointLayoutMatches(checkpoint,checkpoint.after)){
@@ -1513,7 +1515,7 @@ function load(text, markSaved = true) {
     ? block.replace(/^\s*\\maketitle\b[ \t]*(?:\r?\n|$)/gm,'') : block));
   for (const block of content) identifyImportedBoxes(block);
   editor.chain().setMeta('addToHistory', false).setContent({type:'doc',attrs:{layoutPreamble:parsed.start,pageFurniture:readPageFurniture(parsed.start)},content:content.length?content:[{type:'paragraph'}]}).command(({tr})=>{tr.setDocAttribute('layoutPreamble',parsed.start);tr.setDocAttribute('pageFurniture',readPageFurniture(parsed.start));return true;}).run();
-  refreshReferences(paper);syncTableAttributes();
+  refreshReferences(paper,editor);syncTableAttributes();
   importedSource=text;importedSnapshot=JSON.stringify(editor.getJSON());
   if(markSaved) {savedSource=text;documentGeneration++;}
   if (markSaved) sourceView.reset(text);
@@ -2561,7 +2563,7 @@ const compositionController=createCompositionController({
     try{
       editor.chain().setMeta('addToHistory',false).setContent({type:'doc',attrs:editor.state.doc.attrs,content:composed.content}).run();
       projectDocument.hydrate(composed,editor.getJSON());
-      refreshReferences(paper);documentOutline.relocalize();
+      refreshReferences(paper,editor);documentOutline.relocalize();
     }finally{syncApplying=false;}
     // The composition is hydrated after setContent; force one layout pass so
     // the project presentation sees the new regions and renders their badges.
@@ -2630,7 +2632,7 @@ projectExplorer = installProjectExplorer({footer, filePanel:document.querySelect
     if(file.kind==='tex'){
       load(file.draft,false);
       if(restoreRichSession(editor,session,file,projectExplorer.model,projectDocument)){
-        importedSnapshot=JSON.stringify(editor.getJSON());refreshReferences(paper);syncTableAttributes();
+        importedSnapshot=JSON.stringify(editor.getJSON());refreshReferences(paper,editor);syncTableAttributes();
       }
       projection=sourceProjection(file.draft,editor.getJSON(),{fragment:true});
     }
@@ -2638,6 +2640,7 @@ projectExplorer = installProjectExplorer({footer, filePanel:document.querySelect
       if(sourceView.hidden)sourceView.open(file.draft);
       sourceView.restoreSession(session,file.draft);
       sourceView.setSplit(projectWorkspace.modeFor(file.kind)==='split');
+      sourceView.focus();
     }else{
       sourceView.close();sourceView.restoreSession(session,file.draft);editor.commands.focus();
     }

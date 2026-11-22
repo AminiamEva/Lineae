@@ -1,3 +1,5 @@
+import {layoutScale} from '../typesetting/layout-geometry.js';
+import {counterProfile} from '../../latex/counter-profile.mjs';
 import {installParagraphLayout} from '../typesetting/paragraph-layout.js';
 import {documentLayoutBlocks} from '../project/fold-layout.mjs';
 import { planPagination, planTableRows, typesetProfile } from '../../latex/typeset-layout.mjs';
@@ -234,8 +236,8 @@ export function installTypesetPagination(page, paper, meta, editor) {
     const sheet = sheets.firstElementChild;
     if (!sheet) return {left:'', right:''};
     const pageRect = page.getBoundingClientRect();
-    const zoom = pageRect.width / page.offsetWidth || 1;
-    const pitch = sheet.offsetHeight + (Number.parseFloat(getComputedStyle(page).getPropertyValue('--page-gap')) || 0);
+    const zoom = layoutScale(page);
+    const pitch = sheet.getBoundingClientRect().height/zoom + (Number.parseFloat(getComputedStyle(page).getPropertyValue('--page-gap')) || 0);
     const indexed = headings.map(heading => ({
       ...heading,
       page: Math.max(0, Math.floor((heading.top - pageRect.top) / zoom / pitch)),
@@ -297,6 +299,14 @@ export function installTypesetPagination(page, paper, meta, editor) {
     page.style.setProperty('--tex-paragraph-indent', profile.paragraphIndent);
     const quote = name => '"' + String(name).replaceAll('"', '') + '"';
     const stack = (...names) => names.filter(Boolean).map(quote).join(',');
+    const classOptions=/\\documentclass\s*(?:\[([^\]]*)\])?/.exec(preamble)?.[1]??'';
+    const classSize=/(?:^|,)\s*12pt\s*(?:,|$)/.test(classOptions)?12:/(?:^|,)\s*11pt\s*(?:,|$)/.test(classOptions)?11:10;
+    const texPx=96/72.27;
+    // Standard classes place chapter text on fixed 25/30pt baseline grids,
+    // after topskip + 50pt. Compensate the browser's centered line strut.
+    page.style.setProperty('--tex-chapter-top-padding',(55+classSize)*texPx+'px');
+    page.style.setProperty('--tex-chapter-label-size',(classSize===12?24.88:20.74)*texPx+'px');
+    page.style.setProperty('--tex-chapter-label-line-height',(classSize===12?30:25)*texPx+'px');
     const fonts = profile.fonts ?? {};
     page.style.setProperty('--tex-font-family', fonts.serif
       ? stack(fonts.serif, 'Latin Modern Roman') : '"Latin Modern Roman"');
@@ -352,7 +362,7 @@ export function installTypesetPagination(page, paper, meta, editor) {
       if(!element.closest('[data-project-region]'))return;
       const selector='.document-page .ProseMirror>'+blockSelectors[index].replace('>','[data-project-region]>');
       const previous=children[index-1]?.tagName??'';
-      if(/^H[1-3]$/.test(element.tagName)){
+      if(/^H[1-3]$/.test(element.tagName)&&element.dataset.headingCommand!=='chapter'){
         const following=(previous==='H1'&&element.tagName==='H2')||(previous==='H2'&&element.tagName==='H3');
         baseRules.push(selector+'{margin-top:'+(index===0||following?'0':element.tagName==='H1'?'3.5ex':'3.25ex')+';'+(element.tagName==='H1'?'position:relative;top:'+(index===0?'-3.75pt':'0')+';':'')+'}');
         if(element.tagName==='H1'&&children[index+1]?.tagName==='H2')baseRules.push(selector+'{margin-bottom:4.15pt}');
@@ -363,9 +373,9 @@ export function installTypesetPagination(page, paper, meta, editor) {
     paginationStyle.textContent=baseRules.join('\n');
     paragraphLayout.layout(paragraphPreamble);
     const pageRect = page.getBoundingClientRect();
-    const zoom = pageRect.width / page.offsetWidth || 1;
+    const zoom = layoutScale(page);
     const computed = getComputedStyle(page);
-    const pageHeight = sheets.firstElementChild.offsetHeight;
+    const pageHeight = sheets.firstElementChild.getBoundingClientRect().height/zoom;
     const pageGap = parseFloat(computed.getPropertyValue('--page-gap')) || 0;
     const marginTop = parseFloat(computed.paddingTop);
     const marginBottom = parseFloat(computed.paddingBottom);
@@ -385,11 +395,14 @@ export function installTypesetPagination(page, paper, meta, editor) {
     children.forEach((element, index) => {
       if (element.matches('.page-break, [data-page-break]') && blocks[index + 1]) blocks[index + 1].forceBreak = true;
     });
-    const chaptered = page.dataset.documentClass === 'book' || page.dataset.documentClass === 'report';
-    if (chaptered) children.forEach((element, index) => {
-      if (element.tagName === 'H1' && index > 0 && blocks[index]) blocks[index].forceBreak = true;
-    });
-
+    const chapterProfile=counterProfile(paragraphPreamble);
+    if(chapterProfile.chapters){
+      children.forEach((element,index)=>{
+        if(element.dataset.headingCommand!=='chapter')return;
+        const preceding=children.slice(0,index).some(node=>!node.matches('[data-appendix-start],.page-break,[data-page-break]')&&(node.textContent.trim()||node.querySelector('math-field,img,table')));
+        if(preceding)blocks[index].forceBreak=chapterProfile.openRight?'odd':true;
+      });
+    }
     const virtual = [];
     const blockItems = blocks.map((block, blockIndex) => {
       const items = [];

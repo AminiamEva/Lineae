@@ -29,6 +29,34 @@ const server=createServer(async(req,res)=>{
   await page.keyboard.press('Control+z');assert.equal(await paper.locator('[data-appendix-start]').count(),1);assert.equal(await paper.locator('h1').nth(1).getAttribute('data-section-number'),'A');
   const chapterSource='\\documentclass{report}\n\\begin{document}\n\\chapter{Main}\n\n\\section{Body}\n\n\\appendix\n\\chapter{Proofs}\\label{app:chapter}\n\n\\section{Detail}\n\n\\chapter{Data}\n\\end{document}\n';await load(chapterSource);
   assert.deepEqual(await paper.locator('[data-section-number]').evaluateAll(nodes=>nodes.map(n=>n.dataset.sectionNumber)),['1','1.1','A','A.1','B']);
+  const numberedSource='\\documentclass{report}\n\\usepackage{amsmath,graphicx}\n\\renewcommand{\\appendixname}{Supplement}\n\\begin{document}\n\\chapter{Main}\n\\begin{equation}x\\label{e:main}\\end{equation}\n\\appendix\n\\chapter{Proofs}\n\\begin{equation}y\\label{e:app}\\end{equation}\n\\begin{figure}\\includegraphics[width=1cm]{missing.png}\\caption{Image}\\label{f:app}\\end{figure}\n\\begin{table}\\caption{Values}\\label{t:app}\\begin{tabular}{c}1\\end{tabular}\\end{table}\nSee \\ref{e:app}, \\ref{f:app}, \\ref{t:app}.\n\\chapter{Data}\n\\begin{equation}z\\end{equation}\n\\end{document}\n';
+  await load(numberedSource.replaceAll('\n','\n\n'));await page.waitForFunction(()=>document.querySelectorAll('.math-equation-number[data-equation-value]').length===3);
+  assert.deepEqual(await paper.locator('.math-equation-number').evaluateAll(nodes=>nodes.map(n=>n.dataset.equationValue)),['1.1','A.1','B.1']);
+  assert.deepEqual(await paper.locator('.ref-node').allTextContents(),['A.1','A.1','A.1']);
+  assert.equal(await paper.locator('.document-caption-label').getAttribute('data-caption-value'),'A.1');
+  assert.equal(await paper.locator('.table-caption-label').getAttribute('data-caption-value'),'A.1');
+  assert.equal(await paper.locator('h1[data-heading-command=chapter]').nth(1).getAttribute('data-chapter-label'),'Supplement A');
+  const chapterPages=async()=>paper.locator('h1[data-heading-command=chapter]').evaluateAll(nodes=>{const page=document.querySelector('.document-page'),sheets=page.querySelector('.document-sheets'),zoom=page.getBoundingClientRect().width/parseFloat(getComputedStyle(page).width),pitch=sheets.firstElementChild.getBoundingClientRect().height/zoom+parseFloat(getComputedStyle(page).getPropertyValue('--page-gap'));return nodes.map(n=>Math.floor((n.getBoundingClientRect().top-page.getBoundingClientRect().top)/zoom/pitch)+1);});
+  await page.waitForTimeout(250);let pages=await chapterPages();assert.ok(pages[1]>pages[0]&&pages[2]>pages[1],JSON.stringify(pages));
+  await load(chapterSource);await page.waitForTimeout(250);
+  assert.ok(await paper.locator('h1[data-heading-command=chapter]').first().evaluate(chapter=>{const section=chapter.nextElementSibling;return section?.dataset.headingCommand==='section'&&section.getBoundingClientRect().top-chapter.getBoundingClientRect().top<300;}),'A section follows its chapter on the same page');
+  await load(chapterSource.replace('{report}','{book}'));await page.waitForTimeout(250);pages=await chapterPages();assert.ok(pages.every(number=>number%2===1),JSON.stringify(pages));assert.ok(pages[1]>pages[0]&&pages[2]>pages[1]);
+  const chapterReference=JSON.parse(await readFile('tests/fixtures/chapter-xelatex.json','utf8'));
+  for(const fixture of chapterReference.cases){
+    await load(fixture.source);await page.evaluate(()=>document.fonts.ready);await page.waitForTimeout(250);
+    const actual=await paper.locator('h1[data-heading-command=chapter]').evaluateAll(nodes=>{
+      const page=document.querySelector('.document-page'),origin=page.getBoundingClientRect(),zoom=origin.width/parseFloat(getComputedStyle(page).width),pitch=page.querySelector('.document-sheets').firstElementChild.getBoundingClientRect().height/zoom+parseFloat(getComputedStyle(page).getPropertyValue('--page-gap'));
+      return nodes.map(node=>{const range=document.createRange();range.selectNodeContents(node.firstChild);const rect=range.getBoundingClientRect(),style=getComputedStyle(node),canvas=document.createElement('canvas').getContext('2d');canvas.font=[style.fontStyle,style.fontWeight,style.fontSize,style.fontFamily].join(' ');const metrics=canvas.measureText(node.textContent),index=Math.floor((node.getBoundingClientRect().top-origin.top)/zoom/pitch);return {text:node.textContent,page:index+1,x:(rect.left-origin.left)/zoom,baseline:(rect.top-origin.top)/zoom-index*pitch+metrics.fontBoundingBoxAscent};});
+    });
+    console.log('CHAPTER '+JSON.stringify({kind:fixture.kind,expected:fixture.chapters,actual}));
+    assert.deepEqual(actual.map(h=>h.page),fixture.chapters.map(h=>h.page));
+    for(let i=0;i<actual.length;i++){assert.ok(Math.abs(actual[i].x-fixture.chapters[i].x*4/3)<1,'Chapter horizontal position');assert.ok(Math.abs(actual[i].baseline-fixture.chapters[i].baseline*4/3)<1,'Chapter baseline differs from XeLaTeX: '+JSON.stringify(actual[i]));}
+  }
+  await load('\\documentclass{report}\n\\begin{document}\n\\appendix\n\\renewcommand{\\appendixname}{Supplement}\n\\renewcommand{\\thechapter}{S-\\Alph{chapter}}\n\\chapter{Proofs}\n\n\\setcounter{equation}{4}\n\n\\begin{equation}x\\label{custom:equation}\\end{equation}\n\nSee \\ref{custom:equation}.\n\\end{document}\n');
+  assert.equal(await paper.locator('[data-chapter-label]').getAttribute('data-chapter-label'),'Supplement S-A');
+  assert.equal(await paper.locator('.ref-node').textContent(),'S-A.5');
+  assert.equal(await paper.locator('.math-equation-number').getAttribute('data-equation-value'),'S-A.5');
+  assert.equal(await paper.locator('[data-counter-directive]').count(),3);
   assert.deepEqual(errors,[]);console.log('PASS: appendix imports, chapter/section reset, nested numbering, reference target, zero-flow marker, rich editing, undo/redo and source round-trip');
  }finally{await browser.close();server.close();}
 })().catch(error=>{console.error(error);process.exitCode=1;server.close();});

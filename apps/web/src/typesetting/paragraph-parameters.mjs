@@ -10,6 +10,9 @@ export function paragraphParameters(source){
  const dimension='-?(?:\\d*\\.)?\\d+\\s*(?:sp|pt|pc|in|bp|cm|mm|em|ex)';
  const glue=name=>{const assignment=new RegExp('\\\\'+name+'\\s*(?:=\\s*)?('+dimension+')(?:\\s+plus\\s+('+dimension+'))?(?:\\s+minus\\s+('+dimension+'))?','g');const match=[...text.matchAll(assignment)].at(-1);return match?{width:match[1],stretch:match[2]??'0pt',shrink:match[3]??'0pt'}:null;};
  const exceptions=new Map();for(const match of text.matchAll(/\\hyphenation\s*\{([^}]*)\}/g))for(const entry of match[1].trim().split(/\s+/))exceptions.set(entry.replaceAll('-','').toLowerCase(),entry.split('-'));
+ const punct=[...text.matchAll(/PunctStyle\s*=\s*([A-Za-z]+)|\\punctstyle\s*\{([^}]+)\}/g)].at(-1);
+ const cjkPunctStyle=punct?.[1]??punct?.[2]??'quanjiao';
+ const cjkCustomGlue=/\b(?:CJKglue|CJKecglue)\s*=|\\CJKset(?:ec)?glue\b/.test(text);
  const spacing=[...text.matchAll(/\\(nonfrenchspacing|frenchspacing)\b/g)].at(-1)?.[1];
- return {frenchSpacing:spacing==='frenchspacing',pretolerance:number('pretolerance',100),tolerance:number('tolerance',200),linePenalty:number('linepenalty',10),hyphenPenalty:number('hyphenpenalty',50),adjDemerits:number('adjdemerits',10000),doubleHyphenDemerits:number('doublehyphendemerits',10000),finalHyphenDemerits:number('finalhyphendemerits',5000),leftHyphenMin:number('lefthyphenmin',2),rightHyphenMin:number('righthyphenmin',3),spaceSkip:glue('spaceskip'),emergency:glue('emergencystretch')?.width,exceptions};
+ return {cjkPunctStyle,cjkCustomGlue,frenchSpacing:spacing==='frenchspacing',pretolerance:number('pretolerance',100),tolerance:number('tolerance',200),linePenalty:number('linepenalty',10),hyphenPenalty:number('hyphenpenalty',50),adjDemerits:number('adjdemerits',10000),doubleHyphenDemerits:number('doublehyphendemerits',10000),finalHyphenDemerits:number('finalhyphendemerits',5000),leftHyphenMin:number('lefthyphenmin',2),rightHyphenMin:number('righthyphenmin',3),spaceSkip:glue('spaceskip'),emergency:glue('emergencystretch')?.width,exceptions};
 }

@@ -1,20 +1,22 @@
+import {counterDeclarationAt,applyCounterDeclaration} from './counter-declarations.mjs';
+import {counterProfile,formatCounter} from './counter-profile.mjs';
 export function headingOutline(doc){
- const counters=[0,0,0,0],items=[];
- const chapters=/\\documentclass(?:\[[^\]]*\])?\{(?:book|report|ctexbook|ctexrep)\}/.test(doc.attrs?.layoutPreamble??'');
- let appendix=false;
- let matter='main';
+ const profile=counterProfile(doc.attrs?.layoutPreamble??''),items=[];
+ const hierarchy=profile.chapters?['chapter','section','subsection','subsubsection']:['section','subsection','subsubsection'];
+ const counters={chapter:0,section:0,subsection:0,subsubsection:0};let appendix=false,matter="main";
  doc.descendants((node,position)=>{
-  if(node.type.name==='matterStart'){matter=node.attrs.matter||'main';counters.fill(0);return false;}
-  if(node.type.name==='appendixStart'){appendix=true;counters.fill(0);return false;}
+  if(node.type.name==='matterStart'){matter=node.attrs.matter||'main';for(const name of hierarchy)counters[name]=0;return false;}
+  if(node.type.name==='counterDirective'){const declaration=counterDeclarationAt(node.attrs.latex,0);if(declaration)applyCounterDeclaration(profile,counters,declaration);return false;}
+  if(node.type.name==='appendixStart'){appendix=true;delete profile.formats[profile.chapters?'chapter':'section'];counters[profile.chapters?'chapter':'section']=0;counters.subsection=0;counters.section=0;return false;}
   if(node.type.name!=='heading')return;
-  const command=node.attrs.command??['section','subsection','subsubsection'][node.attrs.level-1];
-  const index=chapters?['chapter','section','subsection','subsubsection'].indexOf(command):['section','subsection','subsubsection'].indexOf(command);
+  const command=node.attrs.command??['section','subsection','subsubsection'][node.attrs.level-1],index=hierarchy.indexOf(command);
   if(index<0)return;
   let number='';
-  if(node.attrs.numbered!==false && matter==='main'){
-   counters[index]++;counters.fill(0,index+1);
-   number=counters.slice(0,index+1).map((value,i)=>appendix&&i===0?(value>0&&value<=26?String.fromCharCode(64+value):''):String(value)).join('.');
+  const depth={chapter:0,section:1,subsection:2,subsubsection:3}[command];
+  if(node.attrs.numbered!==false&&matter==='main'&&depth<=profile.secnumdepth){
+   counters[command]++;for(const name of hierarchy.slice(index+1))counters[name]=0;
+   number=formatCounter(command,counters,profile,appendix);
   }
-  items.push({level:index+1,number,text:node.textContent,label:node.attrs.label||null,position,appendix,matter});
+  items.push({level:index+1,number,text:node.textContent,label:node.attrs.label||null,position,appendix,matter,command,counters:Object.fromEntries(['chapter','section','subsection','subsubsection'].map(name=>[name,counters[name]??0])),chapterLabel:command==='chapter'&&number?(appendix?profile.names.appendix:profile.names.chapter)+' '+number:null});
  });return items;
 }

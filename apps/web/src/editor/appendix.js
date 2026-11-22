@@ -1,6 +1,10 @@
 import {Node} from '@tiptap/core';
 export const AppendixStart=Node.create({
  name:'appendixStart',group:'block',atom:true,selectable:true,
+ addKeyboardShortcuts(){
+  const remove=()=>this.editor.state.selection.node?.type.name==='appendixStart'&&this.editor.commands.deleteSelection();
+  return {Backspace:remove,Delete:remove};
+ },
  parseHTML:()=>[{tag:'div[data-appendix-start]'}],
  renderHTML:()=>['div',{'data-appendix-start':'',contenteditable:'false','aria-label':'\\appendix'}],
 });

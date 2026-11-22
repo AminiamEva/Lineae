@@ -14,3 +14,7 @@ test('hyphenated alternatives and first-line indentation are evaluated globally'
 test('nonbreaking boxes do not silently use greedy wrapping',()=>{
  assert.equal(optimumParagraph([box(100),...end()],30),null);
 });
+test('negative punctuation kerns can restore a fit after an overwide candidate',()=>{
+ const plan=optimumParagraph([box(50),{type:'glue',width:-30,stretch:0,shrink:0},box(10),...end()],40);
+ assert.ok(plan);assert.equal(plan.lines.length,1);assert.equal(plan.lines[0].natural,30);
+});
