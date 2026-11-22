@@ -19,6 +19,8 @@ test('the approved macOS defaults resolve to Ctrl on Windows with no duplicate a
   assert.equal(mac.scopes.get('editor').find(entry=>entry.command==='insertDisplayMath').first,'meta+f');
   assert.equal(win.scopes.get('editor').find(entry=>entry.command==='insertDisplayMath').first,'ctrl+f');
   assert.equal(mac.scopes.get('math').find(entry=>entry.command==='pmatrix').first,'meta+m');
+  assert.deepEqual(mac.scopes.get('math').filter(entry=>entry.command==='int').map(entry=>entry.first),['meta+i','ctrl+i']);
+  assert.deepEqual(win.scopes.get('math').filter(entry=>entry.command==='int').map(entry=>entry.first),['ctrl+i']);
   assert.equal(win.scopes.get('math').find(entry=>entry.command==='pmatrix').first,'ctrl+m');
   assert.equal(win.scopes.get('math').filter(entry=>entry.command==='pmatrix').length,1);
   assert.equal(mac.scopes.get('math').filter(entry=>entry.command==='pmatrix').length,2);

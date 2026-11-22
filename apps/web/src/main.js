@@ -1,5 +1,6 @@
 import {AppendixStart,MatterStart,LayoutCommand} from './editor/appendix.js';
 import {Lipsum} from './editor/lipsum.js';
+import {CounterDirective} from './editor/counter-directive.js';
 import {projectLayoutPreamble} from './project/page-context.mjs';
 import {projectInputSource} from './project/input-support.mjs';
 import {installProjectPresentation} from './project/presentation.js';
@@ -46,7 +47,7 @@ import { applyCitationRenames } from '../bib/index.mjs';
 import { chooseReference } from './editor/reference-index.js';
 import { installTableHoverAddRow } from './editor/table-hover.js';
 import { createConfigStore } from './editor/config.mjs';
-import { compileKeybindings, installKeybindings } from './editor/keybindings.mjs';
+import { compileKeybindings, installKeybindings, usesAppleShortcuts } from './editor/keybindings.mjs';
 import defaultConfigYaml from '../config.yaml';
 import { askText } from './editor/dialog.js';
 import { installDocumentFind } from './editor/find.js';
@@ -255,11 +256,12 @@ const DescriptionItem = Node.create({
 function browserStorage() {
   try { return window.localStorage; } catch { return null; }
 }
-const isMac = /Mac|iPhone|iPad|iPod/i.test(navigator.platform || navigator.userAgentData?.platform || navigator.userAgent);
+const isMac = window.__LINEAE_MACOS_DESKTOP__ === true || usesAppleShortcuts(navigator);
+const isWeb = !window.__TAURI_INTERNALS__;
 const config = createConfigStore(defaultConfigYaml, {
   storage: browserStorage(),
   isMac,
-  macWeb: !window.__TAURI_INTERNALS__,
+  macWeb: isWeb,
   onError: error => console.warn(t('配置','Configuration'),error),
 });
 function configuredLanguage() {
@@ -709,7 +711,7 @@ paper.before(documentPage);documentPage.append(paper);
 paper.replaceChildren();
 editor=new Editor({
   element:paper,
-  extensions:[AppendixStart,MatterStart,LayoutCommand,Lipsum,ProjectRegion,PageLayoutHistory,ConfigurableStarterKit.configure({heading:{levels:[1,2,3]},codeBlock:false}),LanguageCodeBlock,MultiSelection,PaperBehavior,TextStyle,TextCommand,Underline,Superscript,Subscript,SmallCaps,Boxed,Circled,PageBreak,MultiColumn,HistoryTable.configure({resizable:true}),TableRow,TableCell,TableHeader,TblrSource,TabularxSource,Raw,DocumentImage,TheoremBlock,DescriptionList,DescriptionItem,MathNode,MathBlock,MathGlue,Ref,Cite.configure({library:citationLibrary}),Footnote,Label,Subfigures,TableOfContents,Shortcuts],
+  extensions:[CounterDirective,AppendixStart,MatterStart,LayoutCommand,Lipsum,ProjectRegion,PageLayoutHistory,ConfigurableStarterKit.configure({heading:{levels:[1,2,3]},codeBlock:false}),LanguageCodeBlock,MultiSelection,PaperBehavior,TextStyle,TextCommand,Underline,Superscript,Subscript,SmallCaps,Boxed,Circled,PageBreak,MultiColumn,HistoryTable.configure({resizable:true}),TableRow,TableCell,TableHeader,TblrSource,TabularxSource,Raw,DocumentImage,TheoremBlock,DescriptionList,DescriptionItem,MathNode,MathBlock,MathGlue,Ref,Cite.configure({library:citationLibrary}),Footnote,Label,Subfigures,TableOfContents,Shortcuts],
   content:'<p></p>',
 });
 function installMarginSelection(editor,page,paper) {
@@ -809,7 +811,7 @@ function syncTableAttributes() {
     table.style.setProperty('--arrayrulewidth',node.attrs.borderWidth??'0.4pt');
   });
 }
-editor.on('update',()=>{refreshReferences(paper);syncTableAttributes();});
+editor.on('update',()=>{refreshReferences(paper,editor);syncTableAttributes();});
 syncTableAttributes();
 installTableHoverAddRow(editor, paper);
 installImageDrop(editor,paper);
@@ -1075,6 +1077,7 @@ function restoreSourceCheckpoint(text,owner,expected) {
   editor.commands.focus();
 }
 function undoDocument() {
+  if(sourceView.hidden&&!editor.view.composing)editor.view.domObserver.flush();
   const checkpoint=sourceModeCommits.at(-1);
   if(!sourceView.hidden&&!(checkpoint?.owner&&checkpoint.sourceText===sourceView.value)){sourceView.undo();sourceView.flush();return true;}
   if(checkpoint && editor.state.doc===checkpoint.afterDoc && documentParts.start===checkpoint.afterPreamble&&checkpointLayoutMatches(checkpoint,checkpoint.after)){
@@ -1513,7 +1516,7 @@ function load(text, markSaved = true) {
     ? block.replace(/^\s*\\maketitle\b[ \t]*(?:\r?\n|$)/gm,'') : block));
   for (const block of content) identifyImportedBoxes(block);
   editor.chain().setMeta('addToHistory', false).setContent({type:'doc',attrs:{layoutPreamble:parsed.start,pageFurniture:readPageFurniture(parsed.start)},content:content.length?content:[{type:'paragraph'}]}).command(({tr})=>{tr.setDocAttribute('layoutPreamble',parsed.start);tr.setDocAttribute('pageFurniture',readPageFurniture(parsed.start));return true;}).run();
-  refreshReferences(paper);syncTableAttributes();
+  refreshReferences(paper,editor);syncTableAttributes();
   importedSource=text;importedSnapshot=JSON.stringify(editor.getJSON());
   if(markSaved) {savedSource=text;documentGeneration++;}
   if (markSaved) sourceView.reset(text);
@@ -2486,10 +2489,34 @@ const nativeBindings=compileKeybindings({
   math:{undo:['ctrl+z','meta+z'],redo:['ctrl+y','meta+y','ctrl+shift+z','meta+shift+z'],
     palette:'backslash',nextSlot:'tab',previousSlot:'shift+tab'},
 },{isMac});
+// Keep this opt-in probe ahead of the capture-phase router. It observes the
+// original event after dispatch without moving focus or reading document text.
+if (isWeb && new URLSearchParams(location.search).has('shortcut-check')) {
+  const output=document.createElement('output');
+  output.style.cssText='position:fixed;bottom:3rem;right:1rem;z-index:10000;background:#202124;color:white;padding:.6rem;pointer-events:none;white-space:pre-line';
+  const messages=[];
+  const note=text=>{
+    messages.push(text);
+    output.textContent=messages.slice(-4).join('\n');
+  };
+  note(t('点击正文，按 ⌘B 或 ⌘⌥F','Click the document and press ⌘B or ⌘⌥F'));
+  document.body.append(output);
+  window.addEventListener('keydown',event=>{
+    if(event.key==='Meta') { note('⌘ ↓'); return; }
+    if(!['KeyB','KeyE','KeyF'].includes(event.code)) return;
+    const target=event.target;
+    const area=target.closest?.('math-field')?'math':
+      target.closest?.('.ProseMirror')?'document':target.closest?.('.cm-content')?'source':target.tagName;
+    setTimeout(()=>note([event.metaKey?'⌘':'',event.altKey?'⌥':'',event.code,' · ',area,' · ',
+      event.defaultPrevented?t('已拦截','handled'):t('未拦截','passed through')].join('')),0);
+  },true);
+}
 installKeybindings(window, {
-  getBindings: () => config.bindings,
+  getBindings: (event,prefix) => isWeb && !isMac &&
+    (event.metaKey || (!event.ctrlKey && prefix?.split('+').slice(0,-1).includes('meta')))
+    ? config.commandBindings : config.bindings,
   nativeBindings,
-  getContext(event) {
+  getContext(event,prefix) {
     if (event.target.closest?.('.tex-code .cm-content'))
       return {element:sourceView.editorView?.contentDOM,source:true,scopes:['source','system','global']};
     if (event.target.closest?.('.tex-code'))return {element:event.target,scopes:['global'],only:'save'};
@@ -2504,15 +2531,22 @@ installKeybindings(window, {
     // is still the visible editing surface. Keep its shortcuts available.
     if (!sourceView.hidden && document.activeElement === document.body)
       return { element:sourceView.editorView?.contentDOM ?? document.body, source:true, scopes:['source','system','global'] };
-    if (!editor.view.hasFocus()) return { element:document.activeElement, scopes:['global'] };
+    // Clicking the blank page or closing a transient control can leave the
+    // selection in ProseMirror while the next keydown targets the body.
+    const pageCommand = isWeb && (event.metaKey || prefix?.includes('meta+')) && sourceView.hidden &&
+      event.target === document.body && document.activeElement === document.body &&
+      editor.isEditable && editor.view.dom.checkVisibility() &&
+      !Array.from(document.querySelectorAll('dialog[open], [aria-modal="true"]')).some(panel => panel.checkVisibility());
+    if (!pageCommand && !editor.view.hasFocus()) return { element:document.activeElement, scopes:['global'] };
     if (editor.view.composing) return { element:editor.view.dom, scopes:[] };
     editor.view.domObserver.flush();
     const scopes = ['editor','system','global'];
     if (editor.isActive('paragraph')) scopes.unshift('paragraph');
     if (editor.isActive('table')) scopes.unshift('table');
-    return { element:editor.view.dom, scopes };
+    return { element:editor.view.dom, scopes, pageCommand };
   },
   run({scope,command},context,event) {
+    if (context.pageCommand && scope !== 'global') editor.view.focus();
     if (scope === 'math') return runMathShortcut(command,context.field,event);
     if (scope === 'source') return sourceView.runShortcut(command);
     if (scope === 'system') {
@@ -2523,7 +2557,7 @@ installKeybindings(window, {
       }
       const key={copy:'c',cut:'x',paste:'v'}[command];
       if(!event.altKey&&!event.shiftKey&&event.key.toLowerCase()===key&&
-          (isMac?event.metaKey&&!event.ctrlKey:event.ctrlKey&&!event.metaKey))return 'native';
+          (isMac || (isWeb && event.metaKey) ? event.metaKey&&!event.ctrlKey : event.ctrlKey&&!event.metaKey))return 'native';
       clipboard[command]().catch(reportClipboardError);
       return true;
     }
@@ -2561,7 +2595,7 @@ const compositionController=createCompositionController({
     try{
       editor.chain().setMeta('addToHistory',false).setContent({type:'doc',attrs:editor.state.doc.attrs,content:composed.content}).run();
       projectDocument.hydrate(composed,editor.getJSON());
-      refreshReferences(paper);documentOutline.relocalize();
+      refreshReferences(paper,editor);documentOutline.relocalize();
     }finally{syncApplying=false;}
     // The composition is hydrated after setContent; force one layout pass so
     // the project presentation sees the new regions and renders their badges.
@@ -2630,7 +2664,7 @@ projectExplorer = installProjectExplorer({footer, filePanel:document.querySelect
     if(file.kind==='tex'){
       load(file.draft,false);
       if(restoreRichSession(editor,session,file,projectExplorer.model,projectDocument)){
-        importedSnapshot=JSON.stringify(editor.getJSON());refreshReferences(paper);syncTableAttributes();
+        importedSnapshot=JSON.stringify(editor.getJSON());refreshReferences(paper,editor);syncTableAttributes();
       }
       projection=sourceProjection(file.draft,editor.getJSON(),{fragment:true});
     }
@@ -2638,6 +2672,7 @@ projectExplorer = installProjectExplorer({footer, filePanel:document.querySelect
       if(sourceView.hidden)sourceView.open(file.draft);
       sourceView.restoreSession(session,file.draft);
       sourceView.setSplit(projectWorkspace.modeFor(file.kind)==='split');
+      sourceView.focus();
     }else{
       sourceView.close();sourceView.restoreSession(session,file.draft);editor.commands.focus();
     }

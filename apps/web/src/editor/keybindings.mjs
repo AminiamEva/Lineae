@@ -1,4 +1,9 @@
 const modifiers = ['ctrl', 'alt', 'shift', 'meta'];
+
+export function usesAppleShortcuts({platform, userAgentData, userAgent}) {
+  return [platform,userAgentData?.platform,userAgent].some(value=>
+    /MacIntel|MacPPC|Macintosh|macOS|Mac OS X|iPhone|iPad|iPod/i.test(value ?? ''));
+}
 const aliases = new Map([
   ['control', 'ctrl'], ['cmd', 'meta'], ['command', 'meta'], ['option', 'alt'],
   ['`', 'backtick'], ['-', 'minus'], ['=', 'equal'], ['+', 'plus'], [' ', 'space'],
@@ -106,7 +111,8 @@ export function installKeybindings(target, { getBindings, getContext, run, nativ
     if ((event.code || event.key) === consumedKey) consumedKey = null;
   }, true);
   target.addEventListener('keydown', event => {
-    if (event.defaultPrevented || event.isComposing || event.keyCode === 229 || event.getModifierState?.('AltGraph')) {
+    if (event.defaultPrevented || event.isComposing ||
+        (!event.metaKey && (event.keyCode === 229 || event.getModifierState?.('AltGraph')))) {
       pending = null;
       return;
     }
@@ -114,8 +120,9 @@ export function installKeybindings(target, { getBindings, getContext, run, nativ
     if (event.key === 'Escape' && pending) { pending = null; return; }
     const physicalKey = event.code || event.key;
     if (event.repeat && physicalKey === consumedKey) { consume(event); return; }
-    const bindings = getBindings();
-    const context = getContext(event);
+    const prefix = pending && performance.now() < pending.expires ? pending.first : null;
+    const bindings = getBindings(event,prefix);
+    const context = getContext(event, prefix);
     const stroke = eventStroke(event);
     const candidates = context.scopes.flatMap(scope => bindings.scopes.get(scope) ?? [])
       .filter(entry => !context.only || entry.command === context.only);

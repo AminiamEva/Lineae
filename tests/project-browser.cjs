@@ -272,8 +272,9 @@ async function clickOpenProject(page) {
     await contextMenu.getByRole('menuitem',{name:/^(移动|Move)$/}).click();
     await page.locator('[data-path="destination/final.tex"]').waitFor();
     assert.match(await code.innerText(),/\\input\{destination\/final\}/,'Active source session receives path rewrites');
+    await page.waitForFunction(()=>document.activeElement?.closest('.cm-content'),'Source editor retains keyboard focus after moving a referenced file');
     await page.keyboard.press('Control+z');assert.match(await code.innerText(),/\\input\{destination\/moved\}/);
-    await page.keyboard.press('Control+y');assert.match(await code.innerText(),/\\input\{destination\/final\}/);
+    await page.keyboard.press('Control+y');await page.waitForFunction(()=>document.querySelector('.cm-content')?.textContent.includes('destination/final'),null,{timeout:4000});assert.match(await code.innerText(),/\\input\{destination\/final\}/);
     await page.locator('#project-save').click();
     await page.waitForFunction(()=>document.querySelector('#project-explorer > [role=status]').textContent.includes('Saved'));
     assert.match(await readFile(resolve(diskRoot,'paper.tex'),'utf8'),/\\input\{destination\/final\}/);

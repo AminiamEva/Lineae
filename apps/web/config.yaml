@@ -111,7 +111,7 @@ keybindings:
     frac: mod+f
     sqrt: [mod+2, ctrl+2]
     indexedRoot: [mod+shift+2, ctrl+shift+2]
-    int: mod+i
+    int: [mod+i, ctrl+i]
     matrix: [mod+shift+m, ctrl+shift+m]
     pmatrix: [mod+m, ctrl+m]
     bmatrix: [mod+alt+m, ctrl+alt+m]

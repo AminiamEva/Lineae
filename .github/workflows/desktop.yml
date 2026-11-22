@@ -66,6 +66,8 @@ jobs:
         run: npx playwright install --only-shell chromium
       - name: Appendix numbering and source editing
         run: node tests/appendix-browser.cjs
+      - name: Book style gallery integration
+        run: node tests/book-styles-browser.cjs
       - name: XeLaTeX paragraph reference
         run: node tests/paragraph-layout-browser.cjs
       - name: Wrapfigure alignment
@@ -74,6 +76,8 @@ jobs:
         run: node tests/table-scroll-browser.cjs
       - name: Image crop, sizing and wrap centering
         run: node tests/image-toolbar-browser.cjs
+      - name: xeCJK paragraph reference
+        run: node tests/xecjk-layout-browser.cjs
       - name: Project separators and shared paper
         run: node tests/project-separator-browser.cjs
       - name: Project source boundaries and marker layout

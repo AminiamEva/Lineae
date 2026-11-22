@@ -1,4 +1,4 @@
-import {migrateVersion,migrateStoredPreferences} from './config-migrations.mjs';
+import {migrateVersion,migrateStoredPreferences,migrateStoredIntegralShortcut} from './config-migrations.mjs';
 import { parseDocument, stringify } from 'yaml';
 import { compileKeybindings } from './keybindings.mjs';
 
@@ -78,6 +78,7 @@ export function createConfigStore(defaultYaml, { storage, isMac = false, macWeb 
   let settings = defaults;
   validateConfig(settings);
   let bindings = compileKeybindings(settings.keybindings, { isMac, macWeb });
+  let commandBindings;
 
   function persist() {
     try {
@@ -94,14 +95,24 @@ export function createConfigStore(defaultYaml, { storage, isMac = false, macWeb 
     overrides = next;
     settings = merged;
     bindings = compiled;
+    commandBindings = undefined;
   }
 
   try {
     const saved = storage?.getItem(storageKey);
     const parsed = saved ? parseYaml(saved) : {};
     const migration = migrateStoredPreferences(parsed,storage);
-    apply(migration.profile);
-    if (migration.changed) {
+    const updatedProfile = migrateStoredIntegralShortcut(migration.profile);
+    let shortcutMigrated = updatedProfile !== migration.profile;
+    try {
+      apply(updatedProfile);
+    } catch (error) {
+      if (!shortcutMigrated) throw error;
+      // Keep a valid existing override if Control+I is already assigned.
+      apply(migration.profile);
+      shortcutMigrated = false;
+    }
+    if (migration.changed || shortcutMigrated) {
       persist();
       for (const key of migration.removals) storage?.removeItem(key);
     }
@@ -110,6 +121,19 @@ export function createConfigStore(defaultYaml, { storage, isMac = false, macWeb 
   return {
     get value() { return settings; },
     get bindings() { return bindings; },
+    get commandBindings() {
+      if (isMac) return bindings;
+      if (!commandBindings) {
+        try {
+          commandBindings = compileKeybindings(settings.keybindings, {isMac:true});
+        } catch {
+          // An explicit Command mapping may conflict with a platform alias.
+          // Retain the user's validated profile in that case.
+          commandBindings = bindings;
+        }
+      }
+      return commandBindings;
+    },
     importYaml(text) { apply(migrateVersion(parseYaml(text))); persist(); },
     exportYaml() { return toYaml(settings); },
     updateInterface(patch) {

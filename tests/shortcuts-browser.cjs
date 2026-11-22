@@ -1,5 +1,6 @@
 const assert=require('node:assert/strict');
 const {chromium}=require('playwright');
+const {execFileSync}=require('node:child_process');
 const {createServer}=require('node:http');
 const {readFile}=require('node:fs/promises');
 const {resolve,extname,sep}=require('node:path');
@@ -15,15 +16,23 @@ const server=createServer(async(req,res)=>{
 });
 (async()=>{
   await new Promise(done=>server.listen(0,'127.0.0.1',done));
-  const browser=await chromium.launch({headless:true});
+  const nativeEdge=process.env.LINEAE_MAC_EDGE==='1';
+  if(nativeEdge) assert.equal(process.platform,'darwin');
+  const browser=await chromium.launch(nativeEdge ? {channel:'msedge',headless:false} : {headless:true});
   try{
-    for(const mac of [false,true]){
+    for(const platform of nativeEdge ? ['edge'] : ['windows','mac','masked']){
+      const mac=platform!=='windows';
       const context=await browser.newContext({locale:'en-US',viewport:{width:1440,height:1100},
         permissions:['clipboard-read','clipboard-write']});
-      await context.addInitScript(isMac=>Object.defineProperty(navigator,'platform',{get:()=>isMac?'MacIntel':'Win32'}),mac);
+      if(!nativeEdge) await context.addInitScript(platform=>{
+        Object.defineProperty(navigator,'platform',{get:()=>platform==='mac'?'Unknown':'Win32'});
+        Object.defineProperty(navigator,'userAgentData',{get:()=>undefined});
+        Object.defineProperty(navigator,'userAgent',{get:()=>platform==='mac'
+          ? 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)' : 'Mozilla/5.0 (Windows NT 10.0)'});
+      },platform);
       const page=await context.newPage(),errors=[];
       page.on('pageerror',error=>errors.push(error.message));
-      await page.goto('http://127.0.0.1:'+server.address().port);
+      await page.goto('http://127.0.0.1:'+server.address().port+((platform==='masked'||nativeEdge)?'/?shortcut-check':'/'));
       const paper=page.locator('.ProseMirror'),mod=mac?'Meta':'Control';
       assert.equal(await page.locator('header .brand img').count(),1);
       assert.equal(await page.locator('header .brand img').getAttribute('src'),'./assets/brand/lineae-logo.png');
@@ -36,6 +45,61 @@ const server=createServer(async(req,res)=>{
         if(await page.locator('[data-source-mode=body]').getAttribute('aria-pressed')!=='true')
           await page.locator('[data-source-mode=body]').click();
       };
+      if(platform==='masked' || nativeEdge){
+        let press=key=>page.keyboard.press(key);
+        if(nativeEdge){
+          const identity=await page.evaluate(()=>({platform:navigator.platform,agent:navigator.userAgent}));
+          assert.match(identity.platform,/Mac/);
+          assert.match(identity.agent,/Edg\//);
+          console.log('Native macOS Edge:',identity.agent);
+          execFileSync('osascript',['-e','tell application "Microsoft Edge" to activate']);
+          await page.bringToFront();
+          const strokes={
+            'Meta+b':'11 using command down', 'Meta+e':'14 using command down',
+            '2':'19', 'Meta+f':'3 using command down', 'Escape':'53',
+            'Meta+Alt+f':'3 using {command down, option down}', 'x':'7',
+            'Meta+i':'34 using command down', 'Control+i':'34 using control down',
+          };
+          press=key=>execFileSync('osascript',['-e','tell application "System Events" to key code '+strokes[key]]);
+        }
+        await load('Alpha');
+        await paper.click();await page.keyboard.press('End');
+        await page.evaluate(()=>document.activeElement.blur());
+        assert.equal(await page.evaluate(()=>document.activeElement===document.body),true);
+        await press('Meta+b');
+        await page.waitForFunction(()=>document.activeElement?.classList.contains('ProseMirror'));
+        await page.locator('output').filter({hasText:/⌘KeyB · BODY · (handled|已拦截)/}).waitFor();
+        await press('x');
+        await paper.locator('strong').filter({hasText:'x'}).waitFor();
+        await press('Meta+e');await press('2');
+        await page.locator('.tex-code .cm-content').waitFor({state:'visible'});
+        await press('Meta+f');
+        await page.locator('.cm-search').waitFor({state:'visible'});
+        await press('Escape');
+        await load('Alpha');
+        await paper.click();await page.keyboard.press('End');
+        await press('Meta+Alt+f');
+        await paper.locator('.math-display math-field').waitFor();
+        if(nativeEdge){
+          await page.evaluate(()=>localStorage.setItem('lineae.config',
+            'version: 2\nediting:\n  shortcutPriority: true\nkeybindings:\n  math:\n    int: mod+i\n'));
+          await page.reload();
+          await load('$x$');
+          const field=paper.locator('math-field');
+          await field.click();
+          await page.waitForFunction(()=>document.activeElement?.tagName==='MATH-FIELD' &&
+            !document.activeElement._mathfield?.focusBlurInProgress);
+          await press('Control+i');
+          await page.waitForFunction(()=>document.activeElement?.value?.includes('\\int'));
+          await press('Meta+i');
+          await page.waitForFunction(()=>(document.activeElement?.value?.match(/\\int\b/g)?.length ?? 0)===2);
+          assert.equal(await page.evaluate(()=>document.fullscreenElement),null);
+        }
+        assert.deepEqual(errors,[]);
+        console.log('Command bold, mode switch, source search and numbered equation passed');
+        await context.close();
+        continue;
+      }
       const mathReady=async()=>{
         const field=paper.locator('math-field').first();await field.click();
         await page.waitForFunction(()=>document.activeElement?.tagName==='MATH-FIELD'&&
@@ -58,6 +122,11 @@ const server=createServer(async(req,res)=>{
       if(mac)await page.keyboard.press('Control+e');
       await page.keyboard.press(mac?'Shift+f':mod+'+f');
       await paper.locator('.math-display math-field').waitFor();
+      if(mac){
+        await load('Alpha');await paper.click();await page.keyboard.press('End');
+        await page.keyboard.press('Meta+Alt+f');
+        await paper.locator('.math-display math-field').waitFor();
+      }
       await load('Alpha');await paper.click();await page.keyboard.press('End');
       await page.keyboard.press(mod+'+Shift+f');
       await paper.locator('.math-inline math-field').waitFor();

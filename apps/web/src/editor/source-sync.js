@@ -191,6 +191,15 @@ function patchBlock(block,nodes) {
       Boolean(node.type==='table'&&node.attrs?.tabularx&&serializeSourceTable(node,serialize,'tabularx')===null)||
       (node.content??[]).some(unsafe);
     if(nodes.some(unsafe))return null;
+    if(block.spelling?.unicode){
+      if(nodes.length!==1||nodes[0].type!=='paragraph')return null;
+      const spelling=block.spelling,body=serialize(nodes[0]).slice(0,-2),old=spelling.canonicalBody;
+      const [patch]=minimalChange(old,body,0);let from=patch.from,to=patch.to;
+      while(from>0&&spelling.map[spelling.start+from]===null)from--;
+      while(to<old.length&&spelling.map[spelling.start+to]===null)to++;
+      const a=spelling.map[spelling.start+from],b=spelling.map[spelling.start+to];if(!Number.isInteger(a)||!Number.isInteger(b))return null;
+      return [{from:block.from+a,to:block.from+b,insert:old.slice(from,patch.from)+patch.insert+old.slice(patch.to,to)}];
+    }
     const [leading,trailing] = block.emptyPrefix!==undefined&&!block.raw.trim()?[block.emptyPrefix,block.emptySuffix??'']:blockWhitespace(block.raw);
     const body = nodes.map(serialize).join('').trim();
     // Prove the new block also round-trips through the existing importer.

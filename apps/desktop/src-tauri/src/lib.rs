@@ -182,6 +182,32 @@ pub fn run() {
     let builder = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .manage(AllowedFiles::default());
+    #[cfg(target_os = "macos")]
+    let builder = builder.menu(|app| {
+        use tauri::menu::{MenuBuilder, SubmenuBuilder};
+
+        let application = SubmenuBuilder::new(app, "Lineae")
+            .hide()
+            .hide_others()
+            .show_all()
+            .separator()
+            .quit()
+            .build()?;
+        // Cocoa supplies the native clipboard actions. Editing history and
+        // Lineae shortcuts belong to the focused editor inside the webview.
+        let edit = SubmenuBuilder::new(app, "Edit")
+            .cut()
+            .copy()
+            .paste()
+            .build()?;
+        let window = SubmenuBuilder::new(app, "Window")
+            .minimize()
+            .close_window()
+            .build()?;
+        MenuBuilder::new(app)
+            .items(&[&application, &edit, &window])
+            .build()
+    });
     #[cfg(target_os = "windows")]
     let builder = builder
         .manage(project::ProjectRoots::default())
@@ -207,17 +233,19 @@ pub fn run() {
                 .inner_size(1280.0, 900.0)
                 .min_inner_size(960.0, 640.0)
                 .center()
-                // WebView2 drops ctrl+wheel and trackpad pinch gestures unless
-                // zoom control is enabled, so the page would never receive the
-                // wheel events that drive the document zoom.
-                .zoom_hotkeys_enabled(true)
+                // Only WebView2 needs this for pinch. On macOS it injects
+                // competing Command shortcuts into the editor's webview.
+                .zoom_hotkeys_enabled(cfg!(target_os = "windows"))
                 .initialization_script(if cfg!(target_os = "windows") {
                     include_str!("bridge.js")
-                } else {
+                } else if cfg!(target_os = "macos") {
                     concat!(
+                        "window.__LINEAE_MACOS_DESKTOP__ = true;\n",
                         "window.__LINEAE_DESKTOP_NATIVE_PROJECTS__ = false;\n",
                         include_str!("bridge.js")
                     )
+                } else {
+                    concat!("window.__LINEAE_DESKTOP_NATIVE_PROJECTS__ = false;\n", include_str!("bridge.js"))
                 });
             #[cfg(target_os = "macos")]
             let window = if std::env::args_os().any(|arg| arg == "--lineae-smoke-test") {

@@ -1979,9 +1979,9 @@ A & B \\
     await page.keyboard.press('Escape');
     await importSource('See \\eqref{eq:y} and \\ref{eq:y}.\n\n\\begin{equation}x\\end{equation}\n\n\\begin{equation*}z\\end{equation*}\n\n\\begin{equation}y\\label{eq:y}\\end{equation}');
     await page.waitForFunction(()=>document.querySelectorAll('.math-display[data-numbered="true"]').length===2);
-    const equationNumbers=await page.locator('.math-equation-number').evaluateAll(nodes=>nodes.map(node=>({increment:getComputedStyle(node).counterIncrement,content:getComputedStyle(node,'::after').content})));
+    const equationNumbers=await page.locator('.math-equation-number').evaluateAll(nodes=>nodes.map(node=>({value:node.dataset.equationValue,content:getComputedStyle(node,'::after').content.replace(/["\s]/g,'')})));
     assert.equal(equationNumbers.length,2);
-    assert.ok(equationNumbers.every(item=>item.increment.includes('lineae-equation')&&item.content.includes('counter(lineae-equation)')),'Equation environments use an ordered CSS counter');
+    assert.deepEqual(equationNumbers,[{value:'1',content:'(1)'},{value:'2',content:'(2)'}],'Painted equation numbers follow the shared reference counter and skip starred equations');
     assert.deepEqual(await paper.locator('.ref-node').allTextContents(),['(2)','2']);
     assert.equal(await paper.locator('math-field').last().evaluate(field=>field.value),'y');
     await importSource('\\begin{equation}x=1\\tag{A}\\end{equation}\n\n\\begin{align}a&=b\\tag{2.1}\\label{eq:a}\\\\c&=d\\notag\\end{align}');

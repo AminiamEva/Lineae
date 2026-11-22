@@ -36,7 +36,7 @@ const server=createServer(async(req,res)=>{
  assert.ok(Math.abs((line.right-line.x)-(expected[2]-expected[0])*4/3)<1,'Line width differs from XeLaTeX: '+JSON.stringify({margin:fixture.margin,line:i,actual:line.right-line.x,expected:(expected[2]-expected[0])*4/3}));
  if(i)assert.ok(Math.abs((line.y-evidence.lines[0].y)-(expected[1]-fixture.lines[0].bbox[1])*4/3)<.5,'Baseline spacing differs from XeLaTeX');
  }
- const sourceText=fixture.source;await page.locator('.ProseMirror p').first().click();await page.keyboard.press('End');await page.keyboard.type(' sample');await page.keyboard.press('Control+z');
+ const sourceText=fixture.source;await page.evaluate(()=>{const editor=document.querySelector('.ProseMirror').editor;editor.view.focus();editor.commands.setTextSelection(editor.state.doc.content.size-1);});await page.keyboard.insertText(' sample');await page.waitForFunction(()=>document.querySelector('.ProseMirror').editor.state.doc.textContent.endsWith(' sample'),null,{timeout:4000});await page.keyboard.press('Control+z');
  await page.locator('[data-source-mode=source]').click();assert.equal((await code.innerText()).trimEnd(),sourceText.trimEnd(),'View layout and undo preserve source text');await page.locator('[data-source-mode=body]').click();
  }
  assert.deepEqual(errors,[]);

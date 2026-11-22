@@ -49,7 +49,8 @@ function readFonts(preamble, options) {
   return {
     serif: fontFamily(commandArgument(preamble, 'setmainfont')),
     mono: fontFamily(commandArgument(preamble, 'setmonofont')),
-    cjk: fontFamily(commandArgument(preamble, 'setCJKmainfont')) ?? fontset ?? null,
+    cjk: fontFamily(commandArgument(preamble, 'setCJKmainfont')) ?? fontset
+      ?? (/\\documentclass(?:\[[^\]]*\])?\{ctex|\\usepackage(?:\[[^\]]*\])?\{[^}]*ctex/.test(preamble)?'FandolSong':null),
   };
 }
 
@@ -132,8 +133,18 @@ export function planPagination(blocks, { pageHeight, pageGap, marginTop, marginB
     const groupHeight = groupBottom - top;
     const canMove = block.height <= bodyHeight + tolerance && groupHeight <= bodyHeight + tolerance;
 
-    if (block.forceBreak && top > bodyTop + tolerance) {
-      pageIndex++;
+    if (block.forceBreak) {
+      let nextPage = pageIndex + 1;
+      if(block.forceBreak==='odd'&&nextPage%2!==0)nextPage++;
+      const nextTop = nextPage * pitch + marginTop;
+      if (top < nextTop - tolerance) {
+        const space = nextTop - top;
+        translation += space;
+        top += space;
+        bottom += space;
+        groupBottom += space;
+      }
+      pageIndex = Math.max(pageIndex, nextPage);
       bodyTop = pageIndex * pitch + marginTop;
       bodyBottom = pageIndex * pitch + pageHeight - marginBottom;
       const space = bodyTop - top;
