@@ -1,0 +1,140 @@
+name: macOS Apple Silicon
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: macos-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  web:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7.1.0
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - run: npm run build
+      - name: Package the formula editor for browser tests
+        run: |
+          archive=$(npm pack mathlive@0.108.0 --pack-destination "$RUNNER_TEMP" --silent)
+          mkdir -p apps/web/vendor/mathlive
+          tar -xzf "$RUNNER_TEMP/$archive" -C apps/web/vendor/mathlive --strip-components=1 \
+            package/mathlive.min.js package/fonts
+      - name: Web and release-policy regressions
+        run: |
+          node --test tests/latex.test.mjs tests/config.test.mjs tests/keybindings.test.mjs \
+            tests/ui/i18n.test.mjs tests/typeset-layout.test.mjs tests/release-policy.test.mjs \
+            tests/project-native-bridge.test.mjs
+          node --test tests/bib/*.test.mjs tests/bib/*/*.test.mjs
+          npx playwright install --only-shell chromium
+          node tests/editor.cjs
+          node tests/shortcuts-browser.cjs
+
+  build:
+    runs-on: macos-15
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
+      prerelease: ${{ steps.version.outputs.prerelease }}
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7.1.0
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            apps/desktop/package-lock.json
+      - name: Validate application version
+        id: version
+        run: node apps/desktop/scripts/validate-release.mjs --macos
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin
+      - uses: Swatinem/rust-cache@v2.9.3
+        with:
+          workspaces: apps/desktop/src-tauri -> target
+          key: macos-aarch64
+      - name: Check runner and install dependencies
+        run: |
+          test "$(uname -m)" = arm64
+          xcodebuild -version
+          npm ci --no-audit --no-fund
+          npm ci --prefix apps/desktop --no-audit --no-fund
+      - name: Build the editor and package offline resources
+        run: |
+          npm run build
+          archive=$(npm pack mathlive@0.108.0 --pack-destination "$RUNNER_TEMP" --silent)
+          mkdir -p apps/web/vendor/mathlive
+          tar -xzf "$RUNNER_TEMP/$archive" -C apps/web/vendor/mathlive --strip-components=1 \
+            package/mathlive.min.js package/fonts
+      - name: Build the ad-hoc signed application and DMG
+        uses: tauri-apps/tauri-action@action-v1.0.0
+        env:
+          RUSTFLAGS: --remap-path-prefix=${{ github.workspace }}=.
+        with:
+          projectPath: apps/desktop
+          tauriScript: npm run tauri --
+          args: --target aarch64-apple-darwin --bundles app,dmg -- --locked
+      - name: Verify and package release assets
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: bash apps/desktop/scripts/package-macos.sh "$VERSION"
+      - uses: actions/upload-artifact@v7.0.2
+        with:
+          name: lineae-macos-aarch64
+          path: artifacts/macos/*
+          if-no-files-found: error
+      - name: Wait for any Windows publisher for the same tag
+        if: steps.version.outputs.requested == 'true'
+        timeout-minutes: 25
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          runs=$(gh run list --workflow desktop.yml --event push --commit "$GITHUB_SHA" \
+            --json headBranch,databaseId,status)
+          run=$(jq -r --arg tag "$TAG" 'map(select(.headBranch == $tag and .status != "completed")) | first | .databaseId // empty' <<<"$runs")
+          if [[ -n "$run" ]]; then
+            gh run watch "$run" --compact
+          fi
+
+  release:
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') && needs.build.outputs.tag == github.ref_name
+    needs: [web, build]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v8.0.2
+        with:
+          name: lineae-macos-aarch64
+          path: artifacts/macos
+      - name: Publish verified macOS assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.build.outputs.tag }}
+          VERSION: ${{ needs.build.outputs.version }}
+          PRERELEASE: ${{ needs.build.outputs.prerelease }}
+        run: bash apps/desktop/scripts/publish-macos.sh

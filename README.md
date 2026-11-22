@@ -195,6 +195,8 @@ the existing ZIP pipeline. Builds and packaging run only on GitHub Actions; see
 steps. Compilation, file watching, and auto-update are intentionally out of scope
 for this release.
 
+For Apple Silicon Macs, get the macOS DMG from [GitHub Releases](https://github.com/AminiamEva/Lineae/releases) when available for your version. Drag Lineae into Applications or your own `~/Applications` folder. The app is ad-hoc signed and is not notarized. If macOS blocks the first launch, use **System Settings → Privacy & Security → Open Anyway** only if you trust the download and macOS offers that option. [macOS installation and verification](docs/macos-distribution.md#install-and-verify-on-a-mac)
+
 ## Contributing
 
 Lineae is still in an early stage, and internal interfaces may change. If you find a bug or a LaTeX compatibility issue, an issue with a small, reproducible <code>.tex</code> example is especially useful. The formal process for external contributions will be documented as the project matures; see [CONTRIBUTING.md](CONTRIBUTING.md).
