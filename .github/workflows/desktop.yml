@@ -70,6 +70,12 @@ jobs:
         run: node tests/book-styles-browser.cjs
       - name: XeLaTeX paragraph reference
         run: node tests/paragraph-layout-browser.cjs
+      - name: Wrapfigure alignment
+        run: node tests/wrapfigure-layout-browser.cjs
+      - name: Table row/column insert keeps scroll
+        run: node tests/table-scroll-browser.cjs
+      - name: Image crop, sizing and wrap centering
+        run: node tests/image-toolbar-browser.cjs
       - name: xeCJK paragraph reference
         run: node tests/xecjk-layout-browser.cjs
       - name: Project separators and shared paper
@@ -91,6 +97,8 @@ jobs:
         run: node tests/project-render-parity-browser.cjs
       - name: Project editing boundary regressions
         run: node tests/project-editing-browser.cjs
+      - name: Pagination idempotency across modes
+        run: node tests/pagination-idempotency-browser.cjs
       - name: Workspace navigation regressions
         run: node tests/workspace-navigation-browser.cjs
       - name: Continuous project Document regressions

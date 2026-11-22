@@ -516,11 +516,29 @@ export const MathNode = Node.create({
       let replacedOperator = null;
       let pointerFocus = 0;
       let scriptCleanupQueued = false;
+      let escaping = false;
+      let escapingTimer = 0;
+      const clearEscape=()=>{escaping=false;};
+      document.addEventListener('pointerdown',clearEscape,true);
       const finish = backward => {
         pointerFocus++;
         commitUnclosedFences(field);
         clearEmptyScripts(field);
+        escaping = true;
+        clearTimeout(escapingTimer);
+        escapingTimer = setTimeout(() => { escaping = false; }, 700);
+        field.blur();
         leaveFormula(editor,getPos(),node,backward);
+        // Pagination may re-render sheets around the caret. Keep the rich
+        // editor focused instead of letting MathLive's blur path win the race.
+        let attempts=0;
+        const settleFocus=()=>{
+          const active=editor.view.dom.ownerDocument.activeElement;
+          if(active===editor.view.dom)return;
+          editor.view.focus();
+          if(++attempts<4)requestAnimationFrame(settleFocus);
+        };
+        requestAnimationFrame(settleFocus);
       };
       const ambiguous = {
         '_': ['moveToSubscript', '\\_'],
@@ -528,6 +546,7 @@ export const MathNode = Node.create({
         '/': [['insert', '\\frac{#@}{#?}'], '/'],
       };
       field.addEventListener('pointerdown', event => {
+        escaping = false;
         pendingKey = null;
         pendingDollar = false;
         replacedOperator = null;
@@ -568,6 +587,12 @@ export const MathNode = Node.create({
         });
       },true);
       field.addEventListener('focus', () => {
+        if (escaping) {
+          queueMicrotask(() => {
+            if (escaping && field.ownerDocument.activeElement !== editor.view.dom) editor.view.focus();
+          });
+          return;
+        }
         commandPalette = false;
         field.setAttribute('data-lineae-editing','');
       });
@@ -846,6 +871,10 @@ export const MathNode = Node.create({
         },
         stopEvent: event => !['dragstart','dragend','dragover','dragenter','dragleave','drop'].includes(event.type) && event.target !== handle,
         ignoreMutation: () => true,
+        destroy() {
+          document.removeEventListener('pointerdown',clearEscape,true);
+          clearTimeout(escapingTimer);
+        },
       };
     };
   },

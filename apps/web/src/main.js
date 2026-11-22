@@ -979,18 +979,18 @@ function fillMatrixAxis(field, axis) {
 // matrix to grow, so the command belongs to the table around it.
 function editTableAxis(axis) {
   if (!editor.isActive('table')) return;
-  const chain=editor.chain().focus();
+  const chain=editor.chain().focus(undefined,{scrollIntoView:false});
   if (axis==='row') chain.addRowAfter().run();
   else chain.addColumnAfter().run();
 }
 function addMatrixRow() {
   const field=activeMath();
-  if(!field) { editor.chain().focus().addRowAfter().run(); return; }
+  if(!field) { editor.chain().focus(undefined,{scrollIntoView:false}).addRowAfter().run(); return; }
   if(!fillMatrixAxis(field,'row')) editTableAxis('row');
 }
 function addMatrixColumn() {
   const field=activeMath();
-  if(!field) { editor.chain().focus().addColumnAfter().run(); return; }
+  if(!field) { editor.chain().focus(undefined,{scrollIntoView:false}).addColumnAfter().run(); return; }
   if(!fillMatrixAxis(field,'column')) editTableAxis('column');
 }
 button('＋ Row',addMatrixRow);

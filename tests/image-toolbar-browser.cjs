@@ -113,6 +113,25 @@ const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR
     assert.equal(await widthNumber.inputValue(), await heightNumber.inputValue(), 'scale 100% restores the natural size in both dimensions');
     assert.ok(Number(await widthNumber.inputValue()) > 0);
 
+    // Wrap text exposes the \centering control immediately after it.
+    const wrapText = page.getByLabel('Wrap text');
+    const centerWrap = page.getByLabel('Center in wrap');
+    assert.equal(await centerWrap.isDisabled(), true, 'Wrap centering is disabled until wrap text is enabled');
+    await wrapText.check();
+    await page.waitForFunction(() => !document.querySelector('.image-tools input[aria-label="Center in wrap"]')?.disabled);
+    await centerWrap.check();
+    await page.waitForFunction(() => document.querySelector('.document-image')?.dataset.centered === 'true');
+    const wrapAttrs = await page.locator('.ProseMirror').evaluate(element => element.editor.getJSON().content.find(node => node.type === 'documentImage').attrs);
+    assert.equal(wrapAttrs.wrap, true);
+    assert.equal(wrapAttrs.centered, true);
+    assert.equal(wrapAttrs.align, 'center');
+    const gaps = await imageNode.evaluate(figure => {
+      const outer = figure.getBoundingClientRect();
+      const frame = figure.querySelector('.document-image-frame').getBoundingClientRect();
+      return [frame.left - outer.left, outer.right - frame.right];
+    });
+    assert.ok(Math.abs(gaps[0] - gaps[1]) < 1.5, `Wrap centering balances the side gaps: ${gaps}`);
+
     assert.deepEqual(errors, []);
     console.log('PASS image caption, crop and aspect-ratio toolbar');
   } finally {

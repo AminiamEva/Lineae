@@ -52,6 +52,14 @@ MathLive provides editable inline and display mathematics. Equations are edited 
 
 This is an editing surface, not a TeX math engine. The set of commands and environments that can be imported, displayed, and exported is finite and continues to be tested.
 
+### TikZ and CircuiTikZ
+
+**TikZ.** The **Insert → TikZ** studio combines a code pane with a live preview rendered by the TeX engine. It accepts a preamble/library block and a TikZ body, can insert the result into the document, and also renders `tikz-general` code blocks in the body. The preview runs entirely in the browser through the prebuilt `mp-tikz-wasm` runtime.
+
+**CircuiTikZ.** A visual CircuiTikZ editor provides circuit-specific component libraries, a snap grid, orthogonal wiring, and draggable component and terminal placement. Components expose editable values, labels, rotation, and properties; existing `circuitikz` source can be imported, edited visually, and exported again. The generated environment is inserted back into the document and previewed through the same TeX runtime.
+
+The general TikZ dialog and `tikz-general` body preview use the prebuilt `mp-tikz-wasm` runtime (LGPL-3.0-or-later). Its large WASM/TeX bundle is intentionally kept out of the source tree. Install it once with `npm run vendor:tikz`; this downloads the pinned release into `apps/web/vendor/mp-tikz-wasm/` (see `scripts/install-mp-tikz-wasm.mjs` and the vendor `LICENSE` / `NOTICE.md`).
+
 ### LaTeX import and export
 
 Lineae can open UTF-8 <code>.tex</code> files and switch between visual editing and source mode. Recognised commands and environments are converted into structured editor nodes. Constructs outside the supported subset are kept as opaque source blocks where possible, so they remain available in source mode and are not mistaken for ordinary text.
@@ -218,13 +226,4 @@ Made with [contrib.rocks](https://contrib.rocks).
 ---
 
 *Lineae — where writing meets typesetting.*
-## General TikZ studio
-
-The **Insert → TikZ** dialog uses the prebuilt `mp-tikz-wasm` runtime (LGPL-3.0-or-later). Its large WASM/TeX bundle is intentionally kept out of the source tree. Install it once before using the general TikZ dialog or the `tikz-general` body preview:
-
-```bash
-npm run vendor:tikz
-```
-
-This downloads the pinned release into `apps/web/vendor/mp-tikz-wasm/`; see `scripts/install-mp-tikz-wasm.mjs` and the vendor `LICENSE` / `NOTICE.md`.
 

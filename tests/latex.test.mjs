@@ -148,6 +148,17 @@ test('keeps wrapfigure and includegraphics textwidth factors independent', () =>
   assert.match(serialize(node),/\\begin\{wrapfigure\}\{r\}\{0\.4\\textwidth\}/);
 });
 
+test('wrapfigure centering round-trips inside the environment', () => {
+  const source=['\\begin{wrapfigure}{r}{0.4\\textwidth}','\\centering','\\includegraphics[width=0.4\\textwidth]{pic.png}','\\caption{Center}','\\end{wrapfigure}'].join('\n');
+  const [node]=importBlocks(source);
+  assert.equal(node.attrs.wrap,true);
+  assert.equal(node.attrs.centered,true);
+  assert.equal(node.attrs.align,'center');
+  assert.match(serialize(node),/\\begin\{wrapfigure\}\{r\}\{0\.4\\textwidth\}\n\\centering\n/);
+  const plain=['\\begin{wrapfigure}{r}{0.4\\textwidth}','\\includegraphics[width=0.4\\textwidth]{pic.png}','\\end{wrapfigure}'].join('\n');
+  assert.doesNotMatch(serialize(importBlocks(plain)[0]),/\\centering/);
+});
+
 test('preserves local image paths and supported widths and requests graphicx', () => {
   const image = String.raw`\includegraphics[width=0.5\linewidth]{figures/plot.png}`;
   const [node] = importBlocks(image);
