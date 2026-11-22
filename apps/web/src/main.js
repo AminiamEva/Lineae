@@ -47,7 +47,7 @@ import { applyCitationRenames } from '../bib/index.mjs';
 import { chooseReference } from './editor/reference-index.js';
 import { installTableHoverAddRow } from './editor/table-hover.js';
 import { createConfigStore } from './editor/config.mjs';
-import { compileKeybindings, installKeybindings, usesAppleShortcuts } from './editor/keybindings.mjs';
+import { compileKeybindings, installKeybindings } from './editor/keybindings.mjs';
 import defaultConfigYaml from '../config.yaml';
 import { askText } from './editor/dialog.js';
 import { installDocumentFind } from './editor/find.js';
@@ -256,12 +256,10 @@ const DescriptionItem = Node.create({
 function browserStorage() {
   try { return window.localStorage; } catch { return null; }
 }
-const isMac = window.__LINEAE_MACOS_DESKTOP__ === true || usesAppleShortcuts(navigator);
-const isWeb = !window.__TAURI_INTERNALS__;
+const isMac = /Mac|iPhone|iPad|iPod/.test(navigator.platform);
 const config = createConfigStore(defaultConfigYaml, {
   storage: browserStorage(),
   isMac,
-  macWeb: isWeb,
   onError: error => console.warn(t('配置','Configuration'),error),
 });
 function configuredLanguage() {
@@ -2489,34 +2487,10 @@ const nativeBindings=compileKeybindings({
   math:{undo:['ctrl+z','meta+z'],redo:['ctrl+y','meta+y','ctrl+shift+z','meta+shift+z'],
     palette:'backslash',nextSlot:'tab',previousSlot:'shift+tab'},
 },{isMac});
-// Keep this opt-in probe ahead of the capture-phase router. It observes the
-// original event after dispatch without moving focus or reading document text.
-if (isWeb && new URLSearchParams(location.search).has('shortcut-check')) {
-  const output=document.createElement('output');
-  output.style.cssText='position:fixed;bottom:3rem;right:1rem;z-index:10000;background:#202124;color:white;padding:.6rem;pointer-events:none;white-space:pre-line';
-  const messages=[];
-  const note=text=>{
-    messages.push(text);
-    output.textContent=messages.slice(-4).join('\n');
-  };
-  note(t('点击正文，按 ⌘B 或 ⌘⌥F','Click the document and press ⌘B or ⌘⌥F'));
-  document.body.append(output);
-  window.addEventListener('keydown',event=>{
-    if(event.key==='Meta') { note('⌘ ↓'); return; }
-    if(!['KeyB','KeyE','KeyF'].includes(event.code)) return;
-    const target=event.target;
-    const area=target.closest?.('math-field')?'math':
-      target.closest?.('.ProseMirror')?'document':target.closest?.('.cm-content')?'source':target.tagName;
-    setTimeout(()=>note([event.metaKey?'⌘':'',event.altKey?'⌥':'',event.code,' · ',area,' · ',
-      event.defaultPrevented?t('已拦截','handled'):t('未拦截','passed through')].join('')),0);
-  },true);
-}
 installKeybindings(window, {
-  getBindings: (event,prefix) => isWeb && !isMac &&
-    (event.metaKey || (!event.ctrlKey && prefix?.split('+').slice(0,-1).includes('meta')))
-    ? config.commandBindings : config.bindings,
+  getBindings: () => config.bindings,
   nativeBindings,
-  getContext(event,prefix) {
+  getContext(event) {
     if (event.target.closest?.('.tex-code .cm-content'))
       return {element:sourceView.editorView?.contentDOM,source:true,scopes:['source','system','global']};
     if (event.target.closest?.('.tex-code'))return {element:event.target,scopes:['global'],only:'save'};
@@ -2531,22 +2505,15 @@ installKeybindings(window, {
     // is still the visible editing surface. Keep its shortcuts available.
     if (!sourceView.hidden && document.activeElement === document.body)
       return { element:sourceView.editorView?.contentDOM ?? document.body, source:true, scopes:['source','system','global'] };
-    // Clicking the blank page or closing a transient control can leave the
-    // selection in ProseMirror while the next keydown targets the body.
-    const pageCommand = isWeb && (event.metaKey || prefix?.includes('meta+')) && sourceView.hidden &&
-      event.target === document.body && document.activeElement === document.body &&
-      editor.isEditable && editor.view.dom.checkVisibility() &&
-      !Array.from(document.querySelectorAll('dialog[open], [aria-modal="true"]')).some(panel => panel.checkVisibility());
-    if (!pageCommand && !editor.view.hasFocus()) return { element:document.activeElement, scopes:['global'] };
+    if (!editor.view.hasFocus()) return { element:document.activeElement, scopes:['global'] };
     if (editor.view.composing) return { element:editor.view.dom, scopes:[] };
     editor.view.domObserver.flush();
     const scopes = ['editor','system','global'];
     if (editor.isActive('paragraph')) scopes.unshift('paragraph');
     if (editor.isActive('table')) scopes.unshift('table');
-    return { element:editor.view.dom, scopes, pageCommand };
+    return { element:editor.view.dom, scopes };
   },
   run({scope,command},context,event) {
-    if (context.pageCommand && scope !== 'global') editor.view.focus();
     if (scope === 'math') return runMathShortcut(command,context.field,event);
     if (scope === 'source') return sourceView.runShortcut(command);
     if (scope === 'system') {
@@ -2557,7 +2524,7 @@ installKeybindings(window, {
       }
       const key={copy:'c',cut:'x',paste:'v'}[command];
       if(!event.altKey&&!event.shiftKey&&event.key.toLowerCase()===key&&
-          (isMac || (isWeb && event.metaKey) ? event.metaKey&&!event.ctrlKey : event.ctrlKey&&!event.metaKey))return 'native';
+          (isMac?event.metaKey&&!event.ctrlKey:event.ctrlKey&&!event.metaKey))return 'native';
       clipboard[command]().catch(reportClipboardError);
       return true;
     }
@@ -3431,18 +3398,15 @@ function applyImportedPreferences() {
   updateLanguage();
 }
 function updateShortcutHints() {
-  const display={ctrl:'Ctrl',meta:isMac?'Cmd':'Meta',alt:'Alt',shift:'Shift',equal:'=',plus:'+',minus:'−'};
+  const display={ctrl:'Ctrl',meta:'Meta',alt:'Alt',shift:'Shift',equal:'=',plus:'+',minus:'−'};
   const format=stroke=>stroke.split('+').map(key=>display[key] ?? key.toUpperCase()).join('+');
   for (const control of ribbon.querySelectorAll('[data-shortcut]')) {
     const [scope,command]=control.dataset.shortcut.split('.');
-    const bindings=config.bindings.scopes.get(scope)?.filter(entry=>entry.command===command);
-    const binding=bindings?.[0];
-    control.dataset.tooltipZh=control.dataset.tooltipBaseZh??=control.dataset.tooltipZh??'';
-    control.dataset.tooltipEn=control.dataset.tooltipBaseEn??=control.dataset.tooltipEn??'';
+    const binding=config.bindings.scopes.get(scope)?.find(entry=>entry.command===command);
+    control.dataset.tooltipZh=control.dataset.tooltipBaseZh??control.dataset.tooltipZh??'';
+    control.dataset.tooltipEn=control.dataset.tooltipBaseEn??control.dataset.tooltipEn??'';
     if (!binding) continue;
-    const alternative=isMac && bindings.find(entry=>entry!==binding && entry.first==='ctrl+e' && entry.second);
-    const shortcut=[binding,alternative].filter(Boolean)
-      .map(entry=>[entry.first,entry.second].filter(Boolean).map(format).join(' ')).join(' / ');
+    const shortcut=[binding.first,binding.second].filter(Boolean).map(format).join(' ');
     control.dataset.tooltipZh+=' · '+shortcut;
     control.dataset.tooltipEn+=' · '+shortcut;
   }

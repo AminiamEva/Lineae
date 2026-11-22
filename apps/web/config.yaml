@@ -111,7 +111,7 @@ keybindings:
     frac: mod+f
     sqrt: [mod+2, ctrl+2]
     indexedRoot: [mod+shift+2, ctrl+shift+2]
-    int: [mod+i, ctrl+i]
+    int: mod+i
     matrix: [mod+shift+m, ctrl+shift+m]
     pmatrix: [mod+m, ctrl+m]
     bmatrix: [mod+alt+m, ctrl+alt+m]
@@ -123,7 +123,7 @@ keybindings:
     oint: alt+i
     oiint: alt+shift+i
     undo: mod+z
-    redo: [mod+y, mod+shift+z]
+    redo: mod+y
     palette: backslash
     nextSlot: tab
     previousSlot: shift+tab
