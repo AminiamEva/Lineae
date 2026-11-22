@@ -70,6 +70,8 @@ jobs:
         run: node tests/paragraph-layout-browser.cjs
       - name: Wrapfigure alignment
         run: node tests/wrapfigure-layout-browser.cjs
+      - name: Table row/column insert keeps scroll
+        run: node tests/table-scroll-browser.cjs
       - name: Project separators and shared paper
         run: node tests/project-separator-browser.cjs
       - name: Project source boundaries and marker layout

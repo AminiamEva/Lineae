@@ -156,13 +156,13 @@ export function installTableHoverAddRow(editor, paper) {
   rowButton.addEventListener('click', () => {
     if (rowPosition === null) return;
     editor.commands.setTextSelection(rowPosition);
-    editor.chain().focus().addRowAfter().run();
+    editor.chain().focus(undefined,{scrollIntoView:false}).addRowAfter().run();
     hide();
   });
   columnButton.addEventListener('click', () => {
     if (columnPosition === null) return;
     editor.commands.setTextSelection(columnPosition);
-    editor.chain().focus().addColumnAfter().run();
+    editor.chain().focus(undefined,{scrollIntoView:false}).addColumnAfter().run();
     hide();
   });
   return hide;
