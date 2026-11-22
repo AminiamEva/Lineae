@@ -74,6 +74,8 @@ jobs:
         run: node tests/wrapfigure-layout-browser.cjs
       - name: Table row/column insert keeps scroll
         run: node tests/table-scroll-browser.cjs
+      - name: Table row insert leaves earlier pages intact
+        run: node tests/table-reflow-browser.cjs
       - name: Image crop, sizing and wrap centering
         run: node tests/image-toolbar-browser.cjs
       - name: xeCJK paragraph reference

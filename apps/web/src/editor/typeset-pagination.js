@@ -83,8 +83,9 @@ function paragraphLines(editor, element, block, pageRect, zoom) {
     try { return (editor.view.coordsAtPos(position, 1).top - pageRect.top) / zoom; }
     catch { return Number.NaN; }
   };
+  const bottom = block.top + block.height;
   const firstTop = topAt(from);
-  if (!Number.isFinite(firstTop)) return null;
+  if (!Number.isFinite(firstTop) || firstTop > bottom + 1) return null;
   const starts = [{ position:from, top:firstTop }];
   let cursor = from;
   while (cursor < to) {
@@ -102,12 +103,11 @@ function paragraphLines(editor, element, block, pageRect, zoom) {
     }
     const position = nextGraphemePosition(editor, low);
     const top = topAt(position);
-    if (!Number.isFinite(top) || top <= currentTop + 1) break;
+    if (!Number.isFinite(top) || top <= currentTop + 1 || top > bottom + 1) break;
     starts.push({ position, top });
     cursor = position;
   }
   if (starts.length < 2) return null;
-  const bottom = block.top + block.height;
   return starts.map((line, index) => ({
     ...line,
     height: Math.max(1, (starts[index + 1]?.top ?? bottom) - line.top),
