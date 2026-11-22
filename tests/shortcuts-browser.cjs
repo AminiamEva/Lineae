@@ -87,7 +87,7 @@ const server=createServer(async(req,res)=>{
         await paper.locator('.math-display math-field').waitFor();
         if(nativeEdge){
           await page.evaluate(()=>localStorage.setItem('lineae.config',
-            'version: 2\nediting:\n  shortcutPriority: false\nkeybindings:\n  global:\n    sourceMode: mod+t\n'));
+            'version: 2\nediting:\n  shortcutPriority: false\nkeybindings:\n  global:\n    sourceMode: mod+t\n  math:\n    int: mod+i\n'));
           await page.reload();
           await load('Alpha');
           await paper.click();

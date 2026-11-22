@@ -37,3 +37,11 @@ export function migrateStoredPreferences(profile, storage) {
   }
   return {profile:migrated,changed,removals};
 }
+
+// Older Settings saves included the shipped shortcut even when it was untouched.
+export function migrateStoredIntegralShortcut(profile) {
+  if (profile.keybindings?.math?.int !== 'mod+i') return profile;
+  const next = structuredClone(profile);
+  delete next.keybindings.math.int;
+  return next;
+}

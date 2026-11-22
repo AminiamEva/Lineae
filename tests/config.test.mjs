@@ -81,6 +81,22 @@ test('importing a conflicting or malformed profile keeps the active profile', ()
   assert.equal(store.exportYaml(),previous);
 });
 
+test('saved integral defaults inherit Control+I while existing custom bindings are preserved', () => {
+  for (const [math, expected] of [
+    [{int:'mod+i'}, ['mod+i','ctrl+i']],
+    [{int:'mod+i', sqrt:'ctrl+i'}, 'mod+i'],
+    [{int:'alt+k'}, 'alt+k'],
+    [{int:null}, null],
+  ]) {
+    let saved = toYaml({version:2,interface:{zoom:130},keybindings:{math}});
+    const storage = {getItem:key=>key==='lineae.config'?saved:null,setItem:(_key,value)=>{saved=value;},removeItem(){}};
+    const store = createConfigStore(defaults,{isMac:true,storage});
+    assert.deepEqual(store.value.keybindings.math.int,expected);
+    assert.equal(store.value.interface.zoom,130);
+    assert.deepEqual(parseYaml(saved).keybindings.math.int,Array.isArray(expected)?undefined:expected);
+  }
+});
+
 test('mode-specific toolbar defaults and YAML source preferences', () => {
  const store=createConfigStore(defaults);
  assert.equal(store.value.interface.toolbarAutoHide,false);

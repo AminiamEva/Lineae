@@ -1,4 +1,4 @@
-import {migrateVersion,migrateStoredPreferences} from './config-migrations.mjs';
+import {migrateVersion,migrateStoredPreferences,migrateStoredIntegralShortcut} from './config-migrations.mjs';
 import { parseDocument, stringify } from 'yaml';
 import { compileKeybindings } from './keybindings.mjs';
 
@@ -103,8 +103,17 @@ export function createConfigStore(defaultYaml, { storage, isMac = false, macWeb 
     const saved = storage?.getItem(storageKey);
     const parsed = saved ? parseYaml(saved) : {};
     const migration = migrateStoredPreferences(parsed,storage);
-    apply(migration.profile);
-    if (migration.changed) {
+    const updatedProfile = migrateStoredIntegralShortcut(migration.profile);
+    let shortcutMigrated = updatedProfile !== migration.profile;
+    try {
+      apply(updatedProfile);
+    } catch (error) {
+      if (!shortcutMigrated) throw error;
+      // Keep a valid existing override if Control+I is already assigned.
+      apply(migration.profile);
+      shortcutMigrated = false;
+    }
+    if (migration.changed || shortcutMigrated) {
       persist();
       for (const key of migration.removals) storage?.removeItem(key);
     }
