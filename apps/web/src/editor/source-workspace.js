@@ -342,6 +342,7 @@ export function createSourceWorkspace({ page, render, metadata, previewRange, so
   }, {signal:lifecycle.signal});
   return {
     destroy,
+    focus,
     captureSession() {
       // Taking a snapshot must not cancel a pending source-to-preview render:
       // save, close confirmation and clicking a resource can keep this file

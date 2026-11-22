@@ -395,11 +395,6 @@ export function installTypesetPagination(page, paper, meta, editor) {
     children.forEach((element, index) => {
       if (element.matches('.page-break, [data-page-break]') && blocks[index + 1]) blocks[index + 1].forceBreak = true;
     });
-    const chaptered = page.dataset.documentClass === 'book' || page.dataset.documentClass === 'report';
-    if (chaptered) children.forEach((element, index) => {
-      if (element.tagName === 'H1' && index > 0 && blocks[index]) blocks[index].forceBreak = true;
-    });
-
     const chapterProfile=counterProfile(paragraphPreamble);
     if(chapterProfile.chapters){
       children.forEach((element,index)=>{

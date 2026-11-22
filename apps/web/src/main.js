@@ -2532,6 +2532,7 @@ projectExplorer = installProjectExplorer({footer, filePanel:document.querySelect
       if(sourceView.hidden)sourceView.open(file.draft);
       sourceView.restoreSession(session,file.draft);
       sourceView.setSplit(projectWorkspace.modeFor(file.kind)==='split');
+      sourceView.focus();
     }else{
       sourceView.close();sourceView.restoreSession(session,file.draft);editor.commands.focus();
     }
