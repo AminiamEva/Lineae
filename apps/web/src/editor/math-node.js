@@ -518,6 +518,15 @@ export const MathNode = Node.create({
         commitUnclosedFences(field);
         clearEmptyScripts(field);
         leaveFormula(editor,getPos(),node,backward);
+        // Pagination may re-render sheets around the caret. Keep the rich
+        // editor focused instead of letting MathLive's blur path win the race.
+        let attempts=0;
+        const settleFocus=()=>{
+          if(editor.view.hasFocus())return;
+          editor.view.focus();
+          if(++attempts<4)requestAnimationFrame(settleFocus);
+        };
+        requestAnimationFrame(settleFocus);
       };
       const ambiguous = {
         '_': ['moveToSubscript', '\\_'],

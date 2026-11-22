@@ -85,6 +85,8 @@ jobs:
         run: node tests/project-render-parity-browser.cjs
       - name: Project editing boundary regressions
         run: node tests/project-editing-browser.cjs
+      - name: Pagination idempotency across modes
+        run: node tests/pagination-idempotency-browser.cjs
       - name: Workspace navigation regressions
         run: node tests/workspace-navigation-browser.cjs
       - name: Continuous project Document regressions

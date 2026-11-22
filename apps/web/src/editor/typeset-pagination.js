@@ -343,6 +343,9 @@ export function installTypesetPagination(page, paper, meta, editor) {
     paginationStyle.textContent = '';
     translations = [];
     page.dataset.paginationMeasuring = '';
+    // Measure from the unpaginated geometry so repeated layouts converge.
+    page.style.removeProperty('--editor-min-height');
+    page.style.removeProperty('--page-stack-height');
     clearHeaderClones();
     renderSheets(1);
 
