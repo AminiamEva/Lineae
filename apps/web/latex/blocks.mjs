@@ -73,7 +73,7 @@ function heading(name, star, short, title, label, labelSource) {
   return {
     type: 'heading',
     attrs: {
-      level: name === 'chapter' ? 1 : headingLevels().indexOf(name) + 1,
+      level: name === 'part' || name === 'chapter' ? 1 : headingLevels().indexOf(name) + 1,
       // Keep the source command for heading numbering.  In book/report,
       // \section has level 2 but must still be treated as a section, not a
       // subsection, when the outline builds 1.1 / A.1 numbers.
@@ -433,7 +433,7 @@ function importSegment(block,options) {
     // Split outer source-backed environments without losing their separators.
     // The scanner
     // keeps nested environments, macro arguments and literal content opaque.
-    const floating=token.kind==='begin' && /^\\begin\{(figure\*?|wrapfigure|table\*?|tblr|tabularx|abstract|center|equation\*?)\}$/.exec(token.value);
+    const floating=token.kind==='begin' && /^\\begin\{(figure\*?|wrapfigure|table\*?|tabular\*?|tblr|tabularx|abstract|center|equation\*?)\}$/.exec(token.value);
     const closing=floating && environmentEnd(block,token.index,floating[1]);
     if(closing) {
       const prefix=block.slice(cursor,token.index);

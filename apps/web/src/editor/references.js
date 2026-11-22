@@ -4,6 +4,8 @@ import {createOutlinePanel} from '../ui/outline-panel.js';
 import { Node } from '@tiptap/core';
 import { t } from '../ui/i18n.mjs';
 import { numberedMathRows } from '../../latex/math-environments.mjs';
+import { usesCtex } from '../../latex/packages.mjs';
+import { displayPageNumber } from '../../latex/document-numbering.mjs';
 import {referenceCommand,serializeReference} from '../../latex/reference-commands.mjs';
 import {sourceStructure} from '../../latex/source-structure.mjs';
 import {environmentEnd} from '../../latex/tblr.mjs';
@@ -33,8 +35,6 @@ export function citationTargets(keys,library) {
     return {key,entry,status:entry?'resolved':conflicts?.has(key)?'ambiguous':'missing'};
   });
 }
-import { usesCtex } from '../../latex/packages.mjs';
-import { displayPageNumber } from '../../latex/document-numbering.mjs';
 
 export const outline=headingOutline;
 

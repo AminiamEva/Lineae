@@ -17,6 +17,18 @@ await page.waitForTimeout(400);
 await bar.locator('.mft-swatch[data-color=lime]').click();
 await page.waitForFunction(()=>document.querySelector('math-field')?.value.includes('textcolor'));
 assert.equal(await field2.evaluate(el=>el.value),'\\textcolor{lime}{\\mathbb{sdf}}');
+// U toggles off on the second click, and the clear button strips math fonts.
+await field2.evaluate(el=>el.executeCommand('selectAll'));await page.waitForTimeout(400);
+await bar.locator('.mft-underline').click();
+await page.waitForFunction(()=>document.querySelector('math-field')?.value.startsWith('\\underline'));
+assert.equal(await field2.evaluate(el=>el.value),'\\underline{\\textcolor{lime}{\\mathbb{sdf}}}');
+await field2.evaluate(el=>el.executeCommand('selectAll'));await page.waitForTimeout(400);
+await bar.locator('.mft-underline').click();
+await page.waitForFunction(()=>document.querySelector('math-field')?.value==='\\textcolor{lime}{\\mathbb{sdf}}');
+await field2.evaluate(el=>el.executeCommand('selectAll'));await page.waitForTimeout(400);
+await bar.locator('.mft-clear').click();
+await page.waitForFunction(()=>document.querySelector('math-field')?.value==='\\textcolor{lime}{sdf}');
+assert.equal(await field2.evaluate(el=>el.value),'\\textcolor{lime}{sdf}');
 // A matrix range must be colored per cell. Wrapping the selected getValue()
 // text in one \textcolor corrupts the matrix because it drops & and \\.
 await page.locator('input[type=file]').setInputFiles({name:'matrix.tex',mimeType:'text/plain',buffer:Buffer.from('\\documentclass{article}\n\\begin{document}\n\n\\[\\begin{pmatrix}a & b \\\\ c & d\\end{pmatrix}\\]\n\n\\end{document}\n')});

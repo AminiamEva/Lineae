@@ -108,7 +108,7 @@ See [Editor Architecture](docs/EDITOR_ARCHITECTURE.md) for implementation detail
 
 ## Development status
 
-Lineae is an early-stage editor. The [v0.2.1 release notes](docs/releases/v0.2.1.md) describe the Windows release and its limits. The distinction between what is already usable and what remains planned is important.
+Lineae is an early-stage editor. The [v0.2.2 release notes](docs/releases/v0.2.2.md) describe the Windows and macOS releases and their limits. The distinction between what is already usable and what remains planned is important.
 
 | Area | Status |
 | --- | --- |
@@ -119,7 +119,7 @@ Lineae is an early-stage editor. The [v0.2.1 release notes](docs/releases/v0.2.1
 | Editor–PDF visual fidelity | A core design goal; systematic comparison with compiled TeX output is not yet implemented |
 | Multi-file projects | File tree, native folder operations, per-file sessions and editable input/include composition with source ownership guards |
 | TeX compilation and PDF preview | Not integrated |
-| Desktop application | Windows x64 v0.2.1 (Tauri 2), offline installer and portable ZIP; unsigned distribution |
+| Desktop application | Windows x64 and macOS Apple Silicon v0.2.2 (Tauri 2); unsigned Windows build and ad-hoc signed macOS build |
 | Precise pagination | Page geometry and pagination remain under calibration against XeLaTeX; full compiled-output parity is not claimed |
 
 The immediate work is centred on three areas: making equation input and navigation more reliable; improving source preservation, mode switching, and editing history; and tightening the behaviour of ordinary document editing, including selection, clipboard operations, and long-document navigation.
@@ -188,12 +188,14 @@ The GitHub Actions workflow builds the application, runs the LaTeX and bibliogra
 ## Desktop
 
 The Windows x64 app built with Tauri 2 lives in `apps/desktop`.
-Download the installer or portable ZIP from [v0.2.1](https://github.com/AminiamEva/Lineae/releases/tag/v0.2.1). This release is unsigned; see the release notes and checksums. It reuses the
+Download the installer or portable ZIP from [v0.2.2](https://github.com/AminiamEva/Lineae/releases/tag/v0.2.2). This release is unsigned; see the release notes and checksums. It reuses the
 browser editor, adds native open/save/save-as dialogs, and exports projects through
 the existing ZIP pipeline. Builds and packaging run only on GitHub Actions; see
 [docs/desktop-preview.md](docs/desktop-preview.md) for artifacts and acceptance
 steps. Compilation, file watching, and auto-update are intentionally out of scope
 for this release.
+
+For Apple Silicon Macs, get the macOS DMG from [v0.2.2](https://github.com/AminiamEva/Lineae/releases/tag/v0.2.2). Drag Lineae into Applications or your own `~/Applications` folder. The app is ad-hoc signed and is not notarized. If macOS blocks the first launch, use **System Settings → Privacy & Security → Open Anyway** only if you trust the download and macOS offers that option. [macOS installation and verification](docs/macos-distribution.md#install-and-verify-on-a-mac)
 
 ## Contributing
 
@@ -216,3 +218,13 @@ Made with [contrib.rocks](https://contrib.rocks).
 ---
 
 *Lineae — where writing meets typesetting.*
+## General TikZ studio
+
+The **Insert → TikZ** dialog uses the prebuilt `mp-tikz-wasm` runtime (LGPL-3.0-or-later). Its large WASM/TeX bundle is intentionally kept out of the source tree. Install it once before using the general TikZ dialog or the `tikz-general` body preview:
+
+```bash
+npm run vendor:tikz
+```
+
+This downloads the pinned release into `apps/web/vendor/mp-tikz-wasm/`; see `scripts/install-mp-tikz-wasm.mjs` and the vendor `LICENSE` / `NOTICE.md`.
+

@@ -1,8 +1,8 @@
 # Lineae desktop
 
-The desktop app wraps the existing `apps/web` editor in a Tauri 2 shell. It is
-built and packaged only on GitHub Actions Windows runners; local development is
-limited to editing source and installing CI artifacts.
+The desktop app wraps the existing `apps/web` editor in a Tauri 2 shell. Windows
+and macOS packages are built on their matching GitHub Actions runners; local
+development is limited to editing source and installing CI artifacts.
 
 ## Scope
 
@@ -10,6 +10,7 @@ Included:
 
 - Offline Windows x64 NSIS installer.
 - Portable ZIP containing the standalone executable.
+- macOS Apple Silicon DMG and app ZIP, ad-hoc signed.
 - Native open, save, and save-as dialogs for UTF-8 `.tex` files.
 - Native ZIP/YAML export using the existing project export code.
 - Bundled MathLive script, fonts, brand assets, and editor bundle.
@@ -44,7 +45,7 @@ data, UI, bibliography, and Playwright suites, then builds the Tauri bundle.
 
 Builds upload an artifact named `lineae-desktop-<sha>` containing:
 
-- `Lineae_0.2.1_x64-setup.exe` (offline NSIS installer)
+- `Lineae_0.2.2_x64-setup.exe` (offline NSIS installer)
 - `Lineae-portable.zip` (portable executable and notes)
 - `SHA256SUMS.txt` (SHA-256 checksums)
 
@@ -68,7 +69,7 @@ When `WINDOWS_CERTIFICATE` is absent, a `preview` tag builds unsigned artifacts.
 A formal release requires a certificate by default; a manual release may explicitly
 set `allow_unsigned: true` after the publisher has chosen unsigned distribution.
 The workflow verifies that these binaries are unsigned and the release notes must
-disclose that status. v0.2.0 uses this explicit unsigned path, as v0.1.0 did.
+disclose that status. v0.2.2, v0.2.0 and v0.1.0 use this explicit unsigned path.
 Pull-request and branch builds never require a certificate.
 
 A publicly trusted signing certificate must be obtained separately; GitHub
@@ -107,7 +108,7 @@ request.
 
 ## Known limits
 
-- Current release: [v0.2.1](releases/v0.2.1.md); no automatic update channel.
+- Current release: [v0.2.2](releases/v0.2.2.md); macOS Apple Silicon is published alongside Windows; no automatic update channel.
 - v0.2.0 is explicitly unsigned. Other stable releases still require a certificate
   or a deliberate unsigned release request.
 - The portable executable assumes WebView2 is installed. The offline installer

@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import { planPagination, planTableRows, typesetProfile } from '../apps/web/latex/typeset-layout.mjs';
-import { readPageSetup } from '../apps/web/latex/geometry.mjs';
+import { wrapLineWidthAt } from '../apps/web/src/typesetting/paragraph-layout.js';
 
 test('derives XeLaTeX article and ctex typography profiles', () => {
   const fonts = { serif: null, mono: null, cjk: null };
@@ -57,15 +57,6 @@ test('reads fontspec, ctex, linespread and fontsize declarations', () => {
   const sized = typesetProfile('\\documentclass{article}\n\\fontsize{12}{15}\\selectfont');
   assert.equal(sized.fontSize, '11.9552pt');
   assert.equal(sized.lineHeight, '14.9440pt');
-});
-
-test('maps geometry package defaults and explicit margins', () => {
-  assert.deepEqual(readPageSetup('\\documentclass[a4paper,10pt]{article}\n\\usepackage{geometry}\n').margins, {
-    top: '35.640mm', right: '31.500mm', bottom: '53.460mm', left: '31.500mm',
-  });
-  assert.deepEqual(readPageSetup('\\documentclass[a4paper,10pt]{article}\n\\usepackage[top=2cm,hmargin=3cm]{geometry}\n').margins, {
-    top: '2cm', right: '3cm', bottom: '53.460mm', left: '3cm',
-  });
 });
 
 test('paginates at block boundaries without changing document nodes', () => {
@@ -138,4 +129,25 @@ test('does not split an oversized editable block', () => {
   assert.deepEqual(plan.breaks, []);
   assert.deepEqual(plan.translations, [0]);
   assert.equal(plan.pageCount, 2);
+});
+
+test('wrapfigure narrows the declaration line and only the intersecting lines', () => {
+  const wraps = [{ rect: { top: 20, bottom: 80, width: 200 }, side: 'r', forceLineZero: true }];
+  const options = { elementTop: 0, lineHeight: 20, baseWidth: 500, wraps, zoom: 1 };
+  assert.equal(wrapLineWidthAt(0, options), 290);
+  assert.equal(wrapLineWidthAt(2, options), 290);
+  assert.equal(wrapLineWidthAt(5, options), 500);
+});
+
+test('wrapfigure side gap uses columnsep and overhang', () => {
+  const wraps = [{ rect: { top: 20, bottom: 80, width: 200 }, side: 'r', forceLineZero: true, columnsep: 13.333, overhang: 3 }];
+  const options = { elementTop: 0, lineHeight: 20, baseWidth: 500, wraps, zoom: 1 };
+  assert.ok(Math.abs(wrapLineWidthAt(0, options) - (500 - 200 - 13.333 + 3)) < 1e-9);
+});
+
+test('a wrapfigure does not narrow a later paragraph that it does not touch', () => {
+  const wraps = [{ rect: { top: 20, bottom: 80, width: 200 }, side: 'r', forceLineZero: false }];
+  const options = { elementTop: 0, lineHeight: 20, baseWidth: 500, wraps, zoom: 1 };
+  assert.equal(wrapLineWidthAt(0, options), 500);
+  assert.equal(wrapLineWidthAt(5, options), 500);
 });

@@ -81,7 +81,8 @@
     return Array.from(new TextEncoder().encode(JSON.stringify(entries)));
   }
 
-  window.lineaeProject = {async open() {
+  // The directory backend uses Windows file handles and ACL semantics.
+  if (window.__LINEAE_DESKTOP_NATIVE_PROJECTS__ !== false) window.lineaeProject = {async open() {
     const projectInvoke = (command,args) => invoke(command,args).catch(error => {throw error instanceof Error ? error : new Error(String(error));});
     const root = await projectInvoke('open_project');
     if (!root) throw abortError();

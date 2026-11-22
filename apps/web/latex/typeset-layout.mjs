@@ -147,6 +147,12 @@ export function planPagination(blocks, { pageHeight, pageGap, marginTop, marginB
       pageIndex = Math.max(pageIndex, nextPage);
       bodyTop = pageIndex * pitch + marginTop;
       bodyBottom = pageIndex * pitch + pageHeight - marginBottom;
+      const space = bodyTop - top;
+      translation += space;
+      top += space;
+      bottom += space;
+      groupBottom += space;
+      breaks.push({ index, space, page: pageIndex + 1 });
     }
 
     // After an oversized block, resume at the next body rather than placing

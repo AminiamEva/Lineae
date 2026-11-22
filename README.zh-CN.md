@@ -184,6 +184,8 @@ GitHub Actions 会自动构建应用、运行 LaTeX 和文献模块测试、准�
 
 `apps/desktop` 是用 Tauri 2 构建的 Windows x64 桌面版。[v0.2.1 正式版](https://github.com/AminiamEva/Lineae/releases/tag/v0.2.1)提供离线安装包和便携版；本版未签名，具体说明与校验值见发行页。它复用浏览器编辑器，增加了原生的打开、保存和另存为对话框，并沿用现有的 ZIP 流程导出项目。构建和打包只在 GitHub Actions 上运行；产物清单和验收步骤见 [docs/desktop-preview.md](docs/desktop-preview.md)。编译、文件监听和自动更新不在这个版本的范围内。
 
+Apple Silicon Mac 用户可在相应版本的 [GitHub Releases](https://github.com/AminiamEva/Lineae/releases) 下载 macOS DMG，并将 Lineae 拖入「应用程序」或自己的 `~/Applications` 文件夹。应用使用 Ad-hoc 签名，未经 Apple 公证。若首次启动被拦截，仅在信任下载来源且系统提供该选项时，前往「系统设置 → 隐私与安全性 → 仍要打开」。[macOS 安装和校验说明](docs/macos-distribution.md#install-and-verify-on-a-mac)
+
 ## 参与项目
 
 Lineae 还处在早期开发阶段，内部接口和实现方式可能继续调整。如果发现问题，欢迎提交 Issue；如果涉及 LaTeX 兼容性，最好附上一份尽可能精简、能够复现问题的 <code>.tex</code> 文件。正式的外部贡献流程会随着项目成熟逐步补充，详见 [CONTRIBUTING.md](CONTRIBUTING.md)。

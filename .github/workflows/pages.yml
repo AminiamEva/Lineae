@@ -15,6 +15,8 @@ jobs:
   deploy:
     runs-on: ubuntu-24.04
     permissions:
+      actions: read
+      contents: read
       pages: write
       id-token: write
     environment:
@@ -22,7 +24,7 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/configure-pages@v5
+      - uses: actions/configure-pages@v6.0.0
       - run: npm ci --no-audit --no-fund
       - run: npm run build
       - run: node --test tests/latex.test.mjs tests/config.test.mjs tests/keybindings.test.mjs tests/ui/i18n.test.mjs tests/typeset-layout.test.mjs
@@ -43,11 +45,11 @@ jobs:
           sed -i "s|./source-workspace.css|./source-workspace.css?v=${GITHUB_SHA}|; s|./project.css|./project.css?v=${GITHUB_SHA}|" apps/web/index.html
           sed -i "s|./pages.css|./pages.css?v=${GITHUB_SHA}|; s|./editor.mjs|./editor.mjs?v=${GITHUB_SHA}|" apps/web/index.html
           sed -i "s|\.mjs';|.mjs?v=${GITHUB_SHA}';|" apps/web/editor.mjs
-      - uses: actions/upload-pages-artifact@v3
+      - uses: actions/upload-pages-artifact@v5.0.0
         with:
           name: github-pages-${{ github.run_attempt }}
           path: apps/web
       - id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5.0.1
         with:
           artifact_name: github-pages-${{ github.run_attempt }}

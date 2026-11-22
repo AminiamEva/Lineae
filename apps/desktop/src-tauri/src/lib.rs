@@ -4,8 +4,12 @@ use std::sync::Mutex;
 
 use serde::Serialize;
 use tauri::{AppHandle, State, WebviewUrl, WebviewWindowBuilder};
+#[cfg(target_os = "macos")]
+use tauri::Manager;
 use tauri_plugin_dialog::DialogExt;
+#[cfg(target_os = "windows")]
 mod project;
+#[cfg(target_os = "windows")]
 mod project_checkpoints;
 
 /// Paths the user has explicitly chosen in a native dialog during this session.
@@ -175,9 +179,11 @@ async fn save_bytes(
 }
 
 pub fn run() {
-    tauri::Builder::default()
+    let builder = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
-        .manage(AllowedFiles::default())
+        .manage(AllowedFiles::default());
+    #[cfg(target_os = "windows")]
+    let builder = builder
         .manage(project::ProjectRoots::default())
         .invoke_handler(tauri::generate_handler![
             open_tex,
@@ -186,9 +192,17 @@ pub fn run() {
             save_bytes,
             project::open_project,
             project::project_operation
-        ])
+        ]);
+    #[cfg(not(target_os = "windows"))]
+    let builder = builder.invoke_handler(tauri::generate_handler![
+        open_tex,
+        pick_save_tex,
+        write_tex,
+        save_bytes
+    ]);
+    builder
         .setup(|app| {
-            WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
+            let window = WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
                 .title("Lineae")
                 .inner_size(1280.0, 900.0)
                 .min_inner_size(960.0, 640.0)
@@ -197,8 +211,28 @@ pub fn run() {
                 // zoom control is enabled, so the page would never receive the
                 // wheel events that drive the document zoom.
                 .zoom_hotkeys_enabled(true)
-                .initialization_script(include_str!("bridge.js"))
-                .build()?;
+                .initialization_script(if cfg!(target_os = "windows") {
+                    include_str!("bridge.js")
+                } else {
+                    concat!(
+                        "window.__LINEAE_DESKTOP_NATIVE_PROJECTS__ = false;\n",
+                        include_str!("bridge.js")
+                    )
+                });
+            #[cfg(target_os = "macos")]
+            let window = if std::env::args_os().any(|arg| arg == "--lineae-smoke-test") {
+                window
+                    .initialization_script(include_str!("macos-smoke.js"))
+                    .on_document_title_changed(|window, title| {
+                        if let Some(result) = title.strip_prefix("Lineae smoke: ") {
+                            eprintln!("Lineae smoke: {result}");
+                            window.app_handle().exit(if result == "ok" { 0 } else { 1 });
+                        }
+                    })
+            } else {
+                window
+            };
+            window.build()?;
             Ok(())
         })
         .run(tauri::generate_context!())

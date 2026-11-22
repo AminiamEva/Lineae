@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {releasePlan} from '../apps/desktop/scripts/validate-release.mjs';
+import {macosReleasePlan,releasePlan} from '../apps/desktop/scripts/validate-release.mjs';
 const versions={desktop:'0.2.0',tauri:'0.2.0',cargo:'0.2.0',lock:'0.2.0'};
 test('an unsigned formal release requires a deliberate request',()=>{
  assert.throws(()=>releasePlan({tag:'v0.2.0',versions}),/certificate/);
@@ -17,4 +17,13 @@ test('release metadata cannot mislabel or bypass checks',()=>{
 test('preview releases retain their existing unsigned policy',()=>{
  const preview=Object.fromEntries(Object.keys(versions).map(key=>[key,'0.2.0-preview.1']));
  assert.equal(releasePlan({tag:'v0.2.0-preview.1',versions:preview}).prerelease,true);
+});
+
+test('macOS only publishes matching pushed tags and never publishes a manual build',()=>{
+ const plan=(event,ref)=>macosReleasePlan({event,ref,versions});
+ assert.equal(plan('workflow_dispatch','refs/tags/v0.2.0').requested,false);
+ assert.equal(plan('push','refs/heads/main').requested,false);
+ assert.deepEqual(plan('push','refs/tags/v0.2.0'),{version:'0.2.0',requested:true,tag:'v0.2.0',prerelease:false});
+ assert.throws(()=>plan('push','refs/tags/v0.2.1'),/v0.2.1 does not match application version 0.2.0/);
+ assert.throws(()=>plan('push','refs/tags/vbogus'),/Invalid release tag/);
 });

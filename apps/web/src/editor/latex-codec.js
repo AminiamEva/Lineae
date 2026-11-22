@@ -78,7 +78,7 @@ export function serialize(node) {
       return '\\begin{lstlisting}'+option+'\n'+(node.content??[]).map(child=>child.text??'').join('')+'\n\\end{lstlisting}\n\n';
     }
     case 'documentImage': return serializeImage(node.attrs);
-    case 'subfigures': return serializeSubfigures(node.attrs, node.content.toJSON());
+    case 'subfigures': return serializeSubfigures(node.attrs, Array.isArray(node.content) ? node.content : node.content.toJSON());
     case 'paragraph': {
       let body=(node.attrs?.indent === false ? '\\noindent ' : node.attrs?.explicitIndent ? '\\indent ' : '') + content;
       const command={left:'raggedright',right:'raggedleft',center:'centering',justify:'justifying'}[node.attrs?.align];
@@ -94,7 +94,9 @@ export function serialize(node) {
     case 'heading': {
       const chaptered = serializationClass === 'book' || serializationClass === 'report';
       const names = chaptered ? ['chapter','section','subsection'] : ['section','subsection','subsubsection'];
-      const name = node.attrs.command === 'chapter' ? 'chapter' : names[Math.min(Math.max(node.attrs.level,1),3)-1];
+      const name = node.attrs.command === 'part' ? 'part'
+        : node.attrs.command === 'chapter' ? 'chapter'
+        : names[Math.min(Math.max(node.attrs.level,1),3)-1];
       const short = node.attrs.shortTitle ? '[' + node.attrs.shortTitle + ']' : '';
       const label = serializeHeadingLabel(node.attrs);
       return '\\' + name + (node.attrs.numbered === false ? '*' : '') + short + '{' + content + '}' + label + '\n\n';

@@ -193,8 +193,9 @@ const mathFieldStyle = `
   :host([data-lineae-editing]) [data-lineae-integrand] { background:light-dark(#e9f4ed,#304a3b); border-radius:.15em; }
   :host([data-empty-matrix-cell]) .ML__caret { position:relative; }
   :host([data-empty-matrix-cell]) .ML__caret::after {
-    content:""; position:absolute; inset:-.05em auto -.05em -.05em;
-    width:.66em; border:1px solid currentColor; border-radius:.16em;
+    content:""; position:absolute; left:50%; top:50%; width:.66em; height:1.3em;
+    transform:translate(-50%,-50%);
+    border:1px solid currentColor; border-radius:.16em;
     opacity:.45; pointer-events:none;
   }
   .delimiter-ghost { display:inline-flex; gap:.1em; pointer-events:none; vertical-align:baseline; }

@@ -2,12 +2,25 @@ import { DOMSerializer } from '@tiptap/pm/model';
 import { icon } from './icons.js';
 import { promptDialog, askText } from './dialog.js';
 import { toggleDisplayStyle } from './math-node.js';
+import { startImageCrop } from './image-node.js';
 import { popIn } from '../ui/motion.mjs';
 import { localizeText, t } from '../ui/i18n.mjs';
 
 function selectedMath(context) {
   const ranges = context.field.selection.ranges;
   return ranges.map(range => context.field.getValue(range)).join('');
+}
+
+function selectedImageRange(editor) {
+  const selection = editor.state.selection;
+  if (selection.empty || selection.node) return null;
+  const images = [];
+  editor.state.doc.forEach((node, offset) => {
+    if (node.type.name === 'documentImage' && offset < selection.to && offset + node.nodeSize > selection.from) {
+      images.push({ node, position: offset });
+    }
+  });
+  return images.length >= 2 ? { images, from: selection.from, to: selection.to } : null;
 }
 
 async function copySelection(context, cut) {
@@ -38,7 +51,7 @@ async function copySelection(context, cut) {
 }
 
 export function contextCommands(context) {
-  const { editor, field } = context;
+  const { editor, field, imagePosition = null } = context;
   const selectionEmpty = field ? field.selection.ranges.every(([from, to]) => from === to) : editor.state.selection.empty;
   return [
     ...[['addRowAfter','在下方插入矩阵行','Insert matrix row'], ['addColumnAfter','在右侧插入矩阵列','Insert matrix column'],
@@ -93,6 +106,10 @@ export function contextCommands(context) {
     { id:'display-style', labels:['切换公式显示样式','Toggle display style'], visible:Boolean(field), run:()=>{
       toggleDisplayStyle(field);
     }},
+    { id:'image-crop', labels:['裁剪图片','Crop image'], icon:'crop',
+      visible:!field && imagePosition !== null,
+      run:()=>{ startImageCrop(editor, imagePosition); },
+    },
     { id: 'undo', labels: ['撤销', 'Undo'], enabled: editor.can().undo(), run: () => editor.chain().focus().undo().run() },
     { id: 'redo', labels: ['重做', 'Redo'], enabled: editor.can().redo(), run: () => editor.chain().focus().redo().run() },
     { id: 'cut', labels: ['剪切', 'Cut'], enabled: !selectionEmpty, run: () => copySelection(context, true) },
@@ -222,25 +239,55 @@ export function installContextMenu(editor, paper, language, reportError) {
       else editor.view.focus();
     }
   }
+  paper.addEventListener('mousedown', event => {
+    if (event.button !== 2) return;
+    if (event.composedPath().some(element => element?.tagName === 'MATH-FIELD')) return;
+    if (!selectedImageRange(editor)) return;
+    // Keep the multi-image range when the user opens the context menu on it.
+    event.preventDefault();
+    event.stopPropagation();
+  }, true);
   paper.addEventListener('contextmenu', event => {
     event.preventDefault();
     event.stopPropagation();
     activeField = event.composedPath().find(element => element?.tagName === 'MATH-FIELD') ?? null;
+    let imagePosition = null;
+    const multiImages = activeField ? null : selectedImageRange(editor);
     if (!activeField) {
-      const hit = editor.view.posAtCoords({ left: event.clientX, top: event.clientY });
-      const { from, to } = editor.state.selection;
-      if (hit && (hit.pos < from || hit.pos > to)) editor.commands.setTextSelection(hit.pos);
+      const figure = event.target?.closest?.('figure.document-image');
+      if (figure) {
+        try {
+          const position = editor.view.posAtDOM(figure, 0);
+          const node = editor.state.doc.nodeAt(position);
+          if (node?.type.name === 'documentImage') {
+            imagePosition = position;
+            // Right-clicking inside a multi-image selection must not collapse it.
+            if (!multiImages) editor.commands.setNodeSelection(position);
+          }
+        } catch {}
+      }
+      if (!multiImages) {
+        if (imagePosition === null) {
+          const selection = editor.state.selection;
+          if (selection.node?.type?.name === 'documentImage') imagePosition = selection.from;
+        }
+        if (imagePosition === null) {
+          const hit = editor.view.posAtCoords({ left: event.clientX, top: event.clientY });
+          const { from, to } = editor.state.selection;
+          if (hit && (hit.pos < from || hit.pos > to)) editor.commands.setTextSelection(hit.pos);
+        }
+      }
     }
     menu.replaceChildren();
-    const commands = contextCommands({ editor, field: activeField });
+    const commands = contextCommands({ editor, field: activeField, imagePosition });
     for (const command of commands.filter(command => command.visible !== false)) {
       const control = document.createElement('button');
       control.type = 'button';
       control.setAttribute('role', 'menuitem');
       control.dataset.command = command.id;
       control.textContent = localizeText(command.labels[0], command.labels[1], language.value);
-      control.prepend(icon(command.id.startsWith('delete') || command.id.startsWith('remove') ? 'delete' :
-        command.id.toLowerCase().includes('column') ? 'column' : command.id.toLowerCase().includes('row') ? 'row' : command.id));
+      control.prepend(icon(command.icon ?? (command.id.startsWith('delete') || command.id.startsWith('remove') ? 'delete' :
+        command.id.toLowerCase().includes('column') ? 'column' : command.id.toLowerCase().includes('row') ? 'row' : command.id)));
       control.disabled = command.enabled === false;
       control.addEventListener('mousedown', event => event.preventDefault());
       control.addEventListener('click', async () => {

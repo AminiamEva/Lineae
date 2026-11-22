@@ -133,7 +133,7 @@ keybindings:
     find: mod+f
     replace: mod+h
     undo: mod+z
-    redo: mod+shift+z
+    redo: [mod+y, mod+shift+z]
     zoomIn: [mod+equal, mod+plus]
     zoomOut: mod+minus
     zoomReset: mod+0
