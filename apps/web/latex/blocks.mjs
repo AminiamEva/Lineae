@@ -460,6 +460,7 @@ function importSegment(block,options) {
     if (token.kind!=='command') continue;
     const declaration=counterDeclarationAt(block,token.index);
     if(declaration){const before=importBlock(block.slice(cursor,token.index),options);if(before)nodes.push(before);nodes.push({type:'counterDirective',attrs:{latex:declaration.latex}});cursor=declaration.to;continue;}
+    if (token.kind!=='command') continue;
     const toc=token.value==='\\tableofcontents';
     const title=toc ? null : headingAt(block,token.index,headingBase);
     const structural=/^\\(?:appendix|frontmatter|mainmatter|backmatter|newpage|clearpage|pagebreak)$/.test(token.value);

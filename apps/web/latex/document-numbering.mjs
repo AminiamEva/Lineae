@@ -1,3 +1,16 @@
+import {sourceStructure} from './source-structure.mjs';
+import {environmentEnd} from './tblr.mjs';
+function hasNumberedCaption(attrs) {
+  if(attrs.caption===null || attrs.caption===undefined)return false;
+  const source=attrs.figureSource??attrs.tblr?.source??attrs.tabularx?.source;
+  const opening=typeof source==='string'?/^\s*\\begin\{((?:figure|table)\*?)\}/.exec(source):null;
+  const closing=opening?environmentEnd(source,source.indexOf('\\begin'),opening[1]):null;
+  if(closing) {
+    const body=source.slice(opening[0].length,closing.start);
+    for(const token of sourceStructure(body))if(token.topLevel && token.value==='\\caption')return body[token.end]!=='*';
+  }
+  return true;
+}
 import {counterDeclarationAt,applyCounterDeclaration} from './counter-declarations.mjs';
 import {counterProfile,formatCounter} from './counter-profile.mjs';
 import {headingOutline} from './heading-numbering.mjs';
@@ -29,8 +42,11 @@ export function documentNumbers(doc){
    });objects.set(position,{kind:'equation',rows});
   }
   const kind=node.type.name==='table'?'table':['documentImage','subfigures'].includes(node.type.name)?'figure':null;
-  if(kind&&parent?.type.name!=='subfigures'&&(kind==='table'?Boolean(node.attrs.captionEnabled||node.attrs.caption):(node.attrs.captionEnabled??typeof node.attrs.caption==='string'))&&node.attrs.captionNumbered!==false){
-   counters[kind]++;const number=formatCounter(kind,counters,profile,appendix);current={number,title:node.attrs.caption??'',kind,position};objects.set(position,current);add(node.attrs.label,current);
+  if(kind&&parent?.type.name!=='subfigures'){
+   const numbered=hasNumberedCaption(node.attrs)&&node.attrs.captionNumbered!==false;
+   const number=numbered?formatCounter(kind,{...counters,[kind]:++counters[kind]},profile,appendix):null;
+   current={number,title:node.attrs.caption??node.attrs.path??'',kind,position};
+   if(numbered)objects.set(position,current);add(node.attrs.label,current);
   }
   if(node.type.name==='raw')current={kind:'label',number:null,title:'',position:null};
   if(node.type.name==='label')add(node.attrs.key,current.kind==='label'?{...current,position}:current);
