@@ -24,6 +24,11 @@ const server=createServer(async(req,res)=>{
       const mac=platform!=='windows';
       const context=await browser.newContext({locale:'en-US',viewport:{width:1440,height:1100},
         permissions:['clipboard-read','clipboard-write']});
+      await context.addInitScript(()=>{
+        if (!localStorage.getItem('lineae.config')) {
+          localStorage.setItem('lineae.config','version: 2\nediting:\n  shortcutPriority: false\n');
+        }
+      });
       if(!nativeEdge) await context.addInitScript(platform=>{
         Object.defineProperty(navigator,'platform',{get:()=>platform==='mac'?'Unknown':'Win32'});
         Object.defineProperty(navigator,'userAgentData',{get:()=>undefined});
@@ -81,7 +86,7 @@ const server=createServer(async(req,res)=>{
         await paper.locator('.math-display math-field').waitFor();
         if(nativeEdge){
           await page.evaluate(()=>localStorage.setItem('lineae.config',
-            'version: 2\nkeybindings:\n  global:\n    sourceMode: mod+t\n'));
+            'version: 2\nediting:\n  shortcutPriority: false\nkeybindings:\n  global:\n    sourceMode: mod+t\n'));
           await page.reload();
           await load('Alpha');
           await paper.click();
@@ -90,18 +95,24 @@ const server=createServer(async(req,res)=>{
           await (await newTab).close();
           await page.bringToFront();
           assert.equal(await page.locator('[data-source-mode=body]').getAttribute('aria-pressed'),'true');
-          const priority=page.locator('#keyboard-priority');
-          await priority.click();
-          await page.waitForFunction(()=>document.querySelector('#keyboard-priority').getAttribute('aria-pressed')==='true');
-          assert.equal(await page.evaluate(()=>document.fullscreenElement===document.documentElement),true);
+          await page.evaluate(()=>{
+            const lock=navigator.keyboard.lock.bind(navigator.keyboard);
+            navigator.keyboard.lock=async codes=>{await lock(codes);window.keyboardPriorityLocked=true;};
+          });
+          await page.locator('#settings-open').click();
+          await page.locator('[data-setting="editing.shortcutPriority"]').check();
+          await page.locator('#settings-apply').click();
+          await page.locator('#settings-close').click();
+          await paper.click();
+          await page.waitForFunction(()=>window.keyboardPriorityLocked &&
+            document.fullscreenElement===document.documentElement);
           await press('Meta+b');await press('x');
           await paper.locator('strong').filter({hasText:'x'}).waitFor();
           await press('Meta+t');
           await page.locator('.tex-code .cm-content').waitFor({state:'visible'});
           assert.equal(context.pages().length,1);
-          await priority.click();
-          await page.waitForFunction(()=>!document.fullscreenElement &&
-            document.querySelector('#keyboard-priority').getAttribute('aria-pressed')==='false');
+          await press('Escape');
+          await page.waitForFunction(()=>!document.fullscreenElement);
           console.log('Native Edge delivers the same Command key to the browser normally and to Lineae with keyboard priority');
         }
         assert.deepEqual(errors,[]);

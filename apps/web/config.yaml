@@ -17,6 +17,7 @@ interface:
   caretMotion: true
   toolbar: [open, saveAs, download, language, assets]
 editing:
+  shortcutPriority: true
   indentOnSave: true
   smartFences: true
   autoReplaceLigatures: false

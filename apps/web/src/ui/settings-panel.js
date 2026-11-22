@@ -11,6 +11,7 @@ const LABELS = {
   zoomOnCtrlWheel:['Ctrl+滚轮缩放','Ctrl+wheel zoom'], continuedTables:['跨页重复表头','Repeat table headers'],
   formattingMarks:['非打印标记','Formatting marks'], caretMotion:['光标和选区动画','Caret and selection animation'],
   toolbar:['文件工具栏入口','File toolbar actions'], smartFences:['括号自动配对','Pair delimiters'],
+  shortcutPriority:['Command 快捷键优先（点击编辑区时进入全屏）','Command shortcut priority (enter full screen when editing)'],
   autoReplaceLigatures:['自动替换连字','Replace ligatures'], indentOnSave:['保存时缩进','Indent on save'],
   ligatures:['连字规则','Ligature rules'], chordTimeoutMs:['组合快捷键等待时间 (ms)','Shortcut chord timeout (ms)'],
   sidebar:['侧栏分区','Sidebar sections'], files:['文件树','File tree'], includes:['文件引用','File includes'],
@@ -40,7 +41,7 @@ function section(name) {
   return details;
 }
 
-export function installSettingsPanel({config,onApply,onImport,onExport,getDocument,applyDocument}) {
+export function installSettingsPanel({config,showShortcutPriority,onApply,onImport,onExport,getDocument,applyDocument}) {
   const dialog = document.createElement('dialog');
   dialog.id = 'settings-panel';
   dialog.className = 'settings-panel';
@@ -95,6 +96,7 @@ export function installSettingsPanel({config,onApply,onImport,onExport,getDocume
     for (const [key,value] of Object.entries(mapping)) {
       if (key === 'version') continue;
       const currentPath = [...path,key];
+      if (currentPath.join('.') === 'editing.shortcutPriority' && !showShortcutPriority) continue;
       if (value && typeof value === 'object' && !Array.isArray(value)) {
         const group = section(labelFor(key));
         group.dataset.settingsGroup = currentPath.join('.');
