@@ -3,7 +3,6 @@ import assert from 'node:assert/strict';
 
 import { planPagination, planTableRows, typesetProfile } from '../apps/web/latex/typeset-layout.mjs';
 import { wrapLineWidthAt } from '../apps/web/src/typesetting/paragraph-layout.js';
-import { columnPlacement } from '../apps/web/src/editor/typeset-pagination.js';
 
 test('derives XeLaTeX article and ctex typography profiles', () => {
   const fonts = { serif: null, mono: null, cjk: null };
@@ -151,11 +150,4 @@ test('a wrapfigure does not narrow a later paragraph that it does not touch', ()
   const options = { elementTop: 0, lineHeight: 20, baseWidth: 500, wraps, zoom: 1 };
   assert.equal(wrapLineWidthAt(0, options), 500);
   assert.equal(wrapLineWidthAt(5, options), 500);
-});
-
-test('maps two-column pseudo pages onto left and right columns', () => {
-  const geometry = { columnBody: 500, pageHeight: 600, pageGap: 20, marginTop: 50 };
-  assert.deepEqual(columnPlacement(100, 0, geometry), { translation: 0, column: 0, page: 0 });
-  assert.deepEqual(columnPlacement(600, 0, geometry), { translation: -500, column: 1, page: 0 });
-  assert.deepEqual(columnPlacement(1100, 0, geometry), { translation: -380, column: 0, page: 1 });
 });

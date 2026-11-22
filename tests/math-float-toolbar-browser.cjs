@@ -29,4 +29,29 @@ await field2.evaluate(el=>el.executeCommand('selectAll'));await page.waitForTime
 await bar.locator('.mft-clear').click();
 await page.waitForFunction(()=>document.querySelector('math-field')?.value==='\\textcolor{lime}{sdf}');
 assert.equal(await field2.evaluate(el=>el.value),'\\textcolor{lime}{sdf}');
+// A matrix range must be colored per cell. Wrapping the selected getValue()
+// text in one \textcolor corrupts the matrix because it drops & and \\.
+await page.locator('input[type=file]').setInputFiles({name:'matrix.tex',mimeType:'text/plain',buffer:Buffer.from('\\documentclass{article}\n\\begin{document}\n\n\\[\\begin{pmatrix}a & b \\\\ c & d\\end{pmatrix}\\]\n\n\\end{document}\n')});
+await page.waitForFunction(()=>document.querySelector('math-field')?.value.includes('pmatrix'));
+const matrix=page.locator('math-field');
+await matrix.click();await page.waitForFunction(()=>document.activeElement?.tagName==='MATH-FIELD');
+await matrix.evaluate(el=>{el.selection={ranges:[[2,8]],direction:'forward'};el.dispatchEvent(new Event('selection-change',{bubbles:true}));});
+await page.waitForTimeout(400);
+assert.equal(await bar.isVisible(),true,'matrix cell range opens the toolbar');
+await bar.locator('.mft-swatch[data-color=red]').click();
+await page.waitForFunction(()=>document.querySelector('math-field')?.value.includes('textcolor'));
+const matrixValue=await matrix.evaluate(el=>el.value);
+assert.match(matrixValue,/a & \\textcolor\{red\}\{b\}/);
+assert.match(matrixValue,/\\textcolor\{red\}\{c\} & \\textcolor\{red\}\{d\}/);
+assert.equal((matrixValue.match(/&/g)||[]).length,2,'Matrix cells stay separated after coloring a range');
+// Switching math fonts replaces the old font instead of stacking wrappers.
+await page.locator('input[type=file]').setInputFiles({name:'fonts.tex',mimeType:'text/plain',buffer:Buffer.from('\\documentclass{article}\n\\begin{document}\n\n$\\mathbf{x}$\n\n\\end{document}\n')});
+await page.waitForFunction(()=>document.querySelector('math-field')?.value==='\\mathbf{x}');
+const fontField=page.locator('math-field');
+await fontField.click();await page.waitForFunction(()=>document.activeElement?.tagName==='MATH-FIELD');
+await fontField.evaluate(el=>el.executeCommand('selectAll'));
+await page.waitForTimeout(400);
+await bar.locator('.mft-font[title="\\\\mathbb"]').click();
+await page.waitForFunction(()=>document.querySelector('math-field')?.value==='\\mathbb{x}');
+assert.equal(await fontField.evaluate(el=>el.value),'\\mathbb{x}','Font change replaces the existing outer font');
 assert.deepEqual(errors,[]);console.log('PASS partial math toolbar');}finally{await browser.close();server.close();}})().catch(e=>{console.error(e);process.exit(1);});

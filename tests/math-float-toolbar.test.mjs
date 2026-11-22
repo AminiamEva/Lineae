@@ -5,8 +5,13 @@ import { wrapMath, toggleWrapMath, clearMathFont, setMathColor, setMathSize, det
 test('latex transforms', () => {
   assert.equal(wrapMath('a+b', 'boxed'), '\\boxed{a+b}');
   assert.equal(wrapMath('\\boxed{a+b}', 'boxed'), '\\boxed{a+b}');
+  assert.equal(wrapMath('\\mathbb{x}', 'mathbf'), '\\mathbf{x}', 'Font changes replace instead of nesting');
+  assert.equal(wrapMath('\\mathcal{\\mathbb{\\mathbf{x}}}', 'mathbf'), '\\mathbf{x}');
+  assert.equal(wrapMath('\\mathbf{a}+b', 'mathbb'), '\\mathbb{\\mathbf{a}+b}', 'Only a whole outer wrapper may be replaced');
   assert.equal(setMathColor('a', 'red'), '\\textcolor{red}{a}');
   assert.equal(setMathColor('\\textcolor{blue}{a}', 'red'), '\\textcolor{red}{a}');
+  assert.equal(setMathColor('\\textcolor{blue}{a}+b', 'red'), '\\textcolor{red}{\\textcolor{blue}{a}+b}',
+    'Recoloring a larger selection keeps its trailing content');
   assert.equal(setMathSize('a', 'scriptstyle'), '\\scriptstyle a');
   assert.equal(setMathSize('\\scriptstyle a', 'displaystyle'), 'a');
   assert.equal(setMathSize('\\scriptstyle a', 'scriptstyle'), '\\scriptstyle a');

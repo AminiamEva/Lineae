@@ -255,10 +255,11 @@ const DescriptionItem = Node.create({
 function browserStorage() {
   try { return window.localStorage; } catch { return null; }
 }
-const isMac = /Mac|iPhone|iPad|iPod/.test(navigator.platform);
+const isMac = /Mac|iPhone|iPad|iPod/i.test(navigator.platform || navigator.userAgentData?.platform || navigator.userAgent);
 const config = createConfigStore(defaultConfigYaml, {
   storage: browserStorage(),
   isMac,
+  macWeb: !window.__TAURI_INTERNALS__,
   onError: error => console.warn(t('配置','Configuration'),error),
 });
 function configuredLanguage() {
@@ -313,10 +314,26 @@ function insertMath(display = false, latex = '') {
   }
   insertFormula(editor, false, '', undefined, field => insertLiveMath(field, latex));
 }
+const HistoryTable = Table.extend({
+  addCommands() {
+    const commands=this.parent();
+    for (const name of ['insertTable','addColumnBefore','addColumnAfter','deleteColumn',
+      'addRowBefore','addRowAfter','deleteRow','deleteTable','mergeCells','splitCell',
+      'toggleHeaderRow','toggleHeaderColumn','toggleHeaderCell']) {
+      const command=commands[name];
+      commands[name]=(...args)=>props=>{
+        const changed=command(...args)(props);
+        if (changed && props.dispatch) closeHistory(props.tr);
+        return changed;
+      };
+    }
+    return commands;
+  },
+});
 function insertDefaultTable() {
-  const inserted=editor.chain().focus().insertTable({rows:2,cols:2,withHeaderRow:false}).run();
-  if(inserted)editor.chain().focus().updateAttributes('table',{borderMode:'grid'}).run();
-  return inserted;
+  return editor.chain().focus()
+    .insertTable({rows:2,cols:2,withHeaderRow:false})
+    .updateAttributes('table',{borderMode:'grid'}).run();
 }
 function insertEquation() {
   insertFormula(editor, true, '', undefined, field => insertLiveMath(field, '\\placeholder{}'), { delimiter:'equation' });
@@ -467,7 +484,7 @@ const Shortcuts = Extension.create({
       if (text === '`' && parent.type.name !== 'codeBlock') {
         const now=performance.now();
         const continued=backticks && now-backticks.time<650 && backticks.doc===view.state.doc && backticks.pos===from;
-        if (continued && backticks.count===2 && parent.textContent==='`') {
+        if (continued && backticks.count===2 && view.state.doc.textBetween(from-1,from)==='`') {
           editor.chain().deleteRange({from:from-1,to:from}).setCodeBlock().run();
           backticks=null;
         } else if (continued && backticks.count===1) {
@@ -692,7 +709,7 @@ paper.before(documentPage);documentPage.append(paper);
 paper.replaceChildren();
 editor=new Editor({
   element:paper,
-  extensions:[AppendixStart,MatterStart,LayoutCommand,Lipsum,ProjectRegion,PageLayoutHistory,ConfigurableStarterKit.configure({heading:{levels:[1,2,3]},codeBlock:false}),LanguageCodeBlock,MultiSelection,PaperBehavior,TextStyle,TextCommand,Underline,Superscript,Subscript,SmallCaps,Boxed,Circled,PageBreak,MultiColumn,Table.configure({resizable:true}),TableRow,TableCell,TableHeader,TblrSource,TabularxSource,Raw,DocumentImage,TheoremBlock,DescriptionList,DescriptionItem,MathNode,MathBlock,MathGlue,Ref,Cite.configure({library:citationLibrary}),Footnote,Label,Subfigures,TableOfContents,Shortcuts],
+  extensions:[AppendixStart,MatterStart,LayoutCommand,Lipsum,ProjectRegion,PageLayoutHistory,ConfigurableStarterKit.configure({heading:{levels:[1,2,3]},codeBlock:false}),LanguageCodeBlock,MultiSelection,PaperBehavior,TextStyle,TextCommand,Underline,Superscript,Subscript,SmallCaps,Boxed,Circled,PageBreak,MultiColumn,HistoryTable.configure({resizable:true}),TableRow,TableCell,TableHeader,TblrSource,TabularxSource,Raw,DocumentImage,TheoremBlock,DescriptionList,DescriptionItem,MathNode,MathBlock,MathGlue,Ref,Cite.configure({library:citationLibrary}),Footnote,Label,Subfigures,TableOfContents,Shortcuts],
   content:'<p></p>',
 });
 function installMarginSelection(editor,page,paper) {
@@ -980,9 +997,38 @@ button('$',()=>insertMath());
 button('$$',()=>insertMath(true)).dataset.shortcut='editor.insertDisplayMath';
 const projectDocument=new ProjectDocumentSession();
 let projection, syncApplying = false, syncPending = false, sourceToolbar, projectExplorer, projectFileKind, projectPresentation;
+let splitMapping;
+function splitBlocks(text) {
+  if (syncPending || projection?.text !== text) return [];
+  const doc=editor.state.doc;
+  if (splitMapping?.doc === doc && splitMapping.projection === projection) return splitMapping.blocks;
+  const positions=[];
+  doc.forEach((_,position)=>positions.push(position));
+  const crlf=text.includes('\r\n');
+  const normalize=offset=>crlf ? text.slice(0,offset).replace(/\r\n/g,'\n').length : offset;
+  const blocks=projection.blocks.filter(block=>block.count).map(block=>({
+    from:normalize(block.from), to:normalize(block.to),
+    first:positions[block.index], last:positions[block.index+block.count-1],
+  }));
+  splitMapping={doc,projection,blocks};
+  return blocks;
+}
 const sourceView = createSourceWorkspace({
   configurableKeys: true,
   page: documentPage,
+  previewRange(offset, text) {
+    const blocks = splitBlocks(text);
+    const block = blocks.find(entry => offset < entry.to) ?? blocks.at(-1);
+    if (!block) return;
+    const first=editor.view.nodeDOM(block.first);
+    const last=editor.view.nodeDOM(block.last);
+    if (first?.getBoundingClientRect && last?.getBoundingClientRect)
+      return [first.getBoundingClientRect().top,last.getBoundingClientRect().bottom];
+  },
+  sourceRange(y, text) {
+    const blocks = splitBlocks(text);
+    return (blocks.find(entry => editor.view.nodeDOM(entry.last)?.getBoundingClientRect?.().bottom > y) ?? blocks.at(-1))?.from;
+  },
   getPreferences:()=>config.value,
   onSourceFontChange:value=>{if(config.value.interface.sourceFontSize!==value)config.updateInterface({sourceFontSize:value});},
   render: text => {
@@ -1426,7 +1472,7 @@ function renderMeta() {
 renderMeta();
 typesetPagination=installTypesetPagination(documentPage,paper,metaBar,editor);
 typesetPagination.setTableContinuation(config.value.interface.continuedTables);
-window.addEventListener('lineae-image-layout',()=>{typesetPagination?.invalidate();syncImageTab?.();});
+window.addEventListener('lineae-image-layout',()=>{typesetPagination?.refresh();syncImageTab?.();});
 function source() {
   if(projectDocument.composition)return projectExplorer.model.file(projectDocument.composition.rootId).draft;
   const document=editor.getJSON();
@@ -1478,40 +1524,50 @@ function load(text, markSaved = true) {
   applyPageSetup();
   } finally { syncApplying = wasApplying; }
 }
-let returnedDraft;
+let returnedDraft, sourceModeDoc, sourceModeComposition;
 function setSourceMode(active) {
   if (!active && projectFileKind==='bib') {sourceView.error(t('BibTeX 文件只能使用源码模式','BibTeX files use Source mode'));return;}
   if (editor.view.composing || sourceView.composing) { sourceView.error(t("请先完成当前输入。","Finish the current composition before switching modes.")); return; }
   if (active === !sourceView.hidden) return;
   if(active && headerFooterMode)setHeaderFooterMode(false);
-  if(active)typesetPagination?.pause(true);
   if(projectExplorer?.active)projectWorkspace.select(active?'source':'body',projectFileKind);
   if (active) {
+    sourceModeComposition=null;
     if(projectDocument.composition){
-      const text=source();projectDocument.composition=null;load(text,false);
+      const text=source(), project=projectExplorer.model;
+      sourceModeComposition={project,fileId:project.activeFileId,
+        session:captureRichSession(editor,projectDocument.composition,project,text)};
+      projectDocument.composition=null;load(text,false);
     }
     const unchanged = returnedDraft?.doc === editor.state.doc && returnedDraft?.imported === importedSource && returnedDraft?.preamble === documentParts.start;
     sourceModeEntry=unchanged ? returnedDraft.text : source();
-    sourceView.open(sourceModeEntry);
+    projection=sourceProjection(sourceModeEntry,editor.getJSON(),{fragment:projectFileKind==='tex'});
+    sourceModeDoc=editor.state.doc;
+    sourceView.open(sourceModeEntry, true);
     sourceToolbar?.sourceTarget();
   } else {
     try {
       const text = sourceView.value;
-      if (text !== importedSource || importedSnapshot !== JSON.stringify(editor.getJSON())) load(text, false);
+      const untouched = text === sourceModeEntry && editor.state.doc === sourceModeDoc;
+      if (!untouched && (text !== importedSource || importedSnapshot !== JSON.stringify(editor.getJSON()))) load(text, false);
       projection=sourceProjection(text,editor.getJSON(),{fragment:projectFileKind==='tex'});syncPending=false;
       if(sourceModeEntry!==undefined && sourceModeEntry!==text){
         sourceModeCommits.push({before:sourceModeEntry,after:text,afterDoc:editor.state.doc,afterPreamble:documentParts.start});sourceModeRedos=[];
 syncUndoButtons();
       }
       sourceModeEntry=undefined;
+      sourceModeDoc=undefined;
       returnedDraft = {doc: editor.state.doc, imported: importedSource, preamble: documentParts.start, text};
       sourceView.close();
+      const cached=sourceModeComposition;
+      sourceModeComposition=null;
+      if(cached && cached.project===projectExplorer?.model && cached.fileId===cached.project.activeFileId &&
+          cached.session.richSource===text &&
+          restoreRichSession(editor,cached.session,cached.project.file(cached.fileId),cached.project,projectDocument)){
+        refreshReferences(paper);syncTableAttributes();documentOutline.relocalize();syncUndoButtons();
+      }
       showProjectComposition();
-      editor.commands.focus();
-      typesetPagination?.reset();
-      typesetPagination?.pause(false);
-      requestAnimationFrame(() => requestAnimationFrame(() => typesetPagination?.refresh()));
-      setTimeout(() => typesetPagination?.refresh(),120);
+      editor.commands.focus(undefined,{scrollIntoView:false});
     } catch (error) {
       sourceView.error(error.message);
       return;
@@ -2292,7 +2348,8 @@ function updateSelectedImageAttrs(patch){
   const current=editor.state.doc.nodeAt(imageSelection);
   if(current?.type.name!=='documentImage')return false;
   const clean=Object.fromEntries(Object.entries(patch).filter(([,value])=>value!==undefined));
-  editor.view.dispatch(editor.state.tr.setNodeMarkup(imageSelection,undefined,{...current.attrs,...clean}));
+  if(Object.entries(clean).every(([key,value])=>current.attrs[key]===value))return false;
+  editor.view.dispatch(closeHistory(editor.state.tr).setNodeMarkup(imageSelection,undefined,{...current.attrs,...clean}));
   const updated=editor.state.doc.nodeAt(imageSelection);
   if(updated?.type.name==='documentImage')imagePanel?.setValues?.(updated.attrs);
   return true;
@@ -2443,6 +2500,10 @@ installKeybindings(window, {
     const field = event.composedPath().find(node => node?.tagName === 'MATH-FIELD');
     if (field && paper.contains(field)) return { element:field, field, scopes:['math','system','global'] };
     if (documentFind.panel.contains(event.target)) return { element:documentFind.panel, scopes:['editor'], only:'find' };
+    // A dialog or project mutation can leave focus on the body while Source mode
+    // is still the visible editing surface. Keep its shortcuts available.
+    if (!sourceView.hidden && document.activeElement === document.body)
+      return { element:sourceView.editorView?.contentDOM ?? document.body, source:true, scopes:['source','system','global'] };
     if (!editor.view.hasFocus()) return { element:document.activeElement, scopes:['global'] };
     if (editor.view.composing) return { element:editor.view.dom, scopes:[] };
     editor.view.domObserver.flush();
@@ -2504,7 +2565,7 @@ const compositionController=createCompositionController({
     }finally{syncApplying=false;}
     // The composition is hydrated after setContent; force one layout pass so
     // the project presentation sees the new regions and renders their badges.
-    requestAnimationFrame(()=>typesetPagination?.invalidate());
+    requestAnimationFrame(()=>typesetPagination?.refresh());
   },
   replace(before,after,show,owner){
     if(owner!==projectExplorer.model.activeFileId){
@@ -2624,7 +2685,7 @@ projectExplorer = installProjectExplorer({footer, filePanel:document.querySelect
     updateSourceButton();
   },
 }});
-projectPresentation=installProjectPresentation({editor,page:documentPage,getProject:()=>projectExplorer.model,openMain:()=>projectExplorer.openFile(projectExplorer.model.mainFileId),getComposition:()=>projectDocument.composition,requestLayout:()=>typesetPagination?.invalidate(),ensureDocument:()=>{if(!sourceView.hidden)setSourceMode(false);showProjectComposition();}});
+projectPresentation=installProjectPresentation({editor,page:documentPage,getProject:()=>projectExplorer.model,openMain:()=>projectExplorer.openFile(projectExplorer.model.mainFileId),getComposition:()=>projectDocument.composition,requestLayout:()=>typesetPagination?.refresh(),ensureDocument:()=>{if(!sourceView.hidden)setSourceMode(false);showProjectComposition();}});
 editor.on('transaction',updateEnvironment);
 document.addEventListener('focusin',updateEnvironment);paper.addEventListener('input',updateEnvironment);
 paper.addEventListener('selection-change',updateEnvironment,true);
@@ -2874,7 +2935,13 @@ tableStretchSection.append(tableStretchGrid);
 function updateTableAttributes(patch,focus=true){
   const lineKeys=['leftRule','rightRule','middleVerticalRule','verticalFirstRow','topRule','bottomRule','midRuleMode','ruleStyle','ruleWidth'];
   if(Object.keys(patch).some(key=>lineKeys.includes(key)))patch={...patch,borderMode:null,booktabs:false,horizontalRuleMode:null};
-  if(editor.isActive('table'))(focus?editor.chain().focus():editor.chain()).updateAttributes('table',patch).run();
+  if(editor.isActive('table')){
+    const current=editor.getAttributes('table');
+    if(Object.entries(patch).every(([key,value])=>current[key]===value))return;
+    const chain=editor.chain();
+    if(focus)chain.focus().command(({tr})=>Boolean(closeHistory(tr)));
+    chain.updateAttributes('table',patch).run();
+  }
 }
 function syncTableControls(){
   const attrs=editor.isActive('table')?editor.getAttributes('table'):null;
@@ -2897,6 +2964,8 @@ function syncTableControls(){
 }
 tableCaptionEnabled.addEventListener('change',()=>updateTableAttributes({captionEnabled:tableCaptionEnabled.checked,caption:tableCaptionEnabled.checked?(editor.getAttributes('table').caption??''):null,centered:true,placement:editor.getAttributes('table').placement??'htbp'}));
 tableCaptionInput.addEventListener('input',()=>{if(editor.isActive('table'))updateTableAttributes({caption:tableCaptionInput.value,captionEnabled:true,centered:true},false);});
+tableCaptionInput.addEventListener('focus',()=>editor.view.dispatch(closeHistory(editor.state.tr)));
+tableCaptionInput.addEventListener('blur',()=>editor.view.dispatch(closeHistory(editor.state.tr)));
 for(const [control,key] of [[tableLeftRule,'leftRule'],[tableRightRule,'rightRule'],[tableMiddleVerticalRule,'middleVerticalRule'],[tableVerticalFirstRow,'verticalFirstRow'],[tableTopRule,'topRule'],[tableBottomRule,'bottomRule']])control.addEventListener('change',()=>updateTableAttributes({[key]:control.checked}));
 tableMidRule.addEventListener('change',()=>updateTableAttributes({midRuleMode:tableMidRule.value}));
 tableRuleStyle.addEventListener('change',()=>updateTableAttributes({ruleStyle:tableRuleStyle.value}));
@@ -3327,15 +3396,18 @@ function applyImportedPreferences() {
   updateLanguage();
 }
 function updateShortcutHints() {
-  const display={ctrl:'Ctrl',meta:'Meta',alt:'Alt',shift:'Shift',equal:'=',plus:'+',minus:'−'};
+  const display={ctrl:'Ctrl',meta:isMac?'Cmd':'Meta',alt:'Alt',shift:'Shift',equal:'=',plus:'+',minus:'−'};
   const format=stroke=>stroke.split('+').map(key=>display[key] ?? key.toUpperCase()).join('+');
   for (const control of ribbon.querySelectorAll('[data-shortcut]')) {
     const [scope,command]=control.dataset.shortcut.split('.');
-    const binding=config.bindings.scopes.get(scope)?.find(entry=>entry.command===command);
-    control.dataset.tooltipZh=control.dataset.tooltipBaseZh??control.dataset.tooltipZh??'';
-    control.dataset.tooltipEn=control.dataset.tooltipBaseEn??control.dataset.tooltipEn??'';
+    const bindings=config.bindings.scopes.get(scope)?.filter(entry=>entry.command===command);
+    const binding=bindings?.[0];
+    control.dataset.tooltipZh=control.dataset.tooltipBaseZh??=control.dataset.tooltipZh??'';
+    control.dataset.tooltipEn=control.dataset.tooltipBaseEn??=control.dataset.tooltipEn??'';
     if (!binding) continue;
-    const shortcut=[binding.first,binding.second].filter(Boolean).map(format).join(' ');
+    const alternative=isMac && bindings.find(entry=>entry!==binding && entry.first==='ctrl+e' && entry.second);
+    const shortcut=[binding,alternative].filter(Boolean)
+      .map(entry=>[entry.first,entry.second].filter(Boolean).map(format).join(' ')).join(' / ');
     control.dataset.tooltipZh+=' · '+shortcut;
     control.dataset.tooltipEn+=' · '+shortcut;
   }

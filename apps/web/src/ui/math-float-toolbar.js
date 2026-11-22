@@ -2,10 +2,25 @@
 // Triggers only on NodeSelection over a whole math node ('math' / 'mathBlock');
 // half-selected objects never show it.
 import { t } from './i18n.mjs';
+import { mathFontStyles } from '../editor/math-formatting.js';
 
 // ---------------- pure latex transforms (unit-tested) ----------------
+const FONT_WRAPPERS = new Set(Object.keys(mathFontStyles));
 export function wrapMath(latex, wrapper, arg) {
   if (!latex) return latex;
+  if (arg === undefined && FONT_WRAPPERS.has(wrapper)) {
+    // Changing a font replaces the previous outer font instead of nesting
+    // \mathbb{\mathbf{\mathcal{...}}} until the formula becomes unusable.
+    let body = latex;
+    for (let changed = true; changed;) {
+      changed = false;
+      for (const command of FONT_WRAPPERS) {
+        const inner = stripOuter(body, command);
+        if (inner !== body) { body = inner; changed = true; break; }
+      }
+    }
+    return `\\${wrapper}{${body}}`;
+  }
   const open = arg === undefined ? `\\${wrapper}{` : `\\${wrapper}{${arg}}{`;
   if (latex.startsWith(open)) return latex; // already wrapped
   return open + latex + '}';
@@ -22,7 +37,7 @@ export function setMathSize(latex, size) {
 }
 function stripOuter(latex, cmd, skipArgs = 0) {
   const prefix = `\\${cmd}`;
-  if (!latex.startsWith(prefix)) return latex;
+  if (!latex.startsWith(prefix) || /[A-Za-z]/.test(latex[prefix.length] ?? '')) return latex;
   let i = prefix.length;
   const skipGroup = () => {
     if (latex[i] !== '{') { while (i < latex.length && latex[i] !== '{' && latex[i] !== '\\') i++; return; }
@@ -37,7 +52,14 @@ function stripOuter(latex, cmd, skipArgs = 0) {
   const start = i; let depth = 0;
   for (; i < latex.length; i++) {
     if (latex[i] === '{') depth++;
-    else if (latex[i] === '}') { depth--; if (depth === 0) return latex.slice(start + 1, i); }
+    else if (latex[i] === '}') {
+      depth--;
+      if (depth === 0) {
+        // Only an outer wrapper around the whole selection can be replaced.
+        // \textcolor{red}{x}+y must not lose "+y" when recolored.
+        return latex.slice(i + 1).trim() ? latex : latex.slice(start + 1, i);
+      }
+    }
   }
   return latex;
 }
@@ -307,6 +329,22 @@ export function installMathFloatToolbar({ editor }) {
     editor.commands.setNodeSelection(current.pos);
   };
 
+  // Atomic styles are applied by MathLive to the selected atoms. String
+  // wrapping cannot represent a matrix range because getValue() drops the
+  // & and \\ separators; MathLive colors each selected cell correctly.
+  const applySelectionStyle = style => {
+    if (!current?.partial || !current.field?.isConnected || !style) return false;
+    const { field } = current;
+    field.focus();
+    const before = field.value;
+    field.applyStyle(style);
+    if (field.value === before) return false;
+    holdToolbarUntil = performance.now() + 1000;
+    field.dispatchEvent(new Event('input', { bubbles: true }));
+    field.focus();
+    return true;
+  };
+
   // ---- toolbar content (built once per language) ----
   function buildBar() {
     bar.replaceChildren();
@@ -327,7 +365,9 @@ export function installMathFloatToolbar({ editor }) {
       s.style.background = c === 'white' ? '#fff' : c;
       s.title = c; s.setAttribute('aria-label', '\\textcolor{' + c + '}');
       s.addEventListener('mousedown', e => e.preventDefault());
-      s.addEventListener('click', () => applyLatex(l => setMathColor(l, c)));
+      s.addEventListener('click', () => current?.partial
+        ? applySelectionStyle({ color: c })
+        : applyLatex(l => setMathColor(l, c)));
       grid.append(s);
     }
     bar.append(grid);
@@ -370,7 +410,9 @@ export function installMathFloatToolbar({ editor }) {
       b.type = 'button'; b.className = 'mft-font'; b.textContent = glyph;
       b.title = '\\' + cmd; b.setAttribute('aria-label', '\\' + cmd);
       b.addEventListener('mousedown', e => e.preventDefault());
-      b.addEventListener('click', () => applyLatex(l => wrapMath(l, cmd)));
+      b.addEventListener('click', () => current?.partial
+        ? applySelectionStyle(mathFontStyles[cmd])
+        : applyLatex(l => wrapMath(l, cmd)));
       fonts.append(b);
     }
     const clear = document.createElement('button');
@@ -490,7 +532,7 @@ export function installMathFloatToolbar({ editor }) {
       const detail = event.detail;
       if (!detail?.field?.isConnected) return;
       if (detail.collapsed) {
-        if (current?.partial && current.field === detail.field && performance.now() >= holdToolbarUntil) hide();
+        if (current?.partial && current.field === detail.field) hide();
         return;
       }
       showPartial(detail);

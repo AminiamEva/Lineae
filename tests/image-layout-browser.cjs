@@ -23,4 +23,44 @@ Before wrap. \begin{wrapfigure}{r}{0.4\textwidth}
 After wrap text continues.`;
 await page.locator('input[type=file]').setInputFiles({name:'images.tex',mimeType:'text/plain',buffer:Buffer.from('\\documentclass{article}\n\\usepackage{graphicx}\n\\usepackage{wrapfig}\n\\begin{document}\n'+body+'\n\\end{document}\n')});await page.waitForTimeout(1200);
 const result=await page.evaluate(()=>{const images=[...document.querySelectorAll('.document-image')];const figure=images.find(d=>d.dataset.wrap==='false');const wrap=images.find(d=>d.dataset.wrap==='true');const frame=figure?.querySelector('.document-image-frame');const page=document.querySelector('.ProseMirror').getBoundingClientRect();return {count:images.length,figure:{centered:figure?.dataset.centered,align:figure?.dataset.align,frameLeft:frame?.getBoundingClientRect().left,frameWidth:frame?.getBoundingClientRect().width,pageLeft:page.left,pageWidth:page.width},wrap:{width:wrap?.style.width,float:wrap?.style.float,frameWidth:wrap?.querySelector('.document-image-frame')?.style.width}};});
-assert.equal(result.count,2);assert.equal(result.figure.centered,'true');assert.equal(result.figure.align,'center');assert.ok(result.figure.frameWidth>0&&Math.abs((result.figure.frameLeft-result.figure.pageLeft)-(result.figure.pageWidth-result.figure.frameWidth)/2)<3,'centered figure frame is horizontally centered');assert.equal(result.wrap.float,'right');assert.equal(result.wrap.width,'40%');assert.equal(result.wrap.frameWidth,'100%');assert.deepEqual(errors,[]);console.log('PASS image centering and wrap width');}finally{await browser.close();server.close();}})().catch(e=>{console.error(e);process.exitCode=1;server.close();});
+assert.equal(result.count,2);assert.equal(result.figure.centered,'true');assert.equal(result.figure.align,'center');assert.ok(result.figure.frameWidth>0&&Math.abs((result.figure.frameLeft-result.figure.pageLeft)-(result.figure.pageWidth-result.figure.frameWidth)/2)<3,'centered figure frame is horizontally centered');assert.equal(result.wrap.float,'right');assert.equal(result.wrap.width,'40%');assert.equal(result.wrap.frameWidth,'100%');
+await page.evaluate(()=>{ window.testFigure=document.querySelector('.document-image'); });
+for(const mode of ['split','source','split','body']){
+  await page.locator('[data-source-mode='+mode+']').click();
+  if(mode==='source') continue;
+  await page.locator('.document-image').first().waitFor();
+  const geometry=await page.evaluate(()=>{
+    const figure=document.querySelector('.document-image');
+    return {
+      same:figure===window.testFigure,
+      width:figure.querySelector('.document-image-frame').getBoundingClientRect().width,
+      pages:document.querySelector('.document-page').dataset.pageCount,
+    };
+  });
+  assert.equal(geometry.same,true,'Switching views preserves the image node');
+  assert.ok(Math.abs(geometry.width-result.figure.frameWidth)<1,'Image width is shared across modes');
+  assert.equal(geometry.pages,'1');
+}
+const editor=page.locator('.ProseMirror');
+await editor.evaluate(element=>{
+  let position;
+  element.editor.state.doc.forEach((node,offset)=>{
+    if(position===undefined && node.type.name==='documentImage') position=offset;
+  });
+  element.editor.commands.setNodeSelection(position);
+});
+const replace=page.locator('[data-en="Replace image"]');
+const png=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/X5sAAAAASUVORK5CYII=','base64');
+for(const expected of ['a.png','a-2.png']){
+  const chooser=page.waitForEvent('filechooser');
+  await replace.click();
+  await (await chooser).setFiles({name:'a.png',mimeType:'image/png',buffer:png});
+  await page.waitForFunction(path=>document.querySelector('.document-image img')?.alt===path,expected);
+}
+assert.equal(await editor.evaluate(element=>element.editor.commands.undo()),true);
+await page.waitForFunction(()=>document.querySelector('.document-image img')?.alt==='a.png');
+assert.equal(await editor.evaluate(element=>element.editor.commands.redo()),true);
+await page.waitForFunction(()=>document.querySelector('.document-image img')?.alt==='a-2.png');
+assert.deepEqual(errors,[]);
+console.log('PASS image geometry, view switches and replacement history');
+}finally{await browser.close();server.close();}})().catch(e=>{console.error(e);process.exitCode=1;server.close();});

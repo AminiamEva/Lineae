@@ -25,6 +25,8 @@ const server=createServer(async(req,res)=>{
       page.on('pageerror',error=>errors.push(error.message));
       await page.goto('http://127.0.0.1:'+server.address().port);
       const paper=page.locator('.ProseMirror'),mod=mac?'Meta':'Control';
+      assert.equal(await page.locator('header .brand img').count(),1);
+      assert.equal(await page.locator('header .brand img').getAttribute('src'),'./assets/brand/lineae-logo.png');
       await paper.click();
       const chord=async key=>{await page.keyboard.press(mod+'+e');await page.keyboard.press(key);};
       const load=async body=>{
@@ -53,7 +55,8 @@ const server=createServer(async(req,res)=>{
       await page.waitForFunction(()=>Boolean(document.querySelector('.math-inline math-field')));
       assert.equal(await paper.locator('math-field').count(),1,'$ input remains enabled');
       await load('Alpha');await paper.click();await page.keyboard.press('End');
-      await page.keyboard.press(mod+'+f');
+      if(mac)await page.keyboard.press('Control+e');
+      await page.keyboard.press(mac?'Shift+f':mod+'+f');
       await paper.locator('.math-display math-field').waitFor();
       await load('Alpha');await paper.click();await page.keyboard.press('End');
       await page.keyboard.press(mod+'+Shift+f');
@@ -77,9 +80,13 @@ const server=createServer(async(req,res)=>{
       assert.equal(await paper.locator('tr').count(),beforeRows);
       await paper.locator('td').first().click();await chord('r');
       assert.equal(await paper.locator('td').first().getAttribute('data-align'),'right','Table cells reuse paragraph alignment shortcuts');
-      await load('Alpha');await paper.click();await chord('2');
+      await load('Alpha');await paper.click();
+      if(mac){await page.keyboard.press('Control+e');await page.keyboard.press('2');}
+      else await chord('2');
       await page.locator('.tex-code .cm-content').waitFor({state:'visible'});
-      await page.locator('.tex-code .cm-content').click();await page.keyboard.press(mod+'+f');
+      await page.locator('.tex-code .cm-content').click();
+      if(mac){await page.keyboard.press('Control+e');await page.keyboard.press('f');}
+      else await page.keyboard.press(mod+'+f');
       await page.locator('.cm-search').waitFor({state:'visible'});
       await page.keyboard.press('Escape');
       const overrides=`keybindings:
