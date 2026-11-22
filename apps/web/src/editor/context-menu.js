@@ -11,6 +11,18 @@ function selectedMath(context) {
   return ranges.map(range => context.field.getValue(range)).join('');
 }
 
+function selectedImageRange(editor) {
+  const selection = editor.state.selection;
+  if (selection.empty || selection.node) return null;
+  const images = [];
+  editor.state.doc.forEach((node, offset) => {
+    if (node.type.name === 'documentImage' && offset < selection.to && offset + node.nodeSize > selection.from) {
+      images.push({ node, position: offset });
+    }
+  });
+  return images.length >= 2 ? { images, from: selection.from, to: selection.to } : null;
+}
+
 async function copySelection(context, cut) {
   const { editor, field } = context;
   if (field) {
@@ -227,30 +239,43 @@ export function installContextMenu(editor, paper, language, reportError) {
       else editor.view.focus();
     }
   }
+  paper.addEventListener('mousedown', event => {
+    if (event.button !== 2) return;
+    if (event.composedPath().some(element => element?.tagName === 'MATH-FIELD')) return;
+    if (!selectedImageRange(editor)) return;
+    // Keep the multi-image range when the user opens the context menu on it.
+    event.preventDefault();
+    event.stopPropagation();
+  }, true);
   paper.addEventListener('contextmenu', event => {
     event.preventDefault();
     event.stopPropagation();
     activeField = event.composedPath().find(element => element?.tagName === 'MATH-FIELD') ?? null;
     let imagePosition = null;
+    const multiImages = activeField ? null : selectedImageRange(editor);
     if (!activeField) {
       const figure = event.target?.closest?.('figure.document-image');
       if (figure) {
         try {
           const position = editor.view.posAtDOM(figure, 0);
-          if (editor.state.doc.nodeAt(position)?.type.name === 'documentImage') {
-            editor.commands.setNodeSelection(position);
+          const node = editor.state.doc.nodeAt(position);
+          if (node?.type.name === 'documentImage') {
             imagePosition = position;
+            // Right-clicking inside a multi-image selection must not collapse it.
+            if (!multiImages) editor.commands.setNodeSelection(position);
           }
         } catch {}
       }
-      if (imagePosition === null) {
-        const selection = editor.state.selection;
-        if (selection.node?.type?.name === 'documentImage') imagePosition = selection.from;
-      }
-      if (imagePosition === null) {
-        const hit = editor.view.posAtCoords({ left: event.clientX, top: event.clientY });
-        const { from, to } = editor.state.selection;
-        if (hit && (hit.pos < from || hit.pos > to)) editor.commands.setTextSelection(hit.pos);
+      if (!multiImages) {
+        if (imagePosition === null) {
+          const selection = editor.state.selection;
+          if (selection.node?.type?.name === 'documentImage') imagePosition = selection.from;
+        }
+        if (imagePosition === null) {
+          const hit = editor.view.posAtCoords({ left: event.clientX, top: event.clientY });
+          const { from, to } = editor.state.selection;
+          if (hit && (hit.pos < from || hit.pos > to)) editor.commands.setTextSelection(hit.pos);
+        }
       }
     }
     menu.replaceChildren();

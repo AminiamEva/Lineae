@@ -76,9 +76,22 @@ async function dragSelectAll(page) {
     assert.deepEqual(data.content.map(node => node.type), ['paragraph', 'documentImage', 'documentImage', 'documentImage', 'paragraph']);
     assert.equal(data.to - data.from, 3, 'the range covers the three atom images');
     assert.equal(await page.locator('.ribbon-tabs [data-group=image]').isVisible(), true, 'Image tab appears for multi-image selection');
+    assert.equal(await page.locator('.ribbon-tabs [data-group=image]').getAttribute('aria-pressed'), 'true', 'Image tab is active for multi-image selection');
     assert.equal(await page.locator('.image-group-button').innerText(), 'Combine as subfigure');
     assert.equal(await page.locator('.image-group-button').isDisabled(), false);
     assert.equal(await page.evaluate(() => document.querySelector('.image-tools [data-ribbon-group="image-transform"]').classList.contains('is-disabled')), true, 'other image controls are disabled');
+
+    // Right-clicking must not collapse the multi-image range.
+    const lastImage = await page.locator('figure.document-image img').last().boundingBox();
+    await page.mouse.click(lastImage.x + lastImage.width / 2, lastImage.y + lastImage.height / 2, { button: 'right' });
+    await page.waitForTimeout(250);
+    const afterRightClick = await documentData(page);
+    assert.equal(afterRightClick.selection, '_TextSelection', 'right-click preserves the range selection');
+    assert.equal(afterRightClick.from, data.from);
+    assert.equal(afterRightClick.to, data.to);
+    assert.equal(await page.locator('.ribbon-tabs [data-group=image]').getAttribute('aria-pressed'), 'true', 'Image tab stays active after right-click');
+    await page.keyboard.press('Escape');
+    await page.waitForTimeout(150);
 
     // Combine into a subfigure environment.
     await page.evaluate(() => document.querySelector('.image-group-button').click());
@@ -128,6 +141,12 @@ async function dragSelectAll(page) {
     await page.waitForFunction(() => !document.querySelector('.ProseMirror').editor.getJSON().content.some(node => node.type === 'subfigures'));
     data = await documentData(page);
     assert.equal(data.content.filter(node => node.type === 'documentImage').length, 3, 'Subfigure tab Ungroup restores the images');
+
+    // A broader selection that also includes text still opens the Image toolbar.
+    await page.evaluate(() => document.querySelector('.ProseMirror').editor.commands.selectAll());
+    await page.waitForFunction(() => document.querySelector('.ProseMirror').editor.state.selection.constructor.name.includes('AllSelection'));
+    assert.equal(await page.locator('.ribbon-tabs [data-group=image]').isVisible(), true, 'Image tab opens for a selection that includes images and text');
+    assert.equal(await page.locator('.ribbon-tabs [data-group=image]').getAttribute('aria-pressed'), 'true');
 
     assert.deepEqual(errors, []);
     console.log('PASS image multi-selection and subfigure grouping');

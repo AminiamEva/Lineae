@@ -3429,14 +3429,26 @@ function currentImageSelection(){
   return selection instanceof NodeSelection && selection.node.type.name==='documentImage'
     ? {position:selection.from,node:selection.node} : null;
 }
-function selectedImageBlocks(){
+function imageBlocksInSelection(){
   const selection=editor.state.selection;
   if(!sourceView.hidden||selection instanceof NodeSelection||selection.empty)return [];
-  const from=selection.from,to=selection.to,blocks=[];
+  const blocks=[];
   editor.state.doc.forEach((node,offset)=>{
-    if(offset>=from&&offset+node.nodeSize<=to)blocks.push({node,position:offset});
+    if(node.type.name==='documentImage'&&offset<selection.to&&offset+node.nodeSize>selection.from)blocks.push({node,position:offset});
   });
-  return blocks.length>1&&blocks.every(({node})=>node.type.name==='documentImage')?blocks:[];
+  return blocks;
+}
+function selectedImageBlocks(){
+  const blocks=imageBlocksInSelection();
+  if(blocks.length<2)return [];
+  const first=blocks[0].position;
+  const last=blocks.at(-1).position+blocks.at(-1).node.nodeSize;
+  let valid=true;
+  editor.state.doc.forEach((node,offset)=>{
+    if(offset<first||offset+node.nodeSize>last||node.type.name==='documentImage')return;
+    if(!(node.type.name==='paragraph'&&!node.textContent.trim()))valid=false;
+  });
+  return valid?blocks:[];
 }
 function subfiguresAncestor(position){
   const $pos=editor.state.doc.resolve(position);
@@ -3505,8 +3517,9 @@ function syncImageTab(){
   if(!imageTab)return;
   const found=sourceView.hidden ? currentImageSelection() : null;
   imageSelection=found?.position??null;
-  const multi=sourceView.hidden && !found ? selectedImageBlocks() : [];
-  imageTab.hidden=!found&&multi.length<2;
+  const selectedImages=sourceView.hidden && !found ? imageBlocksInSelection() : [];
+  const multi=selectedImages.length>=2 ? selectedImageBlocks() : [];
+  imageTab.hidden=!found&&selectedImages.length<2;
   const subSel=sourceView.hidden&&editor.state.selection instanceof NodeSelection&&editor.state.selection.node.type.name==='subfigures'?editor.state.selection.node:null;
   if(subfigureTab)subfigureTab.hidden=!subSel;
   subfigurePanel?.setValues(subSel?.attrs??null);
@@ -3530,9 +3543,9 @@ function syncImageTab(){
     });
     imagePanel.setGroupState(subfiguresAncestor(found.position)!==null?'ungroup':'none');
     if(ribbon.dataset.ribbonPage!=='image' && ribbon.dataset.ribbonPage!=='headerFooter')selectGroup('image');
-  }else if(multi.length>=2){
-    imagePanel.setMultiSelection(multi.length);
-    imagePanel.setGroupState('group');
+  }else if(selectedImages.length>=2){
+    imagePanel.setMultiSelection(selectedImages.length);
+    imagePanel.setGroupState(multi.length>=2?'group':'none');
     if(ribbon.dataset.ribbonPage!=='image' && ribbon.dataset.ribbonPage!=='headerFooter')selectGroup('image');
   }else{
     imagePanel.setMultiSelection(0);
