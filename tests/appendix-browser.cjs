@@ -38,6 +38,8 @@ const server=createServer(async(req,res)=>{
   assert.equal(await paper.locator('h1[data-heading-command=chapter]').nth(1).getAttribute('data-chapter-label'),'Supplement A');
   const chapterPages=async()=>paper.locator('h1[data-heading-command=chapter]').evaluateAll(nodes=>{const page=document.querySelector('.document-page'),sheets=page.querySelector('.document-sheets'),zoom=page.getBoundingClientRect().width/parseFloat(getComputedStyle(page).width),pitch=sheets.firstElementChild.getBoundingClientRect().height/zoom+parseFloat(getComputedStyle(page).getPropertyValue('--page-gap'));return nodes.map(n=>Math.floor((n.getBoundingClientRect().top-page.getBoundingClientRect().top)/zoom/pitch)+1);});
   await page.waitForTimeout(250);let pages=await chapterPages();assert.ok(pages[1]>pages[0]&&pages[2]>pages[1],JSON.stringify(pages));
+  await load(chapterSource);await page.waitForTimeout(250);
+  assert.ok(await paper.locator('h1[data-heading-command=chapter]').first().evaluate(chapter=>{const section=chapter.nextElementSibling;return section?.dataset.headingCommand==='section'&&section.getBoundingClientRect().top-chapter.getBoundingClientRect().top<300;}),'A section follows its chapter on the same page');
   await load(chapterSource.replace('{report}','{book}'));await page.waitForTimeout(250);pages=await chapterPages();assert.ok(pages.every(number=>number%2===1),JSON.stringify(pages));assert.ok(pages[1]>pages[0]&&pages[2]>pages[1]);
   const chapterReference=JSON.parse(await readFile('tests/fixtures/chapter-xelatex.json','utf8'));
   for(const fixture of chapterReference.cases){

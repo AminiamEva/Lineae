@@ -26,7 +26,6 @@ async function clickOpenProject(page) {
   const browser = await chromium.launch({headless:true,executablePath:process.env.LINEAE_CHROMIUM_EXECUTABLE});
   try {
     const page = await browser.newPage({viewport:{width:1440,height:900}});
-    page.on('console',msg=>console.log('BROWSER',msg.text()));
     const errors = []; page.on('pageerror',error => errors.push(error.message));
     await page.goto('http://127.0.0.1:'+server.address().port);
     await showFilePanel(page);
@@ -273,8 +272,8 @@ async function clickOpenProject(page) {
     await contextMenu.getByRole('menuitem',{name:/^(移动|Move)$/}).click();
     await page.locator('[data-path="destination/final.tex"]').waitFor();
     assert.match(await code.innerText(),/\\input\{destination\/final\}/,'Active source session receives path rewrites');
-    console.log('BEFORE UNDO',await page.evaluate(()=>({focus:document.activeElement?.outerHTML.slice(0,400)})));
-    await page.keyboard.press('Control+z');console.log('AFTER UNDO',await page.evaluate(()=>({focus:document.activeElement?.outerHTML.slice(0,400)})));assert.match(await code.innerText(),/\\input\{destination\/moved\}/);
+    await page.waitForFunction(()=>document.activeElement?.closest('.cm-content'),'Source editor retains keyboard focus after moving a referenced file');
+    await page.keyboard.press('Control+z');assert.match(await code.innerText(),/\\input\{destination\/moved\}/);
     await page.keyboard.press('Control+y');await page.waitForFunction(()=>document.querySelector('.cm-content')?.textContent.includes('destination/final'),null,{timeout:4000});assert.match(await code.innerText(),/\\input\{destination\/final\}/);
     await page.locator('#project-save').click();
     await page.waitForFunction(()=>document.querySelector('#project-explorer > [role=status]').textContent.includes('Saved'));
