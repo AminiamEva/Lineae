@@ -2,9 +2,18 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {createConfigStore} from '../apps/web/src/editor/config.mjs';
-import {compileKeybindings,installKeybindings} from '../apps/web/src/editor/keybindings.mjs';
+import {commandKeyCodes,compileKeybindings,installKeybindings} from '../apps/web/src/editor/keybindings.mjs';
 
 const defaults=readFileSync('apps/web/config.yaml','utf8');
+
+test('keyboard priority follows the configured Command keys and chord continuations',()=>{
+  const bindings=compileKeybindings({
+    global:{sourceMode:'mod+e 2',settings:'cmd+comma'},
+    editor:{bold:'mod+b',zoom:'cmd+plus',escape:'cmd+escape',dollar:'$'},
+    system:{copy:'mod+c'},
+  },{isMac:true});
+  assert.deepEqual(commandKeyCodes(bindings),['KeyE','Digit2','Comma','KeyB','Equal']);
+});
 function keyboard(target,key,code,flags={}) {
   const event=new Event('keydown',{cancelable:true});
   Object.assign(event,{key,code,ctrlKey:false,altKey:false,shiftKey:false,metaKey:false,

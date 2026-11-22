@@ -47,7 +47,7 @@ import { applyCitationRenames } from '../bib/index.mjs';
 import { chooseReference } from './editor/reference-index.js';
 import { installTableHoverAddRow } from './editor/table-hover.js';
 import { createConfigStore } from './editor/config.mjs';
-import { compileKeybindings, installKeybindings, usesAppleShortcuts } from './editor/keybindings.mjs';
+import { commandKeyCodes, compileKeybindings, installKeybindings, usesAppleShortcuts } from './editor/keybindings.mjs';
 import defaultConfigYaml from '../config.yaml';
 import { askText } from './editor/dialog.js';
 import { installDocumentFind } from './editor/find.js';
@@ -2586,6 +2586,60 @@ function updateEnvironment() {
   environment.dataset.environment=name;
 }
 footer.append(count,document.querySelector('#status'),environment,zoom,percent,paginationButton,themeButton,modes);document.body.append(footer);sourceView.mountStatus(footer);scale();updatePaginationButton();
+const keyboardPriorityButton = document.createElement('button');
+keyboardPriorityButton.type = 'button';
+keyboardPriorityButton.id = 'keyboard-priority';
+const keyboard = navigator.keyboard;
+if (isWeb && isMac && document.fullscreenEnabled && typeof keyboard?.lock === 'function') {
+  let locked = false;
+  let requesting = false;
+  const refresh = () => {
+    keyboardPriorityButton.textContent = locked
+      ? t('退出快捷键优先','Exit shortcut priority')
+      : t('快捷键优先','Shortcut priority');
+    keyboardPriorityButton.title = t('全屏时优先处理 Lineae 的 Command 快捷键','Give Lineae Command shortcuts priority in full screen');
+    keyboardPriorityButton.setAttribute('aria-pressed',String(locked));
+    keyboardPriorityButton.disabled = requesting;
+  };
+  keyboardPriorityButton.addEventListener('click', async () => {
+    if (locked) {
+      await document.exitFullscreen();
+      return;
+    }
+    requesting = true;
+    refresh();
+    try {
+      await document.documentElement.requestFullscreen();
+      const codes = commandKeyCodes(config.commandBindings);
+      if (!codes.length) throw new Error('No Command shortcuts');
+      await keyboard.lock(codes);
+      locked = document.fullscreenElement === document.documentElement;
+      if (locked) {
+        if (sourceView.hidden) editor.view.focus();
+        else sourceView.focus();
+      }
+    } catch {
+      if (document.fullscreenElement === document.documentElement) await document.exitFullscreen();
+      const status = document.querySelector('#status');
+      status.textContent = t('快捷键优先模式未开启。请检查 Edge 是否允许全屏和键盘锁定。',
+        'Shortcut priority could not start. Check whether Edge allows full screen and keyboard lock.');
+      status.hidden = false;
+    } finally {
+      if (!locked) keyboard.unlock();
+      requesting = false;
+      refresh();
+    }
+  });
+  document.addEventListener('fullscreenchange', () => {
+    if (document.fullscreenElement === document.documentElement) return;
+    keyboard.unlock();
+    locked = false;
+    refresh();
+  });
+  footer.insertBefore(keyboardPriorityButton,modes);
+  keyboardPriorityButton.addEventListener('lineae-relocalize',refresh);
+  refresh();
+}
 const compositionController=createCompositionController({
   explorer:()=>projectExplorer,fileKind:()=>projectFileKind,session:projectDocument,
   sourceHidden:()=>sourceView.hidden,composing:()=>editor.view.composing||sourceView.composing,
@@ -3449,6 +3503,7 @@ function updateShortcutHints() {
 }
 language.value=configuredLanguage();
 function updateLanguage() {
+  keyboardPriorityButton.dispatchEvent(new Event('lineae-relocalize'));
   setLanguage(language.value);
   document.documentElement.lang=getLanguage();
   localize(document);

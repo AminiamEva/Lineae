@@ -56,7 +56,7 @@ const server=createServer(async(req,res)=>{
           await page.bringToFront();
           const strokes={
             'Meta+b':'11 using command down', 'Meta+e':'14 using command down',
-            '2':'19', 'Meta+f':'3 using command down', 'Escape':'53',
+            '2':'19', 'Meta+1':'18 using command down', 'Meta+f':'3 using command down', 'Escape':'53',
             'Meta+Alt+f':'3 using {command down, option down}', 'x':'7',
           };
           press=key=>execFileSync('osascript',['-e','tell application "System Events" to key code '+strokes[key]]);
@@ -79,6 +79,26 @@ const server=createServer(async(req,res)=>{
         await paper.click();await page.keyboard.press('End');
         await press('Meta+Alt+f');
         await paper.locator('.math-display math-field').waitFor();
+        if(nativeEdge){
+          await page.evaluate(()=>localStorage.setItem('lineae.config',
+            'version: 2\nkeybindings:\n  global:\n    sourceMode: mod+1\n'));
+          await page.reload();
+          await load('Alpha');
+          await paper.click();
+          await press('Meta+1');
+          assert.equal(await page.locator('[data-source-mode=body]').getAttribute('aria-pressed'),'true');
+          const priority=page.locator('#keyboard-priority');
+          await priority.click();
+          await page.waitForFunction(()=>document.querySelector('#keyboard-priority').getAttribute('aria-pressed')==='true');
+          assert.equal(await page.evaluate(()=>document.fullscreenElement===document.documentElement),true);
+          await press('Meta+b');await press('x');
+          await paper.locator('strong').filter({hasText:'x'}).waitFor();
+          await press('Meta+1');
+          await page.locator('.tex-code .cm-content').waitFor({state:'visible'});
+          await priority.click();
+          await page.waitForFunction(()=>!document.fullscreenElement);
+          assert.equal(await priority.getAttribute('aria-pressed'),'false');
+        }
         assert.deepEqual(errors,[]);
         console.log('Command bold, mode switch, source search and numbered equation passed');
         await context.close();
