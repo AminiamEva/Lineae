@@ -150,15 +150,14 @@ export function installParagraphLayout(editor){
     const intextsep=intextsepText?cssLengthPx(intextsepText):cssLengthPx('12pt');
     const pending=[];
     function anchorWrap(wrap,lineHeight){
-      // Keep the float's natural box (with the previous in-text spacing) and
-      // shorten its bottom margin so it spans a whole number of lines. A
-      // fractional band is rendered by the browser as one extra wrapped line.
+      // Keep the float's natural box.  Any line it partially overlaps is still
+      // a wrapped line in TeX, so round up instead of trimming the float band.
       const marginTop=intextsep+lineHeight*.5;
-      const desiredBottom=lineHeight*2;
-      const lines=Math.max(1,Math.floor((marginTop+wrap.dom.offsetHeight+desiredBottom)/lineHeight));
-      const marginBottom=Math.max(0,lines*lineHeight-marginTop-wrap.dom.offsetHeight);
+      const marginBottom=lineHeight*2;
       wrap.dom.style.marginBlockStart=marginTop.toFixed(2)+'px';
       wrap.dom.style.marginBlockEnd=marginBottom.toFixed(2)+'px';
+      const raw=(marginTop+wrap.dom.offsetHeight+marginBottom)/lineHeight;
+      const lines=Math.max(1,Math.ceil(raw-1e-6));
       wrap.remaining=lines;
       wrap.dom.dataset.wrapLines=String(lines);
       wrap.dom.dataset.wrapStart='0';

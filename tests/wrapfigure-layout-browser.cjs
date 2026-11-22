@@ -130,8 +130,9 @@ const source = (side, lines, overhang) => `\\documentclass{article}\\usepackage{
       if (side === 'r') assert.ok(after.right > data.figure.left, 'The first line after the wrap uses the full width');
       else assert.ok(after.x < data.figure.right, 'The first line after the wrap uses the full width');
       assert.ok(Math.abs(data.figure.marginTop - (data.intextsep + data.lineHeight / 2)) < .6, `Float keeps its top gap: ${data.figure.marginTop} vs ${data.intextsep + data.lineHeight / 2}`);
-      const outerHeight = data.figure.height + data.figure.marginTop + data.figure.marginBottom;
-      assert.ok(Math.abs(outerHeight - data.n * data.lineHeight) < 1, `Float covers a whole number of lines: ${outerHeight} vs ${data.n * data.lineHeight}`);
+      const raw = (data.figure.marginTop + data.figure.height + data.figure.marginBottom) / data.lineHeight;
+      assert.equal(data.n, Math.max(1, Math.ceil(raw - 1e-6)), `Wrap count includes a partially overlapped line: ${raw}`);
+      assert.ok(raw > data.n - 1, 'The float reaches into the last narrowed line');
     }
     assert.deepEqual(errors, []);
     console.log('PASS wrapfigure line count, narrowing and float anchoring');
