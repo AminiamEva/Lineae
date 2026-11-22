@@ -2862,13 +2862,15 @@ A & B \\
     await page.keyboard.type('b');
     assert.match(await display.evaluate(field=>field.value),/\\begin\{gathered\}a\s*\\\\\s*b/);
     await page.keyboard.type('$$');
-    assert.ok(await paper.evaluate(element=>element===document.activeElement));
+    await page.waitForFunction(()=>document.querySelector('.ProseMirror')===document.activeElement);
 
     // Ctrl+E R / C with the caret inside a formula in a table cell belongs to the
     // table: the formula must not be turned into a displaylines matrix.
     await importSource('\\begin{tabular}{ll}\n & \\\\\n & \\\\\n\\end{tabular}');
     await page.waitForFunction(()=>Boolean(document.querySelector('.ProseMirror table')));
+    await page.waitForTimeout(250);
     await paper.locator('td').first().click();
+    await page.waitForFunction(()=>document.activeElement?.classList.contains('ProseMirror'));
     await page.keyboard.type('$');
     await page.waitForFunction(()=>document.activeElement?.tagName==='MATH-FIELD');
     await page.keyboard.type('x');

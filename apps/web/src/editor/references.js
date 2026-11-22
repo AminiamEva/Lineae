@@ -3,6 +3,8 @@ import {createOutlinePanel} from '../ui/outline-panel.js';
 import { Node } from '@tiptap/core';
 import { t } from '../ui/i18n.mjs';
 import { numberedMathRows } from '../../latex/math-environments.mjs';
+import { usesCtex } from '../../latex/packages.mjs';
+import { displayPageNumber } from '../../latex/document-numbering.mjs';
 import {referenceCommand,serializeReference} from '../../latex/reference-commands.mjs';
 import {sourceStructure} from '../../latex/source-structure.mjs';
 import {environmentEnd} from '../../latex/tblr.mjs';
@@ -32,8 +34,6 @@ export function citationTargets(keys,library) {
     return {key,entry,status:entry?'resolved':conflicts?.has(key)?'ambiguous':'missing'};
   });
 }
-import { usesCtex } from '../../latex/packages.mjs';
-import { displayPageNumber } from '../../latex/document-numbering.mjs';
 
 export const outline=headingOutline;
 
@@ -41,7 +41,6 @@ export function collectReferenceLabels(doc) {
   const labels = [];
   const seen = new Map();
   const headings=new Map(outline(doc).map(item=>[item.position,item]));
-
   let equationNumber=0;
   const floats={figure:0,table:0};
   let current={number:null,title:'',kind:'label'};

@@ -104,7 +104,7 @@ export function parseTable(source) {
   if (!specs) return null;
   const columnLayout = parseColumnLayout(columns, specs);
   if (!columnLayout) return null;
-  const match = source.slice(index).match(/^\r?\n([\s\S]*?)\r?\n\\end\{tabular\}$/);
+  const match = source.slice(index).match(/^\r?\n([\s\S]*?)\r?\n[ \t]*\\end\{tabular\}$/);
   if (!match) return null;
   const rows = [],occupied=Array(specs.length).fill(0);
   const trailing = [];

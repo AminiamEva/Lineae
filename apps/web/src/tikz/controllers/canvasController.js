@@ -15,6 +15,7 @@ export class CanvasController {
     this.view = { x: 0, y: 20, k: 1 };    // single source of truth for zoom
     this.zoomPercent = 100;
     this.textwidthCm = 15;
+    this.gridStepCm = 0.5;
     this.onZoomChange = null;             // slider sync callback
     svg.addEventListener('wheel', e => { e.preventDefault(); this.zoom(e.deltaY < 0 ? 1.12 : 1 / 1.12, e); }, { passive: false });
   }
@@ -27,6 +28,7 @@ export class CanvasController {
     return width > 2 ? width / (this.textwidthCm * this.PX_PER_CM) : 1;
   }
   setTextwidthCm(v) { this.textwidthCm = v || 15; this.setZoomPercent(this.zoomPercent); }
+  setGridStepCm(v) { this.gridStepCm = Math.max(.05, Number(v) || .5); this.drawGrid(); }
   emitZoom() { this.onZoomChange?.(this.zoomPercent, this.view.k); }
   setZoomPercent(percent) {
     this.zoomPercent = Math.min(400, Math.max(10, Number(percent) || 100));
@@ -71,17 +73,24 @@ export class CanvasController {
   drawGrid() {
     const vb = this.svg.viewBox.baseVal;
     const k = this.view.k;
-    const minor = this.PX_PER_CM / 2, major = this.PX_PER_CM;
-    let s = '';
+    const minor = this.PX_PER_CM * this.gridStepCm;
+    const major = this.PX_PER_CM;
     const x0 = -this.view.x / k, y0 = -this.view.y / k;
     const x1 = x0 + vb.width / k, y1 = y0 + vb.height / k;
-    for (let x = Math.floor(x0 / minor) * minor; x <= x1; x += minor)
-      for (let y = Math.floor(y0 / minor) * minor; y <= y1; y += minor) {
-        const isMajor = Math.abs(x / major - Math.round(x / major)) < 1e-6 && Math.abs(y / major - Math.round(y / major)) < 1e-6;
-        s += `<circle cx="${x}" cy="${y}" r="${(isMajor ? 1.4 : 0.8) / k}" fill="${isMajor ? '#9aa4b5' : '#d4dae4'}"/>`;
-      }
+    let minorPath = '', majorPath = '';
+    const isMajor = value => Math.abs(value / major - Math.round(value / major)) < 1e-6;
+    for (let x = Math.floor(x0 / minor) * minor; x <= x1; x += minor) {
+      const segment = `M${x.toFixed(2)} ${y0.toFixed(2)}V${y1.toFixed(2)}`;
+      if (isMajor(x)) majorPath += segment; else minorPath += segment;
+    }
+    for (let y = Math.floor(y0 / minor) * minor; y <= y1; y += minor) {
+      const segment = `M${x0.toFixed(2)} ${y.toFixed(2)}H${x1.toFixed(2)}`;
+      if (isMajor(y)) majorPath += segment; else minorPath += segment;
+    }
     this.layers.grid.setAttribute('transform', `translate(${this.view.x},${this.view.y}) scale(${k})`);
-    this.layers.grid.innerHTML = s;
+    this.layers.grid.innerHTML =
+      `<path d="${minorPath}" fill="none" stroke="#e4e8ef" stroke-width="${1 / k}"/>` +
+      `<path d="${majorPath}" fill="none" stroke="#cbd2de" stroke-width="${1 / k}"/>`;
   }
 
   setGhost(nodes) { this.layers.ghost.replaceChildren(...nodes); }
