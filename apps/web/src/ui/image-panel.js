@@ -118,6 +118,11 @@ export function installImagePanel({onUpdate, onReplace, onSpacing, getSpacing, o
   const wrapEnabledField=document.createElement('label');wrapEnabledField.className='image-check';
   const wrapEnabled=document.createElement('input');wrapEnabled.type='checkbox';
   const wrapEnabledCaption=document.createElement('span');labelText(wrapEnabledCaption,'文字环绕','Wrap text');wrapEnabledField.append(wrapEnabled,wrapEnabledCaption);
+  const wrapCenteringField=document.createElement('label');wrapCenteringField.className='image-check';
+  const wrapCentering=document.createElement('input');wrapCentering.type='checkbox';
+  wrapCentering.setAttribute('aria-label',t('环绕内居中','Center in wrap'));
+  const wrapCenteringCaption=document.createElement('span');labelText(wrapCenteringCaption,'环绕内居中 \\centering','Center in wrap \\centering');
+  wrapCenteringField.append(wrapCentering,wrapCenteringCaption);
   const wrapSideField=document.createElement('label');wrapSideField.className='image-field';
   const wrapSideCaption=document.createElement('span');labelText(wrapSideCaption,'环绕方向','Wrap side');
   const wrapSide=document.createElement('select');wrapSide.setAttribute('aria-label',t('环绕方向','Wrap side'));
@@ -135,7 +140,7 @@ export function installImagePanel({onUpdate, onReplace, onSpacing, getSpacing, o
   const wrapLinesCaption=document.createElement('span');labelText(wrapLinesCaption,'行数','Lines');
   const wrapLines=document.createElement('input');wrapLines.type='number';wrapLines.min='1';wrapLines.max='80';wrapLines.setAttribute('aria-label',t('环绕行数','Wrapped lines'));
   wrapLinesField.append(wrapLinesCaption,wrapLines);
-  layoutGrid.append(figureField,placementField,alignField,captionEnabledField,captionNumberedField,captionPositionField,labelField,wrapEnabledField,wrapSideField,wrapWidthField,wrapOverhangField,wrapLinesField);
+  layoutGrid.append(figureField,placementField,alignField,captionEnabledField,captionNumberedField,captionPositionField,labelField,wrapEnabledField,wrapCenteringField,wrapSideField,wrapWidthField,wrapOverhangField,wrapLinesField);
   layout.append(layoutTitle,layoutGrid);
 
   const appearance=document.createElement('section');appearance.className='image-group';
@@ -313,6 +318,8 @@ export function installImagePanel({onUpdate, onReplace, onSpacing, getSpacing, o
     captionPosition.value=next.captionPosition??'below';
     label.value=next.label??'';
     wrapEnabled.checked=Boolean(next.wrap);
+    wrapCentering.checked=Boolean(next.centered||next.align==='center');
+    wrapCentering.disabled=!next.wrap;
     wrapSide.value=next.wrapSide??'r';
     wrapWidth.value=next.wrapWidth??'0.4\\textwidth';
     wrapOverhang.value=next.wrapOverhang??'';
@@ -357,7 +364,11 @@ export function installImagePanel({onUpdate, onReplace, onSpacing, getSpacing, o
   align.addEventListener('change',()=>update({align:align.value||null,centered:align.value==='center'}));
   captionPosition.addEventListener('change',()=>update({captionPosition:captionPosition.value}));
   label.addEventListener('input',()=>update({label:label.value||null}));
-  wrapEnabled.addEventListener('change',()=>update({wrap:wrapEnabled.checked,figure:wrapEnabled.checked?false:undefined}));
+  wrapEnabled.addEventListener('change',()=>{
+    wrapCentering.disabled=!wrapEnabled.checked;
+    update({wrap:wrapEnabled.checked,figure:wrapEnabled.checked?false:undefined});
+  });
+  wrapCentering.addEventListener('change',()=>update({centered:wrapCentering.checked,align:wrapCentering.checked?'center':null}));
   wrapSide.addEventListener('change',()=>update({wrapSide:wrapSide.value}));
   wrapWidth.addEventListener('change',()=>{if(wrapWidth.value.trim())update({wrapWidth:wrapWidth.value.trim()});});
   wrapOverhang.addEventListener('change',()=>update({wrapOverhang:wrapOverhang.value.trim()||null}));

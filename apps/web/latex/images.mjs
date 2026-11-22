@@ -198,8 +198,9 @@ export function parseImageBlock(source) {
     const captionMatch = /\\caption(\*)?\{([^{}\r\n]*)\}/.exec(inner);
     const captionIndex = inner.search(/\\caption\*?\{/);
     const imageIndex = inner.indexOf(imageMatch[0]);
+    const alignment = /\\centering\b/.test(inner) ? 'center' : /\\raggedleft\b/.test(inner) ? 'right' : /\\raggedright\b/.test(inner) ? 'left' : null;
     return {...image,attrs:{...image.attrs,wrap:true,wrapSide:wrap[2],wrapWidth:wrap[4]||'0.4\\textwidth',
-      wrapOverhang:wrap[3]||null,wrapLines:wrap[1]||null,figure:false,caption:captionMatch?.[2]??null,
+      wrapOverhang:wrap[3]||null,wrapLines:wrap[1]||null,figure:false,centered:alignment==='center',align:alignment,caption:captionMatch?.[2]??null,
       captionEnabled:Boolean(captionMatch),captionNumbered:captionMatch? !captionMatch[1]:true,
       captionPosition:captionIndex>=0&&captionIndex<imageIndex?'above':'below',
       label:/\\label\{([^{}\r\n]+)\}/.exec(inner)?.[1]??null}};
@@ -343,23 +344,24 @@ export function serializeImage(attrs) {
   const graphic = serializeGraphic(attrs);
   const caption = captionLine(attrs);
   const label = attrs.label ? '\\label{' + attrs.label + '}\n' : '';
+  const alignment = attrs.align ?? (attrs.centered ? 'center' : null);
+  const centering = alignment === 'center' ? '\\centering\n' : alignment === 'right' ? '\\raggedleft\n' :
+    alignment === 'left' ? '\\raggedright\n' : '';
   if (attrs.wrap) {
     const lines = attrs.wrapLines ? '[' + attrs.wrapLines + ']' : '';
     const overhang = attrs.wrapOverhang ? '[' + attrs.wrapOverhang + ']' : '';
     const body = attrs.captionPosition === 'above' ? caption + graphic : graphic + '\n' + caption;
     return '\\begin{wrapfigure}' + lines + '{' + (attrs.wrapSide ?? 'r') + '}' + overhang
       + '{' + (attrs.wrapWidth ?? '0.4\\textwidth') + '}\n'
-      + body + (body.endsWith('\n') ? '' : '\n') + label + '\\end{wrapfigure}\n\n';
+      + centering + body + (body.endsWith('\n') ? '' : '\n') + label + '\\end{wrapfigure}\n\n';
   }
   if (!attrs.figure) return graphic + '\n\n';
-  const alignment = attrs.align ?? (attrs.centered ? 'center' : null);
-  const centering = alignment === 'center' ? '\\centering\n' : alignment === 'right' ? '\\raggedleft\n' :
-    alignment === 'left' ? '\\raggedright\n' : '';
   const body = attrs.captionPosition === 'above' ? caption + graphic : graphic + '\n' + caption;
   const placement = attrs.fixed ? 'H' : attrs.placement;
   return '\\begin{figure}' + (placement ? '[' + placement + ']' : '') + '\n'
     + centering + body + (body.endsWith('\n') ? '' : '\n') + label + '\\end{figure}\n\n';
 }
+
 
 export const IMAGE_SPACING_DEFAULTS = Object.freeze({
   textfloatsep: '20pt plus 2pt minus 4pt',

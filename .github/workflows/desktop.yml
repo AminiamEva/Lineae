@@ -72,6 +72,8 @@ jobs:
         run: node tests/wrapfigure-layout-browser.cjs
       - name: Table row/column insert keeps scroll
         run: node tests/table-scroll-browser.cjs
+      - name: Image crop, sizing and wrap centering
+        run: node tests/image-toolbar-browser.cjs
       - name: Project separators and shared paper
         run: node tests/project-separator-browser.cjs
       - name: Project source boundaries and marker layout
