@@ -47,7 +47,7 @@ import { applyCitationRenames } from '../bib/index.mjs';
 import { chooseReference } from './editor/reference-index.js';
 import { installTableHoverAddRow } from './editor/table-hover.js';
 import { createConfigStore } from './editor/config.mjs';
-import { compileKeybindings, installKeybindings } from './editor/keybindings.mjs';
+import { compileKeybindings, installKeybindings, usesAppleShortcuts } from './editor/keybindings.mjs';
 import defaultConfigYaml from '../config.yaml';
 import { askText } from './editor/dialog.js';
 import { installDocumentFind } from './editor/find.js';
@@ -256,8 +256,7 @@ const DescriptionItem = Node.create({
 function browserStorage() {
   try { return window.localStorage; } catch { return null; }
 }
-const isMac = window.__LINEAE_MACOS_DESKTOP__ === true ||
-  /Mac|iPhone|iPad|iPod/i.test(navigator.platform || navigator.userAgentData?.platform || navigator.userAgent);
+const isMac = window.__LINEAE_MACOS_DESKTOP__ === true || usesAppleShortcuts(navigator);
 const config = createConfigStore(defaultConfigYaml, {
   storage: browserStorage(),
   isMac,

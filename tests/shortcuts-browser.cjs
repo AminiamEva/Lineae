@@ -20,7 +20,10 @@ const server=createServer(async(req,res)=>{
     for(const mac of [false,true]){
       const context=await browser.newContext({locale:'en-US',viewport:{width:1440,height:1100},
         permissions:['clipboard-read','clipboard-write']});
-      await context.addInitScript(isMac=>Object.defineProperty(navigator,'platform',{get:()=>isMac?'MacIntel':'Win32'}),mac);
+      await context.addInitScript(isMac=>{
+        Object.defineProperty(navigator,'platform',{get:()=>isMac?'Unknown':'Win32'});
+        if(isMac)Object.defineProperty(navigator,'userAgent',{get:()=>'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)'});
+      },mac);
       const page=await context.newPage(),errors=[];
       page.on('pageerror',error=>errors.push(error.message));
       await page.goto('http://127.0.0.1:'+server.address().port);
@@ -58,6 +61,11 @@ const server=createServer(async(req,res)=>{
       if(mac)await page.keyboard.press('Control+e');
       await page.keyboard.press(mac?'Shift+f':mod+'+f');
       await paper.locator('.math-display math-field').waitFor();
+      if(mac){
+        await load('Alpha');await paper.click();await page.keyboard.press('End');
+        await page.keyboard.press('Meta+Alt+f');
+        await paper.locator('.math-display math-field').waitFor();
+      }
       await load('Alpha');await paper.click();await page.keyboard.press('End');
       await page.keyboard.press(mod+'+Shift+f');
       await paper.locator('.math-inline math-field').waitFor();
