@@ -256,7 +256,8 @@ const DescriptionItem = Node.create({
 function browserStorage() {
   try { return window.localStorage; } catch { return null; }
 }
-const isMac = /Mac|iPhone|iPad|iPod/i.test(navigator.platform || navigator.userAgentData?.platform || navigator.userAgent);
+const isMac = window.__LINEAE_MACOS_DESKTOP__ === true ||
+  /Mac|iPhone|iPad|iPod/i.test(navigator.platform || navigator.userAgentData?.platform || navigator.userAgent);
 const config = createConfigStore(defaultConfigYaml, {
   storage: browserStorage(),
   isMac,
