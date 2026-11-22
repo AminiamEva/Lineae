@@ -81,6 +81,7 @@ const source = (side, lines, overhang) => `\\documentclass{article}\\usepackage{
         const overhangPx = overhangMatch ? Number(overhangMatch[1]) * { pt: 4 / 3, in: 96, cm: 96 / 2.54, mm: 96 / 25.4 }[overhangMatch[2]] : 0;
         return {
           n: Number(figure.dataset.wrapLines),
+          start: Number(figure.dataset.wrapStart || 0),
           side: figure.dataset.wrapSide,
           lineHeight,
           intextsep: intextsepPx,
@@ -98,10 +99,15 @@ const source = (side, lines, overhang) => `\\documentclass{article}\\usepackage{
           lines: [...lines.values()].filter(line => line.text.trim()).map(line => ({ text: line.text.trim(), x: line.x, right: line.right, y: line.y })),
         };
       }, side);
-      console.log('WRAP ' + label + ' ' + JSON.stringify({ n: data.n, lineHeight: data.lineHeight, lines: data.lines.length, figure: data.figure, overhang: data.overhang }));
+      console.log('WRAP ' + label + ' ' + JSON.stringify({ n: data.n, start: data.start, lineHeight: data.lineHeight, lines: data.lines.length, figure: data.figure, overhang: data.overhang }));
       assert.ok(data.n >= 1, 'The kernel publishes the wrap line count');
-      assert.ok(data.lines.length > data.n, 'The paragraph has lines after the wrap');
-      for (let index = 0; index < data.n; index++) {
+      assert.ok(data.lines.length > data.start + data.n, 'The paragraph has lines after the wrap');
+      if (data.start) {
+        const before = data.lines[data.start - 1];
+        if (side === 'r') assert.ok(before.right > data.figure.left, 'The line above the float uses the full width');
+        else assert.ok(before.x < data.figure.right, 'The line above the float uses the full width');
+      }
+      for (let index = data.start; index < data.start + data.n; index++) {
         const line = data.lines[index];
         if (side === 'r') {
           const target = data.figure.left - data.figure.columnsep + data.overhang;
@@ -114,17 +120,18 @@ const source = (side, lines, overhang) => `\\documentclass{article}\\usepackage{
       if (data.overhang) {
         if (side === 'r') {
           const limit = data.figure.left - data.figure.columnsep + data.overhang - 3;
-          assert.ok(data.lines.slice(0, data.n).some(line => line.right >= limit), `${label} overhang widens the text area`);
+          assert.ok(data.lines.slice(data.start, data.start + data.n).some(line => line.right >= limit), `${label} overhang widens the text area`);
         } else {
           const limit = data.figure.right + data.figure.columnsep - data.overhang + 3;
-          assert.ok(data.lines.slice(0, data.n).some(line => line.x <= limit), `${label} overhang widens the text area`);
+          assert.ok(data.lines.slice(data.start, data.start + data.n).some(line => line.x <= limit), `${label} overhang widens the text area`);
         }
       }
-      const after = data.lines[data.n];
+      const after = data.lines[data.start + data.n];
       if (side === 'r') assert.ok(after.right > data.figure.left, 'The first line after the wrap uses the full width');
       else assert.ok(after.x < data.figure.right, 'The first line after the wrap uses the full width');
       assert.ok(Math.abs(data.figure.marginTop - (data.intextsep + data.lineHeight / 2)) < .6, `Float keeps its top gap: ${data.figure.marginTop} vs ${data.intextsep + data.lineHeight / 2}`);
-      assert.ok(Math.abs(data.figure.marginBottom - data.lineHeight * 2) < .6, `Float keeps the previous bottom gap: ${data.figure.marginBottom} vs ${data.lineHeight * 2}`);
+      const outerHeight = data.figure.height + data.figure.marginTop + data.figure.marginBottom;
+      assert.ok(Math.abs(outerHeight - data.n * data.lineHeight) < 1, `Float covers a whole number of lines: ${outerHeight} vs ${data.n * data.lineHeight}`);
     }
     assert.deepEqual(errors, []);
     console.log('PASS wrapfigure line count, narrowing and float anchoring');

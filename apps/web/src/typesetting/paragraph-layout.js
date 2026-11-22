@@ -128,14 +128,17 @@ export function installParagraphLayout(editor){
     const pending=[];
     function anchorWrap(wrap,lineHeight){
       // Keep the float's natural box (with the previous in-text spacing) and
-      // derive its line count from that box. Stretching the box to a TeX
-      // formula count leaves a large blank area under the caption.
+      // shorten its bottom margin so it spans a whole number of lines. A
+      // fractional band is rendered by the browser as one extra wrapped line.
       const marginTop=intextsep+lineHeight*.5;
-      const marginBottom=lineHeight*2;
+      const desiredBottom=lineHeight*2;
+      const lines=Math.max(1,Math.floor((marginTop+wrap.dom.offsetHeight+desiredBottom)/lineHeight));
+      const marginBottom=Math.max(0,lines*lineHeight-marginTop-wrap.dom.offsetHeight);
       wrap.dom.style.marginBlockStart=marginTop.toFixed(2)+'px';
       wrap.dom.style.marginBlockEnd=marginBottom.toFixed(2)+'px';
-      wrap.remaining=Math.max(1,Math.ceil((wrap.dom.offsetHeight+marginTop+marginBottom)/lineHeight));
-      wrap.dom.dataset.wrapLines=String(wrap.remaining);
+      wrap.remaining=lines;
+      wrap.dom.dataset.wrapLines=String(lines);
+      wrap.dom.dataset.wrapStart='0';
       wrap.marginTop=marginTop;wrap.marginBottom=marginBottom;
     }
     editor.state.doc.descendants((node,start)=>{
@@ -167,7 +170,7 @@ export function installParagraphLayout(editor){
         const columnsep=parseFloat(/^[lL]$/.test(side)?imageStyle.marginInlineEnd:imageStyle.marginInlineStart)||0;
         const overhang=cssLengthPx(wrap.attrs.wrapOverhang);
         const width=wrapWidthPx(wrap.attrs.wrapWidth,baseWidth)||image.getBoundingClientRect().width/zoom;
-        return {rect:{top:elementTop,bottom:elementTop+wrap.remaining*lineHeight,width},width,side,columnsep,overhang,forceLineZero:true,remaining:wrap.remaining,marginTop:wrap.marginTop??0,marginBottom:wrap.marginBottom??0};
+        return {rect:{top:elementTop,bottom:elementTop+wrap.remaining*lineHeight,width},width,side,columnsep,overhang,remaining:wrap.remaining,marginTop:wrap.marginTop??0,marginBottom:wrap.marginBottom??0};
       });
       const consume=lines=>{
         for(const wrap of active)wrap.remaining=Math.max(0,wrap.remaining-lines);
