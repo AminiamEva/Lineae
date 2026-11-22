@@ -90,9 +90,9 @@ jobs:
         uses: tauri-apps/tauri-action@action-v1.0.0
         env:
           RUSTFLAGS: --remap-path-prefix=${{ github.workspace }}=.
+          TAURI_BUNDLER_DMG_IGNORE_CI: 'false'
         with:
           projectPath: apps/desktop
-          tauriScript: npm run tauri --
           args: --target aarch64-apple-darwin --bundles app,dmg -- --locked
       - name: Verify and package release assets
         env:
