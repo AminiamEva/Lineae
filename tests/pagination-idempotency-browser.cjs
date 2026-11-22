@@ -88,10 +88,16 @@ const child = `\\section{Child section}\n\n${paragraphs.slice(0, 900)}\n`;
     assert.equal(afterSecondSwitch.pageCount, baseline.pageCount, 'Repeated split round-trips stay stable');
     assert.deepEqual(afterSecondSwitch.regions, baseline.regions);
 
+    await page.evaluate(() => { window.__layoutCount = 0; window.addEventListener('lineae-layout', () => window.__layoutCount += 1); });
     await page.locator('.document-status input[type=range]').evaluate(node => { node.value = 150; node.dispatchEvent(new Event('input', { bubbles: true })); });
-    await page.waitForTimeout(400);
+    const at150 = await stable();
+    assert.equal(await page.evaluate(() => window.__layoutCount), 0, 'Zooming does not schedule pagination');
+    assert.equal(at150.pageCount, baseline.pageCount, 'Zoom 150 keeps the page count');
+    assert.deepEqual(at150.regions, baseline.regions, 'Zoom 150 keeps file boundaries');
+    await page.evaluate(() => { window.__layoutCount = 0; });
     await page.locator('.document-status input[type=range]').evaluate(node => { node.value = 100; node.dispatchEvent(new Event('input', { bubbles: true })); });
     const afterZoom = await stable();
+    assert.equal(await page.evaluate(() => window.__layoutCount), 0, 'Returning to 100% does not schedule pagination');
     assert.equal(afterZoom.pageCount, baseline.pageCount, 'Returning to 100% zoom restores the same pagination');
     assert.deepEqual(afterZoom.regions, baseline.regions);
 

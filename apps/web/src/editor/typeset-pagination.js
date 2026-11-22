@@ -551,13 +551,21 @@ export function installTypesetPagination(page, paper, meta, editor) {
 
   const measured = new WeakMap();
   function onResize(entries) {
-    for (const {target,contentRect:{width,height}} of entries) {
+    // CSS zoom changes reported sizes without changing the logical layout.
+    // Compare rendered sizes normalized by the page zoom so zooming the page
+    // does not schedule redundant pagination.
+    const zoom=page.offsetWidth?page.getBoundingClientRect().width/page.offsetWidth:1;
+    const scale=zoom||1;
+    for (const {target} of entries) {
       // A hidden preview reports zero dimensions. Retain its last visible
       // dimensions so showing the same page does not invalidate pagination.
       if (!target.getClientRects().length) continue;
+      const rect=target.getBoundingClientRect();
+      const next={width:rect.width/scale,height:rect.height/scale};
       const previous=measured.get(target);
-      measured.set(target,{width,height});
-      if (deferredLayout || previous?.width !== width || previous?.height !== height) schedule();
+      measured.set(target,next);
+      const changed=!previous||Math.abs(previous.width-next.width)>.5||Math.abs(previous.height-next.height)>.5;
+      if (deferredLayout || changed) schedule();
     }
   }
   const resize = new ResizeObserver(onResize);
