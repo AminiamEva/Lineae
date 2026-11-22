@@ -1,3 +1,4 @@
+import {documentNumbers} from '../../latex/document-numbering.mjs';
 import {headingOutline} from '../../latex/heading-numbering.mjs';
 import {createOutlinePanel} from '../ui/outline-panel.js';
 import { Node } from '@tiptap/core';
@@ -37,44 +38,7 @@ import { displayPageNumber } from '../../latex/document-numbering.mjs';
 
 export const outline=headingOutline;
 
-export function collectReferenceLabels(doc) {
-  const labels = [];
-  const seen = new Map();
-  const headings=new Map(outline(doc).map(item=>[item.position,item]));
-
-  let equationNumber=0;
-  const floats={figure:0,table:0};
-  let current={number:null,title:'',kind:'label'};
-  function add(key,details) {
-    if(!key)return;
-    if(seen.has(key)){Object.assign(seen.get(key),{ambiguous:true,number:null,position:null});return;}
-    const label={key,...details};seen.set(key,label);labels.push(label);
-  }
-  doc.descendants((node,position) => {
-    if(node.type.name==='heading') {
-      const heading=headings.get(position);
-      current={number:heading?.number||null,title:heading?.text??node.textContent,kind:'heading',position};
-      add(node.attrs.label,current);
-    }
-    if (node.type.name==='mathBlock') {
-      for (const row of numberedMathRows(node.attrs)) {
-        if (row.unnumbered) continue;
-        const number = row.tag ?? String(++equationNumber);
-        current={number,title:node.attrs.latex,kind:'equation',position};
-        add(row.label ?? (row.index === (node.attrs.labelRow ?? 0) ? node.attrs.label : null),current);
-      }
-    }
-    if(node.type.name==='documentImage' || node.type.name==='table') {
-      const kind=node.type.name==='table'?'table':'figure';
-      const captioned=hasNumberedCaption(node.attrs);
-      current={kind,position,number:captioned?String(++floats[kind]):null,title:node.attrs.caption??node.attrs.path??''};
-      add(node.attrs.label,current);
-    }
-    if(node.type.name==='raw')current={kind:'label',number:null,title:'',position:null};
-    if (node.type.name==='label') add(node.attrs.key,current.kind==='label'?{...current,position}:current);
-  });
-  return labels;
-}
+export function collectReferenceLabels(doc) {return documentNumbers(doc).labels;}
 
 function navigateTo(editor,target) {
   if(!Number.isInteger(target?.position))return false;
@@ -356,7 +320,19 @@ export const TableOfContents = Node.create({
   },
 });
 
-export function refreshReferences(root) {
+export function refreshReferences(root, editor) {
+  if(editor){
+    const numbering=documentNumbers(editor.state.doc);
+    for(const [position,item] of numbering.objects){
+      const dom=editor.view.nodeDOM(position);
+      if(item.kind==='equation'){dom?.refreshNumbers?.();continue;}
+      const label=dom?.querySelector('.document-caption-label,.caption-label');
+      if(label){
+        label.dataset.captionValue=item.number;
+        if(dom.matches('.document-subfigures'))label.textContent=(editor.view.dom.closest('.document-page')?.dataset.captionLanguage==='zh'?'图 ':'Figure ')+item.number+': ';
+      }
+    }
+  }
   root.querySelectorAll('[data-ref-view]').forEach(element => element.refreshRef?.());
   root.querySelectorAll('[data-cite-view]').forEach(element => element.refreshCite?.());
   root.querySelectorAll('[data-toc-view]').forEach(element => element.refreshToc?.());

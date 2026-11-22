@@ -36,7 +36,7 @@ test('derives XeLaTeX article and ctex typography profiles', () => {
     lineHeight: '14.4458pt',
     paragraphIndent: '17.9328pt',
     pageStyle: 'headings',
-    fonts,
+    fonts: {...fonts,cjk:'FandolSong'},
   });
 });
 

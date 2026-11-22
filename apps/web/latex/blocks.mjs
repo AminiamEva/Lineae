@@ -1,3 +1,4 @@
+import {counterDeclarationAt} from './counter-declarations.mjs';
 import {importedCellAttributes} from './table-spans.mjs';
 import { parseInline, textCommands } from './inline.mjs';
 import { parseTable } from './tables.mjs';
@@ -291,6 +292,8 @@ export function importBlock(block, options={}) {
   if (image) return image;
   const title = headingAt(text,0,headingBase);
   if (title && title.end===text.length) return heading(title.name,title.star,title.short,title.title,title.label,title.labelSource) ?? rawNode(block);
+  const declaration=counterDeclarationAt(text,0);
+  if(declaration?.to===text.length)return {type:'counterDirective',attrs:{latex:declaration.latex}};
   if (text === '\\appendix') return {type:'appendixStart'};
   const matter = /^\\(frontmatter|mainmatter|backmatter)$/.exec(text);
   if (matter) return {type:'matterStart',attrs:{matter:matter[1].replace('matter','')||'main'}};
@@ -455,6 +458,8 @@ function importSegment(block,options) {
       continue;
     }
     if (token.kind!=='command') continue;
+    const declaration=counterDeclarationAt(block,token.index);
+    if(declaration){const before=importBlock(block.slice(cursor,token.index),options);if(before)nodes.push(before);nodes.push({type:'counterDirective',attrs:{latex:declaration.latex}});cursor=declaration.to;continue;}
     const toc=token.value==='\\tableofcontents';
     const title=toc ? null : headingAt(block,token.index,headingBase);
     const structural=/^\\(?:appendix|frontmatter|mainmatter|backmatter|newpage|clearpage|pagebreak)$/.test(token.value);

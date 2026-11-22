@@ -1,3 +1,4 @@
+import {documentNumbers} from '../../latex/document-numbering.mjs';
 import {localizedTitle} from '../ui/localized-control.mjs';
 import { Node } from '@tiptap/core';
 import { TextSelection } from '@tiptap/pm/state';
@@ -487,7 +488,7 @@ export const MathNode = Node.create({
       numbers.className = 'math-equation-numbers';
       function renderNumbers() {
         if (!node.isBlock) return;
-        const rows = numberedMathRows(node.attrs);
+        const rows = documentNumbers(editor.state.doc).objects.get(getPos())?.rows??numberedMathRows(node.attrs);
         dom.dataset.numbered = String(rows.some(row => row.tag !== undefined || !row.unnumbered));
         numbers.replaceChildren(...rows.map(row => {
           const number = document.createElement('span');
@@ -496,10 +497,12 @@ export const MathNode = Node.create({
             number.textContent = row.tagStar ? row.tag : '(' + row.tag + ')';
           } else if (!row.unnumbered) {
             number.className = 'math-equation-number';
+            if(row.number!==undefined&&row.number!==null)number.dataset.equationValue=row.number;
           }
           return number;
         }));
       }
+      dom.refreshNumbers=renderNumbers;
       if (node.isBlock) dom.append(numbers);
       renderNumbers();
 

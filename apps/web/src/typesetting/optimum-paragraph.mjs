@@ -3,6 +3,7 @@
 export function optimumParagraph(items,widths,options={}){
   const o={pretolerance:100,tolerance:200,linePenalty:10,hyphenPenalty:50,adjDemerits:10000,doubleHyphenDemerits:10000,finalHyphenDemerits:5000,emergencyStretch:0,...options};
   const width=line=>typeof widths==='function'?widths(line):Array.isArray(widths)?widths[Math.min(line,widths.length-1)]:widths;
+  const nonnegative=items.every(item=>item.type==='penalty'||item.width>=0);
   const sums=Array.from({length:3},()=>[0]);
   for(const item of items){sums[0].push(sums[0].at(-1)+(item.type==='penalty'?0:item.width));sums[1].push(sums[1].at(-1)+(item.stretch??0));sums[2].push(sums[2].at(-1)+(item.shrink??0));}
   const breaks=items.flatMap((item,i)=>(item.type==='glue'&&items[i-1]?.type==='box'||item.type==='penalty'&&(item.cost??0)<10000)?[i]:[]);
@@ -35,6 +36,8 @@ export function optimumParagraph(items,widths,options={}){
       const added=[...best.values()];
       if(last)final=added;
       active=forced?added:active.filter(previous=>{
+        // Negative punctuation pair kerns can restore fit at a later boundary.
+        if(!nonnegative)return true;
         // Nonnegative box/glue widths make this lower bound monotonic.
         // Do not retain paths that cannot fit even after all allowed shrink.
         const start=previous.next;

@@ -1,0 +1,305 @@
+{
+  "engine": "XeLaTeX TeX Live 2023, Latin Modern Roman",
+  "cases": [
+    {
+      "kind": "report",
+      "fontSize": 10,
+      "source": "\\documentclass[10pt]{report}\n\\usepackage[a4paper,margin=22mm]{geometry}\n\\usepackage{fontspec,amsmath}\n\\setmainfont{Latin Modern Roman}\n\\begin{document}\n\\chapter{Main}\\label{main}\n\nMain body.\n\n\\begin{equation}x\\label{e:main}\\end{equation}\n\n\\appendix\n\\chapter{Proofs}\\label{proof}\n\nAppendix body.\n\n\\begin{equation}y\\label{e:proof}\\end{equation}\n\n\\chapter{Data}\\label{data}\n\nData body.\n\\end{document}\n",
+      "chapters": [
+        {
+          "text": "Main",
+          "page": 1,
+          "baseline": 196.858,
+          "x": 62.362,
+          "bbox": [
+            62.362,
+            168.67507,
+            125.618679,
+            204.02147
+          ]
+        },
+        {
+          "text": "Proofs",
+          "page": 2,
+          "baseline": 196.858,
+          "x": 62.362,
+          "bbox": [
+            62.362,
+            168.67507,
+            141.03627,
+            204.02147
+          ]
+        },
+        {
+          "text": "Data",
+          "page": 3,
+          "baseline": 196.858,
+          "x": 62.362,
+          "bbox": [
+            62.362,
+            168.67507,
+            121.70232,
+            204.02147
+          ]
+        }
+      ],
+      "labels": {
+        "main": "1",
+        "e:main": "1.1",
+        "proof": "A",
+        "e:proof": "A.1",
+        "data": "B"
+      }
+    },
+    {
+      "kind": "report",
+      "fontSize": 11,
+      "source": "\\documentclass[11pt]{report}\n\\usepackage[a4paper,margin=22mm]{geometry}\n\\usepackage{fontspec,amsmath}\n\\setmainfont{Latin Modern Roman}\n\\begin{document}\n\\chapter{Main}\\label{main}\n\nMain body.\n\n\\begin{equation}x\\label{e:main}\\end{equation}\n\n\\appendix\n\\chapter{Proofs}\\label{proof}\n\nAppendix body.\n\n\\begin{equation}y\\label{e:proof}\\end{equation}\n\n\\chapter{Data}\\label{data}\n\nData body.\n\\end{document}\n",
+      "chapters": [
+        {
+          "text": "Main",
+          "page": 1,
+          "baseline": 197.854,
+          "x": 62.362,
+          "bbox": [
+            62.362,
+            169.67107,
+            125.618679,
+            205.01747
+          ]
+        },
+        {
+          "text": "Proofs",
+          "page": 2,
+          "baseline": 197.854,
+          "x": 62.362,
+          "bbox": [
+            62.362,
+            169.67107,
+            141.03627,
+            205.01747
+          ]
+        },
+        {
+          "text": "Data",
+          "page": 3,
+          "baseline": 197.854,
+          "x": 62.362,
+          "bbox": [
+            62.362,
+            169.67107,
+            121.70232,
+            205.01747
+          ]
+        }
+      ],
+      "labels": {
+        "main": "1",
+        "e:main": "1.1",
+        "proof": "A",
+        "e:proof": "A.1",
+        "data": "B"
+      }
+    },
+    {
+      "kind": "report",
+      "fontSize": 12,
+      "source": "\\documentclass[12pt]{report}\n\\usepackage[a4paper,margin=22mm]{geometry}\n\\usepackage{fontspec,amsmath}\n\\setmainfont{Latin Modern Roman}\n\\begin{document}\n\\chapter{Main}\\label{main}\n\nMain body.\n\n\\begin{equation}x\\label{e:main}\\end{equation}\n\n\\appendix\n\\chapter{Proofs}\\label{proof}\n\nAppendix body.\n\n\\begin{equation}y\\label{e:proof}\\end{equation}\n\n\\chapter{Data}\\label{data}\n\nData body.\n\\end{document}\n",
+      "chapters": [
+        {
+          "text": "Main",
+          "page": 1,
+          "baseline": 203.832,
+          "x": 62.362,
+          "bbox": [
+            62.362,
+            175.64907,
+            125.618679,
+            210.99547
+          ]
+        },
+        {
+          "text": "Proofs",
+          "page": 2,
+          "baseline": 203.832,
+          "x": 62.362,
+          "bbox": [
+            62.362,
+            175.64907,
+            141.03627,
+            210.99547
+          ]
+        },
+        {
+          "text": "Data",
+          "page": 3,
+          "baseline": 203.832,
+          "x": 62.362,
+          "bbox": [
+            62.362,
+            175.64907,
+            121.70232,
+            210.99547
+          ]
+        }
+      ],
+      "labels": {
+        "main": "1",
+        "e:main": "1.1",
+        "proof": "A",
+        "e:proof": "A.1",
+        "data": "B"
+      }
+    },
+    {
+      "kind": "book",
+      "fontSize": 10,
+      "source": "\\documentclass[10pt]{book}\n\\usepackage[a4paper,margin=22mm]{geometry}\n\\usepackage{fontspec,amsmath}\n\\setmainfont{Latin Modern Roman}\n\\begin{document}\n\\chapter{Main}\\label{main}\n\nMain body.\n\n\\begin{equation}x\\label{e:main}\\end{equation}\n\n\\appendix\n\\chapter{Proofs}\\label{proof}\n\nAppendix body.\n\n\\begin{equation}y\\label{e:proof}\\end{equation}\n\n\\chapter{Data}\\label{data}\n\nData body.\n\\end{document}\n",
+      "chapters": [
+        {
+          "text": "Main",
+          "page": 1,
+          "baseline": 196.858,
+          "x": 62.362,
+          "bbox": [
+            62.362,
+            168.67507,
+            125.618679,
+            204.02147
+          ]
+        },
+        {
+          "text": "Proofs",
+          "page": 3,
+          "baseline": 196.858,
+          "x": 62.362,
+          "bbox": [
+            62.362,
+            168.67507,
+            141.03627,
+            204.02147
+          ]
+        },
+        {
+          "text": "Data",
+          "page": 5,
+          "baseline": 196.858,
+          "x": 62.362,
+          "bbox": [
+            62.362,
+            168.67507,
+            121.70232,
+            204.02147
+          ]
+        }
+      ],
+      "labels": {
+        "main": "1",
+        "e:main": "1.1",
+        "proof": "A",
+        "e:proof": "A.1",
+        "data": "B"
+      }
+    },
+    {
+      "kind": "book",
+      "fontSize": 11,
+      "source": "\\documentclass[11pt]{book}\n\\usepackage[a4paper,margin=22mm]{geometry}\n\\usepackage{fontspec,amsmath}\n\\setmainfont{Latin Modern Roman}\n\\begin{document}\n\\chapter{Main}\\label{main}\n\nMain body.\n\n\\begin{equation}x\\label{e:main}\\end{equation}\n\n\\appendix\n\\chapter{Proofs}\\label{proof}\n\nAppendix body.\n\n\\begin{equation}y\\label{e:proof}\\end{equation}\n\n\\chapter{Data}\\label{data}\n\nData body.\n\\end{document}\n",
+      "chapters": [
+        {
+          "text": "Main",
+          "page": 1,
+          "baseline": 197.854,
+          "x": 62.362,
+          "bbox": [
+            62.362,
+            169.67107,
+            125.618679,
+            205.01747
+          ]
+        },
+        {
+          "text": "Proofs",
+          "page": 3,
+          "baseline": 197.854,
+          "x": 62.362,
+          "bbox": [
+            62.362,
+            169.67107,
+            141.03627,
+            205.01747
+          ]
+        },
+        {
+          "text": "Data",
+          "page": 5,
+          "baseline": 197.854,
+          "x": 62.362,
+          "bbox": [
+            62.362,
+            169.67107,
+            121.70232,
+            205.01747
+          ]
+        }
+      ],
+      "labels": {
+        "main": "1",
+        "e:main": "1.1",
+        "proof": "A",
+        "e:proof": "A.1",
+        "data": "B"
+      }
+    },
+    {
+      "kind": "book",
+      "fontSize": 12,
+      "source": "\\documentclass[12pt]{book}\n\\usepackage[a4paper,margin=22mm]{geometry}\n\\usepackage{fontspec,amsmath}\n\\setmainfont{Latin Modern Roman}\n\\begin{document}\n\\chapter{Main}\\label{main}\n\nMain body.\n\n\\begin{equation}x\\label{e:main}\\end{equation}\n\n\\appendix\n\\chapter{Proofs}\\label{proof}\n\nAppendix body.\n\n\\begin{equation}y\\label{e:proof}\\end{equation}\n\n\\chapter{Data}\\label{data}\n\nData body.\n\\end{document}\n",
+      "chapters": [
+        {
+          "text": "Main",
+          "page": 1,
+          "baseline": 203.832,
+          "x": 62.362,
+          "bbox": [
+            62.362,
+            175.64907,
+            125.618679,
+            210.99547
+          ]
+        },
+        {
+          "text": "Proofs",
+          "page": 3,
+          "baseline": 203.832,
+          "x": 62.362,
+          "bbox": [
+            62.362,
+            175.64907,
+            141.03627,
+            210.99547
+          ]
+        },
+        {
+          "text": "Data",
+          "page": 5,
+          "baseline": 203.832,
+          "x": 62.362,
+          "bbox": [
+            62.362,
+            175.64907,
+            121.70232,
+            210.99547
+          ]
+        }
+      ],
+      "labels": {
+        "main": "1",
+        "e:main": "1.1",
+        "proof": "A",
+        "e:proof": "A.1",
+        "data": "B"
+      }
+    }
+  ]
+}
