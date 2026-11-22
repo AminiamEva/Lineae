@@ -1749,13 +1749,19 @@ A & B \\
     await page.waitForFunction(()=>document.querySelector('.ProseMirror > p')?.textContent==='after');
     await page.keyboard.press('Enter');
     await page.keyboard.type('$$');
-    await page.waitForFunction(()=>document.activeElement?.tagName==='MATH-FIELD' && document.activeElement.closest('.math-display'));
+    await page.waitForFunction(()=>document.activeElement?.tagName==='MATH-FIELD' && document.activeElement.closest('.math-display') &&
+      !document.activeElement._mathfield?.focusBlurInProgress);
     assert.deepEqual(await paper.evaluate(element=>Array.from(element.children).map(child=>child.matches('.math-display')?'math':child.tagName)),['PRE','P','math','P']);
     const integral=page.locator('math-field');
     await page.keyboard.press('Control+i');
     assert.equal(await integral.evaluate(field=>field._mathfield.model.at(field.position)?.command),'\\int',
       'Integral insertion leaves the caret on the operator side of the operand');
-    await page.keyboard.type('_i');
+    await page.keyboard.press('Shift+Minus');
+    await page.waitForFunction(()=>{
+      const field=document.activeElement;
+      return field?._mathfield?.model.at(field.position)?.parentBranch==='subscript';
+    });
+    await page.keyboard.press('i');
     await page.keyboard.press('Control+j');
     await integral.evaluate(field=>field.executeCommand('moveToMathfieldEnd'));
     await page.keyboard.press('Control+i');
@@ -1763,7 +1769,8 @@ A & B \\
       const model=field._mathfield.model;
       for(let i=field.lastOffset;i>0;i--) if(model.at(i)?.command==='\\int'){field.position=i;break;}
     });
-    await page.keyboard.type('_0');
+    await page.keyboard.press('Shift+Minus');
+    await page.keyboard.press('0');
     assert.match(await integral.evaluate(field=>field.value),/\\int_\{?i\}?[\s\S]*\\int_\{?0\}?/);
     assert.ok(!(await integral.evaluate(field=>field.value)).includes('\\space'));
     await importSource('alpha beta gamma');
