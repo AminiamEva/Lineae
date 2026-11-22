@@ -49,13 +49,6 @@ const source = (side, lines, overhang) => `\\documentclass{article}\\usepackage{
         const figure = document.querySelector('figure.document-image[data-wrap="true"]');
         const style = getComputedStyle(p);
         const lineHeight = parseFloat(style.lineHeight);
-        const canvas = document.createElement('canvas');
-        const context = canvas.getContext('2d');
-        context.font = style.font;
-        const metrics = context.measureText('Mg');
-        const ascent = metrics.fontBoundingBoxAscent ?? metrics.actualBoundingBoxAscent ?? parseFloat(style.fontSize) * .8;
-        const descent = metrics.fontBoundingBoxDescent ?? metrics.actualBoundingBoxDescent ?? parseFloat(style.fontSize) * .2;
-        const baseline = (lineHeight - (ascent + descent)) / 2 + ascent;
         const page = document.querySelector('.document-page');
         const intextsepText = getComputedStyle(page).getPropertyValue('--image-intextsep') || '12pt';
         const intextsep = /^([\d.]+)(pt|cm|mm|in)$/.exec(intextsepText.trim());
@@ -90,8 +83,6 @@ const source = (side, lines, overhang) => `\\documentclass{article}\\usepackage{
           n: Number(figure.dataset.wrapLines),
           side: figure.dataset.wrapSide,
           lineHeight,
-          paragraphTop: p.getBoundingClientRect().top,
-          baseline,
           intextsep: intextsepPx,
           overhang: overhangPx,
           figure: {
@@ -132,10 +123,8 @@ const source = (side, lines, overhang) => `\\documentclass{article}\\usepackage{
       const after = data.lines[data.n];
       if (side === 'r') assert.ok(after.right > data.figure.left, 'The first line after the wrap uses the full width');
       else assert.ok(after.x < data.figure.right, 'The first line after the wrap uses the full width');
-      const expectedTop = data.paragraphTop + data.baseline - data.intextsep;
-      assert.ok(Math.abs(data.figure.top - expectedTop) < 1.5, `Float anchors to the first baseline: ${data.figure.top} vs ${expectedTop}`);
-      const outerHeight = data.figure.height + data.figure.marginTop + data.figure.marginBottom;
-      assert.ok(Math.abs(outerHeight - data.n * data.lineHeight) < 2, `Float occupies exactly n lines: ${outerHeight} vs ${data.n * data.lineHeight}`);
+      assert.ok(Math.abs(data.figure.marginTop - (data.intextsep + data.lineHeight / 2)) < .6, `Float keeps its top gap: ${data.figure.marginTop} vs ${data.intextsep + data.lineHeight / 2}`);
+      assert.ok(Math.abs(data.figure.marginBottom - data.lineHeight * 2) < .6, `Float keeps the previous bottom gap: ${data.figure.marginBottom} vs ${data.lineHeight * 2}`);
     }
     assert.deepEqual(errors, []);
     console.log('PASS wrapfigure line count, narrowing and float anchoring');

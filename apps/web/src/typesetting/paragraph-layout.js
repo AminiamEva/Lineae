@@ -126,31 +126,16 @@ export function installParagraphLayout(editor){
     const intextsepText=page?getComputedStyle(page).getPropertyValue('--image-intextsep').trim():'';
     const intextsep=intextsepText?cssLengthPx(intextsepText):cssLengthPx('12pt');
     const pending=[];
-    function baselineOffset(style,lineHeight){
-      const font=style.font||[style.fontStyle,style.fontWeight,style.fontSize,style.fontFamily].join(' ');
-      let ascent,descent;
-      if(context){context.font=font;const metrics=context.measureText('Mg');ascent=metrics.fontBoundingBoxAscent??metrics.actualBoundingBoxAscent;descent=metrics.fontBoundingBoxDescent??metrics.actualBoundingBoxDescent;}
-      ascent??=parseFloat(style.fontSize)*.8;descent??=parseFloat(style.fontSize)*.2;
-      return (lineHeight-(ascent+descent))/2+ascent;
-    }
-    function wrapNumber(wrap,lineHeight){
-      const explicit=Number.parseInt(wrap.attrs.wrapLines,10);
-      if(Number.isFinite(explicit)&&explicit>0)return explicit;
-      const height=wrap.dom.offsetHeight||wrap.dom.getBoundingClientRect().height;
-      return Math.max(1,Math.floor((height+2.6*lineHeight+2*intextsep)/lineHeight));
-    }
-    function anchorWrap(wrap,element,elementTop,lineHeight,zoom){
-      const dom=wrap.dom;
-      const currentMargin=parseFloat(getComputedStyle(dom).marginBlockStart)||0;
-      const translation=elementTranslateY(dom)*zoom;
-      const staticTop=dom.getBoundingClientRect().top-translation-currentMargin*zoom;
-      const baseline=baselineOffset(getComputedStyle(element),lineHeight);
-      const targetTop=elementTop+(baseline-intextsep)*zoom;
-      const marginTop=(targetTop-staticTop)/zoom;
-      const marginBottom=Math.max(0,wrap.remaining*lineHeight-dom.offsetHeight-marginTop);
-      dom.style.marginBlockStart=marginTop.toFixed(2)+'px';
-      dom.style.marginBlockEnd=marginBottom.toFixed(2)+'px';
-      dom.dataset.wrapLines=String(wrap.remaining);
+    function anchorWrap(wrap,lineHeight){
+      // Keep the float's natural box (with the previous in-text spacing) and
+      // derive its line count from that box. Stretching the box to a TeX
+      // formula count leaves a large blank area under the caption.
+      const marginTop=intextsep+lineHeight*.5;
+      const marginBottom=lineHeight*2;
+      wrap.dom.style.marginBlockStart=marginTop.toFixed(2)+'px';
+      wrap.dom.style.marginBlockEnd=marginBottom.toFixed(2)+'px';
+      wrap.remaining=Math.max(1,Math.ceil((wrap.dom.offsetHeight+marginTop+marginBottom)/lineHeight));
+      wrap.dom.dataset.wrapLines=String(wrap.remaining);
       wrap.marginTop=marginTop;wrap.marginBottom=marginBottom;
     }
     editor.state.doc.descendants((node,start)=>{
@@ -173,10 +158,7 @@ export function installParagraphLayout(editor){
       const lineHeight=lineHeightLayout*zoom;
       const active=pending.filter(wrap=>wrap.remaining===null||wrap.remaining>0);
       for(const wrap of active){
-        if(wrap.remaining===null){
-          wrap.remaining=wrapNumber(wrap,lineHeightLayout);
-          anchorWrap(wrap,element,elementTop,lineHeightLayout,zoom);
-        }
+        if(wrap.remaining===null)anchorWrap(wrap,lineHeightLayout);
       }
       // TeX narrows the first n lines after the figure, even across paragraphs.
       const wraps=active.map(wrap=>{
