@@ -56,7 +56,7 @@ const server=createServer(async(req,res)=>{
           await page.bringToFront();
           const strokes={
             'Meta+b':'11 using command down', 'Meta+e':'14 using command down',
-            '2':'19', 'Meta+1':'18 using command down', 'Meta+f':'3 using command down', 'Escape':'53',
+            '2':'19', 'Meta+t':'17 using command down', 'Meta+f':'3 using command down', 'Escape':'53',
             'Meta+Alt+f':'3 using {command down, option down}', 'x':'7',
           };
           press=key=>execFileSync('osascript',['-e','tell application "System Events" to key code '+strokes[key]]);
@@ -81,11 +81,14 @@ const server=createServer(async(req,res)=>{
         await paper.locator('.math-display math-field').waitFor();
         if(nativeEdge){
           await page.evaluate(()=>localStorage.setItem('lineae.config',
-            'version: 2\nkeybindings:\n  global:\n    sourceMode: mod+1\n'));
+            'version: 2\nkeybindings:\n  global:\n    sourceMode: mod+t\n'));
           await page.reload();
           await load('Alpha');
           await paper.click();
-          await press('Meta+1');
+          const newTab=context.waitForEvent('page',{timeout:10000});
+          await press('Meta+t');
+          await (await newTab).close();
+          await page.bringToFront();
           assert.equal(await page.locator('[data-source-mode=body]').getAttribute('aria-pressed'),'true');
           const priority=page.locator('#keyboard-priority');
           await priority.click();
@@ -93,8 +96,9 @@ const server=createServer(async(req,res)=>{
           assert.equal(await page.evaluate(()=>document.fullscreenElement===document.documentElement),true);
           await press('Meta+b');await press('x');
           await paper.locator('strong').filter({hasText:'x'}).waitFor();
-          await press('Meta+1');
+          await press('Meta+t');
           await page.locator('.tex-code .cm-content').waitFor({state:'visible'});
+          assert.equal(context.pages().length,1);
           await priority.click();
           await page.waitForFunction(()=>!document.fullscreenElement);
           assert.equal(await priority.getAttribute('aria-pressed'),'false');
