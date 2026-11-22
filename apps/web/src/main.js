@@ -2494,7 +2494,7 @@ installKeybindings(window, {
     (event.metaKey || (!event.ctrlKey && prefix?.split('+').slice(0,-1).includes('meta')))
     ? config.commandBindings : config.bindings,
   nativeBindings,
-  getContext(event) {
+  getContext(event,prefix) {
     if (event.target.closest?.('.tex-code .cm-content'))
       return {element:sourceView.editorView?.contentDOM,source:true,scopes:['source','system','global']};
     if (event.target.closest?.('.tex-code'))return {element:event.target,scopes:['global'],only:'save'};
@@ -2509,15 +2509,22 @@ installKeybindings(window, {
     // is still the visible editing surface. Keep its shortcuts available.
     if (!sourceView.hidden && document.activeElement === document.body)
       return { element:sourceView.editorView?.contentDOM ?? document.body, source:true, scopes:['source','system','global'] };
-    if (!editor.view.hasFocus()) return { element:document.activeElement, scopes:['global'] };
+    // Clicking the blank page or closing a transient control can leave the
+    // selection in ProseMirror while the next keydown targets the body.
+    const pageCommand = isWeb && (event.metaKey || prefix?.includes('meta+')) && sourceView.hidden &&
+      event.target === document.body && document.activeElement === document.body &&
+      editor.isEditable && editor.view.dom.checkVisibility() &&
+      !Array.from(document.querySelectorAll('dialog[open], [aria-modal="true"]')).some(panel => panel.checkVisibility());
+    if (!pageCommand && !editor.view.hasFocus()) return { element:document.activeElement, scopes:['global'] };
     if (editor.view.composing) return { element:editor.view.dom, scopes:[] };
     editor.view.domObserver.flush();
     const scopes = ['editor','system','global'];
     if (editor.isActive('paragraph')) scopes.unshift('paragraph');
     if (editor.isActive('table')) scopes.unshift('table');
-    return { element:editor.view.dom, scopes };
+    return { element:editor.view.dom, scopes, pageCommand };
   },
   run({scope,command},context,event) {
+    if (context.pageCommand && scope !== 'global') editor.view.focus();
     if (scope === 'math') return runMathShortcut(command,context.field,event);
     if (scope === 'source') return sourceView.runShortcut(command);
     if (scope === 'system') {

@@ -122,7 +122,7 @@ export function installKeybindings(target, { getBindings, getContext, run, nativ
     if (event.repeat && physicalKey === consumedKey) { consume(event); return; }
     const prefix = pending && performance.now() < pending.expires ? pending.first : null;
     const bindings = getBindings(event,prefix);
-    const context = getContext(event);
+    const context = getContext(event, prefix);
     const stroke = eventStroke(event);
     const candidates = context.scopes.flatMap(scope => bindings.scopes.get(scope) ?? [])
       .filter(entry => !context.only || entry.command === context.only);

@@ -1,5 +1,6 @@
 const assert=require('node:assert/strict');
 const {chromium}=require('playwright');
+const {execFileSync}=require('node:child_process');
 const {createServer}=require('node:http');
 const {readFile}=require('node:fs/promises');
 const {resolve,extname,sep}=require('node:path');
@@ -45,24 +46,37 @@ const server=createServer(async(req,res)=>{
           await page.locator('[data-source-mode=body]').click();
       };
       if(platform==='masked' || nativeEdge){
+        let press=key=>page.keyboard.press(key);
         if(nativeEdge){
           const identity=await page.evaluate(()=>({platform:navigator.platform,agent:navigator.userAgent}));
           assert.match(identity.platform,/Mac/);
           assert.match(identity.agent,/Edg\//);
           console.log('Native macOS Edge:',identity.agent);
+          execFileSync('osascript',['-e','tell application "Microsoft Edge" to activate']);
+          await page.bringToFront();
+          const strokes={
+            'Meta+b':'11 using command down', 'Meta+e':'14 using command down',
+            '2':'19', 'Meta+f':'3 using command down', 'Escape':'53',
+            'Meta+Alt+f':'3 using {command down, option down}', 'x':'7',
+          };
+          press=key=>execFileSync('osascript',['-e','tell application "System Events" to key code '+strokes[key]]);
         }
         await load('Alpha');
         await paper.click();await page.keyboard.press('End');
-        await page.keyboard.press('Meta+b');await page.keyboard.type('x');
+        await page.evaluate(()=>document.activeElement.blur());
+        assert.equal(await page.evaluate(()=>document.activeElement===document.body),true);
+        await press('Meta+b');
+        await page.waitForFunction(()=>document.activeElement?.classList.contains('ProseMirror'));
+        await press('x');
         await paper.locator('strong').filter({hasText:'x'}).waitFor();
-        await chord('2');
+        await press('Meta+e');await press('2');
         await page.locator('.tex-code .cm-content').waitFor({state:'visible'});
-        await page.keyboard.press('Meta+f');
+        await press('Meta+f');
         await page.locator('.cm-search').waitFor({state:'visible'});
-        await page.keyboard.press('Escape');
+        await press('Escape');
         await load('Alpha');
         await paper.click();await page.keyboard.press('End');
-        await page.keyboard.press('Meta+Alt+f');
+        await press('Meta+Alt+f');
         await paper.locator('.math-display math-field').waitFor();
         assert.deepEqual(errors,[]);
         console.log('Command bold, mode switch, source search and numbered equation passed');
