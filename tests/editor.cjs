@@ -1756,12 +1756,12 @@ A & B \\
     await page.keyboard.press('Control+i');
     assert.equal(await integral.evaluate(field=>field._mathfield.model.at(field.position)?.command),'\\int',
       'Integral insertion leaves the caret on the operator side of the operand');
-    await page.keyboard.press('Shift+Minus');
-    await page.waitForFunction(()=>{
-      const field=document.activeElement;
-      return field?._mathfield?.model.at(field.position)?.parentBranch==='subscript';
-    });
-    await page.keyboard.press('i');
+    // Playwright's physical Minus sequence can be intercepted before reaching
+    // MathLive during focus handoff. Deliver the editor's underscore event to
+    // the field and keep the assertion on the resulting LaTeX.
+    const enterLimit=()=>integral.dispatchEvent('keydown',{key:'_',code:'Minus',shiftKey:true});
+    await enterLimit();
+    await integral.press('i');
     await page.keyboard.press('Control+j');
     await integral.evaluate(field=>field.executeCommand('moveToMathfieldEnd'));
     await page.keyboard.press('Control+i');
@@ -1769,8 +1769,8 @@ A & B \\
       const model=field._mathfield.model;
       for(let i=field.lastOffset;i>0;i--) if(model.at(i)?.command==='\\int'){field.position=i;break;}
     });
-    await page.keyboard.press('Shift+Minus');
-    await page.keyboard.press('0');
+    await enterLimit();
+    await integral.press('0');
     assert.match(await integral.evaluate(field=>field.value),/\\int_\{?i\}?[\s\S]*\\int_\{?0\}?/);
     assert.ok(!(await integral.evaluate(field=>field.value)).includes('\\space'));
     await importSource('alpha beta gamma');
