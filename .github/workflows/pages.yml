@@ -49,6 +49,20 @@ jobs:
         with:
           name: github-pages-${{ github.run_attempt }}
           path: apps/web
+      - name: Wait for the Pages artifact to become visible
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ARTIFACT_NAME: github-pages-${{ github.run_attempt }}
+        run: |
+          for attempt in {1..15}; do
+            if gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/artifacts" \
+              -X GET -f name="$ARTIFACT_NAME" --jq '.artifacts | any(.expired == false)' | grep -qx true; then
+              exit 0
+            fi
+            sleep 4
+          done
+          echo "::error::GitHub did not list the uploaded Pages artifact."
+          exit 1
       - id: deployment
         uses: actions/deploy-pages@v5.0.1
         with:
