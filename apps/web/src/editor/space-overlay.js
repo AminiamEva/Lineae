@@ -276,7 +276,7 @@ export function installSpaceOverlay(editor, paper, { selectionFocus = null } = {
     // before the newly inserted text. Measure the text without changing the
     // Selection, which would interrupt the IME session.
     let text = formula.nextSibling;
-    while (text?.nodeName === 'IMG' && text.classList.contains('ProseMirror-separator')) {
+    while (text?.nodeType === Node.ELEMENT_NODE && (text.classList.contains('ProseMirror-widget') || (text.nodeName === 'IMG' && text.classList.contains('ProseMirror-separator')))) {
       text = text.nextSibling;
     }
     while (text?.nodeType === Node.ELEMENT_NODE && text.contentEditable !== 'false') {
