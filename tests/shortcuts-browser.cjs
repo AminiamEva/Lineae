@@ -65,6 +65,10 @@ const server=createServer(async(req,res)=>{
         await load('Alpha');await paper.click();await page.keyboard.press('End');
         await page.keyboard.press('Meta+Alt+f');
         await paper.locator('.math-display math-field').waitFor();
+        await load('Alpha');await paper.click();await page.keyboard.press('End');
+        await page.keyboard.press('Control+e');await page.keyboard.press('Shift+b');
+        await page.keyboard.press('x');
+        await paper.locator('strong').filter({hasText:'x'}).waitFor();
       }
       await load('Alpha');await paper.click();await page.keyboard.press('End');
       await page.keyboard.press(mod+'+Shift+f');

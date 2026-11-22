@@ -110,6 +110,7 @@ Mac 网页端可先按 Control+E，再按下表中的第二键。原有的 Comma
 | 新建项目 / 打开项目 | Shift+N / Shift+O |
 | 显示公式 / 行内公式 / 编号公式 | Shift+F / Shift+I / Shift+E |
 | 正文查找 / 打开 TikZ 编辑器 | F / Shift+T |
+| 正文加粗 | Shift+B |
 | 公式中的分式 / 左定界符 / 右定界符 | F / L / Shift+R |
 | 源码查找 / 替换 / 补全 | F / H / 空格 |
 

@@ -34,7 +34,7 @@ function parseStroke(stroke, isMac) {
 // shortcut before sending a key event to the editor.
 const macWebAlternatives = {
   global: { 'meta+p':'p', 'meta+o':'o', 'meta+shift+n':'shift+n', 'meta+shift+o':'shift+o', 'meta+,':',' },
-  editor: { 'meta+f':'shift+f', 'meta+shift+f':'shift+i', 'meta+alt+f':'shift+e', 'meta+shift+t':'shift+t' },
+  editor: { 'meta+b':'shift+b', 'meta+f':'shift+f', 'meta+shift+f':'shift+i', 'meta+alt+f':'shift+e', 'meta+shift+t':'shift+t' },
   math: { 'meta+l':'l', 'meta+r':'shift+r', 'meta+f':'f', 'meta+m':'m', 'meta+2':'shift+2', 'meta+shift+2':'alt+2', 'meta+y':'y' },
   source: { 'meta+f':'f', 'meta+h':'h', 'ctrl+space':'space' },
 };
