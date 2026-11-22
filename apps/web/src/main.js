@@ -2502,6 +2502,9 @@ const compositionController=createCompositionController({
       projectDocument.hydrate(composed,editor.getJSON());
       refreshReferences(paper);documentOutline.relocalize();
     }finally{syncApplying=false;}
+    // The composition is hydrated after setContent; force one layout pass so
+    // the project presentation sees the new regions and renders their badges.
+    requestAnimationFrame(()=>typesetPagination?.invalidate());
   },
   replace(before,after,show,owner){
     if(owner!==projectExplorer.model.activeFileId){
@@ -2621,7 +2624,7 @@ projectExplorer = installProjectExplorer({footer, filePanel:document.querySelect
     updateSourceButton();
   },
 }});
-projectPresentation=installProjectPresentation({editor,page:documentPage,getProject:()=>projectExplorer.model,openMain:()=>projectExplorer.openFile(projectExplorer.model.mainFileId),getComposition:()=>projectDocument.composition,requestLayout:()=>typesetPagination?.refresh(),ensureDocument:()=>{if(!sourceView.hidden)setSourceMode(false);showProjectComposition();}});
+projectPresentation=installProjectPresentation({editor,page:documentPage,getProject:()=>projectExplorer.model,openMain:()=>projectExplorer.openFile(projectExplorer.model.mainFileId),getComposition:()=>projectDocument.composition,requestLayout:()=>typesetPagination?.invalidate(),ensureDocument:()=>{if(!sourceView.hidden)setSourceMode(false);showProjectComposition();}});
 editor.on('transaction',updateEnvironment);
 document.addEventListener('focusin',updateEnvironment);paper.addEventListener('input',updateEnvironment);
 paper.addEventListener('selection-change',updateEnvironment,true);
