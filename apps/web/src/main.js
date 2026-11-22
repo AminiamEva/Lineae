@@ -1063,6 +1063,7 @@ function restoreSourceCheckpoint(text,owner,expected) {
   editor.commands.focus();
 }
 function undoDocument() {
+  if(sourceView.hidden&&!editor.view.composing)editor.view.domObserver.flush();
   const checkpoint=sourceModeCommits.at(-1);
   if(!sourceView.hidden&&!(checkpoint?.owner&&checkpoint.sourceText===sourceView.value)){sourceView.undo();sourceView.flush();return true;}
   if(checkpoint && editor.state.doc===checkpoint.afterDoc && documentParts.start===checkpoint.afterPreamble&&checkpointLayoutMatches(checkpoint,checkpoint.after)){
