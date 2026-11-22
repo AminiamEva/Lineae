@@ -2489,6 +2489,28 @@ const nativeBindings=compileKeybindings({
   math:{undo:['ctrl+z','meta+z'],redo:['ctrl+y','meta+y','ctrl+shift+z','meta+shift+z'],
     palette:'backslash',nextSlot:'tab',previousSlot:'shift+tab'},
 },{isMac});
+// Keep this opt-in probe ahead of the capture-phase router. It observes the
+// original event after dispatch without moving focus or reading document text.
+if (isWeb && new URLSearchParams(location.search).has('shortcut-check')) {
+  const output=document.createElement('output');
+  output.style.cssText='position:fixed;bottom:3rem;right:1rem;z-index:10000;background:#202124;color:white;padding:.6rem;pointer-events:none;white-space:pre-line';
+  const messages=[];
+  const note=text=>{
+    messages.push(text);
+    output.textContent=messages.slice(-4).join('\n');
+  };
+  note(t('点击正文，按 ⌘B 或 ⌘⌥F','Click the document and press ⌘B or ⌘⌥F'));
+  document.body.append(output);
+  window.addEventListener('keydown',event=>{
+    if(event.key==='Meta') { note('⌘ ↓'); return; }
+    if(!['KeyB','KeyE','KeyF'].includes(event.code)) return;
+    const target=event.target;
+    const area=target.closest?.('math-field')?'math':
+      target.closest?.('.ProseMirror')?'document':target.closest?.('.cm-content')?'source':target.tagName;
+    setTimeout(()=>note([event.metaKey?'⌘':'',event.altKey?'⌥':'',event.code,' · ',area,' · ',
+      event.defaultPrevented?t('已拦截','handled'):t('未拦截','passed through')].join('')),0);
+  },true);
+}
 installKeybindings(window, {
   getBindings: (event,prefix) => isWeb && !isMac &&
     (event.metaKey || (!event.ctrlKey && prefix?.split('+').slice(0,-1).includes('meta')))

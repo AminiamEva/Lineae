@@ -32,7 +32,7 @@ const server=createServer(async(req,res)=>{
       },platform);
       const page=await context.newPage(),errors=[];
       page.on('pageerror',error=>errors.push(error.message));
-      await page.goto('http://127.0.0.1:'+server.address().port);
+      await page.goto('http://127.0.0.1:'+server.address().port+((platform==='masked'||nativeEdge)?'/?shortcut-check':'/'));
       const paper=page.locator('.ProseMirror'),mod=mac?'Meta':'Control';
       assert.equal(await page.locator('header .brand img').count(),1);
       assert.equal(await page.locator('header .brand img').getAttribute('src'),'./assets/brand/lineae-logo.png');
@@ -67,6 +67,7 @@ const server=createServer(async(req,res)=>{
         assert.equal(await page.evaluate(()=>document.activeElement===document.body),true);
         await press('Meta+b');
         await page.waitForFunction(()=>document.activeElement?.classList.contains('ProseMirror'));
+        await page.locator('output').filter({hasText:/⌘KeyB · BODY · (handled|已拦截)/}).waitFor();
         await press('x');
         await paper.locator('strong').filter({hasText:'x'}).waitFor();
         await press('Meta+e');await press('2');
