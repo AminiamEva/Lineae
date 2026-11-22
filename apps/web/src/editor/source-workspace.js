@@ -37,7 +37,7 @@ function element(tag, className) {
   return node;
 }
 
-export function createSourceWorkspace({ page, render, metadata, onChange = () => {}, onLayout = () => {}, onPreviewZoom = () => {}, getPreferences = () => null, onSourceFontChange = () => {}, configurableKeys = false }) {
+export function createSourceWorkspace({ page, render, metadata, previewRange, sourceRange, onChange = () => {}, onLayout = () => {}, onPreviewZoom = () => {}, getPreferences = () => null, onSourceFontChange = () => {}, configurableKeys = false }) {
   const lifecycle = new AbortController();
   const panel = element('section', 'tex-workspace');
   panel.hidden = true;
@@ -86,6 +86,39 @@ export function createSourceWorkspace({ page, render, metadata, onChange = () =>
   }
   let savedText, savedDoc;
   let lastRendered, expanded = false, previewOnly = false, receiving = false;
+  let sourceScroll, previewScroll, alignFrame;
+  const syncVisible = () => expanded && preview.clientHeight && view?.scrollDOM.clientHeight;
+  function alignPreview(offset, followCursor = false) {
+    if (!syncVisible() || lastRendered === undefined) return;
+    const range = previewRange?.(offset, lastRendered);
+    if (!range) return;
+    const [top, bottom] = range;
+    const viewport = preview.getBoundingClientRect();
+    if (followCursor && top < viewport.bottom - 24 && bottom > viewport.top + 24) return;
+    preview.scrollTop += top - viewport.top - 24;
+    previewScroll = preview.scrollTop;
+  }
+  function followSourceCursor() {
+    cancelAnimationFrame(alignFrame);
+    alignFrame = requestAnimationFrame(() => {
+      if (view) alignPreview(view.state.selection.main.head, true);
+    });
+  }
+  code.addEventListener('scroll', event => {
+    if (!syncVisible() || event.target !== view.scrollDOM || sourceScroll === view.scrollDOM.scrollTop) return;
+    sourceScroll = undefined;
+    const y = view.scrollDOM.getBoundingClientRect().top + 24;
+    alignPreview(view.lineBlockAtHeight(y - view.documentTop).from);
+  }, true);
+  preview.addEventListener('scroll', () => {
+    if (!syncVisible() || previewScroll === preview.scrollTop || lastRendered === undefined) return;
+    previewScroll = undefined;
+    const offset = sourceRange?.(preview.getBoundingClientRect().top + 24, lastRendered);
+    if (offset == null) return;
+    const line = view.lineBlockAt(offset);
+    view.scrollDOM.scrollTop += view.documentTop + line.top - view.scrollDOM.getBoundingClientRect().top - 24;
+    sourceScroll = view.scrollDOM.scrollTop;
+  });
   let fontSize = FONT_DEFAULT;
   fontSize=clampFont(getPreferences()?.interface.sourceFontSize??FONT_DEFAULT);
   function updateZoomLabel() { labelSourceZoom(zoomLabel,fontSize); }
@@ -178,6 +211,7 @@ export function createSourceWorkspace({ page, render, metadata, onChange = () =>
       if (render(text) === false) { timer = setTimeout(updatePreview,120); return; }
       lastRendered = text;
       message.textContent = '';
+      if (expanded) followSourceCursor();
     } catch (err) { message.textContent = err.message; }
   }
   function layout() {
@@ -195,6 +229,7 @@ export function createSourceWorkspace({ page, render, metadata, onChange = () =>
     view?.requestMeasure();
   }
   function setExpanded(next) {
+    if (expanded === next) return;
     expanded = next;
     previewOnly = false;
     if (next) {
@@ -210,6 +245,7 @@ export function createSourceWorkspace({ page, render, metadata, onChange = () =>
     layout();
     onLayout(expanded);
     focus();
+    if (expanded) followSourceCursor();
   }
   wide.addEventListener('change', layout, {signal:lifecycle.signal});
   document.addEventListener('keydown', e => {
@@ -268,7 +304,10 @@ export function createSourceWorkspace({ page, render, metadata, onChange = () =>
             clearTimeout(timer);
             if (!receiving) { onChange(value()); timer = setTimeout(updatePreview, 240); }
           }
-          if (update.docChanged || update.selectionSet) refresh();
+          if (update.docChanged || update.selectionSet) {
+            refresh();
+            if (expanded && !receiving) followSourceCursor();
+          }
         }),
       ],
     });
@@ -285,6 +324,7 @@ export function createSourceWorkspace({ page, render, metadata, onChange = () =>
     if (pageState.hidden === null) page.removeAttribute('hidden');
     else page.setAttribute('hidden', pageState.hidden);
     page.inert = pageState.inert;
+    if (!page.hidden) window.scrollTo(pageState.x,pageState.y);
     pageState = undefined;
   }
   function destroy() {
@@ -365,13 +405,13 @@ export function createSourceWorkspace({ page, render, metadata, onChange = () =>
       return true;
     },
     get value() { return value(); },
-    open(text) {
+    open(text, mounted = false) {
       if (lifecycle.signal.aborted) return;
-      pageState ??= {hidden:page.getAttribute('hidden'), inert:page.inert};
+      pageState ??= {hidden:page.getAttribute('hidden'), inert:page.inert, x:window.scrollX, y:window.scrollY};
       panel.hidden = false;
       replace(text);
       page.hidden = true;
-      lastRendered = undefined;
+      lastRendered = mounted ? text : undefined;
       message.textContent = '';
       layout();
       focus();

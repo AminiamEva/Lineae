@@ -477,6 +477,28 @@ async function verifySelectionGeometry(page, paper, importSource) {
     await page.waitForFunction(()=>document.querySelector('.ProseMirror table')?.dataset.borderMode==='grid');
     assert.equal(await paper.locator('table').first().getAttribute('data-border-mode'),'grid',
       'New tables default to a grid');
+    await page.locator('[data-source-mode=split]').click();
+    await page.locator('[data-source-mode=body]').click();
+    const tableHistory=await paper.evaluate(element=>{
+      const {editor}=element;
+      const rows=()=>Array.from(element.querySelectorAll('table tr'),row=>row.cells.length);
+      editor.commands.undo();
+      const removed=rows();
+      editor.commands.redo();
+      const restored=rows();
+      editor.commands.addRowAfter();
+      editor.commands.addColumnAfter();
+      const expanded=rows();
+      editor.commands.undo();
+      const withoutColumn=rows();
+      editor.commands.undo();
+      editor.commands.focus();
+      return {removed,restored,expanded,withoutColumn,final:rows()};
+    });
+    assert.deepEqual(tableHistory,{
+      removed:[],restored:[2,2],expanded:[3,3,3],withoutColumn:[2,2,2],final:[2,2],
+    },'Table insertion, row insertion and column insertion undo separately after switching views');
+    assert.equal(await paper.locator('table').first().getAttribute('data-border-mode'),'grid');
     await page.keyboard.type('A');
     await page.keyboard.press('Tab');
     await page.keyboard.type('B');
@@ -616,6 +638,14 @@ async function verifySelectionGeometry(page, paper, importSource) {
     assert.equal(await paper.evaluate(element=>element.editor.state.selection.$from.parent.type.name==='heading'
       && element.editor.state.selection.$from.parent.textContent==='Second'),true,'Outline navigation moves the rich-text caret');
     assert.equal(await outlinePanel.getByRole('button',{name:/Second$/}).getAttribute('aria-current'),'true');
+    await page.locator('[data-source-mode=split]').click();
+    await page.evaluate(()=>document.dispatchEvent(new Event('lineae-open-outline')));
+    await page.waitForFunction(()=>document.querySelector('#document-outline [data-heading-position]'));
+    await outlinePanel.getByRole('button',{name:/First$/}).click();
+    await page.waitForFunction(()=>document.querySelector('.ProseMirror').editor.state.selection.$from.parent.textContent==='First');
+    assert.equal(await page.evaluate(()=>document.querySelector('.tex-code .cm-activeLine')?.textContent.includes('\\section{First}')),true,
+      'Outline navigation in Split keeps source and rich preview on the same heading');
+    await page.locator('[data-source-mode=body]').click();
     await page.locator('#sidebar-outline > summary').click();
     assert.equal(await outlinePanel.isVisible(),false);
     await page.locator('#project-toggle').click();
@@ -978,6 +1008,14 @@ async function verifySelectionGeometry(page, paper, importSource) {
     await page.keyboard.press('Space');
     await page.waitForTimeout(40);
     assert.equal(await paper.locator('ol').count(),0,'A single space must not start a list');
+
+    await importSource('Before fence');
+    await paper.locator(':scope > p').filter({hasText:/^Before fence$/}).click();
+    await page.keyboard.press('End');
+    await page.keyboard.type('```');
+    await paper.locator('pre code').waitFor();
+    assert.equal(await paper.locator('pre code').textContent(),'Before fence',
+      'A triple-backtick fence after existing text converts the paragraph instead of leaving a stray code mark');
 
     await importSource('Code fence');
     const codeFenceParagraph = paper.locator(':scope > p').filter({ hasText: /^Code fence$/ });
@@ -1957,6 +1995,9 @@ A & B \\
     await page.waitForFunction(()=>document.querySelector('.ref-node')?.textContent==='(2.1)');
     assert.equal(await paper.locator('.ref-node').textContent(),'(2.1)',
       'References resolve a tagged equation to its custom tag');
+    await importSource('Before break.\n\n\\newpage');
+    await page.waitForFunction(()=>document.querySelector('.document-page')?.dataset.pageCount==='2');
+    assert.equal(await paper.locator('.page-break').count(),1,'A terminal page break creates a second sheet');
     await importSource(Array.from({length:100},(_,index)=>`Paragraph ${String(index+1).padStart(3,'0')}.`).join('\n\n'));
     await page.waitForFunction(()=>document.querySelector('.document-page')?.dataset.pageCount==='3');
     const pagination=await page.evaluate(()=>{

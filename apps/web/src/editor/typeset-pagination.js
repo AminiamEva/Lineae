@@ -324,9 +324,14 @@ export function installTypesetPagination(page, paper, meta, editor) {
     window.dispatchEvent(new CustomEvent('lineae-layout'));
   }
 
+  let deferredLayout = false;
   function layout() {
     frame = 0;
-    if (page.hidden || !editable.isConnected) return;
+    if (!editable.isConnected || !page.getClientRects().length) {
+      deferredLayout = true;
+      return;
+    }
+    deferredLayout = false;
     window.dispatchEvent(new Event('lineae-before-layout'));
     const emptyMeta = !meta.textContent.trim();
     meta.dataset.empty = String(emptyMeta);
@@ -397,6 +402,7 @@ export function installTypesetPagination(page, paper, meta, editor) {
             blockIndex,
             lineIndex,
             position: line.position,
+            forceBreak: lineIndex === 0 && block.forceBreak,
             keepWithNext: lineIndex === 0 || lineIndex === block.lines.length - 2,
             keepWithPrevious: lineIndex === 1,
           });
@@ -407,6 +413,10 @@ export function installTypesetPagination(page, paper, meta, editor) {
       }
       return items;
     });
+    // Give a terminal page break a layout target without adding editable content.
+    if (children.at(-1)?.matches('.page-break, [data-page-break]')) {
+      virtual.push({ top: blocks.at(-1).top, height: 0, forceBreak: true });
+    }
 
     let plan = planPagination(virtual, geometry);
     let tablePlans = new Map();
@@ -536,12 +546,23 @@ export function installTypesetPagination(page, paper, meta, editor) {
     if (!frame) frame = requestAnimationFrame(layout);
   }
 
-  const resize = new ResizeObserver(schedule);
+  const measured = new WeakMap();
+  function onResize(entries) {
+    for (const {target,contentRect:{width,height}} of entries) {
+      // A hidden preview reports zero dimensions. Retain its last visible
+      // dimensions so showing the same page does not invalidate pagination.
+      if (!target.getClientRects().length) continue;
+      const previous=measured.get(target);
+      measured.set(target,{width,height});
+      if (deferredLayout || previous?.width !== width || previous?.height !== height) schedule();
+    }
+  }
+  const resize = new ResizeObserver(onResize);
   resize.observe(editable);
   resize.observe(meta);
   // MathLive mounts and measures inside a shadow root, so the editor's own
   // border box can stay at its minimum height while a paragraph grows.
-  const childResize = new ResizeObserver(schedule);
+  const childResize = new ResizeObserver(onResize);
   const observeChildren = () => {
     for (const child of editable.children) childResize.observe(child);
   };
@@ -552,7 +573,6 @@ export function installTypesetPagination(page, paper, meta, editor) {
   });
   mutations.observe(editable, { subtree: true, childList: true, characterData: true });
   mutations.observe(meta, { subtree: true, childList: true, characterData: true });
-  mutations.observe(page, { attributes: true, attributeFilter: ['hidden'] });
   document.fonts?.addEventListener('loadingdone', schedule);
 
   return {

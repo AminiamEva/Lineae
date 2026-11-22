@@ -1,3 +1,4 @@
+import {TextSelection} from '@tiptap/pm/state';
 import {moveReference} from './include-operations.mjs';
 
 export function installProjectNavigation({outline,paper,sourceView,editor,getProjection,appendInclude,editIncludeSource}) {
@@ -11,7 +12,13 @@ export function installProjectNavigation({outline,paper,sourceView,editor,getPro
     event.preventDefault();
     sourceView.flush();
     const position = Math.min(event.detail.position,editor.state.doc.content.size);
-    const index = editor.state.doc.resolve(position).index(0);
+    const resolved = editor.state.doc.resolve(position);
+    // Split view shows the rich preview next to the source. Move its caret and
+    // scroll it too, without focusing it, so the source keeps keyboard focus.
+    editor.view.dispatch(editor.state.tr
+      .setSelection(TextSelection.create(editor.state.doc,Math.min(position+1,editor.state.doc.content.size)))
+      .scrollIntoView());
+    const index = resolved.index(0);
     const block = getProjection()?.blocks.find(item => index >= item.index && index < item.index + item.count);
     if (!block) return;
     const offset = block.from + Math.max(0,block.raw.indexOf('\\'));

@@ -35,6 +35,9 @@ const server=createServer(async(req,res)=>{
   const child=page.locator('[data-file-path="b.tex"] p').first();
   assert.equal(await child.textContent(),'B child.');
   await child.click();await page.keyboard.press('End');await page.keyboard.insertText(' EDIT');
+  await page.locator('[data-source-mode=split]').click();
+  await page.locator('[data-source-mode=body]').click();
+  assert.match(await child.textContent(),/EDIT/);
   await page.keyboard.press('Control+z');assert.equal(await child.textContent(),'B child.');
   await page.keyboard.press('Control+y');assert.match(await child.textContent(),/EDIT/);
   await page.keyboard.press('Control+s');
