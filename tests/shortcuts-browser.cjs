@@ -63,6 +63,7 @@ const server=createServer(async(req,res)=>{
             'Meta+b':'11 using command down', 'Meta+e':'14 using command down',
             '2':'19', 'Meta+t':'17 using command down', 'Meta+f':'3 using command down', 'Escape':'53',
             'Meta+Alt+f':'3 using {command down, option down}', 'x':'7',
+            'Meta+i':'34 using command down', 'Control+i':'34 using control down',
           };
           press=key=>execFileSync('osascript',['-e','tell application "System Events" to key code '+strokes[key]]);
         }
@@ -108,6 +109,15 @@ const server=createServer(async(req,res)=>{
             document.fullscreenElement===document.documentElement);
           await press('Meta+b');await press('x');
           await paper.locator('strong').filter({hasText:'x'}).waitFor();
+          await load('$x$');
+          const field=paper.locator('math-field');
+          await field.click();
+          await page.waitForFunction(()=>document.activeElement?.tagName==='MATH-FIELD' &&
+            !document.activeElement._mathfield?.focusBlurInProgress);
+          await press('Control+i');
+          await page.waitForFunction(()=>document.activeElement?.value?.includes('\\int'));
+          await press('Meta+i');
+          await page.waitForFunction(()=>(document.activeElement?.value?.match(/\\int\b/g)?.length ?? 0)===2);
           await press('Meta+t');
           await page.locator('.tex-code .cm-content').waitFor({state:'visible'});
           assert.equal(context.pages().length,1);
