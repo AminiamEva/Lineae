@@ -24,11 +24,6 @@ const server=createServer(async(req,res)=>{
       const mac=platform!=='windows';
       const context=await browser.newContext({locale:'en-US',viewport:{width:1440,height:1100},
         permissions:['clipboard-read','clipboard-write']});
-      await context.addInitScript(()=>{
-        if (!localStorage.getItem('lineae.config')) {
-          localStorage.setItem('lineae.config','version: 2\nediting:\n  shortcutPriority: false\n');
-        }
-      });
       if(!nativeEdge) await context.addInitScript(platform=>{
         Object.defineProperty(navigator,'platform',{get:()=>platform==='mac'?'Unknown':'Win32'});
         Object.defineProperty(navigator,'userAgentData',{get:()=>undefined});
@@ -61,7 +56,7 @@ const server=createServer(async(req,res)=>{
           await page.bringToFront();
           const strokes={
             'Meta+b':'11 using command down', 'Meta+e':'14 using command down',
-            '2':'19', 'Meta+t':'17 using command down', 'Meta+f':'3 using command down', 'Escape':'53',
+            '2':'19', 'Meta+f':'3 using command down', 'Escape':'53',
             'Meta+Alt+f':'3 using {command down, option down}', 'x':'7',
             'Meta+i':'34 using command down', 'Control+i':'34 using control down',
           };
@@ -87,28 +82,8 @@ const server=createServer(async(req,res)=>{
         await paper.locator('.math-display math-field').waitFor();
         if(nativeEdge){
           await page.evaluate(()=>localStorage.setItem('lineae.config',
-            'version: 2\nediting:\n  shortcutPriority: false\nkeybindings:\n  global:\n    sourceMode: mod+t\n  math:\n    int: mod+i\n'));
+            'version: 2\nediting:\n  shortcutPriority: true\nkeybindings:\n  math:\n    int: mod+i\n'));
           await page.reload();
-          await load('Alpha');
-          await paper.click();
-          const newTab=context.waitForEvent('page',{timeout:10000});
-          await press('Meta+t');
-          await (await newTab).close();
-          await page.bringToFront();
-          assert.equal(await page.locator('[data-source-mode=body]').getAttribute('aria-pressed'),'true');
-          await page.evaluate(()=>{
-            const lock=navigator.keyboard.lock.bind(navigator.keyboard);
-            navigator.keyboard.lock=async codes=>{await lock(codes);window.keyboardPriorityLocked=true;};
-          });
-          await page.locator('#settings-open').click();
-          await page.locator('[data-setting="editing.shortcutPriority"]').check();
-          await page.locator('#settings-apply').click();
-          await page.locator('#settings-close').click();
-          await paper.click();
-          await page.waitForFunction(()=>window.keyboardPriorityLocked &&
-            document.fullscreenElement===document.documentElement);
-          await press('Meta+b');await press('x');
-          await paper.locator('strong').filter({hasText:'x'}).waitFor();
           await load('$x$');
           const field=paper.locator('math-field');
           await field.click();
@@ -118,12 +93,7 @@ const server=createServer(async(req,res)=>{
           await page.waitForFunction(()=>document.activeElement?.value?.includes('\\int'));
           await press('Meta+i');
           await page.waitForFunction(()=>(document.activeElement?.value?.match(/\\int\b/g)?.length ?? 0)===2);
-          await press('Meta+t');
-          await page.locator('.tex-code .cm-content').waitFor({state:'visible'});
-          assert.equal(context.pages().length,1);
-          await press('Escape');
-          await page.waitForFunction(()=>!document.fullscreenElement);
-          console.log('Native Edge delivers the same Command key to the browser normally and to Lineae with keyboard priority');
+          assert.equal(await page.evaluate(()=>document.fullscreenElement),null);
         }
         assert.deepEqual(errors,[]);
         console.log('Command bold, mode switch, source search and numbered equation passed');

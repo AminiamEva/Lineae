@@ -47,7 +47,7 @@ import { applyCitationRenames } from '../bib/index.mjs';
 import { chooseReference } from './editor/reference-index.js';
 import { installTableHoverAddRow } from './editor/table-hover.js';
 import { createConfigStore } from './editor/config.mjs';
-import { commandKeyCodes, compileKeybindings, installKeybindings, usesAppleShortcuts } from './editor/keybindings.mjs';
+import { compileKeybindings, installKeybindings, usesAppleShortcuts } from './editor/keybindings.mjs';
 import defaultConfigYaml from '../config.yaml';
 import { askText } from './editor/dialog.js';
 import { installDocumentFind } from './editor/find.js';
@@ -2586,38 +2586,6 @@ function updateEnvironment() {
   environment.dataset.environment=name;
 }
 footer.append(count,document.querySelector('#status'),environment,zoom,percent,paginationButton,themeButton,modes);document.body.append(footer);sourceView.mountStatus(footer);scale();updatePaginationButton();
-const keyboard = navigator.keyboard;
-const supportsShortcutPriority = isWeb && isMac && document.fullscreenEnabled &&
-  typeof keyboard?.lock === 'function';
-let shortcutPriorityAttempted = false;
-let shortcutPriorityActive = false;
-let shortcutPriorityEnabled = config.value.editing.shortcutPriority;
-
-if (supportsShortcutPriority) {
-  document.addEventListener('click', async event => {
-    if (!event.isTrusted || shortcutPriorityAttempted || !shortcutPriorityEnabled ||
-        !event.target.closest?.('.ProseMirror, .tex-code .cm-content')) return;
-    const codes = commandKeyCodes(config.commandBindings);
-    if (!codes.length) return;
-    shortcutPriorityAttempted = true;
-    try {
-      await document.documentElement.requestFullscreen();
-      shortcutPriorityActive = document.fullscreenElement === document.documentElement;
-      if (!shortcutPriorityActive) return;
-      if (!shortcutPriorityEnabled) { await document.exitFullscreen(); return; }
-      await keyboard.lock(codes);
-    } catch {
-      keyboard.unlock();
-      if (shortcutPriorityActive && document.fullscreenElement) await document.exitFullscreen();
-      shortcutPriorityActive = false;
-    }
-  });
-  document.addEventListener('fullscreenchange', () => {
-    if (document.fullscreenElement) return;
-    keyboard.unlock();
-    shortcutPriorityActive = false;
-  });
-}
 const compositionController=createCompositionController({
   explorer:()=>projectExplorer,fileKind:()=>projectFileKind,session:projectDocument,
   sourceHidden:()=>sourceView.hidden,composing:()=>editor.view.composing||sourceView.composing,
@@ -3449,13 +3417,6 @@ function updateFileTools() {
   releaseFileNavigation=installRovingFocus(files,{onActivate:control=>control.click()});
 }
 function applyImportedPreferences() {
-  const priorityWasEnabled = shortcutPriorityEnabled;
-  shortcutPriorityEnabled = config.value.editing.shortcutPriority;
-  if (supportsShortcutPriority && !shortcutPriorityEnabled && shortcutPriorityActive) {
-    keyboard.unlock();
-    if (document.fullscreenElement) void document.exitFullscreen();
-  }
-  if (!priorityWasEnabled && shortcutPriorityEnabled) shortcutPriorityAttempted = false;
   clearTimeout(zoomSaveTimer);
   language.value=configuredLanguage();
   theme.set(config.value.interface.theme);
@@ -3709,7 +3670,7 @@ groupButton(insert,'figure',()=>insertLocalImage(editor));
 sourceToolbar = installSourceToolbar({ribbon,groups,source:sourceView,rich:paper,heading:headingMenu});
 const toolbarController=installFloatingToolbar({header,ribbon,sourceView,getAutoHide:()=>sourceView.hidden?config.value.interface.toolbarAutoHide:config.value.interface.sourceToolbarAutoHide});
 installMathFloatToolbar({ editor });
-const settingsPanel=installSettingsPanel({config,showShortcutPriority:supportsShortcutPriority,onApply:applyImportedPreferences,onImport:()=>importConfig.click(),onExport:()=>exportConfig.click(),getDocument:()=>{sourceView.flush();return documentParts.start?structuredClone(pageSetup):null;},applyDocument:updatePageSetup});
+const settingsPanel=installSettingsPanel({config,onApply:applyImportedPreferences,onImport:()=>importConfig.click(),onExport:()=>exportConfig.click(),getDocument:()=>{sourceView.flush();return documentParts.start?structuredClone(pageSetup):null;},applyDocument:updatePageSetup});
 const settingsButton=document.createElement('button');settingsButton.id='settings-open';settingsButton.type='button';settingsButton.append(icon('settings'));settingsButton.onclick=()=>settingsPanel.show();footer.insertBefore(settingsButton,footer.querySelector(':scope>.tex-foot')??count);
 document.addEventListener('lineae-open-settings',()=>settingsPanel.show());
 document.addEventListener('lineae-open-outline',()=>projectExplorer.showOutline());

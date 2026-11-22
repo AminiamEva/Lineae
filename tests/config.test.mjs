@@ -88,11 +88,12 @@ test('saved integral defaults inherit Control+I while existing custom bindings a
     [{int:'alt+k'}, 'alt+k'],
     [{int:null}, null],
   ]) {
-    let saved = toYaml({version:2,interface:{zoom:130},keybindings:{math}});
+    let saved = toYaml({version:2,interface:{zoom:130},editing:{shortcutPriority:true},keybindings:{math}});
     const storage = {getItem:key=>key==='lineae.config'?saved:null,setItem:(_key,value)=>{saved=value;},removeItem(){}};
     const store = createConfigStore(defaults,{isMac:true,storage});
     assert.deepEqual(store.value.keybindings.math.int,expected);
     assert.equal(store.value.interface.zoom,130);
+    assert.equal(Object.hasOwn(parseYaml(saved).editing,'shortcutPriority'),false);
     assert.deepEqual(parseYaml(saved).keybindings.math.int,Array.isArray(expected)?undefined:expected);
   }
 });

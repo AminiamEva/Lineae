@@ -1,7 +1,11 @@
 const owns = (object,key) => Object.hasOwn(object ?? {},key);
 
 export function migrateVersion(value) {
-  if (value.version !== 1) return value;
+  if (value.version !== 1) {
+    if (!owns(value.editing,'shortcutPriority')) return value;
+    const {shortcutPriority: _removed, ...editing} = value.editing;
+    return {...value,editing};
+  }
   const migrated = {version:2,interface:{}};
   for (const key of ['language','zoom']) {
     if (owns(value.interface,key)) migrated.interface[key] = value.interface[key];

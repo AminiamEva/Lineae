@@ -57,7 +57,6 @@ function validateConfig(settings) {
     ...Object.fromEntries(Object.entries(ui.sidebar).map(([key,value])=>['interface.sidebar.'+key,value])),
     'editing.indentOnSave':editing.indentOnSave,
     'editing.smartFences': editing.smartFences,
-    'editing.shortcutPriority': editing.shortcutPriority,
     'editing.autoReplaceLigatures': editing.autoReplaceLigatures,
   })) {
     if (typeof value !== 'boolean') throw new Error(`Expected true or false for ${path}`);

@@ -75,36 +75,6 @@ export function compileKeybindings(config, { isMac = false, macWeb = false } = {
   return { scopes, chordTimeoutMs };
 }
 
-const physicalCommandKeys = {
-  backtick:'Backquote', minus:'Minus', equal:'Equal', plus:'Equal',
-  ',':'Comma', '.':'Period', '/':'Slash', '\\':'Backslash', '[':'BracketLeft', ']':'BracketRight',
-  ';':'Semicolon', "'":'Quote', enter:'Enter', tab:'Tab', space:'Space',
-  backspace:'Backspace', delete:'Delete', home:'Home', end:'End',
-  pageup:'PageUp', pagedown:'PageDown', arrowup:'ArrowUp', arrowdown:'ArrowDown',
-  arrowleft:'ArrowLeft', arrowright:'ArrowRight',
-};
-
-export function commandKeyCodes(bindings) {
-  const codes = new Set();
-  for (const [scope, entries] of bindings.scopes) {
-    // Leave native clipboard shortcuts in the browser's normal input path.
-    if (scope === 'system') continue;
-    for (const {first, second} of entries) {
-      const modifiers = first.split('+').slice(0,-1);
-      if (!modifiers.includes('meta')) continue;
-      for (const stroke of [first, second]) {
-        const key = stroke?.split('+').at(-1);
-        if (!key || key === 'escape') continue;
-        if (/^[a-z]$/.test(key)) codes.add('Key'+key.toUpperCase());
-        else if (/^\d$/.test(key)) codes.add('Digit'+key);
-        else if (/^f\d{1,2}$/.test(key)) codes.add(key.toUpperCase());
-        else if (Object.hasOwn(physicalCommandKeys,key)) codes.add(physicalCommandKeys[key]);
-      }
-    }
-  }
-  return [...codes];
-}
-
 function eventStroke(event) {
   let key = event.key;
   if ((event.shiftKey || event.ctrlKey || event.altKey || event.metaKey) &&
