@@ -68,6 +68,8 @@ jobs:
         run: node tests/appendix-browser.cjs
       - name: XeLaTeX paragraph reference
         run: node tests/paragraph-layout-browser.cjs
+      - name: Wrapfigure alignment
+        run: node tests/wrapfigure-layout-browser.cjs
       - name: Project separators and shared paper
         run: node tests/project-separator-browser.cjs
       - name: Project source boundaries and marker layout

@@ -122,14 +122,46 @@ export function installParagraphLayout(editor){
   function layout(preamble=current){
     current=preamble;if(running||editor.view.composing)return;
     const entries=[],options=paragraphParameters(preamble);let signature=preamble;
+    const page=editor.view.dom.closest('.document-page');
+    const intextsepText=page?getComputedStyle(page).getPropertyValue('--image-intextsep').trim():'';
+    const intextsep=intextsepText?cssLengthPx(intextsepText):cssLengthPx('12pt');
+    const pending=[];
+    function baselineOffset(style,lineHeight){
+      const font=style.font||[style.fontStyle,style.fontWeight,style.fontSize,style.fontFamily].join(' ');
+      let ascent,descent;
+      if(context){context.font=font;const metrics=context.measureText('Mg');ascent=metrics.fontBoundingBoxAscent??metrics.actualBoundingBoxAscent;descent=metrics.fontBoundingBoxDescent??metrics.actualBoundingBoxDescent;}
+      ascent??=parseFloat(style.fontSize)*.8;descent??=parseFloat(style.fontSize)*.2;
+      return (lineHeight-(ascent+descent))/2+ascent;
+    }
+    function wrapNumber(wrap,lineHeight){
+      const explicit=Number.parseInt(wrap.attrs.wrapLines,10);
+      if(Number.isFinite(explicit)&&explicit>0)return explicit;
+      const height=wrap.dom.offsetHeight||wrap.dom.getBoundingClientRect().height;
+      return Math.max(1,Math.floor((height+2.6*lineHeight+2*intextsep)/lineHeight));
+    }
+    function anchorWrap(wrap,element,elementTop,lineHeight,zoom){
+      const dom=wrap.dom;
+      const currentMargin=parseFloat(getComputedStyle(dom).marginBlockStart)||0;
+      const translation=elementTranslateY(dom)*zoom;
+      const staticTop=dom.getBoundingClientRect().top-translation-currentMargin*zoom;
+      const baseline=baselineOffset(getComputedStyle(element),lineHeight);
+      const targetTop=elementTop+(baseline-intextsep)*zoom;
+      const marginTop=(targetTop-staticTop)/zoom;
+      const marginBottom=Math.max(0,wrap.remaining*lineHeight-dom.offsetHeight-marginTop);
+      dom.style.marginBlockStart=marginTop.toFixed(2)+'px';
+      dom.style.marginBlockEnd=marginBottom.toFixed(2)+'px';
+      dom.dataset.wrapLines=String(wrap.remaining);
+      wrap.marginTop=marginTop;wrap.marginBottom=marginBottom;
+    }
     editor.state.doc.descendants((node,start)=>{
+      if(node.type.name==='documentImage'&&node.attrs.wrap){
+        const dom=editor.view.nodeDOM(start);
+        if(dom)pending.push({dom,attrs:node.attrs,position:start,remaining:null});
+        return false;
+      }
       if(node.type.name!=='paragraph'||!node.content.size)return;
-      // xeCJK punctuation/glue needs its own calibrated typesetter; keep native editing until available.
-      if(cjk.test(node.textContent))return false;
       const element=editor.view.nodeDOM(start);if(!element?.offsetWidth||getComputedStyle(element).visibility==='hidden')return false;
       const style=getComputedStyle(element);
-      if((node.attrs.align&&node.attrs.align!=='justify')||(!element.hasAttribute('data-tex-paragraph')&&!['justify','start'].includes(style.textAlign))||element.closest('[data-columns],.image-wrap-left,.image-wrap-right'))return false;
-      const {items}=tokensFor(editor,node,start,element,options);
       const page=element.closest('.document-page');
       const zoom=page?page.getBoundingClientRect().width/page.offsetWidth:1;
       const elementRect=element.getBoundingClientRect();
@@ -137,30 +169,47 @@ export function installParagraphLayout(editor){
       const elementTop=elementRect.top-elementTranslationY;
       const baseWidth=elementRect.width/zoom-parseFloat(style.paddingLeft)-parseFloat(style.paddingRight)-parseFloat(style.borderLeftWidth)-parseFloat(style.borderRightWidth);
       const indent=parseFloat(style.textIndent)||0;
-      const lineHeight=(parseFloat(getComputedStyle(element).lineHeight)||parseFloat(style.fontSize)*1.2||16)*zoom;
-      const wrapAttrs=new Map();
-      editor.state.doc.descendants((node,position)=>{
-        if(node.type.name!=='documentImage'||!node.attrs.wrap)return;
-        const element=editor.view.nodeDOM(position);
-        if(element)wrapAttrs.set(element,node.attrs);
-      });
-      const wraps=[...editor.view.dom.querySelectorAll('.document-image[data-wrap="true"]')].map(image=>{
-        const rawRect=image.getBoundingClientRect();
-        const translationY=elementTranslateY(image)*zoom;
-        const rect={...rawRect,top:rawRect.top-translationY,bottom:rawRect.bottom-translationY};
-        const imageStyle=getComputedStyle(image);
-        const side=image.dataset.wrapSide||'r';
+      const lineHeightLayout=parseFloat(style.lineHeight)||parseFloat(style.fontSize)*1.2||16;
+      const lineHeight=lineHeightLayout*zoom;
+      const active=pending.filter(wrap=>wrap.remaining===null||wrap.remaining>0);
+      for(const wrap of active){
+        if(wrap.remaining===null){
+          wrap.remaining=wrapNumber(wrap,lineHeightLayout);
+          anchorWrap(wrap,element,elementTop,lineHeightLayout,zoom);
+        }
+      }
+      // TeX narrows the first n lines after the figure, even across paragraphs.
+      const wraps=active.map(wrap=>{
+        const image=wrap.dom,imageStyle=getComputedStyle(image);
+        const side=wrap.attrs.wrapSide||image.dataset.wrapSide||'r';
         const columnsep=parseFloat(/^[lL]$/.test(side)?imageStyle.marginInlineEnd:imageStyle.marginInlineStart)||0;
-        const overhang=cssLengthPx(image.dataset.wrapOverhang);
-        const width=wrapWidthPx(wrapAttrs.get(image)?.wrapWidth,baseWidth)||rawRect.width/zoom;
-        return {rect,width,side,columnsep,overhang,forceLineZero:image.nextElementSibling===element};
+        const overhang=cssLengthPx(wrap.attrs.wrapOverhang);
+        const width=wrapWidthPx(wrap.attrs.wrapWidth,baseWidth)||image.getBoundingClientRect().width/zoom;
+        return {rect:{top:elementTop,bottom:elementTop+wrap.remaining*lineHeight,width},width,side,columnsep,overhang,forceLineZero:true,remaining:wrap.remaining,marginTop:wrap.marginTop??0,marginBottom:wrap.marginBottom??0};
       });
-      // Wrapfig narrows the paragraph at the float, including the declaration
-      // line, while the float itself keeps its CSS shape.  Keeping the TeX
-      // paragraph pass active here aligns the break points with XeLaTeX.
+      const consume=lines=>{
+        for(const wrap of active)wrap.remaining=Math.max(0,wrap.remaining-lines);
+        for(let index=pending.length-1;index>=0;index--)if(pending[index].remaining!==null&&pending[index].remaining<=0)pending.splice(index,1);
+      };
+      const estimate=()=>Math.max(1,Math.round(elementRect.height/lineHeight));
+      // xeCJK punctuation/glue needs its own calibrated typesetter; keep native editing until available.
+      if(cjk.test(node.textContent)){
+        if(active.length)consume(estimate());
+        return false;
+      }
+      if((node.attrs.align&&node.attrs.align!=='justify')||(!element.hasAttribute('data-tex-paragraph')&&!['justify','start'].includes(style.textAlign))||element.closest('[data-columns],.image-wrap-left,.image-wrap-right')){
+        if(active.length)consume(estimate());
+        return false;
+      }
+      const {items}=tokensFor(editor,node,start,element,options);
       const widthAt=line=>wrapLineWidthAt(line,{elementTop,lineHeight,baseWidth,wraps,zoom});
-      const plan=optimumParagraph(items,line=>widthAt(line)-(line===0?indent:0),{...options,emergencyStretch:options.emergency?texDimension(options.emergency,parseFloat(style.fontSize)):0});
-      if(!plan||plan.lines.length===1)return false;
+      const wrapOptions=wraps.length?{...options,tolerance:9999}:options;
+      const plan=optimumParagraph(items,line=>widthAt(line)-(line===0?indent:0),{...wrapOptions,emergencyStretch:options.emergency?texDimension(options.emergency,parseFloat(style.fontSize)):0});
+      if(!plan){if(active.length)consume(estimate());return false;}
+      if(plan.lines.length===1){
+        if(active.length)consume(1);
+        return false;
+      }
       entries.push(Decoration.node(start,start+node.nodeSize,{'data-tex-paragraph':'true'}));
       for(const [lineNumber,line] of plan.lines.entries()){
         const last=lineNumber===plan.lines.length-1;
@@ -178,7 +227,8 @@ export function installParagraphLayout(editor){
           if(!end.forced)entries.push(widget(end.to,'tex-paragraph-break'));
         }
       }
-      signature+='|'+start+':'+baseWidth+':'+wraps.map(w=>w.rect.top.toFixed(1)+','+w.rect.bottom.toFixed(1)+','+w.width.toFixed(1)+','+w.columnsep.toFixed(1)+','+w.overhang.toFixed(1)+','+w.side).join(';')+':'+items.map(item=>item.width.toFixed(3)).join(',')+':'+plan.lines.map(line=>line.end+','+line.ratio.toFixed(5)).join(';');
+      signature+='|'+start+':'+baseWidth+':'+wraps.map(w=>w.remaining+','+w.width.toFixed(1)+','+w.columnsep.toFixed(1)+','+w.overhang.toFixed(1)+','+w.side+','+w.marginTop.toFixed(2)+','+w.marginBottom.toFixed(2)).join(';')+':'+items.map(item=>item.width.toFixed(3)).join(',')+':'+plan.lines.map(line=>line.end+','+line.ratio.toFixed(5)).join(';');
+      if(active.length)consume(plan.lines.length);
       return false;
     });
     if(signature===lastSignature)return;lastSignature=signature;
