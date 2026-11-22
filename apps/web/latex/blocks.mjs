@@ -457,7 +457,6 @@ function importSegment(block,options) {
       cursor=token.end;
       continue;
     }
-    if (token.kind!=='command') continue;
     const declaration=counterDeclarationAt(block,token.index);
     if(declaration){const before=importBlock(block.slice(cursor,token.index),options);if(before)nodes.push(before);nodes.push({type:'counterDirective',attrs:{latex:declaration.latex}});cursor=declaration.to;continue;}
     if (token.kind!=='command') continue;
