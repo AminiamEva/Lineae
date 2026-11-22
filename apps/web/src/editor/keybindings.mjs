@@ -120,7 +120,8 @@ export function installKeybindings(target, { getBindings, getContext, run, nativ
     if (event.key === 'Escape' && pending) { pending = null; return; }
     const physicalKey = event.code || event.key;
     if (event.repeat && physicalKey === consumedKey) { consume(event); return; }
-    const bindings = getBindings();
+    const prefix = pending && performance.now() < pending.expires ? pending.first : null;
+    const bindings = getBindings(event,prefix);
     const context = getContext(event);
     const stroke = eventStroke(event);
     const candidates = context.scopes.flatMap(scope => bindings.scopes.get(scope) ?? [])

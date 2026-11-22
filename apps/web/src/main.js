@@ -257,10 +257,11 @@ function browserStorage() {
   try { return window.localStorage; } catch { return null; }
 }
 const isMac = window.__LINEAE_MACOS_DESKTOP__ === true || usesAppleShortcuts(navigator);
+const isWeb = !window.__TAURI_INTERNALS__;
 const config = createConfigStore(defaultConfigYaml, {
   storage: browserStorage(),
   isMac,
-  macWeb: !window.__TAURI_INTERNALS__,
+  macWeb: isWeb,
   onError: error => console.warn(t('配置','Configuration'),error),
 });
 function configuredLanguage() {
@@ -2489,7 +2490,9 @@ const nativeBindings=compileKeybindings({
     palette:'backslash',nextSlot:'tab',previousSlot:'shift+tab'},
 },{isMac});
 installKeybindings(window, {
-  getBindings: () => config.bindings,
+  getBindings: (event,prefix) => isWeb && !isMac &&
+    (event.metaKey || (!event.ctrlKey && prefix?.split('+').slice(0,-1).includes('meta')))
+    ? config.commandBindings : config.bindings,
   nativeBindings,
   getContext(event) {
     if (event.target.closest?.('.tex-code .cm-content'))
@@ -2525,7 +2528,7 @@ installKeybindings(window, {
       }
       const key={copy:'c',cut:'x',paste:'v'}[command];
       if(!event.altKey&&!event.shiftKey&&event.key.toLowerCase()===key&&
-          (isMac?event.metaKey&&!event.ctrlKey:event.ctrlKey&&!event.metaKey))return 'native';
+          (isMac || (isWeb && event.metaKey) ? event.metaKey&&!event.ctrlKey : event.ctrlKey&&!event.metaKey))return 'native';
       clipboard[command]().catch(reportClipboardError);
       return true;
     }

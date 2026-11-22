@@ -17,13 +17,16 @@ const server=createServer(async(req,res)=>{
   await new Promise(done=>server.listen(0,'127.0.0.1',done));
   const browser=await chromium.launch({headless:true});
   try{
-    for(const mac of [false,true]){
+    for(const platform of ['windows','mac','masked']){
+      const mac=platform!=='windows';
       const context=await browser.newContext({locale:'en-US',viewport:{width:1440,height:1100},
         permissions:['clipboard-read','clipboard-write']});
-      await context.addInitScript(isMac=>{
-        Object.defineProperty(navigator,'platform',{get:()=>isMac?'Unknown':'Win32'});
-        if(isMac)Object.defineProperty(navigator,'userAgent',{get:()=>'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)'});
-      },mac);
+      await context.addInitScript(platform=>{
+        Object.defineProperty(navigator,'platform',{get:()=>platform==='mac'?'Unknown':'Win32'});
+        Object.defineProperty(navigator,'userAgentData',{get:()=>undefined});
+        Object.defineProperty(navigator,'userAgent',{get:()=>platform==='mac'
+          ? 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)' : 'Mozilla/5.0 (Windows NT 10.0)'});
+      },platform);
       const page=await context.newPage(),errors=[];
       page.on('pageerror',error=>errors.push(error.message));
       await page.goto('http://127.0.0.1:'+server.address().port);
@@ -39,6 +42,19 @@ const server=createServer(async(req,res)=>{
         if(await page.locator('[data-source-mode=body]').getAttribute('aria-pressed')!=='true')
           await page.locator('[data-source-mode=body]').click();
       };
+      if(platform==='masked'){
+        await load('Alpha');
+        await paper.click();await page.keyboard.press('End');
+        await page.keyboard.press('Meta+b');await page.keyboard.type('x');
+        await paper.locator('strong').filter({hasText:'x'}).waitFor();
+        await chord('2');
+        await page.locator('.tex-code .cm-content').waitFor({state:'visible'});
+        await page.keyboard.press('Meta+f');
+        await page.locator('.cm-search').waitFor({state:'visible'});
+        assert.deepEqual(errors,[]);
+        await context.close();
+        continue;
+      }
       const mathReady=async()=>{
         const field=paper.locator('math-field').first();await field.click();
         await page.waitForFunction(()=>document.activeElement?.tagName==='MATH-FIELD'&&

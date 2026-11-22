@@ -78,6 +78,7 @@ export function createConfigStore(defaultYaml, { storage, isMac = false, macWeb 
   let settings = defaults;
   validateConfig(settings);
   let bindings = compileKeybindings(settings.keybindings, { isMac, macWeb });
+  let commandBindings;
 
   function persist() {
     try {
@@ -94,6 +95,7 @@ export function createConfigStore(defaultYaml, { storage, isMac = false, macWeb 
     overrides = next;
     settings = merged;
     bindings = compiled;
+    commandBindings = undefined;
   }
 
   try {
@@ -110,6 +112,19 @@ export function createConfigStore(defaultYaml, { storage, isMac = false, macWeb 
   return {
     get value() { return settings; },
     get bindings() { return bindings; },
+    get commandBindings() {
+      if (isMac) return bindings;
+      if (!commandBindings) {
+        try {
+          commandBindings = compileKeybindings(settings.keybindings, {isMac:true});
+        } catch {
+          // An explicit Command mapping may conflict with a platform alias.
+          // Retain the user's validated profile in that case.
+          commandBindings = bindings;
+        }
+      }
+      return commandBindings;
+    },
     importYaml(text) { apply(migrateVersion(parseYaml(text))); persist(); },
     exportYaml() { return toYaml(settings); },
     updateInterface(patch) {
