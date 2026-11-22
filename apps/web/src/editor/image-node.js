@@ -1,5 +1,6 @@
 import {localizedLabel,localizedPlaceholder} from '../ui/localized-control.mjs';
-import { Node } from '@tiptap/core';
+import { Node, mergeAttributes } from '@tiptap/core';
+import { closeHistory } from '@tiptap/pm/history';
 import { t } from '../ui/i18n.mjs';
 import { askText } from './dialog.js';
 import { imageWidthPattern, relativeImageWidth } from '../../latex/images.mjs';
@@ -23,6 +24,20 @@ function remember(path, file) {
   rememberAsset(path,file);
 }
 
+function registerImage(file, previousPath) {
+  let path = file.name;
+  if (path === previousPath || path.replace(/\.[^.]+$/,'') === previousPath || resolveImageAsset(path)) {
+    const dot = path.lastIndexOf('.');
+    const stem = dot > 0 ? path.slice(0,dot) : path;
+    const extension = dot > 0 ? path.slice(dot) : '';
+    let version = 2;
+    do { path = stem + '-' + version++ + extension; }
+    while (path === previousPath || resolveImageAsset(path));
+  }
+  remember(path,file);
+  return path;
+}
+
 export function installImageDrop(editor, paper) {
   paper.addEventListener('paste',event=>{
     if (event.composedPath().some(node=>node?.tagName==='MATH-FIELD')) return;
@@ -40,7 +55,7 @@ export function installImageDrop(editor, paper) {
       remember(path,file);
       return {type:'documentImage',attrs:{path}};
     });
-    editor.chain().focus().insertContent(content).run();
+    editor.chain().focus().command(({tr})=>Boolean(closeHistory(tr))).insertContent(content).run();
   },true);
   paper.addEventListener('dragover',event=>{
     if(Array.from(event.dataTransfer?.items??[]).some(item=>item.kind==='file'&&rasterTypes.has(item.type)))event.preventDefault();
@@ -50,8 +65,8 @@ export function installImageDrop(editor, paper) {
     if(!files.length)return;
     event.preventDefault();event.stopPropagation();
     const position=editor.view.posAtCoords({left:event.clientX,top:event.clientY})?.pos ?? editor.state.selection.from;
-    const content=files.map(file=>{remember(file.name,file);return {type:'documentImage',attrs:{path:file.name}};});
-    editor.chain().focus().insertContentAt(position,content).run();
+    const content=files.map(file=>({type:'documentImage',attrs:{path:registerImage(file)}}));
+    editor.chain().focus().command(({tr})=>Boolean(closeHistory(tr))).insertContentAt(position,content).run();
   },true);
 }
 
@@ -60,10 +75,9 @@ export function insertLocalImage(editor) {
   const range = { from:editor.state.selection.from, to:editor.state.selection.to };
   chooseFile(file => {
     if (editor.state.doc !== documentBefore) return;
-    const path = file.name;
-    if (!/^[\p{L}\p{N}_. -]+$/u.test(path)) return;
-    remember(path, file);
-    editor.chain().focus().insertContentAt(range, {type:'documentImage',attrs:{path}}).run();
+    if (!/^[\p{L}\p{N}_. -]+$/u.test(file.name)) return;
+    const path = registerImage(file);
+    editor.chain().focus().command(({tr})=>Boolean(closeHistory(tr))).insertContentAt(range, {type:'documentImage',attrs:{path}}).run();
   });
 }
 
@@ -71,10 +85,9 @@ export function replaceLocalImage(editor, position) {
   const node = editor.state.doc.nodeAt(position);
   if (node?.type.name !== 'documentImage') return;
   chooseFile(file => {
-    const path = file.name;
-    if (!/^[\p{L}\p{N}_. -]+$/u.test(path) || editor.state.doc.nodeAt(position) !== node) return;
-    remember(path, file);
-    editor.view.dispatch(editor.state.tr.setNodeMarkup(position,undefined,{...node.attrs,path}));
+    if (!/^[\p{L}\p{N}_. -]+$/u.test(file.name) || editor.state.doc.nodeAt(position) !== node) return;
+    const path = registerImage(file,node.attrs.path);
+    editor.view.dispatch(closeHistory(editor.state.tr).setNodeMarkup(position,undefined,{...node.attrs,path}));
   });
 }
 
@@ -203,7 +216,7 @@ export const DocumentImage = Node.create({
         if(text!==(node.attrs.caption??''))update({caption:text},node);
       });
       const measureCaption = () => {
-        if(!caption.isConnected || caption.hidden)return;
+        if(!caption.getClientRects().length)return;
         const style=getComputedStyle(captionText);
         measureContext??=document.createElement('canvas').getContext('2d');
         if(measureContext){
@@ -225,13 +238,13 @@ export const DocumentImage = Node.create({
       function update(patch, expected) {
         if (!dom.isConnected || node !== expected) return;
         const position=getPos();
-        if(typeof position==='number') editor.view.dispatch(editor.state.tr.setNodeMarkup(position,undefined,{...node.attrs,...patch}));
+        if(typeof position==='number') editor.view.dispatch(closeHistory(editor.state.tr).setNodeMarkup(position,undefined,{...node.attrs,...patch}));
       }
       function startResize(direction,event) {
         if(event.button!==0)return;
         event.preventDefault();event.stopPropagation();
         const startRect=imageFrame.getBoundingClientRect();
-        const pageWidth=editor.view.dom.clientWidth||startRect.width;
+        const pageWidth=editor.view.dom.getBoundingClientRect().width||startRect.width;
         const startX=event.clientX,startY=event.clientY;
         const startWidth=startRect.width,startHeight=startRect.height||1;
         let changed=false;

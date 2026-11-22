@@ -49,8 +49,6 @@
 body:has(.tex-workspace.is-expanded) {overflow:hidden}
 .tex-divider,.tex-preview {display:none}
 .tex-preview {overflow:auto;overscroll-behavior:contain;background:light-dark(#f2f3f6,#191b20);padding:clamp(8px,1.5vw,24px)}
-.tex-preview .document-page {width:100%;min-height:100%;padding:clamp(18px,6%,56px);cursor:default;zoom:1!important;pointer-events:none}
-.tex-preview .ProseMirror,.tex-preview #editor {min-height:0}
 .tex-preview-toggle {display:none}
 @media(min-width:900px){
   .tex-workspace.is-expanded .tex-body {grid-template-columns:minmax(0,var(--tex-split,45%)) 9px minmax(0,1fr)}
@@ -97,8 +95,6 @@ body:has(.tex-workspace:not([hidden])) {overflow:hidden}
 .tex-code .cm-foldPlaceholder {background:var(--tex-active);border-color:var(--tex-border);color:var(--tex-muted)}
 .tex-code .cm-snippetField {background:#a5b4fc22}
 .ribbon [data-source-unavailable] {opacity:.35;cursor:not-allowed}
-.tex-workspace .tex-preview .document-page {font-size:var(--rich-text-font-size,16px);line-height:1.5}
-.tex-workspace .tex-preview .ProseMirror {--tex-font-size:var(--rich-text-font-size,16px);--tex-line-height:calc(var(--rich-text-font-size,16px) * 1.5);line-height:1.5}
 .tex-rich-actions {display:flex;align-items:center;gap:6px;position:sticky;top:0;z-index:2;padding:4px 6px;margin-bottom:12px;border-radius:8px;background:var(--tex-bar);color:var(--tex-muted);font:12px/1.5 system-ui,sans-serif}
 .tex-rich-title {margin-right:auto}
 .tex-rich-actions button {display:grid;place-items:center;min-width:32px;height:32px;padding:0;border-radius:7px;background:transparent;color:inherit}
@@ -132,15 +128,11 @@ body:has(.tex-workspace:not([hidden])) {overflow:hidden}
 
 /* AminiamEva workspace chrome: source/preview geometry is independent of fonts. */
 .tex-workspace .tex-preview .document-page {
-  width:var(--page-width,210mm); min-height:var(--page-height,297mm);
-  padding:var(--page-margin-top,22mm) var(--page-margin-right,22mm) var(--page-margin-bottom,22mm) var(--page-margin-left,22mm);
   zoom:var(--preview-zoom,1)!important; flex:none;
-  font-size:var(--tex-font-size);line-height:var(--tex-line-height);
   pointer-events:none;cursor:default;
 }
 .tex-workspace .tex-preview .document-page::before {cursor:default;}
 .tex-workspace .tex-preview {padding:16px;overflow:auto;}
-.tex-workspace .tex-preview .ProseMirror {--tex-font-size:inherit;--tex-line-height:inherit;line-height:var(--tex-line-height);}
 .tex-foot[hidden],.tex-rich-actions[hidden] {display:none!important;}
 .source-workspace-visible .document-status>span:first-of-type {display:none;}
 .tex-head {min-height:38px;padding-inline:12px;gap:8px;flex-wrap:wrap;}
