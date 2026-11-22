@@ -618,7 +618,8 @@ async function verifySelectionGeometry(page, paper, importSource) {
     await page.keyboard.press('Control+f');
     await page.waitForFunction(()=>document.activeElement?.closest('.math-display'));
     assert.equal(await paper.locator('.math-display math-field').evaluate(field=>field.value),'');
-    await importSource('\\section{First}\n\n\\subsection{Child}\n\n\\subsubsection{Detail}\n\n\\section*{Unnumbered}\n\n\\section{Second}');
+    await importSource('\\section{First}\n\n\\subsection{Child}\n\n\\subsubsection{Detail}\n\n\\section*{Unnumbered}\n\n'
+      + 'Paragraph before the next section.\n\n'.repeat(45) + '\\section{Second}');
     await page.waitForFunction(()=>document.querySelectorAll('.ProseMirror h1').length===3);
     assert.deepEqual(await paper.locator('[data-section-number]').evaluateAll(nodes=>nodes.map(node=>node.dataset.sectionNumber)),['1','1.1','1.1.1','2']);
     assert.equal(await paper.locator('h1').nth(1).getAttribute('data-section-number'),null);
@@ -634,7 +635,15 @@ async function verifySelectionGeometry(page, paper, importSource) {
     const outlinePanel=page.locator('#document-outline');
     assert.equal(await outlinePanel.isVisible(),true);
     assert.equal(await outlinePanel.locator('.document-outline-list button').count(),5);
+    const secondHeading=paper.locator('h1').last();
+    await secondHeading.evaluate(node=>window.scrollBy(0,node.getBoundingClientRect().top-24));
+    assert.equal(await secondHeading.evaluate(node=>node.getBoundingClientRect().top <
+      document.querySelector('header .floating-toolbar').getBoundingClientRect().bottom),true);
     await outlinePanel.getByRole('button',{name:/Second$/}).click();
+    await secondHeading.evaluate(node=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
+    assert.equal(await secondHeading.evaluate(node=>node.getBoundingClientRect().top >=
+      document.querySelector('header .floating-toolbar').getBoundingClientRect().bottom),true,
+      'Outline target clears the toolbar');
     assert.equal(await paper.evaluate(element=>element.editor.state.selection.$from.parent.type.name==='heading'
       && element.editor.state.selection.$from.parent.textContent==='Second'),true,'Outline navigation moves the rich-text caret');
     assert.equal(await outlinePanel.getByRole('button',{name:/Second$/}).getAttribute('aria-current'),'true');

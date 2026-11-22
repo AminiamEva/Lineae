@@ -1,5 +1,20 @@
 import {t} from './i18n.mjs';
 
+function revealBelowToolbar(editor, position) {
+  // Run after the editor's own selection scroll and deferred focus.
+  requestAnimationFrame(() => {
+    const target = editor.view.nodeDOM(position);
+    if (!(target instanceof Element) || !target.getClientRects().length) return;
+    const toolbar = document.querySelector('header .floating-toolbar');
+    if (!toolbar) return;
+    const scrollPane = target.closest('.tex-preview') ?? window;
+    const top = Math.max(toolbar.getBoundingClientRect().bottom,
+      scrollPane === window ? 0 : scrollPane.getBoundingClientRect().top) + 8;
+    const offset = target.getBoundingClientRect().top - top;
+    if (offset < 0) scrollPane.scrollBy({top:offset,behavior:'instant'});
+  });
+}
+
 export function createOutlinePanel(editor,{readOutline,navigate}) {
   const panel = document.createElement('aside');
   panel.id = 'document-outline';
@@ -27,6 +42,7 @@ export function createOutlinePanel(editor,{readOutline,navigate}) {
     button.addEventListener('click',() => {
       const request = new CustomEvent('lineae-outline-navigate',{cancelable:true,detail:item});
       if (panel.dispatchEvent(request)) navigate(editor,item);
+      revealBelowToolbar(editor,item.position);
     });
     return button;
   }
@@ -47,6 +63,7 @@ export function createOutlinePanel(editor,{readOutline,navigate}) {
       file.addEventListener('click',() => {
         editor.commands.setTextSelection(offset + 2);
         editor.commands.scrollIntoView();
+        revealBelowToolbar(editor,offset);
       });
       nodes.push(file);
     });
