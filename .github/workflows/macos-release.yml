@@ -1,4 +1,4 @@
-name: macOS Apple Silicon
+name: Desktop release
 
 on:
   workflow_dispatch:
@@ -103,23 +103,20 @@ jobs:
           name: lineae-macos-aarch64
           path: artifacts/macos/*
           if-no-files-found: error
-      - name: Wait for any Windows publisher for the same tag
-        if: steps.version.outputs.requested == 'true'
-        timeout-minutes: 25
-        env:
-          GH_TOKEN: ${{ github.token }}
-          TAG: ${{ steps.version.outputs.tag }}
-        run: |
-          runs=$(gh run list --workflow desktop.yml --event push --commit "$GITHUB_SHA" \
-            --json headBranch,databaseId,status)
-          run=$(jq -r --arg tag "$TAG" 'map(select(.headBranch == $tag and .status != "completed")) | first | .databaseId // empty' <<<"$runs")
-          if [[ -n "$run" ]]; then
-            gh run watch "$run" --compact
-          fi
+  windows:
+    uses: ./.github/workflows/desktop.yml
+    permissions:
+      contents: write
+    with:
+      coordinated: true
+    secrets: inherit
+
+  linux:
+    uses: ./.github/workflows/linux-release.yml
 
   release:
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') && needs.build.outputs.tag == github.ref_name
-    needs: [web, build]
+    needs: [web, build, windows, linux]
     runs-on: ubuntu-24.04
     permissions:
       contents: write
@@ -131,10 +128,18 @@ jobs:
         with:
           name: lineae-macos-aarch64
           path: artifacts/macos
-      - name: Publish verified macOS assets
+      - uses: actions/download-artifact@v8.0.2
+        with:
+          name: lineae-desktop-${{ github.sha }}
+          path: artifacts/windows
+      - uses: actions/download-artifact@v8.0.2
+        with:
+          name: lineae-linux-x86_64
+          path: artifacts/linux
+      - name: Publish verified desktop assets
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ needs.build.outputs.tag }}
           VERSION: ${{ needs.build.outputs.version }}
           PRERELEASE: ${{ needs.build.outputs.prerelease }}
-        run: bash apps/desktop/scripts/publish-macos.sh
+        run: bash apps/desktop/scripts/publish-desktop.sh

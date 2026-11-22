@@ -3,8 +3,11 @@ run-name: ${{ inputs.release_tag && format('Release {0}', inputs.release_tag) ||
 
 on:
   pull_request:
-  push:
-    tags: ["v*"]
+  workflow_call:
+    inputs:
+      coordinated:
+        type: boolean
+        default: false
   workflow_dispatch:
     inputs:
       checks_only:
@@ -213,7 +216,7 @@ jobs:
           path: artifacts/*
           if-no-files-found: error
       - name: Publish verified release
-        if: ${{ !inputs.checks_only && steps.release_request.outputs.requested == 'true' }}
+        if: ${{ github.event_name == 'workflow_dispatch' && !inputs.coordinated && !inputs.checks_only && steps.release_request.outputs.requested == 'true' }}
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
