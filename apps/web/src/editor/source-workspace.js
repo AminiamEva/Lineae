@@ -10,7 +10,7 @@ import { tags } from '@lezer/highlight';
 import { icon } from './icons.js';
 import { t } from '../ui/i18n.mjs';
 import { latexAssist, insertLatexSnippet } from './latex-assist.js';
-import { undo, redo, isolateHistory } from '@codemirror/commands';
+import { undo, redo, undoDepth, redoDepth, isolateHistory } from '@codemirror/commands';
 import { preserveSourceEndings, sourceEolExtensions, sourceWithEndings } from './source-eol-state.js';
 import { clampFont, FONT_DEFAULT, FONT_MIN, FONT_MAX, installFontWheel } from './editor-font.mjs';
 
@@ -279,6 +279,7 @@ export function createSourceWorkspace({ page, render, metadata, previewRange, so
   };
 
   function replace(text, reset = false) {
+    if(text.includes('destination/'))console.log('SOURCE REPLACE',reset,view&&undoDepth(view.state),view&&redoDepth(view.state));
     if (view && !reset && value() === text) return;
     original = text;
     const state = EditorState.create({
@@ -370,8 +371,8 @@ export function createSourceWorkspace({ page, render, metadata, previewRange, so
       if(!view)return false;
       switch(command) {
         case 'find': case 'replace': return openSearchPanel(view);
-        case 'undo': return undo(view);
-        case 'redo': return redo(view);
+        case 'undo': console.log('SOURCE UNDO',undoDepth(view.state),redoDepth(view.state)); return undo(view);
+        case 'redo': console.log('SOURCE REDO',undoDepth(view.state),redoDepth(view.state)); return redo(view);
         case 'zoomIn': return zoom(fontSize+1);
         case 'zoomOut': return zoom(fontSize-1);
         case 'zoomReset': return zoom(FONT_DEFAULT);
