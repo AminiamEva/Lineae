@@ -619,7 +619,8 @@ async function verifySelectionGeometry(page, paper, importSource) {
     await page.waitForFunction(()=>document.activeElement?.closest('.math-display'));
     assert.equal(await paper.locator('.math-display math-field').evaluate(field=>field.value),'');
     await importSource('\\section{First}\n\n\\subsection{Child}\n\n\\subsubsection{Detail}\n\n\\section*{Unnumbered}\n\n'
-      + 'Paragraph before the next section.\n\n'.repeat(45) + '\\section{Second}');
+      + 'Paragraph before the next section.\n\n'.repeat(45) + '\\section{Second}\n\n'
+      + 'Paragraph after the second section.\n\n'.repeat(45));
     await page.waitForFunction(()=>document.querySelectorAll('.ProseMirror h1').length===3);
     assert.deepEqual(await paper.locator('[data-section-number]').evaluateAll(nodes=>nodes.map(node=>node.dataset.sectionNumber)),['1','1.1','1.1.1','2']);
     assert.equal(await paper.locator('h1').nth(1).getAttribute('data-section-number'),null);
@@ -636,7 +637,7 @@ async function verifySelectionGeometry(page, paper, importSource) {
     assert.equal(await outlinePanel.isVisible(),true);
     assert.equal(await outlinePanel.locator('.document-outline-list button').count(),5);
     const secondHeading=paper.locator('h1').last();
-    await secondHeading.evaluate(node=>window.scrollBy(0,node.getBoundingClientRect().top-24));
+    await secondHeading.evaluate(node=>window.scrollBy({top:node.getBoundingClientRect().top-24,behavior:'instant'}));
     assert.equal(await secondHeading.evaluate(node=>node.getBoundingClientRect().top <
       document.querySelector('header .floating-toolbar').getBoundingClientRect().bottom),true);
     await outlinePanel.getByRole('button',{name:/Second$/}).click();
