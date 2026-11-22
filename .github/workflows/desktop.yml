@@ -66,6 +66,8 @@ jobs:
         run: npx playwright install --only-shell chromium
       - name: Appendix numbering and source editing
         run: node tests/appendix-browser.cjs
+      - name: Book style gallery integration
+        run: node tests/book-styles-browser.cjs
       - name: XeLaTeX paragraph reference
         run: node tests/paragraph-layout-browser.cjs
       - name: xeCJK paragraph reference
