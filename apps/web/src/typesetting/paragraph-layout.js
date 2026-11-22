@@ -162,7 +162,7 @@ export function installParagraphLayout(editor){
         const last=lineNumber===plan.lines.length-1;
         for(let index=line.start;index<line.end;index++){
           const item=items[index];
-          if(item.punctuation)entries.push(Decoration.inline(item.from,item.to,{class:'tex-cjk-punctuation',style:'font:'+item.font+';line-height:0;margin-left:'+(-item.before)+'px;margin-right:'+(-item.after)+'px'}));
+          if(item.punctuation)entries.push(Decoration.inline(item.from,item.to,{class:'tex-cjk-punctuation',style:'font:'+item.font+';line-height:inherit;margin-left:'+(-item.before)+'px;margin-right:'+(-item.after)+'px'}));
           if(item.type!=='glue'||item.stretch>=1e10)continue;
           const adjusted=item.width+(last?0:line.ratio*(line.ratio<0?item.shrink:item.stretch)),size=item.cjk?adjusted:Math.max(0,adjusted);
           if(item.to>item.from)entries.push(Decoration.inline(item.from,item.to,{class:'tex-word-glue',style:'white-space:pre;word-spacing:'+(size/(item.to-item.from)-measure(' ',style))+'px;text-indent:0'}));
