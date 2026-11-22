@@ -100,8 +100,9 @@ const server=createServer(async(req,res)=>{
           await page.locator('.tex-code .cm-content').waitFor({state:'visible'});
           assert.equal(context.pages().length,1);
           await priority.click();
-          await page.waitForFunction(()=>!document.fullscreenElement);
-          assert.equal(await priority.getAttribute('aria-pressed'),'false');
+          await page.waitForFunction(()=>!document.fullscreenElement &&
+            document.querySelector('#keyboard-priority').getAttribute('aria-pressed')==='false');
+          console.log('Native Edge delivers the same Command key to the browser normally and to Lineae with keyboard priority');
         }
         assert.deepEqual(errors,[]);
         console.log('Command bold, mode switch, source search and numbered equation passed');
