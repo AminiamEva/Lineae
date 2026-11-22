@@ -86,6 +86,13 @@ jobs:
           mkdir -p apps/web/vendor/mathlive
           tar -xzf "$RUNNER_TEMP/$archive" -C apps/web/vendor/mathlive --strip-components=1 \
             package/mathlive.min.js package/fonts
+      - name: Check Command shortcuts in macOS Edge
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          LINEAE_MAC_EDGE: '1'
+        run: |
+          npx playwright install msedge
+          node tests/shortcuts-browser.cjs
       - name: Build the ad-hoc signed application and DMG
         uses: tauri-apps/tauri-action@action-v1.0.0
         env:

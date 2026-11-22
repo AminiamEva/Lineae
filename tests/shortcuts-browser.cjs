@@ -15,13 +15,15 @@ const server=createServer(async(req,res)=>{
 });
 (async()=>{
   await new Promise(done=>server.listen(0,'127.0.0.1',done));
-  const browser=await chromium.launch({headless:true});
+  const nativeEdge=process.env.LINEAE_MAC_EDGE==='1';
+  if(nativeEdge) assert.equal(process.platform,'darwin');
+  const browser=await chromium.launch(nativeEdge ? {channel:'msedge',headless:false} : {headless:true});
   try{
-    for(const platform of ['windows','mac','masked']){
+    for(const platform of nativeEdge ? ['edge'] : ['windows','mac','masked']){
       const mac=platform!=='windows';
       const context=await browser.newContext({locale:'en-US',viewport:{width:1440,height:1100},
         permissions:['clipboard-read','clipboard-write']});
-      await context.addInitScript(platform=>{
+      if(!nativeEdge) await context.addInitScript(platform=>{
         Object.defineProperty(navigator,'platform',{get:()=>platform==='mac'?'Unknown':'Win32'});
         Object.defineProperty(navigator,'userAgentData',{get:()=>undefined});
         Object.defineProperty(navigator,'userAgent',{get:()=>platform==='mac'
@@ -42,7 +44,13 @@ const server=createServer(async(req,res)=>{
         if(await page.locator('[data-source-mode=body]').getAttribute('aria-pressed')!=='true')
           await page.locator('[data-source-mode=body]').click();
       };
-      if(platform==='masked'){
+      if(platform==='masked' || nativeEdge){
+        if(nativeEdge){
+          const identity=await page.evaluate(()=>({platform:navigator.platform,agent:navigator.userAgent}));
+          assert.match(identity.platform,/Mac/);
+          assert.match(identity.agent,/Edg\//);
+          console.log('Native macOS Edge:',identity.agent);
+        }
         await load('Alpha');
         await paper.click();await page.keyboard.press('End');
         await page.keyboard.press('Meta+b');await page.keyboard.type('x');
@@ -51,7 +59,13 @@ const server=createServer(async(req,res)=>{
         await page.locator('.tex-code .cm-content').waitFor({state:'visible'});
         await page.keyboard.press('Meta+f');
         await page.locator('.cm-search').waitFor({state:'visible'});
+        await page.keyboard.press('Escape');
+        await load('Alpha');
+        await paper.click();await page.keyboard.press('End');
+        await page.keyboard.press('Meta+Alt+f');
+        await paper.locator('.math-display math-field').waitFor();
         assert.deepEqual(errors,[]);
+        console.log('Command bold, mode switch, source search and numbered equation passed');
         await context.close();
         continue;
       }
