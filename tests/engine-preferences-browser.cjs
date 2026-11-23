@@ -8,7 +8,7 @@ const {join}=require('node:path');
 const {createHash}=require('node:crypto');
 const {revealToolbar}=require('./workspace-ui-helpers.cjs');
 const sha=b=>createHash('sha256').update(b).digest('hex');
-const source=Buffer.from('\uFEFF% 源码\r\n\\documentclass{article}\n\\usepackage{xeCJK}\r\n\\newcommand{\\keep}{原样}\n\\begin{document}\r\nPreserved text.\n\\end{document}\r\n');
+const source=Buffer.from('\uFEFF% 源码\r\n\\documentclass{article}\n\\usepackage{etoolbox}\r\n\\ifstrequal{a}{b}{}{}\n\\usepackage{xeCJK}\r\n\\newcommand{\\keep}{原样}\n\\begin{document}\r\nPreserved text.\n\\end{document}\r\n');
 const server=spawn(process.execPath,['scripts/serve.mjs','apps/web','39771'],{stdio:['ignore','pipe','inherit']});
 (async()=>{
  await once(server.stdout,'data');
@@ -70,7 +70,7 @@ const server=spawn(process.execPath,['scripts/serve.mjs','apps/web','39771'],{st
   await load();await profile('xelatex');
   assert.match(await page.locator('#engine-resolution').textContent(),/xeCJK/);
   await pick('lualatex');await profile('lualatex');
-  assert.match(await page.locator('.engine-panel li').textContent(),/legacy\.tex:3:1.*xeCJK/);
+  assert.match(await page.locator('.engine-panel li').textContent(),/legacy\.tex:5:1.*xeCJK/);
   const pm=page.locator('.ProseMirror').first();
   await pm.click();await page.keyboard.press('End');
   await page.keyboard.insertText('Q');

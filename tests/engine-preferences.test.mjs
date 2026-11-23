@@ -61,3 +61,10 @@ test('a locally Xe-dependent drawing returns a diagnostic before loading the WAS
  const result=await tikz.renderTikz(String.raw`\documentclass{standalone}\usepackage{xeCJK}\begin{document}图\end{document}`);
  assert.equal(result.status,'unsupported');assert.match(result.diagnostics[0].message,/XeTeX/);
 });
+
+test('TikZ literals cannot request a WASM backend',()=>{
+ for(const command of ['\\directlua{}','\\usetikzlibrary{graphdrawing}','\\usepackage{fontspec}','\\usepackage{xeCJK}']){
+  for(const literal of ['\\verb|'+command+'|','% '+command,'\\begin{verbatim}\n'+command+'\n\\end{verbatim}'])
+   assert.equal(tikz.tikzRuntime(literal),'auto',literal);
+ }
+});

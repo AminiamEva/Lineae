@@ -1,4 +1,4 @@
-import {resolveEngine} from '../typesetting/engine-resolution.mjs';
+import {tikzRuntime} from '../typesetting/engine-resolution.mjs';
 // General TikZ studio: code left, real TeX/TikZ SVG right.  The renderer is
 // mp-tikz-wasm (LGPL-3.0-or-later), loaded lazily from a local vendor copy.
 import { t } from './i18n.mjs';
@@ -50,15 +50,7 @@ function previewPreamble(preamble) {
 
 // This runtime has pdfTeX and LuaTeX. Unicode packages are neutral evidence
 // for the document resolver, but require the Unicode-capable WASM backend.
-export function tikzRuntime(source) {
-  const text=source.replace(/(?:\\%|%[^\r\n]*)/g,token=>token.startsWith('\\')?token:'');
-  const dependencies=resolveEngine({source:text}).evidence.filter(e=>e.kind==='dependency');
-  if (dependencies.some(e=>e.engine==='xelatex')) return 'unsupported-xe';
-  if (dependencies.some(e=>e.engine==='lualatex')) return 'lualatex';
-  if (/\\(?:usegdlibrary|directlua|latelua)\b|\\usetikzlibrary\s*\{[^}]*\bgraphdrawing\b|\\usepackage\s*\{[^}]*\bluacode\b/.test(text)) return 'lualatex';
-  if (/\\(?:usepackage|RequirePackage)\s*(?:\[[^\]]*\]\s*)?\{[^}]*\b(?:fontspec|unicode-math)\b/.test(text)) return 'unicode';
-  return 'auto';
-}
+export {tikzRuntime};
 
 const PREAMBLE_COMMAND = /^\s*\\(?:usepackage|RequirePackage|usetikzlibrary|usegdlibrary|usepgfplotslibrary|usepgflibrary|newcommand|renewcommand|providecommand|DeclareRobustCommand|newenvironment|renewenvironment|NewDocumentCommand|RenewDocumentCommand|ProvideDocumentCommand|DeclareDocumentCommand|DeclareMathOperator|newtheorem|def|gdef|edef|xdef|let|newcounter|newlength|setlength|tikzset|tikzstyle|ctikzset|pgfplotsset|pgfkeys|pgfqkeys|pgfdeclarelayer|pgfsetlayers|colorlet|definecolor|providecolor|DeclareGraphicsExtensions|graphicspath|newfontfamily|setmainfont|setsansfont|setmonofont)\b/;
 

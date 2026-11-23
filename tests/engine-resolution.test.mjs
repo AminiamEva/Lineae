@@ -99,3 +99,15 @@ test('package options may contain balanced groups and nested brackets',()=>{
  Other=1]{fontspec, xeCJK}`});
   assert.equal(r.resolvedEngine,xe);assert.deepEqual(r.evidence.map(d=>d.detail),['xeCJK']);
 });
+
+test('etoolbox argument tests end before an unconditional package',()=>{
+ const text=['\\documentclass{article}','\\usepackage{etoolbox}','\\newif\\ifdraft',
+  '\\ifdraft\\ifXeTeX\\directlua{}\\else\\XeTeXversion\\fi\\fi',
+  '\\ifstrequal{a}{b}{\\directlua{}}{}','  \\usepackage{xeCJK}',
+  '\\begin{document}\\verb|\\directlua| % \\directlua','\\end{document}'].join('\r\n');
+ const source={path:'legacy.tex',text};
+ assert.equal(resolveEngine({source}).resolvedEngine,'xelatex');
+ const forced=resolveEngine({source,explicitChoice:'lualatex'});
+ assert.equal(forced.resolvedEngine,'lualatex');
+ assert.deepEqual(forced.diagnostics.map(d=>[d.file,d.line,d.column,d.command,d.detail]),[['legacy.tex',6,3,'\\usepackage','xeCJK']]);
+});

@@ -38,7 +38,9 @@ function argument(text, offset) {
   return /[{}\\#]/.test(value) ? null : {value,end};
 }
 
-function scan({path, text}) {
+// These conditionals consume braced arguments; they never open a TeX fi group.
+const argumentTests=new Set('ifthenelse ifstrequal ifstrempty ifblank ifdef ifundef ifcsdef ifcsundef ifdefmacro ifcsmacro ifdefequal ifcsequal ifdefstrequal ifcsstrequal ifdefstring ifcsstring ifdefempty ifcsempty ifboolexpr ifbool iftoggle ifnumcomp ifdimcomp ifnumgreater ifnumless ifnumequal ifdimgreater ifdimless ifdimequal ifpatchable ifinlist ifinlistcs'.split(' '));
+function scan({path, text}, wasm) {
   const evidence = [], includes = [];
   const lines = text.split(/\r\n?|\n/);
   let line = 1, lineStart = 0;
@@ -70,7 +72,7 @@ function scan({path, text}) {
       continue;
     }
     if (value === '\\newif') {skipOperand = true; continue;}
-    if (/^\\if/.test(value) && value !== '\\ifthenelse') {
+    if (/^\\if/.test(value) && !argumentTests.has(value.slice(1))) {
       condition++;
       if (value === '\\ifdefined') skipOperand = true;
       continue;
@@ -88,6 +90,8 @@ function scan({path, text}) {
     const record = (engine,detail) => evidence.push({kind:'dependency',engine,file:path,line,
       column:index-lineStart+1,command:value,detail});
     if (primitives.has(command)) record(primitives.get(command),command);
+    if (wasm && command==='usegdlibrary') wasm.add('lualatex');
+    if (wasm && command==='usetikzlibrary' && argument(text,end)?.value.split(',').some(n=>n.trim()==='graphdrawing')) wasm.add('lualatex');
     if (!['usepackage','RequirePackage','input','include'].includes(command)) continue;
     const arg = argument(text,end);
     if (!arg) continue;
@@ -98,11 +102,22 @@ function scan({path, text}) {
       }
     } else {
       for (const name of arg.value.split(',').map(part => part.trim())) {
+        if (wasm && (name==='fontspec' || name==='unicode-math')) wasm.add('unicode');
+        if (wasm && name==='luacode') wasm.add('lualatex');
         if (packages.has(name)) record(packages.get(name),name);
       }
     }
   }
   return {evidence,includes};
+}
+
+export function tikzRuntime(source) {
+  const wasm=new Set();
+  const {evidence}=scan({path:'figure.tex',text:source},wasm);
+  for(const item of evidence)if(item.kind==='dependency')wasm.add(item.engine);
+  if(wasm.has('xelatex'))return 'unsupported-xe';
+  if(wasm.has('lualatex'))return 'lualatex';
+  return wasm.has('unicode')?'unicode':'auto';
 }
 
 // source: string (main.tex), or {path,text}. projectSources: project-root paths,
