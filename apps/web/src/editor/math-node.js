@@ -88,45 +88,28 @@ export function mathEnvironment(field) {
   return labels;
 }
 
-function deleteIntegralAtEmptyLimit(field) {
-  if (field.selection.ranges.some(([start,end])=>start!==end)) return false;
-  const model=field._mathfield?.model;
-  const cursor=model?.at(field.position);
-  const branch=cursor?.parentBranch;
-  if (cursor?.type!=='first' || !['subscript','superscript'].includes(branch)) return false;
-  const owner=cursor.parent;
-  const operator=owner.type==='subsup' ? owner.leftSibling : owner;
-  if (!isIntegral(operator) || !owner.hasEmptyBranch('subscript') || !owner.hasEmptyBranch('superscript')) return false;
-  const start=model.offsetOf(operator.leftSibling);
-  const end=model.offsetOf(owner);
-  if (start<0 || end<=start) return false;
-  if (!model.contentWillChange({inputType:'deleteContentBackward'})) return true;
-  model.deferNotifications({content:true,selection:true,type:'deleteContentBackward'},()=>{
-    if (owner!==operator) owner.parent.removeChild(owner);
-    operator.parent.removeChild(operator);
-    model.position=start;
-  });
-  return true;
-}
-
 // An operator that was just inserted owns an empty \mathord body. Deleting
 // inside it selects the whole operator first, so a second press removes it as
 // one object instead of nibbling at its placeholder. The caret can sit either
 // in the body or right behind the operator, where scripts attach.
-function emptyOperatorRange(field) {
+function emptyOperatorRange(field, backward) {
   const model=field._mathfield?.model;
   if (!model) return null;
   const [from,to]=field.selection.ranges[0]??[field.position,field.position];
   const caret=model.at(from===to?field.position:to);
   if (!caret) return null;
   let operator=null, group=null;
-  if (caret.command==='\\mathord' || caret.parent?.command==='\\mathord') {
+  if ((backward&&caret.command==='\\mathord') || caret.parent?.command==='\\mathord') {
     group=caret.command==='\\mathord' ? caret : caret.parent;
     const left=group.leftSibling;
     operator=left?.type==='subsup' ? left.leftSibling : left;
-  } else if (isMathOperatorWithBody(caret.command?.slice(1))) {
-    operator=caret;
-    const right=operator.rightSibling;
+  } else {
+    const adjacent=!backward&&isMathOperatorWithBody(caret.rightSibling?.command?.slice(1))
+      ?caret.rightSibling:caret;
+    operator=adjacent.type==='subsup'?adjacent.leftSibling:adjacent;
+    if(!isMathOperatorWithBody(operator?.command?.slice(1)))return null;
+    const scripts=operator.rightSibling;
+    const right=scripts?.type==='subsup'?scripts.rightSibling:scripts;
     group=right?.command==='\\mathord' ? right : null;
   }
   if (!group || !isMathOperatorWithBody(operator?.command?.slice(1))) return null;
@@ -136,17 +119,61 @@ function emptyOperatorRange(field) {
   const end=model.offsetOf(group);
   return start>=0&&end>start ? [start,end] : null;
 }
-function selectEmptyOperator(field, backward) {
-  const range=emptyOperatorRange(field);
-  if (!range) return false;
-  const [start,end]=range;
-  const [from,to]=field.selection.ranges[0] ?? [field.position,field.position];
-  if (from===start&&to===end) {
-    field.executeCommand(backward?'deleteBackward':'deleteForward');
-    return true;
+// Use exact model ranges, not MathLive's deleteBackward/deleteForward, which
+// can expand a one-character selection to its parent or unwrap a structure.
+function deleteMathRange(field, range, backward) {
+  const model=field._mathfield?.model;
+  const [from,to]=range;
+  if (!model || to<=from) return false;
+  // getAtoms()/deleteAtoms() omit empty containers in MathLive 0.108. Include
+  // them explicitly, but never expand a partial child selection to its parent.
+  const atoms=new Set();
+  for (let offset=from+1;offset<=to;offset++) {
+    const atom=model.at(offset);
+    if (atom?.parent && atom.type!=='first' && model.offsetOf(atom.leftSibling)>=from) atoms.add(atom);
   }
-  if (from!==to) return false;
-  field.selection={ranges:[[start,end]],direction:backward?'backward':'forward'};
+  const outermost=[...atoms].filter(atom=>{
+    for(let parent=atom.parent;parent;parent=parent.parent) if(atoms.has(parent))return false;
+    return true;
+  });
+  if (!outermost.length) return true;
+  const inputType=backward?'deleteContentBackward':'deleteContentForward';
+  if (!model.contentWillChange({inputType})) return true;
+  model.deferNotifications({content:true,selection:true,type:inputType},()=>{
+    for (const atom of outermost) atom.parent.removeChild(atom);
+    // The public setter also schedules a repaint when forward deletion leaves
+    // the caret at the same offset.
+    field.position=from;
+  });
+  field._mathfield.snapshot();
+  return true;
+}
+
+function eraseMathObject(field, backward) {
+  const model=field._mathfield?.model;
+  if (!model || emptyMath(field.value)) return false;
+  const ranges=field.selection.ranges;
+  if (!caretCollapsed(field)) {
+    if (ranges.length!==1) return false;
+    return deleteMathRange(field,ranges[0],backward);
+  }
+  const caret=model.at(field.position);
+  const target=backward ? caret : caret?.rightSibling;
+  let range=emptyOperatorRange(field,backward);
+  if (!range) {
+    // At a branch boundary only its immediate owner is eligible. Never climb
+    // to the root: deleting a nested radical must not erase its outer fraction.
+    const structure=target?.hasChildren ? target :
+      (backward ? caret?.type==='first' : !target) ? caret?.parent : null;
+    if (structure && structure!==model.root) {
+      range=[model.offsetOf(structure.leftSibling),model.offsetOf(structure)];
+    } else if (target && target.type!=='first' && !target.hasChildren) {
+      const end=model.offsetOf(target);
+      return deleteMathRange(field,[end-1,end],backward);
+    } else return false;
+  }
+  if (range[0]<0 || range[1]<=range[0]) return false;
+  field.selection={ranges:[range],direction:backward?'backward':'forward'};
   return true;
 }
 
@@ -193,8 +220,8 @@ const mathFieldStyle = `
   :host([data-lineae-editing]) [data-lineae-integrand] { background:light-dark(#e9f4ed,#304a3b); border-radius:.15em; }
   :host([data-empty-matrix-cell]) .ML__caret { position:relative; }
   :host([data-empty-matrix-cell]) .ML__caret::after {
-    content:""; position:absolute; left:50%; top:50%; width:.66em; height:1.3em;
-    transform:translate(-50%,-50%);
+    content:""; position:absolute; left:50%; top:-.8em; width:.66em; height:1em;
+    box-sizing:border-box; transform:translateX(-50%);
     border:1px solid currentColor; border-radius:.16em;
     opacity:.45; pointer-events:none;
   }
@@ -379,7 +406,9 @@ function addDisplayLine(field) {
   const split=caret?.parent?.type==='root';
   const before=split ? field.getValue(0,field.position) : value;
   const after=split ? field.getValue(field.position,field.lastOffset) : '';
-  field.value='\\begin{gathered}'+(before || '\\placeholder{}')+'\\\\'+(after || '\\placeholder{}')+'\\end{gathered}';
+  // Empty rows use the same baseline-anchored cell hint as addRowAfter.
+  // A placeholder glyph has a different advance and shifts the empty-row caret.
+  field.value='\\begin{gathered}'+before+'\\\\'+after+'\\end{gathered}';
   const updated=field._mathfield?.model;
   for(let i=0;i<=field.lastOffset;i++) {
     const atom=updated?.at(i);
@@ -665,10 +694,10 @@ export const MathNode = Node.create({
           if(!node.isBlock)return;
           field.focus();addDisplayLine(field);
         } else if(command==='eraseObject') {
-          // Let normal deletion and replacement undo continue in keydown when
-          // there is no empty operator. Only the structural action is bound.
+          // Let replacement undo and deletion of an entirely empty field
+          // continue through keydown.
           if(replacedOperator)return;
-          if(!(backward&&deleteIntegralAtEmptyLimit(field))&&!selectEmptyOperator(field,backward))return;
+          if(!eraseMathObject(field,backward))return;
         } else return;
         event.detail.handled=true;
       });
@@ -742,7 +771,9 @@ export const MathNode = Node.create({
             !event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey &&
             field.selection.ranges.every(([start,end])=>start===end)) {
           const backward=event.key==='ArrowLeft';
-          if (!backward && exitedStyleAt!==field.position && field.position>0 && /^\\(?:math(?:bf|rm|it|cal|bb|sf|tt|frak|scr)|boldsymbol|operatorname)\*?\{/.test(field.getValue(field.position-1,field.position))) {
+          const style=field.position>0 && /^\\(?:math(?:bf|rm|it|cal|bb|sf|tt|frak|scr)|boldsymbol|operatorname)\*?\{/.exec(field.getValue(field.position-1,field.position))?.[0];
+          if (!backward && exitedStyleAt!==field.position && style &&
+              !field.getValue(field.position,field.position+1).startsWith(style)) {
             consume(); leaveEnvironment(field); exitedStyleAt=field.position; return;
           }
           if (field.position===(backward?0:field.lastOffset)) {
@@ -751,15 +782,11 @@ export const MathNode = Node.create({
             return;
           }
         }
-        if ((event.key === 'ArrowLeft' || event.key === 'ArrowRight') && field.mode === 'text') {
-          const before = JSON.stringify(field.selection.ranges);
-          queueMicrotask(() => {
-            if (!field.isConnected || field.mode !== 'text') return;
-            if (JSON.stringify(field.selection.ranges) !== before) return;
-            const command = event.key === 'ArrowRight' ? 'moveToNextGroup' : 'moveToPreviousGroup';
-            field.executeCommand(command);
-            if (field.mode === 'text') field.executeCommand(command);
-          });
+        if (plain && !event.shiftKey && caretCollapsed(field) &&
+            (event.key === 'ArrowLeft' || event.key === 'ArrowRight') && field.mode === 'text') {
+          consume();
+          field.position=Math.max(0,Math.min(field.lastOffset,field.position+(event.key==='ArrowRight'?1:-1)));
+          return;
         }
         if (!event.ctrlKey && !event.metaKey && !event.altKey && ambiguous[event.key]) {
           event.preventDefault(); event.stopPropagation();

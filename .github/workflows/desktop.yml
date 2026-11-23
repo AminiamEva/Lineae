@@ -116,6 +116,8 @@ jobs:
         run: node tests/project-browser.cjs
       - name: Browser regressions
         run: node tests/editor.cjs
+      - name: Math editing browser regressions
+        run: node tests/math-editing-browser.cjs
       - name: Platform shortcuts and YAML native bindings
         run: node tests/shortcuts-browser.cjs
       - name: Project session regressions

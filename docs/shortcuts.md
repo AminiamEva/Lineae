@@ -73,8 +73,11 @@ keybindings:
 - `editor.dollar`：正文 `$` 输入规则。设为 `null` 后输入 `$` 是普通字符；
   改为组合键也可以插入公式。公式内 `$` 的退出行为不属于这个正文输入规则。
 - `math.palette`、`nextSlot`、`previousSlot`、`enterLine`、`eraseObject`：
-  命令补全、占位导航、显示公式换行、空运算符两次删除。
+  命令补全、占位导航、显示公式换行、逐字符删除及结构块两次删除。
   `nextSlot` 在刚插入箭头后仍优先旋转箭头。
+  默认 Backspace / Delete 只删除当前方向的单个字符；遇到分式、根式、矩阵、
+  积分主体等结构边界时，先选中当前结构，再按一次才删除，不扩大到外层公式。
+  左右箭头逐字符进入结构和数学字体文本，不跳过整段内容。
 - `source.find`、`replace`、`undo`、`redo`、`zoomIn`、`zoomOut`、`zoomReset`、
   `indent`、`complete`：源码编辑器的相应操作，另增加 `source.outdent`。
   缩进命令仍优先接受当前补全 / 导航片段占位，然后才缩进。
@@ -83,8 +86,8 @@ keybindings:
   不是编辑区的设置输入框等控件不受禁用影响。
 
 重映射后，原生默认键不会偷偷继续执行相同命令。`null` 禁用应用命令，
-不等于禁用整个操作系统的按键：例如禁用 `math.eraseObject` 只关闭空运算符的
-结构选择 / 删除动作，Backspace 本身仍可以进行普通字符删除。
+不等于禁用整个操作系统的按键：例如禁用 `math.eraseObject` 会关闭应用提供的
+精确删除及结构确认策略，Backspace / Delete 仍由 MathLive 原生删除处理。
 
 ## 作用域及备注
 

@@ -15,7 +15,9 @@ export function installFloatingToolbar({header,ribbon,sourceView,getAutoHide}) {
   const lifetime = new AbortController();
   const options = {signal:lifetime.signal};
   let collapsed = false;
-  let codeMode = !sourceView.hidden;
+  const view = () => sourceView.hidden ? 'document' : sourceView.split ? 'split' : 'source';
+  let currentView = view();
+  const remembered = new Map();
   let timer;
   let frame;
 
@@ -34,6 +36,7 @@ export function installFloatingToolbar({header,ribbon,sourceView,getAutoHide}) {
   function collapse(value) {
     clearTimeout(timer);
     collapsed = Boolean(value);
+    remembered.set(currentView,collapsed);
     holder.classList.toggle('is-hidden',collapsed);
     document.body.classList.toggle('toolbar-collapsed',collapsed);
     for (const panel of ribbon.querySelectorAll(':scope > .tools')) panel.inert = collapsed;
@@ -66,11 +69,14 @@ export function installFloatingToolbar({header,ribbon,sourceView,getAutoHide}) {
   const geometry = new ResizeObserver(measure);
   geometry.observe(holder);
   const mode = new MutationObserver(() => {
-    const next = !sourceView.hidden;
-    if (next !== codeMode) { codeMode = next; collapse(getAutoHide()); }
+    const next = view();
+    if (next !== currentView) {
+      currentView = next;
+      collapse(remembered.get(next) ?? getAutoHide());
+    }
     else measure();
   });
-  mode.observe(document.querySelector('.tex-workspace'),{attributes:true,attributeFilter:['hidden']});
+  mode.observe(document.querySelector('.tex-workspace'),{attributes:true,attributeFilter:['hidden','class']});
   function destroy() {
     lifetime.abort();
     geometry.disconnect();
@@ -80,5 +86,7 @@ export function installFloatingToolbar({header,ribbon,sourceView,getAutoHide}) {
   }
   window.addEventListener('pagehide',event => { if (!event.persisted) destroy(); },options);
   collapse(getAutoHide());
-  return {button,show,destroy,refresh:() => collapse(getAutoHide()),relocalize:label};
+  // Importing preferences is an explicit reset, so the remembered choices go too.
+  function refresh() { remembered.clear(); collapse(getAutoHide()); }
+  return {button,show,destroy,refresh,relocalize:label};
 }

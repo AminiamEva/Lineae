@@ -2630,7 +2630,9 @@ A & B \\
     });
     await page.waitForFunction(()=>document.querySelector('.environment-tag')?.textContent.includes('Subscript'));
     for(let index=0;index<3;index++) await page.keyboard.press('Backspace');
-    assert.equal(await integralWithLimit.evaluate(field=>field.value),'','Backspacing through an empty limit removes the integral');
+    assert.notEqual(await integralWithLimit.evaluate(field=>field.value),'','Backspacing at an empty limit first selects the integral');
+    await page.keyboard.press('Backspace');
+    assert.equal(await integralWithLimit.evaluate(field=>field.value),'','A second Backspace at an empty limit removes the selected integral');
     await importSource('\\[\\int\\mathord{x}\\]');
     const operandField=paper.locator('math-field').first();
     const operandMark=operandField.locator('[data-lineae-integrand]').first();
