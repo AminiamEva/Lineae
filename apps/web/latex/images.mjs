@@ -10,6 +10,9 @@ function figureParts(source) {
   if(!opening || [...sourceStructure(source)].some(t=>t.kind==='invalid'))return null;
   const closing=environmentEnd(source,source.indexOf('\\begin'),opening[1]);
   if(!closing || source.slice(closing.end).trim())return null;
+  // A common authoring form wraps \includegraphics in a center/flush environment.
+  // Keep the original source for patching but hide those wrappers while scanning.
+  const scanSource=source.replace(/\\(?:begin|end)\{(?:center|flushleft|flushright)\}/g,match=>' '.repeat(match.length));
   const attrs={figure:true,placement:null,centered:false,align:null,caption:null,label:null,width:null,captionEnabled:false,captionNumbered:true,captionPosition:'below'};
   const spans={},commands={};let cursor=trivia(source,opening[0].length),graphicsEnd;
   if(source[cursor]==='[') {
@@ -18,7 +21,9 @@ function figureParts(source) {
     commands.placement={from:cursor,to:option.end};cursor=trivia(source,option.end);
   }
   while(cursor<closing.start) {
-    const from=cursor,command=/^\\(includegraphics|caption|label|centering|raggedleft|raggedright)(?![A-Za-z])/.exec(source.slice(cursor));
+    while(cursor<closing.start && /\s/.test(scanSource[cursor]))cursor++;
+    if(cursor>=closing.start)break;
+    const from=cursor,command=/^\\(includegraphics|caption|label|centering|raggedleft|raggedright)(?![A-Za-z])/.exec(scanSource.slice(cursor));
     if(!command)return null;
     cursor+=command[0].length;
     const name=command[1];

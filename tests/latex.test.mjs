@@ -358,6 +358,25 @@ test('imports table floats with arraystretch as editable tables', () => {
   assert.equal(again.attrs.arrayStretch, 0.7);
 });
 
+test('imports a figure whose image is wrapped in a center environment', () => {
+  const source = [
+    '\\begin{figure}[H]', '\\centering', '\\caption{测量面板示例}',
+    '\\begin{center}', '\\includegraphics[width=0.6\\textwidth]{example.png}', '\\end{center}',
+    '\\end{figure}',
+  ].join('\n');
+  const [node] = importBlocks(source);
+  assert.equal(node.type, 'documentImage');
+  assert.equal(node.attrs.figure, true);
+  assert.equal(node.attrs.placement, 'H');
+  assert.equal(node.attrs.centered, true);
+  assert.equal(node.attrs.caption, '测量面板示例');
+  assert.equal(node.attrs.path, 'example.png');
+  assert.equal(node.attrs.width, '0.6\\textwidth');
+  const again = importBlocks(serialize(node))[0];
+  assert.equal(again.type, 'documentImage');
+  assert.equal(again.attrs.caption, '测量面板示例');
+});
+
 test('parses extended math environments as math blocks', () => {
   for (const environment of [
     ['alignat', '\\begin{alignat}{2}\na&=b & c&=d\n\\end{alignat}'],
