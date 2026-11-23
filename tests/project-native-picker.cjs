@@ -3,6 +3,7 @@ const {revealToolbar,setIndentOnSave,createTreeEntry}=require('./workspace-ui-he
 // The native bridge is observed and forwarded unchanged; neither picker nor
 // filesystem is mocked. Frozen Tauri exports are observed at the adapter boundary.
 const {chromium}=require('playwright');
+const {createServer}=require('node:net');
 const {spawn,execFileSync}=require('node:child_process');
 const fs=require('node:fs/promises');
 const {constants}=require('node:fs');
@@ -34,7 +35,7 @@ async function picker(stage,kind){
   const count=await page.evaluate(()=>window.pickerTrace.filter(item=>item.command==='open_project').length);
   await revealToolbar(page); await page.locator('[data-group=files]').click();
   await page.locator('#project-open').click();
-  await page.waitForFunction(count=>window.pickerTrace.filter(item=>item.command==='open_project').length===count+1,count);
+  await page.waitForFunction(count=>window.pickerTrace.filter(item=>item.command==='open_project').length===count+1,count,{polling:100});
   console.log(`${kind==='cancel'?'NATIVE_PICKER_CANCEL_READY':'NATIVE_PICKER_SELECT_READY'} ${stage} ${fixture}`);
   await page.waitForFunction(count=>window.pickerTrace.filter(item=>item.command==='open_project')[count]?.state!=='pending',count,{timeout:operatorTimeout});
   const event=await page.evaluate(count=>window.pickerTrace.filter(item=>item.command==='open_project')[count],count);
@@ -59,11 +60,15 @@ async function picker(stage,kind){
   }
   result.executable=resolve(app,'lineae.exe');
   result.executableSha256=createHash('sha256').update(await fs.readFile(result.executable)).digest('hex');
+  const listener=createServer();
+  await new Promise((done,fail)=>listener.once('error',fail).listen(0,'127.0.0.1',done));
+  const port=listener.address().port;
+  await new Promise(done=>listener.close(done));
   child=spawn(result.executable,[],{
-    env:{...process.env,WEBVIEW2_USER_DATA_FOLDER:resolve(run,'webview-profile'),WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS:'--remote-debugging-port=9237'},stdio:'ignore',
+    env:{...process.env,WEBVIEW2_USER_DATA_FOLDER:resolve(run,'webview-profile'),WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS:'--remote-debugging-port='+port},stdio:'ignore',
   });
   result.pid=child.pid;console.log('NATIVE_PICKER_APP '+JSON.stringify({pid:child.pid,output:run,executable:result.executable,sha256:result.executableSha256}));
-  for(let n=0;n<150;n++){try{browser=await chromium.connectOverCDP('http://127.0.0.1:9237');break;}catch{await new Promise(done=>setTimeout(done,200));}}
+  for(let n=0;n<150;n++){try{browser=await chromium.connectOverCDP('http://127.0.0.1:'+port);break;}catch{await new Promise(done=>setTimeout(done,200));}}
   assert.ok(browser,'Actual WebView2 CDP did not start');
   for(let n=0;n<100;n++){page=browser.contexts()[0]?.pages().find(page=>page.url().includes('tauri.localhost'));if(page)break;await new Promise(done=>setTimeout(done,200));}
   assert.ok(page);await revealToolbar(page); await page.locator('[data-group=files]').click();await page.locator('#project-open').waitFor();

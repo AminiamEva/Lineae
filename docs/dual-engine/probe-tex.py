@@ -140,11 +140,33 @@ def probe(output, identifier, engine, source, expected_text=(), golden=None, chi
     return result
 
 
+def english_reference_environment(output):
+    directory = output / "xelatex-format"
+    directory.mkdir()
+    (directory / "check.tex").write_text(
+        r"\documentclass{article}\begin{document}"
+        r"\typeout{LINEAE-HYPHEN=\the\language,\the\lefthyphenmin,\the\righthyphenmin}"
+        r"\showhyphens{interdependent}\end{document}", encoding="ascii"
+    )
+    commands = [run(directory, name + ".log", ["kpsewhich", "--engine=xetex", name])
+                for name in ("language.dat", "hyphen.tex", "xelatex.fmt")]
+    compile_command = run(directory, "compile.log", ["xelatex", *TEX_FLAGS, "check.tex"])
+    commands.append(compile_command)
+    log = Path(compile_command["log"]).read_text(errors="replace")
+    match = re.search(r"^LINEAE-HYPHEN=(\d+),(\d+),(\d+)\s*$", log, re.M)
+    parameters = list(map(int, match.groups())) if match else None
+    valid = all(command["exit"] == 0 for command in commands) and parameters == [0, 2, 3]
+    return {"id": "xelatex-format", "status": "PASS" if valid else "BLOCKED",
+            "englishLanguageAndMinima": parameters, "commands": commands,
+            "diagnostic": "" if valid else "Restore the matching TeX Live English language configuration and rebuild the xelatex format."}
+
+
 def main():
     output = Path(sys.argv[1]).resolve()
     output.mkdir(parents=True, exist_ok=True)
     revision = subprocess.check_output(["git", "-C", ROOT, "rev-parse", "HEAD"], text=True).strip()
-    results = []
+    reference_environment = english_reference_environment(output)
+    results = [reference_environment]
     for engine, package in CJK.items():
         results.append(probe(output, f"{engine}-article", engine, ARTICLE, ("LineaeTeXbaseline.",)))
         chinese = ARTICLE.replace(r"\pagestyle", package + "\n" + r"\pagestyle").replace(
@@ -155,6 +177,11 @@ def main():
     for name in ("xelatex-reference", "xecjk-reference"):
         reference = json.loads((fixtures / f"{name}.json").read_text(encoding="utf-8"))
         for index, case in enumerate(reference["cases"], 1):
+            if reference_environment["status"] != "PASS":
+                results.append({"id": f"{name}-{index:02d}", "engine": "xelatex", "status": "BLOCKED",
+                                "diagnostic": reference_environment["diagnostic"],
+                                "frozenComparison": {"status": "UNVERIFIED"}})
+                continue
             results.append(probe(output, f"{name}-{index:02d}", "xelatex", case["source"],
                                  golden=case["lines"], chinese=name == "xecjk-reference"))
     versions = [

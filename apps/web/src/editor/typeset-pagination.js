@@ -504,10 +504,12 @@ export function installTypesetPagination(page, paper, meta, editor) {
       if (matter === 'back') backStartPage = pageIndex;
     });
     chapterPages = new Set();
+    // unscaledRect is relative to the paper origin. A heading just above the
+    // body margin still belongs to that sheet, including subpixel rounding.
+    const chapterPage = element => Math.min(plan.pageCount - 1, Math.max(0,
+      Math.floor(unscaledRect(element, pageRect, zoom).top / pitch)));
     editable.querySelectorAll('h1').forEach((element) => {
-      const rect = unscaledRect(element, pageRect, zoom);
-      const pageIndex = Math.min(plan.pageCount - 1, Math.max(0, Math.floor((rect.top - marginTop) / pitch)));
-      chapterPages.add(pageIndex);
+      chapterPages.add(chapterPage(element));
     });
     // The mainmatter marker often sits on the last front-matter page.  Arabic
     // numbering starts at the first chapter after that marker, not at the
@@ -520,8 +522,7 @@ export function installTypesetPagination(page, paper, meta, editor) {
         return;
       }
       if (element.tagName !== 'H1' || currentMatter !== 'main' || firstMainChapter !== null) return;
-      const rect = unscaledRect(element, pageRect, zoom);
-      firstMainChapter = Math.min(plan.pageCount - 1, Math.max(0, Math.floor((rect.top - marginTop) / pitch)));
+      firstMainChapter = chapterPage(element);
     });
     if (firstMainChapter !== null) mainStartPage = firstMainChapter;
     // Find the first chapter after the explicit mainmatter marker in DOM
@@ -532,8 +533,7 @@ export function installTypesetPagination(page, paper, meta, editor) {
       const nextChapter = [...editable.querySelectorAll('h1')].find(element =>
         Boolean(mainMarker.compareDocumentPosition(element) & Node.DOCUMENT_POSITION_FOLLOWING));
       if (nextChapter) {
-        const rect = unscaledRect(nextChapter, pageRect, zoom);
-        mainStartPage = Math.min(plan.pageCount - 1, Math.max(0, Math.floor((rect.top - marginTop) / pitch)));
+        mainStartPage = chapterPage(nextChapter);
       }
     }
     if (hasFrontmatterMarker) page.dataset.frontmatter = 'true';

@@ -30,12 +30,31 @@ function elementTranslateY(element){
   return parts.length>1?Number.parseFloat(parts[1])||0:0;
 }
 const metricCache=new Map();
-if(typeof document!=='undefined')document.fonts?.addEventListener('loadingdone',()=>metricCache.clear());
+const canvasFonts=new Map();
+if(typeof document!=='undefined')document.fonts?.addEventListener('loadingdone',()=>{
+  metricCache.clear();
+  canvasFonts.clear();
+});
+function canvasWidth(text,font){
+  let measurement=canvasFonts.get(font);
+  if(!measurement){
+    context.font=font;
+    const native=context.font;
+    // Some rasterizers round each advance to a CSS pixel at body text sizes.
+    // Keep native shaping but measure at a larger size on those backends.
+    const rounded=['i','W',' '].every(probe=>Number.isInteger(context.measureText(probe).width));
+    const enlarged=rounded?native.replace(/([\d.]+)px/,(_,size)=>Number(size)*64+'px'):native;
+    measurement={font:enlarged,scale:enlarged===native?1:64};
+    canvasFonts.set(font,measurement);
+  }
+  context.font=measurement.font;
+  return context.measureText(text).width/measurement.scale;
+}
 function measure(text,style){
   const font=style.font||[style.fontStyle,style.fontWeight,style.fontSize,style.fontFamily].join(' ');
   const id=font+'|'+style.letterSpacing+'|'+text;
   if(metricCache.has(id))return metricCache.get(id);
-  context.font=font;const width=context.measureText(text).width+Math.max(0,text.length-1)*(parseFloat(style.letterSpacing)||0);
+  const width=canvasWidth(text,font)+Math.max(0,text.length-1)*(parseFloat(style.letterSpacing)||0);
   if(metricCache.size>10000)metricCache.clear();metricCache.set(id,width);return width;
 }
 function tokensFor(editor,node,start,element,options){
@@ -81,7 +100,7 @@ function tokensFor(editor,node,start,element,options){
         emit({type:'glue',width:pair.width*em,stretch:pair.stretch*em,shrink:pair.shrink*em,from,to:from,cjk:true});
       }
       if(before&&!pair&&n>0&&previous!=='\n')emit({type:'glue',width:before,stretch:0,shrink:Math.min(em/2,before),from,to:from,cjk:true});
-      emit({type:'box',width:metrics.width-before-after,from,to:from+value.length,punctuation:true,before,after,font});
+      emit({type:'box',width:canvasWidth(value,font)-before-after,from,to:from+value.length,punctuation:true,before,after,font});
       if(after)emit({type:'glue',width:after,stretch:0,shrink:Math.min(em/2,after),from:from+value.length,to:from+value.length,cjk:true});
     }else if(/^[A-Za-z]{5,}$/.test(value)){
       const exception=options.exceptions.get(value.toLowerCase());
