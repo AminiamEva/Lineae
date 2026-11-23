@@ -68,3 +68,13 @@ test('TikZ literals cannot request a WASM backend',()=>{
    assert.equal(tikz.tikzRuntime(literal),'auto',literal);
  }
 });
+test('a stale window writing a draft preserves the latest explicit preference',async()=>{
+ const f=fixture('shared');const a=await f.open(),b=await f.open();
+ a.setEngineChoice('xelatex');b.edit(b.mainFileId,article+' B');
+ await Promise.all([a.pendingCheckpoint,b.pendingCheckpoint]);
+ assert.equal((await f.open()).engineChoice,'xelatex');
+ a.setEngineChoice('auto');b.checkpoint();await b.pendingCheckpoint;
+ assert.equal((await f.open()).engineChoice,'auto');
+ b.setEngineChoice('lualatex');a.checkpoint();await a.pendingCheckpoint;
+ assert.equal((await f.open()).engineChoice,'lualatex');
+});

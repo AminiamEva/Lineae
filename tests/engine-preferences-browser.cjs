@@ -110,6 +110,28 @@ const server=spawn(process.execPath,['scripts/serve.mjs','apps/web','39771'],{st
   await pick('xelatex');await profile('xelatex');
   assert.match(await page.locator('.engine-panel li').textContent(),/chapter\.tex:1:1/);
   await context.close();await start();await openProject(false);await profile('xelatex');assert.equal(await choice().inputValue(),'xelatex');
+  const a=page;
+  page=await context.newPage();await page.goto('http://127.0.0.1:39771');await openProject(false);
+  const b=page;
+  async function appendDraft(mark){
+    await page.locator('[data-source-mode=source]').click();
+    const code=page.locator('.cm-content');await code.focus();await page.keyboard.press('Control+End');await page.keyboard.insertText(mark);
+    await page.waitForFunction(mark=>Object.keys(localStorage).some(k=>k.includes('project-recovery') && localStorage[k].includes(mark)),mark);
+  }
+  page=a;await pick('auto');await appendDraft('window-A');
+  page=b;await appendDraft('window-B');
+  const prefs=()=>page.evaluate(()=>Object.keys(localStorage).filter(k=>k.endsWith(':engine')).map(k=>JSON.parse(localStorage[k]).choice));
+  assert.ok((await prefs()).includes('auto'));
+  await pick('lualatex');page=a;await pick('xelatex');
+  page=b;await page.locator('.cm-content').focus();await page.keyboard.insertText('B2');
+  assert.ok((await prefs()).includes('xelatex'));
+  await context.close();await start();await openProject(false);await profile('xelatex');
+  const drafts=await page.evaluate(()=>Object.keys(localStorage).filter(k=>k.includes('project-recovery')).map(k=>localStorage[k]));
+  for(const marker of ['window-A','window-B'])assert.ok(drafts.some(d=>d.includes(marker)),marker);
+  await page.reload();await page.evaluate(()=>{indexedDB.open=()=>{throw new DOMException('Denied','SecurityError');};});
+  await openProject(false);
+  assert.match(await page.locator('#engine-resolution').textContent(),/unavailable|无法保存/);
+  assert.match(await page.locator('.ProseMirror').first().textContent(),/Root/);
   console.log('PASS global settings, standalone bytes and restart, selection, undo/redo, IME and directory checkpoint across browser restart');
  }finally{await context?.close();await rm(dir,{recursive:true,force:true});}
 })().catch(e=>{console.error(e);process.exitCode=1;}).finally(()=>server.kill());

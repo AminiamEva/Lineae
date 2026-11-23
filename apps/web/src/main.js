@@ -1,3 +1,4 @@
+import {handleStorageId} from './project/project.mjs';
 import {AppendixStart,MatterStart,LayoutCommand} from './editor/appendix.js';
 import {Lipsum} from './editor/lipsum.js';
 import {CounterDirective} from './editor/counter-directive.js';
@@ -1516,13 +1517,13 @@ function refreshEngine() {
     activeEngine=result.resolvedEngine;
     typesetPagination.setEngine(activeEngine?getTypesettingProfile(activeEngine):null);
   }
-  enginePanel.update(result,Boolean(project),preferenceError || project?.persistenceError);
+  enginePanel.update(result,Boolean(project),project ? project.persistenceError : preferenceError);
 }
 function scheduleEngine() {
   if(enginePanel && !engineFrame)engineFrame=requestAnimationFrame(refreshEngine);
 }
 function persistStandaloneChoice() {
-  if(!standaloneKey)return;
+  if(!standaloneKey){if(fileHandle)preferenceError=t('文档偏好无法保存','Document preference cannot be saved');return;}
   try {
     if(standaloneChoice==='auto')localStorage.removeItem(standaloneKey);
     else localStorage.setItem(standaloneKey,standaloneChoice);
@@ -1771,7 +1772,7 @@ async function writeDocument(snapshot,saveAs) {
     fileHandle=handle;
     if(handle.name)filename=handle.name;
     if(!projectExplorer?.active){
-      const key=await engineStorageKey(filename,new TextEncoder().encode(snapshot.text));
+      const key=await engineStorageKey(filename,new TextEncoder().encode(snapshot.text),handle).catch(()=>null);
       if(!snapshot.isCurrentDocument())return;
       standaloneKey=key;persistStandaloneChoice();
     }
@@ -1783,16 +1784,21 @@ async function writeDocument(snapshot,saveAs) {
   }
   await downloadProject(false,snapshot.text,name);
 }
-async function engineStorageKey(name,bytes) {
+async function engineStorageKey(name,bytes,handle) {
+  if(handle?.nativePath)return 'lineae:document-engine:path:'+handle.nativePath;
+  if(handle?.isSameEntry){
+    const id=await handleStorageId(handle);
+    if(id)return 'lineae:document-engine:handle:'+id;
+  }
   const hash=await crypto.subtle.digest('SHA-256',bytes);
   return 'lineae:document-engine:'+name+':'+Array.from(new Uint8Array(hash),v=>v.toString(16).padStart(2,'0')).join('');
 }
 async function openStandalone(file,handle) {
   const bytes=await file.arrayBuffer();
   const text=new TextDecoder('utf-8',{fatal:true,ignoreBOM:true}).decode(bytes);
-  const key=await engineStorageKey(file.name,bytes);
+  const key=await engineStorageKey(file.name,bytes,handle).catch(()=>null);
   load(text);
-  fileHandle=handle;filename=file.name;standaloneKey=key;preferenceError='';
+  fileHandle=handle;filename=file.name;standaloneKey=key;preferenceError=key?'':t('文档偏好无法保存','Document preference cannot be saved');
   let stored;
   try {stored=localStorage.getItem(key);} catch {preferenceError=t('无法读取文档设置','Document settings unavailable');}
   standaloneChoice=['xelatex','lualatex'].includes(stored)?stored:'auto';

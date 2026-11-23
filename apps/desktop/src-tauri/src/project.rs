@@ -1247,6 +1247,25 @@ mod tests {
         }
     }
     #[test]
+    fn stale_checkpoint_preserves_explicit_engine_and_both_drafts() {
+        use super::super::project_checkpoints::operate;
+        let (_, root) = fixture();
+        let save = |id: &str, choice: &str, revision: u64| {
+            let data = serde_json::json!({"files":{},"drafts":[{"path":"main.tex","draft":id}],
+                "engineChoice":choice,"engineRevision":revision});
+            operate(&root,"checkpoint",Some(id),Some(serde_json::to_vec(&data).unwrap()),None).unwrap();
+        };
+        let check = |choice: &str| {
+            let data:serde_json::Value=serde_json::from_slice(&operate(&root,"load_state",None,None,None).unwrap()).unwrap();
+            assert_eq!(data["engineChoice"],choice);
+            assert_eq!(data["recoveryVersions"].as_array().unwrap().len(),2);
+        };
+        save("A","xelatex",1);save("B","auto",0);check("xelatex");
+        save("A","auto",2);save("B","xelatex",1);check("auto");
+        save("B","lualatex",3);save("A","auto",2);check("lualatex");
+        std::fs::remove_dir_all(root).unwrap();
+    }
+    #[test]
     fn independent_process_checkpoints_survive_saves_and_stale_acknowledgement() {
         let (_, root) = fixture();
         let spawn = |id: &str| {

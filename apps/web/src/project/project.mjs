@@ -10,7 +10,8 @@ const decode = bytes => new TextDecoder('utf-8', {fatal:true, ignoreBOM:true}).d
 
 /** File handles remain in the adapter; source strings are never newline-normalized. */
 export class Project {
-  constructor(adapter, id = crypto.randomUUID(), storage = globalThis.localStorage) {
+  constructor(adapter, id = crypto.randomUUID(), storage = undefined) {
+    if(storage===undefined){try{storage=globalThis.localStorage;}catch{storage=null;}}
     this.id = id;
     this.adapter = adapter;
     this.files = new Map();
@@ -20,6 +21,7 @@ export class Project {
     this.treeVisible = false;
     this.config = {};
     this.engineChoice = 'auto';
+    this.engineRevision=0;
     this.scans = new Map(); this.dependencies = []; this.pathChanges = [];
     this.recovery = adapter.root && storage ? new RecoveryStore(storage,adapter.root+(adapter.session?':'+adapter.session:'')) : null;
     this.storage=storage;this.metadataKey=adapter.root?'lineae:project-state:v1:'+adapter.root:null;this.persistenceError='';
@@ -43,6 +45,11 @@ export class Project {
     let metadata={};
     try {metadata=JSON.parse(this.metadataKey && this.storage?.getItem(this.metadataKey) || '{}');}catch(error){this.persistenceError=error.message;}
     if(this.adapter.loadState){try{const state=await this.adapter.loadState();if(state){if(!state.files || !Array.isArray(state.drafts))throw new Error('Invalid disk checkpoint');if(state.main || state.engineChoice || Object.keys(state.files).length)metadata=state;this.diskRecovery=state.drafts;this.recoveryVersions=state.recoveryVersions ?? [];}}catch(error){this.diskRecoveryError='Disk recovery failed; checkpoint retained: '+error.message;this.persistenceError=this.diskRecoveryError;}}
+    this.engineRevision=Number(metadata?.engineRevision)||0;
+    const preference=this.readPreference();
+    if(preference && preference.revision>=this.engineRevision){
+      metadata={...metadata,engineChoice:preference.choice};this.engineRevision=preference.revision;
+    }
     this.savedIdentities=metadata?.files ?? {};
     const identities=new Set();
     for(const file of files.values()){const id=metadata?.files?.[file.path];if(typeof id==='string' && !identities.has(id))file.id=id;identities.add(file.id);}
@@ -89,9 +96,23 @@ export class Project {
     this.persistMetadata();
     if(recoveryError)this.persistenceError=[this.persistenceError,recoveryError].filter(Boolean).join(' · ');
   }
+  readPreference() {
+    try {
+      const p=JSON.parse(this.storage?.getItem(this.metadataKey+':engine') ?? 'null');
+      if(Number.isSafeInteger(p?.revision) && ['auto','lualatex','xelatex'].includes(p.choice))return p;
+    }catch{}
+    return null;
+  }
   setEngineChoice(choice) {
     if (!['auto','lualatex','xelatex'].includes(choice)) throw new TypeError('Invalid typesetting choice');
+    const latest=this.readPreference();
+    this.engineRevision=Math.max((latest?.revision ?? 0)+1,this.engineRevision+1,
+      Math.floor((performance.timeOrigin+performance.now())*1000));
     this.engineChoice = choice;
+    if(this.metadataKey && this.storage){
+      try{this.storage.setItem(this.metadataKey+':engine',JSON.stringify({choice,revision:this.engineRevision}));}
+      catch(error){this.preferenceError=error.message;}
+    }
     this.persistMetadata();
   }
   resolveTypesetting(globalDefault, liveFile, explicitChoice=this.engineChoice) {
@@ -102,9 +123,13 @@ export class Project {
       explicitChoice, globalDefault});
   }
   persistMetadata() {
-    if(!this.metadataKey)return;
-    const metadata={engineChoice:this.engineChoice,main:this.mainFileId?this.file(this.mainFileId).path:null,files:Object.fromEntries([...this.files.values()].map(file=>[file.path,file.id]))};
-    try {this.storage?.setItem(this.metadataKey,JSON.stringify(metadata));this.persistenceError=this.diskRecoveryError ?? '';}
+    if(!this.metadataKey){this.persistenceError=this.adapter.preferenceError ?? '';return;}
+    const shared=this.readPreference();
+    if(shared && shared.revision>this.engineRevision){
+      this.engineChoice=shared.choice;this.engineRevision=shared.revision;
+    }
+    const metadata={engineChoice:this.engineChoice,engineRevision:this.engineRevision,main:this.mainFileId?this.file(this.mainFileId).path:null,files:Object.fromEntries([...this.files.values()].map(file=>[file.path,file.id]))};
+    try {this.storage?.setItem(this.metadataKey,JSON.stringify(metadata));this.persistenceError=this.diskRecoveryError || this.preferenceError || this.adapter.preferenceError || '';}
     catch(error){this.persistenceError='Project settings could not be persisted: '+error.message;}
     if(this.adapter.checkpoint && !this.diskRecoveryError){
       const state={...metadata,drafts:[...this.files.values()].filter(file=>file.dirty).map(({path,saved,draft})=>({path,saved,draft}))};
@@ -312,12 +337,8 @@ export class Project {
   }
 }
 
-/** Browser File System Access adapter. Unsupported browsers must report capability absence. */
-export class DirectoryHandleAdapter {
-  constructor(handle) { this.handle = handle; }
-  static async open(handle) {
-    const adapter=new DirectoryHandleAdapter(handle);
-    if(!handle.isSameEntry || !globalThis.indexedDB)return adapter;
+export async function handleStorageId(handle) {
+    if(!handle?.isSameEntry || !globalThis.indexedDB)return null;
     const request=req=>new Promise((resolve,reject)=>{
       req.onsuccess=()=>resolve(req.result);req.onerror=()=>reject(req.error);
     });
@@ -327,7 +348,11 @@ export class DirectoryHandleAdapter {
       const db=await request(opening);
       try {
         const entries=await request(db.transaction('roots').objectStore('roots').getAll());
-        for(const entry of entries)if(await handle.isSameEntry(entry.handle))return entry.id;
+        for(const entry of entries){
+          if(handle.kind!==entry.handle.kind)continue;
+          try{if(await handle.isSameEntry(entry.handle))return entry.id;}
+          catch(error){if(error.name!=='NotFoundError')throw error;}
+        }
         const id='browser:'+crypto.randomUUID();
         await new Promise((resolve,reject)=>{
           const tx=db.transaction('roots','readwrite');
@@ -337,7 +362,28 @@ export class DirectoryHandleAdapter {
         return id;
       } finally {db.close();}
     }
-    adapter.root=await (navigator.locks?navigator.locks.request('lineae-project-directory-identity',findRoot):findRoot());
+    return navigator.locks?navigator.locks.request('lineae-project-directory-identity',findRoot):findRoot();
+}
+
+/** Browser File System Access adapter. Unsupported browsers must report capability absence. */
+export class DirectoryHandleAdapter {
+  constructor(handle) { this.handle = handle; }
+  static async open(handle) {
+    const adapter=new DirectoryHandleAdapter(handle);
+    try {
+      adapter.root=await handleStorageId(handle);
+      if(!adapter.root || !globalThis.localStorage)throw new Error('Browser storage unavailable');
+      adapter.session=crypto.randomUUID();
+      const prefix=new RecoveryStore(localStorage,adapter.root).key;
+      adapter.loadState=async()=>{
+        const legacy=localStorage.getItem(prefix);
+        const versions=Object.keys(localStorage).filter(k=>k.startsWith(prefix+':') && k!==prefix+':'+adapter.session)
+          .map(key=>({key,id:key.slice(prefix.length+1),expected:localStorage.getItem(key)}));
+        if(legacy)versions.push({key:prefix,id:'legacy',expected:legacy});
+        return {files:{},drafts:[],recoveryVersions:versions.map(v=>({...v,drafts:JSON.parse(v.expected)}))};
+      };
+      adapter.acknowledge=async v=>{if(localStorage.getItem(v.key)===v.expected)localStorage.removeItem(v.key);};
+    }catch{adapter.preferenceError='Project preferences unavailable / 工程偏好无法保存';}
     return adapter;
   }
   async list() {
