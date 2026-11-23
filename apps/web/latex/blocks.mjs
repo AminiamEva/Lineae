@@ -10,7 +10,7 @@ import {parseDocument} from './document.mjs';
 import {headingAt} from './headings.mjs';
 import {parseTableFloat} from './table-floats.mjs';
 import {importTblr,environmentEnd,trivia} from './tblr.mjs';
-import {importTabularx} from './tabularx.mjs';
+import {importTabularx,importLongtable} from './tabularx.mjs';
 import {importTextEnvironment} from './text-environments.mjs';
 
 function importedTableCells(row,specs,layout) {
@@ -327,6 +327,7 @@ export function importBlock(block, options={}) {
   }
   const list = parseListBlock(text);
   if (list) return list;
+  if (/^\\begin\{longtable\}/.test(text)) return importLongtable(block,inlineContent) ?? rawNode(block);
   const tblr=importTblr(block,inlineContent);
   if(tblr)return tblr;
   const tabularx=importTabularx(block,inlineContent);
@@ -385,7 +386,7 @@ export function importBlock(block, options={}) {
     const borderMode = all && vertical ? 'grid' : all ? 'horizontal' : ends && vertical ? 'outer' : null;
     return {
       type: 'table',
-      attrs: { columns: table.columns, booktabs, borderMode,
+      attrs: { atomicTabular:true, columns: table.columns, booktabs, borderMode,
         columnLayout: JSON.stringify(table.columnLayout?.boundaries??[]),
         columnRules: table.columnLayout?.boundaries?.some(boundary=>boundary.rules>0||boundary.at) || false },
       content: table.rows.map(row => ({
@@ -437,7 +438,7 @@ function importSegment(block,options) {
     // Split outer source-backed environments without losing their separators.
     // The scanner
     // keeps nested environments, macro arguments and literal content opaque.
-    const floating=token.kind==='begin' && /^\\begin\{(figure\*?|wrapfigure|table\*?|tabular\*?|tblr|tabularx|abstract|center|equation\*?)\}$/.exec(token.value);
+    const floating=token.kind==='begin' && /^\\begin\{(figure\*?|wrapfigure|table\*?|tabular\*?|tblr|tabularx|longtable|abstract|center|equation\*?)\}$/.exec(token.value);
     const closing=floating && environmentEnd(block,token.index,floating[1]);
     if(closing) {
       const prefix=block.slice(cursor,token.index);

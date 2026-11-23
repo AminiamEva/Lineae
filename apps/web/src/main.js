@@ -319,6 +319,25 @@ function insertMath(display = false, latex = '') {
   }
   insertFormula(editor, false, '', undefined, field => insertLiveMath(field, latex));
 }
+class PaperTableView extends Table.options.View {
+  constructor(node,minWidth){super(node,minWidth);this.syncEnvironment(node);}
+  update(node){
+    if(!super.update(node))return false;
+    this.syncEnvironment(node);
+    return true;
+  }
+  ignoreMutation(mutation){
+    // These are view-only pagination attributes on the wrapper. Rebuilding
+    // its NodeView would discard scroll position and measured overflow.
+    if(mutation.type==='attributes' && mutation.target===this.dom &&
+       ['data-paper-overflow','title','style'].includes(mutation.attributeName))return true;
+    return super.ignoreMutation(mutation);
+  }
+  syncEnvironment(node){
+    this.table.toggleAttribute('data-longtable',Boolean(node.attrs.longtable));
+    this.table.toggleAttribute('data-atomic-tabular',Boolean(node.attrs.atomicTabular));
+  }
+}
 const HistoryTable = Table.extend({
   addCommands() {
     const commands=this.parent();
@@ -714,7 +733,7 @@ paper.before(documentPage);documentPage.append(paper);
 paper.replaceChildren();
 editor=new Editor({
   element:paper,
-  extensions:[CounterDirective,AppendixStart,MatterStart,LayoutCommand,Lipsum,ProjectRegion,PageLayoutHistory,ConfigurableStarterKit.configure({heading:{levels:[1,2,3]},codeBlock:false}),LanguageCodeBlock,MultiSelection,PaperBehavior,TextStyle,TextCommand,Underline,Superscript,Subscript,SmallCaps,Boxed,Circled,PageBreak,MultiColumn,HistoryTable.configure({resizable:true}),TableRow,TableCell,TableHeader,TblrSource,TabularxSource,Raw,DocumentImage,TheoremBlock,DescriptionList,DescriptionItem,MathNode,MathBlock,MathGlue,Ref,Cite.configure({library:citationLibrary}),Footnote,Label,Subfigures,TableOfContents,Shortcuts],
+  extensions:[CounterDirective,AppendixStart,MatterStart,LayoutCommand,Lipsum,ProjectRegion,PageLayoutHistory,ConfigurableStarterKit.configure({heading:{levels:[1,2,3]},codeBlock:false}),LanguageCodeBlock,MultiSelection,PaperBehavior,TextStyle,TextCommand,Underline,Superscript,Subscript,SmallCaps,Boxed,Circled,PageBreak,MultiColumn,HistoryTable.configure({resizable:true,View:PaperTableView}),TableRow,TableCell,TableHeader,TblrSource,TabularxSource,Raw,DocumentImage,TheoremBlock,DescriptionList,DescriptionItem,MathNode,MathBlock,MathGlue,Ref,Cite.configure({library:citationLibrary}),Footnote,Label,Subfigures,TableOfContents,Shortcuts],
   content:'<p></p>',
 });
 function installMarginSelection(editor,page,paper) {
@@ -1109,7 +1128,7 @@ function usesSourceProjection() {
   let referenceSource=false;
   editor.state.doc.descendants(node=>{if(node.attrs.sourceCommand||node.attrs.labelSource||node.attrs.environmentSource)referenceSource=true;});
   return referenceSource || !sourceView.hidden || (projectExplorer?.active && projectFileKind==='tex') ||
-    editor.getJSON().content.some(node=>node.type==='raw'||node.attrs?.tblr||node.attrs?.tabularx||node.attrs?.figureSource);
+    editor.getJSON().content.some(node=>node.type==='raw'||node.attrs?.longtable||node.attrs?.tblr||node.attrs?.tabularx||node.attrs?.figureSource);
 }
 // Limit standalone writeback to text edits within one top-level paragraph.
 function standaloneParagraphEdit(tr) {

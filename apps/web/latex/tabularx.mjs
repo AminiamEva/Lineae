@@ -57,15 +57,17 @@ function parseColumns(preamble,total,unsupported) {
   return specs.length&&!prefix?{specs,gaps,vertical}:null;
 }
 
-export function parseTabularx(source) {
-  const opening=/^\s*\\begin\{tabularx\}/.exec(source);if(!opening)return null;
+function parseAlignedTable(source,name) {
+  const opening=/^\s*\\begin\{(longtable|tabularx)\}/.exec(source);
+  if(opening?.[1]!==name)return null;
   if([...sourceStructure(source)].some(t=>t.kind==='invalid'))return null;
-  const close=environmentEnd(source,opening[0].indexOf('\\begin'),'tabularx');
+  const close=environmentEnd(source,opening[0].indexOf('\\begin'),name);
   if(!close||source.slice(close.end).trim())return null;
-  const width=group(source,trivia(source,opening[0].length));if(!width)return null;
+  const width=name==='longtable' ? {value:'\\textwidth',end:opening[0].length} : group(source,trivia(source,opening[0].length));if(!width)return null;
   let at=trivia(source,width.end),position=null;
   if(source[at]==='['){const pos=group(source,at,'[',']');if(!pos)return null;position=pos.value;at=trivia(source,pos.end);}
   const preamble=group(source,at);if(!preamble||preamble.end>close.start)return null;
+  if(name==='longtable' && (!/^(?:[lcr|\s]|p\{\d+(?:\.\d+)?(?:mm|cm|pt|in)\})+$/.test(preamble.value) || /\\(?:end(?:firsthead|head|foot|lastfoot)|caption|kill|noalign)\b/.test(source.slice(preamble.end,close.start))))return null;
   const unsupported=[],columns=parseColumns(preamble.value,width.value,unsupported);if(!columns)return null;
   const {specs,gaps,vertical}=columns;
   const body=source.slice(preamble.end,close.start),tokens=delimiters(body,['&','\\\\']);if(!tokens)return null;
@@ -136,6 +138,12 @@ export function parseTabularx(source) {
   return {source,columns:specs.map(s=>alignments[s.type]?s.type:s.type==='p'?'p{'+s.width+'}':'l').join(''),
     booktabs:rules.length>0,rows,unsupported,
     metadata:{width:width.value,widthCSS:widthCSS(width.value),position,preamble:preamble.value,specs,gaps,rules}};
+}
+
+export function parseTabularx(source) { return parseAlignedTable(source,'tabularx'); }
+
+export function importLongtable(source,inline) {
+  return importSourceTable(source,inline,text=>parseAlignedTable(text,'longtable'),'longtable');
 }
 
 export function importTabularx(source,inline) {

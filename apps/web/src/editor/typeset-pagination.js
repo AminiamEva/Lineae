@@ -2,6 +2,7 @@ import {layoutScale} from '../typesetting/layout-geometry.js';
 import {counterProfile} from '../../latex/counter-profile.mjs';
 import {installParagraphLayout} from '../typesetting/paragraph-layout.js';
 import {documentLayoutBlocks} from '../project/fold-layout.mjs';
+import {t} from '../ui/i18n.mjs';
 import { planPagination, planTableRows } from '../../latex/typeset-layout.mjs';
 import { setSerializationClass } from './latex-codec.js';
 import { setHeadingBase } from '../../latex/blocks.mjs';
@@ -67,6 +68,19 @@ function unscaledRect(element, pageRect, zoom) {
     top: (rect.top - pageRect.top) / zoom,
     height: rect.height / zoom,
   };
+}
+
+function lineBoxAscent(element){
+  const style=getComputedStyle(element);
+  const line=document.createElement('span'),baseline=document.createElement('i');
+  line.style.cssText='position:fixed;visibility:hidden;white-space:pre;top:0;left:0;';
+  for(const key of ['fontFamily','fontStyle','fontSize','fontWeight','lineHeight'])line.style[key]=style[key];
+  baseline.style.cssText='display:inline-block;width:0;height:0;vertical-align:baseline';
+  line.append(document.createTextNode(element.textContent.slice(0,64)),baseline);
+  document.body.append(line);
+  const ascent=baseline.getBoundingClientRect().top-line.getBoundingClientRect().top;
+  line.remove();
+  return ascent;
 }
 
 function paragraphLines(editor, element, block, pageRect, zoom) {
@@ -161,6 +175,7 @@ export function installTypesetPagination(page, paper, meta, editor, engineProfil
     const tableRect = table.getBoundingClientRect();
     const rowRect = row => row.getBoundingClientRect();
     return {
+      longtable:table.hasAttribute("data-longtable"),
       rows: [...table.rows].map(row => {
         const rect = rowRect(row);
         return {
@@ -168,7 +183,7 @@ export function installTypesetPagination(page, paper, meta, editor, engineProfil
           height: rect.height / zoom,
         };
       }),
-      headerHeight: rowRect(table.rows[0]).height / zoom,
+      headerHeight: table.hasAttribute('data-longtable') ? 0 : rowRect(table.rows[0]).height / zoom,
       header: [...table.rows[0].cells].map(cell => ({
         text: cell.textContent,
         width: cell.getBoundingClientRect().width / zoom,
@@ -382,6 +397,17 @@ export function installTypesetPagination(page, paper, meta, editor, engineProfil
 
     const {elements:children,selectors:blockSelectors}=documentLayoutBlocks(editable);
     const baseRules=[];
+    // TeX places the first ordinary line at topskip. Measure Chromium's
+    // line-box ascent with the loaded font before positioning that line.
+    const first=children[0];
+    if(first?.matches('p') && first.textContent && !first.querySelector('math-field,img,br') &&
+       profile.className==='ctexart'){
+      const ascent=lineBoxAscent(first);
+      const options=/\\documentclass\s*\[([^\]]*)\]/.exec(paragraphPreamble)?.[1]??'';
+      const size=Number(/(?:^|,)\s*(10|11|12)pt\s*(?:,|$)/.exec(options)?.[1]??10);
+      const delta=size*96/72.27-ascent;
+      baseRules.push('.document-page .ProseMirror > '+blockSelectors[0]+'{margin-block-start:'+delta+'px}');
+    }
     children.forEach((element,index)=>{
       if(!element.closest('[data-project-region]'))return;
       const selector='.document-page .ProseMirror>'+blockSelectors[index].replace('>','[data-project-region]>');
@@ -404,6 +430,27 @@ export function installTypesetPagination(page, paper, meta, editor, engineProfil
     const marginTop = parseFloat(computed.paddingTop);
     const marginBottom = parseFloat(computed.paddingBottom);
     const geometry = { pageHeight, pageGap, marginTop, marginBottom };
+    for(const wrapper of children.filter(el=>el.matches('.tableWrapper'))){
+      const table=wrapper.querySelector('table[data-atomic-tabular]');
+      const sourceTable=table ?? wrapper.querySelector('table[data-longtable]');
+      const cell=sourceTable?.querySelector('td p');
+      if(cell){
+        const selector='.document-page .ProseMirror > '+blockSelectors[children.indexOf(wrapper)];
+        // LaTeX array struts put 70% of the baseline skip above the baseline.
+        const offset=.7*parseFloat(getComputedStyle(cell).lineHeight)-lineBoxAscent(cell);
+        baseRules.push(selector+' > table > tbody > tr > td > p{position:relative;top:'+offset+'px}');
+      }
+      const overflow=table && table.getBoundingClientRect().height/zoom>pageHeight-marginTop-marginBottom;
+      wrapper.toggleAttribute('data-paper-overflow',Boolean(overflow));
+      if(overflow){
+        const selector='.document-page .ProseMirror > '+blockSelectors[children.indexOf(wrapper)];
+        baseRules.push(selector+'{max-height:'+(pageHeight-marginTop)+'px;overflow-y:auto;margin-inline:0 auto}');
+      }
+      wrapper.style.maxHeight=overflow?(pageHeight-marginTop)+'px':'';
+      wrapper.style.overflowY=overflow?'auto':'';
+      if(overflow)wrapper.title=t('表格超出纸面，可滚动编辑全部行','Table exceeds the page. Scroll to edit all rows.');
+      else wrapper.removeAttribute('title');
+    }
     const blocks = children.map((element, index) => {
       const rect = unscaledRect(element, pageRect, zoom);
       const block = {
@@ -411,7 +458,8 @@ export function installTypesetPagination(page, paper, meta, editor, engineProfil
         height: element.tagName === 'P' && !element.textContent ? 0 : rect.height,
         keepWithNext: /^H[1-3]$/.test(element.tagName),
         keepWithPrevious: element.matches('.math-display'),
-        table: element.matches('.tableWrapper') ? tableMeta(element, pageRect, zoom) : null,
+        atomicTable: Boolean(element.matches('.tableWrapper:has(table[data-atomic-tabular])')),
+        table: element.matches('.tableWrapper:not(:has(table[data-atomic-tabular]))') ? tableMeta(element, pageRect, zoom) : null,
       };
       block.lines = element.tagName === 'P' ? paragraphLines(editor, element, block, pageRect, zoom) : null;
       return block;
@@ -427,10 +475,15 @@ export function installTypesetPagination(page, paper, meta, editor, engineProfil
         if(preceding)blocks[index].forceBreak=chapterProfile.openRight?'odd':true;
       });
     }
+    // The normal ctexart club penalty is finite. An otherwise full page
+    // can end with the first line of a long paragraph (headings still keep
+    // their following paragraph). Honour an explicit prohibitive penalty.
+    const allowClub=profile.className==='ctexart' && !/\\clubpenalty\s*=?\s*10000\b/.test(paragraphPreamble);
     const virtual = [];
     const blockItems = blocks.map((block, blockIndex) => {
       const items = [];
       if (block.lines) {
+        const keepFirstPair=!allowClub || block.lines.length<=3 || blocks[blockIndex-1]?.keepWithNext;
         block.lines.forEach((line, lineIndex) => {
           items.push(virtual.length);
           virtual.push({
@@ -440,8 +493,8 @@ export function installTypesetPagination(page, paper, meta, editor, engineProfil
             lineIndex,
             position: line.position,
             forceBreak: lineIndex === 0 && block.forceBreak,
-            keepWithNext: lineIndex === 0 || lineIndex === block.lines.length - 2,
-            keepWithPrevious: lineIndex === 1,
+            keepWithNext: (lineIndex === 0 && keepFirstPair) || lineIndex === block.lines.length - 2,
+            keepWithPrevious: lineIndex === 1 && keepFirstPair,
           });
         });
       } else {
@@ -458,9 +511,12 @@ export function installTypesetPagination(page, paper, meta, editor, engineProfil
     let plan = planPagination(virtual, geometry);
     let tablePlans = new Map();
     for (let pass = 0; pass < 3; pass++) {
+      let added=0;
       const sized = virtual.map(item => {
         const extra = tablePlans.get(item.blockIndex)?.extra ?? 0;
-        return extra && blocks[item.blockIndex].table ? { ...item, height:item.height + extra } : item;
+        const top=item.top+added;
+        added+=extra;
+        return {...item,top,height:item.height+extra};
       });
       plan = planPagination(sized, geometry);
       const next = new Map();
@@ -471,9 +527,10 @@ export function installTypesetPagination(page, paper, meta, editor, engineProfil
           if (!block.table) continue;
           const rows = planTableRows(block.table.rows, {
             ...geometry,
-            top: block.top + plan.translations[blockItems[index][0]] + block.table.tableTop,
+            top: sized[blockItems[index][0]].top + plan.translations[blockItems[index][0]] + block.table.tableTop,
             headerHeight: block.table.headerHeight,
-            repeatHeader: true,
+            repeatHeader: !block.table.longtable,
+            lastRowDepth: block.table.longtable ? block.table.rows[0].height*.3 : 0,
           });
           next.set(index, rows);
           if (Math.abs((tablePlans.get(index)?.extra ?? 0) - rows.extra) > .5) changed = true;

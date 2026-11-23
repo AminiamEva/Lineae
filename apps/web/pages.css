@@ -561,6 +561,12 @@ button,select,.color-control { transition:background-color .14s ease,color .14s 
 .document-page .ProseMirror > .tableWrapper:has(> table[data-table-align="center"]) { margin-inline:auto; }
 .document-page .ProseMirror > .tableWrapper:has(> table[data-table-align="right"]) { margin-inline-start:auto; margin-inline-end:0; }
 .document-page .ProseMirror > .tableWrapper:has(> table[data-table-align="left"]) { margin-inline-start:var(--tex-paragraph-indent); margin-inline-end:auto; }
+.document-page .ProseMirror > .tableWrapper:has(>table[data-longtable]):not(:first-child) { margin-block-start:calc(12 * 1in / 72.27); }
+.document-page .ProseMirror table:is([data-longtable],[data-atomic-tabular]) :is(td,th) { padding-block:0; }
+.tableWrapper[data-paper-overflow]::after {
+  content:attr(title); position:sticky; bottom:0; display:block; width:max-content; max-width:100%;
+  background:Canvas; color:CanvasText; font:12px/1.4 system-ui; pointer-events:none;
+}
 .document-page .ProseMirror .tableWrapper { width:max-content; max-width:100%; }
 .document-page .ProseMirror > .tableWrapper { margin-inline:auto; }
 .document-page .ProseMirror > .tableWrapper > table { min-width:0!important; }
@@ -599,7 +605,7 @@ button,select,.color-control { transition:background-color .14s ease,color .14s 
 .document-page .ProseMirror table[data-horizontal-rule-mode="explicit"][data-booktabs][data-trailing-rule="bottomrule"] tr:last-child > :is(td,th) { border-bottom:var(--booktabs-heavy) solid currentColor; padding-bottom:calc(2px + var(--booktabs-above)); }
 /* Editing grid for tabulars without explicit rules. Booktabs, explicit
    column rules and bordered tables keep their typeset rules. */
-.document-page .ProseMirror table:not([data-border-mode="grid"]):not([data-border-mode="outer"]):not([data-border-mode="horizontal"]):not([data-border-mode="none"]):not([data-booktabs]):not([data-column-rules]):not([data-top-rule]):not([data-bottom-rule]):not([data-left-rule]):not([data-right-rule]):not([data-mid-rule-mode]) :is(td,th) {
+.document-page .ProseMirror table:not([data-atomic-tabular]):not([data-border-mode="grid"]):not([data-border-mode="outer"]):not([data-border-mode="horizontal"]):not([data-border-mode="none"]):not([data-booktabs]):not([data-column-rules]):not([data-top-rule]):not([data-bottom-rule]):not([data-left-rule]):not([data-right-rule]):not([data-mid-rule-mode]) :is(td,th) {
   border:1px solid light-dark(#d5d9e1,#4a505c);
 }
 

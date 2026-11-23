@@ -86,7 +86,10 @@ export function typesetProfile(preamble = '', activeFonts) {
       className,
       fontSize: explicit ? cssPoints(explicit.size) : classSize ? cssPoints(classSize) : '10.5pt',
       lineHeight: explicit ? cssPoints(explicit.baseline * linespread)
-        : classSize ? cssPoints(classBaseline * linespread) : points(15.75 * linespread),
+        : classSize ? cssPoints(classBaseline * linespread)
+        // Keep explicitly selected fontsets on their existing calibrated profile.
+        : options.some(option=>option.startsWith('fontset=')) ? points(15.75 * linespread)
+        : points(10.5 * 1.2 * (/\\(?:linespread|baselinestretch)\b/.test(preamble) ? linespread : 1.3)),
       paragraphIndent: classSize === 12 ? cssPoints(18) : classSize === 11 ? cssPoints(17)
         : classSize === 10 ? cssPoints(15) : '21pt',
       pageStyle: pageNumbers ? 'headings' : 'empty',
@@ -166,7 +169,7 @@ export function planPagination(blocks, { pageHeight, pageGap, marginTop, marginB
       groupBottom += space;
     }
 
-    if (canMove && top > bodyTop + tolerance && groupBottom > bodyBottom + tolerance) {
+    if ((canMove || block.atomicTable) && top > bodyTop + tolerance && groupBottom > bodyBottom + tolerance) {
       // Move a keep-with-previous chain as a unit when it fits on the next
       // page. This covers display formulas and the first two lines of a
       // paragraph without changing the editable document.
@@ -197,6 +200,14 @@ export function planPagination(blocks, { pageHeight, pageGap, marginTop, marginB
 
     // A single table, image, or paragraph can be taller than the body. Do not
     // split its editable DOM; account for every sheet it visually reaches.
+    if (block.atomicTable && block.height > bodyHeight + tolerance && next) {
+      // An overfull tabular occupies one sheet. Its overflow stays editable in
+      // the table viewport; the following block starts on the following sheet.
+      pageIndex++;
+      translation=pageIndex*pitch+marginTop-next.top;
+      continue;
+    }
+    if (block.atomicTable) continue;
     while (bottom > pageIndex * pitch + pageHeight - marginBottom + tolerance) pageIndex++;
   }
 
@@ -205,7 +216,7 @@ export function planPagination(blocks, { pageHeight, pageGap, marginTop, marginB
 
 export function planTableRows(rows, {
   top, pageHeight, pageGap, marginTop, marginBottom,
-  headerHeight = 0, repeatHeader = true,
+  headerHeight = 0, repeatHeader = true, lastRowDepth = 0,
 }) {
   if (!rows.length) return { breaks:[], extra:0, pageCount:1 };
   const pitch = pageHeight + pageGap;
@@ -219,7 +230,7 @@ export function planTableRows(rows, {
   for (let index = 0; index < rows.length; index++) {
     const row = rows[index];
     let rowTop = top + row.top + extra;
-    let rowBottom = rowTop + row.height;
+    let rowBottom = rowTop + row.height - lastRowDepth;
     if (rowBottom > bodyBottom + tolerance && row.height <= bodyHeight + tolerance) {
       const nextPage = pageIndex + 1;
       const bodyTop = nextPage * pitch + marginTop;
