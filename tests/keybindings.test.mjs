@@ -3,8 +3,18 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {createConfigStore} from '../apps/web/src/editor/config.mjs';
 import {compileKeybindings,installKeybindings} from '../apps/web/src/editor/keybindings.mjs';
+import {keyboardLockCodes} from '../apps/web/src/ui/shortcut-priority.mjs';
 
 const defaults=readFileSync('apps/web/config.yaml','utf8');
+test('Keyboard Lock codes follow configured bindings without locking Escape or every key',()=>{
+  const bindings=compileKeybindings({
+    global:{action:'mod+e m',disabled:null},
+    math:{palette:'backslash',slot:'tab',leave:'escape',literal:'alt+backtick'},
+    source:{find:'ctrl+f',zoom:['ctrl+plus','ctrl+equal'],custom:'ctrl+中'},
+  },{isMac:true});
+  assert.deepEqual(keyboardLockCodes(bindings),['Backquote','Equal','KeyE','KeyF','KeyM']);
+  assert.deepEqual(keyboardLockCodes(compileKeybindings({global:{disabled:null}})),[]);
+});
 function keyboard(target,key,code,flags={}) {
   const event=new Event('keydown',{cancelable:true});
   Object.assign(event,{key,code,ctrlKey:false,altKey:false,shiftKey:false,metaKey:false,

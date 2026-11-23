@@ -120,6 +120,8 @@ jobs:
         run: node tests/math-editing-browser.cjs
       - name: Platform shortcuts and YAML native bindings
         run: node tests/shortcuts-browser.cjs
+      - name: Fullscreen shortcut priority regressions
+        run: node tests/shortcut-priority-browser.cjs
       - name: Project session regressions
         run: node tests/file-tree-sessions.cjs
       - uses: dtolnay/rust-toolchain@stable

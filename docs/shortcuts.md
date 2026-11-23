@@ -106,6 +106,30 @@ keybindings:
 网页不能保证收到这些事件，也不能改变应用外的系统快捷键。
 自定义剪贴板键仍受安全上下文、权限和浏览器能力限制，失败会显示错误。
 
+### 网页快捷键优先（Edge / Chrome）
+
+状态栏的“快捷键优先”按钮会主动请求网页全屏及 Keyboard Lock，
+尽量让浏览器先把现有快捷键发给 Lineae；不修改上述 JSON 方案或保存的键位，
+也不会在打开页面、点击编辑区或返回窗口时自动全屏／捕获。
+这不是浏览器菜单或 F11 进入的普通全屏，需由此按钮发起。
+
+- 需要安全连接和浏览器支持；不支持时按钮禁用，失败时显示原因。
+- 开启后按钮变为“退出快捷键优先”；点击或使用浏览器的 Esc 退出全屏。
+- 切换窗口、隐藏页面或更换 YAML 键位后释放捕获；仍在全屏时可点击“恢复快捷键优先”。
+- 只请求当前绑定所需的物理键，不捕获 Escape，不使用“锁定全部按键”。
+  Keyboard Lock 按物理键生效，包含其不同修饰键组合，不是只锁 Command 组合。
+- API 调用成功不代表所有系统快捷键都已送达。macOS 系统保留键仍可能被截走，
+  需要在真实 Mac 上验证；Windows 自动化或模拟 Mac 平台不能代替这项验收。
+- 桌面应用不显示此网页模式入口；没有 Keyboard Lock 的浏览器不会偷偷替换键位。
+
+`global.shortcutPriority` 默认不绑定，可在 YAML 中配置切换键，例如：
+
+```yaml
+keybindings:
+  global:
+    shortcutPriority: ctrl+alt+k
+```
+
 `tests/keybindings.test.mjs` 验证配置、别名、冲突和所有内建命令的禁用。
 `tests/shortcuts-browser.cjs` 在 Windows Chromium 上分别模拟 Windows / macOS 平台，
 验证默认键位、作用域、实时 YAML 重映射和禁用；不替代真实 Mac 的系统占用键测试。

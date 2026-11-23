@@ -20,6 +20,7 @@ test('parses the shipped YAML config', () => {
   assert.deepEqual(config.keybindings.math.leaveFormula,['mod+shift+j','ctrl+shift+j']);
   assert.equal(config.keybindings.editor.toggleItalic,null);
   assert.equal(config.keybindings.editor.toggleStrike,null);
+  assert.equal(config.keybindings.global.shortcutPriority,null);
 });
 
 test('round-trips preferences as YAML', () => {

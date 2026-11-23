@@ -16,6 +16,7 @@ import {ProjectWorkspaceState} from './project/workspace-state.mjs';
 import {exitProjectHeading} from './project/editing.js';
 import {ProjectDocumentSession} from './project/document-session.mjs';
 import {installFloatingToolbar} from './ui/floating-toolbar.js';
+import {installShortcutPriority} from './ui/shortcut-priority.mjs';
 import {installSettingsPanel} from './ui/settings-panel.js';
 import { buildHomeRibbon } from './ui/home-ribbon.js';
 import { activeStyleKey, documentClassFromSource } from './ui/style-presets.mjs';
@@ -2431,6 +2432,7 @@ const shortcutActions = {
     splitMode: () => splitButton.click(),
     settings: () => settingsPanel.show(),
     toggleRibbon: () => document.querySelector('#toolbar-collapse')?.click(),
+    shortcutPriority: (_context,event) => event.repeat ? true : shortcutPriority.toggle(),
     formattingMarks: () => formattingMarks.click(),
     zoomIn: context => zoomByKeyboard(10,context),
     zoomOut: context => zoomByKeyboard(-10,context),
@@ -2574,6 +2576,7 @@ function updateEnvironment() {
   environment.dataset.environment=name;
 }
 footer.append(count,document.querySelector('#status'),environment,zoom,percent,paginationButton,themeButton,modes);document.body.append(footer);sourceView.mountStatus(footer);scale();updatePaginationButton();
+const shortcutPriority=installShortcutPriority({host:footer,before:modes,getBindings:()=>config.bindings});
 const compositionController=createCompositionController({
   explorer:()=>projectExplorer,fileKind:()=>projectFileKind,session:projectDocument,
   sourceHidden:()=>sourceView.hidden,composing:()=>editor.view.composing||sourceView.composing,
@@ -3414,6 +3417,7 @@ function applyImportedPreferences() {
   configureMathFences(smartFences);
   for (const field of paper.querySelectorAll('math-field')) field.smartFence=smartFences;
   sourceView.configure();
+  shortcutPriority.refresh();
   toolbarController.refresh();
   updateFileTools();
   updateLanguage();
@@ -3437,6 +3441,7 @@ function updateLanguage() {
   setLanguage(language.value);
   document.documentElement.lang=getLanguage();
   localize(document);
+  shortcutPriority.relocalize();
   for(const tab of tabs.children)tab.textContent=t(captions[tab.dataset.group][0],captions[tab.dataset.group][1]);
   commands.setAttribute('aria-label',t('LaTeX 补全','LaTeX completion'));
   filter.placeholder=t('LaTeX 命令','LaTeX command');
