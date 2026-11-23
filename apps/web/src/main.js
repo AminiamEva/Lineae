@@ -483,7 +483,7 @@ const Shortcuts = Extension.create({
       const parent = view.state.doc.resolve(from).parent;
       if (text === '`' && parent.type.name !== 'codeBlock') {
         const now=performance.now();
-        const continued=backticks && now-backticks.time<650 && backticks.doc===view.state.doc && backticks.pos===from;
+        const continued=backticks && now-backticks.time<900 && backticks.doc===view.state.doc && backticks.pos===from;
         if (continued && backticks.count===2 && view.state.doc.textBetween(from-1,from)==='`') {
           editor.chain().deleteRange({from:from-1,to:from}).setCodeBlock().run();
           backticks=null;

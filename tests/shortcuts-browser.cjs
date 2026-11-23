@@ -48,6 +48,17 @@ const server=createServer(async(req,res)=>{
         await page.waitForFunction(()=>localStorage.getItem('lineae.config')?.includes('alt+f9'));
         await page.locator('#settings-close').click();
       };
+      await load('Backtick');
+      await paper.click();await page.keyboard.press('End');
+      await page.keyboard.type('`');
+      assert.equal(await paper.evaluate(node=>node.editor.isActive('code')),true,'One backtick still toggles inline code');
+      await page.waitForTimeout(720);
+      await page.keyboard.type('`');
+      assert.equal(await paper.textContent(),'Backtick`','A slightly slower double backtick inserts a literal backtick');
+      assert.equal(await paper.locator('math-field').count(),0,'Double backtick does not insert a formula');
+      await page.keyboard.type('`');
+      assert.equal(await paper.locator('pre code').textContent(),'Backtick','Triple backtick still converts the paragraph to a code block');
+
       await load('Alpha');
       await paper.click();await page.keyboard.press('End');await page.keyboard.type('$');
       await page.waitForFunction(()=>Boolean(document.querySelector('.math-inline math-field')));
