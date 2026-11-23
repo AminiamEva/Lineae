@@ -7,7 +7,7 @@
  *   2. apply the edit through the public Editor API;
  *   3. validate and serialize through the public API;
  *   4. check independently authored `.bib` expectations;
- *   5. compile the edited project with XeLaTeX + BibTeX/Biber;
+ *   5. compile the edited project with the selected TeX engine + BibTeX/Biber;
  *   6. compare `.bbl`, PDF text, page count, fonts, layout metrics and rendered
  *      page images against the baseline.
  *
@@ -21,7 +21,7 @@
  *   node tests/bib/compile/run-editor-compile.mjs \
  *     --tex-bin=<dir containing xelatex/bibtex/biber> \
  *     --poppler-bin=<dir containing pdfinfo/pdftotext/pdffonts/pdftoppm> \
- *     [--json] [--keep] [--dpi=150]
+ *     [--engine=xelatex|lualatex] [--driver=latexmk|direct] [--json] [--keep] [--dpi=150]
  *
  * Exit codes: 0 all layers verified and passing, 1 a check failed,
  *             2 toolchain/layer unavailable (UNVERIFIED).
@@ -75,7 +75,10 @@ const JSON_OUTPUT = argv.includes('--json');
 const KEEP = argv.includes('--keep');
 const OUT_PATH = option('out');
 
-const toolchain = createToolchain({ extraPaths: [TEX_BIN, POPPLER_BIN].filter(Boolean) });
+const engine = option('engine') ?? 'xelatex';
+const driver = option('driver') ?? 'latexmk';
+const toolchain = createToolchain({ engine, driver, extraPaths: [TEX_BIN, POPPLER_BIN].filter(Boolean) });
+const compilerAvailable = Boolean(toolchain.commands[engine] && (driver === 'direct' || toolchain.commands.latexmk));
 const work = mkdtempSync(join(tmpdir(), 'lineae-editor-compile-'));
 const baseBib = loadBaseBib();
 const baseDocument = parseBib(baseBib);
@@ -91,7 +94,7 @@ function profileFor(backend) {
 
 /** @param {string} backend */
 function backendAvailable(backend) {
-  return Boolean(toolchain.commands.xelatex && (backend === 'bibtex' ? toolchain.commands.bibtex : toolchain.commands.biber));
+  return Boolean(compilerAvailable && (backend === 'bibtex' ? toolchain.commands.bibtex : toolchain.commands.biber));
 }
 
 /** @param {string} name */
@@ -114,13 +117,13 @@ function writeProject(directory, backend, bibText, texText) {
  * @param {string} bibText
  * @param {string} texText
  */
-function compileProject(name, backend, bibText, texText) {
+async function compileProject(name, backend, bibText, texText) {
   const directory = projectDirectory(name);
   writeProject(directory, backend, bibText, texText);
   const logPath = join(directory, 'compile.log');
   writeFileSync(logPath, '');
   try {
-    toolchain.compileProject(directory, backend, logPath);
+    await toolchain.compileProject(directory, backend, logPath);
     return {
       directory,
       ok: true,
@@ -264,8 +267,8 @@ for (const testCase of CASES) {
   }
 }
 
-if (!toolchain.commands.xelatex) {
-  console.log('UNVERIFIED: xelatex is not installed or cannot be executed.');
+if (!compilerAvailable) {
+  console.log('UNVERIFIED: ' + engine + ' cannot be executed.');
   console.log('Engine-level edit expectations were executed; no TeX compilation was performed.');
   console.log('Provide --tex-bin and --poppler-bin to run L3/L4.');
 } else {
@@ -281,7 +284,7 @@ if (!toolchain.commands.xelatex) {
       continue;
     }
     const template = loadTemplate(backend);
-    const baseline = compileProject(`baseline-${backend}`, backend, baseBib, template);
+    const baseline = await compileProject(`baseline-${backend}`, backend, baseBib, template);
     if (!baseline.ok) {
       roundTrips.push({ backend, status: 'FAIL', reason: baseline.error });
       continue;
@@ -293,7 +296,7 @@ if (!toolchain.commands.xelatex) {
       roundTrips.push({ backend, status: 'FAIL', reason: 'round-trip changed bytes' });
       continue;
     }
-    const roundTrip = compileProject(`roundtrip-${backend}`, backend, roundTripBib, template);
+    const roundTrip = await compileProject(`roundtrip-${backend}`, backend, roundTripBib, template);
     if (!roundTrip.ok) {
       roundTrips.push({ backend, status: 'FAIL', reason: roundTrip.error });
       continue;
@@ -354,7 +357,7 @@ if (!toolchain.commands.xelatex) {
       continue;
     }
 
-    const compiled = compileProject(`case-${testCase.id}-${backend}`, backend, bibText, texText);
+    const compiled = await compileProject(`case-${testCase.id}-${backend}`, backend, bibText, texText);
     result.compile = { ok: compiled.ok, error: compiled.error ?? null };
     if (!compiled.ok) {
       result.status = 'FAIL';
@@ -392,19 +395,22 @@ const summary = {
   unverified: results.filter(item => item.status === 'UNVERIFIED').length,
   roundTrips,
 };
+const compilationFailed = results.some(item => item.compile?.ok === false && !item.compile.unverified)
+  || roundTrips.some(item => item.status === 'FAIL');
+const compileStatus = compilationFailed ? 'FAIL' : compilerAvailable && !summary.unverified ? 'PASS' : 'BLOCKED';
 const report = {
   environment: {
-    node: process.version,
+    engine, driver, node: process.version,
     platform: process.platform,
     tools: toolchain.versions(),
   },
   workDirectory: work,
   layerStatus: {
     engine: engineFailures === 0 ? 'PASS' : 'FAIL',
-    l3: toolchain.commands.xelatex ? (summary.fail ? 'FAIL' : 'PASS') : 'UNVERIFIED',
-    l4: toolchain.commands.pdftoppm && toolchain.commands.pdftotext && toolchain.commands.pdffonts && toolchain.commands.pdfinfo
+    l3: compileStatus,
+    l4: compileStatus === 'PASS' && toolchain.commands.pdftoppm && toolchain.commands.pdftotext && toolchain.commands.pdffonts && toolchain.commands.pdfinfo
       ? (summary.fail || summary.partial ? 'FAIL' : 'PASS')
-      : 'UNVERIFIED',
+      : (compileStatus === 'FAIL' ? 'FAIL' : 'BLOCKED'),
   },
   summary,
   cases: results,
@@ -418,14 +424,14 @@ if (OUT_PATH) {
 
 if (JSON_OUTPUT) console.log(JSON.stringify(report, null, 2));
 else {  console.log(`Work directory: ${work}`);
-  console.log(`Tools: xelatex=${toolchain.commands.xelatex ?? 'missing'} bibtex=${toolchain.commands.bibtex ?? 'missing'} biber=${toolchain.commands.biber ?? 'missing'} pdftoppm=${toolchain.commands.pdftoppm ?? 'missing'}`);
+  console.log(`Tools: ${engine}=${toolchain.commands[engine] ?? 'missing'} bibtex=${toolchain.commands.bibtex ?? 'missing'} biber=${toolchain.commands.biber ?? 'missing'} pdftoppm=${toolchain.commands.pdftoppm ?? 'missing'}`);
   console.log('\nEngine-level expectations:');
   for (const result of results) {
     console.log(`  ${result.status.padEnd(10)} ${result.case}/${result.backend} ${result.engine.ok ? '' : result.engine.errors.join('; ')}`);
   }
   console.log('\nRound-trip visual checks:');
   for (const item of roundTrips) console.log(`  ${item.status.padEnd(10)} ${item.backend} ${item.failures?.join(',') ?? item.reason ?? ''}`);
-  if (toolchain.commands.xelatex) {
+  if (compilerAvailable) {
     console.log('\nEdited-case checks:');
     for (const result of results) {
       const detail = result.status === 'FAIL'
@@ -437,20 +443,20 @@ else {  console.log(`Work directory: ${work}`);
     }
   }
   console.log('\nSummary:', summary);
-  if (!toolchain.commands.xelatex) {
+  if (!compilerAvailable) {
     console.log('UNVERIFIED: TeX compilation and PDF visual comparison were not performed.');
   }
 }
 
 const failed = results.some(item => item.status === 'FAIL') || roundTrips.some(item => item.status === 'FAIL') || engineFailures > 0;
-const fullyVerified = toolchain.commands.xelatex
+const fullyVerified = compilerAvailable
   && results.length > 0
   && results.every(item => item.status === 'PASS')
   && roundTrips.every(item => item.status === 'PASS');
 if (failed) process.exitCode = 1;
 else if (!fullyVerified) process.exitCode = 2;
 
-if (!KEEP && !JSON_OUTPUT) {
+if (!failed && !KEEP && !JSON_OUTPUT) {
   rmSync(work, { recursive: true, force: true });
 } else if (!JSON_OUTPUT) {
   console.log(`Kept work directory: ${work}`);

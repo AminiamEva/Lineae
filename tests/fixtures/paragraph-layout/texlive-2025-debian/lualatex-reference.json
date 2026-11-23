@@ -1,0 +1,782 @@
+{
+  "schema": 1,
+  "engine": "lualatex",
+  "units": {
+    "origin": "top-left, unrotated PDF page",
+    "bbox": "Poppler word-box union, bp",
+    "baseline": "PDF text origin y (MuPDF), bp",
+    "cssPxPerBp": 1.3333333333333333,
+    "cssPxPerTexPt": 1.3283520132835203,
+    "spPerTexPt": 65536
+  },
+  "provenance": {
+    "tools": {
+      "xelatex": "XeTeX 3.141592653-2.6-0.999996 (TeX Live 2025/dev/Debian)",
+      "lualatex": "This is LuaHBTeX, Version 1.18.0 (TeX Live 2025/dev/Debian)",
+      "latexmk": "Latexmk, John Collins, 11 Dec. 2024. Version 4.86",
+      "bibtex": "BibTeX 0.99d (TeX Live 2025/dev/Debian)",
+      "biber": "biber version: 2.21",
+      "pdfinfo": "pdfinfo version 25.03.0",
+      "pdftotext": "pdftotext version 25.03.0",
+      "pdffonts": "pdffonts version 25.03.0"
+    },
+    "packages": {
+      "ctex.sty": {
+        "file": "ctex.sty",
+        "sha256": "dd868cf1e82815ff9544e222c5eebe528dfc7799b69f7fe1762646ebe23dcd6b",
+        "declarations": [
+          "\\GetIdInfo$Id: ctex.dtx 13a2256 2022-07-14 18:54:09 +0800 Qing Lee <sobenlee@gmail.com> $",
+          "{\\ExplFileDate}{2.5.10}{\\ExplFileDescription}"
+        ]
+      },
+      "xeCJK.sty": {
+        "file": "xeCJK.sty",
+        "sha256": "c61660692befbcec0b52dfb3e2e69b360cbd3e187e07565d722a296df8e893ef",
+        "declarations": [
+          "\\GetIdInfo$Id: xeCJK.dtx c4ccfae 2022-08-05 21:02:32 +0800 Qing Lee <sobenlee@gmail.com> $",
+          "{\\ExplFileDate}{3.9.1}{\\ExplFileDescription}"
+        ]
+      },
+      "luatexja.sty": {
+        "file": "luatexja.sty",
+        "sha256": "ca481726f4aea811226eb9b4b7b8ff2f7fc5e6bcb34cb22ccf0d20fd2a16525e",
+        "declarations": [
+          "\\def\\LuaTeXjaversion{20260130.1}"
+        ]
+      },
+      "luatexja-fontspec.sty": {
+        "file": "luatexja-fontspec.sty",
+        "sha256": "b1daa7a27d32b59680ce8aded5b351c5194afcacf1af92fe47ffe620925694e3",
+        "declarations": [
+          "\\ProvidesPackage{luatexja-fontspec}[2025-09-30 fontspec support of LuaTeX-ja]"
+        ]
+      },
+      "jfm-quanjiao.lua": {
+        "file": "jfm-quanjiao.lua",
+        "sha256": "39f1b83a274ef68bc8b41679dc76f925ef901e1e412069790be70093c1a2f22f",
+        "declarations": []
+      },
+      "fontspec.sty": {
+        "file": "fontspec.sty",
+        "sha256": "6aba297fb68d994b2a92644e0391e99c9bd95645680282c72dce3ad164b22ed0",
+        "declarations": [
+          "{2024/05/11}{2.9e}{Font selection for XeLaTeX and LuaLaTeX}"
+        ]
+      },
+      "biblatex.sty": {
+        "file": "biblatex.sty",
+        "sha256": "6124a851489d7a73b935019d6cd7dd31be30561fe5ab1a2eaa62f2de29016d16",
+        "declarations": [
+          "\\def\\abx@date{2025/07/10}",
+          "\\def\\abx@version{3.21}"
+        ]
+      }
+    },
+    "fonts": {
+      "lmroman10-regular.otf": {
+        "file": "lmroman10-regular.otf",
+        "sha256": "1aa18cfefa58132c52ce5de70db1fd1154201c19cd2b2cdaffba4906a33e6852",
+        "version": "Version 2.004;PS 2.004;hotconv 1.0.49;makeotf.lib2.0.14853",
+        "postscript": "LMRoman10-Regular"
+      },
+      "FandolSong-Regular.otf": {
+        "file": "FandolSong-Regular.otf",
+        "sha256": "a3820003227d4abe31fe28b493200d94a849ccfd078b50a019264f70353020b0",
+        "version": "Version 1.300;PS 1;hotconv 1.0.81;makeotf.lib2.5.63406 DEVELOPMENT",
+        "postscript": "FandolSong-Regular"
+      }
+    },
+    "locale": "C.UTF-8",
+    "pymupdf": "1.26.6",
+    "mupdf": "1.26.11",
+    "fonttools": "4.61.1"
+  },
+  "cases": [
+    {
+      "id": "en-article-22",
+      "sourceSha256": "a1f8508a73e950c8e5445ecff860a01e184ed04a2f6d6e075b44b6a1a0267763",
+      "pageSizeBp": [
+        595.2760009765625,
+        841.8900146484375
+      ],
+      "lines": [
+        {
+          "text": "The paragraph breaking algorithm considers the complete sequence of words before choosing its line",
+          "bbox": [
+            77.306,
+            61.097105,
+            532.90749,
+            75.214166
+          ],
+          "widthBp": 455.60149,
+          "baselineBp": 72.32501,
+          "runBaselinesBp": [
+            72.32501
+          ],
+          "lineBoxSp": {
+            "width": 30953686,
+            "height": 462029,
+            "depth": 135004
+          }
+        },
+        {
+          "text": "endings. Typography is a system of interdependent decisions, including hyphenation, flexible spaces, and the",
+          "bbox": [
+            62.362,
+            73.052105,
+            532.90745,
+            87.169166
+          ],
+          "widthBp": 470.54545,
+          "baselineBp": 84.28003,
+          "runBaselinesBp": [
+            84.28003
+          ],
+          "lineBoxSp": {
+            "width": 30953686,
+            "height": 462029,
+            "depth": 135004
+          }
+        },
+        {
+          "text": "relationship between consecutive lines. A local decision which fills the current line can create an unnecessarily",
+          "bbox": [
+            62.362,
+            85.007105,
+            532.90745,
+            99.124166
+          ],
+          "widthBp": 470.54545,
+          "baselineBp": 96.23499,
+          "runBaselinesBp": [
+            96.23499
+          ],
+          "lineBoxSp": {
+            "width": 30953686,
+            "height": 469238,
+            "depth": 134349
+          }
+        },
+        {
+          "text": "loose following line. Mathematical documents require consistent composition across different widths, without",
+          "bbox": [
+            62.362,
+            96.963105,
+            532.90745,
+            111.080166
+          ],
+          "widthBp": 470.54545,
+          "baselineBp": 108.19104,
+          "runBaselinesBp": [
+            108.19104
+          ],
+          "lineBoxSp": {
+            "width": 30953686,
+            "height": 462029,
+            "depth": 135004
+          }
+        },
+        {
+          "text": "inserting explicit newlines into the original source.",
+          "bbox": [
+            62.362,
+            108.918105,
+            281.799109,
+            123.035166
+          ],
+          "widthBp": 219.437109,
+          "baselineBp": 120.146,
+          "runBaselinesBp": [
+            120.146
+          ],
+          "lineBoxSp": {
+            "width": 30953686,
+            "height": 454820,
+            "depth": 135004
+          }
+        }
+      ],
+      "paragraph": {
+        "hsizeSp": 30953686,
+        "parindentSp": 983040,
+        "language": 0,
+        "leftHyphenMin": 2,
+        "rightHyphenMin": 3
+      },
+      "hasToUnicodeMap": {
+        "lmroman10-regular.otf": true
+      },
+      "embeddedFontFiles": [
+        "lmroman10-regular.otf"
+      ]
+    },
+    {
+      "id": "en-control",
+      "sourceSha256": "01fbdca709999b9890f729e7c9ac67d5867cf7f9293ca4c480ea8a28f5bc99e5",
+      "pageSizeBp": [
+        595.2760009765625,
+        841.8900146484375
+      ],
+      "lines": [
+        {
+          "text": "Hamburg",
+          "bbox": [
+            62.362,
+            61.097105,
+            102.800356,
+            75.214166
+          ],
+          "widthBp": 40.438356,
+          "baselineBp": 72.32501,
+          "runBaselinesBp": [
+            72.32501
+          ],
+          "lineBoxSp": {
+            "width": 30953686,
+            "height": 454820,
+            "depth": 135004
+          }
+        }
+      ],
+      "paragraph": {
+        "hsizeSp": 30953686,
+        "parindentSp": 983040,
+        "language": 0,
+        "leftHyphenMin": 2,
+        "rightHyphenMin": 3
+      },
+      "hasToUnicodeMap": {
+        "lmroman10-regular.otf": true
+      },
+      "embeddedFontFiles": [
+        "lmroman10-regular.otf"
+      ],
+      "controlAdvanceSp": 2660106
+    },
+    {
+      "id": "en-article-45",
+      "sourceSha256": "c935f268a2fc6c7343d334a986f5df2888d0ef0dc1123161d2776e0eeead5929",
+      "pageSizeBp": [
+        595.2760009765625,
+        841.8900146484375
+      ],
+      "lines": [
+        {
+          "text": "The paragraph breaking algorithm considers the complete sequence of words",
+          "bbox": [
+            142.503,
+            61.097105,
+            467.72342,
+            75.214166
+          ],
+          "widthBp": 325.22042,
+          "baselineBp": 72.32501,
+          "runBaselinesBp": [
+            72.32501
+          ],
+          "lineBoxSp": {
+            "width": 22376158,
+            "height": 462029,
+            "depth": 135004
+          }
+        },
+        {
+          "text": "before choosing its line endings. Typography is a system of interdependent",
+          "bbox": [
+            127.559,
+            73.052105,
+            467.72338,
+            87.169166
+          ],
+          "widthBp": 340.16438,
+          "baselineBp": 84.28003,
+          "runBaselinesBp": [
+            84.28003
+          ],
+          "lineBoxSp": {
+            "width": 22376158,
+            "height": 462029,
+            "depth": 135004
+          }
+        },
+        {
+          "text": "decisions, including hyphenation, flexible spaces, and the relationship between",
+          "bbox": [
+            127.559,
+            85.007105,
+            467.72338,
+            99.124166
+          ],
+          "widthBp": 340.16438,
+          "baselineBp": 96.23499,
+          "runBaselinesBp": [
+            96.23499
+          ],
+          "lineBoxSp": {
+            "width": 22376158,
+            "height": 462029,
+            "depth": 135004
+          }
+        },
+        {
+          "text": "consecutive lines. A local decision which fills the current line can create an",
+          "bbox": [
+            127.559,
+            96.963105,
+            467.713418,
+            111.080166
+          ],
+          "widthBp": 340.154418,
+          "baselineBp": 108.19104,
+          "runBaselinesBp": [
+            108.19104
+          ],
+          "lineBoxSp": {
+            "width": 22376158,
+            "height": 469238,
+            "depth": 7209
+          }
+        },
+        {
+          "text": "unnecessarily loose following line. Mathematical documents require consistent",
+          "bbox": [
+            127.559,
+            108.918105,
+            467.72338,
+            123.035166
+          ],
+          "widthBp": 340.16438,
+          "baselineBp": 120.146,
+          "runBaselinesBp": [
+            120.146
+          ],
+          "lineBoxSp": {
+            "width": 22376158,
+            "height": 462029,
+            "depth": 135004
+          }
+        },
+        {
+          "text": "composition across different widths, without inserting explicit newlines into the",
+          "bbox": [
+            127.559,
+            120.873105,
+            467.713418,
+            134.990166
+          ],
+          "widthBp": 340.154418,
+          "baselineBp": 132.10101,
+          "runBaselinesBp": [
+            132.10101
+          ],
+          "lineBoxSp": {
+            "width": 22376158,
+            "height": 462029,
+            "depth": 135004
+          }
+        },
+        {
+          "text": "original source.",
+          "bbox": [
+            127.559,
+            132.828105,
+            193.541565,
+            146.945166
+          ],
+          "widthBp": 65.982565,
+          "baselineBp": 144.05603,
+          "runBaselinesBp": [
+            144.05603
+          ],
+          "lineBoxSp": {
+            "width": 22376158,
+            "height": 454820,
+            "depth": 135004
+          }
+        }
+      ],
+      "paragraph": {
+        "hsizeSp": 22376158,
+        "parindentSp": 983040,
+        "language": 0,
+        "leftHyphenMin": 2,
+        "rightHyphenMin": 3
+      },
+      "hasToUnicodeMap": {
+        "lmroman10-regular.otf": true
+      },
+      "embeddedFontFiles": [
+        "lmroman10-regular.otf"
+      ]
+    },
+    {
+      "id": "en-article-65",
+      "sourceSha256": "7033670c75ce0798ff8f2056a48ef9b51d2f3a1244253f0e9f91346ef726f7d6",
+      "pageSizeBp": [
+        595.2760009765625,
+        841.8900146484375
+      ],
+      "lines": [
+        {
+          "text": "The paragraph breaking algorithm considers the",
+          "bbox": [
+            199.196,
+            61.097105,
+            411.021652,
+            75.214166
+          ],
+          "widthBp": 211.825652,
+          "baselineBp": 72.32501,
+          "runBaselinesBp": [
+            72.32501
+          ],
+          "lineBoxSp": {
+            "width": 14917440,
+            "height": 454820,
+            "depth": 135004
+          }
+        },
+        {
+          "text": "complete sequence of words before choosing its line",
+          "bbox": [
+            184.252,
+            73.052105,
+            411.021612,
+            87.169166
+          ],
+          "widthBp": 226.769612,
+          "baselineBp": 84.28003,
+          "runBaselinesBp": [
+            84.28003
+          ],
+          "lineBoxSp": {
+            "width": 14917440,
+            "height": 462029,
+            "depth": 135004
+          }
+        },
+        {
+          "text": "endings. Typography is a system of interdependent",
+          "bbox": [
+            184.252,
+            85.007105,
+            411.031574,
+            99.124166
+          ],
+          "widthBp": 226.779574,
+          "baselineBp": 96.23499,
+          "runBaselinesBp": [
+            96.23499
+          ],
+          "lineBoxSp": {
+            "width": 14917440,
+            "height": 462029,
+            "depth": 135004
+          }
+        },
+        {
+          "text": "decisions, including hyphenation, flexible spaces, and",
+          "bbox": [
+            184.252,
+            96.963105,
+            411.021612,
+            111.080166
+          ],
+          "widthBp": 226.769612,
+          "baselineBp": 108.19104,
+          "runBaselinesBp": [
+            108.19104
+          ],
+          "lineBoxSp": {
+            "width": 14917440,
+            "height": 462029,
+            "depth": 135004
+          }
+        },
+        {
+          "text": "the relationship between consecutive lines. A local",
+          "bbox": [
+            184.252,
+            108.918105,
+            411.021612,
+            123.035166
+          ],
+          "widthBp": 226.769612,
+          "baselineBp": 120.146,
+          "runBaselinesBp": [
+            120.146
+          ],
+          "lineBoxSp": {
+            "width": 14917440,
+            "height": 469238,
+            "depth": 127140
+          }
+        },
+        {
+          "text": "decision which fills the current line can create an un-",
+          "bbox": [
+            184.252,
+            120.873105,
+            411.021612,
+            134.990166
+          ],
+          "widthBp": 226.769612,
+          "baselineBp": 132.10101,
+          "runBaselinesBp": [
+            132.10101
+          ],
+          "lineBoxSp": {
+            "width": 14917440,
+            "height": 462029,
+            "depth": 7209
+          }
+        },
+        {
+          "text": "necessarily loose following line. Mathematical docu-",
+          "bbox": [
+            184.252,
+            132.828105,
+            411.021612,
+            146.945166
+          ],
+          "widthBp": 226.769612,
+          "baselineBp": 144.05603,
+          "runBaselinesBp": [
+            144.05603
+          ],
+          "lineBoxSp": {
+            "width": 14917440,
+            "height": 462029,
+            "depth": 135004
+          }
+        },
+        {
+          "text": "ments require consistent composition across different",
+          "bbox": [
+            184.252,
+            144.783105,
+            411.031574,
+            158.900166
+          ],
+          "widthBp": 226.779574,
+          "baselineBp": 156.01099,
+          "runBaselinesBp": [
+            156.01099
+          ],
+          "lineBoxSp": {
+            "width": 14917440,
+            "height": 462029,
+            "depth": 127140
+          }
+        },
+        {
+          "text": "widths, without inserting explicit newlines into the",
+          "bbox": [
+            184.252,
+            156.738105,
+            411.021612,
+            170.855166
+          ],
+          "widthBp": 226.769612,
+          "baselineBp": 167.966,
+          "runBaselinesBp": [
+            167.966
+          ],
+          "lineBoxSp": {
+            "width": 14917440,
+            "height": 454820,
+            "depth": 135004
+          }
+        },
+        {
+          "text": "original source.",
+          "bbox": [
+            184.252,
+            168.694105,
+            250.234565,
+            182.811166
+          ],
+          "widthBp": 65.982565,
+          "baselineBp": 179.922,
+          "runBaselinesBp": [
+            179.922
+          ],
+          "lineBoxSp": {
+            "width": 14917440,
+            "height": 454820,
+            "depth": 135004
+          }
+        }
+      ],
+      "paragraph": {
+        "hsizeSp": 14917440,
+        "parindentSp": 983040,
+        "language": 0,
+        "leftHyphenMin": 2,
+        "rightHyphenMin": 3
+      },
+      "hasToUnicodeMap": {
+        "lmroman10-regular.otf": true
+      },
+      "embeddedFontFiles": [
+        "lmroman10-regular.otf"
+      ]
+    },
+    {
+      "id": "en-custom-spaceskip-45",
+      "sourceSha256": "278e2becf426959a6ed8d72df59508358354e88acb91bd6661f9337e6d986ab3",
+      "pageSizeBp": [
+        595.2760009765625,
+        841.8900146484375
+      ],
+      "lines": [
+        {
+          "text": "The paragraph breaking algorithm considers the complete sequence of",
+          "bbox": [
+            142.503,
+            61.097105,
+            467.713458,
+            75.214166
+          ],
+          "widthBp": 325.210458,
+          "baselineBp": 72.32501,
+          "runBaselinesBp": [
+            72.32501
+          ],
+          "lineBoxSp": {
+            "width": 22376158,
+            "height": 462029,
+            "depth": 135004
+          }
+        },
+        {
+          "text": "words before choosing its line endings. Typography is a system of interde-",
+          "bbox": [
+            127.559,
+            73.052105,
+            467.72338,
+            87.169166
+          ],
+          "widthBp": 340.16438,
+          "baselineBp": 84.28003,
+          "runBaselinesBp": [
+            84.28003
+          ],
+          "lineBoxSp": {
+            "width": 22376158,
+            "height": 462029,
+            "depth": 135004
+          }
+        },
+        {
+          "text": "pendent decisions, including hyphenation, flexible spaces, and the relationship",
+          "bbox": [
+            127.559,
+            85.007105,
+            467.713418,
+            99.124166
+          ],
+          "widthBp": 340.154418,
+          "baselineBp": 96.23499,
+          "runBaselinesBp": [
+            96.23499
+          ],
+          "lineBoxSp": {
+            "width": 22376158,
+            "height": 462029,
+            "depth": 135004
+          }
+        },
+        {
+          "text": "between consecutive lines. A local decision which fills the current line can",
+          "bbox": [
+            127.559,
+            96.963105,
+            467.713418,
+            111.080166
+          ],
+          "widthBp": 340.154418,
+          "baselineBp": 108.19104,
+          "runBaselinesBp": [
+            108.19104
+          ],
+          "lineBoxSp": {
+            "width": 22376158,
+            "height": 469238,
+            "depth": 7209
+          }
+        },
+        {
+          "text": "create an unnecessarily loose following line. Mathematical documents require",
+          "bbox": [
+            127.559,
+            108.918105,
+            467.713418,
+            123.035166
+          ],
+          "widthBp": 340.154418,
+          "baselineBp": 120.146,
+          "runBaselinesBp": [
+            120.146
+          ],
+          "lineBoxSp": {
+            "width": 22376158,
+            "height": 462029,
+            "depth": 135004
+          }
+        },
+        {
+          "text": "consistent composition across different widths, without inserting explicit new-",
+          "bbox": [
+            127.559,
+            120.873105,
+            467.713418,
+            134.990166
+          ],
+          "widthBp": 340.154418,
+          "baselineBp": 132.10101,
+          "runBaselinesBp": [
+            132.10101
+          ],
+          "lineBoxSp": {
+            "width": 22376158,
+            "height": 462029,
+            "depth": 135004
+          }
+        },
+        {
+          "text": "lines into the original source.",
+          "bbox": [
+            127.559,
+            132.828105,
+            256.316159,
+            146.945166
+          ],
+          "widthBp": 128.757159,
+          "baselineBp": 144.05603,
+          "runBaselinesBp": [
+            144.05603
+          ],
+          "lineBoxSp": {
+            "width": 22376158,
+            "height": 454820,
+            "depth": 135004
+          }
+        }
+      ],
+      "paragraph": {
+        "hsizeSp": 22376158,
+        "parindentSp": 983040,
+        "language": 0,
+        "leftHyphenMin": 2,
+        "rightHyphenMin": 3
+      },
+      "hasToUnicodeMap": {
+        "lmroman10-regular.otf": true
+      },
+      "embeddedFontFiles": [
+        "lmroman10-regular.otf"
+      ]
+    }
+  ]
+}
