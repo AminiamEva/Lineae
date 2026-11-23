@@ -1455,7 +1455,8 @@ function persistCitationState() {
 const metaBar=document.createElement('section');metaBar.id='document-meta';
 const metaTitle=document.createElement('div');metaTitle.className='doc-title';
 const metaAuthor=document.createElement('div');metaAuthor.className='doc-author';
-metaBar.append(metaTitle,metaAuthor);documentPage.prepend(metaBar);
+const metaDate=document.createElement('div');metaDate.className='doc-date';
+metaBar.append(metaTitle,metaAuthor,metaDate);documentPage.prepend(metaBar);
 function editMeta(element,key){
   element.contentEditable='true';element.spellcheck=false;
   element.addEventListener('keydown',event=>{if(event.key==='Enter'){event.preventDefault();element.blur();}});
@@ -1466,11 +1467,31 @@ function editMeta(element,key){
   });
 }
 editMeta(metaTitle,'title');editMeta(metaAuthor,'author');
+let metaDateDisplay='';
+function todayText(){
+  const locale=document.documentElement.lang?.toLowerCase().startsWith('zh')?'zh-CN':'en-US';
+  return new Intl.DateTimeFormat(locale,{year:'numeric',month:'long',day:'numeric'}).format(new Date());
+}
+function displayDate(raw){return raw.replace(/\\today\b/g,todayText()).trim();}
+metaDate.contentEditable='true';metaDate.spellcheck=false;
+metaDate.addEventListener('keydown',event=>{if(event.key==='Enter'){event.preventDefault();metaDate.blur();}});
+metaDate.addEventListener('blur',()=>{
+  const value=metaDate.textContent.trim();
+  if(value!==metaDateDisplay)writeMeta('date',value);
+  else renderMeta();
+});
 function renderMeta() {
   metaTitle.textContent=readMeta('title');
   metaAuthor.textContent=readMeta('author');
+  const hasDate=/\\date\s*\{/.test(documentParts.start);
+  const rawDate=readMeta('date');
+  const showDefault=!hasDate&&Boolean(readMeta('title'));
+  metaDateDisplay=hasDate?displayDate(rawDate):showDefault?todayText():'';
+  metaDate.textContent=metaDateDisplay;
+  metaDate.hidden=!metaDateDisplay;
   metaTitle.dataset.zhPlaceholder='标题';metaTitle.dataset.enPlaceholder='Title';metaTitle.dataset.placeholder=t('标题','Title');
   metaAuthor.dataset.zhPlaceholder='作者';metaAuthor.dataset.enPlaceholder='Author';metaAuthor.dataset.placeholder=t('作者','Author');
+  metaDate.dataset.zhPlaceholder='日期';metaDate.dataset.enPlaceholder='Date';metaDate.dataset.placeholder=t('日期','Date');
 }
 renderMeta();
 typesetPagination=installTypesetPagination(documentPage,paper,metaBar,editor);
