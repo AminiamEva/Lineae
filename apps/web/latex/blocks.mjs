@@ -339,7 +339,10 @@ export function importBlock(block, options={}) {
     const tabular = start >= 0 && end > start ? parseTable(inner.slice(start, end + '\\end{tabular}'.length)) : null;
     if (tabular) {
       const outside = inner.slice(0,start) + inner.slice(end + '\\end{tabular}'.length);
-      if (outside.replace(/\\centering\b|\\(?:caption|label)\{[^{}]*\}/g,'').trim()) return rawNode(block);
+      const stretch = /\\renewcommand\s*\{\\arraystretch\}\s*\{([^{}]+)\}/.exec(inner) ??
+        /\\setlength\s*\{\\arraystretch\}\s*\{([^{}]+)\}/.exec(inner);
+      const arrayStretch = stretch ? Number.parseFloat(stretch[1]) : null;
+      if (outside.replace(/\\centering\b|\\(?:caption|label)\{[^{}]*\}|\\renewcommand\s*\{\\arraystretch\}\s*\{[^{}]*\}|\\setlength\s*\{\\arraystretch\}\s*\{[^{}]*\}/g,'').replace(/[{}]/g,'').trim()) return rawNode(block);
       if (tabular.rows.some(row => row.cells.some(cell => !inlineContent(cell.trim())))) return rawNode(block);
       const booktabs = tabular.rows.some(row => row.rules.some(rule => /toprule|midrule|bottomrule/.test(rule))) ||
         tabular.trailing.some(rule => /toprule|midrule|bottomrule/.test(rule));
@@ -353,6 +356,7 @@ export function importBlock(block, options={}) {
           columns: tabular.columns, booktabs, borderMode,
           columnLayout: JSON.stringify(tabular.columnLayout?.boundaries??[]),
           columnRules: tabular.columnLayout?.boundaries?.some(boundary=>boundary.rules>0||boundary.at) || false,
+          arrayStretch: Number.isFinite(arrayStretch) ? arrayStretch : null,
           caption: tableFloat.caption,
           label: tableFloat.label,
           placement: tableFloat.placement,
@@ -493,6 +497,12 @@ export function importBlocks(block, options={}) {
   if (ruledTable) {
     const node=importBlock(ruledTable[2]);
     if(node?.type==='table')return [{...node,attrs:{...node.attrs,borderWidth:ruledTable[1]}}];
+  }
+  const stretchedTable = /^\{\s*\\renewcommand\s*\{\\arraystretch\}\s*\{([^{}]+)\}\s*(\\begin\{tabular\}[\s\S]*\\end\{tabular\})\s*\}$/.exec(block.trim());
+  if (stretchedTable) {
+    const node=importBlock(stretchedTable[2]);
+    const value=Number.parseFloat(stretchedTable[1]);
+    if(node?.type==='table')return [{...node,attrs:{...node.attrs,...(Number.isFinite(value)?{arrayStretch:value}:{})}}];
   }
   const listing = /^\\begin\{lstlisting\}(?:\[language=([A-Za-z0-9+_-]+)\])?\r?\n([\s\S]*?)\r?\n\\end\{lstlisting\}$/.exec(block.trim());
   if (listing) return [{type:'codeBlock',attrs:{language:listing[1]??null},content:listing[2]?[{type:'text',text:listing[2]}]:[]}];
