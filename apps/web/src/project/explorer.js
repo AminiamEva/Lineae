@@ -87,7 +87,7 @@ export function installProjectExplorer({footer, filePanel, sessions}) {
     const standaloneBefore = !previous && sessions.text();
     if (!project && !sessions.approveOpen(newOrOpen)) return;
     if (!window.lineaeProject && !window.showDirectoryPicker) throw new Error(t('当前环境不支持目录读写，请使用桌面应用或支持 File System Access 的浏览器。','This browser cannot write to a directory. Use the desktop app or a browser with File System Access.'));
-    const adapter = window.lineaeProject ? await window.lineaeProject.open() : new DirectoryHandleAdapter(await window.showDirectoryPicker({mode:'readwrite'}));
+    const adapter = window.lineaeProject ? await window.lineaeProject.open() : await DirectoryHandleAdapter.open(await window.showDirectoryPicker({mode:'readwrite'}));
     const createNew=await newProjectIntent(adapter,newOrOpen);
     const next = await new Project(adapter).open();
     await seedNewProject(next,createNew);
@@ -269,6 +269,7 @@ export function installProjectExplorer({footer, filePanel, sessions}) {
   panel.addEventListener('contextmenu',showContextMenu);
   panel.addEventListener('keydown',event=>{if(event.key==='ContextMenu' || (event.shiftKey && event.key==='F10'))showContextMenu(event);});
   function render() {
+    sessions.engineChanged?.();
     sidebar.render();
     panel.dataset.state=project?'open':'empty';newProjectButton.hidden=Boolean(project);
     actions.hidden = !project;

@@ -1,0 +1,115 @@
+const assert=require('node:assert/strict');
+const {chromium}=require('playwright');
+const {spawn}=require('node:child_process');
+const {once}=require('node:events');
+const {mkdtemp,readFile,rm}=require('node:fs/promises');
+const {tmpdir}=require('node:os');
+const {join}=require('node:path');
+const {createHash}=require('node:crypto');
+const {revealToolbar}=require('./workspace-ui-helpers.cjs');
+const sha=b=>createHash('sha256').update(b).digest('hex');
+const source=Buffer.from('\uFEFF% 源码\r\n\\documentclass{article}\n\\usepackage{xeCJK}\r\n\\newcommand{\\keep}{原样}\n\\begin{document}\r\nPreserved text.\n\\end{document}\r\n');
+const server=spawn(process.execPath,['scripts/serve.mjs','apps/web','39771'],{stdio:['ignore','pipe','inherit']});
+(async()=>{
+ await once(server.stdout,'data');
+ const dir=await mkdtemp(join(tmpdir(),'lineae-engine-'));
+ let context,page;
+ async function start(){
+  context=await chromium.launchPersistentContext(dir,{headless:true,viewport:{width:1600,height:1000},deviceScaleFactor:1});
+  page=context.pages()[0];page.setDefaultTimeout(10000);
+  page.on('pageerror',e=>console.error('pageerror',e.message));
+  await page.goto('http://127.0.0.1:39771');
+  await profile('lualatex');
+ }
+ const profile=engine=>page.locator('.ProseMirror[data-paragraph-profile="'+engine+'"]').first().waitFor({state:'attached'});
+ const choice=()=>page.locator('#engine-choice');
+ async function pick(value){
+  await page.locator('.engine-panel').evaluate(el=>el.open=true);
+  await choice().selectOption(value);
+ }
+ async function load(bytes=source){
+  await page.locator('#file').setInputFiles({name:'legacy.tex',mimeType:'text/plain',buffer:bytes});
+  await page.waitForFunction(()=>document.querySelector('.ProseMirror')?.textContent==='Preserved text.');
+ }
+ async function openProject(create){
+  await page.evaluate(async create=>{
+   const dir=await (await navigator.storage.getDirectory()).getDirectoryHandle('工程',{create:true});
+   if(create){
+    for(const [name,text] of [['main.tex','\\documentclass{article}\r\n\\input{chapter}\n\\begin{document}Root\\end{document}'],['chapter.tex','\\usepackage{luatexja}\n子文件']]){
+     const w=await (await dir.getFileHandle(name,{create:true})).createWritable();await w.write(text);await w.close();
+    }
+   }
+   window.showDirectoryPicker=async()=>dir;
+  },create);
+  await revealToolbar(page);
+  if(!await page.locator('#project-open').isVisible())await page.locator('[data-group=files]').click();
+  await page.locator('#project-open').click();
+  await page.locator('.project-file[aria-current=true]').waitFor({state:'attached'});
+ }
+ try {
+  await start();console.log('Chromium',await page.evaluate(()=>navigator.userAgent));
+  assert.equal(await choice().inputValue(),'auto');
+  await page.locator('#settings-open').click();
+  const setting=page.locator('[data-setting="typesetting.defaultEngine"]');
+  await setting.evaluate(n=>{for(let p=n.parentElement;p;p=p.parentElement)if(p.tagName==='DETAILS')p.open=true;});
+  const language=page.locator('[data-setting="interface.language"]');
+  await language.evaluate(n=>{for(let p=n.parentElement;p;p=p.parentElement)if(p.tagName==='DETAILS')p.open=true;});
+  await language.selectOption('zh-CN');
+  await setting.selectOption('xelatex');
+  await page.locator('#settings-apply').click();await profile('xelatex');
+  assert.equal(await page.locator('label[for=engine-choice]').textContent(),'文档排版引擎');
+  if(!await page.locator('#settings-panel').isVisible())await page.locator('#settings-open').click();
+  await setting.evaluate(n=>{for(let p=n.parentElement;p;p=p.parentElement)if(p.tagName==='DETAILS')p.open=true;});
+  await language.evaluate(n=>{for(let p=n.parentElement;p;p=p.parentElement)if(p.tagName==='DETAILS')p.open=true;});
+  await language.selectOption('en');
+  await setting.selectOption('lualatex');await page.locator('#settings-apply').click();await profile('lualatex');
+  if(await page.locator('#settings-panel').isVisible())await page.locator('#settings-close').click();
+  assert.equal(await page.locator('label[for=engine-choice]').textContent(),'Document typesetting engine');
+  await load(Buffer.from(source.toString().replace('\\usepackage{xeCJK}','\\usepackage{xeCJK,luatexja}')));
+  await profile('unresolved');assert.equal(await page.locator('.engine-panel li').count(),2);
+  await load();await profile('xelatex');
+  assert.match(await page.locator('#engine-resolution').textContent(),/xeCJK/);
+  await pick('lualatex');await profile('lualatex');
+  assert.match(await page.locator('.engine-panel li').textContent(),/legacy\.tex:3:1.*xeCJK/);
+  const pm=page.locator('.ProseMirror').first();
+  await pm.click();await page.keyboard.press('End');
+  await page.keyboard.insertText('Q');
+  const selection=()=>pm.evaluate(el=>{const s=el.editor?.state.selection;return s?[s.anchor,s.head]:[window.getSelection().anchorOffset,window.getSelection().focusOffset];});
+  const pos=await selection();await pick('xelatex');await profile('xelatex');
+  await pm.focus();assert.deepEqual(await selection(),pos);
+  await page.keyboard.press('Control+z');await page.waitForFunction(()=>!document.querySelector('.ProseMirror').textContent.includes('Q'));
+  await page.keyboard.press('Control+y');await page.waitForFunction(()=>document.querySelector('.ProseMirror').textContent.includes('Q'));
+  await page.keyboard.press('Control+z');
+  await pm.focus();const cdp=await context.newCDPSession(page);
+  await cdp.send('Input.imeSetComposition',{text:'中',selectionStart:1,selectionEnd:1});
+  await choice().evaluate(n=>{n.value='lualatex';n.dispatchEvent(new Event('change'));});
+  assert.equal(await choice().inputValue(),'xelatex');
+  await cdp.send('Input.insertText',{text:'中'});assert.match(await pm.textContent(),/中/);
+  await load();await pick('auto');await profile('xelatex');await pick('lualatex');await profile('lualatex');
+  assert.equal(await page.evaluate(()=>window.dispatchEvent(new Event('beforeunload',{cancelable:true}))),true);
+  await page.locator('[data-source-mode=source]').click();
+  assert.equal(await page.locator('.tex-dirty').evaluate(n=>!n.hidden),false);
+  const cm=page.locator('.cm-content');
+  await cm.click();await page.keyboard.press('Control+End');await page.keyboard.insertText('% draft');
+  await page.keyboard.press('Shift+ArrowLeft');
+  const cmSelection=()=>cm.evaluate(n=>{const s=window.getSelection();return [s.toString(),s.anchorOffset,s.focusOffset];});
+  const anchor=await cmSelection();assert.equal(anchor[0],'t');
+  await pick('xelatex');await profile('xelatex');await cm.focus();assert.deepEqual(await cmSelection(),anchor);
+  assert.equal(await page.locator('.tex-dirty').evaluate(n=>!n.hidden),true);
+  await page.keyboard.press('Control+z');await page.waitForFunction(()=>!document.querySelector('.cm-content').textContent.includes('% draft'));
+  await pick('lualatex');await profile('lualatex');
+  await revealToolbar(page);
+  if(!await page.locator('#download').isVisible())await page.locator('[data-group=files]').click();
+  const pending=page.waitForEvent('download');await page.locator('#download').click();
+  const zip=await readFile(await (await pending).path());assert.equal(zip.readUInt16LE(8),0);
+  const offset=30+zip.readUInt16LE(26)+zip.readUInt16LE(28);
+  const out=zip.subarray(offset,offset+zip.readUInt32LE(22));assert.deepEqual(out,source);console.log('ZIP SHA-256',sha(source),sha(out));
+  await context.close();await start();await load();await profile('lualatex');
+  assert.equal(await choice().inputValue(),'lualatex');
+  await openProject(true);await profile('lualatex');assert.equal(await choice().inputValue(),'auto');
+  await pick('xelatex');await profile('xelatex');
+  assert.match(await page.locator('.engine-panel li').textContent(),/chapter\.tex:1:1/);
+  await context.close();await start();await openProject(false);await profile('xelatex');assert.equal(await choice().inputValue(),'xelatex');
+  console.log('PASS global settings, standalone bytes and restart, selection, undo/redo, IME and directory checkpoint across browser restart');
+ }finally{await context?.close();await rm(dir,{recursive:true,force:true});}
+})().catch(e=>{console.error(e);process.exitCode=1;}).finally(()=>server.kill());

@@ -1221,7 +1221,7 @@ mod tests {
         if let Some(root) = std::env::var_os("LINEAE_TEST_CHECKPOINT_ROOT") {
             let id = std::env::var("LINEAE_TEST_CHECKPOINT_SESSION").unwrap();
             for revision in 0..10 {
-                let bytes=serde_json::to_vec(&serde_json::json!({"files":{},"drafts":[{"path":"main.tex","saved":"base","draft":format!("{id}-{revision}")}]})).unwrap();
+                let bytes=serde_json::to_vec(&serde_json::json!({"engineChoice":"xelatex","files":{},"drafts":[{"path":"main.tex","saved":"base","draft":format!("{id}-{revision}")}]})).unwrap();
                 super::super::project_checkpoints::operate(
                     Path::new(&root),
                     "checkpoint",
@@ -1269,6 +1269,7 @@ mod tests {
             .unwrap()
         };
         let state = read();
+        assert_eq!(state["engineChoice"], "xelatex");
         let versions = state["recoveryVersions"].as_array().unwrap();
         assert_eq!(versions.len(), 2);
         let old = std::fs::read(root.join(".lineae-state-instance-one.json")).unwrap();

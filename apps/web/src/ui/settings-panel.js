@@ -4,6 +4,7 @@ import {MARGIN_PRESETS} from '../../latex/geometry.mjs';
 import {settingsProposal,layoutProposal} from './settings-values.mjs';
 
 const LABELS = {
+  typesetting:['排版','Typesetting'], defaultEngine:['Auto 默认引擎','Default engine for Auto'],
   interface:['界面','Appearance'], editing:['编辑','Editing'], keybindings:['快捷键','Keyboard shortcuts'],
   language:['语言','Language'], theme:['主题','Theme'], zoom:['页面缩放 (%)','Page zoom (%)'],
   sourceFontSize:['源码字号 (px)','Source font size (px)'], toolbarAutoHide:['Document 自动折叠功能区','Auto-hide toolbar in Document'],
@@ -78,6 +79,7 @@ export function installSettingsPanel({config,onApply,onImport,onExport,getDocume
     if (id === 'interface.language') control = selectFrom([
       ['auto',t('跟随系统','System')],['en','English'],['zh-CN','简体中文'],['zh-Hant','繁體中文'],
     ]);
+    else if (id === 'typesetting.defaultEngine') control = selectFrom([['lualatex','LuaLaTeX'],['xelatex','XeLaTeX']]);
     else if (id === 'interface.theme') control = selectFrom([
       ['system',t('跟随系统','System')],['light',t('浅色','Light')],['dark',t('深色','Dark')],
     ]);

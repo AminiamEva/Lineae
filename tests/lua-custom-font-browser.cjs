@@ -11,7 +11,7 @@ const server=spawn(process.execPath,['scripts/serve.mjs','apps/web','39899'],{st
     page.setDefaultTimeout(7000); page.on('pageerror',e=>console.error(e.message));
     await page.route('**/index.html',async route=>{
       const res=await route.fetch();
-      await route.fulfill({response:res,body:(await res.text()).replace('data-typesetting-engine="xelatex"','data-typesetting-engine="lualatex"')});
+      await route.fulfill({response:res,body:(await res.text()).replace('data-typesetting-engine="auto"','data-typesetting-engine="lualatex"')});
     });
     await page.goto('http://127.0.0.1:39899/index.html');
     await page.locator('.ProseMirror[data-paragraph-profile="lualatex"]').waitFor();

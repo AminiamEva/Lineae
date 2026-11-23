@@ -1,4 +1,6 @@
 version: 2
+typesetting:
+  defaultEngine: lualatex
 interface:
   sourceFontSize: 16
   toolbarAutoHide: false

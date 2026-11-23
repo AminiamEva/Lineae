@@ -316,6 +316,11 @@ export function installTypesetPagination(page, paper, meta, editor, engineProfil
       editor.view.dom.style.fontKerning = kerning;
       editor.view.dom.style.fontVariantLigatures = profile.latinFeatures.ligatures;
     }
+    else {
+      editor.view.dom.style.removeProperty('font-feature-settings');
+      editor.view.dom.style.removeProperty('font-kerning');
+      editor.view.dom.style.removeProperty('font-variant-ligatures');
+    }
     const fonts = profile.fonts ?? {};
     page.style.setProperty('--tex-font-family', fonts.serif
       ? stack(fonts.serif, 'Latin Modern Roman') : '"Latin Modern Roman"');
@@ -330,6 +335,7 @@ export function installTypesetPagination(page, paper, meta, editor, engineProfil
       const show = !assessment.supported && (fonts.cjk || /[\p{Script=Han}]/u.test(editor.state.doc.textContent));
       reportCjkPrecision(show ? (fonts.cjk || family) : null);
     }
+    else reportCjkPrecision?.(null);
     page.style.setProperty('--tex-mono-font-family', fonts.mono
       ? stack(fonts.mono, 'Latin Modern Mono') : '"Latin Modern Mono"');
   }
@@ -615,6 +621,14 @@ export function installTypesetPagination(page, paper, meta, editor, engineProfil
   document.fonts?.addEventListener('loadingdone', schedule);
 
   return {
+    setEngine(next) {
+      paragraphLayout.setProfile(next);
+      if (next) {
+        engineProfile=next;
+        applyProfile(paragraphPreamble);
+      } else reportCjkPrecision?.(null);
+      schedule();
+    },
     update(preamble) {
       applyProfile(preamble);
       schedule();

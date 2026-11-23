@@ -1,6 +1,7 @@
 import {removeProjectDirectory,rewriteProjectReferences} from './project-actions.mjs';
 import {projectPath, fileKind, directoryTree} from './paths.mjs';
 import {scanDependencies, resolveMetadata} from './dependencies.mjs';
+import {resolveEngine} from '../typesetting/engine-resolution.mjs';
 import {RecoveryStore} from './recovery.mjs';
 
 const editable = kind => kind === 'tex' || kind === 'bib';
@@ -18,6 +19,7 @@ export class Project {
     this.activeFileId = null;
     this.treeVisible = false;
     this.config = {};
+    this.engineChoice = 'auto';
     this.scans = new Map(); this.dependencies = []; this.pathChanges = [];
     this.recovery = adapter.root && storage ? new RecoveryStore(storage,adapter.root+(adapter.session?':'+adapter.session:'')) : null;
     this.storage=storage;this.metadataKey=adapter.root?'lineae:project-state:v1:'+adapter.root:null;this.persistenceError='';
@@ -40,7 +42,7 @@ export class Project {
     this.directories = directories;
     let metadata={};
     try {metadata=JSON.parse(this.metadataKey && this.storage?.getItem(this.metadataKey) || '{}');}catch(error){this.persistenceError=error.message;}
-    if(this.adapter.loadState){try{const state=await this.adapter.loadState();if(state){if(!state.files || !Array.isArray(state.drafts))throw new Error('Invalid disk checkpoint');metadata=state;this.diskRecovery=state.drafts;this.recoveryVersions=state.recoveryVersions ?? [];}}catch(error){this.diskRecoveryError='Disk recovery failed; checkpoint retained: '+error.message;this.persistenceError=this.diskRecoveryError;}}
+    if(this.adapter.loadState){try{const state=await this.adapter.loadState();if(state){if(!state.files || !Array.isArray(state.drafts))throw new Error('Invalid disk checkpoint');if(state.main || state.engineChoice || Object.keys(state.files).length)metadata=state;this.diskRecovery=state.drafts;this.recoveryVersions=state.recoveryVersions ?? [];}}catch(error){this.diskRecoveryError='Disk recovery failed; checkpoint retained: '+error.message;this.persistenceError=this.diskRecoveryError;}}
     this.savedIdentities=metadata?.files ?? {};
     const identities=new Set();
     for(const file of files.values()){const id=metadata?.files?.[file.path];if(typeof id==='string' && !identities.has(id))file.id=id;identities.add(file.id);}
@@ -50,6 +52,13 @@ export class Project {
     this.mainFileId = main?.id ?? null;
     const selected=files.get(metadata?.main);
     if(selected?.kind==='tex')this.mainFileId=selected.id;
+    if (['auto','lualatex','xelatex'].includes(metadata?.engineChoice)) {
+      this.engineChoice = metadata.engineChoice;
+    } else if (metadata?.engineChoice === undefined && selected?.kind === 'tex' &&
+      typeof metadata.files?.[selected.path] === 'string' && selected.id === metadata.files[selected.path] &&
+      this.resolveTypesetting('xelatex').reason === 'default') {
+      this.engineChoice = 'xelatex';
+    }
     this.activeFileId = this.mainFileId;
     this.treeVisible = false;
     this.resolveDependencies();
@@ -80,12 +89,25 @@ export class Project {
     this.persistMetadata();
     if(recoveryError)this.persistenceError=[this.persistenceError,recoveryError].filter(Boolean).join(' · ');
   }
+  setEngineChoice(choice) {
+    if (!['auto','lualatex','xelatex'].includes(choice)) throw new TypeError('Invalid typesetting choice');
+    this.engineChoice = choice;
+    this.persistMetadata();
+  }
+  resolveTypesetting(globalDefault, liveFile, explicitChoice=this.engineChoice) {
+    const root = this.file(this.mainFileId);
+    const source = file => ({path:file.path, text:liveFile?.id === file.id ? liveFile.text : file.draft});
+    return resolveEngine({source:source(root), projectSources:[...this.files.values()]
+      .filter(file=>file.kind==='tex' && file!==root).map(source),
+      explicitChoice, globalDefault});
+  }
   persistMetadata() {
     if(!this.metadataKey)return;
-    try {this.storage?.setItem(this.metadataKey,JSON.stringify({main:this.mainFileId?this.file(this.mainFileId).path:null,files:Object.fromEntries([...this.files.values()].map(file=>[file.path,file.id]))}));this.persistenceError=this.diskRecoveryError ?? '';}
+    const metadata={engineChoice:this.engineChoice,main:this.mainFileId?this.file(this.mainFileId).path:null,files:Object.fromEntries([...this.files.values()].map(file=>[file.path,file.id]))};
+    try {this.storage?.setItem(this.metadataKey,JSON.stringify(metadata));this.persistenceError=this.diskRecoveryError ?? '';}
     catch(error){this.persistenceError='Project settings could not be persisted: '+error.message;}
     if(this.adapter.checkpoint && !this.diskRecoveryError){
-      const state={main:this.mainFileId?this.file(this.mainFileId).path:null,files:Object.fromEntries([...this.files.values()].map(file=>[file.path,file.id])),drafts:[...this.files.values()].filter(file=>file.dirty).map(({path,saved,draft})=>({path,saved,draft}))};
+      const state={...metadata,drafts:[...this.files.values()].filter(file=>file.dirty).map(({path,saved,draft})=>({path,saved,draft}))};
       // Preserve recovered versions until the user has chosen whether to restore.
       if(this.diskRecovery.length)state.drafts=this.diskRecovery;
       this.pendingCheckpoint=this.pendingCheckpoint.then(()=>this.adapter.checkpoint(state)).catch(error=>{this.persistenceError='Disk checkpoint failed: '+error.message;});
@@ -293,6 +315,31 @@ export class Project {
 /** Browser File System Access adapter. Unsupported browsers must report capability absence. */
 export class DirectoryHandleAdapter {
   constructor(handle) { this.handle = handle; }
+  static async open(handle) {
+    const adapter=new DirectoryHandleAdapter(handle);
+    if(!handle.isSameEntry || !globalThis.indexedDB)return adapter;
+    const request=req=>new Promise((resolve,reject)=>{
+      req.onsuccess=()=>resolve(req.result);req.onerror=()=>reject(req.error);
+    });
+    async function findRoot() {
+      const opening=indexedDB.open('lineae-project-directories',1);
+      opening.onupgradeneeded=()=>opening.result.createObjectStore('roots',{keyPath:'id'});
+      const db=await request(opening);
+      try {
+        const entries=await request(db.transaction('roots').objectStore('roots').getAll());
+        for(const entry of entries)if(await handle.isSameEntry(entry.handle))return entry.id;
+        const id='browser:'+crypto.randomUUID();
+        await new Promise((resolve,reject)=>{
+          const tx=db.transaction('roots','readwrite');
+          tx.oncomplete=resolve;tx.onabort=()=>reject(tx.error);
+          tx.objectStore('roots').add({id,handle});
+        });
+        return id;
+      } finally {db.close();}
+    }
+    adapter.root=await (navigator.locks?navigator.locks.request('lineae-project-directory-identity',findRoot):findRoot());
+    return adapter;
+  }
   async list() {
     const entries = [];
     async function visit(handle, prefix) {

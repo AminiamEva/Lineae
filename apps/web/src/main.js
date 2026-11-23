@@ -69,6 +69,8 @@ import { buildProjectZip, safeProjectPath, projectDependencies } from './editor/
 import { theoremNames } from '../latex/theorem.mjs';
 import { MultiSelection } from './editor/multi-selection.js';
 import { installSpaceOverlay } from './editor/space-overlay.js';
+import {createEnginePanel} from './ui/engine-panel.js';
+import {resolveEngine} from './typesetting/engine-resolution.mjs';
 import { getTypesettingProfile } from './typesetting/engine-profile.mjs';
 import { installTypesetPagination } from './editor/typeset-pagination.js';
 import { wrapMathWithDelimiters } from '../latex/delimiters.mjs';
@@ -999,6 +1001,8 @@ button('$',()=>insertMath());
 button('$$',()=>insertMath(true)).dataset.shortcut='editor.insertDisplayMath';
 const projectDocument=new ProjectDocumentSession();
 let projection, syncApplying = false, syncPending = false, sourceToolbar, projectExplorer, projectFileKind, projectPresentation;
+let enginePanel,engineFrame,compositionActive=false;
+let standaloneChoice='auto',standaloneKey=null,preferenceError='';
 let splitMapping;
 function splitBlocks(text) {
   if (syncPending || projection?.text !== text) return [];
@@ -1051,7 +1055,7 @@ const sourceView = createSourceWorkspace({
     } finally { syncApplying = false; }
   },
   onPreviewZoom: value => setZoom(value),
-  onChange: () => { syncPending = true; projectExplorer?.changed(); },
+  onChange: () => { syncPending = true; scheduleEngine(); projectExplorer?.changed(); },
   onLayout: () => updateSourceButton(),
   metadata: () => ({name: filename, saved: savedSource}),
 });
@@ -1396,6 +1400,7 @@ function applyPageSetup(){
   documentPage.style.setProperty('--page-margin-right',metrics.margins.right);
   documentPage.style.setProperty('--page-margin-bottom',metrics.margins.bottom);
   documentPage.style.setProperty('--page-margin-left',metrics.margins.left);
+  scheduleEngine();
   typesetPagination?.update(layoutPreamble);
   typesetPagination?.setMaketitle(/\\maketitle\b/.test((documentParts.blocks??[]).join('\n')));
   if(headerFooterPanel && !headerFooterPanel.active)headerFooterPanel.refresh();
@@ -1494,8 +1499,52 @@ function renderMeta() {
   metaDate.dataset.zhPlaceholder='日期';metaDate.dataset.enPlaceholder='Date';metaDate.dataset.placeholder=t('日期','Date');
 }
 renderMeta();
-const engineProfile = getTypesettingProfile(document.documentElement.dataset.typesettingEngine ?? 'xelatex');
-if (engineProfile.capabilities.browserLayout !== 'supported') throw new Error('Browser layout pending calibration: '+engineProfile.engine);
+const bootstrapEngine=document.documentElement.dataset.typesettingEngine;
+const pinnedEngine=['xelatex','lualatex'].includes(bootstrapEngine)?bootstrapEngine:null;
+let activeEngine=pinnedEngine ?? config.value.typesetting.defaultEngine;
+function refreshEngine() {
+  engineFrame=0;
+  if (!enginePanel || compositionActive || editor.view.composing || sourceView.composing) return;
+  const project=projectExplorer?.model;
+  const text=sourceView.hidden?source():sourceView.value;
+  const liveId=sourceView.hidden && projectDocument.composition ? projectDocument.composition.rootId : project?.activeFileId;
+  const globalDefault=config.value.typesetting.defaultEngine;
+  const result=project?.mainFileId
+    ? project.resolveTypesetting(globalDefault,{id:liveId,text},pinnedEngine ?? project.engineChoice)
+    : resolveEngine({explicitChoice:pinnedEngine ?? standaloneChoice,globalDefault,source:{path:filename,text}});
+  if (activeEngine!==result.resolvedEngine) {
+    activeEngine=result.resolvedEngine;
+    typesetPagination.setEngine(activeEngine?getTypesettingProfile(activeEngine):null);
+  }
+  enginePanel.update(result,Boolean(project),preferenceError || project?.persistenceError);
+}
+function scheduleEngine() {
+  if(enginePanel && !engineFrame)engineFrame=requestAnimationFrame(refreshEngine);
+}
+function persistStandaloneChoice() {
+  if(!standaloneKey)return;
+  try {
+    if(standaloneChoice==='auto')localStorage.removeItem(standaloneKey);
+    else localStorage.setItem(standaloneKey,standaloneChoice);
+  } catch { preferenceError=t('文档引擎设置未保存','Document engine preference could not be saved'); }
+}
+function changeEngine(choice) {
+  preferenceError='';
+  if(compositionActive || editor.view.composing || sourceView.composing) {
+    enginePanel.panel.querySelector('select').value=projectExplorer?.model?.engineChoice ?? standaloneChoice;
+    return;
+  }
+  const project=projectExplorer?.model;
+  if(project) {
+    project.setEngineChoice(choice);
+    project.pendingCheckpoint.then(scheduleEngine);
+  }
+  else {standaloneChoice=choice;persistStandaloneChoice();}
+  refreshEngine();
+}
+document.addEventListener('compositionstart',()=>{compositionActive=true;},true);
+document.addEventListener('compositionend',()=>{compositionActive=false;scheduleEngine();},true);
+editor.on('update',scheduleEngine);
 const precisionStatus = document.createElement('span');
 precisionStatus.id = 'typesetting-precision';
 precisionStatus.setAttribute('role', 'status');
@@ -1507,8 +1556,7 @@ function reportCjkPrecision(family) {
   precisionStatus.dataset.en = family + ' CJK preview: spacing and line breaks are uncalibrated';
   precisionStatus.textContent = t(precisionStatus.dataset.zh, precisionStatus.dataset.en);
 }
-typesetPagination=installTypesetPagination(documentPage,paper,metaBar,editor,engineProfile,
-  engineProfile.engine === 'lualatex' ? reportCjkPrecision : null);
+typesetPagination=installTypesetPagination(documentPage,paper,metaBar,editor,getTypesettingProfile(activeEngine),reportCjkPrecision);
 typesetPagination.setTableContinuation(config.value.interface.continuedTables);
 window.addEventListener('lineae-image-layout',()=>{typesetPagination?.refresh();syncImageTab?.();});
 function source() {
@@ -1722,6 +1770,11 @@ async function writeDocument(snapshot,saveAs) {
     if(!snapshot.isCurrentDocument())return;
     fileHandle=handle;
     if(handle.name)filename=handle.name;
+    if(!projectExplorer?.active){
+      const key=await engineStorageKey(filename,new TextEncoder().encode(snapshot.text));
+      if(!snapshot.isCurrentDocument())return;
+      standaloneKey=key;persistStandaloneChoice();
+    }
     savedSource=snapshot.text;
     snapshot.commit();
     sourceView.refresh();
@@ -1730,13 +1783,27 @@ async function writeDocument(snapshot,saveAs) {
   }
   await downloadProject(false,snapshot.text,name);
 }
+async function engineStorageKey(name,bytes) {
+  const hash=await crypto.subtle.digest('SHA-256',bytes);
+  return 'lineae:document-engine:'+name+':'+Array.from(new Uint8Array(hash),v=>v.toString(16).padStart(2,'0')).join('');
+}
+async function openStandalone(file,handle) {
+  const bytes=await file.arrayBuffer();
+  const text=new TextDecoder('utf-8',{fatal:true,ignoreBOM:true}).decode(bytes);
+  const key=await engineStorageKey(file.name,bytes);
+  load(text);
+  fileHandle=handle;filename=file.name;standaloneKey=key;preferenceError='';
+  let stored;
+  try {stored=localStorage.getItem(key);} catch {preferenceError=t('无法读取文档设置','Document settings unavailable');}
+  standaloneChoice=['xelatex','lualatex'].includes(stored)?stored:'auto';
+  sourceView.refresh();scheduleEngine();
+}
 async function openDocument() {
   if (projectExplorer?.active && !projectExplorer.close()) return true;
   try {
     const [handle]=await window.showOpenFilePicker({types:[{description:'LaTeX',accept:{'text/plain':['.tex']}}],multiple:false});
     const file=await handle.getFile();
-    fileHandle=handle;filename=file.name;
-    load(await file.text());
+    await openStandalone(file,handle);
     return true;
   } catch(error) {
     if(error?.name==='AbortError')return true;
@@ -1758,7 +1825,7 @@ window.addEventListener('beforeunload',event=>{
 document.querySelector('#file').addEventListener('change',async event=>{
   if (projectExplorer?.active && !projectExplorer.close()) return;
   const file=event.target.files[0];if(!file)return;
-  try {fileHandle=null;load(new TextDecoder('utf-8',{fatal:true,ignoreBOM:true}).decode(await file.arrayBuffer()));filename=file.name;sourceView.refresh();}
+  try {await openStandalone(file,null);}
   catch(error){const status=document.querySelector('#status');status.hidden=false;status.textContent=error.message;}
 });
 const commands = document.createElement('div');
@@ -2590,7 +2657,9 @@ function updateEnvironment() {
   environment.textContent=[labels[name],...(field ? mathEnvironment(field) : [])].join(' › ');
   environment.dataset.environment=name;
 }
-footer.append(count,document.querySelector('#status'),precisionStatus,environment,zoom,percent,paginationButton,themeButton,modes);document.body.append(footer);sourceView.mountStatus(footer);scale();updatePaginationButton();
+enginePanel=createEnginePanel(changeEngine);
+scheduleEngine();
+footer.append(enginePanel.panel,count,document.querySelector('#status'),precisionStatus,environment,zoom,percent,paginationButton,themeButton,modes);document.body.append(footer);sourceView.mountStatus(footer);scale();updatePaginationButton();
 const shortcutPriority=installShortcutPriority({host:footer,before:modes,getBindings:()=>config.bindings});
 const compositionController=createCompositionController({
   explorer:()=>projectExplorer,fileKind:()=>projectFileKind,session:projectDocument,
@@ -2628,6 +2697,7 @@ installProjectNavigation({outline:documentOutline.panel,paper,sourceView,editor,
 const projectWorkspace=new ProjectWorkspaceState();
 let standaloneSession;
 projectExplorer = installProjectExplorer({footer, filePanel:document.querySelector('header .tools'), sessions:{
+  engineChanged:scheduleEngine,
   prepareSave:prepareExplicitSave,
   outline:documentOutline,preferences:()=>config.value,
   sidebarChanged:(key,open)=>config.updateInterface({sidebar:{[key]:open}}),
@@ -3423,6 +3493,7 @@ function updateFileTools() {
   releaseFileNavigation=installRovingFocus(files,{onActivate:control=>control.click()});
 }
 function applyImportedPreferences() {
+  scheduleEngine();
   clearTimeout(zoomSaveTimer);
   language.value=configuredLanguage();
   theme.set(config.value.interface.theme);
@@ -3481,6 +3552,7 @@ function updateLanguage() {
   pageMarginBottom.setAttribute('aria-label',t('下边距','Bottom margin'));
   pageMarginLeft.setAttribute('aria-label',t('左边距','Left margin'));
   tooltips?.setLanguage(language.value);
+  scheduleEngine();
   projectExplorer?.relocalize?.();
   documentFind.relocalize();
   documentOutline.relocalize();

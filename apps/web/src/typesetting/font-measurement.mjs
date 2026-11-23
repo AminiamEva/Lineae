@@ -107,5 +107,5 @@ export function createFontMeasurement(context, fontFaces = [], document = null) 
     widths.set(id,width);
     return width;
   }
-  return {select,clear,measure};
+  return {select,clear,measure,dispose(){clear();probe?.remove();}};
 }

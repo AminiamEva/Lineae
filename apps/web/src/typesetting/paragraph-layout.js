@@ -27,10 +27,7 @@ function elementTranslateY(element){
   const parts=value.match(/-?(?:\d+\.?\d*|\.\d+)(?:px)?/g)??[];
   return parts.length>1?Number.parseFloat(parts[1])||0:0;
 }
-const fontMetrics=createFontMeasurement(context,globalThis.document?.fonts,globalThis.document);
-const {measure}=fontMetrics;
-globalThis.document?.fonts?.addEventListener('loadingdone',fontMetrics.clear);
-function tokensFor(editor,node,start,element,options,profile,metric,lineWidth){
+function tokensFor(editor,node,start,element,options,profile,metric,lineWidth,measure){
   const runs=[],atoms=new Map();let text='';
   node.forEach((child,offset)=>{
     const from=start+1+offset;
@@ -135,6 +132,10 @@ export function wrapLineWidthAt(line,{elementTop,lineHeight,baseWidth,wraps,zoom
   return Math.max(24,available);
 }
 export function installParagraphLayout(editor,profile){
+  const fontMetrics=createFontMeasurement(context,globalThis.document?.fonts,globalThis.document);
+  const {measure}=fontMetrics;
+  globalThis.document?.fonts?.addEventListener('loadingdone',fontMetrics.clear);
+  editor.on('destroy',()=>{document.fonts?.removeEventListener('loadingdone',fontMetrics.clear);fontMetrics.dispose();});
   editor.view.dom.dataset.paragraphProfile=profile.engine;
   let current='',lastSignature='',running=false,preferredX=null;
   editor.view.dom.addEventListener('pointerdown',()=>{preferredX=null;});
@@ -162,7 +163,7 @@ export function installParagraphLayout(editor,profile){
     view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc,event.shiftKey?selection.anchor:target.position,target.position)).scrollIntoView());return true;
   }}}));
   function layout(preamble=current){
-    current=preamble;if(running||editor.view.composing)return;
+    current=preamble;if(!profile||running||editor.view.composing)return;
     fontMetrics.select(profile,preamble);
     const entries=[],options=profile.paragraphParameters(preamble);let signature=preamble;
     const page=editor.view.dom.closest('.document-page');
@@ -232,7 +233,7 @@ export function installParagraphLayout(editor,profile){
         if(active.length)consume(estimate());
         return false;
       }
-      const {items}=tokensFor(editor,node,start,element,options,profile,metric,baseWidth);
+      const {items}=tokensFor(editor,node,start,element,options,profile,metric,baseWidth,measure);
       const widthAt=line=>wrapLineWidthAt(line,{elementTop,lineHeight,baseWidth,wraps,zoom});
       const wrapOptions=wraps.length?{...options,tolerance:9999}:options;
       const plan=optimumParagraph(items,line=>widthAt(line)-(line===0?indent:0),{...wrapOptions,texFinalPass:profile.texFinalPass,emergencyStretch:options.emergency?texDimension(options.emergency,parseFloat(style.fontSize)):0});
@@ -278,5 +279,10 @@ export function installParagraphLayout(editor,profile){
     if(signature===lastSignature)return;lastSignature=signature;
     running=true;try{editor.view.dispatch(editor.state.tr.setMeta(key,DecorationSet.create(editor.state.doc,entries)).setMeta('addToHistory',false));}finally{running=false;}
   }
-  return {layout, invalidate(){lastSignature='';}};
+  return {layout, invalidate(){lastSignature='';}, setProfile(next) {
+    if (profile === next) return;
+    profile=next; lastSignature=''; fontMetrics.clear();
+    editor.view.dom.dataset.paragraphProfile=next?.engine ?? 'unresolved';
+    if (!next) editor.view.dispatch(editor.state.tr.setMeta(key,DecorationSet.empty).setMeta('addToHistory',false));
+  }};
 }

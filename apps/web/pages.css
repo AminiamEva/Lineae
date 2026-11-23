@@ -1352,3 +1352,9 @@ body.format-painter-active .ProseMirror * { cursor:copy; }
 .tikz-studio-status { position:sticky; left:0; bottom:0; padding:6px 12px; white-space:pre-wrap; font:11px/1.4 ui-monospace,monospace; color:#a33; background:light-dark(rgba(255,255,255,.94),rgba(17,23,34,.94)); border-top:1px solid light-dark(#eee,#333c4e); }
 @media (max-width:760px){ .tikz-studio-body { grid-template-columns:1fr; grid-template-rows:1fr 1fr; } }
 
+
+.engine-panel { position:relative; }
+.engine-panel > summary { cursor:pointer; white-space:nowrap; }
+.engine-panel > div { position:absolute; bottom:100%; right:0; z-index:20; background:Canvas; color:CanvasText; border:1px solid GrayText; padding:.75rem; min-width:15rem; max-width:85vw; white-space:normal; }
+.engine-panel label,.engine-panel output { display:block; margin:.25rem 0; }
+.engine-panel ul { padding-inline-start:1.25rem; }
