@@ -23,6 +23,21 @@ function measure() {
   const probe = document.createElement('span');
   probe.style.cssText = 'position:fixed;left:-9999px;visibility:hidden;white-space:pre;';
   document.body.append(probe);
+  const metrics=new Map();
+  function ascent(style,ch) {
+    const properties=['fontFamily','fontSize','fontWeight','fontStyle','lineHeight','fontFeatureSettings'];
+    const key=JSON.stringify([ch,...properties.map(p=>style[p])]);
+    if(metrics.has(key))return metrics.get(key);
+    for(const property of properties)probe.style[property]=style[property];
+    const sample=document.createTextNode(ch), marker=document.createElement('i');
+    marker.style.cssText='display:inline-block;width:0;height:0;vertical-align:baseline';
+    probe.replaceChildren(sample,marker);
+    const range=document.createRange();
+    range.selectNodeContents(sample);
+    const value=marker.getBoundingClientRect().top-range.getBoundingClientRect().top;
+    metrics.set(key,value);
+    return value;
+  }
   function origin(node) {
     const walker = document.createTreeWalker(node, NodeFilter.SHOW_TEXT);
     while (walker.nextNode()) {
@@ -34,12 +49,7 @@ function measure() {
       const range = document.createRange();
       range.setStart(text, i); range.setEnd(text, i+1);
       const box = locate(range.getBoundingClientRect());
-      for (const key of ['fontFamily','fontSize','fontWeight','fontStyle','lineHeight','fontFeatureSettings']) probe.style[key]=style[key];
-      const sample = document.createTextNode(ch), marker=document.createElement('i');
-      marker.style.cssText='display:inline-block;width:0;height:0;vertical-align:baseline';
-      probe.replaceChildren(sample,marker);
-      range.selectNodeContents(sample);
-      return {...box,ch,font:style.fontFamily,baseline:box.y+marker.getBoundingClientRect().top-range.getBoundingClientRect().top};
+      return {...box,ch,font:style.fontFamily,baseline:box.y+ascent(style,ch)};
     }
     return null;
   }
@@ -60,7 +70,7 @@ function measure() {
           if(!t.data[i].trim())continue;
           const range=document.createRange();range.setStart(t,i);range.setEnd(t,i+1);
           const r=locate(range.getBoundingClientRect()),key=r.page+'/'+r.y;
-          const line=lines.get(key) ?? {page:r.page,top:r.y,left:r.x,right:r.x,text:''};
+          const line=lines.get(key) ?? {page:r.page,top:r.y,baseline:r.y+ascent(getComputedStyle(t.parentElement),t.data[i]),left:r.x,right:r.x,text:''};
           line.left=Math.min(line.left,r.x);line.right=Math.max(line.right,r.x+r.width);line.text+=t.data[i];lines.set(key,line);
         }
       }
