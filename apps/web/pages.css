@@ -1358,3 +1358,7 @@ body.format-painter-active .ProseMirror * { cursor:copy; }
 .engine-panel > div { position:absolute; bottom:100%; right:0; z-index:20; background:Canvas; color:CanvasText; border:1px solid GrayText; padding:.75rem; min-width:15rem; max-width:85vw; white-space:normal; }
 .engine-panel label,.engine-panel output { display:block; margin:.25rem 0; }
 .engine-panel ul { padding-inline-start:1.25rem; }
+
+@media (max-width: 700px) {
+  .engine-panel > div { right:auto; left:0; }
+}
