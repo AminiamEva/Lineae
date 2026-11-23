@@ -199,7 +199,7 @@ export function installParagraphLayout(editor,profile){
       const guess=wrap.attrs.rule
         ? Math.floor((ruleDepth+(topRule?1:2)*intextsep)/lineHeight+2.6)-1
         : Math.ceil(raw-1e-6);
-      const lines=Math.max(1,Number(wrap.attrs.wrapLines)||guess);
+      const lines=Math.max(1,wrap.attrs.rule && Number(wrap.attrs.wrapLines) || guess);
       wrap.remaining=lines;
       wrap.dom.dataset.wrapLines=String(lines);
       wrap.dom.dataset.wrapStart='0';
