@@ -158,6 +158,38 @@ function eraseMathObject(field, backward) {
     return deleteMathRange(field,ranges[0],backward);
   }
   const caret=model.at(field.position);
+  const array=caret?.parent;
+  if (array?.type==='array' && Array.isArray(caret.parentBranch) &&
+      (backward ? caret.type==='first' : !caret.rightSibling)) {
+    // A row/cell boundary is not the boundary of the enclosing array. In
+    // particular, backspacing through an empty middle row must not select all
+    // the other rows and delete them on the next press.
+    const [row,column]=caret.parentBranch;
+    const emptyRow=array.rows[row].every(cell=>!cell ||
+      cell.every(atom=>atom.type==='first'||atom.type==='placeholder'));
+    const multiline=/^(?:align(?:at|ed)?|flalign|gather(?:ed)?|multline|eqnarray|split|lines)\*?$/.test(array.environmentName??'');
+    if (multiline && emptyRow && array.rowCount>1) {
+      const before=array.rows[row-1]?.filter(Boolean).at(-1)?.at(-1);
+      const after=array.rows[row+1]?.find(Boolean)?.[0];
+      const destination=backward ? before??after : after??before;
+      const inputType=backward?'deleteContentBackward':'deleteContentForward';
+      if (!model.contentWillChange({inputType})) return true;
+      model.deferNotifications({content:true,selection:true,type:inputType},()=>{
+        array.removeRow(row);
+        field.position=model.offsetOf(destination);
+      });
+      field._mathfield.snapshot();
+    } else {
+      // Nonempty rows and matrix cells keep their contents and shape. Move to
+      // the adjacent cell (or outside the array) rather than expanding selection.
+      const cells=array.rows.flat().filter(Boolean);
+      const adjacent=cells[cells.indexOf(array.getCell(row,column))+(backward?-1:1)];
+      const destination=adjacent ? (backward?adjacent.at(-1):adjacent[0]) :
+        (backward?array.leftSibling:array);
+      if (destination && destination!==model.root) field.position=model.offsetOf(destination);
+    }
+    return true;
+  }
   const target=backward ? caret : caret?.rightSibling;
   let range=emptyOperatorRange(field,backward);
   if (!range) {

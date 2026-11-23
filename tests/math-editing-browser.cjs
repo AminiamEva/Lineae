@@ -49,6 +49,81 @@ const server = createServer(async (req, res) => {
       value: field.value, position: field.position, ranges: field.selection.ranges,
     }));
     const normalized = value => value.replace(/\s|\\nolimits/g, '');
+    // Removing the middle row must not promote a cell boundary to the array.
+    for (const backward of [false, true]) {
+      await reset('\\begin{gathered}abc\\\\def\\\\ghi\\end{gathered}');
+      await field.evaluate((field, backward) => {
+        const model = field._mathfield.model;
+        const array = model.root.body.find(atom => atom.type === 'array');
+        const cell = array.getCell(1, 0);
+        field.position = model.offsetOf(backward ? cell.at(-1) : cell[0]);
+      }, backward);
+      const key = backward ? 'Backspace' : 'Delete';
+      for (let i = 0; i < 3; i++) await page.keyboard.press(key);
+      assert.equal(normalized((await state()).value), '\\begin{gathered}abc\\\\\\\\ghi\\end{gathered}', 'Only the middle row content is erased');
+      await page.keyboard.press(key);
+      assert.equal(normalized((await state()).value), '\\begin{gathered}abc\\\\ghi\\end{gathered}', 'Deleting the empty middle row preserves its neighbors');
+      assert.ok((await state()).ranges.every(([from, to]) => from === to), 'A cell boundary never selects the whole multiline array');
+      await field.evaluate(field => field.executeCommand('undo'));
+      assert.equal(normalized((await state()).value), '\\begin{gathered}abc\\\\\\\\ghi\\end{gathered}', 'Undo restores only the empty row');
+      await field.evaluate(field => field.executeCommand('redo'));
+      assert.equal(normalized((await state()).value), '\\begin{gathered}abc\\\\ghi\\end{gathered}', 'Redo preserves the neighboring rows');
+    }
+    for (const backward of [false, true]) {
+      const key = backward ? 'Backspace' : 'Delete';
+      // A selected alignment row can span several cells without selecting its
+      // parent; deleting it must retain all the surrounding rows and formulas.
+      await reset('\\sqrt{\\begin{aligned}a&b\\\\c&d\\\\e&f\\end{aligned}}');
+      await field.evaluate(field => {
+        const model = field._mathfield.model;
+        const array = model.atoms.find(atom => atom.type === 'array');
+        field.selection = { ranges: [[model.offsetOf(array.getCell(1, 0)[0]),
+          model.offsetOf(array.getCell(1, 1).at(-1))]], direction: 'forward' };
+      });
+      await page.keyboard.press(key);
+      assert.equal(normalized((await state()).value), '\\sqrt{\\begin{aligned}a&b\\\\&\\\\e&f\\end{aligned}}', 'Selected middle row does not erase the other alignment cells');
+      await page.keyboard.press(key);
+      assert.equal(normalized((await state()).value), '\\sqrt{\\begin{aligned}a&b\\\\e&f\\end{aligned}}', 'Removing a nested empty alignment row retains its outer radical');
+
+      for (const row of [0, 1, 2]) {
+        const rows = ['abc', 'def', 'ghi'];
+        rows[row] = '';
+        await reset('\\begin{gathered}' + rows.join('\\\\') + '\\end{gathered}');
+        await field.evaluate((field, { row, backward }) => {
+          const model = field._mathfield.model;
+          const array = model.root.body.find(atom => atom.type === 'array');
+          const cell = array.getCell(row, 0);
+          field.position = model.offsetOf(backward ? cell.at(-1) : cell[0]);
+        }, { row, backward });
+        await page.keyboard.press(key);
+        assert.equal(normalized((await state()).value),
+          '\\begin{gathered}' + rows.filter((_, index) => index !== row).join('\\\\') + '\\end{gathered}',
+          `Only the empty row ${row} is removed`);
+      }
+      await reset('\\begin{gathered}abc\\\\def\\\\ghi\\end{gathered}');
+      await field.evaluate((field, backward) => {
+        const model = field._mathfield.model;
+        const array = model.root.body.find(atom => atom.type === 'array');
+        const cell = array.getCell(1, 0);
+        field.position = model.offsetOf(backward ? cell[0] : cell.at(-1));
+      }, backward);
+      await page.keyboard.press(key);
+      assert.equal(normalized((await state()).value), '\\begin{gathered}abc\\\\def\\\\ghi\\end{gathered}', 'A populated row boundary does not select or delete its parent array');
+      assert.ok((await state()).ranges.every(([from, to]) => from === to), 'Boundary navigation keeps a collapsed caret');
+
+      await reset('\\begin{matrix}a&b\\\\c&d\\end{matrix}');
+      await field.evaluate(field => {
+        const model = field._mathfield.model;
+        const array = model.root.body.find(atom => atom.type === 'array');
+        field.selection = { ranges: [[model.offsetOf(array.getCell(1, 0)[0]),
+          model.offsetOf(array.getCell(1, 0).at(-1))]], direction: 'forward' };
+      });
+      await page.keyboard.press(key);
+      const matrix = (await state()).value;
+      await page.keyboard.press(key);
+      assert.equal((await state()).value, matrix, 'An empty matrix cell never deletes the rest of the matrix or its row');
+      assert.ok((await state()).ranges.every(([from, to]) => from === to), 'Matrix cell boundaries do not select the matrix');
+    }
     const structures = [
       ['\\frac{ab}{cd}', 'genfrac'],
       ['\\frac{}{}', 'genfrac'],
@@ -242,7 +317,7 @@ const server = createServer(async (req, res) => {
       assert.equal(await expanded(), expected, `${mode} remembers its own toolbar state`);
     }
     assert.deepEqual(errors, []);
-    console.log('PASS: exact bidirectional math editing, nested structures, row hints, toolbar view memory');
+    console.log('PASS: exact bidirectional math editing, safe multiline deletion, nested structures, row hints, toolbar view memory');
   } finally {
     await browser.close();
     server.close();
