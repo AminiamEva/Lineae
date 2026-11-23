@@ -153,7 +153,8 @@ export function installParagraphLayout(editor){
       // Keep the float's natural box.  Any line it partially overlaps is still
       // a wrapped line in TeX, so round up instead of trimming the float band.
       const marginTop=intextsep+lineHeight*.5;
-      const marginBottom=lineHeight*2;
+      // The bottom margin is spacing only; it must not add another narrowed line.
+      const marginBottom=intextsep;
       wrap.dom.style.marginBlockStart=marginTop.toFixed(2)+'px';
       wrap.dom.style.marginBlockEnd=marginBottom.toFixed(2)+'px';
       const raw=(marginTop+wrap.dom.offsetHeight+marginBottom)/lineHeight;
