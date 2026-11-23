@@ -152,7 +152,7 @@ export function richSourceChanges(projection, doc) {
 function patchIsolatedTables(block,nodes) {
   const before=JSON.parse(block.snapshot);
   if(nodes.length!==before.length)return null;
-  const sources=before.map(node=>node.attrs?.longtable ? serializeSourceTable(node,serialize,'longtable') : node.type==='table'&&node.attrs?.tblr ? serializeTblr(node,serialize) : null);
+  const sources=before.map(node=>node.attrs?.atomicTabular ? serialize(node).trim() : node.attrs?.longtable ? serializeSourceTable(node,serialize,'longtable') : node.type==='table'&&node.attrs?.tblr ? serializeTblr(node,serialize) : null);
   const starts=[...sourceStructure(block.raw)].filter(token=>token.kind==='begin'&&token.topLevel);
   const changes=[];
   for(let i=0;i<nodes.length;i++) {
@@ -161,7 +161,7 @@ function patchIsolatedTables(block,nodes) {
     if(!source||node.type!=='table'||JSON.stringify(node.attrs)!==JSON.stringify(before[i].attrs))return null;
     const leading=source.length-source.trimStart().length,body=source.trim();
     const ranges=starts.flatMap(token=>{
-      const name=/^\\begin\{(table\*?|tblr|longtable)\}$/.exec(token.value)?.[1];
+      const name=/^\\begin\{(table\*?|tblr|longtable|tabular)\}$/.exec(token.value)?.[1];
       if(!name)return [];
       const end=environmentEnd(block.raw,token.index,name);
       return end&&block.raw.slice(token.index,end.end)===body ? [token.index] : [];

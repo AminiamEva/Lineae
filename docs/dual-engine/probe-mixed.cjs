@@ -151,6 +151,22 @@ async function run(){
       browser:browser.version(),source:hash(bytes),export:hash(exported),equal:bytes.equals(exported)};
     await fs.writeFile(path.join(output,'result.json'),JSON.stringify(result,null,2));
     assert.ok(result.equal,'Export changed source bytes');
+    if(process.env.LINEAE_PAPER_ACCEPTANCE && name==='tabular.tex'){
+      const viewport=page.locator('.tableWrapper:has(table[data-atomic-tabular])');
+      await viewport.scrollIntoViewIfNeeded();
+      const last=viewport.locator('tr').last().locator('td').last();
+      await viewport.evaluate(e=>e.scrollTop=e.scrollHeight);
+      await last.click();await page.keyboard.press('End');await page.keyboard.type('Z');
+      assert.match(await last.innerText(),/Row 89Z/);
+      const edited=await downloadTex();await fs.writeFile(path.join(output,'edited.tex'),edited);
+      const want=Buffer.from(bytes.toString('utf8').replace('Row 89 ','Row 89Z '));
+      assert.deepEqual(edited,want);
+      await page.reload();
+      await page.locator('#file').setInputFiles({name,mimeType:'text/plain',buffer:edited});
+      await page.waitForFunction(()=>document.querySelector('.ProseMirror tr:last-child td:last-child')?.textContent.includes('Row 89Z'));
+      assert.equal(await page.locator('.ProseMirror tr').count(),90);
+      console.log('PASS scrolled to row 90, edited last cell, exported exact byte patch, re-opened 90 rows');
+    }
     if(process.env.LINEAE_PAPER_ACCEPTANCE && name==='long.tex'){
       const last=page.locator('.ProseMirror tr').last().locator('td').last();
       await last.click();await page.keyboard.press('End');await page.keyboard.type('Z');
