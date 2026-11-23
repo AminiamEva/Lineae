@@ -1,5 +1,3 @@
-import {plain} from './document.mjs';
-
 export function readGroup(text, start) {
   if(text[start]!=='{')return null;
   let depth=1;
@@ -58,7 +56,7 @@ export function placeRow(rawCells,occupied){
       occupied[column++]--;continue;
     }
     const cell=parsed[cursor++];
-    if(!cell||!plain.test(cell.text)||column+cell.colspan>occupied.length)return null;
+    if(!cell||column+cell.colspan>occupied.length)return null;
     for(let delta=0;delta<cell.colspan;delta++)if(occupied[column+delta])return null;
     cells.push({...cell,column});
     for(let delta=0;delta<cell.colspan;delta++)occupied[column+delta]=cell.rowspan-1;

@@ -334,6 +334,30 @@ test('round-trips table floats with captions and labels', () => {
   assert.match(latex, /\\begin\{tabular\}\{lc\}/);
 });
 
+test('imports table floats with arraystretch as editable tables', () => {
+  const body = [
+    '\\begin{table}[H]', '\\centering', '\\renewcommand{\\arraystretch}{0.7}',
+    '\\caption{电阻阻值测量数据}', '\\begin{tabular}{lccc}', '\\toprule',
+    ' & 1 & 2 & 3 \\\\', '\\midrule',
+    '1000欧阻值/$\\Omega$ & 985.175 & 985.284 & 895.085 \\\\',
+    '50欧阻值/$\\Omega$ & 52.6881 & 52.7008 & 52.7112 \\\\',
+    '\\bottomrule', '\\end{tabular}', '\\end{table}',
+  ].join('\n');
+  const source = '\\documentclass{article}\n\\begin{document}\n\n' + body + '\n\n\\end{document}\n';
+  const doc = parseDocument(source);
+  const [table] = doc.blocks.flatMap(importBlocks).filter(node => node.type === 'table');
+  assert.ok(table, 'table float is imported as a table');
+  assert.equal(table.attrs.arrayStretch, 0.7);
+  assert.equal(table.attrs.caption, '电阻阻值测量数据');
+  assert.equal(table.attrs.placement, 'H');
+  assert.equal(table.attrs.centered, true);
+  assert.equal(table.content.length, 3);
+  const again = parseDocument('\\documentclass{article}\n\\begin{document}\n\n' + serialize(table) + '\n\\end{document}\n')
+    .blocks.flatMap(importBlocks).filter(node => node.type === 'table')[0];
+  assert.ok(again, 'serialized table re-imports as a table');
+  assert.equal(again.attrs.arrayStretch, 0.7);
+});
+
 test('parses extended math environments as math blocks', () => {
   for (const environment of [
     ['alignat', '\\begin{alignat}{2}\na&=b & c&=d\n\\end{alignat}'],
