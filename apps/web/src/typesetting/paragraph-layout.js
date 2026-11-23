@@ -213,6 +213,16 @@ export function installParagraphLayout(editor){
       const wrapOptions=wraps.length?{...options,tolerance:9999}:options;
       const plan=optimumParagraph(items,line=>widthAt(line)-(line===0?indent:0),{...wrapOptions,emergencyStretch:options.emergency?texDimension(options.emergency,parseFloat(style.fontSize)):0});
       if(!plan){if(active.length)consume(estimate());return false;}
+      // The token stream ends with infinite glue and a forced penalty. If the
+      // optimizer leaves them on a trailing line with no text, rendering a
+      // break widget there makes ProseMirror append a separator/trailing <br>,
+      // which appears as an empty line inside the paragraph.
+      while(plan.lines.length>1){
+        const last=plan.lines.at(-1);
+        const content=items.slice(last.start,last.end).some(item=>item.type==='box'||(item.type==='glue'&&item.to>item.from&&item.stretch<1e10));
+        if(content)break;
+        plan.lines.pop();
+      }
       if(plan.lines.length===1&&!cjk.test(node.textContent)){
         if(active.length)consume(1);
         return false;
