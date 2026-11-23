@@ -82,9 +82,9 @@ export function createFontMeasurement(context, fontFaces = [], document = null) 
     if (lastEngine === 'lualatex') context.fontKerning = fontKerning || 'auto';
     else if (context.fontKerning !== 'auto') context.fontKerning = 'auto';
     let advance;
-    // Canvas has no general OpenType feature-settings API. Let the same browser
+    // Xe keeps its calibrated Canvas path. Canvas has no general OpenType feature-settings API. Let the same browser
     // shaper measure an unwrapped inline for styles with explicit overrides.
-    if (document && (fontKerning === 'none' ||
+    if (lastEngine === 'lualatex' && document && (fontKerning === 'none' ||
         [fontFeatureSettings,fontVariantLigatures,fontVariationSettings].some(value => value && value !== 'normal'))) {
       if (!probe) {
         probe=document.createElement('span');

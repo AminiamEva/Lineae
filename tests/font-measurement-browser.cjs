@@ -36,6 +36,7 @@ const {chromium} = require('playwright');
         metrics.measure(sample.textContent,style);
         results.push({engine,width,first:first-before,second:calls-first});
       }
+      metrics.select({engine:'lualatex',version:1},'');
       sample.style.fontVariantLigatures='no-common-ligatures';
       const noLiga=metrics.measure(sample.textContent,getComputedStyle(sample));
       const range=document.createRange(); range.selectNodeContents(sample);
