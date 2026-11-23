@@ -15,7 +15,7 @@ const server = createServer(async (request, response) => {
     response.end(await readFile(path));
   } catch { response.writeHead(404).end(); }
 });
-const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jB9kAAAAASUVORK5CYII=', 'base64');
+const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+ip1sAAAAASUVORK5CYII=', 'base64');
 const sentence = 'The quick brown fox jumps over the lazy dog while the typesetter balances lines around the floating figure. ';
 const paragraph = sentence.repeat(26);
 const source = (side, lines, overhang) => `\\documentclass{article}\\usepackage{wrapfig}\\usepackage{graphicx}\n\\begin{document}\n\\begin{wrapfigure}${lines}{${side}}${overhang}{0.2\\linewidth}\n\\includegraphics[width=\\linewidth]{plot.png}\n\\end{wrapfigure}\n${paragraph}\n\\end{document}\n`;
