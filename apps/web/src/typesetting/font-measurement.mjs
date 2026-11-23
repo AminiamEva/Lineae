@@ -39,7 +39,7 @@ export function fontspecDeclarations(source, engine) {
 
 export function createFontMeasurement(context, fontFaces = [], document = null) {
   const widths = new Map(), canvasFonts = new Map(), faceIds = new WeakMap();
-  let sequence = 0, namespace, lastPreamble, lastEngine, declared, probe;
+  let sequence = 0, namespace, lastPreamble, lastEngine, declared, fixedLatinFace, probe;
   function clear() {
     widths.clear();
     canvasFonts.clear();
@@ -47,6 +47,8 @@ export function createFontMeasurement(context, fontFaces = [], document = null) 
   function select(profile, preamble) {
     if (preamble !== lastPreamble || profile.engine !== lastEngine) {
       declared = fontspecDeclarations(preamble,profile.engine);
+      const face = declared.filter(d=>d.command === 'setmainfont').at(-1)?.name;
+      fixedLatinFace = /^(?:lmroman\d+-regular\.otf|Latin Modern Roman)$/i.test(face ?? '');
       lastPreamble = preamble;
       lastEngine = profile.engine;
     }
@@ -77,6 +79,8 @@ export function createFontMeasurement(context, fontFaces = [], document = null) 
     const {letterSpacing, fontFeatureSettings, fontKerning, fontVariantLigatures, fontVariationSettings} = style;
     const id = JSON.stringify([font,letterSpacing,fontFeatureSettings,fontKerning,fontVariantLigatures,fontVariationSettings,text]);
     if (widths.has(id)) return widths.get(id);
+    if (lastEngine === 'lualatex') context.fontKerning = fontKerning || 'auto';
+    else if (context.fontKerning !== 'auto') context.fontKerning = 'auto';
     let advance;
     // Canvas has no general OpenType feature-settings API. Let the same browser
     // shaper measure an unwrapped inline for styles with explicit overrides.
@@ -89,8 +93,12 @@ export function createFontMeasurement(context, fontFaces = [], document = null) 
         document.body.append(probe);
       }
       Object.assign(probe.style,{font,fontFeatureSettings,fontKerning,fontVariantLigatures,fontVariationSettings});
+      // LayoutUnit rounds to 1/64 CSS px. Retain subpixel OpenType advances
+      // before summing many shaped fragments at the target optical size.
+      const scale = lastEngine === 'lualatex' && fontVariationSettings === 'normal' && fixedLatinFace ? 64 : 1;
+      if (scale !== 1) probe.style.fontSize = (parseFloat(style.fontSize)*scale) + 'px';
       probe.textContent=text;
-      advance=probe.getBoundingClientRect().width;
+      advance=probe.getBoundingClientRect().width/scale;
     } else {
       advance=canvasWidth(text,font);
     }

@@ -1,3 +1,4 @@
+import {luaCjk} from './lua-jfm.mjs';
 import {luaDocumentStyle} from './lua-english.mjs';
 import {typesetProfile} from '../../latex/typeset-layout.mjs';
 import {paragraphParameters} from './paragraph-parameters.mjs';
@@ -18,10 +19,11 @@ const xe = Object.freeze({
   }),
 });
 const lua = Object.freeze({
-  engine:'lualatex',version:2,
+  engine:'lualatex',version:3,
   capabilities:Object.freeze({resolution:'supported', browserLayout:'supported',
-    cjk:'pending-calibration', english:'latin-modern-preview'}),
-  documentStyle:luaDocumentStyle, paragraphParameters, englishHyphenation, cjk:null,
+    cjk:'measured-fandol-jfm', english:'latin-modern-controlled'}),
+  documentStyle:luaDocumentStyle, paragraphParameters, englishHyphenation, cjk:luaCjk,
+  texFinalPass:true,
 });
 
 export function getTypesettingProfile(resolvedEngine) {

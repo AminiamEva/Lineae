@@ -10,10 +10,10 @@ test('Xe uses original measured objects and parser',()=>{
   assert.equal(p.paragraphParameters('\\tolerance=456').tolerance,456);
   assert.equal(p.documentStyle('\\documentclass{ctexart}').fonts.cjk,'FandolSong');
 });
-test('Lua keeps pending CJK calibration separate from the English path',()=>{
+test('Lua exposes measured JFM without accessing Xe punctuation tables',()=>{
   const p=getTypesettingProfile('lualatex');
   assert.equal(p.engine,'lualatex');assert.equal(p.capabilities.resolution,'supported');
-  assert.equal(p.capabilities.cjk,'pending-calibration');assert.equal(p.cjk,null);
+  assert.equal(p.capabilities.cjk,'measured-fandol-jfm');assert.equal(p.cjk.punctuation,undefined);
   assert.equal(typeof p.paragraphParameters,'function');assert.equal(typeof p.documentStyle,'function');
 });
 test('conflict or auto cannot silently obtain a layout',()=>{

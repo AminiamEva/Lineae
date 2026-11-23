@@ -1495,7 +1495,19 @@ function renderMeta() {
 renderMeta();
 const engineProfile = getTypesettingProfile(document.documentElement.dataset.typesettingEngine ?? 'xelatex');
 if (engineProfile.capabilities.browserLayout !== 'supported') throw new Error('Browser layout pending calibration: '+engineProfile.engine);
-typesetPagination=installTypesetPagination(documentPage,paper,metaBar,editor,engineProfile);
+const precisionStatus = document.createElement('span');
+precisionStatus.id = 'typesetting-precision';
+precisionStatus.setAttribute('role', 'status');
+precisionStatus.hidden = true;
+function reportCjkPrecision(family) {
+  precisionStatus.hidden = !family;
+  if (!family) return;
+  precisionStatus.dataset.zh = family + ' 中文排版预览：字距和断行尚未校准';
+  precisionStatus.dataset.en = family + ' CJK preview: spacing and line breaks are uncalibrated';
+  precisionStatus.textContent = t(precisionStatus.dataset.zh, precisionStatus.dataset.en);
+}
+typesetPagination=installTypesetPagination(documentPage,paper,metaBar,editor,engineProfile,
+  engineProfile.engine === 'lualatex' ? reportCjkPrecision : null);
 typesetPagination.setTableContinuation(config.value.interface.continuedTables);
 window.addEventListener('lineae-image-layout',()=>{typesetPagination?.refresh();syncImageTab?.();});
 function source() {
@@ -2576,7 +2588,7 @@ function updateEnvironment() {
   environment.textContent=[labels[name],...(field ? mathEnvironment(field) : [])].join(' › ');
   environment.dataset.environment=name;
 }
-footer.append(count,document.querySelector('#status'),environment,zoom,percent,paginationButton,themeButton,modes);document.body.append(footer);sourceView.mountStatus(footer);scale();updatePaginationButton();
+footer.append(count,document.querySelector('#status'),precisionStatus,environment,zoom,percent,paginationButton,themeButton,modes);document.body.append(footer);sourceView.mountStatus(footer);scale();updatePaginationButton();
 const compositionController=createCompositionController({
   explorer:()=>projectExplorer,fileKind:()=>projectFileKind,session:projectDocument,
   sourceHidden:()=>sourceView.hidden,composing:()=>editor.view.composing||sourceView.composing,

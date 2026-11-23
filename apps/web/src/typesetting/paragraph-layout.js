@@ -30,7 +30,7 @@ function elementTranslateY(element){
 const fontMetrics=createFontMeasurement(context,globalThis.document?.fonts,globalThis.document);
 const {measure}=fontMetrics;
 globalThis.document?.fonts?.addEventListener('loadingdone',fontMetrics.clear);
-function tokensFor(editor,node,start,element,options,profile){
+function tokensFor(editor,node,start,element,options,profile,metric,lineWidth){
   const runs=[],atoms=new Map();let text='';
   node.forEach((child,offset)=>{
     const from=start+1+offset;
@@ -38,7 +38,7 @@ function tokensFor(editor,node,start,element,options,profile){
       const point=editor.view.domAtPos(from),dom=point.node.nodeType===3?point.node.parentElement:point.node;
       runs.push({from:text.length,to:text.length+child.text.length,style:getComputedStyle(dom.closest('.tex-word-glue,.tex-cjk-punctuation')?.parentElement??dom)});text+=child.text;
     }else if(child.type.name==='hardBreak'){text+='\n';}
-    else if(child.isInline){const dom=editor.view.nodeDOM(from);atoms.set(text.length,{from,kind:child.type.name,size:child.nodeSize,width:dom?.getBoundingClientRect().width??0});text+='\ufffc'.repeat(child.nodeSize);}
+    else if(child.isInline){const dom=editor.view.nodeDOM(from);atoms.set(text.length,{from,kind:child.type.name,simpleMath:child.type.name==='math'&&/^[A-Za-z0-9]$/.test(child.attrs.latex),size:child.nodeSize,width:dom?.getBoundingClientRect().width??0});text+='\ufffc'.repeat(child.nodeSize);}
   });
   const style=getComputedStyle(element),zoom=layoutScale(element.closest('.document-page'));
   const styleAt=offset=>runs.find(run=>offset>=run.from&&offset<run.to)?.style??style;
@@ -52,9 +52,19 @@ function tokensFor(editor,node,start,element,options,profile){
   const pieces=[...text.matchAll(/[A-Za-z]+|[^\S\n\u00a0]+|\n|[^]/gu)];
   for(let n=0;n<pieces.length;n++){
     const match=pieces[n],value=match[0],at=match.index,from=start+1+at,local=styleAt(at);
+    const em = parseFloat(local.fontSize);
+    const symbol = piece => atoms.get(piece?.index)?.kind === 'math' ? '$x$' : piece?.[0];
+    if (metric && n > 0) {
+      const boundary = profile.cjk.boundary(metric, symbol(pieces[n-1]), symbol(match), em, lineWidth);
+      if (boundary) {
+        const {cost, ...glue} = boundary;
+        if (cost) emit({type:'penalty', width:0, cost, from, to:from});
+        emit({type:'glue', ...glue, from, to:from, cjk:true});
+      }
+    }
     if(value==='\ufffc'){
-      const atom=atoms.get(at);if(atom)emit({type:'box',width:atom.width/zoom,from,to:from+atom.size});
-      if(atom?.kind==='math'&&cjk.test(pieces[n+1]?.[0]??'')){const space=measure(' ',local);emit({type:'glue',width:space,stretch:space/2,shrink:space/3,from:from+atom.size,to:from+atom.size,cjk:true});}
+      const atom=atoms.get(at);if(atom)emit({type:'box',width:atom.width/zoom,from,to:from+atom.size,simpleMath:metric && atom.simpleMath});
+      if(!metric&&atom?.kind==='math'&&cjk.test(pieces[n+1]?.[0]??'')){const space=measure(' ',local);emit({type:'glue',width:space,stretch:space/2,shrink:space/3,from:from+atom.size,to:from+atom.size,cjk:true});}
       continue;
     }
     if(value==='\n'){emit({type:'glue',width:0,stretch:1e10,shrink:0,from,to:from});emit({type:'penalty',width:0,cost:-10000,from:from+1,to:from+1,forced:true});continue;}
@@ -65,7 +75,13 @@ function tokensFor(editor,node,start,element,options,profile){
       emit({type:'glue', ...interwordGlue({space, em, skip, factor, extra, profile}), from, to:from+value.length});
       continue;
     }
-    if(chinese&&cjkPunctuation.test(value)){
+    const jfmBox = metric && profile.cjk.box(metric, value, em);
+    if (jfmBox) {
+      const font = [local.fontStyle,local.fontWeight,local.fontSize,cjkFamily].join(' ');
+      const before = -jfmBox.offset;
+      const after = measure(value,local,font) - jfmBox.width - before;
+      emit({type:'box',width:jfmBox.width,from,to:from+value.length,punctuation:true,before,after,font});
+    } else if(!metric&&chinese&&cjkPunctuation.test(value)){
       const font=[local.fontStyle,local.fontWeight,local.fontSize,cjkFamily].join(' ');context.font=font;
       const metrics=context.measureText(value),em=parseFloat(local.fontSize),bounds=profile.cjk.punctuation[Number(local.fontWeight)>=600?'bold':'regular'][value],left=bounds?bounds.left*em:Math.max(0,-metrics.actualBoundingBoxLeft),right=bounds?bounds.right*em:Math.max(0,metrics.width-metrics.actualBoundingBoxRight);
       const before=opening.test(value)?left:0,after=closing.test(value)?right:0;
@@ -85,10 +101,17 @@ function tokensFor(editor,node,start,element,options,profile){
         const part=parts[i];emit({type:'box',width:width(value.slice(0,position+part.length),at)-width(value.slice(0,position),at),from:from+position,to:from+position+part.length});position+=part.length;
         if(i<parts.length-1&&position>=options.leftHyphenMin&&value.length-position>=options.rightHyphenMin)emit({type:'penalty',width:measure('-',styleAt(at+position)),cost:options.hyphenPenalty,hyphen:true,from:from+position,to:from+position});
       }
-    }else emit({type:'box',width:width(value,at),from,to:from+value.length});
+    }else {
+      const previous = pieces[n-1]?.[0];
+      // Keep the kern across the word/punctuation token boundary (e.g. y.).
+      // The browser shapes both characters in the same uninterrupted run.
+      const advance = profile.engine === 'lualatex' && /^[A-Za-z]+$/.test(previous ?? '') && /^[.,:;!?]$/.test(value)
+        ? width(previous + value, at-previous.length) - width(previous, at-previous.length) : width(value,at);
+      emit({type:'box',width:advance,from,to:from+value.length});
+    }
     updateFactor(value.at(-1));
     const next=pieces[n+1]?.[0];
-    if(next&&!(cjkPunctuation.test(value)&&cjkPunctuation.test(next))&&value!=='\u00a0'&&next!=='\u00a0'&&!/\s/.test(next)&&!closing.test(next)&&!opening.test(value)&&(cjk.test(value)||cjk.test(next)||cjkPunctuation.test(value)||cjkPunctuation.test(next))){
+    if(!metric&&next&&!(cjkPunctuation.test(value)&&cjkPunctuation.test(next))&&value!=='\u00a0'&&next!=='\u00a0'&&!/\s/.test(next)&&!closing.test(next)&&!opening.test(value)&&(cjk.test(value)||cjk.test(next)||cjkPunctuation.test(value)||cjkPunctuation.test(next))){
       const mixed=(cjk.test(value)&&(/^[A-Za-z0-9]/.test(next)||atoms.get(pieces[n+1]?.index)?.kind==='math'))||(/[A-Za-z0-9]$/.test(value)&&cjk.test(next));
       const space=mixed?measure(' ',local):0;
       emit({type:'glue',width:space,stretch:mixed?space/2:baseline*profile.cjk.lineStretch,shrink:mixed?space/3:0,from:from+value.length,to:from+value.length,cjk:true});
@@ -145,6 +168,9 @@ export function installParagraphLayout(editor,profile){
     const page=editor.view.dom.closest('.document-page');
     const intextsepText=page?getComputedStyle(page).getPropertyValue('--image-intextsep').trim():'';
     const intextsep=intextsepText?cssLengthPx(intextsepText):cssLengthPx('12pt');
+    const family = getComputedStyle(editor.view.dom).getPropertyValue('--tex-cjk-font-family');
+    const metric = profile.cjk.assess?.(preamble, family).metric;
+    const supportsCjk = metric || profile.cjk.supports?.(options, family);
     const pending=[];
     function anchorWrap(wrap,lineHeight){
       // Keep the float's natural box.  Any line it partially overlaps is still
@@ -198,7 +224,7 @@ export function installParagraphLayout(editor,profile){
       };
       const estimate=()=>Math.max(1,Math.round(elementRect.height/lineHeight));
       // Apply measured xeCJK glue only for its calibrated font and punctuation profile.
-      if(cjk.test(node.textContent)&&!profile.cjk?.supports(options,getComputedStyle(editor.view.dom).getPropertyValue('--tex-cjk-font-family'))){
+      if(cjk.test(node.textContent)&&!supportsCjk){
         if(active.length)consume(estimate());
         return false;
       }
@@ -206,10 +232,10 @@ export function installParagraphLayout(editor,profile){
         if(active.length)consume(estimate());
         return false;
       }
-      const {items}=tokensFor(editor,node,start,element,options,profile);
+      const {items}=tokensFor(editor,node,start,element,options,profile,metric,baseWidth);
       const widthAt=line=>wrapLineWidthAt(line,{elementTop,lineHeight,baseWidth,wraps,zoom});
       const wrapOptions=wraps.length?{...options,tolerance:9999}:options;
-      const plan=optimumParagraph(items,line=>widthAt(line)-(line===0?indent:0),{...wrapOptions,emergencyStretch:options.emergency?texDimension(options.emergency,parseFloat(style.fontSize)):0});
+      const plan=optimumParagraph(items,line=>widthAt(line)-(line===0?indent:0),{...wrapOptions,texFinalPass:profile.texFinalPass,emergencyStretch:options.emergency?texDimension(options.emergency,parseFloat(style.fontSize)):0});
       if(!plan){if(active.length)consume(estimate());return false;}
       // The token stream ends with infinite glue and a forced penalty. If the
       // optimizer leaves them on a trailing line with no text, rendering a
@@ -230,6 +256,7 @@ export function installParagraphLayout(editor,profile){
         const last=lineNumber===plan.lines.length-1;
         for(let index=line.start;index<line.end;index++){
           const item=items[index];
+          if(item.simpleMath)entries.push(Decoration.node(item.from,item.to,{class:'tex-simple-math'}));
           if(item.punctuation)entries.push(Decoration.inline(item.from,item.to,{class:'tex-cjk-punctuation',style:'font:'+item.font+';line-height:inherit;margin-left:'+(-item.before)+'px;margin-right:'+(-item.after)+'px'}));
           if(item.type!=='glue'||item.stretch>=1e10)continue;
           const adjusted=item.width+(last?0:line.ratio*(line.ratio<0?item.shrink:item.stretch)),size=item.cjk?adjusted:Math.max(0,adjusted);
@@ -244,7 +271,7 @@ export function installParagraphLayout(editor,profile){
           if(!end.forced)entries.push(widget(end.to,'tex-paragraph-break'));
         }
       }
-      signature+='|'+start+':'+baseWidth+':'+wraps.map(w=>w.remaining+','+w.width.toFixed(1)+','+w.columnsep.toFixed(1)+','+w.overhang.toFixed(1)+','+w.side+','+w.marginTop.toFixed(2)+','+w.marginBottom.toFixed(2)).join(';')+':'+items.map(item=>item.width.toFixed(3)).join(',')+':'+plan.lines.map(line=>line.end+','+line.ratio.toFixed(5)).join(';');
+      signature+='|'+start+':'+baseWidth+':'+wraps.map(w=>w.remaining+','+w.width.toFixed(1)+','+w.columnsep.toFixed(1)+','+w.overhang.toFixed(1)+','+w.side+','+w.marginTop.toFixed(2)+','+w.marginBottom.toFixed(2)).join(';')+':'+items.map(item=>item.punctuation && metric ? [item.width,item.before,item.after,item.font].join('/') : item.width.toFixed(3)).join(',')+':'+plan.lines.map(line=>line.end+','+line.ratio.toFixed(5)).join(';');
       if(active.length)consume(plan.lines.length);
       return false;
     });

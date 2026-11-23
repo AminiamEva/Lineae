@@ -34,3 +34,11 @@ test('explicit spaceskip keeps the measured Latin Modern sentence extra under Lu
   assert.equal(interwordGlue({space:218235*unit,em,skip,factor:3,extra:true,
     profile:getTypesettingProfile('xelatex')}).width, 4*96/72.27);
 });
+
+test('only the Lua final pass can ship an unavoidable overfull box', async () => {
+  const {optimumParagraph} = await import('../apps/web/src/typesetting/optimum-paragraph.mjs');
+  const items = [{type:'box',width:35}, {type:'glue',width:0,stretch:1e10,shrink:0}, {type:'penalty',cost:-10000,width:0}];
+  const plan = optimumParagraph(items,30,{texFinalPass:lua.texFinalPass});
+  assert.equal(plan.lines[0].natural,35);
+  assert.equal(optimumParagraph(items,30),null);
+});

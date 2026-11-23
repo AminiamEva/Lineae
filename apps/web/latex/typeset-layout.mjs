@@ -44,12 +44,13 @@ function ctexFontset(preamble, options) {
   return ctexFontsets[(fromClass ?? fromPackage ?? '').trim().toLowerCase()] ?? null;
 }
 
-function readFonts(preamble, options) {
+function readFonts(preamble, options, activeFonts) {
+  const family = command => fontFamily(activeFonts ? activeFonts[command] : commandArgument(preamble, command));
   const fontset = ctexFontset(preamble, options);
   return {
-    serif: fontFamily(commandArgument(preamble, 'setmainfont')),
-    mono: fontFamily(commandArgument(preamble, 'setmonofont')),
-    cjk: fontFamily(commandArgument(preamble, 'setCJKmainfont')) ?? fontset
+    serif: family('setmainfont'),
+    mono: family('setmonofont'),
+    cjk: family('setCJKmainfont') ?? fontset
       ?? (/\\documentclass(?:\[[^\]]*\])?\{ctex|\\usepackage(?:\[[^\]]*\])?\{[^}]*ctex/.test(preamble)?'FandolSong':null),
   };
 }
@@ -69,12 +70,12 @@ function readFontsize(preamble) {
   return Number.isFinite(size) && Number.isFinite(baseline) ? { size, baseline } : null;
 }
 
-export function typesetProfile(preamble = '') {
+export function typesetProfile(preamble = '', activeFonts) {
   const match = /\\documentclass(?:\[([^\]]*)\])?\{([^{}]+)\}/.exec(preamble);
   const options = (match?.[1] ?? '').split(',').map(option => option.trim()).filter(Boolean);
   const className = (match?.[2] ?? 'article').trim().toLowerCase();
   const pageNumbers = !/\\pagestyle\s*\{empty\}/.test(preamble);
-  const fonts = readFonts(preamble, options);
+  const fonts = readFonts(preamble, options, activeFonts);
   const linespread = readLinespread(preamble);
   const explicit = readFontsize(preamble);
 

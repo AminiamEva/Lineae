@@ -114,7 +114,7 @@ function paragraphLines(editor, element, block, pageRect, zoom) {
   }));
 }
 
-export function installTypesetPagination(page, paper, meta, editor, engineProfile) {
+export function installTypesetPagination(page, paper, meta, editor, engineProfile, reportCjkPrecision) {
   const editable = paper.querySelector('.ProseMirror');
   const paragraphLayout=installParagraphLayout(editor,engineProfile);
   let paragraphPreamble='';
@@ -308,7 +308,12 @@ export function installTypesetPagination(page, paper, meta, editor, engineProfil
     page.style.setProperty('--tex-chapter-label-size',(classSize===12?24.88:20.74)*texPx+'px');
     page.style.setProperty('--tex-chapter-label-line-height',(classSize===12?30:25)*texPx+'px');
     if (profile.latinFeatures) {
-      editor.view.dom.style.fontKerning = profile.latinFeatures.kerning;
+      const {kerning, ligatures} = profile.latinFeatures;
+      // ProseMirror's editing stylesheet disables liga via the lower-level
+      // feature-settings property, which wins over font-variant-ligatures.
+      editor.view.dom.style.fontFeatureSettings = '"liga" ' + (ligatures === 'no-common-ligatures' ? 0 : 1)
+        + ', "kern" ' + (kerning === 'none' ? 0 : 1);
+      editor.view.dom.style.fontKerning = kerning;
       editor.view.dom.style.fontVariantLigatures = profile.latinFeatures.ligatures;
     }
     const fonts = profile.fonts ?? {};
@@ -319,6 +324,12 @@ export function installTypesetPagination(page, paper, meta, editor, engineProfil
       : '"Latin Modern Roman 12","Latin Modern Roman"');
     page.style.setProperty('--tex-cjk-font-family', fonts.cjk
       ? stack(fonts.cjk, 'Songti SC', 'SimSun') : '"Songti SC",SimSun');
+    if (reportCjkPrecision && engineProfile.cjk?.assess) {
+      const family = page.style.getPropertyValue('--tex-cjk-font-family');
+      const assessment = engineProfile.cjk.assess(preamble, family);
+      const show = !assessment.supported && (fonts.cjk || /[\p{Script=Han}]/u.test(editor.state.doc.textContent));
+      reportCjkPrecision(show ? (fonts.cjk || family) : null);
+    }
     page.style.setProperty('--tex-mono-font-family', fonts.mono
       ? stack(fonts.mono, 'Latin Modern Mono') : '"Latin Modern Mono"');
   }

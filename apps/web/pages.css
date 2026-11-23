@@ -1273,6 +1273,11 @@ body.format-painter-active .ProseMirror * { cursor:copy; }
 /* twoside: mirror furniture margins on even sheets (body column mirroring deferred) */
 .document-page .document-sheet[data-parity="even"] .document-page-header { left:var(--page-margin-right,47.456mm); right:var(--page-margin-left,47.191mm); }
 .document-page .document-sheet[data-parity="even"] .document-page-footer { left:var(--page-margin-right,47.456mm); right:var(--page-margin-left,47.191mm); }
+/* Lua JFM has already placed adjacent punctuation. Disable the browser's second compression. */
+[data-tex-engine="lualatex"] { text-spacing-trim: space-all; }
+/* A one-glyph inline formula fits the text strut. MathLive's editing
+   padding must not enlarge the paragraph's baseline distance. */
+[data-tex-engine="lualatex"] .tex-simple-math math-field { margin-block: -.4em; }
 .tex-paragraph-break{display:block;height:0;line-height:0;pointer-events:none;}
 .tex-interchar-glue{display:inline-block;height:0;text-indent:0;pointer-events:none;}
 .tex-discretionary-hyphen::before{content:"-";}

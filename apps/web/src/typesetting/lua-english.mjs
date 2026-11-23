@@ -20,7 +20,10 @@ function setLatinFeatures(features, options) {
 export function luaDocumentStyle(preamble = '') {
   const defaults = {kerning:'normal', ligatures:'normal'};
   let latinFeatures = {...defaults};
+  const activeFonts = {};
   for (const declaration of fontspecDeclarations(preamble,'lualatex')) {
+    const command = declaration.command === 'setmainjfont' ? 'setCJKmainfont' : declaration.command;
+    if (['setmainfont','setmonofont','setCJKmainfont'].includes(command)) activeFonts[command] = declaration.name;
     if (declaration.command === 'defaultfontfeatures' && !declaration.options) {
       setLatinFeatures(defaults,declaration.name);
     }
@@ -29,5 +32,12 @@ export function luaDocumentStyle(preamble = '') {
       setLatinFeatures(latinFeatures,declaration.options);
     }
   }
-  return {...typesetProfile(preamble), latinFeatures};
+  const style = typesetProfile(preamble, activeFonts);
+  // ctexart sets a two-ideograph indent and a 1.3 baseline spread at 10pt.
+  const options = /\\documentclass\s*\[([^\]]+)\]\s*\{ctexart\}/.exec(preamble)?.[1].split(',').map(s=>s.trim());
+  if (options?.includes('10pt') && !/\\fontsize\b/.test(preamble)) {
+    style.paragraphIndent = '2em';
+    if (!/\\(?:linespread|baselinestretch)\b/.test(preamble)) style.lineHeight = (15.6 * 96 / 72.27) + 'px';
+  }
+  return {...style, latinFeatures};
 }
