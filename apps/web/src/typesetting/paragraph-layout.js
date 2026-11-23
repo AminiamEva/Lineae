@@ -1,3 +1,4 @@
+import {createFontMeasurement} from './font-measurement.mjs';
 import {layoutScale} from './layout-geometry.js';
 import {texDimension} from './paragraph-parameters.mjs';
 import {TextSelection,Plugin,PluginKey} from '@tiptap/pm/state';
@@ -26,34 +27,9 @@ function elementTranslateY(element){
   const parts=value.match(/-?(?:\d+\.?\d*|\.\d+)(?:px)?/g)??[];
   return parts.length>1?Number.parseFloat(parts[1])||0:0;
 }
-const metricCache=new Map();
-const canvasFonts=new Map();
-if(typeof document!=='undefined')document.fonts?.addEventListener('loadingdone',()=>{
-  metricCache.clear();
-  canvasFonts.clear();
-});
-function canvasWidth(text,font){
-  let measurement=canvasFonts.get(font);
-  if(!measurement){
-    context.font=font;
-    const native=context.font;
-    // Some rasterizers round each advance to a CSS pixel at body text sizes.
-    // Keep native shaping but measure at a larger size on those backends.
-    const rounded=['i','W',' '].every(probe=>Number.isInteger(context.measureText(probe).width));
-    const enlarged=rounded?native.replace(/([\d.]+)px/,(_,size)=>Number(size)*64+'px'):native;
-    measurement={font:enlarged,scale:enlarged===native?1:64};
-    canvasFonts.set(font,measurement);
-  }
-  context.font=measurement.font;
-  return context.measureText(text).width/measurement.scale;
-}
-function measure(text,style){
-  const font=style.font||[style.fontStyle,style.fontWeight,style.fontSize,style.fontFamily].join(' ');
-  const id=font+'|'+style.letterSpacing+'|'+text;
-  if(metricCache.has(id))return metricCache.get(id);
-  const width=canvasWidth(text,font)+Math.max(0,text.length-1)*(parseFloat(style.letterSpacing)||0);
-  if(metricCache.size>10000)metricCache.clear();metricCache.set(id,width);return width;
-}
+const fontMetrics=createFontMeasurement(context,globalThis.document?.fonts,globalThis.document);
+const {measure}=fontMetrics;
+globalThis.document?.fonts?.addEventListener('loadingdone',fontMetrics.clear);
 function tokensFor(editor,node,start,element,options,profile){
   const runs=[],atoms=new Map();let text='';
   node.forEach((child,offset)=>{
@@ -97,7 +73,7 @@ function tokensFor(editor,node,start,element,options,profile){
         emit({type:'glue',width:pair.width*em,stretch:pair.stretch*em,shrink:pair.shrink*em,from,to:from,cjk:true});
       }
       if(before&&!pair&&n>0&&previous!=='\n')emit({type:'glue',width:before,stretch:0,shrink:Math.min(em/2,before),from,to:from,cjk:true});
-      emit({type:'box',width:canvasWidth(value,font)-before-after,from,to:from+value.length,punctuation:true,before,after,font});
+      emit({type:'box',width:measure(value,local,font)-before-after,from,to:from+value.length,punctuation:true,before,after,font});
       if(after)emit({type:'glue',width:after,stretch:0,shrink:Math.min(em/2,after),from:from+value.length,to:from+value.length,cjk:true});
     }else if(/^[A-Za-z]{5,}$/.test(value)){
       const exception=options.exceptions.get(value.toLowerCase());
@@ -161,6 +137,7 @@ export function installParagraphLayout(editor,profile){
   }}}));
   function layout(preamble=current){
     current=preamble;if(running||editor.view.composing)return;
+    fontMetrics.select(profile,preamble);
     const entries=[],options=profile.paragraphParameters(preamble);let signature=preamble;
     const page=editor.view.dom.closest('.document-page');
     const intextsepText=page?getComputedStyle(page).getPropertyValue('--image-intextsep').trim():'';

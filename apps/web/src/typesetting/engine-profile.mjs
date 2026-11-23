@@ -5,7 +5,7 @@ import {fandolPairs} from './fandol-pairs.mjs';
 import {fandolPunctuation} from './fandol-punctuation.mjs';
 
 const xe = Object.freeze({
-  engine:'xelatex',
+  engine:'xelatex',version:1,
   capabilities:Object.freeze({resolution:'supported', browserLayout:'supported', cjk:'fandol-quanjiao', english:'supported'}),
   documentStyle:typesetProfile, paragraphParameters, englishHyphenation,
   cjk:Object.freeze({
@@ -17,7 +17,7 @@ const xe = Object.freeze({
   }),
 });
 const lua = Object.freeze({
-  engine:'lualatex',
+  engine:'lualatex',version:1,
   capabilities:Object.freeze({resolution:'supported', browserLayout:'pending-calibration',
     cjk:'pending-calibration', english:'pending-calibration'}),
   documentStyle:null, paragraphParameters:null, englishHyphenation:null, cjk:null,
