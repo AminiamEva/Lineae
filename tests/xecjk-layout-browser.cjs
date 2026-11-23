@@ -1,3 +1,4 @@
+const {openXeReference}=require('./xe-reference-page.cjs');
 const {revealToolbar,setIndentOnSave,createTreeEntry}=require('./workspace-ui-helpers.cjs');
 const {chromium}=require('playwright');
 const {createServer}=require('node:http');
@@ -15,7 +16,7 @@ const server=createServer(async(req,res)=>{
  await new Promise(done=>server.listen(0,'127.0.0.1',done));const browser=await chromium.launch({headless:true});
  try{
  const page=await browser.newPage({viewport:{width:1600,height:1100}}),errors=[];page.on('pageerror',error=>errors.push(error.message));
- await page.goto('http://127.0.0.1:'+server.address().port);
+ await openXeReference(page,'http://127.0.0.1:'+server.address().port);
  const reference=JSON.parse(await readFile('tests/fixtures/paragraph-layout/xecjk-reference.json','utf8'));
  for(const fixture of reference.cases){
  await page.locator('[data-source-mode=source]').click();const code=page.locator('.cm-content');await code.click();await page.keyboard.press('Control+a');await page.keyboard.insertText(fixture.source);await page.locator('[data-source-mode=body]').click();
@@ -30,7 +31,7 @@ const server=createServer(async(req,res)=>{
   return {width:node.clientWidth,style:getComputedStyle(node).font,optimized:node.hasAttribute('data-tex-paragraph'),lines:[...lines.values()].filter(line=>line.text.trim()).map(line=>({...line,text:line.text.trim().normalize('NFC')}))};
  });
  console.log('PARAGRAPH '+JSON.stringify({margin:fixture.margin,expected:fixture.lines,evidence}));
- assert.equal(evidence.optimized,true);assert.deepEqual(evidence.lines.map(line=>line.text),fixture.lines.map(line=>line.text),'Line endings must match the XeLaTeX reference at margin '+fixture.margin);
+ assert.equal(await page.locator('.ProseMirror p').first().getAttribute('data-tex-engine'),'xelatex');assert.equal(evidence.optimized,true);assert.deepEqual(evidence.lines.map(line=>line.text),fixture.lines.map(line=>line.text),'Line endings must match the XeLaTeX reference at margin '+fixture.margin);
  for(let i=0;i<fixture.lines.length;i++){
  const line=evidence.lines[i],expected=fixture.lines[i].bbox;
  assert.ok(Math.abs((line.right-line.x)-(expected[2]-expected[0])*4/3)<1,'Line width differs from XeLaTeX: '+JSON.stringify({margin:fixture.margin,line:i,actual:line.right-line.x,expected:(expected[2]-expected[0])*4/3}));

@@ -1,3 +1,4 @@
+const {openXeReference}=require('./xe-reference-page.cjs');
 const { revealToolbar } = require('./workspace-ui-helpers.cjs');
 const { chromium } = require('playwright');
 const { createServer } = require('node:http');
@@ -27,7 +28,7 @@ const child = `\\section{Child section}\n\n${paragraphs.slice(0, 900)}\n`;
     const page = await browser.newPage({ viewport: { width: 1600, height: 1100 }, locale: 'en-US' });
     const errors = [];
     page.on('pageerror', error => errors.push(error.message));
-    await page.goto('http://127.0.0.1:' + server.address().port);
+    await openXeReference(page,'http://127.0.0.1:' + server.address().port);
     await page.evaluate(async ({ main, child }) => {
       const root = await navigator.storage.getDirectory();
       window.folder = await root.getDirectoryHandle('stability', { create: true });

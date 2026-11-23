@@ -1,3 +1,4 @@
+const {openXeReference}=require('./xe-reference-page.cjs');
 const {chromium}=require('playwright');
 const {createServer}=require('node:http');
 const {readFile}=require('node:fs/promises');
@@ -14,7 +15,7 @@ const server=createServer(async(req,res)=>{
 (async()=>{
  await new Promise(done=>server.listen(0,'127.0.0.1',done));const browser=await chromium.launch({headless:true});
  try{
-  const page=await browser.newPage({viewport:{width:1440,height:1000}}),errors=[];page.on('pageerror',error=>errors.push(error.message));await page.goto('http://127.0.0.1:'+server.address().port);
+  const page=await browser.newPage({viewport:{width:1440,height:1000}}),errors=[];page.on('pageerror',error=>errors.push(error.message));await openXeReference(page,'http://127.0.0.1:'+server.address().port);
   const load=async text=>{await page.locator('[data-source-mode=source]').click();const code=page.locator('.cm-content');await code.click();await page.keyboard.press('Control+a');await page.keyboard.insertText(text);await page.locator('[data-source-mode=body]').click();};
   const source='\\documentclass{article}\n\\begin{document}\n\\section{Main}\n\nBody.\n\n\\appendix\n\\section{Proofs}\\label{app:proof}\n\nAppendix body. See \\ref{app:proof}.\n\n\\subsection{Detail}\n\nDetail body.\n\n\\section*{Notes}\n\n\\section{Data}\n\\end{document}\n';
   await load(source);const paper=page.locator('.ProseMirror');await page.locator('[data-appendix-start]').waitFor({state:'attached'});

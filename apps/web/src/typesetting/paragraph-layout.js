@@ -1,8 +1,5 @@
 import {layoutScale} from './layout-geometry.js';
-import {fandolPairs} from './fandol-pairs.mjs';
-import {fandolPunctuation} from './fandol-punctuation.mjs';
-import {paragraphParameters,texDimension} from './paragraph-parameters.mjs';
-import {englishHyphenation} from './english-hyphenation.mjs';
+import {texDimension} from './paragraph-parameters.mjs';
 import {TextSelection,Plugin,PluginKey} from '@tiptap/pm/state';
 import {Decoration,DecorationSet} from '@tiptap/pm/view';
 import {optimumParagraph} from './optimum-paragraph.mjs';
@@ -57,7 +54,7 @@ function measure(text,style){
   const width=canvasWidth(text,font)+Math.max(0,text.length-1)*(parseFloat(style.letterSpacing)||0);
   if(metricCache.size>10000)metricCache.clear();metricCache.set(id,width);return width;
 }
-function tokensFor(editor,node,start,element,options){
+function tokensFor(editor,node,start,element,options,profile){
   const runs=[],atoms=new Map();let text='';
   node.forEach((child,offset)=>{
     const from=start+1+offset;
@@ -74,7 +71,7 @@ function tokensFor(editor,node,start,element,options){
   };
   const items=[];const emit=item=>items.push(item);let spaceFactor=1000;
   const chinese=cjk.test(text),baseline=parseFloat(style.lineHeight)||parseFloat(style.fontSize)*1.2;
-  const cjkFamily=style.getPropertyValue('--tex-cjk-font-family')||'FandolSong';
+  const cjkFamily=style.getPropertyValue('--tex-cjk-font-family')||profile.cjk.family;
   const updateFactor=character=>{const code=/[A-Z]/.test(character)?999:/[.!?]/.test(character)?3000:character===':'?2000:character===';'?1500:character===','?1250:/[)\]\"']/.test(character)?0:1000;if(code)spaceFactor=code>1000&&spaceFactor<1000?1000:code;};
   const pieces=[...text.matchAll(/[A-Za-z]+|[^\S\n\u00a0]+|\n|[^]/gu)];
   for(let n=0;n<pieces.length;n++){
@@ -91,9 +88,9 @@ function tokensFor(editor,node,start,element,options){
     }
     if(chinese&&cjkPunctuation.test(value)){
       const font=[local.fontStyle,local.fontWeight,local.fontSize,cjkFamily].join(' ');context.font=font;
-      const metrics=context.measureText(value),em=parseFloat(local.fontSize),bounds=fandolPunctuation[Number(local.fontWeight)>=600?'bold':'regular'][value],left=bounds?bounds.left*em:Math.max(0,-metrics.actualBoundingBoxLeft),right=bounds?bounds.right*em:Math.max(0,metrics.width-metrics.actualBoundingBoxRight);
+      const metrics=context.measureText(value),em=parseFloat(local.fontSize),bounds=profile.cjk.punctuation[Number(local.fontWeight)>=600?'bold':'regular'][value],left=bounds?bounds.left*em:Math.max(0,-metrics.actualBoundingBoxLeft),right=bounds?bounds.right*em:Math.max(0,metrics.width-metrics.actualBoundingBoxRight);
       const before=opening.test(value)?left:0,after=closing.test(value)?right:0;
-      const previous=pieces[n-1]?.[0],pair=cjkPunctuation.test(previous??'')?fandolPairs[Number(local.fontWeight)>=600?'bold':'regular'][previous+value]:null;
+      const previous=pieces[n-1]?.[0],pair=cjkPunctuation.test(previous??'')?profile.cjk.pairs[Number(local.fontWeight)>=600?'bold':'regular'][previous+value]:null;
       if(pair){
         while(items.at(-1)?.type==='glue'&&items.at(-1).from===from)items.pop();
         emit({type:'penalty',width:0,cost:10000,from,to:from});
@@ -104,7 +101,7 @@ function tokensFor(editor,node,start,element,options){
       if(after)emit({type:'glue',width:after,stretch:0,shrink:Math.min(em/2,after),from:from+value.length,to:from+value.length,cjk:true});
     }else if(/^[A-Za-z]{5,}$/.test(value)){
       const exception=options.exceptions.get(value.toLowerCase());
-      const parts=exception?exception.map((part,i)=>value.slice(exception.slice(0,i).join('').length,exception.slice(0,i+1).join('').length)):englishHyphenation(value,{leftMin:options.leftHyphenMin,rightMin:options.rightHyphenMin});let position=0;
+      const parts=exception?exception.map((part,i)=>value.slice(exception.slice(0,i).join('').length,exception.slice(0,i+1).join('').length)):profile.englishHyphenation(value,{leftMin:options.leftHyphenMin,rightMin:options.rightHyphenMin});let position=0;
       for(let i=0;i<parts.length;i++){
         const part=parts[i];emit({type:'box',width:width(value.slice(0,position+part.length),at)-width(value.slice(0,position),at),from:from+position,to:from+position+part.length});position+=part.length;
         if(i<parts.length-1&&position>=options.leftHyphenMin&&value.length-position>=options.rightHyphenMin)emit({type:'penalty',width:measure('-',styleAt(at+position)),cost:options.hyphenPenalty,hyphen:true,from:from+position,to:from+position});
@@ -115,7 +112,7 @@ function tokensFor(editor,node,start,element,options){
     if(next&&!(cjkPunctuation.test(value)&&cjkPunctuation.test(next))&&value!=='\u00a0'&&next!=='\u00a0'&&!/\s/.test(next)&&!closing.test(next)&&!opening.test(value)&&(cjk.test(value)||cjk.test(next)||cjkPunctuation.test(value)||cjkPunctuation.test(next))){
       const mixed=(cjk.test(value)&&(/^[A-Za-z0-9]/.test(next)||atoms.get(pieces[n+1]?.index)?.kind==='math'))||(/[A-Za-z0-9]$/.test(value)&&cjk.test(next));
       const space=mixed?measure(' ',local):0;
-      emit({type:'glue',width:space,stretch:mixed?space/2:baseline*.08,shrink:mixed?space/3:0,from:from+value.length,to:from+value.length,cjk:true});
+      emit({type:'glue',width:space,stretch:mixed?space/2:baseline*profile.cjk.lineStretch,shrink:mixed?space/3:0,from:from+value.length,to:from+value.length,cjk:true});
     }
   }
   while(items.at(-1)?.type==='glue')items.pop();
@@ -135,7 +132,8 @@ export function wrapLineWidthAt(line,{elementTop,lineHeight,baseWidth,wraps,zoom
   }
   return Math.max(24,available);
 }
-export function installParagraphLayout(editor){
+export function installParagraphLayout(editor,profile){
+  editor.view.dom.dataset.paragraphProfile=profile.engine;
   let current='',lastSignature='',running=false,preferredX=null;
   editor.view.dom.addEventListener('pointerdown',()=>{preferredX=null;});
   editor.on('transaction',({transaction})=>{if(transaction.docChanged)preferredX=null;});
@@ -163,7 +161,7 @@ export function installParagraphLayout(editor){
   }}}));
   function layout(preamble=current){
     current=preamble;if(running||editor.view.composing)return;
-    const entries=[],options=paragraphParameters(preamble);let signature=preamble;
+    const entries=[],options=profile.paragraphParameters(preamble);let signature=preamble;
     const page=editor.view.dom.closest('.document-page');
     const intextsepText=page?getComputedStyle(page).getPropertyValue('--image-intextsep').trim():'';
     const intextsep=intextsepText?cssLengthPx(intextsepText):cssLengthPx('12pt');
@@ -220,7 +218,7 @@ export function installParagraphLayout(editor){
       };
       const estimate=()=>Math.max(1,Math.round(elementRect.height/lineHeight));
       // Apply measured xeCJK glue only for its calibrated font and punctuation profile.
-      if(cjk.test(node.textContent)&&(options.cjkPunctStyle!=='quanjiao'||options.cjkCustomGlue||!getComputedStyle(editor.view.dom).getPropertyValue('--tex-cjk-font-family').includes('FandolSong'))){
+      if(cjk.test(node.textContent)&&!profile.cjk.supports(options,getComputedStyle(editor.view.dom).getPropertyValue('--tex-cjk-font-family'))){
         if(active.length)consume(estimate());
         return false;
       }
@@ -228,7 +226,7 @@ export function installParagraphLayout(editor){
         if(active.length)consume(estimate());
         return false;
       }
-      const {items}=tokensFor(editor,node,start,element,options);
+      const {items}=tokensFor(editor,node,start,element,options,profile);
       const widthAt=line=>wrapLineWidthAt(line,{elementTop,lineHeight,baseWidth,wraps,zoom});
       const wrapOptions=wraps.length?{...options,tolerance:9999}:options;
       const plan=optimumParagraph(items,line=>widthAt(line)-(line===0?indent:0),{...wrapOptions,emergencyStretch:options.emergency?texDimension(options.emergency,parseFloat(style.fontSize)):0});
@@ -247,7 +245,7 @@ export function installParagraphLayout(editor){
         if(active.length)consume(1);
         return false;
       }
-      entries.push(Decoration.node(start,start+node.nodeSize,{'data-tex-paragraph':'true'}));
+      entries.push(Decoration.node(start,start+node.nodeSize,{'data-tex-paragraph':'true','data-tex-engine':profile.engine}));
       for(const [lineNumber,line] of plan.lines.entries()){
         const last=lineNumber===plan.lines.length-1;
         for(let index=line.start;index<line.end;index++){

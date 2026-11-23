@@ -68,6 +68,7 @@ import { buildProjectZip, safeProjectPath, projectDependencies } from './editor/
 import { theoremNames } from '../latex/theorem.mjs';
 import { MultiSelection } from './editor/multi-selection.js';
 import { installSpaceOverlay } from './editor/space-overlay.js';
+import { getTypesettingProfile } from './typesetting/engine-profile.mjs';
 import { installTypesetPagination } from './editor/typeset-pagination.js';
 import { wrapMathWithDelimiters } from '../latex/delimiters.mjs';
 import { readDelimiterPair } from './editor/delimiter-input.js';
@@ -1492,7 +1493,9 @@ function renderMeta() {
   metaDate.dataset.zhPlaceholder='日期';metaDate.dataset.enPlaceholder='Date';metaDate.dataset.placeholder=t('日期','Date');
 }
 renderMeta();
-typesetPagination=installTypesetPagination(documentPage,paper,metaBar,editor);
+const engineProfile = getTypesettingProfile(document.documentElement.dataset.typesettingEngine ?? 'xelatex');
+if (engineProfile.capabilities.browserLayout !== 'supported') throw new Error('Browser layout pending calibration: '+engineProfile.engine);
+typesetPagination=installTypesetPagination(documentPage,paper,metaBar,editor,engineProfile);
 typesetPagination.setTableContinuation(config.value.interface.continuedTables);
 window.addEventListener('lineae-image-layout',()=>{typesetPagination?.refresh();syncImageTab?.();});
 function source() {

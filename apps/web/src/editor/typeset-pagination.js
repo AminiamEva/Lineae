@@ -2,7 +2,7 @@ import {layoutScale} from '../typesetting/layout-geometry.js';
 import {counterProfile} from '../../latex/counter-profile.mjs';
 import {installParagraphLayout} from '../typesetting/paragraph-layout.js';
 import {documentLayoutBlocks} from '../project/fold-layout.mjs';
-import { planPagination, planTableRows, typesetProfile } from '../../latex/typeset-layout.mjs';
+import { planPagination, planTableRows } from '../../latex/typeset-layout.mjs';
 import { setSerializationClass } from './latex-codec.js';
 import { setHeadingBase } from '../../latex/blocks.mjs';
 import { readPageFurniture, pageFurnitureText, furnitureSlots } from '../../latex/page-furniture.mjs';
@@ -114,9 +114,9 @@ function paragraphLines(editor, element, block, pageRect, zoom) {
   }));
 }
 
-export function installTypesetPagination(page, paper, meta, editor) {
+export function installTypesetPagination(page, paper, meta, editor, engineProfile) {
   const editable = paper.querySelector('.ProseMirror');
-  const paragraphLayout=installParagraphLayout(editor);
+  const paragraphLayout=installParagraphLayout(editor,engineProfile);
   let paragraphPreamble='';
   const sheets = document.createElement('div');
   sheets.className = 'document-sheets';
@@ -128,7 +128,7 @@ export function installTypesetPagination(page, paper, meta, editor) {
   document.head.append(paginationStyle);
 
   let frame = 0;
-  let profile = typesetProfile();
+  let profile = engineProfile.documentStyle();
   let furniture = readPageFurniture();
   let maketitle = false;
   let lineBreaks = [];
@@ -282,7 +282,7 @@ export function installTypesetPagination(page, paper, meta, editor) {
 
   function applyProfile(preamble) {
     paragraphPreamble=preamble;
-    profile = typesetProfile(preamble);
+    profile = engineProfile.documentStyle(preamble);
     furniture = readPageFurniture(preamble);
     page.dataset.documentClass = profile.className;
     page.dataset.frontmatter = String(/\\frontmatter/.test(preamble));

@@ -1,3 +1,4 @@
+const {openXeReference}=require('./xe-reference-page.cjs');
 const { revealToolbar } = require('./workspace-ui-helpers.cjs');
 const { chromium } = require('playwright');
 const { createServer } = require('node:http');
@@ -24,7 +25,7 @@ const source = `\\documentclass{article}\n\\begin{document}\n\nBefore.\n\n\\begi
     const page = await browser.newPage({ viewport: { width: 1400, height: 900 } });
     const errors = [];
     page.on('pageerror', error => errors.push(error.message));
-    await page.goto('http://127.0.0.1:' + server.address().port);
+    await openXeReference(page,'http://127.0.0.1:' + server.address().port);
     await page.waitForTimeout(600);
     await page.locator('input[type=file]').setInputFiles({ name: 'table.tex', mimeType: 'text/plain', buffer: Buffer.from(source) });
     await page.waitForFunction(() => document.querySelectorAll('.ProseMirror table tr').length >= 60);

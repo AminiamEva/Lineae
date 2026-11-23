@@ -1,3 +1,4 @@
+const {openXeReference}=require('./xe-reference-page.cjs');
 const { revealToolbar } = require('./workspace-ui-helpers.cjs');
 const { chromium } = require('playwright');
 const { createServer } = require('node:http');
@@ -26,7 +27,7 @@ const source = (side, lines, overhang) => `\\documentclass{article}\\usepackage{
     const page = await browser.newPage({ viewport: { width: 1600, height: 1100 } });
     const errors = [];
     page.on('pageerror', error => errors.push(error.message));
-    await page.goto('http://127.0.0.1:' + server.address().port);
+    await openXeReference(page,'http://127.0.0.1:' + server.address().port);
     await revealToolbar(page);
     for (const { side, lines, overhang } of [
       { side: 'r', lines: '[12]', overhang: '' },

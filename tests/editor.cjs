@@ -1,3 +1,4 @@
+const {openXeReference}=require('./xe-reference-page.cjs');
 const {revealToolbar,setIndentOnSave,createTreeEntry}=require('./workspace-ui-helpers.cjs');
 const { chromium } = require('playwright');
 const { expect } = require('playwright/test');
@@ -421,7 +422,7 @@ async function verifySelectionGeometry(page, paper, importSource) {
     const page=await browserContext.newPage();
     const errors=[];
     page.on('pageerror',error=>{errors.push(error.message);console.log('PAGE ERROR',error.message);});
-    await page.goto('http://127.0.0.1:'+server.address().port);
+    await openXeReference(page,'http://127.0.0.1:'+server.address().port);
     await page.evaluate(async()=>{
       await document.fonts.load('10pt "Latin Modern Roman"');
       await document.fonts.ready;

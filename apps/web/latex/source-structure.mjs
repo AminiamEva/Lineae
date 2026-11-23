@@ -8,7 +8,7 @@ function skipTrivia(source, index) {
   return pattern.lastIndex;
 }
 
-function groupEnd(source, index) {
+export function groupEnd(source, index) {
   const stack = [source[index]];
   const pattern = /%[^\r\n]*|\\[\s\S]|[{}\[\]]/g;
   pattern.lastIndex = index + 1;
