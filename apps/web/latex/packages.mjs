@@ -85,9 +85,6 @@ export function exportDocument({ start, end, eol }, body, options) {
   }
   const metadata = withoutComments(start);
   if (/\\title\s*\{/.test(metadata) && !hasTitleCommand(body)) {
-    if (!/\\date\s*\{/.test(metadata)) {
-      preamble = preamble.replace(/^\\begin\{document\}/m, () => '\\date{}' + eol + '\\begin{document}');
-    }
     body = '\\maketitle' + eol + eol + body;
   }
   const separator = body && !body.endsWith('\n') ? eol : '';

@@ -354,9 +354,12 @@ test('exports title and math structures with the required outer commands', () =>
   const body = serialize(importBlocks(cases)[0]);
   assert.ok(body.startsWith('\\[' + cases + '\\]'));
   const source = exportDocument(parts, body);
-  assert.match(source, /\\date\{\}\n\\begin\{document\}\n\\maketitle/);
+  assert.match(source, /\\begin\{document\}\n\\maketitle/);
+  assert.doesNotMatch(source, /\\date\{\}/);
   assert.match(source, /\\usepackage\{amsmath\}/);
   assert.equal((exportDocument(parts, '\\maketitle\n' + body).match(/\\maketitle/g) ?? []).length, 1);
+  const dated = exportDocument(parseDocument('\\documentclass{article}\n\\title{Example}\n\\date{\\today}\n\\begin{document}\n\\end{document}\n'), body);
+  assert.match(dated, /\\date\{\\today\}/);
 });
 
 test('uses side limits for inline operators without changing the source', () => {

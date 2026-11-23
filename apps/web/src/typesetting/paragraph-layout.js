@@ -153,7 +153,8 @@ export function installParagraphLayout(editor){
       // Keep the float's natural box.  Any line it partially overlaps is still
       // a wrapped line in TeX, so round up instead of trimming the float band.
       const marginTop=intextsep+lineHeight*.5;
-      const marginBottom=lineHeight*2;
+      // The bottom margin is spacing only; it must not add another narrowed line.
+      const marginBottom=intextsep;
       wrap.dom.style.marginBlockStart=marginTop.toFixed(2)+'px';
       wrap.dom.style.marginBlockEnd=marginBottom.toFixed(2)+'px';
       const raw=(marginTop+wrap.dom.offsetHeight+marginBottom)/lineHeight;
@@ -213,6 +214,16 @@ export function installParagraphLayout(editor){
       const wrapOptions=wraps.length?{...options,tolerance:9999}:options;
       const plan=optimumParagraph(items,line=>widthAt(line)-(line===0?indent:0),{...wrapOptions,emergencyStretch:options.emergency?texDimension(options.emergency,parseFloat(style.fontSize)):0});
       if(!plan){if(active.length)consume(estimate());return false;}
+      // The token stream ends with infinite glue and a forced penalty. If the
+      // optimizer leaves them on a trailing line with no text, rendering a
+      // break widget there makes ProseMirror append a separator/trailing <br>,
+      // which appears as an empty line inside the paragraph.
+      while(plan.lines.length>1){
+        const last=plan.lines.at(-1);
+        const content=items.slice(last.start,last.end).some(item=>item.type==='box'||(item.type==='glue'&&item.to>item.from&&item.stretch<1e10));
+        if(content)break;
+        plan.lines.pop();
+      }
       if(plan.lines.length===1&&!cjk.test(node.textContent)){
         if(active.length)consume(1);
         return false;
