@@ -81,6 +81,7 @@ main { padding:125px 24px 60px; overflow:auto; }
 .ProseMirror [data-theorem="proof"]::after { content:"□"; display:block; text-align:right; }
 .document-image { margin:var(--image-intextsep,12pt) 0; }
 .document-image[data-figure="true"] { margin-block:var(--image-textfloatsep,20pt); }
+.document-fixed-rule { display:block; background:currentColor; }
 .document-image[data-figure="true"][data-wrap="true"] { margin-block:var(--image-intextsep,12pt); }
 .document-image[data-wrap="true"] { margin-block-start:calc(var(--image-intextsep,12pt) + var(--tex-line-height,11.9552pt) * .5); margin-block-end:calc(var(--tex-line-height,11.9552pt) * 2); padding-block-end:0; }
 

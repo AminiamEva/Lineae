@@ -192,7 +192,12 @@ export function parseImageBlock(source) {
   if (wrap) {
     const inner = wrap[5];
     const imageMatch = /\\includegraphics(?:\[[^\]]*\])?\{[^{}\\\r\n%]+\}/.exec(inner);
-    if (!imageMatch) return null;
+    if (!imageMatch) {
+      const fixed=/^\s*\\rule\{(\d+(?:\.\d+)?(?:mm|cm|in|pt|bp))\}\{(\d+(?:\.\d+)?(?:mm|cm|in|pt|bp))\}\s*$/.exec(inner);
+      if (!fixed) return null;
+      return {type:'documentImage',attrs:{rule:{width:fixed[1],height:fixed[2]},ruleSource:source,
+        wrap:true,wrapSide:wrap[2],wrapWidth:wrap[4],wrapOverhang:wrap[3]||null,wrapLines:wrap[1]||null}};
+    }
     const imageExpression = inner
       .replace(/\\(?:centering|raggedleft|raggedright)\b/g,'')
       .replace(/\\caption\*?\{[^{}]*\}/g,'')
@@ -345,6 +350,7 @@ export function serializeSubfigures(attrs, children) {
 }
 
 export function serializeImage(attrs) {
+  if(attrs.rule && attrs.ruleSource)return attrs.ruleSource;
   if(attrs.figureSource)return serializeSourceFigure(attrs)??attrs.figureSource;
   const graphic = serializeGraphic(attrs);
   const caption = captionLine(attrs);

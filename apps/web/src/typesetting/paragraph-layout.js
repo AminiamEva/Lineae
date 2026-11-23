@@ -176,13 +176,30 @@ export function installParagraphLayout(editor,profile){
     function anchorWrap(wrap,lineHeight){
       // Keep the float's natural box.  Any line it partially overlaps is still
       // a wrapped line in TeX, so round up instead of trimming the float band.
-      const marginTop=intextsep+lineHeight*.5;
+      const topRule=wrap.attrs.rule && wrap.position===0;
+      // wrapfig drops the top intextsep at the head of a page. A tall
+      // first box is lowered from the first baseline by its -1.4ex vskip.
+      let marginTop=intextsep+lineHeight*.5;
+      let ruleDepth=0;
+      if(wrap.attrs.rule){
+        const style=getComputedStyle(wrap.dom);
+        context.font=style.fontSize+' '+style.fontFamily;
+        const correction=1.4*context.measureText('x').actualBoundingBoxAscent;
+        const firstBaseline=parseFloat(style.fontSize);
+        ruleDepth=wrap.dom.offsetHeight-correction;
+        marginTop=firstBaseline-correction+(topRule?0:intextsep);
+      }
       // The bottom margin is spacing only; it must not add another narrowed line.
       const marginBottom=intextsep;
       wrap.dom.style.marginBlockStart=marginTop.toFixed(2)+'px';
       wrap.dom.style.marginBlockEnd=marginBottom.toFixed(2)+'px';
       const raw=(marginTop+wrap.dom.offsetHeight+marginBottom)/lineHeight;
-      const lines=Math.max(1,Math.ceil(raw-1e-6));
+      // wrapfig.sty computes a guess from box depth, intextsep and the
+      // baseline grid; its counter includes the line after the wrapped band.
+      const guess=wrap.attrs.rule
+        ? Math.floor((ruleDepth+(topRule?1:2)*intextsep)/lineHeight+2.6)-1
+        : Math.ceil(raw-1e-6);
+      const lines=Math.max(1,Number(wrap.attrs.wrapLines)||guess);
       wrap.remaining=lines;
       wrap.dom.dataset.wrapLines=String(lines);
       wrap.dom.dataset.wrapStart='0';
