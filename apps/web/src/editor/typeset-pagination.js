@@ -307,6 +307,10 @@ export function installTypesetPagination(page, paper, meta, editor, engineProfil
     page.style.setProperty('--tex-chapter-top-padding',(55+classSize)*texPx+'px');
     page.style.setProperty('--tex-chapter-label-size',(classSize===12?24.88:20.74)*texPx+'px');
     page.style.setProperty('--tex-chapter-label-line-height',(classSize===12?30:25)*texPx+'px');
+    if (profile.latinFeatures) {
+      editor.view.dom.style.fontKerning = profile.latinFeatures.kerning;
+      editor.view.dom.style.fontVariantLigatures = profile.latinFeatures.ligatures;
+    }
     const fonts = profile.fonts ?? {};
     page.style.setProperty('--tex-font-family', fonts.serif
       ? stack(fonts.serif, 'Latin Modern Roman') : '"Latin Modern Roman"');

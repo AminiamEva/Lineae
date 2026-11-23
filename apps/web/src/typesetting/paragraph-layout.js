@@ -1,6 +1,6 @@
 import {createFontMeasurement} from './font-measurement.mjs';
 import {layoutScale} from './layout-geometry.js';
-import {texDimension} from './paragraph-parameters.mjs';
+import {interwordGlue, texDimension} from './paragraph-parameters.mjs';
 import {TextSelection,Plugin,PluginKey} from '@tiptap/pm/state';
 import {Decoration,DecorationSet} from '@tiptap/pm/view';
 import {optimumParagraph} from './optimum-paragraph.mjs';
@@ -47,7 +47,7 @@ function tokensFor(editor,node,start,element,options,profile){
   };
   const items=[];const emit=item=>items.push(item);let spaceFactor=1000;
   const chinese=cjk.test(text),baseline=parseFloat(style.lineHeight)||parseFloat(style.fontSize)*1.2;
-  const cjkFamily=style.getPropertyValue('--tex-cjk-font-family')||profile.cjk.family;
+  const cjkFamily=style.getPropertyValue('--tex-cjk-font-family')||profile.cjk?.family||'serif';
   const updateFactor=character=>{const code=/[A-Z]/.test(character)?999:/[.!?]/.test(character)?3000:character===':'?2000:character===';'?1500:character===','?1250:/[)\]\"']/.test(character)?0:1000;if(code)spaceFactor=code>1000&&spaceFactor<1000?1000:code;};
   const pieces=[...text.matchAll(/[A-Za-z]+|[^\S\n\u00a0]+|\n|[^]/gu)];
   for(let n=0;n<pieces.length;n++){
@@ -60,7 +60,10 @@ function tokensFor(editor,node,start,element,options,profile){
     if(value==='\n'){emit({type:'glue',width:0,stretch:1e10,shrink:0,from,to:from});emit({type:'penalty',width:0,cost:-10000,from:from+1,to:from+1,forced:true});continue;}
     if(/^\s+$/u.test(value)&&value!=='\u00a0'){
       const space=measure(' ',local),em=parseFloat(local.fontSize),skip=options.spaceSkip;
-      const custom=skip&&texDimension(skip.width,em)!==0,factor=options.frenchSpacing?1:spaceFactor/1000;emit({type:'glue',width:custom?texDimension(skip.width,em):space+(spaceFactor>=2000&&!options.frenchSpacing?space/3:0),stretch:(custom?texDimension(skip.stretch,em):space/2)*factor,shrink:(custom?texDimension(skip.shrink,em):space/3)/factor,from,to:from+value.length});continue;
+      const factor = options.frenchSpacing ? 1 : spaceFactor / 1000;
+      const extra = spaceFactor >= 2000 && !options.frenchSpacing;
+      emit({type:'glue', ...interwordGlue({space, em, skip, factor, extra, profile}), from, to:from+value.length});
+      continue;
     }
     if(chinese&&cjkPunctuation.test(value)){
       const font=[local.fontStyle,local.fontWeight,local.fontSize,cjkFamily].join(' ');context.font=font;
@@ -195,7 +198,7 @@ export function installParagraphLayout(editor,profile){
       };
       const estimate=()=>Math.max(1,Math.round(elementRect.height/lineHeight));
       // Apply measured xeCJK glue only for its calibrated font and punctuation profile.
-      if(cjk.test(node.textContent)&&!profile.cjk.supports(options,getComputedStyle(editor.view.dom).getPropertyValue('--tex-cjk-font-family'))){
+      if(cjk.test(node.textContent)&&!profile.cjk?.supports(options,getComputedStyle(editor.view.dom).getPropertyValue('--tex-cjk-font-family'))){
         if(active.length)consume(estimate());
         return false;
       }
