@@ -2541,6 +2541,25 @@ A & B \\
     await importSource('\\begin{tabular}{ll}\n'+
       Array.from({length:60},(_,index)=>`${index+1} & Row ${index+1} \\\\`).join('\n')+'\n\\end{tabular}');
     await page.waitForFunction(()=>document.querySelectorAll('.ProseMirror tr').length===60);
+    await page.waitForFunction(()=>{
+      const view=document.querySelector('.tableWrapper:has(table[data-atomic-tabular])');
+      return view && view.scrollHeight>view.clientHeight && getComputedStyle(view).overflowY==='auto';
+    });
+    assert.equal(await page.locator('.table-continuation-header').count(),0,
+      'A TeX tabular is one overflowing box and has no continuation header');
+
+    // Authored rich tables still support the editor's optional continuation headers.
+    await importSource('Rich table');
+    await paper.locator('p').last().click();
+    await page.keyboard.press('End');
+    await page.keyboard.press('Enter');
+    await paper.evaluate(element=>{
+      const clipboard=new DataTransfer();
+      const rows=Array.from({length:60},(_,i)=>'<tr><td>'+ (i+1) +'</td><td>Row '+(i+1)+'</td></tr>');
+      clipboard.setData('text/html','<table><tbody>'+rows.join('')+'</tbody></table>');
+      element.dispatchEvent(new ClipboardEvent('paste',{bubbles:true,cancelable:true,clipboardData:clipboard}));
+    });
+    await page.waitForFunction(()=>document.querySelectorAll('.ProseMirror tr').length===60);
     await page.waitForFunction(()=>Number(document.querySelector('.document-page')?.dataset.pageCount)>1);
     await page.waitForFunction(()=>document.querySelectorAll('.table-continuation-header').length>0);
     assert.equal(await page.locator('.table-continuation-header').first().textContent(),'1Row 1',
