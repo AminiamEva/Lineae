@@ -61,7 +61,7 @@ function measure() {
     }).map(el=>({tag:el.tagName,box:locate(el.getBoundingClientRect()),paint:getComputedStyle(el).backgroundColor}));
     const figure=root.querySelector('figure[data-wrap=true]');
     const image=figure?.querySelector('img');
-    const textLines = paragraphs.slice(0,3).map(p=>{
+    const textLines = paragraphs.map(p=>{
       const lines=new Map(),walk=document.createTreeWalker(p,NodeFilter.SHOW_TEXT);
       while(walk.nextNode()){
         const t=walk.currentNode;
@@ -76,9 +76,14 @@ function measure() {
       }
       return [...lines.values()];
     });
-    return {engine:root.dataset.paragraphProfile,zoom,pages:rects.map(r=>({width:r.width/zoom,height:r.height/zoom})),
+    const table=root.querySelector('table'),cell=table?.querySelector('td p'),first=paragraphs[0];
+    const styles=el=>el && Object.fromEntries(['fontSize','lineHeight','fontFamily','paddingTop','marginTop','height'].map(k=>[k,getComputedStyle(el)[k]]));
+    return {styles:{cell:styles(cell),paragraph:styles(first),paper:styles(root.closest('.document-page'))},atomic:table?.hasAttribute('data-atomic-tabular'),
+      overflow:table && table.parentElement.scrollHeight>table.parentElement.clientHeight+1 && getComputedStyle(table.parentElement).overflowY==='auto',
+      viewport:table?locate(table.parentElement.getBoundingClientRect()):null,engine:root.dataset.paragraphProfile,zoom,pages:rects.map(r=>({width:r.width/zoom,height:r.height/zoom})),
       first:paragraphs.length?origin(paragraphs[0]):null, textLines, ruleCandidates,
-      rows:Array.from(root.querySelectorAll('tr'),row=>({text:row.innerText,box:locate(row.getBoundingClientRect()),origin:origin(row),lastCellOrigin:origin(row.lastElementChild)})),
+      rows:Array.from(root.querySelectorAll('tr'),row=>({text:row.innerText,
+        ownerPage:row.closest('table[data-atomic-tabular]')?locate(row.closest('.tableWrapper').getBoundingClientRect()).page:undefined,box:locate(row.getBoundingClientRect()),origin:origin(row),lastCellOrigin:origin(row.lastElementChild)})),
       wrapBox:figure?locate(figure.getBoundingClientRect()):null, imageBox:image?locate(image.getBoundingClientRect()):null,
       ast:root.editor.getJSON(),html:root.innerHTML};
   } finally { probe.remove(); }
@@ -108,8 +113,10 @@ async function run(){
       await figure.locator('img').waitFor();
     }
     await page.locator('.engine-panel').evaluate(el=>el.open=true);
-    for(const engine of ['xelatex','lualatex']){
-      await page.locator('#engine-choice').selectOption(engine);
+    const choices=process.env.LINEAE_PAPER_ACCEPTANCE && name==='rule.tex' ? ['auto','xelatex','auto','lualatex'] : ['xelatex','lualatex'];
+    for(const [index,choice] of choices.entries()){
+      const engine=choice==='auto'?'lualatex':choice;
+      await page.locator('#engine-choice').selectOption(choice);
       await page.locator('.ProseMirror[data-paragraph-profile='+engine+']').first().waitFor({state:'attached'});
       await page.evaluate(()=>document.fonts.ready);
       await page.waitForTimeout(700);
@@ -121,25 +128,43 @@ async function run(){
         const {nodeId}=await cdp.send('DOM.querySelector',{nodeId:root.nodeId,selector:'.ProseMirror p'});
         if(nodeId)snapshot.platformFonts=(await cdp.send('CSS.getPlatformFontsForNode',{nodeId})).fonts;
       } finally { await cdp.detach(); }
-      await fs.writeFile(path.join(output,engine+'.json'),JSON.stringify(snapshot,null,2));
+      await fs.writeFile(path.join(output,(choice==='auto'?'auto-'+index:engine)+'.json'),JSON.stringify(snapshot,null,2));
       await page.screenshot({path:path.join(output,engine+'.png')});
     }
-    await revealToolbar(page);
-    if(!await page.locator('#download').isVisible())await page.locator('[data-group=files]').click();
-    const event=page.waitForEvent('download');await page.locator('#download').click();
-    const zip=await fs.readFile(await (await event).path());
-    assert.equal(zip.readUInt32LE(0),0x04034b50);
-    assert.equal(zip.readUInt16LE(8),0,'Expected stored source');
-    const nameEnd=30+zip.readUInt16LE(26);
-    assert.equal(zip.toString('utf8',30,nameEnd),name);
-    const offset=nameEnd+zip.readUInt16LE(28);
-    const exported=zip.subarray(offset,offset+zip.readUInt32LE(22));
+    async function downloadTex(){
+      await revealToolbar(page);
+      if(!await page.locator('#download').isVisible())await page.locator('[data-group=files]').click();
+      const event=page.waitForEvent('download');await page.locator('#download').click();
+      const zip=await fs.readFile(await (await event).path());
+      assert.equal(zip.readUInt32LE(0),0x04034b50);
+      assert.equal(zip.readUInt16LE(8),0,'Expected stored source');
+      const nameEnd=30+zip.readUInt16LE(26);
+      assert.equal(zip.toString('utf8',30,nameEnd),name);
+      const offset=nameEnd+zip.readUInt16LE(28);
+      const exported=zip.subarray(offset,offset+zip.readUInt32LE(22));
+      return exported;
+    }
+    const exported=await downloadTex();
     await fs.writeFile(path.join(output,'export.tex'),exported);
     const hash=b=>createHash('sha256').update(b).digest('hex');
     const result={sha:execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).trim(),
       browser:browser.version(),source:hash(bytes),export:hash(exported),equal:bytes.equals(exported)};
     await fs.writeFile(path.join(output,'result.json'),JSON.stringify(result,null,2));
     assert.ok(result.equal,'Export changed source bytes');
+    if(process.env.LINEAE_PAPER_ACCEPTANCE && name==='long.tex'){
+      const last=page.locator('.ProseMirror tr').last().locator('td').last();
+      await last.click();await page.keyboard.press('End');await page.keyboard.type('Z');
+      await page.waitForFunction(()=>document.querySelector('.ProseMirror tr:last-child td:last-child')?.textContent.endsWith('Z'));
+      const changed=await downloadTex();
+      const needle=Buffer.from('Cell 24'),at=bytes.indexOf(needle)+needle.length;
+      const expected=Buffer.concat([bytes.subarray(0,at),Buffer.from('Z'),bytes.subarray(at)]);
+      await fs.writeFile(path.join(output,'edited.tex'),changed);
+      assert.deepEqual(changed,expected);
+      await page.reload();
+      await page.locator('#file').setInputFiles({name,mimeType:'text/plain',buffer:changed});
+      await page.getByText('Cell 24Z',{exact:true}).first().waitFor();
+      assert.equal(await page.locator('.ProseMirror tr').count(),24);
+    }
   } finally {await browser?.close();server.kill();}
 }
 run().catch(error=>{console.error(error);process.exitCode=1;});
