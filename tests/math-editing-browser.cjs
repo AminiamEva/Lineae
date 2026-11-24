@@ -244,6 +244,8 @@ const server = createServer(async (req, res) => {
       buffer:Buffer.from('\\documentclass{article}\n\\begin{document}\n\\[\\frac{z+\\boxed{abc}+w}{uv}\\]\n\\end{document}\n'),
     });
     await page.waitForFunction(()=>document.querySelector('math-field')?.value.includes('\\boxed{abc}'));
+    assert.equal(await page.locator('.ProseMirror').evaluate(node=>node.editor.can().undo()),false,
+      'Opening a separate document must not retain the previous document’s undo steps');
     await field.click();
     if(process.env.LINEAE_TEST_NATIVE_PREVIEW==='1'){
       await page.locator('#native-tex-toggle').click();

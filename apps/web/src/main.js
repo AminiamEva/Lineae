@@ -87,7 +87,7 @@ import Table from '@tiptap/extension-table';
 import TableRow from '@tiptap/extension-table-row';
 import TableCell from '@tiptap/extension-table-cell';
 import TableHeader from '@tiptap/extension-table-header';
-import { Plugin, Selection, NodeSelection, TextSelection } from '@tiptap/pm/state';
+import { EditorState, Plugin, Selection, NodeSelection, TextSelection } from '@tiptap/pm/state';
 import { parseDocument } from '../latex/document.mjs';
 import { exportDocument } from '../latex/packages.mjs';
 import { appendAlignmentPair, displayEnvironment, numberedMathRows } from '../latex/math-environments.mjs';
@@ -1550,6 +1550,13 @@ function load(text, markSaved = true) {
   const content=parsed.blocks.flatMap(block=>importBlocks(block));
   for (const block of content) identifyImportedBoxes(block);
   editor.chain().setMeta('addToHistory', false).setContent({type:'doc',attrs:{layoutPreamble:parsed.start,pageFurniture:readPageFurniture(parsed.start)},content:content.length?content:[{type:'paragraph'}]}).command(({tr})=>{tr.setDocAttribute('layoutPreamble',parsed.start);tr.setDocAttribute('pageFurniture',readPageFurniture(parsed.start));return true;}).run();
+  if(markSaved){
+    // Mapping old history through a non-history import leaves undo steps that
+    // can insert content from the previous file into the newly opened one.
+    const {doc,plugins}=editor.state;
+    editor.view.updateState(EditorState.create({doc,plugins}));
+    syncUndoButtons();
+  }
   refreshReferences(paper,editor);syncTableAttributes();
   importedSource=text;importedSnapshot=JSON.stringify(editor.getJSON());
   if(markSaved) {savedSource=text;documentGeneration++;}
