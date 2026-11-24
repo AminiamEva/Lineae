@@ -93,12 +93,13 @@ const server=createServer(async(req,res)=>{
     await field.click();
     await button.click();
     await page.waitForFunction(()=>document.querySelector('#native-tex-preview').dataset.state==='current');
-    await field.evaluate(field=>{
-      const model=field._mathfield.model;
-      const fraction=model.atoms.find(atom=>atom.type==='genfrac');
-      field.position=model.offsetOf(fraction.branch('below')[0]);
-      window.nativeProbe.denominatorBefore={value:field.value,position:field.position,
-        atoms:fraction.branch('below').map(atom=>({type:atom.type,value:atom.value}))};
+    await page.locator('#native-tex-target').click();
+    await panel.getByText('Click the empty numerator or denominator',{exact:false}).waitFor();
+    const scale=.75*(96/72)/65781.76;
+    await panel.locator('[data-native-page="1"] canvas').click({position:{x:6500000*scale,y:7000000*scale}});
+    await page.waitForFunction(()=>{
+      const field=document.activeElement,model=field?._mathfield?.model;
+      return field?.tagName==='MATH-FIELD'&&model?.at(field.position)?.parentBranch==='below';
     });
     await page.keyboard.type('b');
     await page.waitForFunction(()=>nativeProbe.revision>1);

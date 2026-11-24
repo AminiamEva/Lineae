@@ -388,6 +388,7 @@ struct Session {
     messages: Mutex<Messages>,
     changed: Condvar,
     snapshot: Mutex<Snapshot>,
+    observer: Mutex<Option<Arc<Session>>>,
 }
 
 impl Session {
@@ -412,6 +413,7 @@ impl Session {
             stdin: Mutex::new(None), commands: Mutex::new(()),
             messages: Mutex::new(Messages::default()), changed: Condvar::new(),
             snapshot: Mutex::new(snapshot.clone()),
+            observer: Mutex::new(None),
         });
         for (path, bytes) in &snapshot.files {
             let destination = session.root.join(path);
@@ -447,6 +449,9 @@ impl Session {
             return;
         }
         self.changed.notify_all();
+        if let Some(observer) = lock(&self.observer).take() {
+            observer.terminate();
+        }
         // Do not take the command/stdin locks: a blocked pipe write must be
         // interruptible by an independent tree kill.
         let mut processes = lock(&self.processes);
@@ -628,6 +633,10 @@ impl Session {
     }
 
     fn start(self: &Arc<Self>) -> Result<NativeTexInfo, NativeTexError> {
+        self.start_with_owners(false)
+    }
+
+    fn start_with_owners(self: &Arc<Self>, owners: bool) -> Result<NativeTexInfo, NativeTexError> {
         Self::watchdog(self)?;
         let executable = std::env::var_os("LINEAE_RTEX_PATH").unwrap_or_else(|| "rtex".into());
         let version = self.tool(Command::new(&executable).arg("--version"))?;
@@ -642,6 +651,9 @@ impl Session {
             .arg(format!("--main={main_file}")).arg("--build").arg(self.root.join("build"))
             .args(["--eligibility", "allowlist", "--compile-timeout-ms", "30000", "--pass-timeout-ms", "60000"])
             .stdin(Stdio::piped());
+        if owners {
+            command.args(["--math-owner-attribute", "65000"]);
+        }
         lock(&self.messages).layout_deadline = Some(Instant::now() + LAYOUT_TIMEOUT);
         let (_, stdout, stderr, stdin) = self.spawn(&mut command, true)?;
         *lock(&self.stdin) = stdin;
@@ -881,6 +893,63 @@ impl Session {
         self.compile_pdf(revision).map(|(_, bytes)| bytes)
     }
 
+    // Instrumentation is deliberately isolated from the authoritative engine:
+    // neither its source nor its PDF ever replaces the user's raw snapshot.
+    fn observe_formula(&self, revision: u64, projection: &str) -> Result<Vec<Value>, NativeTexError> {
+        let _serial = lock(&self.commands);
+        self.check()?;
+        if lock(&self.messages).revision != Some(revision) {
+            return Err(error("revision_mismatch", "The source changed before observing its formula."));
+        }
+        let main = {
+            let snapshot = lock(&self.snapshot);
+            if snapshot.files.len() != 1 {
+                return Err(error("project_main", "Formula targeting is limited to standalone documents."));
+            }
+            snapshot.main_file.clone()
+        };
+        let observer = Self::create_snapshot(Snapshot::new(projection, main, Vec::new())?)?;
+        {
+            let mut active = lock(&self.observer);
+            self.check()?;
+            *active = Some(observer.clone());
+        }
+        let result = (|| {
+            observer.start_with_owners(true)?;
+            let deadline = Instant::now() + Duration::from_secs(30);
+            let mut pages = BTreeMap::new();
+            let mut messages = lock(&observer.messages);
+            loop {
+                self.check()?;
+                messages.check()?;
+                for event in messages.events.drain(..) {
+                    if event["event"] != "LayoutUpdate" { continue; }
+                    if event["compile"]["state"] != "Ok" {
+                        return Err(error("formula_observation", "The instrumented formula did not compile."));
+                    }
+                    if let Some(changed) = event["pages_changed"].as_array() {
+                        for page in changed {
+                            pages.insert(integer(page, "page")?, page.clone());
+                        }
+                    }
+                    if event["convergence"]["state"] == "Converged" {
+                        return Ok(pages.into_values().collect());
+                    }
+                }
+                messages.event_bytes = 0;
+                let remaining = deadline.saturating_duration_since(Instant::now());
+                if remaining.is_zero() {
+                    return Err(error("formula_observation", "No converged instrumented formula layout."));
+                }
+                messages = observer.changed.wait_timeout(messages, remaining.min(Duration::from_millis(100)))
+                    .unwrap_or_else(|p| p.into_inner()).0;
+            }
+        })();
+        observer.terminate();
+        lock(&self.observer).take();
+        result
+    }
+
     fn export(&self, revision: u64, destination: PathBuf) -> Result<NativeTexExport, NativeTexError> {
         // Freeze native mutations through the clean build and approved copy.
         let _serial = lock(&self.commands);
@@ -1068,6 +1137,15 @@ pub async fn native_tex_render_pdf(state: State<'_, NativeTexSessions>, session_
 }
 
 #[tauri::command]
+pub async fn native_tex_observe_formula(
+    state: State<'_, NativeTexSessions>, session_id: String, source_revision: u64, projection: String,
+) -> Result<Vec<Value>, NativeTexError> {
+    validate_source(&projection)?;
+    let session = state.get(&session_id)?;
+    blocking(move || session.observe_formula(source_revision, &projection)).await
+}
+
+#[tauri::command]
 pub async fn native_tex_export(app: AppHandle, state: State<'_, NativeTexSessions>, session_id: String, source_revision: u64) -> Result<Option<NativeTexExport>, NativeTexError> {
     if source_revision > MAX_SAFE_INTEGER {
         return Err(error("invalid_revision", "Invalid expected source revision."));
@@ -1204,6 +1282,18 @@ mod tests {
         };
         let initial = wait_layout(&session, info.source_revision);
         assert!(initial["pages_total"].as_i64().unwrap() > 0);
+        let standalone = include_str!("../../../../tests/native-math/fixtures/empty-denominator.tex");
+        let targeting = Session::create(standalone).unwrap();
+        let target_info = targeting.start().unwrap();
+        wait_layout(&targeting, target_info.source_revision);
+        let projected = standalone.replace("\\frac{a}{}", "\\begingroup\\attribute65000=10 \\frac{a}{}\\endgroup");
+        let observed = targeting.observe_formula(target_info.source_revision, &projected).expect("isolated owner observation");
+        assert!(observed.iter().any(|page| page["dl"]["math_owners"]["fields"].as_array().is_some_and(|fields| {
+            fields.iter().any(|field| field["owner"] == 10 && field["role"] == "den" && field["empty"] == true)
+        })));
+        assert!(lock(&targeting.observer).is_none());
+        assert_eq!(std::fs::read_to_string(targeting.root.join("main.tex")).unwrap(), standalone);
+        targeting.terminate();
         assert!(lock(&session.messages).events.iter().any(|event| {
             event["event"] == "LayoutUpdate"
                 && event["versions"]["source_revision"].as_u64() == Some(info.source_revision)

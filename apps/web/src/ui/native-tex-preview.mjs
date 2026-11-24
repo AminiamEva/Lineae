@@ -1,10 +1,11 @@
 import {t} from './i18n.mjs';
 import {installNativePages} from '../typesetting/rtex/pages.mjs';
 import {installNativePdf} from '../typesetting/rtex/pdf.mjs';
+import {projectDisplayMath,editDisplayMathSlot} from '../editor/native-math/document.mjs';
 
 // This surface never edits source or intercepts editor input. The existing
 // ProseMirror/MathLive history stays authoritative while native parity is built.
-export function installNativeTexPreview({host,before,getSource,getSnapshot,isComposing}) {
+export function installNativeTexPreview({host,before,getSource,getSnapshot,isComposing,focusMathSlot}) {
   const invoke=window.__TAURI__?.core?.invoke;
   if(!invoke) return {refresh(){},documentChanged(){},relocalize(){}};
   const button=document.createElement('button');
@@ -18,12 +19,14 @@ export function installNativeTexPreview({host,before,getSource,getSnapshot,isCom
   const status=document.createElement('p');status.setAttribute('role','status');
   const exportButton=document.createElement('button');exportButton.type='button';exportButton.id='native-tex-export';
   const closeButton=document.createElement('button');closeButton.type='button';closeButton.id='native-tex-close';
+  const targetButton=document.createElement('button');targetButton.type='button';targetButton.id='native-tex-target';
+  const targetStatus=document.createElement('p');targetStatus.setAttribute('role','status');
   const zoom=document.createElement('select');zoom.id='native-tex-zoom';
   for(const value of [50,75,100,125,150,200]) zoom.append(new Option(value+'%',String(value)));
   zoom.value='75';zoom.setAttribute('aria-label',t('原生预览缩放','Native preview zoom'));
-  controls.append(zoom,exportButton,closeButton);
+  controls.append(zoom,exportButton,targetButton,closeButton);
   const pages=document.createElement('div');pages.className='native-tex-pages';
-  panel.append(heading,notice,controls,status,pages);
+  panel.append(heading,notice,controls,status,targetStatus,pages);
   document.body.append(panel);host.insertBefore(button,before);
   let session=null,sourceRevision=0,sentSource='',wantedSource='',generation=0;
   let timer=null,pollTimer=null,updating=null,exporting=null,opening=false;
@@ -31,6 +34,7 @@ export function installNativeTexPreview({host,before,getSource,getSnapshot,isCom
   let renderedRevision=-1,error='',active=false,terminal=false;
   let mode='canvas',pdfWanted=-1,pdfAttempt=null;
   let pollEpoch=0;
+  let targeting=null,observation=null;
   const pdf=installNativePdf({host:pages,onPaint:revision=>{
     if(!active||mode!=='pdf')return;
     renderedRevision=revision;pdfRendered=revision;if(!terminal&&revision>=sourceRevision)error='';renderStatus();
@@ -42,6 +46,14 @@ export function installNativeTexPreview({host,before,getSource,getSnapshot,isCom
       renderedRevision=revision;if(!terminal&&revision>=sourceRevision)error='';renderStatus();
     },
     onError:(failure,revision)=>{if(active&&mode==='canvas')void fallback(failure,revision);},
+    onMathHit:(hit,stamp)=>{
+      if(!current()||mode!=='canvas'||!observation||
+          stamp.sessionId!==observation.stamp.sessionId||
+          stamp.sourceRevision!==observation.stamp.sourceRevision)return;
+      const {projection}=observation;
+      if(!editDisplayMathSlot(projection,wantedSource,hit,{from16:0,to16:0,insert:''}))return;
+      focusMathSlot?.(projection.source,projection.math.source,hit.role);
+    },
   });
   function current() {
     return active && session!==null && !opening && !isComposing() && updating!==generation && exporting!==generation &&
@@ -50,6 +62,7 @@ export function installNativeTexPreview({host,before,getSource,getSnapshot,isCom
   }
   function renderStatus() {
     exportButton.disabled=!current();
+    targetButton.disabled=!current()||mode!=='canvas'||Boolean(sentSnapshot?.files)||targeting===generation;
     button.setAttribute('aria-pressed',String(active));
     button.textContent=active?t('关闭 LuaLaTeX 预览','Close LuaLaTeX preview'):t('LuaLaTeX 预览（实验）','LuaLaTeX preview (experimental)');
     panel.dataset.state=error?'error':current()?'current':active?'stale':'off';
@@ -66,6 +79,7 @@ export function installNativeTexPreview({host,before,getSource,getSnapshot,isCom
       'Edit in the existing editor; this view shows LuaLaTeX output. Complex fonts, images and drawings use PDF fallback, not semantic formula editing on PDF pages.');
     exportButton.textContent=t('导出干净 PDF','Export clean PDF');
     closeButton.textContent=t('关闭','Close');
+    targetButton.textContent=t('定位空公式槽位（实验）','Target empty math slots (experimental)');
     renderStatus();
   }
   async function stop() {
@@ -74,6 +88,7 @@ export function installNativeTexPreview({host,before,getSource,getSnapshot,isCom
     panel.hidden=true;document.body.classList.remove('native-tex-open');
     const previous=session;session=null;
     wantedSnapshot=null;sentSnapshot=null;wantedSource='';sentSource='';
+    observation=null;targetStatus.textContent='';
     renderer.reset();pdf.reset();mode='canvas';pdfWanted=-1;pdfRendered=-1;renderedRevision=-1;renderStatus();
     if(previous!==null) {
       try {await invoke('native_tex_close',{sessionId:previous});}
@@ -217,10 +232,35 @@ export function installNativeTexPreview({host,before,getSource,getSnapshot,isCom
     } catch(failure) {if(attempt===generation)fail(failure);}
     finally {if(exporting===attempt)exporting=null;if(attempt===generation){void flush();exportButton.disabled=!current();}}
   }
+  async function observe() {
+    if(targetButton.disabled)return;
+    const projection=projectDisplayMath(sentSource);
+    if(!projection||projection.math.atoms.filter(atom=>atom.kind==='frac').length!==1){
+      targetStatus.textContent=t('目前仅支持独立文档内单个简单分式。','Targeting currently requires one simple fraction in a standalone document.');
+      return;
+    }
+    const attempt=generation,stamp={sessionId:session,sourceRevision};
+    targeting=attempt;observation=null;renderStatus();
+    targetStatus.textContent=t('正在核对源码标记及实际排版…','Checking projected source against the visible layout…');
+    try {
+      const observed=await invoke('native_tex_observe_formula',{...stamp,projection:projection.projection});
+      if(attempt!==generation||stamp.sessionId!==session||stamp.sourceRevision!==sourceRevision||
+          sentSource!==projection.source||wantedSource!==projection.source)return;
+      if(!renderer.attachOwners(observed,stamp))throw new Error(t('标记版排版与当前页面不一致，未启用命中。','Projected geometry differs from the displayed page; targeting remains disabled.'));
+      observation={projection,stamp};
+      targetStatus.textContent=t('点击预览中的空分子或分母，继续在公式编辑器输入。','Click the empty numerator or denominator to continue typing in the formula editor.');
+    } catch(failure) {
+      if(attempt===generation)targetStatus.textContent=String(failure?.message??failure);
+    } finally {
+      if(targeting===attempt)targeting=null;
+      if(attempt===generation)renderStatus();
+    }
+  }
   button.addEventListener('click',()=>{void(active?stop():start());});
   button.addEventListener('mousedown',event=>event.preventDefault());
   closeButton.addEventListener('click',()=>{void stop();});
   exportButton.addEventListener('click',()=>{void exportPdf();});
+  targetButton.addEventListener('click',()=>{void observe();});
   zoom.addEventListener('change',()=>{
     const value=Number(zoom.value)/100;
     renderer.setZoom(value);pdf.setZoom(value);

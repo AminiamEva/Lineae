@@ -1,16 +1,44 @@
 import {FontStore,ImageStore,Painter,inexactReason} from './upstream/webview/render.ts';
 import {fontKey} from './upstream/src/fontKey.ts';
+import {hitMathField} from '../../editor/native-math/hit.mjs';
 
 const CSS_PER_SP=(96/72)/65781.76;
 
 // Strict read-only full-page adapter. No browser font fallback or inferred
 // glyph positions: a page is shown only when all its resources are exact.
-export function installNativePages({host,getFont,onPaint,onError}) {
+export function installNativePages({host,getFont,onPaint,onError,onMathHit}) {
   let generation=0,epoch=0,zoom=.75,revision=-1,layoutVersion=-1;
   let fonts=new FontStore();
   const images=new ImageStore(async()=>{throw new Error('Native PDF image resources are not supported yet');});
   const pages=new Map(),loaded=new Map();
   let frame=0;
+  let ownership=null;
+  function drawing(dl) {
+    return JSON.stringify([dl.page_width,dl.page_height,dl.fonts,dl.other,
+      dl.lines.map(line=>[line.x,line.y,line.w,line.h,line.d,line.items])]);
+  }
+  function attachOwners(observed,stamp) {
+    if(stamp.sourceRevision!==revision||observed.length!==pages.size)return false;
+    const fields=new Map();
+    for(const page of observed) {
+      const entry=pages.get(page.page);
+      if(!entry||page.exact!==true||drawing(entry.dl)!==drawing(page.dl))return false;
+      fields.set(page.page,page.dl.math_owners?.fields?.filter(field=>
+        field.empty&&['num','den'].includes(field.role))??[]);
+    }
+    if(![...fields.values()].some(items=>items.length))return false;
+    ownership={stamp:{...stamp,layoutVersion},fields};
+    return true;
+  }
+  host.addEventListener('click',event=>{
+    const canvas=event.target.closest?.('canvas');
+    if(!canvas||!ownership||event.button!==0)return;
+    const page=Number(canvas.parentElement.dataset.nativePage);
+    const hit=hitMathField(ownership.fields.get(page)??[],canvas.getBoundingClientRect(),
+      {x:event.clientX,y:event.clientY},zoom,ownership.stamp,
+      {...ownership.stamp,sourceRevision:revision,layoutVersion});
+    if(hit)onMathHit?.(hit,ownership.stamp);
+  });
   async function prepare(dl,attempt) {
     if(Object.keys(dl.images_info??{}).length)throw new Error('Native image resources are not supported yet');
     for(const item of [...(dl.other??[]),...(dl.lines??[]).flatMap(line=>line.items)]) {
@@ -77,6 +105,7 @@ export function installNativePages({host,getFont,onPaint,onError}) {
         if(!entry) {
           const dom=document.createElement('div'),canvas=document.createElement('canvas');
           dom.className='native-tex-page';canvas.setAttribute('aria-label','LuaLaTeX page '+page.page);
+          dom.dataset.nativePage=String(page.page);
           dom.append(canvas);entry={dom,canvas};pages.set(page.page,entry);
         }
         entry.dl=page.dl;
@@ -103,13 +132,13 @@ export function installNativePages({host,getFont,onPaint,onError}) {
     pending=pending.then(()=>{if(currentEpoch===epoch)return layout(message);}).catch(onError);
   }
   function reset({clear=true}={}) {
-    epoch++;generation++;revision=-1;layoutVersion=-1;pending=Promise.resolve();
+    epoch++;generation++;revision=-1;layoutVersion=-1;pending=Promise.resolve();ownership=null;
     cancelAnimationFrame(frame);pages.clear();loaded.clear();fonts=new FontStore();if(clear)host.replaceChildren();
   }
   host.addEventListener('scroll',redraw,{passive:true});
   host.parentElement?.addEventListener('scroll',redraw,{passive:true});
   window.addEventListener('resize',redraw);
-  return {accept,reset,setZoom(value){zoom=value;for(const entry of pages.values()){
+  return {accept,reset,attachOwners,setZoom(value){zoom=value;for(const entry of pages.values()){
     entry.dom.style.width=entry.dl.page_width*CSS_PER_SP*zoom+'px';
     entry.dom.style.height=entry.dl.page_height*CSS_PER_SP*zoom+'px';
   }redraw();}};

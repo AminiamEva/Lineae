@@ -217,3 +217,11 @@ at a matching session, source and layout revision. The geometry probe connects
 an actual empty-denominator box to a one-letter slot patch at 100%, 150% and 200%.
 That probe still uses a controlled fixture owner ID. It does **not** certify
 production pointer input, a visible caret, a native selection, or undo/redo on Canvas.
+
+The separate **Target empty math slots (experimental)** action checks an isolated,
+instrumented copy of a supported standalone document. It enables a click only when
+exact page drawing records agree with the raw preview and the session, source and
+layout still match. An empty numerator or denominator click transfers focus to the
+original MathLive field, whose existing history handles subsequent input and undo.
+It does not draw the caret on Canvas, target filled fields, or edit a PDF fallback.
+The independently compiled projection never replaces the source or export buffer.

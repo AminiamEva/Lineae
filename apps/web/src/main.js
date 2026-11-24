@@ -2620,6 +2620,18 @@ nativeTexPreview=installNativeTexPreview({host:footer,before:modes,
     return {source:text,mainFile:'main.tex',signature:text};
   },
   isComposing:()=>editor.view.composing||sourceView.composing,
+  focusMathSlot:(raw,latex,role)=>{
+    if(!sourceView.hidden||projectExplorer?.active||source()!==raw)return;
+    const fields=[...paper.querySelectorAll('.math-display math-field')];
+    if(fields.length!==1||fields[0].value.trim()!==latex.trim())return;
+    const [field]=fields,model=field._mathfield?.model;
+    const fraction=model?.atoms.filter(atom=>atom.type==='genfrac');
+    if(fraction?.length!==1)return;
+    const branch=fraction[0].branch(role==='den'?'below':'above');
+    if(!branch||branch.length!==1||branch[0].type!=='first')return;
+    field.focus();
+    field.position=model.offsetOf(branch[0]);
+  },
 });
 editor.on('update',()=>nativeTexPreview.refresh());
 const compositionController=createCompositionController({

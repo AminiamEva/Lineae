@@ -52,6 +52,14 @@ module.exports=function installMockNativeTex() {
       if(p.failFont)throw 'The native font is unavailable';
       return [...new Uint8Array(await(await fetch('/assets/fonts/latin-modern/lmroman10-regular.otf')).arrayBuffer())];
     }
+    if(command==='native_tex_observe_formula'){
+      const match=/\\attribute65000=(\d+) \\frac/.exec(args.projection);
+      if(!match||args.sourceRevision!==p.revision)throw new Error('Unexpected formula observation request');
+      const observed=p.layout().pages_changed;
+      observed[0].dl.math_owners={fields:[{owner:Number(match[1]),role:'den',
+        bbox:[6500000,7000000,6500000,7000000],empty:true}],glyphs:[]};
+      return observed;
+    }
     if(command==='native_tex_render_pdf'){
       if(args.sourceRevision!==p.revision)throw {code:'revision_mismatch',message:'stale test revision'};
       if(p.failPdf)throw new Error('PDF compilation failed');
