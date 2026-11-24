@@ -451,6 +451,29 @@ export function installMathFloatToolbar({ editor }) {
     current = null;
   }
 
+  let visibilityTimer = 0;
+  const selectedDom = () => {
+    if (!current) return null;
+    if (current.partial) return current.field;
+    return current.dom ?? editor.view.nodeDOM(current.pos);
+  };
+  // The toolbar only appears while the pointer is over the selected content (or
+  // the toolbar itself); a short grace period lets the pointer reach it.
+  function syncVisibility() {
+    clearTimeout(visibilityTimer);
+    const target = selectedDom();
+    if (!current || !target?.isConnected) { bar.hidden = true; return; }
+    if (target.matches(':hover') || bar.matches(':hover')) {
+      const rect = target.getBoundingClientRect();
+      if (rect) position(bar, rect);
+      return;
+    }
+    visibilityTimer = setTimeout(() => {
+      const still = selectedDom();
+      if (!bar.matches(':hover') && !still?.matches(':hover')) bar.hidden = true;
+    }, 150);
+  }
+
   function showPartial(detail) {
     const node = editor.state.doc.nodeAt(detail.position);
     if (!node || !['math', 'mathBlock'].includes(node.type.name)) return hide();
@@ -467,9 +490,7 @@ export function installMathFloatToolbar({ editor }) {
     buildBarOnce();
     fillFonts(selected);
     bar.querySelector('.mft-accents').hidden = true;
-    const rect = detail.field.getBoundingClientRect();
-    if (!rect) return hide();
-    position(bar, rect);
+    syncVisibility();
   }
 
   function update() {
@@ -482,14 +503,13 @@ export function installMathFloatToolbar({ editor }) {
     }
     const sel = selState();
     if (!sel) return hide();
-    current = { ...sel, partial: false };
     const dom = editor.view.nodeDOM(sel.pos);
-    const rect = dom?.getBoundingClientRect();
-    if (!rect) return hide();
+    if (!dom) return hide();
+    current = { ...sel, partial: false, dom };
     buildBarOnce();
     fillFonts(sel.node.attrs.latex ?? '');
     bar.querySelector('.mft-accents').hidden = true;
-    position(bar, rect);
+    syncVisibility();
   }
   let built = false;
   function buildBarOnce() { if (!built) { buildBar(); built = true; } }
@@ -541,6 +561,10 @@ export function installMathFloatToolbar({ editor }) {
   document.addEventListener('pointerdown', e => {
     if (!bar.contains(e.target) && !menu.contains(e.target)) hide(true);
   });
+  const onPointerMove = () => { if (current) syncVisibility(); };
+  document.addEventListener('pointerover', onPointerMove, true);
+  document.addEventListener('pointerout', onPointerMove, true);
+  bar.addEventListener('pointerenter', () => clearTimeout(visibilityTimer));
   document.addEventListener('keydown', e => { if (e.key === 'Escape') hide(true); });
   editor.on('selectionUpdate', update);
   editor.on('blur', () => { setTimeout(() => { if (!bar.matches(':hover') && performance.now() >= holdToolbarUntil) bar.hidden = true; }, 150); });
