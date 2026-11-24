@@ -2651,7 +2651,10 @@ A & B \\
       'Formula operands highlight while editing: '+editingBackground);
     // MathLive delays native focus; do not blur during that transition.
     await page.waitForFunction(()=>!document.querySelector('math-field')?._mathfield?.focusBlurInProgress);
-    await operandField.evaluate(field=>field.blur());
+    // Transfer focus to a real control. Calling MathLive.blur() directly can
+    // race its queued native focus restoration before a different element owns it.
+    await page.locator('#settings-open').focus();
+    await page.waitForFunction(()=>document.activeElement?.id==='settings-open');
     await page.waitForFunction(()=>!document.querySelector('math-field')?.hasAttribute('data-lineae-editing'));
     const blurredBackground=await operandMark.evaluate(el=>getComputedStyle(el).backgroundColor);
     assert.ok(blurredBackground===''||blurredBackground==='rgba(0, 0, 0, 0)',
