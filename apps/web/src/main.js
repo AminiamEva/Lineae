@@ -1434,10 +1434,11 @@ function readMeta(key) {
   return match?match[1]:'';
 }
 function writeMeta(key,value) {
-  const line='\\'+key+'{'+value+'}';
+  const escaped=serialize({type:'text',text:value});
+  const line='\\'+key+'{'+escaped+'}';
   const pattern=new RegExp('\\\\'+key+'\\{([^{}]*)\\}');
   const apply=text=>pattern.test(text)
-    ? text.replace(pattern,line)
+    ? text.replace(pattern,()=>line)
     : text.replace(/\\begin\{document\}/,line+'\n\\begin{document}');
   documentParts.start=apply(documentParts.start);
   if(importedSource)importedSource=apply(importedSource);
@@ -1460,7 +1461,7 @@ function editMeta(element,key){
   element.addEventListener('keydown',event=>{if(event.key==='Enter'){event.preventDefault();element.blur();}});
   element.addEventListener('blur',()=>{
     const value=element.textContent.trim();
-    if(value!==readMeta(key))writeMeta(key,value);
+    if(value!==metaDisplay(readMeta(key)))writeMeta(key,value);
     else renderMeta();
   });
 }
@@ -1479,8 +1480,8 @@ metaDate.addEventListener('blur',()=>{
   else renderMeta();
 });
 function renderMeta() {
-  metaTitle.textContent=readMeta('title');
-  metaAuthor.textContent=readMeta('author');
+  metaTitle.textContent=metaDisplay(readMeta('title'));
+  metaAuthor.textContent=metaDisplay(readMeta('author'));
   const hasDate=/\\date\s*\{/.test(documentParts.start);
   const rawDate=readMeta('date');
   const showDefault=!hasDate&&Boolean(readMeta('title'));
