@@ -11,6 +11,25 @@ if(typeof document!=='undefined')document.addEventListener('pointerdown',event=>
 let smartFences;
 export function configureMathFences(value) { smartFences = value; }
 
+export function mathPositionPath(model,offset) {
+  const path=[];
+  for(let atom=model.at(offset);atom?.parent;atom=atom.parent){
+    const branch=atom.parentBranch;
+    path.unshift([branch,atom.parent.branch(branch).indexOf(atom)]);
+  }
+  return path;
+}
+
+export function mathOffsetAtPath(model,path) {
+  let atom=model.root;
+  for(const [branch,child] of path){
+    if(!atom||child<0||
+      (Array.isArray(branch)&&(atom.type!=='array'||branch[0]>=atom.rowCount||branch[1]>=atom.colCount)))return -1;
+    atom=atom.branch(branch)?.[child];
+  }
+  return atom?model.offsetOf(atom):-1;
+}
+
 const isIntegral = atom => /^\\(?:i{1,3}nt|oi{1,3}nt)$/.test(atom?.command ?? '');
 export const isMathOperatorWithBody = name => /^(?:i{1,3}nt|oi{1,3}nt|sum|prod)$/.test(name);
 function bodyOperator(atom) {
@@ -548,10 +567,11 @@ export const MathNode = Node.create({
       const historySelections=new Map();
       let applyingHistory=false;
       function rememberSelection(){
-        if(applyingHistory||!field._mathfield||!field.hasFocus()||
-          mathDocumentSource(field.value,node.attrs.latex,{inline:!node.isBlock})!==node.attrs.latex)return;
+        const model=field._mathfield?.model;
+        if(applyingHistory||!model||!field.hasFocus()||
+          mathDocumentSource(field.value,node.attrs.latex,{inline:!node.isBlock}).trim()!==node.attrs.latex.trim())return;
         const {ranges,direction}=field.selection;
-        historySelections.set(node.attrs.latex,{ranges:ranges.map(range=>[...range]),direction});
+        historySelections.set(node.attrs.latex,{paths:ranges.map(range=>range.map(offset=>mathPositionPath(model,offset))),direction});
         if(historySelections.size>64)historySelections.delete(historySelections.keys().next().value);
       }
       field.addEventListener('lineae-before-math-history',()=>{
@@ -561,9 +581,12 @@ export const MathNode = Node.create({
       field.addEventListener('lineae-after-math-history',()=>{
         const selection=historySelections.get(node.attrs.latex);
         try {
-          if(field.isConnected&&selection?.ranges.every(range=>range.every(offset=>
-            Number.isSafeInteger(offset)&&offset>=0&&offset<=field.lastOffset))){
-            field.selection=selection;
+          const model=field._mathfield?.model;
+          if(field.isConnected&&selection&&model){
+            const ranges=selection.paths.map(path=>path.map(endpoint=>mathOffsetAtPath(model,endpoint)));
+            if(ranges.every(range=>range.every(offset=>offset>=0&&offset<=field.lastOffset))){
+              field.selection={ranges,direction:selection.direction};
+            }
           }
         }finally{applyingHistory=false;}
       });

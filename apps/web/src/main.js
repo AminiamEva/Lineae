@@ -42,7 +42,7 @@ import { createClipboard } from './editor/clipboard.js';
 import { installFormatPainter } from './editor/format-painter.js';
 import { decorateToolbar, applyToolbarDescriptions, icon } from './editor/icons.js';
 import { PaperBehavior } from './editor/paper-behavior.js';
-import { MathNode, MathBlock, configureMathFences, focusInsertedOperator, insertFormula, isMathOperatorWithBody, mathEnvironment, toggleDisplayStyle } from './editor/math-node.js';
+import { MathNode, MathBlock, configureMathFences, focusInsertedOperator, insertFormula, isMathOperatorWithBody, mathEnvironment, mathPositionPath, mathOffsetAtPath, toggleDisplayStyle } from './editor/math-node.js';
 import { MathGlue } from './editor/math-glue.js';
 import { Ref, Label, Cite, Footnote, TableOfContents, refreshReferences, collectReferenceLabels, installDocumentOutline } from './editor/references.js';
 import { createCitationLibrary, openCitationPanel } from './editor/citation-library.js';
@@ -888,14 +888,6 @@ function activeMath() {
   if(document.activeElement?.tagName==='MATH-FIELD') return document.activeElement;
   return editingMath?.isConnected ? editingMath : null;
 }
-function mathPositionPath(model, offset) {
-  const path=[];
-  for (let atom=model.at(offset); atom?.parent; atom=atom.parent) {
-    const branch=atom.parentBranch;
-    path.unshift([branch,atom.parent.branch(branch).indexOf(atom)]);
-  }
-  return path;
-}
 function preserveMathSelection(field, update) {
   const model=field._mathfield?.model;
   const selection=structuredClone(field.selection);
@@ -904,15 +896,7 @@ function preserveMathSelection(field, update) {
   const updated=field._mathfield?.model;
   if (!paths || !updated) return;
   const ranges=paths.map((range,index)=>range.map((path,end)=>{
-    let atom=updated.root;
-    for (const [branch,child] of path) {
-      if (Array.isArray(branch) && (!atom || atom.type!=='array' || branch[0]>=atom.rowCount || branch[1]>=atom.colCount)) {
-        atom=null;
-        break;
-      }
-      atom=atom?.branch(branch)?.[child];
-    }
-    const offset=atom ? updated.offsetOf(atom) : -1;
+    const offset=mathOffsetAtPath(updated,path);
     return offset>=0 ? offset : Math.min(selection.ranges[index][end],field.lastOffset);
   }));
   field.selection={...selection,ranges};
