@@ -3,8 +3,18 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {createConfigStore} from '../apps/web/src/editor/config.mjs';
 import {compileKeybindings,installKeybindings} from '../apps/web/src/editor/keybindings.mjs';
+import {keyboardLockCodes} from '../apps/web/src/ui/shortcut-priority.mjs';
 
 const defaults=readFileSync('apps/web/config.yaml','utf8');
+test('Keyboard Lock codes follow configured bindings without locking Escape or every key',()=>{
+  const bindings=compileKeybindings({
+    global:{action:'mod+e m',disabled:null},
+    math:{palette:'backslash',slot:'tab',leave:'escape',literal:'alt+backtick'},
+    source:{find:'ctrl+f',zoom:['ctrl+plus','ctrl+equal'],custom:'ctrl+中'},
+  },{isMac:true});
+  assert.deepEqual(keyboardLockCodes(bindings),['Backquote','Equal','KeyE','KeyF','KeyM']);
+  assert.deepEqual(keyboardLockCodes(compileKeybindings({global:{disabled:null}})),[]);
+});
 function keyboard(target,key,code,flags={}) {
   const event=new Event('keydown',{cancelable:true});
   Object.assign(event,{key,code,ctrlKey:false,altKey:false,shiftKey:false,metaKey:false,
@@ -19,8 +29,6 @@ test('the approved macOS defaults resolve to Ctrl on Windows with no duplicate a
   assert.equal(mac.scopes.get('editor').find(entry=>entry.command==='insertDisplayMath').first,'meta+f');
   assert.equal(win.scopes.get('editor').find(entry=>entry.command==='insertDisplayMath').first,'ctrl+f');
   assert.equal(mac.scopes.get('math').find(entry=>entry.command==='pmatrix').first,'meta+m');
-  assert.deepEqual(mac.scopes.get('math').filter(entry=>entry.command==='int').map(entry=>entry.first),['meta+i','ctrl+i']);
-  assert.deepEqual(win.scopes.get('math').filter(entry=>entry.command==='int').map(entry=>entry.first),['ctrl+i']);
   assert.equal(win.scopes.get('math').find(entry=>entry.command==='pmatrix').first,'ctrl+m');
   assert.equal(win.scopes.get('math').filter(entry=>entry.command==='pmatrix').length,1);
   assert.equal(mac.scopes.get('math').filter(entry=>entry.command==='pmatrix').length,2);
@@ -37,17 +45,6 @@ test('plain native keys, aliases, uppercase letters and null all compile',()=>{
   assert.equal(bindings.scopes.get('math').length,2);
   assert.throws(()=>compileKeybindings({source:{a:'tab',b:'tab'}}),/Conflicting shortcuts/);
   assert.throws(()=>compileKeybindings({source:{a:'ctrl+k',b:'ctrl+k m'}}),/Conflicting shortcuts/);
-});
-
-test('Mac web fallbacks follow configured shortcuts and preserve explicit remaps',()=>{
-  const mac=createConfigStore(defaults,{isMac:true,macWeb:true});
-  const entries=(scope,command)=>mac.bindings.scopes.get(scope).filter(entry=>entry.command===command);
-  assert.ok(entries('global','splitMode').some(entry=>entry.first==='ctrl+e' && entry.second==='3'));
-  assert.ok(entries('source','replace').some(entry=>entry.first==='ctrl+e' && entry.second==='h'));
-  mac.importYaml('keybindings:\n  source:\n    replace: null\n    undo: ctrl+e f\n');
-  assert.equal(entries('source','replace').length,0);
-  assert.equal(entries('source','find').some(entry=>entry.first==='ctrl+e'),false);
-  assert.ok(entries('source','undo').some(entry=>entry.first==='ctrl+e' && entry.second==='f'));
 });
 
 test('all worksheet builtin actions have YAML keys, and a rejected profile is atomic',()=>{

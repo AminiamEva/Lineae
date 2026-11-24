@@ -1,0 +1,69 @@
+name: Linux desktop
+
+on:
+  workflow_dispatch:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            apps/desktop/package-lock.json
+      - name: Validate desktop versions
+        id: version
+        run: node apps/desktop/scripts/validate-release.mjs --macos
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: apps/desktop/src-tauri -> target
+          key: linux-x86_64
+      - name: Install Tauri system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libfuse2 patchelf
+      - run: npm ci --no-audit --no-fund
+      - run: npm ci --prefix apps/desktop --no-audit --no-fund
+      - name: Build and vendor the offline editor
+        run: |
+          npm run build
+          archive=$(npm pack mathlive@0.108.0 --pack-destination "$RUNNER_TEMP" --silent)
+          mkdir -p apps/web/vendor/mathlive
+          tar -xzf "$RUNNER_TEMP/$archive" -C apps/web/vendor/mathlive --strip-components=1 \
+            package/mathlive.min.js package/fonts
+      - name: Build Debian and AppImage bundles
+        run: npm --prefix apps/desktop run tauri -- build --bundles deb,appimage -- --locked
+      - name: Verify packages and checksum
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          bundle=apps/desktop/src-tauri/target/release/bundle
+          deb=("$bundle"/deb/*.deb)
+          appimage=("$bundle"/appimage/*.AppImage)
+          test "${#deb[@]}" = 1 && test -s "${deb[0]}"
+          test "${#appimage[@]}" = 1 && test -x "${appimage[0]}"
+          test "$(dpkg-deb --field "${deb[0]}" Architecture)" = amd64
+          test "$(dpkg-deb --field "${deb[0]}" Version)" = "$VERSION"
+          mkdir -p artifacts/linux
+          cp "${deb[0]}" "artifacts/linux/Lineae-${VERSION}-linux-amd64.deb"
+          cp "${appimage[0]}" "artifacts/linux/Lineae-${VERSION}-linux-x86_64.AppImage"
+          cd artifacts/linux
+          sha256sum -- *.deb *.AppImage > SHA256SUMS-linux
+          sha256sum -c SHA256SUMS-linux
+      - uses: actions/upload-artifact@v7.0.2
+        with:
+          name: lineae-linux-x86_64
+          path: artifacts/linux/*
+          if-no-files-found: error

@@ -1,6 +1,6 @@
 [package]
 name = "lineae"
-version = "0.2.2"
+version = "0.2.3"
 description = "Lineae offline LaTeX editor"
 authors = ["Lineae"]
 edition = "2021"

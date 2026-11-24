@@ -1,11 +1,7 @@
 const owns = (object,key) => Object.hasOwn(object ?? {},key);
 
 export function migrateVersion(value) {
-  if (value.version !== 1) {
-    if (!owns(value.editing,'shortcutPriority')) return value;
-    const {shortcutPriority: _removed, ...editing} = value.editing;
-    return {...value,editing};
-  }
+  if (value.version !== 1) return value;
   const migrated = {version:2,interface:{}};
   for (const key of ['language','zoom']) {
     if (owns(value.interface,key)) migrated.interface[key] = value.interface[key];
@@ -40,12 +36,4 @@ export function migrateStoredPreferences(profile, storage) {
     changed = true;
   }
   return {profile:migrated,changed,removals};
-}
-
-// Older Settings saves included the shipped shortcut even when it was untouched.
-export function migrateStoredIntegralShortcut(profile) {
-  if (profile.keybindings?.math?.int !== 'mod+i') return profile;
-  const next = structuredClone(profile);
-  delete next.keybindings.math.int;
-  return next;
 }

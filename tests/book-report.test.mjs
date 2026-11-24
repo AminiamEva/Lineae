@@ -52,3 +52,7 @@ test('book/report: \\part imports and round-trips as a level-1 heading', () => {
   assert.equal(articlePart.attrs.command, 'part');
   assert.equal(articlePart.attrs.level, 1);
 });
+
+test('matter commands retain their complete source spelling',()=>{
+ for(const matter of ['front','main','back'])assert.equal(serialize(importBlock('\\'+matter+'matter')).trim(),'\\'+matter+'matter');
+});

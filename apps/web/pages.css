@@ -338,6 +338,9 @@ main { padding:125px 24px 60px; overflow:auto; }
 .document-status button { padding:2px 9px; border-radius:999px; font-size:10px; background:light-dark(#eef0f4,#303238); box-shadow:inset 0 0 0 1px light-dark(#e1e5ec,#3d4048); transition:background-color .18s ease,transform .18s ease,box-shadow .18s ease; }
 .document-status button:hover { background:light-dark(#e5e9f0,#3a3e46); }
 .document-status button:active { transform:scale(.96); }
+.document-status #keyboard-priority { flex-shrink:0; max-width:180px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.document-status #keyboard-priority[aria-pressed=true] { color:light-dark(#0059c7,#9bc8ff); background:light-dark(#dceaff,#343d50); }
+.document-status .shortcut-priority-message { margin:0; max-width:200px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; color:light-dark(#a32c25,#ffb4ac); }
 .document-status output { min-width:38px; font-variant-numeric:tabular-nums; }
 .document-status .pagination-toggle[data-mode="pages"] {
   color:light-dark(#0059c7,#9bc8ff);
@@ -372,6 +375,7 @@ main { padding:125px 24px 60px; overflow:auto; }
 [data-math-view]:focus-within .math-drag-handle,
 [data-math-view].ProseMirror-selectednode .math-drag-handle { opacity:1; }
 .math-drag-handle:active { cursor:grabbing; }
+.math-display .math-drag-handle { position:absolute; left:0; top:50%; transform:translateY(-50%); }
 .math-inline .math-drag-handle { position:absolute!important; left:-2px!important; right:auto!important; top:50%!important; bottom:auto!important; transform:translate(-100%,-50%)!important; z-index:0!important; }
 .editor-context-menu { position:fixed; z-index:30; width:220px; max-height:calc(100vh - 16px); overflow:auto; padding:5px; border-radius:12px; background:light-dark(#fffffff5,#29292df5); box-shadow:0 5px 24px #0003; backdrop-filter:blur(12px); border:1px solid light-dark(#ddd,#555); }
 .editor-context-menu button { display:block; width:100%; border-radius:7px; background:transparent; text-align:left; padding:6px 10px; }

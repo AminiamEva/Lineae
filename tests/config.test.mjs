@@ -20,6 +20,7 @@ test('parses the shipped YAML config', () => {
   assert.deepEqual(config.keybindings.math.leaveFormula,['mod+shift+j','ctrl+shift+j']);
   assert.equal(config.keybindings.editor.toggleItalic,null);
   assert.equal(config.keybindings.editor.toggleStrike,null);
+  assert.equal(config.keybindings.global.shortcutPriority,null);
 });
 
 test('round-trips preferences as YAML', () => {
@@ -79,23 +80,6 @@ test('importing a conflicting or malformed profile keeps the active profile', ()
   assert.throws(() => store.importYaml('keybindings:\n  editor:\n    toggleBox: ctrl+e e\n'),/Conflicting shortcuts/);
   assert.throws(() => store.importYaml('interface:\n  zoom: [120\n'));
   assert.equal(store.exportYaml(),previous);
-});
-
-test('saved integral defaults inherit Control+I while existing custom bindings are preserved', () => {
-  for (const [math, expected] of [
-    [{int:'mod+i'}, ['mod+i','ctrl+i']],
-    [{int:'mod+i', sqrt:'ctrl+i'}, 'mod+i'],
-    [{int:'alt+k'}, 'alt+k'],
-    [{int:null}, null],
-  ]) {
-    let saved = toYaml({version:2,interface:{zoom:130},editing:{shortcutPriority:true},keybindings:{math}});
-    const storage = {getItem:key=>key==='lineae.config'?saved:null,setItem:(_key,value)=>{saved=value;},removeItem(){}};
-    const store = createConfigStore(defaults,{isMac:true,storage});
-    assert.deepEqual(store.value.keybindings.math.int,expected);
-    assert.equal(store.value.interface.zoom,130);
-    assert.equal(Object.hasOwn(parseYaml(saved).editing,'shortcutPriority'),false);
-    assert.deepEqual(parseYaml(saved).keybindings.math.int,Array.isArray(expected)?undefined:expected);
-  }
 });
 
 test('mode-specific toolbar defaults and YAML source preferences', () => {

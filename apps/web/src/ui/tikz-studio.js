@@ -207,13 +207,16 @@ export function generalTikzPreviewWidget(source, preamble = '', onOpen = null) {
       onOpen();
     });
   }
-  renderTikz(source, preamble).then(result => {
+  const applyResult = result => {
     if (!result.svg) { root.textContent = result.diagnostics?.map(item => item.message).join('\n') || 'TikZ'; return; }
     const svg = document.createElement('div');
     svg.innerHTML = result.svg;
     root.replaceChildren(...svg.childNodes);
     root.classList.add('tikz-general-preview-ready');
-  }).catch(error => { root.textContent = String(error?.message || error); });
+  };
+  const cached=svgCache.get(source+'\0'+preamble);
+  if(cached)applyResult(cached);
+  else renderTikz(source,preamble).then(applyResult).catch(error=>{root.textContent=String(error?.message||error);});
   return root;
 }
 

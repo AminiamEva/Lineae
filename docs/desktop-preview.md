@@ -39,6 +39,12 @@ arbitrary path, and the webview never receives broad filesystem scope.
 
 ## Build
 
+For paired Windows x64 / macOS Apple Silicon migration previews, use the explicit
+`publish_preview` option in `macos-release.yml`. See
+[the two-device workflow and migration baseline](native-tex/README.md).
+It publishes a separate prerelease after both platforms and web checks succeed,
+without requiring Linux. All compilation and packaging remain remote.
+
 The `Desktop Preview` workflow (`.github/workflows/desktop.yml`) runs on every pull
 request and on `v*` tags. It performs the web build, vendors MathLive, runs the
 data, UI, bibliography, and Playwright suites, then builds the Tauri bundle.

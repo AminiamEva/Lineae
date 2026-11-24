@@ -1,7 +1,12 @@
-name: macOS Apple Silicon
+name: Desktop release
 
 on:
   workflow_dispatch:
+    inputs:
+      publish_preview:
+        description: Publish a Windows x64 and macOS arm64 preview after checks (no Linux)
+        type: boolean
+        default: false
   push:
     tags: ["v*"]
 
@@ -36,11 +41,15 @@ jobs:
         run: |
           node --test tests/latex.test.mjs tests/config.test.mjs tests/keybindings.test.mjs \
             tests/ui/i18n.test.mjs tests/typeset-layout.test.mjs tests/release-policy.test.mjs \
-            tests/project-native-bridge.test.mjs
+             tests/project-native-bridge.test.mjs
+          node --test tests/native-math-baseline.test.mjs
+          bash -n apps/desktop/scripts/publish-preview.sh
           node --test tests/bib/*.test.mjs tests/bib/*/*.test.mjs
           npx playwright install --only-shell chromium
           node tests/editor.cjs
           node tests/shortcuts-browser.cjs
+          node tests/math-editing-browser.cjs
+          node tests/shortcut-priority-browser.cjs
 
   build:
     runs-on: macos-15
@@ -86,13 +95,6 @@ jobs:
           mkdir -p apps/web/vendor/mathlive
           tar -xzf "$RUNNER_TEMP/$archive" -C apps/web/vendor/mathlive --strip-components=1 \
             package/mathlive.min.js package/fonts
-      - name: Check Command shortcuts in macOS Edge
-        if: github.event_name == 'workflow_dispatch'
-        env:
-          LINEAE_MAC_EDGE: '1'
-        run: |
-          npx playwright install msedge
-          node tests/shortcuts-browser.cjs
       - name: Build the ad-hoc signed application and DMG
         uses: tauri-apps/tauri-action@action-v1.0.0
         env:
@@ -110,23 +112,21 @@ jobs:
           name: lineae-macos-aarch64
           path: artifacts/macos/*
           if-no-files-found: error
-      - name: Wait for any Windows publisher for the same tag
-        if: steps.version.outputs.requested == 'true'
-        timeout-minutes: 25
-        env:
-          GH_TOKEN: ${{ github.token }}
-          TAG: ${{ steps.version.outputs.tag }}
-        run: |
-          runs=$(gh run list --workflow desktop.yml --event push --commit "$GITHUB_SHA" \
-            --json headBranch,databaseId,status)
-          run=$(jq -r --arg tag "$TAG" 'map(select(.headBranch == $tag and .status != "completed")) | first | .databaseId // empty' <<<"$runs")
-          if [[ -n "$run" ]]; then
-            gh run watch "$run" --compact
-          fi
+  windows:
+    uses: ./.github/workflows/desktop.yml
+    permissions:
+      contents: write
+    with:
+      coordinated: true
+    secrets: inherit
 
-  release:
-    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') && needs.build.outputs.tag == github.ref_name
-    needs: [web, build]
+  linux:
+    if: ${{ !inputs.publish_preview }}
+    uses: ./.github/workflows/linux-release.yml
+
+  preview:
+    if: github.event_name == 'workflow_dispatch' && inputs.publish_preview
+    needs: [web, build, windows]
     runs-on: ubuntu-24.04
     permissions:
       contents: write
@@ -138,10 +138,43 @@ jobs:
         with:
           name: lineae-macos-aarch64
           path: artifacts/macos
-      - name: Publish verified macOS assets
+      - uses: actions/download-artifact@v8.0.2
+        with:
+          name: lineae-desktop-${{ github.sha }}
+          path: artifacts/windows
+      - name: Publish the verified two-device preview
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.build.outputs.version }}
+          PUBLISH_PREVIEW: ${{ inputs.publish_preview }}
+        run: bash apps/desktop/scripts/publish-preview.sh
+
+  release:
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') && needs.build.outputs.tag == github.ref_name
+    needs: [web, build, windows, linux]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v8.0.2
+        with:
+          name: lineae-macos-aarch64
+          path: artifacts/macos
+      - uses: actions/download-artifact@v8.0.2
+        with:
+          name: lineae-desktop-${{ github.sha }}
+          path: artifacts/windows
+      - uses: actions/download-artifact@v8.0.2
+        with:
+          name: lineae-linux-x86_64
+          path: artifacts/linux
+      - name: Publish verified desktop assets
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ needs.build.outputs.tag }}
           VERSION: ${{ needs.build.outputs.version }}
           PRERELEASE: ${{ needs.build.outputs.prerelease }}
-        run: bash apps/desktop/scripts/publish-macos.sh
+        run: bash apps/desktop/scripts/publish-desktop.sh

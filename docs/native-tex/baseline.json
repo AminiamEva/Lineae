@@ -1,0 +1,56 @@
+{
+  "schemaVersion": 1,
+  "lineaeReference": "e7abfe976930886e2e0d8d23b0a7e055863bdff0",
+  "platforms": ["x86_64-pc-windows-msvc", "aarch64-apple-darwin"],
+  "buildPolicy": "remote_only",
+  "engines": {
+    "xelatexJs": {
+      "policy": "retain",
+      "status": "existing_xelatex_aligned_js_rendering",
+      "entryPoints": [
+        "apps/web/src/editor/typeset-pagination.js",
+        "apps/web/src/typesetting/paragraph-layout.js",
+        "apps/web/src/typesetting/optimum-paragraph.mjs",
+        "apps/web/src/editor/math-node.js"
+      ],
+      "note": "Observed main-branch rendering entry points, not a claim of a native XeTeX binary or WASM engine."
+    },
+    "luaJs": {
+      "policy": "retain",
+      "status": "unmerged_reference_pending",
+      "sourceReference": null,
+      "note": "User reports a separate unmerged implementation. Do not replace it with rtex or infer its capabilities."
+    },
+    "rtex": {
+      "status": "candidate_not_integrated",
+      "repository": "https://github.com/HenryXiaoYang/realtime-tex",
+      "version": "v0.0.8",
+      "commit": "6e54e11755ed8b41aeb1739517213c6c8182df47",
+      "license": "MIT",
+      "geometryEvidence": null
+    },
+    "rtexPainter": {
+      "status": "candidate_not_vendored",
+      "repository": "https://github.com/HenryXiaoYang/realtime-tex-vsc-plugin",
+      "version": "v0.0.6",
+      "commit": "fcf6bea3f2c62f89890a5473539119b6185fb4dd",
+      "license": "MIT"
+    },
+    "texpile": {
+      "status": "reference_only",
+      "repository": "https://github.com/texpile/texpile",
+      "commit": "1949c77b68fd7254f26c9e975f0c0b48575362d7",
+      "license": "AGPL-3.0-only",
+      "note": "Review individual file licensing before copying; no code or fonts imported."
+    }
+  },
+  "fixture": {
+    "before": "tests/native-math/fixtures/empty-denominator.tex",
+    "after": "tests/native-math/fixtures/filled-denominator.tex",
+    "formulaBefore": "\\frac{a}{}",
+    "formulaAfter": "\\frac{a}{b}",
+    "patch": {"from16": 9, "to16": 9, "insert": "b"},
+    "rights": "redistributable",
+    "provenance": "Lineae-authored synthetic test; no external corpus payload"
+  }
+}

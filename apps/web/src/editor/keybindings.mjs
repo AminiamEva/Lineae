@@ -1,9 +1,4 @@
 const modifiers = ['ctrl', 'alt', 'shift', 'meta'];
-
-export function usesAppleShortcuts({platform, userAgentData, userAgent}) {
-  return [platform,userAgentData?.platform,userAgent].some(value=>
-    /MacIntel|MacPPC|Macintosh|macOS|Mac OS X|iPhone|iPad|iPod/i.test(value ?? ''));
-}
 const aliases = new Map([
   ['control', 'ctrl'], ['cmd', 'meta'], ['command', 'meta'], ['option', 'alt'],
   ['`', 'backtick'], ['-', 'minus'], ['=', 'equal'], ['+', 'plus'], [' ', 'space'],
@@ -30,16 +25,7 @@ function parseStroke(stroke, isMac) {
   return [...modifiers.filter(part => held.includes(part)), key].join('+');
 }
 
-// These sequences stay available when Chrome or Safari handles the Command
-// shortcut before sending a key event to the editor.
-const macWebAlternatives = {
-  global: { 'meta+p':'p', 'meta+o':'o', 'meta+shift+n':'shift+n', 'meta+shift+o':'shift+o', 'meta+,':',' },
-  editor: { 'meta+f':'shift+f', 'meta+shift+f':'shift+i', 'meta+alt+f':'shift+e', 'meta+shift+t':'shift+t' },
-  math: { 'meta+l':'l', 'meta+r':'shift+r', 'meta+f':'f', 'meta+m':'m', 'meta+2':'shift+2', 'meta+shift+2':'alt+2', 'meta+y':'y' },
-  source: { 'meta+f':'f', 'meta+h':'h', 'ctrl+space':'space' },
-};
-
-export function compileKeybindings(config, { isMac = false, macWeb = false } = {}) {
+export function compileKeybindings(config, { isMac = false } = {}) {
   const { chordTimeoutMs = 1500, ...sections } = config;
   const scopes = new Map();
   for (const [scope, bindings] of Object.entries(sections)) {
@@ -61,16 +47,6 @@ export function compileKeybindings(config, { isMac = false, macWeb = false } = {
       }
     }
     scopes.set(scope, entries);
-  }
-  if (isMac && macWeb) {
-    for (const [scope, entries] of scopes) {
-      for (const entry of [...entries]) {
-        const second = entry.first === 'meta+e' ? entry.second
-          : !entry.second && macWebAlternatives[scope]?.[entry.first];
-        if (!second || entries.some(other => other.first === 'ctrl+e' && (!other.second || other.second === second))) continue;
-        entries.push({ ...entry, first:'ctrl+e', second });
-      }
-    }
   }
   return { scopes, chordTimeoutMs };
 }
@@ -111,8 +87,7 @@ export function installKeybindings(target, { getBindings, getContext, run, nativ
     if ((event.code || event.key) === consumedKey) consumedKey = null;
   }, true);
   target.addEventListener('keydown', event => {
-    if (event.defaultPrevented || event.isComposing ||
-        (!event.metaKey && (event.keyCode === 229 || event.getModifierState?.('AltGraph')))) {
+    if (event.defaultPrevented || event.isComposing || event.keyCode === 229 || event.getModifierState?.('AltGraph')) {
       pending = null;
       return;
     }
@@ -120,9 +95,8 @@ export function installKeybindings(target, { getBindings, getContext, run, nativ
     if (event.key === 'Escape' && pending) { pending = null; return; }
     const physicalKey = event.code || event.key;
     if (event.repeat && physicalKey === consumedKey) { consume(event); return; }
-    const prefix = pending && performance.now() < pending.expires ? pending.first : null;
-    const bindings = getBindings(event,prefix);
-    const context = getContext(event, prefix);
+    const bindings = getBindings();
+    const context = getContext(event);
     const stroke = eventStroke(event);
     const candidates = context.scopes.flatMap(scope => bindings.scopes.get(scope) ?? [])
       .filter(entry => !context.only || entry.command === context.only);
