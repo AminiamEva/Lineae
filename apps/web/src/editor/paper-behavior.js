@@ -548,11 +548,11 @@ function formattingMarks(doc, preamble = '') {
     }
     if (node.type.name === 'codeBlock') {
       if (node.attrs.language === 'tikz-general') {
-        decorations.push(Decoration.widget(position, generalTikzPreviewWidget(node.textContent, preamble, () => openTikzStudio({
+        decorations.push(Decoration.widget(position, () => generalTikzPreviewWidget(node.textContent, preamble, () => openTikzStudio({
           initialLibraries: tikzStagingFromPreamble(preamble),
           initialBody: node.textContent,
           onInsert: ({ body }) => replaceTikzCode(paperEditor, position, body),
-        })), { side: -1 }));
+        })), { side: -1, key:JSON.stringify([position,node.textContent,preamble]) }));
       } else if (node.attrs.language === 'tikz' || node.attrs.language === 'circuitikz') {
         const circuitPreamble = `${tikzStagingFromPreamble(preamble)}\n\\usepackage{circuitikz}`.trim();
         const openCircuitEditor = () => {
@@ -562,7 +562,7 @@ function formattingMarks(doc, preamble = '') {
             if (code) replaceTikzCode(paperEditor, position, code);
           }, node.textContent);
         };
-        decorations.push(Decoration.widget(position, generalTikzPreviewWidget(node.textContent, circuitPreamble, openCircuitEditor), { side: -1 }));
+        decorations.push(Decoration.widget(position, () => generalTikzPreviewWidget(node.textContent, circuitPreamble, openCircuitEditor), { side: -1, key:JSON.stringify([position,node.textContent,circuitPreamble]) }));
       }
       const tokenPattern = codeTokenRegex(codeFamily(node.attrs.language));
       for (const match of node.textContent.matchAll(tokenPattern)) {

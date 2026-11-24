@@ -67,6 +67,8 @@ jobs:
         run: node --test "tests/bib/**/*.test.mjs"
       - name: Install Chromium
         run: npx playwright install --only-shell chromium
+      - name: Requested document regressions
+        run: node tests/document-request-browser.cjs
       - name: Appendix numbering and source editing
         run: node tests/appendix-browser.cjs
       - name: Book style gallery integration

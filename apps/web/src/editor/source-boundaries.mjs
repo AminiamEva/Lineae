@@ -36,7 +36,6 @@ export function splitEditableBoundaries(blocks,doc){
     const nodes=doc.content.slice(block.index,block.index+block.count);
     const matches=[];let cursor=0;
     for(const node of nodes){
-      if(node.type==='raw')return [block];
       const canonical=serialize(node).trim();
       if(!canonical)return [block];
       let start=block.raw.indexOf(canonical,cursor),spelling=null,length=canonical.length;
@@ -55,7 +54,7 @@ export function splitEditableBoundaries(blocks,doc){
       const from=index?matches[index].start:0;
       const to=matches[index+1]?.start??block.raw.length;
       return {spelling:matches[index].spelling,from:block.from+from,to:block.from+to,index:block.index+index,count:1,
-        raw:block.raw.slice(from,to),editable:true,snapshot:JSON.stringify([node])};
+        raw:block.raw.slice(from,to),editable:node.type!=='raw',snapshot:JSON.stringify([node])};
     });
   });
 }
