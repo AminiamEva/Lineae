@@ -1,5 +1,6 @@
 import {parseDocument} from '../../../latex/document.mjs';
 import {sourceStructure} from '../../../latex/source-structure.mjs';
+import {environmentEnd} from '../../../latex/tblr.mjs';
 import {applySlotEdit,projectMath} from './source.mjs';
 
 // First direct-edit scope: one top-level display. Multiple displays require
@@ -7,7 +8,8 @@ import {applySlotEdit,projectMath} from './source.mjs';
 export function projectDisplayMath(source,previous) {
   const doc=parseDocument(source);
   if(!doc)return null;
-  const tokens=[...sourceStructure(doc.blocks.join(''))];
+  const body=doc.blocks.join('');
+  const tokens=[...sourceStructure(body)];
   if(tokens.some(token=>token.kind==='invalid'))return null;
   const displays=tokens.filter(token=>token.topLevel&&token.kind==='displayMath');
   if(displays.length!==1)return null;
@@ -26,9 +28,16 @@ export function projectDisplayMath(source,previous) {
 export function projectDocumentFormulas(source) {
   const doc=parseDocument(source);
   if(!doc)return null;
-  const tokens=[...sourceStructure(doc.blocks.join(''))];
+  const body=doc.blocks.join('');
+  const tokens=[...sourceStructure(body)];
   if(tokens.some(token=>token.kind==='invalid'))return null;
-  const spans=tokens.filter(token=>token.topLevel&&['displayMath','inlineMath'].includes(token.kind));
+  const spans=tokens.flatMap(token=>{
+    if(!token.topLevel)return [];
+    if(['displayMath','inlineMath'].includes(token.kind))return [token];
+    const name=token.kind==='begin'&&/^\\begin\{(equation\*?)\}$/.exec(token.value)?.[1];
+    const close=name&&environmentEnd(body,token.index,name);
+    return close?[{index:token.index,delimiter:token.value,latex:body.slice(token.end,close.start),kind:'displayMath'}]:[];
+  });
   const counts={displayMath:0,inlineMath:0},ordinals={...counts};
   for(const span of spans)counts[span.kind]++;
   const formulas=[], owners=new Map();

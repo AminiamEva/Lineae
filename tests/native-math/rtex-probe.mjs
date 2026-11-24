@@ -260,6 +260,8 @@ async function main() {
       'structured-multiple-displays',out,rtex,texbin,'multi'));
     summaries.push(await probe(unicode.replace('\\[\r\n\\frac{a}{}\r\n\\]','Inline $\\alpha+\\frac{7}{}=y$ here.'),
       'structured-inline-denominator',out,rtex,texbin,'multi'));
+    summaries.push(await probe(unicode.replace('\\[\r\n\\frac{a}{}\r\n\\]',
+      '\\begin{equation}\r\n\\frac{7}{}\r\n\\end{equation}'),'structured-numbered-equation',out,rtex,texbin,'multi'));
     summaries.push(await probe(unicode.replace('\\frac{a}{}','\\begin{pmatrix}a & \\\\ & d\\end{pmatrix}'),
       'matrix-cell-ownership',out,rtex,texbin,'matrix'));
     writeFileSync(join(out,'result.json'),JSON.stringify({status:'passed',cases:summaries},null,2)+'\n');

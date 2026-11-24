@@ -72,6 +72,21 @@ Inline $x$ and \(\frac{a}{}\).
     {from16:0,to16:0,insert:'b'}),null);
 });
 
+test('a numbered equation wraps the same exact native field without changing its environment',()=>{
+  const source=String.raw`\documentclass{article}
+\begin{document}
+\begin{equation}
+\frac{x}{}
+\end{equation}
+\end{document}`;
+  const compiled=projectDocumentFormulas(source),[formula]=compiled.formulas;
+  assert.equal(formula.kind,'displayMath');
+  const slot=formula.math.slots.find(slot=>slot.role==='denominator');
+  const {patch}=editDisplayMathSlot(formula,source,{owner:slot.tag,role:'den'},{from16:0,to16:0,insert:'b'});
+  assert.equal(source.slice(0,patch.from)+patch.insert+source.slice(patch.to),source.replace('\\frac{x}{}','\\frac{x}{b}'));
+  assert.ok(compiled.projection.includes('\\begin{equation}\\begingroup'));
+});
+
 test('literal operators have owners without becoming TeX structure',()=>{
   const snapshot=projectMath(String.raw`\frac{a+1}{b-2}=x`);
   assert.ok(snapshot.supported);
