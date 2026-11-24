@@ -22,6 +22,7 @@ const server = createServer(async (req, res) => {
   const browser = await chromium.launch({ headless: true });
   try {
     const page = await browser.newPage({ locale: 'en-US', viewport: { width: 1280, height: 1000 } });
+    const mod=process.platform==='darwin'?'Meta':'Control';
     if(process.env.LINEAE_TEST_NATIVE_PREVIEW==='1')
       await page.addInitScript(require('./native-math/mock-bridge.cjs'));
     const errors = [];
@@ -248,9 +249,9 @@ const server = createServer(async (req, res) => {
     await page.keyboard.press('Backspace');
     await page.keyboard.press('Backspace');
     await page.waitForTimeout(50);
-    await page.keyboard.press('Control+z');
+    await page.keyboard.press(mod+'+z');
     assert.equal(normalized((await state()).value), normalized(undoValue), 'Editor undo restores the deleted structure');
-    await page.keyboard.press('Control+y');
+    await page.keyboard.press(mod+'+y');
     assert.equal(normalized((await state()).value), '\\frac{z++w}{uv}', 'Editor redo does not widen deletion');
 
     // Real arrow keys must visit every letter/digit, in both directions.

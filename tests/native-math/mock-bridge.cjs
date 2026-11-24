@@ -12,7 +12,7 @@ module.exports=function installMockNativeTex() {
   window.__TAURI__={core:{invoke:async(command,args)=>{
     p.calls.push({command,args});
     if(command==='native_tex_open') {
-      p.source=args.source;p.revision=1;
+      p.source=args.source;p.revision=1;p.events=[];
       const sessionId=String(++p.session);
       if(p.delayOpen)await new Promise(done=>{p.resolveOpen=done;});
       p.events.push(p.layout());
@@ -29,7 +29,10 @@ module.exports=function installMockNativeTex() {
       return [...new Uint8Array(await(await fetch('/assets/fonts/latin-modern/lmroman10-regular.otf')).arrayBuffer())];
     }
     if(command==='native_tex_export')return {jobId:1,sourceRevision:args.sourceRevision,path:'approved.pdf'};
-    if(command==='native_tex_close')return;
+    if(command==='native_tex_close') {
+      if(args.sessionId===String(p.session))p.events=[];
+      return;
+    }
     throw new Error('Unexpected IPC command '+command);
   }}};
 };

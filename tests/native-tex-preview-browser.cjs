@@ -21,6 +21,7 @@ const server=createServer(async(req,res)=>{
   let page;
   try {
     page=await browser.newPage({locale:'en-US',viewport:{width:1600,height:1100}});
+    const mod=process.platform==='darwin'?'Meta':'Control';
     const errors=[];page.on('pageerror',error=>errors.push(error.message));
     await page.addInitScript(installMockNativeTex);
     await page.goto('http://127.0.0.1:'+server.address().port,{waitUntil:'networkidle'});
@@ -43,10 +44,10 @@ const server=createServer(async(req,res)=>{
     await page.keyboard.type('d');
     await page.waitForFunction(()=>nativeProbe.source?.includes('abcd'));
     await page.waitForFunction(()=>document.querySelector('#native-tex-preview').dataset.state==='current');
-    await page.keyboard.press('Control+z');
+    await page.keyboard.press(mod+'+z');
     await page.waitForFunction(()=>document.querySelector('math-field').value==='abc');
     await page.waitForFunction(()=>!nativeProbe.source?.includes('abcd'));
-    await page.keyboard.press('Control+y');
+    await page.keyboard.press(mod+'+y');
     await page.waitForFunction(()=>document.querySelector('math-field').value==='abcd');
     await page.waitForFunction(()=>nativeProbe.source?.includes('abcd') &&
       document.querySelector('#native-tex-preview').dataset.state==='current');
@@ -70,6 +71,25 @@ const server=createServer(async(req,res)=>{
     await page.waitForFunction(()=>nativeProbe.calls.some(call=>call.command==='native_tex_close' && call.args.sessionId==='3'));
     assert.equal(await panel.isHidden(),true,'A late native open cannot reopen a closed preview');
     assert.equal(await field.evaluate(field=>field.value),'abcd','Preview failures and cancellation preserve edits');
+    await page.evaluate(()=>{nativeProbe.delayOpen=false;});
+    const input=await readFile('tests/native-math/fixtures/empty-denominator.tex');
+    const expected=await readFile('tests/native-math/fixtures/filled-denominator.tex','utf8');
+    await page.locator('input#file').setInputFiles({name:'denominator.tex',mimeType:'text/plain',buffer:input});
+    await page.waitForFunction(()=>document.querySelector('math-field')?.value.includes('\\frac'));
+    await field.click();
+    await button.click();
+    await page.waitForFunction(()=>document.querySelector('#native-tex-preview').dataset.state==='current');
+    await field.evaluate(field=>{
+      const model=field._mathfield.model;
+      const fraction=model.atoms.find(atom=>atom.type==='genfrac');
+      field.position=model.offsetOf(fraction.branch('below')[0]);
+    });
+    await page.keyboard.type('b');
+    await page.waitForFunction(expected=>nativeProbe.source?.replace(/\r\n/g,'\n')===expected,expected.replace(/\r\n/g,'\n'));
+    await page.keyboard.press(mod+'+z');
+    await page.waitForFunction(original=>nativeProbe.source?.replace(/\r\n/g,'\n')===original,input.toString().replace(/\r\n/g,'\n'));
+    await page.keyboard.press(mod+'+y');
+    await page.waitForFunction(expected=>nativeProbe.source?.replace(/\r\n/g,'\n')===expected,expected.replace(/\r\n/g,'\n'));
     assert.deepEqual(errors,[]);
     console.log('PASS native preview transport/UI: explicit startup, Canvas resources, retained editor/history, sync, export revision and cancellation (not engine evidence)');
   }catch(error){

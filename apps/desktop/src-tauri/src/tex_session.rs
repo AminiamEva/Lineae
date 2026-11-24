@@ -862,9 +862,13 @@ mod tests {
         };
         let initial = wait_layout(info.source_revision);
         assert!(initial["pages_total"].as_i64().unwrap() > 0);
-        assert!(initial["pages_changed"].as_array().unwrap().iter().any(|page| {
-            page["dl"]["glyphs"].as_u64().unwrap_or(0) > 0
-        }), "initial geometry must contain actual engine glyphs");
+        assert!(lock(&session.messages).events.iter().any(|event| {
+            event["event"] == "LayoutUpdate"
+                && event["versions"]["source_revision"].as_u64() == Some(info.source_revision)
+                && event["pages_changed"].as_array().is_some_and(|pages| pages.iter().any(|page| {
+                    page["dl"]["glyphs"].as_u64().unwrap_or(0) > 0
+                }))
+        }), "initial layout history must contain actual engine glyphs");
         assert_eq!(std::fs::read_to_string(session.root.join("main.tex")).unwrap(), source);
         assert!(manager.get("tex-ffffffff-ffffffffffffffffffffffffffffffff-ffffffffffffffff").is_err());
         assert_eq!(session.font("file:/not-a-captured-font.otf#1".into()).unwrap_err().code, "font_resource");
