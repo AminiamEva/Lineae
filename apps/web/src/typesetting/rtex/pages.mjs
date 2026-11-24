@@ -58,9 +58,29 @@ export function installNativePages({host,getFont,onPaint,onError,onMathHit}) {
     selection=[];
   }
   function clearCaret(){gesture++;caret?.remove();caret=null;clearSelection();}
+  function showCaret(hit){
+    if(!ownership||ownership.stamp.sourceRevision!==revision||ownership.stamp.layoutVersion!==layoutVersion)return;
+    clearSelection();
+    caret?.remove();caret=null;
+    const candidates=hit.role==='nucleus'?ownership.glyphs:ownership.fields;
+    const targets=[];
+    for(const [number,entries] of candidates)
+      for(const field of entries)
+        if(field.owner===hit.owner&&(hit.role==='nucleus'||field.role===hit.role))targets.push({number,field});
+    if(targets.length!==1)return;
+    const [{number,field}]=targets;
+    const [left,top,right,bottom]=field.bbox,scale=CSS_PER_SP*zoom;
+    const height=Math.max(12,(bottom-top)*scale);
+    caret=document.createElement('span');caret.className='native-tex-caret';caret.setAttribute('aria-hidden','true');
+    caret.style.left=(hit.after?right:left)*scale+'px';
+    caret.style.top=(top+bottom)*scale/2-height/2+'px';
+    caret.style.height=height+'px';pages.get(number)?.dom.append(caret);
+  }
   function showSelection(start,end){
     clearSelection();
-    if(start?.role!=='nucleus'||end?.role!=='nucleus')return;
+    caret?.remove();caret=null;
+    if(!ownership||ownership.stamp.sourceRevision!==revision||ownership.stamp.layoutVersion!==layoutVersion||
+      start?.role!=='nucleus'||end?.role!=='nucleus')return;
     const a=ownership.owners.get(start.owner),b=ownership.owners.get(end.owner);
     if(!a||!b||a.formula!==b.formula)return;
     const offset=(atom,hit)=>atom.from16+(hit.after?atom.nucleus.length:0);
@@ -106,16 +126,7 @@ export function installNativePages({host,getFont,onPaint,onError,onMathHit}) {
     if(!accepted){clearSelection();return;}
     if(moved){showSelection(start.hit,hit);return;}
     clearSelection();
-    const node=start.canvas.parentElement,number=Number(node.dataset.nativePage);
-    const target=(hit.role==='nucleus'?ownership.glyphs:ownership.fields).get(number)?.find(field=>
-      field.owner===hit.owner&&(hit.role==='nucleus'||field.role===hit.role));
-    if(!target)return;
-    const [left,top,right,bottom]=target.bbox,scale=CSS_PER_SP*zoom;
-    const height=Math.max(12,(bottom-top)*scale);
-    caret=document.createElement('span');caret.className='native-tex-caret';caret.setAttribute('aria-hidden','true');
-    caret.style.left=(hit.after?right:left)*scale+'px';
-    caret.style.top=(top+bottom)*scale/2-height/2+'px';
-    caret.style.height=height+'px';node.append(caret);
+    showCaret(hit);
   });
   host.addEventListener('pointercancel',()=>{drag=null;clearSelection();});
   async function prepare(dl,attempt) {
@@ -218,7 +229,7 @@ export function installNativePages({host,getFont,onPaint,onError,onMathHit}) {
   host.addEventListener('scroll',redraw,{passive:true});
   host.parentElement?.addEventListener('scroll',redraw,{passive:true});
   window.addEventListener('resize',redraw);
-  return {accept,reset,attachOwners,setZoom(value){clearCaret();zoom=value;for(const entry of pages.values()){
+  return {accept,reset,attachOwners,showCaret,showSelection,setZoom(value){clearCaret();zoom=value;for(const entry of pages.values()){
     entry.dom.style.width=entry.dl.page_width*CSS_PER_SP*zoom+'px';
     entry.dom.style.height=entry.dl.page_height*CSS_PER_SP*zoom+'px';
   }redraw();}};

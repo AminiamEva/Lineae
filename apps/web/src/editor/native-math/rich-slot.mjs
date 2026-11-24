@@ -59,3 +59,24 @@ export function richSlotPosition(model,atoms,owner,{role,after}) {
   const offset=model.offsetOf(caret);
   return Number.isSafeInteger(offset)&&offset>=0?offset:null;
 }
+
+export function nativeCaretTargets(model,formula) {
+  const {atoms,slots}=formula.math, positions=new Map();
+  for(const atom of atoms){
+    if(atom.kind!=='token')continue;
+    for(const after of [false,true]){
+      const hit={owner:atom.tag,role:'nucleus',after};
+      const offset=richSlotPosition(model,atoms,atom,hit);
+      if(offset!==null&&(after||!positions.has(offset)))positions.set(offset,hit);
+    }
+  }
+  const roles={numerator:'num',denominator:'den',radicand:'radicand',degree:'degree',superscript:'sup',subscript:'sub',cell:'cell'};
+  for(const slot of slots){
+    const role=roles[slot.role];
+    if(!role||slot.raw.trim())continue;
+    const hit={owner:slot.tag,role};
+    const offset=richSlotPosition(model,atoms,atoms.find(atom=>atom.tag===slot.tag),hit);
+    if(offset!==null)positions.set(offset,hit);
+  }
+  return positions;
+}

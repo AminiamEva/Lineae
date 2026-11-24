@@ -2649,7 +2649,7 @@ nativeTexPreview=installNativeTexPreview({host:footer,before:modes,
     field.focus();
     if(from===to)field.position=from;
     else field.selection={ranges:[[Math.min(from,to),Math.max(from,to)]],direction:from<to?'forward':'backward'};
-    return true;
+    return {field};
   },
 });
 editor.on('update',()=>nativeTexPreview.refresh());

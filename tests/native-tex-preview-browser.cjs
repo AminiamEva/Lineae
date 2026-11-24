@@ -110,6 +110,14 @@ const server=createServer(async(req,res)=>{
       return field?.tagName==='MATH-FIELD'&&!math?.focusBlurInProgress&&atom?.type==='first'&&atom.parentBranch==='above';
     });
     await panel.locator('.native-tex-caret').waitFor();
+    const markerLeft=await panel.locator('.native-tex-caret').evaluate(node=>parseFloat(node.style.left));
+    await page.keyboard.press('ArrowRight');
+    await page.waitForFunction(left=>{
+      const marker=document.querySelector('.native-tex-caret');
+      return marker&&parseFloat(marker.style.left)>left;
+    },markerLeft);
+    await page.keyboard.press('Shift+ArrowLeft');
+    await panel.locator('.native-tex-selection').waitFor();
     const canvas=panel.locator('[data-native-page="1"] canvas');
     const box=await canvas.boundingBox();
     await page.mouse.move(box.x+6560000*scale,box.y+6250000*scale);

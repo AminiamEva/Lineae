@@ -2,6 +2,7 @@ import {t} from './i18n.mjs';
 import {installNativePages} from '../typesetting/rtex/pages.mjs';
 import {installNativePdf} from '../typesetting/rtex/pdf.mjs';
 import {projectSnapshotFormulas,editDisplayMathSlot} from '../editor/native-math/document.mjs';
+import {nativeCaretTargets} from '../editor/native-math/rich-slot.mjs';
 
 // This surface never edits source or intercepts editor input. The existing
 // ProseMirror/MathLive history stays authoritative while native parity is built.
@@ -35,6 +36,7 @@ export function installNativeTexPreview({host,before,getSource,getSnapshot,isCom
   let mode='canvas',pdfWanted=-1,pdfAttempt=null,pdfLayout=null;
   let pollEpoch=0;
   let targeting=null,observation=null,targetArmed=false,lastTarget=null,targetTimer=null;
+  let mirror=null;
   const pdf=installNativePdf({host:pages,onPaint:revision=>{
     if(!active||mode!=='pdf')return;
     renderedRevision=revision;pdfRendered=revision;if(!terminal&&revision>=sourceRevision)error='';renderStatus();
@@ -46,7 +48,7 @@ export function installNativeTexPreview({host,before,getSource,getSnapshot,isCom
       renderedRevision=revision;if(!terminal&&revision>=sourceRevision)error='';renderStatus();
     },
     onError:(failure,revision)=>{if(active&&mode==='canvas')void fallback(failure,revision);},
-    onMathHit:(hit,stamp,origin,sameGesture)=>{
+    onMathHit:async(hit,stamp,origin,sameGesture)=>{
       if(!current()||mode!=='canvas'||!observation||
           stamp.sessionId!==observation.stamp.sessionId||
           stamp.sourceRevision!==observation.stamp.sourceRevision)return;
@@ -63,11 +65,39 @@ export function installNativeTexPreview({host,before,getSource,getSnapshot,isCom
         } catch {return null;}
       }
       const head=resolve(hit),anchor=origin?resolve(origin):head;
-      return head&&anchor&&focusMathSlot?.(anchor,head,()=>
+      if(!head||!anchor)return false;
+      const focused=await focusMathSlot?.(anchor,head,()=>
         sameGesture()&&active&&session===stamp.sessionId&&sourceRevision===stamp.sourceRevision&&
         wantedSnapshot?.signature===sentSnapshot?.signature);
+      if(focused?.field&&sameGesture())bindCaret(focused.field,head.formula);
+      return Boolean(focused);
     },
   });
+  function syncCaret() {
+    if(!mirror||!observation||!current()||document.activeElement!==mirror.field)return;
+    const formula=[...observation.projection.owners.values()].find(({formula})=>
+      formula.kind===mirror.kind&&formula.ordinal===mirror.ordinal&&formula.filePath===mirror.filePath)?.formula;
+    if(!formula||formula.math.atoms.length>200||mirror.field.value.trim()!==formula.math.source.trim())return;
+    const range=mirror.field.selection.ranges[0];
+    if(!range)return;
+    const model=mirror.field._mathfield?.model;
+    if(!model)return;
+    if(mirror.formula!==formula||mirror.model!==model){
+      mirror.formula=formula;mirror.model=model;mirror.targets=nativeCaretTargets(model,formula);
+    }
+    if(range[0]!==range[1]){
+      renderer.showSelection(mirror.targets.get(range[0]),mirror.targets.get(range[1]));
+      return;
+    }
+    const target=mirror.targets.get(mirror.field.position);
+    if(target)renderer.showCaret(target);
+  }
+  function bindCaret(field,formula){
+    mirror?.lifetime.abort();
+    const lifetime=new AbortController();
+    mirror={field,lifetime,kind:formula.kind,ordinal:formula.ordinal,filePath:formula.filePath};
+    field.addEventListener('selection-change',()=>requestAnimationFrame(syncCaret),{signal:lifetime.signal});
+  }
   function current() {
     return active && session!==null && !opening && !isComposing() && updating!==generation && exporting!==generation &&
       capturing!==generation && !terminal && !error && wantedSnapshot?.signature===sentSnapshot?.signature &&
@@ -109,6 +139,7 @@ export function installNativeTexPreview({host,before,getSource,getSnapshot,isCom
     const previous=session;session=null;
     wantedSnapshot=null;sentSnapshot=null;wantedSource='';sentSource='';
     observation=null;targetStatus.textContent='';
+    mirror?.lifetime.abort();mirror=null;
     targetArmed=false;lastTarget=null;clearTimeout(targetTimer);targetTimer=null;
     renderer.reset();pdf.reset();mode='canvas';pdfWanted=-1;pdfLayout=null;pdfRendered=-1;renderedRevision=-1;renderStatus();
     if(previous!==null) {
@@ -285,6 +316,7 @@ export function installNativeTexPreview({host,before,getSource,getSnapshot,isCom
           sentSource!==projection.source||wantedSource!==projection.source)return;
       if(!renderer.attachOwners(observed,stamp,projection.owners))throw new Error(t('标记版排版与当前页面不一致，未启用命中。','Projected geometry differs from the displayed page; targeting remains disabled.'));
       observation={projection,stamp};
+      requestAnimationFrame(syncCaret);
       targetStatus.textContent=t('点击预览中的空槽或字符边缘，继续在编辑器输入。','Click the empty numerator or denominator, another supported empty slot, or a glyph edge to continue typing in the editor.');
     } catch(failure) {
       if(attempt===generation)targetStatus.textContent=String(failure?.message??failure);

@@ -245,9 +245,13 @@ For projects, composed rich pages filter targets by original file. Source/Split
 navigates to a clicked target's source file before placing the caret. The observer only
 instruments copies of existing TeX files in the trusted project snapshot.
 The existing editor history handles subsequent input and undo. A click shows a
-native position marker until the next input or layout; dragging between two supported
+native position marker that follows the supported MathLive caret positions when the
+layout remains current; dragging between two supported
 targets transfers a selection to the editor. Dragging between glyphs in the same
 supported formula also highlights those glyphs on the Canvas before drop.
+Keyboard extension of a selection between known glyph boundaries uses the same
+highlight layer; when either endpoint cannot be mapped, the original editor
+selection remains authoritative and no guessed rectangle appears.
 Semantic editing on PDF fallback is not implemented.
 The independently compiled projection never replaces the source or export buffer.
 After targeting is armed, small standalone documents refresh owner geometry after
