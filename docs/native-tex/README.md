@@ -258,6 +258,12 @@ After targeting is armed, small standalone documents refresh owner geometry afte
 the new raw layout settles. Large documents and projects still require an explicit
 observation request; no stale geometry remains editable during the refresh.
 
+When rtex supplies an exact, non-stale warm update whose rows map unambiguously
+to the current layout, the page can repaint those rows while waiting for the
+complete result. This provisional frame does not authorize hit-testing or PDF
+export. A background result remains necessary for placement changes, ambiguous
+rows, or drawing operations the warm renderer cannot safely compose.
+
 The verified release checkpoints are [the two-device preview with Canvas drag targeting](
 https://github.com/AminiamEva/Lineae/releases/tag/desktop-preview-45415437738) and the
 [preview including multiple formulas, inline targeting, scripts, and PDF reuse](

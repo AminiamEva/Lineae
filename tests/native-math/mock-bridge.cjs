@@ -23,6 +23,7 @@ module.exports=function installMockNativeTex() {
   p.layout=()=>({event:'LayoutUpdate',compile:{state:'Ok'},convergence:{state:'Converged'},
     pdf_fallback_registered:Boolean(p.registeredPdf),
     versions:{source_revision:p.revision,context_revision:1,engine_generation:0,layout_version:p.revision},
+    placements:[{par_id:1,fragments:[{page:1,first_line:1,last_line:1,xs:[6500000],baselines:[6500000],approximate:false}]}],
     pages_total:1,pages_changed:[{page:1,exact:true,dl:{kind:'page',page:1,
       page_width:39000000,page_height:55000000,width:0,height:0,depth:0,flags:{},images_info:{},
       fonts:{15:{id:15,filename:'/fixture/lmroman10-regular.otf',subfont:1,size:655360,extend:1000,squeeze:1000}},
@@ -46,7 +47,14 @@ module.exports=function installMockNativeTex() {
         p.restartNext=false;p.session++;p.revision=0;p.events=[];
       }
       p.source=args.source;p.revision++;
-      p.events.push(p.layout());
+      if(p.warmNext){
+        p.warmNext=false;
+        const frame=p.layout();
+        p.events.push({event:'ParagraphUpdate',par_id:1,status:'ok',pagination_stale:false,context_stale:false,
+          versions:{...frame.versions,layout_version:frame.versions.layout_version-1},fragments:frame.placements[0].fragments,
+          dl:frame.pages_changed[0].dl});
+        p.finishWarm=()=>p.events.push(frame);
+      }else p.events.push(p.layout());
       return {sessionId:String(p.session),editId:p.revision,sourceRevision:p.revision,routed:'fast'};
     }
     if(command==='native_tex_font') {

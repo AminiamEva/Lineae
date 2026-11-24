@@ -8,6 +8,7 @@ import {fileURLToPath} from 'node:url';
 import {hitMathField} from '../../apps/web/src/editor/native-math/hit.mjs';
 import {projectMath,applySlotEdit} from '../../apps/web/src/editor/native-math/source.mjs';
 import {projectDisplayMath,projectDocumentFormulas,editDisplayMathSlot} from '../../apps/web/src/editor/native-math/document.mjs';
+import {warmRows} from '../../apps/web/src/typesetting/rtex/warm-rows.mjs';
 
 // Deliberately a fixture projection, not a general TeX parser or a production
 // source mapper. The truly empty denominator must stay empty in the projection.
@@ -192,6 +193,10 @@ async function probe(source,label,out,rtex,texbin,structured=false) {
     assert.ok(result.source_revision>layout.versions.source_revision);
     const update=await waitFor(message=>matchesEdit(message,result),'revision-matched ParagraphUpdate',since);
     assert.equal(update.status,'ok',JSON.stringify(update.diagnostics));
+    if(label==='lf'){
+      const overlay=warmRows(update,layout,new Map([[initial.page,initial]]));
+      assert.ok(overlay?.get(initial.page)?.size,'Real warm rows must align with the converged page placements');
+    }
     const nonempty=denominator(update.dl,false,owner);
     assert.ok(update.dl.math_owners.glyphs.some(glyph=>glyph.owner===owner &&
       [98,119887].includes(glyph.char)),'Observed denominator includes the inserted b');

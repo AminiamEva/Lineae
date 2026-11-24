@@ -49,9 +49,14 @@ const server=createServer(async(req,res)=>{
     assert.ok(await panel.locator('canvas').evaluate(canvas=>canvas.width>1),'Actual Canvas painting completes before current state');
     assert.ok(await page.evaluate(()=>nativeProbe.ruleRects.some(rect=>rect.w===3000000 && rect.h===6554)),
       'Thin rules retain native TeX geometry instead of being widened to a device-pixel minimum');
+    await page.evaluate(()=>{nativeProbe.warmNext=true;});
     await page.keyboard.type('d');
     await page.waitForFunction(()=>nativeProbe.source?.includes('abcd'));
+    await panel.locator('[data-warm-revision="2"]').waitFor();
+    assert.equal(await page.locator('#native-tex-export').isDisabled(),true,'A provisional repaint does not authorize export or targeting');
+    await page.evaluate(()=>nativeProbe.finishWarm());
     await page.waitForFunction(()=>document.querySelector('#native-tex-preview').dataset.state==='current');
+    assert.equal(await panel.locator('[data-warm-revision]').count(),0);
     await page.keyboard.press(mod+'+z');
     await page.waitForFunction(()=>document.querySelector('math-field').value==='abc');
     await page.waitForFunction(()=>!nativeProbe.source?.includes('abcd'));

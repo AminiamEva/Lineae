@@ -1,6 +1,7 @@
 import {FontStore,ImageStore,Painter,inexactReason} from './upstream/webview/render.ts';
 import {fontKey} from './upstream/src/fontKey.ts';
 import {hitMathField,hitMathGlyph} from '../../editor/native-math/hit.mjs';
+import {warmRows} from './warm-rows.mjs';
 
 const CSS_PER_SP=(96/72)/65781.76;
 
@@ -13,12 +14,13 @@ export function installNativePages({host,getFont,onPaint,onError,onMathHit}) {
   const pages=new Map(),loaded=new Map();
   let frame=0;
   let ownership=null;
+  let complete=null,warm=null;
   function drawing(dl) {
     return JSON.stringify([dl.page_width,dl.page_height,dl.fonts,dl.other,
       dl.lines.map(line=>[line.x,line.y,line.w,line.h,line.d,line.items])]);
   }
   function attachOwners(observed,stamp,owners) {
-    if(stamp.sourceRevision!==revision||observed.length!==pages.size)return false;
+    if(warm||stamp.sourceRevision!==revision||observed.length!==pages.size)return false;
     const fields=new Map(),glyphs=new Map(),selectionGlyphs=new Map(),seen=new Set();
     for(const page of observed) {
       const entry=pages.get(page.page);
@@ -162,7 +164,12 @@ export function installNativePages({host,getFont,onPaint,onError,onMathHit}) {
     const scale=CSS_PER_SP*zoom*dpr;
     const painter=new Painter(ctx,[scale,0,0,scale,0,0],fonts,images);
     painter.draw(dl,dl.other??[]);
-    for(const line of dl.lines??[])painter.draw(dl,line.items);
+    const rows=warm?.pages.get(Number(entry.dom.dataset.nativePage));
+    for(const [index,line] of (dl.lines??[]).entries()){
+      const replacement=rows?.get(index);
+      if(replacement)painter.draw(warm.dl,replacement.line.items,replacement.dx,replacement.dy);
+      else painter.draw(dl,line.items);
+    }
   }
   function redraw() {
     cancelAnimationFrame(frame);
@@ -173,7 +180,7 @@ export function installNativePages({host,getFont,onPaint,onError,onMathHit}) {
           if(box.bottom>=viewport.top-1000 && box.top<=Math.min(viewport.bottom,window.innerHeight)+1000)draw(entry);
           else {entry.canvas.width=1;entry.canvas.height=1;}
         }
-        if(revision>=0)onPaint(revision);
+        if(revision>=0&&!warm)onPaint(revision);
       } catch(error) {onError(error,revision);}
     });
   }
@@ -206,6 +213,8 @@ export function installNativePages({host,getFont,onPaint,onError,onMathHit}) {
       if(pages.size!==message.pages_total)throw new Error('Native layout is missing page geometry');
       host.replaceChildren(...[...pages].sort(([a],[b])=>a-b).map(([,entry])=>entry.dom));
       revision=stamp.source_revision;layoutVersion=stamp.layout_version;
+      complete=message;warm=null;
+      delete host.dataset.warmRevision;
       clearCaret();
       for(const entry of pages.values()) {
         entry.dom.style.width=entry.dl.page_width*CSS_PER_SP*zoom+'px';
@@ -218,12 +227,27 @@ export function installNativePages({host,getFont,onPaint,onError,onMathHit}) {
   // unchanged page which was first sent in the previous layout.
   let pending=Promise.resolve();
   function accept(message) {
-    if(message.event!=='LayoutUpdate')return;
+    if(!['LayoutUpdate','ParagraphUpdate'].includes(message.event))return;
     const currentEpoch=epoch;
-    pending=pending.then(()=>{if(currentEpoch===epoch)return layout(message);}).catch(onError);
+    pending=pending.then(async()=>{
+      if(currentEpoch!==epoch)return;
+      if(message.event==='LayoutUpdate')return layout(message);
+      if(warm&&message.versions.source_revision<=warm.revision)return;
+      const overlay=warmRows(message,complete,pages);
+      if(!overlay)return;
+      try {
+        await prepare(message.dl,generation);
+        if(currentEpoch!==epoch)return;
+        warm={pages:overlay,dl:message.dl,revision:message.versions.source_revision};
+        host.dataset.warmRevision=String(warm.revision);
+        ownership=null;clearCaret();redraw();
+      } catch {/* Complete layout will handle unsupported resources. */}
+    }).catch(onError);
   }
   function reset({clear=true}={}) {
     epoch++;generation++;revision=-1;layoutVersion=-1;pending=Promise.resolve();ownership=null;drag=null;
+    complete=null;warm=null;
+    delete host.dataset.warmRevision;
     cancelAnimationFrame(frame);clearCaret();pages.clear();loaded.clear();fonts=new FontStore();if(clear)host.replaceChildren();
   }
   host.addEventListener('scroll',redraw,{passive:true});
