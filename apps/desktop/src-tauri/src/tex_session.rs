@@ -1146,8 +1146,9 @@ fn update_snapshot(
         return session.set_source(source);
     }
     let replacement = Session::create_snapshot(snapshot)?;
-    replacement.set_events(lock(manager).events.clone()
-        .ok_or_else(|| error("session_closed", "The native TeX event channel is unavailable."))?);
+    if let Some(sink) = lock(manager).events.clone() {
+        replacement.set_events(sink);
+    }
     {
         let mut manager = lock(manager);
         if manager.stopped || !manager.session.as_ref().is_some_and(|active| active.id == session.id) {
