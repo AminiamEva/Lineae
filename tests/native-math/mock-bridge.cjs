@@ -59,6 +59,9 @@ module.exports=function installMockNativeTex() {
       const observed=p.layout().pages_changed;
       observed[0].dl.math_owners={fields:[{owner:Number(match[1]),role:match[2]==='frac'?'den':'radicand',
         bbox:[6500000,7000000,6500000,7000000],empty:true}],glyphs:[]};
+      const token=/\\attribute65000=(\d+) a(?=\\attribute)/.exec(args.projection);
+      if(token)observed[0].dl.math_owners.glyphs.push({owner:Number(token[1]),char:97,
+        bbox:[6500000,6000000,6800000,6500000]});
       if(p.mismatchObservedDrawing)observed[0].dl.lines[0].items[0][4]++;
       return observed;
     }

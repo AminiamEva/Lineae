@@ -1,6 +1,6 @@
 import {FontStore,ImageStore,Painter,inexactReason} from './upstream/webview/render.ts';
 import {fontKey} from './upstream/src/fontKey.ts';
-import {hitMathField} from '../../editor/native-math/hit.mjs';
+import {hitMathField,hitMathGlyph} from '../../editor/native-math/hit.mjs';
 
 const CSS_PER_SP=(96/72)/65781.76;
 
@@ -17,9 +17,9 @@ export function installNativePages({host,getFont,onPaint,onError,onMathHit}) {
     return JSON.stringify([dl.page_width,dl.page_height,dl.fonts,dl.other,
       dl.lines.map(line=>[line.x,line.y,line.w,line.h,line.d,line.items])]);
   }
-  function attachOwners(observed,stamp) {
+  function attachOwners(observed,stamp,tokenOwners) {
     if(stamp.sourceRevision!==revision||observed.length!==pages.size)return false;
-    const fields=new Map(),seen=new Set();
+    const fields=new Map(),glyphs=new Map(),seen=new Set();
     for(const page of observed) {
       const entry=pages.get(page.page);
       if(!entry||page.exact!==true||drawing(entry.dl)!==drawing(page.dl))return false;
@@ -31,18 +31,20 @@ export function installNativePages({host,getFont,onPaint,onError,onMathHit}) {
         seen.add(key);
       }
       fields.set(page.page,targets);
+      glyphs.set(page.page,page.dl.math_owners?.glyphs?.filter(glyph=>tokenOwners.has(glyph.owner))??[]);
     }
-    if(![...fields.values()].some(items=>items.length))return false;
-    ownership={stamp:{...stamp,layoutVersion},fields};
+    if(![...fields.values(),...glyphs.values()].some(items=>items.length))return false;
+    ownership={stamp:{...stamp,layoutVersion},fields,glyphs};
     return true;
   }
   host.addEventListener('click',event=>{
     const canvas=event.target.closest?.('canvas');
     if(!canvas||!ownership||event.button!==0)return;
     const page=Number(canvas.parentElement.dataset.nativePage);
-    const hit=hitMathField(ownership.fields.get(page)??[],canvas.getBoundingClientRect(),
-      {x:event.clientX,y:event.clientY},zoom,ownership.stamp,
-      {...ownership.stamp,sourceRevision:revision,layoutVersion});
+    const args=[canvas.getBoundingClientRect(),{x:event.clientX,y:event.clientY},zoom,ownership.stamp,
+      {...ownership.stamp,sourceRevision:revision,layoutVersion}];
+    const hit=hitMathGlyph(ownership.glyphs.get(page)??[],...args)||
+      hitMathField(ownership.fields.get(page)??[],...args);
     if(hit)onMathHit?.(hit,ownership.stamp);
   });
   async function prepare(dl,attempt) {

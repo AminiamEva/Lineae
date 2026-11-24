@@ -23,7 +23,8 @@ export function projectDisplayMath(source,previous) {
 
 export function editDisplayMathSlot(projection,currentSource,hit,edit) {
   if(!projection||projection.source!==currentSource||!hit)return null;
-  const role={num:'numerator',den:'denominator',sup:'superscript',sub:'subscript',radicand:'radicand'}[hit.role];
+  const role={num:'numerator',den:'denominator',sup:'superscript',sub:'subscript',radicand:'radicand',
+    nucleus:'nucleus'}[hit.role];
   const slots=projection.math.slots.filter(slot=>slot.tag===hit.owner&&slot.role===role);
   if(slots.length!==1)return null;
   const result=applySlotEdit(projection.math,{...edit,slotId:slots[0].id});

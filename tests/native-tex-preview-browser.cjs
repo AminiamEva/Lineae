@@ -100,6 +100,12 @@ const server=createServer(async(req,res)=>{
     await page.locator('#native-tex-target').click();
     await panel.getByText('Click the empty numerator or denominator',{exact:false}).waitFor();
     const scale=Number(await page.locator('#native-tex-zoom').inputValue())/100*(96/72)/65781.76;
+    await panel.locator('[data-native-page="1"] canvas').click({position:{x:6560000*scale,y:6250000*scale}});
+    await page.waitForFunction(()=>{
+      const field=document.activeElement, math=field?._mathfield;
+      const atom=math?.model.at(field.position);
+      return field?.tagName==='MATH-FIELD'&&!math?.focusBlurInProgress&&atom?.type==='first'&&atom.parentBranch==='above';
+    });
     await panel.locator('[data-native-page="1"] canvas').click({position:{x:6500000*scale,y:7000000*scale}});
     await page.waitForFunction(()=>{
       const field=document.activeElement,math=field?._mathfield;

@@ -3,9 +3,10 @@ const kinds = {frac:'genfrac',sqrt:'surd',group:'group'};
 
 // Follow actual branch ancestry, rather than matching the first fraction in
 // MathLive's flattened offsets. A layout hit can target an inner fraction.
-export function richEmptySlot(model,atoms,owner,role) {
+export function richSlotPosition(model,atoms,owner,{role,after}) {
   const target = {num:'above',den:'below',radicand:'body'}[role];
-  if(!target||!owner||!['frac','sqrt'].includes(owner.kind))return null;
+  if(!owner||(!(target&&['frac','sqrt'].includes(owner.kind))&&
+      !(role==='nucleus'&&owner.kind==='token')))return null;
   const parts=owner.path.split('/'), pathIndex=new Map(atoms.map(atom=>[atom.path,atom]));
   let parent=model.root, prefix=parts[0];
   for(let i=1;i<parts.length;i+=2){
@@ -21,10 +22,13 @@ export function richEmptySlot(model,atoms,owner,role) {
     if(children.length!==expected.length)return null;
     prefix=path+'/'+index;
     parent=children[index];
-    if(!parent||parent.type!==kinds[pathIndex.get(prefix)?.kind])return null;
+    const step=pathIndex.get(prefix);
+    if(!parent||!step||(step.kind==='token'?parent.value!==step.raw:parent.type!==kinds[step.kind]))return null;
   }
-  const slot=parent.branch(target);
-  if(slot?.length!==1||slot[0].type!=='first')return null;
-  const offset=model.offsetOf(slot[0]);
+  const slot=target?parent.branch(target):null;
+  if(target&&(slot?.length!==1||slot[0].type!=='first'))return null;
+  const caret=target?slot[0]:after?parent:parent.leftSibling;
+  if(!caret)return null;
+  const offset=model.offsetOf(caret);
   return Number.isSafeInteger(offset)&&offset>=0?offset:null;
 }

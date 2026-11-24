@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {hitMathField} from '../apps/web/src/editor/native-math/hit.mjs';
+import {hitMathField,hitMathGlyph} from '../apps/web/src/editor/native-math/hit.mjs';
 
 const frame={sessionId:'session-1',sourceRevision:2,layoutVersion:4};
 const rect={left:140,top:240,width:1700,height:2200};
@@ -24,4 +24,15 @@ test('overlapping logical fields cannot silently select a source slot',()=>{
   assert.deepEqual(hitMathField([den,{...den}],rect,point,1,frame,frame),{owner:10,role:'den'});
   assert.equal(hitMathField([den,{...den,role:'num'}],rect,point,1,frame,frame),null);
   assert.equal(hitMathField([{...den,bbox:[NaN,0,0,0]}],rect,point,1,frame,frame),null);
+});
+
+test('glyph halves target the adjacent position, not an ambiguous overlapping glyph',()=>{
+  const scale=(96/72)/65781.76,glyph={owner:4,bbox:[4000000,6000000,4500000,6500000]};
+  const point=x=>({x:rect.left+x*scale,y:rect.top+6250000*scale});
+  assert.deepEqual(hitMathGlyph([glyph],rect,point(4100000),1,frame,frame),
+    {owner:4,role:'nucleus',after:false});
+  assert.deepEqual(hitMathGlyph([glyph],rect,point(4400000),1,frame,frame),
+    {owner:4,role:'nucleus',after:true});
+  assert.equal(hitMathGlyph([glyph,{...glyph,owner:5}],rect,point(4100000),1,frame,frame),null);
+  assert.equal(hitMathGlyph([glyph],rect,point(4100000),1,frame,{...frame,layoutVersion:5}),null);
 });

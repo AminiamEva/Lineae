@@ -18,7 +18,7 @@ import {ProjectDocumentSession} from './project/document-session.mjs';
 import {installFloatingToolbar} from './ui/floating-toolbar.js';
 import {installShortcutPriority} from './ui/shortcut-priority.mjs';
 import {installNativeTexPreview} from './ui/native-tex-preview.mjs';
-import {richEmptySlot} from './editor/native-math/rich-slot.mjs';
+import {richSlotPosition} from './editor/native-math/rich-slot.mjs';
 import {nativeProjectSnapshot} from './typesetting/rtex/project-snapshot.mjs';
 import {installSettingsPanel} from './ui/settings-panel.js';
 import { buildHomeRibbon } from './ui/home-ribbon.js';
@@ -2621,7 +2621,7 @@ nativeTexPreview=installNativeTexPreview({host:footer,before:modes,
     return {source:text,mainFile:'main.tex',signature:text};
   },
   isComposing:()=>editor.view.composing||sourceView.composing,
-  focusMathSlot:(projection,owner,role,selection)=>{
+  focusMathSlot:(projection,owner,hit,selection)=>{
     if(projectExplorer?.active)return;
     if(!sourceView.hidden){
       if(sourceView.value===projection.source)sourceView.select(selection.anchor,selection.head);
@@ -2631,7 +2631,7 @@ nativeTexPreview=installNativeTexPreview({host:footer,before:modes,
     const fields=[...paper.querySelectorAll('.math-display math-field')];
     if(fields.length!==1||fields[0].value.trim()!==projection.math.source.trim())return;
     const [field]=fields,model=field._mathfield?.model;
-    const position=model&&richEmptySlot(model,projection.math.atoms,owner,role);
+    const position=model&&richSlotPosition(model,projection.math.atoms,owner,hit);
     if(position==null)return;
     field.focus();
     field.position=position;

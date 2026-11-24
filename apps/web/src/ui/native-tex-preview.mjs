@@ -51,9 +51,13 @@ export function installNativeTexPreview({host,before,getSource,getSnapshot,isCom
           stamp.sessionId!==observation.stamp.sessionId||
           stamp.sourceRevision!==observation.stamp.sourceRevision)return;
       const {projection}=observation;
-      const target=editDisplayMathSlot(projection,wantedSource,hit,{from16:0,to16:0,insert:''});
+      const offset=hit.after?projection.math.slots.find(slot=>slot.tag===hit.owner&&slot.role==='nucleus')?.raw.length:0;
+      if(offset==null)return;
+      let target;
+      try {target=editDisplayMathSlot(projection,wantedSource,hit,{from16:offset,to16:offset,insert:''});}
+      catch {return;}
       const owner=projection.math.atoms.find(atom=>atom.tag===hit.owner);
-      if(target&&owner)focusMathSlot?.(projection,owner,hit.role,target.selection);
+      if(target&&owner)focusMathSlot?.(projection,owner,hit,target.selection);
     },
   });
   function current() {
@@ -80,7 +84,7 @@ export function installNativeTexPreview({host,before,getSource,getSnapshot,isCom
       'Edit in the existing editor; this view shows LuaLaTeX output. Complex fonts, images and drawings use PDF fallback, not semantic formula editing on PDF pages.');
     exportButton.textContent=t('导出干净 PDF','Export clean PDF');
     closeButton.textContent=t('关闭','Close');
-    targetButton.textContent=t('定位空公式槽位（实验）','Target empty math slots (experimental)');
+    targetButton.textContent=t('定位公式光标（实验）','Target formula caret (experimental)');
     renderStatus();
   }
   async function stop() {
@@ -239,8 +243,8 @@ export function installNativeTexPreview({host,before,getSource,getSnapshot,isCom
   async function observe() {
     if(targetButton.disabled)return;
     const projection=projectDisplayMath(sentSource);
-    if(!projection||!projection.math.atoms.some(atom=>['frac','sqrt'].includes(atom.kind))){
-      targetStatus.textContent=t('目前仅支持独立文档内单个行间公式中的分式和根式。','Targeting currently requires fractions or radicals in one standalone display.');
+    if(!projection||!projection.math.atoms.some(atom=>['frac','sqrt','token'].includes(atom.kind))){
+      targetStatus.textContent=t('目前只支持独立文档内一个可识别的行间公式。','Targeting currently requires one supported standalone display.');
       return;
     }
     const attempt=generation,stamp={sessionId:session,sourceRevision};
@@ -250,9 +254,10 @@ export function installNativeTexPreview({host,before,getSource,getSnapshot,isCom
       const observed=await invoke('native_tex_observe_formula',{...stamp,projection:projection.projection});
       if(attempt!==generation||stamp.sessionId!==session||stamp.sourceRevision!==sourceRevision||
           sentSource!==projection.source||wantedSource!==projection.source)return;
-      if(!renderer.attachOwners(observed,stamp))throw new Error(t('标记版排版与当前页面不一致，未启用命中。','Projected geometry differs from the displayed page; targeting remains disabled.'));
+      const tokenOwners=new Set(projection.math.atoms.filter(atom=>atom.kind==='token').map(atom=>atom.tag));
+      if(!renderer.attachOwners(observed,stamp,tokenOwners))throw new Error(t('标记版排版与当前页面不一致，未启用命中。','Projected geometry differs from the displayed page; targeting remains disabled.'));
       observation={projection,stamp};
-      targetStatus.textContent=t('点击预览中的空分子、分母或根号内容，继续在编辑器输入。','Click the empty numerator or denominator, or an empty radicand, to continue typing in the editor.');
+      targetStatus.textContent=t('点击预览中的空槽或字符边缘，继续在编辑器输入。','Click the empty numerator or denominator, an empty radicand, or a glyph edge to continue typing in the editor.');
     } catch(failure) {
       if(attempt===generation)targetStatus.textContent=String(failure?.message??failure);
     } finally {
