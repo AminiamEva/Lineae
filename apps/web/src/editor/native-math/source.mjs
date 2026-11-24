@@ -159,8 +159,8 @@ function parse(source) {
   return {root, protectedRanges: uniqueProtected, singleArguments};
 }
 
-function reconcile(root, source, prior) {
-  let nextId = prior?.nextId ?? 1;
+function reconcile(root, source, prior, firstTag) {
+  let nextId = prior?.nextId ?? firstTag;
   let prefix = 0, oldEnd = prior?.source.length ?? 0, newEnd = source.length;
   if (prior) {
     while (prefix < oldEnd && prefix < newEnd && prior.source[prefix] === source[prefix]) prefix++;
@@ -263,11 +263,13 @@ function instrument(source, root, attribute) {
  * Inserted projection boundaries map to their source anchor. Source boundaries
  * map AFTER insertions at that boundary (right affinity).
  */
-export function projectMath(source, {previous, attribute = 65000} = {}) {
+export function projectMath(source, {previous, attribute = 65000, firstTag = 1} = {}) {
   if (typeof source !== 'string') throw new TypeError('Math source must be a string');
   if (!Number.isInteger(attribute) || attribute < 0 || attribute > 65535) {
     throw new RangeError('Attribute must be an integer between 0 and 65535');
   }
+  if(!Number.isSafeInteger(firstTag)||firstTag<1||firstTag+source.length>=2147483647)
+    throw new RangeError('Invalid initial math owner ID');
   const prior = previous === undefined ? undefined : snapshots.get(previous);
   if (previous !== undefined && !prior) throw new TypeError('Previous must be a projectMath snapshot');
   let sourceUnits, tree;
@@ -283,7 +285,7 @@ export function projectMath(source, {previous, attribute = 65000} = {}) {
     snapshots.set(result, {source, nextId: prior?.nextId ?? 1});
     return result;
   }
-  const nextId = reconcile(tree.root, source, prior);
+  const nextId = reconcile(tree.root, source, prior, firstTag);
   const {projection, forward, backward, insertions} = instrument(source, tree.root, attribute);
   const projectionUnits = unicode(projection);
   const atoms = [], slots = [];

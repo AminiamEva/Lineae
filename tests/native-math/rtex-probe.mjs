@@ -7,7 +7,7 @@ import {createInterface} from 'node:readline';
 import {fileURLToPath} from 'node:url';
 import {hitMathField} from '../../apps/web/src/editor/native-math/hit.mjs';
 import {projectMath,applySlotEdit} from '../../apps/web/src/editor/native-math/source.mjs';
-import {projectDisplayMath,editDisplayMathSlot} from '../../apps/web/src/editor/native-math/document.mjs';
+import {projectDisplayMath,projectDisplayDocument,editDisplayMathSlot} from '../../apps/web/src/editor/native-math/document.mjs';
 
 // Deliberately a fixture projection, not a general TeX parser or a production
 // source mapper. The truly empty denominator must stay empty in the projection.
@@ -51,14 +51,19 @@ function command(executable,args,cwd,log) {
 async function probe(source,label,out,rtex,texbin,structured=false) {
   const dir=join(out,label),project=join(dir,'project 空分母');
   mkdirSync(project,{recursive:true});
-  const documentProjection=structured?projectDisplayMath(source):null;
+  const whole=structured==='multi'?projectDisplayDocument(source):null;
+  const documentProjection=whole
+    ?{...whole.formulas.find(formula=>formula.math.slots.some(slot=>slot.role==='denominator'&&slot.raw==='')),
+      projection:whole.projection}
+    :structured?projectDisplayMath(source):null;
   if(structured)assert.ok(documentProjection,'Source display projection must be supported');
   const slot=documentProjection?.math.slots.find(slot=>slot.role==='denominator'&&slot.raw==='');
   const owner=slot?.tag??10;
   const projection=documentProjection?{
     text:documentProjection.projection,
     sourceOffset16:documentProjection.from16+slot.from16,
-    projectionOffset16:documentProjection.from16+documentProjection.math.mapping.sourceToProjection16[slot.from16],
+    projectionOffset16:(documentProjection.projectionFrom16??documentProjection.from16)+
+      documentProjection.math.mapping.sourceToProjection16[slot.from16],
   }:projectFixture(source);
   projection.projectionOffset8=Buffer.byteLength(projection.text.slice(0,projection.projectionOffset16));
   const filled=source.slice(0,projection.sourceOffset16)+'b'+source.slice(projection.sourceOffset16);
@@ -228,6 +233,8 @@ async function main() {
     summaries.push(await probe(unicode.replace('\\frac{a}{}','\\frac{7}{}'),'structured-projection',out,rtex,texbin,true));
     summaries.push(await probe(unicode.replace('\\frac{a}{}','\\frac{\\frac{7}{}}{c}'),
       'structured-nested-denominator',out,rtex,texbin,true));
+    summaries.push(await probe(unicode.replace('\\[\r\n\\frac{a}{}','\\[z\\]\r\n\r\n\\[\r\n\\frac{7}{}'),
+      'structured-multiple-displays',out,rtex,texbin,'multi'));
     writeFileSync(join(out,'result.json'),JSON.stringify({status:'passed',cases:summaries},null,2)+'\n');
     console.log('PASS: real rtex geometry, empty denominator, warm revision-matched edit, Unicode/CRLF and clean reference PDF');
   } catch(error) {

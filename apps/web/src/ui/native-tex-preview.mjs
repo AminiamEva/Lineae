@@ -1,7 +1,7 @@
 import {t} from './i18n.mjs';
 import {installNativePages} from '../typesetting/rtex/pages.mjs';
 import {installNativePdf} from '../typesetting/rtex/pdf.mjs';
-import {projectDisplayMath,editDisplayMathSlot} from '../editor/native-math/document.mjs';
+import {projectDisplayDocument,editDisplayMathSlot} from '../editor/native-math/document.mjs';
 
 // This surface never edits source or intercepts editor input. The existing
 // ProseMirror/MathLive history stays authoritative while native parity is built.
@@ -52,12 +52,14 @@ export function installNativeTexPreview({host,before,getSource,getSnapshot,isCom
           stamp.sourceRevision!==observation.stamp.sourceRevision)return;
       const {projection}=observation;
       function resolve(endpoint){
-        const offset=endpoint.after?projection.math.slots.find(slot=>slot.tag===endpoint.owner&&slot.role==='nucleus')?.raw.length:0;
+        const owned=projection.owners.get(endpoint.owner);
+        if(!owned)return null;
+        const {formula,atom}=owned;
+        const offset=endpoint.after?formula.math.slots.find(slot=>slot.tag===endpoint.owner&&slot.role==='nucleus')?.raw.length:0;
         if(offset==null)return null;
         try {
-          const target=editDisplayMathSlot(projection,wantedSource,endpoint,{from16:offset,to16:offset,insert:''});
-          const owner=projection.math.atoms.find(atom=>atom.tag===endpoint.owner);
-          return target&&owner?{owner,hit:endpoint,position:target.selection.head}:null;
+          const target=editDisplayMathSlot(formula,wantedSource,endpoint,{from16:offset,to16:offset,insert:''});
+          return target?{formula,owner:atom,hit:endpoint,position:target.selection.head}:null;
         } catch {return null;}
       }
       const head=resolve(hit),anchor=origin?resolve(origin):head;
@@ -246,9 +248,9 @@ export function installNativeTexPreview({host,before,getSource,getSnapshot,isCom
   }
   async function observe() {
     if(targetButton.disabled)return;
-    const projection=projectDisplayMath(sentSource);
-    if(!projection||!projection.math.atoms.some(atom=>['frac','sqrt','token'].includes(atom.kind))){
-      targetStatus.textContent=t('目前只支持独立文档内一个可识别的行间公式。','Targeting currently requires one supported standalone display.');
+    const projection=projectDisplayDocument(sentSource);
+    if(!projection||![...projection.owners.values()].some(({atom})=>['frac','sqrt','token'].includes(atom.kind))){
+      targetStatus.textContent=t('当前独立文档没有可定位的行间公式。','No supported display formula in this standalone document.');
       return;
     }
     const attempt=generation,stamp={sessionId:session,sourceRevision};
@@ -258,7 +260,7 @@ export function installNativeTexPreview({host,before,getSource,getSnapshot,isCom
       const observed=await invoke('native_tex_observe_formula',{...stamp,projection:projection.projection});
       if(attempt!==generation||stamp.sessionId!==session||stamp.sourceRevision!==sourceRevision||
           sentSource!==projection.source||wantedSource!==projection.source)return;
-      const tokenOwners=new Set(projection.math.atoms.filter(atom=>atom.kind==='token').map(atom=>atom.tag));
+      const tokenOwners=new Set([...projection.owners].filter(([,entry])=>entry.atom.kind==='token').map(([tag])=>tag));
       if(!renderer.attachOwners(observed,stamp,tokenOwners))throw new Error(t('标记版排版与当前页面不一致，未启用命中。','Projected geometry differs from the displayed page; targeting remains disabled.'));
       observation={projection,stamp};
       targetStatus.textContent=t('点击预览中的空槽或字符边缘，继续在编辑器输入。','Click the empty numerator or denominator, an empty radicand, or a glyph edge to continue typing in the editor.');

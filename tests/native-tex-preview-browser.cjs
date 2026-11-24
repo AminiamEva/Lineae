@@ -131,9 +131,10 @@ const server=createServer(async(req,res)=>{
     await page.keyboard.press(mod+'+y');
     await page.waitForFunction(expected=>nativeProbe.source?.replace(/\r\n/g,'\n')===expected,expected.replace(/\r\n/g,'\n'));
     await page.locator('#native-tex-close').click();
-    const nested=input.toString().replace('\\frac{a}{}','\\frac{\\frac{7}{}}{c}');
+    const nested=input.toString().replace('\\[\n\\frac{a}{}','\\[z\\]\n\n\\[\n\\frac{\\frac{7}{}}{c}')
+      .replace('\\[\r\n\\frac{a}{}','\\[z\\]\r\n\r\n\\[\r\n\\frac{\\frac{7}{}}{c}');
     await page.locator('input#file').setInputFiles({name:'nested.tex',mimeType:'text/plain',buffer:Buffer.from(nested)});
-    await page.waitForFunction(()=>document.querySelector('math-field')?.value.includes('\\frac{\\frac'));
+    await page.waitForFunction(()=>[...document.querySelectorAll('math-field')].some(field=>field.value.includes('\\frac{\\frac')));
     await button.click();
     await page.waitForFunction(()=>document.querySelector('#native-tex-preview').dataset.state==='current');
     await page.locator('#native-tex-target').click();
@@ -146,7 +147,8 @@ const server=createServer(async(req,res)=>{
         atom.parent?.type==='genfrac'&&atom.parent.parent?.type==='genfrac';
     });
     await page.keyboard.type('b');
-    await page.waitForFunction(()=>document.querySelector('math-field')?.value.includes('\\frac{\\frac{7}{b}}{c}'));
+    await page.waitForFunction(()=>[...document.querySelectorAll('math-field')].some(field=>field.value.includes('\\frac{\\frac{7}{b}}{c}')));
+    assert.equal((await field.first().evaluate(field=>field.value)).trim(),'z','Editing the second display never changes the first');
     await page.locator('#native-tex-close').click();
     await page.evaluate(async()=>{
       const root=await navigator.storage.getDirectory();
