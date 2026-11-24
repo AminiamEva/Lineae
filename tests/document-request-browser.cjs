@@ -27,7 +27,7 @@ const server=createServer(async(req,res)=>{
  await load('\\documentclass{article}\n\\newcommand{\\custom}{Custom}\n\\begin{document}\n\\custom\n\\section{Editable}\nText.\n\\end{document}\n');await paper.locator('h1').click();await page.keyboard.press('End');await page.keyboard.insertText(' changed');await page.waitForFunction(()=>document.querySelector('.ProseMirror').editor.state.doc.textContent.includes('Editable changed'));
 
  await page.route('**/vendor/mp-tikz-wasm/index.js',route=>route.fulfill({contentType:'text/javascript',body:'export const MetaPost={create:async()=>({latex:async()=>{window.previewCompiles=(window.previewCompiles||0)+1;return {status:"ok",pages:[\'<svg xmlns="http://www.w3.org/2000/svg" width="120pt" height="60pt" viewBox="0 0 120 60"><path d="M0 0L120 60"/></svg>\']};}})};'}));
- await page.route('**/vendor/mp-tikz-wasm/figures.js',route=>route.fulfill({contentType:'text/javascript',body:'export const wrapTikz=source=>source;'}));
+ await page.route('**/vendor/mp-tikz-wasm/figures.js',route=>route.fulfill({contentType:'text/javascript',body:'export const isCompleteDocument=()=>false;export const wrapTikz=source=>source;'}));
  await load('\\documentclass{article}\n\\begin{document}\n\\begin{tikzpicture}\n\\draw (0,0)--(2,1);\n\\end{tikzpicture}\n\nAfter diagram.\n\\end{document}\n');
  await page.locator('.tikz-general-preview-ready svg').waitFor();
  await page.evaluate(()=>{window.previewNode=document.querySelector('.tikz-general-preview');const editor=document.querySelector('.ProseMirror').editor;editor.view.dispatch(editor.state.tr.setMeta('probe',true));});
