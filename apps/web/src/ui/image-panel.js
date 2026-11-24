@@ -1,6 +1,14 @@
 import { t } from './i18n.mjs';
 import { icon } from '../editor/icons.js';
 import { buildRibbonGroups } from './ribbon-groups.js';
+import { openColorPalette } from './color-palette.js';
+
+function setColorButton(button, hex) {
+  button.dataset.hex = hex;
+  button.style.setProperty('--swatch', hex);
+  button.title = hex;
+  button.setAttribute('aria-label', hex);
+}
 
 function labelText(element, zh, en) {
   element.dataset.zh = zh;
@@ -163,10 +171,16 @@ export function installImagePanel({onUpdate, onReplace, onSpacing, getSpacing, o
   const border=document.createElement('input');border.type='checkbox';
   const borderCaption=document.createElement('span');labelText(borderCaption,'边框','Border');borderField.append(border,borderCaption);
   const borderWidth=document.createElement('select');for(const value of ['0.2pt','0.4pt','0.8pt','1pt'])borderWidth.append(new Option(value,value));
-  const borderColor=document.createElement('input');borderColor.type='color';borderColor.value='#000000';
+  const borderColor=document.createElement('button');borderColor.type='button';borderColor.className='image-color-button';
+  setColorButton(borderColor,'#000000');
+  borderColor.addEventListener('click',()=>openColorPalette({anchor:borderColor,value:borderColor.dataset.hex,
+    onPick:hex=>{setColorButton(borderColor,hex);update({borderColor:hex});}}));
   const backgroundField=document.createElement('label');backgroundField.className='image-field';
   const bgCaption=document.createElement('span');labelText(bgCaption,'背景色','Background');
-  const background=document.createElement('input');background.type='color';background.value='#ffffff';
+  const background=document.createElement('button');background.type='button';background.className='image-color-button';
+  setColorButton(background,'#ffffff');
+  background.addEventListener('click',()=>openColorPalette({anchor:background,value:background.dataset.hex,
+    onPick:hex=>{setColorButton(background,hex);if(useBackground.checked)update({background:hex});}}));
   const useBackground=document.createElement('input');useBackground.type='checkbox';
   backgroundField.append(bgCaption,useBackground,background);
   appearanceGrid.append(cropButton,borderField,borderWidth,borderColor,backgroundField);
@@ -358,9 +372,9 @@ export function installImagePanel({onUpdate, onReplace, onSpacing, getSpacing, o
     wrapLines.value=next.wrapLines??'';
     border.checked=Boolean(next.border);
     borderWidth.value=next.borderWidth??'0.4pt';
-    borderColor.value=next.borderColor??'#000000';
+    setColorButton(borderColor,next.borderColor??'#000000');
     useBackground.checked=Boolean(next.background);
-    background.value=next.background??'#ffffff';
+    setColorButton(background,next.background??'#ffffff');
     const spacingValues=getSpacing();
     for(const [name,input] of Object.entries(spacingInputs))input.value=spacingNumber(spacingValues[name]);
     const tikzMode=Boolean(next.tikzSource);
@@ -414,9 +428,7 @@ export function installImagePanel({onUpdate, onReplace, onSpacing, getSpacing, o
   wrapLines.addEventListener('change',()=>update({wrapLines:wrapLines.value||null}));
   border.addEventListener('change',()=>update({border:border.checked}));
   borderWidth.addEventListener('change',()=>update({borderWidth:borderWidth.value}));
-  borderColor.addEventListener('input',()=>update({borderColor:borderColor.value}));
-  useBackground.addEventListener('change',()=>update({background:useBackground.checked?background.value:null}));
-  background.addEventListener('input',()=>{if(useBackground.checked)update({background:background.value});});
+  useBackground.addEventListener('change',()=>update({background:useBackground.checked?background.dataset.hex:null}));
   for(const [name,input] of Object.entries(spacingInputs))input.addEventListener('change',()=>{
     const current={...getSpacing()};
     current[name]=input.value===''?IMAGE_DEFAULTS[name]:input.value+'pt';

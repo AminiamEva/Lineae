@@ -71,11 +71,18 @@ test('content classification drives font list', () => {
 });
 
 test('UI constants complete', () => {
-  assert.equal(LATEX_COLORS.length, 20);
+  assert.equal(LATEX_COLORS.length, 19);
   assert.ok(MATH_FONTS_ALPHA.length >= 8);
   assert.ok(MATH_FONTS_SYMBOL.length >= 2);
   assert.equal(MATH_ACCENTS.length, 13);
   assert.equal(MATH_SIZES.length, 4);
+});
+
+test('math colors use xcolor HTML values and strip the optional model', () => {
+  assert.equal(setMathColor('a', '#00ff00'), '\\textcolor[HTML]{00FF00}{a}');
+  assert.equal(setMathColor('\\textcolor[HTML]{00FF00}{a}', 'red'), '\\textcolor{red}{a}');
+  assert.equal(setMathColor('\\textcolor{red}{a}', null), 'a');
+  assert.ok(!LATEX_COLORS.includes('lightblue'), 'undefined xcolor names are not offered');
 });
 
 test('all new UI elements construct and display (DOM stub smoke)', async () => {
