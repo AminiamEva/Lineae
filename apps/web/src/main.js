@@ -485,16 +485,19 @@ const Shortcuts = Extension.create({
       const parent = view.state.doc.resolve(from).parent;
       if (text === '`' && parent.type.name !== 'codeBlock') {
         const now=performance.now();
-        const continued=backticks && now-backticks.time<900 && backticks.doc===view.state.doc && backticks.pos===from;
+        const continued=backticks && now-backticks.time<650 && backticks.doc===view.state.doc && backticks.pos===from && from===to;
         if (continued && backticks.count===2 && view.state.doc.textBetween(from-1,from)==='`') {
-          editor.chain().deleteRange({from:from-1,to:from}).setCodeBlock().run();
           backticks=null;
+          insertFormula(editor,true,'',{from:from-1,to:from});
         } else if (continued && backticks.count===1) {
-          view.dispatch(view.state.tr.insertText('`',from,to));
+          // The first press only changed stored marks. Do not let that code
+          // mark leak into the literal produced by the second press.
+          view.dispatch(view.state.tr.setStoredMarks(backticks.marks).insertText('`',from,to).setStoredMarks(backticks.marks));
           backticks={time:now,count:2,doc:view.state.doc,pos:view.state.selection.from};
         } else {
+          const marks=(view.state.storedMarks ?? view.state.selection.$from.marks()).filter(mark=>mark.type.name!=='code');
           editor.commands.toggleCode();
-          backticks={time:now,count:1,doc:view.state.doc,pos:view.state.selection.from};
+          backticks={time:now,count:1,doc:view.state.doc,pos:view.state.selection.from,marks};
         }
         return true;
       }
