@@ -199,6 +199,7 @@ pub fn run() {
             tex_session::native_tex_font,
             tex_session::native_tex_export,
             tex_session::native_tex_render_pdf,
+            tex_session::native_tex_pdf,
             tex_session::native_tex_observe_formula,
             tex_session::native_tex_close,
             project::open_project,
@@ -216,6 +217,7 @@ pub fn run() {
         tex_session::native_tex_font,
         tex_session::native_tex_export,
         tex_session::native_tex_render_pdf,
+        tex_session::native_tex_pdf,
         tex_session::native_tex_observe_formula,
         tex_session::native_tex_close
     ]);

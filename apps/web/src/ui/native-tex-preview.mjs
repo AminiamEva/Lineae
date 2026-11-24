@@ -32,7 +32,7 @@ export function installNativeTexPreview({host,before,getSource,getSnapshot,isCom
   let timer=null,pollTimer=null,updating=null,exporting=null,opening=false;
   let sentSnapshot=null,wantedSnapshot=null,captureId=0,capturing=null,pdfRendered=-1;
   let renderedRevision=-1,error='',active=false,terminal=false;
-  let mode='canvas',pdfWanted=-1,pdfAttempt=null;
+  let mode='canvas',pdfWanted=-1,pdfAttempt=null,pdfLayout=null;
   let pollEpoch=0;
   let targeting=null,observation=null;
   const pdf=installNativePdf({host:pages,onPaint:revision=>{
@@ -100,7 +100,7 @@ export function installNativeTexPreview({host,before,getSource,getSnapshot,isCom
     const previous=session;session=null;
     wantedSnapshot=null;sentSnapshot=null;wantedSource='';sentSource='';
     observation=null;targetStatus.textContent='';
-    renderer.reset();pdf.reset();mode='canvas';pdfWanted=-1;pdfRendered=-1;renderedRevision=-1;renderStatus();
+    renderer.reset();pdf.reset();mode='canvas';pdfWanted=-1;pdfLayout=null;pdfRendered=-1;renderedRevision=-1;renderStatus();
     if(previous!==null) {
       try {await invoke('native_tex_close',{sessionId:previous});}
       catch(failure) {console.warn('Native TeX close:',failure);}
@@ -128,7 +128,16 @@ export function installNativeTexPreview({host,before,getSource,getSnapshot,isCom
       while(active&&attempt===generation&&flight.sessionId===session&&pdfWanted>finished) {
         const target=pdfWanted;
         try {
-          const bytes=await invoke('native_tex_render_pdf',{sessionId:flight.sessionId,sourceRevision:target});
+          const args={sessionId:flight.sessionId,sourceRevision:target};
+          let bytes;
+          if(pdfLayout?.source_revision===target){
+            // The host checks both revisions and retains the only permitted
+            // path. Frontend never requests a file by name.
+            try {bytes=await invoke('native_tex_pdf',{...args,layoutVersion:pdfLayout.layout_version});}
+            catch {/* The captured PDF may have expired; compile a clean copy. */}
+          }
+          if(attempt!==generation||flight.sessionId!==session)return;
+          bytes??=await invoke('native_tex_render_pdf',args);
           if(attempt!==generation||flight.sessionId!==session)return;
           if(target===pdfWanted)await pdf.show(bytes,target);
         }catch(problem){
@@ -155,7 +164,7 @@ export function installNativeTexPreview({host,before,getSource,getSnapshot,isCom
           return;
         }
         if(result.sessionId&&result.sessionId!==session){
-          session=result.sessionId;pollEpoch++;renderedRevision=-1;pdfRendered=-1;pdfWanted=-1;
+          session=result.sessionId;pollEpoch++;renderedRevision=-1;pdfRendered=-1;pdfWanted=-1;pdfLayout=null;
           renderer.reset({clear:false});pdf.reset({clear:false});
           void poll(attempt,pollEpoch);
         }
@@ -199,6 +208,8 @@ export function installNativeTexPreview({host,before,getSource,getSnapshot,isCom
           error=event.diagnostics?.map(item=>item.message??String(item)).join('\n').slice(0,2400)||
             t('LuaLaTeX 增量排版失败；修正源码后重试。','LuaLaTeX incremental compilation failed; correct the source and retry.');
         } else if(event.event==='LayoutUpdate' || event.event==='ParagraphUpdate') {
+          if(event.event==='LayoutUpdate')pdfLayout=event.pdf_fallback_registered&&
+            event.convergence?.state==='Converged'&&event.compile?.state==='Ok'?event.versions:null;
           if(event.event==='LayoutUpdate' && event.compile?.state!=='Ok') {
             error=t('LuaLaTeX 编译未成功；保留上次有效画面。','LuaLaTeX compilation failed; keeping the last valid frame.');
           } else {

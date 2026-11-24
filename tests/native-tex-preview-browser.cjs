@@ -66,13 +66,16 @@ const server=createServer(async(req,res)=>{
     await page.locator('#native-tex-close').click();
     assert.equal(await panel.isHidden(),true);
     assert.equal(await field.getAttribute('data-test-identity'),'original');
-    await page.evaluate(()=>{nativeProbe.failFont=true;});
+    await page.evaluate(()=>{nativeProbe.failFont=true;nativeProbe.registeredPdf=true;});
     await button.click();
     await page.waitForFunction(()=>document.querySelector('#native-tex-preview').dataset.state==='current' &&
       document.querySelector('#native-tex-preview').dataset.renderer==='pdf');
     assert.equal(await panel.locator('[data-pdf-page] canvas').count(),1,'Unsupported direct font rendering uses an actual PDF page, not a generic-font substitute');
+    assert.ok(await page.evaluate(()=>nativeProbe.calls.some(call=>call.command==='native_tex_pdf')&&
+      !nativeProbe.calls.some(call=>call.command==='native_tex_render_pdf')),
+    'A registered current-layout PDF avoids an extra clean build');
     await page.locator('#native-tex-close').click();
-    await page.evaluate(()=>{nativeProbe.failPdf=true;});
+    await page.evaluate(()=>{nativeProbe.failPdf=true;nativeProbe.registeredPdf=false;});
     await button.click();
     await page.waitForFunction(()=>document.querySelector('#native-tex-preview').dataset.state==='error');
     assert.equal(await page.locator('#native-tex-export').isDisabled(),true,'Missing resources cannot be presented as exact rendering');

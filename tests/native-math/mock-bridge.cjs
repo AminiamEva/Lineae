@@ -21,6 +21,7 @@ module.exports=function installMockNativeTex() {
     return fillRect.call(this,x,y,w,h);
   };
   p.layout=()=>({event:'LayoutUpdate',compile:{state:'Ok'},convergence:{state:'Converged'},
+    pdf_fallback_registered:Boolean(p.registeredPdf),
     versions:{source_revision:p.revision,context_revision:1,engine_generation:0,layout_version:p.revision},
     pages_total:1,pages_changed:[{page:1,exact:true,dl:{kind:'page',page:1,
       page_width:39000000,page_height:55000000,width:0,height:0,depth:0,flags:{},images_info:{},
@@ -69,6 +70,11 @@ module.exports=function installMockNativeTex() {
     if(command==='native_tex_render_pdf'){
       if(args.sourceRevision!==p.revision)throw {code:'revision_mismatch',message:'stale test revision'};
       if(p.failPdf)throw new Error('PDF compilation failed');
+      return p.pdf();
+    }
+    if(command==='native_tex_pdf'){
+      if(!p.registeredPdf||args.sourceRevision!==p.revision||args.layoutVersion!==p.revision)
+        throw {code:'revision_mismatch',message:'stale test layout'};
       return p.pdf();
     }
     if(command==='native_tex_export')return {jobId:1,sourceRevision:args.sourceRevision,path:'approved.pdf'};
