@@ -181,8 +181,12 @@ const server=createServer(async(req,res)=>{
       call.args.sourceRevision>1),'Retarget geometry automatically after typing');
     await page.keyboard.press(mod+'+z');
     await page.waitForFunction(original=>nativeProbe.source?.replace(/\r\n/g,'\n')===original,input.toString().replace(/\r\n/g,'\n'));
+    assert.equal(await field.evaluate(field=>field._mathfield.model.at(field.position)?.parentBranch),'below',
+      'Undo returns the caret to the original empty denominator');
     await page.keyboard.press(mod+'+y');
     await page.waitForFunction(expected=>nativeProbe.source?.replace(/\r\n/g,'\n')===expected,expected.replace(/\r\n/g,'\n'));
+    assert.equal(await field.evaluate(field=>field._mathfield.model.at(field.position)?.parentBranch),'below',
+      'Redo restores the caret to the edited denominator');
     await page.locator('#native-tex-close').click();
     const nested=input.toString().replace('\\[\n\\frac{a}{}','\\[z\\]\n\n\\[\n\\frac{\\frac{7}{}}{c}')
       .replace('\\[\r\n\\frac{a}{}','\\[z\\]\r\n\r\n\\[\r\n\\frac{\\frac{7}{}}{c}');

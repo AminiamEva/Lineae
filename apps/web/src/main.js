@@ -1093,7 +1093,7 @@ function undoDocument() {
     checkpoint.beforeDoc=editor.state.doc;checkpoint.beforePreamble=documentParts.start;return true;
   }
   if(!sourceView.hidden){sourceView.undo();sourceView.flush();syncUndoButtons();return true;}
-  const done=editor.commands.undo();syncUndoButtons();return done;
+  const done=applyEditorHistory('undo',activeMath());syncUndoButtons();return done;
 }
 function redoDocument() {
   const checkpoint=sourceModeRedos.at(-1);
@@ -1104,7 +1104,13 @@ function redoDocument() {
     checkpoint.afterDoc=editor.state.doc;checkpoint.afterPreamble=documentParts.start;return true;
   }
   if(!sourceView.hidden){sourceView.redo();sourceView.flush();syncUndoButtons();return true;}
-  const done=editor.commands.redo();syncUndoButtons();return done;
+  const done=applyEditorHistory('redo',activeMath());syncUndoButtons();return done;
+}
+function applyEditorHistory(command,field) {
+  if(!field)return editor.commands[command]();
+  field.dispatchEvent(new Event('lineae-before-math-history'));
+  try {return editor.commands[command]();}
+  finally {field.dispatchEvent(new Event('lineae-after-math-history'));}
 }
 paper.addEventListener('focusin', () => { if (!sourceView.hidden && syncPending) sourceView.flush(); syncUndoButtons(); });
 function usesSourceProjection() {
@@ -2096,8 +2102,7 @@ function runMathShortcut(command, field, event) {
   }
   if (event.repeat && !['undo','redo','leaveEnvironment','superscript','subscript'].includes(command)) return;
   switch (command) {
-    case 'undo': editor.commands.undo(); return;
-    case 'redo': editor.commands.redo(); return;
+    case 'undo': case 'redo': applyEditorHistory(command,field); return;
     case 'superscript': field.executeCommand('moveToSuperscript'); return;
     case 'subscript': field.executeCommand('moveToSubscript'); return;
     case 'leaveEnvironment': field.dispatchEvent(new Event('lineae-leave-math-environment')); return;

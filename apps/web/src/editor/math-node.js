@@ -545,6 +545,29 @@ export const MathNode = Node.create({
       const field = document.createElement('math-field');
       field.setAttribute('default-mode', node.isBlock ? 'math' : 'inline-math');
       field.textContent = mathEditorSource(node.attrs.latex, { inline:!node.isBlock });
+      const historySelections=new Map();
+      let applyingHistory=false;
+      function rememberSelection(){
+        if(applyingHistory||!field._mathfield||!field.hasFocus()||
+          mathDocumentSource(field.value,node.attrs.latex,{inline:!node.isBlock})!==node.attrs.latex)return;
+        const {ranges,direction}=field.selection;
+        historySelections.set(node.attrs.latex,{ranges:ranges.map(range=>[...range]),direction});
+        if(historySelections.size>64)historySelections.delete(historySelections.keys().next().value);
+      }
+      field.addEventListener('lineae-before-math-history',()=>{
+        rememberSelection();
+        applyingHistory=true;
+      });
+      field.addEventListener('lineae-after-math-history',()=>{
+        const selection=historySelections.get(node.attrs.latex);
+        try {
+          if(field.isConnected&&selection?.ranges.every(range=>range.every(offset=>
+            Number.isSafeInteger(offset)&&offset>=0&&offset<=field.lastOffset))){
+            field.selection=selection;
+          }
+        }finally{applyingHistory=false;}
+      });
+      field.addEventListener('beforeinput',rememberSelection);
       dom.append(handle, field);
       const numbers = document.createElement('span');
       numbers.className = 'math-equation-numbers';
@@ -666,6 +689,7 @@ export const MathNode = Node.create({
         queueMicrotask(()=>{if(field.isConnected&&!field.hasFocus()&&!commandPalette)clearEmptyScripts(field);});
       });
       field.addEventListener('selection-change',()=>{
+        rememberSelection();
         if (scriptCleanupQueued) return;
         scriptCleanupQueued=true;
         queueMicrotask(()=>{
@@ -694,6 +718,7 @@ export const MathNode = Node.create({
         const position = getPos();
         if (typeof position === 'number') {
           editor.view.dispatch(editor.state.tr.setNodeMarkup(position, undefined, { ...node.attrs, latex }));
+          rememberSelection();
         }
       });
       let leavingStructure = false;
