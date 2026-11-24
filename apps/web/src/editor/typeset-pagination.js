@@ -134,6 +134,8 @@ export function installTypesetPagination(page, paper, meta, editor) {
   let lineBreaks = [];
   let lineBreaksDoc = null;
   let lastLayoutDoc = null;
+  let layoutPass = 0;
+  let settled = false;
   installLineBreaks(editor);
 
   function setLineBreaks(entries) {
@@ -332,6 +334,7 @@ export function installTypesetPagination(page, paper, meta, editor) {
     page.style.setProperty('--editor-min-height', '0');
     page.style.setProperty('--page-stack-height', 'var(--page-height)');
     renderSheets(1);
+    if (layoutPass >= 2) settleLayout();
     lastLayoutDoc = editor.state.doc;
     window.dispatchEvent(new CustomEvent('lineae-layout'));
   }
@@ -344,6 +347,11 @@ export function installTypesetPagination(page, paper, meta, editor) {
       return;
     }
     deferredLayout = false;
+    if (editor.state.doc !== lastLayoutDoc) {
+      layoutPass = 0;
+      settled = false;
+    }
+    layoutPass += 1;
     window.dispatchEvent(new Event('lineae-before-layout'));
     const emptyMeta = !meta.textContent.trim();
     meta.dataset.empty = String(emptyMeta);
@@ -557,12 +565,18 @@ export function installTypesetPagination(page, paper, meta, editor) {
     renderSheets(plan.pageCount);
     renderTableHeaders(tablePlans, blocks);
     delete page.dataset.paginationMeasuring;
+    if (layoutPass >= 2) settleLayout();
     lastLayoutDoc = editor.state.doc;
     window.dispatchEvent(new CustomEvent('lineae-layout'));
   }
 
   function schedule() {
     if (!frame) frame = requestAnimationFrame(layout);
+  }
+  function repaginate() {
+    settled = false;
+    layoutPass = 0;
+    schedule();
   }
 
   const measured = new WeakMap();
@@ -580,9 +594,32 @@ export function installTypesetPagination(page, paper, meta, editor) {
       const next={width:rect.width/scale,height:rect.height/scale};
       const previous=measured.get(target);
       measured.set(target,next);
-      const changed=!previous||Math.abs(previous.width-next.width)>.5||Math.abs(previous.height-next.height)>.5;
+      const widthChanged=!previous||Math.abs(previous.width-next.width)>.5;
+      const changed=widthChanged||Math.abs(previous.height-next.height)>.5;
+      if (settled) {
+        // Our own gaps/translations change heights. Only a real width change
+        // (resize/zoom) warrants a fresh pagination; document changes arrive
+        // through the mutation observer.
+        if (!widthChanged) continue;
+        settled = false;
+        layoutPass = 0;
+      }
       if (deferredLayout || changed) schedule();
     }
+  }
+  function seedMeasuredSizes() {
+    const zoom=page.offsetWidth?page.getBoundingClientRect().width/page.offsetWidth:1;
+    const scale=zoom||1;
+    for(const target of [editable,meta,...editable.children]){
+      if(!target.getClientRects().length)continue;
+      const rect=target.getBoundingClientRect();
+      measured.set(target,{width:rect.width/scale,height:rect.height/scale});
+    }
+  }
+  function settleLayout() {
+    if (settled) return;
+    settled = true;
+    seedMeasuredSizes();
   }
   const resize = new ResizeObserver(onResize);
   resize.observe(editable);
@@ -600,36 +637,40 @@ export function installTypesetPagination(page, paper, meta, editor) {
     // DOM without changing the document; re-paginating for them makes layout
     // depend on selection and jumps the page. Real layout changes still arrive
     // through the document version or the resize observers.
-    if (editor.state.doc !== lastLayoutDoc) schedule();
+    if (editor.state.doc !== lastLayoutDoc) {
+      settled = false;
+      layoutPass = 0;
+      schedule();
+    }
   });
   mutations.observe(editable, { subtree: true, childList: true, characterData: true });
   mutations.observe(meta, { subtree: true, childList: true, characterData: true });
-  document.fonts?.addEventListener('loadingdone', schedule);
+  document.fonts?.addEventListener('loadingdone', repaginate);
 
   return {
     update(preamble) {
       applyProfile(preamble);
-      schedule();
+      repaginate();
     },
-    refresh: schedule,
+    refresh: repaginate,
     setMaketitle(value) {
       const next = Boolean(value);
       if (next !== maketitle) {
         maketitle = next;
         sheetCount = 0;
       }
-      schedule();
+      repaginate();
     },
     getMode: () => mode,
     getTableContinuation: () => continuedTables,
     setTableContinuation(enabled) {
       continuedTables = Boolean(enabled);
-      schedule();
+      repaginate();
       return continuedTables;
     },
     setMode(next) {
       mode = next === 'flow' ? 'flow' : 'pages';
-      schedule();
+      repaginate();
       return mode;
     },
     toggle() {
