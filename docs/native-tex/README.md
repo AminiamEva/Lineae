@@ -30,6 +30,11 @@ only for this manual preview request. Publication waits for all three required j
 macOS retains its packaged WKWebView smoke test and signature checks. Stable `v*` releases
 keep their existing platform gates and signing policy.
 
+If GitHub rejects an automated release request after verification, the run keeps
+the assembled, checksummed `lineae-verified-preview-<sha>` artifact. A maintainer
+can publish those same bytes against a tag verified to point to that commit,
+without weakening CI permissions or rebuilding either platform on a local device.
+
 On success, a separate `desktop-preview-<run ID>` GitHub **prerelease** contains:
 
 - Windows x64 offline installer and portable ZIP (unsigned).
