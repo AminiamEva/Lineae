@@ -2623,19 +2623,20 @@ nativeTexPreview=installNativeTexPreview({host:footer,before:modes,
   isComposing:()=>editor.view.composing||sourceView.composing,
   focusMathSlot:(projection,anchor,head)=>{
     const project=projectExplorer?.model;
-    // Native preview is for the main source. Never use its offsets in an
-    // included file or apply an ordinal to a composed rich document.
+    // The current observer tags the main source. Never use its offsets in an
+    // included file or count an included MathLive field as a main-file field.
     if(project&&project.activeFileId!==project.mainFileId)return;
     if(!sourceView.hidden){
       if(sourceView.value!==projection.source)return;
       sourceView.select(anchor.position,head.position);
       return true;
     }
-    if(projectDocument.composition)return;
     if(source()!==projection.source)return;
     const formula=head.formula;
     if(anchor.formula!==formula)return;
-    const fields=[...paper.querySelectorAll(formula.kind==='displayMath'?'.math-display math-field':'.math-inline math-field')];
+    const mainPath=project?.file(project.mainFileId).path;
+    const fields=[...paper.querySelectorAll(formula.kind==='displayMath'?'.math-display math-field':'.math-inline math-field')]
+      .filter(field=>!projectDocument.composition||field.closest('[data-project-region]')?.dataset.filePath===mainPath);
     const field=fields[formula.ordinal];
     if(fields.length!==formula.count||field?.value.trim()!==formula.math.source.trim())return;
     const model=field._mathfield?.model;

@@ -34,7 +34,7 @@ export function installNativeTexPreview({host,before,getSource,getSnapshot,isCom
   let renderedRevision=-1,error='',active=false,terminal=false;
   let mode='canvas',pdfWanted=-1,pdfAttempt=null,pdfLayout=null;
   let pollEpoch=0;
-  let targeting=null,observation=null;
+  let targeting=null,observation=null,targetArmed=false,lastTarget=null,targetTimer=null;
   const pdf=installNativePdf({host:pages,onPaint:revision=>{
     if(!active||mode!=='pdf')return;
     renderedRevision=revision;pdfRendered=revision;if(!terminal&&revision>=sourceRevision)error='';renderStatus();
@@ -74,6 +74,13 @@ export function installNativeTexPreview({host,before,getSource,getSnapshot,isCom
   function renderStatus() {
     exportButton.disabled=!current();
     targetButton.disabled=!current()||mode!=='canvas'||targeting===generation;
+    if(targetArmed&&!targetButton.disabled&&!sentSnapshot?.files&&sentSource.length<=32*1024&&targetTimer===null&&
+        (lastTarget?.sessionId!==session||lastTarget?.sourceRevision!==sourceRevision)){
+      targetTimer=setTimeout(()=>{
+        targetTimer=null;
+        if(targetArmed&&!targetButton.disabled)void observe();
+      },350);
+    }
     button.setAttribute('aria-pressed',String(active));
     button.textContent=active?t('关闭 LuaLaTeX 预览','Close LuaLaTeX preview'):t('LuaLaTeX 预览（实验）','LuaLaTeX preview (experimental)');
     panel.dataset.state=error?'error':current()?'current':active?'stale':'off';
@@ -100,6 +107,7 @@ export function installNativeTexPreview({host,before,getSource,getSnapshot,isCom
     const previous=session;session=null;
     wantedSnapshot=null;sentSnapshot=null;wantedSource='';sentSource='';
     observation=null;targetStatus.textContent='';
+    targetArmed=false;lastTarget=null;clearTimeout(targetTimer);targetTimer=null;
     renderer.reset();pdf.reset();mode='canvas';pdfWanted=-1;pdfLayout=null;pdfRendered=-1;renderedRevision=-1;renderStatus();
     if(previous!==null) {
       try {await invoke('native_tex_close',{sessionId:previous});}
@@ -259,12 +267,14 @@ export function installNativeTexPreview({host,before,getSource,getSnapshot,isCom
   }
   async function observe() {
     if(targetButton.disabled)return;
+    const stamp={sessionId:session,sourceRevision};
+    lastTarget=stamp;
     const projection=projectDocumentFormulas(sentSource);
     if(!projection||![...projection.owners.values()].some(({atom})=>['frac','sqrt','token','cell'].includes(atom.kind))){
       targetStatus.textContent=t('当前主文档没有可定位的公式。','No supported formula in the current main document.');
       return;
     }
-    const attempt=generation,stamp={sessionId:session,sourceRevision};
+    const attempt=generation;
     targeting=attempt;observation=null;renderStatus();
     targetStatus.textContent=t('正在核对源码标记及实际排版…','Checking projected source against the visible layout…');
     try {
@@ -285,7 +295,9 @@ export function installNativeTexPreview({host,before,getSource,getSnapshot,isCom
   button.addEventListener('mousedown',event=>event.preventDefault());
   closeButton.addEventListener('click',()=>{void stop();});
   exportButton.addEventListener('click',()=>{void exportPdf();});
-  targetButton.addEventListener('click',()=>{void observe();});
+  targetButton.addEventListener('click',()=>{
+    targetArmed=true;clearTimeout(targetTimer);targetTimer=null;void observe();
+  });
   zoom.addEventListener('change',()=>{
     const value=Number(zoom.value)/100;
     renderer.setZoom(value);pdf.setZoom(value);

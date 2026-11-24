@@ -150,13 +150,26 @@ its disposable project; it never saves over the original `.tex`.
 | History and source changes | One PM/MathLive history, no second native editor history; preview must not write document state |
 | IME and clipboard | Existing input surface remains visible/authoritative; physical WKWebView/WebView2 checks still required |
 | LuaLaTeX session, fonts and PDF | Real ignored Rust integration test explicitly selected in remote native CI; mock UI tests do not replace it |
-| Native-canvas clicking, caret and selection | **Not implemented**; requires stable owner/slot mapping and native geometry, not an invisible MathLive overlay |
+| Native Canvas clicking, caret and selection | Partial: owner-verified mouse clicks and drags project onto the existing editor, with a Canvas position marker and glyph highlights for supported formulas |
 | Native page fidelity | Exact glyph/resource gate, otherwise revision-frozen whole-page PDF; no generic-font or unknown-operation substitution |
 | Full feature parity | **Not achieved**; native direct editing cannot become default until these gates pass |
 
 This checkpoint offers existing editing with an updating LuaLaTeX preview. It is not a
 claim that the complete existing editing experience has been reimplemented on native
 geometry, or that an unsupported document can already be edited in the native Canvas.
+
+Release acceptance must still cover all of the following before the new surface
+can become the default:
+
+- The caret and selection remain synchronized with keyboard navigation and typing,
+  including across reflow, zoom, edits, and history changes.
+- Existing structured deletion, multiline editing, matrix operations, clipboard,
+  toolbar commands, and platform shortcuts behave the same on the new surface.
+- Inline and display formulas in composed projects choose their original file and
+  offset, not an offset in composed source.
+- Physical Windows and Apple Silicon tests cover IME candidate positioning,
+  composition commit/cancel, shortcut delivery, and selection at multiple zooms.
+- Unsupported or degraded geometry never writes a guessed source range.
 
 [Run 45384269123](https://github.com/AminiamEva/Lineae/actions/runs/45384269123)
 verified the real Rust session, captured font loading, raw-source updates, revision-checked
@@ -228,11 +241,21 @@ It enables a click only when
 exact page drawing records agree with the raw preview and the session, source and
 layout still match. Clicking an empty numerator, denominator, radicand or supported glyph edge transfers focus to the
 original MathLive field, or selects the original source offset in Source/Split.
-For projects, the active file must be the main file; composed rich pages and
-included files don't yet accept these targets.
+For projects, the active file must be the main file. Composed rich pages filter
+targets by original file; included files aren't instrumented yet.
 The existing editor history handles subsequent input and undo. A click shows a
 native position marker until the next input or layout; dragging between two supported
 targets transfers a selection to the editor. Dragging between glyphs in the same
 supported formula also highlights those glyphs on the Canvas before drop.
 Semantic editing on PDF fallback is not implemented.
 The independently compiled projection never replaces the source or export buffer.
+After targeting is armed, small standalone documents refresh owner geometry after
+the new raw layout settles. Large documents and projects still require an explicit
+observation request; no stale geometry remains editable during the refresh.
+
+The verified release checkpoints are [the two-device preview with Canvas drag targeting](
+https://github.com/AminiamEva/Lineae/releases/tag/desktop-preview-45415437738) and the
+[preview including multiple formulas, inline targeting, scripts, and PDF reuse](
+https://github.com/AminiamEva/Lineae/releases/tag/desktop-preview-45418212782).
+The [matrix-slot run](https://github.com/AminiamEva/Lineae/actions/runs/45420285782)
+separately verifies real per-cell LuaLaTeX ownership and mock-transport UI targeting.

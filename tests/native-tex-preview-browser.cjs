@@ -130,6 +130,8 @@ const server=createServer(async(req,res)=>{
     await page.waitForFunction(()=>nativeProbe.revision>1);
     assert.equal(await page.evaluate(()=>nativeProbe.source.replace(/\r\n/g,'\n')),expected.replace(/\r\n/g,'\n'),
       'Filling the denominator changes exactly one source letter');
+    await page.waitForFunction(()=>nativeProbe.calls.some(call=>call.command==='native_tex_observe_formula'&&
+      call.args.sourceRevision>1),'Retarget geometry automatically after typing');
     await page.keyboard.press(mod+'+z');
     await page.waitForFunction(original=>nativeProbe.source?.replace(/\r\n/g,'\n')===original,input.toString().replace(/\r\n/g,'\n'));
     await page.keyboard.press(mod+'+y');
@@ -208,9 +210,9 @@ const server=createServer(async(req,res)=>{
         const file=await dir.getFileHandle(name,{create:true}),writer=await file.createWritable();
         await writer.write(bytes);await writer.close();
       };
-      await put(luaProjectDirectory,'main.tex','\\documentclass{article}\n\\begin{document}\n\\input{chapters/one}\n\\end{document}\n');
+      await put(luaProjectDirectory,'main.tex','\\documentclass{article}\n\\begin{document}\n\\[\\frac{a}{}\\]\n\\input{chapters/one}\n\\end{document}\n');
       const chapter=await luaProjectDirectory.getDirectoryHandle('chapters',{create:true});
-      await put(chapter,'one.tex','Original chapter.\n');
+      await put(chapter,'one.tex','Original chapter.\n\\[\\frac{z}{}\\]\n');
       await put(luaProjectDirectory,'image.png',new Uint8Array([0,255,13,10]));
       window.showDirectoryPicker=async()=>luaProjectDirectory;
     });
@@ -225,6 +227,16 @@ const server=createServer(async(req,res)=>{
     assert.match(projectOpen.source,/\\input\{chapters\/one\}/,'Compile the actual main source rather than a flattened editor projection');
     assert.ok(projectOpen.files.some(file=>file.path==='chapters/one.tex'));
     assert.deepEqual(projectOpen.files.find(file=>file.path==='image.png').bytes,[0,255,13,10]);
+    await page.locator('#native-tex-target').click();
+    await panel.getByText('Click the empty numerator or denominator',{exact:false}).waitFor();
+    await panel.locator('[data-native-page="1"] canvas').click({position:{x:6500000*scale,y:7000000*scale}});
+    await page.waitForFunction(()=>{
+      const field=document.activeElement,math=field?._mathfield;
+      return field?.tagName==='MATH-FIELD'&&field.value.includes('\\frac{a}{}')&&!math?.focusBlurInProgress&&
+        math?.model.at(field.position)?.parentBranch==='below';
+    });
+    await page.keyboard.type('b');
+    await page.waitForFunction(()=>nativeProbe.source?.includes('\\frac{a}{b}'));
     const previousId=await page.evaluate(()=>String(nativeProbe.session));
     if(!await page.locator('#project-explorer').isVisible())await page.locator('#project-toggle').click();
     const folder=page.locator('#project-explorer summary').filter({hasText:/^chapters$/});
