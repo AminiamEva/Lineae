@@ -1,6 +1,7 @@
 // General TikZ studio: code left, real TeX/TikZ SVG right.  The renderer is
 // mp-tikz-wasm (LGPL-3.0-or-later), loaded lazily from a local vendor copy.
 import { t } from './i18n.mjs';
+import { confirmDialog } from '../editor/dialog.js';
 
 let enginePromise = null;
 const svgCache = new Map();
@@ -385,8 +386,9 @@ export function openTikzStudio({ onInsert, initialLibraries, initialBody } = {})
   const endPan = () => { if (!panning) return; panning = null; previewWrap.classList.remove('is-panning'); };
   previewWrap.addEventListener('pointerup', endPan);
   previewWrap.addEventListener('pointercancel', endPan);
-  const close = () => {
-    if (!inserted && isDirty() && !confirm(t('您有尚未保存的改动，是否退出？', 'You have unsaved changes. Exit anyway?'))) return;
+  const close = async () => {
+    if (!inserted && isDirty() &&
+        !await confirmDialog({ title:t('您有尚未保存的改动，是否退出？', 'You have unsaved changes. Exit anyway?') })) return;
     clearTimeout(timer);
     overlay.remove();
   };

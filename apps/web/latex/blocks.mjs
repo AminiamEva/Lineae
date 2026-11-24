@@ -2,7 +2,7 @@ import {counterDeclarationAt} from './counter-declarations.mjs';
 import {importedCellAttributes} from './table-spans.mjs';
 import { parseInline, textCommands } from './inline.mjs';
 import { parseTable } from './tables.mjs';
-import { parseImageBlock } from './images.mjs';
+import { parseImageBlock, tikzLooksCircuit } from './images.mjs';
 import { theoremParts } from './theorem.mjs';
 import { listStyleForLabel, bulletMarker } from './list-numbering.mjs';
 import {sourceStructure} from './source-structure.mjs';
@@ -413,7 +413,9 @@ export function importBlock(block, options={}) {
   }
   const tikzSource=block.trim();
   const tikzBlock=/^\\resizebox\{[^{}]*\}\{!\}\{/.test(tikzSource)?tikzSource.replace(/^\\resizebox\{[^{}]*\}\{!\}\{%?\s*/,'').replace(/%?\s*\}$/,''):tikzSource;
-  if(/^\\begin\{(?:tikzpicture|circuitikz)\}[\s\S]*\\end\{(?:tikzpicture|circuitikz)\}$/.test(tikzBlock)) return {type:'codeBlock',attrs:{language:'tikz'},content:[{type:'text',text:tikzBlock}]};
+  if(/^\\begin\{(?:tikzpicture|circuitikz)\}[\s\S]*\\end\{(?:tikzpicture|circuitikz)\}$/.test(tikzBlock)) {
+    return {type:'documentImage',attrs:{tikzSource:block.trim(),tikzEditor:tikzLooksCircuit(tikzBlock)?'circuit':'general',centered:true,align:'center'}};
+  }
   return { type: 'raw', attrs: { source: block } };
 }
 

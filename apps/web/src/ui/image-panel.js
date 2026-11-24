@@ -363,6 +363,10 @@ export function installImagePanel({onUpdate, onReplace, onSpacing, getSpacing, o
     background.value=next.background??'#ffffff';
     const spacingValues=getSpacing();
     for(const [name,input] of Object.entries(spacingInputs))input.value=spacingNumber(spacingValues[name]);
+    const tikzMode=Boolean(next.tikzSource);
+    replace.disabled=tikzMode;
+    cropButton.disabled=tikzMode;
+    panel.dataset.tikz=String(tikzMode);
   }
   function update(patch){ if(attrs){attrs={...attrs,...patch};onUpdate?.(patch);} }
   function updateDimension(which){

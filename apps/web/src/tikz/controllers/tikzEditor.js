@@ -6,6 +6,7 @@ import { PX_PER_CM, SnapController } from './snapDrag.js';
 import { NodeSymbol, PathComponent, OpenComponent, RectComponent, TextItem, Wire, GroupComponent } from '../components/components.js';
 import { parseLibrary, BASIC_COMPONENTS, GROUP_LABELS } from '../components/symbols-meta.js';
 import { exportTikz } from './exportController.js';
+import { confirmDialog } from '../../editor/dialog.js';
 
 export class TikzEditor {
   constructor({ getTextwidthCm } = {}) {
@@ -56,9 +57,9 @@ export class TikzEditor {
       this.render();
     });
   }
-  close(force = false) {
+  async close(force = false) {
     if (!force && this.overlay && this.isDirty() &&
-        !confirm(this.t('您有尚未保存的改动，是否退出？', 'You have unsaved changes. Exit anyway?'))) return false;
+        !await confirmDialog({ title:this.t('您有尚未保存的改动，是否退出？', 'You have unsaved changes. Exit anyway?') })) return false;
     this.overlay?.remove(); this.overlay = null; return true;
   }
 

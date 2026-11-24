@@ -2,7 +2,8 @@ import { DOMSerializer } from '@tiptap/pm/model';
 import { icon } from './icons.js';
 import { promptDialog, askText } from './dialog.js';
 import { toggleDisplayStyle } from './math-node.js';
-import { startImageCrop } from './image-node.js';
+import { startImageCrop, editTikzVisual } from './image-node.js';
+import { tikzLooksCircuit } from '../../latex/images.mjs';
 import { deleteTableKeepingScroll } from './table-utils.js';
 import { popIn } from '../ui/motion.mjs';
 import { localizeText, t } from '../ui/i18n.mjs';
@@ -53,6 +54,10 @@ async function copySelection(context, cut) {
 
 export function contextCommands(context) {
   const { editor, field, imagePosition = null } = context;
+  const imageNode = imagePosition !== null ? editor.state.doc.nodeAt(imagePosition) : null;
+  const tikzSource = imageNode?.attrs?.tikzSource ?? null;
+  const circuitTikz = Boolean(tikzSource) && (imageNode.attrs.tikzEditor === 'circuit' ||
+    (!imageNode.attrs.tikzEditor && tikzLooksCircuit(tikzSource)));
   const selectionEmpty = field ? field.selection.ranges.every(([from, to]) => from === to) : editor.state.selection.empty;
   return [
     ...[['addRowAfter','在下方插入矩阵行','Insert matrix row'], ['addColumnAfter','在右侧插入矩阵列','Insert matrix column'],
@@ -108,8 +113,16 @@ export function contextCommands(context) {
       toggleDisplayStyle(field);
     }},
     { id:'image-crop', labels:['裁剪图片','Crop image'], icon:'crop',
-      visible:!field && imagePosition !== null,
+      visible:!field && imagePosition !== null && !tikzSource,
       run:()=>{ startImageCrop(editor, imagePosition); },
+    },
+    { id:'edit-tikz', labels:['编辑 TikZ','Edit TikZ'], icon:'image',
+      visible:!field && Boolean(tikzSource) && !circuitTikz,
+      run:()=>{ editTikzVisual(editor, imagePosition); },
+    },
+    { id:'edit-circuitikz', labels:['编辑 CircuiTikZ','Edit CircuiTikZ'], icon:'image',
+      visible:!field && Boolean(tikzSource) && circuitTikz,
+      run:()=>{ editTikzVisual(editor, imagePosition); },
     },
     { id: 'undo', labels: ['撤销', 'Undo'], enabled: editor.can().undo(), run: () => editor.chain().focus().undo().run() },
     { id: 'redo', labels: ['重做', 'Redo'], enabled: editor.can().redo(), run: () => editor.chain().focus().redo().run() },
