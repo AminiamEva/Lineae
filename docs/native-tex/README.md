@@ -71,6 +71,29 @@ connection; production must continue loading its packaged resources with its exi
 
 ## Next gates
 
+The first gate now has a dedicated remote workflow:
+
+```sh
+gh workflow run native-tex.yml --ref main
+```
+
+It runs on macOS arm64 and Windows x64, verifies the rtex 0.0.8 archive against a
+checked-in SHA-256, and installs the frozen TeX Live 2025 `tlnet-final` toolchain
+into the CI workspace. This toolchain is **not** added to desktop packages.
+The probe adds a controlled `unicode-math`/Latin Modern Math preamble only to its
+test input; it is not a production preamble rewrite or a general TeX parser.
+Fonts remain on the runner; the artifact records their identity and hash.
+
+Each platform uploads `native-tex-geometry-<target>-<commit>` with actual JSONL
+commands/events, initial and incremental geometry, the original/projection text,
+environment/package revisions, and an independently compiled uninstrumented PDF.
+Missing tools, background-only routing, absent owners or mismatched revisions fail
+the job; they are not treated as skipped or successful native support. Tests of
+the probe's matching logic are separate from engine-generated evidence.
+One warm edit's engine timing is recorded, not advertised as end-to-end latency.
+Source-level newline/Unicode offset coverage does not certify glyph rendering,
+interactive history, export identity or input-method behavior.
+
 1. **Environment/geometry:** remote CI verifies pinned rtex + LuaLaTeX, font identity,
    an actual `LayoutUpdate`, an empty `den` owner and a revision-matched incremental
    `ParagraphUpdate`. Archive the actual protocol trace; never fabricate it from fixtures.

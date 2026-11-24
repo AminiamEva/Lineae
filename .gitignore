@@ -19,3 +19,4 @@ tests/corpus/.cache/
 .cache/
 .tmp/
 .acl-recovery/
+.native-tex/
