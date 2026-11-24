@@ -1,5 +1,5 @@
 import {createFontMeasurement} from './font-measurement.mjs';
-import {layoutScale} from './layout-geometry.js';
+import {layoutScale,lineBoxAscent} from './layout-geometry.js';
 import {interwordGlue, texDimension} from './paragraph-parameters.mjs';
 import {TextSelection,Plugin,PluginKey} from '@tiptap/pm/state';
 import {Decoration,DecorationSet} from '@tiptap/pm/view';
@@ -173,7 +173,7 @@ export function installParagraphLayout(editor,profile){
     const metric = profile.cjk.assess?.(preamble, family).metric;
     const supportsCjk = metric || profile.cjk.supports?.(options, family);
     const pending=[];
-    function anchorWrap(wrap,lineHeight){
+    function anchorWrap(wrap,lineHeight,paragraph){
       // Keep the float's natural box.  Any line it partially overlaps is still
       // a wrapped line in TeX, so round up instead of trimming the float band.
       const topRule=wrap.attrs.rule && wrap.position===0;
@@ -189,11 +189,20 @@ export function installParagraphLayout(editor,profile){
         ruleDepth=wrap.dom.offsetHeight-correction;
         marginTop=firstBaseline-correction+(topRule?0:intextsep);
       }
+      const image=wrap.dom.querySelector('img');
+      if(!wrap.attrs.rule && wrap.position>0 && image?.naturalHeight && !wrap.attrs.caption){
+        // wrapfig aligns its tall vtop to the text baseline with a -1.4ex skip.
+        const style=getComputedStyle(paragraph);
+        context.font='1000px '+style.fontFamily;
+        const correction=1.4*context.measureText('x').actualBoundingBoxAscent*parseFloat(style.fontSize)/1000;
+        if(image.getBoundingClientRect().height>parseFloat(style.fontSize))
+          marginTop=lineBoxAscent(paragraph)-correction+intextsep;
+      }
       // The bottom margin is spacing only; it must not add another narrowed line.
       const marginBottom=intextsep;
       wrap.dom.style.marginBlockStart=marginTop.toFixed(2)+'px';
       wrap.dom.style.marginBlockEnd=marginBottom.toFixed(2)+'px';
-      const raw=(marginTop+wrap.dom.offsetHeight+marginBottom)/lineHeight;
+      const raw=(intextsep+lineHeight*.5+wrap.dom.offsetHeight+marginBottom)/lineHeight;
       // wrapfig.sty computes a guess from box depth, intextsep and the
       // baseline grid; its counter includes the line after the wrapped band.
       const guess=wrap.attrs.rule
@@ -225,7 +234,7 @@ export function installParagraphLayout(editor,profile){
       const lineHeight=lineHeightLayout*zoom;
       const active=pending.filter(wrap=>wrap.remaining===null||wrap.remaining>0);
       for(const wrap of active){
-        if(wrap.remaining===null)anchorWrap(wrap,lineHeightLayout);
+        if(wrap.remaining===null)anchorWrap(wrap,lineHeightLayout,element);
       }
       // TeX narrows the first n lines after the figure, even across paragraphs.
       const wraps=active.map(wrap=>{
