@@ -86,7 +86,7 @@ function parse(source) {
     if (source[at] === '{') {
       protect(at, at + 1, 'delimiter');
       const from16 = ++at;
-      const children = sequence(depth + 1, true);
+      const children = sequence(depth + 1, '}');
       const to16 = at;
       if (source[at] !== '}') fail('Unclosed group');
       protect(at, ++at, 'delimiter');
@@ -110,12 +110,49 @@ function parse(source) {
       node = {kind: 'group', from16, fields: [body]};
     } else if (source[at] === '\\') {
       const command = /^\\[A-Za-z]+/.exec(source.slice(at))?.[0];
-      if (command !== '\\frac' && command !== '\\sqrt') fail('Unsupported control sequence');
-      at += command.length;
-      protect(from16, at, 'command');
-      node = {kind: command.slice(1), from16, fields: []};
-      for (const role of command === '\\frac' ? ['numerator', 'denominator'] : ['radicand']) {
-        node.fields.push(field(role, depth));
+      const matrix = command==='\\begin'&&/^\\begin\{(matrix|[pbBvV]matrix)\}/.exec(source.slice(at));
+      if(matrix){
+        at+=matrix[0].length;protect(from16,at,'command');
+        node={kind:'matrix',from16,fields:[]};
+        let row=0,column=0;
+        while(true){
+          const start=at,children=[];
+          while(true){
+            trivia();
+            if(at===source.length||source[at]==='&'||source.startsWith('\\\\',at)||source.startsWith('\\end{',at))break;
+            children.push(atom(depth+1));
+          }
+          const cell={kind:'cell',from16:start,to16:at,
+            fields:[{role:'cell',from16:start,to16:at,grouped:false,children}]};
+          node.fields.push({role:`cell.${row}.${column}`,from16:start,to16:at,grouped:false,children:[cell]});
+          if(source[at]==='&'){protect(at,++at,'delimiter');column++;continue;}
+          if(source.startsWith('\\\\',at)){
+            protect(at,at+2,'delimiter');at+=2;
+            if(/^[ \t]*\[/.test(source.slice(at)))fail('Matrix row spacing is not supported');
+            row++;column=0;continue;
+          }
+          const close=`\\end{${matrix[1]}}`;
+          if(!source.startsWith(close,at))fail('Unclosed matrix environment');
+          protect(at,at+close.length,'command');at+=close.length;break;
+        }
+      } else {
+        if (command !== '\\frac' && command !== '\\sqrt') fail('Unsupported control sequence');
+        at += command.length;
+        protect(from16, at, 'command');
+        node = {kind: command.slice(1), from16, fields: []};
+        if(command==='\\sqrt'){
+          trivia();
+          if(source[at]==='['){
+            protect(at,++at,'delimiter');
+            const start=at,children=sequence(depth+1,']'),end=at;
+            if(source[at]!==']')fail('Unclosed root degree');
+            protect(at,++at,'delimiter');
+            node.fields.push({role:'degree',from16:start,to16:end,grouped:true,children});
+          }
+        }
+        for (const role of command === '\\frac' ? ['numerator', 'denominator'] : ['radicand']) {
+          node.fields.push(field(role, depth));
+        }
       }
     } else {
       const token = graphemes.get(at);
@@ -143,11 +180,11 @@ function parse(source) {
     node.to16 = at;
     return node;
   }
-  function sequence(depth, grouped = false) {
+  function sequence(depth, close) {
     const children = [];
     while (true) {
       trivia();
-      if (at === source.length || (grouped && source[at] === '}')) break;
+      if (at === source.length || source[at] === close) break;
       children.push(atom(depth));
     }
     return children;
@@ -230,7 +267,10 @@ function instrument(source, root, attribute) {
       for (const child of field.children) {
         insert(child.from16, tag(child.tag));
         children(child);
-        insert(child.to16, tag(owner.tag));
+        // LuaTeX records a cell's effective attribute when ending its math
+        // boundary. In an empty cell in particular, keep the cell owner in
+        // force through the alignment separator.
+        if(child.kind!=='cell')insert(child.to16, tag(owner.tag));
       }
       if (field.single) insert(field.to16, '}');
     }

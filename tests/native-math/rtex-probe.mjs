@@ -52,8 +52,8 @@ async function probe(source,label,out,rtex,texbin,structured=false) {
   const dir=join(out,label),project=join(dir,'project 空分母');
   mkdirSync(project,{recursive:true});
   const matrix=structured==='matrix';
-  const whole=structured==='multi'?projectDocumentFormulas(source):null;
-  const documentProjection=whole
+  const whole=structured==='multi'||matrix?projectDocumentFormulas(source):null;
+  const documentProjection=whole&&!matrix
     ?{...whole.formulas.find(formula=>formula.math.slots.some(slot=>slot.role==='denominator'&&slot.raw==='')),
       projection:whole.projection}
     :structured&&!matrix?projectDisplayMath(source):null;
@@ -61,9 +61,7 @@ async function probe(source,label,out,rtex,texbin,structured=false) {
   const slot=documentProjection?.math.slots.find(slot=>slot.role==='denominator'&&slot.raw==='');
   const owner=slot?.tag??10;
   const projection=matrix?{
-    text:source.replace('\\begin{pmatrix}a & \\\\ & d\\end{pmatrix}',
-      '\\begingroup\\attribute65000=80 \\begin{pmatrix}\\attribute65000=81 a &\\attribute65000=82 \\\\'+
-      '\\attribute65000=83 &\\attribute65000=84 d\\end{pmatrix}\\endgroup'),
+    text:whole?.projection??source,
     sourceOffset16:0,projectionOffset16:0,
   }:documentProjection?{
     text:documentProjection.projection,
@@ -137,11 +135,13 @@ async function probe(source,label,out,rtex,texbin,structured=false) {
         .filter(field=>field.role==='cell');
       // Characterize the actual observer before a production cell target is
       // allowed. Do not infer that the nth emitted box belongs to the nth cell.
-      const uniqueEmptyOwners=[82,83].every(owner=>fields.filter(field=>field.empty&&field.owner===owner).length===1);
-      const summary={label,versions:layout.versions,fields,uniqueEmptyOwners,
-        scope:'matrix ownership investigation; not yet enabled for interactive targeting'};
+      const expected=[...whole.owners].filter(([,entry])=>entry.atom.kind==='cell'&&!entry.atom.raw.trim()).map(([tag])=>tag);
+      const uniqueEmptyOwners=expected.length===2&&expected.every(owner=>fields.filter(field=>field.empty&&field.owner===owner).length===1);
+      const summary={label,versions:layout.versions,fields,expected,uniqueEmptyOwners,
+        scope:'real LuaLaTeX ownership of empty matrix slots'};
       writeFileSync(join(dir,'summary.json'),JSON.stringify(summary,null,2)+'\n');
       console.log(`Observed matrix cell ownership: ${JSON.stringify({uniqueEmptyOwners,fields})}`);
+      assert.ok(uniqueEmptyOwners,'Each empty matrix cell needs a distinct source owner');
       return summary;
     }
     const initial=records.filter(message=>message.event==='LayoutUpdate' &&

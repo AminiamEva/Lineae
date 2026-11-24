@@ -17,21 +17,22 @@ export function installNativePages({host,getFont,onPaint,onError,onMathHit}) {
     return JSON.stringify([dl.page_width,dl.page_height,dl.fonts,dl.other,
       dl.lines.map(line=>[line.x,line.y,line.w,line.h,line.d,line.items])]);
   }
-  function attachOwners(observed,stamp,tokenOwners) {
+  function attachOwners(observed,stamp,owners) {
     if(stamp.sourceRevision!==revision||observed.length!==pages.size)return false;
     const fields=new Map(),glyphs=new Map(),seen=new Set();
     for(const page of observed) {
       const entry=pages.get(page.page);
       if(!entry||page.exact!==true||drawing(entry.dl)!==drawing(page.dl))return false;
       const targets=page.dl.math_owners?.fields?.filter(field=>
-        field.empty&&['num','den','radicand','sup','sub'].includes(field.role))??[];
+        field.empty&&(['num','den','radicand','degree','sup','sub'].includes(field.role)||
+          (field.role==='cell'&&owners.get(field.owner)?.atom.kind==='cell')))??[];
       for(const field of targets){
         const key=`${field.owner}/${field.role}`;
         if(seen.has(key))return false;
         seen.add(key);
       }
       fields.set(page.page,targets);
-      glyphs.set(page.page,page.dl.math_owners?.glyphs?.filter(glyph=>tokenOwners.has(glyph.owner))??[]);
+      glyphs.set(page.page,page.dl.math_owners?.glyphs?.filter(glyph=>owners.get(glyph.owner)?.atom.kind==='token')??[]);
     }
     if(![...fields.values(),...glyphs.values()].some(items=>items.length))return false;
     ownership={stamp:{...stamp,layoutVersion},fields,glyphs};

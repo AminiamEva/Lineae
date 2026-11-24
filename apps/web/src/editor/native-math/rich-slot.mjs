@@ -1,5 +1,6 @@
-const branches = {body:'body', numerator:'above', denominator:'below', radicand:'body',superscript:'superscript',subscript:'subscript'};
-const kinds = {frac:'genfrac',sqrt:'surd',group:'group'};
+const branches = {body:'body', numerator:'above', denominator:'below', radicand:'body',degree:'above',
+  superscript:'superscript',subscript:'subscript',cell:'body'};
+const kinds = {frac:'genfrac',sqrt:'surd',group:'group',matrix:'array'};
 const script = name=>name==='superscript'||name==='subscript';
 function branch(atom,name) {
   const direct=atom.branch(name);
@@ -10,13 +11,23 @@ function branch(atom,name) {
 // Follow actual branch ancestry, rather than matching the first fraction in
 // MathLive's flattened offsets. A layout hit can target an inner fraction.
 export function richSlotPosition(model,atoms,owner,{role,after}) {
-  const target = {num:'above',den:'below',radicand:'body',sup:'superscript',sub:'subscript'}[role];
-  if(!owner||(!(target&&(script(target)||['frac','sqrt'].includes(owner.kind)))&&
+  const target = {num:'above',den:'below',radicand:'body',degree:'above',sup:'superscript',sub:'subscript',cell:'body'}[role];
+  if(!owner||(!(target&&(script(target)||['frac','sqrt','cell'].includes(owner.kind)))&&
       !(role==='nucleus'&&owner.kind==='token')))return null;
   const parts=owner.path.split('/'), pathIndex=new Map(atoms.map(atom=>[atom.path,atom]));
   let parent=model.root, prefix=parts[0];
   for(let i=1;i<parts.length;i+=2){
     const field=parts[i], index=Number(parts[i+1]);
+    const cell=/^cell\.(\d+)\.(\d+)$/.exec(field);
+    if(cell){
+      if(index!==0||parent.type!=='array')return null;
+      const content=parent.getCell(Number(cell[1]),Number(cell[2]));
+      if(!content)return null;
+      prefix+='/'+field+'/0';
+      if(pathIndex.get(prefix)?.kind!=='cell')return null;
+      parent={branch:name=>name==='body'?content:null};
+      continue;
+    }
     const name=branches[field];
     if(!name||!Number.isSafeInteger(index))return null;
     const rendered=branch(parent,name);

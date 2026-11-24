@@ -82,6 +82,33 @@ test('literal operators have owners without becoming TeX structure',()=>{
   assert.equal(projectMath('x^+').supported,false);
 });
 
+test('an indexed radical preserves an empty degree and maps its TeX owner to a minimal patch',()=>{
+  const source='\\begin{document}\n\\[\\sqrt[]{x}\\]\n\\end{document}\n';
+  const projection=projectDocumentFormulas(source),[formula]=projection.formulas;
+  const slot=formula.math.slots.find(slot=>slot.role==='degree');
+  assert.equal(slot.raw,'');
+  assert.ok(projection.projection.includes('\\sqrt[]{'));
+  const hit={owner:slot.tag,role:'degree'};
+  const {patch}=editDisplayMathSlot(formula,source,hit,{from16:0,to16:0,insert:'3'});
+  assert.equal(source.slice(0,patch.from)+patch.insert+source.slice(patch.to),source.replace('[]','[3]'));
+  assert.equal(projectMath(String.raw`\sqrt[3{a}`).supported,false);
+});
+
+test('matrix separators stay structural while empty cells keep distinct owners',()=>{
+  const source=String.raw`\begin{pmatrix}a & \\ & d\end{pmatrix}`;
+  const math=projectMath(source);
+  const slots=math.slots.filter(slot=>slot.role==='cell'&&!slot.raw.trim());
+  assert.equal(slots.length,2);
+  assert.notEqual(slots[0].tag,slots[1].tag);
+  const patch=applySlotEdit(math,{slotId:slots[1].id,from16:0,to16:0,insert:'b'}).patch;
+  assert.equal(patched(source,patch),source.replace('\\\\ &','\\\\b &'));
+  const first={type:'first'},matrix={type:'array',getCell:(row,col)=>row===1&&col===0?[first]:null};
+  const model={root:{branch:()=>[first,matrix]},offsetOf:atom=>atom===first?7:-1};
+  const owner=math.atoms.find(atom=>atom.id===slots[1].ownerId);
+  assert.equal(richSlotPosition(model,math.atoms,owner,{role:'cell'}),7);
+  assert.equal(projectMath(String.raw`\begin{pmatrix}a\\[2pt]b\end{pmatrix}`).supported,false);
+});
+
 const field = (snapshot, role, raw) => snapshot.slots.find(s => s.role === role && (raw === undefined || s.raw === raw));
 const edit = (snapshot, slot, from16, to16, insert) => applySlotEdit(snapshot, {slotId: slot.id, from16, to16, insert});
 const patched = (source, patch) => source.slice(0, patch.from) + patch.insert + source.slice(patch.to);
@@ -214,7 +241,7 @@ test('slot-relative offsets, grapheme-safe minimal replacement, and immutable re
 
 test('unknown syntax and malformed input fail closed with explicit diagnostics', () => {
   for (const source of [
-    String.raw`\unknown{a}`, String.raw`\alpha`, String.raw`\sqrt[3]{a}`,
+    String.raw`\unknown{a}`, String.raw`\alpha`, String.raw`\sqrt[3{a}`,
     String.raw`\frac a b`, String.raw`\frac{a}`, '{a', 'a}', 'x^', 'x^a^b',
     String.raw`x^\sqrt{a}`, '$a$', String.raw`\[a\]`, 'a&b', '😀', '\ud800',
   ]) {

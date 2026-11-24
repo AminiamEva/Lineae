@@ -184,6 +184,22 @@ const server=createServer(async(req,res)=>{
     await page.keyboard.type('2');
     await page.waitForFunction(()=>/x\^(?:2|\{2\})/.test(nativeProbe.source));
     await page.locator('#native-tex-close').click();
+    const matrix=input.toString().replace('\\frac{a}{}','\\begin{pmatrix}a & \\\\ & d\\end{pmatrix}');
+    await page.locator('input#file').setInputFiles({name:'matrix.tex',mimeType:'text/plain',buffer:Buffer.from(matrix)});
+    await page.waitForFunction(()=>document.querySelector('math-field')?.value.includes('\\begin{pmatrix}'));
+    await button.click();
+    await page.waitForFunction(()=>document.querySelector('#native-tex-preview').dataset.state==='current');
+    await page.locator('#native-tex-target').click();
+    await panel.getByText('Click the empty numerator or denominator',{exact:false}).waitFor();
+    await panel.locator('[data-native-page="1"] canvas').click({position:{x:6500000*scale,y:7000000*scale}});
+    await page.waitForFunction(()=>{
+      const field=document.activeElement,math=field?._mathfield;
+      const cell=math?.model.at(field.position)?.parentBranch;
+      return field?.tagName==='MATH-FIELD'&&!math?.focusBlurInProgress&&Array.isArray(cell)&&cell[0]===0&&cell[1]===1;
+    });
+    await page.keyboard.type('b');
+    await page.waitForFunction(()=>nativeProbe.source?.replace(/\s/g,'').includes('\\begin{pmatrix}a&b\\\\&d\\end{pmatrix}'));
+    await page.locator('#native-tex-close').click();
     await page.evaluate(async()=>{
       const root=await navigator.storage.getDirectory();
       window.luaProjectDirectory=await root.getDirectoryHandle('lua-'+crypto.randomUUID(),{create:true});

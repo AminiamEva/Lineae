@@ -57,10 +57,12 @@ module.exports=function installMockNativeTex() {
       const matches=[...args.projection.matchAll(/\\attribute65000=(\d+) \\(frac|sqrt)/g)];
       const match=matches.at(-1);
       const script=/\\attribute65000=(\d+) x\^\{\}/.exec(args.projection);
-      if((!match&&!script)||args.sourceRevision!==p.revision)throw new Error('Unexpected formula observation request');
+      const cell=/&\\attribute65000=(\d+) \s*\\\\/.exec(args.projection);
+      if((!match&&!script&&!cell)||args.sourceRevision!==p.revision)throw new Error('Unexpected formula observation request');
       const observed=p.layout().pages_changed;
-      observed[0].dl.math_owners={fields:[{owner:Number((match??script)[1]),role:match?(match[2]==='frac'?'den':'radicand'):'sup',
+      observed[0].dl.math_owners={fields:[{owner:Number((match??script??cell)[1]),role:match?(match[2]==='frac'?'den':'radicand'):script?'sup':'cell',
         bbox:[6500000,7000000,6500000,7000000],empty:true}],glyphs:[]};
+      if(cell)observed[0].dl.math_owners.fields.push({owner:2,role:'cell',bbox:[6500000,7000000,6500000,7000000],empty:true});
       const token=/\\attribute65000=(\d+) a(?=\\attribute)/.exec(args.projection);
       if(token)observed[0].dl.math_owners.glyphs.push({owner:Number(token[1]),char:97,
         bbox:[6500000,6000000,6800000,6500000]});
