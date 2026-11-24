@@ -76,7 +76,7 @@ jobs:
           RTEX_TARGET: ${{ matrix.target }}
         run: |
           bin="$PWD/.native-tex/texlive/bin/${{ matrix.tlarch }}"
-          tool="$PWD/.native-tex/rtex"
+          tool="$PWD/.native-tex/rtex/rtex-0.0.8-${{ matrix.target }}"
           executable="$tool/bin/rtex"
           if [[ "$RUNNER_OS" == Windows ]]; then
             executable="$(cygpath -m "$executable.exe")"
@@ -86,6 +86,8 @@ jobs:
           export RTEX_EXECUTABLE="$executable"
           export RTEX_TEXLIVE_BIN="$bin"
           export RTEX_TEXDIR="$tool/share/rtex/tex"
+          test -f "$executable"
+          test -f "$RTEX_TEXDIR/rtex-serve.lua"
           export TEXMFVAR="$PWD/.native-tex/texlive/texmf-var"
           export TEXMFCONFIG="$PWD/.native-tex/texlive/texmf-config"
           export TEXMFHOME="$PWD/.native-tex/texlive/texmf-home"
