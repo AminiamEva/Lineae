@@ -139,11 +139,48 @@ export function richSourceChanges(projection, doc) {
   for (const block of projection.blocks) {
     const nodes = doc.content.slice(block.index, block.index + block.count);
     if (JSON.stringify(nodes) === block.snapshot) continue;
-    const patch = block.editable ? patchBlock(block,nodes) : patchIsolatedTables(block,nodes);
+    const patch = patchPlainTabular(block, nodes) ??
+      (block.editable ? patchBlock(block,nodes) : patchIsolatedTables(block,nodes));
     if (!patch) return null;
     changes.push(...patch);
   }
   return changes;
+}
+
+// Imported tabular rows may have extra space before their terminators.
+// Map the serializer's single edit to original offsets, retaining row trivia
+// and line endings. Decline any spelling whose ownership we cannot prove.
+function patchPlainTabular(block, nodes) {
+  if (nodes.length !== 1 || !nodes[0].attrs?.atomicTabular) return null;
+  const [before] = JSON.parse(block.snapshot);
+  if (!before?.attrs?.atomicTabular) return null;
+  const oldBody = serialize(before).trim();
+  const newBody = serialize(nodes[0]).trim();
+  const raw = block.raw.trim();
+  const [change] = minimalChange(oldBody, newBody, 0);
+  // A replacement spanning multiple rows has multiple owners. Leave that
+  // operation to the existing structural writeback.
+  if (change.insert && oldBody.slice(change.from,change.to).includes('\n')) return null;
+  const offsets = [0];
+  let i = 0;
+  for (const token of raw.matchAll(/[ \t]+(?=\\\\[ \t]*(?:\r?\n|$))|\r\n|[\s\S]/g)) {
+    const value = token[0];
+    const canonical = /^[ \t]+$/.test(value) && raw.startsWith('\\\\', token.index + value.length)
+      ? /^[ \t]+(?=\\\\)/.exec(oldBody.slice(i))?.[0]
+      : value === '\r\n' ? '\n' : value;
+    if (!canonical || !oldBody.startsWith(canonical, i)) return null;
+    i += canonical.length;
+    offsets[i] = token.index + value.length;
+  }
+  const from = offsets[change.from], to = offsets[change.to];
+  if (i !== oldBody.length || from === undefined || to === undefined) return null;
+  const eol = raw.slice(from).match(/\r?\n/)?.[0] ?? raw.match(/\r?\n/)?.[0] ?? '\n';
+  const insert = change.insert.replaceAll('\n', eol);
+  const updated = raw.slice(0, from) + insert + raw.slice(to);
+  const imported = importBlocks(updated);
+  if (imported.length !== 1 || serialize(imported[0]).trim() !== newBody) return null;
+  const start = block.from + block.raw.indexOf(raw);
+  return [{from:start+from, to:start+to, insert}];
 }
 
 // A protected neighbor must stay untouched, but need not block a source-backed

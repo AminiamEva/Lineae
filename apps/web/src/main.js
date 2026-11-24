@@ -1187,19 +1187,27 @@ editor.registerPlugin(new Plugin({
       const diff=transaction.before.content.findDiffStart(transaction.doc.content);
       if(importedSource!==null && diff!==null){
         const from=transaction.before.resolve(diff),to=transaction.doc.resolve(diff);
-        // Existing table authoring commands keep their own serialization.
-        // A text edit inside a source-backed cell may only patch its owner.
-        if(from.depth>=4 && to.depth===from.depth && from.node(1).attrs.atomicTabular &&
-           from.parent.type.name==='paragraph' && from.parent.sameMarkup(to.parent) &&
-           from.node(1).sameMarkup(to.node(1)) && from.parent.textContent!==to.parent.textContent){
-          const after=transaction.doc.toJSON();
-          const changes=!syncPending && projection?.text===importedSource && richSourceChanges(projection,after);
-          if(!changes?.length)return refuseStandaloneWriteback();
-          const draft=changes.reduceRight((text,{from,to,insert})=>text.slice(0,from)+insert+text.slice(to),importedSource);
-          const next=sourceProjection(draft,after);
-          if(!next)return refuseStandaloneWriteback();
-          transaction.setMeta('standaloneParagraph',{draft,changes,projection:next});
-          return true;
+        const table = from.depth && from.node(1);
+        const nextTable = to.depth && to.node(1);
+        if (table?.attrs?.atomicTabular && nextTable && table.sameMarkup(nextTable)) {
+          const cellEdit = from.depth >= 4 && to.depth === from.depth &&
+            from.parent.type.name === 'paragraph' && from.parent.sameMarkup(to.parent) &&
+            from.parent.textContent !== to.parent.textContent;
+          // Keep the source projection current across a row edit and its undo,
+          // so the next keystroke still maps to the author's original cell.
+          if (cellEdit || table.childCount !== nextTable.childCount) {
+            const after = transaction.doc.toJSON();
+            const changes = !syncPending && projection?.text === importedSource && richSourceChanges(projection, after);
+            if (changes?.length) {
+              const draft = changes.reduceRight((text,{from,to,insert}) => text.slice(0,from)+insert+text.slice(to), importedSource);
+              const next = sourceProjection(draft, after);
+              if (next) {
+                transaction.setMeta('standaloneParagraph',{draft, changes, projection:next});
+                return true;
+              }
+            }
+            if (cellEdit) return refuseStandaloneWriteback();
+          }
         }
       }
       const index=standaloneParagraphEdit(transaction);

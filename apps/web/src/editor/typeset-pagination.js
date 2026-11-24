@@ -396,7 +396,8 @@ export function installTypesetPagination(page, paper, meta, editor, engineProfil
     page.dataset.paginationMeasuring = '';
     // Measure from the unpaginated geometry so repeated layouts converge.
     page.style.removeProperty('--editor-min-height');
-    page.style.removeProperty('--page-stack-height');
+    // Keep the outer page stack until the new plan is ready. Collapsing it here
+    // clamps the viewport scroll while measuring an overflowing tabular.
     clearHeaderClones();
     renderSheets(1);
 
