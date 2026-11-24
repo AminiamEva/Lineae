@@ -52,12 +52,12 @@ import { compileKeybindings, installKeybindings, usesAppleShortcuts } from './ed
 import defaultConfigYaml from '../config.yaml';
 import { askText } from './editor/dialog.js';
 import { installDocumentFind } from './editor/find.js';
-import { DocumentImage, Subfigures, insertLocalImage, insertSubfigures, replaceLocalImage, startImageCrop, installImageDrop } from './editor/image-node.js';
+import { DocumentImage, Subfigures, insertLocalImage, insertSubfigures, insertSubfigureImage, replaceLocalImage, startImageCrop, installImageDrop } from './editor/image-node.js';
 import { installImagePanel } from './ui/image-panel.js';
 import { installSubfigurePanel } from './ui/subfigure-panel.js';
 import { MultiColumn } from './editor/multi-column.js';
 import { readGlobalColumns, writeGlobalColumns } from '../latex/columns.mjs';
-import { readImageSpacing, writeImageSpacing, IMAGE_SPACING_DEFAULTS } from '../latex/images.mjs';
+import { readImageSpacing, writeImageSpacing, IMAGE_SPACING_DEFAULTS, imageWidthPattern } from '../latex/images.mjs';
 import {
   clearProjectAssets,
   projectAssets,
@@ -2369,6 +2369,20 @@ function insertMultiColumn(count=2) {  const {from,to}=editor.state.selection;
   return editor.chain().focus().insertContentAt({from:start,to:end},node).run();
 }
 function updateSelectedImageAttrs(patch){
+  const selection=editor.state.selection;
+  if(selection instanceof NodeSelection&&selection.node.type.name==='subfigures'){
+    const allowed=['placement','fixed','caption','captionEnabled','captionNumbered','label'];
+    const clean=Object.fromEntries(Object.entries(patch).filter(([key,value])=>value!==undefined&&allowed.includes(key)));
+    if(Object.entries(clean).every(([key,value])=>selection.node.attrs[key]===value))return false;
+    editor.view.dispatch(closeHistory(editor.state.tr).setNodeMarkup(selection.from,undefined,{...selection.node.attrs,...clean}));
+    const updated=editor.state.doc.nodeAt(selection.from);
+    if(updated?.type.name==='subfigures'){
+      imagePanel?.setValues?.({...updated.attrs,figure:true,centered:true,align:'center'});
+      imagePanel?.setPath?.(t(updated.childCount+' 张子图',updated.childCount+' subfigures'));
+      imagePanel?.setGroupMode?.(true);
+    }
+    return true;
+  }
   if(imageSelection===null)return false;
   const current=editor.state.doc.nodeAt(imageSelection);
   if(current?.type.name!=='documentImage')return false;
@@ -3280,6 +3294,7 @@ imagePanel=installImagePanel({
   onCrop:()=>{if(imageSelection!==null)startImageCrop(editor,imageSelection);},
   onGroup:groupSelectedImages,
   onUngroup:ungroupSelectedImages,
+  onInsertFigure:()=>insertSubfigureImage(editor),
   onUpdate:patch=>updateSelectedImageAttrs(patch),
 });
 groups.image=imagePanel.panel;
@@ -3592,11 +3607,13 @@ function subfiguresAncestor(position){
 function groupSelectedImages(){
   const blocks=selectedImageBlocks();
   if(blocks.length<2)return false;
-  const width=(Math.min(0.48,0.94/blocks.length)).toFixed(2)+'\\textwidth';
+  const fallback=(Math.min(0.48,0.94/blocks.length)).toFixed(2)+'\\textwidth';
   const children=blocks.map(({node})=>editor.schema.nodes.documentImage.create({
     ...node.attrs,
     figure:false,wrap:false,figureSource:null,placement:null,fixed:false,
-    centered:true,align:'center',height:null,scale:null,width,
+    centered:true,align:'center',height:null,scale:null,
+    width:imageWidthPattern.test(String(node.attrs.width??'').trim())?node.attrs.width:fallback,
+    pos:/^[tcb]$/.test(node.attrs.pos??'')?node.attrs.pos:'c',
   }));
   const subfigures=editor.schema.nodes.subfigures.create({
     placement:null,fixed:false,caption:null,captionEnabled:false,captionNumbered:true,label:null,
@@ -3641,22 +3658,47 @@ function ungroupSelectedImages(){
 }
 function updateSelectedSubfigureAttrs(patch){
   const selection=editor.state.selection;
-  if(!(selection instanceof NodeSelection)||selection.node.type.name!=='subfigures')return;
-  editor.commands.updateAttributes('subfigures',patch);
-  subfigurePanel?.setValues({...selection.node.attrs,...patch});
+  if(!(selection instanceof NodeSelection)||selection.node.type.name!=='documentImage')return;
+  if(subfiguresAncestor(selection.from)===null)return;
+  const current=selection.node;
+  const clean=Object.fromEntries(Object.entries(patch).filter(([,value])=>value!==undefined));
+  if(Object.entries(clean).every(([key,value])=>current.attrs[key]===value))return;
+  editor.view.dispatch(closeHistory(editor.state.tr).setNodeMarkup(selection.from,undefined,{...current.attrs,...clean}));
+  const updated=editor.state.doc.nodeAt(selection.from);
+  subfigurePanel?.setValues(updated?.type.name==='documentImage'?updated.attrs:null);
 }
 function syncImageTab(){
   if(!imageTab)return;
   const found=sourceView.hidden ? currentImageSelection() : null;
   imageSelection=found?.position??null;
-  const selectedImages=sourceView.hidden && !found ? imageBlocksInSelection() : [];
-  const multi=selectedImages.length>=2 ? selectedImageBlocks() : [];
-  imageTab.hidden=!found&&selectedImages.length<2;
   const subSel=sourceView.hidden&&editor.state.selection instanceof NodeSelection&&editor.state.selection.node.type.name==='subfigures'?editor.state.selection.node:null;
-  if(subfigureTab)subfigureTab.hidden=!subSel;
-  subfigurePanel?.setValues(subSel?.attrs??null);
-  if(subSel&&ribbon.dataset.ribbonPage!=='subfigure'&&ribbon.dataset.ribbonPage!=='headerFooter')selectGroup('subfigure');
-  else if(!subSel&&ribbon.dataset.ribbonPage==='subfigure')selectGroup('home');
+  const insideSub=found?subfiguresAncestor(found.position)!==null:false;
+  const selectedImages=sourceView.hidden && !found && !subSel ? imageBlocksInSelection() : [];
+  const multi=selectedImages.length>=2 ? selectedImageBlocks() : [];
+  const showSubfigure=Boolean(found&&insideSub);
+  const showImage=Boolean(subSel)||Boolean(found&&!insideSub)||selectedImages.length>=2;
+  if(subfigureTab)subfigureTab.hidden=!showSubfigure;
+  imageTab.hidden=!showImage;
+
+  if(showSubfigure){
+    subfigurePanel?.setValues(found.node.attrs);
+    imagePanel.setGroupMode(false);
+    if(ribbon.dataset.ribbonPage!=='subfigure'&&ribbon.dataset.ribbonPage!=='headerFooter')selectGroup('subfigure');
+    return;
+  }
+  subfigurePanel?.setValues(null);
+  imagePanel.setGroupMode(false);
+
+  if(subSel){
+    imagePanel.setMultiSelection(0);
+    imagePanel.setValues({...subSel.attrs,figure:true,centered:true,align:'center'});
+    imagePanel.setPath(t(subSel.childCount+' 张子图',subSel.childCount+' subfigures'));
+    imagePanel.setGroupMode(true);
+    imagePanel.setGroupState('ungroup');
+    if(ribbon.dataset.ribbonPage!=='image' && ribbon.dataset.ribbonPage!=='headerFooter')selectGroup('image');
+    return;
+  }
+
   if(found){
     imagePanel.setMultiSelection(0);
     imagePanel.setPath(found.node.attrs.path);
@@ -3673,7 +3715,7 @@ function syncImageTab(){
       naturalHeight:imageElement?.naturalHeight||0,
       textWidth,
     });
-    imagePanel.setGroupState(subfiguresAncestor(found.position)!==null?'ungroup':'none');
+    imagePanel.setGroupState('none');
     if(ribbon.dataset.ribbonPage!=='image' && ribbon.dataset.ribbonPage!=='headerFooter')selectGroup('image');
   }else if(selectedImages.length>=2){
     imagePanel.setMultiSelection(selectedImages.length);
@@ -3682,7 +3724,7 @@ function syncImageTab(){
   }else{
     imagePanel.setMultiSelection(0);
     imagePanel.setGroupState('none');
-    if(ribbon.dataset.ribbonPage==='image')selectGroup('home');
+    if(ribbon.dataset.ribbonPage==='image'||ribbon.dataset.ribbonPage==='subfigure')selectGroup('home');
   }
 }
 editor.on('selectionUpdate',syncImageTab);

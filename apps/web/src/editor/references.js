@@ -326,11 +326,10 @@ export function refreshReferences(root, editor) {
     for(const [position,item] of numbering.objects){
       const dom=editor.view.nodeDOM(position);
       if(item.kind==='equation'){dom?.refreshNumbers?.();continue;}
-      const label=dom?.querySelector('.document-caption-label,.caption-label');
-      if(label){
-        label.dataset.captionValue=item.number;
-        if(dom.matches('.document-subfigures'))label.textContent=(editor.view.dom.closest('.document-page')?.dataset.captionLanguage==='zh'?'图 ':'Figure ')+item.number+': ';
-      }
+      const label=dom?.matches('.document-subfigures')
+        ? dom.querySelector('.document-subfigures-caption .document-caption-label')
+        : dom?.querySelector('.document-caption-label,.caption-label');
+      if(label)label.dataset.captionValue=item.number;
     }
   }
   root.querySelectorAll('[data-ref-view]').forEach(element => element.refreshRef?.());

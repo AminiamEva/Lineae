@@ -170,6 +170,18 @@ test('preserves local image paths and supported widths and requests graphicx', (
   const figure=['\\begin{figure}[ht]','\\centering',image,'\\caption{Plot}','\\label{fig:plot}','\\end{figure}'].join('\n');
   assert.equal(serialize(importBlocks(figure)[0]).trim(),figure);
 });
+test('requests subcaption for subfigure environments and only once', () => {
+  const source=['\\begin{figure}','\\centering','\\begin{subfigure}[t]{0.4\\textwidth}','\\centering','\\includegraphics[width=\\linewidth]{a.png}','\\caption{A}','\\end{subfigure}\\quad','\\begin{subfigure}{0.4\\textwidth}','\\centering','\\includegraphics[width=\\linewidth]{b.png}','\\end{subfigure}','\\caption{Both}','\\end{figure}'].join('\n');
+  const node=importBlocks(source)[0];
+  assert.equal(node.type,'subfigures');
+  const body=serialize(node);
+  assert.ok(resolvePackages('',body).some(rule=>rule.name==='subcaption'));
+  assert.ok(resolvePackages('',body).some(rule=>rule.name==='graphicx'));
+  assert.equal(resolvePackages('\\usepackage{subcaption}\n',body).some(rule=>rule.name==='subcaption'),false);
+  const output=exportDocument({start:'\\documentclass{article}\n\\begin{document}\n',end:'\\end{document}',eol:'\n'},body);
+  assert.ok(output.includes('\\usepackage{subcaption}'));
+  assert.equal((output.match(/\\usepackage\{subcaption\}/g)??[]).length,1);
+});
 import { parseDelimiterPair, wrapMathWithDelimiters } from '../apps/web/latex/delimiters.mjs';
 
 test('builds asymmetric and invisible math delimiters without accepting arbitrary commands', () => {

@@ -219,24 +219,34 @@ export function parseImageBlock(source) {
   if (subfigureMatch && /\\begin\{subfigure\}/.test(subfigureMatch[2])) {
     const inner = subfigureMatch[2];
     const subs = [];
-    const subRe = /\\begin\{subfigure\}\{([^{}]*)\}([\s\S]*?)\\end\{subfigure\}/g;
+    const matches = [];
+    const subRe = /\\begin\{subfigure\}(?:\[([^\]]*)\])?\{([^{}]*)\}([\s\S]*?)\\end\{subfigure\}/g;
     let sub;
     while ((sub = subRe.exec(inner)) !== null) {
-      const body = sub[2];
+      matches.push(sub);
+      const body = sub[3];
       const graphic = parseImageMarkup(/\\includegraphics(?:\[[^\]]*\])?\{[^{}\\\r\n%]+\}/.exec(body)?.[0] ?? '');
       if (!graphic) continue;
       const cap = /\\caption(\*)?\{([^{}\r\n]*)\}/.exec(body);
       subs.push({ type:'documentImage', attrs:{ ...graphic.attrs,
-        width:/\\textwidth$/.test(sub[1]) ? sub[1] : '0.48\\textwidth',
+        width:imageWidthPattern.test((sub[2] ?? '').trim()) ? sub[2].trim() : '0.48\\textwidth',
+        pos:/^[tcb]$/.test((sub[1] ?? '').trim()) ? sub[1].trim() : 'c',
         caption:cap?.[2] ?? null, captionEnabled:Boolean(cap), captionNumbered:cap ? !cap[1] : true,
-        figure:false, centered:true, wrap:false } });
+        label:/\\label\{([^{}\r\n]+)\}/.exec(body)?.[1] ?? null,
+        figure:false, centered:true, align:'center', wrap:false } });
     }
     if (!subs.length) return null;
+    let spacing = null;
+    if (matches.length > 1) {
+      const between = inner.slice(matches[0].index + matches[0][0].length, matches[1].index);
+      spacing = /\\(?:hfill|quad|qquad|hspace\*?\{[^{}]*\})/.exec(between)?.[0] ?? null;
+    }
     const tail = inner.slice(inner.lastIndexOf('\\end{subfigure}'));
     const mainCap = /\\caption(\*)?\{([^{}\r\n]*)\}/.exec(tail);
     return { type:'subfigures', attrs:{
       placement:subfigureMatch[1] || null, fixed:subfigureMatch[1]?.includes('H') || false,
       caption:mainCap?.[2] ?? null, captionEnabled:Boolean(mainCap), captionNumbered:mainCap ? !mainCap[1] : true,
+      spacing:spacing ?? '\\quad',
       label:/\\label\{([^{}\r\n]+)\}/.exec(tail)?.[1] ?? null }, content:subs };
   }
   const figure = /^\\begin\{figure\}(?:\[([^\]]*)\])?\s*([\s\S]*?)\\end\{figure\}$/.exec(text);
@@ -331,11 +341,16 @@ function captionLine(attrs) {
 }
 
 export function serializeSubfigures(attrs, children) {
+  const spacing = /^\\(?:hfill|quad|qquad|hspace\*?\{[^{}]*\})$/.test(String(attrs.spacing ?? '').trim())
+    ? String(attrs.spacing).trim() : '\\quad';
   const subs = children.map((child, index) => {
-    const width = /^\d+(?:\.\d+)?\\textwidth$/.test(child.attrs.width ?? '') ? child.attrs.width : '0.48\\textwidth';
+    const width = imageWidthPattern.test(String(child.attrs.width ?? '').trim()) ? String(child.attrs.width).trim() : '0.48\\textwidth';
+    const pos = /^[tcb]$/.test(child.attrs.pos ?? '') ? child.attrs.pos : 'c';
+    const posOption = pos === 'c' ? '' : '[' + pos + ']';
     const cap = captionEnabled(child.attrs) ? '\\caption{' + (child.attrs.caption ?? '') + '}\n' : '';
-    return '\\begin{subfigure}{' + width + '}\n\\centering\n' + serializeGraphic({...child.attrs, width:null, height:null, scale:null})
-      + '\n' + cap + '\\end{subfigure}' + (index < children.length - 1 ? '\\hfill\n' : '\n');
+    const label = child.attrs.label ? '\\label{' + child.attrs.label + '}\n' : '';
+    return '\\begin{subfigure}' + posOption + '{' + width + '}\n\\centering\n' + serializeGraphic({...child.attrs, width:'\\linewidth', height:null, scale:null})
+      + '\n' + cap + label + '\\end{subfigure}' + (index < children.length - 1 ? spacing + '\n' : '\n');
   }).join('');
   const body = subs + captionLine(attrs);
   const placement = attrs.fixed ? 'H' : attrs.placement;

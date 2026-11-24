@@ -108,12 +108,33 @@ export function insertSubfigures(editor) {
   editor.chain().focus().insertContent({type:'subfigures',content:[sub(0),sub(1)]}).run();
 }
 
+export function insertSubfigureImage(editor) {
+  const selection=editor.state.selection;
+  let position=null;
+  if(selection.node?.type?.name==='subfigures')position=selection.from;
+  else if(selection.node?.type?.name==='documentImage'){
+    const $pos=editor.state.doc.resolve(selection.from);
+    for(let depth=$pos.depth;depth>0;depth-=1)if($pos.node(depth).type.name==='subfigures'){position=$pos.before(depth);break;}
+  }
+  if(position===null)return false;
+  const node=editor.state.doc.nodeAt(position);
+  if(node?.type.name!=='subfigures')return false;
+  chooseFile(file=>{
+    if(!/^[\p{L}\p{N}_. -]+$/u.test(file.name)||editor.state.doc.nodeAt(position)!==node)return;
+    const path=registerImage(file);
+    const child=editor.schema.nodes.documentImage.create({figure:false,centered:true,align:'center',wrap:false,width:'0.48\\textwidth',pos:'c',captionEnabled:false,caption:null,path});
+    const next=node.type.create(node.attrs,[...node.content.content,child]);
+    editor.view.dispatch(closeHistory(editor.state.tr).replaceWith(position,position+node.nodeSize,next));
+  });
+  return true;
+}
+
 export const Subfigures = Node.create({
   name:'subfigures', group:'block', content:'documentImage+', defining:true,
   addAttributes:()=>({
     placement:{default:null},fixed:{default:false},
     caption:{default:null},captionEnabled:{default:false},captionNumbered:{default:true},
-    label:{default:null},
+    label:{default:null},spacing:{default:'\\quad'},
   }),
   parseHTML(){return [{tag:'div[data-subfigures]'}];},
   renderHTML({HTMLAttributes}){return ['div',mergeAttributes(HTMLAttributes,{'data-subfigures':'true'}),0];},
@@ -128,33 +149,77 @@ export const Subfigures = Node.create({
       caption.className='document-subfigures-caption';
       caption.contentEditable='false';
       const captionLabel=document.createElement('span');
-      captionLabel.className='caption-label';
+      captionLabel.className='document-caption-label';
+      captionLabel.setAttribute('aria-hidden','true');
       const captionText=document.createElement('span');
-      captionText.className='caption-text';
+      captionText.className='document-caption-text';
       captionText.contentEditable='true';
-      captionText.setAttribute('data-placeholder','Caption');
+      captionText.spellcheck=false;
+      localizedPlaceholder(captionText,'题注','Caption');
       caption.append(captionLabel,captionText);
-      dom.append(row,caption);
+      const groupHandle=document.createElement('button');
+      groupHandle.type='button';
+      groupHandle.className='subfigures-select-handle';
+      groupHandle.textContent='⠿';
+      groupHandle.setAttribute('aria-label',t('选择整体','Select group'));
+      groupHandle.title=t('选择整体','Select group');
+      groupHandle.addEventListener('mousedown',event=>{
+        event.preventDefault();event.stopPropagation();
+        const position=getPos();
+        if(typeof position==='number')editor.commands.setNodeSelection(position);
+      });
+      dom.append(row,caption,groupHandle);
+      const updateCaption=text=>{
+        const position=getPos();
+        if(typeof position!=='number')return;
+        editor.view.dispatch(closeHistory(editor.state.tr).setNodeMarkup(position,undefined,{...node.attrs,caption:text,captionEnabled:true}));
+      };
+      const measureCaption=()=>{
+        if(!caption.getClientRects().length)return;
+        const style=getComputedStyle(captionText);
+        measureContext??=document.createElement('canvas').getContext('2d');
+        if(measureContext)measureContext.font=[style.fontStyle,style.fontWeight,style.fontSize,style.fontFamily].join(' ');
+        const text=captionText.textContent??'';
+        const numbered=caption.dataset.captionNumbered==='true';
+        const labelWidth=numbered?captionLabel.getBoundingClientRect().width:0;
+        const gap=numbered?(Number.parseFloat(getComputedStyle(caption).columnGap)||0):0;
+        const textWidth=measureContext?.measureText(text).width??0;
+        const available=caption.clientWidth;
+        caption.dataset.captionStyle=!text||labelWidth+gap+textWidth<=available+0.5?'single':'multi';
+      };
+      captionText.addEventListener('keydown',event=>{if(event.key==='Enter'){event.preventDefault();captionText.blur();}});
+      captionText.addEventListener('blur',()=>{
+        const text=captionText.textContent.trim();
+        if(text!==(node.attrs.caption??''))updateCaption(text);
+      });
+      captionText.addEventListener('input',measureCaption);
+      captionText.addEventListener('click',()=>captionText.focus());
       const refresh=()=>{
         const enabled=node.attrs.captionEnabled ?? (node.attrs.caption!==null);
         caption.hidden=!enabled;
-        captionLabel.textContent=enabled?(node.attrs.captionNumbered===false?'Figure:':'Figure 1:').replace('1',captionNumber(getPos()))+' ':'';
-        captionText.textContent=node.attrs.caption??'';
-        captionText.addEventListener('input',()=>{
-          const pos=getPos();
-          if(typeof pos!=='number')return;
-          editor.view.dispatch(editor.state.tr.setNodeMarkup(pos,undefined,{...node.attrs,caption:captionText.textContent,captionEnabled:true}));
-        },{once:true});
+        dom.dataset.captionNumbered=String(Boolean(enabled&&node.attrs.captionNumbered!==false));
+        caption.dataset.captionNumbered=dom.dataset.captionNumbered;
+        const zh=editor.view.dom.closest('.document-page')?.dataset.captionLanguage==='zh';
+        caption.dataset.captionName=zh?t('图','Figure'):'Figure';
+        captionLabel.dataset.captionName=caption.dataset.captionName;
+        captionText.setAttribute('data-placeholder',zh?t('题注','Caption'):'Caption');
+        if(document.activeElement!==captionText)captionText.textContent=node.attrs.caption??'';
+        const spacing=node.attrs.spacing??'\\quad';
+        row.dataset.spacing=/hfill/.test(spacing)?'hfill':/quad/.test(spacing)?'quad':'other';
+        requestAnimationFrame(measureCaption);
       };
-      function captionNumber(pos){
-        if(typeof pos!=='number')return'1';
-        let count=0;
-        editor.state.doc.nodesBetween(0,pos,n=>{if(n.type.name==='subfigures')count++;return true;});
-        return String(count+1);
-      }
-      captionText.addEventListener('blur',()=>refresh());
+      const selectGroup=event=>{
+        if(event.target!==row&&event.target!==captionLabel)return;
+        const position=getPos();
+        if(typeof position!=='number')return;
+        event.preventDefault();event.stopPropagation();
+        editor.commands.setNodeSelection(position);
+      };
+      row.addEventListener('mousedown',selectGroup);
+      captionLabel.addEventListener('mousedown',selectGroup);
       refresh();
-      return {dom,contentDOM:row,stopEvent:event=>caption.contains(event.target),
+      return {dom,contentDOM:row,stopEvent:event=>caption.contains(event.target)||groupHandle.contains(event.target),
+        ignoreMutation:mutation=>!row.contains(mutation.target),
         update(next){if(next.type!==node.type)return false;node=next;refresh();return true;}};
     };
   },
@@ -163,7 +228,7 @@ export const Subfigures = Node.create({
 export const DocumentImage = Node.create({
   name:'documentImage', group:'block', atom:true, draggable:true,
   addAttributes:()=>({
-    figureSource:{default:null},path:{default:''},width:{default:null},height:{default:null},scale:{default:null},
+    figureSource:{default:null},path:{default:''},width:{default:null},height:{default:null},scale:{default:null},pos:{default:'c'},
     angle:{default:null},origin:{default:null},keepAspect:{default:true},
     flipH:{default:false},flipV:{default:false},
     figure:{default:false},placement:{default:null},fixed:{default:false},
@@ -474,7 +539,8 @@ export const DocumentImage = Node.create({
         dom.dataset.wrapSide=node.attrs.wrapSide??'r';
         dom.dataset.wrapOverhang=node.attrs.wrapOverhang??'';
         dom.dataset.captionPosition=node.attrs.captionPosition??'below';
-        if(subIndex>=0)captionLabel.textContent='('+String.fromCharCode(97+subIndex)+') ';
+        if(subIndex>=0){captionLabel.textContent='('+String.fromCharCode(97+subIndex)+') ';dom.dataset.subfigurePos=node.attrs.pos??'c';}
+        else delete dom.dataset.subfigurePos;
         if(node.attrs.wrap&&subIndex<0){
           dom.style.float=node.attrs.wrapSide==='l'||node.attrs.wrapSide==='L'?'left':'right';
           dom.style.width=cssDimension(node.attrs.wrapWidth||'0.4\\textwidth');
