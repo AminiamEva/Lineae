@@ -14,6 +14,14 @@ function tikzSourceFrom(body) {
     .trim() || null;
 }
 
+// Distinguish a circuit drawing (CircuiTikZ editor) from a general TikZ picture.
+export function tikzLooksCircuit(source) {
+  const text = String(source ?? '');
+  if (/\\begin\{circuitikz\}|\\circuitikzset\b|\\ctikzset\b/.test(text)) return true;
+  const styles = [...text.matchAll(/\b(?:to|node)\s*\[([^\]]*)\]/g)].map(match => match[1]).join(',');
+  return /(?:^|,)\s*(?:npn|pnp|resistor|capacitor|inductor|diode|ground|battery\d*|transformer|vco|lamp|switch|ammeter|voltmeter|op ?amp|voltage source|current source|american|european|cute|R|C|L|V|I|sV|sI|pR|pC|pL|eR|eC|eL|vR|vC|vL)\b/.test(styles);
+}
+
 // A single-image float is editable using the existing image node. Every other
 // construct stays Raw: never flatten subfigures or silently drop unknown code.
 function figureParts(source) {
@@ -241,6 +249,7 @@ export function parseImageBlock(source) {
       if (!graphic && !tikz) continue;
       const cap = /\\caption(\*)?\{([^{}\r\n]*)\}/.exec(body);
       subs.push({ type:'documentImage', attrs:{ ...(graphic?.attrs ?? {tikzSource:tikz}),
+        ...(tikz ? {tikzEditor:tikzLooksCircuit(tikz)?'circuit':'general'} : {}),
         width:imageWidthPattern.test((sub[2] ?? '').trim()) ? sub[2].trim() : '0.48\\textwidth',
         pos:/^[tcb]$/.test((sub[1] ?? '').trim()) ? sub[1].trim() : 'c',
         caption:cap?.[2] ?? null, captionEnabled:Boolean(cap), captionNumbered:cap ? !cap[1] : true,
@@ -274,7 +283,7 @@ export function parseImageBlock(source) {
       const captionIndex = inner.search(/\\caption\*?\{/);
       const tikzIndex = inner.search(/\\begin\{(?:tikzpicture|circuitikz)\}/);
       return { type:'documentImage', attrs:{
-        tikzSource:source, figure:true, placement:figure[1] || null, fixed:figure[1]?.includes('H') || false,
+        tikzSource:source, tikzEditor:tikzLooksCircuit(source)?'circuit':'general', figure:true, placement:figure[1] || null, fixed:figure[1]?.includes('H') || false,
         centered:alignment === 'center', align:alignment,
         caption:captionMatch?.[2] ?? null, captionEnabled:Boolean(captionMatch), captionNumbered:captionMatch? !captionMatch[1]:true,
         captionPosition:captionIndex >= 0 && captionIndex < tikzIndex ? 'above' : 'below',

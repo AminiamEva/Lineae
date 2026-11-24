@@ -1355,8 +1355,7 @@ function insertTikzStudioBlock({ libraries = [], macros = [], declarations = '',
   }
   if (body.trim()) {
     editor.chain().focus().insertContent({
-      type: 'codeBlock', attrs: { language: 'tikz-general' },
-      content: [{ type: 'text', text: body.trim() }],
+      type: 'documentImage', attrs: { tikzSource: body.trim(), tikzEditor: 'general', centered: true, align: 'center' },
     }).run();
   }
   return { ok: true };
@@ -3253,7 +3252,7 @@ groupButton(insert,['CircuiTikZ','CircuiTikZ'],()=>{
     const editorEl=document.querySelector('.document-page .ProseMirror');
     const textwidthCm=editorEl?editorEl.clientWidth*2.54/96:15;
     const tikz=new TikzEditor({getTextwidthCm:()=>textwidthCm});
-    tikz.open(code=>{ if(code) editor.chain().focus().insertContent({type:'codeBlock',attrs:{language:'tikz'},content:[{type:'text',text:code}]}).run(); });
+    tikz.open(code=>{ if(code) editor.chain().focus().insertContent({type:'documentImage',attrs:{tikzSource:code,tikzEditor:'circuit',centered:true,align:'center'}}).run(); });
   }catch(error){ console.error(error); alert('CircuiTikZ editor failed: '+(error?.message||error)); }
 });
 const tikzButton=groupButton(insert,['TikZ','TikZ'],()=>{

@@ -3,11 +3,12 @@ import { Node, mergeAttributes } from '@tiptap/core';
 import { closeHistory } from '@tiptap/pm/history';
 import { t } from '../ui/i18n.mjs';
 import { askText } from './dialog.js';
-import { imageWidthPattern, relativeImageWidth } from '../../latex/images.mjs';
+import { imageWidthPattern, relativeImageWidth, tikzLooksCircuit } from '../../latex/images.mjs';
 import { rememberAsset, resolveImageAsset, onAssetsChanged } from './project-assets.js';
-import { renderTikz, getTikzPreamble, openTikzStudio } from '../ui/tikz-studio.js';
+import { renderTikz, getTikzPreamble, openTikzStudio, tikzStagingFromPreamble } from '../ui/tikz-studio.js';
+import { TikzEditor } from '../tikz/controllers/tikzEditor.js';
 
-const rasterTypes = new Set(['image/png','image/jpeg','image/webp','image/gif','image/avif']);
+const rasterTypes = new Set(['image/png','image/jpeg','image/jpg','image/pjpeg','image/webp','image/gif','image/avif']);
 let measureContext = null;
 let suppressImageClickUntil = 0;
 
@@ -17,14 +18,38 @@ function chooseFile(callback) {
   input.accept = [...rasterTypes].join(',');
   input.addEventListener('change', () => {
     const file = input.files[0];
-    if (file && (rasterTypes.has(file.type) ||
-        (!file.type || file.type === 'application/octet-stream') && /\.(png|jpe?g|webp|gif|avif)$/i.test(file.name))) callback(file);
+    if (file && (rasterTypes.has(file.type) || /\.(png|jpe?g|webp|gif|avif)$/i.test(file.name))) callback(file);
   }, { once:true });
   input.click();
 }
 
 function remember(path, file) {
   rememberAsset(path,file);
+}
+
+export function editTikzVisual(editor, position) {
+  const node = editor.state.doc.nodeAt(position);
+  const source = node?.attrs?.tikzSource;
+  if (!source) return false;
+  const apply = code => {
+    if (typeof code !== 'string' || !code.trim()) return;
+    const current = editor.state.doc.nodeAt(position);
+    if (!current || current.attrs.tikzSource == null) return;
+    editor.view.dispatch(closeHistory(editor.state.tr).setNodeMarkup(position, undefined, { ...current.attrs, tikzSource: code }));
+  };
+  const circuit = node.attrs.tikzEditor === 'circuit' || (!node.attrs.tikzEditor && tikzLooksCircuit(source));
+  if (circuit) {
+    const width = editor.view.dom.clientWidth || 600;
+    const tikz = new TikzEditor({ getTextwidthCm: () => width * 2.54 / 96 });
+    tikz.open(code => { if (code) apply(code); }, source);
+  } else {
+    openTikzStudio({
+      initialBody: source,
+      initialLibraries: tikzStagingFromPreamble(getTikzPreamble()),
+      onInsert: ({ body }) => apply(body),
+    });
+  }
+  return true;
 }
 
 function registerImage(file, previousPath) {
@@ -231,7 +256,7 @@ export const Subfigures = Node.create({
 export const DocumentImage = Node.create({
   name:'documentImage', group:'block', atom:true, draggable:true,
   addAttributes:()=>({
-    figureSource:{default:null},path:{default:''},tikzSource:{default:null},width:{default:null},height:{default:null},scale:{default:null},pos:{default:'c'},
+    figureSource:{default:null},path:{default:''},tikzSource:{default:null},tikzEditor:{default:null},width:{default:null},height:{default:null},scale:{default:null},pos:{default:'c'},
     angle:{default:null},origin:{default:null},keepAspect:{default:true},
     flipH:{default:false},flipV:{default:false},
     figure:{default:false},placement:{default:null},fixed:{default:false},
@@ -270,10 +295,8 @@ export const DocumentImage = Node.create({
       tikzPreview.addEventListener('dblclick',event=>{
         if(!node.attrs.tikzSource)return;
         event.preventDefault();event.stopPropagation();
-        openTikzStudio({
-          initialBody:node.attrs.tikzSource,
-          onInsert:({body})=>{if(body)update({tikzSource:body},node);},
-        });
+        const position=getPos();
+        if(typeof position==='number')editTikzVisual(editor,position);
       });
       tikzPreview.addEventListener('click',event=>{
         if(!node.attrs.tikzSource)return;
@@ -554,8 +577,12 @@ export const DocumentImage = Node.create({
             const token=++tikzToken;
             tikzPreview.classList.remove('is-ready');
             tikzPreview.textContent=t('TikZ 渲染中…','TikZ rendering…');
-            const preamble=/\\begin\{circuitikz\}/.test(tikz)?`${getTikzPreamble()}\n\\usepackage{circuitikz}`:getTikzPreamble();
-            renderTikz(tikz,preamble).then(result=>{
+            const circuitPreview=node.attrs.tikzEditor==='circuit'||/\\begin\{circuitikz\}/.test(tikz)||tikzLooksCircuit(tikz);
+            const preamble=circuitPreview?`${getTikzPreamble()}\n\\usepackage{circuitikz}`:getTikzPreamble();
+            let drawing=tikz.trim();
+            if(/^\\resizebox\{[^{}]*\}\{!\}\{%?\s*/.test(drawing))drawing=drawing.replace(/^\\resizebox\{[^{}]*\}\{!\}\{%?\s*/,'').replace(/%?\s*\}$/,'');
+            drawing=drawing.trim()||tikz;
+            renderTikz(drawing,preamble).then(result=>{
               if(token!==tikzToken||destroyed)return;
               if(!result.svg){tikzPreview.textContent=result.diagnostics?.map(item=>item.message).join('\n')||'TikZ';return;}
               const holder=document.createElement('div');holder.innerHTML=result.svg;
@@ -624,6 +651,8 @@ export const DocumentImage = Node.create({
         if(node.attrs.flipV)transforms.push('scaleY(-1)');
         image.style.transform=transforms.join(' ');
         image.style.transformOrigin={c:'center',l:'left center',r:'right center',t:'center top',b:'center bottom',lt:'left top',lb:'left bottom',rt:'right top',rb:'right bottom'}[node.attrs.origin??'c']??'center';
+        tikzPreview.style.transform=tikz?image.style.transform:'';
+        tikzPreview.style.transformOrigin=tikz?image.style.transformOrigin:'';
         const crops=[node.attrs.cropTop,node.attrs.cropRight,node.attrs.cropBottom,node.attrs.cropLeft];
         const cropLeft=cropPx(node.attrs.cropLeft),cropRight=cropPx(node.attrs.cropRight);
         const cropTop=cropPx(node.attrs.cropTop),cropBottom=cropPx(node.attrs.cropBottom);
@@ -650,7 +679,17 @@ export const DocumentImage = Node.create({
       image.addEventListener('load',()=>{if(!destroyed && previewURL && image.currentSrc===previewURL){resourceState='ready';showResourceState();refresh();}});
       image.addEventListener('error',()=>{if(!destroyed && previewURL && image.getAttribute('src')===previewURL){resourceState='error';showResourceState();}});
       const unsubscribe=onAssetsChanged(refresh);
-      button.addEventListener('click',()=>chooseFile(file=>{remember(node.attrs.path,file);refresh();}));
+      button.addEventListener('click',()=>chooseFile(file=>{
+        const path=node.attrs.path||file.name;
+        remember(path,file);
+        if(path!==node.attrs.path){update({path},node);return;}
+        if(previewURL)URL.revokeObjectURL(previewURL);
+        previewURL=URL.createObjectURL(file);
+        previewFile=file;
+        image.src=previewURL;
+        resourceState='loading';
+        showResourceState();
+      }));
       image.addEventListener('click',event=>{
         if(performance.now()<suppressImageClickUntil){event.preventDefault();return;}
         if(event.target!==image||event.defaultPrevented)return;

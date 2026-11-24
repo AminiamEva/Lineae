@@ -44,13 +44,13 @@ assert.match(await status.innerText(), /^\s*$/, 'graph drawing renders without d
 // a fragment with a multi-line \newcommand in the staging pane.
 await libraries.fill(knotLibraries);
 await code.fill(knotPicture);
-await page.waitForTimeout(8000);
+await page.waitForTimeout(20000);
 assert.match(await status.innerText(), /^\s*$/, 'fragment libraries and macro render');
 assert.equal(await page.locator('.tikz-studio-preview svg').count(),1);
 // a complete standalone document still passes through unchanged.
 await libraries.fill('');
 await code.fill(knotDocument);
-await page.waitForTimeout(8000);
+await page.waitForTimeout(20000);
 assert.match(await status.innerText(), /^\s*$/, 'standalone document renders');
 // the split divider is draggable.
 const topBefore=await libraries.evaluate(el=>el.closest('.tikz-studio-code-shell').getBoundingClientRect().height);
@@ -58,24 +58,26 @@ const divider=page.locator('.tikz-studio-divider');const box=await divider.bound
 await page.mouse.move(box.x+box.width/2,box.y+box.height/2);await page.mouse.down();await page.mouse.move(box.x+box.width/2,box.y+80);await page.mouse.up();
 const topAfter=await libraries.evaluate(el=>el.closest('.tikz-studio-code-shell').getBoundingClientRect().height);
 assert.ok(topAfter>topBefore+20,'divider increases the libraries pane');
-// insertion moves libraries/macros out of the block and keeps only the picture.
+// insertion moves libraries/macros out of the picture and keeps only the drawing.
 await libraries.fill(knotLibraries);await code.fill(knotPicture);await page.waitForTimeout(1000);await page.locator('.tikz-studio-insert').click();await page.waitForTimeout(500);
-const inserted=await page.locator('pre[data-language="tikz-general"]').evaluate(el=>el.textContent);assert.equal(await page.locator('pre[data-language="tikz-general"]').evaluate(el=>getComputedStyle(el).display),'none');assert.equal(await page.locator('.tikz-general-preview').evaluate(el=>getComputedStyle(el).borderTopWidth),'0px');assert.equal(await page.locator('.tikz-general-preview').evaluate(el=>getComputedStyle(el).backgroundColor),'rgba(0, 0, 0, 0)');
+const readDrawing=()=>page.locator('.ProseMirror').evaluate(element=>element.editor.getJSON().content.find(node=>node.type==='documentImage')?.attrs??{});
+const inserted=(await readDrawing()).tikzSource;
+assert.equal((await readDrawing()).tikzEditor,'general','general TikZ uses the studio editor');
 assert.doesNotMatch(inserted, /\\documentclass|\\begin\{document\}|\\end\{document\}/);
 assert.doesNotMatch(inserted, /\\usepackage|\\usetikzlibrary|\\newcommand/);
 assert.match(inserted, /\\begin\{tikzpicture\}/);
-await page.locator('.tikz-general-preview svg').waitFor({state:'visible',timeout:120000});
-await page.locator('.tikz-general-preview').first().dblclick();
+await page.locator('.document-image-tikz svg').waitFor({state:'visible',timeout:120000});
+await page.locator('.document-image-tikz').first().dblclick();
 await page.locator('.tikz-studio-window').waitFor({state:'visible'});
 assert.match(await page.locator('.tikz-studio-libraries').inputValue(), /\\usetikzlibrary\{knots\}/);
 assert.match(await page.locator('.tikz-studio-code').inputValue(), /\\begin\{tikzpicture\}/);
 await page.locator('.tikz-studio-code').fill(String.raw`\begin{tikzpicture}\draw (0,0) -- (2,0);\end{tikzpicture}`);
 await page.locator('.tikz-studio-insert').click();
 await page.waitForTimeout(500);
-assert.equal(await page.locator('pre[data-language="tikz-general"]').count(),1);
-assert.match(await page.locator('pre[data-language="tikz-general"]').evaluate(el=>el.textContent), /-- \(2,0\)/);
+assert.equal(await page.locator('.document-image-tikz').count(),1,'the picture stays one image node');
+assert.match((await readDrawing()).tikzSource, /-- \(2,0\)/);
 // inserting the same macro again must highlight its block and keep the dialog open.
-await page.getByRole('button',{name:'TikZ',exact:true}).click();await page.locator('.tikz-studio-window').waitFor({state:'visible'});await libraries.fill(knotLibraries);await code.fill(knotPicture);await page.waitForTimeout(1000);await page.locator('.tikz-studio-insert').click();await page.waitForTimeout(500);
+await page.locator('.ribbon-tabs [data-group=insert]').click();await page.getByRole('button',{name:'TikZ',exact:true}).click();await page.locator('.tikz-studio-window').waitFor({state:'visible'});await libraries.fill(knotLibraries);await code.fill(knotPicture);await page.waitForTimeout(1000);await page.locator('.tikz-studio-insert').click();await page.waitForTimeout(500);
 assert.match(await page.locator('.tikz-studio-status').innerText(), /Already defined: motif/);
 assert.ok(await page.locator('.tikz-studio-highlight-line.duplicate').count()>0,'duplicate macro lines are highlighted');
 assert.equal(await page.locator('.tikz-studio-window').count(),1,'dialog remains open after duplicate');

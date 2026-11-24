@@ -139,15 +139,15 @@ const server = createServer(async (request, response) => {
     assert.notEqual(await page.locator('.tikz-layer-items').getAttribute('transform'), beforePan, 'pan changes the view transform');
 
     await page.locator('.tikz-finish').click();
-    await page.locator('.tikz-general-preview svg').waitFor({ state: 'visible', timeout: 120000 });
-    assert.equal(await page.locator('.tikz-general-preview svg').count(), 1, 'inserted CircuiTikZ has a complete TeX-rendered preview');
-    assert.equal(await page.locator('.ProseMirror pre[data-language="tikz"]').isHidden(), true, 'source code block stays out of the document body');
-    const tikz = await page.locator('.ProseMirror pre code').innerText();
+    await page.locator('.document-image-tikz svg').waitFor({ state: 'visible', timeout: 120000 });
+    assert.equal(await page.locator('.document-image-tikz svg').count(), 1, 'inserted CircuiTikZ has a complete TeX-rendered preview');
+    const tikz = await page.locator('.ProseMirror').evaluate(element => element.editor.getJSON().content.find(node => node.type === 'documentImage')?.attrs?.tikzSource ?? '');
+    assert.equal(await page.locator('.ProseMirror').evaluate(element => element.editor.getJSON().content.find(node => node.type === 'documentImage')?.attrs?.tikzEditor), 'circuit', 'CircuiTikZ uses the circuit editor');
     assert.doesNotMatch(tikz, /\\resizebox\{/);
     assert.match(tikz, /\\node\[npn, bodydiode\]/);
     assert.match(tikz, /\\node\[transformer, cute\]/);
     assert.match(tikz, /\\draw .* to\[vco, box\]/);
-    await page.locator('.tikz-code-preview').dblclick();
+    await page.locator('.document-image-tikz').dblclick();
     await page.locator('.tikz-window').waitFor({ state: 'visible' });
     await page.waitForFunction(() => document.querySelectorAll('.tikz-layer-items > [data-uid]').length > 0);
     assert.ok(await page.locator('.tikz-layer-items > [data-uid]').count() > 0, 'double-click opens the CircuiTikZ editor with the current drawing');
