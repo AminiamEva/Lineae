@@ -123,6 +123,17 @@ const server=createServer(async(req,res)=>{
     },markerLeft);
     await page.keyboard.press('Shift+ArrowLeft');
     await panel.locator('.native-tex-selection').waitFor();
+    const selectionLeft=await panel.locator('.native-tex-selection').evaluate(node=>parseFloat(node.style.left));
+    await page.locator('#native-tex-zoom').selectOption('125');
+    await page.waitForFunction(left=>{
+      const marker=document.querySelector('.native-tex-selection');
+      return marker&&parseFloat(marker.style.left)<left;
+    },selectionLeft);
+    await page.locator('#native-tex-zoom').selectOption('150');
+    await page.waitForFunction(left=>{
+      const marker=document.querySelector('.native-tex-selection');
+      return marker&&parseFloat(marker.style.left)===left;
+    },selectionLeft);
     const canvas=panel.locator('[data-native-page="1"] canvas');
     const box=await canvas.boundingBox();
     await page.mouse.move(box.x+6560000*scale,box.y+6250000*scale);

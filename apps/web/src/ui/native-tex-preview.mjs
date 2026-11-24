@@ -46,6 +46,7 @@ export function installNativeTexPreview({host,before,getSource,getSnapshot,isCom
     onPaint:revision=>{
       if(!active||mode!=='canvas')return;
       renderedRevision=revision;if(!terminal&&revision>=sourceRevision)error='';renderStatus();
+      syncCaret();
     },
     onError:(failure,revision)=>{if(active&&mode==='canvas')void fallback(failure,revision);},
     onMathHit:async(hit,stamp,origin,sameGesture)=>{

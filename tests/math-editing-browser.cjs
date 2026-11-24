@@ -237,7 +237,20 @@ const server = createServer(async (req, res) => {
       await page.keyboard.press(backward ? 'Backspace' : 'Delete');
       assert.equal(normalized((await state()).value), 'z++w', 'Second press removes the empty operator without touching siblings');
     }
-    await reset('\\frac{z+\\boxed{abc}+w}{uv}');
+    // Start a real document for document-history assertions. Earlier cases
+    // reset the private MathLive model repeatedly to exercise isolated atoms.
+    await page.locator('input[type=file]').setInputFiles({
+      name:'history.tex',mimeType:'text/plain',
+      buffer:Buffer.from('\\documentclass{article}\n\\begin{document}\n\\[\\frac{z+\\boxed{abc}+w}{uv}\\]\n\\end{document}\n'),
+    });
+    await page.waitForFunction(()=>document.querySelector('math-field')?.value.includes('\\boxed{abc}'));
+    await field.click();
+    if(process.env.LINEAE_TEST_NATIVE_PREVIEW==='1'){
+      await page.locator('#native-tex-toggle').click();
+      await page.waitForFunction(()=>document.querySelector('#native-tex-preview').dataset.state==='current');
+    }
+    await page.waitForFunction(()=>document.activeElement?.tagName==='MATH-FIELD'&&
+      !document.activeElement._mathfield?.focusBlurInProgress);
     const undoValue = (await state()).value;
     await page.waitForTimeout(600);
     await field.evaluate(field => {
@@ -248,7 +261,7 @@ const server = createServer(async (req, res) => {
     });
     await page.keyboard.press('Backspace');
     await page.keyboard.press('Backspace');
-    await page.waitForTimeout(50);
+    await page.waitForFunction(()=>document.querySelector('math-field')?.value.replace(/\s/g,'')==='\\frac{z++w}{uv}');
     await page.keyboard.press(mod+'+z');
     assert.equal(normalized((await state()).value), normalized(undoValue), 'Editor undo restores the deleted structure');
     await page.keyboard.press(mod+'+y');
