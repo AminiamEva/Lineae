@@ -335,6 +335,7 @@ class PaperTableView extends Table.options.View {
   }
   syncEnvironment(node){
     this.table.toggleAttribute('data-longtable',Boolean(node.attrs.longtable));
+    this.table.lineaeSections=node.attrs.longtable?.sections;
     this.table.toggleAttribute('data-atomic-tabular',Boolean(node.attrs.atomicTabular));
   }
 }

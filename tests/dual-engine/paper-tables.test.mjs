@@ -46,8 +46,8 @@ test('geometry paper dimensions for a short longtable page', async () => {
   assert.equal(metrics.height,'70mm');
 });
 
-test('unimplemented longtable headers retain original markup',()=>{
-  const source=environment('long','longtable').replace('Row 02','\\endhead\nRow 02');
+test('unimplemented longtable alignment commands retain original markup',()=>{
+  const source=environment('long','longtable').replace('Row 02','\\noalign{\\vskip 3pt}\nRow 02');
   const block=importBlock(source);
   assert.equal(block.type,'raw');
   assert.equal(serialize(block),source);

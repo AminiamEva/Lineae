@@ -130,7 +130,8 @@ export function planPagination(blocks, { pageHeight, pageGap, marginTop, marginB
     const block = blocks[index];
     let top = block.top + translation;
     let bottom = top + block.height;
-    let bodyTop = pageIndex * pitch + marginTop;
+    const pageStart=marginTop+(block.pageStartAdjustment??0);
+    let bodyTop = pageIndex * pitch + pageStart;
     let bodyBottom = pageIndex * pitch + pageHeight - marginBottom;
     const next = blocks[index + 1];
     let groupBottom = block.keepWithNext && next ? next.top + next.height + translation : bottom;
@@ -149,7 +150,7 @@ export function planPagination(blocks, { pageHeight, pageGap, marginTop, marginB
         groupBottom += space;
       }
       pageIndex = Math.max(pageIndex, nextPage);
-      bodyTop = pageIndex * pitch + marginTop;
+      bodyTop = pageIndex * pitch + pageStart;
       bodyBottom = pageIndex * pitch + pageHeight - marginBottom;
       const space = bodyTop - top;
       translation += space;
@@ -186,7 +187,7 @@ export function planPagination(blocks, { pageHeight, pageGap, marginTop, marginB
         }
       }
       pageIndex++;
-      bodyTop = pageIndex * pitch + marginTop;
+      bodyTop = pageIndex * pitch + (blocks[breakIndex].pageStartAdjustment??0) + marginTop;
       bodyBottom = pageIndex * pitch + pageHeight - marginBottom;
       const space = bodyTop - anchorTop;
       translation += space;
@@ -216,7 +217,7 @@ export function planPagination(blocks, { pageHeight, pageGap, marginTop, marginB
 
 export function planTableRows(rows, {
   top, pageHeight, pageGap, marginTop, marginBottom,
-  headerHeight = 0, repeatHeader = true, lastRowDepth = 0,
+  headerHeight = 0, repeatHeader = true, lastRowDepth = 0, pageInset = 0, sections = null,
 }) {
   if (!rows.length) return { breaks:[], extra:0, pageCount:1 };
   const pitch = pageHeight + pageGap;
@@ -227,14 +228,26 @@ export function planTableRows(rows, {
   let pageIndex = Math.max(0, Math.floor(top / pitch));
   let bodyBottom = pageIndex * pitch + pageHeight - marginBottom;
 
+  const copies=[];
+  const firstHead=sections?.firsthead ?? sections?.head;
+  const finalFoot=sections?.lastfoot ?? sections?.foot;
+  const copy=(section,y)=>{if(section?.height)copies.push({section:section.kind,top:y});};
+  const atTop=Math.abs(top-(pageIndex*pitch+marginTop))<tolerance;
+  let firstPadding=(atTop?pageInset:0)+(firstHead?.height??0);
   for (let index = 0; index < rows.length; index++) {
     const row = rows[index];
     let rowTop = top + row.top + extra;
     let rowBottom = rowTop + row.height - lastRowDepth;
-    if (rowBottom > bodyBottom + tolerance && row.height <= bodyHeight + tolerance) {
+    const foot=index===rows.length-1?finalFoot:sections?.foot;
+    const reserve=(foot?.height??0)+(index===0?firstPadding:0);
+    if (rowBottom + reserve > bodyBottom + tolerance && row.height <= bodyHeight + tolerance) {
+      if(index)copy(sections?.foot,rowTop);
       const nextPage = pageIndex + 1;
       const bodyTop = nextPage * pitch + marginTop;
-      const header = repeatHeader && index > 0 ? headerHeight : 0;
+      const section=index===0?firstHead:sections?.head;
+      const header = pageInset+(section?.height ?? (repeatHeader && index>0?headerHeight:0));
+      copy(section,bodyTop+pageInset);
+      firstPadding=0;
       const padding = Math.max(0, bodyTop + header - rowTop);
       if (padding > .01) {
         breaks.push({ row:index, padding, headerTop:bodyTop });
@@ -245,7 +258,17 @@ export function planTableRows(rows, {
         rowBottom += padding;
       }
     }
+    if(index===0 && firstPadding){
+      copy(firstHead,top+(atTop?pageInset:0));
+      breaks.push({row:0,padding:firstPadding});
+      extra+=firstPadding;
+      rowBottom+=firstPadding;
+    }
+    if(index===rows.length-1 && finalFoot?.height){
+      copy(finalFoot,rowBottom+lastRowDepth);
+      extra+=finalFoot.height;
+    }
     while (rowBottom > pageIndex * pitch + pageHeight - marginBottom + tolerance) pageIndex++;
   }
-  return { breaks, extra, pageCount: Math.max(1, pageIndex + 1) };
+  return { breaks, extra, ...(sections?{copies}:{}), pageCount: Math.max(1, pageIndex + 1) };
 }

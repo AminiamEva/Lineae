@@ -449,6 +449,9 @@ button,select,.color-control { transition:background-color .14s ease,color .14s 
 .table-continuation-header { position:absolute; z-index:0; pointer-events:none; background:light-dark(#fff,#242426); }
 .table-continuation-header table { width:100%; border-collapse:collapse; table-layout:fixed; }
 .table-continuation-header td { padding:2px 5.9776pt; border-bottom:1px solid light-dark(#d5d9e1,#4a505c); font:var(--tex-font-size)/var(--tex-line-height) var(--tex-font-family,"Latin Modern Roman"),var(--tex-cjk-font-family,"Songti SC",SimSun),serif; }
+.longtable-section { background:transparent; }
+.longtable-section :is(th,td) { padding-block:0; border:0; vertical-align:top; }
+.longtable-section p { margin:0; text-indent:0; position:relative; top:var(--section-baseline-adjust); }
 .document-sheet { position:relative; flex:0 0 var(--page-height,11in); width:100%; background:light-dark(#fff,#242426); box-shadow:0 2px 14px #0002; }
 .document-page-header,
 .document-page-footer {
@@ -561,7 +564,7 @@ button,select,.color-control { transition:background-color .14s ease,color .14s 
 .document-page .ProseMirror > .tableWrapper:has(> table[data-table-align="center"]) { margin-inline:auto; }
 .document-page .ProseMirror > .tableWrapper:has(> table[data-table-align="right"]) { margin-inline-start:auto; margin-inline-end:0; }
 .document-page .ProseMirror > .tableWrapper:has(> table[data-table-align="left"]) { margin-inline-start:var(--tex-paragraph-indent); margin-inline-end:auto; }
-.document-page .ProseMirror > .tableWrapper:has(>table[data-longtable]):not(:first-child) { margin-block-start:calc(12 * 1in / 72.27); }
+.document-page .ProseMirror > .tableWrapper:has(>table[data-longtable]):not(:first-child) { margin-block-start:calc(12 * 1in / 72.27 + var(--lt-depth-adjust,0px)); }
 .document-page .ProseMirror table:is([data-longtable],[data-atomic-tabular]) :is(td,th) { padding-block:0; }
 .tableWrapper[data-paper-overflow]::after {
   content:attr(title); position:sticky; bottom:0; display:block; width:max-content; max-width:100%;
