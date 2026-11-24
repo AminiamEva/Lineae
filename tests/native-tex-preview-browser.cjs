@@ -337,26 +337,19 @@ const server=createServer(async(req,res)=>{
       await page.addInitScript(installMockNativeTex);
       await page.goto('http://127.0.0.1:'+server.address().port,{waitUntil:'networkidle'});
       await page.evaluate(evidence=>{
-        const p=window.nativeProbe,originalLayout=p.layout,invoke=window.__TAURI__.core.invoke;
+        const p=window.nativeProbe,originalLayout=p.layout;
+        p.realEvidence=evidence;
         p.layout=()=>({...originalLayout(),pages_changed:evidence.raw,pages_total:evidence.raw.length});
-        window.__TAURI__.core.invoke=async(command,args)=>{
-          if(command==='native_tex_font') {
-            const result=await fetch('/native-formula-font?key='+encodeURIComponent(args.key));
-            if(!result.ok)throw new Error('The exact recorded native font is not available');
-            return result.arrayBuffer();
-          }
-          if(command==='native_tex_observe_formula'){
-            if(args.projection!==evidence.projection)throw new Error('Editor projection differs from the actual recorded compile');
-            return evidence.observed;
-          }
-          return invoke(command,args);
-        };
       },nativeEvidence);
       await page.locator('input#file').setInputFiles({name:'observed.tex',mimeType:'text/plain',buffer:input});
       await page.waitForFunction(()=>document.querySelector('math-field')?.value.includes('\\frac{a}{}'));
       await page.locator('#native-tex-toggle').click();
-      await page.waitForFunction(()=>document.querySelector('#native-tex-preview').dataset.state==='current'&&
-        document.querySelector('#native-tex-preview').dataset.renderer==='canvas');
+      await page.waitForFunction(()=>['current','error'].includes(document.querySelector('#native-tex-preview').dataset.state));
+      const nativeState=await page.locator('#native-tex-preview').evaluate(node=>({
+        state:node.dataset.state,renderer:node.dataset.renderer,reason:node.dataset.fallbackReason,
+      }));
+      assert.equal(nativeState.renderer,'canvas',JSON.stringify(nativeState));
+      assert.equal(nativeState.state,'current',JSON.stringify(nativeState));
       await page.locator('#native-tex-target').click();
       await page.getByText('Click the empty numerator or denominator',{exact:false}).waitFor();
       const nativePage=nativeEvidence.observed.find(page=>page.dl.math_owners?.fields.some(field=>
@@ -377,6 +370,7 @@ const server=createServer(async(req,res)=>{
   }catch(error){
     if(page)console.error('Native preview UI diagnostic:',await page.evaluate(()=>({
       state:document.querySelector('#native-tex-preview')?.dataset.state,
+      fallback:document.querySelector('#native-tex-preview')?.dataset.fallbackReason,
       status:document.querySelector('#native-tex-preview [role=status]')?.textContent,
       source:window.nativeProbe?.source?.slice(0,1600),
       value:document.querySelector('math-field')?.value,

@@ -263,10 +263,17 @@ const server = createServer(async (req, res) => {
     });
     await page.keyboard.press('Backspace');
     await page.keyboard.press('Backspace');
-    await page.waitForFunction(()=>document.querySelector('math-field')?.value.replace(/\s/g,'')==='\\frac{z++w}{uv}');
+    await page.waitForFunction(()=>{
+      const doc=document.querySelector('.ProseMirror')?.editor?.state.doc;
+      return document.querySelector('math-field')?.value.replace(/\s/g,'')==='\\frac{z++w}{uv}'&&
+        doc?.firstChild?.attrs.latex?.replace(/\s/g,'')==='\\frac{z++w}{uv}';
+    });
     await page.keyboard.press(mod+'+z');
+    await page.waitForFunction(value=>document.querySelector('math-field')?.value.replace(/\s/g,'')===
+      value.replace(/\s/g,''),undoValue);
     assert.equal(normalized((await state()).value), normalized(undoValue), 'Editor undo restores the deleted structure');
     await page.keyboard.press(mod+'+y');
+    await page.waitForFunction(()=>document.querySelector('math-field')?.value.replace(/\s/g,'')==='\\frac{z++w}{uv}');
     assert.equal(normalized((await state()).value), '\\frac{z++w}{uv}', 'Editor redo does not widen deletion');
 
     // Real arrow keys must visit every letter/digit, in both directions.

@@ -144,6 +144,7 @@ export function installNativeTexPreview({host,before,getSource,getSnapshot,isCom
     mirror?.lifetime.abort();mirror=null;
     targetArmed=false;lastTarget=null;clearTimeout(targetTimer);targetTimer=null;
     renderer.reset();pdf.reset();mode='canvas';pdfWanted=-1;pdfLayout=null;pdfRendered=-1;renderedRevision=-1;renderStatus();
+    delete panel.dataset.fallbackReason;
     if(previous!==null) {
       try {await invoke('native_tex_close',{sessionId:previous});}
       catch(failure) {console.warn('Native TeX close:',failure);}
@@ -157,6 +158,7 @@ export function installNativeTexPreview({host,before,getSource,getSnapshot,isCom
   }
   async function fallback(failure,revision) {
     if(mode==='canvas'){
+      panel.dataset.fallbackReason=String(failure?.message??failure).slice(0,300);
       mode='pdf';renderer.reset({clear:false});
     }
     if(!Number.isSafeInteger(revision)||revision<0){fail(failure);return;}

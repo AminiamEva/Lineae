@@ -58,10 +58,19 @@ module.exports=function installMockNativeTex() {
       return {sessionId:String(p.session),editId:p.revision,sourceRevision:p.revision,routed:'fast'};
     }
     if(command==='native_tex_font') {
+      if(p.realEvidence){
+        const result=await fetch('/native-formula-font?key='+encodeURIComponent(args.key));
+        if(!result.ok)throw new Error('The exact recorded native font is not available');
+        return result.arrayBuffer();
+      }
       if(p.failFont)throw 'The native font is unavailable';
       return [...new Uint8Array(await(await fetch('/assets/fonts/latin-modern/lmroman10-regular.otf')).arrayBuffer())];
     }
     if(command==='native_tex_observe_formula'){
+      if(p.realEvidence){
+        if(args.projection!==p.realEvidence.projection)throw new Error('Editor projection differs from the actual recorded compile');
+        return p.realEvidence.observed;
+      }
       const input=p.targetInclude?args.files?.find(file=>file.path==='chapters/one.tex')?.source:args.projection;
       if(!input)throw new Error('No target source in observation request');
       const matches=[...input.matchAll(/\\attribute65000=(\d+) \\(frac|sqrt)/g)];
