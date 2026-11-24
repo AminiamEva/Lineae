@@ -37,16 +37,45 @@ export function installNativePages({host,getFont,onPaint,onError,onMathHit}) {
     ownership={stamp:{...stamp,layoutVersion},fields,glyphs};
     return true;
   }
-  host.addEventListener('click',event=>{
-    const canvas=event.target.closest?.('canvas');
-    if(!canvas||!ownership||event.button!==0)return;
+  function locate(canvas,event) {
+    if(!canvas||!ownership)return null;
     const page=Number(canvas.parentElement.dataset.nativePage);
     const args=[canvas.getBoundingClientRect(),{x:event.clientX,y:event.clientY},zoom,ownership.stamp,
       {...ownership.stamp,sourceRevision:revision,layoutVersion}];
-    const hit=hitMathGlyph(ownership.glyphs.get(page)??[],...args)||
+    return hitMathGlyph(ownership.glyphs.get(page)??[],...args)||
       hitMathField(ownership.fields.get(page)??[],...args);
-    if(hit)onMathHit?.(hit,ownership.stamp);
+  }
+  let drag=null,caret=null;
+  function clearCaret(){caret?.remove();caret=null;}
+  window.addEventListener('keydown',clearCaret,true);
+  window.addEventListener('pointerdown',clearCaret,true);
+  host.addEventListener('pointerdown',event=>{
+    if(!event.isPrimary||event.button!==0)return;
+    const canvas=event.target.closest?.('canvas');
+    const hit=locate(canvas,event);
+    drag=hit?{canvas,hit,ownership,id:event.pointerId,x:event.clientX,y:event.clientY}:null;
+    if(drag)canvas.setPointerCapture(event.pointerId);
   });
+  host.addEventListener('pointerup',event=>{
+    if(drag?.id!==event.pointerId)return;
+    const start=drag;drag=null;
+    if(start.ownership!==ownership)return;
+    const hit=locate(start.canvas,event);
+    if(!hit)return;
+    const moved=Math.hypot(start.x-event.clientX,start.y-event.clientY)>=4;
+    if(!onMathHit?.(hit,ownership.stamp,moved?start.hit:null)||moved)return;
+    const node=start.canvas.parentElement,number=Number(node.dataset.nativePage);
+    const target=(hit.role==='nucleus'?ownership.glyphs:ownership.fields).get(number)?.find(field=>
+      field.owner===hit.owner&&(hit.role==='nucleus'||field.role===hit.role));
+    if(!target)return;
+    const [left,top,right,bottom]=target.bbox,scale=CSS_PER_SP*zoom;
+    const height=Math.max(12,(bottom-top)*scale);
+    caret=document.createElement('span');caret.className='native-tex-caret';caret.setAttribute('aria-hidden','true');
+    caret.style.left=(hit.after?right:left)*scale+'px';
+    caret.style.top=(top+bottom)*scale/2-height/2+'px';
+    caret.style.height=height+'px';node.append(caret);
+  });
+  host.addEventListener('pointercancel',()=>{drag=null;});
   async function prepare(dl,attempt) {
     if(Object.keys(dl.images_info??{}).length)throw new Error('Native image resources are not supported yet');
     for(const item of [...(dl.other??[]),...(dl.lines??[]).flatMap(line=>line.items)]) {
@@ -124,6 +153,7 @@ export function installNativePages({host,getFont,onPaint,onError,onMathHit}) {
       if(pages.size!==message.pages_total)throw new Error('Native layout is missing page geometry');
       host.replaceChildren(...[...pages].sort(([a],[b])=>a-b).map(([,entry])=>entry.dom));
       revision=stamp.source_revision;layoutVersion=stamp.layout_version;
+      clearCaret();
       for(const entry of pages.values()) {
         entry.dom.style.width=entry.dl.page_width*CSS_PER_SP*zoom+'px';
         entry.dom.style.height=entry.dl.page_height*CSS_PER_SP*zoom+'px';
@@ -140,13 +170,13 @@ export function installNativePages({host,getFont,onPaint,onError,onMathHit}) {
     pending=pending.then(()=>{if(currentEpoch===epoch)return layout(message);}).catch(onError);
   }
   function reset({clear=true}={}) {
-    epoch++;generation++;revision=-1;layoutVersion=-1;pending=Promise.resolve();ownership=null;
-    cancelAnimationFrame(frame);pages.clear();loaded.clear();fonts=new FontStore();if(clear)host.replaceChildren();
+    epoch++;generation++;revision=-1;layoutVersion=-1;pending=Promise.resolve();ownership=null;drag=null;
+    cancelAnimationFrame(frame);clearCaret();pages.clear();loaded.clear();fonts=new FontStore();if(clear)host.replaceChildren();
   }
   host.addEventListener('scroll',redraw,{passive:true});
   host.parentElement?.addEventListener('scroll',redraw,{passive:true});
   window.addEventListener('resize',redraw);
-  return {accept,reset,attachOwners,setZoom(value){zoom=value;for(const entry of pages.values()){
+  return {accept,reset,attachOwners,setZoom(value){clearCaret();zoom=value;for(const entry of pages.values()){
     entry.dom.style.width=entry.dl.page_width*CSS_PER_SP*zoom+'px';
     entry.dom.style.height=entry.dl.page_height*CSS_PER_SP*zoom+'px';
   }redraw();}};

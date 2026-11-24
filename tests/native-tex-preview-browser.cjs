@@ -106,6 +106,17 @@ const server=createServer(async(req,res)=>{
       const atom=math?.model.at(field.position);
       return field?.tagName==='MATH-FIELD'&&!math?.focusBlurInProgress&&atom?.type==='first'&&atom.parentBranch==='above';
     });
+    await panel.locator('.native-tex-caret').waitFor();
+    const canvas=panel.locator('[data-native-page="1"] canvas');
+    const box=await canvas.boundingBox();
+    await page.mouse.move(box.x+6560000*scale,box.y+6250000*scale);
+    await page.mouse.down();
+    await page.mouse.move(box.x+6740000*scale,box.y+6250000*scale,{steps:3});
+    await page.mouse.up();
+    await page.waitForFunction(()=>{
+      const range=document.activeElement?.selection?.ranges?.[0];
+      return range?.[1]-range?.[0]===1;
+    });
     await panel.locator('[data-native-page="1"] canvas').click({position:{x:6500000*scale,y:7000000*scale}});
     await page.waitForFunction(()=>{
       const field=document.activeElement,math=field?._mathfield;

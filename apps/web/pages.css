@@ -352,6 +352,7 @@ main { padding:125px 24px 60px; overflow:auto; }
 .native-tex-pages { overflow:auto; }
 .native-tex-page { background:white; margin:12px auto; position:relative; box-shadow:0 1px 8px #0003; }
 .native-tex-page canvas { display:block; }
+.native-tex-caret { position:absolute; width:2px; background:#2f6fd0; pointer-events:none; }
 .document-status output { min-width:38px; font-variant-numeric:tabular-nums; }
 .document-status .pagination-toggle[data-mode="pages"] {
   color:light-dark(#0059c7,#9bc8ff);

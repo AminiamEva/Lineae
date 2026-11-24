@@ -225,6 +225,8 @@ It enables a click only when
 exact page drawing records agree with the raw preview and the session, source and
 layout still match. Clicking an empty numerator, denominator, radicand or supported glyph edge transfers focus to the
 original MathLive field, or selects the original source offset in Source/Split.
-The existing editor history handles subsequent input and undo.
-It does not draw the caret on Canvas, drag a Canvas selection, or edit a PDF fallback.
+The existing editor history handles subsequent input and undo. A click shows a
+native position marker until the next input or layout; dragging between two supported
+targets transfers a selection to the editor. A continuously updated Canvas selection
+overlay and semantic editing on PDF fallback are not implemented.
 The independently compiled projection never replaces the source or export buffer.

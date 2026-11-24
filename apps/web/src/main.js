@@ -2621,20 +2621,24 @@ nativeTexPreview=installNativeTexPreview({host:footer,before:modes,
     return {source:text,mainFile:'main.tex',signature:text};
   },
   isComposing:()=>editor.view.composing||sourceView.composing,
-  focusMathSlot:(projection,owner,hit,selection)=>{
+  focusMathSlot:(projection,anchor,head)=>{
     if(projectExplorer?.active)return;
     if(!sourceView.hidden){
-      if(sourceView.value===projection.source)sourceView.select(selection.anchor,selection.head);
-      return;
+      if(sourceView.value!==projection.source)return;
+      sourceView.select(anchor.position,head.position);
+      return true;
     }
     if(source()!==projection.source)return;
     const fields=[...paper.querySelectorAll('.math-display math-field')];
     if(fields.length!==1||fields[0].value.trim()!==projection.math.source.trim())return;
     const [field]=fields,model=field._mathfield?.model;
-    const position=model&&richSlotPosition(model,projection.math.atoms,owner,hit);
-    if(position==null)return;
+    const from=model&&richSlotPosition(model,projection.math.atoms,anchor.owner,anchor.hit);
+    const to=anchor===head?from:model&&richSlotPosition(model,projection.math.atoms,head.owner,head.hit);
+    if(from==null||to==null)return;
     field.focus();
-    field.position=position;
+    if(from===to)field.position=from;
+    else field.selection={ranges:[[Math.min(from,to),Math.max(from,to)]],direction:from<to?'forward':'backward'};
+    return true;
   },
 });
 editor.on('update',()=>nativeTexPreview.refresh());

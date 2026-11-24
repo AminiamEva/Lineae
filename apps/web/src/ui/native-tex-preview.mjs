@@ -46,18 +46,22 @@ export function installNativeTexPreview({host,before,getSource,getSnapshot,isCom
       renderedRevision=revision;if(!terminal&&revision>=sourceRevision)error='';renderStatus();
     },
     onError:(failure,revision)=>{if(active&&mode==='canvas')void fallback(failure,revision);},
-    onMathHit:(hit,stamp)=>{
+    onMathHit:(hit,stamp,origin)=>{
       if(!current()||mode!=='canvas'||!observation||
           stamp.sessionId!==observation.stamp.sessionId||
           stamp.sourceRevision!==observation.stamp.sourceRevision)return;
       const {projection}=observation;
-      const offset=hit.after?projection.math.slots.find(slot=>slot.tag===hit.owner&&slot.role==='nucleus')?.raw.length:0;
-      if(offset==null)return;
-      let target;
-      try {target=editDisplayMathSlot(projection,wantedSource,hit,{from16:offset,to16:offset,insert:''});}
-      catch {return;}
-      const owner=projection.math.atoms.find(atom=>atom.tag===hit.owner);
-      if(target&&owner)focusMathSlot?.(projection,owner,hit,target.selection);
+      function resolve(endpoint){
+        const offset=endpoint.after?projection.math.slots.find(slot=>slot.tag===endpoint.owner&&slot.role==='nucleus')?.raw.length:0;
+        if(offset==null)return null;
+        try {
+          const target=editDisplayMathSlot(projection,wantedSource,endpoint,{from16:offset,to16:offset,insert:''});
+          const owner=projection.math.atoms.find(atom=>atom.tag===endpoint.owner);
+          return target&&owner?{owner,hit:endpoint,position:target.selection.head}:null;
+        } catch {return null;}
+      }
+      const head=resolve(hit),anchor=origin?resolve(origin):head;
+      return head&&anchor&&focusMathSlot?.(projection,anchor,head);
     },
   });
   function current() {
