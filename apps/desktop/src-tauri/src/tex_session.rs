@@ -454,6 +454,8 @@ struct Session {
     changed: Condvar,
     snapshot: Mutex<Snapshot>,
     observer: Mutex<Option<Arc<Session>>>,
+    observation_commands: Mutex<()>,
+    observation_pages: Mutex<BTreeMap<u64, Value>>,
 }
 
 impl Session {
@@ -479,6 +481,8 @@ impl Session {
             messages: Mutex::new(Messages::default()), changed: Condvar::new(),
             snapshot: Mutex::new(snapshot.clone()),
             observer: Mutex::new(None),
+            observation_commands: Mutex::new(()),
+            observation_pages: Mutex::new(BTreeMap::new()),
         });
         for (path, bytes) in &snapshot.files {
             let destination = session.root.join(path);
@@ -966,6 +970,8 @@ impl Session {
     // Instrumentation is deliberately isolated from the authoritative engine:
     // neither its source nor its PDF ever replaces the user's raw snapshot.
     fn observe_formula(&self, revision: u64, projection: &str, files: Vec<NativeTexProjection>) -> Result<Vec<Value>, NativeTexError> {
+        let _observation = self.observation_commands.try_lock()
+            .map_err(|_| error("formula_observation", "Another formula observation is already running."))?;
         let snapshot = {
             let _serial = lock(&self.commands);
             self.check()?;
@@ -992,19 +998,31 @@ impl Session {
             }
             snapshot
         };
-        let observer = Self::create_snapshot(snapshot)?;
-        {
-            let mut active = lock(&self.observer);
-            self.check()?;
-            if active.is_some() {
-                return Err(error("formula_observation", "Another formula observation is already running."));
-            }
-            *active = Some(observer.clone());
-        }
-        let result = (|| {
-            observer.start_with_owners(true)?;
+        let previous = lock(&self.observer).clone();
+        let reusable = previous.filter(|active| {
+            active.check().is_ok() && lock(&active.snapshot).dependencies_equal(&snapshot)
+        });
+        let mut pages = lock(&self.observation_pages);
+        let (observer, starting) = if let Some(active) = reusable {
+            (active, false)
+        } else {
+            let observer = Self::create_snapshot(snapshot)?;
+            let old = {
+                let mut active = lock(&self.observer);
+                self.check()?;
+                active.replace(observer.clone())
+            };
+            if let Some(old) = old { old.terminate(); }
+            pages.clear();
+            (observer, true)
+        };
+        let result: Result<Vec<Value>, NativeTexError> = (|| {
+            let target = if starting {
+                observer.start_with_owners(true)?.source_revision
+            } else {
+                observer.update(projection.to_owned())?.source_revision
+            };
             let deadline = Instant::now() + Duration::from_secs(30);
-            let mut pages = BTreeMap::new();
             let mut messages = lock(&observer.messages);
             loop {
                 self.check()?;
@@ -1012,21 +1030,30 @@ impl Session {
                     return Err(error("revision_mismatch", "Source changed while observing formula geometry."));
                 }
                 messages.check()?;
-                for event in messages.events.drain(..) {
+                let events = std::mem::take(&mut messages.events);
+                messages.event_bytes = 0;
+                let mut ready = false;
+                for event in events {
                     if event["event"] != "LayoutUpdate" { continue; }
+                    let source = integer(&event["versions"], "source_revision")?;
                     if event["compile"]["state"] != "Ok" {
-                        return Err(error("formula_observation", "The instrumented formula did not compile."));
+                        if source == target {
+                            return Err(error("formula_observation", "The instrumented formula did not compile."));
+                        }
+                        continue;
                     }
                     if let Some(changed) = event["pages_changed"].as_array() {
                         for page in changed {
                             pages.insert(integer(page, "page")?, page.clone());
                         }
                     }
-                    if event["convergence"]["state"] == "Converged" {
-                        return Ok(pages.into_values().collect());
+                    let total = integer(&event, "pages_total")?;
+                    pages.retain(|page, _| *page <= total);
+                    if source == target && event["convergence"]["state"] == "Converged" {
+                        ready = pages.len() as u64 == total;
                     }
                 }
-                messages.event_bytes = 0;
+                if ready { return Ok(pages.values().cloned().collect()); }
                 let remaining = deadline.saturating_duration_since(Instant::now());
                 if remaining.is_zero() {
                     return Err(error("formula_observation", "No converged instrumented formula layout."));
@@ -1035,8 +1062,13 @@ impl Session {
                     .unwrap_or_else(|p| p.into_inner()).0;
             }
         })();
-        observer.terminate();
-        lock(&self.observer).take();
+        if let Err(problem) = &result {
+            if problem.code != "revision_mismatch" {
+                observer.terminate();
+                lock(&self.observer).take();
+                pages.clear();
+            }
+        }
         result
     }
 
@@ -1429,9 +1461,17 @@ mod tests {
                 })).unwrap()).unwrap();
             }
         }
-        assert!(lock(&targeting.observer).is_none());
+        let observer = lock(&targeting.observer).as_ref().expect("warm observer").clone();
+        let edit = targeting.update(standalone.replace("\\frac{a}{}", "\\frac{a}{b}")).unwrap();
+        let filled = targeting.observe_formula(edit.source_revision, &projected.replacen("}{}", "}{b}", 1), Vec::new())
+            .expect("a changed fraction reuses the instrumented process");
+        assert!(filled.iter().any(|page| page["dl"]["math_owners"]["fields"].as_array().is_some_and(|fields| {
+            fields.iter().any(|field| field["role"] == "den" && field["empty"] == false)
+        })));
+        assert!(Arc::ptr_eq(lock(&targeting.observer).as_ref().unwrap(), &observer));
         assert_eq!(std::fs::read_to_string(targeting.root.join("main.tex")).unwrap(), standalone);
         targeting.terminate();
+        assert!(!observer.root.exists());
         assert!(lock(&session.messages).events.iter().any(|event| {
             event["event"] == "LayoutUpdate"
                 && event["versions"]["source_revision"].as_u64() == Some(info.source_revision)

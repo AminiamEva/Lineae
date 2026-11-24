@@ -274,6 +274,9 @@ The independently compiled projection never replaces the source or export buffer
 After targeting is armed, small standalone documents refresh owner geometry after
 the new raw layout settles. Large documents and projects still require an explicit
 observation request; no stale geometry remains editable during the refresh.
+The observation process is kept warm for repeat requests; changes to its
+dependency snapshot replace it. Closing the preview also closes the observer
+and removes both temporary projects.
 
 When rtex supplies an exact, non-stale warm update whose rows map unambiguously
 to the current layout, the page can repaint those rows while waiting for the
