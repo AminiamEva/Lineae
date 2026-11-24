@@ -38,6 +38,7 @@ const server=createServer(async(req,res)=>{
   let page;
   try {
     page=await browser.newPage({locale:'en-US',viewport:{width:1600,height:1100}});
+    await page.context().grantPermissions(['clipboard-read','clipboard-write']);
     const mod=process.platform==='darwin'?'Meta':'Control';
     const errors=[];page.on('pageerror',error=>errors.push(error.message));
     await page.addInitScript(installMockNativeTex);
@@ -162,6 +163,11 @@ const server=createServer(async(req,res)=>{
       const range=document.activeElement?.selection?.ranges?.[0];
       return range?.[1]-range?.[0]===1;
     });
+    assert.equal(await field.evaluate(field=>field.getValue(field.selection.ranges[0])),'a',
+      'Dragging over one native glyph selects the same formula content');
+    await page.evaluate(()=>navigator.clipboard.writeText('SENTINEL'));
+    await page.keyboard.press(mod+'+c');
+    await page.waitForFunction(async()=> (await navigator.clipboard.readText()).includes('a'));
     await panel.locator('[data-native-page="1"] canvas').click({position:{x:6500000*scale,y:7000000*scale}});
     await page.waitForFunction(()=>{
       const field=document.activeElement,math=field?._mathfield;
