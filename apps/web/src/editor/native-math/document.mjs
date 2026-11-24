@@ -23,19 +23,22 @@ export function projectDisplayMath(source,previous) {
 
 // Assign disjoint owner IDs within this exact document revision. Keep
 // unsupported display spans intact and preserve their ordinal in the editor.
-export function projectDisplayDocument(source) {
+export function projectDocumentFormulas(source) {
   const doc=parseDocument(source);
   if(!doc)return null;
   const tokens=[...sourceStructure(doc.blocks.join(''))];
   if(tokens.some(token=>token.kind==='invalid'))return null;
-  const displays=tokens.filter(token=>token.topLevel&&token.kind==='displayMath');
+  const spans=tokens.filter(token=>token.topLevel&&['displayMath','inlineMath'].includes(token.kind));
+  const counts={displayMath:0,inlineMath:0},ordinals={...counts};
+  for(const span of spans)counts[span.kind]++;
   const formulas=[], owners=new Map();
   let projection='',cursor=0,firstTag=1;
-  for(const [ordinal,span] of displays.entries()){
+  for(const span of spans){
+    const ordinal=ordinals[span.kind]++;
     const from16=doc.start.length+span.index+span.delimiter.length,to16=from16+span.latex.length;
     const math=projectMath(span.latex,{firstTag});
     if(!math.supported)continue;
-    const formula={source,from16,to16,math,ordinal,displayCount:displays.length,
+    const formula={source,from16,to16,math,ordinal,kind:span.kind,count:counts[span.kind],
       projectionFrom16:projection.length+from16-cursor};
     for(const atom of math.atoms)owners.set(atom.tag,{formula,atom});
     formulas.push(formula);

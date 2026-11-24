@@ -1,7 +1,7 @@
 import {t} from './i18n.mjs';
 import {installNativePages} from '../typesetting/rtex/pages.mjs';
 import {installNativePdf} from '../typesetting/rtex/pdf.mjs';
-import {projectDisplayDocument,editDisplayMathSlot} from '../editor/native-math/document.mjs';
+import {projectDocumentFormulas,editDisplayMathSlot} from '../editor/native-math/document.mjs';
 
 // This surface never edits source or intercepts editor input. The existing
 // ProseMirror/MathLive history stays authoritative while native parity is built.
@@ -248,9 +248,9 @@ export function installNativeTexPreview({host,before,getSource,getSnapshot,isCom
   }
   async function observe() {
     if(targetButton.disabled)return;
-    const projection=projectDisplayDocument(sentSource);
+    const projection=projectDocumentFormulas(sentSource);
     if(!projection||![...projection.owners.values()].some(({atom})=>['frac','sqrt','token'].includes(atom.kind))){
-      targetStatus.textContent=t('当前独立文档没有可定位的行间公式。','No supported display formula in this standalone document.');
+      targetStatus.textContent=t('当前独立文档没有可定位的公式。','No supported formula in this standalone document.');
       return;
     }
     const attempt=generation,stamp={sessionId:session,sourceRevision};

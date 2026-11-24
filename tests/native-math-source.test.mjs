@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {projectDisplayMath,projectDisplayDocument,editDisplayMathSlot} from '../apps/web/src/editor/native-math/document.mjs';
+import {projectDisplayMath,projectDocumentFormulas,editDisplayMathSlot} from '../apps/web/src/editor/native-math/document.mjs';
 import {projectMath, applySlotEdit} from '../apps/web/src/editor/native-math/source.mjs';
 import {richSlotPosition} from '../apps/web/src/editor/native-math/rich-slot.mjs';
 
@@ -38,15 +38,17 @@ test('one display projection translates a TeX owner into an exact full-document 
 test('disjoint document owners preserve ordinals across unsupported displays',()=>{
   const source=String.raw`\documentclass{article}
 \begin{document}
+Inline $x$ and \(\frac{a}{}\).
 \[\frac{x}{}\]
 \[\unknown{y}\]
 \[\frac{z}{}\]
 \end{document}`;
-  const compiled=projectDisplayDocument(source);
-  assert.deepEqual(compiled.formulas.map(formula=>formula.ordinal),[0,2]);
+  const compiled=projectDocumentFormulas(source);
+  assert.deepEqual(compiled.formulas.map(formula=>[formula.kind,formula.ordinal,formula.count]),
+    [['inlineMath',0,2],['inlineMath',1,2],['displayMath',0,3],['displayMath',2,3]]);
   assert.ok(compiled.projection.includes(String.raw`\[\unknown{y}\]`));
   assert.equal(compiled.owners.size,compiled.formulas.reduce((size,formula)=>size+formula.math.atoms.length,0));
-  const formula=compiled.formulas[1],slot=formula.math.slots.find(slot=>slot.role==='denominator');
+  const formula=compiled.formulas[3],slot=formula.math.slots.find(slot=>slot.role==='denominator');
   const result=editDisplayMathSlot(formula,source,{owner:slot.tag,role:'den'},{from16:0,to16:0,insert:'b'});
   assert.equal(result.patch.from,source.indexOf('\\frac{z}{}')+9);
   assert.equal(editDisplayMathSlot(compiled.formulas[0],source,{owner:slot.tag,role:'den'},

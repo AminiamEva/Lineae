@@ -150,6 +150,21 @@ const server=createServer(async(req,res)=>{
     await page.waitForFunction(()=>[...document.querySelectorAll('math-field')].some(field=>field.value.includes('\\frac{\\frac{7}{b}}{c}')));
     assert.equal((await field.first().evaluate(field=>field.value)).trim(),'z','Editing the second display never changes the first');
     await page.locator('#native-tex-close').click();
+    const inline=input.toString().replace(/\\\[\r?\n\\frac\{a\}\{\}\r?\n\\\]/,'Inline $\\frac{a}{}$ here.');
+    await page.locator('input#file').setInputFiles({name:'inline.tex',mimeType:'text/plain',buffer:Buffer.from(inline)});
+    await page.locator('.math-inline math-field').waitFor();
+    await button.click();
+    await page.waitForFunction(()=>document.querySelector('#native-tex-preview').dataset.state==='current');
+    await page.locator('#native-tex-target').click();
+    await panel.getByText('Click the empty numerator or denominator',{exact:false}).waitFor();
+    await panel.locator('[data-native-page="1"] canvas').click({position:{x:6500000*scale,y:7000000*scale}});
+    await page.waitForFunction(()=>{
+      const field=document.activeElement,math=field?._mathfield;
+      return field?.closest('.math-inline')&&!math?.focusBlurInProgress&&math?.model.at(field.position)?.parentBranch==='below';
+    });
+    await page.keyboard.type('b');
+    await page.waitForFunction(()=>nativeProbe.source?.includes('Inline $\\frac{a}{b}$ here.'));
+    await page.locator('#native-tex-close').click();
     await page.evaluate(async()=>{
       const root=await navigator.storage.getDirectory();
       window.luaProjectDirectory=await root.getDirectoryHandle('lua-'+crypto.randomUUID(),{create:true});

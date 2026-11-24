@@ -2631,9 +2631,9 @@ nativeTexPreview=installNativeTexPreview({host:footer,before:modes,
     if(source()!==projection.source)return;
     const formula=head.formula;
     if(anchor.formula!==formula)return;
-    const fields=[...paper.querySelectorAll('.math-display math-field')];
+    const fields=[...paper.querySelectorAll(formula.kind==='displayMath'?'.math-display math-field':'.math-inline math-field')];
     const field=fields[formula.ordinal];
-    if(fields.length!==formula.displayCount||field?.value.trim()!==formula.math.source.trim())return;
+    if(fields.length!==formula.count||field?.value.trim()!==formula.math.source.trim())return;
     const model=field._mathfield?.model;
     const from=model&&richSlotPosition(model,formula.math.atoms,anchor.owner,anchor.hit);
     const to=anchor===head?from:model&&richSlotPosition(model,formula.math.atoms,head.owner,head.hit);

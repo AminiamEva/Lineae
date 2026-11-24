@@ -221,7 +221,8 @@ production pointer input, a visible caret, a native selection, or undo/redo on C
 
 The separate **Target formula caret (experimental)** action checks an isolated,
 instrumented copy of a supported standalone document. Each recognized top-level
-display has distinct owner IDs; unsupported displays do not receive hit targets.
+inline or display formula has distinct owner IDs; unsupported formulas do not
+receive hit targets.
 It enables a click only when
 exact page drawing records agree with the raw preview and the session, source and
 layout still match. Clicking an empty numerator, denominator, radicand or supported glyph edge transfers focus to the
