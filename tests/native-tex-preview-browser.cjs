@@ -7,10 +7,21 @@ const installMockNativeTex=require('./native-math/mock-bridge.cjs');
 const {revealToolbar}=require('./workspace-ui-helpers.cjs');
 
 const root=resolve('apps/web');
+let nativeEvidence;
 const server=createServer(async(req,res)=>{
   if(req.url==='/native-acceptance.pdf'&&process.env.LINEAE_NATIVE_PDF){
     try {res.setHeader('Content-Type','application/pdf');res.end(await readFile(process.env.LINEAE_NATIVE_PDF));}
     catch{res.writeHead(404).end();}
+    return;
+  }
+  const url=new URL(req.url,'http://localhost');
+  if(url.pathname==='/native-formula-font'&&nativeEvidence){
+    const key=url.searchParams.get('key');
+    const font=nativeEvidence.raw.flatMap(page=>Object.values(page.dl.fonts)).find(desc=>
+      key===`file:${desc.filename}#${desc.subfont??0}`&&
+      /^(?:lmroman10-regular|latinmodern-math)\.otf$/i.test((desc.filename??'').split(/[\\/]/).at(-1)));
+    if(!font)return res.writeHead(404).end();
+    try {res.end(await readFile(font.filename));}catch{res.writeHead(404).end();}
     return;
   }
   const path=resolve(root,'.'+new URL(req.url,'http://localhost').pathname.replace(/\/$/,'/index.html'));
@@ -318,6 +329,49 @@ const server=createServer(async(req,res)=>{
       assert.match(text,/42/,'Actual LuaLaTeX PDF includes executed Lua output');
       assert.match(text,/TikZ/,'Actual drawing document reached the PDF renderer');
       console.log('PASS real LuaLaTeX-generated PDF rendered with the bundled PDF.js worker');
+    }
+    if(process.env.LINEAE_NATIVE_PAGE){
+      nativeEvidence=JSON.parse(await readFile(process.env.LINEAE_NATIVE_PAGE,'utf8'));
+      await page.close();
+      page=await browser.newPage({locale:'en-US',viewport:{width:1600,height:1100}});
+      await page.addInitScript(installMockNativeTex);
+      await page.goto('http://127.0.0.1:'+server.address().port,{waitUntil:'networkidle'});
+      await page.evaluate(evidence=>{
+        const p=window.nativeProbe,originalLayout=p.layout,invoke=window.__TAURI__.core.invoke;
+        p.layout=()=>({...originalLayout(),pages_changed:evidence.raw,pages_total:evidence.raw.length});
+        window.__TAURI__.core.invoke=async(command,args)=>{
+          if(command==='native_tex_font') {
+            const result=await fetch('/native-formula-font?key='+encodeURIComponent(args.key));
+            if(!result.ok)throw new Error('The exact recorded native font is not available');
+            return result.arrayBuffer();
+          }
+          if(command==='native_tex_observe_formula'){
+            if(args.projection!==evidence.projection)throw new Error('Editor projection differs from the actual recorded compile');
+            return evidence.observed;
+          }
+          return invoke(command,args);
+        };
+      },nativeEvidence);
+      await page.locator('input#file').setInputFiles({name:'observed.tex',mimeType:'text/plain',buffer:input});
+      await page.waitForFunction(()=>document.querySelector('math-field')?.value.includes('\\frac{a}{}'));
+      await page.locator('#native-tex-toggle').click();
+      await page.waitForFunction(()=>document.querySelector('#native-tex-preview').dataset.state==='current'&&
+        document.querySelector('#native-tex-preview').dataset.renderer==='canvas');
+      await page.locator('#native-tex-target').click();
+      await page.getByText('Click the empty numerator or denominator',{exact:false}).waitFor();
+      const nativePage=nativeEvidence.observed.find(page=>page.dl.math_owners?.fields.some(field=>
+        field.owner===nativeEvidence.targetOwner&&field.role==='den'&&field.empty));
+      assert.ok(nativePage,'Real observed layout supplies an empty denominator');
+      const field=nativePage.dl.math_owners.fields.find(field=>field.owner===nativeEvidence.targetOwner&&field.role==='den');
+      const [x,y]=field.bbox,nativeScale=.75*(96/72)/65781.76;
+      await page.locator(`[data-native-page="${nativePage.page}"] canvas`).click({position:{x:x*nativeScale,y:y*nativeScale}});
+      await page.waitForFunction(()=>{
+        const field=document.activeElement,math=field?._mathfield;
+        return field?.tagName==='MATH-FIELD'&&!math?.focusBlurInProgress&&math?.model.at(field.position)?.parentBranch==='below';
+      });
+      await page.keyboard.type('b');
+      await page.waitForFunction(expected=>nativeProbe.source?.replace(/\r\n/g,'\n')===expected,expected.replace(/\r\n/g,'\n'));
+      console.log('PASS production Canvas hit using real LuaLaTeX page geometry, recorded fonts and exact source patch');
     }
     console.log('PASS native preview transport/UI: explicit startup, Canvas resources, retained editor/history, sync, export revision and cancellation (not engine evidence)');
   }catch(error){

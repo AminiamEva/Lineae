@@ -1330,10 +1330,16 @@ mod tests {
         let targeting = Session::create(standalone).unwrap();
         let target_info = targeting.start().unwrap();
         wait_layout(&targeting, target_info.source_revision);
-        let projected = standalone.replace("\\frac{a}{}", "\\begingroup\\attribute65000=10 \\frac{a}{}\\endgroup");
+        let evidence = std::env::var_os("LINEAE_NATIVE_EVIDENCE_DIR").map(PathBuf::from);
+        let projected = if let Some(directory) = &evidence {
+            std::fs::read_to_string(directory.join("production-projection.tex")).unwrap()
+        } else {
+            standalone.replace("\\frac{a}{}", "\\begingroup\\attribute65000=10 \\frac{a}{}\\endgroup")
+        };
+        let expected_owner = if evidence.is_some() {2} else {10};
         let observed = targeting.observe_formula(target_info.source_revision, &projected, Vec::new()).expect("isolated owner observation");
         assert!(observed.iter().any(|page| page["dl"]["math_owners"]["fields"].as_array().is_some_and(|fields| {
-            fields.iter().any(|field| field["owner"] == 10 && field["role"] == "den" && field["empty"] == true)
+            fields.iter().any(|field| field["owner"] == expected_owner && field["role"] == "den" && field["empty"] == true)
         })));
         let drawing = |page: &Value| {
             let dl = &page["dl"];
@@ -1344,6 +1350,7 @@ mod tests {
         };
         {
             let messages = lock(&targeting.messages);
+            let mut originals = Vec::new();
             for page in &observed {
                 let raw_page = messages.events.iter().rev()
                     .filter(|event| event["event"] == "LayoutUpdate")
@@ -1353,6 +1360,12 @@ mod tests {
                 assert_eq!(raw_page["exact"], true);
                 assert_eq!(page["exact"], true);
                 assert!(drawing(raw_page) == drawing(page), "ownership instrumentation changed page drawing");
+                originals.push(raw_page);
+            }
+            if let Some(directory) = &evidence {
+                std::fs::write(directory.join("native-formula-pages.json"), serde_json::to_vec(&json!({
+                    "raw":originals,"observed":observed,"projection":projected,"targetOwner":expected_owner,
+                })).unwrap()).unwrap();
             }
         }
         assert!(lock(&targeting.observer).is_none());

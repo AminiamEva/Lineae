@@ -264,6 +264,12 @@ complete result. This provisional frame does not authorize hit-testing or PDF
 export. A background result remains necessary for placement changes, ambiguous
 rows, or drawing operations the warm renderer cannot safely compose.
 
+On remote CI, the browser acceptance pass also replays the raw and instrumented
+pages captured by the real Rust/LuaLaTeX session. It loads the recorded font files
+on the runner, clicks the actual observed denominator geometry, and verifies the
+one-letter edit through the production browser bundle. Test transport is not the
+same as physical desktop input; OS-level IME checks remain separate.
+
 The verified release checkpoints are [the two-device preview with Canvas drag targeting](
 https://github.com/AminiamEva/Lineae/releases/tag/desktop-preview-45415437738) and the
 [preview including multiple formulas, inline targeting, scripts, and PDF reuse](
