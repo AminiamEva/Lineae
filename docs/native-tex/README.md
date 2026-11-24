@@ -232,6 +232,7 @@ For projects, the active file must be the main file; composed rich pages and
 included files don't yet accept these targets.
 The existing editor history handles subsequent input and undo. A click shows a
 native position marker until the next input or layout; dragging between two supported
-targets transfers a selection to the editor. A continuously updated Canvas selection
-overlay and semantic editing on PDF fallback are not implemented.
+targets transfers a selection to the editor. Dragging between glyphs in the same
+supported formula also highlights those glyphs on the Canvas before drop.
+Semantic editing on PDF fallback is not implemented.
 The independently compiled projection never replaces the source or export buffer.

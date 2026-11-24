@@ -115,6 +115,7 @@ const server=createServer(async(req,res)=>{
     await page.mouse.move(box.x+6560000*scale,box.y+6250000*scale);
     await page.mouse.down();
     await page.mouse.move(box.x+6740000*scale,box.y+6250000*scale,{steps:3});
+    await panel.locator('.native-tex-selection').waitFor();
     await page.mouse.up();
     await page.waitForFunction(()=>{
       const range=document.activeElement?.selection?.ranges?.[0];

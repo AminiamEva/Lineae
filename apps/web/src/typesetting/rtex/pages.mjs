@@ -19,7 +19,7 @@ export function installNativePages({host,getFont,onPaint,onError,onMathHit}) {
   }
   function attachOwners(observed,stamp,owners) {
     if(stamp.sourceRevision!==revision||observed.length!==pages.size)return false;
-    const fields=new Map(),glyphs=new Map(),seen=new Set();
+    const fields=new Map(),glyphs=new Map(),selectionGlyphs=new Map(),seen=new Set();
     for(const page of observed) {
       const entry=pages.get(page.page);
       if(!entry||page.exact!==true||drawing(entry.dl)!==drawing(page.dl))return false;
@@ -32,10 +32,16 @@ export function installNativePages({host,getFont,onPaint,onError,onMathHit}) {
         seen.add(key);
       }
       fields.set(page.page,targets);
-      glyphs.set(page.page,page.dl.math_owners?.glyphs?.filter(glyph=>owners.get(glyph.owner)?.atom.kind==='token')??[]);
+      const tokens=page.dl.math_owners?.glyphs?.filter(glyph=>owners.get(glyph.owner)?.atom.kind==='token')??[];
+      glyphs.set(page.page,tokens);
+      for(const glyph of tokens){
+        const {formula,atom}=owners.get(glyph.owner);
+        if(!selectionGlyphs.has(formula))selectionGlyphs.set(formula,[]);
+        selectionGlyphs.get(formula).push({number:page.page,glyph,atom});
+      }
     }
     if(![...fields.values(),...glyphs.values()].some(items=>items.length))return false;
-    ownership={stamp:{...stamp,layoutVersion},fields,glyphs};
+    ownership={stamp:{...stamp,layoutVersion},fields,glyphs,selectionGlyphs,owners};
     return true;
   }
   function locate(canvas,event) {
@@ -46,8 +52,31 @@ export function installNativePages({host,getFont,onPaint,onError,onMathHit}) {
     return hitMathGlyph(ownership.glyphs.get(page)??[],...args)||
       hitMathField(ownership.fields.get(page)??[],...args);
   }
-  let drag=null,caret=null;
-  function clearCaret(){caret?.remove();caret=null;}
+  let drag=null,caret=null,selection=[];
+  function clearSelection(){
+    for(const box of selection)box.remove();
+    selection=[];
+  }
+  function clearCaret(){caret?.remove();caret=null;clearSelection();}
+  function showSelection(start,end){
+    clearSelection();
+    if(start?.role!=='nucleus'||end?.role!=='nucleus')return;
+    const a=ownership.owners.get(start.owner),b=ownership.owners.get(end.owner);
+    if(!a||!b||a.formula!==b.formula)return;
+    const offset=(atom,hit)=>atom.from16+(hit.after?atom.nucleus.length:0);
+    const x=offset(a.atom,start),y=offset(b.atom,end);
+    if(x===y)return;
+    const from=Math.min(x,y),to=Math.max(x,y),scale=CSS_PER_SP*zoom;
+    for(const {number,glyph,atom} of ownership.selectionGlyphs.get(a.formula)??[]){
+      if(atom.from16<from||atom.from16+atom.nucleus.length>to)continue;
+      const [left,top,right,bottom]=glyph.bbox;
+      if(right<=left||bottom<=top)continue;
+      const marker=document.createElement('span');marker.className='native-tex-selection';
+      marker.setAttribute('aria-hidden','true');
+      Object.assign(marker.style,{left:left*scale+'px',top:top*scale+'px',width:(right-left)*scale+'px',height:(bottom-top)*scale+'px'});
+      pages.get(number)?.dom.append(marker);selection.push(marker);
+    }
+  }
   window.addEventListener('keydown',clearCaret,true);
   window.addEventListener('pointerdown',clearCaret,true);
   host.addEventListener('pointerdown',event=>{
@@ -57,14 +86,20 @@ export function installNativePages({host,getFont,onPaint,onError,onMathHit}) {
     drag=hit?{canvas,hit,ownership,id:event.pointerId,x:event.clientX,y:event.clientY}:null;
     if(drag)canvas.setPointerCapture(event.pointerId);
   });
+  host.addEventListener('pointermove',event=>{
+    if(drag?.id!==event.pointerId||drag.ownership!==ownership)return;
+    showSelection(drag.hit,locate(drag.canvas,event));
+  });
   host.addEventListener('pointerup',event=>{
     if(drag?.id!==event.pointerId)return;
     const start=drag;drag=null;
-    if(start.ownership!==ownership)return;
+    if(start.ownership!==ownership){clearSelection();return;}
     const hit=locate(start.canvas,event);
-    if(!hit)return;
+    if(!hit){clearSelection();return;}
     const moved=Math.hypot(start.x-event.clientX,start.y-event.clientY)>=4;
-    if(!onMathHit?.(hit,ownership.stamp,moved?start.hit:null)||moved)return;
+    if(!onMathHit?.(hit,ownership.stamp,moved?start.hit:null)){clearSelection();return;}
+    if(moved){showSelection(start.hit,hit);return;}
+    clearSelection();
     const node=start.canvas.parentElement,number=Number(node.dataset.nativePage);
     const target=(hit.role==='nucleus'?ownership.glyphs:ownership.fields).get(number)?.find(field=>
       field.owner===hit.owner&&(hit.role==='nucleus'||field.role===hit.role));
@@ -76,7 +111,7 @@ export function installNativePages({host,getFont,onPaint,onError,onMathHit}) {
     caret.style.top=(top+bottom)*scale/2-height/2+'px';
     caret.style.height=height+'px';node.append(caret);
   });
-  host.addEventListener('pointercancel',()=>{drag=null;});
+  host.addEventListener('pointercancel',()=>{drag=null;clearSelection();});
   async function prepare(dl,attempt) {
     if(Object.keys(dl.images_info??{}).length)throw new Error('Native image resources are not supported yet');
     for(const item of [...(dl.other??[]),...(dl.lines??[]).flatMap(line=>line.items)]) {
