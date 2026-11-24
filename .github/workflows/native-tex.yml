@@ -7,6 +7,10 @@ on:
         description: Optional warm edit timing samples for the authored LF fixture (0 to 1000)
         type: number
         default: 0
+      large_documents:
+        description: Also measure synthetic 10, 100 and 300 page documents
+        type: boolean
+        default: false
   workflow_call:
 
 permissions:
@@ -98,6 +102,7 @@ jobs:
           RTEX_ARCHIVE_SHA256: ${{ matrix.sha256 }}
           RTEX_TARGET: ${{ matrix.target }}
           LINEAE_WARM_REPETITIONS: ${{ inputs.warm_repetitions || 0 }}
+          LINEAE_LARGE_DOCUMENTS: ${{ inputs.large_documents || false }}
         run: |
           bin="$PWD/.native-tex/texlive/bin/${{ matrix.tlarch }}"
           tool="$PWD/.native-tex/rtex/rtex-0.0.8-${{ matrix.target }}"

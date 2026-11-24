@@ -134,6 +134,7 @@ async function probe(source,label,out,rtex,texbin,structured=false) {
     const layout=await waitFor(message=>message.event==='LayoutUpdate' &&
       message.convergence?.state==='Converged','initial converged layout');
     assert.equal(layout.compile?.state,'Ok','Initial TeX compilation must succeed');
+    if(label.startsWith('lf-pages-'))assert.equal(layout.pages_total,Number(label.slice('lf-pages-'.length)));
     if(matrix){
       const captured=new Map();
       for(const message of records)if(message.event==='LayoutUpdate'&&
@@ -216,7 +217,7 @@ async function probe(source,label,out,rtex,texbin,structured=false) {
       timing:update.timing,timingScope:'engine-reported single warm edit; not display latency or a percentile'};
     const repetitions=Number(process.env.LINEAE_WARM_REPETITIONS??0);
     assert.ok(Number.isInteger(repetitions)&&repetitions>=0&&repetitions<=1000);
-    if(label==='lf'&&repetitions){
+    if(label.startsWith('lf')&&repetitions){
       const samples=[],routes={};
       for(let index=0;index<repetitions;index++){
         const start=projection.projectionOffset8,since=records.length,begin=performance.now();
@@ -232,7 +233,7 @@ async function probe(source,label,out,rtex,texbin,structured=false) {
       }
       const ordered=samples.toSorted((a,b)=>a-b);
       const percentile=q=>ordered.length?ordered[Math.ceil(ordered.length*q)-1]:null;
-      const timing={repetitions,routes,sampleCount:samples.length,p50Ms:percentile(.50),p95Ms:percentile(.95),
+      const timing={repetitions,pages:layout.pages_total,routes,sampleCount:samples.length,p50Ms:percentile(.50),p95Ms:percentile(.95),
         p99Ms:percentile(.99),scope:'stdin edit dispatch to matching stdout event; no drawing, input method or display latency',samplesMs:samples};
       writeFileSync(join(dir,'warm-timing.json'),JSON.stringify(timing,null,2)+'\n');
     }
@@ -306,6 +307,15 @@ async function main() {
     if(Number(process.env.LINEAE_WARM_REPETITIONS??0)){
       summaries.push(await probe(unicode.replace('\\frac{a}{}','\\begin{aligned}a & \\\\ & d\\end{aligned}'),
         'aligned-group-boundary-experiment',out,rtex,texbin,'aligned-aftergroup'));
+    }
+    if(process.env.LINEAE_LARGE_DOCUMENTS==='true'){
+      assert.ok(Number(process.env.LINEAE_WARM_REPETITIONS)>0,'Large document timing requires explicit repetitions');
+      for(const pages of [10,100,300]){
+        const body=Array.from({length:pages-1},(_,index)=>
+          `\\newpage\nSynthetic page ${index+2}. A short paragraph keeps the corpus independent of user documents.\n\n`).join('');
+        summaries.push(await probe(withFont.replace('\\end{document}',body+'\\end{document}'),
+          `lf-pages-${pages}`,out,rtex,texbin));
+      }
     }
     writeFileSync(join(out,'result.json'),JSON.stringify({status:'passed',cases:summaries},null,2)+'\n');
     console.log('PASS: real rtex geometry, empty denominator, warm revision-matched edit, Unicode/CRLF and clean reference PDF');

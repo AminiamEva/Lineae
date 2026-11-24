@@ -209,6 +209,9 @@ An optional `warm_repetitions` dispatch input runs up to 1,000 edits on the
 authored LF fixture and archives routing counts plus P50/P95/P99 from JSONL
 dispatch to the matching response. It excludes paint, IME, and display latency;
 this small-fixture measurement does not replace large-document acceptance.
+For explicit larger probes, dispatch `native-tex.yml` with `large_documents=true`
+and the desired `warm_repetitions`. It checks the generated 10, 100 and 300 page
+counts before timing; the documents are synthetic and not part of a user corpus.
 
 [Run 45438435841](https://github.com/AminiamEva/Lineae/actions/runs/45438435841)
 recorded 1,000/1,000 fast edits on each runner. Dispatch-to-result P50/P95/P99
