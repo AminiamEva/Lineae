@@ -340,6 +340,17 @@ main { padding:125px 24px 60px; overflow:auto; }
 .document-status #keyboard-priority { flex-shrink:0; max-width:180px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .document-status #keyboard-priority[aria-pressed=true] { color:light-dark(#0059c7,#9bc8ff); background:light-dark(#dceaff,#343d50); }
 .document-status .shortcut-priority-message { margin:0; max-width:200px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; color:light-dark(#a32c25,#ffb4ac); }
+.native-tex-open main { margin-right:min(44vw,720px); }
+#native-tex-preview { position:fixed; right:0; top:var(--tex-toolbar-bottom,100px); bottom:28px; width:min(44vw,720px); z-index:10; background:light-dark(#f2f3f5,#242426); border-left:1px solid light-dark(#ccd1d9,#555); padding:12px; overflow:auto; box-sizing:border-box; }
+#native-tex-preview[hidden] { display:none; }
+#native-tex-preview h2 { font-size:16px; margin:0 0 8px; }
+#native-tex-preview p { font-size:12px; white-space:pre-wrap; overflow-wrap:anywhere; }
+#native-tex-preview[data-state=error] [role=status] { color:light-dark(#a32c25,#ffb4ac); }
+#native-tex-preview[data-state=stale] .native-tex-pages { opacity:.65; }
+.native-tex-controls { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+.native-tex-pages { overflow:auto; }
+.native-tex-page { background:white; margin:12px auto; position:relative; box-shadow:0 1px 8px #0003; }
+.native-tex-page canvas { display:block; }
 .document-status output { min-width:38px; font-variant-numeric:tabular-nums; }
 .document-status .pagination-toggle[data-mode="pages"] {
   color:light-dark(#0059c7,#9bc8ff);

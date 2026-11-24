@@ -44,6 +44,14 @@ jobs:
         run: |
           node --test tests/native-math-baseline.test.mjs tests/native-math-probe.test.mjs
           bash -n scripts/install-native-tex-ci.sh
+      - name: Build and verify the native preview frontend
+        run: |
+          npm run build
+          archive=$(npm pack mathlive@0.108.0 --pack-destination "$RUNNER_TEMP" --silent)
+          mkdir -p apps/web/vendor/mathlive
+          tar -xzf "$RUNNER_TEMP/$archive" -C apps/web/vendor/mathlive --strip-components=1 package/mathlive.min.js package/fonts
+          npx playwright install --only-shell chromium
+          node tests/native-tex-preview-browser.cjs
       - uses: actions/cache@v4
         with:
           path: .native-tex/texlive

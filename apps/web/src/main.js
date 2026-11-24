@@ -17,6 +17,7 @@ import {exitProjectHeading} from './project/editing.js';
 import {ProjectDocumentSession} from './project/document-session.mjs';
 import {installFloatingToolbar} from './ui/floating-toolbar.js';
 import {installShortcutPriority} from './ui/shortcut-priority.mjs';
+import {installNativeTexPreview} from './ui/native-tex-preview.mjs';
 import {installSettingsPanel} from './ui/settings-panel.js';
 import { buildHomeRibbon } from './ui/home-ribbon.js';
 import { activeStyleKey, documentClassFromSource } from './ui/style-presets.mjs';
@@ -390,6 +391,7 @@ function outdentCurrentLine(editor) {
   return true;
 }
 let backticks = null;
+let nativeTexPreview;
 function replaceTypedLigatures(view, from, to, text, defaultTransaction) {
   const { autoReplaceLigatures, ligatures } = config.value.editing;
   if (!autoReplaceLigatures || from !== to || !/^[\s.,;:!?)]$/u.test(text)) return false;
@@ -1054,7 +1056,7 @@ const sourceView = createSourceWorkspace({
     } finally { syncApplying = false; }
   },
   onPreviewZoom: value => setZoom(value),
-  onChange: () => { syncPending = true; projectExplorer?.changed(); },
+  onChange: () => { syncPending = true; projectExplorer?.changed(); nativeTexPreview?.refresh(); },
   onLayout: () => updateSourceButton(),
   metadata: () => ({name: filename, saved: savedSource}),
 });
@@ -1525,6 +1527,7 @@ function identifyImportedBoxes(node) {
   }
 }
 function load(text, markSaved = true) {
+  if(markSaved)nativeTexPreview?.documentChanged();
   projectDocument.composition=null;
   const wasApplying = syncApplying; syncApplying = true;
   try {
@@ -2600,6 +2603,15 @@ function updateEnvironment() {
 }
 footer.append(count,document.querySelector('#status'),environment,zoom,percent,paginationButton,themeButton,modes);document.body.append(footer);sourceView.mountStatus(footer);scale();updatePaginationButton();
 const shortcutPriority=installShortcutPriority({host:footer,before:modes,getBindings:()=>config.bindings});
+nativeTexPreview=installNativeTexPreview({host:footer,before:modes,
+  getSource:()=>{
+    if(projectExplorer?.active)throw new Error(t('原生预览首版仅支持独立 .tex 文件；请先关闭工程。','Native preview currently supports standalone .tex files; close the project first.'));
+    if(projectFileKind==='bib')throw new Error(t('请打开 .tex 文档。','Open a .tex document.'));
+    return sourceView.hidden?source():sourceView.value;
+  },
+  isComposing:()=>editor.view.composing||sourceView.composing,
+});
+editor.on('update',()=>nativeTexPreview.refresh());
 const compositionController=createCompositionController({
   explorer:()=>projectExplorer,fileKind:()=>projectFileKind,session:projectDocument,
   sourceHidden:()=>sourceView.hidden,composing:()=>editor.view.composing||sourceView.composing,
@@ -3466,6 +3478,7 @@ function updateLanguage() {
   document.documentElement.lang=getLanguage();
   localize(document);
   shortcutPriority.relocalize();
+  nativeTexPreview?.relocalize();
   for(const tab of tabs.children)tab.textContent=t(captions[tab.dataset.group][0],captions[tab.dataset.group][1]);
   commands.setAttribute('aria-label',t('LaTeX 补全','LaTeX completion'));
   filter.placeholder=t('LaTeX 命令','LaTeX command');
