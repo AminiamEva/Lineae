@@ -142,7 +142,7 @@ async function probe(source,label,out,rtex,texbin,structured=false) {
         scope:'real LuaLaTeX ownership of empty matrix slots'};
       writeFileSync(join(dir,'summary.json'),JSON.stringify(summary,null,2)+'\n');
       console.log(`Observed matrix cell ownership: ${JSON.stringify({uniqueEmptyOwners,fields})}`);
-      assert.ok(uniqueEmptyOwners,'Each empty matrix cell needs a distinct source owner');
+      if(label==='matrix-cell-ownership')assert.ok(uniqueEmptyOwners,'Each empty matrix cell needs a distinct source owner');
       return summary;
     }
     const initial=records.filter(message=>message.event==='LayoutUpdate' &&

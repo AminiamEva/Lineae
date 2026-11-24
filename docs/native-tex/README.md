@@ -280,3 +280,6 @@ https://github.com/AminiamEva/Lineae/releases/tag/desktop-preview-45415437738) a
 https://github.com/AminiamEva/Lineae/releases/tag/desktop-preview-45418212782).
 The [matrix-slot run](https://github.com/AminiamEva/Lineae/actions/runs/45420285782)
 separately verifies real per-cell LuaLaTeX ownership and mock-transport UI targeting.
+With the pinned rtex version, `aligned` can report empty cells under a shared
+container owner. The probe records this case, but the renderer does not guess a
+cell from its box order. Known glyphs and the existing multiline editor still work.

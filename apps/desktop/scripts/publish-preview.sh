@@ -22,6 +22,8 @@ git archive --format=tar.gz --prefix="Lineae-$short/" --output="$out/Lineae-$sho
 cp tests/native-math/fixtures/empty-denominator.tex "$out/empty-denominator.tex"
 cp tests/native-math/fixtures/filled-denominator.tex "$out/filled-denominator.tex"
 cp docs/native-tex/baseline.json "$out/engine-baseline.json"
+cp docs/native-tex/resources.json "$out/native-resource-notices.json"
+git archive --format=zip --output="$out/Lineae-native-project-fixture.zip" HEAD:tests/native-math/fixtures/lua-project
 cat > "$out/BUILD.txt" <<EOF
 Channel: desktop preview (not a stable release)
 Application manifest version: $VERSION
@@ -30,7 +32,8 @@ Workflow: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID
 Windows: x64, unsigned
 macOS: Apple Silicon only, ad-hoc signed, not notarized
 Native LuaLaTeX page preview: opt-in; existing editor remains authoritative
-Direct editing on native Canvas geometry: not implemented
+Native Canvas: supported formula clicks, caret and selections use the existing editor
+Full replacement of the existing editing surface: not yet complete
 XeLaTeX-aligned JS renderer: retained
 Lua JS engine: retained separately; unmerged reference not yet supplied
 No TeX engine, TeX distribution or user font cache is bundled by this preview.
@@ -46,11 +49,12 @@ This is a separate **prerelease**, not an update to the stable release.
 
 - **Windows x64:** offline installer or portable ZIP. Unsigned; no trusted publisher identity.
 - **macOS Apple Silicon:** DMG or app ZIP. Ad-hoc signed, not notarized; macOS may block first launch.
-- Both packages, checksums, exact tracked source and the native-math input/expected-output samples are included.
+- Both packages, checksums, exact tracked source, denominator samples and an authored LuaLaTeX project fixture are included.
 - No Intel Mac or Linux package is part of this preview.
 - Packages retain the stable application's identifier and preference storage; back up documents and exported preferences.
 - Optional local LuaLaTeX page preview and clean PDF export require separately installed rtex 0.0.8 and LuaLaTeX, plus explicit document trust.
-- Editing remains in the existing editor. Direct native-Canvas editing, full native parity, automatic updates and frontend hot reload are not claimed.
+- For supported formulas, select **Target formula caret (experimental)** to use the native page's clicks and drags. The existing editor still handles input, commands and history.
+- Semantic editing of PDF fallback, full native parity, automatic updates and frontend hot reload are not claimed.
 - Existing JS typesetting and MathLive remain the active editing implementation. The unmerged Lua JS engine is not modified or substituted.
 
 Check \`BUILD.txt\` and \`SHA256SUMS\`, then follow
