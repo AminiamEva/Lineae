@@ -30,6 +30,12 @@
       "nativeEditing": {
         "status": "vertical_slice",
         "slice": "display formula caret, keyboard, drag selection, IME-capable input, ProseMirror transactions and history",
+        "evidence": {
+          "nativeWorkflowRun": 45513512566,
+          "browserRegression": "tests/native-tex-preview-browser.cjs",
+          "unitTests": ["tests/native-surface.test.mjs", "tests/native-math-source.test.mjs"],
+          "scope": "Mock-transport browser interaction and real host/event-driven session on both target platforms; physical-device IME and latency pending"
+        },
         "entryPoints": [
           "apps/web/src/editor/native-surface/math-surface.mjs",
           "apps/web/src/editor/native-math/resolve.mjs",
