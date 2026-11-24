@@ -86,8 +86,12 @@ Requirements, installed separately (not silently downloaded by the application):
   from the process PATH. `RTEX_TEXLIVE_BIN` may select the TeX Live binary directory.
   `RTEX_TEXDIR` is supported by rtex for a nonstandard support-file location.
 - GUI-launched apps do not necessarily inherit a terminal's PATH. Launch the executable
-  from the configured terminal for the first experiment; the app must report missing tools,
-  not fall back to another implementation.
+  from the configured terminal if you use nonstandard paths. For an ordinary GUI launch,
+  extract the verified rtex release directory unchanged under `%LOCALAPPDATA%\Lineae`
+  (Windows) or `~/Library/Application Support/Lineae` (macOS). Lineae checks
+  `/Library/TeX/texbin` on macOS or the latest numeric TeX Live installation on the
+  Windows system drive. Explicit environment overrides take precedence. Missing tools
+  are reported; another engine is never silently substituted.
 
 For example, Windows PowerShell (substitute installed locations):
 

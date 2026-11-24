@@ -93,6 +93,61 @@ pub struct NativeTexFile {
     pub bytes: Vec<u8>,
 }
 
+fn installed_tex_bin() -> Option<PathBuf> {
+    if let Some(configured) = std::env::var_os("RTEX_TEXLIVE_BIN") {
+        return Some(PathBuf::from(configured));
+    }
+    #[cfg(target_os = "macos")]
+    {
+        // Finder launches do not normally inherit a shell's PATH.
+        let bin = PathBuf::from("/Library/TeX/texbin");
+        if bin.join("lualatex").is_file() { return Some(bin); }
+    }
+    #[cfg(target_os = "windows")]
+    {
+        if let Some(drive) = std::env::var_os("SystemDrive") {
+            let mut root = PathBuf::from(drive);
+            root.push(r"\texlive");
+            // TeX Live year directories are numeric; don't execute from an
+            // arbitrary child directory or override an explicitly chosen bin.
+            let mut releases = std::fs::read_dir(root).into_iter().flatten()
+                .filter_map(Result::ok)
+                .filter_map(|entry| {
+                    let year = entry.file_name().to_str()?.parse::<u32>().ok()?;
+                    let bin = entry.path().join("bin").join("windows");
+                    bin.join("lualatex.exe").is_file().then_some((year, bin))
+                }).collect::<Vec<_>>();
+            releases.sort_unstable_by_key(|(year, _)| *year);
+            return releases.pop().map(|(_, bin)| bin);
+        }
+    }
+    None
+}
+
+fn installed_rtex() -> PathBuf {
+    if let Some(configured) = std::env::var_os("LINEAE_RTEX_PATH") {
+        return PathBuf::from(configured);
+    }
+    #[cfg(target_os = "macos")]
+    {
+        if let Some(home) = std::env::var_os("HOME") {
+            let path = PathBuf::from(home).join("Library")
+                .join("Application Support").join("Lineae")
+                .join("rtex-0.0.8-aarch64-apple-darwin").join("bin").join("rtex");
+            if path.is_file() { return path; }
+        }
+    }
+    #[cfg(target_os = "windows")]
+    {
+        if let Some(local) = std::env::var_os("LOCALAPPDATA") {
+            let path = PathBuf::from(local).join("Lineae")
+                .join("rtex-0.0.8-x86_64-pc-windows-msvc").join("bin").join("rtex.exe");
+            if path.is_file() { return path; }
+        }
+    }
+    PathBuf::from("rtex")
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct NativeTexProjection {
@@ -390,6 +445,7 @@ struct Process {
 struct Session {
     id: String,
     root: PathBuf,
+    tex_bin: Option<PathBuf>,
     closed: AtomicBool,
     processes: Mutex<Vec<Process>>,
     stdin: Mutex<Option<ChildStdin>>,
@@ -418,7 +474,7 @@ impl Session {
         }
         directory.create(&root).map_err(|e| error("temporary_project", format!("Cannot create temporary TeX project: {e}")))?;
         let session = Arc::new(Self {
-            id, root, closed: AtomicBool::new(false), processes: Mutex::new(Vec::new()),
+            id, root, tex_bin: installed_tex_bin(), closed: AtomicBool::new(false), processes: Mutex::new(Vec::new()),
             stdin: Mutex::new(None), commands: Mutex::new(()),
             messages: Mutex::new(Messages::default()), changed: Condvar::new(),
             snapshot: Mutex::new(snapshot.clone()),
@@ -647,14 +703,19 @@ impl Session {
 
     fn start_with_owners(self: &Arc<Self>, owners: bool) -> Result<NativeTexInfo, NativeTexError> {
         Self::watchdog(self)?;
-        let executable = std::env::var_os("LINEAE_RTEX_PATH").unwrap_or_else(|| "rtex".into());
-        let version = self.tool(Command::new(&executable).arg("--version"))?;
+        let executable = installed_rtex();
+        let new_command = || {
+            let mut command = Command::new(&executable);
+            if let Some(bin) = &self.tex_bin { command.env("RTEX_TEXLIVE_BIN", bin); }
+            command
+        };
+        let version = self.tool(new_command().arg("--version"))?;
         if version.trim() != "rtex 0.0.8" {
             return Err(error("engine_version", format!("rtex 0.0.8 is required; found {}.", version.chars().take(120).collect::<String>())));
         }
         // Uses rtex's own support-file and TeX Live discovery, not a guessed layout.
-        self.tool(Command::new(&executable).arg("doctor"))?;
-        let mut command = Command::new(&executable);
+        self.tool(new_command().arg("doctor"))?;
+        let mut command = new_command();
         let main_file = lock(&self.snapshot).main_file.clone();
         command.args(["serve", "--project"]).arg(&self.root)
             .arg(format!("--main={main_file}")).arg("--build").arg(self.root.join("build"))
@@ -783,8 +844,8 @@ impl Session {
         } else if self.root.join(&path).is_file() {
             self.root.join(path)
         } else {
-            let kpsewhich = std::env::var_os("RTEX_TEXLIVE_BIN")
-                .map(|bin| PathBuf::from(bin).join(if cfg!(windows) { "kpsewhich.exe" } else { "kpsewhich" }))
+            let kpsewhich = self.tex_bin.as_ref()
+                .map(|bin| bin.join(if cfg!(windows) { "kpsewhich.exe" } else { "kpsewhich" }))
                 .unwrap_or_else(|| PathBuf::from("kpsewhich"));
             let found = self.tool(Command::new(kpsewhich).arg("--").arg(&filename))
                 .map_err(|problem| error("font_missing", format!("Cannot locate captured font '{filename}': {}", problem.message)))?;
