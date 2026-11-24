@@ -16,30 +16,36 @@ export function installSubfigurePanel({ onUpdate, onUngroup }) {
     return control;
   };
 
+  const width = document.createElement('input');
+  width.type = 'text';
+  width.placeholder = '0.48\\textwidth';
+  width.setAttribute('aria-label', t('子图宽度','Subfigure width'));
+
+  const pos = document.createElement('select');
+  pos.setAttribute('aria-label', t('垂直对齐','Vertical alignment'));
+  for (const [value,zh,en] of [['c','居中','Center'],['t','顶部','Top'],['b','底部','Bottom']]) {
+    pos.append(new Option(t(zh,en),value));
+  }
+
   const captionEnabled = document.createElement('input');
   captionEnabled.type = 'checkbox';
-  captionEnabled.checked = false;
+  captionEnabled.setAttribute('aria-label', t('启用子图题注','Enable subfigure caption'));
 
   const caption = document.createElement('input');
   caption.type = 'text';
   caption.placeholder = 'Caption';
-
-  const placement = document.createElement('select');
-  for (const value of ['', 'h', 't', 'b', 'p', 'htbp', 'H']) {
-    const option = document.createElement('option');
-    option.value = value;
-    option.textContent = value || 'none';
-    placement.append(option);
-  }
+  caption.setAttribute('aria-label', t('子图题注','Subfigure caption'));
 
   const label = document.createElement('input');
   label.type = 'text';
-  label.placeholder = 'Label';
+  label.placeholder = 'fig:name';
+  label.setAttribute('aria-label', t('子图标签','Subfigure label'));
 
-  row('题注', captionEnabled);
-  row('主图题注', caption);
-  row('位置', placement);
-  row('标签', label);
+  row(t('宽度','Width'), width);
+  row(t('垂直对齐','Vertical alignment'), pos);
+  row(t('题注','Caption'), captionEnabled);
+  row(t('子图题注','Subfigure caption'), caption);
+  row(t('标签','Label'), label);
 
   const grouping = createRibbonGroup(panel,{id:'subfigure-grouping',zh:'子图',en:'Subfigure',iconName:'image',width:150});
   const ungroup = document.createElement('button');
@@ -55,22 +61,30 @@ export function installSubfigurePanel({ onUpdate, onUngroup }) {
   let syncing = false;
   function setValues(attrs) {
     syncing = true;
+    const enabled = Boolean(attrs);
+    width.value = attrs?.width ?? '0.48\\textwidth';
+    width.disabled = !enabled;
+    pos.value = /^[tcb]$/.test(attrs?.pos ?? '') ? attrs.pos : 'c';
+    pos.disabled = !enabled;
     captionEnabled.checked = Boolean(attrs?.captionEnabled);
+    captionEnabled.disabled = !enabled;
     caption.value = attrs?.caption ?? '';
-    placement.value = attrs?.placement ?? '';
+    caption.disabled = !enabled || !captionEnabled.checked;
     label.value = attrs?.label ?? '';
-    caption.disabled = !captionEnabled.checked;
-    ungroup.disabled = !attrs;
+    label.disabled = !enabled;
+    ungroup.disabled = !enabled;
     syncing = false;
   }
 
+  width.addEventListener('change', () => { if (!syncing && width.value.trim()) onUpdate({ width: width.value.trim() }); });
+  pos.addEventListener('change', () => { if (!syncing) onUpdate({ pos: pos.value }); });
   captionEnabled.addEventListener('change', () => {
     caption.disabled = !captionEnabled.checked;
     if (!syncing) onUpdate({ captionEnabled: captionEnabled.checked, caption: caption.value });
   });
   caption.addEventListener('change', () => { if (!syncing) onUpdate({ caption: caption.value, captionEnabled: true }); });
-  placement.addEventListener('change', () => { if (!syncing) onUpdate({ placement: placement.value || null, fixed: placement.value === 'H' }); });
   label.addEventListener('change', () => { if (!syncing) onUpdate({ label: label.value || null }); });
 
+  setValues(null);
   return { panel, setValues };
 }

@@ -106,10 +106,37 @@ async function dragSelectAll(page) {
       assert.equal(child.attrs.wrap, false, 'conflicting wrap wrapper is cleared');
       assert.equal(child.attrs.figureSource, null, 'raw figure source is cleared');
     }
-    assert.equal(await page.locator('.ribbon-tabs [data-group=subfigure]').isVisible(), true, 'Subfigure tab appears');
-    assert.equal(await page.locator('.ribbon-tabs [data-group=subfigure]').getAttribute('aria-pressed'), 'true', 'Subfigure tab is active');
-    assert.equal(await page.locator('.subfigure-tools').isVisible(), true, 'Subfigure toolbar is shown');
-    assert.equal(await page.locator('.subfigure-tools .subfigure-ungroup').isDisabled(), false);
+    // Selecting the whole group shows the Image (Figure) tab with per-image and
+    // wrap controls disabled; the group is edited as a single figure float.
+    await page.waitForFunction(() => document.querySelector('.ProseMirror').editor.state.selection.constructor.name.includes('NodeSelection'));
+    assert.equal(await page.locator('.ribbon-tabs [data-group=image]').isVisible(), true, 'Image tab appears for the subfigure group');
+    assert.equal(await page.locator('.ribbon-tabs [data-group=image]').getAttribute('aria-pressed'), 'true', 'Image tab is active for the subfigure group');
+    assert.equal(await page.locator('.ribbon-tabs [data-group=subfigure]').isVisible(), false, 'Subfigure tab is hidden for the group');
+    assert.equal(await page.locator('.image-group-button').innerText(), 'Ungroup');
+    assert.equal(await page.locator('.image-group-button').isDisabled(), false);
+    assert.equal(await page.evaluate(() => document.querySelector('.image-tools [data-ribbon-group="image-transform"]').classList.contains('is-disabled')), true, 'per-image controls are disabled for a group');
+    assert.equal(await page.getByLabel('Wrap text').isDisabled(), true, 'wrap is disabled for a group');
+    for (const child of subfigures.children) {
+      assert.equal(child.attrs.width, '0.3\\linewidth', 'grouping inherits each image width');
+      assert.equal(child.attrs.pos, 'c', 'subfigures default to centered vertical alignment');
+    }
+    assert.equal(await page.getByLabel('Alignment',{exact:true}).inputValue(), 'center', 'figure alignment defaults to center');
+    const subLabels=page.locator('.document-subfigures .document-image .document-caption-label');
+    assert.ok((await subLabels.first().textContent()).includes('(a)'), 'subfigure label shows its letter');
+    assert.equal(await subLabels.first().evaluate(element=>getComputedStyle(element,'::before').content), 'none', 'subfigure caption omits the figure number');
+
+    // The main caption is edited on canvas, mirroring the child-figure caption editor.
+    await page.getByLabel('Enable caption').check();
+    const mainCaption=page.locator('.document-subfigures-caption .document-caption-text');
+    await mainCaption.waitFor({ state:'visible' });
+    await mainCaption.click();
+    await mainCaption.type('uohut');
+    await page.keyboard.press('Enter');
+    await page.waitForTimeout(200);
+    data = await documentData(page);
+    assert.equal(data.content.find(node => node.type === 'subfigures').attrs.caption, 'uohut', 'main caption is edited on canvas');
+    const mainLabelBefore=await page.locator('.document-subfigures-caption .document-caption-label').evaluate(element=>getComputedStyle(element,'::before').content);
+    assert.ok(mainLabelBefore.includes('Figure 1'), 'main caption label is numbered');
 
     // The serialized environment has one figure wrapper and three subfigures.
     await page.locator('[data-source-mode="source"]').click();
@@ -118,35 +145,85 @@ async function dragSelectAll(page) {
     assert.equal((tex.match(/\\begin\{figure\}/g) || []).length, 1);
     assert.equal((tex.match(/\\begin\{subfigure\}/g) || []).length, 3);
     assert.equal((tex.match(/\\end\{subfigure\}/g) || []).length, 3);
+    assert.ok(tex.includes('\\begin{subfigure}{0.3\\linewidth}'), 'subfigure keeps the inherited width');
+    assert.ok(tex.includes('\\includegraphics[width=\\linewidth]'), 'subfigure graphics fill the box width');
+    assert.ok(tex.includes('\\end{subfigure}\\quad'), 'the default subfigure gap is quad');
+    assert.ok(tex.includes('\\caption{uohut}'), 'the main caption is serialized');
     await page.locator('[data-source-mode="body"]').click();
     await page.locator('.ProseMirror').waitFor({ state: 'visible' });
     await page.waitForTimeout(300);
 
-    // Selecting an image inside the subfigure turns the image-toolbar action into Ungroup.
+    // Selecting one image inside the group opens the Subfigure tab with that
+    // subfigure's own width and vertical alignment.
     await page.locator('.document-subfigures img').first().click();
-    await page.waitForFunction(() => document.querySelector('.image-group-button')?.textContent?.includes('Ungroup'));
-    assert.equal(await page.locator('.image-group-button').innerText(), 'Ungroup');
-    assert.equal(await page.locator('.ribbon-tabs [data-group=image]').getAttribute('aria-pressed'), 'true', 'Image tab becomes active inside a subfigure');
-    await page.evaluate(() => document.querySelector('.image-group-button').click());
-    await page.waitForFunction(() => !document.querySelector('.ProseMirror').editor.getJSON().content.some(node => node.type === 'subfigures'));
-    data = await documentData(page);
-    assert.equal(data.content.filter(node => node.type === 'documentImage').length, 3, 'Ungroup restores the three images');
+    await page.waitForFunction(() => document.querySelector('.subfigure-tools')?.offsetParent !== null);
+    assert.equal(await page.locator('.ribbon-tabs [data-group=subfigure]').isVisible(), true, 'Subfigure tab appears for a single subfigure');
+    assert.equal(await page.locator('.ribbon-tabs [data-group=subfigure]').getAttribute('aria-pressed'), 'true', 'Subfigure tab is active for a single subfigure');
+    assert.equal(await page.locator('.ribbon-tabs [data-group=image]').isVisible(), false, 'Image tab is hidden for a single subfigure');
+    assert.equal(await page.locator('.subfigure-tools .subfigure-ungroup').isDisabled(), false);
 
-    // Regroup and use the dedicated Ungroup button on the Subfigure tab.
-    await dragSelectAll(page);
-    await page.evaluate(() => document.querySelector('.image-group-button').click());
-    await page.waitForFunction(() => document.querySelector('.ProseMirror').editor.getJSON().content.some(node => node.type === 'subfigures'));
-    assert.equal(await page.locator('.ribbon-tabs [data-group=subfigure]').isVisible(), true);
+    await page.getByLabel('Vertical alignment').selectOption('t');
+    await page.getByLabel('Subfigure width').fill('0.4\\textwidth');
+    await page.getByLabel('Subfigure width').press('Enter');
+    await page.waitForTimeout(250);
+    data = await documentData(page);
+    const adjusted = data.content.find(node => node.type === 'subfigures');
+    assert.equal(adjusted.children[0].attrs.pos, 't', 'vertical alignment is stored on the subfigure');
+    assert.equal(adjusted.children[0].attrs.width, '0.4\\textwidth', 'width is stored on the subfigure');
+    const firstSubfigure=page.locator('.document-subfigures .document-image').first();
+    assert.equal(await firstSubfigure.getAttribute('data-subfigure-pos'), 't');
+    assert.equal(await firstSubfigure.evaluate(element=>getComputedStyle(element).alignSelf), 'flex-start', 'top alignment uses flex-start');
+
+    await page.locator('[data-source-mode="source"]').click();
+    await page.locator('.tex-code .cm-content').waitFor();
+    const adjustedTex = await page.locator('.tex-code .cm-content').innerText();
+    assert.ok(adjustedTex.includes('\\begin{subfigure}[t]{0.4\\textwidth}'), 'pos and width are serialized');
+    await page.locator('[data-source-mode="body"]').click();
+    await page.locator('.ProseMirror').waitFor({ state: 'visible' });
+    await page.waitForTimeout(300);
+
+    // Clicking the group handle selects the whole figure and returns to the Image tab.
+    await page.locator('.subfigures-select-handle').click();
+    await page.waitForFunction(() => {
+      const selection = document.querySelector('.ProseMirror').editor.state.selection;
+      return selection.constructor.name.includes('NodeSelection') && selection.node?.type?.name === 'subfigures';
+    });
+    assert.equal(await page.locator('.ribbon-tabs [data-group=image]').getAttribute('aria-pressed'), 'true', 'clicking the group selects the whole figure');
+    assert.equal(await page.locator('.ribbon-tabs [data-group=subfigure]').isVisible(), false);
+
+    // Ungroup from the Subfigure tab.
+    await page.locator('.document-subfigures img').first().click();
+    await page.waitForFunction(() => document.querySelector('.subfigure-tools')?.offsetParent !== null);
     await page.evaluate(() => document.querySelector('.subfigure-tools .subfigure-ungroup').click());
     await page.waitForFunction(() => !document.querySelector('.ProseMirror').editor.getJSON().content.some(node => node.type === 'subfigures'));
     data = await documentData(page);
-    assert.equal(data.content.filter(node => node.type === 'documentImage').length, 3, 'Subfigure tab Ungroup restores the images');
+    assert.equal(data.content.filter(node => node.type === 'documentImage').length, 3, 'Ungroup restores the three images');
+    assert.ok(data.content.filter(node => node.type === 'documentImage').every(node => node.attrs.width === '0.4\\textwidth' || node.attrs.width === '0.3\\linewidth'), 'split images keep their width');
+
+    // Regroup and ungroup through the Image tab, which is shown for the group.
+    await dragSelectAll(page);
+    await page.evaluate(() => document.querySelector('.image-group-button').click());
+    await page.waitForFunction(() => document.querySelector('.ProseMirror').editor.getJSON().content.some(node => node.type === 'subfigures'));
+    assert.equal(await page.locator('.ribbon-tabs [data-group=image]').getAttribute('aria-pressed'), 'true', 'Image tab stays active for the newer group');
+    await page.evaluate(() => document.querySelector('.image-group-button').click());
+    await page.waitForFunction(() => !document.querySelector('.ProseMirror').editor.getJSON().content.some(node => node.type === 'subfigures'));
+    data = await documentData(page);
+    assert.equal(data.content.filter(node => node.type === 'documentImage').length, 3, 'Image tab Ungroup restores the images');
 
     // A broader selection that also includes text still opens the Image toolbar.
     await page.evaluate(() => document.querySelector('.ProseMirror').editor.commands.selectAll());
     await page.waitForFunction(() => document.querySelector('.ProseMirror').editor.state.selection.constructor.name.includes('AllSelection'));
     assert.equal(await page.locator('.ribbon-tabs [data-group=image]').isVisible(), true, 'Image tab opens for a selection that includes images and text');
     assert.equal(await page.locator('.ribbon-tabs [data-group=image]').getAttribute('aria-pressed'), 'true');
+
+    // The Subfigure group's Insert figure button appends another subfigure.
+    await dragSelectAll(page);
+    await page.evaluate(() => document.querySelector('.image-group-button').click());
+    await page.waitForFunction(() => document.querySelector('.ProseMirror').editor.getJSON().content.some(node => node.type === 'subfigures'));
+    const chooser = page.waitForEvent('filechooser');
+    await page.locator('.image-insert-figure').click();
+    await (await chooser).setFiles({ name: 'd.png', mimeType: 'image/png', buffer: PNG });
+    await page.waitForFunction(() => (document.querySelector('.ProseMirror').editor.getJSON().content.find(node => node.type === 'subfigures')?.content?.length ?? 0) === 4);
 
     assert.deepEqual(errors, []);
     console.log('PASS image multi-selection and subfigure grouping');

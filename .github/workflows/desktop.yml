@@ -85,6 +85,8 @@ jobs:
         run: node tests/table-reflow-browser.cjs
       - name: Image crop, sizing and wrap centering
         run: node tests/image-toolbar-browser.cjs
+      - name: Image grouping and subfigure tabs
+        run: node tests/image-grouping-browser.cjs
       - name: Title date metadata
         run: node tests/maketitle-date-browser.cjs
       - name: xeCJK paragraph reference

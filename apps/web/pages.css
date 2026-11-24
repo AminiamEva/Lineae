@@ -108,6 +108,10 @@ main { padding:125px 24px 60px; overflow:auto; }
 .image-resize-handle[data-resize-dir="sw"] { left:-5px; bottom:-5px; cursor:nesw-resize; }
 .image-resize-handle[data-resize-dir="w"] { left:-5px; top:50%; margin-top:-4px; cursor:ew-resize; }
 .document-image-frame[style*="width"] > img { width:100%; }
+.document-image-tikz { display:block; width:100%; }
+.document-image-tikz svg { display:block; width:100%; height:auto; margin:0 auto; }
+.document-image-tikz:not(.is-ready) { min-height:1.4em; color:light-dark(#8b95a7,#7d879c); font-size:12px; text-align:center; white-space:pre-wrap; }
+.document-image.is-tikz .document-image-frame { height:auto; }
 .document-image[data-caption-position="above"] figcaption { order:-1; }
 .document-image { --caption-above-skip:10pt; --caption-below-skip:0pt; --caption-label-sep:.5em; }
 .document-image[data-centered="true"] { text-align:center; }
@@ -719,12 +723,20 @@ button,select,.color-control { transition:background-color .14s ease,color .14s 
 .image-tools .image-field > span:first-child { white-space:nowrap; }
 .image-tools .image-line input { width:44px; }
 .image-tools .image-line select { width:70px; }
-.image-tools .image-grid { align-items:center; }
+.image-tools .image-grid { align-items:center; gap:4px 6px; }
+.image-rows { display:flex; flex-direction:column; gap:4px; }
+.image-rows .image-grid { flex-wrap:nowrap; }
+.image-tools .image-check { white-space:nowrap; }
 .image-tools .ribbon-group.is-disabled { opacity:.45; pointer-events:none; }
-.image-grouping-body { display:flex; align-items:center; justify-content:center; padding:4px 6px; }
+.image-grouping-body { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:3px; padding:4px 6px; }
 .image-group-button { display:inline-flex; align-items:center; gap:6px; padding:5px 8px; }
+.image-insert-figure { display:inline-flex; align-items:center; gap:6px; padding:5px 8px; }
+.image-insert-figure:disabled { opacity:.4; cursor:default; }
 .subfigure-tools .subfigure-ungroup { padding:5px 10px; }
 .subfigure-tools .subfigure-ungroup:disabled { opacity:.4; cursor:default; }
+.subfigure-tools .subfigure-field { display:inline-flex; align-items:center; gap:4px; font-size:11px; color:light-dark(#687386,#aab3c1); white-space:nowrap; }
+.subfigure-tools .subfigure-field > input[type=text] { width:110px; }
+.subfigure-tools .subfigure-field > select { max-width:110px; }
 .layout-ribbon .layout-field { flex-direction:row; align-items:center; gap:4px; }
 .layout-ribbon .layout-field > span { white-space:nowrap; }
 .layout-ribbon .layout-group-controls { gap:4px; }
@@ -1118,16 +1130,31 @@ body.format-painter-active .ProseMirror * { cursor:copy; }
   .home-ribbon .rb-large { width:52px; min-height:52px; }
 }
 
-.document-subfigures { margin:var(--image-textfloatsep,20pt) 0; }
-.document-subfigures .subfigures-row { display:flex; gap:0; justify-content:space-between; align-items:flex-start; }
+.document-subfigures { position:relative; margin:var(--image-textfloatsep,20pt) 0; }
+.document-subfigures .subfigures-row { display:flex; gap:1em; justify-content:center; align-items:center; }
+.document-subfigures .subfigures-row[data-spacing="hfill"] { gap:0; justify-content:space-between; }
 .document-subfigures .document-image[data-subfigure="true"] { float:none; width:auto; margin:0; }
-.document-subfigures .document-image[data-subfigure="true"] figcaption { --caption-above-skip:5pt; }
+.document-subfigures .document-image[data-subfigure="true"][data-subfigure-pos="c"] { align-self:center; }
+.document-subfigures .document-image[data-subfigure="true"][data-subfigure-pos="t"] { align-self:flex-start; }
+.document-subfigures .document-image[data-subfigure="true"][data-subfigure-pos="b"] { align-self:flex-end; }
+.subfigures-select-handle { position:absolute; right:2px; top:2px; z-index:1; width:18px; height:18px; padding:0; border:0; border-radius:4px; background:light-dark(#eef1f6,#33353b); color:light-dark(#7a8494,#aab3c1); cursor:pointer; opacity:0; transition:opacity .12s; }
+.document-subfigures:hover .subfigures-select-handle, .subfigures-select-handle:focus-visible { opacity:.85; }
+.document-subfigures .document-image[data-subfigure="true"] figcaption { --caption-above-skip:10pt; }
 .document-image[data-subfigure="true"][data-caption-numbered="true"] { counter-increment:none; }
-.document-image[data-subfigure="true"] .document-caption-label::before { content:none; }
-.document-subfigures-caption { display:grid; grid-template-columns:auto minmax(0,1fr); column-gap:.5em; justify-content:center; margin:10pt 0 0; color:inherit; font-size:1em; text-align:center; }
-.document-subfigures-caption .caption-label { white-space:nowrap; }
-.document-subfigures-caption .caption-text { min-width:0; text-align:justify; overflow-wrap:anywhere; }
-.document-subfigures-caption .caption-text:empty::before { content:attr(data-placeholder); opacity:.35; }
+.document-subfigures[data-caption-numbered="true"] { counter-increment:lineae-figure; }
+.document-image[data-subfigure="true"] .document-caption-label::before { content:none !important; }
+.document-subfigures-caption { display:grid; grid-template-columns:auto minmax(0,1fr); column-gap:var(--caption-label-sep,.5em); width:100%; margin:10pt 0 0; color:inherit; font-size:1em; text-align:left; outline:none; border-radius:4px; }
+.document-subfigures-caption[data-caption-style="single"] { display:flex; align-items:baseline; justify-content:center; text-align:center; }
+.document-subfigures-caption[data-caption-style="single"] .document-caption-text { text-align:center; white-space:nowrap; }
+.document-subfigures-caption[data-caption-numbered="false"] .document-caption-label { display:none; }
+.document-subfigures-caption .document-caption-label { white-space:nowrap; }
+.document-subfigures-caption[data-caption-numbered="true"] .document-caption-label::before { content:"Figure " counter(lineae-figure) ":"; }
+.document-page[data-caption-language="zh"] .document-subfigures-caption[data-caption-numbered="true"] .document-caption-label::before { content:"图 " counter(lineae-figure) ":"; }
+.document-subfigures-caption .document-caption-label[data-caption-value]::before { content:attr(data-caption-name) " " attr(data-caption-value) ":"; }
+.document-subfigures-caption .document-caption-text { min-width:0; text-align:justify; overflow-wrap:anywhere; }
+.document-subfigures-caption .document-caption-text:empty::before { content:attr(data-placeholder); opacity:.35; }
+.document-subfigures-caption .document-caption-text:focus { background:light-dark(#f3f6fb,#2c3038); }
+.document-image .document-caption-text:focus, .document-subfigures-caption .document-caption-text:focus { outline:none; }
 
 /* TikZ editor modal (new feature, additive) */
 .tikz-overlay { position:fixed; inset:0; background:rgba(15,20,30,.45); z-index:1200; display:flex; align-items:center; justify-content:center; }

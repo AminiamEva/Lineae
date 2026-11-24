@@ -4,6 +4,9 @@ import { t } from './i18n.mjs';
 
 let enginePromise = null;
 const svgCache = new Map();
+let activeTikzPreamble = '';
+export function setTikzPreamble(value) { activeTikzPreamble = String(value || ''); }
+export function getTikzPreamble() { return activeTikzPreamble; }
 function loadEngine() {
   if (enginePromise) return enginePromise;
   enginePromise = (async () => {
