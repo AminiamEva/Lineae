@@ -1,7 +1,7 @@
 import {t} from './i18n.mjs';
 import {installNativePages} from '../typesetting/rtex/pages.mjs';
 import {installNativePdf} from '../typesetting/rtex/pdf.mjs';
-import {projectDocumentFormulas,editDisplayMathSlot} from '../editor/native-math/document.mjs';
+import {projectSnapshotFormulas,editDisplayMathSlot} from '../editor/native-math/document.mjs';
 
 // This surface never edits source or intercepts editor input. The existing
 // ProseMirror/MathLive history stays authoritative while native parity is built.
@@ -58,12 +58,12 @@ export function installNativeTexPreview({host,before,getSource,getSnapshot,isCom
         const offset=endpoint.after?formula.math.slots.find(slot=>slot.tag===endpoint.owner&&slot.role==='nucleus')?.raw.length:0;
         if(offset==null)return null;
         try {
-          const target=editDisplayMathSlot(formula,wantedSource,endpoint,{from16:offset,to16:offset,insert:''});
+          const target=editDisplayMathSlot(formula,formula.source,endpoint,{from16:offset,to16:offset,insert:''});
           return target?{formula,owner:atom,hit:endpoint,position:target.selection.head}:null;
         } catch {return null;}
       }
       const head=resolve(hit),anchor=origin?resolve(origin):head;
-      return head&&anchor&&focusMathSlot?.(projection,anchor,head);
+      return head&&anchor&&focusMathSlot?.(anchor,head);
     },
   });
   function current() {
@@ -269,16 +269,16 @@ export function installNativeTexPreview({host,before,getSource,getSnapshot,isCom
     if(targetButton.disabled)return;
     const stamp={sessionId:session,sourceRevision};
     lastTarget=stamp;
-    const projection=projectDocumentFormulas(sentSource);
+    const projection=projectSnapshotFormulas(sentSnapshot);
     if(!projection||![...projection.owners.values()].some(({atom})=>['frac','sqrt','token','cell'].includes(atom.kind))){
-      targetStatus.textContent=t('当前主文档没有可定位的公式。','No supported formula in the current main document.');
+      targetStatus.textContent=t('当前文档没有可定位的公式。','No supported formula in this document snapshot.');
       return;
     }
     const attempt=generation;
     targeting=attempt;observation=null;renderStatus();
     targetStatus.textContent=t('正在核对源码标记及实际排版…','Checking projected source against the visible layout…');
     try {
-      const observed=await invoke('native_tex_observe_formula',{...stamp,projection:projection.projection});
+      const observed=await invoke('native_tex_observe_formula',{...stamp,projection:projection.projection,files:projection.files});
       if(attempt!==generation||stamp.sessionId!==session||stamp.sourceRevision!==sourceRevision||
           sentSource!==projection.source||wantedSource!==projection.source)return;
       if(!renderer.attachOwners(observed,stamp,projection.owners))throw new Error(t('标记版排版与当前页面不一致，未启用命中。','Projected geometry differs from the displayed page; targeting remains disabled.'));

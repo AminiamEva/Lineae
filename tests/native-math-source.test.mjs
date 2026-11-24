@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {projectDisplayMath,projectDocumentFormulas,editDisplayMathSlot} from '../apps/web/src/editor/native-math/document.mjs';
+import {projectDisplayMath,projectDocumentFormulas,projectSnapshotFormulas,editDisplayMathSlot} from '../apps/web/src/editor/native-math/document.mjs';
 import {projectMath, applySlotEdit} from '../apps/web/src/editor/native-math/source.mjs';
 import {richSlotPosition} from '../apps/web/src/editor/native-math/rich-slot.mjs';
 
@@ -87,6 +87,20 @@ test('a numbered equation wraps the same exact native field without changing its
   assert.ok(compiled.projection.includes('\\begin{equation}\\begingroup'));
 });
 
+test('project-wide ownership maps an included fragment to its own UTF-16 offsets',()=>{
+  const source='\\begin{document}\n\\[\\frac{x}{}\\]\n\\input{parts/y}\n\\end{document}';
+  const child='% 中文 𝔸\r\n\\[\\frac{y}{}\\]\r\n';
+  const snapshot={source,mainFile:'main.tex',files:[{path:'parts/y.tex',bytes:new TextEncoder().encode(child)}]};
+  const projected=projectSnapshotFormulas(snapshot);
+  const owners=[...projected.owners].filter(([,owner])=>owner.atom.kind==='frac');
+  assert.deepEqual(owners.map(([,owner])=>owner.formula.filePath),['main.tex','parts/y.tex']);
+  const [tag,{formula}]=owners[1];
+  const hit={role:'den',owner:tag},edit={from16:0,to16:0,insert:'b'};
+  assert.deepEqual(editDisplayMathSlot(formula,child,hit,edit).patch,
+    {from:child.indexOf('\\frac{y}{}')+9,to:child.indexOf('\\frac{y}{}')+9,insert:'b'});
+  assert.equal(editDisplayMathSlot(formula,source,hit,edit),null);
+});
+
 test('literal operators have owners without becoming TeX structure',()=>{
   const snapshot=projectMath(String.raw`\frac{a+1}{b-2}=x`);
   assert.ok(snapshot.supported);
@@ -104,6 +118,14 @@ test('approved symbol commands are atomic positioning targets',()=>{
   assert.equal(applySlotEdit(math,{slotId:alpha.id,from16:0,to16:0,insert:''}).selection.anchor16,0);
   assert.throws(()=>applySlotEdit(math,{slotId:alpha.id,from16:2,to16:2,insert:'b'}),/structural/);
   assert.equal(projectMath(String.raw`\sin x`).supported,false);
+});
+
+test('matched scalable delimiters preserve the source of a nested fraction',()=>{
+  const source=String.raw`\left\langle\frac{a}{}\right\rangle`;
+  const math=projectMath(source),den=math.slots.find(slot=>slot.role==='denominator');
+  assert.ok(math.supported);
+  assert.equal(applySlotEdit(math,{slotId:den.id,from16:0,to16:0,insert:'b'}).source,source.replace('{}','{b}'));
+  assert.equal(projectMath(String.raw`\left(\frac{a}{b}`).supported,false);
 });
 
 test('an indexed radical preserves an empty degree and maps its TeX owner to a minimal patch',()=>{

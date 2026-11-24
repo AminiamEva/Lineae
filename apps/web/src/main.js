@@ -2621,22 +2621,21 @@ nativeTexPreview=installNativeTexPreview({host:footer,before:modes,
     return {source:text,mainFile:'main.tex',signature:text};
   },
   isComposing:()=>editor.view.composing||sourceView.composing,
-  focusMathSlot:(projection,anchor,head)=>{
+  focusMathSlot:(anchor,head)=>{
     const project=projectExplorer?.model;
-    // The current observer tags the main source. Never use its offsets in an
-    // included file or count an included MathLive field as a main-file field.
-    if(project&&project.activeFileId!==project.mainFileId)return;
+    const formula=head.formula;
+    if(anchor.formula.filePath!==formula.filePath)return;
+    const file=project?.files.get(formula.filePath);
+    if(project&&(!file||file.draft!==formula.source))return;
     if(!sourceView.hidden){
-      if(sourceView.value!==projection.source)return;
+      if((project&&project.activeFileId!==file.id)||sourceView.value!==formula.source)return;
       sourceView.select(anchor.position,head.position);
       return true;
     }
-    if(source()!==projection.source)return;
-    const formula=head.formula;
+    if(!projectDocument.composition&&((project&&project.activeFileId!==file.id)||source()!==formula.source))return;
     if(anchor.formula!==formula)return;
-    const mainPath=project?.file(project.mainFileId).path;
     const fields=[...paper.querySelectorAll(formula.kind==='displayMath'?'.math-display math-field':'.math-inline math-field')]
-      .filter(field=>!projectDocument.composition||field.closest('[data-project-region]')?.dataset.filePath===mainPath);
+      .filter(field=>!projectDocument.composition||field.closest('[data-project-region]')?.dataset.filePath===formula.filePath);
     const field=fields[formula.ordinal];
     if(fields.length!==formula.count||field?.value.trim()!==formula.math.source.trim())return;
     const model=field._mathfield?.model;

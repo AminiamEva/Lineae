@@ -234,15 +234,16 @@ production pointer input, a visible caret, a native selection, or undo/redo on C
 
 The separate **Target formula caret (experimental)** action checks an isolated,
 instrumented copy of a supported standalone document or of the selected project
-main file with its dependencies. Each recognized top-level
+with its TeX inputs. Each recognized top-level
 inline or display formula has distinct owner IDs; unsupported formulas do not
 receive hit targets.
 It enables a click only when
 exact page drawing records agree with the raw preview and the session, source and
 layout still match. Clicking an empty numerator, denominator, radicand or supported glyph edge transfers focus to the
 original MathLive field, or selects the original source offset in Source/Split.
-For projects, the active file must be the main file. Composed rich pages filter
-targets by original file; included files aren't instrumented yet.
+For projects, composed rich pages filter targets by original file. In Source/Split
+the clicked formula must belong to the active source file. The observer only
+instruments copies of existing TeX files in the trusted project snapshot.
 The existing editor history handles subsequent input and undo. A click shows a
 native position marker until the next input or layout; dragging between two supported
 targets transfers a selection to the editor. Dragging between glyphs in the same

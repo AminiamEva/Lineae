@@ -262,6 +262,8 @@ async function main() {
       'structured-inline-denominator',out,rtex,texbin,'multi'));
     summaries.push(await probe(unicode.replace('\\[\r\n\\frac{a}{}\r\n\\]',
       '\\begin{equation}\r\n\\frac{7}{}\r\n\\end{equation}'),'structured-numbered-equation',out,rtex,texbin,'multi'));
+    summaries.push(await probe(unicode.replace('\\frac{a}{}','\\left(\\frac{7}{}\\right)'),
+      'structured-fenced-fraction',out,rtex,texbin,'multi'));
     summaries.push(await probe(unicode.replace('\\frac{a}{}','\\begin{pmatrix}a & \\\\ & d\\end{pmatrix}'),
       'matrix-cell-ownership',out,rtex,texbin,'matrix'));
     writeFileSync(join(out,'result.json'),JSON.stringify({status:'passed',cases:summaries},null,2)+'\n');

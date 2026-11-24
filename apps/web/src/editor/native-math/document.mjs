@@ -25,10 +25,11 @@ export function projectDisplayMath(source,previous) {
 
 // Assign disjoint owner IDs within this exact document revision. Keep
 // unsupported display spans intact and preserve their ordinal in the editor.
-export function projectDocumentFormulas(source) {
-  const doc=parseDocument(source);
+export function projectDocumentFormulas(source,{fragment=false,firstTag=1,filePath}={}) {
+  const doc=parseDocument(source,{fragment});
   if(!doc)return null;
   const body=doc.blocks.join('');
+  if(doc.start+body+doc.end!==source)return null;
   const tokens=[...sourceStructure(body)];
   if(tokens.some(token=>token.kind==='invalid'))return null;
   const spans=tokens.flatMap(token=>{
@@ -41,20 +42,39 @@ export function projectDocumentFormulas(source) {
   const counts={displayMath:0,inlineMath:0},ordinals={...counts};
   for(const span of spans)counts[span.kind]++;
   const formulas=[], owners=new Map();
-  let projection='',cursor=0,firstTag=1;
+  let projection='',cursor=0;
   for(const span of spans){
     const ordinal=ordinals[span.kind]++;
     const from16=doc.start.length+span.index+span.delimiter.length,to16=from16+span.latex.length;
     const math=projectMath(span.latex,{firstTag});
     if(!math.supported)continue;
-    const formula={source,from16,to16,math,ordinal,kind:span.kind,count:counts[span.kind],
+    const formula={source,from16,to16,math,ordinal,kind:span.kind,count:counts[span.kind],filePath,
       projectionFrom16:projection.length+from16-cursor};
     for(const atom of math.atoms)owners.set(atom.tag,{formula,atom});
     formulas.push(formula);
     firstTag+=math.atoms.length;
     projection+=source.slice(cursor,from16)+math.projection;cursor=to16;
   }
-  return formulas.length?{source,projection:projection+source.slice(cursor),formulas,owners}:null;
+  return formulas.length?{source,projection:projection+source.slice(cursor),formulas,owners,nextTag:firstTag}:null;
+}
+
+export function projectSnapshotFormulas(snapshot) {
+  const root=projectDocumentFormulas(snapshot.source,{filePath:snapshot.mainFile});
+  if(!snapshot.files)return root;
+  const files=[],owners=new Map(root?.owners);
+  let firstTag=root?.nextTag??1;
+  const decoder=new TextDecoder('utf-8',{fatal:true,ignoreBOM:true});
+  for(const file of snapshot.files){
+    if(file.path===snapshot.mainFile||!/\.tex$/i.test(file.path)||file.bytes.length>2*1024*1024)continue;
+    let input;
+    try {input=decoder.decode(new Uint8Array(file.bytes));}catch{continue;}
+    const parsed=projectDocumentFormulas(input,{fragment:true,firstTag,filePath:file.path});
+    if(!parsed)continue;
+    firstTag=parsed.nextTag;
+    files.push({path:file.path,source:parsed.projection});
+    for(const [tag,owner] of parsed.owners)owners.set(tag,owner);
+  }
+  return owners.size?{source:snapshot.source,projection:root?.projection??snapshot.source,owners,files}:null;
 }
 
 export function editDisplayMathSlot(projection,currentSource,hit,edit) {

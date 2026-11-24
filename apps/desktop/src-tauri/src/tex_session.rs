@@ -93,6 +93,13 @@ pub struct NativeTexFile {
     pub bytes: Vec<u8>,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct NativeTexProjection {
+    path: String,
+    source: String,
+}
+
 fn validate_project_path(path: &str) -> Result<(), NativeTexError> {
     if path.is_empty() || path.len() > 1024
         || path.contains('\\') || path.contains(':') || path.chars().any(char::is_control)
@@ -897,7 +904,7 @@ impl Session {
 
     // Instrumentation is deliberately isolated from the authoritative engine:
     // neither its source nor its PDF ever replaces the user's raw snapshot.
-    fn observe_formula(&self, revision: u64, projection: &str) -> Result<Vec<Value>, NativeTexError> {
+    fn observe_formula(&self, revision: u64, projection: &str, files: Vec<NativeTexProjection>) -> Result<Vec<Value>, NativeTexError> {
         let snapshot = {
             let _serial = lock(&self.commands);
             self.check()?;
@@ -906,6 +913,19 @@ impl Session {
             }
             let mut snapshot = lock(&self.snapshot).clone();
             snapshot.files.insert(snapshot.main_file.clone(), projection.as_bytes().to_vec());
+            let mut patched = std::collections::HashSet::new();
+            for file in files {
+                validate_project_path(&file.path)?;
+                validate_source(&file.source)?;
+                if file.path == snapshot.main_file || !file.path.to_ascii_lowercase().ends_with(".tex")
+                    || !patched.insert(file.path.to_lowercase()) {
+                    return Err(error("project_path", "Formula projection must name a unique included TeX file."));
+                }
+                let original = snapshot.files.get_mut(&file.path)
+                    .filter(|original| std::str::from_utf8(original).is_ok())
+                    .ok_or_else(|| error("project_path", "Formula projection refers to a file outside the trusted snapshot."))?;
+                *original = file.source.into_bytes();
+            }
             if snapshot.files.values().map(Vec::len).sum::<usize>() > PROJECT_LIMIT {
                 return Err(error("project_limit", "Instrumented preview exceeds the project snapshot limit."));
             }
@@ -1148,10 +1168,11 @@ pub async fn native_tex_render_pdf(state: State<'_, NativeTexSessions>, session_
 #[tauri::command]
 pub async fn native_tex_observe_formula(
     state: State<'_, NativeTexSessions>, session_id: String, source_revision: u64, projection: String,
+    files: Option<Vec<NativeTexProjection>>,
 ) -> Result<Vec<Value>, NativeTexError> {
     validate_source(&projection)?;
     let session = state.get(&session_id)?;
-    blocking(move || session.observe_formula(source_revision, &projection)).await
+    blocking(move || session.observe_formula(source_revision, &projection, files.unwrap_or_default())).await
 }
 
 #[tauri::command]
@@ -1265,7 +1286,8 @@ mod tests {
             }
             files
         };
-        let session = Session::create_snapshot(Snapshot::new(source, "main.tex".into(), files("\\SnapshotWord{} first.\n")).unwrap()).unwrap();
+        let dependency = "\\SnapshotWord{} first.\n\\[\\frac{z}{}\\]\n";
+        let session = Session::create_snapshot(Snapshot::new(source, "main.tex".into(), files(dependency)).unwrap()).unwrap();
         let manager = NativeTexSessions::default();
         lock(&manager.0).session = Some(session.clone());
         let info = session.start().expect("the pinned real native engine must start");
@@ -1292,16 +1314,24 @@ mod tests {
         let initial = wait_layout(&session, info.source_revision);
         assert!(initial["pages_total"].as_i64().unwrap() > 0);
         let project_projection = source.replace("\\frac{a}{}", "\\begingroup\\attribute65000=11 \\frac{a}{}\\endgroup");
-        let project_observed = session.observe_formula(info.source_revision, &project_projection)
+        let project_observed = session.observe_formula(info.source_revision, &project_projection, vec![
+            NativeTexProjection {
+                path: "dependency.tex".into(),
+                source: dependency.replace("\\frac{z}{}", "\\begingroup\\attribute65000=12 \\frac{z}{}\\endgroup"),
+            },
+        ])
             .expect("owner observation retains the project style, Lua module and binary dependency");
-        assert!(project_observed.iter().any(|page| page["dl"]["math_owners"]["fields"]
-            .as_array().is_some_and(|fields| fields.iter().any(|field| field["owner"] == 11 && field["role"] == "den"))));
+        for owner in [11, 12] {
+            assert!(project_observed.iter().any(|page| page["dl"]["math_owners"]["fields"]
+                .as_array().is_some_and(|fields| fields.iter().any(|field| field["owner"] == owner && field["role"] == "den"))));
+        }
+        assert_eq!(std::fs::read_to_string(session.root.join("dependency.tex")).unwrap(), dependency);
         let standalone = include_str!("../../../../tests/native-math/fixtures/empty-denominator.tex");
         let targeting = Session::create(standalone).unwrap();
         let target_info = targeting.start().unwrap();
         wait_layout(&targeting, target_info.source_revision);
         let projected = standalone.replace("\\frac{a}{}", "\\begingroup\\attribute65000=10 \\frac{a}{}\\endgroup");
-        let observed = targeting.observe_formula(target_info.source_revision, &projected).expect("isolated owner observation");
+        let observed = targeting.observe_formula(target_info.source_revision, &projected, Vec::new()).expect("isolated owner observation");
         assert!(observed.iter().any(|page| page["dl"]["math_owners"]["fields"].as_array().is_some_and(|fields| {
             fields.iter().any(|field| field["owner"] == 10 && field["role"] == "den" && field["empty"] == true)
         })));

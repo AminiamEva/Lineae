@@ -54,7 +54,9 @@ module.exports=function installMockNativeTex() {
       return [...new Uint8Array(await(await fetch('/assets/fonts/latin-modern/lmroman10-regular.otf')).arrayBuffer())];
     }
     if(command==='native_tex_observe_formula'){
-      const matches=[...args.projection.matchAll(/\\attribute65000=(\d+) \\(frac|sqrt)/g)];
+      const input=p.targetInclude?args.files?.find(file=>file.path==='chapters/one.tex')?.source:args.projection;
+      if(!input)throw new Error('No target source in observation request');
+      const matches=[...input.matchAll(/\\attribute65000=(\d+) \\(frac|sqrt)/g)];
       const match=matches.at(-1);
       const script=/\\attribute65000=(\d+) x\^\{\}/.exec(args.projection);
       const cell=/&\\attribute65000=(\d+) \s*\\\\/.exec(args.projection);

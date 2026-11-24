@@ -1,6 +1,6 @@
 const branches = {body:'body', numerator:'above', denominator:'below', radicand:'body',degree:'above',
   superscript:'superscript',subscript:'subscript',cell:'body'};
-const kinds = {frac:'genfrac',sqrt:'surd',group:'group',matrix:'array'};
+const kinds = {frac:'genfrac',sqrt:'surd',group:'group',matrix:'array',fence:'leftright'};
 const script = name=>name==='superscript'||name==='subscript';
 function branch(atom,name) {
   const direct=atom.branch(name);

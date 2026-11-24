@@ -116,7 +116,26 @@ function parse(source) {
     } else if (source[at] === '\\') {
       const command = /^\\[A-Za-z]+/.exec(source.slice(at))?.[0];
       const matrix = command==='\\begin'&&/^\\begin\{(matrix|[pbBvV]matrix)\}/.exec(source.slice(at));
-      if(matrix){
+      if(command==='\\left'){
+        function delimiter(prefix) {
+          const start=at;
+          at+=prefix.length;trivia();
+          const spelling=/^(?:\\(?:[{}|]|(?:langle|rangle|lvert|rvert|lVert|rVert|vert|Vert)(?![A-Za-z]))|[()[\].|])/.exec(source.slice(at))?.[0];
+          if(!spelling)fail('Unsupported fence delimiter');
+          at+=spelling.length;protect(start,at,'delimiter');
+        }
+        delimiter('\\left');
+        const start=at,children=[];
+        while(true){
+          trivia();
+          if(at===source.length)fail('Unclosed fence');
+          if(/^\\right(?![A-Za-z])/.test(source.slice(at)))break;
+          children.push(atom(depth+1));
+        }
+        const end=at;
+        delimiter('\\right');
+        node={kind:'fence',from16,fields:[{role:'body',from16:start,to16:end,grouped:true,children}]};
+      } else if(matrix){
         at+=matrix[0].length;protect(from16,at,'command');
         node={kind:'matrix',from16,fields:[]};
         let row=0,column=0;
