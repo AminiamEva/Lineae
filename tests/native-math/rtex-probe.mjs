@@ -258,7 +258,7 @@ async function main() {
       'structured-nested-denominator',out,rtex,texbin,true));
     summaries.push(await probe(unicode.replace('\\[\r\n\\frac{a}{}','\\[z\\]\r\n\r\n\\[\r\n\\frac{7}{}'),
       'structured-multiple-displays',out,rtex,texbin,'multi'));
-    summaries.push(await probe(unicode.replace('\\[\r\n\\frac{a}{}\r\n\\]','Inline $x+\\frac{7}{}=y$ here.'),
+    summaries.push(await probe(unicode.replace('\\[\r\n\\frac{a}{}\r\n\\]','Inline $\\alpha+\\frac{7}{}=y$ here.'),
       'structured-inline-denominator',out,rtex,texbin,'multi'));
     summaries.push(await probe(unicode.replace('\\frac{a}{}','\\begin{pmatrix}a & \\\\ & d\\end{pmatrix}'),
       'matrix-cell-ownership',out,rtex,texbin,'matrix'));

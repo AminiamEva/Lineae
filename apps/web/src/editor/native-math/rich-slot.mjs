@@ -49,7 +49,7 @@ export function richSlotPosition(model,atoms,owner,{role,after}) {
     parent=children[index];
     const step=pathIndex.get(prefix);
     if(!parent||!step||(step.kind==='token'?
-      parent.value!==step.nucleus&&!(step.nucleus==='-'&&parent.value==='−'):
+      parent.value!==step.nucleus&&parent.command!==step.nucleus&&!(step.nucleus==='-'&&parent.value==='−'):
       parent.type!==kinds[step.kind]))return null;
   }
   const slot=target?branch(parent,target):null;

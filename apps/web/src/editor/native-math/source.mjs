@@ -23,11 +23,16 @@
  * no global document/version tracking; callers must supply the current snapshot.
  */
 
+import {mathCommandCatalog} from '../../../latex/command-catalog.mjs';
+
 const snapshots = new WeakMap();
 const segmenter = new Intl.Segmenter('und', {granularity: 'grapheme'});
 const ordinary = /^[\p{L}\p{N}]\p{M}*$/u;
 const operator = /^[+=,.:!?<>/|()\[\]-]$/u;
 const editable = /^[\p{L}\p{N}\p{M}+=,.:!?<>/|()\[\] \t\r\n-]*$/u;
+// Only single-symbol catalog entries here. Function names may paint multiple
+// glyphs while representing one operator and need different caret handling.
+const symbols = new Set(mathCommandCatalog.filter(entry=>entry.category!=='operator').map(entry=>entry.latex));
 
 function freeze(value) {
   if (value && typeof value === 'object') {
@@ -135,6 +140,9 @@ function parse(source) {
           if(!source.startsWith(close,at))fail('Unclosed matrix environment');
           protect(at,at+close.length,'command');at+=close.length;break;
         }
+      } else if(symbols.has(command)){
+        at+=command.length;protect(from16,at,'command');
+        node={kind:'token',from16,fields:[],nucleusTo16:at};
       } else {
         if (command !== '\\frac' && command !== '\\sqrt') fail('Unsupported control sequence');
         at += command.length;

@@ -82,6 +82,15 @@ test('literal operators have owners without becoming TeX structure',()=>{
   assert.equal(projectMath('x^+').supported,false);
 });
 
+test('approved symbol commands are atomic positioning targets',()=>{
+  const math=projectMath(String.raw`\alpha+\beta\leq x`);
+  assert.ok(math.supported);
+  const alpha=math.slots.find(slot=>slot.role==='nucleus'&&slot.raw===String.raw`\alpha`);
+  assert.equal(applySlotEdit(math,{slotId:alpha.id,from16:0,to16:0,insert:''}).selection.anchor16,0);
+  assert.throws(()=>applySlotEdit(math,{slotId:alpha.id,from16:2,to16:2,insert:'b'}),/structural/);
+  assert.equal(projectMath(String.raw`\sin x`).supported,false);
+});
+
 test('an indexed radical preserves an empty degree and maps its TeX owner to a minimal patch',()=>{
   const source='\\begin{document}\n\\[\\sqrt[]{x}\\]\n\\end{document}\n';
   const projection=projectDocumentFormulas(source),[formula]=projection.formulas;
@@ -241,7 +250,7 @@ test('slot-relative offsets, grapheme-safe minimal replacement, and immutable re
 
 test('unknown syntax and malformed input fail closed with explicit diagnostics', () => {
   for (const source of [
-    String.raw`\unknown{a}`, String.raw`\alpha`, String.raw`\sqrt[3{a}`,
+    String.raw`\unknown{a}`, String.raw`\sin x`, String.raw`\sqrt[3{a}`,
     String.raw`\frac a b`, String.raw`\frac{a}`, '{a', 'a}', 'x^', 'x^a^b',
     String.raw`x^\sqrt{a}`, '$a$', String.raw`\[a\]`, 'a&b', '😀', '\ud800',
   ]) {
