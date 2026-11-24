@@ -6,6 +6,7 @@ import {join,resolve} from 'node:path';
 import {createInterface} from 'node:readline';
 import {fileURLToPath} from 'node:url';
 import {hitMathField} from '../../apps/web/src/editor/native-math/hit.mjs';
+import {projectMath,applySlotEdit} from '../../apps/web/src/editor/native-math/source.mjs';
 
 // Deliberately a fixture projection, not a general TeX parser or a production
 // source mapper. The truly empty denominator must stay empty in the projection.
@@ -112,6 +113,12 @@ async function probe(source,label,out,rtex,texbin) {
     assert.ok(initial,'Converged layout history must contain the empty denominator');
     const empty=denominator(initial.dl,true);
     const frame={sessionId:label,sourceRevision:layout.versions.source_revision,layoutVersion:layout.versions.layout_version};
+    const formula=projectMath('\\frac{a}{}');
+    const denSlot=formula.slots.find(slot=>slot.role==='den');
+    // This probe uses a single explicit owner in the TeX fixture. Production
+    // will require the whole source projection and matching owner registry.
+    const slotByOwner=new Map([[`10/${denSlot.role}`,denSlot]]);
+    let patch;
     for(const zoom of [1,1.5,2]){
       const scale=zoom*(96/72)/65781.76;
       const rect={left:40,top:120,width:initial.dl.page_width*scale,height:initial.dl.page_height*scale};
@@ -119,14 +126,19 @@ async function probe(source,label,out,rtex,texbin) {
       // Only eligible fraction roles enter this interaction registry. A
       // generic "math" boundary is not a field owned by our source parser.
       const fields=initial.dl.math_owners.fields.filter(field=>field.role==='num'||field.role==='den');
-      assert.deepEqual(hitMathField(fields,rect,point,zoom,frame,frame),{owner:10,role:'den'});
+      const hit=hitMathField(fields,rect,point,zoom,frame,frame);
+      assert.deepEqual(hit,{owner:10,role:'den'});
+      const slot=slotByOwner.get(`${hit.owner}/${hit.role}`);
+      const edit=applySlotEdit(formula,{slotId:slot.id,from16:0,to16:0,insert:'b'});
+      assert.deepEqual(edit.patch,{from:9,to:9,insert:'b'});
+      patch=edit.patch;
     }
     writeFileSync(join(dir,'initial-layout.json'),JSON.stringify(initial,null,2)+'\n');
     // Reply and event queues are interleaved. Search retained history from the
     // command boundary, including events received before their matching reply.
     const since=records.length;
     send({cmd:'edit',path:'main.tex',start:projection.projectionOffset8,
-      end:projection.projectionOffset8,text:'b'});
+      end:projection.projectionOffset8,text:patch.insert});
     const reply=await waitFor(message=>message.reply==='edit' || message.reply==='error','edit reply',since);
     assert.equal(reply.reply,'edit',reply.message);
     const result=reply.result;
@@ -139,7 +151,7 @@ async function probe(source,label,out,rtex,texbin) {
       [98,119887].includes(glyph.char)),'Observed denominator includes the inserted b');
     writeFileSync(join(dir,'incremental-update.json'),JSON.stringify(update,null,2)+'\n');
     assert.equal(readFileSync(join(project,'main.tex'),'utf8'),tagged,'Session edits do not overwrite input files');
-    summary={label,owner:10,role:'den',empty,nonempty,
+    summary={label,owner:10,role:'den',empty,nonempty,patch,
       sourceOffset16:projection.sourceOffset16,projectionOffset16:projection.projectionOffset16,
       projectionOffset8:projection.projectionOffset8,result,versions:update.versions,
       timing:update.timing,timingScope:'engine-reported single warm edit; not display latency or a percentile'};

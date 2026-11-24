@@ -209,3 +209,11 @@ This does not yet certify native pointer editing, complete history or export ide
    undo/redo, stale-result rejection and clean uninstrumented export.
 4. Expand only after source fidelity, geometry and history pass. Native engine speed
    and sub-30ms interaction are unmeasured targets, not promises.
+
+The interaction prototype has two independent modules under
+`apps/web/src/editor/native-math/`: `source.mjs` maps supported syntax to slots and
+minimal source patches; `hit.mjs` maps page-space geometry to a single owner/role
+at a matching session, source and layout revision. The geometry probe connects
+an actual empty-denominator box to a one-letter slot patch at 100%, 150% and 200%.
+That probe still uses a controlled fixture owner ID. It does **not** certify
+production pointer input, a visible caret, a native selection, or undo/redo on Canvas.

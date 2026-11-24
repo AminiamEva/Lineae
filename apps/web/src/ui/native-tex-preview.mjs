@@ -44,7 +44,7 @@ export function installNativeTexPreview({host,before,getSource,getSnapshot,isCom
     onError:(failure,revision)=>{if(active&&mode==='canvas')void fallback(failure,revision);},
   });
   function current() {
-    return active && session!==null && !opening && updating!==generation && exporting!==generation &&
+    return active && session!==null && !opening && !isComposing() && updating!==generation && exporting!==generation &&
       capturing!==generation && !terminal && !error && wantedSnapshot?.signature===sentSnapshot?.signature &&
       wantedSource===sentSource && renderedRevision===sourceRevision;
   }
@@ -99,14 +99,18 @@ export function installNativeTexPreview({host,before,getSource,getSnapshot,isCom
     pdfAttempt=flight;renderStatus();
     try {
       let finished=-1;
-      while(active&&attempt===generation&&pdfWanted>finished) {
+      while(active&&attempt===generation&&flight.sessionId===session&&pdfWanted>finished) {
         const target=pdfWanted;
-        const bytes=await invoke('native_tex_render_pdf',{sessionId:flight.sessionId,sourceRevision:target});
-        if(attempt!==generation||flight.sessionId!==session)return;
-        await pdf.show(bytes,target);finished=target;
+        try {
+          const bytes=await invoke('native_tex_render_pdf',{sessionId:flight.sessionId,sourceRevision:target});
+          if(attempt!==generation||flight.sessionId!==session)return;
+          if(target===pdfWanted)await pdf.show(bytes,target);
+        }catch(problem){
+          if(attempt!==generation||flight.sessionId!==session)return;
+          if(problem?.code!=='revision_mismatch'&&target===pdfWanted){fail(problem);return;}
+        }
+        finished=target;
       }
-    }catch(problem){
-      if(attempt===generation&&flight.sessionId===session&&problem?.code!=='revision_mismatch')fail(problem);
     }finally{if(pdfAttempt===flight)pdfAttempt=null;}
   }
   async function flush() {
@@ -142,9 +146,7 @@ export function installNativeTexPreview({host,before,getSource,getSnapshot,isCom
   }
   async function refresh() {
     if(!active)return;
-    if(isComposing()) {
-      renderedRevision=-1;renderStatus();return;
-    }
+    if(isComposing()) {renderStatus();return;}
     const attempt=generation,request=++captureId;
     capturing=attempt;renderStatus();
     try {
@@ -224,7 +226,7 @@ export function installNativeTexPreview({host,before,getSource,getSnapshot,isCom
     renderer.setZoom(value);pdf.setZoom(value);
   });
   window.addEventListener('pagehide',()=>{void stop();});
-  document.addEventListener('compositionend',refresh,true);
+  document.addEventListener('compositionend',()=>setTimeout(refresh,0),true);
   relocalize();renderer.setZoom(.75);pdf.setZoom(.75);
   return {refresh,documentChanged:()=>{void stop();},relocalize};
 }
