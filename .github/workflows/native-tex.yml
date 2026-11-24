@@ -113,17 +113,10 @@ jobs:
           export LINEAE_NATIVE_EVIDENCE_DIR="$PWD/artifacts/native-tex/host"
           node tests/native-math/rtex-probe.mjs
           node apps/desktop/scripts/stage.mjs
-          # Refresh only newly added platform dependencies remotely; commit
-          # the resulting lockfile before --locked desktop distribution.
-          cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml --lib
-          cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml --lib \
+          cargo test --locked --manifest-path apps/desktop/src-tauri/Cargo.toml --lib
+          cargo test --locked --manifest-path apps/desktop/src-tauri/Cargo.toml --lib \
             tex_session::tests::real_native -- --ignored --test-threads=1
           LINEAE_NATIVE_PDF="$LINEAE_NATIVE_EVIDENCE_DIR/native-lua-project.pdf" node tests/native-tex-preview-browser.cjs
-      - name: Preserve remotely resolved Cargo lockfile
-        if: always()
-        run: |
-          mkdir -p artifacts/native-tex
-          cp apps/desktop/src-tauri/Cargo.lock artifacts/native-tex/Cargo.lock
       - name: Preserve actual protocol, source, logs and clean reference PDF
         if: always()
         uses: actions/upload-artifact@v4
