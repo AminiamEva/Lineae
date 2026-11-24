@@ -2,6 +2,11 @@ name: Native TeX geometry
 
 on:
   workflow_dispatch:
+    inputs:
+      warm_repetitions:
+        description: Optional warm edit timing samples for the authored LF fixture (0 to 1000)
+        type: number
+        default: 0
   workflow_call:
 
 permissions:
@@ -92,6 +97,7 @@ jobs:
         env:
           RTEX_ARCHIVE_SHA256: ${{ matrix.sha256 }}
           RTEX_TARGET: ${{ matrix.target }}
+          LINEAE_WARM_REPETITIONS: ${{ inputs.warm_repetitions || 0 }}
         run: |
           bin="$PWD/.native-tex/texlive/bin/${{ matrix.tlarch }}"
           tool="$PWD/.native-tex/rtex/rtex-0.0.8-${{ matrix.target }}"

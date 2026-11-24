@@ -201,6 +201,10 @@ Missing tools, background-only routing, absent owners or mismatched revisions fa
 the job; they are not treated as skipped or successful native support. Tests of
 the probe's matching logic are separate from engine-generated evidence.
 One warm edit's engine timing is recorded, not advertised as end-to-end latency.
+An optional `warm_repetitions` dispatch input runs up to 1,000 edits on the
+authored LF fixture and archives routing counts plus P50/P95/P99 from JSONL
+dispatch to the matching response. It excludes paint, IME, and display latency;
+this small-fixture measurement does not replace large-document acceptance.
 Source-level newline/Unicode offset coverage does not certify glyph rendering,
 interactive history, export identity or input-method behavior.
 

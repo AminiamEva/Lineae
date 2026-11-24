@@ -206,6 +206,28 @@ async function probe(source,label,out,rtex,texbin,structured=false) {
       sourceOffset16:projection.sourceOffset16,projectionOffset16:projection.projectionOffset16,
       projectionOffset8:projection.projectionOffset8,result,versions:update.versions,
       timing:update.timing,timingScope:'engine-reported single warm edit; not display latency or a percentile'};
+    const repetitions=Number(process.env.LINEAE_WARM_REPETITIONS??0);
+    assert.ok(Number.isInteger(repetitions)&&repetitions>=0&&repetitions<=1000);
+    if(label==='lf'&&repetitions){
+      const samples=[],routes={};
+      for(let index=0;index<repetitions;index++){
+        const start=projection.projectionOffset8,since=records.length,begin=performance.now();
+        send({cmd:'edit',path:'main.tex',start,end:start+1,text:index%2?'b':'c'});
+        const reply=await waitFor(message=>message.reply==='edit'||message.reply==='error','timed edit reply',since);
+        assert.equal(reply.reply,'edit',reply.message);
+        const routed=reply.result.routed;
+        routes[routed]=(routes[routed]??0)+1;
+        if(routed!=='fast')continue;
+        const result=await waitFor(message=>matchesEdit(message,reply.result),'timed warm result',since);
+        assert.equal(result.status,'ok');
+        samples.push(performance.now()-begin);
+      }
+      const ordered=samples.toSorted((a,b)=>a-b);
+      const percentile=q=>ordered.length?ordered[Math.ceil(ordered.length*q)-1]:null;
+      const timing={repetitions,routes,sampleCount:samples.length,p50Ms:percentile(.50),p95Ms:percentile(.95),
+        p99Ms:percentile(.99),scope:'stdin edit dispatch to matching stdout event; no drawing, input method or display latency',samplesMs:samples};
+      writeFileSync(join(dir,'warm-timing.json'),JSON.stringify(timing,null,2)+'\n');
+    }
   } finally {
     closing=true;
     // The CLI owns child engines. Reap the entire tree, including on failure,
