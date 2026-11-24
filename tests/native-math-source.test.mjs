@@ -101,6 +101,19 @@ test('project-wide ownership maps an included fragment to its own UTF-16 offsets
   assert.equal(editDisplayMathSlot(formula,source,hit,edit),null);
 });
 
+test('new atoms do not renumber unaffected owners in later or included formulas',()=>{
+  const source='\\begin{document}\n\\[\\frac{a}{}\\]\n\\[\\frac{z}{}\\]\n\\input{parts/y}\n\\end{document}';
+  const child='\\[\\frac{y}{}\\]\n',files=[{path:'parts/y.tex',bytes:new TextEncoder().encode(child)}];
+  const before=projectSnapshotFormulas({source,mainFile:'main.tex',files});
+  const changed=source.replace('\\frac{a}{}','\\frac{a}{b}');
+  const after=projectSnapshotFormulas({source:changed,mainFile:'main.tex',files},before);
+  const slotIds=projection=>projection.formulas.map(formula=>formula.math.slots.find(slot=>slot.role==='denominator').id);
+  assert.deepEqual(slotIds(before),slotIds(after));
+  const [newTag]=[...after.owners].filter(([,value])=>value.atom.nucleus==='b').map(([tag])=>tag);
+  assert.ok(newTag>=before.nextTag);
+  assert.equal(after.owners.size,before.owners.size+1);
+});
+
 test('literal operators have owners without becoming TeX structure',()=>{
   const snapshot=projectMath(String.raw`\frac{a+1}{b-2}=x`);
   assert.ok(snapshot.supported);

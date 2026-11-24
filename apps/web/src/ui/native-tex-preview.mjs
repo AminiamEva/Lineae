@@ -36,6 +36,7 @@ export function installNativeTexPreview({host,before,getSource,getSnapshot,isCom
   let mode='canvas',pdfWanted=-1,pdfAttempt=null,pdfLayout=null;
   let pollEpoch=0;
   let targeting=null,observation=null,targetArmed=false,lastTarget=null,targetTimer=null;
+  let previousProjection=null;
   let mirror=null;
   let compositionField=null;
   const composing=()=>isComposing()||Boolean(compositionField?.isConnected);
@@ -143,6 +144,7 @@ export function installNativeTexPreview({host,before,getSource,getSnapshot,isCom
     const previous=session;session=null;
     wantedSnapshot=null;sentSnapshot=null;wantedSource='';sentSource='';
     observation=null;targetStatus.textContent='';
+    previousProjection=null;
     compositionField=null;
     mirror?.lifetime.abort();mirror=null;
     targetArmed=false;lastTarget=null;clearTimeout(targetTimer);targetTimer=null;
@@ -309,7 +311,7 @@ export function installNativeTexPreview({host,before,getSource,getSnapshot,isCom
     if(targetButton.disabled)return;
     const stamp={sessionId:session,sourceRevision};
     lastTarget=stamp;
-    const projection=projectSnapshotFormulas(sentSnapshot);
+    const projection=projectSnapshotFormulas(sentSnapshot,previousProjection);
     if(!projection||![...projection.owners.values()].some(({atom})=>['frac','sqrt','token','cell'].includes(atom.kind))){
       targetStatus.textContent=t('当前文档没有可定位的公式。','No supported formula in this document snapshot.');
       return;
@@ -323,6 +325,7 @@ export function installNativeTexPreview({host,before,getSource,getSnapshot,isCom
           sentSource!==projection.source||wantedSource!==projection.source)return;
       if(!renderer.attachOwners(observed,stamp,projection.owners))throw new Error(t('标记版排版与当前页面不一致，未启用命中。','Projected geometry differs from the displayed page; targeting remains disabled.'));
       observation={projection,stamp};
+      previousProjection=projection;
       requestAnimationFrame(syncCaret);
       targetStatus.textContent=t('点击预览中的空槽或字符边缘，继续在编辑器输入。','Click the empty numerator or denominator, another supported empty slot, or a glyph edge to continue typing in the editor.');
     } catch(failure) {

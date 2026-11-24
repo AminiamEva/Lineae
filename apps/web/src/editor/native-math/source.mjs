@@ -231,7 +231,7 @@ function parse(source) {
 }
 
 function reconcile(root, source, prior, firstTag) {
-  let nextId = prior?.nextId ?? firstTag;
+  let nextId = Math.max(prior?.nextId??1,firstTag);
   let prefix = 0, oldEnd = prior?.source.length ?? 0, newEnd = source.length;
   if (prior) {
     while (prefix < oldEnd && prefix < newEnd && prior.source[prefix] === source[prefix]) prefix++;
@@ -402,7 +402,7 @@ export function projectMath(source, {previous, attribute = 65000, firstTag = 1} 
   for (let i = 0; i < forward.length; i++) if (sourceUnits.to8[i] === null) forward[i] = null;
   for (let i = 0; i < backward.length; i++) if (projectionUnits.to8[i] === null) backward[i] = null;
   const result = freeze({
-    supported: true, source, projection, slots, atoms, attribute, diagnostics: [],
+    supported: true, source, projection, slots, atoms, attribute, diagnostics: [],nextTag:nextId,
     mapping: {
       source16To8: sourceUnits.to8, source8To16: sourceUnits.to16,
       projection16To8: projectionUnits.to8, projection8To16: projectionUnits.to16,

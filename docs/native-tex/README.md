@@ -254,6 +254,9 @@ instrumented copy of a supported standalone document or of the selected project
 with its TeX inputs. Each recognized top-level
 inline or display formula has distinct owner IDs; unsupported formulas do not
 receive hit targets.
+New atoms receive new IDs without renumbering unchanged owners in later formulas
+or included files. Hits still require the current session and source/layout
+revisions; stable IDs do not make a stale frame editable.
 It enables a click only when
 exact page drawing records agree with the raw preview and the session, source and
 layout still match. Clicking an empty numerator, denominator, radicand or supported glyph edge transfers focus to the
