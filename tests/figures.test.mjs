@@ -120,3 +120,45 @@ test('subfigures keep their [pos] alignment, {width} and per-subfigure label',()
   assert.equal(reparsed.content[0].attrs.width,'0.48\\textwidth');
   assert.equal(reparsed.content[0].attrs.label,'sub:a');
 });
+test('imports and exports subfigures containing tikz and circuitikz',()=>{
+  const source='\\begin{figure}\n\\centering\n'
+    +'\\begin{subfigure}[t]{0.48\\textwidth}\n\\centering\n\\begin{tikzpicture}\n\\draw (0,0) -- (1,1);\n\\end{tikzpicture}\n\\caption{Tik}\n\\end{subfigure}\\quad\n'
+    +'\\begin{subfigure}{0.32\\textwidth}\n\\centering\n\\begin{circuitikz}\n\\draw (0,0) to[R] (2,0);\n\\end{circuitikz}\n\\caption{Circuit}\n\\end{subfigure}\n'
+    +'\\caption{Both}\n\\end{figure}';
+  const nodes=importBlocks(source);
+  assert.equal(nodes.length,1);
+  assert.equal(nodes[0].type,'subfigures');
+  const children=nodes[0].content;
+  assert.equal(children.length,2);
+  assert.ok(children[0].attrs.tikzSource.includes('\\begin{tikzpicture}'));
+  assert.equal(children[0].attrs.pos,'t');
+  assert.equal(children[0].attrs.width,'0.48\\textwidth');
+  assert.equal(children[0].attrs.caption,'Tik');
+  assert.ok(children[1].attrs.tikzSource.includes('\\begin{circuitikz}'));
+  assert.equal(children[1].attrs.pos,'c');
+  assert.equal(children[1].attrs.width,'0.32\\textwidth');
+  const tex=serialize(nodes[0]);
+  assert.ok(tex.includes('\\begin{subfigure}[t]{0.48\\textwidth}'));
+  assert.ok(tex.includes('\\begin{tikzpicture}'));
+  assert.ok(tex.includes('\\begin{circuitikz}'));
+  assert.ok(tex.includes('\\caption{Tik}'));
+  assert.ok(!tex.includes('\\includegraphics'));
+  const reparsed=importBlocks(tex)[0];
+  assert.equal(reparsed.type,'subfigures');
+  assert.ok(reparsed.content[0].attrs.tikzSource.includes('\\begin{tikzpicture}'));
+  assert.equal(reparsed.content[0].attrs.pos,'t');
+});
+test('imports a single tikz figure as a document image',()=>{
+  const source='\\begin{figure}[H]\n\\centering\n\\begin{tikzpicture}\n\\draw (0,0) -- (1,1);\n\\end{tikzpicture}\n\\caption{Single}\n\\end{figure}';
+  const nodes=importBlocks(source);
+  assert.equal(nodes.length,1);
+  assert.equal(nodes[0].type,'documentImage');
+  assert.equal(nodes[0].attrs.figure,true);
+  assert.equal(nodes[0].attrs.placement,'H');
+  assert.ok(nodes[0].attrs.tikzSource.includes('\\begin{tikzpicture}'));
+  assert.equal(nodes[0].attrs.caption,'Single');
+  const tex=serialize(nodes[0]);
+  assert.ok(tex.includes('\\begin{figure}[H]'));
+  assert.ok(tex.includes('\\begin{tikzpicture}'));
+  assert.ok(tex.includes('\\caption{Single}'));
+});

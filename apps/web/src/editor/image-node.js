@@ -5,6 +5,7 @@ import { t } from '../ui/i18n.mjs';
 import { askText } from './dialog.js';
 import { imageWidthPattern, relativeImageWidth } from '../../latex/images.mjs';
 import { rememberAsset, resolveImageAsset, onAssetsChanged } from './project-assets.js';
+import { renderTikz, getTikzPreamble, openTikzStudio } from '../ui/tikz-studio.js';
 
 const rasterTypes = new Set(['image/png','image/jpeg','image/webp','image/gif','image/avif']);
 let measureContext = null;
@@ -93,6 +94,7 @@ export function replaceLocalImage(editor, position) {
 }
 
 export function startImageCrop(editor, position) {
+  if (editor.state.doc.nodeAt(position)?.attrs?.tikzSource) return false;
   const dom = editor.view.nodeDOM(position);
   if (!dom?.dispatchEvent) return false;
   const event = new CustomEvent('lineae-image-crop', { bubbles:false, cancelable:true });
@@ -228,7 +230,7 @@ export const Subfigures = Node.create({
 export const DocumentImage = Node.create({
   name:'documentImage', group:'block', atom:true, draggable:true,
   addAttributes:()=>({
-    figureSource:{default:null},path:{default:''},width:{default:null},height:{default:null},scale:{default:null},pos:{default:'c'},
+    figureSource:{default:null},path:{default:''},tikzSource:{default:null},width:{default:null},height:{default:null},scale:{default:null},pos:{default:'c'},
     angle:{default:null},origin:{default:null},keepAspect:{default:true},
     flipH:{default:false},flipV:{default:false},
     figure:{default:false},placement:{default:null},fixed:{default:false},
@@ -245,8 +247,10 @@ export const DocumentImage = Node.create({
     try {return {...JSON.parse(element.dataset.imageAttrs??'{}'),path:element.dataset.documentImage};}
     catch {return false;}
   }}],
-  renderText:({node})=>'\\includegraphics{'+node.attrs.path+'}',
-  renderHTML:({node})=>['figure',{'data-document-image':node.attrs.path,'data-image-attrs':JSON.stringify(node.attrs)},node.attrs.path],
+  renderText:({node})=>node.attrs.tikzSource??('\\includegraphics{'+node.attrs.path+'}'),
+  renderHTML:({node})=>node.attrs.tikzSource
+    ? ['figure',{'data-document-image':'','data-image-attrs':JSON.stringify(node.attrs)},node.attrs.tikzSource]
+    : ['figure',{'data-document-image':node.attrs.path,'data-image-attrs':JSON.stringify(node.attrs)},node.attrs.path],
   addNodeView() {
     return ({node,editor,getPos}) => {
       const dom=document.createElement('figure');
@@ -258,7 +262,24 @@ export const DocumentImage = Node.create({
       let previewFile=null,previewURL=null,resourceState='missing',destroyed=false;
       const imageFrame=document.createElement('div');
       imageFrame.className='document-image-frame';
-      imageFrame.append(image);
+      const tikzPreview=document.createElement('div');
+      tikzPreview.className='document-image-tikz';
+      imageFrame.append(image,tikzPreview);
+      let tikzRendered=null,tikzToken=0;
+      tikzPreview.addEventListener('dblclick',event=>{
+        if(!node.attrs.tikzSource)return;
+        event.preventDefault();event.stopPropagation();
+        openTikzStudio({
+          initialBody:node.attrs.tikzSource,
+          onInsert:({body})=>{if(body)update({tikzSource:body},node);},
+        });
+      });
+      tikzPreview.addEventListener('click',event=>{
+        if(!node.attrs.tikzSource)return;
+        event.preventDefault();event.stopPropagation();
+        const position=getPos();
+        if(typeof position==='number')editor.commands.setNodeSelection(position);
+      });
       const syncHandleVisibility=()=>{dom.dataset.smallImage=String(image.naturalWidth>0&&image.naturalWidth<24);};
       image.addEventListener('load',()=>{
         syncHandleVisibility();
@@ -522,6 +543,32 @@ export const DocumentImage = Node.create({
           if(!match)return '';
           return match[2].startsWith('\\') ? `${Number(match[1]||1)*100}%` : value;
         };
+        const tikz=node.attrs.tikzSource;
+        if(tikz){
+          dom.classList.add('is-tikz');
+          dom.dataset.resourceState='ready';
+          image.hidden=true;button.hidden=true;resourceStatus.hidden=true;
+          if(tikzRendered!==tikz){
+            tikzRendered=tikz;
+            const token=++tikzToken;
+            tikzPreview.classList.remove('is-ready');
+            tikzPreview.textContent=t('TikZ 渲染中…','TikZ rendering…');
+            const preamble=/\\begin\{circuitikz\}/.test(tikz)?`${getTikzPreamble()}\n\\usepackage{circuitikz}`:getTikzPreamble();
+            renderTikz(tikz,preamble).then(result=>{
+              if(token!==tikzToken||destroyed)return;
+              if(!result.svg){tikzPreview.textContent=result.diagnostics?.map(item=>item.message).join('\n')||'TikZ';return;}
+              const holder=document.createElement('div');holder.innerHTML=result.svg;
+              tikzPreview.replaceChildren(...holder.childNodes);
+              tikzPreview.classList.add('is-ready');
+              window.dispatchEvent(new Event('lineae-image-layout'));
+            }).catch(error=>{if(token===tikzToken)tikzPreview.textContent=String(error?.message||error);});
+          }
+        }else{
+          dom.classList.remove('is-tikz');
+          tikzRendered=null;
+          tikzPreview.replaceChildren();
+          tikzPreview.classList.remove('is-ready');
+        }
         image.alt=node.attrs.path;
         syncHandleVisibility();
         captionText.textContent=node.attrs.caption??'';
@@ -551,11 +598,13 @@ export const DocumentImage = Node.create({
         if(node.attrs.align)dom.dataset.align=node.attrs.align;
         else delete dom.dataset.align;
         localizedLabel(button,'定位图片 · '+node.attrs.path,'Locate image · '+node.attrs.path);
-        const imageWidth=subIndex>=0
-          ? '100%'
-          : node.attrs.wrap
-            ? relativeImageWidth(node.attrs.width,node.attrs.wrapWidth||'0.4\\textwidth')
-            : cssDimension(node.attrs.width);
+        const imageWidth=tikz
+          ? (subIndex>=0?'100%':cssDimension(node.attrs.width)||'100%')
+          : subIndex>=0
+            ? '100%'
+            : node.attrs.wrap
+              ? relativeImageWidth(node.attrs.width,node.attrs.wrapWidth||'0.4\\textwidth')
+              : cssDimension(node.attrs.width);
         // Clear any previous crop geometry before measuring the full image.
         imageFrame.style.height='';
         imageFrame.style.overflow='';
@@ -578,7 +627,7 @@ export const DocumentImage = Node.create({
         const cropLeft=cropPx(node.attrs.cropLeft),cropRight=cropPx(node.attrs.cropRight);
         const cropTop=cropPx(node.attrs.cropTop),cropBottom=cropPx(node.attrs.cropBottom);
         const fullWidth=imageFrame.clientWidth,fullHeight=imageFrame.clientHeight;
-        if(!cropping&&crops.some(Boolean)&&fullWidth>0&&fullHeight>0){
+        if(!tikz&&!cropping&&crops.some(Boolean)&&fullWidth>0&&fullHeight>0){
           const visibleWidth=Math.max(1,fullWidth-cropLeft-cropRight);
           const visibleHeight=Math.max(1,fullHeight-cropTop-cropBottom);
           imageFrame.style.width=visibleWidth+'px';
@@ -608,7 +657,7 @@ export const DocumentImage = Node.create({
         if(typeof position==='number')editor.commands.setNodeSelection(position);
       });
       imageFrame.addEventListener('mousedown',event=>{
-        if(event.button!==0||cropping)return;
+        if(event.button!==0||cropping||node.attrs.tikzSource)return;
         if(event.target.closest?.('.image-resize-handle, .image-crop-layer, .document-image-controls'))return;
         const startPos=getPos();
         if(typeof startPos!=='number')return;

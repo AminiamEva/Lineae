@@ -108,6 +108,10 @@ main { padding:125px 24px 60px; overflow:auto; }
 .image-resize-handle[data-resize-dir="sw"] { left:-5px; bottom:-5px; cursor:nesw-resize; }
 .image-resize-handle[data-resize-dir="w"] { left:-5px; top:50%; margin-top:-4px; cursor:ew-resize; }
 .document-image-frame[style*="width"] > img { width:100%; }
+.document-image-tikz { display:block; width:100%; }
+.document-image-tikz svg { display:block; width:100%; height:auto; margin:0 auto; }
+.document-image-tikz:not(.is-ready) { min-height:1.4em; color:light-dark(#8b95a7,#7d879c); font-size:12px; text-align:center; white-space:pre-wrap; }
+.document-image.is-tikz .document-image-frame { height:auto; }
 .document-image[data-caption-position="above"] figcaption { order:-1; }
 .document-image { --caption-above-skip:10pt; --caption-below-skip:0pt; --caption-label-sep:.5em; }
 .document-image[data-centered="true"] { text-align:center; }

@@ -6,7 +6,7 @@ import { NodeSelection, Plugin, TextSelection } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import { listMarkerCSS } from '../../latex/list-numbering.mjs';
 import { t } from '../ui/i18n.mjs';
-import { generalTikzPreviewWidget, openTikzStudio, tikzStagingFromPreamble } from '../ui/tikz-studio.js';
+import { generalTikzPreviewWidget, openTikzStudio, tikzStagingFromPreamble, setTikzPreamble } from '../ui/tikz-studio.js';
 import { TikzEditor } from '../tikz/controllers/tikzEditor.js';
 
 function tableCaptionWidget(caption,number) {
@@ -521,6 +521,7 @@ function codeTokenRegex(family) {
   }
 }
 function formattingMarks(doc, preamble = '') {
+  setTikzPreamble(preamble);
   const decorations = [];
   doc.descendants((node, position, parent, index) => {
     if (node.type.name==='math' && parent) {

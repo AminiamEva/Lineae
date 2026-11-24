@@ -3,6 +3,17 @@ import {group,trivia,clean,environmentEnd} from './tblr.mjs';
 
 export const imageWidthPattern = /^(?:(?:\d+(?:\.\d+)?|\.\d+)?\\(?:linewidth|textwidth|columnwidth)|(?:\d+(?:\.\d+)?|\.\d+)(?:cm|mm|pt|in))$/;
 
+// A subfigure/figure body may contain a TikZ picture instead of \includegraphics.
+// Keep the drawing (including any resizebox wrapper) and drop the surrounding
+// alignment and caption commands, which the editor stores separately.
+function tikzSourceFrom(body) {
+  return String(body)
+    .replace(/\\centering\b/g,'')
+    .replace(/\\caption\*?\{[^{}]*\}/g,'')
+    .replace(/\\label\{[^{}]*\}/g,'')
+    .trim() || null;
+}
+
 // A single-image float is editable using the existing image node. Every other
 // construct stays Raw: never flatten subfigures or silently drop unknown code.
 function figureParts(source) {
@@ -226,9 +237,10 @@ export function parseImageBlock(source) {
       matches.push(sub);
       const body = sub[3];
       const graphic = parseImageMarkup(/\\includegraphics(?:\[[^\]]*\])?\{[^{}\\\r\n%]+\}/.exec(body)?.[0] ?? '');
-      if (!graphic) continue;
+      const tikz = !graphic && /\\begin\{(?:tikzpicture|circuitikz)\}/.test(body) ? tikzSourceFrom(body) : null;
+      if (!graphic && !tikz) continue;
       const cap = /\\caption(\*)?\{([^{}\r\n]*)\}/.exec(body);
-      subs.push({ type:'documentImage', attrs:{ ...graphic.attrs,
+      subs.push({ type:'documentImage', attrs:{ ...(graphic?.attrs ?? {tikzSource:tikz}),
         width:imageWidthPattern.test((sub[2] ?? '').trim()) ? sub[2].trim() : '0.48\\textwidth',
         pos:/^[tcb]$/.test((sub[1] ?? '').trim()) ? sub[1].trim() : 'c',
         caption:cap?.[2] ?? null, captionEnabled:Boolean(cap), captionNumbered:cap ? !cap[1] : true,
@@ -253,7 +265,21 @@ export function parseImageBlock(source) {
   if (figure) {
     const inner = figure[2];
     const imageMatch = /\\includegraphics(?:\[[^\]]*\])?\{[^{}\\\r\n%]+\}/.exec(inner);
-    if (!imageMatch) return null;
+    if (!imageMatch) {
+      if (!/\\begin\{(?:tikzpicture|circuitikz)\}/.test(inner)) return null;
+      const source=tikzSourceFrom(inner);
+      if (!source) return null;
+      const alignment = /\\centering\b/.test(inner) ? 'center' : /\\raggedleft\b/.test(inner) ? 'right' : /\\raggedright\b/.test(inner) ? 'left' : null;
+      const captionMatch = /\\caption(\*)?\{([^{}\r\n]*)\}/.exec(inner);
+      const captionIndex = inner.search(/\\caption\*?\{/);
+      const tikzIndex = inner.search(/\\begin\{(?:tikzpicture|circuitikz)\}/);
+      return { type:'documentImage', attrs:{
+        tikzSource:source, figure:true, placement:figure[1] || null, fixed:figure[1]?.includes('H') || false,
+        centered:alignment === 'center', align:alignment,
+        caption:captionMatch?.[2] ?? null, captionEnabled:Boolean(captionMatch), captionNumbered:captionMatch? !captionMatch[1]:true,
+        captionPosition:captionIndex >= 0 && captionIndex < tikzIndex ? 'above' : 'below',
+        label:/\\label\{([^{}\r\n]+)\}/.exec(inner)?.[1] ?? null } };
+    }
     const image = parseImageMarkup(imageMatch[0]);
     if (!image) return null;
     const alignment = /\\centering\b/.test(inner) ? 'center'
@@ -349,7 +375,8 @@ export function serializeSubfigures(attrs, children) {
     const posOption = pos === 'c' ? '' : '[' + pos + ']';
     const cap = captionEnabled(child.attrs) ? '\\caption{' + (child.attrs.caption ?? '') + '}\n' : '';
     const label = child.attrs.label ? '\\label{' + child.attrs.label + '}\n' : '';
-    return '\\begin{subfigure}' + posOption + '{' + width + '}\n\\centering\n' + serializeGraphic({...child.attrs, width:'\\linewidth', height:null, scale:null})
+    const drawing = child.attrs.tikzSource ?? serializeGraphic({...child.attrs, width:'\\linewidth', height:null, scale:null});
+    return '\\begin{subfigure}' + posOption + '{' + width + '}\n\\centering\n' + drawing
       + '\n' + cap + label + '\\end{subfigure}' + (index < children.length - 1 ? spacing + '\n' : '\n');
   }).join('');
   const body = subs + captionLine(attrs);
@@ -361,6 +388,14 @@ export function serializeSubfigures(attrs, children) {
 
 export function serializeImage(attrs) {
   if(attrs.figureSource)return serializeSourceFigure(attrs)??attrs.figureSource;
+  if(attrs.tikzSource){
+    const caption=captionLine(attrs);
+    const label=attrs.label?'\\label{'+attrs.label+'}\n':'';
+    if(!attrs.figure)return attrs.tikzSource+'\n\n';
+    const body=attrs.captionPosition==='above'?caption+attrs.tikzSource:attrs.tikzSource+'\n'+caption;
+    const placement=attrs.fixed?'H':attrs.placement;
+    return '\\begin{figure}'+(placement?'['+placement+']':'')+'\n\\centering\n'+body+(body.endsWith('\n')?'':'\n')+label+'\\end{figure}\n\n';
+  }
   const graphic = serializeGraphic(attrs);
   const caption = captionLine(attrs);
   const label = attrs.label ? '\\label{' + attrs.label + '}\n' : '';
