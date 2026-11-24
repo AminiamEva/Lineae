@@ -83,9 +83,13 @@ const server=createServer(async(req,res)=>{
       const model=field._mathfield.model;
       const fraction=model.atoms.find(atom=>atom.type==='genfrac');
       field.position=model.offsetOf(fraction.branch('below')[0]);
+      window.nativeProbe.denominatorBefore={value:field.value,position:field.position,
+        atoms:fraction.branch('below').map(atom=>({type:atom.type,value:atom.value}))};
     });
     await page.keyboard.type('b');
-    await page.waitForFunction(expected=>nativeProbe.source?.replace(/\r\n/g,'\n')===expected,expected.replace(/\r\n/g,'\n'));
+    await page.waitForFunction(()=>nativeProbe.revision>1);
+    assert.equal(await page.evaluate(()=>nativeProbe.source.replace(/\r\n/g,'\n')),expected.replace(/\r\n/g,'\n'),
+      'Filling the denominator changes exactly one source letter');
     await page.keyboard.press(mod+'+z');
     await page.waitForFunction(original=>nativeProbe.source?.replace(/\r\n/g,'\n')===original,input.toString().replace(/\r\n/g,'\n'));
     await page.keyboard.press(mod+'+y');
@@ -96,6 +100,9 @@ const server=createServer(async(req,res)=>{
     if(page)console.error('Native preview UI diagnostic:',await page.evaluate(()=>({
       state:document.querySelector('#native-tex-preview')?.dataset.state,
       status:document.querySelector('#native-tex-preview [role=status]')?.textContent,
+      source:window.nativeProbe?.source?.slice(0,1600),
+      value:document.querySelector('math-field')?.value,
+      denominatorBefore:window.nativeProbe?.denominatorBefore,
       calls:window.nativeProbe?.calls.slice(-6).map(call=>({command:call.command,key:call.args?.key})),
     })));
     throw error;
