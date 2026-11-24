@@ -70,7 +70,18 @@ EOF
 )
 assets=("$out"/*)
 # Draft until every asset has uploaded. Refuse to overwrite an existing preview.
-gh release create "$tag" "${assets[@]}" --target "$GITHUB_SHA" --draft \
+ref=$(git ls-remote origin "refs/tags/$tag" "refs/tags/$tag^{}")
+if [[ -n "$ref" ]]; then
+  target=$(awk '/\^\{\}$/ { peeled=$1 } NR==1 { direct=$1 } END {print peeled ? peeled : direct}' <<<"$ref")
+  [[ "$target" == "$GITHUB_SHA" ]] || { echo 'Preview tag points to a different commit' >&2; exit 1; }
+  tag_flags=(--verify-tag)
+else
+  tag_flags=(--target "$GITHUB_SHA")
+fi
+if ! gh release create "$tag" "${assets[@]}" "${tag_flags[@]}" --draft \
   --prerelease --latest=false --title "Lineae desktop preview $short" \
-  --notes-file "$out/RELEASE-NOTES.md"
+  --notes-file "$out/RELEASE-NOTES.md"; then
+  echo "If GitHub denied automatic tag creation, verify this run's successful prerequisites, create $tag at $GITHUB_SHA, and rerun only the failed publish job." >&2
+  exit 1
+fi
 gh release edit "$tag" --draft=false
