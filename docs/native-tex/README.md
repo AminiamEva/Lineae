@@ -119,7 +119,8 @@ formula hit-testing metadata. No PDF scripting or external PDF viewer is enabled
 For projects, open the existing project explorer and select the actual main `.tex`.
 Native snapshots retain relative paths and unsaved text drafts, local `.sty`/`.cls`/
 Lua resources and binary graphics. No flattening or writeback to the original project
-is performed. Snapshot limits are 4,096 files, 2 MiB per editable text and 128 MiB total.
+is performed. Snapshot limits are 512 files, 2 MiB per editable text, 16 MiB per asset
+and 64 MiB total.
 Hidden metadata is excluded. Explicit generated inputs such as `build/diagram.pdf`
 or an external reference `.aux` remain available. Live typing reuses the model's asset
 bytes; use the project's explicit Refresh action to load external asset changes.

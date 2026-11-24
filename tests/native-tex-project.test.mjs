@@ -109,6 +109,8 @@ test('bounds file count, individual UTF-8 source size and total bytes', async ()
   const {project} = model([['main.tex', '文'], ['image.png', null, [1, 2, 3]]]);
   await assert.rejects(nativeProjectSnapshot(project, {maxFiles:1}), /too many files/);
   await assert.rejects(nativeProjectSnapshot(project, {maxSourceBytes:2}), /source exceeds/);
+  const larger=model([['main.tex','a'],['image.png',null,[1,2,3]]]).project;
+  await assert.rejects(nativeProjectSnapshot(larger, {maxFileBytes:2}), /file exceeds/);
   await assert.rejects(nativeProjectSnapshot(project, {maxTotalBytes:5}), /total byte/);
   await assert.rejects(nativeProjectSnapshot(project, {maxFiles:5000}), /Invalid snapshot limit/);
   assert.equal((await nativeProjectSnapshot(project, {maxFiles:2, maxSourceBytes:3, maxTotalBytes:6})).files.length, 2);

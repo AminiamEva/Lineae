@@ -19,12 +19,18 @@ export function installNativePages({host,getFont,onPaint,onError,onMathHit}) {
   }
   function attachOwners(observed,stamp) {
     if(stamp.sourceRevision!==revision||observed.length!==pages.size)return false;
-    const fields=new Map();
+    const fields=new Map(),seen=new Set();
     for(const page of observed) {
       const entry=pages.get(page.page);
       if(!entry||page.exact!==true||drawing(entry.dl)!==drawing(page.dl))return false;
-      fields.set(page.page,page.dl.math_owners?.fields?.filter(field=>
-        field.empty&&['num','den'].includes(field.role))??[]);
+      const targets=page.dl.math_owners?.fields?.filter(field=>
+        field.empty&&['num','den'].includes(field.role))??[];
+      for(const field of targets){
+        const key=`${field.owner}/${field.role}`;
+        if(seen.has(key))return false;
+        seen.add(key);
+      }
+      fields.set(page.page,targets);
     }
     if(![...fields.values()].some(items=>items.length))return false;
     ownership={stamp:{...stamp,layoutVersion},fields};

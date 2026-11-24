@@ -1,7 +1,8 @@
 import {projectPath} from '../../project/paths.mjs';
 
 const encoder = new TextEncoder();
-const limits = {maxFiles:4096, maxSourceBytes:2 * 1024 * 1024, maxTotalBytes:128 * 1024 * 1024};
+const limits = {maxFiles:512, maxSourceBytes:2 * 1024 * 1024, maxFileBytes:16 * 1024 * 1024,
+  maxTotalBytes:64 * 1024 * 1024};
 const outputDirectories = new Set(['build', 'dist', 'out', 'target', 'node_modules', '__pycache__']);
 const generatedFile = /\.(?:aux|log|toc|lof|lot|out|fls|fdb_latexmk|synctex(?:\.gz)?|xdv|dvi|nav|snm|vrb|bcf|run\.xml|blg)$/i;
 const cachedFiles=new WeakMap();
@@ -75,6 +76,7 @@ export async function nativeProjectSnapshot(project, options = {}) {
         (typeof draft!=='string'&&options.useModelAssets&&cached.asset===knownBytes))){
       total+=cached.length;
       if(total>bounds.maxTotalBytes)throw new RangeError('Project snapshot exceeds total byte limit');
+      if(cached.length>bounds.maxFileBytes)throw new RangeError('Project file exceeds snapshot limit: '+path);
       if(typeof draft==='string'&&cached.length>bounds.maxSourceBytes)throw new RangeError('Project source exceeds snapshot limit: '+path);
       manifest.push([path,cached.length,cached.digest]);files.push({path,bytes:cached.bytes});continue;
     }
@@ -89,6 +91,7 @@ export async function nativeProjectSnapshot(project, options = {}) {
       catch { throw new Error('Could not read project snapshot file: ' + path); }
       if (!(bytes instanceof Uint8Array)) throw new TypeError('Invalid project snapshot bytes: ' + path);
     }
+    if(bytes.byteLength>bounds.maxFileBytes)throw new RangeError('Project file exceeds snapshot limit: '+path);
     total += bytes.byteLength;
     if (total > bounds.maxTotalBytes) throw new RangeError('Project snapshot exceeds total byte limit');
     // Own the bytes before yielding to hashing; adapters may reuse their buffer.

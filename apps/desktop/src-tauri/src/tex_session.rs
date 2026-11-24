@@ -151,12 +151,14 @@ impl Snapshot {
             if !folded.insert(file.path.to_lowercase()) {
                 return Err(error("project_path", "Duplicate or case-colliding project paths."));
             }
+            // The authoritative main buffer is counted once, even if the
+            // frontend's complete snapshot also contains a main-file entry.
+            if file.path == main_file { continue; }
             total = total.saturating_add(file.bytes.len());
             if file.bytes.len() > FILE_LIMIT || total > PROJECT_LIMIT {
                 return Err(error("project_limit", "Project snapshot exceeds the 16 MiB file / 64 MiB total limit."));
             }
             // The selected main buffer always wins, including over binary bytes.
-            if file.path == main_file { continue; }
             if file.path.eq_ignore_ascii_case(&main_file) {
                 return Err(error("project_path", "A project file case-collides with the main file."));
             }
