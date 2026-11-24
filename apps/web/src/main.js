@@ -1537,8 +1537,7 @@ function load(text, markSaved = true) {
   if (/\\documentclass/.test(parsed.start)) homeRibbon?.setDocumentClass?.(documentClass);
   // Preserve imported source exactly. Unsupported blocks remain directly accessible in source mode.
   documentParts=parsed;
-  const content=parsed.blocks.flatMap((block,index)=>importBlocks(index===0 && readMeta('title')
-    ? block.replace(/^\s*\\maketitle\b[ \t]*(?:\r?\n|$)/gm,'') : block));
+  const content=parsed.blocks.flatMap(block=>importBlocks(block));
   for (const block of content) identifyImportedBoxes(block);
   editor.chain().setMeta('addToHistory', false).setContent({type:'doc',attrs:{layoutPreamble:parsed.start,pageFurniture:readPageFurniture(parsed.start)},content:content.length?content:[{type:'paragraph'}]}).command(({tr})=>{tr.setDocAttribute('layoutPreamble',parsed.start);tr.setDocAttribute('pageFurniture',readPageFurniture(parsed.start));return true;}).run();
   refreshReferences(paper,editor);syncTableAttributes();
