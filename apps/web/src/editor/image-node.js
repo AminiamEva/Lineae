@@ -578,7 +578,9 @@ export const DocumentImage = Node.create({
             tikzPreview.classList.remove('is-ready');
             tikzPreview.textContent=t('TikZ 渲染中…','TikZ rendering…');
             const circuitPreview=node.attrs.tikzEditor==='circuit'||/\\begin\{circuitikz\}/.test(tikz)||tikzLooksCircuit(tikz);
-            const preamble=circuitPreview?`${getTikzPreamble()}\n\\usepackage{circuitikz}`:getTikzPreamble();
+            const staging=tikzStagingFromPreamble(getTikzPreamble());
+            const hasCircuitikzPackage=/\\usepackage(?:\[[^\]]*\])?\{[^}]*circuitikz[^}]*\}/.test(staging);
+            const preamble=circuitPreview&&!hasCircuitikzPackage?`${staging}\n\\usepackage{circuitikz}`:staging;
             let drawing=tikz.trim();
             if(/^\\resizebox\{[^{}]*\}\{!\}\{%?\s*/.test(drawing))drawing=drawing.replace(/^\\resizebox\{[^{}]*\}\{!\}\{%?\s*/,'').replace(/%?\s*\}$/,'');
             drawing=drawing.trim()||tikz;
