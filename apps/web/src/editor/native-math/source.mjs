@@ -164,6 +164,19 @@ function parse(source) {
       } else if(symbols.has(command)){
         at+=command.length;protect(from16,at,'command');
         node={kind:'token',from16,fields:[],nucleusTo16:at};
+      } else if(command==='\\text'){
+        at+=command.length;protect(from16,at,'command');trivia();
+        if(source[at]!=='{')fail('Expected a braced text argument');
+        protect(at,++at,'delimiter');
+        const start=at,children=[];
+        while(source[at]!=='}'){
+          const token=graphemes.get(at);
+          if(!token||/[\\{}%$#&_^~]/.test(token))fail('Unsupported math text token');
+          const from=at;at+=token.length;
+          if(token.trim())children.push({kind:'token',from16:from,to16:at,nucleusTo16:at,fields:[]});
+        }
+        const end=at;protect(at,++at,'delimiter');
+        node={kind:'wrapper',command,from16,fields:[{role:'body',from16:start,to16:end,grouped:true,children}]};
       } else if(mathWrappers.has(command)){
         at+=command.length;protect(from16,at,'command');
         node={kind:'wrapper',command,from16,fields:[field('body',depth)]};

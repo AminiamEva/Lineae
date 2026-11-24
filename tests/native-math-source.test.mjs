@@ -150,6 +150,17 @@ test('known font and box wrappers keep their TeX spelling while exposing nested 
   assert.equal(projectMath(String.raw`\customfont{A}`).supported,false);
 });
 
+test('math text preserves CJK graphemes and source spaces without interpreting TeX commands',()=>{
+  const source=String.raw`\text{中文 段落}`;
+  const math=projectMath(source);
+  assert.ok(math.supported);
+  assert.deepEqual(math.atoms.filter(atom=>atom.kind==='token').map(atom=>atom.nucleus),['中','文','段','落']);
+  const text=math.slots.find(slot=>slot.role==='body'&&slot.raw==='中文 段落');
+  const edit=applySlotEdit(math,{slotId:text.id,from16:4,to16:5,insert:'文'});
+  assert.equal(edit.source,String.raw`\text{中文 段文}`);
+  assert.equal(projectMath(String.raw`\text{unsafe \command}`).supported,false);
+});
+
 test('an indexed radical preserves an empty degree and maps its TeX owner to a minimal patch',()=>{
   const source='\\begin{document}\n\\[\\sqrt[]{x}\\]\n\\end{document}\n';
   const projection=projectDocumentFormulas(source),[formula]=projection.formulas;

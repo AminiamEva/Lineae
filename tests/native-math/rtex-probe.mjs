@@ -164,6 +164,13 @@ async function probe(source,label,out,rtex,texbin,structured=false) {
       assert.ok(digit&&initial.dl.math_owners.glyphs.some(glyph=>glyph.owner===digit.tag&&glyph.char===55),
         'A digit immediately after an owner assignment must remain a tagged TeX glyph');
     }
+    if(label==='structured-math-text'){
+      for(const text of ['中','文']){
+        const glyph=documentProjection.math.atoms.find(atom=>atom.nucleus===text);
+        assert.ok(glyph&&initial.dl.math_owners.glyphs.some(item=>item.owner===glyph.tag&&item.char===text.codePointAt(0)),
+          `Real LuaLaTeX supplies a matching owner for ${text}`);
+      }
+    }
     const empty=denominator(initial.dl,true,owner);
     const frame={sessionId:label,sourceRevision:layout.versions.source_revision,layoutVersion:layout.versions.layout_version};
     const formula=projectMath('\\frac{a}{}');
@@ -198,8 +205,23 @@ async function probe(source,label,out,rtex,texbin,structured=false) {
     const reply=await waitFor(message=>message.reply==='edit' || message.reply==='error','edit reply',since);
     assert.equal(reply.reply,'edit',reply.message);
     const result=reply.result;
-    assert.equal(result.routed,'fast',`Edit was not warm: ${JSON.stringify(result.reasons)}`);
     assert.ok(result.source_revision>layout.versions.source_revision);
+    if(label==='structured-math-text'&&result.routed!=='fast'){
+      const resultLayout=await waitFor(message=>message.event==='LayoutUpdate'&&
+        message.versions?.source_revision===result.source_revision&&message.convergence?.state==='Converged',
+      'complete CJK layout for the edited source',since);
+      assert.equal(resultLayout.compile?.state,'Ok');
+      writeFileSync(join(dir,'background-update.json'),JSON.stringify(resultLayout,null,2)+'\n');
+      const drawn=records.slice(since).filter(message=>message.event==='LayoutUpdate'&&
+        message.versions.source_revision===result.source_revision).flatMap(message=>message.pages_changed)
+        .find(page=>page.dl.math_owners?.fields.some(field=>field.owner===owner&&field.role==='den'&&!field.empty));
+      assert.ok(drawn,'Complete CJK layout must include the edit');
+      writeFileSync(join(dir,'summary.json'),JSON.stringify({label,owner,empty,
+        nonempty:denominator(drawn.dl,false,owner),result,versions:resultLayout.versions,
+        scope:'CJK source ownership and confirmed complete layout, not a warm-latency measurement'},null,2)+'\n');
+      return {label,route:result.routed};
+    }
+    assert.equal(result.routed,'fast',`Edit was not warm: ${JSON.stringify(result.reasons)}`);
     const update=await waitFor(message=>matchesEdit(message,result),'revision-matched ParagraphUpdate',since);
     assert.equal(update.status,'ok',JSON.stringify(update.diagnostics));
     if(label==='lf'){
@@ -300,6 +322,10 @@ async function main() {
       '\\begin{equation}\r\n\\frac{7}{}\r\n\\end{equation}'),'structured-numbered-equation',out,rtex,texbin,'multi'));
     summaries.push(await probe(unicode.replace('\\frac{a}{}','\\left(\\frac{7}{}\\right)'),
       'structured-fenced-fraction',out,rtex,texbin,'multi'));
+    summaries.push(await probe(unicode.replace('\\usepackage{amsmath}',
+      '\\usepackage[fontset=fandol]{ctex}\r\n\\usepackage{amsmath}')
+      .replace('\\frac{a}{}','\\frac{7}{}+\\text{中文}'),
+      'structured-math-text',out,rtex,texbin,'multi'));
     summaries.push(await probe(unicode.replace('\\frac{a}{}','\\begin{pmatrix}a & \\\\ & d\\end{pmatrix}'),
       'matrix-cell-ownership',out,rtex,texbin,'matrix'));
     summaries.push(await probe(unicode.replace('\\frac{a}{}','\\begin{aligned}a & \\\\ & d\\end{aligned}'),

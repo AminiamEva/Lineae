@@ -223,6 +223,18 @@ recorded 1,000/1,000 fast edits on each runner. Dispatch-to-result P50/P95/P99
 were 2.19/4.90/15.82 ms on macOS arm64 and 2.85/4.09/4.48 ms on Windows x64.
 These are CI protocol timings for one short authored document, not a claim of
 end-to-end typing latency.
+
+[Run 45443842694](https://github.com/AminiamEva/Lineae/actions/runs/45443842694)
+also recorded 1,000/1,000 fast edits per platform and document size:
+
+| Pages | macOS arm64 P50/P95/P99 (ms) | Windows x64 P50/P95/P99 (ms) |
+| --- | --- | --- |
+| 10 | 2.17/4.77/5.88 | 1.84/2.75/2.98 |
+| 100 | 2.96/6.01/11.15 | 1.71/2.62/4.32 |
+| 300 | 2.16/5.24/6.29 | 1.61/2.54/3.08 |
+
+These figures apply to a fixed formula edit in synthetic documents, not to
+initial pagination, arbitrary projects, or end-to-end input latency.
 Source-level newline/Unicode offset coverage does not certify glyph rendering,
 interactive history, export identity or input-method behavior.
 
