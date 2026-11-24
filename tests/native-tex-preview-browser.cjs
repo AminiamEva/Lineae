@@ -102,8 +102,8 @@ const server=createServer(async(req,res)=>{
     const scale=Number(await page.locator('#native-tex-zoom').inputValue())/100*(96/72)/65781.76;
     await panel.locator('[data-native-page="1"] canvas').click({position:{x:6500000*scale,y:7000000*scale}});
     await page.waitForFunction(()=>{
-      const field=document.activeElement,model=field?._mathfield?.model;
-      return field?.tagName==='MATH-FIELD'&&model?.at(field.position)?.parentBranch==='below';
+      const field=document.activeElement,math=field?._mathfield;
+      return field?.tagName==='MATH-FIELD'&&!math?.focusBlurInProgress&&math?.model.at(field.position)?.parentBranch==='below';
     });
     await page.keyboard.type('b');
     await page.waitForFunction(()=>nativeProbe.revision>1);
@@ -122,6 +122,12 @@ const server=createServer(async(req,res)=>{
     await page.locator('#native-tex-target').click();
     await panel.getByText('Click the empty numerator or denominator',{exact:false}).waitFor();
     await panel.locator('[data-native-page="1"] canvas').click({position:{x:6500000*scale,y:7000000*scale}});
+    await page.waitForFunction(()=>{
+      const field=document.activeElement,math=field?._mathfield;
+      const atom=math?.model.at(field.position);
+      return field?.tagName==='MATH-FIELD'&&!math.focusBlurInProgress&&atom?.parentBranch==='below'&&
+        atom.parent?.type==='genfrac'&&atom.parent.parent?.type==='genfrac';
+    });
     await page.keyboard.type('b');
     await page.waitForFunction(()=>document.querySelector('math-field')?.value.includes('\\frac{\\frac{7}{b}}{c}'));
     await page.locator('#native-tex-close').click();
