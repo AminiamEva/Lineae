@@ -1365,10 +1365,11 @@ body.format-painter-active .ProseMirror * { cursor:copy; }
 
 .engine-panel { position:relative; }
 .engine-panel > summary { cursor:pointer; white-space:nowrap; }
-.engine-panel > div { position:absolute; bottom:100%; right:0; z-index:20; background:Canvas; color:CanvasText; border:1px solid GrayText; padding:.75rem; min-width:15rem; max-width:85vw; white-space:normal; }
+.engine-panel > div { position:absolute; bottom:100%; left:0; z-index:20; background:Canvas; color:CanvasText; border:1px solid GrayText; padding:.75rem; width:15rem; max-width:calc(100vw - 1rem); max-height:calc(100dvh - 100% - .75rem); overflow:auto; overflow-wrap:anywhere; white-space:normal; }
 .engine-panel label,.engine-panel output { display:block; margin:.25rem 0; }
 .engine-panel ul { padding-inline-start:1.25rem; }
 
-@media (max-width: 700px) {
-  .engine-panel > div { right:auto; left:0; }
+@media (max-width: 22rem) {
+  .engine-panel { position:static; }
+  .engine-panel > div { left:.5rem; }
 }
