@@ -1,4 +1,5 @@
-import {paragraphSpelling} from './source-spelling.mjs';
+import {paragraphSpelling,mathSpelling} from './source-spelling.mjs';
+import {sourceStructure} from '../../latex/source-structure.mjs';
 import {serialize} from './latex-codec.js';
 
 const empty = node => node.type === 'paragraph' && !node.content?.length && !serialize(node).trim();
@@ -39,6 +40,15 @@ export function splitEditableBoundaries(blocks,doc){
       const canonical=serialize(node).trim();
       if(!canonical)return [block];
       let start=block.raw.indexOf(canonical,cursor),spelling=null,length=canonical.length;
+      if(start<0){
+        const span=[...sourceStructure(block.raw)].find(span=>span.kind==='displayMath'&&span.topLevel&&
+          span.index>=cursor&&!block.raw.slice(cursor,span.index).trim());
+        if(span){
+          const raw=block.raw.slice(span.index,span.end);
+          spelling=mathSpelling(raw,[node]);
+          if(spelling){start=span.index;length=raw.length;}
+        }
+      }
       if(start<0){
         const tail=block.raw.slice(cursor),body=tail.trim();
         spelling=paragraphSpelling(body,canonical,[node]);

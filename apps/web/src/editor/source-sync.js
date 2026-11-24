@@ -1,4 +1,4 @@
-import {paragraphSpelling} from './source-spelling.mjs';
+import {paragraphSpelling,mathSpelling} from './source-spelling.mjs';
 import {includeEmptyParagraphs,ownsEditedRange,blockWhitespace,splitEditableBoundaries} from './source-boundaries.mjs';
 import { parseDocument } from '../../latex/document.mjs';
 import { importBlocks, serialize } from './latex-codec.js';
@@ -18,7 +18,7 @@ export function sourceProjection(text, doc, options) {
     const count = importBlocks(raw).length;
     const nodes = doc.content.slice(index, index + count);
     const canonical = nodes.map(serialize).join('').trim();
-    const spelling=paragraphSpelling(raw,canonical,nodes);
+    const spelling=mathSpelling(raw,nodes)??paragraphSpelling(raw,canonical,nodes);
     const block = { spelling, from: offset, to: offset + raw.length, index, count, raw,
       editable: count > 0 && !nodes.some(node => node.type === 'raw') && (raw.trim() === canonical || !!spelling),
       snapshot: JSON.stringify(nodes) };
@@ -146,6 +146,34 @@ export function richSourceChanges(projection, doc) {
   return changes;
 }
 
+// The plain rich view normally serializes structural changes. A formula-only
+// edit has a verified source range, so it must not reformat neighboring text.
+export function standaloneMathChanges(projection,doc) {
+  if(!projection||doc.content.length!==projection.count)return null;
+  const changes=[];
+  for(const block of projection.blocks){
+    const nodes=doc.content.slice(block.index,block.index+block.count);
+    if(JSON.stringify(nodes)===block.snapshot)continue;
+    const patch=mathBodyChanges(block,nodes);
+    if(!patch)return null;
+    changes.push(...patch);
+  }
+  return changes;
+}
+
+function mathBodyChanges(block,nodes) {
+  const previous=JSON.parse(block.snapshot);
+  if(!block.editable||nodes.length!==1||previous.length!==1||
+      nodes[0].type!=='mathBlock'||previous[0].type!=='mathBlock')return null;
+  const before=previous[0],after=nodes[0];
+  if(JSON.stringify({...after,attrs:{...after.attrs,latex:before.attrs.latex}})!==JSON.stringify(before))return null;
+  const spelling=mathSpelling(block.raw,[before]);
+  if(!spelling)return null;
+  const [leading,trailing]=blockWhitespace(spelling.latex);
+  const body=spelling.latex.slice(leading.length,spelling.latex.length-trailing.length);
+  return minimalChange(body,after.attrs.latex.trim(),block.from+spelling.start+leading.length);
+}
+
 // A protected neighbor must stay untouched, but need not block a source-backed
 // table's cell edit. Locate only real outer environments, never quoted examples
 // in comments, macro definitions or Raw containers. Equal tables map by order.
@@ -181,6 +209,8 @@ function patchIsolatedTables(block,nodes) {
 }
 
 function patchBlock(block,nodes) {
+    const math=mathBodyChanges(block,nodes);
+    if(math)return math;
     if (nodes.some(node => node.type === 'raw')) return null;
     const environments=list=>list.flatMap(node=>[
       ...(node.attrs?.environmentSource?[node.attrs.environmentSource.source]:[]),...environments(node.content??[])]);

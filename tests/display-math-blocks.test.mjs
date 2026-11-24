@@ -2,9 +2,33 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {importBlocks,serialize} from '../apps/web/src/editor/latex-codec.js';
 import {parseDocument} from '../apps/web/latex/document.mjs';
-import {sourceProjection,richSourceChanges} from '../apps/web/src/editor/source-sync.js';
+import {sourceProjection,richSourceChanges,standaloneMathChanges} from '../apps/web/src/editor/source-sync.js';
 const text=n=>(n.content??[]).map(c=>c.text??'').join('');
 const wrap=s=>'\\begin{document}\r\n'+s+'\n\\end{document}\r\n';
+
+for(const [open,close] of [['\\[','\\]'],['$$','$$']]) {
+  for(const eol of ['\n','\r\n'])test('formula edits retain display spelling '+open+' '+JSON.stringify(eol),()=>{
+    const source=wrap('Before.'+eol+open+eol+'\\frac{a}{}'+eol+close+eol+'After.'+eol+eol+'\\unknown{keep}');
+    const doc={type:'doc',content:parseDocument(source).blocks.flatMap(importBlocks)};
+    const original=structuredClone(doc),projection=sourceProjection(source,doc);
+    const math=doc.content.find(node=>node.type==='mathBlock');
+    math.attrs.latex='\\frac{a}{b}'; // MathLive's normalized field serialization.
+    const changes=standaloneMathChanges(projection,doc);
+    const at=source.indexOf('\\frac{a}{}')+9;
+    assert.deepEqual(changes,[{from:at,to:at,insert:'b'}]);
+    const apply=(text,changes)=>changes.toReversed().reduce((text,c)=>text.slice(0,c.from)+c.insert+text.slice(c.to),text);
+    const edited=apply(source,changes);
+    assert.equal(edited,source.replace('\\frac{a}{}','\\frac{a}{b}'));
+    assert.deepEqual(richSourceChanges(projection,doc),changes);
+    const after=sourceProjection(edited,doc);
+    const undo=standaloneMathChanges(after,original);
+    assert.equal(apply(edited,undo),source,'Undo retains the original display delimiters and EOL bytes');
+    const again=sourceProjection(source,original);
+    assert.equal(apply(source,standaloneMathChanges(again,doc)),edited,'Redo changes only the denominator letter');
+    original.content[0].content[0].text='Different.';
+    assert.equal(standaloneMathChanges(after,original),null,'The specialized path cannot own a simultaneous text edit');
+  });
+}
 
 for(const [open,close] of [['$$','$$'],['\\[','\\]']]) {
   for(const latex of ['x^2', '\r\nx=1\n+y\r\n', '\n x=1\r\n\n+y\n', String.raw`\begin{aligned}x&=1\\[6pt]y&=2\end{aligned}`]) {

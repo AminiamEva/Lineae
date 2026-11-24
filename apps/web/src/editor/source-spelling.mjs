@@ -1,4 +1,16 @@
 import {serialize} from './latex-codec.js';
+import {mathSpan} from '../../latex/math-delimiters.mjs';
+
+// MathLive normalizes a field's outer whitespace on the first edit. Retain
+// that spelling separately from the editable formula, just as for paragraphs.
+export function mathSpelling(raw,nodes){
+  if(nodes.length!==1||nodes[0].type!=='mathBlock')return null;
+  const node=nodes[0],source=raw.trim(),open=node.attrs.delimiter??'\\[';
+  if(!['\\[','$$'].includes(open)||!source.startsWith(open))return null;
+  const span=mathSpan(source,0,open);
+  if(!span||span.end!==source.length||span.latex.trim()!==node.attrs.latex.trim())return null;
+  return {math:true,latex:span.latex,start:raw.length-raw.trimStart().length+open.length};
+}
 // TeX paragraph commands can end at a non-ASCII character or an empty group.
 // Keep the user's exact prefix when editing text; do not relax unknown macros.
 export function paragraphSpelling(raw,canonical,nodes){

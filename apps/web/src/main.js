@@ -23,7 +23,7 @@ import { buildHomeRibbon } from './ui/home-ribbon.js';
 import { activeStyleKey, documentClassFromSource } from './ui/style-presets.mjs';
 import { buildRibbonGroups } from './ui/ribbon-groups.js';
 import {installHeaderFooterPanel} from './ui/header-footer-panel.js';
-import { sourceProjection, richSourceChanges, standaloneParagraphDraft } from './editor/source-sync.js';
+import { sourceProjection, richSourceChanges, standaloneParagraphDraft, standaloneMathChanges } from './editor/source-sync.js';
 import { installSourceToolbar } from './editor/source-toolbar.js';
 import { createSourceWorkspace } from './editor/source-workspace.js';
 import { DEFAULT_DOCUMENT_SOURCE } from './editor/default-document.mjs';
@@ -1227,8 +1227,9 @@ editor.on('update', ({transaction}) => {
     }
     pageSetup=readPageSetup(preamble);applyPageSetup();projectExplorer?.changed();
   }
-  if(!usesSourceProjection())return;
-  const changes = richSourceChanges(projection,editor.getJSON());
+  const mathChanges=standaloneMathChanges(projection,editor.getJSON());
+  if(!mathChanges?.length&&!usesSourceProjection())return;
+  const changes = mathChanges?.length?mathChanges:richSourceChanges(projection,editor.getJSON());
   if (!changes?.length) return;
   sourceView.applyChanges(changes);
   importedSource = sourceView.value;
