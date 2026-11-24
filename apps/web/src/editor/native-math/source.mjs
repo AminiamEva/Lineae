@@ -115,7 +115,7 @@ function parse(source) {
       node = {kind: 'group', from16, fields: [body]};
     } else if (source[at] === '\\') {
       const command = /^\\[A-Za-z]+/.exec(source.slice(at))?.[0];
-      const matrix = command==='\\begin'&&/^\\begin\{(matrix|[pbBvV]matrix)\}/.exec(source.slice(at));
+      const matrix = command==='\\begin'&&/^\\begin\{(matrix|[pbBvV]matrix|aligned|gathered)\}/.exec(source.slice(at));
       if(command==='\\left'){
         function delimiter(prefix) {
           const start=at;

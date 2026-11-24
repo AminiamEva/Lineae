@@ -155,6 +155,17 @@ test('matrix separators stay structural while empty cells keep distinct owners',
   assert.equal(projectMath(String.raw`\begin{pmatrix}a\\[2pt]b\end{pmatrix}`).supported,false);
 });
 
+test('aligned and gathered rows preserve separate owners and their original row breaks',()=>{
+  for(const source of [String.raw`\begin{aligned}a&=b\\&\end{aligned}`,String.raw`\begin{gathered}a\\\end{gathered}`]){
+    const math=projectMath(source);
+    assert.ok(math.supported);
+    const slot=math.slots.find(slot=>slot.role==='cell'&&!slot.raw.trim());
+    const result=applySlotEdit(math,{slotId:slot.id,from16:0,to16:0,insert:'x'});
+    assert.ok(result.source.includes('\\\\x'));
+    assert.equal(result.source.length,source.length+1);
+  }
+});
+
 const field = (snapshot, role, raw) => snapshot.slots.find(s => s.role === role && (raw === undefined || s.raw === raw));
 const edit = (snapshot, slot, from16, to16, insert) => applySlotEdit(snapshot, {slotId: slot.id, from16, to16, insert});
 const patched = (source, patch) => source.slice(0, patch.from) + patch.insert + source.slice(patch.to);
