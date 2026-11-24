@@ -26,7 +26,8 @@
 const snapshots = new WeakMap();
 const segmenter = new Intl.Segmenter('und', {granularity: 'grapheme'});
 const ordinary = /^[\p{L}\p{N}]\p{M}*$/u;
-const editable = /^[\p{L}\p{N}\p{M} \t\r\n]*$/u;
+const operator = /^[+=,.:!?<>/|()\[\]-]$/u;
+const editable = /^[\p{L}\p{N}\p{M}+=,.:!?<>/|()\[\] \t\r\n-]*$/u;
 
 function freeze(value) {
   if (value && typeof value === 'object') {
@@ -94,7 +95,8 @@ function parse(source) {
     if (!single) fail('Expected a braced argument');
     const from16 = at;
     const child = atom(depth + 1, false);
-    if (child.kind !== 'token') fail('Ungrouped scripts require a letter or digit', from16);
+    if (child.kind !== 'token'||!ordinary.test(source.slice(from16,at)))
+      fail('Ungrouped scripts require a letter or digit', from16);
     const result = {role, from16, to16: at, grouped: false, single: true, children: [child]};
     singleArguments.push(result);
     return result;
@@ -117,7 +119,7 @@ function parse(source) {
       }
     } else {
       const token = graphemes.get(at);
-      if (!token || !ordinary.test(token)) fail('Unsupported math token');
+      if (!token || (!ordinary.test(token)&&!operator.test(token))) fail('Unsupported math token');
       at += token.length;
       node = {kind: 'token', from16, fields: [], nucleusTo16: at};
     }

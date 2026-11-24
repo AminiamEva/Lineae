@@ -72,6 +72,16 @@ Inline $x$ and \(\frac{a}{}\).
     {from16:0,to16:0,insert:'b'}),null);
 });
 
+test('literal operators have owners without becoming TeX structure',()=>{
+  const snapshot=projectMath(String.raw`\frac{a+1}{b-2}=x`);
+  assert.ok(snapshot.supported);
+  assert.deepEqual(snapshot.atoms.filter(atom=>['+','-','='].includes(atom.nucleus)).map(atom=>atom.nucleus),['+','-','=']);
+  const plus=snapshot.slots.find(slot=>slot.role==='nucleus'&&slot.raw==='+');
+  const result=applySlotEdit(snapshot,{slotId:plus.id,from16:0,to16:1,insert:'-'});
+  assert.equal(result.source,String.raw`\frac{a-1}{b-2}=x`);
+  assert.equal(projectMath('x^+').supported,false);
+});
+
 const field = (snapshot, role, raw) => snapshot.slots.find(s => s.role === role && (raw === undefined || s.raw === raw));
 const edit = (snapshot, slot, from16, to16, insert) => applySlotEdit(snapshot, {slotId: slot.id, from16, to16, insert});
 const patched = (source, patch) => source.slice(0, patch.from) + patch.insert + source.slice(patch.to);
@@ -206,7 +216,7 @@ test('unknown syntax and malformed input fail closed with explicit diagnostics',
   for (const source of [
     String.raw`\unknown{a}`, String.raw`\alpha`, String.raw`\sqrt[3]{a}`,
     String.raw`\frac a b`, String.raw`\frac{a}`, '{a', 'a}', 'x^', 'x^a^b',
-    String.raw`x^\sqrt{a}`, '$a$', String.raw`\[a\]`, 'a+b', '😀', '\ud800',
+    String.raw`x^\sqrt{a}`, '$a$', String.raw`\[a\]`, 'a&b', '😀', '\ud800',
   ]) {
     const snapshot = projectMath(source);
     assert.equal(snapshot.supported, false, JSON.stringify(source));
@@ -227,7 +237,7 @@ test('reject unknown/stale IDs, invalid ranges, structural edits and manufacture
   for (const [from, to] of [[-1, 0], [1, 0], [0, 2], [0.5, 1], [NaN, 1]]) {
     assert.throws(() => edit(snapshot, numerator, from, to, 'a'), /range/);
   }
-  for (const insert of ['{', '}', '\\alpha', '^', '_', '%', '$', '+']) {
+  for (const insert of ['{', '}', '\\alpha', '^', '_', '%', '$', '&']) {
     assert.throws(() => edit(snapshot, numerator, 0, 0, insert), /unsupported/);
   }
   const root = field(snapshot, 'body');

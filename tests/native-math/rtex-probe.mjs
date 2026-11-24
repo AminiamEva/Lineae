@@ -235,7 +235,7 @@ async function main() {
       'structured-nested-denominator',out,rtex,texbin,true));
     summaries.push(await probe(unicode.replace('\\[\r\n\\frac{a}{}','\\[z\\]\r\n\r\n\\[\r\n\\frac{7}{}'),
       'structured-multiple-displays',out,rtex,texbin,'multi'));
-    summaries.push(await probe(unicode.replace('\\[\r\n\\frac{a}{}\r\n\\]','Inline $\\frac{7}{}$ here.'),
+    summaries.push(await probe(unicode.replace('\\[\r\n\\frac{a}{}\r\n\\]','Inline $x+\\frac{7}{}=y$ here.'),
       'structured-inline-denominator',out,rtex,texbin,'multi'));
     writeFileSync(join(out,'result.json'),JSON.stringify({status:'passed',cases:summaries},null,2)+'\n');
     console.log('PASS: real rtex geometry, empty denominator, warm revision-matched edit, Unicode/CRLF and clean reference PDF');

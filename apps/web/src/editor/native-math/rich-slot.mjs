@@ -37,7 +37,9 @@ export function richSlotPosition(model,atoms,owner,{role,after}) {
     prefix=path+'/'+index;
     parent=children[index];
     const step=pathIndex.get(prefix);
-    if(!parent||!step||(step.kind==='token'?parent.value!==step.nucleus:parent.type!==kinds[step.kind]))return null;
+    if(!parent||!step||(step.kind==='token'?
+      parent.value!==step.nucleus&&!(step.nucleus==='-'&&parent.value==='−'):
+      parent.type!==kinds[step.kind]))return null;
   }
   const slot=target?branch(parent,target):null;
   if(target&&(slot?.length!==1||slot[0].type!=='first'))return null;
