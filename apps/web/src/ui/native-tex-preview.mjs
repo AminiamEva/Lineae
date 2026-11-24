@@ -37,6 +37,8 @@ export function installNativeTexPreview({host,before,getSource,getSnapshot,isCom
   let pollEpoch=0;
   let targeting=null,observation=null,targetArmed=false,lastTarget=null,targetTimer=null;
   let mirror=null;
+  let compositionField=null;
+  const composing=()=>isComposing()||Boolean(compositionField?.isConnected);
   const pdf=installNativePdf({host:pages,onPaint:revision=>{
     if(!active||mode!=='pdf')return;
     renderedRevision=revision;pdfRendered=revision;if(!terminal&&revision>=sourceRevision)error='';renderStatus();
@@ -101,7 +103,7 @@ export function installNativeTexPreview({host,before,getSource,getSnapshot,isCom
     field.addEventListener('selection-change',()=>requestAnimationFrame(syncCaret),{signal:lifetime.signal});
   }
   function current() {
-    return active && session!==null && !opening && !isComposing() && updating!==generation && exporting!==generation &&
+    return active && session!==null && !opening && !composing() && updating!==generation && exporting!==generation &&
       capturing!==generation && !terminal && !error && wantedSnapshot?.signature===sentSnapshot?.signature &&
       wantedSource===sentSource && renderedRevision===sourceRevision;
   }
@@ -141,6 +143,7 @@ export function installNativeTexPreview({host,before,getSource,getSnapshot,isCom
     const previous=session;session=null;
     wantedSnapshot=null;sentSnapshot=null;wantedSource='';sentSource='';
     observation=null;targetStatus.textContent='';
+    compositionField=null;
     mirror?.lifetime.abort();mirror=null;
     targetArmed=false;lastTarget=null;clearTimeout(targetTimer);targetTimer=null;
     renderer.reset();pdf.reset();mode='canvas';pdfWanted=-1;pdfLayout=null;pdfRendered=-1;renderedRevision=-1;renderStatus();
@@ -195,7 +198,7 @@ export function installNativeTexPreview({host,before,getSource,getSnapshot,isCom
   }
   async function flush() {
     if(!active || terminal || session===null || updating===generation || exporting===generation ||
-      capturing===generation || isComposing())return;
+      capturing===generation || composing())return;
     const attempt=generation;
     updating=attempt;renderStatus();
     try {
@@ -217,7 +220,7 @@ export function installNativeTexPreview({host,before,getSource,getSnapshot,isCom
           observation=null;targetStatus.textContent='';
         }
         sentSource=snapshot.source;sentSnapshot=snapshot;sourceRevision=result.sourceRevision;error='';
-        if(isComposing())break;
+        if(composing())break;
       }
     } catch(failure) {if(attempt===generation)fail(failure);}
     finally {if(updating===attempt)updating=null;if(attempt===generation)renderStatus();}
@@ -229,7 +232,7 @@ export function installNativeTexPreview({host,before,getSource,getSnapshot,isCom
   }
   async function refresh() {
     if(!active)return;
-    if(isComposing()) {renderStatus();return;}
+    if(composing()) {renderStatus();return;}
     const attempt=generation,request=++captureId;
     capturing=attempt;renderStatus();
     try {
@@ -341,7 +344,14 @@ export function installNativeTexPreview({host,before,getSource,getSnapshot,isCom
     renderer.setZoom(value);pdf.setZoom(value);
   });
   window.addEventListener('pagehide',()=>{void stop();});
-  document.addEventListener('compositionend',()=>setTimeout(refresh,0),true);
+  document.addEventListener('compositionstart',event=>{
+    if(event.target?.tagName==='MATH-FIELD')compositionField=event.target;
+    if(active){renderer.clearCaret();renderStatus();}
+  },true);
+  document.addEventListener('compositionend',event=>{
+    if(event.target===compositionField)compositionField=null;
+    setTimeout(refresh,0);
+  },true);
   relocalize();renderer.setZoom(.75);pdf.setZoom(.75);
   return {refresh,documentChanged:()=>{void stop();},relocalize};
 }

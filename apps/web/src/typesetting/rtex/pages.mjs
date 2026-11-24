@@ -99,7 +99,9 @@ export function installNativePages({host,getFont,onPaint,onError,onMathHit}) {
       pages.get(number)?.dom.append(marker);selection.push(marker);
     }
   }
-  window.addEventListener('keydown',clearCaret,true);
+  window.addEventListener('keydown',event=>{
+    if(!['Shift','Control','Alt','Meta','AltGraph'].includes(event.key))clearCaret();
+  },true);
   window.addEventListener('pointerdown',clearCaret,true);
   host.addEventListener('pointerdown',event=>{
     if(!event.isPrimary||event.button!==0)return;
@@ -253,7 +255,7 @@ export function installNativePages({host,getFont,onPaint,onError,onMathHit}) {
   host.addEventListener('scroll',redraw,{passive:true});
   host.parentElement?.addEventListener('scroll',redraw,{passive:true});
   window.addEventListener('resize',redraw);
-  return {accept,reset,attachOwners,showCaret,showSelection,setZoom(value){clearCaret();zoom=value;for(const entry of pages.values()){
+  return {accept,reset,attachOwners,showCaret,showSelection,clearCaret,setZoom(value){clearCaret();zoom=value;for(const entry of pages.values()){
     entry.dom.style.width=entry.dl.page_width*CSS_PER_SP*zoom+'px';
     entry.dom.style.height=entry.dl.page_height*CSS_PER_SP*zoom+'px';
   }redraw();}};

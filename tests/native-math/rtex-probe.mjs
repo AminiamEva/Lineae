@@ -52,7 +52,8 @@ function command(executable,args,cwd,log) {
 async function probe(source,label,out,rtex,texbin,structured=false) {
   const dir=join(out,label),project=join(dir,'project 空分母');
   mkdirSync(project,{recursive:true});
-  const matrix=structured==='matrix';
+  const aftergroup=structured==='aligned-aftergroup';
+  const matrix=structured==='matrix'||aftergroup;
   const whole=structured==='multi'||matrix?projectDocumentFormulas(source):null;
   const documentProjection=whole&&!matrix
     ?{...whole.formulas.find(formula=>formula.math.slots.some(slot=>slot.role==='denominator'&&slot.raw==='')),
@@ -62,7 +63,13 @@ async function probe(source,label,out,rtex,texbin,structured=false) {
   const slot=documentProjection?.math.slots.find(slot=>slot.role==='denominator'&&slot.raw==='');
   const owner=slot?.tag??10;
   const projection=matrix?{
-    text:whole?.projection??source,
+    text:aftergroup?source
+      .replace('\\begin{document}','\\def\\LineaeEmptyA{\\attribute65000=82 }\n'+
+        '\\def\\LineaeEmptyB{\\attribute65000=83 }\n\\begin{document}')
+      .replace('\\begin{aligned}a & \\\\ & d\\end{aligned}',
+        '\\begingroup\\attribute65000=80 \\begin{aligned}a &\\aftergroup\\LineaeEmptyA \\\\'+
+        '\\aftergroup\\LineaeEmptyB & d\\end{aligned}\\endgroup')
+      :whole?.projection??source,
     sourceOffset16:0,projectionOffset16:0,
   }:documentProjection?{
     text:documentProjection.projection,
@@ -136,7 +143,8 @@ async function probe(source,label,out,rtex,texbin,structured=false) {
         .filter(field=>field.role==='cell');
       // Characterize the actual observer before a production cell target is
       // allowed. Do not infer that the nth emitted box belongs to the nth cell.
-      const expected=[...whole.owners].filter(([,entry])=>entry.atom.kind==='cell'&&!entry.atom.raw.trim()).map(([tag])=>tag);
+      const expected=aftergroup?[82,83]:
+        [...whole.owners].filter(([,entry])=>entry.atom.kind==='cell'&&!entry.atom.raw.trim()).map(([tag])=>tag);
       const uniqueEmptyOwners=expected.length===2&&expected.every(owner=>fields.filter(field=>field.empty&&field.owner===owner).length===1);
       const summary={label,versions:layout.versions,fields,expected,uniqueEmptyOwners,
         scope:'real LuaLaTeX ownership of empty matrix slots'};
@@ -295,6 +303,10 @@ async function main() {
       'matrix-cell-ownership',out,rtex,texbin,'matrix'));
     summaries.push(await probe(unicode.replace('\\frac{a}{}','\\begin{aligned}a & \\\\ & d\\end{aligned}'),
       'aligned-cell-ownership',out,rtex,texbin,'matrix'));
+    if(Number(process.env.LINEAE_WARM_REPETITIONS??0)){
+      summaries.push(await probe(unicode.replace('\\frac{a}{}','\\begin{aligned}a & \\\\ & d\\end{aligned}'),
+        'aligned-group-boundary-experiment',out,rtex,texbin,'aligned-aftergroup'));
+    }
     writeFileSync(join(out,'result.json'),JSON.stringify({status:'passed',cases:summaries},null,2)+'\n');
     console.log('PASS: real rtex geometry, empty denominator, warm revision-matched edit, Unicode/CRLF and clean reference PDF');
   } catch(error) {

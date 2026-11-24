@@ -60,6 +60,12 @@ const server=createServer(async(req,res)=>{
     assert.ok(await panel.locator('canvas').evaluate(canvas=>canvas.width>1),'Actual Canvas painting completes before current state');
     assert.ok(await page.evaluate(()=>nativeProbe.ruleRects.some(rect=>rect.w===3000000 && rect.h===6554)),
       'Thin rules retain native TeX geometry instead of being widened to a device-pixel minimum');
+    await field.dispatchEvent('compositionstart',{bubbles:true,composed:true});
+    assert.equal(await panel.getAttribute('data-state'),'stale','A MathLive preedit temporarily disables native hits');
+    assert.equal(await page.locator('#native-tex-export').isDisabled(),true);
+    await field.dispatchEvent('compositionend',{bubbles:true,composed:true});
+    await page.waitForFunction(()=>document.querySelector('#native-tex-preview').dataset.state==='current');
+    assert.equal(await page.evaluate(()=>nativeProbe.revision),1,'Canceled composition does not create a native revision');
     await page.evaluate(()=>{nativeProbe.warmNext=true;});
     await page.keyboard.type('d');
     await page.waitForFunction(()=>nativeProbe.source?.includes('abcd'));

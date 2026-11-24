@@ -209,6 +209,12 @@ An optional `warm_repetitions` dispatch input runs up to 1,000 edits on the
 authored LF fixture and archives routing counts plus P50/P95/P99 from JSONL
 dispatch to the matching response. It excludes paint, IME, and display latency;
 this small-fixture measurement does not replace large-document acceptance.
+
+[Run 45438435841](https://github.com/AminiamEva/Lineae/actions/runs/45438435841)
+recorded 1,000/1,000 fast edits on each runner. Dispatch-to-result P50/P95/P99
+were 2.19/4.90/15.82 ms on macOS arm64 and 2.85/4.09/4.48 ms on Windows x64.
+These are CI protocol timings for one short authored document, not a claim of
+end-to-end typing latency.
 Source-level newline/Unicode offset coverage does not certify glyph rendering,
 interactive history, export identity or input-method behavior.
 
@@ -260,6 +266,9 @@ supported formula also highlights those glyphs on the Canvas before drop.
 Keyboard extension of a selection between known glyph boundaries uses the same
 highlight layer; when either endpoint cannot be mapped, the original editor
 selection remains authoritative and no guessed rectangle appears.
+Both hit targeting and PDF export are disabled during an IME preedit. Canceled
+preedit does not produce a new native revision. This does not move the operating
+system's candidate window from the real editing surface to the preview.
 Semantic editing on PDF fallback is not implemented.
 The independently compiled projection never replaces the source or export buffer.
 After targeting is armed, small standalone documents refresh owner geometry after
