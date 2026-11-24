@@ -7,6 +7,7 @@ import {createInterface} from 'node:readline';
 import {fileURLToPath} from 'node:url';
 import {hitMathField} from '../../apps/web/src/editor/native-math/hit.mjs';
 import {projectMath,applySlotEdit} from '../../apps/web/src/editor/native-math/source.mjs';
+import {projectDisplayMath,editDisplayMathSlot} from '../../apps/web/src/editor/native-math/document.mjs';
 
 // Deliberately a fixture projection, not a general TeX parser or a production
 // source mapper. The truly empty denominator must stay empty in the projection.
@@ -26,9 +27,9 @@ export function matchesEdit(message,result) {
     message.versions?.source_revision===result.source_revision;
 }
 
-export function denominator(dl,empty) {
-  const field=dl?.math_owners?.fields?.find(field=>field.owner===10 && field.role==='den' && field.empty===empty);
-  assert.ok(field,`Missing observed owner 10/den, empty=${empty}`);
+export function denominator(dl,empty,owner=10) {
+  const field=dl?.math_owners?.fields?.find(field=>field.owner===owner && field.role==='den' && field.empty===empty);
+  assert.ok(field,`Missing observed owner ${owner}/den, empty=${empty}`);
   assert.equal(field.bbox.length,4);
   assert.ok(field.bbox.every(Number.isSafeInteger),'Geometry uses integer TeX scaled points');
   const [left,top,right,bottom]=field.bbox;
@@ -47,10 +48,21 @@ function command(executable,args,cwd,log) {
   return (result.stdout??'').trim();
 }
 
-async function probe(source,label,out,rtex,texbin) {
+async function probe(source,label,out,rtex,texbin,structured=false) {
   const dir=join(out,label),project=join(dir,'project 空分母');
   mkdirSync(project,{recursive:true});
+  const documentProjection=structured?projectDisplayMath(source):null;
+  if(structured)assert.ok(documentProjection,'Source display projection must be supported');
+  const slot=documentProjection?.math.slots.find(slot=>slot.role==='denominator');
+  const owner=slot?.tag??10;
   const projection=projectFixture(source);
+  if(documentProjection){
+    projection.text=documentProjection.projection;
+    projection.sourceOffset16=documentProjection.from16+slot.from16;
+    projection.projectionOffset16=documentProjection.from16+
+      documentProjection.math.mapping.sourceToProjection16[slot.from16];
+    projection.projectionOffset8=Buffer.byteLength(projection.text.slice(0,projection.projectionOffset16));
+  }
   const filled=source.slice(0,projection.sourceOffset16)+'b'+source.slice(projection.sourceOffset16);
   const tagged=projection.text;
   writeFileSync(join(dir,'source-before.tex'),source);
@@ -109,15 +121,15 @@ async function probe(source,label,out,rtex,texbin) {
     const initial=records.filter(message=>message.event==='LayoutUpdate' &&
       message.versions.source_revision===layout.versions.source_revision)
       .flatMap(message=>message.pages_changed).find(page=>page.dl?.math_owners?.fields?.some(
-        field=>field.owner===10 && field.role==='den' && field.empty));
+        field=>field.owner===owner && field.role==='den' && field.empty));
     assert.ok(initial,'Converged layout history must contain the empty denominator');
-    const empty=denominator(initial.dl,true);
+    const empty=denominator(initial.dl,true,owner);
     const frame={sessionId:label,sourceRevision:layout.versions.source_revision,layoutVersion:layout.versions.layout_version};
     const formula=projectMath('\\frac{a}{}');
-    const denSlot=formula.slots.find(slot=>slot.role==='den');
+    const denSlot=formula.slots.find(slot=>slot.role==='denominator');
     // This probe uses a single explicit owner in the TeX fixture. Production
     // will require the whole source projection and matching owner registry.
-    const slotByOwner=new Map([[`10/${denSlot.role}`,denSlot]]);
+    const slotByOwner=new Map([['10/den',denSlot]]);
     let patch;
     for(const zoom of [1,1.5,2]){
       const scale=zoom*(96/72)/65781.76;
@@ -127,10 +139,13 @@ async function probe(source,label,out,rtex,texbin) {
       // generic "math" boundary is not a field owned by our source parser.
       const fields=initial.dl.math_owners.fields.filter(field=>field.role==='num'||field.role==='den');
       const hit=hitMathField(fields,rect,point,zoom,frame,frame);
-      assert.deepEqual(hit,{owner:10,role:'den'});
-      const slot=slotByOwner.get(`${hit.owner}/${hit.role}`);
-      const edit=applySlotEdit(formula,{slotId:slot.id,from16:0,to16:0,insert:'b'});
-      assert.deepEqual(edit.patch,{from:9,to:9,insert:'b'});
+      assert.deepEqual(hit,{owner,role:'den'});
+      const command={from16:0,to16:0,insert:'b'};
+      const edit=documentProjection
+        ?editDisplayMathSlot(documentProjection,source,hit,command)
+        :applySlotEdit(formula,{slotId:slotByOwner.get(`${hit.owner}/${hit.role}`).id,...command});
+      const at=documentProjection?projection.sourceOffset16:9;
+      assert.deepEqual(edit.patch,{from:at,to:at,insert:'b'});
       patch=edit.patch;
     }
     writeFileSync(join(dir,'initial-layout.json'),JSON.stringify(initial,null,2)+'\n');
@@ -146,12 +161,12 @@ async function probe(source,label,out,rtex,texbin) {
     assert.ok(result.source_revision>layout.versions.source_revision);
     const update=await waitFor(message=>matchesEdit(message,result),'revision-matched ParagraphUpdate',since);
     assert.equal(update.status,'ok',JSON.stringify(update.diagnostics));
-    const nonempty=denominator(update.dl,false);
-    assert.ok(update.dl.math_owners.glyphs.some(glyph=>glyph.owner===10 &&
+    const nonempty=denominator(update.dl,false,owner);
+    assert.ok(update.dl.math_owners.glyphs.some(glyph=>glyph.owner===owner &&
       [98,119887].includes(glyph.char)),'Observed denominator includes the inserted b');
     writeFileSync(join(dir,'incremental-update.json'),JSON.stringify(update,null,2)+'\n');
     assert.equal(readFileSync(join(project,'main.tex'),'utf8'),tagged,'Session edits do not overwrite input files');
-    summary={label,owner:10,role:'den',empty,nonempty,patch,
+    summary={label,owner,role:'den',empty,nonempty,patch,
       sourceOffset16:projection.sourceOffset16,projectionOffset16:projection.projectionOffset16,
       projectionOffset8:projection.projectionOffset8,result,versions:update.versions,
       timing:update.timing,timingScope:'engine-reported single warm edit; not display latency or a percentile'};
@@ -207,6 +222,7 @@ async function main() {
     summaries.push(await probe(withFont,'lf',out,rtex,texbin));
     const unicode=withFont.replace('\\begin{document}','% UTF-8 mapping: 中文 𝔸\n\\begin{document}').replace(/\n/g,'\r\n');
     summaries.push(await probe(unicode,'unicode-crlf',out,rtex,texbin));
+    summaries.push(await probe(unicode,'structured-projection',out,rtex,texbin,true));
     writeFileSync(join(out,'result.json'),JSON.stringify({status:'passed',cases:summaries},null,2)+'\n');
     console.log('PASS: real rtex geometry, empty denominator, warm revision-matched edit, Unicode/CRLF and clean reference PDF');
   } catch(error) {

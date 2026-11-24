@@ -1,6 +1,24 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {projectDisplayMath,editDisplayMathSlot} from '../apps/web/src/editor/native-math/document.mjs';
 import {projectMath, applySlotEdit} from '../apps/web/src/editor/native-math/source.mjs';
+
+test('one display projection translates a TeX owner into an exact full-document patch',()=>{
+  const source='\\documentclass{article}\r\n\\begin{document}\r\n% 中文 𝔸\r\n\\[\r\n\\frac{a}{}\r\n\\]\r\n\\end{document}\r\n';
+  const projection=projectDisplayMath(source);
+  assert.ok(projection);
+  const slot=projection.math.slots.find(slot=>slot.role==='denominator');
+  const hit={owner:slot.tag,role:'den'};
+  const edit={from16:0,to16:0,insert:'b'};
+  const at=source.indexOf('\\frac{a}{}')+9;
+  assert.deepEqual(editDisplayMathSlot(projection,source,hit,edit),{
+    patch:{from:at,to:at,insert:'b'},selection:{anchor:at+1,head:at+1,slotId:slot.id},
+  });
+  assert.equal(editDisplayMathSlot(projection,source+'%',hit,edit),null);
+  assert.equal(editDisplayMathSlot(projection,source,{...hit,owner:-1},edit),null);
+  assert.equal(projectDisplayMath(source.replace('\\end{document}','\\[x\\]\\end{document}')),null);
+  assert.equal(projectDisplayMath(source.replace('\\frac{a}{}','\\unknown{a}')),null);
+});
 
 const field = (snapshot, role, raw) => snapshot.slots.find(s => s.role === role && (raw === undefined || s.raw === raw));
 const edit = (snapshot, slot, from16, to16, insert) => applySlotEdit(snapshot, {slotId: slot.id, from16, to16, insert});
