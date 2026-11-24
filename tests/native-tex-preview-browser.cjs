@@ -99,7 +99,7 @@ const server=createServer(async(req,res)=>{
     await page.evaluate(()=>{nativeProbe.mismatchObservedDrawing=false;});
     await page.locator('#native-tex-target').click();
     await panel.getByText('Click the empty numerator or denominator',{exact:false}).waitFor();
-    const scale=.75*(96/72)/65781.76;
+    const scale=Number(await page.locator('#native-tex-zoom').inputValue())/100*(96/72)/65781.76;
     await panel.locator('[data-native-page="1"] canvas').click({position:{x:6500000*scale,y:7000000*scale}});
     await page.waitForFunction(()=>{
       const field=document.activeElement,model=field?._mathfield?.model;
@@ -195,7 +195,8 @@ const server=createServer(async(req,res)=>{
       status:document.querySelector('#native-tex-preview [role=status]')?.textContent,
       source:window.nativeProbe?.source?.slice(0,1600),
       value:document.querySelector('math-field')?.value,
-      denominatorBefore:window.nativeProbe?.denominatorBefore,
+      focus:document.activeElement?.tagName,
+      cursor:document.activeElement?._mathfield?.model.at(document.activeElement.position)?.parentBranch,
       calls:window.nativeProbe?.calls.slice(-6).map(call=>({command:call.command,key:call.args?.key})),
     })));
     throw error;
