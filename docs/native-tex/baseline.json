@@ -27,7 +27,15 @@
       "version": "v0.0.8",
       "commit": "6e54e11755ed8b41aeb1739517213c6c8182df47",
       "license": "MIT",
-      "geometryEvidence": null
+      "geometryEvidence": {
+        "runId": 45377663490,
+        "commit": "8080d0f0e93c21f2d55bd0679077335f8ed7255c",
+        "platforms": ["x86_64-pc-windows-msvc", "aarch64-apple-darwin"],
+        "cases": ["lf", "unicode-crlf"],
+        "texlive": 2025,
+        "fontSha256": "6075562b771f8b82f0c179e363389684f2dd09de30038269e2628e504bd7be0f",
+        "scope": "Observed empty den owner, revision-matched warm edit and independent clean reference PDF; not editor parity or export identity"
+      }
     },
     "rtexPainter": {
       "status": "candidate_not_vendored",

@@ -8,7 +8,7 @@ test('native math baseline retains both JS implementations and gates unverified 
   assert.equal(baseline.engines.xelatexJs.policy,'retain');
   assert.equal(baseline.engines.luaJs.policy,'retain');
   assert.equal(baseline.engines.luaJs.sourceReference,null);
-  assert.equal(baseline.engines.rtex.geometryEvidence,null);
+  assert.deepEqual(baseline.engines.rtex.geometryEvidence.cases,['lf','unicode-crlf']);
   for(const entry of baseline.engines.xelatexJs.entryPoints) assert.ok(readFileSync(entry).length,entry);
   assert.deepEqual(baseline.platforms,['x86_64-pc-windows-msvc','aarch64-apple-darwin']);
   assert.equal(baseline.buildPolicy,'remote_only');

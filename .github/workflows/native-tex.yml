@@ -97,6 +97,8 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: native-tex-geometry-${{ matrix.target }}-${{ github.sha }}
-          path: artifacts/native-tex/
+          path: |
+            artifacts/native-tex/
+            !artifacts/native-tex/**/build/
           if-no-files-found: warn
           retention-days: 30

@@ -179,8 +179,7 @@ async function main() {
     };
     writeFileSync(join(out,'environment.json'),JSON.stringify(environment,null,2)+'\n');
     const input=readFileSync('tests/native-math/fixtures/empty-denominator.tex','utf8').replace(/\r\n/g,'\n');
-    const withFont=input.replace('\\usepackage{amsmath}',
-      '\\usepackage{amsmath}\n\\usepackage{unicode-math}\n\\setmathfont{Latin Modern Math}');
+    const withFont=input;
     const summaries=[];
     summaries.push(await probe(withFont,'lf',out,rtex,texbin));
     const unicode=withFont.replace('\\begin{document}','% UTF-8 mapping: 中文 𝔸\n\\begin{document}').replace(/\n/g,'\r\n');

@@ -80,8 +80,8 @@ gh workflow run native-tex.yml --ref main
 It runs on macOS arm64 and Windows x64, verifies the rtex 0.0.8 archive against a
 checked-in SHA-256, and installs the frozen TeX Live 2025 `tlnet-final` toolchain
 into the CI workspace. This toolchain is **not** added to desktop packages.
-The probe adds a controlled `unicode-math`/Latin Modern Math preamble only to its
-test input; it is not a production preamble rewrite or a general TeX parser.
+The authored fixture explicitly selects `unicode-math`/Latin Modern Math.
+The probe is not a production preamble rewrite or a general TeX parser.
 Fonts remain on the runner; the artifact records their identity and hash.
 
 Each platform uploads `native-tex-geometry-<target>-<commit>` with actual JSONL
@@ -93,6 +93,16 @@ the probe's matching logic are separate from engine-generated evidence.
 One warm edit's engine timing is recorded, not advertised as end-to-end latency.
 Source-level newline/Unicode offset coverage does not certify glyph rendering,
 interactive history, export identity or input-method behavior.
+
+### Verified geometry checkpoint
+
+[Run 45377663490](https://github.com/AminiamEva/Lineae/actions/runs/45377663490),
+commit `8080d0f0e93c21f2d55bd0679077335f8ed7255c`, passed on both target platforms:
+actual empty `owner=10, role=den` point, a warm insertion routed `fast`,
+matching edit/source revisions, LF and Unicode-comment/CRLF cases, and a separate
+uninstrumented reference compile. LuaHBTeX 1.22.0 / TeX Live 2025 and the exact
+Latin Modern Math font hash are recorded in each artifact's environment manifest.
+This does not yet certify native pointer editing, complete history or export identity.
 
 1. **Environment/geometry:** remote CI verifies pinned rtex + LuaLaTeX, font identity,
    an actual `LayoutUpdate`, an empty `den` owner and a revision-matched incremental
