@@ -87,7 +87,7 @@ import Table from '@tiptap/extension-table';
 import TableRow from '@tiptap/extension-table-row';
 import TableCell from '@tiptap/extension-table-cell';
 import TableHeader from '@tiptap/extension-table-header';
-import { EditorState, Plugin, Selection, NodeSelection, TextSelection } from '@tiptap/pm/state';
+import { Plugin, Selection, NodeSelection, TextSelection } from '@tiptap/pm/state';
 import { parseDocument } from '../latex/document.mjs';
 import { exportDocument } from '../latex/packages.mjs';
 import { appendAlignmentPair, displayEnvironment, numberedMathRows } from '../latex/math-environments.mjs';
@@ -1553,8 +1553,11 @@ function load(text, markSaved = true) {
   if(markSaved){
     // Mapping old history through a non-history import leaves undo steps that
     // can insert content from the previous file into the newly opened one.
-    const {doc,plugins}=editor.state;
-    editor.view.updateState(EditorState.create({doc,plugins}));
+    const state=editor.state,plugins=state.plugins;
+    const withoutHistory=plugins.filter(plugin=>!plugin.key.startsWith('history$'));
+    if(withoutHistory.length!==plugins.length){
+      editor.view.updateState(state.reconfigure({plugins:withoutHistory}).reconfigure({plugins}));
+    }
     syncUndoButtons();
   }
   refreshReferences(paper,editor);syncTableAttributes();
@@ -2648,7 +2651,7 @@ nativeTexPreview=installNativeTexPreview({host:footer,before:modes,
     const fields=[...paper.querySelectorAll(formula.kind==='displayMath'?'.math-display math-field':'.math-inline math-field')]
       .filter(field=>!projectDocument.composition||field.closest('[data-project-region]')?.dataset.filePath===formula.filePath);
     const field=fields[formula.ordinal];
-    if(fields.length!==formula.count||field?.value.trim()!==formula.math.source.trim())return;
+    if(fields.length!==formula.count||field?.value.replace(/\s/g,'')!==formula.math.source.replace(/\s/g,''))return;
     const model=field._mathfield?.model;
     const from=model&&richSlotPosition(model,formula.math.atoms,anchor.owner,anchor.hit);
     const to=anchor===head?from:model&&richSlotPosition(model,formula.math.atoms,head.owner,head.hit);

@@ -17,7 +17,7 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Condvar, Mutex, MutexGuard};
 use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
-use tauri::{AppHandle, State};
+use tauri::{ipc::Response, AppHandle, State};
 use tauri_plugin_dialog::{DialogExt, MessageDialogButtons};
 
 const SOURCE_LIMIT: usize = 2 * 1024 * 1024;
@@ -1138,31 +1138,31 @@ pub fn native_tex_poll(state: State<'_, NativeTexSessions>, session_id: String) 
 }
 
 #[tauri::command]
-pub async fn native_tex_font(state: State<'_, NativeTexSessions>, session_id: String, key: String) -> Result<Vec<u8>, NativeTexError> {
+pub async fn native_tex_font(state: State<'_, NativeTexSessions>, session_id: String, key: String) -> Result<Response, NativeTexError> {
     let session = state.get(&session_id)?;
-    blocking(move || session.font(key)).await
+    blocking(move || session.font(key)).await.map(Response::new)
 }
 
 /// Only the PDF provenance registered by this exact current layout is accepted.
 #[tauri::command]
-pub async fn native_tex_pdf(state: State<'_, NativeTexSessions>, session_id: String, source_revision: u64, layout_version: u64) -> Result<Vec<u8>, NativeTexError> {
+pub async fn native_tex_pdf(state: State<'_, NativeTexSessions>, session_id: String, source_revision: u64, layout_version: u64) -> Result<Response, NativeTexError> {
     if source_revision > MAX_SAFE_INTEGER || layout_version > MAX_SAFE_INTEGER {
         return Err(error("invalid_revision", "Invalid source or layout revision."));
     }
     let session = state.get(&session_id)?;
-    blocking(move || session.pdf(source_revision, layout_version)).await
+    blocking(move || session.pdf(source_revision, layout_version)).await.map(Response::new)
 }
 
 /// Clean, revision-frozen read-only PDF, also available when an exact display
 /// list uses Type 1/TTC/fonts/images unsupported by the browser glyph renderer.
 /// Returns bytes only; never a filesystem path or editable geometry.
 #[tauri::command]
-pub async fn native_tex_render_pdf(state: State<'_, NativeTexSessions>, session_id: String, source_revision: u64) -> Result<Vec<u8>, NativeTexError> {
+pub async fn native_tex_render_pdf(state: State<'_, NativeTexSessions>, session_id: String, source_revision: u64) -> Result<Response, NativeTexError> {
     if source_revision > MAX_SAFE_INTEGER {
         return Err(error("invalid_revision", "Invalid source revision."));
     }
     let session = state.get(&session_id)?;
-    blocking(move || session.render_pdf(source_revision)).await
+    blocking(move || session.render_pdf(source_revision)).await.map(Response::new)
 }
 
 #[tauri::command]

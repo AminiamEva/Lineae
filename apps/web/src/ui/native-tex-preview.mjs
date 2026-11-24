@@ -78,7 +78,8 @@ export function installNativeTexPreview({host,before,getSource,getSnapshot,isCom
     if(!mirror||!observation||!current()||document.activeElement!==mirror.field)return;
     const formula=[...observation.projection.owners.values()].find(({formula})=>
       formula.kind===mirror.kind&&formula.ordinal===mirror.ordinal&&formula.filePath===mirror.filePath)?.formula;
-    if(!formula||formula.math.atoms.length>200||mirror.field.value.trim()!==formula.math.source.trim())return;
+    if(!formula||formula.math.atoms.length>200||
+      mirror.field.value.replace(/\s/g,'')!==formula.math.source.replace(/\s/g,''))return;
     const range=mirror.field.selection.ranges[0];
     if(!range)return;
     const model=mirror.field._mathfield?.model;
