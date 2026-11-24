@@ -128,6 +128,15 @@ test('matched scalable delimiters preserve the source of a nested fraction',()=>
   assert.equal(projectMath(String.raw`\left(\frac{a}{b}`).supported,false);
 });
 
+test('known font and box wrappers keep their TeX spelling while exposing nested slots',()=>{
+  const source=String.raw`\boxed{\mathrm{A}\frac{a}{}}`;
+  const math=projectMath(source),den=math.slots.find(slot=>slot.role==='denominator');
+  assert.ok(math.supported);
+  assert.deepEqual(math.atoms.filter(atom=>atom.kind==='wrapper').map(atom=>atom.command),['\\boxed','\\mathrm']);
+  assert.equal(applySlotEdit(math,{slotId:den.id,from16:0,to16:0,insert:'b'}).source,source.replace('{}','{b}'));
+  assert.equal(projectMath(String.raw`\customfont{A}`).supported,false);
+});
+
 test('an indexed radical preserves an empty degree and maps its TeX owner to a minimal patch',()=>{
   const source='\\begin{document}\n\\[\\sqrt[]{x}\\]\n\\end{document}\n';
   const projection=projectDocumentFormulas(source),[formula]=projection.formulas;
@@ -163,6 +172,10 @@ test('aligned and gathered rows preserve separate owners and their original row 
     const result=applySlotEdit(math,{slotId:slot.id,from16:0,to16:0,insert:'x'});
     assert.ok(result.source.includes('\\\\x'));
     assert.equal(result.source.length,source.length+1);
+    if(source.startsWith('\\begin{aligned}')){
+      assert.ok(math.projection.includes('\\aftergroup\\LineaeNativeCell'));
+      assert.ok(math.projection.includes('\\def\\LineaeNativeCell'));
+    }
   }
 });
 

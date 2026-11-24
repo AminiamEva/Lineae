@@ -228,9 +228,28 @@ const server=createServer(async(req,res)=>{
     await page.keyboard.type('2');
     await page.waitForFunction(()=>/x\^(?:2|\{2\})/.test(nativeProbe.source));
     await page.locator('#native-tex-close').click();
-    const matrix=input.toString().replace('\\frac{a}{}','\\begin{pmatrix}a & \\\\ & d\\end{pmatrix}');
-    await page.locator('input#file').setInputFiles({name:'matrix.tex',mimeType:'text/plain',buffer:Buffer.from(matrix)});
-    await page.waitForFunction(()=>document.querySelector('math-field')?.value.includes('\\begin{pmatrix}'));
+    for(const environment of ['pmatrix','aligned']){
+      const open=`\\begin{${environment}}`,close=`\\end{${environment}}`;
+      const matrix=input.toString().replace('\\frac{a}{}',`${open}a & \\\\ & d${close}`);
+      await page.locator('input#file').setInputFiles({name:environment+'.tex',mimeType:'text/plain',buffer:Buffer.from(matrix)});
+      await page.waitForFunction(open=>document.querySelector('math-field')?.value.includes(open),open);
+      await button.click();
+      await page.waitForFunction(()=>document.querySelector('#native-tex-preview').dataset.state==='current');
+      await page.locator('#native-tex-target').click();
+      await panel.getByText('Click the empty numerator or denominator',{exact:false}).waitFor();
+      await panel.locator('[data-native-page="1"] canvas').click({position:{x:6500000*scale,y:7000000*scale}});
+      await page.waitForFunction(()=>{
+        const field=document.activeElement,math=field?._mathfield;
+        const cell=math?.model.at(field.position)?.parentBranch;
+        return field?.tagName==='MATH-FIELD'&&!math?.focusBlurInProgress&&Array.isArray(cell)&&cell[0]===0&&cell[1]===1;
+      });
+      await page.keyboard.type('b');
+      await page.waitForFunction(expected=>nativeProbe.source?.replace(/\s/g,'').includes(expected),`${open}a&b\\\\&d${close}`);
+      await page.locator('#native-tex-close').click();
+    }
+    const boxed=input.toString().replace('\\frac{a}{}','\\boxed{\\frac{a}{}}');
+    await page.locator('input#file').setInputFiles({name:'boxed.tex',mimeType:'text/plain',buffer:Buffer.from(boxed)});
+    await page.waitForFunction(()=>document.querySelector('math-field')?.value.includes('\\boxed'));
     await button.click();
     await page.waitForFunction(()=>document.querySelector('#native-tex-preview').dataset.state==='current');
     await page.locator('#native-tex-target').click();
@@ -238,11 +257,11 @@ const server=createServer(async(req,res)=>{
     await panel.locator('[data-native-page="1"] canvas').click({position:{x:6500000*scale,y:7000000*scale}});
     await page.waitForFunction(()=>{
       const field=document.activeElement,math=field?._mathfield;
-      const cell=math?.model.at(field.position)?.parentBranch;
-      return field?.tagName==='MATH-FIELD'&&!math?.focusBlurInProgress&&Array.isArray(cell)&&cell[0]===0&&cell[1]===1;
+      return field?.tagName==='MATH-FIELD'&&!math?.focusBlurInProgress&&
+        math?.model.at(field.position)?.parentBranch==='below';
     });
     await page.keyboard.type('b');
-    await page.waitForFunction(()=>nativeProbe.source?.replace(/\s/g,'').includes('\\begin{pmatrix}a&b\\\\&d\\end{pmatrix}'));
+    await page.waitForFunction(()=>nativeProbe.source?.includes('\\boxed{\\frac{a}{b}}'));
     await page.locator('#native-tex-close').click();
     await page.evaluate(async()=>{
       const root=await navigator.storage.getDirectory();

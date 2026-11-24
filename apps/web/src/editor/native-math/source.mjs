@@ -33,6 +33,8 @@ const editable = /^[\p{L}\p{N}\p{M}+=,.:!?<>/|()\[\] \t\r\n-]*$/u;
 // Only single-symbol catalog entries here. Function names may paint multiple
 // glyphs while representing one operator and need different caret handling.
 const symbols = new Set(mathCommandCatalog.filter(entry=>entry.category!=='operator').map(entry=>entry.latex));
+const mathWrappers = new Set(['\\boxed','\\mathord','\\mathrm','\\mathbf','\\mathit','\\mathsf',
+  '\\mathtt','\\mathcal','\\mathscr','\\mathbb','\\mathfrak']);
 
 function freeze(value) {
   if (value && typeof value === 'object') {
@@ -146,7 +148,7 @@ function parse(source) {
             if(at===source.length||source[at]==='&'||source.startsWith('\\\\',at)||source.startsWith('\\end{',at))break;
             children.push(atom(depth+1));
           }
-          const cell={kind:'cell',from16:start,to16:at,
+          const cell={kind:'cell',from16:start,to16:at,afterGroup:matrix[1]==='aligned'&&!children.length,
             fields:[{role:'cell',from16:start,to16:at,grouped:false,children}]};
           node.fields.push({role:`cell.${row}.${column}`,from16:start,to16:at,grouped:false,children:[cell]});
           if(source[at]==='&'){protect(at,++at,'delimiter');column++;continue;}
@@ -162,6 +164,9 @@ function parse(source) {
       } else if(symbols.has(command)){
         at+=command.length;protect(from16,at,'command');
         node={kind:'token',from16,fields:[],nucleusTo16:at};
+      } else if(mathWrappers.has(command)){
+        at+=command.length;protect(from16,at,'command');
+        node={kind:'wrapper',command,from16,fields:[field('body',depth)]};
       } else {
         if (command !== '\\frac' && command !== '\\sqrt') fail('Unsupported control sequence');
         at += command.length;
@@ -287,12 +292,19 @@ function instrument(source, root, attribute) {
   // TeX consumes this space as the number terminator, even when the next
   // original token is a digit. rtex's math allowlist rejects \relax here.
   const tag = value => `\\attribute${attribute}=${value} `;
+  const macro = value => '\\LineaeNativeCell'+String(value).replace(/\d/g,digit=>String.fromCharCode(65+Number(digit)));
   insert(0, `\\begingroup${tag(root.tag)}`);
   function children(owner) {
     for (const field of owner.fields) {
       if (field.single) insert(field.from16, '{');
       for (const child of field.children) {
-        insert(child.from16, tag(child.tag));
+        if(child.afterGroup){
+          // amsmath closes a cell's internal group before its math boundary.
+          // Assign on that group exit so a genuinely empty cell has its own
+          // owner without adding a visible or spacing-changing math node.
+          insert(owner.from16,`\\def${macro(child.tag)}{${tag(child.tag)}}`);
+          insert(child.from16,`\\aftergroup${macro(child.tag)} `);
+        }else insert(child.from16, tag(child.tag));
         children(child);
         // LuaTeX records a cell's effective attribute when ending its math
         // boundary. In an empty cell in particular, keep the cell owner in
@@ -371,6 +383,7 @@ export function projectMath(source, {previous, attribute = 65000, firstTag = 1} 
       from16: node.from16, to16: node.to16,
       from8: sourceUnits.to8[node.from16], to8: sourceUnits.to8[node.to16],
       raw: source.slice(node.from16, node.to16),
+      ...(node.command?{command:node.command}:{}),
       ...(node.kind==='token'?{nucleus:source.slice(node.from16,node.nucleusTo16)}:{}),
       slotIds: [
         ...(node.kind === 'token' ? [`${node.id}:nucleus`] : []),

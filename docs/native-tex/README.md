@@ -293,6 +293,8 @@ https://github.com/AminiamEva/Lineae/releases/tag/desktop-preview-45415437738) a
 https://github.com/AminiamEva/Lineae/releases/tag/desktop-preview-45418212782).
 The [matrix-slot run](https://github.com/AminiamEva/Lineae/actions/runs/45420285782)
 separately verifies real per-cell LuaLaTeX ownership and mock-transport UI targeting.
-With the pinned rtex version, `aligned` can report empty cells under a shared
-container owner. The probe records this case, but the renderer does not guess a
-cell from its box order. Known glyphs and the existing multiline editor still work.
+With the pinned rtex version, `aligned` can report ordinary in-group assignments
+under a shared container owner. In the isolated observation copy, the empty-cell
+assignment therefore runs after amsmath's internal cell group closes; it adds
+no math nodes. The renderer still requires distinct owners and matching drawing
+records, rather than guessing a cell from box order.
