@@ -1,6 +1,6 @@
 import {createHash} from 'node:crypto';
 import {execFileSync} from 'node:child_process';
-import {existsSync,mkdirSync,mkdtempSync,readFileSync,rmSync,writeFileSync} from 'node:fs';
+import {cpSync,existsSync,mkdirSync,mkdtempSync,readFileSync,rmSync,writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {dirname,join,resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
@@ -28,10 +28,11 @@ if(!installed) {
     if('sha512-'+createHash('sha512').update(bytes).digest('base64')!==integrity)
       throw new Error('PDF.js archive integrity mismatch');
     writeFileSync(join(temporary,'pdfjs.tgz'),bytes);
-    mkdirSync(output,{recursive:true});
-    execFileSync('tar',['-xzf','pdfjs.tgz','-C',output,'--strip-components=1',
+    mkdirSync(join(temporary,'runtime'));
+    execFileSync('tar',['-xzf','pdfjs.tgz','-C','runtime','--strip-components=1',
       'package/legacy/build/pdf.mjs','package/legacy/build/pdf.worker.mjs',
       'package/cmaps','package/standard_fonts','package/LICENSE'],{cwd:temporary,stdio:'inherit'});
+    cpSync(join(temporary,'runtime'),output,{recursive:true});
     writeFileSync(marker,JSON.stringify({name:'pdfjs-dist',version,url,integrity,
       license:'Apache-2.0',changes:'unmodified selected runtime files',
       standardFonts:'Unmodified upstream fonts; see included LICENSE_FOXIT and LICENSE_LIBERATION',

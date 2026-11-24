@@ -5,6 +5,7 @@ import {appendFileSync,mkdirSync,readFileSync,writeFileSync} from 'node:fs';
 import {join,resolve} from 'node:path';
 import {createInterface} from 'node:readline';
 import {fileURLToPath} from 'node:url';
+import {hitMathField} from '../../apps/web/src/editor/native-math/hit.mjs';
 
 // Deliberately a fixture projection, not a general TeX parser or a production
 // source mapper. The truly empty denominator must stay empty in the projection.
@@ -110,6 +111,16 @@ async function probe(source,label,out,rtex,texbin) {
         field=>field.owner===10 && field.role==='den' && field.empty));
     assert.ok(initial,'Converged layout history must contain the empty denominator');
     const empty=denominator(initial.dl,true);
+    const frame={sessionId:label,sourceRevision:layout.versions.source_revision,layoutVersion:layout.versions.layout_version};
+    for(const zoom of [1,1.5,2]){
+      const scale=zoom*(96/72)/65781.76;
+      const rect={left:40,top:120,width:initial.dl.page_width*scale,height:initial.dl.page_height*scale};
+      const point={x:rect.left+empty.bbox[0]*scale,y:rect.top+empty.bbox[1]*scale};
+      // Only eligible fraction roles enter this interaction registry. A
+      // generic "math" boundary is not a field owned by our source parser.
+      const fields=initial.dl.math_owners.fields.filter(field=>field.role==='num'||field.role==='den');
+      assert.deepEqual(hitMathField(fields,rect,point,zoom,frame,frame),{owner:10,role:'den'});
+    }
     writeFileSync(join(dir,'initial-layout.json'),JSON.stringify(initial,null,2)+'\n');
     // Reply and event queues are interleaved. Search retained history from the
     // command boundary, including events received before their matching reply.
