@@ -58,6 +58,7 @@ module.exports=function installMockNativeTex() {
       const observed=p.layout().pages_changed;
       observed[0].dl.math_owners={fields:[{owner:Number(match[1]),role:'den',
         bbox:[6500000,7000000,6500000,7000000],empty:true}],glyphs:[]};
+      if(p.mismatchObservedDrawing)observed[0].dl.lines[0].items[0][4]++;
       return observed;
     }
     if(command==='native_tex_render_pdf'){

@@ -1291,6 +1291,26 @@ mod tests {
         assert!(observed.iter().any(|page| page["dl"]["math_owners"]["fields"].as_array().is_some_and(|fields| {
             fields.iter().any(|field| field["owner"] == 10 && field["role"] == "den" && field["empty"] == true)
         })));
+        let drawing = |page: &Value| {
+            let dl = &page["dl"];
+            let lines = dl["lines"].as_array().unwrap().iter()
+                .map(|line| json!([line["x"], line["y"], line["w"], line["h"], line["d"], line["items"]]))
+                .collect::<Vec<_>>();
+            json!([dl["page_width"], dl["page_height"], dl["fonts"], dl["other"], lines])
+        };
+        {
+            let messages = lock(&targeting.messages);
+            for page in &observed {
+                let raw_page = messages.events.iter().rev()
+                    .filter(|event| event["event"] == "LayoutUpdate")
+                    .filter_map(|event| event["pages_changed"].as_array())
+                    .flatten()
+                    .find(|raw| raw["page"] == page["page"]).expect("original page drawing");
+                assert_eq!(raw_page["exact"], true);
+                assert_eq!(page["exact"], true);
+                assert!(drawing(raw_page) == drawing(page), "ownership instrumentation changed page drawing");
+            }
+        }
         assert!(lock(&targeting.observer).is_none());
         assert_eq!(std::fs::read_to_string(targeting.root.join("main.tex")).unwrap(), standalone);
         targeting.terminate();

@@ -51,8 +51,8 @@ export function installNativeTexPreview({host,before,getSource,getSnapshot,isCom
           stamp.sessionId!==observation.stamp.sessionId||
           stamp.sourceRevision!==observation.stamp.sourceRevision)return;
       const {projection}=observation;
-      if(!editDisplayMathSlot(projection,wantedSource,hit,{from16:0,to16:0,insert:''}))return;
-      focusMathSlot?.(projection.source,projection.math.source,hit.role);
+      const target=editDisplayMathSlot(projection,wantedSource,hit,{from16:0,to16:0,insert:''});
+      if(target)focusMathSlot?.(projection.source,projection.math.source,hit.role,target.selection);
     },
   });
   function current() {
@@ -147,6 +147,9 @@ export function installNativeTexPreview({host,before,getSource,getSnapshot,isCom
           session=result.sessionId;pollEpoch++;renderedRevision=-1;pdfRendered=-1;pdfWanted=-1;
           renderer.reset({clear:false});pdf.reset({clear:false});
           void poll(attempt,pollEpoch);
+        }
+        if(observation&&snapshot.source!==observation.projection.source){
+          observation=null;targetStatus.textContent='';
         }
         sentSource=snapshot.source;sentSnapshot=snapshot;sourceRevision=result.sourceRevision;error='';
         if(isComposing())break;

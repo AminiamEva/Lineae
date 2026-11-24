@@ -2620,8 +2620,13 @@ nativeTexPreview=installNativeTexPreview({host:footer,before:modes,
     return {source:text,mainFile:'main.tex',signature:text};
   },
   isComposing:()=>editor.view.composing||sourceView.composing,
-  focusMathSlot:(raw,latex,role)=>{
-    if(!sourceView.hidden||projectExplorer?.active||source()!==raw)return;
+  focusMathSlot:(raw,latex,role,selection)=>{
+    if(projectExplorer?.active)return;
+    if(!sourceView.hidden){
+      if(sourceView.value===raw)sourceView.select(selection.anchor,selection.head);
+      return;
+    }
+    if(source()!==raw)return;
     const fields=[...paper.querySelectorAll('.math-display math-field')];
     if(fields.length!==1||fields[0].value.trim()!==latex.trim())return;
     const [field]=fields,model=field._mathfield?.model;

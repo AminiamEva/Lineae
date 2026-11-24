@@ -93,6 +93,10 @@ const server=createServer(async(req,res)=>{
     await field.click();
     await button.click();
     await page.waitForFunction(()=>document.querySelector('#native-tex-preview').dataset.state==='current');
+    await page.evaluate(()=>{nativeProbe.mismatchObservedDrawing=true;});
+    await page.locator('#native-tex-target').click();
+    await panel.getByText('Projected geometry differs', {exact:false}).waitFor();
+    await page.evaluate(()=>{nativeProbe.mismatchObservedDrawing=false;});
     await page.locator('#native-tex-target').click();
     await panel.getByText('Click the empty numerator or denominator',{exact:false}).waitFor();
     const scale=.75*(96/72)/65781.76;
