@@ -148,12 +148,13 @@ export function installNativeTexPreview({host,before,getSource,getSnapshot,isCom
     if (event.key === 'Enter') event.preventDefault();
   });
   let unlisten=null;
+  let eventsLive=false;
   if(eventApi?.listen){
     eventApi.listen('lineae-native-tex',({payload})=>{
       if(!active||!payload||payload.sessionId!==session)return;
       handleEvent(payload.event);
       renderStatus();
-    }).then(fn=>unlisten=fn).catch(()=>{});
+    }).then(fn=>{unlisten=fn;eventsLive=true;}).catch(()=>{});
   }
   const pdf=installNativePdf({host:pages,onPaint:revision=>{
     if(!active||mode!=='pdf')return;
@@ -371,10 +372,10 @@ export function installNativeTexPreview({host,before,getSource,getSnapshot,isCom
       for(const event of events)handleEvent(event);
       renderStatus();
     } catch(failure) {
-      if(attempt===generation&&epoch===pollEpoch&&!eventApi?.listen)fail(failure);
+      if(attempt===generation&&epoch===pollEpoch&&!eventsLive)fail(failure);
     }
     finally {
-      if(!eventApi?.listen&&active && !terminal && attempt===generation&&epoch===pollEpoch)
+      if(!eventsLive&&active && !terminal && attempt===generation&&epoch===pollEpoch)
         pollTimer=setTimeout(()=>poll(attempt,epoch),100);
     }
   }
