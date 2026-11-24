@@ -18,6 +18,23 @@ test('a native nested hit follows MathLive ancestry rather than the first fracti
   assert.equal(richSlotPosition(model,snapshot.atoms,atom,{role:'den'}),null,'Different AST topology must reject the hit');
 });
 
+test('a native script anchor resolves to the adjacent MathLive script sibling',()=>{
+  const snapshot=projectMath('x^{}_{1}');
+  const owner=snapshot.atoms.find(atom=>atom.nucleus==='x');
+  const digit=snapshot.atoms.find(atom=>atom.nucleus==='1');
+  const first={type:'first'},scriptFirst={type:'first'},one={type:'mord',value:'1'};
+  const token={type:'mord',value:'x',branch:()=>undefined,leftSibling:first};
+  const scripts={type:'subsup',leftSibling:token,
+    branch:name=>({superscript:[scriptFirst],subscript:[first,one]})[name]};
+  token.rightSibling=scripts;
+  const model={root:{branch:()=>[first,token,scripts]},
+    offsetOf:atom=>atom===scriptFirst?3:atom===one?5:-1};
+  assert.equal(richSlotPosition(model,snapshot.atoms,owner,{role:'sup'}),3);
+  assert.equal(richSlotPosition(model,snapshot.atoms,digit,{role:'nucleus',after:true}),5);
+  scripts.leftSibling=first;
+  assert.equal(richSlotPosition(model,snapshot.atoms,owner,{role:'sup'}),null);
+});
+
 test('one display projection translates a TeX owner into an exact full-document patch',()=>{
   const source='\\documentclass{article}\r\n\\begin{document}\r\n% 中文 𝔸\r\n\\[\r\n\\frac{a}{}\r\n\\]\r\n\\end{document}\r\n';
   const projection=projectDisplayMath(source);

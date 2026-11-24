@@ -165,6 +165,22 @@ const server=createServer(async(req,res)=>{
     await page.keyboard.type('b');
     await page.waitForFunction(()=>nativeProbe.source?.includes('Inline $\\frac{a}{b}$ here.'));
     await page.locator('#native-tex-close').click();
+    const scripts=input.toString().replace('\\frac{a}{}','x^{}');
+    await page.locator('input#file').setInputFiles({name:'script.tex',mimeType:'text/plain',buffer:Buffer.from(scripts)});
+    await page.waitForFunction(()=>document.querySelector('math-field')?.value.includes('x^{}'));
+    await button.click();
+    await page.waitForFunction(()=>document.querySelector('#native-tex-preview').dataset.state==='current');
+    await page.locator('#native-tex-target').click();
+    await panel.getByText('Click the empty numerator or denominator',{exact:false}).waitFor();
+    await panel.locator('[data-native-page="1"] canvas').click({position:{x:6500000*scale,y:7000000*scale}});
+    await page.waitForFunction(()=>{
+      const field=document.activeElement,math=field?._mathfield;
+      return field?.tagName==='MATH-FIELD'&&!math?.focusBlurInProgress&&
+        math?.model.at(field.position)?.parentBranch==='superscript';
+    });
+    await page.keyboard.type('2');
+    await page.waitForFunction(()=>/x\^(?:2|\{2\})/.test(nativeProbe.source));
+    await page.locator('#native-tex-close').click();
     await page.evaluate(async()=>{
       const root=await navigator.storage.getDirectory();
       window.luaProjectDirectory=await root.getDirectoryHandle('lua-'+crypto.randomUUID(),{create:true});

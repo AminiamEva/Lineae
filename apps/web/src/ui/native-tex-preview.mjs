@@ -263,7 +263,7 @@ export function installNativeTexPreview({host,before,getSource,getSnapshot,isCom
       const tokenOwners=new Set([...projection.owners].filter(([,entry])=>entry.atom.kind==='token').map(([tag])=>tag));
       if(!renderer.attachOwners(observed,stamp,tokenOwners))throw new Error(t('标记版排版与当前页面不一致，未启用命中。','Projected geometry differs from the displayed page; targeting remains disabled.'));
       observation={projection,stamp};
-      targetStatus.textContent=t('点击预览中的空槽或字符边缘，继续在编辑器输入。','Click the empty numerator or denominator, an empty radicand, or a glyph edge to continue typing in the editor.');
+      targetStatus.textContent=t('点击预览中的空槽或字符边缘，继续在编辑器输入。','Click the empty numerator or denominator, another supported empty slot, or a glyph edge to continue typing in the editor.');
     } catch(failure) {
       if(attempt===generation)targetStatus.textContent=String(failure?.message??failure);
     } finally {

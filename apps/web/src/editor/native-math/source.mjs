@@ -302,6 +302,7 @@ export function projectMath(source, {previous, attribute = 65000, firstTag = 1} 
       from16: node.from16, to16: node.to16,
       from8: sourceUnits.to8[node.from16], to8: sourceUnits.to8[node.to16],
       raw: source.slice(node.from16, node.to16),
+      ...(node.kind==='token'?{nucleus:source.slice(node.from16,node.nucleusTo16)}:{}),
       slotIds: [
         ...(node.kind === 'token' ? [`${node.id}:nucleus`] : []),
         ...node.fields.map(f => `${node.id}:${f.role}`),
