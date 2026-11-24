@@ -1,12 +1,15 @@
 import {t} from './i18n.mjs';
 import {installNativePages} from '../typesetting/rtex/pages.mjs';
 import {installNativePdf} from '../typesetting/rtex/pdf.mjs';
-import {projectSnapshotFormulas,editDisplayMathSlot} from '../editor/native-math/document.mjs';
-import {nativeCaretTargets} from '../editor/native-math/rich-slot.mjs';
+import {projectSnapshotFormulas} from '../editor/native-math/document.mjs';
+import {matchesRichFormula,nativeCaretTargets} from '../editor/native-math/rich-slot.mjs';
+import {createMathSurface,surfaceCaretRect} from '../editor/native-surface/math-surface.mjs';
+import {nativeTarget} from '../editor/native-math/resolve.mjs';
 
-// This surface never edits source or intercepts editor input. The existing
-// ProseMirror/MathLive history stays authoritative while native parity is built.
-export function installNativeTexPreview({host,before,getSource,getSnapshot,isComposing,focusMathSlot}) {
+// Native LaTeX output is the primary page. The opt-in native input mode sends
+// supported keys, caret and IME through this surface into ProseMirror; the old
+// JS-formatted page and MathLive inputs stay available as the migration fallback.
+export function installNativeTexPreview({host,before,getSource,getSnapshot,isComposing,focusMathSlot,commitMath,history}) {
   const invoke=window.__TAURI__?.core?.invoke;
   if(!invoke) return {refresh(){},documentChanged(){},relocalize(){}};
   const button=document.createElement('button');
@@ -21,13 +24,20 @@ export function installNativeTexPreview({host,before,getSource,getSnapshot,isCom
   const exportButton=document.createElement('button');exportButton.type='button';exportButton.id='native-tex-export';
   const closeButton=document.createElement('button');closeButton.type='button';closeButton.id='native-tex-close';
   const targetButton=document.createElement('button');targetButton.type='button';targetButton.id='native-tex-target';
+  const editButton=document.createElement('button');editButton.type='button';editButton.id='native-tex-edit';
+  editButton.setAttribute('aria-pressed','false');
   const targetStatus=document.createElement('p');targetStatus.setAttribute('role','status');
   const zoom=document.createElement('select');zoom.id='native-tex-zoom';
   for(const value of [50,75,100,125,150,200]) zoom.append(new Option(value+'%',String(value)));
   zoom.value='75';zoom.setAttribute('aria-label',t('原生预览缩放','Native preview zoom'));
-  controls.append(zoom,exportButton,targetButton,closeButton);
+  controls.append(zoom,editButton,exportButton,targetButton,closeButton);
   const pages=document.createElement('div');pages.className='native-tex-pages';
+  const input=document.createElement('textarea');
+  input.id='native-tex-input';input.className='native-tex-input';input.rows=1;
+  input.spellcheck=false;input.autocapitalize='off';input.autocomplete='off';
+  input.setAttribute('aria-label',t('原生公式输入','Native formula input'));
   panel.append(heading,notice,controls,status,targetStatus,pages);
+  panel.append(input);
   document.body.append(panel);host.insertBefore(button,before);
   let session=null,sourceRevision=0,sentSource='',wantedSource='',generation=0;
   let timer=null,pollTimer=null,updating=null,exporting=null,opening=false;
@@ -40,6 +50,111 @@ export function installNativeTexPreview({host,before,getSource,getSnapshot,isCom
   let mirror=null;
   let compositionField=null;
   const composing=()=>isComposing()||Boolean(compositionField?.isConnected);
+  const surface=createMathSurface({resolve:endpoint=>resolveEndpoint(endpoint)});
+  let nativeEditing=false;
+  let pendingLatencyStart=0;
+  let inputStart=0;
+  const latency=[];
+  const eventApi=window.__TAURI__?.event;
+  function resolveEndpoint(endpoint) {
+    return nativeTarget(observation?.projection, endpoint);
+  }
+  function paintSurfaceSelection() {
+    const caret = surface.caret, anchor = surface.anchor;
+    if (!caret) return;
+    if (anchor && anchor.docOffset !== caret.docOffset) renderer.showSelection(anchor.hit, caret.hit);
+    else renderer.showCaret(caret.hit);
+  }
+  function positionInput() {
+    const stop = surface.caret;
+    if (!stop) return;
+    const canvas = pages.querySelector(`[data-native-page="${stop.page}"] canvas`);
+    if (!canvas) return;
+    const box = canvas.getBoundingClientRect();
+    const scale = Number(zoom.value) / 100 * (96 / 72) / 65781.76;
+    const rect = surfaceCaretRect(stop, scale, box.left, box.top);
+    if (!rect) return;
+    input.style.left = rect.x + 'px';
+    input.style.top = rect.y + 'px';
+    input.style.height = Math.max(14, rect.height) + 'px';
+  }
+  function commitSurface(edit) {
+    if (!edit) return;
+    const applied = commitMath?.({ formula: edit.formula, patch: edit.patch, text: edit.text });
+    input.value = '';
+    if (!applied) {
+      surface.clearPending();
+      targetStatus.textContent = t('原生编辑未能写入文档。', 'The native edit could not be written to the document.');
+      return;
+    }
+    if (!pendingLatencyStart) pendingLatencyStart = inputStart || performance.now();
+  }
+  input.addEventListener('compositionstart', () => { compositionField = input; });
+  input.addEventListener('compositionend', event => {
+    compositionField = null;
+    if (event.data) commitSurface(surface.insert(event.data));
+    input.value = '';
+    setTimeout(refresh, 0);
+  });
+  input.addEventListener('input', event => {
+    if (event.isComposing || composing()) return;
+    const text = input.value;
+    if (!text) return;
+    commitSurface(surface.insert(text));
+    input.value = '';
+  });
+  input.addEventListener('keydown', event => {
+    if (event.isComposing || event.keyCode === 229) return;
+    if (nativeEditing === false) return;
+    const mod = event.metaKey || event.ctrlKey;
+    if (mod && event.key.toLowerCase() === 'z') {
+      event.preventDefault();
+      surface.clearPending();
+      history?.(event.shiftKey ? 'redo' : 'undo');
+      return;
+    }
+    if (mod && event.key.toLowerCase() === 'y') {
+      event.preventDefault();
+      surface.clearPending();
+      history?.('redo');
+      return;
+    }
+    if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+      event.preventDefault();
+      if (surface.move(event.key === 'ArrowLeft' ? -1 : 1, event.shiftKey)) {
+        paintSurfaceSelection();
+        positionInput();
+      }
+      return;
+    }
+    if (event.key === 'Home' || event.key === 'End') {
+      event.preventDefault();
+      surface.move(event.key === 'Home' ? -1e6 : 1e6, event.shiftKey);
+      paintSurfaceSelection();
+      positionInput();
+      return;
+    }
+    if (event.key === 'Backspace' || event.key === 'Delete') {
+      event.preventDefault();
+      inputStart = performance.now();
+      commitSurface(surface.erase(event.key === 'Backspace'));
+      return;
+    }
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      input.blur();
+      return;
+    }
+    if (event.key === 'Enter') event.preventDefault();
+  });
+  let unlisten=null;
+  if(eventApi?.listen){
+    eventApi.listen('lineae-native-tex',({payload})=>{
+      if(!active||!payload||payload.sessionId!==session)return;
+      handleEvent(payload.event);
+      renderStatus();
+    }).then(fn=>unlisten=fn).catch(()=>{});
+  }
   const pdf=installNativePdf({host:pages,onPaint:revision=>{
     if(!active||mode!=='pdf')return;
     renderedRevision=revision;pdfRendered=revision;if(!terminal&&revision>=sourceRevision)error='';renderStatus();
@@ -56,20 +171,14 @@ export function installNativeTexPreview({host,before,getSource,getSnapshot,isCom
       if(!current()||mode!=='canvas'||!observation||
           stamp.sessionId!==observation.stamp.sessionId||
           stamp.sourceRevision!==observation.stamp.sourceRevision)return;
-      const {projection}=observation;
-      function resolve(endpoint){
-        const owned=projection.owners.get(endpoint.owner);
-        if(!owned)return null;
-        const {formula,atom}=owned;
-        const offset=endpoint.after?formula.math.slots.find(slot=>slot.tag===endpoint.owner&&slot.role==='nucleus')?.raw.length:0;
-        if(offset==null)return null;
-        try {
-          const target=editDisplayMathSlot(formula,formula.source,endpoint,{from16:offset,to16:offset,insert:''});
-          return target?{formula,owner:atom,hit:endpoint,position:target.selection.head}:null;
-        } catch {return null;}
-      }
-      const head=resolve(hit),anchor=origin?resolve(origin):head;
+      const head=resolveEndpoint(hit),anchor=origin?resolveEndpoint(origin):head;
       if(!head||!anchor)return false;
+      if(nativeEditing){
+        if(!surface.selectBetween(anchor.docOffset,head.docOffset))return false;
+        inputStart=performance.now();
+        paintSurfaceSelection();positionInput();input.focus({preventScroll:true});
+        return true;
+      }
       const focused=await focusMathSlot?.(anchor,head,()=>
         sameGesture()&&active&&session===stamp.sessionId&&sourceRevision===stamp.sourceRevision&&
         wantedSnapshot?.signature===sentSnapshot?.signature);
@@ -81,8 +190,7 @@ export function installNativeTexPreview({host,before,getSource,getSnapshot,isCom
     if(!mirror||!observation||!current()||document.activeElement!==mirror.field)return;
     const formula=[...observation.projection.owners.values()].find(({formula})=>
       formula.kind===mirror.kind&&formula.ordinal===mirror.ordinal&&formula.filePath===mirror.filePath)?.formula;
-    if(!formula||formula.math.atoms.length>200||
-      mirror.field.value.replace(/\s/g,'')!==formula.math.source.replace(/\s/g,''))return;
+    if(!formula||formula.math.atoms.length>200||!matchesRichFormula(mirror.field,formula))return;
     const range=mirror.field.selection.ranges[0];
     if(!range)return;
     const model=mirror.field._mathfield?.model;
@@ -111,6 +219,8 @@ export function installNativeTexPreview({host,before,getSource,getSnapshot,isCom
   function renderStatus() {
     exportButton.disabled=!current();
     targetButton.disabled=!current()||mode!=='canvas'||targeting===generation;
+    editButton.disabled=!current()||mode!=='canvas'||!observation;
+    editButton.setAttribute('aria-pressed',String(nativeEditing));
     if(targetArmed&&!targetButton.disabled&&!sentSnapshot?.files&&sentSource.length<=32*1024&&targetTimer===null&&
         (lastTarget?.sessionId!==session||lastTarget?.sourceRevision!==sourceRevision)){
       targetTimer=setTimeout(()=>{
@@ -122,6 +232,7 @@ export function installNativeTexPreview({host,before,getSource,getSnapshot,isCom
     button.textContent=active?t('关闭 LuaLaTeX 预览','Close LuaLaTeX preview'):t('LuaLaTeX 预览（实验）','LuaLaTeX preview (experimental)');
     panel.dataset.state=error?'error':current()?'current':active?'stale':'off';
     panel.dataset.renderer=mode;
+    panel.dataset.editing=String(nativeEditing);
     status.textContent=error?t('原生预览不可用：','Native preview unavailable: ')+error:
       opening?t('等待信任确认并启动引擎…','Confirm trust and start the engine…'):
       exporting===generation?t('正在导出已确认版本的 PDF…','Exporting the confirmed PDF revision…'):
@@ -135,6 +246,8 @@ export function installNativeTexPreview({host,before,getSource,getSnapshot,isCom
     exportButton.textContent=t('导出干净 PDF','Export clean PDF');
     closeButton.textContent=t('关闭','Close');
     targetButton.textContent=t('定位公式光标（实验）','Target formula caret (experimental)');
+    editButton.textContent=nativeEditing?t('退出原生输入','Leave native input'):t('原生输入（实验）','Native input (experimental)');
+    editButton.title=t('在原生排版页面上直接输入；ProseMirror 继续保存历史。','Type directly on native pages; ProseMirror keeps the history.');
     renderStatus();
   }
   async function stop() {
@@ -145,6 +258,9 @@ export function installNativeTexPreview({host,before,getSource,getSnapshot,isCom
     wantedSnapshot=null;sentSnapshot=null;wantedSource='';sentSource='';
     observation=null;targetStatus.textContent='';
     previousProjection=null;
+    nativeEditing=false;surface.clearPending();surface.reset();input.blur();input.value='';
+    pendingLatencyStart=0;inputStart=0;delete panel.dataset.latencySamples;
+    delete panel.dataset.latencyP50;delete panel.dataset.latencyP95;
     compositionField=null;
     mirror?.lifetime.abort();mirror=null;
     targetArmed=false;lastTarget=null;clearTimeout(targetTimer);targetTimer=null;
@@ -244,36 +360,42 @@ export function installNativeTexPreview({host,before,getSource,getSnapshot,isCom
     }catch(failure) {if(attempt===generation&&request===captureId)fail(failure);return;}
     finally {if(attempt===generation&&request===captureId)capturing=null;}
     if(attempt!==generation||request!==captureId)return;
-    clearTimeout(timer);
     renderStatus();
-    timer=setTimeout(flush,250);
+    void flush();
   }
   async function poll(attempt,epoch=pollEpoch) {
     if(!active || attempt!==generation || epoch!==pollEpoch || session===null)return;
     try {
       const events=await invoke('native_tex_poll',{sessionId:session});
       if(attempt!==generation||epoch!==pollEpoch)return;
-      for(const event of events) {
-        if(event.event==='ParagraphUpdate'&&event.status==='error'){
-          error=event.diagnostics?.map(item=>item.message??String(item)).join('\n').slice(0,2400)||
-            t('LuaLaTeX 增量排版失败；修正源码后重试。','LuaLaTeX incremental compilation failed; correct the source and retry.');
-        } else if(event.event==='LayoutUpdate' || event.event==='ParagraphUpdate') {
-          if(event.event==='LayoutUpdate')pdfLayout=event.pdf_fallback_registered&&
-            event.convergence?.state==='Converged'&&event.compile?.state==='Ok'?event.versions:null;
-          if(event.event==='LayoutUpdate' && event.compile?.state!=='Ok') {
-            error=t('LuaLaTeX 编译未成功；保留上次有效画面。','LuaLaTeX compilation failed; keeping the last valid frame.');
-          } else {
-            if(mode==='pdf'&&event.event==='LayoutUpdate')void fallback(null,event.versions.source_revision);
-            else renderer.accept(event);
-          }
-        } else if(event.event==='Diagnostics' && event.items?.length) {
-          error=event.items.map(item=>item.message??String(item)).join('\n').slice(0,2400);
-        }
-      }
+      for(const event of events)handleEvent(event);
       renderStatus();
-    } catch(failure) {if(attempt===generation&&epoch===pollEpoch)fail(failure);}
+    } catch(failure) {
+      if(attempt===generation&&epoch===pollEpoch&&!eventApi?.listen)fail(failure);
+    }
     finally {
-      if(active && !terminal && attempt===generation&&epoch===pollEpoch)pollTimer=setTimeout(()=>poll(attempt,epoch),100);
+      if(!eventApi?.listen&&active && !terminal && attempt===generation&&epoch===pollEpoch)
+        pollTimer=setTimeout(()=>poll(attempt,epoch),100);
+    }
+  }
+  // Protocol events are pushed from the Rust reader. Polling is only a
+  // compatibility fallback for hosts without a Tauri event bridge.
+  function handleEvent(event) {
+    if(!event)return;
+    if(event.event==='ParagraphUpdate'&&event.status==='error'){
+      error=event.diagnostics?.map(item=>item.message??String(item)).join('\n').slice(0,2400)||
+        t('LuaLaTeX 增量排版失败；修正源码后重试。','LuaLaTeX incremental compilation failed; correct the source and retry.');
+    } else if(event.event==='LayoutUpdate' || event.event==='ParagraphUpdate') {
+      if(event.event==='LayoutUpdate')pdfLayout=event.pdf_fallback_registered&&
+        event.convergence?.state==='Converged'&&event.compile?.state==='Ok'?event.versions:null;
+      if(event.event==='LayoutUpdate' && event.compile?.state!=='Ok') {
+        error=t('LuaLaTeX 编译未成功；保留上次有效画面。','LuaLaTeX compilation failed; keeping the last valid frame.');
+      } else {
+        if(mode==='pdf'&&event.event==='LayoutUpdate')void fallback(null,event.versions.source_revision);
+        else renderer.accept(event);
+      }
+    } else if(event.event==='Diagnostics' && event.items?.length) {
+      error=event.items.map(item=>item.message??String(item)).join('\n').slice(0,2400);
     }
   }
   async function start() {
@@ -324,8 +446,22 @@ export function installNativeTexPreview({host,before,getSource,getSnapshot,isCom
       if(attempt!==generation||stamp.sessionId!==session||stamp.sourceRevision!==sourceRevision||
           sentSource!==projection.source||wantedSource!==projection.source)return;
       if(!renderer.attachOwners(observed,stamp,projection.owners))throw new Error(t('标记版排版与当前页面不一致，未启用命中。','Projected geometry differs from the displayed page; targeting remains disabled.'));
-      observation={projection,stamp};
+      observation={projection,stamp,observed};
       previousProjection=projection;
+      if(nativeEditing&&surface.setObservation(observed)){
+        paintSurfaceSelection();
+        positionInput();
+        if(pendingLatencyStart){
+          latency.push(performance.now()-pendingLatencyStart);
+          pendingLatencyStart=0;
+          const ordered=[...latency].sort((a,b)=>a-b);
+          const percentile=q=>ordered[Math.ceil(ordered.length*q)-1];
+          panel.dataset.latencySamples=String(ordered.length);
+          panel.dataset.latencyP50=percentile(.50).toFixed(1);
+          panel.dataset.latencyP95=percentile(.95).toFixed(1);
+        }
+        input.focus({preventScroll:true});
+      }
       requestAnimationFrame(syncCaret);
       targetStatus.textContent=t('点击预览中的空槽或字符边缘，继续在编辑器输入。','Click the empty numerator or denominator, another supported empty slot, or a glyph edge to continue typing in the editor.');
     } catch(failure) {
@@ -342,10 +478,27 @@ export function installNativeTexPreview({host,before,getSource,getSnapshot,isCom
   targetButton.addEventListener('click',()=>{
     targetArmed=true;clearTimeout(targetTimer);targetTimer=null;void observe();
   });
+  editButton.addEventListener('mousedown',event=>event.preventDefault());
+  editButton.addEventListener('click',()=>{
+    if(nativeEditing){
+      nativeEditing=false;surface.clearPending();input.blur();renderStatus();return;
+    }
+    if(!observation)return;
+    nativeEditing=true;targetArmed=true;
+    if(!surface.setObservation(observation.observed)){
+      nativeEditing=false;renderStatus();return;
+    }
+    if(surface.caret){
+      paintSurfaceSelection();positionInput();input.focus({preventScroll:true});
+    }
+    renderStatus();
+  });
   zoom.addEventListener('change',()=>{
     const value=Number(zoom.value)/100;
     renderer.setZoom(value);pdf.setZoom(value);
+    if(nativeEditing){paintSurfaceSelection();positionInput();}
   });
+  window.addEventListener('resize',()=>{if(nativeEditing)positionInput();});
   window.addEventListener('pagehide',()=>{void stop();});
   document.addEventListener('compositionstart',event=>{
     if(event.target?.tagName==='MATH-FIELD')compositionField=event.target;

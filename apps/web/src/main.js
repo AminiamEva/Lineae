@@ -18,7 +18,7 @@ import {ProjectDocumentSession} from './project/document-session.mjs';
 import {installFloatingToolbar} from './ui/floating-toolbar.js';
 import {installShortcutPriority} from './ui/shortcut-priority.mjs';
 import {installNativeTexPreview} from './ui/native-tex-preview.mjs';
-import {richSlotPosition} from './editor/native-math/rich-slot.mjs';
+import {matchesRichFormula,richSlotPosition} from './editor/native-math/rich-slot.mjs';
 import {nativeProjectSnapshot} from './typesetting/rtex/project-snapshot.mjs';
 import {installSettingsPanel} from './ui/settings-panel.js';
 import { buildHomeRibbon } from './ui/home-ribbon.js';
@@ -2620,8 +2620,7 @@ nativeTexPreview=installNativeTexPreview({host:footer,before:modes,
     return {source:text,mainFile:'main.tex',signature:text};
   },
   isComposing:()=>editor.view.composing||sourceView.composing,
-  focusMathSlot:async(anchor,head,isCurrent)=>{
-    const project=projectExplorer?.model;
+  focusMathSlot:async(anchor,head,isCurrent)=>{    const project=projectExplorer?.model;
     const formula=head.formula;
     if(anchor.formula.filePath!==formula.filePath)return;
     const file=project?.files.get(formula.filePath);
@@ -2629,7 +2628,7 @@ nativeTexPreview=installNativeTexPreview({host:footer,before:modes,
     if(!sourceView.hidden){
       if(project&&project.activeFileId!==file.id){
         await projectExplorer.openFile(file.id);
-        if(projectExplorer.model!==project||project.activeFileId!==file.id||!isCurrent())return;
+        if(projectExplorer.model!==project||project.activeFileId!==file.id)return;
       }
       if(sourceView.hidden||sourceView.value!==formula.source)return;
       sourceView.select(anchor.position,head.position);
@@ -2640,7 +2639,7 @@ nativeTexPreview=installNativeTexPreview({host:footer,before:modes,
     const fields=[...paper.querySelectorAll(formula.kind==='displayMath'?'.math-display math-field':'.math-inline math-field')]
       .filter(field=>!projectDocument.composition||field.closest('[data-project-region]')?.dataset.filePath===formula.filePath);
     const field=fields[formula.ordinal];
-    if(fields.length!==formula.count||field?.value.replace(/\s/g,'')!==formula.math.source.replace(/\s/g,''))return;
+    if(fields.length!==formula.count||!matchesRichFormula(field,formula))return;
     const model=field._mathfield?.model;
     const from=model&&richSlotPosition(model,formula.math.atoms,anchor.owner,anchor.hit);
     const to=anchor===head?from:model&&richSlotPosition(model,formula.math.atoms,head.owner,head.hit);
@@ -2650,6 +2649,23 @@ nativeTexPreview=installNativeTexPreview({host:footer,before:modes,
     else field.selection={ranges:[[Math.min(from,to),Math.max(from,to)]],direction:from<to?'forward':'backward'};
     return {field};
   },
+  commitMath:({formula,patch,text})=>{
+    if(projectExplorer?.active||projectDocument.composition)return false;
+    if((sourceView.hidden?source():sourceView.value)!==formula.source)return false;
+    if(!text||text===formula.math.source)return false;
+    let position=-1;
+    editor.state.doc.descendants((node,pos)=>{
+      if(position>=0)return false;
+      if(node.type.name===(formula.kind==='displayMath'?'mathBlock':'math')&&
+          node.attrs.latex===formula.math.source){position=pos;return false;}
+    });
+    if(position<0)return false;
+    const node=editor.state.doc.nodeAt(position);
+    if(!node)return false;
+    editor.view.dispatch(editor.state.tr.setNodeMarkup(position,undefined,{...node.attrs,latex:text}));
+    return true;
+  },
+  history:command=>{command==='redo'?redoDocument():undoDocument();},
 });
 editor.on('update',()=>nativeTexPreview.refresh());
 const compositionController=createCompositionController({

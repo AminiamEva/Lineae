@@ -17,8 +17,12 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Condvar, Mutex, MutexGuard};
 use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
-use tauri::{ipc::Response, AppHandle, State};
+use tauri::{ipc::Response, AppHandle, Emitter, State};
 use tauri_plugin_dialog::{DialogExt, MessageDialogButtons};
+
+/// Event-driven protocol delivery. Polling remains as a compatibility fallback,
+/// but an interactive surface never waits for a timer to receive geometry.
+type EventSink = Arc<dyn Fn(Value) + Send + Sync>;
 
 const SOURCE_LIMIT: usize = 2 * 1024 * 1024;
 const LINE_LIMIT: usize = 16 * 1024 * 1024;
@@ -254,6 +258,7 @@ struct Manager {
     generation: u64,
     stopped: bool,
     session: Option<Arc<Session>>,
+    events: Option<EventSink>,
 }
 
 #[derive(Default)]
@@ -456,6 +461,7 @@ struct Session {
     observer: Mutex<Option<Arc<Session>>>,
     observation_commands: Mutex<()>,
     observation_pages: Mutex<BTreeMap<u64, Value>>,
+    events: Mutex<Option<EventSink>>,
 }
 
 impl Session {
@@ -483,6 +489,7 @@ impl Session {
             observer: Mutex::new(None),
             observation_commands: Mutex::new(()),
             observation_pages: Mutex::new(BTreeMap::new()),
+            events: Mutex::new(None),
         });
         for (path, bytes) in &snapshot.files {
             let destination = session.root.join(path);
@@ -503,6 +510,10 @@ impl Session {
             return Err(error("session_closed", "The native TeX session was closed."));
         }
         Ok(())
+    }
+
+    fn set_events(&self, sink: EventSink) {
+        *lock(&self.events) = Some(sink);
     }
 
     fn fail(&self, problem: NativeTexError) {
@@ -614,6 +625,10 @@ impl Session {
                         return captured;
                     }
                     Ok(_) if protocol => {
+                        let dispatched = if line.len() <= LINE_LIMIT {
+                            serde_json::from_slice::<Value>(&line).ok()
+                                .filter(|value| value.get("event").is_some())
+                        } else { None };
                         let received = if line.len() > LINE_LIMIT {
                             Err(error("protocol_limit", "rtex protocol frame exceeded 16 MiB."))
                         } else {
@@ -624,6 +639,9 @@ impl Session {
                         if let Err(problem) = received {
                             session.fail(problem);
                             return captured;
+                        }
+                        if let Some(event) = dispatched {
+                            if let Some(sink) = lock(&session.events).clone() { sink(event); }
                         }
                         session.changed.notify_all();
                     }
@@ -1128,6 +1146,8 @@ fn update_snapshot(
         return session.set_source(source);
     }
     let replacement = Session::create_snapshot(snapshot)?;
+    replacement.set_events(lock(manager).events.clone()
+        .ok_or_else(|| error("session_closed", "The native TeX event channel is unavailable."))?);
     {
         let mut manager = lock(manager);
         if manager.stopped || !manager.session.as_ref().is_some_and(|active| active.id == session.id) {
@@ -1175,12 +1195,21 @@ pub async fn native_tex_open(
         return Ok(None);
     }
     let session = blocking(move || Session::create_snapshot(snapshot)).await?;
+    let session_id = session.id.clone();
+    let event_app = app.clone();
+    session.set_events(Arc::new(move |event| {
+        let _ = event_app.emit("lineae-native-tex", json!({
+            "sessionId": session_id,
+            "event": event,
+        }));
+    }));
     {
         let mut manager = lock(&state.0);
         if manager.stopped || manager.generation != generation {
             return Err(error("stale_session", "A newer native TeX session replaced this request."));
         }
         manager.session = Some(session.clone());
+        manager.events = lock(&session.events).clone();
     }
     blocking(move || {
         let result = session.start();

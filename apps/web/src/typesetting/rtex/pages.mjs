@@ -108,7 +108,7 @@ export function installNativePages({host,getFont,onPaint,onError,onMathHit}) {
     const canvas=event.target.closest?.('canvas');
     const hit=locate(canvas,event);
     drag=hit?{canvas,hit,ownership,id:event.pointerId,x:event.clientX,y:event.clientY}:null;
-    if(drag)canvas.setPointerCapture(event.pointerId);
+    if(drag){try{canvas.setPointerCapture(event.pointerId);}catch{/* synthetic or already released pointer */}}
   });
   host.addEventListener('pointermove',event=>{
     if(drag?.id!==event.pointerId||drag.ownership!==ownership)return;

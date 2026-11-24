@@ -29,15 +29,18 @@ export function projectDocumentFormulas(source,{fragment=false,firstTag=1,filePa
   const doc=parseDocument(source,{fragment});
   if(!doc)return null;
   const body=doc.blocks.join('');
-  if(doc.start+body+doc.end!==source)return null;
+  if(fragment? !source.startsWith(body) : doc.start+body+doc.end!==source)return null;
   const tokens=[...sourceStructure(body)];
   if(tokens.some(token=>token.kind==='invalid'))return null;
   const spans=tokens.flatMap(token=>{
     if(!token.topLevel)return [];
     if(['displayMath','inlineMath'].includes(token.kind))return [token];
-    const name=token.kind==='begin'&&/^\\begin\{(equation\*?)\}$/.exec(token.value)?.[1];
+    const name=token.kind==='begin'&&/^\\begin\{((?:equation|align|gather)\*?)\}$/.exec(token.value)?.[1];
     const close=name&&environmentEnd(body,token.index,name);
-    return close?[{index:token.index,delimiter:token.value,latex:body.slice(token.end,close.start),kind:'displayMath'}]:[];
+    if(!close)return [];
+    const equation=name.startsWith('equation');
+    return [{index:token.index,delimiter:equation?token.value:'',
+      latex:equation?body.slice(token.end,close.start):body.slice(token.index,close.end),kind:'displayMath'}];
   });
   const counts={displayMath:0,inlineMath:0},ordinals={...counts};
   for(const span of spans)counts[span.kind]++;

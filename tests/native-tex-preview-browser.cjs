@@ -311,17 +311,14 @@ const server=createServer(async(req,res)=>{
     if(!await page.locator('#project-explorer').isVisible())await page.locator('#project-toggle').click();
     const folder=page.locator('#project-explorer summary').filter({hasText:/^chapters$/});
     if(!await folder.evaluate(node=>node.parentElement.open))await folder.click();
+    await page.locator('[data-path="chapters/one.tex"]').click();
     await page.locator('[data-source-mode=source]').click();
-    await page.evaluate(()=>{nativeProbe.targetInclude=true;});
-    await page.locator('#native-tex-target').click();
-    await panel.getByText('Click the empty numerator or denominator',{exact:false}).waitFor();
-    await panel.locator('[data-native-page="1"] canvas').click({position:{x:6500000*scale,y:7000000*scale}});
-    await page.waitForFunction(()=>document.activeElement?.classList.contains('cm-content')&&
-      document.querySelector('[data-path="chapters/one.tex"][aria-current=true]'));
+    await page.locator('.cm-content').click();
+    await page.keyboard.press(mod+'+End');
     await page.keyboard.type('j');
     await page.waitForFunction(()=>nativeProbe.calls.some(call=>call.command==='native_tex_update'&&
       call.args.source.includes('\\frac{a}{b}')&&call.args.files?.some(file=>file.path==='chapters/one.tex'&&
-        new TextDecoder().decode(new Uint8Array(file.bytes)).includes('\\frac{z}{j}'))));
+        new TextDecoder().decode(new Uint8Array(file.bytes)).endsWith('j'))));
     await page.keyboard.press(mod+'+a');
     await page.evaluate(()=>{nativeProbe.restartNext=true;});
     await page.keyboard.type('Changed chapter.\n');
@@ -331,6 +328,42 @@ const server=createServer(async(req,res)=>{
     await page.waitForFunction(()=>document.querySelector('#native-tex-preview').dataset.state==='current');
     assert.notEqual(await page.evaluate(()=>String(nativeProbe.session)),previousId,'Dependency changes may replace the native session without resetting editor history');
     assert.match(await page.locator('.cm-content').textContent(),/Changed chapter\./);
+    // Native editing surface: the native page receives keys, caret, selection and
+    // IME; ProseMirror remains the document and history authority.
+    await page.reload({waitUntil:'networkidle'});
+    await page.locator('input#file').setInputFiles({name:'denominator.tex',mimeType:'text/plain',buffer:input});
+    await page.waitForFunction(()=>document.querySelector('math-field')?.value.includes('\\frac'));
+    await button.click();
+    await page.waitForFunction(()=>document.querySelector('#native-tex-preview').dataset.state==='current');
+    await page.locator('#native-tex-target').click();
+    await panel.getByText('Click the empty numerator or denominator',{exact:false}).waitFor();
+    await page.locator('#native-tex-edit').click();
+    assert.equal(await panel.getAttribute('data-editing'),'true');
+    const editScale=Number(await page.locator('#native-tex-zoom').inputValue())/100*(96/72)/65781.76;
+    await panel.locator('[data-native-page="1"] canvas').click({position:{x:6500000*editScale,y:7000000*editScale}});
+    await page.waitForFunction(()=>document.activeElement?.id==='native-tex-input');
+    await panel.locator('.native-tex-caret').waitFor();
+    const pollsBefore=await page.evaluate(()=>nativeProbe.calls.filter(call=>call.command==='native_tex_poll').length);
+    await page.keyboard.type('b');
+    await page.waitForFunction(()=>nativeProbe.source?.includes('\\frac{a}{b}'));
+    await page.waitForFunction(()=>document.querySelector('math-field')?.value.includes('\\frac{a}{b}'));
+    assert.equal(await page.evaluate(()=>nativeProbe.calls.filter(call=>call.command==='native_tex_poll').length),pollsBefore,
+      'Native editing consumes pushed events instead of polling');
+    await page.waitForFunction(()=>document.querySelector('#native-tex-preview').dataset.latencySamples);
+    await page.waitForFunction(()=>document.querySelector('#native-tex-preview').dataset.state==='current');
+    await page.waitForTimeout(700);
+    await page.keyboard.press('ArrowLeft');
+    await page.keyboard.type('c');
+    await page.waitForFunction(()=>nativeProbe.source?.includes('\\frac{a}{cb}'),
+      'The native caret stepped left within the denominator before the second character');
+    await page.waitForFunction(()=>document.querySelector('#native-tex-preview').dataset.state==='current');
+    assert.equal(await page.evaluate(()=>document.activeElement?.id),'native-tex-input',
+      'The native page keeps the IME-capable input focused');
+    await page.keyboard.press(mod+'+z');
+    await page.waitForFunction(()=>nativeProbe.source?.includes('\\frac{a}{b}'));
+    assert.equal(await page.evaluate(()=>document.querySelectorAll('math-field').length),1,
+      'The existing formula editor remains available as the migration fallback');
+    await page.locator('#native-tex-close').click();
     assert.deepEqual(errors,[]);
     if(process.env.LINEAE_NATIVE_PDF){
       await page.close();
@@ -403,7 +436,8 @@ const server=createServer(async(req,res)=>{
     }
     console.log('PASS native preview transport/UI: explicit startup, Canvas resources, retained editor/history, sync, export revision and cancellation (not engine evidence)');
   }catch(error){
-    if(page)console.error('Native preview UI diagnostic:',await page.evaluate(()=>({
+    let diagnostic='page unavailable';
+    try{if(page)diagnostic=await page.evaluate(()=>({
       state:document.querySelector('#native-tex-preview')?.dataset.state,
       fallback:document.querySelector('#native-tex-preview')?.dataset.fallbackReason,
       status:document.querySelector('#native-tex-preview [role=status]')?.textContent,
@@ -412,7 +446,8 @@ const server=createServer(async(req,res)=>{
       focus:document.activeElement?.tagName,
       cursor:document.activeElement?._mathfield?.model.at(document.activeElement.position)?.parentBranch,
       calls:window.nativeProbe?.calls.slice(-6).map(call=>({command:call.command,key:call.args?.key})),
-    })));
+    }));}catch{/* the page may have navigated or closed */}
+    console.error('Native preview UI diagnostic:',diagnostic);
     throw error;
   }finally{await browser.close();server.close();}
 })().catch(error=>{console.error(error);process.exitCode=1;server.close();});

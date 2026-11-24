@@ -2,6 +2,13 @@ module.exports=function installMockNativeTex() {
   // UI/interaction preservation only, never evidence of actual TeX geometry.
   window.nativeProbe={calls:[],events:[],revision:1,session:0,failFont:false,failPdf:false,delayOpen:false,ruleRects:[]};
   const p=window.nativeProbe;
+  p.listeners=[];
+  const emit=event=>{
+    p.events.push(event);
+    for(const listener of p.listeners) {
+      try {listener({payload:{sessionId:String(p.session),event}});} catch {}
+    }
+  };
   p.pdf=()=>{
     const text='BT /F1 18 Tf 72 720 Td (LuaLaTeX PDF fallback) Tj ET\n';
     const objects=['<< /Type /Catalog /Pages 2 0 R >>','<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
@@ -20,8 +27,7 @@ module.exports=function installMockNativeTex() {
     if(this.canvas.closest('#native-tex-preview'))p.ruleRects.push({w,h});
     return fillRect.call(this,x,y,w,h);
   };
-  p.layout=()=>({event:'LayoutUpdate',compile:{state:'Ok'},convergence:{state:'Converged'},
-    pdf_fallback_registered:Boolean(p.registeredPdf),
+  p.layout=()=>({event:'LayoutUpdate',compile:{state:'Ok'},convergence:{state:'Converged'},    pdf_fallback_registered:Boolean(p.registeredPdf),
     versions:{source_revision:p.revision,context_revision:1,engine_generation:0,layout_version:p.revision},
     placements:[{par_id:1,fragments:[{page:1,first_line:1,last_line:1,xs:[6500000],baselines:[6500000],approximate:false}]}],
     pages_total:1,pages_changed:[{page:1,exact:true,dl:{kind:'page',page:1,
@@ -35,7 +41,7 @@ module.exports=function installMockNativeTex() {
       p.source=args.source;p.revision=1;p.events=[];
       const sessionId=String(++p.session);
       if(p.delayOpen)await new Promise(done=>{p.resolveOpen=done;});
-      p.events.push(p.layout());
+      emit(p.layout());
       return {sessionId,sourceRevision:1};
     }
     if(command==='native_tex_poll'){
@@ -50,11 +56,11 @@ module.exports=function installMockNativeTex() {
       if(p.warmNext){
         p.warmNext=false;
         const frame=p.layout();
-        p.events.push({event:'ParagraphUpdate',par_id:1,status:'ok',pagination_stale:false,context_stale:false,
+        emit({event:'ParagraphUpdate',par_id:1,status:'ok',pagination_stale:false,context_stale:false,
           versions:{...frame.versions,layout_version:frame.versions.layout_version-1},fragments:frame.placements[0].fragments,
           dl:frame.pages_changed[0].dl});
-        p.finishWarm=()=>p.events.push(frame);
-      }else p.events.push(p.layout());
+        p.finishWarm=()=>emit(frame);
+      }else emit(p.layout());
       return {sessionId:String(p.session),editId:p.revision,sourceRevision:p.revision,routed:'fast'};
     }
     if(command==='native_tex_font') {
@@ -81,8 +87,17 @@ module.exports=function installMockNativeTex() {
       const cellOwner=cell?.[1]??(aligned?[...aligned[1]].map(letter=>letter.charCodeAt(0)-65).join(''):null);
       if((!match&&!script&&!cellOwner)||args.sourceRevision!==p.revision)throw new Error('Unexpected formula observation request');
       const observed=p.layout().pages_changed;
+      const denominator=/\\frac\{[^{}]*\}\{(?:\\attribute65000=(\d+) )?([^{}]*)\}/.exec(args.projection);
       observed[0].dl.math_owners={fields:[{owner:Number(match?.[1]??script?.[1]??cellOwner),role:match?(match[2]==='frac'?'den':'radicand'):script?'sup':'cell',
-        bbox:[6500000,7000000,6500000,7000000],empty:true}],glyphs:[]};
+        bbox:[6500000,7000000,6500000,7000000],empty:match?denominator?.[2]==='':true}],glyphs:[]};
+      if(match&&denominator){
+        let x=6500000;
+        for(const char of denominator[2]??''){
+          observed[0].dl.math_owners.glyphs.push({owner:Number(denominator[1]),char:char.codePointAt(0),
+            bbox:[x,6900000,x+200000,7000000]});
+          x+=200000;
+        }
+      }
       if(cellOwner)observed[0].dl.math_owners.fields.push({owner:2,role:'cell',bbox:[6500000,7000000,6500000,7000000],empty:true});
       const token=/\\attribute65000=(\d+) a(?=\\attribute)/.exec(args.projection);
       if(token)observed[0].dl.math_owners.glyphs.push({owner:Number(token[1]),char:97,
@@ -106,5 +121,10 @@ module.exports=function installMockNativeTex() {
       return;
     }
     throw new Error('Unexpected IPC command '+command);
+  }},
+  event:{listen:async(name,listener)=>{
+    if(name!=='lineae-native-tex')throw new Error('Unexpected event '+name);
+    p.listeners.push(listener);
+    return ()=>{p.listeners=p.listeners.filter(candidate=>candidate!==listener);};
   }}};
 };

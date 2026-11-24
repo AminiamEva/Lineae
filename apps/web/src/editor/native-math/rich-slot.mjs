@@ -83,3 +83,10 @@ export function nativeCaretTargets(model,formula) {
   }
   return positions;
 }
+import {mathEditorSource} from '../../../latex/math-environments.mjs';
+
+export function matchesRichFormula(field,formula) {
+  return field?.value.replace(/\s/g,'')===mathEditorSource(formula.math.source,{
+    inline:formula.kind==='inlineMath',
+  }).replace(/\s/g,'');
+}

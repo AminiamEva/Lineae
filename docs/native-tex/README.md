@@ -159,7 +159,7 @@ its disposable project; it never saves over the original `.tex`.
 | History and source changes | One PM/MathLive history, no second native editor history; preview must not write document state |
 | IME and clipboard | Existing input surface remains visible/authoritative; physical WKWebView/WebView2 checks still required |
 | LuaLaTeX session, fonts and PDF | Real ignored Rust integration test explicitly selected in remote native CI; mock UI tests do not replace it |
-| Native Canvas clicking, caret and selection | Partial: owner-verified mouse clicks and drags project onto the existing editor, with a Canvas position marker and glyph highlights for supported formulas |
+| Native Canvas clicking, caret and selection | Interactive slice: verified clicks, caret, keyboard, drag selection and IME-capable input route into ProseMirror for supported formulas |
 | Native page fidelity | Exact glyph/resource gate, otherwise revision-frozen whole-page PDF; no generic-font or unknown-operation substitution |
 | Full feature parity | **Not achieved**; native direct editing cannot become default until these gates pass |
 
@@ -189,6 +189,11 @@ with the preview active through a mock transport. These are distinct layers of e
 not a claim of automated physical-device IME or native-canvas direct-editing coverage.
 
 ## Next gates
+
+Architecture and current slice limits are documented in
+[native-editing-surface.md](native-editing-surface.md). The migration phase
+targets a native input surface; the preview remains the fallback until the
+gaps listed there are closed.
 
 The first gate now has a dedicated remote workflow:
 

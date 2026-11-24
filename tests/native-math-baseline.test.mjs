@@ -9,6 +9,9 @@ test('native math baseline retains both JS implementations and gates unverified 
   assert.equal(baseline.engines.luaJs.policy,'retain');
   assert.equal(baseline.engines.luaJs.sourceReference,null);
   assert.deepEqual(baseline.engines.rtex.geometryEvidence.cases,['lf','unicode-crlf']);
+  assert.equal(baseline.engines.rtex.nativeEditing.status,'vertical_slice');
+  for(const entry of baseline.engines.rtex.nativeEditing.entryPoints) assert.ok(readFileSync(entry).length,entry);
+  assert.match(baseline.engines.rtex.nativeEditing.ipc,/lineae-native-tex/);
   for(const entry of baseline.engines.xelatexJs.entryPoints) assert.ok(readFileSync(entry).length,entry);
   assert.deepEqual(baseline.platforms,['x86_64-pc-windows-msvc','aarch64-apple-darwin']);
   assert.equal(baseline.buildPolicy,'remote_only');

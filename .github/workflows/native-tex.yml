@@ -57,7 +57,7 @@ jobs:
       - run: npm ci --no-audit --no-fund
       - name: Probe harness and projection unit tests
         run: |
-          node --test tests/native-math-baseline.test.mjs tests/native-math-probe.test.mjs tests/display-math-blocks.test.mjs tests/native-tex-project.test.mjs tests/native-math-hit.test.mjs tests/native-math-source.test.mjs tests/native-math-warm-pages.test.mjs
+          node --test tests/native-math-baseline.test.mjs tests/native-math-probe.test.mjs tests/display-math-blocks.test.mjs tests/native-tex-project.test.mjs tests/native-math-hit.test.mjs tests/native-math-source.test.mjs tests/native-math-warm-pages.test.mjs tests/native-surface.test.mjs
           bash -n scripts/install-native-tex-ci.sh
       - name: Build and verify the native preview frontend
         run: |

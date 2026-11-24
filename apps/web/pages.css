@@ -354,6 +354,10 @@ main { padding:125px 24px 60px; overflow:auto; }
 .native-tex-page canvas { display:block; }
 .native-tex-caret { position:absolute; width:2px; background:#2f6fd0; pointer-events:none; }
 .native-tex-selection { position:absolute; background:#2f6fd04d; pointer-events:none; }
+.native-tex-input { position:fixed; z-index:20; width:2px; height:16px; padding:0; margin:0; border:0;
+  background:transparent; color:transparent; caret-color:transparent; resize:none; overflow:hidden;
+  outline:none; font-size:16px; line-height:1; }
+#native-tex-preview[data-editing=true] .native-tex-page canvas { cursor:text; }
 .document-status output { min-width:38px; font-variant-numeric:tabular-nums; }
 .document-status .pagination-toggle[data-mode="pages"] {
   color:light-dark(#0059c7,#9bc8ff);
