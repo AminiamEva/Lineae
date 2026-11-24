@@ -1023,9 +1023,11 @@ async function verifySelectionGeometry(page, paper, importSource) {
     await paper.locator(':scope > p').filter({hasText:/^Before fence$/}).click();
     await page.keyboard.press('End');
     await page.keyboard.type('```');
-    await paper.locator('pre code').waitFor();
-    assert.equal(await paper.locator('pre code').textContent(),'Before fence',
-      'A triple-backtick fence after existing text converts the paragraph instead of leaving a stray code mark');
+    await paper.locator('.math-display math-field').waitFor();
+    assert.equal(await paper.locator('math-field').count(),1,'Triple backtick inserts one display formula');
+    assert.equal(await paper.locator('pre code').count(),0,'Triple backtick no longer converts the paragraph to code');
+    assert.equal(await paper.locator(':scope > p').filter({hasText:/^Before fence$/}).count(),1,
+      'Triple backtick preserves the preceding paragraph without a stray backtick or code mark');
 
     await importSource('Code fence');
     const codeFenceParagraph = paper.locator(':scope > p').filter({ hasText: /^Code fence$/ });
@@ -1033,13 +1035,17 @@ async function verifySelectionGeometry(page, paper, importSource) {
     await codeFenceParagraph.click();
     await page.keyboard.press('End');
     await page.keyboard.press('Enter');
-    await page.keyboard.type('```rust');
+    await page.keyboard.press('Control+Alt+c');
     await page.waitForFunction(()=>Boolean(document.querySelector('.ProseMirror pre code')));
+    await page.keyboard.type('rust');
     await page.keyboard.press('Enter');
     await page.waitForFunction(()=>document.querySelector('.ProseMirror pre')?.getAttribute('data-language')==='rust');
-    assert.equal(await paper.locator('pre code').textContent(),'','A typed fence can name the code language');
+    assert.equal(await paper.locator('pre code').textContent(),'','A code block can accept a typed language name');
     assert.equal(await paper.locator('pre').evaluate(element=>getComputedStyle(element).fontFamily.includes('monospace')),true,
       'Code blocks use a monospace font');
+    await page.keyboard.type('```');
+    assert.equal(await paper.locator('pre code').textContent(),'```','Backticks inside code blocks remain literal');
+    assert.equal(await paper.locator('math-field').count(),0,'Typing backticks inside code does not insert a formula');
 
     await importSource('\\begin{enumerate}\n\\item Outer\n\\begin{enumerate}\n\\item Inner\n\\end{enumerate}\n\\end{enumerate}');
     await page.waitForFunction(()=>document.querySelectorAll('.ProseMirror ol ol li').length===1);
@@ -1742,7 +1748,7 @@ A & B \\
     await importSource('');
     await page.waitForFunction(()=>document.querySelector('.ProseMirror p')?.textContent==='');
     await paper.locator('p').click();
-    await page.keyboard.type('```');
+    await page.keyboard.press('Control+Alt+c');
     await paper.locator('pre code').waitFor();
     await page.keyboard.type('return 42');
     assert.equal(await paper.locator('pre code').textContent(),'return 42');

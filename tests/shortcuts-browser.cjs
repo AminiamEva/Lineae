@@ -52,12 +52,37 @@ const server=createServer(async(req,res)=>{
       await paper.click();await page.keyboard.press('End');
       await page.keyboard.type('`');
       assert.equal(await paper.evaluate(node=>node.editor.isActive('code')),true,'One backtick still toggles inline code');
-      await page.waitForTimeout(720);
-      await page.keyboard.type('`');
-      assert.equal(await paper.textContent(),'Backtick`','A slightly slower double backtick inserts a literal backtick');
+      await page.waitForTimeout(100);
+      await page.keyboard.press('Backquote');
+      assert.equal(await paper.textContent(),'Backtick`','A rapid double backtick inserts one literal backtick');
+      assert.equal(await paper.locator('code').count(),0,'The literal backtick is outside inline code');
+      assert.equal(await paper.evaluate(node=>node.editor.isActive('code')),false,'Double backtick leaves code mode off');
       assert.equal(await paper.locator('math-field').count(),0,'Double backtick does not insert a formula');
-      await page.keyboard.type('`');
-      assert.equal(await paper.locator('pre code').textContent(),'Backtick','Triple backtick still converts the paragraph to a code block');
+      await page.keyboard.press('Backquote');
+      await paper.locator('.math-display math-field').waitFor();
+      assert.equal(await paper.locator('math-field').count(),1,'Triple backtick inserts one display formula');
+      assert.equal(await paper.locator('pre code').count(),0,'Triple backtick does not create a code block');
+      assert.equal((await paper.textContent()).includes('`'),false,'Triple backtick consumes the literal from the second press');
+      assert.match(await paper.textContent(),/Backtick/,'Triple backtick preserves surrounding text');
+
+      await load('Inline');await paper.click();await page.keyboard.press('End');
+      await page.keyboard.press('Backquote');await page.keyboard.type('code');
+      assert.equal(await paper.locator('code').textContent(),'code','Typing after one backtick stays in inline code');
+      await page.keyboard.press('Backquote');await page.keyboard.type('plain');
+      assert.equal(await paper.locator('code').textContent(),'code','A later backtick exits inline code without inserting a literal');
+      assert.equal(await paper.textContent(),'Inlinecodeplain');
+
+      await load('Window');await paper.click();await page.keyboard.press('End');
+      await page.keyboard.press('Backquote');
+      await page.waitForTimeout(720);
+      await page.keyboard.press('Backquote');
+      assert.equal(await paper.textContent(),'Window','Presses more than 650ms apart toggle code, not insert a literal');
+      assert.equal(await paper.evaluate(node=>node.editor.isActive('code')),false);
+
+      await load('Typing');await paper.click();await page.keyboard.press('End');
+      await page.keyboard.type('``plain');
+      assert.equal(await paper.textContent(),'Typing`plain','Fast consecutive text input produces a literal and following plain text');
+      assert.equal(await paper.locator('code').count(),0,'Following text does not inherit a stale code mark');
 
       await load('Alpha');
       await paper.click();await page.keyboard.press('End');await page.keyboard.type('$');

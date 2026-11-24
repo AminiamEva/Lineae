@@ -16,6 +16,7 @@ import {ProjectWorkspaceState} from './project/workspace-state.mjs';
 import {exitProjectHeading} from './project/editing.js';
 import {ProjectDocumentSession} from './project/document-session.mjs';
 import {installFloatingToolbar} from './ui/floating-toolbar.js';
+import {installShortcutPriority} from './ui/shortcut-priority.mjs';
 import {installSettingsPanel} from './ui/settings-panel.js';
 import { buildHomeRibbon } from './ui/home-ribbon.js';
 import { activeStyleKey, documentClassFromSource } from './ui/style-presets.mjs';
@@ -46,6 +47,7 @@ import { installProjectExplorer } from './project/explorer.js';
 import { applyCitationRenames } from '../bib/index.mjs';
 import { chooseReference } from './editor/reference-index.js';
 import { installTableHoverAddRow } from './editor/table-hover.js';
+import { deleteTableKeepingScroll } from './editor/table-utils.js';
 import { createConfigStore } from './editor/config.mjs';
 import { compileKeybindings, installKeybindings } from './editor/keybindings.mjs';
 import defaultConfigYaml from '../config.yaml';
@@ -331,7 +333,7 @@ const HistoryTable = Table.extend({
   },
 });
 function insertDefaultTable() {
-  return editor.chain().focus()
+  return editor.chain().focus(undefined,{scrollIntoView:false})
     .insertTable({rows:2,cols:2,withHeaderRow:false})
     .updateAttributes('table',{borderMode:'grid'}).run();
 }
@@ -483,16 +485,19 @@ const Shortcuts = Extension.create({
       const parent = view.state.doc.resolve(from).parent;
       if (text === '`' && parent.type.name !== 'codeBlock') {
         const now=performance.now();
-        const continued=backticks && now-backticks.time<900 && backticks.doc===view.state.doc && backticks.pos===from;
+        const continued=backticks && now-backticks.time<650 && backticks.doc===view.state.doc && backticks.pos===from && from===to;
         if (continued && backticks.count===2 && view.state.doc.textBetween(from-1,from)==='`') {
-          editor.chain().deleteRange({from:from-1,to:from}).setCodeBlock().run();
           backticks=null;
+          insertFormula(editor,true,'',{from:from-1,to:from});
         } else if (continued && backticks.count===1) {
-          view.dispatch(view.state.tr.insertText('`',from,to));
+          // The first press only changed stored marks. Do not let that code
+          // mark leak into the literal produced by the second press.
+          view.dispatch(view.state.tr.setStoredMarks(backticks.marks).insertText('`',from,to).setStoredMarks(backticks.marks));
           backticks={time:now,count:2,doc:view.state.doc,pos:view.state.selection.from};
         } else {
+          const marks=(view.state.storedMarks ?? view.state.selection.$from.marks()).filter(mark=>mark.type.name!=='code');
           editor.commands.toggleCode();
-          backticks={time:now,count:1,doc:view.state.doc,pos:view.state.selection.from};
+          backticks={time:now,count:1,doc:view.state.doc,pos:view.state.selection.from,marks};
         }
         return true;
       }
@@ -2332,9 +2337,9 @@ function setParagraphAlignment(align) {
   }
   if (editor.isActive('table')) {
     if(selection.isRowSelection?.()&&selection.isColSelection?.())
-      return editor.chain().focus().updateAttributes('table',{align}).run();
+      return editor.chain().focus(undefined,{scrollIntoView:false}).updateAttributes('table',{align}).run();
     const type=editor.isActive('tableHeader')?'tableHeader':'tableCell';
-    return editor.chain().focus().updateAttributes(type,{align}).run();
+    return editor.chain().focus(undefined,{scrollIntoView:false}).updateAttributes(type,{align}).run();
   }
   if (selection instanceof NodeSelection && selection.node.type.name==='documentImage') {
     editor.view.dispatch(editor.state.tr.setNodeMarkup(selection.from,undefined,{
@@ -2436,6 +2441,7 @@ const shortcutActions = {
     splitMode: () => splitButton.click(),
     settings: () => settingsPanel.show(),
     toggleRibbon: () => document.querySelector('#toolbar-collapse')?.click(),
+    shortcutPriority: (_context,event) => event.repeat ? true : shortcutPriority.toggle(),
     formattingMarks: () => formattingMarks.click(),
     zoomIn: context => zoomByKeyboard(10,context),
     zoomOut: context => zoomByKeyboard(-10,context),
@@ -2579,6 +2585,7 @@ function updateEnvironment() {
   environment.dataset.environment=name;
 }
 footer.append(count,document.querySelector('#status'),environment,zoom,percent,paginationButton,themeButton,modes);document.body.append(footer);sourceView.mountStatus(footer);scale();updatePaginationButton();
+const shortcutPriority=installShortcutPriority({host:footer,before:modes,getBindings:()=>config.bindings});
 const compositionController=createCompositionController({
   explorer:()=>projectExplorer,fileKind:()=>projectFileKind,session:projectDocument,
   sourceHidden:()=>sourceView.hidden,composing:()=>editor.view.composing||sourceView.composing,
@@ -2860,36 +2867,36 @@ continueTablesButton=groupButton(tableGroup,['续表','Continue'],()=>{
 updateContinueTablesButton();
 groupButton(tableGroup,['＋ 行','＋ Row'],addMatrixRow,'＋ Row');
 groupButton(tableGroup,['＋ 列','＋ Column'],addMatrixColumn,'＋ Column');
-groupButton(tableGroup,['－ 行','－ Row'],()=>editor.chain().focus().deleteRow().run(),'－ Row');
-groupButton(tableGroup,['－ 列','－ Column'],()=>editor.chain().focus().deleteColumn().run(),'－ Column');
-groupButton(tableGroup,['删除表格','Delete table'],()=>editor.chain().focus().deleteTable().run());
-groupButton(tableGroup,['合并','Merge'],()=>editor.chain().focus().mergeCells().run(),'merge');
-groupButton(tableGroup,['拆分','Split'],()=>editor.chain().focus().splitCell().run(),'split');
-groupButton(tableGroup,'booktabs',()=>{if(editor.isActive('table'))editor.chain().focus().updateAttributes('table',{booktabs:!editor.getAttributes('table').booktabs}).run();});
+groupButton(tableGroup,['－ 行','－ Row'],()=>editor.chain().focus(undefined,{scrollIntoView:false}).deleteRow().run(),'－ Row');
+groupButton(tableGroup,['－ 列','－ Column'],()=>editor.chain().focus(undefined,{scrollIntoView:false}).deleteColumn().run(),'－ Column');
+groupButton(tableGroup,['删除表格','Delete table'],()=>deleteTableKeepingScroll(editor));
+groupButton(tableGroup,['合并','Merge'],()=>editor.chain().focus(undefined,{scrollIntoView:false}).mergeCells().run(),'merge');
+groupButton(tableGroup,['拆分','Split'],()=>editor.chain().focus(undefined,{scrollIntoView:false}).splitCell().run(),'split');
+groupButton(tableGroup,'booktabs',()=>{if(editor.isActive('table'))editor.chain().focus(undefined,{scrollIntoView:false}).updateAttributes('table',{booktabs:!editor.getAttributes('table').booktabs}).run();});
 groupButton(tableGroup,['题注','Caption'],async()=>{
   if(!editor.isActive('table'))return;
   const value=await askText(t('表格题注（LaTeX）','Table caption (LaTeX)'),editor.getAttributes('table').caption??'');
-  if(value!==null)editor.chain().focus().updateAttributes('table',{caption:value||null,centered:true,placement:editor.getAttributes('table').placement??'htbp'}).run();
+  if(value!==null)editor.chain().focus(undefined,{scrollIntoView:false}).updateAttributes('table',{caption:value||null,centered:true,placement:editor.getAttributes('table').placement??'htbp'}).run();
 });
 groupButton(tableGroup,'label',async()=>{
   if(!editor.isActive('table'))return;
   const value=await askText(t('表格标签键','Table label key'),editor.getAttributes('table').label??'');
-  if(value!==null)editor.chain().focus().updateAttributes('table',{label:value||null}).run();
+  if(value!==null)editor.chain().focus(undefined,{scrollIntoView:false}).updateAttributes('table',{label:value||null}).run();
 });
 groupButton(tableGroup,['边框','Borders'],async()=>{
   if(!editor.isActive('table'))return;
   const mode=await askText(t('边框：grid 全部、outer 外框、horizontal 横线、none 无','Borders: grid, outer, horizontal, none'),editor.getAttributes('table').borderMode??'grid');
-  if(mode && ['grid','outer','horizontal','none'].includes(mode)) editor.chain().focus().updateAttributes('table',{borderMode:mode,booktabs:false}).run();
+  if(mode && ['grid','outer','horizontal','none'].includes(mode)) editor.chain().focus(undefined,{scrollIntoView:false}).updateAttributes('table',{borderMode:mode,booktabs:false}).run();
 });
 groupButton(tableGroup,['线宽','Rule width'],async()=>{
   if(!editor.isActive('table'))return;
   const width=await askText(t('表格线宽（例如 0.8pt）','Table rule width (e.g. 0.8pt)'),editor.getAttributes('table').borderWidth??'0.4pt');
-  if(width!==null && (!width || /^\d+(?:\.\d+)?pt$/.test(width))) editor.chain().focus().updateAttributes('table',{borderWidth:width||null}).run();
+  if(width!==null && (!width || /^\d+(?:\.\d+)?pt$/.test(width))) editor.chain().focus(undefined,{scrollIntoView:false}).updateAttributes('table',{borderWidth:width||null}).run();
 });
 for(const [label,align] of [[['左','Left'],'left'],[['中','Center'],'center'],[['右','Right'],'right']]) groupButton(tableGroup,label,()=>{
   if(!editor.isActive('table'))return;
   const type=editor.isActive('tableHeader')?'tableHeader':'tableCell';
-  editor.chain().focus().updateAttributes(type,{align}).run();
+  editor.chain().focus(undefined,{scrollIntoView:false}).updateAttributes(type,{align}).run();
 });
 function tableOption(label,control){
   const field=document.createElement('label');
@@ -2967,7 +2974,7 @@ function updateTableAttributes(patch,focus=true){
     const current=editor.getAttributes('table');
     if(Object.entries(patch).every(([key,value])=>current[key]===value))return;
     const chain=editor.chain();
-    if(focus)chain.focus().command(({tr})=>Boolean(closeHistory(tr)));
+    if(focus)chain.focus(undefined,{scrollIntoView:false}).command(({tr})=>Boolean(closeHistory(tr)));
     chain.updateAttributes('table',patch).run();
   }
 }
@@ -3419,6 +3426,7 @@ function applyImportedPreferences() {
   configureMathFences(smartFences);
   for (const field of paper.querySelectorAll('math-field')) field.smartFence=smartFences;
   sourceView.configure();
+  shortcutPriority.refresh();
   toolbarController.refresh();
   updateFileTools();
   updateLanguage();
@@ -3442,6 +3450,7 @@ function updateLanguage() {
   setLanguage(language.value);
   document.documentElement.lang=getLanguage();
   localize(document);
+  shortcutPriority.relocalize();
   for(const tab of tabs.children)tab.textContent=t(captions[tab.dataset.group][0],captions[tab.dataset.group][1]);
   commands.setAttribute('aria-label',t('LaTeX 补全','LaTeX completion'));
   filter.placeholder=t('LaTeX 命令','LaTeX command');

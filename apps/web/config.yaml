@@ -44,6 +44,7 @@ keybindings:
     splitMode: mod+e 3
     settings: [mod+comma, ctrl+comma]
     toggleRibbon: mod+alt+r
+    shortcutPriority: null
     formattingMarks: mod+8
     zoomIn: [ctrl+equal, mod+equal, ctrl+plus, mod+plus, ctrl+shift+plus, mod+shift+plus]
     zoomOut: [ctrl+minus, mod+minus]

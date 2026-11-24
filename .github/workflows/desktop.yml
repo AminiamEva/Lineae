@@ -79,6 +79,8 @@ jobs:
         run: node tests/wrapfigure-layout-browser.cjs
       - name: Table row/column insert keeps scroll
         run: node tests/table-scroll-browser.cjs
+      - name: Table toolbar actions keep scroll
+        run: node tests/table-toolbar-scroll-browser.cjs
       - name: Table row insert leaves earlier pages intact
         run: node tests/table-reflow-browser.cjs
       - name: Image crop, sizing and wrap centering
@@ -122,6 +124,8 @@ jobs:
         run: node tests/math-editing-browser.cjs
       - name: Platform shortcuts and YAML native bindings
         run: node tests/shortcuts-browser.cjs
+      - name: Fullscreen shortcut priority regressions
+        run: node tests/shortcut-priority-browser.cjs
       - name: Project session regressions
         run: node tests/file-tree-sessions.cjs
       - uses: dtolnay/rust-toolchain@stable

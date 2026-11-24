@@ -3,6 +3,7 @@ import { icon } from './icons.js';
 import { promptDialog, askText } from './dialog.js';
 import { toggleDisplayStyle } from './math-node.js';
 import { startImageCrop } from './image-node.js';
+import { deleteTableKeepingScroll } from './table-utils.js';
 import { popIn } from '../ui/motion.mjs';
 import { localizeText, t } from '../ui/i18n.mjs';
 
@@ -210,11 +211,11 @@ export function contextCommands(context) {
     { id: 'column-after', labels: ['在右侧插入列', 'Insert column right'], visible: !field && editor.isActive('table'),
       run: () => editor.chain().focus(undefined,{scrollIntoView:false}).addColumnAfter().run() },
     { id: 'delete-row', labels: ['删除行', 'Delete row'], visible: !field && editor.isActive('table'),
-      run: () => editor.chain().focus().deleteRow().run() },
+      run: () => editor.chain().focus(undefined,{scrollIntoView:false}).deleteRow().run() },
     { id: 'delete-column', labels: ['删除列', 'Delete column'], visible: !field && editor.isActive('table'),
-      run: () => editor.chain().focus().deleteColumn().run() },
+      run: () => editor.chain().focus(undefined,{scrollIntoView:false}).deleteColumn().run() },
     { id: 'delete-table', labels: ['删除表格', 'Delete table'], visible: !field && editor.isActive('table'),
-      run: () => editor.chain().focus().deleteTable().run() },
+      run: () => deleteTableKeepingScroll(editor) },
     { id: 'delete-formula', labels: ['删除公式', 'Delete formula'], visible: Boolean(field), run: () => {
       const position = field.closest('[data-math-view]')?.getMathPosition();
       if (typeof position !== 'number') return;
