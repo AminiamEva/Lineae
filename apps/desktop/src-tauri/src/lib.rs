@@ -3,14 +3,13 @@ use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
 use serde::Serialize;
-use tauri::{AppHandle, State, WebviewUrl, WebviewWindowBuilder};
-#[cfg(target_os = "macos")]
-use tauri::Manager;
+use tauri::{AppHandle, Manager, State, WebviewUrl, WebviewWindowBuilder};
 use tauri_plugin_dialog::DialogExt;
 #[cfg(target_os = "windows")]
 mod project;
 #[cfg(target_os = "windows")]
 mod project_checkpoints;
+mod tex_session;
 
 /// Paths the user has explicitly chosen in a native dialog during this session.
 /// Write commands only accept paths from this set, so the webview cannot touch
@@ -181,7 +180,8 @@ async fn save_bytes(
 pub fn run() {
     let builder = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
-        .manage(AllowedFiles::default());
+        .manage(AllowedFiles::default())
+        .manage(tex_session::NativeTexSessions::default());
     #[cfg(target_os = "windows")]
     let builder = builder
         .manage(project::ProjectRoots::default())
@@ -190,6 +190,12 @@ pub fn run() {
             pick_save_tex,
             write_tex,
             save_bytes,
+            tex_session::native_tex_open,
+            tex_session::native_tex_update,
+            tex_session::native_tex_poll,
+            tex_session::native_tex_font,
+            tex_session::native_tex_export,
+            tex_session::native_tex_close,
             project::open_project,
             project::project_operation
         ]);
@@ -198,9 +204,20 @@ pub fn run() {
         open_tex,
         pick_save_tex,
         write_tex,
-        save_bytes
+        save_bytes,
+        tex_session::native_tex_open,
+        tex_session::native_tex_update,
+        tex_session::native_tex_poll,
+        tex_session::native_tex_font,
+        tex_session::native_tex_export,
+        tex_session::native_tex_close
     ]);
     builder
+        .on_window_event(|window,event| {
+            if matches!(event,tauri::WindowEvent::Destroyed) {
+                window.state::<tex_session::NativeTexSessions>().close_all();
+            }
+        })
         .setup(|app| {
             let window = WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
                 .title("Lineae")

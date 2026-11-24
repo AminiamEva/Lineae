@@ -9,7 +9,8 @@
 - “Remote build” refers to building the application and running acceptance tests.
   Uploading user documents for remote compilation is **not** enabled or implied.
 - Experimental native editing will be off by default until its own acceptance gates pass.
-  This first checkpoint does not yet include rtex, LuaLaTeX, a new renderer or PDF export.
+  The initial baseline release did not include rtex integration; subsequent work adds an
+  opt-in, **read-only native page preview alongside the unchanged editable surface**.
 
 `baseline.json` records observed JS entry points, fixed candidate dependency commits and
 explicitly missing evidence. The rtex and extension tag commits were verified through
@@ -68,6 +69,72 @@ Browser development previews can speed up UI iteration but cannot validate WKWeb
 WebView2 or IPC. A dedicated hot-reload development shell is a later checkpoint, not a
 feature of these packages. It must use a separate development identity and controlled
 connection; production must continue loading its packaged resources with its existing CSP.
+
+## Experimental desktop preview integration
+
+The status-bar **LuaLaTeX preview (experimental)** control starts a local rtex session
+only after a separate native trust dialog. LuaLaTeX can execute Lua with the user's
+file privileges; a temporary directory and disabled shell escape are not a sandbox.
+Only trusted, standalone test documents are in scope.
+
+Requirements, installed separately (not silently downloaded by the application):
+
+- rtex **0.0.8**, including its adjacent `share/rtex/tex` directory.
+- LuaLaTeX with the fixture's packages and Latin Modern Math.
+- `LINEAE_RTEX_PATH` may select the rtex executable; otherwise `rtex` is resolved
+  from the process PATH. `RTEX_TEXLIVE_BIN` may select the TeX Live binary directory.
+  `RTEX_TEXDIR` is supported by rtex for a nonstandard support-file location.
+- GUI-launched apps do not necessarily inherit a terminal's PATH. Launch the executable
+  from the configured terminal for the first experiment; the app must report missing tools,
+  not fall back to another implementation.
+
+For example, Windows PowerShell (substitute installed locations):
+
+```powershell
+$env:LINEAE_RTEX_PATH = 'C:\tools\rtex-0.0.8-x86_64-pc-windows-msvc\bin\rtex.exe'
+$env:RTEX_TEXLIVE_BIN = 'C:\texlive\2025\bin\windows'
+.\Lineae-portable.exe
+```
+
+On the Mac, from a terminal:
+
+```sh
+export LINEAE_RTEX_PATH="$HOME/tools/rtex-0.0.8-aarch64-apple-darwin/bin/rtex"
+export RTEX_TEXLIVE_BIN="/Library/TeX/texbin"
+app="/Applications/Lineae.app"
+executable=$(plutil -extract CFBundleExecutable raw "$app/Contents/Info.plist")
+"$app/Contents/MacOS/$executable"
+```
+
+Open the supplied `empty-denominator.tex`, enable preview and approve trust. Continue
+typing in the existing rich/formula/source editors: source updates are coalesced after
+composition, sent as raw buffers, and acknowledged using actual engine revisions.
+The native panel is read-only and visibly marks stale/error frames. Supported exact
+OTF/TTF resources are read only through captured font tokens. Type 1, TTC/OTC, images,
+project assets and degraded-page PDF fallback are not yet supported.
+
+**Export clean PDF** is available only for a confirmed current frame. It names a source
+revision, uses the native Save dialog and exports the uninstrumented session buffer.
+Editing can continue while export holds the engine snapshot; subsequent source updates
+are queued. Compilation must converge before replacing an existing destination PDF.
+Closing/replacing a session or destroying the window stops its process tree and removes
+its disposable project; it never saves over the original `.tex`.
+
+### Editing parity gates
+
+| Area | Current approach / evidence required |
+| --- | --- |
+| Existing math navigation/deletion/structures | Keep the original MathLive and Lineae commands; rerun the existing math suite with preview active |
+| History and source changes | One PM/MathLive history, no second native editor history; preview must not write document state |
+| IME and clipboard | Existing input surface remains visible/authoritative; physical WKWebView/WebView2 checks still required |
+| LuaLaTeX session, fonts and PDF | Real ignored Rust integration test explicitly selected in remote native CI; mock UI tests do not replace it |
+| Native-canvas clicking, caret and selection | **Not implemented**; requires stable owner/slot mapping and native geometry, not an invisible MathLive overlay |
+| Native page fidelity | Strict resource/exactness gate; no generic-font or unknown-operation fallback |
+| Full feature parity | **Not achieved**; native direct editing cannot become default until these gates pass |
+
+This checkpoint offers existing editing with an updating LuaLaTeX preview. It is not a
+claim that the complete existing editing experience has been reimplemented on native
+geometry, or that an unsupported document can already be edited in the native Canvas.
 
 ## Next gates
 

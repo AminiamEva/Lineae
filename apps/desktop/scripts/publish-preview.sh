@@ -29,7 +29,8 @@ Commit: $GITHUB_SHA
 Workflow: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID
 Windows: x64, unsigned
 macOS: Apple Silicon only, ad-hoc signed, not notarized
-Native rtex formula editing: not integrated yet
+Native LuaLaTeX page preview: opt-in; existing editor remains authoritative
+Direct editing on native Canvas geometry: not implemented
 XeLaTeX-aligned JS renderer: retained
 Lua JS engine: retained separately; unmerged reference not yet supplied
 No TeX engine, TeX distribution or additional fonts are bundled by this preview.
@@ -47,8 +48,9 @@ This is a separate **prerelease**, not an update to the stable release.
 - Both packages, checksums, exact tracked source and the native-math input/expected-output samples are included.
 - No Intel Mac or Linux package is part of this preview.
 - Packages retain the stable application's identifier and preference storage; back up documents and exported preferences.
-- No automatic update, frontend hot reload, native rtex editing or PDF export is claimed by this baseline build.
-- Existing JS typesetting and MathLive remain the active implementation. The unmerged Lua JS engine is not modified or substituted.
+- Optional local LuaLaTeX page preview and clean PDF export require separately installed rtex 0.0.8 and LuaLaTeX, plus explicit document trust.
+- Editing remains in the existing editor. Direct native-Canvas editing, full native parity, automatic updates and frontend hot reload are not claimed.
+- Existing JS typesetting and MathLive remain the active editing implementation. The unmerged Lua JS engine is not modified or substituted.
 
 Check \`BUILD.txt\` and \`SHA256SUMS\`, then follow
 [the two-device checklist]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/blob/$GITHUB_SHA/docs/native-tex/README.md).

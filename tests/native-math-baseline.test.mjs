@@ -28,7 +28,7 @@ test('the native math fixture changes only one denominator letter',()=>{
 test('desktop preview is opt-in, waits for both platforms and does not require Linux',()=>{
   const workflow=parse(readFileSync('.github/workflows/macos-release.yml','utf8'));
   assert.equal(workflow.on.workflow_dispatch.inputs.publish_preview.default,false);
-  assert.deepEqual(workflow.jobs.preview.needs,['web','build','windows']);
+  assert.deepEqual(workflow.jobs.preview.needs,['web','build','windows','native']);
   assert.match(workflow.jobs.preview.if,/workflow_dispatch.*inputs.publish_preview/);
   assert.match(workflow.jobs.linux.if,/!inputs.publish_preview/);
   assert.deepEqual(workflow.jobs.release.needs,['web','build','windows','linux']);

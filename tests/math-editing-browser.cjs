@@ -22,6 +22,8 @@ const server = createServer(async (req, res) => {
   const browser = await chromium.launch({ headless: true });
   try {
     const page = await browser.newPage({ locale: 'en-US', viewport: { width: 1280, height: 1000 } });
+    if(process.env.LINEAE_TEST_NATIVE_PREVIEW==='1')
+      await page.addInitScript(require('./native-math/mock-bridge.cjs'));
     const errors = [];
     page.on('pageerror', error => errors.push(error.message));
     await page.goto('http://127.0.0.1:' + server.address().port, { waitUntil: 'networkidle' });
@@ -32,6 +34,10 @@ const server = createServer(async (req, res) => {
     await page.waitForFunction(() => document.querySelector('math-field')?.value === 'x');
     const field = page.locator('math-field');
     await field.click();
+    if(process.env.LINEAE_TEST_NATIVE_PREVIEW==='1') {
+      await page.locator('#native-tex-toggle').click();
+      await page.waitForFunction(()=>document.querySelector('#native-tex-preview').dataset.state==='current');
+    }
     const reset = async latex => {
       await field.evaluate((field, latex) => {
         // MathLive's replaceAll leaves empty containers behind in 0.108.
@@ -318,6 +324,8 @@ const server = createServer(async (req, res) => {
     }
     assert.deepEqual(errors, []);
     console.log('PASS: exact bidirectional math editing, safe multiline deletion, nested structures, row hints, toolbar view memory');
+    if(process.env.LINEAE_TEST_NATIVE_PREVIEW==='1')
+      console.log('PASS: existing math interaction suite with native preview enabled (mock transport, not native geometry evidence)');
   } finally {
     await browser.close();
     server.close();

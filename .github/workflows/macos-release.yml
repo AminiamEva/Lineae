@@ -124,9 +124,13 @@ jobs:
     if: ${{ !inputs.publish_preview }}
     uses: ./.github/workflows/linux-release.yml
 
+  native:
+    if: github.event_name == 'workflow_dispatch' && inputs.publish_preview
+    uses: ./.github/workflows/native-tex.yml
+
   preview:
     if: github.event_name == 'workflow_dispatch' && inputs.publish_preview
-    needs: [web, build, windows]
+    needs: [web, build, windows, native]
     runs-on: ubuntu-24.04
     permissions:
       contents: write

@@ -2,6 +2,7 @@ name: Native TeX geometry
 
 on:
   workflow_dispatch:
+  workflow_call:
 
 permissions:
   contents: read
@@ -39,6 +40,11 @@ jobs:
         with:
           node-version: 22
           cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: apps/desktop/src-tauri -> target
+          key: native-tex-debug
       - run: npm ci --no-audit --no-fund
       - name: Probe harness and projection unit tests
         run: |
@@ -49,9 +55,12 @@ jobs:
           npm run build
           archive=$(npm pack mathlive@0.108.0 --pack-destination "$RUNNER_TEMP" --silent)
           mkdir -p apps/web/vendor/mathlive
-          tar -xzf "$RUNNER_TEMP/$archive" -C apps/web/vendor/mathlive --strip-components=1 package/mathlive.min.js package/fonts
+          temp="$RUNNER_TEMP"
+          if [[ "$RUNNER_OS" == Windows ]]; then temp=$(cygpath -u "$temp"); fi
+          tar -xzf "$temp/$archive" -C apps/web/vendor/mathlive --strip-components=1 package/mathlive.min.js package/fonts
           npx playwright install --only-shell chromium
           node tests/native-tex-preview-browser.cjs
+          LINEAE_TEST_NATIVE_PREVIEW=1 node tests/math-editing-browser.cjs
       - uses: actions/cache@v4
         with:
           path: .native-tex/texlive
@@ -92,6 +101,7 @@ jobs:
             tool="$(cygpath -m "$tool")"
           fi
           export RTEX_EXECUTABLE="$executable"
+          export LINEAE_RTEX_PATH="$executable"
           export RTEX_TEXLIVE_BIN="$bin"
           export RTEX_TEXDIR="$tool/share/rtex/tex"
           test -f "$executable"
@@ -100,6 +110,17 @@ jobs:
           export TEXMFCONFIG="$PWD/.native-tex/texlive/texmf-config"
           export TEXMFHOME="$PWD/.native-tex/texlive/texmf-home"
           node tests/native-math/rtex-probe.mjs
+          node apps/desktop/scripts/stage.mjs
+          # Resolve only newly introduced dependencies remotely. Commit the
+          # resulting lockfile before producing --locked desktop packages.
+          cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml --lib
+          cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml --lib \
+            tex_session::tests::real_native_session -- --ignored
+      - name: Preserve remotely resolved Cargo lockfile
+        if: always()
+        run: |
+          mkdir -p artifacts/native-tex
+          cp apps/desktop/src-tauri/Cargo.lock artifacts/native-tex/Cargo.lock
       - name: Preserve actual protocol, source, logs and clean reference PDF
         if: always()
         uses: actions/upload-artifact@v4

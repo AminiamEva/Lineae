@@ -3,6 +3,7 @@ const {chromium}=require('playwright');
 const {createServer}=require('node:http');
 const {readFile}=require('node:fs/promises');
 const {resolve,extname,sep}=require('node:path');
+const installMockNativeTex=require('./native-math/mock-bridge.cjs');
 
 const root=resolve('apps/web');
 const server=createServer(async(req,res)=>{
@@ -17,45 +18,11 @@ const server=createServer(async(req,res)=>{
 (async()=>{
   await new Promise(done=>server.listen(0,'127.0.0.1',done));
   const browser=await chromium.launch({headless:true});
+  let page;
   try {
-    const page=await browser.newPage({locale:'en-US',viewport:{width:1600,height:1100}});
+    page=await browser.newPage({locale:'en-US',viewport:{width:1600,height:1100}});
     const errors=[];page.on('pageerror',error=>errors.push(error.message));
-    await page.addInitScript(()=>{
-      // Transport/UI test only. Real TeX geometry is separately required by
-      // native-tex.yml; this synthetic list never counts as engine evidence.
-      window.nativeProbe={calls:[],events:[],revision:1,session:0,failFont:false,delayOpen:false};
-      const p=window.nativeProbe;
-      p.layout=()=>({event:'LayoutUpdate',compile:{state:'Ok'},convergence:{state:'Converged'},
-        versions:{source_revision:p.revision,context_revision:1,engine_generation:0,layout_version:p.revision},
-        pages_total:1,pages_changed:[{page:1,exact:true,dl:{kind:'page',page:1,
-          page_width:39000000,page_height:55000000,width:0,height:0,depth:0,flags:{},images_info:{},
-          fonts:{15:{id:15,filename:'/fixture/lmroman10-regular.otf',subfont:1,size:655360,extend:1000,squeeze:1000}},
-          other:[],lines:[{x:6500000,y:6500000,w:600000,h:600000,d:0,
-            items:[['g',15,97,null,6500000,6500000,327680,0]]}]}}]});
-      window.__TAURI__={core:{invoke:async(command,args)=>{
-        p.calls.push({command,args});
-        if(command==='native_tex_open') {
-          p.source=args.source;p.revision=1;
-          const sessionId=String(++p.session);
-          if(p.delayOpen)await new Promise(done=>{p.resolveOpen=done;});
-          p.events.push(p.layout());
-          return {sessionId,sourceRevision:1};
-        }
-        if(command==='native_tex_poll')return p.events.splice(0);
-        if(command==='native_tex_update') {
-          p.source=args.source;p.revision++;
-          p.events.push(p.layout());
-          return {editId:p.revision,sourceRevision:p.revision,routed:'fast'};
-        }
-        if(command==='native_tex_font') {
-          if(p.failFont)throw 'The native font is unavailable';
-          return [...new Uint8Array(await(await fetch('/assets/fonts/latin-modern/lmroman10-regular.otf')).arrayBuffer())];
-        }
-        if(command==='native_tex_export')return {jobId:1,sourceRevision:args.sourceRevision,path:'approved.pdf'};
-        if(command==='native_tex_close')return;
-        throw new Error('Unexpected IPC command '+command);
-      }}};
-    });
+    await page.addInitScript(installMockNativeTex);
     await page.goto('http://127.0.0.1:'+server.address().port,{waitUntil:'networkidle'});
     await page.locator('input#file').setInputFiles({name:'native.tex',mimeType:'text/plain',
       buffer:Buffer.from('\\documentclass{article}\n\\begin{document}\nBefore $abc$ after.\n\\end{document}\n')});
@@ -105,5 +72,12 @@ const server=createServer(async(req,res)=>{
     assert.equal(await field.evaluate(field=>field.value),'abcd','Preview failures and cancellation preserve edits');
     assert.deepEqual(errors,[]);
     console.log('PASS native preview transport/UI: explicit startup, Canvas resources, retained editor/history, sync, export revision and cancellation (not engine evidence)');
+  }catch(error){
+    if(page)console.error('Native preview UI diagnostic:',await page.evaluate(()=>({
+      state:document.querySelector('#native-tex-preview')?.dataset.state,
+      status:document.querySelector('#native-tex-preview [role=status]')?.textContent,
+      calls:window.nativeProbe?.calls.slice(-6).map(call=>({command:call.command,key:call.args?.key})),
+    })));
+    throw error;
   }finally{await browser.close();server.close();}
 })().catch(error=>{console.error(error);process.exitCode=1;server.close();});
