@@ -47,6 +47,10 @@ const server = createServer(async (req,res)=>{
         if (probe.denyFullscreen) throw new DOMException('Fullscreen denied','NotAllowedError');
         probe.fullscreen = document.documentElement;
         document.dispatchEvent(new Event('fullscreenchange'));
+        if (probe.fullscreenBlur) {
+          probe.focused=false;
+          window.dispatchEvent(new Event('blur'));
+        }
       };
       document.exitFullscreen = async ()=>{
         probe.calls.push('exit');
@@ -154,7 +158,19 @@ const server = createServer(async (req,res)=>{
       probe.resolveLock();
     });
     await page.waitForFunction(()=>document.querySelector('#keyboard-priority').getAttribute('aria-busy')==='false');
-    assert.equal(await page.evaluate(()=>probe.locked),false,'Returning focus while a lock is pending cannot silently reactivate it');
+    assert.equal(await page.evaluate(()=>probe.locked),true,'Permission UI may temporarily blur the window without canceling approval');
+    assert.equal(await button.getAttribute('data-state'),'on');
+    await button.click();
+    await button.click();
+    await page.evaluate(()=>{
+      probe.focused=false;
+      window.dispatchEvent(new Event('blur'));
+      probe.resolveLock();
+    });
+    await page.waitForFunction(()=>document.querySelector('#keyboard-priority').getAttribute('aria-busy')==='false');
+    assert.equal(await page.evaluate(()=>probe.locked),false,'An unfocused window cannot retain a pending lock indefinitely');
+    await page.evaluate(()=>{probe.focused=true;window.dispatchEvent(new Event('focus'));});
+    assert.notEqual(await button.getAttribute('data-state'),'on','Returning after canceled startup never restores capture');
     await button.click();
     await page.evaluate(()=>{priority.destroy();probe.resolveLock();});
     await page.waitForFunction(()=>!probe.locked);
@@ -170,6 +186,32 @@ const server = createServer(async (req,res)=>{
     await page.waitForFunction(()=>document.querySelector('#keyboard-priority').getAttribute('aria-busy')==='false');
     assert.equal(await page.evaluate(()=>probe.fullscreen),null,'Late fullscreen entry is rolled back after cancellation');
     assert.equal(await page.evaluate(()=>probe.calls.some(call=>call.lock)),false,'A canceled fullscreen request never starts locking keys');
+    await page.close();
+
+    page = await probe();
+    button = page.locator('#keyboard-priority');
+    await page.evaluate(()=>{probe.fullscreenBlur=true;});
+    await button.click();
+    assert.equal(await button.getAttribute('data-state'),'starting','Fullscreen transition may still be handing focus back to the page');
+    await page.evaluate(()=>{probe.focused=true;window.dispatchEvent(new Event('focus'));});
+    await page.waitForFunction(()=>document.querySelector('#keyboard-priority').dataset.state==='on');
+    assert.equal(await page.evaluate(()=>probe.locked),true,'A delayed fullscreen focus handoff does not abort startup');
+    await page.close();
+
+    page = await probe();
+    button = page.locator('#keyboard-priority');
+    await page.evaluate(()=>{probe.delayLock=true;});
+    await button.click();
+    await page.evaluate(()=>{
+      probe.focused=false;
+      window.dispatchEvent(new Event('blur'));
+      probe.resolveLock();
+    });
+    await page.waitForFunction(()=>probe.locked);
+    assert.equal(await button.getAttribute('data-state'),'starting');
+    await page.evaluate(()=>{probe.focused=true;window.dispatchEvent(new Event('focus'));});
+    await page.waitForFunction(()=>document.querySelector('#keyboard-priority').dataset.state==='on');
+    assert.equal(await page.evaluate(()=>probe.locked),true,'Permission resolution before its focus event is tolerated');
     await page.close();
 
     page = await probe(false);

@@ -45,7 +45,7 @@ export function installShortcutPriority({host, before, getBindings}) {
   host.insertBefore(message,before);
 
   let state = 'off', busy = false, destroyed = false, generation = 0;
-  let ownsFullscreen = false, waitingForLock = false, lockedBindings = null, error = '';
+  let ownsFullscreen = false, lockedBindings = null, error = '';
   const supported = () => !desktop && window.isSecureContext && document.fullscreenEnabled &&
     typeof root.requestFullscreen === 'function' && typeof keyboard?.lock === 'function' &&
     typeof keyboard?.unlock === 'function';
@@ -89,6 +89,31 @@ export function installShortcutPriority({host, before, getBindings}) {
     state = document.fullscreenElement === root ? 'paused' : 'off';
     relocalize();
   }
+  async function hasStartupFocus(attempt) {
+    const current = () => attempt === generation && !destroyed && !document.hidden &&
+      document.fullscreenElement === root;
+    if (!current()) return false;
+    if (!document.hasFocus()) {
+      // Fullscreen animations and browser permission UI can briefly own focus.
+      // Wait for that handoff, but never leave an unbounded auto-resume request.
+      await new Promise(resolve=>{
+        const finish = () => {
+          clearTimeout(timer);
+          window.removeEventListener('focus',finish);
+          document.removeEventListener('visibilitychange',finish);
+          document.removeEventListener('fullscreenchange',finish);
+          lifetime.signal.removeEventListener('abort',finish);
+          resolve();
+        };
+        const timer = setTimeout(finish,1500);
+        window.addEventListener('focus',finish);
+        document.addEventListener('visibilitychange',finish);
+        document.addEventListener('fullscreenchange',finish);
+        lifetime.signal.addEventListener('abort',finish,{once:true});
+      });
+    }
+    return current() && document.hasFocus();
+  }
   async function start() {
     const attempt = ++generation;
     const focus = document.activeElement;
@@ -104,14 +129,13 @@ export function installShortcutPriority({host, before, getBindings}) {
         await root.requestFullscreen();
         ownsFullscreen = document.fullscreenElement === root;
       }
-      if (attempt !== generation || !document.hasFocus() || document.hidden) {
+      if (!await hasStartupFocus(attempt)) {
         if (attempt === generation) pause();
         await exitOwnedFullscreen();
         return;
       }
-      waitingForLock = true;
       await keyboard.lock(codes);
-      if (attempt !== generation || document.fullscreenElement !== root || !document.hasFocus() || document.hidden) {
+      if (!await hasStartupFocus(attempt)) {
         keyboard.unlock();
         if (attempt === generation) pause();
         await exitOwnedFullscreen();
@@ -127,7 +151,6 @@ export function installShortcutPriority({host, before, getBindings}) {
       lockedBindings = null;
       await exitOwnedFullscreen();
     } finally {
-      waitingForLock = false;
       busy = false;
       relocalize();
     }
@@ -180,7 +203,11 @@ export function installShortcutPriority({host, before, getBindings}) {
     pause();
     if (state === 'paused') { state = 'off'; relocalize(); }
   },options);
-  window.addEventListener('blur',()=>{ if (state === 'on' || waitingForLock) pause(); },options);
+  // A permission prompt may blur the window before lock() settles. Unlocking
+  // here would cancel the very request the user is being asked to approve.
+  window.addEventListener('blur',event=>{
+    if (event.target === window && state === 'on') pause();
+  },options);
   document.addEventListener('visibilitychange',()=>{ if (document.hidden) pause(); },options);
   window.addEventListener('pagehide',event=>{ if (event.persisted) pause(); else destroy(); },options);
   relocalize();
