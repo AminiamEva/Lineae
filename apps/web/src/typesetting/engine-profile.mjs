@@ -1,18 +1,25 @@
 import {luaCjk} from './lua-jfm.mjs';
 import {luaDocumentStyle} from './lua-english.mjs';
 import {typesetProfile} from '../../latex/typeset-layout.mjs';
-import {paragraphParameters} from './paragraph-parameters.mjs';
+import {ctexIntercharStretch, paragraphParameters, usesCtex} from './paragraph-parameters.mjs';
 import {englishHyphenation} from './english-hyphenation.mjs';
 import {fandolPairs} from './fandol-pairs.mjs';
 import {fandolPunctuation} from './fandol-punctuation.mjs';
 
 const xe = Object.freeze({
-  engine:'xelatex',version:1,
+  engine:'xelatex',version:2,
   capabilities:Object.freeze({resolution:'supported', browserLayout:'supported', cjk:'fandol-quanjiao', english:'supported'}),
-  documentStyle:typesetProfile, paragraphParameters, englishHyphenation,
+  documentStyle:typesetProfile, englishHyphenation,
+  paragraphParameters(preamble) {
+    const options = paragraphParameters(preamble);
+    options.ctexDefaultStretch = usesCtex(preamble) && !/\blinestretch\s*=/.test(preamble);
+    return options;
+  },
   cjk:Object.freeze({
     family:'FandolSong', pairs:fandolPairs, punctuation:fandolPunctuation,
-    lineStretch:.08,
+    intercharStretch(options, lineWidth, em, baseline) {
+      return options.ctexDefaultStretch ? ctexIntercharStretch(lineWidth, em) : baseline * .08;
+    },
     supports(options,family) {
       return options.cjkPunctStyle === 'quanjiao' && !options.cjkCustomGlue && family.includes(this.family);
     },

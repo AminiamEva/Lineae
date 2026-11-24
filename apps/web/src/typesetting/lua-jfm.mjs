@@ -1,3 +1,4 @@
+import {ctexIntercharStretch, usesCtex} from './paragraph-parameters.mjs';
 import {fontspecDeclarations} from './font-measurement.mjs';
 import {jfmTables} from './lua-jfm-data.mjs';
 import {sourceStructure} from '../../latex/source-structure.mjs';
@@ -14,9 +15,7 @@ function assess(preamble, cssFamily) {
   const declaration = declarations.filter(d => ['setCJKmainfont','setmainjfont'].includes(d.command)).at(-1);
   if (declaration && !fandol.test(declaration.name)) return preview('unmeasured-cjk-font');
   const commands = [...sourceStructure(preamble)].filter(t => t.topLevel && t.kind === 'command');
-  const ctex = commands.some(t =>
-    t.value === '\\documentclass' && /^\s*(?:\[[^\]]*\]\s*)?\{ctex(?:art|book|rep)\}/.test(preamble.slice(t.end))
-    || t.value === '\\usepackage' && /^\s*(?:\[[^\]]*\]\s*)?\{[^}]*\bctex\b[^}]*\}/.test(preamble.slice(t.end)));
+  const ctex = usesCtex(preamble, commands);
   if (commands.some(t => ['\\ltjsetparameter','\\ltjglobalsetparameter','\\ctexset'].includes(t.value))) {
     return preview('custom-jfm-parameters');
   }
@@ -54,8 +53,7 @@ function boundary(metric, left, right, em, lineWidth) {
   const kanji = classes.get(metric).get('中');
   const kanjiPair = table.matrix[kanji][kanji];
   if (metric === 'ctex-zh-cn' && index === kanjiPair && Number.isFinite(lineWidth)) {
-    const spaces = Math.trunc(lineWidth/em - 2);
-    return {width:0, stretch:spaces>0 ? (lineWidth-em*(spaces+1))/spaces : 0, shrink:0, cost};
+    return {width:0, stretch:ctexIntercharStretch(lineWidth, em), shrink:0, cost};
   }
   return {width:width*em, stretch:stretch*em, shrink:shrink*em, cost};
 }

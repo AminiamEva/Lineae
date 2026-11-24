@@ -111,7 +111,7 @@ function tokensFor(editor,node,start,element,options,profile,metric,lineWidth,me
     if(!metric&&next&&!(cjkPunctuation.test(value)&&cjkPunctuation.test(next))&&value!=='\u00a0'&&next!=='\u00a0'&&!/\s/.test(next)&&!closing.test(next)&&!opening.test(value)&&(cjk.test(value)||cjk.test(next)||cjkPunctuation.test(value)||cjkPunctuation.test(next))){
       const mixed=(cjk.test(value)&&(/^[A-Za-z0-9]/.test(next)||atoms.get(pieces[n+1]?.index)?.kind==='math'))||(/[A-Za-z0-9]$/.test(value)&&cjk.test(next));
       const space=mixed?measure(' ',local):0;
-      emit({type:'glue',width:space,stretch:mixed?space/2:baseline*profile.cjk.lineStretch,shrink:mixed?space/3:0,from:from+value.length,to:from+value.length,cjk:true});
+      emit({type:'glue',width:space,stretch:mixed?space/2:profile.cjk.intercharStretch(options,lineWidth,em,baseline),shrink:mixed?space/3:0,from:from+value.length,to:from+value.length,cjk:true});
     }
   }
   while(items.at(-1)?.type==='glue')items.pop();

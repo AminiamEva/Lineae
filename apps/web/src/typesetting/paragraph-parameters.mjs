@@ -1,3 +1,18 @@
+import {sourceStructure} from '../../latex/source-structure.mjs';
+
+export function usesCtex(preamble, commands = [...sourceStructure(preamble)].filter(t => t.topLevel && t.kind === 'command')) {
+  return commands.some(t =>
+    t.value === '\\documentclass' && /^\s*(?:\[[^\]]*\]\s*)?\{ctex(?:art|book|rep)\}/.test(preamble.slice(t.end))
+    || t.value === '\\usepackage' && /^\s*(?:\[[^\]]*\]\s*)?\{[^}]*\bctex\b[^}]*\}/.test(preamble.slice(t.end)));
+}
+
+// ctex_update_stretch_auxiii distributes the remaining column width over
+// the inter-character gaps, reserving one ideograph for line stretch.
+export function ctexIntercharStretch(lineWidth, em) {
+  const spaces = Math.trunc(lineWidth / em - 2);
+  return spaces > 0 ? (lineWidth - em * (spaces + 1)) / spaces : 0;
+}
+
 // TeX dimensions are 72.27 pt/in; CSS pt is 72 pt/in.
 export function texDimension(value,em=16){
  const match=String(value).trim().match(/^(-?(?:\d*\.)?\d+)\s*(sp|pt|pc|in|bp|cm|mm|em|ex)$/);

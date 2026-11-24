@@ -20,3 +20,15 @@ test('conflict or auto cannot silently obtain a layout',()=>{
   assert.throws(()=>getTypesettingProfile(null),TypeError);
   assert.throws(()=>getTypesettingProfile('auto'),TypeError);
 });
+
+test('Xe ctex default inter-character stretch follows the column, including beside a float',()=>{
+  const xe=getTypesettingProfile('xelatex');
+  const em=14, baseline=21.84, width=458.28125;
+  const ctex=xe.paragraphParameters('\\documentclass{ctexart}');
+  const measuredPt=0.60931; // Glue stretch from the shipped Xe hbox.
+  assert.ok(Math.abs(xe.cjk.intercharStretch(ctex,width,em,baseline)-measuredPt*96/72.27)<0.001);
+  const packageOptions=xe.paragraphParameters('\\documentclass{article}\n\\usepackage{ctex}');
+  assert.equal(xe.cjk.intercharStretch(packageOptions,28,em,baseline),0);
+  const article=xe.paragraphParameters('\\documentclass{article}\n% \\usepackage{ctex}\n\\usepackage{xeCJK}');
+  assert.equal(xe.cjk.intercharStretch(article,width,em,baseline),baseline*.08);
+});
