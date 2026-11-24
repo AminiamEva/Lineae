@@ -51,25 +51,32 @@ function command(executable,args,cwd,log) {
 async function probe(source,label,out,rtex,texbin,structured=false) {
   const dir=join(out,label),project=join(dir,'project 空分母');
   mkdirSync(project,{recursive:true});
+  const matrix=structured==='matrix';
   const whole=structured==='multi'?projectDocumentFormulas(source):null;
   const documentProjection=whole
     ?{...whole.formulas.find(formula=>formula.math.slots.some(slot=>slot.role==='denominator'&&slot.raw==='')),
       projection:whole.projection}
-    :structured?projectDisplayMath(source):null;
-  if(structured)assert.ok(documentProjection,'Source display projection must be supported');
+    :structured&&!matrix?projectDisplayMath(source):null;
+  if(structured&&!matrix)assert.ok(documentProjection,'Source display projection must be supported');
   const slot=documentProjection?.math.slots.find(slot=>slot.role==='denominator'&&slot.raw==='');
   const owner=slot?.tag??10;
-  const projection=documentProjection?{
+  const projection=matrix?{
+    text:source.replace('\\begin{pmatrix}a & \\\\ & d\\end{pmatrix}',
+      '\\begingroup\\attribute65000=80 \\begin{pmatrix}\\attribute65000=81 a &\\attribute65000=82 \\\\'+
+      '\\attribute65000=83 &\\attribute65000=84 d\\end{pmatrix}\\endgroup'),
+    sourceOffset16:0,projectionOffset16:0,
+  }:documentProjection?{
     text:documentProjection.projection,
     sourceOffset16:documentProjection.from16+slot.from16,
     projectionOffset16:(documentProjection.projectionFrom16??documentProjection.from16)+
       documentProjection.math.mapping.sourceToProjection16[slot.from16],
   }:projectFixture(source);
   projection.projectionOffset8=Buffer.byteLength(projection.text.slice(0,projection.projectionOffset16));
-  const filled=source.slice(0,projection.sourceOffset16)+'b'+source.slice(projection.sourceOffset16);
+  const filled=matrix?source:source.slice(0,projection.sourceOffset16)+'b'+source.slice(projection.sourceOffset16);
   const tagged=projection.text;
+  if(matrix)assert.notEqual(tagged,source,'Matrix fixture must contain per-cell tags');
   writeFileSync(join(dir,'source-before.tex'),source);
-  writeFileSync(join(dir,'source-after.tex'),filled);
+  if(!matrix)writeFileSync(join(dir,'source-after.tex'),filled);
   writeFileSync(join(dir,'projection-before.tex'),tagged);
   writeFileSync(join(project,'main.tex'),tagged);
   const records=[],waiters=new Set();
@@ -121,6 +128,22 @@ async function probe(source,label,out,rtex,texbin,structured=false) {
     const layout=await waitFor(message=>message.event==='LayoutUpdate' &&
       message.convergence?.state==='Converged','initial converged layout');
     assert.equal(layout.compile?.state,'Ok','Initial TeX compilation must succeed');
+    if(matrix){
+      const captured=new Map();
+      for(const message of records)if(message.event==='LayoutUpdate'&&
+        message.versions.source_revision===layout.versions.source_revision)
+        for(const page of message.pages_changed)captured.set(page.page,page);
+      const fields=[...captured.values()].flatMap(page=>page.dl?.math_owners?.fields??[])
+        .filter(field=>field.role==='cell');
+      // Characterize the actual observer before a production cell target is
+      // allowed. Do not infer that the nth emitted box belongs to the nth cell.
+      const uniqueEmptyOwners=[82,83].every(owner=>fields.filter(field=>field.empty&&field.owner===owner).length===1);
+      const summary={label,versions:layout.versions,fields,uniqueEmptyOwners,
+        scope:'matrix ownership investigation; not yet enabled for interactive targeting'};
+      writeFileSync(join(dir,'summary.json'),JSON.stringify(summary,null,2)+'\n');
+      console.log(`Observed matrix cell ownership: ${JSON.stringify({uniqueEmptyOwners,fields})}`);
+      return summary;
+    }
     const initial=records.filter(message=>message.event==='LayoutUpdate' &&
       message.versions.source_revision===layout.versions.source_revision)
       .flatMap(message=>message.pages_changed).find(page=>page.dl?.math_owners?.fields?.some(
@@ -237,6 +260,8 @@ async function main() {
       'structured-multiple-displays',out,rtex,texbin,'multi'));
     summaries.push(await probe(unicode.replace('\\[\r\n\\frac{a}{}\r\n\\]','Inline $x+\\frac{7}{}=y$ here.'),
       'structured-inline-denominator',out,rtex,texbin,'multi'));
+    summaries.push(await probe(unicode.replace('\\frac{a}{}','\\begin{pmatrix}a & \\\\ & d\\end{pmatrix}'),
+      'matrix-cell-ownership',out,rtex,texbin,'matrix'));
     writeFileSync(join(out,'result.json'),JSON.stringify({status:'passed',cases:summaries},null,2)+'\n');
     console.log('PASS: real rtex geometry, empty denominator, warm revision-matched edit, Unicode/CRLF and clean reference PDF');
   } catch(error) {
