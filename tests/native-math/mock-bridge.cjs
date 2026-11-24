@@ -1,7 +1,20 @@
 module.exports=function installMockNativeTex() {
   // UI/interaction preservation only, never evidence of actual TeX geometry.
-  window.nativeProbe={calls:[],events:[],revision:1,session:0,failFont:false,delayOpen:false,ruleRects:[]};
+  window.nativeProbe={calls:[],events:[],revision:1,session:0,failFont:false,failPdf:false,delayOpen:false,ruleRects:[]};
   const p=window.nativeProbe;
+  p.pdf=()=>{
+    const text='BT /F1 18 Tf 72 720 Td (LuaLaTeX PDF fallback) Tj ET\n';
+    const objects=['<< /Type /Catalog /Pages 2 0 R >>','<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
+      '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>',
+      `<< /Length ${text.length} >>\nstream\n${text}endstream`,
+      '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>'];
+    let output='%PDF-1.4\n';const offsets=[0];
+    for(let i=0;i<objects.length;i++){offsets.push(output.length);output+=`${i+1} 0 obj\n${objects[i]}\nendobj\n`;}
+    const start=output.length;output+='xref\n0 6\n0000000000 65535 f \n';
+    for(const offset of offsets.slice(1))output+=String(offset).padStart(10,'0')+' 00000 n \n';
+    output+=`trailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n${start}\n%%EOF\n`;
+    return [...new TextEncoder().encode(output)];
+  };
   const fillRect=CanvasRenderingContext2D.prototype.fillRect;
   CanvasRenderingContext2D.prototype.fillRect=function(x,y,w,h) {
     if(this.canvas.closest('#native-tex-preview'))p.ruleRects.push({w,h});
@@ -23,15 +36,26 @@ module.exports=function installMockNativeTex() {
       p.events.push(p.layout());
       return {sessionId,sourceRevision:1};
     }
-    if(command==='native_tex_poll')return p.events.splice(0);
+    if(command==='native_tex_poll'){
+      if(args.sessionId!==String(p.session))throw {code:'stale_session',message:'stale test session'};
+      return p.events.splice(0);
+    }
     if(command==='native_tex_update') {
+      if(p.restartNext){
+        p.restartNext=false;p.session++;p.revision=0;p.events=[];
+      }
       p.source=args.source;p.revision++;
       p.events.push(p.layout());
-      return {editId:p.revision,sourceRevision:p.revision,routed:'fast'};
+      return {sessionId:String(p.session),editId:p.revision,sourceRevision:p.revision,routed:'fast'};
     }
     if(command==='native_tex_font') {
       if(p.failFont)throw 'The native font is unavailable';
       return [...new Uint8Array(await(await fetch('/assets/fonts/latin-modern/lmroman10-regular.otf')).arrayBuffer())];
+    }
+    if(command==='native_tex_render_pdf'){
+      if(args.sourceRevision!==p.revision)throw {code:'revision_mismatch',message:'stale test revision'};
+      if(p.failPdf)throw new Error('PDF compilation failed');
+      return p.pdf();
     }
     if(command==='native_tex_export')return {jobId:1,sourceRevision:args.sourceRevision,path:'approved.pdf'};
     if(command==='native_tex_close') {

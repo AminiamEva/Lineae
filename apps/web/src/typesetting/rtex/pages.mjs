@@ -56,7 +56,7 @@ export function installNativePages({host,getFont,onPaint,onError}) {
           else {entry.canvas.width=1;entry.canvas.height=1;}
         }
         if(revision>=0)onPaint(revision);
-      } catch(error) {onError(error);}
+      } catch(error) {onError(error,revision);}
     });
   }
   async function layout(message) {
@@ -92,7 +92,7 @@ export function installNativePages({host,getFont,onPaint,onError}) {
         entry.dom.style.height=entry.dl.page_height*CSS_PER_SP*zoom+'px';
       }
       redraw();
-    } catch(error) {if(attempt===generation)onError(error);}
+    } catch(error) {if(attempt===generation)onError(error,stamp.source_revision);}
   }
   // Preserve deltas in order while resources load. A later layout may omit an
   // unchanged page which was first sent in the previous layout.
@@ -102,9 +102,9 @@ export function installNativePages({host,getFont,onPaint,onError}) {
     const currentEpoch=epoch;
     pending=pending.then(()=>{if(currentEpoch===epoch)return layout(message);}).catch(onError);
   }
-  function reset() {
+  function reset({clear=true}={}) {
     epoch++;generation++;revision=-1;layoutVersion=-1;pending=Promise.resolve();
-    cancelAnimationFrame(frame);pages.clear();loaded.clear();fonts=new FontStore();host.replaceChildren();
+    cancelAnimationFrame(frame);pages.clear();loaded.clear();fonts=new FontStore();if(clear)host.replaceChildren();
   }
   host.addEventListener('scroll',redraw,{passive:true});
   host.parentElement?.addEventListener('scroll',redraw,{passive:true});

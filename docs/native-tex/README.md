@@ -10,7 +10,7 @@
   Uploading user documents for remote compilation is **not** enabled or implied.
 - Experimental native editing will be off by default until its own acceptance gates pass.
   The initial baseline release did not include rtex integration; subsequent work adds an
-  opt-in, **read-only native page preview alongside the unchanged editable surface**.
+  opt-in native page/PDF preview alongside the unchanged editable surface.
 
 `baseline.json` records observed JS entry points, fixed candidate dependency commits and
 explicitly missing evidence. The rtex and extension tag commits were verified through
@@ -75,7 +75,8 @@ connection; production must continue loading its packaged resources with its exi
 The status-bar **LuaLaTeX preview (experimental)** control starts a local rtex session
 only after a separate native trust dialog. LuaLaTeX can execute Lua with the user's
 file privileges; a temporary directory and disabled shell escape are not a sandbox.
-Only trusted, standalone test documents are in scope.
+Only trusted documents and projects are in scope. The native trust warning applies to
+the entire project, including local packages, Lua modules and image/PDF assets.
 
 Requirements, installed separately (not silently downloaded by the application):
 
@@ -111,7 +112,27 @@ typing in the existing rich/formula/source editors: source updates are coalesced
 composition, sent as raw buffers, and acknowledged using actual engine revisions.
 The native panel is read-only and visibly marks stale/error frames. Supported exact
 OTF/TTF resources are read only through captured font tokens. Type 1, TTC/OTC, images,
-project assets and degraded-page PDF fallback are not yet supported.
+TikZ and other material the glyph painter cannot draw use a clean revision-frozen
+PDF and the bundled PDF.js renderer. PDF pages are visual output, not semantic
+formula hit-testing metadata. No PDF scripting or external PDF viewer is enabled.
+
+For projects, open the existing project explorer and select the actual main `.tex`.
+Native snapshots retain relative paths and unsaved text drafts, local `.sty`/`.cls`/
+Lua resources and binary graphics. No flattening or writeback to the original project
+is performed. Snapshot limits are 4,096 files, 2 MiB per editable text and 128 MiB total.
+Hidden metadata is excluded. Explicit generated inputs such as `build/diagram.pdf`
+or an external reference `.aux` remain available. Live typing reuses the model's asset
+bytes; use the project's explicit Refresh action to load external asset changes.
+Dependency changes must invalidate the native engine/cache, not just repaint stale output.
+
+The macOS project bridge uses held directory capabilities and no-follow traversal;
+it is not the Windows backend with its platform checks disabled. Conflicted writes
+retain displaced bytes for review. Archival remove/recovery data is not automatically
+purged; a cleanup policy remains separate from compilation.
+
+The desktop package stages an integrity-verified PDF.js 4.10.38 module/worker and its
+licensed standard-font/CMap resources for offline rendering. See `resources.json` and
+the corresponding license files in `vendor/pdfjs/`; no user font cache is redistributed.
 
 **Export clean PDF** is available only for a confirmed current frame. It names a source
 revision, uses the native Save dialog and exports the uninstrumented session buffer.
@@ -129,7 +150,7 @@ its disposable project; it never saves over the original `.tex`.
 | IME and clipboard | Existing input surface remains visible/authoritative; physical WKWebView/WebView2 checks still required |
 | LuaLaTeX session, fonts and PDF | Real ignored Rust integration test explicitly selected in remote native CI; mock UI tests do not replace it |
 | Native-canvas clicking, caret and selection | **Not implemented**; requires stable owner/slot mapping and native geometry, not an invisible MathLive overlay |
-| Native page fidelity | Strict resource/exactness gate; no generic-font or unknown-operation fallback |
+| Native page fidelity | Exact glyph/resource gate, otherwise revision-frozen whole-page PDF; no generic-font or unknown-operation substitution |
 | Full feature parity | **Not achieved**; native direct editing cannot become default until these gates pass |
 
 This checkpoint offers existing editing with an updating LuaLaTeX preview. It is not a

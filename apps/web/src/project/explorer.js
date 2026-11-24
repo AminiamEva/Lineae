@@ -55,7 +55,7 @@ export function installProjectExplorer({footer, filePanel, sessions}) {
     busy = true; panel.setAttribute('aria-busy','true');
     try { message.textContent = ''; await action(); }
     catch (error) { if (error.name !== 'AbortError') { message.textContent = error.message; sessions.error(error.message); } }
-    finally { busy = false; panel.setAttribute('aria-busy','false'); render(); }
+    finally { busy = false; panel.setAttribute('aria-busy','false'); render(); sessions.changed?.(); }
   }
   function show(file) {
     switching = true;

@@ -2,13 +2,16 @@
 
 Lineae uses the existing Tauri 2 shell, Node.js 22 with npm, Cargo, and the system WKWebView. The macOS package targets Apple Silicon (`aarch64-apple-darwin`) and declares macOS 13.0 as its minimum system version. Keep macOS and its WebKit updates current.
 
-The shell loads `index.html` and the bundled editor, MathLive, fonts, and symbol assets from Tauri's local app protocol. It uses the existing native dialogs and scoped IPC for opening and saving UTF-8 `.tex` files and exporting ZIPs. The native directory-project backend currently uses Windows file APIs, so opening and managing a whole project directory is unavailable on macOS. There is no bundled TeX engine or PDF compilation. Website links and downloads need internet access; the editor and its packaged resources work offline.
+The shell loads `index.html` and the bundled editor, MathLive, fonts, and symbol assets from Tauri's local app protocol. Native dialogs and scoped IPC open/save UTF-8 files and projects. The experimental LuaLaTeX path discovers separately installed rtex 0.0.8 and TeX Live; it does not bundle a TeX distribution. Native output uses glyph Canvas with offline PDF.js fallback. See [native TeX setup and acceptance status](native-tex/README.md); native-Canvas direct editing is not yet complete.
 
-## Build on Apple Silicon
+## Remote build on Apple Silicon
 
-Install the [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/), including Xcode Command Line Tools, Node.js 22, and stable Rust. Python 3 is used for the bounded WKWebView smoke test. The build needs internet access to install dependencies. The checked-in npm and Cargo lockfiles select the dependency versions, and the GitHub Actions workflow uses the standard `macos-15` Apple Silicon runner.
+Build and test using the GitHub Actions `macos-15` Apple Silicon runner, not on the user's device.
+The runner supplies the [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/),
+Xcode tools, Node.js and Rust. Python 3 runs the bounded packaged WKWebView/PDF smoke test.
+The following commands document the remote runner recipe, not a request for local builds.
 
-From the repository root on a Mac:
+From the repository root on the remote Mac runner:
 
 ```bash
 xcode-select -p

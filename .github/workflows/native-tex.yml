@@ -48,11 +48,12 @@ jobs:
       - run: npm ci --no-audit --no-fund
       - name: Probe harness and projection unit tests
         run: |
-          node --test tests/native-math-baseline.test.mjs tests/native-math-probe.test.mjs tests/display-math-blocks.test.mjs
+          node --test tests/native-math-baseline.test.mjs tests/native-math-probe.test.mjs tests/display-math-blocks.test.mjs tests/native-tex-project.test.mjs
           bash -n scripts/install-native-tex-ci.sh
       - name: Build and verify the native preview frontend
         run: |
           npm run build
+          node scripts/install-pdfjs.mjs
           archive=$(npm pack mathlive@0.108.0 --pack-destination "$RUNNER_TEMP" --silent)
           mkdir -p apps/web/vendor/mathlive
           temp="$RUNNER_TEMP"
@@ -109,11 +110,15 @@ jobs:
           export TEXMFVAR="$PWD/.native-tex/texlive/texmf-var"
           export TEXMFCONFIG="$PWD/.native-tex/texlive/texmf-config"
           export TEXMFHOME="$PWD/.native-tex/texlive/texmf-home"
+          export LINEAE_NATIVE_EVIDENCE_DIR="$PWD/artifacts/native-tex/host"
           node tests/native-math/rtex-probe.mjs
           node apps/desktop/scripts/stage.mjs
-          cargo test --locked --manifest-path apps/desktop/src-tauri/Cargo.toml --lib
-          cargo test --locked --manifest-path apps/desktop/src-tauri/Cargo.toml --lib \
-            tex_session::tests::real_native_session -- --ignored
+          # Refresh only newly added platform dependencies remotely; commit
+          # the resulting lockfile before --locked desktop distribution.
+          cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml --lib
+          cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml --lib \
+            tex_session::tests::real_native -- --ignored --test-threads=1
+          LINEAE_NATIVE_PDF="$LINEAE_NATIVE_EVIDENCE_DIR/native-lua-project.pdf" node tests/native-tex-preview-browser.cjs
       - name: Preserve remotely resolved Cargo lockfile
         if: always()
         run: |

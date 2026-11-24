@@ -18,6 +18,7 @@ import {ProjectDocumentSession} from './project/document-session.mjs';
 import {installFloatingToolbar} from './ui/floating-toolbar.js';
 import {installShortcutPriority} from './ui/shortcut-priority.mjs';
 import {installNativeTexPreview} from './ui/native-tex-preview.mjs';
+import {nativeProjectSnapshot} from './typesetting/rtex/project-snapshot.mjs';
 import {installSettingsPanel} from './ui/settings-panel.js';
 import { buildHomeRibbon } from './ui/home-ribbon.js';
 import { activeStyleKey, documentClassFromSource } from './ui/style-presets.mjs';
@@ -2604,10 +2605,19 @@ function updateEnvironment() {
 footer.append(count,document.querySelector('#status'),environment,zoom,percent,paginationButton,themeButton,modes);document.body.append(footer);sourceView.mountStatus(footer);scale();updatePaginationButton();
 const shortcutPriority=installShortcutPriority({host:footer,before:modes,getBindings:()=>config.bindings});
 nativeTexPreview=installNativeTexPreview({host:footer,before:modes,
-  getSource:()=>{
-    if(projectExplorer?.active)throw new Error(t('原生预览首版仅支持独立 .tex 文件；请先关闭工程。','Native preview currently supports standalone .tex files; close the project first.'));
+  getSnapshot:async()=>{
+    if(projectExplorer?.active){
+      const project=projectExplorer.model;
+      if(!sourceView.hidden)sourceView.flush();
+      else editor.view.domObserver.flush();
+      projectExplorer.changed();
+      const snapshot=await nativeProjectSnapshot(project,{useModelAssets:true,includeGeneratedInputs:true});
+      if(projectExplorer.model!==project)throw new Error(t('工程已改变，请重试。','Project changed; retry the preview.'));
+      return snapshot;
+    }
     if(projectFileKind==='bib')throw new Error(t('请打开 .tex 文档。','Open a .tex document.'));
-    return sourceView.hidden?source():sourceView.value;
+    const text=sourceView.hidden?source():sourceView.value;
+    return {source:text,mainFile:'main.tex',signature:text};
   },
   isComposing:()=>editor.view.composing||sourceView.composing,
 });
@@ -2672,6 +2682,7 @@ projectExplorer = installProjectExplorer({footer, filePanel:document.querySelect
     ? t('保留当前单文件草稿并新建或打开工程？','Keep the current single-file draft and create or open a project?')
     : t('保留当前单文件草稿并打开工程？','Keep the current single-file draft and open a project?')),
   begin() {
+    nativeTexPreview?.documentChanged();
     projectWorkspace.select('body');
     if (!standaloneSession) standaloneSession = {
       text:sourceView.hidden?source():sourceView.value, filename, fileHandle, savedSource,
@@ -2709,11 +2720,14 @@ projectExplorer = installProjectExplorer({footer, filePanel:document.querySelect
     if (file.kind === 'bib') sourceView.setSplit(false);
     updateSourceButton();
     showProjectComposition();
+    nativeTexPreview?.refresh();
 
   },
   saved(text) { savedSource = text; sourceView.refresh(); },
+  changed() { nativeTexPreview?.refresh(); },
   error(text) { const status = document.querySelector('#status'); status.hidden = false; status.textContent = text; },
   end() {
+    nativeTexPreview?.documentChanged();
     documentGeneration++;
     projectDocument.composition=null;
     projectFileKind = undefined; returnedDraft = undefined;

@@ -7,6 +7,9 @@ use tauri::{AppHandle, Manager, State, WebviewUrl, WebviewWindowBuilder};
 use tauri_plugin_dialog::DialogExt;
 #[cfg(target_os = "windows")]
 mod project;
+#[cfg(target_os = "macos")]
+#[path = "project_macos.rs"]
+mod project;
 #[cfg(target_os = "windows")]
 mod project_checkpoints;
 mod tex_session;
@@ -182,7 +185,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .manage(AllowedFiles::default())
         .manage(tex_session::NativeTexSessions::default());
-    #[cfg(target_os = "windows")]
+    #[cfg(any(target_os = "windows",target_os = "macos"))]
     let builder = builder
         .manage(project::ProjectRoots::default())
         .invoke_handler(tauri::generate_handler![
@@ -195,11 +198,12 @@ pub fn run() {
             tex_session::native_tex_poll,
             tex_session::native_tex_font,
             tex_session::native_tex_export,
+            tex_session::native_tex_render_pdf,
             tex_session::native_tex_close,
             project::open_project,
             project::project_operation
         ]);
-    #[cfg(not(target_os = "windows"))]
+    #[cfg(not(any(target_os = "windows",target_os = "macos")))]
     let builder = builder.invoke_handler(tauri::generate_handler![
         open_tex,
         pick_save_tex,
@@ -210,6 +214,7 @@ pub fn run() {
         tex_session::native_tex_poll,
         tex_session::native_tex_font,
         tex_session::native_tex_export,
+        tex_session::native_tex_render_pdf,
         tex_session::native_tex_close
     ]);
     builder
@@ -228,7 +233,7 @@ pub fn run() {
                 // zoom control is enabled, so the page would never receive the
                 // wheel events that drive the document zoom.
                 .zoom_hotkeys_enabled(true)
-                .initialization_script(if cfg!(target_os = "windows") {
+                .initialization_script(if cfg!(any(target_os = "windows",target_os = "macos")) {
                     include_str!("bridge.js")
                 } else {
                     concat!(
@@ -236,9 +241,10 @@ pub fn run() {
                         include_str!("bridge.js")
                     )
                 });
-            #[cfg(target_os = "macos")]
             let window = if std::env::args_os().any(|arg| arg == "--lineae-smoke-test") {
                 window
+                    .initialization_script(format!("window.__LINEAE_SMOKE_UNAUTHORIZED_PATH__={};",
+                        serde_json::to_string(&std::env::temp_dir().join("lineae-smoke-not-authorized.tex").to_string_lossy()).unwrap()))
                     .initialization_script(include_str!("macos-smoke.js"))
                     .on_document_title_changed(|window, title| {
                         if let Some(result) = title.strip_prefix("Lineae smoke: ") {

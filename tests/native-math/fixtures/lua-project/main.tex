@@ -1,0 +1,19 @@
+\documentclass{article}
+\usepackage[fontset=fandol]{ctex}
+\usepackage{unicode-math}
+\setmathfont{Latin Modern Math}
+\usepackage{tikz}
+\usepackage{luacode}
+\begin{document}
+% Lineae-authored comprehensive LuaLaTeX acceptance sample.
+中文与 Lua：
+\directlua{tex.sprint("Lua ready: " .. tostring(6 * 7))}
+\input{chapters/one}
+\[
+\frac{a}{b}+\sqrt{x_1^2+x_2^2}
+\]
+\begin{tikzpicture}
+\draw[blue,thick] (0,0) rectangle (2,1);
+\node at (1,0.5) {TikZ};
+\end{tikzpicture}
+\end{document}

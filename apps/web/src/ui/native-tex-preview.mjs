@@ -1,9 +1,10 @@
 import {t} from './i18n.mjs';
 import {installNativePages} from '../typesetting/rtex/pages.mjs';
+import {installNativePdf} from '../typesetting/rtex/pdf.mjs';
 
 // This surface never edits source or intercepts editor input. The existing
 // ProseMirror/MathLive history stays authoritative while native parity is built.
-export function installNativeTexPreview({host,before,getSource,isComposing}) {
+export function installNativeTexPreview({host,before,getSource,getSnapshot,isComposing}) {
   const invoke=window.__TAURI__?.core?.invoke;
   if(!invoke) return {refresh(){},documentChanged(){},relocalize(){}};
   const button=document.createElement('button');
@@ -26,17 +27,25 @@ export function installNativeTexPreview({host,before,getSource,isComposing}) {
   document.body.append(panel);host.insertBefore(button,before);
   let session=null,sourceRevision=0,sentSource='',wantedSource='',generation=0;
   let timer=null,pollTimer=null,updating=null,exporting=null,opening=false;
-  let renderedRevision=-1,error='',active=false;
+  let sentSnapshot=null,wantedSnapshot=null,captureId=0,capturing=null,pdfRendered=-1;
+  let renderedRevision=-1,error='',active=false,terminal=false;
+  let mode='canvas',pdfWanted=-1,pdfAttempt=null;
+  let pollEpoch=0;
+  const pdf=installNativePdf({host:pages,onPaint:revision=>{
+    if(!active||mode!=='pdf')return;
+    renderedRevision=revision;pdfRendered=revision;if(!terminal&&revision>=sourceRevision)error='';renderStatus();
+  },onError:failure=>{if(active&&mode==='pdf')fail(failure);}});
   const renderer=installNativePages({host:pages,
     getFont:key=>invoke('native_tex_font',{sessionId:session,key}),
     onPaint:revision=>{
-      if(!active)return;
-      renderedRevision=revision;renderStatus();
+      if(!active||mode!=='canvas')return;
+      renderedRevision=revision;if(!terminal&&revision>=sourceRevision)error='';renderStatus();
     },
-    onError:failure=>{error=String(failure?.message??failure);renderStatus();},
+    onError:(failure,revision)=>{if(active&&mode==='canvas')void fallback(failure,revision);},
   });
   function current() {
-    return active && session!==null && !opening && updating!==generation && exporting!==generation && !error &&
+    return active && session!==null && !opening && updating!==generation && exporting!==generation &&
+      capturing!==generation && !terminal && !error && wantedSnapshot?.signature===sentSnapshot?.signature &&
       wantedSource===sentSource && renderedRevision===sourceRevision;
   }
   function renderStatus() {
@@ -44,100 +53,154 @@ export function installNativeTexPreview({host,before,getSource,isComposing}) {
     button.setAttribute('aria-pressed',String(active));
     button.textContent=active?t('关闭 LuaLaTeX 预览','Close LuaLaTeX preview'):t('LuaLaTeX 预览（实验）','LuaLaTeX preview (experimental)');
     panel.dataset.state=error?'error':current()?'current':active?'stale':'off';
+    panel.dataset.renderer=mode;
     status.textContent=error?t('原生预览不可用：','Native preview unavailable: ')+error:
       opening?t('等待信任确认并启动引擎…','Confirm trust and start the engine…'):
       exporting===generation?t('正在导出已确认版本的 PDF…','Exporting the confirmed PDF revision…'):
-      current()?t('已显示源码修订 ','Showing source revision ')+sourceRevision:
+      current()?t('已显示源码修订 ','Showing source revision ')+sourceRevision+(mode==='pdf'?' · PDF':''):
       t('排版中；现有画面可能过期。编辑可以继续。','Typesetting; the last frame may be stale. Editing can continue.');
   }
   function relocalize() {
     heading.textContent=t('LuaLaTeX 原生排版预览','Native LuaLaTeX preview');
-    notice.textContent=t('实验：在原编辑器中编辑，此处只读。尚不支持项目依赖、图片或非 OpenType 字体。',
-      'Experimental: edit in the existing editor; this view is read-only. Project dependencies, images and non-OpenType fonts are not supported yet.');
+    notice.textContent=t('在原编辑器中编辑，此处显示 LuaLaTeX 输出。复杂字体、图片和绘图使用 PDF 回退；PDF 页面本身不提供公式语义编辑。',
+      'Edit in the existing editor; this view shows LuaLaTeX output. Complex fonts, images and drawings use PDF fallback, not semantic formula editing on PDF pages.');
     exportButton.textContent=t('导出干净 PDF','Export clean PDF');
     closeButton.textContent=t('关闭','Close');
     renderStatus();
   }
   async function stop() {
-    generation++;active=false;opening=false;error='';
+    generation++;captureId++;pollEpoch++;active=false;opening=false;error='';capturing=null;terminal=false;
     clearTimeout(timer);clearTimeout(pollTimer);
     panel.hidden=true;document.body.classList.remove('native-tex-open');
     const previous=session;session=null;
-    renderer.reset();renderedRevision=-1;renderStatus();
+    wantedSnapshot=null;sentSnapshot=null;wantedSource='';sentSource='';
+    renderer.reset();pdf.reset();mode='canvas';pdfWanted=-1;pdfRendered=-1;renderedRevision=-1;renderStatus();
     if(previous!==null) {
       try {await invoke('native_tex_close',{sessionId:previous});}
       catch(failure) {console.warn('Native TeX close:',failure);}
     }
   }
   function fail(failure) {
+    if(['engine_exit','engine_io','timeout','session_closed','stale_session','event_overflow','protocol'].includes(failure?.code))
+      terminal=true;
     error=String(failure?.message??failure);
     renderStatus();
   }
+  async function fallback(failure,revision) {
+    if(mode==='canvas'){
+      mode='pdf';renderer.reset({clear:false});
+    }
+    if(!Number.isSafeInteger(revision)||revision<0){fail(failure);return;}
+    if(pdfRendered===revision)return;
+    pdfWanted=Math.max(pdfWanted,revision);
+    if(pdfAttempt?.generation===generation&&pdfAttempt?.sessionId===session)return;
+    const attempt=generation;
+    const flight={generation:attempt,sessionId:session};
+    pdfAttempt=flight;renderStatus();
+    try {
+      let finished=-1;
+      while(active&&attempt===generation&&pdfWanted>finished) {
+        const target=pdfWanted;
+        const bytes=await invoke('native_tex_render_pdf',{sessionId:flight.sessionId,sourceRevision:target});
+        if(attempt!==generation||flight.sessionId!==session)return;
+        await pdf.show(bytes,target);finished=target;
+      }
+    }catch(problem){
+      if(attempt===generation&&flight.sessionId===session&&problem?.code!=='revision_mismatch')fail(problem);
+    }finally{if(pdfAttempt===flight)pdfAttempt=null;}
+  }
   async function flush() {
-    if(!active || session===null || updating===generation || exporting===generation || isComposing())return;
+    if(!active || terminal || session===null || updating===generation || exporting===generation ||
+      capturing===generation || isComposing())return;
     const attempt=generation;
     updating=attempt;renderStatus();
     try {
-      while(active && attempt===generation && wantedSource!==sentSource) {
-        const text=wantedSource;
-        const result=await invoke('native_tex_update',{sessionId:session,source:text});
-        if(attempt!==generation)return;
-        sentSource=text;sourceRevision=result.sourceRevision;error='';
+      while(active && attempt===generation && wantedSnapshot?.signature!==sentSnapshot?.signature) {
+        const snapshot=wantedSnapshot;
+        if(snapshot.mainFile!==sentSnapshot.mainFile)throw new Error(t('主文件已改变，请重新打开原生预览。','Main document changed; reopen native preview.'));
+        const files=snapshot.dependencySignature===sentSnapshot.dependencySignature?undefined:snapshot.files;
+        const result=await invoke('native_tex_update',{sessionId:session,source:snapshot.source,files});
+        if(attempt!==generation){
+          if(result.sessionId)await invoke('native_tex_close',{sessionId:result.sessionId}).catch(()=>{});
+          return;
+        }
+        if(result.sessionId&&result.sessionId!==session){
+          session=result.sessionId;pollEpoch++;renderedRevision=-1;pdfRendered=-1;pdfWanted=-1;
+          renderer.reset({clear:false});pdf.reset({clear:false});
+          void poll(attempt,pollEpoch);
+        }
+        sentSource=snapshot.source;sentSnapshot=snapshot;sourceRevision=result.sourceRevision;error='';
         if(isComposing())break;
       }
     } catch(failure) {if(attempt===generation)fail(failure);}
     finally {if(updating===attempt)updating=null;if(attempt===generation)renderStatus();}
   }
-  function refresh() {
+  async function readSnapshot() {
+    if(getSnapshot)return getSnapshot();
+    const source=getSource();
+    return {source,mainFile:'main.tex',signature:source};
+  }
+  async function refresh() {
     if(!active)return;
     if(isComposing()) {
       renderedRevision=-1;renderStatus();return;
     }
-    try {wantedSource=getSource();}
-    catch(failure) {fail(failure);return;}
+    const attempt=generation,request=++captureId;
+    capturing=attempt;renderStatus();
+    try {
+      const snapshot=await readSnapshot();
+      if(attempt!==generation||request!==captureId)return;
+      wantedSnapshot=snapshot;wantedSource=snapshot.source;
+    }catch(failure) {if(attempt===generation&&request===captureId)fail(failure);return;}
+    finally {if(attempt===generation&&request===captureId)capturing=null;}
+    if(attempt!==generation||request!==captureId)return;
     clearTimeout(timer);
     renderStatus();
     timer=setTimeout(flush,250);
   }
-  async function poll(attempt) {
-    if(!active || attempt!==generation || session===null)return;
+  async function poll(attempt,epoch=pollEpoch) {
+    if(!active || attempt!==generation || epoch!==pollEpoch || session===null)return;
     try {
       const events=await invoke('native_tex_poll',{sessionId:session});
-      if(attempt!==generation)return;
+      if(attempt!==generation||epoch!==pollEpoch)return;
       for(const event of events) {
-        if(event.event==='LayoutUpdate' || event.event==='ParagraphUpdate') {
+        if(event.event==='ParagraphUpdate'&&event.status==='error'){
+          error=event.diagnostics?.map(item=>item.message??String(item)).join('\n').slice(0,2400)||
+            t('LuaLaTeX 增量排版失败；修正源码后重试。','LuaLaTeX incremental compilation failed; correct the source and retry.');
+        } else if(event.event==='LayoutUpdate' || event.event==='ParagraphUpdate') {
           if(event.event==='LayoutUpdate' && event.compile?.state!=='Ok') {
             error=t('LuaLaTeX 编译未成功；保留上次有效画面。','LuaLaTeX compilation failed; keeping the last valid frame.');
           } else {
-            error='';renderer.accept(event);
+            if(mode==='pdf'&&event.event==='LayoutUpdate')void fallback(null,event.versions.source_revision);
+            else renderer.accept(event);
           }
         } else if(event.event==='Diagnostics' && event.items?.length) {
           error=event.items.map(item=>item.message??String(item)).join('\n').slice(0,2400);
         }
       }
       renderStatus();
-    } catch(failure) {if(attempt===generation)fail(failure);}
+    } catch(failure) {if(attempt===generation&&epoch===pollEpoch)fail(failure);}
     finally {
-      if(active && attempt===generation)pollTimer=setTimeout(()=>poll(attempt),100);
+      if(active && !terminal && attempt===generation&&epoch===pollEpoch)pollTimer=setTimeout(()=>poll(attempt,epoch),100);
     }
   }
   async function start() {
     if(active)return;
-    try {wantedSource=getSource();}
-    catch(failure) {panel.hidden=false;fail(failure);return;}
     const attempt=++generation;
-    const initial=wantedSource;
-    active=true;opening=true;error='';renderedRevision=-1;
+    active=true;opening=true;error='';terminal=false;renderedRevision=-1;mode='canvas';pdfWanted=-1;pdfRendered=-1;
     panel.hidden=false;document.body.classList.add('native-tex-open');renderStatus();
     try {
-      const opened=await invoke('native_tex_open',{source:initial});
+      const initial=await readSnapshot();
+      if(attempt!==generation)return;
+      wantedSource=initial.source;wantedSnapshot=initial;
+      const opened=await invoke('native_tex_open',{source:initial.source,mainFile:initial.mainFile,files:initial.files});
       if(attempt!==generation) {
         if(opened)await invoke('native_tex_close',{sessionId:opened.sessionId});
         return;
       }
       if(!opened) {await stop();return;}
-      session=opened.sessionId;sourceRevision=opened.sourceRevision;sentSource=initial;opening=false;
-      renderer.reset();void poll(attempt);
+      session=opened.sessionId;sourceRevision=opened.sourceRevision;sentSource=initial.source;sentSnapshot=initial;opening=false;
+      renderer.reset();pdf.reset();void poll(attempt);
       refresh();renderStatus();
     } catch(failure) {if(attempt===generation){opening=false;fail(failure);}}
   }
@@ -156,9 +219,12 @@ export function installNativeTexPreview({host,before,getSource,isComposing}) {
   button.addEventListener('mousedown',event=>event.preventDefault());
   closeButton.addEventListener('click',()=>{void stop();});
   exportButton.addEventListener('click',()=>{void exportPdf();});
-  zoom.addEventListener('change',()=>renderer.setZoom(Number(zoom.value)/100));
+  zoom.addEventListener('change',()=>{
+    const value=Number(zoom.value)/100;
+    renderer.setZoom(value);pdf.setZoom(value);
+  });
   window.addEventListener('pagehide',()=>{void stop();});
   document.addEventListener('compositionend',refresh,true);
-  relocalize();renderer.setZoom(.75);
+  relocalize();renderer.setZoom(.75);pdf.setZoom(.75);
   return {refresh,documentChanged:()=>{void stop();},relocalize};
 }

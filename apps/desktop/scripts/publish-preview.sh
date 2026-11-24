@@ -33,7 +33,8 @@ Native LuaLaTeX page preview: opt-in; existing editor remains authoritative
 Direct editing on native Canvas geometry: not implemented
 XeLaTeX-aligned JS renderer: retained
 Lua JS engine: retained separately; unmerged reference not yet supplied
-No TeX engine, TeX distribution or additional fonts are bundled by this preview.
+No TeX engine, TeX distribution or user font cache is bundled by this preview.
+PDF.js includes its licensed unmodified standard-font and Adobe CMap resources.
 The application identifier and preference storage are shared with stable Lineae.
 Back up documents and exported preferences before testing.
 EOF

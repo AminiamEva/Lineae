@@ -4,9 +4,15 @@ const {createServer}=require('node:http');
 const {readFile}=require('node:fs/promises');
 const {resolve,extname,sep}=require('node:path');
 const installMockNativeTex=require('./native-math/mock-bridge.cjs');
+const {revealToolbar}=require('./workspace-ui-helpers.cjs');
 
 const root=resolve('apps/web');
 const server=createServer(async(req,res)=>{
+  if(req.url==='/native-acceptance.pdf'&&process.env.LINEAE_NATIVE_PDF){
+    try {res.setHeader('Content-Type','application/pdf');res.end(await readFile(process.env.LINEAE_NATIVE_PDF));}
+    catch{res.writeHead(404).end();}
+    return;
+  }
   const path=resolve(root,'.'+new URL(req.url,'http://localhost').pathname.replace(/\/$/,'/index.html'));
   if(!path.startsWith(root+sep))return res.writeHead(403).end();
   try {
@@ -62,15 +68,21 @@ const server=createServer(async(req,res)=>{
     assert.equal(await field.getAttribute('data-test-identity'),'original');
     await page.evaluate(()=>{nativeProbe.failFont=true;});
     await button.click();
+    await page.waitForFunction(()=>document.querySelector('#native-tex-preview').dataset.state==='current' &&
+      document.querySelector('#native-tex-preview').dataset.renderer==='pdf');
+    assert.equal(await panel.locator('[data-pdf-page] canvas').count(),1,'Unsupported direct font rendering uses an actual PDF page, not a generic-font substitute');
+    await page.locator('#native-tex-close').click();
+    await page.evaluate(()=>{nativeProbe.failPdf=true;});
+    await button.click();
     await page.waitForFunction(()=>document.querySelector('#native-tex-preview').dataset.state==='error');
     assert.equal(await page.locator('#native-tex-export').isDisabled(),true,'Missing resources cannot be presented as exact rendering');
     assert.equal(await panel.locator('canvas').count(),0,'No generic font fallback is painted');
     await page.locator('#native-tex-close').click();
-    await page.evaluate(()=>{nativeProbe.failFont=false;nativeProbe.delayOpen=true;});
+    await page.evaluate(()=>{nativeProbe.failFont=false;nativeProbe.failPdf=false;nativeProbe.delayOpen=true;});
     await button.click();
     await page.locator('#native-tex-close').click();
     await page.evaluate(()=>nativeProbe.resolveOpen());
-    await page.waitForFunction(()=>nativeProbe.calls.some(call=>call.command==='native_tex_close' && call.args.sessionId==='3'));
+    await page.waitForFunction(()=>nativeProbe.calls.some(call=>call.command==='native_tex_close' && call.args.sessionId===String(nativeProbe.session)));
     assert.equal(await panel.isHidden(),true,'A late native open cannot reopen a closed preview');
     assert.equal(await field.evaluate(field=>field.value),'abcd','Preview failures and cancellation preserve edits');
     await page.evaluate(()=>{nativeProbe.delayOpen=false;});
@@ -96,7 +108,81 @@ const server=createServer(async(req,res)=>{
     await page.waitForFunction(original=>nativeProbe.source?.replace(/\r\n/g,'\n')===original,input.toString().replace(/\r\n/g,'\n'));
     await page.keyboard.press(mod+'+y');
     await page.waitForFunction(expected=>nativeProbe.source?.replace(/\r\n/g,'\n')===expected,expected.replace(/\r\n/g,'\n'));
+    await page.locator('#native-tex-close').click();
+    await page.evaluate(async()=>{
+      const root=await navigator.storage.getDirectory();
+      window.luaProjectDirectory=await root.getDirectoryHandle('lua-'+crypto.randomUUID(),{create:true});
+      const put=async(dir,name,bytes)=>{
+        const file=await dir.getFileHandle(name,{create:true}),writer=await file.createWritable();
+        await writer.write(bytes);await writer.close();
+      };
+      await put(luaProjectDirectory,'main.tex','\\documentclass{article}\n\\begin{document}\n\\input{chapters/one}\n\\end{document}\n');
+      const chapter=await luaProjectDirectory.getDirectoryHandle('chapters',{create:true});
+      await put(chapter,'one.tex','Original chapter.\n');
+      await put(luaProjectDirectory,'image.png',new Uint8Array([0,255,13,10]));
+      window.showDirectoryPicker=async()=>luaProjectDirectory;
+    });
+    page.on('dialog',dialog=>dialog.accept());
+    await revealToolbar(page);await page.locator('[data-group=files]').click();
+    await page.locator('#project-open').click();
+    await page.locator('.project-file[aria-current=true]').waitFor({state:'attached'});
+    await button.click();
+    await page.waitForFunction(()=>document.querySelector('#native-tex-preview').dataset.state==='current');
+    const projectOpen=await page.evaluate(()=>nativeProbe.calls.filter(call=>call.command==='native_tex_open').at(-1).args);
+    assert.equal(projectOpen.mainFile,'main.tex');
+    assert.match(projectOpen.source,/\\input\{chapters\/one\}/,'Compile the actual main source rather than a flattened editor projection');
+    assert.ok(projectOpen.files.some(file=>file.path==='chapters/one.tex'));
+    assert.deepEqual(projectOpen.files.find(file=>file.path==='image.png').bytes,[0,255,13,10]);
+    const previousId=await page.evaluate(()=>String(nativeProbe.session));
+    if(!await page.locator('#project-explorer').isVisible())await page.locator('#project-toggle').click();
+    const folder=page.locator('#project-explorer summary').filter({hasText:/^chapters$/});
+    if(!await folder.evaluate(node=>node.parentElement.open))await folder.click();
+    await page.locator('[data-path="chapters/one.tex"]').click();
+    await page.locator('[data-source-mode=source]').click();
+    await page.locator('.cm-content').click();
+    await page.keyboard.press(mod+'+a');
+    await page.evaluate(()=>{nativeProbe.restartNext=true;});
+    await page.keyboard.type('Changed chapter.\n');
+    await page.waitForFunction(()=>nativeProbe.calls.some(call=>call.command==='native_tex_update' &&
+      call.args.files?.some(file=>file.path==='chapters/one.tex' &&
+        new TextDecoder().decode(new Uint8Array(file.bytes))==='Changed chapter.\n')));
+    await page.waitForFunction(()=>document.querySelector('#native-tex-preview').dataset.state==='current');
+    assert.notEqual(await page.evaluate(()=>String(nativeProbe.session)),previousId,'Dependency changes may replace the native session without resetting editor history');
+    assert.match(await page.locator('.cm-content').textContent(),/Changed chapter\./);
     assert.deepEqual(errors,[]);
+    if(process.env.LINEAE_NATIVE_PDF){
+      await page.close();
+      page=await browser.newPage({locale:'en-US',viewport:{width:1600,height:1100}});
+      await page.addInitScript(installMockNativeTex);
+      await page.addInitScript(()=>{
+        nativeProbe.failFont=true;
+        const invoke=window.__TAURI__.core.invoke;
+        window.__TAURI__.core.invoke=async(command,args)=>{
+          if(command==='native_tex_render_pdf')return [...new Uint8Array(
+            await(await fetch('/native-acceptance.pdf')).arrayBuffer())];
+          return invoke(command,args);
+        };
+      });
+      await page.goto('http://127.0.0.1:'+server.address().port,{waitUntil:'networkidle'});
+      await page.locator('input#file').setInputFiles({name:'preview.tex',mimeType:'text/plain',buffer:input});
+      await page.locator('#native-tex-toggle').click();
+      await page.waitForFunction(()=>document.querySelector('#native-tex-preview').dataset.state==='current'&&
+        document.querySelector('#native-tex-preview').dataset.renderer==='pdf');
+      assert.ok(await page.locator('[data-pdf-page="1"] canvas').evaluate(canvas=>canvas.width>1));
+      const text=await page.evaluate(async()=>{
+        const api=await import('/vendor/pdfjs/legacy/build/pdf.mjs');
+        api.GlobalWorkerOptions.workerSrc='/vendor/pdfjs/legacy/build/pdf.worker.mjs';
+        const task=api.getDocument({data:new Uint8Array(await(await fetch('/native-acceptance.pdf')).arrayBuffer()),
+          isEvalSupported:false,useSystemFonts:false});
+        const doc=await task.promise,words=[];
+        for(let number=1;number<=doc.numPages;number++)
+          words.push(...(await(await doc.getPage(number)).getTextContent()).items.map(item=>item.str??''));
+        await task.destroy();return words.join(' ');
+      });
+      assert.match(text,/42/,'Actual LuaLaTeX PDF includes executed Lua output');
+      assert.match(text,/TikZ/,'Actual drawing document reached the PDF renderer');
+      console.log('PASS real LuaLaTeX-generated PDF rendered with the bundled PDF.js worker');
+    }
     console.log('PASS native preview transport/UI: explicit startup, Canvas resources, retained editor/history, sync, export revision and cancellation (not engine evidence)');
   }catch(error){
     if(page)console.error('Native preview UI diagnostic:',await page.evaluate(()=>({

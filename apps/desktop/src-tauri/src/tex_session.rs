@@ -1,14 +1,15 @@
 //! Experimental, trusted-document-only rtex 0.0.8 host.
 //!
 //! Source is never instrumented. Only a disposable main.tex is exposed to rtex;
-//! project assets, PDF fallback rendering, Type 1 fonts and native editing are not
-//! supported here. LuaLaTeX is NOT a sandbox, even with shell escape disabled.
+//! Assets are copied from validated byte snapshots, never original filesystem
+//! paths. PDF fallback is read-only, not editable glyph geometry. LuaLaTeX is
+//! NOT a sandbox, even with shell escape disabled.
 //! Call close_all on window/app teardown in addition to the explicit close IPC.
 
 use command_group::{CommandGroup, GroupChild};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use std::collections::{HashMap, VecDeque};
+use std::collections::{BTreeMap, HashMap, VecDeque};
 use std::io::{BufRead, BufReader, Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{ChildStdin, Command, Stdio};
@@ -25,6 +26,10 @@ const QUEUE_LIMIT: usize = 32 * 1024 * 1024;
 const EVENT_LIMIT: usize = 256;
 const TAIL_LIMIT: usize = 4096;
 const FONT_LIMIT: u64 = 32 * 1024 * 1024;
+const PDF_LIMIT: u64 = 64 * 1024 * 1024;
+const PROJECT_LIMIT: usize = 64 * 1024 * 1024;
+const FILE_LIMIT: usize = 16 * 1024 * 1024;
+const FILE_COUNT_LIMIT: usize = 512;
 const MAX_SAFE_INTEGER: u64 = 9_007_199_254_740_991;
 const COMMAND_TIMEOUT: Duration = Duration::from_secs(45);
 // Allows rtex's bounded multi-pass convergence, but not an indefinitely stuck host.
@@ -80,6 +85,106 @@ fn integer(value: &Value, field: &str) -> Result<u64, NativeTexError> {
         .ok_or_else(|| error("protocol", format!("rtex returned an invalid {field}.")))
 }
 
+/// Byte-only IPC snapshot: no original filesystem paths or symlinks are copied.
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct NativeTexFile {
+    pub path: String,
+    pub bytes: Vec<u8>,
+}
+
+fn validate_project_path(path: &str) -> Result<(), NativeTexError> {
+    if path.is_empty() || path.len() > 1024
+        || path.contains('\\') || path.contains(':') || path.chars().any(char::is_control)
+    {
+        return Err(error("project_path", "Project paths must be clean, relative forward-slash paths."));
+    }
+    let components: Vec<_> = path.split('/').collect();
+    if components.len() > 32 {
+        return Err(error("project_path", "Project paths may have at most 32 components."));
+    }
+    for component in &components {
+        let lower = component.to_ascii_lowercase();
+        let stem = lower.split('.').next().unwrap_or("").trim_end_matches(' ');
+        if component.is_empty() || *component == "." || *component == ".."
+            || component.ends_with('.') || component.ends_with(' ')
+            || component.chars().any(|c| matches!(c, '<' | '>' | '"' | '|' | '?' | '*'))
+            || component.starts_with('.')
+            || matches!(stem, "con" | "prn" | "aux" | "nul" | "clock$" | "conin$" | "conout$"
+                | "com¹" | "com²" | "com³" | "lpt¹" | "lpt²" | "lpt³")
+            || (stem.len() == 4 && (stem.starts_with("com") || stem.starts_with("lpt"))
+                && stem.as_bytes()[3].is_ascii_digit())
+        {
+            return Err(error("project_path", format!("Unsupported project path component in '{path}'.")));
+        }
+    }
+    if components[0].eq_ignore_ascii_case("build")
+        || components[0].eq_ignore_ascii_case("export.pdf")
+        || components[0].to_ascii_lowercase().starts_with("lineae-")
+    {
+        return Err(error("project_path", "Project path collides with native session output."));
+    }
+    Ok(())
+}
+
+#[derive(Clone, PartialEq, Eq)]
+struct Snapshot {
+    main_file: String,
+    files: BTreeMap<String, Vec<u8>>,
+}
+
+impl Snapshot {
+    fn new(source: &str, main_file: String, files: Vec<NativeTexFile>) -> Result<Self, NativeTexError> {
+        validate_source(source)?;
+        validate_project_path(&main_file)?;
+        if !main_file.to_ascii_lowercase().ends_with(".tex") {
+            return Err(error("project_main", "The main file must have a .tex extension."));
+        }
+        if files.len() > FILE_COUNT_LIMIT {
+            return Err(error("project_limit", "Project snapshot exceeds 512 files."));
+        }
+        let mut result = BTreeMap::new();
+        let mut folded = std::collections::HashSet::new();
+        let mut total = source.len();
+        for file in files {
+            validate_project_path(&file.path)?;
+            if !folded.insert(file.path.to_lowercase()) {
+                return Err(error("project_path", "Duplicate or case-colliding project paths."));
+            }
+            total = total.saturating_add(file.bytes.len());
+            if file.bytes.len() > FILE_LIMIT || total > PROJECT_LIMIT {
+                return Err(error("project_limit", "Project snapshot exceeds the 16 MiB file / 64 MiB total limit."));
+            }
+            // The selected main buffer always wins, including over binary bytes.
+            if file.path == main_file { continue; }
+            if file.path.eq_ignore_ascii_case(&main_file) {
+                return Err(error("project_path", "A project file case-collides with the main file."));
+            }
+            result.insert(file.path, file.bytes);
+        }
+        result.insert(main_file.clone(), source.as_bytes().to_vec());
+        if result.len() > FILE_COUNT_LIMIT {
+            return Err(error("project_limit", "Project snapshot exceeds 512 files including the main file."));
+        }
+        // Reject both file/directory collisions and their Windows case variants.
+        let names: std::collections::HashSet<_> = result.keys().map(|name| name.to_lowercase()).collect();
+        for path in result.keys() {
+            for (index, _) in path.match_indices('/') {
+                if names.contains(&path[..index].to_lowercase()) {
+                    return Err(error("project_path", "A snapshot path is both a file and a directory."));
+                }
+            }
+        }
+        Ok(Self { main_file, files: result })
+    }
+
+    fn dependencies_equal(&self, other: &Self) -> bool {
+        self.main_file == other.main_file
+            && self.files.iter().filter(|(path, _)| path.as_str() != self.main_file.as_str())
+                .eq(other.files.iter().filter(|(path, _)| path.as_str() != other.main_file.as_str()))
+    }
+}
+
 #[derive(Default)]
 struct Manager {
     generation: u64,
@@ -88,7 +193,7 @@ struct Manager {
 }
 
 #[derive(Default)]
-pub struct NativeTexSessions(Mutex<Manager>);
+pub struct NativeTexSessions(Arc<Mutex<Manager>>);
 
 impl NativeTexSessions {
     fn get(&self, id: &str) -> Result<Arc<Session>, NativeTexError> {
@@ -128,6 +233,8 @@ pub struct NativeTexInfo {
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NativeTexUpdate {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    session_id: Option<String>,
     edit_id: u64,
     source_revision: u64,
     routed: String,
@@ -155,6 +262,8 @@ struct Messages {
     layout_deadline: Option<Instant>,
     revision: Option<u64>,
     layout_revision: Option<u64>,
+    latest_layout: Option<(u64, u64)>,
+    layout_pdfs: BTreeMap<(u64, u64), PathBuf>,
 }
 
 impl Messages {
@@ -222,6 +331,18 @@ impl Messages {
         match event {
             "LayoutUpdate" => {
                 let revision = integer(&message["versions"], "source_revision")?;
+                // Older fixture/protocol frames without a version cannot grant PDF access.
+                if let Ok(version) = integer(&message["versions"], "layout_version") {
+                    if self.latest_layout.map_or(true, |latest| (revision, version) >= latest) {
+                        self.latest_layout = Some((revision, version));
+                    }
+                    if let Some(path) = message["pdf_fallback"].as_str().filter(|path| !path.is_empty()) {
+                        self.layout_pdfs.insert((revision, version), PathBuf::from(path));
+                        while self.layout_pdfs.len() > 8 {
+                            self.layout_pdfs.pop_first();
+                        }
+                    }
+                }
                 self.layout_revision = Some(self.layout_revision.unwrap_or(0).max(revision));
                 if self.revision.is_some_and(|current| revision >= current) {
                     self.layout_deadline = None;
@@ -266,21 +387,42 @@ struct Session {
     commands: Mutex<()>,
     messages: Mutex<Messages>,
     changed: Condvar,
+    snapshot: Mutex<Snapshot>,
 }
 
 impl Session {
+    #[cfg(test)]
     fn create(source: &str) -> Result<Arc<Self>, NativeTexError> {
+        Self::create_snapshot(Snapshot::new(source, "main.tex".into(), Vec::new())?)
+    }
+
+    fn create_snapshot(snapshot: Snapshot) -> Result<Arc<Self>, NativeTexError> {
         let stamp = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_nanos();
         let id = format!("tex-{:08x}-{stamp:032x}-{:016x}", std::process::id(), NEXT_ID.fetch_add(1, Ordering::Relaxed));
         let root = std::env::temp_dir().join(format!("lineae-native-{id}"));
-        std::fs::create_dir(&root).map_err(|e| error("temporary_project", format!("Cannot create temporary TeX project: {e}")))?;
+        let mut directory = std::fs::DirBuilder::new();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::DirBuilderExt;
+            directory.mode(0o700);
+        }
+        directory.create(&root).map_err(|e| error("temporary_project", format!("Cannot create temporary TeX project: {e}")))?;
         let session = Arc::new(Self {
             id, root, closed: AtomicBool::new(false), processes: Mutex::new(Vec::new()),
             stdin: Mutex::new(None), commands: Mutex::new(()),
             messages: Mutex::new(Messages::default()), changed: Condvar::new(),
+            snapshot: Mutex::new(snapshot.clone()),
         });
-        std::fs::write(session.root.join("main.tex"), source)
-            .map_err(|e| error("temporary_project", format!("Cannot write temporary main.tex: {e}")))?;
+        for (path, bytes) in &snapshot.files {
+            let destination = session.root.join(path);
+            if let Some(parent) = destination.parent() {
+                std::fs::create_dir_all(parent)
+                    .map_err(|e| error("temporary_project", format!("Cannot create temporary project directory: {e}")))?;
+            }
+            let mut file = std::fs::OpenOptions::new().write(true).create_new(true).open(&destination)
+                .map_err(|e| error("temporary_project", format!("Cannot stage temporary project file '{path}': {e}")))?;
+            file.write_all(bytes).map_err(|e| error("temporary_project", format!("Cannot write temporary project file '{path}': {e}")))?;
+        }
         Ok(session)
     }
 
@@ -495,8 +637,9 @@ impl Session {
         // Uses rtex's own support-file and TeX Live discovery, not a guessed layout.
         self.tool(Command::new(&executable).arg("doctor"))?;
         let mut command = Command::new(&executable);
+        let main_file = lock(&self.snapshot).main_file.clone();
         command.args(["serve", "--project"]).arg(&self.root)
-            .args(["--main", "main.tex", "--build"]).arg(self.root.join("build"))
+            .arg(format!("--main={main_file}")).arg("--build").arg(self.root.join("build"))
             .args(["--eligibility", "allowlist", "--compile-timeout-ms", "30000", "--pass-timeout-ms", "60000"])
             .stdin(Stdio::piped());
         lock(&self.messages).layout_deadline = Some(Instant::now() + LAYOUT_TIMEOUT);
@@ -565,7 +708,23 @@ impl Session {
 
     fn update(&self, source: String) -> Result<NativeTexUpdate, NativeTexError> {
         let _serial = lock(&self.commands);
-        let reply = self.request(json!({"cmd": "set_document", "path": "main.tex", "text": source}), "set_document")?;
+        self.set_source(source)
+    }
+
+    /// Caller holds commands, including while replacing a project snapshot.
+    fn set_source(&self, source: String) -> Result<NativeTexUpdate, NativeTexError> {
+        validate_source(&source)?;
+        let main_file = {
+            let snapshot = lock(&self.snapshot);
+            let dependencies: usize = snapshot.files.iter()
+                .filter(|(path, _)| path.as_str() != snapshot.main_file.as_str())
+                .map(|(_, bytes)| bytes.len()).sum();
+            if dependencies.saturating_add(source.len()) > PROJECT_LIMIT {
+                return Err(error("project_limit", "Updated source exceeds the 64 MiB project snapshot limit."));
+            }
+            snapshot.main_file.clone()
+        };
+        let reply = self.request(json!({"cmd": "set_document", "path": &main_file, "text": &source}), "set_document")?;
         let result = &reply["result"];
         let revision = integer(result, "source_revision")?;
         let edit_id = integer(result, "edit_id")?;
@@ -581,10 +740,11 @@ impl Session {
                 messages.layout_deadline.get_or_insert(Instant::now() + LAYOUT_TIMEOUT);
             }
         }
+        lock(&self.snapshot).files.insert(main_file, source.into_bytes());
         // Always obtain a whole-page result: the checkpoint does not paint fast
         // paragraph overlays. The event queue still contains all original frames.
         self.request(json!({"cmd": "request_layout"}), "request_layout")?;
-        Ok(NativeTexUpdate { edit_id, source_revision: revision, routed })
+        Ok(NativeTexUpdate { session_id: None, edit_id, source_revision: revision, routed })
     }
 
     fn font(self: &Arc<Self>, key: String) -> Result<Vec<u8>, NativeTexError> {
@@ -627,15 +787,14 @@ impl Session {
         Ok(bytes)
     }
 
-    fn export(&self, revision: u64, destination: PathBuf) -> Result<NativeTexExport, NativeTexError> {
-        // Freeze session mutations through the clean build and approved copy.
-        // UI edits can continue in the authoritative editor and queue an update.
-        let _serial = lock(&self.commands);
+    /// Caller holds commands to freeze the raw source/assets through compilation.
+    /// PDF bytes have no editable geometry contract.
+    fn compile_pdf(&self, revision: u64) -> Result<(u64, Vec<u8>), NativeTexError> {
         self.check()?;
         if lock(&self.messages).revision != Some(revision) {
             return Err(error("revision_mismatch", "The source changed while choosing an export destination. Export again."));
         }
-        let output = self.root.join("export.pdf");
+        let output = self.root.join("build").join("lineae-export.pdf");
         match std::fs::remove_file(&output) {
             Ok(()) => {}
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
@@ -670,14 +829,62 @@ impl Session {
             return Err(error("export_failed", "LuaLaTeX did not produce a successful, converged clean PDF. The destination was not changed."));
         }
         self.check()?;
-        // A completed file is copied only after successful engine confirmation.
-        // No caller-provided filesystem path enters this command.
-        let mut file = std::fs::File::open(&output).map_err(|e| error("export_failed", format!("Clean PDF is missing: {e}")))?;
-        let mut header = [0; 5];
-        file.read_exact(&mut header).map_err(|e| error("export_failed", e.to_string()))?;
-        if &header != b"%PDF-" {
-            return Err(error("export_failed", "Clean export was not a PDF. The destination was not changed."));
+        Ok((job, self.read_pdf(&output)?))
+    }
+
+    fn read_pdf(&self, path: &Path) -> Result<Vec<u8>, NativeTexError> {
+        self.check()?;
+        let canonical = |path: &Path| path.canonicalize()
+            .map_err(|e| error("pdf_missing", format!("Native PDF resource is unavailable: {e}")));
+        let root = canonical(&self.root)?;
+        let build = canonical(&self.root.join("build"))?;
+        let path = canonical(path)?;
+        if build == root || !build.starts_with(&root) || !path.starts_with(&build) {
+            return Err(error("pdf_resource", "Native PDF resource escaped the session build directory."));
         }
+        let file = std::fs::File::open(&path).map_err(|e| error("pdf_missing", e.to_string()))?;
+        let metadata = file.metadata().map_err(|e| error("pdf_io", e.to_string()))?;
+        if !metadata.is_file() || metadata.len() > PDF_LIMIT {
+            return Err(error("pdf_limit", "Native PDF must be a regular file, at most 64 MiB."));
+        }
+        let mut bytes = Vec::new();
+        file.take(PDF_LIMIT + 1).read_to_end(&mut bytes).map_err(|e| error("pdf_io", e.to_string()))?;
+        if bytes.len() as u64 > PDF_LIMIT || !bytes.starts_with(b"%PDF-") {
+            return Err(error("pdf_format", "Native PDF resource has an invalid header or size."));
+        }
+        self.check()?;
+        Ok(bytes)
+    }
+
+    fn pdf(&self, revision: u64, layout_version: u64) -> Result<Vec<u8>, NativeTexError> {
+        let _serial = lock(&self.commands);
+        self.check()?;
+        let path = {
+            let messages = lock(&self.messages);
+            if messages.revision != Some(revision) || messages.latest_layout != Some((revision, layout_version)) {
+                return Err(error("revision_mismatch", "This PDF request does not match the current source and layout."));
+            }
+            messages.layout_pdfs.get(&(revision, layout_version)).cloned()
+                .ok_or_else(|| error("pdf_unavailable", "This exact layout has no registered PDF fallback. Request a clean read-only PDF snapshot instead."))?
+        };
+        let path = if path.is_absolute() { path } else { self.root.join(path) };
+        let bytes = self.read_pdf(&path)?;
+        // A newer layout can arrive independently of the command lock.
+        if lock(&self.messages).latest_layout != Some((revision, layout_version)) {
+            return Err(error("revision_mismatch", "A newer native layout replaced this PDF."));
+        }
+        Ok(bytes)
+    }
+
+    fn render_pdf(&self, revision: u64) -> Result<Vec<u8>, NativeTexError> {
+        let _serial = lock(&self.commands);
+        self.compile_pdf(revision).map(|(_, bytes)| bytes)
+    }
+
+    fn export(&self, revision: u64, destination: PathBuf) -> Result<NativeTexExport, NativeTexError> {
+        // Freeze native mutations through the clean build and approved copy.
+        let _serial = lock(&self.commands);
+        let (job, bytes) = self.compile_pdf(revision)?;
         // Stage beside the approved destination, then atomically replace it.
         // Compilation/copy failures never truncate an existing user PDF.
         let parent = destination.parent().ok_or_else(|| error("export_path", "The selected PDF has no parent directory."))?;
@@ -685,8 +892,7 @@ impl Session {
         let mut staging = std::fs::OpenOptions::new().write(true).create_new(true).open(&staging_path)
             .map_err(|e| error("export_copy", format!("Cannot stage the completed PDF: {e}")))?;
         let published = (|| {
-            staging.write_all(&header).map_err(|e| error("export_copy", e.to_string()))?;
-            std::io::copy(&mut file, &mut staging).map_err(|e| error("export_copy", e.to_string()))?;
+            staging.write_all(&bytes).map_err(|e| error("export_copy", e.to_string()))?;
             staging.sync_all().map_err(|e| error("export_copy", e.to_string()))?;
             drop(staging);
             self.check()?;
@@ -712,9 +918,54 @@ async fn blocking<T: Send + 'static>(work: impl FnOnce() -> Result<T, NativeTexE
         .map_err(|e| error("native_task", format!("Native TeX task failed: {e}")))?
 }
 
+/// `files: Some` is a complete replacement dependency snapshot, not a patch.
+/// A changed dependency (including deletion/binary changes) starts a new engine
+/// session so no stale parsed files, aux state, or cached pictures survive.
+fn update_snapshot(
+    manager: &Mutex<Manager>,
+    session: Arc<Session>,
+    source: String,
+    files: Option<Vec<NativeTexFile>>,
+) -> Result<NativeTexUpdate, NativeTexError> {
+    let _serial = lock(&session.commands);
+    session.check()?;
+    let snapshot = match files {
+        None => return session.set_source(source),
+        Some(files) => Snapshot::new(&source, lock(&session.snapshot).main_file.clone(), files)?,
+    };
+    if lock(&session.snapshot).dependencies_equal(&snapshot) {
+        return session.set_source(source);
+    }
+    let replacement = Session::create_snapshot(snapshot)?;
+    {
+        let mut manager = lock(manager);
+        if manager.stopped || !manager.session.as_ref().is_some_and(|active| active.id == session.id) {
+            return Err(error("stale_session", "A newer session replaced this project update."));
+        }
+        manager.generation = manager.generation.wrapping_add(1);
+        manager.session = Some(replacement.clone());
+    }
+    session.terminate();
+    let result = replacement.start().and_then(|_| replacement.update(source)).map(|mut update| {
+        update.session_id = Some(replacement.id.clone());
+        update
+    });
+    if let Err(problem) = &result {
+        replacement.fail(problem.clone());
+        replacement.terminate();
+    }
+    result.map_err(|problem| lock(&replacement.messages).diagnostic(problem))
+}
+
 #[tauri::command]
-pub async fn native_tex_open(app: AppHandle, state: State<'_, NativeTexSessions>, source: String) -> Result<Option<NativeTexInfo>, NativeTexError> {
-    validate_source(&source)?;
+pub async fn native_tex_open(
+    app: AppHandle,
+    state: State<'_, NativeTexSessions>,
+    source: String,
+    main_file: Option<String>,
+    files: Option<Vec<NativeTexFile>>,
+) -> Result<Option<NativeTexInfo>, NativeTexError> {
+    let snapshot = Snapshot::new(&source, main_file.unwrap_or_else(|| "main.tex".into()), files.unwrap_or_default())?;
     let (generation, old) = {
         let mut manager = lock(&state.0);
         if manager.stopped { return Err(error("session_closed", "The native TeX host is shutting down.")); }
@@ -724,7 +975,7 @@ pub async fn native_tex_open(app: AppHandle, state: State<'_, NativeTexSessions>
     if let Some(old) = old { blocking(move || { old.terminate(); Ok(()) }).await?; }
     let (sender, receiver) = tokio::sync::oneshot::channel();
     let dialog_app = app.clone();
-    app.run_on_main_thread(move || dialog_app.dialog().message("Compile this document with native LuaLaTeX?\n\nOnly continue if you trust its source. LuaLaTeX can execute Lua and access or change files with your account's permissions, even without shell escape. The temporary project is not a security sandbox.")
+    app.run_on_main_thread(move || dialog_app.dialog().message("Compile this project with native LuaLaTeX?\n\nOnly continue if you trust its source and included project assets. LuaLaTeX can execute Lua and access or change files with your account's permissions, even without shell escape. The temporary snapshot is not a security sandbox.")
         .title("Trust native TeX source")
         .buttons(MessageDialogButtons::OkCancelCustom("Trust and compile".into(), "Cancel".into()))
         .show(move |approved| { let _ = sender.send(approved); }))
@@ -732,7 +983,7 @@ pub async fn native_tex_open(app: AppHandle, state: State<'_, NativeTexSessions>
     if !receiver.await.map_err(|_| error("trust_canceled", "Native TeX trust dialog was closed."))? {
         return Ok(None);
     }
-    let session = Session::create(&source)?;
+    let session = blocking(move || Session::create_snapshot(snapshot)).await?;
     {
         let mut manager = lock(&state.0);
         if manager.stopped || manager.generation != generation {
@@ -751,14 +1002,18 @@ pub async fn native_tex_open(app: AppHandle, state: State<'_, NativeTexSessions>
 }
 
 #[tauri::command]
-pub async fn native_tex_update(state: State<'_, NativeTexSessions>, session_id: String, source: String) -> Result<NativeTexUpdate, NativeTexError> {
+pub async fn native_tex_update(state: State<'_, NativeTexSessions>, session_id: String, source: String, files: Option<Vec<NativeTexFile>>) -> Result<NativeTexUpdate, NativeTexError> {
     validate_source(&source)?;
     let session = state.get(&session_id)?;
+    let manager = state.0.clone();
     blocking(move || {
-        let result = session.update(source);
+        let result = update_snapshot(&manager, session.clone(), source, files);
+        // Snapshot validation failures leave the current project usable.
         if let Err(problem) = &result {
-            session.fail(problem.clone());
-            session.terminate();
+            if !matches!(problem.code, "project_path" | "project_limit" | "project_main" | "temporary_project" | "invalid_source" | "stale_session") {
+                session.fail(problem.clone());
+                session.terminate();
+            }
         }
         result.map_err(|problem| lock(&session.messages).diagnostic(problem))
     }).await
@@ -770,13 +1025,46 @@ pub fn native_tex_poll(state: State<'_, NativeTexSessions>, session_id: String) 
     let mut messages = lock(&session.messages);
     messages.check()?;
     messages.event_bytes = 0;
-    Ok(messages.events.drain(..).collect())
+    Ok(messages.events.drain(..).map(|mut event| {
+        // Keep engine versions/geometry/diagnostics intact, but never publish
+        // host-private PDF paths as web resources. Provenance stays in the hub.
+        if event["event"] == "LayoutUpdate" {
+            let available = event["pdf_fallback"].as_str().is_some_and(|path| !path.is_empty());
+            event["pdf_fallback_registered"] = json!(available);
+            event["pdf_fallback"] = Value::Null;
+        } else if event["event"] == "PdfExported" {
+            event["path"] = Value::Null;
+        }
+        event
+    }).collect())
 }
 
 #[tauri::command]
 pub async fn native_tex_font(state: State<'_, NativeTexSessions>, session_id: String, key: String) -> Result<Vec<u8>, NativeTexError> {
     let session = state.get(&session_id)?;
     blocking(move || session.font(key)).await
+}
+
+/// Only the PDF provenance registered by this exact current layout is accepted.
+#[tauri::command]
+pub async fn native_tex_pdf(state: State<'_, NativeTexSessions>, session_id: String, source_revision: u64, layout_version: u64) -> Result<Vec<u8>, NativeTexError> {
+    if source_revision > MAX_SAFE_INTEGER || layout_version > MAX_SAFE_INTEGER {
+        return Err(error("invalid_revision", "Invalid source or layout revision."));
+    }
+    let session = state.get(&session_id)?;
+    blocking(move || session.pdf(source_revision, layout_version)).await
+}
+
+/// Clean, revision-frozen read-only PDF, also available when an exact display
+/// list uses Type 1/TTC/fonts/images unsupported by the browser glyph renderer.
+/// Returns bytes only; never a filesystem path or editable geometry.
+#[tauri::command]
+pub async fn native_tex_render_pdf(state: State<'_, NativeTexSessions>, session_id: String, source_revision: u64) -> Result<Vec<u8>, NativeTexError> {
+    if source_revision > MAX_SAFE_INTEGER {
+        return Err(error("invalid_revision", "Invalid source revision."));
+    }
+    let session = state.get(&session_id)?;
+    blocking(move || session.render_pdf(source_revision)).await
 }
 
 #[tauri::command]
@@ -818,6 +1106,39 @@ pub async fn native_tex_close(state: State<'_, NativeTexSessions>, session_id: S
 mod tests {
     use super::*;
 
+    fn save_pdf_evidence(name: &str, bytes: &[u8]) {
+        if let Some(directory) = std::env::var_os("LINEAE_NATIVE_EVIDENCE_DIR") {
+            assert!(!directory.is_empty(), "configured evidence directory must not be empty");
+            let directory = PathBuf::from(directory);
+            std::fs::create_dir_all(&directory).unwrap();
+            std::fs::write(directory.join(name), bytes).unwrap();
+        }
+    }
+
+    #[test]
+    #[ignore = "requires the comprehensive pinned LuaLaTeX project CI toolchain"]
+    fn real_native_project() {
+        for name in ["LINEAE_RTEX_PATH", "RTEX_TEXLIVE_BIN"] {
+            assert!(!std::env::var_os(name).unwrap_or_else(|| panic!("{name} is required")).is_empty());
+        }
+        let fixture = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../../tests/native-math/fixtures/lua-project");
+        let source = std::fs::read_to_string(fixture.join("main.tex")).unwrap();
+        let sibling = std::fs::read(fixture.join("chapters/one.tex")).unwrap();
+        let session = Session::create_snapshot(Snapshot::new(&source, "main.tex".into(), vec![
+            NativeTexFile { path: "chapters/one.tex".into(), bytes: sibling },
+        ]).unwrap()).unwrap();
+        let info = session.start().expect("comprehensive LuaLaTeX project must start");
+        let pdf = session.render_pdf(info.source_revision)
+            .expect("ctex/Fandol, unicode-math, Lua and TikZ must produce a converged clean PDF");
+        assert!(pdf.starts_with(b"%PDF-"));
+        save_pdf_evidence("native-lua-project.pdf", &pdf);
+        let root = session.root.clone();
+        session.terminate();
+        assert!(!root.exists());
+        assert!(lock(&session.processes).is_empty());
+    }
+
     /// Explicit remote CI gate only; this is not a JavaScript trust-dialog bypass.
     #[test]
     #[ignore = "requires the pinned real rtex 0.0.8 / LuaLaTeX CI toolchain"]
@@ -830,19 +1151,40 @@ mod tests {
             "\\documentclass{article}\n",
             "\\usepackage{amsmath}\n",
             "\\usepackage{unicode-math}\n",
+            "\\usepackage{localstyle}\n",
             "\\setmathfont{Latin Modern Math}\n",
             "\\begin{document}\n",
             "Native LuaLaTeX checkpoint.\n",
+            "\\input{dependency}\n",
+            "\\IfFileExists{assets/payload.bin}{}{\\errmessage{Missing binary snapshot asset}}\n",
             "\\[\\frac{a}{}\\]\n",
             "\\end{document}\n"
         );
-        let session = Session::create(source).unwrap();
+        let files = |dependency: &str| {
+            let changed = dependency.contains("unsaved");
+            let mut files = vec![
+                NativeTexFile { path: "dependency.tex".into(), bytes: dependency.as_bytes().to_vec() },
+                NativeTexFile { path: "localstyle.sty".into(), bytes: format!(
+                    "\\ProvidesPackage{{localstyle}}\n\\directlua{{lineaenativevalue=require(\"cachevalue\")}}\n\\newcommand{{\\SnapshotWord}}{{{} \\directlua{{tex.sprint(lineaenativevalue)}}}}\n",
+                    if changed { "Changed style" } else { "Original style" }
+                ).into_bytes() },
+                NativeTexFile { path: "cachevalue.lua".into(), bytes: if changed {
+                    b"return 'Changed Lua module'".to_vec()
+                } else { b"return 'Original Lua module'".to_vec() } },
+                NativeTexFile { path: "assets/payload.bin".into(), bytes: vec![0, 255, 13, 10, 128, if changed { 2 } else { 1 }] },
+            ];
+            if !changed {
+                files.push(NativeTexFile { path: "obsolete.tex".into(), bytes: b"removed by replacement snapshot".to_vec() });
+            }
+            files
+        };
+        let session = Session::create_snapshot(Snapshot::new(source, "main.tex".into(), files("\\SnapshotWord{} first.\n")).unwrap()).unwrap();
         let manager = NativeTexSessions::default();
         lock(&manager.0).session = Some(session.clone());
         let info = session.start().expect("the pinned real native engine must start");
         assert_eq!(info.session_id, session.id);
         assert!(info.source_revision > 0, "use the engine's actual initial revision");
-        let wait_layout = |revision: u64| {
+        let wait_layout = |session: &Arc<Session>, revision: u64| {
             let deadline = Instant::now() + Duration::from_secs(180);
             let mut messages = lock(&session.messages);
             loop {
@@ -860,7 +1202,7 @@ mod tests {
                 messages = session.changed.wait_timeout(messages, remaining).unwrap().0;
             }
         };
-        let initial = wait_layout(info.source_revision);
+        let initial = wait_layout(&session, info.source_revision);
         assert!(initial["pages_total"].as_i64().unwrap() > 0);
         assert!(lock(&session.messages).events.iter().any(|event| {
             event["event"] == "LayoutUpdate"
@@ -878,12 +1220,16 @@ mod tests {
         assert!(font.starts_with(b"OTTO") || font.starts_with(&[0, 1, 0, 0]));
 
         let updated = source.replace("\\frac{a}{}", "\\frac{a}{b}");
-        let edit = session.update(updated).expect("set_document must accept the raw edited document");
+        let edit = session.update(updated.clone()).expect("set_document must accept the raw edited document");
         assert!(edit.source_revision > info.source_revision);
-        let layout = wait_layout(edit.source_revision);
+        let layout = wait_layout(&session, edit.source_revision);
         assert_eq!(layout["versions"]["source_revision"].as_u64(), Some(edit.source_revision));
         // Engine buffer updates must not rewrite even the disposable input file.
         assert_eq!(std::fs::read_to_string(session.root.join("main.tex")).unwrap(), source);
+        assert_eq!(session.render_pdf(info.source_revision).unwrap_err().code, "revision_mismatch");
+        let preview_pdf = session.render_pdf(edit.source_revision).expect("read-only PDF snapshot must compile");
+        assert!(preview_pdf.starts_with(b"%PDF-"));
+        save_pdf_evidence("native-session.pdf", &preview_pdf);
 
         let saved = Session::create("separate export-test temporary directory").unwrap();
         assert!(manager.get(&saved.id).is_err());
@@ -901,11 +1247,38 @@ mod tests {
             event["event"] == "PdfExported" && event["job_id"].as_u64() == Some(exported.job_id)
         }), "export completion must remain visible to the frontend poller");
         let project = session.root.clone();
-        manager.close_all();
+        let replaced = update_snapshot(&manager.0, session.clone(), updated.clone(),
+            Some(files("\\SnapshotWord{} unsaved sibling change.\n"))).expect("changed dependencies must replace the native engine");
+        let replaced_id = replaced.session_id.as_ref().expect("dependency replacement must return its new session ID");
+        assert_ne!(replaced_id, &session.id);
+        assert!(manager.get(&session.id).is_err());
         assert!(session.closed.load(Ordering::Acquire));
         assert!(lock(&session.processes).is_empty());
-        assert!(!project.exists(), "closing must remove the temporary project");
-        assert!(manager.get(&session.id).is_err());
+        assert!(!project.exists());
+        let active = manager.get(replaced_id).unwrap();
+        wait_layout(&active, replaced.source_revision);
+        assert_eq!(std::fs::read_to_string(active.root.join("main.tex")).unwrap(), updated,
+            "dependency/style/Lua/binary updates must not need a main source change");
+        assert_eq!(std::fs::read(active.root.join("assets/payload.bin")).unwrap(), vec![0, 255, 13, 10, 128, 2]);
+        assert!(!active.root.join("obsolete.tex").exists(), "removed snapshot members must not survive");
+        let updated_pdf = active.render_pdf(replaced.source_revision).expect("PDF must include updated siblings, Lua/style modules and binary assets");
+        assert!(updated_pdf.starts_with(b"%PDF-"));
+        save_pdf_evidence("native-session-updated-dependencies.pdf", &updated_pdf);
+        // Classic Computer Modern is not browser-OTF geometry, but remains fully
+        // renderable through the same native LuaLaTeX PDF snapshot endpoint.
+        let type_one_source = updated.replace("\\usepackage{unicode-math}\n", "")
+            .replace("\\setmathfont{Latin Modern Math}\n", "");
+        let classic = active.update(type_one_source).unwrap();
+        let type_one_pdf = active.render_pdf(classic.source_revision).expect("Type 1 PDF fallback must compile");
+        assert!(type_one_pdf.starts_with(b"%PDF-"));
+        save_pdf_evidence("native-type1.pdf", &type_one_pdf);
+        assert_eq!(active.render_pdf(replaced.source_revision).unwrap_err().code, "revision_mismatch");
+        let active_root = active.root.clone();
+        manager.close_all();
+        assert!(active.closed.load(Ordering::Acquire));
+        assert!(lock(&active.processes).is_empty());
+        assert!(!active_root.exists(), "closing must remove the temporary project");
+        assert!(manager.get(&active.id).is_err());
         assert!(std::fs::read(&destination).unwrap().starts_with(b"%PDF-"),
             "closing a session must not remove the independently saved PDF");
         let saved_root = saved.root.clone();
@@ -922,6 +1295,110 @@ mod tests {
         assert!(validate_id("tex-00000001-00000000000000000000000000000001-0000000000000001").is_ok());
         assert!(integer(&json!({"revision": -1}), "revision").is_err());
         assert!(integer(&json!({"revision": MAX_SAFE_INTEGER + 1}), "revision").is_err());
+    }
+
+    #[test]
+    fn update_serializes_replacement_id_only_when_session_changes() {
+        let mut update = NativeTexUpdate {
+            session_id: None, edit_id: 4, source_revision: 2, routed: "background".into(),
+        };
+        let value = serde_json::to_value(&update).unwrap();
+        assert!(value.get("sessionId").is_none());
+        assert_eq!(value["sourceRevision"], 2);
+        update.session_id = Some("replacement".into());
+        assert_eq!(serde_json::to_value(update).unwrap()["sessionId"], "replacement");
+    }
+
+    #[test]
+    fn snapshot_rejects_untrusted_paths_collisions_unknown_fields_and_limits() {
+        for path in [
+            "/absolute.tex", "../escape.tex", "dir/../escape.tex", "dir//file.tex",
+            "C:/escape.tex", "dir\\file.tex", ".git/config", "dir/.hidden",
+            "build/asset.pdf", "export.pdf", "lineae-private/file", "NUL.tex",
+            "dir/aux.txt", "file.tex.", "file.tex ", "dir/COM1.log", "dir/a:b",
+            "CONIN$", "dir/COM¹.txt", "dir/LPT².log", "con .tex",
+        ] {
+            assert!(validate_project_path(path).is_err(), "accepted {path}");
+        }
+        assert!(validate_project_path("chapters/空 白.tex").is_ok());
+        assert!(serde_json::from_value::<NativeTexFile>(json!({
+            "path": "okay.tex", "bytes": [], "symlink": "/secret"
+        })).is_err());
+        let make = |path: &str| NativeTexFile { path: path.into(), bytes: vec![] };
+        assert!(Snapshot::new("", "main.tex".into(), vec![make("part.tex"), make("PART.tex")]).is_err());
+        assert!(Snapshot::new("", "main.tex".into(), vec![make("dir"), make("dir/part.tex")]).is_err());
+        assert!(Snapshot::new("", "main.tex".into(), vec![make("MAIN.tex")]).is_err());
+        assert!(Snapshot::new("", "main.pdf".into(), vec![]).is_err());
+        assert!(Snapshot::new("", "main.tex".into(), vec![NativeTexFile {
+            path: "large.bin".into(), bytes: vec![0; FILE_LIMIT + 1]
+        }]).is_err());
+        assert!(Snapshot::new("", "main.tex".into(), (0..=FILE_COUNT_LIMIT)
+            .map(|i| make(&format!("part{i}.tex"))).collect()).is_err());
+    }
+
+    #[test]
+    fn snapshot_stages_binary_assets_and_authoritative_main_without_original_paths() {
+        let snapshot = Snapshot::new("authoritative main", "chapters/document.tex".into(), vec![
+            NativeTexFile { path: "chapters/document.tex".into(), bytes: vec![0, 255] },
+            NativeTexFile { path: "assets/data.bin".into(), bytes: vec![0, 255, 128, 13, 10] },
+            NativeTexFile { path: "local.sty".into(), bytes: b"raw unsaved style".to_vec() },
+        ]).unwrap();
+        let mut changed_main = snapshot.clone();
+        changed_main.files.insert(snapshot.main_file.clone(), b"next main".to_vec());
+        assert!(snapshot.dependencies_equal(&changed_main));
+        changed_main.files.insert("assets/data.bin".into(), vec![1]);
+        assert!(!snapshot.dependencies_equal(&changed_main));
+        let session = Session::create_snapshot(snapshot).unwrap();
+        assert_eq!(std::fs::read_to_string(session.root.join("chapters/document.tex")).unwrap(), "authoritative main");
+        assert_eq!(std::fs::read(session.root.join("assets/data.bin")).unwrap(), vec![0, 255, 128, 13, 10]);
+        assert!(!std::fs::symlink_metadata(session.root.join("assets/data.bin")).unwrap().file_type().is_symlink());
+    }
+
+    #[test]
+    fn pdf_registry_requires_current_exact_provenance_and_build_containment() {
+        let session = Session::create("raw").unwrap();
+        let build = session.root.join("build");
+        std::fs::create_dir(&build).unwrap();
+        let pdf = build.join("layout-7.pdf");
+        std::fs::write(&pdf, b"%PDF-unit-test-only").unwrap();
+        {
+            let mut messages = lock(&session.messages);
+            messages.revision = Some(3);
+            messages.receive(json!({"event": "LayoutUpdate",
+                "versions": {"source_revision": 3, "layout_version": 7},
+                "pdf_fallback": pdf}), 100).unwrap();
+        }
+        assert_eq!(session.pdf(3, 7).unwrap(), b"%PDF-unit-test-only");
+        assert_eq!(session.pdf(2, 7).unwrap_err().code, "revision_mismatch");
+        assert_eq!(session.pdf(3, 6).unwrap_err().code, "revision_mismatch");
+        let outside = session.root.join("outside.pdf");
+        std::fs::write(&outside, b"%PDF-unit-test-only").unwrap();
+        lock(&session.messages).receive(json!({"event": "LayoutUpdate",
+            "versions": {"source_revision": 3, "layout_version": 8},
+            "pdf_fallback": outside}), 100).unwrap();
+        assert_eq!(session.pdf(3, 8).unwrap_err().code, "pdf_resource");
+        lock(&session.messages).receive(json!({"event": "LayoutUpdate",
+            "versions": {"source_revision": 3, "layout_version": 9}}), 100).unwrap();
+        assert_eq!(session.pdf(3, 7).unwrap_err().code, "revision_mismatch");
+        assert_eq!(session.pdf(3, 9).unwrap_err().code, "pdf_unavailable");
+        std::fs::write(&pdf, b"not a PDF").unwrap();
+        assert_eq!(session.read_pdf(&pdf).unwrap_err().code, "pdf_format");
+        let file = std::fs::OpenOptions::new().write(true).open(&pdf).unwrap();
+        file.set_len(PDF_LIMIT + 1).unwrap();
+        assert_eq!(session.read_pdf(&pdf).unwrap_err().code, "pdf_limit");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn registered_pdf_symlink_cannot_escape_session_build() {
+        let session = Session::create("raw").unwrap();
+        let other = Session::create("another project").unwrap();
+        let outside = other.root.join("outside.pdf");
+        std::fs::write(&outside, b"%PDF-unit-test-only").unwrap();
+        std::fs::create_dir(session.root.join("build")).unwrap();
+        let link = session.root.join("build").join("link.pdf");
+        std::os::unix::fs::symlink(outside, &link).unwrap();
+        assert_eq!(session.read_pdf(&link).unwrap_err().code, "pdf_resource");
     }
 
     #[test]

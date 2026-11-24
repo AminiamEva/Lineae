@@ -284,11 +284,13 @@ const server = createServer(async (req, res) => {
     // Empty-row box shares the following row's glyph baseline, even after zoom.
     for (const zoom of [1, 1.5]) {
       await reset('abc');
+      await page.evaluate(()=>document.fonts.ready);
       await field.evaluate((field, zoom) => { field.style.zoom = zoom; }, zoom);
       await field.evaluate(field => field.executeCommand('moveToMathfieldEnd'));
       await page.dispatchEvent('math-field', 'lineae-math-newline');
       if (zoom === 1) await page.dispatchEvent('math-field', 'lineae-math-newline');
       await page.waitForFunction(() => document.querySelector('math-field').hasAttribute('data-empty-matrix-cell'));
+      await page.evaluate(()=>new Promise(done=>requestAnimationFrame(()=>requestAnimationFrame(done))));
       const hint = await field.evaluate(field => {
         const caret = field.shadowRoot.querySelector('.ML__caret');
         const box = caret.getBoundingClientRect();
@@ -300,12 +302,15 @@ const server = createServer(async (req, res) => {
       assert.ok(Math.abs(hint.fieldCenter - hint.containerCenter) < 1, 'Hidden drag handle does not shift display math');
       await page.keyboard.type('x');
       await page.waitForFunction(() => !document.querySelector('math-field').hasAttribute('data-empty-matrix-cell'));
+      await page.evaluate(()=>document.fonts.ready);
+      await page.evaluate(()=>new Promise(done=>requestAnimationFrame(()=>requestAnimationFrame(done))));
       const glyphCenter = await field.evaluate(field => {
         const glyph = [...field.shadowRoot.querySelectorAll('.ML__mathit')].find(el => el.textContent === 'x');
         const rect = glyph.getBoundingClientRect();
         return (rect.top + rect.bottom) / 2;
       });
-      assert.ok(Math.abs(glyphCenter - hint.center) < 3 * zoom, 'Empty-row hint is aligned with the typed glyph');
+      assert.ok(Math.abs(glyphCenter - hint.center) < 3 * zoom,
+        'Empty-row hint is aligned with the typed glyph: '+JSON.stringify({zoom,hintCenter:hint.center,glyphCenter}));
       assert.match((await state()).value, /\\\\ x\\end/);
     }
     await field.evaluate(field => { field.style.zoom = ''; });

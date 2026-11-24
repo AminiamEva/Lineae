@@ -57,7 +57,8 @@ export TEXMFVAR="$texdir/texmf-var"
 export TEXMFCONFIG="$texdir/texmf-config"
 export TEXMFHOME="$texdir/texmf-home"
 "$tlmgr" option repository "$repo"
-"$tlmgr" install collection-latex collection-luatex amsmath fontspec unicode-math lm lm-math
+"$tlmgr" install collection-latex collection-latexrecommended collection-luatex amsmath amsfonts \
+  fontspec unicode-math lm lm-math pgf ctex fandol biblatex biber latexmk luacode
 mkdir -p artifacts/native-tex
 "$tlmgr" info --only-installed --data name,localrev > artifacts/native-tex/packages.txt
 fmtutil-sys --byfmt lualatex
