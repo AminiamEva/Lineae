@@ -73,7 +73,7 @@ export function installNativeTexPreview({host,before,getSource,getSnapshot,isCom
   }
   function renderStatus() {
     exportButton.disabled=!current();
-    targetButton.disabled=!current()||mode!=='canvas'||Boolean(sentSnapshot?.files)||targeting===generation;
+    targetButton.disabled=!current()||mode!=='canvas'||targeting===generation;
     button.setAttribute('aria-pressed',String(active));
     button.textContent=active?t('关闭 LuaLaTeX 预览','Close LuaLaTeX preview'):t('LuaLaTeX 预览（实验）','LuaLaTeX preview (experimental)');
     panel.dataset.state=error?'error':current()?'current':active?'stale':'off';
@@ -261,7 +261,7 @@ export function installNativeTexPreview({host,before,getSource,getSnapshot,isCom
     if(targetButton.disabled)return;
     const projection=projectDocumentFormulas(sentSource);
     if(!projection||![...projection.owners.values()].some(({atom})=>['frac','sqrt','token','cell'].includes(atom.kind))){
-      targetStatus.textContent=t('当前独立文档没有可定位的公式。','No supported formula in this standalone document.');
+      targetStatus.textContent=t('当前主文档没有可定位的公式。','No supported formula in the current main document.');
       return;
     }
     const attempt=generation,stamp={sessionId:session,sourceRevision};

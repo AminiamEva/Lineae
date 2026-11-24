@@ -898,22 +898,26 @@ impl Session {
     // Instrumentation is deliberately isolated from the authoritative engine:
     // neither its source nor its PDF ever replaces the user's raw snapshot.
     fn observe_formula(&self, revision: u64, projection: &str) -> Result<Vec<Value>, NativeTexError> {
-        let _serial = lock(&self.commands);
-        self.check()?;
-        if lock(&self.messages).revision != Some(revision) {
-            return Err(error("revision_mismatch", "The source changed before observing its formula."));
-        }
-        let main = {
-            let snapshot = lock(&self.snapshot);
-            if snapshot.files.len() != 1 {
-                return Err(error("project_main", "Formula targeting is limited to standalone documents."));
+        let snapshot = {
+            let _serial = lock(&self.commands);
+            self.check()?;
+            if lock(&self.messages).revision != Some(revision) {
+                return Err(error("revision_mismatch", "The source changed before observing its formula."));
             }
-            snapshot.main_file.clone()
+            let mut snapshot = lock(&self.snapshot).clone();
+            snapshot.files.insert(snapshot.main_file.clone(), projection.as_bytes().to_vec());
+            if snapshot.files.values().map(Vec::len).sum::<usize>() > PROJECT_LIMIT {
+                return Err(error("project_limit", "Instrumented preview exceeds the project snapshot limit."));
+            }
+            snapshot
         };
-        let observer = Self::create_snapshot(Snapshot::new(projection, main, Vec::new())?)?;
+        let observer = Self::create_snapshot(snapshot)?;
         {
             let mut active = lock(&self.observer);
             self.check()?;
+            if active.is_some() {
+                return Err(error("formula_observation", "Another formula observation is already running."));
+            }
             *active = Some(observer.clone());
         }
         let result = (|| {
@@ -923,6 +927,9 @@ impl Session {
             let mut messages = lock(&observer.messages);
             loop {
                 self.check()?;
+                if lock(&self.messages).revision != Some(revision) {
+                    return Err(error("revision_mismatch", "Source changed while observing formula geometry."));
+                }
                 messages.check()?;
                 for event in messages.events.drain(..) {
                     if event["event"] != "LayoutUpdate" { continue; }
@@ -1284,6 +1291,11 @@ mod tests {
         };
         let initial = wait_layout(&session, info.source_revision);
         assert!(initial["pages_total"].as_i64().unwrap() > 0);
+        let project_projection = source.replace("\\frac{a}{}", "\\begingroup\\attribute65000=11 \\frac{a}{}\\endgroup");
+        let project_observed = session.observe_formula(info.source_revision, &project_projection)
+            .expect("owner observation retains the project style, Lua module and binary dependency");
+        assert!(project_observed.iter().any(|page| page["dl"]["math_owners"]["fields"]
+            .as_array().is_some_and(|fields| fields.iter().any(|field| field["owner"] == 11 && field["role"] == "den"))));
         let standalone = include_str!("../../../../tests/native-math/fixtures/empty-denominator.tex");
         let targeting = Session::create(standalone).unwrap();
         let target_info = targeting.start().unwrap();

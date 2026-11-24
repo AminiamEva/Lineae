@@ -220,13 +220,16 @@ That probe still uses a controlled fixture owner ID. It does **not** certify
 production pointer input, a visible caret, a native selection, or undo/redo on Canvas.
 
 The separate **Target formula caret (experimental)** action checks an isolated,
-instrumented copy of a supported standalone document. Each recognized top-level
+instrumented copy of a supported standalone document or of the selected project
+main file with its dependencies. Each recognized top-level
 inline or display formula has distinct owner IDs; unsupported formulas do not
 receive hit targets.
 It enables a click only when
 exact page drawing records agree with the raw preview and the session, source and
 layout still match. Clicking an empty numerator, denominator, radicand or supported glyph edge transfers focus to the
 original MathLive field, or selects the original source offset in Source/Split.
+For projects, the active file must be the main file; composed rich pages and
+included files don't yet accept these targets.
 The existing editor history handles subsequent input and undo. A click shows a
 native position marker until the next input or layout; dragging between two supported
 targets transfers a selection to the editor. A continuously updated Canvas selection

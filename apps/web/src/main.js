@@ -2622,12 +2622,16 @@ nativeTexPreview=installNativeTexPreview({host:footer,before:modes,
   },
   isComposing:()=>editor.view.composing||sourceView.composing,
   focusMathSlot:(projection,anchor,head)=>{
-    if(projectExplorer?.active)return;
+    const project=projectExplorer?.model;
+    // Native preview is for the main source. Never use its offsets in an
+    // included file or apply an ordinal to a composed rich document.
+    if(project&&project.activeFileId!==project.mainFileId)return;
     if(!sourceView.hidden){
       if(sourceView.value!==projection.source)return;
       sourceView.select(anchor.position,head.position);
       return true;
     }
+    if(projectDocument.composition)return;
     if(source()!==projection.source)return;
     const formula=head.formula;
     if(anchor.formula!==formula)return;
