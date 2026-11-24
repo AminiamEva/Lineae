@@ -17,7 +17,8 @@ function chooseFile(callback) {
   input.accept = [...rasterTypes].join(',');
   input.addEventListener('change', () => {
     const file = input.files[0];
-    if (file && rasterTypes.has(file.type)) callback(file);
+    if (file && (rasterTypes.has(file.type) ||
+        (!file.type || file.type === 'application/octet-stream') && /\.(png|jpe?g|webp|gif|avif)$/i.test(file.name))) callback(file);
   }, { once:true });
   input.click();
 }

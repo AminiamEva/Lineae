@@ -18,6 +18,7 @@ export class TikzEditor {
     this.snapEnabled = true;
     this.onDone = null;
     this.history = []; this.future = [];
+    this.baseline = undefined;
     this.envSettings = { voltages: 'european', voltageConvention: 'noold', labelOrientation: 'smart' };
     try {
       const saved = JSON.parse(localStorage.getItem('lineae.tikz.environment') || 'null');
@@ -29,6 +30,8 @@ export class TikzEditor {
     const clone = it => ({ ...it, pts: it.pts?.map(q => ({ ...q })) });
     return this.items.map(clone);
   }
+  snapshotKey() { return JSON.stringify(this.snapshot()); }
+  isDirty() { return this.baseline !== undefined && this.snapshotKey() !== this.baseline; }
   pushHistory() { this.history.push(this.snapshot()); if (this.history.length > 50) this.history.shift(); this.future = []; }
   restore(snap) {
     const byUid = new Map(this.items.map(i => [i.uid, i]));
@@ -48,11 +51,16 @@ export class TikzEditor {
     this.render();
     this.loadSymbolArtwork().then(() => {
       if (initialCode) this.importTikz(initialCode);
+      this.baseline = this.snapshotKey();
       this.canvas.fit();
       this.render();
     });
   }
-  close() { this.overlay?.remove(); this.overlay = null; }
+  close(force = false) {
+    if (!force && this.overlay && this.isDirty() &&
+        !confirm(this.t('您有尚未保存的改动，是否退出？', 'You have unsaved changes. Exit anyway?'))) return false;
+    this.overlay?.remove(); this.overlay = null; return true;
+  }
 
   importTikz(source) {
     const text = String(source || '').replace(/^\s*\\resizebox\{[^{}]*\}\{!\}\{%?/, '').replace(/%\}\s*$/, '');
@@ -146,7 +154,7 @@ export class TikzEditor {
   }
 
   buildDom() {
-    this.close();
+    this.close(true);
     const o = document.createElement('div');
     o.className = 'tikz-overlay';
     o.innerHTML = `
@@ -209,7 +217,7 @@ export class TikzEditor {
       if (this.unparsed?.length) {
         code = code.replace(/\\end\{tikzpicture\}\s*$/, this.unparsed.join('\n') + '\n\\end{tikzpicture}');
       }
-      this.close(); this.onDone?.(code);
+      this.close(true); this.onDone?.(code);
     };
     const slider = o.querySelector('.tikz-zoom-slider'), input = o.querySelector('.tikz-zoom-input');
     this.canvas.onZoomChange = (percent) => {

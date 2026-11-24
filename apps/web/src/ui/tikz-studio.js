@@ -248,7 +248,7 @@ export function openTikzStudio({ onInsert, initialLibraries, initialBody } = {})
         <span class="tikz-studio-hint">${t('代码实时渲染 · 滚轮缩放', 'Live TeX rendering · wheel to zoom')}</span>
         <span class="tikz-studio-spacer"></span>
         <button type="button" class="tikz-studio-insert">${t('插入', 'Insert')}</button>
-        <button type="button" class="tikz-studio-close">${t('关闭', 'Close')}</button>
+        <button type="button" class="tikz-studio-close">${t('退出', 'Exit')}</button>
       </div>
       <div class="tikz-studio-body">
         <div class="tikz-studio-editor">
@@ -280,7 +280,16 @@ export function openTikzStudio({ onInsert, initialLibraries, initialBody } = {})
   libraries.value = initialLibraries ?? SAMPLE_LIBRARIES;
   code.value = initialBody ?? SAMPLE;
   code.focus();
+  const baseCode = code.value;
+  const baseLibraries = libraries.value;
+  let inserted = false;
+  const isDirty = () => code.value !== baseCode || libraries.value !== baseLibraries;
   let zoom = 1;
+  let panX = 0;
+  let panY = 0;
+  const applyPreviewTransform = () => {
+    preview.style.transform = `translate(${panX}px, ${panY}px) scale(${zoom})`;
+  };
   let version = 0;
   let timer = 0;
   let engine = null;
@@ -307,7 +316,7 @@ export function openTikzStudio({ onInsert, initialLibraries, initialBody } = {})
         }
         lastSvg = result.svg;
         preview.innerHTML = lastSvg;
-        preview.style.transform = `scale(${zoom})`;
+        applyPreviewTransform();
         setStatus(result.diagnostics?.length ? result.diagnostics.map(item => item.message).join('\n') : '');
       } catch (error) {
         if (current !== version) return;
@@ -353,9 +362,28 @@ export function openTikzStudio({ onInsert, initialLibraries, initialBody } = {})
     if (!lastSvg || event.deltaY === 0) return;
     event.preventDefault();
     zoom = Math.min(4, Math.max(0.2, zoom * (event.deltaY < 0 ? 1.12 : 1 / 1.12)));
-    preview.style.transform = `scale(${zoom})`;
+    applyPreviewTransform();
   }, { passive: false });
+  const previewWrap = overlay.querySelector('.tikz-studio-preview-wrap');
+  let panning = null;
+  previewWrap.addEventListener('pointerdown', event => {
+    if (event.button !== 0 || event.target.closest('button')) return;
+    panning = { x: event.clientX, y: event.clientY, panX, panY };
+    previewWrap.setPointerCapture(event.pointerId);
+    previewWrap.classList.add('is-panning');
+    event.preventDefault();
+  });
+  previewWrap.addEventListener('pointermove', event => {
+    if (!panning) return;
+    panX = panning.panX + (event.clientX - panning.x);
+    panY = panning.panY + (event.clientY - panning.y);
+    applyPreviewTransform();
+  });
+  const endPan = () => { if (!panning) return; panning = null; previewWrap.classList.remove('is-panning'); };
+  previewWrap.addEventListener('pointerup', endPan);
+  previewWrap.addEventListener('pointercancel', endPan);
   const close = () => {
+    if (!inserted && isDirty() && !confirm(t('您有尚未保存的改动，是否退出？', 'You have unsaved changes. Exit anyway?'))) return;
     clearTimeout(timer);
     overlay.remove();
   };
@@ -380,6 +408,7 @@ export function openTikzStudio({ onInsert, initialLibraries, initialBody } = {})
       setStatus(`${t('名称已被使用：', 'Already defined: ')}${result.duplicates.join(', ')}`);
       return;
     }
+    inserted = true;
     close();
   };
   overlay.addEventListener('pointerdown', event => { if (event.target === overlay) close(); });
