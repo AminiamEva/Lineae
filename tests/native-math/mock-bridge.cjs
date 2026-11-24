@@ -53,10 +53,11 @@ module.exports=function installMockNativeTex() {
       return [...new Uint8Array(await(await fetch('/assets/fonts/latin-modern/lmroman10-regular.otf')).arrayBuffer())];
     }
     if(command==='native_tex_observe_formula'){
-      const match=/\\attribute65000=(\d+) \\frac/.exec(args.projection);
+      const matches=[...args.projection.matchAll(/\\attribute65000=(\d+) \\(frac|sqrt)/g)];
+      const match=matches.at(-1);
       if(!match||args.sourceRevision!==p.revision)throw new Error('Unexpected formula observation request');
       const observed=p.layout().pages_changed;
-      observed[0].dl.math_owners={fields:[{owner:Number(match[1]),role:'den',
+      observed[0].dl.math_owners={fields:[{owner:Number(match[1]),role:match[2]==='frac'?'den':'radicand',
         bbox:[6500000,7000000,6500000,7000000],empty:true}],glyphs:[]};
       if(p.mismatchObservedDrawing)observed[0].dl.lines[0].items[0][4]++;
       return observed;

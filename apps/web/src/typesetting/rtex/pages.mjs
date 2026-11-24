@@ -24,7 +24,7 @@ export function installNativePages({host,getFont,onPaint,onError,onMathHit}) {
       const entry=pages.get(page.page);
       if(!entry||page.exact!==true||drawing(entry.dl)!==drawing(page.dl))return false;
       const targets=page.dl.math_owners?.fields?.filter(field=>
-        field.empty&&['num','den'].includes(field.role))??[];
+        field.empty&&['num','den','radicand'].includes(field.role))??[];
       for(const field of targets){
         const key=`${field.owner}/${field.role}`;
         if(seen.has(key))return false;

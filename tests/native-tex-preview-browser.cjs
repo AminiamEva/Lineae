@@ -114,6 +114,17 @@ const server=createServer(async(req,res)=>{
     await page.keyboard.press(mod+'+y');
     await page.waitForFunction(expected=>nativeProbe.source?.replace(/\r\n/g,'\n')===expected,expected.replace(/\r\n/g,'\n'));
     await page.locator('#native-tex-close').click();
+    const nested=input.toString().replace('\\frac{a}{}','\\frac{\\frac{7}{}}{c}');
+    await page.locator('input#file').setInputFiles({name:'nested.tex',mimeType:'text/plain',buffer:Buffer.from(nested)});
+    await page.waitForFunction(()=>document.querySelector('math-field')?.value.includes('\\frac{\\frac'));
+    await button.click();
+    await page.waitForFunction(()=>document.querySelector('#native-tex-preview').dataset.state==='current');
+    await page.locator('#native-tex-target').click();
+    await panel.getByText('Click the empty numerator or denominator',{exact:false}).waitFor();
+    await panel.locator('[data-native-page="1"] canvas').click({position:{x:6500000*scale,y:7000000*scale}});
+    await page.keyboard.type('b');
+    await page.waitForFunction(()=>document.querySelector('math-field')?.value.includes('\\frac{\\frac{7}{b}}{c}'));
+    await page.locator('#native-tex-close').click();
     await page.evaluate(async()=>{
       const root=await navigator.storage.getDirectory();
       window.luaProjectDirectory=await root.getDirectoryHandle('lua-'+crypto.randomUUID(),{create:true});

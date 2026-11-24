@@ -2,6 +2,21 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {projectDisplayMath,editDisplayMathSlot} from '../apps/web/src/editor/native-math/document.mjs';
 import {projectMath, applySlotEdit} from '../apps/web/src/editor/native-math/source.mjs';
+import {richEmptySlot} from '../apps/web/src/editor/native-math/rich-slot.mjs';
+
+test('a native nested hit follows MathLive ancestry rather than the first fraction',()=>{
+  const snapshot=projectMath(String.raw`\frac{\frac{7}{}}{c}`);
+  const den=snapshot.slots.find(slot=>slot.role==='denominator'&&slot.raw==='');
+  const atom=snapshot.atoms.find(atom=>atom.id===den.ownerId);
+  const first={type:'first'},innerFirst={type:'first'};
+  const node=(type,branches)=>({type,branch:name=>branches[name]});
+  const inner=node('genfrac',{above:[first,{type:'mord'}],below:[innerFirst]});
+  const outer=node('genfrac',{above:[first,inner],below:[first,{type:'mord'}]});
+  const model={root:node('root',{body:[first,outer]}),offsetOf:element=>element===innerFirst?8:-1};
+  assert.equal(richEmptySlot(model,snapshot.atoms,atom,'den'),8);
+  model.root=node('root',{body:[first,outer,{type:'subsup'}]});
+  assert.equal(richEmptySlot(model,snapshot.atoms,atom,'den'),null,'Different AST topology must reject the hit');
+});
 
 test('one display projection translates a TeX owner into an exact full-document patch',()=>{
   const source='\\documentclass{article}\r\n\\begin{document}\r\n% 中文 𝔸\r\n\\[\r\n\\frac{a}{}\r\n\\]\r\n\\end{document}\r\n';

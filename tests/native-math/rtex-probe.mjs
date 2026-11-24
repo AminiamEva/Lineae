@@ -53,7 +53,7 @@ async function probe(source,label,out,rtex,texbin,structured=false) {
   mkdirSync(project,{recursive:true});
   const documentProjection=structured?projectDisplayMath(source):null;
   if(structured)assert.ok(documentProjection,'Source display projection must be supported');
-  const slot=documentProjection?.math.slots.find(slot=>slot.role==='denominator');
+  const slot=documentProjection?.math.slots.find(slot=>slot.role==='denominator'&&slot.raw==='');
   const owner=slot?.tag??10;
   const projection=documentProjection?{
     text:documentProjection.projection,
@@ -140,7 +140,7 @@ async function probe(source,label,out,rtex,texbin,structured=false) {
       const point={x:rect.left+empty.bbox[0]*scale,y:rect.top+empty.bbox[1]*scale};
       // Only eligible fraction roles enter this interaction registry. A
       // generic "math" boundary is not a field owned by our source parser.
-      const fields=initial.dl.math_owners.fields.filter(field=>field.role==='num'||field.role==='den');
+      const fields=initial.dl.math_owners.fields.filter(field=>field.empty&&(field.role==='num'||field.role==='den'));
       const hit=hitMathField(fields,rect,point,zoom,frame,frame);
       assert.deepEqual(hit,{owner,role:'den'});
       const command={from16:0,to16:0,insert:'b'};
@@ -226,6 +226,8 @@ async function main() {
     const unicode=withFont.replace('\\begin{document}','% UTF-8 mapping: 中文 𝔸\n\\begin{document}').replace(/\n/g,'\r\n');
     summaries.push(await probe(unicode,'unicode-crlf',out,rtex,texbin));
     summaries.push(await probe(unicode.replace('\\frac{a}{}','\\frac{7}{}'),'structured-projection',out,rtex,texbin,true));
+    summaries.push(await probe(unicode.replace('\\frac{a}{}','\\frac{\\frac{7}{}}{c}'),
+      'structured-nested-denominator',out,rtex,texbin,true));
     writeFileSync(join(out,'result.json'),JSON.stringify({status:'passed',cases:summaries},null,2)+'\n');
     console.log('PASS: real rtex geometry, empty denominator, warm revision-matched edit, Unicode/CRLF and clean reference PDF');
   } catch(error) {

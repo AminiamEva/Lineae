@@ -52,7 +52,8 @@ export function installNativeTexPreview({host,before,getSource,getSnapshot,isCom
           stamp.sourceRevision!==observation.stamp.sourceRevision)return;
       const {projection}=observation;
       const target=editDisplayMathSlot(projection,wantedSource,hit,{from16:0,to16:0,insert:''});
-      if(target)focusMathSlot?.(projection.source,projection.math.source,hit.role,target.selection);
+      const owner=projection.math.atoms.find(atom=>atom.tag===hit.owner);
+      if(target&&owner)focusMathSlot?.(projection,owner,hit.role,target.selection);
     },
   });
   function current() {
@@ -238,8 +239,8 @@ export function installNativeTexPreview({host,before,getSource,getSnapshot,isCom
   async function observe() {
     if(targetButton.disabled)return;
     const projection=projectDisplayMath(sentSource);
-    if(!projection||projection.math.atoms.filter(atom=>atom.kind==='frac').length!==1){
-      targetStatus.textContent=t('目前仅支持独立文档内单个简单分式。','Targeting currently requires one simple fraction in a standalone document.');
+    if(!projection||!projection.math.atoms.some(atom=>['frac','sqrt'].includes(atom.kind))){
+      targetStatus.textContent=t('目前仅支持独立文档内单个行间公式中的分式和根式。','Targeting currently requires fractions or radicals in one standalone display.');
       return;
     }
     const attempt=generation,stamp={sessionId:session,sourceRevision};
@@ -251,7 +252,7 @@ export function installNativeTexPreview({host,before,getSource,getSnapshot,isCom
           sentSource!==projection.source||wantedSource!==projection.source)return;
       if(!renderer.attachOwners(observed,stamp))throw new Error(t('标记版排版与当前页面不一致，未启用命中。','Projected geometry differs from the displayed page; targeting remains disabled.'));
       observation={projection,stamp};
-      targetStatus.textContent=t('点击预览中的空分子或分母，继续在公式编辑器输入。','Click the empty numerator or denominator to continue typing in the formula editor.');
+      targetStatus.textContent=t('点击预览中的空分子、分母或根号内容，继续在编辑器输入。','Click the empty numerator or denominator, or an empty radicand, to continue typing in the editor.');
     } catch(failure) {
       if(attempt===generation)targetStatus.textContent=String(failure?.message??failure);
     } finally {

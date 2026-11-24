@@ -18,6 +18,7 @@ import {ProjectDocumentSession} from './project/document-session.mjs';
 import {installFloatingToolbar} from './ui/floating-toolbar.js';
 import {installShortcutPriority} from './ui/shortcut-priority.mjs';
 import {installNativeTexPreview} from './ui/native-tex-preview.mjs';
+import {richEmptySlot} from './editor/native-math/rich-slot.mjs';
 import {nativeProjectSnapshot} from './typesetting/rtex/project-snapshot.mjs';
 import {installSettingsPanel} from './ui/settings-panel.js';
 import { buildHomeRibbon } from './ui/home-ribbon.js';
@@ -2620,22 +2621,20 @@ nativeTexPreview=installNativeTexPreview({host:footer,before:modes,
     return {source:text,mainFile:'main.tex',signature:text};
   },
   isComposing:()=>editor.view.composing||sourceView.composing,
-  focusMathSlot:(raw,latex,role,selection)=>{
+  focusMathSlot:(projection,owner,role,selection)=>{
     if(projectExplorer?.active)return;
     if(!sourceView.hidden){
-      if(sourceView.value===raw)sourceView.select(selection.anchor,selection.head);
+      if(sourceView.value===projection.source)sourceView.select(selection.anchor,selection.head);
       return;
     }
-    if(source()!==raw)return;
+    if(source()!==projection.source)return;
     const fields=[...paper.querySelectorAll('.math-display math-field')];
-    if(fields.length!==1||fields[0].value.trim()!==latex.trim())return;
+    if(fields.length!==1||fields[0].value.trim()!==projection.math.source.trim())return;
     const [field]=fields,model=field._mathfield?.model;
-    const fraction=model?.atoms.filter(atom=>atom.type==='genfrac');
-    if(fraction?.length!==1)return;
-    const branch=fraction[0].branch(role==='den'?'below':'above');
-    if(!branch||branch.length!==1||branch[0].type!=='first')return;
+    const position=model&&richEmptySlot(model,projection.math.atoms,owner,role);
+    if(position==null)return;
     field.focus();
-    field.position=model.offsetOf(branch[0]);
+    field.position=position;
   },
 });
 editor.on('update',()=>nativeTexPreview.refresh());

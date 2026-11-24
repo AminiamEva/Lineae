@@ -220,9 +220,10 @@ That probe still uses a controlled fixture owner ID. It does **not** certify
 production pointer input, a visible caret, a native selection, or undo/redo on Canvas.
 
 The separate **Target empty math slots (experimental)** action checks an isolated,
-instrumented copy of a supported standalone document. It enables a click only when
+instrumented copy of a supported standalone document with one display formula.
+It enables a click only when
 exact page drawing records agree with the raw preview and the session, source and
-layout still match. An empty numerator or denominator click transfers focus to the
+layout still match. Clicking an empty numerator, denominator or radicand transfers focus to the
 original MathLive field, or selects the original source offset in Source/Split.
 The existing editor history handles subsequent input and undo.
 It does not draw the caret on Canvas, target filled fields, or edit a PDF fallback.
