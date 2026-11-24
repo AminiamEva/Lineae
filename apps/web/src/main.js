@@ -1479,6 +1479,11 @@ metaDate.addEventListener('blur',()=>{
   if(value!==metaDateDisplay)writeMeta('date',value);
   else renderMeta();
 });
+function metaDisplay(raw){
+  const nodes=importBlocks(raw);
+  const text=node=>node.type==='text'?node.text:(node.content??[]).map(text).join('');
+  return nodes.some(node=>node.type==='raw')?raw:nodes.map(text).join('');
+}
 function renderMeta() {
   metaTitle.textContent=metaDisplay(readMeta('title'));
   metaAuthor.textContent=metaDisplay(readMeta('author'));
