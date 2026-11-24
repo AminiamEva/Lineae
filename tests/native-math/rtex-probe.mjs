@@ -55,14 +55,12 @@ async function probe(source,label,out,rtex,texbin,structured=false) {
   if(structured)assert.ok(documentProjection,'Source display projection must be supported');
   const slot=documentProjection?.math.slots.find(slot=>slot.role==='denominator');
   const owner=slot?.tag??10;
-  const projection=projectFixture(source);
-  if(documentProjection){
-    projection.text=documentProjection.projection;
-    projection.sourceOffset16=documentProjection.from16+slot.from16;
-    projection.projectionOffset16=documentProjection.from16+
-      documentProjection.math.mapping.sourceToProjection16[slot.from16];
-    projection.projectionOffset8=Buffer.byteLength(projection.text.slice(0,projection.projectionOffset16));
-  }
+  const projection=documentProjection?{
+    text:documentProjection.projection,
+    sourceOffset16:documentProjection.from16+slot.from16,
+    projectionOffset16:documentProjection.from16+documentProjection.math.mapping.sourceToProjection16[slot.from16],
+  }:projectFixture(source);
+  projection.projectionOffset8=Buffer.byteLength(projection.text.slice(0,projection.projectionOffset16));
   const filled=source.slice(0,projection.sourceOffset16)+'b'+source.slice(projection.sourceOffset16);
   const tagged=projection.text;
   writeFileSync(join(dir,'source-before.tex'),source);
@@ -123,6 +121,11 @@ async function probe(source,label,out,rtex,texbin,structured=false) {
       .flatMap(message=>message.pages_changed).find(page=>page.dl?.math_owners?.fields?.some(
         field=>field.owner===owner && field.role==='den' && field.empty));
     assert.ok(initial,'Converged layout history must contain the empty denominator');
+    if(structured){
+      const digit=documentProjection.math.atoms.find(atom=>atom.kind==='token'&&atom.raw==='7');
+      assert.ok(digit&&initial.dl.math_owners.glyphs.some(glyph=>glyph.owner===digit.tag&&glyph.char===55),
+        'A digit immediately after an owner assignment must remain a tagged TeX glyph');
+    }
     const empty=denominator(initial.dl,true,owner);
     const frame={sessionId:label,sourceRevision:layout.versions.source_revision,layoutVersion:layout.versions.layout_version};
     const formula=projectMath('\\frac{a}{}');
@@ -222,7 +225,7 @@ async function main() {
     summaries.push(await probe(withFont,'lf',out,rtex,texbin));
     const unicode=withFont.replace('\\begin{document}','% UTF-8 mapping: 中文 𝔸\n\\begin{document}').replace(/\n/g,'\r\n');
     summaries.push(await probe(unicode,'unicode-crlf',out,rtex,texbin));
-    summaries.push(await probe(unicode,'structured-projection',out,rtex,texbin,true));
+    summaries.push(await probe(unicode.replace('\\frac{a}{}','\\frac{7}{}'),'structured-projection',out,rtex,texbin,true));
     writeFileSync(join(out,'result.json'),JSON.stringify({status:'passed',cases:summaries},null,2)+'\n');
     console.log('PASS: real rtex geometry, empty denominator, warm revision-matched edit, Unicode/CRLF and clean reference PDF');
   } catch(error) {

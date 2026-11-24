@@ -35,7 +35,7 @@ test('empty fraction fields remain empty and denominator insertion is exactly on
   assert.equal(denominator.tag, owner.tag);
   assert.match(snapshot.projection, /\\frac\{/);
   assert.ok(snapshot.projection.includes('}{}'), 'nothing is inserted into an empty denominator');
-  assert.ok(snapshot.projection.indexOf(`\\attribute65000=${owner.tag}\\relax `) < snapshot.projection.indexOf('\\frac'));
+  assert.ok(snapshot.projection.indexOf(`\\attribute65000=${owner.tag} `) < snapshot.projection.indexOf('\\frac'));
   const result = edit(snapshot, denominator, 0, 0, 'b');
   assert.deepEqual(result.patch, {from: 9, to: 9, insert: 'b'});
   assert.equal(result.source, String.raw`\frac{a}{b}`);
@@ -78,7 +78,7 @@ test('scripts support grouped, empty and single arguments with projection-only s
   assert.equal(snapshot.supported, true);
   const exponent = field(snapshot, 'superscript', '2');
   assert.equal(exponent.single, true);
-  assert.match(snapshot.projection, /\^\{\\attribute65000=\d+\\relax 2/);
+  assert.match(snapshot.projection, /\^\{\\attribute65000=\d+ 2/);
   assert.ok(snapshot.projection.includes('_{}'));
   assert.equal(edit(snapshot, exponent, 0, 1, '3').source, String.raw`x^3_{ab}y_{}^{\frac{a}{b}}`);
   assert.throws(() => edit(snapshot, exponent, 0, 1, '34'), /ungrouped script/);

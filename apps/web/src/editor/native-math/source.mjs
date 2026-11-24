@@ -218,7 +218,9 @@ function instrument(source, root, attribute) {
   function insert(at, text) {
     events.set(at, (events.get(at) ?? '') + text);
   }
-  const tag = value => `\\attribute${attribute}=${value}\\relax `;
+  // TeX consumes this space as the number terminator, even when the next
+  // original token is a digit. rtex's math allowlist rejects \relax here.
+  const tag = value => `\\attribute${attribute}=${value} `;
   insert(0, `\\begingroup${tag(root.tag)}`);
   function children(owner) {
     for (const field of owner.fields) {
