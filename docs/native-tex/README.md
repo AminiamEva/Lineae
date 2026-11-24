@@ -136,6 +136,14 @@ This checkpoint offers existing editing with an updating LuaLaTeX preview. It is
 claim that the complete existing editing experience has been reimplemented on native
 geometry, or that an unsupported document can already be edited in the native Canvas.
 
+[Run 45384269123](https://github.com/AminiamEva/Lineae/actions/runs/45384269123)
+verified the real Rust session, captured font loading, raw-source updates, revision-checked
+clean PDF export and close cleanup on **both Windows x64 and macOS arm64**.
+The frontend test also filled the sample denominator, undid and redid the edit while
+retaining exactly the surrounding source spelling; the existing math-editing suite ran
+with the preview active through a mock transport. These are distinct layers of evidence,
+not a claim of automated physical-device IME or native-canvas direct-editing coverage.
+
 ## Next gates
 
 The first gate now has a dedicated remote workflow:

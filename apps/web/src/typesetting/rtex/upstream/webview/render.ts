@@ -270,10 +270,10 @@ export class Painter {
           const m = mul(this.base, this.cur);
           ctx.setTransform(m[0], m[1], m[2], m[3], m[4], m[5]);
           ctx.fillStyle = this.color;
-          // keep hairlines visible: at least 0.75 device px
-          const minW = 0.75 / Math.hypot(m[0], m[1]);
-          const minH = 0.75 / Math.hypot(m[2], m[3]);
-          ctx.fillRect(x + dx, yTop + dy, Math.max(w, minW), Math.max(h, minH));
+          // Lineae modification: preserve TeX rule geometry at every zoom.
+          // A minimum device-pixel thickness changes fraction bars and can
+          // turn a deliberately zero-size rule into visible material.
+          ctx.fillRect(x + dx, yTop + dy, w, h);
           break;
         }
         case 'c': {

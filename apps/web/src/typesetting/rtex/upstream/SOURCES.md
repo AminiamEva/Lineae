@@ -6,7 +6,10 @@
 - Copied paths (original directory layout): `webview/render.ts`,
   `src/protocol.ts`, `src/fontKey.ts`, `LICENSE`.
 - License: MIT; copyright (c) 2026 Henry Yang. See `LICENSE`.
-- Upstream files are unmodified, including headers and UTF-8/LF encoding.
+- Upstream files retain their headers. Local modification in `webview/render.ts`:
+  draw rule widths/heights directly in TeX sp instead of enforcing the upstream
+  0.75-device-pixel minimum, so zoom does not change fraction-bar geometry.
+  Other copied upstream files are unmodified.
 - No font assets copied.
 - Runtime dependency: `opentype.js` version `1.3.4` (not installed here).
 

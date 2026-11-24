@@ -41,6 +41,8 @@ const server=createServer(async(req,res)=>{
     assert.equal(await field.getAttribute('data-test-identity'),'original','Native preview does not replace the existing editable surface');
     assert.equal(await panel.locator('canvas').count(),1);
     assert.ok(await panel.locator('canvas').evaluate(canvas=>canvas.width>1),'Actual Canvas painting completes before current state');
+    assert.ok(await page.evaluate(()=>nativeProbe.ruleRects.some(rect=>rect.w===3000000 && rect.h===6554)),
+      'Thin rules retain native TeX geometry instead of being widened to a device-pixel minimum');
     await page.keyboard.type('d');
     await page.waitForFunction(()=>nativeProbe.source?.includes('abcd'));
     await page.waitForFunction(()=>document.querySelector('#native-tex-preview').dataset.state==='current');

@@ -22,11 +22,17 @@
       "note": "User reports a separate unmerged implementation. Do not replace it with rtex or infer its capabilities."
     },
     "rtex": {
-      "status": "candidate_not_integrated",
+      "status": "experimental_read_only_preview_host",
       "repository": "https://github.com/HenryXiaoYang/realtime-tex",
       "version": "v0.0.8",
       "commit": "6e54e11755ed8b41aeb1739517213c6c8182df47",
       "license": "MIT",
+      "hostEvidence": {
+        "runId": 45384269123,
+        "commit": "c427a9380071f93493ff8cfaedccfe273bb16ff6",
+        "platforms": ["x86_64-pc-windows-msvc", "aarch64-apple-darwin"],
+        "scope": "Real Rust session, captured fonts, raw-buffer update, clean converged PDF export and close cleanup; UI tests also retain existing math editing and exact one-letter source history"
+      },
       "geometryEvidence": {
         "runId": 45377663490,
         "commit": "8080d0f0e93c21f2d55bd0679077335f8ed7255c",
@@ -38,7 +44,8 @@
       }
     },
     "rtexPainter": {
-      "status": "candidate_not_vendored",
+      "status": "vendored_experimental_canvas_adapter",
+      "entryPoint": "apps/web/src/typesetting/rtex/pages.mjs",
       "repository": "https://github.com/HenryXiaoYang/realtime-tex-vsc-plugin",
       "version": "v0.0.6",
       "commit": "fcf6bea3f2c62f89890a5473539119b6185fb4dd",
