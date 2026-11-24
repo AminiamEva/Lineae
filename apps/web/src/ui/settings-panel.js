@@ -1,10 +1,11 @@
+import {engineFields} from './engine-panel.js';
 import {t} from './i18n.mjs';
 import {toYaml} from '../editor/config.mjs';
 import {MARGIN_PRESETS} from '../../latex/geometry.mjs';
 import {settingsProposal,layoutProposal} from './settings-values.mjs';
 
 const LABELS = {
-  typesetting:['排版','Typesetting'], defaultEngine:['Auto 默认引擎','Default engine for Auto'],
+  typesetting:['排版','Typesetting'], defaultEngine:['全局默认引擎','Global default engine'],
   interface:['界面','Appearance'], editing:['编辑','Editing'], keybindings:['快捷键','Keyboard shortcuts'],
   language:['语言','Language'], theme:['主题','Theme'], zoom:['页面缩放 (%)','Page zoom (%)'],
   sourceFontSize:['源码字号 (px)','Source font size (px)'], toolbarAutoHide:['Document 自动折叠功能区','Auto-hide toolbar in Document'],
@@ -41,7 +42,7 @@ function section(name) {
   return details;
 }
 
-export function installSettingsPanel({config,onApply,onImport,onExport,getDocument,applyDocument}) {
+export function installSettingsPanel({config,onApply,onImport,onExport,getDocument,applyDocument,getEngine,applyEngine,onClose}) {
   const dialog = document.createElement('dialog');
   dialog.id = 'settings-panel';
   dialog.className = 'settings-panel';
@@ -62,11 +63,17 @@ export function installSettingsPanel({config,onApply,onImport,onExport,getDocume
   };
   const importButton = makeButton('settings-import','button',onImport);
   const exportButton = makeButton('settings-export','button',onExport);
-  const closeButton = makeButton('settings-close','button',() => dialog.close());
+  function close() {
+    dialog.close();
+    onClose();
+  }
+  dialog.addEventListener('cancel',event=>{event.preventDefault(); close();});
+  const closeButton = makeButton('settings-close','button',close);
   const applyButton = makeButton('settings-apply','submit');
   form.append(fields,error,actions);
   dialog.append(heading,form);
   document.body.append(dialog);
+  let engine;
   let controls = [];
   let layoutControls = null;
   let originalLayout = null;
@@ -102,6 +109,9 @@ export function installSettingsPanel({config,onApply,onImport,onExport,getDocume
         group.dataset.settingsGroup = currentPath.join('.');
         group.open = !path.length;
         configFields(value,group,currentPath);
+        if (group.dataset.settingsGroup === 'typesetting') {
+          engine = engineFields(group,group.querySelector('[data-setting="typesetting.defaultEngine"]'),getEngine);
+        }
         parent.append(group);
       } else parent.append(labeledRow(labelFor(key),inputFor(currentPath,value)));
     }
@@ -165,16 +175,18 @@ export function installSettingsPanel({config,onApply,onImport,onExport,getDocume
     try {
       const layout = layoutProposal(originalLayout,layoutControls);
       const proposal = yamlChanged ? yaml.value : toYaml(settingsProposal(config.value,controls));
-      config.importYaml(proposal);
+      const configChanged = yamlChanged || proposal !== toYaml(config.value);
+      if (configChanged) config.importYaml(proposal);
+      if (engine.choice !== undefined) applyEngine(engine.choice);
       if (layout) applyDocument(layout);
-      onApply();
+      if (configChanged) onApply();
       render();
     } catch (failure) { error.textContent = failure.message; }
   });
   dialog.addEventListener('click',event => {
     if (event.target !== dialog) return;
     const bounds = dialog.getBoundingClientRect();
-    if (event.clientX < bounds.left || event.clientX > bounds.right || event.clientY < bounds.top || event.clientY > bounds.bottom) dialog.close();
+    if (event.clientX < bounds.left || event.clientX > bounds.right || event.clientY < bounds.top || event.clientY > bounds.bottom) close();
   });
-  return {dialog,show() { render(); if (!dialog.open) dialog.showModal(); },relocalize() { if (dialog.open) render(); }};
+  return {dialog,refreshEngine(){ if (dialog.open) engine.update(); },show() { render(); if (!dialog.open) dialog.showModal(); },relocalize() { if (dialog.open) render(); }};
 }

@@ -4,7 +4,7 @@ const {chromium}=require('playwright');
 const {spawn}=require('node:child_process');
 const {once}=require('node:events');
 const {createHash}=require('node:crypto');
-const {setIndentOnSave,revealToolbar}=require('./workspace-ui-helpers.cjs');
+const {setIndentOnSave,revealToolbar,chooseEngine,readEngineSettings}=require('./workspace-ui-helpers.cjs');
 const hash=b=>createHash('sha256').update(b).digest('hex');
 const sample='\uFEFF% 中文注释\r\n\\documentclass{article}\n\\newcommand{\\original}{x}\r\n\\begin{document}\n\\input{part}\r\n\nFirst paragraph.\r\n\nLast paragraph.\n\\end{document}\r\n';
 const part=Buffer.from('% 子文件\r\n\\original\n');
@@ -36,7 +36,6 @@ const server=spawn(process.execPath,['scripts/serve.mjs','apps/web','39581'],{st
    await page.waitForTimeout(100);
   }
   async function bytes(name){return Buffer.from(await page.evaluate(async name=>Array.from(new Uint8Array(await (await (await testDir.getFileHandle(name)).getFile()).arrayBuffer())),name));}
-  async function choose(v){await page.locator('.engine-panel').evaluate(n=>n.open=true);await page.locator('#engine-choice').selectOption(v);}
   async function save(keys='Control+s'){
    await page.locator('#status').evaluate(el=>{window.savedFile=false;
     const observer=new MutationObserver(()=>{if(/^(Saved|已保存)$/.test(el.textContent)){window.savedFile=true;observer.disconnect();}});
@@ -45,9 +44,9 @@ const server=spawn(process.execPath,['scripts/serve.mjs','apps/web','39581'],{st
    await page.keyboard.press(keys);await page.waitForFunction(()=>window.savedFile);
   }
   for(const mode of ['body','source','split']){
-   await setup(mode);await open();assert.equal(await page.locator('#engine-choice').inputValue(),'auto');
+   await setup(mode);await open();assert.equal((await readEngineSettings(page)).choice,'auto');
    await page.locator('[data-source-mode='+mode+']').click();
-   await choose('xelatex');await save();
+   await chooseEngine(page,'xelatex');await save();
    await page.waitForTimeout(350);
    assert.deepEqual(await bytes('main.tex'),Buffer.from(sample));
    if(mode==='body'){
@@ -55,7 +54,7 @@ const server=spawn(process.execPath,['scripts/serve.mjs','apps/web','39581'],{st
    }else{
     await page.locator('.cm-line').filter({hasText:'Last paragraph.'}).click();await page.keyboard.press('End');
    }
-   await page.keyboard.insertText('甲');await choose('lualatex');
+   await page.keyboard.insertText('甲');await chooseEngine(page,'lualatex');
    if(mode==='body')await page.locator('.ProseMirror').first().focus();else await page.locator('.cm-content').focus();
    await save();
    const expected=Buffer.from(sample.replace('Last paragraph.','Last paragraph.甲'));
@@ -64,19 +63,19 @@ const server=spawn(process.execPath,['scripts/serve.mjs','apps/web','39581'],{st
     await page.waitForTimeout(100);
    }
    assert.deepEqual(got,expected,mode+' exact edited bytes');assert.deepEqual(await bytes('part.tex'),part);
-   await open();assert.equal(await page.locator('#engine-choice').inputValue(),'lualatex');
+   await open();assert.equal((await readEngineSettings(page)).choice,'lualatex');
    console.log(mode,hash(Buffer.from(sample)),hash(got),hash(part));
   }
-  await choose('xelatex');await page.locator('.cm-content').focus();await save('Control+Shift+s');
+  await chooseEngine(page,'xelatex');await page.locator('.cm-content').focus();await save('Control+Shift+s');
   await page.waitForFunction(()=>document.querySelector('.tex-filename')?.textContent==='copy.tex');
   assert.deepEqual(await bytes('copy.tex'),await bytes('main.tex'));await open('copy.tex');
-  assert.equal(await page.locator('#engine-choice').inputValue(),'xelatex');
+  assert.equal((await readEngineSettings(page)).choice,'xelatex');
   const sameIdentity=await page.evaluate(async()=>{
    const f=await testDir.getFileHandle('copy.tex'),prior=structuredClone(f);
    await f.move('renamed.tex');
    return prior.isSameEntry(await testDir.getFileHandle('renamed.tex'));
   });
-  await open('renamed.tex');assert.equal(await page.locator('#engine-choice').inputValue(),sameIdentity?'xelatex':'auto');
+  await open('renamed.tex');assert.equal((await readEngineSettings(page)).choice,sameIdentity?'xelatex':'auto');
   console.log('External move: persisted handle isSameEntry =',sameIdentity);
   console.log('PASS three modes, original bytes, scoped edit, sibling, same-name directories, save-as and external rename');
  }finally{await browser.close();}

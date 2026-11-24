@@ -4,7 +4,7 @@ const {chromium}=require(require.resolve('playwright',{paths:[process.cwd()]}));
 const {spawn}=require('node:child_process');
 const {once}=require('node:events');
 const {createHash}=require('node:crypto');
-const {setIndentOnSave,revealToolbar}=require(require('node:path').resolve('tests/workspace-ui-helpers.cjs'));
+const {setIndentOnSave,revealToolbar,chooseEngine,readEngineSettings}=require(require('node:path').resolve('tests/workspace-ui-helpers.cjs'));
 const hash=b=>createHash('sha256').update(b).digest('hex');
 const sample='\uFEFF% 中文注释\r\n\\documentclass{article}\n\\newcommand{\\original}{x}\r\n\\begin{document}\n\\input{part}\r\n\nFirst paragraph.\r\n\nLast paragraph.\n\\end{document}\r\n';
 const part=Buffer.from('% 子文件\r\n\\original\n');
@@ -48,7 +48,6 @@ const server=spawn(process.execPath,['scripts/serve.mjs','apps/web',String(proce
    await page.waitForTimeout(100);
   }
   async function bytes(name){return Buffer.from(await page.evaluate(async name=>Array.from(new Uint8Array(await (await (await testDir.getFileHandle(name)).getFile()).arrayBuffer())),name));}
-  async function choose(v){await page.locator('.engine-panel').evaluate(n=>n.open=true);await page.locator('#engine-choice').selectOption(v);}
   async function save(keys='Control+s'){
    await page.locator('#status').evaluate(el=>{window.savedFile=false;
     const observer=new MutationObserver(()=>{if(/^(Saved|已保存)$/.test(el.textContent)){window.savedFile=true;observer.disconnect();}});
@@ -57,9 +56,9 @@ const server=spawn(process.execPath,['scripts/serve.mjs','apps/web',String(proce
    await page.keyboard.press(keys);await page.waitForFunction(()=>window.savedFile);
   }
   for(const mode of [process.argv[2]]){
-   await setup(mode);await open();assert.equal(await page.locator('#engine-choice').inputValue(),'auto');
+   await setup(mode);await open();assert.equal((await readEngineSettings(page)).choice,'auto');
    await page.locator('[data-source-mode='+mode+']').click();
-   await choose('xelatex');await save();
+   await chooseEngine(page,'xelatex');await save();
    await page.waitForTimeout(350);
    assert.deepEqual(await bytes('main.tex'),Buffer.from(sample));
    if(mode==='body'){
@@ -87,7 +86,7 @@ const server=spawn(process.execPath,['scripts/serve.mjs','apps/web',String(proce
      const {from,to}=cm.state.selection.main;return cm.state.doc.sliceString(from,to)==='甲';
    },mode==='body'?'.ProseMirror':'.cm-content',{timeout:3000});
    const before=await snapshot();console.log('selection before switch',mode,before,await surface.evaluate(n=>({active:document.activeElement?.className,documentFocus:document.hasFocus(),native:getSelection()?.toString(),pm:n.editor?.state.selection.toJSON(),anchor:getSelection()?.anchorNode?.textContent?.slice(-60)})));assert.equal(before[2],'甲');
-   await choose('lualatex');await surface.focus();
+   await chooseEngine(page,'lualatex');await surface.focus();
    const after=await snapshot();assert.deepEqual(after,before);
    await page.keyboard.press('Control+z');
    await page.waitForFunction(sel=>!document.querySelector(sel).textContent.includes('Last paragraph.甲'),mode==='body'?'.ProseMirror':'.cm-content');
@@ -101,7 +100,7 @@ const server=spawn(process.execPath,['scripts/serve.mjs','apps/web',String(proce
     await page.waitForTimeout(100);
    }
    assert.deepEqual(got,expected,mode+' exact edited bytes');assert.deepEqual(await bytes('part.tex'),part);
-   await open();assert.equal(await page.locator('#engine-choice').inputValue(),'lualatex');
+   await open();assert.equal((await readEngineSettings(page)).choice,'lualatex');
    console.log(mode,hash(Buffer.from(sample)),hash(got),hash(part));
   }
   console.log('PASS',process.argv[2],process.argv[3]);

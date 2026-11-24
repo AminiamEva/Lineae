@@ -70,7 +70,6 @@ import { buildProjectZip, safeProjectPath, projectDependencies } from './editor/
 import { theoremNames } from '../latex/theorem.mjs';
 import { MultiSelection } from './editor/multi-selection.js';
 import { installSpaceOverlay } from './editor/space-overlay.js';
-import {createEnginePanel} from './ui/engine-panel.js';
 import {resolveEngine} from './typesetting/engine-resolution.mjs';
 import { getTypesettingProfile } from './typesetting/engine-profile.mjs';
 import { installTypesetPagination } from './editor/typeset-pagination.js';
@@ -1022,7 +1021,7 @@ button('$',()=>insertMath());
 button('$$',()=>insertMath(true)).dataset.shortcut='editor.insertDisplayMath';
 const projectDocument=new ProjectDocumentSession();
 let projection, syncApplying = false, syncPending = false, sourceToolbar, projectExplorer, projectFileKind, projectPresentation;
-let enginePanel,engineFrame,compositionActive=false;
+let settingsPanel,engineFrame,compositionActive=false;
 let standaloneChoice='auto',standaloneKey=null,preferenceError='';
 let splitMapping;
 function splitBlocks(text) {
@@ -1549,24 +1548,30 @@ renderMeta();
 const bootstrapEngine=document.documentElement.dataset.typesettingEngine;
 const pinnedEngine=['xelatex','lualatex'].includes(bootstrapEngine)?bootstrapEngine:null;
 let activeEngine=pinnedEngine ?? config.value.typesetting.defaultEngine;
-function refreshEngine() {
-  engineFrame=0;
-  if (!enginePanel || compositionActive || editor.view.composing || sourceView.composing) return;
+function engineSettingsState(draft,globalDefault=config.value.typesetting.defaultEngine) {
   const project=projectExplorer?.model;
+  const choice=project?.engineChoice ?? standaloneChoice;
+  const requested=pinnedEngine ?? draft ?? choice;
   const text=sourceView.hidden?source():sourceView.value;
   const liveId=sourceView.hidden && projectDocument.composition ? projectDocument.composition.rootId : project?.activeFileId;
-  const globalDefault=config.value.typesetting.defaultEngine;
   const result=project?.mainFileId
-    ? project.resolveTypesetting(globalDefault,{id:liveId,text},pinnedEngine ?? project.engineChoice)
-    : resolveEngine({explicitChoice:pinnedEngine ?? standaloneChoice,globalDefault,source:{path:filename,text}});
+    ? project.resolveTypesetting(globalDefault,{id:liveId,text},requested)
+    : resolveEngine({explicitChoice:requested,globalDefault,source:{path:filename,text}});
+  return {result,choice,globalDefault:config.value.typesetting.defaultEngine,project:Boolean(project),
+    error:project ? project.persistenceError : preferenceError};
+}
+function refreshEngine() {
+  engineFrame=0;
+  if (!settingsPanel || compositionActive || editor.view.composing || sourceView.composing) return;
+  const {result}=engineSettingsState();
   if (activeEngine!==result.resolvedEngine) {
     activeEngine=result.resolvedEngine;
     typesetPagination.setEngine(activeEngine?getTypesettingProfile(activeEngine):null);
   }
-  enginePanel.update(result,Boolean(project),project ? project.persistenceError : preferenceError);
+  settingsPanel.refreshEngine();
 }
 function scheduleEngine() {
-  if(enginePanel && !engineFrame)engineFrame=requestAnimationFrame(refreshEngine);
+  if(settingsPanel && !engineFrame)engineFrame=requestAnimationFrame(refreshEngine);
 }
 function persistStandaloneChoice() {
   if(!standaloneKey){if(fileHandle)preferenceError=t('文档偏好无法保存','Document preference cannot be saved');return;}
@@ -1578,16 +1583,16 @@ function persistStandaloneChoice() {
 function changeEngine(choice) {
   preferenceError='';
   if(compositionActive || editor.view.composing || sourceView.composing) {
-    enginePanel.panel.querySelector('select').value=projectExplorer?.model?.engineChoice ?? standaloneChoice;
-    return;
+    throw new Error(t('请先完成输入法组词','Finish composing text first'));
   }
   const project=projectExplorer?.model;
+  if(choice===(project?.engineChoice ?? standaloneChoice))return;
   if(project) {
     project.setEngineChoice(choice);
     project.pendingCheckpoint.then(scheduleEngine);
   }
   else {standaloneChoice=choice;persistStandaloneChoice();}
-  refreshEngine();
+  scheduleEngine();
 }
 document.addEventListener('compositionstart',()=>{compositionActive=true;},true);
 document.addEventListener('compositionend',()=>{compositionActive=false;scheduleEngine();},true);
@@ -2709,9 +2714,7 @@ function updateEnvironment() {
   environment.textContent=[labels[name],...(field ? mathEnvironment(field) : [])].join(' › ');
   environment.dataset.environment=name;
 }
-enginePanel=createEnginePanel(changeEngine);
-scheduleEngine();
-footer.append(enginePanel.panel,count,document.querySelector('#status'),precisionStatus,environment,zoom,percent,paginationButton,themeButton,modes);document.body.append(footer);sourceView.mountStatus(footer);scale();updatePaginationButton();
+footer.append(count,document.querySelector('#status'),precisionStatus,environment,zoom,percent,paginationButton,themeButton,modes);document.body.append(footer);sourceView.mountStatus(footer);scale();updatePaginationButton();
 const shortcutPriority=installShortcutPriority({host:footer,before:modes,getBindings:()=>config.bindings});
 const compositionController=createCompositionController({
   explorer:()=>projectExplorer,fileKind:()=>projectFileKind,session:projectDocument,
@@ -3799,8 +3802,18 @@ groupButton(insert,'figure',()=>insertLocalImage(editor));
 sourceToolbar = installSourceToolbar({ribbon,groups,source:sourceView,rich:paper,heading:headingMenu});
 const toolbarController=installFloatingToolbar({header,ribbon,sourceView,getAutoHide:()=>sourceView.hidden?config.value.interface.toolbarAutoHide:config.value.interface.sourceToolbarAutoHide});
 installMathFloatToolbar({ editor });
-const settingsPanel=installSettingsPanel({config,onApply:applyImportedPreferences,onImport:()=>importConfig.click(),onExport:()=>exportConfig.click(),getDocument:()=>{sourceView.flush();return documentParts.start?structuredClone(pageSetup):null;},applyDocument:updatePageSetup});
+function restoreSettingsFocus() {
+  // Native dialog focus restoration does not redraw CodeMirror's DOM selection.
+  if (sourceView.editorView?.hasFocus) sourceView.focus();
+  else if (editor.view.hasFocus()) editor.view.focus();
+}
+settingsPanel=installSettingsPanel({config,onClose:restoreSettingsFocus,getEngine:engineSettingsState,applyEngine:changeEngine,onApply:applyImportedPreferences,onImport:()=>importConfig.click(),onExport:()=>exportConfig.click(),getDocument:()=>{sourceView.flush();return documentParts.start?structuredClone(pageSetup):null;},applyDocument:updatePageSetup});
+scheduleEngine();
 const settingsButton=document.createElement('button');settingsButton.id='settings-open';settingsButton.type='button';settingsButton.append(icon('settings'));settingsButton.onclick=()=>settingsPanel.show();footer.insertBefore(settingsButton,footer.querySelector(':scope>.tex-foot')??count);
+// Let the native dialog return focus to the active editor and its selection.
+settingsButton.addEventListener('mousedown',event=>{
+  if (event.button===0 && (editor.view.hasFocus() || sourceView.editorView?.hasFocus)) event.preventDefault();
+});
 document.addEventListener('lineae-open-settings',()=>settingsPanel.show());
 document.addEventListener('lineae-open-outline',()=>projectExplorer.showOutline());
 document.addEventListener('lineae-open-includes',()=>projectExplorer.showIncludes());

@@ -6,7 +6,7 @@ const {createHash} = require('node:crypto');
 const {spawn, execFileSync} = require('node:child_process');
 const {once} = require('node:events');
 const {chromium} = require(require.resolve('playwright', {paths:[process.cwd()]}));
-const {revealToolbar} = require(path.resolve('tests/workspace-ui-helpers.cjs'));
+const {revealToolbar,chooseEngine} = require(path.resolve('tests/workspace-ui-helpers.cjs'));
 
 function measure() {
   const root = document.querySelector('.ProseMirror');
@@ -112,11 +112,10 @@ async function run(){
       await (await choose).setFiles({name:'plot.png',mimeType:'image/png',buffer:await fs.readFile(image)});
       await figure.locator('img').waitFor();
     }
-    await page.locator('.engine-panel').evaluate(el=>el.open=true);
     const choices=process.env.LINEAE_PAPER_ACCEPTANCE && name==='rule.tex' ? ['auto','xelatex','auto','lualatex'] : ['xelatex','lualatex'];
     for(const [index,choice] of choices.entries()){
       const engine=choice==='auto'?'lualatex':choice;
-      await page.locator('#engine-choice').selectOption(choice);
+      await chooseEngine(page,choice);
       await page.locator('.ProseMirror[data-paragraph-profile='+engine+']').first().waitFor({state:'attached'});
       await page.evaluate(()=>document.fonts.ready);
       await page.waitForTimeout(700);

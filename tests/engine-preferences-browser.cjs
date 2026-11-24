@@ -6,7 +6,7 @@ const {mkdtemp,readFile,rm}=require('node:fs/promises');
 const {tmpdir}=require('node:os');
 const {join}=require('node:path');
 const {createHash}=require('node:crypto');
-const {revealToolbar}=require('./workspace-ui-helpers.cjs');
+const {revealToolbar,chooseEngine,readEngineSettings}=require('./workspace-ui-helpers.cjs');
 const sha=b=>createHash('sha256').update(b).digest('hex');
 const source=Buffer.from('\uFEFF% 源码\r\n\\documentclass{article}\n\\usepackage{etoolbox}\r\n\\ifstrequal{a}{b}{}{}\n\\usepackage{xeCJK}\r\n\\newcommand{\\keep}{原样}\n\\begin{document}\r\nPreserved text.\n\\end{document}\r\n');
 const server=spawn(process.execPath,['scripts/serve.mjs','apps/web','39771'],{stdio:['ignore','pipe','inherit']});
@@ -14,33 +14,30 @@ const server=spawn(process.execPath,['scripts/serve.mjs','apps/web','39771'],{st
  await once(server.stdout,'data');
  const dir=await mkdtemp(join(tmpdir(),'lineae-engine-'));
  let context,page;
- async function start(){
+ async function start(expectedDefault='lualatex'){
   context=await chromium.launchPersistentContext(dir,{headless:true,viewport:{width:1600,height:1000},deviceScaleFactor:1});
   page=context.pages()[0];page.setDefaultTimeout(10000);
   page.on('pageerror',e=>console.error('pageerror',e.message));
   await page.goto('http://127.0.0.1:39771');
-  await profile('lualatex');
+  await profile(expectedDefault);
  }
  const profile=engine=>page.locator('.ProseMirror[data-paragraph-profile="'+engine+'"]').first().waitFor({state:'attached'});
- const choice=()=>page.locator('#engine-choice');
- async function pick(value){
-  await page.locator('.engine-panel').evaluate(el=>el.open=true);
-  await choice().selectOption(value);
- }
+ const pick=value=>chooseEngine(page,value);
+ const state=()=>readEngineSettings(page);
  async function load(bytes=source){
   await page.locator('#file').setInputFiles({name:'legacy.tex',mimeType:'text/plain',buffer:bytes});
   await page.waitForFunction(()=>document.querySelector('.ProseMirror')?.textContent==='Preserved text.');
  }
- async function openProject(create){
-  await page.evaluate(async create=>{
-   const dir=await (await navigator.storage.getDirectory()).getDirectoryHandle('工程',{create:true});
+ async function openProject(create,legacy=false){
+  await page.evaluate(async ([create,legacy])=>{
+   const dir=await (await navigator.storage.getDirectory()).getDirectoryHandle(legacy?'legacy-xe':'工程',{create:true});
    if(create){
-    for(const [name,text] of [['main.tex','\\documentclass{article}\r\n\\input{chapter}\n\\begin{document}Root\\end{document}'],['chapter.tex','\\usepackage{luatexja}\n子文件']]){
+    for(const [name,text] of [['main.tex','\\documentclass{article}\r\n\\input{chapter}\n\\begin{document}Root\\end{document}'],['chapter.tex',legacy?'\\usepackage{xeCJK}':'\\usepackage{luatexja}\n子文件']]){
      const w=await (await dir.getFileHandle(name,{create:true})).createWritable();await w.write(text);await w.close();
     }
    }
    window.showDirectoryPicker=async()=>dir;
-  },create);
+  },[create,legacy]);
   await revealToolbar(page);
   if(!await page.locator('#project-open').isVisible())await page.locator('[data-group=files]').click();
   await page.locator('#project-open').click();
@@ -48,7 +45,7 @@ const server=spawn(process.execPath,['scripts/serve.mjs','apps/web','39771'],{st
  }
  try {
   await start();console.log('Chromium',await page.evaluate(()=>navigator.userAgent));
-  assert.equal(await choice().inputValue(),'auto');
+  assert.equal((await state()).choice,'auto');
   await page.locator('#settings-open').click();
   const setting=page.locator('[data-setting="typesetting.defaultEngine"]');
   await setting.evaluate(n=>{for(let p=n.parentElement;p;p=p.parentElement)if(p.tagName==='DETAILS')p.open=true;});
@@ -57,20 +54,20 @@ const server=spawn(process.execPath,['scripts/serve.mjs','apps/web','39771'],{st
   await language.selectOption('zh-CN');
   await setting.selectOption('xelatex');
   await page.locator('#settings-apply').click();await profile('xelatex');
-  assert.equal(await page.locator('label[for=engine-choice]').textContent(),'文档排版引擎');
+  assert.equal(await page.locator('label[for=engine-choice] span').textContent(),'当前文档引擎');
   if(!await page.locator('#settings-panel').isVisible())await page.locator('#settings-open').click();
   await setting.evaluate(n=>{for(let p=n.parentElement;p;p=p.parentElement)if(p.tagName==='DETAILS')p.open=true;});
   await language.evaluate(n=>{for(let p=n.parentElement;p;p=p.parentElement)if(p.tagName==='DETAILS')p.open=true;});
   await language.selectOption('en');
   await setting.selectOption('lualatex');await page.locator('#settings-apply').click();await profile('lualatex');
   if(await page.locator('#settings-panel').isVisible())await page.locator('#settings-close').click();
-  assert.equal(await page.locator('label[for=engine-choice]').textContent(),'Document typesetting engine');
+  assert.equal(await page.locator('label[for=engine-choice] span').textContent(),'Current document engine');
   await load(Buffer.from(source.toString().replace('\\usepackage{xeCJK}','\\usepackage{xeCJK,luatexja}')));
-  await profile('unresolved');assert.equal(await page.locator('.engine-panel li').count(),2);
+  await profile('unresolved');assert.equal((await state()).diagnostics.length,2);
   await load();await profile('xelatex');
-  assert.match(await page.locator('#engine-resolution').textContent(),/xeCJK/);
+  assert.match((await state()).status,/xeCJK/);
   await pick('lualatex');await profile('lualatex');
-  assert.match(await page.locator('.engine-panel li').textContent(),/legacy\.tex:5:1.*xeCJK/);
+  assert.match((await state()).diagnostics.join(' '),/legacy\.tex:5:1.*xeCJK/);
   const pm=page.locator('.ProseMirror').first();
   await pm.click();await page.keyboard.press('End');
   await page.keyboard.insertText('Q');
@@ -82,8 +79,11 @@ const server=spawn(process.execPath,['scripts/serve.mjs','apps/web','39771'],{st
   await page.keyboard.press('Control+z');
   await pm.focus();const cdp=await context.newCDPSession(page);
   await cdp.send('Input.imeSetComposition',{text:'中',selectionStart:1,selectionEnd:1});
-  await choice().evaluate(n=>{n.value='lualatex';n.dispatchEvent(new Event('change'));});
-  assert.equal(await choice().inputValue(),'xelatex');
+  await page.locator('#engine-choice').evaluate(n=>{
+   n.value='lualatex';n.dispatchEvent(new Event('change'));n.form.requestSubmit();
+  });
+  assert.match(await page.locator('#settings-panel [role=alert]').textContent(),/composing|输入法/);
+  await profile('xelatex');
   await cdp.send('Input.insertText',{text:'中'});assert.match(await pm.textContent(),/中/);
   await load();await pick('auto');await profile('xelatex');await pick('lualatex');await profile('lualatex');
   assert.equal(await page.evaluate(()=>window.dispatchEvent(new Event('beforeunload',{cancelable:true}))),true);
@@ -94,7 +94,9 @@ const server=spawn(process.execPath,['scripts/serve.mjs','apps/web','39771'],{st
   await page.keyboard.press('Shift+ArrowLeft');
   const cmSelection=()=>cm.evaluate(n=>{const s=window.getSelection();return [s.toString(),s.anchorOffset,s.focusOffset];});
   const anchor=await cmSelection();assert.equal(anchor[0],'t');
-  await pick('xelatex');await profile('xelatex');await cm.focus();assert.deepEqual(await cmSelection(),anchor);
+  await pick('xelatex');await profile('xelatex');
+  await page.waitForFunction(()=>document.activeElement?.closest('.cm-content') && getSelection().toString()==='t',null,{timeout:3000});
+  assert.deepEqual(await cmSelection(),anchor);
   assert.equal(await page.locator('.tex-dirty').evaluate(n=>!n.hidden),true);
   await page.keyboard.press('Control+z');await page.waitForFunction(()=>!document.querySelector('.cm-content').textContent.includes('% draft'));
   await pick('lualatex');await profile('lualatex');
@@ -105,11 +107,11 @@ const server=spawn(process.execPath,['scripts/serve.mjs','apps/web','39771'],{st
   const offset=30+zip.readUInt16LE(26)+zip.readUInt16LE(28);
   const out=zip.subarray(offset,offset+zip.readUInt32LE(22));assert.deepEqual(out,source);console.log('ZIP SHA-256',sha(source),sha(out));
   await context.close();await start();await load();await profile('lualatex');
-  assert.equal(await choice().inputValue(),'lualatex');
-  await openProject(true);await profile('lualatex');assert.equal(await choice().inputValue(),'auto');
+  assert.equal((await state()).choice,'lualatex');
+  await openProject(true);await profile('lualatex');assert.equal((await state()).choice,'auto');
   await pick('xelatex');await profile('xelatex');
-  assert.match(await page.locator('.engine-panel li').textContent(),/chapter\.tex:1:1/);
-  await context.close();await start();await openProject(false);await profile('xelatex');assert.equal(await choice().inputValue(),'xelatex');
+  assert.match((await state()).diagnostics.join(' '),/chapter\.tex:1:1/);
+  await context.close();await start();await openProject(false);await profile('xelatex');assert.equal((await state()).choice,'xelatex');
   const a=page;
   page=await context.newPage();await page.goto('http://127.0.0.1:39771');await openProject(false);
   const b=page;
@@ -128,9 +130,19 @@ const server=spawn(process.execPath,['scripts/serve.mjs','apps/web','39771'],{st
   await context.close();await start();await openProject(false);await profile('xelatex');
   const drafts=await page.evaluate(()=>Object.keys(localStorage).filter(k=>k.includes('project-recovery')).map(k=>localStorage[k]));
   for(const marker of ['window-A','window-B'])assert.ok(drafts.some(d=>d.includes(marker)),marker);
+  await openProject(true,true);await profile('xelatex');
+  assert.equal((await state()).choice,'auto');
+  await pick('lualatex');await profile('lualatex');
+  assert.match((await state()).diagnostics.join(' '),/chapter\.tex:1:1.*xeCJK/);
+  await page.locator('#settings-open').click();
+  await page.locator('[data-setting="typesetting.defaultEngine"]').selectOption('xelatex');await page.locator('#settings-apply').click();
+  await profile('lualatex');assert.equal(await page.locator('#engine-choice').inputValue(),'lualatex');
+  await page.locator('#settings-close').click();
+  await context.close();await start('xelatex');await openProject(false,true);await profile('lualatex');
+  assert.equal((await state()).choice,'lualatex');
   await page.reload();await page.evaluate(()=>{indexedDB.open=()=>{throw new DOMException('Denied','SecurityError');};});
   await openProject(false);
-  assert.match(await page.locator('#engine-resolution').textContent(),/unavailable|无法保存/);
+  assert.match((await state()).status,/unavailable|无法保存/);
   assert.match(await page.locator('.ProseMirror').first().textContent(),/Root/);
   console.log('PASS global settings, standalone bytes and restart, selection, undo/redo, IME and directory checkpoint across browser restart');
  }finally{await context?.close();await rm(dir,{recursive:true,force:true});}

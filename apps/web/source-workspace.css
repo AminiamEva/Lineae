@@ -177,6 +177,10 @@ header .floating-toolbar #layout-panel input {box-sizing:border-box;min-width:0;
 .setting-row {display:grid;grid-template-columns:minmax(0,1fr) minmax(90px,46%);gap:12px;align-items:center;margin:8px 0;font:12px system-ui;}
 .setting-row input,.setting-row select {box-sizing:border-box;min-width:0;width:100%;font:12px system-ui;}
 .setting-row input[type=checkbox] {justify-self:end;width:16px;height:16px;}
+#engine-resolution, #engine-diagnostics, #default-engine-help {display:block;margin:4px 0 10px;font:12px/1.45 system-ui;overflow-wrap:anywhere;}
+#engine-diagnostics {padding-inline-start:1.4em;}
+#engine-diagnostics[hidden] {display:none;}
+@media (max-width:420px) { .settings-actions {flex-wrap:wrap;} }
 .settings-panel textarea {box-sizing:border-box;width:100%;font:12px/1.5 Consolas,monospace;margin-top:8px;}
 .settings-actions {position:sticky;bottom:-20px;display:flex;gap:8px;justify-content:flex-end;padding:12px 0;background:light-dark(#fbfcff,#262930);}
 .settings-panel [role=alert] {color:light-dark(#b33737,#efa2a2);font-size:12px;}
