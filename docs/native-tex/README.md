@@ -241,8 +241,8 @@ It enables a click only when
 exact page drawing records agree with the raw preview and the session, source and
 layout still match. Clicking an empty numerator, denominator, radicand or supported glyph edge transfers focus to the
 original MathLive field, or selects the original source offset in Source/Split.
-For projects, composed rich pages filter targets by original file. In Source/Split
-the clicked formula must belong to the active source file. The observer only
+For projects, composed rich pages filter targets by original file. Source/Split
+navigates to a clicked target's source file before placing the caret. The observer only
 instruments copies of existing TeX files in the trusted project snapshot.
 The existing editor history handles subsequent input and undo. A click shows a
 native position marker until the next input or layout; dragging between two supported

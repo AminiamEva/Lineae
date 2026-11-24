@@ -52,12 +52,12 @@ export function installNativePages({host,getFont,onPaint,onError,onMathHit}) {
     return hitMathGlyph(ownership.glyphs.get(page)??[],...args)||
       hitMathField(ownership.fields.get(page)??[],...args);
   }
-  let drag=null,caret=null,selection=[];
+  let drag=null,caret=null,selection=[],gesture=0;
   function clearSelection(){
     for(const box of selection)box.remove();
     selection=[];
   }
-  function clearCaret(){caret?.remove();caret=null;clearSelection();}
+  function clearCaret(){gesture++;caret?.remove();caret=null;clearSelection();}
   function showSelection(start,end){
     clearSelection();
     if(start?.role!=='nucleus'||end?.role!=='nucleus')return;
@@ -90,14 +90,20 @@ export function installNativePages({host,getFont,onPaint,onError,onMathHit}) {
     if(drag?.id!==event.pointerId||drag.ownership!==ownership)return;
     showSelection(drag.hit,locate(drag.canvas,event));
   });
-  host.addEventListener('pointerup',event=>{
+  host.addEventListener('pointerup',async event=>{
     if(drag?.id!==event.pointerId)return;
     const start=drag;drag=null;
     if(start.ownership!==ownership){clearSelection();return;}
     const hit=locate(start.canvas,event);
     if(!hit){clearSelection();return;}
     const moved=Math.hypot(start.x-event.clientX,start.y-event.clientY)>=4;
-    if(!onMathHit?.(hit,ownership.stamp,moved?start.hit:null)){clearSelection();return;}
+    const attempt=gesture,stamp=ownership.stamp;
+    const sameGesture=()=>attempt===gesture&&ownership?.stamp===stamp;
+    let accepted;
+    try {accepted=await onMathHit?.(hit,stamp,moved?start.hit:null,sameGesture);}
+    catch {accepted=false;}
+    if(!sameGesture())return;
+    if(!accepted){clearSelection();return;}
     if(moved){showSelection(start.hit,hit);return;}
     clearSelection();
     const node=start.canvas.parentElement,number=Number(node.dataset.nativePage);

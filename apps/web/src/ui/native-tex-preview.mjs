@@ -46,7 +46,7 @@ export function installNativeTexPreview({host,before,getSource,getSnapshot,isCom
       renderedRevision=revision;if(!terminal&&revision>=sourceRevision)error='';renderStatus();
     },
     onError:(failure,revision)=>{if(active&&mode==='canvas')void fallback(failure,revision);},
-    onMathHit:(hit,stamp,origin)=>{
+    onMathHit:(hit,stamp,origin,sameGesture)=>{
       if(!current()||mode!=='canvas'||!observation||
           stamp.sessionId!==observation.stamp.sessionId||
           stamp.sourceRevision!==observation.stamp.sourceRevision)return;
@@ -63,7 +63,9 @@ export function installNativeTexPreview({host,before,getSource,getSnapshot,isCom
         } catch {return null;}
       }
       const head=resolve(hit),anchor=origin?resolve(origin):head;
-      return head&&anchor&&focusMathSlot?.(anchor,head);
+      return head&&anchor&&focusMathSlot?.(anchor,head,()=>
+        sameGesture()&&active&&session===stamp.sessionId&&sourceRevision===stamp.sourceRevision&&
+        wantedSnapshot?.signature===sentSnapshot?.signature);
     },
   });
   function current() {

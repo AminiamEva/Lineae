@@ -2621,14 +2621,18 @@ nativeTexPreview=installNativeTexPreview({host:footer,before:modes,
     return {source:text,mainFile:'main.tex',signature:text};
   },
   isComposing:()=>editor.view.composing||sourceView.composing,
-  focusMathSlot:(anchor,head)=>{
+  focusMathSlot:async(anchor,head,isCurrent)=>{
     const project=projectExplorer?.model;
     const formula=head.formula;
     if(anchor.formula.filePath!==formula.filePath)return;
     const file=project?.files.get(formula.filePath);
     if(project&&(!file||file.draft!==formula.source))return;
     if(!sourceView.hidden){
-      if((project&&project.activeFileId!==file.id)||sourceView.value!==formula.source)return;
+      if(project&&project.activeFileId!==file.id){
+        await projectExplorer.openFile(file.id);
+        if(projectExplorer.model!==project||project.activeFileId!==file.id||!isCurrent())return;
+      }
+      if(sourceView.hidden||sourceView.value!==formula.source)return;
       sourceView.select(anchor.position,head.position);
       return true;
     }

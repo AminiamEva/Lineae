@@ -241,13 +241,13 @@ const server=createServer(async(req,res)=>{
     if(!await page.locator('#project-explorer').isVisible())await page.locator('#project-toggle').click();
     const folder=page.locator('#project-explorer summary').filter({hasText:/^chapters$/});
     if(!await folder.evaluate(node=>node.parentElement.open))await folder.click();
-    await page.locator('[data-path="chapters/one.tex"]').click();
     await page.locator('[data-source-mode=source]').click();
     await page.evaluate(()=>{nativeProbe.targetInclude=true;});
     await page.locator('#native-tex-target').click();
     await panel.getByText('Click the empty numerator or denominator',{exact:false}).waitFor();
     await panel.locator('[data-native-page="1"] canvas').click({position:{x:6500000*scale,y:7000000*scale}});
-    await page.waitForFunction(()=>document.activeElement?.classList.contains('cm-content'));
+    await page.waitForFunction(()=>document.activeElement?.classList.contains('cm-content')&&
+      document.querySelector('[data-path="chapters/one.tex"][aria-current=true]'));
     await page.keyboard.type('j');
     await page.waitForFunction(()=>nativeProbe.calls.some(call=>call.command==='native_tex_update'&&
       call.args.source.includes('\\frac{a}{b}')&&call.args.files?.some(file=>file.path==='chapters/one.tex'&&
