@@ -29,10 +29,10 @@ const server=createServer(async(req,res)=>{
  await page.route('**/vendor/mp-tikz-wasm/index.js',route=>route.fulfill({contentType:'text/javascript',body:'export const MetaPost={create:async()=>({latex:async()=>{window.previewCompiles=(window.previewCompiles||0)+1;return {status:"ok",pages:[\'<svg xmlns="http://www.w3.org/2000/svg" width="120pt" height="60pt" viewBox="0 0 120 60"><path d="M0 0L120 60"/></svg>\']};}})};'}));
  await page.route('**/vendor/mp-tikz-wasm/figures.js',route=>route.fulfill({contentType:'text/javascript',body:'export const isCompleteDocument=()=>false;export const wrapTikz=source=>source;'}));
  await load('\\documentclass{article}\n\\begin{document}\n\\begin{tikzpicture}\n\\draw (0,0)--(2,1);\n\\end{tikzpicture}\n\nAfter diagram.\n\\end{document}\n');
- await page.locator('.tikz-general-preview-ready svg').waitFor({timeout:5000}).catch(async error=>{console.log('PREVIEW',await paper.innerText(),await paper.evaluate(node=>JSON.stringify(node.editor.getJSON())));throw error;});
- await page.evaluate(()=>{window.previewNode=document.querySelector('.tikz-general-preview');const editor=document.querySelector('.ProseMirror').editor;editor.view.dispatch(editor.state.tr.setMeta('probe',true));});
- assert.ok(await page.evaluate(()=>window.previewNode===document.querySelector('.tikz-general-preview')),'An unchanged diagram keeps its rendered DOM during editor transactions');
- for(const mode of ['source','split','body']){await page.locator('[data-source-mode='+mode+']').click();if(mode!=='source')await page.locator('.tikz-general-preview-ready svg').waitFor({state:'attached'});}
+ await page.locator('.document-image-tikz.is-ready svg').waitFor({timeout:5000}).catch(async error=>{console.log('PREVIEW',await paper.innerText(),await paper.evaluate(node=>JSON.stringify(node.editor.getJSON())));throw error;});
+ await page.evaluate(()=>{window.previewNode=document.querySelector('.document-image-tikz');const editor=document.querySelector('.ProseMirror').editor;editor.view.dispatch(editor.state.tr.setMeta('probe',true));});
+ assert.ok(await page.evaluate(()=>window.previewNode===document.querySelector('.document-image-tikz')),'An unchanged diagram keeps its rendered DOM during editor transactions');
+ for(const mode of ['source','split','body']){await page.locator('[data-source-mode='+mode+']').click();if(mode!=='source')await page.locator('.document-image-tikz.is-ready svg').waitFor({state:'attached'});}
  assert.equal(await page.evaluate(()=>window.previewCompiles),1,'View switches reuse the rendered diagram');
 
  console.log('PASS requested book editing, matter source, date, metadata escaping, page break and macro-adjacent heading');
