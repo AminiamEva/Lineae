@@ -133,6 +133,7 @@ export function installTypesetPagination(page, paper, meta, editor) {
   let maketitle = false;
   let lineBreaks = [];
   let lineBreaksDoc = null;
+  let lastLayoutDoc = null;
   installLineBreaks(editor);
 
   function setLineBreaks(entries) {
@@ -331,10 +332,13 @@ export function installTypesetPagination(page, paper, meta, editor) {
     page.style.setProperty('--editor-min-height', '0');
     page.style.setProperty('--page-stack-height', 'var(--page-height)');
     renderSheets(1);
+    recordMeasuredSizes();
+    lastLayoutDoc = editor.state.doc;
     window.dispatchEvent(new CustomEvent('lineae-layout'));
   }
 
   let deferredLayout = false;
+  let applyingLayout = false;
   function layout() {
     frame = 0;
     if (!editable.isConnected || !page.getClientRects().length) {
@@ -342,6 +346,16 @@ export function installTypesetPagination(page, paper, meta, editor) {
       return;
     }
     deferredLayout = false;
+    applyingLayout = true;
+    try {
+      layoutNow();
+    } finally {
+      // ResizeObserver callbacks arrive after this frame; keep ignoring the
+      // sizes produced by our own gaps/translations until the next task.
+      setTimeout(() => { applyingLayout = false; }, 0);
+    }
+  }
+  function layoutNow() {
     window.dispatchEvent(new Event('lineae-before-layout'));
     const emptyMeta = !meta.textContent.trim();
     meta.dataset.empty = String(emptyMeta);
@@ -356,6 +370,7 @@ export function installTypesetPagination(page, paper, meta, editor) {
     // Measure from the unpaginated geometry so repeated layouts converge.
     page.style.removeProperty('--editor-min-height');
     page.style.removeProperty('--page-stack-height');
+    if (lineBreaks.length) setLineBreaks([]);
     clearHeaderClones();
     renderSheets(1);
 
@@ -555,6 +570,8 @@ export function installTypesetPagination(page, paper, meta, editor) {
     renderSheets(plan.pageCount);
     renderTableHeaders(tablePlans, blocks);
     delete page.dataset.paginationMeasuring;
+    recordMeasuredSizes();
+    lastLayoutDoc = editor.state.doc;
     window.dispatchEvent(new CustomEvent('lineae-layout'));
   }
 
@@ -577,8 +594,20 @@ export function installTypesetPagination(page, paper, meta, editor) {
       const next={width:rect.width/scale,height:rect.height/scale};
       const previous=measured.get(target);
       measured.set(target,next);
+      // Layout writes gaps and translations into the editable DOM; those size
+      // changes are ours, not a reason to paginate again.
+      if (applyingLayout) continue;
       const changed=!previous||Math.abs(previous.width-next.width)>.5||Math.abs(previous.height-next.height)>.5;
       if (deferredLayout || changed) schedule();
+    }
+  }
+  function recordMeasuredSizes() {
+    const zoom=page.offsetWidth?page.getBoundingClientRect().width/page.offsetWidth:1;
+    const scale=zoom||1;
+    for(const target of [editable,meta,...editable.children]){
+      if(!target.getClientRects().length)continue;
+      const rect=target.getBoundingClientRect();
+      measured.set(target,{width:rect.width/scale,height:rect.height/scale});
     }
   }
   const resize = new ResizeObserver(onResize);
@@ -593,7 +622,11 @@ export function installTypesetPagination(page, paper, meta, editor) {
   observeChildren();
   const mutations = new MutationObserver(() => {
     observeChildren();
-    schedule();
+    // Decoration-only updates (selection marks, table/cell classes) mutate the
+    // DOM without changing the document; re-paginating for them makes layout
+    // depend on selection and jumps the page. Real layout changes still arrive
+    // through the document version or the resize observers.
+    if (editor.state.doc !== lastLayoutDoc) schedule();
   });
   mutations.observe(editable, { subtree: true, childList: true, characterData: true });
   mutations.observe(meta, { subtree: true, childList: true, characterData: true });

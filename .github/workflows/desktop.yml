@@ -83,6 +83,8 @@ jobs:
         run: node tests/table-toolbar-scroll-browser.cjs
       - name: Table row insert leaves earlier pages intact
         run: node tests/table-reflow-browser.cjs
+      - name: Table pagination stays stable across selection
+        run: node tests/table-pagination-selection-browser.cjs
       - name: Image crop, sizing and wrap centering
         run: node tests/image-toolbar-browser.cjs
       - name: Image grouping and subfigure tabs
