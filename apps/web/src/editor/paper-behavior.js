@@ -891,7 +891,10 @@ export const PaperBehavior = Extension.create({
             const widgets = [];
             state.doc.descendants((node, position) => {
               if (node.type.name === 'table' && (node.attrs.captionEnabled || node.attrs.caption)) {
-                widgets.push(Decoration.widget(position, tableCaptionWidget(node.attrs.caption ?? '',documentNumbers(state.doc).objects.get(position)?.number), {side:-1}));
+                const number=documentNumbers(state.doc).objects.get(position)?.number;
+                widgets.push(Decoration.widget(position, tableCaptionWidget(node.attrs.caption ?? '',number), {
+                  side:-1, key:`table-caption-${position}-${number ?? ''}-${node.attrs.caption ?? ''}`,
+                }));
               }
             });
             return widgets.length ? DecorationSet.create(state.doc, widgets) : null;
