@@ -125,6 +125,19 @@ test('fresh asset reads and dependency edits change a stable order-independent s
   assert.equal((await nativeProjectSnapshot(project)).mainFile, 'chapter.tex');
   assert.notEqual((await nativeProjectSnapshot(project)).signature, changed.signature);
 });
+
+test('previewing another complete TeX file changes only the compilation entry',async()=>{
+  const root='\\begin{document}\nMain.\n\\end{document}\n';
+  const notes='\\begin{document}\nNotes.\n\\end{document}\n';
+  const {project}=model([['main.tex',root],['notes/notes.tex',notes]]);
+  const original=await nativeProjectSnapshot(project);
+  const direct=await nativeProjectSnapshot(project,{entryFileId:'notes/notes.tex'});
+  assert.equal(project.mainFileId,'main.tex');
+  assert.equal(direct.mainFile,'notes/notes.tex');
+  assert.equal(direct.source,notes);
+  assert.deepEqual(direct.files,original.files);
+  assert.notEqual(direct.dependencySignature,original.dependencySignature);
+});
 test('live typing may use the explicitly refreshed model asset snapshot without disk I/O',async()=>{
   const {project,reads}=model([['main.tex','main'],['image.png',null,[1,2,3],'image']]);
   const first=await nativeProjectSnapshot(project,{useModelAssets:true});

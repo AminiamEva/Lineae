@@ -284,6 +284,7 @@ export function projectMixedSnapshot(snapshot, previous, pending) {
   const root=add(snapshot.source,snapshot.mainFile,false)??snapshot.source;
   const decoder=new TextDecoder('utf-8',{fatal:true,ignoreBOM:true});
   for(const file of snapshot.files??[]){
+    if(snapshot.editablePaths&&!snapshot.editablePaths.has(file.path))continue;
     if(file.path===snapshot.mainFile||!/\.tex$/i.test(file.path)||file.bytes.length>2*1024*1024)continue;
     let source;
     try {source=decoder.decode(new Uint8Array(file.bytes));} catch {continue;}

@@ -1992,7 +1992,7 @@ function showCommands(field = null, native = false) {
   filter.value = '';
   renderCommands();
   positionCommands();
-  filter.focus();
+  filter.focus({preventScroll:true});
 }
 function insertFormulaCommand(latex) {
   const fragment = latex.replaceAll('#?', '\\placeholder{}');
@@ -2103,7 +2103,7 @@ function renderCommands() {
 }
 document.addEventListener('focusin', event => {
   if (commands.hidden || commands.contains(event.target)) return;
-  queueMicrotask(() => { if (!commands.hidden) filter.focus(); });
+  queueMicrotask(() => { if (!commands.hidden) filter.focus({preventScroll:true}); });
 }, true);
 filter.addEventListener('input', renderCommands);
 filter.addEventListener('keydown', event => {
@@ -2175,10 +2175,18 @@ function runMathShortcut(command, field, event) {
   else insertLiveMath(field, '\\'+command);
 }
 document.addEventListener('pointerdown', event => { if (!commands.contains(event.target)) closeCommands(); }, true);
-document.addEventListener('scroll', event => {
-  if (!commands.hidden && !commands.contains(event.target)) closeCommands();
-}, true);
-window.addEventListener('resize', () => closeCommands());
+function commandViewportChanged(event){
+  if(commands.hidden||event.target instanceof Node&&commands.contains(event.target))return;
+  if(completionNative&&completionField?.isConnected){
+    requestAnimationFrame(()=>{
+      if(commands.hidden||!completionNative||!completionField?.isConnected)return;
+      completionAnchor=completionField.getBoundingClientRect();
+      positionCommands();
+    });
+  }else closeCommands();
+}
+document.addEventListener('scroll',commandViewportChanged,true);
+window.addEventListener('resize',commandViewportChanged);
 document.addEventListener('keydown', event => {
   if (event.key !== 'Escape' || event.isComposing || event.keyCode === 229 || editor.view.composing) return;
   if (!editor.state.storedMarks?.some(mark => mark.type.name === 'boxed')) return;
@@ -2739,11 +2747,18 @@ function nativeTikzDrawings(){
   });
   return results;
 }
+function nativeProjectEntry(project){
+  const main=project.file(project.mainFileId),active=project.file(project.activeFileId);
+  const composition=projectDocument.compose(project,main.id,{boundariesOnly:true});
+  if(active.id===main.id||active.kind!=='tex'||!parseDocument(active.draft)||composition.sources.has(active.id))
+    return {file:main,composition};
+  return {file:active,composition:projectDocument.compose(project,active.id,{boundariesOnly:true})};
+}
 function canStartNativeText(){
   if(!sourceView.hidden||projectDocument.composition||editor.state.doc.childCount!==1)return false;
   const paragraph=editor.state.doc.firstChild,project=projectExplorer?.model;
   if(paragraph?.type.name!=='paragraph'||paragraph.content.size||
-     (project&&project.activeFileId!==project.mainFileId))return false;
+     project&&nativeProjectEntry(project).file.id!==project.activeFileId)return false;
   const value=source(),document=parseDocument(value);
   return Boolean(document&&value.slice(document.start.length,value.length-document.end.length).trim()==='');
 }
@@ -2755,9 +2770,12 @@ nativeTexPreview=installNativeTexPreview({host:footer,before:modes,primary:nativ
       if(!sourceView.hidden)sourceView.flush();
       else editor.view.domObserver.flush();
       projectExplorer.changed();
-      const snapshot=await nativeProjectSnapshot(project,{useModelAssets:true,includeGeneratedInputs:true});
-      if(projectExplorer.model!==project)throw new Error(t('工程已改变，请重试。','Project changed; retry the preview.'));
-      return snapshot;
+      const active=project.activeFileId,{file,composition}=nativeProjectEntry(project);
+      const snapshot=await nativeProjectSnapshot(project,{useModelAssets:true,includeGeneratedInputs:true,
+        entryFileId:file.id});
+      if(projectExplorer.model!==project||project.activeFileId!==active)
+        throw new Error(t('工程已改变，请重试。','Project changed; retry the preview.'));
+      return {...snapshot,editablePaths:new Set(composition.regions.map(region=>region.path))};
     }
     if(projectFileKind==='bib')throw new Error(t('请打开 .tex 文档。','Open a .tex document.'));
     const text=sourceView.hidden?source():sourceView.value;
@@ -2844,7 +2862,8 @@ nativeTexPreview=installNativeTexPreview({host:footer,before:modes,primary:nativ
     tr.setSelection(TextSelection.create(tr.doc,1+text.length));
     const prepared=standaloneParagraphDraft(importedSource,projection,importedSnapshot,
       state.doc.toJSON(),tr.doc.toJSON(),0);
-    const path=projectExplorer?.model?.mainFileId;
+    const project=projectExplorer?.model;
+    const path=project?.file(project.activeFileId).path;
     const first=prepared&&projectTextDocument(prepared.draft,{filePath:path})?.paragraphs[0];
     if(!first)return null;
     const offset=first.from16+first.glyphs.at(-1).to16;

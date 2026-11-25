@@ -92,7 +92,8 @@ export async function nativeProjectSnapshot(project, options = {}) {
   }
   // Moves, saves, and refreshes already serialize through this model promise.
   await project.pendingOperation;
-  const mainId = project.mainFileId, membership = project.files, fileCount = membership.size;
+  const projectMainId=project.mainFileId;
+  const entryId=options.entryFileId??projectMainId, membership=project.files, fileCount=membership.size;
   const records = [];
   const paths = new Set();
   let main;
@@ -110,7 +111,7 @@ export async function nativeProjectSnapshot(project, options = {}) {
     if (records.length >= bounds.maxFiles) throw new RangeError('Project snapshot has too many files');
     const record = {file, path, draft:file.draft, revision:file.revision, bytes:file.bytes};
     records.push(record);
-    if (file.id === mainId) main = record;
+    if (file.id === entryId) main = record;
   }
   if (!main || main.file.kind !== 'tex' || typeof main.draft !== 'string') {
     throw new TypeError('Project snapshot requires a TeX main document');
@@ -153,7 +154,7 @@ export async function nativeProjectSnapshot(project, options = {}) {
   const digest = await crypto.subtle.digest('SHA-256', encoder.encode(JSON.stringify([main.path, manifest])));
   const dependencyDigest=await crypto.subtle.digest('SHA-256',
     encoder.encode(JSON.stringify([main.path,manifest.filter(([path])=>path!==main.path)])));
-  if (project.files !== membership || project.mainFileId !== mainId || membership.size !== fileCount
+  if (project.files !== membership || project.mainFileId !== projectMainId || membership.size !== fileCount
       || records.some(({file, path, draft, revision,bytes}) =>
         membership.get(path) !== file || file.path !== path || file.draft !== draft || file.revision !== revision ||
         (options.useModelAssets && file.bytes!==bytes))) {

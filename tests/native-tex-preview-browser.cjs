@@ -10,7 +10,7 @@ const projectMain='\\documentclass{article}\n\\begin{document}\n\\[\\frac{a}{}\\
 const projectMainWithImage=projectMain.replace('\\begin{document}','\\usepackage{graphicx}\n\\begin{document}')
   .replace('\\end{document}','\\begin{figure}[ht]\n\\centering\n\\includegraphics[width=18pt]{plot.png}\n\\end{figure}\n\\end{document}');
 const projectChapter='Original chapter.\n\n\\[\\frac{z}{}\\]\n';
-async function openMockProject(page,raster=false,main=raster?projectMainWithImage:projectMain) {
+async function openMockProject(page,raster=false,main=raster?projectMainWithImage:projectMain,child=projectChapter) {
   const name=await page.evaluate(async({main,child,raster})=>{
     const root=await navigator.storage.getDirectory();
     const folder=await root.getDirectoryHandle('lua-'+crypto.randomUUID(),{create:true});
@@ -33,7 +33,7 @@ async function openMockProject(page,raster=false,main=raster?projectMainWithImag
     }
     window.showDirectoryPicker=async()=>folder;
     return folder.name;
-  },{main,child:projectChapter,raster});
+  },{main,child,raster});
   if(!page.listenerCount('dialog'))page.on('dialog',dialog=>dialog.accept());
   await revealToolbar(page);await page.locator('[data-group=files]').click();
   await page.locator('#project-open').click();
@@ -137,6 +137,8 @@ const server=createServer(async(req,res)=>{
       await page.waitForFunction(()=>document.activeElement?.id==='native-tex-input');
       await page.keyboard.press('Backslash');
       const nativePalette=page.getByRole('dialog',{name:'LaTeX completion',exact:true});
+      await nativePalette.waitFor();
+      await panel.dispatchEvent('scroll');
       await nativePalette.getByRole('textbox',{name:'LaTeX command',exact:true}).fill('sqrt');
       await page.keyboard.press('Enter');
       await page.waitForFunction(()=>nativeProbe.source?.includes('\\sqrt{}'));
@@ -498,7 +500,8 @@ const server=createServer(async(req,res)=>{
       await page.waitForFunction(expected=>nativeProbe.source===expected,split.replace('Beta','\\[x\\]\n\nBeta'));
       await page.goto('http://127.0.0.1:'+server.address().port+'/?native-only-acceptance=1',{waitUntil:'networkidle'});
       const singleProject=workspaceSource.replace('Native document.','Native document.\n\n\\[\\frac{a}{}\\]');
-      await openMockProject(page,false,singleProject);
+      const independent=workspaceSource.replace('Native document.','Independent file.');
+      await openMockProject(page,false,singleProject,independent);
       await page.locator('#native-tex-toggle').click();
       await page.waitForFunction(()=>document.querySelector('#native-tex-preview').dataset.state==='current');
       await page.locator('#native-tex-target').click();
@@ -511,7 +514,20 @@ const server=createServer(async(req,res)=>{
       await panel.getByText('Click prose on the native page',{exact:false}).waitFor();
       await canvas.click({position:{x:6500000*scale,y:7000000*scale}});
       await page.keyboard.type('q');
-      await page.waitForFunction(expected=>nativeProbe.source===expected,projectWithText.replace('}{','}{q'));
+      const verifiedMain=projectWithText.replace('}{','}{q');
+      await page.waitForFunction(expected=>nativeProbe.source===expected,verifiedMain);
+      const folder=page.locator('summary[data-path="chapters"]');
+      if(!await page.locator('.project-file[data-path="chapters/one.tex"]').isVisible())await folder.click();
+      await page.locator('.project-file[data-path="chapters/one.tex"]').click();
+      await page.waitForFunction(expected=>nativeProbe.source===expected,independent);
+      await panel.getByText('Click text on the native page',{exact:false}).waitFor();
+      await canvas.click({position:{x:6550000*scale,y:9250000*scale}});
+      await page.keyboard.type('X');
+      await page.waitForFunction(({active,main})=>{
+        const update=nativeProbe.calls.findLast(call=>call.command==='native_tex_update');
+        return update?.args.source===active&&update.args.files?.some(file=>file.path==='main.tex'&&
+          new TextDecoder().decode(new Uint8Array(file.bytes))===main);
+      },{active:independent.replace('Independent','XIndependent'),main:verifiedMain});
       await page.locator('#native-tex-close').click();
       const endingWithInput=projectMain.replace('After chapter.\n','');
       await openMockProject(page,false,endingWithInput);
