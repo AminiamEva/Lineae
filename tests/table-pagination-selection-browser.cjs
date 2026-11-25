@@ -41,6 +41,7 @@ const read = page => page.evaluate(() => {
     documentLastParagraphTop: lastParagraph.getBoundingClientRect().top + scrollY,
     pageTop: pageTop + scrollY,
     rules: document.querySelector('[data-lineae-pagination]')?.textContent?.length ?? 0,
+    toolbar: parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--tex-toolbar-bottom')),
     layouts: window.__layoutEvents,
   };
 });
@@ -91,6 +92,22 @@ async function check(browser, wrap) {
       `clicking the table must not repaginate (wrap=${wrap})`);
     assert.equal(afterTable.rules, beforeTable.rules, 'pagination rules stay stable');
     assert.equal(await page.locator('[data-group=table]').isVisible(), true, 'table tab is available');
+
+    // Switching to the Table panel and back must not change the toolbar
+    // height or shift the document (the selection jitter).
+    const toolbarBefore = beforeTable.toolbar;
+    await page.locator('.ribbon-tabs [data-group=table]').click();
+    await page.waitForTimeout(350);
+    const tablePanel = await read(page);
+    assert.equal(tablePanel.toolbar, toolbarBefore, `toolbar height is stable on the Table panel (wrap=${wrap})`);
+    assert.ok(Math.abs(tablePanel.documentCellTop - afterTable.documentCellTop) < 3,
+      `switching panels must not move the table (wrap=${wrap})`);
+    await page.locator('.ribbon-tabs [data-group=home]').click();
+    await page.waitForTimeout(350);
+    const homePanel = await read(page);
+    assert.equal(homePanel.toolbar, toolbarBefore, `toolbar height is stable on the Home panel (wrap=${wrap})`);
+    assert.ok(Math.abs(homePanel.documentCellTop - afterTable.documentCellTop) < 3,
+      `switching back must not move the table (wrap=${wrap})`);
   } finally {
     await page.close();
   }
