@@ -819,6 +819,18 @@ const server=createServer(async(req,res)=>{
         await page.keyboard.press(mod+'+z');
         await page.waitForFunction(expected=>nativeProbe.source===expected,pagedProse);
       }
+      await panel.getByText('Click text on the native page',{exact:false}).waitFor();
+      await canvas.click({position:{x:6550000*scale,y:9250000*scale}});
+      await page.keyboard.press('Backslash');
+      await prosePalette.getByRole('textbox',{name:'LaTeX command',exact:true}).fill('multicols*');
+      await page.keyboard.press('Enter');
+      const wrappedColumns=pagedProse.replace('Alpha','\\begin{multicols*}{2}\nAlpha\n\n\\end{multicols*}')
+        .replace('\\begin{document}','\\usepackage{multicol}\n\\begin{document}');
+      await page.waitForFunction(expected=>nativeProbe.source===expected,wrappedColumns);
+      assert.equal(await page.locator('.ProseMirror [data-multicol-starred]').count(),1);
+      await page.keyboard.press(mod+'+z');
+      await page.waitForFunction(expected=>nativeProbe.source===expected,pagedProse);
+      await panel.getByText('Click text on the native page',{exact:false}).waitFor();
       await canvas.click({position:{x:7520000*scale,y:9250000*scale}});
       await page.keyboard.press('Backslash');
       await prosePalette.getByRole('textbox',{name:'LaTeX command',exact:true}).fill('newpage');
@@ -870,6 +882,21 @@ const server=createServer(async(req,res)=>{
       await page.waitForFunction(expected=>nativeProbe.source===expected,splitList);
       await page.keyboard.press(mod+'+z');
       await page.waitForFunction(expected=>nativeProbe.source===expected,splitListSource);
+      await page.locator('#native-tex-close').click();
+      const nativeColumns=pagedProse.replace('Alpha\n\nBeta',
+        '\\begin{multicols*}{2}\nAlphaBeta.\n\nGamma.\n\\end{multicols*}')
+        .replace('\\begin{document}','\\usepackage{multicol}\n\\begin{document}');
+      await page.locator('input#file').setInputFiles({name:'native-columns.tex',mimeType:'text/plain',buffer:Buffer.from(nativeColumns)});
+      await page.locator('#native-tex-toggle').click();
+      await page.locator('#native-tex-target').click();
+      await panel.getByText('Click text on the native page',{exact:false}).waitFor();
+      await page.locator('#native-tex-edit').click();
+      await canvas.click({position:{x:7450000*scale,y:9250000*scale}});
+      await page.keyboard.press('Enter');
+      await page.waitForFunction(expected=>nativeProbe.source===expected,nativeColumns.replace('AlphaBeta.','Alpha\n\nBeta.'));
+      await panel.getByText('Click text on the native page',{exact:false}).waitFor();
+      await page.keyboard.press('Backspace');
+      await page.waitForFunction(expected=>nativeProbe.source===expected,nativeColumns);
       await page.locator('#native-tex-close').click();
       const bookSource=pagedProse.replace('{article}','{book}');
       await page.locator('input#file').setInputFiles({name:'native-book.tex',mimeType:'text/plain',buffer:Buffer.from(bookSource)});

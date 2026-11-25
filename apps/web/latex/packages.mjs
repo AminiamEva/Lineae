@@ -17,7 +17,7 @@ const dependencies = [
   { name: 'subcaption', pattern: /\\(?:begin\{subfigure\}|subref\b|subcaptionbox\b)/ },
   { name: 'tikz', pattern: /\\begin\{tikzpicture\}/, satisfies: ['circuitikz'] },
   { name: 'circuitikz', pattern: /\\(?:node|to)\[[^\]]*(?:ground|rground|sground|nground|vcc|vee|ocirc|diamondpole)\b/ },
-  { name: 'multicol', pattern: /\\begin\{multicols\}/ },
+  { name: 'multicol', pattern: /\\begin\{multicols\*?\}/ },
   { name: 'adjustbox', pattern: /\\adjustbox\b/ },
   { name: 'caption', pattern: /\\caption\*/ },
   { name: 'wrapfig', pattern: /\\begin\{wrapfigure\}/ },

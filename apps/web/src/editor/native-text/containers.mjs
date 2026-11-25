@@ -1,4 +1,4 @@
-import {importBlocks,listParagraphRanges} from '../../../latex/blocks.mjs';
+import {importBlocks,listParagraphRanges,multicolParts} from '../../../latex/blocks.mjs';
 import {parseDocument} from '../../../latex/document.mjs';
 import {importTextEnvironment} from '../../../latex/text-environments.mjs';
 import {theoremParts} from '../../../latex/theorem.mjs';
@@ -23,20 +23,22 @@ export function containerParagraphRanges(source,depth=0) {
   function descendants(from,to,container,index,node){
     const part=paragraphRange(source,from,to,container,[index],node);
     if(part)return [part];
-    if(!['blockquote','theoremBlock','orderedList','bulletList','descriptionList'].includes(node?.type))return [];
+    if(!['blockquote','theoremBlock','orderedList','bulletList','descriptionList','multiColumn'].includes(node?.type))return [];
     return containerParagraphRanges(source.slice(from,to),depth+1).filter(part=>part.container===node.type)
       .map(part=>({...part,from:from+part.from,container,path:[index,...part.path]}));
   }
   const theorem=theoremParts(source);
-  if(theorem){
-    const doc=parseDocument(theorem.body,{fragment:true});
-    if(!doc||doc.blocks.join('')!==theorem.body)return [];
-    let offset=theorem.bodyFrom,index=0;
+  const delimited=theorem??multicolParts(source);
+  if(delimited){
+    const type=theorem?'theoremBlock':'multiColumn';
+    const doc=parseDocument(delimited.body,{fragment:true});
+    if(!doc||doc.blocks.join('')!==delimited.body)return [];
+    let offset=delimited.bodyFrom,index=0;
     const paragraphs=[];
     for(const raw of doc.blocks){
       const nodes=importBlocks(raw);
       if(nodes.some(node=>node.type==='raw'))return [];
-      if(nodes.length===1)paragraphs.push(...descendants(offset,offset+raw.length,'theoremBlock',index,nodes[0]));
+      if(nodes.length===1)paragraphs.push(...descendants(offset,offset+raw.length,type,index,nodes[0]));
       offset+=raw.length;
       index+=nodes.length;
     }

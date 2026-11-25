@@ -304,6 +304,14 @@ export function unwrapParagraphWrappers(block) {
   }
   return {text,attrs,from};
 }
+export function multicolParts(source){
+  const text=source.trim();
+  const match=/^\\begin\{(multicols\*?)\}\{(\d+)\}([\s\S]*?)\\end\{\1\}$/.exec(text);
+  if(!match||Number(match[2])<2||Number(match[2])>20)return null;
+  const [,environment,count,body]=match;
+  return {count:Number(count),starred:environment.endsWith('*'),body,
+    bodyFrom:source.indexOf(text)+text.length-body.length-environment.length-6};
+}
 
 export function importBlock(block, options={}) {
   if((options.environmentDepth??0)>32)return rawNode(block);
@@ -324,10 +332,11 @@ export function importBlock(block, options={}) {
   if (text === '\\tableofcontents') return { type: 'tableOfContents' };
   if (/^\\(?:newpage|clearpage|pagebreak)(?:\[[^\]]*\])?$/.test(text)) return { type: 'pageBreak' };
   if (text === '\\hrule') return { type: 'horizontalRule' };
-  const multicol = text.match(/^\\begin\{multicols\*?\}\{(\d+)\}([\s\S]*?)\\end\{multicols\*?\}$/);
+  const multicol = multicolParts(block);
   if (multicol) {
-    const content = importBlocks(multicol[2].trim());
-    return {type:'multiColumn',attrs:{count:Math.max(2,Math.min(4,Number(multicol[1])||2))},content:content.length?content:[{type:'paragraph'}]};
+    const {count,starred,body}=multicol;
+    const content=parseDocument(body,{fragment:true})?.blocks.flatMap(raw=>importBlocks(raw))??[];
+    return {type:'multiColumn',attrs:{count,starred},content:content.length?content:[{type:'paragraph'}]};
   }
   const math = text.match(/^\\\[([\s\S]*?)\\\]$/) ?? text.match(/^\$\$([\s\S]*?)\$\$$/) ?? text.match(/^\\begin\{equation\*?\}([\s\S]*?)\\end\{equation\*?\}$/);
   if (math) {

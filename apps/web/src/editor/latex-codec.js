@@ -100,7 +100,10 @@ export function serialize(node) {
     case 'matterStart': return '\\' + (node.attrs.matter || 'main') + 'matter\n\n';
     case 'tableOfContents': return '\\tableofcontents\n\n';
     case 'pageBreak': return '\\newpage\n\n';
-    case 'multiColumn': return '\\begin{multicols}{' + (node.attrs.count ?? 2) + '}\n' + content + '\\end{multicols}\n\n';
+    case 'multiColumn': {
+      const environment=node.attrs.starred?'multicols*':'multicols';
+      return '\\begin{'+environment+'}{'+(node.attrs.count??2)+'}\n'+content+'\\end{'+environment+'}\n\n';
+    }
     case 'blockquote': return node.attrs?.environmentSource
       ? serializeTextEnvironment(node,serialize)??node.attrs.environmentSource.source
       : '\\begin{quote}\n' + content + '\\end{quote}\n\n';

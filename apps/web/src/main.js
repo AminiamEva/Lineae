@@ -2286,6 +2286,8 @@ function completionActions() {
       toc:()=>insertNativeDirective('tableOfContents'),
       tableofcontents:()=>insertNativeDirective('tableOfContents'),
       lstlisting:editCodeBlockLanguage,
+      multicols:()=>runNativeTextStructure('wrapIn','multiColumn',{count:2}),
+      'multicols*':()=>runNativeTextStructure('wrapIn','multiColumn',{count:2,starred:true}),
       title:structureCommands.title,
       author:structureCommands.author,date:structureCommands.date,
       table:insertNativeTableFromProse,tabular:insertNativeTableFromProse,newpage:insertNativePageBreak};
@@ -2699,7 +2701,9 @@ function indentSelectedParagraph(direction) {
   }
   return setParagraphIndent(editor,direction > 0);
 }
-function insertMultiColumn(count=2) {  const {from,to}=editor.state.selection;
+function insertMultiColumn(count=2) {
+  if(nativeParagraphFormattingActive())return runNativeTextStructure('wrapIn','multiColumn',{count});
+  const {from,to}=editor.state.selection;
   const doc=editor.state.doc;
   let start,end;
   try {
@@ -3047,7 +3051,7 @@ function dispatchVerifiedNativeProse(state,tr,source,draft,change,index){
   const projected=sourceProjection(draft,tr.doc.toJSON(),{fragment:projectFileKind==='tex'});
   return Boolean(projected&&dispatchNativeParagraphChange(state,tr,source,draft,change,projected));
 }
-function commitNativeListChange(state,tr,target,paragraph,change,offset){
+function commitNativeContainerDraft(state,tr,target,paragraph,change,offset){
   const {source,filePath:path}=paragraph;
   const {range,composition,project,file}=target;
   const draft=source.slice(0,change.from)+change.insert+source.slice(change.to);
@@ -3083,7 +3087,7 @@ function splitNativeListItem(state,target,paragraph,from,to,text){
   const next=range.from+4;
   if(text)tr.insertText(text,next);
   tr.setSelection(TextSelection.create(tr.doc,next+text.length));
-  return commitNativeListChange(state,tr,target,paragraph,change,change.from+insert.length);
+  return commitNativeContainerDraft(state,tr,target,paragraph,change,change.from+insert.length);
 }
 function joinNativeListItems(first,last,from,to){
   if(first.local!==first.paragraph.text.length||last.local!==0||
@@ -3098,7 +3102,7 @@ function joinNativeListItems(first,last,from,to){
      $right.node(item).childCount!==1||$left.after(item)!==$right.before(item))return null;
   const tr=state.tr.join($left.after(item),2);
   tr.setSelection(TextSelection.create(tr.doc,left.range.from));
-  return commitNativeListChange(state,tr,left,first.paragraph,{from,to,insert:''},from);
+  return commitNativeContainerDraft(state,tr,left,first.paragraph,{from,to,insert:''},from);
 }
 function applyTextStyle(attributes){
   if(!nativeParagraphFormattingActive())return editor.chain().focus().setMark('textStyle',attributes).run();
@@ -3181,7 +3185,7 @@ function runNativeTextStructure(command,...args){
   const attributes=command==='updateAttributes'&&args[0]==='paragraph'&&args[1];
   const theorem=command==='wrapIn'&&args[0]==='theoremBlock'&&args[1]?.kind;
   const packageBody=(attributes?.align==='justify'?'\\justifying ':'')+(attributes?.shading?'\\colorbox':'')+
-    (theorem?'\\begin{'+theorem+'}':'');
+    (theorem?'\\begin{'+theorem+'}':'')+(command==='wrapIn'&&args[0]==='multiColumn'?'\\begin{multicols}':'');
   const dependency=packageBody?nativePackagePatch(root,packageBody):null;
   if(dependency===false)return false;
   let draft,from,to,shift=0;
@@ -3739,8 +3743,9 @@ nativeTexPreview=installNativeTexPreview({host:footer,before:modes,primary:nativ
     const theorem=paragraph.container?.type==='theoremBlock';
     const environment=paragraph.container?.type==='blockquote';
     const list=isNativeListParagraph(paragraph);
+    const columns=paragraph.container?.type==='multiColumn';
     const mixed=paragraph.parts.length!==1;
-    if(paragraph.tableCell||paragraph.container&&!theorem&&!environment&&!list||
+    if(paragraph.tableCell||paragraph.container&&!theorem&&!environment&&!list&&!columns||
        mixed&&(paragraph.container||paragraph.heading||paragraph.wrapped)||!from||/[\r\n]/.test(text))return null;
     if(paragraph.heading&&(!Number.isInteger(paragraph.headingEnd)||from!==to||to!==paragraph.text.length))return null;
     if(projectDocument.composition&&!projectDocument.rebase(currentNativeProjectComposition(),editor.getJSON()))return null;
@@ -3772,6 +3777,7 @@ nativeTexPreview=installNativeTexPreview({host:footer,before:modes,primary:nativ
     if(environment&&!refreshNativeTextEnvironment(tr,parent,range.match.sourceBlock,paragraph.source,change))return null;
     tr.setSelection(TextSelection.create(tr.doc,next+text.length));
     const offset=change.from+insert.length;
+    if(columns)return commitNativeContainerDraft(state,tr,target,paragraph,change,offset);
     if(composition){
       const drafts=projectDocument.changes(tr.doc.toJSON());
       if((wrapper||environment||mixed)&&drafts?.get(file.id)!==draft)return dispatchNativeProjectChange(state,tr,project,new Map([[file.id,draft]]))
@@ -3813,10 +3819,11 @@ nativeTexPreview=installNativeTexPreview({host:footer,before:modes,primary:nativ
     }
     const theorem=first.paragraph.container?.type==='theoremBlock'&&last.paragraph.container?.type==='theoremBlock';
     const environment=first.paragraph.container?.type==='blockquote'&&last.paragraph.container?.type==='blockquote';
+    const columns=first.paragraph.container?.type==='multiColumn'&&last.paragraph.container?.type==='multiColumn';
     const mixed=first.paragraph.parts.length!==1||last.paragraph.parts.length!==1;
     for(const stop of [first,last]){
       const {paragraph}=stop;
-      if(paragraph.heading||paragraph.tableCell||paragraph.container&&!theorem&&!environment||
+      if(paragraph.heading||paragraph.tableCell||paragraph.container&&!theorem&&!environment&&!columns||
         mixed&&(paragraph.container||paragraph.wrapped))return null;
     }
     const from=first.docOffset,to=last.docOffset,source=first.paragraph.source;
@@ -3838,6 +3845,7 @@ nativeTexPreview=installNativeTexPreview({host:footer,before:modes,primary:nativ
     if(environment&&!refreshNativeTextEnvironment(tr,start.before(depth),left.range.match.sourceBlock,source,change))return null;
     tr.setSelection(TextSelection.create(tr.doc,left.range.from+text.length));
     const draft=source.slice(0,from)+insert+source.slice(to);
+    if(columns)return commitNativeContainerDraft(state,tr,left,first.paragraph,change,offset);
     if(left.composition){
       if(left.file!==right.file)return null;
       const drafts=projectDocument.changes(tr.doc.toJSON());
@@ -4157,7 +4165,7 @@ nativeTexPreview=installNativeTexPreview({host:footer,before:modes,primary:nativ
     const firstRegion=positions[0].index(0),lastRegion=positions.at(-1).index(0);
     const leafPositions=mapped.map(({formula,range})=>formula?range.from:range.match.offset);
     const expectedNodes=[],containers=new Set(['projectRegion','theoremBlock','blockquote',
-      'orderedList','bulletList','listItem','descriptionList','descriptionItem']);
+      'orderedList','bulletList','listItem','descriptionList','descriptionItem','multiColumn']);
     state.doc.nodesBetween(leafPositions[0],leafPositions.at(-1)+1,(node,position,parent,index)=>{
       if(node.type.name==='projectRegion'&&index>firstRegion&&index<lastRegion&&
          node.childCount===1&&node.firstChild.type.name==='paragraph'&&!node.firstChild.content.size){

@@ -14,7 +14,7 @@ export const sameTable=(left,right)=>{
     (a.row===b.row||a.vertical&&b.vertical&&a.column===b.column));
 };
 const overlapsLine=(left,right)=>left?.page===right.page&&left.top<right.bottom&&left.bottom>right.top;
-const editableRangeContainers=new Set(['theoremBlock','blockquote','orderedList','bulletList','descriptionList']);
+const editableRangeContainers=new Set(['theoremBlock','blockquote','orderedList','bulletList','descriptionList','multiColumn']);
 
 // Text and math contribute geometry and edit operations. The document session
 // owns one selection and one pending caret address for the visible revision.

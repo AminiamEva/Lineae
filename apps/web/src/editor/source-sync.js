@@ -266,7 +266,7 @@ function containerProseChanges(block,nodes) {
   const [previous]=JSON.parse(block.snapshot);
   const [current]=nodes;
   if(nodes.length!==1||block.count!==1||
-     !['theoremBlock','blockquote','orderedList','bulletList','descriptionList'].includes(previous?.type)||
+     !['theoremBlock','blockquote','orderedList','bulletList','descriptionList','multiColumn'].includes(previous?.type)||
      current?.type!==previous.type)return null;
   const restored=structuredClone(current),changes=[];
   const at=(node,path)=>path.reduce((parent,index)=>parent?.content?.[index],node);
