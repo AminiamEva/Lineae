@@ -4,6 +4,10 @@ The native TeX preview is no longer the end goal. This page describes the
 architecture now being migrated toward: a directly interactive surface whose
 layout geometry comes only from rtex/LuaLaTeX.
 
+Status: the migration is in progress. Native input is opt-in, the old editor
+remains the default fallback, and the final acceptance gate (normal editing
+with the old JS typesetting engine disabled) is not met yet.
+
 ## Rules
 
 - ProseMirror remains the single document model and history.
