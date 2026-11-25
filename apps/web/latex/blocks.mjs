@@ -458,7 +458,7 @@ export function structuralCommandAt(source,token){
   if(token.kind!=='command')return null;
   const toc=token.value==='\\tableofcontents';
   const title=toc?null:headingAt(source,token.index,headingBase);
-  const structural=/^\\(?:appendix|frontmatter|mainmatter|backmatter|newpage|clearpage|pagebreak)$/.test(token.value);
+  const structural=/^\\(?:appendix|frontmatter|mainmatter|backmatter|newpage|clearpage|pagebreak|hrule)$/.test(token.value);
   const layout=/^\\(?:pagestyle|thispagestyle)\{[^{}]*\}|^\\(?:maketitle\b|mbox\{\})/.exec(source.slice(token.index));
   if(!toc&&!title&&!structural&&!layout)return null;
   return {toc,title,structural,layout,end:title?.end??(layout?token.index+layout[0].length:token.end)};

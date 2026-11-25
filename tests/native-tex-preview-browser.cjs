@@ -789,9 +789,24 @@ const server=createServer(async(req,res)=>{
       await page.locator('#native-tex-target').click();
       await panel.getByText('Click text on the native page',{exact:false}).waitFor();
       await page.locator('#native-tex-edit').click();
+      const prosePalette=page.getByRole('dialog',{name:'LaTeX completion',exact:true});
+      for(const [command,latex,node] of [
+        ['appendix','\\appendix','[data-appendix-start]'],
+        ['hrule','\\hrule','hr'],
+        ['tableofcontents','\\tableofcontents','[data-toc-view]'],
+      ]){
+        await panel.getByText('Click text on the native page',{exact:false}).waitFor();
+        await canvas.click({position:{x:7520000*scale,y:9250000*scale}});
+        await page.keyboard.press('Backslash');
+        await prosePalette.getByRole('textbox',{name:'LaTeX command',exact:true}).fill(command);
+        await page.keyboard.press('Enter');
+        await page.waitForFunction(expected=>nativeProbe.source===expected,pagedProse.replace('Beta',latex+'\n\nBeta'));
+        assert.equal(await page.locator('.ProseMirror').locator(node).count(),1);
+        await page.keyboard.press(mod+'+z');
+        await page.waitForFunction(expected=>nativeProbe.source===expected,pagedProse);
+      }
       await canvas.click({position:{x:7520000*scale,y:9250000*scale}});
       await page.keyboard.press('Backslash');
-      const prosePalette=page.getByRole('dialog',{name:'LaTeX completion',exact:true});
       await prosePalette.getByRole('textbox',{name:'LaTeX command',exact:true}).fill('newpage');
       await page.keyboard.press('Enter');
       const pageBreakSource=pagedProse.replace('Beta','\\newpage\n\nBeta');

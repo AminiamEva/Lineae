@@ -368,9 +368,12 @@ function insertNativeTableFromProse(){
   const [parsed]=importBlocks(latex);
   if(parsed?.type!=='table')return false;
   const block=editor.schema.nodeFromJSON(parsed);
-  return canStartNativeText()?insertNativeInitialTable(block,latex):insertNativeProseBlock(block,latex);
+  return insertNativeDocumentBlock(block,latex);
 }
-function insertNativeInitialTable(block,latex){
+function insertNativeDocumentBlock(block,latex){
+  return canStartNativeText()?insertNativeInitialBlock(block,latex):insertNativeProseBlock(block,latex);
+}
+function insertNativeInitialBlock(block,latex){
   const started=performance.now(),{state}=editor;
   const sourceBefore=source(),fragment=projectFileKind==='tex';
   const document=parseDocument(sourceBefore,{fragment});
@@ -378,11 +381,12 @@ function insertNativeInitialTable(block,latex){
   const insert=latex.replaceAll('\n',document.eol)+(document.end?document.eol:'');
   const draft=sourceBefore.slice(0,from)+insert+sourceBefore.slice(from);
   const tr=state.tr.insert(0,block);
-  tr.setSelection(Selection.near(tr.doc.resolve(1),1));
+  const table=block.type.name==='table';
+  tr.setSelection(Selection.near(tr.doc.resolve(table?1:block.nodeSize),1));
   const projected=sourceProjection(draft,tr.doc.toJSON(),{fragment});
   if(!projected||!dispatchNativeParagraphChange(state,tr,sourceBefore,draft,{from,to:from,insert},projected))return false;
   const project=projectExplorer?.model,path=project?.file(project.activeFileId).path;
-  focusNativeTableInsertion(draft,from,path,fragment,false,started);
+  if(table)focusNativeTableInsertion(draft,from,path,fragment,false,started);
   return true;
 }
 function insertEquation() {
@@ -2016,10 +2020,7 @@ const structureCommands = {
   quote: () => editor.chain().focus().toggleBlockquote().run(),
   hrule: () => editor.chain().focus().setHorizontalRule().run(),
   description: () => editor.chain().focus().insertContent({type:'descriptionList',content:[{type:'descriptionItem',attrs:{term:''},content:[{type:'paragraph'}]}]}).run(),
-  toc: () => {
-    if(editor.isActive('tableOfContents'))editor.chain().focus().deleteSelection().run();
-    else editor.chain().focus().insertContent({type:'tableOfContents'}).run();
-  },
+  toc: toggleDocumentContents,
   label: async () => {
     if (activeMath() || formulaAtSelection()) return editFormulaLabel();
     if(editor.isActive('heading')) {
@@ -2178,7 +2179,16 @@ function highlightCandidate(index) {
     candidates.scrollTop = bottom - candidates.clientHeight;
 }
 function insertNativePageBreak(){
-  return insertNativeProseBlock(editor.schema.nodes.pageBreak.create(),'\\newpage');
+  return insertNativeDocumentBlock(editor.schema.nodes.pageBreak.create(),'\\newpage');
+}
+function insertNativeDirective(type){
+  const block=editor.schema.nodes[type].create();
+  return insertNativeDocumentBlock(block,serialize(block.toJSON()).trimEnd());
+}
+function toggleDocumentContents(){
+  if(nativeParagraphFormattingActive())return insertNativeDirective('tableOfContents');
+  if(editor.isActive('tableOfContents'))return editor.chain().focus().deleteSelection().run();
+  return structureCommands.tableofcontents();
 }
 function insertNativeProseBlock(block,latex){
   const started=performance.now();
@@ -2249,7 +2259,11 @@ function completionActions() {
       quote:()=>runNativeTextStructure('toggleBlockquote'),
       ...Object.fromEntries(Object.keys(theoremNames).map(kind=>
         [kind,()=>runNativeTextStructure('wrapIn','theoremBlock',{kind})])),
-      appendix:structureCommands.appendix,title:structureCommands.title,
+      appendix:()=>insertNativeDirective('appendixStart'),
+      hrule:()=>insertNativeDirective('horizontalRule'),
+      toc:()=>insertNativeDirective('tableOfContents'),
+      tableofcontents:()=>insertNativeDirective('tableOfContents'),
+      title:structureCommands.title,
       author:structureCommands.author,date:structureCommands.date,
       table:insertNativeTableFromProse,tabular:insertNativeTableFromProse,newpage:insertNativePageBreak};
     if(projectExplorer?.active){actions.input=structureCommands.input;actions.include=structureCommands.include;}
@@ -4648,10 +4662,7 @@ async function manageCitations(){
 }
 groupButton(referenceGroup,'cite',manageCitations);
 
-groupButton(referenceGroup,'toc',()=>{
-  if(editor.isActive('tableOfContents'))editor.chain().focus().deleteSelection().run();
-  else editor.chain().focus().insertContent({type:'tableOfContents'}).run();
-});
+groupButton(referenceGroup,'toc',toggleDocumentContents);
 groupButton(referenceGroup,['大纲','Outline'],documentOutline.show);
 groupButton(referenceGroup,'short',async()=>{
   if(!editor.isActive('heading'))return;
