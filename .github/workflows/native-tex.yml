@@ -81,7 +81,7 @@ jobs:
             tests/native-math-source.test.mjs tests/native-math-warm-pages.test.mjs tests/native-surface.test.mjs \
             tests/project-composition.test.mjs
           bash -n scripts/install-native-tex-ci.sh
-      - name: Build and verify the native preview frontend
+      - name: Build the native preview frontend
         run: |
           npm run build
           node scripts/install-pdfjs.mjs
@@ -95,6 +95,10 @@ jobs:
           else
             npx playwright install --only-shell chromium
           fi
+      - name: Verify browser editing with and without the legacy engine
+        id: browser_editing
+        continue-on-error: true
+        run: |
           node tests/native-tex-preview-browser.cjs
           LINEAE_NATIVE_ONLY=1 node tests/native-tex-preview-browser.cjs
           LINEAE_TEST_NATIVE_PREVIEW=1 node tests/math-editing-browser.cjs
@@ -270,3 +274,8 @@ jobs:
           path: apps/desktop/src-tauri/target/debug/${{ runner.os == 'Windows' && 'lineae.exe' || 'lineae' }}
           if-no-files-found: error
           retention-days: 3
+      - name: Enforce browser editing results
+        if: ${{ always() && steps.browser_editing.outcome == 'failure' }}
+        run: |
+          echo '::error::The native browser editing gate failed. See its step above.'
+          exit 1
