@@ -13,6 +13,7 @@ import {importTblr,environmentEnd,trivia} from './tblr.mjs';
 import {importTabularx} from './tabularx.mjs';
 import {importTextEnvironment} from './text-environments.mjs';
 import {displayEnvironment} from './math-environments.mjs';
+import {tableStyleParts} from './table-styles.mjs';
 
 function importedTableCells(row,specs,layout) {
   return row.cells.map((cell,index) => {
@@ -535,16 +536,10 @@ export function importBlocks(block, options={}) {
     if (content.some(node => node.type === 'raw')) return [rawNode(block)];
     return [{type:'theoremBlock',attrs:{kind:theorem.kind,title:theorem.title},content:content.length?content:[{type:'paragraph'}]}];
   }
-  const ruledTable = /^\{\\setlength\{\\arrayrulewidth\}\{(\d+(?:\.\d+)?pt)\}\s*(\\begin\{tabular\}[\s\S]*\\end\{tabular\})\s*\}$/.exec(block.trim());
-  if (ruledTable) {
-    const node=importBlock(ruledTable[2]);
-    if(node?.type==='table')return [{...node,attrs:{...node.attrs,borderWidth:ruledTable[1]}}];
-  }
-  const stretchedTable = /^\{\s*\\renewcommand\s*\{\\arraystretch\}\s*\{([^{}]+)\}\s*(\\begin\{tabular\}[\s\S]*\\end\{tabular\})\s*\}$/.exec(block.trim());
-  if (stretchedTable) {
-    const node=importBlock(stretchedTable[2]);
-    const value=Number.parseFloat(stretchedTable[1]);
-    if(node?.type==='table')return [{...node,attrs:{...node.attrs,...(Number.isFinite(value)?{arrayStretch:value}:{})}}];
+  const styled=tableStyleParts(block);
+  if(styled&&Object.keys(styled.attrs).length){
+    const node=importBlock(styled.body);
+    if(node?.type==='table')return [{...node,attrs:{...node.attrs,...styled.attrs}}];
   }
   const listing = /^\\begin\{lstlisting\}(?:\[language=([A-Za-z0-9+_-]+)\])?\r?\n([\s\S]*?)\r?\n\\end\{lstlisting\}$/.exec(block.trim());
   if (listing) return [{type:'codeBlock',attrs:{language:listing[1]??null},content:listing[2]?[{type:'text',text:listing[2]}]:[]}];

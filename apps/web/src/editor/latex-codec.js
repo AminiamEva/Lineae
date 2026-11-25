@@ -9,6 +9,7 @@ export { importBlock, importBlocks };
 export {parseTableFloat} from '../../latex/table-floats.mjs';
 import {serializeTblr,serializeSourceTable} from '../../latex/tblr.mjs';
 import {serializeTextEnvironment} from '../../latex/text-environments.mjs';
+import {serializeTableStyle} from '../../latex/table-styles.mjs';
 
 // MathLive placeholders are editing aids with no LaTeX meaning.
 const withoutPlaceholders = latex => latex.replace(/\\placeholder\{[^{}]*\}/g, '');
@@ -178,16 +179,7 @@ export function serialize(node) {
       if (border && border!=='none') body += '\\hline\n';
       if (!border && !customRules && node.attrs.booktabs) body += '\\bottomrule\n';
       if (customRules && node.attrs.bottomRule) body += '\\bottomrule\n';
-      let tabular='\\begin{tabular}{' + columns + '}\n' + body + '\\end{tabular}';
-      if (node.attrs.arrayStretch && Number(node.attrs.arrayStretch) !== 1) tabular='{\\renewcommand{\\arraystretch}{'+node.attrs.arrayStretch+'}\n'+tabular+'\n}';
-      if (node.attrs.fontSize && /^(small|footnotesize|scriptsize)$/.test(node.attrs.fontSize)) tabular='{\\'+node.attrs.fontSize+' '+tabular+'}';
-      else if (node.attrs.fontSize && /^\d+(?:\.\d+)?pt$/.test(node.attrs.fontSize)) {
-        const points=Number.parseFloat(node.attrs.fontSize);
-        tabular='{\\fontsize{'+node.attrs.fontSize+'}{'+(points*1.2).toFixed(1)+'pt}\\selectfont '+tabular+'}';
-      }
-      if (node.attrs.tableScale && Number(node.attrs.tableScale) !== 1) tabular='\\scalebox{'+node.attrs.tableScale+'}{'+tabular+'}';
-      if (/^\d+(?:\.\d+)?pt$/.test(node.attrs.borderWidth??''))
-        tabular='{\\setlength{\\arrayrulewidth}{'+node.attrs.borderWidth+'}\n'+tabular+'\n}';
+      const tabular=serializeTableStyle('\\begin{tabular}{'+columns+'}\n'+body+'\\end{tabular}',node.attrs);
       const hasCaption = node.attrs.captionEnabled || node.attrs.caption!=null;
       if (hasCaption || node.attrs.label || node.attrs.centered || node.attrs.placement)
         return '\\begin{table}'+(node.attrs.placement?'['+node.attrs.placement+']':'')+'\n'

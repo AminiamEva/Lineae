@@ -4,6 +4,7 @@ import {parseTblr,environmentEnd} from '../../../latex/tblr.mjs';
 import {parseTabularx} from '../../../latex/tabularx.mjs';
 import {parseTableFloat} from '../../../latex/table-floats.mjs';
 import {sourceStructure} from '../../../latex/source-structure.mjs';
+import {tableStyleParts} from '../../../latex/table-styles.mjs';
 
 export function verticalTableSelection(source){
   return /\\begin\{tabularx?\}/.test(source)&&!/\\(?:multicolumn|multirow)(?![a-zA-Z])/.test(source)||
@@ -27,6 +28,11 @@ function contentRange(part,offset) {
 // Reuse the importer's span placement so skipped multirow placeholders do
 // not shift ProseMirror cell indexes. Only edit text inside known wrappers.
 export function tableCellRanges(block) {
+  const styled=tableStyleParts(block);
+  if(styled&&Object.keys(styled.attrs).length){
+    const cells=tableCellRanges(styled.body);
+    return cells?.map(cell=>({...cell,offset:cell.offset+styled.from}))??null;
+  }
   const structured=parseTblr(block)??parseTabularx(block);
   if(structured){
     const cells=structured.rows.flatMap((row,rowIndex)=>row.map((cell,column)=>

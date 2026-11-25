@@ -387,6 +387,30 @@ const server=createServer(async(req,res)=>{
       await panel.getByText('Click text on the native page',{exact:false}).waitFor();
       await page.locator('#native-tex-edit').click();
       await panel.locator('[data-native-page="1"] canvas').click({position:{x:6550000*scale,y:9250000*scale}});
+      await revealToolbar(page);await page.locator('[data-group=table]').click();
+      await page.locator('input[aria-label="Row stretch"]').evaluate(control=>{
+        control.value='1.5';control.dispatchEvent(new Event('change',{bubbles:true}));
+      });
+      const stretchedTable=tableSource.replace('\\begin{tabular}','{\\renewcommand{\\arraystretch}{1.5}\n\\begin{tabular}')
+        .replace('\\end{tabular}','\\end{tabular}\n}');
+      await page.waitForFunction(expected=>nativeProbe.source===expected,stretchedTable);
+      await panel.getByText('Click text on the native page',{exact:false}).waitFor();
+      await page.locator('.table-style-group select[aria-label="Font size"]').evaluate(control=>{
+        control.value='small';control.dispatchEvent(new Event('change',{bubbles:true}));
+      });
+      const smallTable=stretchedTable.replace('{\\renewcommand','{\\small {\\renewcommand').replace('\\end{tabular}\n}','\\end{tabular}\n}}');
+      await page.waitForFunction(expected=>nativeProbe.source===expected,smallTable);
+      await panel.getByText('Click text on the native page',{exact:false}).waitFor();
+      await page.keyboard.type('X');
+      await page.waitForFunction(expected=>nativeProbe.source===expected,smallTable.replace('One','XOne'));
+      await page.keyboard.press(mod+'+z');
+      await page.waitForFunction(expected=>nativeProbe.source===expected,smallTable);
+      await page.keyboard.press(mod+'+z');
+      await page.waitForFunction(expected=>nativeProbe.source===expected,stretchedTable);
+      await page.keyboard.press(mod+'+z');
+      await page.waitForFunction(expected=>nativeProbe.source===expected,tableSource);
+      await panel.getByText('Click text on the native page',{exact:false}).waitFor();
+      await panel.locator('[data-native-page="1"] canvas').click({position:{x:6550000*scale,y:9250000*scale}});
       await page.keyboard.type('X');
       await page.waitForFunction(expected=>nativeProbe.source===expected,tableSource.replace('One','XOne'));
       const tableObservations=await page.evaluate(()=>nativeProbe.calls.filter(call=>call.command==='native_tex_observe_formula').length);

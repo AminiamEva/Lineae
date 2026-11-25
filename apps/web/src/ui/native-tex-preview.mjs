@@ -1222,7 +1222,7 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
     hasMathInput: event => event.target===input && nativeEditing && acceptsInput() && nativeDocument.surface.caret?.kind==='math',
     hasNativeMathFocus:()=>document.activeElement===input&&nativeEditing&&acceptsInput()&&nativeDocument.surface.caret?.kind==='math',
     focusedCaret:()=>document.activeElement===input&&nativeEditing&&acceptsInput()?nativeDocument.surface.caret:null,
-    verifiedCaret:()=>document.activeElement===input&&nativeEditing&&acceptsInput()&&current()&&observation&&!pendingEdit
+    verifiedCaret:(allowUnfocused=false)=>(allowUnfocused||document.activeElement===input)&&nativeEditing&&acceptsInput()&&current()&&observation&&!pendingEdit
       ?nativeDocument.surface.caret:null,
     preserveSourceCaret(position,started,kind){
       draftInput=null;
