@@ -1,4 +1,4 @@
-import {rasterContains,registeredRasterHits,stagedRasterPath} from './raster-assets.mjs';
+import {matchingRasterHit,rasterContains,registeredRasterHits,stagedRasterPath} from './raster-assets.mjs';
 import {nativeFontFace} from './font-collection.mjs';
 import {FontStore,Painter,inexactReason} from './upstream/webview/render.ts';
 import {fontKey} from './upstream/src/fontKey.ts';
@@ -112,12 +112,9 @@ export function installNativePages({host,getFont,getTypeOneFont,getRaster,onPain
       if(drawing(raw)===drawing(measured)){
         const rasters=drawings.filter(candidate=>candidate.number===page.page&&candidate.drawing.raster);
         const hits=rasters.length?registeredRasterHits(raw,getRaster):[];
-        const identity=[1,0,0,1,0,0];
         for(const candidate of rasters){
-          const path=stagedRasterPath(candidate.drawing.raster);
-          const exact=hits.filter(hit=>hit.path===path&&hit.box.every((value,axis)=>value===candidate.box[axis])&&
-            hit.transform.every((value,axis)=>value===identity[axis]));
-          if(exact.length===1)verifiedDrawings.push(candidate);
+          const rasterHit=matchingRasterHit(hits,candidate.drawing.raster,candidate.box);
+          if(rasterHit)verifiedDrawings.push({...candidate,rasterHit});
         }
       }else{
         if(!pdfBacked||page.exact||!matched.length)return false;
@@ -327,8 +324,8 @@ export function installNativePages({host,getFont,getTypeOneFont,getRaster,onPain
     const rect=canvas.getBoundingClientRect(),scale=CSS_PER_SP*zoom;
     const x=(event.clientX-rect.left)/scale,y=(event.clientY-rect.top)/scale;
     if(ownership?.stamp.sourceRevision===revision&&ownership?.stamp.layoutVersion===layoutVersion){
-      const drawings=ownership.drawings.filter(({number,box:[left,top,width,height]})=>
-        number===entry.number&&x>=left&&x<=left+width&&y>=top&&y<=top+height);
+      const drawings=ownership.drawings.filter(({number,box:[left,top,width,height],rasterHit})=>
+        number===entry.number&&(rasterHit?rasterContains(rasterHit,x,y):x>=left&&x<=left+width&&y>=top&&y<=top+height));
       if(drawings.length===1){onDrawingHit?.(drawings[0].drawing,ownership.stamp);return;}
       if(drawings.length>1)return;
     }

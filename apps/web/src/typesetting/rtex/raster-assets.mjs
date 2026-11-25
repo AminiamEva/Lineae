@@ -34,6 +34,23 @@ export function rasterContains({transform,box},x,y) {
   return localX>=left&&localX<=left+width&&localY>=top&&localY<=top+height;
 }
 
+export function matchingRasterHit(hits,file,box){
+  const path=stagedRasterPath(file);
+  const matches=hits.filter(hit=>{
+    if(hit.path!==path)return false;
+    const [a,b,c,d,e,f]=hit.transform,[x,y,w,h]=hit.box;
+    const points=[[x,y],[x+w,y],[x,y+h],[x+w,y+h]];
+    const xs=points.map(([u,v])=>a*u+c*v+e),ys=points.map(([u,v])=>b*u+d*v+f);
+    const left=Math.min(...xs),top=Math.min(...ys);
+    const bounds=[left,top,Math.max(...xs)-left,Math.max(...ys)-top];
+    // The PDF transformation coefficients are decimal approximations. Compare
+    // the image in page coordinates, allowing for the serialized precision.
+    const rounding=2+(w+h)*1e-6;
+    return bounds.every((value,axis)=>Math.abs(value-box[axis])<=rounding);
+  });
+  return matches.length===1?matches[0]:null;
+}
+
 export function registeredRasterHits(display,getRaster) {
   const items=[...(display.other??[]),...(display.lines??[]).flatMap(line=>line.items??[])];
   const identity=[1,0,0,1,0,0];

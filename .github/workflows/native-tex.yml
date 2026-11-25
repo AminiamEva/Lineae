@@ -180,6 +180,25 @@ jobs:
           cargo test --locked --manifest-path apps/desktop/src-tauri/Cargo.toml --lib
           cargo test --locked --manifest-path apps/desktop/src-tauri/Cargo.toml --lib \
             tex_session::tests::real_native -- --ignored --test-threads=1
+          node --input-type=module -e '
+            import assert from "node:assert/strict";
+            import {readFileSync} from "node:fs";
+            import {join} from "node:path";
+            import {registeredRasterHits,matchingRasterHit} from "./apps/web/src/typesetting/rtex/raster-assets.mjs";
+            const evidence=JSON.parse(readFileSync(join(process.env.LINEAE_NATIVE_EVIDENCE_DIR,"native-raster-repeat-pages.json")));
+            const hits=registeredRasterHits(evidence.raw[0].dl,()=>true);
+            const fields=evidence.observed[0].dl.math_owners.fields;
+            const points=evidence.tags.map(tag=>fields.find(field=>field.owner===tag&&field.empty).bbox);
+            const matches=[];
+            for(let index=0;index<points.length;index+=2){
+              const [x,y]=points[index],[right,bottom]=points[index+1];
+              const box=[x,y,right-x,bottom-y];
+              const hit=matchingRasterHit(hits,"plot.png",box);
+              assert.ok(hit,JSON.stringify({box,hits}));
+              matches.push(hit);
+            }
+            assert.equal(new Set(matches).size,2);
+          '
           LINEAE_NATIVE_PDF="$LINEAE_NATIVE_EVIDENCE_DIR/native-lua-project.pdf" \
           LINEAE_NATIVE_PAGE="$LINEAE_NATIVE_EVIDENCE_DIR/native-formula-pages.json" \
           LINEAE_NATIVE_TEXT_PAGE="$LINEAE_NATIVE_EVIDENCE_DIR/native-text-pages.json" \

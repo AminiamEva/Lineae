@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {nativeAttachedSnapshot,nativeProjectSnapshot} from '../apps/web/src/typesetting/rtex/project-snapshot.mjs';
-import {rasterContains,registeredRasterHits,stagedRaster,stagedRasterPath} from '../apps/web/src/typesetting/rtex/raster-assets.mjs';
+import {matchingRasterHit,rasterContains,registeredRasterHits,stagedRaster,stagedRasterPath} from '../apps/web/src/typesetting/rtex/raster-assets.mjs';
 import {nativeFontFace} from '../apps/web/src/typesetting/rtex/font-collection.mjs';
 import {matchObservedDrawingFonts,sameCachedDrawingItems} from '../apps/web/src/typesetting/rtex/cached-drawings.mjs';
 import {projectMixedSnapshot,textEdit} from '../apps/web/src/editor/native-text/projection.mjs';
@@ -302,4 +302,13 @@ test('rejects membership changes while reading instead of sending a partial proj
     return read(path);
   };
   await assert.rejects(nativeProjectSnapshot(project), /Project changed/);
+});
+test('repeated images match the measured page box after the paint transformation',()=>{
+  const display={images_info:{1:{file:'plot.png'}},other:[
+    ['i',1,10,10,10,10],['M','save'],['M','set',50,60,'2 0 0 2'],['i',1,50,50,10,10],['M','restore'],
+  ]};
+  const hits=registeredRasterHits(display,()=>true);
+  assert.equal(matchingRasterHit(hits,'plot.png',[50,40,20,20]),hits[1]);
+  assert.equal(matchingRasterHit(hits,'plot.png',[50,50,10,10]),null);
+  assert.equal(matchingRasterHit([hits[1],hits[1]],'plot.png',[50,40,20,20]),null);
 });
