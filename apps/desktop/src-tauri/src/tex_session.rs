@@ -1392,6 +1392,21 @@ mod tests {
                 .any(|glyph| glyph["owner"] == owner && glyph["char"] == ch))
         });
         assert!(owned(41, 65) && owned(42, 108), "text glyph ownership must survive compilation");
+        if let Some(directory) = std::env::var_os("LINEAE_NATIVE_EVIDENCE_DIR") {
+            let directory = PathBuf::from(directory);
+            std::fs::create_dir_all(&directory).unwrap();
+            let raw = lock(&session.messages).events.iter().rev()
+                .filter(|event| event["event"] == "LayoutUpdate")
+                .filter_map(|event| event["pages_changed"].as_array())
+                .flatten()
+                .filter(|page| observed.iter().any(|item| item["page"] == page["page"]))
+                .cloned()
+                .collect::<Vec<_>>();
+            assert!(!raw.is_empty(), "raw pages must be available for prose evidence");
+            std::fs::write(directory.join("native-text-pages.json"), serde_json::to_vec(&json!({
+                "raw":raw, "observed":observed, "projection":projection, "source":source,
+            })).unwrap()).unwrap();
+        }
         session.terminate();
     }
 

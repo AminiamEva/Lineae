@@ -137,7 +137,9 @@ jobs:
           cargo test --locked --manifest-path apps/desktop/src-tauri/Cargo.toml --lib \
             tex_session::tests::real_native -- --ignored --test-threads=1
           LINEAE_NATIVE_PDF="$LINEAE_NATIVE_EVIDENCE_DIR/native-lua-project.pdf" \
-          LINEAE_NATIVE_PAGE="$LINEAE_NATIVE_EVIDENCE_DIR/native-formula-pages.json" node tests/native-tex-preview-browser.cjs
+          LINEAE_NATIVE_PAGE="$LINEAE_NATIVE_EVIDENCE_DIR/native-formula-pages.json" \
+          LINEAE_NATIVE_TEXT_PAGE="$LINEAE_NATIVE_EVIDENCE_DIR/native-text-pages.json" \
+          node tests/native-tex-preview-browser.cjs
       - name: Preserve actual protocol, source, logs and clean reference PDF
         if: always()
         uses: actions/upload-artifact@v4

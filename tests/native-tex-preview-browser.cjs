@@ -482,6 +482,37 @@ const server=createServer(async(req,res)=>{
       await page.waitForFunction(expected=>nativeProbe.source?.replace(/\r\n/g,'\n')===expected,expected.replace(/\r\n/g,'\n'));
       console.log('PASS production Canvas hit using real LuaLaTeX page geometry, recorded fonts and exact source patch');
     }
+    if(process.env.LINEAE_NATIVE_TEXT_PAGE){
+      const evidence=JSON.parse(await readFile(process.env.LINEAE_NATIVE_TEXT_PAGE,'utf8'));
+      await page.close();
+      page=await browser.newPage({locale:'en-US',viewport:{width:1600,height:1100}});
+      await page.addInitScript(installMockNativeTex);
+      await page.goto('http://127.0.0.1:'+server.address().port,{waitUntil:'networkidle'});
+      await page.evaluate(evidence=>{
+        const p=window.nativeProbe,originalLayout=p.layout;
+        p.realEvidence=evidence;
+        p.layout=()=>({...originalLayout(),pages_changed:evidence.raw,pages_total:evidence.raw.length});
+      },evidence);
+      await page.locator('input#file').setInputFiles({name:'prose-evidence.tex',mimeType:'text/plain',
+        buffer:Buffer.from(evidence.source)});
+      await page.waitForFunction(()=>document.querySelector('.cm-content')?.textContent.includes('Alpha beta.'));
+      await page.locator('#native-tex-toggle').click();
+      await page.waitForFunction(()=>document.querySelector('#native-tex-preview').dataset.state==='current');
+      await page.locator('#native-tex-target').click();
+      await panel.getByText('Click text on the native page',{exact:false}).waitFor();
+      await page.locator('#native-tex-edit').click();
+      const nativePage=evidence.observed.find(page=>page.dl.math_owners?.glyphs?.some(glyph=>glyph.owner===41));
+      const glyph=nativePage.dl.math_owners.glyphs.find(glyph=>glyph.owner===41);
+      const nativeScale=.75*(96/72)/65781.76;
+      await page.locator(`[data-native-page="${nativePage.page}"] canvas`).click({position:{
+        x:glyph.bbox[0]*nativeScale,y:((glyph.bbox[1]+glyph.bbox[3])/2)*nativeScale,
+      }});
+      await page.waitForFunction(()=>document.activeElement?.id==='native-tex-input');
+      await page.keyboard.type('X');
+      await page.waitForFunction(()=>nativeProbe.source?.includes('XAlpha beta.'),
+        'Real text geometry edit writes the recorded prose source');
+      console.log('PASS real LuaLaTeX prose glyph hit, caret and exact source patch');
+    }
     console.log('PASS native preview transport/UI: explicit startup, Canvas resources, retained editor/history, sync, export revision and cancellation (not engine evidence)');
   }catch(error){
     let diagnostic='page unavailable';
