@@ -447,14 +447,24 @@ function patchBlock(block,nodes) {
       const a=spelling.map[spelling.start+from],b=spelling.map[spelling.start+to];if(!Number.isInteger(a)||!Number.isInteger(b))return null;
       return [{from:block.from+a,to:block.from+b,insert:old.slice(from,patch.from)+patch.insert+old.slice(patch.to,to)}];
     }
-    const [leading,trailing] = block.emptyPrefix!==undefined&&!block.raw.trim()?[block.emptyPrefix,block.emptySuffix??'']:blockWhitespace(block.raw);
+    let [leading,trailing] = block.emptyPrefix!==undefined&&!block.raw.trim()?[block.emptyPrefix,block.emptySuffix??'']:blockWhitespace(block.raw);
     const body = nodes.map(serialize).join('').trim();
     // Prove the new block also round-trips through the existing importer.
     const parsed = parseDocument('\\begin{document}\n' + body + '\n\\end{document}\n');
     if (!parsed || parsed.blocks.flatMap(importBlocks).map(serialize).join('').trim() !== body) return null;
     const originalBody=block.spelling&&body.startsWith(block.spelling.canonical)
       ? block.spelling.original+body.slice(block.spelling.canonical.length) : body;
-    const next = leading + originalBody + trailing;
+    // The rich paragraph may have spaces typed before the next word arrives.
+    // Preserve them separately from source trivia after the paragraph.
+    let typedSpaces='';
+    const [previous]=JSON.parse(block.snapshot);
+    if(block.count===1&&nodes.length===1&&previous?.type==='paragraph'&&nodes[0].type==='paragraph'){
+      const previousBody=serialize(previous).slice(0,-2);
+      const previousSpaces=previousBody.match(/[ \t]+$/)?.[0]??'';
+      if(previousSpaces&&trailing.startsWith(previousSpaces))trailing=trailing.slice(previousSpaces.length);
+      if(body)typedSpaces=serialize(nodes[0]).slice(0,-2).match(/[ \t]+$/)?.[0]??'';
+    }
+    const next = leading + originalBody + typedSpaces + trailing;
     return minimalChange(block.raw,next,block.from);
 }
 

@@ -72,6 +72,22 @@ test('editing an empty parent slot before or between inputs creates source parag
   assert.equal(changes.get('1'),'A.\n');assert.equal(changes.get('2'),'B.\n');
 });
 
+test('rapid parent continuation preserves typed spaces separately from existing source whitespace',()=>{
+  const root='\\begin{document}\r\n\\input{child}\r\n\r\nParen  \r\n\\end{document}\r\n';
+  const project=fixture([['main.tex',root],['child.tex','Child.\r\n']]);
+  const session=new ProjectDocumentSession(),initial=session.compose(project,'0');
+  const document=structuredClone({content:initial.content});
+  session.hydrate(initial,document);
+  const text=document.content.at(-1).content[0].content[0];
+  text.text='Parent ';
+  const draft=root.replace('Paren  ','Parent   ');
+  assert.equal(session.changes(document)?.get('0'),draft);
+  project.file('0').draft=draft;
+  assert.ok(session.rebase(session.compose(project,'0',{boundariesOnly:true}),document));
+  text.text='Parent continuation.';
+  assert.equal(session.changes(document)?.get('0'),root.replace('Paren','Parent continuation.'));
+});
+
 test('rebasing project regions keeps an earlier formula edit during a later native paragraph split',()=>{
   const root='\\begin{document}\n\\input{child}\n\\end{document}\n';
   const child='AlphaBeta\n\n\\[\\frac{z}{}\\]\n';

@@ -1633,7 +1633,14 @@ const server=createServer(async(req,res)=>{
       await canvas.click({position:{x:6550000*scale,y:9250000*scale}});
       await page.keyboard.press(mod+'+Alt+j');
       await panel.getByText('Continue editing main.tex',{exact:true}).waitFor();
-      await page.keyboard.type('Parent continuation.');
+      await page.evaluate(()=>{nativeProbe.releaseUpdate=null;nativeProbe.holdUpdate=true;});
+      await page.keyboard.type('P');
+      await page.waitForFunction(()=>typeof nativeProbe.releaseUpdate==='function');
+      await page.keyboard.type('arent ');
+      await page.evaluate(()=>nativeProbe.releaseUpdate());
+      const pendingSpace=endingWithInput.replace('\\end{document}','Parent \n\\end{document}');
+      await page.waitForFunction(expected=>nativeProbe.source===expected,pendingSpace);
+      await page.keyboard.type('continuation.');
       const continued=endingWithInput.replace('\\end{document}','Parent continuation.\n\\end{document}');
       await page.waitForFunction(expected=>nativeProbe.source===expected,continued);
       await page.locator('#native-tex-close').click();
