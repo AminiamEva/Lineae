@@ -112,7 +112,9 @@ WebView checks. Linux exercises the directory-handle tests shared with macOS.
 The actual folder picker and physical Linux IME still need device checks.
 
 For physical input review, the workflow's optional `desktop_input_probe`
-retains the unbundled debug executables from the same commit. Launch an
+retains the unbundled debug executables from the same commit. The three-platform
+[full software run](https://github.com/AminiamEva/Lineae/actions/runs/45678406254)
+includes these executables and the recorded LuaLaTeX geometry. Launch an
 executable with `--lineae-native-workspace` on the device under test. This
 opens the engine-off workspace with the normal TeX trust dialog. The
 `--lineae-native-workspace-smoke` argument is for the automated check that
