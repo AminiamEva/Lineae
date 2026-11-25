@@ -1,6 +1,20 @@
+const workspacePreference='lineae.native-document-workspace';
+
+export function nativeWorkspacePreference() {
+  if(!window.__TAURI__?.core?.invoke)return null;
+  try{return window.localStorage.getItem(workspacePreference)==='1';}
+  catch{return null;}
+}
+
+export function saveNativeWorkspacePreference(enabled) {
+  if(enabled===nativeWorkspacePreference())return;
+  window.localStorage.setItem(workspacePreference,enabled?'1':'0');
+}
+
 export function nativeWorkspaceRequested() {
-  return Boolean(window.__TAURI__?.core?.invoke)&&
-    new URLSearchParams(location.search).get('native-workspace')==='1';
+  if(!window.__TAURI__?.core?.invoke)return false;
+  const requested=new URLSearchParams(location.search).get('native-workspace');
+  return requested===null?nativeWorkspacePreference()===true:requested==='1';
 }
 
 export function nativeOnlyAcceptance() {

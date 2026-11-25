@@ -454,6 +454,15 @@ const server=createServer(async(req,res)=>{
       await page.keyboard.type('Parent continuation.');
       const continued=endingWithInput.replace('\\end{document}','Parent continuation.\n\\end{document}');
       await page.waitForFunction(expected=>nativeProbe.source===expected,continued);
+      await page.locator('#native-tex-close').click();
+      await page.locator('#settings-open').click();
+      await page.locator('[data-native-workspace-preference]').check();
+      await page.locator('#settings-apply').click();
+      assert.equal(await page.locator('#settings-panel').isVisible(),true);
+      await page.goto('http://127.0.0.1:'+server.address().port+'/',{waitUntil:'networkidle'});
+      await page.getByRole('button',{name:'Native document',exact:true}).waitFor();
+      assert.equal(await page.evaluate(()=>customElements.get('math-field')),undefined);
+      assert.equal(await page.locator('.document-sheets').count(),0);
       assert.deepEqual(errors,[]);
       console.log('PASS native mixed editing with MathLive and JS pagination disabled');
       return;
