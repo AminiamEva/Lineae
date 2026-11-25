@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {nativeAttachedSnapshot,nativeProjectSnapshot} from '../apps/web/src/typesetting/rtex/project-snapshot.mjs';
 import {rasterContains,registeredRasterHits,stagedRaster,stagedRasterPath} from '../apps/web/src/typesetting/rtex/raster-assets.mjs';
 import {nativeFontFace} from '../apps/web/src/typesetting/rtex/font-collection.mjs';
+import {sameCachedDrawingItems} from '../apps/web/src/typesetting/rtex/cached-drawings.mjs';
 import {projectMixedSnapshot,textEdit} from '../apps/web/src/editor/native-text/projection.mjs';
 
 test('native raster commands can only resolve staged PNG and JPEG assets',()=>{
@@ -42,6 +43,16 @@ test('registered PDF raster hits retain scoped page-space transforms',()=>{
   assert.deepEqual(plain,hit);
   assert.deepEqual(registeredRasterHits({...display,other:[['M','matrix',0,0,'0 1 -1 0'],...display.other]},load),[]);
   assert.deepEqual(registeredRasterHits({...display,other:[['M','save'],...display.other]},load),[]);
+});
+
+test('observed PDF drawing ownership keeps the original cached box and all neighboring operators',()=>{
+  const original=[['u','cached_picture','1 100 200 30 40'],['r',100,245,40,1]];
+  const observed=[['l',0,'data'],['l',0,'data'],['r',100,245,40,1]];
+  const drawing={box:[100,200,30,40]};
+  assert.equal(sameCachedDrawingItems(original,observed,[drawing]),true);
+  assert.equal(sameCachedDrawingItems(original,observed,[]),false);
+  assert.equal(sameCachedDrawingItems(original,observed,[drawing,drawing]),false);
+  assert.equal(sameCachedDrawingItems(original,[...observed.slice(0,2),['r',100,246,40,1]],[drawing]),false);
 });
 
 test('native font extraction follows LuaTeX face numbers and rejects malformed offsets',()=>{

@@ -5,6 +5,7 @@ import {fontKey} from './upstream/src/fontKey.ts';
 import {parseMapFile,parseEncFile,type1Outlines} from './upstream/src/type1.ts';
 import {hitMathField,hitMathGlyph} from '../../editor/native-math/hit.mjs';
 import {warmRows} from './warm-rows.mjs';
+import {cachedDrawingBox,sameCachedDrawingItems} from './cached-drawings.mjs';
 
 const CSS_PER_SP=(96/72)/65781.76;
 
@@ -22,10 +23,10 @@ export function installNativePages({host,getFont,getTypeOneFont,getRaster,onPain
   let foldedRanges=[],foldMasks=[],hiddenPages=[];
   let complete=null,warm=null;
   let pdfBacked=false;
-  function drawing(dl) {
+  function drawing(dl,includeItems=true) {
     const resources=Object.entries(dl.images_info??{}).map(([key,info])=>
       [key,{...info,file:stagedRasterPath(info.file)??info.file}]);
-    const paintable=items=>items.filter(item=>item[0]!=='m');
+    const paintable=items=>includeItems?items.filter(item=>item[0]!=='m'):[];
     return JSON.stringify([dl.page_width,dl.page_height,dl.fonts,paintable(dl.other),resources,
       dl.lines.map(line=>[line.x,line.y,line.w,line.h,line.d,paintable(line.items)])]);
   }
@@ -45,7 +46,7 @@ export function installNativePages({host,getFont,getTypeOneFont,getRaster,onPain
     };
     for(const page of observed) {
       const entry=pages.get(page.page);
-      if(!entry||page.exact!==entry.exact||drawing(entry.dl)!==drawing(page.dl))return false;
+      if(!entry||page.exact!==entry.exact)return false;
       const targets=page.dl.math_owners?.fields?.filter(field=>{
         if(!field.empty)return false;
         const owner=owners.get(field.owner);
@@ -101,8 +102,22 @@ export function installNativePages({host,getFont,getTypeOneFont,getRaster,onPain
       const [left,y]=top.bbox,[right,edge]=bottom.bbox;
       if(right>left&&edge>y)drawings.push({drawing,number:top.number,box:[left,y,right-left,edge-y]});
     }
-    if(!drawings.length&&![...fields.values(),...glyphs.values()].some(items=>items.length))return false;
-    ownership={stamp:{...stamp,layoutVersion},fields,glyphs,selectionGlyphs,owners,drawings};
+    const verifiedDrawings=[];
+    for(const page of observed){
+      const raw=pages.get(page.page).dl,measured=page.dl;
+      const originalItems=[raw.other,...raw.lines.map(line=>line.items)];
+      const measuredItems=[measured.other,...measured.lines.map(line=>line.items)];
+      const boxes=originalItems.flat().map(cachedDrawingBox).filter(Boolean);
+      const matched=drawings.filter(candidate=>candidate.number===page.page&&
+        boxes.filter(box=>box.every((value,axis)=>value===candidate.box[axis])).length===1);
+      if(drawing(raw)!==drawing(measured)){
+        if(!pdfBacked||page.exact||!matched.length||drawing(raw,false)!==drawing(measured,false)||
+           originalItems.some((items,index)=>!sameCachedDrawingItems(items,measuredItems[index],matched)))return false;
+      }
+      verifiedDrawings.push(...matched);
+    }
+    if(!verifiedDrawings.length&&![...fields.values(),...glyphs.values()].some(items=>items.length))return false;
+    ownership={stamp:{...stamp,layoutVersion},fields,glyphs,selectionGlyphs,owners,drawings:verifiedDrawings};
     return true;
   }
   function locate(canvas,event) {

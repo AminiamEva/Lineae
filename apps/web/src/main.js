@@ -92,7 +92,7 @@ import { serialize, importBlocks, parseTableFloat, setSerializationClass } from 
 import {TblrSource} from './editor/tblr-extension.js';
 import {TabularxSource,syncTabularxWidths} from './editor/tabularx-extension.js';
 import { setHeadingBase } from '../latex/blocks.mjs';
-import { Editor, Node, Extension, Mark, mergeAttributes, wrappingInputRule } from '@tiptap/core';
+import { CommandManager, Editor, Node, Extension, Mark, mergeAttributes, wrappingInputRule } from '@tiptap/core';
 import StarterKit from '@tiptap/starter-kit';
 import CodeBlock from '@tiptap/extension-code-block';
 import Table from '@tiptap/extension-table';
@@ -2690,6 +2690,11 @@ const nativeSelectionCommands=new Set(['toggleBold','toggleItalic','toggleUnderl
   'toggleSuperscript','toggleSubscript','alignLeft','alignRight','alignCenter','toggleContextMarker','insertTable']);
 const nativeRangeCommands=new Set(['toggleBold','toggleItalic','toggleUnderline','toggleStrike','toggleCode',
   'toggleSuperscript','toggleSubscript']);
+const nativeTextStructures={
+  paragraph:['setParagraph'],section:['toggleHeading',{level:1,command:null}],
+  subsection:['toggleHeading',{level:2,command:null}],subsubsection:['toggleHeading',{level:3,command:null}],
+  toggleBulletList:['toggleBulletList'],toggleOrderedList:['toggleOrderedList'],toggleBlockquote:['toggleBlockquote'],
+};
 installKeybindings(window, {
   getBindings: () => config.bindings,
   nativeBindings,
@@ -2725,6 +2730,7 @@ installKeybindings(window, {
     if(context.nativeText&&scope==='editor'){
       if(command==='leaveFile')return nativeTexPreview.leaveFile();
       if(['insertDisplayMath','insertInlineMath','insertEquation'].includes(command))return shortcutActions.editor[command]();
+      if(Object.hasOwn(nativeTextStructures,command))return runNativeTextStructure(...nativeTextStructures[command]);
       return nativeSelectionCommands.has(command)&&nativeTexPreview.useTextSelection(nativeRangeCommands.has(command))&&
         shortcutActions.editor[command](context,event);
     }
@@ -2793,6 +2799,48 @@ function nativeProsePosition(paragraph,from,to){
   if(!composition&&source()!==paragraph.source)return null;
   const range=nativeEditorRange({doc:editor.state.doc,projection,composition,file,paragraph,from,to});
   return range?{range,project,composition,file}:null;
+}
+function runNativeTextStructure(command,...args){
+  const started=performance.now();
+  const verified=nativeTexPreview.verifiedTextRange?.();
+  if(!verified||!nativeTexPreview.useTextSelection())return false;
+  const [first,last]=verified,{paragraph}=first;
+  if(paragraph.tableCell||paragraph.container&&!['bulletList','orderedList','blockquote'].includes(paragraph.container.type))return false;
+  const target=nativeProsePosition(paragraph,first.local,last.local);
+  if(!target)return false;
+  const {state}=editor,tr=state.tr;
+  const chain=new CommandManager({editor}).createChain(tr);
+  if(!chain[command](...args).run()||!tr.docChanged)return false;
+  const {source,filePath}=paragraph,{composition,project,file}=target;
+  const fragment=projectFileKind==='tex';
+  let draft,from,to;
+  if(composition){
+    const updates=projectDocument.changes(tr.doc.toJSON());
+    draft=updates?.get(file.id);
+    if(!draft||draft===source)return false;
+    for(const [id,value] of updates)if(id!==file.id&&value!==project.file(id).draft)return false;
+    editor.view.dispatch(closeHistory(tr));
+    if(editor.state.doc===state.doc)return false;
+    ({from,to}=textPatch(source,draft)[0]);
+  }else {
+    const owner=projection?.blocks.find(block=>block.from<=paragraph.from16&&
+      block.to>=paragraph.from16+paragraph.text.length);
+    const changes=richSourceChanges(projection,tr.doc.toJSON());
+    if(!owner||changes?.length!==1)return false;
+    const [change]=changes;
+    if(change.from<owner.from||change.to>owner.to)return false;
+    draft=source.slice(0,change.from)+change.insert+source.slice(change.to);
+    const projected=sourceProjection(draft,tr.doc.toJSON(),{fragment});
+    if(!projected||!dispatchNativeParagraphChange(state,tr,source,draft,change,projected))return false;
+    ({from,to}=change);
+  }
+  const changeEnd=to+draft.length-source.length;
+  const projectedText=projectMixedDocument(draft,{fragment,filePath,splitIncludes:Boolean(composition)});
+  const candidates=projectedText?.paragraphs.filter(next=>next.text===paragraph.text&&
+    next.from16<=changeEnd&&next.from16+next.text.length>=from)??[];
+  if(candidates.length===1)nativeTexPreview.preserveSourceCaret({source:draft,path:filePath,
+    offset:candidates[0].from16+last.local},started,'text');
+  return true;
 }
 function nativeFormulaPosition(formula){
   if(!sourceView.hidden)return null;

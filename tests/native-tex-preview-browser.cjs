@@ -193,6 +193,20 @@ const server=createServer(async(req,res)=>{
       await page.waitForFunction(source=>nativeProbe.source===source,afterLeaving);
       await panel.getByText('Click prose on the native page',{exact:false}).waitFor();
       await canvas.click({position:{x:6550000*scale,y:9250000*scale}});
+      await page.keyboard.press(mod+'+Alt+1');
+      await page.waitForFunction(source=>nativeProbe.source===source,
+        afterLeaving.replace('XYZAlpha beta.','\\section{XYZAlpha beta.}'));
+      await page.keyboard.press(mod+'+z');
+      await page.waitForFunction(source=>nativeProbe.source===source,afterLeaving);
+      await panel.getByText('Click prose on the native page',{exact:false}).waitFor();
+      await canvas.click({position:{x:6550000*scale,y:9250000*scale}});
+      await page.keyboard.press(mod+'+Shift+7');
+      await page.waitForFunction(source=>nativeProbe.source===source,
+        afterLeaving.replace('XYZAlpha beta.','\\begin{enumerate}\n\\item XYZAlpha beta.\n\\end{enumerate}'));
+      await page.keyboard.press(mod+'+z');
+      await page.waitForFunction(source=>nativeProbe.source===source,afterLeaving);
+      await panel.getByText('Click prose on the native page',{exact:false}).waitFor();
+      await canvas.click({position:{x:6550000*scale,y:9250000*scale}});
       await page.keyboard.press(mod+'+Alt+f');
       await panel.getByText('Type a display formula',{exact:true}).waitFor();
       await page.keyboard.insertText('\\frac{n}{}');
