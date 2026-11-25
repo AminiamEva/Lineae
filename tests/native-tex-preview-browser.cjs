@@ -491,14 +491,17 @@ const server=createServer(async(req,res)=>{
       await page.close();
       page=await browser.newPage({locale:'en-US',viewport:{width:1600,height:1100}});
       await page.addInitScript(installMockNativeTex);
-      await page.goto('http://127.0.0.1:'+server.address().port,{waitUntil:'networkidle'});
+      await page.route('**/vendor/mathlive/**',route=>route.abort());
+      await page.goto('http://127.0.0.1:'+server.address().port+'/?native-only-acceptance=1',{waitUntil:'networkidle'});
+      assert.equal(await page.locator('.document-sheets').count(),0);
+      assert.equal(await page.evaluate(()=>Boolean(customElements.get('math-field'))),false);
       await page.evaluate(evidence=>{
         const p=window.nativeProbe,originalLayout=p.layout;
         p.realEvidence=evidence;
         p.layout=()=>({...originalLayout(),pages_changed:evidence.raw,pages_total:evidence.raw.length});
       },nativeEvidence);
       await page.locator('input#file').setInputFiles({name:'observed.tex',mimeType:'text/plain',buffer:input});
-      await page.waitForFunction(()=>document.querySelector('math-field')?.value.includes('\\frac{a}{}'));
+      await page.waitForFunction(()=>document.querySelector('.math-display')?.dataset.latex.includes('\\frac{a}{}'));
       await page.locator('#native-tex-toggle').click();
       await page.waitForFunction(()=>['current','error'].includes(document.querySelector('#native-tex-preview').dataset.state));
       const nativeState=await page.locator('#native-tex-preview').evaluate(node=>({
@@ -508,16 +511,14 @@ const server=createServer(async(req,res)=>{
       assert.equal(nativeState.state,'current',JSON.stringify(nativeState));
       await page.locator('#native-tex-target').click();
       await page.getByText('Click the empty numerator or denominator',{exact:false}).waitFor();
+      await page.locator('#native-tex-edit').click();
       const nativePage=nativeEvidence.observed.find(page=>page.dl.math_owners?.fields.some(field=>
         field.owner===nativeEvidence.targetOwner&&field.role==='den'&&field.empty));
       assert.ok(nativePage,'Real observed layout supplies an empty denominator');
       const field=nativePage.dl.math_owners.fields.find(field=>field.owner===nativeEvidence.targetOwner&&field.role==='den');
       const [x,y]=field.bbox,nativeScale=.75*(96/72)/65781.76;
       await page.locator(`[data-native-page="${nativePage.page}"] canvas`).click({position:{x:x*nativeScale,y:y*nativeScale}});
-      await page.waitForFunction(()=>{
-        const field=document.activeElement,math=field?._mathfield;
-        return field?.tagName==='MATH-FIELD'&&!math?.focusBlurInProgress&&math?.model.at(field.position)?.parentBranch==='below';
-      });
+      await page.waitForFunction(()=>document.activeElement?.id==='native-tex-input');
       await page.keyboard.type('b');
       await page.waitForFunction(expected=>nativeProbe.source?.replace(/\r\n/g,'\n')===expected,expected.replace(/\r\n/g,'\n'));
       console.log('PASS production Canvas hit using real LuaLaTeX page geometry, recorded fonts and exact source patch');
@@ -527,7 +528,10 @@ const server=createServer(async(req,res)=>{
       await page.close();
       page=await browser.newPage({locale:'en-US',viewport:{width:1600,height:1100}});
       await page.addInitScript(installMockNativeTex);
-      await page.goto('http://127.0.0.1:'+server.address().port,{waitUntil:'networkidle'});
+      await page.route('**/vendor/mathlive/**',route=>route.abort());
+      await page.goto('http://127.0.0.1:'+server.address().port+'/?native-only-acceptance=1',{waitUntil:'networkidle'});
+      assert.equal(await page.locator('.document-sheets').count(),0);
+      assert.equal(await page.evaluate(()=>Boolean(customElements.get('math-field'))),false);
       await page.evaluate(evidence=>{
         const p=window.nativeProbe,originalLayout=p.layout;
         p.realEvidence=evidence;
