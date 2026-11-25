@@ -3,8 +3,22 @@ import assert from 'node:assert/strict';
 import {importBlocks,serialize} from '../apps/web/src/editor/latex-codec.js';
 import {parseDocument} from '../apps/web/latex/document.mjs';
 import {sourceProjection,richSourceChanges,standaloneMathChanges} from '../apps/web/src/editor/source-sync.js';
+import {documentMetadata,writeDocumentMetadata} from '../apps/web/latex/document-metadata.mjs';
 const text=n=>(n.content??[]).map(c=>c.text??'').join('');
 const wrap=s=>'\\begin{document}\r\n'+s+'\n\\end{document}\r\n';
+
+test('title edits preserve preamble trivia and generate a single real maketitle',()=>{
+  const source='\\documentclass{article}\r\n% \\title{Comment}\r\n\\title  {Before {Nested}}\r\n'+
+    '\\begin{document}\r\n% \\maketitle\r\nBody.\r\n\\end{document}\r\n';
+  assert.equal(documentMetadata(parseDocument(source).start,'title').value,'Before {Nested}');
+  const title=writeDocumentMetadata(source,'title','Yield 50\\%');
+  assert.equal(title.draft,source.replace('Before {Nested}','Yield 50\\%')
+    .replace('\\begin{document}\r\n','\\begin{document}\r\n\\maketitle\r\n\r\n'));
+  assert.equal(source.slice(0,title.change.from)+title.change.insert+source.slice(title.change.to),title.draft);
+  const date=writeDocumentMetadata(title.draft,'date','');
+  assert.equal(date.addMaketitle,false);
+  assert.equal(documentMetadata(date.preamble,'date').value,'');
+});
 
 for(const [open,close] of [['\\[','\\]'],['$$','$$']]) {
   for(const eol of ['\n','\r\n'])test('formula edits retain display spelling '+open+' '+JSON.stringify(eol),()=>{

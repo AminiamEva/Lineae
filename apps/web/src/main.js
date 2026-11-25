@@ -1,6 +1,7 @@
 import {nativeEditorRange} from './editor/native-text/editor-range.mjs';
 import {projectMixedDocument,projectTextDocument} from './editor/native-text/projection.mjs';
 import {nativeMathCommandNames,projectMath} from './editor/native-math/source.mjs';
+import {documentMetadata,writeDocumentMetadata} from '../../latex/document-metadata.mjs';
 import {loadLegacyMath,nativeOnlyAcceptance,nativeWorkspaceRequested} from './editor/native-surface/acceptance-mode.mjs';
 import {AppendixStart,MatterStart,LayoutCommand} from './editor/appendix.js';
 import {Lipsum} from './editor/lipsum.js';
@@ -1222,8 +1223,13 @@ editor.on('update', ({transaction}) => {
     if(sourceView.value===importedSource)sourceView.applyChanges(paragraph.changes);
     importedSource=paragraph.draft;
     importedSnapshot=JSON.stringify(editor.getJSON());
+    const previousPreamble=documentParts.start;
     documentParts=parseDocument(importedSource,{fragment:projectFileKind==='tex'});
     projection=paragraph.projection;
+    if(documentParts.start!==previousPreamble){
+      renderMeta();
+      typesetPagination?.setMaketitle(/\\maketitle\b/.test(documentParts.blocks.join('\n')));
+    }
     return;
   }
   if(projectDocument.composition){
@@ -1469,19 +1475,25 @@ let documentGeneration=0;
 let importedSource=null;
 let importedSnapshot=null;
 function readMeta(key) {
-  const match=documentParts.start.match(new RegExp('\\\\'+key+'\\{([^{}]*)\\}'));
-  return match?match[1]:'';
+  return documentMetadata(documentParts.start,key)?.value??'';
 }
 function writeMeta(key,value) {
-  const escaped=serialize({type:'text',text:value});
-  const line='\\'+key+'{'+escaped+'}';
-  const pattern=new RegExp('\\\\'+key+'\\{([^{}]*)\\}');
-  const apply=text=>pattern.test(text)
-    ? text.replace(pattern,()=>line)
-    : text.replace(/\\begin\{document\}/,line+'\n\\begin{document}');
-  documentParts.start=apply(documentParts.start);
-  if(importedSource)importedSource=apply(importedSource);
-  renderMeta();
+  const escaped=key==='date'&&value==='\\today'?value:serialize({type:'text',text:value});
+  const before=sourceView.hidden?source():sourceView.value;
+  const edited=writeDocumentMetadata(before,key,escaped);
+  if(!edited||edited.draft===before){renderMeta();return;}
+  if(projectDocument.composition){
+    editIncludeSource(text=>text===before?edited.draft:text,projectDocument.composition.rootId);
+    return;
+  }
+  if(!sourceView.hidden){sourceView.applyChanges([edited.change]);sourceView.flush();return;}
+  const {state}=editor;
+  const tr=state.tr.setDocAttribute('layoutPreamble',edited.preamble);
+  if(edited.addMaketitle)tr.insert(0,editor.schema.nodes.layoutCommand.create({command:'\\maketitle'}));
+  const projected=sourceProjection(edited.draft,tr.doc.toJSON());
+  if(!projected||!dispatchNativeParagraphChange(state,tr,before,edited.draft,edited.change,projected)){
+    refuseStandaloneWriteback();renderMeta();
+  }
 }
 function persistCitationState() {
   const paths = projectDependencies(source()).filter(path => path.endsWith('.bib'));
@@ -1526,10 +1538,8 @@ function metaDisplay(raw){
 function renderMeta() {
   metaTitle.textContent=metaDisplay(readMeta('title'));
   metaAuthor.textContent=metaDisplay(readMeta('author'));
-  const hasDate=/\\date\s*\{/.test(documentParts.start);
-  const rawDate=readMeta('date');
-  const showDefault=!hasDate&&Boolean(readMeta('title'));
-  metaDateDisplay=hasDate?displayDate(rawDate):showDefault?todayText():'';
+  const date=documentMetadata(documentParts.start,'date');
+  metaDateDisplay=date?displayDate(date.value):readMeta('title')?todayText():'';
   metaDate.textContent=metaDateDisplay;
   metaDate.hidden=!metaDateDisplay;
   metaTitle.dataset.zhPlaceholder='标题';metaTitle.dataset.enPlaceholder='Title';metaTitle.dataset.placeholder=t('标题','Title');
@@ -1905,6 +1915,10 @@ const structureCommands = {
   author: async () => {
     const value=await askText(t('作者','Author'),readMeta('author'));
     if(value!==null)writeMeta('author',value);
+  },
+  date: async () => {
+    const value=await askText(t('日期','Date'),readMeta('date'));
+    if(value!==null)writeMeta('date',value);
   },
   textbf: () => editor.chain().focus().toggleBold().run(),
   textit: () => editor.chain().focus().toggleItalic().run(),
@@ -3659,14 +3673,9 @@ groupButton(referenceGroup,'short',async()=>{
   const value=await askText(t('短标题','Short title'),editor.getAttributes('heading').shortTitle??'');
   if(value!==null)editor.chain().focus().updateAttributes('heading',{shortTitle:value||null}).run();
 });
-groupButton(referenceGroup,'title',async()=>{
-  const value=await askText(t('标题','Title'),readMeta('title'));
-  if(value!==null)writeMeta('title',value);
-});
-groupButton(referenceGroup,'author',async()=>{
-  const value=await askText(t('作者','Author'),readMeta('author'));
-  if(value!==null)writeMeta('author',value);
-});
+groupButton(referenceGroup,'title',structureCommands.title);
+groupButton(referenceGroup,'author',structureCommands.author);
+groupButton(referenceGroup,'date',structureCommands.date);
 groupButton(mathGroup,'$',()=>insertMath());
 groupButton(mathGroup,'$$',()=>insertMath(true)).dataset.shortcut='editor.insertDisplayMath';
 groupButton(mathGroup,'equation',()=>insertEquation());
