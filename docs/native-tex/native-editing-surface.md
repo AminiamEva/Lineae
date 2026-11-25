@@ -108,8 +108,8 @@ GitHub-hosted WebView2 and WKWebView checks start the engine-off workspace and
 verify the embedded fonts, PDF worker and native session bridge. The workflow
 also runs on Ubuntu x64 with pinned rtex and a WebKitGTK smoke check under Xvfb.
 Browser regressions and real LuaLaTeX host tests run separately from these
-WebView checks. Native folder handles and physical Linux IME are outside the
-Ubuntu smoke check.
+WebView checks. Linux exercises the directory-handle tests shared with macOS.
+The actual folder picker and physical Linux IME still need device checks.
 
 For physical input review, the workflow's optional `desktop_input_probe`
 retains the unbundled debug executables from the same commit. Launch an

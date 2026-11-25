@@ -1,9 +1,9 @@
-//! macOS project capabilities. Wire this file as `project`, not as a second
+//! Unix project capabilities. Wire this file as `project`, not as a second
 //! project module. All ambient access ends at the native folder selection.
 //!
-//! macOS has no rename-by-verified-file-handle or mandatory Windows sharing
+//! These hosts have no rename-by-verified-file-handle or mandatory Windows sharing
 //! locks. `flock` serializes Lineae processes, not unrelated editors. Saves use
-//! RENAME_SWAP and retain the displaced inode; a late external change therefore
+//! atomic exchange and retain the displaced inode; a late external change therefore
 //! produces an explicit conflict with a recovery location, never lost bytes.
 //! Removal is an archival rename, never recursive unlink. Recovery material is
 //! deliberately not garbage-collected: deleting it safely needs a separate,
@@ -432,6 +432,8 @@ fn checkpoints(root: &Dir) -> Result<(HashMap<String, Checkpoint>, u64), String>
     for entry in root.entries().map_err(error)? {
         let name = entry.map_err(error)?.file_name().into_string()
             .map_err(|_| "Non-UTF-8 project path")?;
+        // Retain the original checkpoint name so a project can move between
+        // macOS and Linux without losing its checkpoint history.
         let (id, revision) = if let Some(tail) = name.strip_prefix(".lineae-macos-state-").and_then(|s| s.strip_suffix(".json")) {
             let (id, revision) = tail.rsplit_once('-').ok_or("Invalid checkpoint filename; retained")?;
             session(id)?;
@@ -602,7 +604,7 @@ mod tests {
     use super::*;
 
     fn fixture() -> (ProjectRoots, PathBuf) {
-        let path = std::env::temp_dir().join(format!("lineae-macos-原生 {}", nonce()));
+        let path = std::env::temp_dir().join(format!("lineae-unix-原生 {}", nonce()));
         std::fs::create_dir(&path).unwrap();
         let path = path.canonicalize().unwrap();
         let roots = ProjectRoots::default();

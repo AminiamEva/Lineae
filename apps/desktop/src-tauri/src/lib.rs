@@ -7,8 +7,8 @@ use tauri::{AppHandle, Manager, State, WebviewUrl, WebviewWindowBuilder};
 use tauri_plugin_dialog::DialogExt;
 #[cfg(target_os = "windows")]
 mod project;
-#[cfg(target_os = "macos")]
-#[path = "project_macos.rs"]
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+#[path = "project_unix.rs"]
 mod project;
 #[cfg(target_os = "windows")]
 mod project_checkpoints;
@@ -185,7 +185,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .manage(AllowedFiles::default())
         .manage(tex_session::NativeTexSessions::default());
-    #[cfg(any(target_os = "windows",target_os = "macos"))]
+    #[cfg(any(target_os = "windows", target_os = "macos", target_os = "linux"))]
     let builder = builder
         .manage(project::ProjectRoots::default())
         .invoke_handler(tauri::generate_handler![
@@ -206,7 +206,7 @@ pub fn run() {
             project::open_project,
             project::project_operation
         ]);
-    #[cfg(not(any(target_os = "windows",target_os = "macos")))]
+    #[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "linux")))]
     let builder = builder.invoke_handler(tauri::generate_handler![
         open_tex,
         pick_save_tex,
@@ -250,7 +250,7 @@ pub fn run() {
                 // zoom control is enabled, so the page would never receive the
                 // wheel events that drive the document zoom.
                 .zoom_hotkeys_enabled(true)
-                .initialization_script(if cfg!(any(target_os = "windows",target_os = "macos")) {
+                .initialization_script(if cfg!(any(target_os = "windows", target_os = "macos", target_os = "linux")) {
                     include_str!("bridge.js")
                 } else {
                     concat!(
