@@ -5,6 +5,7 @@ import {parseDocument} from '../../../latex/document.mjs';
 import {sourceStructure} from '../../../latex/source-structure.mjs';
 import {decodeProse,markedRuns} from './prose-runs.mjs';
 import {projectDocumentFormulas} from '../native-math/document.mjs';
+import {textPatch} from '../source-boundaries.mjs';
 
 const segmenter = new Intl.Segmenter('und', {granularity:'grapheme'});
 const unsupported = /[\\{}$%&#_^~]/;
@@ -12,7 +13,28 @@ const unsupported = /[\\{}$%&#_^~]/;
 // Prose text is tagged per grapheme with its own LuaTeX attribute. Only plain
 // runs are instrumented: TeX syntax, comments and math never receive a guessed
 // source range.
-function instrumentText(raw, firstOwner, attribute) {
+function reusableProseTags(previous,source,filePath){
+  const paragraphs=previous?.paragraphs?.filter(paragraph=>paragraph.filePath===filePath);
+  if(!paragraphs?.length)return undefined;
+  const [patch]=textPatch(paragraphs[0].source,source);
+  const tags=new Map();
+  for(const paragraph of paragraphs){
+    for(const glyph of paragraph.glyphs){
+      const from=paragraph.from16+glyph.from16,to=paragraph.from16+glyph.to16;
+      if(patch&&to>patch.from&&from<patch.to)continue;
+      const shift=patch&&to>patch.from?patch.insert.length-(patch.to-patch.from):0;
+      tags.set(`${from+shift}/${to+shift}`,glyph);
+    }
+  }
+  return (from,to,char)=>{
+    const key=`${from}/${to}`,glyph=tags.get(key);
+    if(glyph?.char!==char)return undefined;
+    tags.delete(key);
+    return glyph.tag;
+  };
+}
+
+function instrumentText(raw, firstOwner, attribute, from, reuse) {
   const {text,offsets}=decodeProse(raw);
   let next = firstOwner, local = 0, instrumented = '\\begingroup';
   const glyphs = [];
@@ -20,7 +42,7 @@ function instrumentText(raw, firstOwner, attribute) {
     const end=local+segment.length,from16=offsets?.[local]??local,to16=offsets?.[end]??end;
     const token=raw.slice(from16,to16);
     if (/^\s+$/u.test(segment)) { instrumented += token; local = end; continue; }
-    const tag = next++;
+    const tag = reuse?.(from+from16,from+to16,segment)??next++;
     instrumented += `\\attribute${attribute}=${tag} ${token}`;
     glyphs.push({tag, from16, to16, char:segment});
     local = end;
@@ -44,7 +66,7 @@ function proseBody(block,keepThrough) {
   return {leading,text};
 }
 
-function instrumentProse(block, source, blockFrom, firstOwner, attribute, filePath, keepThrough, formulas=[]) {
+function instrumentProse(block, source, blockFrom, firstOwner, attribute, filePath, keepThrough, reuse, formulas=[]) {
   const {leading,text,heading,headingEnd}=proseBody(block,keepThrough-blockFrom);
   const base=blockFrom+leading;
   const inline=new Map(formulas.map(formula=>[formula.outerFrom16-base,{formula,end:formula.outerTo16-base,latex:formula.math.source}]));
@@ -62,7 +84,7 @@ function instrumentProse(block, source, blockFrom, firstOwner, attribute, filePa
       cursor=part.to16;
       continue;
     }
-    const built=instrumentText(text.slice(part.from16,part.to16),nextTag,attribute);
+    const built=instrumentText(text.slice(part.from16,part.to16),nextTag,attribute,base+part.from16,reuse);
     nextTag=built.nextTag;
     projection+=text.slice(cursor,part.from16)+built.instrumented;
     cursor=part.to16;
@@ -77,7 +99,7 @@ function instrumentProse(block, source, blockFrom, firstOwner, attribute, filePa
     paragraphs:[paragraph],nextTag};
 }
 
-function instrumentTable(block, source, blockFrom, firstOwner, attribute, filePath, formulas=[]) {
+function instrumentTable(block, source, blockFrom, firstOwner, attribute, filePath, reuse, formulas=[]) {
   const cells=plainTableCells(block,{partial:true});
   if(!cells||!cells.length&&!formulas.length)return null;
   const replacements=formulas.map(formula=>({from:formula.from16-blockFrom,to:formula.to16-blockFrom,
@@ -88,9 +110,11 @@ function instrumentTable(block, source, blockFrom, firstOwner, attribute, filePa
     const {text,offset,row,column}=cell;
     // An empty inline math boundary has zero ink and reports an engine-owned point.
     // The visible page still comes from the uninstrumented source.
-    const built=text?instrumentText(text,nextTag,attribute):{
-      instrumented:`\\begingroup\\mathsurround=0pt\\attribute${attribute}=${nextTag} $ $\\endgroup`,
-      glyphs:[{tag:nextTag,from16:0,to16:0,char:''}],nextTag:nextTag+1,
+    const from=blockFrom+offset;
+    const emptyTag=text?null:reuse?.(from,from,'')??nextTag++;
+    const built=text?instrumentText(text,nextTag,attribute,from,reuse):{
+      instrumented:`\\begingroup\\mathsurround=0pt\\attribute${attribute}=${emptyTag} $ $\\endgroup`,
+      glyphs:[{tag:emptyTag,from16:0,to16:0,char:''}],nextTag,
     };
     nextTag=built.nextTag;
     replacements.push({from:offset,to:offset+text.length,insert:built.instrumented});
@@ -108,13 +132,13 @@ function instrumentTable(block, source, blockFrom, firstOwner, attribute, filePa
   return {projection:projection+block.slice(cursor),paragraphs,nextTag};
 }
 
-function instrumentContainer(block,source,blockFrom,firstOwner,attribute,filePath) {
+function instrumentContainer(block,source,blockFrom,firstOwner,attribute,filePath,reuse) {
   const parts=plainContainerParagraphs(block);
   if(!parts.length)return null;
   const paragraphs=[];
   let projection='',cursor=0,nextTag=firstOwner;
   for(const {from,text,container,path} of parts){
-    const built=instrumentText(text,nextTag,attribute);
+    const built=instrumentText(text,nextTag,attribute,blockFrom+from,reuse);
     projection+=block.slice(cursor,from)+built.instrumented;
     cursor=from+text.length;
     nextTag=built.nextTag;
@@ -125,26 +149,27 @@ function instrumentContainer(block,source,blockFrom,firstOwner,attribute,filePat
   return {projection:projection+block.slice(cursor),paragraphs,nextTag};
 }
 
-function instrumentTextBlock(block,source,from,next,attribute,filePath,keepThrough){
-  return instrumentTable(block,source,from,next,attribute,filePath)??
-    instrumentContainer(block,source,from,next,attribute,filePath)??
-    instrumentProse(block,source,from,next,attribute,filePath,keepThrough);
+function instrumentTextBlock(block,source,from,next,attribute,filePath,keepThrough,reuse){
+  return instrumentTable(block,source,from,next,attribute,filePath,reuse)??
+    instrumentContainer(block,source,from,next,attribute,filePath,reuse)??
+    instrumentProse(block,source,from,next,attribute,filePath,keepThrough,reuse);
 }
 
 // Prose-only documents: every plain paragraph becomes a native target.
-export function projectTextDocument(source, {firstOwner=1, attribute=65000, fragment=false, filePath,keepThrough=0}={}) {
+export function projectTextDocument(source, {firstOwner=1, attribute=65000, fragment=false, filePath,keepThrough=0,previous}={}) {
   const doc = parseDocument(source,{fragment});
   if (!doc) return null;
   const body = doc.blocks.join('');
   if (doc.start + body + doc.end !== source) return null;
-  let output = '', cursor = 0, next = firstOwner, bodyOffset = 0;
+  const reuse=reusableProseTags(previous,source,filePath);
+  let output = '', cursor = 0, next = Math.max(firstOwner,previous?.nextTag??1), bodyOffset = 0;
   const paragraphs = [], owners = new Map();
   for (const block of doc.blocks) {
     const blockStart = bodyOffset;
     bodyOffset += block.length;
     if (!block.trim()) continue;
     const blockFrom=doc.start.length+blockStart;
-    const result=instrumentTextBlock(block,source,blockFrom,next,attribute,filePath,keepThrough);
+    const result=instrumentTextBlock(block,source,blockFrom,next,attribute,filePath,keepThrough,reuse);
     if(!result)continue;
     output+=source.slice(cursor,blockFrom)+result.projection;
     cursor=blockFrom+block.length;
@@ -168,8 +193,10 @@ export function projectMixedDocument(source, {previous=[], attribute=65000, frag
   if (!doc) return null;
   const body = doc.blocks.join('');
   if (doc.start + body + doc.end !== source) return null;
-  const math = projectDocumentFormulas(source, {previous:previous?.formulas ?? [], firstTag:firstOwner, fragment, filePath});
-  if (!math) return projectTextDocument(source,{attribute,firstOwner,fragment,filePath,keepThrough});
+  const firstTag=Math.max(firstOwner,previous?.nextTag??1);
+  const math = projectDocumentFormulas(source, {previous:previous?.formulas ?? [],firstTag,fragment,filePath});
+  if (!math) return projectTextDocument(source,{attribute,firstOwner,fragment,filePath,keepThrough,previous});
+  const reuse=reusableProseTags(previous,source,filePath);
   const formulas = [...math.formulas].sort((left, right) => left.from16 - right.from16);
   const mathTokens = [...sourceStructure(body)].filter(token =>
     token.kind === 'inlineMath' || token.kind === 'displayMath');
@@ -187,10 +214,10 @@ export function projectMixedDocument(source, {previous=[], attribute=65000, frag
       return {...math, kind:'math', paragraphs:[]};
     }
     output += source.slice(cursor, from16);
-    const result=overlapping.length?(instrumentTable(block,source,from16,next,attribute,filePath,overlapping)??
+    const result=overlapping.length?(instrumentTable(block,source,from16,next,attribute,filePath,reuse,overlapping)??
       (overlapping.every(formula=>formula.kind==='inlineMath')&&
-        instrumentProse(block,source,from16,next,attribute,filePath,keepThrough,overlapping))):
-      instrumentTextBlock(block,source,from16,next,attribute,filePath,keepThrough);
+        instrumentProse(block,source,from16,next,attribute,filePath,keepThrough,reuse,overlapping))):
+      instrumentTextBlock(block,source,from16,next,attribute,filePath,keepThrough,reuse);
     if(result){
       output+=result.projection;
       cursor=to16;
@@ -218,7 +245,7 @@ export function projectMixedDocument(source, {previous=[], attribute=65000, frag
       for(const part of marked){
         const partIndex=parts.push(part)-1;
         if(part.kind==='break')continue;
-        const built=instrumentText(text.slice(part.from16,part.to16),next,attribute);
+        const built=instrumentText(text.slice(part.from16,part.to16),next,attribute,contentFrom+part.from16,reuse);
         next=built.nextTag;
         runs.push({...part,partIndex});
         for(const glyph of built.glyphs)

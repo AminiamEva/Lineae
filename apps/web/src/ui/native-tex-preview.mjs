@@ -821,7 +821,7 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
           sentSnapshot?.signature!==signature||wantedSnapshot?.signature!==signature||
           sentSource!==projection.source||wantedSource!==projection.source)return;
       if(!renderer.attachOwners(observed,stamp,projection.owners))throw new Error(t('标记版排版与当前页面不一致，未启用命中。','Projected geometry differs from the displayed page; targeting remains disabled.'));
-      if(kind!=='text')previousProjection=projection;
+      previousProjection=projection;
       observation={kind,projection,stamp,observed};
       if(nativeEditing){
         const expectedOffset=nativeDocument.surface.pendingOffset;

@@ -717,6 +717,21 @@ test('a native selection can remove complete display math between plain paragrap
   assert.equal(richSourceChanges(sourceProjection(protectedSource,document(protectedSource)),document(draft)),null);
 });
 
+test('changing a project paragraph leaves untouched native ownership and instrumented files stable',()=>{
+  const source='\\begin{document}\nFirst.\n\nUnchanged $x+y$.\n\\input{child}\n\\end{document}\n';
+  const files=[{path:'child.tex',bytes:new TextEncoder().encode('Other text.')}];
+  const initial=projectMixedSnapshot({source,mainFile:'main.tex',files});
+  const draft=source.replace('First.','文First.');
+  const next=projectMixedSnapshot({source:draft,mainFile:'main.tex',files},initial);
+  const [oldFirst,oldStable]=initial.paragraphs,[newFirst,newStable]=next.paragraphs;
+  assert.equal(newFirst.glyphs[0].char,'文');
+  assert.ok(newFirst.glyphs[0].tag>=initial.nextTag);
+  assert.deepEqual(newFirst.glyphs.slice(1).map(glyph=>glyph.tag),oldFirst.glyphs.map(glyph=>glyph.tag));
+  assert.deepEqual(newStable.glyphs.map(glyph=>glyph.tag),oldStable.glyphs.map(glyph=>glyph.tag));
+  assert.deepEqual(next.formulas[0].math.atoms.map(atom=>atom.tag),initial.formulas[0].math.atoms.map(atom=>atom.tag));
+  assert.deepEqual(next.files,initial.files);
+});
+
 test('native list prose path distinguishes duplicate text inside a nested item',()=>{
   const source='\\begin{document}\n\\begin{enumerate}\n\\item Same text.\n'+
     '\\begin{itemize}\n\\item Same text.\n\\end{itemize}\n\\item Same text.\n'+

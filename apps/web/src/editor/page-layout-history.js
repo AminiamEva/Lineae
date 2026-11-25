@@ -2,6 +2,8 @@ import {Extension} from '@tiptap/core';
 import {closeHistory} from '@tiptap/pm/history';
 import {parseDocument} from '../../latex/document.mjs';
 import {readPageSetup,writePageSetup} from '../../latex/geometry.mjs';
+import {textPatch} from './source-boundaries.mjs';
+export {textPatch};
 
 export function mergePageLayout(current, patch) {
   const updated = {...current,...patch,margins:{...current.margins,...patch.margins}};
@@ -11,15 +13,6 @@ export function mergePageLayout(current, patch) {
   const values = Object.values(updated.margins);
   updated.margin = values.every(value => value === values[0]) ? values[0] : 'custom';
   return updated;
-}
-export function textPatch(before, after) {
-  if (before === after) return [];
-  let from = 0;
-  let to = before.length;
-  let end = after.length;
-  while (from < to && from < end && before[from] === after[from]) from++;
-  while (to > from && end > from && before[to - 1] === after[end - 1]) { to--; end--; }
-  return [{from,to,insert:after.slice(from,end)}];
 }
 export function changePageLayout({editor,sourceView,current,preamble,patch}) {
   if (!sourceView.hidden) sourceView.flush();

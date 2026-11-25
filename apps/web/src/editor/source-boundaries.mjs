@@ -2,6 +2,16 @@ import {paragraphSpelling,mathSpelling} from './source-spelling.mjs';
 import {sourceStructure} from '../../latex/source-structure.mjs';
 import {serialize} from './latex-codec.js';
 
+export function textPatch(before, after) {
+  if (before === after) return [];
+  let from = 0;
+  let to = before.length;
+  let end = after.length;
+  while (from < to && from < end && before[from] === after[from]) from++;
+  while (to > from && end > from && before[to - 1] === after[end - 1]) { to--; end--; }
+  return [{from,to,insert:after.slice(from,end)}];
+}
+
 const empty = node => node.type === 'paragraph' && !node.content?.length && !serialize(node).trim();
 export function includeEmptyParagraphs(blocks,index,parsed,text,doc) {
   const tail = doc.content.slice(index);

@@ -251,6 +251,21 @@ impl Snapshot {
             && self.files.iter().filter(|(path, _)| path.as_str() != self.main_file.as_str())
                 .eq(other.files.iter().filter(|(path, _)| path.as_str() != other.main_file.as_str()))
     }
+
+    fn changed_tex_buffers(&self, other: &Self) -> Option<Vec<(String, String)>> {
+        if self.main_file != other.main_file || !self.files.keys().eq(other.files.keys()) {
+            return None;
+        }
+        let mut changes = Vec::new();
+        for ((path, before), (_, after)) in self.files.iter().zip(&other.files) {
+            if before == after { continue; }
+            if !path.to_ascii_lowercase().ends_with(".tex") { return None; }
+            let text = std::str::from_utf8(after).ok()?;
+            validate_source(text).ok()?;
+            changes.push((path.clone(), text.to_owned()));
+        }
+        Some(changes)
+    }
 }
 
 #[derive(Default)]
@@ -828,7 +843,22 @@ impl Session {
             }
             snapshot.main_file.clone()
         };
-        let reply = self.request(json!({"cmd": "set_document", "path": &main_file, "text": &source}), "set_document")?;
+        self.apply_tex_buffers(vec![(main_file, source)])
+    }
+
+    // Caller owns commands and has already validated every staged path and buffer.
+    fn apply_tex_buffers(&self, changes: Vec<(String, String)>) -> Result<NativeTexUpdate, NativeTexError> {
+        let mut update = None;
+        for (path, source) in changes {
+            update = Some(self.set_tex_buffer(path, source)?);
+        }
+        let update = update.ok_or_else(|| error("protocol", "No native TeX buffers to update."))?;
+        self.request(json!({"cmd": "request_layout"}), "request_layout")?;
+        Ok(update)
+    }
+
+    fn set_tex_buffer(&self, path: String, source: String) -> Result<NativeTexUpdate, NativeTexError> {
+        let reply = self.request(json!({"cmd": "set_document", "path": &path, "text": &source}), "set_document")?;
         let result = &reply["result"];
         let revision = integer(result, "source_revision")?;
         let edit_id = integer(result, "edit_id")?;
@@ -844,10 +874,7 @@ impl Session {
                 messages.layout_deadline.get_or_insert(Instant::now() + LAYOUT_TIMEOUT);
             }
         }
-        lock(&self.snapshot).files.insert(main_file, source.into_bytes());
-        // Always obtain a whole-page result: the checkpoint does not paint fast
-        // paragraph overlays. The event queue still contains all original frames.
-        self.request(json!({"cmd": "request_layout"}), "request_layout")?;
+        lock(&self.snapshot).files.insert(path, source.into_bytes());
         Ok(NativeTexUpdate { session_id: None, edit_id, source_revision: revision, routed })
     }
 
@@ -1017,12 +1044,14 @@ impl Session {
             snapshot
         };
         let previous = lock(&self.observer).clone();
-        let reusable = previous.filter(|active| {
-            active.check().is_ok() && lock(&active.snapshot).dependencies_equal(&snapshot)
+        let reusable = previous.and_then(|active| {
+            active.check().ok()?;
+            let changes = lock(&active.snapshot).changed_tex_buffers(&snapshot)?;
+            Some((active, changes))
         });
         let mut pages = lock(&self.observation_pages);
-        let (observer, starting) = if let Some(active) = reusable {
-            (active, false)
+        let (observer, changes) = if let Some((active, changes)) = reusable {
+            (active, Some(changes))
         } else {
             let observer = Self::create_snapshot(snapshot)?;
             let old = {
@@ -1032,13 +1061,16 @@ impl Session {
             };
             if let Some(old) = old { old.terminate(); }
             pages.clear();
-            (observer, true)
+            (observer, None)
         };
         let result: Result<Vec<Value>, NativeTexError> = (|| {
-            let target = if starting {
-                observer.start_with_owners(true)?.source_revision
-            } else {
-                observer.update(projection.to_owned())?.source_revision
+            let target = match changes {
+                Some(changes) if changes.is_empty() => observer.update(projection.to_owned())?.source_revision,
+                Some(changes) => {
+                    let _serial = lock(&observer.commands);
+                    observer.apply_tex_buffers(changes)?.source_revision
+                }
+                None => observer.start_with_owners(true)?.source_revision,
             };
             let deadline = Instant::now() + Duration::from_secs(30);
             let mut messages = lock(&observer.messages);
@@ -1129,7 +1161,7 @@ async fn blocking<T: Send + 'static>(work: impl FnOnce() -> Result<T, NativeTexE
 
 /// `files: Some` is a complete replacement dependency snapshot, not a patch.
 /// A changed dependency (including deletion/binary changes) starts a new engine
-/// session so no stale parsed files, aux state, or cached pictures survive.
+/// session so no stale parsed assets, aux state, or cached pictures survive.
 fn update_snapshot(
     manager: &Mutex<Manager>,
     session: Arc<Session>,
@@ -1152,7 +1184,20 @@ fn update_snapshot(
     if lock(&session.snapshot).dependencies_equal(&snapshot) {
         return session.set_source(source);
     }
-    let replacement = Session::create_snapshot(snapshot)?;
+    let buffers = lock(&session.snapshot).changed_tex_buffers(&snapshot);
+    let incremental_failure = match buffers.map(|changes| session.apply_tex_buffers(changes)) {
+        Some(Ok(update)) => return Ok(update),
+        Some(Err(problem)) => Some(problem),
+        None => None,
+    };
+    let replacement = Session::create_snapshot(snapshot).map_err(|problem| {
+        if let Some(incremental) = incremental_failure {
+            session.fail(incremental);
+            session.terminate();
+            return error("session_closed", format!("Cannot restage the native TeX update: {}", problem.message));
+        }
+        problem
+    })?;
     if let Some(sink) = lock(manager).events.clone() {
         replacement.set_events(sink);
     }
@@ -1579,6 +1624,24 @@ mod tests {
                 .as_array().is_some_and(|fields| fields.iter().any(|field| field["owner"] == owner && field["role"] == "den"))));
         }
         assert_eq!(std::fs::read_to_string(session.root.join("dependency.tex")).unwrap(), dependency);
+        let observer_id = lock(&session.observer).as_ref().unwrap().id.clone();
+        let child_draft = dependency.replace("first.", "first warm.");
+        let child_update = update_snapshot(&manager.0, session.clone(), source.into(),
+            Some(files(&child_draft)), None).expect("an included TeX edit must use the current native engine");
+        assert!(child_update.session_id.is_none());
+        assert!(child_update.source_revision > info.source_revision);
+        wait_layout(&session, child_update.source_revision);
+        assert_eq!(lock(&session.snapshot).files["dependency.tex"], child_draft.as_bytes());
+        assert_eq!(std::fs::read_to_string(session.root.join("dependency.tex")).unwrap(), dependency);
+        let observed_child = session.observe_formula(child_update.source_revision, &project_projection, vec![
+            NativeTexProjection {
+                path: "dependency.tex".into(),
+                source: child_draft.replace("\\frac{z}{}", "\\begingroup\\attribute65000=12 \\frac{z}{}\\endgroup"),
+            },
+        ]).expect("changed child geometry must come from the existing observer");
+        assert_eq!(lock(&session.observer).as_ref().unwrap().id, observer_id);
+        assert!(observed_child.iter().any(|page| page["dl"]["math_owners"]["fields"]
+            .as_array().is_some_and(|fields| fields.iter().any(|field| field["owner"] == 12))));
         let standalone = include_str!("../../../../tests/native-math/fixtures/empty-denominator.tex");
         let targeting = Session::create(standalone).unwrap();
         let target_info = targeting.start().unwrap();

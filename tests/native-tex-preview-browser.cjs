@@ -366,7 +366,7 @@ const server=createServer(async(req,res)=>{
       await page.locator('#native-tex-edit').click();
       await canvas.click({position:{x:6550000*scale,y:9250000*scale}});
       await page.keyboard.press(mod+'+a');
-      await page.keyboard.type('Replaced');
+      await page.keyboard.insertText('Replaced');
       await page.waitForFunction(expected=>nativeProbe.source===expected,acrossMath.replace(acrossMathBody,'Replaced'));
       await page.keyboard.press(mod+'+z');
       await page.waitForFunction(expected=>nativeProbe.source===expected,acrossMath);
