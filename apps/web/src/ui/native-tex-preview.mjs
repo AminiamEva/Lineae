@@ -198,8 +198,10 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
   }
   function replaceMixedSelection(action){
     const [first,last]=nativeDocument.surface.range;
-    if(!first||!last||first.kind===last.kind)return false;
-    const applied=commitMixedSelection?.(nativeDocument.proseRanges(first,last),action.insert??'');
+    if(!first||!last||first===last)return false;
+    const spans=nativeDocument.structuralRanges(first,last);
+    if(first.kind===last.kind&&!spans.some(span=>span.table))return false;
+    const applied=commitMixedSelection?.(spans,action.insert??'');
     if(!applied)return false;
     if(applied.offset!==null)return awaitSourcePosition(applied,action.started);
     renderer.clearCaret();
@@ -392,8 +394,9 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
     const [from,to]=nativeDocument.surface.range;
     if(!from||from===to)return null;
     if(from.kind==='text'||to.kind==='text'){
-      const ranges=nativeDocument.proseRanges(from,to);
-      return ranges.length?ranges.map(({paragraph,formula,from,to})=>formula?
+      const ranges=nativeDocument.structuralRanges(from,to);
+      return ranges.length?ranges.map(({paragraph,formula,table,from,to})=>table?
+        table.owner.source.slice(table.from16,table.to16):formula?
         formula.source.slice(formula.outerFrom16,formula.outerTo16):paragraph.parts.map(part=>{
         const start=Math.max(part.from16,from),end=Math.min(part.to16,to);
         if(end<=start)return '';

@@ -1281,6 +1281,32 @@ const server=createServer(async(req,res)=>{
       await projectDrafts(mixedProject,markedChild);
 
       await page.goto('http://127.0.0.1:'+server.address().port+'/?native-only-acceptance=1',{waitUntil:'networkidle'});
+      const projectTable='\\begin{tabular}{ll}\nA & B \\\\\nC & D\n\\end{tabular}';
+      const childWithTable='Child.\n\n'+projectTable+'\n';
+      const tableProject=projectMain.replace('\\[\\frac{a}{}\\]\n\n','');
+      await openMockProject(page,false,tableProject,childWithTable);
+      await page.evaluate(()=>{nativeProbe.targetInclude=true;nativeProbe.includeMainText=true;});
+      await page.locator('#native-tex-toggle').click();
+      await page.waitForFunction(()=>document.querySelector('#native-tex-preview').dataset.state==='current');
+      await page.locator('#native-tex-target').click();
+      await panel.getByText('Click prose on the native page',{exact:false}).waitFor();
+      await page.locator('#native-tex-edit').click();
+      const tableBounds=await canvas.boundingBox();
+      const tableRangeEnd='Child.ABCDBeforechapter.Af'.length;
+      await page.mouse.move(tableBounds.x+6550000*scale,tableBounds.y+9250000*scale);
+      await page.mouse.down();
+      await page.mouse.move(tableBounds.x+(6500000+tableRangeEnd*200000-50000)*scale,
+        tableBounds.y+9250000*scale,{steps:12});
+      await page.mouse.up();
+      await page.keyboard.press(mod+'+c');
+      assert.equal(await page.evaluate(()=>navigator.clipboard.readText()),'Child.\n\n'+projectTable+'\n\nAf');
+      await page.keyboard.insertText('Updated.');
+      const tableRemoved=tableProject.replace('After chapter.','ter chapter.');
+      await projectDrafts(tableRemoved,'Updated.\n\n\n');
+      await page.keyboard.press(mod+'+z');
+      await projectDrafts(tableProject,childWithTable);
+
+      await page.goto('http://127.0.0.1:'+server.address().port+'/?native-only-acceptance=1',{waitUntil:'networkidle'});
       const containerProject=mixedProject.replace('Before $z$ end.',
         '\\begin{center}\nBefore section.\n\\end{center}').replace('\\begin{document}',
         '\\usepackage{amsthm}\n\\begin{document}');

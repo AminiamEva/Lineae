@@ -3681,10 +3681,32 @@ function continueNativeTextEnvironment(caret,outermost,text){
   }
   return {source:draft,offset:from+line.length,path};
 }
-function editNativeMixedSelection(spans,insert){
-  if(spans.length<2||/[\r\n]/.test(insert)||!spans.some(span=>span.formula))return null;
+function nativeWholeTablePosition(table){
+  const {owner,from16,to16}=table;
+  const target=owner.parts?nativeProsePosition(owner,owner.runs[0]?.from16,owner.runs[0]?.from16):
+    nativeFormulaPosition(owner);
+  if(!target)return null;
   const {state}=editor;
-  const items=spans.map(({formula,paragraph,from,to})=>{
+  const current=state.doc.resolve(target.range?.from??target.position);
+  let depth=current.depth;
+  while(depth>0&&current.node(depth).type.name!=='table')depth--;
+  if(depth!==(target.composition?2:1))return null;
+  const node=current.node(depth),position=current.before(depth);
+  const raw=owner.source.slice(from16,to16);
+  const [parsed,...rest]=importBlocks(raw);
+  if(parsed?.type!=='table'||rest.length||!state.schema.nodeFromJSON(parsed).eq(node))return null;
+  return {...target,node,position};
+}
+function editNativeMixedSelection(spans,insert){
+  if(spans.length<2||/[\r\n]/.test(insert)||!spans.some(span=>span.formula||span.table))return null;
+  const {state}=editor;
+  const items=spans.map(({formula,paragraph,table,from,to})=>{
+    if(table){
+      const target=nativeWholeTablePosition(table);
+      const {owner,from16,to16}=table;
+      return target?{...target,path:owner.filePath,source:owner.source,occurrence:owner.occurrence,
+        left:from16,right:to16,begin:from16,end:to16}:null;
+    }
     if(formula){
       const target=nativeFormulaPosition(formula);
       if(target?.type!=='mathBlock')return null;
@@ -4622,6 +4644,13 @@ nativeTexPreview=installNativeTexPreview({host:footer,before:modes,primary:nativ
     const {state}=editor,project=projectExplorer?.model,composition=projectDocument.composition;
     if(!project||!composition||edits.length<2)return false;
     const mapped=edits.map(edit=>{
+      if(edit.table){
+        const target=nativeWholeTablePosition(edit.table);
+        if(!target?.file)return null;
+        const {position,node}=target;
+        return {...edit,...target,range:{from:position,to:position+node.nodeSize},
+          change:{from:edit.table.from16,to:edit.table.to16,insert:''}};
+      }
       if(edit.formula){
         const {formula,patch}=edit;
         const target=nativeFormulaPosition(formula);
@@ -4639,13 +4668,13 @@ nativeTexPreview=installNativeTexPreview({host:footer,before:modes,primary:nativ
     const first=mapped[0];
     const positions=mapped.map(edit=>state.doc.resolve(edit.range.from));
     if(positions.some((position,index)=>{
-      const {formula,paragraph,range}=mapped[index];
+      const {formula,paragraph,table,range}=mapped[index];
       if(!position.depth||position.node(1).type.name!=='projectRegion')return true;
-      if(!paragraph?.container)return position.depth!==(formula?1:2);
+      if(!paragraph?.container)return position.depth!==(formula||table?1:2);
       return position.depth<3||position.node(2).type.name!==paragraph.container.type||!range.match.sourceBlock;
     }))return false;
     const firstRegion=positions[0].index(0),lastRegion=positions.at(-1).index(0);
-    const leafPositions=mapped.map(({formula,range})=>formula?range.from:range.match.offset);
+    const leafPositions=mapped.map(({formula,table,range})=>formula||table?range.from:range.match.offset);
     const expectedNodes=[],containers=new Set(['projectRegion','theoremBlock','blockquote',
       'orderedList','bulletList','listItem','descriptionList','descriptionItem','multiColumn']);
     state.doc.nodesBetween(leafPositions[0],leafPositions.at(-1)+1,(node,position,parent,index)=>{
@@ -4680,7 +4709,7 @@ nativeTexPreview=installNativeTexPreview({host:footer,before:modes,primary:nativ
     const drafts=projectDocument.changes(tr.doc.toJSON());
     const expected=new Map([...patches].map(([id,changes])=>[id,changes.sort((a,b)=>b.from-a.from)
       .reduce((draft,change)=>draft.slice(0,change.from)+change.insert+draft.slice(change.to),project.file(id).draft)]));
-    if(mapped.some(edit=>edit.formula||edit.paragraph.container||edit.paragraph.heading))
+    if(mapped.some(edit=>edit.formula||edit.table||edit.paragraph.container||edit.paragraph.heading))
       return dispatchNativeProjectChange(state,tr,project,expected);
     if(!drafts||[...expected].some(([id,value])=>drafts.get(id)!==value))return false;
     for(const [id,draft] of drafts)if(draft!==(expected.get(id)??project.file(id).draft))return false;

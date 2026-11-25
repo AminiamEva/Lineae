@@ -386,6 +386,30 @@ test('native project selection follows include order and keeps complete display 
   assert.equal(edit.edits[2].source,source.replace('Main.','in.'));
 });
 
+test('native cross-file selection treats a complete table as one exact source range',()=>{
+  const source='\\begin{document}\n\\input{chapter}\n\nMain.\n\\end{document}\n';
+  const table='\\begin{tabular}{ll}\nA & B \\\\\nC & D\n\\end{tabular}';
+  const chapter='Child.\n\n'+table+'\n';
+  const projection=projectMixedSnapshot({source,mainFile:'main.tex',
+    files:[{path:'chapter.tex',bytes:new TextEncoder().encode(chapter)}]});
+  const session=createNativeDocumentSession(endpoint=>nativeTarget(projection,endpoint));
+  const child=projection.paragraphs.find(paragraph=>paragraph.text==='Child.');
+  const root=projection.paragraphs.find(paragraph=>paragraph.text==='Main.');
+  const targets=[child,...projection.paragraphs.filter(paragraph=>paragraph.tableCell),root].map(p=>p.glyphs[0].tag);
+  const regions=[{path:'chapter.tex',from:0,to:chapter.length},
+    {path:'main.tex',from:source.indexOf('Main.'),to:source.length}];
+  session.setObservation(page([],targets.map((tag,index)=>glyph(tag,100+index*40))),projection,false,regions);
+  const from=textTarget(projection,targets[0],false),to=textTarget(projection,targets.at(-1),true);
+  assert.equal(session.select(from,to),true);
+  const ranges=session.structuralRanges(from,to);
+  assert.equal(ranges.length,3);
+  assert.equal(chapter.slice(ranges[1].table.from16,ranges[1].table.to16),table);
+  const change=session.editAcrossFiles('Updated.');
+  assert.equal(change.edits.length,3);
+  assert.equal(change.source,'Updated.\n\n\n');
+  assert.equal(change.edits[2].source,source.replace('Main.','ain.'));
+});
+
 test('native vertical movement keeps the visual column and extends to another page',()=>{
   const projection=projectMixedDocument('\\begin{document}\nTop.\n\nBottom.\n\\end{document}\n');
   const top=projection.paragraphs[0].glyphs[0],bottom=projection.paragraphs[1].glyphs[0];

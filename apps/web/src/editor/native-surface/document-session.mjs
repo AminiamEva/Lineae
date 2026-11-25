@@ -32,7 +32,7 @@ export function createNativeDocumentSession(resolve) {
     if(from.kind===to.kind)return from.kind==='text'&&(sameTable(from,to)||!tableCellOf(from)&&!tableCellOf(to));
     const [prose,math]=from.kind==='text'?[from,to]:[to,from];
     const edges=displayEdges.get(math.formula);
-    if(!edges||tableCellOf(prose))return false;
+    if(!edges||tableCellOf(prose)||tableCellOf(math))return false;
     return math===(compare(math,prose)<0?edges[0]:edges[1]);
   }
   const selection=createSelectionModel(sameOwner,fileOf,canSelect);
@@ -199,20 +199,42 @@ export function createNativeDocumentSession(resolve) {
         paragraph:group,from:group===from.paragraph?from.local:0,to:group===to.paragraph?to.local:group.text.length,
       });
     },
+    structuralRanges(anchor,head){
+      const ranges=this.proseRanges(anchor,head);
+      if(tableCellOf(anchor)||tableCellOf(head))return ranges;
+      const seen=new Map();
+      return ranges.flatMap(range=>{
+        const owner=range.paragraph??range.formula;
+        const cell=owner.tableCell;
+        if(!cell)return [range];
+        const key=JSON.stringify([owner.filePath,owner.occurrence??0]);
+        if(!seen.has(key))seen.set(key,new Set());
+        const tables=seen.get(key);
+        if(tables.has(cell.from16))return [];
+        tables.add(cell.from16);
+        return [{table:{...cell,owner}}];
+      });
+    },
     editAcrossFiles(insert) {
       const [first,last]=selection.range;
       if(first?.kind!=='text'||last?.kind!=='text'||order(first)<0||order(last)<=order(first))return null;
-      const ranges=this.proseRanges(first,last);
+      const ranges=this.structuralRanges(first,last);
       const sources=new Map();
-      for(const {paragraph,formula} of ranges){
-        const owner=paragraph??formula;
+      for(const {paragraph,formula,table} of ranges){
+        const owner=paragraph??formula??table.owner;
         if(sources.has(owner.filePath)&&sources.get(owner.filePath)!==owner.occurrence)return null;
         sources.set(owner.filePath,owner.occurrence);
       }
       if(ranges.length<2||ranges.some(({paragraph},index)=>paragraph&&(paragraph.tableCell||
         paragraph.heading&&index>0&&index<ranges.length-1||
         paragraph.container&&!editableRangeContainers.has(paragraph.container.type))))return null;
-      const edits=ranges.map(({paragraph,formula,from,to},index)=>{
+      const edits=ranges.map(({paragraph,formula,table,from,to},index)=>{
+        if(table){
+          const {from16:start,to16:end,owner}=table;
+          if(!documentRegions.some(region=>region.path===owner.filePath&&
+            (region.occurrence??0)===(owner.occurrence??0)&&start>=region.from&&end<=region.to))return null;
+          return {table,source:owner.source.slice(0,start)+owner.source.slice(end),patch:{from:0,to:end-start,insert:''}};
+        }
         if(formula){
           const {outerFrom16:start,outerTo16:end,filePath,source}=formula;
           if(!documentRegions.some(region=>region.path===filePath&&start>=region.from&&end<=region.to))return null;
@@ -229,8 +251,8 @@ export function createNativeDocumentSession(resolve) {
       });
       if(edits.some(edit=>!edit))return null;
       const [start]=edits;
-      const updates=edits.flatMap(({paragraph,formula,patch})=>{
-        const owner=paragraph??formula,to=paragraph?.from16??formula.outerFrom16;
+      const updates=edits.flatMap(({paragraph,formula,table,patch})=>{
+        const owner=paragraph??formula??table.owner,to=paragraph?.from16??formula?.outerFrom16??table.from16;
         return owner.filePath===start.paragraph.filePath?[{offset:to,patch}]:[];
       }).sort((left,right)=>right.offset-left.offset);
       const source=updates.reduce((value,{offset,patch})=>value.slice(0,offset+patch.from)+
