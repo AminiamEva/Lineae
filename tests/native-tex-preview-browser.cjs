@@ -374,9 +374,17 @@ const server=createServer(async(req,res)=>{
       const blank='\\documentclass{article}\n\\begin{document}\n\n\\end{document}\n';
       await page.locator('input#file').setInputFiles({name:'empty-workspace.tex',mimeType:'text/plain',buffer:Buffer.from(blank)});
       await page.getByRole('button',{name:'Start typing',exact:true}).click();
-      await page.keyboard.type('First paragraph.');
-      await page.waitForFunction(()=>nativeProbe.source.includes('First paragraph.'));
+      await page.keyboard.type('AlphaBeta');
+      await page.waitForFunction(()=>nativeProbe.source.includes('AlphaBeta')&&
+        nativeProbe.calls.some(call=>call.command==='native_tex_observe_formula'&&call.args.sourceRevision===nativeProbe.revision));
       assert.equal(await page.evaluate(()=>document.querySelectorAll('.ProseMirror p').length),1);
+      const beforeBreak=await page.evaluate(()=>nativeProbe.source);
+      await page.keyboard.press('Home');
+      for(let index=0;index<5;index++)await page.keyboard.press('ArrowRight');
+      const split=beforeBreak.replace('AlphaBeta','Alpha\n\nBeta');
+      await page.keyboard.press('Enter');
+      await page.waitForFunction(expected=>nativeProbe.source.replace(/\r\n/g,'\n')===expected,split.replace(/\r\n/g,'\n'));
+      assert.deepEqual(await page.locator('.ProseMirror p').allTextContents(),['Alpha','Beta']);
       assert.deepEqual(errors,[]);
       console.log('PASS native mixed editing with MathLive and JS pagination disabled');
       return;

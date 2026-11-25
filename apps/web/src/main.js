@@ -2719,6 +2719,33 @@ nativeTexPreview=installNativeTexPreview({host:footer,before:modes,primary:nativ
     editor.view.dispatch(closeHistory(tr.setMeta('standaloneParagraph',prepared)));
     return editor.state.doc===state.doc?null:{source:prepared.draft,offset,path};
   },
+  commitParagraphBreak:(paragraph,from,to,text)=>{
+    if(paragraph.heading||paragraph.tableCell||paragraph.container||paragraph.parts.length!==1||
+       paragraph.parts[0].marks?.length||!from||/[\r\n]/.test(text))return null;
+    const target=nativeProsePosition(paragraph,from,to);
+    if(!target||target.project)return null;
+    const {range}=target,{state}=editor;
+    if(!text&&to===paragraph.text.length)return {awaitingText:true};
+    if(text&&!text.trim())return null;
+    const newline=paragraph.source.includes('\r\n')?'\r\n':'\n';
+    const raw=serialize({type:'text',text});
+    const insert=newline+newline+raw;
+    const change={from:paragraph.from16+from,to:paragraph.from16+to,insert};
+    const draft=paragraph.source.slice(0,change.from)+insert+paragraph.source.slice(change.to);
+    const tr=state.tr;
+    if(range.to>range.from)tr.delete(range.from,range.to);
+    tr.split(range.from,1,[{type:editor.schema.nodes.paragraph}]);
+    const next=range.from+2;
+    if(text)tr.insertText(text,next);
+    tr.setSelection(TextSelection.create(tr.doc,next+text.length));
+    const projected=sourceProjection(draft,tr.doc.toJSON());
+    const offset=change.from+insert.length;
+    if(!projected?.blocks.some(block=>block.index===tr.doc.resolve(next).index(0)&&
+       block.from<=offset&&block.to>=offset&&block.editable))return null;
+    tr.setMeta('standaloneParagraph',{draft,changes:[change],projection:projected});
+    editor.view.dispatch(closeHistory(tr));
+    return editor.state.doc===state.doc?null:{source:draft,offset,path:paragraph.filePath};
+  },
   focusMathSlot:async(anchor,head,isCurrent)=>{    const project=projectExplorer?.model;
     const formula=head.formula;
     if(anchor.formula.filePath!==formula.filePath)return;

@@ -11,7 +11,7 @@ import {nativeTarget} from '../editor/native-math/resolve.mjs';
 // Native LaTeX output is the primary page. The opt-in native input mode sends
 // supported keys, caret and IME through this surface into ProseMirror; the old
 // JS-formatted page and MathLive inputs stay available as the migration fallback.
-export function installNativeTexPreview({host,before,primary=false,isDocumentMode,getSource,getSnapshot,isComposing,focusMathSlot,focusImage,continuationRegion,selectionRegions,selectText,commitMath,commitText,commitProjectRange,canStartText,commitInitialText,history}) {
+export function installNativeTexPreview({host,before,primary=false,isDocumentMode,getSource,getSnapshot,isComposing,focusMathSlot,focusImage,continuationRegion,selectionRegions,selectText,commitMath,commitText,commitProjectRange,canStartText,commitInitialText,commitParagraphBreak,history}) {
   const invoke=window.__TAURI__?.core?.invoke;
   if(!invoke) return {refresh(){},documentChanged(){},relocalize(){}};
   const button=document.createElement('button');
@@ -61,6 +61,7 @@ export function installNativeTexPreview({host,before,primary=false,isDocumentMod
   let mirror=null;
   let primaryRequested=false;
   let initialTyping=false;
+  let paragraphBreak=null;
   let compositionField=null;
   const composing=()=>isComposing()||Boolean(compositionField?.isConnected);
   const nativeDocument=createNativeDocumentSession(endpoint=>{
@@ -140,6 +141,12 @@ export function installNativeTexPreview({host,before,primary=false,isDocumentMod
       return nativeDocument.editAcrossFiles(action.insert??'');
     return action.insert?surface.insert(action.insert):surface.erase(action.backward);
   }
+  function awaitTextPosition(edit,started){
+    pendingEdit={source:edit.source,paragraph:{filePath:edit.path}};
+    nativeDocument.expectInitialText(pendingEdit,edit.offset,edit.path);
+    pendingLatency={started,committed:performance.now()};
+    return true;
+  }
   function submitInput(action) {
     const {surface}=nativeDocument;
     if(!nativeEditing)return false;
@@ -154,10 +161,20 @@ export function installNativeTexPreview({host,before,primary=false,isDocumentMod
       const edit=commitInitialText?.(action.insert);
       if(!edit)return false;
       initialTyping=false;
-      pendingEdit={source:edit.source,paragraph:{filePath:edit.path}};
-      nativeDocument.expectInitialText(pendingEdit,edit.offset,edit.path);
-      pendingLatency={started:action.started,committed:performance.now()};
-      return true;
+      return awaitTextPosition(edit,action.started);
+    }
+    if(paragraphBreak){
+      if(!action.insert){
+        paragraphBreak=null;
+        paintSurfaceSelection();positionInput();
+        return true;
+      }
+      if(!current())return false;
+      const {paragraph,from,to}=paragraphBreak;
+      const edit=commitParagraphBreak?.(paragraph,from,to,action.insert);
+      if(!edit)return false;
+      paragraphBreak=null;
+      return awaitTextPosition(edit,action.started);
     }
     if(!surface.caret)return false;
     if(!current()||!observation)return false;
@@ -261,6 +278,7 @@ export function installNativeTexPreview({host,before,primary=false,isDocumentMod
     const mod = event.metaKey || event.ctrlKey;
     if (mod && event.key.toLowerCase() === 'z') {
       event.preventDefault();
+      if(paragraphBreak){submitInput({backward:true,started:performance.now()});return;}
       clearQueuedInput();
       surface.clearPending();
       history?.(event.shiftKey ? 'redo' : 'undo');
@@ -307,10 +325,22 @@ export function installNativeTexPreview({host,before,primary=false,isDocumentMod
       event.preventDefault();
       clearQueuedInput();
       initialTyping=false;
+      paragraphBreak=null;
       input.blur();
       return;
     }
-    if (event.key === 'Enter') event.preventDefault();
+    if(event.key==='Enter'){
+      event.preventDefault();
+      if(!current()||!observation||pendingEdit||paragraphBreak)return;
+      const [first,last]=surface.range;
+      if(first?.kind!=='text'||first.paragraph!==last.paragraph)return;
+      const edit=commitParagraphBreak?.(first.paragraph,first.local,last.local,'');
+      if(edit?.awaitingText){
+        paragraphBreak={paragraph:first.paragraph,from:first.local,to:last.local};
+        return;
+      }
+      if(edit)awaitTextPosition(edit,performance.now());
+    }
   });
   let unlisten=null;
   let eventsLive=false;
@@ -349,6 +379,7 @@ export function installNativeTexPreview({host,before,primary=false,isDocumentMod
       if(nativeEditing){
         if(pendingEdit)return false;
         if(!nativeDocument.select(anchor,head))return false;
+        paragraphBreak=null;
         inputStart=performance.now();
         paintSurfaceSelection(true);positionInput();input.focus({preventScroll:true});
         return true;
@@ -438,7 +469,7 @@ export function installNativeTexPreview({host,before,primary=false,isDocumentMod
     wantedSnapshot=null;sentSnapshot=null;wantedSource='';sentSource='';
     observation=null;targetStatus.textContent='';
     previousProjection=null;
-    nativeEditing=false;initialTyping=false;nativeDocument.reset();
+    nativeEditing=false;initialTyping=false;paragraphBreak=null;nativeDocument.reset();
     input.blur();input.value='';
     clearQueuedInput();
     pendingLatency=null;inputStart=0;latency.length=0;delete panel.dataset.latencySamples;
