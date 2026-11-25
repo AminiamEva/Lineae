@@ -24,7 +24,14 @@ export function includeEmptyParagraphs(blocks,index,parsed,text,doc) {
     return doc.content.length;
   }
   const owner = blocks.findLast(block => block.count > 0);
-  if (!owner?.editable&&!owner?.tableCells&&!owner?.tikz) return index;
+  if (!owner?.editable&&!owner?.tableCells&&!owner?.tikz) {
+    // The editor adds a typing paragraph after a terminal display or table.
+    // It owns no source bytes and must not make the preceding block editable.
+    if (!['mathBlock','table'].includes(doc.content[index-1]?.type)) return index;
+    const at=text.length-parsed.end.length;
+    blocks.push({from:at,to:at,index,count:tail.length,raw:'',editable:false,snapshot:JSON.stringify(tail)});
+    return doc.content.length;
+  }
   owner.count += tail.length;
   owner.snapshot = JSON.stringify(doc.content.slice(owner.index,owner.index + owner.count));
   return doc.content.length;

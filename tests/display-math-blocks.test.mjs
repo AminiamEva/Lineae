@@ -7,6 +7,19 @@ import {documentMetadata,writeDocumentMetadata} from '../apps/web/latex/document
 const text=n=>(n.content??[]).map(c=>c.text??'').join('');
 const wrap=s=>'\\begin{document}\r\n'+s+'\n\\end{document}\r\n';
 
+test('a terminal labelled equation has a separate, source-free typing paragraph',()=>{
+  const source=wrap('\\begin{equation}\n\\label{eq:keep}\n\\frac{a}{b}\n\\end{equation}');
+  const content=parseDocument(source).blocks.flatMap(raw=>importBlocks(raw));
+  content.push({type:'paragraph'});
+  const doc={type:'doc',content};
+  const projection=sourceProjection(source,doc);
+  assert.equal(projection.count,2);
+  assert.equal(projection.blocks[0].editable,false);
+  const {from,to,raw,index}=projection.blocks.at(-1);
+  assert.deepEqual({from,to,raw,index},{from:source.indexOf('\\end{document}'),to:from,raw:'',index:1});
+  assert.deepEqual(richSourceChanges(projection,doc),[]);
+});
+
 test('title edits preserve preamble trivia and generate a single real maketitle',()=>{
   const source='\\documentclass{article}\r\n% \\title{Comment}\r\n\\title  {Before {Nested}}\r\n'+
     '\\begin{document}\r\n% \\maketitle\r\nBody.\r\n\\end{document}\r\n';

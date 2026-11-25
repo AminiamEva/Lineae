@@ -53,7 +53,7 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
   }
   const pages=document.createElement('div');pages.className='native-tex-pages';
   const input=document.createElement('textarea');
-  input.id='native-tex-input';input.className='native-tex-input';input.rows=1;
+  input.id='native-tex-input';input.className='native-tex-input';input.rows=1;input.wrap='off';
   input.spellcheck=false;input.autocapitalize='off';input.autocomplete='off';
   input.setAttribute('aria-label',t('原生公式输入','Native formula input'));
   panel.append(heading,notice,controls,status,targetStatus,startText,pages);
@@ -359,9 +359,12 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
   function commitComposition(composition){
     if(composition.committed||!composition.text)return;
     composition.committed=true;
-    submitInput({insert:composition.text,started:inputStart||performance.now()});
+    submitInput({insert:composition.text,started:performance.now()});
   }
   input.addEventListener('compositionstart', () => {
+    inputStart=0;
+    positionInput();
+    input.scrollLeft=0;
     inputComposition={text:'',ended:false,committed:false};
     compositionField=input;
   });

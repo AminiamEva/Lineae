@@ -1250,6 +1250,23 @@ const server=createServer(async(req,res)=>{
     await panel.locator('[data-native-page="1"] canvas').click({position:{x:7510000*inlineScale,y:9250000*inlineScale}});
     await page.waitForFunction(()=>document.activeElement?.id==='native-tex-input');
     const inlineObservations=await page.evaluate(()=>nativeProbe.calls.filter(call=>call.command==='native_tex_observe_formula').length);
+    const inputAnchor=await page.locator('#native-tex-input').evaluate(input=>{
+      const anchor=()=>[input.style.left,input.style.top];
+      const before=anchor();
+      input.dispatchEvent(new CompositionEvent('compositionstart',{bubbles:true}));
+      input.value='z';
+      input.dispatchEvent(new InputEvent('input',{data:'z',inputType:'insertCompositionText',isComposing:true,bubbles:true}));
+      input.value='zh';
+      input.dispatchEvent(new InputEvent('input',{data:'zh',inputType:'insertCompositionText',isComposing:true,bubbles:true}));
+      const after=anchor();
+      input.dispatchEvent(new CompositionEvent('compositionend',{data:'',bubbles:true}));
+      return {before,after,wrap:input.wrap,scroll:input.scrollLeft};
+    });
+    assert.ok(inputAnchor.before.every(value=>value.endsWith('px')));
+    assert.deepEqual(inputAnchor.after,inputAnchor.before,'The IME anchor stays at the same prose boundary during preedit after inline math');
+    assert.equal(inputAnchor.wrap,'off');
+    assert.equal(inputAnchor.scroll,0);
+    assert.equal(await page.evaluate(()=>nativeProbe.source),inlineDoc.toString());
     await page.keyboard.type('Y');
     await page.waitForFunction(()=>nativeProbe.source?.includes('Alpha $x$ Ybeta.'),
       'A prose run beside inline math edits only its own source bytes');
