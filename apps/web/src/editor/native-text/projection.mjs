@@ -171,8 +171,33 @@ function instrumentTextBlock(block,source,from,next,attribute,filePath,keepThrou
     instrumentProse(block,source,from,next,attribute,filePath,keepThrough,reuse);
 }
 
+function includeSeparatedBlocks(doc){
+  const body=doc.blocks.join('');
+  const tokens=[...sourceStructure(body)];
+  if(tokens.some(token=>token.kind==='invalid'))return doc.blocks;
+  const boundaries=[];
+  for(const token of tokens){
+    if(!token.topLevel||!['\\input','\\include'].includes(token.value))continue;
+    const argument=/^[ \t]*\{[^{}\\%\r\n]+\}/.exec(body.slice(token.end));
+    if(argument)boundaries.push(token.index,token.end+argument[0].length);
+  }
+  let from=0,index=0;
+  return doc.blocks.flatMap(block=>{
+    const end=from+block.length,parts=[];
+    let start=from;
+    while(index<boundaries.length&&boundaries[index]<end){
+      const next=boundaries[index++];
+      if(next>start)parts.push(body.slice(start,next));
+      start=next;
+    }
+    parts.push(body.slice(start,end));
+    from=end;
+    return parts;
+  });
+}
+
 // Prose-only documents: every plain paragraph becomes a native target.
-export function projectTextDocument(source, {firstOwner=1, attribute=65000, fragment=false, filePath,keepThrough=0,previous}={}) {
+export function projectTextDocument(source, {firstOwner=1, attribute=65000, fragment=false, filePath,keepThrough=0,previous,splitIncludes=false}={}) {
   const doc = parseDocument(source,{fragment});
   if (!doc) return null;
   const body = doc.blocks.join('');
@@ -180,7 +205,7 @@ export function projectTextDocument(source, {firstOwner=1, attribute=65000, frag
   const reuse=reusableProseTags(previous,source,filePath);
   let output = '', cursor = 0, next = Math.max(firstOwner,previous?.nextTag??1), bodyOffset = 0;
   const paragraphs = [], owners = new Map();
-  for (const block of doc.blocks) {
+  for (const block of splitIncludes?includeSeparatedBlocks(doc):doc.blocks) {
     const blockStart = bodyOffset;
     bodyOffset += block.length;
     if (!block.trim()) continue;
@@ -204,21 +229,21 @@ export function projectTextDocument(source, {firstOwner=1, attribute=65000, frag
 // plain runs beside inline math are tagged individually. Runs never cross
 // math; a paragraph records the exact text/math child sequence so the editor
 // can map a run patch to one ProseMirror text node.
-export function projectMixedDocument(source, {previous=[], attribute=65000, fragment=false, firstOwner=1, filePath,keepThrough=0}={}) {
+export function projectMixedDocument(source, {previous=[], attribute=65000, fragment=false, firstOwner=1, filePath,keepThrough=0,splitIncludes=false}={}) {
   const doc = parseDocument(source,{fragment});
   if (!doc) return null;
   const body = doc.blocks.join('');
   if (doc.start + body + doc.end !== source) return null;
   const firstTag=Math.max(firstOwner,previous?.nextTag??1);
   const math = projectDocumentFormulas(source, {previous:previous?.formulas ?? [],firstTag,fragment,filePath});
-  if (!math) return projectTextDocument(source,{attribute,firstOwner,fragment,filePath,keepThrough,previous});
+  if (!math) return projectTextDocument(source,{attribute,firstOwner,fragment,filePath,keepThrough,previous,splitIncludes});
   const reuse=reusableProseTags(previous,source,filePath);
   const formulas = [...math.formulas].sort((left, right) => left.from16 - right.from16);
   const mathTokens = [...sourceStructure(body)].filter(token =>
     token.kind === 'inlineMath' || token.kind === 'displayMath');
   const owners = new Map(math.owners), paragraphs = [];
   let output='',cursor=0,next=math.nextTag,bodyOffset=0,firstFormula=0,firstToken=0;
-  for (const block of doc.blocks) {
+  for (const block of splitIncludes?includeSeparatedBlocks(doc):doc.blocks) {
     const blockStart = bodyOffset;
     const from16 = doc.start.length + bodyOffset;
     bodyOffset += block.length;
@@ -323,7 +348,7 @@ export function projectMixedSnapshot(snapshot, previous, pending) {
   let nextTag=previous?.nextTag??1;
   const owners=new Map(), formulas=[], paragraphs=[], files=[];
   function add(source,filePath,fragment) {
-    const projection=projectMixedDocument(source,{previous,firstOwner:nextTag,filePath,fragment,
+    const projection=projectMixedDocument(source,{previous,firstOwner:nextTag,filePath,fragment,splitIncludes:true,
       keepThrough:pending?.path===filePath?pending.offset:0});
     if(!projection)return null;
     nextTag=projection.nextTag;

@@ -7,6 +7,7 @@ const sameOwner=(left,right)=>Boolean(left&&right&&left.kind===right.kind&&
   (left.kind==='math'?sameFormula(left,right):sameParagraph(left,right)));
 const fileOf=stop=>(stop.formula??stop.paragraph).filePath;
 const tableCellOf=stop=>(stop?.paragraph??stop?.formula)?.tableCell;
+const overlapsLine=(left,right)=>left?.page===right.page&&left.top<right.bottom&&left.bottom>right.top;
 
 // Text and math contribute geometry and edit operations. The document session
 // owns one selection and one pending caret address for the visible revision.
@@ -87,14 +88,29 @@ export function createNativeDocumentSession(resolve) {
         if(!first||!last||first.page>last.page)continue;
         const previous=positions.findLast(([index])=>index<indices[0])?.[1].last;
         const following=positions.find(([index])=>index>indices.at(-1))?.[1].first;
-        if(previous?.page===first.page&&previous.bottom>=first.top||
-           following?.page===last.page&&following.top<=last.bottom)continue;
-        const from=previous?.page===first.page?(previous.bottom+first.top)/2:first.top;
-        const to=following?.page===last.page?(last.bottom+following.top)/2:last.bottom;
+        const firstShared=overlapsLine(previous,first),lastShared=overlapsLine(following,last);
+        function sharedLine(anchor){
+          const line=observedStops.filter(stop=>overlapsLine(stop,anchor));
+          const inside=line.filter(stop=>indices.includes(order(stop)));
+          if(!inside.length||inside.some(stop=>stop.kind!=='text'))return null;
+          const left=Math.min(...inside.map(stop=>stop.x)),right=Math.max(...inside.map(stop=>stop.x));
+          if(left>=right||line.some(stop=>!indices.includes(order(stop))&&stop.x>=left&&stop.x<=right))return null;
+          return {page:anchor.page,left,right,top:Math.min(...inside.map(stop=>stop.top)),
+            bottom:Math.max(...inside.map(stop=>stop.bottom))};
+        }
+        const startLine=firstShared?sharedLine(first):null;
+        const endLine=lastShared?sharedLine(last):null;
+        if(firstShared&&!startLine||lastShared&&!endLine)continue;
+        const sameLine=(firstShared||lastShared)&&overlapsLine(first,last);
+        const lineMasks=[startLine,endLine].filter(Boolean);
+        if(sameLine&&lineMasks.length>1)lineMasks.pop();
+        const from=startLine?.bottom??(previous?.page===first.page?(previous.bottom+first.top)/2:first.top);
+        const to=endLine?.top??(following?.page===last.page?(last.bottom+following.top)/2:last.bottom);
         const outer=ranges.find(range=>range.indices.includes(indices[0]));
         if(outer)continue;
         for(const index of indices)hidden.add(index);
-        ranges.push({path,firstPage:first.page,lastPage:last.page,from,to,indices});
+        ranges.push({path,firstPage:first.page,lastPage:last.page,from,to,indices,
+          ...(lineMasks.length?{lineMasks,sameLine}:{})});
       }
       selection.setStops(observedStops.filter(stop=>!hidden.has(order(stop))));
       return ranges.filter((range,index)=>!ranges.some((other,otherIndex)=>

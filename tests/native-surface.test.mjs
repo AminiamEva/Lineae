@@ -443,6 +443,30 @@ test('native include folding preserves the first and last page boundaries and hi
   assert.deepEqual(session.foldFiles(['chapter.tex']),[]);
 });
 
+test('an inline project input folds only its verified horizontal span',()=>{
+  const source='\\begin{document}\nBefore \\input{chapter} After.\n\\end{document}\n';
+  const chapter='Child';
+  const projection=projectMixedSnapshot({source,mainFile:'main.tex',
+    files:[{path:'chapter.tex',bytes:new TextEncoder().encode(chapter)}]});
+  const [before,after,child]=projection.paragraphs;
+  assert.deepEqual([before.text,after.text,child.text],['Before','After.','Child']);
+  assert.ok(projection.projection.includes(' \\input{chapter} '));
+  const regions=[{path:'main.tex',from:0,to:source.indexOf('\\input')},
+    {path:'chapter.tex',from:0,to:chapter.length},
+    {path:'main.tex',from:source.indexOf(' After.'),to:source.length}];
+  const onLine=(paragraph,x)=>({...glyph(paragraph.glyphs[0].tag,x),bbox:[x,100,x+20,110]});
+  const session=createNativeDocumentSession(()=>null);
+  session.setObservation(page([],[onLine(before,100),onLine(child,145),onLine(after,190)]),projection,false,regions);
+  assert.deepEqual(session.foldFiles(['chapter.tex']),[{
+    path:'chapter.tex',firstPage:1,lastPage:1,from:110,to:100,indices:[1],sameLine:true,
+    lineMasks:[{page:1,left:145,right:165,top:100,bottom:110}],
+  }]);
+  const beforeCaret=textTarget(projection,before.glyphs[0].tag,false);
+  assert.equal(session.select(beforeCaret,beforeCaret),true);
+  const childCaret=textTarget(projection,child.glyphs[0].tag,false);
+  assert.equal(session.select(childCaret,childCaret),false);
+});
+
 test('prose can replace a complete inline formula but cannot edit part of its source', () => {
   const inlineSource = '\\begin{document}\nBefore $x$ after.\n\\end{document}\n';
   const projection = projectMixedDocument(inlineSource);

@@ -2810,7 +2810,7 @@ function nativeFormulaPosition(formula){
   return Number.isInteger(position)?{position,node:editor.state.doc.nodeAt(position),type,project,composition,file}:null;
 }
 function addNativeTableRow(){
-  const caret=nativeTexPreview?.focusedCaret();
+  const caret=nativeTexPreview?.focusedCaret?.();
   const owner=caret?.kind==='text'?caret.paragraph:caret?.formula;
   const cell=owner?.tableCell;
   if(!cell)return;

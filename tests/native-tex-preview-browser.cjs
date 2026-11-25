@@ -829,6 +829,24 @@ const server=createServer(async(req,res)=>{
       assert.equal(await panel.locator('.native-tex-fold-mask').count(),0);
       assert.equal(await page.evaluate(()=>nativeProbe.source),foldSource);
       await page.locator('#native-tex-close').click();
+      const inlineInclude=foldSource.replace('Before.\n\n\\input{chapters/one}\n\nAfter.','Before \\input{chapters/one} After.');
+      await openMockProject(page,false,inlineInclude,'Child');
+      await page.evaluate(()=>{nativeProbe.foldProject='inline';});
+      await page.locator('#native-tex-toggle').click();
+      await page.locator('#native-tex-target').click();
+      await panel.getByText('Click text on the native page',{exact:false}).waitFor();
+      await page.locator('#native-tex-edit').click();
+      await page.evaluate(()=>document.dispatchEvent(new CustomEvent('lineae-toggle-project-file',{
+        detail:{path:'chapters/one.tex'},
+      })));
+      const inlineMask=panel.locator('.native-tex-fold-inline');
+      await inlineMask.waitFor();
+      assert.equal(await panel.locator('.native-tex-fold-mask').count(),1);
+      assert.ok(await inlineMask.evaluate(mask=>mask.offsetWidth<mask.parentElement.offsetWidth/10));
+      await inlineMask.click();
+      await inlineMask.waitFor({state:'detached'});
+      assert.equal(await page.evaluate(()=>nativeProbe.source),inlineInclude);
+      await page.locator('#native-tex-close').click();
       await page.locator('#settings-open').click();
       await page.locator('[data-native-workspace-preference]').check();
       await page.locator('#settings-apply').click();

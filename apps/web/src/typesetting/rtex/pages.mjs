@@ -129,7 +129,7 @@ export function installNativePages({host,getFont,getRaster,onPaint,onError,onMat
     for(const entry of hiddenPages)entry.hidden=false;
     foldedRanges=next;foldMasks=[];hiddenPages=[];
     const skipped=new Set(),scale=CSS_PER_SP*zoom;
-    for(const {path,firstPage,lastPage,from,to} of next){
+    for(const {path,firstPage,lastPage,from,to,lineMasks=[],sameLine} of next){
       const interior=[];
       for(let number=firstPage+1;number<lastPage;number++){
         const dom=pages.get(number)?.dom;
@@ -137,17 +137,30 @@ export function installNativePages({host,getFont,getRaster,onPaint,onError,onMat
         dom.hidden=true;hiddenPages.push(dom);
         skipped.add(number);interior.push(number);
       }
-      for(const number of new Set([firstPage,lastPage])){
+      function maskFor(number){
         const dom=pages.get(number)?.dom;
-        if(!dom)continue;
+        if(!dom)return null;
         const mask=document.createElement('button');
         mask.type='button';mask.className='native-tex-fold-mask';
         mask.dataset.foldPath=path;mask.dataset.originalPage=String(number);
-        mask.style.top=(number===firstPage?from*scale:0)+'px';
-        mask.style.bottom=number===lastPage?`calc(100% - ${to*scale}px)`:'0';
-        mask.textContent=foldLabel(path,interior);
+        mask.textContent=mask.title=foldLabel(path,interior);
         mask.onclick=()=>onExpandFile(path);
         dom.append(mask);foldMasks.push(mask);
+        return mask;
+      }
+      if(!sameLine)for(const number of new Set([firstPage,lastPage])){
+        if(firstPage===lastPage&&from>=to)continue;
+        const mask=maskFor(number);
+        if(!mask)continue;
+        mask.style.top=(number===firstPage?from*scale:0)+'px';
+        mask.style.bottom=number===lastPage?`calc(100% - ${to*scale}px)`:'0';
+      }
+      for(const {page,left,right,top,bottom} of lineMasks){
+        const mask=maskFor(page);
+        if(!mask)continue;
+        mask.classList.add('native-tex-fold-inline');
+        Object.assign(mask.style,{left:`${left*scale}px`,right:'auto',top:`${top*scale}px`,
+          width:`${(right-left)*scale}px`,height:`${(bottom-top)*scale}px`});
       }
     }
     if(skipped.size)host.dataset.skippedPages=[...skipped].sort((a,b)=>a-b).join(',');

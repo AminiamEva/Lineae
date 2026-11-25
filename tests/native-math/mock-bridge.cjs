@@ -37,7 +37,7 @@ module.exports=function installMockNativeTex() {
       fonts:{15:{id:15,filename:p.collection?'/fixture/native.otc':'/fixture/lmroman10-regular.otf',subfont:1,size:655360,extend:1000,squeeze:1000}},
       other:p.raster?[['i',1,3000000,3000000,1000000,1000000]]:[],lines:[{x:6500000,y:6500000,w:600000,h:600000,d:0,
         items:[['g',15,97,28,6500000,6500000,327680,0],['r',6500000,7000000,3000000,6554]]}]}}]};
-    if(p.foldProject){
+    if(p.foldProject===true){
       const [first]=layout.pages_changed;
       layout.pages_total=3;
       layout.pages_changed=[1,2,3].map(page=>({...first,page,dl:{...first.dl,page}}));
@@ -122,10 +122,15 @@ module.exports=function installMockNativeTex() {
         const root=textTags(args.projection);
         const child=textTags(args.files.find(file=>file.path==='chapters/one.tex').source);
         const observed=p.layout().pages_changed;
-        const owners=(items,y)=>items.map(([,owner,char],index)=>{
-          const x=6500000+index*200000;
+        const owners=(items,y,start=6500000)=>items.map(([,owner,char],index)=>{
+          const x=start+index*200000;
           return {owner:Number(owner),char:char.codePointAt(0),bbox:[x,y,x+200000,y+500000]};
         });
+        if(p.foldProject==='inline'){
+          observed[0].dl.math_owners={fields:[],glyphs:[...owners(root.slice(0,6),9000000),
+            ...owners(child,9000000,8000000),...owners(root.slice(6),9000000,9400000)]};
+          return observed;
+        }
         observed[0].dl.math_owners={fields:[],glyphs:[...owners(root.slice(0,7),9000000),...owners(child.slice(0,6),27000000)]};
         observed[2].dl.math_owners={fields:[],glyphs:[...owners(child.slice(6),27000000),...owners(root.slice(7),33000000)]};
         return observed;
