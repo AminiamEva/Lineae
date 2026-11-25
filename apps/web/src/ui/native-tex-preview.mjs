@@ -5,7 +5,7 @@ import {projectSnapshotFormulas} from '../editor/native-math/document.mjs';
 import {matchesRichFormula,nativeCaretTargets} from '../editor/native-math/rich-slot.mjs';
 import {createMathSurface,surfaceCaretRect} from '../editor/native-surface/math-surface.mjs';
 import {createTextSurface} from '../editor/native-surface/text-surface.mjs';
-import {projectTextDocument,textTarget} from '../editor/native-text/projection.mjs';
+import {projectMixedDocument,textTarget} from '../editor/native-text/projection.mjs';
 import {nativeTarget} from '../editor/native-math/resolve.mjs';
 
 // Native LaTeX output is the primary page. The opt-in native input mode sends
@@ -52,18 +52,25 @@ export function installNativeTexPreview({host,before,getSource,getSnapshot,isCom
   let mirror=null;
   let compositionField=null;
   const composing=()=>isComposing()||Boolean(compositionField?.isConnected);
-  const mathSurface=()=>createMathSurface({resolve:endpoint=>resolveEndpoint(endpoint)});
-  let surface=mathSurface();
-  let surfaceKind='math';
+  const mathSurface=createMathSurface({resolve:endpoint=>{
+    const target=resolveEndpoint(endpoint);
+    return target?.kind==='math'?target:null;
+  }});
+  let textSurface=null;
+  let surface=mathSurface;
   let nativeEditing=false;
   let pendingLatencyStart=0;
   let inputStart=0;
   const latency=[];
   const eventApi=window.__TAURI__?.event;
   function resolveEndpoint(endpoint) {
-    if(observation?.kind==='text')
+    const owned=observation?.projection?.owners.get(endpoint?.owner);
+    if(owned?.paragraph)
       return textTarget(observation.projection, endpoint.owner, Boolean(endpoint.after));
     return nativeTarget(observation?.projection, endpoint);
+  }
+  function targetSurface(target) {
+    return target?.kind==='text'?textSurface:mathSurface;
   }
   function paintSurfaceSelection() {
     const caret = surface.caret, anchor = surface.anchor;
@@ -184,7 +191,9 @@ export function installNativeTexPreview({host,before,getSource,getSnapshot,isCom
       if(!head||!anchor)return false;
       if(observation.kind==='text'&&!nativeEditing)return false;
       if(nativeEditing){
-        if(!surface.selectBetween(anchor.docOffset,head.docOffset))return false;
+        const next=targetSurface(head);
+        if(!next||!next.selectBetween(anchor.docOffset,head.docOffset))return false;
+        surface=next;
         inputStart=performance.now();
         paintSurfaceSelection();positionInput();input.focus({preventScroll:true});
         return true;
@@ -197,9 +206,10 @@ export function installNativeTexPreview({host,before,getSource,getSnapshot,isCom
     },
   });
   function syncCaret() {
-    if(observation?.kind!=='math'||!mirror||!current()||document.activeElement!==mirror.field)return;
+    if(!observation||observation.kind==='text'||!mirror||!current()||document.activeElement!==mirror.field)return;
     const formula=[...observation.projection.owners.values()].find(({formula})=>
-      formula.kind===mirror.kind&&formula.ordinal===mirror.ordinal&&formula.filePath===mirror.filePath)?.formula;
+      formula&&formula.kind===mirror.kind&&formula.ordinal===mirror.ordinal&&
+      formula.filePath===mirror.filePath)?.formula;
     if(!formula||formula.math.atoms.length>200||!matchesRichFormula(mirror.field,formula))return;
     const range=mirror.field.selection.ranges[0];
     if(!range)return;
@@ -268,7 +278,9 @@ export function installNativeTexPreview({host,before,getSource,getSnapshot,isCom
     wantedSnapshot=null;sentSnapshot=null;wantedSource='';sentSource='';
     observation=null;targetStatus.textContent='';
     previousProjection=null;
-    nativeEditing=false;surface.clearPending();surface.reset();surfaceKind='math';input.blur();input.value='';
+    nativeEditing=false;mathSurface.clearPending();mathSurface.reset();
+    textSurface?.clearPending();textSurface?.reset();textSurface=null;surface=mathSurface;
+    input.blur();input.value='';
     pendingLatencyStart=0;inputStart=0;delete panel.dataset.latencySamples;
     delete panel.dataset.latencyP50;delete panel.dataset.latencyP95;
     compositionField=null;
@@ -443,50 +455,59 @@ export function installNativeTexPreview({host,before,getSource,getSnapshot,isCom
     if(targetButton.disabled)return;
     const stamp={sessionId:session,sourceRevision};
     lastTarget=stamp;
-    let kind='math';
-    let projection=projectSnapshotFormulas(sentSnapshot,previousProjection);
-    if(!projection||![...projection.owners.values()].some(({atom})=>['frac','sqrt','token','cell'].includes(atom.kind))){
-      projection=sentSnapshot?.files?.length?null:projectTextDocument(sentSource);
-      if(!projection){
-        targetStatus.textContent=t('当前文档没有可定位的公式或纯文本段落。','No supported formula or plain paragraph in this document snapshot.');
-        return;
-      }
-      kind='text';
+    const projection=sentSnapshot?.files?.length
+      ?projectSnapshotFormulas(sentSnapshot,previousProjection)
+      :projectMixedDocument(sentSource,{previous:previousProjection??[]});
+    if(!projection||!projection.owners.size){
+      targetStatus.textContent=t('当前文档没有可定位的公式或纯文本段落。','No supported formula or plain paragraph in this document snapshot.');
+      return;
+    }
+    const kind=projection.kind;
+    if(kind==='math'&&![...projection.owners.values()].some(({atom})=>
+      atom&&['frac','sqrt','token','cell'].includes(atom.kind))){
+      targetStatus.textContent=t('当前文档没有可定位的公式或纯文本段落。','No supported formula or plain paragraph in this document snapshot.');
+      return;
     }
     const attempt=generation;
     targeting=attempt;observation=null;renderStatus();
     targetStatus.textContent=t('正在核对源码标记及实际排版…','Checking projected source against the visible layout…');
     try {
       const observed=await invoke('native_tex_observe_formula',{...stamp,projection:projection.projection,
-        files:kind==='math'?projection.files:undefined});
+        files:projection.files});
       if(attempt!==generation||stamp.sessionId!==session||stamp.sourceRevision!==sourceRevision||
           sentSource!==projection.source||wantedSource!==projection.source)return;
       if(!renderer.attachOwners(observed,stamp,projection.owners))throw new Error(t('标记版排版与当前页面不一致，未启用命中。','Projected geometry differs from the displayed page; targeting remains disabled.'));
-      if(kind==='text'){
-        if(surfaceKind==='text')surface.setProjection(projection);
-        else {surface=createTextSurface({projection});surfaceKind='text';}
-      }else {
-        if(surfaceKind!=='math'){surface=mathSurface();surfaceKind='math';}
-        previousProjection=projection;
+      if(kind==='text'||kind==='mixed'){
+        if(textSurface)textSurface.setProjection(projection);
+        else textSurface=createTextSurface({projection});
       }
+      if(kind!=='text')previousProjection=projection;
       observation={kind,projection,stamp,observed};
-      if(nativeEditing&&surface.setObservation(observed)){
-        paintSurfaceSelection();
-        positionInput();
-        if(pendingLatencyStart){
-          latency.push(performance.now()-pendingLatencyStart);
-          pendingLatencyStart=0;
-          const ordered=[...latency].sort((a,b)=>a-b);
-          const percentile=q=>ordered[Math.ceil(ordered.length*q)-1];
-          panel.dataset.latencySamples=String(ordered.length);
-          panel.dataset.latencyP50=percentile(.50).toFixed(1);
-          panel.dataset.latencyP95=percentile(.95).toFixed(1);
+      if(nativeEditing){
+        const candidates=kind==='mixed'?[mathSurface,textSurface]:kind==='text'?[textSurface]:[mathSurface];
+        let applied=false;
+        for(const candidate of candidates) if(candidate.setObservation(observed))applied=true;
+        if(!candidates.includes(surface))surface=candidates.find(candidate=>candidate.caret)??candidates[0];
+        if(applied){
+          paintSurfaceSelection();
+          positionInput();
+          if(pendingLatencyStart){
+            latency.push(performance.now()-pendingLatencyStart);
+            pendingLatencyStart=0;
+            const ordered=[...latency].sort((a,b)=>a-b);
+            const percentile=q=>ordered[Math.ceil(ordered.length*q)-1];
+            panel.dataset.latencySamples=String(ordered.length);
+            panel.dataset.latencyP50=percentile(.50).toFixed(1);
+            panel.dataset.latencyP95=percentile(.95).toFixed(1);
+          }
+          input.focus({preventScroll:true});
         }
-        input.focus({preventScroll:true});
       }
       requestAnimationFrame(syncCaret);
       targetStatus.textContent=kind==='text'
         ?t('点击原生页面中的文字定位光标，输入会写入原文。','Click text on the native page to place the caret; typing edits the source.')
+        :kind==='mixed'
+        ?t('点击原生页面中的文字或空槽定位光标，输入会写入原文。','Click prose or a supported formula slot on the native page; typing edits the source.')
         :t('点击预览中的空槽或字符边缘，继续在编辑器输入。','Click the empty numerator or denominator, another supported empty slot, or a glyph edge to continue typing in the editor.');
     } catch(failure) {
       if(attempt===generation)targetStatus.textContent=String(failure?.message??failure);
@@ -509,9 +530,14 @@ export function installNativeTexPreview({host,before,getSource,getSnapshot,isCom
     }
     if(!observation)return;
     nativeEditing=true;targetArmed=true;
-    if(!surface.setObservation(observation.observed)){
+    const candidates=observation.kind==='mixed'?[mathSurface,textSurface]:
+      observation.kind==='text'?[textSurface]:[mathSurface];
+    let applied=false;
+    for(const candidate of candidates) if(candidate.setObservation(observation.observed))applied=true;
+    if(!applied){
       nativeEditing=false;renderStatus();return;
     }
+    if(!candidates.includes(surface))surface=candidates.find(candidate=>candidate.caret)??candidates[0];
     if(surface.caret){
       paintSurfaceSelection();positionInput();input.focus({preventScroll:true});
     }

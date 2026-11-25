@@ -85,15 +85,21 @@ module.exports=function installMockNativeTex() {
       const cell=/&\\attribute65000=(\d+) \s*\\\\/.exec(args.projection);
       const aligned=/&\\aftergroup\\LineaeNativeCell([A-J]+)\s*\\\\/.exec(args.projection);
       const cellOwner=cell?.[1]??(aligned?[...aligned[1]].map(letter=>letter.charCodeAt(0)-65).join(''):null);
+      // Prose tags are the attribute assignments outside instrumented math groups.
+      const textTags=projection=>[...projection
+        .replace(/\\\[[\s\S]*?\\\]/g,'')
+        .replace(/\$[^$]*\$/g,'')
+        .replace(/\\begin\{(?:equation|align|gather)\*?\}[\s\S]*?\\end\{(?:equation|align|gather)\*?\}/g,'')
+        .matchAll(/\\attribute65000=(\d+) (.)/gsu)];
       if(!match&&!script&&!cellOwner){
-        const text=[...args.projection.matchAll(/\\attribute65000=(\d+) (.)/gsu)];
+        const text=textTags(args.projection);
         if(!text.length||args.sourceRevision!==p.revision)throw new Error('Unexpected formula observation request');
         const observed=p.layout().pages_changed;
         observed[0].dl.math_owners={fields:[],glyphs:[]};
         let x=6500000;
         for(const [,owner,char] of text){
           observed[0].dl.math_owners.glyphs.push({owner:Number(owner),char:char.codePointAt(0),
-            bbox:[x,6000000,x+200000,6500000]});
+            bbox:[x,9000000,x+200000,9500000]});
           x+=200000;
         }
         return observed;
@@ -115,6 +121,12 @@ module.exports=function installMockNativeTex() {
       const token=/\\attribute65000=(\d+) a(?=\\attribute)/.exec(args.projection);
       if(token)observed[0].dl.math_owners.glyphs.push({owner:Number(token[1]),char:97,
         bbox:[6500000,6000000,6800000,6500000]});
+      let textX=6500000;
+      for(const [,owner,char] of textTags(args.projection)){
+        observed[0].dl.math_owners.glyphs.push({owner:Number(owner),char:char.codePointAt(0),
+          bbox:[textX,9000000,textX+200000,9500000]});
+        textX+=200000;
+      }
       if(p.mismatchObservedDrawing)observed[0].dl.lines[0].items[0][4]++;
       return observed;
     }

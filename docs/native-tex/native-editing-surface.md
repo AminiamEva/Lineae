@@ -18,9 +18,10 @@ layout geometry comes only from rtex/LuaLaTeX.
 ## Vertical slice implemented
 
 Scope: one standalone or project document, one display formula with
-editor-owned math slots, and plain documents whose body has no supported
-formula. A document that mixes prose and formulas still targets the formulas
-only.
+editor-owned math slots, and single-file documents that combine plain prose
+blocks with display formulas. Prose only receives an owner when a whole block
+is plain and holds no formula; inline math inside a prose paragraph and
+project-composed prose are not projected yet.
 
 | Layer | Implementation |
 | --- | --- |
@@ -77,10 +78,10 @@ Engine-only protocol timings remain in `native-tex.yml` artifacts.
 
 ## Known gaps before switching the default
 
-1. **Mixed prose and project pages.** Plain prose paragraphs now use the same
-   pipeline, but a document with any supported display formula still targets
-   formulas only. Composed project pages have no prose projection yet; body
-   text in a project remains on the existing editor surface.
+1. **Inline math and project prose.** Prose blocks and display formulas in the
+   same single-file document now share one surface. A paragraph that mixes
+   text and inline math is left uninstrumented, and composed project pages have
+   no prose projection yet; both remain on the existing editor surface.
 2. **IME commit coverage.** The native input is an IME-capable textarea and
    composition disables targeting/export, but automated composition commit and
    candidate-window placement need real-device tests.

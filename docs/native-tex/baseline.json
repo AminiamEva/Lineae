@@ -31,10 +31,11 @@
         "status": "vertical_slice",
         "slice": "display formula caret, keyboard, drag selection, IME-capable input, ProseMirror transactions and history; plain-document prose grapheme projection through the same surface",
         "evidence": {
-          "nativeWorkflowRun": 45513512566,
+          "nativeWorkflowRun": 45522091356,
           "browserRegression": "tests/native-tex-preview-browser.cjs",
           "unitTests": ["tests/native-surface.test.mjs", "tests/native-math-source.test.mjs"],
-          "scope": "Mock-transport browser interaction and real host/event-driven session on both target platforms; physical-device IME and latency pending"
+          "textOwnershipRun": 45522091356,
+          "scope": "Mock-transport browser interaction and real host/event-driven session on both target platforms; real text-glyph ownership outside math passed on Windows and macOS; physical-device IME and latency pending"
         },
         "entryPoints": [
           "apps/web/src/editor/native-surface/math-surface.mjs",
@@ -46,7 +47,7 @@
         ],
         "ipc": "Rust reader emits lineae-native-tex events; polling remains fallback only",
         "notYet": [
-          "mixed prose/formula documents and project prose pages",
+          "inline math inside prose paragraphs and project prose pages",
           "native structure commands and multiline editing",
           "semantic editing on PDF fallback",
           "physical-device IME and end-to-end latency",

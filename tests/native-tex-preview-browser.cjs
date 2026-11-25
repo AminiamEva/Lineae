@@ -367,25 +367,33 @@ const server=createServer(async(req,res)=>{
     await page.locator('#native-tex-close').click();
     // Prose slice: plain paragraphs are tagged per grapheme and edited through
     // the same transaction path as formulas.
-    const prose=Buffer.from('\\documentclass{article}\n\\begin{document}\nAlpha beta.\n\\end{document}\n');
+    const prose=Buffer.from('\\documentclass{article}\n\\begin{document}\nAlpha beta.\n\n\\[\n\\frac{a}{b}\n\\]\n\\end{document}\n');
     await page.locator('input#file').setInputFiles({name:'prose.tex',mimeType:'text/plain',buffer:prose});
     await page.waitForFunction(()=>document.querySelector('.cm-content')?.textContent.includes('Alpha beta.'));
     await button.click();
     await page.waitForFunction(()=>document.querySelector('#native-tex-preview').dataset.state==='current');
     await page.locator('#native-tex-target').click();
-    await panel.getByText('Click text on the native page',{exact:false}).waitFor();
+    await panel.getByText('Click prose or a supported formula slot',{exact:false}).waitFor();
     assert.equal(await page.locator('#native-tex-edit').isEnabled(),true,'Native input is available for prose');
     await page.locator('#native-tex-edit').click();
     const proseScale=Number(await page.locator('#native-tex-zoom').inputValue())/100*(96/72)/65781.76;
-    await panel.locator('[data-native-page="1"] canvas').click({position:{x:6550000*proseScale,y:6250000*proseScale}});
+    await panel.locator('[data-native-page="1"] canvas').click({position:{x:6550000*proseScale,y:9250000*proseScale}});
     await page.waitForFunction(()=>document.activeElement?.id==='native-tex-input');
     await page.waitForFunction(()=>nativeProbe.source?.includes('Alpha beta.'));
     await page.keyboard.type('X');
     await page.waitForFunction(()=>nativeProbe.source?.includes('XAlpha beta.'),
       'Typing at a prose grapheme boundary writes the exact source offset');
     await page.waitForFunction(()=>document.querySelector('#native-tex-preview').dataset.state==='current');
+    const observesBefore=await page.evaluate(()=>nativeProbe.calls.filter(call=>call.command==='native_tex_observe_formula').length);
     await page.keyboard.press(mod+'+z');
     await page.waitForFunction(()=>nativeProbe.source?.includes('Alpha beta.')&&!nativeProbe.source?.includes('XAlpha beta.'));
+    await page.waitForFunction(count=>nativeProbe.calls.filter(call=>call.command==='native_tex_observe_formula').length>count,observesBefore);
+    await page.waitForFunction(()=>document.querySelector('#native-tex-preview').dataset.state==='current');
+    await panel.locator('[data-native-page="1"] canvas').click({position:{x:6510000*proseScale,y:6950000*proseScale}});
+    await page.waitForFunction(()=>document.activeElement?.id==='native-tex-input');
+    await page.keyboard.type('c');
+    await page.waitForFunction(()=>nativeProbe.source?.includes('\\frac{a}{cb}'),
+      'A mixed document keeps formula editing on the same native page');
     await page.locator('#native-tex-close').click();
     assert.deepEqual(errors,[]);
     if(process.env.LINEAE_NATIVE_PDF){

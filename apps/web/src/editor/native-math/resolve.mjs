@@ -10,7 +10,7 @@ const roleOf = {
 export function nativeTarget(projection, endpoint) {
   if (!projection || !endpoint) return null;
   const owned = projection.owners.get(endpoint.owner);
-  if (!owned) return null;
+  if (!owned?.formula || !owned?.atom) return null;
   const { formula, atom } = owned;
   const role = roleOf[endpoint.role];
   const slot = formula.math.slots.find(candidate =>
@@ -22,7 +22,7 @@ export function nativeTarget(projection, endpoint) {
       { from16: local, to16: local, insert: '' });
     if (!target) return null;
     return {
-      formula, atom, owner: atom, slot, local, hit: endpoint,
+      kind:'math', formula, atom, owner: atom, slot, local, hit: endpoint,
       docOffset: target.selection.head, position: target.selection.head,
     };
   } catch { return null; }

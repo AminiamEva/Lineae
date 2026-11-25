@@ -4,7 +4,7 @@ import {projectDocumentFormulas} from '../apps/web/src/editor/native-math/docume
 import {nativeTarget} from '../apps/web/src/editor/native-math/resolve.mjs';
 import {createMathSurface} from '../apps/web/src/editor/native-surface/math-surface.mjs';
 import {createTextSurface} from '../apps/web/src/editor/native-surface/text-surface.mjs';
-import {projectTextDocument,textTarget} from '../apps/web/src/editor/native-text/projection.mjs';
+import {projectTextDocument,projectMixedDocument,textTarget} from '../apps/web/src/editor/native-text/projection.mjs';
 
 const source = '\\begin{document}\n\\[\\frac{a}{}\\]\n\\end{document}\n';
 const filled = '\\begin{document}\n\\[\\frac{a}{b}\\]\n\\end{document}\n';
@@ -152,4 +152,18 @@ test('backspace removes one whole grapheme and never crosses a paragraph', () =>
 test('native prose targeting refuses TeX syntax instead of guessing a range', () => {
   assert.equal(projectTextDocument('\\begin{document}\nCost $5.\n\\end{document}\n'),null);
   assert.equal(textTarget(null, 1, false), null);
+});
+
+test('mixed prose and display math share one projection and keep distinct owners', () => {
+  const mixedSource = '\\begin{document}\nIntro text.\n\n\\[\\frac{a}{b}\\]\n\nOutro text.\n\\end{document}\n';
+  const projection = projectMixedDocument(mixedSource);
+  assert.equal(projection.kind, 'mixed');
+  assert.deepEqual(projection.paragraphs.map(paragraph => paragraph.text), ['Intro text.', 'Outro text.']);
+  assert.equal(projection.formulas.length, 1);
+  assert.equal(projection.projection.replace(/\\begingroup|\\endgroup|\\attribute65000=\d+ /g, ''), mixedSource);
+  const textOwner = projection.paragraphs[0].glyphs[0].tag;
+  const mathOwner = projection.formulas[0].math.atoms.find(atom => atom.kind === 'token').tag;
+  assert.equal(textTarget(projection, textOwner, false).kind, 'text');
+  assert.equal(nativeTarget(projection, {owner:textOwner, role:'nucleus', after:false}), null);
+  assert.equal(nativeTarget(projection, {owner:mathOwner, role:'nucleus', after:false}).kind, 'math');
 });
