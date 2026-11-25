@@ -169,6 +169,7 @@ export function createNativeDocumentSession(resolve) {
         const target=selection.range[delta<0?0:1];
         return selection.selectTargets(target,target);
       }
+      if(!extend&&delta===1&&before.kind==='math'&&math.leaveFormatting())return true;
       const local=selection.move(delta,extend);
       if(local!==before||Math.abs(delta)!==1)return Boolean(local);
       const stops=selection.stops;

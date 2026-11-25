@@ -413,7 +413,7 @@ const server=createServer(async(req,res)=>{
       const prosePalette=page.getByRole('dialog',{name:'LaTeX completion',exact:true});
       await prosePalette.getByRole('textbox',{name:'LaTeX command',exact:true}).fill('newpage');
       await page.keyboard.press('Enter');
-      await page.waitForFunction(()=>nativeProbe.source?.includes('\\newpage'));
+      await page.waitForFunction(expected=>nativeProbe.source===expected,pagedProse.replace('Beta','\\newpage\n\nBeta'));
       assert.equal(await page.locator('.ProseMirror [data-page-break]').count(),1);
       await panel.getByText('Click text on the native page',{exact:false}).waitFor();
       await canvas.click({position:{x:6550000*scale,y:9250000*scale}});

@@ -611,6 +611,22 @@ test('native script commands preserve the nucleus and place the caret within the
   }
 });
 
+test('right arrow leaves a native math font wrapper within its enclosing fraction slot',()=>{
+  const source='\\begin{document}\n\\[\\frac{\\mathbf{ab}}{c}\\]\n\\end{document}\n';
+  const {projection,formula,token}=setup(source);
+  const a=token('a'),b=token('b'),c=token('c');
+  const session=createNativeDocumentSession(endpoint=>nativeTarget(projection,endpoint));
+  session.setObservation(page([],[glyph(a.tag,100),glyph(b.tag,130),glyph(c.tag,160)]),projection);
+  const start=nativeTarget(projection,{owner:a.tag,role:'nucleus',after:false});
+  assert.equal(session.select(start,start),true);
+  assert.equal(session.move(1,true),true,'Extending selection still advances by a character');
+  assert.equal(session.surface.caret.docOffset,formula.from16+a.to16);
+  assert.equal(session.select(start,start),true);
+  assert.equal(session.move(1,false),true);
+  assert.equal(session.surface.caret.slot.role,'numerator');
+  assert.equal(session.surface.insert('Z').text,'\\frac{\\mathbf{ab}Z}{c}');
+});
+
 test('tagged plain table text maps to the original cell and exact byte range',()=>{
   const source='\\begin{document}\n\\begin{tabular}{ll}\nOne & Two \\\\\nThree & Four\n\\end{tabular}\n\\end{document}\n';
   const projection=projectTextDocument(source);

@@ -1074,6 +1074,11 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
     hasMathInput: event => event.target===input && nativeEditing && acceptsInput() && nativeDocument.surface.caret?.kind==='math',
     hasNativeMathFocus:()=>document.activeElement===input&&nativeEditing&&acceptsInput()&&nativeDocument.surface.caret?.kind==='math',
     focusedCaret:()=>document.activeElement===input&&nativeEditing&&acceptsInput()?nativeDocument.surface.caret:null,
+    verifiedTextRange(){
+      if(!acceptsInput()||!nativeEditing||!current()||!observation||pendingEdit)return null;
+      const [from,to]=nativeDocument.surface.range;
+      return from?.kind==='text'&&from.paragraph===to?.paragraph?[from,to]:null;
+    },
     insertLiteralText:text=>nativeDocument.surface.caret?.kind==='text'&&
       submitInput({insert:text,paste:true,started:performance.now()}),
     clipboardSelection,

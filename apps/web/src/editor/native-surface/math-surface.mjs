@@ -44,12 +44,12 @@ const stopsFor = (observed, resolve, verified) => {
     }
     const path=stop.atom.path;
     const script=path.match(/\/(?:superscript|subscript)\/\d+$/);
-    const parentPath=script?path.slice(0,script.index):path.replace(/\/body\/\d+$/,'');
-    if(parentPath===path)continue;
+    if(!script)continue;
+    const parentPath=path.slice(0,script.index);
     const {formula}=stop;
     if(!atomsByFormula.has(formula))atomsByFormula.set(formula,new Map(formula.math.atoms.map(atom=>[atom.path,atom])));
     const parent=atomsByFormula.get(formula).get(parentPath);
-    if(!parent||!script&&parent.command!=='\\text')continue;
+    if(!parent)continue;
     const docOffset=formula.from16+parent.to16;
     const slot=formula.math.slots.find(slot=>slot.role==='body'&&slot.from16===0&&slot.to16===formula.math.source.length);
     if(!slot)continue;
@@ -58,6 +58,25 @@ const stopsFor = (observed, resolve, verified) => {
     const {top,bottom}=base.page===stop.page?base:stop;
     tails.push({...stop,slot,local:parent.to16,docOffset,atom:parent,x,top,bottom,
       hit:{...stop.hit,page:stop.page,caretBox:[x,top,x,bottom]}});
+  }
+  const observedFormulas=new Map();
+  for(const stop of byAddress.values()){
+    if(!observedFormulas.has(stop.formula))observedFormulas.set(stop.formula,[]);
+    observedFormulas.get(stop.formula).push(stop);
+  }
+  for(const [formula,stops] of observedFormulas){
+    for(const {wrapper,body} of formattingBodies(formula)){
+      const docOffset=formula.from16+wrapper.to16;
+      if(byAddress.has(JSON.stringify([formula.filePath,docOffset])))continue;
+      const end=stops.filter(stop=>stop.after&&stop.docOffset>=formula.from16+body.from16&&
+        stop.docOffset<=formula.from16+body.to16).sort((left,right)=>right.docOffset-left.docOffset)[0];
+      const slot=formula.math.slots.filter(slot=>slot.from16<=wrapper.from16&&slot.to16>=wrapper.to16)
+        .sort((left,right)=>left.raw.length-right.raw.length)[0];
+      if(!end||!slot)continue;
+      const {x,top,bottom,page}=end;
+      tails.push({...end,slot,local:wrapper.to16-slot.from16,docOffset,atom:wrapper,
+        hit:{...end.hit,page,caretBox:[x,top,x,bottom]}});
+    }
   }
   for(const stop of tails){
     const key=JSON.stringify([stop.formula.filePath,stop.docOffset]);
@@ -72,10 +91,28 @@ export const sameFormula = (left, right) =>
   left?.formula.kind === right?.formula.kind &&
   left?.formula.filePath === right?.formula.filePath;
 
+function formattingBodies(formula){
+  return formula.math.atoms.filter(atom=>atom.kind==='wrapper').flatMap(wrapper=>{
+    const body=formula.math.slots.find(slot=>slot.ownerId===wrapper.id&&slot.role==='body'&&slot.grouped);
+    return body?[{wrapper,body}]:[];
+  });
+}
+
 export function createMathSurface({resolve,selection=createSelectionModel(sameFormula,stop=>stop.formula.filePath)}) {
   return Object.assign(Object.create(selection), {
     collectStops(observed,verified) { return stopsFor(observed,resolve,verified); },
     setObservation(observed) { return selection.setStops(stopsFor(observed, resolve)); },
+    leaveFormatting(){
+      const caret=selection.caret;
+      if(caret?.kind!=='math'||selection.anchor!==caret)return false;
+      const offset=caret.docOffset-caret.formula.from16;
+      const enclosing=formattingBodies(caret.formula).filter(({body})=>offset>=body.from16&&offset<=body.to16)
+        .sort((left,right)=>left.body.raw.length-right.body.raw.length)[0];
+      if(!enclosing)return false;
+      const next=selection.stops.find(stop=>stop.kind==='math'&&sameFormula(stop,caret)&&
+        stop.docOffset===caret.formula.from16+enclosing.wrapper.to16);
+      return next?selection.selectTargets(next,next):false;
+    },
     insert(text) {
       const stop = selection.caret;
       if (!stop || typeof text !== 'string' || !text) return null;
