@@ -79,11 +79,15 @@ module.exports=function installMockNativeTex() {
       }
       const input=p.targetInclude?args.files?.find(file=>file.path==='chapters/one.tex')?.source:args.projection;
       if(!input)throw new Error('No target source in observation request');
-      const matches=[...input.matchAll(/\\attribute65000=(\d+) \\(frac|sqrt)/g)];
+      // The mock only treats tags inside math delimiters as formula owners.
+      const mathOnly=text=>[...text.matchAll(/\\\[([\s\S]*?)\\\]|\$([^$]*)\$/g)]
+        .map(found=>found[1]??found[2]).join('\n');
+      const mathInput=mathOnly(input);
+      const matches=[...mathInput.matchAll(/\\attribute65000=(\d+) \\(frac|sqrt)/g)];
       const match=matches.at(-1);
-      const script=/\\attribute65000=(\d+) x\^\{\}/.exec(args.projection);
-      const cell=/&\\attribute65000=(\d+) \s*\\\\/.exec(args.projection);
-      const aligned=/&\\aftergroup\\LineaeNativeCell([A-J]+)\s*\\\\/.exec(args.projection);
+      const script=/\\attribute65000=(\d+) x\^\{\}/.exec(mathInput);
+      const cell=/&\\attribute65000=(\d+) \s*\\\\/.exec(mathInput);
+      const aligned=/&\\aftergroup\\LineaeNativeCell([A-J]+)\s*\\\\/.exec(mathInput);
       const cellOwner=cell?.[1]??(aligned?[...aligned[1]].map(letter=>letter.charCodeAt(0)-65).join(''):null);
       // Prose tags are the attribute assignments outside instrumented math groups.
       const textTags=projection=>[...projection
@@ -106,7 +110,7 @@ module.exports=function installMockNativeTex() {
       }
       if((!match&&!script&&!cellOwner)||args.sourceRevision!==p.revision)throw new Error('Unexpected formula observation request');
       const observed=p.layout().pages_changed;
-      const denominator=/\\frac\{[^{}]*\}\{(?:\\attribute65000=(\d+) )?([^{}]*)\}/.exec(args.projection);
+      const denominator=/\\frac\{[^{}]*\}\{(?:\\attribute65000=(\d+) )?([^{}]*)\}/.exec(mathInput);
       observed[0].dl.math_owners={fields:[{owner:Number(match?.[1]??script?.[1]??cellOwner),role:match?(match[2]==='frac'?'den':'radicand'):script?'sup':'cell',
         bbox:[6500000,7000000,6500000,7000000],empty:match?denominator?.[2]==='':true}],glyphs:[]};
       if(match&&denominator){
@@ -118,7 +122,7 @@ module.exports=function installMockNativeTex() {
         }
       }
       if(cellOwner)observed[0].dl.math_owners.fields.push({owner:2,role:'cell',bbox:[6500000,7000000,6500000,7000000],empty:true});
-      const token=/\\attribute65000=(\d+) a(?=\\attribute)/.exec(args.projection);
+      const token=/\\attribute65000=(\d+) a(?=\\attribute)/.exec(mathInput);
       if(token)observed[0].dl.math_owners.glyphs.push({owner:Number(token[1]),char:97,
         bbox:[6500000,6000000,6800000,6500000]});
       let textX=6500000;

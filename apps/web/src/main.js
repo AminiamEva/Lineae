@@ -2668,17 +2668,30 @@ nativeTexPreview=installNativeTexPreview({host:footer,before:modes,
   commitText:({paragraph,patch,text})=>{
     if(projectExplorer?.active||projectDocument.composition)return false;
     if((sourceView.hidden?source():sourceView.value)!==paragraph.source)return false;
-    if(!text||text===paragraph.text)return false;
-    let found=-1,matches=0;
+    if(!text||text===paragraph.text||!paragraph.parts)return false;
+    const run=paragraph.runs?.find(candidate=>patch.from>=candidate.from16&&patch.to<=candidate.to16);
+    if(!run)return false;
+    const matchesParts=node=>{
+      if(node.type.name!=='paragraph'||node.childCount!==paragraph.parts.length)return false;
+      return paragraph.parts.every((part,index)=>{
+        const child=node.child(index);
+        return part.kind==='text'
+          ?child.isText&&child.text===part.text
+          :(child.type.name==='math'||child.type.name==='mathBlock')&&child.attrs.latex===part.latex;
+      });
+    };
+    let found=-1,foundNode=null,matches=0;
     editor.state.doc.forEach((node,offset)=>{
-      if(node.type.name==='paragraph'&&node.textContent===paragraph.text&&
-          node.childCount===1&&node.firstChild.isText){matches++;if(found<0)found=offset;}
+      if(matchesParts(node)){matches++;if(found<0){found=offset;foundNode=node;}}
     });
     if(matches!==1||found<0)return false;
-    const start=found+1,tr=editor.state.tr;
-    if(patch.to>patch.from)tr.delete(start+patch.from,start+patch.to);
-    if(patch.insert)tr.insertText(patch.insert,start+patch.from);
-    tr.setSelection(TextSelection.create(tr.doc,start+patch.from+patch.insert.length));
+    let start=found+1;
+    for(let index=0;index<run.partIndex;index++)start+=foundNode.child(index).nodeSize;
+    start+=patch.from-run.from16;
+    const end=start+(patch.to-patch.from),tr=editor.state.tr;
+    if(end>start)tr.delete(start,end);
+    if(patch.insert)tr.insertText(patch.insert,start);
+    tr.setSelection(TextSelection.create(tr.doc,start+patch.insert.length));
     editor.view.dispatch(tr);
     return true;
   },

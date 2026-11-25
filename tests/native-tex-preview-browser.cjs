@@ -373,7 +373,7 @@ const server=createServer(async(req,res)=>{
     await button.click();
     await page.waitForFunction(()=>document.querySelector('#native-tex-preview').dataset.state==='current');
     await page.locator('#native-tex-target').click();
-    await panel.getByText('Click prose or a supported formula slot',{exact:false}).waitFor();
+    await panel.getByText('Click prose on the native page',{exact:false}).waitFor();
     assert.equal(await page.locator('#native-tex-edit').isEnabled(),true,'Native input is available for prose');
     await page.locator('#native-tex-edit').click();
     const proseScale=Number(await page.locator('#native-tex-zoom').inputValue())/100*(96/72)/65781.76;
@@ -394,6 +394,23 @@ const server=createServer(async(req,res)=>{
     await page.keyboard.type('c');
     await page.waitForFunction(()=>nativeProbe.source?.includes('\\frac{a}{cb}'),
       'A mixed document keeps formula editing on the same native page');
+    await page.locator('#native-tex-close').click();
+    // Inline math splits the paragraph into native text runs. Editing a run
+    // must not rewrite the math node's source.
+    const inlineDoc=Buffer.from('\\documentclass{article}\n\\begin{document}\nAlpha $x$ beta.\n\\end{document}\n');
+    await page.locator('input#file').setInputFiles({name:'inline.tex',mimeType:'text/plain',buffer:inlineDoc});
+    await page.waitForFunction(()=>document.querySelector('.cm-content')?.textContent.includes('Alpha'));
+    await button.click();
+    await page.waitForFunction(()=>document.querySelector('#native-tex-preview').dataset.state==='current');
+    await page.locator('#native-tex-target').click();
+    await panel.getByText('Click prose on the native page',{exact:false}).waitFor();
+    await page.locator('#native-tex-edit').click();
+    const inlineScale=Number(await page.locator('#native-tex-zoom').inputValue())/100*(96/72)/65781.76;
+    await panel.locator('[data-native-page="1"] canvas').click({position:{x:7510000*inlineScale,y:9250000*inlineScale}});
+    await page.waitForFunction(()=>document.activeElement?.id==='native-tex-input');
+    await page.keyboard.type('Y');
+    await page.waitForFunction(()=>nativeProbe.source?.includes('Alpha $x$ Ybeta.'),
+      'A prose run beside inline math edits only its own source bytes');
     await page.locator('#native-tex-close').click();
     assert.deepEqual(errors,[]);
     if(process.env.LINEAE_NATIVE_PDF){
@@ -472,6 +489,7 @@ const server=createServer(async(req,res)=>{
       state:document.querySelector('#native-tex-preview')?.dataset.state,
       fallback:document.querySelector('#native-tex-preview')?.dataset.fallbackReason,
       status:document.querySelector('#native-tex-preview [role=status]')?.textContent,
+      targetStatus:document.querySelectorAll('#native-tex-preview [role=status]')[1]?.textContent,
       source:window.nativeProbe?.source?.slice(0,1600),
       value:document.querySelector('math-field')?.value,
       focus:document.activeElement?.tagName,

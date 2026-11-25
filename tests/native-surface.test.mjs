@@ -4,7 +4,7 @@ import {projectDocumentFormulas} from '../apps/web/src/editor/native-math/docume
 import {nativeTarget} from '../apps/web/src/editor/native-math/resolve.mjs';
 import {createMathSurface} from '../apps/web/src/editor/native-surface/math-surface.mjs';
 import {createTextSurface} from '../apps/web/src/editor/native-surface/text-surface.mjs';
-import {projectTextDocument,projectMixedDocument,textTarget} from '../apps/web/src/editor/native-text/projection.mjs';
+import {projectTextDocument,projectMixedDocument,textTarget,textEdit} from '../apps/web/src/editor/native-text/projection.mjs';
 
 const source = '\\begin{document}\n\\[\\frac{a}{}\\]\n\\end{document}\n';
 const filled = '\\begin{document}\n\\[\\frac{a}{b}\\]\n\\end{document}\n';
@@ -166,4 +166,26 @@ test('mixed prose and display math share one projection and keep distinct owners
   assert.equal(textTarget(projection, textOwner, false).kind, 'text');
   assert.equal(nativeTarget(projection, {owner:textOwner, role:'nucleus', after:false}), null);
   assert.equal(nativeTarget(projection, {owner:mathOwner, role:'nucleus', after:false}).kind, 'math');
+});
+
+test('inline math splits prose into runs that never edit across the math node', () => {
+  const inlineSource = '\\begin{document}\nBefore $x$ after.\n\\end{document}\n';
+  const projection = projectMixedDocument(inlineSource);
+  assert.equal(projection.kind, 'mixed');
+  const paragraph = projection.paragraphs[0];
+  assert.equal(paragraph.text, 'Before $x$ after.');
+  assert.deepEqual(paragraph.parts.map(part => part.kind), ['text', 'math', 'text']);
+  assert.deepEqual(paragraph.runs.map(run => run.text), ['Before ', ' after.']);
+  const surface = createTextSurface({projection});
+  const glyphs = paragraph.glyphs.map((glyph, index) => ({
+    owner:glyph.tag, char:glyph.char.codePointAt(0), bbox:[100 + index * 20, 90, 120 + index * 20, 100],
+  }));
+  surface.setObservation([{page:1, exact:true, dl:{math_owners:{fields:[], glyphs}}}]);
+  const secondRun = paragraph.runs[1];
+  surface.selectBetween(paragraph.from16 + secondRun.from16 + 1, paragraph.from16 + secondRun.from16 + 1);
+  const edit = surface.insert('Z');
+  assert.equal(edit.text, 'Before $x$ Zafter.');
+  assert.equal(textEdit(projection, {
+    paragraph, from16:paragraph.runs[0].to16 - 1, to16:paragraph.runs[1].from16 + 1, insert:'',
+  }), null);
 });

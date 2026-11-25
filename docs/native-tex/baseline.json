@@ -47,7 +47,8 @@
         ],
         "ipc": "Rust reader emits lineae-native-tex events; polling remains fallback only",
         "notYet": [
-          "inline math inside prose paragraphs and project prose pages",
+          "project prose pages",
+          "cross-run selection across inline math",
           "native structure commands and multiline editing",
           "semantic editing on PDF fallback",
           "physical-device IME and end-to-end latency",

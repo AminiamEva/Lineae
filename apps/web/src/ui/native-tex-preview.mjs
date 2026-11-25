@@ -507,7 +507,7 @@ export function installNativeTexPreview({host,before,getSource,getSnapshot,isCom
       targetStatus.textContent=kind==='text'
         ?t('点击原生页面中的文字定位光标，输入会写入原文。','Click text on the native page to place the caret; typing edits the source.')
         :kind==='mixed'
-        ?t('点击原生页面中的文字或空槽定位光标，输入会写入原文。','Click prose or a supported formula slot on the native page; typing edits the source.')
+        ?t('点击原生页面中的文字或空槽定位光标，输入会写入原文。','Click prose on the native page, or click the empty numerator or denominator, another supported empty slot, or a glyph edge to continue typing.')
         :t('点击预览中的空槽或字符边缘，继续在编辑器输入。','Click the empty numerator or denominator, another supported empty slot, or a glyph edge to continue typing in the editor.');
     } catch(failure) {
       if(attempt===generation)targetStatus.textContent=String(failure?.message??failure);

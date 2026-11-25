@@ -1,4 +1,5 @@
 import {parseDocument} from '../../../latex/document.mjs';
+import {sourceStructure} from '../../../latex/source-structure.mjs';
 import {projectDocumentFormulas} from '../native-math/document.mjs';
 
 const segmenter = new Intl.Segmenter('und', {granularity:'grapheme'});
@@ -43,7 +44,9 @@ export function projectTextDocument(source, {firstOwner=1, attribute=65000}={}) 
     const built = instrumentText(text, next, attribute);
     next = built.nextTag;
     const from16 = doc.start.length + blockStart + leading;
-    const paragraph = {source, from16, text, glyphs:built.glyphs, index:paragraphs.length};
+    const paragraph = {source, from16, text, glyphs:built.glyphs, index:paragraphs.length,
+      parts:[{kind:'text', from16:0, to16:text.length, text}],
+      runs:[{from16:0, to16:text.length, text, partIndex:0}]};
     for (const glyph of built.glyphs) owners.set(glyph.tag, {paragraph, glyph});
     paragraphs.push(paragraph);
     output += source.slice(cursor, from16) + built.instrumented;
@@ -54,9 +57,10 @@ export function projectTextDocument(source, {firstOwner=1, attribute=65000}={}) 
 }
 
 // Combined document projection for a single file: math spans keep their
-// instrumented projection, formula-free plain blocks are tagged as prose.
-// Blocks that mix inline math and text stay untouched rather than pretending
-// that a partial paragraph maps to one ProseMirror paragraph.
+// instrumented projection, formula-free plain blocks are tagged as prose, and
+// plain runs beside inline math are tagged individually. Runs never cross
+// math; a paragraph records the exact text/math child sequence so the editor
+// can map a run patch to one ProseMirror text node.
 export function projectMixedDocument(source, {previous=[], attribute=65000}={}) {
   const doc = parseDocument(source);
   if (!doc) return null;
@@ -65,36 +69,87 @@ export function projectMixedDocument(source, {previous=[], attribute=65000}={}) 
   const math = projectDocumentFormulas(source, {previous:previous?.formulas ?? []});
   if (!math) return projectTextDocument(source, {attribute});
   const formulas = [...math.formulas].sort((left, right) => left.from16 - right.from16);
+  const mathTokens = [...sourceStructure(body)].filter(token =>
+    token.kind === 'inlineMath' || token.kind === 'displayMath');
   const owners = new Map(math.owners), paragraphs = [];
   let output = '', cursor = 0, next = math.nextTag, bodyOffset = 0;
   for (const block of doc.blocks) {
+    const blockStart = bodyOffset;
     const from16 = doc.start.length + bodyOffset;
     bodyOffset += block.length;
     const to16 = from16 + block.length;
     const overlapping = formulas.filter(formula => formula.from16 < to16 && formula.to16 > from16);
+    const blockTokens = mathTokens.filter(token =>
+      token.index >= blockStart && token.index < blockStart + block.length);
     if (overlapping.some(formula => formula.from16 < from16 || formula.to16 > to16)) {
       return {...math, kind:'math', paragraphs:[]};
     }
     output += source.slice(cursor, from16);
+    const {leading, text} = plainBlock(block);
+    const contentFrom = from16 + leading;
     if (!overlapping.length) {
-      const {leading, text} = plainBlock(block);
       if (text && !unsupported.test(text)) {
         const built = instrumentText(text, next, attribute);
         next = built.nextTag;
-        const paragraph = {source, from16:from16 + leading, text, glyphs:built.glyphs, index:paragraphs.length};
+        const paragraph = {source, from16:contentFrom, text, glyphs:built.glyphs, index:paragraphs.length,
+          parts:[{kind:'text', from16:0, to16:text.length, text}],
+          runs:[{from16:0, to16:text.length, text, partIndex:0}]};
         for (const glyph of built.glyphs) owners.set(glyph.tag, {paragraph, glyph});
         paragraphs.push(paragraph);
-        output += source.slice(from16, from16 + leading) + built.instrumented;
-        cursor = from16 + leading + text.length;
+        output += source.slice(from16, contentFrom) + built.instrumented;
+        cursor = contentFrom + text.length;
         continue;
       }
     }
-    let local = from16;
-    for (const formula of overlapping) {
-      output += source.slice(local, formula.from16) + formula.math.projection;
-      local = formula.to16;
+    const parts = [], runs = [], glyphs = [];
+    let run = '', partCursor = 0;
+    const addText = (from, to) => {
+      const raw = text.slice(from, to);
+      if (!raw) return;
+      const partIndex = parts.length;
+      parts.push({kind:'text', from16:from, to16:to, text:raw});
+      if (unsupported.test(raw)) { run += raw; return; }
+      const built = instrumentText(raw, next, attribute);
+      next = built.nextTag;
+      runs.push({from16:from, to16:to, text:raw, partIndex});
+      for (const glyph of built.glyphs)
+        glyphs.push({...glyph, from16:glyph.from16 + from, to16:glyph.to16 + from});
+      run += built.instrumented;
+    };
+    const segments = overlapping.map(formula => ({
+      formula,
+      token: blockTokens.find(token =>
+        doc.start.length + token.index + token.delimiter.length === formula.from16),
+    }));
+    if (segments.every(segment => segment.token && segment.token.end >= segment.formula.to16 - doc.start.length)) {
+      for (const {formula, token} of segments) {
+        const tokenStart = doc.start.length + token.index - contentFrom;
+        const tokenEnd = doc.start.length + token.end - contentFrom;
+        const mathFrom = formula.from16 - contentFrom, mathTo = formula.to16 - contentFrom;
+        addText(partCursor, tokenStart);
+        run += source.slice(contentFrom + tokenStart, contentFrom + mathFrom) +
+          formula.math.projection +
+          source.slice(contentFrom + mathTo, contentFrom + tokenEnd);
+        parts.push({kind:'math', from16:tokenStart, to16:tokenEnd, latex:formula.math.source});
+        partCursor = tokenEnd;
+      }
+    } else {
+      for (const formula of overlapping) {
+        const mathFrom = formula.from16 - contentFrom;
+        addText(partCursor, mathFrom);
+        parts.push({kind:'math', from16:mathFrom, to16:formula.to16 - contentFrom, latex:formula.math.source});
+        run += formula.math.projection;
+        partCursor = formula.to16 - contentFrom;
+      }
     }
-    output += source.slice(local, to16);
+    addText(partCursor, text.length);
+    output += source.slice(from16, contentFrom) + run +
+      source.slice(contentFrom + text.length, to16);
+    if (runs.length) {
+      const paragraph = {source, from16:contentFrom, text, glyphs, runs, parts, index:paragraphs.length};
+      for (const glyph of glyphs) owners.set(glyph.tag, {paragraph, glyph});
+      paragraphs.push(paragraph);
+    }
     cursor = to16;
   }
   output += source.slice(cursor);
@@ -117,6 +172,7 @@ export function textTarget(projection, owner, after) {
 export function textEdit(projection, {paragraph, from16, to16, insert}) {
   if (!projection || projection.source !== paragraph.source) return null;
   if (!Number.isInteger(from16) || !Number.isInteger(to16) || from16 < 0 || to16 < from16 || to16 > paragraph.text.length) return null;
+  if (paragraph.runs && !paragraph.runs.some(run => from16 >= run.from16 && to16 <= run.to16)) return null;
   if (typeof insert !== 'string' || unsupported.test(insert)) return null;
   const next = paragraph.text.slice(0, from16) + insert + paragraph.text.slice(to16);
   const source = projection.source.slice(0, paragraph.from16) + next + projection.source.slice(paragraph.from16 + paragraph.text.length);

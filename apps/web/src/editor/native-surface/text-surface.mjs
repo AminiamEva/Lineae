@@ -28,6 +28,17 @@ function stopsFor(observed, projection) {
 
 const sameParagraph = (a, b) =>
   a?.paragraph.from16 === b?.paragraph.from16 && a?.paragraph.source === b?.paragraph.source;
+const runsOf = paragraph => paragraph.runs ?? [{from16:0, to16:paragraph.text.length}];
+const runFor = (paragraph, from16, to16) =>
+  runsOf(paragraph).find(run => from16 >= run.from16 && to16 <= run.to16) ?? null;
+const runAt = (paragraph, offset, backward) => runsOf(paragraph).find(run =>
+  backward ? offset > run.from16 && offset <= run.to16 : offset >= run.from16 && offset < run.to16) ?? null;
+const boundariesOf = (run, fallback) => {
+  const boundaries = [run.from16];
+  for (const {segment} of segmenter.segment(run.text ?? fallback))
+    boundaries.push(boundaries.at(-1) + segment.length);
+  return boundaries;
+};
 
 export function createTextSurface({projection}) {
   let sourceProjection = projection;
@@ -89,7 +100,7 @@ export function createTextSurface({projection}) {
       const stop = stops[index];
       if (!stop || !text) return null;
       const start = stops[Math.min(anchor, index)], end = stops[Math.max(anchor, index)];
-      if (!sameParagraph(start, stop)) return null;
+      if (!sameParagraph(start, stop) || !runFor(stop.paragraph, start.local, end.local)) return null;
       const result = textEdit(sourceProjection, {
         paragraph: stop.paragraph, from16: start.local, to16: end.local, insert: text,
       });
@@ -101,17 +112,23 @@ export function createTextSurface({projection}) {
     erase(backward = true) {
       const stop = stops[index];
       if (!stop) return null;
-      const text = stop.paragraph.text;
-      const boundaries = [0];
-      for (const {segment} of segmenter.segment(text)) boundaries.push(boundaries.at(-1) + segment.length);
-      const caret = stop.local;
       let from, to;
-      if (backward) {
-        to = boundaries.filter(boundary => boundary <= caret).at(-1) ?? 0;
-        from = boundaries[boundaries.indexOf(to) - 1] ?? 0;
+      if (anchor !== index) {
+        const start = stops[Math.min(anchor, index)], end = stops[Math.max(anchor, index)];
+        from = Math.min(start.local, end.local);
+        to = Math.max(start.local, end.local);
+        if (!runFor(stop.paragraph, from, to)) return null;
       } else {
-        from = boundaries.find(boundary => boundary >= caret) ?? text.length;
-        to = boundaries[boundaries.indexOf(from) + 1] ?? text.length;
+        const run = runAt(stop.paragraph, stop.local, backward);
+        if (!run) return null;
+        const boundaries = boundariesOf(run, stop.paragraph.text);
+        if (backward) {
+          to = boundaries.filter(boundary => boundary <= stop.local).at(-1) ?? run.from16;
+          from = boundaries[boundaries.indexOf(to) - 1] ?? run.from16;
+        } else {
+          from = boundaries.find(boundary => boundary >= stop.local) ?? run.to16;
+          to = boundaries[boundaries.indexOf(from) + 1] ?? run.to16;
+        }
       }
       if (from === to) return null;
       const result = textEdit(sourceProjection, {
