@@ -3510,7 +3510,8 @@ function runNativeMathToolbarCommand(command,fallback){
 }
 groupButton(mathGroup,'frac',()=>runNativeMathToolbarCommand('frac',
   ()=>insertMath(false,'\\frac{\\placeholder{}}{\\placeholder{}}')));
-groupButton(mathGroup,['公式换行','Math line break'],()=>activeMath()?.dispatchEvent(new Event('lineae-math-newline')));
+groupButton(mathGroup,['公式换行','Math line break'],()=>nativeTexPreview.hasNativeMathFocus?.()
+  ?nativeTexPreview.runMathCommand('enterLine'):activeMath()?.dispatchEvent(new Event('lineae-math-newline')));
 groupButton(mathGroup,['退出公式','Exit formula'],()=>nativeTexPreview.hasNativeMathFocus?.()
   ?nativeTexPreview.runMathCommand('leaveFormula'):activeMath()?.dispatchEvent(new Event('lineae-leave-formula'))).dataset.shortcut='math.leaveFormula';
 for (const [label,command,latex] of [

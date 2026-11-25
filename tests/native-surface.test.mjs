@@ -28,6 +28,27 @@ const page = (fields, glyphs = []) => [{
 const field = (owner, role, x, empty) => ({owner, role, empty, bbox: [x, 100, x, 100]});
 const glyph = (owner, x, width = 20) => ({owner, char: 97, bbox: [x, 90, x + width, 100]});
 
+test('native display Enter splits between atoms and adds a row to an existing alignment', () => {
+  const display='\\begin{document}\n\\[a+b\\]\n\\end{document}\n';
+  const {projection,formula,token}=setup(display);
+  const surface=createMathSurface({resolve:endpoint=>nativeTarget(projection,endpoint)});
+  surface.setObservation(page([], [glyph(token('a').tag,100)]));
+  surface.nearest(1,120,100);
+  const split=surface.command('enterLine');
+  assert.equal(split.text,'\\begin{gathered}a\\\\+b\\end{gathered}');
+  assert.equal(split.text.slice(surface.pendingOffset-formula.from16,split.text.indexOf('\\end')),'+b');
+
+  const align='\\begin{document}\n\\begin{align}a&=b\\\\c&=d\\end{align}\n\\end{document}\n';
+  const aligned=setup(align);
+  const grid=createMathSurface({resolve:endpoint=>nativeTarget(aligned.projection,endpoint)});
+  grid.setObservation(page([], [glyph(aligned.token('b').tag,100)]));
+  grid.nearest(1,120,100);
+  const row=grid.command('enterLine');
+  assert.equal(row.text,'\\begin{align}a&=b\\\\&\\\\c&=d\\end{align}');
+  const newCell=grid.pendingOffset-aligned.formula.from16;
+  assert.equal(row.text.slice(newCell-3,newCell+2),'\\\\&\\\\');
+});
+
 test('a native caret stops at real formula boundaries and edits exactly one slot', () => {
   const {projection, denominator, numerator, token} = setup();
   const surface = createMathSurface({resolve: endpoint => nativeTarget(projection, endpoint)});

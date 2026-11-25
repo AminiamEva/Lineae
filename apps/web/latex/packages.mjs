@@ -4,7 +4,7 @@ import { theoremNames } from './theorem.mjs';
 // Dependencies are added only when that feature appears in the document body.
 const dependencies = [
   { name: 'ulem', pattern: /\\(?:sout|uline|uuline|uwave|dashuline|dotuline)\b/ },
-  { name: 'amsmath', pattern: /\\(?:begin\{(?:align|alignat|flalign|gather|multline|equation|split|aligned|alignedat|gathered|cases|[pbBvV]?(?:small)?matrix)\*?\}|(?:dfrac|tfrac|text|operatorname|eqref)\b)/ },
+  { name: 'amsmath', pattern: /\\(?:begin\{(?:align|alignat|flalign|gather|multline|equation|split|aligned|alignedat|gathered|cases|[pbBvV]?(?:small)?matrix)\*?\}|(?:dfrac|tfrac|text|operatorname|eqref)\b)/, satisfies: ['mathtools'] },
   { name: 'mathtools', pattern: /\\begin\{(?:[dr]cases|drcases|multlined|[pbBvV]smallmatrix)\*?\}/ },
   { name: 'xcolor', pattern: /\\(?:textcolor|colorbox|fcolorbox|definecolor)\b/ },
   { name: 'ragged2e', pattern: /\\justifying\b/ },

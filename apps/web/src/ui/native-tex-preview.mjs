@@ -7,6 +7,8 @@ import {surfaceCaretRect} from '../editor/native-surface/math-surface.mjs';
 import {createNativeDocumentSession} from '../editor/native-surface/document-session.mjs';
 import {projectMixedDocument,projectMixedSnapshot,textTarget} from '../editor/native-text/projection.mjs';
 import {nativeTarget} from '../editor/native-math/resolve.mjs';
+import {parseDocument} from '../../latex/document.mjs';
+import {resolvePackages} from '../../latex/packages.mjs';
 
 // Native LaTeX output is the primary page. The opt-in native input mode sends
 // supported keys, caret and IME through this surface into ProseMirror; the old
@@ -118,6 +120,12 @@ export function installNativeTexPreview({host,before,primary=false,isDocumentMod
   }
   function commitSurface(edit) {
     if (!edit) return;
+    if(edit.requiresAmsmath&&resolvePackages(parseDocument(sentSource)?.start??'',edit.text)
+      .some(({name})=>name==='amsmath')){
+      nativeDocument.surface.clearPending();
+      targetStatus.textContent=t('公式换行需要 amsmath。请在导言区加载宏包。','Load amsmath in the preamble to insert a display line.');
+      return;
+    }
     const started=inputStart || performance.now();
     inputStart=0;
     const applied=edit.kind==='project-range'?commitProjectRange?.(edit.edits):edit.kind==='text'

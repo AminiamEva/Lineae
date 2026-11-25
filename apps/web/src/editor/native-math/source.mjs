@@ -456,11 +456,12 @@ const structureTemplates = {
   cases: text => ({before:'\\begin{cases}',body:text,after:'&\\\\&\\end{cases}',next:'first'}),
 };
 
-export function expandMatrix(snapshot,slot,local,axis) {
+export function expandMatrix(snapshot,slot,local,axis,{enterRow=false}={}) {
   if(!snapshots.get(snapshot)?.tree||!snapshot.slots.includes(slot)||
       !Number.isInteger(local)||local<0||local>slot.raw.length||!['row','column'].includes(axis))return null;
   const cursor=slot.from16+local;
-  const matrices=snapshot.atoms.filter(atom=>atom.kind==='matrix'&&atom.from16<cursor&&atom.to16>cursor)
+  const matrices=snapshot.atoms.filter(atom=>atom.kind==='matrix'&&atom.from16<cursor&&atom.to16>cursor&&
+    (!enterRow||/^(?:align(?:ed)?|gather(?:ed)?)\*?$/.test(atom.command)))
     .sort((left,right)=>(left.to16-left.from16)-(right.to16-right.from16));
   const byId=new Map(snapshot.slots.map(candidate=>[candidate.id,candidate]));
   for(const atom of matrices){
@@ -485,10 +486,28 @@ export function expandMatrix(snapshot,slot,local,axis) {
       body.slice(0,edit.from-from)+edit.insert+body.slice(edit.from-from),snapshot.source.slice(from,to));
     const source=snapshot.source.slice(0,from)+insert+snapshot.source.slice(to);
     parse(source);
-    return {source,patch:{from,to,insert},
-      cursor:cursor+edits.filter(edit=>edit.from<cursor).reduce((count,edit)=>count+edit.insert.length,0)};
+    const next=enterRow ? from+2+origin.column :
+      cursor+edits.filter(edit=>edit.from<cursor).reduce((count,edit)=>count+edit.insert.length,0);
+    return {source,patch:{from,to,insert},cursor:next};
   }
   return null;
+}
+
+export function insertDisplayLine(snapshot,slot,local) {
+  if(!snapshots.get(snapshot)?.tree||!snapshot.slots.includes(slot)||!Number.isInteger(local)||
+    local<0||local>slot.raw.length)return null;
+  const row=expandMatrix(snapshot,slot,local,'row',{enterRow:true});
+  if(row)return row;
+  const caret=slot.from16+local;
+  const {source}=snapshot;
+  const root=snapshots.get(snapshot).tree.root;
+  const isBoundary=caret===0||caret===source.length||root.fields[0].children.some(atom=>
+    caret===atom.from16||caret===atom.to16);
+  const split=isBoundary?caret:source.length;
+  const open='\\begin{gathered}',close='\\end{gathered}';
+  const insert=open+source.slice(0,split)+'\\\\'+source.slice(split)+close;
+  parse(insert);
+  return {source:insert,patch:{from:0,to:source.length,insert},cursor:open.length+split+2,requiresAmsmath:true};
 }
 
 export function applyStructureCommand(snapshot, {slotId,from16,to16,command}) {
