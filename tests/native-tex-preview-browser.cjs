@@ -155,6 +155,17 @@ const server=createServer(async(req,res)=>{
         call.args.sourceRevision===nativeProbe.revision));
       await panel.getByText('Click prose on the native page',{exact:false}).waitFor();
       await canvas.click({position:{x:6510000*scale,y:6950000*scale}});
+      await page.keyboard.press(mod+'+l');
+      await page.locator('.native-delimiter-ghost').waitFor();
+      await page.keyboard.press('(');
+      await page.keyboard.press(')');
+      await page.waitForFunction(source=>nativeProbe.source===source,expected.replace('}{cb}','}{\\left(\\right)cb}'));
+      await page.keyboard.press(mod+'+z');
+      await page.waitForFunction(source=>nativeProbe.source===source,expected);
+      await page.waitForFunction(()=>nativeProbe.calls.some(call=>call.command==='native_tex_observe_formula'&&
+        call.args.sourceRevision===nativeProbe.revision));
+      await panel.getByText('Click prose on the native page',{exact:false}).waitFor();
+      await canvas.click({position:{x:6510000*scale,y:6950000*scale}});
       await page.keyboard.press('Enter');
       await page.waitForFunction(()=>nativeProbe.source?.includes('\\begin{gathered}')&&nativeProbe.source.includes('\\usepackage{amsmath}'));
       await page.keyboard.press(mod+'+z');

@@ -1,7 +1,7 @@
 import {nativeEditorRange} from './editor/native-text/editor-range.mjs';
 import {projectMixedDocument,projectTextDocument} from './editor/native-text/projection.mjs';
 import {nativeMathCommandNames,projectMath} from './editor/native-math/source.mjs';
-import {documentMetadata,writeDocumentMetadata} from '../../latex/document-metadata.mjs';
+import {documentMetadata,writeDocumentMetadata} from '../latex/document-metadata.mjs';
 import {loadLegacyMath,nativeOnlyAcceptance,nativeWorkspaceRequested} from './editor/native-surface/acceptance-mode.mjs';
 import {AppendixStart,MatterStart,LayoutCommand} from './editor/appendix.js';
 import {Lipsum} from './editor/lipsum.js';
@@ -2047,7 +2047,7 @@ function highlightCandidate(index) {
     candidates.scrollTop = bottom - candidates.clientHeight;
 }
 function completionActions() {
-  if(completionNative)return Object.fromEntries([...nativeMathCommandNames,'newline'].map(name=>[
+  if(completionNative)return Object.fromEntries([...nativeMathCommandNames,'left','right','newline'].map(name=>[
     name,()=>nativeTexPreview.runMathCommand(name==='newline'?'enterLine':name),
   ]));
   const actions = Object.fromEntries(Object.entries(formulaCommands).map(([name, latex]) =>

@@ -2,7 +2,7 @@ import {editDisplayMathSlot} from './document.mjs';
 
 const roleOf = {
   num: 'numerator', den: 'denominator', radicand: 'radicand', degree: 'degree',
-  sup: 'superscript', sub: 'subscript', cell: 'cell', nucleus: 'nucleus',
+  sup: 'superscript', sub: 'subscript', cell: 'cell', nucleus: 'nucleus', body:'body',
 };
 
 // A geometry hit becomes a document offset only through the current source
@@ -12,13 +12,14 @@ export function nativeTarget(projection, endpoint) {
   const owned = projection.owners.get(endpoint.owner);
   if (!owned?.formula || !owned?.atom) return null;
   const { formula, atom } = owned;
-  const role = roleOf[endpoint.role];
+  const fence=atom.kind==='fence'&&['nucleus','math','body'].includes(endpoint.role);
+  const role = fence?'body':roleOf[endpoint.role];
   const slot = formula.math.slots.find(candidate =>
     candidate.tag === endpoint.owner && candidate.role === role);
-  if (!slot) return null;
+  if (!slot||fence&&slot.raw) return null;
   const local = endpoint.after ? slot.raw.length : 0;
   try {
-    const target = editDisplayMathSlot(formula, formula.source, endpoint,
+    const target = editDisplayMathSlot(formula, formula.source, fence?{...endpoint,role:'body'}:endpoint,
       { from16: local, to16: local, insert: '' });
     if (!target) return null;
     return {

@@ -47,6 +47,7 @@ export function installNativePages({host,getFont,getRaster,onPaint,onError,onMat
         const owner=owners.get(field.owner);
         return ['num','den','radicand','degree','sup','sub'].includes(field.role)||
           (field.role==='cell'&&owner?.atom?.kind==='cell')||
+          (['body','math'].includes(field.role)&&owner?.atom?.kind==='fence')||
           (['math','cell'].includes(field.role)&&owner?.paragraph?.tableCell&&owner.paragraph.text==='');
       })??[];
       for(const field of targets){
@@ -62,7 +63,7 @@ export function installNativePages({host,getFont,getRaster,onPaint,onError,onMat
         const group=owner.formula??owner.paragraph;
         const from16=owner.formula?owner.formula.from16+owner.atom.from16:owner.paragraph.from16+owner.glyph.from16;
         const to16=owner.formula
-          ?owner.formula.from16+owner.atom.from16+owner.atom.nucleus.length
+          ?owner.formula.from16+(owner.atom.nucleus===undefined?owner.atom.to16:owner.atom.from16+owner.atom.nucleus.length)
           :owner.paragraph.from16+owner.glyph.to16;
         const entry={number:page.page,glyph,from16,to16};
         addGlyph(group,entry);
@@ -113,8 +114,9 @@ export function installNativePages({host,getFont,getRaster,onPaint,onError,onMat
     for(const [number,entries] of candidates)
       for(const field of entries)
         if(field.owner===hit.owner&&(hit.role==='nucleus'||field.role===hit.role))targets.push({number,field});
-    if(targets.length!==1)return;
-    const [{number,field}]=targets;
+    const target=hit.caretBox?targets.find(target=>target.number===hit.page):targets.length===1?targets[0]:null;
+    if(!target)return;
+    const {number,field}=target;
     const [left,top,right,bottom]=hit.page===number&&hit.caretBox?hit.caretBox:field.bbox,scale=CSS_PER_SP*zoom;
     const height=Math.max(12,(bottom-top)*scale);
     caret=document.createElement('span');caret.className='native-tex-caret';caret.setAttribute('aria-hidden','true');

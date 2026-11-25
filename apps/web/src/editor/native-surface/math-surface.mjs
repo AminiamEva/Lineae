@@ -1,5 +1,5 @@
 import {createSelectionModel} from './selection-model.mjs';
-import {applySlotEdit,applyStructureCommand,expandMatrix,insertDisplayLine,removeEmptyScript,applySingleCharacterScript} from '../native-math/source.mjs';
+import {applySlotEdit,applyStructureCommand,expandMatrix,insertDisplayLine,removeEmptyScript,applySingleCharacterScript,applyScalableFence} from '../native-math/source.mjs';
 
 // Native surface geometry adapter. Display-list coordinates are page space;
 // callers provide the zoom used for the current painted page.
@@ -8,9 +8,11 @@ const stopsFor = (observed, resolve, verified) => {
   const push = (owner, role, after, page, bbox, empty = false) => {
     const target = resolve({owner, role, after});
     if (!target) return;
+    const fenceGlyph=target.atom.kind==='fence'&&target.slot.role==='body'&&role==='nucleus';
     const stop = {
-      ...target, page, after,empty,
-      x: after ? bbox[2] : bbox[0], top: bbox[1], bottom: bbox[3],
+      ...target,page,after,empty:empty||fenceGlyph,
+      x: after||fenceGlyph?bbox[2]:bbox[0],top:bbox[1],bottom:bbox[3],
+      ...(fenceGlyph?{hit:{...target.hit,page,caretBox:[bbox[2],bbox[1],bbox[2],bbox[3]]}}:{}),
     };
     const key = JSON.stringify([target.formula.filePath,target.docOffset]);
     const previous = byAddress.get(key);
@@ -95,6 +97,20 @@ export function createMathSurface({resolve,selection=createSelectionModel(sameFo
         const edit=applySingleCharacterScript(caret.formula.math,caret.slot,caret.local,marker,text);
         return edit?selection.record({formula:caret.formula,patch:edit.patch,text:edit.source,structure:true},
           caret.formula.from16+edit.cursor):null;
+      }catch{return null;}
+    },
+    wrapFence(pair){
+      const [first,last]=selection.range;
+      if(first?.kind!=='math'||last?.kind!=='math'||!sameFormula(first,last))return null;
+      const {formula}=first;
+      const from=first.docOffset-formula.from16,to=last.docOffset-formula.from16;
+      const owner=first.slot===last.slot?first.slot:formula.math.slots.filter(slot=>
+        slot.from16<=from&&slot.to16>=to).sort((left,right)=>left.raw.length-right.raw.length)[0];
+      if(!owner)return null;
+      try{
+        const edit=applyScalableFence(formula.math,owner,from-owner.from16,to-owner.from16,pair);
+        return edit?selection.record({formula,patch:edit.patch,text:edit.source,structure:true},
+          formula.from16+edit.cursor):null;
       }catch{return null;}
     },
     command(command) {

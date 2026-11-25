@@ -9,6 +9,7 @@ import {projectMixedDocument,projectMixedSnapshot,textTarget} from '../editor/na
 import {nativeTarget} from '../editor/native-math/resolve.mjs';
 import {parseDocument} from '../../latex/document.mjs';
 import {resolvePackages} from '../../latex/packages.mjs';
+import {readDelimiterPair} from '../editor/delimiter-input.js';
 
 // Native LaTeX output is the primary page. The opt-in native input mode sends
 // supported keys, caret and IME through this surface into ProseMirror; the old
@@ -270,6 +271,17 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
     draftInput=null;
     paintSurfaceSelection(true);
     positionInput();
+    return true;
+  }
+  function chooseNativeDelimiters(rightFirst){
+    const {surface}=nativeDocument;
+    const caret=surface.caret,anchor=surface.anchor,snapshot=observation;
+    input.focus({preventScroll:true});
+    void readDelimiterPair(input.getBoundingClientRect(),rightFirst,null,input).then(pair=>{
+      if(!pair||!current()||observation!==snapshot||surface.caret!==caret||surface.anchor!==anchor)return;
+      inputStart=performance.now();
+      commitSurface(surface.wrapFence?.(pair));
+    });
     return true;
   }
   for(const type of ['copy','cut']){
@@ -942,6 +954,7 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
         return true;
       }
       if(!current()||!observation||pendingEdit||surface.caret?.kind!=='math')return false;
+      if(command==='left'||command==='right')return chooseNativeDelimiters(command==='right');
       if(command==='leaveFormula'){
         if(!nativeDocument.leaveFormula())return false;
         paintSurfaceSelection(true);

@@ -109,7 +109,7 @@ export function projectSnapshotFormulas(snapshot,previous) {
 export function editDisplayMathSlot(projection,currentSource,hit,edit) {
   if(!projection||projection.source!==currentSource||!hit)return null;
   const role={num:'numerator',den:'denominator',sup:'superscript',sub:'subscript',radicand:'radicand',
-    degree:'degree',cell:'cell',nucleus:'nucleus'}[hit.role];
+    degree:'degree',cell:'cell',nucleus:'nucleus',body:'body'}[hit.role];
   const slots=projection.math.slots.filter(slot=>slot.tag===hit.owner&&slot.role===role);
   if(slots.length!==1)return null;
   const result=applySlotEdit(projection.math,{...edit,slotId:slots[0].id});

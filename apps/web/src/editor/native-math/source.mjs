@@ -23,6 +23,7 @@
  */
 
 import {mathCommandCatalog} from '../../../latex/command-catalog.mjs';
+import {parseDelimiterPair} from '../../../latex/delimiters.mjs';
 
 const snapshots = new WeakMap();
 const segmenter = new Intl.Segmenter('und', {granularity: 'grapheme'});
@@ -125,7 +126,7 @@ function parse(source) {
         function delimiter(prefix) {
           const start=at;
           at+=prefix.length;trivia();
-          const spelling=/^(?:\\(?:[{}|]|(?:langle|rangle|lvert|rvert|lVert|rVert|vert|Vert)(?![A-Za-z]))|[()[\].|])/.exec(source.slice(at))?.[0];
+          const spelling=/^(?:\\(?:[{}|]|(?:langle|rangle|lvert|rvert|lVert|rVert|vert|Vert|lfloor|rfloor|lceil|rceil|lbrace|rbrace)(?![A-Za-z]))|[()[\].|])/.exec(source.slice(at))?.[0];
           if(!spelling)fail('Unsupported fence delimiter');
           at+=spelling.length;protect(start,at,'delimiter');
         }
@@ -539,6 +540,20 @@ export function applySlotEdit(snapshot, edit) {
   return editSlot(snapshot,edit,false);
 }
 
+export function applyScalableFence(snapshot,slot,from16,to16,pair) {
+  const delimiters=Array.isArray(pair)&&parseDelimiterPair(pair.join(' '));
+  if(!delimiters||!snapshots.get(snapshot)?.tree||!snapshot.slots.includes(slot))return null;
+  const [left,right]=delimiters;
+  const selected=slot.raw.slice(from16,to16);
+  // The gap terminates named delimiters when the selected text starts with a letter.
+  const prefix='\\left'+left+(/\\[A-Za-z]+$/.test(left)&&/^[A-Za-z]/.test(selected)?' ':'');
+  const after=snapshot.source[slot.from16+to16];
+  const suffix='\\right'+right+(/\\[A-Za-z]+$/.test(right)&&after&&/[A-Za-z]/.test(after)?' ':'');
+  const edit=editSlot(snapshot,{slotId:slot.id,from16,to16,insert:prefix+selected+suffix,
+    preserved: selected},true);
+  return {source:edit.source,patch:edit.patch,cursor:slot.from16+from16+prefix.length};
+}
+
 export function removeEmptyScript(snapshot,slot) {
   if(!snapshots.get(snapshot)?.tree||!snapshot.slots.includes(slot)||slot.raw||
     !['superscript','subscript'].includes(slot.role)||!slot.grouped)return null;
@@ -573,7 +588,7 @@ export function applySingleCharacterScript(snapshot,slot,local,marker,text) {
   return {source:edit.source,patch:edit.patch,cursor:at+insert.length};
 }
 
-function editSlot(snapshot, {slotId, from16, to16, insert}, structure) {
+function editSlot(snapshot, {slotId, from16, to16, insert,preserved}, structure) {
   const state = snapshots.get(snapshot);
   if (!state?.tree || !snapshot.supported) throw new TypeError('Expected a supported projectMath snapshot');
   const slot = snapshot.slots.find(candidate => candidate.id === slotId);
@@ -603,6 +618,7 @@ function editSlot(snapshot, {slotId, from16, to16, insert}, structure) {
   }
   for (const range of state.tree.protectedRanges) {
     if(removeSymbol&&range.from16>=from&&range.to16<=to)continue;
+    if(structure&&preserved&&range.kind!=='comment'&&range.from16>=from&&range.to16<=to)continue;
     if ((from < range.to16 && to > range.from16) ||
         (from === to && from > range.from16 && from < range.to16) ||
         (range.kind === 'comment' && from === range.to16)) {
@@ -616,6 +632,7 @@ function editSlot(snapshot, {slotId, from16, to16, insert}, structure) {
   if (!newBoundaries.has(cursor)) throw new RangeError('Selection would split a grapheme');
   for (const arg of state.tree.singleArguments) {
     if(removeSymbol&&arg.from16>=from&&arg.to16<=to)continue;
+    if(structure&&preserved&&arg.from16>from&&arg.to16<to)continue;
     if (from <= arg.to16 && to >= arg.from16) {
       // Check the original single-argument field, even when editing via an
       // ancestor slot. Inserting "ab" into x^a must not silently escape ^.

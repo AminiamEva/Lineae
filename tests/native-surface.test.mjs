@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {projectDocumentFormulas,projectSnapshotFormulas} from '../apps/web/src/editor/native-math/document.mjs';
 import {nativeTarget} from '../apps/web/src/editor/native-math/resolve.mjs';
-import {applySlotEdit,applyStructureCommand,nativeMathCommandNames,projectMath} from '../apps/web/src/editor/native-math/source.mjs';
+import {applySlotEdit,applyStructureCommand,applyScalableFence,nativeMathCommandNames,projectMath} from '../apps/web/src/editor/native-math/source.mjs';
 import {createMathSurface} from '../apps/web/src/editor/native-surface/math-surface.mjs';
 import {createTextSurface} from '../apps/web/src/editor/native-surface/text-surface.mjs';
 import {createNativeDocumentSession} from '../apps/web/src/editor/native-surface/document-session.mjs';
@@ -109,6 +109,22 @@ test('one-character shortcuts continue on the base line and doubled caret produc
   surface.setObservation(page([], [glyph(evidence.token('x').tag,100),glyph(evidence.token('ˆ').tag,140)]));
   assert.equal(surface.caret.docOffset,evidence.formula.to16);
   assert.equal(surface.insert('+').text,'x\\text{ˆ}+');
+});
+
+test('scalable fences preserve selected structures and an empty fence has a verified insertion slot',()=>{
+  const raw='\\frac{x}{y}';
+  const math=projectMath(raw);
+  const root=math.slots.find(slot=>slot.role==='body');
+  const wrapped=applyScalableFence(math,root,0,raw.length,['(',')']);
+  assert.equal(wrapped.source,'\\left('+raw+'\\right)');
+  const empty=setup('\\begin{document}\n\\[\\left(\\right)\\]\n\\end{document}\n');
+  const owner=empty.formula.math.atoms.find(atom=>atom.kind==='fence');
+  const surface=createMathSurface({resolve:endpoint=>nativeTarget(empty.projection,endpoint)});
+  surface.setObservation(page([], [glyph(owner.tag,100),glyph(owner.tag,150)]));
+  const caret=surface.nearest(1,121,100);
+  assert.equal(caret.slot.role,'body');
+  assert.equal(caret.x,120);
+  assert.equal(surface.insert('x').text,'\\left(x\\right)');
 });
 
 test('a native caret stops at real formula boundaries and edits exactly one slot', () => {
