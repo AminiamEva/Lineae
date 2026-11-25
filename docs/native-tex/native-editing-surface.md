@@ -113,7 +113,7 @@ The actual folder picker and physical Linux IME still need device checks.
 
 For physical input review, the workflow's optional `desktop_input_probe`
 retains the unbundled debug executables from the same commit. The three-platform
-[full software run](https://github.com/AminiamEva/Lineae/actions/runs/45686311404)
+[full software run](https://github.com/AminiamEva/Lineae/actions/runs/45702308052)
 includes these executables and the recorded LuaLaTeX geometry. Launch an
 executable with `--lineae-native-workspace` on the device under test. This
 opens the engine-off workspace with the normal TeX trust dialog. The
@@ -132,8 +132,10 @@ keydown to pixels separately from engine protocol and browser frame timing.
    still need equivalent editing and history coverage.
 2. Cross-file replacement can include complete inline and display formulas
    between prose endpoints. It verifies the rebuilt document against the source
-   drafts and records both drafts in the same undo step. Selection endpoints
-   inside complex containers still need coverage.
+   drafts and records both drafts in the same undo step. Covered endpoints
+   include nested lists, a proof, and the edge of a numbered or starred heading.
+   Tables, scopes spanning two copies of the same input, and partially selected
+   formula structures still need coverage.
 3. Automated composition proves commit-once and cancellation. Candidate
    placement, shortcut delivery and latency still need physical-device tests.
 4. The browser can open standalone and floating TikZ directly from a registered

@@ -172,7 +172,7 @@
       ],
       "nativeStatus": "partial",
       "evidence": ["https://github.com/AminiamEva/Lineae/actions/runs/45620299673", "https://github.com/AminiamEva/Lineae/actions/runs/45622916182", "https://github.com/AminiamEva/Lineae/actions/runs/45628338101", "https://github.com/AminiamEva/Lineae/actions/runs/45639252258", "https://github.com/AminiamEva/Lineae/actions/runs/45646995464"],
-      "scope": "The native math palette supports verified structures and formula labels. The prose palette supports page breaks, appendix, contents, horizontal rules, book matter, listings, columns, metadata, and project inputs. The code block editor preserves the listing wrapper and supports independent undo and redo in Document. The cases shortcut adds amsmath when needed and targets the first empty cell. Opaque source blocks open at their exact source range. The remaining command inventory requires individual verification. Code block and cases browser gates: https://github.com/AminiamEva/Lineae/actions/runs/45700456663 and https://github.com/AminiamEva/Lineae/actions/runs/45700948651"
+      "scope": "The native math palette supports verified structures, formatting, display style and formula labels. The prose palette supports page breaks, appendix, contents, horizontal rules, book matter, listings, columns, metadata, and project inputs. The code block editor preserves the listing wrapper and supports independent undo and redo in Document. Known directives can be edited there, including source spellings that represent an identical rich node. The cases shortcut adds amsmath and targets the first empty cell. The alignment and inline formula toolbar actions use the native document. The browser tests also cover opening a formula at its right edge, explicit prose breaks, boxed text and continuing beyond a proof. Opaque source blocks open at their exact source range. Browser command gates: https://github.com/AminiamEva/Lineae/actions/runs/45701809530 and https://github.com/AminiamEva/Lineae/actions/runs/45703676672"
     },
     {
       "id": "clipboard-ime-cross-run",
@@ -186,7 +186,7 @@
       ],
       "nativeStatus": "partial",
       "evidence": ["https://github.com/AminiamEva/Lineae/actions/runs/45596378294", "https://github.com/AminiamEva/Lineae/actions/runs/45599661375", "https://github.com/AminiamEva/Lineae/actions/runs/45629535428", "https://github.com/AminiamEva/Lineae/actions/runs/45639252258", "https://github.com/AminiamEva/Lineae/actions/runs/45646995464"],
-      "scope": "Copy, cut, formatted paste, whole inline formula selection, synthetic Chinese composition, and queued input during a forced geometry delay. Verified selections within one paragraph copy formatting alongside plain text, and native math accepts validated LaTeX fragments from the clipboard. Browser checks cover vertical caret and page navigation, the textarea anchor during scrolling, the first preedit after exiting inline math, rapid prose after exiting an included file, and entering inline math while prose geometry is pending. Physical input methods and broader cross-file editing remain pending. Queue gates: https://github.com/AminiamEva/Lineae/actions/runs/45699836032 and https://github.com/AminiamEva/Lineae/actions/runs/45700117546"
+      "scope": "Copy, cut, formatted paste, whole inline formula selection, synthetic Chinese composition, and queued input during a forced geometry delay. Verified selections within one paragraph copy formatting alongside plain text, and native math accepts validated LaTeX fragments from the clipboard. Browser checks cover vertical caret and page navigation, the textarea anchor during scrolling, the first preedit after exiting inline math, rapid prose after exiting an included file, and entering inline math while prose geometry is pending. Cross-file selection can replace the edge of a heading, escape percent in the parent source, and undo both files together. Physical input methods and broader cross-file editing remain pending. Browser gates: https://github.com/AminiamEva/Lineae/actions/runs/45699836032, https://github.com/AminiamEva/Lineae/actions/runs/45700117546 and https://github.com/AminiamEva/Lineae/actions/runs/45704768975"
     },
     {
       "id": "default-native-engine",
@@ -204,11 +204,11 @@
   ],
   "acceptance": {
     "fullSoftwareRun": {
-      "revision": "5caa5e056b2bdce2f35767a6f0663a8bf6111d87",
+      "revision": "a8eabc343f1876491732d2ab3ee4fc23b3c4866f",
       "status": "passed-on-windows-macos-ubuntu",
-      "scope": "All three jobs passed the browser gates, real host geometry including repeated source expansion, recorded page editing, and the engine-off desktop WebView smoke. The prior run includes unbundled executables for physical device input review.",
-      "evidence": "https://github.com/AminiamEva/Lineae/actions/runs/45699877002",
-      "priorEvidence": "https://github.com/AminiamEva/Lineae/actions/runs/45692782713"
+      "scope": "All three jobs passed the browser gates, real host geometry including repeated source expansion and four empty cases cells, recorded page editing, and the engine-off desktop WebView smoke. This run includes unbundled executables for physical device input review.",
+      "evidence": "https://github.com/AminiamEva/Lineae/actions/runs/45702308052",
+      "priorEvidence": "https://github.com/AminiamEva/Lineae/actions/runs/45699877002"
     },
     "nativeHost": {
       "status": "protocol-and-project-tests-passed",
@@ -274,82 +274,82 @@
     "browserInstrumentation": "apps/web/src/ui/native-tex-preview.mjs",
     "browserPaint": "Animation frame estimate, excludes OS input and physical display scan-out.",
     "engineBaseline": {
-      "evidence": "https://github.com/AminiamEva/Lineae/actions/runs/45676010748",
-      "priorEvidence": "https://github.com/AminiamEva/Lineae/actions/runs/45651241855",
-      "revision": "26ca22ad7dd4bc9d41d0aa538502e525d313b008",
+      "evidence": "https://github.com/AminiamEva/Lineae/actions/runs/45702308052",
+      "priorEvidence": "https://github.com/AminiamEva/Lineae/actions/runs/45676010748",
+      "revision": "a8eabc343f1876491732d2ab3ee4fc23b3c4866f",
       "scope": "Warm rtex edit dispatch on stdin to matching stdout event, in CI.",
       "samples": [
         {
           "platform": "macOS arm64",
           "pages": 10,
           "sampleCount": 1000,
-          "p50Ms": 2.0569,
-          "p95Ms": 3.1109,
-          "p99Ms": 3.8352
+          "p50Ms": 3.9405,
+          "p95Ms": 9.4018,
+          "p99Ms": 28.4889
         },
         {
           "platform": "macOS arm64",
           "pages": 100,
           "sampleCount": 1000,
-          "p50Ms": 2.2716,
-          "p95Ms": 4.6593,
-          "p99Ms": 5.9788
+          "p50Ms": 2.2038,
+          "p95Ms": 4.2715,
+          "p99Ms": 6.2335
         },
         {
           "platform": "macOS arm64",
           "pages": 300,
           "sampleCount": 1000,
-          "p50Ms": 1.9883,
-          "p95Ms": 2.4788,
-          "p99Ms": 4.02
+          "p50Ms": 2.2557,
+          "p95Ms": 5.5562,
+          "p99Ms": 6.6094
         },
         {
           "platform": "Windows x64",
           "pages": 10,
           "sampleCount": 1000,
-          "p50Ms": 3.4083,
-          "p95Ms": 5.2907,
-          "p99Ms": 5.7072
+          "p50Ms": 2.6406,
+          "p95Ms": 3.8085,
+          "p99Ms": 4.0553
         },
         {
           "platform": "Windows x64",
           "pages": 100,
           "sampleCount": 1000,
-          "p50Ms": 3.41,
-          "p95Ms": 5.448,
-          "p99Ms": 5.7775
+          "p50Ms": 2.5688,
+          "p95Ms": 3.6455,
+          "p99Ms": 4.2478
         },
         {
           "platform": "Windows x64",
           "pages": 300,
           "sampleCount": 1000,
-          "p50Ms": 3.1983,
-          "p95Ms": 5.0057,
-          "p99Ms": 5.4142
+          "p50Ms": 2.4648,
+          "p95Ms": 3.4193,
+          "p99Ms": 4.3146
         },
         {
           "platform": "Ubuntu x64",
           "pages": 10,
           "sampleCount": 1000,
-          "p50Ms": 2.5431,
-          "p95Ms": 3.6004,
-          "p99Ms": 4.5542
+          "p50Ms": 1.7072,
+          "p95Ms": 2.4115,
+          "p99Ms": 2.9269
         },
         {
           "platform": "Ubuntu x64",
           "pages": 100,
           "sampleCount": 1000,
-          "p50Ms": 2.5342,
-          "p95Ms": 3.6192,
-          "p99Ms": 4.3193
+          "p50Ms": 1.6022,
+          "p95Ms": 2.5265,
+          "p99Ms": 2.7953
         },
         {
           "platform": "Ubuntu x64",
           "pages": 300,
           "sampleCount": 1000,
-          "p50Ms": 2.4937,
-          "p95Ms": 3.4189,
-          "p99Ms": 3.7627
+          "p50Ms": 1.6596,
+          "p95Ms": 2.4971,
+          "p99Ms": 2.9674
         }
       ]
     }
@@ -363,12 +363,12 @@
       "verifiedTableOperations": ["table", "tableRow", "tableCell", "tableHeader"],
       "partialNativeEditing": ["blockquote", "theoremBlock", "bulletList", "orderedList", "listItem", "descriptionList", "descriptionItem", "projectRegion", "documentImage", "subfigures", "multiColumn"],
       "protectedInlineOrStructural": ["hardBreak", "ref", "cite", "label", "footnote", "pageBreak", "appendixStart", "matterStart", "counterDirective", "layoutCommand"],
-      "verifiedNativeDialogs": ["codeBlock"],
-      "directEditingPending": ["horizontalRule", "lipsum", "raw", "tableOfContents"]
+      "nativeDialogRoutes": ["codeBlock", "pageBreak", "appendixStart", "matterStart", "tableOfContents", "layoutCommand", "counterDirective", "horizontalRule", "lipsum"],
+      "exactSourceFallback": ["raw"]
     },
     "legacyDecorationsDisabledInNativeMode": ["mathGlue", "lipsumPreviewExpansion"],
     "marks": {
-      "nativeTyping": ["bold", "italic", "underline", "code", "superscript", "subscript", "smallcaps", "strike", "textStyle"],
+      "nativeTyping": ["bold", "italic", "underline", "code", "superscript", "subscript", "smallcaps", "strike", "textStyle", "boxed", "circled"],
       "verifiedSourceRuns": ["textCommand", "textStyle", "boxed", "circled"],
       "pending": "Typing and changing style attributes inside formatted or structural runs, including package-backed variants."
     }
