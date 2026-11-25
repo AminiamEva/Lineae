@@ -232,7 +232,15 @@ pub fn run() {
         .setup(|app| {
             let native_smoke = cfg!(debug_assertions)
                 && std::env::args_os().any(|arg| arg == "--lineae-native-workspace-smoke");
-            let entry = if native_smoke { "index.html?native-only-acceptance=1" } else { "index.html" };
+            let native_input_review = cfg!(debug_assertions)
+                && std::env::args_os().any(|arg| arg == "--lineae-native-workspace");
+            let entry = if native_smoke {
+                "index.html?native-only-acceptance=1"
+            } else if native_input_review {
+                "index.html?native-workspace=1"
+            } else {
+                "index.html"
+            };
             let window = WebviewWindowBuilder::new(app, "main", WebviewUrl::App(entry.into()))
                 .title("Lineae")
                 .inner_size(1280.0, 900.0)

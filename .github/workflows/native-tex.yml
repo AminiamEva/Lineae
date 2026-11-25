@@ -15,6 +15,10 @@ on:
         description: Keep the unbundled Windows executable for physical input checks
         type: boolean
         default: false
+      desktop_input_probe:
+        description: Keep the unbundled Windows and macOS debug executables for physical input checks
+        type: boolean
+        default: false
   workflow_call:
 
 permissions:
@@ -83,6 +87,7 @@ jobs:
         with:
           path: .native-tex/texlive
           key: native-tex-tl2025-${{ matrix.target }}-${{ hashFiles('scripts/install-native-tex-ci.sh') }}
+          restore-keys: native-tex-tl2025-${{ matrix.target }}-
       - name: Install the frozen TeX Live environment
         run: bash scripts/install-native-tex-ci.sh
       - name: Download and verify the pinned rtex release
@@ -192,5 +197,13 @@ jobs:
         with:
           name: native-windows-input-probe-${{ github.sha }}
           path: apps/desktop/src-tauri/target/debug/lineae.exe
+          if-no-files-found: error
+          retention-days: 3
+      - name: Preserve the two-platform unbundled input probes
+        if: ${{ inputs.desktop_input_probe }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-input-probe-${{ matrix.target }}-${{ github.sha }}
+          path: apps/desktop/src-tauri/target/debug/${{ runner.os == 'Windows' && 'lineae.exe' || 'lineae' }}
           if-no-files-found: error
           retention-days: 3

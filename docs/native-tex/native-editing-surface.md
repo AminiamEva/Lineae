@@ -106,6 +106,19 @@ verify the embedded fonts, PDF worker and native session bridge without an
 installer. The browser regression and the real LuaLaTeX host tests still run
 separately from the WebView check.
 
+For physical input review, the workflow's optional `desktop_input_probe`
+retains the two unbundled debug executables from the same commit. Launch an
+executable with `--lineae-native-workspace` on the device under test. This
+opens the engine-off workspace with the normal TeX trust dialog. The
+`--lineae-native-workspace-smoke` argument is for the automated check that
+opens and exits on its own.
+
+The device record needs the commit, operating system, WebView version, IME
+name, and a recording of the candidate box after the first and second Pinyin
+keys next to an inline formula. Check candidate selection, cancellation,
+duplicate input and shortcut delivery with the physical keyboard. Measure
+keydown to pixels separately from engine protocol and browser frame timing.
+
 ## Known gaps before switching the default
 
 1. Broader commands, TeX structures, complex table cells and project changes
