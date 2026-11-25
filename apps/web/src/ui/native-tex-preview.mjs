@@ -1029,7 +1029,7 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
         selectOutlineTarget(address);
       }
       requestAnimationFrame(syncCaret);
-      targetStatus.textContent=kind==='text'&&!projection.paragraphs.length
+      targetStatus.textContent=!projection.paragraphs.length&&!projection.formulas.length
         ?t('点击已定位的图形进行编辑。','Click a verified drawing to edit it.')
         :kind==='text'
         ?t('点击原生页面中的文字定位光标，输入会写入原文。','Click text on the native page to place the caret; typing edits the source.')
