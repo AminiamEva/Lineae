@@ -707,6 +707,16 @@ test('native prose targets both sides of explicit LaTeX line breaks and preserve
   assert.equal(patches.reduceRight((value,{from,to,insert})=>value.slice(0,from)+insert+value.slice(to),source),draft);
 });
 
+test('a native selection can remove complete display math between plain paragraphs',()=>{
+  const source='\\begin{document}\nBefore.\n\n\\[x+y\\]\n\nAfter.\n\\end{document}\n';
+  const draft=source.replace('Before.\n\n\\[x+y\\]\n\nAfter.','Before/After.');
+  const document=text=>({type:'doc',content:parseDocument(text).blocks.flatMap(raw=>importBlocks(raw))});
+  const patches=richSourceChanges(sourceProjection(source,document(source)),document(draft));
+  assert.equal(patches.reduceRight((value,{from,to,insert})=>value.slice(0,from)+insert+value.slice(to),source),draft);
+  const protectedSource=source.replace('\\[x+y\\]','% retain this comment\n\\[x+y\\]');
+  assert.equal(richSourceChanges(sourceProjection(protectedSource,document(protectedSource)),document(draft)),null);
+});
+
 test('native list prose path distinguishes duplicate text inside a nested item',()=>{
   const source='\\begin{document}\n\\begin{enumerate}\n\\item Same text.\n'+
     '\\begin{itemize}\n\\item Same text.\n\\end{itemize}\n\\item Same text.\n'+

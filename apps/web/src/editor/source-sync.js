@@ -147,7 +147,7 @@ export function richSourceChanges(projection, doc) {
     while(first<oldEnd && first<newEnd && same(before[first],doc.content[first])) first++;
     while(oldEnd>first && newEnd>first && same(before[oldEnd-1],doc.content[newEnd-1])) {oldEnd--;newEnd--;}
     const block=projection.blocks.find(block=>ownsEditedRange(block,first,oldEnd));
-    if (!block) return oldEnd===first+2&&newEnd===first+1
+    if (!block) return oldEnd>=first+2&&newEnd===first+1
       ?plainParagraphJoin(projection,before.slice(first,oldEnd),doc.content[first],first):null;
     const nodes=doc.content.slice(block.index,block.index+block.count+doc.content.length-before.length);
     return patchBlock(block,nodes);
@@ -165,19 +165,28 @@ export function richSourceChanges(projection, doc) {
   return changes;
 }
 
-function plainParagraphJoin(projection,[left,right],joined,index) {
+export function matchesParagraphGap(source,nodes) {
+  if(!nodes.length)return /^[ \t]*\r?\n[ \t]*\r?\n\s*$/.test(source);
+  if(source.includes('%')||nodes.some(node=>node.type!=='mathBlock'))return false;
+  const parsed=parseDocument(source,{fragment:true})?.blocks.flatMap(raw=>importBlocks(raw));
+  return parsed?.length===nodes.length&&parsed.every((node,index)=>node.type==='mathBlock'&&
+    serialize(node)===serialize(nodes[index]));
+}
+
+function plainParagraphJoin(projection,selected,joined,index) {
+  const left=selected[0],right=selected.at(-1);
   const nodes=[left,right,joined];
   if(nodes.some(node=>node?.type!=='paragraph'||node.content?.length!==1||
     node.content[0].type!=='text'||node.content[0].marks?.length))return null;
   const a=left.content[0].text,b=right.content[0].text;
   if(JSON.stringify({...joined,content:left.content})!==JSON.stringify(left))return null;
-  const owners=nodes.slice(0,2).map((_,offset)=>projection.blocks.find(block=>
+  const owners=[0,selected.length-1].map(offset=>projection.blocks.find(block=>
     block.index===index+offset&&block.count===1&&block.editable));
   const [first,last]=owners;
   if(first?.raw.trim()!==a||last?.raw.trim()!==b)return null;
   const from=first.from+first.raw.trimEnd().length,to=last.to-last.raw.trimStart().length;
   const gap=projection.text.slice(from,to),replacement=serialize(joined).slice(0,-2);
-  if(!/^[ \t]*\r?\n[ \t]*\r?\n\s*$/.test(gap)||
+  if(!matchesParagraphGap(gap,selected.slice(1,-1))||
      importBlocks(replacement).map(serialize).join('')!==serialize(joined))return null;
   return minimalChange(a+gap+b,replacement,from-a.length);
 }

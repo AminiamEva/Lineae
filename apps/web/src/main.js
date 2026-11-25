@@ -31,7 +31,7 @@ import { buildHomeRibbon } from './ui/home-ribbon.js';
 import { activeStyleKey, documentClassFromSource } from './ui/style-presets.mjs';
 import { buildRibbonGroups } from './ui/ribbon-groups.js';
 import {installHeaderFooterPanel} from './ui/header-footer-panel.js';
-import { sourceProjection, richSourceChanges, standaloneParagraphDraft, standaloneMathChanges } from './editor/source-sync.js';
+import { sourceProjection, richSourceChanges, standaloneParagraphDraft, standaloneMathChanges, matchesParagraphGap } from './editor/source-sync.js';
 import { installSourceToolbar } from './editor/source-toolbar.js';
 import { createSourceWorkspace } from './editor/source-workspace.js';
 import { DEFAULT_DOCUMENT_SOURCE } from './editor/default-document.mjs';
@@ -2929,14 +2929,17 @@ nativeTexPreview=installNativeTexPreview({host:footer,before:modes,primary:nativ
     }
     const from=first.docOffset,to=last.docOffset,source=first.paragraph.source;
     const gap=source.slice(first.paragraph.from16+first.paragraph.text.length,last.paragraph.from16);
-    if(!/^[ \t]*\r?\n[ \t]*\r?\n\s*$/.test(gap)||
-      !(first.paragraph.text.slice(0,first.local)+text+last.paragraph.text.slice(last.local)).trim())return null;
+    if(!(first.paragraph.text.slice(0,first.local)+text+last.paragraph.text.slice(last.local)).trim())return null;
     if(projectDocument.composition&&!projectDocument.rebase(currentNativeProjectComposition(),editor.getJSON()))return null;
     const left=nativeProsePosition(first.paragraph,first.local,first.local);
     const right=nativeProsePosition(last.paragraph,last.local,last.local);
-    if(!left||!right||left.range.match.offset+left.range.match.node.nodeSize!==right.range.match.offset||
-      theorem&&left.range.match.index!==right.range.match.index)return null;
-    const {state}=editor,tr=state.tr.insertText(text,left.range.from,right.range.from);
+    if(!left||!right)return null;
+    const {state}=editor;
+    const start=state.doc.resolve(left.range.from),end=state.doc.resolve(right.range.from),depth=start.depth-1;
+    if(end.depth!==start.depth||start.start(depth)!==end.start(depth))return null;
+    const middle=start.node(depth).content.content.slice(start.index(depth)+1,end.index(depth));
+    if(theorem&&middle.length||!matchesParagraphGap(gap,middle.map(node=>node.toJSON())))return null;
+    const tr=state.tr.insertText(text,left.range.from,right.range.from);
     tr.setSelection(TextSelection.create(tr.doc,left.range.from+text.length));
     const insert=serialize({type:'text',text}),offset=from+insert.length;
     const draft=source.slice(0,from)+insert+source.slice(to);

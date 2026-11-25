@@ -357,6 +357,20 @@ const server=createServer(async(req,res)=>{
       await page.waitForFunction(expected=>nativeProbe.source===expected,pasted);
       assert.equal(await page.locator('.ProseMirror p br').count(),3);
       await page.locator('#native-tex-close').click();
+      const acrossMathBody='Alpha\n\n\\[x+y\\]\n\nBeta';
+      const acrossMath='\\documentclass{article}\n\\begin{document}\n'+acrossMathBody+'\n\\end{document}\n';
+      await page.locator('input#file').setInputFiles({name:'range-with-math.tex',mimeType:'text/plain',buffer:Buffer.from(acrossMath)});
+      await page.locator('#native-tex-toggle').click();
+      await page.locator('#native-tex-target').click();
+      await panel.getByText('Click prose on the native page',{exact:false}).waitFor();
+      await page.locator('#native-tex-edit').click();
+      await canvas.click({position:{x:6550000*scale,y:9250000*scale}});
+      await page.keyboard.press(mod+'+a');
+      await page.keyboard.type('Replaced');
+      await page.waitForFunction(expected=>nativeProbe.source===expected,acrossMath.replace(acrossMathBody,'Replaced'));
+      await page.keyboard.press(mod+'+z');
+      await page.waitForFunction(expected=>nativeProbe.source===expected,acrossMath);
+      await page.locator('#native-tex-close').click();
       const listSource='\\documentclass{article}\n\\begin{document}\n\\begin{enumerate}\n\\item One item.\n'+
         '\\begin{itemize}\n\\item Nested.\n\\end{itemize}\n\\item Last.\n\\end{enumerate}\n\\end{document}\n';
       await page.locator('input#file').setInputFiles({name:'list.tex',mimeType:'text/plain',buffer:Buffer.from(listSource)});
