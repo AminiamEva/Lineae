@@ -46,6 +46,10 @@ export function createNativeDocumentSession(resolve) {
         fileOf(stop)===fileOf(caret)&&stop.docOffset>=caret.formula.to16);
       return following?selection.selectTargets(following,following):false;
     },
+    selectRegion({path,from,to}){
+      const first=selection.stops.find(stop=>fileOf(stop)===path&&stop.docOffset>=from&&stop.docOffset<=to);
+      return first?selection.selectTargets(first,first):false;
+    },
     reset(){selection.reset();},
   };
 }

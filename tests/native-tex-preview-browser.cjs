@@ -6,7 +6,7 @@ const {resolve,extname,sep}=require('node:path');
 const installMockNativeTex=require('./native-math/mock-bridge.cjs');
 const {revealToolbar}=require('./workspace-ui-helpers.cjs');
 
-const projectMain='\\documentclass{article}\n\\begin{document}\n\\[\\frac{a}{}\\]\n\\input{chapters/one}\n\\end{document}\n';
+const projectMain='\\documentclass{article}\n\\begin{document}\n\\[\\frac{a}{}\\]\n\\input{chapters/one}\n\nAfter chapter.\n\\end{document}\n';
 const projectMainWithImage=projectMain.replace('\\begin{document}','\\usepackage{graphicx}\n\\begin{document}')
   .replace('\\end{document}','\\begin{figure}[ht]\n\\centering\n\\includegraphics[width=18pt]{plot.png}\n\\end{figure}\n\\end{document}');
 const projectChapter='Original chapter.\n\n\\[\\frac{z}{}\\]\n';
@@ -187,6 +187,7 @@ const server=createServer(async(req,res)=>{
         input.dispatchEvent(new CompositionEvent('compositionend',{bubbles:true,data:''}));
       });
       assert.equal(await page.evaluate(()=>nativeProbe.source),typedHeading);
+      const beforeComposition=await page.evaluate(()=>nativeProbe.calls.filter(call=>call.command==='native_tex_observe_formula').length);
       await page.locator('#native-tex-input').evaluate(input=>{
         input.dispatchEvent(new CompositionEvent('compositionstart',{bubbles:true}));
         input.value='文';
@@ -197,9 +198,17 @@ const server=createServer(async(req,res)=>{
       });
       const composedHeading=typedHeading.replace('XLong title','文XLong title');
       await page.waitForFunction(expected=>nativeProbe.source===expected,composedHeading);
+      await page.waitForFunction(count=>nativeProbe.calls.filter(call=>call.command==='native_tex_observe_formula').length>count,beforeComposition);
       await panel.getByText('Click text on the native page',{exact:false}).waitFor();
+      await canvas.click({position:{x:6655000*scale,y:9250000*scale}});
       await page.keyboard.type('%');
-      await page.waitForFunction(expected=>nativeProbe.source===expected,composedHeading.replace('文X','文\\%X'));
+      const escapedHeading=composedHeading.replace('文X','文\\%X');
+      await page.waitForFunction(expected=>nativeProbe.source===expected,escapedHeading,{timeout:6000}).catch(async error=>{
+        console.error('Native heading percent input',await panel.getByRole('status').allTextContents(),
+          await page.evaluate(()=>({source:nativeProbe.source,heading:document.querySelector('.ProseMirror h1')?.textContent,
+            focus:document.activeElement?.id})));
+        throw error;
+      });
       await panel.getByText('Click text on the native page',{exact:false}).waitFor();
       await page.keyboard.press('Backspace');
       await page.waitForFunction(expected=>nativeProbe.source===expected,composedHeading);
@@ -245,7 +254,7 @@ const server=createServer(async(req,res)=>{
       await page.locator('#native-tex-close').click();
       await page.evaluate(()=>{nativeProbe.semanticPdf=false;nativeProbe.registeredPdf=false;});
       await openMockProject(page);
-      await page.evaluate(()=>{nativeProbe.targetInclude=true;});
+      await page.evaluate(()=>{nativeProbe.targetInclude=true;nativeProbe.includeMainText=true;});
       await page.locator('#native-tex-toggle').click();
       await page.waitForFunction(()=>document.querySelector('#native-tex-preview').dataset.state==='current');
       await page.locator('#native-tex-target').click();
@@ -263,8 +272,14 @@ const server=createServer(async(req,res)=>{
       await page.waitForFunction(count=>nativeProbe.calls.filter(call=>call.command==='native_tex_observe_formula').length>count,childObservations);
       await panel.getByText('Click prose on the native page',{exact:false}).waitFor();
       await canvas.click({position:{x:6550000*scale,y:9250000*scale}});
+      const beforeExitFile=await page.evaluate(()=>nativeProbe.calls.filter(call=>call.command==='native_tex_observe_formula').length);
       await page.keyboard.type('X');
       await childChanged('X'+childWithMath);
+      await page.waitForFunction(count=>nativeProbe.calls.filter(call=>call.command==='native_tex_observe_formula').length>count,beforeExitFile);
+      await panel.getByText('Click prose on the native page',{exact:false}).waitFor();
+      await page.keyboard.press(mod+'+Alt+j');
+      await page.keyboard.type('Y');
+      await page.waitForFunction(expected=>nativeProbe.source===expected,projectMain.replace('After chapter.','YAfter chapter.'));
       assert.deepEqual(errors,[]);
       console.log('PASS native mixed editing with MathLive and JS pagination disabled');
       return;

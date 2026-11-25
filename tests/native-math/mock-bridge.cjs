@@ -102,8 +102,9 @@ module.exports=function installMockNativeTex() {
         .replace(/\$[^$]*\$/g,'')
         .replace(/\\begin\{(?:equation|align|gather)\*?\}[\s\S]*?\\end\{(?:equation|align|gather)\*?\}/g,'')
         .matchAll(/\\attribute65000=(\d+) (.)/gsu)];
+      const proseTags=[...textTags(input),...(p.targetInclude&&p.includeMainText?textTags(args.projection):[])];
       if(!match&&!script&&!cellOwner){
-        const text=textTags(input);
+        const text=proseTags;
         const fields=[...input.matchAll(emptyCells)].map(([,owner],index)=>{
           const x=6500000+index*1000000;
           return {owner:Number(owner),role:'math',empty:true,bbox:[x,10500000,x,10500000]};
@@ -137,7 +138,7 @@ module.exports=function installMockNativeTex() {
       if(token)observed[0].dl.math_owners.glyphs.push({owner:Number(token[1]),char:97,
         bbox:[6500000,6000000,6800000,6500000]});
       let textX=6500000;
-      for(const [,owner,char] of textTags(input)){
+      for(const [,owner,char] of proseTags){
         observed[0].dl.math_owners.glyphs.push({owner:Number(owner),char:char.codePointAt(0),
           bbox:[textX,9000000,textX+200000,9500000]});
         textX+=200000;

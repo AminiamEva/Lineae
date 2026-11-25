@@ -11,7 +11,7 @@ import {nativeTarget} from '../editor/native-math/resolve.mjs';
 // Native LaTeX output is the primary page. The opt-in native input mode sends
 // supported keys, caret and IME through this surface into ProseMirror; the old
 // JS-formatted page and MathLive inputs stay available as the migration fallback.
-export function installNativeTexPreview({host,before,getSource,getSnapshot,isComposing,focusMathSlot,focusImage,commitMath,commitText,history}) {
+export function installNativeTexPreview({host,before,getSource,getSnapshot,isComposing,focusMathSlot,focusImage,continuationRegion,commitMath,commitText,history}) {
   const invoke=window.__TAURI__?.core?.invoke;
   if(!invoke) return {refresh(){},documentChanged(){},relocalize(){}};
   const button=document.createElement('button');
@@ -139,6 +139,14 @@ export function installNativeTexPreview({host,before,getSource,getSnapshot,isCom
     if(from.kind==='math'&&from.formula===to.formula&&from.slot.id===to.slot.id)
       return from.slot.raw.slice(from.local,to.local);
     return null;
+  }
+  function leaveFile(){
+    if(!current()||!observation||pendingEdit)return false;
+    const target=continuationRegion?.(nativeDocument.surface.caret);
+    if(!target||!nativeDocument.selectRegion(target))return false;
+    paintSurfaceSelection();
+    positionInput();
+    return true;
   }
   for(const type of ['copy','cut']){
     input.addEventListener(type,event=>{
@@ -674,10 +682,13 @@ export function installNativeTexPreview({host,before,getSource,getSnapshot,isCom
   relocalize();renderer.setZoom(.75);pdf.setZoom(.75);
   return {
     refresh,documentChanged:()=>{void stop();},relocalize,
+    hasTextInput:event=>event.target===input&&nativeEditing&&nativeDocument.surface.caret?.kind==='text',
     hasMathInput: event => event.target===input && nativeEditing && nativeDocument.surface.caret?.kind==='math',
     hasNativeMathFocus:()=>document.activeElement===input&&nativeEditing&&nativeDocument.surface.caret?.kind==='math',
+    leaveFile,
     runMathCommand(command) {
       const {surface}=nativeDocument;
+      if(command==='leaveFile')return leaveFile();
       if(command==='undo'||command==='redo'){
         clearQueuedInput();
         surface.clearPending();

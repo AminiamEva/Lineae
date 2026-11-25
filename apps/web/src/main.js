@@ -2546,6 +2546,8 @@ installKeybindings(window, {
   getContext(event) {
     if(nativeTexPreview?.hasMathInput?.(event))
       return {element:event.target,nativeMath:true,scopes:['math','global']};
+    if(nativeTexPreview?.hasTextInput?.(event))
+      return {element:event.target,nativeText:true,scopes:['editor','global']};
     if (event.target.closest?.('.tex-code .cm-content'))
       return {element:sourceView.editorView?.contentDOM,source:true,scopes:['source','system','global']};
     if (event.target.closest?.('.tex-code'))return {element:event.target,scopes:['global'],only:'save'};
@@ -2569,6 +2571,7 @@ installKeybindings(window, {
     return { element:editor.view.dom, scopes };
   },
   run({scope,command},context,event) {
+    if(context.nativeText&&scope==='editor')return command==='leaveFile'&&nativeTexPreview.leaveFile();
     if (scope === 'math') return context.nativeMath
       ? nativeTexPreview.runMathCommand(command)
       : runMathShortcut(command,context.field,event);
@@ -2640,6 +2643,16 @@ nativeTexPreview=installNativeTexPreview({host:footer,before:modes,
     if(matches.length!==1)return;
     const {state}=editor;
     editor.view.dispatch(state.tr.setSelection(NodeSelection.create(state.doc,matches[0])));
+  },
+  continuationRegion:caret=>{
+    if(!caret||!sourceView.hidden)return null;
+    const composition=projectDocument.composition,owner=caret.formula??caret.paragraph;
+    if(!composition||!owner.filePath)return null;
+    const index=composition.regions.findIndex(region=>region.path===owner.filePath&&
+      region.from<=caret.docOffset&&region.to>=caret.docOffset&&composition.sources.get(region.id)===owner.source);
+    const parent=composition.content[index]?.attrs.trail?.at(-1);
+    if(!parent)return null;
+    return composition.regions.slice(index+1).find(region=>region.path===parent)??null;
   },
   focusMathSlot:async(anchor,head,isCurrent)=>{    const project=projectExplorer?.model;
     const formula=head.formula;
