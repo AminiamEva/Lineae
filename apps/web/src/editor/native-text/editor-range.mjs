@@ -11,6 +11,7 @@ export function nativeEditorRange({doc,projection,composition,file,paragraph,fro
     const parts=[];
     let index=0,offset=0;
     for(const part of paragraph.parts){
+      if(part.kind==='caret'){parts.push({offset,marks:[]});continue;}
       const child=node.maybeChild(index++);
       if(!child)return null;
       const marks=child.marks.filter(mark=>mark.type.name!=='textCommand');

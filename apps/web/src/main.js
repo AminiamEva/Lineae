@@ -2299,6 +2299,10 @@ function completionActions() {
       tableofcontents:()=>insertNativeDirective('tableOfContents'),
       lstlisting:editCodeBlockLanguage,
       includegraphics:()=>insertDocumentImage(true),
+      ref:()=>nativeInlineCommand('ref'),
+      eqref:()=>nativeInlineCommand('ref',true),
+      cite:()=>nativeInlineCommand('cite'),
+      footnote:()=>nativeInlineCommand('footnote'),
       multicols:()=>runNativeTextStructure('wrapIn','multiColumn',{count:2}),
       'multicols*':()=>runNativeTextStructure('wrapIn','multiColumn',{count:2,starred:true}),
       title:structureCommands.title,
@@ -3063,6 +3067,58 @@ function dispatchVerifiedNativeProse(state,tr,source,draft,change,index){
   if(!matchesNativeProseBlock(state,tr,source,draft,change,index))return false;
   const projected=sourceProjection(draft,tr.doc.toJSON(),{fragment:projectFileKind==='tex'});
   return Boolean(projected&&dispatchNativeParagraphChange(state,tr,source,draft,change,projected));
+}
+async function nativeInlineCommand(type,equation=false){
+  const original=editor.state.doc;
+  const note=type==='footnote';
+  const label=note?t('脚注内容','Footnote text'):type==='cite'?t('文献键','Citation key'):t('引用标签','Reference label');
+  const value=await askText(label);
+  if(!value||editor.state.doc!==original||!note&&!equationLabelKey.test(value))return false;
+  const attrs=note?{text:serialize({type:'text',text:value})}:{key:value,...(equation&&{equation:true,command:'eqref'})};
+  return insertNativeInlineNode(type,attrs);
+}
+function insertNativeInlineNode(type,attrs){
+  const stops=nativeTexPreview.verifiedTextRange();
+  if(!stops)return false;
+  const [first,last]=stops,{paragraph}=first;
+  if(paragraph.heading||paragraph.tableCell||paragraph.container||paragraph.wrapped)return false;
+  const target=nativeProsePosition(paragraph,first.local,last.local);
+  if(!target||target.range.marks?.length||target.range.endpoints.start!==target.range.endpoints.end)return false;
+  const started=performance.now(),{state}=editor;
+  const latex=serialize(state.schema.nodes[type].create(attrs).toJSON());
+  const [parsed]=importBlocks(latex),item=parsed?.content?.[0];
+  if(parsed?.type!=='paragraph'||parsed.content.length!==1||item?.type!==type)return false;
+  const node=state.schema.nodeFromJSON(item),{range,composition,project,file}=target;
+  const tr=state.tr.replaceWith(range.from,range.to,node);
+  tr.setSelection(TextSelection.create(tr.doc,range.from+node.nodeSize));
+  const {source,filePath:path}=paragraph;
+  const {docOffset:from}=first,{docOffset:to}=last;
+  const change={from,to,insert:latex};
+  let draft=source.slice(0,from)+latex+source.slice(to),offset=from+latex.length;
+  const rootId=composition?.rootId,root=rootId&&rootId!==file.id?project.file(rootId).draft:source;
+  const dependency=nativePackagePatch(root,latex);
+  if(dependency===false)return false;
+  let applied;
+  if(composition){
+    const drafts=new Map([[file.id,draft]]);
+    if(dependency){
+      const before=drafts.get(rootId)??root;
+      const updated=before.slice(0,dependency.from)+dependency.insert+before.slice(dependency.to);
+      drafts.set(rootId,updated);
+      if(rootId===file.id){draft=updated;offset+=dependency.delta;}
+    }
+    applied=dispatchNativeProjectChange(state,tr,project,drafts);
+  }else if(dependency){
+    if(!matchesNativeProseBlock(state,tr,source,draft,change,range.match.index))return false;
+    draft=draft.slice(0,dependency.from)+dependency.insert+draft.slice(dependency.to);
+    offset+=dependency.delta;
+    const projected=sourceProjection(draft,tr.doc.toJSON(),{fragment:projectFileKind==='tex'});
+    applied=Boolean(projected&&dispatchNativeParagraphChange(state,tr,source,draft,textPatch(source,draft)[0],projected));
+  }else applied=dispatchVerifiedNativeProse(state,tr,source,draft,change,range.match.index);
+  if(!applied)return false;
+  editor.view.dispatch(closeHistory(editor.state.tr));
+  nativeTexPreview.refocusTextInput();
+  return nativeTexPreview.preserveSourceCaret({source:draft,offset,path},started,'text');
 }
 function commitNativeContainerDraft(state,tr,target,paragraph,change,offset){
   const {source,filePath:path}=paragraph;
@@ -4136,7 +4192,7 @@ nativeTexPreview=installNativeTexPreview({host:footer,before:modes,primary:nativ
     tr.setSelection(TextSelection.create(tr.doc,start+patch.insert.length));
     const inlineBoundary=endpoints.start!==endpoints.end&&paragraph.parts
       .slice(endpoints.start.partIndex+1,endpoints.end.partIndex).some(part=>part.kind!=='math');
-    if((paragraph.wrapped||inlineBoundary)&&!paragraph.container&&!paragraph.tableCell&&!paragraph.heading){
+    if((paragraph.wrapped||inlineBoundary||endpoints.start.kind==='caret')&&!paragraph.container&&!paragraph.tableCell&&!paragraph.heading){
       const {state}=editor,{source}=paragraph;
       const change={from:paragraph.from16+patch.from,to:paragraph.from16+patch.to,insert:patch.latex??patch.insert};
       const draft=source.slice(0,change.from)+change.insert+source.slice(change.to);

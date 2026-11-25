@@ -61,7 +61,8 @@ export function installNativePages({host,getFont,getTypeOneFont,getRaster,onPain
         return ['num','den','radicand','degree','sup','sub'].includes(field.role)||
           (field.role==='cell'&&owner?.atom?.kind==='cell')||
           (['body','math'].includes(field.role)&&owner?.atom?.kind==='fence')||
-          (['math','cell'].includes(field.role)&&owner?.paragraph?.tableCell&&owner.paragraph.text==='');
+          (['math','cell'].includes(field.role)&&(owner?.glyph?.terminal||
+            owner?.paragraph?.tableCell&&owner.paragraph.text===''));
       })??[];
       for(const field of targets){
         const key=`${field.owner}/${field.role}`;

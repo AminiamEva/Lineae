@@ -321,6 +321,28 @@ const server=createServer(async(req,res)=>{
       await page.keyboard.press(mod+'+z');
       await page.waitForFunction(expected=>nativeProbe.source===expected,markedSource.replace('Bold prose.','XBold prose.'));
       await page.locator('#native-tex-close').click();
+      const noteTailSource='\\documentclass{article}\n\\begin{document}\nAlpha\n\\end{document}\n';
+      await page.locator('input#file').setInputFiles({name:'terminal-note.tex',mimeType:'text/plain',buffer:Buffer.from(noteTailSource)});
+      await page.locator('#native-tex-toggle').click();
+      await page.locator('#native-tex-target').click();
+      await panel.getByText('Click text on the native page',{exact:false}).waitFor();
+      await page.locator('#native-tex-edit').click();
+      await canvas.click({position:{x:7450000*scale,y:9250000*scale}});
+      await page.keyboard.press('Backslash');
+      await page.getByRole('textbox',{name:'LaTeX command',exact:true}).fill('footnote');
+      await page.keyboard.press('Enter');
+      await page.locator('.editor-dialog input').fill('Yield 50%');
+      await page.locator('.editor-dialog button[type=submit]').click();
+      const terminalNote=noteTailSource.replace('Alpha','Alpha\\footnote{Yield 50\\%}');
+      await page.waitForFunction(expected=>nativeProbe.source===expected,terminalNote);
+      await panel.getByText('Click text on the native page',{exact:false}).waitFor();
+      await page.keyboard.type('X');
+      await page.waitForFunction(expected=>nativeProbe.source===expected,terminalNote.replace('Yield 50\\%}','Yield 50\\%}X'));
+      await page.keyboard.press(mod+'+z');
+      await page.waitForFunction(expected=>nativeProbe.source===expected,terminalNote);
+      await page.keyboard.press(mod+'+z');
+      await page.waitForFunction(expected=>nativeProbe.source===expected,noteTailSource);
+      await page.locator('#native-tex-close').click();
       const styledSource='\\documentclass{article}\n\\usepackage{xcolor}\n\\begin{document}\n'+
         'Before {\\sffamily {\\fontsize{16}{20}\\selectfont \\colorbox[HTML]{EEEEEE}{\\textcolor[HTML]{FF0000}{Styled}}}} after.\n'+
         '\\end{document}\n';

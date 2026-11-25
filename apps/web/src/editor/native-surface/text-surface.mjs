@@ -11,7 +11,7 @@ function stopsFor(observed, projection, verified) {
     for (const field of page.dl.math_owners.fields ?? []) {
       if(!field.empty||!['math','cell'].includes(field.role))continue;
       const target=textTarget(projection,field.owner,false);
-      if(!target?.paragraph.tableCell||target.paragraph.text)continue;
+      if(!target||!target.glyph.terminal&&(!target.paragraph.tableCell||target.paragraph.text))continue;
       byOffset.set(address(target.paragraph,target.docOffset),{
         ...target,hit:{owner:field.owner,role:field.role},page:page.page,
         x:field.bbox[0],top:field.bbox[1],bottom:field.bbox[3],

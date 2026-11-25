@@ -941,10 +941,11 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
     lastTarget={...stamp,signature};
     const pending=pendingEdit?.paragraph&&nativeDocument.surface.pendingOffset!==null
       ?{path:pendingEdit.paragraph.filePath,offset:nativeDocument.surface.pendingOffset}:undefined;
-    const project=measureDrawings=>sentSnapshot?.files?.length
-      ?projectMixedSnapshot(sentSnapshot,previousProjection,pending,{measureDrawings})
-      :projectMixedDocument(sentSource,{previous:previousProjection??[],keepThrough:pending?.offset,measureDrawings});
-    let projection=project(Boolean(openMeasuredDrawing));
+    const markers={measureDrawings:Boolean(openMeasuredDrawing),terminalCarets:true};
+    const project=()=>sentSnapshot?.files?.length
+      ?projectMixedSnapshot(sentSnapshot,previousProjection,pending,markers)
+      :projectMixedDocument(sentSource,{previous:previousProjection??[],keepThrough:pending?.offset,...markers});
+    let projection=project();
     if(!projection||!projection.owners.size){
       targetStatus.textContent=primary&&canStartText?.()?'':t('当前文档没有可定位的公式或纯文本段落。','No supported formula or plain paragraph in this document snapshot.');
       return;
@@ -969,12 +970,17 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
     targetStatus.textContent=t('正在核对源码标记及实际排版…','Checking projected source against the visible layout…');
     try {
       let output;
-      try {output=await observeProjection();}
-      catch(failure){
-        if(!currentStamp()||![...projection.owners.values()].some(({drawing})=>drawing))throw failure;
-        projection=project(false);
-        if(!projection?.owners.size)throw failure;
-        output=await observeProjection();
+      for(;;){
+        try {output=await observeProjection();break;}
+        catch(failure){
+          if(!currentStamp())throw failure;
+          const owners=[...projection.owners.values()];
+          if(markers.measureDrawings&&owners.some(({drawing})=>drawing))markers.measureDrawings=false;
+          else if(markers.terminalCarets&&owners.some(({glyph})=>glyph?.terminal))markers.terminalCarets=false;
+          else throw failure;
+          projection=project();
+          if(!projection?.owners.size)throw failure;
+        }
       }
       if(!output)return;
       const {pages:observed,projection:visibleProjection}=output;
