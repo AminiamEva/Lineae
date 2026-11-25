@@ -56,7 +56,7 @@ const server=createServer(async(req,res)=>{
     const key=url.searchParams.get('key');
     const font=nativeEvidence.raw.flatMap(page=>Object.values(page.dl.fonts)).find(desc=>
       key===`file:${desc.filename}#${desc.subfont??0}`&&
-      /^(?:lmroman10-regular|latinmodern-math)\.otf$/i.test((desc.filename??'').split(/[\\/]/).at(-1)));
+      /^(?:lmroman10-regular|latinmodern-math|fandolsong-regular)\.otf$/i.test((desc.filename??'').split(/[\\/]/).at(-1)));
     if(!font)return res.writeHead(404).end();
     try {res.end(await readFile(font.filename));}catch{res.writeHead(404).end();}
     return;
@@ -1524,7 +1524,7 @@ const server=createServer(async(req,res)=>{
       console.log('PASS production Canvas hit using real LuaLaTeX page geometry, recorded fonts and exact source patch');
     }
     if(process.env.LINEAE_NATIVE_TEXT_PAGE){
-      const evidence=JSON.parse(await readFile(process.env.LINEAE_NATIVE_TEXT_PAGE,'utf8'));
+      const evidence=nativeEvidence=JSON.parse(await readFile(process.env.LINEAE_NATIVE_TEXT_PAGE,'utf8'));
       await page.close();
       page=await browser.newPage({locale:'en-US',viewport:{width:1600,height:1100}});
       await page.addInitScript(installMockNativeTex);
@@ -1545,18 +1545,23 @@ const server=createServer(async(req,res)=>{
       await page.locator('#native-tex-target').click();
       await page.getByText('Click text on the native page',{exact:false}).waitFor();
       await page.locator('#native-tex-edit').click();
-      const nativePage=evidence.observed.find(page=>page.dl.math_owners?.glyphs?.some(glyph=>glyph.owner===1));
-      const glyph=nativePage.dl.math_owners.glyphs.find(glyph=>glyph.owner===1);
+      const nativePage=evidence.observed.find(page=>page.dl.math_owners?.glyphs?.some(glyph=>glyph.owner===12));
+      const glyph=nativePage.dl.math_owners.glyphs.find(glyph=>glyph.owner===12);
       const nativeScale=.75*(96/72)/65781.76;
       await page.locator(`[data-native-page="${nativePage.page}"] canvas`).click({position:{
-        x:((glyph.bbox[0]+glyph.bbox[2])/2)*nativeScale,
+        x:(glyph.bbox[0]+(glyph.bbox[2]-glyph.bbox[0])*.1)*nativeScale,
         y:((glyph.bbox[1]+glyph.bbox[3])/2)*nativeScale,
       }});
       await page.waitForFunction(()=>document.activeElement?.id==='native-tex-input');
-      await page.keyboard.type('X');
-      await page.waitForFunction(()=>nativeProbe.source?.includes('XAlpha beta.'),
-        'Real text geometry edit writes the recorded prose source');
-      console.log('PASS real LuaLaTeX prose glyph hit, caret and exact source patch');
+      await page.locator('#native-tex-input').evaluate(input=>{
+        input.dispatchEvent(new CompositionEvent('compositionstart',{bubbles:true}));
+        input.value='j';
+        input.dispatchEvent(new InputEvent('input',{data:'j',inputType:'insertCompositionText',isComposing:true,bubbles:true}));
+        input.dispatchEvent(new CompositionEvent('compositionend',{data:'键',bubbles:true}));
+        input.dispatchEvent(new InputEvent('input',{data:'键',inputType:'insertFromComposition',bubbles:true}));
+      });
+      await page.waitForFunction(expected=>nativeProbe.source===expected,evidence.source.replace('汉字','键汉字'));
+      console.log('PASS real LuaLaTeX CJK glyph hit and exact source patch after composition');
     }
     if(process.env.LINEAE_NATIVE_DEGRADED_PAGE){
       const evidence=JSON.parse(await readFile(process.env.LINEAE_NATIVE_DEGRADED_PAGE,'utf8'));

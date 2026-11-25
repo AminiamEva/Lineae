@@ -148,6 +148,8 @@ jobs:
             writeFileSync(join(process.env.LINEAE_NATIVE_EVIDENCE_DIR,"alignment-projection.tex"),projectMixedDocument(alignment).projection);
             const classic=readFileSync("tests/native-math/fixtures/classic-font.tex","utf8");
             writeFileSync(join(process.env.LINEAE_NATIVE_EVIDENCE_DIR,"classic-projection.tex"),projectMixedDocument(classic).projection);
+            const prose=readFileSync("tests/native-math/fixtures/prose-font.tex","utf8");
+            writeFileSync(join(process.env.LINEAE_NATIVE_EVIDENCE_DIR,"prose-projection.tex"),projectMixedDocument(prose).projection);
           '
           node tests/native-math/rtex-probe.mjs
           node apps/desktop/scripts/stage.mjs
