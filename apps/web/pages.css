@@ -356,6 +356,7 @@ main { padding:125px 24px 60px; overflow:auto; }
 .native-tex-page { background:white; margin:12px auto; position:relative; box-shadow:0 1px 8px #0003; }
 .native-tex-page canvas { display:block; }
 .native-tex-caret { position:absolute; width:2px; background:#2f6fd0; pointer-events:none; }
+.native-tex-operator-caret::after { content:''; position:absolute; top:.14em; left:3px; width:.68em; height:.68em; border:1px solid #96bdb1; border-radius:3px; background:#85bdab26; }
 .native-tex-selection { position:absolute; background:#2f6fd04d; pointer-events:none; }
 .native-tex-file-boundary { position:absolute; inset-inline:8%; border-top:1px solid #d9dee5; pointer-events:none; }
 .native-delimiter-ghost { position:fixed; z-index:21; display:inline-flex; gap:3px; pointer-events:none; }

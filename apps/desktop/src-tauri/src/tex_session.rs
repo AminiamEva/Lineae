@@ -1693,6 +1693,14 @@ mod tests {
         })));
         assert!(Arc::ptr_eq(lock(&targeting.observer).as_ref().unwrap(), &observer));
         assert_eq!(std::fs::read_to_string(targeting.root.join("main.tex")).unwrap(), standalone);
+        let integral = standalone.replace("\\frac{a}{}", "\\int{}");
+        let integral_edit = targeting.update(integral.clone()).unwrap();
+        wait_layout(&targeting, integral_edit.source_revision);
+        let observed_integral = targeting.observe_formula(integral_edit.source_revision,
+            &integral.replace("\\int{}", "\\begingroup\\attribute65000=413 \\int{}\\endgroup"), Vec::new())
+            .expect("native integral ownership provides the operator insertion boundary");
+        assert!(observed_integral.iter().any(|page| page["dl"]["math_owners"]["glyphs"].as_array()
+            .is_some_and(|glyphs| glyphs.iter().any(|glyph| glyph["owner"] == 413))));
         targeting.terminate();
         assert!(!observer.root.exists());
         assert!(lock(&session.messages).events.iter().any(|event| {

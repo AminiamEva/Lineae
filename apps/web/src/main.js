@@ -1962,6 +1962,7 @@ for (const [environment, row] of Object.entries({
 let completionField = null;
 let completionNative = false;
 let completionAnchor = null;
+let completionOrigin = null;
 let candidateIndex = 0;
 
 function positionCommands() {
@@ -1995,6 +1996,7 @@ function showCommands(field = null, native = false) {
   renderCommands();
   positionCommands();
   filter.focus({preventScroll:true});
+  completionOrigin=(field??editor.view.dom).getBoundingClientRect();
 }
 function insertFormulaCommand(latex) {
   const fragment = latex.replaceAll('#?', '\\placeholder{}');
@@ -2182,7 +2184,10 @@ function commandViewportChanged(event){
   requestAnimationFrame(()=>{
     if(commands.hidden)return;
     if(completionField&&!completionField.isConnected){closeCommands();return;}
-    completionAnchor=commandAnchor(completionField);
+    const origin=(completionField??editor.view.dom).getBoundingClientRect();
+    const dx=origin.left-completionOrigin.left,dy=origin.top-completionOrigin.top;
+    completionAnchor={left:completionAnchor.left+dx,top:completionAnchor.top+dy,bottom:completionAnchor.bottom+dy};
+    completionOrigin=origin;
     positionCommands();
   });
 }

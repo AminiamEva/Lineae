@@ -543,6 +543,9 @@ async function verifySelectionGeometry(page, paper, importSource) {
     await page.keyboard.type('\\');
     await page.waitForFunction(()=>!document.querySelector('.command-menu').hidden);
     const completion=page.locator('.command-menu');
+    await completion.evaluate(async menu=>{
+      await Promise.allSettled(menu.getAnimations().map(animation=>animation.finished));
+    });
     const initialBounds=await completion.boundingBox();
     const initialScroll=await page.evaluate(()=>window.scrollY);
     assert.ok(initialBounds.y>=caretBounds.y && initialBounds.x<caretBounds.x+80,

@@ -521,11 +521,11 @@ test('native math commands insert validated structures and target the new field'
   for(const [command,insert,caret] of [
     ['frac','\\frac{}{}',6],
     ['sqrt','\\sqrt{}',6],
-    ['int','\\int_{}^{}{}',6],
-    ['sum','\\sum_{}^{}{}',6],
-    ['prod','\\prod_{}^{}{}',7],
-    ['iint','\\iint_{}^{}{}',7],
-    ['oiint','\\oiint_{}^{}{}',8],
+    ['int','\\int{}',4],
+    ['sum','\\sum{}',4],
+    ['prod','\\prod{}',5],
+    ['iint','\\iint{}',5],
+    ['oiint','\\oiint{}',6],
     ['indexedRoot','\\sqrt[]{}',6],
     ['pmatrix','\\begin{pmatrix}&\\\\&\\end{pmatrix}',15],
   ]){
@@ -538,6 +538,23 @@ test('native math commands insert validated structures and target the new field'
     assert.equal(surface.pendingOffset,formula.from16+denominator.from16+caret);
     assert.equal(surface.insert(insert),null,'Raw typing cannot inject a TeX structure');
   }
+});
+
+test('an inserted integral accepts ordinary text in its body and scripts at the symbol',()=>{
+  const source='\\begin{document}\n\\[x+\\int{}\\]\n\\end{document}\n';
+  const {projection,formula,token}=setup(source),atom=token('\\int');
+  const surface=createMathSurface({resolve:endpoint=>nativeTarget(projection,endpoint)});
+  surface.setObservation(page([],[glyph(atom.tag,300)]));
+  surface.nearest(1,320,100);
+  assert.equal(surface.caret.hit.operatorHint,true);
+  assert.equal(surface.insert('x').text,'x+\\int{x}');
+  surface.clearPending();
+  assert.equal(surface.singleCharacterScript('_','0').text,'x+\\int_{0}{}');
+  surface.clearPending();
+  assert.equal(surface.moveEmptySlot(false),true);
+  assert.equal(surface.caret.slot.role,'body');
+  assert.equal(surface.caret.docOffset,formula.from16+'x+\\int{'.length);
+  assert.equal(surface.erase().text,'x+');
 });
 
 test('native script commands preserve the nucleus and place the caret within the new script',()=>{

@@ -411,6 +411,11 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
       }
       return;
     }
+    if(!event.shiftKey&&!pendingEdit&&current()&&observation&&
+        ['ArrowLeft','ArrowRight','ArrowUp','ArrowDown','Escape'].includes(event.key)){
+      const script=surface.clearEmptyScript?.();
+      if(script){event.preventDefault();commitSurface(script);return;}
+    }
     if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
       event.preventDefault();
       if (!pendingEdit&&nativeDocument.move(event.key==='ArrowLeft'?-1:1,event.shiftKey)) {

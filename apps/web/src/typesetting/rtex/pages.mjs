@@ -137,6 +137,10 @@ export function installNativePages({host,getFont,getRaster,onPaint,onError,onMat
     const [left,top,right,bottom]=hit.page===number&&hit.caretBox?hit.caretBox:field.bbox,scale=CSS_PER_SP*zoom;
     const height=Math.max(12,(bottom-top)*scale);
     caret=document.createElement('span');caret.className='native-tex-caret';caret.setAttribute('aria-hidden','true');
+    if(hit.operatorHint){
+      caret.classList.add('native-tex-operator-caret');
+      caret.style.fontSize=height+'px';
+    }
     const x=(hit.after?right:left)*scale,y=(top+bottom)*scale/2-height/2,page=pages.get(number)?.dom;
     caret.style.left=x+'px';caret.style.top=y+'px';
     caret.style.height=height+'px';page?.append(caret);

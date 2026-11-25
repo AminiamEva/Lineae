@@ -1,5 +1,5 @@
 import {createSelectionModel} from './selection-model.mjs';
-import {applySlotEdit,applyStructureCommand,expandMatrix,insertDisplayLine,removeEmptyScript,applySingleCharacterScript,applyScalableFence} from '../native-math/source.mjs';
+import {applySlotEdit,applyStructureCommand,expandMatrix,insertDisplayLine,removeEmptyScript,applySingleCharacterScript,applyScalableFence,nativeOperatorBody} from '../native-math/source.mjs';
 
 // Native surface geometry adapter. Display-list coordinates are page space;
 // callers provide the zoom used for the current painted page.
@@ -35,6 +35,13 @@ const stopsFor = (observed, resolve, verified) => {
   const atomsByFormula=new Map(),tails=[];
   for(const stop of byAddress.values()){
     if(!stop.after||stop.slot.role!=='nucleus')continue;
+    const body=nativeOperatorBody(stop.formula.math,stop.atom);
+    if(body&&!body.slot.raw){
+      stop.hit={...stop.hit,operatorHint:true};
+      const {formula,x,top,bottom,page}=stop;
+      tails.push({...stop,...body,local:0,docOffset:formula.from16+body.slot.from16,empty:true,operatorSlot:stop.slot,
+        hit:{...stop.hit,page,caretBox:[x,top,x,bottom]}});
+    }
     const path=stop.atom.path;
     const script=path.match(/\/(?:superscript|subscript)\/\d+$/);
     const parentPath=script?path.slice(0,script.index):path.replace(/\/body\/\d+$/,'');
@@ -75,8 +82,9 @@ export function createMathSurface({resolve,selection=createSelectionModel(sameFo
       const [from, to] = selection.range;
       if (!sameFormula(from, stop) || from.slot.id !== to.slot.id) return null;
       try {
+        const body=from===to&&stop.after&&stop.slot.role==='nucleus'?nativeOperatorBody(stop.formula.math,stop.atom):null;
         const result = applySlotEdit(stop.formula.math, {
-          slotId: stop.slot.id, from16: from.local, to16: to.local, insert: text,
+          slotId:body?.slot.id??stop.slot.id,from16:body?0:from.local,to16:body?0:to.local,insert:text,
         });
         return selection.record({formula:stop.formula,patch:result.patch,text:result.source},
           stop.formula.from16+result.selection.head16);
@@ -98,6 +106,13 @@ export function createMathSurface({resolve,selection=createSelectionModel(sameFo
         return edit?selection.record({formula:caret.formula,patch:edit.patch,text:edit.source,structure:true},
           caret.formula.from16+edit.cursor):null;
       }catch{return null;}
+    },
+    clearEmptyScript(){
+      const stop=selection.caret;
+      if(!stop?.empty||selection.anchor!==stop)return null;
+      const script=removeEmptyScript(stop.formula.math,stop.slot);
+      return script?selection.record({formula:stop.formula,patch:script.patch,text:script.source,structure:true},
+        stop.formula.from16+script.cursor):null;
     },
     wrapFence(pair){
       const [first,last]=selection.range;
@@ -133,11 +148,15 @@ export function createMathSurface({resolve,selection=createSelectionModel(sameFo
       if (!stop) return null;
       let [start, end] = selection.range;
       if (start === end) {
-        if(backward&&stop.empty){
-          const script=removeEmptyScript(stop.formula.math,stop.slot);
-          if(script)return selection.record({formula:stop.formula,patch:script.patch,text:script.source,structure:true},
-            stop.formula.from16+script.cursor);
+        if(backward&&stop.operatorSlot){
+          try{
+            const {formula,operatorSlot}=stop;
+            const result=applySlotEdit(formula.math,{slotId:operatorSlot.id,from16:0,to16:operatorSlot.raw.length,insert:''});
+            return selection.record({formula,patch:result.patch,text:result.source},formula.from16+result.selection.head16);
+          }catch{return null;}
         }
+        const script=backward?this.clearEmptyScript():null;
+        if(script)return script;
         const own = selection.stops.filter(candidate => candidate.kind==='math'&&sameFormula(candidate, stop));
         const neighbor = own[own.indexOf(stop) + (backward ? -1 : 1)];
         if (!neighbor) return null;

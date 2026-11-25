@@ -448,7 +448,7 @@ const structureTemplates = {
   subscript: text => ({before:text+'_{',body:'',after:'}',next:'first'}),
   ...Object.fromEntries(largeOperators.map(operator=>[
     operator,
-    text=>({before:'\\'+operator+'_{',body:'',after:'}^{}{'+text+'}',next:'first'}),
+    text=>({before:'\\'+operator+'{',body:text,after:'}',next:'operator'}),
   ])),
   ...Object.fromEntries(['matrix','pmatrix','bmatrix','Bmatrix','vmatrix','Vmatrix'].map(environment=>[
     environment,
@@ -532,12 +532,22 @@ export function applyStructureCommand(snapshot, {slotId,from16,to16,command}) {
   const insert=template.before+template.body+template.after;
   const result=editSlot(snapshot,{slotId,from16,to16,insert},true);
   const cursor=slot.from16+from16+template.before.length+
-    (template.next==='denominator'?template.body.length+2:0);
+    (template.next==='denominator'?template.body.length+2:template.next==='operator'?-1:0);
   return {source:result.source,patch:result.patch,cursor};
 }
 
 export function applySlotEdit(snapshot, edit) {
   return editSlot(snapshot,edit,false);
+}
+
+export function nativeOperatorBody(snapshot,atom) {
+  if(!largeOperators.includes(atom?.nucleus?.slice(1))||!atom.nucleus.startsWith('\\'))return null;
+  const boundary=atom.path.lastIndexOf('/');
+  const nextPath=atom.path.slice(0,boundary+1)+(Number(atom.path.slice(boundary+1))+1);
+  const body=snapshot.atoms.find(candidate=>candidate.kind==='group'&&candidate.path===nextPath);
+  if(!body||snapshot.source.slice(atom.to16,body.from16).trim())return null;
+  const slot=snapshot.slots.find(candidate=>candidate.ownerId===body.id&&candidate.role==='body');
+  return slot?{atom:body,slot}:null;
 }
 
 export function applyScalableFence(snapshot,slot,from16,to16,pair) {
