@@ -59,7 +59,7 @@ export function installNativeTexPreview({host,before,getSource,getSnapshot,isCom
   let textSurface=null;
   let surface=mathSurface;
   let nativeEditing=false;
-  let pendingLatencyStart=0;
+  let pendingLatency=null;
   let inputStart=0;
   const latency=[];
   const eventApi=window.__TAURI__?.event;
@@ -93,6 +93,8 @@ export function installNativeTexPreview({host,before,getSource,getSnapshot,isCom
   }
   function commitSurface(edit) {
     if (!edit) return;
+    const started=inputStart || performance.now();
+    inputStart=0;
     const applied = edit.kind === 'text'
       ? commitText?.({ paragraph: edit.paragraph, patch: edit.patch, text: edit.text })
       : commitMath?.({ formula: edit.formula, patch: edit.patch, text: edit.text });
@@ -102,7 +104,7 @@ export function installNativeTexPreview({host,before,getSource,getSnapshot,isCom
       targetStatus.textContent = t('原生编辑未能写入文档。', 'The native edit could not be written to the document.');
       return;
     }
-    if (!pendingLatencyStart) pendingLatencyStart = inputStart || performance.now();
+    pendingLatency ??= {started, committed:performance.now()};
   }
   input.addEventListener('compositionstart', () => { compositionField = input; });
   input.addEventListener('compositionend', event => {
@@ -121,6 +123,7 @@ export function installNativeTexPreview({host,before,getSource,getSnapshot,isCom
   input.addEventListener('keydown', event => {
     if (event.isComposing || event.keyCode === 229) return;
     if (nativeEditing === false) return;
+    if (!event.metaKey && !event.ctrlKey && !event.altKey && [...event.key].length===1) inputStart=performance.now();
     const mod = event.metaKey || event.ctrlKey;
     if (mod && event.key.toLowerCase() === 'z') {
       event.preventDefault();
@@ -281,8 +284,11 @@ export function installNativeTexPreview({host,before,getSource,getSnapshot,isCom
     nativeEditing=false;mathSurface.clearPending();mathSurface.reset();
     textSurface?.clearPending();textSurface?.reset();textSurface=null;surface=mathSurface;
     input.blur();input.value='';
-    pendingLatencyStart=0;inputStart=0;delete panel.dataset.latencySamples;
-    delete panel.dataset.latencyP50;delete panel.dataset.latencyP95;
+    pendingLatency=null;inputStart=0;latency.length=0;delete panel.dataset.latencySamples;
+    delete panel.dataset.latencyP50;delete panel.dataset.latencyP95;delete panel.dataset.latencyP99;
+    delete panel.dataset.latencyLastTransaction;
+    delete panel.dataset.latencyLastGeometry;
+    delete panel.dataset.latencyLastRepaint;
     compositionField=null;
     mirror?.lifetime.abort();mirror=null;
     targetArmed=false;lastTarget=null;clearTimeout(targetTimer);targetTimer=null;
@@ -491,14 +497,26 @@ export function installNativeTexPreview({host,before,getSource,getSnapshot,isCom
         if(applied){
           paintSurfaceSelection();
           positionInput();
-          if(pendingLatencyStart){
-            latency.push(performance.now()-pendingLatencyStart);
-            pendingLatencyStart=0;
-            const ordered=[...latency].sort((a,b)=>a-b);
-            const percentile=q=>ordered[Math.ceil(ordered.length*q)-1];
-            panel.dataset.latencySamples=String(ordered.length);
-            panel.dataset.latencyP50=percentile(.50).toFixed(1);
-            panel.dataset.latencyP95=percentile(.95).toFixed(1);
+          if(pendingLatency){
+            const sample=pendingLatency;
+            const geometry=performance.now();
+            pendingLatency=null;
+            // The next animation frame after the caret update bounds browser
+            // repaint. It does not measure device input or display scan-out.
+            requestAnimationFrame(()=>requestAnimationFrame(()=>{
+              if(attempt!==generation)return;
+              const repaint=performance.now();
+              latency.push(repaint-sample.started);
+              const ordered=[...latency].sort((left,right)=>left-right);
+              const percentile=q=>ordered[Math.ceil(ordered.length*q)-1].toFixed(1);
+              panel.dataset.latencySamples=String(ordered.length);
+              panel.dataset.latencyP50=percentile(.50);
+              panel.dataset.latencyP95=percentile(.95);
+              panel.dataset.latencyP99=percentile(.99);
+              panel.dataset.latencyLastTransaction=(sample.committed-sample.started).toFixed(1);
+              panel.dataset.latencyLastGeometry=(geometry-sample.committed).toFixed(1);
+              panel.dataset.latencyLastRepaint=(repaint-geometry).toFixed(1);
+            }));
           }
           input.focus({preventScroll:true});
         }
