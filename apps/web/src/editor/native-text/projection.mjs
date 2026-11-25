@@ -3,6 +3,7 @@ import {escapeText} from '../../../latex/inline.mjs';
 import {tableCellRanges} from './table-cells.mjs';
 import {containerParagraphRanges} from './containers.mjs';
 import {parseDocument} from '../../../latex/document.mjs';
+import {unwrapParagraphWrappers} from '../../../latex/blocks.mjs';
 import {sourceStructure} from '../../../latex/source-structure.mjs';
 import {decodeProse,markedRuns} from './prose-runs.mjs';
 import {projectDocumentFormulas} from '../native-math/document.mjs';
@@ -65,11 +66,14 @@ function proseBody(block,keepThrough) {
   if(heading?.end===text.length&&(heading.title.trim()===heading.title||
      (heading.title===heading.title.trimStart()&&keepThrough===leading+heading.titleFrom+heading.title.length)))
     return {leading:leading+heading.titleFrom,text:heading.title,heading:heading.name,headingEnd:leading+heading.end};
+  const wrapper=unwrapParagraphWrappers(text);
+  const indent=/^\\(?:noindent|indent)(?![A-Za-z])[ \t]*/.exec(wrapper.text)?.[0].length??0;
+  if(wrapper.from||indent)return {leading:leading+wrapper.from+indent,text:wrapper.text.slice(indent),wrapped:true};
   return {leading,text};
 }
 
 function instrumentProse(block, source, blockFrom, firstOwner, attribute, filePath, keepThrough, reuse, formulas=[]) {
-  const {leading,text,heading,headingEnd}=proseBody(block,keepThrough-blockFrom);
+  const {leading,text,heading,headingEnd,wrapped}=proseBody(block,keepThrough-blockFrom);
   const base=blockFrom+leading;
   const inline=new Map(formulas.map(formula=>[formula.outerFrom16-base,{formula,end:formula.outerTo16-base,latex:formula.math.source}]));
   const parts=markedRuns(text,0,[],inline);
@@ -96,7 +100,7 @@ function instrumentProse(block, source, blockFrom, firstOwner, attribute, filePa
   }
   if(!glyphs.length)return null;
   const paragraph={source,filePath,from16:blockFrom+leading,text,heading,glyphs,parts,runs,
-    ...(headingEnd===undefined?{}:{headingEnd:blockFrom+headingEnd})};
+    ...(headingEnd===undefined?{}:{headingEnd:blockFrom+headingEnd}),...(wrapped?{wrapped}:{})};
   return {projection:block.slice(0,leading)+projection+text.slice(cursor)+block.slice(leading+text.length),
     paragraphs:[paragraph],nextTag};
 }

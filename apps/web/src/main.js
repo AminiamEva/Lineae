@@ -853,9 +853,9 @@ function button(label, action) {
 }
 const undoButton=button('↶',undoDocument);
 const redoButton=button('↷',redoDocument);
-const boldButton=button('B',()=>editor.chain().focus().toggleBold().run());
-const italicButton=button('I',()=>editor.chain().focus().toggleItalic().run());
-const underlineButton=button('U',()=>editor.chain().focus().toggleMark('underline').run());
+const boldButton=button('B',withNativeTextCommand('toggleBold',()=>editor.chain().focus().toggleBold().run()));
+const italicButton=button('I',withNativeTextCommand('toggleItalic',()=>editor.chain().focus().toggleItalic().run()));
+const underlineButton=button('U',withNativeTextCommand('toggleUnderline',()=>editor.chain().focus().toggleMark('underline').run()));
 function syncUndoButtons(){
   try{
     const source=!sourceView.hidden;
@@ -890,8 +890,8 @@ headingMenu.addEventListener('change', () => {
 });
 editor.on('transaction', () => { headingMenu.value = String(editor.getAttributes('heading').level ?? 0); });
 // 旧工具栏不再挂载 headingMenu（样式下拉已从主页-样式移除）。
-button('itemize',()=>editor.chain().focus().toggleBulletList().run());
-button('enumerate',()=>editor.chain().focus().toggleOrderedList().run());
+button('itemize',withNativeTextCommand('toggleBulletList',()=>editor.chain().focus().toggleBulletList().run()));
+button('enumerate',withNativeTextCommand('toggleOrderedList',()=>editor.chain().focus().toggleOrderedList().run()));
 button('▦',()=>insertDefaultTable());
 document.addEventListener('focusin', event => {
   if (event.target.closest?.('.delimiter-input-embedded')) return;
@@ -2685,6 +2685,7 @@ const shortcutActions = {
     toggleUnderline: () => editor.commands.toggleMark('underline'),
     toggleStrike: () => editor.commands.toggleStrike(),
     toggleCode: () => editor.commands.toggleCode(),
+    clearFormatting: () => editor.commands.unsetAllMarks(),
     toggleCodeBlock: () => editor.commands.toggleCodeBlock(),
     toggleBlockquote: () => editor.commands.toggleBlockquote(),
     toggleBulletList: () => editor.commands.toggleBulletList(),
@@ -2718,14 +2719,25 @@ const nativeBindings=compileKeybindings({
     palette:'backslash',nextSlot:'tab',previousSlot:'shift+tab'},
 },{isMac});
 const nativeSelectionCommands=new Set(['toggleBold','toggleItalic','toggleUnderline','toggleStrike','toggleCode',
-  'toggleSuperscript','toggleSubscript','alignLeft','alignRight','alignCenter','toggleContextMarker','insertTable']);
+  'toggleSuperscript','toggleSubscript','clearFormatting','toggleContextMarker','insertTable']);
 const nativeRangeCommands=new Set(['toggleBold','toggleItalic','toggleUnderline','toggleStrike','toggleCode',
-  'toggleSuperscript','toggleSubscript']);
+  'toggleSuperscript','toggleSubscript','clearFormatting']);
 const nativeTextStructures={
   paragraph:['setParagraph'],section:['toggleHeading',{level:1,command:null}],
   subsection:['toggleHeading',{level:2,command:null}],subsubsection:['toggleHeading',{level:3,command:null}],
   toggleBulletList:['toggleBulletList'],toggleOrderedList:['toggleOrderedList'],toggleBlockquote:['toggleBlockquote'],
+  alignLeft:['updateAttributes','paragraph',{align:'left'}],
+  alignRight:['updateAttributes','paragraph',{align:'right'}],
+  alignCenter:['updateAttributes','paragraph',{align:'center'}],
 };
+function runNativeTextCommand(command,context,event){
+  if(Object.hasOwn(nativeTextStructures,command))return runNativeTextStructure(...nativeTextStructures[command]);
+  return nativeSelectionCommands.has(command)&&nativeTexPreview.useTextSelection(nativeRangeCommands.has(command))&&
+    shortcutActions.editor[command](context,event);
+}
+function withNativeTextCommand(command,legacy){
+  return (...args)=>nativeTexPreview?.hasNativeTextFocus?.()?runNativeTextCommand(command):legacy(...args);
+}
 installKeybindings(window, {
   getBindings: () => config.bindings,
   nativeBindings,
@@ -2761,9 +2773,7 @@ installKeybindings(window, {
     if(context.nativeText&&scope==='editor'){
       if(command==='leaveFile')return nativeTexPreview.leaveFile();
       if(['insertDisplayMath','insertInlineMath','insertEquation'].includes(command))return shortcutActions.editor[command]();
-      if(Object.hasOwn(nativeTextStructures,command))return runNativeTextStructure(...nativeTextStructures[command]);
-      return nativeSelectionCommands.has(command)&&nativeTexPreview.useTextSelection(nativeRangeCommands.has(command))&&
-        shortcutActions.editor[command](context,event);
+      return runNativeTextCommand(command,context,event);
     }
     if(context.nativeText&&scope==='table'&&!nativeTexPreview.useTextSelection())return false;
     if (scope === 'math') {
@@ -3535,6 +3545,19 @@ nativeTexPreview=installNativeTexPreview({host:footer,before:modes,primary:nativ
     if(end>start)tr.delete(start,end);
     if(patch.insert)tr.insert(start,editor.schema.text(patch.insert,marks));
     tr.setSelection(TextSelection.create(tr.doc,start+patch.insert.length));
+    if(paragraph.wrapped&&!paragraph.container&&!paragraph.tableCell&&!paragraph.heading){
+      const {state}=editor,{source}=paragraph;
+      const change={from:paragraph.from16+patch.from,to:paragraph.from16+patch.to,insert:patch.latex??patch.insert};
+      const draft=source.slice(0,change.from)+change.insert+source.slice(change.to);
+      if(composition)return dispatchNativeProjectChange(state,tr,project,new Map([[file.id,draft]]));
+      const owner=projection?.blocks.find(block=>block.index===match.index&&block.count===1&&
+        change.from>=block.from&&change.to<=block.to);
+      if(!owner)return false;
+      const [updated,...rest]=importBlocks(draft.slice(owner.from,owner.to+draft.length-source.length));
+      if(updated?.type!=='paragraph'||rest.length||!state.schema.nodeFromJSON(updated).eq(tr.doc.child(match.index)))return false;
+      const projected=sourceProjection(draft,tr.doc.toJSON(),{fragment:projectFileKind==='tex'});
+      return Boolean(projected&&dispatchNativeParagraphChange(state,tr,source,draft,change,projected));
+    }
     if(composition){
       const from=paragraph.from16+patch.from,to=paragraph.from16+patch.to;
       const expected=file.draft.slice(0,from)+(patch.latex??patch.insert)+file.draft.slice(to);
@@ -4084,16 +4107,16 @@ tableArrayStretch.addEventListener('change',()=>updateTableAttributes({arrayStre
 tableFontSize.addEventListener('change',()=>updateTableAttributes({fontSize:tableFontSize.value||null}));
 tableScale.addEventListener('change',()=>updateTableAttributes({tableScale:Number(tableScale.value)||1}));
 editor.on('transaction',syncTableControls);editor.on('selectionUpdate',syncTableControls);syncTableControls();
-groupButton(formatGroup,'B',()=>editor.chain().focus().toggleBold().run());
+groupButton(formatGroup,'B',withNativeTextCommand('toggleBold',()=>editor.chain().focus().toggleBold().run()));
 for (const [align,label] of [['left',['左对齐','Align left']],['right',['右对齐','Align right']],['center',['居中','Center']]]) {
-  groupButton(formatGroup,label,()=>setParagraphAlignment(align));
+  groupButton(formatGroup,label,withNativeTextCommand('align'+align[0].toUpperCase()+align.slice(1),()=>setParagraphAlignment(align)));
 }
-groupButton(formatGroup,'I',()=>editor.chain().focus().toggleItalic().run());
-groupButton(formatGroup,'U',()=>editor.chain().focus().toggleMark('underline').run());
-groupButton(formatGroup,'S',()=>editor.chain().focus().toggleStrike().run());
-groupButton(formatGroup,['清除格式','Clear formatting'],()=>editor.chain().focus().unsetAllMarks().run());
-groupButton(formatGroup,'code',()=>editor.chain().focus().toggleCode().run());
-groupButton(formatGroup,'quote',()=>editor.chain().focus().toggleBlockquote().run());
+groupButton(formatGroup,'I',withNativeTextCommand('toggleItalic',()=>editor.chain().focus().toggleItalic().run()));
+groupButton(formatGroup,'U',withNativeTextCommand('toggleUnderline',()=>editor.chain().focus().toggleMark('underline').run()));
+groupButton(formatGroup,'S',withNativeTextCommand('toggleStrike',()=>editor.chain().focus().toggleStrike().run()));
+groupButton(formatGroup,['清除格式','Clear formatting'],withNativeTextCommand('clearFormatting',()=>editor.chain().focus().unsetAllMarks().run()));
+groupButton(formatGroup,'code',withNativeTextCommand('toggleCode',()=>editor.chain().focus().toggleCode().run()));
+groupButton(formatGroup,'quote',withNativeTextCommand('toggleBlockquote',()=>editor.chain().focus().toggleBlockquote().run()));
 groupButton(formatGroup,'hr',()=>editor.chain().focus().setHorizontalRule().run());
 groupButton(formatGroup,'x²',()=>editor.chain().focus().toggleMark('superscript').run());
 groupButton(formatGroup,'x₂',()=>editor.chain().focus().toggleMark('subscript').run());
@@ -4437,28 +4460,28 @@ homeRibbon=buildHomeRibbon(home,{documentClass:documentClassFromSource(documentP
   formatPainter:event=>formatPainter?.activate(event),
   undo:undoDocument,
   redo:redoDocument,
-  bold:textOnly(()=>editor.chain().focus().toggleBold().run()),
-  italic:textOnly(()=>editor.chain().focus().toggleItalic().run()),
-  underline:textOnly(()=>editor.chain().focus().toggleMark('underline').run()),
+  bold:textOnly(withNativeTextCommand('toggleBold',()=>editor.chain().focus().toggleBold().run())),
+  italic:textOnly(withNativeTextCommand('toggleItalic',()=>editor.chain().focus().toggleItalic().run())),
+  underline:textOnly(withNativeTextCommand('toggleUnderline',()=>editor.chain().focus().toggleMark('underline').run())),
   underlineStyle:textOnly(style=>editor.chain().focus().setMark('underline',{style}).run()),
-  strike:textOnly(()=>editor.chain().focus().toggleStrike().run()),
-  subscript:textOnly(()=>editor.chain().focus().toggleMark('subscript').run()),
-  superscript:textOnly(()=>editor.chain().focus().toggleMark('superscript').run()),
-  clearFormatting:textOnly(()=>editor.chain().focus().unsetAllMarks().run()),
+  strike:textOnly(withNativeTextCommand('toggleStrike',()=>editor.chain().focus().toggleStrike().run())),
+  subscript:textOnly(withNativeTextCommand('toggleSubscript',()=>editor.chain().focus().toggleMark('subscript').run())),
+  superscript:textOnly(withNativeTextCommand('toggleSuperscript',()=>editor.chain().focus().toggleMark('superscript').run())),
+  clearFormatting:textOnly(withNativeTextCommand('clearFormatting',()=>editor.chain().focus().unsetAllMarks().run())),
   characterBorder:textOnly(()=>spaceOverlay.toggleBox()),
   fontGrow:textOnly(()=>changeFontSize(1)),
   fontShrink:textOnly(()=>changeFontSize(-1)),
   highlight:textOnly(color=>editor.chain().focus().setMark('textStyle',{backgroundColor:color??null}).run()),
   circled:textOnly(()=>editor.chain().focus().toggleMark('circled').run()),
-  bullets:()=>editor.chain().focus().toggleBulletList().run(),
-  numbering:()=>editor.chain().focus().toggleOrderedList().run(),
+  bullets:withNativeTextCommand('toggleBulletList',()=>editor.chain().focus().toggleBulletList().run()),
+  numbering:withNativeTextCommand('toggleOrderedList',()=>editor.chain().focus().toggleOrderedList().run()),
   bulletStyle:marker=>setListStyle(marker),
   numberStyle:style=>setListStyle(style),
   indentDecrease:()=>indentSelectedParagraph(-1),
   indentIncrease:()=>indentSelectedParagraph(1),
-  alignLeft:()=>setParagraphAlignment('left'),
-  alignCenter:()=>setParagraphAlignment('center'),
-  alignRight:()=>setParagraphAlignment('right'),
+  alignLeft:withNativeTextCommand('alignLeft',()=>setParagraphAlignment('left')),
+  alignCenter:withNativeTextCommand('alignCenter',()=>setParagraphAlignment('center')),
+  alignRight:withNativeTextCommand('alignRight',()=>setParagraphAlignment('right')),
   alignJustify:()=>setParagraphAlignment('justify'),
   lineSpacing:value=>updateSelectedParagraphs({lineSpacing:value&&value!==1?value:null}),
   paragraphSpacing:(before,after)=>updateSelectedParagraphs({spaceBefore:before??null,spaceAfter:after??null}),

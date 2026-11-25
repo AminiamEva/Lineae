@@ -1,4 +1,5 @@
 import {parseDocument} from '../../../latex/document.mjs';
+import {unwrapParagraphWrappers} from '../../../latex/blocks.mjs';
 import {tableCellRanges} from '../native-text/table-cells.mjs';
 import {containerParagraphRanges} from '../native-text/containers.mjs';
 import {markedRuns} from '../native-text/prose-runs.mjs';
@@ -53,6 +54,12 @@ export function projectDocumentFormulas(source,{fragment=false,firstTag=1,filePa
   let blockStart=0;
   for(const block of doc.blocks){
     if(block.includes('{')&&nested.size){
+      const wrapped=unwrapParagraphWrappers(block);
+      if(wrapped.from>block.length-block.trimStart().length){
+        const indent=/^\\(?:noindent|indent)(?![A-Za-z])[ \t]*/.exec(wrapped.text)?.[0].length??0;
+        for(const run of markedRuns(wrapped.text.slice(indent),blockStart+wrapped.from+indent,[],nested)??[])
+          if(run.kind==='math')markedMath.add(run.from16);
+      }
       for(const run of markedRuns(block,blockStart,[],nested)??[])
         if(run.kind==='math'&&run.insideMark)markedMath.add(run.from16);
       for(const {from,text} of containerParagraphRanges(block)){

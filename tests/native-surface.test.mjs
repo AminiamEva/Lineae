@@ -1000,6 +1000,17 @@ test('native prose edits retain emphasis, color and small-caps commands verbatim
   assert.equal(patches.reduceRight((value,{from,to,insert})=>value.slice(0,from)+insert+value.slice(to),source),draft);
 });
 
+test('nested paragraph formatting keeps indent and inline math outside a native prose patch',()=>{
+  const body=String.raw`{\fbox{\parbox{\linewidth}{{\linespread{1.2}\selectfont {\raggedleft \noindent Text $z$ tail.\par}\par}}}}`;
+  const source='\\begin{document}\r\n'+body+'\r\n\\end{document}\r\n';
+  const projection=projectMixedDocument(source);
+  const [paragraph]=projection.paragraphs;
+  assert.ok(paragraph.wrapped);
+  assert.equal(paragraph.from16,source.indexOf('Text'));
+  assert.equal(projection.formulas[0].math.source,'z');
+  assert.equal(textEdit(projection,{paragraph,from16:0,to16:0,insert:'X'}).source,source.replace('Text','XText'));
+});
+
 test('native math context identifies an integral body, its limits and a nested fraction',()=>{
   const source='\\begin{document}\n\\[\\int_{0}^{1}{\\frac{x}{y}}\\]\n\\end{document}\n';
   const projection=projectDocumentFormulas(source),[formula]=projection.formulas;

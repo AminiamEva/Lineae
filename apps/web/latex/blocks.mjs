@@ -240,7 +240,7 @@ function unwrapParagraphBorder(text) {
   if (!fbox.inner.startsWith(prefix)) return null;
   const body = bracedGroup(fbox.inner,prefix.length - 1);
   if (!body || body.end !== fbox.inner.length) return null;
-  return {inner:body.inner,attrs:{border:true}};
+  return {inner:body.inner,from:7+prefix.length,attrs:{border:true}};
 }
 
 function unwrapParagraphShading(text) {
@@ -253,7 +253,7 @@ function unwrapParagraphShading(text) {
   if (!parbox.inner.startsWith(prefix)) return null;
   const body = bracedGroup(parbox.inner,prefix.length - 1);
   if (!body || body.end !== parbox.inner.length) return null;
-  return {inner:body.inner,attrs:{shading:color.inner.trim()}};
+  return {inner:body.inner,from:color.end+1+prefix.length,attrs:{shading:color.inner.trim()}};
 }
 
 function unwrapParagraphSpacing(text) {
@@ -268,6 +268,7 @@ function unwrapParagraphSpacing(text) {
   const normalize = value => value.trim() === '0pt' ? null : value.trim();
   return {
     inner:text.slice(before.end,at),
+    from:before.end,
     attrs:{spaceBefore:normalize(before.inner),spaceAfter:normalize(after.inner)},
   };
 }
@@ -277,27 +278,29 @@ function unwrapParagraphLineSpacing(text) {
   if (!match) return null;
   const value = Number(match[1]);
   if (!Number.isFinite(value) || value <= 0) return null;
-  return {inner:match[2],attrs:{lineSpacing:value}};
+  return {inner:match[2],from:'{\\linespread{}\\selectfont '.length+match[1].length,attrs:{lineSpacing:value}};
 }
 
 function unwrapParagraphAlignment(text) {
   const match = /^\{\\(raggedright|raggedleft|centering|justifying) ([\s\S]*)\\par\}$/.exec(text);
   if (!match) return null;
   const align = {raggedright:'left',raggedleft:'right',centering:'center',justifying:'justify'}[match[1]];
-  return {inner:match[2],attrs:{align}};
+  return {inner:match[2],from:match[1].length+3,attrs:{align}};
 }
 
-function unwrapParagraphWrappers(block) {
+export function unwrapParagraphWrappers(block) {
   let text = block.trim();
   let attrs = {};
+  let from=block.length-block.trimStart().length;
   for (;;) {
     const wrapper = unwrapParagraphBorder(text) ?? unwrapParagraphShading(text) ??
       unwrapParagraphSpacing(text) ?? unwrapParagraphLineSpacing(text) ?? unwrapParagraphAlignment(text);
     if (!wrapper) break;
     attrs = {...attrs,...wrapper.attrs};
+    from+=wrapper.from+wrapper.inner.length-wrapper.inner.trimStart().length;
     text = wrapper.inner.trim();
   }
-  return {text,attrs};
+  return {text,attrs,from};
 }
 
 export function importBlock(block, options={}) {

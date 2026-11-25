@@ -108,15 +108,16 @@ separately from the WebView check.
 
 1. Broader commands, TeX structures, complex table cells and project changes
    still need equivalent editing and history coverage.
-2. Complete inline formulas can be selected as part of prose. Cross-file
-   replacement has coverage for adjacent plain paragraphs, with complex
-   selections still pending.
+2. Cross-file replacement can include complete inline and display formulas
+   between prose endpoints. It verifies the rebuilt document against the source
+   drafts and records both drafts in the same undo step. Selection endpoints
+   inside complex containers still need coverage.
 3. Automated composition proves commit-once and cancellation. Candidate
    placement, shortcut delivery and latency still need physical-device tests.
-4. The browser can open a standalone TikZ drawing directly from a registered
-   LuaLaTeX PDF and edit an ordinary formula on that page. The dual-platform
-   run was [45646995464](https://github.com/AminiamEva/Lineae/actions/runs/45646995464).
-   Geometry-based editing of nested figure content remains pending.
+4. The browser can open standalone and floating TikZ directly from a registered
+   LuaLaTeX PDF and edit an ordinary formula on that page. The floating example
+   passed [45649964814](https://github.com/AminiamEva/Lineae/actions/runs/45649964814)
+   on both platforms. Geometry-based editing of nested figure content remains pending.
 5. The engine-off desktop workspace has passed the covered cases. Its default
    switch still depends on complete coverage and the device checks.
 
