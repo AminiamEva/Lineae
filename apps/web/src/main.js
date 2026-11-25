@@ -2309,6 +2309,7 @@ function completionActions() {
       name,()=>nativeTexPreview.runMathCommand(name==='newline'?'enterLine':name),
     ])),
     label:editFormulaLabel,
+    displaystyle:()=>nativeTexPreview.runMathCommand('toggleDisplayStyle'),
   };
   if(completionNative==='text'){
     const actions={
@@ -2968,6 +2969,10 @@ function nativeParagraphFormattingActive(){
 function runNativeTextCommand(command,context,event){
   if(command==='insertTable')return insertNativeTableFromProse();
   if(command==='hardBreak')return nativeTexPreview.startHardBreak();
+  if(command==='openTikz'||command==='codeLanguage'){
+    shortcutActions.editor[command]();
+    return true;
+  }
   if(command==='toggleContextMarker'){
     if(!nativeTexPreview.useTextSelection())return false;
     const target=nextContextMarker(editor.state.selection.$from);
@@ -5234,8 +5239,8 @@ for (const [label,command,latex] of [
     return insertMath(false,latex);
   })).dataset.shortcut='math.'+command;
 }
-groupButton(mathGroup,'\\left',()=>chooseMathDelimiters(activeMath()));
-groupButton(mathGroup,'\\right',()=>chooseMathDelimiters(activeMath(),true));
+groupButton(mathGroup,'\\left',()=>runNativeMathToolbarCommand('left',()=>chooseMathDelimiters(activeMath())));
+groupButton(mathGroup,'\\right',()=>runNativeMathToolbarCommand('right',()=>chooseMathDelimiters(activeMath(),true)));
 groupButton(mathGroup,['单括号','Literal fence'],()=>armLiteralFence(activeMath()));
 groupButton(mathGroup,'matrix',()=>runNativeMathToolbarCommand('matrix',()=>insertMath(false,matrixSource('matrix'))));
 groupButton(mathGroup,'cases',()=>runNativeMathToolbarCommand('cases',insertCases));

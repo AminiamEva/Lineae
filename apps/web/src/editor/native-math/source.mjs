@@ -39,6 +39,7 @@ const symbols = new Set([
 ]);
 const mathWrappers = new Set(['\\boxed','\\mathord','\\mathrm','\\mathbf','\\mathit','\\mathsf',
   '\\mathtt','\\mathcal','\\mathscr','\\mathbb','\\mathfrak']);
+const mathStyle=/^\\(display|text|script|scriptscript)style(?![A-Za-z])/;
 
 function freeze(value) {
   if (value && typeof value === 'object') {
@@ -80,6 +81,14 @@ function parse(source) {
   }
   function protect(from16, to16, kind) {
     protectedRanges.push({from16, to16, kind});
+  }
+  function skipStyle() {
+    const style=mathStyle.exec(source.slice(at));
+    if(!style)return false;
+    const start=at;
+    at+=style[0].length;
+    protect(start,at,'command');
+    return true;
   }
   function trivia() {
     while (at < source.length) {
@@ -161,7 +170,7 @@ function parse(source) {
           while(true){
             trivia();
             if(at===source.length||source[at]==='&'||source.startsWith('\\\\',at)||source.startsWith('\\end{',at))break;
-            children.push(atom(depth+1));
+            if(!skipStyle())children.push(atom(depth+1));
           }
           const cell={kind:'cell',from16:start,to16:at,afterGroup:/^align/.test(matrix[1])&&!children.length,
             fields:[{role:'cell',from16:start,to16:at,grouped:false,children}]};
@@ -245,7 +254,7 @@ function parse(source) {
     while (true) {
       trivia();
       if (at === source.length || source[at] === close) break;
-      children.push(atom(depth));
+      if(!skipStyle())children.push(atom(depth));
     }
     return children;
   }
@@ -457,6 +466,9 @@ const structureTemplates = {
   indexedRoot: text => ({before:'\\sqrt[', body:'', after:']{'+text+'}', next:'first'}),
   superscript: text => ({before:text+'^{',body:'',after:'}',next:'first'}),
   subscript: text => ({before:text+'_{',body:'',after:'}',next:'first'}),
+  ...Object.fromEntries([...mathWrappers].filter(command=>command!=='\\mathord').map(command=>[
+    command.slice(1),text=>({before:command+'{',body:text,after:'}',next:'first'}),
+  ])),
   ...Object.fromEntries(largeOperators.map(operator=>[
     operator,
     text=>({before:'\\'+operator+'{',body:text,after:'}',next:'operator'}),
@@ -524,6 +536,21 @@ export function insertDisplayLine(snapshot,slot,local) {
   const insert=open+source.slice(0,split)+'\\\\'+source.slice(split)+close;
   parse(insert);
   return {source:insert,patch:{from:0,to:source.length,insert},cursor:open.length+split+2,requiresAmsmath:true};
+}
+
+export function toggleFormulaDisplayStyle(snapshot,cursor) {
+  if(!snapshots.get(snapshot)?.tree||!Number.isInteger(cursor)||cursor<0||cursor>snapshot.source.length)return null;
+  const {source}=snapshot;
+  const from=source.search(/\S/);
+  if(from<0)return null;
+  const existing=mathStyle.exec(source.slice(from));
+  const inserted=existing?.[1]==='display'?'':'\\displaystyle ';
+  let to=from+(existing?.[0].length??0);
+  if(existing&&/[ \t]/.test(source[to]??''))to++;
+  const patch={from,to,insert:inserted};
+  const revised=source.slice(0,from)+inserted+source.slice(to);
+  if(!revised.trim()||!projectMath(revised).supported)return null;
+  return {source:revised,patch,cursor:Math.max(from+inserted.length,cursor+inserted.length-(to-from))};
 }
 
 export function applyStructureCommand(snapshot, {slotId,from16,to16,command}) {

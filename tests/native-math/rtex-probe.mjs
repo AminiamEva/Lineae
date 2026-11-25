@@ -324,6 +324,8 @@ async function main() {
       '\\begin{equation}\r\n\\frac{7}{}\r\n\\end{equation}'),'structured-numbered-equation',out,rtex,texbin,'multi'));
     summaries.push(await probe(unicode.replace('\\frac{a}{}','\\left(\\frac{7}{}\\right)'),
       'structured-fenced-fraction',out,rtex,texbin,'multi'));
+    summaries.push(await probe(unicode.replace('\\[\r\n\\frac{a}{}\r\n\\]','Inline $\\displaystyle \\frac{7}{}$ here.'),
+      'structured-styled-inline-fraction',out,rtex,texbin,'multi'));
     summaries.push(await probe(unicode.replace('\\usepackage{amsmath}',
       '\\usepackage[fontset=fandol]{ctex}\r\n\\usepackage{amsmath}')
       .replace('\\frac{a}{}','\\frac{7}{}+\\text{中文}'),

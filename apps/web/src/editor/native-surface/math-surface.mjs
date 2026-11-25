@@ -1,5 +1,5 @@
 import {createSelectionModel} from './selection-model.mjs';
-import {applyPastedMath,applySlotEdit,applyStructureCommand,expandMatrix,insertDisplayLine,removeEmptyScript,applySingleCharacterScript,applyScalableFence,nativeOperatorBody} from '../native-math/source.mjs';
+import {applyPastedMath,applySlotEdit,applyStructureCommand,expandMatrix,insertDisplayLine,removeEmptyScript,applySingleCharacterScript,applyScalableFence,nativeOperatorBody,toggleFormulaDisplayStyle} from '../native-math/source.mjs';
 
 const structuralAtom=atom=>['frac','sqrt','fence','group','wrapper','matrix'].includes(atom.kind)&&
   !(atom.kind==='matrix'&&/^(?:align|flalign|gather|multline|eqnarray)/.test(atom.command));
@@ -223,7 +223,9 @@ export function createMathSurface({resolve,selection=createSelectionModel(sameFo
       const [from,to] = selection.range;
       if(!from||!sameFormula(from,to)||from.slot.id!==to.slot.id)return null;
       try {
-        const result=command==='enterLine'
+        const result=command==='toggleDisplayStyle'
+          ?from===to&&from.formula.delimiter!==''&&toggleFormulaDisplayStyle(from.formula.math,from.docOffset-from.formula.from16)
+          :command==='enterLine'
           ?from===to&&from.formula.kind==='displayMath'&&insertDisplayLine(from.formula.math,from.slot,from.local)
           :command==='addRow'||command==='addColumn'
           ?expandMatrix(from.formula.math,selection.caret.slot,selection.caret.local,command==='addRow'?'row':'column')
