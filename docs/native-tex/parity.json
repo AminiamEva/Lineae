@@ -172,7 +172,7 @@
       ],
       "nativeStatus": "partial",
       "evidence": ["https://github.com/AminiamEva/Lineae/actions/runs/45620299673", "https://github.com/AminiamEva/Lineae/actions/runs/45622916182", "https://github.com/AminiamEva/Lineae/actions/runs/45628338101", "https://github.com/AminiamEva/Lineae/actions/runs/45639252258", "https://github.com/AminiamEva/Lineae/actions/runs/45646995464"],
-      "scope": "The native math palette supports verified structures and formula labels. The prose palette supports page breaks, appendix, contents, horizontal rules, book matter, listings, columns, metadata, and project inputs. The listing body opens at its exact source range. The remaining command inventory requires individual verification."
+      "scope": "The native math palette supports verified structures and formula labels. The prose palette supports page breaks, appendix, contents, horizontal rules, book matter, listings, columns, metadata, and project inputs. The code block editor preserves the listing wrapper and supports independent undo and redo in Document. The cases shortcut adds amsmath when needed and targets the first empty cell. Opaque source blocks open at their exact source range. The remaining command inventory requires individual verification. Code block and cases browser gates: https://github.com/AminiamEva/Lineae/actions/runs/45700456663 and https://github.com/AminiamEva/Lineae/actions/runs/45700948651"
     },
     {
       "id": "clipboard-ime-cross-run",
@@ -186,7 +186,7 @@
       ],
       "nativeStatus": "partial",
       "evidence": ["https://github.com/AminiamEva/Lineae/actions/runs/45596378294", "https://github.com/AminiamEva/Lineae/actions/runs/45599661375", "https://github.com/AminiamEva/Lineae/actions/runs/45629535428", "https://github.com/AminiamEva/Lineae/actions/runs/45639252258", "https://github.com/AminiamEva/Lineae/actions/runs/45646995464"],
-      "scope": "Copy, cut, formatted paste, whole inline formula selection, synthetic Chinese composition, and queued input during a forced geometry delay. Verified selections within one paragraph copy formatting alongside plain text, and native math accepts validated LaTeX fragments from the clipboard. Browser checks cover vertical caret and page navigation, the textarea anchor during scrolling, and the first preedit after exiting inline math. Physical input methods and broader cross-file editing remain pending."
+      "scope": "Copy, cut, formatted paste, whole inline formula selection, synthetic Chinese composition, and queued input during a forced geometry delay. Verified selections within one paragraph copy formatting alongside plain text, and native math accepts validated LaTeX fragments from the clipboard. Browser checks cover vertical caret and page navigation, the textarea anchor during scrolling, the first preedit after exiting inline math, rapid prose after exiting an included file, and entering inline math while prose geometry is pending. Physical input methods and broader cross-file editing remain pending. Queue gates: https://github.com/AminiamEva/Lineae/actions/runs/45699836032 and https://github.com/AminiamEva/Lineae/actions/runs/45700117546"
     },
     {
       "id": "default-native-engine",
@@ -204,11 +204,11 @@
   ],
   "acceptance": {
     "fullSoftwareRun": {
-      "revision": "4beefa4eaa940ed7268ab878acc855d6b07f831b",
+      "revision": "5caa5e056b2bdce2f35767a6f0663a8bf6111d87",
       "status": "passed-on-windows-macos-ubuntu",
       "scope": "All three jobs passed the browser gates, real host geometry including repeated source expansion, recorded page editing, and the engine-off desktop WebView smoke. The prior run includes unbundled executables for physical device input review.",
-      "evidence": "https://github.com/AminiamEva/Lineae/actions/runs/45692782713",
-      "priorEvidence": "https://github.com/AminiamEva/Lineae/actions/runs/45686311404"
+      "evidence": "https://github.com/AminiamEva/Lineae/actions/runs/45699877002",
+      "priorEvidence": "https://github.com/AminiamEva/Lineae/actions/runs/45692782713"
     },
     "nativeHost": {
       "status": "protocol-and-project-tests-passed",
@@ -363,7 +363,8 @@
       "verifiedTableOperations": ["table", "tableRow", "tableCell", "tableHeader"],
       "partialNativeEditing": ["blockquote", "theoremBlock", "bulletList", "orderedList", "listItem", "descriptionList", "descriptionItem", "projectRegion", "documentImage", "subfigures", "multiColumn"],
       "protectedInlineOrStructural": ["hardBreak", "ref", "cite", "label", "footnote", "pageBreak", "appendixStart", "matterStart", "counterDirective", "layoutCommand"],
-      "directEditingPending": ["codeBlock", "horizontalRule", "lipsum", "raw", "tableOfContents"]
+      "verifiedNativeDialogs": ["codeBlock"],
+      "directEditingPending": ["horizontalRule", "lipsum", "raw", "tableOfContents"]
     },
     "legacyDecorationsDisabledInNativeMode": ["mathGlue", "lipsumPreviewExpansion"],
     "marks": {

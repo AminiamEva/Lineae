@@ -39,8 +39,11 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
   const sourceBlockEdit=document.createElement('button');
   sourceBlockEdit.id='native-tex-edit-source-block';sourceBlockEdit.type='button';sourceBlockEdit.hidden=true;
   let availableBlocks=[],lastSourceBlocks='';
-  const labelSourceBlockEdit=()=>{sourceBlockEdit.textContent=availableBlocks[sourceBlock.selectedIndex]?.code
-    ?t('编辑代码块','Edit code block'):t('编辑源码块','Edit source block');};
+  const labelSourceBlockEdit=()=>{
+    const kind=availableBlocks[sourceBlock.selectedIndex]?.edit?.kind;
+    sourceBlockEdit.textContent=kind==='code'?t('编辑代码块','Edit code block'):
+      kind==='command'?t('编辑 LaTeX 命令','Edit LaTeX command'):t('编辑源码块','Edit source block');
+  };
   sourceBlock.addEventListener('change',labelSourceBlockEdit);
   const targetStatus=document.createElement('p');targetStatus.setAttribute('role','status');
   const startText=document.createElement('button');

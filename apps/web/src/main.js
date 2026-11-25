@@ -1232,7 +1232,7 @@ function prepareNativeParagraphHistory(transaction) {
   const before=JSON.stringify(transaction.before.toJSON()),after=JSON.stringify(transaction.doc.toJSON());
   for(let index=nativeParagraphTransitions.length-1;index>=0;index--){
     const transition=nativeParagraphTransitions[index];
-    const forward=transition.before.snapshot===before;
+    const forward=transition.before.snapshot===before&&transition.before.source===importedSource;
     const previous=forward?transition.before:transition.after;
     const next=forward?transition.after:transition.before;
     if(previous.source!==importedSource||previous.snapshot!==before||next.snapshot!==after)continue;
@@ -3696,31 +3696,37 @@ function nativeSourceBlocks(){
       if(!start||!end||end.index<start[0].length)return;
       const from=base+block.from+start[0].length,to=base+block.from+end.index;
       if(text.slice(from,to)===node.textContent)results.push({path,fileId,text,from,to,label:start[1],
-        code:{position,from:base+block.from,to:base+block.to,eol:start[0].endsWith('\r\n')?'\r\n':'\n'}});
+        edit:{position,from:base+block.from,to:base+block.to,kind:'code',eol:start[0].endsWith('\r\n')?'\r\n':'\n'}});
       return;
     }
     if(!raw||type==='raw'&&raw!==node.attrs.source?.trim())return;
     const from=base+block.from+block.raw.length-block.raw.trimStart().length,to=from+raw.length;
     const label=raw.split(/\r?\n/,1)[0].slice(0,64);
-    results.push({path,fileId,text,from,to,label:label===raw?label:`${label}…`});
+    const edit=type!=='raw'&&!/[\r\n]/.test(raw)?{position,from,to,kind:'command'}:null;
+    results.push({path,fileId,text,from,to,label:label===raw?label:`${label}…`,edit});
   });
   return results;
 }
-async function editNativeCodeBlock(block,project,file){
-  const {state}=editor,{code,text,from,to}=block;
-  const node=state.doc.nodeAt(code.position),original=text.slice(from,to);
-  if(node?.type.name!=='codeBlock'||node.textContent!==original)return;
-  const value=await promptDialog({title:t('代码块','Code block'),value:original,multiline:true});
-  if(value===null||editor.state.doc!==state.doc||!sourceView.hidden||projectExplorer?.model!==project||
+async function editNativeSourceContent(block,project,file){
+  const {state}=editor,{edit,text,from,to}=block;
+  const node=state.doc.nodeAt(edit.position),original=text.slice(from,to);
+  const code=edit.kind==='code';
+  if(!node||code&&node.textContent!==original)return;
+  const value=await promptDialog({title:code?t('代码块','Code block'):t('LaTeX 命令','LaTeX command'),value:original,multiline:code});
+  if(editor.state.doc!==state.doc||!sourceView.hidden||projectExplorer?.model!==project||
     (file?.draft??source())!==text)return;
-  const insert=value.replace(/\r\n|\r|\n/g,code.eol);
+  nativeTexPreview.refocusTextInput();
+  if(value===null)return;
+  const insert=code?value.replace(/\r\n|\r|\n/g,edit.eol):value.trim();
   if(insert===original)return;
-  if(/\\end\{lstlisting\}/.test(insert))return refuseStandaloneWriteback();
-  const revised=node.type.create(node.attrs,insert?editor.schema.text(insert):null);
+  if(code&&/\\end\{lstlisting\}/.test(insert))return refuseStandaloneWriteback();
   const draft=text.slice(0,from)+insert+text.slice(to);
-  const [parsed,...rest]=importBlocks(draft.slice(code.from,code.to+draft.length-text.length));
-  if(rest.length||parsed?.type!=='codeBlock'||!editor.schema.nodeFromJSON(parsed).eq(revised))return refuseStandaloneWriteback();
-  const tr=editor.state.tr.replaceWith(code.position,code.position+node.nodeSize,revised);
+  const [parsed,...rest]=importBlocks(draft.slice(edit.from,edit.to+draft.length-text.length));
+  if(rest.length||parsed?.type!==node.type.name)return refuseStandaloneWriteback();
+  const revised=editor.schema.nodeFromJSON(parsed);
+  if(code?revised.textContent!==insert||revised.attrs.language!==node.attrs.language:
+    node.type.name==='paragraph'&&(revised.childCount!==1||revised.firstChild.type!==node.firstChild.type))return refuseStandaloneWriteback();
+  const tr=editor.state.tr.replaceWith(edit.position,edit.position+node.nodeSize,revised);
   if(projectDocument.composition){
     if(!file||!projectDocument.rebase(currentNativeProjectComposition(),editor.getJSON())||
       !dispatchNativeProjectChange(editor.state,tr,project,new Map([[file.id,draft]])))return refuseStandaloneWriteback();
@@ -3736,7 +3742,7 @@ async function openNativeSourceBlock(block){
   const file=block.fileId?project?.files.get(block.path):null;
   if(block.fileId&&file?.id!==block.fileId)return;
   if((file?.draft??source())!==block.text)return;
-  if(block.code)return editNativeCodeBlock(block,project,file);
+  if(block.edit)return editNativeSourceContent(block,project,file);
   setSourceMode(true);
   if(sourceView.hidden)return;
   if(file&&project.activeFileId!==file.id){

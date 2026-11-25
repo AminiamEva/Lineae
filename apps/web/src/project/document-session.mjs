@@ -61,13 +61,13 @@ export class ProjectDocumentSession {
     const history=this.#history.get(project);
     if(!history?.length)return null;
     const files=new Map([...project.files.values()].map(file=>[file.id,file]));
+    const matches=(previous,next)=>previous.doc.eq(transaction.before)&&next.doc.eq(transaction.doc)&&
+      [...previous.drafts].every(([id,draft])=>this.#composition?.sources.has(id)&&files.get(id)?.draft===draft);
     for(const transition of history.toReversed()){
-      const forward=transition.before.doc.eq(transaction.before)&&transition.after.doc.eq(transaction.doc);
-      const backward=transition.after.doc.eq(transaction.before)&&transition.before.doc.eq(transaction.doc);
+      const forward=matches(transition.before,transition.after);
+      const backward=matches(transition.after,transition.before);
       if(!forward&&!backward)continue;
-      const [previous,next]=forward?[transition.before,transition.after]:[transition.after,transition.before];
-      if([...previous.drafts].some(([id,draft])=>!this.#composition?.sources.has(id)||
-        files.get(id)?.draft!==draft))continue;
+      const next=forward?transition.after:transition.before;
       const composition=this.verify(project,transaction.doc,next.drafts);
       if(composition)return {composition,drafts:next.drafts};
     }

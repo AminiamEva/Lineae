@@ -146,3 +146,28 @@ test('a proven native project revision deletes a formula and restores exact draf
   project.file('1').draft+=' external edit';
   assert.equal(session.restore(project,{before:after,doc:before}),null);
 });
+
+test('project undo and redo distinguish commands with the same rich document',()=>{
+  const root='\\begin{document}\n\\input{child}\n\\end{document}\n';
+  const child='\\newpage\r\n',cleared='\\clearpage\r\n';
+  const project=fixture([['main.tex',root],['child.tex',child]]);
+  const session=new ProjectDocumentSession(),composition=session.compose(project,'0');
+  const schema=new Schema({nodes:{
+    doc:{content:'projectRegion+'},
+    projectRegion:{content:'block+',attrs:{regionKey:{default:''},path:{default:''},trail:{default:[]}}},
+    paragraph:{group:'block'},pageBreak:{group:'block'},text:{},
+  }});
+  const doc=schema.nodeFromJSON({type:'doc',content:composition.content});
+  session.hydrate(composition,doc.toJSON());
+  const before=new Map([['1',child]]),after=new Map([['1',cleared]]);
+  const verified=session.verify(project,doc,after);
+  assert.ok(verified);
+  session.record(project,{before:{doc,drafts:before},after:{doc,drafts:after}});
+  project.file('1').draft=cleared;
+  session.hydrate(verified,doc.toJSON());
+  const undo=session.restore(project,{before:doc,doc});
+  assert.deepEqual(undo.drafts,before);
+  project.file('1').draft=child;
+  session.hydrate(undo.composition,doc.toJSON());
+  assert.deepEqual(session.restore(project,{before:doc,doc}).drafts,after);
+});
