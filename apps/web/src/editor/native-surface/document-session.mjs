@@ -263,6 +263,12 @@ export function createNativeDocumentSession(resolve) {
         (heading===undefined||stop.paragraph?.heading===heading));
       return first?selection.selectTargets(first,first):false;
     },
+    selectTextRange({path,source,from,to}){
+      const stopAt=offset=>selection.stops.find(stop=>stop.kind==='text'&&stop.paragraph.filePath===path&&
+        stop.paragraph.source===source&&stop.docOffset===offset);
+      const start=stopAt(from),end=stopAt(to);
+      return Boolean(start&&end&&sameParagraph(start,end)&&selection.selectTargets(start,end));
+    },
     expectInitialText(edit,offset,path){
       selection.record(edit,offset,{kind:'text',paragraph:{filePath:path}});
     },

@@ -1892,8 +1892,18 @@ const server=createServer(async(req,res)=>{
     await page.locator('#document-outline [data-heading-position]').last().click();
     await page.waitForFunction(()=>document.activeElement?.id==='native-tex-input');
     await page.keyboard.type('X');
-    await page.waitForFunction(expected=>nativeProbe.source===expected,
-      outlined.replace('Repeat}\n\nSecond','XRepeat}\n\nSecond'));
+    const outlinedEdit=outlined.replace('Repeat}\n\nSecond','XRepeat}\n\nSecond');
+    await page.waitForFunction(expected=>nativeProbe.source===expected,outlinedEdit);
+    await page.getByText('Click text on the native page',{exact:false}).waitFor();
+    await page.keyboard.press(mod+'+f');
+    const search=page.getByRole('searchbox',{name:'Find in document'});
+    await search.fill('Repeat');
+    await search.press('Enter');
+    await page.locator('.document-find output').filter({hasText:'2 / 2'}).waitFor();
+    await search.press('Escape');
+    await page.waitForFunction(()=>document.activeElement?.id==='native-tex-input');
+    await page.keyboard.insertText('Next');
+    await page.waitForFunction(expected=>nativeProbe.source===expected,outlinedEdit.replace('XRepeat','XNext'));
 
     await page.goto(base+'?native-only-acceptance=1',{waitUntil:'networkidle'});
     const duplicateImages='\\documentclass{article}\n\\usepackage{graphicx}\n\\begin{document}\n'+

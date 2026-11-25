@@ -1,4 +1,4 @@
-import {nativeEditorRange} from './editor/native-text/editor-range.mjs';
+import {nativeEditorRange,sourceOffsetAtEditorPosition} from './editor/native-text/editor-range.mjs';
 import {projectMixedDocument,projectTextDocument} from './editor/native-text/projection.mjs';
 import {nativeMathCommandNames,projectMath} from './editor/native-math/source.mjs';
 import {nativeMathContext} from './editor/native-math/resolve.mjs';
@@ -843,7 +843,8 @@ editor.on('update',()=>{refreshReferences(paper,editor);syncTableAttributes();})
 syncTableAttributes();
 installTableHoverAddRow(editor, paper);
 installImageDrop(editor,paper);
-const documentFind = installDocumentFind(editor);
+const documentFind = installDocumentFind(editor,{reveal:revealNativeSearchResult,
+  focusDocument:()=>nativeTexPreview?.focusInput?.()});
 const documentOutline = installDocumentOutline(editor);
 const tools=document.querySelector('#insert');
 tools.replaceChildren();
@@ -2762,7 +2763,7 @@ installKeybindings(window, {
   nativeBindings,
   getContext(event) {
     if(nativeTexPreview?.hasMathInput?.(event))
-      return {element:event.target,nativeMath:true,scopes:['math','system','global']};
+      return {element:event.target,nativeMath:true,scopes:['math','editor','system','global']};
     if(nativeTexPreview?.hasTextInput?.(event))
       return {element:event.target,nativeText:true,
         scopes:nativeTexPreview.inTableCell()?['table','editor','system','global']:['paragraph','editor','system','global']};
@@ -2789,6 +2790,10 @@ installKeybindings(window, {
     return { element:editor.view.dom, scopes };
   },
   run({scope,command},context,event) {
+    if((context.nativeText||context.nativeMath)&&scope==='editor'&&command==='find'){
+      documentFind.show();return true;
+    }
+    if(context.nativeMath&&scope==='editor')return false;
     if(context.nativeText&&scope==='editor'){
       if(command==='leaveFile')return nativeTexPreview.leaveFile();
       if(['insertDisplayMath','insertInlineMath','insertEquation'].includes(command))return shortcutActions.editor[command]();
@@ -3904,23 +3909,45 @@ function showProjectComposition(){return compositionController.show();}
 function editIncludeSource(transform,owner){return compositionController.edit(transform,owner);}
 function requestProjectInclude(command){return compositionController.request(command);}
 function appendInclude(id,beforePath,command){return compositionController.append(id,beforePath,command);}
-documentOutline.panel.addEventListener('lineae-outline-navigate',event=>{
-  if(!sourceView.hidden)return;
-  const {position}=event.detail,{doc}=editor.state;
-  if(doc.nodeAt(position)?.type.name!=='heading')return;
+function nativeSourceBlockAt(position){
+  if(!sourceView.hidden)return null;
+  const {doc}=editor.state;
   const resolved=doc.resolve(position),composition=projectDocument.composition;
   const region=composition?.regions[resolved.index(0)];
-  if(composition&&(!region||resolved.depth!==1)||!composition&&resolved.depth!==0)return;
+  if(composition&&(!region||resolved.depth!==1)||!composition&&resolved.depth!==0)return null;
   const projected=region?.projection??projection,index=resolved.index(region?1:0);
   const block=projected?.blocks.find(entry=>entry.index===index&&entry.count===1);
-  const heading=block&&headingAt(block.raw.trimStart());
-  if(!heading)return;
+  if(!block)return null;
   const project=projectExplorer?.model;
   const path=region?.path??project?.file(project.activeFileId)?.path;
   const text=region?composition.sources.get(region.id):projected.text;
   const base=region?.from??0;
   const trail=region?doc.child(resolved.index(0)).attrs.trail:undefined;
-  if(nativeTexPreview.navigateOutline?.({path,trail,source:text,heading:heading.name,from:base+block.from,to:base+block.to}))
+  return {raw:block.raw,path,trail,source:text,from:base+block.from,to:base+block.to};
+}
+function revealNativeSearchResult({from,to}){
+  const paragraphs=nativeTexPreview?.nativeParagraphs?.();
+  if(!paragraphs?.length)return false;
+  const {doc}=editor.state,start=doc.resolve(from),end=doc.resolve(to),depth=projectDocument.composition?2:1;
+  if(start.depth<depth||start.parent!==end.parent)return false;
+  const address=nativeSourceBlockAt(start.before(depth));
+  if(!address)return false;
+  for(const paragraph of paragraphs){
+    if(paragraph.filePath!==address.path||paragraph.source!==address.source||
+      paragraph.from16<address.from||paragraph.from16>=address.to||!paragraph.runs.length)continue;
+    const first=paragraph.runs[0].from16;
+    const target=nativeProsePosition(paragraph,first,first)?.range.match;
+    if(!target||target.offset!==start.before())continue;
+    const begin=sourceOffsetAtEditorPosition(paragraph,target,from),finish=sourceOffsetAtEditorPosition(paragraph,target,to);
+    if(begin!==null&&finish!==null)return nativeTexPreview.navigate({...address,range:true,from:begin,to:finish});
+  }
+  return false;
+}
+documentOutline.panel.addEventListener('lineae-outline-navigate',event=>{
+  const {position}=event.detail;
+  if(editor.state.doc.nodeAt(position)?.type.name!=='heading')return;
+  const address=nativeSourceBlockAt(position),heading=address&&headingAt(address.raw.trimStart());
+  if(heading&&nativeTexPreview.navigate?.({...address,heading:heading.name}))
     event.preventDefault();
 });
 documentOutline.panel.addEventListener('lineae-outline-file-navigate',event=>{
@@ -3930,7 +3957,7 @@ documentOutline.panel.addEventListener('lineae-outline-file-navigate',event=>{
   if(!composition||node?.type.name!=='projectRegion')return;
   const region=composition.regions[doc.resolve(position).index(0)];
   if(!region||region.path!==node.attrs.path)return;
-  if(nativeTexPreview.navigateOutline?.({path:region.path,trail:node.attrs.trail,
+  if(nativeTexPreview.navigate?.({path:region.path,trail:node.attrs.trail,
     source:composition.sources.get(region.id),from:region.from,to:region.to}))event.preventDefault();
 });
 installProjectNavigation({outline:documentOutline.panel,paper,sourceView,editor,getProjection:()=>projection,appendInclude,editIncludeSource});

@@ -133,17 +133,17 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
     input.style.top = rect.y + 'px';
     input.style.height = Math.max(14, rect.height) + 'px';
   }
-  function selectOutlineTarget(address){
+  function selectNavigationTarget(address){
     if(!nativeEditing||!acceptsInput()||!current()||!observation||pendingEdit)return false;
     const containing=new Set([...(address.trail??[]),address.path]);
     for(const path of foldedFiles?.()??[]){
       if(containing.has(path))document.dispatchEvent(new CustomEvent('lineae-toggle-project-file',{detail:{path}}));
     }
-    if(!nativeDocument.selectRegion(address))return false;
+    if(!(address.range?nativeDocument.selectTextRange(address):nativeDocument.selectRegion(address)))return false;
     cancelDraftInput();
     paintSurfaceSelection(true);
     positionInput(true);
-    input.focus({preventScroll:true});
+    if(!address.range)input.focus({preventScroll:true});
     return true;
   }
   function commitSurface(edit) {
@@ -1028,7 +1028,7 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
       if(outlineTarget){
         const address=outlineTarget;
         outlineTarget=null;
-        selectOutlineTarget(address);
+        selectNavigationTarget(address);
       }
       requestAnimationFrame(syncCaret);
       targetStatus.textContent=!projection.paragraphs.length&&!projection.formulas.length
@@ -1180,9 +1180,9 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
       if(isDocumentMode?.()||splitHost?.())void start();
     },
     setDocumentZoom:value=>{if(primary)setNativeZoom(value);},
-    navigateOutline(address){
+    navigate(address){
       if(!acceptsInput()||!nativeEditing||pendingEdit)return false;
-      if(observation&&current())return selectOutlineTarget(address);
+      if(observation&&current())return selectNavigationTarget(address);
       outlineTarget=address;
       targetArmed=true;
       renderStatus();
@@ -1200,7 +1200,11 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
     },
     hasTextInput:event=>event.target===input&&hasNativeTextFocus(),
     hasNativeTextFocus,
-    focusInput(){if(nativeEditing&&acceptsInput())input.focus({preventScroll:true});},
+    focusInput(){
+      if(!nativeEditing||!acceptsInput())return false;
+      input.focus({preventScroll:true});return true;
+    },
+    nativeParagraphs:()=>current()?observation?.projection.paragraphs:undefined,
     startFormula,
     inTableCell:()=>Boolean(nativeDocument.surface.caret?.paragraph?.tableCell),
     hasMathInput: event => event.target===input && nativeEditing && acceptsInput() && nativeDocument.surface.caret?.kind==='math',

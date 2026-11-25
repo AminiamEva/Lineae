@@ -104,3 +104,15 @@ export function nativeEditorRange({doc,projection,composition,file,paragraph,fro
   return {from:at(endpoints.start,from),to:at(endpoints.end,to),match,endpoints,
     marks:match.parts[endpoints.start.partIndex]?.marks};
 }
+
+export function sourceOffsetAtEditorPosition(paragraph,match,position){
+  for(const run of paragraph.runs){
+    const part=match.parts[run.partIndex];
+    if(!part)continue;
+    const offset=position-(match.offset+1+part.offset);
+    const length=run.offsets?run.offsets.length-1:run.to16-run.from16;
+    if(offset<0||offset>length)continue;
+    return paragraph.from16+run.from16+(run.offsets?.[offset]??offset);
+  }
+  return null;
+}
