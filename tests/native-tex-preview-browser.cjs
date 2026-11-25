@@ -156,9 +156,9 @@ const server=createServer(async(req,res)=>{
       await page.keyboard.type('X');
       await page.waitForFunction(source=>nativeProbe.source===source,expected.replace('Omega.','XOmega.'));
       await page.locator('#native-tex-close').click();
-      const markedSource='\\documentclass{article}\n\\begin{document}\nBefore \\textit{\\textbf{Bold prose.}} $x$ after.\n\\end{document}\n';
+      const markedSource='\\documentclass{article}\n\\begin{document}\nBefore \\textit{\\textbf{Bold prose. $x$}} after.\n\\end{document}\n';
       await page.locator('input#file').setInputFiles({name:'marked.tex',mimeType:'text/plain',buffer:Buffer.from(markedSource)});
-      await page.waitForFunction(()=>document.querySelector('.ProseMirror strong')?.textContent==='Bold prose.');
+      await page.waitForFunction(()=>document.querySelector('.ProseMirror strong')?.textContent.trim()==='Bold prose.');
       await page.locator('#native-tex-toggle').click();
       await page.waitForFunction(()=>document.querySelector('#native-tex-preview').dataset.state==='current');
       await page.locator('#native-tex-target').click();
@@ -167,7 +167,7 @@ const server=createServer(async(req,res)=>{
       await panel.locator('[data-native-page="1"] canvas').click({position:{x:7750000*scale,y:9250000*scale}});
       await page.keyboard.type('X');
       await page.waitForFunction(expected=>nativeProbe.source===expected,markedSource.replace('Bold prose.','XBold prose.'));
-      assert.equal(await page.locator('.ProseMirror strong').textContent(),'XBold prose.');
+      assert.equal((await page.locator('.ProseMirror strong').textContent()).trim(),'XBold prose.');
       await page.locator('#native-tex-close').click();
       const tableSource='\\documentclass{article}\n\\begin{document}\n\\begin{tabular}{ll}\nOne  & Two \\\\\nThree & \n\\end{tabular}\n\\end{document}\n';
       await page.locator('input#file').setInputFiles({name:'table.tex',mimeType:'text/plain',buffer:Buffer.from(tableSource)});

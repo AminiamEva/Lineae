@@ -3,24 +3,11 @@ import {plainTableCells} from './table-cells.mjs';
 import {plainContainerParagraphs} from './containers.mjs';
 import {parseDocument} from '../../../latex/document.mjs';
 import {sourceStructure} from '../../../latex/source-structure.mjs';
-import {readGroup} from '../../../latex/table-spans.mjs';
+import {decodeProse,markedRuns} from './prose-runs.mjs';
 import {projectDocumentFormulas} from '../native-math/document.mjs';
 
 const segmenter = new Intl.Segmenter('und', {granularity:'grapheme'});
 const unsupported = /[\\{}$%&#_^~]/;
-const plainTokens=/^(?:\\[%&_#${}]|[^\\{}$%&#_^~])+/u;
-
-function decodeProse(raw) {
-  if(!raw.includes('\\'))return {text:raw};
-  const offsets=[0];
-  let text='';
-  for(let index=0;index<raw.length;index++){
-    if(raw[index]==='\\')index++;
-    text+=raw[index];
-    offsets.push(index+1);
-  }
-  return {text,offsets};
-}
 
 // Prose text is tagged per grapheme with its own LuaTeX attribute. Only plain
 // runs are instrumented: TeX syntax, comments and math never receive a guessed
@@ -48,8 +35,6 @@ function plainBlock(block,keepThrough=0) {
   return {leading,text:block.slice(leading,preserved?keepThrough:end)};
 }
 
-const textMarks = {textbf:'bold',textit:'italic',texttt:'code',underline:'underline',
-  sout:'strike',textsuperscript:'superscript',textsubscript:'subscript'};
 function proseBody(block,keepThrough) {
   const {leading,text}=plainBlock(block,keepThrough);
   const heading=headingAt(text);
@@ -59,37 +44,23 @@ function proseBody(block,keepThrough) {
   return {leading,text};
 }
 
-function markedRuns(text, offset=0, marks=[]) {
-  const runs=[];
-  let cursor=0;
-  while(cursor<text.length){
-    const raw=plainTokens.exec(text.slice(cursor))?.[0];
-    if(raw){
-      runs.push({kind:'text',from16:offset+cursor,to16:offset+cursor+raw.length,...decodeProse(raw),marks});
-      cursor+=raw.length;
-      continue;
-    }
-    const command=/^\\([a-z]+)(?=\{)/.exec(text.slice(cursor));
-    const mark=command&&Object.hasOwn(textMarks,command[1])&&textMarks[command[1]];
-    if(!mark||marks.includes(mark)||marks.length>=3)return null;
-    const start=cursor+command[0].length;
-    const group=readGroup(text,start);
-    if(!group?.value)return null;
-    const nested=markedRuns(group.value,offset+start+1,[...marks,mark]);
-    if(!nested)return null;
-    runs.push(...nested);
-    cursor=group.end;
-  }
-  return runs;
-}
-
-function instrumentProse(block, source, blockFrom, firstOwner, attribute, filePath, keepThrough) {
+function instrumentProse(block, source, blockFrom, firstOwner, attribute, filePath, keepThrough, formulas=[]) {
   const {leading,text,heading,headingEnd}=proseBody(block,keepThrough-blockFrom);
-  const parts=markedRuns(text);
+  const base=blockFrom+leading;
+  const inline=new Map(formulas.map(formula=>[formula.outerFrom16-base,{formula,end:formula.outerTo16-base,latex:formula.math.source}]));
+  const parts=markedRuns(text,0,[],inline);
   if(!parts?.length)return null;
+  if(parts.filter(part=>part.kind==='math').length!==inline.size)return null;
   const runs=[],glyphs=[];
   let projection='',cursor=0,nextTag=firstOwner;
   for(const [partIndex,part] of parts.entries()){
+    if(part.kind==='math'){
+      const {formula}=inline.get(part.from16);
+      projection+=text.slice(cursor,formula.from16-base)+formula.math.projection+
+        text.slice(formula.to16-base,part.to16);
+      cursor=part.to16;
+      continue;
+    }
     const built=instrumentText(text.slice(part.from16,part.to16),nextTag,attribute);
     nextTag=built.nextTag;
     projection+=text.slice(cursor,part.from16)+built.instrumented;
@@ -215,7 +186,9 @@ export function projectMixedDocument(source, {previous=[], attribute=65000, frag
       return {...math, kind:'math', paragraphs:[]};
     }
     output += source.slice(cursor, from16);
-    const result=overlapping.length?instrumentTable(block,source,from16,next,attribute,filePath,overlapping):
+    const result=overlapping.length?(instrumentTable(block,source,from16,next,attribute,filePath,overlapping)??
+      (overlapping.every(formula=>formula.kind==='inlineMath')&&
+        instrumentProse(block,source,from16,next,attribute,filePath,keepThrough,overlapping))):
       instrumentTextBlock(block,source,from16,next,attribute,filePath,keepThrough);
     if(result){
       output+=result.projection;

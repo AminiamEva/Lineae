@@ -8,6 +8,7 @@ import {serializeTblr,serializeSourceTable,environmentEnd} from '../../latex/tbl
 import {sourceStructure} from '../../latex/source-structure.mjs';
 import {serializeSourceFigure} from '../../latex/images.mjs';
 import {serializeTextEnvironment} from '../../latex/text-environments.mjs';
+import {markedRuns} from './native-text/prose-runs.mjs';
 
 function tikzRange(raw,expected) {
   if(typeof expected!=='string'||!expected)return null;
@@ -156,7 +157,7 @@ export function richSourceChanges(projection, doc) {
     const nodes = doc.content.slice(block.index, block.index + block.count);
     if (JSON.stringify(nodes) === block.snapshot) continue;
     const patch = block.editable ? patchBlock(block,nodes) :
-      inlineMathChanges(block,nodes)??plainTableChanges(block,nodes)??tikzFigureChanges(block,nodes)??
+      inlineMathChanges(block,nodes)??markedInlineProseChanges(block,nodes)??plainTableChanges(block,nodes)??tikzFigureChanges(block,nodes)??
       plainContainerChanges(block,nodes)??patchIsolatedTables(block,nodes);
     if (!patch) return null;
     changes.push(...patch);
@@ -187,7 +188,7 @@ export function standaloneMathChanges(projection,doc) {
   for(const block of projection.blocks){
     const nodes=doc.content.slice(block.index,block.index+block.count);
     if(JSON.stringify(nodes)===block.snapshot)continue;
-    const patch=mathBodyChanges(block,nodes)??inlineMathChanges(block,nodes)??plainTableChanges(block,nodes)??
+    const patch=mathBodyChanges(block,nodes)??inlineMathChanges(block,nodes)??markedInlineProseChanges(block,nodes)??plainTableChanges(block,nodes)??
       tikzFigureChanges(block,nodes)??plainContainerChanges(block,nodes);
     if(!patch)return null;
     changes.push(...patch);
@@ -310,6 +311,33 @@ function inlineMathChanges(block,nodes) {
   return patches.length&&JSON.stringify([restored])===block.snapshot?patches:null;
 }
 
+function markedInlineProseChanges(block,nodes) {
+  const [before]=JSON.parse(block.snapshot),[after]=nodes;
+  if(block.count!==1||nodes.length!==1||before?.type!=='paragraph'||after?.type!=='paragraph'||
+    before.content?.length!==after.content?.length||!before.content?.some(node=>node.type==='math'))return null;
+  const inline=new Map([...sourceStructure(block.raw)].filter(token=>token.kind==='inlineMath').map(token=>[token.index,token]));
+  const leading=block.raw.length-block.raw.trimStart().length;
+  const parts=markedRuns(block.raw.trim(),leading,[],inline);
+  if(parts?.length!==before.content.length||!parts.some(part=>part.insideMark))return null;
+  const restored=structuredClone(after),patches=[];
+  for(const [index,part] of parts.entries()){
+    const old=before.content[index],next=after.content[index];
+    if(part.kind==='math'){
+      if(old.type!=='math'||old.attrs.latex!==part.latex||JSON.stringify(old)!==JSON.stringify(next))return null;
+      continue;
+    }
+    if(old.type!=='text'||old.text!==part.text||next.type!=='text'||typeof next.text!=='string'||
+      (old.marks??[]).length!==part.marks.length||
+      (old.marks??[]).some(mark=>!part.marks.includes(mark.type)))return null;
+    if(old.text===next.text)continue;
+    const from=part.from16;
+    const spelling=block.raw.slice(from,part.to16);
+    restored.content[index].text=old.text;
+    patches.push(...minimalChange(spelling,serialize({type:'text',text:next.text}),block.from+from));
+  }
+  return patches.length&&JSON.stringify([restored])===block.snapshot?patches:null;
+}
+
 // A protected neighbor must stay untouched, but need not block a source-backed
 // table's cell edit. Locate only real outer environments, never quoted examples
 // in comments, macro definitions or Raw containers. Equal tables map by order.
@@ -345,7 +373,7 @@ function patchIsolatedTables(block,nodes) {
 }
 
 function patchBlock(block,nodes) {
-    const math=mathBodyChanges(block,nodes)??inlineMathChanges(block,nodes)??plainTableChanges(block,nodes)??
+    const math=mathBodyChanges(block,nodes)??inlineMathChanges(block,nodes)??markedInlineProseChanges(block,nodes)??plainTableChanges(block,nodes)??
       tikzFigureChanges(block,nodes)??plainContainerChanges(block,nodes);
     if(math)return math;
     if (nodes.some(node => node.type === 'raw')) return null;

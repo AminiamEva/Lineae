@@ -193,6 +193,20 @@ test('inline math edits preserve repeated formula delimiters and untouched prose
   assert.equal(standaloneMathChanges(projection,edited),null);
 });
 
+test('an inline formula inside a formatting command keeps its original enclosing braces',()=>{
+  const source=wrap('Before \\textbf{bold $x$ inside} after.');
+  const original={type:'doc',content:parseDocument(source).blocks.flatMap(importBlocks)};
+  const projection=sourceProjection(source,original);
+  const textEdit=structuredClone(original);
+  textEdit.content[0].content[3].text=' around';
+  const from=source.indexOf('inside');
+  assert.deepEqual(richSourceChanges(projection,textEdit),[{from,to:from+6,insert:'around'}]);
+  const formula=structuredClone(original);
+  formula.content[0].content[2].attrs.latex='y';
+  const at=source.indexOf('$x$')+1;
+  assert.deepEqual(richSourceChanges(projection,formula),[{from:at,to:at+1,insert:'y'}]);
+});
+
 test('TikZ visual updates replace only the verified drawing body inside a figure',()=>{
   const source=wrap('\\begin{figure}[ht]\r\n  \\centering\r\n'+
     '\\begin{tikzpicture}\r\n\\draw (0,0) -- (1,1);\r\n\\end{tikzpicture}\r\n'+

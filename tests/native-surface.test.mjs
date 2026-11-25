@@ -430,6 +430,18 @@ test('native mixed prose keeps marked runs and neighboring inline formula addres
   assert.equal(projection.formulas[0].math.source,'x');
 });
 
+test('native mixed projection observes inline math inside recognized text marks',()=>{
+  const raw='\\begin{document}\nBefore \\textbf{bold $\\frac{x}{}$ inside} after.\n\\end{document}\n';
+  const projection=projectMixedDocument(raw);
+  assert.equal(projection.formulas[0].math.source,'\\frac{x}{}');
+  assert.equal(projection.paragraphs[0].parts[2].insideMark,true);
+  const {from16,to16}=projection.paragraphs[0].parts[3];
+  const edited=textEdit(projection,{paragraph:projection.paragraphs[0],from16,to16,insert:' around'});
+  assert.equal(edited.source,raw.replace(' inside',' around'));
+  const slot=projection.formulas[0].math.slots.find(slot=>slot.role==='denominator');
+  assert.equal(nativeTarget(projection,{owner:slot.tag,role:'den'}).docOffset,raw.indexOf('}{}')+2);
+});
+
 test('native math commands insert validated structures and target the new field',()=>{
   const {projection,formula,denominator}=setup();
   for(const [command,insert,caret] of [

@@ -1,5 +1,6 @@
 import {parseDocument} from '../../../latex/document.mjs';
 import {tableCellRanges} from '../native-text/table-cells.mjs';
+import {markedRuns} from '../native-text/prose-runs.mjs';
 import {sourceStructure} from '../../../latex/source-structure.mjs';
 import {environmentEnd} from '../../../latex/tblr.mjs';
 import {applySlotEdit,projectMath} from './source.mjs';
@@ -40,8 +41,18 @@ export function projectDocumentFormulas(source,{fragment=false,firstTag=1,filePa
     return (tableCellRanges(body.slice(token.index,close.end))??[]).map(cell=>
       [token.index+cell.offset,token.index+cell.offset+cell.text.length]);
   }));
+  const nested=new Map(tokens.filter(token=>token.kind==='inlineMath').map(token=>[token.index,token]));
+  const markedMath=new Set();
+  let blockStart=0;
+  for(const block of doc.blocks){
+    if(block.includes('{')&&nested.size){
+      for(const run of markedRuns(block,blockStart,[],nested)??[])
+        if(run.kind==='math'&&run.insideMark)markedMath.add(run.from16);
+    }
+    blockStart+=block.length;
+  }
   const spans=tokens.flatMap(token=>{
-    if(token.kind==='inlineMath'&&tableCells.get(token.index)===token.end)return [token];
+    if(token.kind==='inlineMath'&&(tableCells.get(token.index)===token.end||markedMath.has(token.index)))return [token];
     if(!token.topLevel)return [];
     if(['displayMath','inlineMath'].includes(token.kind))return [token];
     const name=token.kind==='begin'&&/^\\begin\{((?:equation|align|gather)\*?)\}$/.exec(token.value)?.[1];
