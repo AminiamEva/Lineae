@@ -499,7 +499,7 @@ const server=createServer(async(req,res)=>{
       await page.locator('#native-tex-toggle').click();
       await page.waitForFunction(()=>document.querySelector('#native-tex-preview').dataset.state==='current');
       await page.locator('#native-tex-target').click();
-      await panel.getByText('Click text on the native page',{exact:false}).waitFor();
+      await page.getByText('Click text on the native page',{exact:false}).waitFor();
       await page.locator('#native-tex-edit').click();
       const nativePage=evidence.observed.find(page=>page.dl.math_owners?.glyphs?.some(glyph=>glyph.owner===1));
       const glyph=nativePage.dl.math_owners.glyphs.find(glyph=>glyph.owner===1);
