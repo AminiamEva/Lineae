@@ -1278,6 +1278,9 @@ editor.on('update', ({transaction}) => {
     projection=paragraph.projection;
     if(documentParts.start!==previousPreamble){
       renderMeta();
+      if(transaction.doc.attrs.layoutPreamble!==transaction.before.attrs.layoutPreamble){
+        pageSetup=readPageSetup(documentParts.start);applyPageSetup();
+      }
       typesetPagination?.setMaketitle(/\\maketitle\b/.test(documentParts.blocks.join('\n')));
     }
     return;
@@ -1514,6 +1517,18 @@ function updatePageSetup(patch){
     if(after!==before){project.edit(owner,after);sourceModeCommits.push({owner,before,after,afterDoc:editor.state.doc,afterPreamble:documentParts.start,sourceText:sourceView.value});
 syncUndoButtons();sourceModeRedos=[];}
     applyPageSetup();projectExplorer.changed();return;
+  }
+  if(sourceView.hidden&&nativeWorkspaceRequested()&&!projectDocument.composition){
+    const before=source(),parsed=parseDocument(before);
+    if(!parsed)return;
+    const preamble=writePageSetup(parsed.start,mergePageLayout(readPageSetup(parsed.start),patch));
+    const [change]=textPatch(parsed.start,preamble);
+    if(!change)return;
+    const {state}=editor,tr=state.tr.setDocAttribute('layoutPreamble',preamble);
+    const draft=preamble+before.slice(parsed.start.length);
+    const projected=sourceProjection(draft,tr.doc.toJSON());
+    if(projected)dispatchNativeParagraphChange(state,tr,before,draft,change,projected);
+    return;
   }
   pageSetup=changePageLayout({editor,sourceView,current:pageSetup,preamble:documentParts.start,patch});
   applyPageSetup();

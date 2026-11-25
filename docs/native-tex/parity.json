@@ -69,9 +69,10 @@
         "https://github.com/AminiamEva/Lineae/actions/runs/45596378294",
         "https://github.com/AminiamEva/Lineae/actions/runs/45602854334",
         "https://github.com/AminiamEva/Lineae/actions/runs/45623818094",
-        "https://github.com/AminiamEva/Lineae/actions/runs/45628338101"
+        "https://github.com/AminiamEva/Lineae/actions/runs/45628338101",
+        "https://github.com/AminiamEva/Lineae/actions/runs/45665234676"
       ],
-      "scope": "Plain headings and escaped literals, paragraphs with nested marks, and source mapping for proof, abstract and nested lists. Browser checks cover editing marked text alongside inline math, including inside a proof. Prose paste and direct typing preserve supported escaped characters, and LuaLaTeX reports a native glyph for the escaped caret. More text environments remain pending."
+      "scope": "Plain headings and escaped literals, paragraphs with nested marks, and source mapping for proof, abstract, quote, and nested lists. The Windows and macOS jobs cover abstract and quote paragraph splitting and joining, explicitly selected bold on new text, justified paragraphs and the required preamble update, and marked prose beside inline math. LuaLaTeX reports a native glyph for the escaped caret. More text environments and structural operations in nested containers remain pending."
     },
     {
       "id": "tables-including-spans",
@@ -86,8 +87,8 @@
         "tests/native-tex-preview-browser.cjs"
       ],
       "nativeStatus": "partial",
-      "evidence": ["https://github.com/AminiamEva/Lineae/actions/runs/45590498054", "https://github.com/AminiamEva/Lineae/actions/runs/45628338101", "https://github.com/AminiamEva/Lineae/actions/runs/45639252258", "https://github.com/AminiamEva/Lineae/actions/runs/45649964814", "https://github.com/AminiamEva/Lineae/actions/runs/45656057369", "https://github.com/AminiamEva/Lineae/actions/runs/45658008577"],
-      "scope": "The browser gates cover empty and nonempty cells, mixed marked text and math in tabularx, ordinary tabular, tabularx and tabularray axis edits, and ordinary tabular horizontal and vertical merge and split with exact source writeback and undo. The real engine reports an empty-cell anchor, marked cell glyphs and an inline formula field with unchanged page drawing on both platforms. Some absolute tabularray rule selectors can follow structural edits. Tabularray row spans preserve covered source and have unit tests. More general span and cell styling edits remain pending."
+      "evidence": ["https://github.com/AminiamEva/Lineae/actions/runs/45590498054", "https://github.com/AminiamEva/Lineae/actions/runs/45628338101", "https://github.com/AminiamEva/Lineae/actions/runs/45639252258", "https://github.com/AminiamEva/Lineae/actions/runs/45649964814", "https://github.com/AminiamEva/Lineae/actions/runs/45656057369", "https://github.com/AminiamEva/Lineae/actions/runs/45658008577", "https://github.com/AminiamEva/Lineae/actions/runs/45665234676"],
+      "scope": "The browser gates cover empty and nonempty cells, mixed marked text and math in tabularx, ordinary tabular, tabularx and tabularray axis edits, and ordinary tabular and tabularray vertical merge and split with exact source writeback and undo. Windows and macOS real-engine jobs check glyph ownership and unchanged visible geometry for both kinds of row span. The tabularx row span has direct source and parser tests. Advanced row-and-column spans and arbitrary cell styles remain pending."
     },
     {
       "id": "project-composition",
@@ -111,9 +112,10 @@
         "https://github.com/AminiamEva/Lineae/actions/runs/45621393391",
         "https://github.com/AminiamEva/Lineae/actions/runs/45624267696",
         "https://github.com/AminiamEva/Lineae/actions/runs/45639252258",
-        "https://github.com/AminiamEva/Lineae/actions/runs/45649964814"
+        "https://github.com/AminiamEva/Lineae/actions/runs/45649964814",
+        "https://github.com/AminiamEva/Lineae/actions/runs/45665234676"
       ],
-      "scope": "Included prose and display math edit the owning source file. The native exit shortcut resumes typing in the parent. Cross-file copy and replacement can include complete inline and display formulas, with undo and redo preserving each file's exact source. Independent documents switch the compilation entry. Detached fragments inherit the preamble and keep their original source offsets. Folding preserves original page numbering and partial edge placeholders. Folding an include that shares a line with the parent only masks its own measured horizontal span. Actual LuaLaTeX tests confirm that edits to a staged child retain both the live and geometry-observation sessions. More complex selection endpoints and geometry with overlapping owners remain pending."
+      "scope": "Included prose and display math edit their owning source file. Cross-file copy and replacement can include complete formulas and endpoints inside single-paragraph center and proof environments, with atomic undo and redo. The native exit shortcut and file outline navigate the composed source. Detached fragments inherit the preamble. Folding retains page numbering and partial edge placeholders and handles an include sharing a line. Live and observation sessions retain a staged child after an edit. Selections across more complex environments and repeated source ownership need additional coverage."
     },
     {
       "id": "images-floats-tikz",
@@ -133,9 +135,10 @@
         "https://github.com/AminiamEva/Lineae/actions/runs/45639252258",
         "https://github.com/AminiamEva/Lineae/actions/runs/45646995464",
         "https://github.com/AminiamEva/Lineae/actions/runs/45649964814",
-        "https://github.com/AminiamEva/Lineae/actions/runs/45656057369"
+        "https://github.com/AminiamEva/Lineae/actions/runs/45656057369",
+        "https://github.com/AminiamEva/Lineae/actions/runs/45665234676"
       ],
-      "scope": "Real staged PNG drawing metadata is unchanged by ownership. Browser gates select a raster from Canvas and a transformed raster in a simulated registered PDF frame, then patch its width through the Image controls. A direct click on standalone or floating TikZ or one of two nested subfigures in a registered real LuaLaTeX PDF opens the intended drawing on Windows and macOS. The native workspace can select an exact opaque block in Source. Other nested float content remains pending."
+      "scope": "A staged raster can be edited from native Canvas and a registered PDF. Repeated PNG occurrences resolve to separate source ranges using the real graphicx transformation, confirmed on Windows and macOS. Direct clicks open standalone or floating TikZ and the selected nested subfigure from a registered real LuaLaTeX PDF. The native workspace can select an exact opaque block in Source. Other nested float content still needs direct editing coverage."
     },
     {
       "id": "page-layout-and-pdf",
