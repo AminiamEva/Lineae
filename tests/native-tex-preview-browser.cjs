@@ -191,6 +191,22 @@ const server=createServer(async(req,res)=>{
       await page.waitForFunction(expected=>nativeProbe.source===expected,
         typedHeading.replace('XLong title','文XLong title'));
       await page.locator('#native-tex-close').click();
+      const pdfSource='\\documentclass{article}\n\\begin{document}\n\\[\\frac{a}{}\\]\n\\end{document}\n';
+      await page.locator('input#file').setInputFiles({name:'pdf.tex',mimeType:'text/plain',buffer:Buffer.from(pdfSource)});
+      await page.evaluate(()=>{nativeProbe.semanticPdf=true;nativeProbe.registeredPdf=true;});
+      await page.locator('#native-tex-toggle').click();
+      await page.waitForFunction(()=>{
+        const readable=document.querySelector('#native-tex-preview');
+        return readable.dataset.state==='current'&&readable.dataset.renderer==='pdf';
+      });
+      await page.locator('#native-tex-target').click();
+      await panel.getByText('Click the empty numerator or denominator',{exact:false}).waitFor();
+      await page.locator('#native-tex-edit').click();
+      await panel.locator('[data-pdf-page="1"] canvas').click({position:{x:6500000*scale,y:7000000*scale}});
+      await page.keyboard.type('m');
+      await page.waitForFunction(expected=>nativeProbe.source===expected,pdfSource.replace('}{','}{m'));
+      await page.locator('#native-tex-close').click();
+      await page.evaluate(()=>{nativeProbe.semanticPdf=false;nativeProbe.registeredPdf=false;});
       await openMockProject(page);
       await page.evaluate(()=>{nativeProbe.targetInclude=true;});
       await page.locator('#native-tex-toggle').click();
@@ -268,6 +284,7 @@ const server=createServer(async(req,res)=>{
     await page.waitForFunction(()=>document.querySelector('#native-tex-preview').dataset.state==='current' &&
       document.querySelector('#native-tex-preview').dataset.renderer==='pdf');
     assert.equal(await panel.locator('[data-pdf-page] canvas').count(),1,'Unsupported direct font rendering uses an actual PDF page, not a generic-font substitute');
+    assert.equal(await page.locator('#native-tex-target').isDisabled(),true,'A PDF with unmatched page dimensions provides visual output only');
     assert.ok(await page.evaluate(()=>nativeProbe.calls.some(call=>call.command==='native_tex_pdf')&&
       !nativeProbe.calls.some(call=>call.command==='native_tex_render_pdf')),
     'A registered current-layout PDF avoids an extra clean build');

@@ -3,7 +3,7 @@ import {applySlotEdit,applyStructureCommand} from '../native-math/source.mjs';
 
 // Native surface geometry adapter. Display-list coordinates are page space;
 // callers provide the zoom used for the current painted page.
-const stopsFor = (observed, resolve) => {
+const stopsFor = (observed, resolve, verified) => {
   const byAddress = new Map();
   const push = (owner, role, after, page, bbox, empty = false) => {
     const target = resolve({owner, role, after});
@@ -21,7 +21,7 @@ const stopsFor = (observed, resolve) => {
     }
   };
   for (const page of observed ?? []) {
-    if (page?.exact !== true || !page.dl?.math_owners) continue;
+    if ((!verified&&page?.exact!==true)||!page?.dl?.math_owners)continue;
     for (const field of page.dl.math_owners.fields ?? []) {
       push(field.owner, field.role, false, page.page, field.bbox,field.empty===true);
     }
@@ -41,7 +41,7 @@ export const sameFormula = (left, right) =>
 
 export function createMathSurface({resolve,selection=createSelectionModel(sameFormula,stop=>stop.formula.filePath)}) {
   return Object.assign(Object.create(selection), {
-    collectStops(observed) { return stopsFor(observed, resolve); },
+    collectStops(observed,verified) { return stopsFor(observed,resolve,verified); },
     setObservation(observed) { return selection.setStops(stopsFor(observed, resolve)); },
     insert(text) {
       const stop = selection.caret;

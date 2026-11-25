@@ -11,8 +11,9 @@ module.exports=function installMockNativeTex() {
   };
   p.pdf=()=>{
     const text='BT /F1 18 Tf 72 720 Td (LuaLaTeX PDF fallback) Tj ET\n';
+    const size=p.semanticPdf?`${39000000/65781.76} ${55000000/65781.76}`:'612 792';
     const objects=['<< /Type /Catalog /Pages 2 0 R >>','<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
-      '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>',
+      `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${size}] /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>`,
       `<< /Length ${text.length} >>\nstream\n${text}endstream`,
       '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>'];
     let output='%PDF-1.4\n';const offsets=[0];
@@ -30,7 +31,7 @@ module.exports=function installMockNativeTex() {
   p.layout=()=>({event:'LayoutUpdate',compile:{state:'Ok'},convergence:{state:'Converged'},    pdf_fallback_registered:Boolean(p.registeredPdf),
     versions:{source_revision:p.revision,context_revision:1,engine_generation:0,layout_version:p.revision},
     placements:[{par_id:1,fragments:[{page:1,first_line:1,last_line:1,xs:[6500000],baselines:[6500000],approximate:false}]}],
-    pages_total:1,pages_changed:[{page:1,exact:true,dl:{kind:'page',page:1,
+    pages_total:1,pages_changed:[{page:1,exact:!p.semanticPdf,dl:{kind:'page',page:1,
       page_width:39000000,page_height:55000000,width:0,height:0,depth:0,flags:{},images_info:p.raster?{'1':{file:'plot.png'}}:{},
       fonts:{15:{id:15,filename:'/fixture/lmroman10-regular.otf',subfont:1,size:655360,extend:1000,squeeze:1000}},
       other:p.raster?[['i',1,3000000,3000000,1000000,1000000]]:[],lines:[{x:6500000,y:6500000,w:600000,h:600000,d:0,

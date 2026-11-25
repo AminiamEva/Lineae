@@ -17,6 +17,7 @@ export function installNativePages({host,getFont,getRaster,onPaint,onError,onMat
   let frame=0;
   let ownership=null;
   let complete=null,warm=null;
+  let pdfBacked=false;
   function drawing(dl) {
     const resources=Object.entries(dl.images_info??{}).map(([key,info])=>
       [key,{...info,file:stagedRasterPath(info.file)??info.file}]);
@@ -39,7 +40,7 @@ export function installNativePages({host,getFont,getRaster,onPaint,onError,onMat
     };
     for(const page of observed) {
       const entry=pages.get(page.page);
-      if(!entry||page.exact!==true||drawing(entry.dl)!==drawing(page.dl))return false;
+      if(!entry||page.exact!==entry.exact||drawing(entry.dl)!==drawing(page.dl))return false;
       const targets=page.dl.math_owners?.fields?.filter(field=>{
         if(!field.empty)return false;
         const owner=owners.get(field.owner);
@@ -237,6 +238,7 @@ export function installNativePages({host,getFont,getRaster,onPaint,onError,onMat
     }
   }
   function redraw() {
+    if(pdfBacked)return;
     cancelAnimationFrame(frame);
     frame=requestAnimationFrame(()=>{
       try {
@@ -270,7 +272,7 @@ export function installNativePages({host,getFont,getRaster,onPaint,onError,onMat
           dom.dataset.nativePage=String(page.page);
           dom.append(canvas);entry={dom,canvas};pages.set(page.page,entry);
         }
-        entry.dl=page.dl;
+        entry.dl=page.dl;entry.exact=page.exact;
       }
       for(const [number,entry] of pages) {
         if(number>message.pages_total){entry.dom.remove();pages.delete(number);}
@@ -311,16 +313,37 @@ export function installNativePages({host,getFont,getRaster,onPaint,onError,onMat
   }
   function reset({clear=true}={}) {
     epoch++;generation++;revision=-1;layoutVersion=-1;pending=Promise.resolve();ownership=null;drag=null;
-    complete=null;warm=null;
+    complete=null;warm=null;pdfBacked=false;
     delete host.dataset.warmRevision;
     cancelAnimationFrame(frame);clearCaret();pages.clear();loaded.clear();fonts=new FontStore();
     for(const resource of imageResources.values())resource.image.close();
     imageResources.clear();imageLoads.clear();if(clear)host.replaceChildren();
   }
+  function bindPdfLayout(stamp,geometry,views) {
+    if(geometry.size!==views.length||!views.length)return false;
+    const entries=views.map(({number,dom,canvas,width,height})=>{
+      const page=geometry.get(number);
+      // PDF page dimensions are in bp; the rtex display list is in TeX sp.
+      const tolerance=2;
+      if(!page||!Number.isFinite(width)||!Number.isFinite(height)||
+          Math.abs(width*65781.76-page.dl.page_width)>tolerance||
+          Math.abs(height*65781.76-page.dl.page_height)>tolerance)return null;
+      return {number,dom,canvas,dl:page.dl,exact:page.exact};
+    });
+    if(entries.some(entry=>!entry))return false;
+    clearCaret();ownership=null;pages.clear();pdfBacked=true;
+    revision=stamp.source_revision;layoutVersion=stamp.layout_version;
+    for(const entry of entries){
+      const {number,dom}=entry;
+      dom.dataset.nativePage=String(number);
+      pages.set(number,entry);
+    }
+    return true;
+  }
   host.addEventListener('scroll',redraw,{passive:true});
   host.parentElement?.addEventListener('scroll',redraw,{passive:true});
   window.addEventListener('resize',redraw);
-  return {accept,reset,attachOwners,showCaret,showSelection,clearCaret,setZoom(value){clearCaret();zoom=value;for(const entry of pages.values()){
+  return {accept,reset,attachOwners,bindPdfLayout,showCaret,showSelection,clearCaret,setZoom(value){clearCaret();zoom=value;if(pdfBacked)return;for(const entry of pages.values()){
     entry.dom.style.width=entry.dl.page_width*CSS_PER_SP*zoom+'px';
     entry.dom.style.height=entry.dl.page_height*CSS_PER_SP*zoom+'px';
   }redraw();}};

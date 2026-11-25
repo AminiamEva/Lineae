@@ -10,9 +10,7 @@ async function pdfjs() {
   return library;
 }
 
-// Complete-page PDF fallback is visual output only, never a replacement for
-// semantic math ownership/caret metadata. It keeps native fonts/images/TikZ
-// without pretending that the glyph Canvas understands every TeX primitive.
+// PDF pixels may be paired with a separately verified native geometry revision.
 export function installNativePdf({host,onPaint,onError}) {
   let epoch=0,zoom=.75,documentTask=null,pages=[],revision=-1,frame=0;
   const clearTasks=()=>{
@@ -70,11 +68,16 @@ export function installNativePdf({host,onPaint,onError}) {
       dom.className='native-tex-page';dom.dataset.pdfPage=String(number);
       dom.style.width=viewport.width+'px';dom.style.height=viewport.height+'px';
       canvas.setAttribute('aria-label','LuaLaTeX PDF page '+number);
-      dom.append(canvas);next.push({dom,canvas,page,render:null});
+      dom.append(canvas);next.push({number,dom,canvas,page,render:null});
     }
     pages=next;revision=sourceRevision;
     host.replaceChildren(...pages.map(entry=>entry.dom));
     redraw();
+    return pages.map(({number,dom,canvas,page})=>{
+      const standard=page.rotate===0&&page.userUnit===1&&page.view[0]===0&&page.view[1]===0;
+      const {width,height}=page.getViewport({scale:1});
+      return {number,dom,canvas,width:standard?width:NaN,height:standard?height:NaN};
+    });
   }
   function reset({clear=true}={}) {
     epoch++;revision=-1;cancelAnimationFrame(frame);clearTasks();pages=[];

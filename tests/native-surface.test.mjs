@@ -207,6 +207,17 @@ test('one native session restores the selected text or math address through obse
   assert.equal(session.surface.insert('X').source,projection.source.replace('Intro','XIntro'));
 });
 
+test('PDF-backed editing requires geometry already verified against the registered layout',()=>{
+  const projection=projectMixedDocument(source);
+  const session=createNativeDocumentSession(endpoint=>nativeTarget(projection,endpoint));
+  const target=projection.formulas[0].math.slots.find(slot=>slot.role==='denominator');
+  const [observed]=page([field(target.tag,'den',300,true)]);
+  observed.exact=false;
+  assert.equal(session.setObservation([observed],projection),false);
+  assert.equal(session.setObservation([observed],projection,true),true);
+  assert.equal(session.surface.insert('b').text,'\\frac{a}{b}');
+});
+
 test('prose can replace a complete inline formula but cannot edit part of its source', () => {
   const inlineSource = '\\begin{document}\nBefore $x$ after.\n\\end{document}\n';
   const projection = projectMixedDocument(inlineSource);

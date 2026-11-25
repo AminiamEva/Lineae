@@ -14,11 +14,11 @@ export function createNativeDocumentSession(resolve) {
   const text=createTextSurface({selection});
   return {
     get surface(){return selection.caret?.kind==='text'?text:math;},
-    setObservation(observed,projection){
+    setObservation(observed,projection,verified=false){
       text.setProjection(projection);
       const stops=[
-        ...(projection.kind==='text'?[]:math.collectStops(observed)),
-        ...(projection.kind==='math'?[]:text.collectStops(observed)),
+        ...(projection.kind==='text'?[]:math.collectStops(observed,verified)),
+        ...(projection.kind==='math'?[]:text.collectStops(observed,verified)),
       ].sort((left,right)=>left.docOffset-right.docOffset);
       return selection.setStops(stops);
     },

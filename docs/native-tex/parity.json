@@ -78,8 +78,8 @@
         "tests/native-tex-preview-browser.cjs"
       ],
       "nativeStatus": "partial",
-      "evidence": ["https://github.com/AminiamEva/Lineae/actions/runs/45589155092"],
-      "scope": "Exact edits and undo in nonempty plain cells pass the browser gate. Multicolumn and multirow range mapping has direct tests. Empty-cell native geometry is pending."
+      "evidence": ["https://github.com/AminiamEva/Lineae/actions/runs/45590498054"],
+      "scope": "Editing empty and nonempty plain cells passes the browser gate. Multicolumn and multirow range mapping has direct tests. The real engine reports an empty-cell anchor with unchanged page drawing on both platforms."
     },
     {
       "id": "project-composition",
@@ -108,8 +108,8 @@
         "tests/editor.cjs"
       ],
       "nativeStatus": "partial",
-      "evidence": ["https://github.com/AminiamEva/Lineae/actions/runs/45589155092"],
-      "scope": "Staged PNG/JPEG access and canvas drawing are tested using simulated display lists. Real asset geometry and editing figures, floats and TikZ are pending."
+      "evidence": ["https://github.com/AminiamEva/Lineae/actions/runs/45590498054"],
+      "scope": "Raster resource access and canvas drawing pass browser checks. Real staged PNG drawing metadata remains identical when adding ownership. Figure selection and property editing await their own browser gate; complex floats and TikZ remain open."
     },
     {
       "id": "page-layout-and-pdf",
@@ -150,7 +150,7 @@
       ],
       "nativeStatus": "partial",
       "evidence": ["https://github.com/AminiamEva/Lineae/actions/runs/45589155092"],
-      "scope": "Copy, cut, paste, whole inline formula selection, and synthetic Chinese composition commit and cancellation. Physical input methods and cross-file editing are pending."
+      "scope": "Copy, cut, paste, whole inline formula selection, and synthetic Chinese composition commit and cancellation. Queued input during a forced geometry delay also passes the browser gate. Physical input methods and cross-file editing are pending."
     },
     {
       "id": "default-native-engine",
@@ -180,8 +180,8 @@
     "pending": [
       "project structural and cross-file selection edits",
       "full native command coverage",
-      "empty and complex table cell targeting",
-      "real asset geometry and figure editing",
+      "complex table cell targeting and editing",
+      "figure, float and TikZ editing",
       "PDF semantic editing",
       "physical device IME and latency"
     ]

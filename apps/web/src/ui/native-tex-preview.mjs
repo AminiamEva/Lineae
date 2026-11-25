@@ -46,6 +46,9 @@ export function installNativeTexPreview({host,before,getSource,getSnapshot,isCom
   let sentSnapshot=null,wantedSnapshot=null,captureId=0,capturing=null,pdfRendered=-1;
   let renderedRevision=-1,error='',active=false,terminal=false;
   let mode='canvas',pdfWanted=-1,pdfAttempt=null,pdfLayout=null;
+  let pdfGeometryAvailable=false;
+  const recordedPages=new Map();
+  const hasGeometry=()=>mode==='canvas'||pdfGeometryAvailable;
   let pollEpoch=0;
   let targeting=null,observation=null,targetArmed=false,lastTarget=null,targetTimer=null;
   let previousProjection=null;
@@ -248,7 +251,7 @@ export function installNativeTexPreview({host,before,getSource,getSnapshot,isCom
       if(current()&&mode==='canvas'&&revision===sourceRevision)focusImage?.(path);
     },
     onMathHit:async(hit,stamp,origin,sameGesture)=>{
-      if(!current()||mode!=='canvas'||!observation||
+      if(!current()||!hasGeometry()||!observation||
           stamp.sessionId!==observation.stamp.sessionId||
           stamp.sourceRevision!==observation.stamp.sourceRevision)return;
       const head=resolveEndpoint(hit),anchor=origin?resolveEndpoint(origin):head;
@@ -301,8 +304,8 @@ export function installNativeTexPreview({host,before,getSource,getSnapshot,isCom
   }
   function renderStatus() {
     exportButton.disabled=!current();
-    targetButton.disabled=!current()||mode!=='canvas'||targeting===generation;
-    editButton.disabled=!current()||mode!=='canvas'||!observation;
+    targetButton.disabled=!current()||!hasGeometry()||targeting===generation;
+    editButton.disabled=!current()||!hasGeometry()||!observation;
     editButton.setAttribute('aria-pressed',String(nativeEditing));
     const canRefreshTargets=nativeEditing||(!sentSnapshot?.files&&sentSource.length<=32*1024);
     if(targetArmed&&!targetButton.disabled&&canRefreshTargets&&targetTimer===null&&
@@ -326,8 +329,8 @@ export function installNativeTexPreview({host,before,getSource,getSnapshot,isCom
   }
   function relocalize() {
     heading.textContent=t('LuaLaTeX 原生排版预览','Native LuaLaTeX preview');
-    notice.textContent=t('在原编辑器中编辑，此处显示 LuaLaTeX 输出。复杂字体、图片和绘图使用 PDF 回退；PDF 页面本身不提供公式语义编辑。',
-      'Edit in the existing editor; this view shows LuaLaTeX output. Complex fonts, images and drawings use PDF fallback, not semantic formula editing on PDF pages.');
+    notice.textContent=t('此处显示 LuaLaTeX 输出。已核对位置的文字和公式可直接编辑。',
+      'This view shows LuaLaTeX output. Text and formulas with verified positions can be edited here.');
     exportButton.textContent=t('导出干净 PDF','Export clean PDF');
     closeButton.textContent=t('关闭','Close');
     targetButton.textContent=t('定位公式光标（实验）','Target formula caret (experimental)');
@@ -355,6 +358,7 @@ export function installNativeTexPreview({host,before,getSource,getSnapshot,isCom
     mirror?.lifetime.abort();mirror=null;
     targetArmed=false;lastTarget=null;clearTimeout(targetTimer);targetTimer=null;
     renderer.reset();pdf.reset();mode='canvas';pdfWanted=-1;pdfLayout=null;pdfRendered=-1;renderedRevision=-1;renderStatus();
+    pdfGeometryAvailable=false;recordedPages.clear();
     delete panel.dataset.fallbackReason;
     if(previous!==null) {
       try {await invoke('native_tex_close',{sessionId:previous});}
@@ -387,17 +391,29 @@ export function installNativeTexPreview({host,before,getSource,getSnapshot,isCom
         const target=pdfWanted;
         try {
           const args={sessionId:flight.sessionId,sourceRevision:target};
-          let bytes;
+          let bytes,registeredLayout;
           if(pdfLayout?.source_revision===target){
             // The host checks both revisions and retains the only permitted
             // path. Frontend never requests a file by name.
-            try {bytes=await invoke('native_tex_pdf',{...args,layoutVersion:pdfLayout.layout_version});}
+            const layout=pdfLayout,geometry=new Map(recordedPages);
+            try {
+              bytes=await invoke('native_tex_pdf',{...args,layoutVersion:layout.layout_version});
+              registeredLayout={layout,geometry};
+            }
             catch {/* The captured PDF may have expired; compile a clean copy. */}
           }
           if(attempt!==generation||flight.sessionId!==session)return;
           bytes??=await invoke('native_tex_render_pdf',args);
           if(attempt!==generation||flight.sessionId!==session)return;
-          if(target===pdfWanted)await pdf.show(bytes,target);
+          if(target===pdfWanted){
+            pdfGeometryAvailable=false;
+            observation=null;
+            const views=await pdf.show(bytes,target);
+            if(attempt!==generation||flight.sessionId!==session)return;
+            if(target===pdfWanted&&registeredLayout?.layout===pdfLayout&&views)
+              pdfGeometryAvailable=renderer.bindPdfLayout(pdfLayout,registeredLayout.geometry,views);
+            renderStatus();
+          }
         }catch(problem){
           if(attempt!==generation||flight.sessionId!==session)return;
           if(problem?.code!=='revision_mismatch'&&target===pdfWanted){fail(problem);return;}
@@ -423,6 +439,7 @@ export function installNativeTexPreview({host,before,getSource,getSnapshot,isCom
         }
         if(result.sessionId&&result.sessionId!==session){
           session=result.sessionId;pollEpoch++;renderedRevision=-1;pdfRendered=-1;pdfWanted=-1;pdfLayout=null;
+          pdfGeometryAvailable=false;recordedPages.clear();
           renderer.reset({clear:false});pdf.reset({clear:false});
           void poll(attempt,pollEpoch);
         }
@@ -478,8 +495,11 @@ export function installNativeTexPreview({host,before,getSource,getSnapshot,isCom
       error=event.diagnostics?.map(item=>item.message??String(item)).join('\n').slice(0,2400)||
         t('LuaLaTeX 增量排版失败；修正源码后重试。','LuaLaTeX incremental compilation failed; correct the source and retry.');
     } else if(event.event==='LayoutUpdate' || event.event==='ParagraphUpdate') {
-      if(event.event==='LayoutUpdate')pdfLayout=event.pdf_fallback_registered&&
-        event.convergence?.state==='Converged'&&event.compile?.state==='Ok'?event.versions:null;
+      if(event.event==='LayoutUpdate'&&event.compile?.state==='Ok'){
+        for(const page of event.pages_changed??[])recordedPages.set(page.page,page);
+        for(const page of recordedPages.keys())if(page>event.pages_total)recordedPages.delete(page);
+        pdfLayout=event.pdf_fallback_registered&&event.convergence?.state==='Converged'?event.versions:null;
+      }
       if(event.event==='LayoutUpdate' && event.compile?.state!=='Ok') {
         error=t('LuaLaTeX 编译未成功；保留上次有效画面。','LuaLaTeX compilation failed; keeping the last valid frame.');
       } else {
@@ -553,7 +573,7 @@ export function installNativeTexPreview({host,before,getSource,getSnapshot,isCom
       observation={kind,projection,stamp,observed};
       if(nativeEditing){
         const expectedOffset=nativeDocument.surface.pendingOffset;
-        const applied=nativeDocument.setObservation(observed,projection);
+        const applied=nativeDocument.setObservation(observed,projection,pdfGeometryAvailable);
         if(pendingEdit){
           const stop=nativeDocument.surface.caret;
           const previous=pendingEdit.paragraph??pendingEdit.formula;
@@ -625,7 +645,7 @@ export function installNativeTexPreview({host,before,getSource,getSnapshot,isCom
     }
     if(!observation)return;
     nativeEditing=true;targetArmed=true;
-    const applied=nativeDocument.setObservation(observation.observed,observation.projection);
+    const applied=nativeDocument.setObservation(observation.observed,observation.projection,pdfGeometryAvailable);
     if(!applied){
       nativeEditing=false;renderStatus();return;
     }

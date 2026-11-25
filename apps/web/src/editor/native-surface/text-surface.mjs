@@ -3,10 +3,10 @@ import {textTarget, textEdit} from '../native-text/projection.mjs';
 
 const segmenter = new Intl.Segmenter('und', {granularity:'grapheme'});
 
-function stopsFor(observed, projection) {
+function stopsFor(observed, projection, verified) {
   const byOffset = new Map();
   for (const page of observed ?? []) {
-    if (page?.exact !== true || !page.dl?.math_owners) continue;
+    if ((!verified&&page?.exact!==true)||!page?.dl?.math_owners)continue;
     for (const field of page.dl.math_owners.fields ?? []) {
       if(!field.empty||!['math','cell'].includes(field.role))continue;
       const target=textTarget(projection,field.owner,false);
@@ -54,7 +54,7 @@ export function createTextSurface({projection,selection=createSelectionModel(sam
   let sourceProjection = projection;
   return Object.assign(Object.create(selection), {
     setProjection(next) { if (next) sourceProjection = next; },
-    collectStops(observed) { return stopsFor(observed,sourceProjection); },
+    collectStops(observed,verified) { return stopsFor(observed,sourceProjection,verified); },
     setObservation(observed) { return selection.setStops(stopsFor(observed, sourceProjection)); },
     insert(text) {
       const stop = selection.caret;
