@@ -122,7 +122,7 @@ The actual folder picker and physical Linux IME still need device checks.
 
 For physical input review, the workflow's optional `desktop_input_probe`
 retains the unbundled debug executables from the same commit. The three-platform
-[full software run](https://github.com/AminiamEva/Lineae/actions/runs/45716499706)
+[full software run](https://github.com/AminiamEva/Lineae/actions/runs/45719223473)
 includes these executables and the recorded LuaLaTeX geometry. Launch an
 executable with `--lineae-native-workspace` on the device under test. This
 opens the engine-off workspace with the normal TeX trust dialog. The
@@ -152,8 +152,11 @@ The physical acceptance target is P95 below 30 ms.
    drafts and records both drafts in the same undo step. Covered endpoints
    include nested lists, a proof, and the edge of a numbered or starred heading.
    Within a file, a prose selection can also start or end with a complete
-   display formula. The browser verifies copying, deletion and undo when that
+   display formula. Select All from prose includes both verified boundaries.
+   The browser verifies copying, replacement, deletion and undo when the
    formula is at the start of a page.
+   Project Select All uses editable prose endpoints across files. Whole
+   display equations between those endpoints remain part of the range.
    A prose selection can contain a complete table. Copy preserves the table's
    TeX and a cross-file replacement removes it in the same undo step as the
    surrounding text edits. The same run verifies that the format painter can
@@ -173,6 +176,9 @@ The physical acceptance target is P95 below 30 ms.
    Other nested float content still needs geometry and editing coverage.
 5. The engine-off desktop workspace has passed the covered cases. Its default
    switch still depends on complete coverage and the device checks.
+6. The continuous presentation stacks the original LuaLaTeX pages. Joining
+   pre-laid body blocks into a single flow across these boundaries while
+   preserving the ownership of page-dependent content still needs coverage.
 
 ## Acceptance for the first full slice
 

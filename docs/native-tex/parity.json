@@ -204,17 +204,18 @@
   ],
   "acceptance": {
     "latestBrowserRun": {
-      "revision": "abf41c4bdb2fe8f16e40b416451988647752fc2a",
+      "revision": "9efd5d8968ee60def21a2fe42105228638cc9f5a",
       "status": "passed-on-windows-macos-ubuntu",
-      "scope": "Native editing and legacy regressions, including exact source and undo for row and column edits through spans, moving a surviving span cell on row deletion, whole-table selection across files and format painting around inline math.",
-      "evidence": "https://github.com/AminiamEva/Lineae/actions/runs/45715982464"
+      "scope": "Native editing and legacy regressions. Single-file Select All from prose includes complete boundary display equations. Copy, replacement and undo are verified. Project Select All preserves editable prose endpoints across files. Additional gates cover combined table spans, cross-file whole-table selection and format painting around inline math.",
+      "evidence": "https://github.com/AminiamEva/Lineae/actions/runs/45718933612",
+      "legacyRegression": "https://github.com/AminiamEva/Lineae/actions/runs/45717799881"
     },
     "fullSoftwareRun": {
-      "revision": "99c778648e4f2c603462cb7f41be9f48d49e2233",
+      "revision": "9efd5d8968ee60def21a2fe42105228638cc9f5a",
       "status": "passed-on-windows-macos-ubuntu",
       "scope": "All three jobs passed the browser gates, real host geometry including repeated source expansion and empty cases cells, recorded PDF editing including a scaled TikZ drawing, and the engine-off desktop WebView smoke. Unbundled debug executables are retained for physical device input review.",
-      "evidence": "https://github.com/AminiamEva/Lineae/actions/runs/45716499706",
-      "priorEvidence": "https://github.com/AminiamEva/Lineae/actions/runs/45709683498"
+      "evidence": "https://github.com/AminiamEva/Lineae/actions/runs/45719223473",
+      "priorEvidence": "https://github.com/AminiamEva/Lineae/actions/runs/45716499706"
     },
     "nativeHost": {
       "status": "protocol-and-project-tests-passed",
@@ -245,11 +246,12 @@
       "evidence": ["https://github.com/AminiamEva/Lineae/actions/runs/45617906617", "https://github.com/AminiamEva/Lineae/actions/runs/45671660810"]
     },
     "pending": [
-      "cross-file selection with endpoints inside cells, partial formula structures, or multiple copies of the same source",
+      "cross-file selection with endpoints inside cells or at display formula edges, partial formula structures, or multiple copies of the same source",
       "remaining native commands across nested mixed selections and direct editing inside unsupported macro expansions",
       "additional complex cell styles, occupied source slots that would be overwritten by moving a span anchor, and conflicting indexed rules on a collapsed boundary",
       "direct figure editing inside unsupported nested float wrappers",
       "PDF semantics for complex objects beyond verified text, formulas, references, rasters and TikZ",
+      "continuous body flow that joins LaTeX blocks across page boundaries while keeping page-dependent content tied to a converged layout",
       "physical device verification on Windows and macOS for IME, native shortcut delivery, and keydown-to-pixels latency"
     ]
   },
