@@ -110,7 +110,7 @@ function parseColumnTable(source,environment) {
       if(body[next]==='*'){from=++next;next=trivia(body,next);}
       if(body[next]==='['){const spacing=group(body,next,'[',']');if(!spacing)return null;from=spacing.end;}
     }
-    if(cells.length>1||clean(cells[0].raw)){
+    if(token.value==='\\\\'||cells.length>1||clean(cells[0].raw)){
       rawRows.push(cells);
       rowEnds.push({start:cells[0].from,from:preamble.end+(token.value==='end'?body.trimEnd().length:from),
         terminated:token.value!=='end'});
@@ -180,7 +180,7 @@ export function insertTableSourceRow(source,index) {
   const location=columnTableSource(source);
   if(!location)return null;
   const {table,start,parse}=location,edge=table.rowEnds[index],columns=table.metadata.specs.length;
-  if(!edge||columns<2)return null;
+  if(!edge)return null;
   const eol=table.source.includes('\r\n')?'\r\n':'\n';
   const row=' & '.repeat(columns-1)+'\\\\';
   const {from}=edge,insert=(edge.terminated?'':' \\\\')+eol+row;

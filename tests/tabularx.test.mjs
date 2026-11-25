@@ -166,3 +166,15 @@ test('ordinary tabular axis edits preserve CRLF, rules, spans and noncanonical c
   assert.equal(apply(removeTableSourceRow(source,1)),source.replace('A  & B  & C \\\\\r\n',''));
   assert.equal(removeTableSourceColumn(source.replace('\\hline','\\cline{1-2}'),1,0),null);
 });
+
+test('single-column tables expose empty rows for native insertion and deletion',()=>{
+  for(const declaration of ['\\begin{tabular}{l}','\\begin{tabularx}{\\textwidth}{X}']){
+    const environment=declaration.includes('tabularx')?'tabularx':'tabular';
+    const source=declaration+'\nEntry \\\\\n\\end{'+environment+'}';
+    const add=insertTableSourceRow(source,0),draft=source.slice(0,add.from)+add.insert+source.slice(add.to);
+    assert.equal(draft,source.replace('\n\\end','\n\\\\\n\\end'));
+    assert.equal(importBlocks(draft)[0].content.length,2);
+    const remove=removeTableSourceRow(draft,1);
+    assert.equal(draft.slice(0,remove.from)+remove.insert+draft.slice(remove.to),source);
+  }
+});
