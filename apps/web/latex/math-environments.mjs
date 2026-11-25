@@ -136,6 +136,14 @@ export function alignmentLabel(latex, index, key) {
   return open + body.slice(0, end) + '\\label{' + key + '}' + body.slice(end) + close;
 }
 
+export function alignmentLabelRange(latex,index) {
+  const parts=alignmentParts(latex);
+  if(!parts||!numberedMathRows({latex}).some(row=>row.index===index&&!row.unnumbered))return null;
+  const [,open,,body]=parts;
+  const row=alignmentRows(body)[index];
+  return row?{from:open.length+row.start,to:open.length+row.end}:null;
+}
+
 export function numberedMathRows({ latex, delimiter }) {
   const environment = displayEnvironment(latex);
   if (delimiter === 'equation' || delimiter === 'equation*') {

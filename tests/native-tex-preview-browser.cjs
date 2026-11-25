@@ -1346,6 +1346,24 @@ const server=createServer(async(req,res)=>{
       await page.locator('#native-tex-target').click();
       await page.getByText('Click the empty numerator or denominator',{exact:false}).waitFor();
       await page.locator('#native-tex-edit').click();
+      const scale=.75*(96/72)/65781.76;
+      const labelPage=nativeEvidence.observed.find(page=>page.dl.math_owners?.fields.some(field=>
+        field.owner===nativeEvidence.labelOwner&&field.role==='den'&&field.empty));
+      const [labelX,labelY]=labelPage.dl.math_owners.fields.find(field=>
+        field.owner===nativeEvidence.labelOwner&&field.role==='den').bbox;
+      await page.locator(`[data-native-page="${labelPage.page}"] canvas`).click({position:{x:labelX*scale,y:labelY*scale}});
+      await page.waitForFunction(()=>document.activeElement?.id==='native-tex-input');
+      await page.keyboard.press('Backslash');
+      await page.getByRole('textbox',{name:'LaTeX command',exact:true}).fill('label');
+      await page.keyboard.press('Enter');
+      const labelInput=page.locator('.editor-dialog input');
+      assert.equal(await labelInput.inputValue(),'eq:alignment');
+      await labelInput.fill('eq:updated');
+      await labelInput.press('Enter');
+      await page.waitForFunction(expected=>nativeProbe.source===expected,nativeEvidence.source.replace('eq:alignment','eq:updated'));
+      await page.keyboard.press(mod+'+z');
+      await page.waitForFunction(expected=>nativeProbe.source===expected,nativeEvidence.source);
+      await page.getByText('Click the empty numerator or denominator',{exact:false}).waitFor();
       const nativePage=nativeEvidence.observed.find(page=>page.dl.math_owners?.fields.some(field=>
         field.owner===nativeEvidence.targetOwner&&field.role==='den'&&field.empty));
       assert.ok(nativePage,'Real observed layout supplies an empty denominator');
@@ -1450,7 +1468,7 @@ const server=createServer(async(req,res)=>{
       const nativePage=nativeEvidence.observed.find(page=>page.dl.math_owners?.fields.some(field=>
         field.owner===nativeEvidence.targetOwner&&field.role==='den'&&field.empty));
       const field=nativePage.dl.math_owners.fields.find(field=>field.owner===nativeEvidence.targetOwner&&field.role==='den');
-      const [x,y]=field.bbox,scale=.75*(96/72)/65781.76;
+      const [x,y]=field.bbox;
       await page.locator(`[data-native-page="${nativePage.page}"] canvas`).click({position:{x:x*scale,y:y*scale}});
       await page.waitForFunction(()=>document.activeElement?.id==='native-tex-input');
       await page.keyboard.type('e');

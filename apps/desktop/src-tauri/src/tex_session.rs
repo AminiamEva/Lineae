@@ -1645,7 +1645,7 @@ mod tests {
             assert_eq!(denominators.len(), 2, "both alignat variants keep an editable empty denominator");
             std::fs::write(directory.join("native-alignment-pages.json"), serde_json::to_vec(&json!({
                 "raw": raw["pages_changed"], "observed": observed, "projection": projection,
-                "source": source, "targetOwner": denominators[1],
+                "source": source, "targetOwner": denominators[1], "labelOwner": denominators[0],
             })).unwrap()).unwrap();
             alignment.terminate();
         }

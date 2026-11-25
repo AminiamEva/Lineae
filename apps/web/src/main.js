@@ -102,7 +102,7 @@ import { Plugin, Selection, NodeSelection, TextSelection } from '@tiptap/pm/stat
 import { DOMParser as ProseMirrorParser, Fragment } from '@tiptap/pm/model';
 import { parseDocument } from '../latex/document.mjs';
 import { exportDocument } from '../latex/packages.mjs';
-import { appendAlignmentPair, displayEnvironment, numberedMathRows } from '../latex/math-environments.mjs';
+import { alignmentLabelRange, appendAlignmentPair, displayEnvironment, numberedMathRows } from '../latex/math-environments.mjs';
 import { MARGIN_PRESETS, readPageSetup, writePageSetup, pageMetrics } from '../latex/geometry.mjs';
 import { readPageFurniture, writePageFurniture } from '../latex/page-furniture.mjs';
 import { mathSymbols } from '../latex/math-symbols.mjs';
@@ -3942,11 +3942,18 @@ groupButton(mathGroup,'$',()=>insertMath());
 groupButton(mathGroup,'$$',()=>insertMath(true)).dataset.shortcut='editor.insertDisplayMath';
 groupButton(mathGroup,'equation',()=>insertEquation());
 const equationLabelKey=/^[\p{L}\p{N}:_.-]*$/u;
-async function editNativeEquationLabel({formula}) {
+async function editNativeEquationLabel(caret) {
+  const {formula,atom,slot}=caret;
   const target=nativeFormulaPosition(formula);
-  if(target?.node?.attrs.delimiter!=='equation')return false;
+  if(target?.type!=='mathBlock')return false;
   const {node,position,composition,file,project}=target,{state}=editor;
-  const {source,outerFrom16,outerTo16,math}=formula,body=math.source;
+  const {source,outerFrom16,outerTo16,math}=formula;
+  const equation=node.attrs.delimiter==='equation';
+  const cell=/^formula\/body\/0\/cell\.(\d+)\.\d+(?:\/|$)/.exec(`${atom.path}/${slot.role}`);
+  const range=equation?{from:0,to:math.source.length}:node.attrs.latex===math.source&&cell&&
+    alignmentLabelRange(math.source,Number(cell[1]));
+  if(!range)return false;
+  const body=math.source.slice(range.from,range.to);
   const tokens=[...sourceStructure(body)];
   const labels=tokens.flatMap(token=>{
     if(!token.topLevel||token.kind!=='command'||token.value!=='\\label')return [];
@@ -3974,10 +3981,11 @@ async function editNativeEquationLabel({formula}) {
     const comment=/(^|[^\\])(?:\\\\)*%/.test(lastLine);
     insert=(comment?eol:'')+'\\label{'+label+'}';
   }
-  from+=formula.from16;to+=formula.from16;
+  from+=formula.from16+range.from;to+=formula.from16+range.from;
   const draft=source.slice(0,from)+insert+source.slice(to);
   const [updated]=importBlocks(draft.slice(outerFrom16,outerTo16+insert.length-(to-from)));
-  if(updated?.type!=='mathBlock'||updated.attrs.delimiter!=='equation')return false;
+  if(updated?.type!=='mathBlock'||(equation?updated.attrs.delimiter!=='equation':
+    displayEnvironment(updated.attrs.latex)!==displayEnvironment(math.source)))return false;
   const tr=editor.state.tr.setNodeMarkup(position,undefined,{...node.attrs,
     latex:updated.attrs.latex,label:updated.attrs.label??null,labelRow:null});
   if(composition){
