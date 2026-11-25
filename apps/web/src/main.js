@@ -1150,7 +1150,7 @@ function prepareNativeParagraphHistory(transaction) {
     const {change}=transition;
     const patch=forward?change:{from:change.from,to:change.from+change.insert.length,
       insert:next.source.slice(change.from,change.to)};
-    const nextProjection=sourceProjection(next.source,transaction.doc.toJSON());
+    const nextProjection=sourceProjection(next.source,transaction.doc.toJSON(),{fragment:projectFileKind==='tex'});
     if(!nextProjection)return false;
     transaction.setMeta('standaloneParagraph',{draft:next.source,changes:[patch],projection:nextProjection});
     return true;
@@ -1209,7 +1209,7 @@ editor.on('update', ({transaction}) => {
     if(sourceView.value===importedSource)sourceView.applyChanges(paragraph.changes);
     importedSource=paragraph.draft;
     importedSnapshot=JSON.stringify(editor.getJSON());
-    documentParts=parseDocument(importedSource);
+    documentParts=parseDocument(importedSource,{fragment:projectFileKind==='tex'});
     projection=paragraph.projection;
     return;
   }
@@ -2653,7 +2653,8 @@ function nativeProsePosition(paragraph,from,to){
   if(!sourceView.hidden||!paragraph?.parts)return null;
   const project=projectExplorer?.model,composition=projectDocument.composition;
   const file=project?.files.get(paragraph.filePath);
-  if(project?!composition||file?.draft!==paragraph.source:source()!==paragraph.source)return null;
+  if(project&&(file?.draft!==paragraph.source||!composition&&file?.id!==project.activeFileId))return null;
+  if(!composition&&source()!==paragraph.source)return null;
   const range=nativeEditorRange({doc:editor.state.doc,projection,composition,file,paragraph,from,to});
   return range?{range,project,composition,file}:null;
 }
@@ -2745,7 +2746,7 @@ nativeTexPreview=installNativeTexPreview({host:footer,before:modes,primary:nativ
        paragraph.parts[0].marks?.length||!from||/[\r\n]/.test(text))return null;
     const target=nativeProsePosition(paragraph,from,to);
     if(!target)return null;
-    const {range,project,file}=target,{state}=editor;
+    const {range,project,composition,file}=target,{state}=editor;
     if(!text&&to===paragraph.text.length)return {awaitingText:true};
     if(text&&!text.trim())return null;
     const newline=paragraph.source.includes('\r\n')?'\r\n':'\n';
@@ -2760,14 +2761,14 @@ nativeTexPreview=installNativeTexPreview({host:footer,before:modes,primary:nativ
     if(text)tr.insertText(text,next);
     tr.setSelection(TextSelection.create(tr.doc,next+text.length));
     const offset=change.from+insert.length;
-    if(project){
+    if(composition){
       const drafts=projectDocument.changes(tr.doc.toJSON());
       if(drafts?.get(file.id)!==draft)return null;
       for(const [id,value] of drafts)if(id!==file.id&&value!==project.file(id).draft)return null;
       editor.view.dispatch(closeHistory(tr));
       return editor.state.doc===state.doc?null:{source:draft,offset,path:paragraph.filePath};
     }
-    const projected=sourceProjection(draft,tr.doc.toJSON());
+    const projected=sourceProjection(draft,tr.doc.toJSON(),{fragment:projectFileKind==='tex'});
     if(!projected?.blocks.some(block=>block.index===tr.doc.resolve(next).index(0)&&
        block.from<=offset&&block.to>=offset&&block.editable))return null;
     tr.setMeta('standaloneParagraph',{draft,changes:[change],projection:projected});
@@ -2813,7 +2814,8 @@ nativeTexPreview=installNativeTexPreview({host:footer,before:modes,primary:nativ
     const project=projectExplorer?.model;
     const composition=projectDocument.composition;
     const file=project?.files.get(formula.filePath);
-    if(project ? !composition||file?.draft!==formula.source : source()!==formula.source)return false;
+    if(project&&(file?.draft!==formula.source||!composition&&file?.id!==project.activeFileId))return false;
+    if(!composition&&source()!==formula.source)return false;
     const type=formula.kind==='displayMath'?'mathBlock':'math';
     const positions=[];
     editor.state.doc.descendants((node,pos)=>{
@@ -2835,12 +2837,16 @@ nativeTexPreview=installNativeTexPreview({host:footer,before:modes,primary:nativ
     if(node?.attrs.latex!==formula.math.source)return false;
     const transaction=editor.state.tr.setNodeMarkup(position,undefined,{...node.attrs,latex:text});
     if(structure)closeHistory(transaction);
+    const from=formula.from16+patch.from,to=formula.from16+patch.to;
+    const expected=formula.source.slice(0,from)+patch.insert+formula.source.slice(to);
     if(composition){
-      const from=formula.from16+patch.from,to=formula.from16+patch.to;
-      const expected=file.draft.slice(0,from)+patch.insert+file.draft.slice(to);
       const drafts=projectDocument.changes(transaction.doc.toJSON());
       if(drafts?.get(file.id)!==expected)return false;
       for(const [id,draft] of drafts)if(id!==file.id&&draft!==project.file(id).draft)return false;
+    }else if(project){
+      const changes=standaloneMathChanges(projection,transaction.doc.toJSON());
+      if(!changes?.length||changes.reduceRight((source,change)=>
+        source.slice(0,change.from)+change.insert+source.slice(change.to),formula.source)!==expected)return false;
     }
     editor.view.dispatch(transaction);
     return editor.state.doc.nodeAt(position)?.attrs.latex===text;

@@ -10,7 +10,7 @@ const projectMain='\\documentclass{article}\n\\begin{document}\n\\[\\frac{a}{}\\
 const projectMainWithImage=projectMain.replace('\\begin{document}','\\usepackage{graphicx}\n\\begin{document}')
   .replace('\\end{document}','\\begin{figure}[ht]\n\\centering\n\\includegraphics[width=18pt]{plot.png}\n\\end{figure}\n\\end{document}');
 const projectChapter='Original chapter.\n\n\\[\\frac{z}{}\\]\n';
-async function openMockProject(page,raster=false) {
+async function openMockProject(page,raster=false,main=raster?projectMainWithImage:projectMain) {
   await page.evaluate(async({main,child,raster})=>{
     const root=await navigator.storage.getDirectory();
     const folder=await root.getDirectoryHandle('lua-'+crypto.randomUUID(),{create:true});
@@ -32,8 +32,8 @@ async function openMockProject(page,raster=false) {
       nativeProbe.raster=true;
     }
     window.showDirectoryPicker=async()=>folder;
-  },{main:raster?projectMainWithImage:projectMain,child:projectChapter,raster});
-  page.on('dialog',dialog=>dialog.accept());
+  },{main,child:projectChapter,raster});
+  if(!page.listenerCount('dialog'))page.on('dialog',dialog=>dialog.accept());
   await revealToolbar(page);await page.locator('[data-group=files]').click();
   await page.locator('#project-open').click();
   await page.locator('.project-file[aria-current=true]').waitFor({state:'attached'});
@@ -401,6 +401,22 @@ const server=createServer(async(req,res)=>{
       await page.waitForFunction(expected=>nativeProbe.source===expected,beforeBreak);
       await page.keyboard.press(mod+'+Shift+z');
       await page.waitForFunction(expected=>nativeProbe.source.replace(/\r\n/g,'\n')===expected,split.replace(/\r\n/g,'\n'));
+      await page.goto('http://127.0.0.1:'+server.address().port+'/?native-only-acceptance=1',{waitUntil:'networkidle'});
+      const singleProject=workspaceSource.replace('Native document.','Native document.\n\n\\[\\frac{a}{}\\]');
+      await openMockProject(page,false,singleProject);
+      await page.locator('#native-tex-toggle').click();
+      await page.waitForFunction(()=>document.querySelector('#native-tex-preview').dataset.state==='current');
+      await page.locator('#native-tex-target').click();
+      await panel.getByText('Click prose on the native page',{exact:false}).waitFor();
+      await page.locator('#native-tex-edit').click();
+      await canvas.click({position:{x:6550000*scale,y:9250000*scale}});
+      await page.keyboard.type('X');
+      const projectWithText=singleProject.replace('Native document.','XNative document.');
+      await page.waitForFunction(expected=>nativeProbe.source===expected,projectWithText);
+      await panel.getByText('Click prose on the native page',{exact:false}).waitFor();
+      await canvas.click({position:{x:6500000*scale,y:7000000*scale}});
+      await page.keyboard.type('q');
+      await page.waitForFunction(expected=>nativeProbe.source===expected,projectWithText.replace('}{','}{q'));
       assert.deepEqual(errors,[]);
       console.log('PASS native mixed editing with MathLive and JS pagination disabled');
       return;
