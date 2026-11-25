@@ -343,7 +343,13 @@ const server=createServer(async(req,res)=>{
       await page.locator('#native-tex-edit').click();
       await canvas.click({position:{x:8150000*scale,y:9250000*scale}});
       await page.keyboard.press('Enter');
-      await page.waitForFunction(expected=>nativeProbe.source===expected,mixedParagraph.replace('Next.','Ne\n\nxt.'));
+      const splitMixed=mixedParagraph.replace('Next.','Ne\n\nxt.');
+      await page.waitForFunction(expected=>nativeProbe.source===expected,splitMixed);
+      await panel.getByText('Click prose on the native page',{exact:false}).waitFor();
+      await page.keyboard.press('Backspace');
+      await page.waitForFunction(expected=>nativeProbe.source===expected,mixedParagraph);
+      await page.keyboard.press(mod+'+z');
+      await page.waitForFunction(expected=>nativeProbe.source===expected,splitMixed);
       await page.keyboard.press(mod+'+z');
       await page.waitForFunction(expected=>nativeProbe.source===expected,mixedParagraph);
       await page.locator('#native-tex-close').click();
