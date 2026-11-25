@@ -3281,6 +3281,7 @@ nativeTexPreview=installNativeTexPreview({host:footer,before:modes,primary:nativ
   openSourceBlock:openNativeSourceBlock,
   editTikzDrawing:editNativeDrawing,
   openMeasuredDrawing:openNativeMeasuredDrawing,
+  navigateReference:navigateNativeReference,
   focusImage:path=>{
     if(!sourceView.hidden)return;
     const matches=[];
@@ -3942,6 +3943,16 @@ function revealNativeSearchResult({from,to}){
     if(begin!==null&&finish!==null)return nativeTexPreview.navigate({...address,range:true,from:begin,to:finish});
   }
   return false;
+}
+function navigateNativeReference(reference){
+  const project=projectExplorer?.model,file=project?.files.get(reference.filePath);
+  if((file?.draft??source())!==reference.source)return false;
+  const target=collectReferenceLabels(editor.state.doc).find(label=>label.key===reference.key);
+  if(!target||target.ambiguous||!['heading','equation'].includes(target.kind))return false;
+  const address=nativeSourceBlockAt(target.position);
+  if(!address)return false;
+  const heading=target.kind==='heading'?headingAt(address.raw.trimStart())?.name:undefined;
+  return nativeTexPreview.navigate({...address,heading});
 }
 documentOutline.panel.addEventListener('lineae-outline-navigate',event=>{
   const {position}=event.detail;

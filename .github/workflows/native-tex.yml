@@ -192,6 +192,11 @@ jobs:
             const rasterTags=[...rasterProbe.owners].filter(([,owner])=>owner.drawing?.raster).map(([tag])=>tag);
             writeFileSync(join(process.env.LINEAE_NATIVE_EVIDENCE_DIR,"raster-repeat-probe.json"),
               JSON.stringify({projection:rasterProbe.projection,tags:rasterTags}));
+            const reference=readFileSync("tests/native-math/fixtures/native-reference.tex","utf8");
+            const referenceProbe=projectMixedDocument(reference);
+            const [referenceTag]=[...referenceProbe.owners].find(([,owner])=>owner.reference?.key==="sec:first");
+            writeFileSync(join(process.env.LINEAE_NATIVE_EVIDENCE_DIR,"native-reference-probe.json"),
+              JSON.stringify({projection:referenceProbe.projection,tag:referenceTag}));
           '
           node tests/native-math/rtex-probe.mjs
           node apps/desktop/scripts/stage.mjs

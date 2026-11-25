@@ -1,5 +1,6 @@
 import {readGroup} from '../../../latex/table-spans.mjs';
 import {textCommands} from '../../../latex/inline.mjs';
+import {referenceAt} from '../../../latex/reference-commands.mjs';
 
 const plainTokens=/^(?:\\(?:[%&_#${}]|[A-Za-z]+\{\})|[^\\{}$%&#_^])+/u;
 const namedLiteral=/^\\([A-Za-z]+)\{\}/;
@@ -41,6 +42,12 @@ export function markedRuns(text,offset=0,marks=[],inline) {
     if(math&&math.end<=offset+text.length){
       runs.push({kind:'math',from16:start,to16:math.end,latex:math.latex,insideMark:marks.length>0});
       cursor=math.end-offset;
+      continue;
+    }
+    const reference=!marks.length&&text[cursor]==='\\'&&referenceAt(text,cursor);
+    if(reference){
+      runs.push({kind:'reference',type:reference.kind,key:reference.key,source:reference.sourceCommand,from16:start,to16:offset+reference.end});
+      cursor=reference.end;
       continue;
     }
     const lineBreak=!marks.length&&/^(?:\\\\(?:\[[^\]\r\n]*\])?|\\(?:newline|linebreak)(?![A-Za-z]))[ \t]*(?:\r?\n)?/.exec(text.slice(cursor));

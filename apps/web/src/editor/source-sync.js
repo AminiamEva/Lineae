@@ -374,6 +374,10 @@ function markedInlineProseChanges(block,nodes) {
       if(old.type!=='hardBreak'||JSON.stringify(old)!==JSON.stringify(next))return null;
       continue;
     }
+    if(part.kind==='reference'){
+      if(old.type!==part.type||serialize(old)!==part.source||JSON.stringify(old)!==JSON.stringify(next))return null;
+      continue;
+    }
     if(old.type!=='text'||old.text!==part.text||next.type!=='text'||typeof next.text!=='string'||
       (old.marks??[]).length!==part.marks.length||
       (old.marks??[]).some(mark=>!part.marks.includes(mark.type)))return null;

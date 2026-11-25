@@ -1770,6 +1770,18 @@ mod tests {
                     "each repeated raster corner must have exactly one observed owner");
             }
             raster.terminate();
+            let reference_source = include_str!("../../../../tests/native-math/fixtures/native-reference.tex");
+            let reference_probe: Value = serde_json::from_slice(&std::fs::read(directory.join("native-reference-probe.json")).unwrap()).unwrap();
+            let reference = Session::create(reference_source).unwrap();
+            let info = reference.start().unwrap();
+            let layout = wait_layout(&reference, info.source_revision);
+            let measured = reference.observe_formula(info.source_revision, reference_probe["projection"].as_str().unwrap(), Vec::new()).unwrap();
+            assert!(drawing_without_markers(&layout["pages_changed"][0]) == drawing_without_markers(&measured[0]),
+                "observing a reference must preserve the original line and glyph geometry");
+            assert!(measured[0]["dl"]["math_owners"]["glyphs"].as_array().is_some_and(|glyphs|
+                glyphs.iter().any(|glyph| glyph["owner"] == reference_probe["tag"])),
+                "the reference expansion must retain its exact source owner");
+            reference.terminate();
             let source = include_str!("../../../../tests/native-math/fixtures/numbered-alignment.tex");
             let projection = std::fs::read_to_string(directory.join("alignment-projection.tex")).unwrap();
             let alignment = Session::create(source).unwrap();

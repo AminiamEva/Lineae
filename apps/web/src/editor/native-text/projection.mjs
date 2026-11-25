@@ -81,10 +81,19 @@ function instrumentProse(block, source, blockFrom, firstOwner, attribute, filePa
   const parts=markedRuns(text,0,[],inline);
   if(!parts?.length)return null;
   if(parts.filter(part=>part.kind==='math').length!==inline.size)return null;
-  const runs=[],glyphs=[];
+  const runs=[],glyphs=[],owners=[];
   let projection='',cursor=0,nextTag=firstOwner;
   for(const [partIndex,part] of parts.entries()){
     if(part.kind==='break')continue;
+    if(part.kind==='reference'){
+      if(part.type==='ref'){
+        const tag=nextTag++;
+        projection+=text.slice(cursor,part.from16)+`\\begingroup\\attribute${attribute}=${tag} ${part.source}\\endgroup`;
+        cursor=part.to16;
+        owners.push([tag,{reference:{key:part.key,source,filePath,from16:base+part.from16,to16:base+part.to16}}]);
+      }
+      continue;
+    }
     if(part.kind==='math'){
       const {formula}=inline.get(part.from16);
       projection+=text.slice(cursor,formula.from16-base)+formula.math.projection+
@@ -100,12 +109,12 @@ function instrumentProse(block, source, blockFrom, firstOwner, attribute, filePa
     for(const glyph of built.glyphs)
       glyphs.push({...glyph,from16:part.from16+glyph.from16,to16:part.from16+glyph.to16});
   }
-  if(!glyphs.length)return null;
+  if(!glyphs.length&&!owners.length)return null;
   const paragraph={source,filePath,from16:blockFrom+leading,text,heading,glyphs,parts,runs,
     ...(headingEnd===undefined?{}:{headingEnd:blockFrom+headingEnd}),
     ...(wrapperEnd===undefined?{}:{wrapped:true,wrapperEnd:blockFrom+wrapperEnd})};
   return {projection:block.slice(0,leading)+projection+text.slice(cursor)+block.slice(leading+text.length),
-    paragraphs:[paragraph],nextTag};
+    paragraphs:[paragraph],nextTag,owners};
 }
 
 function renderInstrumentedBlock(block,blockFrom,replacements,formulas,projectedFormulas){
@@ -125,7 +134,7 @@ function renderInstrumentedBlock(block,blockFrom,replacements,formulas,projected
 function instrumentTable(block, source, blockFrom, firstOwner, attribute, filePath, reuse, formulas=[]) {
   const cells=tableCellRanges(block);
   if(!cells||!cells.length&&!formulas.length)return null;
-  const replacements=[],projectedFormulas=new Set();
+  const replacements=[],projectedFormulas=new Set(),owners=[];
   const vertical=verticalTableSelection(block);
   const tableStart=blockFrom+block.length-block.trimStart().length;
   const tableEnd=blockFrom+block.trimEnd().length;
@@ -142,6 +151,7 @@ function instrumentTable(block, source, blockFrom, firstOwner, attribute, filePa
       const built=instrumentProse(text,source,from,nextTag,attribute,filePath,0,reuse,inline);
       if(!built||built.paragraphs.some(paragraph=>paragraph.heading))continue;
       nextTag=built.nextTag;
+      owners.push(...built.owners);
       inline.forEach(formula=>projectedFormulas.add(formula));
       replacements.push({from:offset,to:offset+text.length,insert:built.projection});
       paragraphs.push(...built.paragraphs.map(paragraph=>({...paragraph,tableCell})));
@@ -154,13 +164,13 @@ function instrumentTable(block, source, blockFrom, firstOwner, attribute, filePa
     }
   }
   const projection=renderInstrumentedBlock(block,blockFrom,replacements,formulas,projectedFormulas);
-  return projection===null?null:{projection,paragraphs,nextTag};
+  return projection===null?null:{projection,paragraphs,nextTag,owners};
 }
 
 function instrumentContainer(block,source,blockFrom,firstOwner,attribute,filePath,reuse,formulas=[]) {
   const parts=containerParagraphRanges(block);
   if(!parts.length)return null;
-  const paragraphs=[],replacements=[],projectedFormulas=new Set();
+  const paragraphs=[],replacements=[],projectedFormulas=new Set(),owners=[];
   let nextTag=firstOwner;
   for(const {from,text,container,path} of parts){
     const start=blockFrom+from;
@@ -168,12 +178,13 @@ function instrumentContainer(block,source,blockFrom,firstOwner,attribute,filePat
     const built=instrumentProse(text,source,start,nextTag,attribute,filePath,0,reuse,inline);
     if(!built||built.paragraphs.some(paragraph=>paragraph.heading))continue;
     replacements.push({from,to:from+text.length,insert:built.projection});
+    owners.push(...built.owners);
     inline.forEach(formula=>projectedFormulas.add(formula));
     paragraphs.push(...built.paragraphs.map(paragraph=>({...paragraph,container:{type:container,path}})));
     nextTag=built.nextTag;
   }
   const projection=renderInstrumentedBlock(block,blockFrom,replacements,formulas,projectedFormulas);
-  return projection===null?null:{projection,paragraphs,nextTag};
+  return projection===null?null:{projection,paragraphs,nextTag,owners};
 }
 
 function instrumentTextBlock(block,source,from,next,attribute,filePath,keepThrough,reuse){
@@ -313,7 +324,7 @@ export function projectMixedDocument(source, {previous=[], attribute=65000, frag
       let offset=from;
       for(const part of marked){
         const partIndex=parts.push(part)-1;
-        if(part.kind==='break')continue;
+        if(part.kind==='break'||part.kind==='reference')continue;
         const built=instrumentText(text.slice(part.from16,part.to16),next,attribute,contentFrom+part.from16,reuse);
         next=built.nextTag;
         runs.push({...part,partIndex});

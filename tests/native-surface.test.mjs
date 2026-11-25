@@ -1001,6 +1001,24 @@ test('native proof ownership and source writeback retain marked prose, formulas,
   assert.deepEqual(richSourceChanges(layout,formula),[{from:mathFrom,to:mathFrom+1,insert:'y'}]);
 });
 
+test('references stay byte-identical during an edit of adjacent native prose',()=>{
+  const source='\\begin{document}\r\nBefore \\ref  {sec:one} and \\cite[see][p. 4]{item}. Tail.\r\n\\end{document}\r\n';
+  const projection=projectMixedDocument(source),[paragraph]=projection.paragraphs;
+  assert.deepEqual(paragraph.parts.filter(part=>part.kind==='reference').map(part=>part.source),
+    ['\\ref  {sec:one}','\\cite[see][p. 4]{item}']);
+  const [{reference}]=[...projection.owners.values()].filter(owner=>owner.reference);
+  assert.equal(reference.key,'sec:one');
+  assert.equal(source.slice(reference.from16,reference.to16),'\\ref  {sec:one}');
+  const offset=paragraph.text.indexOf('Tail');
+  const patch=textEdit(projection,{paragraph,from16:offset,to16:offset+4,insert:'End'});
+  assert.equal(patch.source,source.replace('Tail.','End.'));
+  const before={type:'doc',content:parseDocument(source).blocks.flatMap(importBlocks)};
+  const after=structuredClone(before);
+  after.content[0].content.at(-1).text='. End.';
+  const changes=richSourceChanges(sourceProjection(source,before),after);
+  assert.equal(changes.reduceRight((value,{from,to,insert})=>value.slice(0,from)+insert+value.slice(to),source),patch.source);
+});
+
 test('native prose targets both sides of explicit LaTeX line breaks and preserves the spelling',()=>{
   const source='\\begin{document}\r\nAlpha\\newline\r\nBeta\\\\[2pt]\r\nGamma\r\n\\end{document}\r\n';
   const draft=source.replace('Beta','Delta');

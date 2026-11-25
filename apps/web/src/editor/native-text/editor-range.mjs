@@ -20,6 +20,8 @@ export function nativeEditorRange({doc,projection,composition,file,paragraph,fro
         if(child.type.name!=='hardBreak')return null;
       }else if(part.kind==='math'){
         if(!['math','mathBlock'].includes(child.type.name)||child.attrs.latex!==part.latex)return null;
+      }else if(part.kind==='reference'){
+        if(child.type.name!==part.type||serialize(child.toJSON())!==part.source)return null;
       }else{
         // Named text symbols are separate rich nodes but share the source run's
         // formatting and UTF-16 boundaries with the surrounding prose.

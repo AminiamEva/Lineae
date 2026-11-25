@@ -11,7 +11,7 @@ const CSS_PER_SP=(96/72)/65781.76;
 
 // Strict read-only full-page adapter. No browser font fallback or inferred
 // glyph positions: a page is shown only when all its resources are exact.
-export function installNativePages({host,getFont,getTypeOneFont,getRaster,onPaint,onError,onMathHit,onImageHit,onDrawingHit,proseRanges,foldLabel,onExpandFile}) {
+export function installNativePages({host,getFont,getTypeOneFont,getRaster,onPaint,onError,onMathHit,onImageHit,onDrawingHit,onReferenceHit,proseRanges,foldLabel,onExpandFile}) {
   let generation=0,epoch=0,zoom=.75,revision=-1,layoutVersion=-1;
   let fonts=new FontStore();
   const imageResources=new Map(),imageLoads=new Map();
@@ -32,7 +32,7 @@ export function installNativePages({host,getFont,getTypeOneFont,getRaster,onPain
   }
   function attachOwners(observed,stamp,owners) {
     if(warm||stamp.sourceRevision!==revision||observed.length!==pages.size)return false;
-    const fields=new Map(),glyphs=new Map(),selectionGlyphs=new Map(),seen=new Set();
+    const fields=new Map(),glyphs=new Map(),references=new Map(),selectionGlyphs=new Map(),seen=new Set();
     const corners=new Map();
     const proseByFile=new Map(),formulaParagraphs=new Map();
     for(const {paragraph} of owners.values()){
@@ -69,6 +69,7 @@ export function installNativePages({host,getFont,getTypeOneFont,getRaster,onPain
         seen.add(key);
       }
       fields.set(page.page,targets);
+      references.set(page.page,page.dl.math_owners?.glyphs?.filter(glyph=>owners.get(glyph.owner)?.reference)??[]);
       const tokens=page.dl.math_owners?.glyphs?.filter(glyph=>{
         const owner=owners.get(glyph.owner);
         return owner?.paragraph||owner?.formula;
@@ -125,8 +126,8 @@ export function installNativePages({host,getFont,getTypeOneFont,getRaster,onPain
       }
       verifiedDrawings.push(...matched);
     }
-    if(!verifiedDrawings.length&&![...fields.values(),...glyphs.values()].some(items=>items.length))return false;
-    ownership={stamp:{...stamp,layoutVersion},fields,glyphs,selectionGlyphs,owners,drawings:verifiedDrawings};
+    if(!verifiedDrawings.length&&![...fields.values(),...glyphs.values(),...references.values()].some(items=>items.length))return false;
+    ownership={stamp:{...stamp,layoutVersion},fields,glyphs,references,selectionGlyphs,owners,drawings:verifiedDrawings};
     return true;
   }
   function locate(canvas,event) {
@@ -318,12 +319,22 @@ export function installNativePages({host,getFont,getTypeOneFont,getRaster,onPain
   host.addEventListener('click',event=>{
     if(warm||event.button!==0)return;
     const canvas=event.target.closest?.('canvas');
-    if(!canvas||locate(canvas,event))return;
+    if(!canvas)return;
     const entry=pages.get(Number(canvas.parentElement.dataset.nativePage));
     if(entry?.canvas!==canvas)return;
     const rect=canvas.getBoundingClientRect(),scale=CSS_PER_SP*zoom;
     const x=(event.clientX-rect.left)/scale,y=(event.clientY-rect.top)/scale;
     if(ownership?.stamp.sourceRevision===revision&&ownership?.stamp.layoutVersion===layoutVersion){
+      if(event.ctrlKey||event.metaKey){
+        const references=(ownership.references.get(entry.number)??[]).filter(({bbox:[left,top,right,bottom]})=>
+          x>=left&&x<=right&&y>=top&&y<=bottom);
+        const unique=new Set(references.map(glyph=>glyph.owner));
+        if(unique.size===1){
+          onReferenceHit?.(ownership.owners.get(references[0].owner).reference,ownership.stamp,event);
+          return;
+        }
+      }
+      if(locate(canvas,event))return;
       const drawings=ownership.drawings.filter(({number,box:[left,top,width,height],rasterHit})=>
         number===entry.number&&(rasterHit?rasterContains(rasterHit,x,y):x>=left&&x<=left+width&&y>=top&&y<=top+height));
       if(drawings.length===1){onDrawingHit?.(drawings[0].drawing,ownership.stamp);return;}

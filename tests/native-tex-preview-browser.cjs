@@ -1881,7 +1881,8 @@ const server=createServer(async(req,res)=>{
     await page.route('**/vendor/mathlive/**',route=>route.abort());
     const base='http://127.0.0.1:'+server.address().port+'/';
     await page.goto(base+'?native-workspace=1',{waitUntil:'networkidle'});
-    const outlined='\\documentclass{article}\n\\begin{document}\n\\section{Repeat}\n\nFirst paragraph.\n\n'+
+    const outlined='\\documentclass{article}\n\\begin{document}\n\\section{Repeat}\\label{sec:first}\n\n'+
+      'First paragraph. See \\ref{sec:first}.\n\n'+
       '\\section{Repeat}\n\nSecond paragraph.\n\\end{document}\n';
     await page.locator('input#file').setInputFiles({name:'outlined.tex',mimeType:'text/plain',buffer:Buffer.from(outlined)});
     await page.locator('#native-tex-toggle').click();
@@ -1895,7 +1896,7 @@ const server=createServer(async(req,res)=>{
     const outlinedEdit=outlined.replace('Repeat}\n\nSecond','XRepeat}\n\nSecond');
     await page.waitForFunction(expected=>nativeProbe.source===expected,outlinedEdit);
     await page.getByText('Click text on the native page',{exact:false}).waitFor();
-    await page.keyboard.press(mod+'+f');
+    await page.keyboard.press(mod+'+e');await page.keyboard.press('f');
     const search=page.getByRole('searchbox',{name:'Find in document'});
     await search.fill('Repeat');
     await search.press('Enter');
@@ -1918,6 +1919,11 @@ const server=createServer(async(req,res)=>{
     await page.waitForFunction(expected=>nativeProbe.source===expected,layoutSource);
     await page.keyboard.press(mod+'+Shift+z');
     await page.waitForFunction(expected=>nativeProbe.source===expected,narrow);
+    await page.getByText('Click text on the native page',{exact:false}).waitFor();
+    const referenceX=6550000+'RepeatFirstparagraph.See'.length*200000;
+    await page.locator('[data-native-page="1"] canvas').click({position:{x:referenceX*layoutScale,y:9250000*layoutScale},modifiers:[mod]});
+    await page.keyboard.type('Y');
+    await page.waitForFunction(expected=>nativeProbe.source===expected,narrow.replace('Repeat}\\label','YRepeat}\\label'));
 
     await page.goto(base+'?native-only-acceptance=1',{waitUntil:'networkidle'});
     const duplicateImages='\\documentclass{article}\n\\usepackage{graphicx}\n\\begin{document}\n'+
