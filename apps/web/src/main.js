@@ -371,17 +371,17 @@ function insertNativeTableFromProse(){
   const block=editor.schema.nodeFromJSON(parsed);
   return insertNativeDocumentBlock(block,latex);
 }
-function insertNativeDocumentBlock(block,latex){
-  return canStartNativeText()?insertNativeInitialBlock(block,latex):insertNativeProseBlock(block,latex);
+function insertNativeDocumentBlock(block,latex,preambleLines){
+  return canStartNativeText()?insertNativeInitialBlock(block,latex,preambleLines):insertNativeProseBlock(block,latex,preambleLines);
 }
-function insertNativeInitialBlock(block,latex){
+function insertNativeInitialBlock(block,latex,preambleLines){
   const started=performance.now(),{state}=editor;
   const sourceBefore=source(),fragment=projectFileKind==='tex';
   const document=parseDocument(sourceBefore,{fragment});
   const from=document.start.length;
   const insert=latex.replaceAll('\n',document.eol)+(document.end?document.eol:'');
   let draft=sourceBefore.slice(0,from)+insert+sourceBefore.slice(from),change={from,to:from,insert};
-  const dependency=nativePackagePatch(sourceBefore,latex);
+  const dependency=nativePackagePatch(sourceBefore,latex,preambleLines);
   if(dependency===false)return false;
   if(dependency){
     draft=draft.slice(0,dependency.from)+dependency.insert+draft.slice(dependency.to);
@@ -1455,14 +1455,18 @@ function applyTikzPreamble(after) {
   projectExplorer?.changed();
 }
 
-function insertTikzStudioBlock({ libraries = [], macros = [], declarations = '', body = '' } = {}) {
+function insertTikzStudioBlock({ libraries = [], macros = [], declarations = '', body = '' } = {},nativeDocument=null) {
+  const failed=()=>({error:t('未能插入图形，请核对正文光标和源码。','The drawing could not be inserted. Check the document caret and source.')});
+  if(nativeDocument&&editor.state.doc!==nativeDocument)return failed();
   body = body
     .replace(/^\s*\\documentclass(?:\[[^\]]*\])?\{[^{}]+\}[^\n]*(?:\r?\n|$)/m, '')
     .replace(/^\s*\\(?:usepackage|RequirePackage)(?:\[[^\]]*\])?\{[^{}]*\}[^\n]*(?:\r?\n|$)/gm, '')
     .replace(/\\begin\{document\}/g, '')
     .replace(/\\end\{document\}/g, '')
     .trim();
-  const before = documentParts.start;
+  const rootId=projectDocument.composition?.rootId;
+  const root=nativeDocument&&rootId?projectExplorer.model.file(rootId).draft:null;
+  const before=root?parseDocument(root,{fragment:true}).start:documentParts.start;
   const existingMacros = tikzMacroNames(before);
   const seen = new Set();
   const duplicates = [];
@@ -1482,6 +1486,12 @@ function insertTikzStudioBlock({ libraries = [], macros = [], declarations = '',
     .replace(/^\s*\\usetikzlibrary(?:\[[^\]]*\])?\{[^{}]*\}[ \t]*$/gm, '')
     .trim();
   const preambleAdditions = declarationText ? [declarationText] : sortedMacros;
+  if(nativeDocument){
+    const existing=new Set(tikzLibraries(before));
+    const added=allLibraries.filter(name=>!existing.has(name));
+    const lines=[...(added.length?[`\\usetikzlibrary{${added.join(',')}}`]:[]),...preambleAdditions];
+    return insertNativeDrawing(body,lines)?{ok:true}:failed();
+  }
   const beginAt = before.indexOf('\\begin{document}');
   if (beginAt >= 0) {
     let preamble = before.slice(0, beginAt)
@@ -2197,7 +2207,7 @@ function toggleDocumentContents(){
   if(editor.isActive('tableOfContents'))return editor.chain().focus().deleteSelection().run();
   return structureCommands.tableofcontents();
 }
-function insertNativeProseBlock(block,latex){
+function insertNativeProseBlock(block,latex,preambleLines){
   const started=performance.now();
   const range=nativeTexPreview.verifiedTextRange();
   if(!range)return false;
@@ -2230,7 +2240,7 @@ function insertNativeProseBlock(block,latex){
   let draft=source.slice(0,from)+insert+source.slice(to),shift=0,change={from,to,insert};
   const rootId=target.composition?.rootId;
   const root=rootId&&rootId!==target.file.id?target.project.file(rootId).draft:source;
-  const dependency=nativePackagePatch(root,latex);
+  const dependency=nativePackagePatch(root,latex,preambleLines);
   if(dependency===false)return false;
   let applied;
   if(target.composition){
@@ -3256,12 +3266,12 @@ function nativeFormulaPosition(formula){
 function addNativeTableAxis(axis){
   return editNativeTable(axis==='row'?'insertRow':'insertColumn');
 }
-function nativePackagePatch(root,body){
+function nativePackagePatch(root,body,preambleLines=[]){
   const {start,eol}=parseDocument(root,{fragment:true});
   const packages=resolvePackages(start,body);
   const early=packages.filter(rule=>rule.beforeClass).map(({name})=>'\\RequirePackage{'+name+'}');
   const required=[...packages.filter(rule=>!rule.beforeClass).map(({name})=>'\\usepackage{'+name+'}'),
-    ...resolveTheoremDeclarations(start,body)];
+    ...resolveTheoremDeclarations(start,body),...preambleLines.map(line=>line.replace(/\r?\n/g,eol))];
   if(!early.length&&!required.length)return null;
   const begin=start.lastIndexOf('\\begin{document}');
   if(begin<0)return false;
@@ -3455,6 +3465,14 @@ function nativeDrawingTargets(ranges){
 }
 function nativeTikzDrawings(){
   return nativeDrawingTargets(tikzDrawingRanges).map(({position,label})=>({position,label}));
+}
+function insertNativeDrawing(source,preambleLines){
+  const latex=source.trim();
+  const [node,...rest]=importBlocks(latex);
+  if(rest.length||node?.type!=='documentImage'||!node.attrs.tikzSource)return false;
+  const result=insertNativeDocumentBlock(editor.schema.nodeFromJSON(node),latex,preambleLines);
+  if(result)nativeTexPreview.refocusTextInput();
+  return result;
 }
 function editNativeDrawing(position){
   if(!nativeTikzDrawings().some(drawing=>drawing.position===position))return;
@@ -4972,16 +4990,23 @@ async function editCodeBlockLanguage(){
 }
 groupButton(insert,['CircuiTikZ','CircuiTikZ'],()=>{
   try{
+    const nativeDocument=nativeParagraphFormattingActive()?editor.state.doc:null;
     const editorEl=document.querySelector('.document-page .ProseMirror');
     const textwidthCm=editorEl?editorEl.clientWidth*2.54/96:15;
     const tikz=new TikzEditor({getTextwidthCm:()=>textwidthCm});
-    tikz.open(code=>{ if(code) editor.chain().focus().insertContent({type:'documentImage',attrs:{tikzSource:code,tikzEditor:'circuit',centered:true,align:'center'}}).run(); });
+    tikz.open(code=>{
+      if(!code)return;
+      if(nativeDocument){
+        if(editor.state.doc!==nativeDocument||!insertNativeDrawing(code))refuseStandaloneWriteback();
+      }else editor.chain().focus().insertContent({type:'documentImage',attrs:{tikzSource:code,tikzEditor:'circuit',centered:true,align:'center'}}).run();
+    });
   }catch(error){ console.error(error); alert('CircuiTikZ editor failed: '+(error?.message||error)); }
 });
 const tikzButton=groupButton(insert,['TikZ','TikZ'],()=>{
   try{
+    const nativeDocument=nativeParagraphFormattingActive()?editor.state.doc:null;
     openTikzStudio({
-      onInsert:payload=>insertTikzStudioBlock(payload),
+      onInsert:payload=>insertTikzStudioBlock(payload,nativeDocument),
     });
   }catch(error){ console.error(error); alert('TikZ editor failed: '+(error?.message||error)); }
 });

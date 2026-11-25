@@ -1285,6 +1285,20 @@ const server=createServer(async(req,res)=>{
       const bodyText='SHXNative document.';
       const beforeListing=workspaceSource.replace('Native document.',bodyText);
       await canvas.click({position:{x:6550000*scale,y:9250000*scale}});
+      await revealToolbar(page);
+      await page.locator('[data-group=insert]').click();
+      await page.locator('.floating-toolbar button[data-source-action="TikZ"]').evaluate(button=>button.click());
+      const nativeDrawing='\\begin{tikzpicture}\n\\draw (0,0) -- (1,1);\n\\end{tikzpicture}';
+      await page.locator('.tikz-studio-libraries').fill('\\usetikzlibrary{arrows.meta}');
+      await page.locator('.tikz-studio-code').fill(nativeDrawing);
+      await page.locator('.tikz-studio-insert').click();
+      const insertedDrawing=beforeListing.replace(bodyText,nativeDrawing+'\n\n'+bodyText)
+        .replace('\\begin{document}','\\usepackage{tikz}\n\\usetikzlibrary{arrows.meta}\n\\begin{document}');
+      await page.waitForFunction(expected=>nativeProbe.source===expected,insertedDrawing);
+      await page.keyboard.press(mod+'+z');
+      await page.waitForFunction(expected=>nativeProbe.source===expected,beforeListing);
+      await panel.getByText('Click text on the native page',{exact:false}).waitFor();
+      await canvas.click({position:{x:6550000*scale,y:9250000*scale}});
       await page.keyboard.press('Backslash');
       await page.getByRole('textbox',{name:'LaTeX command',exact:true}).fill('lstlisting');
       await page.keyboard.press('Enter');
