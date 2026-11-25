@@ -8,19 +8,35 @@ import {projectDocumentFormulas} from '../native-math/document.mjs';
 
 const segmenter = new Intl.Segmenter('und', {granularity:'grapheme'});
 const unsupported = /[\\{}$%&#_^~]/;
+const plainTokens=/^(?:\\[%&_#${}]|[^\\{}$%&#_^~])+/u;
+
+function decodeProse(raw) {
+  if(!raw.includes('\\'))return {text:raw};
+  const offsets=[0];
+  let text='';
+  for(let index=0;index<raw.length;index++){
+    if(raw[index]==='\\')index++;
+    text+=raw[index];
+    offsets.push(index+1);
+  }
+  return {text,offsets};
+}
 
 // Prose text is tagged per grapheme with its own LuaTeX attribute. Only plain
 // runs are instrumented: TeX syntax, comments and math never receive a guessed
 // source range.
-function instrumentText(text, firstOwner, attribute) {
+function instrumentText(raw, firstOwner, attribute) {
+  const {text,offsets}=decodeProse(raw);
   let next = firstOwner, local = 0, instrumented = '\\begingroup';
   const glyphs = [];
   for (const {segment} of segmenter.segment(text)) {
-    if (/^\s+$/u.test(segment)) { instrumented += segment; local += segment.length; continue; }
+    const end=local+segment.length,from16=offsets?.[local]??local,to16=offsets?.[end]??end;
+    const token=raw.slice(from16,to16);
+    if (/^\s+$/u.test(segment)) { instrumented += token; local = end; continue; }
     const tag = next++;
-    instrumented += `\\attribute${attribute}=${tag} ${segment}`;
-    glyphs.push({tag, from16:local, to16:local + segment.length, char:segment});
-    local += segment.length;
+    instrumented += `\\attribute${attribute}=${tag} ${token}`;
+    glyphs.push({tag, from16, to16, char:segment});
+    local = end;
   }
   return {instrumented:instrumented + '\\endgroup', glyphs, nextTag:next};
 }
@@ -45,9 +61,9 @@ function markedRuns(text, offset=0, marks=[]) {
   const runs=[];
   let cursor=0;
   while(cursor<text.length){
-    const raw=/^[^\\{}$%&#_^~]+/.exec(text.slice(cursor))?.[0];
+    const raw=plainTokens.exec(text.slice(cursor))?.[0];
     if(raw){
-      runs.push({kind:'text',from16:offset+cursor,to16:offset+cursor+raw.length,text:raw,marks});
+      runs.push({kind:'text',from16:offset+cursor,to16:offset+cursor+raw.length,...decodeProse(raw),marks});
       cursor+=raw.length;
       continue;
     }
@@ -72,7 +88,7 @@ function instrumentProse(block, source, blockFrom, firstOwner, attribute, filePa
   const runs=[],glyphs=[];
   let projection='',cursor=0,nextTag=firstOwner;
   for(const [partIndex,part] of parts.entries()){
-    const built=instrumentText(part.text,nextTag,attribute);
+    const built=instrumentText(text.slice(part.from16,part.to16),nextTag,attribute);
     nextTag=built.nextTag;
     projection+=text.slice(cursor,part.from16)+built.instrumented;
     cursor=part.to16;
@@ -208,11 +224,13 @@ export function projectMixedDocument(source, {previous=[], attribute=65000, frag
       const raw = text.slice(from, to);
       if (!raw) return;
       const partIndex = parts.length;
-      parts.push({kind:'text', from16:from, to16:to, text:raw});
-      if (unsupported.test(raw)) { run += raw; return; }
+      const supported=plainTokens.exec(raw)?.[0]===raw;
+      const part={kind:'text',from16:from,to16:to,...(supported?decodeProse(raw):{text:raw})};
+      parts.push(part);
+      if (!supported) { run += raw; return; }
       const built = instrumentText(raw, next, attribute);
       next = built.nextTag;
-      runs.push({from16:from, to16:to, text:raw, partIndex});
+      runs.push({...part,partIndex});
       for (const glyph of built.glyphs)
         glyphs.push({...glyph, from16:glyph.from16 + from, to16:glyph.to16 + from});
       run += built.instrumented;
@@ -298,7 +316,8 @@ export function textTarget(projection, owner, after) {
 
 export function proseEditEndpoints(paragraph, from, to) {
   const runs=paragraph.runs??[];
-  const contains=(run,offset)=>offset>=run.from16&&offset<=run.to16;
+  const contains=(run,offset)=>offset>=run.from16&&offset<=run.to16&&
+    (!run.offsets||run.offsets.includes(offset-run.from16));
   const single=runs.find(run=>contains(run,from)&&contains(run,to));
   if(single)return {start:single,end:single};
   const start=runs.find(run=>contains(run,from));
@@ -313,8 +332,11 @@ export function textEdit(projection, {paragraph, from16, to16, insert}) {
   if (!projection || (projection.source!==paragraph.source && !projection.paragraphs?.includes(paragraph))) return null;
   if (!Number.isInteger(from16) || !Number.isInteger(to16) || from16 < 0 || to16 < from16 || to16 > paragraph.text.length) return null;
   if (paragraph.runs && !proseEditEndpoints(paragraph,from16,to16)) return null;
-  if (typeof insert !== 'string' || unsupported.test(insert)) return null;
-  const next = paragraph.text.slice(0, from16) + insert + paragraph.text.slice(to16);
+  if(typeof insert!=='string'||/[\\^~]/.test(insert))return null;
+  if((paragraph.container||paragraph.tableCell)&&unsupported.test(insert))return null;
+  const latex=insert.replace(/[%&_#${}]/g,char=>'\\'+char);
+  const next = paragraph.text.slice(0, from16) + latex + paragraph.text.slice(to16);
   const source = paragraph.source.slice(0, paragraph.from16) + next + paragraph.source.slice(paragraph.from16 + paragraph.text.length);
-  return {text:next, patch:{from:from16, to:to16, insert}, source, selection:from16 + insert.length};
+  const patch={from:from16,to:to16,insert,...(latex!==insert&&{latex})};
+  return {text:next,patch,source,selection:from16+latex.length};
 }

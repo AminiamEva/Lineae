@@ -188,8 +188,14 @@ const server=createServer(async(req,res)=>{
         input.value='文';
         input.dispatchEvent(new InputEvent('input',{bubbles:true,inputType:'insertFromComposition',data:'文'}));
       });
-      await page.waitForFunction(expected=>nativeProbe.source===expected,
-        typedHeading.replace('XLong title','文XLong title'));
+      const composedHeading=typedHeading.replace('XLong title','文XLong title');
+      await page.waitForFunction(expected=>nativeProbe.source===expected,composedHeading);
+      await panel.getByText('Click text on the native page',{exact:false}).waitFor();
+      await page.keyboard.type('%');
+      await page.waitForFunction(expected=>nativeProbe.source===expected,composedHeading.replace('文X','文\\%X'));
+      await panel.getByText('Click text on the native page',{exact:false}).waitFor();
+      await page.keyboard.press('Backspace');
+      await page.waitForFunction(expected=>nativeProbe.source===expected,composedHeading);
       await page.locator('#native-tex-close').click();
       const proofSource='\\documentclass{article}\r\n\\usepackage{amsthm}\r\n\\begin{document}\r\n'+
         '\\begin{proof}[Reason]\r\n  One step.\r\n\\end{proof}\r\n\\end{document}\r\n';

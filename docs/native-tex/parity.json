@@ -63,7 +63,7 @@
         "https://github.com/AminiamEva/Lineae/actions/runs/45583564517",
         "https://github.com/AminiamEva/Lineae/actions/runs/45589155092"
       ],
-      "scope": "Plain headings with unchanged short titles and labels, plus standalone marked prose. Nested marks have source tests; lists, theorem bodies and mixed markup with math need dedicated validation."
+      "scope": "Plain headings, standalone paragraphs with nested marks, and source mapping for proof, abstract and nested lists. Mixed marks with math and additional text environments need validation."
     },
     {
       "id": "tables-including-spans",
@@ -93,9 +93,10 @@
       ],
       "nativeStatus": "partial",
       "evidence": [
-        "https://github.com/AminiamEva/Lineae/actions/runs/45583564517"
+        "https://github.com/AminiamEva/Lineae/actions/runs/45583564517",
+        "https://github.com/AminiamEva/Lineae/actions/runs/45591125903"
       ],
-      "scope": "Direct edits to a plain paragraph and a supported display formula in an included file, with exact source checks; cross-file editing pending."
+      "scope": "Direct edits to a plain paragraph and a supported display formula in an included file preserve the main source bytes, including with the legacy engines disabled. Cross-file selection and project structural editing are pending."
     },
     {
       "id": "images-floats-tikz",
@@ -108,8 +109,11 @@
         "tests/editor.cjs"
       ],
       "nativeStatus": "partial",
-      "evidence": ["https://github.com/AminiamEva/Lineae/actions/runs/45590498054"],
-      "scope": "Raster resource access and canvas drawing pass browser checks. Real staged PNG drawing metadata remains identical when adding ownership. Figure selection and property editing await their own browser gate; complex floats and TikZ remain open."
+      "evidence": [
+        "https://github.com/AminiamEva/Lineae/actions/runs/45590498054",
+        "https://github.com/AminiamEva/Lineae/actions/runs/45591990969"
+      ],
+      "scope": "Real staged PNG drawing metadata is unchanged by ownership. The browser gate selects a raster figure from its painted position and patches its width through the existing Image controls. Complex floats and TikZ remain open."
     },
     {
       "id": "page-layout-and-pdf",
@@ -121,10 +125,12 @@
       "tests": [
         "tests/native-tex-preview-browser.cjs"
       ],
-      "nativeStatus": "render-only",
+      "nativeStatus": "partial",
       "evidence": [
-        "https://github.com/AminiamEva/Lineae/actions/runs/45527337822"
-      ]
+        "https://github.com/AminiamEva/Lineae/actions/runs/45527337822",
+        "https://github.com/AminiamEva/Lineae/actions/runs/45591990969"
+      ],
+      "scope": "A registered PDF with matching page dimensions and ownership can support the same edits as a direct canvas page. Simulated transport covers both semantic editing and refusal for mismatched dimensions. Real mixed PDF and TikZ editing remains to be verified."
     },
     {
       "id": "commands-toolbar-shortcuts",
@@ -182,7 +188,7 @@
       "full native command coverage",
       "complex table cell targeting and editing",
       "figure, float and TikZ editing",
-      "PDF semantic editing",
+      "semantic editing with real degraded PDF geometry",
       "physical device IME and latency"
     ]
   },

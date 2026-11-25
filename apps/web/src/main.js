@@ -2782,7 +2782,8 @@ nativeTexPreview=installNativeTexPreview({host:footer,before:modes,
     const at=(run,offset)=>{
       let position=found+1;
       for(let index=0;index<run.partIndex;index++)position+=foundNode.child(index).nodeSize;
-      return position+offset-run.from16;
+      const local=offset-run.from16;
+      return position+(run.offsets?.indexOf(local)??local);
     };
     const start=at(endpoints.start,patch.from),end=at(endpoints.end,patch.to),tr=editor.state.tr;
     if(end>start)tr.delete(start,end);
@@ -2790,7 +2791,7 @@ nativeTexPreview=installNativeTexPreview({host:footer,before:modes,
     tr.setSelection(TextSelection.create(tr.doc,start+patch.insert.length));
     if(composition){
       const from=paragraph.from16+patch.from,to=paragraph.from16+patch.to;
-      const expected=file.draft.slice(0,from)+patch.insert+file.draft.slice(to);
+      const expected=file.draft.slice(0,from)+(patch.latex??patch.insert)+file.draft.slice(to);
       const drafts=projectDocument.changes(tr.doc.toJSON());
       if(drafts?.get(file.id)!==expected)return false;
       for(const [id,draft] of drafts)if(id!==file.id&&draft!==project.file(id).draft)return false;
@@ -2803,9 +2804,10 @@ nativeTexPreview=installNativeTexPreview({host:footer,before:modes,
         source.slice(0,change.from)+change.insert+source.slice(change.to),paragraph.source)!==expected)return false;
     }
     if(endpoints.start!==endpoints.end)closeHistory(tr);
-    if(!composition&&(endpoints.start!==endpoints.end||paragraph.parts.some(part=>part.marks?.length))){
+    if(!composition&&(patch.latex||endpoints.start!==endpoints.end||
+        paragraph.parts.some(part=>part.marks?.length||part.offsets))){
       const from=paragraph.from16+patch.from,to=paragraph.from16+patch.to;
-      const expected=paragraph.source.slice(0,from)+patch.insert+paragraph.source.slice(to);
+      const expected=paragraph.source.slice(0,from)+(patch.latex??patch.insert)+paragraph.source.slice(to);
       const draft=standaloneParagraphDraft(importedSource,projection,importedSnapshot,
         editor.state.doc.toJSON(),tr.doc.toJSON(),match.index);
       if(draft?.draft!==expected)return false;

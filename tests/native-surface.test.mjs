@@ -389,6 +389,24 @@ test('native heading text mapping leaves short titles, stars and labels intact',
   assert.equal(textEdit(projection,{paragraph,from16:0,to16:0,insert:'X'}).source,source.replace('Long title','XLong title'));
 });
 
+test('native prose escapes percent and deletes the complete escaped token as one glyph',()=>{
+  const source='\\begin{document}\r\n\\section[Short]{Yield 50}\\label{s:test}\r\n\\end{document}\r\n';
+  const {paragraphs:[heading],...projection}=projectTextDocument(source);
+  const inserted=textEdit(projection,{paragraph:heading,from16:8,to16:8,insert:'%'});
+  assert.equal(inserted.source,source.replace('50}','50\\%}'));
+  assert.deepEqual(inserted.patch,{from:8,to:8,insert:'%',latex:'\\%'});
+  const parsed=projectTextDocument(inserted.source);
+  const [paragraph]=parsed.paragraphs;
+  const percent=paragraph.glyphs.at(-1);
+  assert.equal(percent.char,'%');
+  assert.deepEqual([percent.from16,percent.to16],[8,10]);
+  assert.equal(textEdit(parsed,{paragraph,from16:9,to16:10,insert:''}),null);
+  const surface=createTextSurface({projection:parsed});
+  surface.setObservation(page([],[glyph(percent.tag,300)]));
+  surface.nearest(1,320,100);
+  assert.equal(surface.erase().source,source);
+});
+
 test('native text ranges preserve proof titles, comments and container declarations',()=>{
   const source='\\begin{document}\r\n\\begin{proof}[Reason]\r\nOne step.\r\n\r\nAnother step.\r\n\\end{proof}\r\n\r\n'+
     '\\begin{abstract}\r\n% keep declaration and comment\r\n\\small\r\nA summary.\r\n\\end{abstract}\r\n\\end{document}\r\n';

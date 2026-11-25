@@ -44,9 +44,12 @@ const runsOf = paragraph => paragraph.runs ?? [{from16:0, to16:paragraph.text.le
 const runAt = (paragraph, offset, backward) => runsOf(paragraph).find(run =>
   backward ? offset > run.from16 && offset <= run.to16 : offset >= run.from16 && offset < run.to16) ?? null;
 const boundariesOf = (run, fallback) => {
-  const boundaries = [run.from16];
-  for (const {segment} of segmenter.segment(run.text ?? fallback))
-    boundaries.push(boundaries.at(-1) + segment.length);
+  const boundaries=[run.from16];
+  let local=0;
+  for(const {segment} of segmenter.segment(run.text??fallback)){
+    local+=segment.length;
+    boundaries.push(run.from16+(run.offsets?.[local]??local));
+  }
   return boundaries;
 };
 
