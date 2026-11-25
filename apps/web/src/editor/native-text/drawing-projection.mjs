@@ -10,7 +10,7 @@ export function instrumentDrawing(block,source,from,tag,attribute,filePath){
   const marker=owner=>`\\begingroup\\mathsurround=0pt\\attribute${attribute}=${owner} $ $\\endgroup`;
   for(const range of ranges){
     if(range.from<cursor)return null;
-    const drawing={source,filePath,from16:from+range.from,to16:from+range.to,
+    const drawing={source,filePath,from16:from+range.from,to16:from+range.to,...(range.scaled&&{scaled:true}),
       ...(range.path&&{raster:range.path})};
     const raw=block.slice(range.from,range.to);
     const measured='\\begingroup\\setbox0=\\hbox{'+raw+'}\\leavevmode'+

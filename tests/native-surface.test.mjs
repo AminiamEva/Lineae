@@ -1268,6 +1268,7 @@ test('native drawing ownership includes the complete resizebox, preserving float
   const [top,bottom]=[...projection.owners.values()].filter(owner=>owner.drawing);
   const from=source.indexOf(drawing);
   assert.deepEqual(top.drawing,bottom.drawing);
+  assert.equal(top.drawing.scaled,true);
   assert.equal(top.drawing.from16,from);
   assert.equal(top.drawing.to16,from+drawing.length);
   assert.ok(projection.projection.includes('\\setbox0=\\hbox{'+drawing+'}'));

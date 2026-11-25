@@ -22,8 +22,9 @@ export function tikzDrawingRanges(source,node){
   for(const token of tokens){
     if(spans.at(-1)?.to>token.index)continue;
     const name=token.kind==='begin'&&/^\\begin\{(tikzpicture|circuitikz)\}$/.exec(token.value)?.[1];
-    const close=name?environmentEnd(source,token.index,name):token.value==='\\resizebox'?scaledTikzEnd(source,token.end):null;
-    if(close)spans.push({from:token.index,to:close.end});
+    const scaled=token.value==='\\resizebox';
+    const close=name?environmentEnd(source,token.index,name):scaled?scaledTikzEnd(source,token.end):null;
+    if(close)spans.push({from:token.index,to:close.end,...(scaled&&{scaled:true})});
   }
   if(!node&&spans.length===1&&source.trim()===source.slice(spans[0].from,spans[0].to))
     return [{...spans[0],child:null}];

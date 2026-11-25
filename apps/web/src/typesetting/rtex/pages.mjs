@@ -109,7 +109,8 @@ export function installNativePages({host,getFont,getTypeOneFont,getRaster,onPain
       const entry=pages.get(page.page),raw=entry.dl,measured=page.dl;
       const originalItems=[raw.other,...raw.lines.map(line=>line.items)];
       const boxes=originalItems.flat().map(cachedDrawingBox).filter(Boolean);
-      const matched=drawings.filter(candidate=>candidate.number===page.page&&!candidate.drawing.raster&&
+      const pageDrawings=drawings.filter(candidate=>candidate.number===page.page&&!candidate.drawing.raster);
+      const matched=pageDrawings.filter(candidate=>
         boxes.filter(box=>box.every((value,axis)=>value===candidate.box[axis])).length===1);
       if(drawing(raw)===drawing(measured)){
         const rasters=drawings.filter(candidate=>candidate.number===page.page&&candidate.drawing.raster);
@@ -126,6 +127,14 @@ export function installNativePages({host,getFont,getTypeOneFont,getRaster,onPain
         if(originalItems.some((items,index)=>!sameCachedDrawingItems(items,measuredItems[index],matched)))return false;
       }
       verifiedDrawings.push(...matched);
+      // A resized TikZ box can be literal PDF drawing operators instead of
+      // a cached_picture. Its measured corners are valid after the original
+      // and instrumented display lists have passed the same comparison.
+      verifiedDrawings.push(...pageDrawings.filter(candidate=>{
+        const [x,y,width,height]=candidate.box;
+        return candidate.drawing.scaled&&!matched.includes(candidate)&&x>=0&&y>=0&&
+          x+width<=raw.page_width&&y+height<=raw.page_height;
+      }));
     }
     if(!verifiedDrawings.length&&![...fields.values(),...glyphs.values(),...references.values()].some(items=>items.length))return false;
     ownership={stamp:{...stamp,layoutVersion},fields,glyphs,references,selectionGlyphs,owners,drawings:verifiedDrawings};
