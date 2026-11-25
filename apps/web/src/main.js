@@ -2245,8 +2245,8 @@ function insertNativeProseBlock(block,latex){
     const owner=projection?.blocks.find(entry=>entry.index===target.range.match.index&&entry.count===1&&
       entry.from<=from&&entry.to>=to);
     if(!owner)return false;
-    const revised=importBlocks(draft.slice(owner.from,owner.to+draft.length-source.length));
-    if(revised.length!==nodes.length||revised.some((value,index)=>!state.schema.nodeFromJSON(value).eq(nodes[index])))return false;
+    const revised=parseDocument(draft.slice(owner.from,owner.to+draft.length-source.length),{fragment:true})?.blocks.flatMap(importBlocks);
+    if(revised?.length!==nodes.length||revised.some((value,index)=>!state.schema.nodeFromJSON(value).eq(nodes[index])))return false;
     if(dependency){
       shift=dependency.delta;
       draft=draft.slice(0,dependency.from)+dependency.insert+draft.slice(dependency.to);
