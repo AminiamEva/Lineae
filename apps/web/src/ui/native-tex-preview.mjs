@@ -249,7 +249,7 @@ export function installNativeTexPreview({host,before,getSource,getSnapshot,isCom
       targetTimer=setTimeout(()=>{
         targetTimer=null;
         if(targetArmed&&!targetButton.disabled)void observe();
-      },350);
+      },nativeEditing?0:350);
     }
     button.setAttribute('aria-pressed',String(active));
     button.textContent=active?t('关闭 LuaLaTeX 预览','Close LuaLaTeX preview'):t('LuaLaTeX 预览（实验）','LuaLaTeX preview (experimental)');
@@ -362,7 +362,7 @@ export function installNativeTexPreview({host,before,getSource,getSnapshot,isCom
           renderer.reset({clear:false});pdf.reset({clear:false});
           void poll(attempt,pollEpoch);
         }
-        if(observation&&snapshot.source!==observation.projection.source){
+        if(observation&&snapshot.signature!==sentSnapshot.signature){
           observation=null;targetStatus.textContent='';
         }
         sentSource=snapshot.source;sentSnapshot=snapshot;sourceRevision=result.sourceRevision;error='';
@@ -460,7 +460,8 @@ export function installNativeTexPreview({host,before,getSource,getSnapshot,isCom
   async function observe() {
     if(targetButton.disabled)return;
     const stamp={sessionId:session,sourceRevision};
-    lastTarget=stamp;
+    const signature=sentSnapshot.signature;
+    lastTarget={...stamp,signature};
     const projection=sentSnapshot?.files?.length
       ?projectMixedSnapshot(sentSnapshot,previousProjection)
       :projectMixedDocument(sentSource,{previous:previousProjection??[]});
@@ -481,6 +482,7 @@ export function installNativeTexPreview({host,before,getSource,getSnapshot,isCom
       const observed=await invoke('native_tex_observe_formula',{...stamp,projection:projection.projection,
         files:projection.files});
       if(attempt!==generation||stamp.sessionId!==session||stamp.sourceRevision!==sourceRevision||
+          sentSnapshot?.signature!==signature||wantedSnapshot?.signature!==signature||
           sentSource!==projection.source||wantedSource!==projection.source)return;
       if(!renderer.attachOwners(observed,stamp,projection.owners))throw new Error(t('标记版排版与当前页面不一致，未启用命中。','Projected geometry differs from the displayed page; targeting remains disabled.'));
       if(kind==='text'||kind==='mixed'){
