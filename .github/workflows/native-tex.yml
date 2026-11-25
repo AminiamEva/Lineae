@@ -118,8 +118,9 @@ jobs:
           node tests/native-tex-preview-browser.cjs
           LINEAE_NATIVE_ONLY=1 node tests/native-tex-preview-browser.cjs
           LINEAE_TEST_NATIVE_PREVIEW=1 node tests/math-editing-browser.cjs
-      - uses: actions/cache@v4
+      - uses: actions/cache/restore@v4
         if: ${{ !inputs.browser_only }}
+        id: texlive_cache
         with:
           path: .native-tex/texlive
           key: native-tex-tl2025-${{ matrix.target }}-${{ hashFiles('scripts/install-native-tex-ci.sh') }}
@@ -127,6 +128,11 @@ jobs:
       - name: Install the frozen TeX Live environment
         if: ${{ !inputs.browser_only }}
         run: bash scripts/install-native-tex-ci.sh
+      - uses: actions/cache/save@v4
+        if: ${{ !inputs.browser_only && steps.texlive_cache.outputs.cache-hit != 'true' }}
+        with:
+          path: .native-tex/texlive
+          key: ${{ steps.texlive_cache.outputs.cache-primary-key }}
       - name: Download and verify the pinned rtex release
         if: ${{ !inputs.browser_only }}
         env:
