@@ -5585,7 +5585,7 @@ function applyNativeFormatPainter({marks,textStyle,paragraph:attributes}){
   if(!range)return false;
   const [first,last]=range,{paragraph}=first;
   if(first===last||paragraph!==last.paragraph||paragraph.heading||paragraph.container||paragraph.tableCell||
-    paragraph.parts.some(part=>part.kind!=='text'))return false;
+    paragraph.parts.some(part=>!['text','math'].includes(part.kind)))return false;
   const target=nativeProsePosition(paragraph,first.local,last.local);
   if(!target)return false;
   const {state}=editor,{from,to,match}=target.range;
@@ -5597,9 +5597,15 @@ function applyNativeFormatPainter({marks,textStyle,paragraph:attributes}){
         to:base+block.from+block.raw.trimEnd().length};
   });
   if(!owner)return false;
-  const tr=state.tr.removeMark(from,to);
-  for(const {name,attrs} of marks)tr.addMark(from,to,schema.marks[name].create({...attrs,...(name==='boxed'&&{boxId:null})}));
-  if(Object.keys(textStyle).length)tr.addMark(from,to,schema.marks.textStyle.create(textStyle));
+  const captured=marks.map(({name,attrs})=>schema.marks[name].create({...attrs,...(name==='boxed'&&{boxId:null})}));
+  if(Object.keys(textStyle).length)captured.push(schema.marks.textStyle.create(textStyle));
+  const tr=state.tr;
+  state.doc.nodesBetween(from,to,(node,position)=>{
+    if(!node.isText)return true;
+    const start=Math.max(from,position),end=Math.min(to,position+node.nodeSize);
+    tr.removeMark(start,end);
+    for(const mark of captured)tr.addMark(start,end,mark);
+  });
   const node=tr.doc.nodeAt(owner.position);
   tr.setNodeMarkup(owner.position,undefined,{...node.attrs,...attributes});
   if(tr.doc.eq(state.doc))return true;

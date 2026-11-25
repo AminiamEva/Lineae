@@ -1289,7 +1289,7 @@ const server=createServer(async(req,res)=>{
       await page.locator('#native-tex-toggle').click();
       await page.waitForFunction(()=>document.querySelector('#native-tex-preview').dataset.state==='current');
       await page.locator('#native-tex-target').click();
-      await panel.getByText('Click prose on the native page',{exact:false}).waitFor();
+      await panel.getByText('Click text on the native page',{exact:false}).waitFor();
       await page.locator('#native-tex-edit').click();
       const tableBounds=await canvas.boundingBox();
       const tableRangeEnd='Child.ABCDBeforechapter.Af'.length;
@@ -1305,6 +1305,28 @@ const server=createServer(async(req,res)=>{
       await projectDrafts(tableRemoved,'Updated.\n\n\n');
       await page.keyboard.press(mod+'+z');
       await projectDrafts(tableProject,childWithTable);
+
+      await page.goto('http://127.0.0.1:'+server.address().port+'/?native-only-acceptance=1',{waitUntil:'networkidle'});
+      const mixedPaint='\\documentclass{article}\n\\begin{document}\n\\textbf{Seed}.\n\nA$x$B.\n\\end{document}\n';
+      await page.locator('input#file').setInputFiles({name:'painter.tex',mimeType:'text/plain',buffer:Buffer.from(mixedPaint)});
+      await page.locator('#native-tex-toggle').click();
+      await page.waitForFunction(()=>document.querySelector('#native-tex-preview').dataset.state==='current');
+      await page.locator('#native-tex-target').click();
+      await panel.getByText(/Click (?:text|prose) on the native page/).waitFor();
+      await page.locator('#native-tex-edit').click();
+      await canvas.click({position:{x:6670000*scale,y:9250000*scale}});
+      await revealToolbar(page);await page.locator('[data-group=home]').click();
+      if(!await painter.isVisible())await page.locator('[data-ribbon-group=clipboard] .ribbon-group-toggle').click();
+      await painter.click();
+      const paintBounds=await canvas.boundingBox();
+      await page.mouse.move(paintBounds.x+7550000*scale,paintBounds.y+9250000*scale);
+      await page.mouse.down();
+      await page.mouse.move(paintBounds.x+7850000*scale,paintBounds.y+9250000*scale,{steps:8});
+      await page.mouse.up();
+      await page.waitForFunction(expected=>nativeProbe.source===expected,
+        mixedPaint.replace('A$x$B.','\\textbf{A}$x$\\textbf{B}.'));
+      await page.keyboard.press(mod+'+z');
+      await page.waitForFunction(expected=>nativeProbe.source===expected,mixedPaint);
 
       await page.goto('http://127.0.0.1:'+server.address().port+'/?native-only-acceptance=1',{waitUntil:'networkidle'});
       const containerProject=mixedProject.replace('Before $z$ end.',
