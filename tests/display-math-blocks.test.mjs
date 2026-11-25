@@ -143,3 +143,20 @@ test('plain table cell edits preserve layout tokens and row line endings',()=>{
   const changed=source.slice(0,at)+'X'+source.slice(at);
   assert.deepEqual(standaloneMathChanges(sourceProjection(changed,edited),original),[{from:at,to:at+1,insert:''}]);
 });
+
+test('span placeholders never shift the cell byte range on writeback',()=>{
+  const source=wrap(String.raw`\begin{tabular}{lll}
+\multicolumn{2}{c}{Total} & One \\
+\multirow{2}{*}{Group} & Two & Three \\
+ & Four & Five
+\end{tabular}`);
+  const original={type:'doc',content:parseDocument(source).blocks.flatMap(importBlocks)};
+  const edited=structuredClone(original);
+  const table=edited.content[0];
+  table.content[1].content[0].content[0].content[0].text='XGroup';
+  table.content[2].content[0].content[0].content[0].text='YFour';
+  assert.deepEqual(standaloneMathChanges(sourceProjection(source,original),edited),[
+    {from:source.indexOf('Group'),to:source.indexOf('Group'),insert:'X'},
+    {from:source.indexOf('Four'),to:source.indexOf('Four'),insert:'Y'},
+  ]);
+});

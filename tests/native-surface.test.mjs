@@ -281,3 +281,19 @@ test('tagged plain table text maps to the original cell and exact byte range',()
   const paragraph=projection.paragraphs[3];
   assert.equal(textEdit(projection,{paragraph,from16:0,to16:0,insert:'X'}).source,source.replace('Four','XFour'));
 });
+
+test('native table ranges keep multicolumn and multirow wrappers intact',()=>{
+  const source=String.raw`\begin{document}
+\begin{tabular}{lll}
+\multicolumn{2}{c}{Total} & One \\
+\multirow{2}{*}{Group} & Two & Three \\
+ & Four & Five
+\end{tabular}
+\end{document}
+`;
+  const projection=projectTextDocument(source);
+  const find=text=>projection.paragraphs.find(paragraph=>paragraph.text===text);
+  assert.deepEqual([find('Total').tableCell.column,find('One').tableCell.column,find('Four').tableCell.column],[0,1,0]);
+  assert.equal(textEdit(projection,{paragraph:find('Group'),from16:0,to16:0,insert:'X'}).source,
+    source.replace('{Group}','{XGroup}'));
+});
