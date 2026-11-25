@@ -21,7 +21,7 @@ import {installFloatingToolbar} from './ui/floating-toolbar.js';
 import {installShortcutPriority} from './ui/shortcut-priority.mjs';
 import {installNativeTexPreview} from './ui/native-tex-preview.mjs';
 import {matchesRichFormula,richSlotPosition} from './editor/native-math/rich-slot.mjs';
-import {nativeProjectSnapshot} from './typesetting/rtex/project-snapshot.mjs';
+import {nativeAttachedSnapshot,nativeProjectSnapshot} from './typesetting/rtex/project-snapshot.mjs';
 import {stagedRasterPath} from './typesetting/rtex/raster-assets.mjs';
 import {installSettingsPanel} from './ui/settings-panel.js';
 import { buildHomeRibbon } from './ui/home-ribbon.js';
@@ -67,6 +67,7 @@ import { readGlobalColumns, writeGlobalColumns } from '../latex/columns.mjs';
 import { readImageSpacing, writeImageSpacing, IMAGE_SPACING_DEFAULTS, imageWidthPattern } from '../latex/images.mjs';
 import {
   clearProjectAssets,
+  onAssetsChanged,
   projectAssets,
   readBibliographyMetadata,
   rememberAsset,
@@ -2627,7 +2628,7 @@ nativeTexPreview=installNativeTexPreview({host:footer,before:modes,
     }
     if(projectFileKind==='bib')throw new Error(t('请打开 .tex 文档。','Open a .tex document.'));
     const text=sourceView.hidden?source():sourceView.value;
-    return {source:text,mainFile:'main.tex',signature:text};
+    return nativeAttachedSnapshot(text,projectAssets());
   },
   isComposing:()=>editor.view.composing||sourceView.composing,
   focusImage:path=>{
@@ -2832,6 +2833,7 @@ nativeTexPreview=installNativeTexPreview({host:footer,before:modes,
   history:command=>{command==='redo'?redoDocument():undoDocument();},
 });
 editor.on('update',()=>nativeTexPreview.refresh());
+onAssetsChanged(()=>nativeTexPreview.refresh());
 const compositionController=createCompositionController({
   explorer:()=>projectExplorer,fileKind:()=>projectFileKind,session:projectDocument,
   sourceHidden:()=>sourceView.hidden,composing:()=>editor.view.composing||sourceView.composing,

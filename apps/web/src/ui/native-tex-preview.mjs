@@ -174,23 +174,33 @@ export function installNativeTexPreview({host,before,getSource,getSnapshot,isCom
   });
   input.addEventListener('compositionend', event => {
     compositionField=null;
-    if(event.data&&submitInput({insert:event.data,started:inputStart||performance.now()}))committedComposition=event.data;
+    committedComposition=event.data||null;
     input.value='';
+    if(committedComposition)submitInput({insert:committedComposition,started:inputStart||performance.now()});
     setTimeout(refresh,0);
   });
   input.addEventListener('input', event => {
-    if(event.isComposing||composing())return;
-    const duplicate=committedComposition!==null && event.data===committedComposition &&
-      ['insertFromComposition','insertCompositionText'].includes(event.inputType);
-    committedComposition=null;
-    if(!duplicate&&input.value)submitInput({insert:input.value,started:inputStart||performance.now()});
+    if(event.isComposing||event.inputType==='insertCompositionText')return;
+    const insert=event.data??input.value;
     input.value='';
+    if(event.inputType==='insertFromComposition'){
+      if(!insert||insert===committedComposition)return;
+      committedComposition=insert;
+    }else{
+      const repeatedCommit=event.inputType==='insertText'&&insert===committedComposition;
+      committedComposition=null;
+      if(repeatedCommit||composing())return;
+    }
+    if(insert)submitInput({insert,started:inputStart||performance.now()});
   });
   input.addEventListener('keydown', event => {
     if (event.isComposing || event.keyCode === 229) return;
     if (nativeEditing === false) return;
     const {surface}=nativeDocument;
-    if (!event.metaKey && !event.ctrlKey && !event.altKey && [...event.key].length===1) inputStart=performance.now();
+    if (!event.metaKey && !event.ctrlKey && !event.altKey && [...event.key].length===1){
+      committedComposition=null;
+      inputStart=performance.now();
+    }
     const mod = event.metaKey || event.ctrlKey;
     if (mod && event.key.toLowerCase() === 'z') {
       event.preventDefault();
@@ -318,7 +328,7 @@ export function installNativeTexPreview({host,before,getSource,getSnapshot,isCom
     targetButton.disabled=!current()||!hasGeometry()||targeting===generation;
     editButton.disabled=!current()||!hasGeometry()||!observation;
     editButton.setAttribute('aria-pressed',String(nativeEditing));
-    const canRefreshTargets=nativeEditing||(!sentSnapshot?.files&&sentSource.length<=32*1024);
+    const canRefreshTargets=nativeEditing||(!sentSnapshot?.files?.length&&sentSource.length<=32*1024);
     if(targetArmed&&!targetButton.disabled&&canRefreshTargets&&targetTimer===null&&
         (lastTarget?.sessionId!==session||lastTarget?.sourceRevision!==sourceRevision||
          lastTarget?.signature!==sentSnapshot?.signature)){

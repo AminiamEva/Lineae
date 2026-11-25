@@ -195,18 +195,22 @@ const server=createServer(async(req,res)=>{
         input.dispatchEvent(new CompositionEvent('compositionend',{bubbles:true,data:'文'}));
         input.value='文';
         input.dispatchEvent(new InputEvent('input',{bubbles:true,inputType:'insertFromComposition',data:'文'}));
+        input.value='文';
+        input.dispatchEvent(new InputEvent('input',{bubbles:true,inputType:'insertText',data:'文'}));
       });
       const composedHeading=typedHeading.replace('XLong title','文XLong title');
       await page.waitForFunction(expected=>nativeProbe.source===expected,composedHeading);
       await page.waitForFunction(count=>nativeProbe.calls.filter(call=>call.command==='native_tex_observe_formula').length>count,beforeComposition);
       await panel.getByText('Click text on the native page',{exact:false}).waitFor();
+      assert.equal(await page.evaluate(()=>nativeProbe.source),composedHeading);
       await canvas.click({position:{x:6655000*scale,y:9250000*scale}});
       await page.keyboard.type('%');
       const escapedHeading=composedHeading.replace('文X','文\\%X');
       await page.waitForFunction(expected=>nativeProbe.source===expected,escapedHeading,{timeout:6000}).catch(async error=>{
         console.error('Native heading percent input',await panel.getByRole('status').allTextContents(),
           await page.evaluate(()=>({source:nativeProbe.source,heading:document.querySelector('.ProseMirror h1')?.textContent,
-            focus:document.activeElement?.id})));
+            focus:document.activeElement?.id,sources:nativeProbe.calls.filter(call=>call.command==='native_tex_update')
+              .slice(-5).map(call=>call.args.source)})));
         throw error;
       });
       await panel.getByText('Click text on the native page',{exact:false}).waitFor();

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {nativeProjectSnapshot} from '../apps/web/src/typesetting/rtex/project-snapshot.mjs';
+import {nativeAttachedSnapshot,nativeProjectSnapshot} from '../apps/web/src/typesetting/rtex/project-snapshot.mjs';
 import {rasterContains,stagedRaster,stagedRasterPath} from '../apps/web/src/typesetting/rtex/raster-assets.mjs';
 
 test('native raster commands can only resolve staged PNG and JPEG assets',()=>{
@@ -21,6 +21,22 @@ test('native image hits follow rotation and scaling from the painter',()=>{
   assert.equal(rasterContains(image,26,44),true);
   assert.equal(rasterContains(image,36,44),false);
   assert.equal(rasterContains({...image,transform:[0,0,0,0,0,0]},26,44),false);
+});
+
+test('a standalone snapshot stages only the transitive references already attached',async()=>{
+  const root='\\documentclass{article}\n\\input{chapter}\n\\includegraphics{figures/chart}';
+  const chapter=new Blob(['\\bibliography{refs}']);
+  const attachments=[
+    ['chapter.tex',chapter],['figures/chart.png',new Blob([Uint8Array.of(7,8)])],
+    ['refs.bib',new Blob(['@article{one}'])],['unrelated.tex',new Blob(['ignore'])],
+  ];
+  const snapshot=await nativeAttachedSnapshot(root,attachments);
+  assert.deepEqual(snapshot.files.map(file=>file.path),['chapter.tex','figures/chart.png','refs.bib']);
+  assert.deepEqual(snapshot.files[1].bytes,[7,8]);
+  const reordered=await nativeAttachedSnapshot(root+'\nUnrelated edit',attachments.toReversed());
+  assert.equal(reordered.dependencySignature,snapshot.dependencySignature);
+  assert.notEqual(reordered.signature,snapshot.signature);
+  assert.deepEqual((await nativeAttachedSnapshot(root,[])).files,[]);
 });
 
 const encode = text => new TextEncoder().encode(text);
