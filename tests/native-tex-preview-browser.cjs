@@ -126,6 +126,7 @@ const server=createServer(async(req,res)=>{
       await panel.getByText('Click text on the native page',{exact:false}).waitFor();
       await page.locator('#native-tex-edit').click();
       await panel.locator('[data-native-page="1"] canvas').click({position:{x:6550000*scale,y:9250000*scale}});
+      const headingObservations=await page.evaluate(()=>nativeProbe.calls.filter(call=>call.command==='native_tex_observe_formula').length);
       await page.keyboard.type('X');
       await page.waitForFunction(expected=>nativeProbe.source===expected,headingSource.replace('Long title','XLong title'));
       console.log('PASS native mixed editing with MathLive and JS pagination disabled');
@@ -344,6 +345,25 @@ const server=createServer(async(req,res)=>{
       });
       await page.keyboard.type('b');
       await page.waitForFunction(expected=>nativeProbe.source?.replace(/\s/g,'').includes(expected),`${open}a&b\\\\&d${close}`);
+      const typedHeading=headingSource.replace('Long title','XLong title');
+      await page.waitForFunction(count=>nativeProbe.calls.filter(call=>call.command==='native_tex_observe_formula').length>count,headingObservations);
+      await panel.getByText('Click text on the native page',{exact:false}).waitFor();
+      await panel.locator('[data-native-page="1"] canvas').click({position:{x:6550000*scale,y:9250000*scale}});
+      await page.locator('#native-tex-input').evaluate(input=>{
+        input.dispatchEvent(new CompositionEvent('compositionstart',{bubbles:true}));
+        input.dispatchEvent(new CompositionEvent('compositionend',{bubbles:true,data:''}));
+      });
+      assert.equal(await page.evaluate(()=>nativeProbe.source),typedHeading);
+      await page.locator('#native-tex-input').evaluate(input=>{
+        input.dispatchEvent(new CompositionEvent('compositionstart',{bubbles:true}));
+        input.value='文';
+        input.dispatchEvent(new InputEvent('input',{bubbles:true,inputType:'insertCompositionText',data:'文',isComposing:true}));
+        input.dispatchEvent(new CompositionEvent('compositionend',{bubbles:true,data:'文'}));
+        input.value='文';
+        input.dispatchEvent(new InputEvent('input',{bubbles:true,inputType:'insertFromComposition',data:'文'}));
+      });
+      await page.waitForFunction(expected=>nativeProbe.source===expected,
+        typedHeading.replace('XLong title','文XLong title'));
       await page.locator('#native-tex-close').click();
     }
     const boxed=input.toString().replace('\\frac{a}{}','\\boxed{\\frac{a}{}}');

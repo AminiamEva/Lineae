@@ -135,19 +135,24 @@ export function installNativeTexPreview({host,before,getSource,getSnapshot,isCom
     const text=event.clipboardData.getData('text/plain');
     if(text)commitSurface(surface.insert(text));
   });
-  input.addEventListener('compositionstart', () => { compositionField = input; });
+  let committedComposition=null;
+  input.addEventListener('compositionstart', () => {
+    committedComposition=null;
+    compositionField=input;
+  });
   input.addEventListener('compositionend', event => {
-    compositionField = null;
-    if (event.data) commitSurface(surface.insert(event.data));
-    input.value = '';
-    setTimeout(refresh, 0);
+    compositionField=null;
+    if(event.data&&commitSurface(surface.insert(event.data)))committedComposition=event.data;
+    input.value='';
+    setTimeout(refresh,0);
   });
   input.addEventListener('input', event => {
-    if (event.isComposing || composing()) return;
-    const text = input.value;
-    if (!text) return;
-    commitSurface(surface.insert(text));
-    input.value = '';
+    if(event.isComposing||composing())return;
+    const duplicate=committedComposition!==null && event.data===committedComposition &&
+      ['insertFromComposition','insertCompositionText'].includes(event.inputType);
+    committedComposition=null;
+    if(!duplicate&&input.value)commitSurface(surface.insert(input.value));
+    input.value='';
   });
   input.addEventListener('keydown', event => {
     if (event.isComposing || event.keyCode === 229) return;
