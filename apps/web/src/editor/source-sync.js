@@ -250,8 +250,12 @@ function plainTableChanges(block,nodes) {
     const nextCell=after.content[row]?.content[column];
     if(JSON.stringify(oldCell)===JSON.stringify(nextCell))continue;
     const next=read(nextCell), at=block.from+offset;
+    const paragraph=oldCell?.content?.length===1&&nextCell?.content?.length===1&&oldCell.content[0];
+    const updated=paragraph?[nextCell.content[0]]:null;
+    const region=paragraph?{raw:text,from:at,count:1,snapshot:JSON.stringify([paragraph])}:null;
     const patch=read(oldCell)===text&&next!==null&&!/[\\{}$%&#_^~\r\n]/.test(next)&&next===next.trim()
-      ?minimalChange(text,next,at):patchInlineMath(text,oldCell,nextCell,at);
+      ?minimalChange(text,next,at):patchInlineMath(text,oldCell,nextCell,at)??(region&&
+        (inlineMathChanges(region,updated)??markedInlineProseChanges(region,updated)));
     if(!patch)return null;
     const target=restored[0].content[row].content[column].content[0];
     if(oldCell.content[0].content)target.content=oldCell.content[0].content;
@@ -354,11 +358,11 @@ function inlineMathChanges(block,nodes) {
 function markedInlineProseChanges(block,nodes) {
   const [before]=JSON.parse(block.snapshot),[after]=nodes;
   if(block.count!==1||nodes.length!==1||before?.type!=='paragraph'||after?.type!=='paragraph'||
-    !block.raw.includes('\\')||!before.content?.length||before.content.length!==after.content?.length)return null;
+    !before.content?.length||before.content.length!==after.content?.length)return null;
   const inline=new Map([...sourceStructure(block.raw)].filter(token=>token.kind==='inlineMath').map(token=>[token.index,token]));
   const leading=block.raw.length-block.raw.trimStart().length;
   const parts=markedRuns(block.raw.trim(),leading,[],inline);
-  if(parts?.length!==before.content.length||!parts.some(part=>part.insideMark||part.kind==='break'||part.marks?.length))return null;
+  if(parts?.length!==before.content.length||!parts.some(part=>part.kind!=='text'||part.marks?.length))return null;
   const restored=structuredClone(after),patches=[];
   for(const [index,part] of parts.entries()){
     const old=before.content[index],next=after.content[index];

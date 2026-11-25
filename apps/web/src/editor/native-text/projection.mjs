@@ -1,6 +1,6 @@
 import {headingAt} from '../../../latex/headings.mjs';
 import {escapeText} from '../../../latex/inline.mjs';
-import {plainTableCells} from './table-cells.mjs';
+import {tableCellRanges} from './table-cells.mjs';
 import {plainContainerParagraphs} from './containers.mjs';
 import {parseDocument} from '../../../latex/document.mjs';
 import {sourceStructure} from '../../../latex/source-structure.mjs';
@@ -101,10 +101,9 @@ function instrumentProse(block, source, blockFrom, firstOwner, attribute, filePa
 }
 
 function instrumentTable(block, source, blockFrom, firstOwner, attribute, filePath, reuse, formulas=[]) {
-  const cells=plainTableCells(block,{partial:true});
+  const cells=tableCellRanges(block);
   if(!cells||!cells.length&&!formulas.length)return null;
-  const replacements=formulas.map(formula=>({from:formula.from16-blockFrom,to:formula.to16-blockFrom,
-    insert:formula.math.projection}));
+  const replacements=[],projectedFormulas=new Set();
   let nextTag=firstOwner;
   const paragraphs=[];
   for(const cell of cells){
@@ -112,18 +111,26 @@ function instrumentTable(block, source, blockFrom, firstOwner, attribute, filePa
     // An empty inline math boundary has zero ink and reports an engine-owned point.
     // The visible page still comes from the uninstrumented source.
     const from=blockFrom+offset;
-    const emptyTag=text?null:reuse?.(from,from,'')??nextTag++;
-    const built=text?instrumentText(text,nextTag,attribute,from,reuse):{
-      instrumented:`\\begingroup\\mathsurround=0pt\\attribute${attribute}=${emptyTag} $ $\\endgroup`,
-      glyphs:[{tag:emptyTag,from16:0,to16:0,char:''}],nextTag,
-    };
-    nextTag=built.nextTag;
-    replacements.push({from:offset,to:offset+text.length,insert:built.instrumented});
-    paragraphs.push({source,filePath,from16:blockFrom+offset,text,glyphs:built.glyphs,
-      parts:text?[{kind:'text',from16:0,to16:text.length,text}]:[],
-      runs:[{from16:0,to16:text.length,text,partIndex:0}],
-      tableCell:{from16:blockFrom,row,column}});
+    const tableCell={from16:blockFrom,row,column};
+    if(text){
+      const inline=formulas.filter(formula=>formula.outerFrom16>=from&&formula.outerTo16<=from+text.length);
+      const built=instrumentProse(text,source,from,nextTag,attribute,filePath,0,reuse,inline);
+      if(!built||built.paragraphs.some(paragraph=>paragraph.heading))continue;
+      nextTag=built.nextTag;
+      inline.forEach(formula=>projectedFormulas.add(formula));
+      replacements.push({from:offset,to:offset+text.length,insert:built.projection});
+      paragraphs.push(...built.paragraphs.map(paragraph=>({...paragraph,tableCell})));
+    }else{
+      const tag=reuse?.(from,from,'')??nextTag++;
+      replacements.push({from:offset,to:offset,
+        insert:`\\begingroup\\mathsurround=0pt\\attribute${attribute}=${tag} $ $\\endgroup`});
+      paragraphs.push({source,filePath,from16:from,text,glyphs:[{tag,from16:0,to16:0,char:''}],
+        parts:[],runs:[{from16:0,to16:0,text,partIndex:0}],tableCell});
+    }
   }
+  for(const formula of formulas)if(!projectedFormulas.has(formula))replacements.push({
+    from:formula.from16-blockFrom,to:formula.to16-blockFrom,insert:formula.math.projection,
+  });
   let projection='',cursor=0;
   for(const {from,to,insert} of replacements.sort((left,right)=>left.from-right.from)){
     if(from<cursor||to>block.length)return null;

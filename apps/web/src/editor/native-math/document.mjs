@@ -39,9 +39,13 @@ export function projectDocumentFormulas(source,{fragment=false,firstTag=1,filePa
     if(!table)return [];
     const close=environmentEnd(body,token.index,table);
     if(!close)return [];
-    return (tableCellRanges(body.slice(token.index,close.end))??[]).map(cell=>
-      [token.index+cell.offset,{end:token.index+cell.offset+cell.text.length,
-        from16:doc.start.length+token.index,row:cell.row,column:cell.column}]);
+    return (tableCellRanges(body.slice(token.index,close.end))??[]).flatMap(cell=>{
+      const inline=new Map([...sourceStructure(cell.text)].filter(part=>part.kind==='inlineMath')
+        .map(part=>[part.index,part]));
+      if(!inline.size||!markedRuns(cell.text,0,[],inline))return [];
+      return [...inline.keys()].map(index=>[token.index+cell.offset+index,
+        {from16:doc.start.length+token.index,row:cell.row,column:cell.column}]);
+    });
   }));
   const nested=new Map(tokens.filter(token=>token.kind==='inlineMath').map(token=>[token.index,token]));
   const markedMath=new Set();
@@ -54,7 +58,7 @@ export function projectDocumentFormulas(source,{fragment=false,firstTag=1,filePa
     blockStart+=block.length;
   }
   const spans=tokens.flatMap(token=>{
-    if(token.kind==='inlineMath'&&(tableCells.get(token.index)?.end===token.end||markedMath.has(token.index)))return [token];
+    if(token.kind==='inlineMath'&&(tableCells.has(token.index)||markedMath.has(token.index)))return [token];
     if(!token.topLevel)return [];
     if(['displayMath','inlineMath'].includes(token.kind))return [token];
     const name=token.kind==='begin'&&/^\\begin\{((?:equation|align|gather)\*?)\}$/.exec(token.value)?.[1];
@@ -83,7 +87,7 @@ export function projectDocumentFormulas(source,{fragment=false,firstTag=1,filePa
       outerFrom16:doc.start.length+span.index,outerTo16:doc.start.length+span.end,
       projectionFrom16:projection.length+from16-cursor};
     const cell=tableCells.get(span.index);
-    if(cell?.end===span.end)formula.tableCell={from16:cell.from16,row:cell.row,column:cell.column};
+    if(cell)formula.tableCell=cell;
     for(const atom of math.atoms)owners.set(atom.tag,{formula,atom});
     formulas.push(formula);
     firstTag=math.nextTag;

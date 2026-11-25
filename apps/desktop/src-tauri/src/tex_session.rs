@@ -1573,7 +1573,7 @@ mod tests {
         }
         let table_source = concat!(
             "\\documentclass{article}\n\\usepackage{graphicx}\n\\begin{document}\n",
-            "\\begin{tabular}{lc}\n & Entry \\\\\nRow & Value\n\\end{tabular}\n\n",
+            "\\begin{tabular}{lc}\n & \\textbf{Entry} $\\frac{a}{}$ \\\\\nRow & Value\n\\end{tabular}\n\n",
             "\\includegraphics[width=18pt]{figures/preview.png}\n\\end{document}\n"
         );
         let table = Session::create_snapshot(Snapshot::new(
@@ -1585,8 +1585,10 @@ mod tests {
         ).unwrap()).unwrap();
         let table_info = table.start().unwrap();
         let raw_table = wait_layout(&table, table_info.source_revision);
-        let projected_table = table_source.replace("\n & Entry",
-            "\n \\begingroup\\mathsurround=0pt\\attribute65000=91 $ $\\endgroup& Entry");
+        let projected_table = table_source.replace("\n & \\textbf{Entry} $\\frac{a}{}$",
+            "\n \\begingroup\\mathsurround=0pt\\attribute65000=91 $ $\\endgroup& \
+             \\textbf{\\begingroup\\attribute65000=92 Entry\\endgroup} \
+             $\\begingroup\\attribute65000=93 \\frac{a}{}\\endgroup$");
         let observed_table = table.observe_formula(table_info.source_revision, &projected_table, Vec::new())
             .expect("the observer retains the staged raster asset");
         let raw_page = &raw_table["pages_changed"][0];
@@ -1596,6 +1598,11 @@ mod tests {
         assert!(observed_page["dl"]["math_owners"]["fields"].as_array().is_some_and(|fields|
             fields.iter().any(|field| field["owner"] == 91 && field["empty"] == true &&
                 matches!(field["role"].as_str(), Some("math" | "cell")))), "missing empty-cell position");
+        assert!(observed_page["dl"]["math_owners"]["glyphs"].as_array().is_some_and(|glyphs|
+            glyphs.iter().any(|glyph| glyph["owner"] == 92)), "missing marked table prose");
+        assert!(observed_page["dl"]["math_owners"]["fields"].as_array().is_some_and(|fields|
+            fields.iter().any(|field| field["owner"] == 93 && field["role"] == "den" && field["empty"] == true)),
+            "missing a formula field next to marked prose in the same cell");
         let image_entries = |page: &Value| page["dl"]["images_info"].as_object().unwrap().values()
             .map(|entry| entry["file"].as_str().unwrap().replace('\\', "/"))
             .collect::<Vec<_>>();

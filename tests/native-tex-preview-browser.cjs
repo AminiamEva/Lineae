@@ -224,7 +224,7 @@ const server=createServer(async(req,res)=>{
       await page.locator('#native-tex-close').click();
       const tableWithMath=tableSource.replace('\\begin{document}','\\usepackage{tabularx}\n\\begin{document}')
         .replace('\\begin{tabular}{ll}','\\begin{tabularx}{\\textwidth}{lX}')
-        .replace('\\end{tabular}','\\end{tabularx}').replace('Two','$\\frac{a}{}$');
+        .replace('\\end{tabular}','\\end{tabularx}').replace('Two','\\textbf{Value} $\\frac{a}{}$ unit');
       await page.locator('input#file').setInputFiles({name:'mixed-table.tex',mimeType:'text/plain',buffer:Buffer.from(tableWithMath)});
       await page.locator('#native-tex-toggle').click();
       await page.waitForFunction(()=>document.querySelector('#native-tex-preview').dataset.state==='current');
@@ -236,6 +236,10 @@ const server=createServer(async(req,res)=>{
       await page.waitForFunction(expected=>nativeProbe.source===expected,tableWithMath.replace('\\frac{a}{}','\\frac{a}{b}'));
       await page.keyboard.press(mod+'+z');
       await page.waitForFunction(expected=>nativeProbe.source===expected,tableWithMath);
+      await panel.getByText('Click prose on the native page',{exact:false}).waitFor();
+      await canvas.click({position:{x:7150000*scale,y:9250000*scale}});
+      await page.keyboard.type('X');
+      await page.waitForFunction(expected=>nativeProbe.source===expected,tableWithMath.replace('Value','XValue'));
       await page.locator('#native-tex-close').click();
       const matrixSource='\\documentclass{article}\n\\usepackage{amsmath}\n\\begin{document}\n'+
         '\\[\\begin{bmatrix}a&\\\\&d\\end{bmatrix}\\]\n\\end{document}\n';

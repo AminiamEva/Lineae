@@ -210,6 +210,19 @@ test('complex table cell edits preserve float captions and column declarations',
   }
 });
 
+test('editing marked text or math in the same table cell patches only the edited run',()=>{
+  const source=wrap('\\begin{tabular}{ll}\r\nLeft  & \\textbf{Value} $ x $ unit\r\n\\end{tabular}');
+  const original={type:'doc',content:parseDocument(source).blocks.flatMap(importBlocks)};
+  const projection=sourceProjection(source,original);
+  const cell=doc=>doc.content[0].content[0].content[1].content[0].content;
+  const edited=structuredClone(original),value=source.indexOf('Value');
+  cell(edited)[0].text='XValue';
+  assert.deepEqual(standaloneMathChanges(projection,edited),[{from:value,to:value,insert:'X'}]);
+  const math=structuredClone(original),at=source.indexOf('$ x $')+2;
+  cell(math).find(node=>node.type==='math').attrs.latex=' y ';
+  assert.deepEqual(standaloneMathChanges(projection,math),[{from:at,to:at+1,insert:'y'}]);
+});
+
 test('inline math edits preserve repeated formula delimiters and untouched prose',()=>{
   const source=wrap('Text with  $ x $ and \\(x\\).\r\n');
   const original={type:'doc',content:parseDocument(source).blocks.flatMap(importBlocks)};

@@ -673,6 +673,19 @@ test('native table geometry keeps complex float declarations out of editable cel
   assert.equal(mixed.formulas[0].math.source,'\\frac{a}{}');
 });
 
+test('marked prose and formula fields share their native table cell address',()=>{
+  const source='\\begin{document}\n\\begin{tabular}{ll}\nLeft & \\textbf{Value} $\\frac{a}{}$ unit\n'+
+    '\\end{tabular}\n\\end{document}\n';
+  const projection=projectMixedDocument(source);
+  const cell=projection.paragraphs.find(paragraph=>paragraph.tableCell.column===1);
+  assert.deepEqual(cell.parts.map(part=>part.kind),['text','text','math','text']);
+  assert.deepEqual(cell.parts[0].marks,['bold']);
+  assert.deepEqual(projection.formulas[0].tableCell,cell.tableCell);
+  const start=cell.parts[0].from16;
+  assert.equal(textEdit(projection,{paragraph:cell,from16:start,to16:start,insert:'X'}).source,
+    source.replace('Value','XValue'));
+});
+
 test('native tab visits unfilled fields in source order without leaving the formula',()=>{
   const {projection,numerator,denominator}=setup(source.replace('{a}','{}'));
   const surface=createMathSurface({resolve:endpoint=>nativeTarget(projection,endpoint)});
