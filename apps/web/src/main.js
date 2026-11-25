@@ -2032,6 +2032,8 @@ const formulaCommands = {
 for (const name of mathSymbols) {
   if (/^[A-Za-z]+$/.test(name) && !(name in formulaCommands)) formulaCommands[name] = '\\' + name;
 }
+const nativeProseMathTemplates=Object.entries(formulaCommands).filter(([name])=>
+  nativeMathCommandNames.includes(name)||name==='intbody');
 const structureCommands = {
   appendix:()=>editor.chain().focus().insertContent({type:'appendixStart'}).run(),
   chapter:()=>editor.chain().focus().setHeading({level:1}).updateAttributes('heading',{command:'chapter'}).run(),
@@ -2314,6 +2316,10 @@ function completionActions() {
   };
   if(completionNative==='text'){
     const actions={
+      ...Object.fromEntries(nativeProseMathTemplates.map(([name,latex])=>[
+        name,()=>insertMath(false,/^\\(?:o?i{1,3}nt|sum|prod)$/.test(latex)?latex+'{}':
+          latex.replaceAll('#?','\\placeholder{}')),
+      ])),
       ...Object.fromEntries(Object.entries(structureCommands).filter(([name])=>
         /^(?:align(?:at)?|flalign|gather|multline|eqnarray)\*?$/.test(name))),
       chapter:()=>runNativeTextStructure('setHeading',{level:1,command:'chapter'}),
@@ -2362,7 +2368,7 @@ function completionActions() {
     if(projectExplorer?.active){actions.input=structureCommands.input;actions.include=structureCommands.include;}
     const input=completionField;
     return Object.fromEntries(Object.entries(actions).map(([name,action])=>[name,async()=>{
-      if(!nativeTexPreview.useTextSelection())return;
+      if(!nativeTexPreview.useTextSelection()&&!(canStartNativeText()&&nativeTexPreview.hasNativeTextFocus()))return;
       try{await action();}
       catch(error){sourceView.error(error?.message??String(error));}
       if(input.isConnected&&input.closest('#native-tex-preview')?.dataset.editing==='true')input.focus({preventScroll:true});
@@ -2972,6 +2978,7 @@ function nativeParagraphFormattingActive(){
 }
 function runNativeTextCommand(command,context,event){
   if(command==='insertTable')return insertNativeTableFromProse();
+  if(command==='literalBacktick')return nativeTexPreview.insertLiteralText('`');
   if(command==='hardBreak')return nativeTexPreview.startHardBreak();
   if(command==='leaveEnvironment'||command==='leaveAllEnvironments')
     return nativeTexPreview.leaveTextEnvironment(command==='leaveAllEnvironments');

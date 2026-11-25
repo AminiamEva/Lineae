@@ -323,6 +323,10 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
       return true;
     }
     if(action.lineBreak)return submitLineBreak(action);
+    if(startingText()&&action.insert==='\\'&&!action.paste){
+      showTextCommands?.(input);
+      return true;
+    }
     if(draftInput)return commitDraftInput(action,surface);
     if(!surface.caret)return false;
     if(!current()||!observation)return false;
@@ -1294,7 +1298,7 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
       const a=from.paragraph.tableCell,b=to.paragraph.tableCell;
       return sameTable(from,to)&&(a.row!==b.row||a.column!==b.column)?[from,to]:null;
     },
-    insertLiteralText:text=>nativeDocument.surface.caret?.kind==='text'&&
+    insertLiteralText:text=>(startingText()||nativeDocument.surface.caret?.kind==='text')&&
       submitInput({insert:text,paste:true,started:performance.now()}),
     clipboardSelection,
     selectAll(){
