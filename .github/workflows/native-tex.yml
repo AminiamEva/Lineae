@@ -141,6 +141,7 @@ jobs:
             import {readFileSync,writeFileSync} from "node:fs";
             import {join} from "node:path";
             import {projectMixedDocument} from "./apps/web/src/editor/native-text/projection.mjs";
+            import {mergeTableSourceRows} from "./apps/web/latex/tabularx.mjs";
             const source=readFileSync("tests/native-math/fixtures/empty-denominator.tex","utf8");
             const target=projectMixedDocument(source);
             writeFileSync(join(process.env.LINEAE_NATIVE_EVIDENCE_DIR,"production-projection.tex"),target.projection);
@@ -155,6 +156,15 @@ jobs:
             writeFileSync(join(process.env.LINEAE_NATIVE_EVIDENCE_DIR,"classic-projection.tex"),projectMixedDocument(classic).projection);
             const prose=readFileSync("tests/native-math/fixtures/prose-font.tex","utf8");
             writeFileSync(join(process.env.LINEAE_NATIVE_EVIDENCE_DIR,"prose-projection.tex"),projectMixedDocument(prose).projection);
+            const table=readFileSync("tests/native-math/fixtures/table-rowspan.tex","utf8");
+            const from=table.indexOf("\\begin{tabular}");
+            const to=table.indexOf("\\end{tabular}")+"\\end{tabular}".length;
+            const patch=mergeTableSourceRows(table.slice(from,to),0,1,0);
+            const rowspan=table.slice(0,from+patch.from)+patch.insert+table.slice(from+patch.to);
+            const native=projectMixedDocument(rowspan);
+            const merged=native.paragraphs.find(paragraph=>paragraph.text==="First Second");
+            writeFileSync(join(process.env.LINEAE_NATIVE_EVIDENCE_DIR,"table-rowspan-probe.json"),
+              JSON.stringify({source:rowspan,projection:native.projection,tag:merged.glyphs[0].tag}));
           '
           node tests/native-math/rtex-probe.mjs
           node apps/desktop/scripts/stage.mjs
