@@ -203,6 +203,12 @@
     }
   ],
   "acceptance": {
+    "latestBrowserRun": {
+      "revision": "abf41c4bdb2fe8f16e40b416451988647752fc2a",
+      "status": "passed-on-windows-macos-ubuntu",
+      "scope": "Native editing and legacy regressions, including exact source and undo for row and column edits through spans, moving a surviving span cell on row deletion, whole-table selection across files and format painting around inline math.",
+      "evidence": "https://github.com/AminiamEva/Lineae/actions/runs/45715982464"
+    },
     "fullSoftwareRun": {
       "revision": "d02ea2e30d8a373769491e02a4147316e9247cdc",
       "status": "passed-on-windows-macos-ubuntu",
@@ -239,9 +245,9 @@
       "evidence": ["https://github.com/AminiamEva/Lineae/actions/runs/45617906617", "https://github.com/AminiamEva/Lineae/actions/runs/45671660810"]
     },
     "pending": [
-      "cross-file selection across complex cells, partial formula structures, or multiple copies of the same source",
-      "full native command coverage including format painting across mixed structures and direct edits inside opaque macros",
-      "additional complex cell styles and span combinations",
+      "cross-file selection with endpoints inside cells, partial formula structures, or multiple copies of the same source",
+      "remaining native commands across nested mixed selections and direct editing inside unsupported macro expansions",
+      "additional complex cell styles, occupied source slots that would be overwritten by moving a span anchor, and indexed rules across structural edits",
       "direct figure editing inside unsupported nested float wrappers",
       "PDF semantics for complex objects beyond verified text, formulas, references, rasters and TikZ",
       "physical device verification on Windows and macOS for IME, native shortcut delivery, and keydown-to-pixels latency"
@@ -277,87 +283,117 @@
     "browserInstrumentation": "apps/web/src/ui/native-tex-preview.mjs",
     "browserPaint": "Animation frame estimate, excludes OS input and physical display scan-out.",
     "remainingMeasurements": [
-      "same input and documents on the legacy JS path",
-      "cold startup separately from warm edits",
       "physical keydown to display on the target hardware"
     ],
+    "coldBaseline": {
+      "evidence": "https://github.com/AminiamEva/Lineae/actions/runs/45712134045",
+      "revision": "f817621bb9dd9a808948a5fad2247a118edbc823",
+      "scope": "One observation per platform and page count for rtex process spawn through first converged layout, and legacy file import through the first editable formula in an opened Chromium workspace. Legacy workspace navigation through editor initialization is measured once per platform and repeated in its rows.",
+      "samples": [
+        {"platform": "macOS arm64", "pages": 10, "rtexConvergedMs": 2020.8, "legacyWorkspaceMs": 289.6, "legacyImportMs": 290.2},
+        {"platform": "macOS arm64", "pages": 100, "rtexConvergedMs": 2482.6, "legacyWorkspaceMs": 289.6, "legacyImportMs": 507.8},
+        {"platform": "macOS arm64", "pages": 300, "rtexConvergedMs": 3802, "legacyWorkspaceMs": 289.6, "legacyImportMs": 2001.3},
+        {"platform": "Windows x64", "pages": 10, "rtexConvergedMs": 2285.3, "legacyWorkspaceMs": 399.9, "legacyImportMs": 302.2},
+        {"platform": "Windows x64", "pages": 100, "rtexConvergedMs": 2915.8, "legacyWorkspaceMs": 399.9, "legacyImportMs": 628.5},
+        {"platform": "Windows x64", "pages": 300, "rtexConvergedMs": 4308.4, "legacyWorkspaceMs": 399.9, "legacyImportMs": 2398.2},
+        {"platform": "Linux x64", "pages": 10, "rtexConvergedMs": 1184.1, "legacyWorkspaceMs": 300.5, "legacyImportMs": 210.8},
+        {"platform": "Linux x64", "pages": 100, "rtexConvergedMs": 1364.1, "legacyWorkspaceMs": 300.5, "legacyImportMs": 389.1},
+        {"platform": "Linux x64", "pages": 300, "rtexConvergedMs": 2002.8, "legacyWorkspaceMs": 300.5, "legacyImportMs": 1358.6}
+      ]
+    },
+    "legacyBrowserBaseline": {
+      "evidence": "https://github.com/AminiamEva/Lineae/actions/runs/45711830079",
+      "revision": "1d631ca10053003c5386994a07c0c711f31edc60",
+      "scope": "The same generated source and alternating denominator edits. Transaction measures browser keydown to the editor update. Frame measures keydown through two animation frames. Values are P50, P95 and P99 in milliseconds.",
+      "samples": [
+        {"platform": "macOS arm64", "pages": 10, "sampleCount": 1000, "transactionMs": [29.7, 96.4, 124.1], "frameMs": [90.9, 186.9, 220.1]},
+        {"platform": "macOS arm64", "pages": 100, "sampleCount": 1000, "transactionMs": [35.1, 99.8, 118.9], "frameMs": [176.8, 270.9, 333.8]},
+        {"platform": "macOS arm64", "pages": 300, "sampleCount": 1000, "transactionMs": [50.4, 114.5, 143.1], "frameMs": [472.2, 605.5, 720.6]},
+        {"platform": "Windows x64", "pages": 10, "sampleCount": 1000, "transactionMs": [16.2, 29.2, 31.1], "frameMs": [55.7, 69.4, 72.3]},
+        {"platform": "Windows x64", "pages": 100, "sampleCount": 1000, "transactionMs": [26, 31.6, 34.6], "frameMs": [151.2, 162.1, 174.5]},
+        {"platform": "Windows x64", "pages": 300, "sampleCount": 1000, "transactionMs": [33.2, 39.4, 42.2], "frameMs": [570.4, 591, 625.6]},
+        {"platform": "Linux x64", "pages": 10, "sampleCount": 1000, "transactionMs": [15.5, 23.9, 25.6], "frameMs": [52.3, 62.6, 64]},
+        {"platform": "Linux x64", "pages": 100, "sampleCount": 1000, "transactionMs": [21.9, 29.4, 32.7], "frameMs": [122.2, 132.3, 140.8]},
+        {"platform": "Linux x64", "pages": 300, "sampleCount": 1000, "transactionMs": [29.4, 39.1, 44], "frameMs": [446.6, 467.3, 476.6]}
+      ]
+    },
     "engineBaseline": {
-      "evidence": "https://github.com/AminiamEva/Lineae/actions/runs/45709683498",
-      "priorEvidence": "https://github.com/AminiamEva/Lineae/actions/runs/45702308052",
-      "revision": "d02ea2e30d8a373769491e02a4147316e9247cdc",
-      "scope": "Warm rtex edit dispatch on stdin to matching stdout event, in CI.",
+      "evidence": "https://github.com/AminiamEva/Lineae/actions/runs/45711830079",
+      "priorEvidence": "https://github.com/AminiamEva/Lineae/actions/runs/45709683498",
+      "revision": "1d631ca10053003c5386994a07c0c711f31edc60",
+      "scope": "Warm rtex edit dispatch on stdin to matching stdout event, with the same fixture and edit sequence used in the legacy browser.",
       "samples": [
         {
           "platform": "macOS arm64",
           "pages": 10,
           "sampleCount": 1000,
-          "p50Ms": 2.1895,
-          "p95Ms": 5.3513,
-          "p99Ms": 8.8498
+          "p50Ms": 2.6158,
+          "p95Ms": 5.7508,
+          "p99Ms": 7.243
         },
         {
           "platform": "macOS arm64",
           "pages": 100,
           "sampleCount": 1000,
-          "p50Ms": 1.7935,
-          "p95Ms": 2.374,
-          "p99Ms": 4.4133
+          "p50Ms": 2.6313,
+          "p95Ms": 5.422,
+          "p99Ms": 6.9844
         },
         {
           "platform": "macOS arm64",
           "pages": 300,
           "sampleCount": 1000,
-          "p50Ms": 2.0141,
-          "p95Ms": 4.3796,
-          "p99Ms": 6.2032
+          "p50Ms": 2.4573,
+          "p95Ms": 5.1999,
+          "p99Ms": 6.466
         },
         {
           "platform": "Windows x64",
           "pages": 10,
           "sampleCount": 1000,
-          "p50Ms": 3.2512,
-          "p95Ms": 4.996,
-          "p99Ms": 5.2651
+          "p50Ms": 2.6733,
+          "p95Ms": 3.8886,
+          "p99Ms": 4.2387
         },
         {
           "platform": "Windows x64",
           "pages": 100,
           "sampleCount": 1000,
-          "p50Ms": 3.1847,
-          "p95Ms": 4.8833,
-          "p99Ms": 5.2826
+          "p50Ms": 2.5823,
+          "p95Ms": 3.5822,
+          "p99Ms": 3.9824
         },
         {
           "platform": "Windows x64",
           "pages": 300,
           "sampleCount": 1000,
-          "p50Ms": 3.0218,
-          "p95Ms": 4.51,
-          "p99Ms": 4.9572
+          "p50Ms": 2.4822,
+          "p95Ms": 3.1277,
+          "p99Ms": 3.79
         },
         {
           "platform": "Ubuntu x64",
           "pages": 10,
           "sampleCount": 1000,
-          "p50Ms": 1.7097,
-          "p95Ms": 2.5456,
-          "p99Ms": 3.1827
+          "p50Ms": 1.7262,
+          "p95Ms": 2.6718,
+          "p99Ms": 3.0591
         },
         {
           "platform": "Ubuntu x64",
           "pages": 100,
           "sampleCount": 1000,
-          "p50Ms": 1.6643,
-          "p95Ms": 2.2563,
-          "p99Ms": 2.7279
+          "p50Ms": 1.6455,
+          "p95Ms": 2.6049,
+          "p99Ms": 2.8489
         },
         {
           "platform": "Ubuntu x64",
           "pages": 300,
           "sampleCount": 1000,
-          "p50Ms": 1.5746,
-          "p95Ms": 2.2311,
-          "p99Ms": 2.6405
+          "p50Ms": 1.675,
+          "p95Ms": 2.174,
+          "p99Ms": 2.4205
         }
       ]
     }

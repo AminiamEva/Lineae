@@ -100,9 +100,18 @@ file update, or session restart. The browser regression uses
 mocked geometry. OS input, real device composition and display scan-out still
 need separate measurements on Windows and macOS.
 
-Engine-only protocol timings are in `parity.json` and the
-[two-platform Actions artifacts](https://github.com/AminiamEva/Lineae/actions/runs/45651241855).
-The run recorded 1,000 warm edits each at 10, 100, and 300 pages.
+The benchmark replayed 1,000 identical warm edits per platform and document
+size at 10, 100 and 300 pages. `parity.json` records P50, P95 and P99 for rtex
+stdin-to-stdout, legacy Chromium keydown-to-transaction and legacy Chromium
+keydown-to-frame. These timings cover distinct stages of the editing paths.
+[Windows, macOS and Linux Actions artifacts](https://github.com/AminiamEva/Lineae/actions/runs/45711830079).
+
+The separate cold run records rtex process startup through its first converged
+layout, legacy Chromium workspace initialization, and legacy import through the
+first editable formula. At 300 pages, convergence took 2.00–4.31 seconds and
+legacy import took 1.36–2.40 seconds. The cold measurements are single
+observations for each platform and document size.
+[Cold startup artifacts](https://github.com/AminiamEva/Lineae/actions/runs/45712134045).
 
 GitHub-hosted WebView2 and WKWebView checks start the engine-off workspace and
 verify the embedded fonts, PDF worker and native session bridge. The workflow
@@ -125,18 +134,19 @@ name, and a recording of the candidate box after the first and second Pinyin
 keys next to an inline formula. Check candidate selection, cancellation,
 duplicate input and shortcut delivery with the physical keyboard. Measure
 keydown to pixels separately from engine protocol and browser frame timing.
-The physical acceptance target is P95 below 30 ms. The protocol and browser
-measurements provide separate diagnostics. Use the same input and documents
-on the legacy path and record cold startup separately from warm edits.
+The physical acceptance target is P95 below 30 ms.
 
 ## Known gaps before switching the default
 
 1. Broader commands, TeX structures, complex table cells and project changes
    still need equivalent editing and history coverage.
    Row insertion and deletion inside a covered vertical span update the
-   span count in tabular, tabularx and tabularray. The browser verifies row
-   insertion and undo through the native keyboard path in ordinary tabular.
-   [Browser run](https://github.com/AminiamEva/Lineae/actions/runs/45712922440).
+   span count in tabular, tabularx and tabularray. Columns account for the
+   logical widths and covered slots of combined spans. The browser verifies
+   row and column insertion and undo through the native keyboard path in
+   ordinary tabular, and moving the surviving cell into the next row when
+   the user deletes the row that started its span.
+   [Browser run](https://github.com/AminiamEva/Lineae/actions/runs/45715982464).
 2. Cross-file replacement can include complete inline and display formulas
    between prose endpoints. It verifies the rebuilt document against the source
    drafts and records both drafts in the same undo step. Covered endpoints
