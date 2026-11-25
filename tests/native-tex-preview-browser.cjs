@@ -79,6 +79,7 @@ const server=createServer(async(req,res)=>{
     await page.context().grantPermissions(['clipboard-read','clipboard-write']);
     const mod=process.platform==='darwin'?'Meta':'Control';
     page.on('pageerror',error=>errors.push(error.message));
+    page.on('console',message=>{if(message.text().startsWith('[empty-table-check]'))console.log(message.text());});
     await page.addInitScript(installMockNativeTex);
 
     if(process.env.LINEAE_NATIVE_ONLY==='1'){
@@ -1087,7 +1088,7 @@ const server=createServer(async(req,res)=>{
       await page.waitForFunction(expected=>nativeProbe.source===expected,blank);
       await page.getByRole('button',{name:'Start typing',exact:true}).click();
       await page.keyboard.press(mod+'+Shift+6');
-      await page.waitForFunction(original=>nativeProbe.source
+      await page.waitForFunction(original=>nativeProbe.source!==original&&nativeProbe.source
         ?.replace(/\\begin\{tabular\}\{\|l\|l\|\}[\s\S]*?\\end\{tabular\}\n/,'')===original&&
         document.querySelector('.environment-tag')?.textContent.endsWith('Row 1, column 1'),blank);
       await page.keyboard.press(mod+'+z');

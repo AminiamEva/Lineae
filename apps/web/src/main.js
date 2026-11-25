@@ -362,6 +362,7 @@ function insertDefaultTable() {
     .updateAttributes('table',{borderMode:'grid'}).run();
 }
 function insertNativeTableFromProse(){
+  console.debug('[empty-table-check]',JSON.stringify({canStart:canStartNativeText(),nativeFocus:nativeTexPreview.hasNativeTextFocus(),content:editor.state.doc.childCount}));
   const table=createTable(editor.schema,2,2,false);
   const grid=table.type.create({...table.attrs,borderMode:'grid'},table.content);
   const latex=serialize(grid.toJSON()).trimEnd();
@@ -380,6 +381,7 @@ function insertNativeInitialTable(block,latex){
   const tr=state.tr.insert(0,block);
   tr.setSelection(Selection.near(tr.doc.resolve(1),1));
   const projected=sourceProjection(draft,tr.doc.toJSON(),{fragment});
+  console.debug('[empty-table-check]',JSON.stringify({projected:Boolean(projected),count:tr.doc.childCount,sourceLength:draft.length}));
   if(!projected||!dispatchNativeParagraphChange(state,tr,sourceBefore,draft,{from,to:from,insert},projected))return false;
   const project=projectExplorer?.model,path=project?.file(project.activeFileId).path;
   focusNativeTableInsertion(draft,from,path,fragment,false,started);
