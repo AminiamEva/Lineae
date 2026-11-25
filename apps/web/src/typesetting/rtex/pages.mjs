@@ -34,12 +34,17 @@ export function installNativePages({host,getFont,onPaint,onError,onMathHit}) {
         seen.add(key);
       }
       fields.set(page.page,targets);
-      const tokens=page.dl.math_owners?.glyphs?.filter(glyph=>owners.get(glyph.owner)?.atom.kind==='token')??[];
+      const tokens=page.dl.math_owners?.glyphs?.filter(glyph=>owners.has(glyph.owner))??[];
       glyphs.set(page.page,tokens);
       for(const glyph of tokens){
-        const {formula,atom}=owners.get(glyph.owner);
-        if(!selectionGlyphs.has(formula))selectionGlyphs.set(formula,[]);
-        selectionGlyphs.get(formula).push({number:page.page,glyph,atom});
+        const owner=owners.get(glyph.owner);
+        const group=owner.formula??owner.paragraph;
+        const from16=owner.formula?owner.formula.from16+owner.atom.from16:owner.paragraph.from16+owner.glyph.from16;
+        const to16=owner.formula
+          ?owner.formula.from16+owner.atom.from16+owner.atom.nucleus.length
+          :owner.paragraph.from16+owner.glyph.to16;
+        if(!selectionGlyphs.has(group))selectionGlyphs.set(group,[]);
+        selectionGlyphs.get(group).push({number:page.page,glyph,from16,to16});
       }
     }
     if(![...fields.values(),...glyphs.values()].some(items=>items.length))return false;
@@ -84,13 +89,16 @@ export function installNativePages({host,getFont,onPaint,onError,onMathHit}) {
     if(!ownership||ownership.stamp.sourceRevision!==revision||ownership.stamp.layoutVersion!==layoutVersion||
       start?.role!=='nucleus'||end?.role!=='nucleus')return;
     const a=ownership.owners.get(start.owner),b=ownership.owners.get(end.owner);
-    if(!a||!b||a.formula!==b.formula)return;
-    const offset=(atom,hit)=>atom.from16+(hit.after?atom.nucleus.length:0);
-    const x=offset(a.atom,start),y=offset(b.atom,end);
+    const group=a?.formula??a?.paragraph;
+    if(!a||!b||group!==(b?.formula??b?.paragraph))return;
+    const at=(owner,hit)=>owner.formula
+      ?owner.formula.from16+owner.atom.from16+(hit.after?owner.atom.nucleus.length:0)
+      :owner.paragraph.from16+owner.glyph.from16+(hit.after?owner.glyph.to16-owner.glyph.from16:0);
+    const x=at(a,start),y=at(b,end);
     if(x===y)return;
     const from=Math.min(x,y),to=Math.max(x,y),scale=CSS_PER_SP*zoom;
-    for(const {number,glyph,atom} of ownership.selectionGlyphs.get(a.formula)??[]){
-      if(atom.from16<from||atom.from16+atom.nucleus.length>to)continue;
+    for(const {number,glyph,from16,to16} of ownership.selectionGlyphs.get(group)??[]){
+      if(from16<from||to16>to)continue;
       const [left,top,right,bottom]=glyph.bbox;
       if(right<=left||bottom<=top)continue;
       const marker=document.createElement('span');marker.className='native-tex-selection';

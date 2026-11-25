@@ -29,7 +29,7 @@
       "license": "MIT",
       "nativeEditing": {
         "status": "vertical_slice",
-        "slice": "display formula caret, keyboard, drag selection, IME-capable input, ProseMirror transactions and history",
+        "slice": "display formula caret, keyboard, drag selection, IME-capable input, ProseMirror transactions and history; plain-document prose grapheme projection through the same surface",
         "evidence": {
           "nativeWorkflowRun": 45513512566,
           "browserRegression": "tests/native-tex-preview-browser.cjs",
@@ -38,13 +38,15 @@
         },
         "entryPoints": [
           "apps/web/src/editor/native-surface/math-surface.mjs",
+          "apps/web/src/editor/native-surface/text-surface.mjs",
+          "apps/web/src/editor/native-text/projection.mjs",
           "apps/web/src/editor/native-math/resolve.mjs",
           "apps/web/src/ui/native-tex-preview.mjs",
           "apps/desktop/src-tauri/src/tex_session.rs"
         ],
         "ipc": "Rust reader emits lineae-native-tex events; polling remains fallback only",
         "notYet": [
-          "prose text projection and caret",
+          "mixed prose/formula documents and project prose pages",
           "native structure commands and multiline editing",
           "semantic editing on PDF fallback",
           "physical-device IME and end-to-end latency",

@@ -36,11 +36,12 @@ const server=createServer(async(req,res)=>{
   await new Promise(done=>server.listen(0,'127.0.0.1',done));
   const browser=await chromium.launch({headless:true});
   let page;
+  const errors=[];
   try {
     page=await browser.newPage({locale:'en-US',viewport:{width:1600,height:1100}});
     await page.context().grantPermissions(['clipboard-read','clipboard-write']);
     const mod=process.platform==='darwin'?'Meta':'Control';
-    const errors=[];page.on('pageerror',error=>errors.push(error.message));
+    page.on('pageerror',error=>errors.push(error.message));
     await page.addInitScript(installMockNativeTex);
     await page.goto('http://127.0.0.1:'+server.address().port,{waitUntil:'networkidle'});
     await page.locator('input#file').setInputFiles({name:'native.tex',mimeType:'text/plain',
@@ -364,6 +365,28 @@ const server=createServer(async(req,res)=>{
     assert.equal(await page.evaluate(()=>document.querySelectorAll('math-field').length),1,
       'The existing formula editor remains available as the migration fallback');
     await page.locator('#native-tex-close').click();
+    // Prose slice: plain paragraphs are tagged per grapheme and edited through
+    // the same transaction path as formulas.
+    const prose=Buffer.from('\\documentclass{article}\n\\begin{document}\nAlpha beta.\n\\end{document}\n');
+    await page.locator('input#file').setInputFiles({name:'prose.tex',mimeType:'text/plain',buffer:prose});
+    await page.waitForFunction(()=>document.querySelector('.cm-content')?.textContent.includes('Alpha beta.'));
+    await button.click();
+    await page.waitForFunction(()=>document.querySelector('#native-tex-preview').dataset.state==='current');
+    await page.locator('#native-tex-target').click();
+    await panel.getByText('Click text on the native page',{exact:false}).waitFor();
+    assert.equal(await page.locator('#native-tex-edit').isEnabled(),true,'Native input is available for prose');
+    await page.locator('#native-tex-edit').click();
+    const proseScale=Number(await page.locator('#native-tex-zoom').inputValue())/100*(96/72)/65781.76;
+    await panel.locator('[data-native-page="1"] canvas').click({position:{x:6550000*proseScale,y:6250000*proseScale}});
+    await page.waitForFunction(()=>document.activeElement?.id==='native-tex-input');
+    await page.waitForFunction(()=>nativeProbe.source?.includes('Alpha beta.'));
+    await page.keyboard.type('X');
+    await page.waitForFunction(()=>nativeProbe.source?.includes('XAlpha beta.'),
+      'Typing at a prose grapheme boundary writes the exact source offset');
+    await page.waitForFunction(()=>document.querySelector('#native-tex-preview').dataset.state==='current');
+    await page.keyboard.press(mod+'+z');
+    await page.waitForFunction(()=>nativeProbe.source?.includes('Alpha beta.')&&!nativeProbe.source?.includes('XAlpha beta.'));
+    await page.locator('#native-tex-close').click();
     assert.deepEqual(errors,[]);
     if(process.env.LINEAE_NATIVE_PDF){
       await page.close();
@@ -448,6 +471,7 @@ const server=createServer(async(req,res)=>{
       calls:window.nativeProbe?.calls.slice(-6).map(call=>({command:call.command,key:call.args?.key})),
     }));}catch{/* the page may have navigated or closed */}
     console.error('Native preview UI diagnostic:',diagnostic);
+    console.error('Page errors:',errors);
     throw error;
   }finally{await browser.close();server.close();}
 })().catch(error=>{console.error(error);process.exitCode=1;server.close();});

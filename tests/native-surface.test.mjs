@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import {projectDocumentFormulas} from '../apps/web/src/editor/native-math/document.mjs';
 import {nativeTarget} from '../apps/web/src/editor/native-math/resolve.mjs';
 import {createMathSurface} from '../apps/web/src/editor/native-surface/math-surface.mjs';
+import {createTextSurface} from '../apps/web/src/editor/native-surface/text-surface.mjs';
+import {projectTextDocument,textTarget} from '../apps/web/src/editor/native-text/projection.mjs';
 
 const source = '\\begin{document}\n\\[\\frac{a}{}\\]\n\\end{document}\n';
 const filled = '\\begin{document}\n\\[\\frac{a}{b}\\]\n\\end{document}\n';
@@ -101,4 +103,53 @@ test('a pending caret offset resolves against the next observation', () => {
     [glyph(second.token('b').tag, 300)])));
   assert.equal(surface.caret.docOffset, pending);
   assert.equal(surface.caret.slot.role, 'nucleus');
+});
+
+const textSource = '\\begin{document}\nAlpha beta.\n\\end{document}\n';
+
+test('plain prose is tagged per grapheme without changing its bytes', () => {
+  const projection = projectTextDocument(textSource);
+  const paragraph = projection.paragraphs[0];
+  assert.equal(paragraph.text, 'Alpha beta.');
+  assert.equal(projection.projection.replace(/\\begingroup|\\endgroup|\\attribute65000=\d+ /g, ''),
+    textSource);
+  assert.deepEqual(paragraph.glyphs.map(glyph => glyph.char), [...'Alphabeta.']);
+  assert.equal(projection.owners.get(paragraph.glyphs[0].tag).glyph.from16, 0);
+});
+
+test('a native text caret edits one grapheme and keeps prose offsets exact', () => {
+  const projection = projectTextDocument(textSource);
+  const surface = createTextSurface({projection});
+  const glyphs = projection.paragraphs[0].glyphs.map((glyph, index) => ({
+    owner: glyph.tag, char: glyph.char.codePointAt(0), bbox: [100 + index * 20, 90, 120 + index * 20, 100],
+  }));
+  assert.ok(surface.setObservation([{page: 1, exact: true, dl: {math_owners: {fields: [], glyphs}}}]));
+  const caret = surface.nearest(1, 100, 95);
+  assert.equal(caret.local, 0);
+  const edit = surface.insert('X');
+  assert.equal(edit.text, 'XAlpha beta.');
+  assert.equal(edit.source, textSource.replace('Alpha beta.', 'XAlpha beta.'));
+  assert.equal(surface.pendingOffset, projection.paragraphs[0].from16 + 1);
+});
+
+test('backspace removes one whole grapheme and never crosses a paragraph', () => {
+  const projection = projectTextDocument(textSource);
+  const surface = createTextSurface({projection});
+  const paragraph = projection.paragraphs[0];
+  const glyphs = paragraph.glyphs.map((glyph, index) => ({
+    owner: glyph.tag, char: glyph.char.codePointAt(0), bbox: [100 + index * 20, 90, 120 + index * 20, 100],
+  }));
+  surface.setObservation([{page: 1, exact: true, dl: {math_owners: {fields: [], glyphs}}}]);
+  surface.selectBetween(paragraph.from16 + 5, paragraph.from16 + 5);
+  const edit = surface.erase();
+  assert.equal(edit.text, 'Alph beta.');
+  assert.equal(surface.pendingOffset, paragraph.from16 + 4);
+  surface.clearPending();
+  surface.selectBetween(paragraph.from16, paragraph.from16);
+  assert.equal(surface.erase(), null);
+});
+
+test('native prose targeting refuses TeX syntax instead of guessing a range', () => {
+  assert.equal(projectTextDocument('\\begin{document}\nCost $5.\n\\end{document}\n'),null);
+  assert.equal(textTarget(null, 1, false), null);
 });

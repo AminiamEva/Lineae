@@ -85,6 +85,19 @@ module.exports=function installMockNativeTex() {
       const cell=/&\\attribute65000=(\d+) \s*\\\\/.exec(args.projection);
       const aligned=/&\\aftergroup\\LineaeNativeCell([A-J]+)\s*\\\\/.exec(args.projection);
       const cellOwner=cell?.[1]??(aligned?[...aligned[1]].map(letter=>letter.charCodeAt(0)-65).join(''):null);
+      if(!match&&!script&&!cellOwner){
+        const text=[...args.projection.matchAll(/\\attribute65000=(\d+) (.)/gsu)];
+        if(!text.length||args.sourceRevision!==p.revision)throw new Error('Unexpected formula observation request');
+        const observed=p.layout().pages_changed;
+        observed[0].dl.math_owners={fields:[],glyphs:[]};
+        let x=6500000;
+        for(const [,owner,char] of text){
+          observed[0].dl.math_owners.glyphs.push({owner:Number(owner),char:char.codePointAt(0),
+            bbox:[x,6000000,x+200000,6500000]});
+          x+=200000;
+        }
+        return observed;
+      }
       if((!match&&!script&&!cellOwner)||args.sourceRevision!==p.revision)throw new Error('Unexpected formula observation request');
       const observed=p.layout().pages_changed;
       const denominator=/\\frac\{[^{}]*\}\{(?:\\attribute65000=(\d+) )?([^{}]*)\}/.exec(args.projection);

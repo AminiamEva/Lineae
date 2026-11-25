@@ -2665,6 +2665,23 @@ nativeTexPreview=installNativeTexPreview({host:footer,before:modes,
     editor.view.dispatch(editor.state.tr.setNodeMarkup(position,undefined,{...node.attrs,latex:text}));
     return true;
   },
+  commitText:({paragraph,patch,text})=>{
+    if(projectExplorer?.active||projectDocument.composition)return false;
+    if((sourceView.hidden?source():sourceView.value)!==paragraph.source)return false;
+    if(!text||text===paragraph.text)return false;
+    let found=-1,matches=0;
+    editor.state.doc.forEach((node,offset)=>{
+      if(node.type.name==='paragraph'&&node.textContent===paragraph.text&&
+          node.childCount===1&&node.firstChild.isText){matches++;if(found<0)found=offset;}
+    });
+    if(matches!==1||found<0)return false;
+    const start=found+1,tr=editor.state.tr;
+    if(patch.to>patch.from)tr.delete(start+patch.from,start+patch.to);
+    if(patch.insert)tr.insertText(patch.insert,start+patch.from);
+    tr.setSelection(TextSelection.create(tr.doc,start+patch.from+patch.insert.length));
+    editor.view.dispatch(tr);
+    return true;
+  },
   history:command=>{command==='redo'?redoDocument():undoDocument();},
 });
 editor.on('update',()=>nativeTexPreview.refresh());

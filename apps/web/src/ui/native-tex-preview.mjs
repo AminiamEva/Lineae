@@ -4,12 +4,14 @@ import {installNativePdf} from '../typesetting/rtex/pdf.mjs';
 import {projectSnapshotFormulas} from '../editor/native-math/document.mjs';
 import {matchesRichFormula,nativeCaretTargets} from '../editor/native-math/rich-slot.mjs';
 import {createMathSurface,surfaceCaretRect} from '../editor/native-surface/math-surface.mjs';
+import {createTextSurface} from '../editor/native-surface/text-surface.mjs';
+import {projectTextDocument,textTarget} from '../editor/native-text/projection.mjs';
 import {nativeTarget} from '../editor/native-math/resolve.mjs';
 
 // Native LaTeX output is the primary page. The opt-in native input mode sends
 // supported keys, caret and IME through this surface into ProseMirror; the old
 // JS-formatted page and MathLive inputs stay available as the migration fallback.
-export function installNativeTexPreview({host,before,getSource,getSnapshot,isComposing,focusMathSlot,commitMath,history}) {
+export function installNativeTexPreview({host,before,getSource,getSnapshot,isComposing,focusMathSlot,commitMath,commitText,history}) {
   const invoke=window.__TAURI__?.core?.invoke;
   if(!invoke) return {refresh(){},documentChanged(){},relocalize(){}};
   const button=document.createElement('button');
@@ -50,13 +52,17 @@ export function installNativeTexPreview({host,before,getSource,getSnapshot,isCom
   let mirror=null;
   let compositionField=null;
   const composing=()=>isComposing()||Boolean(compositionField?.isConnected);
-  const surface=createMathSurface({resolve:endpoint=>resolveEndpoint(endpoint)});
+  const mathSurface=()=>createMathSurface({resolve:endpoint=>resolveEndpoint(endpoint)});
+  let surface=mathSurface();
+  let surfaceKind='math';
   let nativeEditing=false;
   let pendingLatencyStart=0;
   let inputStart=0;
   const latency=[];
   const eventApi=window.__TAURI__?.event;
   function resolveEndpoint(endpoint) {
+    if(observation?.kind==='text')
+      return textTarget(observation.projection, endpoint.owner, Boolean(endpoint.after));
     return nativeTarget(observation?.projection, endpoint);
   }
   function paintSurfaceSelection() {
@@ -80,7 +86,9 @@ export function installNativeTexPreview({host,before,getSource,getSnapshot,isCom
   }
   function commitSurface(edit) {
     if (!edit) return;
-    const applied = commitMath?.({ formula: edit.formula, patch: edit.patch, text: edit.text });
+    const applied = edit.kind === 'text'
+      ? commitText?.({ paragraph: edit.paragraph, patch: edit.patch, text: edit.text })
+      : commitMath?.({ formula: edit.formula, patch: edit.patch, text: edit.text });
     input.value = '';
     if (!applied) {
       surface.clearPending();
@@ -174,6 +182,7 @@ export function installNativeTexPreview({host,before,getSource,getSnapshot,isCom
           stamp.sourceRevision!==observation.stamp.sourceRevision)return;
       const head=resolveEndpoint(hit),anchor=origin?resolveEndpoint(origin):head;
       if(!head||!anchor)return false;
+      if(observation.kind==='text'&&!nativeEditing)return false;
       if(nativeEditing){
         if(!surface.selectBetween(anchor.docOffset,head.docOffset))return false;
         inputStart=performance.now();
@@ -188,7 +197,7 @@ export function installNativeTexPreview({host,before,getSource,getSnapshot,isCom
     },
   });
   function syncCaret() {
-    if(!mirror||!observation||!current()||document.activeElement!==mirror.field)return;
+    if(observation?.kind!=='math'||!mirror||!current()||document.activeElement!==mirror.field)return;
     const formula=[...observation.projection.owners.values()].find(({formula})=>
       formula.kind===mirror.kind&&formula.ordinal===mirror.ordinal&&formula.filePath===mirror.filePath)?.formula;
     if(!formula||formula.math.atoms.length>200||!matchesRichFormula(mirror.field,formula))return;
@@ -259,7 +268,7 @@ export function installNativeTexPreview({host,before,getSource,getSnapshot,isCom
     wantedSnapshot=null;sentSnapshot=null;wantedSource='';sentSource='';
     observation=null;targetStatus.textContent='';
     previousProjection=null;
-    nativeEditing=false;surface.clearPending();surface.reset();input.blur();input.value='';
+    nativeEditing=false;surface.clearPending();surface.reset();surfaceKind='math';input.blur();input.value='';
     pendingLatencyStart=0;inputStart=0;delete panel.dataset.latencySamples;
     delete panel.dataset.latencyP50;delete panel.dataset.latencyP95;
     compositionField=null;
@@ -434,21 +443,33 @@ export function installNativeTexPreview({host,before,getSource,getSnapshot,isCom
     if(targetButton.disabled)return;
     const stamp={sessionId:session,sourceRevision};
     lastTarget=stamp;
-    const projection=projectSnapshotFormulas(sentSnapshot,previousProjection);
+    let kind='math';
+    let projection=projectSnapshotFormulas(sentSnapshot,previousProjection);
     if(!projection||![...projection.owners.values()].some(({atom})=>['frac','sqrt','token','cell'].includes(atom.kind))){
-      targetStatus.textContent=t('当前文档没有可定位的公式。','No supported formula in this document snapshot.');
-      return;
+      projection=sentSnapshot?.files?.length?null:projectTextDocument(sentSource);
+      if(!projection){
+        targetStatus.textContent=t('当前文档没有可定位的公式或纯文本段落。','No supported formula or plain paragraph in this document snapshot.');
+        return;
+      }
+      kind='text';
     }
     const attempt=generation;
     targeting=attempt;observation=null;renderStatus();
     targetStatus.textContent=t('正在核对源码标记及实际排版…','Checking projected source against the visible layout…');
     try {
-      const observed=await invoke('native_tex_observe_formula',{...stamp,projection:projection.projection,files:projection.files});
+      const observed=await invoke('native_tex_observe_formula',{...stamp,projection:projection.projection,
+        files:kind==='math'?projection.files:undefined});
       if(attempt!==generation||stamp.sessionId!==session||stamp.sourceRevision!==sourceRevision||
           sentSource!==projection.source||wantedSource!==projection.source)return;
       if(!renderer.attachOwners(observed,stamp,projection.owners))throw new Error(t('标记版排版与当前页面不一致，未启用命中。','Projected geometry differs from the displayed page; targeting remains disabled.'));
-      observation={projection,stamp,observed};
-      previousProjection=projection;
+      if(kind==='text'){
+        if(surfaceKind==='text')surface.setProjection(projection);
+        else {surface=createTextSurface({projection});surfaceKind='text';}
+      }else {
+        if(surfaceKind!=='math'){surface=mathSurface();surfaceKind='math';}
+        previousProjection=projection;
+      }
+      observation={kind,projection,stamp,observed};
       if(nativeEditing&&surface.setObservation(observed)){
         paintSurfaceSelection();
         positionInput();
@@ -464,7 +485,9 @@ export function installNativeTexPreview({host,before,getSource,getSnapshot,isCom
         input.focus({preventScroll:true});
       }
       requestAnimationFrame(syncCaret);
-      targetStatus.textContent=t('点击预览中的空槽或字符边缘，继续在编辑器输入。','Click the empty numerator or denominator, another supported empty slot, or a glyph edge to continue typing in the editor.');
+      targetStatus.textContent=kind==='text'
+        ?t('点击原生页面中的文字定位光标，输入会写入原文。','Click text on the native page to place the caret; typing edits the source.')
+        :t('点击预览中的空槽或字符边缘，继续在编辑器输入。','Click the empty numerator or denominator, another supported empty slot, or a glyph edge to continue typing in the editor.');
     } catch(failure) {
       if(attempt===generation)targetStatus.textContent=String(failure?.message??failure);
     } finally {

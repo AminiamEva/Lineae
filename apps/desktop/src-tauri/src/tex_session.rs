@@ -1370,6 +1370,31 @@ mod tests {
         assert!(lock(&session.processes).is_empty());
     }
 
+    /// Prose ownership is only accepted when rtex reports attributes on text
+    /// glyphs outside math. This gate runs on both target platforms.
+    #[test]
+    #[ignore = "requires the pinned real rtex 0.0.8 / LuaLaTeX CI toolchain"]
+    fn real_native_text_observation() {
+        for name in ["LINEAE_RTEX_PATH", "RTEX_TEXLIVE_BIN"] {
+            assert!(!std::env::var_os(name).unwrap_or_else(|| panic!("{name} is required")).is_empty());
+        }
+        let source = "\\documentclass{article}\n\\begin{document}\nAlpha beta.\n\\end{document}\n";
+        let projection = source.replace(
+            "Alpha beta.",
+            "\\begingroup\\attribute65000=41 A\\attribute65000=42 l\\endgroup pha beta.",
+        );
+        let session = Session::create(source).unwrap();
+        let info = session.start_with_owners(true).expect("prose owner session must start");
+        let observed = session.observe_formula(info.source_revision, &projection, Vec::new())
+            .expect("prose attributes must produce observable glyph boxes");
+        let owned = |owner: i64, ch: i64| observed.iter().any(|page| {
+            page["dl"]["math_owners"]["glyphs"].as_array().is_some_and(|glyphs| glyphs.iter()
+                .any(|glyph| glyph["owner"] == owner && glyph["char"] == ch))
+        });
+        assert!(owned(41, 65) && owned(42, 108), "text glyph ownership must survive compilation");
+        session.terminate();
+    }
+
     /// Explicit remote CI gate only; this is not a JavaScript trust-dialog bypass.
     #[test]
     #[ignore = "requires the pinned real rtex 0.0.8 / LuaLaTeX CI toolchain"]

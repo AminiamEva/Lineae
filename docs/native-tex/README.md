@@ -159,7 +159,7 @@ its disposable project; it never saves over the original `.tex`.
 | History and source changes | One PM/MathLive history, no second native editor history; preview must not write document state |
 | IME and clipboard | Existing input surface remains visible/authoritative; physical WKWebView/WebView2 checks still required |
 | LuaLaTeX session, fonts and PDF | Real ignored Rust integration test explicitly selected in remote native CI; mock UI tests do not replace it |
-| Native Canvas clicking, caret and selection | Interactive slice: verified clicks, caret, keyboard, drag selection and IME-capable input route into ProseMirror for supported formulas |
+| Native Canvas clicking, caret and selection | Interactive slice: verified clicks, caret, keyboard, drag selection and IME-capable input route into ProseMirror for supported formulas and plain-document prose |
 | Native page fidelity | Exact glyph/resource gate, otherwise revision-frozen whole-page PDF; no generic-font or unknown-operation substitution |
 | Full feature parity | **Not achieved**; native direct editing cannot become default until these gates pass |
 

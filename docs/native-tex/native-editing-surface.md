@@ -17,22 +17,31 @@ layout geometry comes only from rtex/LuaLaTeX.
 
 ## Vertical slice implemented
 
-Scope: one standalone or project document, one display formula, editor-owned
-math slots.
+Scope: one standalone or project document, one display formula with
+editor-owned math slots, and plain documents whose body has no supported
+formula. A document that mixes prose and formulas still targets the formulas
+only.
 
 | Layer | Implementation |
 | --- | --- |
 | Geometry source | rtex full layout; exact OTF/TTF pages; PDF fallback for other resources |
-| Source mapping | `editor/native-math/source.mjs`, `document.mjs`, `resolve.mjs` |
-| Caret/selection | `editor/native-surface/math-surface.mjs` over observed owner boxes |
+| Source mapping | `editor/native-math/source.mjs`, `document.mjs`, `resolve.mjs`; `editor/native-text/projection.mjs` |
+| Caret/selection | `editor/native-surface/math-surface.mjs` and `text-surface.mjs` over observed owner boxes |
 | Input | textarea overlay for keys and IME composition; keys map to exact source patches |
 | Transactions | `commitMath` updates the math node attribute in one ProseMirror transaction |
 | History | ProseMirror undo/redo; formula selections restored by structural atom paths |
 | IPC | Rust reader thread emits `lineae-native-tex` events; no polling loop |
 
-Keys currently covered: printable insertion, Backspace/Delete within a slot,
-Left/Right/Home/End between observed stops, Shift selection, drag selection
-across glyphs, Cmd/Ctrl+Z / Shift+Z / Y.
+Keys currently covered: printable insertion, Backspace/Delete within a slot or
+paragraph, Left/Right/Home/End between observed stops, Shift selection, drag
+selection across glyphs, Cmd/Ctrl+Z / Shift+Z / Y.
+
+For plain prose, each non-space grapheme is preceded by an
+`\attribute65000` assignment inside a local group. The instrumented compile is
+accepted only when its drawing equals the displayed raw page, so attributes
+that change spacing or line breaking cannot authorize a caret. Source edits
+remain UTF-16 patches into the original paragraph bytes; TeX syntax in a
+paragraph refuses native targeting rather than guessing a range.
 
 Drag selections and keyboard-extension selections are drawn from observed glyph
 boxes. A click paints a positioned caret marker. Both disappear when the frame
@@ -68,10 +77,10 @@ Engine-only protocol timings remain in `native-tex.yml` artifacts.
 
 ## Known gaps before switching the default
 
-1. **Prose text projection.** Text hit-testing/selection still comes from the
-   existing editor surface. The next increment adds per-grapheme owner
-   projection and the same caret/edit pipeline for paragraphs, with a strict
-   raw-vs-instrumented drawing comparison.
+1. **Mixed prose and project pages.** Plain prose paragraphs now use the same
+   pipeline, but a document with any supported display formula still targets
+   formulas only. Composed project pages have no prose projection yet; body
+   text in a project remains on the existing editor surface.
 2. **IME commit coverage.** The native input is an IME-capable textarea and
    composition disables targeting/export, but automated composition commit and
    candidate-window placement need real-device tests.
