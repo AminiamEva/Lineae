@@ -204,11 +204,11 @@
   ],
   "acceptance": {
     "fullSoftwareRun": {
-      "revision": "a8eabc343f1876491732d2ab3ee4fc23b3c4866f",
+      "revision": "d7f460871cc7160904acea255f74577a439a0026",
       "status": "passed-on-windows-macos-ubuntu",
       "scope": "All three jobs passed the browser gates, real host geometry including repeated source expansion and four empty cases cells, recorded page editing, and the engine-off desktop WebView smoke. This run includes unbundled executables for physical device input review.",
-      "evidence": "https://github.com/AminiamEva/Lineae/actions/runs/45702308052",
-      "priorEvidence": "https://github.com/AminiamEva/Lineae/actions/runs/45699877002"
+      "evidence": "https://github.com/AminiamEva/Lineae/actions/runs/45706843556",
+      "priorEvidence": "https://github.com/AminiamEva/Lineae/actions/runs/45702308052"
     },
     "nativeHost": {
       "status": "protocol-and-project-tests-passed",
@@ -240,7 +240,7 @@
     },
     "pending": [
       "cross-file selection across complex cells, partial formula structures, or multiple copies of the same source",
-      "full native command coverage including format painter and direct edits inside opaque macros",
+      "full native command coverage including format painting across mixed structures and direct edits inside opaque macros",
       "additional complex cell styles and span combinations",
       "direct figure editing inside unsupported nested float wrappers",
       "PDF semantics for complex objects beyond verified text, formulas, references, rasters and TikZ",

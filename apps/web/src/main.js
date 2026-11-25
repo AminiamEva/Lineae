@@ -2818,15 +2818,7 @@ function updateSelectedImageAttrs(patch){
   if(updated?.type.name==='documentImage')imagePanel?.setValues?.(updated.attrs);
   return true;
 }
-function sortParagraphs(mode) {
-  const { from,to }=editor.state.selection;
-  const items=[];
-  editor.state.doc.forEach((node,offset) => {
-    const end=offset+node.nodeSize;
-    if (end<=from || offset>=to) return;
-    items.push({node,offset});
-  });
-  if (items.length<2 || items.some(item=>item.node.type.name!=='paragraph')) return false;
+function sortedParagraphs(items,mode) {
   let collator;
   try {
     collator = mode==='alphabet' ? new Intl.Collator(undefined,{sensitivity:'base'})
@@ -2835,7 +2827,7 @@ function sortParagraphs(mode) {
   } catch {
     collator = new Intl.Collator('zh-Hans',{usage:'sort'});
   }
-  const sorted=[...items].sort((left,right) => {
+  return [...items].sort((left,right) => {
     if (mode==='alphabet') {
       const leftLatin=/^[\x00-\x7F]/.test(left.node.textContent) ? 0 : 1;
       const rightLatin=/^[\x00-\x7F]/.test(right.node.textContent) ? 0 : 1;
@@ -2843,12 +2835,54 @@ function sortParagraphs(mode) {
     }
     return collator.compare(left.node.textContent,right.node.textContent);
   });
+}
+function sortParagraphs(mode) {
+  if(nativeTexPreview.hasNativeTextFocus?.())return sortNativeParagraphs(mode);
+  const { from,to }=editor.state.selection;
+  const items=[];
+  editor.state.doc.forEach((node,offset) => {
+    const end=offset+node.nodeSize;
+    if (end<=from || offset>=to) return;
+    items.push({node,offset});
+  });
+  if (items.length<2 || items.some(item=>item.node.type.name!=='paragraph')) return false;
+  const sorted=sortedParagraphs(items,mode);
   if (sorted.every((item,index) => item===items[index])) return false;
   const first=items[0].offset;
   const last=items.at(-1).offset+items.at(-1).node.nodeSize;
   editor.view.dispatch(editor.state.tr.replaceWith(first,last,sorted.map(item=>item.node)).scrollIntoView());
   editor.view.focus();
   return true;
+}
+function sortNativeParagraphs(mode){
+  const spans=nativeTexPreview.verifiedProseSpan();
+  const origin=spans[0]?.paragraph;
+  if(!origin||spans.length<2||spans.some(({paragraph})=>!paragraph||paragraph.heading||paragraph.container||
+    paragraph.tableCell||paragraph.source!==origin.source||paragraph.filePath!==origin.filePath||
+    paragraph.occurrence!==origin.occurrence))return false;
+  const positions=spans.map(({paragraph,from,to})=>nativeProsePosition(paragraph,from,to));
+  if(positions.some(position=>!position))return false;
+  const byPosition=new Map();
+  forEachNativeDocumentBlock('paragraph',(node,offset,block,path,source,base)=>{
+    if(positions[0].project&&path!==origin.filePath||source!==origin.source||block?.count!==1||!block.editable)return;
+    const raw=block.raw.trim();
+    if(raw===serialize(node.toJSON()).trim())byPosition.set(offset,{node,raw,offset,
+      from:base+block.from+block.raw.length-block.raw.trimStart().length,to:base+block.from+block.raw.trimEnd().length});
+  });
+  const items=positions.map(({range})=>byPosition.get(range.match.offset));
+  const {source}=origin;
+  if(items.some((item,index)=>!item||index>0&&(items[index-1].offset+items[index-1].node.nodeSize!==item.offset||
+    !/^[ \t]*(?:\r?\n[ \t]*){2,}$/.test(source.slice(items[index-1].to,item.from)))))return false;
+  const sorted=sortedParagraphs(items,mode);
+  if(sorted.every((item,index)=>item===items[index]))return false;
+  const start=items[0].offset,end=items.at(-1).offset+items.at(-1).node.nodeSize;
+  const {state}=editor;
+  const tr=state.tr.replaceWith(start,end,sorted.map(item=>item.node));
+  const draft=items.reduceRight((text,item,index)=>text.slice(0,item.from)+sorted[index].raw+text.slice(item.to),source);
+  const {composition,project,file}=positions[0];
+  if(composition)return dispatchNativeProjectChange(state,tr,project,new Map([[file.id,draft]]));
+  const projected=sourceProjection(draft,tr.doc.toJSON(),{fragment:projectFileKind==='tex'});
+  return Boolean(projected&&dispatchNativeParagraphChange(state,tr,source,draft,textPatch(source,draft)[0],projected));
 }
 function zoomByKeyboard(amount, {source}={}) {
   if(source)return false;

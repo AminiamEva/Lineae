@@ -1291,6 +1291,11 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
       const [from,to]=nativeDocument.surface.range;
       return from?.kind==='text'&&from.paragraph===to?.paragraph?[from,to]:null;
     },
+    verifiedProseSpan(){
+      if(!acceptsInput()||!nativeEditing||!current()||!observation||pendingEdit)return [];
+      const [from,to]=nativeDocument.surface.range;
+      return nativeDocument.proseRanges(from,to);
+    },
     verifiedTableRange(){
       if(!acceptsInput()||!nativeEditing||!current()||!observation||pendingEdit)return null;
       const [from,to]=nativeDocument.surface.range;
