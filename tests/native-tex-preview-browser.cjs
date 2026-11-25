@@ -1731,6 +1731,16 @@ const server=createServer(async(req,res)=>{
       await page.waitForFunction(expected=>nativeProbe.source===expected,unsorted.replace('Zed.\n\n\nAlpha.','Alpha.\n\n\nZed.'));
       await page.keyboard.press(mod+'+z');
       await page.waitForFunction(expected=>nativeProbe.source===expected,unsorted);
+      const leadingFormula=blank.replace('\n\n\\end{document}',
+        '\n\\[\\frac{a}{b}\\]\n\nAfter.\n\\end{document}');
+      await page.locator('input#file').setInputFiles({name:'leading-formula.tex',mimeType:'text/plain',buffer:Buffer.from(leadingFormula)});
+      await page.waitForFunction(expected=>nativeProbe.source===expected,leadingFormula);
+      await panel.getByText('Click prose on the native page',{exact:false}).waitFor();
+      await canvas.click({position:{x:6550000*scale,y:9250000*scale}});
+      await page.keyboard.press('End');
+      await page.keyboard.press('Shift+PageUp');
+      await page.keyboard.press(mod+'+c');
+      assert.equal(await page.evaluate(()=>navigator.clipboard.readText()),'\\[\\frac{a}{b}\\]\n\nAfter.');
       await page.goto('http://127.0.0.1:'+server.address().port+'/?native-only-acceptance=1',{waitUntil:'networkidle'});
       const singleProject=workspaceSource.replace('Native document.','Native document.\n\n\\[\\frac{a}{}\\]');
       const independent=workspaceSource.replace('Native document.','Independent file.');

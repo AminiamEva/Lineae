@@ -243,15 +243,15 @@ export function installNativePages({host,getFont,getTypeOneFont,getRaster,onPain
     }
     previousCaret=null;
   }
-  function showSelection(start,end){
+  function showSelection(start,end,documentRanges){
     clearSelection();
     caret?.remove();caret=null;
     previousCaret=null;
-    if(!ownership||ownership.stamp.sourceRevision!==revision||ownership.stamp.layoutVersion!==layoutVersion||
-      start?.role!=='nucleus'||end?.role!=='nucleus')return;
+    if(!ownership||ownership.stamp.sourceRevision!==revision||ownership.stamp.layoutVersion!==layoutVersion)return;
+    if(!documentRanges&&(start?.role!=='nucleus'||end?.role!=='nucleus'))return;
     const a=ownership.owners.get(start.owner),b=ownership.owners.get(end.owner);
-    if(a?.paragraph&&b?.paragraph){
-      for(const {paragraph,formula,from,to} of proseRanges?.(start,end)??[]){
+    if(documentRanges||a?.paragraph&&b?.paragraph){
+      for(const {paragraph,formula,from,to} of documentRanges??proseRanges?.(start,end)??[]){
         if(formula)paintRange(formula,formula.from16,formula.to16);
         else paintRange(paragraph,paragraph.from16+from,paragraph.from16+to);
       }

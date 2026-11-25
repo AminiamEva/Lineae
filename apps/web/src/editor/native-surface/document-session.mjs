@@ -22,12 +22,19 @@ export function createNativeDocumentSession(resolve) {
   let orderByFile=new Map();
   let documentRegions=[];
   let observedStops=[];
+  const displayEdges=new Map();
   const order=stop=>orderByFile.get(fileOf(stop))?.find(region=>
     copyOf(stop)===region.occurrence&&stop.docOffset>=region.from&&stop.docOffset<=region.to)?.index??-1;
-  const canSelect=(from,to)=>sameOwner(from,to)||Boolean(from?.kind==='text'&&to?.kind==='text'&&
-    (sameTable(from,to)||!from.paragraph.tableCell&&!to.paragraph.tableCell&&
-      (fileOf(from)===fileOf(to)||(order(from)>=0&&order(to)>=0))));
   const compare=(left,right)=>order(left)-order(right)||left.docOffset-right.docOffset;
+  function canSelect(from,to){
+    if(sameOwner(from,to))return true;
+    if(!from||!to||fileOf(from)!==fileOf(to)&&(order(from)<0||order(to)<0))return false;
+    if(from.kind===to.kind)return from.kind==='text'&&(sameTable(from,to)||!tableCellOf(from)&&!tableCellOf(to));
+    const [prose,math]=from.kind==='text'?[from,to]:[to,from];
+    const edges=displayEdges.get(math.formula);
+    if(!edges||tableCellOf(prose))return false;
+    return math===(compare(math,prose)<0?edges[0]:edges[1]);
+  }
   const selection=createSelectionModel(sameOwner,fileOf,canSelect);
   const math=createMathSurface({resolve,selection});
   const text=createTextSurface({selection});
@@ -61,6 +68,13 @@ export function createNativeDocumentSession(resolve) {
         ...(projection.kind==='text'?[]:math.collectStops(observed,verified)),
         ...(projection.kind==='math'?[]:text.collectStops(observed,verified)),
       ].sort(compare);
+      displayEdges.clear();
+      for(const stop of observedStops){
+        if(stop.formula?.kind!=='displayMath')continue;
+        const edges=displayEdges.get(stop.formula);
+        if(edges)edges[1]=stop;
+        else displayEdges.set(stop.formula,[stop,stop]);
+      }
       return selection.setStops(observedStops);
     },
     fileBoundaries(){
@@ -158,10 +172,10 @@ export function createNativeDocumentSession(resolve) {
       return selection.selectTargets(next,next);
     },
     proseRanges(anchor,head){
-      if(anchor?.kind!=='text'||head?.kind!=='text'||!canSelect(anchor,head)||
+      if(!canSelect(anchor,head)||anchor.kind==='math'&&head.kind==='math'||
          (anchor.paragraph===head.paragraph&&anchor.local===head.local))return [];
       const [from,to]=compare(anchor,head)<=0?[anchor,head]:[head,anchor];
-      if(from.paragraph===to.paragraph)return [{paragraph:from.paragraph,from:from.local,to:to.local}];
+      if(from.paragraph&&from.paragraph===to.paragraph)return [{paragraph:from.paragraph,from:from.local,to:to.local}];
       if(sameTable(from,to)){
         const a=tableCellOf(from),b=tableCellOf(to);
         const first=Math.min(a.column,b.column),last=Math.max(a.column,b.column);
@@ -173,14 +187,14 @@ export function createNativeDocumentSession(resolve) {
         }));
         return [...paragraphs].map(paragraph=>({paragraph,from:0,to:paragraph.text.length}));
       }
-      const groups=new Set([from.paragraph]);
+      const groups=new Set([from.paragraph??from.formula]);
       for(const stop of selection.stops){
         if((order(from)>=0?order(stop)>=0:fileOf(stop)===fileOf(from))&&compare(stop,from)>0&&compare(stop,to)<0){
           if(stop.kind==='text')groups.add(stop.paragraph);
           else if(stop.formula.kind==='displayMath')groups.add(stop.formula);
         }
       }
-      groups.add(to.paragraph);
+      groups.add(to.paragraph??to.formula);
       return [...groups].map(group=>group.math?{formula:group}:{
         paragraph:group,from:group===from.paragraph?from.local:0,to:group===to.paragraph?to.local:group.text.length,
       });
@@ -254,7 +268,7 @@ export function createNativeDocumentSession(resolve) {
       let target=null,targetPage=Infinity,targetY=Infinity,targetX=Infinity;
       for(const stop of selection.stops){
         if(stop===from||fileOf(stop)!==fileOf(from)&&order(stop)<0||
-            (from.kind==='math'&&!sameFormula(from,stop))||
+            (from.kind==='math'&&anchor?.kind!=='text'&&!sameFormula(from,stop))||
             (anchor&&!canSelect(anchor,stop)))continue;
         let pageDelta=0,distanceY;
         if(useViewport){
@@ -320,6 +334,6 @@ export function createNativeDocumentSession(resolve) {
       const caret=selection.caret,occurrence=caret&&fileOf(caret)===path?copyOf(caret):0;
       selection.record(edit,offset,{kind:'math',formula:{filePath:path,occurrence}});
     },
-    reset(){selection.reset();sourceProjection=null;preferredX=null;observedStops=[];documentRegions=[];orderByFile.clear();},
+    reset(){selection.reset();sourceProjection=null;preferredX=null;observedStops=[];documentRegions=[];orderByFile.clear();displayEdges.clear();},
   };
 }

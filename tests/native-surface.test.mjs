@@ -416,6 +416,23 @@ test('Page Up moves one viewport within a tall native page instead of selecting 
   assert.equal(session.surface.anchor.paragraph.text,'Bottom.');
 });
 
+test('extending prose upward to the first display includes the entire formula',()=>{
+  const source='\\begin{document}\n\\[x\\]\n\nText.\n\\end{document}\n';
+  const projection=projectMixedDocument(source);
+  const formula=projection.formulas[0],paragraph=projection.paragraphs[0];
+  const atom=formula.math.atoms.find(entry=>entry.nucleus==='x'),tag=paragraph.glyphs[0].tag;
+  const session=createNativeDocumentSession(endpoint=>nativeTarget(projection,endpoint));
+  session.setObservation(page([],[{...glyph(atom.tag,80),bbox:[80,20,100,30]},
+    {...glyph(tag,100),bbox:[100,170,120,185]}]),projection);
+  const start=textTarget(projection,tag,true);
+  assert.equal(session.select(start,start),true);
+  assert.equal(session.moveVertical(-1,true,true,{height:150,position:stop=>(stop.top+stop.bottom)/2}),true);
+  assert.equal(session.surface.caret.formula,formula);
+  assert.deepEqual(session.proseRanges(session.surface.anchor,session.surface.caret),[
+    {formula},{paragraph,from:0,to:start.local},
+  ]);
+});
+
 test('native outline targeting selects the second repeated heading on its measured page',()=>{
   const source='\\begin{document}\n\\section{Repeat}\n\n\\section{Repeat}\n\\end{document}\n';
   const projection=projectMixedDocument(source);

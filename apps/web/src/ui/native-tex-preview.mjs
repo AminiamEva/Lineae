@@ -111,7 +111,8 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
   function paintSurfaceSelection(reflect=false) {
     const caret = nativeDocument.surface.caret, anchor = nativeDocument.surface.anchor;
     if (!caret) return;
-    if (anchor && anchor!==caret) renderer.showSelection(anchor.hit, caret.hit);
+    if (anchor && anchor!==caret) renderer.showSelection(anchor.hit,caret.hit,
+      anchor.kind!==caret.kind?nativeDocument.proseRanges(anchor,caret):undefined);
     else renderer.showCaret(caret.hit);
     if(reflect)useTextSelection();
     onEnvironmentChange?.();
@@ -180,6 +181,7 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
   function editSelection(action){
     const {surface}=nativeDocument;
     const [first,last]=surface.range;
+    if(first?.kind!==last?.kind)return null;
     if(first?.kind==='text'&&last?.kind==='text'&&first.paragraph!==last.paragraph){
       const crossed=nativeDocument.editAcrossFiles(action.insert??'');
       if(crossed)return crossed;
@@ -379,7 +381,7 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
   function selectedSource() {
     const [from,to]=nativeDocument.surface.range;
     if(!from||from===to)return null;
-    if(from.kind==='text'&&to.kind==='text'){
+    if(from.kind==='text'||to.kind==='text'){
       const ranges=nativeDocument.proseRanges(from,to);
       return ranges.length?ranges.map(({paragraph,formula,from,to})=>formula?
         formula.source.slice(formula.outerFrom16,formula.outerTo16):paragraph.parts.map(part=>{
