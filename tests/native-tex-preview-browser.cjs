@@ -351,6 +351,12 @@ const server=createServer(async(req,res)=>{
       await projectDrafts(projectMain.replace('After chapter.','YAfter chapter.'),'X'+childWithMath);
       await page.keyboard.press(mod+'+Shift+z');
       await projectDrafts(editedMain,childWithMath);
+      await panel.getByText('Click prose on the native page',{exact:false}).waitFor();
+      await canvas.click({position:{x:7280000*scale,y:9250000*scale}});
+      await page.keyboard.press('Enter');
+      await projectDrafts(editedMain,childWithMath.replace('Original','Orig\n\ninal'));
+      await page.keyboard.press(mod+'+z');
+      await projectDrafts(editedMain,childWithMath);
       assert.deepEqual(errors,[]);
 
       await page.goto('http://127.0.0.1:'+server.address().port+'/?native-workspace=1',{waitUntil:'networkidle'});
@@ -385,6 +391,10 @@ const server=createServer(async(req,res)=>{
       await page.keyboard.press('Enter');
       await page.waitForFunction(expected=>nativeProbe.source.replace(/\r\n/g,'\n')===expected,split.replace(/\r\n/g,'\n'));
       assert.deepEqual(await page.locator('.ProseMirror p').allTextContents(),['Alpha','Beta']);
+      await page.keyboard.press(mod+'+z');
+      await page.waitForFunction(expected=>nativeProbe.source===expected,beforeBreak);
+      await page.keyboard.press(mod+'+Shift+z');
+      await page.waitForFunction(expected=>nativeProbe.source.replace(/\r\n/g,'\n')===expected,split.replace(/\r\n/g,'\n'));
       assert.deepEqual(errors,[]);
       console.log('PASS native mixed editing with MathLive and JS pagination disabled');
       return;

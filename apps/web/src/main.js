@@ -37,7 +37,7 @@ import { indentLatex } from './editor/latex-indent.mjs';
 import { installContextMenu } from './editor/context-menu.js';
 import { textCommands } from '../latex/inline.mjs';
 import { markerInput, listMarker } from '../latex/list-numbering.mjs';
-import { closeHistory } from '@tiptap/pm/history';
+import { closeHistory, isHistoryTransaction } from '@tiptap/pm/history';
 import { exitCode } from '@tiptap/pm/commands';
 import { mathFontStyles, applyMathFont } from './editor/math-formatting.js';
 import { installFormatControls } from './editor/format-controls.js';
@@ -1137,6 +1137,26 @@ function refuseStandaloneWriteback() {
   status.textContent=t('该修改无法无损回写，请在源码中编辑；原文已保留。','This edit cannot round-trip safely. Edit the source; original text is preserved.');
   return false;
 }
+const nativeParagraphTransitions=[];
+function prepareNativeParagraphHistory(transaction) {
+  if(!isHistoryTransaction(transaction)||transaction.before.childCount===transaction.doc.childCount)return false;
+  const before=JSON.stringify(transaction.before.toJSON()),after=JSON.stringify(transaction.doc.toJSON());
+  for(let index=nativeParagraphTransitions.length-1;index>=0;index--){
+    const transition=nativeParagraphTransitions[index];
+    const forward=transition.before.snapshot===before;
+    const previous=forward?transition.before:transition.after;
+    const next=forward?transition.after:transition.before;
+    if(previous.source!==importedSource||previous.snapshot!==before||next.snapshot!==after)continue;
+    const {change}=transition;
+    const patch=forward?change:{from:change.from,to:change.from+change.insert.length,
+      insert:next.source.slice(change.from,change.to)};
+    const nextProjection=sourceProjection(next.source,transaction.doc.toJSON());
+    if(!nextProjection)return false;
+    transaction.setMeta('standaloneParagraph',{draft:next.source,changes:[patch],projection:nextProjection});
+    return true;
+  }
+  return false;
+}
 editor.registerPlugin(new Plugin({
   state: {
     init:()=>false,
@@ -1161,6 +1181,7 @@ editor.registerPlugin(new Plugin({
       if(!valid)sourceView.error(t('请在对应文件的源码中修改此结构','Edit this structure in its source file'));
       return !!valid;
     }
+    if(sourceView.hidden&&prepareNativeParagraphHistory(transaction))return true;
     if(!usesSourceProjection()) {
       const index=standaloneParagraphEdit(transaction);
       if (index<0) return true;
@@ -1531,7 +1552,7 @@ function load(text, markSaved = true) {
   try {
   const parsed=parseDocument(text, {fragment:projectFileKind === 'tex'});
   if(!parsed)throw new Error(t('无法识别文档','Invalid document'));
-  if (markSaved) {clearProjectAssets();sourceModeEntry=undefined;sourceModeCommits=[];sourceModeRedos=[];}
+  if (markSaved) {clearProjectAssets();sourceModeEntry=undefined;sourceModeCommits=[];sourceModeRedos=[];nativeParagraphTransitions.length=0;}
   citationLibrary.restoreState(readBibliographyMetadata(text));
   // The book/report heading mapping must be active before blocks are imported;
   // applyProfile() runs later, during pagination, which is too late for the
@@ -2723,8 +2744,8 @@ nativeTexPreview=installNativeTexPreview({host:footer,before:modes,primary:nativ
     if(paragraph.heading||paragraph.tableCell||paragraph.container||paragraph.parts.length!==1||
        paragraph.parts[0].marks?.length||!from||/[\r\n]/.test(text))return null;
     const target=nativeProsePosition(paragraph,from,to);
-    if(!target||target.project)return null;
-    const {range}=target,{state}=editor;
+    if(!target)return null;
+    const {range,project,file}=target,{state}=editor;
     if(!text&&to===paragraph.text.length)return {awaitingText:true};
     if(text&&!text.trim())return null;
     const newline=paragraph.source.includes('\r\n')?'\r\n':'\n';
@@ -2738,13 +2759,25 @@ nativeTexPreview=installNativeTexPreview({host:footer,before:modes,primary:nativ
     const next=range.from+2;
     if(text)tr.insertText(text,next);
     tr.setSelection(TextSelection.create(tr.doc,next+text.length));
-    const projected=sourceProjection(draft,tr.doc.toJSON());
     const offset=change.from+insert.length;
+    if(project){
+      const drafts=projectDocument.changes(tr.doc.toJSON());
+      if(drafts?.get(file.id)!==draft)return null;
+      for(const [id,value] of drafts)if(id!==file.id&&value!==project.file(id).draft)return null;
+      editor.view.dispatch(closeHistory(tr));
+      return editor.state.doc===state.doc?null:{source:draft,offset,path:paragraph.filePath};
+    }
+    const projected=sourceProjection(draft,tr.doc.toJSON());
     if(!projected?.blocks.some(block=>block.index===tr.doc.resolve(next).index(0)&&
        block.from<=offset&&block.to>=offset&&block.editable))return null;
     tr.setMeta('standaloneParagraph',{draft,changes:[change],projection:projected});
     editor.view.dispatch(closeHistory(tr));
-    return editor.state.doc===state.doc?null:{source:draft,offset,path:paragraph.filePath};
+    if(editor.state.doc===state.doc)return null;
+    nativeParagraphTransitions.push({change,
+      before:{source:paragraph.source,snapshot:JSON.stringify(state.doc.toJSON())},
+      after:{source:draft,snapshot:importedSnapshot}});
+    if(nativeParagraphTransitions.length>100)nativeParagraphTransitions.shift();
+    return {source:draft,offset,path:paragraph.filePath};
   },
   focusMathSlot:async(anchor,head,isCurrent)=>{    const project=projectExplorer?.model;
     const formula=head.formula;

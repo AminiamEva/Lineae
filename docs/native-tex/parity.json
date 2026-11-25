@@ -96,9 +96,10 @@
       "evidence": [
         "https://github.com/AminiamEva/Lineae/actions/runs/45583564517",
         "https://github.com/AminiamEva/Lineae/actions/runs/45591125903",
-        "https://github.com/AminiamEva/Lineae/actions/runs/45596378294"
+        "https://github.com/AminiamEva/Lineae/actions/runs/45596378294",
+        "https://github.com/AminiamEva/Lineae/actions/runs/45599179386"
       ],
-      "scope": "Direct edits to a plain paragraph and a supported display formula in an included file preserve the main source bytes. The native exit shortcut resumes typing after the include in the parent, with the legacy engines disabled. Cross-file selection and project structural editing are pending."
+      "scope": "Direct edits to a plain paragraph and a supported display formula in an included file preserve the main source bytes. The native exit shortcut resumes typing in the parent. Cross-file copying can include complete display formulas. Replacement across two adjacent plain paragraphs in different files, including undo and redo, has exact-source browser coverage. Broader structural editing remains pending."
     },
     {
       "id": "images-floats-tikz",
@@ -130,9 +131,10 @@
       "nativeStatus": "partial",
       "evidence": [
         "https://github.com/AminiamEva/Lineae/actions/runs/45527337822",
-        "https://github.com/AminiamEva/Lineae/actions/runs/45591990969"
+        "https://github.com/AminiamEva/Lineae/actions/runs/45591990969",
+        "https://github.com/AminiamEva/Lineae/actions/runs/45599179386"
       ],
-      "scope": "A registered PDF with matching page dimensions and ownership can support the same edits as a direct canvas page. Simulated transport covers both semantic editing and refusal for mismatched dimensions. Real mixed PDF and TikZ editing remains to be verified."
+      "scope": "A registered PDF with matching page dimensions and ownership supports semantic editing. Native geometry from a real two-platform LuaLaTeX run provides browser evidence for editing a formula on a page containing TikZ. Mismatched dimensions disable editing. Editing TikZ itself remains pending."
     },
     {
       "id": "commands-toolbar-shortcuts",
@@ -157,8 +159,8 @@
         "tests/native-tex-preview-browser.cjs"
       ],
       "nativeStatus": "partial",
-      "evidence": ["https://github.com/AminiamEva/Lineae/actions/runs/45596378294"],
-      "scope": "Copy, cut, paste, whole inline formula selection, and synthetic Chinese composition commit and cancellation. Queued input during a forced geometry delay also passes the browser gate. Physical input methods and cross-file editing are pending."
+      "evidence": ["https://github.com/AminiamEva/Lineae/actions/runs/45596378294", "https://github.com/AminiamEva/Lineae/actions/runs/45599661375"],
+      "scope": "Copy, cut, paste, whole inline formula selection, synthetic Chinese composition, and queued input during a forced geometry delay. The browser also covers vertical caret navigation, page navigation, and the textarea anchor during scrolling. Physical input methods and broader cross-file editing remain pending."
     },
     {
       "id": "default-native-engine",
@@ -188,11 +190,11 @@
       ]
     },
     "pending": [
-      "project structural and cross-file selection edits",
+      "broader project structures and edits across complex selections",
       "full native command coverage",
       "complex table cell targeting and editing",
       "figure, float and TikZ editing",
-      "semantic editing with real degraded PDF geometry",
+      "PDF semantics for complex objects and document layouts beyond verified text and formulas",
       "physical device IME and latency"
     ]
   },
