@@ -1146,7 +1146,9 @@ impl Session {
                 }
                 None => observer.start_with_owners(true)?.source_revision,
             };
-            let deadline = Instant::now() + Duration::from_secs(30);
+            // A cold observation may need the same complete passes as the primary layout.
+            // Source revisions are still checked on every wake while those passes run.
+            let deadline = Instant::now() + LAYOUT_TIMEOUT;
             let mut messages = lock(&observer.messages);
             loop {
                 self.check()?;
@@ -1180,7 +1182,7 @@ impl Session {
                 if ready { return Ok(pages.values().cloned().collect()); }
                 let remaining = deadline.saturating_duration_since(Instant::now());
                 if remaining.is_zero() {
-                    return Err(error("formula_observation", "No converged instrumented formula layout."));
+                    return Err(messages.diagnostic(error("formula_observation", "No converged instrumented formula layout.")));
                 }
                 messages = observer.changed.wait_timeout(messages, remaining.min(Duration::from_millis(100)))
                     .unwrap_or_else(|p| p.into_inner()).0;
