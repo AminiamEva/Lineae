@@ -7,7 +7,7 @@ import {resolvePackages} from '../latex/packages.mjs';
 import {referenceAt} from '../latex/reference-commands.mjs';
 import {sourceStructure} from '../latex/source-structure.mjs';
 import {insertTableSourceColumn,insertTableSourceRow,mergeTableSourceCells,mergeTableSourceRows,removeTableSourceColumn,removeTableSourceRow,splitTableSourceCell,splitTableSourceRowspan} from '../latex/tabularx.mjs';
-import {editTblrColumn,editTblrRow,mergeTblrCells,splitTblrCell} from '../latex/tblr.mjs';
+import {editTblrColumn,editTblrRow,mergeTblrCells,mergeTblrRows,splitTblrCell} from '../latex/tblr.mjs';
 import {rasterDrawingRanges,tikzDrawingRanges} from '../latex/images.mjs';
 import {loadLegacyMath,nativeOnlyAcceptance,nativeWorkspaceRequested} from './editor/native-surface/acceptance-mode.mjs';
 import {sameTable} from './editor/native-surface/document-session.mjs';
@@ -2980,7 +2980,8 @@ function editNativeTable(operation){
     deleteRow:()=>editTblrRow(original,cell.row,true),
     deleteColumn:()=>editTblrColumn(original,cell.row,cell.column,offsetInTable,true),
     splitCell:()=>splitTblrCell(original,cell.row,cell.column,offsetInTable),
-    mergeCells:()=>mergeTblrCells(original,cell.row,mergeColumn,mergeRange[1].paragraph.tableCell.column),
+    mergeCells:()=>verticalMerge?mergeTblrRows(original,mergeStart.row,mergeEnd.row,mergeColumn):
+      mergeTblrCells(original,cell.row,mergeColumn,mergeEnd.column),
   };
   const columnTableCommands={
     insertRow:()=>insertTableSourceRow(original,cell.row),
@@ -3009,8 +3010,9 @@ function editNativeTable(operation){
   let offset=patch.offset===undefined?caret.docOffset:start+patch.offset;
   const rootId=composition?.rootId;
   const root=rootId&&rootId!==file.id?project.file(rootId).draft:owner.source;
-  const dependency=verticalMerge&&nativeMultirowPackage(root);
-  if(verticalMerge&&dependency===false)return false;
+  const requiresMultirow=verticalMerge&&!node.attrs.tblr;
+  const dependency=requiresMultirow&&nativeMultirowPackage(root);
+  if(requiresMultirow&&dependency===false)return false;
   if(dependency&&(!rootId||rootId===file.id)){
     const {from,insert}=dependency;
     draft=draft.slice(0,from)+insert+draft.slice(from);

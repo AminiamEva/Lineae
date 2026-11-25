@@ -4,7 +4,7 @@ import {readFileSync} from 'node:fs';
 import {importBlocks,serialize} from '../apps/web/src/editor/latex-codec.js';
 import {sourceProjection,richSourceChanges} from '../apps/web/src/editor/source-sync.js';
 import {parseDocument} from '../apps/web/latex/document.mjs';
-import {editTblrColumn,editTblrRow,mergeTblrCells,splitTblrCell} from '../apps/web/latex/tblr.mjs';
+import {editTblrColumn,editTblrRow,mergeTblrCells,mergeTblrRows,splitTblrCell} from '../apps/web/latex/tblr.mjs';
 const fixture=JSON.parse(readFileSync(new URL('./fixtures/academic-tblr.json',import.meta.url),'utf8'));
 const table=source=>{const nodes=importBlocks(source);assert.equal(nodes.length,1);assert.equal(nodes[0].type,'table');return nodes[0];};
 const wrap=body=>'\\begin{document}\r\nBefore.\n\n'+body+'\r\n\nAfter.\n\\end{document}\r\n';
@@ -61,6 +61,22 @@ test('merging adjacent tabularray cells keeps the selected text and remaining fi
   assert.equal(draft,source.replace('A & $z$','\\SetCell[c=2]{l} A $z$ & '));
   assert.equal(draft.slice(patch.offset-3,patch.offset),'$z$');
   assert.equal(table(draft).content[0].content[0].attrs.colspan,2);
+});
+
+test('tabularray row spans preserve covered source, neighboring cells and absolute rules',()=>{
+  const source='\\begin{tblr}{colspec={lc},hline{2}={solid}}\r\nA & B \\\\\r\nC & D\r\n\\end{tblr}';
+  const apply=(source,{from,to,insert})=>source.slice(0,from)+insert+source.slice(to);
+  const merged=apply(source,mergeTblrRows(source,0,1,0));
+  assert.equal(merged,source.replace('A & B','\\SetCell[r=2]{l} A C & B').replace('C & D',' & D'));
+  const authored=merged.replace('\r\n & D','\r\nHidden & D');
+  const node=table(authored);
+  assert.equal(node.content[0].content[0].attrs.rowspan,2);
+  assert.equal(node.content[1].content.length,1);
+  assert.equal(serialize(node),authored);
+  assert.equal(editTblrRow(authored,0),null);
+  const split=apply(authored,splitTblrCell(authored,0,0,authored.indexOf('A C')));
+  assert.equal(split,authored.replace('r=2','r=1'));
+  assert.equal(table(split).content[1].content[0].content[0].content[0].text,'Hidden');
 });
 const edit=(source,mutate)=>{
   const doc={type:'doc',content:parseDocument(source).blocks.flatMap(importBlocks)};

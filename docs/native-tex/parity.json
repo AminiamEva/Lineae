@@ -86,8 +86,8 @@
         "tests/native-tex-preview-browser.cjs"
       ],
       "nativeStatus": "partial",
-      "evidence": ["https://github.com/AminiamEva/Lineae/actions/runs/45590498054", "https://github.com/AminiamEva/Lineae/actions/runs/45628338101", "https://github.com/AminiamEva/Lineae/actions/runs/45639252258", "https://github.com/AminiamEva/Lineae/actions/runs/45649964814", "https://github.com/AminiamEva/Lineae/actions/runs/45656057369"],
-      "scope": "The browser gates cover empty and nonempty cells, mixed marked text and math in tabularx, ordinary tabular, tabularx and tabularray axis edits, and verified adjacent merge and split with exact source writeback and undo. The real engine reports an empty-cell anchor, marked cell glyphs and an inline formula field with unchanged page drawing on both platforms. Some absolute tabularray rule selectors can follow structural edits. Ordinary tabular multirow merge and split have source-level tests and await the browser gate. More general span and cell styling edits remain pending."
+      "evidence": ["https://github.com/AminiamEva/Lineae/actions/runs/45590498054", "https://github.com/AminiamEva/Lineae/actions/runs/45628338101", "https://github.com/AminiamEva/Lineae/actions/runs/45639252258", "https://github.com/AminiamEva/Lineae/actions/runs/45649964814", "https://github.com/AminiamEva/Lineae/actions/runs/45656057369", "https://github.com/AminiamEva/Lineae/actions/runs/45658008577"],
+      "scope": "The browser gates cover empty and nonempty cells, mixed marked text and math in tabularx, ordinary tabular, tabularx and tabularray axis edits, and ordinary tabular horizontal and vertical merge and split with exact source writeback and undo. The real engine reports an empty-cell anchor, marked cell glyphs and an inline formula field with unchanged page drawing on both platforms. Some absolute tabularray rule selectors can follow structural edits. Tabularray row spans preserve covered source and have unit tests. More general span and cell styling edits remain pending."
     },
     {
       "id": "project-composition",

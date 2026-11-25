@@ -1729,20 +1729,22 @@ mod tests {
         table.terminate();
         if let Some(directory) = std::env::var_os("LINEAE_NATIVE_EVIDENCE_DIR") {
             let directory = PathBuf::from(directory);
-            let probe: Value = serde_json::from_slice(&std::fs::read(directory.join("table-rowspan-probe.json")).unwrap()).unwrap();
-            let rowspan = Session::create(probe["source"].as_str().unwrap()).unwrap();
-            let info = rowspan.start().expect("the editor-generated multirow table compiles");
-            let layout = wait_layout(&rowspan, info.source_revision);
-            let observed = rowspan.observe_formula(info.source_revision, probe["projection"].as_str().unwrap(), Vec::new())
-                .expect("the merged cell and its neighbors remain observable");
-            let raw_page = &layout["pages_changed"][0];
-            let observed_page = &observed[0];
-            assert!(observed_page["dl"]["math_owners"]["glyphs"].as_array().is_some_and(|glyphs|
-                glyphs.iter().any(|glyph| glyph["owner"] == probe["tag"] && glyph["char"] == u32::from('F'))),
-                "missing glyph owner inside the merged cell");
-            assert!(drawing_without_markers(raw_page) == drawing_without_markers(observed_page),
-                "instrumentation must preserve visible multirow geometry");
-            rowspan.terminate();
+            for environment in ["tabular", "tblr"] {
+                let probe: Value = serde_json::from_slice(&std::fs::read(directory.join(format!("{environment}-rowspan-probe.json"))).unwrap()).unwrap();
+                let rowspan = Session::create(probe["source"].as_str().unwrap()).unwrap();
+                let info = rowspan.start().expect("the editor-generated row span compiles");
+                let layout = wait_layout(&rowspan, info.source_revision);
+                let observed = rowspan.observe_formula(info.source_revision, probe["projection"].as_str().unwrap(), Vec::new())
+                    .expect("the merged cell and its neighbors remain observable");
+                let raw_page = &layout["pages_changed"][0];
+                let observed_page = &observed[0];
+                assert!(observed_page["dl"]["math_owners"]["glyphs"].as_array().is_some_and(|glyphs|
+                    glyphs.iter().any(|glyph| glyph["owner"] == probe["tag"] && glyph["char"] == u32::from('F'))),
+                    "missing glyph owner inside the merged {environment} cell");
+                assert!(drawing_without_markers(raw_page) == drawing_without_markers(observed_page),
+                    "instrumentation must preserve visible row span geometry in {environment}");
+                rowspan.terminate();
+            }
             let raster_source = include_str!("../../../../tests/native-math/fixtures/raster-repeat.tex");
             let raster_probe: Value = serde_json::from_slice(&std::fs::read(directory.join("raster-repeat-probe.json")).unwrap()).unwrap();
             let raster = Session::create_snapshot(Snapshot::new(raster_source, "main.tex".into(), vec![NativeTexFile {

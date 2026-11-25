@@ -177,32 +177,40 @@ export function parseTblr(source) {
       const style=styles(value,unsupported);for(const r of selected)for(const s of cellStyles[r-1])Object.assign(s,style);
     } else unsupported.push(key+(value===null?'':'='+value));
   }
-  const parsed=[];
+  const parsed=[],coveredUntil=Array(specs.length).fill(0);
   for(let r=0;r<rows.length;r++) {
     const row=[];
     for(let c=0;c<specs.length;) {
-      const cell=rows[r][c];let offset=trivia(cell.raw),span=1,style={...cellStyles[r][c]},spanRange;
+      if(coveredUntil[c]>r){c++;continue;}
+      const cell=rows[r][c];let offset=trivia(cell.raw),span=1,rowspan=1,style={...cellStyles[r][c]},spanRange;
       if(/^\\SetCell(?![A-Za-z])/.test(cell.raw.slice(offset))) {
         offset=trivia(cell.raw,offset+8);
         if(cell.raw[offset]==='[') {
           const opt=group(cell.raw,offset,'[',']');if(!opt)return null;
-          const match=/^\s*c\s*=\s*(\d+)\s*$/.exec(opt.value);if(!match)return null;
-          span=Number(match[1]);
+          const fields=split(opt.value)?.map(field=>/^\s*([cr])\s*=\s*(\d+)\s*$/.exec(field));
+          if(!fields?.length||fields.some(field=>!field)||new Set(fields.map(field=>field[1])).size!==fields.length)return null;
+          for(const [,key,value] of fields){
+            if(key==='c')span=Number(value);
+            else rowspan=Number(value);
+          }
           spanRange={from:cell.from+offset+1,to:cell.from+opt.end-1};
           offset=trivia(cell.raw,opt.end);
         }
         const format=group(cell.raw,offset);if(!format)return null;
         Object.assign(style,styles(format.value,unsupported));offset=trivia(cell.raw,format.end);
       }
-      if(span<1||c+span>specs.length)return null;
+      if(span<1||c+span>specs.length||rowspan<1||r+rowspan>rows.length||
+         coveredUntil.slice(c,c+span).some(end=>end>r))return null;
+      coveredUntil.fill(r+rowspan,c,c+span);
       const text=cell.raw.slice(offset).trimEnd();
       const {align,...css}=style;
       // Rules inside a spanning cell are omitted by tabularray as well.
-      for(const [side,values] of [['Top',h[r].slice(c,c+span)],['Bottom',h[r+1].slice(c,c+span)],['Left',[v[c][r]]],['Right',[v[c+span][r]]]]) {
+      for(const [side,values] of [['Top',h[r].slice(c,c+span)],['Bottom',h[r+rowspan].slice(c,c+span)],
+        ['Left',v[c].slice(r,r+rowspan)],['Right',v[c+span].slice(r,r+rowspan)]]) {
         css['border'+side]=values.every(x=>x===values[0])?(values[0]??'0px solid currentColor'):'0px solid currentColor';
       }
       row.push({text,from:cell.from+offset,to:cell.from+offset+text.length,spanRange,
-        attrs:{colspan:span,rowspan:1,align,tblrStyle:css}});
+        attrs:{colspan:span,rowspan,align,tblrStyle:css}});
       c+=span;
     }
     parsed.push(row);
@@ -304,7 +312,7 @@ export function editTblrRow(source,index,remove=false,offset) {
   if(!located)return null;
   const {table}=located;
   const edge=table?.rowEnds?.[index];
-  if(!edge||remove&&table.rows.length===1)return null;
+  if(!edge||remove&&table.rows.length===1||table.rows.some(row=>row.some(cell=>cell.attrs.rowspan>1)))return null;
   const selectors=adjustAxes(table,'row',index+1,remove);
   if(!selectors)return null;
   const raw=table.source,eol=raw.includes('\r\n')?'\r\n':'\n';
@@ -354,13 +362,13 @@ export function splitTblrCell(source,row,column,offset){
   const located=editableTblr(source);
   if(!located)return null;
   const {table}=located,cell=table.rows[row]?.[column];
-  if(!cell?.spanRange||cell.attrs.colspan<=1)return null;
+  if(!cell?.spanRange||cell.attrs.colspan===1&&cell.attrs.rowspan===1)return null;
   const {from,to}=cell.spanRange;
-  const insert=table.source.slice(from,to).replace(/\d+/,'1');
+  const insert=table.source.slice(from,to).replace(/\d+/g,'1');
   const {patch,draft}=applyTblrEdits(located,[{from,to,insert}],offset);
   const next=parseTblr(draft);
   if(next?.rows[row]?.length!==table.rows[row].length+cell.attrs.colspan-1||
-     next.rows[row][column].text!==cell.text)return null;
+     next.rows[row][column].text!==cell.text||next.rows[row][column].attrs.rowspan!==1)return null;
   return patch;
 }
 
@@ -370,7 +378,8 @@ export function mergeTblrCells(source,row,first,last){
   const {table,base}=located;
   const cells=table.rows[row];
   const selected=cells?.slice(first,last+1);
-  if(!selected||selected.length!==last-first+1||selected.some(cell=>cell.attrs.colspan!==1))return null;
+  if(!selected||selected.length!==last-first+1||selected.some(cell=>cell.attrs.colspan!==1)||
+     table.rows.some(row=>row.some(cell=>cell.attrs.rowspan>1)))return null;
   const column=cells.slice(0,first).reduce((sum,cell)=>sum+cell.attrs.colspan,0);
   const raw=table.rawRows[row].slice(column,column+selected.length);
   const from=selected[0].from,to=selected.at(-1).to;
@@ -383,6 +392,24 @@ export function mergeTblrCells(source,row,first,last){
   const cell=parseTblr(draft)?.rows[row]?.[first];
   if(cell?.attrs.colspan!==selected.length||cell.text!==body)return null;
   return {...patch,offset:base+from+merged.length};
+}
+
+export function mergeTblrRows(source,first,last,column){
+  const located=editableTblr(source);
+  if(!located||first>=last)return null;
+  const {table,base}=located;
+  if(last>=table.rows.length||table.rows.some(row=>row.length!==table.columns.length))return null;
+  const cells=table.rows.slice(first,last+1).map(row=>row[column]);
+  if(cells.some((cell,index)=>!cell||cell.attrs.rowspan!==1||cell.text.includes('%')||
+    table.rawRows[first+index][column].raw.trim()!==cell.text))return null;
+  const format={left:'l',center:'c',right:'r'}[cells[0].attrs.align]??'l';
+  const text=cells.map(cell=>cell.text).filter(Boolean).join(' ');
+  const merged='\\SetCell[r='+cells.length+']{'+format+'} '+text;
+  const edits=cells.map(({from,to},index)=>({from,to,insert:index?'':merged}));
+  const {patch,draft}=applyTblrEdits(located,edits);
+  const cell=parseTblr(draft)?.rows[first]?.[column];
+  if(cell?.attrs.rowspan!==cells.length||cell.text!==text)return null;
+  return {...patch,offset:base+cells[0].from+merged.length};
 }
 
 const tableKeys=['columns','booktabs','borderMode','borderWidth','caption','label','placement','centered','align'];
