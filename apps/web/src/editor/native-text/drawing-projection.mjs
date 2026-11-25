@@ -5,6 +5,7 @@ import {sourceStructure} from '../../../latex/source-structure.mjs';
 // These empty math fields live in the observation session only. Their boxes
 // measure the exact TeX drawing, with zero contribution to the outer list.
 export function instrumentDrawing(block,source,from,tag,attribute,filePath){
+  if(!/\\begin\{(?:tikzpicture|circuitikz)\}/.test(block))return null;
   const openings=[...sourceStructure(block)].filter(token=>token.kind==='begin'&&
     /^\\begin\{(?:tikzpicture|circuitikz)\}$/.test(token.value));
   if(openings.length!==1)return null;

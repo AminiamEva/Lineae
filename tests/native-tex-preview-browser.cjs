@@ -323,6 +323,20 @@ const server=createServer(async(req,res)=>{
       await page.keyboard.press(mod+'+z');
       await page.waitForFunction(expected=>nativeProbe.source===expected,editedTable);
       await page.locator('#native-tex-close').click();
+      const tabularray=tableSource.replace('\\begin{tabular}{ll}','\\begin{tblr}{colspec={ll},rows={m}}')
+        .replace('\\end{tabular}','\\end{tblr}');
+      await page.locator('input#file').setInputFiles({name:'tabularray.tex',mimeType:'text/plain',buffer:Buffer.from(tabularray)});
+      await page.locator('#native-tex-toggle').click();
+      await page.waitForFunction(()=>document.querySelector('#native-tex-preview').dataset.state==='current');
+      await page.locator('#native-tex-target').click();
+      await panel.getByText('Click text on the native page',{exact:false}).waitFor();
+      await page.locator('#native-tex-edit').click();
+      await canvas.click({position:{x:6550000*scale,y:9250000*scale}});
+      await page.keyboard.press(mod+'+e');await page.keyboard.press('Shift+r');
+      await page.waitForFunction(expected=>nativeProbe.source===expected,tabularray.replace('\nThree','\n & \\\\\nThree'));
+      await page.keyboard.press(mod+'+z');
+      await page.waitForFunction(expected=>nativeProbe.source===expected,tabularray);
+      await page.locator('#native-tex-close').click();
       const matrixSource='\\documentclass{article}\n\\usepackage{amsmath}\n\\begin{document}\n'+
         '\\[\\begin{bmatrix}a&\\\\&d\\end{bmatrix}\\]\n\\end{document}\n';
       await page.locator('input#file').setInputFiles({name:'matrix.tex',mimeType:'text/plain',buffer:Buffer.from(matrixSource)});

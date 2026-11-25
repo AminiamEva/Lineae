@@ -113,8 +113,10 @@ separately from the WebView check.
    selections still pending.
 3. Automated composition proves commit-once and cancellation. Candidate
    placement, shortcut delivery and latency still need physical-device tests.
-4. The browser can edit an ordinary formula on a registered PDF page containing
-   TikZ. Direct editing of complex floats and TikZ remains pending.
+4. The browser can open a standalone TikZ drawing directly from a registered
+   LuaLaTeX PDF and edit an ordinary formula on that page. The dual-platform
+   run was [45646995464](https://github.com/AminiamEva/Lineae/actions/runs/45646995464).
+   Geometry-based editing of nested figure content remains pending.
 5. The engine-off desktop workspace has passed the covered cases. Its default
    switch still depends on complete coverage and the device checks.
 

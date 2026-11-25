@@ -7,6 +7,7 @@ import {resolvePackages} from '../latex/packages.mjs';
 import {referenceAt} from '../latex/reference-commands.mjs';
 import {sourceStructure} from '../latex/source-structure.mjs';
 import {insertTableSourceColumn,insertTableSourceRow,removeTableSourceColumn,removeTableSourceRow} from '../latex/tabularx.mjs';
+import {editTblrRow} from '../latex/tblr.mjs';
 import {loadLegacyMath,nativeOnlyAcceptance,nativeWorkspaceRequested} from './editor/native-surface/acceptance-mode.mjs';
 import {AppendixStart,MatterStart,LayoutCommand} from './editor/appendix.js';
 import {Lipsum} from './editor/lipsum.js';
@@ -2914,18 +2915,20 @@ function editNativeTableAxis(operation){
   while(depth>0&&at.node(depth).type.name!=='table')depth--;
   if(!depth)return false;
   const node=at.node(depth);
-  if(node.attrs.tblr)return false;
   if(at.depth!==depth+3)return false;
   const start=cell.from16;
-  const original=owner.source.slice(start,cell.to16);
+  const rawTable=owner.source.slice(start,cell.to16);
+  const structured=node.attrs.tabularx||node.attrs.tblr;
+  const original=structured?serialize(node.toJSON()):rawTable;
   const decode=source=>{
-    const [table,...rest]=importBlocks(source.trim());
-    return table?.type==='table'&&!rest.length&&Boolean(table.attrs.tabularx)===Boolean(node.attrs.tabularx)
+    const [table,...rest]=importBlocks(source);
+    return table?.type==='table'&&!rest.length&&Boolean(table.attrs.tabularx)===Boolean(node.attrs.tabularx)&&
+      Boolean(table.attrs.tblr)===Boolean(node.attrs.tblr)
       ?state.schema.nodeFromJSON(table):null;
   };
-  if(node.attrs.tabularx?serialize(node.toJSON())!==original:!decode(original)?.eq(node))return false;
+  if(structured?(original.trimEnd()!==rawTable||!owner.source.startsWith(original,start)):!decode(original)?.eq(node))return false;
   const deleting=operation.startsWith('delete');
-  const patch={
+  const patch=node.attrs.tblr?(operation.endsWith('Row')?editTblrRow(original,cell.row,deleting):null):{
     insertRow:()=>insertTableSourceRow(original,cell.row),
     insertColumn:()=>insertTableSourceColumn(original,cell.row,cell.column,caret.docOffset-start),
     deleteRow:()=>removeTableSourceRow(original,cell.row),

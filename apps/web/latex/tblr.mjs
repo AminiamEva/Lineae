@@ -144,18 +144,23 @@ export function parseTblr(source) {
   const colspec=options.find(([key])=>key==='colspec');
   const specs=columns(colspec?unwrap(colspec[1]??''):clean(settings.value),unsupported);if(!specs)return null;
   const body=source.slice(settings.end,closing.start),tokens=delimiters(body,['&','\\\\']);if(!tokens)return null;
-  const rows=[];let cells=[],from=0;
+  const rows=[],rowEnds=[];let cells=[],from=0;
   for(const token of [...tokens,{index:body.length,end:body.length,value:'end'}]) {
     if(token.index<from)continue;
     cells.push({from:settings.end+from,to:settings.end+token.index,raw:body.slice(from,token.index)});
     from=token.end;
     if(token.value==='&')continue;
-    if(cells.length>1||clean(cells[0].raw))rows.push(cells);
-    cells=[];
+    const terminated=token.value==='\\\\';
     if(token.value==='\\\\') {
-      let next=trivia(body,from);if(body[next]==='*')next++;
+      let next=trivia(body,from);if(body[next]==='*'){from=++next;next=trivia(body,next);}
       if(body[next]==='['){const spacing=group(body,next,'[',']');if(!spacing)return null;from=spacing.end;}
     }
+    if(terminated||cells.length>1||clean(cells[0].raw)){
+      rows.push(cells);
+      rowEnds.push({start:cells[0].from+trivia(cells[0].raw),
+        from:settings.end+(terminated?from:body.trimEnd().length),terminated});
+    }
+    cells=[];
   }
   if(!rows.length||rows.some(row=>row.length!==specs.length))return null;
   const h=Array.from({length:rows.length+1},()=>Array(specs.length).fill(null));
@@ -199,7 +204,40 @@ export function parseTblr(source) {
     }
     parsed.push(row);
   }
-  return {source,columns:specs.map(s=>({left:'l',center:'c',right:'r'}[s.align]??'l')).join(''),rows:parsed,unsupported};
+  const structural=options.every(([key,value])=>!colspec||['colspec','width','rows','cells'].includes(key)||
+    ['hlines','vlines'].includes(key)&&(value===null||group(value,0)?.end===value.length));
+  return {source,columns:specs.map(s=>({left:'l',center:'c',right:'r'}[s.align]??'l')).join(''),rows:parsed,unsupported,
+    ...(structural&&source[trivia(source,start[0].length)]!=='['?{rowEnds}:{})};
+}
+
+export function editTblrRow(source,index,remove=false) {
+  let table=parseTblr(source),base=0;
+  if(!table){
+    const float=parseTableFloat(source);
+    const [opening,...rest]=float?[...sourceStructure(float.body)].filter(token=>token.topLevel&&token.kind==='begin'):[];
+    if(opening?.value!=='\\begin{tblr}'||rest.length)return null;
+    const closing=environmentEnd(float.body,opening.index,'tblr');
+    if(!closing)return null;
+    table=parseTblr(float.body.slice(opening.index,closing.end));
+    base=float.open.length+opening.index;
+  }
+  const edge=table?.rowEnds?.[index];
+  if(!edge||remove&&table.rows.length===1)return null;
+  const raw=table.source,eol=raw.includes('\r\n')?'\r\n':'\n';
+  let {from}=edge,to=from;
+  let insert=(edge.terminated?'':' \\\\')+eol+' & '.repeat(table.columns.length-1)+'\\\\';
+  if(remove){
+    const lineStart=raw.lastIndexOf('\n',edge.start-1)+1;
+    const newline=/^[ \t]*\r?\n/.exec(raw.slice(edge.from));
+    const wholeLine=newline&&!raw.slice(lineStart,edge.start).trim();
+    from=wholeLine?lineStart:edge.start;
+    to=edge.from+(wholeLine?newline[0].length:0);
+    insert='';
+  }
+  const updated=parseTblr(raw.slice(0,from)+insert+raw.slice(to));
+  if(updated?.rows.length!==table.rows.length+(remove?-1:1)||
+    !remove&&updated.rows[index+1].some(cell=>cell.text))return null;
+  return {from:base+from,to:base+to,insert};
 }
 
 const tableKeys=['columns','booktabs','borderMode','borderWidth','caption','label','placement','centered','align'];

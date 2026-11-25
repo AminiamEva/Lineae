@@ -4,9 +4,24 @@ import {readFileSync} from 'node:fs';
 import {importBlocks,serialize} from '../apps/web/src/editor/latex-codec.js';
 import {sourceProjection,richSourceChanges} from '../apps/web/src/editor/source-sync.js';
 import {parseDocument} from '../apps/web/latex/document.mjs';
+import {editTblrRow} from '../apps/web/latex/tblr.mjs';
 const fixture=JSON.parse(readFileSync(new URL('./fixtures/academic-tblr.json',import.meta.url),'utf8'));
 const table=source=>{const nodes=importBlocks(source);assert.equal(nodes.length,1);assert.equal(nodes[0].type,'table');return nodes[0];};
 const wrap=body=>'\\begin{document}\r\nBefore.\n\n'+body+'\r\n\nAfter.\n\\end{document}\r\n';
+
+test('native tabularray row edits preserve global options, spans and source trivia',()=>{
+  const settings='colspec={lc}, rows={m}, hlines={solid}';
+  const source=['\\begin{table}[ht]','\\caption{Caption}','\\begin{tblr}{'+settings+'}',
+    '\\SetCell[c=2]{c} Full & \\\\*[4pt]','% Keep','A & B','\\end{tblr}','\\end{table}'].join('\r\n');
+  const apply=({from,to,insert})=>source.slice(0,from)+insert+source.slice(to);
+  const changed=apply(editTblrRow(source,0));
+  assert.equal(changed,source.replace('\\\\*[4pt]\r\n','\\\\*[4pt]\r\n & \\\\\r\n'));
+  assert.equal(table(changed).content.length,3);
+  const deleted=apply(editTblrRow(source,1,true));
+  assert.equal(deleted,source.replace('A & B\r\n',''));
+  assert.equal(table(deleted).content.length,1);
+  assert.equal(editTblrRow(source.replace(settings,settings+', row{2}={r}'),0),null);
+});
 const edit=(source,mutate)=>{
   const doc={type:'doc',content:parseDocument(source).blocks.flatMap(importBlocks)};
   const projection=sourceProjection(source,doc);assert.ok(projection);

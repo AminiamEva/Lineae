@@ -127,9 +127,10 @@
         "https://github.com/AminiamEva/Lineae/actions/runs/45590498054",
         "https://github.com/AminiamEva/Lineae/actions/runs/45591990969",
         "https://github.com/AminiamEva/Lineae/actions/runs/45628338101",
-        "https://github.com/AminiamEva/Lineae/actions/runs/45639252258"
+        "https://github.com/AminiamEva/Lineae/actions/runs/45639252258",
+        "https://github.com/AminiamEva/Lineae/actions/runs/45646995464"
       ],
-      "scope": "Real staged PNG drawing metadata is unchanged by ownership. Browser gates select a raster from Canvas and a transformed raster in a simulated registered PDF frame, then patch its width through the Image controls. Recognized TikZ blocks use the existing visual editor. The native workspace can also select an exact opaque block in Source. Direct hit targets for complex floats and TikZ remain pending."
+      "scope": "Real staged PNG drawing metadata is unchanged by ownership. Browser gates select a raster from Canvas and a transformed raster in a simulated registered PDF frame, then patch its width through the Image controls. A direct click on standalone TikZ in a registered real LuaLaTeX PDF opens the visual editor on Windows and macOS. The native workspace can select an exact opaque block in Source. Nested figure content remains pending."
     },
     {
       "id": "page-layout-and-pdf",
@@ -145,9 +146,10 @@
       "evidence": [
         "https://github.com/AminiamEva/Lineae/actions/runs/45527337822",
         "https://github.com/AminiamEva/Lineae/actions/runs/45591990969",
-        "https://github.com/AminiamEva/Lineae/actions/runs/45599179386"
+        "https://github.com/AminiamEva/Lineae/actions/runs/45599179386",
+        "https://github.com/AminiamEva/Lineae/actions/runs/45646995464"
       ],
-      "scope": "A registered PDF with matching page dimensions and ownership supports semantic editing. Native geometry from a real two-platform LuaLaTeX run provides browser evidence for editing a formula on a page containing TikZ. Mismatched dimensions disable editing. Editing TikZ itself remains pending."
+      "scope": "A registered PDF with matching page dimensions and ownership supports semantic editing. Native geometry from a real two-platform LuaLaTeX run provides browser evidence for opening standalone TikZ for editing and updating a nearby formula. Mismatched dimensions disable editing. More complex page objects remain pending."
     },
     {
       "id": "commands-toolbar-shortcuts",
@@ -159,8 +161,8 @@
         "tests/shortcuts-browser.cjs"
       ],
       "nativeStatus": "partial",
-      "evidence": ["https://github.com/AminiamEva/Lineae/actions/runs/45620299673", "https://github.com/AminiamEva/Lineae/actions/runs/45622916182", "https://github.com/AminiamEva/Lineae/actions/runs/45628338101", "https://github.com/AminiamEva/Lineae/actions/runs/45639252258"],
-      "scope": "The native command palette covers verified math structures and the status bar displays the active nested field. Formula label changes preserve the selected equation or alignment row and its surroundings. Keyboard commands insert inline and numbered display formulas and accept an initial display formula in a blank document. The prose palette inserts an exact page break, edits document metadata, and offers project input and include commands."
+      "evidence": ["https://github.com/AminiamEva/Lineae/actions/runs/45620299673", "https://github.com/AminiamEva/Lineae/actions/runs/45622916182", "https://github.com/AminiamEva/Lineae/actions/runs/45628338101", "https://github.com/AminiamEva/Lineae/actions/runs/45639252258", "https://github.com/AminiamEva/Lineae/actions/runs/45646995464"],
+      "scope": "The native command palette covers verified math structures and the status bar displays the active nested field. Formula label changes preserve the selected equation or alignment row and its surroundings. Keyboard commands insert inline and numbered display formulas, accept an initial display formula in a blank document, and leave a nested fraction with Ctrl+J. The prose palette inserts an exact page break, edits document metadata, and offers project input and include commands."
     },
     {
       "id": "clipboard-ime-cross-run",
@@ -173,7 +175,7 @@
         "tests/native-tex-preview-browser.cjs"
       ],
       "nativeStatus": "partial",
-      "evidence": ["https://github.com/AminiamEva/Lineae/actions/runs/45596378294", "https://github.com/AminiamEva/Lineae/actions/runs/45599661375", "https://github.com/AminiamEva/Lineae/actions/runs/45629535428", "https://github.com/AminiamEva/Lineae/actions/runs/45639252258"],
+      "evidence": ["https://github.com/AminiamEva/Lineae/actions/runs/45596378294", "https://github.com/AminiamEva/Lineae/actions/runs/45599661375", "https://github.com/AminiamEva/Lineae/actions/runs/45629535428", "https://github.com/AminiamEva/Lineae/actions/runs/45639252258", "https://github.com/AminiamEva/Lineae/actions/runs/45646995464"],
       "scope": "Copy, cut, formatted paste, whole inline formula selection, synthetic Chinese composition, and queued input during a forced geometry delay. Verified selections within one paragraph copy formatting alongside plain text, and native math accepts validated LaTeX fragments from the clipboard. Browser checks cover vertical caret and page navigation, the textarea anchor during scrolling, and the first preedit after exiting inline math. Physical input methods and broader cross-file editing remain pending."
     },
     {
