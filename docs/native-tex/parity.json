@@ -156,8 +156,11 @@
   "acceptance": {
     "legacyDisabled": {
       "command": "LINEAE_NATIVE_ONLY=1 node tests/native-tex-preview-browser.cjs",
-      "scope": "Single-file mixed prose and display math, mocked bridge",
-      "status": "awaiting-ci"
+      "scope": "Windows and macOS Chromium with mocked transport. Single-file prose and display formula edit, undo and redo; real engine/device acceptance tracked separately.",
+      "status": "browser-passed",
+      "evidence": [
+        "https://github.com/AminiamEva/Lineae/actions/runs/45579797136"
+      ]
     },
     "pending": [
       "project editing",
@@ -190,6 +193,8 @@
       "transactionToGeometry": 50,
       "geometryToRepaint": 34,
       "keydownToPixels": 100
-    }
+    },
+    "browserInstrumentation": "apps/web/src/ui/native-tex-preview.mjs",
+    "browserPaint": "Animation frame estimate, excludes OS input and physical display scan-out."
   }
 }
