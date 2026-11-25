@@ -2635,6 +2635,12 @@ function nativeProsePosition(paragraph,from,to){
   const range=nativeEditorRange({doc:editor.state.doc,projection,composition,file,paragraph,from,to});
   return range?{range,project,composition,file}:null;
 }
+function currentNativeProjectComposition(){
+  const active=projectDocument.composition,project=projectExplorer?.model;
+  if(!active||!project)return null;
+  const composition=projectDocument.compose(project,active.rootId,{boundariesOnly:true});
+  return composition.issues.length?null:composition;
+}
 nativeTexPreview=installNativeTexPreview({host:footer,before:modes,primary:nativeWorkspaceRequested(),
   isDocumentMode:()=>sourceView.hidden,
   getSnapshot:async()=>{
@@ -2668,17 +2674,16 @@ nativeTexPreview=installNativeTexPreview({host:footer,before:modes,primary:nativ
   },
   continuationRegion:caret=>{
     if(!caret||!sourceView.hidden)return null;
-    const active=projectDocument.composition,project=projectExplorer?.model;
+    const composition=currentNativeProjectComposition();
     const owner=caret.formula??caret.paragraph;
-    if(!active||!project||!owner.filePath)return null;
-    const composition=projectDocument.compose(project,active.rootId);
-    if(composition.issues.length)return null;
+    if(!composition||!owner.filePath)return null;
     const index=composition.regions.findIndex(region=>region.path===owner.filePath&&
       region.from<=caret.docOffset&&region.to>=caret.docOffset&&composition.sources.get(region.id)===owner.source);
     const parent=composition.content[index]?.attrs.trail?.at(-1);
     if(!parent)return null;
     return composition.regions.slice(index+1).find(region=>region.path===parent)??null;
   },
+  selectionRegions:()=>currentNativeProjectComposition()?.regions,
   selectText:(anchor,head)=>{
     if(!anchor||anchor.paragraph!==head?.paragraph)return false;
     const forward=anchor.local<=head.local;
@@ -2792,6 +2797,32 @@ nativeTexPreview=installNativeTexPreview({host:footer,before:modes,primary:nativ
     const before=editor.state.doc;
     editor.view.dispatch(tr);
     return editor.state.doc!==before;
+  },
+  commitProjectRange:edits=>{
+    const {state}=editor,project=projectExplorer?.model,composition=projectDocument.composition;
+    if(!project||!composition||edits.length!==2)return false;
+    const mapped=edits.map(edit=>{
+      const target=nativeProsePosition(edit.paragraph,edit.patch.from,edit.patch.to);
+      return target?.file?{...edit,...target}:null;
+    });
+    const [first,last]=mapped;
+    if(!first||!last||first.file===last.file)return false;
+    const anchor=state.doc.resolve(first.range.from),head=state.doc.resolve(last.range.to);
+    const region=anchor.index(0);
+    if(anchor.depth<2||head.depth<2||head.index(0)!==region+1||
+       anchor.index(1)!==anchor.node(1).childCount-1||head.index(1)!==0)return false;
+    const tr=state.tr;
+    for(const {range,patch} of [last,first]){
+      if(range.to>range.from)tr.delete(range.from,range.to);
+      if(patch.insert)tr.insert(range.from,editor.schema.text(patch.insert));
+    }
+    tr.setSelection(TextSelection.create(tr.doc,first.range.from+first.patch.insert.length));
+    const drafts=projectDocument.changes(tr.doc.toJSON());
+    const expected=new Map(mapped.map(edit=>[edit.file.id,edit.source]));
+    if(!drafts||mapped.some(edit=>drafts.get(edit.file.id)!==edit.source))return false;
+    for(const [id,draft] of drafts)if(draft!==(expected.get(id)??project.file(id).draft))return false;
+    editor.view.dispatch(closeHistory(tr));
+    return editor.state.doc!==state.doc;
   },
   history:command=>{command==='redo'?redoDocument():undoDocument();},
 });

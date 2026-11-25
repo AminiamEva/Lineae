@@ -1,5 +1,5 @@
 // Shared caret and range mechanics for geometry-backed editing adapters.
-export function createSelectionModel(sameOwner, fileOf = () => undefined) {
+export function createSelectionModel(sameOwner, fileOf = () => undefined, canSelect=sameOwner) {
   const address = stop => stop && {offset:stop.docOffset,file:fileOf(stop),kind:stop.kind};
   const matches = (stop, target) => target && stop.docOffset===target.offset &&
     fileOf(stop)===target.file&&stop.kind===target.kind;
@@ -26,7 +26,7 @@ export function createSelectionModel(sameOwner, fileOf = () => undefined) {
       const headIndex = stops.findIndex(stop => matches(stop,previousHead));
       index = headIndex >= 0 ? headIndex : Math.max(0, Math.min(index, stops.length - 1));
       const anchorIndex = stops.findIndex(stop => matches(stop,previousAnchor));
-      anchor = anchorIndex >= 0 && sameOwner(stops[anchorIndex], stops[index]) ? anchorIndex : index;
+      anchor = anchorIndex >= 0 && canSelect(stops[anchorIndex], stops[index]) ? anchorIndex : index;
       return true;
     },
     nearest(page, x, y) {
@@ -62,17 +62,17 @@ export function createSelectionModel(sameOwner, fileOf = () => undefined) {
     selectTargets(from, to) {
       const first=stops.findIndex(stop=>matches(stop,address(from)));
       const last=stops.findIndex(stop=>matches(stop,address(to)));
-      if(first<0||last<0||!sameOwner(stops[first],stops[last]))return false;
+      if(first<0||last<0||!canSelect(stops[first],stops[last]))return false;
       anchor=first;index=last;
       return true;
     },
     get range() {
       return [stops[Math.min(anchor, index)], stops[Math.max(anchor, index)]];
     },
-    record(edit, nextOffset) {
+    record(edit, nextOffset, target=stops[index]) {
       lastEdit = edit;
       pendingOffset = nextOffset;
-      pendingAddress = {...address(stops[index]),offset:nextOffset};
+      pendingAddress = {...address(target),offset:nextOffset};
       return edit;
     },
     clearPending() { pendingOffset = null; pendingAddress = null; lastEdit = null; },

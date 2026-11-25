@@ -6,7 +6,7 @@ const {resolve,extname,sep}=require('node:path');
 const installMockNativeTex=require('./native-math/mock-bridge.cjs');
 const {revealToolbar}=require('./workspace-ui-helpers.cjs');
 
-const projectMain='\\documentclass{article}\n\\begin{document}\n\\[\\frac{a}{}\\]\n\\input{chapters/one}\n\nAfter chapter.\n\\end{document}\n';
+const projectMain='\\documentclass{article}\n\\begin{document}\n\\[\\frac{a}{}\\]\n\nBefore chapter.\n\n\\input{chapters/one}\n\nAfter chapter.\n\\end{document}\n';
 const projectMainWithImage=projectMain.replace('\\begin{document}','\\usepackage{graphicx}\n\\begin{document}')
   .replace('\\end{document}','\\begin{figure}[ht]\n\\centering\n\\includegraphics[width=18pt]{plot.png}\n\\end{figure}\n\\end{document}');
 const projectChapter='Original chapter.\n\n\\[\\frac{z}{}\\]\n';
@@ -318,8 +318,31 @@ const server=createServer(async(req,res)=>{
       await page.waitForFunction(count=>nativeProbe.calls.filter(call=>call.command==='native_tex_observe_formula').length>count,beforeExitFile);
       await panel.getByText('Click prose on the native page',{exact:false}).waitFor();
       await page.keyboard.press(mod+'+Alt+j');
+      const beforeCrossFile=await page.evaluate(()=>nativeProbe.calls.filter(call=>call.command==='native_tex_observe_formula').length);
       await page.keyboard.type('Y');
       await page.waitForFunction(expected=>nativeProbe.source===expected,projectMain.replace('After chapter.','YAfter chapter.'));
+      await page.waitForFunction(count=>nativeProbe.calls.filter(call=>call.command==='native_tex_observe_formula').length>count,beforeCrossFile);
+      await panel.getByText('Click prose on the native page',{exact:false}).waitFor();
+      const bounds=await canvas.boundingBox();
+      const count='XOriginal chapter.Before chapter.YAfter chapter.'.replace(/\s/g,'').length;
+      await page.mouse.move(bounds.x+6550000*scale,bounds.y+9250000*scale);
+      await page.mouse.down();
+      await page.mouse.move(bounds.x+(6500000+count*200000-50000)*scale,bounds.y+9250000*scale,{steps:12});
+      await page.mouse.up();
+      await page.keyboard.press(mod+'+c');
+      assert.equal(await page.evaluate(()=>navigator.clipboard.readText()),
+        'XOriginal chapter.\n\n\\[\\frac{z}{q}\\]\n\nYAfter chapter.');
+      const beforeGlyph='XOriginal chapter.Before'.replace(/\s/g,'').length;
+      await page.mouse.move(bounds.x+(6500000+beforeGlyph*200000-50000)*scale,bounds.y+9250000*scale);
+      await page.mouse.down();
+      await page.mouse.move(bounds.x+6655000*scale,bounds.y+9250000*scale,{steps:12});
+      await page.mouse.up();
+      await page.keyboard.insertText(' started.');
+      const editedMain=projectMain.replace('Before chapter.','Before started.').replace('After chapter.','YAfter chapter.');
+      await page.waitForFunction(({main,child})=>
+        nativeProbe.calls.some(call=>call.command==='native_tex_update'&&call.args.source===main&&
+          call.args.files?.some(file=>file.path==='chapters/one.tex'&&
+            new TextDecoder().decode(new Uint8Array(file.bytes))===child)),{main:editedMain,child:childWithMath});
       assert.deepEqual(errors,[]);
 
       await page.goto('http://127.0.0.1:'+server.address().port+'/?native-workspace=1',{waitUntil:'networkidle'});

@@ -4,7 +4,7 @@ export class ProjectDocumentSession {
   #composition = null;
   get composition() { return this.#composition; }
   set composition(value) { this.#composition = value; }
-  compose(project, id) { return composeProject(project,id); }
+  compose(project, id, options) { return composeProject(project,id,options); }
   clear() { this.#composition = null; }
   hydrate(composition, document) {
     for (const [index, region] of composition.regions.entries()) {

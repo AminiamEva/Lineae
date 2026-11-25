@@ -223,6 +223,44 @@ test('PDF-backed editing requires geometry already verified against the register
   assert.equal(session.surface.insert('b').text,'\\frac{a}{b}');
 });
 
+test('native project selection follows include order and keeps complete display formulas',()=>{
+  const source='\\begin{document}\n\\input{chapter}\n\nMain.\n\\end{document}\n';
+  const chapter='Child.\n\n\\[x\\]\n';
+  const projection=projectMixedSnapshot({source,mainFile:'main.tex',
+    files:[{path:'chapter.tex',bytes:new TextEncoder().encode(chapter)}]});
+  const session=createNativeDocumentSession(endpoint=>nativeTarget(projection,endpoint));
+  const root=projection.paragraphs.find(paragraph=>paragraph.filePath==='main.tex');
+  const child=projection.paragraphs.find(paragraph=>paragraph.filePath==='chapter.tex');
+  const formula=projection.formulas[0],atom=formula.math.atoms.find(atom=>atom.nucleus==='x');
+  const regions=[{path:'chapter.tex',from:0,to:chapter.length},{path:'main.tex',from:source.indexOf('Main.'),to:source.length}];
+  const from=textTarget(projection,child.glyphs[0].tag,false);
+  const to=textTarget(projection,root.glyphs.at(-1).tag,true);
+  session.setObservation(page([],[glyph(from.owner,100),glyph(atom.tag,200),glyph(to.owner,300)]),projection,false,regions);
+  assert.equal(session.select(from,to),true);
+  assert.deepEqual(session.proseRanges(from,to).map(range=>range.paragraph?.text??
+    range.formula.source.slice(range.formula.outerFrom16,range.formula.outerTo16)),['Child.','\\[x\\]','Main.']);
+  assert.equal(session.surface.erase(),null,'A cross-file range cannot silently delete one file only');
+  assert.equal(session.surface.insert('unsafe'),null);
+  assert.equal(session.editAcrossFiles('replacement'),null,'The formula is a separate structural selection');
+});
+
+test('native cross-file replacement produces one edit per file and a parent caret address',()=>{
+  const source='\\begin{document}\nAlpha beta.\n\n\\input{chapter}\n\\end{document}\n';
+  const chapter='XYZ child.\n';
+  const projection=projectMixedSnapshot({source,mainFile:'main.tex',
+    files:[{path:'chapter.tex',bytes:new TextEncoder().encode(chapter)}]});
+  const session=createNativeDocumentSession(()=>null);
+  const [root,child]=projection.paragraphs;
+  const from=textTarget(projection,root.glyphs[4].tag,true),to=textTarget(projection,child.glyphs[1].tag,true);
+  const regions=[{path:'main.tex',from:0,to:source.indexOf('\\input')},{path:'chapter.tex',from:0,to:chapter.length}];
+  session.setObservation(page([],[glyph(from.owner,100),glyph(to.owner,200)]),projection,false,regions);
+  assert.equal(session.select(from,to),true);
+  const edit=session.editAcrossFiles(' changed.');
+  assert.deepEqual(edit.edits.map(change=>change.source),[source.replace('Alpha beta.','Alpha changed.'),'Z child.\n']);
+  assert.equal(session.surface.pendingOffset,source.indexOf('Alpha')+'Alpha changed.'.length);
+  assert.equal(edit.paragraph.filePath,'main.tex');
+});
+
 test('prose can replace a complete inline formula but cannot edit part of its source', () => {
   const inlineSource = '\\begin{document}\nBefore $x$ after.\n\\end{document}\n';
   const projection = projectMixedDocument(inlineSource);

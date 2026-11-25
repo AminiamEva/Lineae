@@ -9,7 +9,7 @@ const CSS_PER_SP=(96/72)/65781.76;
 
 // Strict read-only full-page adapter. No browser font fallback or inferred
 // glyph positions: a page is shown only when all its resources are exact.
-export function installNativePages({host,getFont,getRaster,onPaint,onError,onMathHit,onImageHit}) {
+export function installNativePages({host,getFont,getRaster,onPaint,onError,onMathHit,onImageHit,proseRanges}) {
   let generation=0,epoch=0,zoom=.75,revision=-1,layoutVersion=-1;
   let fonts=new FontStore();
   const imageResources=new Map(),imageLoads=new Map();
@@ -120,6 +120,13 @@ export function installNativePages({host,getFont,getRaster,onPaint,onError,onMat
     if(!ownership||ownership.stamp.sourceRevision!==revision||ownership.stamp.layoutVersion!==layoutVersion||
       start?.role!=='nucleus'||end?.role!=='nucleus')return;
     const a=ownership.owners.get(start.owner),b=ownership.owners.get(end.owner);
+    if(a?.paragraph&&b?.paragraph){
+      for(const {paragraph,formula,from,to} of proseRanges?.(start,end)??[]){
+        if(formula)paintRange(formula,formula.from16,formula.to16);
+        else paintRange(paragraph,paragraph.from16+from,paragraph.from16+to);
+      }
+      return;
+    }
     const group=a?.formula??a?.paragraph;
     if(!a||!b||group!==(b?.formula??b?.paragraph))return;
     const at=(owner,hit)=>owner.formula
@@ -127,7 +134,10 @@ export function installNativePages({host,getFont,getRaster,onPaint,onError,onMat
       :owner.paragraph.from16+owner.glyph.from16+(hit.after?owner.glyph.to16-owner.glyph.from16:0);
     const x=at(a,start),y=at(b,end);
     if(x===y)return;
-    const from=Math.min(x,y),to=Math.max(x,y),scale=CSS_PER_SP*zoom;
+    paintRange(group,Math.min(x,y),Math.max(x,y));
+  }
+  function paintRange(group,from,to){
+    const scale=CSS_PER_SP*zoom;
     for(const {number,glyph,from16,to16} of ownership.selectionGlyphs.get(group)??[]){
       if(from16<from||to16>to)continue;
       const [left,top,right,bottom]=glyph.bbox;
@@ -139,6 +149,7 @@ export function installNativePages({host,getFont,getRaster,onPaint,onError,onMat
     }
   }
   window.addEventListener('keydown',event=>{
+    if(event.isComposing||(event.ctrlKey||event.metaKey)&&event.key.toLowerCase()==='c')return;
     if(!['Shift','Control','Alt','Meta','AltGraph'].includes(event.key))clearCaret();
   },true);
   window.addEventListener('pointerdown',clearCaret,true);
@@ -151,13 +162,17 @@ export function installNativePages({host,getFont,getRaster,onPaint,onError,onMat
   });
   host.addEventListener('pointermove',event=>{
     if(drag?.id!==event.pointerId||drag.ownership!==ownership)return;
-    showSelection(drag.hit,locate(drag.canvas,event));
+    showSelection(drag.hit,locate(canvasAt(event)??drag.canvas,event));
   });
+  function canvasAt(event){
+    const canvas=document.elementFromPoint(event.clientX,event.clientY)?.closest('canvas');
+    return canvas&&host.contains(canvas)?canvas:null;
+  }
   host.addEventListener('pointerup',async event=>{
     if(drag?.id!==event.pointerId)return;
     const start=drag;drag=null;
     if(start.ownership!==ownership){clearSelection();return;}
-    const hit=locate(start.canvas,event);
+    const hit=locate(canvasAt(event)??start.canvas,event);
     if(!hit){clearSelection();return;}
     const moved=Math.hypot(start.x-event.clientX,start.y-event.clientY)>=4;
     const attempt=gesture,stamp=ownership.stamp;

@@ -11,7 +11,7 @@ import {nativeTarget} from '../editor/native-math/resolve.mjs';
 // Native LaTeX output is the primary page. The opt-in native input mode sends
 // supported keys, caret and IME through this surface into ProseMirror; the old
 // JS-formatted page and MathLive inputs stay available as the migration fallback.
-export function installNativeTexPreview({host,before,primary=false,isDocumentMode,getSource,getSnapshot,isComposing,focusMathSlot,focusImage,continuationRegion,selectText,commitMath,commitText,history}) {
+export function installNativeTexPreview({host,before,primary=false,isDocumentMode,getSource,getSnapshot,isComposing,focusMathSlot,focusImage,continuationRegion,selectionRegions,selectText,commitMath,commitText,commitProjectRange,history}) {
   const invoke=window.__TAURI__?.core?.invoke;
   if(!invoke) return {refresh(){},documentChanged(){},relocalize(){}};
   const button=document.createElement('button');
@@ -85,7 +85,7 @@ export function installNativeTexPreview({host,before,primary=false,isDocumentMod
   function paintSurfaceSelection(reflect=false) {
     const caret = nativeDocument.surface.caret, anchor = nativeDocument.surface.anchor;
     if (!caret) return;
-    if (anchor && anchor.docOffset !== caret.docOffset) renderer.showSelection(anchor.hit, caret.hit);
+    if (anchor && anchor!==caret) renderer.showSelection(anchor.hit, caret.hit);
     else renderer.showCaret(caret.hit);
     if(reflect)useTextSelection();
   }
@@ -106,7 +106,7 @@ export function installNativeTexPreview({host,before,primary=false,isDocumentMod
     if (!edit) return;
     const started=inputStart || performance.now();
     inputStart=0;
-    const applied = edit.kind === 'text'
+    const applied=edit.kind==='project-range'?commitProjectRange?.(edit.edits):edit.kind==='text'
       ? commitText?.({ paragraph: edit.paragraph, patch: edit.patch, text: edit.text })
       : commitMath?.({ formula: edit.formula, patch: edit.patch, text: edit.text, structure:edit.structure });
     input.value = '';
@@ -120,6 +120,13 @@ export function installNativeTexPreview({host,before,primary=false,isDocumentMod
     pendingLatency ??= {started, committed:performance.now()};
     return true;
   }
+  function editSelection(action){
+    const {surface}=nativeDocument;
+    const [first,last]=surface.range;
+    if(first?.kind==='text'&&last?.kind==='text'&&first.paragraph.filePath!==last.paragraph.filePath)
+      return nativeDocument.editAcrossFiles(action.insert??'');
+    return action.insert?surface.insert(action.insert):surface.erase(action.backward);
+  }
   function submitInput(action) {
     const {surface}=nativeDocument;
     if(!nativeEditing||!surface.caret)return false;
@@ -131,7 +138,7 @@ export function installNativeTexPreview({host,before,primary=false,isDocumentMod
     }
     if(!current()||!observation)return false;
     inputStart=action.started;
-    return commitSurface(action.insert?surface.insert(action.insert):surface.erase(action.backward));
+    return commitSurface(editSelection(action));
   }
   function clearQueuedInput() {
     pendingEdit=null;
@@ -140,13 +147,16 @@ export function installNativeTexPreview({host,before,primary=false,isDocumentMod
   function selectedSource() {
     const [from,to]=nativeDocument.surface.range;
     if(!from||from===to)return null;
-    if(from.kind==='text'&&from.paragraph===to.paragraph)
-      return from.paragraph.parts.map(part=>{
-        const start=Math.max(part.from16,from.local),end=Math.min(part.to16,to.local);
+    if(from.kind==='text'&&to.kind==='text'){
+      const ranges=nativeDocument.proseRanges(from,to);
+      return ranges.length?ranges.map(({paragraph,formula,from,to})=>formula?
+        formula.source.slice(formula.outerFrom16,formula.outerTo16):paragraph.parts.map(part=>{
+        const start=Math.max(part.from16,from),end=Math.min(part.to16,to);
         if(end<=start)return '';
         if(part.offsets)return part.text.slice(part.offsets.indexOf(start-part.from16),part.offsets.indexOf(end-part.from16));
-        return from.paragraph.text.slice(start,end);
-      }).join('');
+        return paragraph.text.slice(start,end);
+      }).join('')).join('\n\n'):null;
+    }
     if(from.kind==='math'&&from.formula===to.formula&&from.slot.id===to.slot.id)
       return from.slot.raw.slice(from.local,to.local);
     return null;
@@ -165,7 +175,7 @@ export function installNativeTexPreview({host,before,primary=false,isDocumentMod
       if(text===null||!event.clipboardData)return;
       if(type==='cut'){
         if(!current()||!observation||pendingEdit)return;
-        const edit=nativeDocument.surface.erase();
+        const edit=editSelection({backward:true});
         if(!commitSurface(edit))return;
       }
       event.clipboardData.setData('text/plain',text);
@@ -294,6 +304,7 @@ export function installNativeTexPreview({host,before,primary=false,isDocumentMod
     onImageHit:(path,revision)=>{
       if(current()&&mode==='canvas'&&revision===sourceRevision)focusImage?.(path);
     },
+    proseRanges:(from,to)=>nativeDocument.proseRanges(resolveEndpoint(from),resolveEndpoint(to)),
     onMathHit:async(hit,stamp,origin,sameGesture)=>{
       if(!current()||!hasGeometry()||!observation||
           stamp.sessionId!==observation.stamp.sessionId||
@@ -620,7 +631,7 @@ export function installNativeTexPreview({host,before,primary=false,isDocumentMod
       observation={kind,projection,stamp,observed};
       if(nativeEditing){
         const expectedOffset=nativeDocument.surface.pendingOffset;
-        const applied=nativeDocument.setObservation(observed,projection,pdfGeometryAvailable);
+        const applied=nativeDocument.setObservation(observed,projection,pdfGeometryAvailable,selectionRegions?.());
         if(pendingEdit){
           const stop=nativeDocument.surface.caret;
           const previous=pendingEdit.paragraph??pendingEdit.formula;
@@ -704,7 +715,7 @@ export function installNativeTexPreview({host,before,primary=false,isDocumentMod
     }
     if(!observation)return;
     nativeEditing=true;targetArmed=true;
-    const applied=nativeDocument.setObservation(observation.observed,observation.projection,pdfGeometryAvailable);
+    const applied=nativeDocument.setObservation(observation.observed,observation.projection,pdfGeometryAvailable,selectionRegions?.());
     if(!applied){
       nativeEditing=false;renderStatus();return;
     }

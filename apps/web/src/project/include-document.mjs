@@ -23,7 +23,7 @@ function regionFor(text, from, to, file, key, continuation, beforeReference) {
   return region;
 }
 
-export function composeProject(project, rootId) {
+export function composeProject(project, rootId, {boundariesOnly=false}={}) {
   const result = {rootId, regions:[], sources:new Map(), issues:[], content:[]};
   const included = new Set();
   function visit(id, ancestry) {
@@ -39,9 +39,11 @@ export function composeProject(project, rootId) {
     const limit = source.length - document.end.length;
     let position = start;
     const append = (end,beforeReference=false) => {
-      const region = regionFor(source,position,end,file,String(result.regions.length),position>start,beforeReference);
+      const key=String(result.regions.length);
+      const region=boundariesOnly?{key,id:file.id,path:file.path,from:position,to:end}:
+        regionFor(source,position,end,file,key,position>start,beforeReference);
       result.regions.push(region);
-      result.content.push({type:'projectRegion',attrs:{regionKey:region.key,path:file.path,trail:[...ancestry].map(parent=>project.file(parent).path)},content:region.doc.content});
+      result.content.push({type:'projectRegion',attrs:{regionKey:region.key,path:file.path,trail:[...ancestry].map(parent=>project.file(parent).path)},content:region.doc?.content??[]});
     };
     const nextAncestry = new Set(ancestry).add(id);
     for (const reference of includeEdges(source)) {

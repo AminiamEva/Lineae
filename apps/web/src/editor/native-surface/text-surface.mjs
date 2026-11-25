@@ -63,7 +63,7 @@ export function createTextSurface({projection,selection=createSelectionModel(sam
       const stop = selection.caret;
       if (!stop || !text) return null;
       const [start, end] = selection.range;
-      if (!sameParagraph(start, stop)) return null;
+      if (!sameParagraph(start, stop)||!sameParagraph(end, stop))return null;
       const result = textEdit(sourceProjection, {
         paragraph: stop.paragraph, from16: start.local, to16: end.local, insert: text,
       });
@@ -76,6 +76,7 @@ export function createTextSurface({projection,selection=createSelectionModel(sam
       let from, to;
       if (selection.anchor !== stop) {
         const [start, end] = selection.range;
+        if(!sameParagraph(start,end))return null;
         from = Math.min(start.local, end.local);
         to = Math.max(start.local, end.local);
       } else {
