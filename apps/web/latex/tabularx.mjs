@@ -294,16 +294,22 @@ export function splitTableSourceCell(source,row,column,offset){
   if(!location)return null;
   const {table,start,parse}=location;
   const cell=table.rows[row]?.[column];
-  if(!cell?.spanRange||cell.attrs.colspan<=1||cell.attrs.rowspan>1)return null;
+  if(!cell?.spanRange||cell.attrs.colspan<=1||cell.attrs.rowspan>1&&!cell.rowspanRange)return null;
   const {from,to}=cell.spanRange;
   const count=table.source.slice(from,to);
   const single=count.replace(/\d+/,'1');
-  const insert=single+table.source.slice(to,cell.sourceEnd)+' & '.repeat(cell.attrs.colspan-1);
+  const rowspan=cell.rowspanRange;
+  const contents=rowspan
+    ?table.source.slice(to,rowspan.from)+rowspan.value+table.source.slice(rowspan.to,cell.sourceEnd)
+    :table.source.slice(to,cell.sourceEnd);
+  const insert=single+contents+' & '.repeat(cell.attrs.colspan-1);
   const draft=table.source.slice(0,from)+insert+table.source.slice(cell.sourceEnd);
   const next=parse(draft);
+  const restored=next?.rows[row]?.[column];
   if(next?.rows.length!==table.rows.length||next.rows[row].length!==table.rows[row].length+cell.attrs.colspan-1||
-     next.rows[row][column].text!==cell.text)return null;
-  return {from:start+from,to:start+cell.sourceEnd,insert,offset:offset+single.length-count.length};
+     restored?.text!==cell.text||restored.attrs.rowspan!==1||restored.attrs.colspan!==1)return null;
+  const shift=single.length-count.length-(rowspan?rowspan.contentFrom-rowspan.from:0);
+  return {from:start+from,to:start+cell.sourceEnd,insert,offset:offset+shift};
 }
 
 export function mergeTableSourceCells(source,row,first,last){

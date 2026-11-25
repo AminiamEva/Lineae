@@ -231,3 +231,17 @@ test('tabularx keeps exact preambles and hidden slots when a row-span cell is me
   assert.equal(table(restored).content[1].content.length,2);
   assert.equal(insertTableSourceRow(merged,0),null);
 });
+
+test('splitting a combined tabularx span restores both axes and retains exact cell spelling',()=>{
+  const source=['\\begin{tabularx}{\\linewidth}{llX}',
+    '\\multicolumn{2}{c}{\\multirow{2}{*}{Lead}} & Far \\\\[3pt]',
+    ' & & After','\\end{tabularx}'].join('\r\n');
+  const original=parseTabularx(source);
+  assert.equal(original.rows[0][0].attrs.rowspan,2);
+  assert.equal(original.rows[0][0].attrs.colspan,2);
+  const split=splitTableSourceCell(source,0,0,source.indexOf('Lead')+2);
+  const draft=source.slice(0,split.from)+split.insert+source.slice(split.to);
+  assert.equal(draft,source.replace('\\multicolumn{2}{c}{\\multirow{2}{*}{Lead}}','\\multicolumn{1}{c}{Lead} & '));
+  assert.equal(draft.slice(split.offset-2,split.offset+2),'Lead');
+  assert.deepEqual(parseTabularx(draft).rows.map(row=>row.map(cell=>cell.text)),[['Lead','','Far'],['','','After']]);
+});

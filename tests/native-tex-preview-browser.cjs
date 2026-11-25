@@ -466,6 +466,22 @@ const server=createServer(async(req,res)=>{
       await page.keyboard.press(mod+'+z');
       await page.waitForFunction(expected=>nativeProbe.source===expected,spanTabularx);
       await page.locator('#native-tex-close').click();
+      const combinedSource=spanTabularx.replace('One  & Two','\\multicolumn{2}{c}{\\multirow{2}{*}{One}}')
+        .replace('Three &',' &').replace('\\usepackage{tabularx}','\\usepackage{tabularx,multirow}');
+      await page.locator('input#file').setInputFiles({name:'tabularx-combined-span.tex',mimeType:'text/plain',buffer:Buffer.from(combinedSource)});
+      await page.locator('#native-tex-toggle').click();
+      await page.waitForFunction(()=>document.querySelector('#native-tex-preview').dataset.state==='current');
+      await page.locator('#native-tex-target').click();
+      await panel.getByText('Click text on the native page',{exact:false}).waitFor();
+      await page.locator('#native-tex-edit').click();
+      await revealToolbar(page);await page.locator('[data-group=table]').click();
+      await canvas.click({position:{x:6550000*scale,y:9250000*scale}});
+      await page.locator('button[data-source-action=split]').click();
+      await page.waitForFunction(expected=>nativeProbe.source===expected,
+        combinedSource.replace('\\multicolumn{2}{c}{\\multirow{2}{*}{One}}','\\multicolumn{1}{c}{One} & '));
+      await page.keyboard.press(mod+'+z');
+      await page.waitForFunction(expected=>nativeProbe.source===expected,combinedSource);
+      await page.locator('#native-tex-close').click();
       const spanning=tableSource.replace('One  & Two','\\multicolumn{2}{c}{Title}');
       await page.locator('input#file').setInputFiles({name:'spanning.tex',mimeType:'text/plain',buffer:Buffer.from(spanning)});
       await page.locator('#native-tex-toggle').click();
@@ -1929,15 +1945,23 @@ const server=createServer(async(req,res)=>{
     await page.keyboard.press(mod+'+Shift+z');
     await page.waitForFunction(expected=>nativeProbe.source===expected,narrow);
     await page.getByText('Click text on the native page',{exact:false}).waitFor();
-    const referenceX=await page.evaluate(()=>{
+    const referencePoint=await page.locator('[data-native-page="1"] canvas').evaluate(canvas=>{
       const call=nativeProbe.calls.findLast(call=>call.command==='native_tex_observe_formula');
       const tags=[...call.args.projection.matchAll(/\\attribute65000=(\d+) (.)/gsu)];
       const index=tags.findIndex(tag=>call.args.projection.startsWith('\\ref{sec:first}',tag.index+tag[0].length-1));
-      return index<0?null:6600000+index*200000;
+      const {dl}=nativeProbe.layout().pages_changed[0],bounds=canvas.getBoundingClientRect();
+      if(index<0)return null;
+      canvas.addEventListener('click',event=>{
+        queueMicrotask(()=>{nativeProbe.referenceClick={x:event.offsetX,y:event.offsetY,
+          modified:event.ctrlKey||event.metaKey,handled:event.defaultPrevented};});
+      },{once:true});
+      return {x:(6600000+index*200000)*bounds.width/dl.page_width,y:9250000*bounds.height/dl.page_height};
     });
-    assert.ok(referenceX,'The current observation tags the reference on the page');
-    await page.locator('[data-native-page="1"] canvas').click({position:{x:referenceX*layoutScale,y:9250000*layoutScale},modifiers:[mod]});
-    await page.waitForFunction(()=>document.activeElement?.id==='native-tex-input');
+    assert.ok(referencePoint,'The current observation tags the reference on the page');
+    await page.locator('[data-native-page="1"] canvas').click({position:referencePoint,modifiers:[mod]});
+    assert.deepEqual(await page.evaluate(()=>({modified:nativeProbe.referenceClick?.modified,
+      handled:nativeProbe.referenceClick?.handled,focus:document.activeElement?.id})),
+    {modified:true,handled:true,focus:'native-tex-input'},'The modifier-click navigates to the reference target');
     await page.keyboard.type('Y');
     await page.waitForFunction(expected=>nativeProbe.source===expected,narrow.replace('Repeat}\\label','YRepeat}\\label')).catch(async error=>{
       console.error('Native reference writeback',await page.evaluate(()=>({source:nativeProbe.source,
