@@ -7,9 +7,10 @@ const sameOwner=(left,right)=>Boolean(left&&right&&left.kind===right.kind&&
   (left.kind==='math'?sameFormula(left,right):sameParagraph(left,right)));
 const fileOf=stop=>(stop.formula??stop.paragraph).filePath;
 const tableCellOf=stop=>(stop?.paragraph??stop?.formula)?.tableCell;
-const sameTable=(left,right)=>{
+export const sameTable=(left,right)=>{
   const a=tableCellOf(left),b=tableCellOf(right);
-  return Boolean(a&&b&&a.from16===b.from16&&a.row===b.row&&fileOf(left)===fileOf(right));
+  return Boolean(a&&b&&a.from16===b.from16&&fileOf(left)===fileOf(right)&&
+    (a.row===b.row||a.vertical&&b.vertical&&a.column===b.column));
 };
 const overlapsLine=(left,right)=>left?.page===right.page&&left.top<right.bottom&&left.bottom>right.top;
 
@@ -154,10 +155,11 @@ export function createNativeDocumentSession(resolve) {
       if(sameTable(from,to)){
         const a=tableCellOf(from),b=tableCellOf(to);
         const first=Math.min(a.column,b.column),last=Math.max(a.column,b.column);
+        const top=Math.min(a.row,b.row),bottom=Math.max(a.row,b.row);
         const paragraphs=new Set(selection.stops.flatMap(stop=>{
           if(stop.kind!=='text'||!sameTable(from,stop))return [];
           const cell=tableCellOf(stop);
-          return cell.column>=first&&cell.column<=last?[stop.paragraph]:[];
+          return cell.row>=top&&cell.row<=bottom&&cell.column>=first&&cell.column<=last?[stop.paragraph]:[];
         }));
         return [...paragraphs].map(paragraph=>({paragraph,from:0,to:paragraph.text.length}));
       }

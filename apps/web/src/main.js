@@ -6,10 +6,11 @@ import {documentMetadata,writeDocumentMetadata} from '../latex/document-metadata
 import {resolvePackages} from '../latex/packages.mjs';
 import {referenceAt} from '../latex/reference-commands.mjs';
 import {sourceStructure} from '../latex/source-structure.mjs';
-import {insertTableSourceColumn,insertTableSourceRow,mergeTableSourceCells,removeTableSourceColumn,removeTableSourceRow,splitTableSourceCell} from '../latex/tabularx.mjs';
+import {insertTableSourceColumn,insertTableSourceRow,mergeTableSourceCells,mergeTableSourceRows,removeTableSourceColumn,removeTableSourceRow,splitTableSourceCell,splitTableSourceRowspan} from '../latex/tabularx.mjs';
 import {editTblrColumn,editTblrRow,mergeTblrCells,splitTblrCell} from '../latex/tblr.mjs';
 import {tikzDrawingRanges} from '../latex/images.mjs';
 import {loadLegacyMath,nativeOnlyAcceptance,nativeWorkspaceRequested} from './editor/native-surface/acceptance-mode.mjs';
+import {sameTable} from './editor/native-surface/document-session.mjs';
 import {AppendixStart,MatterStart,LayoutCommand} from './editor/appendix.js';
 import {Lipsum} from './editor/lipsum.js';
 import {CounterDirective} from './editor/counter-directive.js';
@@ -2911,6 +2912,12 @@ function nativeFormulaPosition(formula){
 function addNativeTableAxis(axis){
   return editNativeTable(axis==='row'?'insertRow':'insertColumn');
 }
+function nativeMultirowPackage(root){
+  const {start,eol}=parseDocument(root,{fragment:true});
+  if(!resolvePackages(start,'\\multirow').some(({name})=>name==='multirow'))return null;
+  const from=start.lastIndexOf('\\begin{document}');
+  return from<0?false:{from,insert:'\\usepackage{multirow}'+eol};
+}
 function editNativeTable(operation){
   const started=performance.now();
   const caret=nativeTexPreview?.verifiedCaret?.();
@@ -2952,7 +2959,9 @@ function editNativeTable(operation){
   const deleting=operation.startsWith('delete');
   const mergeRange=operation==='mergeCells'?nativeTexPreview.verifiedTableRange():null;
   if(operation==='mergeCells'&&!mergeRange)return false;
-  const mergeColumn=mergeRange?.[0].paragraph.tableCell.column;
+  const mergeStart=mergeRange?.[0].paragraph.tableCell,mergeEnd=mergeRange?.[1].paragraph.tableCell;
+  const mergeColumn=mergeStart?.column;
+  const verticalMerge=mergeStart&&mergeStart.row!==mergeEnd.row;
   const offsetInTable=caret.docOffset-start;
   const tabularrayCommands={
     insertRow:()=>editTblrRow(original,cell.row,false,offsetInTable),
@@ -2967,8 +2976,10 @@ function editNativeTable(operation){
     insertColumn:()=>insertTableSourceColumn(original,cell.row,cell.column,caret.docOffset-start),
     deleteRow:()=>removeTableSourceRow(original,cell.row),
     deleteColumn:()=>removeTableSourceColumn(original,cell.row,cell.column),
-    splitCell:()=>splitTableSourceCell(original,cell.row,cell.column,offsetInTable),
-    mergeCells:()=>mergeTableSourceCells(original,cell.row,mergeColumn,mergeRange[1].paragraph.tableCell.column),
+    splitCell:()=>splitTableSourceCell(original,cell.row,cell.column,offsetInTable)??
+      splitTableSourceRowspan(original,cell.row,cell.column,offsetInTable),
+    mergeCells:()=>verticalMerge?mergeTableSourceRows(original,mergeStart.row,mergeEnd.row,mergeColumn):
+      mergeTableSourceCells(original,cell.row,mergeColumn,mergeEnd.column),
   };
   const patch=(node.attrs.tblr?tabularrayCommands:columnTableCommands)[operation]();
   if(!patch)return false;
@@ -2976,15 +2987,25 @@ function editNativeTable(operation){
   const replacement=decode(raw);
   if(!replacement)return false;
   const tr=state.tr.replaceWith(tableFrom,tableFrom+node.nodeSize,replacement);
-  const rowIndex=Math.min(cell.row,replacement.childCount-1),row=replacement.child(rowIndex);
+  const rowIndex=Math.min(mergeStart?.row??cell.row,replacement.childCount-1),row=replacement.child(rowIndex);
   const columnIndex=Math.min(mergeColumn??cell.column,row.childCount-1);
   let next=tableFrom+4+(mergeRange?row.child(columnIndex).firstChild.content.size:deleting?0:position-at.start(depth+3));
   replacement.forEach((before,_position,index)=>{if(index<rowIndex)next+=before.nodeSize;});
   row.forEach((before,_position,index)=>{if(index<columnIndex)next+=before.nodeSize;});
   tr.setSelection(TextSelection.create(tr.doc,next));
-  const change={from:start+patch.from,to:start+patch.to,insert:patch.insert};
-  const draft=owner.source.slice(0,change.from)+change.insert+owner.source.slice(change.to);
-  const offset=patch.offset===undefined?caret.docOffset:start+patch.offset;
+  let change={from:start+patch.from,to:start+patch.to,insert:patch.insert};
+  let draft=owner.source.slice(0,change.from)+change.insert+owner.source.slice(change.to);
+  let offset=patch.offset===undefined?caret.docOffset:start+patch.offset;
+  const rootId=composition?.rootId;
+  const root=rootId&&rootId!==file.id?project.file(rootId).draft:owner.source;
+  const dependency=verticalMerge&&nativeMultirowPackage(root);
+  if(verticalMerge&&dependency===false)return false;
+  if(dependency&&(!rootId||rootId===file.id)){
+    const {from,insert}=dependency;
+    draft=draft.slice(0,from)+insert+draft.slice(from);
+    offset+=insert.length;
+    change={from,to:change.to,insert:insert+owner.source.slice(from,change.from)+change.insert};
+  }
   const restoreCaret=()=>{
     if(!deleting)return nativeTexPreview.preserveSourceCaret({source:draft,offset,path:owner.filePath},started,caret.kind);
     const model=projectMixedDocument(draft,{fragment:projectFileKind==='tex',filePath:owner.filePath});
@@ -2994,6 +3015,14 @@ function editNativeTable(operation){
     return true;
   };
   if(composition){
+    if(dependency){
+      const drafts=new Map([[file.id,draft]]);
+      if(rootId!==file.id){
+        const {from,insert}=dependency;
+        drafts.set(rootId,root.slice(0,from)+insert+root.slice(from));
+      }
+      return dispatchNativeProjectChange(state,tr,project,drafts)&&restoreCaret();
+    }
     const updates=projectDocument.changes(tr.doc.toJSON());
     if(updates?.get(file.id)!==draft)
       return dispatchNativeProjectChange(state,tr,project,new Map([[file.id,draft]]))&&restoreCaret();
@@ -3250,8 +3279,7 @@ nativeTexPreview=installNativeTexPreview({host:footer,before:modes,primary:nativ
   selectText:(anchor,head)=>{
     if(!anchor||!head)return false;
     if(anchor.paragraph!==head.paragraph){
-      const a=anchor.paragraph.tableCell,b=head.paragraph.tableCell;
-      if(!a||!b||a.from16!==b.from16||a.row!==b.row||anchor.paragraph.filePath!==head.paragraph.filePath)return false;
+      if(!sameTable(anchor,head))return false;
       const {state}=editor;
       const address=stop=>{
         const target=nativeProsePosition(stop.paragraph,stop.local,stop.local);

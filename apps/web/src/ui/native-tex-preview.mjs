@@ -4,7 +4,7 @@ import {installNativePages} from '../typesetting/rtex/pages.mjs';
 import {installNativePdf} from '../typesetting/rtex/pdf.mjs';
 import {matchesRichFormula,nativeCaretTargets} from '../editor/native-math/rich-slot.mjs';
 import {surfaceCaretRect} from '../editor/native-surface/math-surface.mjs';
-import {createNativeDocumentSession} from '../editor/native-surface/document-session.mjs';
+import {createNativeDocumentSession,sameTable} from '../editor/native-surface/document-session.mjs';
 import {projectMixedDocument,projectMixedSnapshot,textTarget} from '../editor/native-text/projection.mjs';
 import {nativeTarget} from '../editor/native-math/resolve.mjs';
 import {parseDocument} from '../../latex/document.mjs';
@@ -1175,8 +1175,7 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
       const [from,to]=nativeDocument.surface.range;
       if(from?.kind!=='text'||to?.kind!=='text'||from===to)return null;
       const a=from.paragraph.tableCell,b=to.paragraph.tableCell;
-      return a&&b&&a.from16===b.from16&&a.row===b.row&&a.column!==b.column&&
-        from.paragraph.filePath===to.paragraph.filePath?[from,to]:null;
+      return sameTable(from,to)&&(a.row!==b.row||a.column!==b.column)?[from,to]:null;
     },
     insertLiteralText:text=>nativeDocument.surface.caret?.kind==='text'&&
       submitInput({insert:text,paste:true,started:performance.now()}),

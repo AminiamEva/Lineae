@@ -5,6 +5,10 @@ import {parseTabularx} from '../../../latex/tabularx.mjs';
 import {parseTableFloat} from '../../../latex/table-floats.mjs';
 import {sourceStructure} from '../../../latex/source-structure.mjs';
 
+export function verticalTableSelection(source){
+  return source.includes('\\begin{tabular}{')&&!/\\(?:multicolumn|multirow)(?![a-zA-Z])/.test(source);
+}
+
 function contentRange(part,offset) {
   let text=part.trim();
   offset+=part.length-part.trimStart().length;

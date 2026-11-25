@@ -4,7 +4,7 @@ import {readFileSync} from 'node:fs';
 import {importBlocks,serialize} from '../apps/web/src/editor/latex-codec.js';
 import {parseDocument} from '../apps/web/latex/document.mjs';
 import {sourceProjection,richSourceChanges} from '../apps/web/src/editor/source-sync.js';
-import {insertTableSourceColumn,insertTableSourceRow,mergeTableSourceCells,parseTabularx,removeTableSourceColumn,removeTableSourceRow,splitTableSourceCell} from '../apps/web/latex/tabularx.mjs';
+import {insertTableSourceColumn,insertTableSourceRow,mergeTableSourceCells,mergeTableSourceRows,parseTabularx,removeTableSourceColumn,removeTableSourceRow,splitTableSourceCell,splitTableSourceRowspan} from '../apps/web/latex/tabularx.mjs';
 const fixture=JSON.parse(readFileSync(new URL('./fixtures/academic-tabularx.json',import.meta.url),'utf8'));
 const table=source=>{const nodes=importBlocks(source);assert.equal(nodes.length,1);assert.equal(nodes[0].type,'table');assert.ok(nodes[0].attrs.tabularx);return nodes[0];};
 const wrap=source=>'\\begin{document}\r\nBefore.\n\n'+source+'\r\n\nAfter.\n\\end{document}\r\n';
@@ -196,4 +196,21 @@ test('merging adjacent source cells keeps their visible content and following ro
   assert.equal(draft,source.replace('\\textbf{A} & $z$','\\multicolumn{2}{l}{\\textbf{A} $z$}'));
   assert.equal(draft[patch.offset],'}');
   assert.equal(mergeTableSourceCells(source.replace(' & $z$',' % retained\r\n& $z$'),0,0,1),null);
+});
+
+test('native multirow keeps neighboring cells and can be split back into ordinary cells',()=>{
+  const source=['\\begin{tabular}{ll}','One  & Two \\\\','Three & Four','\\end{tabular}'].join('\r\n');
+  const apply=(value,{from,to,insert})=>value.slice(0,from)+insert+value.slice(to);
+  const patch=mergeTableSourceRows(source,0,1,0);
+  const merged=apply(source,patch);
+  assert.equal(merged,source.replace('One','\\multirow{2}{*}{One Three}').replace('Three &',' &'));
+  const [node]=importBlocks(merged);
+  assert.equal(node.content[0].content[0].attrs.rowspan,2);
+  assert.equal(node.content[1].content.length,1);
+  const split=splitTableSourceRowspan(merged,0,0,merged.indexOf('Three'));
+  const restored=apply(merged,split);
+  assert.equal(restored,merged.replace('\\multirow{2}{*}{One Three}','One Three'));
+  assert.equal(restored.slice(split.offset,split.offset+5),'Three');
+  assert.equal(importBlocks(restored)[0].content[1].content.length,2);
+  assert.equal(mergeTableSourceRows(source.replace('Three','\\hline\r\nThree'),0,1,0),null);
 });

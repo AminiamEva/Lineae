@@ -1,6 +1,8 @@
 import {sourceStructure} from './source-structure.mjs';
 import {group,trivia,clean,environmentEnd,delimiters,importSourceTable} from './tblr.mjs';
 import {parseTableFloat} from './table-floats.mjs';
+import {parseTable} from './tables.mjs';
+import {wrapCell,readGroup} from './table-spans.mjs';
 
 const alignments={l:'left',c:'center',r:'right'};
 const dimension=/^(?:\d+(?:\.\d+)?|\.\d+)(?:pt|px|cm|mm|in|em|ex)$/;
@@ -64,7 +66,7 @@ export function parseTabularx(source) {
   return parseColumnTable(source,'tabularx');
 }
 
-function parseColumnTable(source,environment) {
+function parseColumnTable(source,environment,{allowMultirow=false}={}) {
   const opening=/^\s*\\begin\{(tabularx|tabular)\}/.exec(source);
   if(opening?.[1]!==environment)return null;
   if([...sourceStructure(source)].some(t=>t.kind==='invalid'))return null;
@@ -79,7 +81,8 @@ function parseColumnTable(source,environment) {
   const unsupported=[],columns=parseColumns(preamble.value,width.value,unsupported);if(!columns)return null;
   const {specs,gaps,vertical}=columns;
   if(environment==='tabular'&&(specs.some(spec=>spec.type==='X')||
-    /\\(?:multirow|cline|cmidrule)(?![A-Za-z])/.test(source)))return null;
+    /\\(?:cline|cmidrule)(?![A-Za-z])/.test(source)||
+    !allowMultirow&&/\\multirow(?![A-Za-z])/.test(source)))return null;
   const body=source.slice(preamble.end,close.start),tokens=delimiters(body,['&','\\\\']);if(!tokens)return null;
   let from=0,cells=[];const rawRows=[],rowEnds=[],rules=[];
   for(const token of [...tokens,{index:body.length,end:body.length,value:'end'}]) {
@@ -160,8 +163,8 @@ function parseColumnTable(source,environment) {
     metadata:{width:width.value,widthCSS:widthCSS(width.value),position,preamble:preamble.value,specs,gaps,rules}};
 }
 
-function columnTableSource(source){
-  const parse=raw=>parseTabularx(raw)??parseColumnTable(raw,'tabular');
+function columnTableSource(source,options){
+  const parse=raw=>parseTabularx(raw)??parseColumnTable(raw,'tabular',options);
   let table=parse(source),start=0;
   if(!table){
     const float=parseTableFloat(source);
@@ -300,6 +303,52 @@ export function mergeTableSourceCells(source,row,first,last){
   const merged=next?.rows[row]?.[first];
   if(next?.rows.length!==table.rows.length||merged?.attrs.colspan!==selected.length||merged.text!==body)return null;
   return {from:start+from,to:start+to,insert,offset:start+from+insert.length-1};
+}
+
+export function mergeTableSourceRows(source,first,last,column){
+  const location=columnTableSource(source);
+  if(!location||first>=last)return null;
+  const {table,start}=location;
+  if(!table.source.trimStart().startsWith('\\begin{tabular}{')||last>=table.rows.length||
+     table.rows.some(row=>row.some(cell=>cell.attrs.colspan!==1))||
+     table.metadata.rules.some(({boundary})=>boundary>first&&boundary<=last))return null;
+  const cells=table.rows.slice(first,last+1).map(row=>row[column]);
+  if(cells.some(cell=>!cell||cell.text.includes('%')))return null;
+  const from=cells[0].sourceStart,to=cells.at(-1).sourceEnd;
+  const body=cells.map(cell=>cell.text).filter(Boolean).join(' ');
+  const wrapper=wrapCell(body,1,cells.length);
+  let insert=table.source.slice(from,to);
+  for(const [index,cell] of [...cells.entries()].reverse()){
+    insert=insert.slice(0,cell.sourceStart-from)+(index?'':wrapper)+insert.slice(cell.sourceEnd-from);
+  }
+  const draft=table.source.slice(0,from)+insert+table.source.slice(to);
+  const next=parseTable(draft.trim());
+  if(next?.rows.length!==table.rows.length||next.rows[first].rowspans[column]!==cells.length||
+     next.rows[first].cells[column]!==body)return null;
+  return {from:start+from,to:start+to,insert,offset:start+from+wrapper.length-1};
+}
+
+export function splitTableSourceRowspan(source,row,column,offset){
+  const location=columnTableSource(source,{allowMultirow:true});
+  if(!location)return null;
+  const {table,start}=location;
+  const imported=parseTable(table.source.trim());
+  const layout=imported?.rows[row];
+  const logical=layout?.columnIndexes[column];
+  const cell=table.rows[row]?.[logical];
+  if(!cell||layout.rowspans[column]<2||layout.spans[column]!==1||cell.spanRange||
+     table.rows.some(row=>row.some(entry=>entry.attrs.colspan!==1))||!cell.text.startsWith('\\multirow{'))return null;
+  const count=readGroup(cell.text,'\\multirow'.length);
+  const width=count&&readGroup(cell.text,count.end);
+  const body=width&&readGroup(cell.text,width.end);
+  if(!body||body.end!==cell.text.length)return null;
+  const draft=table.source.slice(0,cell.from)+body.value+table.source.slice(cell.to);
+  const next=parseTable(draft.trim());
+  const restored=next?.rows.slice(row+1,row+layout.rowspans[column]);
+  if(next?.rows.length!==imported.rows.length||next.rows[row].rowspans[column]!==1||
+     restored.length!==layout.rowspans[column]-1||
+     !restored.every(covered=>covered.cells[covered.columnIndexes.indexOf(logical)]===''))return null;
+  return {from:start+cell.from,to:start+cell.to,insert:body.value,offset:Math.max(start+cell.from,offset-width.end-1)};
 }
 
 export function importTabularx(source,inline) {

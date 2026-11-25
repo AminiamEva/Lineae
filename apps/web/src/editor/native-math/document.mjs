@@ -1,6 +1,6 @@
 import {parseDocument} from '../../../latex/document.mjs';
 import {unwrapParagraphWrappers} from '../../../latex/blocks.mjs';
-import {tableCellRanges} from '../native-text/table-cells.mjs';
+import {tableCellRanges,verticalTableSelection} from '../native-text/table-cells.mjs';
 import {containerParagraphRanges} from '../native-text/containers.mjs';
 import {markedRuns} from '../native-text/prose-runs.mjs';
 import {sourceStructure} from '../../../latex/source-structure.mjs';
@@ -41,12 +41,14 @@ export function projectDocumentFormulas(source,{fragment=false,firstTag=1,filePa
     if(!table)return [];
     const close=environmentEnd(body,token.index,table);
     if(!close)return [];
-    return (tableCellRanges(body.slice(token.index,close.end))??[]).flatMap(cell=>{
+    const tableSource=body.slice(token.index,close.end),vertical=verticalTableSelection(tableSource);
+    return (tableCellRanges(tableSource)??[]).flatMap(cell=>{
       const inline=new Map([...sourceStructure(cell.text)].filter(part=>part.kind==='inlineMath')
         .map(part=>[part.index,part]));
       if(!inline.size||!markedRuns(cell.text,0,[],inline))return [];
       return [...inline.keys()].map(index=>[token.index+cell.offset+index,
-        {from16:doc.start.length+token.index,to16:doc.start.length+close.end,row:cell.row,column:cell.column}]);
+        {from16:doc.start.length+token.index,to16:doc.start.length+close.end,row:cell.row,column:cell.column,
+          ...(vertical&&{vertical})}]);
     });
   }));
   const nested=new Map(tokens.filter(token=>token.kind==='inlineMath').map(token=>[token.index,token]));

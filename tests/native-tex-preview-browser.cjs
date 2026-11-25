@@ -305,6 +305,25 @@ const server=createServer(async(req,res)=>{
       await page.waitForFunction(expected=>nativeProbe.source===expected,plainEdited.replace('One  & Two','\\multicolumn{2}{l}{One Two}'));
       await page.keyboard.press(mod+'+z');
       await page.waitForFunction(expected=>nativeProbe.source===expected,plainEdited);
+      await panel.getByText('Click text on the native page',{exact:false}).waitFor();
+      await page.mouse.move(cellBounds.x+6550000*scale,cellBounds.y+9250000*scale);
+      await page.mouse.down();
+      await page.mouse.move(cellBounds.x+7750000*scale,cellBounds.y+9250000*scale,{steps:8});
+      await page.mouse.up();
+      await page.locator('button[data-source-action=merge]').click();
+      const verticalTable=plainEdited.replace('One','\\multirow{2}{*}{One QThree}').replace('QThree &',' &')
+        .replace('\\begin{document}','\\usepackage{multirow}\n\\begin{document}');
+      await page.waitForFunction(expected=>nativeProbe.source===expected,verticalTable);
+      await page.waitForFunction(()=>document.querySelector('.ProseMirror td')?.rowSpan===2);
+      await page.keyboard.press(mod+'+z');
+      await page.waitForFunction(expected=>nativeProbe.source===expected,plainEdited);
+      await page.keyboard.press(mod+'+y');
+      await page.waitForFunction(expected=>nativeProbe.source===expected,verticalTable);
+      await panel.getByText('Click text on the native page',{exact:false}).waitFor();
+      await canvas.click({position:{x:6550000*scale,y:9250000*scale}});
+      await page.locator('button[data-source-action=split]').click();
+      await page.waitForFunction(expected=>nativeProbe.source===expected,
+        verticalTable.replace('\\multirow{2}{*}{One QThree}','One QThree'));
       await page.locator('#native-tex-close').click();
       const tableWithMath=tableSource.replace('\\begin{document}','\\usepackage{tabularx}\n\\begin{document}')
         .replace('\\begin{tabular}{ll}','\\begin{tabularx}{\\textwidth}{lX}')
