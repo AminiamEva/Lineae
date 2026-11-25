@@ -6,7 +6,7 @@ import {documentMetadata,writeDocumentMetadata} from '../latex/document-metadata
 import {resolvePackages} from '../latex/packages.mjs';
 import {referenceAt} from '../latex/reference-commands.mjs';
 import {sourceStructure} from '../latex/source-structure.mjs';
-import {insertTabularxColumn,insertTabularxRow} from '../latex/tabularx.mjs';
+import {insertTabularxColumn,insertTabularxRow,removeTabularxColumn,removeTabularxRow} from '../latex/tabularx.mjs';
 import {loadLegacyMath,nativeOnlyAcceptance,nativeWorkspaceRequested} from './editor/native-surface/acceptance-mode.mjs';
 import {AppendixStart,MatterStart,LayoutCommand} from './editor/appendix.js';
 import {Lipsum} from './editor/lipsum.js';
@@ -2675,8 +2675,8 @@ const shortcutActions = {
   table: {
     addRow: () => addNativeTableAxis('row')??editor.commands.addRowAfter(),
     addColumn: () => addNativeTableAxis('column')??editor.commands.addColumnAfter(),
-    deleteRow: () => editor.commands.deleteRow(),
-    deleteColumn: () => editor.commands.deleteColumn(),
+    deleteRow: () => editNativeTableAxis('deleteRow')??editor.commands.deleteRow(),
+    deleteColumn: () => editNativeTableAxis('deleteColumn')??editor.commands.deleteColumn(),
   },
 };
 const nativeBindings=compileKeybindings({
@@ -2818,6 +2818,9 @@ function nativeFormulaPosition(formula){
   return Number.isInteger(position)?{position,node:editor.state.doc.nodeAt(position),type,project,composition,file}:null;
 }
 function addNativeTableAxis(axis){
+  return editNativeTableAxis(axis==='row'?'insertRow':'insertColumn');
+}
+function editNativeTableAxis(operation){
   const started=performance.now();
   const caret=nativeTexPreview?.verifiedCaret?.();
   if(!caret&&nativeTexPreview?.focusedCaret?.())return false;
@@ -2838,8 +2841,13 @@ function addNativeTableAxis(axis){
   const original=serialize(node.toJSON());
   const start=cell.from16;
   if(!owner.source.startsWith(original,start))return false;
-  const patch=axis==='row'?insertTabularxRow(original,cell.row):
-    insertTabularxColumn(original,cell.row,cell.column,caret.docOffset-start);
+  const deleting=operation.startsWith('delete');
+  const patch={
+    insertRow:()=>insertTabularxRow(original,cell.row),
+    insertColumn:()=>insertTabularxColumn(original,cell.row,cell.column,caret.docOffset-start),
+    deleteRow:()=>removeTabularxRow(original,cell.row),
+    deleteColumn:()=>removeTabularxColumn(original,cell.row,cell.column),
+  }[operation]();
   if(!patch)return false;
   const raw=original.slice(0,patch.from)+patch.insert+original.slice(patch.to);
   const [updated,...rest]=importBlocks(raw);
@@ -2847,15 +2855,23 @@ function addNativeTableAxis(axis){
   const tableFrom=at.before(depth);
   const replacement=state.schema.nodeFromJSON(updated);
   const tr=state.tr.replaceWith(tableFrom,tableFrom+node.nodeSize,replacement);
-  const row=replacement.child(cell.row);
-  let next=tableFrom+4+position-at.start(depth+3);
-  replacement.forEach((before,_position,index)=>{if(index<cell.row)next+=before.nodeSize;});
-  row.forEach((before,_position,index)=>{if(index<cell.column)next+=before.nodeSize;});
+  const rowIndex=Math.min(cell.row,replacement.childCount-1),row=replacement.child(rowIndex);
+  const columnIndex=Math.min(cell.column,row.childCount-1);
+  let next=tableFrom+4+(deleting?0:position-at.start(depth+3));
+  replacement.forEach((before,_position,index)=>{if(index<rowIndex)next+=before.nodeSize;});
+  row.forEach((before,_position,index)=>{if(index<columnIndex)next+=before.nodeSize;});
   tr.setSelection(TextSelection.create(tr.doc,next));
   const change={from:start+patch.from,to:start+patch.to,insert:patch.insert};
   const draft=owner.source.slice(0,change.from)+change.insert+owner.source.slice(change.to);
   const offset=patch.offset===undefined?caret.docOffset:start+patch.offset;
-  const restoreCaret=()=>nativeTexPreview.preserveSourceCaret({source:draft,offset,path:owner.filePath},started,caret.kind);
+  const restoreCaret=()=>{
+    if(!deleting)return nativeTexPreview.preserveSourceCaret({source:draft,offset,path:owner.filePath},started,caret.kind);
+    const model=projectMixedDocument(draft,{fragment:projectFileKind==='tex',filePath:owner.filePath});
+    const target=model?.paragraphs.find(({tableCell})=>tableCell?.from16===start&&tableCell.row===rowIndex&&tableCell.column===columnIndex);
+    if(target?.glyphs.length)nativeTexPreview.preserveSourceCaret({source:draft,
+      offset:target.from16+target.glyphs[0].from16,path:owner.filePath},started,'text');
+    return true;
+  };
   if(composition){
     const updates=projectDocument.changes(tr.doc.toJSON());
     if(updates?.get(file.id)!==draft)return false;
@@ -3760,8 +3776,8 @@ continueTablesButton=groupButton(tableGroup,['续表','Continue'],()=>{
 updateContinueTablesButton();
 groupButton(tableGroup,['＋ 行','＋ Row'],addMatrixRow,'＋ Row');
 groupButton(tableGroup,['＋ 列','＋ Column'],addMatrixColumn,'＋ Column');
-groupButton(tableGroup,['－ 行','－ Row'],()=>editor.chain().focus(undefined,{scrollIntoView:false}).deleteRow().run(),'－ Row');
-groupButton(tableGroup,['－ 列','－ Column'],()=>editor.chain().focus(undefined,{scrollIntoView:false}).deleteColumn().run(),'－ Column');
+groupButton(tableGroup,['－ 行','－ Row'],()=>editNativeTableAxis('deleteRow')??editor.chain().focus(undefined,{scrollIntoView:false}).deleteRow().run(),'－ Row');
+groupButton(tableGroup,['－ 列','－ Column'],()=>editNativeTableAxis('deleteColumn')??editor.chain().focus(undefined,{scrollIntoView:false}).deleteColumn().run(),'－ Column');
 groupButton(tableGroup,['删除表格','Delete table'],()=>deleteTableKeepingScroll(editor));
 groupButton(tableGroup,['合并','Merge'],()=>editor.chain().focus(undefined,{scrollIntoView:false}).mergeCells().run(),'merge');
 groupButton(tableGroup,['拆分','Split'],()=>editor.chain().focus(undefined,{scrollIntoView:false}).splitCell().run(),'split');

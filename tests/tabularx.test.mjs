@@ -4,7 +4,7 @@ import {readFileSync} from 'node:fs';
 import {importBlocks,serialize} from '../apps/web/src/editor/latex-codec.js';
 import {parseDocument} from '../apps/web/latex/document.mjs';
 import {sourceProjection,richSourceChanges} from '../apps/web/src/editor/source-sync.js';
-import {insertTabularxColumn,insertTabularxRow,parseTabularx} from '../apps/web/latex/tabularx.mjs';
+import {insertTabularxColumn,insertTabularxRow,parseTabularx,removeTabularxColumn,removeTabularxRow} from '../apps/web/latex/tabularx.mjs';
 const fixture=JSON.parse(readFileSync(new URL('./fixtures/academic-tabularx.json',import.meta.url),'utf8'));
 const table=source=>{const nodes=importBlocks(source);assert.equal(nodes.length,1);assert.equal(nodes[0].type,'table');assert.ok(nodes[0].attrs.tabularx);return nodes[0];};
 const wrap=source=>'\\begin{document}\r\nBefore.\n\n'+source+'\r\n\nAfter.\n\\end{document}\r\n';
@@ -104,6 +104,25 @@ test('inserting a column widens intersected spans and retains the caret in its o
   assert.deepEqual(updated.rows.map(row=>row.map(cell=>[cell.text,cell.attrs.colspan])),[
     [['A',3],['B',1]],[['C',1],['',1],['D',1],['E',1]],
   ]);
+});
+test('deleting a row preserves directives and neighboring comments',()=>{
+  const removed='  C & \\textit{Delete} \\\\[4pt]\r\n';
+  const source='\\begin{tabularx}{\\textwidth}{XX}\n'+
+    '\\toprule\nA & B \\\\\n% Keep with neighboring rows\r\n'+removed+
+    '\\midrule\nE & F \\\\\n\\bottomrule\n\\end{tabularx}';
+  const {from,to,insert}=removeTabularxRow(source,1);
+  assert.equal(source.slice(from,to),removed);
+  assert.equal(insert,'');
+  assert.deepEqual(parseTabularx(source.slice(0,from)+source.slice(to)).rows.map(row=>row.map(cell=>cell.text)),[
+    ['A','B'],['E','F'],
+  ]);
+});
+test('deleting a column preserves neighboring alignment and shrinks crossing spans',()=>{
+  const source=String.raw`\begin{tabularx}{\textwidth}{p{3cm}XX} \multicolumn{ 2 }{c}{A} & B\\[4pt] C & D & E\end{tabularx}`;
+  const {from,to,insert}=removeTabularxColumn(source,1,1);
+  const draft=source.slice(0,from)+insert+source.slice(to);
+  assert.equal(draft,source.replace('p{3cm}XX','p{3cm}X').replace('{ 2 }','{ 1 }').replace(' & D',' '));
+  assert.deepEqual(parseTabularx(draft).rows.map(row=>row.map(cell=>cell.text)),[['A','B'],['C','E']]);
 });
 for(const eol of ['\n','\r\n'])test('comments and '+JSON.stringify(eol)+' survive a neighboring cell edit',()=>{
   const source=['\\begin{tabularx}{\\textwidth}{XX}','\\toprule','A % & \\\\ ignored','&B \\\\','\\bottomrule','\\end{tabularx}'].join(eol);

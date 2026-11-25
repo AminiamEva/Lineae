@@ -31,7 +31,7 @@ function declaration(source,unsupported) {
   return result;
 }
 function parseColumns(preamble,total,unsupported) {
-  const specs=[],gaps=[],vertical=[],ends=[];let prefix='',style={};
+  const specs=[],gaps=[],vertical=[],starts=[],ends=[];let prefix='',style={};
   for(let i=0;i<preamble.length;) {
     i=trivia(preamble,i);if(i===preamble.length)break;
     const tokenStart=i,token=preamble[i++];
@@ -52,11 +52,12 @@ function parseColumns(preamble,total,unsupported) {
     const {align,...css}=style;
     specs.push({type:token,width,widthCSS:width===null?null:widthCSS(width,total),prefix,
       align:align??alignments[token]??'left',style:css});
+    starts.push(tokenStart);
     ends.push(i);
     if(specs.length>4096)return null;
     prefix='';style={};
   }
-  return specs.length&&!prefix?{specs,gaps,vertical,ends}:null;
+  return specs.length&&!prefix?{specs,gaps,vertical,starts,ends}:null;
 }
 
 export function parseTabularx(source) {
@@ -101,7 +102,8 @@ export function parseTabularx(source) {
     }
     if(cells.length>1||clean(cells[0].raw)){
       rawRows.push(cells);
-      rowEnds.push({from:preamble.end+(token.value==='end'?body.trimEnd().length:from),terminated:token.value!=='end'});
+      rowEnds.push({start:cells[0].from,from:preamble.end+(token.value==='end'?body.trimEnd().length:from),
+        terminated:token.value!=='end'});
     }
     cells=[];
   }
@@ -134,7 +136,8 @@ export function parseTabularx(source) {
       if(spec.widthCSS)css.width=spec.widthCSS;
       if((override?.gaps??gaps).some(g=>g.column===(override?0:column)&&!clean(g.source)))css.paddingLeft='0px';
       if((override?.gaps??gaps).some(g=>g.column===(override?1:column+span)&&!clean(g.source)))css.paddingRight='0px';
-      row.push({text:raw.raw.slice(begin,end),from:raw.from+begin,to:raw.from+end,sourceEnd,spanRange,
+      row.push({text:raw.raw.slice(begin,end),from:raw.from+begin,to:raw.from+end,
+        sourceStart:raw.from,sourceEnd,sourceDelimiter:raw.to,spanRange,
         attrs:{colspan:span,rowspan:1,align:spec.align,tblrStyle:css}});
       column+=span;
     }
@@ -142,6 +145,7 @@ export function parseTabularx(source) {
   }
   return {source,columns:specs.map(s=>alignments[s.type]?s.type:s.type==='p'?'p{'+s.width+'}':'l').join(''),
     booktabs:rules.length>0,rows,rowEnds,unsupported,
+    columnStarts:columns.starts.map(start=>preamble.end-preamble.value.length-1+start),
     columnEnds:columns.ends.map(end=>preamble.end-preamble.value.length-1+end),
     metadata:{width:width.value,widthCSS:widthCSS(width.value),position,preamble:preamble.value,specs,gaps,rules}};
 }
@@ -195,15 +199,60 @@ export function insertTabularxColumn(source,row,column,offset){
       break;
     }
   }
-  const to=edits.at(-1).to;
+  return changeTabularxColumns(table,start,edits,1,offset);
+}
+
+function changeTabularxColumns(table,start,edits,count,offset){
+  const from=edits[0].from,to=edits.at(-1).to;
   const insert=edits.toReversed().reduce((value,change)=>
     value.slice(0,change.from-from)+change.insert+value.slice(change.to-from),table.source.slice(from,to));
   const draft=table.source.slice(0,from)+insert+table.source.slice(to);
   const updated=parseTabularx(draft);
-  if(updated?.rows.length!==table.rows.length||updated.metadata.specs.length!==table.metadata.specs.length+1)return null;
+  if(updated?.rows.length!==table.rows.length||updated.metadata.specs.length!==table.metadata.specs.length+count)return null;
   let nextOffset=offset;
   for(const change of edits)if(start+change.from<offset)nextOffset+=change.insert.length-(change.to-change.from);
   return {from:start+from,to:start+to,insert,offset:nextOffset};
+}
+
+export function removeTabularxColumn(source,row,column){
+  const location=tabularxSource(source);
+  if(!location)return null;
+  const {table,start}=location,cells=table.rows[row];
+  if(!cells?.[column]||table.metadata.specs.length<2)return null;
+  const logical=cells.slice(0,column).reduce((count,cell)=>count+cell.attrs.colspan,0);
+  if(table.metadata.specs[logical].prefix||table.metadata.preamble.includes('<'))return null;
+  const edits=[{from:table.columnStarts[logical],to:table.columnEnds[logical],insert:''}];
+  for(const cells of table.rows){
+    let position=0;
+    for(const [index,cell] of cells.entries()){
+      position+=cell.attrs.colspan;
+      if(position<=logical)continue;
+      if(cell.attrs.colspan>1&&cell.spanRange){
+        const old=table.source.slice(cell.spanRange.from,cell.spanRange.to);
+        edits.push({...cell.spanRange,insert:old.replace(/\d+/,String(cell.attrs.colspan-1))});
+      }else{
+        const from=index?cell.sourceStart-1:cell.sourceStart;
+        const to=index?cell.sourceEnd:cell.sourceDelimiter+1;
+        if(table.source[index?from:to-1]!=='&')return null;
+        edits.push({from,to,insert:''});
+      }
+      break;
+    }
+  }
+  return changeTabularxColumns(table,start,edits,-1);
+}
+
+export function removeTabularxRow(source,index){
+  const location=tabularxSource(source);
+  if(!location)return null;
+  const {table,start}=location,edge=table.rowEnds[index];
+  if(!edge||table.rows.length===1)return null;
+  const raw=table.source,lineStart=raw.lastIndexOf('\n',edge.start-1)+1;
+  const newline=/^[ \t]*\r?\n/.exec(raw.slice(edge.from));
+  const wholeLine=newline&&!raw.slice(lineStart,edge.start).trim();
+  const from=wholeLine?lineStart:edge.start,to=edge.from+(wholeLine?newline[0].length:0);
+  if(parseTabularx(raw.slice(0,from)+raw.slice(to))?.rows.length!==table.rows.length-1)return null;
+  return {from:start+from,to:start+to,insert:''};
 }
 
 export function importTabularx(source,inline) {

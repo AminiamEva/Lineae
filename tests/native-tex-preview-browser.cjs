@@ -282,6 +282,19 @@ const server=createServer(async(req,res)=>{
         .replace(' unit ',' unit &  ').replace('Three & ','Three & &  '));
       await page.keyboard.press(mod+'+z');
       await page.waitForFunction(expected=>nativeProbe.source===expected,editedTable);
+      await panel.getByText('Click prose on the native page',{exact:false}).waitFor();
+      await canvas.click({position:{x:7150000*scale,y:9250000*scale}});
+      await page.keyboard.press(mod+'+e');await page.keyboard.press('x');
+      await page.waitForFunction(expected=>nativeProbe.source===expected,editedTable.replace(/^One[^\n]*\n/m,''));
+      await page.keyboard.press(mod+'+z');
+      await page.waitForFunction(expected=>nativeProbe.source===expected,editedTable);
+      await panel.getByText('Click prose on the native page',{exact:false}).waitFor();
+      await canvas.click({position:{x:7150000*scale,y:9250000*scale}});
+      await page.keyboard.press(mod+'+e');await page.keyboard.press('y');
+      await page.waitForFunction(expected=>nativeProbe.source===expected,editedTable.replace('{lX}','{l}')
+        .replace(/&[^\n]* unit/,'').replace('Three & ','Three  '));
+      await page.keyboard.press(mod+'+z');
+      await page.waitForFunction(expected=>nativeProbe.source===expected,editedTable);
       await page.locator('#native-tex-close').click();
       const matrixSource='\\documentclass{article}\n\\usepackage{amsmath}\n\\begin{document}\n'+
         '\\[\\begin{bmatrix}a&\\\\&d\\end{bmatrix}\\]\n\\end{document}\n';
