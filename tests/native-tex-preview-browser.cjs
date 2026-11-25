@@ -1391,6 +1391,26 @@ const server=createServer(async(req,res)=>{
       await page.waitForFunction(expected=>nativeProbe.source===expected,pictureSource);
       await page.keyboard.press(mod+'+Shift+z');
       await page.waitForFunction(expected=>nativeProbe.source===expected,insertedPicture);
+      await page.keyboard.press(mod+'+z');
+      await page.waitForFunction(expected=>nativeProbe.source===expected,pictureSource);
+      await panel.getByText('Click text on the native page',{exact:false}).waitFor();
+      await canvas.click({position:{x:6550000*scale,y:9250000*scale}});
+      await revealToolbar(page);await page.locator('[data-group=insert]').click();
+      await page.getByRole('button',{name:'Subfigure',exact:true}).click();
+      const subfigureNames=['panel-a.png','panel-b.png'];
+      await page.locator('input[type=file][multiple][accept*="image/png"]').setInputFiles(
+        subfigureNames.map(name=>({name,mimeType:'image/png',buffer:picture})));
+      await page.waitForFunction(({names,bytes})=>nativeProbe.calls.some(call=>{
+        const source=call.args?.source;
+        return source?.includes('\\usepackage{subcaption}')&&source.match(/\\begin\{subfigure\}/g)?.length===2&&
+          names.every(name=>source.includes(`{${name}}`)&&call.args.files?.some(file=>file.path===name&&
+            file.bytes.length===bytes.length&&file.bytes.every((byte,index)=>byte===bytes[index])));
+      }),{names:subfigureNames,bytes:[...picture]});
+      const groupedPictures=await page.evaluate(()=>nativeProbe.source);
+      await page.keyboard.press(mod+'+z');
+      await page.waitForFunction(expected=>nativeProbe.source===expected,pictureSource);
+      await page.keyboard.press(mod+'+Shift+z');
+      await page.waitForFunction(expected=>nativeProbe.source===expected,groupedPictures);
 
       await page.goto('http://127.0.0.1:'+server.address().port+'/?native-workspace=1',{waitUntil:'networkidle'});
       const workspaceSource='\\documentclass{article}\n\\begin{document}\nNative document.\n\\end{document}\n';

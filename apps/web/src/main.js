@@ -86,6 +86,7 @@ import {
   projectAssets,
   readBibliographyMetadata,
   rememberAsset,
+  resolveImageAsset,
   writeBibliographyMetadata,
 } from './editor/project-assets.js';
 import { buildProjectZip, safeProjectPath, projectDependencies } from './editor/project-zip.mjs';
@@ -3693,36 +3694,52 @@ function insertNativeDrawing(source,preambleLines){
 }
 function insertDocumentImage(native=nativeParagraphFormattingActive()){
   if(!native)return insertLocalImage(editor);
+  return insertNativeImages(false);
+}
+function insertNativeImages(grouped){
   const document=editor.state.doc,project=projectExplorer?.model;
-  return chooseImageFile(async file=>{
-    if(editor.state.doc!==document||projectExplorer?.model!==project)return;
-    if(!/^[\p{L}\p{N}_. -]+\.(?:png|jpe?g)$/iu.test(file.name)||file.size>16*1024*1024){
+  const current=()=>editor.state.doc===document&&projectExplorer?.model===project;
+  return chooseImageFile(async selected=>{
+    if(!current())return;
+    const files=grouped?selected:[selected];
+    if(files.some(file=>!/^[\p{L}\p{N}_. -]+\.(?:png|jpe?g)$/iu.test(file.name)||file.size>16*1024*1024)){
       sourceView.error(t('原生文档支持不超过 16 MB 的 PNG 和 JPEG。','Native documents support PNG and JPEG images up to 16 MB.'));
       return;
     }
-    let imported;
+    const imported=[];
+    let applied=false;
     try{
-      const occupied=project&&new Set([...project.files.keys(),...project.directories].map(path=>path.toLowerCase()));
-      const path=availableImagePath(file,undefined,occupied?name=>occupied.has(name.toLowerCase()):undefined);
-      const latex=serialize(editor.schema.nodes.documentImage.create({path}).toJSON()).trimEnd();
+      const occupied=new Set(project?[...project.files.keys(),...project.directories].map(path=>path.toLowerCase()):[]);
+      const images=files.map(file=>{
+        const path=availableImagePath(file,undefined,name=>occupied.has(name.toLowerCase())||!project&&Boolean(resolveImageAsset(name)));
+        occupied.add(path.toLowerCase());
+        return {file,path};
+      });
+      const {documentImage,subfigures}=editor.schema.nodes;
+      const nodes=images.map(({path})=>documentImage.create({path}));
+      const latex=serialize((grouped?subfigures.create(null,nodes):nodes[0]).toJSON()).trimEnd();
       const [node,...rest]=importBlocks(latex);
-      if(node?.type!=='documentImage'||rest.length)return;
-      if(project){
+      if(node?.type!==(grouped?'subfigures':'documentImage')||rest.length)return;
+      if(project)for(const {path,file} of images){
         const bytes=new Uint8Array(await file.arrayBuffer());
-        if(editor.state.doc!==document||projectExplorer?.model!==project)return;
-        imported=await project.importAsset(path,bytes);
+        if(!current())return;
+        const {id}=await project.importAsset(path,bytes);
+        imported.push({id,path});
       }
-      if(editor.state.doc!==document||projectExplorer?.model!==project||
-        !insertNativeDocumentBlock(editor.schema.nodeFromJSON(node),latex)){
-        if(imported)await project.remove(imported.id);
-        return;
-      }
-      if(!project)rememberAsset(path,file);
+      if(!current()||!insertNativeDocumentBlock(editor.schema.nodeFromJSON(node),latex))return;
+      applied=true;
+      if(!project)for(const {path,file} of images)rememberAsset(path,file);
       nativeTexPreview.refocusTextInput();
     }catch(error){
       sourceView.error(error?.message??String(error));
+    }finally{
+      if(!applied)for(const image of imported){
+        if(project.files.get(image.path)?.id!==image.id)continue;
+        try{await project.remove(image.id);}
+        catch(error){sourceView.error(error?.message??String(error));}
+      }
     }
-  });
+  },{multiple:grouped});
 }
 function editNativeDrawing(position){
   if(!nativeTikzDrawings().some(drawing=>drawing.position===position))return;
@@ -5315,7 +5332,7 @@ const insert=document.createElement('div');insert.className='tools';
 groupButton(insert,['分页','New page'],()=>nativeTexPreview.hasNativeTextFocus?.()?insertNativePageBreak():
   editor.chain().focus().insertContent({type:'pageBreak'}).run());
 groupButton(insert,['图片','Image'],()=>insertDocumentImage());
-groupButton(insert,['子图','Subfigure'],()=>insertSubfigures(editor));
+groupButton(insert,['子图','Subfigure'],()=>nativeParagraphFormattingActive()?insertNativeImages(true):insertSubfigures(editor));
 const codeLanguageButton=groupButton(insert,['代码块','Code block'],editCodeBlockLanguage);
 async function editCodeBlockLanguage(){
   const native=nativeParagraphFormattingActive();

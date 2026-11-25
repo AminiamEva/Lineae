@@ -12,9 +12,10 @@ const rasterTypes = new Set(['image/png','image/jpeg','image/jpg','image/pjpeg',
 let measureContext = null;
 let suppressImageClickUntil = 0;
 
-export function chooseImageFile(callback) {
+export function chooseImageFile(callback, {multiple=false}={}) {
   const input = document.createElement('input');
   input.type = 'file';
+  input.multiple = multiple;
   input.hidden = true;
   input.accept = [...rasterTypes].join(',');
   return new Promise((resolve,reject)=>{
@@ -23,7 +24,8 @@ export function chooseImageFile(callback) {
     input.addEventListener('change',async()=>{
       const file=input.files[0];
       try{
-        if(file&&(rasterTypes.has(file.type)||/\.(png|jpe?g|webp|gif|avif)$/i.test(file.name)))await callback(file);
+        if(file&&multiple)await callback([...input.files]);
+        else if(file&&(rasterTypes.has(file.type)||/\.(png|jpe?g|webp|gif|avif)$/i.test(file.name)))await callback(file);
         close();
       }catch(error){input.remove();reject(error);}
     },{once:true});
