@@ -336,14 +336,17 @@ test('native project selection follows include order and keeps complete display 
   const formula=projection.formulas[0],atom=formula.math.atoms.find(atom=>atom.nucleus==='x');
   const regions=[{path:'chapter.tex',from:0,to:chapter.length},{path:'main.tex',from:source.indexOf('Main.'),to:source.length}];
   const from=textTarget(projection,child.glyphs[0].tag,false);
-  const to=textTarget(projection,root.glyphs.at(-1).tag,true);
+  const to=textTarget(projection,root.glyphs[1].tag,true);
   session.setObservation(page([],[glyph(from.owner,100),glyph(atom.tag,200),glyph(to.owner,300)]),projection,false,regions);
   assert.equal(session.select(from,to),true);
   assert.deepEqual(session.proseRanges(from,to).map(range=>range.paragraph?.text??
     range.formula.source.slice(range.formula.outerFrom16,range.formula.outerTo16)),['Child.','\\[x\\]','Main.']);
   assert.equal(session.surface.erase(),null,'A cross-file range cannot silently delete one file only');
   assert.equal(session.surface.insert('unsafe'),null);
-  assert.equal(session.editAcrossFiles('replacement'),null,'The formula is a separate structural selection');
+  const edit=session.editAcrossFiles('replacement');
+  assert.equal(edit.edits[1].formula,formula);
+  assert.equal(edit.source,'replacement\n\n\n');
+  assert.equal(edit.edits[2].source,source.replace('Main.','in.'));
 });
 
 test('native vertical movement keeps the visual column and extends to another page',()=>{

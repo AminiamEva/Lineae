@@ -1154,6 +1154,16 @@ function refuseStandaloneWriteback() {
   return false;
 }
 const nativeParagraphTransitions=[];
+function dispatchNativeProjectChange(state,tr,project,drafts) {
+  const composition=projectDocument.verify(project,tr.doc,drafts);
+  if(!composition)return false;
+  const before={doc:state.doc,drafts:new Map([...drafts.keys()].map(id=>[id,project.file(id).draft]))};
+  tr.setMeta('nativeProjectDraft',{project,composition,drafts});
+  editor.view.dispatch(closeHistory(tr));
+  if(!editor.state.doc.eq(tr.doc))return false;
+  projectDocument.record(project,{before,after:{doc:tr.doc,drafts}});
+  return true;
+}
 function dispatchNativeParagraphChange(state,tr,source,draft,change,nextProjection) {
   tr.setMeta('standaloneParagraph',{draft,changes:[change],projection:nextProjection});
   editor.view.dispatch(closeHistory(tr));
@@ -1186,7 +1196,8 @@ function prepareNativeParagraphHistory(transaction) {
 editor.registerPlugin(new Plugin({
   state: {
     init:()=>false,
-    apply:tr=>!!(tr.getMeta('standaloneParagraph') || tr.getMeta('appendedTransaction')?.getMeta('standaloneParagraph')),
+    apply:tr=>['standaloneParagraph','nativeProjectDraft'].some(key=>
+      tr.getMeta(key)||tr.getMeta('appendedTransaction')?.getMeta(key)),
   },
   props: {handleKeyDown(view,event) {
     if (sourceView.hidden || event.isComposing || !(event.ctrlKey || event.metaKey) || event.altKey) return false;
@@ -1203,6 +1214,16 @@ editor.registerPlugin(new Plugin({
     // Its extra document changes have no authority over the approved source range.
     if(state!==editor.state && this.getState(state) && !transaction.doc.eq(state.doc))return refuseStandaloneWriteback();
     if(projectDocument.composition){
+      const project=projectExplorer.model;
+      const verified=transaction.getMeta('nativeProjectDraft');
+      if(verified)return transaction.before===state.doc&&verified.project===project;
+      if(isHistoryTransaction(transaction)){
+        const restored=projectDocument.restore(project,transaction);
+        if(restored){
+          transaction.setMeta('nativeProjectDraft',{...restored,project});
+          return true;
+        }
+      }
       const valid=projectDocument.changes(transaction.doc.toJSON());
       if(!valid)sourceView.error(t('请在对应文件的源码中修改此结构','Edit this structure in its source file'));
       return !!valid;
@@ -1232,6 +1253,15 @@ editor.registerPlugin(new Plugin({
 }));
 editor.on('update', ({transaction}) => {
   if (syncApplying) return;
+  const nativeProject=transaction.getMeta('nativeProjectDraft');
+  if(nativeProject&&editor.state.doc.eq(transaction.doc)){
+    const {project,composition,drafts}=nativeProject;
+    for(const [id,draft] of drafts)project.edit(id,draft);
+    projectDocument.hydrate(composition,editor.getJSON());
+    sourceView.reset(composition.sources.get(composition.rootId));
+    projectExplorer.changed();
+    return;
+  }
   const paragraph=transaction.getMeta('standaloneParagraph');
   if (paragraph && editor.state.doc.eq(transaction.doc)) {
     if(sourceView.value===importedSource)sourceView.applyChanges(paragraph.changes);
@@ -2926,7 +2956,8 @@ function editNativeTableAxis(operation){
   };
   if(composition){
     const updates=projectDocument.changes(tr.doc.toJSON());
-    if(updates?.get(file.id)!==draft)return false;
+    if(updates?.get(file.id)!==draft)
+      return dispatchNativeProjectChange(state,tr,project,new Map([[file.id,draft]]))&&restoreCaret();
     for(const [id,value] of updates)if(id!==file.id&&value!==project.file(id).draft)return false;
     editor.view.dispatch(closeHistory(tr));
     return editor.state.doc!==state.doc&&restoreCaret();
@@ -3567,13 +3598,24 @@ nativeTexPreview=installNativeTexPreview({host:footer,before:modes,primary:nativ
     const {state}=editor,project=projectExplorer?.model,composition=projectDocument.composition;
     if(!project||!composition||edits.length<2)return false;
     const mapped=edits.map(edit=>{
+      if(edit.formula){
+        const {formula,patch}=edit;
+        const target=nativeFormulaPosition(formula);
+        if(!target?.file||target.type!=='mathBlock'||target.node.attrs.labelSource)return null;
+        const {position,node}=target;
+        return {...edit,...target,range:{from:position,to:position+node.nodeSize},
+          change:{from:formula.outerFrom16,to:formula.outerTo16,insert:patch.insert}};
+      }
       const target=nativeProsePosition(edit.paragraph,edit.patch.from,edit.patch.to);
-      return target?.file?{...edit,...target}:null;
+      const {paragraph,patch}=edit;
+      return target?.file?{...edit,...target,change:{from:paragraph.from16+patch.from,
+        to:paragraph.from16+patch.to,insert:patch.latex??patch.insert}}:null;
     });
     if(mapped.some(edit=>!edit))return false;
     const first=mapped[0];
     const positions=mapped.map(edit=>state.doc.resolve(edit.range.from));
-    if(positions.some(position=>position.depth!==2||position.node(1).type.name!=='projectRegion'))return false;
+    if(positions.some((position,index)=>position.depth!==(mapped[index].formula?1:2)||
+      position.node(1).type.name!=='projectRegion'))return false;
     const firstRegion=positions[0].index(0),lastRegion=positions.at(-1).index(0);
     const expectedNodes=[];
     for(let index=firstRegion;index<=lastRegion;index++){
@@ -3589,16 +3631,17 @@ nativeTexPreview=installNativeTexPreview({host:footer,before:modes,primary:nativ
     if(expectedNodes.length!==positions.length||positions.some((at,index)=>expectedNodes[index]!==`${at.index(0)}/${at.index(1)}`))return false;
     const tr=state.tr;
     const patches=new Map();
-    for(const {file,paragraph,range,patch} of mapped.toReversed()){
+    for(const {file,range,patch,change} of mapped.toReversed()){
       if(range.to>range.from)tr.delete(range.from,range.to);
       if(patch.insert)tr.insert(range.from,editor.schema.text(patch.insert,range.marks));
       if(!patches.has(file.id))patches.set(file.id,[]);
-      patches.get(file.id).push({from:paragraph.from16+patch.from,to:paragraph.from16+patch.to,insert:patch.latex??patch.insert});
+      patches.get(file.id).push(change);
     }
     tr.setSelection(TextSelection.create(tr.doc,first.range.from+first.patch.insert.length));
     const drafts=projectDocument.changes(tr.doc.toJSON());
     const expected=new Map([...patches].map(([id,changes])=>[id,changes.sort((a,b)=>b.from-a.from)
       .reduce((draft,change)=>draft.slice(0,change.from)+change.insert+draft.slice(change.to),project.file(id).draft)]));
+    if(mapped.some(edit=>edit.formula))return dispatchNativeProjectChange(state,tr,project,expected);
     if(!drafts||[...expected].some(([id,value])=>drafts.get(id)!==value))return false;
     for(const [id,draft] of drafts)if(draft!==(expected.get(id)??project.file(id).draft))return false;
     editor.view.dispatch(closeHistory(tr));

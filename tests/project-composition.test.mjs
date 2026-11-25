@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {composeProject,projectDocumentEdits} from '../apps/web/src/project/include-document.mjs';
 import {ProjectDocumentSession} from '../apps/web/src/project/document-session.mjs';
+import {Schema} from '@tiptap/pm/model';
 function fixture(entries){
   const files=new Map(entries.map(([path,draft],i)=>[path,{id:String(i),path,draft,kind:'tex'}]));
   return {files,file:id=>[...files.values()].find(f=>f.id===id)};
@@ -80,4 +81,39 @@ test('rebasing project regions keeps an earlier formula edit during a later nati
   assert.ok(session.rebase(session.compose(project,'0',{boundariesOnly:true}),split));
   assert.equal(session.changes(document)?.get('1'),withFormula);
   assert.equal(session.changes(document)?.get('0'),root);
+});
+
+test('a proven native project revision deletes a formula and restores exact drafts with history',()=>{
+  const root='\\begin{document}\n\\input{child}\n\nAfter.\n\\end{document}\n';
+  const child='Original.\r\n\r\n\\[x\\]\r\n';
+  const project=fixture([['main.tex',root],['child.tex',child]]);
+  const session=new ProjectDocumentSession();
+  const original=session.compose(project,'0');
+  const schema=new Schema({nodes:{
+    doc:{content:'projectRegion+'},
+    projectRegion:{content:'block+',attrs:{regionKey:{default:''},path:{default:''},trail:{default:[]}}},
+    paragraph:{group:'block',content:'text*'},
+    mathBlock:{group:'block',attrs:{latex:{}}},
+    text:{},
+  }});
+  const read=content=>schema.nodeFromJSON({type:'doc',content});
+  const before=read(original.content);
+  session.hydrate(original,before.toJSON());
+  const changed=structuredClone(original.content);
+  changed[1].content.splice(1,1);
+  changed[1].content[0].content[0].text='Replacement.';
+  changed[2].content[0].content[0].text='ter.';
+  const after=read(changed);
+  const beforeDrafts=new Map([['0',root],['1',child]]);
+  const afterDrafts=new Map([['0',root.replace('After.','ter.')],['1','Replacement.\r\n\r\n\r\n']]);
+  const verified=session.verify(project,after,afterDrafts);
+  assert.ok(verified);
+  assert.equal(session.verify(project,after,new Map(afterDrafts).set('1','Wrong.')),null);
+  assert.equal(session.verify(project,after,new Map(afterDrafts).set('0',root.replace('\\input{child}',''))),null);
+  session.record(project,{before:{doc:before,drafts:beforeDrafts},after:{doc:after,drafts:afterDrafts}});
+  for(const [id,draft] of afterDrafts)project.file(id).draft=draft;
+  session.hydrate(verified,after.toJSON());
+  assert.deepEqual(session.restore(project,{before:after,doc:before}).drafts,beforeDrafts);
+  project.file('1').draft+=' external edit';
+  assert.equal(session.restore(project,{before:after,doc:before}),null);
 });

@@ -659,6 +659,26 @@ const server=createServer(async(req,res)=>{
       await projectDrafts(editedMain,splitChild);
       await page.keyboard.press(mod+'+z');
       await projectDrafts(editedMain,childWithMath);
+      await panel.getByText('Click prose on the native page',{exact:false}).waitFor();
+      const replacementBounds=await canvas.boundingBox();
+      const replacementEnd='Original chapter.Before started.YAf'.replace(/\s/g,'').length;
+      await page.mouse.move(replacementBounds.x+6550000*scale,replacementBounds.y+9250000*scale);
+      await page.mouse.down();
+      await page.mouse.move(replacementBounds.x+(6500000+replacementEnd*200000-50000)*scale,
+        replacementBounds.y+9250000*scale,{steps:12});
+      await page.mouse.up();
+      await page.keyboard.press(mod+'+c');
+      assert.equal(await page.evaluate(()=>navigator.clipboard.readText()),'Original chapter.\n\n\\[\\frac{z}{q}\\]\n\nYAf');
+      await page.keyboard.insertText('Replacement.');
+      const replacedMain=editedMain.replace('YAfter chapter.','ter chapter.');
+      const replacedChild='Replacement.\n\n\n';
+      await projectDrafts(replacedMain,replacedChild);
+      await page.keyboard.press(mod+'+z');
+      await projectDrafts(editedMain,childWithMath);
+      await page.keyboard.press(mod+'+Shift+z');
+      await projectDrafts(replacedMain,replacedChild);
+      await page.keyboard.press(mod+'+z');
+      await projectDrafts(editedMain,childWithMath);
       assert.deepEqual(errors,[]);
 
       await page.goto('http://127.0.0.1:'+server.address().port+'/?native-only-acceptance=1',{waitUntil:'networkidle'});

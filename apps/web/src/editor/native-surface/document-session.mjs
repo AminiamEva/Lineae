@@ -163,9 +163,16 @@ export function createNativeDocumentSession(resolve) {
       const [first,last]=selection.range;
       if(first?.kind!=='text'||last?.kind!=='text'||order(first)<0||order(last)<=order(first))return null;
       const ranges=this.proseRanges(first,last);
-      if(ranges.length<2||ranges.some(({paragraph})=>!paragraph||paragraph.container||
-         paragraph.tableCell||paragraph.heading))return null;
-      const edits=ranges.map(({paragraph,from,to},index)=>{
+      if(ranges.length<2||ranges.some(({paragraph})=>paragraph&&
+         (paragraph.container||paragraph.tableCell||paragraph.heading)))return null;
+      const edits=ranges.map(({paragraph,formula,from,to},index)=>{
+        if(formula){
+          const {outerFrom16:start,outerTo16:end,filePath,source}=formula;
+          if(!documentRegions.some(region=>region.path===filePath&&start>=region.from&&end<=region.to))return null;
+          if(fileOf(first)===filePath&&first.docOffset>=start&&first.docOffset<end||
+             fileOf(last)===filePath&&last.docOffset>start&&last.docOffset<=end)return null;
+          return {formula,source:source.slice(0,start)+source.slice(end),patch:{from:0,to:end-start,insert:''}};
+        }
         const firstPart=paragraph.parts[0],lastPart=paragraph.parts.at(-1);
         const from16=from===0&&firstPart?.kind==='text'?firstPart.from16:from;
         const to16=to===paragraph.text.length&&lastPart?.kind==='text'?lastPart.to16:to;
@@ -175,10 +182,12 @@ export function createNativeDocumentSession(resolve) {
       });
       if(edits.some(edit=>!edit))return null;
       const [start]=edits;
-      const updates=edits.filter(edit=>edit.paragraph.filePath===start.paragraph.filePath)
-        .sort((left,right)=>right.paragraph.from16-left.paragraph.from16);
-      const source=updates.reduce((value,{paragraph,patch})=>value.slice(0,paragraph.from16+patch.from)+
-        (patch.latex??patch.insert)+value.slice(paragraph.from16+patch.to),start.paragraph.source);
+      const updates=edits.flatMap(({paragraph,formula,patch})=>{
+        const owner=paragraph??formula,to=paragraph?.from16??formula.outerFrom16;
+        return owner.filePath===start.paragraph.filePath?[{offset:to,patch}]:[];
+      }).sort((left,right)=>right.offset-left.offset);
+      const source=updates.reduce((value,{offset,patch})=>value.slice(0,offset+patch.from)+
+        (patch.latex??patch.insert)+value.slice(offset+patch.to),start.paragraph.source);
       return selection.record({kind:'project-range',edits,paragraph:start.paragraph,source},
         start.paragraph.from16+start.selection,first);
     },
