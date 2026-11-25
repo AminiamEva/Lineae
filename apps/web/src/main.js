@@ -318,6 +318,7 @@ function insertLiveMath(field, latex, notify = true) {
   }
 }
 function insertMath(display = false, latex = '') {
+  if(!latex&&nativeTexPreview?.hasNativeTextFocus?.())return nativeTexPreview.startFormula(display);
   if (display) {
     if (!latex) return insertFormula(editor, true, '');
     if (displayEnvironment(latex)) {
@@ -355,6 +356,7 @@ function insertDefaultTable() {
     .updateAttributes('table',{borderMode:'grid'}).run();
 }
 function insertEquation() {
+  if(nativeTexPreview?.hasNativeTextFocus?.())return nativeTexPreview.startFormula(true,'equation');
   insertFormula(editor, true, '', undefined, field => insertLiveMath(field, '\\placeholder{}'), { delimiter:'equation' });
 }
 const matrixEnvironments = new Set(['matrix', 'pmatrix', 'bmatrix', 'Bmatrix', 'vmatrix', 'Vmatrix']);
@@ -2722,6 +2724,7 @@ installKeybindings(window, {
   run({scope,command},context,event) {
     if(context.nativeText&&scope==='editor'){
       if(command==='leaveFile')return nativeTexPreview.leaveFile();
+      if(['insertDisplayMath','insertInlineMath','insertEquation'].includes(command))return shortcutActions.editor[command]();
       return nativeSelectionCommands.has(command)&&nativeTexPreview.useTextSelection(nativeRangeCommands.has(command))&&
         shortcutActions.editor[command](context,event);
     }
@@ -2958,6 +2961,18 @@ function canStartNativeText(){
   const document=parseDocument(value,{fragment:entry?.wrapFragment});
   return Boolean(document&&value.slice(document.start.length,value.length-document.end.length).trim()==='');
 }
+function newNativeMath(text,display,numbering){
+  if(!text.trim()||/[\r\n]/.test(text))return null;
+  const model=projectMath(text);
+  if(!model.supported)return null;
+  const delimiter=numbering==='equation'?'equation':display?'\\[':'$';
+  const [open,close]=delimiter==='equation'?['\\begin{equation}','\\end{equation}']:
+    display?['\\[','\\]']:['$','$'];
+  const empty=model.slots.find(slot=>['numerator','denominator','radicand','degree','superscript','subscript','cell']
+    .includes(slot.role)&&slot.raw.length===0);
+  const node=editor.schema.nodes[display?'mathBlock':'math'].create({latex:text,display,delimiter});
+  return {node,open,close,initial:empty?.from16??text.length};
+}
 nativeTexPreview=installNativeTexPreview({host:footer,before:modes,primary:nativeWorkspaceRequested(),documentZoom:Number(zoom.value),
   isDocumentMode:()=>sourceView.hidden,
   splitHost:()=>!sourceView.hidden&&sourceView.split&&projectFileKind!=='bib'?sourceView.previewHost:null,
@@ -3085,6 +3100,28 @@ nativeTexPreview=installNativeTexPreview({host:footer,before:modes,primary:nativ
     return true;
   },
   canStartText:canStartNativeText,
+  commitInitialMath:(text,display,numbering)=>{
+    if(!canStartNativeText())return null;
+    const prepared=newNativeMath(text,display,numbering);
+    if(!prepared)return null;
+    const {state}=editor,original=source(),fragment=projectFileKind==='tex';
+    const document=parseDocument(original,{fragment});
+    if(!document)return null;
+    const {node,open,close,initial}=prepared;
+    const from=document.start.length;
+    const eol=!document.end&&from===original.length?'':document.eol;
+    const insert=open+text+close+eol;
+    const draft=original.slice(0,from)+insert+original.slice(from);
+    const tr=state.tr;
+    if(display)tr.insert(0,node).setSelection(NodeSelection.create(tr.doc,0));
+    else tr.insert(1,node).setSelection(TextSelection.create(tr.doc,2));
+    const projected=sourceProjection(draft,tr.doc.toJSON(),{fragment});
+    if(!projected?.blocks.some(block=>block.editable&&block.from<=from&&block.to>=from+insert.trimEnd().length))return null;
+    const project=projectExplorer?.model;
+    const path=project?.file(project.activeFileId).path;
+    return dispatchNativeParagraphChange(state,tr,original,draft,{from,to:from,insert},projected)
+      ?{source:draft,offset:from+open.length+initial,path}:null;
+  },
   commitInitialText:(text,region)=>{
     if(region){
       if(!text.trim()||/[\r\n]/.test(text))return null;
@@ -3206,10 +3243,10 @@ nativeTexPreview=installNativeTexPreview({host:footer,before:modes,primary:nativ
     return dispatchNativeParagraphChange(state,tr,source,draft,change,projected)
       ?{source:draft,offset,path:first.paragraph.filePath}:null;
   },
-  commitNewMath:(first,last,text,display)=>{
-    if(!text.trim()||/[\r\n]/.test(text)||first?.kind!=='text'||first.paragraph!==last?.paragraph)return null;
-    const model=projectMath(text);
-    if(!model.supported)return null;
+  commitNewMath:(first,last,text,display,numbering)=>{
+    if(first?.kind!=='text'||first.paragraph!==last?.paragraph)return null;
+    const prepared=newNativeMath(text,display,numbering);
+    if(!prepared)return null;
     const {paragraph}=first;
     if(paragraph.heading||paragraph.container||paragraph.tableCell||paragraph.parts.length!==1||paragraph.parts[0].marks?.length)return null;
     if(projectDocument.composition&&!projectDocument.rebase(currentNativeProjectComposition(),editor.getJSON()))return null;
@@ -3217,15 +3254,15 @@ nativeTexPreview=installNativeTexPreview({host:footer,before:modes,primary:nativ
     if(!target)return null;
     const {state}=editor;
     const {range}=target;
-    const math=editor.schema.nodes[display?'mathBlock':'math'].create({latex:text,display,delimiter:display?'\\[':'$'});
+    const {node:math,open,close,initial}=prepared;
     const tr=state.tr;
-    let prefix='$',suffix='$';
+    let prefix=open,suffix=close;
     if(display){
       if(first!==last||first.local!==0&&first.local!==paragraph.text.length)return null;
       const head=first.local===0;
       const eol=paragraph.source.includes('\r\n')?'\r\n':'\n';
-      prefix=(head?'':eol+eol)+'\\[';
-      suffix='\\]'+(head?eol+eol:'');
+      prefix=(head?'':eol+eol)+open;
+      suffix=close+(head?eol+eol:'');
       const at=head?range.match.offset:range.match.offset+range.match.node.nodeSize;
       tr.insert(at,math);
       tr.setSelection(NodeSelection.create(tr.doc,at));
@@ -3235,9 +3272,7 @@ nativeTexPreview=installNativeTexPreview({host:footer,before:modes,primary:nativ
     }
     const change={from:first.docOffset,to:last.docOffset,insert:prefix+text+suffix};
     const draft=paragraph.source.slice(0,change.from)+change.insert+paragraph.source.slice(change.to);
-    const empty=model.slots.find(slot=>['numerator','denominator','radicand','degree','superscript','subscript','cell']
-      .includes(slot.role)&&slot.raw.length===0);
-    const offset=change.from+prefix.length+(empty?.from16??text.length);
+    const offset=change.from+prefix.length+initial;
     const result={source:draft,offset,path:paragraph.filePath};
     if(target.composition){
       const drafts=projectDocument.changes(tr.doc.toJSON());

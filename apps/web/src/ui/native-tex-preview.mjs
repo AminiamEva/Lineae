@@ -14,7 +14,7 @@ import {readDelimiterPair} from '../editor/delimiter-input.js';
 // Native LaTeX output is the primary page. The opt-in native input mode sends
 // supported keys, caret and IME through this surface into ProseMirror; the old
 // JS-formatted page and MathLive inputs stay available as the migration fallback.
-export function installNativeTexPreview({host,before,primary=false,documentZoom=100,isDocumentMode,splitHost,getSource,getSnapshot,isComposing,focusMathSlot,focusImage,listTikzDrawings,editTikzDrawing,listSourceBlocks,openSourceBlock,continuationRegion,selectionRegions,foldedFiles,selectText,serializeTextSelection,commitMath,commitText,commitTextLines,commitInlinePaste,commitProjectRange,canStartText,commitInitialText,commitParagraphBreak,commitParagraphJoin,commitNewMath,onEnvironmentChange,showTextCommands,history}) {
+export function installNativeTexPreview({host,before,primary=false,documentZoom=100,isDocumentMode,splitHost,getSource,getSnapshot,isComposing,focusMathSlot,focusImage,listTikzDrawings,editTikzDrawing,listSourceBlocks,openSourceBlock,continuationRegion,selectionRegions,foldedFiles,selectText,serializeTextSelection,commitMath,commitText,commitTextLines,commitInlinePaste,commitProjectRange,canStartText,commitInitialText,commitInitialMath,commitParagraphBreak,commitParagraphJoin,commitNewMath,onEnvironmentChange,showTextCommands,history}) {
   const invoke=window.__TAURI__?.core?.invoke;
   if(!invoke) return {refresh(){},documentChanged(){},relocalize(){}};
   const button=document.createElement('button');
@@ -181,6 +181,26 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
     paintSurfaceSelection(true);
     positionInput();
   }
+  const startingText=()=>draftInput?.kind==='initial'&&!draftInput.region;
+  function hasNativeTextFocus(){
+    return document.activeElement===input&&nativeEditing&&acceptsInput()&&
+      (startingText()||nativeDocument.surface.caret?.kind==='text');
+  }
+  function startFormula(display,delimiter){
+    if(!current()||pendingEdit)return false;
+    if(startingText())draftInput={kind:'formula',initial:true,display,delimiter};
+    else {
+      if(!observation||draftInput)return false;
+      const [first,last]=nativeDocument.surface.range;
+      if(first?.kind!=='text'||first.paragraph!==last?.paragraph)return false;
+      const paragraph=first.paragraph;
+      if(paragraph.heading||paragraph.container||paragraph.tableCell||paragraph.parts.length!==1||
+         paragraph.parts[0].marks?.length||display&&(first!==last||first.local!==0&&first.local!==paragraph.text.length))return false;
+      draftInput={kind:'formula',first,last,display,delimiter};
+    }
+    targetStatus.textContent=display?t('输入行间公式','Type a display formula'):t('输入行内公式','Type an inline formula');
+    return true;
+  }
   function commitDraftInput(action,surface){
     if(!current())return false;
     if(!action.insert){cancelDraftInput();return true;}
@@ -202,9 +222,11 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
           targetStatus.textContent=t('输入行间公式','Type a display formula');
           return true;
         }
-        edit=commitNewMath?.(draft.first,draft.last,action.insert,draft.display);
+        edit=draft.initial?commitInitialMath?.(action.insert,draft.display,draft.delimiter):
+          commitNewMath?.(draft.first,draft.last,action.insert,draft.display,draft.delimiter);
         break;
       default:
+        if(action.insert==='$'&&!action.paste&&startFormula(false))return true;
         edit=commitInitialText?.(action.insert,draft.region);
     }
     if(!edit)return false;
@@ -242,12 +264,7 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
         paintSurfaceSelection(true);positionInput();
         return true;
       }
-      const [first,last]=surface.range;
-      if(first?.kind==='text'&&first.paragraph===last.paragraph){
-        draftInput={kind:'formula',first,last,display:false};
-        targetStatus.textContent=t('输入行内公式','Type an inline formula');
-        return true;
-      }
+      if(startFormula(false))return true;
     }
     if(!action.paste&&surface.caret.kind==='math'&&surface.caret===surface.anchor&&['^','_'].includes(action.insert)){
       draftInput={kind:'script',marker:action.insert};
@@ -1079,7 +1096,9 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
       }
       return true;
     },
-    hasTextInput:event=>event.target===input&&nativeEditing&&acceptsInput()&&nativeDocument.surface.caret?.kind==='text',
+    hasTextInput:event=>event.target===input&&hasNativeTextFocus(),
+    hasNativeTextFocus,
+    startFormula,
     inTableCell:()=>Boolean(nativeDocument.surface.caret?.paragraph?.tableCell),
     hasMathInput: event => event.target===input && nativeEditing && acceptsInput() && nativeDocument.surface.caret?.kind==='math',
     hasNativeMathFocus:()=>document.activeElement===input&&nativeEditing&&acceptsInput()&&nativeDocument.surface.caret?.kind==='math',

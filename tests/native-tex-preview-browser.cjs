@@ -45,8 +45,7 @@ const root=resolve('apps/web');
 let nativeEvidence;
 const server=createServer(async(req,res)=>{
   const pdfPath=req.url==='/native-acceptance.pdf'?process.env.LINEAE_NATIVE_PDF:
-    req.url==='/native-degraded.pdf'?process.env.LINEAE_NATIVE_DEGRADED_PDF:
-    req.url==='/native-alignment.pdf'?process.env.LINEAE_NATIVE_ALIGNMENT_PDF:null;
+    req.url==='/native-degraded.pdf'?process.env.LINEAE_NATIVE_DEGRADED_PDF:null;
   if(pdfPath){
     try {res.setHeader('Content-Type','application/pdf');res.end(await readFile(pdfPath));}
     catch{res.writeHead(404).end();}
@@ -188,7 +187,23 @@ const server=createServer(async(req,res)=>{
       await canvas.click({position:{x:6510000*scale,y:6950000*scale}});
       await page.keyboard.press(mod+'+Shift+j');
       await page.keyboard.type('X');
-      await page.waitForFunction(source=>nativeProbe.source===source,expected.replace('Omega.','XOmega.'));
+      const afterLeaving=expected.replace('Omega.','XOmega.');
+      await page.waitForFunction(source=>nativeProbe.source===source,afterLeaving);
+      await panel.getByText('Click prose on the native page',{exact:false}).waitFor();
+      await canvas.click({position:{x:6550000*scale,y:9250000*scale}});
+      await page.keyboard.press(mod+'+Alt+f');
+      await panel.getByText('Type a display formula',{exact:true}).waitFor();
+      await page.keyboard.insertText('\\frac{n}{}');
+      await page.waitForFunction(source=>nativeProbe.source===source,afterLeaving.replace('XYZAlpha',
+        '\\begin{equation}\\frac{n}{}\\end{equation}\n\nXYZAlpha'));
+      await page.keyboard.press(mod+'+z');
+      await page.waitForFunction(source=>nativeProbe.source===source,afterLeaving);
+      await panel.getByText('Click prose on the native page',{exact:false}).waitFor();
+      await canvas.click({position:{x:6550000*scale,y:9250000*scale}});
+      await page.keyboard.press(mod+'+Shift+f');
+      await panel.getByText('Type an inline formula',{exact:true}).waitFor();
+      await page.keyboard.insertText('\\frac{n}{}');
+      await page.waitForFunction(source=>nativeProbe.source===source,afterLeaving.replace('XYZAlpha','$\\frac{n}{}$XYZAlpha'));
       await page.locator('#native-tex-close').click();
       const markedSource='\\documentclass{article}\n\\begin{document}\nBefore \\textit{\\textbf{Bold prose. $x$}} after.\n\\end{document}\n';
       await page.locator('input#file').setInputFiles({name:'marked.tex',mimeType:'text/plain',buffer:Buffer.from(markedSource)});
@@ -702,6 +717,14 @@ const server=createServer(async(req,res)=>{
       await page.locator('[data-source-mode=body]').click();
       const blank='\\documentclass{article}\n\\begin{document}\n\n\\end{document}\n';
       await page.locator('input#file').setInputFiles({name:'empty-workspace.tex',mimeType:'text/plain',buffer:Buffer.from(blank)});
+      await page.getByRole('button',{name:'Start typing',exact:true}).click();
+      await page.keyboard.type('$$');
+      await panel.getByText('Type a display formula',{exact:true}).waitFor();
+      await page.keyboard.insertText('\\frac{a}{}');
+      await page.waitForFunction(expected=>nativeProbe.source===expected,
+        blank.replace('\\begin{document}\n','\\begin{document}\n\\[\\frac{a}{}\\]\n'));
+      await page.keyboard.press(mod+'+z');
+      await page.waitForFunction(expected=>nativeProbe.source===expected,blank);
       await page.getByRole('button',{name:'Start typing',exact:true}).click();
       await page.keyboard.type('AlphaBeta');
       await page.waitForFunction(()=>nativeProbe.source.includes('AlphaBeta')&&
@@ -1474,18 +1497,15 @@ const server=createServer(async(req,res)=>{
       await page.goto('http://127.0.0.1:'+server.address().port+'/?native-only-acceptance=1',{waitUntil:'networkidle'});
       await page.evaluate(evidence=>{
         const p=window.nativeProbe,originalLayout=p.layout;
-        p.realEvidence=evidence;p.registeredPdf=true;p.failFont=true;
+        p.realEvidence=evidence;
         p.layout=()=>({...originalLayout(),pages_changed:evidence.raw,pages_total:evidence.raw.length});
-        const invoke=window.__TAURI__.core.invoke;
-        window.__TAURI__.core.invoke=async(command,args)=>command==='native_tex_pdf'
-          ?[...new Uint8Array(await(await fetch('/native-alignment.pdf')).arrayBuffer())]:invoke(command,args);
       },nativeEvidence);
       await page.locator('input#file').setInputFiles({name:'numbered-alignment.tex',mimeType:'text/plain',
         buffer:Buffer.from(nativeEvidence.source)});
       await page.locator('#native-tex-toggle').click();
       await page.waitForFunction(()=>{
         const state=document.querySelector('#native-tex-preview').dataset;
-        return state.state==='current'&&state.renderer==='pdf';
+        return state.state==='current'&&state.renderer==='canvas';
       });
       await page.locator('#native-tex-target').click();
       await page.getByText('Click the empty numerator or denominator',{exact:false}).waitFor();

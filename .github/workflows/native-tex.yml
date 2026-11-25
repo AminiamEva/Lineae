@@ -152,7 +152,6 @@ jobs:
           LINEAE_NATIVE_PAGE="$LINEAE_NATIVE_EVIDENCE_DIR/native-formula-pages.json" \
           LINEAE_NATIVE_TEXT_PAGE="$LINEAE_NATIVE_EVIDENCE_DIR/native-text-pages.json" \
           LINEAE_NATIVE_ALIGNMENT_PAGE="$LINEAE_NATIVE_EVIDENCE_DIR/native-alignment-pages.json" \
-          LINEAE_NATIVE_ALIGNMENT_PDF="$LINEAE_NATIVE_EVIDENCE_DIR/native-alignment.pdf" \
           LINEAE_NATIVE_DEGRADED_PAGE="$LINEAE_NATIVE_EVIDENCE_DIR/native-degraded-pages.json" \
           LINEAE_NATIVE_DEGRADED_PDF="$LINEAE_NATIVE_EVIDENCE_DIR/native-degraded.pdf" \
           node tests/native-tex-preview-browser.cjs
