@@ -14,7 +14,7 @@ export function includeEmptyParagraphs(blocks,index,parsed,text,doc) {
     return doc.content.length;
   }
   const owner = blocks.findLast(block => block.count > 0);
-  if (!owner?.editable) return index;
+  if (!owner?.editable&&!owner?.tableCells) return index;
   owner.count += tail.length;
   owner.snapshot = JSON.stringify(doc.content.slice(owner.index,owner.index + owner.count));
   return doc.content.length;

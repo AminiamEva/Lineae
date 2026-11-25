@@ -76,4 +76,8 @@ test('rebasing project regions keeps an earlier formula edit during a later nati
   assert.equal(session.changes(split)?.get('1'),withFormula.replace('AlphaBeta','Alpha\n\nBeta'));
   assert.equal(session.changes(split)?.get('0'),root);
   assert.equal(session.changes(document)?.get('1'),withFormula);
+  project.file('1').draft=session.changes(split).get('1');
+  assert.ok(session.rebase(session.compose(project,'0',{boundariesOnly:true}),split));
+  assert.equal(session.changes(document)?.get('1'),withFormula);
+  assert.equal(session.changes(document)?.get('0'),root);
 });

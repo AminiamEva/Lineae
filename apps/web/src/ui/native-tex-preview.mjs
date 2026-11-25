@@ -13,7 +13,7 @@ import {resolvePackages} from '../../latex/packages.mjs';
 // Native LaTeX output is the primary page. The opt-in native input mode sends
 // supported keys, caret and IME through this surface into ProseMirror; the old
 // JS-formatted page and MathLive inputs stay available as the migration fallback.
-export function installNativeTexPreview({host,before,primary=false,isDocumentMode,getSource,getSnapshot,isComposing,focusMathSlot,focusImage,continuationRegion,selectionRegions,selectText,commitMath,commitText,commitProjectRange,canStartText,commitInitialText,commitParagraphBreak,history}) {
+export function installNativeTexPreview({host,before,primary=false,isDocumentMode,getSource,getSnapshot,isComposing,focusMathSlot,focusImage,continuationRegion,selectionRegions,selectText,commitMath,commitText,commitProjectRange,canStartText,commitInitialText,commitParagraphBreak,commitParagraphJoin,history}) {
   const invoke=window.__TAURI__?.core?.invoke;
   if(!invoke) return {refresh(){},documentChanged(){},relocalize(){}};
   const button=document.createElement('button');
@@ -186,8 +186,15 @@ export function installNativeTexPreview({host,before,primary=false,isDocumentMod
     }
     if(!surface.caret)return false;
     if(!current()||!observation)return false;
+    const edit=editSelection(action);
+    if(!edit&&!action.insert&&surface.caret===surface.anchor&&surface.caret.kind==='text'){
+      const {stops,index,caret}=surface;
+      const pair=action.backward?[stops[index-1],caret]:[caret,stops[index+1]];
+      const joined=commitParagraphJoin?.(...pair);
+      if(joined)return awaitTextPosition(joined,action.started);
+    }
     inputStart=action.started;
-    return commitSurface(editSelection(action));
+    return commitSurface(edit);
   }
   function clearQueuedInput() {
     pendingEdit=null;

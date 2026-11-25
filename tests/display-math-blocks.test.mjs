@@ -163,7 +163,7 @@ test('span placeholders never shift the cell byte range on writeback',()=>{
 
 test('plain cell writeback leaves a neighboring inline formula and its spelling intact',()=>{
   const source=wrap('\\begin{tabular}{ll}\r\nLeft & $ x $ \\\\\r\nBelow & Right\r\n\\end{tabular}');
-  const original={type:'doc',content:parseDocument(source).blocks.flatMap(importBlocks)};
+  const original={type:'doc',content:[...parseDocument(source).blocks.flatMap(importBlocks),{type:'paragraph'}]};
   const edited=structuredClone(original);
   edited.content[0].content[0].content[0].content[0].content[0].text='XLeft';
   const projection=sourceProjection(source,original),at=source.indexOf('Left');

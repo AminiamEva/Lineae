@@ -1138,6 +1138,16 @@ function refuseStandaloneWriteback() {
   return false;
 }
 const nativeParagraphTransitions=[];
+function dispatchNativeParagraphChange(state,tr,source,draft,change,nextProjection) {
+  tr.setMeta('standaloneParagraph',{draft,changes:[change],projection:nextProjection});
+  editor.view.dispatch(closeHistory(tr));
+  if(editor.state.doc===state.doc)return false;
+  nativeParagraphTransitions.push({change,
+    before:{source,snapshot:JSON.stringify(state.doc.toJSON())},
+    after:{source:draft,snapshot:importedSnapshot}});
+  if(nativeParagraphTransitions.length>100)nativeParagraphTransitions.shift();
+  return true;
+}
 function prepareNativeParagraphHistory(transaction) {
   if(!isHistoryTransaction(transaction)||transaction.before.childCount===transaction.doc.childCount)return false;
   const before=JSON.stringify(transaction.before.toJSON()),after=JSON.stringify(transaction.doc.toJSON());
@@ -2808,14 +2818,40 @@ nativeTexPreview=installNativeTexPreview({host:footer,before:modes,primary:nativ
     const projected=sourceProjection(draft,tr.doc.toJSON(),{fragment:projectFileKind==='tex'});
     if(!projected?.blocks.some(block=>block.index===tr.doc.resolve(next).index(0)&&
        block.from<=offset&&block.to>=offset&&block.editable))return null;
-    tr.setMeta('standaloneParagraph',{draft,changes:[change],projection:projected});
-    editor.view.dispatch(closeHistory(tr));
-    if(editor.state.doc===state.doc)return null;
-    nativeParagraphTransitions.push({change,
-      before:{source:paragraph.source,snapshot:JSON.stringify(state.doc.toJSON())},
-      after:{source:draft,snapshot:importedSnapshot}});
-    if(nativeParagraphTransitions.length>100)nativeParagraphTransitions.shift();
-    return {source:draft,offset,path:paragraph.filePath};
+    return dispatchNativeParagraphChange(state,tr,paragraph.source,draft,change,projected)
+      ?{source:draft,offset,path:paragraph.filePath}:null;
+  },
+  commitParagraphJoin:(first,last)=>{
+    if(first?.kind!=='text'||last?.kind!=='text'||first.paragraph===last.paragraph||
+      first.paragraph.filePath!==last.paragraph.filePath||first.paragraph.source!==last.paragraph.source||
+      first.local!==first.paragraph.text.length||last.local!==0)return null;
+    for(const stop of [first,last]){
+      const {paragraph}=stop;
+      if(paragraph.heading||paragraph.tableCell||paragraph.container||paragraph.parts.length!==1||
+        paragraph.parts[0].marks?.length)return null;
+    }
+    const from=first.docOffset,to=last.docOffset,source=first.paragraph.source;
+    if(!/^[ \t]*\r?\n[ \t]*\r?\n[\s]*$/.test(source.slice(from,to)))return null;
+    if(projectDocument.composition&&!projectDocument.rebase(currentNativeProjectComposition(),editor.getJSON()))return null;
+    const left=nativeProsePosition(first.paragraph,first.local,first.local);
+    const right=nativeProsePosition(last.paragraph,0,0);
+    if(!left||!right||left.range.from+2!==right.range.from)return null;
+    const {state}=editor,tr=state.tr.join(left.range.from+1);
+    tr.setSelection(TextSelection.create(tr.doc,left.range.from));
+    const draft=source.slice(0,from)+source.slice(to);
+    if(left.composition){
+      if(left.file!==right.file)return null;
+      const drafts=projectDocument.changes(tr.doc.toJSON());
+      if(drafts?.get(left.file.id)!==draft)return null;
+      for(const [id,value] of drafts)if(id!==left.file.id&&value!==left.project.file(id).draft)return null;
+      editor.view.dispatch(closeHistory(tr));
+      return editor.state.doc===state.doc?null:{source:draft,offset:from,path:first.paragraph.filePath};
+    }
+    const projected=sourceProjection(draft,tr.doc.toJSON(),{fragment:projectFileKind==='tex'});
+    if(!projected?.blocks.some(block=>block.index===left.range.match.index&&block.editable&&block.from<=from&&block.to>=from))return null;
+    const change={from,to,insert:''};
+    return dispatchNativeParagraphChange(state,tr,source,draft,change,projected)
+      ?{source:draft,offset:from,path:first.paragraph.filePath}:null;
   },
   focusMathSlot:async(anchor,head,isCurrent)=>{    const project=projectExplorer?.model;
     const formula=head.formula;

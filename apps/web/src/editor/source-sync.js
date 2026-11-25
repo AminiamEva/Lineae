@@ -24,6 +24,7 @@ export function sourceProjection(text, doc, options) {
       (nodes.length===1&&nodes[0].type==='table'&&plainTableCells(raw)?{plainTable:true}:null);
     const block = { spelling, from: offset, to: offset + raw.length, index, count, raw,
       editable: count > 0 && !nodes.some(node => node.type === 'raw') && (raw.trim() === canonical || !!spelling),
+      tableCells: nodes.length===1 && nodes[0].type==='table' && Boolean(tableCellRanges(raw)),
       snapshot: JSON.stringify(nodes) };
     offset += raw.length;
     index += count;
@@ -134,7 +135,8 @@ export function richSourceChanges(projection, doc) {
     while(first<oldEnd && first<newEnd && same(before[first],doc.content[first])) first++;
     while(oldEnd>first && newEnd>first && same(before[oldEnd-1],doc.content[newEnd-1])) {oldEnd--;newEnd--;}
     const block=projection.blocks.find(block=>ownsEditedRange(block,first,oldEnd));
-    if (!block) return null;
+    if (!block) return oldEnd===first+2&&newEnd===first+1
+      ?plainParagraphJoin(projection,before.slice(first,oldEnd),doc.content[first],first):null;
     const nodes=doc.content.slice(block.index,block.index+block.count+doc.content.length-before.length);
     return patchBlock(block,nodes);
   }
@@ -148,6 +150,21 @@ export function richSourceChanges(projection, doc) {
     changes.push(...patch);
   }
   return changes;
+}
+
+function plainParagraphJoin(projection,[left,right],joined,index) {
+  const nodes=[left,right,joined];
+  if(nodes.some(node=>node?.type!=='paragraph'||node.content?.length!==1||
+    node.content[0].type!=='text'||node.content[0].marks?.length))return null;
+  const a=left.content[0].text,b=right.content[0].text;
+  if(JSON.stringify({...joined,content:left.content})!==JSON.stringify(left)||joined.content[0].text!==a+b)return null;
+  const owners=nodes.slice(0,2).map((_,offset)=>projection.blocks.find(block=>
+    block.index===index+offset&&block.count===1&&block.editable));
+  const [first,last]=owners;
+  if(first?.raw.trim()!==a||last?.raw.trim()!==b)return null;
+  const from=first.from+first.raw.trimEnd().length,to=last.to-last.raw.trimStart().length;
+  if(!/^[ \t]*\r?\n[ \t]*\r?\n[\s]*$/.test(projection.text.slice(from,to)))return null;
+  return [{from,to,insert:''}];
 }
 
 // The plain rich view normally serializes structural changes. A formula-only
