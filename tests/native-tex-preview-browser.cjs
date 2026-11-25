@@ -233,6 +233,17 @@ const server=createServer(async(req,res)=>{
       await page.waitForFunction(source=>nativeProbe.source===source,afterLeaving);
       await panel.getByText('Click prose on the native page',{exact:false}).waitFor();
       await canvas.click({position:{x:6550000*scale,y:9250000*scale}});
+      const strike=page.locator('.floating-toolbar').getByRole('button',{name:'Strikethrough',exact:true});
+      if(!await strike.isVisible())await page.locator('[data-ribbon-group=font] .ribbon-group-toggle').click();
+      await strike.click();
+      await page.keyboard.type('D');
+      const struck=afterLeaving.replace('XYZAlpha','\\sout{D}XYZAlpha')
+        .replace('\\begin{document}','\\usepackage{ulem}\n\\begin{document}');
+      await page.waitForFunction(source=>nativeProbe.source===source,struck);
+      await page.keyboard.press(mod+'+z');
+      await page.waitForFunction(source=>nativeProbe.source===source,afterLeaving);
+      await panel.getByText('Click prose on the native page',{exact:false}).waitFor();
+      await canvas.click({position:{x:6550000*scale,y:9250000*scale}});
       await page.keyboard.press(mod+'+6');
       await page.keyboard.type('2');
       await page.waitForFunction(source=>nativeProbe.source===source,

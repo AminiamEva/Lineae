@@ -2835,11 +2835,11 @@ const nativeBindings=compileKeybindings({
     palette:'backslash',nextSlot:'tab',previousSlot:'shift+tab'},
 },{isMac});
 const nativeTypingCommands=new Map([
-  ['toggleBold','bold'],['toggleItalic','italic'],['toggleUnderline','underline'],['toggleCode','code'],
+  ['toggleBold','bold'],['toggleItalic','italic'],['toggleUnderline','underline'],['toggleCode','code'],['toggleStrike','strike'],
   ['toggleSuperscript','superscript'],['toggleSubscript','subscript'],['toggleSmallCaps','smallcaps'],
 ]);
 const nativeTypingMarks=new Set(nativeTypingCommands.values());
-const nativeRangeCommands=new Set([...nativeTypingCommands.keys(),'toggleStrike','clearFormatting']);
+const nativeRangeCommands=new Set([...nativeTypingCommands.keys(),'clearFormatting']);
 const nativeSelectionCommands=new Set([...nativeRangeCommands,'toggleContextMarker']);
 const nativeTextStructures={
   paragraph:['setParagraph'],section:['toggleHeading',{level:1,command:null}],
@@ -2990,12 +2990,15 @@ function refreshNativeTextEnvironment(tr,position,sourceBlock,source,change){
   if(verified.attrs.environmentSource)tr.setNodeMarkup(position,undefined,verified.attrs);
   return true;
 }
-function dispatchVerifiedNativeProse(state,tr,source,draft,change,index){
+function matchesNativeProseBlock(state,tr,source,draft,change,index){
   const owner=projection?.blocks.find(block=>block.index===index&&block.count===1&&
     change.from>=block.from&&change.to<=block.to);
   if(!owner)return false;
   const [updated,...rest]=importBlocks(draft.slice(owner.from,owner.to+draft.length-source.length));
-  if(rest.length||updated?.type!=='paragraph'||!state.schema.nodeFromJSON(updated).eq(tr.doc.child(index)))return false;
+  return !rest.length&&updated?.type==='paragraph'&&state.schema.nodeFromJSON(updated).eq(tr.doc.child(index));
+}
+function dispatchVerifiedNativeProse(state,tr,source,draft,change,index){
+  if(!matchesNativeProseBlock(state,tr,source,draft,change,index))return false;
   const projected=sourceProjection(draft,tr.doc.toJSON(),{fragment:projectFileKind==='tex'});
   return Boolean(projected&&dispatchNativeParagraphChange(state,tr,source,draft,change,projected));
 }
@@ -3005,15 +3008,35 @@ function insertNativeMarkedText(paragraph,patch,target,marks){
   const raw=patch.latex??patch.insert,inside=insert.lastIndexOf(raw);
   if(inside<0||insert===raw)return null;
   const {source,filePath:path}=paragraph,from=paragraph.from16+patch.from;
-  const draft=source.slice(0,from)+insert+source.slice(from),offset=from+inside+raw.length;
+  const change={from,to:from,insert};
+  let draft=source.slice(0,from)+insert+source.slice(from),offset=from+inside+raw.length;
   const tr=state.tr.insert(range.from,node);
   tr.setSelection(TextSelection.create(tr.doc,range.from+node.nodeSize)).setStoredMarks(marks);
   const fragment=projectFileKind==='tex';
   const candidate=projectMixedDocument(draft,{filePath:path,fragment,splitIncludes:Boolean(composition)})?.paragraphs.find(next=>
     next.from16<=offset&&next.runs.some(run=>next.from16+run.from16<=offset&&next.from16+run.to16>=offset));
   if(!candidate)return null;
-  if(composition)return dispatchNativeProjectChange(state,tr,project,new Map([[file.id,draft]]))?{source:draft,offset,path}:null;
-  return dispatchVerifiedNativeProse(state,tr,source,draft,{from,to:from,insert},range.match.index)?{source:draft,offset,path}:null;
+  const rootId=composition?.rootId;
+  const root=rootId&&rootId!==file.id?project.file(rootId).draft:source;
+  const dependency=marks.some(mark=>mark.type.name==='strike')?nativePackagePatch(root,insert):null;
+  if(dependency===false)return null;
+  if(composition){
+    const drafts=new Map([[file.id,draft]]);
+    if(dependency){
+      const before=rootId===file.id?draft:root;
+      const rootDraft=before.slice(0,dependency.from)+dependency.insert+before.slice(dependency.from);
+      drafts.set(rootId,rootDraft);
+      if(rootId===file.id){draft=rootDraft;offset+=dependency.insert.length;}
+    }
+    return dispatchNativeProjectChange(state,tr,project,drafts)?{source:draft,offset,path}:null;
+  }
+  if(!dependency)return dispatchVerifiedNativeProse(state,tr,source,draft,change,range.match.index)?{source:draft,offset,path}:null;
+  if(!matchesNativeProseBlock(state,tr,source,draft,change,range.match.index))return null;
+  draft=draft.slice(0,dependency.from)+dependency.insert+draft.slice(dependency.from);
+  offset+=dependency.insert.length;
+  const [combined]=textPatch(source,draft);
+  const projected=sourceProjection(draft,tr.doc.toJSON(),{fragment});
+  return projected&&dispatchNativeParagraphChange(state,tr,source,draft,combined,projected)?{source:draft,offset,path}:null;
 }
 function runNativeTextStructure(command,...args){
   const started=performance.now();
