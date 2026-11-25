@@ -1,5 +1,5 @@
 import {readGroup} from '../../../latex/table-spans.mjs';
-import {footnoteAt,textCommands} from '../../../latex/inline.mjs';
+import {fontFamilies,fontSizes,footnoteAt,textCommands} from '../../../latex/inline.mjs';
 import {referenceAt} from '../../../latex/reference-commands.mjs';
 
 const plainTokens=/^(?:\\(?:[%&_#${}]|[A-Za-z]+\{\})|[^\\{}$%&#_^])+/u;
@@ -8,7 +8,9 @@ const textMarks={textbf:'bold',textit:'italic',emph:'italic',textsl:'italic',tex
   underline:'underline',uline:'underline',uuline:'underline',uwave:'underline',sout:'strike',
   textsuperscript:'superscript',textsubscript:'subscript',textsc:'smallcaps',fbox:'boxed',
   textcircled:'circled',textsf:'textStyle',textrm:'textStyle'};
-const htmlColor=/^\\(?:textcolor|colorbox)\[HTML\]\{[0-9a-f]{6}\}(?=\{)/i;
+const htmlColor=/^\\(textcolor|colorbox)\[HTML\]\{[0-9a-f]{6}\}(?=\{)/i;
+const familyCommands=new Set(Object.values(fontFamilies));
+const sizeCommands=new Set(Object.values(fontSizes));
 
 export function decodeProse(raw) {
   if(!/[\\~]/.test(raw))return {text:raw};
@@ -33,7 +35,7 @@ export function decodeProse(raw) {
   return {text,offsets};
 }
 
-export function markedRuns(text,offset=0,marks=[],inline) {
+export function markedRuns(text,offset=0,marks=[],inline,styles=[]) {
   const runs=[];
   let cursor=0;
   while(cursor<text.length){
@@ -70,14 +72,23 @@ export function markedRuns(text,offset=0,marks=[],inline) {
       cursor+=raw.length;
       continue;
     }
-    const color=htmlColor.exec(text.slice(cursor));
-    const command=color??/^\\([a-z]+)(?=\{)/.exec(text.slice(cursor));
-    const mark=color?'textStyle':command&&Object.hasOwn(textMarks,command[1])&&textMarks[command[1]];
-    if(!mark||marks.includes(mark)||marks.length>=3)return null;
-    const argument=cursor+command[0].length;
+    const rest=text.slice(cursor);
+    const color=htmlColor.exec(rest);
+    const size=/^\{\\fontsize\{\d{1,2}\}\{\d{1,2}\}\\selectfont /.exec(rest);
+    const declaration=/^\{(\\[A-Za-z]+) /.exec(rest);
+    const groupedStyle=size||sizeCommands.has(declaration?.[1])?'size':
+      familyCommands.has(declaration?.[1])?'family':null;
+    const command=/^\\([a-z]+)(?=\{)/.exec(rest);
+    const mark=color||groupedStyle?'textStyle':command&&Object.hasOwn(textMarks,command[1])&&textMarks[command[1]];
+    const style=color?.[1].toLowerCase()??groupedStyle??(mark==='textStyle'?'family':null);
+    if(!mark||styles.length+marks.length>=8||
+      (style?styles.includes(style):marks.includes(mark)))return null;
+    const argument=groupedStyle?cursor:cursor+(color??command)[0].length;
+    const valueFrom=groupedStyle?cursor+(size??declaration)[0].length:argument+1;
     const group=readGroup(text,argument);
-    if(!group?.value)return null;
-    const nested=markedRuns(group.value,offset+argument+1,[...marks,mark],inline);
+    if(!group||valueFrom>=group.end-1)return null;
+    const nested=markedRuns(text.slice(valueFrom,group.end-1),offset+valueFrom,
+      marks.includes(mark)?marks:[...marks,mark],inline,style?[...styles,style]:styles);
     if(!nested)return null;
     runs.push(...nested);
     cursor=group.end;
