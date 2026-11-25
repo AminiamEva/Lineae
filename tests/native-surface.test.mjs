@@ -7,7 +7,7 @@ import {createMathSurface} from '../apps/web/src/editor/native-surface/math-surf
 import {createTextSurface} from '../apps/web/src/editor/native-surface/text-surface.mjs';
 import {createNativeDocumentSession} from '../apps/web/src/editor/native-surface/document-session.mjs';
 import {projectTextDocument,projectMixedDocument,projectMixedSnapshot,textTarget,textEdit} from '../apps/web/src/editor/native-text/projection.mjs';
-import {richSourceChanges,sourceProjection} from '../apps/web/src/editor/source-sync.js';
+import {richSourceChanges,sourceProjection,standaloneMathChanges} from '../apps/web/src/editor/source-sync.js';
 import {importBlocks} from '../apps/web/latex/blocks.mjs';
 import {parseDocument} from '../apps/web/latex/document.mjs';
 
@@ -1021,6 +1021,25 @@ test('book matter and date commands keep exact bytes when editing native prose',
   const edit=textEdit(projection,{paragraph,from16:0,to16:4,insert:'Edited'});
   assert.equal(edit.source,source.replace('Back text.','Edited text.'));
   assert.equal(projection.paragraphs.find(paragraph=>paragraph.text==='Notes').heading,'chapter');
+});
+
+test('each sibling TikZ drawing owns its measured corners and only its source bytes',()=>{
+  const drawing='\\begin{tikzpicture}\r\n\\draw (0,0) -- (1,1);\r\n\\end{tikzpicture}';
+  const picture=caption=>['\\begin{subfigure}{.4\\textwidth}',drawing,'\\caption{'+caption+'}','\\end{subfigure}'].join('\r\n');
+  const source=['\\begin{document}','\\begin{figure}[ht]',picture('First'),'\\hfill',picture('Second'),
+    '\\caption{Both drawings}','\\label{fig:both}','\\end{figure}','\\end{document}',''].join('\r\n');
+  const projection=projectMixedDocument(source,{measureDrawings:true});
+  assert.deepEqual([...projection.owners.values()].map(owner=>owner.drawing?.from16),[
+    source.indexOf(drawing),source.indexOf(drawing),source.lastIndexOf(drawing),source.lastIndexOf(drawing),
+  ]);
+  const before={type:'doc',content:parseDocument(source).blocks.flatMap(importBlocks)};
+  const after=structuredClone(before);
+  after.content[0].content[1].attrs.tikzSource=drawing.replace('(1,1)','(2,1)');
+  const changes=standaloneMathChanges(sourceProjection(source,before),after);
+  assert.ok(changes);
+  const result=changes.reduceRight((text,{from,to,insert})=>text.slice(0,from)+insert+text.slice(to),source);
+  assert.equal(result,source.slice(0,source.lastIndexOf(drawing))+
+    source.slice(source.lastIndexOf(drawing)).replace('(1,1)','(2,1)'));
 });
 
 test('native math context identifies an integral body, its limits and a nested fraction',()=>{

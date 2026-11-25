@@ -6,19 +6,9 @@ import { parseDocument } from '../../latex/document.mjs';
 import { importBlocks, serialize } from './latex-codec.js';
 import {serializeTblr,serializeSourceTable,environmentEnd} from '../../latex/tblr.mjs';
 import {sourceStructure} from '../../latex/source-structure.mjs';
-import {serializeSourceFigure} from '../../latex/images.mjs';
+import {serializeSourceFigure,tikzDrawingRanges} from '../../latex/images.mjs';
 import {serializeTextEnvironment} from '../../latex/text-environments.mjs';
 import {markedRuns} from './native-text/prose-runs.mjs';
-
-function tikzRange(raw,expected) {
-  if(typeof expected!=='string'||!expected)return null;
-  const matches=[...sourceStructure(raw)].flatMap(token=>{
-    const environment=token.kind==='begin'&&/^\\begin\{(tikzpicture|circuitikz)\}$/.exec(token.value)?.[1];
-    const close=environment&&environmentEnd(raw,token.index,environment);
-    return close&&raw.slice(token.index,close.end)===expected?[{from:token.index,to:close.end}]:[];
-  });
-  return matches.length===1?matches[0]:null;
-}
 
 // This is a projection of the authoritative source, not a second document.
 // A rich edit may only replace a block whose original spelling round-trips
@@ -36,7 +26,7 @@ export function sourceProjection(text, doc, options) {
     const block = { spelling, from: offset, to: offset + raw.length, index, count, raw,
       editable: count > 0 && !nodes.some(node => node.type === 'raw') && (raw.trim() === canonical || !!spelling),
       tableCells: nodes.length===1 && nodes[0].type==='table' && Boolean(tableCellRanges(raw)),
-      tikz: nodes.length===1 && nodes[0].type==='documentImage' && Boolean(tikzRange(raw,nodes[0].attrs.tikzSource)),
+      tikz: nodes.length===1 && tikzDrawingRanges(raw,nodes[0]).length>0,
       snapshot: JSON.stringify(nodes) };
     offset += raw.length;
     index += count;
@@ -209,14 +199,20 @@ export function standaloneMathChanges(projection,doc) {
 
 function tikzFigureChanges(block,nodes) {
   if(!block.tikz)return null;
-  const before=JSON.parse(block.snapshot),original=before[0],updated=nodes[0];
-  if(updated?.type!=='documentImage'||nodes.length!==before.length)return null;
-  const drawing=original.attrs.tikzSource,next=updated.attrs.tikzSource;
-  if(drawing===next||typeof next!=='string'||!next.trim())return null;
-  if(JSON.stringify([{...updated,attrs:{...updated.attrs,tikzSource:drawing}},...nodes.slice(1)])!==block.snapshot)return null;
-  const range=tikzRange(block.raw,drawing),newRange=tikzRange(next,next);
-  if(!range||newRange?.from!==0||newRange.to!==next.length)return null;
-  return minimalChange(drawing,next,block.from+range.from);
+  const before=JSON.parse(block.snapshot),original=before[0];
+  if(nodes.length!==before.length||nodes[0]?.type!==original.type)return null;
+  const restored=structuredClone(nodes),[updated]=restored,patches=[];
+  for(const range of tikzDrawingRanges(block.raw,original)){
+    const child=range.child===null?updated:updated.content?.[range.child];
+    const drawing=block.raw.slice(range.from,range.to),next=child?.attrs?.tikzSource;
+    if(drawing===next)continue;
+    if(typeof next!=='string')return null;
+    const [newRange]=tikzDrawingRanges(next);
+    if(newRange?.from!==0||newRange.to!==next.length||newRange.child!==null)return null;
+    patches.push(...minimalChange(drawing,next,block.from+range.from));
+    child.attrs.tikzSource=drawing;
+  }
+  return patches.length&&JSON.stringify(restored)===block.snapshot?patches:null;
 }
 
 function plainTableChanges(block,nodes) {

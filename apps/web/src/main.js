@@ -8,6 +8,7 @@ import {referenceAt} from '../latex/reference-commands.mjs';
 import {sourceStructure} from '../latex/source-structure.mjs';
 import {insertTableSourceColumn,insertTableSourceRow,removeTableSourceColumn,removeTableSourceRow} from '../latex/tabularx.mjs';
 import {editTblrColumn,editTblrRow} from '../latex/tblr.mjs';
+import {tikzDrawingRanges} from '../latex/images.mjs';
 import {loadLegacyMath,nativeOnlyAcceptance,nativeWorkspaceRequested} from './editor/native-surface/acceptance-mode.mjs';
 import {AppendixStart,MatterStart,LayoutCommand} from './editor/appendix.js';
 import {Lipsum} from './editor/lipsum.js';
@@ -3019,13 +3020,27 @@ function forEachNativeDocumentBlock(type,visit){
     });
   });
 }
-function nativeTikzDrawings(){
+function nativeTikzDrawingTargets(){
   const results=[];
-  forEachNativeDocumentBlock('documentImage',(node,position,block,path)=>{
-    if(block?.tikz&&node.attrs.tikzSource)
-      results.push({position,label:node.attrs.caption||node.attrs.label||path});
-  });
+  function collect(node,position,block,path,text,base){
+    if(!block?.tikz||typeof text!=='string')return;
+    for(const range of tikzDrawingRanges(block.raw,node.toJSON())){
+      const child=range.child===null?node:node.child(range.child);
+      let at=position;
+      if(range.child!==null){
+        at++;
+        node.forEach((_,offset,index)=>{if(index===range.child)at+=offset;});
+      }
+      results.push({position:at,path,text,from:base+block.from+range.from,to:base+block.from+range.to,
+        label:child.attrs.caption||child.attrs.label||path});
+    }
+  }
+  forEachNativeDocumentBlock('documentImage',collect);
+  forEachNativeDocumentBlock('subfigures',collect);
   return results;
+}
+function nativeTikzDrawings(){
+  return nativeTikzDrawingTargets().map(({position,label})=>({position,label}));
 }
 function editNativeDrawing(position){
   if(!nativeTikzDrawings().some(drawing=>drawing.position===position))return;
@@ -3040,13 +3055,9 @@ function editNativeDrawing(position){
   });
 }
 function openNativeMeasuredDrawing(drawing){
-  const matches=[];
-  forEachNativeDocumentBlock('documentImage',(node,position,block,path,text,base)=>{
-    if(!block?.tikz||text!==drawing.source||drawing.filePath&&path!==drawing.filePath)return;
-    if(base+block.from<=drawing.from16&&base+block.to>=drawing.to16&&
-       text.slice(drawing.from16,drawing.to16)===node.attrs.tikzSource)matches.push(position);
-  });
-  if(matches.length===1)editNativeDrawing(matches[0]);
+  const matches=nativeTikzDrawingTargets().filter(target=>target.text===drawing.source&&
+    (!drawing.filePath||target.path===drawing.filePath)&&target.from===drawing.from16&&target.to===drawing.to16);
+  if(matches.length===1)editNativeDrawing(matches[0].position);
 }
 function nativeSourceBlocks(){
   const results=[];

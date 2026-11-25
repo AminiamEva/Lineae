@@ -1640,7 +1640,7 @@ const server=createServer(async(req,res)=>{
       await page.locator(`[data-pdf-page="${drawingPage.page}"] canvas`).click({position:{
         x:(top[0]+bottom[0])/2*nativeScale,y:(top[1]+bottom[1])/2*nativeScale,
       }});
-      assert.match(await page.locator('.tikz-studio-code').inputValue(),/\\draw \(0,0\) -- \(1,1\)/);
+      assert.match(await page.locator('.tikz-studio-code').inputValue(),/\\draw \(0,0\) -- \(2,1\)/);
       await page.locator('.tikz-studio-close').click();
       await page.locator(`[data-pdf-page="${nativePage.page}"] canvas`).click({position:{x:x*nativeScale,y:y*nativeScale}});
       await page.waitForFunction(()=>document.activeElement?.id==='native-tex-input');

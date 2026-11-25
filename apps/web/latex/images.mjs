@@ -3,6 +3,25 @@ import {group,trivia,clean,environmentEnd} from './tblr.mjs';
 
 export const imageWidthPattern = /^(?:(?:\d+(?:\.\d+)?|\.\d+)?\\(?:linewidth|textwidth|columnwidth)|(?:\d+(?:\.\d+)?|\.\d+)(?:cm|mm|pt|in))$/;
 
+export function tikzDrawingRanges(source,node){
+  if(!/\\begin\{(?:tikzpicture|circuitikz)\}/.test(source))return [];
+  const tokens=[...sourceStructure(source)];
+  if(tokens.some(token=>token.kind==='invalid'))return [];
+  const spans=tokens.flatMap(token=>{
+    const name=token.kind==='begin'&&/^\\begin\{(tikzpicture|circuitikz)\}$/.exec(token.value)?.[1];
+    const close=name&&environmentEnd(source,token.index,name);
+    return close?[{from:token.index,to:close.end}]:[];
+  });
+  if(!node&&spans.length===1&&source.trim()===source.slice(spans[0].from,spans[0].to))
+    return [{...spans[0],child:null}];
+  node??=parseImageBlock(source);
+  const children=node?.type==='subfigures'?node.content??[]:node?.type==='documentImage'?[node]:[];
+  const drawings=children.flatMap((child,index)=>child.attrs?.tikzSource?
+    [{child:node.type==='subfigures'?index:null,tikz:child.attrs.tikzSource}]:[]);
+  if(spans.length!==drawings.length||spans.some(({from,to},index)=>source.slice(from,to)!==drawings[index].tikz))return [];
+  return spans.map((span,index)=>({...span,child:drawings[index].child}));
+}
+
 // A subfigure/figure body may contain a TikZ picture instead of \includegraphics.
 // Keep the drawing (including any resizebox wrapper) and drop the surrounding
 // alignment and caption commands, which the editor stores separately.
