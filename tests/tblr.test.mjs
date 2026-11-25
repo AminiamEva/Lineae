@@ -4,7 +4,7 @@ import {readFileSync} from 'node:fs';
 import {importBlocks,serialize} from '../apps/web/src/editor/latex-codec.js';
 import {sourceProjection,richSourceChanges} from '../apps/web/src/editor/source-sync.js';
 import {parseDocument} from '../apps/web/latex/document.mjs';
-import {editTblrColumn,editTblrRow} from '../apps/web/latex/tblr.mjs';
+import {editTblrColumn,editTblrRow,splitTblrCell} from '../apps/web/latex/tblr.mjs';
 const fixture=JSON.parse(readFileSync(new URL('./fixtures/academic-tblr.json',import.meta.url),'utf8'));
 const table=source=>{const nodes=importBlocks(source);assert.equal(nodes.length,1);assert.equal(nodes[0].type,'table');return nodes[0];};
 const wrap=body=>'\\begin{document}\r\nBefore.\n\n'+body+'\r\n\nAfter.\n\\end{document}\r\n';
@@ -43,6 +43,15 @@ test('native tabularray column edits retain column declarations, rules and caret
   assert.equal(indexed.slice(0,indexedPatch.from)+indexedPatch.insert+indexed.slice(indexedPatch.to),
     draft.replace('vlines={solid}','vline{3}={solid}'));
   assert.equal(editTblrColumn(indexed,0,0,0,true),null);
+});
+
+test('splitting a tabularray cell reveals the preserved covered cells',()=>{
+  const source='\\begin{tblr}{lc}\r\n\\SetCell[ c = 2 ]{c} Lead & Hidden \\\\\r\n\\end{tblr}';
+  const patch=splitTblrCell(source,0,0,source.indexOf('Lead'));
+  const draft=source.slice(0,patch.from)+patch.insert+source.slice(patch.to);
+  assert.equal(draft,source.replace(' c = 2 ',' c = 1 '));
+  assert.equal(draft.slice(patch.offset,patch.offset+4),'Lead');
+  assert.equal(table(draft).content[0].content[1].content[0].content[0].text,'Hidden');
 });
 const edit=(source,mutate)=>{
   const doc={type:'doc',content:parseDocument(source).blocks.flatMap(importBlocks)};

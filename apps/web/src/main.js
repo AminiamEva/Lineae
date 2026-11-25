@@ -6,8 +6,8 @@ import {documentMetadata,writeDocumentMetadata} from '../latex/document-metadata
 import {resolvePackages} from '../latex/packages.mjs';
 import {referenceAt} from '../latex/reference-commands.mjs';
 import {sourceStructure} from '../latex/source-structure.mjs';
-import {insertTableSourceColumn,insertTableSourceRow,removeTableSourceColumn,removeTableSourceRow} from '../latex/tabularx.mjs';
-import {editTblrColumn,editTblrRow} from '../latex/tblr.mjs';
+import {insertTableSourceColumn,insertTableSourceRow,removeTableSourceColumn,removeTableSourceRow,splitTableSourceCell} from '../latex/tabularx.mjs';
+import {editTblrColumn,editTblrRow,splitTblrCell} from '../latex/tblr.mjs';
 import {tikzDrawingRanges} from '../latex/images.mjs';
 import {loadLegacyMath,nativeOnlyAcceptance,nativeWorkspaceRequested} from './editor/native-surface/acceptance-mode.mjs';
 import {AppendixStart,MatterStart,LayoutCommand} from './editor/appendix.js';
@@ -2708,8 +2708,8 @@ const shortcutActions = {
   table: {
     addRow: () => addNativeTableAxis('row')??editor.commands.addRowAfter(),
     addColumn: () => addNativeTableAxis('column')??editor.commands.addColumnAfter(),
-    deleteRow: () => editNativeTableAxis('deleteRow')??editor.commands.deleteRow(),
-    deleteColumn: () => editNativeTableAxis('deleteColumn')??editor.commands.deleteColumn(),
+    deleteRow: () => editNativeTable('deleteRow')??editor.commands.deleteRow(),
+    deleteColumn: () => editNativeTable('deleteColumn')??editor.commands.deleteColumn(),
   },
 };
 const nativeBindings=compileKeybindings({
@@ -2908,15 +2908,15 @@ function nativeFormulaPosition(formula){
   return Number.isInteger(position)?{position,node:editor.state.doc.nodeAt(position),type,project,composition,file}:null;
 }
 function addNativeTableAxis(axis){
-  return editNativeTableAxis(axis==='row'?'insertRow':'insertColumn');
+  return editNativeTable(axis==='row'?'insertRow':'insertColumn');
 }
-function editNativeTableAxis(operation){
+function editNativeTable(operation){
   const started=performance.now();
   const caret=nativeTexPreview?.verifiedCaret?.();
   if(!caret&&nativeTexPreview?.focusedCaret?.())return false;
   const owner=caret?.kind==='text'?caret.paragraph:caret?.formula;
   const cell=owner?.tableCell;
-  if(!cell)return;
+  if(!cell)return caret?false:undefined;
   const target=caret.kind==='text'?nativeProsePosition(owner,caret.local,caret.local):nativeFormulaPosition(owner);
   if(!target)return false;
   const {state}=editor,{project,composition,file}=target;
@@ -2938,19 +2938,37 @@ function editNativeTableAxis(operation){
       ?state.schema.nodeFromJSON(table):null;
   };
   if(structured?(original.trimEnd()!==rawTable||!owner.source.startsWith(original,start)):!decode(original)?.eq(node))return false;
+  const tableFrom=at.before(depth);
+  if(operation==='deleteTable'){
+    const tr=state.tr.delete(tableFrom,tableFrom+node.nodeSize);
+    tr.setSelection(Selection.near(tr.doc.resolve(Math.min(tableFrom,tr.doc.content.size))));
+    const change={from:start,to:cell.to16,insert:''};
+    const draft=owner.source.slice(0,change.from)+owner.source.slice(change.to);
+    if(composition)return dispatchNativeProjectChange(state,tr,project,new Map([[file.id,draft]]));
+    const projected=sourceProjection(draft,tr.doc.toJSON(),{fragment:projectFileKind==='tex'});
+    return Boolean(projected&&dispatchNativeParagraphChange(state,tr,owner.source,draft,change,projected));
+  }
   const deleting=operation.startsWith('delete');
-  const patch=node.attrs.tblr?(operation.endsWith('Row')?editTblrRow(original,cell.row,deleting,caret.docOffset-start):
-    editTblrColumn(original,cell.row,cell.column,caret.docOffset-start,deleting)):{
+  const offsetInTable=caret.docOffset-start;
+  const tabularrayCommands={
+    insertRow:()=>editTblrRow(original,cell.row,false,offsetInTable),
+    insertColumn:()=>editTblrColumn(original,cell.row,cell.column,offsetInTable),
+    deleteRow:()=>editTblrRow(original,cell.row,true),
+    deleteColumn:()=>editTblrColumn(original,cell.row,cell.column,offsetInTable,true),
+    splitCell:()=>splitTblrCell(original,cell.row,cell.column,offsetInTable),
+  };
+  const columnTableCommands={
     insertRow:()=>insertTableSourceRow(original,cell.row),
     insertColumn:()=>insertTableSourceColumn(original,cell.row,cell.column,caret.docOffset-start),
     deleteRow:()=>removeTableSourceRow(original,cell.row),
     deleteColumn:()=>removeTableSourceColumn(original,cell.row,cell.column),
-  }[operation]();
+    splitCell:()=>splitTableSourceCell(original,cell.row,cell.column,offsetInTable),
+  };
+  const patch=(node.attrs.tblr?tabularrayCommands:columnTableCommands)[operation]();
   if(!patch)return false;
   const raw=original.slice(0,patch.from)+patch.insert+original.slice(patch.to);
   const replacement=decode(raw);
   if(!replacement)return false;
-  const tableFrom=at.before(depth);
   const tr=state.tr.replaceWith(tableFrom,tableFrom+node.nodeSize,replacement);
   const rowIndex=Math.min(cell.row,replacement.childCount-1),row=replacement.child(rowIndex);
   const columnIndex=Math.min(cell.column,row.childCount-1);
@@ -3984,11 +4002,11 @@ continueTablesButton=groupButton(tableGroup,['续表','Continue'],()=>{
 updateContinueTablesButton();
 groupButton(tableGroup,['＋ 行','＋ Row'],addMatrixRow,'＋ Row');
 groupButton(tableGroup,['＋ 列','＋ Column'],addMatrixColumn,'＋ Column');
-groupButton(tableGroup,['－ 行','－ Row'],()=>editNativeTableAxis('deleteRow')??editor.chain().focus(undefined,{scrollIntoView:false}).deleteRow().run(),'－ Row');
-groupButton(tableGroup,['－ 列','－ Column'],()=>editNativeTableAxis('deleteColumn')??editor.chain().focus(undefined,{scrollIntoView:false}).deleteColumn().run(),'－ Column');
-groupButton(tableGroup,['删除表格','Delete table'],()=>deleteTableKeepingScroll(editor));
+groupButton(tableGroup,['－ 行','－ Row'],()=>editNativeTable('deleteRow')??editor.chain().focus(undefined,{scrollIntoView:false}).deleteRow().run(),'－ Row');
+groupButton(tableGroup,['－ 列','－ Column'],()=>editNativeTable('deleteColumn')??editor.chain().focus(undefined,{scrollIntoView:false}).deleteColumn().run(),'－ Column');
+groupButton(tableGroup,['删除表格','Delete table'],()=>editNativeTable('deleteTable')??deleteTableKeepingScroll(editor));
 groupButton(tableGroup,['合并','Merge'],()=>editor.chain().focus(undefined,{scrollIntoView:false}).mergeCells().run(),'merge');
-groupButton(tableGroup,['拆分','Split'],()=>editor.chain().focus(undefined,{scrollIntoView:false}).splitCell().run(),'split');
+groupButton(tableGroup,['拆分','Split'],()=>editNativeTable('splitCell')??editor.chain().focus(undefined,{scrollIntoView:false}).splitCell().run(),'split');
 groupButton(tableGroup,'booktabs',()=>{if(editor.isActive('table'))editor.chain().focus(undefined,{scrollIntoView:false}).updateAttributes('table',{booktabs:!editor.getAttributes('table').booktabs}).run();});
 groupButton(tableGroup,['题注','Caption'],async()=>{
   if(!editor.isActive('table'))return;

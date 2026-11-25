@@ -181,13 +181,15 @@ export function parseTblr(source) {
   for(let r=0;r<rows.length;r++) {
     const row=[];
     for(let c=0;c<specs.length;) {
-      const cell=rows[r][c];let offset=trivia(cell.raw),span=1,style={...cellStyles[r][c]};
+      const cell=rows[r][c];let offset=trivia(cell.raw),span=1,style={...cellStyles[r][c]},spanRange;
       if(/^\\SetCell(?![A-Za-z])/.test(cell.raw.slice(offset))) {
         offset=trivia(cell.raw,offset+8);
         if(cell.raw[offset]==='[') {
           const opt=group(cell.raw,offset,'[',']');if(!opt)return null;
           const match=/^\s*c\s*=\s*(\d+)\s*$/.exec(opt.value);if(!match)return null;
-          span=Number(match[1]);offset=trivia(cell.raw,opt.end);
+          span=Number(match[1]);
+          spanRange={from:cell.from+offset+1,to:cell.from+opt.end-1};
+          offset=trivia(cell.raw,opt.end);
         }
         const format=group(cell.raw,offset);if(!format)return null;
         Object.assign(style,styles(format.value,unsupported));offset=trivia(cell.raw,format.end);
@@ -199,7 +201,8 @@ export function parseTblr(source) {
       for(const [side,values] of [['Top',h[r].slice(c,c+span)],['Bottom',h[r+1].slice(c,c+span)],['Left',[v[c][r]]],['Right',[v[c+span][r]]]]) {
         css['border'+side]=values.every(x=>x===values[0])?(values[0]??'0px solid currentColor'):'0px solid currentColor';
       }
-      row.push({text,from:cell.from+offset,to:cell.from+offset+text.length,attrs:{colspan:span,rowspan:1,align,tblrStyle:css}});
+      row.push({text,from:cell.from+offset,to:cell.from+offset+text.length,spanRange,
+        attrs:{colspan:span,rowspan:1,align,tblrStyle:css}});
       c+=span;
     }
     parsed.push(row);
@@ -344,6 +347,20 @@ export function editTblrColumn(source,row,column,offset,remove=false) {
   const {patch,draft}=applyTblrEdits(located,edits,offset);
   const next=parseTblr(draft);
   if(next?.rows.length!==table.rows.length||next.columns.length!==count+(remove?-1:1))return null;
+  return patch;
+}
+
+export function splitTblrCell(source,row,column,offset){
+  const located=editableTblr(source);
+  if(!located)return null;
+  const {table}=located,cell=table.rows[row]?.[column];
+  if(!cell?.spanRange||cell.attrs.colspan<=1)return null;
+  const {from,to}=cell.spanRange;
+  const insert=table.source.slice(from,to).replace(/\d+/,'1');
+  const {patch,draft}=applyTblrEdits(located,[{from,to,insert}],offset);
+  const next=parseTblr(draft);
+  if(next?.rows[row]?.length!==table.rows[row].length+cell.attrs.colspan-1||
+     next.rows[row][column].text!==cell.text)return null;
   return patch;
 }
 

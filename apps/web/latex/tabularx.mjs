@@ -267,6 +267,23 @@ export function removeTableSourceRow(source,index){
   return {from:start+from,to:start+to,insert:''};
 }
 
+export function splitTableSourceCell(source,row,column,offset){
+  const location=columnTableSource(source);
+  if(!location)return null;
+  const {table,start,parse}=location;
+  const cell=table.rows[row]?.[column];
+  if(!cell?.spanRange||cell.attrs.colspan<=1)return null;
+  const {from,to}=cell.spanRange;
+  const count=table.source.slice(from,to);
+  const single=count.replace(/\d+/,'1');
+  const insert=single+table.source.slice(to,cell.sourceEnd)+' & '.repeat(cell.attrs.colspan-1);
+  const draft=table.source.slice(0,from)+insert+table.source.slice(cell.sourceEnd);
+  const next=parse(draft);
+  if(next?.rows.length!==table.rows.length||next.rows[row].length!==table.rows[row].length+cell.attrs.colspan-1||
+     next.rows[row][column].text!==cell.text)return null;
+  return {from:start+from,to:start+cell.sourceEnd,insert,offset:offset+single.length-count.length};
+}
+
 export function importTabularx(source,inline) {
   return importSourceTable(source,inline,parseTabularx,'tabularx');
 }

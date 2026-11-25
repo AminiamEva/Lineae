@@ -365,6 +365,29 @@ const server=createServer(async(req,res)=>{
       await page.keyboard.press(mod+'+z');
       await page.waitForFunction(expected=>nativeProbe.source===expected,tabularray);
       await page.locator('#native-tex-close').click();
+      const spanning=tableSource.replace('One  & Two','\\multicolumn{2}{c}{Title}');
+      await page.locator('input#file').setInputFiles({name:'spanning.tex',mimeType:'text/plain',buffer:Buffer.from(spanning)});
+      await page.locator('#native-tex-toggle').click();
+      await page.waitForFunction(()=>document.querySelector('#native-tex-preview').dataset.state==='current');
+      await page.locator('#native-tex-target').click();
+      await panel.getByText('Click text on the native page',{exact:false}).waitFor();
+      await page.locator('#native-tex-edit').click();
+      await revealToolbar(page);await page.locator('[data-group=table]').click();
+      await canvas.click({position:{x:6550000*scale,y:9250000*scale}});
+      await page.locator('button[data-source-action=split]').click();
+      const separated=spanning.replace('\\multicolumn{2}{c}{Title}','\\multicolumn{1}{c}{Title} & ');
+      await page.waitForFunction(expected=>nativeProbe.source===expected,separated);
+      await panel.getByText('Click text on the native page',{exact:false}).waitFor();
+      await canvas.click({position:{x:6550000*scale,y:9250000*scale}});
+      await revealToolbar(page);
+      await page.getByRole('button',{name:'Delete table',exact:true}).click();
+      await page.waitForFunction(expected=>nativeProbe.source===expected,
+        separated.replace(/\\begin\{tabular\}[\s\S]*?\\end\{tabular\}/,''));
+      await page.keyboard.press(mod+'+z');
+      await page.waitForFunction(expected=>nativeProbe.source===expected,separated);
+      await page.keyboard.press(mod+'+z');
+      await page.waitForFunction(expected=>nativeProbe.source===expected,spanning);
+      await page.locator('#native-tex-close').click();
       const matrixSource='\\documentclass{article}\n\\usepackage{amsmath}\n\\begin{document}\n'+
         '\\[\\begin{bmatrix}a&\\\\&d\\end{bmatrix}\\]\n\\end{document}\n';
       await page.locator('input#file').setInputFiles({name:'matrix.tex',mimeType:'text/plain',buffer:Buffer.from(matrixSource)});
