@@ -9,6 +9,7 @@ const wrappers=[
 ];
 
 export function tableStyleParts(source){
+  if(!source.includes('\\begin{tabular}'))return null;
   let from=source.length-source.trimStart().length,to=source.trimEnd().length;
   const attrs={},layers=new Map();
   for(;;){

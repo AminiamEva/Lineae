@@ -24,7 +24,7 @@ function regionFor(text, from, to, file, key, continuation, beforeReference) {
 }
 
 export function composeProject(project, rootId, {boundariesOnly=false,repeated='reject'}={}) {
-  const result = {rootId,repeated,regions:[],sources:new Map(),issues:[],content:[]};
+  const result = {rootId,repeated,hasRepeated:false,regions:[],sources:new Map(),issues:[],content:[]};
   const included = new Map();
   let expanded=0;
   function visit(id, ancestry) {
@@ -35,6 +35,7 @@ export function composeProject(project, rootId, {boundariesOnly=false,repeated='
       return;
     }
     const occurrence=included.get(id)??0;
+    if(occurrence)result.hasRepeated=true;
     if(occurrence&&repeated!=='all'){
       if(repeated==='reject')result.issues.push('Repeated include: '+file.path);
       return;

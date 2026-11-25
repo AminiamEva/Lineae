@@ -3193,14 +3193,16 @@ function applyTextStyle(attributes){
   const [first,last]=stops,{paragraph}=first,{state}=editor;
   if(paragraph.container||paragraph.heading||paragraph.wrapped||paragraph.tableCell)return false;
   const target=nativeProsePosition(paragraph,first.local,last.local);
-  if(!target||target.range.marks?.length||target.range.endpoints.start!==target.range.endpoints.end)return false;
+  if(!target||target.range.endpoints.start!==target.range.endpoints.end)return false;
   const type=state.schema.marks.textStyle,stored=state.storedMarks??[];
-  const style=type.create({...stored.find(mark=>mark.type===type)?.attrs,...attributes});
+  const baseline=target.range.marks??[];
+  const style=type.create(first===last?{...stored.find(mark=>mark.type===type)?.attrs,...attributes}:attributes);
   const [sample]=importBlocks(serialize(state.schema.text('x',[style]).toJSON()));
   const canonical=sample?.content?.[0]?.marks?.find(mark=>mark.type==='textStyle');
-  const marks=stored.filter(mark=>mark.type!==type);
-  if(canonical)marks.push(state.schema.markFromJSON(canonical));
   if(first===last){
+    if(baseline.length)return false;
+    const marks=stored.filter(mark=>mark.type!==type);
+    if(canonical)marks.push(state.schema.markFromJSON(canonical));
     editor.view.dispatch(state.tr.setStoredMarks(marks));
     nativeTexPreview.refocusTextInput();
     return true;
@@ -3208,14 +3210,18 @@ function applyTextStyle(attributes){
   if(!canonical)return false;
   const started=performance.now(),{from,to}=target.range;
   const insert=state.doc.textBetween(from,to),latex=paragraph.text.slice(first.local,last.local);
-  const committed=commitNativeMarkedText(paragraph,{from:first.local,to:last.local,insert,latex},target,marks);
+  const marks=baseline.filter(mark=>mark.type!==type);
+  marks.push(type.create({...baseline.find(mark=>mark.type===type)?.attrs,...canonical.attrs}));
+  const wrapper=state.schema.markFromJSON(canonical);
+  const serialized=serialize(state.schema.text(insert,[wrapper]).toJSON());
+  const committed=commitNativeMarkedText(paragraph,{from:first.local,to:last.local,insert,latex},target,marks,serialized);
   if(!committed)return false;
   nativeTexPreview.refocusTextInput();
   return nativeTexPreview.preserveSourceCaret(committed,started,'text');
 }
-function commitNativeMarkedText(paragraph,patch,target,marks){
+function commitNativeMarkedText(paragraph,patch,target,marks,serialized){
   const {state}=editor,{range,composition,project,file}=target;
-  const node=editor.schema.text(patch.insert,marks),insert=serialize(node.toJSON());
+  const node=editor.schema.text(patch.insert,marks),insert=serialized??serialize(node.toJSON());
   const raw=patch.latex??patch.insert,inside=insert.lastIndexOf(raw);
   if(inside<0||insert===raw)return null;
   const {source,filePath:path}=paragraph,from=paragraph.from16+patch.from,to=paragraph.from16+patch.to;
@@ -3502,7 +3508,7 @@ function currentNativeProjectComposition(){
 }
 function nativeSelectionComposition(canonical){
   const project=projectExplorer?.model;
-  if(canonical?.repeated!=='first'||!project)return canonical;
+  if(!canonical?.hasRepeated||canonical.repeated!=='first'||!project)return canonical;
   const expanded=projectDocument.compose(project,canonical.rootId,{boundariesOnly:true,repeated:'all'});
   return expanded.issues.length?canonical:expanded;
 }

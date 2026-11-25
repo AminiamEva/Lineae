@@ -367,6 +367,19 @@ const server=createServer(async(req,res)=>{
       await page.waitForFunction(expected=>nativeProbe.source===expected,crossedStyle);
       await page.keyboard.press(mod+'+z');
       await page.waitForFunction(expected=>nativeProbe.source===expected,styledSource);
+      await panel.getByText('Click text on the native page',{exact:false}).waitFor();
+      await page.mouse.move(styledBounds.x+7750000*scale,styledBounds.y+9250000*scale);
+      await page.mouse.down();
+      await page.mouse.move(styledBounds.x+8050000*scale,styledBounds.y+9250000*scale,{steps:8});
+      await page.mouse.up();
+      await page.locator('[data-format-attribute=fontSize]').evaluate(control=>{
+        control.value='18pt';control.dispatchEvent(new Event('change',{bubbles:true}));
+      });
+      const resizedWithinStyle=styledSource.replace('Styled','{\\fontsize{18}{22}\\selectfont St}yled')
+        .replace('\\documentclass','\\RequirePackage{fix-cm}\n\\documentclass');
+      await page.waitForFunction(expected=>nativeProbe.source===expected,resizedWithinStyle);
+      await page.keyboard.press(mod+'+z');
+      await page.waitForFunction(expected=>nativeProbe.source===expected,styledSource);
       await page.locator('#native-tex-close').click();
       const noteSource='\\documentclass{article}\n\\begin{document}\nBefore\\footnote{Comment.} after.\n\\end{document}\n';
       await page.locator('input#file').setInputFiles({name:'footnote.tex',mimeType:'text/plain',buffer:Buffer.from(noteSource)});
@@ -1287,6 +1300,13 @@ const server=createServer(async(req,res)=>{
       await panel.getByText('Click text on the native page',{exact:false}).waitFor();
       await page.locator('#native-tex-edit').click();
       await canvas.click({position:{x:6550000*scale,y:9250000*scale}});
+      await page.evaluate(()=>{
+        const click=HTMLInputElement.prototype.click;
+        HTMLInputElement.prototype.click=function(){
+          if(this.type==='file'&&this.accept.includes('image/png'))return;
+          return click.call(this);
+        };
+      });
       await page.keyboard.press('Backslash');
       await page.getByRole('textbox',{name:'LaTeX command',exact:true}).fill('includegraphics');
       await page.keyboard.press('Enter');

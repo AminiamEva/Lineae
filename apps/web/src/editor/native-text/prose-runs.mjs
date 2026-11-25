@@ -80,8 +80,7 @@ export function markedRuns(text,offset=0,marks=[],inline,styles=[]) {
     const command=/^\\([a-z]+)(?=\{)/.exec(rest);
     const mark=color||groupedStyle?'textStyle':command&&Object.hasOwn(textMarks,command[1])&&textMarks[command[1]];
     const style=color?.[1].toLowerCase()??groupedStyle??(mark==='textStyle'?'family':null);
-    if(!mark||styles.length+marks.length>=8||
-      (style?styles.includes(style):marks.includes(mark)))return null;
+    if(!mark||styles.length+marks.length>=8||(!style&&marks.includes(mark)))return null;
     const argument=groupedStyle?cursor:cursor+(color??command)[0].length;
     const valueFrom=groupedStyle?cursor+(size??declaration)[0].length:argument+1;
     const group=readGroup(text,argument);
