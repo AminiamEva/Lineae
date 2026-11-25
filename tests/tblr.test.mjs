@@ -20,7 +20,11 @@ test('native tabularray row edits preserve global options, spans and source triv
   const deleted=apply(editTblrRow(source,1,true));
   assert.equal(deleted,source.replace('A & B\r\n',''));
   assert.equal(table(deleted).content.length,1);
-  assert.equal(editTblrRow(source.replace(settings,settings+', row{2}={r}'),0),null);
+  const indexed=source.replace(settings,settings+', row{2}={r}');
+  const indexedPatch=editTblrRow(indexed,0);
+  assert.equal(indexed.slice(0,indexedPatch.from)+indexedPatch.insert+indexed.slice(indexedPatch.to),
+    changed.replace(settings,settings+', row{3}={r}'));
+  assert.equal(editTblrRow(indexed,1,true),null);
 });
 
 test('native tabularray column edits retain column declarations, rules and caret ownership',()=>{
@@ -34,7 +38,11 @@ test('native tabularray column edits retain column declarations, rules and caret
   assert.equal(apply(editTblrColumn(source,0,0,0,true)),source.replace('l X[c]',' X[c]')
     .replace('A  & B',' B').replace(' C & D','  D'));
   assert.equal(editTblrColumn(source.replace('A  & B','\\SetCell[c=2]{c} A & '),1,0,0),null);
-  assert.equal(editTblrColumn(source.replace('vlines={solid}','vline{2}={solid}'),0,0,0),null);
+  const indexed=source.replace('vlines={solid}','vline{2}={solid}');
+  const indexedPatch=editTblrColumn(indexed,0,0,0);
+  assert.equal(indexed.slice(0,indexedPatch.from)+indexedPatch.insert+indexed.slice(indexedPatch.to),
+    draft.replace('vlines={solid}','vline{3}={solid}'));
+  assert.equal(editTblrColumn(indexed,0,0,0,true),null);
 });
 const edit=(source,mutate)=>{
   const doc={type:'doc',content:parseDocument(source).blocks.flatMap(importBlocks)};

@@ -37,3 +37,25 @@ test('desktop preview is opt-in, waits for both platforms and does not require L
   assert.deepEqual(workflow.jobs.release.needs,['web','build','windows','linux']);
   assert.match(workflow.jobs.release.if,/github.event_name == 'push'/);
 });
+
+test('the migration record identifies reproducible evidence and keeps device gates explicit',()=>{
+  const migration=JSON.parse(readFileSync('docs/native-tex/parity.json','utf8'));
+  const features=migration.features;
+  assert.equal(new Set(features.map(feature=>feature.id)).size,features.length);
+  for(const feature of features){
+    for(const path of [...feature.entryPoints,...feature.tests])assert.ok(readFileSync(path).length,path);
+    assert.ok(feature.evidence.length,feature.id);
+    for(const evidence of feature.evidence)assert.match(evidence,/\/actions\/runs\/\d+$/);
+  }
+  const {pages,engineBaseline}=migration.latency;
+  assert.match(engineBaseline.revision,/^[0-9a-f]{40}$/);
+  for(const platform of ['macOS arm64','Windows x64']){
+    const samples=engineBaseline.samples.filter(sample=>sample.platform===platform);
+    assert.deepEqual(samples.map(sample=>sample.pages),pages);
+    for(const sample of samples){
+      assert.equal(sample.sampleCount,1000);
+      assert.ok(sample.p50Ms>0&&sample.p50Ms<=sample.p95Ms&&sample.p95Ms<=sample.p99Ms);
+    }
+  }
+  assert.ok(migration.acceptance.pending.some(item=>item.includes('physical device')));
+});

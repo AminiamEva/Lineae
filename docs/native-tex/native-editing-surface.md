@@ -97,7 +97,9 @@ total, using up to the most recent 1,024 samples. The browser regression uses
 mocked geometry. OS input, real device composition and display scan-out still
 need separate measurements on Windows and macOS.
 
-Engine-only protocol timings remain in `native-tex.yml` artifacts.
+Engine-only protocol timings are in `parity.json` and the
+[two-platform Actions artifacts](https://github.com/AminiamEva/Lineae/actions/runs/45651241855).
+The run recorded 1,000 warm edits each at 10, 100, and 300 pages.
 
 GitHub-hosted WebView2 and WKWebView checks start the engine-off workspace and
 verify the embedded fonts, PDF worker and native session bridge without an
