@@ -1,3 +1,4 @@
+import {nativeOnlyAcceptance} from './editor/native-surface/acceptance-mode.mjs';
 import {AppendixStart,MatterStart,LayoutCommand} from './editor/appendix.js';
 import {Lipsum} from './editor/lipsum.js';
 import {CounterDirective} from './editor/counter-directive.js';
@@ -1497,9 +1498,7 @@ function renderMeta() {
   metaDate.dataset.zhPlaceholder='日期';metaDate.dataset.enPlaceholder='Date';metaDate.dataset.placeholder=t('日期','Date');
 }
 renderMeta();
-const nativeOnlyAcceptance=Boolean(window.__TAURI__?.core?.invoke) &&
-  new URLSearchParams(location.search).get('native-only-acceptance')==='1';
-if(!nativeOnlyAcceptance)typesetPagination=installTypesetPagination(documentPage,paper,metaBar,editor);
+if(!nativeOnlyAcceptance())typesetPagination=installTypesetPagination(documentPage,paper,metaBar,editor);
 typesetPagination?.setTableContinuation(config.value.interface.continuedTables);
 window.addEventListener('lineae-image-layout',()=>{typesetPagination?.refresh();syncImageTab?.();});
 function source() {

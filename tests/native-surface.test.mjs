@@ -74,6 +74,18 @@ test('arrows stay inside the served formula and deletion removes one source char
   assert.equal(surface2.pendingOffset, typed.formula.from16 + b.from16);
 });
 
+test('forward delete removes the selected denominator glyph even at the slot end', () => {
+  const {projection, denominator, token} = setup(filled);
+  const surface = createMathSurface({resolve: endpoint => nativeTarget(projection, endpoint)});
+  const observation = page([field(denominator.tag, 'den', 300, false)], [glyph(token('b').tag, 300)]);
+  surface.setObservation(observation);
+  const first = surface.nearest(1, 300, 100);
+  const last = surface.nearest(1, 320, 100);
+  assert.ok(surface.selectBetween(first.docOffset, last.docOffset));
+  surface.setObservation(observation);
+  assert.equal(surface.erase(false)?.text, '\\frac{a}{}');
+});
+
 test('a selection across slots is not silently rewritten', () => {
   const {projection, denominator, numerator, token} = setup();
   const surface = createMathSurface({resolve: endpoint => nativeTarget(projection, endpoint)});

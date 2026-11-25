@@ -57,12 +57,17 @@ export function createMathSurface({resolve}) {
     erase(backward = true) {
       const stop = selection.caret;
       if (!stop) return null;
-      const own = selection.stops.filter(candidate => sameFormula(candidate, stop));
-      const position = own.indexOf(stop);
-      const neighbor = own[position + (backward ? -1 : 1)];
-      if (!neighbor || neighbor.slot.id !== stop.slot.id) return null;
-      const from = Math.min(stop.local, neighbor.local);
-      const to = Math.max(stop.local, neighbor.local);
+      let [start, end] = selection.range;
+      if (start === end) {
+        const own = selection.stops.filter(candidate => sameFormula(candidate, stop));
+        const neighbor = own[own.indexOf(stop) + (backward ? -1 : 1)];
+        if (!neighbor) return null;
+        start = stop;
+        end = neighbor;
+      }
+      if (!sameFormula(start, end) || start.slot.id !== end.slot.id) return null;
+      const from = Math.min(start.local, end.local);
+      const to = Math.max(start.local, end.local);
       if (from === to) return null;
       try {
         const result = applySlotEdit(stop.formula.math, {
