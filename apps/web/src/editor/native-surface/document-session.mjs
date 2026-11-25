@@ -13,6 +13,7 @@ export const sameTable=(left,right)=>{
     (a.row===b.row||a.vertical&&b.vertical&&a.column===b.column));
 };
 const overlapsLine=(left,right)=>left?.page===right.page&&left.top<right.bottom&&left.bottom>right.top;
+const editableRangeContainers=new Set(['theoremBlock','blockquote','orderedList','bulletList','descriptionList']);
 
 // Text and math contribute geometry and edit operations. The document session
 // owns one selection and one pending caret address for the visible revision.
@@ -179,9 +180,8 @@ export function createNativeDocumentSession(resolve) {
       const [first,last]=selection.range;
       if(first?.kind!=='text'||last?.kind!=='text'||order(first)<0||order(last)<=order(first))return null;
       const ranges=this.proseRanges(first,last);
-      if(ranges.length<2||ranges.some(({paragraph},index)=>paragraph&&(paragraph.tableCell||paragraph.heading||
-        paragraph.container&&((index!==0&&index!==ranges.length-1)||
-          !['theoremBlock','blockquote'].includes(paragraph.container.type)))))return null;
+      if(ranges.length<2||ranges.some(({paragraph})=>paragraph&&(paragraph.tableCell||paragraph.heading||
+        paragraph.container&&!editableRangeContainers.has(paragraph.container.type))))return null;
       const edits=ranges.map(({paragraph,formula,from,to},index)=>{
         if(formula){
           const {outerFrom16:start,outerTo16:end,filePath,source}=formula;

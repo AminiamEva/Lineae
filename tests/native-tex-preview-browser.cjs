@@ -1061,6 +1061,27 @@ const server=createServer(async(req,res)=>{
       await page.keyboard.type('X');
       await projectDrafts(updatedParent,updatedProof.replace('Child.','XChild.'));
 
+      await page.goto('http://127.0.0.1:'+server.address().port+'/?native-only-acceptance=1',{waitUntil:'networkidle'});
+      const nestedChild='\\begin{itemize}\n\\item Outer item.\n\\begin{enumerate}\n\\item StartChild.\n\\end{enumerate}\n\\end{itemize}\n';
+      await openMockProject(page,false,containerProject,nestedChild);
+      await page.evaluate(()=>{nativeProbe.targetInclude=true;nativeProbe.includeMainText=true;});
+      await page.locator('#native-tex-toggle').click();
+      await page.waitForFunction(()=>document.querySelector('#native-tex-preview').dataset.state==='current');
+      await page.locator('#native-tex-target').click();
+      await panel.getByText('Click prose on the native page',{exact:false}).waitFor();
+      await page.locator('#native-tex-edit').click();
+      const nestedBounds=await canvas.boundingBox();
+      const xAfter=text=>nestedBounds.x+(6450000+text.replace(/\s/g,'').length*200000)*scale;
+      await page.mouse.move(xAfter('Outer item.Start'),nestedBounds.y+9250000*scale);
+      await page.mouse.down();
+      await page.mouse.move(xAfter('Outer item.StartChild.Before section.After ch'),nestedBounds.y+9250000*scale,{steps:12});
+      await page.mouse.up();
+      await page.keyboard.insertText(' updated.');
+      const editedNestedChild=nestedChild.replace('StartChild.','Start updated.');
+      await projectDrafts(containerProject.replace('After chapter.','apter.'),editedNestedChild);
+      await page.keyboard.press(mod+'+z');
+      await projectDrafts(containerProject,nestedChild);
+
       await page.goto('http://127.0.0.1:'+server.address().port+'/?native-workspace=1',{waitUntil:'networkidle'});
       const workspaceSource='\\documentclass{article}\n\\begin{document}\nNative document.\n\\end{document}\n';
       await page.locator('input#file').setInputFiles({name:'workspace.tex',mimeType:'text/plain',buffer:Buffer.from(workspaceSource)});

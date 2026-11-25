@@ -2994,8 +2994,12 @@ function nativeProsePosition(paragraph,from,to){
   return range?{range,project,composition,file}:null;
 }
 function refreshNativeTextEnvironment(tr,position,sourceBlock,source,change){
-  if(!sourceBlock||change.from<sourceBlock.from||change.to>sourceBlock.to)return false;
-  const raw=source.slice(sourceBlock.from,change.from)+change.insert+source.slice(change.to,sourceBlock.to);
+  return refreshNativeTextEnvironmentChanges(tr,position,sourceBlock,source,[change]);
+}
+function refreshNativeTextEnvironmentChanges(tr,position,sourceBlock,source,changes){
+  if(!sourceBlock||changes.some(change=>change.from<sourceBlock.from||change.to>sourceBlock.to))return false;
+  const raw=changes.reduce((value,change)=>value.slice(0,change.from-sourceBlock.from)+
+    change.insert+value.slice(change.to-sourceBlock.from),source.slice(sourceBlock.from,sourceBlock.to));
   const [parsed,...rest]=importBlocks(raw);
   const node=tr.doc.nodeAt(position);
   if(rest.length||parsed?.type!=='blockquote'||node?.type.name!=='blockquote')return false;
@@ -4009,33 +4013,39 @@ nativeTexPreview=installNativeTexPreview({host:footer,before:modes,primary:nativ
       const {formula,paragraph,range}=mapped[index];
       if(!position.depth||position.node(1).type.name!=='projectRegion')return true;
       if(!paragraph?.container)return position.depth!==(formula?1:2);
-      if(position.depth!==3)return true;
-      const owner=position.node(2);
-      return owner.type.name!==paragraph.container.type||owner.childCount!==1||!range.match.sourceBlock;
+      return position.depth<3||position.node(2).type.name!==paragraph.container.type||!range.match.sourceBlock;
     }))return false;
     const firstRegion=positions[0].index(0),lastRegion=positions.at(-1).index(0);
-    const expectedNodes=[];
-    for(let index=firstRegion;index<=lastRegion;index++){
-      const region=composition.regions[index],node=state.doc.child(index);
-      const regionSource=region&&composition.sources.get(region.id);
-      if(index>firstRegion&&index<lastRegion&&region&&node.childCount===1&&
-         node.firstChild.type.name==='paragraph'&&!node.firstChild.content.size&&
-         typeof regionSource==='string'&&!regionSource.slice(region.from,region.to).trim())continue;
-      const start=index===firstRegion?positions[0].index(1):0;
-      const end=index===lastRegion?positions.at(-1).index(1):node.childCount-1;
-      for(let child=start;child<=end;child++)expectedNodes.push(`${index}/${child}`);
-    }
-    if(expectedNodes.length!==positions.length||positions.some((at,index)=>expectedNodes[index]!==`${at.index(0)}/${at.index(1)}`))return false;
+    const leafPositions=mapped.map(({formula,range})=>formula?range.from:range.match.offset);
+    const expectedNodes=[],containers=new Set(['projectRegion','theoremBlock','blockquote',
+      'orderedList','bulletList','listItem','descriptionList','descriptionItem']);
+    state.doc.nodesBetween(leafPositions[0],leafPositions.at(-1)+1,(node,position,parent,index)=>{
+      if(node.type.name==='projectRegion'&&index>firstRegion&&index<lastRegion&&
+         node.childCount===1&&node.firstChild.type.name==='paragraph'&&!node.firstChild.content.size){
+        const region=composition.regions[index],source=region&&composition.sources.get(region.id);
+        if(typeof source==='string'&&!source.slice(region.from,region.to).trim())return false;
+      }
+      if(containers.has(node.type.name))return true;
+      expectedNodes.push(position);
+      return false;
+    });
+    if(expectedNodes.length!==leafPositions.length||leafPositions.some((position,index)=>position!==expectedNodes[index]))return false;
     const tr=state.tr;
-    const patches=new Map();
+    const patches=new Map(),environments=new Map();
     for(let index=mapped.length-1;index>=0;index--){
       const {file,range,patch,change,paragraph}=mapped[index];
       if(range.to>range.from)tr.delete(range.from,range.to);
       if(patch.insert)tr.insert(range.from,editor.schema.text(patch.insert,range.marks));
-      if(paragraph?.container?.type==='blockquote'&&!refreshNativeTextEnvironment(tr,positions[index].before(2),
-         range.match.sourceBlock,paragraph.source,change))return false;
+      if(paragraph?.container?.type==='blockquote'){
+        const position=positions[index].before(2);
+        if(!environments.has(position))environments.set(position,{paragraph,sourceBlock:range.match.sourceBlock,changes:[]});
+        environments.get(position).changes.push(change);
+      }
       if(!patches.has(file.id))patches.set(file.id,[]);
       patches.get(file.id).push(change);
+    }
+    for(const [position,{paragraph,sourceBlock,changes}] of environments){
+      if(!refreshNativeTextEnvironmentChanges(tr,tr.mapping.map(position),sourceBlock,paragraph.source,changes))return false;
     }
     tr.setSelection(TextSelection.create(tr.doc,first.range.from+first.patch.insert.length));
     const drafts=projectDocument.changes(tr.doc.toJSON());
