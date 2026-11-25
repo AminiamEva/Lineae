@@ -2308,6 +2308,14 @@ function completionActions() {
       eqref:()=>nativeInlineCommand('ref',true),
       cite:()=>nativeInlineCommand('cite'),
       footnote:()=>nativeInlineCommand('footnote'),
+      lipsum:async()=>{
+        const document=editor.state.doc;
+        const range=await askText(t('段落范围','Paragraph range'),'1-7');
+        if(!range||!/^\d+(?:-\d+)?$/.test(range)||editor.state.doc!==document)return false;
+        const [first,last=first]=range.split('-').map(Number);
+        if(!Number.isSafeInteger(first)||!Number.isSafeInteger(last)||first<1||last<first)return false;
+        return insertNativeInlineNode('lipsum',{range});
+      },
       togglemarker:()=>runNativeTextCommand('toggleContextMarker'),
       multicols:()=>runNativeTextStructure('wrapIn','multiColumn',{count:2}),
       'multicols*':()=>runNativeTextStructure('wrapIn','multiColumn',{count:2,starred:true}),

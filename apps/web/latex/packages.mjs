@@ -24,6 +24,7 @@ const dependencies = [
   { name: 'float', pattern: /\\begin\{figure\}\[H\]/ },
   { name: 'amsthm', pattern: /\\begin\{proof\}/ },
   { name: 'listings', pattern: /\\begin\{lstlisting\}/ },
+  { name: 'lipsum', pattern: /\\lipsum\b/ },
   { name: 'textcomp', pattern: /\\(?:textdegree|textcelsius|textmu|textohm|textcent|textyen|texteuro|textperthousand|textnumero)\b/ },
   { name: 'hyperref', pattern: /\\(?:href|url|hyperref|autoref)\b/, satisfies: ['url'], onlyUrl: /\\(?:href|hyperref|autoref)\b/ },
   { name: 'fix-cm', pattern: /\\fontsize\s*\{[^{}]+\}\s*\{[^{}]+\}\s*\\selectfont\b/,

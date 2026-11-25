@@ -1,5 +1,6 @@
 export const fontFamilies = { Georgia: '\\rmfamily', Arial: '\\sffamily', monospace: '\\ttfamily' };
 export const fontSizes = { 1: '\\scriptsize', 2: '\\small', 3: '\\normalsize', 4: '\\large', 5: '\\Large', 6: '\\LARGE', 7: '\\Huge' };
+export const lipsumAt=source=>/^\\lipsum(?![A-Za-z])(?:\[([^\]]*)\])?/.exec(source);
 
 const textSymbols = {
   textbackslash: '\\', textasciitilde: '~', textasciicircum: '^', textasciigrave: '`',
@@ -70,8 +71,12 @@ export function parseInline(source, depth = 0, options = {}) {
     const newline = rest.match(/^[ \t]*\r?\n[ \t]*/);
     if (newline) { nodes.push(' '); cursor += newline[0].length; continue; }
 
-    const lipsum = rest.match(/^\\lipsum(?:\[([^\]]*)\])?[ \t]*/);
-    if (lipsum) { nodes.push({ lipsum: lipsum[1] || '1-7' }); cursor += lipsum[0].length; continue; }
+    const lipsum=lipsumAt(rest);
+    if(lipsum){
+      nodes.push({lipsum:lipsum[1]||'1-7'});
+      cursor+=lipsum[0].length+(rest.slice(lipsum[0].length).match(/^[ \t]*/)?.[0].length??0);
+      continue;
+    }
 
     const text = rest.match(/^[^\\{}%$&#_^~\r\n]+/);
     const math = rest.match(/^\$([^$\r\n]+)\$/) ?? rest.match(/^\\\(([^\r\n]+?)\\\)/);

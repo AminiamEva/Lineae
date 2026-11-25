@@ -1,6 +1,7 @@
 import {headingAt} from '../../../latex/headings.mjs';
 import {serialize} from '../latex-codec.js';
 import {proseEditEndpoints} from './projection.mjs';
+import {lipsumAt} from '../../../latex/inline.mjs';
 
 export function nativeEditorRange({doc,projection,composition,file,paragraph,from,to}) {
   const endpoints=proseEditEndpoints(paragraph,from,to);
@@ -41,7 +42,10 @@ export function nativeEditorRange({doc,projection,composition,file,paragraph,fro
       }else if(part.kind==='math'){
         if(!['math','mathBlock'].includes(child.type.name)||child.attrs.latex!==part.latex)return null;
       }else if(part.kind==='reference'||part.kind==='atom'){
-        if(child.type.name!==part.type||serialize(child.toJSON())!==part.source)return null;
+        if(child.type.name!==part.type)return null;
+        if(part.type==='lipsum'){
+          if(child.attrs.range!==(lipsumAt(part.source)?.[1]||'1-7'))return null;
+        }else if(serialize(child.toJSON())!==part.source)return null;
       }else return null;
     }
     return index===node.childCount?parts:null;

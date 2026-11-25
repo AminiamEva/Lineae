@@ -342,6 +342,18 @@ const server=createServer(async(req,res)=>{
       await page.waitForFunction(expected=>nativeProbe.source===expected,terminalNote);
       await page.keyboard.press(mod+'+z');
       await page.waitForFunction(expected=>nativeProbe.source===expected,noteTailSource);
+      await panel.getByText('Click text on the native page',{exact:false}).waitFor();
+      await canvas.click({position:{x:6550000*scale,y:9250000*scale}});
+      await page.keyboard.press('Backslash');
+      await page.getByRole('textbox',{name:'LaTeX command',exact:true}).fill('lipsum');
+      await page.keyboard.press('Enter');
+      await page.locator('.editor-dialog input').fill('2');
+      await page.locator('.editor-dialog button[type=submit]').click();
+      const generatedText=noteTailSource.replace('Alpha','\\lipsum[2]Alpha')
+        .replace('\\begin{document}','\\usepackage{lipsum}\n\\begin{document}');
+      await page.waitForFunction(expected=>nativeProbe.source===expected,generatedText);
+      await page.keyboard.press(mod+'+z');
+      await page.waitForFunction(expected=>nativeProbe.source===expected,noteTailSource);
       await page.locator('#native-tex-close').click();
       const styledSource='\\documentclass{article}\n\\usepackage{xcolor}\n\\begin{document}\n'+
         'Before {\\sffamily {\\fontsize{16}{20}\\selectfont \\colorbox[HTML]{EEEEEE}{\\textcolor[HTML]{FF0000}{Styled}}}} after.\n'+
