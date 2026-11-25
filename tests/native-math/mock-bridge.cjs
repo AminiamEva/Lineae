@@ -181,6 +181,16 @@ module.exports=function installMockNativeTex() {
         const x=6500000+index*1000000;
         return {owner:Number(owner),role:'math',empty:true,bbox:[x,10500000,x,10500000]};
       });
+      const cases=/\\begin\{cases\}([\s\S]*?)\\end\{cases\}/.exec(mathInput);
+      if(cases){
+        const observed=p.layout().pages_changed;
+        const fields=[...cases[1].matchAll(/\\attribute65000=(\d+) (?=[&\\]|$)/g)].map(([,owner],index)=>{
+          const x=6500000+index%2*1000000,y=7000000+Math.floor(index/2)*1000000;
+          return {owner:Number(owner),role:'cell',empty:true,bbox:[x,y,x,y]};
+        });
+        observed[0].dl.math_owners={fields,glyphs:[]};
+        return observed;
+      }
       if(!match&&!script&&!cellOwner){
         const text=proseTags;
         if((!text.length&&!emptyFields.length)||args.sourceRevision!==p.revision)throw new Error('Unexpected formula observation request');

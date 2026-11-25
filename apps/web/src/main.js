@@ -396,12 +396,20 @@ function insertNativeInitialBlock(block,latex,preambleLines){
   const projected=sourceProjection(draft,tr.doc.toJSON(),{fragment});
   if(!projected||!dispatchNativeParagraphChange(state,tr,sourceBefore,draft,change,projected))return false;
   const project=projectExplorer?.model,path=project?.file(project.activeFileId).path;
-  if(table)focusNativeTableInsertion(draft,from+(dependency?.delta??0),path,fragment,false,started);
+  focusNativeBlockInsertion(block,draft,from+(dependency?.delta??0),path,fragment,false,started);
   return true;
 }
 function insertEquation() {
   if(nativeTexPreview?.hasNativeTextFocus?.())return nativeTexPreview.startFormula(true,'equation');
   insertFormula(editor, true, '', undefined, field => insertLiveMath(field, '\\placeholder{}'), { delimiter:'equation' });
+}
+function insertCases(){
+  if(nativeParagraphFormattingActive()){
+    const latex='\\begin{cases}&\\\\&\\end{cases}';
+    const formula=newNativeMath(latex,true);
+    return Boolean(formula&&insertNativeDocumentBlock(formula.node,formula.open+latex+formula.close));
+  }
+  return insertMath(true,'\\begin{cases}\\placeholder{} & \\placeholder{}\\\\ \\placeholder{} & \\placeholder{}\\end{cases}');
 }
 const matrixEnvironments = new Set(['matrix', 'pmatrix', 'bmatrix', 'Bmatrix', 'vmatrix', 'Vmatrix']);
 function matrixSource(name, content = '\\placeholder{}') {
@@ -2092,7 +2100,7 @@ const structureCommands = {
   Bmatrix: () => insertMath(false,matrixSource('Bmatrix')),
   vmatrix: () => insertMath(false,matrixSource('vmatrix')),
   Vmatrix: () => insertMath(false,matrixSource('Vmatrix')),
-  cases: () => insertMath(true,'\\begin{cases}\\placeholder{} & \\placeholder{}\\\\ \\placeholder{} & \\placeholder{}\\end{cases}'),
+  cases: insertCases,
 };
 const mathSlot = '\\placeholder{}';
 const alignedRow = mathSlot + ' & ' + mathSlot;
@@ -2269,10 +2277,17 @@ function insertNativeProseBlock(block,latex,preambleLines){
     const projected=sourceProjection(draft,tr.doc.toJSON(),{fragment});
     applied=Boolean(projected&&dispatchNativeParagraphChange(state,tr,source,draft,change,projected));
   }
-  if(applied&&table)focusNativeTableInsertion(draft,from+prefix.length+shift,path,fragment,Boolean(target.composition),started);
+  if(applied)focusNativeBlockInsertion(block,draft,from+prefix.length+shift,path,fragment,Boolean(target.composition),started);
   return applied;
 }
-function focusNativeTableInsertion(source,from,path,fragment,splitIncludes,started){
+function focusNativeBlockInsertion(block,source,from,path,fragment,splitIncludes,started){
+  if(block.type.name==='mathBlock'&&block.attrs.delimiter==='\\['){
+    const math=projectMath(block.attrs.latex);
+    const firstCell=math.slots.find(slot=>slot.role==='cell'&&!slot.raw.length);
+    if(firstCell)nativeTexPreview.preserveSourceCaret({source,path,offset:from+2+firstCell.from16},started,'math');
+    return;
+  }
+  if(block.type.name!=='table')return;
   const firstCell=projectMixedDocument(source,{fragment,filePath:path,splitIncludes})?.paragraphs
     .find(({tableCell})=>tableCell?.from16===from);
   if(firstCell)nativeTexPreview.preserveSourceCaret({source,path,offset:firstCell.from16},started,'text');
@@ -2306,6 +2321,7 @@ function completionActions() {
       includegraphics:()=>insertDocumentImage(true),
       ref:()=>nativeInlineCommand('ref'),
       eqref:()=>nativeInlineCommand('ref',true),
+      cases:insertCases,
       cite:()=>nativeInlineCommand('cite'),
       footnote:()=>nativeInlineCommand('footnote'),
       lipsum:async()=>{
@@ -2844,7 +2860,7 @@ const shortcutActions = {
     insertDisplayMath: () => insertMath(true),
     insertInlineMath: () => insertMath(),
     insertEquation,
-    insertCases: () => insertMath(true,'\\begin{cases}\\placeholder{} & \\placeholder{}\\\\ \\placeholder{} & \\placeholder{}\\end{cases}'),
+    insertCases,
     dollar: (_context,event) => {
       if(event.key.length===1&&!event.ctrlKey&&!event.metaKey&&!event.altKey)return 'native';
       insertMath();
@@ -2994,7 +3010,7 @@ installKeybindings(window, {
     if(context.nativeMath&&scope==='editor')return false;
     if(context.nativeText&&scope==='editor'){
       if(command==='leaveFile')return nativeTexPreview.leaveFile();
-      if(['insertDisplayMath','insertInlineMath','insertEquation'].includes(command))return shortcutActions.editor[command]();
+      if(['insertDisplayMath','insertInlineMath','insertEquation','insertCases'].includes(command))return shortcutActions.editor[command]();
       return runNativeTextCommand(command,context,event);
     }
     if(context.nativeText&&scope==='table'&&!nativeTexPreview.useTextSelection())return false;
@@ -5153,8 +5169,7 @@ groupButton(mathGroup,'\\left',()=>chooseMathDelimiters(activeMath()));
 groupButton(mathGroup,'\\right',()=>chooseMathDelimiters(activeMath(),true));
 groupButton(mathGroup,['单括号','Literal fence'],()=>armLiteralFence(activeMath()));
 groupButton(mathGroup,'matrix',()=>runNativeMathToolbarCommand('matrix',()=>insertMath(false,matrixSource('matrix'))));
-groupButton(mathGroup,'cases',()=>runNativeMathToolbarCommand('cases',
-  ()=>insertMath(true,'\\begin{cases}\\placeholder{} & \\placeholder{}\\\\ \\placeholder{} & \\placeholder{}\\end{cases}')));
+groupButton(mathGroup,'cases',()=>runNativeMathToolbarCommand('cases',insertCases));
 groupButton(mathGroup,'align',structureCommands.align);
 groupButton(mathGroup,'align*',structureCommands['align*']);
 

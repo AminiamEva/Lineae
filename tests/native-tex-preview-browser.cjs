@@ -1510,6 +1510,15 @@ const server=createServer(async(req,res)=>{
       await page.keyboard.press(mod+'+z');
       await page.waitForFunction(expected=>nativeProbe.source===expected,blank);
       await page.getByRole('button',{name:'Start typing',exact:true}).click();
+      await page.keyboard.press(mod+'+e');
+      await page.keyboard.press('Shift+c');
+      const casesSource=blank.replace('\\begin{document}\n',
+        '\\usepackage{amsmath}\n\\begin{document}\n\\[\\begin{cases}&\\\\&\\end{cases}\\]\n');
+      await page.waitForFunction(expected=>nativeProbe.source===expected&&
+        document.querySelector('.environment-tag')?.textContent.endsWith('Row 1, column 1'),casesSource);
+      await page.keyboard.press(mod+'+z');
+      await page.waitForFunction(expected=>nativeProbe.source===expected,blank);
+      await page.getByRole('button',{name:'Start typing',exact:true}).click();
       await page.keyboard.press(mod+'+Shift+6');
       await page.waitForFunction(original=>nativeProbe.source!==original&&nativeProbe.source
         ?.replace(/\\begin\{tabular\}\{\|l\|l\|\}[\s\S]*?\\end\{tabular\}\n/,'')===original&&
