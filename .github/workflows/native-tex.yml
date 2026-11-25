@@ -246,6 +246,12 @@ jobs:
             }
             assert.equal(new Set(matches).size,2);
           '
+      - name: Verify edits against recorded LuaLaTeX pages
+        if: ${{ !inputs.browser_only }}
+        id: recorded_editing
+        continue-on-error: true
+        run: |
+          LINEAE_NATIVE_EVIDENCE_DIR="$PWD/artifacts/native-tex/host"
           LINEAE_NATIVE_PDF="$LINEAE_NATIVE_EVIDENCE_DIR/native-lua-project.pdf" \
           LINEAE_NATIVE_PAGE="$LINEAE_NATIVE_EVIDENCE_DIR/native-formula-pages.json" \
           LINEAE_NATIVE_TEXT_PAGE="$LINEAE_NATIVE_EVIDENCE_DIR/native-text-pages.json" \
@@ -296,7 +302,7 @@ jobs:
           if-no-files-found: error
           retention-days: 3
       - name: Enforce browser editing results
-        if: ${{ always() && steps.browser_editing.outcome == 'failure' }}
+        if: ${{ always() && (steps.browser_editing.outcome == 'failure' || steps.recorded_editing.outcome == 'failure') }}
         run: |
           echo '::error::The native browser editing gate failed. See its step above.'
           exit 1

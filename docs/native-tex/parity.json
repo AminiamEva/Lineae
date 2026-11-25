@@ -201,6 +201,11 @@
     }
   ],
   "acceptance": {
+    "nativeHost": {
+      "status": "protocol-and-project-tests-passed",
+      "scope": "Windows x64, macOS arm64 and Ubuntu x64 passed their Rust native host tests and the three real LuaLaTeX session, project and text-observation tests. Browser cross-reference navigation and desktop WebView acceptance are separate gates.",
+      "evidence": ["https://github.com/AminiamEva/Lineae/actions/runs/45669290104"]
+    },
     "legacyDisabled": {
       "command": "LINEAE_NATIVE_ONLY=1 node tests/native-tex-preview-browser.cjs",
       "scope": "Two-platform Chromium with legacy pagination and MathLive disabled. Mixed prose and display formula edit, undo/redo, root insertion, exact source bytes, plain bold prose, table cells, headings, and synthetic IME. Real LuaLaTeX geometry is replayed in a separate browser gate with a simulated transport.",
