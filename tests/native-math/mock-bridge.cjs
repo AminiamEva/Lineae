@@ -31,9 +31,9 @@ module.exports=function installMockNativeTex() {
     versions:{source_revision:p.revision,context_revision:1,engine_generation:0,layout_version:p.revision},
     placements:[{par_id:1,fragments:[{page:1,first_line:1,last_line:1,xs:[6500000],baselines:[6500000],approximate:false}]}],
     pages_total:1,pages_changed:[{page:1,exact:true,dl:{kind:'page',page:1,
-      page_width:39000000,page_height:55000000,width:0,height:0,depth:0,flags:{},images_info:{},
+      page_width:39000000,page_height:55000000,width:0,height:0,depth:0,flags:{},images_info:p.raster?{'1':{file:'plot.png'}}:{},
       fonts:{15:{id:15,filename:'/fixture/lmroman10-regular.otf',subfont:1,size:655360,extend:1000,squeeze:1000}},
-      other:[],lines:[{x:6500000,y:6500000,w:600000,h:600000,d:0,
+      other:p.raster?[['i',1,3000000,3000000,1000000,1000000]]:[],lines:[{x:6500000,y:6500000,w:600000,h:600000,d:0,
         items:[['g',15,97,28,6500000,6500000,327680,0],['r',6500000,7000000,3000000,6554]]}]}}]});
   window.__TAURI__={core:{invoke:async(command,args)=>{
     p.calls.push({command,args});

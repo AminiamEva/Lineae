@@ -1,6 +1,20 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {nativeProjectSnapshot} from '../apps/web/src/typesetting/rtex/project-snapshot.mjs';
+import {stagedRaster,stagedRasterPath} from '../apps/web/src/typesetting/rtex/raster-assets.mjs';
+
+test('native raster commands can only resolve staged PNG and JPEG assets',()=>{
+  const path='figures/plot.png';
+  const staged=`C:\\Temp\\lineae-native-tex-12345678-${'a'.repeat(32)}-${'b'.repeat(16)}\\figures\\plot.png`;
+  const bytes=[137,80,78,71,13,10,26,10];
+  const snapshot={files:[{path,bytes},{path:'corrupt.jpg',bytes}]};
+  assert.equal(stagedRasterPath(staged),path);
+  assert.equal(stagedRaster(snapshot,staged)?.mime,'image/png');
+  assert.deepEqual([...stagedRaster(snapshot,`./${path}`).data],bytes);
+  for(const reported of ['../figures/plot.png',`C:/${path}`,`/${path}`,`https://example.com/${path}`,'corrupt.jpg']){
+    assert.equal(stagedRaster(snapshot,reported),null);
+  }
+});
 
 const encode = text => new TextEncoder().encode(text);
 const decode = bytes => new TextDecoder('utf-8', {ignoreBOM:true}).decode(new Uint8Array(bytes));

@@ -129,6 +129,25 @@ const server=createServer(async(req,res)=>{
       const headingObservations=await page.evaluate(()=>nativeProbe.calls.filter(call=>call.command==='native_tex_observe_formula').length);
       await page.keyboard.type('X');
       await page.waitForFunction(expected=>nativeProbe.source===expected,headingSource.replace('Long title','XLong title'));
+      const typedHeading=headingSource.replace('Long title','XLong title');
+      await page.waitForFunction(count=>nativeProbe.calls.filter(call=>call.command==='native_tex_observe_formula').length>count,headingObservations);
+      await panel.getByText('Click text on the native page',{exact:false}).waitFor();
+      await panel.locator('[data-native-page="1"] canvas').click({position:{x:6550000*scale,y:9250000*scale}});
+      await page.locator('#native-tex-input').evaluate(input=>{
+        input.dispatchEvent(new CompositionEvent('compositionstart',{bubbles:true}));
+        input.dispatchEvent(new CompositionEvent('compositionend',{bubbles:true,data:''}));
+      });
+      assert.equal(await page.evaluate(()=>nativeProbe.source),typedHeading);
+      await page.locator('#native-tex-input').evaluate(input=>{
+        input.dispatchEvent(new CompositionEvent('compositionstart',{bubbles:true}));
+        input.value='文';
+        input.dispatchEvent(new InputEvent('input',{bubbles:true,inputType:'insertCompositionText',data:'文',isComposing:true}));
+        input.dispatchEvent(new CompositionEvent('compositionend',{bubbles:true,data:'文'}));
+        input.value='文';
+        input.dispatchEvent(new InputEvent('input',{bubbles:true,inputType:'insertFromComposition',data:'文'}));
+      });
+      await page.waitForFunction(expected=>nativeProbe.source===expected,
+        typedHeading.replace('XLong title','文XLong title'));
       console.log('PASS native mixed editing with MathLive and JS pagination disabled');
       return;
     }
@@ -345,25 +364,6 @@ const server=createServer(async(req,res)=>{
       });
       await page.keyboard.type('b');
       await page.waitForFunction(expected=>nativeProbe.source?.replace(/\s/g,'').includes(expected),`${open}a&b\\\\&d${close}`);
-      const typedHeading=headingSource.replace('Long title','XLong title');
-      await page.waitForFunction(count=>nativeProbe.calls.filter(call=>call.command==='native_tex_observe_formula').length>count,headingObservations);
-      await panel.getByText('Click text on the native page',{exact:false}).waitFor();
-      await panel.locator('[data-native-page="1"] canvas').click({position:{x:6550000*scale,y:9250000*scale}});
-      await page.locator('#native-tex-input').evaluate(input=>{
-        input.dispatchEvent(new CompositionEvent('compositionstart',{bubbles:true}));
-        input.dispatchEvent(new CompositionEvent('compositionend',{bubbles:true,data:''}));
-      });
-      assert.equal(await page.evaluate(()=>nativeProbe.source),typedHeading);
-      await page.locator('#native-tex-input').evaluate(input=>{
-        input.dispatchEvent(new CompositionEvent('compositionstart',{bubbles:true}));
-        input.value='文';
-        input.dispatchEvent(new InputEvent('input',{bubbles:true,inputType:'insertCompositionText',data:'文',isComposing:true}));
-        input.dispatchEvent(new CompositionEvent('compositionend',{bubbles:true,data:'文'}));
-        input.value='文';
-        input.dispatchEvent(new InputEvent('input',{bubbles:true,inputType:'insertFromComposition',data:'文'}));
-      });
-      await page.waitForFunction(expected=>nativeProbe.source===expected,
-        typedHeading.replace('XLong title','文XLong title'));
       await page.locator('#native-tex-close').click();
     }
     const boxed=input.toString().replace('\\frac{a}{}','\\boxed{\\frac{a}{}}');
@@ -393,6 +393,13 @@ const server=createServer(async(req,res)=>{
       const chapter=await luaProjectDirectory.getDirectoryHandle('chapters',{create:true});
       await put(chapter,'one.tex','Original chapter.\n\n\\[\\frac{z}{}\\]\n');
       await put(luaProjectDirectory,'image.png',new Uint8Array([0,255,13,10]));
+      const canvas=document.createElement('canvas');
+      canvas.width=canvas.height=1;
+      const context=canvas.getContext('2d');
+      context.fillStyle='#f00';context.fillRect(0,0,1,1);
+      const blob=await new Promise(resolve=>canvas.toBlob(resolve,'image/png'));
+      await put(luaProjectDirectory,'plot.png',new Uint8Array(await blob.arrayBuffer()));
+      nativeProbe.raster=true;
       window.showDirectoryPicker=async()=>luaProjectDirectory;
     });
     page.on('dialog',dialog=>dialog.accept());
@@ -402,6 +409,12 @@ const server=createServer(async(req,res)=>{
     await button.click();
     await page.waitForFunction(()=>document.querySelector('#native-tex-preview').dataset.state==='current');
     const projectOpen=await page.evaluate(()=>nativeProbe.calls.filter(call=>call.command==='native_tex_open').at(-1).args);
+    assert.equal(await panel.getAttribute('data-renderer'),'canvas');
+    assert.deepEqual(await panel.locator('[data-native-page="1"] canvas').evaluate(canvas=>{
+      const x=Math.round(canvas.width*3500000/39000000);
+      const y=Math.round(canvas.height*3500000/55000000);
+      return [...canvas.getContext('2d').getImageData(x,y,1,1).data];
+    }),[255,0,0,255]);
     assert.equal(projectOpen.mainFile,'main.tex');
     assert.match(projectOpen.source,/\\input\{chapters\/one\}/,'Compile the actual main source rather than a flattened editor projection');
     assert.ok(projectOpen.files.some(file=>file.path==='chapters/one.tex'));
@@ -460,6 +473,7 @@ const server=createServer(async(req,res)=>{
         new TextDecoder().decode(new Uint8Array(file.bytes))==='Changed chapter.\n')));
     await page.waitForFunction(()=>document.querySelector('#native-tex-preview').dataset.state==='current');
     assert.notEqual(await page.evaluate(()=>String(nativeProbe.session)),previousId,'Dependency changes may replace the native session without resetting editor history');
+    await page.evaluate(()=>{nativeProbe.raster=false;});
     assert.match(await page.locator('.cm-content').textContent(),/Changed chapter\./);
     // Native editing surface: the native page receives keys, caret, selection and
     // IME; ProseMirror remains the document and history authority.

@@ -1,3 +1,4 @@
+import {stagedRaster} from '../typesetting/rtex/raster-assets.mjs';
 import {t} from './i18n.mjs';
 import {installNativePages} from '../typesetting/rtex/pages.mjs';
 import {installNativePdf} from '../typesetting/rtex/pdf.mjs';
@@ -214,6 +215,8 @@ export function installNativeTexPreview({host,before,getSource,getSnapshot,isCom
   },onError:failure=>{if(active&&mode==='pdf')fail(failure);}});
   const renderer=installNativePages({host:pages,
     getFont:key=>invoke('native_tex_font',{sessionId:session,key}),
+    getRaster:file=>sentSnapshot?.dependencySignature===wantedSnapshot?.dependencySignature
+      ? stagedRaster(sentSnapshot,file) : null,
     onPaint:revision=>{
       if(!active||mode!=='canvas')return;
       renderedRevision=revision;if(!terminal&&revision>=sourceRevision)error='';renderStatus();

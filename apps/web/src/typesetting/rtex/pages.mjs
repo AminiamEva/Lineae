@@ -1,4 +1,5 @@
-import {FontStore,ImageStore,Painter,inexactReason} from './upstream/webview/render.ts';
+import {stagedRasterPath} from './raster-assets.mjs';
+import {FontStore,Painter,inexactReason} from './upstream/webview/render.ts';
 import {fontKey} from './upstream/src/fontKey.ts';
 import {hitMathField,hitMathGlyph} from '../../editor/native-math/hit.mjs';
 import {warmRows} from './warm-rows.mjs';
@@ -7,16 +8,19 @@ const CSS_PER_SP=(96/72)/65781.76;
 
 // Strict read-only full-page adapter. No browser font fallback or inferred
 // glyph positions: a page is shown only when all its resources are exact.
-export function installNativePages({host,getFont,onPaint,onError,onMathHit}) {
+export function installNativePages({host,getFont,getRaster,onPaint,onError,onMathHit}) {
   let generation=0,epoch=0,zoom=.75,revision=-1,layoutVersion=-1;
   let fonts=new FontStore();
-  const images=new ImageStore(async()=>{throw new Error('Native PDF image resources are not supported yet');});
+  const imageResources=new Map(),imageLoads=new Map();
+  const images={get:file=>imageResources.get(file)};
   const pages=new Map(),loaded=new Map();
   let frame=0;
   let ownership=null;
   let complete=null,warm=null;
   function drawing(dl) {
-    return JSON.stringify([dl.page_width,dl.page_height,dl.fonts,dl.other,
+    const resources=Object.entries(dl.images_info??{}).map(([key,info])=>
+      [key,{...info,file:stagedRasterPath(info.file)??info.file}]);
+    return JSON.stringify([dl.page_width,dl.page_height,dl.fonts,dl.other,resources,
       dl.lines.map(line=>[line.x,line.y,line.w,line.h,line.d,line.items])]);
   }
   function attachOwners(observed,stamp,owners) {
@@ -162,9 +166,20 @@ export function installNativePages({host,getFont,onPaint,onError,onMathHit}) {
   });
   host.addEventListener('pointercancel',()=>{drag=null;clearSelection();});
   async function prepare(dl,attempt) {
-    if(Object.keys(dl.images_info??{}).length)throw new Error('Native image resources are not supported yet');
+    for(const info of Object.values(dl.images_info??{})){
+      if(info.cached_picture||info.page>1||info.pages>1)throw new Error('Native image requires PDF rendering');
+      if(!imageLoads.has(info.file)){
+        const resource=getRaster?.(info.file);
+        if(!resource)throw new Error('Native image is not a raster asset in the current snapshot');
+        imageLoads.set(info.file,createImageBitmap(new Blob([resource.data],{type:resource.mime})).then(image=>{
+          if(attempt===generation)imageResources.set(info.file,{kind:'bitmap',image});
+          else image.close();
+        }));
+      }
+      await imageLoads.get(info.file);
+    }
     for(const item of [...(dl.other??[]),...(dl.lines??[]).flatMap(line=>line.items)]) {
-      if(!['g','r','c','m','M'].includes(item[0]))throw new Error('Unsupported native drawing operation: '+item[0]);
+      if(!['g','r','c','m','M','i'].includes(item[0]))throw new Error('Unsupported native drawing operation: '+item[0]);
     }
     for(const desc of Object.values(dl.fonts??{})) {
       if(!desc.filename || !/\.(?:otf|ttf)$/i.test(desc.filename) || (desc.subfont && desc.subfont!==1) ||
@@ -278,7 +293,9 @@ export function installNativePages({host,getFont,onPaint,onError,onMathHit}) {
     epoch++;generation++;revision=-1;layoutVersion=-1;pending=Promise.resolve();ownership=null;drag=null;
     complete=null;warm=null;
     delete host.dataset.warmRevision;
-    cancelAnimationFrame(frame);clearCaret();pages.clear();loaded.clear();fonts=new FontStore();if(clear)host.replaceChildren();
+    cancelAnimationFrame(frame);clearCaret();pages.clear();loaded.clear();fonts=new FontStore();
+    for(const resource of imageResources.values())resource.image.close();
+    imageResources.clear();imageLoads.clear();if(clear)host.replaceChildren();
   }
   host.addEventListener('scroll',redraw,{passive:true});
   host.parentElement?.addEventListener('scroll',redraw,{passive:true});
