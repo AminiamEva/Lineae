@@ -201,15 +201,20 @@ export function projectMixedDocument(source, {previous=[], attribute=65000, frag
   const mathTokens = [...sourceStructure(body)].filter(token =>
     token.kind === 'inlineMath' || token.kind === 'displayMath');
   const owners = new Map(math.owners), paragraphs = [];
-  let output = '', cursor = 0, next = math.nextTag, bodyOffset = 0;
+  let output='',cursor=0,next=math.nextTag,bodyOffset=0,firstFormula=0,firstToken=0;
   for (const block of doc.blocks) {
     const blockStart = bodyOffset;
     const from16 = doc.start.length + bodyOffset;
     bodyOffset += block.length;
     const to16 = from16 + block.length;
-    const overlapping = formulas.filter(formula => formula.from16 < to16 && formula.to16 > from16);
-    const blockTokens = mathTokens.filter(token =>
-      token.index >= blockStart && token.index < blockStart + block.length);
+    while(firstFormula<formulas.length&&formulas[firstFormula].to16<=from16)firstFormula++;
+    let formulaEnd=firstFormula;
+    while(formulaEnd<formulas.length&&formulas[formulaEnd].from16<to16)formulaEnd++;
+    const overlapping=formulas.slice(firstFormula,formulaEnd);
+    while(firstToken<mathTokens.length&&mathTokens[firstToken].index<blockStart)firstToken++;
+    let tokenEnd=firstToken;
+    while(tokenEnd<mathTokens.length&&mathTokens[tokenEnd].index<bodyOffset)tokenEnd++;
+    const blockTokens=mathTokens.slice(firstToken,tokenEnd);
     if (overlapping.some(formula => formula.from16 < from16 || formula.to16 > to16)) {
       return {...math, kind:'math', paragraphs:[]};
     }

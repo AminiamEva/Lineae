@@ -67,12 +67,16 @@ export function projectDocumentFormulas(source,{fragment=false,firstTag=1,filePa
   const counts={displayMath:0,inlineMath:0},ordinals={...counts};
   for(const span of spans)counts[span.kind]++;
   const formulas=[], owners=new Map();
+  const priorByKind={displayMath:new Map(),inlineMath:new Map()};
+  for(const formula of previous){
+    if(formula.filePath===filePath)priorByKind[formula.kind]?.set(formula.ordinal,formula);
+  }
   let projection='',cursor=0;
   for(const span of spans){
     const ordinal=ordinals[span.kind]++;
     const from16=doc.start.length+span.index+span.delimiter.length,to16=from16+span.latex.length;
-    const prior=previous.find(formula=>formula.filePath===filePath&&formula.kind===span.kind&&
-      formula.ordinal===ordinal&&(formula.from16===from16||formula.math.source===span.latex));
+    const candidate=priorByKind[span.kind].get(ordinal);
+    const prior=candidate&&(candidate.from16===from16||candidate.math.source===span.latex)?candidate:undefined;
     const math=projectMath(span.latex,{firstTag,previous:prior?.math});
     if(!math.supported)continue;
     const formula={source,from16,to16,math,ordinal,kind:span.kind,count:counts[span.kind],filePath,

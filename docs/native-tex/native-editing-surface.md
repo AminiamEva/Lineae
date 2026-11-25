@@ -57,6 +57,10 @@ leave page geometry unchanged, including when an input begins on a line shared
 with its parent. Independent project documents switch the compilation entry
 within the same trusted project. A detached source fragment inherits the project
 preamble in the temporary snapshot and keeps its own source offsets for edits.
+Edits to existing UTF-8 TeX buffers reuse the live and observation sessions.
+Changes to the compilation entry or to binary assets rebuild the snapshot.
+Unchanged glyphs keep their owner IDs across edits to limit the changes sent to
+the observation engine.
 
 ## Event-driven protocol
 
@@ -92,6 +96,11 @@ mocked geometry. OS input, real device composition and display scan-out still
 need separate measurements on Windows and macOS.
 
 Engine-only protocol timings remain in `native-tex.yml` artifacts.
+
+GitHub-hosted WebView2 and WKWebView checks start the engine-off workspace and
+verify the embedded fonts, PDF worker and native session bridge without an
+installer. The browser regression and the real LuaLaTeX host tests still run
+separately from the WebView check.
 
 ## Known gaps before switching the default
 

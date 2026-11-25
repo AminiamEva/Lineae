@@ -1,6 +1,7 @@
 import {nativeEditorRange} from './editor/native-text/editor-range.mjs';
 import {projectMixedDocument,projectTextDocument} from './editor/native-text/projection.mjs';
 import {nativeMathCommandNames,projectMath} from './editor/native-math/source.mjs';
+import {nativeMathContext} from './editor/native-math/resolve.mjs';
 import {documentMetadata,writeDocumentMetadata} from '../latex/document-metadata.mjs';
 import {loadLegacyMath,nativeOnlyAcceptance,nativeWorkspaceRequested} from './editor/native-surface/acceptance-mode.mjs';
 import {AppendixStart,MatterStart,LayoutCommand} from './editor/appendix.js';
@@ -2691,10 +2692,20 @@ window.addEventListener('wheel', event => {
 const environment = document.createElement('span'); environment.className='environment-tag';
 function updateEnvironment() {
   const field=document.activeElement?.tagName==='MATH-FIELD' ? document.activeElement : null;
-  const name=field ? (field.closest('.math-display')?'display math':'inline math') :
+  const native=nativeTexPreview?.focusedCaret?.();
+  const name=native?.kind==='math'?(native.formula.kind==='displayMath'?'display math':'inline math'):
+    field ? (field.closest('.math-display')?'display math':'inline math') :
     !sourceView.hidden?'LaTeX': ['table','listItem','heading'].find(type=>editor.isActive(type)) ?? 'text';
   const labels={matrix:t('矩阵','Matrix'),'display math':t('行间公式','Display math'),'inline math':t('行内公式','Inline math'),table:t('表格','Table'),listItem:t('列表','List'),heading:t('标题','Heading'),text:t('正文','Text'),LaTeX:t('源码','Source')};
-  environment.textContent=[labels[name],...(field ? mathEnvironment(field) : [])].join(' › ');
+  const nativeLabels={frac:t('分式','Fraction'),sqrt:t('根式','Radical'),numerator:t('分子','Numerator'),
+    denominator:t('分母','Denominator'),radicand:t('被开方数','Radicand'),degree:t('根指数','Root degree'),
+    superscript:t('上标','Superscript'),subscript:t('下标','Subscript'),integrand:t('被积式','Integrand'),operand:t('运算主体','Operand')};
+  const location=({row,column})=>t('第 '+row+' 行，第 '+column+' 列','Row '+row+', column '+column);
+  const context=native?.kind==='math'?nativeMathContext(native).map(entry=>entry.text??
+    (entry.key==='cell'?location(entry):nativeLabels[entry.key])):
+    native?.paragraph?.tableCell?[location({row:native.paragraph.tableCell.row+1,column:native.paragraph.tableCell.column+1})]:
+    field?mathEnvironment(field):[];
+  environment.textContent=[labels[name],...context].join(' › ');
   environment.dataset.environment=name;
 }
 footer.append(count,document.querySelector('#status'),environment,zoom,percent,paginationButton,themeButton,modes);document.body.append(footer);sourceView.mountStatus(footer);scale();updatePaginationButton();
@@ -3192,6 +3203,7 @@ nativeTexPreview=installNativeTexPreview({host:footer,before:modes,primary:nativ
     return editor.state.doc!==state.doc;
   },
   history:command=>{command==='redo'?redoDocument():undoDocument();},
+  onEnvironmentChange:updateEnvironment,
 });
 editor.on('update',()=>nativeTexPreview.refresh());
 onAssetsChanged(()=>nativeTexPreview.refresh());

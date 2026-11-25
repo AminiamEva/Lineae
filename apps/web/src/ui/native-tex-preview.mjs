@@ -14,7 +14,7 @@ import {readDelimiterPair} from '../editor/delimiter-input.js';
 // Native LaTeX output is the primary page. The opt-in native input mode sends
 // supported keys, caret and IME through this surface into ProseMirror; the old
 // JS-formatted page and MathLive inputs stay available as the migration fallback.
-export function installNativeTexPreview({host,before,primary=false,documentZoom=100,isDocumentMode,getSource,getSnapshot,isComposing,focusMathSlot,focusImage,listTikzDrawings,editTikzDrawing,continuationRegion,selectionRegions,selectText,commitMath,commitText,commitTextLines,commitProjectRange,canStartText,commitInitialText,commitParagraphBreak,commitParagraphJoin,commitNewMath,history}) {
+export function installNativeTexPreview({host,before,primary=false,documentZoom=100,isDocumentMode,getSource,getSnapshot,isComposing,focusMathSlot,focusImage,listTikzDrawings,editTikzDrawing,continuationRegion,selectionRegions,selectText,commitMath,commitText,commitTextLines,commitProjectRange,canStartText,commitInitialText,commitParagraphBreak,commitParagraphJoin,commitNewMath,onEnvironmentChange,history}) {
   const invoke=window.__TAURI__?.core?.invoke;
   if(!invoke) return {refresh(){},documentChanged(){},relocalize(){}};
   const button=document.createElement('button');
@@ -98,6 +98,7 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
     if (anchor && anchor!==caret) renderer.showSelection(anchor.hit, caret.hit);
     else renderer.showCaret(caret.hit);
     if(reflect)useTextSelection();
+    onEnvironmentChange?.();
   }
   function positionInput(reveal=false) {
     const stop = nativeDocument.surface.caret;
@@ -956,6 +957,7 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
   window.addEventListener('resize',()=>{if(nativeEditing)positionInput();});
   panel.addEventListener('scroll',()=>{if(nativeEditing)positionInput();},{passive:true});
   window.addEventListener('pagehide',()=>{void stop();});
+  input.addEventListener('blur',()=>queueMicrotask(()=>onEnvironmentChange?.()));
   document.addEventListener('compositionstart',event=>{
     if(event.target?.tagName==='MATH-FIELD')compositionField=event.target;
     if(active){renderer.clearCaret();renderStatus();}
@@ -977,6 +979,7 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
     inTableCell:()=>Boolean(nativeDocument.surface.caret?.paragraph?.tableCell),
     hasMathInput: event => event.target===input && nativeEditing && nativeDocument.surface.caret?.kind==='math',
     hasNativeMathFocus:()=>document.activeElement===input&&nativeEditing&&nativeDocument.surface.caret?.kind==='math',
+    focusedCaret:()=>document.activeElement===input&&nativeEditing?nativeDocument.surface.caret:null,
     clipboardSelection,
     selectAll(){
       if(!current()||!observation||pendingEdit)return true;

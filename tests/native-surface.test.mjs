@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {projectDocumentFormulas,projectSnapshotFormulas} from '../apps/web/src/editor/native-math/document.mjs';
-import {nativeTarget} from '../apps/web/src/editor/native-math/resolve.mjs';
+import {nativeMathContext,nativeTarget} from '../apps/web/src/editor/native-math/resolve.mjs';
 import {applySlotEdit,applyStructureCommand,applyScalableFence,nativeMathCommandNames,projectMath} from '../apps/web/src/editor/native-math/source.mjs';
 import {createMathSurface} from '../apps/web/src/editor/native-surface/math-surface.mjs';
 import {createTextSurface} from '../apps/web/src/editor/native-surface/text-surface.mjs';
@@ -730,6 +730,27 @@ test('changing a project paragraph leaves untouched native ownership and instrum
   assert.deepEqual(newStable.glyphs.map(glyph=>glyph.tag),oldStable.glyphs.map(glyph=>glyph.tag));
   assert.deepEqual(next.formulas[0].math.atoms.map(atom=>atom.tag),initial.formulas[0].math.atoms.map(atom=>atom.tag));
   assert.deepEqual(next.files,initial.files);
+});
+
+test('native prose edits retain emphasis, color and small-caps commands verbatim',()=>{
+  const source='\\begin{document}\n\\emph{Alpha $x$} \\textcolor[HTML]{AABBCC}{Beta} \\textsc{Gamma}.\n\\end{document}\n';
+  const draft=source.replace('{Beta}','{Delta}');
+  const document=text=>({type:'doc',content:parseDocument(text).blocks.flatMap(raw=>importBlocks(raw))});
+  const native=projectMixedDocument(source),[paragraph]=native.paragraphs;
+  assert.deepEqual(paragraph.runs.filter(run=>run.marks.length).map(run=>run.marks),[['italic'],['textStyle'],['smallcaps']]);
+  assert.equal(native.formulas[0].math.source,'x');
+  const patches=richSourceChanges(sourceProjection(source,document(source)),document(draft));
+  assert.equal(patches.reduceRight((value,{from,to,insert})=>value.slice(0,from)+insert+value.slice(to),source),draft);
+});
+
+test('native math context identifies an integral body, its limits and a nested fraction',()=>{
+  const source='\\begin{document}\n\\[\\int_{0}^{1}{\\frac{x}{y}}\\]\n\\end{document}\n';
+  const projection=projectDocumentFormulas(source),[formula]=projection.formulas;
+  const target=char=>nativeTarget(projection,{owner:formula.math.atoms.find(atom=>atom.nucleus===char).tag,
+    role:'nucleus',after:false});
+  assert.deepEqual(nativeMathContext(target('0')),[{text:'op/int'},{key:'subscript'}]);
+  assert.deepEqual(nativeMathContext(target('y')),
+    [{text:'op/int'},{key:'integrand'},{key:'frac'},{key:'denominator'}]);
 });
 
 test('native list prose path distinguishes duplicate text inside a nested item',()=>{

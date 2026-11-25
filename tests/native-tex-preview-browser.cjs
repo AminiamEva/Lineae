@@ -116,6 +116,8 @@ const server=createServer(async(req,res)=>{
         nativeProbe.calls.filter(call=>call.command==='native_tex_observe_formula').length>count+1,observations);
       await panel.getByText('Click prose on the native page',{exact:false}).waitFor();
       await canvas.click({position:{x:6510000*scale,y:6950000*scale}});
+      await page.waitForFunction(()=>document.querySelector('.environment-tag')?.textContent===
+        'Display math › Fraction › Denominator');
       await page.keyboard.type('c');
       await page.waitForFunction(()=>nativeProbe.source?.includes('\\frac{a}{cb}'),null,{timeout:5000})
         .catch(async error=>{

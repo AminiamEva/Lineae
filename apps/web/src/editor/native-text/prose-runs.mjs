@@ -1,8 +1,11 @@
 import {readGroup} from '../../../latex/table-spans.mjs';
 
 const plainTokens=/^(?:\\[%&_#${}]|[^\\{}$%&#_^~])+/u;
-const textMarks={textbf:'bold',textit:'italic',texttt:'code',underline:'underline',
-  sout:'strike',textsuperscript:'superscript',textsubscript:'subscript'};
+const textMarks={textbf:'bold',textit:'italic',emph:'italic',textsl:'italic',texttt:'code',
+  underline:'underline',uline:'underline',uuline:'underline',uwave:'underline',sout:'strike',
+  textsuperscript:'superscript',textsubscript:'subscript',textsc:'smallcaps',fbox:'boxed',
+  textcircled:'circled',textsf:'textStyle',textrm:'textStyle'};
+const htmlColor=/^\\(?:textcolor|colorbox)\[HTML\]\{[0-9a-f]{6}\}(?=\{)/i;
 
 export function decodeProse(raw) {
   if(!raw.includes('\\'))return {text:raw};
@@ -39,8 +42,9 @@ export function markedRuns(text,offset=0,marks=[],inline) {
       cursor+=raw.length;
       continue;
     }
-    const command=/^\\([a-z]+)(?=\{)/.exec(text.slice(cursor));
-    const mark=command&&Object.hasOwn(textMarks,command[1])&&textMarks[command[1]];
+    const color=htmlColor.exec(text.slice(cursor));
+    const command=color??/^\\([a-z]+)(?=\{)/.exec(text.slice(cursor));
+    const mark=color?'textStyle':command&&Object.hasOwn(textMarks,command[1])&&textMarks[command[1]];
     if(!mark||marks.includes(mark)||marks.length>=3)return null;
     const argument=cursor+command[0].length;
     const group=readGroup(text,argument);

@@ -354,11 +354,11 @@ function inlineMathChanges(block,nodes) {
 function markedInlineProseChanges(block,nodes) {
   const [before]=JSON.parse(block.snapshot),[after]=nodes;
   if(block.count!==1||nodes.length!==1||before?.type!=='paragraph'||after?.type!=='paragraph'||
-    before.content?.length!==after.content?.length||!before.content?.some(node=>['math','hardBreak'].includes(node.type)))return null;
+    !block.raw.includes('\\')||!before.content?.length||before.content.length!==after.content?.length)return null;
   const inline=new Map([...sourceStructure(block.raw)].filter(token=>token.kind==='inlineMath').map(token=>[token.index,token]));
   const leading=block.raw.length-block.raw.trimStart().length;
   const parts=markedRuns(block.raw.trim(),leading,[],inline);
-  if(parts?.length!==before.content.length||!parts.some(part=>part.insideMark||part.kind==='break'))return null;
+  if(parts?.length!==before.content.length||!parts.some(part=>part.insideMark||part.kind==='break'||part.marks?.length))return null;
   const restored=structuredClone(after),patches=[];
   for(const [index,part] of parts.entries()){
     const old=before.content[index],next=after.content[index];
