@@ -3664,7 +3664,7 @@ function forEachNativeDocumentBlock(type,visit){
 }
 function nativeDrawingTargets(ranges){
   const results=[];
-  function collect(node,position,block,path,text,base){
+  function collect(node,position,block,path,text,base,fileId){
     if(block?.count!==1||typeof text!=='string'||text.slice(base+block.from,base+block.to)!==block.raw)return;
     for(const range of ranges(block.raw,node.toJSON())){
       const child=range.child===null?node:node.child(range.child);
@@ -3673,7 +3673,10 @@ function nativeDrawingTargets(ranges){
         at++;
         node.forEach((_,offset,index)=>{if(index===range.child)at+=offset;});
       }
-      results.push({position:at,path,text,from:base+block.from+range.from,to:base+block.from+range.to,
+      const blockFrom=base+block.from,blockTo=base+block.to;
+      const argument=range.argument&&{from:blockFrom+range.argument.from,to:blockFrom+range.argument.to};
+      results.push({position:at,path,text,fileId,blockPosition:position,blockFrom,blockTo,argument,imagePath:range.path,
+        from:blockFrom+range.from,to:blockFrom+range.to,
         label:child.attrs.caption||child.attrs.label||path});
     }
   }
@@ -3696,7 +3699,7 @@ function insertDocumentImage(native=nativeParagraphFormattingActive()){
   if(!native)return insertLocalImage(editor);
   return insertNativeImages(false);
 }
-function insertNativeImages(grouped){
+function insertNativeImages(grouped,replacement){
   const document=editor.state.doc,project=projectExplorer?.model;
   const current=()=>editor.state.doc===document&&projectExplorer?.model===project;
   return chooseImageFile(async selected=>{
@@ -3711,7 +3714,8 @@ function insertNativeImages(grouped){
     try{
       const occupied=new Set(project?[...project.files.keys(),...project.directories].map(path=>path.toLowerCase()):[]);
       const images=files.map(file=>{
-        const path=availableImagePath(file,undefined,name=>occupied.has(name.toLowerCase())||!project&&Boolean(resolveImageAsset(name)));
+        const path=availableImagePath(file,replacement?.imagePath,
+          name=>occupied.has(name.toLowerCase())||!project&&Boolean(resolveImageAsset(name)));
         occupied.add(path.toLowerCase());
         return {file,path};
       });
@@ -3726,7 +3730,10 @@ function insertNativeImages(grouped){
         const {id}=await project.importAsset(path,bytes);
         imported.push({id,path});
       }
-      if(!current()||!insertNativeDocumentBlock(editor.schema.nodeFromJSON(node),latex))return;
+      if(!current())return;
+      const accepted=replacement?replaceNativeRaster(replacement,images[0].path,project):
+        insertNativeDocumentBlock(editor.schema.nodeFromJSON(node),latex);
+      if(!accepted)return;
       applied=true;
       if(!project)for(const {path,file} of images)rememberAsset(path,file);
       nativeTexPreview.refocusTextInput();
@@ -3740,6 +3747,25 @@ function insertNativeImages(grouped){
       }
     }
   },{multiple:grouped});
+}
+function replaceNativeRaster(target,path,project){
+  const {state}=editor,{text:original,position,blockPosition,blockFrom,blockTo,argument}=target;
+  if(!argument||original.slice(argument.from,argument.to)!==target.imagePath)return false;
+  const file=target.fileId?project?.files.get(target.path):null;
+  if((file?.draft??source())!==original||target.fileId&&file?.id!==target.fileId)return false;
+  const before=state.doc.nodeAt(blockPosition);
+  const change={...argument,insert:path};
+  const draft=original.slice(0,change.from)+path+original.slice(change.to);
+  const [parsed,...rest]=importBlocks(draft.slice(blockFrom,blockTo+draft.length-original.length));
+  if(!parsed||!before||rest.length||parsed.type!==before.type.name)return false;
+  const revised=state.schema.nodeFromJSON(parsed);
+  if(revised.childCount!==before.childCount)return false;
+  const tr=state.tr.replaceWith(blockPosition,blockPosition+before.nodeSize,revised);
+  if(tr.doc.nodeAt(position)?.attrs.path!==path)return false;
+  tr.setSelection(NodeSelection.create(tr.doc,position));
+  if(projectDocument.composition)return Boolean(file&&dispatchNativeProjectChange(state,tr,project,new Map([[file.id,draft]])));
+  const projected=sourceProjection(draft,tr.doc.toJSON(),{fragment:projectFileKind==='tex'});
+  return Boolean(projected&&dispatchNativeParagraphChange(state,tr,original,draft,change,projected));
 }
 function editNativeDrawing(position){
   if(!nativeTikzDrawings().some(drawing=>drawing.position===position))return;
@@ -5396,7 +5422,12 @@ headerFooterPanel.refresh();
 imagePanel=installImagePanel({
   getSpacing:()=>readImageSpacing(documentParts.start),
   onSpacing:updateImageSpacing,
-  onReplace:()=>{if(imageSelection!==null)replaceLocalImage(editor,imageSelection);},
+  onReplace:()=>{
+    if(imageSelection===null)return;
+    if(!nativeOnlyAcceptance())return replaceLocalImage(editor,imageSelection);
+    const target=nativeDrawingTargets(rasterDrawingRanges).find(drawing=>drawing.position===imageSelection);
+    if(target)return insertNativeImages(false,target);
+  },
   onCrop:()=>{if(imageSelection!==null)startImageCrop(editor,imageSelection);},
   onGroup:groupSelectedImages,
   onUngroup:ungroupSelectedImages,

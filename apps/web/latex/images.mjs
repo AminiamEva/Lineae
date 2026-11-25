@@ -43,7 +43,8 @@ export function rasterDrawingRanges(source,node){
     }
     const arg=group(source,cursor),image=images[index];
     if(arg?.value!==image.path||/[\\%{}]/.test(arg.value))return [];
-    if(/\.(?:png|jpe?g)$/i.test(image.path))ranges.push({from:token.index,to:arg.end,...image});
+    if(/\.(?:png|jpe?g)$/i.test(image.path))ranges.push({from:token.index,to:arg.end,...image,
+      argument:{from:cursor+1,to:arg.end-1}});
   }
   return ranges;
 }

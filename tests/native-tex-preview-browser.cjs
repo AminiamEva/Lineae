@@ -10,6 +10,15 @@ const projectMain='\\documentclass{article}\n\\begin{document}\n\\[\\frac{a}{}\\
 const projectMainWithImage=projectMain.replace('\\begin{document}','\\usepackage{graphicx}\n\\begin{document}')
   .replace('\\end{document}','\\begin{figure}[ht]\n\\centering\n\\includegraphics[width=18pt]{plot.png}\n\\end{figure}\n\\end{document}');
 const projectChapter='Original chapter.\n\n\\[\\frac{z}{}\\]\n';
+async function stubImagePicker(page){
+  await page.evaluate(()=>{
+    const click=HTMLInputElement.prototype.click;
+    HTMLInputElement.prototype.click=function(){
+      if(this.type==='file'&&this.accept.includes('image/png'))return;
+      return click.call(this);
+    };
+  });
+}
 async function openMockProject(page,raster=false,main=raster?projectMainWithImage:projectMain,child=projectChapter) {
   const name=await page.evaluate(async({main,child,raster})=>{
     const root=await navigator.storage.getDirectory();
@@ -1369,13 +1378,7 @@ const server=createServer(async(req,res)=>{
       await panel.getByText('Click text on the native page',{exact:false}).waitFor();
       await page.locator('#native-tex-edit').click();
       await canvas.click({position:{x:6550000*scale,y:9250000*scale}});
-      await page.evaluate(()=>{
-        const click=HTMLInputElement.prototype.click;
-        HTMLInputElement.prototype.click=function(){
-          if(this.type==='file'&&this.accept.includes('image/png'))return;
-          return click.call(this);
-        };
-      });
+      await stubImagePicker(page);
       await page.keyboard.press('Backslash');
       await page.getByRole('textbox',{name:'LaTeX command',exact:true}).fill('includegraphics');
       await page.keyboard.press('Enter');
@@ -1411,6 +1414,26 @@ const server=createServer(async(req,res)=>{
       await page.waitForFunction(expected=>nativeProbe.source===expected,pictureSource);
       await page.keyboard.press(mod+'+Shift+z');
       await page.waitForFunction(expected=>nativeProbe.source===expected,groupedPictures);
+
+      await page.goto('http://127.0.0.1:'+server.address().port+'/?native-only-acceptance=1',{waitUntil:'networkidle'});
+      await openMockProject(page,true);
+      await page.locator('#native-tex-toggle').click();
+      await page.locator('#native-tex-target').click();
+      await panel.getByText('Click prose on the native page',{exact:false}).waitFor();
+      await page.locator('#native-tex-edit').click();
+      await canvas.click({position:{x:3500000*scale,y:3500000*scale}});
+      await revealToolbar(page);
+      await stubImagePicker(page);
+      await page.getByRole('button',{name:'Replace image',exact:true}).click();
+      await page.locator('input[type=file][accept*="image/png"]').setInputFiles(
+        {name:'replacement.png',mimeType:'image/png',buffer:picture});
+      const replacedPicture=projectMainWithImage.replace('{plot.png}','{replacement.png}');
+      await page.waitForFunction(({source,bytes})=>nativeProbe.calls.some(call=>{
+        const file=call.args?.files?.find(file=>file.path==='replacement.png');
+        return call.args?.source===source&&file?.bytes.length===bytes.length&&file.bytes.every((byte,index)=>byte===bytes[index]);
+      }),{source:replacedPicture,bytes:[...picture]});
+      await page.keyboard.press(mod+'+z');
+      await page.waitForFunction(expected=>nativeProbe.source===expected,projectMainWithImage);
 
       await page.goto('http://127.0.0.1:'+server.address().port+'/?native-workspace=1',{waitUntil:'networkidle'});
       const workspaceSource='\\documentclass{article}\n\\begin{document}\nNative document.\n\\end{document}\n';
