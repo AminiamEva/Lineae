@@ -1082,7 +1082,7 @@ const server=createServer(async(req,res)=>{
       await page.locator('#native-tex-toggle').click();
       await page.waitForFunction(()=>document.querySelector('#native-tex-preview').dataset.state==='current');
       await page.locator('#native-tex-target').click();
-      await panel.getByText('Click prose on the native page',{exact:false}).waitFor();
+      await panel.getByText(/Click (?:text|prose) on the native page/).waitFor();
       await page.locator('#native-tex-edit').click();
       const nestedBounds=await canvas.boundingBox();
       const xAfter=text=>nestedBounds.x+(6450000+text.replace(/\s/g,'').length*200000)*scale;
