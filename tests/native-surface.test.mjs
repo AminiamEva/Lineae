@@ -694,6 +694,19 @@ test('splitting a proof paragraph keeps its title, indentation and CRLF bytes',(
     [['Alpha',[0]],['Beta',[1]],['Untouched.',[2]]]);
 });
 
+test('native prose targets both sides of explicit LaTeX line breaks and preserves the spelling',()=>{
+  const source='\\begin{document}\r\nAlpha\\newline\r\nBeta\\\\[2pt]\r\nGamma\r\n\\end{document}\r\n';
+  const draft=source.replace('Beta','Delta');
+  const document=text=>({type:'doc',content:parseDocument(text).blocks.flatMap(raw=>importBlocks(raw))});
+  const before=projectTextDocument(source),[paragraph]=before.paragraphs;
+  assert.deepEqual(paragraph.parts.map(part=>part.kind),['text','break','text','break','text']);
+  assert.deepEqual(paragraph.runs.map(run=>run.text),['Alpha','Beta','Gamma']);
+  const [,run]=paragraph.runs;
+  assert.equal(textEdit(before,{paragraph,from16:run.from16,to16:run.to16,insert:'Delta'}).source,draft);
+  const patches=richSourceChanges(sourceProjection(source,document(source)),document(draft));
+  assert.equal(patches.reduceRight((value,{from,to,insert})=>value.slice(0,from)+insert+value.slice(to),source),draft);
+});
+
 test('native list prose path distinguishes duplicate text inside a nested item',()=>{
   const source='\\begin{document}\n\\begin{enumerate}\n\\item Same text.\n'+
     '\\begin{itemize}\n\\item Same text.\n\\end{itemize}\n\\item Same text.\n'+

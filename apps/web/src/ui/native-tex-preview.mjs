@@ -14,7 +14,7 @@ import {readDelimiterPair} from '../editor/delimiter-input.js';
 // Native LaTeX output is the primary page. The opt-in native input mode sends
 // supported keys, caret and IME through this surface into ProseMirror; the old
 // JS-formatted page and MathLive inputs stay available as the migration fallback.
-export function installNativeTexPreview({host,before,primary=false,documentZoom=100,isDocumentMode,getSource,getSnapshot,isComposing,focusMathSlot,focusImage,listTikzDrawings,editTikzDrawing,continuationRegion,selectionRegions,selectText,commitMath,commitText,commitProjectRange,canStartText,commitInitialText,commitParagraphBreak,commitParagraphJoin,commitNewMath,history}) {
+export function installNativeTexPreview({host,before,primary=false,documentZoom=100,isDocumentMode,getSource,getSnapshot,isComposing,focusMathSlot,focusImage,listTikzDrawings,editTikzDrawing,continuationRegion,selectionRegions,selectText,commitMath,commitText,commitTextLines,commitProjectRange,canStartText,commitInitialText,commitParagraphBreak,commitParagraphJoin,commitNewMath,history}) {
   const invoke=window.__TAURI__?.core?.invoke;
   if(!invoke) return {refresh(){},documentChanged(){},relocalize(){}};
   const button=document.createElement('button');
@@ -207,13 +207,17 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
     if(!nativeEditing)return false;
     if(pendingEdit){
       const last=queuedInput.at(-1);
-      if(action.insert&&last?.insert)last.insert+=action.insert;
+      if(action.insert&&last?.insert&&!action.paste&&!last.paste)last.insert+=action.insert;
       else queuedInput.push(action);
       return true;
     }
     if(draftInput)return commitDraftInput(action,surface);
     if(!surface.caret)return false;
     if(!current()||!observation)return false;
+    if(action.paste&&/[\r\n]/.test(action.insert)&&surface.caret.kind==='text'){
+      const edit=commitTextLines?.(...surface.range,action.insert);
+      return edit?awaitSourcePosition(edit,action.started):false;
+    }
     if(action.insert==='$'){
       if(surface.caret.kind==='math'){
         if(!nativeDocument.leaveFormula())return false;
@@ -257,6 +261,7 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
         formula.source.slice(formula.outerFrom16,formula.outerTo16):paragraph.parts.map(part=>{
         const start=Math.max(part.from16,from),end=Math.min(part.to16,to);
         if(end<=start)return '';
+        if(part.kind==='break')return '\n';
         if(part.offsets)return part.text.slice(part.offsets.indexOf(start-part.from16),part.offsets.indexOf(end-part.from16));
         return paragraph.text.slice(start,end);
       }).join('')).join('\n\n'):null;
@@ -281,7 +286,7 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
       paste:text=>{
         if(!valid()||!text)return false;
         input.focus({preventScroll:true});
-        return submitInput({insert:text,started:performance.now()});
+        return submitInput({insert:text,paste:true,started:performance.now()});
       },
     };
   }
@@ -328,7 +333,7 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
     if(!nativeEditing||!event.clipboardData)return;
     event.preventDefault();
     const text=event.clipboardData.getData('text/plain');
-    if(text)submitInput({insert:text,started:performance.now()});
+    if(text)submitInput({insert:text,paste:true,started:performance.now()});
   });
   let inputComposition=null;
   function commitComposition(composition){

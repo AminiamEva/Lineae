@@ -338,6 +338,25 @@ const server=createServer(async(req,res)=>{
       await page.keyboard.press(mod+'+z');
       await page.waitForFunction(expected=>nativeProbe.source===expected,splitProof);
       await page.locator('#native-tex-close').click();
+      const brokenProse='\\documentclass{article}\r\n\\begin{document}\r\nAlpha\\newline\r\nBeta\\\\[2pt]\r\nGamma\r\n\\end{document}\r\n';
+      await page.locator('input#file').setInputFiles({name:'prose-breaks.tex',mimeType:'text/plain',buffer:Buffer.from(brokenProse)});
+      await page.locator('#native-tex-toggle').click();
+      await page.locator('#native-tex-target').click();
+      await panel.getByText('Click text on the native page',{exact:false}).waitFor();
+      await page.locator('#native-tex-edit').click();
+      await canvas.click({position:{x:7520000*scale,y:9250000*scale}});
+      await page.keyboard.type('X');
+      await page.waitForFunction(expected=>nativeProbe.source===expected,brokenProse.replace('Beta','XBeta'));
+      await page.keyboard.press(mod+'+z');
+      await page.waitForFunction(expected=>nativeProbe.source===expected,brokenProse);
+      await panel.getByText('Click text on the native page',{exact:false}).waitFor();
+      await canvas.click({position:{x:7520000*scale,y:9250000*scale}});
+      await page.evaluate(()=>navigator.clipboard.writeText('One\nTwo'));
+      await page.keyboard.press(mod+'+v');
+      const pasted=brokenProse.replace('Beta','One\\\\\r\nTwoBeta');
+      await page.waitForFunction(expected=>nativeProbe.source===expected,pasted);
+      assert.equal(await page.locator('.ProseMirror p br').count(),3);
+      await page.locator('#native-tex-close').click();
       const listSource='\\documentclass{article}\n\\begin{document}\n\\begin{enumerate}\n\\item One item.\n'+
         '\\begin{itemize}\n\\item Nested.\n\\end{itemize}\n\\item Last.\n\\end{enumerate}\n\\end{document}\n';
       await page.locator('input#file').setInputFiles({name:'list.tex',mimeType:'text/plain',buffer:Buffer.from(listSource)});

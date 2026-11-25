@@ -54,6 +54,7 @@ function instrumentProse(block, source, blockFrom, firstOwner, attribute, filePa
   const runs=[],glyphs=[];
   let projection='',cursor=0,nextTag=firstOwner;
   for(const [partIndex,part] of parts.entries()){
+    if(part.kind==='break')continue;
     if(part.kind==='math'){
       const {formula}=inline.get(part.from16);
       projection+=text.slice(cursor,formula.from16-base)+formula.math.projection+
@@ -216,6 +217,7 @@ export function projectMixedDocument(source, {previous=[], attribute=65000, frag
       let offset=from;
       for(const part of marked){
         const partIndex=parts.push(part)-1;
+        if(part.kind==='break')continue;
         const built=instrumentText(text.slice(part.from16,part.to16),next,attribute);
         next=built.nextTag;
         runs.push({...part,partIndex});

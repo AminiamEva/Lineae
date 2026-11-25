@@ -9,6 +9,7 @@ export function nativeEditorRange({doc,projection,composition,file,paragraph,fro
     return paragraph.parts.every((part,index)=>{
       const child=node.child(index);
       const marks=part.marks??[];
+      if(part.kind==='break')return child.type.name==='hardBreak';
       return part.kind==='text'
         ?child.isText&&child.text===part.text&&
           child.marks.length===marks.length&&child.marks.every(mark=>marks.includes(mark.type.name))

@@ -27,6 +27,12 @@ export function markedRuns(text,offset=0,marks=[],inline) {
       cursor=math.end-offset;
       continue;
     }
+    const lineBreak=!marks.length&&/^(?:\\\\(?:\[[^\]\r\n]*\])?|\\(?:newline|linebreak)(?![A-Za-z]))[ \t]*(?:\r?\n)?/.exec(text.slice(cursor));
+    if(lineBreak){
+      runs.push({kind:'break',from16:start,to16:start+lineBreak[0].length});
+      cursor+=lineBreak[0].length;
+      continue;
+    }
     const raw=plainTokens.exec(text.slice(cursor))?.[0];
     if(raw){
       runs.push({kind:'text',from16:start,to16:start+raw.length,...decodeProse(raw),marks});

@@ -3125,6 +3125,43 @@ nativeTexPreview=installNativeTexPreview({host:footer,before:modes,primary:nativ
     editor.view.dispatch(tr);
     return editor.state.doc!==before;
   },
+  commitTextLines:(first,last,text)=>{
+    if(first?.kind!=='text'||first.paragraph!==last?.paragraph)return null;
+    const {paragraph}=first;
+    if(paragraph.heading||paragraph.tableCell||paragraph.container||
+      paragraph.parts.some(part=>part.kind==='math'||part.marks?.length))return null;
+    const lines=text.split(/\r\n|\r|\n/);
+    if(lines.some(line=>!line||line!==line.trim()))return null;
+    if(projectDocument.composition&&!projectDocument.rebase(currentNativeProjectComposition(),editor.getJSON()))return null;
+    const target=nativeProsePosition(paragraph,first.local,last.local);
+    if(!target||target.range.endpoints.start!==target.range.endpoints.end)return null;
+    const {state}=editor,hardBreak=editor.schema.nodes.hardBreak;
+    const content=lines.flatMap((line,index)=>index?[hardBreak.create(),editor.schema.text(line)]:[editor.schema.text(line)]);
+    const {from:start,to:end,match}=target.range;
+    const tr=state.tr.replaceWith(start,end,content);
+    tr.setSelection(TextSelection.create(tr.doc,start+lines.join('').length+lines.length-1));
+    const from=first.docOffset,to=last.docOffset,source=paragraph.source;
+    const eol=source.includes('\r\n')?'\r\n':'\n';
+    const insert=lines.map(line=>serialize({type:'text',text:line})).join(serialize({type:'hardBreak'}).replace('\n',eol));
+    const draft=source.slice(0,from)+insert+source.slice(to),offset=from+insert.length;
+    const candidate=projectTextDocument(draft,{fragment:projectFileKind==='tex',filePath:paragraph.filePath})
+      ?.paragraphs.find(next=>next.from16===paragraph.from16);
+    if(!candidate)return null;
+    const local=offset-candidate.from16;
+    if(!candidate.runs.some(run=>local>=run.from16&&local<=run.to16))return null;
+    if(target.composition){
+      const drafts=projectDocument.changes(tr.doc.toJSON());
+      if(drafts?.get(target.file.id)!==draft)return null;
+      for(const [id,value] of drafts)if(id!==target.file.id&&value!==target.project.file(id).draft)return null;
+      editor.view.dispatch(closeHistory(tr));
+      return editor.state.doc===state.doc?null:{source:draft,offset,path:paragraph.filePath};
+    }
+    const projected=sourceProjection(draft,tr.doc.toJSON(),{fragment:projectFileKind==='tex'});
+    const selection=nativeEditorRange({doc:tr.doc,projection:projected,paragraph:candidate,from:local,to:local});
+    if(!projected||selection?.match.index!==match.index||selection.from!==tr.selection.from)return null;
+    return dispatchNativeParagraphChange(state,tr,source,draft,{from,to,insert},projected)
+      ?{source:draft,offset,path:paragraph.filePath}:null;
+  },
   commitProjectRange:edits=>{
     const {state}=editor,project=projectExplorer?.model,composition=projectDocument.composition;
     if(!project||!composition||edits.length!==2)return false;
