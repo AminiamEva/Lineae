@@ -31,7 +31,7 @@ function declaration(source,unsupported) {
   return result;
 }
 function parseColumns(preamble,total,unsupported) {
-  const specs=[],gaps=[],vertical=[];let prefix='',style={};
+  const specs=[],gaps=[],vertical=[],ends=[];let prefix='',style={};
   for(let i=0;i<preamble.length;) {
     i=trivia(preamble,i);if(i===preamble.length)break;
     const tokenStart=i,token=preamble[i++];
@@ -52,10 +52,11 @@ function parseColumns(preamble,total,unsupported) {
     const {align,...css}=style;
     specs.push({type:token,width,widthCSS:width===null?null:widthCSS(width,total),prefix,
       align:align??alignments[token]??'left',style:css});
+    ends.push(i);
     if(specs.length>4096)return null;
     prefix='';style={};
   }
-  return specs.length&&!prefix?{specs,gaps,vertical}:null;
+  return specs.length&&!prefix?{specs,gaps,vertical,ends}:null;
 }
 
 export function parseTabularx(source) {
@@ -110,7 +111,8 @@ export function parseTabularx(source) {
     let column=0;const row=[];
     for(const raw of rawRows[r]) {
       if(column>=specs.length)return null;
-      let begin=trivia(raw.raw),end=Math.max(begin,raw.raw.trimEnd().length),span=1,spec=specs[column],override=null;
+      const trimmed=raw.raw.trimEnd().length,sourceEnd=raw.from+trimmed;
+      let begin=trivia(raw.raw),end=Math.max(begin,trimmed),span=1,spec=specs[column],override=null,spanRange;
       const command=/^\\multicolumn(?![A-Za-z])/.exec(raw.raw.slice(begin));
       if(command) {
         const count=group(raw.raw,trivia(raw.raw,begin+command[0].length));
@@ -121,6 +123,7 @@ export function parseTabularx(source) {
         if(!override||override.specs.length!==1)return null;spec=override.specs[0];
         // Patch only the third argument; keep the multicolumn wrapper intact.
         begin=trivia(raw.raw,trivia(raw.raw,format.end)+1);end=begin+raw.raw.slice(begin,text.end-1).trimEnd().length;
+        spanRange={from:raw.from+count.end-1-count.value.length,to:raw.from+count.end-1};
       }
       if(span<1||column+span>specs.length)return null;
       const top=rules.findLast(rule=>rule.boundary===r),bottom=rules.findLast(rule=>rule.boundary===r+1);
@@ -131,7 +134,7 @@ export function parseTabularx(source) {
       if(spec.widthCSS)css.width=spec.widthCSS;
       if((override?.gaps??gaps).some(g=>g.column===(override?0:column)&&!clean(g.source)))css.paddingLeft='0px';
       if((override?.gaps??gaps).some(g=>g.column===(override?1:column+span)&&!clean(g.source)))css.paddingRight='0px';
-      row.push({text:raw.raw.slice(begin,end),from:raw.from+begin,to:raw.from+end,
+      row.push({text:raw.raw.slice(begin,end),from:raw.from+begin,to:raw.from+end,sourceEnd,spanRange,
         attrs:{colspan:span,rowspan:1,align:spec.align,tblrStyle:css}});
       column+=span;
     }
@@ -139,10 +142,11 @@ export function parseTabularx(source) {
   }
   return {source,columns:specs.map(s=>alignments[s.type]?s.type:s.type==='p'?'p{'+s.width+'}':'l').join(''),
     booktabs:rules.length>0,rows,rowEnds,unsupported,
+    columnEnds:columns.ends.map(end=>preamble.end-preamble.value.length-1+end),
     metadata:{width:width.value,widthCSS:widthCSS(width.value),position,preamble:preamble.value,specs,gaps,rules}};
 }
 
-export function insertTabularxRow(source,index) {
+function tabularxSource(source){
   let table=parseTabularx(source),start=0;
   if(!table){
     const float=parseTableFloat(source);
@@ -153,7 +157,13 @@ export function insertTabularxRow(source,index) {
     table=parseTabularx(float.body.slice(open.index,close.end));
     start=float.open.length+open.index;
   }
-  const edge=table?.rowEnds[index],columns=table?.metadata.specs.length;
+  return table?{table,start}:null;
+}
+
+export function insertTabularxRow(source,index) {
+  const location=tabularxSource(source);
+  if(!location)return null;
+  const {table,start}=location,edge=table.rowEnds[index],columns=table.metadata.specs.length;
   if(!edge||columns<2)return null;
   const eol=table.source.includes('\r\n')?'\r\n':'\n';
   const row=' & '.repeat(columns-1)+'\\\\';
@@ -162,6 +172,38 @@ export function insertTabularxRow(source,index) {
   const updated=parseTabularx(draft);
   if(updated?.rows.length!==table.rows.length+1||updated.rows[index+1].some(cell=>cell.text))return null;
   return {from:start+from,to:start+from,insert};
+}
+
+export function insertTabularxColumn(source,row,column,offset){
+  const location=tabularxSource(source);
+  if(!location)return null;
+  const {table,start}=location,cells=table.rows[row];
+  if(!cells?.[column])return null;
+  const boundary=cells.slice(0,column+1).reduce((count,cell)=>count+cell.attrs.colspan,0);
+  const from=table.columnEnds[boundary-1],edits=[{from,to:from,insert:'l'}];
+  for(const cells of table.rows){
+    let index=0;
+    for(const cell of cells){
+      index+=cell.attrs.colspan;
+      if(index<boundary)continue;
+      if(index===boundary)edits.push({from:cell.sourceEnd,to:cell.sourceEnd,insert:' & '});
+      else {
+        if(!cell.spanRange)return null;
+        const old=table.source.slice(cell.spanRange.from,cell.spanRange.to);
+        edits.push({...cell.spanRange,insert:old.replace(/\d+/,String(cell.attrs.colspan+1))});
+      }
+      break;
+    }
+  }
+  const to=edits.at(-1).to;
+  const insert=edits.toReversed().reduce((value,change)=>
+    value.slice(0,change.from-from)+change.insert+value.slice(change.to-from),table.source.slice(from,to));
+  const draft=table.source.slice(0,from)+insert+table.source.slice(to);
+  const updated=parseTabularx(draft);
+  if(updated?.rows.length!==table.rows.length||updated.metadata.specs.length!==table.metadata.specs.length+1)return null;
+  let nextOffset=offset;
+  for(const change of edits)if(start+change.from<offset)nextOffset+=change.insert.length-(change.to-change.from);
+  return {from:start+from,to:start+to,insert,offset:nextOffset};
 }
 
 export function importTabularx(source,inline) {

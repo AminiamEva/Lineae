@@ -6,7 +6,7 @@ import {documentMetadata,writeDocumentMetadata} from '../latex/document-metadata
 import {resolvePackages} from '../latex/packages.mjs';
 import {referenceAt} from '../latex/reference-commands.mjs';
 import {sourceStructure} from '../latex/source-structure.mjs';
-import {insertTabularxRow} from '../latex/tabularx.mjs';
+import {insertTabularxColumn,insertTabularxRow} from '../latex/tabularx.mjs';
 import {loadLegacyMath,nativeOnlyAcceptance,nativeWorkspaceRequested} from './editor/native-surface/acceptance-mode.mjs';
 import {AppendixStart,MatterStart,LayoutCommand} from './editor/appendix.js';
 import {Lipsum} from './editor/lipsum.js';
@@ -989,13 +989,17 @@ function editTableAxis(axis) {
   else chain.addColumnAfter().run();
 }
 function addMatrixRow() {
-  const added=addNativeTableRow();
+  if(nativeTexPreview?.hasNativeMathFocus?.()&&nativeTexPreview.runMathCommand('addRow'))return true;
+  const added=addNativeTableAxis('row');
   if(added!==undefined)return added;
   const field=activeMath();
   if(!field) { editor.chain().focus(undefined,{scrollIntoView:false}).addRowAfter().run(); return; }
   if(!fillMatrixAxis(field,'row')) editTableAxis('row');
 }
 function addMatrixColumn() {
+  if(nativeTexPreview?.hasNativeMathFocus?.()&&nativeTexPreview.runMathCommand('addColumn'))return true;
+  const added=addNativeTableAxis('column');
+  if(added!==undefined)return added;
   const field=activeMath();
   if(!field) { editor.chain().focus(undefined,{scrollIntoView:false}).addColumnAfter().run(); return; }
   if(!fillMatrixAxis(field,'column')) editTableAxis('column');
@@ -2667,8 +2671,8 @@ const shortcutActions = {
     toggleIndent: () => setParagraphIndent(editor,!paragraphHasIndent(editor)),
   },
   table: {
-    addRow: () => addNativeTableRow()??editor.commands.addRowAfter(),
-    addColumn: () => editor.commands.addColumnAfter(),
+    addRow: () => addNativeTableAxis('row')??editor.commands.addRowAfter(),
+    addColumn: () => addNativeTableAxis('column')??editor.commands.addColumnAfter(),
     deleteRow: () => editor.commands.deleteRow(),
     deleteColumn: () => editor.commands.deleteColumn(),
   },
@@ -2725,7 +2729,8 @@ installKeybindings(window, {
     if (scope === 'math') {
       if(!context.nativeMath)return runMathShortcut(command,context.field,event);
       if(command==='palette'){showCommands(context.element,'math');return true;}
-      return nativeTexPreview.runMathCommand(command)||(command==='addRow'&&addNativeTableRow()===true);
+      return nativeTexPreview.runMathCommand(command)||
+        (command==='addRow'&&addNativeTableAxis('row')===true)||(command==='addColumn'&&addNativeTableAxis('column')===true);
     }
     if (scope === 'source') return sourceView.runShortcut(command);
     if (scope === 'system') {
@@ -2809,8 +2814,10 @@ function nativeFormulaPosition(formula){
   const position=positions[formula.ordinal];
   return Number.isInteger(position)?{position,node:editor.state.doc.nodeAt(position),type,project,composition,file}:null;
 }
-function addNativeTableRow(){
-  const caret=nativeTexPreview?.focusedCaret?.();
+function addNativeTableAxis(axis){
+  const started=performance.now();
+  const caret=nativeTexPreview?.verifiedCaret?.();
+  if(!caret&&nativeTexPreview?.focusedCaret?.())return false;
   const owner=caret?.kind==='text'?caret.paragraph:caret?.formula;
   const cell=owner?.tableCell;
   if(!cell)return;
@@ -2824,28 +2831,37 @@ function addNativeTableRow(){
   if(!depth)return false;
   const node=at.node(depth);
   if(!node.attrs.tabularx)return;
+  if(at.depth!==depth+3)return false;
   const original=serialize(node.toJSON());
   const start=cell.from16;
   if(!owner.source.startsWith(original,start))return false;
-  const patch=insertTabularxRow(original,cell.row);
+  const patch=axis==='row'?insertTabularxRow(original,cell.row):
+    insertTabularxColumn(original,cell.row,cell.column,caret.docOffset-start);
   if(!patch)return false;
   const raw=original.slice(0,patch.from)+patch.insert+original.slice(patch.to);
   const [updated,...rest]=importBlocks(raw);
   if(updated?.type!=='table'||rest.length||!updated.attrs.tabularx)return false;
   const tableFrom=at.before(depth);
-  const tr=state.tr.replaceWith(tableFrom,tableFrom+node.nodeSize,state.schema.nodeFromJSON(updated));
-  tr.setSelection(TextSelection.create(tr.doc,position));
+  const replacement=state.schema.nodeFromJSON(updated);
+  const tr=state.tr.replaceWith(tableFrom,tableFrom+node.nodeSize,replacement);
+  const row=replacement.child(cell.row);
+  let next=tableFrom+4+position-at.start(depth+3);
+  replacement.forEach((before,_position,index)=>{if(index<cell.row)next+=before.nodeSize;});
+  row.forEach((before,_position,index)=>{if(index<cell.column)next+=before.nodeSize;});
+  tr.setSelection(TextSelection.create(tr.doc,next));
   const change={from:start+patch.from,to:start+patch.to,insert:patch.insert};
   const draft=owner.source.slice(0,change.from)+change.insert+owner.source.slice(change.to);
+  const offset=patch.offset===undefined?caret.docOffset:start+patch.offset;
+  const restoreCaret=()=>nativeTexPreview.preserveSourceCaret({source:draft,offset,path:owner.filePath},started,caret.kind);
   if(composition){
     const updates=projectDocument.changes(tr.doc.toJSON());
     if(updates?.get(file.id)!==draft)return false;
     for(const [id,value] of updates)if(id!==file.id&&value!==project.file(id).draft)return false;
     editor.view.dispatch(closeHistory(tr));
-    return editor.state.doc!==state.doc;
+    return editor.state.doc!==state.doc&&restoreCaret();
   }
   const projected=sourceProjection(draft,tr.doc.toJSON(),{fragment:projectFileKind==='tex'});
-  return Boolean(projected&&dispatchNativeParagraphChange(state,tr,owner.source,draft,change,projected));
+  return Boolean(projected&&dispatchNativeParagraphChange(state,tr,owner.source,draft,change,projected)&&restoreCaret());
 }
 function currentNativeProjectComposition(){
   const active=projectDocument.composition,project=projectExplorer?.model;

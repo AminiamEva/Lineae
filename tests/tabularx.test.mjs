@@ -4,7 +4,7 @@ import {readFileSync} from 'node:fs';
 import {importBlocks,serialize} from '../apps/web/src/editor/latex-codec.js';
 import {parseDocument} from '../apps/web/latex/document.mjs';
 import {sourceProjection,richSourceChanges} from '../apps/web/src/editor/source-sync.js';
-import {insertTabularxRow,parseTabularx} from '../apps/web/latex/tabularx.mjs';
+import {insertTabularxColumn,insertTabularxRow,parseTabularx} from '../apps/web/latex/tabularx.mjs';
 const fixture=JSON.parse(readFileSync(new URL('./fixtures/academic-tabularx.json',import.meta.url),'utf8'));
 const table=source=>{const nodes=importBlocks(source);assert.equal(nodes.length,1);assert.equal(nodes[0].type,'table');assert.ok(nodes[0].attrs.tabularx);return nodes[0];};
 const wrap=source=>'\\begin{document}\r\nBefore.\n\n'+source+'\r\n\nAfter.\n\\end{document}\r\n';
@@ -93,6 +93,17 @@ test('inserting a row in a table float changes only its tabularx body',()=>{
   assert.equal(node.attrs.caption,caption);
   assert.equal(node.attrs.label,label);
   assert.equal(node.content.length,expectedRows+1);
+});
+test('inserting a column widens intersected spans and retains the caret in its original cell',()=>{
+  const source=String.raw`\begin{tabularx}{\textwidth}{p{3cm}XX} \multicolumn{ 2 }{c}{A} & B\\[4pt] C & D & E\end{tabularx}`;
+  const {from,to,insert,offset}=insertTabularxColumn(source,1,0,source.indexOf('C'));
+  const draft=source.slice(0,from)+insert+source.slice(to);
+  assert.equal(draft,source.replace('p{3cm}XX','p{3cm}lXX').replace('{ 2 }','{ 3 }').replace('C & D','C &  & D'));
+  assert.equal(draft[offset],'C');
+  const updated=parseTabularx(draft);
+  assert.deepEqual(updated.rows.map(row=>row.map(cell=>[cell.text,cell.attrs.colspan])),[
+    [['A',3],['B',1]],[['C',1],['',1],['D',1],['E',1]],
+  ]);
 });
 for(const eol of ['\n','\r\n'])test('comments and '+JSON.stringify(eol)+' survive a neighboring cell edit',()=>{
   const source=['\\begin{tabularx}{\\textwidth}{XX}','\\toprule','A % & \\\\ ignored','&B \\\\','\\bottomrule','\\end{tabularx}'].join(eol);
