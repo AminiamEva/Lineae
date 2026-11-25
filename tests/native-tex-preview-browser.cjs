@@ -489,6 +489,15 @@ const server=createServer(async(req,res)=>{
       await page.waitForFunction(expected=>nativeProbe.source.replace(/\r\n/g,'\n')===expected,split.replace(/\r\n/g,'\n'));
       await panel.getByText('Click text on the native page',{exact:false}).waitFor();
       await canvas.click({position:{x:7520000*scale,y:9250000*scale}});
+      await page.keyboard.press('Shift+ArrowLeft');
+      await page.keyboard.press('Shift+ArrowLeft');
+      await page.keyboard.type('X');
+      await page.waitForFunction(expected=>nativeProbe.source===expected,beforeBreak.replace('AlphaBeta','AlphXBeta'));
+      assert.deepEqual(await page.locator('.ProseMirror p').allTextContents(),['AlphXBeta']);
+      await page.keyboard.press(mod+'+z');
+      await page.waitForFunction(expected=>nativeProbe.source===expected,split);
+      await panel.getByText('Click text on the native page',{exact:false}).waitFor();
+      await canvas.click({position:{x:7520000*scale,y:9250000*scale}});
       await page.keyboard.insertText('$');
       await page.keyboard.insertText('x');
       await page.waitForFunction(expected=>nativeProbe.source===expected,split.replace('Beta','$x$Beta'));

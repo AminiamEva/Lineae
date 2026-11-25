@@ -153,6 +153,13 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
       return nativeDocument.editAcrossFiles(action.insert??'');
     return action.insert?surface.insert(action.insert):surface.erase(action.backward);
   }
+  function replaceParagraphSelection(action){
+    const [first,last]=nativeDocument.surface.range;
+    if(first?.kind!=='text'||last?.kind!=='text'||first.paragraph===last.paragraph||
+      first.paragraph.filePath!==last.paragraph.filePath)return false;
+    const applied=commitParagraphJoin?.(first,last,action.insert??'');
+    return applied?awaitSourcePosition(applied,action.started):false;
+  }
   function awaitSourcePosition(edit,started,math=false){
     pendingEdit={source:edit.source,[math?'formula':'paragraph']:{filePath:edit.path}};
     if(math)nativeDocument.expectInitialMath(pendingEdit,edit.offset,edit.path);
@@ -227,6 +234,7 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
       return true;
     }
     const edit=editSelection(action);
+    if(!edit&&replaceParagraphSelection(action))return true;
     if(!edit&&!action.insert&&surface.caret===surface.anchor&&surface.caret.kind==='text'){
       const {stops,index,caret}=surface;
       const pair=action.backward?[stops[index-1],caret]:[caret,stops[index+1]];
@@ -290,8 +298,9 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
       if(text===null||!event.clipboardData)return;
       if(type==='cut'){
         if(!current()||!observation||pendingEdit)return;
-        const edit=editSelection({backward:true});
-        if(!commitSurface(edit))return;
+        const action={backward:true,started:performance.now()};
+        const edit=editSelection(action);
+        if(edit?!commitSurface(edit):!replaceParagraphSelection(action))return;
       }
       event.clipboardData.setData('text/plain',text);
       event.preventDefault();

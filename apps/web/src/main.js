@@ -2909,37 +2909,40 @@ nativeTexPreview=installNativeTexPreview({host:footer,before:modes,primary:nativ
     return dispatchNativeParagraphChange(state,tr,paragraph.source,draft,change,projected)
       ?{source:draft,offset,path:paragraph.filePath}:null;
   },
-  commitParagraphJoin:(first,last)=>{
+  commitParagraphJoin:(first,last,text='')=>{
     if(first?.kind!=='text'||last?.kind!=='text'||first.paragraph===last.paragraph||
       first.paragraph.filePath!==last.paragraph.filePath||first.paragraph.source!==last.paragraph.source||
-      first.local!==first.paragraph.text.length||last.local!==0)return null;
+      /[\r\n]/.test(text))return null;
     for(const stop of [first,last]){
       const {paragraph}=stop;
       if(paragraph.heading||paragraph.tableCell||paragraph.container||paragraph.parts.length!==1||
         paragraph.parts[0].marks?.length)return null;
     }
     const from=first.docOffset,to=last.docOffset,source=first.paragraph.source;
-    if(!/^[ \t]*\r?\n[ \t]*\r?\n[\s]*$/.test(source.slice(from,to)))return null;
+    const gap=source.slice(first.paragraph.from16+first.paragraph.text.length,last.paragraph.from16);
+    if(!/^[ \t]*\r?\n[ \t]*\r?\n\s*$/.test(gap)||
+      !(first.paragraph.text.slice(0,first.local)+text+last.paragraph.text.slice(last.local)).trim())return null;
     if(projectDocument.composition&&!projectDocument.rebase(currentNativeProjectComposition(),editor.getJSON()))return null;
     const left=nativeProsePosition(first.paragraph,first.local,first.local);
     const right=nativeProsePosition(last.paragraph,0,0);
-    if(!left||!right||left.range.from+2!==right.range.from)return null;
-    const {state}=editor,tr=state.tr.join(left.range.from+1);
-    tr.setSelection(TextSelection.create(tr.doc,left.range.from));
-    const draft=source.slice(0,from)+source.slice(to);
+    if(!left||!right||left.range.match.offset+left.range.match.node.nodeSize!==right.range.match.offset)return null;
+    const {state}=editor,tr=state.tr.insertText(text,left.range.from,right.range.from);
+    tr.setSelection(TextSelection.create(tr.doc,left.range.from+text.length));
+    const insert=serialize({type:'text',text}),offset=from+insert.length;
+    const draft=source.slice(0,from)+insert+source.slice(to);
     if(left.composition){
       if(left.file!==right.file)return null;
       const drafts=projectDocument.changes(tr.doc.toJSON());
       if(drafts?.get(left.file.id)!==draft)return null;
       for(const [id,value] of drafts)if(id!==left.file.id&&value!==left.project.file(id).draft)return null;
       editor.view.dispatch(closeHistory(tr));
-      return editor.state.doc===state.doc?null:{source:draft,offset:from,path:first.paragraph.filePath};
+      return editor.state.doc===state.doc?null:{source:draft,offset,path:first.paragraph.filePath};
     }
     const projected=sourceProjection(draft,tr.doc.toJSON(),{fragment:projectFileKind==='tex'});
     if(!projected?.blocks.some(block=>block.index===left.range.match.index&&block.editable&&block.from<=from&&block.to>=from))return null;
-    const change={from,to,insert:''};
+    const change={from,to,insert};
     return dispatchNativeParagraphChange(state,tr,source,draft,change,projected)
-      ?{source:draft,offset:from,path:first.paragraph.filePath}:null;
+      ?{source:draft,offset,path:first.paragraph.filePath}:null;
   },
   commitNewMath:(first,last,text,display)=>{
     if(!text.trim()||/[\r\n]/.test(text)||first?.kind!=='text'||first.paragraph!==last?.paragraph)return null;
