@@ -130,9 +130,10 @@ keydown to pixels separately from engine protocol and browser frame timing.
 3. Automated composition proves commit-once and cancellation. Candidate
    placement, shortcut delivery and latency still need physical-device tests.
 4. The browser can open standalone and floating TikZ directly from a registered
-   LuaLaTeX PDF and edit an ordinary formula on that page. The floating example
-   passed [45649964814](https://github.com/AminiamEva/Lineae/actions/runs/45649964814)
-   on both platforms. Geometry-based editing of nested figure content remains pending.
+   LuaLaTeX PDF and edit an ordinary formula on that page. The two-subfigure
+   example opens the specific drawing clicked on both platforms, as verified by
+   [45656057369](https://github.com/AminiamEva/Lineae/actions/runs/45656057369).
+   Other nested float content still needs geometry and editing coverage.
 5. The engine-off desktop workspace has passed the covered cases. Its default
    switch still depends on complete coverage and the device checks.
 

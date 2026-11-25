@@ -2844,6 +2844,18 @@ function nativeProsePosition(paragraph,from,to){
   const range=nativeEditorRange({doc:editor.state.doc,projection,composition,file,paragraph,from,to});
   return range?{range,project,composition,file}:null;
 }
+function refreshNativeTextEnvironment(tr,position,sourceBlock,source,change){
+  if(!sourceBlock||change.from<sourceBlock.from||change.to>sourceBlock.to)return false;
+  const raw=source.slice(sourceBlock.from,change.from)+change.insert+source.slice(change.to,sourceBlock.to);
+  const [parsed,...rest]=importBlocks(raw);
+  const node=tr.doc.nodeAt(position);
+  if(rest.length||parsed?.type!=='blockquote'||!parsed.attrs.environmentSource||
+     node?.type.name!=='blockquote'||parsed.attrs.latexEnvironment!==node.attrs.latexEnvironment)return false;
+  const verified=tr.doc.type.schema.nodeFromJSON(parsed);
+  if(!verified.content.eq(node.content))return false;
+  tr.setNodeMarkup(position,undefined,verified.attrs);
+  return true;
+}
 function runNativeTextStructure(command,...args){
   const started=performance.now();
   const verified=nativeTexPreview.verifiedTextRange?.();
@@ -3362,7 +3374,8 @@ nativeTexPreview=installNativeTexPreview({host:footer,before:modes,primary:nativ
   },
   commitParagraphBreak:(paragraph,from,to,text)=>{
     const theorem=paragraph.container?.type==='theoremBlock';
-    if(paragraph.tableCell||paragraph.container&&!theorem||paragraph.parts.length!==1||
+    const environment=paragraph.container?.type==='blockquote';
+    if(paragraph.tableCell||paragraph.container&&!theorem&&!environment||paragraph.parts.length!==1||
        paragraph.parts[0].marks?.length||!from||/[\r\n]/.test(text))return null;
     if(paragraph.heading&&(!Number.isInteger(paragraph.headingEnd)||from!==to||to!==paragraph.text.length))return null;
     if(projectDocument.composition&&!projectDocument.rebase(currentNativeProjectComposition(),editor.getJSON()))return null;
@@ -3382,16 +3395,19 @@ nativeTexPreview=installNativeTexPreview({host:footer,before:modes,primary:nativ
     const change={from:start,to:wrapper?paragraph.wrapperEnd:end,
       insert:insert+(wrapper?paragraph.source.slice(end,proseEnd):'')};
     const draft=paragraph.source.slice(0,change.from)+change.insert+paragraph.source.slice(change.to);
+    const at=state.doc.resolve(range.from);
+    const parent=environment?at.before(at.depth-1):null;
     const tr=state.tr;
     if(range.to>range.from)tr.delete(range.from,range.to);
     tr.split(range.from,1,[{type:editor.schema.nodes.paragraph}]);
     const next=range.from+2;
     if(text)tr.insertText(text,next);
+    if(environment&&!refreshNativeTextEnvironment(tr,parent,range.match.sourceBlock,paragraph.source,change))return null;
     tr.setSelection(TextSelection.create(tr.doc,next+text.length));
     const offset=change.from+insert.length;
     if(composition){
       const drafts=projectDocument.changes(tr.doc.toJSON());
-      if(wrapper&&drafts?.get(file.id)!==draft)return dispatchNativeProjectChange(state,tr,project,new Map([[file.id,draft]]))
+      if((wrapper||environment)&&drafts?.get(file.id)!==draft)return dispatchNativeProjectChange(state,tr,project,new Map([[file.id,draft]]))
         ?{source:draft,offset,path:paragraph.filePath}:null;
       if(drafts?.get(file.id)!==draft)return null;
       for(const [id,value] of drafts)if(id!==file.id&&value!==project.file(id).draft)return null;
@@ -3415,9 +3431,10 @@ nativeTexPreview=installNativeTexPreview({host:footer,before:modes,primary:nativ
       first.paragraph.filePath!==last.paragraph.filePath||first.paragraph.source!==last.paragraph.source||
       /[\r\n]/.test(text))return null;
     const theorem=first.paragraph.container?.type==='theoremBlock'&&last.paragraph.container?.type==='theoremBlock';
+    const environment=first.paragraph.container?.type==='blockquote'&&last.paragraph.container?.type==='blockquote';
     for(const stop of [first,last]){
       const {paragraph}=stop;
-      if(paragraph.heading||paragraph.tableCell||paragraph.container&&!theorem||paragraph.parts.length!==1||
+      if(paragraph.heading||paragraph.tableCell||paragraph.container&&!theorem&&!environment||paragraph.parts.length!==1||
         paragraph.parts[0].marks?.length)return null;
     }
     const from=first.docOffset,to=last.docOffset,source=first.paragraph.source;
@@ -3431,14 +3448,20 @@ nativeTexPreview=installNativeTexPreview({host:footer,before:modes,primary:nativ
     const start=state.doc.resolve(left.range.from),end=state.doc.resolve(right.range.from),depth=start.depth-1;
     if(end.depth!==start.depth||start.start(depth)!==end.start(depth))return null;
     const middle=start.node(depth).content.content.slice(start.index(depth)+1,end.index(depth));
-    if(theorem&&middle.length||!matchesParagraphGap(gap,middle.map(node=>node.toJSON())))return null;
+    const explicitBreak=environment&&/^\s*\\par\s*$/.test(gap);
+    if((theorem||environment)&&middle.length||!explicitBreak&&!matchesParagraphGap(gap,middle.map(node=>node.toJSON())))return null;
     const tr=state.tr.insertText(text,left.range.from,right.range.from);
-    tr.setSelection(TextSelection.create(tr.doc,left.range.from+text.length));
     const insert=serialize({type:'text',text}),offset=from+insert.length;
+    const change={from,to,insert};
+    if(environment&&!refreshNativeTextEnvironment(tr,start.before(depth),left.range.match.sourceBlock,source,change))return null;
+    tr.setSelection(TextSelection.create(tr.doc,left.range.from+text.length));
     const draft=source.slice(0,from)+insert+source.slice(to);
     if(left.composition){
       if(left.file!==right.file)return null;
       const drafts=projectDocument.changes(tr.doc.toJSON());
+      if(environment&&drafts?.get(left.file.id)!==draft)
+        return dispatchNativeProjectChange(state,tr,left.project,new Map([[left.file.id,draft]]))
+          ?{source:draft,offset,path:first.paragraph.filePath}:null;
       if(drafts?.get(left.file.id)!==draft)return null;
       for(const [id,value] of drafts)if(id!==left.file.id&&value!==left.project.file(id).draft)return null;
       editor.view.dispatch(closeHistory(tr));
@@ -3450,7 +3473,6 @@ nativeTexPreview=installNativeTexPreview({host:footer,before:modes,primary:nativ
       if(!projected||patches?.length!==1||
          source.slice(0,patches[0].from)+patches[0].insert+source.slice(patches[0].to)!==draft)return null;
     }else if(!projected?.blocks.some(block=>block.index===left.range.match.index&&block.editable&&block.from<=from&&block.to>=from))return null;
-    const change={from,to,insert};
     return dispatchNativeParagraphChange(state,tr,source,draft,change,projected)
       ?{source:draft,offset,path:first.paragraph.filePath}:null;
   },

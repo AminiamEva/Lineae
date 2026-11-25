@@ -48,7 +48,7 @@ export function nativeEditorRange({doc,projection,composition,file,paragraph,fro
     (block.count===1||paragraph.tableCell) && block.from<=paragraph.from16 &&
     block.to>=paragraph.from16+paragraph.text.length);
   const matches=[];
-  function collect(node,offset,index,sourceOwner){
+  function collect(node,offset,index,sourceOwner,sourceBase=0){
     if(paragraph.container){
       const {type,path}=paragraph.container;
       if(sourceOwner?.index!==index||node.type.name!==type)return;
@@ -60,7 +60,8 @@ export function nativeEditorRange({doc,projection,composition,file,paragraph,fro
         child=child.child(childIndex);
       }
       const parts=matchesParts(child);
-      if(parts)matches.push({node:child,offset:position,index,verified:true,parts});
+      if(parts)matches.push({node:child,offset:position,index,verified:true,parts,
+        sourceBlock:{from:sourceBase+sourceOwner.from,to:sourceBase+sourceOwner.to}});
       return;
     }
     if(!paragraph.tableCell){
@@ -91,7 +92,7 @@ export function nativeEditorRange({doc,projection,composition,file,paragraph,fro
     const sourceOwner=composition.sources.get(file.id)===paragraph.source && region.projection?.blocks.find(block=>
       (block.count===1||paragraph.tableCell)&&region.from+block.from<=paragraph.from16 &&
       region.from+block.to>=paragraph.from16+paragraph.text.length);
-    node.forEach((child,childOffset,childIndex)=>collect(child,offset+1+childOffset,childIndex,sourceOwner));
+    node.forEach((child,childOffset,childIndex)=>collect(child,offset+1+childOffset,childIndex,sourceOwner,region.from));
   });
   const match=matches.find(candidate=>composition?candidate.verified: candidate.index===owner?.index) ??
     (matches.length===1 ? matches[0] : null);

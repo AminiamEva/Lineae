@@ -86,8 +86,8 @@
         "tests/native-tex-preview-browser.cjs"
       ],
       "nativeStatus": "partial",
-      "evidence": ["https://github.com/AminiamEva/Lineae/actions/runs/45590498054", "https://github.com/AminiamEva/Lineae/actions/runs/45628338101", "https://github.com/AminiamEva/Lineae/actions/runs/45639252258", "https://github.com/AminiamEva/Lineae/actions/runs/45649964814"],
-      "scope": "The browser gates cover empty and nonempty cells, mixed marked text and math in tabularx, and ordinary tabular, tabularx and tabularray axis edits with exact source writeback and undo. Multicolumn and multirow range mapping has direct tests. The real engine reports an empty-cell anchor, marked cell glyphs and an inline formula field with unchanged page drawing on both platforms. Structural changes involving indexed tabularray rules, multirow spans, and arbitrary cell styling remain pending."
+      "evidence": ["https://github.com/AminiamEva/Lineae/actions/runs/45590498054", "https://github.com/AminiamEva/Lineae/actions/runs/45628338101", "https://github.com/AminiamEva/Lineae/actions/runs/45639252258", "https://github.com/AminiamEva/Lineae/actions/runs/45649964814", "https://github.com/AminiamEva/Lineae/actions/runs/45656057369"],
+      "scope": "The browser gates cover empty and nonempty cells, mixed marked text and math in tabularx, ordinary tabular, tabularx and tabularray axis edits, and verified adjacent merge and split with exact source writeback and undo. The real engine reports an empty-cell anchor, marked cell glyphs and an inline formula field with unchanged page drawing on both platforms. Some absolute tabularray rule selectors can follow structural edits. Ordinary tabular multirow merge and split have source-level tests and await the browser gate. More general span and cell styling edits remain pending."
     },
     {
       "id": "project-composition",
@@ -132,9 +132,10 @@
         "https://github.com/AminiamEva/Lineae/actions/runs/45628338101",
         "https://github.com/AminiamEva/Lineae/actions/runs/45639252258",
         "https://github.com/AminiamEva/Lineae/actions/runs/45646995464",
-        "https://github.com/AminiamEva/Lineae/actions/runs/45649964814"
+        "https://github.com/AminiamEva/Lineae/actions/runs/45649964814",
+        "https://github.com/AminiamEva/Lineae/actions/runs/45656057369"
       ],
-      "scope": "Real staged PNG drawing metadata is unchanged by ownership. Browser gates select a raster from Canvas and a transformed raster in a simulated registered PDF frame, then patch its width through the Image controls. A direct click on standalone or floating TikZ in a registered real LuaLaTeX PDF opens the visual editor on Windows and macOS. The native workspace can select an exact opaque block in Source. Nested figure content remains pending."
+      "scope": "Real staged PNG drawing metadata is unchanged by ownership. Browser gates select a raster from Canvas and a transformed raster in a simulated registered PDF frame, then patch its width through the Image controls. A direct click on standalone or floating TikZ or one of two nested subfigures in a registered real LuaLaTeX PDF opens the intended drawing on Windows and macOS. The native workspace can select an exact opaque block in Source. Other nested float content remains pending."
     },
     {
       "id": "page-layout-and-pdf",
