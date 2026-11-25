@@ -2009,10 +2009,13 @@ const server=createServer(async(req,res)=>{
     if(!await columns.isVisible())await page.locator('[data-ribbon-group=layout-page-setup] .ribbon-group-toggle').click();
     await columns.selectOption('2');
     const twoColumns=projectLayout.replace('\\documentclass{article}','\\documentclass[twocolumn]{article}');
-    const verifyLayout=expected=>page.waitForFunction(({expected,child})=>nativeProbe.source===expected&&
-      nativeProbe.calls.some(call=>call.command==='native_tex_update'&&call.args.source===expected&&
-        call.args.files?.some(file=>file.path==='chapters/one.tex'&&
-          new TextDecoder().decode(new Uint8Array(file.bytes))===child)),{expected,child:layoutChild});
+    const verifyLayout=expected=>page.waitForFunction(({expected,child})=>{
+      if(nativeProbe.source!==expected)return false;
+      const layouts=nativeProbe.calls.filter(({command})=>['native_tex_open','native_tex_update'].includes(command));
+      const staged=layouts.findLast(call=>call.args.files!==undefined)?.args.files;
+      return layouts.at(-1)?.args.source===expected&&staged?.some(file=>file.path==='chapters/one.tex'&&
+        new TextDecoder().decode(new Uint8Array(file.bytes))===child);
+    },{expected,child:layoutChild});
     await verifyLayout(twoColumns);
     await margin.selectOption('narrow');
     const projectNarrow=twoColumns.replace('\\begin{document}','\\usepackage[letterpaper,margin=1.27cm]{geometry}\n\\begin{document}');
