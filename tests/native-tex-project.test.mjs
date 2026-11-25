@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {nativeAttachedSnapshot,nativeProjectSnapshot} from '../apps/web/src/typesetting/rtex/project-snapshot.mjs';
 import {rasterContains,stagedRaster,stagedRasterPath} from '../apps/web/src/typesetting/rtex/raster-assets.mjs';
+import {nativeFontFace} from '../apps/web/src/typesetting/rtex/font-collection.mjs';
 
 test('native raster commands can only resolve staged PNG and JPEG assets',()=>{
   const path='figures/plot.png';
@@ -21,6 +22,29 @@ test('native image hits follow rotation and scaling from the painter',()=>{
   assert.equal(rasterContains(image,26,44),true);
   assert.equal(rasterContains(image,36,44),false);
   assert.equal(rasterContains({...image,transform:[0,0,0,0,0,0]},26,44),false);
+});
+
+test('native font extraction follows LuaTeX face numbers and rejects malformed offsets',()=>{
+  const collection=new Uint8Array(85),view=new DataView(collection.buffer);
+  view.setUint32(0,0x74746366);
+  view.setUint32(4,0x00010000);
+  view.setUint32(8,2);
+  for(const [index,offset,tableAt,value] of [[0,20,76,123],[1,48,80,231]]){
+    view.setUint32(12+index*4,offset);
+    view.setUint32(offset,0x4f54544f);
+    view.setUint16(offset+4,1);
+    view.setUint32(offset+12,0x6e616d65);
+    view.setUint32(offset+20,tableAt);
+    view.setUint32(offset+24,4);
+    view.setUint32(tableAt,value);
+  }
+  assert.deepEqual(nativeFontFace(collection,0),nativeFontFace(collection,1));
+  const second=new DataView(nativeFontFace(collection,2).buffer);
+  assert.equal(second.getUint32(20),28);
+  assert.equal(second.getUint32(28),231);
+  assert.throws(()=>nativeFontFace(collection,3),/collection face/);
+  view.setUint32(68,83);
+  assert.throws(()=>nativeFontFace(collection,2),/table range/);
 });
 
 test('a standalone snapshot stages only the transitive references already attached',async()=>{

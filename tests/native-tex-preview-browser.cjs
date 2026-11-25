@@ -91,6 +91,12 @@ const server=createServer(async(req,res)=>{
       await page.locator('#native-tex-toggle').click();
       await panel.locator('[data-native-page="1"] canvas').waitFor();
       await page.waitForFunction(()=>document.querySelector('#native-tex-preview').dataset.state==='current');
+      assert.equal(await panel.evaluate(async node=>{
+        const before=nativeProbe.ruleRects.length;
+        node.dispatchEvent(new Event('scroll'));
+        await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
+        return nativeProbe.ruleRects.length-before;
+      }),0,'Scrolling an unchanged visible native page does not repaint its glyphs');
       await page.locator('#native-tex-target').click();
       await page.locator('#native-tex-edit').click();
       const canvas=panel.locator('[data-native-page="1"] canvas');
@@ -319,9 +325,11 @@ const server=createServer(async(req,res)=>{
       await page.goto('http://127.0.0.1:'+server.address().port+'/?native-workspace=1',{waitUntil:'networkidle'});
       const workspaceSource='\\documentclass{article}\n\\begin{document}\nNative document.\n\\end{document}\n';
       await page.locator('input#file').setInputFiles({name:'workspace.tex',mimeType:'text/plain',buffer:Buffer.from(workspaceSource)});
+      await page.evaluate(()=>{nativeProbe.collection=true;});
       await page.locator('#native-tex-toggle').click();
       await panel.getByText('Click text on the native page',{exact:false}).waitFor();
       assert.equal(await panel.getAttribute('data-editing'),'true');
+      assert.equal(await panel.getAttribute('data-renderer'),'canvas');
       assert.equal(await page.locator('#native-tex-edit').isVisible(),false);
       assert.equal(await page.locator('#editor').isVisible(),false);
       await canvas.click({position:{x:6550000*scale,y:9250000*scale}});

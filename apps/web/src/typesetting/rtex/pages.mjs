@@ -1,4 +1,5 @@
 import {rasterContains,stagedRasterPath} from './raster-assets.mjs';
+import {nativeFontFace} from './font-collection.mjs';
 import {FontStore,Painter,inexactReason} from './upstream/webview/render.ts';
 import {fontKey} from './upstream/src/fontKey.ts';
 import {hitMathField,hitMathGlyph} from '../../editor/native-math/hit.mjs';
@@ -199,13 +200,13 @@ export function installNativePages({host,getFont,getRaster,onPaint,onError,onMat
       if(!['g','r','c','m','M','i'].includes(item[0]))throw new Error('Unsupported native drawing operation: '+item[0]);
     }
     for(const desc of Object.values(dl.fonts??{})) {
-      if(!desc.filename || !/\.(?:otf|ttf)$/i.test(desc.filename) || (desc.subfont && desc.subfont!==1) ||
-          (desc.squeeze && desc.squeeze!==1000))throw new Error('Native preview requires a supported single-face OTF/TTF font');
+      if(!desc.filename||!/\.(?:otf|ttf|otc|ttc)$/i.test(desc.filename)||
+          (desc.squeeze&&desc.squeeze!==1000))throw new Error('Native preview requires a supported OpenType font');
       const key=fontKey(desc);
       if(!loaded.has(key))loaded.set(key,(async()=>{
         const bytes=await getFont(key);
         if(attempt!==generation)return;
-        fonts.add(key,{kind:'sfnt',data:new Uint8Array(bytes)});
+        fonts.add(key,{kind:'sfnt',data:nativeFontFace(new Uint8Array(bytes),desc.subfont)});
       })());
       await loaded.get(key);
     }
@@ -216,6 +217,9 @@ export function installNativePages({host,getFont,getRaster,onPaint,onError,onMat
     const {canvas,dl}=entry;
     const width=dl.page_width*CSS_PER_SP*zoom,height=dl.page_height*CSS_PER_SP*zoom;
     const dpr=window.devicePixelRatio||1;
+    const rows=warm?.pages.get(Number(entry.dom.dataset.nativePage));
+    const previous=entry.painted;
+    if(previous?.dl===dl&&previous.rows===rows&&previous.zoom===zoom&&previous.dpr===dpr)return;
     if(!Number.isFinite(width) || !Number.isFinite(height) || width<=0 || height<=0 ||
         width*dpr>16384 || height*dpr>16384)throw new Error('Unsupported native page dimensions or zoom');
     entry.dom.style.width=width+'px';entry.dom.style.height=height+'px';
@@ -230,12 +234,12 @@ export function installNativePages({host,getFont,getRaster,onPaint,onError,onMat
       if(path)entry.rasterHits.push({path,transform,box});
     });
     painter.draw(dl,dl.other??[]);
-    const rows=warm?.pages.get(Number(entry.dom.dataset.nativePage));
     for(const [index,line] of (dl.lines??[]).entries()){
       const replacement=rows?.get(index);
       if(replacement)painter.draw(warm.dl,replacement.line.items,replacement.dx,replacement.dy);
       else painter.draw(dl,line.items);
     }
+    entry.painted={dl,rows,zoom,dpr};
   }
   function redraw() {
     if(pdfBacked)return;
@@ -245,7 +249,10 @@ export function installNativePages({host,getFont,getRaster,onPaint,onError,onMat
         for(const entry of pages.values()) {
           const box=entry.dom.getBoundingClientRect(),viewport=host.getBoundingClientRect();
           if(box.bottom>=viewport.top-1000 && box.top<=Math.min(viewport.bottom,window.innerHeight)+1000)draw(entry);
-          else {entry.canvas.width=1;entry.canvas.height=1;}
+          else if(entry.painted){
+            entry.canvas.width=1;entry.canvas.height=1;
+            entry.painted=null;entry.rasterHits=[];
+          }
         }
         if(revision>=0&&!warm)onPaint(revision);
       } catch(error) {onError(error,revision);}
@@ -269,6 +276,7 @@ export function installNativePages({host,getFont,getRaster,onPaint,onError,onMat
         if(!entry) {
           const dom=document.createElement('div'),canvas=document.createElement('canvas');
           dom.className='native-tex-page';canvas.setAttribute('aria-label','LuaLaTeX page '+page.page);
+          canvas.width=1;canvas.height=1;
           dom.dataset.nativePage=String(page.page);
           dom.append(canvas);entry={dom,canvas};pages.set(page.page,entry);
         }

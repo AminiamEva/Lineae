@@ -33,7 +33,7 @@ module.exports=function installMockNativeTex() {
     placements:[{par_id:1,fragments:[{page:1,first_line:1,last_line:1,xs:[6500000],baselines:[6500000],approximate:false}]}],
     pages_total:1,pages_changed:[{page:1,exact:!p.semanticPdf,dl:{kind:'page',page:1,
       page_width:39000000,page_height:55000000,width:0,height:0,depth:0,flags:{},images_info:p.raster?{'1':{file:'plot.png'}}:{},
-      fonts:{15:{id:15,filename:'/fixture/lmroman10-regular.otf',subfont:1,size:655360,extend:1000,squeeze:1000}},
+      fonts:{15:{id:15,filename:p.collection?'/fixture/native.otc':'/fixture/lmroman10-regular.otf',subfont:1,size:655360,extend:1000,squeeze:1000}},
       other:p.raster?[['i',1,3000000,3000000,1000000,1000000]]:[],lines:[{x:6500000,y:6500000,w:600000,h:600000,d:0,
         items:[['g',15,97,28,6500000,6500000,327680,0],['r',6500000,7000000,3000000,6554]]}]}}]});
   window.__TAURI__={core:{invoke:async(command,args)=>{
@@ -75,7 +75,16 @@ module.exports=function installMockNativeTex() {
         return result.arrayBuffer();
       }
       if(p.failFont)throw 'The native font is unavailable';
-      return [...new Uint8Array(await(await fetch('/assets/fonts/latin-modern/lmroman10-regular.otf')).arrayBuffer())];
+      const face=new Uint8Array(await(await fetch('/assets/fonts/latin-modern/lmroman10-regular.otf')).arrayBuffer());
+      if(!p.collection)return [...face];
+      const collection=new Uint8Array(face.length+16),view=new DataView(collection.buffer);
+      view.setUint32(0,0x74746366);view.setUint32(4,0x00010000);view.setUint32(8,1);view.setUint32(12,16);
+      collection.set(face,16);
+      for(let index=0;index<view.getUint16(20);index++){
+        const offset=16+12+index*16+8;
+        view.setUint32(offset,view.getUint32(offset)+16);
+      }
+      return [...collection];
     }
     if(command==='native_tex_observe_formula'){
       if(p.realEvidence){

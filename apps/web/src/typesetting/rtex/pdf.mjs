@@ -18,9 +18,12 @@ export function installNativePdf({host,onPaint,onError}) {
   };
   async function draw(entry,attempt) {
     if(entry.render)return;
-    const viewport=entry.page.getViewport({scale:zoom*96/72});
+    const renderZoom=zoom;
+    const viewport=entry.page.getViewport({scale:renderZoom*96/72});
     const dpr=window.devicePixelRatio||1;
+    if(entry.painted?.zoom===renderZoom&&entry.painted.dpr===dpr)return;
     if(viewport.width*dpr>16384 || viewport.height*dpr>16384)throw new Error('PDF page exceeds supported Canvas size at this zoom');
+    entry.painted=null;
     entry.canvas.width=Math.ceil(viewport.width*dpr);entry.canvas.height=Math.ceil(viewport.height*dpr);
     entry.canvas.style.width=viewport.width+'px';entry.canvas.style.height=viewport.height+'px';
     entry.dom.style.width=viewport.width+'px';entry.dom.style.height=viewport.height+'px';
@@ -29,7 +32,10 @@ export function installNativePdf({host,onPaint,onError}) {
     entry.render=task;
     try {
       await task.promise;
-      if(attempt===epoch)onPaint(revision);
+      if(attempt===epoch&&entry.render===task){
+        entry.painted={zoom:renderZoom,dpr};
+        onPaint(revision);
+      }
     }catch(error){if(error.name!=='RenderingCancelledException'&&attempt===epoch)onError(error);}
     finally {if(entry.render===task)entry.render=null;}
   }
@@ -40,7 +46,9 @@ export function installNativePdf({host,onPaint,onError}) {
       for(const entry of pages) {
         const box=entry.dom.getBoundingClientRect();
         if(box.bottom>=0 && box.top<window.innerHeight+600)void draw(entry,attempt).catch(onError);
-        else if(!entry.render){entry.canvas.width=1;entry.canvas.height=1;}
+        else if(!entry.render&&entry.painted){
+          entry.canvas.width=1;entry.canvas.height=1;entry.painted=null;
+        }
       }
     });
   }
@@ -66,6 +74,7 @@ export function installNativePdf({host,onPaint,onError}) {
       const viewport=page.getViewport({scale:zoom*96/72});
       const dom=document.createElement('div'),canvas=document.createElement('canvas');
       dom.className='native-tex-page';dom.dataset.pdfPage=String(number);
+      canvas.width=1;canvas.height=1;
       dom.style.width=viewport.width+'px';dom.style.height=viewport.height+'px';
       canvas.setAttribute('aria-label','LuaLaTeX PDF page '+number);
       dom.append(canvas);next.push({number,dom,canvas,page,render:null});

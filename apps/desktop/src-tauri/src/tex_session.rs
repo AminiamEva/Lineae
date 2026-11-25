@@ -362,7 +362,7 @@ impl Messages {
             for font in fonts.values() {
                 let Some(filename) = font.get("filename").and_then(Value::as_str) else { continue };
                 let extension = Path::new(filename).extension().and_then(|s| s.to_str()).unwrap_or("");
-                if !extension.eq_ignore_ascii_case("otf") && !extension.eq_ignore_ascii_case("ttf") {
+                if !["otf", "ttf", "otc", "ttc"].iter().any(|allowed| extension.eq_ignore_ascii_case(allowed)) {
                     continue;
                 }
                 if filename.is_empty() || filename.len() > 4096 || filename.contains('\0') {
@@ -857,7 +857,7 @@ impl Session {
         }
         self.check()?;
         let filename = lock(&self.messages).fonts.get(&key).cloned()
-            .ok_or_else(|| error("font_resource", "Font token was not referenced by this session's captured display lists (only OTF/TTF are supported)."))?;
+            .ok_or_else(|| error("font_resource", "Font token was not referenced by this session's captured OpenType display lists."))?;
         let _serial = lock(&self.commands);
         self.check()?;
         let path = PathBuf::from(&filename);
@@ -884,8 +884,8 @@ impl Session {
         }
         let mut bytes = Vec::new();
         file.take(FONT_LIMIT + 1).read_to_end(&mut bytes).map_err(|e| error("font_io", e.to_string()))?;
-        if bytes.len() as u64 > FONT_LIMIT || !(bytes.starts_with(b"OTTO") || bytes.starts_with(&[0, 1, 0, 0]) || bytes.starts_with(b"true")) {
-            return Err(error("font_format", format!("Captured font '{filename}' is not a supported OTF/TTF file.")));
+        if bytes.len() as u64 > FONT_LIMIT || !(bytes.starts_with(b"OTTO") || bytes.starts_with(&[0, 1, 0, 0]) || bytes.starts_with(b"true") || bytes.starts_with(b"ttcf")) {
+            return Err(error("font_format", format!("Captured font '{filename}' is not a supported OpenType font.")));
         }
         self.check()?;
         Ok(bytes)
@@ -1851,13 +1851,16 @@ mod tests {
         let mut messages = Messages { waiting: Some("status"), ..Default::default() };
         messages.receive(json!({"event": "LayoutUpdate", "versions": {"source_revision": 1},
             "pages_changed": [{"dl": {"fonts": {
-                "20": {"filename": "/tex/latinmodern-math.otf", "subfont": 1}
+                "20": {"filename": "/tex/latinmodern-math.otf", "subfont": 1},
+                "21": {"filename": "/tex/cjk.ttc", "subfont": 2}
             }}}]}), 100).unwrap();
         messages.receive(json!({"reply": "status", "versions": {"source_revision": 1}}), 40).unwrap();
         assert_eq!(messages.layout_revision, Some(1));
         assert_eq!(integer(&messages.reply.unwrap()["versions"], "source_revision").unwrap(), 1);
         assert!(messages.fonts.contains_key("file:/tex/latinmodern-math.otf#1"));
         assert!(!messages.fonts.contains_key("file:/tex/latinmodern-math.otf#0"));
+        assert!(messages.fonts.contains_key("file:/tex/cjk.ttc#2"));
+        assert!(!messages.fonts.contains_key("file:/tex/cjk.ttc#1"));
     }
 
     #[test]
