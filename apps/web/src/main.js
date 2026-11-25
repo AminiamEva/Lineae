@@ -3287,6 +3287,7 @@ nativeTexPreview=installNativeTexPreview({host:footer,before:modes,primary:nativ
     const from=formula.from16+patch.from,to=formula.from16+patch.to;
     const expected=formula.source.slice(0,from)+patch.insert+formula.source.slice(to);
     let latex=text,detachedLabel=false;
+    const environment=type==='mathBlock'&&displayEnvironment(formula.math.source);
     if(node.attrs.latex!==formula.math.source){
       if(type!=='mathBlock'||node.attrs.delimiter!=='equation'||!node.attrs.label)return false;
       const [original]=importBlocks(formula.source.slice(formula.outerFrom16,formula.outerTo16));
@@ -3312,7 +3313,12 @@ nativeTexPreview=installNativeTexPreview({host:footer,before:modes,primary:nativ
       return dispatchNativeParagraphChange(editor.state,transaction,formula.source,draft,change,projected)
         ?{source:draft,path:formula.filePath,offset:cursor+packageLine.length}:false;
     }
-    if(detachedLabel&&!composition){
+    if((detachedLabel||environment)&&!composition){
+      if(environment){
+        const revised=importBlocks(expected.slice(formula.outerFrom16,formula.outerTo16+patch.insert.length-(to-from)));
+        if(revised.length!==1||revised[0].type!=='mathBlock'||revised[0].attrs.latex!==latex||
+            displayEnvironment(latex)!==environment)return false;
+      }
       const projected=sourceProjection(expected,transaction.doc.toJSON(),{fragment:projectFileKind==='tex'});
       return Boolean(projected&&dispatchNativeParagraphChange(editor.state,transaction,formula.source,expected,
         {from,to,insert:patch.insert},projected));

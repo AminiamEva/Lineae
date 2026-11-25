@@ -12,6 +12,7 @@ import {parseTableFloat} from './table-floats.mjs';
 import {importTblr,environmentEnd,trivia} from './tblr.mjs';
 import {importTabularx} from './tabularx.mjs';
 import {importTextEnvironment} from './text-environments.mjs';
+import {displayEnvironment} from './math-environments.mjs';
 
 function importedTableCells(row,specs,layout) {
   return row.cells.map((cell,index) => {
@@ -455,11 +456,10 @@ function importSegment(block,options) {
   let cursor = 0;
   for (const token of sourceStructure(block)) {
     if (!token.topLevel || token.index<cursor) continue;
-    // Split outer source-backed environments without losing their separators.
-    // The scanner
-    // keeps nested environments, macro arguments and literal content opaque.
-    const floating=token.kind==='begin' && /^\\begin\{(figure\*?|wrapfigure|table\*?|tabular\*?|tblr|tabularx|abstract|center|equation\*?)\}$/.exec(token.value);
-    const closing=floating && environmentEnd(block,token.index,floating[1]);
+    // The scanner keeps nested environments and literal content opaque.
+    const environment=token.kind==='begin'&&(displayEnvironment(token.value)??
+      /^\\begin\{(figure\*?|wrapfigure|table\*?|tabular\*?|tblr|tabularx|abstract|center)\}$/.exec(token.value)?.[1]);
+    const closing=environment&&environmentEnd(block,token.index,environment);
     if(closing) {
       const prefix=block.slice(cursor,token.index);
       const start=prefix.trim()?token.index:cursor;

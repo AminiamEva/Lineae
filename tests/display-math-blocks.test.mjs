@@ -1,11 +1,25 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
 import {importBlocks,serialize} from '../apps/web/src/editor/latex-codec.js';
 import {parseDocument} from '../apps/web/latex/document.mjs';
 import {sourceProjection,richSourceChanges,standaloneMathChanges} from '../apps/web/src/editor/source-sync.js';
 import {documentMetadata,writeDocumentMetadata} from '../apps/web/latex/document-metadata.mjs';
 const text=n=>(n.content??[]).map(c=>c.text??'').join('');
 const wrap=s=>'\\begin{document}\r\n'+s+'\n\\end{document}\r\n';
+
+test('adjacent numbered and starred alignments retain separate source owners',()=>{
+  const source=readFileSync(new URL('./native-math/fixtures/numbered-alignment.tex',import.meta.url),'utf8');
+  const content=parseDocument(source).blocks.flatMap(raw=>importBlocks(raw));
+  assert.deepEqual(content.map(node=>node.type),['mathBlock','mathBlock']);
+  assert.match(content[0].attrs.latex,/\\label\{eq:alignment\}/);
+  assert.match(content[1].attrs.latex,/^\\begin\{alignat\*\}\{1\}/);
+  content.push({type:'paragraph'});
+  const doc={type:'doc',content};
+  const projection=sourceProjection(source,doc);
+  assert.deepEqual(projection.blocks.map(block=>[block.index,block.count]),[[0,1],[1,2]]);
+  assert.deepEqual(richSourceChanges(projection,doc),[]);
+});
 
 test('a terminal labelled equation has a separate, source-free typing paragraph',()=>{
   const source=wrap('\\begin{equation}\n\\label{eq:keep}\n\\frac{a}{b}\n\\end{equation}');

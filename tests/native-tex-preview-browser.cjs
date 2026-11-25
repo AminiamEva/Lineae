@@ -1273,7 +1273,8 @@ const server=createServer(async(req,res)=>{
     await page.locator('#native-tex-close').click();
     // Inline math splits the paragraph into native text runs. Editing a run
     // must not rewrite the math node's source.
-    const inlineDoc=Buffer.from('\\documentclass{article}\n\\begin{document}\nAlpha $x$ beta.\n\\end{document}\n');
+    const inlineFormula='$\\frac{a}{}$';
+    const inlineDoc=Buffer.from(`\\documentclass{article}\n\\begin{document}\nAlpha ${inlineFormula} beta.\n\\end{document}\n`);
     await page.locator('input#file').setInputFiles({name:'inline.tex',mimeType:'text/plain',buffer:inlineDoc});
     await page.waitForFunction(()=>document.querySelector('.cm-content')?.textContent.includes('Alpha'));
     await button.click();
@@ -1282,8 +1283,10 @@ const server=createServer(async(req,res)=>{
     await panel.getByText('Click prose on the native page',{exact:false}).waitFor();
     await page.locator('#native-tex-edit').click();
     const inlineScale=Number(await page.locator('#native-tex-zoom').inputValue())/100*(96/72)/65781.76;
-    await panel.locator('[data-native-page="1"] canvas').click({position:{x:7510000*inlineScale,y:9250000*inlineScale}});
+    await panel.locator('[data-native-page="1"] canvas').click({position:{x:6500000*inlineScale,y:7000000*inlineScale}});
     await page.waitForFunction(()=>document.activeElement?.id==='native-tex-input');
+    await page.keyboard.press(mod+'+Shift+j');
+    await page.locator('footer.document-status').getByText('Text',{exact:true}).waitFor();
     const inlineObservations=await page.evaluate(()=>nativeProbe.calls.filter(call=>call.command==='native_tex_observe_formula').length);
     const inputAnchor=await page.locator('#native-tex-input').evaluate(input=>{
       const anchor=()=>[input.style.left,input.style.top];
@@ -1303,8 +1306,7 @@ const server=createServer(async(req,res)=>{
     assert.equal(inputAnchor.scroll,0);
     assert.equal(await page.evaluate(()=>nativeProbe.source),inlineDoc.toString());
     await page.keyboard.type('Y');
-    await page.waitForFunction(()=>nativeProbe.source?.includes('Alpha $x$ Ybeta.'),
-      'A prose run beside inline math edits only its own source bytes');
+    await page.waitForFunction(expected=>nativeProbe.source===expected,inlineDoc.toString().replace('beta.','Ybeta.'));
     await page.waitForFunction(count=>nativeProbe.calls.filter(call=>call.command==='native_tex_observe_formula').length>count,inlineObservations);
     await panel.getByText('Click prose on the native page',{exact:false}).waitFor();
     await panel.locator('[data-native-page="1"] canvas').click({position:{x:7510000*inlineScale,y:9250000*inlineScale}});
@@ -1314,9 +1316,9 @@ const server=createServer(async(req,res)=>{
       input.dispatchEvent(new ClipboardEvent('copy',{clipboardData,bubbles:true,cancelable:true}));
       return clipboardData.getData('text/plain');
     });
-    assert.equal(copied,' $x$ ');
+    assert.equal(copied,` ${inlineFormula} `);
     await page.keyboard.press('Delete');
-    const withoutInline=inlineDoc.toString().replace('Alpha $x$ beta.','AlphaYbeta.');
+    const withoutInline=inlineDoc.toString().replace(`Alpha ${inlineFormula} beta.`,'AlphaYbeta.');
     await page.waitForFunction(expected=>nativeProbe.source===expected,withoutInline);
     await page.keyboard.press(mod+'+z');
     await page.waitForFunction(expected=>nativeProbe.source===expected,inlineDoc.toString().replace('beta.','Ybeta.'));
