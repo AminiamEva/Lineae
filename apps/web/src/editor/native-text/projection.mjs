@@ -429,7 +429,9 @@ export function proseEditEndpoints(paragraph, from, to) {
   const end=runs.find(run=>contains(run,to));
   if(!start||!end||start.partIndex>=end.partIndex)return null;
   const between=paragraph.parts.slice(start.partIndex+1,end.partIndex);
-  if(!between.length||between.some(part=>part.kind!=='math'||part.from16<from||part.to16>to))return null;
+  if(!between.length||between.some(part=>!['math','reference','atom','break'].includes(part.kind)||
+    part.from16<from||part.to16>to))return null;
+  if((start.marks?.length||end.marks?.length)&&between.some(part=>part.kind!=='math'))return null;
   return {start,end};
 }
 

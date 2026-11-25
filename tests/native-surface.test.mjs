@@ -1046,7 +1046,10 @@ test('native prose remains editable on both sides of an exact footnote',()=>{
     assert.equal(patches.reduceRight((value,{from,to,insert})=>value.slice(0,from)+insert+value.slice(to),source),edit.source);
     assert.ok(edit.source.includes(note.source));
   }
-  assert.equal(textEdit(projection,{paragraph,from16:1,to16:paragraph.text.length,insert:'Changed'}),null);
+  const from16=3,to16=paragraph.text.indexOf('after')+2;
+  const replacement=textEdit(projection,{paragraph,from16,to16,insert:'T'});
+  assert.equal(replacement.source,source.replace('Before\\footnote{Comment.} after.','BefTter.'));
+  assert.equal(textEdit(projection,{paragraph,from16,to16:note.to16-1,insert:'T'}),null);
 });
 
 test('native prose targets both sides of explicit LaTeX line breaks and preserves the spelling',()=>{

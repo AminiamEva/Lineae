@@ -322,6 +322,17 @@ const server=createServer(async(req,res)=>{
       await page.waitForFunction(expected=>nativeProbe.source===expected,noteSource.replace('after.','Xafter.'));
       await page.keyboard.press(mod+'+z');
       await page.waitForFunction(expected=>nativeProbe.source===expected,noteSource);
+      await panel.getByText('Click text on the native page',{exact:false}).waitFor();
+      const noteBounds=await canvas.boundingBox();
+      await page.mouse.move(noteBounds.x+7150000*scale,noteBounds.y+9250000*scale);
+      await page.mouse.down();
+      await page.mouse.move(noteBounds.x+8150000*scale,noteBounds.y+9250000*scale,{steps:7});
+      await page.mouse.up();
+      await page.keyboard.type('T');
+      await page.waitForFunction(expected=>nativeProbe.source===expected,
+        noteSource.replace('Before\\footnote{Comment.} after.','BefTter.'));
+      await page.keyboard.press(mod+'+z');
+      await page.waitForFunction(expected=>nativeProbe.source===expected,noteSource);
       await page.locator('#native-tex-close').click();
       const tableSource='\\documentclass{article}\n\\begin{document}\n\\begin{tabular}{ll}\nOne  & Two \\\\\nThree & \n\\end{tabular}\n\\end{document}\n';
       await page.locator('input#file').setInputFiles({name:'table.tex',mimeType:'text/plain',buffer:Buffer.from(tableSource)});

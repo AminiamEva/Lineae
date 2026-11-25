@@ -2985,6 +2985,15 @@ function refreshNativeTextEnvironment(tr,position,sourceBlock,source,change){
   if(verified.attrs.environmentSource)tr.setNodeMarkup(position,undefined,verified.attrs);
   return true;
 }
+function dispatchVerifiedNativeProse(state,tr,source,draft,change,index){
+  const owner=projection?.blocks.find(block=>block.index===index&&block.count===1&&
+    change.from>=block.from&&change.to<=block.to);
+  if(!owner)return false;
+  const [updated,...rest]=importBlocks(draft.slice(owner.from,owner.to+draft.length-source.length));
+  if(rest.length||updated?.type!=='paragraph'||!state.schema.nodeFromJSON(updated).eq(tr.doc.child(index)))return false;
+  const projected=sourceProjection(draft,tr.doc.toJSON(),{fragment:projectFileKind==='tex'});
+  return Boolean(projected&&dispatchNativeParagraphChange(state,tr,source,draft,change,projected));
+}
 function insertNativeMarkedText(paragraph,patch,target,marks){
   const {state}=editor,{range,composition,project,file}=target;
   const node=editor.schema.text(patch.insert,marks),insert=serialize(node.toJSON());
@@ -2999,12 +3008,7 @@ function insertNativeMarkedText(paragraph,patch,target,marks){
     next.from16<=offset&&next.runs.some(run=>next.from16+run.from16<=offset&&next.from16+run.to16>=offset));
   if(!candidate)return null;
   if(composition)return dispatchNativeProjectChange(state,tr,project,new Map([[file.id,draft]]))?{source:draft,offset,path}:null;
-  const owner=projection?.blocks.find(block=>block.index===range.match.index&&block.count===1&&from>=block.from&&from<=block.to);
-  if(!owner)return null;
-  const [updated,...rest]=importBlocks(draft.slice(owner.from,owner.to+insert.length));
-  if(rest.length||updated?.type!=='paragraph'||!editor.schema.nodeFromJSON(updated).eq(tr.doc.child(owner.index)))return null;
-  const projected=sourceProjection(draft,tr.doc.toJSON(),{fragment});
-  return projected&&dispatchNativeParagraphChange(state,tr,source,draft,{from,to:from,insert},projected)?{source:draft,offset,path}:null;
+  return dispatchVerifiedNativeProse(state,tr,source,draft,{from,to:from,insert},range.match.index)?{source:draft,offset,path}:null;
 }
 function runNativeTextStructure(command,...args){
   const started=performance.now();
@@ -3846,18 +3850,14 @@ nativeTexPreview=installNativeTexPreview({host:footer,before:modes,primary:nativ
     if(end>start)tr.delete(start,end);
     if(patch.insert)tr.insert(start,editor.schema.text(patch.insert,marks));
     tr.setSelection(TextSelection.create(tr.doc,start+patch.insert.length));
-    if(paragraph.wrapped&&!paragraph.container&&!paragraph.tableCell&&!paragraph.heading){
+    const inlineBoundary=endpoints.start!==endpoints.end&&paragraph.parts
+      .slice(endpoints.start.partIndex+1,endpoints.end.partIndex).some(part=>part.kind!=='math');
+    if((paragraph.wrapped||inlineBoundary)&&!paragraph.container&&!paragraph.tableCell&&!paragraph.heading){
       const {state}=editor,{source}=paragraph;
       const change={from:paragraph.from16+patch.from,to:paragraph.from16+patch.to,insert:patch.latex??patch.insert};
       const draft=source.slice(0,change.from)+change.insert+source.slice(change.to);
       if(composition)return dispatchNativeProjectChange(state,tr,project,new Map([[file.id,draft]]));
-      const owner=projection?.blocks.find(block=>block.index===match.index&&block.count===1&&
-        change.from>=block.from&&change.to<=block.to);
-      if(!owner)return false;
-      const [updated,...rest]=importBlocks(draft.slice(owner.from,owner.to+draft.length-source.length));
-      if(updated?.type!=='paragraph'||rest.length||!state.schema.nodeFromJSON(updated).eq(tr.doc.child(match.index)))return false;
-      const projected=sourceProjection(draft,tr.doc.toJSON(),{fragment:projectFileKind==='tex'});
-      return Boolean(projected&&dispatchNativeParagraphChange(state,tr,source,draft,change,projected));
+      return dispatchVerifiedNativeProse(state,tr,source,draft,change,match.index);
     }
     if(composition){
       const from=paragraph.from16+patch.from,to=paragraph.from16+patch.to;
