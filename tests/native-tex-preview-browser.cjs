@@ -11,7 +11,7 @@ const projectMainWithImage=projectMain.replace('\\begin{document}','\\usepackage
   .replace('\\end{document}','\\begin{figure}[ht]\n\\centering\n\\includegraphics[width=18pt]{plot.png}\n\\end{figure}\n\\end{document}');
 const projectChapter='Original chapter.\n\n\\[\\frac{z}{}\\]\n';
 async function openMockProject(page,raster=false,main=raster?projectMainWithImage:projectMain) {
-  await page.evaluate(async({main,child,raster})=>{
+  const name=await page.evaluate(async({main,child,raster})=>{
     const root=await navigator.storage.getDirectory();
     const folder=await root.getDirectoryHandle('lua-'+crypto.randomUUID(),{create:true});
     const put=async(dir,name,bytes)=>{
@@ -32,10 +32,12 @@ async function openMockProject(page,raster=false,main=raster?projectMainWithImag
       nativeProbe.raster=true;
     }
     window.showDirectoryPicker=async()=>folder;
+    return folder.name;
   },{main,child:projectChapter,raster});
   if(!page.listenerCount('dialog'))page.on('dialog',dialog=>dialog.accept());
   await revealToolbar(page);await page.locator('[data-group=files]').click();
   await page.locator('#project-open').click();
+  await page.locator('#project-explorer').getByText(name,{exact:true}).waitFor();
   await page.locator('.project-file[aria-current=true]').waitFor({state:'attached'});
 }
 

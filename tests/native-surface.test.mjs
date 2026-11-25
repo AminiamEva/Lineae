@@ -63,6 +63,20 @@ test('native completion inserts the exact case and keeps subsequent input separa
   assert.equal(typed.selection.head16,typed.source.indexOf('x')+1);
 });
 
+test('native deletion removes an operator with empty slots and retains filled limits',()=>{
+  const erase=source=>{
+    const math=projectMath(source);
+    const symbol=math.slots.find(slot=>slot.role==='nucleus'&&slot.raw==='\\int');
+    return applySlotEdit(math,{slotId:symbol.id,from16:0,to16:symbol.raw.length,insert:''});
+  };
+  const withEmptySlots='x+\\int_{}^{}{}';
+  const empty=erase(withEmptySlots);
+  assert.equal(empty.source,'x+');
+  assert.deepEqual(empty.patch,{from:2,to:withEmptySlots.length,insert:''});
+  assert.throws(()=>erase('x+\\int_{0}^{}{}'),/structural TeX/);
+  assert.equal(erase('x+\\int_{}^{}{g}').source,'x+{g}');
+});
+
 test('a native caret stops at real formula boundaries and edits exactly one slot', () => {
   const {projection, denominator, numerator, token} = setup();
   const surface = createMathSurface({resolve: endpoint => nativeTarget(projection, endpoint)});

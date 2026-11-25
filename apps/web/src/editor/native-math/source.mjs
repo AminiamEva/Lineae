@@ -559,7 +559,16 @@ function editSlot(snapshot, {slotId, from16, to16, insert}, structure) {
     const control=state.tree.protectedRanges.find(range=>range.kind==='command'&&range.to16===from);
     if(control&&symbols.has(snapshot.source.slice(control.from16,from)))insert=' '+insert;
   }
+  const symbol=!structure&&!insert&&slot.role==='nucleus'&&from===slot.from16&&to===slot.to16&&symbols.has(slot.raw)
+    ?snapshot.atoms.find(atom=>atom.id===slot.ownerId):null;
+  const removeSymbol=symbol&&snapshot.slots.every(candidate=>candidate.ownerId!==symbol.id||
+    candidate.role==='nucleus'||!candidate.raw.trim());
+  if(removeSymbol){
+    to=symbol.to16;
+    if(largeOperators.includes(slot.raw.slice(1))&&snapshot.source.startsWith('{}',to))to+=2;
+  }
   for (const range of state.tree.protectedRanges) {
+    if(removeSymbol&&range.from16>=from&&range.to16<=to)continue;
     if ((from < range.to16 && to > range.from16) ||
         (from === to && from > range.from16 && from < range.to16) ||
         (range.kind === 'comment' && from === range.to16)) {
@@ -572,6 +581,7 @@ function editSlot(snapshot, {slotId, from16, to16, insert}, structure) {
   for (const part of segmenter.segment(source)) newBoundaries.add(part.index);
   if (!newBoundaries.has(cursor)) throw new RangeError('Selection would split a grapheme');
   for (const arg of state.tree.singleArguments) {
+    if(removeSymbol&&arg.from16>=from&&arg.to16<=to)continue;
     if (from <= arg.to16 && to >= arg.from16) {
       // Check the original single-argument field, even when editing via an
       // ancestor slot. Inserting "ab" into x^a must not silently escape ^.
