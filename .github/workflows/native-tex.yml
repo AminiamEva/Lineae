@@ -11,6 +11,10 @@ on:
         description: Also measure synthetic 10, 100 and 300 page documents
         type: boolean
         default: false
+      windows_input_probe:
+        description: Keep the unbundled Windows executable for physical input checks
+        type: boolean
+        default: false
   workflow_call:
 
 permissions:
@@ -171,3 +175,11 @@ jobs:
             !artifacts/native-tex/**/build/
           if-no-files-found: warn
           retention-days: 30
+      - name: Preserve the unbundled Windows input probe
+        if: ${{ runner.os == 'Windows' && inputs.windows_input_probe }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-windows-input-probe-${{ github.sha }}
+          path: apps/desktop/src-tauri/target/debug/lineae.exe
+          if-no-files-found: error
+          retention-days: 3
