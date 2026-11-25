@@ -29,7 +29,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: native-tex-${{ github.ref }}-${{ inputs.browser_only && 'browser' || 'engine' }}
+  group: native-tex-${{ github.ref }}-${{ inputs.browser_only && 'browser' || (inputs.warm_repetitions > 0 && 'engine' || 'verification') }}
   cancel-in-progress: false
 
 jobs:
