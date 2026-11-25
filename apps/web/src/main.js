@@ -1980,13 +1980,14 @@ function closeCommands(restoreFocus = false) {
     else editor.view.focus();
   }
 }
+function commandAnchor(field){
+  if(!field)return editor.view.coordsAtPos(editor.state.selection.from);
+  return (field.shadowRoot?.querySelector('.ML__caret')??field).getBoundingClientRect();
+}
 function showCommands(field = null, native = false) {
   completionField = field;
   completionNative = native;
-  if (field) {
-    const caret = field.shadowRoot?.querySelector('.ML__caret');
-    completionAnchor = (caret ?? field).getBoundingClientRect();
-  } else completionAnchor = editor.view.coordsAtPos(editor.state.selection.from);
+  completionAnchor=commandAnchor(field);
   commands.hidden = false;
   fadeIn(commands, { prefersReducedMotion: prefersReducedMotion() });
   filter.value = '';
@@ -2177,13 +2178,12 @@ function runMathShortcut(command, field, event) {
 document.addEventListener('pointerdown', event => { if (!commands.contains(event.target)) closeCommands(); }, true);
 function commandViewportChanged(event){
   if(commands.hidden||event.target instanceof Node&&commands.contains(event.target))return;
-  if(completionNative&&completionField?.isConnected){
-    requestAnimationFrame(()=>{
-      if(commands.hidden||!completionNative||!completionField?.isConnected)return;
-      completionAnchor=completionField.getBoundingClientRect();
-      positionCommands();
-    });
-  }else closeCommands();
+  requestAnimationFrame(()=>{
+    if(commands.hidden)return;
+    if(completionField&&!completionField.isConnected){closeCommands();return;}
+    completionAnchor=commandAnchor(completionField);
+    positionCommands();
+  });
 }
 document.addEventListener('scroll',commandViewportChanged,true);
 window.addEventListener('resize',commandViewportChanged);

@@ -207,9 +207,14 @@ const server=createServer(async(req,res)=>{
       await page.waitForFunction(expected=>nativeProbe.source===expected,tableSource);
       await page.waitForFunction(count=>nativeProbe.calls.filter(call=>call.command==='native_tex_observe_formula').length>count,tableObservations);
       await panel.getByText('Click text on the native page',{exact:false}).waitFor();
-      await panel.locator('[data-native-page="1"] canvas').click({position:{x:6500000*scale,y:10500000*scale}});
+      await panel.locator('[data-native-page="1"] canvas').click({position:{x:6550000*scale,y:9250000*scale}});
+      for(let index=0;index<3;index++)await page.keyboard.press('Tab');
       await page.keyboard.type('Z');
       await page.waitForFunction(expected=>nativeProbe.source===expected,tableSource.replace('Three & ','Three & Z'));
+      await panel.getByText('Click text on the native page',{exact:false}).waitFor();
+      await page.keyboard.press('Shift+Tab');
+      await page.keyboard.type('Q');
+      await page.waitForFunction(expected=>nativeProbe.source===expected,tableSource.replace('Three & ','QThree & Z'));
       await panel.getByText('Click text on the native page',{exact:false}).waitFor();
       await canvas.click({position:{x:6550000*scale,y:9250000*scale}});
       await page.keyboard.press(mod+'+e');await page.keyboard.press('Shift+r');

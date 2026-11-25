@@ -402,6 +402,14 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
       history?.('redo');
       return;
     }
+    if(event.key==='Tab'&&!mod&&!event.altKey&&surface.caret?.paragraph?.tableCell){
+      event.preventDefault();
+      if(current()&&observation&&!pendingEdit&&nativeDocument.moveTableCell(event.shiftKey)){
+        paintSurfaceSelection(true);
+        positionInput(true);
+      }
+      return;
+    }
     if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
       event.preventDefault();
       if (!pendingEdit&&nativeDocument.move(event.key==='ArrowLeft'?-1:1,event.shiftKey)) {

@@ -40,7 +40,8 @@ export function projectDocumentFormulas(source,{fragment=false,firstTag=1,filePa
     const close=environmentEnd(body,token.index,table);
     if(!close)return [];
     return (tableCellRanges(body.slice(token.index,close.end))??[]).map(cell=>
-      [token.index+cell.offset,token.index+cell.offset+cell.text.length]);
+      [token.index+cell.offset,{end:token.index+cell.offset+cell.text.length,
+        from16:doc.start.length+token.index,row:cell.row,column:cell.column}]);
   }));
   const nested=new Map(tokens.filter(token=>token.kind==='inlineMath').map(token=>[token.index,token]));
   const markedMath=new Set();
@@ -53,7 +54,7 @@ export function projectDocumentFormulas(source,{fragment=false,firstTag=1,filePa
     blockStart+=block.length;
   }
   const spans=tokens.flatMap(token=>{
-    if(token.kind==='inlineMath'&&(tableCells.get(token.index)===token.end||markedMath.has(token.index)))return [token];
+    if(token.kind==='inlineMath'&&(tableCells.get(token.index)?.end===token.end||markedMath.has(token.index)))return [token];
     if(!token.topLevel)return [];
     if(['displayMath','inlineMath'].includes(token.kind))return [token];
     const name=token.kind==='begin'&&/^\\begin\{((?:equation|align|gather)\*?)\}$/.exec(token.value)?.[1];
@@ -77,6 +78,8 @@ export function projectDocumentFormulas(source,{fragment=false,firstTag=1,filePa
     const formula={source,from16,to16,math,ordinal,kind:span.kind,count:counts[span.kind],filePath,
       outerFrom16:doc.start.length+span.index,outerTo16:doc.start.length+span.end,
       projectionFrom16:projection.length+from16-cursor};
+    const cell=tableCells.get(span.index);
+    if(cell?.end===span.end)formula.tableCell={from16:cell.from16,row:cell.row,column:cell.column};
     for(const atom of math.atoms)owners.set(atom.tag,{formula,atom});
     formulas.push(formula);
     firstTag=math.nextTag;

@@ -6,6 +6,7 @@ import {textEdit} from '../native-text/projection.mjs';
 const sameOwner=(left,right)=>Boolean(left&&right&&left.kind===right.kind&&
   (left.kind==='math'?sameFormula(left,right):sameParagraph(left,right)));
 const fileOf=stop=>(stop.formula??stop.paragraph).filePath;
+const tableCellOf=stop=>(stop?.paragraph??stop?.formula)?.tableCell;
 
 // Text and math contribute geometry and edit operations. The document session
 // owns one selection and one pending caret address for the visible revision.
@@ -74,6 +75,22 @@ export function createNativeDocumentSession(resolve) {
         :stop.kind==='text'&&canSelect(caret,stop));
       preferredX=null;
       return stops.length>0&&selection.selectTargets(stops[0],stops.at(-1));
+    },
+    moveTableCell(backward){
+      const caret=selection.caret,cell=tableCellOf(caret);
+      if(!cell)return false;
+      const cells=new Map();
+      for(const stop of selection.stops){
+        const target=tableCellOf(stop);
+        if(target?.from16!==cell.from16||fileOf(stop)!==fileOf(caret))continue;
+        const key=`${target.row}/${target.column}`;
+        if(!cells.has(key))cells.set(key,stop);
+      }
+      const names=[...cells.keys()],index=names.indexOf(`${cell.row}/${cell.column}`);
+      const next=cells.get(names[index+(backward?-1:1)]);
+      if(!next)return false;
+      preferredX=null;
+      return selection.selectTargets(next,next);
     },
     proseRanges(anchor,head){
       if(anchor?.kind!=='text'||head?.kind!=='text'||!canSelect(anchor,head)||

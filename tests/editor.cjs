@@ -549,6 +549,7 @@ async function verifySelectionGeometry(page, paper, importSource) {
       'Completion appears below the text entry position: '+JSON.stringify({initialBounds,caretBounds}));
     for(let index=0;index<16;index++) await page.keyboard.press('ArrowDown');
     assert.equal(await page.evaluate(()=>window.scrollY),initialScroll);
+    await page.evaluate(()=>document.querySelector('.document-page').dispatchEvent(new Event('scroll')));
     await page.locator('.command-menu input').fill('sqrt');
     assert.deepEqual(await completion.boundingBox(),initialBounds,'Filtering must not move or resize completion');
     await page.keyboard.press('Enter');
