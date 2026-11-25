@@ -1497,7 +1497,7 @@ function renderMeta() {
   metaDate.dataset.zhPlaceholder='日期';metaDate.dataset.enPlaceholder='Date';metaDate.dataset.placeholder=t('日期','Date');
 }
 renderMeta();
-const nativeOnlyAcceptance=Boolean(window.__TAURI_INTERNALS__) &&
+const nativeOnlyAcceptance=Boolean(window.__TAURI__?.core?.invoke) &&
   new URLSearchParams(location.search).get('native-only-acceptance')==='1';
 if(!nativeOnlyAcceptance)typesetPagination=installTypesetPagination(documentPage,paper,metaBar,editor);
 typesetPagination?.setTableContinuation(config.value.interface.continuedTables);
@@ -2655,17 +2655,17 @@ nativeTexPreview=installNativeTexPreview({host:footer,before:modes,
     if(projectExplorer?.active||projectDocument.composition)return false;
     if((sourceView.hidden?source():sourceView.value)!==formula.source)return false;
     if(!text||text===formula.math.source)return false;
-    let position=-1;
+    const type=formula.kind==='displayMath'?'mathBlock':'math';
+    const positions=[];
     editor.state.doc.descendants((node,pos)=>{
-      if(position>=0)return false;
-      if(node.type.name===(formula.kind==='displayMath'?'mathBlock':'math')&&
-          node.attrs.latex===formula.math.source){position=pos;return false;}
+      if(node.type.name===type)positions.push(pos);
     });
-    if(position<0)return false;
-    const node=editor.state.doc.nodeAt(position);
-    if(!node)return false;
+    if(positions.length!==formula.count)return false;
+    const position=positions[formula.ordinal];
+    const node=Number.isInteger(position)?editor.state.doc.nodeAt(position):null;
+    if(node?.attrs.latex!==formula.math.source)return false;
     editor.view.dispatch(editor.state.tr.setNodeMarkup(position,undefined,{...node.attrs,latex:text}));
-    return true;
+    return editor.state.doc.nodeAt(position)?.attrs.latex===text;
   },
   commitText:({paragraph,patch,text})=>{
     if(projectExplorer?.active||projectDocument.composition)return false;
@@ -2694,8 +2694,9 @@ nativeTexPreview=installNativeTexPreview({host:footer,before:modes,
     if(end>start)tr.delete(start,end);
     if(patch.insert)tr.insertText(patch.insert,start);
     tr.setSelection(TextSelection.create(tr.doc,start+patch.insert.length));
+    const before=editor.state.doc;
     editor.view.dispatch(tr);
-    return true;
+    return editor.state.doc!==before;
   },
   history:command=>{command==='redo'?redoDocument():undoDocument();},
 });

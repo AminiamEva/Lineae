@@ -43,7 +43,6 @@ const server=createServer(async(req,res)=>{
     const mod=process.platform==='darwin'?'Meta':'Control';
     page.on('pageerror',error=>errors.push(error.message));
     await page.addInitScript(installMockNativeTex);
-    await page.goto('http://127.0.0.1:'+server.address().port,{waitUntil:'networkidle'});
 
     if(process.env.LINEAE_NATIVE_ONLY==='1'){
       await page.route('**/vendor/mathlive/**',route=>route.abort());

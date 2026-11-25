@@ -1,3 +1,4 @@
+import {createSelectionModel} from './selection-model.mjs';
 import {applySlotEdit} from '../native-math/source.mjs';
 
 // Native surface geometry adapter. Display-list coordinates are page space;
@@ -38,90 +39,25 @@ const sameFormula = (left, right) =>
   left?.formula.filePath === right?.formula.filePath;
 
 export function createMathSurface({resolve}) {
-  let stops = [], index = -1, anchor = -1, pendingOffset = null, lastEdit = null;
-
-  const formulaStops = () => index < 0 ? [] :
-    stops.filter(stop => sameFormula(stop, stops[index]));
-
-  function select(offset) {
-    index = stops.findIndex(stop => stop.docOffset === offset);
-    if (index < 0) index = 0;
-    anchor = index;
-    return stops[index] ?? null;
-  }
-
-  return {
-    get stops() { return stops; },
-    get index() { return index; },
-    get caret() { return stops[index] ?? null; },
-    get anchor() { return stops[anchor] ?? null; },
-    get pendingOffset() { return pendingOffset; },
-    get lastEdit() { return lastEdit; },
-    setObservation(observed) {
-      stops = stopsFor(observed, resolve);
-      if (!stops.length) { index = anchor = -1; return false; }
-      if (pendingOffset !== null) {
-        const offset = pendingOffset;
-        pendingOffset = null;
-        const exact = stops.findIndex(stop => stop.docOffset === offset);
-        if (exact >= 0) { index = anchor = exact; return true; }
-      }
-      const current = stops[index];
-      if (!current) { index = anchor = 0; return true; }
-      const moved = stops.findIndex(stop => stop.docOffset === current.docOffset);
-      index = moved >= 0 ? moved : Math.min(index, stops.length - 1);
-      anchor = index;
-      return true;
-    },
-    nearest(page, x, y) {
-      let best = -1, distance = Infinity;
-      for (let i = 0; i < stops.length; i++) {
-        const stop = stops[i];
-        if (stop.page !== page) continue;
-        const height = Math.max(1, stop.bottom - stop.top);
-        const center = (stop.top + stop.bottom) / 2;
-        const value = (stop.x - x) ** 2 + ((center - y) / height) ** 2;
-        if (value < distance) { distance = value; best = i; }
-      }
-      if (best < 0) return null;
-      index = anchor = best;
-      return stops[best];
-    },
-    move(delta, extend = false) {
-      const own = stops.filter(stop => sameFormula(stop, stops[index]));
-      if (!own.length) return null;
-      const position = own.findIndex(stop => stop === stops[index]);
-      const next = Math.max(0, Math.min(own.length - 1, position + delta));
-      index = stops.indexOf(own[next]);
-      if (!extend) anchor = index;
-      return stops[index];
-    },
-    selectBetween(fromOffset, toOffset) {
-      const from = stops.findIndex(stop => stop.docOffset === fromOffset);
-      const to = stops.findIndex(stop => stop.docOffset === toOffset);
-      if (from < 0 || to < 0) return false;
-      anchor = from; index = to;
-      return true;
-    },
+  const selection = createSelectionModel(sameFormula);
+  return Object.assign(selection, {
+    setObservation(observed) { return selection.setStops(stopsFor(observed, resolve)); },
     insert(text) {
-      const stop = stops[index];
+      const stop = selection.caret;
       if (!stop || typeof text !== 'string' || !text) return null;
-      const start = Math.min(anchor, index), end = Math.max(anchor, index);
-      const from = stops[start], to = stops[end];
+      const [from, to] = selection.range;
       if (!sameFormula(from, stop) || from.slot.id !== to.slot.id) return null;
       try {
         const result = applySlotEdit(stop.formula.math, {
           slotId: stop.slot.id, from16: from.local, to16: to.local, insert: text,
         });
-        pendingOffset = from.docOffset + text.length;
-        lastEdit = {formula: stop.formula, patch: result.patch, text: result.source};
-        return lastEdit;
+        return selection.record({formula: stop.formula, patch: result.patch, text: result.source}, from.docOffset + text.length);
       } catch { return null; }
     },
     erase(backward = true) {
-      const stop = stops[index];
+      const stop = selection.caret;
       if (!stop) return null;
-      const own = formulaStops();
+      const own = selection.stops.filter(candidate => sameFormula(candidate, stop));
       const position = own.indexOf(stop);
       const neighbor = own[position + (backward ? -1 : 1)];
       if (!neighbor || neighbor.slot.id !== stop.slot.id) return null;
@@ -132,14 +68,11 @@ export function createMathSurface({resolve}) {
         const result = applySlotEdit(stop.formula.math, {
           slotId: stop.slot.id, from16: from, to16: to, insert: '',
         });
-        pendingOffset = stop.formula.from16 + stop.slot.from16 + from;
-        lastEdit = {formula: stop.formula, patch: result.patch, text: result.source};
-        return lastEdit;
+        return selection.record({formula: stop.formula, patch: result.patch, text: result.source}, stop.formula.from16 + stop.slot.from16 + from);
       } catch { return null; }
     },
-    clearPending() { pendingOffset = null; lastEdit = null; },
-    reset() { stops = []; index = anchor = -1; pendingOffset = null; lastEdit = null; },
-  };
+
+  });
 }
 
 export function surfaceCaretRect(stop, scale, pageLeft, pageTop) {

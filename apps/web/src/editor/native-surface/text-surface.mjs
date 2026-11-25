@@ -1,3 +1,4 @@
+import {createSelectionModel} from './selection-model.mjs';
 import {textTarget, textEdit} from '../native-text/projection.mjs';
 
 const segmenter = new Intl.Segmenter('und', {granularity:'grapheme'});
@@ -42,79 +43,27 @@ const boundariesOf = (run, fallback) => {
 
 export function createTextSurface({projection}) {
   let sourceProjection = projection;
-  let stops = [], index = -1, anchor = -1, pendingOffset = null, lastEdit = null;
-
-  const own = () => index < 0 ? [] :
-    stops.filter(stop => sameParagraph(stop, stops[index]));
-
-  return {
-    get stops() { return stops; },
-    get caret() { return stops[index] ?? null; },
-    get anchor() { return stops[anchor] ?? null; },
-    get pendingOffset() { return pendingOffset; },
-    get lastEdit() { return lastEdit; },
+  const selection = createSelectionModel(sameParagraph);
+  return Object.assign(selection, {
     setProjection(next) { if (next) sourceProjection = next; },
-    setObservation(observed) {
-      stops = stopsFor(observed, sourceProjection);
-      if (!stops.length) { index = anchor = -1; return false; }
-      if (pendingOffset !== null) {
-        const exact = stops.findIndex(stop => stop.docOffset === pendingOffset);
-        pendingOffset = null;
-        if (exact >= 0) { index = anchor = exact; return true; }
-      }
-      const current = stops[index];
-      index = current ? Math.max(0, stops.findIndex(stop => stop.docOffset === current.docOffset)) : 0;
-      anchor = index;
-      return true;
-    },
-    nearest(page, x, y) {
-      let best = -1, distance = Infinity;
-      for (let i = 0; i < stops.length; i++) {
-        const stop = stops[i];
-        if (stop.page !== page) continue;
-        const height = Math.max(1, stop.bottom - stop.top);
-        const value = (stop.x - x) ** 2 + (((stop.top + stop.bottom) / 2 - y) / height) ** 2;
-        if (value < distance) { distance = value; best = i; }
-      }
-      if (best < 0) return null;
-      index = anchor = best;
-      return stops[best];
-    },
-    move(delta, extend = false) {
-      const list = own();
-      if (!list.length) return null;
-      const position = list.indexOf(stops[index]);
-      const next = Math.max(0, Math.min(list.length - 1, position + delta));
-      index = stops.indexOf(list[next]);
-      if (!extend) anchor = index;
-      return stops[index];
-    },
-    selectBetween(fromOffset, toOffset) {
-      const from = stops.findIndex(stop => stop.docOffset === fromOffset);
-      const to = stops.findIndex(stop => stop.docOffset === toOffset);
-      if (from < 0 || to < 0 || !sameParagraph(stops[from], stops[to])) return false;
-      anchor = from; index = to;
-      return true;
-    },
+    setObservation(observed) { return selection.setStops(stopsFor(observed, sourceProjection)); },
     insert(text) {
-      const stop = stops[index];
+      const stop = selection.caret;
       if (!stop || !text) return null;
-      const start = stops[Math.min(anchor, index)], end = stops[Math.max(anchor, index)];
+      const [start, end] = selection.range;
       if (!sameParagraph(start, stop) || !runFor(stop.paragraph, start.local, end.local)) return null;
       const result = textEdit(sourceProjection, {
         paragraph: stop.paragraph, from16: start.local, to16: end.local, insert: text,
       });
       if (!result) return null;
-      pendingOffset = stop.paragraph.from16 + result.selection;
-      lastEdit = {kind:'text', paragraph: stop.paragraph, ...result};
-      return lastEdit;
+      return selection.record({kind:'text', paragraph: stop.paragraph, ...result}, stop.paragraph.from16 + result.selection);
     },
     erase(backward = true) {
-      const stop = stops[index];
+      const stop = selection.caret;
       if (!stop) return null;
       let from, to;
-      if (anchor !== index) {
-        const start = stops[Math.min(anchor, index)], end = stops[Math.max(anchor, index)];
+      if (selection.anchor !== stop) {
+        const [start, end] = selection.range;
         from = Math.min(start.local, end.local);
         to = Math.max(start.local, end.local);
         if (!runFor(stop.paragraph, from, to)) return null;
@@ -135,11 +84,8 @@ export function createTextSurface({projection}) {
         paragraph: stop.paragraph, from16: from, to16: to, insert: '',
       });
       if (!result) return null;
-      pendingOffset = stop.paragraph.from16 + result.selection;
-      lastEdit = {kind:'text', paragraph: stop.paragraph, ...result};
-      return lastEdit;
+      return selection.record({kind:'text', paragraph: stop.paragraph, ...result}, stop.paragraph.from16 + result.selection);
     },
-    clearPending() { pendingOffset = null; lastEdit = null; },
-    reset() { stops = []; index = anchor = -1; pendingOffset = null; lastEdit = null; },
-  };
+
+  });
 }
