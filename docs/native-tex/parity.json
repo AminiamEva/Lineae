@@ -202,11 +202,11 @@
   ],
   "acceptance": {
     "fullSoftwareRun": {
-      "revision": "4d941cf01f15d3f953582cf9fe888a6d387409ca",
+      "revision": "e0b9245bf96b63ed14a6e529eac99a45f8bc0e6c",
       "status": "passed-on-windows-macos-ubuntu",
       "scope": "All three CI jobs passed the browser gates, real LuaLaTeX host tests, recorded page editing and the engine-off desktop WebView smoke. The same run preserved three unbundled executables for device input review.",
-      "evidence": "https://github.com/AminiamEva/Lineae/actions/runs/45684502595",
-      "priorEvidence": "https://github.com/AminiamEva/Lineae/actions/runs/45678406254"
+      "evidence": "https://github.com/AminiamEva/Lineae/actions/runs/45686311404",
+      "priorEvidence": "https://github.com/AminiamEva/Lineae/actions/runs/45684502595"
     },
     "nativeHost": {
       "status": "protocol-and-project-tests-passed",
@@ -227,7 +227,8 @@
         "https://github.com/AminiamEva/Lineae/actions/runs/45613386465",
         "https://github.com/AminiamEva/Lineae/actions/runs/45617906617",
         "https://github.com/AminiamEva/Lineae/actions/runs/45673715541",
-        "https://github.com/AminiamEva/Lineae/actions/runs/45677040987"
+        "https://github.com/AminiamEva/Lineae/actions/runs/45677040987",
+        "https://github.com/AminiamEva/Lineae/actions/runs/45685981178"
       ]
     },
     "desktopWebView": {
@@ -363,8 +364,8 @@
       "directEditingPending": ["codeBlock", "horizontalRule", "lipsum", "mathGlue", "multiColumn", "raw", "tableOfContents"]
     },
     "marks": {
-      "nativeTyping": ["bold", "italic", "underline", "code", "superscript", "subscript", "smallcaps"],
-      "verifiedSourceRuns": ["textCommand", "textStyle", "strike", "boxed", "circled"],
+      "nativeTyping": ["bold", "italic", "underline", "code", "superscript", "subscript", "smallcaps", "strike"],
+      "verifiedSourceRuns": ["textCommand", "textStyle", "boxed", "circled"],
       "pending": "Typing and changing style attributes inside formatted or structural runs, including package-backed variants."
     }
   },
