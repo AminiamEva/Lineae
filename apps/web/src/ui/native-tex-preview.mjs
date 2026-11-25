@@ -15,7 +15,7 @@ import {separateRepeatedOwners} from '../editor/native-surface/repeated-owners.m
 // Native LaTeX output is the primary page. The opt-in native input mode sends
 // supported keys, caret and IME through this surface into ProseMirror; the old
 // JS-formatted page and MathLive inputs stay available as the migration fallback.
-export function installNativeTexPreview({host,before,primary=false,documentZoom=100,isDocumentMode,splitHost,getSource,getSnapshot,isComposing,focusMathSlot,focusImage,listTikzDrawings,editTikzDrawing,openMeasuredDrawing,navigateReference,listSourceBlocks,openSourceBlock,continuationRegion,selectionRegions,foldedFiles,selectText,serializeTextSelection,commitMath,commitText,commitTextLines,commitInlinePaste,commitProjectRange,canStartText,commitInitialText,commitInitialMath,commitParagraphBreak,commitParagraphJoin,commitNewMath,commitAfterFormulaText,onEnvironmentChange,showTextCommands,history}) {
+export function installNativeTexPreview({host,before,primary=false,documentZoom=100,isDocumentMode,splitHost,getSource,getSnapshot,isComposing,focusMathSlot,focusImage,listTikzDrawings,editTikzDrawing,openMeasuredDrawing,navigateReference,listSourceBlocks,openSourceBlock,continuationRegion,selectionRegions,foldedFiles,selectText,serializeTextSelection,commitMath,commitText,commitTextLines,commitInlinePaste,commitProjectRange,canStartText,commitInitialText,commitInitialMath,commitParagraphBreak,commitParagraphJoin,commitHardBreak,commitNewMath,commitAfterFormulaText,onEnvironmentChange,showTextCommands,history}) {
   const invoke=window.__TAURI__?.core?.invoke;
   if(!invoke) return {refresh(){},documentChanged(){},relocalize(){}};
   const button=document.createElement('button');
@@ -249,6 +249,9 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
     switch(draft.kind){
       case 'paragraph':
         edit=commitParagraphBreak?.(draft.paragraph,draft.from,draft.to,action.insert);
+        break;
+      case 'hard-break':
+        edit=commitHardBreak?.(draft.first,draft.last,action.insert);
         break;
       case 'script':
         edit=surface.singleCharacterScript?.(draft.marker,action.insert);
@@ -560,7 +563,7 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
       input.blur();
       return;
     }
-    if(event.key==='Enter'){
+    if(event.key==='Enter'&&!mod&&!event.altKey){
       event.preventDefault();
       if(!current()||!observation||pendingEdit||draftInput)return;
       const [first,last]=surface.range;
@@ -1240,6 +1243,17 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
     },
     nativeParagraphs:()=>current()?observation?.projection.paragraphs:undefined,
     startFormula,
+    startHardBreak(){
+      if(!acceptsInput()||!current()||!observation||pendingEdit||draftInput)return false;
+      const [first,last]=nativeDocument.surface.range;
+      const edit=commitHardBreak?.(first,last,'');
+      if(edit?.awaitingText){
+        draftInput={kind:'hard-break',first,last};
+        targetStatus.textContent=t('在换行后继续输入','Type after the line break');
+        return true;
+      }
+      return edit?awaitSourcePosition(edit,performance.now()):false;
+    },
     inTableCell:()=>Boolean(nativeDocument.surface.caret?.paragraph?.tableCell),
     hasMathInput: event => event.target===input && nativeEditing && acceptsInput() && nativeDocument.surface.caret?.kind==='math',
     hasNativeMathFocus:()=>document.activeElement===input&&nativeEditing&&acceptsInput()&&nativeDocument.surface.caret?.kind==='math',

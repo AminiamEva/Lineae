@@ -2967,6 +2967,7 @@ function nativeParagraphFormattingActive(){
 }
 function runNativeTextCommand(command,context,event){
   if(command==='insertTable')return insertNativeTableFromProse();
+  if(command==='hardBreak')return nativeTexPreview.startHardBreak();
   if(command==='toggleContextMarker'){
     if(!nativeTexPreview.useTextSelection())return false;
     const target=nextContextMarker(editor.state.selection.$from);
@@ -3924,6 +3925,26 @@ nativeTexPreview=installNativeTexPreview({host:footer,before:modes,primary:nativ
     return true;
   },
   canStartText:canStartNativeText,
+  commitHardBreak:(first,last,text)=>{
+    if(first?.kind!=='text'||first.paragraph!==last?.paragraph)return null;
+    const {paragraph}=first,{source,filePath:path}=paragraph;
+    if(paragraph.heading||paragraph.tableCell||paragraph.container||paragraph.wrapped||
+      !paragraph.text.slice(0,first.local).trim()||/[\r\n]/.test(text))return null;
+    const target=nativeProsePosition(paragraph,first.local,last.local);
+    if(!target||target.range.endpoints.start!==target.range.endpoints.end||target.range.marks?.length)return null;
+    if(!text&&last.local===paragraph.text.length)return {awaitingText:true};
+    const {state}=editor,{range,composition,project,file}=target;
+    const eol=source.includes('\r\n')?'\r\n':'\n';
+    const next=state.schema.nodes.hardBreak.create();
+    const replacement=text?Fragment.fromArray([next,state.schema.text(text)]):next;
+    const tr=state.tr.replaceWith(range.from,range.to,replacement);
+    tr.setSelection(TextSelection.create(tr.doc,range.from+next.nodeSize+text.length));
+    const from=first.docOffset,to=last.docOffset,insert='\\\\'+eol+serialize({type:'text',text});
+    const draft=source.slice(0,from)+insert+source.slice(to);
+    const applied=composition?dispatchNativeProjectChange(state,tr,project,new Map([[file.id,draft]])):
+      dispatchVerifiedNativeProse(state,tr,source,draft,{from,to,insert},range.match.index);
+    return applied?{source:draft,offset:from+insert.length,path}:null;
+  },
   commitInitialMath:(text,display,numbering)=>{
     if(!canStartNativeText())return null;
     const prepared=newNativeMath(text,display,numbering);

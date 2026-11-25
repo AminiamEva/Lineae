@@ -1564,6 +1564,15 @@ const server=createServer(async(req,res)=>{
       await panel.getByText('Click text on the native page',{exact:false}).waitFor();
       await page.keyboard.press('Home');
       for(let index=0;index<5;index++)await page.keyboard.press('ArrowRight');
+      const softBreak=beforeBreak.replace('AlphaBeta','Alpha\\\\\nBeta');
+      await page.keyboard.press(mod+'+Enter');
+      await page.waitForFunction(expected=>nativeProbe.source===expected,softBreak);
+      assert.equal(await page.locator('.ProseMirror p br').count(),1);
+      await page.keyboard.press(mod+'+z');
+      await page.waitForFunction(expected=>nativeProbe.source===expected,beforeBreak);
+      await panel.getByText('Click text on the native page',{exact:false}).waitFor();
+      await page.keyboard.press('Home');
+      for(let index=0;index<5;index++)await page.keyboard.press('ArrowRight');
       const split=beforeBreak.replace('AlphaBeta','Alpha\n\nBeta');
       await page.keyboard.press('Enter');
       await page.waitForFunction(expected=>nativeProbe.source.replace(/\r\n/g,'\n')===expected,split.replace(/\r\n/g,'\n'));
