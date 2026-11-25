@@ -1628,13 +1628,19 @@ mod tests {
             let mut messages = lock(&session.messages);
             loop {
                 messages.check().expect("real engine failed while waiting for geometry");
-                if let Some(event) = messages.events.iter().find(|event| {
-                    event["event"] == "LayoutUpdate"
-                        && event["versions"]["source_revision"].as_u64() == Some(revision)
-                        && event["compile"]["state"] == "Ok"
-                        && event["convergence"]["state"] == "Converged"
-                }) {
-                    return event.clone();
+                let mut pages = BTreeMap::new();
+                for event in messages.events.iter().filter(|event| event["event"] == "LayoutUpdate"
+                    && event["versions"]["source_revision"].as_u64() == Some(revision)) {
+                    for page in event["pages_changed"].as_array().into_iter().flatten() {
+                        if let Some(number) = page["page"].as_u64() { pages.insert(number, page.clone()); }
+                    }
+                    let total = event["pages_total"].as_u64().unwrap_or(0);
+                    if total > 0 && pages.keys().filter(|&&page| page<=total).copied().eq(1..=total)
+                        && event["compile"]["state"] == "Ok" && event["convergence"]["state"] == "Converged" {
+                        let mut frame = event.clone();
+                        frame["pages_changed"] = json!(pages.into_iter().filter_map(|(number,page)| (number<=total).then_some(page)).collect::<Vec<_>>());
+                        return frame;
+                    }
                 }
                 let remaining = deadline.saturating_duration_since(Instant::now());
                 assert!(!remaining.is_zero(), "no successful converged layout for revision {revision}");
@@ -1658,9 +1664,19 @@ mod tests {
             let target = observed.iter().filter_map(|page| page["dl"]["math_owners"]["fields"].as_array())
                 .flatten().find(|field| field["role"] == "den" && field["empty"] == true)
                 .expect("the real degraded page reports an empty denominator");
+            let drawing: Value = serde_json::from_slice(&std::fs::read(directory.join("degraded-drawing-probe.json")).unwrap()).unwrap();
+            let measured_projection = drawing["projection"].as_str().unwrap();
+            let measured = degraded.observe_formula(opened.source_revision, measured_projection, Vec::new())
+                .expect("observe the two exact corners of a standalone TikZ drawing");
+            for corner in ["top", "bottom"] {
+                assert!(measured.iter().any(|page| page["dl"]["math_owners"]["fields"].as_array().into_iter().flatten()
+                    .any(|field| field["owner"] == drawing["corners"][corner] && field["empty"] == true)),
+                    "the measured drawing must expose its {corner} corner");
+            }
             save_pdf_evidence("native-degraded.pdf", &pdf);
             std::fs::write(directory.join("native-degraded-pages.json"), serde_json::to_vec(&json!({
                 "raw": layout["pages_changed"], "observed": observed, "projection": projection,
+                "measuredObserved": measured, "measuredProjection": measured_projection, "drawingCorners": drawing["corners"],
                 "source": raw_source, "targetOwner": target["owner"],
             })).unwrap()).unwrap();
             degraded.terminate();

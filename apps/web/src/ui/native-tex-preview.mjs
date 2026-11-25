@@ -14,7 +14,7 @@ import {readDelimiterPair} from '../editor/delimiter-input.js';
 // Native LaTeX output is the primary page. The opt-in native input mode sends
 // supported keys, caret and IME through this surface into ProseMirror; the old
 // JS-formatted page and MathLive inputs stay available as the migration fallback.
-export function installNativeTexPreview({host,before,primary=false,documentZoom=100,isDocumentMode,splitHost,getSource,getSnapshot,isComposing,focusMathSlot,focusImage,listTikzDrawings,editTikzDrawing,listSourceBlocks,openSourceBlock,continuationRegion,selectionRegions,foldedFiles,selectText,serializeTextSelection,commitMath,commitText,commitTextLines,commitInlinePaste,commitProjectRange,canStartText,commitInitialText,commitInitialMath,commitParagraphBreak,commitParagraphJoin,commitNewMath,onEnvironmentChange,showTextCommands,history}) {
+export function installNativeTexPreview({host,before,primary=false,documentZoom=100,isDocumentMode,splitHost,getSource,getSnapshot,isComposing,focusMathSlot,focusImage,listTikzDrawings,editTikzDrawing,openMeasuredDrawing,listSourceBlocks,openSourceBlock,continuationRegion,selectionRegions,foldedFiles,selectText,serializeTextSelection,commitMath,commitText,commitTextLines,commitInlinePaste,commitProjectRange,canStartText,commitInitialText,commitInitialMath,commitParagraphBreak,commitParagraphJoin,commitNewMath,onEnvironmentChange,showTextCommands,history}) {
   const invoke=window.__TAURI__?.core?.invoke;
   if(!invoke) return {refresh(){},documentChanged(){},relocalize(){}};
   const button=document.createElement('button');
@@ -537,6 +537,10 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
     onImageHit:(path,revision)=>{
       if(acceptsInput()&&current()&&hasGeometry()&&revision===sourceRevision)focusImage?.(path);
     },
+    onDrawingHit:(drawing,stamp)=>{
+      if(acceptsInput()&&current()&&hasGeometry()&&observation?.stamp.sessionId===stamp.sessionId&&
+         observation.stamp.sourceRevision===stamp.sourceRevision)openMeasuredDrawing?.(drawing);
+    },
     proseRanges:(from,to)=>nativeDocument.proseRanges(resolveEndpoint(from),resolveEndpoint(to)),
     onMathHit:async(hit,stamp,origin,sameGesture)=>{
       if(!acceptsInput()||!current()||!hasGeometry()||!observation||
@@ -870,29 +874,41 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
     lastTarget={...stamp,signature};
     const pending=pendingEdit?.paragraph&&nativeDocument.surface.pendingOffset!==null
       ?{path:pendingEdit.paragraph.filePath,offset:nativeDocument.surface.pendingOffset}:undefined;
-    const projection=sentSnapshot?.files?.length
-      ?projectMixedSnapshot(sentSnapshot,previousProjection,pending)
-      :projectMixedDocument(sentSource,{previous:previousProjection??[],keepThrough:pending?.offset});
+    const project=measureDrawings=>sentSnapshot?.files?.length
+      ?projectMixedSnapshot(sentSnapshot,previousProjection,pending,{measureDrawings})
+      :projectMixedDocument(sentSource,{previous:previousProjection??[],keepThrough:pending?.offset,measureDrawings});
+    let projection=project(Boolean(openMeasuredDrawing));
     if(!projection||!projection.owners.size){
       targetStatus.textContent=primary&&canStartText?.()?'':t('当前文档没有可定位的公式或纯文本段落。','No supported formula or plain paragraph in this document snapshot.');
       return;
     }
-    const kind=projection.kind;
-    if(kind==='math'&&![...projection.owners.values()].some(({atom})=>
-      atom&&['frac','sqrt','token','cell'].includes(atom.kind))){
+    if(projection.kind==='math'&&![...projection.owners.values()].some(({atom,drawing})=>
+      drawing||atom&&['frac','sqrt','token','cell'].includes(atom.kind))){
       targetStatus.textContent=t('当前文档没有可定位的公式或纯文本段落。','No supported formula or plain paragraph in this document snapshot.');
       return;
     }
     const attempt=generation;
+    const currentStamp=()=>attempt===generation&&acceptsInput()&&stamp.sessionId===session&&stamp.sourceRevision===sourceRevision&&
+      sentSnapshot?.signature===signature&&wantedSnapshot?.signature===signature&&sentSource===projection?.source&&wantedSource===projection?.source;
+    async function observeProjection(){
+      const frames=await invoke('native_tex_observe_formula',{...stamp,projection:projection.projection,files:projection.files});
+      if(!currentStamp())return null;
+      if(!renderer.attachOwners(frames,stamp,projection.owners))throw new Error(t('标记版排版与当前页面不一致，未启用命中。','Projected geometry differs from the displayed page; targeting remains disabled.'));
+      return frames;
+    }
     targeting=attempt;observation=null;renderStatus();
     targetStatus.textContent=t('正在核对源码标记及实际排版…','Checking projected source against the visible layout…');
     try {
-      const observed=await invoke('native_tex_observe_formula',{...stamp,projection:projection.projection,
-        files:projection.files});
-      if(attempt!==generation||!acceptsInput()||stamp.sessionId!==session||stamp.sourceRevision!==sourceRevision||
-          sentSnapshot?.signature!==signature||wantedSnapshot?.signature!==signature||
-          sentSource!==projection.source||wantedSource!==projection.source)return;
-      if(!renderer.attachOwners(observed,stamp,projection.owners))throw new Error(t('标记版排版与当前页面不一致，未启用命中。','Projected geometry differs from the displayed page; targeting remains disabled.'));
+      let observed;
+      try {observed=await observeProjection();}
+      catch(failure){
+        if(!currentStamp()||![...projection.owners.values()].some(({drawing})=>drawing))throw failure;
+        projection=project(false);
+        if(!projection?.owners.size)throw failure;
+        observed=await observeProjection();
+      }
+      if(!observed)return;
+      const kind=projection.kind;
       previousProjection=projection;
       observation={kind,projection,stamp,observed};
       if(nativeEditing){

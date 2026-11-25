@@ -1504,6 +1504,14 @@ const server=createServer(async(req,res)=>{
       const target=nativePage.dl.math_owners.fields.find(field=>field.owner===evidence.targetOwner&&field.role==='den');
       const zoom=Number(await page.locator('footer.document-status input[type=range]').inputValue());
       const [x,y]=target.bbox,nativeScale=zoom/100*(96/72)/65781.76;
+      const corners=evidence.measuredObserved.flatMap(page=>page.dl.math_owners?.fields??[]);
+      const top=corners.find(field=>field.owner===evidence.drawingCorners.top).bbox;
+      const bottom=corners.find(field=>field.owner===evidence.drawingCorners.bottom).bbox;
+      await page.locator(`[data-pdf-page="${nativePage.page}"] canvas`).click({position:{
+        x:(top[0]+bottom[0])/2*nativeScale,y:(top[1]+bottom[1])/2*nativeScale,
+      }});
+      assert.match(await page.locator('.tikz-studio-code').inputValue(),/\\draw \(0,0\) -- \(1,1\)/);
+      await page.locator('.tikz-studio-close').click();
       await page.locator(`[data-pdf-page="${nativePage.page}"] canvas`).click({position:{x:x*nativeScale,y:y*nativeScale}});
       await page.waitForFunction(()=>document.activeElement?.id==='native-tex-input');
       await page.keyboard.type('b');

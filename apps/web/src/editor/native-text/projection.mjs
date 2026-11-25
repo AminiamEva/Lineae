@@ -7,6 +7,7 @@ import {sourceStructure} from '../../../latex/source-structure.mjs';
 import {decodeProse,markedRuns} from './prose-runs.mjs';
 import {projectDocumentFormulas} from '../native-math/document.mjs';
 import {textPatch} from '../source-boundaries.mjs';
+import {instrumentDrawing} from './drawing-projection.mjs';
 
 const segmenter = new Intl.Segmenter('und', {granularity:'grapheme'});
 const unsupported = /[\\{}$%&#_^~]/;
@@ -197,7 +198,7 @@ function includeSeparatedBlocks(doc){
 }
 
 // Prose-only documents: every plain paragraph becomes a native target.
-export function projectTextDocument(source, {firstOwner=1, attribute=65000, fragment=false, filePath,keepThrough=0,previous,splitIncludes=false}={}) {
+export function projectTextDocument(source, {firstOwner=1, attribute=65000, fragment=false, filePath,keepThrough=0,previous,splitIncludes=false,measureDrawings=false}={}) {
   const doc = parseDocument(source,{fragment});
   if (!doc) return null;
   const body = doc.blocks.join('');
@@ -210,17 +211,19 @@ export function projectTextDocument(source, {firstOwner=1, attribute=65000, frag
     bodyOffset += block.length;
     if (!block.trim()) continue;
     const blockFrom=doc.start.length+blockStart;
-    const result=instrumentTextBlock(block,source,blockFrom,next,attribute,filePath,keepThrough,reuse);
+    const result=(measureDrawings&&instrumentDrawing(block,source,blockFrom,next,attribute,filePath))||
+      instrumentTextBlock(block,source,blockFrom,next,attribute,filePath,keepThrough,reuse);
     if(!result)continue;
     output+=source.slice(cursor,blockFrom)+result.projection;
     cursor=blockFrom+block.length;
     next=result.nextTag;
+    for(const [tag,entry] of result.owners??[])owners.set(tag,entry);
     for(const paragraph of result.paragraphs){
       paragraphs.push(paragraph);
       for(const glyph of paragraph.glyphs)owners.set(glyph.tag,{paragraph,glyph});
     }
   }
-  if (!paragraphs.length) return null;
+  if (!owners.size) return null;
   return {source, projection:output + source.slice(cursor), paragraphs, owners, nextTag:next, kind:'text', formulas:[]};
 }
 
@@ -229,14 +232,14 @@ export function projectTextDocument(source, {firstOwner=1, attribute=65000, frag
 // plain runs beside inline math are tagged individually. Runs never cross
 // math; a paragraph records the exact text/math child sequence so the editor
 // can map a run patch to one ProseMirror text node.
-export function projectMixedDocument(source, {previous=[], attribute=65000, fragment=false, firstOwner=1, filePath,keepThrough=0,splitIncludes=false}={}) {
+export function projectMixedDocument(source, {previous=[], attribute=65000, fragment=false, firstOwner=1, filePath,keepThrough=0,splitIncludes=false,measureDrawings=false}={}) {
   const doc = parseDocument(source,{fragment});
   if (!doc) return null;
   const body = doc.blocks.join('');
   if (doc.start + body + doc.end !== source) return null;
   const firstTag=Math.max(firstOwner,previous?.nextTag??1);
   const math = projectDocumentFormulas(source, {previous:previous?.formulas ?? [],firstTag,fragment,filePath});
-  if (!math) return projectTextDocument(source,{attribute,firstOwner,fragment,filePath,keepThrough,previous,splitIncludes});
+  if (!math) return projectTextDocument(source,{attribute,firstOwner,fragment,filePath,keepThrough,previous,splitIncludes,measureDrawings});
   const reuse=reusableProseTags(previous,source,filePath);
   const formulas = [...math.formulas].sort((left, right) => left.from16 - right.from16);
   const mathTokens = [...sourceStructure(body)].filter(token =>
@@ -264,11 +267,13 @@ export function projectMixedDocument(source, {previous=[], attribute=65000, frag
       instrumentContainer(block,source,from16,next,attribute,filePath,reuse,overlapping)??
       (overlapping.every(formula=>formula.kind==='inlineMath')&&
         instrumentProse(block,source,from16,next,attribute,filePath,keepThrough,reuse,overlapping))):
-      instrumentTextBlock(block,source,from16,next,attribute,filePath,keepThrough,reuse);
+      ((measureDrawings&&instrumentDrawing(block,source,from16,next,attribute,filePath))||
+        instrumentTextBlock(block,source,from16,next,attribute,filePath,keepThrough,reuse));
     if(result){
       output+=result.projection;
       cursor=to16;
       next=result.nextTag;
+      for(const [tag,entry] of result.owners??[])owners.set(tag,entry);
       for(const paragraph of result.paragraphs){
         paragraphs.push(paragraph);
         for(const glyph of paragraph.glyphs)owners.set(glyph.tag,{paragraph,glyph});
@@ -344,11 +349,11 @@ export function projectMixedDocument(source, {previous=[], attribute=65000, frag
 }
 
 // Instrument each file independently while sharing the owner ID namespace.
-export function projectMixedSnapshot(snapshot, previous, pending) {
+export function projectMixedSnapshot(snapshot, previous, pending, {measureDrawings=false}={}) {
   let nextTag=previous?.nextTag??1;
   const owners=new Map(), formulas=[], paragraphs=[], files=[];
   function add(source,filePath,fragment) {
-    const projection=projectMixedDocument(source,{previous,firstOwner:nextTag,filePath,fragment,splitIncludes:true,
+    const projection=projectMixedDocument(source,{previous,firstOwner:nextTag,filePath,fragment,splitIncludes:true,measureDrawings,
       keepThrough:pending?.path===filePath?pending.offset:0});
     if(!projection)return null;
     nextTag=projection.nextTag;

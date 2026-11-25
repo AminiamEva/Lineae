@@ -10,7 +10,7 @@ const CSS_PER_SP=(96/72)/65781.76;
 
 // Strict read-only full-page adapter. No browser font fallback or inferred
 // glyph positions: a page is shown only when all its resources are exact.
-export function installNativePages({host,getFont,getTypeOneFont,getRaster,onPaint,onError,onMathHit,onImageHit,proseRanges,foldLabel,onExpandFile}) {
+export function installNativePages({host,getFont,getTypeOneFont,getRaster,onPaint,onError,onMathHit,onImageHit,onDrawingHit,proseRanges,foldLabel,onExpandFile}) {
   let generation=0,epoch=0,zoom=.75,revision=-1,layoutVersion=-1;
   let fonts=new FontStore();
   const imageResources=new Map(),imageLoads=new Map();
@@ -32,6 +32,7 @@ export function installNativePages({host,getFont,getTypeOneFont,getRaster,onPain
   function attachOwners(observed,stamp,owners) {
     if(warm||stamp.sourceRevision!==revision||observed.length!==pages.size)return false;
     const fields=new Map(),glyphs=new Map(),selectionGlyphs=new Map(),seen=new Set();
+    const corners=new Map();
     const proseByFile=new Map(),formulaParagraphs=new Map();
     for(const {paragraph} of owners.values()){
       if(!paragraph)continue;
@@ -48,6 +49,14 @@ export function installNativePages({host,getFont,getTypeOneFont,getRaster,onPain
       const targets=page.dl.math_owners?.fields?.filter(field=>{
         if(!field.empty)return false;
         const owner=owners.get(field.owner);
+        if(owner?.drawing){
+          const {drawing,corner}=owner;
+          if(!corners.has(drawing))corners.set(drawing,new Map());
+          const pair=corners.get(drawing);
+          if(pair.has(corner)||!field.bbox.every(Number.isFinite))pair.set(corner,null);
+          else pair.set(corner,{number:page.page,bbox:field.bbox});
+          return false;
+        }
         return ['num','den','radicand','degree','sup','sub'].includes(field.role)||
           (field.role==='cell'&&owner?.atom?.kind==='cell')||
           (['body','math'].includes(field.role)&&owner?.atom?.kind==='fence')||
@@ -59,7 +68,10 @@ export function installNativePages({host,getFont,getTypeOneFont,getRaster,onPain
         seen.add(key);
       }
       fields.set(page.page,targets);
-      const tokens=page.dl.math_owners?.glyphs?.filter(glyph=>owners.has(glyph.owner))??[];
+      const tokens=page.dl.math_owners?.glyphs?.filter(glyph=>{
+        const owner=owners.get(glyph.owner);
+        return owner?.paragraph||owner?.formula;
+      })??[];
       glyphs.set(page.page,tokens);
       for(const glyph of tokens){
         const owner=owners.get(glyph.owner);
@@ -82,8 +94,15 @@ export function installNativePages({host,getFont,getTypeOneFont,getRaster,onPain
         for(const paragraph of formulaParagraphs.get(formula))addGlyph(paragraph,entry);
       }
     }
-    if(![...fields.values(),...glyphs.values()].some(items=>items.length))return false;
-    ownership={stamp:{...stamp,layoutVersion},fields,glyphs,selectionGlyphs,owners};
+    const drawings=[];
+    for(const [drawing,pair] of corners){
+      const top=pair.get('top'),bottom=pair.get('bottom');
+      if(!top||!bottom||top.number!==bottom.number)continue;
+      const [left,y]=top.bbox,[right,edge]=bottom.bbox;
+      if(right>left&&edge>y)drawings.push({drawing,number:top.number,box:[left,y,right-left,edge-y]});
+    }
+    if(!drawings.length&&![...fields.values(),...glyphs.values()].some(items=>items.length))return false;
+    ownership={stamp:{...stamp,layoutVersion},fields,glyphs,selectionGlyphs,owners,drawings};
     return true;
   }
   function locate(canvas,event) {
@@ -282,6 +301,10 @@ export function installNativePages({host,getFont,getTypeOneFont,getRaster,onPain
     const x=(event.clientX-rect.left)/scale,y=(event.clientY-rect.top)/scale;
     const hits=entry.rasterHits?.filter(hit=>rasterContains(hit,x,y));
     if(hits?.length===1)onImageHit?.(hits[0].path,revision);
+    if(hits?.length||ownership?.stamp.sourceRevision!==revision||ownership?.stamp.layoutVersion!==layoutVersion)return;
+    const drawings=ownership.drawings.filter(({number,box:[left,top,width,height]})=>
+      number===Number(canvas.parentElement.dataset.nativePage)&&x>=left&&x<=left+width&&y>=top&&y<=top+height);
+    if(drawings.length===1)onDrawingHit?.(drawings[0].drawing,ownership.stamp);
   });
   async function prepare(dl,attempt) {
     for(const info of Object.values(dl.images_info??{})){

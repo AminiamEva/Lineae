@@ -2930,6 +2930,27 @@ function nativeTikzDrawings(){
   });
   return results;
 }
+function editNativeDrawing(position){
+  if(!nativeTikzDrawings().some(drawing=>drawing.position===position))return;
+  editTikzVisual(editor,position,tr=>{
+    if(!tr.docChanged||tr.doc.eq(tr.before))return true;
+    if(projectDocument.composition){
+      if(!projectDocument.rebase(currentNativeProjectComposition(),editor.getJSON())||
+        !projectDocument.changes(tr.doc.toJSON()))return refuseStandaloneWriteback();
+    }else if(!standaloneMathChanges(projection,tr.doc.toJSON())?.length)return refuseStandaloneWriteback();
+    editor.view.dispatch(tr);
+    return editor.state.doc!==tr.before;
+  });
+}
+function openNativeMeasuredDrawing(drawing){
+  const matches=[];
+  forEachNativeDocumentBlock('documentImage',(node,position,block,path,text,base)=>{
+    if(!block?.tikz||text!==drawing.source||drawing.filePath&&path!==drawing.filePath)return;
+    if(base+block.from<=drawing.from16&&base+block.to>=drawing.to16&&
+       text.slice(drawing.from16,drawing.to16)===node.attrs.tikzSource)matches.push(position);
+  });
+  if(matches.length===1)editNativeDrawing(matches[0]);
+}
 function nativeSourceBlocks(){
   const results=[];
   forEachNativeDocumentBlock('raw',(node,_position,block,path,text,base,fileId)=>{
@@ -3013,18 +3034,8 @@ nativeTexPreview=installNativeTexPreview({host:footer,before:modes,primary:nativ
   listTikzDrawings:nativeTikzDrawings,
   listSourceBlocks:nativeSourceBlocks,
   openSourceBlock:openNativeSourceBlock,
-  editTikzDrawing:position=>{
-    if(!nativeTikzDrawings().some(drawing=>drawing.position===position))return;
-    editTikzVisual(editor,position,tr=>{
-      if(!tr.docChanged||tr.doc.eq(tr.before))return true;
-      if(projectDocument.composition){
-        if(!projectDocument.rebase(currentNativeProjectComposition(),editor.getJSON())||
-          !projectDocument.changes(tr.doc.toJSON()))return refuseStandaloneWriteback();
-      }else if(!standaloneMathChanges(projection,tr.doc.toJSON())?.length)return refuseStandaloneWriteback();
-      editor.view.dispatch(tr);
-      return editor.state.doc!==tr.before;
-    });
-  },
+  editTikzDrawing:editNativeDrawing,
+  openMeasuredDrawing:openNativeMeasuredDrawing,
   focusImage:path=>{
     if(!sourceView.hidden)return;
     const matches=[];

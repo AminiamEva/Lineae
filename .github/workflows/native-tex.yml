@@ -141,6 +141,9 @@ jobs:
             writeFileSync(join(process.env.LINEAE_NATIVE_EVIDENCE_DIR,"production-projection.tex"),target.projection);
             const degraded=readFileSync("tests/native-math/fixtures/degraded-page.tex","utf8");
             writeFileSync(join(process.env.LINEAE_NATIVE_EVIDENCE_DIR,"degraded-projection.tex"),projectMixedDocument(degraded).projection);
+            const measured=projectMixedDocument(degraded,{measureDrawings:true});
+            const corners=Object.fromEntries([...measured.owners].filter(([,entry])=>entry.drawing).map(([tag,{corner}])=>[corner,tag]));
+            writeFileSync(join(process.env.LINEAE_NATIVE_EVIDENCE_DIR,"degraded-drawing-probe.json"),JSON.stringify({projection:measured.projection,corners}));
             const alignment=readFileSync("tests/native-math/fixtures/numbered-alignment.tex","utf8");
             writeFileSync(join(process.env.LINEAE_NATIVE_EVIDENCE_DIR,"alignment-projection.tex"),projectMixedDocument(alignment).projection);
             const classic=readFileSync("tests/native-math/fixtures/classic-font.tex","utf8");

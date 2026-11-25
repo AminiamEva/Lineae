@@ -467,6 +467,19 @@ test('an inline project input folds only its verified horizontal span',()=>{
   assert.equal(session.select(childCaret,childCaret),false);
 });
 
+test('drawing measurement leaves the source and ordinary formula authority intact',()=>{
+  const drawing='\\begin{tikzpicture}\n\\draw (0,0) -- (1,1);\n\\end{tikzpicture}';
+  const source='\\begin{document}\n'+drawing+'\n\n\\[\\frac{a}{}\\]\n\\end{document}\n';
+  const plain=projectMixedDocument(source),measured=projectMixedDocument(source,{measureDrawings:true});
+  assert.equal(measured.source,source);
+  assert.equal(measured.formulas[0].math.projection,plain.formulas[0].math.projection);
+  assert.ok(measured.projection.includes(drawing));
+  const corners=[...measured.owners.values()].filter(owner=>owner.drawing);
+  assert.deepEqual(corners.map(({corner})=>corner),['top','bottom']);
+  for(const {drawing:range} of corners)assert.equal(source.slice(range.from16,range.to16),drawing);
+  assert.equal([...plain.owners.values()].some(owner=>owner.drawing),false);
+});
+
 test('a native project replacement can span a child and return to the original file',()=>{
   const source='\\begin{document}\nBefore \\input{chapter} After.\n\\end{document}\n';
   const chapter='Middle';
