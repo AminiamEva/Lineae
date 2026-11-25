@@ -1,5 +1,6 @@
 import {sourceStructure} from './source-structure.mjs';
 import {group,trivia,clean,environmentEnd,delimiters,importSourceTable} from './tblr.mjs';
+import {parseTableFloat} from './table-floats.mjs';
 
 const alignments={l:'left',c:'center',r:'right'};
 const dimension=/^(?:\d+(?:\.\d+)?|\.\d+)(?:pt|px|cm|mm|in|em|ex)$/;
@@ -69,7 +70,7 @@ export function parseTabularx(source) {
   const unsupported=[],columns=parseColumns(preamble.value,width.value,unsupported);if(!columns)return null;
   const {specs,gaps,vertical}=columns;
   const body=source.slice(preamble.end,close.start),tokens=delimiters(body,['&','\\\\']);if(!tokens)return null;
-  let from=0,cells=[];const rawRows=[],rules=[];
+  let from=0,cells=[];const rawRows=[],rowEnds=[],rules=[];
   for(const token of [...tokens,{index:body.length,end:body.length,value:'end'}]) {
     if(token.index<from)continue;
     let begin=from;
@@ -92,13 +93,16 @@ export function parseTabularx(source) {
     cells.push({from:preamble.end+begin,to:preamble.end+token.index,raw:body.slice(begin,token.index)});
     from=token.end;
     if(token.value==='&')continue;
-    if(cells.length>1||clean(cells[0].raw))rawRows.push(cells);
-    cells=[];
     if(token.value==='\\\\') {
       let next=trivia(body,from);
       if(body[next]==='*'){from=++next;next=trivia(body,next);}
       if(body[next]==='['){const spacing=group(body,next,'[',']');if(!spacing)return null;from=spacing.end;}
     }
+    if(cells.length>1||clean(cells[0].raw)){
+      rawRows.push(cells);
+      rowEnds.push({from:preamble.end+(token.value==='end'?body.trimEnd().length:from),terminated:token.value!=='end'});
+    }
+    cells=[];
   }
   if(!rawRows.length)return null;
   const rows=[];
@@ -134,8 +138,30 @@ export function parseTabularx(source) {
     if(column!==specs.length)return null;rows.push(row);
   }
   return {source,columns:specs.map(s=>alignments[s.type]?s.type:s.type==='p'?'p{'+s.width+'}':'l').join(''),
-    booktabs:rules.length>0,rows,unsupported,
+    booktabs:rules.length>0,rows,rowEnds,unsupported,
     metadata:{width:width.value,widthCSS:widthCSS(width.value),position,preamble:preamble.value,specs,gaps,rules}};
+}
+
+export function insertTabularxRow(source,index) {
+  let table=parseTabularx(source),start=0;
+  if(!table){
+    const float=parseTableFloat(source);
+    const [open,...rest]=float?[...sourceStructure(float.body)].filter(token=>token.topLevel&&token.kind==='begin'):[];
+    if(open?.value!=='\\begin{tabularx}'||rest.length)return null;
+    const close=environmentEnd(float.body,open.index,'tabularx');
+    if(!close)return null;
+    table=parseTabularx(float.body.slice(open.index,close.end));
+    start=float.open.length+open.index;
+  }
+  const edge=table?.rowEnds[index],columns=table?.metadata.specs.length;
+  if(!edge||columns<2)return null;
+  const eol=table.source.includes('\r\n')?'\r\n':'\n';
+  const row=' & '.repeat(columns-1)+'\\\\';
+  const {from}=edge,insert=(edge.terminated?'':' \\\\')+eol+row;
+  const draft=table.source.slice(0,from)+insert+table.source.slice(from);
+  const updated=parseTabularx(draft);
+  if(updated?.rows.length!==table.rows.length+1||updated.rows[index+1].some(cell=>cell.text))return null;
+  return {from:start+from,to:start+from,insert};
 }
 
 export function importTabularx(source,inline) {

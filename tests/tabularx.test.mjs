@@ -4,6 +4,7 @@ import {readFileSync} from 'node:fs';
 import {importBlocks,serialize} from '../apps/web/src/editor/latex-codec.js';
 import {parseDocument} from '../apps/web/latex/document.mjs';
 import {sourceProjection,richSourceChanges} from '../apps/web/src/editor/source-sync.js';
+import {insertTabularxRow,parseTabularx} from '../apps/web/latex/tabularx.mjs';
 const fixture=JSON.parse(readFileSync(new URL('./fixtures/academic-tabularx.json',import.meta.url),'utf8'));
 const table=source=>{const nodes=importBlocks(source);assert.equal(nodes.length,1);assert.equal(nodes[0].type,'table');assert.ok(nodes[0].attrs.tabularx);return nodes[0];};
 const wrap=source=>'\\begin{document}\r\nBefore.\n\n'+source+'\r\n\nAfter.\n\\end{document}\r\n';
@@ -69,6 +70,29 @@ c&=d\end{aligned}\) & \textbf{a \textit{b \& c}} \\[6pt]
 \end{tabularx}`;
   const node=table(source);assert.equal(node.content.length,2);assert.equal(node.content[0].content[0].content[0].content[0].type,'math');
   assert.equal(serialize(node),source);
+});
+test('inserting a row preserves column declarations, row spacing and mixed EOLs',()=>{
+  const source='\\begin{tabularx}{\\textwidth}{p{3cm}XX}\r\n'+
+    '\\multicolumn{2}{c}{A} & B \\\\*[6pt]\n\\midrule\nC & D & E\r\n\\end{tabularx}';
+  for(const index of [0,1]){
+    const change=insertTabularxRow(source,index);
+    assert.ok(change);
+    assert.equal(change.from,change.to);
+    const draft=source.slice(0,change.from)+change.insert+source.slice(change.to);
+    const parsed=parseTabularx(draft);
+    assert.equal(parsed.rows.length,3);
+    assert.deepEqual(parsed.rows[index+1].map(cell=>cell.text),['','','']);
+    assert.deepEqual(parsed.rows.filter((_,row)=>row!==index+1).map(row=>row.map(cell=>cell.text)),[['A','B'],['C','D','E']]);
+  }
+});
+test('inserting a row in a table float changes only its tabularx body',()=>{
+  const {source,caption,label,expectedRows}=fixture.tables[0];
+  const {from,to,insert}=insertTabularxRow(source,0);
+  assert.equal(from,to);
+  const node=table(source.slice(0,from)+insert+source.slice(to));
+  assert.equal(node.attrs.caption,caption);
+  assert.equal(node.attrs.label,label);
+  assert.equal(node.content.length,expectedRows+1);
 });
 for(const eol of ['\n','\r\n'])test('comments and '+JSON.stringify(eol)+' survive a neighboring cell edit',()=>{
   const source=['\\begin{tabularx}{\\textwidth}{XX}','\\toprule','A % & \\\\ ignored','&B \\\\','\\bottomrule','\\end{tabularx}'].join(eol);

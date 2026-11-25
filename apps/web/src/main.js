@@ -6,6 +6,7 @@ import {documentMetadata,writeDocumentMetadata} from '../latex/document-metadata
 import {resolvePackages} from '../latex/packages.mjs';
 import {referenceAt} from '../latex/reference-commands.mjs';
 import {sourceStructure} from '../latex/source-structure.mjs';
+import {insertTabularxRow} from '../latex/tabularx.mjs';
 import {loadLegacyMath,nativeOnlyAcceptance,nativeWorkspaceRequested} from './editor/native-surface/acceptance-mode.mjs';
 import {AppendixStart,MatterStart,LayoutCommand} from './editor/appendix.js';
 import {Lipsum} from './editor/lipsum.js';
@@ -988,6 +989,8 @@ function editTableAxis(axis) {
   else chain.addColumnAfter().run();
 }
 function addMatrixRow() {
+  const added=addNativeTableRow();
+  if(added!==undefined)return added;
   const field=activeMath();
   if(!field) { editor.chain().focus(undefined,{scrollIntoView:false}).addRowAfter().run(); return; }
   if(!fillMatrixAxis(field,'row')) editTableAxis('row');
@@ -2664,7 +2667,7 @@ const shortcutActions = {
     toggleIndent: () => setParagraphIndent(editor,!paragraphHasIndent(editor)),
   },
   table: {
-    addRow: () => editor.commands.addRowAfter(),
+    addRow: () => addNativeTableRow()??editor.commands.addRowAfter(),
     addColumn: () => editor.commands.addColumnAfter(),
     deleteRow: () => editor.commands.deleteRow(),
     deleteColumn: () => editor.commands.deleteColumn(),
@@ -2722,7 +2725,7 @@ installKeybindings(window, {
     if (scope === 'math') {
       if(!context.nativeMath)return runMathShortcut(command,context.field,event);
       if(command==='palette'){showCommands(context.element,'math');return true;}
-      return nativeTexPreview.runMathCommand(command);
+      return nativeTexPreview.runMathCommand(command)||(command==='addRow'&&addNativeTableRow()===true);
     }
     if (scope === 'source') return sourceView.runShortcut(command);
     if (scope === 'system') {
@@ -2805,6 +2808,44 @@ function nativeFormulaPosition(formula){
   if(positions.length!==formula.count)return null;
   const position=positions[formula.ordinal];
   return Number.isInteger(position)?{position,node:editor.state.doc.nodeAt(position),type,project,composition,file}:null;
+}
+function addNativeTableRow(){
+  const caret=nativeTexPreview?.focusedCaret();
+  const owner=caret?.kind==='text'?caret.paragraph:caret?.formula;
+  const cell=owner?.tableCell;
+  if(!cell)return;
+  const target=caret.kind==='text'?nativeProsePosition(owner,caret.local,caret.local):nativeFormulaPosition(owner);
+  if(!target)return false;
+  const {state}=editor,{project,composition,file}=target;
+  const position=target.range?.from??target.position;
+  const at=state.doc.resolve(position);
+  let depth=at.depth;
+  while(depth>0&&at.node(depth).type.name!=='table')depth--;
+  if(!depth)return false;
+  const node=at.node(depth);
+  if(!node.attrs.tabularx)return;
+  const original=serialize(node.toJSON());
+  const start=cell.from16;
+  if(!owner.source.startsWith(original,start))return false;
+  const patch=insertTabularxRow(original,cell.row);
+  if(!patch)return false;
+  const raw=original.slice(0,patch.from)+patch.insert+original.slice(patch.to);
+  const [updated,...rest]=importBlocks(raw);
+  if(updated?.type!=='table'||rest.length||!updated.attrs.tabularx)return false;
+  const tableFrom=at.before(depth);
+  const tr=state.tr.replaceWith(tableFrom,tableFrom+node.nodeSize,state.schema.nodeFromJSON(updated));
+  tr.setSelection(TextSelection.create(tr.doc,position));
+  const change={from:start+patch.from,to:start+patch.to,insert:patch.insert};
+  const draft=owner.source.slice(0,change.from)+change.insert+owner.source.slice(change.to);
+  if(composition){
+    const updates=projectDocument.changes(tr.doc.toJSON());
+    if(updates?.get(file.id)!==draft)return false;
+    for(const [id,value] of updates)if(id!==file.id&&value!==project.file(id).draft)return false;
+    editor.view.dispatch(closeHistory(tr));
+    return editor.state.doc!==state.doc;
+  }
+  const projected=sourceProjection(draft,tr.doc.toJSON(),{fragment:projectFileKind==='tex'});
+  return Boolean(projected&&dispatchNativeParagraphChange(state,tr,owner.source,draft,change,projected));
 }
 function currentNativeProjectComposition(){
   const active=projectDocument.composition,project=projectExplorer?.model;
