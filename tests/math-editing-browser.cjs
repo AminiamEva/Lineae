@@ -1,7 +1,7 @@
 const { chromium } = require('playwright');
 const { createServer } = require('node:http');
-const { readFile } = require('node:fs/promises');
-const { resolve, extname, sep } = require('node:path');
+const { mkdir, readFile, writeFile } = require('node:fs/promises');
+const { resolve, extname, sep, join } = require('node:path');
 const assert = require('node:assert/strict');
 
 const root = resolve('apps/web');
@@ -17,11 +17,72 @@ const server = createServer(async (req, res) => {
   } catch { res.writeHead(404).end(); }
 });
 
+async function measureLegacyEditing(page,origin,artifactDirectory){
+  const repetitions=Number(process.env.LINEAE_WARM_REPETITIONS);
+  assert.ok(Number.isInteger(repetitions)&&repetitions>0&&repetitions<=1000);
+  const destination=join(artifactDirectory,'legacy-browser');
+  await mkdir(destination,{recursive:true});
+  for(const pages of [10,100,300]){
+    const source=await readFile(join(artifactDirectory,`lf-pages-${pages}`,'source-after.tex'));
+    await page.goto(origin,{waitUntil:'networkidle'});
+    const cold=performance.now();
+    await page.locator('input#file').setInputFiles({name:`legacy-${pages}.tex`,mimeType:'text/plain',buffer:source});
+    await page.waitForFunction(()=>/\\frac\{a\}\{b\}/.test(document.querySelector('math-field')?.value??''));
+    const field=page.locator('math-field').first();
+    await field.click();
+    await field.evaluate(node=>{
+      const editor=document.querySelector('.ProseMirror').editor;
+      let started=null;
+      window.legacyLatencySamples=[];
+      node.addEventListener('keydown',event=>{
+        if(event.key==='b'||event.key==='c')started=performance.now();
+      },true);
+      editor.on('update',()=>{
+        if(started===null)return;
+        const timestamp=started,transaction=performance.now()-timestamp;
+        started=null;
+        requestAnimationFrame(()=>requestAnimationFrame(()=>{
+          window.legacyLatencySamples.push({transaction,frame:performance.now()-timestamp});
+        }));
+      });
+    });
+    const coldImportMs=performance.now()-cold;
+    for(let index=0;index<repetitions;index++){
+      const previous=index%2?'c':'b',next=index%2?'b':'c';
+      await field.evaluate((node,expected)=>{
+        const model=node._mathfield.model;
+        const fraction=model.root.branch('body').find(atom=>atom.type==='genfrac');
+        const denominator=fraction?.branch('below')?.at(-1);
+        if(denominator?.value!==expected)throw new Error('Expected denominator '+expected+' before editing');
+        const end=model.offsetOf(denominator),start=model.offsetOf(denominator.leftSibling);
+        node.selection={ranges:[[start,end]],direction:'forward'};
+      },previous);
+      await field.press(next);
+      await page.waitForFunction(({count,value})=>window.legacyLatencySamples.length===count&&
+        document.querySelector('math-field')?.value.includes('\\frac{a}{'+value+'}'),{count:index+1,value:next});
+    }
+    const samples=await page.evaluate(()=>window.legacyLatencySamples);
+    const percentiles=segment=>{
+      const ordered=samples.map(sample=>sample[segment]).sort((a,b)=>a-b);
+      const percentile=value=>ordered[Math.ceil(value*ordered.length)-1];
+      return {p50Ms:percentile(.5),p95Ms:percentile(.95),p99Ms:percentile(.99)};
+    };
+    const result={pages,repetitions,coldImportMs,transaction:percentiles('transaction'),frame:percentiles('frame'),samples,
+      scope:'Same source and denominator replacements as rtex. Browser keydown to editor update and animation frame, excluding physical display scan-out.'};
+    await writeFile(join(destination,`lf-pages-${pages}.json`),JSON.stringify(result,null,2)+'\n');
+    console.log(`Legacy ${pages} pages, ${repetitions} edits, transaction P95 ${result.transaction.p95Ms.toFixed(2)}ms, frame P95 ${result.frame.p95Ms.toFixed(2)}ms`);
+  }
+}
+
 (async () => {
   await new Promise(done => server.listen(0, '127.0.0.1', done));
   const browser = await chromium.launch({ headless: true });
   try {
     const page = await browser.newPage({ locale: 'en-US', viewport: { width: 1280, height: 1000 } });
+    if(process.env.LINEAE_LEGACY_LATENCY_DIR){
+      await measureLegacyEditing(page,'http://127.0.0.1:'+server.address().port,process.env.LINEAE_LEGACY_LATENCY_DIR);
+      return;
+    }
     const mod=process.platform==='darwin'?'Meta':'Control';
     if(process.env.LINEAE_TEST_NATIVE_PREVIEW==='1')
       await page.addInitScript(require('./native-math/mock-bridge.cjs'));

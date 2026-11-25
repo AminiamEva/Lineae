@@ -125,6 +125,9 @@ name, and a recording of the candidate box after the first and second Pinyin
 keys next to an inline formula. Check candidate selection, cancellation,
 duplicate input and shortcut delivery with the physical keyboard. Measure
 keydown to pixels separately from engine protocol and browser frame timing.
+The physical acceptance target is P95 below 30 ms. The protocol and browser
+measurements provide separate diagnostics. Use the same input and documents
+on the legacy path and record cold startup separately from warm edits.
 
 ## Known gaps before switching the default
 

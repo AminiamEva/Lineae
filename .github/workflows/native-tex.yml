@@ -279,6 +279,12 @@ jobs:
           LINEAE_NATIVE_DEGRADED_PAGE="$LINEAE_NATIVE_EVIDENCE_DIR/native-degraded-pages.json" \
           LINEAE_NATIVE_DEGRADED_PDF="$LINEAE_NATIVE_EVIDENCE_DIR/native-degraded.pdf" \
           node tests/native-tex-preview-browser.cjs
+      - name: Measure the legacy browser on the same source and edits
+        if: ${{ !inputs.browser_only && inputs.large_documents }}
+        env:
+          LINEAE_WARM_REPETITIONS: ${{ inputs.warm_repetitions }}
+          LINEAE_LEGACY_LATENCY_DIR: ${{ github.workspace }}/artifacts/native-tex
+        run: node tests/math-editing-browser.cjs
       - name: Check the engine-off workspace in the desktop WebView
         if: ${{ !inputs.browser_only }}
         run: |

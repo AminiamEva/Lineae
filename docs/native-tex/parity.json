@@ -271,8 +271,16 @@
       "geometryToRepaint": 34,
       "keydownToPixels": 100
     },
+    "acceptanceP95Ms": {
+      "keydownToPixelsExclusive": 30
+    },
     "browserInstrumentation": "apps/web/src/ui/native-tex-preview.mjs",
     "browserPaint": "Animation frame estimate, excludes OS input and physical display scan-out.",
+    "remainingMeasurements": [
+      "same input and documents on the legacy JS path",
+      "cold startup separately from warm edits",
+      "physical keydown to display on the target hardware"
+    ],
     "engineBaseline": {
       "evidence": "https://github.com/AminiamEva/Lineae/actions/runs/45702308052",
       "priorEvidence": "https://github.com/AminiamEva/Lineae/actions/runs/45676010748",
