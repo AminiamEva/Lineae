@@ -115,6 +115,10 @@ const server=createServer(async(req,res)=>{
       await page.waitForFunction(count=>nativeProbe.source?.includes('XYZAlpha beta.') &&
         nativeProbe.calls.filter(call=>call.command==='native_tex_observe_formula').length>count+1,observations);
       await panel.getByText('Click prose on the native page',{exact:false}).waitFor();
+      await page.keyboard.press('End');
+      await page.keyboard.press(mod+'+e');
+      await page.keyboard.press('e');
+      await page.waitForFunction(()=>document.querySelector('.environment-tag')?.textContent.startsWith('Display math'));
       await canvas.click({position:{x:6510000*scale,y:6950000*scale}});
       await page.waitForFunction(()=>document.querySelector('.environment-tag')?.textContent===
         'Display math › Fraction › Denominator');

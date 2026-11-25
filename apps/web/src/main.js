@@ -3017,6 +3017,8 @@ installKeybindings(window, {
     if((context.nativeText||context.nativeMath)&&scope==='editor'&&command==='find'){
       documentFind.show();return true;
     }
+    if((context.nativeText||context.nativeMath)&&scope==='editor'&&command==='editMath')
+      return nativeTexPreview.editAdjacentFormula();
     if(context.nativeMath&&scope==='editor')return false;
     if(context.nativeText&&scope==='editor'){
       if(command==='leaveFile')return nativeTexPreview.leaveFile();

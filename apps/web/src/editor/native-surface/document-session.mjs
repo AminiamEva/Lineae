@@ -272,6 +272,23 @@ export function createNativeDocumentSession(resolve) {
         fileOf(stop)===fileOf(caret)&&stop.docOffset>=caret.formula.to16);
       return following?selection.selectTargets(following,following):false;
     },
+    editAdjacentFormula(){
+      const caret=selection.caret;
+      if(!caret||caret!==selection.anchor)return false;
+      let related=caret;
+      if(caret.kind==='text'){
+        const {source}=caret.paragraph,offset=caret.docOffset;
+        const adjacent=selection.stops.filter(stop=>stop.kind==='math'&&order(stop)===order(caret)&&
+          fileOf(stop)===fileOf(caret)&&copyOf(stop)===copyOf(caret)&&stop.formula.source===source);
+        related=adjacent.find(({formula})=>formula.outerFrom16>=offset&&
+          !source.slice(offset,formula.outerFrom16).trim())??adjacent.findLast(({formula})=>
+          formula.outerTo16<=offset&&!source.slice(formula.outerTo16,offset).trim());
+      }
+      const last=related&&selection.stops.findLast(stop=>stop.kind==='math'&&sameFormula(stop,related));
+      if(!last)return false;
+      preferredX=null;
+      return selection.selectTargets(last,last);
+    },
     selectRegion({path,from,to,source,heading,occurrence=0}){
       const first=selection.stops.find(stop=>fileOf(stop)===path&&stop.docOffset>=from&&stop.docOffset<=to&&
         copyOf(stop)===occurrence&&

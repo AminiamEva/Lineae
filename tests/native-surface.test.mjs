@@ -338,10 +338,15 @@ test('one native session restores the selected text or math address through obse
   assert.equal(session.surface.anchor,session.surface.caret);
   assert.equal(session.leaveFormula(),true);
   assert.equal(session.surface.caret.paragraph.text,'Outro.');
+  assert.equal(session.editAdjacentFormula(),true);
+  assert.equal(session.surface.caret.kind,'math');
+  assert.equal(session.surface.caret.docOffset,projection.formulas[0].to16);
+  assert.equal(session.leaveFormula(),true);
   assert.equal(session.move(-1,false),true);
   assert.equal(session.surface.caret.kind,'math');
   const start=textTarget(projection,proseTag,false);
   assert.equal(session.select(start,start),true);
+  assert.equal(session.editAdjacentFormula(),false);
   assert.equal(session.surface.insert('X').source,projection.source.replace('Intro','XIntro'));
 });
 

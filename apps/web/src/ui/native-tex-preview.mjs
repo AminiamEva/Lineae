@@ -1270,6 +1270,12 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
     },
     useTextSelection,
     leaveFile,
+    editAdjacentFormula(){
+      if(!acceptsInput()||!current()||!observation||pendingEdit||draftInput||!nativeDocument.editAdjacentFormula())return false;
+      paintSurfaceSelection(true);
+      positionInput(true);
+      return true;
+    },
     runMathCommand(command) {
       if(!acceptsInput())return false;
       const {surface}=nativeDocument;
