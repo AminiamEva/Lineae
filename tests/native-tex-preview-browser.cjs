@@ -430,6 +430,33 @@ const server=createServer(async(req,res)=>{
       await page.keyboard.press(mod+'+z');
       await page.waitForFunction(expected=>nativeProbe.source===expected,mergedTblr);
       await page.locator('#native-tex-close').click();
+      const spanTabularx=tableSource.replace('\\begin{tabular}{ll}','\\begin{tabularx}{\\linewidth}{lX}')
+        .replace('\\end{tabular}','\\end{tabularx}').replace('\\begin{document}','\\usepackage{tabularx}\n\\begin{document}');
+      await page.locator('input#file').setInputFiles({name:'tabularx-spans.tex',mimeType:'text/plain',buffer:Buffer.from(spanTabularx)});
+      await page.locator('#native-tex-toggle').click();
+      await page.waitForFunction(()=>document.querySelector('#native-tex-preview').dataset.state==='current');
+      await page.locator('#native-tex-target').click();
+      await panel.getByText('Click text on the native page',{exact:false}).waitFor();
+      await page.locator('#native-tex-edit').click();
+      await revealToolbar(page);await page.locator('[data-group=table]').click();
+      const spanBounds=await canvas.boundingBox();
+      await page.mouse.move(spanBounds.x+6550000*scale,spanBounds.y+9250000*scale);
+      await page.mouse.down();
+      await page.mouse.move(spanBounds.x+7750000*scale,spanBounds.y+9250000*scale,{steps:8});
+      await page.mouse.up();
+      await page.locator('button[data-source-action=merge]').click();
+      const mergedTabularx=spanTabularx.replace('One','\\multirow{2}{*}{One Three}').replace('Three &',' &')
+        .replace('\\begin{document}','\\usepackage{multirow}\n\\begin{document}');
+      await page.waitForFunction(expected=>nativeProbe.source===expected,mergedTabularx);
+      await panel.getByText('Click text on the native page',{exact:false}).waitFor();
+      await canvas.click({position:{x:6550000*scale,y:9250000*scale}});
+      await page.locator('button[data-source-action=split]').click();
+      await page.waitForFunction(expected=>nativeProbe.source===expected,mergedTabularx.replace('\\multirow{2}{*}{One Three}','One Three'));
+      await page.keyboard.press(mod+'+z');
+      await page.waitForFunction(expected=>nativeProbe.source===expected,mergedTabularx);
+      await page.keyboard.press(mod+'+z');
+      await page.waitForFunction(expected=>nativeProbe.source===expected,spanTabularx);
+      await page.locator('#native-tex-close').click();
       const spanning=tableSource.replace('One  & Two','\\multicolumn{2}{c}{Title}');
       await page.locator('input#file').setInputFiles({name:'spanning.tex',mimeType:'text/plain',buffer:Buffer.from(spanning)});
       await page.locator('#native-tex-toggle').click();

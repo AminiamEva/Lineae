@@ -214,3 +214,20 @@ test('native multirow keeps neighboring cells and can be split back into ordinar
   assert.equal(importBlocks(restored)[0].content[1].content.length,2);
   assert.equal(mergeTableSourceRows(source.replace('Three','\\hline\r\nThree'),0,1,0),null);
 });
+
+test('tabularx keeps exact preambles and hidden slots when a row-span cell is merged or split',()=>{
+  const source=['\\begin{tabularx}{\\linewidth}{lX}','One  & Two \\\\[3pt]','Three & Four','\\end{tabularx}'].join('\r\n');
+  const apply=(value,{from,to,insert})=>value.slice(0,from)+insert+value.slice(to);
+  const merged=apply(source,mergeTableSourceRows(source,0,1,0));
+  assert.equal(merged,source.replace('One','\\multirow{2}{*}{One Three}').replace('Three &',' &'));
+  const imported=table(merged);
+  assert.equal(imported.content[0].content[0].attrs.rowspan,2);
+  assert.equal(imported.content[1].content.length,1);
+  assert.equal(serialize(imported),merged);
+  const split=splitTableSourceRowspan(merged,0,0,merged.indexOf('Three'));
+  const restored=apply(merged,split);
+  assert.equal(restored,merged.replace('\\multirow{2}{*}{One Three}','One Three'));
+  assert.equal(restored.slice(split.offset,split.offset+5),'Three');
+  assert.equal(table(restored).content[1].content.length,2);
+  assert.equal(insertTableSourceRow(merged,0),null);
+});

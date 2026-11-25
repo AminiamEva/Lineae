@@ -1729,7 +1729,7 @@ mod tests {
         table.terminate();
         if let Some(directory) = std::env::var_os("LINEAE_NATIVE_EVIDENCE_DIR") {
             let directory = PathBuf::from(directory);
-            for environment in ["tabular", "tblr"] {
+            for environment in ["tabular", "tabularx", "tblr"] {
                 let probe: Value = serde_json::from_slice(&std::fs::read(directory.join(format!("{environment}-rowspan-probe.json"))).unwrap()).unwrap();
                 let rowspan = Session::create(probe["source"].as_str().unwrap()).unwrap();
                 let info = rowspan.start().expect("the editor-generated row span compiles");

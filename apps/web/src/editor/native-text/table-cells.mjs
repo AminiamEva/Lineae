@@ -6,7 +6,7 @@ import {parseTableFloat} from '../../../latex/table-floats.mjs';
 import {sourceStructure} from '../../../latex/source-structure.mjs';
 
 export function verticalTableSelection(source){
-  return source.includes('\\begin{tabular}{')&&!/\\(?:multicolumn|multirow)(?![a-zA-Z])/.test(source)||
+  return /\\begin\{tabularx?\}/.test(source)&&!/\\(?:multicolumn|multirow)(?![a-zA-Z])/.test(source)||
     source.includes('\\begin{tblr}')&&!/\\SetCell(?![a-zA-Z])/.test(source);
 }
 

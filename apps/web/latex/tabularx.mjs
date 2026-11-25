@@ -121,13 +121,18 @@ function parseColumnTable(source,environment,{allowMultirow=false}={}) {
     cells=[];
   }
   if(!rawRows.length)return null;
-  const rows=[];
+  const rows=[],coveredUntil=Array(specs.length).fill(0);
   for(let r=0;r<rawRows.length;r++) {
     let column=0;const row=[];
     for(const raw of rawRows[r]) {
       if(column>=specs.length)return null;
+      if(coveredUntil[column]>r){
+        if(clean(raw.raw))return null;
+        column++;
+        continue;
+      }
       const trimmed=raw.raw.trimEnd().length,sourceEnd=raw.from+trimmed;
-      let begin=trivia(raw.raw),end=Math.max(begin,trimmed),span=1,spec=specs[column],override=null,spanRange;
+      let begin=trivia(raw.raw),end=Math.max(begin,trimmed),span=1,rowspan=1,spec=specs[column],override=null,spanRange,rowspanRange;
       const command=/^\\multicolumn(?![A-Za-z])/.exec(raw.raw.slice(begin));
       if(command) {
         const count=group(raw.raw,trivia(raw.raw,begin+command[0].length));
@@ -140,8 +145,18 @@ function parseColumnTable(source,environment,{allowMultirow=false}={}) {
         begin=trivia(raw.raw,trivia(raw.raw,format.end)+1);end=begin+raw.raw.slice(begin,text.end-1).trimEnd().length;
         spanRange={from:raw.from+count.end-1-count.value.length,to:raw.from+count.end-1};
       }
-      if(span<1||column+span>specs.length)return null;
-      const top=rules.findLast(rule=>rule.boundary===r),bottom=rules.findLast(rule=>rule.boundary===r+1);
+      if(environment==='tabularx'&&raw.raw.startsWith('\\multirow{',begin)){
+        const count=readGroup(raw.raw,begin+'\\multirow'.length);
+        const width=count&&readGroup(raw.raw,count.end),content=width&&readGroup(raw.raw,width.end);
+        if(!content||content.end!==end||!/^\d+$/.test(count.value))return null;
+        rowspan=Number(count.value);
+        rowspanRange={from:raw.from+begin,to:raw.from+end,value:content.value,contentFrom:raw.from+width.end+1};
+        begin=trivia(raw.raw,width.end+1);end=begin+raw.raw.slice(begin,content.end-1).trimEnd().length;
+      }
+      if(span<1||column+span>specs.length||rowspan<1||r+rowspan>rawRows.length||
+         coveredUntil.slice(column,column+span).some(end=>end>r))return null;
+      coveredUntil.fill(r+rowspan,column,column+span);
+      const top=rules.findLast(rule=>rule.boundary===r),bottom=rules.findLast(rule=>rule.boundary===r+rowspan);
       const css={verticalAlign:'top',...spec.style,
         borderTop:top?.css??'0px solid currentColor',borderBottom:bottom?.css??'0px solid currentColor',
         borderLeft:(override?override.vertical.includes(0):vertical.includes(column))?'0.4pt solid currentColor':'0px solid currentColor',
@@ -150,8 +165,8 @@ function parseColumnTable(source,environment,{allowMultirow=false}={}) {
       if((override?.gaps??gaps).some(g=>g.column===(override?0:column)&&!clean(g.source)))css.paddingLeft='0px';
       if((override?.gaps??gaps).some(g=>g.column===(override?1:column+span)&&!clean(g.source)))css.paddingRight='0px';
       row.push({text:raw.raw.slice(begin,end),from:raw.from+begin,to:raw.from+end,
-        sourceStart:raw.from,sourceEnd,sourceDelimiter:raw.to,spanRange,
-        attrs:{colspan:span,rowspan:1,align:spec.align,tblrStyle:css}});
+        sourceStart:raw.from,sourceEnd,sourceDelimiter:raw.to,spanRange,rowspanRange,
+        attrs:{colspan:span,rowspan,align:spec.align,tblrStyle:css}});
       column+=span;
     }
     if(column!==specs.length)return null;rows.push(row);
@@ -162,6 +177,10 @@ function parseColumnTable(source,environment,{allowMultirow=false}={}) {
     columnEnds:columns.ends.map(end=>preamble.end-preamble.value.length-1+end),
     metadata:{width:width.value,widthCSS:widthCSS(width.value),position,preamble:preamble.value,specs,gaps,rules}};
 }
+
+const rowSpansIndex=(table,index,remove)=>table.rows.some((row,start)=>start<=index&&row.some(({attrs})=>
+  attrs.rowspan>1&&index<start+attrs.rowspan-(remove?0:1)));
+const hasRowSpans=table=>table.rows.some(row=>row.some(({attrs})=>attrs.rowspan>1));
 
 function columnTableSource(source,options){
   const parse=raw=>parseTabularx(raw)??parseColumnTable(raw,'tabular',options);
@@ -183,7 +202,7 @@ export function insertTableSourceRow(source,index) {
   const location=columnTableSource(source);
   if(!location)return null;
   const {table,start,parse}=location,edge=table.rowEnds[index],columns=table.metadata.specs.length;
-  if(!edge)return null;
+  if(!edge||rowSpansIndex(table,index,false))return null;
   const eol=table.source.includes('\r\n')?'\r\n':'\n';
   const row=' & '.repeat(columns-1)+'\\\\';
   const {from}=edge,insert=(edge.terminated?'':' \\\\')+eol+row;
@@ -197,7 +216,7 @@ export function insertTableSourceColumn(source,row,column,offset){
   const location=columnTableSource(source);
   if(!location)return null;
   const {table,start}=location,cells=table.rows[row];
-  if(!cells?.[column])return null;
+  if(!cells?.[column]||hasRowSpans(table))return null;
   const boundary=cells.slice(0,column+1).reduce((count,cell)=>count+cell.attrs.colspan,0);
   const from=table.columnEnds[boundary-1],edits=[{from,to:from,insert:'l'}];
   for(const cells of table.rows){
@@ -233,7 +252,7 @@ export function removeTableSourceColumn(source,row,column){
   const location=columnTableSource(source);
   if(!location)return null;
   const {table,start}=location,cells=table.rows[row];
-  if(!cells?.[column]||table.metadata.specs.length<2)return null;
+  if(!cells?.[column]||table.metadata.specs.length<2||hasRowSpans(table))return null;
   const logical=cells.slice(0,column).reduce((count,cell)=>count+cell.attrs.colspan,0);
   if(table.metadata.specs[logical].prefix||table.metadata.preamble.includes('<'))return null;
   const edits=[{from:table.columnStarts[logical],to:table.columnEnds[logical],insert:''}];
@@ -261,7 +280,7 @@ export function removeTableSourceRow(source,index){
   const location=columnTableSource(source);
   if(!location)return null;
   const {table,start,parse}=location,edge=table.rowEnds[index];
-  if(!edge||table.rows.length===1)return null;
+  if(!edge||table.rows.length===1||rowSpansIndex(table,index,true))return null;
   const raw=table.source,lineStart=raw.lastIndexOf('\n',edge.start-1)+1;
   const newline=/^[ \t]*\r?\n/.exec(raw.slice(edge.from));
   const wholeLine=newline&&!raw.slice(lineStart,edge.start).trim();
@@ -275,7 +294,7 @@ export function splitTableSourceCell(source,row,column,offset){
   if(!location)return null;
   const {table,start,parse}=location;
   const cell=table.rows[row]?.[column];
-  if(!cell?.spanRange||cell.attrs.colspan<=1)return null;
+  if(!cell?.spanRange||cell.attrs.colspan<=1||cell.attrs.rowspan>1)return null;
   const {from,to}=cell.spanRange;
   const count=table.source.slice(from,to);
   const single=count.replace(/\d+/,'1');
@@ -292,7 +311,7 @@ export function mergeTableSourceCells(source,row,first,last){
   if(!location||first>=last)return null;
   const {table,start,parse}=location;
   const selected=table.rows[row]?.slice(first,last+1);
-  if(!selected||selected.length!==last-first+1||selected.some(cell=>cell.attrs.colspan!==1||cell.spanRange))return null;
+  if(!selected||selected.length!==last-first+1||selected.some(cell=>cell.attrs.colspan!==1||cell.attrs.rowspan!==1||cell.spanRange))return null;
   const from=selected[0].sourceStart,to=selected.at(-1).sourceEnd;
   if(table.source.slice(from,to).includes('%'))return null;
   const format={left:'l',center:'c',right:'r'}[selected[0].attrs.align]??'l';
@@ -309,8 +328,8 @@ export function mergeTableSourceRows(source,first,last,column){
   const location=columnTableSource(source);
   if(!location||first>=last)return null;
   const {table,start}=location;
-  if(!table.source.trimStart().startsWith('\\begin{tabular}{')||last>=table.rows.length||
-     table.rows.some(row=>row.some(cell=>cell.attrs.colspan!==1))||
+  const structured=table.source.trimStart().startsWith('\\begin{tabularx}');
+  if(last>=table.rows.length||table.rows.some(row=>row.some(cell=>cell.attrs.colspan!==1||cell.attrs.rowspan!==1))||
      table.metadata.rules.some(({boundary})=>boundary>first&&boundary<=last))return null;
   const cells=table.rows.slice(first,last+1).map(row=>row[column]);
   if(cells.some(cell=>!cell||cell.text.includes('%')))return null;
@@ -322,9 +341,10 @@ export function mergeTableSourceRows(source,first,last,column){
     insert=insert.slice(0,cell.sourceStart-from)+(index?'':wrapper)+insert.slice(cell.sourceEnd-from);
   }
   const draft=table.source.slice(0,from)+insert+table.source.slice(to);
-  const next=parseTable(draft.trim());
-  if(next?.rows.length!==table.rows.length||next.rows[first].rowspans[column]!==cells.length||
-     next.rows[first].cells[column]!==body)return null;
+  const next=structured?parseTabularx(draft):parseTable(draft.trim());
+  const merged=next?.rows[first];
+  const actual=structured?merged?.[column]:merged&&{attrs:{rowspan:merged.rowspans[column]},text:merged.cells[column]};
+  if(next?.rows.length!==table.rows.length||actual?.attrs.rowspan!==cells.length||actual.text!==body)return null;
   return {from:start+from,to:start+to,insert,offset:start+from+wrapper.length-1};
 }
 
@@ -332,6 +352,16 @@ export function splitTableSourceRowspan(source,row,column,offset){
   const location=columnTableSource(source,{allowMultirow:true});
   if(!location)return null;
   const {table,start}=location;
+  if(table.source.trimStart().startsWith('\\begin{tabularx}')){
+    const cell=table.rows[row]?.[column],span=cell?.rowspanRange;
+    if(!span||cell.attrs.rowspan<2||cell.attrs.colspan!==1)return null;
+    const {from,to,value:insert,contentFrom}=span;
+    const draft=table.source.slice(0,from)+insert+table.source.slice(to);
+    const next=parseTabularx(draft);
+    if(next?.rows.length!==table.rows.length||next.rows[row]?.[column]?.text!==cell.text||
+       next.rows[row][column].attrs.rowspan!==1)return null;
+    return {from:start+from,to:start+to,insert,offset:Math.max(start+from,offset+from-contentFrom)};
+  }
   const imported=parseTable(table.source.trim());
   const layout=imported?.rows[row];
   const logical=layout?.columnIndexes[column];

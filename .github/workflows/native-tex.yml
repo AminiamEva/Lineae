@@ -174,7 +174,10 @@ jobs:
             writeFileSync(join(process.env.LINEAE_NATIVE_EVIDENCE_DIR,"prose-projection.tex"),projectMixedDocument(prose).projection);
             const table=readFileSync("tests/native-math/fixtures/table-rowspan.tex","utf8");
             const tabularray=table.replace("{multirow}","{tabularray}").replaceAll("{tabular}","{tblr}");
-            for(const [environment,raw,merge] of [["tabular",table,mergeTableSourceRows],["tblr",tabularray,mergeTblrRows]]){
+            const tabularx=table.replace("{multirow}","{multirow,tabularx}").replaceAll("{tabular}","{tabularx}")
+              .replace("{tabularx}{ll}","{tabularx}{\\linewidth}{lX}");
+            for(const [environment,raw,merge] of [["tabular",table,mergeTableSourceRows],["tabularx",tabularx,mergeTableSourceRows],
+              ["tblr",tabularray,mergeTblrRows]]){
               const open=`\\begin{${environment}}`,close=`\\end{${environment}}`;
               const from=raw.indexOf(open),to=raw.indexOf(close)+close.length;
               const patch=merge(raw.slice(from,to),0,1,0);
