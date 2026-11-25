@@ -1796,6 +1796,35 @@ const server=createServer(async(req,res)=>{
       await page.waitForFunction(expected=>nativeProbe.source===expected,evidence.source.replace('汉字','键汉字'));
       console.log('PASS real LuaLaTeX CJK glyph hit and exact source patch after composition');
     }
+    if(process.env.LINEAE_NATIVE_REFERENCE_PAGE){
+      const evidence=nativeEvidence=JSON.parse(await readFile(process.env.LINEAE_NATIVE_REFERENCE_PAGE,'utf8'));
+      await page.close();
+      page=await browser.newPage({locale:'en-US',viewport:{width:1600,height:1100}});
+      await page.addInitScript(installMockNativeTex);
+      await page.route('**/vendor/mathlive/**',route=>route.abort());
+      await page.goto('http://127.0.0.1:'+server.address().port+'/?native-only-acceptance=1',{waitUntil:'networkidle'});
+      await page.evaluate(evidence=>{
+        const p=window.nativeProbe,originalLayout=p.layout;
+        p.realEvidence=evidence;
+        p.layout=()=>({...originalLayout(),pages_changed:evidence.raw,pages_total:evidence.raw.length});
+      },evidence);
+      await page.locator('input#file').setInputFiles({name:'reference-evidence.tex',mimeType:'text/plain',buffer:Buffer.from(evidence.source)});
+      await page.locator('#native-tex-toggle').click();
+      await page.waitForFunction(()=>document.querySelector('#native-tex-preview').dataset.state==='current');
+      await page.locator('#native-tex-target').click();
+      await page.getByText('Click text on the native page',{exact:false}).waitFor();
+      await page.locator('#native-tex-edit').click();
+      const nativePage=evidence.observed.find(page=>page.dl.math_owners?.glyphs?.some(glyph=>glyph.owner===evidence.targetOwner));
+      const {bbox}=nativePage.dl.math_owners.glyphs.find(glyph=>glyph.owner===evidence.targetOwner);
+      const scale=.75*(96/72)/65781.76;
+      await page.locator(`[data-native-page="${nativePage.page}"] canvas`).click({
+        position:{x:(bbox[0]+bbox[2])/2*scale,y:(bbox[1]+bbox[3])/2*scale},modifiers:[mod],
+      });
+      await page.waitForFunction(()=>document.activeElement?.id==='native-tex-input');
+      await page.keyboard.type('A');
+      await page.waitForFunction(expected=>nativeProbe.source===expected,evidence.source.replace('Reference target','AReference target'));
+      console.log('PASS cross-reference navigation and precise source edit using real LuaLaTeX glyph bounds');
+    }
     if(process.env.LINEAE_NATIVE_DEGRADED_PAGE){
       const evidence=JSON.parse(await readFile(process.env.LINEAE_NATIVE_DEGRADED_PAGE,'utf8'));
       await page.close();
@@ -1902,7 +1931,6 @@ const server=createServer(async(req,res)=>{
     }
     await page.close();
     page=await browser.newPage({locale:'en-US',viewport:{width:1600,height:1100}});
-    page.on('console',message=>{if(message.text().startsWith('[ref-check]'))console.log(message.text());});
     await page.addInitScript(installMockNativeTex);
     await page.route('**/vendor/mathlive/**',route=>route.abort());
     const base='http://127.0.0.1:'+server.address().port+'/';

@@ -591,8 +591,6 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
          observation.stamp.sourceRevision===stamp.sourceRevision)openMeasuredDrawing?.(drawing);
     },
     onReferenceHit:(reference,stamp,event)=>{
-      console.debug('[ref-check]',JSON.stringify({nativeEditing,accepts:acceptsInput(),current:current(),geometry:hasGeometry(),pending:!!pendingEdit,
-        observed:observation?.stamp,stamp}));
       if(nativeEditing&&acceptsInput()&&current()&&hasGeometry()&&!pendingEdit&&observation?.stamp.sessionId===stamp.sessionId&&
         observation.stamp.sourceRevision===stamp.sourceRevision&&navigateReference?.(reference))event.preventDefault();
     },
@@ -1185,8 +1183,6 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
     },
     setDocumentZoom:value=>{if(primary)setNativeZoom(value);},
     navigate(address){
-      console.debug('[ref-check]',JSON.stringify({navigate:{path:address.path,from:address.from,to:address.to,heading:address.heading},
-        matching:nativeDocument.surface.caret?.docOffset,kind:observation?.kind}));
       if(!acceptsInput()||!nativeEditing||pendingEdit)return false;
       if(observation&&current())return selectNavigationTarget(address);
       outlineTarget=address;

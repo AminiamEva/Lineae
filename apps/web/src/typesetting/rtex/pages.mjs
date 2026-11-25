@@ -320,15 +320,14 @@ export function installNativePages({host,getFont,getTypeOneFont,getRaster,onPain
     if(warm||event.button!==0)return;
     const canvas=event.target.closest?.('canvas');
     if(!canvas)return;
-    const entry=pages.get(Number(canvas.parentElement.dataset.nativePage));
+    const pageNumber=Number(canvas.parentElement.dataset.nativePage);
+    const entry=pages.get(pageNumber);
     if(entry?.canvas!==canvas)return;
     const rect=canvas.getBoundingClientRect(),scale=CSS_PER_SP*zoom;
     const x=(event.clientX-rect.left)/scale,y=(event.clientY-rect.top)/scale;
-    if(event.ctrlKey||event.metaKey)console.debug('[ref-check]',JSON.stringify({x,y,zoom,revision,layoutVersion,
-      stamp:ownership?.stamp,boxes:ownership?.references.get(entry.number)}));
     if(ownership?.stamp.sourceRevision===revision&&ownership?.stamp.layoutVersion===layoutVersion){
       if(event.ctrlKey||event.metaKey){
-        const references=(ownership.references.get(entry.number)??[]).filter(({bbox:[left,top,right,bottom]})=>
+        const references=(ownership.references.get(pageNumber)??[]).filter(({bbox:[left,top,right,bottom]})=>
           x>=left&&x<=right&&y>=top&&y<=bottom);
         const unique=new Set(references.map(glyph=>glyph.owner));
         if(unique.size===1){
@@ -338,7 +337,7 @@ export function installNativePages({host,getFont,getTypeOneFont,getRaster,onPain
       }
       if(locate(canvas,event))return;
       const drawings=ownership.drawings.filter(({number,box:[left,top,width,height],rasterHit})=>
-        number===entry.number&&(rasterHit?rasterContains(rasterHit,x,y):x>=left&&x<=left+width&&y>=top&&y<=top+height));
+        number===pageNumber&&(rasterHit?rasterContains(rasterHit,x,y):x>=left&&x<=left+width&&y>=top&&y<=top+height));
       if(drawings.length===1){onDrawingHit?.(drawings[0].drawing,ownership.stamp);return;}
       if(drawings.length>1)return;
     }

@@ -1781,6 +1781,10 @@ mod tests {
             assert!(measured[0]["dl"]["math_owners"]["glyphs"].as_array().is_some_and(|glyphs|
                 glyphs.iter().any(|glyph| glyph["owner"] == reference_probe["tag"])),
                 "the reference expansion must retain its exact source owner");
+            std::fs::write(directory.join("native-reference-pages.json"), serde_json::to_vec(&json!({
+                "raw": layout["pages_changed"], "observed": measured, "projection": reference_probe["projection"],
+                "source": reference_source, "targetOwner": reference_probe["tag"],
+            })).unwrap()).unwrap();
             reference.terminate();
             let source = include_str!("../../../../tests/native-math/fixtures/numbered-alignment.tex");
             let projection = std::fs::read_to_string(directory.join("alignment-projection.tex")).unwrap();
