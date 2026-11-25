@@ -1264,7 +1264,12 @@ editor.on('update', ({transaction}) => {
     const {project,composition,drafts}=nativeProject;
     for(const [id,draft] of drafts)project.edit(id,draft);
     projectDocument.hydrate(composition,editor.getJSON());
-    sourceView.reset(composition.sources.get(composition.rootId));
+    const root=composition.sources.get(composition.rootId);
+    if(transaction.doc.attrs.layoutPreamble!==transaction.before.attrs.layoutPreamble){
+      documentParts=parseDocument(root,{fragment:true});
+      pageSetup=readPageSetup(documentParts.start);applyPageSetup();renderMeta();
+    }
+    sourceView.reset(root);
     projectExplorer.changed();
     return;
   }
@@ -1457,7 +1462,12 @@ function insertTikzStudioBlock({ libraries = [], macros = [], declarations = '',
   return { ok: true };
 }
 
-function updateGlobalColumns(count){  const before=documentParts.start;
+function updateGlobalColumns(count){
+  if(sourceView.hidden&&nativeWorkspaceRequested()){
+    updateNativeLayout(preamble=>writeGlobalColumns(preamble,count));
+    return;
+  }
+  const before=documentParts.start;
   const after=writeGlobalColumns(before,count);
   if(after===before)return;
   if(!sourceView.hidden){
@@ -1469,6 +1479,29 @@ function updateGlobalColumns(count){  const before=documentParts.start;
   documentParts.start=after;
   if(importedSource?.startsWith(before))importedSource=after+importedSource.slice(before.length);
   applyPageSetup();
+}
+function updateNativeLayout(transform){
+  const composition=projectDocument.composition,project=projectExplorer?.model;
+  if(projectFileKind==='tex'&&project&&project.activeFileId!==project.mainFileId){
+    updateDetachedProjectLayout(project,transform);
+    return;
+  }
+  const root=composition?.rootId;
+  const before=root?project.file(root).draft:source();
+  const fragment=projectFileKind==='tex';
+  const parsed=parseDocument(before,{fragment});
+  if(!parsed?.start)return;
+  const preamble=transform(parsed.start);
+  const [change]=textPatch(parsed.start,preamble);
+  if(!change)return;
+  const {state}=editor,tr=state.tr.setDocAttribute('layoutPreamble',preamble);
+  const draft=preamble+before.slice(parsed.start.length);
+  if(root){
+    dispatchNativeProjectChange(state,tr,project,new Map([[root,draft]]));
+    return;
+  }
+  const projected=sourceProjection(draft,tr.doc.toJSON(),{fragment});
+  if(projected)dispatchNativeParagraphChange(state,tr,before,draft,change,projected);
 }
 function applyPageSetup(){
   const layoutPreamble=projectFileKind==='tex'?projectLayoutPreamble(projectExplorer?.model,documentParts.start):documentParts.start;
@@ -1505,29 +1538,29 @@ function applyPageSetup(){
     pageMarginPreset.value=Object.keys(MARGIN_PRESETS).find(key=>MARGIN_PRESETS[key]===pageSetup.margin)??'custom';
   }
 }
+function updateDetachedProjectLayout(project,transform){
+  if(sourceView.composing||editor.view.composing)return;
+  if(!sourceView.hidden)sourceView.flush();
+  const owner=project.mainFileId,before=project.file(owner).draft;
+  const preamble=parseDocument(before,{fragment:true})?.start;
+  if(!preamble)return;
+  const after=transform(preamble)+before.slice(preamble.length);
+  if(after!==before){
+    project.edit(owner,after);
+    sourceModeCommits.push({owner,before,after,afterDoc:editor.state.doc,afterPreamble:documentParts.start,sourceText:sourceView.value});
+    sourceModeRedos=[];syncUndoButtons();
+  }
+  applyPageSetup();projectExplorer.changed();nativeTexPreview?.refresh();
+}
 function updatePageSetup(patch){
   const project=projectExplorer?.model;
+  const transform=preamble=>writePageSetup(preamble,mergePageLayout(readPageSetup(preamble),patch));
   if(projectFileKind==='tex'&&project&&project.activeFileId!==project.mainFileId){
-    if(sourceView.composing||editor.view.composing)return;
-    if(!sourceView.hidden)sourceView.flush();
-    const owner=project.mainFileId,before=project.file(owner).draft;
-    const preamble=parseDocument(before,{fragment:true})?.start;
-    if(!preamble)return;
-    const after=writePageSetup(before,mergePageLayout(readPageSetup(preamble),patch));
-    if(after!==before){project.edit(owner,after);sourceModeCommits.push({owner,before,after,afterDoc:editor.state.doc,afterPreamble:documentParts.start,sourceText:sourceView.value});
-syncUndoButtons();sourceModeRedos=[];}
-    applyPageSetup();projectExplorer.changed();return;
+    updateDetachedProjectLayout(project,transform);
+    return;
   }
-  if(sourceView.hidden&&nativeWorkspaceRequested()&&!projectDocument.composition){
-    const before=source(),parsed=parseDocument(before);
-    if(!parsed)return;
-    const preamble=writePageSetup(parsed.start,mergePageLayout(readPageSetup(parsed.start),patch));
-    const [change]=textPatch(parsed.start,preamble);
-    if(!change)return;
-    const {state}=editor,tr=state.tr.setDocAttribute('layoutPreamble',preamble);
-    const draft=preamble+before.slice(parsed.start.length);
-    const projected=sourceProjection(draft,tr.doc.toJSON());
-    if(projected)dispatchNativeParagraphChange(state,tr,before,draft,change,projected);
+  if(sourceView.hidden&&nativeWorkspaceRequested()){
+    updateNativeLayout(transform);
     return;
   }
   pageSetup=changePageLayout({editor,sourceView,current:pageSetup,preamble:documentParts.start,patch});

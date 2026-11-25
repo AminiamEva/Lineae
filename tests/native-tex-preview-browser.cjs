@@ -1929,10 +1929,55 @@ const server=createServer(async(req,res)=>{
     await page.keyboard.press(mod+'+Shift+z');
     await page.waitForFunction(expected=>nativeProbe.source===expected,narrow);
     await page.getByText('Click text on the native page',{exact:false}).waitFor();
-    const referenceX=6550000+'RepeatFirstparagraph.See'.length*200000;
+    const referenceX=await page.evaluate(()=>{
+      const call=nativeProbe.calls.findLast(call=>call.command==='native_tex_observe_formula');
+      const tags=[...call.args.projection.matchAll(/\\attribute65000=(\d+) (.)/gsu)];
+      const index=tags.findIndex(tag=>call.args.projection.startsWith('\\ref{sec:first}',tag.index+tag[0].length-1));
+      return index<0?null:6600000+index*200000;
+    });
+    assert.ok(referenceX,'The current observation tags the reference on the page');
     await page.locator('[data-native-page="1"] canvas').click({position:{x:referenceX*layoutScale,y:9250000*layoutScale},modifiers:[mod]});
+    await page.waitForFunction(()=>document.activeElement?.id==='native-tex-input');
     await page.keyboard.type('Y');
-    await page.waitForFunction(expected=>nativeProbe.source===expected,narrow.replace('Repeat}\\label','YRepeat}\\label'));
+    await page.waitForFunction(expected=>nativeProbe.source===expected,narrow.replace('Repeat}\\label','YRepeat}\\label')).catch(async error=>{
+      console.error('Native reference writeback',await page.evaluate(()=>({source:nativeProbe.source,
+        selection:document.getSelection()?.anchorNode?.textContent,focus:document.activeElement?.id,
+        status:document.querySelector('#native-tex-preview')?.dataset.state})));
+      throw error;
+    });
+
+    await page.goto(base+'?native-workspace=1',{waitUntil:'networkidle'});
+    const projectLayout='\\documentclass{article}\n\\begin{document}\nBefore.\n\n'+
+      '\\input{chapters/one}\n\nAfter.\n\\end{document}\n';
+    const layoutChild='Child keeps its bytes.\n';
+    await openMockProject(page,false,projectLayout,layoutChild);
+    await page.locator('#native-tex-toggle').click();
+    await page.getByText('Click text on the native page',{exact:false}).waitFor();
+    await revealToolbar(page);await page.locator('[data-group=layout]').click();
+    const columns=page.getByRole('combobox',{name:'Global columns'});
+    if(!await columns.isVisible())await page.locator('[data-ribbon-group=layout-page-setup] .ribbon-group-toggle').click();
+    await columns.selectOption('2');
+    const twoColumns=projectLayout.replace('\\documentclass{article}','\\documentclass[twocolumn]{article}');
+    const verifyLayout=expected=>page.waitForFunction(({expected,child})=>nativeProbe.source===expected&&
+      nativeProbe.calls.some(call=>call.command==='native_tex_update'&&call.args.source===expected&&
+        call.args.files?.some(file=>file.path==='chapters/one.tex'&&
+          new TextDecoder().decode(new Uint8Array(file.bytes))===child)),{expected,child:layoutChild});
+    await verifyLayout(twoColumns);
+    await margin.selectOption('narrow');
+    const projectNarrow=twoColumns.replace('\\begin{document}','\\usepackage[letterpaper,margin=1.27cm]{geometry}\n\\begin{document}');
+    await verifyLayout(projectNarrow);
+    await page.getByText('Click text on the native page',{exact:false}).waitFor();
+    const projectScale=Number(await page.locator('.document-status input[type=range]').inputValue())/100*(96/72)/65781.76;
+    await page.locator('[data-native-page="1"] canvas').click({position:{x:6550000*projectScale,y:9250000*projectScale}});
+    await page.keyboard.press(mod+'+z');
+    await verifyLayout(twoColumns);
+    assert.notEqual(await margin.inputValue(),'narrow');
+    await page.keyboard.press(mod+'+z');
+    await verifyLayout(projectLayout);
+    assert.equal(await columns.inputValue(),'1');
+    await page.keyboard.press(mod+'+Shift+z');
+    await verifyLayout(twoColumns);
+    assert.equal(await columns.inputValue(),'2');
 
     await page.goto(base+'?native-only-acceptance=1',{waitUntil:'networkidle'});
     const duplicateImages='\\documentclass{article}\n\\usepackage{graphicx}\n\\begin{document}\n'+

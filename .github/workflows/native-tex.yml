@@ -3,6 +3,10 @@ name: Native TeX geometry
 on:
   workflow_dispatch:
     inputs:
+      browser_only:
+        description: Run the native editing browser gates without TeX Live or a desktop build
+        type: boolean
+        default: false
       warm_repetitions:
         description: Optional warm edit timing samples for the authored LF fixture (0 to 1000)
         type: number
@@ -25,7 +29,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: native-tex-${{ github.ref }}
+  group: native-tex-${{ github.ref }}-${{ inputs.browser_only && 'browser' || 'engine' }}
   cancel-in-progress: false
 
 jobs:
@@ -63,7 +67,7 @@ jobs:
           node-version: 22
           cache: npm
       - name: Install Linux WebView dependencies
-        if: runner.os == 'Linux'
+        if: ${{ runner.os == 'Linux' && !inputs.browser_only }}
         timeout-minutes: 6
         run: |
           packages=(libwebkit2gtk-4.1-dev libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev xvfb xauth)
@@ -79,7 +83,9 @@ jobs:
             sudo apt-get "${apt_options[@]}" install -y --no-install-recommends "${missing[@]}"
           fi
       - uses: dtolnay/rust-toolchain@stable
+        if: ${{ !inputs.browser_only }}
       - uses: Swatinem/rust-cache@v2
+        if: ${{ !inputs.browser_only }}
         with:
           workspaces: apps/desktop/src-tauri -> target
           key: native-tex-debug
@@ -113,13 +119,16 @@ jobs:
           LINEAE_NATIVE_ONLY=1 node tests/native-tex-preview-browser.cjs
           LINEAE_TEST_NATIVE_PREVIEW=1 node tests/math-editing-browser.cjs
       - uses: actions/cache@v4
+        if: ${{ !inputs.browser_only }}
         with:
           path: .native-tex/texlive
           key: native-tex-tl2025-${{ matrix.target }}-${{ hashFiles('scripts/install-native-tex-ci.sh') }}
           restore-keys: native-tex-tl2025-${{ matrix.target }}-
       - name: Install the frozen TeX Live environment
+        if: ${{ !inputs.browser_only }}
         run: bash scripts/install-native-tex-ci.sh
       - name: Download and verify the pinned rtex release
+        if: ${{ !inputs.browser_only }}
         env:
           ARCHIVE: ${{ matrix.archive }}
           EXPECTED_SHA256: ${{ matrix.sha256 }}
@@ -140,6 +149,7 @@ jobs:
             tar -xzf ".native-tex/$ARCHIVE" -C .native-tex/rtex
           fi
       - name: Observe real geometry and a revision-matched warm edit
+        if: ${{ !inputs.browser_only }}
         env:
           RTEX_ARCHIVE_SHA256: ${{ matrix.sha256 }}
           RTEX_TARGET: ${{ matrix.target }}
@@ -244,6 +254,7 @@ jobs:
           LINEAE_NATIVE_DEGRADED_PDF="$LINEAE_NATIVE_EVIDENCE_DIR/native-degraded.pdf" \
           node tests/native-tex-preview-browser.cjs
       - name: Check the engine-off workspace in the desktop WebView
+        if: ${{ !inputs.browser_only }}
         run: |
           npm ci --prefix apps/desktop --no-audit --no-fund
           npm --prefix apps/desktop run tauri -- build --debug --no-bundle
@@ -259,7 +270,7 @@ jobs:
             if(output)process.stdout.write(output);
           '
       - name: Preserve actual protocol, source, logs and clean reference PDF
-        if: always()
+        if: ${{ always() && !inputs.browser_only }}
         uses: actions/upload-artifact@v4
         with:
           name: native-tex-geometry-${{ matrix.target }}-${{ github.sha }}
@@ -269,7 +280,7 @@ jobs:
           if-no-files-found: warn
           retention-days: 30
       - name: Preserve the unbundled Windows input probe
-        if: ${{ runner.os == 'Windows' && inputs.windows_input_probe }}
+        if: ${{ runner.os == 'Windows' && inputs.windows_input_probe && !inputs.browser_only }}
         uses: actions/upload-artifact@v4
         with:
           name: native-windows-input-probe-${{ github.sha }}
@@ -277,7 +288,7 @@ jobs:
           if-no-files-found: error
           retention-days: 3
       - name: Preserve the unbundled input probes
-        if: ${{ inputs.desktop_input_probe }}
+        if: ${{ inputs.desktop_input_probe && !inputs.browser_only }}
         uses: actions/upload-artifact@v4
         with:
           name: native-input-probe-${{ matrix.target }}-${{ github.sha }}
