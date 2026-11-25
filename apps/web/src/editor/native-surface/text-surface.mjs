@@ -32,8 +32,6 @@ const sameParagraph = (a, b) =>
   a?.paragraph.filePath === b?.paragraph.filePath &&
   a?.paragraph.from16 === b?.paragraph.from16 && a?.paragraph.source === b?.paragraph.source;
 const runsOf = paragraph => paragraph.runs ?? [{from16:0, to16:paragraph.text.length}];
-const runFor = (paragraph, from16, to16) =>
-  runsOf(paragraph).find(run => from16 >= run.from16 && to16 <= run.to16) ?? null;
 const runAt = (paragraph, offset, backward) => runsOf(paragraph).find(run =>
   backward ? offset > run.from16 && offset <= run.to16 : offset >= run.from16 && offset < run.to16) ?? null;
 const boundariesOf = (run, fallback) => {
@@ -53,7 +51,7 @@ export function createTextSurface({projection}) {
       const stop = selection.caret;
       if (!stop || !text) return null;
       const [start, end] = selection.range;
-      if (!sameParagraph(start, stop) || !runFor(stop.paragraph, start.local, end.local)) return null;
+      if (!sameParagraph(start, stop)) return null;
       const result = textEdit(sourceProjection, {
         paragraph: stop.paragraph, from16: start.local, to16: end.local, insert: text,
       });
@@ -68,7 +66,6 @@ export function createTextSurface({projection}) {
         const [start, end] = selection.range;
         from = Math.min(start.local, end.local);
         to = Math.max(start.local, end.local);
-        if (!runFor(stop.paragraph, from, to)) return null;
       } else {
         const run = runAt(stop.paragraph, stop.local, backward);
         if (!run) return null;

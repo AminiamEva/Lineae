@@ -180,7 +180,7 @@ test('mixed prose and display math share one projection and keep distinct owners
   assert.equal(nativeTarget(projection, {owner:mathOwner, role:'nucleus', after:false}).kind, 'math');
 });
 
-test('inline math splits prose into runs that never edit across the math node', () => {
+test('prose can replace a complete inline formula but cannot edit part of its source', () => {
   const inlineSource = '\\begin{document}\nBefore $x$ after.\n\\end{document}\n';
   const projection = projectMixedDocument(inlineSource);
   assert.equal(projection.kind, 'mixed');
@@ -197,9 +197,13 @@ test('inline math splits prose into runs that never edit across the math node', 
   surface.selectBetween(paragraph.from16 + secondRun.from16 + 1, paragraph.from16 + secondRun.from16 + 1);
   const edit = surface.insert('Z');
   assert.equal(edit.text, 'Before $x$ Zafter.');
-  assert.equal(textEdit(projection, {
-    paragraph, from16:paragraph.runs[0].to16 - 1, to16:paragraph.runs[1].from16 + 1, insert:'',
-  }), null);
+  const replacement=textEdit(projection,{
+    paragraph,from16:paragraph.runs[0].to16-1,to16:paragraph.runs[1].from16+1,insert:'-',
+  });
+  assert.equal(replacement.text,'Before-after.');
+  assert.equal(textEdit(projection,{
+    paragraph,from16:paragraph.parts[1].from16+1,to16:paragraph.runs[1].from16,insert:'',
+  }),null);
 });
 
 test('a protected block does not disable targeting in neighboring plain prose', () => {

@@ -1,3 +1,4 @@
+import {proseEditEndpoints} from './editor/native-text/projection.mjs';
 import {nativeOnlyAcceptance} from './editor/native-surface/acceptance-mode.mjs';
 import {AppendixStart,MatterStart,LayoutCommand} from './editor/appendix.js';
 import {Lipsum} from './editor/lipsum.js';
@@ -1121,9 +1122,9 @@ function standaloneParagraphEdit(tr) {
   // creating a new box), with its own package-generation behavior.
   const priorRuns=a.parent.content.content;
   const inline = a.sameParent(before.resolve(oldEnd)) && b.sameParent(doc.resolve(newEnd)) &&
-    a.parent.content.cut(a.parentOffset,oldEnd-a.start()).content.every(node=>node.isText) &&
-    b.parent.content.cut(b.parentOffset,newEnd-b.start()).content.every(node=>node.isText &&
-      (!node.marks.length || priorRuns.some(run=>run.sameMarkup(node))));
+    a.parent.content.cut(a.parentOffset,oldEnd-a.start()).content.every(node=>node.isText||node.type.name==='math') &&
+    b.parent.content.cut(b.parentOffset,newEnd-b.start()).content.every(node=>node.type.name==='math'||(node.isText &&
+      (!node.marks.length || priorRuns.some(run=>run.sameMarkup(node)))));
   return inline ? a.index(0) : -1;
 }
 function refuseStandaloneWriteback() {
@@ -2654,7 +2655,7 @@ nativeTexPreview=installNativeTexPreview({host:footer,before:modes,
     else field.selection={ranges:[[Math.min(from,to),Math.max(from,to)]],direction:from<to?'forward':'backward'};
     return {field};
   },
-  commitMath:({formula,patch,text})=>{
+  commitMath:({formula,patch,text,structure})=>{
     if(!sourceView.hidden||!text||text===formula.math.source)return false;
     const project=projectExplorer?.model;
     const composition=projectDocument.composition;
@@ -2680,6 +2681,7 @@ nativeTexPreview=installNativeTexPreview({host:footer,before:modes,
     const node=Number.isInteger(position)?editor.state.doc.nodeAt(position):null;
     if(node?.attrs.latex!==formula.math.source)return false;
     const transaction=editor.state.tr.setNodeMarkup(position,undefined,{...node.attrs,latex:text});
+    if(structure)closeHistory(transaction);
     if(composition){
       const from=formula.from16+patch.from,to=formula.from16+patch.to;
       const expected=file.draft.slice(0,from)+patch.insert+file.draft.slice(to);
@@ -2696,8 +2698,8 @@ nativeTexPreview=installNativeTexPreview({host:footer,before:modes,
     const composition=projectDocument.composition;
     const file=project?.files.get(paragraph.filePath);
     if(project ? !composition||file?.draft!==paragraph.source : source()!==paragraph.source)return false;
-    const run=paragraph.runs?.find(candidate=>patch.from>=candidate.from16&&patch.to<=candidate.to16);
-    if(!run)return false;
+    const endpoints=proseEditEndpoints(paragraph,patch.from,patch.to);
+    if(!endpoints)return false;
     const matchesParts=node=>{
       if(node.type.name!=='paragraph'||node.childCount!==paragraph.parts.length)return false;
       return paragraph.parts.every((part,index)=>{
@@ -2733,12 +2735,14 @@ nativeTexPreview=installNativeTexPreview({host:footer,before:modes,
       (matches.length===1 ? matches[0] : null);
     if(!match)return false;
     const {offset:found,node:foundNode}=match;
-    let start=found+1;
-    for(let index=0;index<run.partIndex;index++)start+=foundNode.child(index).nodeSize;
-    start+=patch.from-run.from16;
-    const end=start+(patch.to-patch.from),tr=editor.state.tr;
+    const at=(run,offset)=>{
+      let position=found+1;
+      for(let index=0;index<run.partIndex;index++)position+=foundNode.child(index).nodeSize;
+      return position+offset-run.from16;
+    };
+    const start=at(endpoints.start,patch.from),end=at(endpoints.end,patch.to),tr=editor.state.tr;
     if(end>start)tr.delete(start,end);
-    if(patch.insert)tr.insert(start,editor.schema.text(patch.insert,foundNode.child(run.partIndex).marks));
+    if(patch.insert)tr.insert(start,editor.schema.text(patch.insert,foundNode.child(endpoints.start.partIndex).marks));
     tr.setSelection(TextSelection.create(tr.doc,start+patch.insert.length));
     if(composition){
       const from=paragraph.from16+patch.from,to=paragraph.from16+patch.to;
@@ -2746,6 +2750,14 @@ nativeTexPreview=installNativeTexPreview({host:footer,before:modes,
       const drafts=projectDocument.changes(tr.doc.toJSON());
       if(drafts?.get(file.id)!==expected)return false;
       for(const [id,draft] of drafts)if(id!==file.id&&draft!==project.file(id).draft)return false;
+    }
+    if(endpoints.start!==endpoints.end)closeHistory(tr);
+    if(!composition&&endpoints.start!==endpoints.end){
+      const from=paragraph.from16+patch.from,to=paragraph.from16+patch.to;
+      const expected=paragraph.source.slice(0,from)+patch.insert+paragraph.source.slice(to);
+      const draft=standaloneParagraphDraft(importedSource,projection,importedSnapshot,
+        editor.state.doc.toJSON(),tr.doc.toJSON(),match.index);
+      if(draft?.draft!==expected)return false;
     }
     const before=editor.state.doc;
     editor.view.dispatch(tr);

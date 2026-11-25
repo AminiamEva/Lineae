@@ -96,7 +96,7 @@ export function installNativeTexPreview({host,before,getSource,getSnapshot,isCom
     inputStart=0;
     const applied = edit.kind === 'text'
       ? commitText?.({ paragraph: edit.paragraph, patch: edit.patch, text: edit.text })
-      : commitMath?.({ formula: edit.formula, patch: edit.patch, text: edit.text });
+      : commitMath?.({ formula: edit.formula, patch: edit.patch, text: edit.text, structure:edit.structure });
     input.value = '';
     if (!applied) {
       surface.clearPending();

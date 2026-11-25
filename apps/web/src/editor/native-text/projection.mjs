@@ -203,10 +203,23 @@ export function textTarget(projection, owner, after) {
   };
 }
 
+export function proseEditEndpoints(paragraph, from, to) {
+  const runs=paragraph.runs??[];
+  const contains=(run,offset)=>offset>=run.from16&&offset<=run.to16;
+  const single=runs.find(run=>contains(run,from)&&contains(run,to));
+  if(single)return {start:single,end:single};
+  const start=runs.find(run=>contains(run,from));
+  const end=runs.find(run=>contains(run,to));
+  if(!start||!end||start.partIndex>=end.partIndex)return null;
+  const between=paragraph.parts.slice(start.partIndex+1,end.partIndex);
+  if(!between.length||between.some(part=>part.kind!=='math'||part.from16<from||part.to16>to))return null;
+  return {start,end};
+}
+
 export function textEdit(projection, {paragraph, from16, to16, insert}) {
   if (!projection || (projection.source!==paragraph.source && !projection.paragraphs?.includes(paragraph))) return null;
   if (!Number.isInteger(from16) || !Number.isInteger(to16) || from16 < 0 || to16 < from16 || to16 > paragraph.text.length) return null;
-  if (paragraph.runs && !paragraph.runs.some(run => from16 >= run.from16 && to16 <= run.to16)) return null;
+  if (paragraph.runs && !proseEditEndpoints(paragraph,from16,to16)) return null;
   if (typeof insert !== 'string' || unsupported.test(insert)) return null;
   const next = paragraph.text.slice(0, from16) + insert + paragraph.text.slice(to16);
   const source = paragraph.source.slice(0, paragraph.from16) + next + paragraph.source.slice(paragraph.from16 + paragraph.text.length);

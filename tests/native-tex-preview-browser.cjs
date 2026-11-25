@@ -494,9 +494,19 @@ const server=createServer(async(req,res)=>{
     const inlineScale=Number(await page.locator('#native-tex-zoom').inputValue())/100*(96/72)/65781.76;
     await panel.locator('[data-native-page="1"] canvas').click({position:{x:7510000*inlineScale,y:9250000*inlineScale}});
     await page.waitForFunction(()=>document.activeElement?.id==='native-tex-input');
+    const inlineObservations=await page.evaluate(()=>nativeProbe.calls.filter(call=>call.command==='native_tex_observe_formula').length);
     await page.keyboard.type('Y');
     await page.waitForFunction(()=>nativeProbe.source?.includes('Alpha $x$ Ybeta.'),
       'A prose run beside inline math edits only its own source bytes');
+    await page.waitForFunction(count=>nativeProbe.calls.filter(call=>call.command==='native_tex_observe_formula').length>count,inlineObservations);
+    await panel.getByText('Click prose on the native page',{exact:false}).waitFor();
+    await panel.locator('[data-native-page="1"] canvas').click({position:{x:7510000*inlineScale,y:9250000*inlineScale}});
+    await page.keyboard.press('Shift+ArrowLeft');
+    await page.keyboard.press('Delete');
+    const withoutInline=inlineDoc.toString().replace('Alpha $x$ beta.','AlphaYbeta.');
+    await page.waitForFunction(expected=>nativeProbe.source===expected,withoutInline);
+    await page.keyboard.press(mod+'+z');
+    await page.waitForFunction(expected=>nativeProbe.source===expected,inlineDoc.toString().replace('beta.','Ybeta.'));
     await page.locator('#native-tex-close').click();
     assert.deepEqual(errors,[]);
     if(process.env.LINEAE_NATIVE_PDF){

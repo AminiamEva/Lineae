@@ -63,7 +63,7 @@ export function createMathSurface({resolve}) {
           slotId:from.slot.id,from16:from.local,to16:to.local,command,
         });
         if(!result)return null;
-        return selection.record({formula:from.formula,patch:result.patch,text:result.source},
+        return selection.record({formula:from.formula,patch:result.patch,text:result.source,structure:true},
           from.formula.from16+result.cursor);
       } catch { return null; }
     },
