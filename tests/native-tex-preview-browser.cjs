@@ -1488,6 +1488,7 @@ const server=createServer(async(req,res)=>{
       'Native editing consumes pushed events instead of polling');
     await page.waitForFunction(()=>document.querySelector('#native-tex-preview').dataset.latencySamples);
     const timings=JSON.parse(await panel.getAttribute('data-latency-segments'));
+    assert.deepEqual(JSON.parse(await panel.getAttribute('data-latency-routes')),{fast:1});
     for(const stage of ['transaction','geometry','repaint','total'])
       assert.ok(timings[stage].p50>=0&&timings[stage].p99>=timings[stage].p95&&timings[stage].p95>=timings[stage].p50);
     await page.waitForFunction(()=>document.querySelector('#native-tex-preview').dataset.state==='current');

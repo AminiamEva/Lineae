@@ -153,7 +153,7 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
       return;
     }
     pendingEdit=edit;
-    pendingLatency ??= {started, committed:performance.now()};
+    pendingLatency={started,committed:performance.now()};
     return true;
   }
   function editSelection(action){
@@ -311,6 +311,7 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
   }
   function clearQueuedInput() {
     pendingEdit=null;
+    pendingLatency=null;
     queuedInput.length=0;
   }
   function selectedSource() {
@@ -716,6 +717,7 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
     delete panel.dataset.latencyLastGeometry;
     delete panel.dataset.latencyLastRepaint;
     delete panel.dataset.latencySegments;
+    delete panel.dataset.latencyRoutes;
     compositionField=null;
     inputComposition=null;
     mirror?.lifetime.abort();mirror=null;
@@ -795,13 +797,20 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
         const snapshot=wantedSnapshot;
         const changedEntry=snapshot.mainFile!==sentSnapshot.mainFile;
         const files=!changedEntry&&snapshot.dependencySignature===sentSnapshot.dependencySignature?undefined:snapshot.files;
+        const sample=pendingLatency;
         const result=await invoke('native_tex_update',{sessionId:session,source:snapshot.source,files,
           mainFile:changedEntry?snapshot.mainFile:undefined});
         if(attempt!==generation){
           if(result.sessionId)await invoke('native_tex_close',{sessionId:result.sessionId}).catch(()=>{});
           return;
         }
-        if(result.sessionId&&result.sessionId!==session){
+        const restarted=result.sessionId&&result.sessionId!==session;
+        if(sample&&sample===pendingLatency){
+          sample.signature=snapshot.signature;
+          sample.revision=result.sourceRevision;
+          sample.route=restarted?'restart':files?'project':result.routed??'unknown';
+        }
+        if(restarted){
           session=result.sessionId;pollEpoch++;renderedRevision=-1;pdfRendered=-1;pdfWanted=-1;pdfLayout=null;
           pdfGeometryAvailable=false;recordedPages.clear();
           renderer.reset({clear:false});pdf.reset({clear:false});
@@ -954,31 +963,32 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
         const expectedOffset=nativeDocument.surface.pendingOffset;
         const applied=nativeDocument.setObservation(observed,projection,pdfGeometryAvailable,selectionRegions?.());
         paintFilePresentation();
+        let editRestored=false;
         if(pendingEdit){
           const stop=nativeDocument.surface.caret;
           const previous=pendingEdit.paragraph??pendingEdit.formula;
           const next=stop?.paragraph??stop?.formula;
           const expected=pendingEdit.source??(previous.source.slice(0,previous.from16)+
             pendingEdit.text+previous.source.slice(previous.to16));
-          if(expectedOffset!==stop?.docOffset||next?.filePath!==previous.filePath||next?.source!==expected)
-            queuedInput.length=0;
+          editRestored=expectedOffset===stop?.docOffset&&next?.filePath===previous.filePath&&next?.source===expected;
+          if(!editRestored)queuedInput.length=0;
           pendingEdit=null;
         }
+        const sample=pendingLatency;
+        pendingLatency=null;
         if(applied){
           paintSurfaceSelection();
           positionInput();
-          if(pendingLatency){
-            const sample=pendingLatency;
+          if(editRestored&&sample?.signature===signature&&sample.revision===stamp.sourceRevision){
             const geometry=performance.now();
-            pendingLatency=null;
             // The next animation frame after the caret update bounds browser
             // repaint. It does not measure device input or display scan-out.
             requestAnimationFrame(()=>requestAnimationFrame(()=>{
-              if(attempt!==generation)return;
+              if(!currentStamp()||observation?.stamp!==stamp)return;
               const repaint=performance.now();
               const last={transaction:sample.committed-sample.started,geometry:geometry-sample.committed,
                 repaint:repaint-geometry,total:repaint-sample.started};
-              latency.push(last);
+              latency.push({...last,route:sample.route});
               if(latency.length>1024)latency.shift();
               const percentiles=Object.fromEntries(Object.keys(last).map(segment=>{
                 const ordered=latency.map(entry=>entry[segment]).sort((left,right)=>left-right);
@@ -993,6 +1003,9 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
               panel.dataset.latencyLastGeometry=last.geometry.toFixed(1);
               panel.dataset.latencyLastRepaint=last.repaint.toFixed(1);
               panel.dataset.latencySegments=JSON.stringify(percentiles);
+              const routes={};
+              for(const {route} of latency)routes[route]=(routes[route]??0)+1;
+              panel.dataset.latencyRoutes=JSON.stringify(routes);
             }));
           }
         }

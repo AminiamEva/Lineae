@@ -90,10 +90,13 @@ writes the exact source byte.
 ## Latency
 
 `#native-tex-preview` records `data-latency-samples`, `data-latency-p50`,
-`data-latency-p95` and `data-latency-p99` for keydown through the next confirmed
-repaint. `data-latency-segments` reports those percentiles separately for
+`data-latency-p95` and `data-latency-p99` from keydown through the next browser
+frame after the matching caret geometry. `data-latency-segments` reports separate percentiles for
 input-to-transaction, transaction-to-geometry, geometry-to-repaint and the
-total, using up to the most recent 1,024 samples. The browser regression uses
+total, using up to the most recent 1,024 samples. Superseded revisions and
+edits whose caret could not be restored do not enter the sample set.
+`data-latency-routes` records the corresponding counts by engine route, project
+file update, or session restart. The browser regression uses
 mocked geometry. OS input, real device composition and display scan-out still
 need separate measurements on Windows and macOS.
 
