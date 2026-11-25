@@ -202,10 +202,11 @@
   ],
   "acceptance": {
     "fullSoftwareRun": {
-      "revision": "22acf9b2df81c495a94d5d0cc72e5af5b3464d2c",
+      "revision": "4d941cf01f15d3f953582cf9fe888a6d387409ca",
       "status": "passed-on-windows-macos-ubuntu",
       "scope": "All three CI jobs passed the browser gates, real LuaLaTeX host tests, recorded page editing and the engine-off desktop WebView smoke. The same run preserved three unbundled executables for device input review.",
-      "evidence": "https://github.com/AminiamEva/Lineae/actions/runs/45678406254"
+      "evidence": "https://github.com/AminiamEva/Lineae/actions/runs/45684502595",
+      "priorEvidence": "https://github.com/AminiamEva/Lineae/actions/runs/45678406254"
     },
     "nativeHost": {
       "status": "protocol-and-project-tests-passed",
