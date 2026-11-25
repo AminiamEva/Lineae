@@ -1685,6 +1685,7 @@ mod tests {
             std::fs::write(directory.join("native-repeated-input-pages.json"), serde_json::to_vec(&json!({
                 "raw":layout["pages_changed"],"observed":observed,"source":repeated["source"],
                 "child":repeated["child"],"glyph":repeated["glyph"],"denominator":repeated["denominator"],
+                "projection":repeated["projection"],"files":repeated["files"],
             })).unwrap()).unwrap();
             input.terminate();
             let raw_source = include_str!("../../../../tests/native-math/fixtures/degraded-page.tex");

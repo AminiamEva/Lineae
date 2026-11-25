@@ -227,7 +227,7 @@ jobs:
             const [referenceTag]=[...referenceProbe.owners].find(([,owner])=>owner.reference?.key==="sec:first");
             writeFileSync(join(process.env.LINEAE_NATIVE_EVIDENCE_DIR,"native-reference-probe.json"),
               JSON.stringify({projection:referenceProbe.projection,tag:referenceTag}));
-            const repeatedRoot="\\documentclass{article}\n\\usepackage{amsmath}\n\\begin{document}\n"+
+            const repeatedRoot="\\documentclass{article}\n\\usepackage{unicode-math}\n\\setmathfont{Latin Modern Math}\n\\begin{document}\n"+
               "Before.\n\n\\input{chapters/one}\n\nBetween.\n\n\\input{chapters/one}\n\nAfter.\n\\end{document}\n";
             const repeatedChild="Child.\n\n\\[\\frac{x}{}\\]\n", path="chapters/one.tex";
             const repeated=projectMixedSnapshot({source:repeatedRoot,mainFile:"main.tex",
@@ -271,6 +271,7 @@ jobs:
           LINEAE_NATIVE_PAGE="$LINEAE_NATIVE_EVIDENCE_DIR/native-formula-pages.json" \
           LINEAE_NATIVE_TEXT_PAGE="$LINEAE_NATIVE_EVIDENCE_DIR/native-text-pages.json" \
           LINEAE_NATIVE_REFERENCE_PAGE="$LINEAE_NATIVE_EVIDENCE_DIR/native-reference-pages.json" \
+          LINEAE_NATIVE_REPEATED_INPUT_PAGE="$LINEAE_NATIVE_EVIDENCE_DIR/native-repeated-input-pages.json" \
           LINEAE_NATIVE_ALIGNMENT_PAGE="$LINEAE_NATIVE_EVIDENCE_DIR/native-alignment-pages.json" \
           LINEAE_NATIVE_DEGRADED_PAGE="$LINEAE_NATIVE_EVIDENCE_DIR/native-degraded-pages.json" \
           LINEAE_NATIVE_DEGRADED_PDF="$LINEAE_NATIVE_EVIDENCE_DIR/native-degraded.pdf" \

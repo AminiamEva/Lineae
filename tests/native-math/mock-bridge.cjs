@@ -106,6 +106,8 @@ module.exports=function installMockNativeTex() {
       if(p.realEvidence){
         if(args.projection===p.realEvidence.measuredProjection&&p.realEvidence.measuredObserved)return p.realEvidence.measuredObserved;
         if(args.projection!==p.realEvidence.projection)throw new Error('Editor projection differs from the actual recorded compile');
+        if(p.realEvidence.files&&JSON.stringify(p.realEvidence.files)!==JSON.stringify(args.files))
+          throw new Error('Staged project projection differs from the actual recorded compile');
         return p.realEvidence.observed;
       }
       const input=p.targetInclude?args.files?.find(file=>file.path==='chapters/one.tex')?.source:args.projection;

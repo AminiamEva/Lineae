@@ -2128,6 +2128,50 @@ const server=createServer(async(req,res)=>{
       await page.waitForFunction(expected=>nativeProbe.source===expected,evidence.source.replace('汉字','键汉字'));
       console.log('PASS real LuaLaTeX CJK glyph hit and exact source patch after composition');
     }
+    if(process.env.LINEAE_NATIVE_REPEATED_INPUT_PAGE){
+      const evidence=nativeEvidence=JSON.parse(await readFile(process.env.LINEAE_NATIVE_REPEATED_INPUT_PAGE,'utf8'));
+      const nativeScale=.75*(96/72)/65781.76;
+      for(const kind of ['glyph','denominator']){
+        await page.close();
+        page=await browser.newPage({locale:'en-US',viewport:{width:1600,height:1100}});
+        await page.addInitScript(installMockNativeTex);
+        await page.route('**/vendor/mathlive/**',route=>route.abort());
+        await page.goto('http://127.0.0.1:'+server.address().port+'/?native-only-acceptance=1',{waitUntil:'networkidle'});
+        await page.evaluate(recorded=>{
+          const p=window.nativeProbe,originalLayout=p.layout;
+          p.realEvidence=recorded;
+          p.layout=()=>({...originalLayout(),pages_changed:recorded.raw,pages_total:recorded.raw.length});
+        },evidence);
+        await openMockProject(page,false,evidence.source,evidence.child);
+        await page.locator('#native-tex-toggle').click();
+        await page.waitForFunction(()=>document.querySelector('#native-tex-preview').dataset.state==='current');
+        await page.locator('#native-tex-target').click();
+        await page.getByText('Click prose on the native page',{exact:false}).waitFor();
+        await page.locator('#native-tex-edit').click();
+        const matches=new Map();
+        const entries=kind==='glyph'?'glyphs':'fields';
+        for(const {page:number,dl} of evidence.observed){
+          for(const entry of dl.math_owners?.[entries]??[]){
+            if(entry.owner!==evidence[kind]||entries==='fields'&&(!entry.empty||entry.role!=='den'))continue;
+            matches.set(JSON.stringify([number,entry.bbox]),{number,bbox:entry.bbox});
+          }
+        }
+        assert.equal(matches.size,2);
+        const {number,bbox:[left,top,right,bottom]}=[...matches.values()].at(-1);
+        await page.locator(`[data-native-page="${number}"] canvas`).click({position:{
+          x:(left+.2*(right-left))*nativeScale,y:((top+bottom)/2)*nativeScale,
+        }});
+        await page.waitForFunction(()=>document.activeElement?.id==='native-tex-input');
+        await page.keyboard.type(kind==='glyph'?'X':'q');
+        const child=kind==='glyph'?evidence.child.replace('Child.','XChild.'):evidence.child.replace('}{','}{q');
+        await page.waitForFunction(({source,child})=>{
+          const update=nativeProbe.calls.findLast(call=>call.command==='native_tex_update');
+          return update?.args.source===source&&update.args.files?.some(file=>file.path==='chapters/one.tex'&&
+            new TextDecoder().decode(new Uint8Array(file.bytes))===child);
+        },{source:evidence.source,child});
+      }
+      console.log('PASS native edits at the second real LuaLaTeX expansion update one shared source file');
+    }
     if(process.env.LINEAE_NATIVE_REFERENCE_PAGE){
       const evidence=nativeEvidence=JSON.parse(await readFile(process.env.LINEAE_NATIVE_REFERENCE_PAGE,'utf8'));
       await page.close();
