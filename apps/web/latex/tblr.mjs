@@ -227,6 +227,7 @@ function axisOptions(settings,colspec,height,width){
   const indexed=[];
   let from=0;
   for(const cut of [...delimiters(settings.value,[','],true),{index:end,end}]){
+    const optionStart=from;
     const raw=settings.value.slice(from,cut.index);
     const [key,value]=assignment(clean(raw));
     const start=from+trivia(raw);
@@ -239,7 +240,9 @@ function axisOptions(settings,colspec,height,width){
     const index=Number(digits),limit={row:height,hline:height+1,vline:width+1}[kind];
     if(index>limit||kind!=='row'&&value!==null&&group(value,0)?.end!==value.length)return null;
     const at=base+start+kind.length+gap.length;
-    indexed.push({kind,index,from:at,to:at+digits.length});
+    const removal=kind==='row'&&!raw.includes('%')?{from:base+(optionStart?optionStart-1:start),
+      to:base+(optionStart?optionStart+raw.trimEnd().length:cut.end),insert:''}:null;
+    indexed.push({kind,index,from:at,to:at+digits.length,removal});
   }
   return indexed;
 }
@@ -247,9 +250,18 @@ function axisOptions(settings,colspec,height,width){
 function adjustAxes(table,axis,position,remove){
   const relevant=axis==='row'?['row','hline']:['vline'];
   const edits=[];
-  for(const {kind,index,from,to} of table.indexed){
+  const boundary=axis==='row'?'hline':'vline';
+  const mergingRules=remove&&table.indexed.some(({kind,index})=>kind===boundary&&index===position)&&
+    table.indexed.some(({kind,index})=>kind===boundary&&index===position+1);
+  if(mergingRules)return null;
+  let removedStyle=false;
+  for(const {kind,index,from,to,removal} of table.indexed){
     if(!relevant.includes(kind))continue;
-    if(remove&&(index===position||kind!=='row'&&index===position+1))return null;
+    if(remove&&kind==='row'&&index===position){
+      if(removedStyle||!removal)return null;
+      edits.push(removal);
+      removedStyle=true;
+    }
     if(index>position)edits.push({from,to,insert:String(index+(remove?-1:1))});
   }
   return edits;

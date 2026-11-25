@@ -24,7 +24,13 @@ test('native tabularray row edits preserve global options, spans and source triv
   const indexedPatch=editTblrRow(indexed,0);
   assert.equal(indexed.slice(0,indexedPatch.from)+indexedPatch.insert+indexed.slice(indexedPatch.to),
     changed.replace(settings,settings+', row{3}={r}'));
-  assert.equal(editTblrRow(indexed,1,true),null);
+  const removed=editTblrRow(indexed,1,true);
+  assert.equal(indexed.slice(0,removed.from)+removed.insert+indexed.slice(removed.to),deleted);
+  const firstOption=source.replace(settings,'row{1}={l}, row{2}={r}, '+settings);
+  const shifted=editTblrRow(firstOption,0,true);
+  const retained=firstOption.slice(0,shifted.from)+shifted.insert+firstOption.slice(shifted.to);
+  assert.equal(retained,source.replace(settings,' row{1}={r}, '+settings)
+    .replace('\\SetCell[c=2]{c} Full & \\\\*[4pt]\r\n',''));
 });
 
 test('native tabularray column edits retain column declarations, rules and caret ownership',()=>{
@@ -45,7 +51,10 @@ test('native tabularray column edits retain column declarations, rules and caret
   const indexedPatch=editTblrColumn(indexed,0,0,0);
   assert.equal(indexed.slice(0,indexedPatch.from)+indexedPatch.insert+indexed.slice(indexedPatch.to),
     draft.replace('vlines={solid}','vline{3}={solid}'));
-  assert.equal(editTblrColumn(indexed,0,0,0,true),null);
+  const contract=editTblrColumn(indexed,0,0,0,true);
+  assert.equal(indexed.slice(0,contract.from)+contract.insert+indexed.slice(contract.to),
+    apply(editTblrColumn(source,0,0,0,true)).replace('vlines={solid}','vline{1}={solid}'));
+  assert.equal(editTblrColumn(indexed.replace('vline{2}', 'vline{1}={dashed}, vline{2}'),0,0,0,true),null);
 });
 
 test('tabularray column changes inside a combined span keep its vertical count and options',()=>{
@@ -102,8 +111,9 @@ test('tabularray row spans preserve covered source, neighboring cells and absolu
   const withInteriorRow=apply(authored,editTblrRow(authored,0));
   assert.equal(withInteriorRow,authored.replace('r=2','r=3')
     .replace('hline{2}','hline{3}').replace('\r\nHidden','\r\n & \\\\\r\nHidden'));
-  const unindexed=withInteriorRow.replace(',hline{3}={solid}','');
-  assert.equal(apply(unindexed,editTblrRow(unindexed,1,true)),authored.replace(',hline{2}={solid}',''));
+  assert.equal(apply(withInteriorRow,editTblrRow(withInteriorRow,1,true)),authored);
+  const conflicting=withInteriorRow.replace('hline{3}', 'hline{2}={dashed}, hline{3}');
+  assert.equal(editTblrRow(conflicting,1,true),null);
   assert.equal(editTblrRow(authored,0,true),null);
   const split=apply(authored,splitTblrCell(authored,0,0,authored.indexOf('A C')));
   assert.equal(split,authored.replace('r=2','r=1'));

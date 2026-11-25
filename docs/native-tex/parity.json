@@ -210,11 +210,11 @@
       "evidence": "https://github.com/AminiamEva/Lineae/actions/runs/45715982464"
     },
     "fullSoftwareRun": {
-      "revision": "d02ea2e30d8a373769491e02a4147316e9247cdc",
+      "revision": "99c778648e4f2c603462cb7f41be9f48d49e2233",
       "status": "passed-on-windows-macos-ubuntu",
-      "scope": "All three jobs passed the browser gates, real host geometry including repeated source expansion and four empty cases cells, recorded page editing, and the engine-off desktop WebView smoke. This run includes unbundled executables for physical device input review.",
-      "evidence": "https://github.com/AminiamEva/Lineae/actions/runs/45709683498",
-      "priorEvidence": "https://github.com/AminiamEva/Lineae/actions/runs/45708481162"
+      "scope": "All three jobs passed the browser gates, real host geometry including repeated source expansion and empty cases cells, recorded PDF editing including a scaled TikZ drawing, and the engine-off desktop WebView smoke. Unbundled debug executables are retained for physical device input review.",
+      "evidence": "https://github.com/AminiamEva/Lineae/actions/runs/45716499706",
+      "priorEvidence": "https://github.com/AminiamEva/Lineae/actions/runs/45709683498"
     },
     "nativeHost": {
       "status": "protocol-and-project-tests-passed",
@@ -247,7 +247,7 @@
     "pending": [
       "cross-file selection with endpoints inside cells, partial formula structures, or multiple copies of the same source",
       "remaining native commands across nested mixed selections and direct editing inside unsupported macro expansions",
-      "additional complex cell styles, occupied source slots that would be overwritten by moving a span anchor, and indexed rules across structural edits",
+      "additional complex cell styles, occupied source slots that would be overwritten by moving a span anchor, and conflicting indexed rules on a collapsed boundary",
       "direct figure editing inside unsupported nested float wrappers",
       "PDF semantics for complex objects beyond verified text, formulas, references, rasters and TikZ",
       "physical device verification on Windows and macOS for IME, native shortcut delivery, and keydown-to-pixels latency"

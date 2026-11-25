@@ -122,7 +122,7 @@ The actual folder picker and physical Linux IME still need device checks.
 
 For physical input review, the workflow's optional `desktop_input_probe`
 retains the unbundled debug executables from the same commit. The three-platform
-[full software run](https://github.com/AminiamEva/Lineae/actions/runs/45709683498)
+[full software run](https://github.com/AminiamEva/Lineae/actions/runs/45716499706)
 includes these executables and the recorded LuaLaTeX geometry. Launch an
 executable with `--lineae-native-workspace` on the device under test. This
 opens the engine-off workspace with the normal TeX trust dialog. The
@@ -167,8 +167,9 @@ The physical acceptance target is P95 below 30 ms.
    placement, shortcut delivery and latency still need physical-device tests.
 4. The browser can open standalone and floating TikZ directly from a registered
    LuaLaTeX PDF and edit an ordinary formula on that page. The two-subfigure
-   example opens the specific drawing clicked on both platforms, as verified by
-   [45656057369](https://github.com/AminiamEva/Lineae/actions/runs/45656057369).
+   example opens the specific scaled drawing clicked and checks its original
+   TeX wrapper on Windows, macOS and Linux.
+   [Full software run](https://github.com/AminiamEva/Lineae/actions/runs/45716499706).
    Other nested float content still needs geometry and editing coverage.
 5. The engine-off desktop workspace has passed the covered cases. Its default
    switch still depends on complete coverage and the device checks.
