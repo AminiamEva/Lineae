@@ -268,6 +268,8 @@ const server=createServer(async(req,res)=>{
         const table=/\\begin\{tabular\}\{\|l\|l\|\}[\s\S]*?\\end\{tabular\}\r?\n\r?\n/.exec(source);
         return Boolean(table)&&source.slice(0,table.index)+source.slice(table.index+table[0].length)===original;
       },afterLeaving);
+      await page.waitForFunction(()=>document.activeElement?.id==='native-tex-input'&&
+        document.querySelector('.environment-tag')?.textContent.endsWith('Row 1, column 1'));
       await page.keyboard.press(mod+'+z');
       await page.waitForFunction(source=>nativeProbe.source===source,afterLeaving);
       await panel.getByText('Click prose on the native page',{exact:false}).waitFor();

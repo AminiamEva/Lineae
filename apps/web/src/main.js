@@ -99,7 +99,7 @@ import { setHeadingBase } from '../latex/blocks.mjs';
 import { CommandManager, Editor, Node, Extension, Mark, mergeAttributes, wrappingInputRule } from '@tiptap/core';
 import StarterKit from '@tiptap/starter-kit';
 import CodeBlock from '@tiptap/extension-code-block';
-import Table from '@tiptap/extension-table';
+import Table, {createTable} from '@tiptap/extension-table';
 import TableRow from '@tiptap/extension-table-row';
 import TableCell from '@tiptap/extension-table-cell';
 import TableHeader from '@tiptap/extension-table-header';
@@ -356,6 +356,13 @@ const HistoryTable = Table.extend({
   },
 });
 function insertDefaultTable() {
+  if(nativeTexPreview?.hasNativeTextFocus?.()){
+    const table=createTable(editor.schema,2,2,false);
+    const grid=table.type.create({...table.attrs,borderMode:'grid'},table.content);
+    const latex=serialize(grid.toJSON()).trimEnd();
+    const [parsed]=importBlocks(latex);
+    return parsed?.type==='table'&&insertNativeProseBlock(editor.schema.nodeFromJSON(parsed),latex);
+  }
   return editor.chain().focus(undefined,{scrollIntoView:false})
     .insertTable({rows:2,cols:2,withHeaderRow:false})
     .updateAttributes('table',{borderMode:'grid'}).run();
@@ -2153,10 +2160,14 @@ function highlightCandidate(index) {
     candidates.scrollTop = bottom - candidates.clientHeight;
 }
 function insertNativePageBreak(){
+  return insertNativeProseBlock(editor.schema.nodes.pageBreak.create(),'\\newpage');
+}
+function insertNativeProseBlock(block,latex){
+  const started=performance.now();
   const range=nativeTexPreview.verifiedTextRange();
   if(!range)return false;
   const [first,last]=range,{paragraph}=first;
-  if(paragraph.heading||paragraph.tableCell||paragraph.container)return false;
+  if(paragraph.heading||paragraph.tableCell||paragraph.container||paragraph.wrapped)return false;
   const target=nativeProsePosition(paragraph,first.local,last.local);
   if(!target)return false;
   const {state}=editor,{from:start,to:end}=target.range;
@@ -2164,30 +2175,43 @@ function insertNativePageBreak(){
   if(!$start.sameParent($end)||$start.parent.type.name!=='paragraph')return false;
   const parent=$start.parent,left=parent.content.cut(0,$start.parentOffset),right=parent.content.cut($end.parentOffset);
   const {start:fromRun,end:toRun}=target.range.endpoints;
-  const collapsed=state.selection.empty;
+  const collapsed=first.local===last.local;
   if(left.size&&(!collapsed||right.size)&&fromRun.marks?.length||
      right.size&&(!collapsed||left.size)&&toRun.marks?.length)return false;
-  const pageBreak=editor.schema.nodes.pageBreak.create();
-  const nodes=[...(left.size?[parent.copy(left)]:[]),pageBreak,...(right.size?[parent.copy(right)]:[])];
+  const nodes=[...(left.size?[parent.copy(left)]:[]),block,...(right.size?[parent.copy(right)]:[])];
   const tr=state.tr.replaceWith($start.before(),$end.after(),nodes);
-  const afterBreak=$start.before()+(left.size?left.size+2:0)+pageBreak.nodeSize;
-  tr.setSelection(TextSelection.near(tr.doc.resolve(afterBreak),right.size?1:-1));
-  const source=paragraph.source,eol=parseDocument(source,{fragment:target.file?.kind==='tex'})?.eol;
+  const blockPosition=$start.before()+(left.size?left.size+2:0);
+  const table=block.type.name==='table';
+  const selection=table?blockPosition+1:blockPosition+block.nodeSize;
+  tr.setSelection(Selection.near(tr.doc.resolve(selection),table||right.size?1:-1));
+  const {source,filePath:path}=paragraph,fragment=projectFileKind==='tex';
+  const eol=parseDocument(source,{fragment})?.eol;
   if(!eol)return false;
   const blockEnd=paragraph.from16+paragraph.text.length;
   const from=!left.size?paragraph.from16:collapsed&&!right.size?blockEnd:first.docOffset;
   const to=collapsed?from:right.size?last.docOffset:blockEnd;
-  const insert=(left.size?eol+eol:'')+'\\newpage'+(right.size?eol+eol:'');
+  const prefix=left.size?eol+eol:'';
+  const insert=prefix+latex.replaceAll('\n',eol)+(right.size?eol+eol:'');
   const draft=source.slice(0,from)+insert+source.slice(to);
+  const change={from,to,insert};
+  let applied;
   if(target.composition){
-    const updates=projectDocument.changes(tr.doc.toJSON());
-    if(updates?.get(target.file.id)!==draft)return false;
-    for(const [id,text] of updates)if(id!==target.file.id&&text!==target.project.file(id).draft)return false;
-    editor.view.dispatch(closeHistory(tr));
-    return editor.state.doc!==state.doc;
+    applied=dispatchNativeProjectChange(state,tr,target.project,new Map([[target.file.id,draft]]));
+  }else{
+    const owner=projection?.blocks.find(entry=>entry.index===target.range.match.index&&entry.count===1&&
+      entry.from<=from&&entry.to>=to);
+    if(!owner)return false;
+    const revised=importBlocks(draft.slice(owner.from,owner.to+draft.length-source.length));
+    if(revised.length!==nodes.length||revised.some((value,index)=>!state.schema.nodeFromJSON(value).eq(nodes[index])))return false;
+    const projected=sourceProjection(draft,tr.doc.toJSON(),{fragment});
+    applied=Boolean(projected&&dispatchNativeParagraphChange(state,tr,source,draft,change,projected));
   }
-  const projected=sourceProjection(draft,tr.doc.toJSON(),{fragment:projectFileKind==='tex'});
-  return Boolean(projected&&dispatchNativeParagraphChange(state,tr,source,draft,{from,to,insert},projected));
+  if(applied&&table){
+    const firstCell=projectMixedDocument(draft,{fragment,filePath:path,splitIncludes:Boolean(target.composition)})?.paragraphs
+      .find(({tableCell})=>tableCell?.from16===from+prefix.length);
+    if(firstCell)nativeTexPreview.preserveSourceCaret({source:draft,path,offset:firstCell.from16},started,'text');
+  }
+  return applied;
 }
 function completionActions() {
   if(completionNative==='math')return {
@@ -4688,7 +4712,8 @@ const ribbon=document.createElement('div');ribbon.className='ribbon';
 const tabs=document.createElement('nav');tabs.className='ribbon-tabs';
 const home=document.createElement('div');home.className='tools';
 const insert=document.createElement('div');insert.className='tools';
-groupButton(insert,['分页','New page'],()=>editor.chain().focus().insertContent({type:'pageBreak'}).run());
+groupButton(insert,['分页','New page'],()=>nativeTexPreview.hasNativeTextFocus?.()?insertNativePageBreak():
+  editor.chain().focus().insertContent({type:'pageBreak'}).run());
 groupButton(insert,['图片','Image'],()=>insertLocalImage(editor));
 groupButton(insert,['子图','Subfigure'],()=>insertSubfigures(editor));
 const codeLanguageButton=groupButton(insert,['代码块','Code block'],async()=>{
