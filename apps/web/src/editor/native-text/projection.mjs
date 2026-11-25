@@ -55,7 +55,7 @@ function proseBody(block,keepThrough) {
   const heading=headingAt(text);
   if(heading?.end===text.length&&(heading.title.trim()===heading.title||
      (heading.title===heading.title.trimStart()&&keepThrough===leading+heading.titleFrom+heading.title.length)))
-    return {leading:leading+heading.titleFrom,text:heading.title,heading:heading.name};
+    return {leading:leading+heading.titleFrom,text:heading.title,heading:heading.name,headingEnd:leading+heading.end};
   return {leading,text};
 }
 
@@ -84,7 +84,7 @@ function markedRuns(text, offset=0, marks=[]) {
 }
 
 function instrumentProse(block, source, blockFrom, firstOwner, attribute, filePath, keepThrough) {
-  const {leading,text,heading}=proseBody(block,keepThrough-blockFrom);
+  const {leading,text,heading,headingEnd}=proseBody(block,keepThrough-blockFrom);
   const parts=markedRuns(text);
   if(!parts?.length)return null;
   const runs=[],glyphs=[];
@@ -99,7 +99,8 @@ function instrumentProse(block, source, blockFrom, firstOwner, attribute, filePa
       glyphs.push({...glyph,from16:part.from16+glyph.from16,to16:part.from16+glyph.to16});
   }
   if(!glyphs.length)return null;
-  const paragraph={source,filePath,from16:blockFrom+leading,text,heading,glyphs,parts,runs};
+  const paragraph={source,filePath,from16:blockFrom+leading,text,heading,glyphs,parts,runs,
+    ...(headingEnd===undefined?{}:{headingEnd:blockFrom+headingEnd})};
   return {projection:block.slice(0,leading)+projection+text.slice(cursor)+block.slice(leading+text.length),
     paragraphs:[paragraph],nextTag};
 }

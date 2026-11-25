@@ -255,6 +255,15 @@ const server=createServer(async(req,res)=>{
       await page.keyboard.press('Backspace');
       await page.waitForFunction(expected=>nativeProbe.source===expected,composedHeading);
       await panel.getByText('Click text on the native page',{exact:false}).waitFor();
+      await page.keyboard.press('End');
+      await page.keyboard.press('Enter');
+      await page.keyboard.insertText('Body text.');
+      const afterHeading=composedHeading.replace('\\label{section:test}','\\label{section:test}\n\nBody text.');
+      await page.waitForFunction(expected=>nativeProbe.source===expected,afterHeading);
+      assert.equal(await page.locator('.ProseMirror p').textContent(),'Body text.');
+      await page.keyboard.press(mod+'+z');
+      await page.waitForFunction(expected=>nativeProbe.source===expected,composedHeading);
+      await panel.getByText('Click text on the native page',{exact:false}).waitFor();
       await canvas.click({position:{x:6550000*scale,y:9250000*scale}});
       await page.keyboard.press('Home');
       await page.keyboard.press('Shift+End');

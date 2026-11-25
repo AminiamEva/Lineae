@@ -2777,8 +2777,9 @@ nativeTexPreview=installNativeTexPreview({host:footer,before:modes,primary:nativ
     return editor.state.doc===state.doc?null:{source:prepared.draft,offset,path};
   },
   commitParagraphBreak:(paragraph,from,to,text)=>{
-    if(paragraph.heading||paragraph.tableCell||paragraph.container||paragraph.parts.length!==1||
+    if(paragraph.tableCell||paragraph.container||paragraph.parts.length!==1||
        paragraph.parts[0].marks?.length||!from||/[\r\n]/.test(text))return null;
+    if(paragraph.heading&&(!Number.isInteger(paragraph.headingEnd)||from!==to||to!==paragraph.text.length))return null;
     if(projectDocument.composition&&!projectDocument.rebase(currentNativeProjectComposition(),editor.getJSON()))return null;
     const target=nativeProsePosition(paragraph,from,to);
     if(!target)return null;
@@ -2788,7 +2789,7 @@ nativeTexPreview=installNativeTexPreview({host:footer,before:modes,primary:nativ
     const newline=paragraph.source.includes('\r\n')?'\r\n':'\n';
     const raw=serialize({type:'text',text});
     const insert=newline+newline+raw;
-    const change={from:paragraph.from16+from,to:paragraph.from16+to,insert};
+    const change={from:paragraph.headingEnd??paragraph.from16+from,to:paragraph.headingEnd??paragraph.from16+to,insert};
     const draft=paragraph.source.slice(0,change.from)+insert+paragraph.source.slice(change.to);
     const tr=state.tr;
     if(range.to>range.from)tr.delete(range.from,range.to);

@@ -494,6 +494,7 @@ test('native heading text mapping leaves short titles, stars and labels intact',
   const [paragraph]=projection.paragraphs;
   assert.equal(paragraph.heading,'section');
   assert.equal(paragraph.text,'Long title');
+  assert.equal(source.slice(paragraph.from16+paragraph.text.length,paragraph.headingEnd),'}\\label{s:test}');
   assert.equal(textEdit(projection,{paragraph,from16:0,to16:0,insert:'X'}).source,source.replace('Long title','XLong title'));
 });
 
