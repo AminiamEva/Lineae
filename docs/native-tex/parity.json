@@ -58,8 +58,11 @@
         "tests/latex.test.mjs",
         "tests/editor.cjs"
       ],
-      "nativeStatus": "pending",
-      "evidence": []
+      "nativeStatus": "partial",
+      "evidence": [
+        "https://github.com/AminiamEva/Lineae/actions/runs/45583564517"
+      ],
+      "scope": "Single plain run wrapped in textbf, textit or texttt. Bold is covered by browser regression; complex marks and other containers are pending."
     },
     {
       "id": "tables-including-spans",
@@ -84,8 +87,11 @@
       "tests": [
         "tests/project-composition-browser.cjs"
       ],
-      "nativeStatus": "pending",
-      "evidence": []
+      "nativeStatus": "partial",
+      "evidence": [
+        "https://github.com/AminiamEva/Lineae/actions/runs/45583564517"
+      ],
+      "scope": "Direct edits to a plain paragraph and a supported display formula in an included file, with exact source checks; cross-file editing pending."
     },
     {
       "id": "images-floats-tikz",
@@ -156,14 +162,16 @@
   "acceptance": {
     "legacyDisabled": {
       "command": "LINEAE_NATIVE_ONLY=1 node tests/native-tex-preview-browser.cjs",
-      "scope": "Windows and macOS Chromium with mocked transport. Single-file prose and display formula edit, undo and redo; real engine/device acceptance tracked separately.",
+      "scope": "Two-platform Chromium with legacy pagination and MathLive disabled. Mixed prose and display formula edit, undo/redo, exact source bytes, and plain bold prose. Real LuaLaTeX geometry is replayed in Chromium with a simulated transport.",
       "status": "browser-passed",
       "evidence": [
-        "https://github.com/AminiamEva/Lineae/actions/runs/45579797136"
+        "https://github.com/AminiamEva/Lineae/actions/runs/45579797136",
+        "https://github.com/AminiamEva/Lineae/actions/runs/45581410790",
+        "https://github.com/AminiamEva/Lineae/actions/runs/45583564517"
       ]
     },
     "pending": [
-      "project editing",
+      "project structural and cross-file selection edits",
       "structure commands",
       "cross-run replacement",
       "PDF semantic editing",
