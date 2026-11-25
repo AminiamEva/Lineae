@@ -27,15 +27,19 @@ function remember(path, file) {
   rememberAsset(path,file);
 }
 
-export function editTikzVisual(editor, position) {
+export function editTikzVisual(editor, position, commit) {
   const node = editor.state.doc.nodeAt(position);
   const source = node?.attrs?.tikzSource;
   if (!source) return false;
   const apply = code => {
-    if (typeof code !== 'string' || !code.trim()) return;
+    if (typeof code !== 'string' || !code.trim()) return false;
     const current = editor.state.doc.nodeAt(position);
-    if (!current || current.attrs.tikzSource == null) return;
-    editor.view.dispatch(closeHistory(editor.state.tr).setNodeMarkup(position, undefined, { ...current.attrs, tikzSource: code }));
+    if (!current || current.attrs.tikzSource == null) return false;
+    if(commit&&current!==node)return false;
+    const tr=closeHistory(editor.state.tr).setNodeMarkup(position,undefined,{...current.attrs,tikzSource:code});
+    if(commit)return commit(tr);
+    editor.view.dispatch(tr);
+    return true;
   };
   const circuit = node.attrs.tikzEditor === 'circuit' || (!node.attrs.tikzEditor && tikzLooksCircuit(source));
   if (circuit) {
@@ -46,7 +50,7 @@ export function editTikzVisual(editor, position) {
     openTikzStudio({
       initialBody: source,
       initialLibraries: tikzStagingFromPreamble(getTikzPreamble()),
-      onInsert: ({ body }) => apply(body),
+      onInsert: ({body})=>apply(body)?undefined:{error:t('未能写回图形，请保留当前修改并核对源码。','The drawing could not be saved. Your edits are still available here.')},
     });
   }
   return true;

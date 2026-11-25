@@ -405,6 +405,7 @@ export function openTikzStudio({ onInsert, initialLibraries, initialBody } = {})
       declarations,
       body,
     });
+    if(result?.error){setStatus(result.error);return;}
     if (result?.duplicates?.length) {
       const duplicateLines = staging.macros
         .filter(macro => result.duplicates.includes(macro.name))

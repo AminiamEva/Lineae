@@ -193,6 +193,22 @@ test('inline math edits preserve repeated formula delimiters and untouched prose
   assert.equal(standaloneMathChanges(projection,edited),null);
 });
 
+test('TikZ visual updates replace only the verified drawing body inside a figure',()=>{
+  const source=wrap('\\begin{figure}[ht]\r\n  \\centering\r\n'+
+    '\\begin{tikzpicture}\r\n\\draw (0,0) -- (1,1);\r\n\\end{tikzpicture}\r\n'+
+    '  \\caption{Diagonal}\r\n  \\label{fig:keep}\r\n\\end{figure}');
+  const original={type:'doc',content:[...parseDocument(source).blocks.flatMap(importBlocks),{type:'paragraph'}]};
+  const edited=structuredClone(original);
+  edited.content[0].attrs.tikzSource=edited.content[0].attrs.tikzSource.replace('(1,1)','(2,1)');
+  const at=source.indexOf('(1,1)')+1;
+  const expected=[{from:at,to:at+1,insert:'2'}];
+  const projection=sourceProjection(source,original);
+  assert.deepEqual(standaloneMathChanges(projection,edited),expected);
+  assert.deepEqual(richSourceChanges(projection,edited),expected);
+  edited.content[0].attrs.tikzSource+='\n\\caption{Not part of the drawing}';
+  assert.equal(standaloneMathChanges(projection,edited),null);
+});
+
 test('nested prose edits preserve a proof title, an abstract declaration, and mixed line endings',()=>{
   const source=wrap('\\begin{proof}[Claim]\r\n  First step.\r\n\\end{proof}\r\n\r\n'+
     '\\begin{abstract}\n% preserve this comment\r\n\\small\r\nSummary.\r\n\\end{abstract}');

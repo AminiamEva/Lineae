@@ -60,7 +60,7 @@ import { compileKeybindings, installKeybindings } from './editor/keybindings.mjs
 import defaultConfigYaml from '../config.yaml';
 import { askText } from './editor/dialog.js';
 import { installDocumentFind } from './editor/find.js';
-import { DocumentImage, Subfigures, insertLocalImage, insertSubfigures, insertSubfigureImage, replaceLocalImage, startImageCrop, installImageDrop } from './editor/image-node.js';
+import { DocumentImage, Subfigures, insertLocalImage, insertSubfigures, insertSubfigureImage, replaceLocalImage, startImageCrop, installImageDrop, editTikzVisual } from './editor/image-node.js';
 import { installImagePanel } from './ui/image-panel.js';
 import { installSubfigurePanel } from './ui/subfigure-panel.js';
 import { MultiColumn } from './editor/multi-column.js';
@@ -2687,6 +2687,27 @@ function emptyContinuation(region,composition,doc){
   for(let i=0;i<index;i++)start+=doc.child(i).nodeSize;
   return {source,start:start+1};
 }
+function nativeTikzDrawings(){
+  if(!sourceView.hidden)return [];
+  const results=[],composition=projectDocument.composition;
+  const add=(node,position,block,path)=>{
+    if(node.type.name!=='documentImage'||!block?.tikz||!node.attrs.tikzSource)return;
+    results.push({position,label:node.attrs.caption||node.attrs.label||path});
+  };
+  editor.state.doc.forEach((node,position,index)=>{
+    if(!composition){
+      if(node.type.name==='documentImage')add(node,position,projection?.blocks.find(block=>block.index===index),filename);
+      return;
+    }
+    const region=composition.regions[index];
+    if(node.type.name!=='projectRegion'||!region)return;
+    node.forEach((child,offset,childIndex)=>{
+      if(child.type.name==='documentImage')
+        add(child,position+offset+1,region.projection?.blocks.find(block=>block.index===childIndex),region.path);
+    });
+  });
+  return results;
+}
 function canStartNativeText(){
   if(!sourceView.hidden||projectDocument.composition||editor.state.doc.childCount!==1)return false;
   const paragraph=editor.state.doc.firstChild,project=projectExplorer?.model;
@@ -2712,6 +2733,19 @@ nativeTexPreview=installNativeTexPreview({host:footer,before:modes,primary:nativ
     return nativeAttachedSnapshot(text,projectAssets());
   },
   isComposing:()=>editor.view.composing||sourceView.composing,
+  listTikzDrawings:nativeTikzDrawings,
+  editTikzDrawing:position=>{
+    if(!nativeTikzDrawings().some(drawing=>drawing.position===position))return;
+    editTikzVisual(editor,position,tr=>{
+      if(!tr.docChanged||tr.doc.eq(tr.before))return true;
+      if(projectDocument.composition){
+        if(!projectDocument.rebase(currentNativeProjectComposition(),editor.getJSON())||
+          !projectDocument.changes(tr.doc.toJSON()))return refuseStandaloneWriteback();
+      }else if(!standaloneMathChanges(projection,tr.doc.toJSON())?.length)return refuseStandaloneWriteback();
+      editor.view.dispatch(tr);
+      return editor.state.doc!==tr.before;
+    });
+  },
   focusImage:path=>{
     if(!sourceView.hidden)return;
     const matches=[];

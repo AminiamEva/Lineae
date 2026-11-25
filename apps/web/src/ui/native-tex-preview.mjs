@@ -13,7 +13,7 @@ import {resolvePackages} from '../../latex/packages.mjs';
 // Native LaTeX output is the primary page. The opt-in native input mode sends
 // supported keys, caret and IME through this surface into ProseMirror; the old
 // JS-formatted page and MathLive inputs stay available as the migration fallback.
-export function installNativeTexPreview({host,before,primary=false,isDocumentMode,getSource,getSnapshot,isComposing,focusMathSlot,focusImage,continuationRegion,selectionRegions,selectText,commitMath,commitText,commitProjectRange,canStartText,commitInitialText,commitParagraphBreak,commitParagraphJoin,history}) {
+export function installNativeTexPreview({host,before,primary=false,isDocumentMode,getSource,getSnapshot,isComposing,focusMathSlot,focusImage,listTikzDrawings,editTikzDrawing,continuationRegion,selectionRegions,selectText,commitMath,commitText,commitProjectRange,canStartText,commitInitialText,commitParagraphBreak,commitParagraphJoin,history}) {
   const invoke=window.__TAURI__?.core?.invoke;
   if(!invoke) return {refresh(){},documentChanged(){},relocalize(){}};
   const button=document.createElement('button');
@@ -30,13 +30,16 @@ export function installNativeTexPreview({host,before,primary=false,isDocumentMod
   const targetButton=document.createElement('button');targetButton.type='button';targetButton.id='native-tex-target';
   const editButton=document.createElement('button');editButton.type='button';editButton.id='native-tex-edit';
   editButton.setAttribute('aria-pressed','false');
+  const tikzSelect=document.createElement('select');tikzSelect.hidden=true;
+  const tikzEdit=document.createElement('button');tikzEdit.id='native-tex-edit-tikz';tikzEdit.type='button';tikzEdit.hidden=true;
+  let lastDrawings='';
   const targetStatus=document.createElement('p');targetStatus.setAttribute('role','status');
   const startText=document.createElement('button');
   startText.id='native-tex-start-text';startText.type='button';startText.hidden=true;
   const zoom=document.createElement('select');zoom.id='native-tex-zoom';
   for(const value of [50,75,100,125,150,200]) zoom.append(new Option(value+'%',String(value)));
   zoom.value='75';zoom.setAttribute('aria-label',t('原生预览缩放','Native preview zoom'));
-  controls.append(zoom,editButton,exportButton,targetButton,closeButton);
+  controls.append(zoom,editButton,tikzSelect,tikzEdit,exportButton,targetButton,closeButton);
   if(primary){
     panel.dataset.primary='true';
     targetButton.hidden=true;editButton.hidden=true;
@@ -458,6 +461,17 @@ export function installNativeTexPreview({host,before,primary=false,isDocumentMod
     exportButton.disabled=!current();
     targetButton.disabled=!current()||!hasGeometry()||targeting===generation;
     editButton.disabled=!current()||!hasGeometry()||!observation;
+    const drawings=current()&&isDocumentMode?.()?listTikzDrawings?.()??[]:[];
+    const drawingKey=JSON.stringify(drawings);
+    if(drawingKey!==lastDrawings){
+      const selected=tikzSelect.value;
+      tikzSelect.replaceChildren(...drawings.map(({position,label},index)=>
+        new Option(drawings.length>1?`${index+1}. ${label}`:label,String(position))));
+      if(drawings.some(drawing=>String(drawing.position)===selected))tikzSelect.value=selected;
+      lastDrawings=drawingKey;
+    }
+    tikzSelect.hidden=drawings.length<2;
+    tikzEdit.hidden=drawings.length===0;
     startText.hidden=!primary||!current()||Boolean(observation)||!canStartText?.();
     editButton.setAttribute('aria-pressed',String(nativeEditing));
     const canRefreshTargets=nativeEditing||(!sentSnapshot?.files?.length&&sentSource.length<=32*1024);
@@ -486,6 +500,8 @@ export function installNativeTexPreview({host,before,primary=false,isDocumentMod
     notice.textContent=t('此处显示 LuaLaTeX 输出。已核对位置的文字和公式可直接编辑。',
       'This view shows LuaLaTeX output. Text and formulas with verified positions can be edited here.');
     exportButton.textContent=t('导出干净 PDF','Export clean PDF');
+    tikzSelect.setAttribute('aria-label',t('TikZ 图形','TikZ drawing'));
+    tikzEdit.textContent=t('编辑 TikZ','Edit TikZ');
     closeButton.textContent=t('关闭','Close');
     targetButton.textContent=t('定位公式光标（实验）','Target formula caret (experimental)');
     editButton.textContent=nativeEditing?t('退出原生输入','Leave native input'):t('原生输入（实验）','Native input (experimental)');
@@ -811,6 +827,9 @@ export function installNativeTexPreview({host,before,primary=false,isDocumentMod
     input.focus({preventScroll:true});
   });
   button.addEventListener('mousedown',event=>event.preventDefault());
+  tikzEdit.addEventListener('click',()=>{
+    if(current()&&tikzSelect.value!=='')editTikzDrawing?.(Number(tikzSelect.value));
+  });
   closeButton.addEventListener('click',()=>{primaryRequested=false;void stop();});
   exportButton.addEventListener('click',()=>{void exportPdf();});
   targetButton.addEventListener('click',()=>{

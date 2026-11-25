@@ -9,6 +9,16 @@ import {sourceStructure} from '../../latex/source-structure.mjs';
 import {serializeSourceFigure} from '../../latex/images.mjs';
 import {serializeTextEnvironment} from '../../latex/text-environments.mjs';
 
+function tikzRange(raw,expected) {
+  if(typeof expected!=='string'||!expected)return null;
+  const matches=[...sourceStructure(raw)].flatMap(token=>{
+    const environment=token.kind==='begin'&&/^\\begin\{(tikzpicture|circuitikz)\}$/.exec(token.value)?.[1];
+    const close=environment&&environmentEnd(raw,token.index,environment);
+    return close&&raw.slice(token.index,close.end)===expected?[{from:token.index,to:close.end}]:[];
+  });
+  return matches.length===1?matches[0]:null;
+}
+
 // This is a projection of the authoritative source, not a second document.
 // A rich edit may only replace a block whose original spelling round-trips
 // exactly. All other bytes (including comments, macros and separators) survive.
@@ -25,6 +35,7 @@ export function sourceProjection(text, doc, options) {
     const block = { spelling, from: offset, to: offset + raw.length, index, count, raw,
       editable: count > 0 && !nodes.some(node => node.type === 'raw') && (raw.trim() === canonical || !!spelling),
       tableCells: nodes.length===1 && nodes[0].type==='table' && Boolean(tableCellRanges(raw)),
+      tikz: nodes.length===1 && nodes[0].type==='documentImage' && Boolean(tikzRange(raw,nodes[0].attrs.tikzSource)),
       snapshot: JSON.stringify(nodes) };
     offset += raw.length;
     index += count;
@@ -145,7 +156,8 @@ export function richSourceChanges(projection, doc) {
     const nodes = doc.content.slice(block.index, block.index + block.count);
     if (JSON.stringify(nodes) === block.snapshot) continue;
     const patch = block.editable ? patchBlock(block,nodes) :
-      inlineMathChanges(block,nodes)??plainTableChanges(block,nodes)??plainContainerChanges(block,nodes)??patchIsolatedTables(block,nodes);
+      inlineMathChanges(block,nodes)??plainTableChanges(block,nodes)??tikzFigureChanges(block,nodes)??
+      plainContainerChanges(block,nodes)??patchIsolatedTables(block,nodes);
     if (!patch) return null;
     changes.push(...patch);
   }
@@ -175,11 +187,24 @@ export function standaloneMathChanges(projection,doc) {
   for(const block of projection.blocks){
     const nodes=doc.content.slice(block.index,block.index+block.count);
     if(JSON.stringify(nodes)===block.snapshot)continue;
-    const patch=mathBodyChanges(block,nodes)??inlineMathChanges(block,nodes)??plainTableChanges(block,nodes)??plainContainerChanges(block,nodes);
+    const patch=mathBodyChanges(block,nodes)??inlineMathChanges(block,nodes)??plainTableChanges(block,nodes)??
+      tikzFigureChanges(block,nodes)??plainContainerChanges(block,nodes);
     if(!patch)return null;
     changes.push(...patch);
   }
   return changes;
+}
+
+function tikzFigureChanges(block,nodes) {
+  if(!block.tikz)return null;
+  const before=JSON.parse(block.snapshot),original=before[0],updated=nodes[0];
+  if(updated?.type!=='documentImage'||nodes.length!==before.length)return null;
+  const drawing=original.attrs.tikzSource,next=updated.attrs.tikzSource;
+  if(drawing===next||typeof next!=='string'||!next.trim())return null;
+  if(JSON.stringify([{...updated,attrs:{...updated.attrs,tikzSource:drawing}},...nodes.slice(1)])!==block.snapshot)return null;
+  const range=tikzRange(block.raw,drawing),newRange=tikzRange(next,next);
+  if(!range||newRange?.from!==0||newRange.to!==next.length)return null;
+  return minimalChange(drawing,next,block.from+range.from);
 }
 
 function plainTableChanges(block,nodes) {
@@ -320,7 +345,8 @@ function patchIsolatedTables(block,nodes) {
 }
 
 function patchBlock(block,nodes) {
-    const math=mathBodyChanges(block,nodes)??inlineMathChanges(block,nodes)??plainTableChanges(block,nodes)??plainContainerChanges(block,nodes);
+    const math=mathBodyChanges(block,nodes)??inlineMathChanges(block,nodes)??plainTableChanges(block,nodes)??
+      tikzFigureChanges(block,nodes)??plainContainerChanges(block,nodes);
     if(math)return math;
     if (nodes.some(node => node.type === 'raw')) return null;
     const environments=list=>list.flatMap(node=>[

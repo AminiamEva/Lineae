@@ -194,7 +194,7 @@ const server=createServer(async(req,res)=>{
       await page.locator('#native-tex-edit').click();
       await canvas.click({position:{x:6500000*scale,y:7000000*scale}});
       await page.keyboard.type('b');
-      await page.waitForFunction(expected=>nativeProbe.source===expected,tableWithMath.replace('}{','}{b'));
+      await page.waitForFunction(expected=>nativeProbe.source===expected,tableWithMath.replace('\\frac{a}{}','\\frac{a}{b}'));
       await page.keyboard.press(mod+'+z');
       await page.waitForFunction(expected=>nativeProbe.source===expected,tableWithMath);
       await page.locator('#native-tex-close').click();
@@ -307,7 +307,9 @@ const server=createServer(async(req,res)=>{
       await page.keyboard.type('X');
       await page.waitForFunction(expected=>nativeProbe.source===expected,listSource.replace('Nested.','XNested.'));
       await page.locator('#native-tex-close').click();
-      const pdfSource='\\documentclass{article}\n\\begin{document}\n\\[\\frac{a}{}\\]\n\\end{document}\n';
+      const drawing='\\begin{tikzpicture}\n\\draw (0,0) -- (1,1);\n\\end{tikzpicture}';
+      const pdfSource='\\documentclass{article}\n\\usepackage{tikz}\n\\begin{document}\n'+drawing+
+        '\n\n\\[\\frac{a}{}\\]\n\\end{document}\n';
       await page.locator('input#file').setInputFiles({name:'pdf.tex',mimeType:'text/plain',buffer:Buffer.from(pdfSource)});
       await page.evaluate(()=>{nativeProbe.semanticPdf=true;nativeProbe.registeredPdf=true;});
       await page.locator('#native-tex-toggle').click();
@@ -320,7 +322,14 @@ const server=createServer(async(req,res)=>{
       await page.locator('#native-tex-edit').click();
       await panel.locator('[data-pdf-page="1"] canvas').click({position:{x:6500000*scale,y:7000000*scale}});
       await page.keyboard.type('m');
-      await page.waitForFunction(expected=>nativeProbe.source===expected,pdfSource.replace('}{','}{m'));
+      const withFormula=pdfSource.replace('\\frac{a}{}','\\frac{a}{m}');
+      await page.waitForFunction(expected=>nativeProbe.source===expected,withFormula);
+      await panel.getByRole('button',{name:'Edit TikZ',exact:true}).click();
+      const drawingCode=page.locator('.tikz-studio-code');
+      assert.equal(await drawingCode.inputValue(),drawing);
+      await drawingCode.fill(drawing.replace('(1,1)','(2,1)'));
+      await page.locator('.tikz-studio-insert').click();
+      await page.waitForFunction(expected=>nativeProbe.source===expected,withFormula.replace('(1,1)','(2,1)'));
       await page.locator('#native-tex-close').click();
       await page.evaluate(()=>{nativeProbe.semanticPdf=false;nativeProbe.registeredPdf=false;});
       await openMockProject(page);
