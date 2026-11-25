@@ -3681,6 +3681,48 @@ function continueNativeTextEnvironment(caret,outermost,text){
   }
   return {source:draft,offset:from+line.length,path};
 }
+function editNativeMixedSelection(spans,insert){
+  if(spans.length<2||/[\r\n]/.test(insert)||!spans.some(span=>span.formula))return null;
+  const {state}=editor;
+  const items=spans.map(({formula,paragraph,from,to})=>{
+    if(formula){
+      const target=nativeFormulaPosition(formula);
+      if(target?.type!=='mathBlock')return null;
+      const [parsed,...rest]=importBlocks(formula.source.slice(formula.outerFrom16,formula.outerTo16));
+      if(!parsed||rest.length||!state.schema.nodeFromJSON(parsed).eq(target.node))return null;
+      return {...target,path:formula.filePath,source:formula.source,occurrence:formula.occurrence,
+        left:formula.outerFrom16,right:formula.outerTo16,begin:formula.outerFrom16,end:formula.outerTo16};
+    }
+    if(!paragraph||paragraph.heading||paragraph.container||paragraph.tableCell||paragraph.wrapped||
+      paragraph.parts.some(part=>part.kind!=='text'||part.marks?.length))return null;
+    const target=nativeProsePosition(paragraph,from,to);
+    if(!target||target.range.match.node.type.name!=='paragraph'||target.range.match.node.attrs.explicitIndent||
+      target.range.match.node.attrs.indent===false)return null;
+    return {...target,node:target.range.match.node,position:target.range.match.offset,path:paragraph.filePath,
+      source:paragraph.source,occurrence:paragraph.occurrence,left:paragraph.from16+from,right:paragraph.from16+to,
+      begin:paragraph.from16,end:paragraph.from16+paragraph.text.length};
+  });
+  if(items.some(item=>!item))return null;
+  const first=items[0],last=items.at(-1),{source,path,composition,project,file}=first;
+  if(items.some((item,index)=>item.source!==source||item.path!==path||item.occurrence!==first.occurrence||
+    index>0&&(items[index-1].position+items[index-1].node.nodeSize!==item.position||
+      source.slice(items[index-1].end,item.begin).trim())))return null;
+  const $from=state.doc.resolve(first.position),$to=state.doc.resolve(last.position);
+  if(!$from.sameParent($to)||$from.depth!==(composition?1:0))return null;
+  const change={from:first.left,to:last.right,insert:serialize({type:'text',text:insert})};
+  const draft=source.slice(0,change.from)+change.insert+source.slice(change.to);
+  const raw=draft.slice(first.begin,last.end+draft.length-source.length);
+  const parsed=importBlocks(raw);
+  if(parsed.length>1||parsed.length===1&&parsed[0].type!=='paragraph'||!parsed.length&&raw.trim())return null;
+  const nodes=parsed.map(item=>state.schema.nodeFromJSON(item));
+  if(!nodes.length&&$from.parent.childCount===items.length)nodes.push(state.schema.nodes.paragraph.create());
+  const tr=state.tr.replaceWith(first.position,last.position+last.node.nodeSize,nodes);
+  const offset=raw.trim()?change.from+change.insert.length:null;
+  const result={source:draft,offset,path};
+  if(composition)return dispatchNativeProjectChange(state,tr,project,new Map([[file.id,draft]]))?result:null;
+  const projected=sourceProjection(draft,tr.doc.toJSON(),{fragment:projectFileKind==='tex'});
+  return projected&&dispatchNativeParagraphChange(state,tr,source,draft,change,projected)?result:null;
+}
 function forEachNativeDocumentBlock(type,visit){
   if(!sourceView.hidden)return;
   const accepts=typeof type==='function'?type:node=>node.type.name===type;
@@ -3990,6 +4032,7 @@ nativeTexPreview=installNativeTexPreview({host:footer,before:modes,primary:nativ
     return {...continuation,occurrence:next.occurrence,empty:Boolean(emptyContinuation(continuation,composition,editor.state.doc))};
   },
   nativeTextEnvironment,continueNativeTextEnvironment,
+  commitMixedSelection:editNativeMixedSelection,
   selectionRegions:()=>{
     const composition=nativeSelectionComposition(currentNativeProjectComposition());
     return composition?.regions.map((region,index)=>({...region,trail:composition.content[index]?.attrs.trail}));

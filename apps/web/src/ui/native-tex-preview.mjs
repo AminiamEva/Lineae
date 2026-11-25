@@ -15,7 +15,7 @@ import {separateRepeatedOwners} from '../editor/native-surface/repeated-owners.m
 // Native LaTeX output is the primary page. The opt-in native input mode sends
 // supported keys, caret and IME through this surface into ProseMirror; the old
 // JS-formatted page and MathLive inputs stay available as the migration fallback.
-export function installNativeTexPreview({host,before,primary=false,documentZoom=100,isDocumentMode,splitHost,getSource,getSnapshot,isComposing,focusMathSlot,focusImage,listTikzDrawings,editTikzDrawing,openMeasuredDrawing,navigateReference,listSourceBlocks,openSourceBlock,continuationRegion,nativeTextEnvironment,continueNativeTextEnvironment,selectionRegions,foldedFiles,selectText,serializeTextSelection,commitMath,commitText,commitTextLines,commitInlinePaste,commitProjectRange,canStartText,commitInitialText,commitInitialMath,commitParagraphBreak,commitParagraphJoin,commitHardBreak,commitNewMath,commitAfterFormulaText,onEnvironmentChange,showTextCommands,history}) {
+export function installNativeTexPreview({host,before,primary=false,documentZoom=100,isDocumentMode,splitHost,getSource,getSnapshot,isComposing,focusMathSlot,focusImage,listTikzDrawings,editTikzDrawing,openMeasuredDrawing,navigateReference,listSourceBlocks,openSourceBlock,continuationRegion,nativeTextEnvironment,continueNativeTextEnvironment,selectionRegions,foldedFiles,selectText,serializeTextSelection,commitMath,commitText,commitTextLines,commitInlinePaste,commitProjectRange,commitMixedSelection,canStartText,commitInitialText,commitInitialMath,commitParagraphBreak,commitParagraphJoin,commitHardBreak,commitNewMath,commitAfterFormulaText,onEnvironmentChange,showTextCommands,history}) {
   const invoke=window.__TAURI__?.core?.invoke;
   if(!invoke) return {refresh(){},documentChanged(){},relocalize(){}};
   const button=document.createElement('button');
@@ -196,6 +196,15 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
     const applied=commitParagraphJoin?.(first,last,action.insert??'');
     return applied?awaitSourcePosition(applied,action.started):false;
   }
+  function replaceMixedSelection(action){
+    const [first,last]=nativeDocument.surface.range;
+    if(!first||!last||first.kind===last.kind)return false;
+    const applied=commitMixedSelection?.(nativeDocument.proseRanges(first,last),action.insert??'');
+    if(!applied)return false;
+    if(applied.offset!==null)return awaitSourcePosition(applied,action.started);
+    renderer.clearCaret();
+    return true;
+  }
   function awaitSourcePosition(edit,started,math=false){
     pendingEdit={source:edit.source,[math?'formula':'paragraph']:{filePath:edit.path}};
     if(math)nativeDocument.expectInitialMath(pendingEdit,edit.offset,edit.path);
@@ -332,6 +341,7 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
     if(draftInput)return commitDraftInput(action,surface);
     if(!surface.caret)return false;
     if(!current()||!observation)return false;
+    if(replaceMixedSelection(action))return true;
     if(action.insert==='\\'&&!action.paste&&surface.caret.kind==='text'){
       showTextCommands?.(input);
       return true;
@@ -398,6 +408,7 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
   }
   function cutSelection(){
     const action={backward:true,started:performance.now()};
+    if(replaceMixedSelection(action))return true;
     const edit=editSelection(action);
     return edit?commitSurface(edit):replaceParagraphSelection(action);
   }

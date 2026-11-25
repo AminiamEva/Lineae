@@ -1741,6 +1741,12 @@ const server=createServer(async(req,res)=>{
       await page.keyboard.press('Shift+PageUp');
       await page.keyboard.press(mod+'+c');
       assert.equal(await page.evaluate(()=>navigator.clipboard.readText()),'\\[\\frac{a}{b}\\]\n\nAfter.');
+      await canvas.click({position:{x:6550000*scale,y:9250000*scale}});
+      await page.keyboard.press('Shift+PageUp');
+      await page.keyboard.press('Delete');
+      await page.waitForFunction(expected=>nativeProbe.source===expected,leadingFormula.replace('\\[\\frac{a}{b}\\]\n\n',''));
+      await page.keyboard.press(mod+'+z');
+      await page.waitForFunction(expected=>nativeProbe.source===expected,leadingFormula);
       await page.goto('http://127.0.0.1:'+server.address().port+'/?native-only-acceptance=1',{waitUntil:'networkidle'});
       const singleProject=workspaceSource.replace('Native document.','Native document.\n\n\\[\\frac{a}{}\\]');
       const independent=workspaceSource.replace('Native document.','Independent file.');
