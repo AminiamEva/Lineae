@@ -2681,11 +2681,19 @@ nativeTexPreview=installNativeTexPreview({host:footer,before:modes,
           :(child.type.name==='math'||child.type.name==='mathBlock')&&child.attrs.latex===part.latex;
       });
     };
-    let found=-1,foundNode=null,matches=0;
-    editor.state.doc.forEach((node,offset)=>{
-      if(matchesParts(node)){matches++;if(found<0){found=offset;foundNode=node;}}
+    // Resolve repeated prose by its verified source block before falling back
+    // to an unambiguous structural match.
+    const owner=projection?.text===paragraph.source && projection.blocks.find(block=>
+      block.count===1 && block.from<=paragraph.from16 &&
+      block.to>=paragraph.from16+paragraph.text.length);
+    const matches=[];
+    editor.state.doc.forEach((node,offset,index)=>{
+      if(matchesParts(node))matches.push({node,offset,index});
     });
-    if(matches!==1||found<0)return false;
+    const match=matches.find(candidate=>candidate.index===owner?.index) ??
+      (matches.length===1 ? matches[0] : null);
+    if(!match)return false;
+    const {offset:found,node:foundNode}=match;
     let start=found+1;
     for(let index=0;index<run.partIndex;index++)start+=foundNode.child(index).nodeSize;
     start+=patch.from-run.from16;

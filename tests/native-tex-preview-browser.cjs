@@ -47,8 +47,9 @@ const server=createServer(async(req,res)=>{
     if(process.env.LINEAE_NATIVE_ONLY==='1'){
       await page.route('**/vendor/mathlive/**',route=>route.abort());
       await page.goto('http://127.0.0.1:'+server.address().port+'/?native-only-acceptance=1',{waitUntil:'networkidle'});
+      const mixedSource='\\documentclass{article}\n\\begin{document}\nAlpha beta.\n\n\\[\n\\frac{a}{b}\n\\]\n\\end{document}\n';
       await page.locator('input#file').setInputFiles({name:'mixed.tex',mimeType:'text/plain',
-        buffer:Buffer.from('\\documentclass{article}\n\\begin{document}\nAlpha beta.\n\n\\[\n\\frac{a}{b}\n\\]\n\\end{document}\n')});
+        buffer:Buffer.from(mixedSource)});
       await page.waitForFunction(()=>document.querySelector('.ProseMirror')?.textContent.includes('Alpha beta.'));
       assert.equal(await page.locator('.document-sheets').count(),0);
       assert.equal(await page.evaluate(()=>customElements.get('math-field')),undefined);
@@ -79,6 +80,8 @@ const server=createServer(async(req,res)=>{
       await page.waitForFunction(()=>nativeProbe.source?.includes('\\frac{a}{b}'));
       await page.keyboard.press(mod+'+Shift+z');
       await page.waitForFunction(()=>nativeProbe.source?.includes('\\frac{a}{cb}'));
+      const expected=mixedSource.replace('Alpha beta.','XAlpha beta.').replace('\\frac{a}{b}','\\frac{a}{cb}');
+      assert.equal(await page.evaluate(()=>nativeProbe.source),expected,'Both native edits preserve every other source byte');
       assert.deepEqual(errors,[]);
       console.log('PASS native mixed editing with MathLive and JS pagination disabled');
       return;
