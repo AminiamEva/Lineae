@@ -77,6 +77,13 @@ test('tabularray row spans preserve covered source, neighboring cells and absolu
   const split=apply(authored,splitTblrCell(authored,0,0,authored.indexOf('A C')));
   assert.equal(split,authored.replace('r=2','r=1'));
   assert.equal(table(split).content[1].content[0].content[0].content[0].text,'Hidden');
+  const expanded=apply(authored,editTblrColumn(authored,1,0,authored.indexOf('D')));
+  assert.equal(expanded,authored.replace('colspec={lc}','colspec={lcl}')
+    .replace(' & B',' & B & ').replace(' & D',' & D & '));
+  assert.equal(table(expanded).content[0].content[0].attrs.rowspan,2);
+  const rowInserted=apply(authored,editTblrRow(authored,1));
+  assert.equal(table(rowInserted).content.length,3);
+  assert.equal(table(rowInserted).content[0].content[0].attrs.rowspan,2);
 });
 const edit=(source,mutate)=>{
   const doc={type:'doc',content:parseDocument(source).blocks.flatMap(importBlocks)};

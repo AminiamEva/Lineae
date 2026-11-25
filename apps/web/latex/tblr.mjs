@@ -209,7 +209,7 @@ export function parseTblr(source) {
         ['Left',v[c].slice(r,r+rowspan)],['Right',v[c+span].slice(r,r+rowspan)]]) {
         css['border'+side]=values.every(x=>x===values[0])?(values[0]??'0px solid currentColor'):'0px solid currentColor';
       }
-      row.push({text,from:cell.from+offset,to:cell.from+offset+text.length,spanRange,
+      row.push({text,from:cell.from+offset,to:cell.from+offset+text.length,spanRange,column:c,
         attrs:{colspan:span,rowspan,align,tblrStyle:css}});
       c+=span;
     }
@@ -312,7 +312,10 @@ export function editTblrRow(source,index,remove=false,offset) {
   if(!located)return null;
   const {table}=located;
   const edge=table?.rowEnds?.[index];
-  if(!edge||remove&&table.rows.length===1||table.rows.some(row=>row.some(cell=>cell.attrs.rowspan>1)))return null;
+  if(!edge||remove&&table.rows.length===1)return null;
+  const spansAcrossIndex=table.rows.some((row,start)=>start<=index&&row.some(cell=>
+    cell.attrs.rowspan>1&&index<start+cell.attrs.rowspan-(remove?0:1)));
+  if(spansAcrossIndex)return null;
   const selectors=adjustAxes(table,'row',index+1,remove);
   if(!selectors)return null;
   const raw=table.source,eol=raw.includes('\r\n')?'\r\n':'\n';
@@ -338,8 +341,10 @@ export function editTblrColumn(source,row,column,offset,remove=false) {
   if(!located)return null;
   const {table}=located;
   const count=table.columnRanges.length;
-  if(!table.rows[row]?.[column]||!table.columnRanges[column]||remove&&count<2||
-    table.rows.some(cells=>cells.length!==count))return null;
+  const target=table.rows[row]?.[column];
+  if(!target||remove&&count<2||table.rows.some(cells=>cells.some(cell=>cell.attrs.colspan!==1)))return null;
+  column=target.column;
+  if(remove&&table.rows.some(cells=>cells.some(cell=>cell.column===column&&cell.attrs.rowspan>1)))return null;
   const {from,to}=table.columnRanges[column];
   const selectors=adjustAxes(table,'column',column+1,remove);
   if(!selectors)return null;
