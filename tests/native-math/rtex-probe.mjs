@@ -87,6 +87,7 @@ async function probe(source,label,out,rtex,texbin,structured=false) {
   writeFileSync(join(project,'main.tex'),tagged);
   const records=[],waiters=new Set();
   let failure=null,closing=false;
+  const coldStart=performance.now();
   const child=spawn(rtex,['serve','--project',project,'--main','main.tex','--build',join(dir,'build'),
     '--math-owner-attribute','65000','--eligibility','allowlist','--fast-budget-ms','5000',
     '--compile-timeout-ms','30000','--pass-timeout-ms','120000'],{
@@ -133,6 +134,7 @@ async function probe(source,label,out,rtex,texbin,structured=false) {
   try {
     const layout=await waitFor(message=>message.event==='LayoutUpdate' &&
       message.convergence?.state==='Converged','initial converged layout');
+    const coldConvergedMs=performance.now()-coldStart;
     assert.equal(layout.compile?.state,'Ok','Initial TeX compilation must succeed');
     if(label.startsWith('lf-pages-'))assert.equal(layout.pages_total,Number(label.slice('lf-pages-'.length)));
     if(matrix){
@@ -235,7 +237,7 @@ async function probe(source,label,out,rtex,texbin,structured=false) {
       [98,119887].includes(glyph.char)),'Observed denominator includes the inserted b');
     writeFileSync(join(dir,'incremental-update.json'),JSON.stringify(update,null,2)+'\n');
     assert.equal(readFileSync(join(project,'main.tex'),'utf8'),tagged,'Session edits do not overwrite input files');
-    summary={label,owner,role:'den',empty,nonempty,patch,
+    summary={label,owner,role:'den',empty,nonempty,patch,coldConvergedMs,
       sourceOffset16:projection.sourceOffset16,projectionOffset16:projection.projectionOffset16,
       projectionOffset8:projection.projectionOffset8,result,versions:update.versions,
       timing:update.timing,timingScope:'engine-reported single warm edit; not display latency or a percentile'};

@@ -22,6 +22,10 @@ async function measureLegacyEditing(page,origin,artifactDirectory){
   assert.ok(Number.isInteger(repetitions)&&repetitions>0&&repetitions<=1000);
   const destination=join(artifactDirectory,'legacy-browser');
   await mkdir(destination,{recursive:true});
+  const coldStartup=performance.now();
+  await page.goto(origin,{waitUntil:'domcontentloaded'});
+  await page.waitForFunction(()=>Boolean(document.querySelector('.ProseMirror')?.editor));
+  const coldWorkspaceMs=performance.now()-coldStartup;
   for(const pages of [10,100,300]){
     const source=await readFile(join(artifactDirectory,`lf-pages-${pages}`,'source-after.tex'));
     await page.goto(origin,{waitUntil:'networkidle'});
@@ -67,7 +71,7 @@ async function measureLegacyEditing(page,origin,artifactDirectory){
       const percentile=value=>ordered[Math.ceil(value*ordered.length)-1];
       return {p50Ms:percentile(.5),p95Ms:percentile(.95),p99Ms:percentile(.99)};
     };
-    const result={pages,repetitions,coldImportMs,transaction:percentiles('transaction'),frame:percentiles('frame'),samples,
+    const result={pages,repetitions,coldWorkspaceMs,coldImportMs,transaction:percentiles('transaction'),frame:percentiles('frame'),samples,
       scope:'Same source and denominator replacements as rtex. Browser keydown to editor update and animation frame, excluding physical display scan-out.'};
     await writeFile(join(destination,`lf-pages-${pages}.json`),JSON.stringify(result,null,2)+'\n');
     console.log(`Legacy ${pages} pages, ${repetitions} edits, transaction P95 ${result.transaction.p95Ms.toFixed(2)}ms, frame P95 ${result.frame.p95Ms.toFixed(2)}ms`);
