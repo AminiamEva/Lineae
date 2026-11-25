@@ -1559,9 +1559,15 @@ const server=createServer(async(req,res)=>{
       await page.waitForFunction(expected=>nativeProbe.source===expected,split);
       await panel.getByText('Click text on the native page',{exact:false}).waitFor();
       await canvas.click({position:{x:7520000*scale,y:9250000*scale}});
+      await page.evaluate(()=>{nativeProbe.releaseUpdate=null;nativeProbe.holdUpdate=true;});
+      await page.keyboard.insertText('Y');
+      await page.waitForFunction(()=>typeof nativeProbe.releaseUpdate==='function');
       await page.keyboard.insertText('$');
       await page.keyboard.insertText('x');
-      await page.waitForFunction(expected=>nativeProbe.source===expected,split.replace('Beta','$x$Beta'));
+      await page.evaluate(()=>nativeProbe.releaseUpdate());
+      await page.waitForFunction(expected=>nativeProbe.source===expected,split.replace('Beta','Y$x$Beta'));
+      await page.keyboard.press(mod+'+z');
+      await page.waitForFunction(expected=>nativeProbe.source===expected,split.replace('Beta','YBeta'));
       await page.keyboard.press(mod+'+z');
       await page.waitForFunction(expected=>nativeProbe.source===expected,split);
       await panel.getByText('Click text on the native page',{exact:false}).waitFor();

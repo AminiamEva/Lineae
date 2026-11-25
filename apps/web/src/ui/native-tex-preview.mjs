@@ -275,7 +275,11 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
     if(!nativeEditing||!acceptsInput())return false;
     if(pendingEdit){
       const last=queuedInput.at(-1);
-      if(action.insert&&last?.insert&&!action.paste&&!last.paste)last.insert+=action.insert;
+      // Formula delimiters and script keys are interpreted individually. Even
+      // plain text after a queued delimiter can arrive at a math caret.
+      const changesMode=entry=>entry.paste||/[$\\^_]/.test(entry.insert??'');
+      if(surface.caret?.kind==='text'&&action.insert&&last?.insert&&!changesMode(action)&&
+        !queuedInput.some(changesMode))last.insert+=action.insert;
       else queuedInput.push(action);
       return true;
     }
