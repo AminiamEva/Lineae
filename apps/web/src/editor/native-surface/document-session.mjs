@@ -11,6 +11,7 @@ const fileOf=stop=>(stop.formula??stop.paragraph).filePath;
 // owns one selection and one pending caret address for the visible revision.
 export function createNativeDocumentSession(resolve) {
   let orderByFile=new Map();
+  let documentRegions=[];
   const order=stop=>orderByFile.get(fileOf(stop))?.find(region=>
     stop.docOffset>=region.from&&stop.docOffset<=region.to)?.index??-1;
   const canSelect=(from,to)=>sameOwner(from,to)||Boolean(from?.kind==='text'&&to?.kind==='text'&&
@@ -26,6 +27,7 @@ export function createNativeDocumentSession(resolve) {
   return {
     get surface(){return selection.caret?.kind==='text'?text:math;},
     setObservation(observed,projection,verified=false,regions=[]){
+      documentRegions=regions;
       orderByFile=new Map();
       for(const [index,{path,from,to}] of regions.entries()){
         if(!orderByFile.has(path))orderByFile.set(path,[]);
@@ -38,6 +40,30 @@ export function createNativeDocumentSession(resolve) {
         ...(projection.kind==='math'?[]:text.collectStops(observed,verified)),
       ].sort(compare);
       return selection.setStops(stops);
+    },
+    fileBoundaries(){
+      if(documentRegions.length<2)return [];
+      const bounds=new Map();
+      for(const stop of selection.stops){
+        const index=order(stop);
+        if(index<0)continue;
+        const known=bounds.get(index);
+        if(!known){bounds.set(index,{first:stop,last:stop});continue;}
+        if(stop.page<known.first.page||stop.page===known.first.page&&stop.top<known.first.top)known.first=stop;
+        if(stop.page>known.last.page||stop.page===known.last.page&&stop.bottom>known.last.bottom)known.last=stop;
+      }
+      const positions=[];
+      for(let index=1;index<documentRegions.length;index++){
+        const previous=bounds.get(index-1)?.last,next=bounds.get(index)?.first;
+        const {path}=documentRegions[index];
+        if(!previous||!next||documentRegions[index-1].path===path)continue;
+        if(previous.page===next.page&&previous.bottom<next.top){
+          positions.push({path,page:next.page,y:(previous.bottom+next.top)/2});
+        }else if(previous.page<next.page){
+          positions.push({path,page:next.page,y:next.top,atPageStart:true});
+        }
+      }
+      return positions;
     },
     select(from,to){preferredX=null;return selection.selectTargets(from,to);},
     selectAll(){
@@ -140,6 +166,6 @@ export function createNativeDocumentSession(resolve) {
     expectInitialMath(edit,offset,path){
       selection.record(edit,offset,{kind:'math',formula:{filePath:path}});
     },
-    reset(){selection.reset();sourceProjection=null;preferredX=null;orderByFile.clear();},
+    reset(){selection.reset();sourceProjection=null;preferredX=null;documentRegions=[];orderByFile.clear();},
   };
 }

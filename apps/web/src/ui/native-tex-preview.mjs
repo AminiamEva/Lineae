@@ -821,6 +821,7 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
       if(nativeEditing){
         const expectedOffset=nativeDocument.surface.pendingOffset;
         const applied=nativeDocument.setObservation(observed,projection,pdfGeometryAvailable,selectionRegions?.());
+        renderer.showFileBoundaries(nativeDocument.fileBoundaries());
         if(pendingEdit){
           const stop=nativeDocument.surface.caret;
           const previous=pendingEdit.paragraph??pendingEdit.formula;
@@ -917,7 +918,8 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
   editButton.addEventListener('mousedown',event=>event.preventDefault());
   editButton.addEventListener('click',()=>{
     if(nativeEditing){
-      nativeEditing=false;draftInput=null;clearQueuedInput();nativeDocument.surface.clearPending();input.blur();renderStatus();return;
+      nativeEditing=false;draftInput=null;clearQueuedInput();nativeDocument.surface.clearPending();
+      renderer.showFileBoundaries([]);input.blur();renderStatus();return;
     }
     if(!observation)return;
     nativeEditing=true;targetArmed=true;
@@ -928,6 +930,7 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
     if(nativeDocument.surface.caret){
       paintSurfaceSelection();positionInput();input.focus({preventScroll:true});
     }
+    renderer.showFileBoundaries(nativeDocument.fileBoundaries());
     renderStatus();
   });
   function setNativeZoom(value){

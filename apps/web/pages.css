@@ -357,6 +357,7 @@ main { padding:125px 24px 60px; overflow:auto; }
 .native-tex-page canvas { display:block; }
 .native-tex-caret { position:absolute; width:2px; background:#2f6fd0; pointer-events:none; }
 .native-tex-selection { position:absolute; background:#2f6fd04d; pointer-events:none; }
+.native-tex-file-boundary { position:absolute; inset-inline:8%; border-top:1px solid #d9dee5; pointer-events:none; }
 .native-delimiter-ghost { position:fixed; z-index:21; display:inline-flex; gap:3px; pointer-events:none; }
 .native-delimiter-ghost .delimiter-ghost-slot { min-width:.75em; min-height:1em; text-align:center; border-radius:3px; background:#8959ae24; }
 .native-delimiter-ghost .delimiter-ghost-slot.is-active { background:#4386d94d; outline:1px solid #4386d9; }

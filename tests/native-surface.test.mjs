@@ -377,6 +377,27 @@ test('native cross-file replacement produces one edit per file and a parent care
   assert.equal(edit.paragraph.filePath,'main.tex');
 });
 
+test('native project boundaries follow verified vertical space without splitting a shared line',()=>{
+  const source='\\begin{document}\nBefore.\n\n\\input{chapter}\n\nAfter.\n\\end{document}\n';
+  const chapter='Child.\n';
+  const projection=projectMixedSnapshot({source,mainFile:'main.tex',
+    files:[{path:'chapter.tex',bytes:new TextEncoder().encode(chapter)}]});
+  const [before,after,child]=projection.paragraphs;
+  const regions=[{path:'main.tex',from:0,to:source.indexOf('\\input')},
+    {path:'chapter.tex',from:0,to:chapter.length},
+    {path:'main.tex',from:source.indexOf('After.'),to:source.length}];
+  const onLine=(paragraph,y)=>({...glyph(paragraph.glyphs[0].tag,100),bbox:[100,y,120,y+10]});
+  const session=createNativeDocumentSession(()=>null);
+  const first=page([],[onLine(before,100),onLine(child,150)]);
+  const second=page([],[onLine(after,70)])[0];
+  second.page=2;
+  session.setObservation([...first,second],projection,false,regions);
+  assert.deepEqual(session.fileBoundaries(),[{path:'chapter.tex',page:1,y:130},
+    {path:'main.tex',page:2,y:70,atPageStart:true}]);
+  session.setObservation(page([],[onLine(before,100),onLine(child,100),onLine(after,150)]),projection,false,regions);
+  assert.deepEqual(session.fileBoundaries(),[{path:'main.tex',page:1,y:130}]);
+});
+
 test('prose can replace a complete inline formula but cannot edit part of its source', () => {
   const inlineSource = '\\begin{document}\nBefore $x$ after.\n\\end{document}\n';
   const projection = projectMixedDocument(inlineSource);

@@ -52,6 +52,12 @@ Drag selections and keyboard-extension selections are drawn from observed glyph
 boxes. A click paints a positioned caret marker. Both disappear when the frame
 is no longer current.
 
+Composed documents draw file dividers between verified visual lines. The dividers
+leave page geometry unchanged, including when an input begins on a line shared
+with its parent. Independent project documents switch the compilation entry
+within the same trusted project. A detached source fragment inherits the project
+preamble in the temporary snapshot and keeps its own source offsets for edits.
+
 ## Event-driven protocol
 
 `native_tex_open` installs an emitter on the session. Every protocol event that

@@ -17,6 +17,7 @@ export function installNativePages({host,getFont,getRaster,onPaint,onError,onMat
   const pages=new Map(),loaded=new Map();
   let frame=0;
   let ownership=null;
+  let boundaries=[],boundaryMarks=[];
   let complete=null,warm=null;
   let pdfBacked=false;
   function drawing(dl) {
@@ -105,6 +106,22 @@ export function installNativePages({host,getFont,getRaster,onPaint,onError,onMat
     }
   }
   function clearCaret(){gesture++;takeCaret();clearSelection();}
+  function showFileBoundaries(next){
+    for(const mark of boundaryMarks)mark.remove();
+    boundaryMarks=[];
+    boundaries=next;
+    for(const {path,page,y,atPageStart} of next){
+      const dom=pages.get(page)?.dom;
+      if(!dom)continue;
+      const mark=document.createElement('span');
+      mark.className='native-tex-file-boundary';
+      mark.dataset.file=path;
+      mark.setAttribute('aria-hidden','true');
+      mark.style.top=Math.max(0,y*CSS_PER_SP*zoom-(atPageStart?6:0))+'px';
+      dom.append(mark);
+      boundaryMarks.push(mark);
+    }
+  }
   function showCaret(hit){
     if(!ownership||ownership.stamp.sourceRevision!==revision||ownership.stamp.layoutVersion!==layoutVersion)return;
     clearSelection();
@@ -324,6 +341,7 @@ export function installNativePages({host,getFont,getRaster,onPaint,onError,onMat
       complete=message;warm=null;
       delete host.dataset.warmRevision;
       clearCaret();
+      showFileBoundaries([]);
       for(const entry of pages.values()) {
         entry.dom.style.width=entry.dl.page_width*CSS_PER_SP*zoom+'px';
         entry.dom.style.height=entry.dl.page_height*CSS_PER_SP*zoom+'px';
@@ -348,7 +366,7 @@ export function installNativePages({host,getFont,getRaster,onPaint,onError,onMat
         if(currentEpoch!==epoch)return;
         warm={pages:overlay,dl:message.dl,revision:message.versions.source_revision};
         host.dataset.warmRevision=String(warm.revision);
-        ownership=null;clearCaret();redraw();
+        ownership=null;clearCaret();showFileBoundaries([]);redraw();
       } catch {/* Complete layout will handle unsupported resources. */}
     }).catch(onError);
   }
@@ -356,7 +374,7 @@ export function installNativePages({host,getFont,getRaster,onPaint,onError,onMat
     epoch++;generation++;revision=-1;layoutVersion=-1;pending=Promise.resolve();ownership=null;drag=null;
     complete=null;warm=null;pdfBacked=false;
     delete host.dataset.warmRevision;
-    cancelAnimationFrame(frame);clearCaret();previousCaret=null;pages.clear();loaded.clear();fonts=new FontStore();
+    cancelAnimationFrame(frame);clearCaret();showFileBoundaries([]);previousCaret=null;pages.clear();loaded.clear();fonts=new FontStore();
     for(const resource of imageResources.values())resource.image.close();
     imageResources.clear();imageLoads.clear();if(clear)host.replaceChildren();
   }
@@ -373,7 +391,7 @@ export function installNativePages({host,getFont,getRaster,onPaint,onError,onMat
       return {number,dom,canvas,dl:page.dl,exact:page.exact};
     });
     if(entries.some(entry=>!entry))return false;
-    clearCaret();ownership=null;pages.clear();pdfBacked=true;
+    clearCaret();showFileBoundaries([]);ownership=null;pages.clear();pdfBacked=true;
     revision=stamp.source_revision;layoutVersion=stamp.layout_version;
     for(const entry of entries){
       const {number,dom}=entry;
@@ -385,7 +403,7 @@ export function installNativePages({host,getFont,getRaster,onPaint,onError,onMat
   host.addEventListener('scroll',redraw,{passive:true});
   host.parentElement?.addEventListener('scroll',redraw,{passive:true});
   window.addEventListener('resize',redraw);
-  return {accept,reset,attachOwners,bindPdfLayout,showCaret,showSelection,clearCaret,setZoom(value){clearCaret();zoom=value;if(pdfBacked)return;for(const entry of pages.values()){
+  return {accept,reset,attachOwners,bindPdfLayout,showCaret,showSelection,showFileBoundaries,clearCaret,setZoom(value){clearCaret();zoom=value;showFileBoundaries(boundaries);if(pdfBacked)return;for(const entry of pages.values()){
     entry.dom.style.width=entry.dl.page_width*CSS_PER_SP*zoom+'px';
     entry.dom.style.height=entry.dl.page_height*CSS_PER_SP*zoom+'px';
   }redraw();}};
