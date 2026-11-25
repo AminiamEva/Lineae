@@ -2336,6 +2336,8 @@ function completionActions() {
       ref:()=>nativeInlineCommand('ref'),
       eqref:()=>nativeInlineCommand('ref',true),
       cases:insertCases,
+      fbox:()=>runNativeTextCommand('toggleBox'),
+      textcircled:()=>runNativeTextCommand('toggleCircled'),
       cite:()=>nativeInlineCommand('cite'),
       footnote:()=>nativeInlineCommand('footnote'),
       lipsum:async()=>{
@@ -2940,6 +2942,7 @@ const nativeBindings=compileKeybindings({
 const nativeTypingCommands=new Map([
   ['toggleBold','bold'],['toggleItalic','italic'],['toggleUnderline','underline'],['toggleCode','code'],['toggleStrike','strike'],
   ['toggleSuperscript','superscript'],['toggleSubscript','subscript'],['toggleSmallCaps','smallcaps'],
+  ['toggleBox','boxed'],['toggleCircled','circled'],
 ]);
 const nativeTypingMarks=new Set([...nativeTypingCommands.values(),'textStyle']);
 const nativeRangeCommands=new Set([...nativeTypingCommands.keys(),'clearFormatting']);
@@ -2985,8 +2988,9 @@ function runNativeTextCommand(command,context,event){
     !caret.paragraph.heading&&!caret.paragraph.container&&!caret.paragraph.tableCell&&!caret.paragraph.wrapped&&
     caret.paragraph.runs.some(run=>run.from16<=caret.local&&run.to16>=caret.local&&
       !caret.paragraph.parts[run.partIndex]?.marks?.length);
-  return nativeRangeCommands.has(command)&&nativeTexPreview.useTextSelection(!unmarked)&&
-    shortcutActions.editor[command](context,event);
+  if(!nativeRangeCommands.has(command)||!nativeTexPreview.useTextSelection(!unmarked))return false;
+  if(command==='toggleBox'||command==='toggleCircled')return editor.commands.toggleMark(nativeTypingCommands.get(command));
+  return shortcutActions.editor[command](context,event);
 }
 function withNativeTextCommand(command,legacy){
   return (...args)=>nativeTexPreview?.hasNativeTextFocus?.()?runNativeTextCommand(command):legacy(...args);
@@ -5012,7 +5016,7 @@ groupButton(formatGroup,'hr',()=>editor.chain().focus().setHorizontalRule().run(
 groupButton(formatGroup,'x²',withNativeTextCommand('toggleSuperscript',()=>editor.chain().focus().toggleMark('superscript').run()));
 groupButton(formatGroup,'x₂',withNativeTextCommand('toggleSubscript',()=>editor.chain().focus().toggleMark('subscript').run()));
 groupButton(formatGroup,'sc',withNativeTextCommand('toggleSmallCaps',()=>editor.chain().focus().toggleMark('smallcaps').run()));
-groupButton(formatGroup,'box',()=>spaceOverlay.toggleBox()).dataset.shortcut='editor.toggleBox';
+groupButton(formatGroup,'box',withNativeTextCommand('toggleBox',()=>spaceOverlay.toggleBox())).dataset.shortcut='editor.toggleBox';
 groupButton(formatGroup,'\\LaTeX',()=>insertTextCommand('LaTeX'));
 groupButton(formatGroup,'\\TeX',()=>insertTextCommand('TeX'));
 const spaceOverlay=installSpaceOverlay(editor,paper,{selectionFocus:zoom});
@@ -5373,11 +5377,11 @@ homeRibbon=buildHomeRibbon(home,{documentClass:documentClassFromSource(documentP
   subscript:textOnly(withNativeTextCommand('toggleSubscript',()=>editor.chain().focus().toggleMark('subscript').run())),
   superscript:textOnly(withNativeTextCommand('toggleSuperscript',()=>editor.chain().focus().toggleMark('superscript').run())),
   clearFormatting:textOnly(withNativeTextCommand('clearFormatting',()=>editor.chain().focus().unsetAllMarks().run())),
-  characterBorder:textOnly(()=>spaceOverlay.toggleBox()),
+  characterBorder:textOnly(withNativeTextCommand('toggleBox',()=>spaceOverlay.toggleBox())),
   fontGrow:textOnly(()=>changeFontSize(1)),
   fontShrink:textOnly(()=>changeFontSize(-1)),
   highlight:textOnly(color=>applyTextStyle({backgroundColor:color??null})),
-  circled:textOnly(()=>editor.chain().focus().toggleMark('circled').run()),
+  circled:textOnly(withNativeTextCommand('toggleCircled',()=>editor.chain().focus().toggleMark('circled').run())),
   bullets:withNativeTextCommand('toggleBulletList',()=>editor.chain().focus().toggleBulletList().run()),
   numbering:withNativeTextCommand('toggleOrderedList',()=>editor.chain().focus().toggleOrderedList().run()),
   bulletStyle:marker=>setListStyle(marker),

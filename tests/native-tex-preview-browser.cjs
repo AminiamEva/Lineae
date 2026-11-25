@@ -246,6 +246,13 @@ const server=createServer(async(req,res)=>{
       await page.waitForFunction(source=>nativeProbe.source===source,afterLeaving);
       await panel.getByText('Click prose on the native page',{exact:false}).waitFor();
       await canvas.click({position:{x:6550000*scale,y:9250000*scale}});
+      await page.keyboard.press(mod+'+e');await page.keyboard.press('b');
+      await page.keyboard.type('B');
+      await page.waitForFunction(source=>nativeProbe.source===source,afterLeaving.replace('XYZAlpha','\\fbox{B}XYZAlpha'));
+      await page.keyboard.press(mod+'+z');
+      await page.waitForFunction(source=>nativeProbe.source===source,afterLeaving);
+      await panel.getByText('Click prose on the native page',{exact:false}).waitFor();
+      await canvas.click({position:{x:6550000*scale,y:9250000*scale}});
       const strike=page.locator('.floating-toolbar').getByRole('button',{name:'Strikethrough',exact:true});
       if(!await strike.isVisible())await page.locator('[data-ribbon-group=font] .ribbon-group-toggle').click();
       await strike.click();
