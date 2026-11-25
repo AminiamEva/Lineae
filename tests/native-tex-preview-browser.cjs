@@ -1087,6 +1087,30 @@ const server=createServer(async(req,res)=>{
     if(!await width.isVisible())await imageTools.locator('[data-ribbon-group=image-transform] .ribbon-group-toggle').click();
     await width.fill('24');
     await page.waitForFunction(expected=>nativeProbe.source===expected,projectMainWithImage.replace('18pt','24pt'));
+    await page.locator('#native-tex-close').click();
+    await page.evaluate(()=>{
+      const editor=document.querySelector('.ProseMirror').editor;
+      let textPosition;
+      editor.state.doc.descendants((node,position)=>{if(node.isText)textPosition??=position;});
+      editor.commands.setTextSelection(textPosition);
+      nativeProbe.semanticPdf=true;nativeProbe.registeredPdf=true;
+    });
+    await imageTools.waitFor({state:'hidden'});
+    await button.click();
+    await page.waitForFunction(()=>{
+      const state=document.querySelector('#native-tex-preview').dataset;
+      return state.state==='current'&&state.renderer==='pdf';
+    });
+    await panel.locator('[data-pdf-page="1"] canvas').click({position:{x:3500000*scale,y:3500000*scale}});
+    await revealToolbar(page);
+    await imageTools.waitFor();
+    if(!await width.isVisible())await imageTools.locator('[data-ribbon-group=image-transform] .ribbon-group-toggle').click();
+    await width.fill('28');
+    await page.waitForFunction(expected=>nativeProbe.source===expected,projectMainWithImage.replace('18pt','28pt'));
+    await page.locator('#native-tex-close').click();
+    await page.evaluate(()=>{nativeProbe.semanticPdf=false;nativeProbe.registeredPdf=false;});
+    await button.click();
+    await page.waitForFunction(()=>document.querySelector('#native-tex-preview').dataset.state==='current');
     await page.locator('#native-tex-target').click();
     await panel.getByText('Click the empty numerator or denominator',{exact:false}).waitFor();
     await panel.locator('[data-native-page="1"] canvas').click({position:{x:6500000*scale,y:7000000*scale}});
@@ -1386,6 +1410,35 @@ const server=createServer(async(req,res)=>{
       await page.keyboard.type('b');
       await page.waitForFunction(expected=>nativeProbe.source===expected,evidence.source.replace('\\frac{a}{}','\\frac{a}{b}'));
       console.log('PASS semantic edit on an actual registered LuaLaTeX PDF with TikZ');
+    }
+    if(process.env.LINEAE_NATIVE_ALIGNMENT_PAGE){
+      nativeEvidence=JSON.parse(await readFile(process.env.LINEAE_NATIVE_ALIGNMENT_PAGE,'utf8'));
+      await page.close();
+      page=await browser.newPage({locale:'en-US',viewport:{width:1600,height:1100}});
+      await page.addInitScript(installMockNativeTex);
+      await page.route('**/vendor/mathlive/**',route=>route.abort());
+      await page.goto('http://127.0.0.1:'+server.address().port+'/?native-only-acceptance=1',{waitUntil:'networkidle'});
+      await page.evaluate(evidence=>{
+        const p=window.nativeProbe,originalLayout=p.layout;
+        p.realEvidence=evidence;
+        p.layout=()=>({...originalLayout(),pages_changed:evidence.raw,pages_total:evidence.raw.length});
+      },nativeEvidence);
+      await page.locator('input#file').setInputFiles({name:'numbered-alignment.tex',mimeType:'text/plain',
+        buffer:Buffer.from(nativeEvidence.source)});
+      await page.locator('#native-tex-toggle').click();
+      await page.waitForFunction(()=>document.querySelector('#native-tex-preview').dataset.state==='current');
+      await page.locator('#native-tex-target').click();
+      await page.getByText('Click the empty numerator or denominator',{exact:false}).waitFor();
+      await page.locator('#native-tex-edit').click();
+      const nativePage=nativeEvidence.observed.find(page=>page.dl.math_owners?.fields.some(field=>
+        field.owner===nativeEvidence.targetOwner&&field.role==='den'&&field.empty));
+      const field=nativePage.dl.math_owners.fields.find(field=>field.owner===nativeEvidence.targetOwner&&field.role==='den');
+      const [x,y]=field.bbox,scale=.75*(96/72)/65781.76;
+      await page.locator(`[data-native-page="${nativePage.page}"] canvas`).click({position:{x:x*scale,y:y*scale}});
+      await page.waitForFunction(()=>document.activeElement?.id==='native-tex-input');
+      await page.keyboard.type('e');
+      await page.waitForFunction(expected=>nativeProbe.source===expected,nativeEvidence.source.replace('\\frac{d}{}','\\frac{d}{e}'));
+      console.log('PASS real LuaLaTeX alignat* geometry and source writeback beside a labeled numbered row');
     }
     console.log('PASS native preview transport/UI: explicit startup, Canvas resources, retained editor/history, sync, export revision and cancellation (not engine evidence)');
   }catch(error){

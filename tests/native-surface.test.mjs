@@ -657,6 +657,21 @@ test('native edits keep numbered equation annotations in the source and out of e
   assert.throws(()=>applySlotEdit(formula.math,{slotId:body.id,from16:start,to16:start+5,insert:''}));
 });
 
+test('alignment variants keep pair counts, stars and row delimiters during native edits',()=>{
+  for(const [environment,argument,body] of [
+    ['alignat','{2}','a&=b & c&=d'],['alignat*','{2}','a&=b & c&=d'],
+    ['flalign*','','a&=b&&'],['eqnarray','','a&=&b'],['multline*','','a+b'],
+  ]){
+    const latex='\\begin{'+environment+'}'+argument+body+'\\\\c+d\\end{'+environment+'}';
+    const source='\\begin{document}\n'+latex+'\n\\end{document}\n';
+    const {formula,token}=setup(source);
+    assert.equal(formula.math.source,latex);
+    const b=token('b');
+    const result=applySlotEdit(formula.math,{slotId:b.slotIds[0],from16:0,to16:0,insert:'X'});
+    assert.equal(result.source,latex.slice(0,b.from16)+'X'+latex.slice(b.from16));
+  }
+});
+
 test('tagged plain table text maps to the original cell and exact byte range',()=>{
   const source='\\begin{document}\n\\begin{tabular}{ll}\nOne & Two \\\\\nThree & Four\n\\end{tabular}\n\\end{document}\n';
   const projection=projectTextDocument(source);

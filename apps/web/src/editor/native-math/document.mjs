@@ -66,7 +66,7 @@ export function projectDocumentFormulas(source,{fragment=false,firstTag=1,filePa
     if(token.kind==='inlineMath'&&(tableCells.has(token.index)||markedMath.has(token.index)))return [token];
     if(!token.topLevel)return [];
     if(['displayMath','inlineMath'].includes(token.kind))return [token];
-    const name=token.kind==='begin'&&/^\\begin\{((?:equation|align|gather)\*?)\}$/.exec(token.value)?.[1];
+    const name=token.kind==='begin'&&/^\\begin\{((?:equation|align(?:at)?|flalign|gather|multline|eqnarray)\*?)\}$/.exec(token.value)?.[1];
     const close=name&&environmentEnd(body,token.index,name);
     if(!close)return [];
     const equation=name.startsWith('equation');

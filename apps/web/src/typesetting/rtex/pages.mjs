@@ -1,4 +1,4 @@
-import {rasterContains,stagedRasterPath} from './raster-assets.mjs';
+import {rasterContains,registeredRasterHits,stagedRasterPath} from './raster-assets.mjs';
 import {nativeFontFace} from './font-collection.mjs';
 import {FontStore,Painter,inexactReason} from './upstream/webview/render.ts';
 import {fontKey} from './upstream/src/fontKey.ts';
@@ -430,7 +430,7 @@ export function installNativePages({host,getFont,getRaster,onPaint,onError,onMat
       if(!page||!Number.isFinite(width)||!Number.isFinite(height)||
           Math.abs(width*65781.76-page.dl.page_width)>tolerance||
           Math.abs(height*65781.76-page.dl.page_height)>tolerance)return null;
-      return {number,dom,canvas,dl:page.dl,exact:page.exact};
+      return {number,dom,canvas,dl:page.dl,exact:page.exact,rasterHits:registeredRasterHits(page.dl,getRaster)};
     });
     if(entries.some(entry=>!entry))return false;
     clearCaret();showFileBoundaries([]);showFoldedFiles([],false);ownership=null;pages.clear();pdfBacked=true;

@@ -126,7 +126,7 @@ function parse(source) {
       node = {kind: 'group', from16, fields: [body]};
     } else if (source[at] === '\\') {
       const command = /^\\[A-Za-z]+/.exec(source.slice(at))?.[0];
-      const matrix = command==='\\begin'&&/^\\begin\{(matrix|[pbBvV]matrix|aligned|gathered|align\*?|gather\*?|cases|dcases|rcases|drcases)\}/.exec(source.slice(at));
+      const matrix = command==='\\begin'&&/^\\begin\{(matrix|[pbBvV]matrix|aligned(?:at)?|gathered|align(?:at)?\*?|flalign\*?|gather\*?|multline\*?|eqnarray\*?|split|cases|dcases|rcases|drcases)\}/.exec(source.slice(at));
       if(command==='\\left'){
         function delimiter(prefix) {
           const start=at;
@@ -148,6 +148,12 @@ function parse(source) {
         node={kind:'fence',from16,fields:[{role:'body',from16:start,to16:end,grouped:true,children}]};
       } else if(matrix){
         at+=matrix[0].length;protect(from16,at,'command');
+        if(/^align(?:ed)?at\*?$/.test(matrix[1])){
+          const count=/^[ \t\r\n]*\{[1-9]\d*\}/.exec(source.slice(at));
+          if(!count)fail('Expected an alignment pair count');
+          protect(at,at+count[0].length,'delimiter');
+          at+=count[0].length;
+        }
         node={kind:'matrix',command:matrix[1],from16,fields:[]};
         let row=0,column=0;
         while(true){
@@ -471,7 +477,7 @@ export function expandMatrix(snapshot,slot,local,axis,{enterRow=false}={}) {
       !Number.isInteger(local)||local<0||local>slot.raw.length||!['row','column'].includes(axis))return null;
   const cursor=slot.from16+local;
   const matrices=snapshot.atoms.filter(atom=>atom.kind==='matrix'&&atom.from16<cursor&&atom.to16>cursor&&
-    (!enterRow||/^(?:align(?:ed)?|gather(?:ed)?)\*?$/.test(atom.command)))
+    (!enterRow||/^(?:align(?:ed)?(?:at)?|flalign|gather(?:ed)?|multline|eqnarray|split)\*?$/.test(atom.command)))
     .sort((left,right)=>(left.to16-left.from16)-(right.to16-right.from16));
   const byId=new Map(snapshot.slots.map(candidate=>[candidate.id,candidate]));
   for(const atom of matrices){
@@ -485,7 +491,7 @@ export function expandMatrix(snapshot,slot,local,axis,{enterRow=false}={}) {
       if(slot.from16>=cell.from16&&slot.to16<=cell.to16)origin={row,column};
     }
     if(!origin)continue;
-    if(axis==='column'&&(/^gather|cases$/.test(atom.command)||
+    if(axis==='column'&&(/^(?:align(?:ed)?at|gather(?:ed)?|multline|eqnarray|split)\*?$|cases$/.test(atom.command)||
         rows.some(row=>row.length<=origin.column)))return null;
     const width=rows.reduce((maximum,row)=>Math.max(maximum,row.length),0);
     const edits=axis==='row'

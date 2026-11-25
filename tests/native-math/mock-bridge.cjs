@@ -103,8 +103,8 @@ module.exports=function installMockNativeTex() {
       const input=p.targetInclude?args.files?.find(file=>file.path==='chapters/one.tex')?.source:args.projection;
       if(!input)throw new Error('No target source in observation request');
       // The mock only treats tags inside math delimiters as formula owners.
-      const mathOnly=text=>[...text.matchAll(/\\\[([\s\S]*?)\\\]|\$([^$]*)\$/g)]
-        .map(found=>found[1]??found[2]).join('\n');
+      const mathGroups=/\\\[([\s\S]*?)\\\]|\$\$([\s\S]*?)\$\$|\$([^$]*)\$|\\begin\{((?:equation|align(?:at)?|flalign|gather|multline|eqnarray)\*?)\}([\s\S]*?)\\end\{\4\}/g;
+      const mathOnly=text=>[...text.matchAll(mathGroups)].map(found=>found[1]??found[2]??found[3]??found[5]).join('\n');
       const mathInput=mathOnly(input);
       const matches=[...mathInput.matchAll(/\\attribute65000=(\d+) \\(frac|sqrt)/g)];
       const match=matches.at(-1);
@@ -116,9 +116,7 @@ module.exports=function installMockNativeTex() {
       const emptyCells=/\\begingroup\\mathsurround=0pt\\attribute65000=(\d+) \$ \$\\endgroup/g;
       const textTags=projection=>[...projection
         .replace(emptyCells,'')
-        .replace(/\\\[[\s\S]*?\\\]/g,'')
-        .replace(/\$[^$]*\$/g,'')
-        .replace(/\\begin\{(?:equation|align|gather)\*?\}[\s\S]*?\\end\{(?:equation|align|gather)\*?\}/g,'')
+        .replace(mathGroups,'')
         .matchAll(/\\attribute65000=(\d+) (.)/gsu)];
       if(p.foldProject){
         const root=textTags(args.projection);

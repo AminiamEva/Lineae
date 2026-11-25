@@ -1621,6 +1621,34 @@ mod tests {
         assert!(drawing_without_markers(raw_page) == drawing_without_markers(observed_page),
             "an empty-cell observation must preserve visible table and image geometry");
         table.terminate();
+        if let Some(directory) = std::env::var_os("LINEAE_NATIVE_EVIDENCE_DIR") {
+            let directory = PathBuf::from(directory);
+            let source = include_str!("../../../../tests/native-math/fixtures/numbered-alignment.tex");
+            let projection = std::fs::read_to_string(directory.join("alignment-projection.tex")).unwrap();
+            let alignment = Session::create(source).unwrap();
+            let info = alignment.start().expect("numbered and starred alignat compile");
+            let raw = wait_layout(&alignment, info.source_revision);
+            let observed = alignment.observe_formula(info.source_revision, &projection, Vec::new())
+                .expect("production alignment projection renders alongside the unmarked original");
+            let mut denominators = Vec::new();
+            for page in &observed {
+                let original = raw["pages_changed"].as_array().unwrap().iter()
+                    .find(|original| original["page"] == page["page"]).unwrap();
+                assert!(drawing_without_markers(original) == drawing_without_markers(page),
+                    "alignat ownership must preserve the original page drawing");
+                denominators.extend(page["dl"]["math_owners"]["fields"].as_array().into_iter().flatten()
+                    .filter(|field| field["role"] == "den" && field["empty"] == true)
+                    .filter_map(|field| field["owner"].as_u64()));
+            }
+            denominators.sort_unstable();
+            denominators.dedup();
+            assert_eq!(denominators.len(), 2, "both alignat variants keep an editable empty denominator");
+            std::fs::write(directory.join("native-alignment-pages.json"), serde_json::to_vec(&json!({
+                "raw": raw["pages_changed"], "observed": observed, "projection": projection,
+                "source": source, "targetOwner": denominators[1],
+            })).unwrap()).unwrap();
+            alignment.terminate();
+        }
         let project_projection = source.replace("\\frac{a}{}", "\\begingroup\\attribute65000=11 \\frac{a}{}\\endgroup");
         let project_observed = session.observe_formula(info.source_revision, &project_projection, vec![
             NativeTexProjection {

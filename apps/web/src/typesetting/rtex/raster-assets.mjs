@@ -33,3 +33,16 @@ export function rasterContains({transform,box},x,y) {
   const [left,top,width,height]=box;
   return localX>=left&&localX<=left+width&&localY>=top&&localY<=top+height;
 }
+
+export function registeredRasterHits(display,getRaster) {
+  const items=[...(display.other??[]),...(display.lines??[]).flatMap(line=>line.items??[])];
+  // Only accept page-space image commands with no enclosing PDF transform.
+  if(items.some(item=>item[0]==='M'))return [];
+  const identity=[1,0,0,1,0,0];
+  return items.flatMap(([command,index,x,y,width,height])=>{
+    if(command!=='i'||![x,y,width,height].every(Number.isFinite)||width<=0||height<=0)return [];
+    const image=display.images_info?.[index],path=stagedRasterPath(image?.file);
+    if(!path||image.cached_picture||image.page>1||image.pages>1||!getRaster?.(image.file))return [];
+    return [{path,transform:identity,box:[x,y,width,height]}];
+  });
+}

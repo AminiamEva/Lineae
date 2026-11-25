@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {nativeAttachedSnapshot,nativeProjectSnapshot} from '../apps/web/src/typesetting/rtex/project-snapshot.mjs';
-import {rasterContains,stagedRaster,stagedRasterPath} from '../apps/web/src/typesetting/rtex/raster-assets.mjs';
+import {rasterContains,registeredRasterHits,stagedRaster,stagedRasterPath} from '../apps/web/src/typesetting/rtex/raster-assets.mjs';
 import {nativeFontFace} from '../apps/web/src/typesetting/rtex/font-collection.mjs';
 import {projectMixedSnapshot,textEdit} from '../apps/web/src/editor/native-text/projection.mjs';
 
@@ -23,6 +23,18 @@ test('native image hits follow rotation and scaling from the painter',()=>{
   assert.equal(rasterContains(image,26,44),true);
   assert.equal(rasterContains(image,36,44),false);
   assert.equal(rasterContains({...image,transform:[0,0,0,0,0,0]},26,44),false);
+});
+
+test('registered PDF raster hits use staged untransformed page coordinates',()=>{
+  const snapshot={files:[{path:'figure.png',bytes:[137,80,78,71,13,10,26,10]}]};
+  const display={images_info:{1:{file:'figure.png'},2:{file:'other.png'},3:{file:'figure.png',page:2}},
+    other:[['i',1,10,20,50,40]],lines:[{items:[['i',2,30,30,40,40],['i',3,40,40,50,50]]}]};
+  const load=file=>stagedRaster(snapshot,file);
+  const [hit,...others]=registeredRasterHits(display,load);
+  assert.equal(hit.path,'figure.png');
+  assert.equal(rasterContains(hit,35,40),true);
+  assert.equal(others.length,0);
+  assert.deepEqual(registeredRasterHits({...display,other:[['M','matrix',0,0,'0 1 -1 0'],...display.other]},load),[]);
 });
 
 test('native font extraction follows LuaTeX face numbers and rejects malformed offsets',()=>{

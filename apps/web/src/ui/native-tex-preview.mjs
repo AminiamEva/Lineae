@@ -512,7 +512,7 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
     },
     onError:(failure,revision)=>{if(active&&mode==='canvas')void fallback(failure,revision);},
     onImageHit:(path,revision)=>{
-      if(acceptsInput()&&current()&&mode==='canvas'&&revision===sourceRevision)focusImage?.(path);
+      if(acceptsInput()&&current()&&hasGeometry()&&revision===sourceRevision)focusImage?.(path);
     },
     proseRanges:(from,to)=>nativeDocument.proseRanges(resolveEndpoint(from),resolveEndpoint(to)),
     onMathHit:async(hit,stamp,origin,sameGesture)=>{
