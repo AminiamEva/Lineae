@@ -1,5 +1,5 @@
 import {readGroup} from '../../../latex/table-spans.mjs';
-import {fontFamilies,fontSizes,footnoteAt,textCommands} from '../../../latex/inline.mjs';
+import {fontFamilies,footnoteAt,textCommands} from '../../../latex/inline.mjs';
 import {referenceAt} from '../../../latex/reference-commands.mjs';
 
 const plainTokens=/^(?:\\(?:[%&_#${}]|[A-Za-z]+\{\})|[^\\{}$%&#_^])+/u;
@@ -10,7 +10,6 @@ const textMarks={textbf:'bold',textit:'italic',emph:'italic',textsl:'italic',tex
   textcircled:'circled',textsf:'textStyle',textrm:'textStyle'};
 const htmlColor=/^\\(textcolor|colorbox)\[HTML\]\{[0-9a-f]{6}\}(?=\{)/i;
 const familyCommands=new Set(Object.values(fontFamilies));
-const sizeCommands=new Set(Object.values(fontSizes));
 
 export function decodeProse(raw) {
   if(!/[\\~]/.test(raw))return {text:raw};
@@ -76,7 +75,7 @@ export function markedRuns(text,offset=0,marks=[],inline,styles=[]) {
     const color=htmlColor.exec(rest);
     const size=/^\{\\fontsize\{\d{1,2}\}\{\d{1,2}\}\\selectfont /.exec(rest);
     const declaration=/^\{(\\[A-Za-z]+) /.exec(rest);
-    const groupedStyle=size||sizeCommands.has(declaration?.[1])?'size':
+    const groupedStyle=size?'size':
       familyCommands.has(declaration?.[1])?'family':null;
     const command=/^\\([a-z]+)(?=\{)/.exec(rest);
     const mark=color||groupedStyle?'textStyle':command&&Object.hasOwn(textMarks,command[1])&&textMarks[command[1]];

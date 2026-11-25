@@ -1123,6 +1123,29 @@ const server=createServer(async(req,res)=>{
       assert.ok(Math.abs((await canvas.boundingBox()).width-at100*.75)<2);
       await pagePresentation.click();
       await canvas.click({position:{x:6550000*scale,y:9250000*scale}});
+      await page.keyboard.press(mod+'+a');
+      await revealToolbar(page);
+      await page.locator('[data-group=home]').click();
+      await page.locator('[data-format-attribute=fontSize]').selectOption('16pt');
+      const resized=workspaceSource.replace('Native document.','{\\fontsize{16}{20}\\selectfont Native document.}');
+      await page.waitForFunction(expected=>nativeProbe.source===expected,resized);
+      await page.keyboard.press(mod+'+z');
+      await page.waitForFunction(expected=>nativeProbe.source===expected,workspaceSource);
+      await panel.getByText('Click text on the native page',{exact:false}).waitFor();
+      await canvas.click({position:{x:6550000*scale,y:9250000*scale}});
+      await revealToolbar(page);
+      await page.locator('.floating-toolbar .color-control').click();
+      const red=page.locator('.color-swatch[data-color=red]');
+      const hex=(await red.getAttribute('data-hex')).slice(1);
+      await red.click();
+      await page.keyboard.type('X');
+      const colored=workspaceSource.replace('Native document.',`\\textcolor[HTML]{${hex}}{X}Native document.`)
+        .replace('\\begin{document}','\\usepackage{xcolor}\n\\begin{document}');
+      await page.waitForFunction(expected=>nativeProbe.source===expected,colored);
+      await page.keyboard.press(mod+'+z');
+      await page.waitForFunction(expected=>nativeProbe.source===expected,workspaceSource);
+      await panel.getByText('Click text on the native page',{exact:false}).waitFor();
+      await canvas.click({position:{x:6550000*scale,y:9250000*scale}});
       await page.evaluate(()=>navigator.clipboard.write([new ClipboardItem({
         'text/plain':new Blob(['Bold'],{type:'text/plain'}),
         'text/html':new Blob(['<strong>Bold</strong>'],{type:'text/html'}),

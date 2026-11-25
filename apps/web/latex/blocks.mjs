@@ -56,7 +56,9 @@ function inlineContent(text, groups=false) {
         part.attribute === 'background' ? { backgroundColor: part.value } :
         part.attribute === 'face' ? { fontFamily: part.value } : null;
       if (!attrs) throw new Error('Unsupported inline formatting');
-      return convert(part.children, [...marks, { type: 'textStyle', attrs }]);
+      const current=marks.find(mark=>mark.type==='textStyle');
+      const style={type:'textStyle',attrs:{...current?.attrs,...attrs}};
+      return convert(part.children,current?marks.map(mark=>mark===current?style:mark):[...marks,style]);
     });
   }
   try { return convert(parsed); } catch { return null; }

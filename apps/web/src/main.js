@@ -910,7 +910,7 @@ editor.on('transaction',()=>{
   syncUndoButtons();
 });
 let editingMath = null;
-installFormatControls(editor, tools, {isUnavailable:()=>Boolean(activeMath())});
+installFormatControls(editor, tools, {isUnavailable:()=>Boolean(activeMath()),applyStyle:applyTextStyle});
 const headingMenu = document.createElement('select');
 headingMenu.setAttribute('aria-label', t('段落样式','Paragraph style'));
 const textStyleOption = new Option(t('正文','Text'), '0');
@@ -2852,7 +2852,7 @@ const nativeTypingCommands=new Map([
   ['toggleBold','bold'],['toggleItalic','italic'],['toggleUnderline','underline'],['toggleCode','code'],['toggleStrike','strike'],
   ['toggleSuperscript','superscript'],['toggleSubscript','subscript'],['toggleSmallCaps','smallcaps'],
 ]);
-const nativeTypingMarks=new Set(nativeTypingCommands.values());
+const nativeTypingMarks=new Set([...nativeTypingCommands.values(),'textStyle']);
 const nativeRangeCommands=new Set([...nativeTypingCommands.keys(),'clearFormatting']);
 const nativeSelectionCommands=new Set([...nativeRangeCommands,'toggleContextMarker']);
 const nativeTextStructures={
@@ -3020,15 +3020,42 @@ function dispatchVerifiedNativeProse(state,tr,source,draft,change,index){
   const projected=sourceProjection(draft,tr.doc.toJSON(),{fragment:projectFileKind==='tex'});
   return Boolean(projected&&dispatchNativeParagraphChange(state,tr,source,draft,change,projected));
 }
-function insertNativeMarkedText(paragraph,patch,target,marks){
+function applyTextStyle(attributes){
+  if(!nativeParagraphFormattingActive())return editor.chain().focus().setMark('textStyle',attributes).run();
+  const stops=nativeTexPreview.verifiedTextRange();
+  if(!stops||!nativeTexPreview.useTextSelection())return false;
+  const [first,last]=stops,{paragraph}=first,{state}=editor;
+  if(paragraph.container||paragraph.heading||paragraph.wrapped||paragraph.tableCell)return false;
+  const target=nativeProsePosition(paragraph,first.local,last.local);
+  if(!target||target.range.marks?.length||target.range.endpoints.start!==target.range.endpoints.end)return false;
+  const type=state.schema.marks.textStyle,stored=state.storedMarks??[];
+  const style=type.create({...stored.find(mark=>mark.type===type)?.attrs,...attributes});
+  const [sample]=importBlocks(serialize(state.schema.text('x',[style]).toJSON()));
+  const canonical=sample?.content?.[0]?.marks?.find(mark=>mark.type==='textStyle');
+  const marks=stored.filter(mark=>mark.type!==type);
+  if(canonical)marks.push(state.schema.markFromJSON(canonical));
+  if(first===last){
+    editor.view.dispatch(state.tr.setStoredMarks(marks));
+    nativeTexPreview.refocusTextInput();
+    return true;
+  }
+  if(!canonical)return false;
+  const started=performance.now(),{from,to}=target.range;
+  const insert=state.doc.textBetween(from,to),latex=paragraph.text.slice(first.local,last.local);
+  const committed=commitNativeMarkedText(paragraph,{from:first.local,to:last.local,insert,latex},target,marks);
+  if(!committed)return false;
+  nativeTexPreview.refocusTextInput();
+  return nativeTexPreview.preserveSourceCaret(committed,started,'text');
+}
+function commitNativeMarkedText(paragraph,patch,target,marks){
   const {state}=editor,{range,composition,project,file}=target;
   const node=editor.schema.text(patch.insert,marks),insert=serialize(node.toJSON());
   const raw=patch.latex??patch.insert,inside=insert.lastIndexOf(raw);
   if(inside<0||insert===raw)return null;
-  const {source,filePath:path}=paragraph,from=paragraph.from16+patch.from;
-  const change={from,to:from,insert};
-  let draft=source.slice(0,from)+insert+source.slice(from),offset=from+inside+raw.length;
-  const tr=state.tr.insert(range.from,node);
+  const {source,filePath:path}=paragraph,from=paragraph.from16+patch.from,to=paragraph.from16+patch.to;
+  const change={from,to,insert};
+  let draft=source.slice(0,from)+insert+source.slice(to),offset=from+inside+raw.length;
+  const tr=state.tr.replaceWith(range.from,range.to,node);
   tr.setSelection(TextSelection.create(tr.doc,range.from+node.nodeSize)).setStoredMarks(marks);
   const fragment=projectFileKind==='tex';
   const candidate=projectMixedDocument(draft,{filePath:path,fragment,splitIncludes:Boolean(composition)})?.paragraphs.find(next=>
@@ -3036,7 +3063,7 @@ function insertNativeMarkedText(paragraph,patch,target,marks){
   if(!candidate)return null;
   const rootId=composition?.rootId;
   const root=rootId&&rootId!==file.id?project.file(rootId).draft:source;
-  const dependency=marks.some(mark=>mark.type.name==='strike')?nativePackagePatch(root,insert):null;
+  const dependency=nativePackagePatch(root,insert);
   if(dependency===false)return null;
   if(composition){
     const drafts=new Map([[file.id,draft]]);
@@ -3912,7 +3939,7 @@ nativeTexPreview=installNativeTexPreview({host:footer,before:modes,primary:nativ
     if(stored?.length&&stored.every(mark=>nativeTypingMarks.has(mark.type.name))&&
        patch.insert&&start===end&&editor.state.selection.from===start&&!marks?.length&&
        !paragraph.container&&!paragraph.tableCell&&!paragraph.heading&&!paragraph.wrapped)
-      return insertNativeMarkedText(paragraph,patch,position,stored);
+      return commitNativeMarkedText(paragraph,patch,position,stored);
     const tr=editor.state.tr;
     if(end>start)tr.delete(start,end);
     if(patch.insert)tr.insert(start,editor.schema.text(patch.insert,marks));
@@ -4893,7 +4920,7 @@ function changeFontSize(direction) {
     ? sizes.find(size => size>current+0.01)
     : [...sizes].reverse().find(size => size<current-0.01);
   if (!next) return false;
-  return editor.chain().focus().setMark('textStyle',{fontSize:next+'pt'}).run();
+  return applyTextStyle({fontSize:next+'pt'});
 }
 homeRibbon=buildHomeRibbon(home,{documentClass:documentClassFromSource(documentParts.start),actions:{
   copy:()=>clipboard.copy().catch(reportClipboardError),
@@ -4913,7 +4940,7 @@ homeRibbon=buildHomeRibbon(home,{documentClass:documentClassFromSource(documentP
   characterBorder:textOnly(()=>spaceOverlay.toggleBox()),
   fontGrow:textOnly(()=>changeFontSize(1)),
   fontShrink:textOnly(()=>changeFontSize(-1)),
-  highlight:textOnly(color=>editor.chain().focus().setMark('textStyle',{backgroundColor:color??null}).run()),
+  highlight:textOnly(color=>applyTextStyle({backgroundColor:color??null})),
   circled:textOnly(()=>editor.chain().focus().toggleMark('circled').run()),
   bullets:withNativeTextCommand('toggleBulletList',()=>editor.chain().focus().toggleBulletList().run()),
   numbering:withNativeTextCommand('toggleOrderedList',()=>editor.chain().focus().toggleOrderedList().run()),

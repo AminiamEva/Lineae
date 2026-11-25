@@ -1204,6 +1204,9 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
     },
     hasTextInput:event=>event.target===input&&hasNativeTextFocus(),
     hasNativeTextFocus,
+    refocusTextInput(){
+      if(nativeEditing&&acceptsInput())input.focus({preventScroll:true});
+    },
     focusInput(){
       if(!nativeEditing||!acceptsInput())return false;
       input.focus({preventScroll:true});return true;
