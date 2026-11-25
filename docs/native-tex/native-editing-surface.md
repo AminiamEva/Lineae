@@ -19,27 +19,27 @@ with the old JS typesetting engine disabled) is not met yet.
   Final acceptance is editing with it disabled.
 - Unsupported or stale geometry never writes a guessed source range.
 
-## Vertical slice implemented
+## Implemented editing paths
 
-Scope: one standalone or project document, one display formula with
-editor-owned math slots, and single-file documents that combine prose with
-display or inline math. A prose paragraph is split into runs at math
-boundaries; each run is tagged separately, and an edit never crosses a math
-node. Project-composed prose is not projected yet.
+Standalone and composed project pages can combine prose, inline math and
+display math. Native text and math adapters share the same document session
+and selection. Each editable stop maps to its source file, and a registered
+PDF can serve as the painted page when its geometry matches the observed
+layout. `parity.json` records the verified scope and links to each test run.
 
 | Layer | Implementation |
 | --- | --- |
-| Geometry source | rtex full layout; exact OTF/TTF pages; PDF fallback for other resources |
+| Geometry source | rtex layout, staged raster images and font faces including collections; registered PDF for other resources |
 | Source mapping | `editor/native-math/source.mjs`, `document.mjs`, `resolve.mjs`; `editor/native-text/projection.mjs` |
-| Caret/selection | `editor/native-surface/math-surface.mjs` and `text-surface.mjs` over observed owner boxes |
+| Caret/selection | `editor/native-surface/document-session.mjs` and its text and math adapters over observed owner boxes |
 | Input | textarea overlay for keys and IME composition; keys map to exact source patches |
-| Transactions | `commitMath` updates the math node attribute in one ProseMirror transaction |
-| History | ProseMirror undo/redo; formula selections restored by structural atom paths |
+| Transactions | `commitMath` and `commitText` apply verified patches through ProseMirror |
+| History | ProseMirror undo/redo, with verified tests for edits that affect two project files |
 | IPC | Rust reader thread emits `lineae-native-tex` events; no polling loop |
 
-Keys currently covered: printable insertion, Backspace/Delete within a slot or
-paragraph, Left/Right/Home/End between observed stops, Shift selection, drag
-selection across glyphs, Cmd/Ctrl+Z / Shift+Z / Y.
+Covered interactions include printable insertion, deletion within a slot or
+paragraph, horizontal and vertical movement, PageUp/PageDown, range selection,
+undo/redo, and Tab between empty math fields.
 
 For plain prose, each non-space grapheme is preceded by an
 `\attribute65000` assignment inside a local group. The instrumented compile is
@@ -87,22 +87,17 @@ Engine-only protocol timings remain in `native-tex.yml` artifacts.
 
 ## Known gaps before switching the default
 
-1. **Project prose.** Inline and display math share the same single-file
-   surface, but composed project pages still have no prose projection; project
-   body text remains on the existing editor surface.
-2. **Cross-run selection.** A selection that spans an inline math node can be
-   displayed but is refused for deletion or replacement instead of rewriting
-   the math source.
-3. **IME commit coverage.** The native input is an IME-capable textarea and
-   composition disables targeting/export, but automated composition commit and
-   candidate-window placement need real-device tests.
-4. **Structure commands.** Fraction/root/matrix insertion commands and
-   multiline editing still run through the existing editor, not native keys.
-5. **PDF fallback.** Pages drawn from PDF are read-only and carry no semantic
-   caret.
-6. **Engine-off acceptance.** Node scripts and UI still instantiate the old
-   typesetting path for fallback; it has not yet been removed from the normal
-   editing flow.
+1. Broader commands, TeX structures, complex table cells and project changes
+   still need equivalent editing and history coverage.
+2. Complete inline formulas can be selected as part of prose. Cross-file
+   replacement has coverage for adjacent plain paragraphs, with complex
+   selections still pending.
+3. Automated composition proves commit-once and cancellation. Candidate
+   placement, shortcut delivery and latency still need physical-device tests.
+4. The browser can edit an ordinary formula on a registered PDF page containing
+   TikZ. Direct editing of complex floats and TikZ remains pending.
+5. The engine-off desktop workspace has passed the covered cases. Its default
+   switch still depends on complete coverage and the device checks.
 
 ## Acceptance for the first full slice
 

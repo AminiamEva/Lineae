@@ -476,6 +476,15 @@ test('native empty table cells accept text only at the observed boundary',()=>{
   assert.equal(surface.insert('new').source,source.replace(' & value',' new& value'));
 });
 
+test('native table projection includes plain and empty cells beside protected cells',()=>{
+  const source='\\begin{document}\n\\begin{tabular}{lll}\nFirst & $x$ & \\\\\n\\end{tabular}\n\\end{document}\n';
+  const projection=projectTextDocument(source);
+  assert.deepEqual(projection.paragraphs.map(({tableCell,text})=>[tableCell.column,text]),[[0,'First'],[2,'']]);
+  assert.ok(projection.projection.includes(' & $x$ &'));
+  const [paragraph]=projection.paragraphs;
+  assert.equal(textEdit(projection,{paragraph,from16:0,to16:0,insert:'X'}).source,source.replace('First','XFirst'));
+});
+
 test('native tab visits unfilled fields in source order without leaving the formula',()=>{
   const {projection,numerator,denominator}=setup(source.replace('{a}','{}'));
   const surface=createMathSurface({resolve:endpoint=>nativeTarget(projection,endpoint)});

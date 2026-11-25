@@ -1,4 +1,4 @@
-import {parseTable} from '../../../latex/tables.mjs';
+import {parseTable,splitCells} from '../../../latex/tables.mjs';
 import {placeRow,readGroup} from '../../../latex/table-spans.mjs';
 
 function contentRange(part,offset) {
@@ -17,7 +17,7 @@ function contentRange(part,offset) {
 
 // Reuse the importer's span placement so skipped multirow placeholders do
 // not shift ProseMirror cell indexes. Only edit text inside known wrappers.
-export function plainTableCells(block) {
+export function plainTableCells(block,{partial=false}={}) {
   const leading=block.length-block.trimStart().length;
   const raw=block.trim(),begin='\\begin{tabular}';
   if(!raw.startsWith(begin))return null;
@@ -33,14 +33,15 @@ export function plainTableCells(block) {
   let row=0;
   for(const line of body.matchAll(/[^\r\n]+/g)){
     if(/^\s*\\(?:hline|toprule|midrule|bottomrule|cmidrule(?:\([^)]*\))?\{[^}]*\})\s*$/.test(line[0]))continue;
-    const parts=line[0].replace(/[ \t]*\\\\[ \t]*$/,'').split('&');
+    const parts=splitCells(line[0].replace(/[ \t]*\\\\[ \t]*$/,''));
     const placed=placeRow(parts,occupied);
     if(!placed||!table.rows[row]||placed.length!==table.rows[row].cells.length)return null;
     let offset=leading+start+line.index;
     const offsets=parts.map(part=>{const result=offset;offset+=part.length+1;return result;});
     for(const [column,cell] of placed.entries()){
       const range=contentRange(parts[cell.sourceIndex],offsets[cell.sourceIndex]);
-      if(!range||range.text!==cell.text||range.text!==table.rows[row].cells[column])return null;
+      if(!range){if(partial)continue;return null;}
+      if(range.text!==cell.text||range.text!==table.rows[row].cells[column])return null;
       cells.push({row,column,...range});
     }
     row++;

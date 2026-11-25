@@ -161,6 +161,20 @@ test('span placeholders never shift the cell byte range on writeback',()=>{
   ]);
 });
 
+test('plain cell writeback leaves a neighboring inline formula and its spelling intact',()=>{
+  const source=wrap('\\begin{tabular}{ll}\r\nLeft & $ x $ \\\\\r\nBelow & Right\r\n\\end{tabular}');
+  const original={type:'doc',content:parseDocument(source).blocks.flatMap(importBlocks)};
+  const edited=structuredClone(original);
+  edited.content[0].content[0].content[0].content[0].content[0].text='XLeft';
+  const projection=sourceProjection(source,original),at=source.indexOf('Left');
+  assert.deepEqual(standaloneMathChanges(projection,edited),[{from:at,to:at,insert:'X'}]);
+  assert.deepEqual(richSourceChanges(projection,edited),[{from:at,to:at,insert:'X'}]);
+  const formula=edited.content[0].content[0].content[1].content[0].content[0];
+  assert.equal(formula.type,'math');
+  formula.attrs.latex='z';
+  assert.equal(standaloneMathChanges(projection,edited),null);
+});
+
 test('nested prose edits preserve a proof title, an abstract declaration, and mixed line endings',()=>{
   const source=wrap('\\begin{proof}[Claim]\r\n  First step.\r\n\\end{proof}\r\n\r\n'+
     '\\begin{abstract}\n% preserve this comment\r\n\\small\r\nSummary.\r\n\\end{abstract}');

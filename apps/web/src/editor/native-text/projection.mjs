@@ -106,7 +106,7 @@ function instrumentProse(block, source, blockFrom, firstOwner, attribute, filePa
 }
 
 function instrumentTable(block, source, blockFrom, firstOwner, attribute, filePath) {
-  const cells=plainTableCells(block);
+  const cells=plainTableCells(block,{partial:true});
   if(!cells?.length)return null;
   let projection='',cursor=0,nextTag=firstOwner;
   const paragraphs=[];

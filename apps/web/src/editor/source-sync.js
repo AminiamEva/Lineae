@@ -143,7 +143,7 @@ export function richSourceChanges(projection, doc) {
     const nodes = doc.content.slice(block.index, block.index + block.count);
     if (JSON.stringify(nodes) === block.snapshot) continue;
     const patch = block.editable ? patchBlock(block,nodes) :
-      plainContainerChanges(block,nodes)??patchIsolatedTables(block,nodes);
+      plainTableChanges(block,nodes)??plainContainerChanges(block,nodes)??patchIsolatedTables(block,nodes);
     if (!patch) return null;
     changes.push(...patch);
   }
@@ -170,7 +170,7 @@ function plainTableChanges(block,nodes) {
   const [before]=previous,[after]=nodes;
   if(before?.type!=='table'||after?.type!=='table'||nodes.length!==previous.length)return null;
   if(before.attrs?.caption||before.attrs?.tblr||before.attrs?.tabularx)return null;
-  const cells=plainTableCells(block.raw);
+  const cells=plainTableCells(block.raw,{partial:true});
   if(!cells)return null;
   const restored=structuredClone(nodes);
   const patches=[];
