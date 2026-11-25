@@ -13,7 +13,7 @@ import {resolvePackages} from '../../latex/packages.mjs';
 // Native LaTeX output is the primary page. The opt-in native input mode sends
 // supported keys, caret and IME through this surface into ProseMirror; the old
 // JS-formatted page and MathLive inputs stay available as the migration fallback.
-export function installNativeTexPreview({host,before,primary=false,isDocumentMode,getSource,getSnapshot,isComposing,focusMathSlot,focusImage,listTikzDrawings,editTikzDrawing,continuationRegion,selectionRegions,selectText,commitMath,commitText,commitProjectRange,canStartText,commitInitialText,commitParagraphBreak,commitParagraphJoin,history}) {
+export function installNativeTexPreview({host,before,primary=false,documentZoom=100,isDocumentMode,getSource,getSnapshot,isComposing,focusMathSlot,focusImage,listTikzDrawings,editTikzDrawing,continuationRegion,selectionRegions,selectText,commitMath,commitText,commitProjectRange,canStartText,commitInitialText,commitParagraphBreak,commitParagraphJoin,history}) {
   const invoke=window.__TAURI__?.core?.invoke;
   if(!invoke) return {refresh(){},documentChanged(){},relocalize(){}};
   const button=document.createElement('button');
@@ -39,10 +39,11 @@ export function installNativeTexPreview({host,before,primary=false,isDocumentMod
   const zoom=document.createElement('select');zoom.id='native-tex-zoom';
   for(const value of [50,75,100,125,150,200]) zoom.append(new Option(value+'%',String(value)));
   zoom.value='75';zoom.setAttribute('aria-label',t('原生预览缩放','Native preview zoom'));
+  let zoomPercent=primary?documentZoom:75;
   controls.append(zoom,editButton,tikzSelect,tikzEdit,exportButton,targetButton,closeButton);
   if(primary){
     panel.dataset.primary='true';
-    targetButton.hidden=true;editButton.hidden=true;
+    targetButton.hidden=true;editButton.hidden=true;zoom.hidden=true;
   }
   const pages=document.createElement('div');pages.className='native-tex-pages';
   const input=document.createElement('textarea');
@@ -104,7 +105,7 @@ export function installNativeTexPreview({host,before,primary=false,isDocumentMod
     const canvas = pages.querySelector(`[data-native-page="${stop.page}"] canvas`);
     if (!canvas) return;
     let box=canvas.getBoundingClientRect();
-    const scale = Number(zoom.value) / 100 * (96 / 72) / 65781.76;
+    const scale = zoomPercent / 100 * (96 / 72) / 65781.76;
     let rect=surfaceCaretRect(stop,scale,box.left,box.top);
     if (!rect) return;
     if(reveal){
@@ -851,11 +852,13 @@ export function installNativeTexPreview({host,before,primary=false,isDocumentMod
     }
     renderStatus();
   });
-  zoom.addEventListener('change',()=>{
-    const value=Number(zoom.value)/100;
-    renderer.setZoom(value);pdf.setZoom(value);
+  function setNativeZoom(value){
+    if(zoomPercent===value)return;
+    zoomPercent=value;
+    renderer.setZoom(value/100);pdf.setZoom(value/100);
     if(nativeEditing){paintSurfaceSelection();positionInput();}
-  });
+  }
+  zoom.addEventListener('change',()=>setNativeZoom(Number(zoom.value)));
   window.addEventListener('resize',()=>{if(nativeEditing)positionInput();});
   panel.addEventListener('scroll',()=>{if(nativeEditing)positionInput();},{passive:true});
   window.addEventListener('pagehide',()=>{void stop();});
@@ -867,7 +870,7 @@ export function installNativeTexPreview({host,before,primary=false,isDocumentMod
     if(event.target===compositionField)compositionField=null;
     setTimeout(refresh,0);
   },true);
-  relocalize();renderer.setZoom(.75);pdf.setZoom(.75);
+  relocalize();renderer.setZoom(zoomPercent/100);pdf.setZoom(zoomPercent/100);
   return {
     refresh,documentChanged,relocalize,
     documentModeChanged(){
@@ -875,6 +878,7 @@ export function installNativeTexPreview({host,before,primary=false,isDocumentMod
       if(isDocumentMode?.())void start();
       else void stop();
     },
+    setDocumentZoom:value=>{if(primary)setNativeZoom(value);},
     hasTextInput:event=>event.target===input&&nativeEditing&&nativeDocument.surface.caret?.kind==='text',
     inTableCell:()=>Boolean(nativeDocument.surface.caret?.paragraph?.tableCell),
     hasMathInput: event => event.target===input && nativeEditing && nativeDocument.surface.caret?.kind==='math',

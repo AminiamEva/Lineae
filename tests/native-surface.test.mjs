@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {projectDocumentFormulas,projectSnapshotFormulas} from '../apps/web/src/editor/native-math/document.mjs';
 import {nativeTarget} from '../apps/web/src/editor/native-math/resolve.mjs';
+import {applySlotEdit,applyStructureCommand,nativeMathCommandNames,projectMath} from '../apps/web/src/editor/native-math/source.mjs';
 import {createMathSurface} from '../apps/web/src/editor/native-surface/math-surface.mjs';
 import {createTextSurface} from '../apps/web/src/editor/native-surface/text-surface.mjs';
 import {createNativeDocumentSession} from '../apps/web/src/editor/native-surface/document-session.mjs';
@@ -47,6 +48,19 @@ test('native display Enter splits between atoms and adds a row to an existing al
   assert.equal(row.text,'\\begin{align}a&=b\\\\&\\\\c&=d\\end{align}');
   const newCell=grid.pendingOffset-aligned.formula.from16;
   assert.equal(row.text.slice(newCell-3,newCell+2),'\\\\&\\\\');
+});
+
+test('native completion inserts the exact case and keeps subsequent input separate from a control word',()=>{
+  assert.ok(nativeMathCommandNames.includes('Delta')&&nativeMathCommandNames.includes('delta'));
+  const math=projectMath('\\frac{a}{}');
+  const slot=math.slots.find(slot=>slot.role==='denominator');
+  const symbol=applyStructureCommand(math,{slotId:slot.id,from16:0,to16:0,command:'Delta'});
+  assert.equal(symbol.source,'\\frac{a}{\\Delta}');
+  const next=projectMath(symbol.source);
+  const atom=next.slots.find(slot=>slot.role==='nucleus'&&slot.raw==='\\Delta');
+  const typed=applySlotEdit(next,{slotId:atom.id,from16:atom.raw.length,to16:atom.raw.length,insert:'x'});
+  assert.equal(typed.source,'\\frac{a}{\\Delta x}');
+  assert.equal(typed.selection.head16,typed.source.indexOf('x')+1);
 });
 
 test('a native caret stops at real formula boundaries and edits exactly one slot', () => {

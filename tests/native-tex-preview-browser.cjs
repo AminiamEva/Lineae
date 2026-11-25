@@ -130,7 +130,10 @@ const server=createServer(async(req,res)=>{
       assert.deepEqual(errors,[]);
       await panel.getByText('Click prose on the native page',{exact:false}).waitFor();
       await canvas.click({position:{x:6510000*scale,y:6950000*scale}});
-      await page.keyboard.press(mod+'+2');
+      await page.keyboard.press('Backslash');
+      const nativePalette=page.getByRole('dialog',{name:'LaTeX completion',exact:true});
+      await nativePalette.getByRole('textbox',{name:'LaTeX command',exact:true}).fill('sqrt');
+      await page.keyboard.press('Enter');
       await page.waitForFunction(()=>nativeProbe.source?.includes('\\sqrt{}'));
       const rootObservations=await page.evaluate(()=>nativeProbe.calls.filter(call=>call.command==='native_tex_observe_formula').length);
       await page.keyboard.press(mod+'+z');
@@ -413,6 +416,15 @@ const server=createServer(async(req,res)=>{
       assert.equal(await panel.getAttribute('data-renderer'),'canvas');
       assert.equal(await page.locator('#native-tex-edit').isVisible(),false);
       assert.equal(await page.locator('#editor').isVisible(),false);
+      const setNativePageZoom=value=>page.locator('footer.document-status input[type=range]').evaluate((input,value)=>{
+        input.value=String(value);input.dispatchEvent(new Event('input',{bubbles:true}));
+      },value);
+      await setNativePageZoom(100);
+      const at100=(await canvas.boundingBox()).width;
+      await setNativePageZoom(75);
+      await page.waitForFunction(width=>Math.abs(document.querySelector('[data-native-page="1"] canvas')
+        .getBoundingClientRect().width-width*.75)<2,at100);
+      assert.equal(await page.locator('#native-tex-zoom').isVisible(),false);
       await canvas.click({position:{x:6550000*scale,y:9250000*scale}});
       await page.keyboard.type('X');
       await page.waitForFunction(expected=>nativeProbe.source===expected,workspaceSource.replace('Native document.','XNative document.'));

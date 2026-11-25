@@ -52,7 +52,8 @@ export function createMathSurface({resolve,selection=createSelectionModel(sameFo
         const result = applySlotEdit(stop.formula.math, {
           slotId: stop.slot.id, from16: from.local, to16: to.local, insert: text,
         });
-        return selection.record({formula: stop.formula, patch: result.patch, text: result.source}, from.docOffset + text.length);
+        return selection.record({formula:stop.formula,patch:result.patch,text:result.source},
+          stop.formula.from16+result.selection.head16);
       } catch { return null; }
     },
     moveEmptySlot(backward) {

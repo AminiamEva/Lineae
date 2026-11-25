@@ -456,6 +456,10 @@ const structureTemplates = {
   cases: text => ({before:'\\begin{cases}',body:text,after:'&\\\\&\\end{cases}',next:'first'}),
 };
 
+export const nativeMathCommandNames=Object.freeze([...new Set([
+  ...Object.keys(structureTemplates),...[...symbols].filter(command=>/^\\[A-Za-z]+$/.test(command)).map(command=>command.slice(1)),
+])]);
+
 export function expandMatrix(snapshot,slot,local,axis,{enterRow=false}={}) {
   if(!snapshots.get(snapshot)?.tree||!snapshot.slots.includes(slot)||
       !Number.isInteger(local)||local<0||local>slot.raw.length||!['row','column'].includes(axis))return null;
@@ -511,9 +515,16 @@ export function insertDisplayLine(snapshot,slot,local) {
 }
 
 export function applyStructureCommand(snapshot, {slotId,from16,to16,command}) {
-  if(!Object.hasOwn(structureTemplates,command))return null;
   const slot=snapshot.slots.find(candidate=>candidate.id===slotId);
   if(!slot)return null;
+  if(!Object.hasOwn(structureTemplates,command)){
+    const tex='\\'+command;
+    if(!symbols.has(tex))return null;
+    const after=snapshot.source[slot.from16+to16];
+    const insert=tex+(after&&/[A-Za-z]/.test(after)?' ':'');
+    const result=editSlot(snapshot,{slotId,from16,to16,insert},true);
+    return {source:result.source,patch:result.patch,cursor:slot.from16+from16+tex.length};
+  }
   const selected=slot.raw.slice(from16,to16);
   if(!editable.test(selected))return null;
   const template=structureTemplates[command](selected);
@@ -544,6 +555,10 @@ function editSlot(snapshot, {slotId, from16, to16, insert}, structure) {
   let from = slot.from16 + from16, to = slot.from16 + to16;
   if (!boundaries.has(from) || !boundaries.has(to)) throw new RangeError('Edit splits a grapheme');
   if (!structure && !editable.test(insert)) throw new SyntaxError('Structural or unsupported math insertion');
+  if(!structure&&/^[A-Za-z]/.test(insert)){
+    const control=state.tree.protectedRanges.find(range=>range.kind==='command'&&range.to16===from);
+    if(control&&symbols.has(snapshot.source.slice(control.from16,from)))insert=' '+insert;
+  }
   for (const range of state.tree.protectedRanges) {
     if ((from < range.to16 && to > range.from16) ||
         (from === to && from > range.from16 && from < range.to16) ||

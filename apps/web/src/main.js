@@ -1,5 +1,6 @@
 import {nativeEditorRange} from './editor/native-text/editor-range.mjs';
 import {projectMixedDocument,projectTextDocument} from './editor/native-text/projection.mjs';
+import {nativeMathCommandNames} from './editor/native-math/source.mjs';
 import {loadLegacyMath,nativeOnlyAcceptance,nativeWorkspaceRequested} from './editor/native-surface/acceptance-mode.mjs';
 import {AppendixStart,MatterStart,LayoutCommand} from './editor/appendix.js';
 import {Lipsum} from './editor/lipsum.js';
@@ -1942,6 +1943,7 @@ for (const [environment, row] of Object.entries({
   }
 }
 let completionField = null;
+let completionNative = false;
 let completionAnchor = null;
 let candidateIndex = 0;
 
@@ -1962,8 +1964,9 @@ function closeCommands(restoreFocus = false) {
     else editor.view.focus();
   }
 }
-function showCommands(field = null) {
+function showCommands(field = null, native = false) {
   completionField = field;
+  completionNative = native;
   if (field) {
     const caret = field.shadowRoot?.querySelector('.ML__caret');
     completionAnchor = (caret ?? field).getBoundingClientRect();
@@ -2027,8 +2030,10 @@ function highlightCandidate(index) {
   else if (bottom > candidates.scrollTop + candidates.clientHeight)
     candidates.scrollTop = bottom - candidates.clientHeight;
 }
-function renderCommands() {
-  candidates.replaceChildren();
+function completionActions() {
+  if(completionNative)return Object.fromEntries([...nativeMathCommandNames,'newline'].map(name=>[
+    name,()=>nativeTexPreview.runMathCommand(name==='newline'?'enterLine':name),
+  ]));
   const actions = Object.fromEntries(Object.entries(formulaCommands).map(([name, latex]) =>
     [name, () => insertFormulaCommand(latex)]));
   actions.left = () => chooseMathDelimiters(completionField);
@@ -2055,6 +2060,11 @@ function renderCommands() {
     actions.outdentitem = () => editor.chain().focus().liftListItem('listItem').run();
     for (const name of Object.keys(textCommands)) actions[name] = () => insertTextCommand(name);
   }
+  return actions;
+}
+function renderCommands() {
+  candidates.replaceChildren();
+  const actions=completionActions();
   const exactQuery = filter.value.replace(/^\\/, '').replace(/^begin\{([^{}]*)\}?$/, '$1');
   const query = exactQuery.toLowerCase();
   for (const [name, action] of Object.entries(actions).filter(([name]) => name.toLowerCase().startsWith(query)).sort(([a],[b]) => Number(b===exactQuery)-Number(a===exactQuery) || Number(b.startsWith(exactQuery))-Number(a.startsWith(exactQuery)) || Number(b.toLowerCase()===query)-Number(a.toLowerCase()===query))) {
@@ -2065,7 +2075,7 @@ function renderCommands() {
     control.textContent = '\\' + name;
     control.tabIndex = -1;
     control.addEventListener('mousedown', event => event.preventDefault());
-    control.addEventListener('click', () => { closeCommands(); action(); });
+    control.addEventListener('click', () => { closeCommands(completionNative); action(); });
     candidates.append(control);
   }
   if (!candidates.children.length) {
@@ -2084,6 +2094,7 @@ filter.addEventListener('keydown', event => {
   if (event.key === '\\' && !filter.value && !event.ctrlKey && !event.altKey && !event.metaKey && !event.isComposing) {
     event.preventDefault();
     closeCommands(true);
+    if(completionNative)return;
     if (completionField?.isConnected) insertLiveMath(completionField,'\\backslash');
     else insertTextCommand('textbackslash');
     return;
@@ -2238,8 +2249,10 @@ function updatePaginationButton(){
   paginationButton.dataset.tooltipEn=pages?'Switch to continuous flow':'Switch to paginated pages';
 }
 function scale() {
-  documentPage.style.zoom=Number(zoom.value)/100;
-  sourceView.setPreviewZoom(Number(zoom.value));
+  const value=Number(zoom.value);
+  documentPage.style.zoom=value/100;
+  sourceView.setPreviewZoom(value);
+  nativeTexPreview?.setDocumentZoom?.(value);
   percent.textContent=zoom.value+'%';
   requestAnimationFrame(()=>{
     const brand=document.querySelector('header h1');
@@ -2617,9 +2630,11 @@ installKeybindings(window, {
         shortcutActions.editor[command](context,event);
     }
     if(context.nativeText&&scope==='table'&&!nativeTexPreview.useTextSelection())return false;
-    if (scope === 'math') return context.nativeMath
-      ? nativeTexPreview.runMathCommand(command)
-      : runMathShortcut(command,context.field,event);
+    if (scope === 'math') {
+      if(!context.nativeMath)return runMathShortcut(command,context.field,event);
+      if(command==='palette'){showCommands(context.element,true);return true;}
+      return nativeTexPreview.runMathCommand(command);
+    }
     if (scope === 'source') return sourceView.runShortcut(command);
     if (scope === 'system') {
       if(command==='selectAll') {
@@ -2716,7 +2731,7 @@ function canStartNativeText(){
   const value=source(),document=parseDocument(value);
   return Boolean(document&&value.slice(document.start.length,value.length-document.end.length).trim()==='');
 }
-nativeTexPreview=installNativeTexPreview({host:footer,before:modes,primary:nativeWorkspaceRequested(),
+nativeTexPreview=installNativeTexPreview({host:footer,before:modes,primary:nativeWorkspaceRequested(),documentZoom:Number(zoom.value),
   isDocumentMode:()=>sourceView.hidden,
   getSnapshot:async()=>{
     if(projectExplorer?.active){
