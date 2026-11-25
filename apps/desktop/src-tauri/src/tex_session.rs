@@ -1494,6 +1494,28 @@ mod tests {
         };
         let initial = wait_layout(&session, info.source_revision);
         assert!(initial["pages_total"].as_i64().unwrap() > 0);
+        if let Some(directory) = std::env::var_os("LINEAE_NATIVE_EVIDENCE_DIR") {
+            let directory = PathBuf::from(directory);
+            let raw_source = include_str!("../../../../tests/native-math/fixtures/degraded-page.tex");
+            let projection = std::fs::read_to_string(directory.join("degraded-projection.tex")).unwrap();
+            let degraded = Session::create(raw_source).unwrap();
+            let opened = degraded.start().expect("TikZ and formula snapshot starts");
+            let layout = wait_layout(&degraded, opened.source_revision);
+            let version = integer(&layout["versions"], "layout_version").unwrap();
+            let pdf = degraded.pdf(opened.source_revision, version)
+                .expect("the converged TikZ layout has an authoritative registered PDF");
+            let observed = degraded.observe_formula(opened.source_revision, &projection, Vec::new())
+                .expect("the same TikZ page retains formula ownership");
+            let target = observed.iter().filter_map(|page| page["dl"]["math_owners"]["fields"].as_array())
+                .flatten().find(|field| field["role"] == "den" && field["empty"] == true)
+                .expect("the real degraded page reports an empty denominator");
+            save_pdf_evidence("native-degraded.pdf", &pdf);
+            std::fs::write(directory.join("native-degraded-pages.json"), serde_json::to_vec(&json!({
+                "raw": layout["pages_changed"], "observed": observed, "projection": projection,
+                "source": raw_source, "targetOwner": target["owner"],
+            })).unwrap()).unwrap();
+            degraded.terminate();
+        }
         let table_source = concat!(
             "\\documentclass{article}\n\\usepackage{graphicx}\n\\begin{document}\n",
             "\\begin{tabular}{lc}\n & Entry \\\\\nRow & Value\n\\end{tabular}\n\n",

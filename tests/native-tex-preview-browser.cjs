@@ -42,8 +42,10 @@ async function openMockProject(page,raster=false) {
 const root=resolve('apps/web');
 let nativeEvidence;
 const server=createServer(async(req,res)=>{
-  if(req.url==='/native-acceptance.pdf'&&process.env.LINEAE_NATIVE_PDF){
-    try {res.setHeader('Content-Type','application/pdf');res.end(await readFile(process.env.LINEAE_NATIVE_PDF));}
+  const pdfPath=req.url==='/native-acceptance.pdf'?process.env.LINEAE_NATIVE_PDF:
+    req.url==='/native-degraded.pdf'?process.env.LINEAE_NATIVE_DEGRADED_PDF:null;
+  if(pdfPath){
+    try {res.setHeader('Content-Type','application/pdf');res.end(await readFile(pdfPath));}
     catch{res.writeHead(404).end();}
     return;
   }
@@ -339,10 +341,16 @@ const server=createServer(async(req,res)=>{
       await page.mouse.up();
       await page.keyboard.insertText(' started.');
       const editedMain=projectMain.replace('Before chapter.','Before started.').replace('After chapter.','YAfter chapter.');
-      await page.waitForFunction(({main,child})=>
-        nativeProbe.calls.some(call=>call.command==='native_tex_update'&&call.args.source===main&&
-          call.args.files?.some(file=>file.path==='chapters/one.tex'&&
-            new TextDecoder().decode(new Uint8Array(file.bytes))===child)),{main:editedMain,child:childWithMath});
+      const projectDrafts=(main,child)=>page.waitForFunction(({main,child})=>{
+        const latest=nativeProbe.calls.findLast(call=>call.command==='native_tex_update');
+        return latest?.args.source===main&&latest.args.files?.some(file=>file.path==='chapters/one.tex'&&
+          new TextDecoder().decode(new Uint8Array(file.bytes))===child);
+      },{main,child});
+      await projectDrafts(editedMain,childWithMath);
+      await page.keyboard.press(mod+'+z');
+      await projectDrafts(projectMain.replace('After chapter.','YAfter chapter.'),'X'+childWithMath);
+      await page.keyboard.press(mod+'+Shift+z');
+      await projectDrafts(editedMain,childWithMath);
       assert.deepEqual(errors,[]);
 
       await page.goto('http://127.0.0.1:'+server.address().port+'/?native-workspace=1',{waitUntil:'networkidle'});
@@ -881,6 +889,41 @@ const server=createServer(async(req,res)=>{
       await page.waitForFunction(()=>nativeProbe.source?.includes('XAlpha beta.'),
         'Real text geometry edit writes the recorded prose source');
       console.log('PASS real LuaLaTeX prose glyph hit, caret and exact source patch');
+    }
+    if(process.env.LINEAE_NATIVE_DEGRADED_PAGE){
+      const evidence=JSON.parse(await readFile(process.env.LINEAE_NATIVE_DEGRADED_PAGE,'utf8'));
+      await page.close();
+      page=await browser.newPage({locale:'en-US',viewport:{width:1600,height:1100}});
+      await page.addInitScript(installMockNativeTex);
+      await page.goto('http://127.0.0.1:'+server.address().port+'/?native-workspace=1',{waitUntil:'networkidle'});
+      await page.evaluate(evidence=>{
+        const p=window.nativeProbe,base=p.layout;
+        p.realEvidence=evidence;p.registeredPdf=true;
+        p.layout=()=>({...base(),pages_changed:evidence.raw,pages_total:evidence.raw.length});
+        const invoke=window.__TAURI__.core.invoke;
+        window.__TAURI__.core.invoke=async(command,args)=>{
+          if(command==='native_tex_pdf')return [...new Uint8Array(
+            await(await fetch('/native-degraded.pdf')).arrayBuffer())];
+          return invoke(command,args);
+        };
+      },evidence);
+      await page.locator('input#file').setInputFiles({name:'degraded.tex',mimeType:'text/plain',
+        buffer:Buffer.from(evidence.source)});
+      await page.locator('#native-tex-toggle').click();
+      await page.waitForFunction(()=>{
+        const panel=document.querySelector('#native-tex-preview');
+        return panel.dataset.state==='current'&&panel.dataset.renderer==='pdf';
+      });
+      await page.getByText('Click the empty numerator or denominator',{exact:false}).waitFor();
+      const nativePage=evidence.observed.find(page=>page.dl.math_owners?.fields.some(field=>
+        field.owner===evidence.targetOwner&&field.role==='den'&&field.empty));
+      const target=nativePage.dl.math_owners.fields.find(field=>field.owner===evidence.targetOwner&&field.role==='den');
+      const [x,y]=target.bbox,nativeScale=.75*(96/72)/65781.76;
+      await page.locator(`[data-pdf-page="${nativePage.page}"] canvas`).click({position:{x:x*nativeScale,y:y*nativeScale}});
+      await page.waitForFunction(()=>document.activeElement?.id==='native-tex-input');
+      await page.keyboard.type('b');
+      await page.waitForFunction(expected=>nativeProbe.source===expected,evidence.source.replace('\\frac{a}{}','\\frac{a}{b}'));
+      console.log('PASS semantic edit on an actual registered LuaLaTeX PDF with TikZ');
     }
     console.log('PASS native preview transport/UI: explicit startup, Canvas resources, retained editor/history, sync, export revision and cancellation (not engine evidence)');
   }catch(error){

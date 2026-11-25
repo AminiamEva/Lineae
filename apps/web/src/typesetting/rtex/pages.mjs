@@ -346,8 +346,9 @@ export function installNativePages({host,getFont,getRaster,onPaint,onError,onMat
     if(geometry.size!==views.length||!views.length)return false;
     const entries=views.map(({number,dom,canvas,width,height})=>{
       const page=geometry.get(number);
-      // PDF page dimensions are in bp; the rtex display list is in TeX sp.
-      const tolerance=2;
+      // The PDF writer rounds media boxes in bp. One thousandth of a bp is
+      // smaller than a CSS pixel at every supported zoom.
+      const tolerance=66;
       if(!page||!Number.isFinite(width)||!Number.isFinite(height)||
           Math.abs(width*65781.76-page.dl.page_width)>tolerance||
           Math.abs(height*65781.76-page.dl.page_height)>tolerance)return null;

@@ -131,6 +131,8 @@ jobs:
             const source=readFileSync("tests/native-math/fixtures/empty-denominator.tex","utf8");
             const target=projectMixedDocument(source);
             writeFileSync(join(process.env.LINEAE_NATIVE_EVIDENCE_DIR,"production-projection.tex"),target.projection);
+            const degraded=readFileSync("tests/native-math/fixtures/degraded-page.tex","utf8");
+            writeFileSync(join(process.env.LINEAE_NATIVE_EVIDENCE_DIR,"degraded-projection.tex"),projectMixedDocument(degraded).projection);
           '
           node tests/native-math/rtex-probe.mjs
           node apps/desktop/scripts/stage.mjs
@@ -140,6 +142,8 @@ jobs:
           LINEAE_NATIVE_PDF="$LINEAE_NATIVE_EVIDENCE_DIR/native-lua-project.pdf" \
           LINEAE_NATIVE_PAGE="$LINEAE_NATIVE_EVIDENCE_DIR/native-formula-pages.json" \
           LINEAE_NATIVE_TEXT_PAGE="$LINEAE_NATIVE_EVIDENCE_DIR/native-text-pages.json" \
+          LINEAE_NATIVE_DEGRADED_PAGE="$LINEAE_NATIVE_EVIDENCE_DIR/native-degraded-pages.json" \
+          LINEAE_NATIVE_DEGRADED_PDF="$LINEAE_NATIVE_EVIDENCE_DIR/native-degraded.pdf" \
           node tests/native-tex-preview-browser.cjs
       - name: Preserve actual protocol, source, logs and clean reference PDF
         if: always()
