@@ -101,6 +101,13 @@ fn child_dir(parent: &Dir, name: &str) -> Result<Dir, String> {
     .map_err(error)
 }
 
+fn open_project_root(path: &Path) -> Result<Dir, String> {
+    let selected = Dir::open_ambient_dir(path, cap_std::ambient_authority()).map_err(error)?;
+    // cap-std can keep an O_PATH handle on Linux. Open the directory itself
+    // relative to that authority so flock and fsync use a readable descriptor.
+    child_dir(&selected, ".")
+}
+
 fn parent(root: &Dir, path: &str) -> Result<(Dir, String), String> {
     validate(path)?;
     let mut components = path.split('/').collect::<Vec<_>>();
@@ -529,7 +536,7 @@ pub async fn open_project(
     let path = folder.into_path().map_err(error)?.canonicalize().map_err(error)?;
     let key = path.to_str().ok_or("Non-UTF-8 project root")?.to_owned();
     // The canonical string is an IPC lookup key only; never reopen it later.
-    let directory = Dir::open_ambient_dir(&path, cap_std::ambient_authority()).map_err(error)?;
+    let directory = open_project_root(&path)?;
     roots.0.lock().map_err(error)?.entry(path).or_insert(directory);
     Ok(Some(key))
 }
@@ -609,7 +616,7 @@ mod tests {
         let path = path.canonicalize().unwrap();
         let roots = ProjectRoots::default();
         roots.0.lock().unwrap().insert(
-            path.clone(), Dir::open_ambient_dir(&path, cap_std::ambient_authority()).unwrap(),
+            path.clone(), open_project_root(&path).unwrap(),
         );
         (roots, path)
     }
@@ -686,7 +693,7 @@ mod tests {
         assert_eq!(std::fs::read_dir(root.join("source")).unwrap().count(), 1);
         assert!(call(&roots, &root, "move", Some("source/a.tex"), Some("occupied.tex"), None, Some(b"saved")).is_err());
         assert!(call(&roots, &root, "remove", Some("source/a.tex"), None, None, Some(b"stale")).is_err());
-        let dir = Dir::open_ambient_dir(&root, cap_std::ambient_authority()).unwrap();
+        let dir = open_project_root(&root).unwrap();
         let manifest = serde_json::to_vec(&snapshot(&dir, "source", "source").unwrap()).unwrap();
         std::fs::write(root.join("source/late.tex"), b"unrelated").unwrap();
         assert!(call(&roots, &root, "remove", Some("source"), None, Some(&manifest), None).is_err());
@@ -725,7 +732,7 @@ mod tests {
         assert!(load()["recoveryVersions"].as_array().unwrap().is_empty());
         drop(roots);
         let reopened = ProjectRoots::default();
-        reopened.0.lock().unwrap().insert(root.clone(), Dir::open_ambient_dir(&root, cap_std::ambient_authority()).unwrap());
+        reopened.0.lock().unwrap().insert(root.clone(), open_project_root(&root).unwrap());
         let state: Value = serde_json::from_slice(&call(&reopened, &root, "load_state", None, None, None, None).unwrap().bytes).unwrap();
         assert!(state["recoveryVersions"].as_array().unwrap().is_empty());
     }
