@@ -64,9 +64,12 @@ const server=createServer(async(req,res)=>{
       await canvas.click({position:{x:6550000*scale,y:9250000*scale}});
       await page.waitForFunction(()=>document.activeElement?.id==='native-tex-input');
       const observations=await page.evaluate(()=>nativeProbe.calls.filter(call=>call.command==='native_tex_observe_formula').length);
-      await page.keyboard.type('X');
-      await page.waitForFunction(count=>nativeProbe.source?.includes('XAlpha beta.') &&
-        nativeProbe.calls.filter(call=>call.command==='native_tex_observe_formula').length>count,observations);
+      await page.evaluate(()=>{nativeProbe.holdUpdate=true;});
+      await page.keyboard.type('XYZ');
+      await page.waitForFunction(()=>typeof nativeProbe.releaseUpdate==='function');
+      await page.evaluate(()=>nativeProbe.releaseUpdate());
+      await page.waitForFunction(count=>nativeProbe.source?.includes('XYZAlpha beta.') &&
+        nativeProbe.calls.filter(call=>call.command==='native_tex_observe_formula').length>count+1,observations);
       await panel.getByText('Click prose on the native page',{exact:false}).waitFor();
       await canvas.click({position:{x:6510000*scale,y:6950000*scale}});
       await page.keyboard.type('c');
@@ -80,7 +83,7 @@ const server=createServer(async(req,res)=>{
       await page.waitForFunction(()=>nativeProbe.source?.includes('\\frac{a}{b}'));
       await page.keyboard.press(mod+'+Shift+z');
       await page.waitForFunction(()=>nativeProbe.source?.includes('\\frac{a}{cb}'));
-      const expected=mixedSource.replace('Alpha beta.','XAlpha beta.').replace('\\frac{a}{b}','\\frac{a}{cb}');
+      const expected=mixedSource.replace('Alpha beta.','XYZAlpha beta.').replace('\\frac{a}{b}','\\frac{a}{cb}');
       assert.equal(await page.evaluate(()=>nativeProbe.source),expected,'Both native edits preserve every other source byte');
       assert.deepEqual(errors,[]);
       await panel.getByText('Click prose on the native page',{exact:false}).waitFor();

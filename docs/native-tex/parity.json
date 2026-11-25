@@ -60,9 +60,10 @@
       ],
       "nativeStatus": "partial",
       "evidence": [
-        "https://github.com/AminiamEva/Lineae/actions/runs/45583564517"
+        "https://github.com/AminiamEva/Lineae/actions/runs/45583564517",
+        "https://github.com/AminiamEva/Lineae/actions/runs/45589155092"
       ],
-      "scope": "Single plain run wrapped in textbf, textit or texttt. Bold is covered by browser regression; complex marks and other containers are pending."
+      "scope": "Plain headings with unchanged short titles and labels, plus standalone marked prose. Nested marks have source tests; lists, theorem bodies and mixed markup with math need dedicated validation."
     },
     {
       "id": "tables-including-spans",
@@ -72,10 +73,13 @@
         "apps/web/src/editor/latex-codec.js"
       ],
       "tests": [
-        "tests/editor.cjs"
+        "tests/editor.cjs",
+        "tests/native-surface.test.mjs",
+        "tests/native-tex-preview-browser.cjs"
       ],
-      "nativeStatus": "pending",
-      "evidence": []
+      "nativeStatus": "partial",
+      "evidence": ["https://github.com/AminiamEva/Lineae/actions/runs/45589155092"],
+      "scope": "Exact edits and undo in nonempty plain cells pass the browser gate. Multicolumn and multirow range mapping has direct tests. Empty-cell native geometry is pending."
     },
     {
       "id": "project-composition",
@@ -103,8 +107,9 @@
       "tests": [
         "tests/editor.cjs"
       ],
-      "nativeStatus": "pending",
-      "evidence": []
+      "nativeStatus": "partial",
+      "evidence": ["https://github.com/AminiamEva/Lineae/actions/runs/45589155092"],
+      "scope": "Staged PNG/JPEG access and canvas drawing are tested using simulated display lists. Real asset geometry and editing figures, floats and TikZ are pending."
     },
     {
       "id": "page-layout-and-pdf",
@@ -144,7 +149,8 @@
         "tests/native-tex-preview-browser.cjs"
       ],
       "nativeStatus": "partial",
-      "evidence": []
+      "evidence": ["https://github.com/AminiamEva/Lineae/actions/runs/45589155092"],
+      "scope": "Copy, cut, paste, whole inline formula selection, and synthetic Chinese composition commit and cancellation. Physical input methods and cross-file editing are pending."
     },
     {
       "id": "default-native-engine",
@@ -162,18 +168,20 @@
   "acceptance": {
     "legacyDisabled": {
       "command": "LINEAE_NATIVE_ONLY=1 node tests/native-tex-preview-browser.cjs",
-      "scope": "Two-platform Chromium with legacy pagination and MathLive disabled. Mixed prose and display formula edit, undo/redo, exact source bytes, and plain bold prose. Real LuaLaTeX geometry is replayed in Chromium with a simulated transport.",
+      "scope": "Two-platform Chromium with legacy pagination and MathLive disabled. Mixed prose and display formula edit, undo/redo, root insertion, exact source bytes, plain bold prose, table cells, headings, and synthetic IME. Real LuaLaTeX geometry is replayed in a separate browser gate with a simulated transport.",
       "status": "browser-passed",
       "evidence": [
         "https://github.com/AminiamEva/Lineae/actions/runs/45579797136",
         "https://github.com/AminiamEva/Lineae/actions/runs/45581410790",
-        "https://github.com/AminiamEva/Lineae/actions/runs/45583564517"
+        "https://github.com/AminiamEva/Lineae/actions/runs/45583564517",
+        "https://github.com/AminiamEva/Lineae/actions/runs/45589155092"
       ]
     },
     "pending": [
       "project structural and cross-file selection edits",
-      "structure commands",
-      "cross-run replacement",
+      "full native command coverage",
+      "empty and complex table cell targeting",
+      "real asset geometry and figure editing",
       "PDF semantic editing",
       "physical device IME and latency"
     ]

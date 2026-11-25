@@ -49,6 +49,10 @@ module.exports=function installMockNativeTex() {
       return p.events.splice(0);
     }
     if(command==='native_tex_update') {
+      if(p.holdUpdate){
+        p.holdUpdate=false;
+        await new Promise(resolve=>{p.releaseUpdate=resolve;});
+      }
       if(p.restartNext){
         p.restartNext=false;p.session++;p.revision=0;p.events=[];
       }

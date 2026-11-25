@@ -61,6 +61,8 @@ export function installNativeTexPreview({host,before,getSource,getSnapshot,isCom
   let nativeEditing=false;
   let pendingLatency=null;
   let inputStart=0;
+  let pendingEdit=null;
+  const queuedInput=[];
   const latency=[];
   const eventApi=window.__TAURI__?.event;
   function resolveEndpoint(endpoint) {
@@ -101,11 +103,29 @@ export function installNativeTexPreview({host,before,getSource,getSnapshot,isCom
     input.value = '';
     if (!applied) {
       surface.clearPending();
+      queuedInput.length=0;
       targetStatus.textContent = t('原生编辑未能写入文档。', 'The native edit could not be written to the document.');
       return;
     }
+    pendingEdit=edit;
     pendingLatency ??= {started, committed:performance.now()};
     return true;
+  }
+  function submitInput(action) {
+    if(!nativeEditing||!surface.caret)return false;
+    if(pendingEdit){
+      const last=queuedInput.at(-1);
+      if(action.insert&&last?.insert)last.insert+=action.insert;
+      else queuedInput.push(action);
+      return true;
+    }
+    if(!current()||!observation)return false;
+    inputStart=action.started;
+    return commitSurface(action.insert?surface.insert(action.insert):surface.erase(action.backward));
+  }
+  function clearQueuedInput() {
+    pendingEdit=null;
+    queuedInput.length=0;
   }
   function selectedSource() {
     const [from,to]=surface.range;
@@ -124,7 +144,7 @@ export function installNativeTexPreview({host,before,getSource,getSnapshot,isCom
       const text=selectedSource();
       if(text===null||!event.clipboardData)return;
       if(type==='cut'){
-        if(!current()||!observation)return;
+        if(!current()||!observation||pendingEdit)return;
         const edit=surface.erase();
         if(!commitSurface(edit))return;
       }
@@ -135,9 +155,8 @@ export function installNativeTexPreview({host,before,getSource,getSnapshot,isCom
   input.addEventListener('paste',event=>{
     if(!nativeEditing||!event.clipboardData)return;
     event.preventDefault();
-    if(!current()||!observation)return;
     const text=event.clipboardData.getData('text/plain');
-    if(text)commitSurface(surface.insert(text));
+    if(text)submitInput({insert:text,started:performance.now()});
   });
   let committedComposition=null;
   input.addEventListener('compositionstart', () => {
@@ -146,7 +165,7 @@ export function installNativeTexPreview({host,before,getSource,getSnapshot,isCom
   });
   input.addEventListener('compositionend', event => {
     compositionField=null;
-    if(event.data&&commitSurface(surface.insert(event.data)))committedComposition=event.data;
+    if(event.data&&submitInput({insert:event.data,started:inputStart||performance.now()}))committedComposition=event.data;
     input.value='';
     setTimeout(refresh,0);
   });
@@ -155,7 +174,7 @@ export function installNativeTexPreview({host,before,getSource,getSnapshot,isCom
     const duplicate=committedComposition!==null && event.data===committedComposition &&
       ['insertFromComposition','insertCompositionText'].includes(event.inputType);
     committedComposition=null;
-    if(!duplicate&&input.value)commitSurface(surface.insert(input.value));
+    if(!duplicate&&input.value)submitInput({insert:input.value,started:inputStart||performance.now()});
     input.value='';
   });
   input.addEventListener('keydown', event => {
@@ -165,12 +184,14 @@ export function installNativeTexPreview({host,before,getSource,getSnapshot,isCom
     const mod = event.metaKey || event.ctrlKey;
     if (mod && event.key.toLowerCase() === 'z') {
       event.preventDefault();
+      clearQueuedInput();
       surface.clearPending();
       history?.(event.shiftKey ? 'redo' : 'undo');
       return;
     }
     if (mod && event.key.toLowerCase() === 'y') {
       event.preventDefault();
+      clearQueuedInput();
       surface.clearPending();
       history?.('redo');
       return;
@@ -192,12 +213,12 @@ export function installNativeTexPreview({host,before,getSource,getSnapshot,isCom
     }
     if (event.key === 'Backspace' || event.key === 'Delete') {
       event.preventDefault();
-      inputStart = performance.now();
-      commitSurface(surface.erase(event.key === 'Backspace'));
+      submitInput({backward:event.key==='Backspace',started:performance.now()});
       return;
     }
     if (event.key === 'Escape') {
       event.preventDefault();
+      clearQueuedInput();
       input.blur();
       return;
     }
@@ -234,6 +255,7 @@ export function installNativeTexPreview({host,before,getSource,getSnapshot,isCom
       if(!head||!anchor||head.kind!==anchor.kind)return false;
       if((anchor.kind==='text'||head.kind==='text')&&!nativeEditing)return false;
       if(nativeEditing){
+        if(pendingEdit)return false;
         const next=targetSurface(head);
         if(!next||!next.selectBetween(anchor.docOffset,head.docOffset,anchor.formula?.filePath??anchor.paragraph?.filePath,
           head.formula?.filePath??head.paragraph?.filePath))return false;
@@ -327,6 +349,7 @@ export function installNativeTexPreview({host,before,getSource,getSnapshot,isCom
     nativeEditing=false;mathSurface.clearPending();mathSurface.reset();
     textSurface?.clearPending();textSurface?.reset();textSurface=null;surface=mathSurface;
     input.blur();input.value='';
+    clearQueuedInput();
     pendingLatency=null;inputStart=0;latency.length=0;delete panel.dataset.latencySamples;
     delete panel.dataset.latencyP50;delete panel.dataset.latencyP95;delete panel.dataset.latencyP99;
     delete panel.dataset.latencyLastTransaction;
@@ -346,10 +369,12 @@ export function installNativeTexPreview({host,before,getSource,getSnapshot,isCom
     if(['engine_exit','engine_io','timeout','session_closed','stale_session','event_overflow','protocol'].includes(failure?.code))
       terminal=true;
     error=String(failure?.message??failure);
+    clearQueuedInput();
     renderStatus();
   }
   async function fallback(failure,revision) {
     if(mode==='canvas'){
+      clearQueuedInput();
       panel.dataset.fallbackReason=String(failure?.message??failure).slice(0,300);
       mode='pdf';renderer.reset({clear:false});
     }
@@ -535,10 +560,21 @@ export function installNativeTexPreview({host,before,getSource,getSnapshot,isCom
       if(kind!=='text')previousProjection=projection;
       observation={kind,projection,stamp,observed};
       if(nativeEditing){
+        const expectedOffset=surface.pendingOffset;
         const candidates=kind==='mixed'?[mathSurface,textSurface]:kind==='text'?[textSurface]:[mathSurface];
         let applied=false;
         for(const candidate of candidates) if(candidate.setObservation(observed))applied=true;
         if(!candidates.includes(surface))surface=candidates.find(candidate=>candidate.caret)??candidates[0];
+        if(pendingEdit){
+          const stop=surface.caret;
+          const previous=pendingEdit.paragraph??pendingEdit.formula;
+          const next=stop?.paragraph??stop?.formula;
+          const expected=pendingEdit.source??(previous.source.slice(0,previous.from16)+
+            pendingEdit.text+previous.source.slice(previous.to16));
+          if(expectedOffset!==stop?.docOffset||next?.filePath!==previous.filePath||next?.source!==expected)
+            queuedInput.length=0;
+          pendingEdit=null;
+        }
         if(applied){
           paintSurfaceSelection();
           positionInput();
@@ -573,10 +609,17 @@ export function installNativeTexPreview({host,before,getSource,getSnapshot,isCom
         ?t('点击原生页面中的文字或空槽定位光标，输入会写入原文。','Click prose on the native page, or click the empty numerator or denominator, another supported empty slot, or a glyph edge to continue typing.')
         :t('点击预览中的空槽或字符边缘，继续在编辑器输入。','Click the empty numerator or denominator, another supported empty slot, or a glyph edge to continue typing in the editor.');
     } catch(failure) {
-      if(attempt===generation)targetStatus.textContent=String(failure?.message??failure);
+      if(attempt===generation){
+        clearQueuedInput();
+        targetStatus.textContent=String(failure?.message??failure);
+      }
     } finally {
       if(targeting===attempt)targeting=null;
-      if(attempt===generation)renderStatus();
+      if(attempt===generation){
+        renderStatus();
+        while(queuedInput.length&&!pendingEdit&&current()&&observation)
+          submitInput(queuedInput.shift());
+      }
     }
   }
   button.addEventListener('click',()=>{void(active?stop():start());});
@@ -589,7 +632,7 @@ export function installNativeTexPreview({host,before,getSource,getSnapshot,isCom
   editButton.addEventListener('mousedown',event=>event.preventDefault());
   editButton.addEventListener('click',()=>{
     if(nativeEditing){
-      nativeEditing=false;surface.clearPending();input.blur();renderStatus();return;
+      nativeEditing=false;clearQueuedInput();surface.clearPending();input.blur();renderStatus();return;
     }
     if(!observation)return;
     nativeEditing=true;targetArmed=true;
@@ -627,6 +670,7 @@ export function installNativeTexPreview({host,before,getSource,getSnapshot,isCom
     hasMathInput: event => event.target===input && nativeEditing && surface===mathSurface,
     runMathCommand(command) {
       if(command==='undo'||command==='redo'){
+        clearQueuedInput();
         surface.clearPending();
         history?.(command);
         return true;
@@ -638,7 +682,7 @@ export function installNativeTexPreview({host,before,getSource,getSnapshot,isCom
         }
         return true;
       }
-      if(!current()||!observation||surface!==mathSurface)return false;
+      if(!current()||!observation||pendingEdit||surface!==mathSurface)return false;
       const edit=surface.command(command);
       if(!edit)return false;
       inputStart=performance.now();
