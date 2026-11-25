@@ -597,16 +597,16 @@ button,select,.color-control { transition:background-color .14s ease,color .14s 
 .document-page .ProseMirror > .tableWrapper { margin-inline:auto; }
 .document-page .ProseMirror > .tableWrapper > table { min-width:0!important; }
 .document-page .ProseMirror > .tableWrapper col { width:auto!important; min-width:0!important; }
-.document-page .ProseMirror td,.document-page .ProseMirror th { min-width:0; border:0; padding:2px var(--tabcolsep); line-height:var(--tex-line-height); }
+.document-page .ProseMirror td,.document-page .ProseMirror th { min-width:0; border:0; padding:0 var(--tabcolsep); line-height:var(--tex-line-height); }
 .document-page .ProseMirror table[data-left-rule="true"] :is(td,th):first-child { border-left:var(--table-line-width,var(--arrayrulewidth)) var(--table-line-style,solid) currentColor; }
 .document-page .ProseMirror table[data-right-rule="true"] :is(td,th):last-child { border-right:var(--table-line-width,var(--arrayrulewidth)) var(--table-line-style,solid) currentColor; }
 .document-page .ProseMirror table[data-middle-vertical-rule="true"] tr > :is(td,th):not(:first-child) { border-left:var(--table-line-width,var(--arrayrulewidth)) var(--table-line-style,solid) currentColor; }
 .document-page .ProseMirror table[data-left-rule="true"][data-vertical-first-row="false"] tr:first-child :is(td,th):first-child { border-left:0; }
 .document-page .ProseMirror table[data-right-rule="true"][data-vertical-first-row="false"] tr:first-child :is(td,th):last-child { border-right:0; }
-.document-page .ProseMirror table[data-top-rule="true"] tr:first-child > :is(td,th) { border-top:var(--booktabs-heavy,.08em) var(--table-line-style,solid) currentColor; padding-top:calc(2px + var(--booktabs-below,.65ex)); }
-.document-page .ProseMirror table[data-bottom-rule="true"] tr:last-child > :is(td,th) { border-bottom:var(--booktabs-heavy,.08em) var(--table-line-style,solid) currentColor; padding-bottom:calc(2px + var(--booktabs-above,.4ex)); }
-.document-page .ProseMirror table[data-mid-rule-mode="first"] tr:nth-child(2) > :is(td,th) { border-top:var(--booktabs-light,.05em) var(--table-line-style,solid) currentColor; padding-top:calc(2px + var(--booktabs-below,.65ex)); }
-.document-page .ProseMirror table[data-mid-rule-mode="all"] tr:not(:first-child) > :is(td,th) { border-top:var(--booktabs-light,.05em) var(--table-line-style,solid) currentColor; padding-top:calc(2px + var(--booktabs-below,.65ex)); }
+.document-page .ProseMirror table[data-top-rule="true"] tr:first-child > :is(td,th) { border-top:var(--booktabs-heavy,.08em) var(--table-line-style,solid) currentColor; }
+.document-page .ProseMirror table[data-bottom-rule="true"] tr:last-child > :is(td,th) { border-bottom:var(--booktabs-heavy,.08em) var(--table-line-style,solid) currentColor; }
+.document-page .ProseMirror table[data-mid-rule-mode="first"] tr:nth-child(2) > :is(td,th) { border-top:var(--booktabs-light,.05em) var(--table-line-style,solid) currentColor; }
+.document-page .ProseMirror table[data-mid-rule-mode="all"] tr:not(:first-child) > :is(td,th) { border-top:var(--booktabs-light,.05em) var(--table-line-style,solid) currentColor; }
 .document-page .ProseMirror table[data-rule-style="dashed"] { --table-line-style:dashed; }
 .document-page .ProseMirror table[data-rule-style="dotted"] { --table-line-style:dotted; }
 .document-page .ProseMirror table[data-rule-style="double"] { --table-line-style:double; }
@@ -620,10 +620,22 @@ button,select,.color-control { transition:background-color .14s ease,color .14s 
 .document-page .ProseMirror table[data-border-mode="outer"] { border:var(--table-rule-width) solid currentColor; }
 .document-page .ProseMirror table[data-border-mode="horizontal"] :is(td,th) { border-block:var(--table-rule-width) solid currentColor; }
 .document-page .ProseMirror table[data-booktabs] :is(td,th) { border-inline:0; }
-.document-page .ProseMirror table[data-booktabs] { margin-block:var(--booktabs-above) var(--booktabs-below); }
-.document-page .ProseMirror table[data-booktabs] tr[data-booktabs-rule="toprule"] > :is(td,th) { border-top:var(--booktabs-heavy) solid currentColor; padding-top:calc(2px + var(--booktabs-above)); padding-bottom:calc(2px + var(--booktabs-below)); }
-.document-page .ProseMirror table[data-booktabs] tr[data-booktabs-rule="midrule"] > :is(td,th) { border-top:var(--booktabs-light) solid currentColor; padding-top:calc(2px + var(--booktabs-above)); padding-bottom:calc(2px + var(--booktabs-below)); }
-.document-page .ProseMirror table[data-booktabs] tr[data-booktabs-rule="bottomrule"] > :is(td,th) { border-bottom:var(--booktabs-heavy) solid currentColor; padding-top:calc(2px + var(--booktabs-above)); padding-bottom:calc(2px + var(--booktabs-below)); }
+.document-page .ProseMirror table[data-booktabs] { margin-block:var(--booktabs-above) 0; }
+.document-page .ProseMirror table[data-booktabs] tr[data-booktabs-rule="toprule"] > :is(td,th) {
+  border-top:0; padding-top:var(--booktabs-below);
+  background-image:linear-gradient(currentColor,currentColor); background-repeat:repeat-x;
+  background-size:100% var(--booktabs-heavy); background-position:0 0;
+}
+.document-page .ProseMirror table[data-booktabs] tr[data-booktabs-rule="midrule"] > :is(td,th) {
+  border-top:0; padding-top:calc(var(--booktabs-above) + var(--booktabs-below));
+  background-image:linear-gradient(currentColor,currentColor); background-repeat:repeat-x;
+  background-size:100% var(--booktabs-light); background-position:0 var(--booktabs-above);
+}
+.document-page .ProseMirror table[data-booktabs] tr[data-booktabs-rule="bottomrule"] > :is(td,th) {
+  border-bottom:0; padding-bottom:var(--booktabs-above);
+  background-image:linear-gradient(currentColor,currentColor); background-repeat:repeat-x;
+  background-size:100% var(--booktabs-heavy); background-position:0 calc(100% - var(--booktabs-heavy));
+}
 .document-page .ProseMirror table[data-booktabs] tr:first-child:not([data-booktabs-rule="toprule"]) > :is(td,th) { border-top:var(--booktabs-heavy) solid currentColor; }
 .document-page .ProseMirror table[data-booktabs] tr:last-child:not([data-booktabs-rule="bottomrule"]) > :is(td,th) { border-bottom:var(--booktabs-heavy) solid currentColor; }
 .document-page .ProseMirror table[data-horizontal-rule-mode="explicit"][data-booktabs] tr:first-child:not([data-booktabs-rule="toprule"]) > :is(td,th) { border-top:0; padding-top:2px; }
