@@ -409,6 +409,8 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
     input.scrollLeft=0;
     inputComposition={text:'',ended:false,committed:false};
     compositionField=input;
+    input.dataset.composing='true';
+    renderer.clearCaret();
   });
   input.addEventListener('compositionend', event => {
     compositionField=null;
@@ -416,7 +418,9 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
     composition.text=event.data||'';
     composition.ended=true;
     inputComposition=composition;
+    delete input.dataset.composing;
     input.value='';
+    if(!composition.text)paintSurfaceSelection();
     queueMicrotask(()=>{if(inputComposition===composition)commitComposition(composition);});
     setTimeout(refresh,0);
   });
@@ -704,6 +708,7 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
     previousProjection=null;foldsDirty=false;
     nativeEditing=false;draftInput=null;nativeDocument.reset();
     input.blur();input.value='';
+    delete input.dataset.composing;
     clearQueuedInput();
     pendingLatency=null;inputStart=0;latency.length=0;delete panel.dataset.latencySamples;
     delete panel.dataset.latencyP50;delete panel.dataset.latencyP95;delete panel.dataset.latencyP99;

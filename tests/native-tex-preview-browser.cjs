@@ -1439,13 +1439,15 @@ const server=createServer(async(req,res)=>{
       input.value='zh';
       input.dispatchEvent(new InputEvent('input',{data:'zh',inputType:'insertCompositionText',isComposing:true,bubbles:true}));
       const after=anchor();
+      const visible=getComputedStyle(input).color!=='rgba(0, 0, 0, 0)';
       input.dispatchEvent(new CompositionEvent('compositionend',{data:'',bubbles:true}));
-      return {before,after,wrap:input.wrap,scroll:input.scrollLeft};
+      return {before,after,wrap:input.wrap,scroll:input.scrollLeft,visible,ended:input.dataset.composing===undefined};
     });
     assert.ok(inputAnchor.before.every(value=>value.endsWith('px')));
     assert.deepEqual(inputAnchor.after,inputAnchor.before,'The IME anchor stays at the same prose boundary during preedit after inline math');
     assert.equal(inputAnchor.wrap,'off');
     assert.equal(inputAnchor.scroll,0);
+    assert.ok(inputAnchor.visible&&inputAnchor.ended);
     assert.equal(await page.evaluate(()=>nativeProbe.source),inlineDoc.toString());
     await page.keyboard.type('Y');
     await page.waitForFunction(expected=>nativeProbe.source===expected,inlineDoc.toString().replace('beta.','Ybeta.'));

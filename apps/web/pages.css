@@ -372,6 +372,7 @@ main { padding:125px 24px 60px; overflow:auto; }
 .native-tex-input { position:fixed; z-index:20; width:12ch; height:16px; padding:0; margin:0; border:0;
   background:transparent; color:transparent; caret-color:transparent; resize:none; overflow:hidden;
   outline:none; font-size:16px; line-height:1; pointer-events:none; }
+.native-tex-input[data-composing=true] { color:#20242b; caret-color:#2f6fd0; }
 #native-tex-preview[data-editing=true] .native-tex-page canvas { cursor:text; }
 .document-status output { min-width:38px; font-variant-numeric:tabular-nums; }
 .document-status .pagination-toggle[data-mode="pages"] {
