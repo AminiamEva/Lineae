@@ -906,7 +906,14 @@ const server=createServer(async(req,res)=>{
       await page.keyboard.press('Backslash');
       await prosePalette.getByRole('textbox',{name:'LaTeX command',exact:true}).fill('section');
       await page.keyboard.press('Enter');
-      await page.waitForFunction(expected=>nativeProbe.source===expected,pageBreakSource.replace('Alpha','\\section{Alpha}'));
+      const numberedHeading=pageBreakSource.replace('Alpha','\\section{Alpha}');
+      await page.waitForFunction(expected=>nativeProbe.source===expected,numberedHeading);
+      await panel.getByText('Click text on the native page',{exact:false}).waitFor();
+      await canvas.click({position:{x:6550000*scale,y:9250000*scale}});
+      await page.keyboard.press(mod+'+Alt+t');
+      await page.waitForFunction(expected=>nativeProbe.source===expected,numberedHeading.replace('\\section{','\\section*{'));
+      await page.keyboard.press(mod+'+z');
+      await page.waitForFunction(expected=>nativeProbe.source===expected,numberedHeading);
       await page.keyboard.press(mod+'+z');
       await page.waitForFunction(expected=>nativeProbe.source===expected,pageBreakSource);
       await panel.getByText('Click text on the native page',{exact:false}).waitFor();
@@ -945,6 +952,20 @@ const server=createServer(async(req,res)=>{
       await page.waitForFunction(expected=>nativeProbe.source===expected,splitList);
       await page.keyboard.press(mod+'+z');
       await page.waitForFunction(expected=>nativeProbe.source===expected,splitListSource);
+      await page.locator('#native-tex-close').click();
+      const markerList=pagedProse.replace('Alpha\n\nBeta','\\begin{enumerate}\n\\item Alpha.\n\\end{enumerate}');
+      await page.locator('input#file').setInputFiles({name:'native-list-marker.tex',mimeType:'text/plain',buffer:Buffer.from(markerList)});
+      await page.locator('#native-tex-toggle').click();
+      await page.locator('#native-tex-target').click();
+      await panel.getByText('Click text on the native page',{exact:false}).waitFor();
+      await page.locator('#native-tex-edit').click();
+      await canvas.click({position:{x:6550000*scale,y:9250000*scale}});
+      await page.keyboard.press(mod+'+Alt+t');
+      const changedMarker=markerList.replace('\\begin{enumerate}','\\begin{enumerate}[label=(\\arabic*)]')
+        .replace('\\begin{document}','\\usepackage{enumitem}\n\\begin{document}');
+      await page.waitForFunction(expected=>nativeProbe.source===expected,changedMarker);
+      await page.keyboard.press(mod+'+z');
+      await page.waitForFunction(expected=>nativeProbe.source===expected,markerList);
       await page.locator('#native-tex-close').click();
       const nativeColumns=pagedProse.replace('Alpha\n\nBeta',
         '\\begin{multicols*}{2}\nAlphaBeta.\n\nGamma.\n\\end{multicols*}')
@@ -1268,9 +1289,9 @@ const server=createServer(async(req,res)=>{
       await canvas.click({position:{x:6550000*scale,y:9250000*scale}});
       await page.keyboard.press('Backslash');
       await page.getByRole('textbox',{name:'LaTeX command',exact:true}).fill('includegraphics');
-      const [fileChooser]=await Promise.all([page.waitForEvent('filechooser'),page.locator('#complete-includegraphics').click()]);
+      await page.keyboard.press('Enter');
       const picture=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jB9kAAAAASUVORK5CYII=','base64');
-      await fileChooser.setFiles({name:'added.png',mimeType:'image/png',buffer:picture});
+      await page.locator('input[type=file][accept*="image/png"]').setInputFiles({name:'added.png',mimeType:'image/png',buffer:picture});
       const insertedPicture=pictureSource.replace('Project text.','\\includegraphics{added.png}\n\nProject text.')
         .replace('\\begin{document}','\\usepackage{graphicx}\n\\begin{document}');
       await page.waitForFunction(({source,bytes})=>nativeProbe.calls.some(call=>{

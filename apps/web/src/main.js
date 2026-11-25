@@ -2303,6 +2303,7 @@ function completionActions() {
       eqref:()=>nativeInlineCommand('ref',true),
       cite:()=>nativeInlineCommand('cite'),
       footnote:()=>nativeInlineCommand('footnote'),
+      togglemarker:()=>runNativeTextCommand('toggleContextMarker'),
       multicols:()=>runNativeTextStructure('wrapIn','multiColumn',{count:2}),
       'multicols*':()=>runNativeTextStructure('wrapIn','multiColumn',{count:2,starred:true}),
       title:structureCommands.title,
@@ -2708,7 +2709,11 @@ function setParagraphAlignment(align) {
   return updateSelectedParagraphs({align});
 }
 function indentSelectedParagraph(direction) {
-  if(nativeParagraphFormattingActive()&&!editor.isActive('listItem')){
+  if(nativeParagraphFormattingActive()){
+    if(editor.isActive('listItem')){
+      if(direction>0&&!canIndentList(editor,listItemLevelAt))return false;
+      return runNativeTextStructure(direction>0?'sinkListItem':'liftListItem','listItem');
+    }
     return updateSelectedParagraphs(indentationAttributes(editor.getAttributes('paragraph'),direction>0));
   }
   if (editor.isActive('listItem')) {
@@ -2841,17 +2846,10 @@ const shortcutActions = {
     leaveAllEnvironments: leaveAllTextEnvironments,
     leaveFile:()=>projectPresentation?.exitFile()??false,
     toggleContextMarker: () => {
-      const { $from }=editor.state.selection;
-      for (let depth=$from.depth;depth>0;depth--) {
-        const node=$from.node(depth);
-        const key={orderedList:'labelStyle',bulletList:'marker',heading:'numbered'}[node.type.name];
-        if (!key) continue;
-        const choices={orderedList:[null,'decimal-parens','lower-alpha','lower-roman'],bulletList:[null,'◦','▪'],heading:[true,false]}[node.type.name];
-        const value=choices[(choices.indexOf(node.attrs[key])+1)%choices.length];
-        editor.view.dispatch(editor.state.tr.setNodeMarkup($from.before(depth),undefined,{...node.attrs,[key]:value}));
-        return true;
-      }
-      return false;
+      const target=nextContextMarker(editor.state.selection.$from);
+      if(!target)return false;
+      editor.view.dispatch(editor.state.tr.setNodeMarkup(target.position,undefined,{...target.node.attrs,...target.attrs}));
+      return true;
     },
     ignoreBrowserZoomReset: resetPageZoom,
     literalBacktick: () => editor.commands.insertContent('`'),
@@ -2902,7 +2900,17 @@ const nativeTypingCommands=new Map([
 ]);
 const nativeTypingMarks=new Set([...nativeTypingCommands.values(),'textStyle']);
 const nativeRangeCommands=new Set([...nativeTypingCommands.keys(),'clearFormatting']);
-const nativeSelectionCommands=new Set([...nativeRangeCommands,'toggleContextMarker']);
+function nextContextMarker($from){
+  for(let depth=$from.depth;depth>0;depth--){
+    const node=$from.node(depth),type=node.type.name;
+    const key={orderedList:'labelStyle',bulletList:'marker',heading:'numbered'}[type];
+    if(!key)continue;
+    const choices={orderedList:[null,'decimal-parens','lower-alpha','lower-roman'],bulletList:[null,'◦','▪'],heading:[true,false]}[type];
+    const value=choices[(choices.indexOf(node.attrs[key])+1)%choices.length];
+    return {node,position:$from.before(depth),attrs:{[key]:value}};
+  }
+  return null;
+}
 const nativeTextStructures={
   paragraph:['setParagraph'],section:['toggleHeading',{level:1,command:null}],
   subsection:['toggleHeading',{level:2,command:null}],subsubsection:['toggleHeading',{level:3,command:null}],
@@ -2917,6 +2925,11 @@ function nativeParagraphFormattingActive(){
 }
 function runNativeTextCommand(command,context,event){
   if(command==='insertTable')return insertNativeTableFromProse();
+  if(command==='toggleContextMarker'){
+    if(!nativeTexPreview.useTextSelection())return false;
+    const target=nextContextMarker(editor.state.selection.$from);
+    return Boolean(target&&runNativeTextStructure('updateAttributes',target.node.type.name,target.attrs));
+  }
   if(Object.hasOwn(nativeTextStructures,command))return runNativeTextStructure(...nativeTextStructures[command]);
   const range=nativeTexPreview.verifiedTextRange?.();
   const caret=range?.[0];
@@ -2924,7 +2937,7 @@ function runNativeTextCommand(command,context,event){
     !caret.paragraph.heading&&!caret.paragraph.container&&!caret.paragraph.tableCell&&!caret.paragraph.wrapped&&
     caret.paragraph.runs.some(run=>run.from16<=caret.local&&run.to16>=caret.local&&
       !caret.paragraph.parts[run.partIndex]?.marks?.length);
-  return nativeSelectionCommands.has(command)&&nativeTexPreview.useTextSelection(nativeRangeCommands.has(command)&&!unmarked)&&
+  return nativeRangeCommands.has(command)&&nativeTexPreview.useTextSelection(!unmarked)&&
     shortcutActions.editor[command](context,event);
 }
 function withNativeTextCommand(command,legacy){
@@ -3253,8 +3266,11 @@ function runNativeTextStructure(command,...args){
   const root=rootId&&rootId!==file.id?project.file(rootId).draft:source;
   const attributes=command==='updateAttributes'&&args[0]==='paragraph'&&args[1];
   const theorem=command==='wrapIn'&&args[0]==='theoremBlock'&&args[1]?.kind;
+  const listStyle=command==='updateAttributes'&&
+    (args[0]==='orderedList'&&args[1].labelStyle?'enumerate':args[0]==='bulletList'&&args[1].marker?'itemize':null);
   const packageBody=(attributes?.align==='justify'?'\\justifying ':'')+(attributes?.shading?'\\colorbox':'')+
-    (theorem?'\\begin{'+theorem+'}':'')+(command==='wrapIn'&&args[0]==='multiColumn'?'\\begin{multicols}':'');
+    (theorem?'\\begin{'+theorem+'}':'')+(command==='wrapIn'&&args[0]==='multiColumn'?'\\begin{multicols}':'')+
+    (listStyle?'\\begin{'+listStyle+'}[':'');
   const dependency=packageBody?nativePackagePatch(root,packageBody):null;
   if(dependency===false)return false;
   let draft,from,to,shift=0;
@@ -4871,7 +4887,9 @@ function setListStyle(style) {
   else if(editor.isActive('bulletList'))editor.chain().focus().updateAttributes('bulletList',{marker:style}).run();
 }
 groupButton(formatGroup,'1.',()=>setListStyle('decimal'));
-groupButton(formatGroup,['切换标记','Cycle marker'],()=>{ editor.view.focus(); shortcutActions.editor.toggleContextMarker(); }).dataset.shortcut='editor.toggleContextMarker';
+groupButton(formatGroup,['切换标记','Cycle marker'],withNativeTextCommand('toggleContextMarker',()=>{
+  editor.view.focus();return shortcutActions.editor.toggleContextMarker();
+})).dataset.shortcut='editor.toggleContextMarker';
 groupButton(formatGroup,['列表降一级','Indent list item'],()=>indentListItem(editor));
 groupButton(formatGroup,['列表升一级','Outdent list item'],()=>editor.chain().focus().liftListItem('listItem').run());
 groupButton(formatGroup,'a.',()=>setListStyle('lower-alpha'));

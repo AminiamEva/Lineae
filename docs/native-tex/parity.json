@@ -70,9 +70,11 @@
         "https://github.com/AminiamEva/Lineae/actions/runs/45602854334",
         "https://github.com/AminiamEva/Lineae/actions/runs/45623818094",
         "https://github.com/AminiamEva/Lineae/actions/runs/45628338101",
-        "https://github.com/AminiamEva/Lineae/actions/runs/45665234676"
+        "https://github.com/AminiamEva/Lineae/actions/runs/45665234676",
+        "https://github.com/AminiamEva/Lineae/actions/runs/45690765126",
+        "https://github.com/AminiamEva/Lineae/actions/runs/45692829962"
       ],
-      "scope": "Plain headings and escaped literals, paragraphs with nested marks, and source mapping for proof, abstract, quote, and nested lists. The Windows and macOS jobs cover abstract and quote paragraph splitting and joining, explicitly selected bold on new text, justified paragraphs and the required preamble update, and marked prose beside inline math. LuaLaTeX reports a native glyph for the escaped caret. More text environments and structural operations in nested containers remain pending."
+      "scope": "The browser tests verify typing within existing nested colors and fonts, selected font-size changes, typing in a selected color, list item splitting and joining, and native insertion, splitting and joining in starred local columns. Prior tests cover abstract, quote, proof, heading and inline math. Native styling of already formatted selections and some nested structural operations still need coverage."
     },
     {
       "id": "tables-including-spans",
@@ -88,7 +90,7 @@
       ],
       "nativeStatus": "partial",
       "evidence": ["https://github.com/AminiamEva/Lineae/actions/runs/45590498054", "https://github.com/AminiamEva/Lineae/actions/runs/45628338101", "https://github.com/AminiamEva/Lineae/actions/runs/45639252258", "https://github.com/AminiamEva/Lineae/actions/runs/45649964814", "https://github.com/AminiamEva/Lineae/actions/runs/45656057369", "https://github.com/AminiamEva/Lineae/actions/runs/45658008577", "https://github.com/AminiamEva/Lineae/actions/runs/45665234676"],
-      "scope": "The browser gates cover empty and nonempty cells, mixed marked text and math in tabularx, ordinary tabular, tabularx and tabularray axis edits, and ordinary tabular and tabularray vertical merge and split with exact source writeback and undo. Windows and macOS real-engine jobs check glyph ownership and unchanged visible geometry for both kinds of row span. The tabularx row span has direct source and parser tests. Advanced row-and-column spans and arbitrary cell styles remain pending."
+      "scope": "The browser gates cover empty and nonempty cells, mixed marked text and math, supported row and column operations in tabular, tabularx and tabularray, vertical spans, and combined spans in tabularx. An ordinary tabular keeps its cell source when row stretch or font size changes. Typing and formatting undo separately. Arbitrary cell styles, float wrappers and additional span configurations still need coverage. Table-style gate: https://github.com/AminiamEva/Lineae/actions/runs/45694209910"
     },
     {
       "id": "project-composition",
@@ -115,7 +117,7 @@
         "https://github.com/AminiamEva/Lineae/actions/runs/45649964814",
         "https://github.com/AminiamEva/Lineae/actions/runs/45665234676"
       ],
-      "scope": "Included prose and display math edit their owning source file. Cross-file copy and replacement can include complete formulas and endpoints inside single-paragraph center and proof environments, with atomic undo and redo. The native exit shortcut and file outline navigate the composed source. Detached fragments inherit the preamble. Folding retains page numbering and partial edge placeholders and handles an include sharing a line. Live and observation sessions retain a staged child after an edit. Selections across more complex environments and repeated source ownership need additional coverage."
+      "scope": "Included prose and display math edit the owning source file. Repeated literal inputs keep one editable source and distinct geometry in each rendering, including folded copies and the return to the correct parent segment. Actual LuaLaTeX reports distinct glyph and math-slot boxes. Browser replay targets the second expansion. Cross-file replacement includes nested list paragraphs. Repeated floats and ranges spanning two copies of the same source remain outside verified editing. Repeated input gates: https://github.com/AminiamEva/Lineae/actions/runs/45692208893 and https://github.com/AminiamEva/Lineae/actions/runs/45692782713"
     },
     {
       "id": "images-floats-tikz",
@@ -138,7 +140,7 @@
         "https://github.com/AminiamEva/Lineae/actions/runs/45656057369",
         "https://github.com/AminiamEva/Lineae/actions/runs/45665234676"
       ],
-      "scope": "A staged raster can be edited from native Canvas and a registered PDF. Repeated PNG occurrences resolve to separate source ranges using the real graphicx transformation, confirmed on Windows and macOS. Direct clicks open standalone or floating TikZ and the selected nested subfigure from a registered real LuaLaTeX PDF. The native workspace can select an exact opaque block in Source. Other nested float content still needs direct editing coverage."
+      "scope": "A staged raster can be edited from native Canvas or a registered PDF. Repeated PNG occurrences have distinct measured targets. The browser gates cover project PNG insertion with unchanged binary bytes, undo and redo of its reference, and native TikZ insertion and preamble dependencies in one edit. Direct clicks open verified TikZ and supported subfigures. More nested float and image operations still need direct editing coverage. Insertion gates: https://github.com/AminiamEva/Lineae/actions/runs/45693569036 and https://github.com/AminiamEva/Lineae/actions/runs/45694599386"
     },
     {
       "id": "page-layout-and-pdf",
@@ -170,7 +172,7 @@
       ],
       "nativeStatus": "partial",
       "evidence": ["https://github.com/AminiamEva/Lineae/actions/runs/45620299673", "https://github.com/AminiamEva/Lineae/actions/runs/45622916182", "https://github.com/AminiamEva/Lineae/actions/runs/45628338101", "https://github.com/AminiamEva/Lineae/actions/runs/45639252258", "https://github.com/AminiamEva/Lineae/actions/runs/45646995464"],
-      "scope": "The native command palette covers verified math structures and the status bar displays the active nested field. Formula label changes preserve the selected equation or alignment row and its surroundings. Keyboard commands insert inline and numbered display formulas, accept an initial display formula in a blank document, and leave a nested fraction with Ctrl+J. The prose palette inserts an exact page break, edits document metadata, and offers project input and include commands."
+      "scope": "The native math palette supports verified structures and formula labels. The prose palette supports page breaks, appendix, contents, horizontal rules, book matter, listings, columns, metadata, and project inputs. The listing body opens at its exact source range. The remaining command inventory requires individual verification."
     },
     {
       "id": "clipboard-ime-cross-run",
@@ -202,11 +204,11 @@
   ],
   "acceptance": {
     "fullSoftwareRun": {
-      "revision": "e0b9245bf96b63ed14a6e529eac99a45f8bc0e6c",
+      "revision": "4beefa4eaa940ed7268ab878acc855d6b07f831b",
       "status": "passed-on-windows-macos-ubuntu",
-      "scope": "All three CI jobs passed the browser gates, real LuaLaTeX host tests, recorded page editing and the engine-off desktop WebView smoke. The same run preserved three unbundled executables for device input review.",
-      "evidence": "https://github.com/AminiamEva/Lineae/actions/runs/45686311404",
-      "priorEvidence": "https://github.com/AminiamEva/Lineae/actions/runs/45684502595"
+      "scope": "All three jobs passed the browser gates, real host geometry including repeated source expansion, recorded page editing, and the engine-off desktop WebView smoke. The prior run includes unbundled executables for physical device input review.",
+      "evidence": "https://github.com/AminiamEva/Lineae/actions/runs/45692782713",
+      "priorEvidence": "https://github.com/AminiamEva/Lineae/actions/runs/45686311404"
     },
     "nativeHost": {
       "status": "protocol-and-project-tests-passed",
@@ -359,12 +361,12 @@
     "nodes": {
       "verifiedTextOrMath": ["paragraph", "text", "heading", "math", "mathBlock"],
       "verifiedTableOperations": ["table", "tableRow", "tableCell", "tableHeader"],
-      "partialNativeEditing": ["blockquote", "theoremBlock", "bulletList", "orderedList", "listItem", "descriptionList", "descriptionItem", "projectRegion", "documentImage", "subfigures"],
+      "partialNativeEditing": ["blockquote", "theoremBlock", "bulletList", "orderedList", "listItem", "descriptionList", "descriptionItem", "projectRegion", "documentImage", "subfigures", "multiColumn"],
       "protectedInlineOrStructural": ["hardBreak", "ref", "cite", "label", "footnote", "pageBreak", "appendixStart", "matterStart", "counterDirective", "layoutCommand"],
-      "directEditingPending": ["codeBlock", "horizontalRule", "lipsum", "mathGlue", "multiColumn", "raw", "tableOfContents"]
+      "directEditingPending": ["codeBlock", "horizontalRule", "lipsum", "mathGlue", "raw", "tableOfContents"]
     },
     "marks": {
-      "nativeTyping": ["bold", "italic", "underline", "code", "superscript", "subscript", "smallcaps", "strike"],
+      "nativeTyping": ["bold", "italic", "underline", "code", "superscript", "subscript", "smallcaps", "strike", "textStyle"],
       "verifiedSourceRuns": ["textCommand", "textStyle", "boxed", "circled"],
       "pending": "Typing and changing style attributes inside formatted or structural runs, including package-backed variants."
     }
