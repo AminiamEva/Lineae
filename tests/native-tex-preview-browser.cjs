@@ -423,6 +423,12 @@ const server=createServer(async(req,res)=>{
       const smallTable=stretchedTable.replace('{\\renewcommand','{\\small {\\renewcommand').replace('\\end{tabular}\n}','\\end{tabular}\n}}');
       await page.waitForFunction(expected=>nativeProbe.source===expected,smallTable);
       await panel.getByText('Click text on the native page',{exact:false}).waitFor();
+      await page.keyboard.press(mod+'+e');await page.keyboard.press('Shift+r');
+      await page.waitForFunction(expected=>nativeProbe.source===expected,smallTable.replace('\nThree','\n & \\\\\nThree'));
+      await page.keyboard.press(mod+'+z');
+      await page.waitForFunction(expected=>nativeProbe.source===expected,smallTable);
+      await panel.getByText('Click text on the native page',{exact:false}).waitFor();
+      await panel.locator('[data-native-page="1"] canvas').click({position:{x:6550000*scale,y:9250000*scale}});
       await page.keyboard.type('X');
       await page.waitForFunction(expected=>nativeProbe.source===expected,smallTable.replace('One','XOne'));
       await page.keyboard.press(mod+'+z');

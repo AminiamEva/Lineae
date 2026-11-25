@@ -1,7 +1,7 @@
 import {nativeEditorRange,sourceOffsetAtEditorPosition} from './editor/native-text/editor-range.mjs';
 import {canBeginProseFormula,projectMixedDocument,projectTextDocument} from './editor/native-text/projection.mjs';
 import {tableCellRanges} from './editor/native-text/table-cells.mjs';
-import {writeTableStyle} from '../latex/table-styles.mjs';
+import {tableStyleParts,writeTableStyle} from '../latex/table-styles.mjs';
 import {nativeMathCommandNames,projectMath} from './editor/native-math/source.mjs';
 import {nativeMathContext} from './editor/native-math/resolve.mjs';
 import {documentMetadata,writeDocumentMetadata} from '../latex/document-metadata.mjs';
@@ -3385,6 +3385,9 @@ function editNativeTable(operation,style){
   const mergeColumn=mergeStart?.column;
   const verticalMerge=mergeStart&&mergeStart.row!==mergeEnd.row;
   const offsetInTable=caret.docOffset-start;
+  const wrappers=structured?null:tableStyleParts(original);
+  const body=wrappers?.body??original,bodyFrom=wrappers?.from??0;
+  const caretInBody=offsetInTable-bodyFrom;
   const tabularrayCommands={
     insertRow:()=>editTblrRow(original,cell.row,false,offsetInTable),
     insertColumn:()=>editTblrColumn(original,cell.row,cell.column,offsetInTable),
@@ -3395,14 +3398,14 @@ function editNativeTable(operation,style){
       mergeTblrCells(original,cell.row,mergeColumn,mergeEnd.column),
   };
   const columnTableCommands={
-    insertRow:()=>insertTableSourceRow(original,cell.row),
-    insertColumn:()=>insertTableSourceColumn(original,cell.row,cell.column,caret.docOffset-start),
-    deleteRow:()=>removeTableSourceRow(original,cell.row),
-    deleteColumn:()=>removeTableSourceColumn(original,cell.row,cell.column),
-    splitCell:()=>splitTableSourceCell(original,cell.row,cell.column,offsetInTable)??
-      splitTableSourceRowspan(original,cell.row,cell.column,offsetInTable),
-    mergeCells:()=>verticalMerge?mergeTableSourceRows(original,mergeStart.row,mergeEnd.row,mergeColumn):
-      mergeTableSourceCells(original,cell.row,mergeColumn,mergeEnd.column),
+    insertRow:()=>insertTableSourceRow(body,cell.row),
+    insertColumn:()=>insertTableSourceColumn(body,cell.row,cell.column,caretInBody),
+    deleteRow:()=>removeTableSourceRow(body,cell.row),
+    deleteColumn:()=>removeTableSourceColumn(body,cell.row,cell.column),
+    splitCell:()=>splitTableSourceCell(body,cell.row,cell.column,caretInBody)??
+      splitTableSourceRowspan(body,cell.row,cell.column,caretInBody),
+    mergeCells:()=>verticalMerge?mergeTableSourceRows(body,mergeStart.row,mergeEnd.row,mergeColumn):
+      mergeTableSourceCells(body,cell.row,mergeColumn,mergeEnd.column),
   };
   let patch;
   if(style){
@@ -3414,7 +3417,11 @@ function editNativeTable(operation,style){
     const [change]=revised?textPatch(original,revised):[];
     if(!change||!before||!after)return false;
     patch={...change,offset:after.offset+offsetInTable-before.offset};
-  }else patch=(node.attrs.tblr?tabularrayCommands:columnTableCommands)[operation]();
+  }else{
+    patch=(node.attrs.tblr?tabularrayCommands:columnTableCommands)[operation]();
+    if(patch&&bodyFrom)patch={...patch,from:patch.from+bodyFrom,to:patch.to+bodyFrom,
+      ...(patch.offset!==undefined&&{offset:patch.offset+bodyFrom})};
+  }
   if(!patch)return false;
   const raw=original.slice(0,patch.from)+patch.insert+original.slice(patch.to);
   const replacement=decode(raw);
@@ -3443,10 +3450,8 @@ function editNativeTable(operation,style){
     change={from,to:change.to,insert:insert+owner.source.slice(to,change.from)+change.insert};
   }
   const restoreCaret=()=>{
-    if(style){
-      editor.view.dispatch(closeHistory(editor.state.tr));
-      nativeTexPreview.refocusTextInput();
-    }
+    editor.view.dispatch(closeHistory(editor.state.tr));
+    if(style)nativeTexPreview.refocusTextInput();
     if(!deleting)return nativeTexPreview.preserveSourceCaret({source:draft,offset,path:owner.filePath},started,caret.kind);
     const model=projectMixedDocument(draft,{fragment:projectFileKind==='tex',filePath:owner.filePath});
     const target=model?.paragraphs.find(({tableCell})=>tableCell?.from16===start&&tableCell.row===rowIndex&&tableCell.column===columnIndex);
