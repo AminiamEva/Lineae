@@ -1,5 +1,8 @@
 // Shared caret and range mechanics for geometry-backed editing adapters.
-export function createSelectionModel(sameOwner) {
+export function createSelectionModel(sameOwner, fileOf = () => undefined) {
+  const address = stop => stop && {offset:stop.docOffset,file:fileOf(stop)};
+  const matches = (stop, target) => target && stop.docOffset===target.offset && fileOf(stop)===target.file;
+  let pendingAddress = null;
   let stops = [], index = -1, anchor = -1, pendingOffset = null, lastEdit = null;
   return {
     get stops() { return stops; },
@@ -9,18 +12,19 @@ export function createSelectionModel(sameOwner) {
     get pendingOffset() { return pendingOffset; },
     get lastEdit() { return lastEdit; },
     setStops(next) {
-      const previousHead = stops[index]?.docOffset;
-      const previousAnchor = stops[anchor]?.docOffset;
+      const previousHead = address(stops[index]);
+      const previousAnchor = address(stops[anchor]);
       stops = next;
       if (!stops.length) { index = anchor = -1; return false; }
       if (pendingOffset !== null) {
-        const nextIndex = stops.findIndex(stop => stop.docOffset === pendingOffset);
+        const nextIndex = stops.findIndex(stop => matches(stop,pendingAddress));
         pendingOffset = null;
+        pendingAddress = null;
         if (nextIndex >= 0) { index = anchor = nextIndex; return true; }
       }
-      const headIndex = stops.findIndex(stop => stop.docOffset === previousHead);
+      const headIndex = stops.findIndex(stop => matches(stop,previousHead));
       index = headIndex >= 0 ? headIndex : Math.max(0, Math.min(index, stops.length - 1));
-      const anchorIndex = stops.findIndex(stop => stop.docOffset === previousAnchor);
+      const anchorIndex = stops.findIndex(stop => matches(stop,previousAnchor));
       anchor = anchorIndex >= 0 && sameOwner(stops[anchorIndex], stops[index]) ? anchorIndex : index;
       return true;
     },
@@ -47,9 +51,9 @@ export function createSelectionModel(sameOwner) {
       if (!extend) anchor = index;
       return stops[index];
     },
-    selectBetween(fromOffset, toOffset) {
-      const from = stops.findIndex(stop => stop.docOffset === fromOffset);
-      const to = stops.findIndex(stop => stop.docOffset === toOffset);
+    selectBetween(fromOffset, toOffset, fromFile, toFile = fromFile) {
+      const from = stops.findIndex(stop => stop.docOffset === fromOffset && fileOf(stop)===fromFile);
+      const to = stops.findIndex(stop => stop.docOffset === toOffset && fileOf(stop)===toFile);
       if (from < 0 || to < 0 || !sameOwner(stops[from], stops[to])) return false;
       anchor = from; index = to;
       return true;
@@ -60,9 +64,10 @@ export function createSelectionModel(sameOwner) {
     record(edit, nextOffset) {
       lastEdit = edit;
       pendingOffset = nextOffset;
+      pendingAddress = {offset:nextOffset,file:fileOf(stops[index])};
       return edit;
     },
-    clearPending() { pendingOffset = null; lastEdit = null; },
-    reset() { stops = []; index = anchor = -1; pendingOffset = null; lastEdit = null; },
+    clearPending() { pendingOffset = null; pendingAddress = null; lastEdit = null; },
+    reset() { stops = []; index = anchor = -1; pendingOffset = null; pendingAddress = null; lastEdit = null; },
   };
 }

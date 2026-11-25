@@ -4,7 +4,7 @@ import {applySlotEdit} from '../native-math/source.mjs';
 // Native surface geometry adapter. Display-list coordinates are page space;
 // callers provide the zoom used for the current painted page.
 const stopsFor = (observed, resolve) => {
-  const byOffset = new Map();
+  const byAddress = new Map();
   const push = (owner, role, after, page, bbox) => {
     const target = resolve({owner, role, after});
     if (!target) return;
@@ -12,11 +12,12 @@ const stopsFor = (observed, resolve) => {
       ...target, page, after,
       x: after ? bbox[2] : bbox[0], top: bbox[1], bottom: bbox[3],
     };
-    const previous = byOffset.get(target.docOffset);
+    const key = JSON.stringify([target.formula.filePath,target.docOffset]);
+    const previous = byAddress.get(key);
     // A glyph boundary inside a slot is the precise caret target; an empty
     // field marker at the same offset is only a fallback.
     if (!previous || (previous.slot.role !== 'nucleus' && target.slot.role === 'nucleus')) {
-      byOffset.set(target.docOffset, stop);
+      byAddress.set(key, stop);
     }
   };
   for (const page of observed ?? []) {
@@ -29,7 +30,7 @@ const stopsFor = (observed, resolve) => {
       push(glyph.owner, 'nucleus', true, page.page, glyph.bbox);
     }
   }
-  return [...byOffset.values()].sort((left, right) => left.docOffset - right.docOffset ||
+  return [...byAddress.values()].sort((left, right) => left.docOffset - right.docOffset ||
     (left.after ? 1 : 0) - (right.after ? 1 : 0));
 };
 
@@ -39,7 +40,7 @@ const sameFormula = (left, right) =>
   left?.formula.filePath === right?.formula.filePath;
 
 export function createMathSurface({resolve}) {
-  const selection = createSelectionModel(sameFormula);
+  const selection = createSelectionModel(sameFormula,stop=>stop.formula.filePath ?? undefined);
   return Object.assign(selection, {
     setObservation(observed) { return selection.setStops(stopsFor(observed, resolve)); },
     insert(text) {

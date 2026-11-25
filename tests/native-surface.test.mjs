@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {projectDocumentFormulas} from '../apps/web/src/editor/native-math/document.mjs';
+import {projectDocumentFormulas,projectSnapshotFormulas} from '../apps/web/src/editor/native-math/document.mjs';
 import {nativeTarget} from '../apps/web/src/editor/native-math/resolve.mjs';
 import {createMathSurface} from '../apps/web/src/editor/native-surface/math-surface.mjs';
 import {createTextSurface} from '../apps/web/src/editor/native-surface/text-surface.mjs';
@@ -212,4 +212,21 @@ test('a protected block does not disable targeting in neighboring plain prose', 
   assert.ok(projection.projection.includes('\\custom{Keep me}'));
   assert.equal(textEdit(projection, {paragraph, from16:0, to16:0, insert:'X'}).source,
     source.replace('Plain prose.', 'XPlain prose.'));
+});
+
+test('identical offsets in two included files remain distinct native caret addresses', () => {
+  const bytes = [...new TextEncoder().encode(source.split('\n')[1]+'\n')];
+  const projection = projectSnapshotFormulas({
+    source: source.replace('\\[\\frac{a}{}\\]', ''),
+    mainFile:'main.tex',files:[{path:'one.tex',bytes},{path:'two.tex',bytes}],
+  });
+  const slots=projection.formulas.map(formula=>formula.math.slots.find(slot=>slot.role==='denominator'));
+  const surface=createMathSurface({resolve:endpoint=>nativeTarget(projection,endpoint)});
+  surface.setObservation(page(slots.map((slot,index)=>field(slot.tag,'den',300+100*index,true))));
+  assert.equal(surface.stops.length,2);
+  const offset=surface.stops[0].docOffset;
+  assert.equal(surface.stops[1].docOffset,offset);
+  assert.equal(surface.selectBetween(offset,offset,'one.tex','two.tex'),false);
+  assert.ok(surface.selectBetween(offset,offset,'two.tex'));
+  assert.equal(surface.insert('b').formula.filePath,'two.tex');
 });

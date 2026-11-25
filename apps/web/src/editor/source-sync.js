@@ -163,8 +163,12 @@ export function standaloneMathChanges(projection,doc) {
 
 function mathBodyChanges(block,nodes) {
   const previous=JSON.parse(block.snapshot);
-  if(!block.editable||nodes.length!==1||previous.length!==1||
+  if(!block.editable||!nodes.length||nodes.length!==previous.length||
       nodes[0].type!=='mathBlock'||previous[0].type!=='mathBlock')return null;
+  // The editor may append an empty paragraph for typing after the final atom.
+  // It has no source bytes and cannot invalidate an otherwise exact math edit.
+  if(!nodes.slice(1).every((node,index)=>node.type==='paragraph'&&!node.content?.length&&
+      JSON.stringify(node)===JSON.stringify(previous[index+1])))return null;
   const before=previous[0],after=nodes[0];
   if(JSON.stringify({...after,attrs:{...after.attrs,latex:before.attrs.latex}})!==JSON.stringify(before))return null;
   const spelling=mathSpelling(block.raw,[before]);

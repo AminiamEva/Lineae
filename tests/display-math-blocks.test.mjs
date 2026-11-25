@@ -117,3 +117,16 @@ test('top-level heading followed immediately by a display retains both structure
   const nodes=importBlocks(String.raw`\section{\textbf{Title}}Text.$$x$$Tail.`);
   assert.deepEqual(nodes.map(n=>n.type),['heading','paragraph','mathBlock','paragraph']);
 });
+
+test('the typing paragraph after final display math owns no source bytes',()=>{
+  const source=wrap('Before.\n\n\\[\n\\frac{a}{b}\n\\]');
+  const original={type:'doc',content:[...parseDocument(source).blocks.flatMap(importBlocks),{type:'paragraph'}]};
+  const edited=structuredClone(original);
+  edited.content.find(node=>node.type==='mathBlock').attrs.latex='\n\\frac{a}{cb}\n';
+  const insertion=source.indexOf('{b}')+1;
+  assert.deepEqual(standaloneMathChanges(sourceProjection(source,original),edited),
+    [{from:insertion,to:insertion,insert:'c'}]);
+  const changed=source.slice(0,insertion)+'c'+source.slice(insertion);
+  assert.deepEqual(standaloneMathChanges(sourceProjection(changed,edited),original),
+    [{from:insertion,to:insertion+1,insert:''}]);
+});

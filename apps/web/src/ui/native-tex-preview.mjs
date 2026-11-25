@@ -195,7 +195,7 @@ export function installNativeTexPreview({host,before,getSource,getSnapshot,isCom
       if(observation.kind==='text'&&!nativeEditing)return false;
       if(nativeEditing){
         const next=targetSurface(head);
-        if(!next||!next.selectBetween(anchor.docOffset,head.docOffset))return false;
+        if(!next||!next.selectBetween(anchor.docOffset,head.docOffset,anchor.formula?.filePath,head.formula?.filePath))return false;
         surface=next;
         inputStart=performance.now();
         paintSurfaceSelection();positionInput();input.focus({preventScroll:true});
