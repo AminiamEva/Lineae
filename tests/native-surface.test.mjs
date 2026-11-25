@@ -7,6 +7,9 @@ import {createMathSurface} from '../apps/web/src/editor/native-surface/math-surf
 import {createTextSurface} from '../apps/web/src/editor/native-surface/text-surface.mjs';
 import {createNativeDocumentSession} from '../apps/web/src/editor/native-surface/document-session.mjs';
 import {projectTextDocument,projectMixedDocument,projectMixedSnapshot,textTarget,textEdit} from '../apps/web/src/editor/native-text/projection.mjs';
+import {richSourceChanges,sourceProjection} from '../apps/web/src/editor/source-sync.js';
+import {importBlocks} from '../apps/web/latex/blocks.mjs';
+import {parseDocument} from '../apps/web/latex/document.mjs';
 
 const source = '\\begin{document}\n\\[\\frac{a}{}\\]\n\\end{document}\n';
 const filled = '\\begin{document}\n\\[\\frac{a}{b}\\]\n\\end{document}\n';
@@ -676,6 +679,19 @@ test('native text ranges preserve proof titles, comments and container declarati
   const paragraph=projection.paragraphs[2];
   assert.equal(textEdit(projection,{paragraph,from16:0,to16:1,insert:'The'}).source,
     source.replace('A summary.','The summary.'));
+});
+
+test('splitting a proof paragraph keeps its title, indentation and CRLF bytes',()=>{
+  const source='\\begin{document}\r\n\\begin{proof}[Reason]\r\n  AlphaBeta\r\n\r\n  Untouched.\r\n\\end{proof}\r\n\\end{document}\r\n';
+  const draft=source.replace('AlphaBeta','Alpha\r\n\r\nBeta');
+  const document=text=>({type:'doc',content:parseDocument(text).blocks.flatMap(raw=>importBlocks(raw))});
+  const projection=sourceProjection(source,document(source));
+  assert.deepEqual(richSourceChanges(projection,document(draft)),
+    [{from:source.indexOf('Beta'),to:source.indexOf('Beta'),insert:'\r\n\r\n'}]);
+  assert.deepEqual(richSourceChanges(sourceProjection(draft,document(draft)),document(source)),
+    [{from:source.indexOf('Beta'),to:source.indexOf('Beta')+4,insert:''}]);
+  assert.deepEqual(projectTextDocument(draft).paragraphs.map(paragraph=>[paragraph.text,paragraph.container.path]),
+    [['Alpha',[0]],['Beta',[1]],['Untouched.',[2]]]);
 });
 
 test('native list prose path distinguishes duplicate text inside a nested item',()=>{

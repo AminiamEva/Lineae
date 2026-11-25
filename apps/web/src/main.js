@@ -2876,7 +2876,8 @@ nativeTexPreview=installNativeTexPreview({host:footer,before:modes,primary:nativ
     return editor.state.doc===state.doc?null:{source:prepared.draft,offset,path};
   },
   commitParagraphBreak:(paragraph,from,to,text)=>{
-    if(paragraph.tableCell||paragraph.container||paragraph.parts.length!==1||
+    const theorem=paragraph.container?.type==='theoremBlock';
+    if(paragraph.tableCell||paragraph.container&&!theorem||paragraph.parts.length!==1||
        paragraph.parts[0].marks?.length||!from||/[\r\n]/.test(text))return null;
     if(paragraph.heading&&(!Number.isInteger(paragraph.headingEnd)||from!==to||to!==paragraph.text.length))return null;
     if(projectDocument.composition&&!projectDocument.rebase(currentNativeProjectComposition(),editor.getJSON()))return null;
@@ -2905,8 +2906,14 @@ nativeTexPreview=installNativeTexPreview({host:footer,before:modes,primary:nativ
       return editor.state.doc===state.doc?null:{source:draft,offset,path:paragraph.filePath};
     }
     const projected=sourceProjection(draft,tr.doc.toJSON(),{fragment:projectFileKind==='tex'});
-    if(!projected?.blocks.some(block=>block.index===tr.doc.resolve(next).index(0)&&
-       block.from<=offset&&block.to>=offset&&block.editable))return null;
+    if(theorem){
+      const patches=richSourceChanges(projection,tr.doc.toJSON());
+      const owner=projectTextDocument(draft,{filePath:paragraph.filePath,fragment:projectFileKind==='tex'})?.paragraphs.find(next=>(
+        next.from16<=offset&&offset<=next.from16+next.text.length&&next.container?.type==='theoremBlock'));
+      if(!projected||patches?.length!==1||!owner||
+        paragraph.source.slice(0,patches[0].from)+patches[0].insert+paragraph.source.slice(patches[0].to)!==draft)return null;
+    }else if(!projected?.blocks.some(block=>block.index===tr.doc.resolve(next).index(0)&&
+        block.from<=offset&&block.to>=offset&&block.editable))return null;
     return dispatchNativeParagraphChange(state,tr,paragraph.source,draft,change,projected)
       ?{source:draft,offset,path:paragraph.filePath}:null;
   },

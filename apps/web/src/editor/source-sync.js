@@ -158,7 +158,7 @@ export function richSourceChanges(projection, doc) {
     if (JSON.stringify(nodes) === block.snapshot) continue;
     const patch = block.editable ? patchBlock(block,nodes) :
       inlineMathChanges(block,nodes)??markedInlineProseChanges(block,nodes)??plainTableChanges(block,nodes)??tikzFigureChanges(block,nodes)??
-      plainContainerChanges(block,nodes)??patchIsolatedTables(block,nodes);
+      theoremParagraphChanges(block,nodes)??plainContainerChanges(block,nodes)??patchIsolatedTables(block,nodes);
     if (!patch) return null;
     changes.push(...patch);
   }
@@ -272,6 +272,36 @@ function plainContainerChanges(block,nodes) {
   return changes;
 }
 
+function theoremParagraphChanges(block,nodes) {
+  const [before]=JSON.parse(block.snapshot),[after]=nodes;
+  if(block.count!==1||nodes.length!==1||before?.type!=='theoremBlock'||after?.type!=='theoremBlock')return null;
+  const delta=after.content?.length-before.content?.length;
+  if(Math.abs(delta)!==1)return null;
+  const removed=delta>0?1:2,added=delta>0?2:1;
+  const paragraphs=plainContainerParagraphs(block.raw);
+  const eol=block.raw.includes('\r\n')?'\r\n':'\n';
+  for(const {from,text,container,path:[index]} of paragraphs){
+    if(container!=='theoremBlock')continue;
+    const last=paragraphs.find(part=>part.path[0]===index+removed-1);
+    if(!last)continue;
+    const end=last.from+last.text.length;
+    const replacementNodes=after.content.slice(index,index+added);
+    if(replacementNodes.length!==added||replacementNodes.some(node=>{
+      const text=plainParagraphText(node);
+      return !text||text!==text.trim();
+    }))continue;
+    const restored=structuredClone(after);
+    restored.content.splice(index,added,...before.content.slice(index,index+removed));
+    if(JSON.stringify(restored)!==JSON.stringify(before))continue;
+    if(delta<0&&!/^[ \t]*\r?\n[ \t]*\r?\n\s*$/.test(block.raw.slice(from+text.length,last.from)))return null;
+    const replacement=replacementNodes.map(node=>serialize(node).slice(0,-2)).join(eol+eol);
+    const draft=block.raw.slice(0,from)+replacement+block.raw.slice(end);
+    if(importBlocks(draft).map(serialize).join('')!==serialize(after))return null;
+    return minimalChange(block.raw.slice(from,end),replacement,block.from+from);
+  }
+  return null;
+}
+
 
 function mathBodyChanges(block,nodes) {
   const previous=JSON.parse(block.snapshot);
@@ -373,7 +403,7 @@ function patchIsolatedTables(block,nodes) {
 
 function patchBlock(block,nodes) {
     const math=mathBodyChanges(block,nodes)??inlineMathChanges(block,nodes)??markedInlineProseChanges(block,nodes)??plainTableChanges(block,nodes)??
-      tikzFigureChanges(block,nodes)??plainContainerChanges(block,nodes);
+      tikzFigureChanges(block,nodes)??theoremParagraphChanges(block,nodes)??plainContainerChanges(block,nodes);
     if(math)return math;
     if (nodes.some(node => node.type === 'raw')) return null;
     const environments=list=>list.flatMap(node=>[
