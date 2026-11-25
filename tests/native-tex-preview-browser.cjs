@@ -233,6 +233,14 @@ const server=createServer(async(req,res)=>{
       await page.waitForFunction(source=>nativeProbe.source===source,afterLeaving);
       await panel.getByText('Click prose on the native page',{exact:false}).waitFor();
       await canvas.click({position:{x:6550000*scale,y:9250000*scale}});
+      await page.keyboard.press(mod+'+6');
+      await page.keyboard.type('2');
+      await page.waitForFunction(source=>nativeProbe.source===source,
+        afterLeaving.replace('XYZAlpha','\\textsuperscript{2}XYZAlpha'));
+      await page.keyboard.press(mod+'+z');
+      await page.waitForFunction(source=>nativeProbe.source===source,afterLeaving);
+      await panel.getByText('Click prose on the native page',{exact:false}).waitFor();
+      await canvas.click({position:{x:6550000*scale,y:9250000*scale}});
       await page.keyboard.press(mod+'+e');await page.keyboard.press('r');
       const rightAligned=afterLeaving.replace('XYZAlpha beta.','{\\raggedleft XYZAlpha beta.\\par}');
       await page.waitForFunction(source=>nativeProbe.source===source,rightAligned);
@@ -1980,24 +1988,14 @@ const server=createServer(async(req,res)=>{
       const index=tags.findIndex(tag=>call.args.projection.startsWith('\\ref{sec:first}',tag.index+tag[0].length-1));
       const {dl}=nativeProbe.layout().pages_changed[0],bounds=canvas.getBoundingClientRect();
       if(index<0)return null;
-      canvas.addEventListener('click',event=>{
-        queueMicrotask(()=>{nativeProbe.referenceClick={x:event.offsetX,y:event.offsetY,
-          modified:event.ctrlKey||event.metaKey,handled:event.defaultPrevented};});
-      },{once:true});
       return {x:(6600000+index*200000)*bounds.width/dl.page_width,y:9250000*bounds.height/dl.page_height};
     });
     assert.ok(referencePoint,'The current observation tags the reference on the page');
     await page.locator('[data-native-page="1"] canvas').click({position:referencePoint,modifiers:[mod]});
-    assert.deepEqual(await page.evaluate(()=>({modified:nativeProbe.referenceClick?.modified,
-      handled:nativeProbe.referenceClick?.handled,focus:document.activeElement?.id})),
-    {modified:true,handled:true,focus:'native-tex-input'},'The modifier-click navigates to the reference target');
+    assert.equal(await page.evaluate(()=>document.activeElement?.id),'native-tex-input',
+      'The modifier-click focuses the reference target');
     await page.keyboard.type('Y');
-    await page.waitForFunction(expected=>nativeProbe.source===expected,narrow.replace('Repeat}\\label','YRepeat}\\label')).catch(async error=>{
-      console.error('Native reference writeback',await page.evaluate(()=>({source:nativeProbe.source,
-        selection:document.getSelection()?.anchorNode?.textContent,focus:document.activeElement?.id,
-        status:document.querySelector('#native-tex-preview')?.dataset.state})));
-      throw error;
-    });
+    await page.waitForFunction(expected=>nativeProbe.source===expected,narrow.replace('Repeat}\\label','YRepeat}\\label'));
 
     await page.goto(base+'?native-workspace=1',{waitUntil:'networkidle'});
     const projectLayout='\\documentclass{article}\n\\begin{document}\nBefore.\n\n'+

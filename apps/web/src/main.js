@@ -2740,6 +2740,7 @@ const shortcutActions = {
     toggleBold: () => editor.commands.toggleBold(),
     toggleItalic: () => editor.commands.toggleItalic(),
     toggleUnderline: () => editor.commands.toggleMark('underline'),
+    toggleSmallCaps: () => editor.commands.toggleMark('smallcaps'),
     toggleStrike: () => editor.commands.toggleStrike(),
     toggleCode: () => editor.commands.toggleCode(),
     clearFormatting: () => editor.commands.unsetAllMarks(),
@@ -2775,11 +2776,13 @@ const nativeBindings=compileKeybindings({
   math:{undo:['ctrl+z','meta+z'],redo:['ctrl+y','meta+y','ctrl+shift+z','meta+shift+z'],
     palette:'backslash',nextSlot:'tab',previousSlot:'shift+tab'},
 },{isMac});
-const nativeSelectionCommands=new Set(['toggleBold','toggleItalic','toggleUnderline','toggleStrike','toggleCode',
-  'toggleSuperscript','toggleSubscript','clearFormatting','toggleContextMarker','insertTable']);
-const nativeRangeCommands=new Set(['toggleBold','toggleItalic','toggleUnderline','toggleStrike','toggleCode',
-  'toggleSuperscript','toggleSubscript','clearFormatting']);
-const nativeTypingCommands=new Set(['toggleBold','toggleItalic','toggleUnderline']);
+const nativeTypingCommands=new Map([
+  ['toggleBold','bold'],['toggleItalic','italic'],['toggleUnderline','underline'],['toggleCode','code'],
+  ['toggleSuperscript','superscript'],['toggleSubscript','subscript'],['toggleSmallCaps','smallcaps'],
+]);
+const nativeTypingMarks=new Set(nativeTypingCommands.values());
+const nativeRangeCommands=new Set([...nativeTypingCommands.keys(),'toggleStrike','clearFormatting']);
+const nativeSelectionCommands=new Set([...nativeRangeCommands,'toggleContextMarker','insertTable']);
 const nativeTextStructures={
   paragraph:['setParagraph'],section:['toggleHeading',{level:1,command:null}],
   subsection:['toggleHeading',{level:2,command:null}],subsubsection:['toggleHeading',{level:3,command:null}],
@@ -3781,7 +3784,7 @@ nativeTexPreview=installNativeTexPreview({host:footer,before:modes,primary:nativ
     const {range,project,composition,file}=position;
     const {from:start,to:end,match,endpoints,marks}=range;
     const stored=editor.state.storedMarks;
-    if(stored?.length&&stored.every(mark=>['bold','italic','underline'].includes(mark.type.name))&&
+    if(stored?.length&&stored.every(mark=>nativeTypingMarks.has(mark.type.name))&&
        patch.insert&&start===end&&editor.state.selection.from===start&&!marks?.length&&
        !paragraph.container&&!paragraph.tableCell&&!paragraph.heading&&!paragraph.wrapped)
       return insertNativeMarkedText(paragraph,patch,position,stored);
@@ -4432,9 +4435,9 @@ groupButton(formatGroup,['清除格式','Clear formatting'],withNativeTextComman
 groupButton(formatGroup,'code',withNativeTextCommand('toggleCode',()=>editor.chain().focus().toggleCode().run()));
 groupButton(formatGroup,'quote',withNativeTextCommand('toggleBlockquote',()=>editor.chain().focus().toggleBlockquote().run()));
 groupButton(formatGroup,'hr',()=>editor.chain().focus().setHorizontalRule().run());
-groupButton(formatGroup,'x²',()=>editor.chain().focus().toggleMark('superscript').run());
-groupButton(formatGroup,'x₂',()=>editor.chain().focus().toggleMark('subscript').run());
-groupButton(formatGroup,'sc',()=>editor.chain().focus().toggleMark('smallcaps').run());
+groupButton(formatGroup,'x²',withNativeTextCommand('toggleSuperscript',()=>editor.chain().focus().toggleMark('superscript').run()));
+groupButton(formatGroup,'x₂',withNativeTextCommand('toggleSubscript',()=>editor.chain().focus().toggleMark('subscript').run()));
+groupButton(formatGroup,'sc',withNativeTextCommand('toggleSmallCaps',()=>editor.chain().focus().toggleMark('smallcaps').run()));
 groupButton(formatGroup,'box',()=>spaceOverlay.toggleBox()).dataset.shortcut='editor.toggleBox';
 groupButton(formatGroup,'\\LaTeX',()=>insertTextCommand('LaTeX'));
 groupButton(formatGroup,'\\TeX',()=>insertTextCommand('TeX'));
