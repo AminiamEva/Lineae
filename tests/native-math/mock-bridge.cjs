@@ -42,6 +42,11 @@ module.exports=function installMockNativeTex() {
       layout.pages_total=3;
       layout.pages_changed=[1,2,3].map(page=>({...first,page,dl:{...first.dl,page}}));
     }
+    if(p.raster&&p.transformedRaster){
+      const other=layout.pages_changed[0].dl.other;
+      other.unshift(['M','save'],['M','set',3000000,3000000,'2 0 0 1']);
+      other.push(['M','restore']);
+    }
     return layout;
   };
   window.__TAURI__={core:{invoke:async(command,args)=>{

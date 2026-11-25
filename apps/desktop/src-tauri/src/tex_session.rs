@@ -1628,6 +1628,10 @@ mod tests {
             let alignment = Session::create(source).unwrap();
             let info = alignment.start().expect("numbered and starred alignat compile");
             let raw = wait_layout(&alignment, info.source_revision);
+            let version = integer(&raw["versions"], "layout_version").unwrap();
+            let pdf = alignment.pdf(info.source_revision, version)
+                .expect("numbered alignat has an authoritative PDF for its original math fonts");
+            save_pdf_evidence("native-alignment.pdf", &pdf);
             let observed = alignment.observe_formula(info.source_revision, &projection, Vec::new())
                 .expect("production alignment projection renders alongside the unmarked original");
             let mut denominators = Vec::new();

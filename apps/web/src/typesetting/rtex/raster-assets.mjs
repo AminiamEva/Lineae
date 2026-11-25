@@ -36,13 +36,30 @@ export function rasterContains({transform,box},x,y) {
 
 export function registeredRasterHits(display,getRaster) {
   const items=[...(display.other??[]),...(display.lines??[]).flatMap(line=>line.items??[])];
-  // Only accept page-space image commands with no enclosing PDF transform.
-  if(items.some(item=>item[0]==='M'))return [];
   const identity=[1,0,0,1,0,0];
-  return items.flatMap(([command,index,x,y,width,height])=>{
-    if(command!=='i'||![x,y,width,height].every(Number.isFinite)||width<=0||height<=0)return [];
+  const hits=[],stack=[];
+  let transform=identity;
+  for(const [command,index,x,y,width,height] of items){
+    if(command==='M'){
+      if(index==='save'){stack.push(transform);continue;}
+      if(index==='restore'){
+        if(!stack.length)return [];
+        transform=stack.pop();continue;
+      }
+      if(index!=='set'||typeof width!=='string'||![x,y].every(Number.isFinite))return [];
+      const values=width.trim().split(/\s+/).map(Number);
+      if(values.length!==4||!values.every(Number.isFinite))return [];
+      // Match the painter: PDF matrices are y-up, while page hits are y-down.
+      const [u,v,w,z]=values,[a,b,c,d,e,f]=transform;
+      const dx=x-u*x+w*y,dy=y+v*x-z*y;
+      transform=[a*u-c*v,b*u-d*v,-a*w+c*z,-b*w+d*z,a*dx+c*dy+e,b*dx+d*dy+f];
+      if(!transform.every(Number.isFinite))return [];
+      continue;
+    }
+    if(command!=='i'||![x,y,width,height].every(Number.isFinite)||width<=0||height<=0)continue;
     const image=display.images_info?.[index],path=stagedRasterPath(image?.file);
-    if(!path||image.cached_picture||image.page>1||image.pages>1||!getRaster?.(image.file))return [];
-    return [{path,transform:identity,box:[x,y,width,height]}];
-  });
+    if(!path||image.cached_picture||image.page>1||image.pages>1||!getRaster?.(image.file))continue;
+    hits.push({path,transform,box:[x,y,width,height]});
+  }
+  return stack.length?[]:hits;
 }

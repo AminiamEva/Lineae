@@ -45,7 +45,8 @@ const root=resolve('apps/web');
 let nativeEvidence;
 const server=createServer(async(req,res)=>{
   const pdfPath=req.url==='/native-acceptance.pdf'?process.env.LINEAE_NATIVE_PDF:
-    req.url==='/native-degraded.pdf'?process.env.LINEAE_NATIVE_DEGRADED_PDF:null;
+    req.url==='/native-degraded.pdf'?process.env.LINEAE_NATIVE_DEGRADED_PDF:
+    req.url==='/native-alignment.pdf'?process.env.LINEAE_NATIVE_ALIGNMENT_PDF:null;
   if(pdfPath){
     try {res.setHeader('Content-Type','application/pdf');res.end(await readFile(pdfPath));}
     catch{res.writeHead(404).end();}
@@ -1120,6 +1121,7 @@ const server=createServer(async(req,res)=>{
       editor.state.doc.descendants((node,position)=>{if(node.isText)textPosition??=position;});
       editor.commands.setTextSelection(textPosition);
       nativeProbe.semanticPdf=true;nativeProbe.registeredPdf=true;
+      nativeProbe.transformedRaster=true;
     });
     await imageTools.waitFor({state:'hidden'});
     await button.click();
@@ -1127,14 +1129,14 @@ const server=createServer(async(req,res)=>{
       const state=document.querySelector('#native-tex-preview').dataset;
       return state.state==='current'&&state.renderer==='pdf';
     });
-    await panel.locator('[data-pdf-page="1"] canvas').click({position:{x:3500000*scale,y:3500000*scale}});
+    await panel.locator('[data-pdf-page="1"] canvas').click({position:{x:4500000*scale,y:3500000*scale}});
     await revealToolbar(page);
     await imageTools.waitFor();
     if(!await width.isVisible())await imageTools.locator('[data-ribbon-group=image-transform] .ribbon-group-toggle').click();
     await width.fill('28');
     await page.waitForFunction(expected=>nativeProbe.source===expected,projectMainWithImage.replace('18pt','28pt'));
     await page.locator('#native-tex-close').click();
-    await page.evaluate(()=>{nativeProbe.semanticPdf=false;nativeProbe.registeredPdf=false;});
+    await page.evaluate(()=>{nativeProbe.semanticPdf=false;nativeProbe.registeredPdf=false;nativeProbe.transformedRaster=false;});
     await button.click();
     await page.waitForFunction(()=>document.querySelector('#native-tex-preview').dataset.state==='current');
     await page.locator('#native-tex-target').click();
@@ -1463,13 +1465,19 @@ const server=createServer(async(req,res)=>{
       await page.goto('http://127.0.0.1:'+server.address().port+'/?native-only-acceptance=1',{waitUntil:'networkidle'});
       await page.evaluate(evidence=>{
         const p=window.nativeProbe,originalLayout=p.layout;
-        p.realEvidence=evidence;
+        p.realEvidence=evidence;p.registeredPdf=true;p.failFont=true;
         p.layout=()=>({...originalLayout(),pages_changed:evidence.raw,pages_total:evidence.raw.length});
+        const invoke=window.__TAURI__.core.invoke;
+        window.__TAURI__.core.invoke=async(command,args)=>command==='native_tex_pdf'
+          ?[...new Uint8Array(await(await fetch('/native-alignment.pdf')).arrayBuffer())]:invoke(command,args);
       },nativeEvidence);
       await page.locator('input#file').setInputFiles({name:'numbered-alignment.tex',mimeType:'text/plain',
         buffer:Buffer.from(nativeEvidence.source)});
       await page.locator('#native-tex-toggle').click();
-      await page.waitForFunction(()=>document.querySelector('#native-tex-preview').dataset.state==='current');
+      await page.waitForFunction(()=>{
+        const state=document.querySelector('#native-tex-preview').dataset;
+        return state.state==='current'&&state.renderer==='pdf';
+      });
       await page.locator('#native-tex-target').click();
       await page.getByText('Click the empty numerator or denominator',{exact:false}).waitFor();
       await page.locator('#native-tex-edit').click();

@@ -25,7 +25,7 @@ test('native image hits follow rotation and scaling from the painter',()=>{
   assert.equal(rasterContains({...image,transform:[0,0,0,0,0,0]},26,44),false);
 });
 
-test('registered PDF raster hits use staged untransformed page coordinates',()=>{
+test('registered PDF raster hits retain scoped page-space transforms',()=>{
   const snapshot={files:[{path:'figure.png',bytes:[137,80,78,71,13,10,26,10]}]};
   const display={images_info:{1:{file:'figure.png'},2:{file:'other.png'},3:{file:'figure.png',page:2}},
     other:[['i',1,10,20,50,40]],lines:[{items:[['i',2,30,30,40,40],['i',3,40,40,50,50]]}]};
@@ -34,7 +34,14 @@ test('registered PDF raster hits use staged untransformed page coordinates',()=>
   assert.equal(hit.path,'figure.png');
   assert.equal(rasterContains(hit,35,40),true);
   assert.equal(others.length,0);
+  const [rotated,plain]=registeredRasterHits({...display,
+    other:[['M','save'],['M','set',10,20,'0 1 -1 0'],...display.other],
+    lines:[{items:[['M','restore'],...display.other]}]},load);
+  assert.equal(rasterContains(rotated,30,-10),true);
+  assert.equal(rasterContains(rotated,35,40),false);
+  assert.deepEqual(plain,hit);
   assert.deepEqual(registeredRasterHits({...display,other:[['M','matrix',0,0,'0 1 -1 0'],...display.other]},load),[]);
+  assert.deepEqual(registeredRasterHits({...display,other:[['M','save'],...display.other]},load),[]);
 });
 
 test('native font extraction follows LuaTeX face numbers and rejects malformed offsets',()=>{
