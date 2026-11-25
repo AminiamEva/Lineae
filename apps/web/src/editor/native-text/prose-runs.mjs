@@ -1,5 +1,5 @@
 import {readGroup} from '../../../latex/table-spans.mjs';
-import {textCommands} from '../../../latex/inline.mjs';
+import {footnoteAt,textCommands} from '../../../latex/inline.mjs';
 import {referenceAt} from '../../../latex/reference-commands.mjs';
 
 const plainTokens=/^(?:\\(?:[%&_#${}]|[A-Za-z]+\{\})|[^\\{}$%&#_^])+/u;
@@ -48,6 +48,12 @@ export function markedRuns(text,offset=0,marks=[],inline) {
     if(reference){
       runs.push({kind:'reference',type:reference.kind,key:reference.key,source:reference.sourceCommand,from16:start,to16:offset+reference.end});
       cursor=reference.end;
+      continue;
+    }
+    const footnote=!marks.length&&text[cursor]==='\\'&&footnoteAt(text.slice(cursor));
+    if(footnote){
+      runs.push({kind:'atom',type:'footnote',source:footnote[0],from16:start,to16:start+footnote[0].length});
+      cursor+=footnote[0].length;
       continue;
     }
     const lineBreak=!marks.length&&/^(?:\\\\(?:\[[^\]\r\n]*\])?|\\(?:newline|linebreak)(?![A-Za-z]))[ \t]*(?:\r?\n)?/.exec(text.slice(cursor));

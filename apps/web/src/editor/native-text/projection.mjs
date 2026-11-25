@@ -84,7 +84,7 @@ function instrumentProse(block, source, blockFrom, firstOwner, attribute, filePa
   const runs=[],glyphs=[],owners=[];
   let projection='',cursor=0,nextTag=firstOwner;
   for(const [partIndex,part] of parts.entries()){
-    if(part.kind==='break')continue;
+    if(part.kind==='break'||part.kind==='atom')continue;
     if(part.kind==='reference'){
       if(part.type==='ref'){
         const tag=nextTag++;
@@ -324,7 +324,7 @@ export function projectMixedDocument(source, {previous=[], attribute=65000, frag
       let offset=from;
       for(const part of marked){
         const partIndex=parts.push(part)-1;
-        if(part.kind==='break'||part.kind==='reference')continue;
+        if(part.kind==='break'||part.kind==='reference'||part.kind==='atom')continue;
         const built=instrumentText(text.slice(part.from16,part.to16),next,attribute,contentFrom+part.from16,reuse);
         next=built.nextTag;
         runs.push({...part,partIndex});

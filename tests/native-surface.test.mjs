@@ -1030,6 +1030,25 @@ test('references stay byte-identical during an edit of adjacent native prose',()
   assert.equal(changes.reduceRight((value,{from,to,insert})=>value.slice(0,from)+insert+value.slice(to),source),patch.source);
 });
 
+test('native prose remains editable on both sides of an exact footnote',()=>{
+  const source='\\begin{document}\r\nBefore\\footnote{Comment.} after.\r\n\\end{document}\r\n';
+  const projection=projectMixedDocument(source),[paragraph]=projection.paragraphs;
+  const note=paragraph.parts.find(part=>part.type==='footnote');
+  assert.equal(note.kind,'atom');
+  assert.ok(projection.projection.includes(note.source));
+  const before={type:'doc',content:parseDocument(source).blocks.flatMap(importBlocks)};
+  for(const [index,oldText,newText] of [[0,'Before','Start'],[2,'after','end']]){
+    const from=paragraph.text.indexOf(oldText);
+    const edit=textEdit(projection,{paragraph,from16:from,to16:from+oldText.length,insert:newText});
+    const after=structuredClone(before);
+    after.content[0].content[index].text=after.content[0].content[index].text.replace(oldText,newText);
+    const patches=richSourceChanges(sourceProjection(source,before),after);
+    assert.equal(patches.reduceRight((value,{from,to,insert})=>value.slice(0,from)+insert+value.slice(to),source),edit.source);
+    assert.ok(edit.source.includes(note.source));
+  }
+  assert.equal(textEdit(projection,{paragraph,from16:1,to16:paragraph.text.length,insert:'Changed'}),null);
+});
+
 test('native prose targets both sides of explicit LaTeX line breaks and preserves the spelling',()=>{
   const source='\\begin{document}\r\nAlpha\\newline\r\nBeta\\\\[2pt]\r\nGamma\r\n\\end{document}\r\n';
   const draft=source.replace('Beta','Delta');

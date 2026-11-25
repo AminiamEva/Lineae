@@ -27,6 +27,7 @@ const textCommandPattern = /^\\([A-Za-z]+)(?:\{\}|[ \t]+)?/;
 const plainPattern = /^\\(textup|textmd|textnormal|mbox|hbox)\{/;
 const stylePattern = /^\\(textsc|fbox)\{/;
 const scriptPattern = /^\\(textsuperscript|textsubscript)\{/;
+export const footnoteAt = source => /^\\footnote\{([^{}\r\n]*)\}/.exec(source);
 const ignoredPattern = /^\\(?:noindent|indent|smallskip|medskip|bigskip|newpage|clearpage|pagebreak|nolinebreak|hspace|vspace)(?![A-Za-z])(?:\{[^{}]*\})?[ \t]*/;
 
 import {referenceAt} from './reference-commands.mjs';
@@ -80,7 +81,7 @@ export function parseInline(source, depth = 0, options = {}) {
       continue;
     }
 
-    const footnote = rest.match(/^\\footnote\{([^{}\r\n]*)\}/);
+    const footnote = footnoteAt(rest);
     if (footnote) { nodes.push({ footnote: footnote[1] }); cursor += footnote[0].length; continue; }
 
     const reference=referenceAt(rest);
