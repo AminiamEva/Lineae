@@ -371,11 +371,13 @@ const server=createServer(async(req,res)=>{
     await page.locator('#native-tex-edit').click();
     await panel.locator('[data-native-page="1"] canvas').click({position:{x:6500000*scale,y:7000000*scale}});
     await page.waitForFunction(()=>document.activeElement?.id==='native-tex-input');
+    const projectObservations=await page.evaluate(()=>nativeProbe.calls.filter(call=>call.command==='native_tex_observe_formula').length);
     await page.keyboard.type('q');
     await page.waitForFunction(()=>nativeProbe.calls.some(call=>call.command==='native_tex_update' &&
       call.args.source.includes('\\frac{a}{b}') &&
       call.args.files?.some(file=>file.path==='chapters/one.tex' &&
         new TextDecoder().decode(new Uint8Array(file.bytes))==='Original chapter.\n\n\\[\\frac{z}{q}\\]\n')));
+    await page.waitForFunction(count=>nativeProbe.calls.filter(call=>call.command==='native_tex_observe_formula').length>count,projectObservations);
     await panel.getByText('Click prose on the native page',{exact:false}).waitFor();
     await panel.locator('[data-native-page="1"] canvas').click({position:{x:6550000*scale,y:9250000*scale}});
     await page.keyboard.type('X');
@@ -383,6 +385,7 @@ const server=createServer(async(req,res)=>{
       call.args.source.includes('\\frac{a}{b}') &&
       call.args.files?.some(file=>file.path==='chapters/one.tex' &&
         new TextDecoder().decode(new Uint8Array(file.bytes))==='XOriginal chapter.\n\n\\[\\frac{z}{q}\\]\n')));
+    assert.equal(await page.evaluate(()=>document.activeElement?.id),'native-tex-input');
     await page.locator('#native-tex-edit').click();
     await page.evaluate(()=>{nativeProbe.targetInclude=false;});
     const previousId=await page.evaluate(()=>String(nativeProbe.session));
