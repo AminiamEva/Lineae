@@ -148,6 +148,19 @@ jobs:
           LINEAE_NATIVE_DEGRADED_PAGE="$LINEAE_NATIVE_EVIDENCE_DIR/native-degraded-pages.json" \
           LINEAE_NATIVE_DEGRADED_PDF="$LINEAE_NATIVE_EVIDENCE_DIR/native-degraded.pdf" \
           node tests/native-tex-preview-browser.cjs
+      - name: Check the engine-off workspace in the desktop WebView
+        run: |
+          npm ci --prefix apps/desktop --no-audit --no-fund
+          npm --prefix apps/desktop run tauri -- build --debug --no-bundle
+          node --input-type=module -e '
+            import {execFileSync} from "node:child_process";
+            import {resolve} from "node:path";
+            const executable=resolve("apps/desktop/src-tauri/target/debug/lineae"+(process.platform==="win32"?".exe":""));
+            const output=execFileSync(executable,["--lineae-native-workspace-smoke"],{
+              timeout:60000,encoding:"utf8",stdio:["ignore","pipe","inherit"],
+            });
+            if(output)process.stdout.write(output);
+          '
       - name: Preserve actual protocol, source, logs and clean reference PDF
         if: always()
         uses: actions/upload-artifact@v4

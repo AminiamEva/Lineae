@@ -228,7 +228,10 @@ pub fn run() {
             }
         })
         .setup(|app| {
-            let window = WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
+            let native_smoke = cfg!(debug_assertions)
+                && std::env::args_os().any(|arg| arg == "--lineae-native-workspace-smoke");
+            let entry = if native_smoke { "index.html?native-only-acceptance=1" } else { "index.html" };
+            let window = WebviewWindowBuilder::new(app, "main", WebviewUrl::App(entry.into()))
                 .title("Lineae")
                 .inner_size(1280.0, 900.0)
                 .min_inner_size(960.0, 640.0)
@@ -245,7 +248,7 @@ pub fn run() {
                         include_str!("bridge.js")
                     )
                 });
-            let window = if std::env::args_os().any(|arg| arg == "--lineae-smoke-test") {
+            let window = if native_smoke || std::env::args_os().any(|arg| arg == "--lineae-smoke-test") {
                 window
                     .initialization_script(format!("window.__LINEAE_SMOKE_UNAUTHORIZED_PATH__={};",
                         serde_json::to_string(&std::env::temp_dir().join("lineae-smoke-not-authorized.tex").to_string_lossy()).unwrap()))

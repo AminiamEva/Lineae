@@ -5,7 +5,19 @@ window.addEventListener('load', async () => {
         !document.querySelector('.ProseMirror')?.editor) {
       throw new Error('the packaged editor did not initialize');
     }
-    if (!customElements.get('math-field')) throw new Error('MathLive did not load');
+    const nativeWorkspace = new URLSearchParams(location.search).has('native-only-acceptance');
+    if (nativeWorkspace) {
+      if (customElements.get('math-field') || document.querySelector('.document-sheets')) {
+        throw new Error('the legacy page or MathLive loaded in the engine-off workspace');
+      }
+      if (!document.querySelector('#native-tex-toggle')) throw new Error('the native document controls did not initialize');
+      const rejection = await window.__TAURI__.core.invoke('native_tex_poll', {
+        sessionId: 'tex-00000000-00000000000000000000000000000000-0000000000000000',
+      }).then(() => '', error => error?.code);
+      if (rejection !== 'stale_session') throw new Error('the native session bridge did not reject an unknown session');
+    } else if (!customElements.get('math-field')) {
+      throw new Error('MathLive did not load');
+    }
     const fonts = await document.fonts.load('10pt "Latin Modern Roman"', 'Lineae');
     if (!fonts.length) throw new Error('the packaged Latin Modern font did not load');
     const symbols = await fetch('assets/tikz-symbols.svg');
