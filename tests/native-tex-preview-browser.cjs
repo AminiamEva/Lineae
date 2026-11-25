@@ -501,8 +501,8 @@ const server=createServer(async(req,res)=>{
       await page.locator('#native-tex-target').click();
       await panel.getByText('Click text on the native page',{exact:false}).waitFor();
       await page.locator('#native-tex-edit').click();
-      const nativePage=evidence.observed.find(page=>page.dl.math_owners?.glyphs?.some(glyph=>glyph.owner===41));
-      const glyph=nativePage.dl.math_owners.glyphs.find(glyph=>glyph.owner===41);
+      const nativePage=evidence.observed.find(page=>page.dl.math_owners?.glyphs?.some(glyph=>glyph.owner===1));
+      const glyph=nativePage.dl.math_owners.glyphs.find(glyph=>glyph.owner===1);
       const nativeScale=.75*(96/72)/65781.76;
       await page.locator(`[data-native-page="${nativePage.page}"] canvas`).click({position:{
         x:glyph.bbox[0]*nativeScale,y:((glyph.bbox[1]+glyph.bbox[3])/2)*nativeScale,

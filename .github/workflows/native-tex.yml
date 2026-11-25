@@ -126,9 +126,9 @@ jobs:
           node --input-type=module -e '
             import {readFileSync,writeFileSync} from "node:fs";
             import {join} from "node:path";
-            import {projectSnapshotFormulas} from "./apps/web/src/editor/native-math/document.mjs";
+            import {projectMixedDocument} from "./apps/web/src/editor/native-text/projection.mjs";
             const source=readFileSync("tests/native-math/fixtures/empty-denominator.tex","utf8");
-            const target=projectSnapshotFormulas({source,mainFile:"main.tex"});
+            const target=projectMixedDocument(source);
             writeFileSync(join(process.env.LINEAE_NATIVE_EVIDENCE_DIR,"production-projection.tex"),target.projection);
           '
           node tests/native-math/rtex-probe.mjs

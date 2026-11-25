@@ -1381,17 +1381,35 @@ mod tests {
         let source = "\\documentclass{article}\n\\begin{document}\nAlpha beta.\n\\end{document}\n";
         let projection = source.replace(
             "Alpha beta.",
-            "\\begingroup\\attribute65000=41 A\\attribute65000=42 l\\endgroup pha beta.",
+            "\\begingroup\\attribute65000=1 A\\attribute65000=2 l\\attribute65000=3 p\\attribute65000=4 h\
+             \\attribute65000=5 a \\attribute65000=6 b\\attribute65000=7 e\\attribute65000=8 t\
+             \\attribute65000=9 a\\attribute65000=10 .\\endgroup",
         );
         let session = Session::create(source).unwrap();
         let info = session.start_with_owners(true).expect("prose owner session must start");
+        {
+            let deadline = Instant::now() + Duration::from_secs(180);
+            let mut messages = lock(&session.messages);
+            loop {
+                messages.check().expect("real engine failed while waiting for prose geometry");
+                if messages.events.iter().any(|event| event["event"] == "LayoutUpdate"
+                    && event["versions"]["source_revision"].as_u64() == Some(info.source_revision)
+                    && event["compile"]["state"] == "Ok"
+                    && event["convergence"]["state"] == "Converged") {
+                    break;
+                }
+                let remaining = deadline.saturating_duration_since(Instant::now());
+                assert!(!remaining.is_zero(), "no converged prose layout");
+                messages = session.changed.wait_timeout(messages, remaining).unwrap().0;
+            }
+        }
         let observed = session.observe_formula(info.source_revision, &projection, Vec::new())
             .expect("prose attributes must produce observable glyph boxes");
         let owned = |owner: i64, ch: i64| observed.iter().any(|page| {
             page["dl"]["math_owners"]["glyphs"].as_array().is_some_and(|glyphs| glyphs.iter()
                 .any(|glyph| glyph["owner"] == owner && glyph["char"] == ch))
         });
-        assert!(owned(41, 65) && owned(42, 108), "text glyph ownership must survive compilation");
+        assert!(owned(1, 65) && owned(2, 108), "text glyph ownership must survive compilation");
         if let Some(directory) = std::env::var_os("LINEAE_NATIVE_EVIDENCE_DIR") {
             let directory = PathBuf::from(directory);
             std::fs::create_dir_all(&directory).unwrap();
