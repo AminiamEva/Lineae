@@ -3,7 +3,7 @@ import {t} from './i18n.mjs';
 import {installNativePages} from '../typesetting/rtex/pages.mjs';
 import {installNativePdf} from '../typesetting/rtex/pdf.mjs';
 import {matchesRichFormula,nativeCaretTargets} from '../editor/native-math/rich-slot.mjs';
-import {surfaceCaretRect} from '../editor/native-surface/math-surface.mjs';
+import {sameFormula,surfaceCaretRect} from '../editor/native-surface/math-surface.mjs';
 import {createNativeDocumentSession,sameTable} from '../editor/native-surface/document-session.mjs';
 import {canBeginProseFormula,projectMixedDocument,projectMixedSnapshot,textTarget} from '../editor/native-text/projection.mjs';
 import {nativeTarget} from '../editor/native-math/resolve.mjs';
@@ -112,7 +112,8 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
     const caret = nativeDocument.surface.caret, anchor = nativeDocument.surface.anchor;
     if (!caret) return;
     if (anchor && anchor!==caret) renderer.showSelection(anchor.hit,caret.hit,
-      anchor.kind!==caret.kind?nativeDocument.proseRanges(anchor,caret):undefined);
+      anchor.kind!==caret.kind||anchor.kind==='math'&&!sameFormula(anchor,caret)?
+        nativeDocument.proseRanges(anchor,caret):undefined);
     else renderer.showCaret(caret.hit);
     if(reflect)useTextSelection();
     onEnvironmentChange?.();
@@ -200,7 +201,7 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
     const [first,last]=nativeDocument.surface.range;
     if(!first||!last||first===last)return false;
     const spans=nativeDocument.structuralRanges(first,last);
-    if(first.kind===last.kind&&!spans.some(span=>span.table))return false;
+    if(first.kind===last.kind&&!spans.some(span=>span.table||first.kind==='math'&&span.formula))return false;
     const applied=commitMixedSelection?.(spans,action.insert??'');
     if(!applied)return false;
     if(applied.offset!==null)return awaitSourcePosition(applied,action.started);
@@ -393,7 +394,7 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
   function selectedSource() {
     const [from,to]=nativeDocument.surface.range;
     if(!from||from===to)return null;
-    if(from.kind==='text'||to.kind==='text'){
+    if(from.kind==='text'||to.kind==='text'||!sameFormula(from,to)){
       const ranges=nativeDocument.structuralRanges(from,to);
       return ranges.length?ranges.map(({paragraph,formula,table,from,to})=>table?
         table.owner.source.slice(table.from16,table.to16):formula?

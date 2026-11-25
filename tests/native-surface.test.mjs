@@ -457,6 +457,24 @@ test('extending prose upward to the first display includes the entire formula',(
   ]);
 });
 
+test('native select-all from prose includes complete display formulas at both ends',()=>{
+  const projection=projectMixedDocument('\\begin{document}\n\\[x\\]\n\nText.\n\n\\[y\\]\n\\end{document}\n');
+  const [first,last]=projection.formulas,[paragraph]=projection.paragraphs;
+  const x=first.math.atoms.find(atom=>atom.nucleus==='x').tag;
+  const y=last.math.atoms.find(atom=>atom.nucleus==='y').tag;
+  const tag=paragraph.glyphs[0].tag;
+  const session=createNativeDocumentSession(endpoint=>nativeTarget(projection,endpoint));
+  session.setObservation(page([],[glyph(x,50),glyph(tag,100),glyph(y,150)]),projection);
+  const prose=textTarget(projection,tag,false);
+  assert.equal(session.select(prose,prose),true);
+  assert.equal(session.selectAll(),true);
+  const [from,to]=session.surface.range;
+  assert.equal(from.formula,first);
+  assert.equal(to.formula,last);
+  assert.deepEqual(session.structuralRanges(from,to),[{formula:first},
+    {paragraph,from:0,to:paragraph.text.length},{formula:last}]);
+});
+
 test('native outline targeting selects the second repeated heading on its measured page',()=>{
   const source='\\begin{document}\n\\section{Repeat}\n\n\\section{Repeat}\n\\end{document}\n';
   const projection=projectMixedDocument(source);

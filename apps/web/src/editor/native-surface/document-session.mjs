@@ -29,7 +29,12 @@ export function createNativeDocumentSession(resolve) {
   function canSelect(from,to){
     if(sameOwner(from,to))return true;
     if(!from||!to||fileOf(from)!==fileOf(to)&&(order(from)<0||order(to)<0))return false;
-    if(from.kind===to.kind)return from.kind==='text'&&(sameTable(from,to)||!tableCellOf(from)&&!tableCellOf(to));
+    if(from.kind==='text'&&to.kind==='text')return sameTable(from,to)||!tableCellOf(from)&&!tableCellOf(to);
+    if(from.kind==='math'&&to.kind==='math'){
+      const [first,last]=compare(from,to)<0?[from,to]:[to,from];
+      return !tableCellOf(first)&&!tableCellOf(last)&&first===displayEdges.get(first.formula)?.[0]&&
+        last===displayEdges.get(last.formula)?.[1];
+    }
     const [prose,math]=from.kind==='text'?[from,to]:[to,from];
     const edges=displayEdges.get(math.formula);
     if(!edges||tableCellOf(prose)||tableCellOf(math))return false;
@@ -151,7 +156,7 @@ export function createNativeDocumentSession(resolve) {
       if(!caret)return false;
       const stops=selection.stops.filter(stop=>caret.kind==='math'
         ?stop.kind==='math'&&sameFormula(caret,stop)&&caret.slot.id===stop.slot.id
-        :stop.kind==='text'&&(caret.paragraph.tableCell?sameOwner(caret,stop):canSelect(caret,stop)));
+        :caret.paragraph.tableCell?sameOwner(caret,stop):canSelect(caret,stop));
       preferredX=null;
       return stops.length>0&&selection.selectTargets(stops[0],stops.at(-1));
     },
@@ -172,7 +177,7 @@ export function createNativeDocumentSession(resolve) {
       return selection.selectTargets(next,next);
     },
     proseRanges(anchor,head){
-      if(!canSelect(anchor,head)||anchor.kind==='math'&&head.kind==='math'||
+      if(!canSelect(anchor,head)||anchor.kind==='math'&&head.kind==='math'&&sameFormula(anchor,head)||
          (anchor.paragraph===head.paragraph&&anchor.local===head.local))return [];
       const [from,to]=compare(anchor,head)<=0?[anchor,head]:[head,anchor];
       if(from.paragraph&&from.paragraph===to.paragraph)return [{paragraph:from.paragraph,from:from.local,to:to.local}];
