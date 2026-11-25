@@ -332,13 +332,17 @@ export function installNativePages({host,getFont,getRaster,onPaint,onError,onMat
     cancelAnimationFrame(frame);
     frame=requestAnimationFrame(()=>{
       try {
-        for(const entry of pages.values()) {
-          if(entry.dom.hidden)continue;
-          const box=entry.dom.getBoundingClientRect(),viewport=host.getBoundingClientRect();
-          if(box.bottom>=viewport.top-1000 && box.top<=Math.min(viewport.bottom,window.innerHeight)+1000)draw(entry);
-          else if(entry.painted){
-            entry.canvas.width=1;entry.canvas.height=1;
-            entry.painted=null;entry.rasterHits=[];
+        const viewport=host.getBoundingClientRect();
+        if(viewport.width&&viewport.height){
+          const bottom=Math.min(viewport.bottom,window.innerHeight)+1000;
+          for(const entry of pages.values()) {
+            if(entry.dom.hidden)continue;
+            const box=entry.dom.getBoundingClientRect();
+            if(box.bottom>=viewport.top-1000&&box.top<=bottom)draw(entry);
+            else if(entry.painted){
+              entry.canvas.width=1;entry.canvas.height=1;
+              entry.painted=null;entry.rasterHits=[];
+            }
           }
         }
         if(revision>=0&&!warm)onPaint(revision);

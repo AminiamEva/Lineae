@@ -599,14 +599,21 @@ const server=createServer(async(req,res)=>{
       const openedSessions=await page.evaluate(()=>nativeProbe.calls.filter(call=>call.command==='native_tex_open').length);
       await page.locator('[data-source-mode=source]').click();
       await panel.waitFor({state:'hidden'});
+      const beforeHiddenEdit=await page.evaluate(()=>nativeProbe.ruleRects.length);
+      await page.locator('.cm-content .cm-line').filter({hasText:'XNative document.'}).click();
+      await page.keyboard.press('Home');
+      await page.keyboard.insertText('H');
+      await page.waitForFunction(expected=>nativeProbe.source===expected&&
+        document.querySelector('#native-tex-preview').dataset.state==='current',workspaceSource.replace('Native document.','HXNative document.'));
+      assert.equal(await page.evaluate(()=>nativeProbe.ruleRects.length),beforeHiddenEdit);
       await page.locator('[data-source-mode=split]').click();
       await page.locator('.tex-preview > #native-tex-preview[data-editing=false] canvas').waitFor();
       assert.equal(await page.locator('.tex-preview > .document-page').isVisible(),false);
       assert.equal(await page.locator('#native-tex-input').isVisible(),false);
-      await page.locator('.cm-content .cm-line').filter({hasText:'XNative document.'}).click();
+      await page.locator('.cm-content .cm-line').filter({hasText:'HXNative document.'}).click();
       await page.keyboard.press('Home');
       await page.keyboard.insertText('S');
-      await page.waitForFunction(expected=>nativeProbe.source===expected,workspaceSource.replace('Native document.','SXNative document.'));
+      await page.waitForFunction(expected=>nativeProbe.source===expected,workspaceSource.replace('Native document.','SHXNative document.'));
       await page.locator('[data-source-mode=body]').click();
       await panel.getByText('Click text on the native page',{exact:false}).waitFor();
       assert.equal(await page.evaluate(()=>nativeProbe.calls.filter(call=>call.command==='native_tex_open').length),openedSessions);

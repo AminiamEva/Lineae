@@ -43,6 +43,8 @@ export function installNativePdf({host,onPaint,onError}) {
     cancelAnimationFrame(frame);
     const attempt=epoch;
     frame=requestAnimationFrame(()=>{
+      const viewport=host.getBoundingClientRect();
+      if(!viewport.width||!viewport.height)return;
       for(const entry of pages) {
         const box=entry.dom.getBoundingClientRect();
         if(box.bottom>=0 && box.top<window.innerHeight+600)void draw(entry,attempt).catch(onError);
