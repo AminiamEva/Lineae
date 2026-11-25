@@ -104,7 +104,37 @@ export function installNativeTexPreview({host,before,getSource,getSnapshot,isCom
       return;
     }
     pendingLatency ??= {started, committed:performance.now()};
+    return true;
   }
+  function selectedSource() {
+    const [from,to]=surface.range;
+    if(!from||from===to)return null;
+    if(from.kind==='text'&&from.paragraph===to.paragraph)
+      return from.paragraph.text.slice(from.local,to.local);
+    if(from.kind==='math'&&from.formula===to.formula&&from.slot.id===to.slot.id)
+      return from.slot.raw.slice(from.local,to.local);
+    return null;
+  }
+  for(const type of ['copy','cut']){
+    input.addEventListener(type,event=>{
+      const text=selectedSource();
+      if(text===null||!event.clipboardData)return;
+      if(type==='cut'){
+        if(!current()||!observation)return;
+        const edit=surface.erase();
+        if(!commitSurface(edit))return;
+      }
+      event.clipboardData.setData('text/plain',text);
+      event.preventDefault();
+    });
+  }
+  input.addEventListener('paste',event=>{
+    if(!nativeEditing||!event.clipboardData)return;
+    event.preventDefault();
+    if(!current()||!observation)return;
+    const text=event.clipboardData.getData('text/plain');
+    if(text)commitSurface(surface.insert(text));
+  });
   input.addEventListener('compositionstart', () => { compositionField = input; });
   input.addEventListener('compositionend', event => {
     compositionField = null;
@@ -585,6 +615,11 @@ export function installNativeTexPreview({host,before,getSource,getSnapshot,isCom
     refresh,documentChanged:()=>{void stop();},relocalize,
     hasMathInput: event => event.target===input && nativeEditing && surface===mathSurface,
     runMathCommand(command) {
+      if(command==='undo'||command==='redo'){
+        surface.clearPending();
+        history?.(command);
+        return true;
+      }
       if(!current()||!observation||surface!==mathSurface)return false;
       const edit=surface.command(command);
       if(!edit)return false;

@@ -502,6 +502,12 @@ const server=createServer(async(req,res)=>{
     await panel.getByText('Click prose on the native page',{exact:false}).waitFor();
     await panel.locator('[data-native-page="1"] canvas').click({position:{x:7510000*inlineScale,y:9250000*inlineScale}});
     await page.keyboard.press('Shift+ArrowLeft');
+    const copied=await page.locator('#native-tex-input').evaluate(input=>{
+      const clipboardData=new DataTransfer();
+      input.dispatchEvent(new ClipboardEvent('copy',{clipboardData,bubbles:true,cancelable:true}));
+      return clipboardData.getData('text/plain');
+    });
+    assert.equal(copied,' $x$ ');
     await page.keyboard.press('Delete');
     const withoutInline=inlineDoc.toString().replace('Alpha $x$ beta.','AlphaYbeta.');
     await page.waitForFunction(expected=>nativeProbe.source===expected,withoutInline);
