@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {nativeAttachedSnapshot,nativeProjectSnapshot} from '../apps/web/src/typesetting/rtex/project-snapshot.mjs';
 import {rasterContains,registeredRasterHits,stagedRaster,stagedRasterPath} from '../apps/web/src/typesetting/rtex/raster-assets.mjs';
 import {nativeFontFace} from '../apps/web/src/typesetting/rtex/font-collection.mjs';
-import {sameCachedDrawingItems} from '../apps/web/src/typesetting/rtex/cached-drawings.mjs';
+import {matchObservedDrawingFonts,sameCachedDrawingItems} from '../apps/web/src/typesetting/rtex/cached-drawings.mjs';
 import {projectMixedSnapshot,textEdit} from '../apps/web/src/editor/native-text/projection.mjs';
 
 test('native raster commands can only resolve staged PNG and JPEG assets',()=>{
@@ -53,6 +53,19 @@ test('observed PDF drawing ownership keeps the original cached box and all neigh
   assert.equal(sameCachedDrawingItems(original,observed,[]),false);
   assert.equal(sameCachedDrawingItems(original,observed,[drawing,drawing]),false);
   assert.equal(sameCachedDrawingItems(original,[...observed.slice(0,2),['r',100,246,40,1]],[drawing]),false);
+});
+
+test('picture observation maps engine font IDs only when complete descriptors and glyph coordinates agree',()=>{
+  const make=(id,size,position)=>({
+    fonts:{[id]:{id,filename:'/font.otf',subfont:1,size,extend:1000,slant:0,squeeze:1000}},
+    other:[],lines:[{items:[['g',id,65,37,position,42]]}],
+  });
+  const original=make(1,655360,24);
+  const map=matchObservedDrawingFonts(original,make(9,655360,24));
+  assert.deepEqual(map,original);
+  assert.equal(matchObservedDrawingFonts(original,make(9,655361,24)),null);
+  const shifted=matchObservedDrawingFonts(original,make(9,655360,25));
+  assert.equal(sameCachedDrawingItems(original.lines[0].items,shifted.lines[0].items,[]),false);
 });
 
 test('native font extraction follows LuaTeX face numbers and rejects malformed offsets',()=>{

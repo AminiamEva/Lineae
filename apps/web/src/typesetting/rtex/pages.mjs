@@ -5,7 +5,7 @@ import {fontKey} from './upstream/src/fontKey.ts';
 import {parseMapFile,parseEncFile,type1Outlines} from './upstream/src/type1.ts';
 import {hitMathField,hitMathGlyph} from '../../editor/native-math/hit.mjs';
 import {warmRows} from './warm-rows.mjs';
-import {cachedDrawingBox,sameCachedDrawingItems} from './cached-drawings.mjs';
+import {cachedDrawingBox,matchObservedDrawingFonts,sameCachedDrawingItems} from './cached-drawings.mjs';
 
 const CSS_PER_SP=(96/72)/65781.76;
 
@@ -106,13 +106,15 @@ export function installNativePages({host,getFont,getTypeOneFont,getRaster,onPain
     for(const page of observed){
       const raw=pages.get(page.page).dl,measured=page.dl;
       const originalItems=[raw.other,...raw.lines.map(line=>line.items)];
-      const measuredItems=[measured.other,...measured.lines.map(line=>line.items)];
       const boxes=originalItems.flat().map(cachedDrawingBox).filter(Boolean);
       const matched=drawings.filter(candidate=>candidate.number===page.page&&
         boxes.filter(box=>box.every((value,axis)=>value===candidate.box[axis])).length===1);
       if(drawing(raw)!==drawing(measured)){
-        if(!pdfBacked||page.exact||!matched.length||drawing(raw,false)!==drawing(measured,false)||
-           originalItems.some((items,index)=>!sameCachedDrawingItems(items,measuredItems[index],matched)))return false;
+        if(!pdfBacked||page.exact||!matched.length)return false;
+        const normalized=matchObservedDrawingFonts(raw,measured);
+        if(!normalized||drawing(raw,false)!==drawing(normalized,false))return false;
+        const measuredItems=[normalized.other,...normalized.lines.map(line=>line.items)];
+        if(originalItems.some((items,index)=>!sameCachedDrawingItems(items,measuredItems[index],matched)))return false;
       }
       verifiedDrawings.push(...matched);
     }
