@@ -15,7 +15,7 @@ import {separateRepeatedOwners} from '../editor/native-surface/repeated-owners.m
 // Native LaTeX output is the primary page. The opt-in native input mode sends
 // supported keys, caret and IME through this surface into ProseMirror; the old
 // JS-formatted page and MathLive inputs stay available as the migration fallback.
-export function installNativeTexPreview({host,before,primary=false,documentZoom=100,isDocumentMode,splitHost,getSource,getSnapshot,isComposing,focusMathSlot,focusImage,listTikzDrawings,editTikzDrawing,openMeasuredDrawing,navigateReference,listSourceBlocks,openSourceBlock,continuationRegion,selectionRegions,foldedFiles,selectText,serializeTextSelection,commitMath,commitText,commitTextLines,commitInlinePaste,commitProjectRange,canStartText,commitInitialText,commitInitialMath,commitParagraphBreak,commitParagraphJoin,commitHardBreak,commitNewMath,commitAfterFormulaText,onEnvironmentChange,showTextCommands,history}) {
+export function installNativeTexPreview({host,before,primary=false,documentZoom=100,isDocumentMode,splitHost,getSource,getSnapshot,isComposing,focusMathSlot,focusImage,listTikzDrawings,editTikzDrawing,openMeasuredDrawing,navigateReference,listSourceBlocks,openSourceBlock,continuationRegion,nativeTextEnvironment,continueNativeTextEnvironment,selectionRegions,foldedFiles,selectText,serializeTextSelection,commitMath,commitText,commitTextLines,commitInlinePaste,commitProjectRange,canStartText,commitInitialText,commitInitialMath,commitParagraphBreak,commitParagraphJoin,commitHardBreak,commitNewMath,commitAfterFormulaText,onEnvironmentChange,showTextCommands,history}) {
   const invoke=window.__TAURI__?.core?.invoke;
   if(!invoke) return {refresh(){},documentChanged(){},relocalize(){}};
   const button=document.createElement('button');
@@ -275,6 +275,9 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
         return action.insert==='$'&&!action.paste?finishFormula():submitInput(action);
       case 'after-formula':
         edit=commitAfterFormulaText?.(draft.formula,action.insert);
+        break;
+      case 'after-container':
+        edit=continueNativeTextEnvironment?.(draft.caret,draft.outermost,action.insert);
         break;
       default:
         if(['$','$$'].includes(action.insert)&&!action.paste&&startFormula(action.insert==='$$'))return true;
@@ -1289,6 +1292,22 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
     },
     useTextSelection,
     leaveFile,
+    leaveTextEnvironment(outermost){
+      if(!acceptsInput()||!current()||!observation||pendingEdit||draftInput)return false;
+      const caret=nativeDocument.surface.caret;
+      const target=nativeTextEnvironment?.(caret,outermost);
+      if(!target)return false;
+      if(nativeDocument.selectRegion(target)){
+        paintSurfaceSelection(true);
+        positionInput(true);
+        return true;
+      }
+      if(target.source.slice(target.from,target.to).trim())return false;
+      draftInput={kind:'after-container',caret,outermost};
+      renderer.clearCaret();
+      targetStatus.textContent=t('在环境结束后继续输入','Type after the environment');
+      return true;
+    },
     editAdjacentFormula(){
       if(!acceptsInput()||!current()||!observation||pendingEdit||draftInput||!nativeDocument.editAdjacentFormula())return false;
       paintSurfaceSelection(true);

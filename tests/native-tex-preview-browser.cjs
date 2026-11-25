@@ -824,6 +824,13 @@ const server=createServer(async(req,res)=>{
       await page.waitForFunction(expected=>nativeProbe.source===expected,proofSource.replace('One step.','XOne step.'));
       await page.keyboard.press(mod+'+z');
       await page.waitForFunction(expected=>nativeProbe.source===expected,splitProof);
+      await panel.getByText('Click text on the native page',{exact:false}).waitFor();
+      await canvas.click({position:{x:6550000*scale,y:9250000*scale}});
+      await page.keyboard.press(mod+'+Shift+j');
+      await panel.getByText('Type after the environment',{exact:true}).waitFor();
+      await page.keyboard.type('Outside proof.');
+      const continuedProof=splitProof.replace('\\end{proof}\r\n','\\end{proof}\r\n\r\nOutside proof.\r\n');
+      await page.waitForFunction(expected=>nativeProbe.source===expected,continuedProof);
       await page.locator('#native-tex-close').click();
       for(const [name,prefix] of [['abstract','\\small '],['quote','']]){
         const source=`\\documentclass{article}\r\n\\begin{document}\r\n\\begin{${name}}\r\n`+

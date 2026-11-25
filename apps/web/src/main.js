@@ -2972,6 +2972,8 @@ function nativeParagraphFormattingActive(){
 function runNativeTextCommand(command,context,event){
   if(command==='insertTable')return insertNativeTableFromProse();
   if(command==='hardBreak')return nativeTexPreview.startHardBreak();
+  if(command==='leaveEnvironment'||command==='leaveAllEnvironments')
+    return nativeTexPreview.leaveTextEnvironment(command==='leaveAllEnvironments');
   if(command==='openTikz'||command==='codeLanguage'){
     shortcutActions.editor[command]();
     return true;
@@ -3589,6 +3591,54 @@ function emptyContinuation(region,composition,doc){
   for(let i=0;i<index;i++)start+=doc.child(i).nodeSize;
   return {source,start:start+1};
 }
+const nativeTextContainers=new Set(['blockquote','theoremBlock','orderedList','bulletList','descriptionList','multiColumn','table']);
+function nativeTextEnvironment(caret,outermost){
+  if(caret?.kind!=='text')return null;
+  const {paragraph}=caret,{source,filePath:path,occurrence=0}=paragraph;
+  const target=nativeProsePosition(paragraph,caret.local,caret.local);
+  if(!target)return null;
+  const {state}=editor,{range,composition,file}=target;
+  const $from=state.doc.resolve(range.from),depth=composition?2:1;
+  if($from.depth<=depth||!nativeTextContainers.has($from.node(depth).type.name))return null;
+  if(!outermost){
+    for(let level=depth+1;level<$from.depth;level++)if(nativeTextContainers.has($from.node(level).type.name))return null;
+  }
+  const owner=range.match.sourceBlock??(paragraph.tableCell&&{from:paragraph.tableCell.from16,to:paragraph.tableCell.to16});
+  if(!owner)return null;
+  const region=composition?.regions[$from.index(0)];
+  if(composition&&(!region||region.id!==file.id||owner.to>region.to))return null;
+  const document=parseDocument(source,{fragment:projectFileKind==='tex'});
+  if(!document)return null;
+  const limit=region?.to??source.length-document.end.length;
+  return {path,source,occurrence,from:owner.to,to:limit,owner,after:$from.after(depth),eol:document.eol};
+}
+function continueNativeTextEnvironment(caret,outermost,text){
+  const end=nativeTextEnvironment(caret,outermost);
+  if(!end||!text.trim()||/[\r\n]/.test(text))return null;
+  const {source,path,after,owner,eol,to}=end;
+  if(source.slice(owner.to,to).trim())return null;
+  const tail=source.slice(owner.from,owner.to);
+  const from=owner.from+tail.trimEnd().length;
+  const line=eol+eol+serialize({type:'text',text});
+  const insert=line+(from===to&&to<source.length?eol:'');
+  const draft=source.slice(0,from)+insert+source.slice(from);
+  const {state}=editor,{schema}=state;
+  const paragraph=schema.nodes.paragraph.create(null,schema.text(text));
+  const tr=state.tr.insert(after,paragraph);
+  tr.setSelection(TextSelection.create(tr.doc,after+text.length+1));
+  const composition=projectDocument.composition,project=projectExplorer?.model;
+  if(composition){
+    const file=project?.files.get(path);
+    if(!file||!dispatchNativeProjectChange(state,tr,project,new Map([[file.id,draft]])))return null;
+  }else{
+    const revised=parseDocument(draft.slice(owner.from,to+insert.length),{fragment:true})?.blocks.flatMap(importBlocks);
+    if(revised?.length!==2||!schema.nodeFromJSON(revised[0]).eq(state.doc.resolve(after).nodeBefore)||
+      !schema.nodeFromJSON(revised[1]).eq(paragraph))return null;
+    const projected=sourceProjection(draft,tr.doc.toJSON(),{fragment:projectFileKind==='tex'});
+    if(!projected||!dispatchNativeParagraphChange(state,tr,source,draft,{from,to:from,insert},projected))return null;
+  }
+  return {source:draft,offset:from+line.length,path};
+}
 function forEachNativeDocumentBlock(type,visit){
   if(!sourceView.hidden)return;
   const accepts=typeof type==='function'?type:node=>node.type.name===type;
@@ -3855,6 +3905,7 @@ nativeTexPreview=installNativeTexPreview({host:footer,before:modes,primary:nativ
     if(!continuation)return null;
     return {...continuation,occurrence:next.occurrence,empty:Boolean(emptyContinuation(continuation,composition,editor.state.doc))};
   },
+  nativeTextEnvironment,continueNativeTextEnvironment,
   selectionRegions:()=>{
     const composition=nativeSelectionComposition(currentNativeProjectComposition());
     return composition?.regions.map((region,index)=>({...region,trail:composition.content[index]?.attrs.trail}));
@@ -4310,6 +4361,10 @@ nativeTexPreview=installNativeTexPreview({host:footer,before:modes,primary:nativ
     }
     const transaction=editor.state.tr.setNodeMarkup(position,undefined,{...node.attrs,latex});
     if(structure)closeHistory(transaction);
+    const finish=()=>{
+      if(structure==='displayStyle')editor.view.dispatch(closeHistory(editor.state.tr));
+      return true;
+    };
     if(needsAmsmath){
       const doc=!composition&&parseDocument(formula.source);
       if(!doc||!Number.isInteger(cursor))return false;
@@ -4333,7 +4388,7 @@ nativeTexPreview=installNativeTexPreview({host:footer,before:modes,primary:nativ
       }
       const projected=sourceProjection(expected,transaction.doc.toJSON(),{fragment:projectFileKind==='tex'});
       return Boolean(projected&&dispatchNativeParagraphChange(editor.state,transaction,formula.source,expected,
-        {from,to,insert:patch.insert},projected));
+        {from,to,insert:patch.insert},projected)&&finish());
     }
     if(composition){
       const drafts=projectDocument.changes(transaction.doc.toJSON());
@@ -4345,7 +4400,7 @@ nativeTexPreview=installNativeTexPreview({host:footer,before:modes,primary:nativ
         source.slice(0,change.from)+change.insert+source.slice(change.to),formula.source)!==expected)return false;
     }
     editor.view.dispatch(transaction);
-    return editor.state.doc.nodeAt(position)?.attrs.latex===latex;
+    return editor.state.doc.nodeAt(position)?.attrs.latex===latex&&finish();
   },
   commitText:({paragraph,patch,text})=>{
     if((!text&&!paragraph.tableCell)||text===paragraph.text)return false;

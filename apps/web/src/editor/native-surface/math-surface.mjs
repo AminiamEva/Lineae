@@ -231,7 +231,8 @@ export function createMathSurface({resolve,selection=createSelectionModel(sameFo
           ?expandMatrix(from.formula.math,selection.caret.slot,selection.caret.local,command==='addRow'?'row':'column')
           :applyStructureCommand(from.formula.math,{slotId:from.slot.id,from16:from.local,to16:to.local,command});
         if(!result)return null;
-        return selection.record({formula:from.formula,patch:result.patch,text:result.source,structure:true,
+        return selection.record({formula:from.formula,patch:result.patch,text:result.source,
+          structure:command==='toggleDisplayStyle'?'displayStyle':true,
           requiresAmsmath:result.requiresAmsmath},
           from.formula.from16+result.cursor);
       } catch { return null; }
