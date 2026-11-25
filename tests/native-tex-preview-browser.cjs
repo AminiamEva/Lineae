@@ -130,8 +130,11 @@ const server=createServer(async(req,res)=>{
       const expected=mixedSource.replace('Alpha beta.','XYZAlpha beta.').replace('\\frac{a}{b}','\\frac{a}{cb}');
       assert.equal(await page.evaluate(()=>nativeProbe.source),expected,'Both native edits preserve every other source byte');
       assert.deepEqual(errors,[]);
+      await page.waitForFunction(()=>nativeProbe.calls.some(call=>call.command==='native_tex_observe_formula'&&
+        call.args.sourceRevision===nativeProbe.revision));
       await panel.getByText('Click prose on the native page',{exact:false}).waitFor();
       await canvas.click({position:{x:6510000*scale,y:6950000*scale}});
+      await page.waitForFunction(()=>document.activeElement?.id==='native-tex-input');
       await page.keyboard.press('Backslash');
       const nativePalette=page.getByRole('dialog',{name:'LaTeX completion',exact:true});
       await nativePalette.getByRole('textbox',{name:'LaTeX command',exact:true}).fill('sqrt');
@@ -460,6 +463,19 @@ const server=createServer(async(req,res)=>{
       assert.deepEqual(await page.locator('.ProseMirror p').allTextContents(),['AlphaBeta']);
       await page.keyboard.press(mod+'+z');
       await page.waitForFunction(expected=>nativeProbe.source.replace(/\r\n/g,'\n')===expected,split.replace(/\r\n/g,'\n'));
+      await panel.getByText('Click text on the native page',{exact:false}).waitFor();
+      await canvas.click({position:{x:7520000*scale,y:9250000*scale}});
+      await page.keyboard.insertText('$');
+      await page.keyboard.insertText('x');
+      await page.waitForFunction(expected=>nativeProbe.source===expected,split.replace('Beta','$x$Beta'));
+      await page.keyboard.press(mod+'+z');
+      await page.waitForFunction(expected=>nativeProbe.source===expected,split);
+      await panel.getByText('Click text on the native page',{exact:false}).waitFor();
+      await canvas.click({position:{x:7520000*scale,y:9250000*scale}});
+      await page.keyboard.insertText('$');
+      await page.keyboard.insertText('$');
+      await page.keyboard.insertText('x');
+      await page.waitForFunction(expected=>nativeProbe.source===expected,split.replace('Beta','\\[x\\]\n\nBeta'));
       await page.goto('http://127.0.0.1:'+server.address().port+'/?native-only-acceptance=1',{waitUntil:'networkidle'});
       const singleProject=workspaceSource.replace('Native document.','Native document.\n\n\\[\\frac{a}{}\\]');
       await openMockProject(page,false,singleProject);
@@ -1047,7 +1063,8 @@ const server=createServer(async(req,res)=>{
       const nativePage=evidence.observed.find(page=>page.dl.math_owners?.fields.some(field=>
         field.owner===evidence.targetOwner&&field.role==='den'&&field.empty));
       const target=nativePage.dl.math_owners.fields.find(field=>field.owner===evidence.targetOwner&&field.role==='den');
-      const [x,y]=target.bbox,nativeScale=.75*(96/72)/65781.76;
+      const zoom=Number(await page.locator('footer.document-status input[type=range]').inputValue());
+      const [x,y]=target.bbox,nativeScale=zoom/100*(96/72)/65781.76;
       await page.locator(`[data-pdf-page="${nativePage.page}"] canvas`).click({position:{x:x*nativeScale,y:y*nativeScale}});
       await page.waitForFunction(()=>document.activeElement?.id==='native-tex-input');
       await page.keyboard.type('b');

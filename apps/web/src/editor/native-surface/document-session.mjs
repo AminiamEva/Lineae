@@ -128,6 +128,9 @@ export function createNativeDocumentSession(resolve) {
     expectInitialText(edit,offset,path){
       selection.record(edit,offset,{kind:'text',paragraph:{filePath:path}});
     },
+    expectInitialMath(edit,offset,path){
+      selection.record(edit,offset,{kind:'math',formula:{filePath:path}});
+    },
     reset(){selection.reset();sourceProjection=null;preferredX=null;orderByFile.clear();},
   };
 }

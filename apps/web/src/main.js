@@ -1,6 +1,6 @@
 import {nativeEditorRange} from './editor/native-text/editor-range.mjs';
 import {projectMixedDocument,projectTextDocument} from './editor/native-text/projection.mjs';
-import {nativeMathCommandNames} from './editor/native-math/source.mjs';
+import {nativeMathCommandNames,projectMath} from './editor/native-math/source.mjs';
 import {loadLegacyMath,nativeOnlyAcceptance,nativeWorkspaceRequested} from './editor/native-surface/acceptance-mode.mjs';
 import {AppendixStart,MatterStart,LayoutCommand} from './editor/appendix.js';
 import {Lipsum} from './editor/lipsum.js';
@@ -1150,7 +1150,7 @@ function dispatchNativeParagraphChange(state,tr,source,draft,change,nextProjecti
   return true;
 }
 function prepareNativeParagraphHistory(transaction) {
-  if(!isHistoryTransaction(transaction)||transaction.before.childCount===transaction.doc.childCount)return false;
+  if(!isHistoryTransaction(transaction)||!nativeParagraphTransitions.length)return false;
   const before=JSON.stringify(transaction.before.toJSON()),after=JSON.stringify(transaction.doc.toJSON());
   for(let index=nativeParagraphTransitions.length-1;index>=0;index--){
     const transition=nativeParagraphTransitions[index];
@@ -1192,6 +1192,8 @@ editor.registerPlugin(new Plugin({
       if(!valid)sourceView.error(t('请在对应文件的源码中修改此结构','Edit this structure in its source file'));
       return !!valid;
     }
+    const verified=transaction.getMeta('standaloneParagraph');
+    if(verified)return !syncPending&&transaction.before===state.doc&&verified.projection?.text===verified.draft;
     if(sourceView.hidden&&prepareNativeParagraphHistory(transaction))return true;
     if(!usesSourceProjection()) {
       const index=standaloneParagraphEdit(transaction);
@@ -2901,6 +2903,50 @@ nativeTexPreview=installNativeTexPreview({host:footer,before:modes,primary:nativ
     const change={from,to,insert:''};
     return dispatchNativeParagraphChange(state,tr,source,draft,change,projected)
       ?{source:draft,offset:from,path:first.paragraph.filePath}:null;
+  },
+  commitNewMath:(first,last,text,display)=>{
+    if(!text.trim()||/[\r\n]/.test(text)||first?.kind!=='text'||first.paragraph!==last?.paragraph)return null;
+    const model=projectMath(text);
+    if(!model.supported)return null;
+    const {paragraph}=first;
+    if(paragraph.heading||paragraph.container||paragraph.tableCell||paragraph.parts.length!==1||paragraph.parts[0].marks?.length)return null;
+    if(projectDocument.composition&&!projectDocument.rebase(currentNativeProjectComposition(),editor.getJSON()))return null;
+    const target=nativeProsePosition(paragraph,first.local,last.local);
+    if(!target)return null;
+    const {state}=editor;
+    const {range}=target;
+    const math=editor.schema.nodes[display?'mathBlock':'math'].create({latex:text,display,delimiter:display?'\\[':'$'});
+    const tr=state.tr;
+    let prefix='$',suffix='$';
+    if(display){
+      if(first!==last||first.local!==0&&first.local!==paragraph.text.length)return null;
+      const head=first.local===0;
+      const eol=paragraph.source.includes('\r\n')?'\r\n':'\n';
+      prefix=(head?'':eol+eol)+'\\[';
+      suffix='\\]'+(head?eol+eol:'');
+      const at=head?range.match.offset:range.match.offset+range.match.node.nodeSize;
+      tr.insert(at,math);
+      tr.setSelection(NodeSelection.create(tr.doc,at));
+    }else{
+      tr.replaceWith(range.from,range.to,math);
+      tr.setSelection(TextSelection.create(tr.doc,range.from+1));
+    }
+    const change={from:first.docOffset,to:last.docOffset,insert:prefix+text+suffix};
+    const draft=paragraph.source.slice(0,change.from)+change.insert+paragraph.source.slice(change.to);
+    const empty=model.slots.find(slot=>['numerator','denominator','radicand','degree','superscript','subscript','cell']
+      .includes(slot.role)&&slot.raw.length===0);
+    const offset=change.from+prefix.length+(empty?.from16??text.length);
+    const result={source:draft,offset,path:paragraph.filePath};
+    if(target.composition){
+      const drafts=projectDocument.changes(tr.doc.toJSON());
+      if(drafts?.get(target.file.id)!==draft)return null;
+      for(const [id,value] of drafts)if(id!==target.file.id&&value!==target.project.file(id).draft)return null;
+      editor.view.dispatch(closeHistory(tr));
+      return editor.state.doc===state.doc?null:result;
+    }
+    const projected=sourceProjection(draft,tr.doc.toJSON(),{fragment:projectFileKind==='tex'});
+    if(!projected?.blocks.some(block=>block.editable&&block.from<=offset&&block.to>=offset))return null;
+    return dispatchNativeParagraphChange(state,tr,paragraph.source,draft,change,projected)?result:null;
   },
   focusMathSlot:async(anchor,head,isCurrent)=>{    const project=projectExplorer?.model;
     const formula=head.formula;
