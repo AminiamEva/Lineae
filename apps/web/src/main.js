@@ -2621,10 +2621,10 @@ installKeybindings(window, {
   nativeBindings,
   getContext(event) {
     if(nativeTexPreview?.hasMathInput?.(event))
-      return {element:event.target,nativeMath:true,scopes:['math','global']};
+      return {element:event.target,nativeMath:true,scopes:['math','system','global']};
     if(nativeTexPreview?.hasTextInput?.(event))
       return {element:event.target,nativeText:true,
-        scopes:nativeTexPreview.inTableCell()?['table','editor','global']:['editor','global']};
+        scopes:nativeTexPreview.inTableCell()?['table','editor','system','global']:['editor','system','global']};
     if (event.target.closest?.('.tex-code .cm-content'))
       return {element:sourceView.editorView?.contentDOM,source:true,scopes:['source','system','global']};
     if (event.target.closest?.('.tex-code'))return {element:event.target,scopes:['global'],only:'save'};
@@ -2662,6 +2662,7 @@ installKeybindings(window, {
     if (scope === 'source') return sourceView.runShortcut(command);
     if (scope === 'system') {
       if(command==='selectAll') {
+        if(context.nativeText||context.nativeMath)return nativeTexPreview.selectAll();
         if(context.source)return sourceView.runShortcut('selectAll');
         if(context.field)return context.field.executeCommand('selectAll');
         return editor.commands.selectAll();
@@ -3833,7 +3834,8 @@ const language=document.querySelector('#language');
 const fontFamilyControl=home.querySelector('[data-format-attribute="fontFamily"]');
 const fontSizeControl=home.querySelector('[data-format-attribute="fontSize"]');
 const colorControl=home.querySelector('.color-control');
-const clipboard=createClipboard(editor,{getField:activeMath,getSource:()=>sourceView.editorView});
+const clipboard=createClipboard(editor,{getField:activeMath,getSource:()=>sourceView.editorView,
+  getNative:()=>nativeTexPreview?.clipboardSelection()});
 let formatPainter;
 let clipboardStatusTimer;
 function reportClipboardError(error){

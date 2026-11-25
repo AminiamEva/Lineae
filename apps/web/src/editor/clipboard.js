@@ -42,7 +42,7 @@ async function writeRich(info) {
   await writeText(info.text);
 }
 
-export function createClipboard(editor,{getField = () => null, getSource = () => null} = {}) {
+export function createClipboard(editor,{getField = () => null, getSource = () => null,getNative = () => null} = {}) {
   async function copy({cut = false} = {}) {
     const source=getSource();
     if(source?.hasFocus) {
@@ -52,6 +52,12 @@ export function createClipboard(editor,{getField = () => null, getSource = () =>
       await writeText(text);
       if(cut&&source.state===state)source.dispatch({...state.replaceSelection(''),userEvent:'delete.cut'});
       return true;
+    }
+    const native=getNative();
+    if(native){
+      if(native.text===null)return false;
+      await writeText(native.text);
+      return cut?native.cut():true;
     }
     const field = getField();
     if (field) {
@@ -133,6 +139,11 @@ export function createClipboard(editor,{getField = () => null, getSource = () =>
       if(!text||source.state!==state||!source.hasFocus)return false;
       source.dispatch({...state.replaceSelection(text),userEvent:'input.paste'});
       return true;
+    }
+    const native=getNative();
+    if(native){
+      const {text}=await read();
+      return native.paste(text);
     }
     const field = getField();
     if (field) {

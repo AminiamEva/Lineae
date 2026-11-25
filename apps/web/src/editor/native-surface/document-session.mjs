@@ -40,6 +40,15 @@ export function createNativeDocumentSession(resolve) {
       return selection.setStops(stops);
     },
     select(from,to){preferredX=null;return selection.selectTargets(from,to);},
+    selectAll(){
+      const caret=selection.caret;
+      if(!caret)return false;
+      const stops=selection.stops.filter(stop=>caret.kind==='math'
+        ?stop.kind==='math'&&sameFormula(caret,stop)&&caret.slot.id===stop.slot.id
+        :stop.kind==='text'&&canSelect(caret,stop));
+      preferredX=null;
+      return stops.length>0&&selection.selectTargets(stops[0],stops.at(-1));
+    },
     proseRanges(anchor,head){
       if(anchor?.kind!=='text'||head?.kind!=='text'||!canSelect(anchor,head)||
          (anchor.paragraph===head.paragraph&&anchor.local===head.local))return [];

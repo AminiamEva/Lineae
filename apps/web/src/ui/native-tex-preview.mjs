@@ -265,6 +265,26 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
       return from.slot.raw.slice(from.local,to.local);
     return null;
   }
+  function cutSelection(){
+    const action={backward:true,started:performance.now()};
+    const edit=editSelection(action);
+    return edit?commitSurface(edit):replaceParagraphSelection(action);
+  }
+  function clipboardSelection(){
+    if(!active||!nativeEditing||!isDocumentMode?.()||!primary&&document.activeElement!==input)return null;
+    const {caret,anchor}=nativeDocument.surface,frame=observation;
+    const valid=()=>current()&&frame&&observation===frame&&!pendingEdit&&
+      nativeDocument.surface.caret===caret&&nativeDocument.surface.anchor===anchor;
+    return {
+      text:valid()?selectedSource():null,
+      cut:()=>valid()&&cutSelection(),
+      paste:text=>{
+        if(!valid()||!text)return false;
+        input.focus({preventScroll:true});
+        return submitInput({insert:text,started:performance.now()});
+      },
+    };
+  }
   function leaveFile(){
     if(!current()||!observation||pendingEdit)return false;
     const target=continuationRegion?.(nativeDocument.surface.caret);
@@ -298,9 +318,7 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
       if(text===null||!event.clipboardData)return;
       if(type==='cut'){
         if(!current()||!observation||pendingEdit)return;
-        const action={backward:true,started:performance.now()};
-        const edit=editSelection(action);
-        if(edit?!commitSurface(edit):!replaceParagraphSelection(action))return;
+        if(!cutSelection())return;
       }
       event.clipboardData.setData('text/plain',text);
       event.preventDefault();
@@ -943,6 +961,15 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
     inTableCell:()=>Boolean(nativeDocument.surface.caret?.paragraph?.tableCell),
     hasMathInput: event => event.target===input && nativeEditing && nativeDocument.surface.caret?.kind==='math',
     hasNativeMathFocus:()=>document.activeElement===input&&nativeEditing&&nativeDocument.surface.caret?.kind==='math',
+    clipboardSelection,
+    selectAll(){
+      if(!current()||!observation||pendingEdit)return true;
+      if(nativeDocument.selectAll()){
+        paintSurfaceSelection(true);
+        positionInput();
+      }
+      return true;
+    },
     useTextSelection,
     leaveFile,
     runMathCommand(command) {

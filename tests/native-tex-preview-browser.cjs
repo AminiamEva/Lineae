@@ -489,6 +489,10 @@ const server=createServer(async(req,res)=>{
       await page.waitForFunction(expected=>nativeProbe.source.replace(/\r\n/g,'\n')===expected,split.replace(/\r\n/g,'\n'));
       await panel.getByText('Click text on the native page',{exact:false}).waitFor();
       await canvas.click({position:{x:7520000*scale,y:9250000*scale}});
+      await page.keyboard.press(mod+'+a');
+      await page.keyboard.press(mod+'+c');
+      await page.waitForFunction(async()=>await navigator.clipboard.readText()==='Alpha\n\nBeta');
+      await canvas.click({position:{x:7520000*scale,y:9250000*scale}});
       await page.keyboard.press('Shift+ArrowLeft');
       await page.keyboard.press('Shift+ArrowLeft');
       await page.keyboard.type('X');
