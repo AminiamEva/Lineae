@@ -3565,13 +3565,15 @@ nativeTexPreview=installNativeTexPreview({host:footer,before:modes,primary:nativ
   commitParagraphBreak:(paragraph,from,to,text)=>{
     const theorem=paragraph.container?.type==='theoremBlock';
     const environment=paragraph.container?.type==='blockquote';
-    if(paragraph.tableCell||paragraph.container&&!theorem&&!environment||paragraph.parts.length!==1||
-       paragraph.parts[0].marks?.length||!from||/[\r\n]/.test(text))return null;
+    const mixed=paragraph.parts.length!==1;
+    if(paragraph.tableCell||paragraph.container&&!theorem&&!environment||
+       mixed&&(paragraph.container||paragraph.heading||paragraph.wrapped)||!from||/[\r\n]/.test(text))return null;
     if(paragraph.heading&&(!Number.isInteger(paragraph.headingEnd)||from!==to||to!==paragraph.text.length))return null;
     if(projectDocument.composition&&!projectDocument.rebase(currentNativeProjectComposition(),editor.getJSON()))return null;
     const target=nativeProsePosition(paragraph,from,to);
     if(!target)return null;
     const {range,project,composition,file}=target,{state}=editor;
+    if(range.endpoints.start!==range.endpoints.end||range.endpoints.start.marks?.length)return null;
     if(!text&&to===paragraph.text.length)return {awaitingText:true};
     if(text&&!text.trim())return null;
     const newline=paragraph.source.includes('\r\n')?'\r\n':'\n';
@@ -3597,7 +3599,7 @@ nativeTexPreview=installNativeTexPreview({host:footer,before:modes,primary:nativ
     const offset=change.from+insert.length;
     if(composition){
       const drafts=projectDocument.changes(tr.doc.toJSON());
-      if((wrapper||environment)&&drafts?.get(file.id)!==draft)return dispatchNativeProjectChange(state,tr,project,new Map([[file.id,draft]]))
+      if((wrapper||environment||mixed)&&drafts?.get(file.id)!==draft)return dispatchNativeProjectChange(state,tr,project,new Map([[file.id,draft]]))
         ?{source:draft,offset,path:paragraph.filePath}:null;
       if(drafts?.get(file.id)!==draft)return null;
       for(const [id,value] of drafts)if(id!==file.id&&value!==project.file(id).draft)return null;
@@ -3605,6 +3607,13 @@ nativeTexPreview=installNativeTexPreview({host:footer,before:modes,primary:nativ
       return editor.state.doc===state.doc?null:{source:draft,offset,path:paragraph.filePath};
     }
     const projected=sourceProjection(draft,tr.doc.toJSON(),{fragment:projectFileKind==='tex'});
+    if(mixed){
+      const index=range.match.index;
+      const owner=projection?.blocks.find(block=>block.index===index&&block.count===1&&block.from<=start&&block.to>=end);
+      if(!owner)return null;
+      const revised=importBlocks(draft.slice(owner.from,owner.to+draft.length-paragraph.source.length));
+      if(revised.length!==2||revised.some((value,position)=>!state.schema.nodeFromJSON(value).eq(tr.doc.child(index+position))))return null;
+    }
     if(theorem){
       const patches=richSourceChanges(projection,tr.doc.toJSON());
       const owner=projectTextDocument(draft,{filePath:paragraph.filePath,fragment:projectFileKind==='tex'})?.paragraphs.find(next=>(
