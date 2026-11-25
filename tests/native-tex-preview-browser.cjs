@@ -1448,12 +1448,21 @@ const server=createServer(async(req,res)=>{
       await page.locator('[data-source-mode=body]').click();
       const rawBlock='\\custom{Original}';
       const sourceWithRaw=workspaceSource.replace('\\begin{document}',
-        '\\newcommand{\\custom}[1]{#1}\n\\begin{document}').replace('Native document.',`Before.\n\n${rawBlock}\n\nAfter.`);
+        '\\newcommand{\\custom}[1]{#1}\n\\begin{document}').replace('Native document.',`Before.\n\n\\newpage\n\n${rawBlock}\n\nAfter.`);
       await page.locator('input#file').setInputFiles({name:'custom-block.tex',mimeType:'text/plain',buffer:Buffer.from(sourceWithRaw)});
+      const sourceBlocks=page.getByRole('combobox',{name:'LaTeX source block',exact:true});
+      await sourceBlocks.selectOption({label:'custom-block.tex · \\newpage'});
+      await page.getByRole('button',{name:'Edit source block',exact:true}).click();
+      await page.locator('.cm-content').waitFor();
+      await page.keyboard.insertText('\\clearpage');
+      const changedDirective=sourceWithRaw.replace('\\newpage','\\clearpage');
+      await page.waitForFunction(expected=>nativeProbe.source===expected,changedDirective);
+      await page.locator('[data-source-mode=body]').click();
+      await sourceBlocks.selectOption({label:'custom-block.tex · '+rawBlock});
       await page.getByRole('button',{name:'Edit source block',exact:true}).click();
       await page.locator('.cm-content').waitFor();
       await page.keyboard.insertText('\\custom{Updated}');
-      await page.waitForFunction(expected=>nativeProbe.source===expected,sourceWithRaw.replace(rawBlock,'\\custom{Updated}'));
+      await page.waitForFunction(expected=>nativeProbe.source===expected,changedDirective.replace(rawBlock,'\\custom{Updated}'));
       await page.locator('[data-source-mode=body]').click();
       const blank='\\documentclass{article}\n\\begin{document}\n\n\\end{document}\n';
       await page.locator('input#file').setInputFiles({name:'empty-workspace.tex',mimeType:'text/plain',buffer:Buffer.from(blank)});

@@ -3527,10 +3527,11 @@ function emptyContinuation(region,composition,doc){
 }
 function forEachNativeDocumentBlock(type,visit){
   if(!sourceView.hidden)return;
+  const accepts=typeof type==='function'?type:node=>node.type.name===type;
   const composition=projectDocument.composition;
   editor.state.doc.forEach((node,position,index)=>{
     if(!composition){
-      if(node.type.name===type){
+      if(accepts(node)){
         const project=projectExplorer?.model,file=project&&project.file(project.activeFileId);
         visit(node,position,projection?.blocks.find(block=>block.index===index&&block.count),
           file?.path??filename,projection?.text,0,file?.id);
@@ -3541,7 +3542,7 @@ function forEachNativeDocumentBlock(type,visit){
     if(node.type.name!=='projectRegion'||!region)return;
     const text=composition.sources.get(region.id);
     node.forEach((child,offset,childIndex)=>{
-      if(child.type.name===type)visit(child,position+offset+1,region.projection?.blocks.find(block=>block.index===childIndex&&block.count),
+      if(accepts(child))visit(child,position+offset+1,region.projection?.blocks.find(block=>block.index===childIndex&&block.count),
         region.path,text,region.from,region.id);
     });
   });
@@ -3633,24 +3634,25 @@ function openNativeMeasuredDrawing(drawing){
 }
 function nativeSourceBlocks(){
   const results=[];
-  forEachNativeDocumentBlock('raw',(node,_position,block,path,text,base,fileId)=>{
-    if(block?.count!==1||typeof text!=='string')return;
-    const raw=block.raw.trim();
-    if(!raw||raw!==node.attrs.source?.trim())return;
-    const from=base+block.from+block.raw.length-block.raw.trimStart().length;
-    const to=from+raw.length;
-    if(text.slice(from,to)!==raw)return;
+  const directives=new Set(['pageBreak','horizontalRule','appendixStart','matterStart',
+    'tableOfContents','layoutCommand','counterDirective']);
+  const hasSource=node=>['raw','codeBlock'].includes(node.type.name)||directives.has(node.type.name)||
+    node.type.name==='paragraph'&&node.childCount===1&&node.firstChild.type.name==='lipsum';
+  forEachNativeDocumentBlock(hasSource,(node,_position,block,path,text,base,fileId)=>{
+    if(block?.count!==1||typeof text!=='string'||text.slice(base+block.from,base+block.to)!==block.raw)return;
+    const type=node.type.name,raw=block.raw.trim();
+    if(type==='codeBlock'){
+      const start=/^\s*(\\begin\{lstlisting\}(?:\[language=[A-Za-z0-9+_-]+\])?)\r?\n/.exec(block.raw);
+      const end=/\r?\n\\end\{lstlisting\}\s*$/.exec(block.raw);
+      if(!start||!end||end.index<start[0].length)return;
+      const from=base+block.from+start[0].length,to=base+block.from+end.index;
+      if(text.slice(from,to)===node.textContent)results.push({path,fileId,text,from,to,label:start[1]});
+      return;
+    }
+    if(!raw||type==='raw'&&raw!==node.attrs.source?.trim())return;
+    const from=base+block.from+block.raw.length-block.raw.trimStart().length,to=from+raw.length;
     const label=raw.split(/\r?\n/,1)[0].slice(0,64);
     results.push({path,fileId,text,from,to,label:label===raw?label:`${label}…`});
-  });
-  forEachNativeDocumentBlock('codeBlock',(node,_position,block,path,text,base,fileId)=>{
-    if(block?.count!==1||typeof text!=='string'||text.slice(base+block.from,base+block.to)!==block.raw)return;
-    const start=/^\s*(\\begin\{lstlisting\}(?:\[language=[A-Za-z0-9+_-]+\])?)\r?\n/.exec(block.raw);
-    const end=/\r?\n\\end\{lstlisting\}\s*$/.exec(block.raw);
-    if(!start||!end||end.index<start[0].length)return;
-    const from=base+block.from+start[0].length,to=base+block.from+end.index;
-    if(text.slice(from,to)!==node.textContent)return;
-    results.push({path,fileId,text,from,to,label:start[1]});
   });
   return results;
 }
