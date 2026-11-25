@@ -3,8 +3,8 @@ import {t} from './i18n.mjs';
 import {installNativePages} from '../typesetting/rtex/pages.mjs';
 import {installNativePdf} from '../typesetting/rtex/pdf.mjs';
 import {matchesRichFormula,nativeCaretTargets} from '../editor/native-math/rich-slot.mjs';
-import {createMathSurface,surfaceCaretRect} from '../editor/native-surface/math-surface.mjs';
-import {createTextSurface} from '../editor/native-surface/text-surface.mjs';
+import {surfaceCaretRect} from '../editor/native-surface/math-surface.mjs';
+import {createNativeDocumentSession} from '../editor/native-surface/document-session.mjs';
 import {projectMixedDocument,projectMixedSnapshot,textTarget} from '../editor/native-text/projection.mjs';
 import {nativeTarget} from '../editor/native-math/resolve.mjs';
 
@@ -52,12 +52,10 @@ export function installNativeTexPreview({host,before,getSource,getSnapshot,isCom
   let mirror=null;
   let compositionField=null;
   const composing=()=>isComposing()||Boolean(compositionField?.isConnected);
-  const mathSurface=createMathSurface({resolve:endpoint=>{
+  const nativeDocument=createNativeDocumentSession(endpoint=>{
     const target=resolveEndpoint(endpoint);
     return target?.kind==='math'?target:null;
-  }});
-  let textSurface=null;
-  let surface=mathSurface;
+  });
   let nativeEditing=false;
   let pendingLatency=null;
   let inputStart=0;
@@ -71,17 +69,14 @@ export function installNativeTexPreview({host,before,getSource,getSnapshot,isCom
       return textTarget(observation.projection, endpoint.owner, Boolean(endpoint.after));
     return nativeTarget(observation?.projection, endpoint);
   }
-  function targetSurface(target) {
-    return target?.kind==='text'?textSurface:mathSurface;
-  }
   function paintSurfaceSelection() {
-    const caret = surface.caret, anchor = surface.anchor;
+    const caret = nativeDocument.surface.caret, anchor = nativeDocument.surface.anchor;
     if (!caret) return;
     if (anchor && anchor.docOffset !== caret.docOffset) renderer.showSelection(anchor.hit, caret.hit);
     else renderer.showCaret(caret.hit);
   }
   function positionInput() {
-    const stop = surface.caret;
+    const stop = nativeDocument.surface.caret;
     if (!stop) return;
     const canvas = pages.querySelector(`[data-native-page="${stop.page}"] canvas`);
     if (!canvas) return;
@@ -102,7 +97,7 @@ export function installNativeTexPreview({host,before,getSource,getSnapshot,isCom
       : commitMath?.({ formula: edit.formula, patch: edit.patch, text: edit.text, structure:edit.structure });
     input.value = '';
     if (!applied) {
-      surface.clearPending();
+      nativeDocument.surface.clearPending();
       queuedInput.length=0;
       targetStatus.textContent = t('原生编辑未能写入文档。', 'The native edit could not be written to the document.');
       return;
@@ -112,6 +107,7 @@ export function installNativeTexPreview({host,before,getSource,getSnapshot,isCom
     return true;
   }
   function submitInput(action) {
+    const {surface}=nativeDocument;
     if(!nativeEditing||!surface.caret)return false;
     if(pendingEdit){
       const last=queuedInput.at(-1);
@@ -128,7 +124,7 @@ export function installNativeTexPreview({host,before,getSource,getSnapshot,isCom
     queuedInput.length=0;
   }
   function selectedSource() {
-    const [from,to]=surface.range;
+    const [from,to]=nativeDocument.surface.range;
     if(!from||from===to)return null;
     if(from.kind==='text'&&from.paragraph===to.paragraph)
       return from.paragraph.parts.map(part=>{
@@ -145,7 +141,7 @@ export function installNativeTexPreview({host,before,getSource,getSnapshot,isCom
       if(text===null||!event.clipboardData)return;
       if(type==='cut'){
         if(!current()||!observation||pendingEdit)return;
-        const edit=surface.erase();
+        const edit=nativeDocument.surface.erase();
         if(!commitSurface(edit))return;
       }
       event.clipboardData.setData('text/plain',text);
@@ -180,6 +176,7 @@ export function installNativeTexPreview({host,before,getSource,getSnapshot,isCom
   input.addEventListener('keydown', event => {
     if (event.isComposing || event.keyCode === 229) return;
     if (nativeEditing === false) return;
+    const {surface}=nativeDocument;
     if (!event.metaKey && !event.ctrlKey && !event.altKey && [...event.key].length===1) inputStart=performance.now();
     const mod = event.metaKey || event.ctrlKey;
     if (mod && event.key.toLowerCase() === 'z') {
@@ -256,10 +253,7 @@ export function installNativeTexPreview({host,before,getSource,getSnapshot,isCom
       if((anchor.kind==='text'||head.kind==='text')&&!nativeEditing)return false;
       if(nativeEditing){
         if(pendingEdit)return false;
-        const next=targetSurface(head);
-        if(!next||!next.selectBetween(anchor.docOffset,head.docOffset,anchor.formula?.filePath??anchor.paragraph?.filePath,
-          head.formula?.filePath??head.paragraph?.filePath))return false;
-        surface=next;
+        if(!nativeDocument.select(anchor,head))return false;
         inputStart=performance.now();
         paintSurfaceSelection();positionInput();input.focus({preventScroll:true});
         return true;
@@ -346,8 +340,7 @@ export function installNativeTexPreview({host,before,getSource,getSnapshot,isCom
     wantedSnapshot=null;sentSnapshot=null;wantedSource='';sentSource='';
     observation=null;targetStatus.textContent='';
     previousProjection=null;
-    nativeEditing=false;mathSurface.clearPending();mathSurface.reset();
-    textSurface?.clearPending();textSurface?.reset();textSurface=null;surface=mathSurface;
+    nativeEditing=false;nativeDocument.reset();
     input.blur();input.value='';
     clearQueuedInput();
     pendingLatency=null;inputStart=0;latency.length=0;delete panel.dataset.latencySamples;
@@ -553,20 +546,13 @@ export function installNativeTexPreview({host,before,getSource,getSnapshot,isCom
           sentSnapshot?.signature!==signature||wantedSnapshot?.signature!==signature||
           sentSource!==projection.source||wantedSource!==projection.source)return;
       if(!renderer.attachOwners(observed,stamp,projection.owners))throw new Error(t('标记版排版与当前页面不一致，未启用命中。','Projected geometry differs from the displayed page; targeting remains disabled.'));
-      if(kind==='text'||kind==='mixed'){
-        if(textSurface)textSurface.setProjection(projection);
-        else textSurface=createTextSurface({projection});
-      }
       if(kind!=='text')previousProjection=projection;
       observation={kind,projection,stamp,observed};
       if(nativeEditing){
-        const expectedOffset=surface.pendingOffset;
-        const candidates=kind==='mixed'?[mathSurface,textSurface]:kind==='text'?[textSurface]:[mathSurface];
-        let applied=false;
-        for(const candidate of candidates) if(candidate.setObservation(observed))applied=true;
-        if(!candidates.includes(surface))surface=candidates.find(candidate=>candidate.caret)??candidates[0];
+        const expectedOffset=nativeDocument.surface.pendingOffset;
+        const applied=nativeDocument.setObservation(observed,projection);
         if(pendingEdit){
-          const stop=surface.caret;
+          const stop=nativeDocument.surface.caret;
           const previous=pendingEdit.paragraph??pendingEdit.formula;
           const next=stop?.paragraph??stop?.formula;
           const expected=pendingEdit.source??(previous.source.slice(0,previous.from16)+
@@ -632,19 +618,15 @@ export function installNativeTexPreview({host,before,getSource,getSnapshot,isCom
   editButton.addEventListener('mousedown',event=>event.preventDefault());
   editButton.addEventListener('click',()=>{
     if(nativeEditing){
-      nativeEditing=false;clearQueuedInput();surface.clearPending();input.blur();renderStatus();return;
+      nativeEditing=false;clearQueuedInput();nativeDocument.surface.clearPending();input.blur();renderStatus();return;
     }
     if(!observation)return;
     nativeEditing=true;targetArmed=true;
-    const candidates=observation.kind==='mixed'?[mathSurface,textSurface]:
-      observation.kind==='text'?[textSurface]:[mathSurface];
-    let applied=false;
-    for(const candidate of candidates) if(candidate.setObservation(observation.observed))applied=true;
+    const applied=nativeDocument.setObservation(observation.observed,observation.projection);
     if(!applied){
       nativeEditing=false;renderStatus();return;
     }
-    if(!candidates.includes(surface))surface=candidates.find(candidate=>candidate.caret)??candidates[0];
-    if(surface.caret){
+    if(nativeDocument.surface.caret){
       paintSurfaceSelection();positionInput();input.focus({preventScroll:true});
     }
     renderStatus();
@@ -667,8 +649,9 @@ export function installNativeTexPreview({host,before,getSource,getSnapshot,isCom
   relocalize();renderer.setZoom(.75);pdf.setZoom(.75);
   return {
     refresh,documentChanged:()=>{void stop();},relocalize,
-    hasMathInput: event => event.target===input && nativeEditing && surface===mathSurface,
+    hasMathInput: event => event.target===input && nativeEditing && nativeDocument.surface.caret?.kind==='math',
     runMathCommand(command) {
+      const {surface}=nativeDocument;
       if(command==='undo'||command==='redo'){
         clearQueuedInput();
         surface.clearPending();
@@ -676,13 +659,13 @@ export function installNativeTexPreview({host,before,getSource,getSnapshot,isCom
         return true;
       }
       if(command==='nextSlot'||command==='previousSlot'){
-        if(current()&&observation&&mathSurface.moveEmptySlot(command==='previousSlot')){
+        if(current()&&observation&&surface.moveEmptySlot?.(command==='previousSlot')){
           paintSurfaceSelection();
           positionInput();
         }
         return true;
       }
-      if(!current()||!observation||pendingEdit||surface!==mathSurface)return false;
+      if(!current()||!observation||pendingEdit||surface.caret?.kind!=='math')return false;
       const edit=surface.command(command);
       if(!edit)return false;
       inputStart=performance.now();

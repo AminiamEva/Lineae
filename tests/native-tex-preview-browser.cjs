@@ -6,6 +6,37 @@ const {resolve,extname,sep}=require('node:path');
 const installMockNativeTex=require('./native-math/mock-bridge.cjs');
 const {revealToolbar}=require('./workspace-ui-helpers.cjs');
 
+const projectMain='\\documentclass{article}\n\\begin{document}\n\\[\\frac{a}{}\\]\n\\input{chapters/one}\n\\end{document}\n';
+const projectChapter='Original chapter.\n\n\\[\\frac{z}{}\\]\n';
+async function openMockProject(page,raster=false) {
+  await page.evaluate(async({main,child,raster})=>{
+    const root=await navigator.storage.getDirectory();
+    const folder=await root.getDirectoryHandle('lua-'+crypto.randomUUID(),{create:true});
+    const put=async(dir,name,bytes)=>{
+      const file=await dir.getFileHandle(name,{create:true}),writer=await file.createWritable();
+      await writer.write(bytes);await writer.close();
+    };
+    await put(folder,'main.tex',main);
+    const chapter=await folder.getDirectoryHandle('chapters',{create:true});
+    await put(chapter,'one.tex',child);
+    if(raster){
+      await put(folder,'image.png',new Uint8Array([0,255,13,10]));
+      const canvas=document.createElement('canvas');
+      canvas.width=canvas.height=1;
+      const context=canvas.getContext('2d');
+      context.fillStyle='#f00';context.fillRect(0,0,1,1);
+      const blob=await new Promise(resolve=>canvas.toBlob(resolve,'image/png'));
+      await put(folder,'plot.png',new Uint8Array(await blob.arrayBuffer()));
+      nativeProbe.raster=true;
+    }
+    window.showDirectoryPicker=async()=>folder;
+  },{main:projectMain,child:projectChapter,raster});
+  page.on('dialog',dialog=>dialog.accept());
+  await revealToolbar(page);await page.locator('[data-group=files]').click();
+  await page.locator('#project-open').click();
+  await page.locator('.project-file[aria-current=true]').waitFor({state:'attached'});
+}
+
 const root=resolve('apps/web');
 let nativeEvidence;
 const server=createServer(async(req,res)=>{
@@ -157,6 +188,29 @@ const server=createServer(async(req,res)=>{
       });
       await page.waitForFunction(expected=>nativeProbe.source===expected,
         typedHeading.replace('XLong title','文XLong title'));
+      await page.locator('#native-tex-close').click();
+      await openMockProject(page);
+      await page.evaluate(()=>{nativeProbe.targetInclude=true;});
+      await page.locator('#native-tex-toggle').click();
+      await page.waitForFunction(()=>document.querySelector('#native-tex-preview').dataset.state==='current');
+      await page.locator('#native-tex-target').click();
+      await panel.getByText('Click prose on the native page',{exact:false}).waitFor();
+      await page.locator('#native-tex-edit').click();
+      const childChanged=expected=>page.waitForFunction(({main,child})=>
+        nativeProbe.calls.some(call=>call.command==='native_tex_update'&&call.args.source===main&&
+          call.args.files?.some(file=>file.path==='chapters/one.tex'&&
+            new TextDecoder().decode(new Uint8Array(file.bytes))===child)),{main:projectMain,child:expected});
+      await canvas.click({position:{x:6500000*scale,y:7000000*scale}});
+      const childObservations=await page.evaluate(()=>nativeProbe.calls.filter(call=>call.command==='native_tex_observe_formula').length);
+      await page.keyboard.type('q');
+      const childWithMath=projectChapter.replace('\\frac{z}{}','\\frac{z}{q}');
+      await childChanged(childWithMath);
+      await page.waitForFunction(count=>nativeProbe.calls.filter(call=>call.command==='native_tex_observe_formula').length>count,childObservations);
+      await panel.getByText('Click prose on the native page',{exact:false}).waitFor();
+      await canvas.click({position:{x:6550000*scale,y:9250000*scale}});
+      await page.keyboard.type('X');
+      await childChanged('X'+childWithMath);
+      assert.deepEqual(errors,[]);
       console.log('PASS native mixed editing with MathLive and JS pagination disabled');
       return;
     }
@@ -391,30 +445,7 @@ const server=createServer(async(req,res)=>{
     await page.keyboard.type('b');
     await page.waitForFunction(()=>nativeProbe.source?.includes('\\boxed{\\frac{a}{b}}'));
     await page.locator('#native-tex-close').click();
-    await page.evaluate(async()=>{
-      const root=await navigator.storage.getDirectory();
-      window.luaProjectDirectory=await root.getDirectoryHandle('lua-'+crypto.randomUUID(),{create:true});
-      const put=async(dir,name,bytes)=>{
-        const file=await dir.getFileHandle(name,{create:true}),writer=await file.createWritable();
-        await writer.write(bytes);await writer.close();
-      };
-      await put(luaProjectDirectory,'main.tex','\\documentclass{article}\n\\begin{document}\n\\[\\frac{a}{}\\]\n\\input{chapters/one}\n\\end{document}\n');
-      const chapter=await luaProjectDirectory.getDirectoryHandle('chapters',{create:true});
-      await put(chapter,'one.tex','Original chapter.\n\n\\[\\frac{z}{}\\]\n');
-      await put(luaProjectDirectory,'image.png',new Uint8Array([0,255,13,10]));
-      const canvas=document.createElement('canvas');
-      canvas.width=canvas.height=1;
-      const context=canvas.getContext('2d');
-      context.fillStyle='#f00';context.fillRect(0,0,1,1);
-      const blob=await new Promise(resolve=>canvas.toBlob(resolve,'image/png'));
-      await put(luaProjectDirectory,'plot.png',new Uint8Array(await blob.arrayBuffer()));
-      nativeProbe.raster=true;
-      window.showDirectoryPicker=async()=>luaProjectDirectory;
-    });
-    page.on('dialog',dialog=>dialog.accept());
-    await revealToolbar(page);await page.locator('[data-group=files]').click();
-    await page.locator('#project-open').click();
-    await page.locator('.project-file[aria-current=true]').waitFor({state:'attached'});
+    await openMockProject(page,true);
     await button.click();
     await page.waitForFunction(()=>document.querySelector('#native-tex-preview').dataset.state==='current');
     const projectOpen=await page.evaluate(()=>nativeProbe.calls.filter(call=>call.command==='native_tex_open').at(-1).args);

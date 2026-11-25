@@ -37,7 +37,7 @@ function stopsFor(observed, projection) {
   return [...byOffset.values()].sort((a, b) => a.docOffset - b.docOffset);
 }
 
-const sameParagraph = (a, b) =>
+export const sameParagraph = (a, b) =>
   a?.paragraph.filePath === b?.paragraph.filePath &&
   a?.paragraph.from16 === b?.paragraph.from16 && a?.paragraph.source === b?.paragraph.source;
 const runsOf = paragraph => paragraph.runs ?? [{from16:0, to16:paragraph.text.length}];
@@ -50,11 +50,11 @@ const boundariesOf = (run, fallback) => {
   return boundaries;
 };
 
-export function createTextSurface({projection}) {
+export function createTextSurface({projection,selection=createSelectionModel(sameParagraph,stop=>stop.paragraph.filePath)}) {
   let sourceProjection = projection;
-  const selection = createSelectionModel(sameParagraph,stop=>stop.paragraph.filePath);
-  return Object.assign(selection, {
+  return Object.assign(Object.create(selection), {
     setProjection(next) { if (next) sourceProjection = next; },
+    collectStops(observed) { return stopsFor(observed,sourceProjection); },
     setObservation(observed) { return selection.setStops(stopsFor(observed, sourceProjection)); },
     insert(text) {
       const stop = selection.caret;

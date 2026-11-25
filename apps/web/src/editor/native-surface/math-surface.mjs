@@ -34,14 +34,14 @@ const stopsFor = (observed, resolve) => {
     (left.after ? 1 : 0) - (right.after ? 1 : 0));
 };
 
-const sameFormula = (left, right) =>
+export const sameFormula = (left, right) =>
   left?.formula.from16 === right?.formula.from16 &&
   left?.formula.kind === right?.formula.kind &&
   left?.formula.filePath === right?.formula.filePath;
 
-export function createMathSurface({resolve}) {
-  const selection = createSelectionModel(sameFormula,stop=>stop.formula.filePath ?? undefined);
-  return Object.assign(selection, {
+export function createMathSurface({resolve,selection=createSelectionModel(sameFormula,stop=>stop.formula.filePath)}) {
+  return Object.assign(Object.create(selection), {
+    collectStops(observed) { return stopsFor(observed, resolve); },
     setObservation(observed) { return selection.setStops(stopsFor(observed, resolve)); },
     insert(text) {
       const stop = selection.caret;
@@ -58,10 +58,10 @@ export function createMathSurface({resolve}) {
     moveEmptySlot(backward) {
       const caret=selection.caret;
       if(!caret)return false;
-      const candidates=selection.stops.filter(stop=>stop.empty&&sameFormula(stop,caret));
+      const candidates=selection.stops.filter(stop=>stop.kind==='math'&&stop.empty&&sameFormula(stop,caret));
       if(backward)candidates.reverse();
       const target=candidates.find(stop=>backward?stop.docOffset<caret.docOffset:stop.docOffset>caret.docOffset);
-      return target?selection.selectBetween(target.docOffset,target.docOffset,target.formula.filePath):false;
+      return target?selection.selectTargets(target,target):false;
     },
     command(command) {
       const [from,to] = selection.range;
@@ -80,7 +80,7 @@ export function createMathSurface({resolve}) {
       if (!stop) return null;
       let [start, end] = selection.range;
       if (start === end) {
-        const own = selection.stops.filter(candidate => sameFormula(candidate, stop));
+        const own = selection.stops.filter(candidate => candidate.kind==='math'&&sameFormula(candidate, stop));
         const neighbor = own[own.indexOf(stop) + (backward ? -1 : 1)];
         if (!neighbor) return null;
         start = stop;

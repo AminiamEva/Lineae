@@ -4,6 +4,7 @@ import {projectDocumentFormulas,projectSnapshotFormulas} from '../apps/web/src/e
 import {nativeTarget} from '../apps/web/src/editor/native-math/resolve.mjs';
 import {createMathSurface} from '../apps/web/src/editor/native-surface/math-surface.mjs';
 import {createTextSurface} from '../apps/web/src/editor/native-surface/text-surface.mjs';
+import {createNativeDocumentSession} from '../apps/web/src/editor/native-surface/document-session.mjs';
 import {projectTextDocument,projectMixedDocument,projectMixedSnapshot,textTarget,textEdit} from '../apps/web/src/editor/native-text/projection.mjs';
 
 const source = '\\begin{document}\n\\[\\frac{a}{}\\]\n\\end{document}\n';
@@ -178,6 +179,32 @@ test('mixed prose and display math share one projection and keep distinct owners
   assert.equal(textTarget(projection, textOwner, false).kind, 'text');
   assert.equal(nativeTarget(projection, {owner:textOwner, role:'nucleus', after:false}), null);
   assert.equal(nativeTarget(projection, {owner:mathOwner, role:'nucleus', after:false}).kind, 'math');
+});
+
+test('one native session restores the selected text or math address through observation',()=>{
+  const source='\\begin{document}\nIntro.\n\n\\[\\frac{a}{}\\]\n\\end{document}\n';
+  let projection=projectMixedDocument(source);
+  const session=createNativeDocumentSession(endpoint=>nativeTarget(projection,endpoint));
+  const textOwner=projection.paragraphs[0].glyphs[0].tag;
+  const denominator=projection.formulas[0].math.slots.find(slot=>slot.role==='denominator');
+  const prose=textTarget(projection,textOwner,false);
+  const formula=nativeTarget(projection,{owner:denominator.tag,role:'den'});
+  session.setObservation(page([field(denominator.tag,'den',300,true)],[glyph(textOwner,100)]),projection);
+  assert.equal(session.select(prose,formula),false);
+  assert.equal(session.select(formula,formula),true);
+  const edit=session.surface.insert('b');
+  const pending=session.surface.pendingOffset;
+  assert.equal(edit.text,'\\frac{a}{b}');
+  projection=projectMixedDocument(source.replace('{}','{b}'),{previous:projection});
+  const inserted=projection.formulas[0].math.atoms.find(atom=>atom.nucleus==='b');
+  const proseTag=projection.paragraphs[0].glyphs[0].tag;
+  session.setObservation(page([],[glyph(proseTag,100),glyph(inserted.tag,300)]),projection);
+  assert.equal(session.surface.caret.kind,'math');
+  assert.equal(session.surface.caret.docOffset,pending);
+  assert.equal(session.surface.anchor,session.surface.caret);
+  const start=textTarget(projection,proseTag,false);
+  assert.equal(session.select(start,start),true);
+  assert.equal(session.surface.insert('X').source,projection.source.replace('Intro','XIntro'));
 });
 
 test('prose can replace a complete inline formula but cannot edit part of its source', () => {

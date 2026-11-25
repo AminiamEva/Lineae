@@ -1,7 +1,8 @@
 // Shared caret and range mechanics for geometry-backed editing adapters.
 export function createSelectionModel(sameOwner, fileOf = () => undefined) {
-  const address = stop => stop && {offset:stop.docOffset,file:fileOf(stop)};
-  const matches = (stop, target) => target && stop.docOffset===target.offset && fileOf(stop)===target.file;
+  const address = stop => stop && {offset:stop.docOffset,file:fileOf(stop),kind:stop.kind};
+  const matches = (stop, target) => target && stop.docOffset===target.offset &&
+    fileOf(stop)===target.file&&stop.kind===target.kind;
   let pendingAddress = null;
   let stops = [], index = -1, anchor = -1, pendingOffset = null, lastEdit = null;
   return {
@@ -58,13 +59,20 @@ export function createSelectionModel(sameOwner, fileOf = () => undefined) {
       anchor = from; index = to;
       return true;
     },
+    selectTargets(from, to) {
+      const first=stops.findIndex(stop=>matches(stop,address(from)));
+      const last=stops.findIndex(stop=>matches(stop,address(to)));
+      if(first<0||last<0||!sameOwner(stops[first],stops[last]))return false;
+      anchor=first;index=last;
+      return true;
+    },
     get range() {
       return [stops[Math.min(anchor, index)], stops[Math.max(anchor, index)]];
     },
     record(edit, nextOffset) {
       lastEdit = edit;
       pendingOffset = nextOffset;
-      pendingAddress = {offset:nextOffset,file:fileOf(stops[index])};
+      pendingAddress = {...address(stops[index]),offset:nextOffset};
       return edit;
     },
     clearPending() { pendingOffset = null; pendingAddress = null; lastEdit = null; },
