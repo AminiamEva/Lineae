@@ -5,11 +5,11 @@ import {applySlotEdit,applyStructureCommand} from '../native-math/source.mjs';
 // callers provide the zoom used for the current painted page.
 const stopsFor = (observed, resolve) => {
   const byAddress = new Map();
-  const push = (owner, role, after, page, bbox) => {
+  const push = (owner, role, after, page, bbox, empty = false) => {
     const target = resolve({owner, role, after});
     if (!target) return;
     const stop = {
-      ...target, page, after,
+      ...target, page, after,empty,
       x: after ? bbox[2] : bbox[0], top: bbox[1], bottom: bbox[3],
     };
     const key = JSON.stringify([target.formula.filePath,target.docOffset]);
@@ -23,7 +23,7 @@ const stopsFor = (observed, resolve) => {
   for (const page of observed ?? []) {
     if (page?.exact !== true || !page.dl?.math_owners) continue;
     for (const field of page.dl.math_owners.fields ?? []) {
-      push(field.owner, field.role, false, page.page, field.bbox);
+      push(field.owner, field.role, false, page.page, field.bbox,field.empty===true);
     }
     for (const glyph of page.dl.math_owners.glyphs ?? []) {
       push(glyph.owner, 'nucleus', false, page.page, glyph.bbox);
@@ -54,6 +54,14 @@ export function createMathSurface({resolve}) {
         });
         return selection.record({formula: stop.formula, patch: result.patch, text: result.source}, from.docOffset + text.length);
       } catch { return null; }
+    },
+    moveEmptySlot(backward) {
+      const caret=selection.caret;
+      if(!caret)return false;
+      const candidates=selection.stops.filter(stop=>stop.empty&&sameFormula(stop,caret));
+      if(backward)candidates.reverse();
+      const target=candidates.find(stop=>backward?stop.docOffset<caret.docOffset:stop.docOffset>caret.docOffset);
+      return target?selection.selectBetween(target.docOffset,target.docOffset,target.formula.filePath):false;
     },
     command(command) {
       const [from,to] = selection.range;

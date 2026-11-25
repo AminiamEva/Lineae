@@ -620,6 +620,13 @@ export function installNativeTexPreview({host,before,getSource,getSnapshot,isCom
         history?.(command);
         return true;
       }
+      if(command==='nextSlot'||command==='previousSlot'){
+        if(current()&&observation&&mathSurface.moveEmptySlot(command==='previousSlot')){
+          paintSurfaceSelection();
+          positionInput();
+        }
+        return true;
+      }
       if(!current()||!observation||surface!==mathSurface)return false;
       const edit=surface.command(command);
       if(!edit)return false;

@@ -2713,7 +2713,7 @@ nativeTexPreview=installNativeTexPreview({host:footer,before:modes,
     // Resolve repeated prose by its verified source block before falling back
     // to an unambiguous structural match.
     const owner=projection?.text===paragraph.source && projection.blocks.find(block=>
-      block.count===1 && block.from<=paragraph.from16 &&
+      (block.count===1||paragraph.tableCell) && block.from<=paragraph.from16 &&
       block.to>=paragraph.from16+paragraph.text.length);
     const matches=[];
     function collect(node,offset,index,sourceOwner){
@@ -2740,7 +2740,7 @@ nativeTexPreview=installNativeTexPreview({host:footer,before:modes,
       const region=composition.regions[index];
       if(!region||paragraph.from16<region.from)return;
       const sourceOwner=composition.sources.get(file.id)===paragraph.source && region.projection?.blocks.find(block=>
-        block.count===1&&region.from+block.from<=paragraph.from16 &&
+        (block.count===1||paragraph.tableCell)&&region.from+block.from<=paragraph.from16 &&
         region.from+block.to>=paragraph.from16+paragraph.text.length);
       node.forEach((child,childOffset,childIndex)=>collect(child,offset+1+childOffset,childIndex,sourceOwner));
     });

@@ -297,3 +297,15 @@ test('native table ranges keep multicolumn and multirow wrappers intact',()=>{
   assert.equal(textEdit(projection,{paragraph:find('Group'),from16:0,to16:0,insert:'X'}).source,
     source.replace('{Group}','{XGroup}'));
 });
+
+test('native tab visits unfilled fields in source order without leaving the formula',()=>{
+  const {projection,numerator,denominator}=setup(source.replace('{a}','{}'));
+  const surface=createMathSurface({resolve:endpoint=>nativeTarget(projection,endpoint)});
+  surface.setObservation(page([field(numerator.tag,'num',100,true),field(denominator.tag,'den',300,true)]));
+  surface.nearest(1,100,100);
+  assert.equal(surface.moveEmptySlot(false),true);
+  assert.equal(surface.caret.slot.role,'denominator');
+  assert.equal(surface.moveEmptySlot(false),false);
+  assert.equal(surface.moveEmptySlot(true),true);
+  assert.equal(surface.caret.slot.role,'numerator');
+});
