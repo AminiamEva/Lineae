@@ -3312,6 +3312,47 @@ nativeTexPreview=installNativeTexPreview({host:footer,before:modes,primary:nativ
     if(!projected?.blocks.some(block=>block.editable&&block.from<=offset&&block.to>=offset))return null;
     return dispatchNativeParagraphChange(state,tr,paragraph.source,draft,change,projected)?result:null;
   },
+  commitAfterFormulaText:(formula,text)=>{
+    if(!text.trim()||/[\r\n]/.test(text))return null;
+    const target=nativeFormulaPosition(formula);
+    if(!target?.node)return null;
+    const {state}=editor,{position,node,project,composition,file}=target;
+    const {source,outerTo16:from}=formula;
+    const fragment=projectFileKind==='tex',document=parseDocument(source,{fragment});
+    if(!document)return null;
+    const next=position+node.nodeSize,encoded=serialize({type:'text',text});
+    let insert=encoded,caret=next+text.length;
+    const tr=state.tr;
+    if(formula.kind==='inlineMath')tr.insertText(text,next);
+    else {
+      const parent=state.doc.resolve(position).parent.type.name;
+      if(parent!=='doc'&&parent!=='projectRegion')return null;
+      const following=state.doc.nodeAt(next);
+      if(following?.type.name==='paragraph'&&!following.content.size)tr.insertText(text,next+1);
+      else tr.insert(next,state.schema.nodes.paragraph.create(null,state.schema.text(text)));
+      caret++;
+      insert=document.eol+document.eol+encoded;
+    }
+    tr.setSelection(TextSelection.create(tr.doc,caret));
+    const draft=source.slice(0,from)+insert+source.slice(from);
+    const offset=from+insert.length,path=formula.filePath;
+    const candidate=projectMixedDocument(draft,{fragment,filePath:path,splitIncludes:Boolean(composition)})?.paragraphs.find(paragraph=>
+      offset>=paragraph.from16&&offset<=paragraph.from16+paragraph.text.length);
+    if(!candidate)return null;
+    if(composition){
+      const updates=projectDocument.changes(tr.doc.toJSON());
+      if(updates?.get(file.id)!==draft)return null;
+      for(const [id,value] of updates)if(id!==file.id&&value!==project.file(id).draft)return null;
+      editor.view.dispatch(closeHistory(tr));
+      return editor.state.doc!==state.doc?{source:draft,offset,path}:null;
+    }
+    const projected=sourceProjection(draft,tr.doc.toJSON(),{fragment});
+    const local=offset-candidate.from16;
+    const projectedCaret=nativeEditorRange({doc:tr.doc,projection:projected,paragraph:candidate,from:local,to:local});
+    if(projectedCaret?.from!==caret)return null;
+    const change={from,to:from,insert};
+    return projected&&dispatchNativeParagraphChange(state,tr,source,draft,change,projected)?{source:draft,offset,path}:null;
+  },
   focusMathSlot:async(anchor,head,isCurrent)=>{    const project=projectExplorer?.model;
     const formula=head.formula;
     if(anchor.formula.filePath!==formula.filePath)return;

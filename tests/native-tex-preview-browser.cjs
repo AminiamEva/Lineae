@@ -185,7 +185,9 @@ const server=createServer(async(req,res)=>{
       await page.waitForFunction(source=>nativeProbe.source===source,expected);
       await panel.getByText('Click prose on the native page',{exact:false}).waitFor();
       await canvas.click({position:{x:6510000*scale,y:6950000*scale}});
-      await page.keyboard.press(mod+'+Shift+j');
+      await page.keyboard.type('$');
+      await panel.getByText('Type another $ to close the display formula',{exact:true}).waitFor();
+      await page.keyboard.type('$');
       await page.keyboard.type('X');
       const afterLeaving=expected.replace('Omega.','XOmega.');
       await page.waitForFunction(source=>nativeProbe.source===source,afterLeaving);
@@ -734,8 +736,15 @@ const server=createServer(async(req,res)=>{
       await page.keyboard.type('$$');
       await panel.getByText('Type a display formula',{exact:true}).waitFor();
       await page.keyboard.insertText('\\frac{a}{}');
-      await page.waitForFunction(expected=>nativeProbe.source===expected,
-        blank.replace('\\begin{document}\n','\\begin{document}\n\\[\\frac{a}{}\\]\n'));
+      const initialFormula=blank.replace('\\begin{document}\n','\\begin{document}\n\\[\\frac{a}{}\\]\n');
+      await page.waitForFunction(expected=>nativeProbe.source===expected,initialFormula);
+      await panel.getByText('Click the empty numerator or denominator',{exact:false}).waitFor();
+      await page.keyboard.type('$$');
+      await panel.getByText('Type text after the formula',{exact:true}).waitFor();
+      await page.keyboard.type('X');
+      await page.waitForFunction(expected=>nativeProbe.source===expected,initialFormula.replace('\\]','\\]\n\nX'));
+      await page.keyboard.press(mod+'+z');
+      await page.waitForFunction(expected=>nativeProbe.source===expected,initialFormula);
       await page.keyboard.press(mod+'+z');
       await page.waitForFunction(expected=>nativeProbe.source===expected,blank);
       await page.getByRole('button',{name:'Start typing',exact:true}).click();
@@ -744,6 +753,15 @@ const server=createServer(async(req,res)=>{
         nativeProbe.calls.some(call=>call.command==='native_tex_observe_formula'&&call.args.sourceRevision===nativeProbe.revision));
       assert.equal(await page.evaluate(()=>document.querySelectorAll('.ProseMirror p').length),1);
       const beforeBreak=await page.evaluate(()=>nativeProbe.source);
+      await panel.getByText('Click text on the native page',{exact:false}).waitFor();
+      await page.keyboard.press('End');
+      await page.keyboard.press('Tab');
+      await page.waitForFunction(expected=>nativeProbe.source===expected,beforeBreak.replace('AlphaBeta','AlphaBeta    '));
+      await panel.getByText('Click text on the native page',{exact:false}).waitFor();
+      await page.keyboard.press('Shift+Tab');
+      await page.waitForFunction(expected=>nativeProbe.source===expected,beforeBreak);
+      assert.equal(await page.evaluate(()=>document.activeElement?.id),'native-tex-input');
+      await panel.getByText('Click text on the native page',{exact:false}).waitFor();
       await page.keyboard.press('Home');
       for(let index=0;index<5;index++)await page.keyboard.press('ArrowRight');
       const split=beforeBreak.replace('AlphaBeta','Alpha\n\nBeta');

@@ -79,7 +79,7 @@ export function createTextSurface({projection,selection=createSelectionModel(sam
       if (!result) return null;
       return selection.record({kind:'text', paragraph: stop.paragraph, ...result}, stop.paragraph.from16 + result.selection);
     },
-    erase(backward = true) {
+    erase(backward = true, {indent=false} = {}) {
       const stop = selection.caret;
       if (!stop) return null;
       let from, to;
@@ -88,6 +88,11 @@ export function createTextSurface({projection,selection=createSelectionModel(sam
         if(!sameParagraph(start,end))return null;
         from = Math.min(start.local, end.local);
         to = Math.max(start.local, end.local);
+      } else if(indent){
+        to=stop.local;
+        const spaces=/ {1,4}$/.exec(stop.paragraph.text.slice(0,to));
+        if(!spaces)return null;
+        from=to-spaces[0].length;
       } else {
         const run = runAt(stop.paragraph, stop.local, backward);
         if (!run) return null;

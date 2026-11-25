@@ -14,7 +14,7 @@ import {readDelimiterPair} from '../editor/delimiter-input.js';
 // Native LaTeX output is the primary page. The opt-in native input mode sends
 // supported keys, caret and IME through this surface into ProseMirror; the old
 // JS-formatted page and MathLive inputs stay available as the migration fallback.
-export function installNativeTexPreview({host,before,primary=false,documentZoom=100,isDocumentMode,splitHost,getSource,getSnapshot,isComposing,focusMathSlot,focusImage,listTikzDrawings,editTikzDrawing,openMeasuredDrawing,listSourceBlocks,openSourceBlock,continuationRegion,selectionRegions,foldedFiles,selectText,serializeTextSelection,commitMath,commitText,commitTextLines,commitInlinePaste,commitProjectRange,canStartText,commitInitialText,commitInitialMath,commitParagraphBreak,commitParagraphJoin,commitNewMath,onEnvironmentChange,showTextCommands,history}) {
+export function installNativeTexPreview({host,before,primary=false,documentZoom=100,isDocumentMode,splitHost,getSource,getSnapshot,isComposing,focusMathSlot,focusImage,listTikzDrawings,editTikzDrawing,openMeasuredDrawing,listSourceBlocks,openSourceBlock,continuationRegion,selectionRegions,foldedFiles,selectText,serializeTextSelection,commitMath,commitText,commitTextLines,commitInlinePaste,commitProjectRange,canStartText,commitInitialText,commitInitialMath,commitParagraphBreak,commitParagraphJoin,commitNewMath,commitAfterFormulaText,onEnvironmentChange,showTextCommands,history}) {
   const invoke=window.__TAURI__?.core?.invoke;
   if(!invoke) return {refresh(){},documentChanged(){},relocalize(){}};
   const button=document.createElement('button');
@@ -183,6 +183,19 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
     paintSurfaceSelection(true);
     positionInput();
   }
+  function finishFormula(){
+    if(nativeDocument.leaveFormula()){
+      cancelDraftInput();
+      targetStatus.textContent='';
+      return true;
+    }
+    const caret=nativeDocument.surface.caret;
+    if(caret?.kind!=='math'||!commitAfterFormulaText)return false;
+    draftInput={kind:'after-formula',formula:caret.formula};
+    renderer.clearCaret();
+    targetStatus.textContent=t('继续输入正文','Type text after the formula');
+    return true;
+  }
   const startingText=()=>draftInput?.kind==='initial'&&!draftInput.region;
   function hasNativeTextFocus(){
     return document.activeElement===input&&nativeEditing&&acceptsInput()&&
@@ -227,8 +240,15 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
         edit=draft.initial?commitInitialMath?.(action.insert,draft.display,draft.delimiter):
           commitNewMath?.(draft.first,draft.last,action.insert,draft.display,draft.delimiter);
         break;
+      case 'close-display':
+        cancelDraftInput();
+        targetStatus.textContent='';
+        return action.insert==='$'&&!action.paste?finishFormula():submitInput(action);
+      case 'after-formula':
+        edit=commitAfterFormulaText?.(draft.formula,action.insert);
+        break;
       default:
-        if(action.insert==='$'&&!action.paste&&startFormula(false))return true;
+        if(['$','$$'].includes(action.insert)&&!action.paste&&startFormula(action.insert==='$$'))return true;
         edit=commitInitialText?.(action.insert,draft.region);
     }
     if(!edit)return false;
@@ -260,13 +280,16 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
       const edit=commitTextLines?.(...surface.range,action.insert);
       return edit?awaitSourcePosition(edit,action.started):false;
     }
-    if(action.insert==='$'&&!action.paste){
+    if(['$','$$'].includes(action.insert)&&!action.paste){
       if(surface.caret.kind==='math'){
-        if(!nativeDocument.leaveFormula())return false;
-        paintSurfaceSelection(true);positionInput();
-        return true;
+        if(surface.caret.formula.kind==='displayMath'&&action.insert==='$'){
+          draftInput={kind:'close-display'};
+          targetStatus.textContent=t('再输入一个 $ 退出行间公式','Type another $ to close the display formula');
+          return true;
+        }
+        return finishFormula();
       }
-      if(startFormula(false))return true;
+      if(startFormula(action.insert==='$$'))return true;
     }
     if(!action.paste&&surface.caret.kind==='math'&&surface.caret===surface.anchor&&['^','_'].includes(action.insert)){
       draftInput={kind:'script',marker:action.insert};
@@ -444,11 +467,20 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
       history?.('redo');
       return;
     }
-    if(event.key==='Tab'&&!mod&&!event.altKey&&surface.caret?.paragraph?.tableCell){
+    if(event.key==='Tab'&&!mod&&!event.altKey&&surface.caret?.kind==='text'){
       event.preventDefault();
-      if(current()&&observation&&!pendingEdit&&nativeDocument.moveTableCell(event.shiftKey)){
-        paintSurfaceSelection(true);
-        positionInput(true);
+      if(surface.caret.paragraph.tableCell){
+        if(current()&&observation&&!pendingEdit&&nativeDocument.moveTableCell(event.shiftKey)){
+          paintSurfaceSelection(true);
+          positionInput(true);
+        }
+      }else if(event.shiftKey){
+        if(current()&&observation&&!pendingEdit){
+          const edit=surface.erase(true,{indent:true});
+          if(edit){inputStart=performance.now();commitSurface(edit);}
+        }
+      }else {
+        submitInput({insert:'    ',started:performance.now()});
       }
       return;
     }
@@ -1165,10 +1197,7 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
       if(!current()||!observation||pendingEdit||surface.caret?.kind!=='math')return false;
       if(command==='left'||command==='right')return chooseNativeDelimiters(command==='right');
       if(command==='leaveFormula'){
-        if(!nativeDocument.leaveFormula())return false;
-        paintSurfaceSelection(true);
-        positionInput();
-        return true;
+        return finishFormula();
       }
       const edit=surface.command(command);
       if(!edit)return false;
