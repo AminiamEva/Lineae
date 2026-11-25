@@ -171,8 +171,11 @@ test('plain cell writeback leaves a neighboring inline formula and its spelling 
   assert.deepEqual(richSourceChanges(projection,edited),[{from:at,to:at,insert:'X'}]);
   const formula=edited.content[0].content[0].content[1].content[0].content[0];
   assert.equal(formula.type,'math');
-  formula.attrs.latex='z';
-  assert.equal(standaloneMathChanges(projection,edited),null);
+  formula.attrs.latex=' z ';
+  const math=source.indexOf('$ x $')+2;
+  assert.deepEqual(standaloneMathChanges(projection,edited),[
+    {from:at,to:at,insert:'X'}, {from:math,to:math+1,insert:'z'},
+  ]);
 });
 
 test('nested prose edits preserve a proof title, an abstract declaration, and mixed line endings',()=>{

@@ -12,12 +12,12 @@ function contentRange(part,offset) {
     offset+=format.end+1+body.value.length-body.value.trimStart().length;
     text=body.value.trim();
   }
-  return /[\\{}$%#_^~]/.test(text)?null:{text,offset};
+  return {text,offset};
 }
 
 // Reuse the importer's span placement so skipped multirow placeholders do
 // not shift ProseMirror cell indexes. Only edit text inside known wrappers.
-export function plainTableCells(block,{partial=false}={}) {
+export function tableCellRanges(block) {
   const leading=block.length-block.trimStart().length;
   const raw=block.trim(),begin='\\begin{tabular}';
   if(!raw.startsWith(begin))return null;
@@ -40,11 +40,18 @@ export function plainTableCells(block,{partial=false}={}) {
     const offsets=parts.map(part=>{const result=offset;offset+=part.length+1;return result;});
     for(const [column,cell] of placed.entries()){
       const range=contentRange(parts[cell.sourceIndex],offsets[cell.sourceIndex]);
-      if(!range){if(partial)continue;return null;}
+      if(!range)return null;
       if(range.text!==cell.text||range.text!==table.rows[row].cells[column])return null;
       cells.push({row,column,...range});
     }
     row++;
   }
   return row===table.rows.length?cells:null;
+}
+
+export function plainTableCells(block,{partial=false}={}) {
+  const cells=tableCellRanges(block);
+  if(!cells)return null;
+  const plain=cells.filter(cell=>!/[\\{}$%#_^~]/.test(cell.text));
+  return partial||plain.length===cells.length?plain:null;
 }

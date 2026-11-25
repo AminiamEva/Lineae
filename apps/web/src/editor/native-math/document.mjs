@@ -1,4 +1,5 @@
 import {parseDocument} from '../../../latex/document.mjs';
+import {tableCellRanges} from '../native-text/table-cells.mjs';
 import {sourceStructure} from '../../../latex/source-structure.mjs';
 import {environmentEnd} from '../../../latex/tblr.mjs';
 import {applySlotEdit,projectMath} from './source.mjs';
@@ -29,10 +30,18 @@ export function projectDocumentFormulas(source,{fragment=false,firstTag=1,filePa
   const doc=parseDocument(source,{fragment});
   if(!doc)return null;
   const body=doc.blocks.join('');
-  if(fragment? !source.startsWith(body) : doc.start+body+doc.end!==source)return null;
+  if(doc.start+body+doc.end!==source)return null;
   const tokens=[...sourceStructure(body)];
   if(tokens.some(token=>token.kind==='invalid'))return null;
+  const tableCells=new Map(tokens.flatMap(token=>{
+    if(!token.topLevel||token.kind!=='begin'||token.value!=='\\begin{tabular}')return [];
+    const close=environmentEnd(body,token.index,'tabular');
+    if(!close)return [];
+    return (tableCellRanges(body.slice(token.index,close.end))??[]).map(cell=>
+      [token.index+cell.offset,token.index+cell.offset+cell.text.length]);
+  }));
   const spans=tokens.flatMap(token=>{
+    if(token.kind==='inlineMath'&&tableCells.get(token.index)===token.end)return [token];
     if(!token.topLevel)return [];
     if(['displayMath','inlineMath'].includes(token.kind))return [token];
     const name=token.kind==='begin'&&/^\\begin\{((?:equation|align|gather)\*?)\}$/.exec(token.value)?.[1];

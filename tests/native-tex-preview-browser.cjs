@@ -185,6 +185,19 @@ const server=createServer(async(req,res)=>{
       await page.keyboard.press(mod+'+e');await page.keyboard.press('Shift+r');
       await page.waitForFunction(()=>document.querySelectorAll('.ProseMirror table tr').length===3);
       await page.locator('#native-tex-close').click();
+      const tableWithMath=tableSource.replace('Two','$\\frac{a}{}$');
+      await page.locator('input#file').setInputFiles({name:'mixed-table.tex',mimeType:'text/plain',buffer:Buffer.from(tableWithMath)});
+      await page.locator('#native-tex-toggle').click();
+      await page.waitForFunction(()=>document.querySelector('#native-tex-preview').dataset.state==='current');
+      await page.locator('#native-tex-target').click();
+      await panel.getByText('Click prose on the native page',{exact:false}).waitFor();
+      await page.locator('#native-tex-edit').click();
+      await canvas.click({position:{x:6500000*scale,y:7000000*scale}});
+      await page.keyboard.type('b');
+      await page.waitForFunction(expected=>nativeProbe.source===expected,tableWithMath.replace('}{','}{b'));
+      await page.keyboard.press(mod+'+z');
+      await page.waitForFunction(expected=>nativeProbe.source===expected,tableWithMath);
+      await page.locator('#native-tex-close').click();
       const matrixSource='\\documentclass{article}\n\\usepackage{amsmath}\n\\begin{document}\n'+
         '\\[\\begin{bmatrix}a&\\\\&d\\end{bmatrix}\\]\n\\end{document}\n';
       await page.locator('input#file').setInputFiles({name:'matrix.tex',mimeType:'text/plain',buffer:Buffer.from(matrixSource)});

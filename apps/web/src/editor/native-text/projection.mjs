@@ -105,10 +105,12 @@ function instrumentProse(block, source, blockFrom, firstOwner, attribute, filePa
     paragraphs:[paragraph],nextTag};
 }
 
-function instrumentTable(block, source, blockFrom, firstOwner, attribute, filePath) {
+function instrumentTable(block, source, blockFrom, firstOwner, attribute, filePath, formulas=[]) {
   const cells=plainTableCells(block,{partial:true});
-  if(!cells?.length)return null;
-  let projection='',cursor=0,nextTag=firstOwner;
+  if(!cells||!cells.length&&!formulas.length)return null;
+  const replacements=formulas.map(formula=>({from:formula.from16-blockFrom,to:formula.to16-blockFrom,
+    insert:formula.math.projection}));
+  let nextTag=firstOwner;
   const paragraphs=[];
   for(const cell of cells){
     const {text,offset,row,column}=cell;
@@ -119,12 +121,17 @@ function instrumentTable(block, source, blockFrom, firstOwner, attribute, filePa
       glyphs:[{tag:nextTag,from16:0,to16:0,char:''}],nextTag:nextTag+1,
     };
     nextTag=built.nextTag;
-    projection+=block.slice(cursor,offset)+built.instrumented;
-    cursor=offset+text.length;
+    replacements.push({from:offset,to:offset+text.length,insert:built.instrumented});
     paragraphs.push({source,filePath,from16:blockFrom+offset,text,glyphs:built.glyphs,
       parts:text?[{kind:'text',from16:0,to16:text.length,text}]:[],
       runs:[{from16:0,to16:text.length,text,partIndex:0}],
       tableCell:{from16:blockFrom,row,column}});
+  }
+  let projection='',cursor=0;
+  for(const {from,to,insert} of replacements.sort((left,right)=>left.from-right.from)){
+    if(from<cursor||to>block.length)return null;
+    projection+=block.slice(cursor,from)+insert;
+    cursor=to;
   }
   return {projection:projection+block.slice(cursor),paragraphs,nextTag};
 }
@@ -208,7 +215,8 @@ export function projectMixedDocument(source, {previous=[], attribute=65000, frag
       return {...math, kind:'math', paragraphs:[]};
     }
     output += source.slice(cursor, from16);
-    const result=!overlapping.length&&instrumentTextBlock(block,source,from16,next,attribute,filePath,keepThrough);
+    const result=overlapping.length?instrumentTable(block,source,from16,next,attribute,filePath,overlapping):
+      instrumentTextBlock(block,source,from16,next,attribute,filePath,keepThrough);
     if(result){
       output+=result.projection;
       cursor=to16;

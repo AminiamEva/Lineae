@@ -483,6 +483,11 @@ test('native table projection includes plain and empty cells beside protected ce
   assert.ok(projection.projection.includes(' & $x$ &'));
   const [paragraph]=projection.paragraphs;
   assert.equal(textEdit(projection,{paragraph,from16:0,to16:0,insert:'X'}).source,source.replace('First','XFirst'));
+  const mixed=projectMixedDocument(source);
+  assert.deepEqual(mixed.paragraphs.map(({tableCell,text})=>[tableCell.column,text]),[[0,'First'],[2,'']]);
+  assert.equal(mixed.formulas.length,1);
+  assert.equal(mixed.formulas[0].math.source,'x');
+  assert.equal(source[mixed.formulas[0].from16],'x');
 });
 
 test('native tab visits unfilled fields in source order without leaving the formula',()=>{

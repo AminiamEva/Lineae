@@ -1,4 +1,4 @@
-import {plainTableCells} from './native-text/table-cells.mjs';
+import {plainTableCells,tableCellRanges} from './native-text/table-cells.mjs';
 import {plainContainerParagraphs,plainParagraphText} from './native-text/containers.mjs';
 import {paragraphSpelling,mathSpelling} from './source-spelling.mjs';
 import {includeEmptyParagraphs,ownsEditedRange,blockWhitespace,splitEditableBoundaries} from './source-boundaries.mjs';
@@ -170,7 +170,7 @@ function plainTableChanges(block,nodes) {
   const [before]=previous,[after]=nodes;
   if(before?.type!=='table'||after?.type!=='table'||nodes.length!==previous.length)return null;
   if(before.attrs?.caption||before.attrs?.tblr||before.attrs?.tabularx)return null;
-  const cells=plainTableCells(block.raw,{partial:true});
+  const cells=tableCellRanges(block.raw);
   if(!cells)return null;
   const restored=structuredClone(nodes);
   const patches=[];
@@ -181,16 +181,29 @@ function plainTableChanges(block,nodes) {
     if(content.some(node=>node.type!=='text'||node.marks?.length))return null;
     return content.map(node=>node.text).join('');
   }
+  function patchInlineMath(text,oldCell,nextCell,offset) {
+    const [token]=[...sourceStructure(text)];
+    const old=oldCell?.content?.[0]?.content;
+    const next=nextCell?.content?.[0]?.content;
+    if(token?.kind!=='inlineMath'||token.index!==0||token.end!==text.length||
+      oldCell?.content?.length!==1||nextCell?.content?.length!==1||old?.length!==1||next?.length!==1||
+      old[0].type!=='math'||next[0].type!=='math'||old[0].attrs.latex!==token.latex||typeof next[0].attrs.latex!=='string')return null;
+    const previous={...next[0],attrs:{...next[0].attrs,latex:token.latex}};
+    if(JSON.stringify(previous)!==JSON.stringify(old[0]))return null;
+    return minimalChange(token.latex,next[0].attrs.latex,offset+token.delimiter.length);
+  }
   for(const {row,column,text,offset} of cells){
     const oldCell=before.content[row]?.content[column];
     const nextCell=after.content[row]?.content[column];
     if(JSON.stringify(oldCell)===JSON.stringify(nextCell))continue;
-    const next=read(nextCell);
-    if(read(oldCell)!==text||next===null||/[\\{}$%&#_^~\r\n]/.test(next)||next!==next.trim())return null;
+    const next=read(nextCell), at=block.from+offset;
+    const patch=read(oldCell)===text&&next!==null&&!/[\\{}$%&#_^~\r\n]/.test(next)&&next===next.trim()
+      ?minimalChange(text,next,at):patchInlineMath(text,oldCell,nextCell,at);
+    if(!patch)return null;
     const target=restored[0].content[row].content[column].content[0];
     if(oldCell.content[0].content)target.content=oldCell.content[0].content;
     else delete target.content;
-    patches.push(...minimalChange(text,next,block.from+offset));
+    patches.push(...patch);
   }
   if(!patches.length||JSON.stringify(restored)!==block.snapshot)return null;
   return patches;
