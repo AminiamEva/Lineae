@@ -1,8 +1,7 @@
 /**
  * Conservative source model for ONE display's contents (no $/$$/\[ wrappers).
- * This is not a TeX interpreter: only letters/numbers with combining marks,
- * groups, \frac, \sqrt and ^/_ arguments are recognized. Everything else fails
- * closed. No macro expansion, catcode changes, operators or environments.
+ * Parse the supported structural commands, symbols, scripts and aligned cells
+ * without expanding macros or changing category codes.
  *
  * Ranges are half-open UTF-16 source offsets; slot edit offsets are relative to
  * slot.raw. Slots describe source fields, not inferred glyph/empty-field boxes.
@@ -121,7 +120,7 @@ function parse(source) {
       node = {kind: 'group', from16, fields: [body]};
     } else if (source[at] === '\\') {
       const command = /^\\[A-Za-z]+/.exec(source.slice(at))?.[0];
-      const matrix = command==='\\begin'&&/^\\begin\{(matrix|[pbBvV]matrix|aligned|gathered|align\*?|gather\*?)\}/.exec(source.slice(at));
+      const matrix = command==='\\begin'&&/^\\begin\{(matrix|[pbBvV]matrix|aligned|gathered|align\*?|gather\*?|cases|dcases|rcases|drcases)\}/.exec(source.slice(at));
       if(command==='\\left'){
         function delimiter(prefix) {
           const start=at;
@@ -143,7 +142,7 @@ function parse(source) {
         node={kind:'fence',from16,fields:[{role:'body',from16:start,to16:end,grouped:true,children}]};
       } else if(matrix){
         at+=matrix[0].length;protect(from16,at,'command');
-        node={kind:'matrix',from16,fields:[]};
+        node={kind:'matrix',command:matrix[1],from16,fields:[]};
         let row=0,column=0;
         while(true){
           const start=at,children=[];
@@ -454,7 +453,43 @@ const structureTemplates = {
     environment,
     text=>({before:'\\begin{'+environment+'}',body:text,after:'&\\\\&\\end{'+environment+'}',next:'first'}),
   ])),
+  cases: text => ({before:'\\begin{cases}',body:text,after:'&\\\\&\\end{cases}',next:'first'}),
 };
+
+export function expandMatrix(snapshot,slot,local,axis) {
+  if(!snapshots.get(snapshot)?.tree||!snapshot.slots.includes(slot)||
+      !Number.isInteger(local)||local<0||local>slot.raw.length||!['row','column'].includes(axis))return null;
+  const cursor=slot.from16+local;
+  const matrices=snapshot.atoms.filter(atom=>atom.kind==='matrix'&&atom.from16<cursor&&atom.to16>cursor)
+    .sort((left,right)=>(left.to16-left.from16)-(right.to16-right.from16));
+  const byId=new Map(snapshot.slots.map(candidate=>[candidate.id,candidate]));
+  for(const atom of matrices){
+    const rows=[];
+    let origin;
+    for(const id of atom.slotIds){
+      const cell=byId.get(id),coordinates=/^cell\.(\d+)\.(\d+)$/.exec(cell?.role??'');
+      if(!coordinates)continue;
+      const row=Number(coordinates[1]),column=Number(coordinates[2]);
+      (rows[row]??=[]).push(cell);
+      if(slot.from16>=cell.from16&&slot.to16<=cell.to16)origin={row,column};
+    }
+    if(!origin)continue;
+    if(axis==='column'&&(/^gather|cases$/.test(atom.command)||
+        rows.some(row=>row.length<=origin.column)))return null;
+    const width=rows.reduce((maximum,row)=>Math.max(maximum,row.length),0);
+    const edits=axis==='row'
+      ?[{from:rows[origin.row].at(-1).to16,insert:'\\\\'+'&'.repeat(width-1)}]
+      :rows.map(row=>({from:row[origin.column].to16,insert:'&'}));
+    const from=edits[0].from,to=edits.at(-1).from;
+    const insert=edits.reduceRight((body,edit)=>
+      body.slice(0,edit.from-from)+edit.insert+body.slice(edit.from-from),snapshot.source.slice(from,to));
+    const source=snapshot.source.slice(0,from)+insert+snapshot.source.slice(to);
+    parse(source);
+    return {source,patch:{from,to,insert},
+      cursor:cursor+edits.filter(edit=>edit.from<cursor).reduce((count,edit)=>count+edit.insert.length,0)};
+  }
+  return null;
+}
 
 export function applyStructureCommand(snapshot, {slotId,from16,to16,command}) {
   if(!Object.hasOwn(structureTemplates,command))return null;

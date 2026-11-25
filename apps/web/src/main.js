@@ -3415,7 +3415,8 @@ groupButton(mathGroup,'\\left',()=>chooseMathDelimiters(activeMath()));
 groupButton(mathGroup,'\\right',()=>chooseMathDelimiters(activeMath(),true));
 groupButton(mathGroup,['单括号','Literal fence'],()=>armLiteralFence(activeMath()));
 groupButton(mathGroup,'matrix',()=>runNativeMathToolbarCommand('matrix',()=>insertMath(false,matrixSource('matrix'))));
-groupButton(mathGroup,'cases',()=>insertMath(true,'\\begin{cases}\\placeholder{} & \\placeholder{}\\\\ \\placeholder{} & \\placeholder{}\\end{cases}'));
+groupButton(mathGroup,'cases',()=>runNativeMathToolbarCommand('cases',
+  ()=>insertMath(true,'\\begin{cases}\\placeholder{} & \\placeholder{}\\\\ \\placeholder{} & \\placeholder{}\\end{cases}')));
 groupButton(mathGroup,'align',structureCommands.align);
 groupButton(mathGroup,'align*',structureCommands['align*']);
 

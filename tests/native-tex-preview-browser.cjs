@@ -171,6 +171,19 @@ const server=createServer(async(req,res)=>{
       await page.keyboard.press(mod+'+e');await page.keyboard.press('Shift+r');
       await page.waitForFunction(()=>document.querySelectorAll('.ProseMirror table tr').length===3);
       await page.locator('#native-tex-close').click();
+      const matrixSource='\\documentclass{article}\n\\usepackage{amsmath}\n\\begin{document}\n'+
+        '\\[\\begin{bmatrix}a&\\\\&d\\end{bmatrix}\\]\n\\end{document}\n';
+      await page.locator('input#file').setInputFiles({name:'matrix.tex',mimeType:'text/plain',buffer:Buffer.from(matrixSource)});
+      await page.locator('#native-tex-toggle').click();
+      await page.waitForFunction(()=>document.querySelector('#native-tex-preview').dataset.state==='current');
+      await page.locator('#native-tex-target').click();
+      await panel.getByText('Click the empty numerator or denominator',{exact:false}).waitFor();
+      await page.locator('#native-tex-edit').click();
+      await canvas.click({position:{x:6500000*scale,y:7000000*scale}});
+      await page.keyboard.press(mod+'+e');await page.keyboard.press('c');
+      await page.waitForFunction(expected=>nativeProbe.source===expected,
+        matrixSource.replace('a&\\\\&d','a&&\\\\&d&'));
+      await page.locator('#native-tex-close').click();
       const headingSource='\\documentclass{article}\n\\begin{document}\n\\section[Short]{Long title}\\label{section:test}\n\\end{document}\n';
       await page.locator('input#file').setInputFiles({name:'heading.tex',mimeType:'text/plain',buffer:Buffer.from(headingSource)});
       await page.waitForFunction(()=>document.querySelector('.ProseMirror h1')?.textContent==='Long title');

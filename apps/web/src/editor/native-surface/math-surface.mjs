@@ -1,5 +1,5 @@
 import {createSelectionModel} from './selection-model.mjs';
-import {applySlotEdit,applyStructureCommand} from '../native-math/source.mjs';
+import {applySlotEdit,applyStructureCommand,expandMatrix} from '../native-math/source.mjs';
 
 // Native surface geometry adapter. Display-list coordinates are page space;
 // callers provide the zoom used for the current painted page.
@@ -67,9 +67,9 @@ export function createMathSurface({resolve,selection=createSelectionModel(sameFo
       const [from,to] = selection.range;
       if(!from||!sameFormula(from,to)||from.slot.id!==to.slot.id)return null;
       try {
-        const result=applyStructureCommand(from.formula.math,{
-          slotId:from.slot.id,from16:from.local,to16:to.local,command,
-        });
+        const result=command==='addRow'||command==='addColumn'
+          ?expandMatrix(from.formula.math,selection.caret.slot,selection.caret.local,command==='addRow'?'row':'column')
+          :applyStructureCommand(from.formula.math,{slotId:from.slot.id,from16:from.local,to16:to.local,command});
         if(!result)return null;
         return selection.record({formula:from.formula,patch:result.patch,text:result.source,structure:true},
           from.formula.from16+result.cursor);
