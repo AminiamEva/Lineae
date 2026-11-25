@@ -111,7 +111,10 @@ export function installNativeTexPreview({host,before,getSource,getSnapshot,isCom
     const [from,to]=surface.range;
     if(!from||from===to)return null;
     if(from.kind==='text'&&from.paragraph===to.paragraph)
-      return from.paragraph.text.slice(from.local,to.local);
+      return from.paragraph.parts.map(part=>{
+        const start=Math.max(part.from16,from.local),end=Math.min(part.to16,to.local);
+        return end>start?from.paragraph.text.slice(start,end):'';
+      }).join('');
     if(from.kind==='math'&&from.formula===to.formula&&from.slot.id===to.slot.id)
       return from.slot.raw.slice(from.local,to.local);
     return null;

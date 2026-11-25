@@ -2,6 +2,7 @@ import {headingAt} from '../../../latex/headings.mjs';
 import {plainTableCells} from './table-cells.mjs';
 import {parseDocument} from '../../../latex/document.mjs';
 import {sourceStructure} from '../../../latex/source-structure.mjs';
+import {readGroup} from '../../../latex/table-spans.mjs';
 import {projectDocumentFormulas} from '../native-math/document.mjs';
 
 const segmenter = new Intl.Segmenter('und', {granularity:'grapheme'});
@@ -29,15 +30,59 @@ function plainBlock(block) {
   return {leading, trailing, text:block.slice(leading, block.length - trailing)};
 }
 
-const textMarks = {textbf:'bold',textit:'italic',texttt:'code'};
+const textMarks = {textbf:'bold',textit:'italic',texttt:'code',underline:'underline',
+  sout:'strike',textsuperscript:'superscript',textsubscript:'subscript'};
 function proseBody(block) {
   const {leading,text}=plainBlock(block);
   const heading=headingAt(text);
-  if(heading?.end===text.length&&heading.title.trim()===heading.title&&!unsupported.test(heading.title))
-    return {leading:leading+heading.titleFrom,text:heading.title,mark:null,heading:heading.name};
-  const mark=/^\\(textbf|textit|texttt)\{([^{}]+)\}$/.exec(text);
-  if(!mark)return {leading,text,mark:null};
-  return {leading:leading+mark[1].length+2,text:mark[2],mark:textMarks[mark[1]]};
+  if(heading?.end===text.length&&heading.title.trim()===heading.title)
+    return {leading:leading+heading.titleFrom,text:heading.title,heading:heading.name};
+  return {leading,text};
+}
+
+function markedRuns(text, offset=0, marks=[]) {
+  const runs=[];
+  let cursor=0;
+  while(cursor<text.length){
+    const raw=/^[^\\{}$%&#_^~]+/.exec(text.slice(cursor))?.[0];
+    if(raw){
+      runs.push({kind:'text',from16:offset+cursor,to16:offset+cursor+raw.length,text:raw,marks});
+      cursor+=raw.length;
+      continue;
+    }
+    const command=/^\\([a-z]+)(?=\{)/.exec(text.slice(cursor));
+    const mark=command&&Object.hasOwn(textMarks,command[1])&&textMarks[command[1]];
+    if(!mark||marks.includes(mark)||marks.length>=3)return null;
+    const start=cursor+command[0].length;
+    const group=readGroup(text,start);
+    if(!group?.value)return null;
+    const nested=markedRuns(group.value,offset+start+1,[...marks,mark]);
+    if(!nested)return null;
+    runs.push(...nested);
+    cursor=group.end;
+  }
+  return runs;
+}
+
+function instrumentProse(block, source, blockFrom, firstOwner, attribute, filePath) {
+  const {leading,text,heading}=proseBody(block);
+  const parts=markedRuns(text);
+  if(!parts?.length)return null;
+  const runs=[],glyphs=[];
+  let projection='',cursor=0,nextTag=firstOwner;
+  for(const [partIndex,part] of parts.entries()){
+    const built=instrumentText(part.text,nextTag,attribute);
+    nextTag=built.nextTag;
+    projection+=text.slice(cursor,part.from16)+built.instrumented;
+    cursor=part.to16;
+    runs.push({...part,partIndex});
+    for(const glyph of built.glyphs)
+      glyphs.push({...glyph,from16:part.from16+glyph.from16,to16:part.from16+glyph.to16});
+  }
+  if(!glyphs.length)return null;
+  const paragraph={source,filePath,from16:blockFrom+leading,text,heading,glyphs,parts,runs};
+  return {projection:block.slice(0,leading)+projection+text.slice(cursor)+block.slice(leading+text.length),
+    paragraphs:[paragraph],nextTag};
 }
 
 function instrumentTable(block, source, blockFrom, firstOwner, attribute, filePath) {
@@ -72,29 +117,16 @@ export function projectTextDocument(source, {firstOwner=1, attribute=65000, frag
     bodyOffset += block.length;
     if (!block.trim()) continue;
     const blockFrom=doc.start.length+blockStart;
-    const table=instrumentTable(block,source,blockFrom,next,attribute,filePath);
-    if(table){
-      output+=source.slice(cursor,blockFrom)+table.projection;
-      cursor=blockFrom+block.length;
-      next=table.nextTag;
-      for(const paragraph of table.paragraphs){
-        paragraphs.push(paragraph);
-        for(const glyph of paragraph.glyphs)owners.set(glyph.tag,{paragraph,glyph});
-      }
-      continue;
+    const result=instrumentTable(block,source,blockFrom,next,attribute,filePath)??
+      instrumentProse(block,source,blockFrom,next,attribute,filePath);
+    if(!result)continue;
+    output+=source.slice(cursor,blockFrom)+result.projection;
+    cursor=blockFrom+block.length;
+    next=result.nextTag;
+    for(const paragraph of result.paragraphs){
+      paragraphs.push(paragraph);
+      for(const glyph of paragraph.glyphs)owners.set(glyph.tag,{paragraph,glyph});
     }
-    const {leading,text,mark,heading}=proseBody(block);
-    if (!text || unsupported.test(text)) continue;
-    const built = instrumentText(text, next, attribute);
-    next = built.nextTag;
-    const from16 = doc.start.length + blockStart + leading;
-    const paragraph = {source, filePath, from16, text, heading,glyphs:built.glyphs, index:paragraphs.length,
-      parts:[{kind:'text', from16:0, to16:text.length, text, mark}],
-      runs:[{from16:0, to16:text.length, text, partIndex:0}]};
-    for (const glyph of built.glyphs) owners.set(glyph.tag, {paragraph, glyph});
-    paragraphs.push(paragraph);
-    output += source.slice(cursor, from16) + built.instrumented;
-    cursor = from16 + text.length;
   }
   if (!paragraphs.length) return null;
   return {source, projection:output + source.slice(cursor), paragraphs, owners, nextTag:next, kind:'text', formulas:[]};
@@ -129,33 +161,20 @@ export function projectMixedDocument(source, {previous=[], attribute=65000, frag
       return {...math, kind:'math', paragraphs:[]};
     }
     output += source.slice(cursor, from16);
-    const table=!overlapping.length&&instrumentTable(block,source,from16,next,attribute,filePath);
-    if(table){
-      output+=table.projection;
+    const result=!overlapping.length&&(instrumentTable(block,source,from16,next,attribute,filePath)??
+      instrumentProse(block,source,from16,next,attribute,filePath));
+    if(result){
+      output+=result.projection;
       cursor=to16;
-      next=table.nextTag;
-      for(const paragraph of table.paragraphs){
+      next=result.nextTag;
+      for(const paragraph of result.paragraphs){
         paragraphs.push(paragraph);
         for(const glyph of paragraph.glyphs)owners.set(glyph.tag,{paragraph,glyph});
       }
       continue;
     }
-    const {leading,text,mark,heading}=overlapping.length ? {...plainBlock(block),mark:null} : proseBody(block);
+    const {leading,text}=plainBlock(block);
     const contentFrom = from16 + leading;
-    if (!overlapping.length) {
-      if (text && !unsupported.test(text)) {
-        const built = instrumentText(text, next, attribute);
-        next = built.nextTag;
-        const paragraph = {source, filePath, from16:contentFrom, text, heading,glyphs:built.glyphs, index:paragraphs.length,
-          parts:[{kind:'text', from16:0, to16:text.length, text, mark}],
-          runs:[{from16:0, to16:text.length, text, partIndex:0}]};
-        for (const glyph of built.glyphs) owners.set(glyph.tag, {paragraph, glyph});
-        paragraphs.push(paragraph);
-        output += source.slice(from16, contentFrom) + built.instrumented;
-        cursor = contentFrom + text.length;
-        continue;
-      }
-    }
     const parts = [], runs = [], glyphs = [];
     let run = '', partCursor = 0;
     const addText = (from, to) => {

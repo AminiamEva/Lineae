@@ -90,7 +90,7 @@ const server=createServer(async(req,res)=>{
       await page.keyboard.press(mod+'+z');
       await page.waitForFunction(source=>nativeProbe.source===source,expected);
       await page.locator('#native-tex-close').click();
-      const markedSource='\\documentclass{article}\n\\begin{document}\n\\textbf{Bold prose.}\n\\end{document}\n';
+      const markedSource='\\documentclass{article}\n\\begin{document}\nBefore \\textit{\\textbf{Bold prose.}} after.\n\\end{document}\n';
       await page.locator('input#file').setInputFiles({name:'marked.tex',mimeType:'text/plain',buffer:Buffer.from(markedSource)});
       await page.waitForFunction(()=>document.querySelector('.ProseMirror strong')?.textContent==='Bold prose.');
       await page.locator('#native-tex-toggle').click();
@@ -98,7 +98,7 @@ const server=createServer(async(req,res)=>{
       await page.locator('#native-tex-target').click();
       await panel.getByText('Click text on the native page',{exact:false}).waitFor();
       await page.locator('#native-tex-edit').click();
-      await panel.locator('[data-native-page="1"] canvas').click({position:{x:6550000*scale,y:9250000*scale}});
+      await panel.locator('[data-native-page="1"] canvas').click({position:{x:7750000*scale,y:9250000*scale}});
       await page.keyboard.type('X');
       await page.waitForFunction(expected=>nativeProbe.source===expected,markedSource.replace('Bold prose.','XBold prose.'));
       assert.equal(await page.locator('.ProseMirror strong').textContent(),'XBold prose.');

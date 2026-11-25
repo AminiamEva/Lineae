@@ -2705,9 +2705,10 @@ nativeTexPreview=installNativeTexPreview({host:footer,before:modes,
       if(paragraph.heading&&node.attrs.command!==paragraph.heading)return false;
       return paragraph.parts.every((part,index)=>{
         const child=node.child(index);
+        const marks=part.marks??[];
         return part.kind==='text'
           ?child.isText&&child.text===part.text&&
-            (part.mark?child.marks.length===1&&child.marks[0].type.name===part.mark:!child.marks.length)
+            child.marks.length===marks.length&&child.marks.every(mark=>marks.includes(mark.type.name))
           :(child.type.name==='math'||child.type.name==='mathBlock')&&child.attrs.latex===part.latex;
       });
     };
@@ -2773,7 +2774,7 @@ nativeTexPreview=installNativeTexPreview({host:footer,before:modes,
         source.slice(0,change.from)+change.insert+source.slice(change.to),paragraph.source)!==expected)return false;
     }
     if(endpoints.start!==endpoints.end)closeHistory(tr);
-    if(!composition&&endpoints.start!==endpoints.end){
+    if(!composition&&(endpoints.start!==endpoints.end||paragraph.parts.some(part=>part.marks?.length))){
       const from=paragraph.from16+patch.from,to=paragraph.from16+patch.to;
       const expected=paragraph.source.slice(0,from)+patch.insert+paragraph.source.slice(to);
       const draft=standaloneParagraphDraft(importedSource,projection,importedSnapshot,

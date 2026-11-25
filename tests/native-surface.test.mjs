@@ -239,11 +239,26 @@ test('a plain marked paragraph instruments only the command argument',()=>{
   const source='\\begin{document}\n\\textbf{Bold prose.}\n\\end{document}\n';
   const projection=projectTextDocument(source);
   const [paragraph]=projection.paragraphs;
-  assert.equal(paragraph.parts[0].mark,'bold');
-  assert.equal(paragraph.text,'Bold prose.');
+  assert.deepEqual(paragraph.parts[0].marks,['bold']);
+  assert.equal(paragraph.text,'\\textbf{Bold prose.}');
   assert.ok(projection.projection.includes('\\textbf{\\begingroup'));
-  assert.equal(textEdit(projection,{paragraph,from16:0,to16:0,insert:'X'}).source,
+  const offset=paragraph.parts[0].from16;
+  assert.equal(textEdit(projection,{paragraph,from16:offset,to16:offset,insert:'X'}).source,
     source.replace('Bold prose.','XBold prose.'));
+});
+
+test('native prose edits a nested marked run without rewriting its wrappers or neighbors',()=>{
+  const source='\\begin{document}\r\nBefore \\textbf{bold \\textit{both}} after.\r\n\\end{document}\r\n';
+  const projection=projectTextDocument(source);
+  const [paragraph]=projection.paragraphs;
+  assert.deepEqual(paragraph.parts.map(({text,marks})=>[text,marks]),[
+    ['Before ',[]],['bold ',['bold']],['both',['bold','italic']],[' after.',[]],
+  ]);
+  const {from16,to16}=paragraph.parts[2];
+  assert.equal(textEdit(projection,{paragraph,from16,to16,insert:'inside'}).source,
+    source.replace('{both}','{inside}'));
+  assert.equal(textEdit(projection,{paragraph,from16:0,to16,insert:'ambiguous'}),null);
+  assert.match(projection.projection,/\\textbf\{\\begingroup.*\\textit\{\\begingroup/);
 });
 
 test('mixed project prose edits refer to the child file, not the main snapshot',()=>{
