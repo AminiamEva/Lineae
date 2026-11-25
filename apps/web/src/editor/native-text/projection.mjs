@@ -1,5 +1,6 @@
 import {headingAt} from '../../../latex/headings.mjs';
 import {plainTableCells} from './table-cells.mjs';
+import {plainContainerParagraphs} from './containers.mjs';
 import {parseDocument} from '../../../latex/document.mjs';
 import {sourceStructure} from '../../../latex/source-structure.mjs';
 import {readGroup} from '../../../latex/table-spans.mjs';
@@ -109,6 +110,29 @@ function instrumentTable(block, source, blockFrom, firstOwner, attribute, filePa
   return {projection:projection+block.slice(cursor),paragraphs,nextTag};
 }
 
+function instrumentContainer(block,source,blockFrom,firstOwner,attribute,filePath) {
+  const parts=plainContainerParagraphs(block);
+  if(!parts.length)return null;
+  const paragraphs=[];
+  let projection='',cursor=0,nextTag=firstOwner;
+  for(const {from,text,container,path} of parts){
+    const built=instrumentText(text,nextTag,attribute);
+    projection+=block.slice(cursor,from)+built.instrumented;
+    cursor=from+text.length;
+    nextTag=built.nextTag;
+    const part={kind:'text',from16:0,to16:text.length,text};
+    paragraphs.push({source,filePath,from16:blockFrom+from,text,glyphs:built.glyphs,
+      parts:[part],runs:[{...part,partIndex:0}],container:{type:container,path}});
+  }
+  return {projection:projection+block.slice(cursor),paragraphs,nextTag};
+}
+
+function instrumentTextBlock(block,source,from,next,attribute,filePath){
+  return instrumentTable(block,source,from,next,attribute,filePath)??
+    instrumentContainer(block,source,from,next,attribute,filePath)??
+    instrumentProse(block,source,from,next,attribute,filePath);
+}
+
 // Prose-only documents: every plain paragraph becomes a native target.
 export function projectTextDocument(source, {firstOwner=1, attribute=65000, fragment=false, filePath}={}) {
   const doc = parseDocument(source,{fragment});
@@ -122,8 +146,7 @@ export function projectTextDocument(source, {firstOwner=1, attribute=65000, frag
     bodyOffset += block.length;
     if (!block.trim()) continue;
     const blockFrom=doc.start.length+blockStart;
-    const result=instrumentTable(block,source,blockFrom,next,attribute,filePath)??
-      instrumentProse(block,source,blockFrom,next,attribute,filePath);
+    const result=instrumentTextBlock(block,source,blockFrom,next,attribute,filePath);
     if(!result)continue;
     output+=source.slice(cursor,blockFrom)+result.projection;
     cursor=blockFrom+block.length;
@@ -166,8 +189,7 @@ export function projectMixedDocument(source, {previous=[], attribute=65000, frag
       return {...math, kind:'math', paragraphs:[]};
     }
     output += source.slice(cursor, from16);
-    const result=!overlapping.length&&(instrumentTable(block,source,from16,next,attribute,filePath)??
-      instrumentProse(block,source,from16,next,attribute,filePath));
+    const result=!overlapping.length&&instrumentTextBlock(block,source,from16,next,attribute,filePath);
     if(result){
       output+=result.projection;
       cursor=to16;

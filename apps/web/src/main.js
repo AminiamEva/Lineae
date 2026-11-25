@@ -2734,6 +2734,20 @@ nativeTexPreview=installNativeTexPreview({host:footer,before:modes,
       block.to>=paragraph.from16+paragraph.text.length);
     const matches=[];
     function collect(node,offset,index,sourceOwner){
+      if(paragraph.container){
+        const {type,path}=paragraph.container;
+        if(sourceOwner?.index!==index||node.type.name!==type)return;
+        let child=node,position=offset;
+        for(const childIndex of path){
+          if(childIndex>=child.childCount)return;
+          position++;
+          for(let i=0;i<childIndex;i++)position+=child.child(i).nodeSize;
+          child=child.child(childIndex);
+        }
+        if(!matchesParts(child))return;
+        matches.push({node:child,offset:position,index,verified:true});
+        return;
+      }
       if(!paragraph.tableCell){
         if(matchesParts(node))matches.push({node,offset,index,verified:sourceOwner?.index===index});
         return;
@@ -2781,7 +2795,7 @@ nativeTexPreview=installNativeTexPreview({host:footer,before:modes,
       if(drafts?.get(file.id)!==expected)return false;
       for(const [id,draft] of drafts)if(id!==file.id&&draft!==project.file(id).draft)return false;
     }
-    if(!composition&&paragraph.tableCell){
+    if(!composition&&(paragraph.tableCell||paragraph.container)){
       const patchList=standaloneMathChanges(projection,tr.doc.toJSON());
       const from=paragraph.from16+patch.from,to=paragraph.from16+patch.to;
       const expected=paragraph.source.slice(0,from)+patch.insert+paragraph.source.slice(to);

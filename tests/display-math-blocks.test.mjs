@@ -160,3 +160,36 @@ test('span placeholders never shift the cell byte range on writeback',()=>{
     {from:source.indexOf('Four'),to:source.indexOf('Four'),insert:'Y'},
   ]);
 });
+
+test('nested prose edits preserve a proof title, an abstract declaration, and mixed line endings',()=>{
+  const source=wrap('\\begin{proof}[Claim]\r\n  First step.\r\n\\end{proof}\r\n\r\n'+
+    '\\begin{abstract}\n% preserve this comment\r\n\\small\r\nSummary.\r\n\\end{abstract}');
+  const before={type:'doc',content:parseDocument(source).blocks.flatMap(importBlocks)};
+  const after=structuredClone(before);
+  after.content.find(node=>node.type==='theoremBlock').content[0].content[0].text='First proof step.';
+  after.content.find(node=>node.type==='blockquote').content[0].content[0].text='Brief Summary.';
+  const changes=[
+    {from:source.indexOf('step.'),to:source.indexOf('step.'),insert:'proof '},
+    {from:source.indexOf('Summary.'),to:source.indexOf('Summary.'),insert:'Brief '},
+  ];
+  const projection=sourceProjection(source,before);
+  assert.deepEqual(standaloneMathChanges(projection,after),changes);
+  assert.deepEqual(richSourceChanges(projection,after),changes);
+  const changed=source.replace('First step.','First proof step.').replace('Summary.','Brief Summary.');
+  const undo=standaloneMathChanges(sourceProjection(changed,after),before);
+  assert.equal(undo.toReversed().reduce((text,c)=>text.slice(0,c.from)+c.insert+text.slice(c.to),changed),source);
+});
+
+test('nested list edits preserve item commands, list options and adjacent identical text',()=>{
+  const source=wrap('\\begin{enumerate}[start=3]\r\n\\item Same text.\r\n'+
+    '  \\begin{description}\n  \\item[Term] Same text.\r\n  \\end{description}\r\n'+
+    '\\item Same text.\r\n\\end{enumerate}');
+  const before={type:'doc',content:parseDocument(source).blocks.flatMap(importBlocks)};
+  const after=structuredClone(before);
+  after.content[0].content[0].content[1].content[0].content[0].content[0].text='XSame text.';
+  const at=source.indexOf('Same text.',source.indexOf('[Term]'));
+  const projection=sourceProjection(source,before);
+  const expected=[{from:at,to:at,insert:'X'}];
+  assert.deepEqual(standaloneMathChanges(projection,after),expected);
+  assert.deepEqual(richSourceChanges(projection,after),expected);
+});

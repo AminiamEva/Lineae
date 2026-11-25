@@ -388,3 +388,28 @@ test('native heading text mapping leaves short titles, stars and labels intact',
   assert.equal(paragraph.text,'Long title');
   assert.equal(textEdit(projection,{paragraph,from16:0,to16:0,insert:'X'}).source,source.replace('Long title','XLong title'));
 });
+
+test('native text ranges preserve proof titles, comments and container declarations',()=>{
+  const source='\\begin{document}\r\n\\begin{proof}[Reason]\r\nOne step.\r\n\r\nAnother step.\r\n\\end{proof}\r\n\r\n'+
+    '\\begin{abstract}\r\n% keep declaration and comment\r\n\\small\r\nA summary.\r\n\\end{abstract}\r\n\\end{document}\r\n';
+  const projection=projectTextDocument(source);
+  assert.deepEqual(projection.paragraphs.map(p=>[p.text,p.container]),[
+    ['One step.',{type:'theoremBlock',path:[0]}],
+    ['Another step.',{type:'theoremBlock',path:[1]}],
+    ['A summary.',{type:'blockquote',path:[0]}],
+  ]);
+  const paragraph=projection.paragraphs[2];
+  assert.equal(textEdit(projection,{paragraph,from16:0,to16:1,insert:'The'}).source,
+    source.replace('A summary.','The summary.'));
+});
+
+test('native list prose path distinguishes duplicate text inside a nested item',()=>{
+  const source='\\begin{document}\n\\begin{enumerate}\n\\item Same text.\n'+
+    '\\begin{itemize}\n\\item Same text.\n\\end{itemize}\n\\item Same text.\n'+
+    '\\end{enumerate}\n\\end{document}\n';
+  const projection=projectTextDocument(source);
+  assert.deepEqual(projection.paragraphs.map(p=>p.container.path),[[0,0],[0,1,0,0],[1,0]]);
+  const paragraph=projection.paragraphs[1];
+  assert.equal(textEdit(projection,{paragraph,from16:0,to16:0,insert:'X'}).source,
+    source.replace('itemize}\n\\item Same','itemize}\n\\item XSame'));
+});

@@ -191,6 +191,30 @@ const server=createServer(async(req,res)=>{
       await page.waitForFunction(expected=>nativeProbe.source===expected,
         typedHeading.replace('XLong title','文XLong title'));
       await page.locator('#native-tex-close').click();
+      const proofSource='\\documentclass{article}\r\n\\usepackage{amsthm}\r\n\\begin{document}\r\n'+
+        '\\begin{proof}[Reason]\r\n  One step.\r\n\\end{proof}\r\n\\end{document}\r\n';
+      await page.locator('input#file').setInputFiles({name:'proof.tex',mimeType:'text/plain',buffer:Buffer.from(proofSource)});
+      await page.locator('#native-tex-toggle').click();
+      await page.waitForFunction(()=>document.querySelector('#native-tex-preview').dataset.state==='current');
+      await page.locator('#native-tex-target').click();
+      await panel.getByText('Click text on the native page',{exact:false}).waitFor();
+      await page.locator('#native-tex-edit').click();
+      await canvas.click({position:{x:6550000*scale,y:9250000*scale}});
+      await page.keyboard.type('X');
+      await page.waitForFunction(expected=>nativeProbe.source===expected,proofSource.replace('One step.','XOne step.'));
+      await page.locator('#native-tex-close').click();
+      const listSource='\\documentclass{article}\n\\begin{document}\n\\begin{enumerate}\n\\item One item.\n'+
+        '\\begin{itemize}\n\\item Nested.\n\\end{itemize}\n\\item Last.\n\\end{enumerate}\n\\end{document}\n';
+      await page.locator('input#file').setInputFiles({name:'list.tex',mimeType:'text/plain',buffer:Buffer.from(listSource)});
+      await page.locator('#native-tex-toggle').click();
+      await page.waitForFunction(()=>document.querySelector('#native-tex-preview').dataset.state==='current');
+      await page.locator('#native-tex-target').click();
+      await panel.getByText('Click text on the native page',{exact:false}).waitFor();
+      await page.locator('#native-tex-edit').click();
+      await canvas.click({position:{x:8150000*scale,y:9250000*scale}});
+      await page.keyboard.type('X');
+      await page.waitForFunction(expected=>nativeProbe.source===expected,listSource.replace('Nested.','XNested.'));
+      await page.locator('#native-tex-close').click();
       const pdfSource='\\documentclass{article}\n\\begin{document}\n\\[\\frac{a}{}\\]\n\\end{document}\n';
       await page.locator('input#file').setInputFiles({name:'pdf.tex',mimeType:'text/plain',buffer:Buffer.from(pdfSource)});
       await page.evaluate(()=>{nativeProbe.semanticPdf=true;nativeProbe.registeredPdf=true;});

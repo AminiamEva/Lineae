@@ -114,55 +114,65 @@ function splitListItems(body) {
     if (token.startsWith('\\end')) { depth = Math.max(0, depth - 1); continue; }
     if (depth !== 0) continue;
     if (start === null && body.slice(0,match.index).trim()) return null;
-    if (start !== null) items.push(body.slice(start, match.index));
+    if (start !== null) items.push({from:start,to:match.index});
     start = match.index + token.length;
   }
   if (start === null) return null;
-  items.push(body.slice(start));
+  items.push({from:start,to:body.length});
   return items;
 }
 
-function paragraphs(text) {
-  const nodes=text.split(/\n\s*\n/).map(part => part.trim()).filter(Boolean).map(part => {
+function paragraphs(text,record) {
+  const nodes=[];
+  let from=0;
+  function append(to){
+    const raw=text.slice(from,to),part=raw.trim();
+    if(!part)return;
     const imported=importBlock(part);
-    return imported?.type==='paragraph'
+    const node=imported?.type==='paragraph'
       ? imported
       : {type:'paragraph',content:inlineContent(part) ?? undefined};
-  });
+    record?.(node,nodes.length,from,to);
+    nodes.push(node);
+  }
+  for(const separator of text.matchAll(/\n\s*\n/g)){
+    append(separator.index);
+    from=separator.index+separator[0].length;
+  }
+  append(text.length);
   return nodes.every(node=>node.content) ? nodes : null;
 }
 
-function itemParts(content) {
+function itemParts(content,location) {
   const parts = [];
   let cursor = 0;
+  function append(from,to) {
+    const nodes=paragraphs(content.slice(from,to),location&&((node,index,start,end)=>
+      location.record(node,[...location.path,parts.length+index],location.offset+from+start,location.offset+from+end)));
+    if(!nodes)return false;
+    parts.push(...nodes);
+    return true;
+  }
   const pattern = /\\begin\{(itemize|enumerate|description)\}/g;
   let match;
   while ((match = pattern.exec(content))) {
-    const before = content.slice(cursor, match.index).trim();
-    if (before) {
-      const nodes = paragraphs(before);
-      if (!nodes) return null;
-      parts.push(...nodes);
-    }
+    if(!append(cursor,match.index))return null;
     const end = matchingListEnd(content, match.index, match[1]);
     if (end < 0) return null;
     const close = '\\end{' + match[1] + '}';
-    const nested = parseListBlock(content.slice(match.index, end + close.length));
+    const nested = parseListBlock(content.slice(match.index, end + close.length),location&&{
+      ...location,offset:location.offset+match.index,path:[...location.path,parts.length],
+    });
     if (!nested) return null;
     parts.push(nested);
     cursor = end + close.length;
     pattern.lastIndex = cursor;
   }
-  const after = content.slice(cursor).trim();
-  if (after) {
-    const nodes = paragraphs(after);
-    if (!nodes) return null;
-    parts.push(...nodes);
-  }
+  if(!append(cursor,content.length))return null;
   return parts.length ? parts : [{ type: 'paragraph' }];
 }
 
-function parseListBlock(text) {
+function parseListBlock(text,location) {
   const open = text.match(/^\\begin\{(itemize|enumerate|description)\}(?:\[([^\]]*)\])?/);
   if (!open) return null;
   const env = open[1];
@@ -173,13 +183,14 @@ function parseListBlock(text) {
   if (!items) return null;
   const content = [];
   for (const item of items) {
-    let body = item;
+    let from=open[0].length+item.from;
+    let body=text.slice(from,open[0].length+item.to);
     let term = '';
     if (env === 'description') {
       const match = body.match(/^\s*\[([^\]]*)\]/);
-      if (match) { term = match[1]; body = body.slice(match[0].length); }
+      if (match) { term = match[1]; body = body.slice(match[0].length); from+=match[0].length; }
     }
-    const parts = itemParts(body);
+    const parts = itemParts(body,location&&{...location,offset:location.offset+from,path:[...location.path,content.length]});
     if (!parts) return null;
     if (env === 'description') content.push({ type: 'descriptionItem', attrs: { term }, content: parts });
     else content.push({ type: 'listItem', content: parts });
@@ -197,6 +208,13 @@ function parseListBlock(text) {
   if (env === 'enumerate' && start) attrs.start = Number(start);
   if (env === 'description') return { type: 'descriptionList', content };
   return { type: env === 'itemize' ? 'bulletList' : 'orderedList', attrs, content };
+}
+
+export function listParagraphRanges(source) {
+  const ranges=[];
+  const list=parseListBlock(source.trim(),{offset:source.length-source.trimStart().length,path:[],
+    record:(node,path,from,to)=>ranges.push({node,path,from,to})});
+  return list?ranges.map(range=>({...range,container:list.type})):[];
 }
 
 function bracedGroup(text,start) {
