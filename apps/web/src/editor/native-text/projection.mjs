@@ -209,6 +209,6 @@ export function textEdit(projection, {paragraph, from16, to16, insert}) {
   if (paragraph.runs && !paragraph.runs.some(run => from16 >= run.from16 && to16 <= run.to16)) return null;
   if (typeof insert !== 'string' || unsupported.test(insert)) return null;
   const next = paragraph.text.slice(0, from16) + insert + paragraph.text.slice(to16);
-  const source = projection.source.slice(0, paragraph.from16) + next + projection.source.slice(paragraph.from16 + paragraph.text.length);
+  const source = paragraph.source.slice(0, paragraph.from16) + next + paragraph.source.slice(paragraph.from16 + paragraph.text.length);
   return {text:next, patch:{from:from16, to:to16, insert}, source, selection:from16 + insert.length};
 }

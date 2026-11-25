@@ -4,7 +4,7 @@ import {projectDocumentFormulas,projectSnapshotFormulas} from '../apps/web/src/e
 import {nativeTarget} from '../apps/web/src/editor/native-math/resolve.mjs';
 import {createMathSurface} from '../apps/web/src/editor/native-surface/math-surface.mjs';
 import {createTextSurface} from '../apps/web/src/editor/native-surface/text-surface.mjs';
-import {projectTextDocument,projectMixedDocument,textTarget,textEdit} from '../apps/web/src/editor/native-text/projection.mjs';
+import {projectTextDocument,projectMixedDocument,projectMixedSnapshot,textTarget,textEdit} from '../apps/web/src/editor/native-text/projection.mjs';
 
 const source = '\\begin{document}\n\\[\\frac{a}{}\\]\n\\end{document}\n';
 const filled = '\\begin{document}\n\\[\\frac{a}{b}\\]\n\\end{document}\n';
@@ -240,4 +240,13 @@ test('a plain marked paragraph instruments only the command argument',()=>{
   assert.ok(projection.projection.includes('\\textbf{\\begingroup'));
   assert.equal(textEdit(projection,{paragraph,from16:0,to16:0,insert:'X'}).source,
     source.replace('Bold prose.','XBold prose.'));
+});
+
+test('mixed project prose edits refer to the child file, not the main snapshot',()=>{
+  const child='Original chapter.\n\n\\[\\frac{z}{}\\]\n';
+  const bytes=[...new TextEncoder().encode(child)];
+  const projection=projectMixedSnapshot({source,mainFile:'main.tex',files:[{path:'chapter.tex',bytes}]});
+  const [paragraph]=projection.paragraphs;
+  assert.equal(paragraph.filePath,'chapter.tex');
+  assert.equal(textEdit(projection,{paragraph,from16:0,to16:0,insert:'X'}).source,'X'+child);
 });
