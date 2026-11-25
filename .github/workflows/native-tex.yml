@@ -64,10 +64,20 @@ jobs:
           cache: npm
       - name: Install Linux WebView dependencies
         if: runner.os == 'Linux'
+        timeout-minutes: 6
         run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            libwebkit2gtk-4.1-dev libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev xvfb xauth
+          packages=(libwebkit2gtk-4.1-dev libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev xvfb xauth)
+          missing=()
+          for package in "${packages[@]}"; do
+            if [[ $(dpkg-query -W -f='${db:Status-Status}' "$package" 2>/dev/null) != installed ]]; then
+              missing+=("$package")
+            fi
+          done
+          if (( ${#missing[@]} )); then
+            apt_options=(-o Acquire::Retries=2 -o Acquire::http::Timeout=25 -o Acquire::https::Timeout=25)
+            sudo apt-get "${apt_options[@]}" -o APT::Update::Error-Mode=any update
+            sudo apt-get "${apt_options[@]}" install -y --no-install-recommends "${missing[@]}"
+          fi
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
         with:
