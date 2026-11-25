@@ -4553,7 +4553,8 @@ nativeTexPreview=installNativeTexPreview({host:footer,before:modes,primary:nativ
     const drafts=projectDocument.changes(tr.doc.toJSON());
     const expected=new Map([...patches].map(([id,changes])=>[id,changes.sort((a,b)=>b.from-a.from)
       .reduce((draft,change)=>draft.slice(0,change.from)+change.insert+draft.slice(change.to),project.file(id).draft)]));
-    if(mapped.some(edit=>edit.formula||edit.paragraph.container))return dispatchNativeProjectChange(state,tr,project,expected);
+    if(mapped.some(edit=>edit.formula||edit.paragraph.container||edit.paragraph.heading))
+      return dispatchNativeProjectChange(state,tr,project,expected);
     if(!drafts||[...expected].some(([id,value])=>drafts.get(id)!==value))return false;
     for(const [id,draft] of drafts)if(draft!==(expected.get(id)??project.file(id).draft))return false;
     editor.view.dispatch(closeHistory(tr));

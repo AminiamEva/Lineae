@@ -195,7 +195,8 @@ export function createNativeDocumentSession(resolve) {
         if(sources.has(owner.filePath)&&sources.get(owner.filePath)!==owner.occurrence)return null;
         sources.set(owner.filePath,owner.occurrence);
       }
-      if(ranges.length<2||ranges.some(({paragraph})=>paragraph&&(paragraph.tableCell||paragraph.heading||
+      if(ranges.length<2||ranges.some(({paragraph},index)=>paragraph&&(paragraph.tableCell||
+        paragraph.heading&&index>0&&index<ranges.length-1||
         paragraph.container&&!editableRangeContainers.has(paragraph.container.type))))return null;
       const edits=ranges.map(({paragraph,formula,from,to},index)=>{
         if(formula){

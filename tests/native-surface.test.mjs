@@ -469,6 +469,24 @@ test('native cross-file replacement preserves enclosing text environments',()=>{
   ]);
 });
 
+test('native cross-file selection edits a heading endpoint without removing its command',()=>{
+  const source='\\begin{document}\nBefore tail.\n\n\\input{chapter}\n\\end{document}\n';
+  const chapter='\\section*{StartChild.}\n';
+  const projection=projectMixedSnapshot({source,mainFile:'main.tex',
+    files:[{path:'chapter.tex',bytes:new TextEncoder().encode(chapter)}]});
+  const session=createNativeDocumentSession(()=>null);
+  const [root,child]=projection.paragraphs;
+  assert.equal(child.heading,'section');
+  const from=textTarget(projection,root.glyphs[5].tag,true),to=textTarget(projection,child.glyphs[4].tag,true);
+  const regions=[{path:'main.tex',from:0,to:source.indexOf('\\input')},{path:'chapter.tex',from:0,to:chapter.length}];
+  session.setObservation(page([],[glyph(from.owner,100),glyph(to.owner,200)]),projection,false,regions);
+  assert.equal(session.select(from,to),true);
+  const edit=session.editAcrossFiles(' 50%');
+  assert.deepEqual(edit.edits.map(change=>change.source),[
+    source.replace('Before tail.','Before 50\\%'),chapter.replace('StartChild.','Child.'),
+  ]);
+});
+
 test('native project boundaries follow verified vertical space without splitting a shared line',()=>{
   const source='\\begin{document}\nBefore.\n\n\\input{chapter}\n\nAfter.\n\\end{document}\n';
   const chapter='Child.\n';

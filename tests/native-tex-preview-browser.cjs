@@ -1307,6 +1307,25 @@ const server=createServer(async(req,res)=>{
       await projectDrafts(containerProject,nestedChild);
 
       await page.goto('http://127.0.0.1:'+server.address().port+'/?native-only-acceptance=1',{waitUntil:'networkidle'});
+      const headingProject=mixedProject.replace('Before $z$ end.','Before suffix.');
+      const headingChild='\\section*{StartChild.}\n';
+      await openMockProject(page,false,headingProject,headingChild);
+      await page.evaluate(()=>{nativeProbe.targetInclude=true;nativeProbe.includeMainText=true;});
+      await page.locator('#native-tex-toggle').click();
+      await page.locator('#native-tex-target').click();
+      await panel.getByText('Click text on the native page',{exact:false}).waitFor();
+      await page.locator('#native-tex-edit').click();
+      const headingBounds=await canvas.boundingBox();
+      await page.mouse.move(headingBounds.x+9850000*scale,headingBounds.y+9250000*scale);
+      await page.mouse.down();
+      await page.mouse.move(headingBounds.x+7450000*scale,headingBounds.y+9250000*scale,{steps:12});
+      await page.mouse.up();
+      await page.keyboard.insertText(' 50%');
+      await projectDrafts(headingProject.replace('Before suffix.','Before 50\\%'),headingChild.replace('StartChild.','Child.'));
+      await page.keyboard.press(mod+'+z');
+      await projectDrafts(headingProject,headingChild);
+
+      await page.goto('http://127.0.0.1:'+server.address().port+'/?native-only-acceptance=1',{waitUntil:'networkidle'});
       const repeatedProject='\\documentclass{article}\n\\begin{document}\nBefore.\n\n\\input{chapters/one}\n\n'+
         'Between.\n\n\\input{chapters/one}\n\nAfter.\n\\end{document}\n';
       const repeatedChild='Child.\n\n\\[\\frac{x}{}\\]\n';
