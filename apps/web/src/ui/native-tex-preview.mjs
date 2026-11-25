@@ -200,7 +200,7 @@ export function installNativeTexPreview({host,before,getSource,getSnapshot,isCom
     }
     if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
       event.preventDefault();
-      if (surface.move(event.key === 'ArrowLeft' ? -1 : 1, event.shiftKey)) {
+      if (!pendingEdit&&nativeDocument.move(event.key==='ArrowLeft'?-1:1,event.shiftKey)) {
         paintSurfaceSelection();
         positionInput();
       }
@@ -208,9 +208,10 @@ export function installNativeTexPreview({host,before,getSource,getSnapshot,isCom
     }
     if (event.key === 'Home' || event.key === 'End') {
       event.preventDefault();
-      surface.move(event.key === 'Home' ? -1e6 : 1e6, event.shiftKey);
-      paintSurfaceSelection();
-      positionInput();
+      if(!pendingEdit&&nativeDocument.move(event.key==='Home'?-1e6:1e6,event.shiftKey)){
+        paintSurfaceSelection();
+        positionInput();
+      }
       return;
     }
     if (event.key === 'Backspace' || event.key === 'Delete') {
@@ -610,7 +611,6 @@ export function installNativeTexPreview({host,before,getSource,getSnapshot,isCom
               panel.dataset.latencyLastRepaint=(repaint-geometry).toFixed(1);
             }));
           }
-          input.focus({preventScroll:true});
         }
       }
       requestAnimationFrame(syncCaret);
@@ -675,6 +675,7 @@ export function installNativeTexPreview({host,before,getSource,getSnapshot,isCom
   return {
     refresh,documentChanged:()=>{void stop();},relocalize,
     hasMathInput: event => event.target===input && nativeEditing && nativeDocument.surface.caret?.kind==='math',
+    hasNativeMathFocus:()=>document.activeElement===input&&nativeEditing&&nativeDocument.surface.caret?.kind==='math',
     runMathCommand(command) {
       const {surface}=nativeDocument;
       if(command==='undo'||command==='redo'){
@@ -684,13 +685,19 @@ export function installNativeTexPreview({host,before,getSource,getSnapshot,isCom
         return true;
       }
       if(command==='nextSlot'||command==='previousSlot'){
-        if(current()&&observation&&surface.moveEmptySlot?.(command==='previousSlot')){
+        if(current()&&observation&&!pendingEdit&&surface.moveEmptySlot?.(command==='previousSlot')){
           paintSurfaceSelection();
           positionInput();
         }
         return true;
       }
       if(!current()||!observation||pendingEdit||surface.caret?.kind!=='math')return false;
+      if(command==='leaveFormula'){
+        if(!nativeDocument.leaveFormula())return false;
+        paintSurfaceSelection();
+        positionInput();
+        return true;
+      }
       const edit=surface.command(command);
       if(!edit)return false;
       inputStart=performance.now();

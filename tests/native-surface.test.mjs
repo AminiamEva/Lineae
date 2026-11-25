@@ -182,7 +182,7 @@ test('mixed prose and display math share one projection and keep distinct owners
 });
 
 test('one native session restores the selected text or math address through observation',()=>{
-  const source='\\begin{document}\nIntro.\n\n\\[\\frac{a}{}\\]\n\\end{document}\n';
+  const source='\\begin{document}\nIntro.\n\n\\[\\frac{a}{}\\]\n\nOutro.\n\\end{document}\n';
   let projection=projectMixedDocument(source);
   const session=createNativeDocumentSession(endpoint=>nativeTarget(projection,endpoint));
   const textOwner=projection.paragraphs[0].glyphs[0].tag;
@@ -198,10 +198,15 @@ test('one native session restores the selected text or math address through obse
   projection=projectMixedDocument(source.replace('{}','{b}'),{previous:projection});
   const inserted=projection.formulas[0].math.atoms.find(atom=>atom.nucleus==='b');
   const proseTag=projection.paragraphs[0].glyphs[0].tag;
-  session.setObservation(page([],[glyph(proseTag,100),glyph(inserted.tag,300)]),projection);
+  const outroTag=projection.paragraphs[1].glyphs[0].tag;
+  session.setObservation(page([],[glyph(proseTag,100),glyph(inserted.tag,300),glyph(outroTag,400)]),projection);
   assert.equal(session.surface.caret.kind,'math');
   assert.equal(session.surface.caret.docOffset,pending);
   assert.equal(session.surface.anchor,session.surface.caret);
+  assert.equal(session.leaveFormula(),true);
+  assert.equal(session.surface.caret.paragraph.text,'Outro.');
+  assert.equal(session.move(-1,false),true);
+  assert.equal(session.surface.caret.kind,'math');
   const start=textTarget(projection,proseTag,false);
   assert.equal(session.select(start,start),true);
   assert.equal(session.surface.insert('X').source,projection.source.replace('Intro','XIntro'));
@@ -316,6 +321,8 @@ test('native math commands insert validated structures and target the new field'
     ['int','\\int_{}^{}{}',6],
     ['sum','\\sum_{}^{}{}',6],
     ['prod','\\prod_{}^{}{}',7],
+    ['iint','\\iint_{}^{}{}',7],
+    ['oiint','\\oiint_{}^{}{}',8],
     ['indexedRoot','\\sqrt[]{}',6],
     ['pmatrix','\\begin{pmatrix}&\\\\&\\end{pmatrix}',15],
   ]){
@@ -327,6 +334,18 @@ test('native math commands insert validated structures and target the new field'
     assert.equal(edit.text,'\\frac{a}{'+insert+'}');
     assert.equal(surface.pendingOffset,formula.from16+denominator.from16+caret);
     assert.equal(surface.insert(insert),null,'Raw typing cannot inject a TeX structure');
+  }
+});
+
+test('native script commands preserve the nucleus and place the caret within the new script',()=>{
+  const {projection,formula,token}=setup();
+  const atom=token('a');
+  for(const [command,marker] of [['superscript','^'],['subscript','_']]){
+    const surface=createMathSurface({resolve:endpoint=>nativeTarget(projection,endpoint)});
+    surface.setObservation(page([],[glyph(atom.tag,300)]));
+    surface.nearest(1,320,100);
+    assert.equal(surface.command(command).text,`\\frac{a${marker}{}}{}`);
+    assert.equal(surface.pendingOffset,formula.from16+atom.from16+3);
   }
 });
 

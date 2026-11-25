@@ -80,7 +80,7 @@ const server=createServer(async(req,res)=>{
     if(process.env.LINEAE_NATIVE_ONLY==='1'){
       await page.route('**/vendor/mathlive/**',route=>route.abort());
       await page.goto('http://127.0.0.1:'+server.address().port+'/?native-only-acceptance=1',{waitUntil:'networkidle'});
-      const mixedSource='\\documentclass{article}\n\\begin{document}\nAlpha beta.\n\n\\[\n\\frac{a}{b}\n\\]\n\\end{document}\n';
+      const mixedSource='\\documentclass{article}\n\\begin{document}\nAlpha beta.\n\n\\[\n\\frac{a}{b}\n\\]\n\nOmega.\n\\end{document}\n';
       await page.locator('input#file').setInputFiles({name:'mixed.tex',mimeType:'text/plain',
         buffer:Buffer.from(mixedSource)});
       await page.waitForFunction(()=>document.querySelector('.ProseMirror')?.textContent.includes('Alpha beta.'));
@@ -123,8 +123,15 @@ const server=createServer(async(req,res)=>{
       await canvas.click({position:{x:6510000*scale,y:6950000*scale}});
       await page.keyboard.press(mod+'+2');
       await page.waitForFunction(()=>nativeProbe.source?.includes('\\sqrt{}'));
+      const rootObservations=await page.evaluate(()=>nativeProbe.calls.filter(call=>call.command==='native_tex_observe_formula').length);
       await page.keyboard.press(mod+'+z');
       await page.waitForFunction(source=>nativeProbe.source===source,expected);
+      await page.waitForFunction(count=>nativeProbe.calls.filter(call=>call.command==='native_tex_observe_formula').length>count,rootObservations);
+      await panel.getByText('Click prose on the native page',{exact:false}).waitFor();
+      await canvas.click({position:{x:6510000*scale,y:6950000*scale}});
+      await page.keyboard.press(mod+'+Shift+j');
+      await page.keyboard.type('X');
+      await page.waitForFunction(source=>nativeProbe.source===source,expected.replace('Omega.','XOmega.'));
       await page.locator('#native-tex-close').click();
       const markedSource='\\documentclass{article}\n\\begin{document}\nBefore \\textit{\\textbf{Bold prose.}} after.\n\\end{document}\n';
       await page.locator('input#file').setInputFiles({name:'marked.tex',mimeType:'text/plain',buffer:Buffer.from(markedSource)});

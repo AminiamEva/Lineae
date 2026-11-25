@@ -30,11 +30,12 @@ const segmenter = new Intl.Segmenter('und', {granularity: 'grapheme'});
 const ordinary = /^[\p{L}\p{N}]\p{M}*$/u;
 const operator = /^[+=,.:!?<>/|()\[\]-]$/u;
 const editable = /^[\p{L}\p{N}\p{M}+=,.:!?<>/|()\[\] \t\r\n-]*$/u;
+const largeOperators=['int','iint','iiint','oint','oiint','sum','prod'];
 // Only single-symbol catalog entries here. Function names may paint multiple
 // glyphs while representing one operator and need different caret handling.
 const symbols = new Set([
   ...mathCommandCatalog.filter(entry=>entry.category!=='operator').map(entry=>entry.latex),
-  '\\int','\\sum','\\prod',
+  ...largeOperators.map(command=>'\\'+command),
 ]);
 const mathWrappers = new Set(['\\boxed','\\mathord','\\mathrm','\\mathbf','\\mathit','\\mathsf',
   '\\mathtt','\\mathcal','\\mathscr','\\mathbb','\\mathfrak']);
@@ -443,7 +444,9 @@ const structureTemplates = {
   frac: text => ({before:'\\frac{', body:text, after:'}{}', next:text ? 'denominator' : 'first'}),
   sqrt: text => ({before:'\\sqrt{', body:text, after:'}', next:'first'}),
   indexedRoot: text => ({before:'\\sqrt[', body:'', after:']{'+text+'}', next:'first'}),
-  ...Object.fromEntries(['int','sum','prod'].map(operator=>[
+  superscript: text => ({before:text+'^{',body:'',after:'}',next:'first'}),
+  subscript: text => ({before:text+'_{',body:'',after:'}',next:'first'}),
+  ...Object.fromEntries(largeOperators.map(operator=>[
     operator,
     text=>({before:'\\'+operator+'_{',body:'',after:'}^{}{'+text+'}',next:'first'}),
   ])),

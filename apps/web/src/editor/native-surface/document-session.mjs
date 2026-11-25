@@ -23,6 +23,29 @@ export function createNativeDocumentSession(resolve) {
       return selection.setStops(stops);
     },
     select(from,to){return selection.selectTargets(from,to);},
+    move(delta,extend){
+      const before=selection.caret;
+      if(!before)return false;
+      if(!extend&&Math.abs(delta)===1&&selection.anchor!==before){
+        const target=selection.range[delta<0?0:1];
+        return selection.selectTargets(target,target);
+      }
+      const local=selection.move(delta,extend);
+      if(extend||local!==before||Math.abs(delta)!==1)return Boolean(local);
+      const stops=selection.stops;
+      for(let index=selection.index+delta;index>=0&&index<stops.length;index+=delta){
+        const target=stops[index];
+        if(fileOf(target)===fileOf(before))return selection.selectTargets(target,target);
+      }
+      return Boolean(local);
+    },
+    leaveFormula(){
+      const caret=selection.caret;
+      if(caret?.kind!=='math')return false;
+      const following=selection.stops.find(stop=>stop.kind==='text'&&
+        fileOf(stop)===fileOf(caret)&&stop.docOffset>=caret.formula.to16);
+      return following?selection.selectTargets(following,following):false;
+    },
     reset(){selection.reset();},
   };
 }

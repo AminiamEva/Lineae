@@ -2545,7 +2545,7 @@ installKeybindings(window, {
   nativeBindings,
   getContext(event) {
     if(nativeTexPreview?.hasMathInput?.(event))
-      return {element:event.target,nativeMath:true,scopes:['math']};
+      return {element:event.target,nativeMath:true,scopes:['math','global']};
     if (event.target.closest?.('.tex-code .cm-content'))
       return {element:sourceView.editorView?.contentDOM,source:true,scopes:['source','system','global']};
     if (event.target.closest?.('.tex-code'))return {element:event.target,scopes:['global'],only:'save'};
@@ -3411,9 +3411,15 @@ async function editFormulaLabel() {
   field?.focus();
 }
 groupButton(mathGroup,'equation label',editFormulaLabel);
-groupButton(mathGroup,'frac',()=>insertMath(false,'\\frac{\\placeholder{}}{\\placeholder{}}'));
+function runNativeMathToolbarCommand(command,fallback){
+  if(nativeTexPreview.hasNativeMathFocus?.())return nativeTexPreview.runMathCommand(command);
+  return fallback();
+}
+groupButton(mathGroup,'frac',()=>runNativeMathToolbarCommand('frac',
+  ()=>insertMath(false,'\\frac{\\placeholder{}}{\\placeholder{}}')));
 groupButton(mathGroup,['公式换行','Math line break'],()=>activeMath()?.dispatchEvent(new Event('lineae-math-newline')));
-groupButton(mathGroup,['退出公式','Exit formula'],()=>activeMath()?.dispatchEvent(new Event('lineae-leave-formula'))).dataset.shortcut='math.leaveFormula';
+groupButton(mathGroup,['退出公式','Exit formula'],()=>nativeTexPreview.hasNativeMathFocus?.()
+  ?nativeTexPreview.runMathCommand('leaveFormula'):activeMath()?.dispatchEvent(new Event('lineae-leave-formula'))).dataset.shortcut='math.leaveFormula';
 for (const [label,command,latex] of [
   ['sqrt','sqrt','\\sqrt{\\placeholder{}}'],
   ['ⁿ√','indexedRoot','\\sqrt[\\placeholder{}]{\\placeholder{}}'],
@@ -3421,16 +3427,16 @@ for (const [label,command,latex] of [
     ['sum','int'].includes(name) ? name : '\\'+name,name,'\\'+name+'\\mathord{\\placeholder{}}',
   ]),
 ]) {
-  groupButton(mathGroup,label,()=>{
+  groupButton(mathGroup,label,()=>runNativeMathToolbarCommand(command,()=>{
     const field=activeMath();
-    if(field)runMathShortcut(command,field,{repeat:false});
-    else insertMath(false,latex);
-  }).dataset.shortcut='math.'+command;
+    if(field)return runMathShortcut(command,field,{repeat:false});
+    return insertMath(false,latex);
+  })).dataset.shortcut='math.'+command;
 }
 groupButton(mathGroup,'\\left',()=>chooseMathDelimiters(activeMath()));
 groupButton(mathGroup,'\\right',()=>chooseMathDelimiters(activeMath(),true));
 groupButton(mathGroup,['单括号','Literal fence'],()=>armLiteralFence(activeMath()));
-groupButton(mathGroup,'matrix',()=>insertMath(false,matrixSource('matrix')));
+groupButton(mathGroup,'matrix',()=>runNativeMathToolbarCommand('matrix',()=>insertMath(false,matrixSource('matrix'))));
 groupButton(mathGroup,'cases',()=>insertMath(true,'\\begin{cases}\\placeholder{} & \\placeholder{}\\\\ \\placeholder{} & \\placeholder{}\\end{cases}'));
 groupButton(mathGroup,'align',structureCommands.align);
 groupButton(mathGroup,'align*',structureCommands['align*']);
