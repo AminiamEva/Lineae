@@ -86,18 +86,23 @@ function instrumentProse(block, source, blockFrom, firstOwner, attribute, filePa
 }
 
 function instrumentTable(block, source, blockFrom, firstOwner, attribute, filePath) {
-  const cells=plainTableCells(block)?.filter(cell=>cell.text);
+  const cells=plainTableCells(block);
   if(!cells?.length)return null;
   let projection='',cursor=0,nextTag=firstOwner;
   const paragraphs=[];
   for(const cell of cells){
     const {text,offset,row,column}=cell;
-    const built=instrumentText(text,nextTag,attribute);
+    // An empty inline math boundary has zero ink and reports an engine-owned point.
+    // The visible page still comes from the uninstrumented source.
+    const built=text?instrumentText(text,nextTag,attribute):{
+      instrumented:`\\begingroup\\mathsurround=0pt\\attribute${attribute}=${nextTag} $ $\\endgroup`,
+      glyphs:[{tag:nextTag,from16:0,to16:0,char:''}],nextTag:nextTag+1,
+    };
     nextTag=built.nextTag;
     projection+=block.slice(cursor,offset)+built.instrumented;
     cursor=offset+text.length;
     paragraphs.push({source,filePath,from16:blockFrom+offset,text,glyphs:built.glyphs,
-      parts:[{kind:'text',from16:0,to16:text.length,text}],
+      parts:text?[{kind:'text',from16:0,to16:text.length,text}]:[],
       runs:[{from16:0,to16:text.length,text,partIndex:0}],
       tableCell:{from16:blockFrom,row,column}});
   }

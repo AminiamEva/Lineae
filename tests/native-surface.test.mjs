@@ -316,6 +316,20 @@ test('native table ranges keep multicolumn and multirow wrappers intact',()=>{
     source.replace('{Group}','{XGroup}'));
 });
 
+test('native empty table cells accept text only at the observed boundary',()=>{
+  const source='\\begin{document}\n\\begin{tabular}{ll}\n & value\n\\end{tabular}\n\\end{document}\n';
+  const projection=projectTextDocument(source);
+  const [empty]=projection.paragraphs;
+  assert.equal(empty.text,'');
+  const [{tag}]=empty.glyphs;
+  assert.ok(projection.projection.includes(`\\attribute65000=${tag} $ $`));
+  const surface=createTextSurface({projection});
+  const field={owner:tag,role:'math',empty:true,bbox:[100,200,100,200]};
+  assert.equal(surface.setObservation([{page:1,exact:true,dl:{math_owners:{fields:[field]}}}]),true);
+  assert.equal(surface.caret.hit.role,'math');
+  assert.equal(surface.insert('new').source,source.replace(' & value',' new& value'));
+});
+
 test('native tab visits unfilled fields in source order without leaving the formula',()=>{
   const {projection,numerator,denominator}=setup(source.replace('{a}','{}'));
   const surface=createMathSurface({resolve:endpoint=>nativeTarget(projection,endpoint)});

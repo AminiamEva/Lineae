@@ -1494,6 +1494,49 @@ mod tests {
         };
         let initial = wait_layout(&session, info.source_revision);
         assert!(initial["pages_total"].as_i64().unwrap() > 0);
+        let table_source = concat!(
+            "\\documentclass{article}\n\\usepackage{graphicx}\n\\begin{document}\n",
+            "\\begin{tabular}{lc}\n & Entry \\\\\nRow & Value\n\\end{tabular}\n\n",
+            "\\includegraphics[width=18pt]{figures/preview.png}\n\\end{document}\n"
+        );
+        let table = Session::create_snapshot(Snapshot::new(
+            table_source, "main.tex".into(),
+            vec![NativeTexFile {
+                path: "figures/preview.png".into(),
+                bytes: include_bytes!("../icons/32x32.png").to_vec(),
+            }],
+        ).unwrap()).unwrap();
+        let table_info = table.start().unwrap();
+        let raw_table = wait_layout(&table, table_info.source_revision);
+        let projected_table = table_source.replace("\n & Entry",
+            "\n \\begingroup\\mathsurround=0pt\\attribute65000=91 $ $\\endgroup& Entry");
+        let observed_table = table.observe_formula(table_info.source_revision, &projected_table, Vec::new())
+            .expect("the observer retains the staged raster asset");
+        let raw_page = &raw_table["pages_changed"][0];
+        let observed_page = &observed_table[0];
+        assert_eq!(raw_page["exact"], true);
+        assert_eq!(observed_page["exact"], true);
+        assert!(observed_page["dl"]["math_owners"]["fields"].as_array().is_some_and(|fields|
+            fields.iter().any(|field| field["owner"] == 91 && field["empty"] == true &&
+                matches!(field["role"].as_str(), Some("math" | "cell")))), "missing empty-cell position");
+        let image_entries = |page: &Value| page["dl"]["images_info"].as_object().unwrap().values()
+            .map(|entry| entry["file"].as_str().unwrap().replace('\\', "/"))
+            .collect::<Vec<_>>();
+        for page in [raw_page, observed_page] {
+            assert!(image_entries(page).iter().any(|file| file.ends_with("figures/preview.png")));
+        }
+        let drawing_without_markers = |page: &Value| {
+            let dl = &page["dl"];
+            let drawing_items = |items: &Value| items.as_array().unwrap().iter()
+                .filter(|item| item[0] != "m").cloned().collect::<Vec<_>>();
+            let lines = dl["lines"].as_array().unwrap().iter().map(|line|
+                json!([line["x"], line["y"], line["w"], line["h"], line["d"], drawing_items(&line["items"])]))
+                .collect::<Vec<_>>();
+            json!([dl["page_width"], dl["page_height"], dl["fonts"], drawing_items(&dl["other"]), lines])
+        };
+        assert!(drawing_without_markers(raw_page) == drawing_without_markers(observed_page),
+            "an empty-cell observation must preserve visible table and image geometry");
+        table.terminate();
         let project_projection = source.replace("\\frac{a}{}", "\\begingroup\\attribute65000=11 \\frac{a}{}\\endgroup");
         let project_observed = session.observe_formula(info.source_revision, &project_projection, vec![
             NativeTexProjection {

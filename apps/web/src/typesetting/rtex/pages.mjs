@@ -20,8 +20,9 @@ export function installNativePages({host,getFont,getRaster,onPaint,onError,onMat
   function drawing(dl) {
     const resources=Object.entries(dl.images_info??{}).map(([key,info])=>
       [key,{...info,file:stagedRasterPath(info.file)??info.file}]);
-    return JSON.stringify([dl.page_width,dl.page_height,dl.fonts,dl.other,resources,
-      dl.lines.map(line=>[line.x,line.y,line.w,line.h,line.d,line.items])]);
+    const paintable=items=>items.filter(item=>item[0]!=='m');
+    return JSON.stringify([dl.page_width,dl.page_height,dl.fonts,paintable(dl.other),resources,
+      dl.lines.map(line=>[line.x,line.y,line.w,line.h,line.d,paintable(line.items)])]);
   }
   function attachOwners(observed,stamp,owners) {
     if(warm||stamp.sourceRevision!==revision||observed.length!==pages.size)return false;
@@ -39,9 +40,13 @@ export function installNativePages({host,getFont,getRaster,onPaint,onError,onMat
     for(const page of observed) {
       const entry=pages.get(page.page);
       if(!entry||page.exact!==true||drawing(entry.dl)!==drawing(page.dl))return false;
-      const targets=page.dl.math_owners?.fields?.filter(field=>
-        field.empty&&(['num','den','radicand','degree','sup','sub'].includes(field.role)||
-          (field.role==='cell'&&owners.get(field.owner)?.atom?.kind==='cell')))??[];
+      const targets=page.dl.math_owners?.fields?.filter(field=>{
+        if(!field.empty)return false;
+        const owner=owners.get(field.owner);
+        return ['num','den','radicand','degree','sup','sub'].includes(field.role)||
+          (field.role==='cell'&&owner?.atom?.kind==='cell')||
+          (['math','cell'].includes(field.role)&&owner?.paragraph?.tableCell&&owner.paragraph.text==='');
+      })??[];
       for(const field of targets){
         const key=`${field.owner}/${field.role}`;
         if(seen.has(key))return false;

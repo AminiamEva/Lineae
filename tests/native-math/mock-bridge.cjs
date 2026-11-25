@@ -94,16 +94,22 @@ module.exports=function installMockNativeTex() {
       const aligned=/&\\aftergroup\\LineaeNativeCell([A-J]+)\s*\\\\/.exec(mathInput);
       const cellOwner=cell?.[1]??(aligned?[...aligned[1]].map(letter=>letter.charCodeAt(0)-65).join(''):null);
       // Prose tags are the attribute assignments outside instrumented math groups.
+      const emptyCells=/\\begingroup\\mathsurround=0pt\\attribute65000=(\d+) \$ \$\\endgroup/g;
       const textTags=projection=>[...projection
+        .replace(emptyCells,'')
         .replace(/\\\[[\s\S]*?\\\]/g,'')
         .replace(/\$[^$]*\$/g,'')
         .replace(/\\begin\{(?:equation|align|gather)\*?\}[\s\S]*?\\end\{(?:equation|align|gather)\*?\}/g,'')
         .matchAll(/\\attribute65000=(\d+) (.)/gsu)];
       if(!match&&!script&&!cellOwner){
         const text=textTags(input);
-        if(!text.length||args.sourceRevision!==p.revision)throw new Error('Unexpected formula observation request');
+        const fields=[...input.matchAll(emptyCells)].map(([,owner],index)=>{
+          const x=6500000+index*1000000;
+          return {owner:Number(owner),role:'math',empty:true,bbox:[x,10500000,x,10500000]};
+        });
+        if((!text.length&&!fields.length)||args.sourceRevision!==p.revision)throw new Error('Unexpected formula observation request');
         const observed=p.layout().pages_changed;
-        observed[0].dl.math_owners={fields:[],glyphs:[]};
+        observed[0].dl.math_owners={fields,glyphs:[]};
         let x=6500000;
         for(const [,owner,char] of text){
           observed[0].dl.math_owners.glyphs.push({owner:Number(owner),char:char.codePointAt(0),

@@ -106,7 +106,7 @@ const server=createServer(async(req,res)=>{
       await page.waitForFunction(expected=>nativeProbe.source===expected,markedSource.replace('Bold prose.','XBold prose.'));
       assert.equal(await page.locator('.ProseMirror strong').textContent(),'XBold prose.');
       await page.locator('#native-tex-close').click();
-      const tableSource='\\documentclass{article}\n\\begin{document}\n\\begin{tabular}{ll}\nOne  & Two \\\\\nThree & Four\n\\end{tabular}\n\\end{document}\n';
+      const tableSource='\\documentclass{article}\n\\begin{document}\n\\begin{tabular}{ll}\nOne  & Two \\\\\nThree & \n\\end{tabular}\n\\end{document}\n';
       await page.locator('input#file').setInputFiles({name:'table.tex',mimeType:'text/plain',buffer:Buffer.from(tableSource)});
       await page.waitForFunction(()=>document.querySelector('.ProseMirror td')?.textContent==='One');
       await page.locator('#native-tex-toggle').click();
@@ -117,8 +117,14 @@ const server=createServer(async(req,res)=>{
       await panel.locator('[data-native-page="1"] canvas').click({position:{x:6550000*scale,y:9250000*scale}});
       await page.keyboard.type('X');
       await page.waitForFunction(expected=>nativeProbe.source===expected,tableSource.replace('One','XOne'));
+      const tableObservations=await page.evaluate(()=>nativeProbe.calls.filter(call=>call.command==='native_tex_observe_formula').length);
       await page.keyboard.press(mod+'+z');
       await page.waitForFunction(expected=>nativeProbe.source===expected,tableSource);
+      await page.waitForFunction(count=>nativeProbe.calls.filter(call=>call.command==='native_tex_observe_formula').length>count,tableObservations);
+      await panel.getByText('Click text on the native page',{exact:false}).waitFor();
+      await panel.locator('[data-native-page="1"] canvas').click({position:{x:6500000*scale,y:10500000*scale}});
+      await page.keyboard.type('Z');
+      await page.waitForFunction(expected=>nativeProbe.source===expected,tableSource.replace('Three & ','Three & Z'));
       await page.locator('#native-tex-close').click();
       const headingSource='\\documentclass{article}\n\\begin{document}\n\\section[Short]{Long title}\\label{section:test}\n\\end{document}\n';
       await page.locator('input#file').setInputFiles({name:'heading.tex',mimeType:'text/plain',buffer:Buffer.from(headingSource)});

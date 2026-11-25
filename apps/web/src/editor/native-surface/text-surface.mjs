@@ -7,6 +7,15 @@ function stopsFor(observed, projection) {
   const byOffset = new Map();
   for (const page of observed ?? []) {
     if (page?.exact !== true || !page.dl?.math_owners) continue;
+    for (const field of page.dl.math_owners.fields ?? []) {
+      if(!field.empty||!['math','cell'].includes(field.role))continue;
+      const target=textTarget(projection,field.owner,false);
+      if(!target?.paragraph.tableCell||target.paragraph.text)continue;
+      byOffset.set(JSON.stringify([target.paragraph.filePath,target.docOffset]),{
+        ...target,hit:{owner:field.owner,role:field.role},page:page.page,
+        x:field.bbox[0],top:field.bbox[1],bottom:field.bbox[3],
+      });
+    }
     for (const glyph of page.dl.math_owners.glyphs ?? []) {
       if (!projection.owners.has(glyph.owner)) continue;
       for (const after of [false, true]) {

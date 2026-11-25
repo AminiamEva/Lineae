@@ -2693,7 +2693,7 @@ nativeTexPreview=installNativeTexPreview({host:footer,before:modes,
     return editor.state.doc.nodeAt(position)?.attrs.latex===text;
   },
   commitText:({paragraph,patch,text})=>{
-    if(!sourceView.hidden||!text||text===paragraph.text||!paragraph.parts)return false;
+    if(!sourceView.hidden||(!text&&!paragraph.tableCell)||text===paragraph.text||!paragraph.parts)return false;
     const project=projectExplorer?.model;
     const composition=projectDocument.composition;
     const file=project?.files.get(paragraph.filePath);
@@ -2757,7 +2757,7 @@ nativeTexPreview=installNativeTexPreview({host:footer,before:modes,
     };
     const start=at(endpoints.start,patch.from),end=at(endpoints.end,patch.to),tr=editor.state.tr;
     if(end>start)tr.delete(start,end);
-    if(patch.insert)tr.insert(start,editor.schema.text(patch.insert,foundNode.child(endpoints.start.partIndex).marks));
+    if(patch.insert)tr.insert(start,editor.schema.text(patch.insert,foundNode.maybeChild(endpoints.start.partIndex)?.marks));
     tr.setSelection(TextSelection.create(tr.doc,start+patch.insert.length));
     if(composition){
       const from=paragraph.from16+patch.from,to=paragraph.from16+patch.to;
