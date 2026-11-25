@@ -287,6 +287,28 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
     draftInput=null;
     return awaitSourcePosition(edit,action.started,draft.kind==='formula');
   }
+  function submitLineBreak(action){
+    if(!current()||!observation||draftInput)return false;
+    const {surface}=nativeDocument;
+    const [first,last]=surface.range;
+    if(action.lineBreak==='formula'){
+      if(first?.kind!=='math')return false;
+      inputStart=action.started;
+      return commitSurface(surface.command('enterLine'));
+    }
+    if(first?.kind!=='text'||first.paragraph!==last?.paragraph)return false;
+    const hard=action.lineBreak==='hard';
+    const edit=hard?commitHardBreak?.(first,last,''):
+      commitParagraphBreak?.(first.paragraph,first.local,last.local,'');
+    if(edit?.awaitingText){
+      if(hard){
+        draftInput={kind:'hard-break',first,last};
+        targetStatus.textContent=t('在换行后继续输入','Type after the line break');
+      }else draftInput={kind:'paragraph',paragraph:first.paragraph,from:first.local,to:last.local};
+      return true;
+    }
+    return edit?awaitSourcePosition(edit,action.started):false;
+  }
   function submitInput(action) {
     const {surface}=nativeDocument;
     if(!nativeEditing||!acceptsInput())return false;
@@ -300,6 +322,7 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
       else queuedInput.push(action);
       return true;
     }
+    if(action.lineBreak)return submitLineBreak(action);
     if(draftInput)return commitDraftInput(action,surface);
     if(!surface.caret)return false;
     if(!current()||!observation)return false;
@@ -575,15 +598,8 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
     }
     if(event.key==='Enter'&&!mod&&!event.altKey){
       event.preventDefault();
-      if(!current()||!observation||pendingEdit||draftInput)return;
-      const [first,last]=surface.range;
-      if(first?.kind!=='text'||first.paragraph!==last.paragraph)return;
-      const edit=commitParagraphBreak?.(first.paragraph,first.local,last.local,'');
-      if(edit?.awaitingText){
-        draftInput={kind:'paragraph',paragraph:first.paragraph,from:first.local,to:last.local};
-        return;
-      }
-      if(edit)awaitSourcePosition(edit,performance.now());
+      const kind=pendingEdit?(pendingEdit.formula?'math':'text'):surface.caret?.kind;
+      if(kind)submitInput({lineBreak:kind==='math'?'formula':'paragraph',started:performance.now()});
     }
   });
   let unlisten=null;
@@ -1254,15 +1270,7 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
     nativeParagraphs:()=>current()?observation?.projection.paragraphs:undefined,
     startFormula,
     startHardBreak(){
-      if(!acceptsInput()||!current()||!observation||pendingEdit||draftInput)return false;
-      const [first,last]=nativeDocument.surface.range;
-      const edit=commitHardBreak?.(first,last,'');
-      if(edit?.awaitingText){
-        draftInput={kind:'hard-break',first,last};
-        targetStatus.textContent=t('在换行后继续输入','Type after the line break');
-        return true;
-      }
-      return edit?awaitSourcePosition(edit,performance.now()):false;
+      return submitInput({lineBreak:'hard',started:performance.now()});
     },
     inTableCell:()=>Boolean(nativeDocument.surface.caret?.paragraph?.tableCell),
     hasMathInput: event => event.target===input && nativeEditing && acceptsInput() && nativeDocument.surface.caret?.kind==='math',
@@ -1325,6 +1333,7 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
       if(!acceptsInput())return false;
       const {surface}=nativeDocument;
       if(command==='leaveFile')return leaveFile();
+      if(command==='enterLine')return submitInput({lineBreak:'formula',started:performance.now()});
       if(command==='undo'||command==='redo'){
         if(draftInput){cancelDraftInput();return true;}
         clearQueuedInput();

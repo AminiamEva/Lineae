@@ -1779,6 +1779,17 @@ const server=createServer(async(req,res)=>{
       await page.keyboard.type('continuation.');
       const continued=endingWithInput.replace('\\end{document}','Parent continuation.\n\\end{document}');
       await page.waitForFunction(expected=>nativeProbe.source===expected,continued);
+      await panel.getByText('Click prose on the native page',{exact:false}).waitFor();
+      await page.keyboard.press('Home');
+      for(let index=0;index<7;index++)await page.keyboard.press('ArrowRight');
+      await page.evaluate(()=>{nativeProbe.releaseUpdate=null;nativeProbe.holdUpdate=true;});
+      await page.keyboard.type('X');
+      await page.waitForFunction(()=>typeof nativeProbe.releaseUpdate==='function');
+      await page.keyboard.press('Enter');
+      await page.keyboard.type('Y');
+      await page.evaluate(()=>nativeProbe.releaseUpdate());
+      await page.waitForFunction(expected=>nativeProbe.source===expected,
+        continued.replace('Parent continuation.','Parent X\n\nYcontinuation.'));
       await page.locator('#native-tex-close').click();
       const foldSource='\\documentclass{article}\n\\begin{document}\nBefore.\n\n\\input{chapters/one}\n\nAfter.\n\\end{document}\n';
       await openMockProject(page,false,foldSource,'Start.\n\nEnd.\n');
