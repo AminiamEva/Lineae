@@ -188,12 +188,15 @@ export function installNativeTexPreview({host,before,getSource,getSnapshot,isCom
           stamp.sessionId!==observation.stamp.sessionId||
           stamp.sourceRevision!==observation.stamp.sourceRevision)return;
       const head=resolveEndpoint(hit),anchor=origin?resolveEndpoint(origin):head;
+      window.__lineaeHit={hit,head:head&&{kind:head.kind,docOffset:head.docOffset},anchor:anchor&&{kind:anchor.kind,docOffset:anchor.docOffset},
+        kind:observation.kind,nativeEditing,stops:surface.stops?.length};
       if(!head||!anchor)return false;
       if(observation.kind==='text'&&!nativeEditing)return false;
       if(nativeEditing){
         const next=targetSurface(head);
         if(!next||!next.selectBetween(anchor.docOffset,head.docOffset))return false;
         surface=next;
+        window.__lineaeHit.ok=true;
         inputStart=performance.now();
         paintSurfaceSelection();positionInput();input.focus({preventScroll:true});
         return true;

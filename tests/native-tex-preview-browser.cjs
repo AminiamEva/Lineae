@@ -505,7 +505,8 @@ const server=createServer(async(req,res)=>{
       const glyph=nativePage.dl.math_owners.glyphs.find(glyph=>glyph.owner===1);
       const nativeScale=.75*(96/72)/65781.76;
       await page.locator(`[data-native-page="${nativePage.page}"] canvas`).click({position:{
-        x:glyph.bbox[0]*nativeScale,y:((glyph.bbox[1]+glyph.bbox[3])/2)*nativeScale,
+        x:((glyph.bbox[0]+glyph.bbox[2])/2)*nativeScale,
+        y:((glyph.bbox[1]+glyph.bbox[3])/2)*nativeScale,
       }});
       await page.waitForFunction(()=>document.activeElement?.id==='native-tex-input');
       await page.keyboard.type('X');
@@ -521,6 +522,8 @@ const server=createServer(async(req,res)=>{
       fallback:document.querySelector('#native-tex-preview')?.dataset.fallbackReason,
       status:document.querySelector('#native-tex-preview [role=status]')?.textContent,
       targetStatus:document.querySelectorAll('#native-tex-preview [role=status]')[1]?.textContent,
+      hitDebug:window.__lineaeHit,
+      lastHit:window.__lineaeLastHit,
       source:window.nativeProbe?.source?.slice(0,1600),
       value:document.querySelector('math-field')?.value,
       focus:document.activeElement?.tagName,

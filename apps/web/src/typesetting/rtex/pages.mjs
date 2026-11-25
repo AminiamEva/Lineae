@@ -127,6 +127,7 @@ export function installNativePages({host,getFont,onPaint,onError,onMathHit}) {
     const start=drag;drag=null;
     if(start.ownership!==ownership){clearSelection();return;}
     const hit=locate(start.canvas,event);
+    window.__lineaeLastHit=hit;
     if(!hit){clearSelection();return;}
     const moved=Math.hypot(start.x-event.clientX,start.y-event.clientY)>=4;
     const attempt=gesture,stamp=ownership.stamp;
