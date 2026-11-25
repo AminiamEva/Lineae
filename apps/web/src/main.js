@@ -3,7 +3,7 @@ import {canBeginProseFormula,projectMixedDocument,projectTextDocument} from './e
 import {tableCellRanges} from './editor/native-text/table-cells.mjs';
 import {decodeProse} from './editor/native-text/prose-runs.mjs';
 import {tableStyleParts,writeTableStyle} from '../latex/table-styles.mjs';
-import {nativeMathCommandNames,projectMath} from './editor/native-math/source.mjs';
+import {nativeMathCommandNames,nativeOperatorBody,projectMath} from './editor/native-math/source.mjs';
 import {nativeMathContext} from './editor/native-math/resolve.mjs';
 import {documentMetadata,writeDocumentMetadata} from '../latex/document-metadata.mjs';
 import {resolvePackages,resolveTheoremDeclarations} from '../latex/packages.mjs';
@@ -327,7 +327,10 @@ function insertLiveMath(field, latex, notify = true) {
   }
 }
 function insertMath(display = false, latex = '') {
-  if(!latex&&nativeTexPreview?.hasNativeTextFocus?.())return nativeTexPreview.startFormula(display);
+  if(nativeTexPreview?.hasNativeTextFocus?.()){
+    const template=latex.replaceAll('\\mathord{\\placeholder{}}','{}').replaceAll('\\placeholder{}','');
+    return nativeTexPreview.startFormula(display,undefined,template);
+  }
   if (display) {
     if (!latex) return insertFormula(editor, true, '');
     if (displayEnvironment(latex)) {
@@ -3781,8 +3784,9 @@ function newNativeMath(text,display,numbering){
     display?['\\[','\\]']:['$','$'];
   const empty=model.slots.find(slot=>['numerator','denominator','radicand','degree','superscript','subscript','cell']
     .includes(slot.role)&&slot.raw.length===0);
+  const operator=model.atoms.find(atom=>nativeOperatorBody(model,atom)?.slot.raw==='');
   const node=editor.schema.nodes[display?'mathBlock':'math'].create({latex:text,display,delimiter});
-  return {node,open,close,initial:empty?.from16??text.length};
+  return {node,open,close,initial:empty?.from16??operator?.to16??text.length};
 }
 nativeTexPreview=installNativeTexPreview({host:footer,before:modes,primary:nativeWorkspaceRequested(),documentZoom:Number(zoom.value),
   isDocumentMode:()=>sourceView.hidden,
@@ -3931,16 +3935,23 @@ nativeTexPreview=installNativeTexPreview({host:footer,before:modes,primary:nativ
     const from=document.start.length;
     const eol=!document.end&&from===original.length?'':document.eol;
     const insert=open+text+close+eol;
-    const draft=original.slice(0,from)+insert+original.slice(from);
+    let draft=original.slice(0,from)+insert+original.slice(from),change={from,to:from,insert};
+    const dependency=nativePackagePatch(original,text);
+    if(dependency===false)return null;
+    const shift=dependency?.delta??0;
+    if(dependency){
+      draft=draft.slice(0,dependency.from)+dependency.insert+draft.slice(dependency.to);
+      [change]=textPatch(original,draft);
+    }
     const tr=state.tr;
     if(display)tr.insert(0,node).setSelection(NodeSelection.create(tr.doc,0));
     else tr.insert(1,node).setSelection(TextSelection.create(tr.doc,2));
     const projected=sourceProjection(draft,tr.doc.toJSON(),{fragment});
-    if(!projected?.blocks.some(block=>block.editable&&block.from<=from&&block.to>=from+insert.trimEnd().length))return null;
+    if(!projected?.blocks.some(block=>block.editable&&block.from<=from+shift&&block.to>=from+shift+insert.trimEnd().length))return null;
     const project=projectExplorer?.model;
     const path=project?.file(project.activeFileId).path;
-    return dispatchNativeParagraphChange(state,tr,original,draft,{from,to:from,insert},projected)
-      ?{source:draft,offset:from+open.length+initial,path}:null;
+    return dispatchNativeParagraphChange(state,tr,original,draft,change,projected)
+      ?{source:draft,offset:from+shift+open.length+initial,path}:null;
   },
   commitInitialText:(text,region)=>{
     if(region){
@@ -4137,10 +4148,21 @@ nativeTexPreview=installNativeTexPreview({host:footer,before:modes,primary:nativ
       tr.replaceWith(range.from,range.to,math);
       tr.setSelection(TextSelection.create(tr.doc,range.from+1));
     }
-    const change={from:first.docOffset,to:last.docOffset,insert:prefix+text+suffix};
-    const draft=paragraph.source.slice(0,change.from)+change.insert+paragraph.source.slice(change.to);
-    const offset=change.from+prefix.length+initial;
+    let change={from:first.docOffset,to:last.docOffset,insert:prefix+text+suffix};
+    let draft=paragraph.source.slice(0,change.from)+change.insert+paragraph.source.slice(change.to);
+    let offset=change.from+prefix.length+initial;
     const result={source:draft,offset,path:paragraph.filePath};
+    const {composition,project,file}=target,rootId=composition?.rootId;
+    const root=composition&&rootId!==file.id?project.file(rootId).draft:paragraph.source;
+    const dependency=nativePackagePatch(root,text);
+    if(dependency===false)return null;
+    if(dependency&&composition){
+      const drafts=new Map([[file.id,draft]]),prior=drafts.get(rootId)??root;
+      const updated=prior.slice(0,dependency.from)+dependency.insert+prior.slice(dependency.to);
+      drafts.set(rootId,updated);
+      if(rootId===file.id){result.source=updated;result.offset+=dependency.delta;}
+      return dispatchNativeProjectChange(state,tr,project,drafts)?result:null;
+    }
     if(target.composition){
       const drafts=projectDocument.changes(tr.doc.toJSON());
       if(drafts?.get(target.file.id)!==draft)return null;
@@ -4159,7 +4181,15 @@ nativeTexPreview=installNativeTexPreview({host:footer,before:modes,primary:nativ
       const [updated,...rest]=importBlocks(draft.slice(owner.from,owner.to+draft.length-paragraph.source.length));
       if(!updated||rest.length||!state.schema.nodeFromJSON(updated).eq(tr.doc.child(owner.index)))return null;
     }
-    return dispatchNativeParagraphChange(state,tr,paragraph.source,draft,change,projected)?result:null;
+    let verifiedProjection=projected;
+    if(dependency){
+      draft=draft.slice(0,dependency.from)+dependency.insert+draft.slice(dependency.to);
+      [change]=textPatch(paragraph.source,draft);
+      offset+=dependency.delta;
+      verifiedProjection=sourceProjection(draft,tr.doc.toJSON(),{fragment:projectFileKind==='tex'});
+    }
+    return verifiedProjection&&dispatchNativeParagraphChange(state,tr,paragraph.source,draft,change,verifiedProjection)
+      ?{...result,source:draft,offset}:null;
   },
   commitAfterFormulaText:(formula,text)=>{
     if(!text.trim()||/[\r\n]/.test(text))return null;

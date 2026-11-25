@@ -224,7 +224,7 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
     return document.activeElement===input&&nativeEditing&&acceptsInput()&&
       (startingText()||nativeDocument.surface.caret?.kind==='text');
   }
-  function startFormula(display,delimiter){
+  function startFormula(display,delimiter,template=''){
     if(!current()||pendingEdit)return false;
     if(startingText())draftInput={kind:'formula',initial:true,display,delimiter};
     else {
@@ -234,6 +234,11 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
       draftInput={kind:'formula',first,last,display,delimiter};
     }
     targetStatus.textContent=display?t('输入行间公式','Type a display formula'):t('输入行内公式','Type an inline formula');
+    if(template){
+      const committed=commitDraftInput({insert:template,started:performance.now()},nativeDocument.surface);
+      if(!committed)cancelDraftInput();
+      return committed;
+    }
     return true;
   }
   function commitDraftInput(action,surface){

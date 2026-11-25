@@ -1535,6 +1535,12 @@ const server=createServer(async(req,res)=>{
       await page.keyboard.press(mod+'+z');
       await page.waitForFunction(expected=>nativeProbe.source===expected,blank);
       await page.getByRole('button',{name:'Start typing',exact:true}).click();
+      await page.getByRole('button',{name:'frac',exact:true}).click();
+      const inlineFraction=blank.replace('\\begin{document}\n','\\begin{document}\n$\\frac{}{}$\n');
+      await page.waitForFunction(expected=>nativeProbe.source===expected,inlineFraction);
+      await page.keyboard.press(mod+'+z');
+      await page.waitForFunction(expected=>nativeProbe.source===expected,blank);
+      await page.getByRole('button',{name:'Start typing',exact:true}).click();
       await page.keyboard.press(mod+'+Shift+6');
       await page.waitForFunction(original=>nativeProbe.source!==original&&nativeProbe.source
         ?.replace(/\\begin\{tabular\}\{\|l\|l\|\}[\s\S]*?\\end\{tabular\}\n/,'')===original&&
