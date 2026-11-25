@@ -1667,7 +1667,7 @@ mod tests {
             let drawing: Value = serde_json::from_slice(&std::fs::read(directory.join("degraded-drawing-probe.json")).unwrap()).unwrap();
             let measured_projection = drawing["projection"].as_str().unwrap();
             let measured = degraded.observe_formula(opened.source_revision, measured_projection, Vec::new())
-                .expect("observe the two exact corners of a standalone TikZ drawing");
+                .expect("observe the two exact corners of a floating TikZ drawing");
             for corner in ["top", "bottom"] {
                 assert!(measured.iter().any(|page| page["dl"]["math_owners"]["fields"].as_array().into_iter().flatten()
                     .any(|field| field["owner"] == drawing["corners"][corner] && field["empty"] == true)),
