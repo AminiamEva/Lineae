@@ -31,8 +31,9 @@ Commit: $GITHUB_SHA
 Workflow: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID
 Windows: x64, unsigned
 macOS: Apple Silicon only, ad-hoc signed, not notarized
-Native LuaLaTeX page preview: opt-in; existing editor remains authoritative
-Native Canvas: supported formula clicks, caret and selections use the existing editor
+Native LuaLaTeX page preview: opt-in; native pages are the geometry source
+Native Canvas: supported formula input, caret and selections route into ProseMirror
+Prose text, structure commands and PDF pages: existing editor remains the fallback
 Full replacement of the existing editing surface: not yet complete
 XeLaTeX-aligned JS renderer: retained
 Lua JS engine: retained separately; unmerged reference not yet supplied
