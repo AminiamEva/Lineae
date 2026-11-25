@@ -1,6 +1,9 @@
 import {createSelectionModel} from './selection-model.mjs';
 import {applyPastedMath,applySlotEdit,applyStructureCommand,expandMatrix,insertDisplayLine,removeEmptyScript,applySingleCharacterScript,applyScalableFence,nativeOperatorBody} from '../native-math/source.mjs';
 
+const structuralAtom=atom=>['frac','sqrt','fence','group','wrapper','matrix'].includes(atom.kind)&&
+  !(atom.kind==='matrix'&&/^(?:align|flalign|gather|multline|eqnarray)/.test(atom.command));
+
 // Native surface geometry adapter. Display-list coordinates are page space;
 // callers provide the zoom used for the current painted page.
 const stopsFor = (observed, resolve, verified, pasted, pasteOffset) => {
@@ -77,6 +80,18 @@ const stopsFor = (observed, resolve, verified, pasted, pasteOffset) => {
       tails.push({...end,slot,local:wrapper.to16-slot.from16,docOffset,atom:wrapper,
         hit:{...end.hit,page,caretBox:[x,top,x,bottom]}});
     }
+    for(const atom of formula.math.atoms.filter(atom=>structuralAtom(atom)&&atom.kind!=='wrapper')){
+      const docOffset=formula.from16+atom.to16;
+      if(byAddress.has(JSON.stringify([formula.filePath,docOffset])))continue;
+      const body=stops.filter(stop=>stop.docOffset>formula.from16+atom.from16&&stop.docOffset<=docOffset);
+      const right=body.filter(stop=>stop.after||stop.empty).sort((a,b)=>b.x-a.x)[0];
+      const slot=formula.math.slots.filter(slot=>slot.from16<=atom.from16&&slot.to16>=atom.to16)
+        .sort((a,b)=>a.raw.length-b.raw.length)[0];
+      if(!right||!slot||body.some(stop=>stop.page!==right.page))continue;
+      const {x,top,bottom,page}=right;
+      tails.push({...right,slot,atom,local:atom.to16-slot.from16,docOffset,empty:false,
+        hit:{...right.hit,page,caretBox:[x,top,x,bottom]}});
+    }
     if(pasted?.paste&&pasted.formula.filePath===formula.filePath&&pasted.formula.from16===formula.from16&&
        !byAddress.has(JSON.stringify([formula.filePath,pasteOffset]))){
       const local=pasteOffset-formula.from16;
@@ -126,6 +141,21 @@ export function createMathSurface({resolve,selection=createSelectionModel(sameFo
       const next=selection.stops.find(stop=>stop.kind==='math'&&sameFormula(stop,caret)&&
         stop.docOffset===caret.formula.from16+enclosing.wrapper.to16);
       return next?selection.selectTargets(next,next):false;
+    },
+    leaveStructure(){
+      const caret=selection.caret;
+      if(caret?.kind!=='math')return false;
+      const {formula}=caret,offset=caret.docOffset-formula.from16;
+      const compound=formula.math.atoms.filter(atom=>structuralAtom(atom)&&atom.from16<offset&&atom.to16>offset)
+        .sort((a,b)=>(a.to16-a.from16)-(b.to16-b.from16))[0];
+      if(!compound){
+        const script=caret.atom.path.match(/^(.*)\/(?:superscript|subscript)\//);
+        if(!script)return false;
+        const base=formula.math.atoms.find(atom=>atom.path===script[1]);
+        if(!base)return false;
+        return selection.selectBetween(formula.from16+base.to16,formula.from16+base.to16,formula.filePath);
+      }
+      return selection.selectBetween(formula.from16+compound.to16,formula.from16+compound.to16,formula.filePath);
     },
     insert(text,{paste=false}={}) {
       const stop = selection.caret;

@@ -109,6 +109,7 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
     onEnvironmentChange?.();
   }
   function positionInput(reveal=false) {
+    if(inputComposition&&!inputComposition.ended)return;
     const stop = nativeDocument.surface.caret;
     if (!stop) return;
     const canvas = pages.querySelector(`[data-native-page="${stop.page}"] canvas`);
@@ -405,7 +406,6 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
   }
   input.addEventListener('compositionstart', () => {
     inputStart=0;
-    positionInput();
     input.scrollLeft=0;
     inputComposition={text:'',ended:false,committed:false};
     compositionField=input;
@@ -628,6 +628,8 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
       wantedSource===sentSource && renderedRevision===sourceRevision;
   }
   function renderStatus() {
+    // Changing the preview controls can move the page and its IME anchor.
+    if(inputComposition&&!inputComposition.ended)return;
     if(foldsDirty&&nativeEditing&&acceptsInput()&&current()&&observation)refreshFoldView();
     exportButton.disabled=!current();
     targetButton.disabled=!acceptsInput()||!current()||!hasGeometry()||targeting===generation;
@@ -1121,6 +1123,7 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
   window.addEventListener('pagehide',()=>{void stop();});
   input.addEventListener('blur',()=>queueMicrotask(()=>onEnvironmentChange?.()));
   document.addEventListener('compositionstart',event=>{
+    if(event.target===input)return;
     if(event.target?.tagName==='MATH-FIELD')compositionField=event.target;
     if(active){renderer.clearCaret();renderStatus();}
   },true);
@@ -1196,6 +1199,13 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
       }
       if(!current()||!observation||pendingEdit||surface.caret?.kind!=='math')return false;
       if(command==='left'||command==='right')return chooseNativeDelimiters(command==='right');
+      if(command==='leaveEnvironment'){
+        const cleanup=surface.clearEmptyScript?.();
+        if(cleanup){inputStart=performance.now();return commitSurface(cleanup);}
+        if(!surface.leaveStructure())return false;
+        paintSurfaceSelection(true);positionInput();
+        return true;
+      }
       if(command==='leaveFormula'){
         return finishFormula();
       }

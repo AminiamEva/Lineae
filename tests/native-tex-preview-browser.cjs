@@ -132,6 +132,13 @@ const server=createServer(async(req,res)=>{
       const expected=mixedSource.replace('Alpha beta.','XYZAlpha beta.').replace('\\frac{a}{b}','\\frac{a}{cb}');
       assert.equal(await page.evaluate(()=>nativeProbe.source),expected,'Both native edits preserve every other source byte');
       assert.deepEqual(errors,[]);
+      await panel.getByText('Click prose on the native page',{exact:false}).waitFor();
+      await canvas.click({position:{x:6510000*scale,y:6950000*scale}});
+      await page.keyboard.press(mod+'+j');
+      await page.keyboard.type('Z');
+      await page.waitForFunction(source=>nativeProbe.source===source,expected.replace('\\frac{a}{cb}','\\frac{a}{cb}Z'));
+      await page.keyboard.press(mod+'+z');
+      await page.waitForFunction(source=>nativeProbe.source===source,expected);
       await page.waitForFunction(()=>nativeProbe.calls.some(call=>call.command==='native_tex_observe_formula'&&
         call.args.sourceRevision===nativeProbe.revision));
       await panel.getByText('Click prose on the native page',{exact:false}).waitFor();

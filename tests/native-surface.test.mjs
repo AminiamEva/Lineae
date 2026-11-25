@@ -547,9 +547,10 @@ test('identical offsets in two included files remain distinct native caret addre
   const slots=projection.formulas.map(formula=>formula.math.slots.find(slot=>slot.role==='denominator'));
   const surface=createMathSurface({resolve:endpoint=>nativeTarget(projection,endpoint)});
   surface.setObservation(page(slots.map((slot,index)=>field(slot.tag,'den',300+100*index,true))));
-  assert.equal(surface.stops.length,2);
-  const offset=surface.stops[0].docOffset;
-  assert.equal(surface.stops[1].docOffset,offset);
+  const denominators=surface.stops.filter(stop=>stop.slot.role==='denominator');
+  assert.equal(denominators.length,2);
+  const offset=denominators[0].docOffset;
+  assert.equal(denominators[1].docOffset,offset);
   assert.equal(surface.selectBetween(offset,offset,'one.tex','two.tex'),false);
   assert.ok(surface.selectBetween(offset,offset,'two.tex'));
   assert.equal(surface.insert('b').formula.filePath,'two.tex');
@@ -682,6 +683,18 @@ test('right arrow leaves a native math font wrapper within its enclosing fractio
   assert.equal(session.move(1,false),true);
   assert.equal(session.surface.caret.slot.role,'numerator');
   assert.equal(session.surface.insert('Z').text,'\\frac{\\mathbf{ab}Z}{c}');
+});
+
+test('leaving a terminal fraction ends the inner slot and retains the outer math caret',()=>{
+  const source='\\begin{document}\n\\[\\frac{a}{b}\\]\n\\end{document}\n';
+  const {projection,formula,token}=setup(source);
+  const session=createNativeDocumentSession(endpoint=>nativeTarget(projection,endpoint));
+  session.setObservation(page([],[glyph(token('a').tag,100),glyph(token('b').tag,130)]),projection);
+  const inside=nativeTarget(projection,{owner:token('b').tag,role:'nucleus',after:false});
+  assert.equal(session.select(inside,inside),true);
+  assert.equal(session.surface.leaveStructure(),true);
+  assert.equal(session.surface.caret.docOffset,formula.to16);
+  assert.equal(session.surface.insert('Z').text,'\\frac{a}{b}Z');
 });
 
 test('native math paste accepts a complete fragment and restores the caret after it',()=>{
