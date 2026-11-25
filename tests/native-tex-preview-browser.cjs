@@ -371,6 +371,12 @@ const server=createServer(async(req,res)=>{
       await page.locator('[data-source-mode=body]').click();
       await panel.getByText('Click text on the native page',{exact:false}).waitFor();
       assert.equal(await page.evaluate(()=>customElements.get('math-field')),undefined);
+      const blank='\\documentclass{article}\n\\begin{document}\n\n\\end{document}\n';
+      await page.locator('input#file').setInputFiles({name:'empty-workspace.tex',mimeType:'text/plain',buffer:Buffer.from(blank)});
+      await page.getByRole('button',{name:'Start typing',exact:true}).click();
+      await page.keyboard.type('First paragraph.');
+      await page.waitForFunction(()=>nativeProbe.source.includes('First paragraph.'));
+      assert.equal(await page.evaluate(()=>document.querySelectorAll('.ProseMirror p').length),1);
       assert.deepEqual(errors,[]);
       console.log('PASS native mixed editing with MathLive and JS pagination disabled');
       return;

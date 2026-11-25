@@ -481,6 +481,19 @@ test('native prose escapes percent and deletes the complete escaped token as one
   assert.equal(surface.erase().source,source);
 });
 
+test('native typing carries trailing whitespace through a geometry revision',()=>{
+  const source='\\begin{document}\nWord \n\\end{document}\n';
+  const end=source.indexOf('Word ')+5;
+  const projection=projectMixedDocument(source,{keepThrough:end});
+  const [paragraph]=projection.paragraphs;
+  assert.equal(paragraph.text,'Word ');
+  const session=createNativeDocumentSession(()=>null);
+  session.expectInitialText({kind:'text'},end,undefined);
+  session.setObservation(page([],[glyph(paragraph.glyphs.at(-1).tag,100)]),projection);
+  assert.equal(session.surface.caret.docOffset,end);
+  assert.equal(session.surface.insert('next').source,source.replace('Word ','Word next'));
+});
+
 test('native text ranges preserve proof titles, comments and container declarations',()=>{
   const source='\\begin{document}\r\n\\begin{proof}[Reason]\r\nOne step.\r\n\r\nAnother step.\r\n\\end{proof}\r\n\r\n'+
     '\\begin{abstract}\r\n% keep declaration and comment\r\n\\small\r\nA summary.\r\n\\end{abstract}\r\n\\end{document}\r\n';

@@ -1,4 +1,5 @@
 import {nativeEditorRange} from './editor/native-text/editor-range.mjs';
+import {projectTextDocument} from './editor/native-text/projection.mjs';
 import {loadLegacyMath,nativeOnlyAcceptance,nativeWorkspaceRequested} from './editor/native-surface/acceptance-mode.mjs';
 import {AppendixStart,MatterStart,LayoutCommand} from './editor/appendix.js';
 import {Lipsum} from './editor/lipsum.js';
@@ -2641,6 +2642,14 @@ function currentNativeProjectComposition(){
   const composition=projectDocument.compose(project,active.rootId,{boundariesOnly:true});
   return composition.issues.length?null:composition;
 }
+function canStartNativeText(){
+  if(!sourceView.hidden||projectDocument.composition||editor.state.doc.childCount!==1)return false;
+  const paragraph=editor.state.doc.firstChild,project=projectExplorer?.model;
+  if(paragraph?.type.name!=='paragraph'||paragraph.content.size||
+     (project&&project.activeFileId!==project.mainFileId))return false;
+  const value=source(),document=parseDocument(value);
+  return Boolean(document&&value.slice(document.start.length,value.length-document.end.length).trim()==='');
+}
 nativeTexPreview=installNativeTexPreview({host:footer,before:modes,primary:nativeWorkspaceRequested(),
   isDocumentMode:()=>sourceView.hidden,
   getSnapshot:async()=>{
@@ -2694,6 +2703,21 @@ nativeTexPreview=installNativeTexPreview({host:footer,before:modes,primary:nativ
     const selection=TextSelection.create(state.doc,forward?from:to,forward?to:from);
     if(!selection.eq(state.selection))editor.view.dispatch(state.tr.setSelection(selection).setMeta('addToHistory',false));
     return true;
+  },
+  canStartText:canStartNativeText,
+  commitInitialText:text=>{
+    if(!text.trim()||/[\r\n]/.test(text)||!canStartNativeText())return null;
+    const {state}=editor;
+    const tr=state.tr.insertText(text,1);
+    tr.setSelection(TextSelection.create(tr.doc,1+text.length));
+    const prepared=standaloneParagraphDraft(importedSource,projection,importedSnapshot,
+      state.doc.toJSON(),tr.doc.toJSON(),0);
+    const path=projectExplorer?.model?.mainFileId;
+    const first=prepared&&projectTextDocument(prepared.draft,{filePath:path})?.paragraphs[0];
+    if(!first)return null;
+    const offset=first.from16+first.glyphs.at(-1).to16;
+    editor.view.dispatch(closeHistory(tr.setMeta('standaloneParagraph',prepared)));
+    return editor.state.doc===state.doc?null:{source:prepared.draft,offset,path};
   },
   focusMathSlot:async(anchor,head,isCurrent)=>{    const project=projectExplorer?.model;
     const formula=head.formula;

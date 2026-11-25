@@ -31,6 +31,15 @@ function stopsFor(observed, projection, verified) {
         // Prefer the boundary whose paragraph/glyph is stable; either side of a
         // space has no tag, so the nearest glyph edge is the caret.
         if (!previous || (!previous.after && after)) byOffset.set(key, stop);
+        if(after&&target.glyph===target.paragraph.glyphs.at(-1)&&
+           /^[ \t]+$/.test(target.paragraph.text.slice(target.local))){
+          // TeX discards trailing paragraph glue. Keep its logical typing
+          // positions at the last painted glyph edge.
+          for(let local=target.local+1;local<=target.paragraph.text.length;local++){
+            const docOffset=target.paragraph.from16+local;
+            byOffset.set(JSON.stringify([target.paragraph.filePath,docOffset]),{...stop,local,docOffset});
+          }
+        }
       }
     }
   }

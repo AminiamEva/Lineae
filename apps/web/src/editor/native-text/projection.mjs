@@ -41,18 +41,20 @@ function instrumentText(raw, firstOwner, attribute) {
   return {instrumented:instrumented + '\\endgroup', glyphs, nextTag:next};
 }
 
-function plainBlock(block) {
+function plainBlock(block,keepThrough=0) {
   const leading = block.match(/^\s*/)[0].length;
-  const trailing = block.length - block.trimEnd().length;
-  return {leading, trailing, text:block.slice(leading, block.length - trailing)};
+  const end=block.trimEnd().length;
+  const preserved=keepThrough>end&&keepThrough<=block.length&&/^[ \t]+$/.test(block.slice(end,keepThrough));
+  return {leading,text:block.slice(leading,preserved?keepThrough:end)};
 }
 
 const textMarks = {textbf:'bold',textit:'italic',texttt:'code',underline:'underline',
   sout:'strike',textsuperscript:'superscript',textsubscript:'subscript'};
-function proseBody(block) {
-  const {leading,text}=plainBlock(block);
+function proseBody(block,keepThrough) {
+  const {leading,text}=plainBlock(block,keepThrough);
   const heading=headingAt(text);
-  if(heading?.end===text.length&&heading.title.trim()===heading.title)
+  if(heading?.end===text.length&&(heading.title.trim()===heading.title||
+     (heading.title===heading.title.trimStart()&&keepThrough===leading+heading.titleFrom+heading.title.length)))
     return {leading:leading+heading.titleFrom,text:heading.title,heading:heading.name};
   return {leading,text};
 }
@@ -81,8 +83,8 @@ function markedRuns(text, offset=0, marks=[]) {
   return runs;
 }
 
-function instrumentProse(block, source, blockFrom, firstOwner, attribute, filePath) {
-  const {leading,text,heading}=proseBody(block);
+function instrumentProse(block, source, blockFrom, firstOwner, attribute, filePath, keepThrough) {
+  const {leading,text,heading}=proseBody(block,keepThrough-blockFrom);
   const parts=markedRuns(text);
   if(!parts?.length)return null;
   const runs=[],glyphs=[];
@@ -143,14 +145,14 @@ function instrumentContainer(block,source,blockFrom,firstOwner,attribute,filePat
   return {projection:projection+block.slice(cursor),paragraphs,nextTag};
 }
 
-function instrumentTextBlock(block,source,from,next,attribute,filePath){
+function instrumentTextBlock(block,source,from,next,attribute,filePath,keepThrough){
   return instrumentTable(block,source,from,next,attribute,filePath)??
     instrumentContainer(block,source,from,next,attribute,filePath)??
-    instrumentProse(block,source,from,next,attribute,filePath);
+    instrumentProse(block,source,from,next,attribute,filePath,keepThrough);
 }
 
 // Prose-only documents: every plain paragraph becomes a native target.
-export function projectTextDocument(source, {firstOwner=1, attribute=65000, fragment=false, filePath}={}) {
+export function projectTextDocument(source, {firstOwner=1, attribute=65000, fragment=false, filePath,keepThrough=0}={}) {
   const doc = parseDocument(source,{fragment});
   if (!doc) return null;
   const body = doc.blocks.join('');
@@ -162,7 +164,7 @@ export function projectTextDocument(source, {firstOwner=1, attribute=65000, frag
     bodyOffset += block.length;
     if (!block.trim()) continue;
     const blockFrom=doc.start.length+blockStart;
-    const result=instrumentTextBlock(block,source,blockFrom,next,attribute,filePath);
+    const result=instrumentTextBlock(block,source,blockFrom,next,attribute,filePath,keepThrough);
     if(!result)continue;
     output+=source.slice(cursor,blockFrom)+result.projection;
     cursor=blockFrom+block.length;
@@ -181,13 +183,13 @@ export function projectTextDocument(source, {firstOwner=1, attribute=65000, frag
 // plain runs beside inline math are tagged individually. Runs never cross
 // math; a paragraph records the exact text/math child sequence so the editor
 // can map a run patch to one ProseMirror text node.
-export function projectMixedDocument(source, {previous=[], attribute=65000, fragment=false, firstOwner=1, filePath}={}) {
+export function projectMixedDocument(source, {previous=[], attribute=65000, fragment=false, firstOwner=1, filePath,keepThrough=0}={}) {
   const doc = parseDocument(source,{fragment});
   if (!doc) return null;
   const body = doc.blocks.join('');
   if (doc.start + body + doc.end !== source) return null;
   const math = projectDocumentFormulas(source, {previous:previous?.formulas ?? [], firstTag:firstOwner, fragment, filePath});
-  if (!math) return projectTextDocument(source, {attribute,firstOwner,fragment,filePath});
+  if (!math) return projectTextDocument(source,{attribute,firstOwner,fragment,filePath,keepThrough});
   const formulas = [...math.formulas].sort((left, right) => left.from16 - right.from16);
   const mathTokens = [...sourceStructure(body)].filter(token =>
     token.kind === 'inlineMath' || token.kind === 'displayMath');
@@ -205,7 +207,7 @@ export function projectMixedDocument(source, {previous=[], attribute=65000, frag
       return {...math, kind:'math', paragraphs:[]};
     }
     output += source.slice(cursor, from16);
-    const result=!overlapping.length&&instrumentTextBlock(block,source,from16,next,attribute,filePath);
+    const result=!overlapping.length&&instrumentTextBlock(block,source,from16,next,attribute,filePath,keepThrough);
     if(result){
       output+=result.projection;
       cursor=to16;
@@ -216,7 +218,7 @@ export function projectMixedDocument(source, {previous=[], attribute=65000, frag
       }
       continue;
     }
-    const {leading,text}=plainBlock(block);
+    const {leading,text}=plainBlock(block,keepThrough-from16);
     const contentFrom = from16 + leading;
     const parts = [], runs = [], glyphs = [];
     let run = '', partCursor = 0;
@@ -277,11 +279,12 @@ export function projectMixedDocument(source, {previous=[], attribute=65000, frag
 }
 
 // Instrument each file independently while sharing the owner ID namespace.
-export function projectMixedSnapshot(snapshot, previous) {
+export function projectMixedSnapshot(snapshot, previous, pending) {
   let nextTag=previous?.nextTag??1;
   const owners=new Map(), formulas=[], paragraphs=[], files=[];
   function add(source,filePath,fragment) {
-    const projection=projectMixedDocument(source,{previous,firstOwner:nextTag,filePath,fragment});
+    const projection=projectMixedDocument(source,{previous,firstOwner:nextTag,filePath,fragment,
+      keepThrough:pending?.path===filePath?pending.offset:0});
     if(!projection)return null;
     nextTag=projection.nextTag;
     for(const [tag,target] of projection.owners)owners.set(tag,target);

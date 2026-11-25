@@ -125,6 +125,9 @@ export function createNativeDocumentSession(resolve) {
       const first=selection.stops.find(stop=>fileOf(stop)===path&&stop.docOffset>=from&&stop.docOffset<=to);
       return first?selection.selectTargets(first,first):false;
     },
+    expectInitialText(edit,offset,path){
+      selection.record(edit,offset,{kind:'text',paragraph:{filePath:path}});
+    },
     reset(){selection.reset();sourceProjection=null;preferredX=null;orderByFile.clear();},
   };
 }

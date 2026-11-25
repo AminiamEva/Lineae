@@ -11,7 +11,7 @@ import {nativeTarget} from '../editor/native-math/resolve.mjs';
 // Native LaTeX output is the primary page. The opt-in native input mode sends
 // supported keys, caret and IME through this surface into ProseMirror; the old
 // JS-formatted page and MathLive inputs stay available as the migration fallback.
-export function installNativeTexPreview({host,before,primary=false,isDocumentMode,getSource,getSnapshot,isComposing,focusMathSlot,focusImage,continuationRegion,selectionRegions,selectText,commitMath,commitText,commitProjectRange,history}) {
+export function installNativeTexPreview({host,before,primary=false,isDocumentMode,getSource,getSnapshot,isComposing,focusMathSlot,focusImage,continuationRegion,selectionRegions,selectText,commitMath,commitText,commitProjectRange,canStartText,commitInitialText,history}) {
   const invoke=window.__TAURI__?.core?.invoke;
   if(!invoke) return {refresh(){},documentChanged(){},relocalize(){}};
   const button=document.createElement('button');
@@ -29,6 +29,8 @@ export function installNativeTexPreview({host,before,primary=false,isDocumentMod
   const editButton=document.createElement('button');editButton.type='button';editButton.id='native-tex-edit';
   editButton.setAttribute('aria-pressed','false');
   const targetStatus=document.createElement('p');targetStatus.setAttribute('role','status');
+  const startText=document.createElement('button');
+  startText.id='native-tex-start-text';startText.type='button';startText.hidden=true;
   const zoom=document.createElement('select');zoom.id='native-tex-zoom';
   for(const value of [50,75,100,125,150,200]) zoom.append(new Option(value+'%',String(value)));
   zoom.value='75';zoom.setAttribute('aria-label',t('原生预览缩放','Native preview zoom'));
@@ -42,7 +44,7 @@ export function installNativeTexPreview({host,before,primary=false,isDocumentMod
   input.id='native-tex-input';input.className='native-tex-input';input.rows=1;
   input.spellcheck=false;input.autocapitalize='off';input.autocomplete='off';
   input.setAttribute('aria-label',t('原生公式输入','Native formula input'));
-  panel.append(heading,notice,controls,status,targetStatus,pages);
+  panel.append(heading,notice,controls,status,targetStatus,startText,pages);
   panel.append(input);
   document.body.append(panel);host.insertBefore(button,before);
   let session=null,sourceRevision=0,sentSource='',wantedSource='',generation=0;
@@ -58,6 +60,7 @@ export function installNativeTexPreview({host,before,primary=false,isDocumentMod
   let previousProjection=null;
   let mirror=null;
   let primaryRequested=false;
+  let initialTyping=false;
   let compositionField=null;
   const composing=()=>isComposing()||Boolean(compositionField?.isConnected);
   const nativeDocument=createNativeDocumentSession(endpoint=>{
@@ -139,13 +142,24 @@ export function installNativeTexPreview({host,before,primary=false,isDocumentMod
   }
   function submitInput(action) {
     const {surface}=nativeDocument;
-    if(!nativeEditing||!surface.caret)return false;
+    if(!nativeEditing)return false;
     if(pendingEdit){
       const last=queuedInput.at(-1);
       if(action.insert&&last?.insert)last.insert+=action.insert;
       else queuedInput.push(action);
       return true;
     }
+    if(initialTyping){
+      if(!current()||!action.insert)return false;
+      const edit=commitInitialText?.(action.insert);
+      if(!edit)return false;
+      initialTyping=false;
+      pendingEdit={source:edit.source,paragraph:{filePath:edit.path}};
+      nativeDocument.expectInitialText(pendingEdit,edit.offset,edit.path);
+      pendingLatency={started:action.started,committed:performance.now()};
+      return true;
+    }
+    if(!surface.caret)return false;
     if(!current()||!observation)return false;
     inputStart=action.started;
     return commitSurface(editSelection(action));
@@ -292,6 +306,7 @@ export function installNativeTexPreview({host,before,primary=false,isDocumentMod
     if (event.key === 'Escape') {
       event.preventDefault();
       clearQueuedInput();
+      initialTyping=false;
       input.blur();
       return;
     }
@@ -380,6 +395,7 @@ export function installNativeTexPreview({host,before,primary=false,isDocumentMod
     exportButton.disabled=!current();
     targetButton.disabled=!current()||!hasGeometry()||targeting===generation;
     editButton.disabled=!current()||!hasGeometry()||!observation;
+    startText.hidden=!primary||!current()||Boolean(observation)||!canStartText?.();
     editButton.setAttribute('aria-pressed',String(nativeEditing));
     const canRefreshTargets=nativeEditing||(!sentSnapshot?.files?.length&&sentSource.length<=32*1024);
     if(targetArmed&&!targetButton.disabled&&canRefreshTargets&&targetTimer===null&&
@@ -410,6 +426,7 @@ export function installNativeTexPreview({host,before,primary=false,isDocumentMod
     closeButton.textContent=t('关闭','Close');
     targetButton.textContent=t('定位公式光标（实验）','Target formula caret (experimental)');
     editButton.textContent=nativeEditing?t('退出原生输入','Leave native input'):t('原生输入（实验）','Native input (experimental)');
+    startText.textContent=t('开始输入','Start typing');
     editButton.title=t('在原生排版页面上直接输入；ProseMirror 继续保存历史。','Type directly on native pages; ProseMirror keeps the history.');
     renderStatus();
   }
@@ -421,7 +438,7 @@ export function installNativeTexPreview({host,before,primary=false,isDocumentMod
     wantedSnapshot=null;sentSnapshot=null;wantedSource='';sentSource='';
     observation=null;targetStatus.textContent='';
     previousProjection=null;
-    nativeEditing=false;nativeDocument.reset();
+    nativeEditing=false;initialTyping=false;nativeDocument.reset();
     input.blur();input.value='';
     clearQueuedInput();
     pendingLatency=null;inputStart=0;latency.length=0;delete panel.dataset.latencySamples;
@@ -623,11 +640,13 @@ export function installNativeTexPreview({host,before,primary=false,isDocumentMod
     const stamp={sessionId:session,sourceRevision};
     const signature=sentSnapshot.signature;
     lastTarget={...stamp,signature};
+    const pending=pendingEdit?.paragraph&&nativeDocument.surface.pendingOffset!==null
+      ?{path:pendingEdit.paragraph.filePath,offset:nativeDocument.surface.pendingOffset}:undefined;
     const projection=sentSnapshot?.files?.length
-      ?projectMixedSnapshot(sentSnapshot,previousProjection)
-      :projectMixedDocument(sentSource,{previous:previousProjection??[]});
+      ?projectMixedSnapshot(sentSnapshot,previousProjection,pending)
+      :projectMixedDocument(sentSource,{previous:previousProjection??[],keepThrough:pending?.offset});
     if(!projection||!projection.owners.size){
-      targetStatus.textContent=t('当前文档没有可定位的公式或纯文本段落。','No supported formula or plain paragraph in this document snapshot.');
+      targetStatus.textContent=primary&&canStartText?.()?'':t('当前文档没有可定位的公式或纯文本段落。','No supported formula or plain paragraph in this document snapshot.');
       return;
     }
     const kind=projection.kind;
@@ -721,6 +740,13 @@ export function installNativeTexPreview({host,before,primary=false,isDocumentMod
     });
   }
   button.addEventListener('click',toggle);
+  startText.addEventListener('click',()=>{
+    if(startText.hidden||!current())return;
+    initialTyping=true;
+    const rect=startText.getBoundingClientRect();
+    input.style.left=rect.left+'px';input.style.top=rect.top+'px';
+    input.focus({preventScroll:true});
+  });
   button.addEventListener('mousedown',event=>event.preventDefault());
   closeButton.addEventListener('click',()=>{primaryRequested=false;void stop();});
   exportButton.addEventListener('click',()=>{void exportPdf();});
