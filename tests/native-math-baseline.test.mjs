@@ -49,7 +49,7 @@ test('the migration record identifies reproducible evidence and keeps device gat
   }
   const {pages,engineBaseline}=migration.latency;
   assert.match(engineBaseline.revision,/^[0-9a-f]{40}$/);
-  for(const platform of ['macOS arm64','Windows x64']){
+  for(const platform of ['macOS arm64','Windows x64','Ubuntu x64']){
     const samples=engineBaseline.samples.filter(sample=>sample.platform===platform);
     assert.deepEqual(samples.map(sample=>sample.pages),pages);
     for(const sample of samples){

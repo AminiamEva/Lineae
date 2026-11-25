@@ -219,7 +219,8 @@
         "https://github.com/AminiamEva/Lineae/actions/runs/45608889023",
         "https://github.com/AminiamEva/Lineae/actions/runs/45613386465",
         "https://github.com/AminiamEva/Lineae/actions/runs/45617906617",
-        "https://github.com/AminiamEva/Lineae/actions/runs/45673715541"
+        "https://github.com/AminiamEva/Lineae/actions/runs/45673715541",
+        "https://github.com/AminiamEva/Lineae/actions/runs/45677040987"
       ]
     },
     "desktopWebView": {
@@ -263,60 +264,101 @@
     "browserInstrumentation": "apps/web/src/ui/native-tex-preview.mjs",
     "browserPaint": "Animation frame estimate, excludes OS input and physical display scan-out.",
     "engineBaseline": {
-      "evidence": "https://github.com/AminiamEva/Lineae/actions/runs/45651241855",
-      "priorEvidence": "https://github.com/AminiamEva/Lineae/actions/runs/45579797136",
-      "revision": "71d57bdcb4024995aeed249ad725e6dc643d4730",
+      "evidence": "https://github.com/AminiamEva/Lineae/actions/runs/45676010748",
+      "priorEvidence": "https://github.com/AminiamEva/Lineae/actions/runs/45651241855",
+      "revision": "26ca22ad7dd4bc9d41d0aa538502e525d313b008",
       "scope": "Warm rtex edit dispatch on stdin to matching stdout event, in CI.",
       "samples": [
         {
           "platform": "macOS arm64",
           "pages": 10,
           "sampleCount": 1000,
-          "p50Ms": 3.20825,
-          "p95Ms": 6.367041,
-          "p99Ms": 8.320959
+          "p50Ms": 2.0569,
+          "p95Ms": 3.1109,
+          "p99Ms": 3.8352
         },
         {
           "platform": "macOS arm64",
           "pages": 100,
           "sampleCount": 1000,
-          "p50Ms": 3.635625,
-          "p95Ms": 6.633708,
-          "p99Ms": 8.989292
+          "p50Ms": 2.2716,
+          "p95Ms": 4.6593,
+          "p99Ms": 5.9788
         },
         {
           "platform": "macOS arm64",
           "pages": 300,
           "sampleCount": 1000,
-          "p50Ms": 2.922209,
-          "p95Ms": 5.928583,
-          "p99Ms": 7.498875
+          "p50Ms": 1.9883,
+          "p95Ms": 2.4788,
+          "p99Ms": 4.02
         },
         {
           "platform": "Windows x64",
           "pages": 10,
           "sampleCount": 1000,
-          "p50Ms": 3.269,
-          "p95Ms": 4.9933,
-          "p99Ms": 5.2562
+          "p50Ms": 3.4083,
+          "p95Ms": 5.2907,
+          "p99Ms": 5.7072
         },
         {
           "platform": "Windows x64",
           "pages": 100,
           "sampleCount": 1000,
-          "p50Ms": 3.2565,
-          "p95Ms": 4.9544,
-          "p99Ms": 5.305
+          "p50Ms": 3.41,
+          "p95Ms": 5.448,
+          "p99Ms": 5.7775
         },
         {
           "platform": "Windows x64",
           "pages": 300,
           "sampleCount": 1000,
-          "p50Ms": 3.037,
-          "p95Ms": 4.5446,
-          "p99Ms": 5.0056
+          "p50Ms": 3.1983,
+          "p95Ms": 5.0057,
+          "p99Ms": 5.4142
+        },
+        {
+          "platform": "Ubuntu x64",
+          "pages": 10,
+          "sampleCount": 1000,
+          "p50Ms": 2.5431,
+          "p95Ms": 3.6004,
+          "p99Ms": 4.5542
+        },
+        {
+          "platform": "Ubuntu x64",
+          "pages": 100,
+          "sampleCount": 1000,
+          "p50Ms": 2.5342,
+          "p95Ms": 3.6192,
+          "p99Ms": 4.3193
+        },
+        {
+          "platform": "Ubuntu x64",
+          "pages": 300,
+          "sampleCount": 1000,
+          "p50Ms": 2.4937,
+          "p95Ms": 3.4189,
+          "p99Ms": 3.7627
         }
       ]
+    }
+  },
+  "inventory": {
+    "editorSchema": "apps/web/src/main.js",
+    "latexImport": "apps/web/latex/blocks.mjs",
+    "latexExport": "apps/web/src/editor/latex-codec.js",
+    "nodes": {
+      "verifiedTextOrMath": ["paragraph", "text", "heading", "math", "mathBlock"],
+      "verifiedTableOperations": ["table", "tableRow", "tableCell", "tableHeader"],
+      "partialNativeEditing": ["blockquote", "theoremBlock", "bulletList", "orderedList", "listItem", "descriptionList", "descriptionItem", "projectRegion", "documentImage", "subfigures"],
+      "protectedInlineOrStructural": ["hardBreak", "ref", "cite", "label", "footnote", "pageBreak", "appendixStart", "matterStart", "counterDirective", "layoutCommand"],
+      "directEditingPending": ["codeBlock", "horizontalRule", "lipsum", "mathGlue", "multiColumn", "raw", "tableOfContents"]
+    },
+    "marks": {
+      "nativeTyping": ["bold", "italic", "underline", "code", "superscript", "subscript", "smallcaps"],
+      "verifiedSourceRuns": ["textCommand", "textStyle", "strike", "boxed", "circled"],
+      "pending": "Typing and changing style attributes inside formatted or structural runs, including package-backed variants."
     }
   },
   "phaseA": {
