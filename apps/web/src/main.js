@@ -2187,8 +2187,8 @@ function highlightCandidate(index) {
 function insertNativePageBreak(){
   return insertNativeDocumentBlock(editor.schema.nodes.pageBreak.create(),'\\newpage');
 }
-function insertNativeDirective(type){
-  const block=editor.schema.nodes[type].create();
+function insertNativeDirective(type,attrs){
+  const block=editor.schema.nodes[type].create(attrs);
   return insertNativeDocumentBlock(block,serialize(block.toJSON()).trimEnd());
 }
 function toggleDocumentContents(){
@@ -2288,6 +2288,10 @@ function completionActions() {
       title:structureCommands.title,
       author:structureCommands.author,date:structureCommands.date,
       table:insertNativeTableFromProse,tabular:insertNativeTableFromProse,newpage:insertNativePageBreak};
+    if(documentClassFromSource(documentParts.start)==='book'){
+      for(const matter of ['front','main','back'])
+        actions[matter+'matter']=()=>insertNativeDirective('matterStart',{matter});
+    }
     if(projectExplorer?.active){actions.input=structureCommands.input;actions.include=structureCommands.include;}
     const input=completionField;
     return Object.fromEntries(Object.entries(actions).map(([name,action])=>[name,async()=>{

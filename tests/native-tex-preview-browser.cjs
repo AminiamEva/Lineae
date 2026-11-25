@@ -853,6 +853,24 @@ const server=createServer(async(req,res)=>{
       await page.locator('.editor-dialog button[type=submit]').click();
       await page.waitForFunction(()=>nativeProbe.source?.includes('\\title{Yield 50\\%}')&&nativeProbe.source.includes('\\maketitle'));
       await page.locator('#native-tex-close').click();
+      const bookSource=pagedProse.replace('{article}','{book}');
+      await page.locator('input#file').setInputFiles({name:'native-book.tex',mimeType:'text/plain',buffer:Buffer.from(bookSource)});
+      await page.locator('#native-tex-toggle').click();
+      await page.locator('#native-tex-target').click();
+      await panel.getByText('Click text on the native page',{exact:false}).waitFor();
+      await page.locator('#native-tex-edit').click();
+      for(const matter of ['front','main','back']){
+        await panel.getByText('Click text on the native page',{exact:false}).waitFor();
+        await canvas.click({position:{x:7520000*scale,y:9250000*scale}});
+        await page.keyboard.press('Backslash');
+        await prosePalette.getByRole('textbox',{name:'LaTeX command',exact:true}).fill(matter+'matter');
+        await page.keyboard.press('Enter');
+        await page.waitForFunction(expected=>nativeProbe.source===expected,bookSource.replace('Beta','\\'+matter+'matter\n\nBeta'));
+        assert.equal(await page.locator(`.ProseMirror [data-matter-start="${matter}"]`).count(),1);
+        await page.keyboard.press(mod+'+z');
+        await page.waitForFunction(expected=>nativeProbe.source===expected,bookSource);
+      }
+      await page.locator('#native-tex-close').click();
       const literalProse='\\documentclass{article}\n\\begin{document}\n\\textasciicircum{}Alpha\n\\end{document}\n';
       await page.locator('input#file').setInputFiles({name:'literal-prose.tex',mimeType:'text/plain',buffer:Buffer.from(literalProse)});
       await page.locator('#native-tex-toggle').click();
