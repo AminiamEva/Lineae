@@ -27,6 +27,14 @@ function plainBlock(block) {
   return {leading, trailing, text:block.slice(leading, block.length - trailing)};
 }
 
+const textMarks = {textbf:'bold',textit:'italic',texttt:'code'};
+function proseBody(block) {
+  const {leading,text}=plainBlock(block);
+  const mark=/^\\(textbf|textit|texttt)\{([^{}]+)\}$/.exec(text);
+  if(!mark)return {leading,text,mark:null};
+  return {leading:leading+mark[1].length+2,text:mark[2],mark:textMarks[mark[1]]};
+}
+
 // Prose-only documents: every plain paragraph becomes a native target.
 export function projectTextDocument(source, {firstOwner=1, attribute=65000, fragment=false, filePath}={}) {
   const doc = parseDocument(source,{fragment});
@@ -39,13 +47,13 @@ export function projectTextDocument(source, {firstOwner=1, attribute=65000, frag
     const blockStart = bodyOffset;
     bodyOffset += block.length;
     if (!block.trim()) continue;
-    const {leading, trailing, text} = plainBlock(block);
+    const {leading,text,mark}=proseBody(block);
     if (!text || unsupported.test(text)) continue;
     const built = instrumentText(text, next, attribute);
     next = built.nextTag;
     const from16 = doc.start.length + blockStart + leading;
     const paragraph = {source, filePath, from16, text, glyphs:built.glyphs, index:paragraphs.length,
-      parts:[{kind:'text', from16:0, to16:text.length, text}],
+      parts:[{kind:'text', from16:0, to16:text.length, text, mark}],
       runs:[{from16:0, to16:text.length, text, partIndex:0}]};
     for (const glyph of built.glyphs) owners.set(glyph.tag, {paragraph, glyph});
     paragraphs.push(paragraph);
@@ -85,14 +93,14 @@ export function projectMixedDocument(source, {previous=[], attribute=65000, frag
       return {...math, kind:'math', paragraphs:[]};
     }
     output += source.slice(cursor, from16);
-    const {leading, text} = plainBlock(block);
+    const {leading,text,mark}=overlapping.length ? {...plainBlock(block),mark:null} : proseBody(block);
     const contentFrom = from16 + leading;
     if (!overlapping.length) {
       if (text && !unsupported.test(text)) {
         const built = instrumentText(text, next, attribute);
         next = built.nextTag;
         const paragraph = {source, filePath, from16:contentFrom, text, glyphs:built.glyphs, index:paragraphs.length,
-          parts:[{kind:'text', from16:0, to16:text.length, text}],
+          parts:[{kind:'text', from16:0, to16:text.length, text, mark}],
           runs:[{from16:0, to16:text.length, text, partIndex:0}]};
         for (const glyph of built.glyphs) owners.set(glyph.tag, {paragraph, glyph});
         paragraphs.push(paragraph);

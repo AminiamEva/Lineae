@@ -83,6 +83,19 @@ const server=createServer(async(req,res)=>{
       const expected=mixedSource.replace('Alpha beta.','XAlpha beta.').replace('\\frac{a}{b}','\\frac{a}{cb}');
       assert.equal(await page.evaluate(()=>nativeProbe.source),expected,'Both native edits preserve every other source byte');
       assert.deepEqual(errors,[]);
+      await page.locator('#native-tex-close').click();
+      const markedSource='\\documentclass{article}\n\\begin{document}\n\\textbf{Bold prose.}\n\\end{document}\n';
+      await page.locator('input#file').setInputFiles({name:'marked.tex',mimeType:'text/plain',buffer:Buffer.from(markedSource)});
+      await page.waitForFunction(()=>document.querySelector('.ProseMirror strong')?.textContent==='Bold prose.');
+      await page.locator('#native-tex-toggle').click();
+      await page.waitForFunction(()=>document.querySelector('#native-tex-preview').dataset.state==='current');
+      await page.locator('#native-tex-target').click();
+      await panel.getByText('Click text on the native page',{exact:false}).waitFor();
+      await page.locator('#native-tex-edit').click();
+      await panel.locator('[data-native-page="1"] canvas').click({position:{x:6550000*scale,y:9250000*scale}});
+      await page.keyboard.type('X');
+      await page.waitForFunction(expected=>nativeProbe.source===expected,markedSource.replace('Bold prose.','XBold prose.'));
+      assert.equal(await page.locator('.ProseMirror strong').textContent(),'XBold prose.');
       console.log('PASS native mixed editing with MathLive and JS pagination disabled');
       return;
     }

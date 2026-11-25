@@ -2699,7 +2699,8 @@ nativeTexPreview=installNativeTexPreview({host:footer,before:modes,
       return paragraph.parts.every((part,index)=>{
         const child=node.child(index);
         return part.kind==='text'
-          ?child.isText&&child.text===part.text
+          ?child.isText&&child.text===part.text&&
+            (part.mark?child.marks.length===1&&child.marks[0].type.name===part.mark:!child.marks.length)
           :(child.type.name==='math'||child.type.name==='mathBlock')&&child.attrs.latex===part.latex;
       });
     };
@@ -2733,7 +2734,7 @@ nativeTexPreview=installNativeTexPreview({host:footer,before:modes,
     start+=patch.from-run.from16;
     const end=start+(patch.to-patch.from),tr=editor.state.tr;
     if(end>start)tr.delete(start,end);
-    if(patch.insert)tr.insertText(patch.insert,start);
+    if(patch.insert)tr.insert(start,editor.schema.text(patch.insert,foundNode.child(run.partIndex).marks));
     tr.setSelection(TextSelection.create(tr.doc,start+patch.insert.length));
     if(composition){
       const from=paragraph.from16+patch.from,to=paragraph.from16+patch.to;

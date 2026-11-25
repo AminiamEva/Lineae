@@ -230,3 +230,14 @@ test('identical offsets in two included files remain distinct native caret addre
   assert.ok(surface.selectBetween(offset,offset,'two.tex'));
   assert.equal(surface.insert('b').formula.filePath,'two.tex');
 });
+
+test('a plain marked paragraph instruments only the command argument',()=>{
+  const source='\\begin{document}\n\\textbf{Bold prose.}\n\\end{document}\n';
+  const projection=projectTextDocument(source);
+  const [paragraph]=projection.paragraphs;
+  assert.equal(paragraph.parts[0].mark,'bold');
+  assert.equal(paragraph.text,'Bold prose.');
+  assert.ok(projection.projection.includes('\\textbf{\\begingroup'));
+  assert.equal(textEdit(projection,{paragraph,from16:0,to16:0,insert:'X'}).source,
+    source.replace('Bold prose.','XBold prose.'));
+});
