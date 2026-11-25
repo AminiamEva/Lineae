@@ -673,7 +673,9 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
         if(!nativeDocument.select(anchor,head))return false;
         draftInput=null;
         inputStart=performance.now();
-        paintSurfaceSelection(true);positionInput();input.focus({preventScroll:true});
+        positionInput();
+        input.focus({preventScroll:true});
+        paintSurfaceSelection(true);
         return true;
       }
       const focused=await focusMathSlot?.(anchor,head,()=>
