@@ -73,7 +73,7 @@ import { compileKeybindings, installKeybindings } from './editor/keybindings.mjs
 import defaultConfigYaml from '../config.yaml';
 import { askText } from './editor/dialog.js';
 import { installDocumentFind } from './editor/find.js';
-import { DocumentImage, Subfigures, insertLocalImage, insertSubfigures, insertSubfigureImage, replaceLocalImage, startImageCrop, installImageDrop, editTikzVisual } from './editor/image-node.js';
+import { DocumentImage, Subfigures, chooseImageFile, availableImagePath, insertLocalImage, insertSubfigures, insertSubfigureImage, replaceLocalImage, startImageCrop, installImageDrop, editTikzVisual } from './editor/image-node.js';
 import { installImagePanel } from './ui/image-panel.js';
 import { installSubfigurePanel } from './ui/subfigure-panel.js';
 import { MultiColumn } from './editor/multi-column.js';
@@ -2063,7 +2063,7 @@ const structureCommands = {
     const value=await askText(t('脚注内容','Footnote text'));
     if(value)editor.chain().focus().insertContent({type:'footnote',attrs:{text:value}}).run();
   },
-  includegraphics: () => insertLocalImage(editor),
+  includegraphics: insertDocumentImage,
   tableofcontents: () => editor.chain().focus().insertContent({type:'tableOfContents'}).run(),
   title:()=>editMetadata('title',t('标题','Title')),
   author:()=>editMetadata('author',t('作者','Author')),
@@ -2298,6 +2298,7 @@ function completionActions() {
       toc:()=>insertNativeDirective('tableOfContents'),
       tableofcontents:()=>insertNativeDirective('tableOfContents'),
       lstlisting:editCodeBlockLanguage,
+      includegraphics:()=>insertDocumentImage(true),
       multicols:()=>runNativeTextStructure('wrapIn','multiColumn',{count:2}),
       'multicols*':()=>runNativeTextStructure('wrapIn','multiColumn',{count:2,starred:true}),
       title:structureCommands.title,
@@ -3491,6 +3492,39 @@ function insertNativeDrawing(source,preambleLines){
   const result=insertNativeDocumentBlock(editor.schema.nodeFromJSON(node),latex,preambleLines);
   if(result)nativeTexPreview.refocusTextInput();
   return result;
+}
+function insertDocumentImage(native=nativeParagraphFormattingActive()){
+  if(!native)return insertLocalImage(editor);
+  const document=editor.state.doc,project=projectExplorer?.model;
+  chooseImageFile(async file=>{
+    if(editor.state.doc!==document||projectExplorer?.model!==project)return;
+    if(!/^[\p{L}\p{N}_. -]+\.(?:png|jpe?g)$/iu.test(file.name)||file.size>16*1024*1024){
+      sourceView.error(t('原生文档支持不超过 16 MB 的 PNG 和 JPEG。','Native documents support PNG and JPEG images up to 16 MB.'));
+      return;
+    }
+    let imported;
+    try{
+      const occupied=project&&new Set([...project.files.keys(),...project.directories].map(path=>path.toLowerCase()));
+      const path=availableImagePath(file,undefined,occupied?name=>occupied.has(name.toLowerCase()):undefined);
+      const latex=serialize(editor.schema.nodes.documentImage.create({path}).toJSON()).trimEnd();
+      const [node,...rest]=importBlocks(latex);
+      if(node?.type!=='documentImage'||rest.length)return;
+      if(project){
+        const bytes=new Uint8Array(await file.arrayBuffer());
+        if(editor.state.doc!==document||projectExplorer?.model!==project)return;
+        imported=await project.importAsset(path,bytes);
+      }
+      if(editor.state.doc!==document||projectExplorer?.model!==project||
+        !insertNativeDocumentBlock(editor.schema.nodeFromJSON(node),latex)){
+        if(imported)await project.remove(imported.id);
+        return;
+      }
+      if(!project)rememberAsset(path,file);
+      nativeTexPreview.refocusTextInput();
+    }catch(error){
+      sourceView.error(error?.message??String(error));
+    }
+  });
 }
 function editNativeDrawing(position){
   if(!nativeTikzDrawings().some(drawing=>drawing.position===position))return;
@@ -4993,7 +5027,7 @@ const home=document.createElement('div');home.className='tools';
 const insert=document.createElement('div');insert.className='tools';
 groupButton(insert,['分页','New page'],()=>nativeTexPreview.hasNativeTextFocus?.()?insertNativePageBreak():
   editor.chain().focus().insertContent({type:'pageBreak'}).run());
-groupButton(insert,['图片','Image'],()=>insertLocalImage(editor));
+groupButton(insert,['图片','Image'],()=>insertDocumentImage());
 groupButton(insert,['子图','Subfigure'],()=>insertSubfigures(editor));
 const codeLanguageButton=groupButton(insert,['代码块','Code block'],editCodeBlockLanguage);
 async function editCodeBlockLanguage(){
@@ -5499,7 +5533,7 @@ function syncImageTab(){
 editor.on('selectionUpdate',syncImageTab);
 editor.on('transaction',({transaction})=>{if(transaction.selectionSet)syncImageTab();});
 ribbon.append(tabs,files,home,insert,layoutGroup,tableGroup,formatGroup,referenceGroup,mathGroup,imagePanel.panel,subfigurePanel.panel,headerFooterPanel.panel);header.append(ribbon);tools.remove();
-groupButton(insert,'figure',()=>insertLocalImage(editor));
+groupButton(insert,'figure',()=>insertDocumentImage());
 sourceToolbar = installSourceToolbar({ribbon,groups,source:sourceView,rich:paper,heading:headingMenu});
 const toolbarController=installFloatingToolbar({header,ribbon,sourceView,getAutoHide:()=>sourceView.hidden?config.value.interface.toolbarAutoHide:config.value.interface.sourceToolbarAutoHide});
 installMathFloatToolbar({ editor });

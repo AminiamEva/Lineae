@@ -1219,6 +1219,31 @@ const server=createServer(async(req,res)=>{
       await page.keyboard.type('X');
       await page.waitForFunction(expected=>nativeProbe.source===expected,repeatedProject.replace('After.','XAfter.'));
 
+      await page.goto('http://127.0.0.1:'+server.address().port+'/?native-only-acceptance=1',{waitUntil:'networkidle'});
+      const pictureSource='\\documentclass{article}\n\\begin{document}\nProject text.\n\\end{document}\n';
+      await openMockProject(page,false,pictureSource);
+      await page.locator('#native-tex-toggle').click();
+      await page.locator('#native-tex-target').click();
+      await panel.getByText('Click text on the native page',{exact:false}).waitFor();
+      await page.locator('#native-tex-edit').click();
+      await canvas.click({position:{x:6550000*scale,y:9250000*scale}});
+      await page.keyboard.press('Backslash');
+      await page.getByRole('textbox',{name:'LaTeX command',exact:true}).fill('includegraphics');
+      const fileChooser=page.waitForEvent('filechooser');
+      await page.keyboard.press('Enter');
+      const picture=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jB9kAAAAASUVORK5CYII=','base64');
+      await (await fileChooser).setFiles({name:'added.png',mimeType:'image/png',buffer:picture});
+      const insertedPicture=pictureSource.replace('Project text.','\\includegraphics{added.png}\n\nProject text.')
+        .replace('\\begin{document}','\\usepackage{graphicx}\n\\begin{document}');
+      await page.waitForFunction(({source,bytes})=>nativeProbe.calls.some(call=>{
+        const file=call.args?.files?.find(file=>file.path==='added.png');
+        return call.args?.source===source&&file?.bytes.length===bytes.length&&file.bytes.every((byte,index)=>byte===bytes[index]);
+      }),{source:insertedPicture,bytes:[...picture]});
+      await page.keyboard.press(mod+'+z');
+      await page.waitForFunction(expected=>nativeProbe.source===expected,pictureSource);
+      await page.keyboard.press(mod+'+Shift+z');
+      await page.waitForFunction(expected=>nativeProbe.source===expected,insertedPicture);
+
       await page.goto('http://127.0.0.1:'+server.address().port+'/?native-workspace=1',{waitUntil:'networkidle'});
       const workspaceSource='\\documentclass{article}\n\\begin{document}\nNative document.\n\\end{document}\n';
       await page.locator('input#file').setInputFiles({name:'workspace.tex',mimeType:'text/plain',buffer:Buffer.from(workspaceSource)});

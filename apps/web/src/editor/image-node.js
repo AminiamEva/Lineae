@@ -12,7 +12,7 @@ const rasterTypes = new Set(['image/png','image/jpeg','image/jpg','image/pjpeg',
 let measureContext = null;
 let suppressImageClickUntil = 0;
 
-function chooseFile(callback) {
+export function chooseImageFile(callback) {
   const input = document.createElement('input');
   input.type = 'file';
   input.accept = [...rasterTypes].join(',');
@@ -56,16 +56,20 @@ export function editTikzVisual(editor, position, commit) {
   return true;
 }
 
-function registerImage(file, previousPath) {
+export function availableImagePath(file,previousPath,isOccupied=resolveImageAsset){
   let path = file.name;
-  if (path === previousPath || path.replace(/\.[^.]+$/,'') === previousPath || resolveImageAsset(path)) {
+  if (path === previousPath || path.replace(/\.[^.]+$/,'') === previousPath || isOccupied(path)) {
     const dot = path.lastIndexOf('.');
     const stem = dot > 0 ? path.slice(0,dot) : path;
     const extension = dot > 0 ? path.slice(dot) : '';
     let version = 2;
     do { path = stem + '-' + version++ + extension; }
-    while (path === previousPath || resolveImageAsset(path));
+    while (path === previousPath || isOccupied(path));
   }
+  return path;
+}
+function registerImage(file, previousPath) {
+  const path=availableImagePath(file,previousPath);
   remember(path,file);
   return path;
 }
@@ -105,7 +109,7 @@ export function installImageDrop(editor, paper) {
 export function insertLocalImage(editor) {
   const documentBefore = editor.state.doc;
   const range = { from:editor.state.selection.from, to:editor.state.selection.to };
-  chooseFile(file => {
+  chooseImageFile(file => {
     if (editor.state.doc !== documentBefore) return;
     if (!/^[\p{L}\p{N}_. -]+$/u.test(file.name)) return;
     const path = registerImage(file);
@@ -116,7 +120,7 @@ export function insertLocalImage(editor) {
 export function replaceLocalImage(editor, position) {
   const node = editor.state.doc.nodeAt(position);
   if (node?.type.name !== 'documentImage') return;
-  chooseFile(file => {
+  chooseImageFile(file => {
     if (!/^[\p{L}\p{N}_. -]+$/u.test(file.name) || editor.state.doc.nodeAt(position) !== node) return;
     const path = registerImage(file,node.attrs.path);
     editor.view.dispatch(closeHistory(editor.state.tr).setNodeMarkup(position,undefined,{...node.attrs,path}));
@@ -151,7 +155,7 @@ export function insertSubfigureImage(editor) {
   if(position===null)return false;
   const node=editor.state.doc.nodeAt(position);
   if(node?.type.name!=='subfigures')return false;
-  chooseFile(file=>{
+  chooseImageFile(file=>{
     if(!/^[\p{L}\p{N}_. -]+$/u.test(file.name)||editor.state.doc.nodeAt(position)!==node)return;
     const path=registerImage(file);
     const child=editor.schema.nodes.documentImage.create({figure:false,centered:true,align:'center',wrap:false,width:'0.48\\textwidth',pos:'c',captionEnabled:false,caption:null,path});
@@ -685,7 +689,7 @@ export const DocumentImage = Node.create({
       image.addEventListener('load',()=>{if(!destroyed && previewURL && image.currentSrc===previewURL){resourceState='ready';showResourceState();refresh();}});
       image.addEventListener('error',()=>{if(!destroyed && previewURL && image.getAttribute('src')===previewURL){resourceState='error';showResourceState();}});
       const unsubscribe=onAssetsChanged(refresh);
-      button.addEventListener('click',()=>chooseFile(file=>{
+      button.addEventListener('click',()=>chooseImageFile(file=>{
         const path=node.attrs.path||file.name;
         remember(path,file);
         if(path!==node.attrs.path){update({path},node);return;}
