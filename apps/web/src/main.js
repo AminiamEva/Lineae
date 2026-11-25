@@ -3528,7 +3528,7 @@ function editNativeTable(operation,style){
       mergeTblrCells(original,cell.row,mergeColumn,mergeEnd.column),
   };
   const columnTableCommands={
-    insertRow:()=>insertTableSourceRow(body,cell.row),
+    insertRow:()=>insertTableSourceRow(body,cell.row,caretInBody),
     insertColumn:()=>insertTableSourceColumn(body,cell.row,cell.column,caretInBody),
     deleteRow:()=>removeTableSourceRow(body,cell.row),
     deleteColumn:()=>removeTableSourceColumn(body,cell.row,cell.column),

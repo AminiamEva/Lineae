@@ -213,6 +213,10 @@ test('native multirow keeps neighboring cells and can be split back into ordinar
   assert.equal(restored.slice(split.offset,split.offset+5),'Three');
   assert.equal(importBlocks(restored)[0].content[1].content.length,2);
   assert.equal(mergeTableSourceRows(source.replace('Three','\\hline\r\nThree'),0,1,0),null);
+  const expanded=apply(merged,insertTableSourceRow(merged,0));
+  assert.equal(expanded,merged.replace('\\multirow{2}','\\multirow{3}').replace('\r\n & Four','\r\n & \\\\\r\n & Four'));
+  assert.equal(importBlocks(expanded)[0].content[0].content[0].attrs.rowspan,3);
+  assert.equal(apply(expanded,removeTableSourceRow(expanded,1)),merged);
 });
 
 test('tabularx keeps exact preambles and hidden slots when a row-span cell is merged or split',()=>{
@@ -229,7 +233,11 @@ test('tabularx keeps exact preambles and hidden slots when a row-span cell is me
   assert.equal(restored,merged.replace('\\multirow{2}{*}{One Three}','One Three'));
   assert.equal(restored.slice(split.offset,split.offset+5),'Three');
   assert.equal(table(restored).content[1].content.length,2);
-  assert.equal(insertTableSourceRow(merged,0),null);
+  const expanded=apply(merged,insertTableSourceRow(merged,0));
+  assert.equal(expanded,merged.replace('\\multirow{2}','\\multirow{3}')
+    .replace('\\\\[3pt]\r\n','\\\\[3pt]\r\n & \\\\\r\n'));
+  assert.equal(apply(expanded,removeTableSourceRow(expanded,1)),merged);
+  assert.equal(removeTableSourceRow(expanded,0),null);
 });
 
 test('splitting a combined tabularx span restores both axes and retains exact cell spelling',()=>{
@@ -239,6 +247,13 @@ test('splitting a combined tabularx span restores both axes and retains exact ce
   const original=parseTabularx(source);
   assert.equal(original.rows[0][0].attrs.rowspan,2);
   assert.equal(original.rows[0][0].attrs.colspan,2);
+  const rowEdit=insertTableSourceRow(source,0,source.indexOf('Lead'));
+  const withRow=source.slice(0,rowEdit.from)+rowEdit.insert+source.slice(rowEdit.to);
+  assert.equal(withRow,source.replace('\\multirow{2}','\\multirow{3}')
+    .replace('\\\\[3pt]\r\n','\\\\[3pt]\r\n &  & \\\\\r\n'));
+  assert.equal(withRow.slice(rowEdit.offset,rowEdit.offset+4),'Lead');
+  const deletion=removeTableSourceRow(withRow,1);
+  assert.equal(withRow.slice(0,deletion.from)+deletion.insert+withRow.slice(deletion.to),source);
   const split=splitTableSourceCell(source,0,0,source.indexOf('Lead')+2);
   const draft=source.slice(0,split.from)+split.insert+source.slice(split.to);
   assert.equal(draft,source.replace('\\multicolumn{2}{c}{\\multirow{2}{*}{Lead}}','\\multicolumn{1}{c}{Lead} & '));

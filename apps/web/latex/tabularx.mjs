@@ -66,7 +66,7 @@ export function parseTabularx(source) {
   return parseColumnTable(source,'tabularx');
 }
 
-function parseColumnTable(source,environment,{allowMultirow=false}={}) {
+function parseColumnTable(source,environment,{allowMultirow=false,trackRowSpans=environment==='tabularx'}={}) {
   const opening=/^\s*\\begin\{(tabularx|tabular)\}/.exec(source);
   if(opening?.[1]!==environment)return null;
   if([...sourceStructure(source)].some(t=>t.kind==='invalid'))return null;
@@ -145,7 +145,7 @@ function parseColumnTable(source,environment,{allowMultirow=false}={}) {
         begin=trivia(raw.raw,trivia(raw.raw,format.end)+1);end=begin+raw.raw.slice(begin,text.end-1).trimEnd().length;
         spanRange={from:raw.from+count.end-1-count.value.length,to:raw.from+count.end-1};
       }
-      if(environment==='tabularx'&&raw.raw.startsWith('\\multirow{',begin)){
+      if(trackRowSpans&&raw.raw.startsWith('\\multirow{',begin)){
         const count=readGroup(raw.raw,begin+'\\multirow'.length);
         const width=count&&readGroup(raw.raw,count.end),content=width&&readGroup(raw.raw,width.end);
         if(!content||content.end!==end||!/^\d+$/.test(count.value))return null;
@@ -178,8 +178,6 @@ function parseColumnTable(source,environment,{allowMultirow=false}={}) {
     metadata:{width:width.value,widthCSS:widthCSS(width.value),position,preamble:preamble.value,specs,gaps,rules}};
 }
 
-const rowSpansIndex=(table,index,remove)=>table.rows.some((row,start)=>start<=index&&row.some(({attrs})=>
-  attrs.rowspan>1&&index<start+attrs.rowspan-(remove?0:1)));
 const hasRowSpans=table=>table.rows.some(row=>row.some(({attrs})=>attrs.rowspan>1));
 
 function columnTableSource(source,options){
@@ -198,18 +196,40 @@ function columnTableSource(source,options){
   return table?{table,start,parse}:null;
 }
 
-export function insertTableSourceRow(source,index) {
-  const location=columnTableSource(source);
+function changeTableSourceRows({table,start,parse},index,remove,edit,offset){
+  const edits=[];
+  for(const [row,cells] of table.rows.slice(0,index+1).entries()){
+    for(const {attrs,rowspanRange} of cells){
+      if(attrs.rowspan<2||index>=row+attrs.rowspan-(remove?0:1))continue;
+      if(!rowspanRange||remove&&row===index)return null;
+      const from=rowspanRange.from+'\\multirow{'.length;
+      const count=/^\d+(?=\})/.exec(table.source.slice(from,rowspanRange.contentFrom));
+      if(!count||Number(count[0])!==attrs.rowspan)return null;
+      edits.push({from,to:from+count[0].length,insert:String(attrs.rowspan+(remove?-1:1))});
+    }
+  }
+  edits.push(edit);
+  const from=edits[0].from,to=edit.to;
+  const insert=edits.toReversed().reduce((value,change)=>
+    value.slice(0,change.from-from)+change.insert+value.slice(change.to-from),table.source.slice(from,to));
+  const updated=parse(table.source.slice(0,from)+insert+table.source.slice(to));
+  if(updated?.rows.length!==table.rows.length+(remove?-1:1)||
+    !remove&&updated.rows[index+1].some(cell=>cell.text))return null;
+  const patch={from:start+from,to:start+to,insert};
+  if(offset!==undefined)patch.offset=offset+edits.filter(change=>start+change.from<offset)
+    .reduce((delta,change)=>delta+change.insert.length-(change.to-change.from),0);
+  return patch;
+}
+
+export function insertTableSourceRow(source,index,offset) {
+  const location=columnTableSource(source,{allowMultirow:true,trackRowSpans:true});
   if(!location)return null;
-  const {table,start,parse}=location,edge=table.rowEnds[index],columns=table.metadata.specs.length;
-  if(!edge||rowSpansIndex(table,index,false))return null;
+  const {table}=location,edge=table.rowEnds[index],columns=table.metadata.specs.length;
+  if(!edge)return null;
   const eol=table.source.includes('\r\n')?'\r\n':'\n';
   const row=' & '.repeat(columns-1)+'\\\\';
   const {from}=edge,insert=(edge.terminated?'':' \\\\')+eol+row;
-  const draft=table.source.slice(0,from)+insert+table.source.slice(from);
-  const updated=parse(draft);
-  if(updated?.rows.length!==table.rows.length+1||updated.rows[index+1].some(cell=>cell.text))return null;
-  return {from:start+from,to:start+from,insert};
+  return changeTableSourceRows(location,index,false,{from,to:from,insert},offset);
 }
 
 export function insertTableSourceColumn(source,row,column,offset){
@@ -277,16 +297,15 @@ export function removeTableSourceColumn(source,row,column){
 }
 
 export function removeTableSourceRow(source,index){
-  const location=columnTableSource(source);
+  const location=columnTableSource(source,{allowMultirow:true,trackRowSpans:true});
   if(!location)return null;
-  const {table,start,parse}=location,edge=table.rowEnds[index];
-  if(!edge||table.rows.length===1||rowSpansIndex(table,index,true))return null;
+  const {table}=location,edge=table.rowEnds[index];
+  if(!edge||table.rows.length===1)return null;
   const raw=table.source,lineStart=raw.lastIndexOf('\n',edge.start-1)+1;
   const newline=/^[ \t]*\r?\n/.exec(raw.slice(edge.from));
   const wholeLine=newline&&!raw.slice(lineStart,edge.start).trim();
   const from=wholeLine?lineStart:edge.start,to=edge.from+(wholeLine?newline[0].length:0);
-  if(parse(raw.slice(0,from)+raw.slice(to))?.rows.length!==table.rows.length-1)return null;
-  return {from:start+from,to:start+to,insert:''};
+  return changeTableSourceRows(location,index,true,{from,to,insert:''});
 }
 
 export function splitTableSourceCell(source,row,column,offset){

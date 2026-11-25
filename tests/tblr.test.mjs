@@ -73,7 +73,12 @@ test('tabularray row spans preserve covered source, neighboring cells and absolu
   assert.equal(node.content[0].content[0].attrs.rowspan,2);
   assert.equal(node.content[1].content.length,1);
   assert.equal(serialize(node),authored);
-  assert.equal(editTblrRow(authored,0),null);
+  const withInteriorRow=apply(authored,editTblrRow(authored,0));
+  assert.equal(withInteriorRow,authored.replace('r=2','r=3')
+    .replace('hline{2}','hline{3}').replace('\r\nHidden','\r\n & \\\\\r\nHidden'));
+  const unindexed=withInteriorRow.replace(',hline{3}={solid}','');
+  assert.equal(apply(unindexed,editTblrRow(unindexed,1,true)),authored.replace(',hline{2}={solid}',''));
+  assert.equal(editTblrRow(authored,0,true),null);
   const split=apply(authored,splitTblrCell(authored,0,0,authored.indexOf('A C')));
   assert.equal(split,authored.replace('r=2','r=1'));
   assert.equal(table(split).content[1].content[0].content[0].content[0].text,'Hidden');

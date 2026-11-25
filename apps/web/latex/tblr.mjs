@@ -313,12 +313,21 @@ export function editTblrRow(source,index,remove=false,offset) {
   const {table}=located;
   const edge=table?.rowEnds?.[index];
   if(!edge||remove&&table.rows.length===1)return null;
-  const spansAcrossIndex=table.rows.some((row,start)=>start<=index&&row.some(cell=>
-    cell.attrs.rowspan>1&&index<start+cell.attrs.rowspan-(remove?0:1)));
-  if(spansAcrossIndex)return null;
   const selectors=adjustAxes(table,'row',index+1,remove);
   if(!selectors)return null;
   const raw=table.source,eol=raw.includes('\r\n')?'\r\n':'\n';
+  const spans=[];
+  for(const [row,cells] of table.rows.slice(0,index+1).entries()){
+    for(const {attrs,spanRange} of cells){
+      if(attrs.rowspan<2||index>=row+attrs.rowspan-(remove?0:1))continue;
+      if(!spanRange||remove&&row===index)return null;
+      const option=raw.slice(spanRange.from,spanRange.to);
+      const insert=option.replace(/(^|,)\s*r\s*=\s*\d+/,value=>
+        value.replace(/\d+$/,String(attrs.rowspan+(remove?-1:1))));
+      if(insert===option)return null;
+      spans.push({...spanRange,insert});
+    }
+  }
   let {from}=edge,to=from;
   let insert=(edge.terminated?'':' \\\\')+eol+' & '.repeat(table.columns.length-1)+'\\\\';
   if(remove){
@@ -329,7 +338,7 @@ export function editTblrRow(source,index,remove=false,offset) {
     to=edge.from+(wholeLine?newline[0].length:0);
     insert='';
   }
-  const {patch,draft}=applyTblrEdits(located,[...selectors,{from,to,insert}],offset);
+  const {patch,draft}=applyTblrEdits(located,[...selectors,...spans,{from,to,insert}],offset);
   const updated=parseTblr(draft);
   if(updated?.rows.length!==table.rows.length+(remove?-1:1)||
     !remove&&updated.rows[index+1].some(cell=>cell.text))return null;
