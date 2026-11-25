@@ -21,6 +21,8 @@ export function createNativeDocumentSession(resolve) {
   const math=createMathSurface({resolve,selection});
   const text=createTextSurface({selection});
   let sourceProjection=null;
+  let preferredX=null;
+  const center=stop=>(stop.top+stop.bottom)/2;
   return {
     get surface(){return selection.caret?.kind==='text'?text:math;},
     setObservation(observed,projection,verified=false,regions=[]){
@@ -37,7 +39,7 @@ export function createNativeDocumentSession(resolve) {
       ].sort(compare);
       return selection.setStops(stops);
     },
-    select(from,to){return selection.selectTargets(from,to);},
+    select(from,to){preferredX=null;return selection.selectTargets(from,to);},
     proseRanges(anchor,head){
       if(anchor?.kind!=='text'||head?.kind!=='text'||!canSelect(anchor,head)||
          (anchor.paragraph===head.paragraph&&anchor.local===head.local))return [];
@@ -72,6 +74,7 @@ export function createNativeDocumentSession(resolve) {
         start.paragraph.from16+start.selection,first);
     },
     move(delta,extend){
+      preferredX=null;
       const before=selection.caret;
       if(!before)return false;
       if(!extend&&Math.abs(delta)===1&&selection.anchor!==before){
@@ -89,6 +92,28 @@ export function createNativeDocumentSession(resolve) {
       }
       return Boolean(local);
     },
+    moveVertical(direction,extend,jumpPage=false){
+      const from=selection.caret;
+      if(!from||Math.abs(direction)!==1)return false;
+      preferredX??=from.x;
+      const anchor=extend?selection.anchor:null;
+      let target=null,targetPage=Infinity,targetY=Infinity,targetX=Infinity;
+      for(const stop of selection.stops){
+        if(stop===from||fileOf(stop)!==fileOf(from)&&order(stop)<0||
+            (from.kind==='math'&&!sameFormula(from,stop))||
+            (anchor&&!canSelect(anchor,stop)))continue;
+        const pageDelta=(stop.page-from.page)*direction;
+        const yDelta=(center(stop)-center(from))*direction;
+        const minLineGap=Math.min(from.bottom-from.top,stop.bottom-stop.top)/2;
+        if(pageDelta<0||(!pageDelta&&(jumpPage||yDelta<=minLineGap)))continue;
+        const distanceY=jumpPage?Math.abs(yDelta):pageDelta?(direction>0?center(stop):-center(stop)):yDelta;
+        const distanceX=Math.abs(stop.x-preferredX);
+        if(pageDelta>targetPage||(pageDelta===targetPage&&
+           (distanceY>targetY||distanceY===targetY&&distanceX>=targetX)))continue;
+        target=stop;targetPage=pageDelta;targetY=distanceY;targetX=distanceX;
+      }
+      return target?selection.selectTargets(anchor??target,target):false;
+    },
     leaveFormula(){
       const caret=selection.caret;
       if(caret?.kind!=='math')return false;
@@ -100,6 +125,6 @@ export function createNativeDocumentSession(resolve) {
       const first=selection.stops.find(stop=>fileOf(stop)===path&&stop.docOffset>=from&&stop.docOffset<=to);
       return first?selection.selectTargets(first,first):false;
     },
-    reset(){selection.reset();sourceProjection=null;orderByFile.clear();},
+    reset(){selection.reset();sourceProjection=null;preferredX=null;orderByFile.clear();},
   };
 }

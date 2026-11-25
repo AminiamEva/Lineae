@@ -89,15 +89,25 @@ export function installNativeTexPreview({host,before,primary=false,isDocumentMod
     else renderer.showCaret(caret.hit);
     if(reflect)useTextSelection();
   }
-  function positionInput() {
+  function positionInput(reveal=false) {
     const stop = nativeDocument.surface.caret;
     if (!stop) return;
     const canvas = pages.querySelector(`[data-native-page="${stop.page}"] canvas`);
     if (!canvas) return;
-    const box = canvas.getBoundingClientRect();
+    let box=canvas.getBoundingClientRect();
     const scale = Number(zoom.value) / 100 * (96 / 72) / 65781.76;
-    const rect = surfaceCaretRect(stop, scale, box.left, box.top);
+    let rect=surfaceCaretRect(stop,scale,box.left,box.top);
     if (!rect) return;
+    if(reveal){
+      const viewport=panel.getBoundingClientRect();
+      const vertical=rect.y<viewport.top?rect.y-viewport.top-12:
+        rect.y+rect.height>viewport.bottom?rect.y+rect.height-viewport.bottom+12:0;
+      if(vertical){
+        panel.scrollTop+=vertical;
+        box=canvas.getBoundingClientRect();
+        rect=surfaceCaretRect(stop,scale,box.left,box.top);
+      }
+    }
     input.style.left = rect.x + 'px';
     input.style.top = rect.y + 'px';
     input.style.height = Math.max(14, rect.height) + 'px';
@@ -254,6 +264,15 @@ export function installNativeTexPreview({host,before,primary=false,isDocumentMod
       if (!pendingEdit&&nativeDocument.move(event.key==='ArrowLeft'?-1:1,event.shiftKey)) {
         paintSurfaceSelection(true);
         positionInput();
+      }
+      return;
+    }
+    if(['ArrowUp','ArrowDown','PageUp','PageDown'].includes(event.key)){
+      event.preventDefault();
+      if(!pendingEdit&&nativeDocument.moveVertical(
+        event.key.endsWith('Up')?-1:1,event.shiftKey,event.key.startsWith('Page'))){
+        paintSurfaceSelection(true);
+        positionInput(true);
       }
       return;
     }
@@ -730,6 +749,7 @@ export function installNativeTexPreview({host,before,primary=false,isDocumentMod
     if(nativeEditing){paintSurfaceSelection();positionInput();}
   });
   window.addEventListener('resize',()=>{if(nativeEditing)positionInput();});
+  panel.addEventListener('scroll',()=>{if(nativeEditing)positionInput();},{passive:true});
   window.addEventListener('pagehide',()=>{void stop();});
   document.addEventListener('compositionstart',event=>{
     if(event.target?.tagName==='MATH-FIELD')compositionField=event.target;

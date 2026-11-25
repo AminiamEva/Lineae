@@ -244,6 +244,23 @@ test('native project selection follows include order and keeps complete display 
   assert.equal(session.editAcrossFiles('replacement'),null,'The formula is a separate structural selection');
 });
 
+test('native vertical movement keeps the visual column and extends to another page',()=>{
+  const projection=projectMixedDocument('\\begin{document}\nTop.\n\nBottom.\n\\end{document}\n');
+  const top=projection.paragraphs[0].glyphs[0],bottom=projection.paragraphs[1].glyphs[0];
+  const session=createNativeDocumentSession(()=>null);
+  const [first]=page([],[glyph(top.tag,100)]);
+  const [second]=page([],[glyph(bottom.tag,130)]);
+  second.page=2;
+  session.setObservation([first,second],projection);
+  const start=textTarget(projection,top.tag,false);
+  session.select(start,start);
+  assert.equal(session.moveVertical(1,true,true),true);
+  assert.equal(session.surface.caret.page,2);
+  assert.equal(session.surface.anchor.page,1);
+  assert.deepEqual(session.proseRanges(session.surface.anchor,session.surface.caret).map(range=>range.paragraph.text),
+    ['Top.','Bottom.']);
+});
+
 test('native cross-file replacement produces one edit per file and a parent caret address',()=>{
   const source='\\begin{document}\nAlpha beta.\n\n\\input{chapter}\n\\end{document}\n';
   const chapter='XYZ child.\n';

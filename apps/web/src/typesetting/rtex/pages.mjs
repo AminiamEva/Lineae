@@ -95,11 +95,19 @@ export function installNativePages({host,getFont,getRaster,onPaint,onError,onMat
     for(const box of selection)box.remove();
     selection=[];
   }
-  function clearCaret(){gesture++;caret?.remove();caret=null;clearSelection();}
+  let previousCaret=null;
+  function takeCaret(){
+    if(caret){
+      previousCaret={page:caret.parentElement,x:parseFloat(caret.style.left),y:parseFloat(caret.style.top),
+        time:performance.now()};
+      caret.remove();caret=null;
+    }
+  }
+  function clearCaret(){gesture++;takeCaret();clearSelection();}
   function showCaret(hit){
     if(!ownership||ownership.stamp.sourceRevision!==revision||ownership.stamp.layoutVersion!==layoutVersion)return;
     clearSelection();
-    caret?.remove();caret=null;
+    takeCaret();
     const candidates=hit.role==='nucleus'?ownership.glyphs:ownership.fields;
     const targets=[];
     for(const [number,entries] of candidates)
@@ -110,13 +118,21 @@ export function installNativePages({host,getFont,getRaster,onPaint,onError,onMat
     const [left,top,right,bottom]=field.bbox,scale=CSS_PER_SP*zoom;
     const height=Math.max(12,(bottom-top)*scale);
     caret=document.createElement('span');caret.className='native-tex-caret';caret.setAttribute('aria-hidden','true');
-    caret.style.left=(hit.after?right:left)*scale+'px';
-    caret.style.top=(top+bottom)*scale/2-height/2+'px';
-    caret.style.height=height+'px';pages.get(number)?.dom.append(caret);
+    const x=(hit.after?right:left)*scale,y=(top+bottom)*scale/2-height/2,page=pages.get(number)?.dom;
+    caret.style.left=x+'px';caret.style.top=y+'px';
+    caret.style.height=height+'px';page?.append(caret);
+    if(previousCaret?.page===page&&performance.now()-previousCaret.time<250&&
+       Math.hypot(previousCaret.x-x,previousCaret.y-y)<96&&
+       !window.matchMedia('(prefers-reduced-motion: reduce)').matches){
+      caret.animate([{transform:`translate(${previousCaret.x-x}px,${previousCaret.y-y}px)`},{transform:'none'}],
+        {duration:85,easing:'ease-out'});
+    }
+    previousCaret=null;
   }
   function showSelection(start,end){
     clearSelection();
     caret?.remove();caret=null;
+    previousCaret=null;
     if(!ownership||ownership.stamp.sourceRevision!==revision||ownership.stamp.layoutVersion!==layoutVersion||
       start?.role!=='nucleus'||end?.role!=='nucleus')return;
     const a=ownership.owners.get(start.owner),b=ownership.owners.get(end.owner);
@@ -338,7 +354,7 @@ export function installNativePages({host,getFont,getRaster,onPaint,onError,onMat
     epoch++;generation++;revision=-1;layoutVersion=-1;pending=Promise.resolve();ownership=null;drag=null;
     complete=null;warm=null;pdfBacked=false;
     delete host.dataset.warmRevision;
-    cancelAnimationFrame(frame);clearCaret();pages.clear();loaded.clear();fonts=new FontStore();
+    cancelAnimationFrame(frame);clearCaret();previousCaret=null;pages.clear();loaded.clear();fonts=new FontStore();
     for(const resource of imageResources.values())resource.image.close();
     imageResources.clear();imageLoads.clear();if(clear)host.replaceChildren();
   }
