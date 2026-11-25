@@ -1762,6 +1762,9 @@ mod tests {
             let fields = display["math_owners"]["fields"].as_array().unwrap();
             let tags = raster_probe["tags"].as_array().unwrap();
             assert_eq!(tags.len(), 4);
+            std::fs::write(directory.join("native-raster-repeat-pages.json"), serde_json::to_vec(&json!({
+                "raw": layout["pages_changed"], "observed": measured, "tags": tags,
+            })).unwrap()).unwrap();
             let corner = |tag: &Value| {
                 let field = fields.iter().find(|entry| entry["owner"] == *tag && entry["empty"] == true).unwrap();
                 (field["bbox"][0].as_i64().unwrap(), field["bbox"][1].as_i64().unwrap())
@@ -1771,7 +1774,8 @@ mod tests {
                 let (right,bottom) = corner(&pair[1]);
                 assert_eq!(images.iter().filter(|item| item[2] == x && item[3] == y &&
                     item[4] == right - x && item[5] == bottom - y).count(), 1,
-                    "each source invocation must have a unique image box");
+                    "measured image box {:?} does not uniquely match visible image operators {:?}",
+                    [x, y, right - x, bottom - y], images);
             }
             raster.terminate();
             let source = include_str!("../../../../tests/native-math/fixtures/numbered-alignment.tex");
