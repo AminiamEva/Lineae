@@ -1,6 +1,7 @@
 import {nativeEditorRange,sourceOffsetAtEditorPosition} from './editor/native-text/editor-range.mjs';
 import {canBeginProseFormula,projectMixedDocument,projectTextDocument} from './editor/native-text/projection.mjs';
 import {tableCellRanges} from './editor/native-text/table-cells.mjs';
+import {decodeProse} from './editor/native-text/prose-runs.mjs';
 import {tableStyleParts,writeTableStyle} from '../latex/table-styles.mjs';
 import {nativeMathCommandNames,projectMath} from './editor/native-math/source.mjs';
 import {nativeMathContext} from './editor/native-math/resolve.mjs';
@@ -777,7 +778,7 @@ paper.before(documentPage);documentPage.append(paper);
 paper.replaceChildren();
 editor=new Editor({
   element:paper,
-  extensions:[CounterDirective,AppendixStart,MatterStart,LayoutCommand,Lipsum,ProjectRegion,PageLayoutHistory,ConfigurableStarterKit.configure({heading:{levels:[1,2,3]},codeBlock:false}),LanguageCodeBlock,MultiSelection,PaperBehavior,TextStyle,TextCommand,Underline,Superscript,Subscript,SmallCaps,Boxed,Circled,PageBreak,MultiColumn,HistoryTable.configure({resizable:true}),TableRow,TableCell,TableHeader,TblrSource,TabularxSource,Raw,DocumentImage,TheoremBlock,DescriptionList,DescriptionItem,MathNode,MathBlock,MathGlue,Ref,Cite.configure({library:citationLibrary}),Footnote,Label,Subfigures,TableOfContents,Shortcuts],
+  extensions:[CounterDirective,AppendixStart,MatterStart,LayoutCommand,Lipsum.configure({expandPreview:!nativeOnlyAcceptance()}),ProjectRegion,PageLayoutHistory,ConfigurableStarterKit.configure({heading:{levels:[1,2,3]},codeBlock:false}),LanguageCodeBlock,MultiSelection,PaperBehavior,TextStyle,TextCommand,Underline,Superscript,Subscript,SmallCaps,Boxed,Circled,PageBreak,MultiColumn,HistoryTable.configure({resizable:true}),TableRow,TableCell,TableHeader,TblrSource,TabularxSource,Raw,DocumentImage,TheoremBlock,DescriptionList,DescriptionItem,MathNode,MathBlock,...(nativeOnlyAcceptance()?[]:[MathGlue]),Ref,Cite.configure({library:citationLibrary}),Footnote,Label,Subfigures,TableOfContents,Shortcuts],
   content:'<p></p>',
 });
 function installMarginSelection(editor,page,paper) {
@@ -2290,6 +2291,10 @@ function completionActions() {
         [command,()=>runNativeTextStructure('setHeading',{level:index+1,command})])),
       itemize:()=>runNativeTextStructure('toggleBulletList'),
       enumerate:()=>runNativeTextStructure('toggleOrderedList'),
+      description:()=>editNativeDescription(false),
+      descriptionterm:()=>editNativeDescription(true),
+      indent:()=>updateSelectedParagraphs(indentationAttributes(editor.getAttributes('paragraph'),true)),
+      noindent:()=>updateSelectedParagraphs(indentationAttributes(editor.getAttributes('paragraph'),false)),
       quote:()=>runNativeTextStructure('toggleBlockquote'),
       ...Object.fromEntries(Object.keys(theoremNames).map(kind=>
         [kind,()=>runNativeTextStructure('wrapIn','theoremBlock',{kind})])),
@@ -3219,6 +3224,16 @@ function applyTextStyle(attributes){
   nativeTexPreview.refocusTextInput();
   return nativeTexPreview.preserveSourceCaret(committed,started,'text');
 }
+async function editNativeDescription(existing){
+  if(existing&&!editor.isActive('descriptionItem'))return false;
+  const document=editor.state.doc;
+  const raw=existing?editor.getAttributes('descriptionItem').term:'';
+  const current=decodeProse(raw)?.text??raw;
+  const term=await askText(t('术语','Term'),current);
+  if(term===null||existing&&term===current||/[\[\]\r\n]/.test(term)||editor.state.doc!==document)return false;
+  return runNativeTextStructure(existing?'updateAttributes':'wrapIn','descriptionItem',
+    {term:serialize({type:'text',text:term})});
+}
 function commitNativeMarkedText(paragraph,patch,target,marks,serialized){
   const {state}=editor,{range,composition,project,file}=target;
   const node=editor.schema.text(patch.insert,marks),insert=serialized??serialize(node.toJSON());
@@ -3260,7 +3275,7 @@ function runNativeTextStructure(command,...args){
   const verified=nativeTexPreview.verifiedTextRange?.();
   if(!verified||!nativeTexPreview.useTextSelection())return false;
   const [first,last]=verified,{paragraph}=first;
-  if(paragraph.tableCell||paragraph.container&&!['bulletList','orderedList','blockquote'].includes(paragraph.container.type))return false;
+  if(paragraph.tableCell||paragraph.container&&!['bulletList','orderedList','descriptionList','blockquote'].includes(paragraph.container.type))return false;
   const target=nativeProsePosition(paragraph,first.local,last.local);
   if(!target)return false;
   const {state}=editor,tr=state.tr;

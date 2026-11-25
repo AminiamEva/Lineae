@@ -363,8 +363,9 @@
       "verifiedTableOperations": ["table", "tableRow", "tableCell", "tableHeader"],
       "partialNativeEditing": ["blockquote", "theoremBlock", "bulletList", "orderedList", "listItem", "descriptionList", "descriptionItem", "projectRegion", "documentImage", "subfigures", "multiColumn"],
       "protectedInlineOrStructural": ["hardBreak", "ref", "cite", "label", "footnote", "pageBreak", "appendixStart", "matterStart", "counterDirective", "layoutCommand"],
-      "directEditingPending": ["codeBlock", "horizontalRule", "lipsum", "mathGlue", "raw", "tableOfContents"]
+      "directEditingPending": ["codeBlock", "horizontalRule", "lipsum", "raw", "tableOfContents"]
     },
+    "legacyDecorationsDisabledInNativeMode": ["mathGlue", "lipsumPreviewExpansion"],
     "marks": {
       "nativeTyping": ["bold", "italic", "underline", "code", "superscript", "subscript", "smallcaps", "strike", "textStyle"],
       "verifiedSourceRuns": ["textCommand", "textStyle", "boxed", "circled"],
