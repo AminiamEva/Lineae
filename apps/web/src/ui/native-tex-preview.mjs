@@ -14,7 +14,7 @@ import {readDelimiterPair} from '../editor/delimiter-input.js';
 // Native LaTeX output is the primary page. The opt-in native input mode sends
 // supported keys, caret and IME through this surface into ProseMirror; the old
 // JS-formatted page and MathLive inputs stay available as the migration fallback.
-export function installNativeTexPreview({host,before,primary=false,documentZoom=100,isDocumentMode,getSource,getSnapshot,isComposing,focusMathSlot,focusImage,listTikzDrawings,editTikzDrawing,continuationRegion,selectionRegions,foldedFiles,selectText,commitMath,commitText,commitTextLines,commitProjectRange,canStartText,commitInitialText,commitParagraphBreak,commitParagraphJoin,commitNewMath,onEnvironmentChange,history}) {
+export function installNativeTexPreview({host,before,primary=false,documentZoom=100,isDocumentMode,splitHost,getSource,getSnapshot,isComposing,focusMathSlot,focusImage,listTikzDrawings,editTikzDrawing,continuationRegion,selectionRegions,foldedFiles,selectText,commitMath,commitText,commitTextLines,commitProjectRange,canStartText,commitInitialText,commitParagraphBreak,commitParagraphJoin,commitNewMath,onEnvironmentChange,showTextCommands,history}) {
   const invoke=window.__TAURI__?.core?.invoke;
   if(!invoke) return {refresh(){},documentChanged(){},relocalize(){}};
   const button=document.createElement('button');
@@ -68,6 +68,8 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
   let foldsDirty=false;
   let mirror=null;
   let primaryRequested=false;
+  let mountedSplit=null;
+  const acceptsInput=()=>!primary||isDocumentMode?.();
   let draftInput=null;
   let compositionField=null;
   const composing=()=>isComposing()||Boolean(compositionField?.isConnected);
@@ -206,7 +208,7 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
   }
   function submitInput(action) {
     const {surface}=nativeDocument;
-    if(!nativeEditing)return false;
+    if(!nativeEditing||!acceptsInput())return false;
     if(pendingEdit){
       const last=queuedInput.at(-1);
       if(action.insert&&last?.insert&&!action.paste&&!last.paste)last.insert+=action.insert;
@@ -216,6 +218,10 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
     if(draftInput)return commitDraftInput(action,surface);
     if(!surface.caret)return false;
     if(!current()||!observation)return false;
+    if(action.insert==='\\'&&!action.paste&&surface.caret.kind==='text'){
+      showTextCommands?.(input);
+      return true;
+    }
     if(action.paste&&/[\r\n]/.test(action.insert)&&surface.caret.kind==='text'){
       const edit=commitTextLines?.(...surface.range,action.insert);
       return edit?awaitSourcePosition(edit,action.started):false;
@@ -376,7 +382,7 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
   });
   input.addEventListener('keydown', event => {
     if (event.isComposing || event.keyCode === 229 || (inputComposition&&!inputComposition.ended))return;
-    if (nativeEditing === false) return;
+    if (!nativeEditing || !acceptsInput()) return;
     const {surface}=nativeDocument;
     if (!event.metaKey && !event.ctrlKey && !event.altKey && [...event.key].length===1){
       if(inputComposition?.ended)commitComposition(inputComposition);
@@ -494,11 +500,11 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
     },
     onError:(failure,revision)=>{if(active&&mode==='canvas')void fallback(failure,revision);},
     onImageHit:(path,revision)=>{
-      if(current()&&mode==='canvas'&&revision===sourceRevision)focusImage?.(path);
+      if(acceptsInput()&&current()&&mode==='canvas'&&revision===sourceRevision)focusImage?.(path);
     },
     proseRanges:(from,to)=>nativeDocument.proseRanges(resolveEndpoint(from),resolveEndpoint(to)),
     onMathHit:async(hit,stamp,origin,sameGesture)=>{
-      if(!current()||!hasGeometry()||!observation||
+      if(!acceptsInput()||!current()||!hasGeometry()||!observation||
           stamp.sessionId!==observation.stamp.sessionId||
           stamp.sourceRevision!==observation.stamp.sourceRevision)return;
       const head=resolveEndpoint(hit),anchor=origin?resolveEndpoint(origin):head;
@@ -551,9 +557,9 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
       wantedSource===sentSource && renderedRevision===sourceRevision;
   }
   function renderStatus() {
-    if(foldsDirty&&nativeEditing&&current()&&observation)refreshFoldView();
+    if(foldsDirty&&nativeEditing&&acceptsInput()&&current()&&observation)refreshFoldView();
     exportButton.disabled=!current();
-    targetButton.disabled=!current()||!hasGeometry()||targeting===generation;
+    targetButton.disabled=!acceptsInput()||!current()||!hasGeometry()||targeting===generation;
     editButton.disabled=!current()||!hasGeometry()||!observation;
     const drawings=current()&&isDocumentMode?.()?listTikzDrawings?.()??[]:[];
     const drawingKey=JSON.stringify(drawings);
@@ -566,7 +572,7 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
     }
     tikzSelect.hidden=drawings.length<2;
     tikzEdit.hidden=drawings.length===0;
-    startText.hidden=!primary||!current()||Boolean(observation)||!canStartText?.();
+    startText.hidden=!primary||!acceptsInput()||!current()||Boolean(observation)||!canStartText?.();
     editButton.setAttribute('aria-pressed',String(nativeEditing));
     const canRefreshTargets=nativeEditing||(!sentSnapshot?.files?.length&&sentSource.length<=32*1024);
     if(targetArmed&&!targetButton.disabled&&canRefreshTargets&&targetTimer===null&&
@@ -582,7 +588,7 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
     else button.textContent=active?t('关闭 LuaLaTeX 预览','Close LuaLaTeX preview'):t('LuaLaTeX 预览（实验）','LuaLaTeX preview (experimental)');
     panel.dataset.state=error?'error':current()?'current':active?'stale':'off';
     panel.dataset.renderer=mode;
-    panel.dataset.editing=String(nativeEditing);
+    panel.dataset.editing=String(nativeEditing&&acceptsInput());
     status.textContent=error?t('原生预览不可用：','Native preview unavailable: ')+error:
       opening?t('等待信任确认并启动引擎…','Confirm trust and start the engine…'):
       exporting===generation?t('正在导出已确认版本的 PDF…','Exporting the confirmed PDF revision…'):
@@ -606,7 +612,7 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
   async function stop() {
     generation++;captureId++;pollEpoch++;active=false;opening=false;error='';capturing=null;terminal=false;
     clearTimeout(timer);clearTimeout(pollTimer);
-    panel.hidden=true;document.body.classList.remove('native-tex-open','native-tex-primary-open');
+    syncPresentation();
     const previous=session;session=null;
     wantedSnapshot=null;sentSnapshot=null;wantedSource='';sentSource='';
     observation=null;targetStatus.textContent='';
@@ -783,7 +789,7 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
     const attempt=++generation;
     active=true;opening=true;error='';terminal=false;renderedRevision=-1;mode='canvas';pdfWanted=-1;pdfRendered=-1;
     if(primary){nativeEditing=true;targetArmed=true;}
-    panel.hidden=false;document.body.classList.add(primary?'native-tex-primary-open':'native-tex-open');renderStatus();
+    syncPresentation();renderStatus();
     try {
       const initial=await readSnapshot();
       if(attempt!==generation)return;
@@ -836,7 +842,7 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
     try {
       const observed=await invoke('native_tex_observe_formula',{...stamp,projection:projection.projection,
         files:projection.files});
-      if(attempt!==generation||stamp.sessionId!==session||stamp.sourceRevision!==sourceRevision||
+      if(attempt!==generation||!acceptsInput()||stamp.sessionId!==session||stamp.sourceRevision!==sourceRevision||
           sentSnapshot?.signature!==signature||wantedSnapshot?.signature!==signature||
           sentSource!==projection.source||wantedSource!==projection.source)return;
       if(!renderer.attachOwners(observed,stamp,projection.owners))throw new Error(t('标记版排版与当前页面不一致，未启用命中。','Projected geometry differs from the displayed page; targeting remains disabled.'));
@@ -916,10 +922,36 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
     }
     void(active?stop():start());
   }
+  function syncPresentation(){
+    const nextSplit=active&&primary?splitHost?.()??null:null;
+    if(mountedSplit!==nextSplit){
+      if(mountedSplit){
+        delete mountedSplit.dataset.native;
+        mountedSplit.removeEventListener('scroll',renderer.redraw);
+      }
+      mountedSplit=nextSplit;
+      if(mountedSplit){
+        mountedSplit.dataset.native='true';
+        mountedSplit.addEventListener('scroll',renderer.redraw,{passive:true});
+        mountedSplit.append(panel);
+      }else document.body.append(panel);
+    }
+    panel.toggleAttribute('data-split',Boolean(nextSplit));
+    panel.hidden=!active||!acceptsInput()&&!nextSplit;
+    document.body.classList.toggle('native-tex-open',active&&!primary);
+    document.body.classList.toggle('native-tex-primary-open',active&&primary&&acceptsInput());
+    if(!acceptsInput()){
+      input.blur();draftInput=null;queuedInput.length=0;
+      if(!observation)lastTarget=null;
+      renderer.clearCaret();renderer.showFileBoundaries([]);renderer.showFoldedFiles([]);
+    }else if(active&&observation&&current())refreshFoldView();
+    if(active&&!panel.hidden)renderer.redraw();
+  }
   function documentChanged(){
     const afterStop=stop(),stamp=generation;
-    if(primaryRequested&&isDocumentMode?.())void afterStop.then(()=>{
-      if(stamp===generation&&primaryRequested&&isDocumentMode?.())void start();
+    const shouldStart=()=>primaryRequested&&(isDocumentMode?.()||splitHost?.());
+    if(shouldStart())void afterStop.then(()=>{
+      if(stamp===generation&&shouldStart())void start();
     });
   }
   button.addEventListener('click',toggle);
@@ -954,7 +986,7 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
   document.addEventListener('lineae-project-fold-state',()=>{
     if(!nativeEditing)return;
     foldsDirty=true;
-    if(current()&&observation)refreshFoldView();
+    if(acceptsInput()&&current()&&observation)refreshFoldView();
   });
   editButton.addEventListener('mousedown',event=>event.preventDefault());
   editButton.addEventListener('click',()=>{
@@ -978,7 +1010,7 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
     if(zoomPercent===value)return;
     zoomPercent=value;
     renderer.setZoom(value/100);pdf.setZoom(value/100);
-    if(nativeEditing){paintSurfaceSelection();positionInput();}
+    if(nativeEditing&&acceptsInput()){paintSurfaceSelection();positionInput();}
   }
   zoom.addEventListener('change',()=>setNativeZoom(Number(zoom.value)));
   window.addEventListener('resize',()=>{if(nativeEditing)positionInput();});
@@ -998,15 +1030,15 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
     refresh,documentChanged,relocalize,
     documentModeChanged(){
       if(!primaryRequested)return;
-      if(isDocumentMode?.())void start();
-      else void stop();
+      if(active){syncPresentation();refresh();return;}
+      if(isDocumentMode?.()||splitHost?.())void start();
     },
     setDocumentZoom:value=>{if(primary)setNativeZoom(value);},
-    hasTextInput:event=>event.target===input&&nativeEditing&&nativeDocument.surface.caret?.kind==='text',
+    hasTextInput:event=>event.target===input&&nativeEditing&&acceptsInput()&&nativeDocument.surface.caret?.kind==='text',
     inTableCell:()=>Boolean(nativeDocument.surface.caret?.paragraph?.tableCell),
-    hasMathInput: event => event.target===input && nativeEditing && nativeDocument.surface.caret?.kind==='math',
-    hasNativeMathFocus:()=>document.activeElement===input&&nativeEditing&&nativeDocument.surface.caret?.kind==='math',
-    focusedCaret:()=>document.activeElement===input&&nativeEditing?nativeDocument.surface.caret:null,
+    hasMathInput: event => event.target===input && nativeEditing && acceptsInput() && nativeDocument.surface.caret?.kind==='math',
+    hasNativeMathFocus:()=>document.activeElement===input&&nativeEditing&&acceptsInput()&&nativeDocument.surface.caret?.kind==='math',
+    focusedCaret:()=>document.activeElement===input&&nativeEditing&&acceptsInput()?nativeDocument.surface.caret:null,
     clipboardSelection,
     selectAll(){
       if(!current()||!observation||pendingEdit)return true;
@@ -1019,6 +1051,7 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
     useTextSelection,
     leaveFile,
     runMathCommand(command) {
+      if(!acceptsInput())return false;
       const {surface}=nativeDocument;
       if(command==='leaveFile')return leaveFile();
       if(command==='undo'||command==='redo'){

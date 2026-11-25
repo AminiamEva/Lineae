@@ -441,7 +441,7 @@ export function installNativePages({host,getFont,getRaster,onPaint,onError,onMat
   host.addEventListener('scroll',redraw,{passive:true});
   host.parentElement?.addEventListener('scroll',redraw,{passive:true});
   window.addEventListener('resize',redraw);
-  return {accept,reset,attachOwners,bindPdfLayout,showCaret,showSelection,showFileBoundaries,showFoldedFiles,clearCaret,setZoom(value){clearCaret();zoom=value;showFileBoundaries(boundaries);showFoldedFiles(foldedRanges,false);if(pdfBacked)return;for(const entry of pages.values()){
+  return {accept,reset,attachOwners,bindPdfLayout,showCaret,showSelection,showFileBoundaries,showFoldedFiles,clearCaret,redraw,setZoom(value){clearCaret();zoom=value;showFileBoundaries(boundaries);showFoldedFiles(foldedRanges,false);if(pdfBacked)return;for(const entry of pages.values()){
     entry.dom.style.width=entry.dl.page_width*CSS_PER_SP*zoom+'px';
     entry.dom.style.height=entry.dl.page_height*CSS_PER_SP*zoom+'px';
   }redraw();}};

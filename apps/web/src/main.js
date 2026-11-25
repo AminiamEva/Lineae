@@ -1052,7 +1052,7 @@ const sourceView = createSourceWorkspace({
   },
   onPreviewZoom: value => setZoom(value),
   onChange: () => { syncPending = true; projectExplorer?.changed(); nativeTexPreview?.refresh(); },
-  onLayout: () => updateSourceButton(),
+  onLayout: () => {updateSourceButton();nativeTexPreview?.documentModeChanged?.();},
   metadata: () => ({name: filename, saved: savedSource}),
 });
 let sourceModeEntry,sourceModeCommits=[],sourceModeRedos=[];
@@ -1986,7 +1986,7 @@ function commandAnchor(field){
   if(!field)return editor.view.coordsAtPos(editor.state.selection.from);
   return (field.shadowRoot?.querySelector('.ML__caret')??field).getBoundingClientRect();
 }
-function showCommands(field = null, native = false) {
+function showCommands(field = null, native = null) {
   completionField = field;
   completionNative = native;
   completionAnchor=commandAnchor(field);
@@ -2051,9 +2051,22 @@ function highlightCandidate(index) {
     candidates.scrollTop = bottom - candidates.clientHeight;
 }
 function completionActions() {
-  if(completionNative)return Object.fromEntries([...nativeMathCommandNames,'left','right','newline'].map(name=>[
+  if(completionNative==='math')return Object.fromEntries([...nativeMathCommandNames,'left','right','newline'].map(name=>[
     name,()=>nativeTexPreview.runMathCommand(name==='newline'?'enterLine':name),
   ]));
+  if(completionNative==='text'){
+    const actions={section:structureCommands.section,subsection:structureCommands.subsection,
+      subsubsection:structureCommands.subsubsection,appendix:structureCommands.appendix,
+      newpage:()=>editor.commands.insertContent({type:'pageBreak'})};
+    if(projectExplorer?.active){actions.input=structureCommands.input;actions.include=structureCommands.include;}
+    const input=completionField;
+    return Object.fromEntries(Object.entries(actions).map(([name,action])=>[name,async()=>{
+      if(!nativeTexPreview.useTextSelection())return;
+      try{await action();}
+      catch(error){sourceView.error(error?.message??String(error));}
+      if(input.isConnected&&input.closest('#native-tex-preview')?.dataset.editing==='true')input.focus({preventScroll:true});
+    }]));
+  }
   const actions = Object.fromEntries(Object.entries(formulaCommands).map(([name, latex]) =>
     [name, () => insertFormulaCommand(latex)]));
   actions.left = () => chooseMathDelimiters(completionField);
@@ -2662,7 +2675,7 @@ installKeybindings(window, {
     if(context.nativeText&&scope==='table'&&!nativeTexPreview.useTextSelection())return false;
     if (scope === 'math') {
       if(!context.nativeMath)return runMathShortcut(command,context.field,event);
-      if(command==='palette'){showCommands(context.element,true);return true;}
+      if(command==='palette'){showCommands(context.element,'math');return true;}
       return nativeTexPreview.runMathCommand(command);
     }
     if (scope === 'source') return sourceView.runShortcut(command);
@@ -2785,6 +2798,7 @@ function canStartNativeText(){
 }
 nativeTexPreview=installNativeTexPreview({host:footer,before:modes,primary:nativeWorkspaceRequested(),documentZoom:Number(zoom.value),
   isDocumentMode:()=>sourceView.hidden,
+  splitHost:()=>!sourceView.hidden&&sourceView.split&&projectFileKind!=='bib'?sourceView.previewHost:null,
   getSnapshot:async()=>{
     if(projectExplorer?.active){
       const project=projectExplorer.model;
@@ -3213,6 +3227,7 @@ nativeTexPreview=installNativeTexPreview({host:footer,before:modes,primary:nativ
   },
   history:command=>{command==='redo'?redoDocument():undoDocument();},
   onEnvironmentChange:updateEnvironment,
+  showTextCommands:field=>showCommands(field,'text'),
 });
 editor.on('update',()=>nativeTexPreview.refresh());
 onAssetsChanged(()=>nativeTexPreview.refresh());

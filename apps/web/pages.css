@@ -347,6 +347,10 @@ main { padding:125px 24px 60px; overflow:auto; }
 .native-tex-primary-open main { visibility:hidden; margin-right:0; }
 #native-tex-preview[data-primary=true] { left:var(--sidebar-width,0px); width:auto; border-left:0; }
 #native-tex-preview[data-primary=true] .native-tex-controls { justify-content:center; }
+.tex-preview[data-native=true] > .document-page { display:none; }
+#native-tex-preview[data-split] { position:relative; inset:auto; width:max-content; min-width:100%; padding:0; background:transparent; overflow:visible; }
+#native-tex-preview[data-split] > :is(h2,p:not([role=status]),.native-tex-controls,.native-tex-input,#native-tex-start-text),
+#native-tex-preview[data-split][data-state=current] > p[role=status] { display:none; }
 #native-tex-preview h2 { font-size:16px; margin:0 0 8px; }
 #native-tex-preview p { font-size:12px; white-space:pre-wrap; overflow-wrap:anywhere; }
 #native-tex-preview[data-state=error] [role=status] { color:light-dark(#a32c25,#ffb4ac); }

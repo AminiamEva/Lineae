@@ -378,6 +378,20 @@ const server=createServer(async(req,res)=>{
       await page.keyboard.press(mod+'+z');
       await page.waitForFunction(expected=>nativeProbe.source===expected,acrossMath);
       await page.locator('#native-tex-close').click();
+      const pagedProse='\\documentclass{article}\n\\begin{document}\nAlpha\n\nBeta\n\\end{document}\n';
+      await page.locator('input#file').setInputFiles({name:'native-page-break.tex',mimeType:'text/plain',buffer:Buffer.from(pagedProse)});
+      await page.locator('#native-tex-toggle').click();
+      await page.locator('#native-tex-target').click();
+      await panel.getByText('Click text on the native page',{exact:false}).waitFor();
+      await page.locator('#native-tex-edit').click();
+      await canvas.click({position:{x:7520000*scale,y:9250000*scale}});
+      await page.keyboard.press('Backslash');
+      const prosePalette=page.getByRole('dialog',{name:'LaTeX completion',exact:true});
+      await prosePalette.getByRole('textbox',{name:'LaTeX command',exact:true}).fill('newpage');
+      await page.keyboard.press('Enter');
+      await page.waitForFunction(()=>nativeProbe.source?.includes('\\newpage'));
+      assert.equal(await page.locator('.ProseMirror [data-page-break]').count(),1);
+      await page.locator('#native-tex-close').click();
       const listSource='\\documentclass{article}\n\\begin{document}\n\\begin{enumerate}\n\\item One item.\n'+
         '\\begin{itemize}\n\\item Nested.\n\\end{itemize}\n\\item Last.\n\\end{enumerate}\n\\end{document}\n';
       await page.locator('input#file').setInputFiles({name:'list.tex',mimeType:'text/plain',buffer:Buffer.from(listSource)});
@@ -508,10 +522,16 @@ const server=createServer(async(req,res)=>{
       await canvas.click({position:{x:6550000*scale,y:9250000*scale}});
       await page.keyboard.type('X');
       await page.waitForFunction(expected=>nativeProbe.source===expected,workspaceSource.replace('Native document.','XNative document.'));
+      const openedSessions=await page.evaluate(()=>nativeProbe.calls.filter(call=>call.command==='native_tex_open').length);
       await page.locator('[data-source-mode=source]').click();
       await panel.waitFor({state:'hidden'});
+      await page.locator('[data-source-mode=split]').click();
+      await page.locator('.tex-preview > #native-tex-preview[data-editing=false] canvas').waitFor();
+      assert.equal(await page.locator('.tex-preview > .document-page').isVisible(),false);
+      assert.equal(await page.locator('#native-tex-input').isVisible(),false);
       await page.locator('[data-source-mode=body]').click();
       await panel.getByText('Click text on the native page',{exact:false}).waitFor();
+      assert.equal(await page.evaluate(()=>nativeProbe.calls.filter(call=>call.command==='native_tex_open').length),openedSessions);
       assert.equal(await page.evaluate(()=>customElements.get('math-field')),undefined);
       const blank='\\documentclass{article}\n\\begin{document}\n\n\\end{document}\n';
       await page.locator('input#file').setInputFiles({name:'empty-workspace.tex',mimeType:'text/plain',buffer:Buffer.from(blank)});
@@ -575,6 +595,10 @@ const server=createServer(async(req,res)=>{
       await panel.getByText('Click prose on the native page',{exact:false}).waitFor();
       await page.locator('#native-tex-edit').click();
       await canvas.click({position:{x:6550000*scale,y:9250000*scale}});
+      await page.keyboard.press('Backslash');
+      await prosePalette.getByRole('textbox',{name:'LaTeX command',exact:true}).fill('input');
+      await prosePalette.getByRole('option',{name:'\\input',exact:true}).waitFor();
+      await page.keyboard.press('Escape');
       await page.keyboard.type('X');
       const projectWithText=singleProject.replace('Native document.','XNative document.');
       await page.waitForFunction(expected=>nativeProbe.source===expected,projectWithText);
