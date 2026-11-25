@@ -1200,6 +1200,7 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
     },
     hasTextInput:event=>event.target===input&&hasNativeTextFocus(),
     hasNativeTextFocus,
+    focusInput(){if(nativeEditing&&acceptsInput())input.focus({preventScroll:true});},
     startFormula,
     inTableCell:()=>Boolean(nativeDocument.surface.caret?.paragraph?.tableCell),
     hasMathInput: event => event.target===input && nativeEditing && acceptsInput() && nativeDocument.surface.caret?.kind==='math',

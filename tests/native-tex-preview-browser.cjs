@@ -214,6 +214,17 @@ const server=createServer(async(req,res)=>{
       await page.waitForFunction(source=>nativeProbe.source===source,afterLeaving);
       await panel.getByText('Click prose on the native page',{exact:false}).waitFor();
       await canvas.click({position:{x:6550000*scale,y:9250000*scale}});
+      await revealToolbar(page);await page.locator('[data-group=home]').click();
+      const justify=page.locator('.floating-toolbar').getByRole('button',{name:'Justify',exact:true});
+      if(!await justify.isVisible())await page.locator('[data-ribbon-group=paragraph] .ribbon-group-toggle').click();
+      await justify.click();
+      const justified=afterLeaving.replace('XYZAlpha beta.','{\\justifying XYZAlpha beta.\\par}')
+        .replace('\\begin{document}','\\usepackage{ragged2e}\n\\begin{document}');
+      await page.waitForFunction(source=>nativeProbe.source===source,justified);
+      await page.keyboard.press(mod+'+z');
+      await page.waitForFunction(source=>nativeProbe.source===source,afterLeaving);
+      await panel.getByText('Click prose on the native page',{exact:false}).waitFor();
+      await canvas.click({position:{x:6550000*scale,y:9250000*scale}});
       await page.keyboard.press(mod+'+e');await page.keyboard.press('r');
       const rightAligned=afterLeaving.replace('XYZAlpha beta.','{\\raggedleft XYZAlpha beta.\\par}');
       await page.waitForFunction(source=>nativeProbe.source===source,rightAligned);

@@ -24,7 +24,7 @@ import {createCompositionController} from './project/composition-controller.js';
 import {applicationCommandActions} from './editor/application-commands.js';
 import {captureRichSession,restoreRichSession,copyModeHistory,readModeHistory} from './project/rich-session.js';
 import {changePageLayout,mergePageLayout,PageLayoutHistory,textPatch} from './editor/page-layout-history.js';
-import {setParagraphIndent,paragraphHasIndent} from './editor/paragraph-format.js';
+import {indentationAttributes,setParagraphIndent,paragraphHasIndent} from './editor/paragraph-format.js';
 import {installProjectNavigation} from './project/navigation.js';
 import {ProjectWorkspaceState} from './project/workspace-state.mjs';
 import {exitProjectHeading} from './project/editing.js';
@@ -2498,6 +2498,7 @@ function selectedParagraphPositions() {
   return [...new Set(positions)];
 }
 function updateSelectedParagraphs(attributes) {
+  if(nativeParagraphFormattingActive())return runNativeTextStructure('updateAttributes','paragraph',attributes);
   const positions = selectedParagraphPositions();
   if (!positions.length) return false;
   const transaction = editor.state.tr;
@@ -2540,6 +2541,9 @@ function setParagraphAlignment(align) {
   return updateSelectedParagraphs({align});
 }
 function indentSelectedParagraph(direction) {
+  if(nativeParagraphFormattingActive()&&!editor.isActive('listItem')){
+    return updateSelectedParagraphs(indentationAttributes(editor.getAttributes('paragraph'),direction>0));
+  }
   if (editor.isActive('listItem')) {
     return direction > 0
       ? indentListItem(editor)
@@ -2733,7 +2737,11 @@ const nativeTextStructures={
   alignLeft:['updateAttributes','paragraph',{align:'left'}],
   alignRight:['updateAttributes','paragraph',{align:'right'}],
   alignCenter:['updateAttributes','paragraph',{align:'center'}],
+  alignJustify:['updateAttributes','paragraph',{align:'justify'}],
 };
+function nativeParagraphFormattingActive(){
+  return nativeTexPreview?.hasNativeTextFocus?.()||nativeWorkspaceRequested()&&nativeTexPreview?.verifiedTextRange?.();
+}
 function runNativeTextCommand(command,context,event){
   if(Object.hasOwn(nativeTextStructures,command))return runNativeTextStructure(...nativeTextStructures[command]);
   return nativeSelectionCommands.has(command)&&nativeTexPreview.useTextSelection(nativeRangeCommands.has(command))&&
@@ -2750,7 +2758,7 @@ installKeybindings(window, {
       return {element:event.target,nativeMath:true,scopes:['math','system','global']};
     if(nativeTexPreview?.hasTextInput?.(event))
       return {element:event.target,nativeText:true,
-        scopes:nativeTexPreview.inTableCell()?['table','editor','system','global']:['editor','system','global']};
+        scopes:nativeTexPreview.inTableCell()?['table','editor','system','global']:['paragraph','editor','system','global']};
     if (event.target.closest?.('.tex-code .cm-content'))
       return {element:sourceView.editorView?.contentDOM,source:true,scopes:['source','system','global']};
     if (event.target.closest?.('.tex-code'))return {element:event.target,scopes:['global'],only:'save'};
@@ -2780,6 +2788,10 @@ installKeybindings(window, {
       return runNativeTextCommand(command,context,event);
     }
     if(context.nativeText&&scope==='table'&&!nativeTexPreview.useTextSelection())return false;
+    if(context.nativeText&&scope==='paragraph'&&command==='toggleIndent'){
+      return nativeTexPreview.useTextSelection()&&updateSelectedParagraphs(
+        indentationAttributes(editor.getAttributes('paragraph'),!paragraphHasIndent(editor)));
+    }
     if (scope === 'math') {
       if(!context.nativeMath)return runMathShortcut(command,context.field,event);
       if(command==='palette'){showCommands(context.element,'math');return true;}
@@ -2869,33 +2881,52 @@ function runNativeTextStructure(command,...args){
   if(!chain[command](...args).run()||!tr.docChanged)return false;
   const {source,filePath}=paragraph,{composition,project,file}=target;
   const fragment=projectFileKind==='tex';
-  let draft,from,to;
+  const rootId=composition?.rootId;
+  const root=rootId&&rootId!==file.id?project.file(rootId).draft:source;
+  const attributes=command==='updateAttributes'&&args[0]==='paragraph'&&args[1];
+  const packageBody=(attributes?.align==='justify'?'\\justifying ':'')+(attributes?.shading?'\\colorbox':'');
+  const dependency=packageBody?nativePackagePatch(root,packageBody):null;
+  if(dependency===false)return false;
+  let draft,from,to,shift=0;
   if(composition){
     const updates=projectDocument.changes(tr.doc.toJSON());
     draft=updates?.get(file.id);
     if(!draft||draft===source)return false;
     for(const [id,value] of updates)if(id!==file.id&&value!==project.file(id).draft)return false;
-    editor.view.dispatch(closeHistory(tr));
-    if(editor.state.doc===state.doc)return false;
     ({from,to}=textPatch(source,draft)[0]);
+    if(dependency){
+      const amended=rootId===file.id?draft:root;
+      const rootDraft=amended.slice(0,dependency.from)+dependency.insert+amended.slice(dependency.from);
+      const drafts=new Map([[file.id,draft],[rootId,rootDraft]]);
+      if(!dispatchNativeProjectChange(state,tr,project,drafts))return false;
+      if(rootId===file.id){draft=rootDraft;shift=dependency.insert.length;}
+    }else editor.view.dispatch(closeHistory(tr));
+    if(editor.state.doc===state.doc)return false;
   }else {
     const owner=projection?.blocks.find(block=>block.from<=paragraph.from16&&
       block.to>=paragraph.from16+paragraph.text.length);
     const changes=richSourceChanges(projection,tr.doc.toJSON());
     if(!owner||changes?.length!==1)return false;
-    const [change]=changes;
+    let [change]=changes;
     if(change.from<owner.from||change.to>owner.to)return false;
     draft=source.slice(0,change.from)+change.insert+source.slice(change.to);
+    ({from,to}=change);
+    if(dependency){
+      shift=dependency.insert.length;
+      draft=draft.slice(0,dependency.from)+dependency.insert+draft.slice(dependency.from);
+      change={from:dependency.from,to,insert:dependency.insert+source.slice(dependency.from,from)+change.insert};
+    }
     const projected=sourceProjection(draft,tr.doc.toJSON(),{fragment});
     if(!projected||!dispatchNativeParagraphChange(state,tr,source,draft,change,projected))return false;
-    ({from,to}=change);
   }
   const changeEnd=to+draft.length-source.length;
   const projectedText=projectMixedDocument(draft,{fragment,filePath,splitIncludes:Boolean(composition)});
   const candidates=projectedText?.paragraphs.filter(next=>next.text===paragraph.text&&
-    next.from16<=changeEnd&&next.from16+next.text.length>=from)??[];
-  if(candidates.length===1)nativeTexPreview.preserveSourceCaret({source:draft,path:filePath,
-    offset:candidates[0].from16+last.local},started,'text');
+    next.from16<=changeEnd&&next.from16+next.text.length>=from+shift)??[];
+  if(candidates.length===1){
+    nativeTexPreview.preserveSourceCaret({source:draft,path:filePath,offset:candidates[0].from16+last.local},started,'text');
+    nativeTexPreview.focusInput();
+  }
   return true;
 }
 function nativeFormulaPosition(formula){
@@ -2924,11 +2955,12 @@ function nativeFormulaPosition(formula){
 function addNativeTableAxis(axis){
   return editNativeTable(axis==='row'?'insertRow':'insertColumn');
 }
-function nativeMultirowPackage(root){
+function nativePackagePatch(root,body){
   const {start,eol}=parseDocument(root,{fragment:true});
-  if(!resolvePackages(start,'\\multirow').some(({name})=>name==='multirow'))return null;
+  const required=resolvePackages(start,body);
+  if(!required.length)return null;
   const from=start.lastIndexOf('\\begin{document}');
-  return from<0?false:{from,insert:'\\usepackage{multirow}'+eol};
+  return from<0?false:{from,insert:required.map(({name})=>'\\usepackage{'+name+'}'+eol).join('')};
 }
 function editNativeTable(operation){
   const started=performance.now();
@@ -3012,7 +3044,7 @@ function editNativeTable(operation){
   const rootId=composition?.rootId;
   const root=rootId&&rootId!==file.id?project.file(rootId).draft:owner.source;
   const requiresMultirow=verticalMerge&&!node.attrs.tblr;
-  const dependency=requiresMultirow&&nativeMultirowPackage(root);
+  const dependency=requiresMultirow&&nativePackagePatch(root,'\\multirow');
   if(requiresMultirow&&dependency===false)return false;
   if(dependency&&(!rootId||rootId===file.id)){
     const {from,insert}=dependency;
@@ -4638,7 +4670,7 @@ homeRibbon=buildHomeRibbon(home,{documentClass:documentClassFromSource(documentP
   alignLeft:withNativeTextCommand('alignLeft',()=>setParagraphAlignment('left')),
   alignCenter:withNativeTextCommand('alignCenter',()=>setParagraphAlignment('center')),
   alignRight:withNativeTextCommand('alignRight',()=>setParagraphAlignment('right')),
-  alignJustify:()=>setParagraphAlignment('justify'),
+  alignJustify:()=>nativeParagraphFormattingActive()?runNativeTextCommand('alignJustify'):setParagraphAlignment('justify'),
   lineSpacing:value=>updateSelectedParagraphs({lineSpacing:value&&value!==1?value:null}),
   paragraphSpacing:(before,after)=>updateSelectedParagraphs({spaceBefore:before??null,spaceAfter:after??null}),
   paragraphShading:color=>updateSelectedParagraphs({shading:color??null}),
