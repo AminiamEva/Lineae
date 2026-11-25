@@ -146,7 +146,9 @@ async function probe(source,label,out,rtex,texbin,structured=false) {
       // allowed. Do not infer that the nth emitted box belongs to the nth cell.
       const expected=aftergroup?[82,83]:
         [...whole.owners].filter(([,entry])=>entry.atom.kind==='cell'&&!entry.atom.raw.trim()).map(([tag])=>tag);
-      const uniqueEmptyOwners=expected.length===2&&expected.every(owner=>fields.filter(field=>field.empty&&field.owner===owner).length===1);
+      const expectedCount=label==='cases-cell-ownership'?4:2;
+      const uniqueEmptyOwners=expected.length===expectedCount&&expected.every(owner=>
+        fields.filter(field=>field.empty&&field.owner===owner).length===1);
       const summary={label,versions:layout.versions,fields,expected,uniqueEmptyOwners,
         scope:'real LuaLaTeX ownership of empty matrix slots'};
       writeFileSync(join(dir,'summary.json'),JSON.stringify(summary,null,2)+'\n');
@@ -328,6 +330,8 @@ async function main() {
       'structured-math-text',out,rtex,texbin,'multi'));
     summaries.push(await probe(unicode.replace('\\frac{a}{}','\\begin{pmatrix}a & \\\\ & d\\end{pmatrix}'),
       'matrix-cell-ownership',out,rtex,texbin,'matrix'));
+    summaries.push(await probe(unicode.replace('\\frac{a}{}','\\begin{cases}&\\\\&\\end{cases}'),
+      'cases-cell-ownership',out,rtex,texbin,'matrix'));
     summaries.push(await probe(unicode.replace('\\frac{a}{}','\\begin{aligned}a & \\\\ & d\\end{aligned}'),
       'aligned-cell-ownership',out,rtex,texbin,'matrix'));
     if(Number(process.env.LINEAE_WARM_REPETITIONS??0)){
