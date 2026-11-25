@@ -3,15 +3,28 @@ import {group,trivia,clean,environmentEnd} from './tblr.mjs';
 
 export const imageWidthPattern = /^(?:(?:\d+(?:\.\d+)?|\.\d+)?\\(?:linewidth|textwidth|columnwidth)|(?:\d+(?:\.\d+)?|\.\d+)(?:cm|mm|pt|in))$/;
 
+function scaledTikzEnd(source,afterCommand){
+  const width=group(source,trivia(source,afterCommand));
+  const height=width&&group(source,trivia(source,width.end));
+  const body=height&&group(source,trivia(source,height.end));
+  if(!body)return null;
+  const start=trivia(body.value,0);
+  const name=/^\\begin\{(tikzpicture|circuitikz)\}/.exec(body.value.slice(start))?.[1];
+  const end=name&&environmentEnd(body.value,start,name);
+  return end&&trivia(body.value,end.end)===body.value.length?{end:body.end}:null;
+}
+
 export function tikzDrawingRanges(source,node){
   if(!/\\begin\{(?:tikzpicture|circuitikz)\}/.test(source))return [];
   const tokens=[...sourceStructure(source)];
   if(tokens.some(token=>token.kind==='invalid'))return [];
-  const spans=tokens.flatMap(token=>{
+  const spans=[];
+  for(const token of tokens){
+    if(spans.at(-1)?.to>token.index)continue;
     const name=token.kind==='begin'&&/^\\begin\{(tikzpicture|circuitikz)\}$/.exec(token.value)?.[1];
-    const close=name&&environmentEnd(source,token.index,name);
-    return close?[{from:token.index,to:close.end}]:[];
-  });
+    const close=name?environmentEnd(source,token.index,name):token.value==='\\resizebox'?scaledTikzEnd(source,token.end):null;
+    if(close)spans.push({from:token.index,to:close.end});
+  }
   if(!node&&spans.length===1&&source.trim()===source.slice(spans[0].from,spans[0].to))
     return [{...spans[0],child:null}];
   node??=parseImageBlock(source);

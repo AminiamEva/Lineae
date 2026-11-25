@@ -133,6 +133,10 @@ on the legacy path and record cold startup separately from warm edits.
 
 1. Broader commands, TeX structures, complex table cells and project changes
    still need equivalent editing and history coverage.
+   Row insertion and deletion inside a covered vertical span update the
+   span count in tabular, tabularx and tabularray. The browser verifies row
+   insertion and undo through the native keyboard path in ordinary tabular.
+   [Browser run](https://github.com/AminiamEva/Lineae/actions/runs/45712922440).
 2. Cross-file replacement can include complete inline and display formulas
    between prose endpoints. It verifies the rebuilt document against the source
    drafts and records both drafts in the same undo step. Covered endpoints
@@ -140,8 +144,15 @@ on the legacy path and record cold startup separately from warm edits.
    Within a file, a prose selection can also start or end with a complete
    display formula. The browser verifies copying, deletion and undo when that
    formula is at the start of a page.
-   Tables, scopes spanning two copies of the same input, and partially selected
-   formula structures still need coverage.
+   A prose selection can contain a complete table. Copy preserves the table's
+   TeX and a cross-file replacement removes it in the same undo step as the
+   surrounding text edits. The same run verifies that the format painter can
+   format the text on either side of an inline formula and undo the change
+   without modifying the formula or the surrounding source.
+   [Browser run](https://github.com/AminiamEva/Lineae/actions/runs/45714398129).
+   Selections ending in individual cells, spanning two
+   copies of the same input, or partially selecting formula structures still
+   need coverage.
 3. Automated composition proves commit-once and cancellation. Candidate
    placement, shortcut delivery and latency still need physical-device tests.
 4. The browser can open standalone and floating TikZ directly from a registered

@@ -1259,6 +1259,27 @@ test('each sibling TikZ drawing owns its measured corners and only its source by
     source.slice(source.lastIndexOf(drawing)).replace('(1,1)','(2,1)'));
 });
 
+test('native drawing ownership includes the complete resizebox, preserving float options',()=>{
+  const drawing=['\\resizebox{.6\\linewidth}{!}{%','\\begin{tikzpicture}',
+    '\\draw (0,0) -- (1,1);','\\end{tikzpicture}','}'].join('\r\n');
+  const source=['\\begin{document}','\\begin{figure}[ht]','\\centering',drawing,
+    '\\caption{Scaled drawing}','\\label{fig:scaled}','\\end{figure}','\\end{document}',''].join('\r\n');
+  const projection=projectMixedDocument(source,{measureDrawings:true});
+  const [top,bottom]=[...projection.owners.values()].filter(owner=>owner.drawing);
+  const from=source.indexOf(drawing);
+  assert.deepEqual(top.drawing,bottom.drawing);
+  assert.equal(top.drawing.from16,from);
+  assert.equal(top.drawing.to16,from+drawing.length);
+  assert.ok(projection.projection.includes('\\setbox0=\\hbox{'+drawing+'}'));
+  const before={type:'doc',content:parseDocument(source).blocks.flatMap(importBlocks)};
+  const after=structuredClone(before);
+  after.content[0].attrs.tikzSource=drawing.replace('(1,1)','(2,1)');
+  const changes=standaloneMathChanges(sourceProjection(source,before),after);
+  assert.ok(changes);
+  const result=changes.reduceRight((text,{from,to,insert})=>text.slice(0,from)+insert+text.slice(to),source);
+  assert.equal(result,source.replace('(1,1)','(2,1)'));
+});
+
 test('native math context identifies an integral body, its limits and a nested fraction',()=>{
   const source='\\begin{document}\n\\[\\int_{0}^{1}{\\frac{x}{y}}\\]\n\\end{document}\n';
   const projection=projectDocumentFormulas(source),[formula]=projection.formulas;
