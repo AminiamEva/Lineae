@@ -104,6 +104,7 @@ import TableRow from '@tiptap/extension-table-row';
 import TableCell from '@tiptap/extension-table-cell';
 import TableHeader from '@tiptap/extension-table-header';
 import { Plugin, Selection, NodeSelection, TextSelection } from '@tiptap/pm/state';
+import {canSplit} from '@tiptap/pm/transform';
 import { DOMParser as ProseMirrorParser, Fragment } from '@tiptap/pm/model';
 import { CellSelection } from '@tiptap/pm/tables';
 import { parseDocument } from '../latex/document.mjs';
@@ -3046,6 +3047,59 @@ function dispatchVerifiedNativeProse(state,tr,source,draft,change,index){
   const projected=sourceProjection(draft,tr.doc.toJSON(),{fragment:projectFileKind==='tex'});
   return Boolean(projected&&dispatchNativeParagraphChange(state,tr,source,draft,change,projected));
 }
+function commitNativeListChange(state,tr,target,paragraph,change,offset){
+  const {source,filePath:path}=paragraph;
+  const {range,composition,project,file}=target;
+  const draft=source.slice(0,change.from)+change.insert+source.slice(change.to);
+  const result={source:draft,offset,path};
+  if(composition)return dispatchNativeProjectChange(state,tr,project,new Map([[file.id,draft]]))?result:null;
+  const block=range.match.sourceBlock;
+  if(!block||change.from<block.from||change.to>block.to)return null;
+  const raw=draft.slice(block.from,block.to+draft.length-source.length);
+  const parsed=parseDocument(raw,{fragment:true})?.blocks.flatMap(importBlocks);
+  if(parsed?.length!==1||!state.schema.nodeFromJSON(parsed[0]).eq(tr.doc.child(range.match.index)))return null;
+  const projected=sourceProjection(draft,tr.doc.toJSON(),{fragment:projectFileKind==='tex'});
+  return projected&&dispatchNativeParagraphChange(state,tr,source,draft,change,projected)?result:null;
+}
+function isNativeListParagraph(paragraph){
+  return ['bulletList','orderedList'].includes(paragraph.container?.type)&&paragraph.parts.length===1&&
+    !paragraph.parts[0].marks?.length&&!paragraph.wrapped;
+}
+function splitNativeListItem(state,target,paragraph,from,to,text){
+  const {range}=target,{source}=paragraph;
+  const position=state.doc.resolve(range.from);
+  if(position.depth<2||position.index(position.depth-1)!==0||
+    position.node(position.depth-1).type.name!=='listItem')return null;
+  const {listItem,paragraph:paragraphType}=state.schema.nodes;
+  const types=[{type:listItem},{type:paragraphType}];
+  const tr=state.tr.delete(range.from,range.to);
+  if(!canSplit(tr.doc,range.from,2,types))return null;
+  const eol=source.includes('\r\n')?'\r\n':'\n';
+  const before=source.slice(0,paragraph.from16).split(/\r?\n/).at(-1);
+  const indent=/^([ \t]*)\\item\b/.exec(before)?.[1]??'';
+  const insert=eol+indent+'\\item '+serialize({type:'text',text});
+  const change={from:paragraph.from16+from,to:paragraph.from16+to,insert};
+  tr.split(range.from,2,types);
+  const next=range.from+4;
+  if(text)tr.insertText(text,next);
+  tr.setSelection(TextSelection.create(tr.doc,next+text.length));
+  return commitNativeListChange(state,tr,target,paragraph,change,change.from+insert.length);
+}
+function joinNativeListItems(first,last,from,to){
+  if(first.local!==first.paragraph.text.length||last.local!==0||
+    !/^\s*\\item[\t \r\n]+$/.test(first.paragraph.source.slice(from,to)))return null;
+  const left=nativeProsePosition(first.paragraph,first.local,first.local);
+  const right=nativeProsePosition(last.paragraph,last.local,last.local);
+  if(!left||!right||left.range.match.sourceBlock?.from!==right.range.match.sourceBlock?.from)return null;
+  const {state}=editor;
+  const $left=state.doc.resolve(left.range.from),$right=state.doc.resolve(right.range.from),item=$left.depth-1;
+  if(item<1||$left.depth!==$right.depth||$left.node(item).type.name!=='listItem'||
+     $right.node(item).type.name!=='listItem'||$left.node(item).childCount!==1||
+     $right.node(item).childCount!==1||$left.after(item)!==$right.before(item))return null;
+  const tr=state.tr.join($left.after(item),2);
+  tr.setSelection(TextSelection.create(tr.doc,left.range.from));
+  return commitNativeListChange(state,tr,left,first.paragraph,{from,to,insert:''},from);
+}
 function applyTextStyle(attributes){
   if(!nativeParagraphFormattingActive())return editor.chain().focus().setMark('textStyle',attributes).run();
   const stops=nativeTexPreview.verifiedTextRange();
@@ -3675,8 +3729,9 @@ nativeTexPreview=installNativeTexPreview({host:footer,before:modes,primary:nativ
   commitParagraphBreak:(paragraph,from,to,text)=>{
     const theorem=paragraph.container?.type==='theoremBlock';
     const environment=paragraph.container?.type==='blockquote';
+    const list=isNativeListParagraph(paragraph);
     const mixed=paragraph.parts.length!==1;
-    if(paragraph.tableCell||paragraph.container&&!theorem&&!environment||
+    if(paragraph.tableCell||paragraph.container&&!theorem&&!environment&&!list||
        mixed&&(paragraph.container||paragraph.heading||paragraph.wrapped)||!from||/[\r\n]/.test(text))return null;
     if(paragraph.heading&&(!Number.isInteger(paragraph.headingEnd)||from!==to||to!==paragraph.text.length))return null;
     if(projectDocument.composition&&!projectDocument.rebase(currentNativeProjectComposition(),editor.getJSON()))return null;
@@ -3686,6 +3741,7 @@ nativeTexPreview=installNativeTexPreview({host:footer,before:modes,primary:nativ
     if(range.endpoints.start!==range.endpoints.end||range.endpoints.start.marks?.length)return null;
     if(!text&&to===paragraph.text.length)return {awaitingText:true};
     if(text&&!text.trim())return null;
+    if(list)return splitNativeListItem(state,target,paragraph,from,to,text);
     const newline=paragraph.source.includes('\r\n')?'\r\n':'\n';
     const raw=serialize({type:'text',text});
     const start=paragraph.headingEnd??paragraph.from16+from,end=paragraph.headingEnd??paragraph.from16+to;
@@ -3741,6 +3797,10 @@ nativeTexPreview=installNativeTexPreview({host:footer,before:modes,primary:nativ
     if(first?.kind!=='text'||last?.kind!=='text'||first.paragraph===last.paragraph||
       first.paragraph.filePath!==last.paragraph.filePath||first.paragraph.source!==last.paragraph.source||
       /[\r\n]/.test(text))return null;
+    if(!text&&isNativeListParagraph(first.paragraph)&&isNativeListParagraph(last.paragraph)){
+      if(projectDocument.composition&&!projectDocument.rebase(currentNativeProjectComposition(),editor.getJSON()))return null;
+      return joinNativeListItems(first,last,first.docOffset,last.docOffset);
+    }
     const theorem=first.paragraph.container?.type==='theoremBlock'&&last.paragraph.container?.type==='theoremBlock';
     const environment=first.paragraph.container?.type==='blockquote'&&last.paragraph.container?.type==='blockquote';
     const mixed=first.paragraph.parts.length!==1||last.paragraph.parts.length!==1;
