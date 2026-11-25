@@ -1,5 +1,6 @@
 import {projectPath} from '../../project/paths.mjs';
 import {projectDependencies} from '../../editor/project-zip.mjs';
+import {parseDocument} from '../../../latex/document.mjs';
 
 const encoder = new TextEncoder();
 const limits = {maxFiles:512, maxSourceBytes:2 * 1024 * 1024, maxFileBytes:16 * 1024 * 1024,
@@ -66,7 +67,7 @@ export async function nativeAttachedSnapshot(source,attachments) {
  * Recheck model identity/document generation after awaiting, before opening a
  * native session. Pass source, main_file:mainFile, and files to native open.
  * Send changed snapshots to the same trusted project session. A different
- * main file/project requires a new session and trust confirmation.
+ * project requires trust confirmation.
  *
  * changed() uses the explorer's existing sessions.text()/Project.edit() capture;
  * rich composition edits already update individual dependency drafts. Never use
@@ -116,10 +117,18 @@ export async function nativeProjectSnapshot(project, options = {}) {
   if (!main || main.file.kind !== 'tex' || typeof main.draft !== 'string') {
     throw new TypeError('Project snapshot requires a TeX main document');
   }
+  const projectMain=records.find(record=>record.file.id===projectMainId);
+  const inherited=options.wrapFragment&&main!==projectMain&&typeof projectMain?.draft==='string'
+    ?parseDocument(projectMain.draft):null;
+  const fragment=inherited&& !parseDocument(main.draft)
+    ?{start:inherited.start,source:main.draft,end:inherited.eol+'\\end{document}'+inherited.eol}:null;
+  const source=fragment?fragment.start+fragment.source+fragment.end:main.draft;
   records.sort((a, b) => a.path < b.path ? -1 : a.path > b.path ? 1 : 0);
   const files = [], manifest = [];
   let total = 0;
-  for (const {file,path, draft, bytes:knownBytes} of records) {
+  for (const record of records) {
+    const {file,path,bytes:knownBytes}=record;
+    const draft=record===main?source:record.draft;
     const cached=cachedFiles.get(file);
     if(cached && ((typeof draft==='string'&&cached.draft===draft) ||
         (typeof draft!=='string'&&options.useModelAssets&&cached.asset===knownBytes))){
@@ -162,5 +171,5 @@ export async function nativeProjectSnapshot(project, options = {}) {
   }
   const signature=hex(digest);
   const dependencySignature=hex(dependencyDigest);
-  return {mainFile:main.path, source:main.draft, files, signature,dependencySignature};
+  return {mainFile:main.path,source,files,signature,dependencySignature,...(fragment&&{fragment})};
 }

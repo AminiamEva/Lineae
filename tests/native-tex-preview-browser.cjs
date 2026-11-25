@@ -528,9 +528,25 @@ const server=createServer(async(req,res)=>{
       await page.keyboard.type('X');
       await page.waitForFunction(({active,main})=>{
         const update=nativeProbe.calls.findLast(call=>call.command==='native_tex_update');
-        return update?.args.source===active&&update.args.files?.some(file=>file.path==='main.tex'&&
+        const entry=nativeProbe.calls.findLast(call=>call.command==='native_tex_update'&&call.args.mainFile==='chapters/one.tex');
+        return update?.args.source===active&&entry?.args.files?.some(file=>file.path==='main.tex'&&
           new TextDecoder().decode(new Uint8Array(file.bytes))===main);
       },{active:independent.replace('Independent','XIndependent'),main:verifiedMain});
+      await page.locator('#native-tex-close').click();
+      const fragment='Detached notes.';
+      await openMockProject(page,false,singleProject,fragment);
+      if(!await page.locator('.project-file[data-path="chapters/one.tex"]').isVisible())await folder.click();
+      await page.locator('.project-file[data-path="chapters/one.tex"]').click();
+      await page.locator('#native-tex-toggle').click();
+      const stagedFragment=workspaceSource.replace('Native document.',fragment);
+      await page.waitForFunction(expected=>nativeProbe.source===expected,stagedFragment);
+      await page.locator('#native-tex-target').click();
+      await panel.getByText('Click text on the native page',{exact:false}).waitFor();
+      await page.locator('#native-tex-edit').click();
+      await canvas.click({position:{x:6550000*scale,y:9250000*scale}});
+      await page.keyboard.type('X');
+      await page.waitForFunction(expected=>nativeProbe.source===expected,stagedFragment.replace(fragment,'X'+fragment));
+      assert.deepEqual(await page.locator('.ProseMirror p').allTextContents(),['X'+fragment]);
       await page.locator('#native-tex-close').click();
       const endingWithInput=projectMain.replace('After chapter.\n','');
       await openMockProject(page,false,endingWithInput);

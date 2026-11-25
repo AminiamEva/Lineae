@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {nativeAttachedSnapshot,nativeProjectSnapshot} from '../apps/web/src/typesetting/rtex/project-snapshot.mjs';
 import {rasterContains,stagedRaster,stagedRasterPath} from '../apps/web/src/typesetting/rtex/raster-assets.mjs';
 import {nativeFontFace} from '../apps/web/src/typesetting/rtex/font-collection.mjs';
+import {projectMixedSnapshot,textEdit} from '../apps/web/src/editor/native-text/projection.mjs';
 
 test('native raster commands can only resolve staged PNG and JPEG assets',()=>{
   const path='figures/plot.png';
@@ -137,6 +138,29 @@ test('previewing another complete TeX file changes only the compilation entry',a
   assert.equal(direct.source,notes);
   assert.deepEqual(direct.files,original.files);
   assert.notEqual(direct.dependencySignature,original.dependencySignature);
+});
+
+test('a detached fragment inherits the project preamble and keeps its native editing offsets',async()=>{
+  const start='\\documentclass{article}\r\n\\usepackage{amsmath}\r\n\\begin{document}\r\n';
+  const root=start+'Main.\r\n\\end{document}\r\n',fragment='Notes $x$ and prose.';
+  const {project}=model([['main.tex',root],['notes/notes.tex',fragment]]);
+  const options={entryFileId:'notes/notes.tex',wrapFragment:true};
+  const snapshot=await nativeProjectSnapshot(project,options);
+  assert.equal(snapshot.source,start+fragment+'\r\n\\end{document}\r\n');
+  assert.equal(decode(snapshot.files.find(file=>file.path==='main.tex').bytes),root);
+  const observed=projectMixedSnapshot({...snapshot,editablePaths:new Set(['notes/notes.tex'])});
+  const [paragraph]=observed.paragraphs,[formula]=observed.formulas;
+  assert.equal(paragraph.source,fragment);
+  assert.equal(paragraph.from16,0);
+  assert.equal(formula.from16,fragment.indexOf('$')+1);
+  assert.equal(formula.filePath,'notes/notes.tex');
+  assert.ok(observed.projection.startsWith(start));
+  assert.equal(textEdit(observed,{paragraph,from16:0,to16:0,insert:'Draft '}).source,'Draft '+fragment);
+  assert.equal(project.files.get('notes/notes.tex').draft,fragment);
+  project.files.get('notes/notes.tex').draft='Updated '+fragment;
+  const next=await nativeProjectSnapshot(project,options);
+  assert.notEqual(snapshot.signature,next.signature);
+  assert.equal(snapshot.dependencySignature,next.dependencySignature);
 });
 test('live typing may use the explicitly refreshed model asset snapshot without disk I/O',async()=>{
   const {project,reads}=model([['main.tex','main'],['image.png',null,[1,2,3],'image']]);

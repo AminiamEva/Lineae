@@ -2750,16 +2750,20 @@ function nativeTikzDrawings(){
 function nativeProjectEntry(project){
   const main=project.file(project.mainFileId),active=project.file(project.activeFileId);
   const composition=projectDocument.compose(project,main.id,{boundariesOnly:true});
-  if(active.id===main.id||active.kind!=='tex'||!parseDocument(active.draft)||composition.sources.has(active.id))
+  if(active.id===main.id||active.kind!=='tex'||composition.sources.has(active.id))
     return {file:main,composition};
-  return {file:active,composition:projectDocument.compose(project,active.id,{boundariesOnly:true})};
+  const wrapFragment=!parseDocument(active.draft);
+  if(wrapFragment&&!parseDocument(main.draft))return {file:main,composition};
+  return {file:active,wrapFragment,composition:projectDocument.compose(project,active.id,{boundariesOnly:true})};
 }
 function canStartNativeText(){
   if(!sourceView.hidden||projectDocument.composition||editor.state.doc.childCount!==1)return false;
   const paragraph=editor.state.doc.firstChild,project=projectExplorer?.model;
-  if(paragraph?.type.name!=='paragraph'||paragraph.content.size||
-     project&&nativeProjectEntry(project).file.id!==project.activeFileId)return false;
-  const value=source(),document=parseDocument(value);
+  if(paragraph?.type.name!=='paragraph'||paragraph.content.size)return false;
+  const entry=project&&nativeProjectEntry(project);
+  if(entry&&entry.file.id!==project.activeFileId)return false;
+  const value=source();
+  const document=parseDocument(value,{fragment:entry?.wrapFragment});
   return Boolean(document&&value.slice(document.start.length,value.length-document.end.length).trim()==='');
 }
 nativeTexPreview=installNativeTexPreview({host:footer,before:modes,primary:nativeWorkspaceRequested(),documentZoom:Number(zoom.value),
@@ -2770,9 +2774,9 @@ nativeTexPreview=installNativeTexPreview({host:footer,before:modes,primary:nativ
       if(!sourceView.hidden)sourceView.flush();
       else editor.view.domObserver.flush();
       projectExplorer.changed();
-      const active=project.activeFileId,{file,composition}=nativeProjectEntry(project);
+      const active=project.activeFileId,{file,composition,wrapFragment}=nativeProjectEntry(project);
       const snapshot=await nativeProjectSnapshot(project,{useModelAssets:true,includeGeneratedInputs:true,
-        entryFileId:file.id});
+        entryFileId:file.id,wrapFragment});
       if(projectExplorer.model!==project||project.activeFileId!==active)
         throw new Error(t('工程已改变，请重试。','Project changed; retry the preview.'));
       return {...snapshot,editablePaths:new Set(composition.regions.map(region=>region.path))};
@@ -2864,7 +2868,7 @@ nativeTexPreview=installNativeTexPreview({host:footer,before:modes,primary:nativ
       state.doc.toJSON(),tr.doc.toJSON(),0);
     const project=projectExplorer?.model;
     const path=project?.file(project.activeFileId).path;
-    const first=prepared&&projectTextDocument(prepared.draft,{filePath:path})?.paragraphs[0];
+    const first=prepared&&projectTextDocument(prepared.draft,{filePath:path,fragment:projectFileKind==='tex'})?.paragraphs[0];
     if(!first)return null;
     const offset=first.from16+first.glyphs.at(-1).to16;
     editor.view.dispatch(closeHistory(tr.setMeta('standaloneParagraph',prepared)));

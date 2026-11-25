@@ -281,7 +281,10 @@ export function projectMixedSnapshot(snapshot, previous, pending) {
     paragraphs.push(...projection.paragraphs);
     return projection.projection;
   }
-  const root=add(snapshot.source,snapshot.mainFile,false)??snapshot.source;
+  const fragment=snapshot.fragment;
+  const root=fragment
+    ?fragment.start+(add(fragment.source,snapshot.mainFile,true)??fragment.source)+fragment.end
+    :add(snapshot.source,snapshot.mainFile,false)??snapshot.source;
   const decoder=new TextDecoder('utf-8',{fatal:true,ignoreBOM:true});
   for(const file of snapshot.files??[]){
     if(snapshot.editablePaths&&!snapshot.editablePaths.has(file.path))continue;
