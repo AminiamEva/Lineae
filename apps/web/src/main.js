@@ -3611,8 +3611,9 @@ nativeTexPreview=installNativeTexPreview({host:footer,before:modes,primary:nativ
       const index=range.match.index;
       const owner=projection?.blocks.find(block=>block.index===index&&block.count===1&&block.from<=start&&block.to>=end);
       if(!owner)return null;
-      const revised=importBlocks(draft.slice(owner.from,owner.to+draft.length-paragraph.source.length));
-      if(revised.length!==2||revised.some((value,position)=>!state.schema.nodeFromJSON(value).eq(tr.doc.child(index+position))))return null;
+      const fragmentSource=draft.slice(owner.from,owner.to+draft.length-paragraph.source.length);
+      const revised=parseDocument(fragmentSource,{fragment:true})?.blocks.flatMap(importBlocks);
+      if(revised?.length!==2||revised.some((value,position)=>!state.schema.nodeFromJSON(value).eq(tr.doc.child(index+position))))return null;
     }
     if(theorem){
       const patches=richSourceChanges(projection,tr.doc.toJSON());
