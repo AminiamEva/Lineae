@@ -284,14 +284,16 @@
   "phaseA": {
     "status": "partial",
     "shared": [
+      "native document session for prose and math adapters",
       "caret and selection mechanics",
       "pending source offset recovery",
-      "native preview commit dispatch"
+      "native preview commit dispatch",
+      "file-aware source ownership within verified project regions"
     ],
     "pending": [
-      "unified document session and command registry",
-      "stable semantic addresses across composed files",
-      "cross-adapter selection and transactions"
+      "full native command registry",
+      "semantic addresses for opaque or complex project structures",
+      "general cross-adapter replacement and structural transactions"
     ]
   }
 }

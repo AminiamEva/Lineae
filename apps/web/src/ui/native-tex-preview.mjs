@@ -125,22 +125,22 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
   }
   function commitSurface(edit) {
     if (!edit) return;
-    if(edit.requiresAmsmath&&resolvePackages(parseDocument(sentSource)?.start??'',edit.text)
-      .some(({name})=>name==='amsmath')){
-      nativeDocument.surface.clearPending();
-      targetStatus.textContent=t('公式换行需要 amsmath。请在导言区加载宏包。','Load amsmath in the preamble to insert a display line.');
-      return;
-    }
     const started=inputStart || performance.now();
     inputStart=0;
+    const needsAmsmath=edit.requiresAmsmath&&resolvePackages(parseDocument(sentSource)?.start??'',edit.text)
+      .some(({name})=>name==='amsmath');
     const applied=edit.kind==='project-range'?commitProjectRange?.(edit.edits):edit.kind==='text'
       ? commitText?.({ paragraph: edit.paragraph, patch: edit.patch, text: edit.text })
-      : commitMath?.({ formula: edit.formula, patch: edit.patch, text: edit.text, structure:edit.structure });
+      : commitMath?.({ formula: edit.formula, patch: edit.patch, text: edit.text, structure:edit.structure,
+        needsAmsmath,cursor:nativeDocument.surface.pendingOffset });
     input.value = '';
+    if(applied&&typeof applied==='object')return awaitSourcePosition(applied,started,true);
     if (!applied) {
       nativeDocument.surface.clearPending();
       queuedInput.length=0;
-      targetStatus.textContent = t('原生编辑未能写入文档。', 'The native edit could not be written to the document.');
+      targetStatus.textContent=needsAmsmath
+        ?t('公式换行需要在主文档导言区加载 amsmath。','Load amsmath in the main document preamble to insert a display line.')
+        :t('原生编辑未能写入文档。','The native edit could not be written to the document.');
       return;
     }
     pendingEdit=edit;
@@ -559,6 +559,7 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
     delete panel.dataset.latencyLastTransaction;
     delete panel.dataset.latencyLastGeometry;
     delete panel.dataset.latencyLastRepaint;
+    delete panel.dataset.latencySegments;
     compositionField=null;
     inputComposition=null;
     mirror?.lifetime.abort();mirror=null;
@@ -805,16 +806,23 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
             requestAnimationFrame(()=>requestAnimationFrame(()=>{
               if(attempt!==generation)return;
               const repaint=performance.now();
-              latency.push(repaint-sample.started);
-              const ordered=[...latency].sort((left,right)=>left-right);
-              const percentile=q=>ordered[Math.ceil(ordered.length*q)-1].toFixed(1);
-              panel.dataset.latencySamples=String(ordered.length);
-              panel.dataset.latencyP50=percentile(.50);
-              panel.dataset.latencyP95=percentile(.95);
-              panel.dataset.latencyP99=percentile(.99);
-              panel.dataset.latencyLastTransaction=(sample.committed-sample.started).toFixed(1);
-              panel.dataset.latencyLastGeometry=(geometry-sample.committed).toFixed(1);
-              panel.dataset.latencyLastRepaint=(repaint-geometry).toFixed(1);
+              const last={transaction:sample.committed-sample.started,geometry:geometry-sample.committed,
+                repaint:repaint-geometry,total:repaint-sample.started};
+              latency.push(last);
+              if(latency.length>1024)latency.shift();
+              const percentiles=Object.fromEntries(Object.keys(last).map(segment=>{
+                const ordered=latency.map(entry=>entry[segment]).sort((left,right)=>left-right);
+                const at=percent=>Number(ordered[Math.ceil(ordered.length*percent)-1].toFixed(1));
+                return [segment,{p50:at(.50),p95:at(.95),p99:at(.99)}];
+              }));
+              panel.dataset.latencySamples=String(latency.length);
+              panel.dataset.latencyP50=String(percentiles.total.p50);
+              panel.dataset.latencyP95=String(percentiles.total.p95);
+              panel.dataset.latencyP99=String(percentiles.total.p99);
+              panel.dataset.latencyLastTransaction=last.transaction.toFixed(1);
+              panel.dataset.latencyLastGeometry=last.geometry.toFixed(1);
+              panel.dataset.latencyLastRepaint=last.repaint.toFixed(1);
+              panel.dataset.latencySegments=JSON.stringify(percentiles);
             }));
           }
         }

@@ -2977,7 +2977,7 @@ nativeTexPreview=installNativeTexPreview({host:footer,before:modes,primary:nativ
     else field.selection={ranges:[[Math.min(from,to),Math.max(from,to)]],direction:from<to?'forward':'backward'};
     return {field};
   },
-  commitMath:({formula,patch,text,structure})=>{
+  commitMath:({formula,patch,text,structure,needsAmsmath,cursor})=>{
     if(!sourceView.hidden||!text||text===formula.math.source)return false;
     const project=projectExplorer?.model;
     const composition=projectDocument.composition;
@@ -3007,6 +3007,21 @@ nativeTexPreview=installNativeTexPreview({host:footer,before:modes,primary:nativ
     if(structure)closeHistory(transaction);
     const from=formula.from16+patch.from,to=formula.from16+patch.to;
     const expected=formula.source.slice(0,from)+patch.insert+formula.source.slice(to);
+    if(needsAmsmath){
+      const doc=!composition&&parseDocument(formula.source);
+      if(!doc||!Number.isInteger(cursor))return false;
+      const at=doc.start.lastIndexOf('\\begin{document}');
+      if(at<0||from<doc.start.length)return false;
+      const packageLine='\\usepackage{amsmath}'+doc.eol;
+      const preamble=doc.start.slice(0,at)+packageLine+doc.start.slice(at);
+      const draft=expected.slice(0,at)+packageLine+expected.slice(at);
+      transaction.setDocAttribute('layoutPreamble',preamble);
+      const projected=sourceProjection(draft,transaction.doc.toJSON());
+      if(!projected)return false;
+      const change={from:at,to,insert:packageLine+formula.source.slice(at,from)+patch.insert};
+      return dispatchNativeParagraphChange(editor.state,transaction,formula.source,draft,change,projected)
+        ?{source:draft,path:formula.filePath,offset:cursor+packageLine.length}:false;
+    }
     if(composition){
       const drafts=projectDocument.changes(transaction.doc.toJSON());
       if(drafts?.get(file.id)!==expected)return false;

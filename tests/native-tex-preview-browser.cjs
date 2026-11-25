@@ -83,7 +83,7 @@ const server=createServer(async(req,res)=>{
 
     if(process.env.LINEAE_NATIVE_ONLY==='1'){
       await page.goto('http://127.0.0.1:'+server.address().port+'/?native-only-acceptance=1',{waitUntil:'networkidle'});
-      const mixedSource='\\documentclass{article}\n\\usepackage{amsmath}\n\\begin{document}\nAlpha beta.\n\n\\[\n\\frac{a}{b}\n\\]\n\nOmega.\n\\end{document}\n';
+      const mixedSource='\\documentclass{article}\n\\begin{document}\nAlpha beta.\n\n\\[\n\\frac{a}{b}\n\\]\n\nOmega.\n\\end{document}\n';
       await page.locator('input#file').setInputFiles({name:'mixed.tex',mimeType:'text/plain',
         buffer:Buffer.from(mixedSource)});
       await page.waitForFunction(()=>document.querySelector('.ProseMirror')?.textContent.includes('Alpha beta.'));
@@ -147,7 +147,7 @@ const server=createServer(async(req,res)=>{
       await panel.getByText('Click prose on the native page',{exact:false}).waitFor();
       await canvas.click({position:{x:6510000*scale,y:6950000*scale}});
       await page.keyboard.press('Enter');
-      await page.waitForFunction(()=>nativeProbe.source?.includes('\\begin{gathered}'));
+      await page.waitForFunction(()=>nativeProbe.source?.includes('\\begin{gathered}')&&nativeProbe.source.includes('\\usepackage{amsmath}'));
       await page.keyboard.press(mod+'+z');
       await page.waitForFunction(source=>nativeProbe.source===source,expected);
       await panel.getByText('Click prose on the native page',{exact:false}).waitFor();
@@ -852,6 +852,9 @@ const server=createServer(async(req,res)=>{
     assert.equal(await page.evaluate(()=>nativeProbe.calls.filter(call=>call.command==='native_tex_poll').length),pollsBefore,
       'Native editing consumes pushed events instead of polling');
     await page.waitForFunction(()=>document.querySelector('#native-tex-preview').dataset.latencySamples);
+    const timings=JSON.parse(await panel.getAttribute('data-latency-segments'));
+    for(const stage of ['transaction','geometry','repaint','total'])
+      assert.ok(timings[stage].p50>=0&&timings[stage].p99>=timings[stage].p95&&timings[stage].p95>=timings[stage].p50);
     await page.waitForFunction(()=>document.querySelector('#native-tex-preview').dataset.state==='current');
     await page.waitForTimeout(700);
     await page.keyboard.press('ArrowLeft');
