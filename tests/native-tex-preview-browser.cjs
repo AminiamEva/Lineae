@@ -44,6 +44,35 @@ const server=createServer(async(req,res)=>{
     page.on('pageerror',error=>errors.push(error.message));
     await page.addInitScript(installMockNativeTex);
     await page.goto('http://127.0.0.1:'+server.address().port,{waitUntil:'networkidle'});
+
+    if(process.env.LINEAE_NATIVE_ONLY==='1'){
+      await page.route('**/vendor/mathlive/**',route=>route.abort());
+      await page.goto('http://127.0.0.1:'+server.address().port+'/?native-only-acceptance=1',{waitUntil:'networkidle'});
+      await page.locator('input#file').setInputFiles({name:'mixed.tex',mimeType:'text/plain',
+        buffer:Buffer.from('\\documentclass{article}\n\\begin{document}\nAlpha beta.\n\n\\[\n\\frac{a}{b}\n\\]\n\\end{document}\n')});
+      await page.waitForFunction(()=>document.querySelector('.ProseMirror')?.textContent.includes('Alpha beta.'));
+      assert.equal(await page.locator('.document-sheets').count(),0);
+      assert.equal(await page.evaluate(()=>customElements.get('math-field')),undefined);
+      const panel=page.locator('#native-tex-preview');
+      await page.locator('#native-tex-toggle').click();
+      await panel.locator('[data-native-page="1"] canvas').waitFor();
+      await page.waitForFunction(()=>document.querySelector('#native-tex-preview').dataset.state==='current');
+      await page.locator('#native-tex-target').click();
+      await page.locator('#native-tex-edit').click();
+      const canvas=panel.locator('[data-native-page="1"] canvas');
+      const scale=Number(await page.locator('#native-tex-zoom').inputValue())/100*(96/72)/65781.76;
+      await canvas.click({position:{x:6550000*scale,y:9250000*scale}});
+      await page.waitForFunction(()=>document.activeElement?.id==='native-tex-input');
+      await page.keyboard.type('X');
+      await page.waitForFunction(()=>nativeProbe.source?.includes('XAlpha beta.') && document.querySelector('#native-tex-preview').dataset.state==='current');
+      await canvas.click({position:{x:6510000*scale,y:6950000*scale}});
+      await page.keyboard.type('c');
+      await page.waitForFunction(()=>nativeProbe.source?.includes('\\frac{a}{cb}'));
+      assert.deepEqual(errors,[]);
+      console.log('PASS native mixed editing with MathLive and JS pagination disabled');
+      return;
+    }
+    await page.goto('http://127.0.0.1:'+server.address().port,{waitUntil:'networkidle'});
     await page.locator('input#file').setInputFiles({name:'native.tex',mimeType:'text/plain',
       buffer:Buffer.from('\\documentclass{article}\n\\begin{document}\nBefore $abc$ after.\n\\end{document}\n')});
     const field=page.locator('math-field');

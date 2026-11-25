@@ -1497,8 +1497,10 @@ function renderMeta() {
   metaDate.dataset.zhPlaceholder='日期';metaDate.dataset.enPlaceholder='Date';metaDate.dataset.placeholder=t('日期','Date');
 }
 renderMeta();
-typesetPagination=installTypesetPagination(documentPage,paper,metaBar,editor);
-typesetPagination.setTableContinuation(config.value.interface.continuedTables);
+const nativeOnlyAcceptance=Boolean(window.__TAURI_INTERNALS__) &&
+  new URLSearchParams(location.search).get('native-only-acceptance')==='1';
+if(!nativeOnlyAcceptance)typesetPagination=installTypesetPagination(documentPage,paper,metaBar,editor);
+typesetPagination?.setTableContinuation(config.value.interface.continuedTables);
 window.addEventListener('lineae-image-layout',()=>{typesetPagination?.refresh();syncImageTab?.();});
 function source() {
   if(projectDocument.composition)return projectExplorer.model.file(projectDocument.composition.rootId).draft;
@@ -2178,7 +2180,7 @@ function updateSourceButton() {
 let continueTablesButton;
 function updateContinueTablesButton(){
   if(!continueTablesButton)return;
-  const enabled=typesetPagination.getTableContinuation();
+  const enabled=typesetPagination?.getTableContinuation();
   continueTablesButton.textContent=enabled?t('续表 开','Continue on'):t('续表 关','Continue off');
   continueTablesButton.setAttribute('aria-pressed',String(enabled));
   continueTablesButton.dataset.tooltipZh=enabled?'超过一页的表格自动拆分并重复表头':'表格不自动拆分';
@@ -2188,11 +2190,11 @@ const paginationButton=document.createElement('button');
 paginationButton.type='button';paginationButton.className='pagination-toggle';
 paginationButton.addEventListener('mousedown',event=>event.preventDefault());
 paginationButton.addEventListener('click',()=>{
-  typesetPagination.toggle();
+  typesetPagination?.toggle();
   updatePaginationButton();
 });
 function updatePaginationButton(){
-  const pages=typesetPagination.getMode()==='pages';
+  const pages=typesetPagination?.getMode()==='pages';
   paginationButton.textContent=pages?t('分页','Pages'):t('连续流','Continuous');
   paginationButton.dataset.mode=pages?'pages':'flow';
   paginationButton.setAttribute('aria-pressed',String(pages));
@@ -2975,8 +2977,8 @@ editor.on('selectionUpdate',()=>syncLayoutParagraph?.());
 applyPageSetup();
 groupButton(tableGroup,'▦',()=>insertDefaultTable());
 continueTablesButton=groupButton(tableGroup,['续表','Continue'],()=>{
-  const enabled=!typesetPagination.getTableContinuation();
-  typesetPagination.setTableContinuation(enabled);
+  const enabled=!typesetPagination?.getTableContinuation();
+  typesetPagination?.setTableContinuation(enabled);
   config.updateInterface({continuedTables:enabled});
   updateContinueTablesButton();
 });

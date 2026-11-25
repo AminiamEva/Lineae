@@ -1,0 +1,195 @@
+{
+  "schemaVersion": 1,
+  "reference": "0c1d12b",
+  "features": [
+    {
+      "id": "plain-prose",
+      "phase": "B",
+      "entryPoints": [
+        "apps/web/src/main.js",
+        "apps/web/src/editor/source-sync.js"
+      ],
+      "tests": [
+        "tests/native-tex-preview-browser.cjs"
+      ],
+      "nativeStatus": "single-file",
+      "evidence": [
+        "https://github.com/AminiamEva/Lineae/actions/runs/45527337822"
+      ]
+    },
+    {
+      "id": "inline-math",
+      "phase": "A",
+      "entryPoints": [
+        "apps/web/src/editor/math-node.js"
+      ],
+      "tests": [
+        "tests/native-surface.test.mjs",
+        "tests/native-tex-preview-browser.cjs"
+      ],
+      "nativeStatus": "single-file",
+      "evidence": [
+        "https://github.com/AminiamEva/Lineae/actions/runs/45527337822"
+      ]
+    },
+    {
+      "id": "display-math",
+      "phase": "A",
+      "entryPoints": [
+        "apps/web/src/editor/math-node.js"
+      ],
+      "tests": [
+        "tests/native-surface.test.mjs",
+        "tests/math-editing-browser.cjs"
+      ],
+      "nativeStatus": "single-file",
+      "evidence": [
+        "https://github.com/AminiamEva/Lineae/actions/runs/45527337822"
+      ]
+    },
+    {
+      "id": "text-containers-and-marks",
+      "phase": "B",
+      "entryPoints": [
+        "apps/web/src/editor/paper-behavior.js",
+        "apps/web/src/editor/latex-codec.js"
+      ],
+      "tests": [
+        "tests/latex.test.mjs",
+        "tests/editor.cjs"
+      ],
+      "nativeStatus": "pending",
+      "evidence": []
+    },
+    {
+      "id": "tables-including-spans",
+      "phase": "C",
+      "entryPoints": [
+        "apps/web/src/editor/table-utils.js",
+        "apps/web/src/editor/latex-codec.js"
+      ],
+      "tests": [
+        "tests/editor.cjs"
+      ],
+      "nativeStatus": "pending",
+      "evidence": []
+    },
+    {
+      "id": "project-composition",
+      "phase": "D",
+      "entryPoints": [
+        "apps/web/src/project/presentation.js",
+        "apps/web/src/main.js"
+      ],
+      "tests": [
+        "tests/project-composition-browser.cjs"
+      ],
+      "nativeStatus": "pending",
+      "evidence": []
+    },
+    {
+      "id": "images-floats-tikz",
+      "phase": "E",
+      "entryPoints": [
+        "apps/web/src/editor/image-node.js",
+        "apps/web/src/ui/tikz-studio.js"
+      ],
+      "tests": [
+        "tests/editor.cjs"
+      ],
+      "nativeStatus": "pending",
+      "evidence": []
+    },
+    {
+      "id": "page-layout-and-pdf",
+      "phase": "F",
+      "entryPoints": [
+        "apps/web/src/editor/typeset-pagination.js",
+        "apps/web/src/ui/native-tex-preview.mjs"
+      ],
+      "tests": [
+        "tests/native-tex-preview-browser.cjs"
+      ],
+      "nativeStatus": "render-only",
+      "evidence": [
+        "https://github.com/AminiamEva/Lineae/actions/runs/45527337822"
+      ]
+    },
+    {
+      "id": "commands-toolbar-shortcuts",
+      "phase": "G",
+      "entryPoints": [
+        "apps/web/src/main.js"
+      ],
+      "tests": [
+        "tests/shortcuts-browser.cjs"
+      ],
+      "nativeStatus": "partial",
+      "evidence": []
+    },
+    {
+      "id": "clipboard-ime-cross-run",
+      "phase": "G",
+      "entryPoints": [
+        "apps/web/src/main.js",
+        "apps/web/src/ui/native-tex-preview.mjs"
+      ],
+      "tests": [
+        "tests/native-tex-preview-browser.cjs"
+      ],
+      "nativeStatus": "partial",
+      "evidence": []
+    },
+    {
+      "id": "default-native-engine",
+      "phase": "H",
+      "entryPoints": [
+        "apps/web/src/main.js"
+      ],
+      "tests": [
+        "tests/native-tex-preview-browser.cjs"
+      ],
+      "nativeStatus": "pending",
+      "evidence": []
+    }
+  ],
+  "acceptance": {
+    "legacyDisabled": {
+      "command": "LINEAE_NATIVE_ONLY=1 node tests/native-tex-preview-browser.cjs",
+      "scope": "Single-file mixed prose and display math, mocked bridge",
+      "status": "awaiting-ci"
+    },
+    "pending": [
+      "project editing",
+      "structure commands",
+      "cross-run replacement",
+      "PDF semantic editing",
+      "physical device IME and latency"
+    ]
+  },
+  "latency": {
+    "pages": [
+      10,
+      100,
+      300
+    ],
+    "percentiles": [
+      50,
+      95,
+      99
+    ],
+    "segments": [
+      "keydown-to-transaction",
+      "transaction-to-geometry",
+      "geometry-to-repaint",
+      "keydown-to-pixels"
+    ],
+    "budgetStatus": "provisional",
+    "provisionalP95Ms": {
+      "keydownToTransaction": 16,
+      "transactionToGeometry": 50,
+      "geometryToRepaint": 34,
+      "keydownToPixels": 100
+    }
+  }
+}

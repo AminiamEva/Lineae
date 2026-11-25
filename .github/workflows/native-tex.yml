@@ -70,6 +70,7 @@ jobs:
           tar -xzf "$temp/$archive" -C apps/web/vendor/mathlive --strip-components=1 package/mathlive.min.js package/fonts
           npx playwright install --only-shell chromium
           node tests/native-tex-preview-browser.cjs
+          LINEAE_NATIVE_ONLY=1 node tests/native-tex-preview-browser.cjs
           LINEAE_TEST_NATIVE_PREVIEW=1 node tests/math-editing-browser.cjs
       - uses: actions/cache@v4
         with:
