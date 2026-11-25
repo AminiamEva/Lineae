@@ -831,6 +831,32 @@ const server=createServer(async(req,res)=>{
       await page.keyboard.press(mod+'+z');
       await projectDrafts(mixedProject,markedChild);
 
+      await page.goto('http://127.0.0.1:'+server.address().port+'/?native-only-acceptance=1',{waitUntil:'networkidle'});
+      const containerProject=mixedProject.replace('Before $z$ end.',
+        '\\begin{center}\nBefore section.\n\\end{center}').replace('\\begin{document}',
+        '\\usepackage{amsthm}\n\\begin{document}');
+      const proofChild='\\begin{proof}\nStartChild.\n\\end{proof}\n';
+      await openMockProject(page,false,containerProject,proofChild);
+      await page.evaluate(()=>{nativeProbe.targetInclude=true;nativeProbe.includeMainText=true;});
+      await page.locator('#native-tex-toggle').click();
+      await page.waitForFunction(()=>document.querySelector('#native-tex-preview').dataset.state==='current');
+      await page.locator('#native-tex-target').click();
+      await panel.getByText('Click prose on the native page',{exact:false}).waitFor();
+      await page.locator('#native-tex-edit').click();
+      const containerBounds=await canvas.boundingBox();
+      await page.mouse.move(containerBounds.x+9850000*scale,containerBounds.y+9250000*scale);
+      await page.mouse.down();
+      await page.mouse.move(containerBounds.x+7450000*scale,containerBounds.y+9250000*scale,{steps:12});
+      await page.mouse.up();
+      await page.keyboard.insertText(' updated.');
+      const updatedParent=containerProject.replace('Before section.','Before updated.');
+      const updatedProof=proofChild.replace('StartChild.','Child.');
+      await projectDrafts(updatedParent,updatedProof);
+      await page.keyboard.press(mod+'+z');
+      await projectDrafts(containerProject,proofChild);
+      await page.keyboard.press(mod+'+Shift+z');
+      await projectDrafts(updatedParent,updatedProof);
+
       await page.goto('http://127.0.0.1:'+server.address().port+'/?native-workspace=1',{waitUntil:'networkidle'});
       const workspaceSource='\\documentclass{article}\n\\begin{document}\nNative document.\n\\end{document}\n';
       await page.locator('input#file').setInputFiles({name:'workspace.tex',mimeType:'text/plain',buffer:Buffer.from(workspaceSource)});

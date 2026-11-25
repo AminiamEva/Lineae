@@ -179,8 +179,9 @@ export function createNativeDocumentSession(resolve) {
       const [first,last]=selection.range;
       if(first?.kind!=='text'||last?.kind!=='text'||order(first)<0||order(last)<=order(first))return null;
       const ranges=this.proseRanges(first,last);
-      if(ranges.length<2||ranges.some(({paragraph})=>paragraph&&
-         (paragraph.container||paragraph.tableCell||paragraph.heading)))return null;
+      if(ranges.length<2||ranges.some(({paragraph},index)=>paragraph&&(paragraph.tableCell||paragraph.heading||
+        paragraph.container&&((index!==0&&index!==ranges.length-1)||
+          !['theoremBlock','blockquote'].includes(paragraph.container.type)))))return null;
       const edits=ranges.map(({paragraph,formula,from,to},index)=>{
         if(formula){
           const {outerFrom16:start,outerTo16:end,filePath,source}=formula;

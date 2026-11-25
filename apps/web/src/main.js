@@ -3750,8 +3750,14 @@ nativeTexPreview=installNativeTexPreview({host:footer,before:modes,primary:nativ
     if(mapped.some(edit=>!edit))return false;
     const first=mapped[0];
     const positions=mapped.map(edit=>state.doc.resolve(edit.range.from));
-    if(positions.some((position,index)=>position.depth!==(mapped[index].formula?1:2)||
-      position.node(1).type.name!=='projectRegion'))return false;
+    if(positions.some((position,index)=>{
+      const {formula,paragraph,range}=mapped[index];
+      if(!position.depth||position.node(1).type.name!=='projectRegion')return true;
+      if(!paragraph?.container)return position.depth!==(formula?1:2);
+      if(position.depth!==3)return true;
+      const owner=position.node(2);
+      return owner.type.name!==paragraph.container.type||owner.childCount!==1||!range.match.sourceBlock;
+    }))return false;
     const firstRegion=positions[0].index(0),lastRegion=positions.at(-1).index(0);
     const expectedNodes=[];
     for(let index=firstRegion;index<=lastRegion;index++){
@@ -3767,9 +3773,12 @@ nativeTexPreview=installNativeTexPreview({host:footer,before:modes,primary:nativ
     if(expectedNodes.length!==positions.length||positions.some((at,index)=>expectedNodes[index]!==`${at.index(0)}/${at.index(1)}`))return false;
     const tr=state.tr;
     const patches=new Map();
-    for(const {file,range,patch,change} of mapped.toReversed()){
+    for(let index=mapped.length-1;index>=0;index--){
+      const {file,range,patch,change,paragraph}=mapped[index];
       if(range.to>range.from)tr.delete(range.from,range.to);
       if(patch.insert)tr.insert(range.from,editor.schema.text(patch.insert,range.marks));
+      if(paragraph?.container?.type==='blockquote'&&!refreshNativeTextEnvironment(tr,positions[index].before(2),
+         range.match.sourceBlock,paragraph.source,change))return false;
       if(!patches.has(file.id))patches.set(file.id,[]);
       patches.get(file.id).push(change);
     }
@@ -3777,7 +3786,7 @@ nativeTexPreview=installNativeTexPreview({host:footer,before:modes,primary:nativ
     const drafts=projectDocument.changes(tr.doc.toJSON());
     const expected=new Map([...patches].map(([id,changes])=>[id,changes.sort((a,b)=>b.from-a.from)
       .reduce((draft,change)=>draft.slice(0,change.from)+change.insert+draft.slice(change.to),project.file(id).draft)]));
-    if(mapped.some(edit=>edit.formula))return dispatchNativeProjectChange(state,tr,project,expected);
+    if(mapped.some(edit=>edit.formula||edit.paragraph.container))return dispatchNativeProjectChange(state,tr,project,expected);
     if(!drafts||[...expected].some(([id,value])=>drafts.get(id)!==value))return false;
     for(const [id,draft] of drafts)if(draft!==(expected.get(id)??project.file(id).draft))return false;
     editor.view.dispatch(closeHistory(tr));
