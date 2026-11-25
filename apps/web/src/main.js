@@ -6,7 +6,7 @@ import {documentMetadata,writeDocumentMetadata} from '../latex/document-metadata
 import {resolvePackages} from '../latex/packages.mjs';
 import {referenceAt} from '../latex/reference-commands.mjs';
 import {sourceStructure} from '../latex/source-structure.mjs';
-import {insertTabularxColumn,insertTabularxRow,removeTabularxColumn,removeTabularxRow} from '../latex/tabularx.mjs';
+import {insertTableSourceColumn,insertTableSourceRow,removeTableSourceColumn,removeTableSourceRow} from '../latex/tabularx.mjs';
 import {loadLegacyMath,nativeOnlyAcceptance,nativeWorkspaceRequested} from './editor/native-surface/acceptance-mode.mjs';
 import {AppendixStart,MatterStart,LayoutCommand} from './editor/appendix.js';
 import {Lipsum} from './editor/lipsum.js';
@@ -2884,24 +2884,28 @@ function editNativeTableAxis(operation){
   while(depth>0&&at.node(depth).type.name!=='table')depth--;
   if(!depth)return false;
   const node=at.node(depth);
-  if(!node.attrs.tabularx)return;
+  if(node.attrs.tblr)return false;
   if(at.depth!==depth+3)return false;
-  const original=serialize(node.toJSON());
   const start=cell.from16;
-  if(!owner.source.startsWith(original,start))return false;
+  const original=owner.source.slice(start,cell.to16);
+  const decode=source=>{
+    const [table,...rest]=importBlocks(source.trim());
+    return table?.type==='table'&&!rest.length&&Boolean(table.attrs.tabularx)===Boolean(node.attrs.tabularx)
+      ?state.schema.nodeFromJSON(table):null;
+  };
+  if(!decode(original)?.eq(node))return false;
   const deleting=operation.startsWith('delete');
   const patch={
-    insertRow:()=>insertTabularxRow(original,cell.row),
-    insertColumn:()=>insertTabularxColumn(original,cell.row,cell.column,caret.docOffset-start),
-    deleteRow:()=>removeTabularxRow(original,cell.row),
-    deleteColumn:()=>removeTabularxColumn(original,cell.row,cell.column),
+    insertRow:()=>insertTableSourceRow(original,cell.row),
+    insertColumn:()=>insertTableSourceColumn(original,cell.row,cell.column,caret.docOffset-start),
+    deleteRow:()=>removeTableSourceRow(original,cell.row),
+    deleteColumn:()=>removeTableSourceColumn(original,cell.row,cell.column),
   }[operation]();
   if(!patch)return false;
   const raw=original.slice(0,patch.from)+patch.insert+original.slice(patch.to);
-  const [updated,...rest]=importBlocks(raw);
-  if(updated?.type!=='table'||rest.length||!updated.attrs.tabularx)return false;
+  const replacement=decode(raw);
+  if(!replacement)return false;
   const tableFrom=at.before(depth);
-  const replacement=state.schema.nodeFromJSON(updated);
   const tr=state.tr.replaceWith(tableFrom,tableFrom+node.nodeSize,replacement);
   const rowIndex=Math.min(cell.row,replacement.childCount-1),row=replacement.child(rowIndex);
   const columnIndex=Math.min(cell.column,row.childCount-1);

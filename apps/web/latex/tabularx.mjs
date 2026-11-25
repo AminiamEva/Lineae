@@ -61,16 +61,25 @@ function parseColumns(preamble,total,unsupported) {
 }
 
 export function parseTabularx(source) {
-  const opening=/^\s*\\begin\{tabularx\}/.exec(source);if(!opening)return null;
+  return parseColumnTable(source,'tabularx');
+}
+
+function parseColumnTable(source,environment) {
+  const opening=/^\s*\\begin\{(tabularx|tabular)\}/.exec(source);
+  if(opening?.[1]!==environment)return null;
   if([...sourceStructure(source)].some(t=>t.kind==='invalid'))return null;
-  const close=environmentEnd(source,opening[0].indexOf('\\begin'),'tabularx');
+  const close=environmentEnd(source,opening[0].indexOf('\\begin'),environment);
   if(!close||source.slice(close.end).trim())return null;
-  const width=group(source,trivia(source,opening[0].length));if(!width)return null;
+  const width=environment==='tabularx'?group(source,trivia(source,opening[0].length))
+    :{end:opening[0].length,value:'\\textwidth'};
+  if(!width)return null;
   let at=trivia(source,width.end),position=null;
   if(source[at]==='['){const pos=group(source,at,'[',']');if(!pos)return null;position=pos.value;at=trivia(source,pos.end);}
   const preamble=group(source,at);if(!preamble||preamble.end>close.start)return null;
   const unsupported=[],columns=parseColumns(preamble.value,width.value,unsupported);if(!columns)return null;
   const {specs,gaps,vertical}=columns;
+  if(environment==='tabular'&&(specs.some(spec=>spec.type==='X')||
+    /\\(?:multirow|cline|cmidrule)(?![A-Za-z])/.test(source)))return null;
   const body=source.slice(preamble.end,close.start),tokens=delimiters(body,['&','\\\\']);if(!tokens)return null;
   let from=0,cells=[];const rawRows=[],rowEnds=[],rules=[];
   for(const token of [...tokens,{index:body.length,end:body.length,value:'end'}]) {
@@ -79,7 +88,8 @@ export function parseTabularx(source) {
     if(!cells.length) {
       begin=trivia(body,begin);
       for(;;) {
-        const rule=/^\\(toprule|midrule|bottomrule)(?![A-Za-z])/.exec(body.slice(begin));if(!rule)break;
+        const rule=/^\\(toprule|midrule|bottomrule|hline)(?![A-Za-z])/.exec(body.slice(begin));
+        if(!rule||rule[1]==='hline'&&environment!=='tabular')break;
         const ruleStart=begin;begin=trivia(body,begin+rule[0].length);
         let weight=rule[1]==='midrule'?'0.5pt':'0.8pt';
         if(body[begin]==='[') {
@@ -150,36 +160,38 @@ export function parseTabularx(source) {
     metadata:{width:width.value,widthCSS:widthCSS(width.value),position,preamble:preamble.value,specs,gaps,rules}};
 }
 
-function tabularxSource(source){
-  let table=parseTabularx(source),start=0;
+function columnTableSource(source){
+  const parse=raw=>parseTabularx(raw)??parseColumnTable(raw,'tabular');
+  let table=parse(source),start=0;
   if(!table){
     const float=parseTableFloat(source);
     const [open,...rest]=float?[...sourceStructure(float.body)].filter(token=>token.topLevel&&token.kind==='begin'):[];
-    if(open?.value!=='\\begin{tabularx}'||rest.length)return null;
-    const close=environmentEnd(float.body,open.index,'tabularx');
+    const name=open&&/^\\begin\{(tabularx|tabular)\}$/.exec(open.value)?.[1];
+    if(!name||rest.length)return null;
+    const close=environmentEnd(float.body,open.index,name);
     if(!close)return null;
-    table=parseTabularx(float.body.slice(open.index,close.end));
+    table=parse(float.body.slice(open.index,close.end));
     start=float.open.length+open.index;
   }
-  return table?{table,start}:null;
+  return table?{table,start,parse}:null;
 }
 
-export function insertTabularxRow(source,index) {
-  const location=tabularxSource(source);
+export function insertTableSourceRow(source,index) {
+  const location=columnTableSource(source);
   if(!location)return null;
-  const {table,start}=location,edge=table.rowEnds[index],columns=table.metadata.specs.length;
+  const {table,start,parse}=location,edge=table.rowEnds[index],columns=table.metadata.specs.length;
   if(!edge||columns<2)return null;
   const eol=table.source.includes('\r\n')?'\r\n':'\n';
   const row=' & '.repeat(columns-1)+'\\\\';
   const {from}=edge,insert=(edge.terminated?'':' \\\\')+eol+row;
   const draft=table.source.slice(0,from)+insert+table.source.slice(from);
-  const updated=parseTabularx(draft);
+  const updated=parse(draft);
   if(updated?.rows.length!==table.rows.length+1||updated.rows[index+1].some(cell=>cell.text))return null;
   return {from:start+from,to:start+from,insert};
 }
 
-export function insertTabularxColumn(source,row,column,offset){
-  const location=tabularxSource(source);
+export function insertTableSourceColumn(source,row,column,offset){
+  const location=columnTableSource(source);
   if(!location)return null;
   const {table,start}=location,cells=table.rows[row];
   if(!cells?.[column])return null;
@@ -199,23 +211,23 @@ export function insertTabularxColumn(source,row,column,offset){
       break;
     }
   }
-  return changeTabularxColumns(table,start,edits,1,offset);
+  return changeTableSourceColumns(location,edits,1,offset);
 }
 
-function changeTabularxColumns(table,start,edits,count,offset){
+function changeTableSourceColumns({table,start,parse},edits,count,offset){
   const from=edits[0].from,to=edits.at(-1).to;
   const insert=edits.toReversed().reduce((value,change)=>
     value.slice(0,change.from-from)+change.insert+value.slice(change.to-from),table.source.slice(from,to));
   const draft=table.source.slice(0,from)+insert+table.source.slice(to);
-  const updated=parseTabularx(draft);
+  const updated=parse(draft);
   if(updated?.rows.length!==table.rows.length||updated.metadata.specs.length!==table.metadata.specs.length+count)return null;
   let nextOffset=offset;
   for(const change of edits)if(start+change.from<offset)nextOffset+=change.insert.length-(change.to-change.from);
   return {from:start+from,to:start+to,insert,offset:nextOffset};
 }
 
-export function removeTabularxColumn(source,row,column){
-  const location=tabularxSource(source);
+export function removeTableSourceColumn(source,row,column){
+  const location=columnTableSource(source);
   if(!location)return null;
   const {table,start}=location,cells=table.rows[row];
   if(!cells?.[column]||table.metadata.specs.length<2)return null;
@@ -239,19 +251,19 @@ export function removeTabularxColumn(source,row,column){
       break;
     }
   }
-  return changeTabularxColumns(table,start,edits,-1);
+  return changeTableSourceColumns(location,edits,-1);
 }
 
-export function removeTabularxRow(source,index){
-  const location=tabularxSource(source);
+export function removeTableSourceRow(source,index){
+  const location=columnTableSource(source);
   if(!location)return null;
-  const {table,start}=location,edge=table.rowEnds[index];
+  const {table,start,parse}=location,edge=table.rowEnds[index];
   if(!edge||table.rows.length===1)return null;
   const raw=table.source,lineStart=raw.lastIndexOf('\n',edge.start-1)+1;
   const newline=/^[ \t]*\r?\n/.exec(raw.slice(edge.from));
   const wholeLine=newline&&!raw.slice(lineStart,edge.start).trim();
   const from=wholeLine?lineStart:edge.start,to=edge.from+(wholeLine?newline[0].length:0);
-  if(parseTabularx(raw.slice(0,from)+raw.slice(to))?.rows.length!==table.rows.length-1)return null;
+  if(parse(raw.slice(0,from)+raw.slice(to))?.rows.length!==table.rows.length-1)return null;
   return {from:start+from,to:start+to,insert:''};
 }
 

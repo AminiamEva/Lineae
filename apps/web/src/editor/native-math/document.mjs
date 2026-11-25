@@ -45,7 +45,7 @@ export function projectDocumentFormulas(source,{fragment=false,firstTag=1,filePa
         .map(part=>[part.index,part]));
       if(!inline.size||!markedRuns(cell.text,0,[],inline))return [];
       return [...inline.keys()].map(index=>[token.index+cell.offset+index,
-        {from16:doc.start.length+token.index,row:cell.row,column:cell.column}]);
+        {from16:doc.start.length+token.index,to16:doc.start.length+close.end,row:cell.row,column:cell.column}]);
     });
   }));
   const nested=new Map(tokens.filter(token=>token.kind==='inlineMath').map(token=>[token.index,token]));

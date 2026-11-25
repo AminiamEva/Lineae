@@ -119,6 +119,8 @@ function instrumentTable(block, source, blockFrom, firstOwner, attribute, filePa
   const cells=tableCellRanges(block);
   if(!cells||!cells.length&&!formulas.length)return null;
   const replacements=[],projectedFormulas=new Set();
+  const tableStart=blockFrom+block.length-block.trimStart().length;
+  const tableEnd=blockFrom+block.trimEnd().length;
   let nextTag=firstOwner;
   const paragraphs=[];
   for(const cell of cells){
@@ -126,7 +128,7 @@ function instrumentTable(block, source, blockFrom, firstOwner, attribute, filePa
     // An empty inline math boundary has zero ink and reports an engine-owned point.
     // The visible page still comes from the uninstrumented source.
     const from=blockFrom+offset;
-    const tableCell={from16:blockFrom,row,column};
+    const tableCell={from16:tableStart,to16:tableEnd,row,column};
     if(text){
       const inline=formulas.filter(formula=>formula.outerFrom16>=from&&formula.outerTo16<=from+text.length);
       const built=instrumentProse(text,source,from,nextTag,attribute,filePath,0,reuse,inline);

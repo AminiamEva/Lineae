@@ -269,6 +269,10 @@ const server=createServer(async(req,res)=>{
       await canvas.click({position:{x:6550000*scale,y:9250000*scale}});
       await page.keyboard.press(mod+'+e');await page.keyboard.press('Shift+r');
       await page.waitForFunction(()=>document.querySelectorAll('.ProseMirror table tr').length===3);
+      const plainEdited=tableSource.replace('Three & ','QThree & Z');
+      await page.waitForFunction(expected=>nativeProbe.source===expected,plainEdited.replace('\nQThree','\n & \\\\\nQThree'));
+      await page.keyboard.press(mod+'+z');
+      await page.waitForFunction(expected=>nativeProbe.source===expected,plainEdited);
       await page.locator('#native-tex-close').click();
       const tableWithMath=tableSource.replace('\\begin{document}','\\usepackage{tabularx}\n\\begin{document}')
         .replace('\\begin{tabular}{ll}','\\begin{tabularx}{\\textwidth}{lX}')
