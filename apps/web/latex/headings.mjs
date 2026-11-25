@@ -46,5 +46,5 @@ export function headingAt(source,index=0,base=null) {
     label=labelled.key;labelSource=source.slice(end,labelled.end);end=labelled.end;
     if(labelSource==='\\label{'+label+'}')labelSource=undefined;
   }
-  return {name:match[1],star:match[2],short,title:title.value,label,labelSource,end};
+  return {name:match[1],star:match[2],short,title:title.value,titleFrom:cursor+1,label,labelSource,end};
 }

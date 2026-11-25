@@ -1,3 +1,4 @@
+import {headingAt} from '../../../latex/headings.mjs';
 import {plainTableCells} from './table-cells.mjs';
 import {parseDocument} from '../../../latex/document.mjs';
 import {sourceStructure} from '../../../latex/source-structure.mjs';
@@ -31,6 +32,9 @@ function plainBlock(block) {
 const textMarks = {textbf:'bold',textit:'italic',texttt:'code'};
 function proseBody(block) {
   const {leading,text}=plainBlock(block);
+  const heading=headingAt(text);
+  if(heading?.end===text.length&&heading.title.trim()===heading.title&&!unsupported.test(heading.title))
+    return {leading:leading+heading.titleFrom,text:heading.title,mark:null,heading:heading.name};
   const mark=/^\\(textbf|textit|texttt)\{([^{}]+)\}$/.exec(text);
   if(!mark)return {leading,text,mark:null};
   return {leading:leading+mark[1].length+2,text:mark[2],mark:textMarks[mark[1]]};
@@ -79,12 +83,12 @@ export function projectTextDocument(source, {firstOwner=1, attribute=65000, frag
       }
       continue;
     }
-    const {leading,text,mark}=proseBody(block);
+    const {leading,text,mark,heading}=proseBody(block);
     if (!text || unsupported.test(text)) continue;
     const built = instrumentText(text, next, attribute);
     next = built.nextTag;
     const from16 = doc.start.length + blockStart + leading;
-    const paragraph = {source, filePath, from16, text, glyphs:built.glyphs, index:paragraphs.length,
+    const paragraph = {source, filePath, from16, text, heading,glyphs:built.glyphs, index:paragraphs.length,
       parts:[{kind:'text', from16:0, to16:text.length, text, mark}],
       runs:[{from16:0, to16:text.length, text, partIndex:0}]};
     for (const glyph of built.glyphs) owners.set(glyph.tag, {paragraph, glyph});
@@ -136,13 +140,13 @@ export function projectMixedDocument(source, {previous=[], attribute=65000, frag
       }
       continue;
     }
-    const {leading,text,mark}=overlapping.length ? {...plainBlock(block),mark:null} : proseBody(block);
+    const {leading,text,mark,heading}=overlapping.length ? {...plainBlock(block),mark:null} : proseBody(block);
     const contentFrom = from16 + leading;
     if (!overlapping.length) {
       if (text && !unsupported.test(text)) {
         const built = instrumentText(text, next, attribute);
         next = built.nextTag;
-        const paragraph = {source, filePath, from16:contentFrom, text, glyphs:built.glyphs, index:paragraphs.length,
+        const paragraph = {source, filePath, from16:contentFrom, text, heading,glyphs:built.glyphs, index:paragraphs.length,
           parts:[{kind:'text', from16:0, to16:text.length, text, mark}],
           runs:[{from16:0, to16:text.length, text, partIndex:0}]};
         for (const glyph of built.glyphs) owners.set(glyph.tag, {paragraph, glyph});

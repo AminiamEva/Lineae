@@ -207,12 +207,12 @@ test('prose can replace a complete inline formula but cannot edit part of its so
 });
 
 test('a protected block does not disable targeting in neighboring plain prose', () => {
-  const source = '\\begin{document}\n\\section{Heading}\n\nPlain prose.\n\n\\custom{Keep me}\n\\end{document}\n';
+  const source = '\\begin{document}\n\\section{\\custom{Heading}}\n\nPlain prose.\n\n\\custom{Keep me}\n\\end{document}\n';
   const projection = projectTextDocument(source);
   assert.equal(projection.paragraphs.length, 1);
   const [paragraph] = projection.paragraphs;
   assert.equal(paragraph.text, 'Plain prose.');
-  assert.ok(projection.projection.includes('\\section{Heading}'));
+  assert.ok(projection.projection.includes('\\section{\\custom{Heading}}'));
   assert.ok(projection.projection.includes('\\custom{Keep me}'));
   assert.equal(textEdit(projection, {paragraph, from16:0, to16:0, insert:'X'}).source,
     source.replace('Plain prose.', 'XPlain prose.'));
@@ -308,4 +308,13 @@ test('native tab visits unfilled fields in source order without leaving the form
   assert.equal(surface.moveEmptySlot(false),false);
   assert.equal(surface.moveEmptySlot(true),true);
   assert.equal(surface.caret.slot.role,'numerator');
+});
+
+test('native heading text mapping leaves short titles, stars and labels intact',()=>{
+  const source='\\begin{document}\n\\section*[Short]{Long title}\\label{s:test}\n\\end{document}\n';
+  const projection=projectTextDocument(source);
+  const [paragraph]=projection.paragraphs;
+  assert.equal(paragraph.heading,'section');
+  assert.equal(paragraph.text,'Long title');
+  assert.equal(textEdit(projection,{paragraph,from16:0,to16:0,insert:'X'}).source,source.replace('Long title','XLong title'));
 });

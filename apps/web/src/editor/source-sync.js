@@ -39,7 +39,7 @@ export function sourceProjection(text, doc, options) {
 function standaloneTextChanges(text,projection,snapshot,before,after,index) {
   const previous=before.content[index], next=after.content[index];
   const empty=node=>node.type==='paragraph' && !node.content?.length && !serialize(node).trim();
-  if(previous?.type!=='paragraph' || next?.type!=='paragraph')return null;
+  if(!['paragraph','heading'].includes(previous?.type)||next?.type!==previous.type)return null;
   if(snapshot!==JSON.stringify(before)) {
     // Double-clicking below a terminal table can add a visual typing paragraph.
     // Accept only extra empty paragraphs after the exact imported document.

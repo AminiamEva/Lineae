@@ -1114,7 +1114,7 @@ function standaloneParagraphEdit(tr) {
   if (start===null) return -1;
   const end=before.content.findDiffEnd(doc.content);
   const a=before.resolve(start), b=doc.resolve(start);
-  if (a.depth!==1 || b.depth!==1 || a.parent.type.name!=='paragraph' || !a.parent.sameMarkup(b.parent) ||
+  if (a.depth!==1 || b.depth!==1 || !['paragraph','heading'].includes(a.parent.type.name) || !a.parent.sameMarkup(b.parent) ||
       a.parent.textContent===b.parent.textContent) return -1;
   // Identical runs can make the diff endpoints overlap on insertion/deletion.
   const oldEnd=Math.max(start,end.a), newEnd=Math.max(start,end.b);
@@ -2701,7 +2701,8 @@ nativeTexPreview=installNativeTexPreview({host:footer,before:modes,
     const endpoints=proseEditEndpoints(paragraph,patch.from,patch.to);
     if(!endpoints)return false;
     const matchesParts=node=>{
-      if(node.type.name!=='paragraph'||node.childCount!==paragraph.parts.length)return false;
+      if(node.type.name!==(paragraph.heading?'heading':'paragraph')||node.childCount!==paragraph.parts.length)return false;
+      if(paragraph.heading&&node.attrs.command!==paragraph.heading)return false;
       return paragraph.parts.every((part,index)=>{
         const child=node.child(index);
         return part.kind==='text'
