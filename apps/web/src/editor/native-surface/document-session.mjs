@@ -161,20 +161,25 @@ export function createNativeDocumentSession(resolve) {
     },
     editAcrossFiles(insert) {
       const [first,last]=selection.range;
-      if(first?.kind!=='text'||last?.kind!=='text'||fileOf(first)===fileOf(last))return null;
+      if(first?.kind!=='text'||last?.kind!=='text'||order(first)<0||order(last)<=order(first))return null;
       const ranges=this.proseRanges(first,last);
-      if(ranges.length!==2||ranges.some(({paragraph})=>!paragraph||paragraph.container||
+      if(ranges.length<2||ranges.some(({paragraph})=>!paragraph||paragraph.container||
          paragraph.tableCell||paragraph.heading))return null;
       const edits=ranges.map(({paragraph,from,to},index)=>{
         const firstPart=paragraph.parts[0],lastPart=paragraph.parts.at(-1);
         const from16=from===0&&firstPart?.kind==='text'?firstPart.from16:from;
         const to16=to===paragraph.text.length&&lastPart?.kind==='text'?lastPart.to16:to;
         const edit=textEdit(sourceProjection,{paragraph,from16,to16,insert:index===0?insert:''});
-        return edit?.text.trim()?{...edit,paragraph}:null;
+        const wholeParagraph=index>0&&index<ranges.length-1&&from16===0&&to16===paragraph.text.length;
+        return edit&&(wholeParagraph||edit.text.trim())?{...edit,paragraph}:null;
       });
       if(edits.some(edit=>!edit))return null;
       const [start]=edits;
-      return selection.record({kind:'project-range',edits,paragraph:start.paragraph,source:start.source},
+      const updates=edits.filter(edit=>edit.paragraph.filePath===start.paragraph.filePath)
+        .sort((left,right)=>right.paragraph.from16-left.paragraph.from16);
+      const source=updates.reduce((value,{paragraph,patch})=>value.slice(0,paragraph.from16+patch.from)+
+        (patch.latex??patch.insert)+value.slice(paragraph.from16+patch.to),start.paragraph.source);
+      return selection.record({kind:'project-range',edits,paragraph:start.paragraph,source},
         start.paragraph.from16+start.selection,first);
     },
     move(delta,extend){

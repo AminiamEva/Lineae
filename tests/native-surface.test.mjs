@@ -467,6 +467,26 @@ test('an inline project input folds only its verified horizontal span',()=>{
   assert.equal(session.select(childCaret,childCaret),false);
 });
 
+test('a native project replacement can span a child and return to the original file',()=>{
+  const source='\\begin{document}\nBefore \\input{chapter} After.\n\\end{document}\n';
+  const chapter='Middle';
+  const projection=projectMixedSnapshot({source,mainFile:'main.tex',
+    files:[{path:'chapter.tex',bytes:new TextEncoder().encode(chapter)}]});
+  const [before,after,child]=projection.paragraphs;
+  const regions=[{path:'main.tex',from:0,to:source.indexOf('\\input')},
+    {path:'chapter.tex',from:0,to:chapter.length},
+    {path:'main.tex',from:source.indexOf(' After.'),to:source.length}];
+  const session=createNativeDocumentSession(()=>null);
+  const from=textTarget(projection,before.glyphs[1].tag,true),to=textTarget(projection,after.glyphs[1].tag,true);
+  session.setObservation(page([],[glyph(from.owner,100),glyph(child.glyphs[0].tag,200),glyph(to.owner,300)]),projection,false,regions);
+  assert.equal(session.select(from,to),true);
+  const edit=session.editAcrossFiles('Z');
+  assert.equal(edit.source,source.replace('Before','BeZ').replace('After','ter'));
+  assert.deepEqual(edit.edits.map(({paragraph,text})=>[paragraph.filePath,text]),[
+    ['main.tex','BeZ'],['chapter.tex',''],['main.tex','ter.'],
+  ]);
+});
+
 test('prose can replace a complete inline formula but cannot edit part of its source', () => {
   const inlineSource = '\\begin{document}\nBefore $x$ after.\n\\end{document}\n';
   const projection = projectMixedDocument(inlineSource);

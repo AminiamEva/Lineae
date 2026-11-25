@@ -3461,26 +3461,41 @@ nativeTexPreview=installNativeTexPreview({host:footer,before:modes,primary:nativ
   },
   commitProjectRange:edits=>{
     const {state}=editor,project=projectExplorer?.model,composition=projectDocument.composition;
-    if(!project||!composition||edits.length!==2)return false;
+    if(!project||!composition||edits.length<2)return false;
     const mapped=edits.map(edit=>{
       const target=nativeProsePosition(edit.paragraph,edit.patch.from,edit.patch.to);
       return target?.file?{...edit,...target}:null;
     });
-    const [first,last]=mapped;
-    if(!first||!last||first.file===last.file)return false;
-    const anchor=state.doc.resolve(first.range.from),head=state.doc.resolve(last.range.to);
-    const region=anchor.index(0);
-    if(anchor.depth<2||head.depth<2||head.index(0)!==region+1||
-       anchor.index(1)!==anchor.node(1).childCount-1||head.index(1)!==0)return false;
+    if(mapped.some(edit=>!edit))return false;
+    const first=mapped[0];
+    const positions=mapped.map(edit=>state.doc.resolve(edit.range.from));
+    if(positions.some(position=>position.depth!==2||position.node(1).type.name!=='projectRegion'))return false;
+    const firstRegion=positions[0].index(0),lastRegion=positions.at(-1).index(0);
+    const expectedNodes=[];
+    for(let index=firstRegion;index<=lastRegion;index++){
+      const region=composition.regions[index],node=state.doc.child(index);
+      const regionSource=region&&composition.sources.get(region.id);
+      if(index>firstRegion&&index<lastRegion&&region&&node.childCount===1&&
+         node.firstChild.type.name==='paragraph'&&!node.firstChild.content.size&&
+         typeof regionSource==='string'&&!regionSource.slice(region.from,region.to).trim())continue;
+      const start=index===firstRegion?positions[0].index(1):0;
+      const end=index===lastRegion?positions.at(-1).index(1):node.childCount-1;
+      for(let child=start;child<=end;child++)expectedNodes.push(`${index}/${child}`);
+    }
+    if(expectedNodes.length!==positions.length||positions.some((at,index)=>expectedNodes[index]!==`${at.index(0)}/${at.index(1)}`))return false;
     const tr=state.tr;
-    for(const {range,patch} of [last,first]){
+    const patches=new Map();
+    for(const {file,paragraph,range,patch} of mapped.toReversed()){
       if(range.to>range.from)tr.delete(range.from,range.to);
       if(patch.insert)tr.insert(range.from,editor.schema.text(patch.insert,range.marks));
+      if(!patches.has(file.id))patches.set(file.id,[]);
+      patches.get(file.id).push({from:paragraph.from16+patch.from,to:paragraph.from16+patch.to,insert:patch.latex??patch.insert});
     }
     tr.setSelection(TextSelection.create(tr.doc,first.range.from+first.patch.insert.length));
     const drafts=projectDocument.changes(tr.doc.toJSON());
-    const expected=new Map(mapped.map(edit=>[edit.file.id,edit.source]));
-    if(!drafts||mapped.some(edit=>drafts.get(edit.file.id)!==edit.source))return false;
+    const expected=new Map([...patches].map(([id,changes])=>[id,changes.sort((a,b)=>b.from-a.from)
+      .reduce((draft,change)=>draft.slice(0,change.from)+change.insert+draft.slice(change.to),project.file(id).draft)]));
+    if(!drafts||[...expected].some(([id,value])=>drafts.get(id)!==value))return false;
     for(const [id,draft] of drafts)if(draft!==(expected.get(id)??project.file(id).draft))return false;
     editor.view.dispatch(closeHistory(tr));
     return editor.state.doc!==state.doc;

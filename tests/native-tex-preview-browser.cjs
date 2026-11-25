@@ -890,6 +890,15 @@ const server=createServer(async(req,res)=>{
       await inlineMask.click();
       await inlineMask.waitFor({state:'detached'});
       assert.equal(await page.evaluate(()=>nativeProbe.source),inlineInclude);
+      const inlineBounds=await canvas.boundingBox();
+      await page.mouse.move(inlineBounds.x+6850000*scale,inlineBounds.y+9250000*scale);
+      await page.mouse.down();
+      await page.mouse.move(inlineBounds.x+9750000*scale,inlineBounds.y+9250000*scale,{steps:12});
+      await page.mouse.up();
+      await page.keyboard.insertText('Z');
+      await projectDrafts(inlineInclude.replace('Before','BeZ').replace('After','ter'),'');
+      await page.keyboard.press(mod+'+z');
+      await projectDrafts(inlineInclude,'Child');
       await page.locator('#native-tex-close').click();
       await page.locator('#settings-open').click();
       await page.locator('[data-native-workspace-preference]').check();

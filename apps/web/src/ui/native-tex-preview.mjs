@@ -158,8 +158,10 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
   function editSelection(action){
     const {surface}=nativeDocument;
     const [first,last]=surface.range;
-    if(first?.kind==='text'&&last?.kind==='text'&&first.paragraph.filePath!==last.paragraph.filePath)
-      return nativeDocument.editAcrossFiles(action.insert??'');
+    if(first?.kind==='text'&&last?.kind==='text'&&first.paragraph!==last.paragraph){
+      const crossed=nativeDocument.editAcrossFiles(action.insert??'');
+      if(crossed)return crossed;
+    }
     return action.insert?surface.insert(action.insert,{paste:action.paste}):surface.erase(action.backward);
   }
   function replaceParagraphSelection(action){
