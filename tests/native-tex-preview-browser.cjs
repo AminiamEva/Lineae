@@ -79,7 +79,6 @@ const server=createServer(async(req,res)=>{
     await page.context().grantPermissions(['clipboard-read','clipboard-write']);
     const mod=process.platform==='darwin'?'Meta':'Control';
     page.on('pageerror',error=>errors.push(error.message));
-    page.on('console',message=>{if(message.text().startsWith('[empty-table-check]'))console.log(message.text());});
     await page.addInitScript(installMockNativeTex);
 
     if(process.env.LINEAE_NATIVE_ONLY==='1'){

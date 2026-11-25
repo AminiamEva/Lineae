@@ -1100,6 +1100,8 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
   button.addEventListener('click',toggle);
   startText.addEventListener('click',()=>{
     if(startText.hidden||!current())return;
+    nativeDocument.reset();
+    renderer.clearCaret();
     draftInput={kind:'initial'};
     const rect=startText.getBoundingClientRect();
     input.style.left=rect.left+'px';input.style.top=rect.top+'px';
