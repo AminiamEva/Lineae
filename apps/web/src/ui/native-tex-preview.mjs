@@ -11,7 +11,7 @@ import {nativeTarget} from '../editor/native-math/resolve.mjs';
 // Native LaTeX output is the primary page. The opt-in native input mode sends
 // supported keys, caret and IME through this surface into ProseMirror; the old
 // JS-formatted page and MathLive inputs stay available as the migration fallback.
-export function installNativeTexPreview({host,before,getSource,getSnapshot,isComposing,focusMathSlot,focusImage,continuationRegion,selectText,commitMath,commitText,history}) {
+export function installNativeTexPreview({host,before,primary=false,isDocumentMode,getSource,getSnapshot,isComposing,focusMathSlot,focusImage,continuationRegion,selectText,commitMath,commitText,history}) {
   const invoke=window.__TAURI__?.core?.invoke;
   if(!invoke) return {refresh(){},documentChanged(){},relocalize(){}};
   const button=document.createElement('button');
@@ -33,6 +33,10 @@ export function installNativeTexPreview({host,before,getSource,getSnapshot,isCom
   for(const value of [50,75,100,125,150,200]) zoom.append(new Option(value+'%',String(value)));
   zoom.value='75';zoom.setAttribute('aria-label',t('原生预览缩放','Native preview zoom'));
   controls.append(zoom,editButton,exportButton,targetButton,closeButton);
+  if(primary){
+    panel.dataset.primary='true';
+    targetButton.hidden=true;editButton.hidden=true;
+  }
   const pages=document.createElement('div');pages.className='native-tex-pages';
   const input=document.createElement('textarea');
   input.id='native-tex-input';input.className='native-tex-input';input.rows=1;
@@ -53,6 +57,7 @@ export function installNativeTexPreview({host,before,getSource,getSnapshot,isCom
   let targeting=null,observation=null,targetArmed=false,lastTarget=null,targetTimer=null;
   let previousProjection=null;
   let mirror=null;
+  let primaryRequested=false;
   let compositionField=null;
   const composing=()=>isComposing()||Boolean(compositionField?.isConnected);
   const nativeDocument=createNativeDocumentSession(endpoint=>{
@@ -356,7 +361,8 @@ export function installNativeTexPreview({host,before,getSource,getSnapshot,isCom
       },nativeEditing?0:350);
     }
     button.setAttribute('aria-pressed',String(active));
-    button.textContent=active?t('关闭 LuaLaTeX 预览','Close LuaLaTeX preview'):t('LuaLaTeX 预览（实验）','LuaLaTeX preview (experimental)');
+    if(primary)button.textContent=active?t('退出原生文档','Leave native document'):t('原生文档','Native document');
+    else button.textContent=active?t('关闭 LuaLaTeX 预览','Close LuaLaTeX preview'):t('LuaLaTeX 预览（实验）','LuaLaTeX preview (experimental)');
     panel.dataset.state=error?'error':current()?'current':active?'stale':'off';
     panel.dataset.renderer=mode;
     panel.dataset.editing=String(nativeEditing);
@@ -380,7 +386,7 @@ export function installNativeTexPreview({host,before,getSource,getSnapshot,isCom
   async function stop() {
     generation++;captureId++;pollEpoch++;active=false;opening=false;error='';capturing=null;terminal=false;
     clearTimeout(timer);clearTimeout(pollTimer);
-    panel.hidden=true;document.body.classList.remove('native-tex-open');
+    panel.hidden=true;document.body.classList.remove('native-tex-open','native-tex-primary-open');
     const previous=session;session=null;
     wantedSnapshot=null;sentSnapshot=null;wantedSource='';sentSource='';
     observation=null;targetStatus.textContent='';
@@ -554,7 +560,8 @@ export function installNativeTexPreview({host,before,getSource,getSnapshot,isCom
     if(active)return;
     const attempt=++generation;
     active=true;opening=true;error='';terminal=false;renderedRevision=-1;mode='canvas';pdfWanted=-1;pdfRendered=-1;
-    panel.hidden=false;document.body.classList.add('native-tex-open');renderStatus();
+    if(primary){nativeEditing=true;targetArmed=true;}
+    panel.hidden=false;document.body.classList.add(primary?'native-tex-primary-open':'native-tex-open');renderStatus();
     try {
       const initial=await readSnapshot();
       if(attempt!==generation)return;
@@ -564,7 +571,7 @@ export function installNativeTexPreview({host,before,getSource,getSnapshot,isCom
         if(opened)await invoke('native_tex_close',{sessionId:opened.sessionId});
         return;
       }
-      if(!opened) {await stop();return;}
+      if(!opened) {primaryRequested=false;await stop();return;}
       session=opened.sessionId;sourceRevision=opened.sourceRevision;sentSource=initial.source;sentSnapshot=initial;opening=false;
       renderer.reset();pdf.reset();void poll(attempt);
       refresh();renderStatus();
@@ -670,9 +677,22 @@ export function installNativeTexPreview({host,before,getSource,getSnapshot,isCom
       }
     }
   }
-  button.addEventListener('click',()=>{void(active?stop():start());});
+  function toggle(){
+    if(primary){
+      if(!isDocumentMode?.())return;
+      primaryRequested=!active;
+    }
+    void(active?stop():start());
+  }
+  function documentChanged(){
+    const afterStop=stop(),stamp=generation;
+    if(primaryRequested&&isDocumentMode?.())void afterStop.then(()=>{
+      if(stamp===generation&&primaryRequested&&isDocumentMode?.())void start();
+    });
+  }
+  button.addEventListener('click',toggle);
   button.addEventListener('mousedown',event=>event.preventDefault());
-  closeButton.addEventListener('click',()=>{void stop();});
+  closeButton.addEventListener('click',()=>{primaryRequested=false;void stop();});
   exportButton.addEventListener('click',()=>{void exportPdf();});
   targetButton.addEventListener('click',()=>{
     targetArmed=true;clearTimeout(targetTimer);targetTimer=null;void observe();
@@ -710,8 +730,14 @@ export function installNativeTexPreview({host,before,getSource,getSnapshot,isCom
   },true);
   relocalize();renderer.setZoom(.75);pdf.setZoom(.75);
   return {
-    refresh,documentChanged:()=>{void stop();},relocalize,
+    refresh,documentChanged,relocalize,
+    documentModeChanged(){
+      if(!primaryRequested)return;
+      if(isDocumentMode?.())void start();
+      else void stop();
+    },
     hasTextInput:event=>event.target===input&&nativeEditing&&nativeDocument.surface.caret?.kind==='text',
+    inTableCell:()=>Boolean(nativeDocument.surface.caret?.paragraph?.tableCell),
     hasMathInput: event => event.target===input && nativeEditing && nativeDocument.surface.caret?.kind==='math',
     hasNativeMathFocus:()=>document.activeElement===input&&nativeEditing&&nativeDocument.surface.caret?.kind==='math',
     useTextSelection,

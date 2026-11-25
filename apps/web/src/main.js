@@ -1,5 +1,5 @@
 import {nativeEditorRange} from './editor/native-text/editor-range.mjs';
-import {nativeOnlyAcceptance} from './editor/native-surface/acceptance-mode.mjs';
+import {loadLegacyMath,nativeOnlyAcceptance,nativeWorkspaceRequested} from './editor/native-surface/acceptance-mode.mjs';
 import {AppendixStart,MatterStart,LayoutCommand} from './editor/appendix.js';
 import {Lipsum} from './editor/lipsum.js';
 import {CounterDirective} from './editor/counter-directive.js';
@@ -106,6 +106,7 @@ import { getLanguage, localize, normalizeLanguage, setLanguage, t } from './ui/i
 import { TikzEditor } from './tikz/controllers/tikzEditor.js';
 import { openTikzStudio } from './ui/tikz-studio.js';
 
+await loadLegacyMath();
 const citationLibrary = createCitationLibrary();
 
 const cssColor = value => {
@@ -1617,6 +1618,7 @@ syncUndoButtons();
   updateSourceButton();
   updateEnvironment();
   syncImageTab?.();
+  nativeTexPreview?.documentModeChanged?.();
 }
 function locateMissingCitation(missing) {
   setSourceMode(true);
@@ -2542,7 +2544,9 @@ const nativeBindings=compileKeybindings({
     palette:'backslash',nextSlot:'tab',previousSlot:'shift+tab'},
 },{isMac});
 const nativeSelectionCommands=new Set(['toggleBold','toggleItalic','toggleUnderline','toggleStrike','toggleCode',
-  'toggleSuperscript','toggleSubscript','alignLeft','alignRight','alignCenter','toggleContextMarker']);
+  'toggleSuperscript','toggleSubscript','alignLeft','alignRight','alignCenter','toggleContextMarker','insertTable']);
+const nativeRangeCommands=new Set(['toggleBold','toggleItalic','toggleUnderline','toggleStrike','toggleCode',
+  'toggleSuperscript','toggleSubscript']);
 installKeybindings(window, {
   getBindings: () => config.bindings,
   nativeBindings,
@@ -2550,7 +2554,8 @@ installKeybindings(window, {
     if(nativeTexPreview?.hasMathInput?.(event))
       return {element:event.target,nativeMath:true,scopes:['math','global']};
     if(nativeTexPreview?.hasTextInput?.(event))
-      return {element:event.target,nativeText:true,scopes:['editor','global']};
+      return {element:event.target,nativeText:true,
+        scopes:nativeTexPreview.inTableCell()?['table','editor','global']:['editor','global']};
     if (event.target.closest?.('.tex-code .cm-content'))
       return {element:sourceView.editorView?.contentDOM,source:true,scopes:['source','system','global']};
     if (event.target.closest?.('.tex-code'))return {element:event.target,scopes:['global'],only:'save'};
@@ -2576,9 +2581,10 @@ installKeybindings(window, {
   run({scope,command},context,event) {
     if(context.nativeText&&scope==='editor'){
       if(command==='leaveFile')return nativeTexPreview.leaveFile();
-      return nativeSelectionCommands.has(command)&&nativeTexPreview.useTextSelection(command.startsWith('toggle')&&
-        command!=='toggleContextMarker')&&shortcutActions.editor[command](context,event);
+      return nativeSelectionCommands.has(command)&&nativeTexPreview.useTextSelection(nativeRangeCommands.has(command))&&
+        shortcutActions.editor[command](context,event);
     }
+    if(context.nativeText&&scope==='table'&&!nativeTexPreview.useTextSelection())return false;
     if (scope === 'math') return context.nativeMath
       ? nativeTexPreview.runMathCommand(command)
       : runMathShortcut(command,context.field,event);
@@ -2629,7 +2635,8 @@ function nativeProsePosition(paragraph,from,to){
   const range=nativeEditorRange({doc:editor.state.doc,projection,composition,file,paragraph,from,to});
   return range?{range,project,composition,file}:null;
 }
-nativeTexPreview=installNativeTexPreview({host:footer,before:modes,
+nativeTexPreview=installNativeTexPreview({host:footer,before:modes,primary:nativeWorkspaceRequested(),
+  isDocumentMode:()=>sourceView.hidden,
   getSnapshot:async()=>{
     if(projectExplorer?.active){
       const project=projectExplorer.model;
@@ -2661,8 +2668,11 @@ nativeTexPreview=installNativeTexPreview({host:footer,before:modes,
   },
   continuationRegion:caret=>{
     if(!caret||!sourceView.hidden)return null;
-    const composition=projectDocument.composition,owner=caret.formula??caret.paragraph;
-    if(!composition||!owner.filePath)return null;
+    const active=projectDocument.composition,project=projectExplorer?.model;
+    const owner=caret.formula??caret.paragraph;
+    if(!active||!project||!owner.filePath)return null;
+    const composition=projectDocument.compose(project,active.rootId);
+    if(composition.issues.length)return null;
     const index=composition.regions.findIndex(region=>region.path===owner.filePath&&
       region.from<=caret.docOffset&&region.to>=caret.docOffset&&composition.sources.get(region.id)===owner.source);
     const parent=composition.content[index]?.attrs.trail?.at(-1);

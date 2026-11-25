@@ -344,6 +344,9 @@ main { padding:125px 24px 60px; overflow:auto; }
 .native-tex-open main { margin-right:min(44vw,720px); }
 #native-tex-preview { position:fixed; right:0; top:var(--tex-toolbar-bottom,100px); bottom:28px; width:min(44vw,720px); z-index:10; background:light-dark(#f2f3f5,#242426); border-left:1px solid light-dark(#ccd1d9,#555); padding:12px; overflow:auto; box-sizing:border-box; }
 #native-tex-preview[hidden] { display:none; }
+.native-tex-primary-open main { visibility:hidden; margin-right:0; }
+#native-tex-preview[data-primary=true] { left:var(--sidebar-width,0px); width:auto; border-left:0; }
+#native-tex-preview[data-primary=true] .native-tex-controls { justify-content:center; }
 #native-tex-preview h2 { font-size:16px; margin:0 0 8px; }
 #native-tex-preview p { font-size:12px; white-space:pre-wrap; overflow-wrap:anywhere; }
 #native-tex-preview[data-state=error] [role=status] { color:light-dark(#a32c25,#ffb4ac); }

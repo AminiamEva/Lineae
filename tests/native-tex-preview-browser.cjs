@@ -78,7 +78,6 @@ const server=createServer(async(req,res)=>{
     await page.addInitScript(installMockNativeTex);
 
     if(process.env.LINEAE_NATIVE_ONLY==='1'){
-      await page.route('**/vendor/mathlive/**',route=>route.abort());
       await page.goto('http://127.0.0.1:'+server.address().port+'/?native-only-acceptance=1',{waitUntil:'networkidle'});
       const mixedSource='\\documentclass{article}\n\\begin{document}\nAlpha beta.\n\n\\[\n\\frac{a}{b}\n\\]\n\nOmega.\n\\end{document}\n';
       await page.locator('input#file').setInputFiles({name:'mixed.tex',mimeType:'text/plain',
@@ -86,6 +85,8 @@ const server=createServer(async(req,res)=>{
       await page.waitForFunction(()=>document.querySelector('.ProseMirror')?.textContent.includes('Alpha beta.'));
       assert.equal(await page.locator('.document-sheets').count(),0);
       assert.equal(await page.evaluate(()=>customElements.get('math-field')),undefined);
+      assert.equal(await page.evaluate(()=>performance.getEntriesByType('resource')
+        .some(entry=>entry.name.includes('/vendor/mathlive/'))),false);
       const panel=page.locator('#native-tex-preview');
       await page.locator('#native-tex-toggle').click();
       await panel.locator('[data-native-page="1"] canvas').waitFor();
@@ -165,6 +166,10 @@ const server=createServer(async(req,res)=>{
       await panel.locator('[data-native-page="1"] canvas').click({position:{x:6500000*scale,y:10500000*scale}});
       await page.keyboard.type('Z');
       await page.waitForFunction(expected=>nativeProbe.source===expected,tableSource.replace('Three & ','Three & Z'));
+      await panel.getByText('Click text on the native page',{exact:false}).waitFor();
+      await canvas.click({position:{x:6550000*scale,y:9250000*scale}});
+      await page.keyboard.press(mod+'+e');await page.keyboard.press('Shift+r');
+      await page.waitForFunction(()=>document.querySelectorAll('.ProseMirror table tr').length===3);
       await page.locator('#native-tex-close').click();
       const headingSource='\\documentclass{article}\n\\begin{document}\n\\section[Short]{Long title}\\label{section:test}\n\\end{document}\n';
       await page.locator('input#file').setInputFiles({name:'heading.tex',mimeType:'text/plain',buffer:Buffer.from(headingSource)});
@@ -296,6 +301,24 @@ const server=createServer(async(req,res)=>{
       await page.keyboard.press(mod+'+Alt+j');
       await page.keyboard.type('Y');
       await page.waitForFunction(expected=>nativeProbe.source===expected,projectMain.replace('After chapter.','YAfter chapter.'));
+      assert.deepEqual(errors,[]);
+
+      await page.goto('http://127.0.0.1:'+server.address().port+'/?native-workspace=1',{waitUntil:'networkidle'});
+      const workspaceSource='\\documentclass{article}\n\\begin{document}\nNative document.\n\\end{document}\n';
+      await page.locator('input#file').setInputFiles({name:'workspace.tex',mimeType:'text/plain',buffer:Buffer.from(workspaceSource)});
+      await page.locator('#native-tex-toggle').click();
+      await panel.getByText('Click text on the native page',{exact:false}).waitFor();
+      assert.equal(await panel.getAttribute('data-editing'),'true');
+      assert.equal(await page.locator('#native-tex-edit').isVisible(),false);
+      assert.equal(await page.locator('#editor').isVisible(),false);
+      await canvas.click({position:{x:6550000*scale,y:9250000*scale}});
+      await page.keyboard.type('X');
+      await page.waitForFunction(expected=>nativeProbe.source===expected,workspaceSource.replace('Native document.','XNative document.'));
+      await page.locator('[data-source-mode=source]').click();
+      await panel.waitFor({state:'hidden'});
+      await page.locator('[data-source-mode=body]').click();
+      await panel.getByText('Click text on the native page',{exact:false}).waitFor();
+      assert.equal(await page.evaluate(()=>customElements.get('math-field')),undefined);
       assert.deepEqual(errors,[]);
       console.log('PASS native mixed editing with MathLive and JS pagination disabled');
       return;
