@@ -1,6 +1,8 @@
 import {readGroup} from '../../../latex/table-spans.mjs';
+import {textCommands} from '../../../latex/inline.mjs';
 
-const plainTokens=/^(?:\\[%&_#${}]|[^\\{}$%&#_^~])+/u;
+const plainTokens=/^(?:\\(?:[%&_#${}]|[A-Za-z]+\{\})|[^\\{}$%&#_^])+/u;
+const namedLiteral=/^\\([A-Za-z]+)\{\}/;
 const textMarks={textbf:'bold',textit:'italic',emph:'italic',textsl:'italic',texttt:'code',
   underline:'underline',uline:'underline',uuline:'underline',uwave:'underline',sout:'strike',
   textsuperscript:'superscript',textsubscript:'subscript',textsc:'smallcaps',fbox:'boxed',
@@ -8,12 +10,23 @@ const textMarks={textbf:'bold',textit:'italic',emph:'italic',textsl:'italic',tex
 const htmlColor=/^\\(?:textcolor|colorbox)\[HTML\]\{[0-9a-f]{6}\}(?=\{)/i;
 
 export function decodeProse(raw) {
-  if(!raw.includes('\\'))return {text:raw};
+  if(!/[\\~]/.test(raw))return {text:raw};
   const offsets=[0];
   let text='';
   for(let index=0;index<raw.length;index++){
-    if(raw[index]==='\\')index++;
-    text+=raw[index];
+    if(raw[index]==='\\'){
+      const command=namedLiteral.exec(raw.slice(index));
+      if(command){
+        const value=Object.hasOwn(textCommands,command[1])&&textCommands[command[1]];
+        if(!value||value.length!==1)return null;
+        index+=command[0].length-1;
+        text+=value;
+        offsets.push(index+1);
+        continue;
+      }
+      index++;
+      text+=raw[index];
+    }else text+=raw[index]==='~'?'\u00A0':raw[index];
     offsets.push(index+1);
   }
   return {text,offsets};
@@ -38,7 +51,9 @@ export function markedRuns(text,offset=0,marks=[],inline) {
     }
     const raw=plainTokens.exec(text.slice(cursor))?.[0];
     if(raw){
-      runs.push({kind:'text',from16:start,to16:start+raw.length,...decodeProse(raw),marks});
+      const decoded=decodeProse(raw);
+      if(!decoded)return null;
+      runs.push({kind:'text',from16:start,to16:start+raw.length,...decoded,marks});
       cursor+=raw.length;
       continue;
     }

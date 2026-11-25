@@ -392,6 +392,20 @@ const server=createServer(async(req,res)=>{
       await page.waitForFunction(()=>nativeProbe.source?.includes('\\newpage'));
       assert.equal(await page.locator('.ProseMirror [data-page-break]').count(),1);
       await page.locator('#native-tex-close').click();
+      const literalProse='\\documentclass{article}\n\\begin{document}\n\\textasciicircum{}Alpha\n\\end{document}\n';
+      await page.locator('input#file').setInputFiles({name:'literal-prose.tex',mimeType:'text/plain',buffer:Buffer.from(literalProse)});
+      await page.locator('#native-tex-toggle').click();
+      await page.waitForFunction(()=>document.querySelector('#native-tex-preview').dataset.state==='current');
+      await page.locator('#native-tex-target').click();
+      await panel.getByText('Click text on the native page',{exact:false}).waitFor();
+      await page.locator('#native-tex-edit').click();
+      await canvas.click({position:{x:6650000*scale,y:9250000*scale}});
+      await page.keyboard.insertText('~');
+      const escapedProse=literalProse.replace('Alpha','\\textasciitilde{}Alpha');
+      await page.waitForFunction(expected=>nativeProbe.source===expected,escapedProse);
+      await page.keyboard.press('Backspace');
+      await page.waitForFunction(expected=>nativeProbe.source===expected,literalProse);
+      await page.locator('#native-tex-close').click();
       const listSource='\\documentclass{article}\n\\begin{document}\n\\begin{enumerate}\n\\item One item.\n'+
         '\\begin{itemize}\n\\item Nested.\n\\end{itemize}\n\\item Last.\n\\end{enumerate}\n\\end{document}\n';
       await page.locator('input#file').setInputFiles({name:'list.tex',mimeType:'text/plain',buffer:Buffer.from(listSource)});

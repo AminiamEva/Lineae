@@ -16,6 +16,13 @@ const textSymbols = {
 };
 const simpleCommands = { LaTeX: 'LaTeX', TeX: 'TeX', copyright: '©', ldots: '…', dots: '…' };
 export const textCommands = Object.freeze({ ...textSymbols, ...simpleCommands });
+export const escapeText = text => text.replace(/[\u00A0\\{}%$&#_^~§¶•…–—‘’“”®™©]/g, char => ({
+  '\\': '\\textbackslash{}', '~': '\\textasciitilde{}', '^': '\\textasciicircum{}', '\u00A0': '~',
+  '§': '\\textsection{}', '¶': '\\textparagraph{}', '•': '\\textbullet{}', '…': '\\ldots{}',
+  '–': '\\textendash{}', '—': '\\textemdash{}', '‘': '\\textquoteleft{}', '’': '\\textquoteright{}',
+  '“': '\\textquotedblleft{}', '”': '\\textquotedblright{}', '®': '\\textregistered{}',
+  '™': '\\texttrademark{}', '©': '\\copyright{}',
+}[char] ?? '\\' + char));
 const textCommandPattern = /^\\([A-Za-z]+)(?:\{\}|[ \t]+)?/;
 const plainPattern = /^\\(textup|textmd|textnormal|mbox|hbox)\{/;
 const stylePattern = /^\\(textsc|fbox)\{/;

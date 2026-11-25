@@ -1430,12 +1430,12 @@ mod tests {
         for name in ["LINEAE_RTEX_PATH", "RTEX_TEXLIVE_BIN"] {
             assert!(!std::env::var_os(name).unwrap_or_else(|| panic!("{name} is required")).is_empty());
         }
-        let source = "\\documentclass{article}\n\\begin{document}\nAlpha beta.\n\\end{document}\n";
+        let source = "\\documentclass{article}\n\\begin{document}\nAlpha beta. \\textasciicircum{}\n\\end{document}\n";
         let projection = source.replace(
-            "Alpha beta.",
+            "Alpha beta. \\textasciicircum{}",
             "\\begingroup\\attribute65000=1 A\\attribute65000=2 l\\attribute65000=3 p\\attribute65000=4 h\
              \\attribute65000=5 a \\attribute65000=6 b\\attribute65000=7 e\\attribute65000=8 t\
-             \\attribute65000=9 a\\attribute65000=10 .\\endgroup",
+             \\attribute65000=9 a\\attribute65000=10 . \\attribute65000=11 \\textasciicircum{}\\endgroup",
         );
         let session = Session::create(source).unwrap();
         let info = session.start_with_owners(true).expect("prose owner session must start");
@@ -1462,6 +1462,9 @@ mod tests {
                 .any(|glyph| glyph["owner"] == owner && glyph["char"] == ch))
         });
         assert!(owned(1, 65) && owned(2, 108), "text glyph ownership must survive compilation");
+        assert!(observed.iter().any(|page| page["dl"]["math_owners"]["glyphs"].as_array()
+            .is_some_and(|glyphs| glyphs.iter().any(|glyph| glyph["owner"] == 11))),
+            "the escaped caret must have native text geometry");
         if let Some(directory) = std::env::var_os("LINEAE_NATIVE_EVIDENCE_DIR") {
             let directory = PathBuf::from(directory);
             std::fs::create_dir_all(&directory).unwrap();

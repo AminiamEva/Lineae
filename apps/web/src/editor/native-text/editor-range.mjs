@@ -4,17 +4,41 @@ export function nativeEditorRange({doc,projection,composition,file,paragraph,fro
   const endpoints=proseEditEndpoints(paragraph,from,to);
   if(!endpoints)return null;
   const matchesParts=node=>{
-    if(node.type.name!==(paragraph.heading?'heading':'paragraph')||node.childCount!==paragraph.parts.length)return false;
-    if(paragraph.heading&&node.attrs.command!==paragraph.heading)return false;
-    return paragraph.parts.every((part,index)=>{
-      const child=node.child(index);
-      const marks=part.marks??[];
-      if(part.kind==='break')return child.type.name==='hardBreak';
-      return part.kind==='text'
-        ?child.isText&&child.text===part.text&&
-          child.marks.length===marks.length&&child.marks.every(mark=>marks.includes(mark.type.name))
-        :(child.type.name==='math'||child.type.name==='mathBlock')&&child.attrs.latex===part.latex;
-    });
+    if(node.type.name!==(paragraph.heading?'heading':'paragraph'))return null;
+    if(paragraph.heading&&node.attrs.command!==paragraph.heading)return null;
+    const parts=[];
+    let index=0,offset=0;
+    for(const part of paragraph.parts){
+      const child=node.maybeChild(index++);
+      if(!child)return null;
+      const marks=child.marks.filter(mark=>mark.type.name!=='textCommand');
+      parts.push({offset,marks});
+      offset+=child.nodeSize;
+      if(part.kind==='break'){
+        if(child.type.name!=='hardBreak')return null;
+      }else if(part.kind==='math'){
+        if(!['math','mathBlock'].includes(child.type.name)||child.attrs.latex!==part.latex)return null;
+      }else{
+        // Named text symbols are separate rich nodes but share the source run's
+        // formatting and UTF-16 boundaries with the surrounding prose.
+        const expected=part.marks??[];
+        const matches=run=>{
+          const visibleMarks=run.marks.filter(mark=>mark.type.name!=='textCommand');
+          return run.isText&&visibleMarks.length===expected.length&&
+            visibleMarks.every(mark=>expected.includes(mark.type.name)&&marks.some(first=>first.eq(mark)));
+        };
+        if(!matches(child))return null;
+        let value=child.text;
+        while(value.length<part.text.length){
+          const run=node.maybeChild(index++);
+          if(!run||!matches(run))return null;
+          value+=run.text;
+          offset+=run.nodeSize;
+        }
+        if(value!==part.text)return null;
+      }
+    }
+    return index===node.childCount?parts:null;
   };
   // Resolve repeated prose by its verified source block before falling back
   // to an unambiguous structural match.
@@ -33,23 +57,26 @@ export function nativeEditorRange({doc,projection,composition,file,paragraph,fro
         for(let i=0;i<childIndex;i++)position+=child.child(i).nodeSize;
         child=child.child(childIndex);
       }
-      if(!matchesParts(child))return;
-      matches.push({node:child,offset:position,index,verified:true});
+      const parts=matchesParts(child);
+      if(parts)matches.push({node:child,offset:position,index,verified:true,parts});
       return;
     }
     if(!paragraph.tableCell){
-      if(matchesParts(node))matches.push({node,offset,index,verified:sourceOwner?.index===index});
+      const parts=matchesParts(node);
+      if(parts)matches.push({node,offset,index,verified:sourceOwner?.index===index,parts});
       return;
     }
     if(node.type.name!=='table'||sourceOwner?.index!==index)return;
     const {row,column}=paragraph.tableCell;
     if(row>=node.childCount||column>=node.child(row).childCount)return;
     const rowNode=node.child(row),cell=rowNode.child(column);
-    if(cell.childCount!==1||!matchesParts(cell.firstChild))return;
+    if(cell.childCount!==1)return;
+    const parts=matchesParts(cell.firstChild);
+    if(!parts)return;
     let position=offset+3;
     for(let i=0;i<row;i++)position+=node.child(i).nodeSize;
     for(let i=0;i<column;i++)position+=rowNode.child(i).nodeSize;
-    matches.push({node:cell.firstChild,offset:position,index,verified:true});
+    matches.push({node:cell.firstChild,offset:position,index,verified:true,parts});
   }
   doc.forEach((node,offset,index)=>{
     if(!composition){
@@ -67,12 +94,10 @@ export function nativeEditorRange({doc,projection,composition,file,paragraph,fro
   const match=matches.find(candidate=>composition?candidate.verified: candidate.index===owner?.index) ??
     (matches.length===1 ? matches[0] : null);
   if(!match)return null;
-  const {offset:found,node:foundNode}=match;
   const at=(run,offset)=>{
-    let position=found+1;
-    for(let index=0;index<run.partIndex;index++)position+=foundNode.child(index).nodeSize;
     const local=offset-run.from16;
-    return position+(run.offsets?.indexOf(local)??local);
+    return match.offset+1+(match.parts[run.partIndex]?.offset??0)+(run.offsets?.indexOf(local)??local);
   };
-  return {from:at(endpoints.start,from),to:at(endpoints.end,to),match,endpoints};
+  return {from:at(endpoints.start,from),to:at(endpoints.end,to),match,endpoints,
+    marks:match.parts[endpoints.start.partIndex]?.marks};
 }

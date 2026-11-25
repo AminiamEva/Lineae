@@ -2127,6 +2127,7 @@ filter.addEventListener('keydown', event => {
   if (event.key === '\\' && !filter.value && !event.ctrlKey && !event.altKey && !event.metaKey && !event.isComposing) {
     event.preventDefault();
     closeCommands(true);
+    if(completionNative==='text'){nativeTexPreview.insertLiteralText('\\');return;}
     if(completionNative)return;
     if (completionField?.isConnected) insertLiveMath(completionField,'\\backslash');
     else insertTextCommand('textbackslash');
@@ -3130,10 +3131,10 @@ nativeTexPreview=installNativeTexPreview({host:footer,before:modes,primary:nativ
     const position=nativeProsePosition(paragraph,patch.from,patch.to);
     if(!position)return false;
     const {range,project,composition,file}=position;
-    const {from:start,to:end,match,endpoints}=range;
-    const foundNode=match.node,tr=editor.state.tr;
+    const {from:start,to:end,match,endpoints,marks}=range;
+    const tr=editor.state.tr;
     if(end>start)tr.delete(start,end);
-    if(patch.insert)tr.insert(start,editor.schema.text(patch.insert,foundNode.maybeChild(endpoints.start.partIndex)?.marks));
+    if(patch.insert)tr.insert(start,editor.schema.text(patch.insert,marks));
     tr.setSelection(TextSelection.create(tr.doc,start+patch.insert.length));
     if(composition){
       const from=paragraph.from16+patch.from,to=paragraph.from16+patch.to;

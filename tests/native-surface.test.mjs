@@ -696,6 +696,21 @@ test('native prose escapes percent and deletes the complete escaped token as one
   assert.equal(surface.erase().source,source);
 });
 
+test('native prose round-trips literal caret, tilde, and backslash as graphemes',()=>{
+  const source='\\begin{document}\nLiteral end.\n\\end{document}\n';
+  const projection=projectTextDocument(source);
+  const insertion=textEdit(projection,{paragraph:projection.paragraphs[0],from16:8,to16:8,insert:'^~\\'});
+  const literals='\\textasciicircum{}\\textasciitilde{}\\textbackslash{}';
+  assert.equal(insertion.source,source.replace('end.',literals+'end.'));
+  const observed=projectTextDocument(insertion.source);
+  const [paragraph]=observed.paragraphs;
+  assert.equal(paragraph.parts[0].text,'Literal ^~\\end.');
+  const glyph=paragraph.glyphs.find(glyph=>glyph.char==='\\');
+  assert.equal(glyph.to16,insertion.selection);
+  assert.equal(textEdit(observed,{paragraph,from16:glyph.from16,to16:glyph.to16,insert:''}).source,
+    insertion.source.replace('\\textbackslash{}',''));
+});
+
 test('native typing carries trailing whitespace through a geometry revision',()=>{
   const source='\\begin{document}\nWord \n\\end{document}\n';
   const end=source.indexOf('Word ')+5;

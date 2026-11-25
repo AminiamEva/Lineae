@@ -1,4 +1,5 @@
 import {headingAt} from '../../../latex/headings.mjs';
+import {escapeText} from '../../../latex/inline.mjs';
 import {plainTableCells} from './table-cells.mjs';
 import {plainContainerParagraphs} from './containers.mjs';
 import {parseDocument} from '../../../latex/document.mjs';
@@ -362,9 +363,9 @@ export function textEdit(projection, {paragraph, from16, to16, insert}) {
   if (!projection || (projection.source!==paragraph.source && !projection.paragraphs?.includes(paragraph))) return null;
   if (!Number.isInteger(from16) || !Number.isInteger(to16) || from16 < 0 || to16 < from16 || to16 > paragraph.text.length) return null;
   if (paragraph.runs && !proseEditEndpoints(paragraph,from16,to16)) return null;
-  if(typeof insert!=='string'||/[\\^~]/.test(insert))return null;
-  if((paragraph.container||paragraph.tableCell)&&unsupported.test(insert))return null;
-  const latex=insert.replace(/[%&_#${}]/g,char=>'\\'+char);
+  if(typeof insert!=='string')return null;
+  const latex=escapeText(insert);
+  if((paragraph.container||paragraph.tableCell)&&(latex!==insert||unsupported.test(insert)))return null;
   const next = paragraph.text.slice(0, from16) + latex + paragraph.text.slice(to16);
   const source = paragraph.source.slice(0, paragraph.from16) + next + paragraph.source.slice(paragraph.from16 + paragraph.text.length);
   const patch={from:from16,to:to16,insert,...(latex!==insert&&{latex})};

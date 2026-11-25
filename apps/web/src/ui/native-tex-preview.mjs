@@ -226,7 +226,7 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
       const edit=commitTextLines?.(...surface.range,action.insert);
       return edit?awaitSourcePosition(edit,action.started):false;
     }
-    if(action.insert==='$'){
+    if(action.insert==='$'&&!action.paste){
       if(surface.caret.kind==='math'){
         if(!nativeDocument.leaveFormula())return false;
         paintSurfaceSelection(true);positionInput();
@@ -1039,6 +1039,8 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
     hasMathInput: event => event.target===input && nativeEditing && acceptsInput() && nativeDocument.surface.caret?.kind==='math',
     hasNativeMathFocus:()=>document.activeElement===input&&nativeEditing&&acceptsInput()&&nativeDocument.surface.caret?.kind==='math',
     focusedCaret:()=>document.activeElement===input&&nativeEditing&&acceptsInput()?nativeDocument.surface.caret:null,
+    insertLiteralText:text=>nativeDocument.surface.caret?.kind==='text'&&
+      submitInput({insert:text,paste:true,started:performance.now()}),
     clipboardSelection,
     selectAll(){
       if(!current()||!observation||pendingEdit)return true;

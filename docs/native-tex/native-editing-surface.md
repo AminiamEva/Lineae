@@ -57,6 +57,8 @@ leave page geometry unchanged, including when an input begins on a line shared
 with its parent. Independent project documents switch the compilation entry
 within the same trusted project. A detached source fragment inherits the project
 preamble in the temporary snapshot and keeps its own source offsets for edits.
+Folding at verified visual boundaries masks the included content on the edge
+pages and hides intervening pages while keeping their original numbering.
 Edits to existing UTF-8 TeX buffers reuse the live and observation sessions.
 Changes to the compilation entry or to binary assets rebuild the snapshot.
 Unchanged glyphs keep their owner IDs across edits to limit the changes sent to

@@ -1,7 +1,7 @@
 import {richTableRow,wrapCell} from '../../latex/table-spans.mjs';
 import { importBlock, importBlocks } from '../../latex/blocks.mjs';
 import { listLabel, bulletLabel } from '../../latex/list-numbering.mjs';
-import { textCommands } from '../../latex/inline.mjs';
+import { escapeText, textCommands } from '../../latex/inline.mjs';
 import { serializeImage, serializeSubfigures } from '../../latex/images.mjs';
 import {serializeReference,serializeHeadingLabel} from '../../latex/reference-commands.mjs';
 import { alignmentLabel, displayEnvironment } from '../../latex/math-environments.mjs';
@@ -9,14 +9,6 @@ export { importBlock, importBlocks };
 export {parseTableFloat} from '../../latex/table-floats.mjs';
 import {serializeTblr,serializeSourceTable} from '../../latex/tblr.mjs';
 import {serializeTextEnvironment} from '../../latex/text-environments.mjs';
-
-const escape = text => text.replace(/[\u00A0\\{}%$&#_^~§¶•…–—‘’“”®™©]/g, char => ({
-  '\\': '\\textbackslash{}', '~': '\\textasciitilde{}', '^': '\\textasciicircum{}', '\u00A0': '~',
-  '§': '\\textsection{}', '¶': '\\textparagraph{}', '•': '\\textbullet{}', '…': '\\ldots{}',
-  '–': '\\textendash{}', '—': '\\textemdash{}', '‘': '\\textquoteleft{}', '’': '\\textquoteright{}',
-  '“': '\\textquotedblleft{}', '”': '\\textquotedblright{}', '®': '\\textregistered{}',
-  '™': '\\texttrademark{}', '©': '\\copyright{}',
-}[char] ?? '\\' + char));
 
 // MathLive placeholders are editing aids with no LaTeX meaning.
 const withoutPlaceholders = latex => latex.replace(/\\placeholder\{[^{}]*\}/g, '');
@@ -37,7 +29,7 @@ export function serialize(node) {
     const glyph=Object.hasOwn(textCommands,command) ? textCommands[command] : '';
     const count=glyph ? node.text.length/glyph.length : 0;
     let value = count && Number.isInteger(count) && glyph.repeat(count)===node.text
-      ? ('\\' + command + '{}').repeat(count) : escape(node.text);
+      ? ('\\' + command + '{}').repeat(count) : escapeText(node.text);
     for (const mark of node.marks ?? []) {
       if (mark.type === 'bold') value = '\\textbf{' + value + '}';
       if (mark.type === 'italic') value = '\\textit{' + value + '}';

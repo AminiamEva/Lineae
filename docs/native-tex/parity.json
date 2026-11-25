@@ -101,9 +101,10 @@
         "https://github.com/AminiamEva/Lineae/actions/runs/45599179386",
         "https://github.com/AminiamEva/Lineae/actions/runs/45602854334",
         "https://github.com/AminiamEva/Lineae/actions/runs/45613386465",
-        "https://github.com/AminiamEva/Lineae/actions/runs/45617906617"
+        "https://github.com/AminiamEva/Lineae/actions/runs/45617906617",
+        "https://github.com/AminiamEva/Lineae/actions/runs/45621393391"
       ],
-      "scope": "Included prose and display math edit the owning source file. The native exit shortcut resumes typing in the parent. Cross-file copying can include complete display formulas. Adjacent plain paragraphs support cross-file replacement with undo and redo. Independent documents switch the compilation entry. Detached fragments inherit the preamble and keep their original source offsets. Verified spacing can show editor-only file dividers. Actual LuaLaTeX tests confirm that edits to a staged child retain both the live and geometry-observation sessions. Structural edits and folding with preserved pagination remain pending."
+      "scope": "Included prose and display math edit the owning source file. The native exit shortcut resumes typing in the parent. Cross-file copying can include complete display formulas. Adjacent plain paragraphs support cross-file replacement with undo and redo. Independent documents switch the compilation entry. Detached fragments inherit the preamble and keep their original source offsets. Verified spacing can show editor-only file dividers and fold complete intervening pages while preserving original numbering and partial edge placeholders. Actual LuaLaTeX tests confirm that edits to a staged child retain both the live and geometry-observation sessions. Broader structural edits and folding where ownership shares the same visual line remain pending."
     },
     {
       "id": "images-floats-tikz",
