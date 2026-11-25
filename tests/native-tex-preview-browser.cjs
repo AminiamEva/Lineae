@@ -146,6 +146,15 @@ const server=createServer(async(req,res)=>{
       await page.waitForFunction(count=>nativeProbe.calls.filter(call=>call.command==='native_tex_observe_formula').length>count,rootObservations);
       await panel.getByText('Click prose on the native page',{exact:false}).waitFor();
       await canvas.click({position:{x:6510000*scale,y:6950000*scale}});
+      await page.keyboard.insertText('^');
+      await page.keyboard.insertText('^');
+      await page.waitForFunction(source=>nativeProbe.source===source,expected.replace('}{cb}','}{\\text{ˆ}cb}'));
+      await page.keyboard.press(mod+'+z');
+      await page.waitForFunction(source=>nativeProbe.source===source,expected);
+      await page.waitForFunction(()=>nativeProbe.calls.some(call=>call.command==='native_tex_observe_formula'&&
+        call.args.sourceRevision===nativeProbe.revision));
+      await panel.getByText('Click prose on the native page',{exact:false}).waitFor();
+      await canvas.click({position:{x:6510000*scale,y:6950000*scale}});
       await page.keyboard.press('Enter');
       await page.waitForFunction(()=>nativeProbe.source?.includes('\\begin{gathered}')&&nativeProbe.source.includes('\\usepackage{amsmath}'));
       await page.keyboard.press(mod+'+z');

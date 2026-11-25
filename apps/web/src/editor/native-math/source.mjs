@@ -539,6 +539,40 @@ export function applySlotEdit(snapshot, edit) {
   return editSlot(snapshot,edit,false);
 }
 
+export function removeEmptyScript(snapshot,slot) {
+  if(!snapshots.get(snapshot)?.tree||!snapshot.slots.includes(slot)||slot.raw||
+    !['superscript','subscript'].includes(slot.role)||!slot.grouped)return null;
+  const from=slot.from16-2,to=slot.to16+1;
+  const expected=slot.role==='superscript'?'^{}':'_{}';
+  if(snapshot.source.slice(from,to)!==expected)return null;
+  const source=snapshot.source.slice(0,from)+snapshot.source.slice(to);
+  parse(source);
+  return {source,patch:{from,to,insert:''},cursor:from};
+}
+
+export function applySingleCharacterScript(snapshot,slot,local,marker,text) {
+  if(!snapshots.get(snapshot)?.tree||!snapshot.slots.includes(slot)||!['^','_'].includes(marker)||
+    [...segmenter.segment(text)].length!==1)return null;
+  const at=slot.from16+local;
+  if(marker==='^'&&text==='^'){
+    const literal='\\text{ˆ}';
+    const edit=editSlot(snapshot,{slotId:slot.id,from16:local,to16:local,insert:literal},true);
+    return {source:edit.source,patch:edit.patch,cursor:at+literal.length};
+  }
+  if(!editable.test(text)||!text.trim())return null;
+  const role=marker==='^'?'superscript':'subscript';
+  const owner=snapshot.atoms.find(atom=>atom.id===slot.ownerId);
+  const existing=snapshot.slots.find(field=>field.ownerId===owner?.id&&field.role===role);
+  if(existing){
+    if(existing.raw.trim())return null;
+    const edit=editSlot(snapshot,{slotId:existing.id,from16:0,to16:existing.raw.length,insert:text},true);
+    return {source:edit.source,patch:edit.patch,cursor:owner.to16+text.length-existing.raw.length};
+  }
+  const insert=marker+'{'+text+'}';
+  const edit=editSlot(snapshot,{slotId:slot.id,from16:local,to16:local,insert},true);
+  return {source:edit.source,patch:edit.patch,cursor:at+insert.length};
+}
+
 function editSlot(snapshot, {slotId, from16, to16, insert}, structure) {
   const state = snapshots.get(snapshot);
   if (!state?.tree || !snapshot.supported) throw new TypeError('Expected a supported projectMath snapshot');

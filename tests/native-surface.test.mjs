@@ -77,6 +77,40 @@ test('native deletion removes an operator with empty slots and retains filled li
   assert.equal(erase('x+\\int_{}^{}{g}').source,'x+{g}');
 });
 
+test('Backspace on an empty native script removes its syntax and returns to the operator',()=>{
+  const {projection,formula}=setup('\\begin{document}\n\\[x+\\int_{}^{}{}\\]\n\\end{document}\n');
+  const sub=formula.math.slots.find(slot=>slot.role==='subscript');
+  const surface=createMathSurface({resolve:endpoint=>nativeTarget(projection,endpoint)});
+  surface.setObservation(page([field(sub.tag,'sub',100,true)]));
+  surface.nearest(1,100,100);
+  const edit=surface.erase();
+  assert.equal(edit.text,'x+\\int^{}{}');
+  assert.equal(surface.pendingOffset,formula.from16+'x+\\int'.length);
+});
+
+test('one-character shortcuts continue on the base line and doubled caret produces a literal',()=>{
+  const wrap=body=>'\\begin{document}\n\\['+body+'\\]\n\\end{document}\n';
+  let evidence=setup(wrap('x'));
+  const surface=createMathSurface({resolve:endpoint=>nativeTarget(evidence.projection,endpoint)});
+  surface.setObservation(page([], [glyph(evidence.token('x').tag,100)]));
+  surface.nearest(1,120,100);
+  assert.equal(surface.singleCharacterScript('^','2').text,'x^{2}');
+  evidence=setup(wrap('x^{2}'));
+  surface.setObservation(page([], [glyph(evidence.token('x').tag,100),
+    {owner:evidence.token('2').tag,char:50,bbox:[121,69,134,80]}]));
+  assert.equal(surface.caret.docOffset,evidence.formula.to16);
+  assert.equal(surface.caret.top,90);
+  assert.equal(surface.insert('+').text,'x^{2}+');
+  evidence=setup(wrap('x'));
+  surface.setObservation(page([], [glyph(evidence.token('x').tag,100)]));
+  surface.nearest(1,120,100);
+  assert.equal(surface.singleCharacterScript('^','^').text,'x\\text{ˆ}');
+  evidence=setup(wrap('x\\text{ˆ}'));
+  surface.setObservation(page([], [glyph(evidence.token('x').tag,100),glyph(evidence.token('ˆ').tag,140)]));
+  assert.equal(surface.caret.docOffset,evidence.formula.to16);
+  assert.equal(surface.insert('+').text,'x\\text{ˆ}+');
+});
+
 test('a native caret stops at real formula boundaries and edits exactly one slot', () => {
   const {projection, denominator, numerator, token} = setup();
   const surface = createMathSurface({resolve: endpoint => nativeTarget(projection, endpoint)});

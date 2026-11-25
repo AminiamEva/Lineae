@@ -1,5 +1,5 @@
 import {createSelectionModel} from './selection-model.mjs';
-import {applySlotEdit,applyStructureCommand,expandMatrix,insertDisplayLine} from '../native-math/source.mjs';
+import {applySlotEdit,applyStructureCommand,expandMatrix,insertDisplayLine,removeEmptyScript,applySingleCharacterScript} from '../native-math/source.mjs';
 
 // Native surface geometry adapter. Display-list coordinates are page space;
 // callers provide the zoom used for the current painted page.
@@ -29,6 +29,30 @@ const stopsFor = (observed, resolve, verified) => {
       push(glyph.owner, 'nucleus', false, page.page, glyph.bbox);
       push(glyph.owner, 'nucleus', true, page.page, glyph.bbox);
     }
+  }
+  const atomsByFormula=new Map(),tails=[];
+  for(const stop of byAddress.values()){
+    if(!stop.after||stop.slot.role!=='nucleus')continue;
+    const path=stop.atom.path;
+    const script=path.match(/\/(?:superscript|subscript)\/\d+$/);
+    const parentPath=script?path.slice(0,script.index):path.replace(/\/body\/\d+$/,'');
+    if(parentPath===path)continue;
+    const {formula}=stop;
+    if(!atomsByFormula.has(formula))atomsByFormula.set(formula,new Map(formula.math.atoms.map(atom=>[atom.path,atom])));
+    const parent=atomsByFormula.get(formula).get(parentPath);
+    if(!parent||!script&&parent.command!=='\\text')continue;
+    const docOffset=formula.from16+parent.to16;
+    const slot=formula.math.slots.find(slot=>slot.role==='body'&&slot.from16===0&&slot.to16===formula.math.source.length);
+    if(!slot)continue;
+    const base=byAddress.get(JSON.stringify([formula.filePath,formula.from16+parent.from16]))??stop;
+    const x=Math.max(stop.x,base.page===stop.page?base.x:stop.x);
+    const {top,bottom}=base.page===stop.page?base:stop;
+    tails.push({...stop,slot,local:parent.to16,docOffset,atom:parent,x,top,bottom,
+      hit:{...stop.hit,page:stop.page,caretBox:[x,top,x,bottom]}});
+  }
+  for(const stop of tails){
+    const key=JSON.stringify([stop.formula.filePath,stop.docOffset]);
+    if(!byAddress.has(key)||byAddress.get(key).hit.caretBox&&byAddress.get(key).x<stop.x)byAddress.set(key,stop);
   }
   return [...byAddress.values()].sort((left, right) => left.docOffset - right.docOffset ||
     (left.after ? 1 : 0) - (right.after ? 1 : 0));
@@ -64,6 +88,15 @@ export function createMathSurface({resolve,selection=createSelectionModel(sameFo
       const target=candidates.find(stop=>backward?stop.docOffset<caret.docOffset:stop.docOffset>caret.docOffset);
       return target?selection.selectTargets(target,target):false;
     },
+    singleCharacterScript(marker,text){
+      const caret=selection.caret;
+      if(!caret||caret!==selection.anchor)return null;
+      try{
+        const edit=applySingleCharacterScript(caret.formula.math,caret.slot,caret.local,marker,text);
+        return edit?selection.record({formula:caret.formula,patch:edit.patch,text:edit.source,structure:true},
+          caret.formula.from16+edit.cursor):null;
+      }catch{return null;}
+    },
     command(command) {
       const [from,to] = selection.range;
       if(!from||!sameFormula(from,to)||from.slot.id!==to.slot.id)return null;
@@ -84,6 +117,11 @@ export function createMathSurface({resolve,selection=createSelectionModel(sameFo
       if (!stop) return null;
       let [start, end] = selection.range;
       if (start === end) {
+        if(backward&&stop.empty){
+          const script=removeEmptyScript(stop.formula.math,stop.slot);
+          if(script)return selection.record({formula:stop.formula,patch:script.patch,text:script.source,structure:true},
+            stop.formula.from16+script.cursor);
+        }
         const own = selection.stops.filter(candidate => candidate.kind==='math'&&sameFormula(candidate, stop));
         const neighbor = own[own.indexOf(stop) + (backward ? -1 : 1)];
         if (!neighbor) return null;

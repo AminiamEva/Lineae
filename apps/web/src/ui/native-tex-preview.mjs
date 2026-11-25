@@ -66,9 +66,7 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
   let previousProjection=null;
   let mirror=null;
   let primaryRequested=false;
-  let initialTyping=false;
-  let paragraphBreak=null;
-  let formulaStart=null;
+  let draftInput=null;
   let compositionField=null;
   const composing=()=>isComposing()||Boolean(compositionField?.isConnected);
   const nativeDocument=createNativeDocumentSession(endpoint=>{
@@ -161,6 +159,41 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
     pendingLatency={started,committed:performance.now()};
     return true;
   }
+  function cancelDraftInput(){
+    draftInput=null;
+    paintSurfaceSelection(true);
+    positionInput();
+  }
+  function commitDraftInput(action,surface){
+    if(!current())return false;
+    if(!action.insert){cancelDraftInput();return true;}
+    const draft=draftInput;
+    let edit;
+    switch(draft.kind){
+      case 'paragraph':
+        edit=commitParagraphBreak?.(draft.paragraph,draft.from,draft.to,action.insert);
+        break;
+      case 'script':
+        edit=surface.singleCharacterScript?.(draft.marker,action.insert);
+        if(!edit)return false;
+        draftInput=null;
+        inputStart=action.started;
+        return commitSurface(edit);
+      case 'formula':
+        if(action.insert==='$'&&!draft.display){
+          draft.display=true;
+          targetStatus.textContent=t('输入行间公式','Type a display formula');
+          return true;
+        }
+        edit=commitNewMath?.(draft.first,draft.last,action.insert,draft.display);
+        break;
+      default:
+        edit=commitInitialText?.(action.insert,draft.region);
+    }
+    if(!edit)return false;
+    draftInput=null;
+    return awaitSourcePosition(edit,action.started,draft.kind==='formula');
+  }
   function submitInput(action) {
     const {surface}=nativeDocument;
     if(!nativeEditing)return false;
@@ -170,41 +203,9 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
       else queuedInput.push(action);
       return true;
     }
-    if(initialTyping){
-      if(!current()||!action.insert)return false;
-      const edit=commitInitialText?.(action.insert,initialTyping.region);
-      if(!edit)return false;
-      initialTyping=false;
-      return awaitSourcePosition(edit,action.started);
-    }
-    if(paragraphBreak){
-      if(!action.insert){
-        paragraphBreak=null;
-        paintSurfaceSelection();positionInput();
-        return true;
-      }
-      if(!current())return false;
-      const {paragraph,from,to}=paragraphBreak;
-      const edit=commitParagraphBreak?.(paragraph,from,to,action.insert);
-      if(!edit)return false;
-      paragraphBreak=null;
-      return awaitSourcePosition(edit,action.started);
-    }
+    if(draftInput)return commitDraftInput(action,surface);
     if(!surface.caret)return false;
     if(!current()||!observation)return false;
-    if(formulaStart){
-      if(!action.insert){formulaStart=null;paintSurfaceSelection();return true;}
-      if(action.insert==='$'&&!formulaStart.display){
-        formulaStart.display=true;
-        targetStatus.textContent=t('输入行间公式','Type a display formula');
-        return true;
-      }
-      const {first,last,display}=formulaStart;
-      const edit=commitNewMath?.(first,last,action.insert,display);
-      if(!edit)return false;
-      formulaStart=null;
-      return awaitSourcePosition(edit,action.started,true);
-    }
     if(action.insert==='$'){
       if(surface.caret.kind==='math'){
         if(!nativeDocument.leaveFormula())return false;
@@ -213,10 +214,16 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
       }
       const [first,last]=surface.range;
       if(first?.kind==='text'&&first.paragraph===last.paragraph){
-        formulaStart={first,last,display:false};
+        draftInput={kind:'formula',first,last,display:false};
         targetStatus.textContent=t('输入行内公式','Type an inline formula');
         return true;
       }
+    }
+    if(surface.caret.kind==='math'&&surface.caret===surface.anchor&&['^','_'].includes(action.insert)){
+      draftInput={kind:'script',marker:action.insert};
+      targetStatus.textContent=action.insert==='^'?t('输入一个上标字符','Type one superscript character'):
+        t('输入一个下标字符','Type one subscript character');
+      return true;
     }
     const edit=editSelection(action);
     if(!edit&&!action.insert&&surface.caret===surface.anchor&&surface.caret.kind==='text'){
@@ -255,12 +262,12 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
     if(!target)return false;
     if(!nativeDocument.selectRegion(target)){
       if(!target.empty)return false;
-      initialTyping={region:target};
+      draftInput={kind:'initial',region:target};
       renderer.clearCaret();
       targetStatus.textContent=t('继续编辑 ','Continue editing ')+target.path;
       return true;
     }
-    initialTyping=false;
+    draftInput=null;
     paintSurfaceSelection(true);
     positionInput();
     return true;
@@ -331,21 +338,14 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
       inputStart=performance.now();
     }
     const mod = event.metaKey || event.ctrlKey;
-    if(formulaStart&&(['Escape','Backspace','Delete','ArrowLeft','ArrowRight','ArrowUp','ArrowDown','Home','End'].includes(event.key)||
+    if(draftInput&&(['Escape','Backspace','Delete','ArrowLeft','ArrowRight','ArrowUp','ArrowDown','Home','End','PageUp','PageDown'].includes(event.key)||
       (mod&&['z','y'].includes(event.key.toLowerCase())))){
-      formulaStart=null;paintSurfaceSelection();event.preventDefault();return;
-    }
-    if(initialTyping.region&&(['Backspace','Delete','ArrowLeft','ArrowRight','ArrowUp','ArrowDown','Home','End','PageUp','PageDown'].includes(event.key)||
-      (mod&&['z','y'].includes(event.key.toLowerCase())))){
-      initialTyping=false;
-      paintSurfaceSelection(true);
-      positionInput();
+      cancelDraftInput();
       event.preventDefault();
       return;
     }
     if (mod && event.key.toLowerCase() === 'z') {
       event.preventDefault();
-      if(paragraphBreak){submitInput({backward:true,started:performance.now()});return;}
       clearQueuedInput();
       surface.clearPending();
       history?.(event.shiftKey ? 'redo' : 'undo');
@@ -391,19 +391,18 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
     if (event.key === 'Escape') {
       event.preventDefault();
       clearQueuedInput();
-      initialTyping=false;
-      paragraphBreak=null;
+      draftInput=null;
       input.blur();
       return;
     }
     if(event.key==='Enter'){
       event.preventDefault();
-      if(!current()||!observation||pendingEdit||paragraphBreak)return;
+      if(!current()||!observation||pendingEdit||draftInput)return;
       const [first,last]=surface.range;
       if(first?.kind!=='text'||first.paragraph!==last.paragraph)return;
       const edit=commitParagraphBreak?.(first.paragraph,first.local,last.local,'');
       if(edit?.awaitingText){
-        paragraphBreak={paragraph:first.paragraph,from:first.local,to:last.local};
+        draftInput={kind:'paragraph',paragraph:first.paragraph,from:first.local,to:last.local};
         return;
       }
       if(edit)awaitSourcePosition(edit,performance.now());
@@ -446,9 +445,7 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
       if(nativeEditing){
         if(pendingEdit)return false;
         if(!nativeDocument.select(anchor,head))return false;
-        initialTyping=false;
-        paragraphBreak=null;
-        formulaStart=null;
+        draftInput=null;
         inputStart=performance.now();
         paintSurfaceSelection(true);positionInput();input.focus({preventScroll:true});
         return true;
@@ -551,7 +548,7 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
     wantedSnapshot=null;sentSnapshot=null;wantedSource='';sentSource='';
     observation=null;targetStatus.textContent='';
     previousProjection=null;
-    nativeEditing=false;initialTyping=false;paragraphBreak=null;formulaStart=null;nativeDocument.reset();
+    nativeEditing=false;draftInput=null;nativeDocument.reset();
     input.blur();input.value='';
     clearQueuedInput();
     pendingLatency=null;inputStart=0;latency.length=0;delete panel.dataset.latencySamples;
@@ -863,7 +860,7 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
   button.addEventListener('click',toggle);
   startText.addEventListener('click',()=>{
     if(startText.hidden||!current())return;
-    initialTyping={};
+    draftInput={kind:'initial'};
     const rect=startText.getBoundingClientRect();
     input.style.left=rect.left+'px';input.style.top=rect.top+'px';
     input.focus({preventScroll:true});
@@ -880,7 +877,7 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
   editButton.addEventListener('mousedown',event=>event.preventDefault());
   editButton.addEventListener('click',()=>{
     if(nativeEditing){
-      nativeEditing=false;clearQueuedInput();nativeDocument.surface.clearPending();input.blur();renderStatus();return;
+      nativeEditing=false;draftInput=null;clearQueuedInput();nativeDocument.surface.clearPending();input.blur();renderStatus();return;
     }
     if(!observation)return;
     nativeEditing=true;targetArmed=true;
@@ -930,12 +927,14 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
       const {surface}=nativeDocument;
       if(command==='leaveFile')return leaveFile();
       if(command==='undo'||command==='redo'){
+        if(draftInput){cancelDraftInput();return true;}
         clearQueuedInput();
         surface.clearPending();
         history?.(command);
         return true;
       }
       if(command==='nextSlot'||command==='previousSlot'){
+        if(draftInput)cancelDraftInput();
         if(current()&&observation&&!pendingEdit&&surface.moveEmptySlot?.(command==='previousSlot')){
           paintSurfaceSelection();
           positionInput();

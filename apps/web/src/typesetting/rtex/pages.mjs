@@ -115,7 +115,7 @@ export function installNativePages({host,getFont,getRaster,onPaint,onError,onMat
         if(field.owner===hit.owner&&(hit.role==='nucleus'||field.role===hit.role))targets.push({number,field});
     if(targets.length!==1)return;
     const [{number,field}]=targets;
-    const [left,top,right,bottom]=field.bbox,scale=CSS_PER_SP*zoom;
+    const [left,top,right,bottom]=hit.page===number&&hit.caretBox?hit.caretBox:field.bbox,scale=CSS_PER_SP*zoom;
     const height=Math.max(12,(bottom-top)*scale);
     caret=document.createElement('span');caret.className='native-tex-caret';caret.setAttribute('aria-hidden','true');
     const x=(hit.after?right:left)*scale,y=(top+bottom)*scale/2-height/2,page=pages.get(number)?.dom;
