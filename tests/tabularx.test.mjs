@@ -245,3 +245,20 @@ test('splitting a combined tabularx span restores both axes and retains exact ce
   assert.equal(draft.slice(split.offset-2,split.offset+2),'Lead');
   assert.deepEqual(parseTabularx(draft).rows.map(row=>row.map(cell=>cell.text)),[['Lead','','Far'],['','','After']]);
 });
+
+test('a fully covered row serializes when the editor omits its empty content array',()=>{
+  const source=['\\begin{tabularx}{\\linewidth}{lX}',
+    '\\multicolumn{2}{c}{\\multirow{2}{*}{Lead}} \\\\',
+    ' & ','\\end{tabularx}'].join('\r\n');
+  const node=table(source);
+  assert.deepEqual(node.content[1].content,[]);
+  delete node.content[1].content;
+  assert.equal(serialize(node),source);
+  const text=node.content[0].content[0].content[0].content[0];
+  text.text='Changed';
+  assert.equal(serialize(node),source.replace('Lead','Changed'));
+  text.text='Lead';
+  const patch=splitTableSourceCell(serialize(node),0,0,source.indexOf('Lead'));
+  const draft=source.slice(0,patch.from)+patch.insert+source.slice(patch.to);
+  assert.deepEqual(parseTabularx(draft).rows.map(row=>row.map(cell=>cell.text)),[['Lead',''],['','']]);
+});

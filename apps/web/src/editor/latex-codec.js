@@ -151,7 +151,7 @@ export function serialize(node) {
     case 'table': {
       if(node.attrs.tblr)return serializeTblr(node,serialize)??node.attrs.tblr.source;
       if(node.attrs.tabularx)return serializeSourceTable(node,serialize,'tabularx')??node.attrs.tabularx.source;
-      let columns = node.attrs.columns || 'l'.repeat(node.content[0]?.content.length ?? 1);
+      let columns = node.attrs.columns || 'l'.repeat(node.content[0]?.content?.length ?? 1);
       const columnCount=(node.content[0]?.content??[]).reduce((total,cell)=>total+(cell.attrs.colspan??1),0)||1;
       const occupied=Array(columnCount).fill(0);
       const border = node.attrs.borderMode;
@@ -194,7 +194,7 @@ export function serialize(node) {
           +tabular+'\n\\end{table}\n\n';
       return tabular+'\n\n';
     }
-    case 'tableRow': return node.content.map(cell => serialize(cell)).join(' & ') + ' \\\\\n';
+    case 'tableRow': return (node.content??[]).map(cell => serialize(cell)).join(' & ') + ' \\\\\n';
     case 'tableCell':
     case 'tableHeader': {
       const value = (node.content ?? []).map(serialize).join('').trim();

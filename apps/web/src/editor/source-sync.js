@@ -242,8 +242,8 @@ function plainTableChanges(block,nodes) {
     return minimalChange(token.latex,next[0].attrs.latex,offset+token.delimiter.length);
   }
   for(const {row,column,text,offset} of cells){
-    const oldCell=before.content[row]?.content[column];
-    const nextCell=after.content[row]?.content[column];
+    const oldCell=before.content[row]?.content?.[column];
+    const nextCell=after.content[row]?.content?.[column];
     if(JSON.stringify(oldCell)===JSON.stringify(nextCell))continue;
     const next=read(nextCell), at=block.from+offset;
     const paragraph=oldCell?.content?.length===1&&nextCell?.content?.length===1&&oldCell.content[0];

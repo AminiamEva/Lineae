@@ -480,8 +480,8 @@ export function serializeTblr(node,serialize) {
 
 export function serializeSourceTable(node,serialize,name) {
   const saved=node.attrs?.[name];if(!saved)return null;
-  if(tableShape(node.attrs)!==saved.shape||JSON.stringify(node.content.map(r=>r.content.length))!==JSON.stringify(saved.rows))return null;
-  const cells=node.content.flatMap(r=>r.content),edits=[];
+  if(tableShape(node.attrs)!==saved.shape||JSON.stringify(node.content.map(row=>row.content?.length??0))!==JSON.stringify(saved.rows))return null;
+  const cells=node.content.flatMap(row=>row.content??[]),edits=[];
   for(let i=0;i<cells.length;i++) {
     const cell=cells[i],original=saved.cells[i];
     if(!original||cellShape(cell)!==original.shape)return null;
