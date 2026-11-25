@@ -237,7 +237,9 @@ test('tabularx keeps exact preambles and hidden slots when a row-span cell is me
   assert.equal(expanded,merged.replace('\\multirow{2}','\\multirow{3}')
     .replace('\\\\[3pt]\r\n','\\\\[3pt]\r\n & \\\\\r\n'));
   assert.equal(apply(expanded,removeTableSourceRow(expanded,1)),merged);
-  assert.equal(removeTableSourceRow(expanded,0),null);
+  const moved=apply(expanded,removeTableSourceRow(expanded,0));
+  assert.equal(moved,expanded.replace('\\multirow{3}{*}{One Three}  & Two \\\\[3pt]\r\n & \\\\',
+    ' \\multirow{2}{*}{One Three}& \\\\'));
 });
 
 test('splitting a combined tabularx span restores both axes and retains exact cell spelling',()=>{
@@ -254,6 +256,11 @@ test('splitting a combined tabularx span restores both axes and retains exact ce
   assert.equal(withRow.slice(rowEdit.offset,rowEdit.offset+4),'Lead');
   const deletion=removeTableSourceRow(withRow,1);
   assert.equal(withRow.slice(0,deletion.from)+deletion.insert+withRow.slice(deletion.to),source);
+  const move=removeTableSourceRow(source,0);
+  const moved=source.slice(0,move.from)+move.insert+source.slice(move.to);
+  assert.equal(moved,source.replace(
+    '\\multicolumn{2}{c}{\\multirow{2}{*}{Lead}} & Far \\\\[3pt]\r\n & & After',
+    ' \\multicolumn{2}{c}{\\multirow{1}{*}{Lead}} & After'));
   const split=splitTableSourceCell(source,0,0,source.indexOf('Lead')+2);
   const draft=source.slice(0,split.from)+split.insert+source.slice(split.to);
   assert.equal(draft,source.replace('\\multicolumn{2}{c}{\\multirow{2}{*}{Lead}}','\\multicolumn{1}{c}{Lead} & '));
@@ -275,7 +282,8 @@ test('tabularx column edits keep the raw slots beneath a combined span aligned',
   assert.equal(removed,source.replace('{llX}','{lX}').replace('\\multicolumn{2}','\\multicolumn{1}')
     .replace(' & & After','  & After').replace('Later & B',' B'));
   assert.equal(parseTabularx(removed).rows[0][0].attrs.rowspan,2);
-  assert.equal(removeTableSourceColumn(removed,2,0),null,'deleting the only column holding the span would lose the anchor');
+  const lastColumn=apply(removed,removeTableSourceColumn(removed,2,0));
+  assert.deepEqual(parseTabularx(lastColumn).rows.map(row=>row.map(cell=>cell.text)),[['Far'],['After'],['C']]);
 });
 
 test('a fully covered row serializes when the editor omits its empty content array',()=>{

@@ -202,17 +202,26 @@ function columnTableSource(source,options){
 function changeTableSourceRows({table,start,parse},index,remove,edit,offset){
   const edits=[];
   for(const [row,cells] of table.rows.slice(0,index+1).entries()){
-    for(const {attrs,rowspanRange} of cells){
+    for(const {attrs,column,rowspanRange,sourceStart,sourceEnd} of cells){
       if(attrs.rowspan<2||index>=row+attrs.rowspan-(remove?0:1))continue;
-      if(!rowspanRange||remove&&row===index)return null;
+      if(!rowspanRange)return null;
       const from=rowspanRange.from+'\\multirow{'.length;
       const count=/^\d+(?=\})/.exec(table.source.slice(from,rowspanRange.contentFrom));
       if(!count||Number(count[0])!==attrs.rowspan)return null;
-      edits.push({from,to:from+count[0].length,insert:String(attrs.rowspan+(remove?-1:1))});
+      const to=from+count[0].length,insert=String(attrs.rowspan+(remove?-1:1));
+      if(remove&&row===index){
+        const covered=table.sourceRows[row+1].slice(column,column+attrs.colspan);
+        const start=covered[0].sourceStart,end=covered.at(-1).sourceDelimiter;
+        if(covered.some(cell=>cell.attrs)||table.source.slice(start,end).includes('%'))return null;
+        const trailing=table.source.slice(covered.at(-1).sourceEnd,end);
+        const anchor=table.source.slice(sourceStart,from)+insert+table.source.slice(to,sourceEnd);
+        edits.push({from:start,to:end,insert:anchor+trailing});
+      }else edits.push({from,to,insert});
     }
   }
   edits.push(edit);
-  const from=edits[0].from,to=edit.to;
+  edits.sort((left,right)=>left.from-right.from);
+  const from=edits[0].from,to=edits.at(-1).to;
   const insert=edits.toReversed().reduce((value,change)=>
     value.slice(0,change.from-from)+change.insert+value.slice(change.to-from),table.source.slice(from,to));
   const updated=parse(table.source.slice(0,from)+insert+table.source.slice(to));
@@ -282,7 +291,6 @@ export function removeTableSourceColumn(source,row,column){
       const old=table.source.slice(cell.spanRange.from,cell.spanRange.to);
       edits.push({...cell.spanRange,insert:old.replace(/\d+/,String(attrs.colspan-1))});
     }else{
-      if(attrs?.rowspan>1)return null;
       const from=logical?cell.sourceStart-1:cell.sourceStart;
       const to=logical?cell.sourceEnd:cell.sourceDelimiter+1;
       if(table.source[logical?from:to-1]!=='&'||!attrs&&table.source.slice(from,to).includes('%'))return null;

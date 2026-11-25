@@ -326,12 +326,16 @@ export function editTblrRow(source,index,remove=false,offset) {
   const raw=table.source,eol=raw.includes('\r\n')?'\r\n':'\n';
   const spans=[];
   for(const [row,cells] of table.rows.slice(0,index+1).entries()){
-    for(const {attrs,spanRange} of cells){
+    for(const {attrs,spanRange,column,to} of cells){
       if(attrs.rowspan<2||index>=row+attrs.rowspan-(remove?0:1))continue;
-      if(remove&&row===index)return null;
       const span=changeSpan(raw,spanRange,'row',attrs.rowspan+(remove?-1:1));
       if(!span)return null;
-      spans.push(span);
+      if(remove&&row===index){
+        const first=table.rawRows[row][column],next=table.rawRows[row+1][column];
+        if(next.raw.trim())return null;
+        const start=first.from+trivia(first.raw),at=next.from+trivia(next.raw);
+        spans.push({from:at,to:at,insert:raw.slice(start,span.from)+span.insert+raw.slice(span.to,to)});
+      }else spans.push(span);
     }
   }
   let {from}=edge,to=from;
@@ -359,30 +363,30 @@ export function editTblrColumn(source,row,column,offset,remove=false) {
   const target=table.rows[row]?.[column];
   if(!target||remove&&count<2)return null;
   column=target.column+(remove?0:target.attrs.colspan-1);
-  if(remove&&table.rows.some(cells=>cells.some(cell=>cell.column===column&&
-    (cell.attrs.rowspan>1||cell.attrs.colspan>1))))return null;
   const {from,to}=table.columnRanges[column];
   const selectors=adjustAxes(table,'column',column+1,remove);
   if(!selectors)return null;
   const edits=[...selectors,remove?{from,to,insert:''}:{from:to,to,insert:'l'}];
   const boundary=column+(remove?0:1);
-  for(const row of table.rows){
-    const spanning=row.find(cell=>cell.column<boundary&&boundary<cell.column+cell.attrs.colspan);
-    if(!spanning)continue;
-    const edit=changeSpan(table.source,spanning.spanRange,'column',spanning.attrs.colspan+(remove?-1:1));
-    if(!edit)return null;
-    edits.push(edit);
-  }
-  for(const cells of table.rawRows){
-    const cell=cells[column],end=cell.from+cell.raw.trimEnd().length;
+  for(const [row,cells] of table.rawRows.entries()){
+    const span=table.rows[row].find(cell=>cell.attrs.colspan>1&&
+      cell.column<boundary+(remove?1:0)&&boundary<cell.column+cell.attrs.colspan);
+    if(span){
+      const edit=changeSpan(table.source,span.spanRange,'column',span.attrs.colspan+(remove?-1:1));
+      if(!edit)return null;
+      edits.push(edit);
+    }
+    const slot=remove&&span?.column===column?column+1:column;
+    const cell=cells[slot],end=cell.from+cell.raw.trimEnd().length;
+    if(slot!==column&&cell.raw.trim())return null;
     if(!remove){
       const position=Math.max(end,cell.from+trivia(cell.raw));
       edits.push({from:position,to:position,insert:' & '});
       continue;
     }
-    const a=column?cell.from-1:cell.from+trivia(cell.raw);
-    const b=column?end:cell.to+1;
-    if(table.source[column?a:b-1]!=='&'||a>b||table.source.slice(a,b).includes('%'))return null;
+    const a=slot?cell.from-1:cell.from+trivia(cell.raw);
+    const b=slot?end:cell.to+1;
+    if(table.source[slot?a:b-1]!=='&'||a>b||table.source.slice(a,b).includes('%'))return null;
     edits.push({from:a,to:b,insert:''});
   }
   const {patch,draft}=applyTblrEdits(located,edits,offset);

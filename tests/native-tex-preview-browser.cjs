@@ -581,6 +581,14 @@ const server=createServer(async(req,res)=>{
       await page.waitForFunction(expected=>nativeProbe.source===expected,verticalTable);
       await panel.getByText('Click text on the native page',{exact:false}).waitFor();
       await canvas.click({position:{x:6550000*scale,y:9250000*scale}});
+      await page.getByRole('button',{name:'－ Row',exact:true}).click();
+      const movedSpan=verticalTable.replace('\\multirow{2}{*}{One QThree}  & Two \\\\\n & Z',
+        ' \\multirow{1}{*}{One QThree}& Z');
+      await page.waitForFunction(expected=>nativeProbe.source===expected,movedSpan);
+      await page.keyboard.press(mod+'+z');
+      await page.waitForFunction(expected=>nativeProbe.source===expected,verticalTable);
+      await panel.getByText('Click text on the native page',{exact:false}).waitFor();
+      await canvas.click({position:{x:6550000*scale,y:9250000*scale}});
       await page.locator('button[data-source-action=split]').click();
       await page.waitForFunction(expected=>nativeProbe.source===expected,
         verticalTable.replace('\\multirow{2}{*}{One QThree}','One QThree'));

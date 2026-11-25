@@ -60,6 +60,15 @@ test('tabularray column changes inside a combined span keep its vertical count a
     .replace('Lead & Hidden','Lead ').replace(' & & After','  & After').replace('A & B','A '));
   assert.equal(table(contracted).content[0].content[0].attrs.rowspan,2);
   assert.equal(editTblrColumn(source,2,0,0,true),null);
+  const blank=source.replace(' & Hidden',' & ');
+  const contractedAnchor=apply(blank,editTblrColumn(blank,2,0,0,true));
+  assert.equal(table(contractedAnchor).content[0].content[0].attrs.rowspan,2);
+  assert.equal(table(contractedAnchor).content[0].content[0].attrs.colspan,1);
+  assert.match(contractedAnchor,/\\SetCell\[r = 2, c = 1\]\{c\} Lead/);
+  const moved=apply(source,editTblrRow(source,0,true));
+  assert.equal(moved,source.replace('\\SetCell[r = 2, c = 2]{c} Lead & Hidden & Far \\\\\r\n & & After',
+    ' \\SetCell[r = 1, c = 2]{c} Lead& & After'));
+  assert.equal(editTblrRow(source.replace(' & & After','Content & & After'),0,true),null);
 });
 
 test('splitting a tabularray cell reveals the preserved covered cells',()=>{
