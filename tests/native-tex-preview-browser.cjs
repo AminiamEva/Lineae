@@ -83,6 +83,12 @@ const server=createServer(async(req,res)=>{
       const expected=mixedSource.replace('Alpha beta.','XAlpha beta.').replace('\\frac{a}{b}','\\frac{a}{cb}');
       assert.equal(await page.evaluate(()=>nativeProbe.source),expected,'Both native edits preserve every other source byte');
       assert.deepEqual(errors,[]);
+      await panel.getByText('Click prose on the native page',{exact:false}).waitFor();
+      await canvas.click({position:{x:6510000*scale,y:6950000*scale}});
+      await page.keyboard.press(mod+'+2');
+      await page.waitForFunction(()=>nativeProbe.source?.includes('\\sqrt{}'));
+      await page.keyboard.press(mod+'+z');
+      await page.waitForFunction(source=>nativeProbe.source===source,expected);
       await page.locator('#native-tex-close').click();
       const markedSource='\\documentclass{article}\n\\begin{document}\n\\textbf{Bold prose.}\n\\end{document}\n';
       await page.locator('input#file').setInputFiles({name:'marked.tex',mimeType:'text/plain',buffer:Buffer.from(markedSource)});

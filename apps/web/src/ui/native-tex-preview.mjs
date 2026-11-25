@@ -581,5 +581,16 @@ export function installNativeTexPreview({host,before,getSource,getSnapshot,isCom
     setTimeout(refresh,0);
   },true);
   relocalize();renderer.setZoom(.75);pdf.setZoom(.75);
-  return {refresh,documentChanged:()=>{void stop();},relocalize};
+  return {
+    refresh,documentChanged:()=>{void stop();},relocalize,
+    hasMathInput: event => event.target===input && nativeEditing && surface===mathSurface,
+    runMathCommand(command) {
+      if(!current()||!observation||surface!==mathSurface)return false;
+      const edit=surface.command(command);
+      if(!edit)return false;
+      inputStart=performance.now();
+      commitSurface(edit);
+      return true;
+    },
+  };
 }

@@ -436,7 +436,35 @@ export function projectMath(source, {previous, attribute = 65000, firstTag = 1} 
  * offsets; selection includes both document and updated slot-local offsets.
  * It is a single minimal patch, trimmed only at grapheme boundaries.
  */
-export function applySlotEdit(snapshot, {slotId, from16, to16, insert}) {
+const structureTemplates = {
+  frac: text => ({before:'\\frac{', body:text, after:'}{}', next:text ? 'denominator' : 'first'}),
+  sqrt: text => ({before:'\\sqrt{', body:text, after:'}', next:'first'}),
+  indexedRoot: text => ({before:'\\sqrt[', body:'', after:']{'+text+'}', next:'first'}),
+  ...Object.fromEntries(['matrix','pmatrix','bmatrix','Bmatrix','vmatrix','Vmatrix'].map(environment=>[
+    environment,
+    text=>({before:'\\begin{'+environment+'}',body:text,after:'&\\\\&\\end{'+environment+'}',next:'first'}),
+  ])),
+};
+
+export function applyStructureCommand(snapshot, {slotId,from16,to16,command}) {
+  if(!Object.hasOwn(structureTemplates,command))return null;
+  const slot=snapshot.slots.find(candidate=>candidate.id===slotId);
+  if(!slot)return null;
+  const selected=slot.raw.slice(from16,to16);
+  if(!editable.test(selected))return null;
+  const template=structureTemplates[command](selected);
+  const insert=template.before+template.body+template.after;
+  const result=editSlot(snapshot,{slotId,from16,to16,insert},true);
+  const cursor=slot.from16+from16+template.before.length+
+    (template.next==='denominator'?template.body.length+2:0);
+  return {source:result.source,patch:result.patch,cursor};
+}
+
+export function applySlotEdit(snapshot, edit) {
+  return editSlot(snapshot,edit,false);
+}
+
+function editSlot(snapshot, {slotId, from16, to16, insert}, structure) {
   const state = snapshots.get(snapshot);
   if (!state?.tree || !snapshot.supported) throw new TypeError('Expected a supported projectMath snapshot');
   const slot = snapshot.slots.find(candidate => candidate.id === slotId);
@@ -451,7 +479,7 @@ export function applySlotEdit(snapshot, {slotId, from16, to16, insert}) {
   for (const part of segmenter.segment(snapshot.source)) boundaries.add(part.index);
   let from = slot.from16 + from16, to = slot.from16 + to16;
   if (!boundaries.has(from) || !boundaries.has(to)) throw new RangeError('Edit splits a grapheme');
-  if (!editable.test(insert)) throw new SyntaxError('Structural or unsupported math insertion');
+  if (!structure && !editable.test(insert)) throw new SyntaxError('Structural or unsupported math insertion');
   for (const range of state.tree.protectedRanges) {
     if ((from < range.to16 && to > range.from16) ||
         (from === to && from > range.from16 && from < range.to16) ||

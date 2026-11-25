@@ -2542,6 +2542,8 @@ installKeybindings(window, {
   getBindings: () => config.bindings,
   nativeBindings,
   getContext(event) {
+    if(nativeTexPreview?.hasMathInput?.(event))
+      return {element:event.target,nativeMath:true,scopes:['math']};
     if (event.target.closest?.('.tex-code .cm-content'))
       return {element:sourceView.editorView?.contentDOM,source:true,scopes:['source','system','global']};
     if (event.target.closest?.('.tex-code'))return {element:event.target,scopes:['global'],only:'save'};
@@ -2565,7 +2567,9 @@ installKeybindings(window, {
     return { element:editor.view.dom, scopes };
   },
   run({scope,command},context,event) {
-    if (scope === 'math') return runMathShortcut(command,context.field,event);
+    if (scope === 'math') return context.nativeMath
+      ? nativeTexPreview.runMathCommand(command)
+      : runMathShortcut(command,context.field,event);
     if (scope === 'source') return sourceView.runShortcut(command);
     if (scope === 'system') {
       if(command==='selectAll') {

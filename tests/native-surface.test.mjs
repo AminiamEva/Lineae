@@ -250,3 +250,22 @@ test('mixed project prose edits refer to the child file, not the main snapshot',
   assert.equal(paragraph.filePath,'chapter.tex');
   assert.equal(textEdit(projection,{paragraph,from16:0,to16:0,insert:'X'}).source,'X'+child);
 });
+
+test('native math commands insert validated structures and target the new field',()=>{
+  const {projection,formula,denominator}=setup();
+  for(const [command,insert,caret] of [
+    ['frac','\\frac{}{}',6],
+    ['sqrt','\\sqrt{}',6],
+    ['indexedRoot','\\sqrt[]{}',6],
+    ['pmatrix','\\begin{pmatrix}&\\\\&\\end{pmatrix}',15],
+  ]){
+    const surface=createMathSurface({resolve:endpoint=>nativeTarget(projection,endpoint)});
+    surface.setObservation(page([field(denominator.tag,'den',300,true)]));
+    surface.nearest(1,300,100);
+    const edit=surface.command(command);
+    assert.equal(edit.patch.insert,insert);
+    assert.equal(edit.text,'\\frac{a}{'+insert+'}');
+    assert.equal(surface.pendingOffset,formula.from16+denominator.from16+caret);
+    assert.equal(surface.insert(insert),null,'Raw typing cannot inject a TeX structure');
+  }
+});
