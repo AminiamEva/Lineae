@@ -22,12 +22,22 @@ export function installNativePages({host,getFont,onPaint,onError,onMathHit}) {
   function attachOwners(observed,stamp,owners) {
     if(warm||stamp.sourceRevision!==revision||observed.length!==pages.size)return false;
     const fields=new Map(),glyphs=new Map(),selectionGlyphs=new Map(),seen=new Set();
+    const proseByFile=new Map(),formulaParagraphs=new Map();
+    for(const {paragraph} of owners.values()){
+      if(!paragraph)continue;
+      if(!proseByFile.has(paragraph.filePath))proseByFile.set(paragraph.filePath,new Set());
+      proseByFile.get(paragraph.filePath).add(paragraph);
+    }
+    const addGlyph=(group,entry)=>{
+      if(!selectionGlyphs.has(group))selectionGlyphs.set(group,[]);
+      selectionGlyphs.get(group).push(entry);
+    };
     for(const page of observed) {
       const entry=pages.get(page.page);
       if(!entry||page.exact!==true||drawing(entry.dl)!==drawing(page.dl))return false;
       const targets=page.dl.math_owners?.fields?.filter(field=>
         field.empty&&(['num','den','radicand','degree','sup','sub'].includes(field.role)||
-          (field.role==='cell'&&owners.get(field.owner)?.atom.kind==='cell')))??[];
+          (field.role==='cell'&&owners.get(field.owner)?.atom?.kind==='cell')))??[];
       for(const field of targets){
         const key=`${field.owner}/${field.role}`;
         if(seen.has(key))return false;
@@ -43,8 +53,18 @@ export function installNativePages({host,getFont,onPaint,onError,onMathHit}) {
         const to16=owner.formula
           ?owner.formula.from16+owner.atom.from16+owner.atom.nucleus.length
           :owner.paragraph.from16+owner.glyph.to16;
-        if(!selectionGlyphs.has(group))selectionGlyphs.set(group,[]);
-        selectionGlyphs.get(group).push({number:page.page,glyph,from16,to16});
+        const entry={number:page.page,glyph,from16,to16};
+        addGlyph(group,entry);
+        const formula=owner.formula;
+        if(!formula)continue;
+        if(!formulaParagraphs.has(formula)){
+          const paragraphs=proseByFile.get(formula.filePath);
+          const matches=[...(paragraphs??[])].filter(paragraph=>paragraph.parts.some(part=>
+            part.kind==='math'&&paragraph.from16+part.from16<=formula.from16&&
+            paragraph.from16+part.to16>=formula.to16));
+          formulaParagraphs.set(formula,matches);
+        }
+        for(const paragraph of formulaParagraphs.get(formula))addGlyph(paragraph,entry);
       }
     }
     if(![...fields.values(),...glyphs.values()].some(items=>items.length))return false;

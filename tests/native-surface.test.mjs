@@ -260,6 +260,9 @@ test('native math commands insert validated structures and target the new field'
   for(const [command,insert,caret] of [
     ['frac','\\frac{}{}',6],
     ['sqrt','\\sqrt{}',6],
+    ['int','\\int_{}^{}{}',6],
+    ['sum','\\sum_{}^{}{}',6],
+    ['prod','\\prod_{}^{}{}',7],
     ['indexedRoot','\\sqrt[]{}',6],
     ['pmatrix','\\begin{pmatrix}&\\\\&\\end{pmatrix}',15],
   ]){

@@ -32,7 +32,10 @@ const operator = /^[+=,.:!?<>/|()\[\]-]$/u;
 const editable = /^[\p{L}\p{N}\p{M}+=,.:!?<>/|()\[\] \t\r\n-]*$/u;
 // Only single-symbol catalog entries here. Function names may paint multiple
 // glyphs while representing one operator and need different caret handling.
-const symbols = new Set(mathCommandCatalog.filter(entry=>entry.category!=='operator').map(entry=>entry.latex));
+const symbols = new Set([
+  ...mathCommandCatalog.filter(entry=>entry.category!=='operator').map(entry=>entry.latex),
+  '\\int','\\sum','\\prod',
+]);
 const mathWrappers = new Set(['\\boxed','\\mathord','\\mathrm','\\mathbf','\\mathit','\\mathsf',
   '\\mathtt','\\mathcal','\\mathscr','\\mathbb','\\mathfrak']);
 
@@ -440,6 +443,10 @@ const structureTemplates = {
   frac: text => ({before:'\\frac{', body:text, after:'}{}', next:text ? 'denominator' : 'first'}),
   sqrt: text => ({before:'\\sqrt{', body:text, after:'}', next:'first'}),
   indexedRoot: text => ({before:'\\sqrt[', body:'', after:']{'+text+'}', next:'first'}),
+  ...Object.fromEntries(['int','sum','prod'].map(operator=>[
+    operator,
+    text=>({before:'\\'+operator+'_{',body:'',after:'}^{}{'+text+'}',next:'first'}),
+  ])),
   ...Object.fromEntries(['matrix','pmatrix','bmatrix','Bmatrix','vmatrix','Vmatrix'].map(environment=>[
     environment,
     text=>({before:'\\begin{'+environment+'}',body:text,after:'&\\\\&\\end{'+environment+'}',next:'first'}),
