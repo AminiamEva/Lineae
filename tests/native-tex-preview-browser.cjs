@@ -280,6 +280,15 @@ const server=createServer(async(req,res)=>{
       await page.keyboard.type('X');
       await page.waitForFunction(expected=>nativeProbe.source===expected,markedSource.replace('Bold prose.','XBold prose.'));
       assert.equal((await page.locator('.ProseMirror strong').textContent()).trim(),'XBold prose.');
+      await panel.getByText('Click prose on the native page',{exact:false}).waitFor();
+      await panel.locator('[data-native-page="1"] canvas').click({position:{x:6550000*scale,y:9250000*scale}});
+      await page.keyboard.press(mod+'+Shift+f');
+      await panel.getByText('Type an inline formula',{exact:true}).waitFor();
+      await page.keyboard.insertText('z');
+      const addedInline=markedSource.replace('Before ','$z$Before ').replace('Bold prose.','XBold prose.');
+      await page.waitForFunction(expected=>nativeProbe.source===expected,addedInline);
+      await page.keyboard.press(mod+'+z');
+      await page.waitForFunction(expected=>nativeProbe.source===expected,markedSource.replace('Bold prose.','XBold prose.'));
       await page.locator('#native-tex-close').click();
       const tableSource='\\documentclass{article}\n\\begin{document}\n\\begin{tabular}{ll}\nOne  & Two \\\\\nThree & \n\\end{tabular}\n\\end{document}\n';
       await page.locator('input#file').setInputFiles({name:'table.tex',mimeType:'text/plain',buffer:Buffer.from(tableSource)});

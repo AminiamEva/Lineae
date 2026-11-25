@@ -1,5 +1,5 @@
 import {nativeEditorRange,sourceOffsetAtEditorPosition} from './editor/native-text/editor-range.mjs';
-import {projectMixedDocument,projectTextDocument} from './editor/native-text/projection.mjs';
+import {canBeginProseFormula,projectMixedDocument,projectTextDocument} from './editor/native-text/projection.mjs';
 import {nativeMathCommandNames,projectMath} from './editor/native-math/source.mjs';
 import {nativeMathContext} from './editor/native-math/resolve.mjs';
 import {documentMetadata,writeDocumentMetadata} from '../latex/document-metadata.mjs';
@@ -3567,11 +3567,10 @@ nativeTexPreview=installNativeTexPreview({host:footer,before:modes,primary:nativ
       ?{source:draft,offset,path:first.paragraph.filePath}:null;
   },
   commitNewMath:(first,last,text,display,numbering)=>{
-    if(first?.kind!=='text'||first.paragraph!==last?.paragraph)return null;
+    if(!canBeginProseFormula(first,last,display))return null;
     const prepared=newNativeMath(text,display,numbering);
     if(!prepared)return null;
     const {paragraph}=first;
-    if(paragraph.heading||paragraph.container||paragraph.tableCell||paragraph.parts.length!==1||paragraph.parts[0].marks?.length)return null;
     if(projectDocument.composition&&!projectDocument.rebase(currentNativeProjectComposition(),editor.getJSON()))return null;
     const target=nativeProsePosition(paragraph,first.local,last.local);
     if(!target)return null;
@@ -3581,7 +3580,6 @@ nativeTexPreview=installNativeTexPreview({host:footer,before:modes,primary:nativ
     const tr=state.tr;
     let prefix=open,suffix=close;
     if(display){
-      if(first!==last||first.local!==0&&first.local!==paragraph.text.length)return null;
       const head=first.local===0;
       const eol=paragraph.source.includes('\r\n')?'\r\n':'\n';
       prefix=(head?'':eol+eol)+open;
@@ -3605,7 +3603,16 @@ nativeTexPreview=installNativeTexPreview({host:footer,before:modes,primary:nativ
       return editor.state.doc===state.doc?null:result;
     }
     const projected=sourceProjection(draft,tr.doc.toJSON(),{fragment:projectFileKind==='tex'});
-    if(!projected?.blocks.some(block=>block.editable&&block.from<=offset&&block.to>=offset))return null;
+    if(!projected)return null;
+    if(display){
+      if(!projected.blocks.some(block=>block.editable&&block.from<=offset&&block.to>=offset))return null;
+    }else{
+      const owner=projection?.blocks.find(block=>block.index===range.match.index&&block.count===1&&
+        block.from<=change.from&&block.to>=change.to);
+      if(!owner)return null;
+      const [updated,...rest]=importBlocks(draft.slice(owner.from,owner.to+draft.length-paragraph.source.length));
+      if(!updated||rest.length||!state.schema.nodeFromJSON(updated).eq(tr.doc.child(owner.index)))return null;
+    }
     return dispatchNativeParagraphChange(state,tr,paragraph.source,draft,change,projected)?result:null;
   },
   commitAfterFormulaText:(formula,text)=>{

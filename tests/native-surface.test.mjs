@@ -6,13 +6,24 @@ import {applySlotEdit,applyStructureCommand,applyScalableFence,nativeMathCommand
 import {createMathSurface} from '../apps/web/src/editor/native-surface/math-surface.mjs';
 import {createTextSurface} from '../apps/web/src/editor/native-surface/text-surface.mjs';
 import {createNativeDocumentSession} from '../apps/web/src/editor/native-surface/document-session.mjs';
-import {projectTextDocument,projectMixedDocument,projectMixedSnapshot,textTarget,textEdit} from '../apps/web/src/editor/native-text/projection.mjs';
+import {canBeginProseFormula,projectTextDocument,projectMixedDocument,projectMixedSnapshot,textTarget,textEdit} from '../apps/web/src/editor/native-text/projection.mjs';
 import {richSourceChanges,sourceProjection,standaloneMathChanges} from '../apps/web/src/editor/source-sync.js';
 import {importBlocks} from '../apps/web/latex/blocks.mjs';
 import {parseDocument} from '../apps/web/latex/document.mjs';
 
 const source = '\\begin{document}\n\\[\\frac{a}{}\\]\n\\end{document}\n';
 const filled = '\\begin{document}\n\\[\\frac{a}{b}\\]\n\\end{document}\n';
+
+test('native inline formula insertion accepts a plain run beside existing math and marks',()=>{
+  const mixed='\\begin{document}\nBefore $x$ \\textbf{bold} after.\n\\end{document}\n';
+  const [paragraph]=projectMixedDocument(mixed).paragraphs;
+  const text=(local)=>({kind:'text',paragraph,local});
+  assert.equal(canBeginProseFormula(text(0),text(3),false),true);
+  assert.equal(canBeginProseFormula(text(0),text(0),true),false);
+  assert.equal(canBeginProseFormula(text(2),text(paragraph.text.indexOf('after')),false),false);
+  const bold=paragraph.text.indexOf('bold');
+  assert.equal(canBeginProseFormula(text(bold+1),text(bold+2),false),false);
+});
 
 function setup(text = source) {
   const projection = projectDocumentFormulas(text);

@@ -5,7 +5,7 @@ import {installNativePdf} from '../typesetting/rtex/pdf.mjs';
 import {matchesRichFormula,nativeCaretTargets} from '../editor/native-math/rich-slot.mjs';
 import {surfaceCaretRect} from '../editor/native-surface/math-surface.mjs';
 import {createNativeDocumentSession,sameTable} from '../editor/native-surface/document-session.mjs';
-import {projectMixedDocument,projectMixedSnapshot,textTarget} from '../editor/native-text/projection.mjs';
+import {canBeginProseFormula,projectMixedDocument,projectMixedSnapshot,textTarget} from '../editor/native-text/projection.mjs';
 import {nativeTarget} from '../editor/native-math/resolve.mjs';
 import {parseDocument} from '../../latex/document.mjs';
 import {resolvePackages} from '../../latex/packages.mjs';
@@ -222,10 +222,7 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
     else {
       if(!observation||draftInput)return false;
       const [first,last]=nativeDocument.surface.range;
-      if(first?.kind!=='text'||first.paragraph!==last?.paragraph)return false;
-      const paragraph=first.paragraph;
-      if(paragraph.heading||paragraph.container||paragraph.tableCell||paragraph.parts.length!==1||
-         paragraph.parts[0].marks?.length||display&&(first!==last||first.local!==0&&first.local!==paragraph.text.length))return false;
+      if(!canBeginProseFormula(first,last,display))return false;
       draftInput={kind:'formula',first,last,display,delimiter};
     }
     targetStatus.textContent=display?t('输入行间公式','Type a display formula'):t('输入行内公式','Type an inline formula');
@@ -248,6 +245,7 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
         return commitSurface(edit);
       case 'formula':
         if(action.insert==='$'&&!draft.display){
+          if(!draft.initial&&!canBeginProseFormula(draft.first,draft.last,true))return false;
           draft.display=true;
           targetStatus.textContent=t('输入行间公式','Type a display formula');
           return true;

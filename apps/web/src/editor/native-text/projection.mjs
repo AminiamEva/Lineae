@@ -433,6 +433,17 @@ export function proseEditEndpoints(paragraph, from, to) {
   return {start,end};
 }
 
+export function canBeginProseFormula(first,last,display) {
+  if(first?.kind!=='text'||first.paragraph!==last?.paragraph)return false;
+  const {paragraph}=first;
+  if(paragraph.heading||paragraph.container||paragraph.tableCell)return false;
+  if(display)return first.local===last.local&&paragraph.parts.length===1&&
+    !paragraph.parts[0].marks?.length&&(first.local===0||first.local===paragraph.text.length);
+  const endpoints=proseEditEndpoints(paragraph,first.local,last.local);
+  return Boolean(endpoints&&endpoints.start===endpoints.end&&!endpoints.start.marks?.length&&
+    !paragraph.parts[endpoints.start.partIndex].marks?.length);
+}
+
 export function textEdit(projection, {paragraph, from16, to16, insert}) {
   if (!projection || (projection.source!==paragraph.source && !projection.paragraphs?.includes(paragraph))) return null;
   if (!Number.isInteger(from16) || !Number.isInteger(to16) || from16 < 0 || to16 < from16 || to16 > paragraph.text.length) return null;
