@@ -8,7 +8,7 @@ import {referenceAt} from '../latex/reference-commands.mjs';
 import {sourceStructure} from '../latex/source-structure.mjs';
 import {insertTableSourceColumn,insertTableSourceRow,mergeTableSourceCells,mergeTableSourceRows,removeTableSourceColumn,removeTableSourceRow,splitTableSourceCell,splitTableSourceRowspan} from '../latex/tabularx.mjs';
 import {editTblrColumn,editTblrRow,mergeTblrCells,splitTblrCell} from '../latex/tblr.mjs';
-import {tikzDrawingRanges} from '../latex/images.mjs';
+import {rasterDrawingRanges,tikzDrawingRanges} from '../latex/images.mjs';
 import {loadLegacyMath,nativeOnlyAcceptance,nativeWorkspaceRequested} from './editor/native-surface/acceptance-mode.mjs';
 import {sameTable} from './editor/native-surface/document-session.mjs';
 import {AppendixStart,MatterStart,LayoutCommand} from './editor/appendix.js';
@@ -3085,11 +3085,11 @@ function forEachNativeDocumentBlock(type,visit){
     });
   });
 }
-function nativeTikzDrawingTargets(){
+function nativeDrawingTargets(ranges){
   const results=[];
   function collect(node,position,block,path,text,base){
-    if(!block?.tikz||typeof text!=='string')return;
-    for(const range of tikzDrawingRanges(block.raw,node.toJSON())){
+    if(block?.count!==1||typeof text!=='string'||text.slice(base+block.from,base+block.to)!==block.raw)return;
+    for(const range of ranges(block.raw,node.toJSON())){
       const child=range.child===null?node:node.child(range.child);
       let at=position;
       if(range.child!==null){
@@ -3105,7 +3105,7 @@ function nativeTikzDrawingTargets(){
   return results;
 }
 function nativeTikzDrawings(){
-  return nativeTikzDrawingTargets().map(({position,label})=>({position,label}));
+  return nativeDrawingTargets(tikzDrawingRanges).map(({position,label})=>({position,label}));
 }
 function editNativeDrawing(position){
   if(!nativeTikzDrawings().some(drawing=>drawing.position===position))return;
@@ -3120,9 +3120,14 @@ function editNativeDrawing(position){
   });
 }
 function openNativeMeasuredDrawing(drawing){
-  const matches=nativeTikzDrawingTargets().filter(target=>target.text===drawing.source&&
+  const matches=nativeDrawingTargets(drawing.raster?rasterDrawingRanges:tikzDrawingRanges).filter(target=>target.text===drawing.source&&
     (!drawing.filePath||target.path===drawing.filePath)&&target.from===drawing.from16&&target.to===drawing.to16);
-  if(matches.length===1)editNativeDrawing(matches[0].position);
+  if(matches.length!==1)return;
+  const [{position}]=matches;
+  if(drawing.raster){
+    const {state}=editor;
+    editor.view.dispatch(state.tr.setSelection(NodeSelection.create(state.doc,position)));
+  }else editNativeDrawing(position);
 }
 function nativeSourceBlocks(){
   const results=[];

@@ -502,6 +502,17 @@ test('drawing measurement leaves the source and ordinary formula authority intac
   assert.equal([...plain.owners.values()].some(owner=>owner.drawing),false);
 });
 
+test('repeat raster occurrences get distinct source ranges in one observation',()=>{
+  const first='\\includegraphics[width=18pt]{plot.png}',second='\\includegraphics[width=25pt]{plot.png}';
+  const source='\\begin{document}\n'+first+'\n\n'+second+'\n\\end{document}\n';
+  const measured=projectMixedDocument(source,{measureDrawings:true});
+  const corners=[...measured.owners.values()].filter(owner=>owner.corner==='top');
+  assert.deepEqual(corners.map(({drawing})=>[drawing.raster,source.slice(drawing.from16,drawing.to16)]),
+    [['plot.png',first],['plot.png',second]]);
+  assert.equal(measured.source,source);
+  assert.equal(projectMixedDocument(source),null);
+});
+
 test('a native project replacement can span a child and return to the original file',()=>{
   const source='\\begin{document}\nBefore \\input{chapter} After.\n\\end{document}\n';
   const chapter='Middle';

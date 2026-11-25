@@ -165,6 +165,11 @@ jobs:
             const merged=native.paragraphs.find(paragraph=>paragraph.text==="First Second");
             writeFileSync(join(process.env.LINEAE_NATIVE_EVIDENCE_DIR,"table-rowspan-probe.json"),
               JSON.stringify({source:rowspan,projection:native.projection,tag:merged.glyphs[0].tag}));
+            const raster=readFileSync("tests/native-math/fixtures/raster-repeat.tex","utf8");
+            const rasterProbe=projectMixedDocument(raster,{measureDrawings:true});
+            const rasterTags=[...rasterProbe.owners].filter(([,owner])=>owner.drawing?.raster).map(([tag])=>tag);
+            writeFileSync(join(process.env.LINEAE_NATIVE_EVIDENCE_DIR,"raster-repeat-probe.json"),
+              JSON.stringify({projection:rasterProbe.projection,tags:rasterTags}));
           '
           node tests/native-math/rtex-probe.mjs
           node apps/desktop/scripts/stage.mjs

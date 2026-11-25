@@ -998,7 +998,9 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
         }
       }
       requestAnimationFrame(syncCaret);
-      targetStatus.textContent=kind==='text'
+      targetStatus.textContent=kind==='text'&&!projection.paragraphs.length
+        ?t('点击已定位的图形进行编辑。','Click a verified drawing to edit it.')
+        :kind==='text'
         ?t('点击原生页面中的文字定位光标，输入会写入原文。','Click text on the native page to place the caret; typing edits the source.')
         :kind==='mixed'
         ?t('点击原生页面中的文字或空槽定位光标，输入会写入原文。','Click prose on the native page, or click the empty numerator or denominator, another supported empty slot, or a glyph edge to continue typing.')

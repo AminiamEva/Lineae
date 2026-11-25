@@ -1803,6 +1803,29 @@ const server=createServer(async(req,res)=>{
         nativeEvidence.source.replace(`\\frac{${numerator}}{}`,`\\frac{${numerator}}{e}`));
       console.log(`PASS real LuaLaTeX geometry, original fonts and source writeback for ${filename}`);
     }
+    await page.close();
+    page=await browser.newPage({locale:'en-US',viewport:{width:1600,height:1100}});
+    await page.addInitScript(installMockNativeTex);
+    await page.route('**/vendor/mathlive/**',route=>route.abort());
+    await page.goto('http://127.0.0.1:'+server.address().port+'/?native-only-acceptance=1',{waitUntil:'networkidle'});
+    const duplicateImages='\\documentclass{article}\n\\usepackage{graphicx}\n\\begin{document}\n'+
+      '\\includegraphics[width=18pt]{plot.png}\n\n\\includegraphics[width=25pt]{plot.png}\n\\end{document}\n';
+    await openMockProject(page,true,duplicateImages,'');
+    await page.evaluate(()=>{nativeProbe.duplicateRaster=true;});
+    await page.locator('#native-tex-toggle').click();
+    await page.waitForFunction(()=>document.querySelector('#native-tex-preview').dataset.state==='current');
+    await page.locator('#native-tex-target').click();
+    await page.getByText('Click a verified drawing to edit it.',{exact:true}).waitFor();
+    const imageScale=.75*(96/72)/65781.76;
+    await page.locator('[data-native-page="1"] canvas').click({position:{x:3500000*imageScale,y:7000000*imageScale}});
+    await revealToolbar(page);
+    const imageRibbon=page.locator('.image-tools');
+    await imageRibbon.waitFor();
+    const imageWidth=page.getByRole('spinbutton',{name:'Width',exact:true});
+    if(!await imageWidth.isVisible())await imageRibbon.locator('[data-ribbon-group=image-transform] .ribbon-group-toggle').click();
+    assert.equal(await imageWidth.inputValue(),'25');
+    await imageWidth.fill('28');
+    await page.waitForFunction(expected=>nativeProbe.source===expected,duplicateImages.replace('25pt','28pt'));
     console.log('PASS native preview transport/UI: explicit startup, Canvas resources, retained editor/history, sync, export revision and cancellation (not engine evidence)');
   }catch(error){
     let diagnostic='page unavailable';

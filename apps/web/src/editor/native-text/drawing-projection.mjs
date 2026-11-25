@@ -1,15 +1,17 @@
-import {tikzDrawingRanges} from '../../../latex/images.mjs';
+import {rasterDrawingRanges,tikzDrawingRanges} from '../../../latex/images.mjs';
 
 // These empty math fields live in the observation session only. Their boxes
 // measure the exact TeX drawing, with zero contribution to the outer list.
 export function instrumentDrawing(block,source,from,tag,attribute,filePath){
-  const ranges=tikzDrawingRanges(block);
+  const ranges=[...tikzDrawingRanges(block),...rasterDrawingRanges(block)].sort((a,b)=>a.from-b.from);
   if(!ranges.length)return null;
   const owners=[],parts=[];
   let cursor=0;
   const marker=owner=>`\\begingroup\\mathsurround=0pt\\attribute${attribute}=${owner} $ $\\endgroup`;
   for(const range of ranges){
-    const drawing={source,filePath,from16:from+range.from,to16:from+range.to};
+    if(range.from<cursor)return null;
+    const drawing={source,filePath,from16:from+range.from,to16:from+range.to,
+      ...(range.path&&{raster:range.path})};
     const raw=block.slice(range.from,range.to);
     const measured='\\begingroup\\setbox0=\\hbox{'+raw+'}\\leavevmode'+
       '\\rlap{\\smash{\\raise\\ht0\\hbox{'+marker(tag)+'}}}'+

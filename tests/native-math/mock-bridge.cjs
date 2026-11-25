@@ -47,6 +47,7 @@ module.exports=function installMockNativeTex() {
       other.unshift(['M','save'],['M','set',3000000,3000000,'2 0 0 1']);
       other.push(['M','restore']);
     }
+    if(p.duplicateRaster)layout.pages_changed[0].dl.other.push(['i',1,3000000,6500000,1500000,1500000]);
     return layout;
   };
   window.__TAURI__={core:{invoke:async(command,args)=>{
@@ -109,6 +110,15 @@ module.exports=function installMockNativeTex() {
       }
       const input=p.targetInclude?args.files?.find(file=>file.path==='chapters/one.tex')?.source:args.projection;
       if(!input)throw new Error('No target source in observation request');
+      if(p.duplicateRaster){
+        const observed=p.layout().pages_changed;
+        const markers=[...input.matchAll(/\\attribute65000=(\d+) \$ \$/g)];
+        const anchors=observed[0].dl.other.flatMap(([, ,x,y,w,h])=>[[x,y],[x+w,y+h]]);
+        if(markers.length!==anchors.length)throw new Error('Missing raster source anchors');
+        observed[0].dl.math_owners={glyphs:[],fields:anchors.map(([x,y],index)=>
+          ({owner:Number(markers[index][1]),role:'math',empty:true,bbox:[x,y,x,y]}))};
+        return observed;
+      }
       // The mock only treats tags inside math delimiters as formula owners.
       const mathGroups=/\\\[([\s\S]*?)\\\]|\$\$([\s\S]*?)\$\$|\$([^$]*)\$|\\begin\{((?:equation|align(?:at)?|flalign|gather|multline|eqnarray)\*?)\}([\s\S]*?)\\end\{\4\}/g;
       const mathOnly=text=>[...text.matchAll(mathGroups)].map(found=>found[1]??found[2]??found[3]??found[5]).join('\n');

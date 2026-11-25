@@ -1743,6 +1743,35 @@ mod tests {
             assert!(drawing_without_markers(raw_page) == drawing_without_markers(observed_page),
                 "instrumentation must preserve visible multirow geometry");
             rowspan.terminate();
+            let raster_source = include_str!("../../../../tests/native-math/fixtures/raster-repeat.tex");
+            let raster_probe: Value = serde_json::from_slice(&std::fs::read(directory.join("raster-repeat-probe.json")).unwrap()).unwrap();
+            let raster = Session::create_snapshot(Snapshot::new(raster_source, "main.tex".into(), vec![NativeTexFile {
+                path: "plot.png".into(), bytes: include_bytes!("../icons/32x32.png").to_vec(),
+            }]).unwrap()).unwrap();
+            let info = raster.start().unwrap();
+            let layout = wait_layout(&raster, info.source_revision);
+            let measured = raster.observe_formula(info.source_revision, raster_probe["projection"].as_str().unwrap(), Vec::new()).unwrap();
+            assert!(drawing_without_markers(&layout["pages_changed"][0]) == drawing_without_markers(&measured[0]),
+                "instrumentation must preserve both occurrences of the staged image");
+            let display = &measured[0]["dl"];
+            let images = display["other"].as_array().unwrap().iter().chain(display["lines"].as_array().unwrap().iter()
+                .flat_map(|line| line["items"].as_array().unwrap())).filter(|item| item[0] == "i").collect::<Vec<_>>();
+            assert_eq!(images.len(), 2);
+            let fields = display["math_owners"]["fields"].as_array().unwrap();
+            let tags = raster_probe["tags"].as_array().unwrap();
+            assert_eq!(tags.len(), 4);
+            let corner = |tag: &Value| {
+                let field = fields.iter().find(|entry| entry["owner"] == *tag && entry["empty"] == true).unwrap();
+                (field["bbox"][0].as_i64().unwrap(), field["bbox"][1].as_i64().unwrap())
+            };
+            for pair in tags.chunks_exact(2) {
+                let (x,y) = corner(&pair[0]);
+                let (right,bottom) = corner(&pair[1]);
+                assert_eq!(images.iter().filter(|item| item[2] == x && item[3] == y &&
+                    item[4] == right - x && item[5] == bottom - y).count(), 1,
+                    "each source invocation must have a unique image box");
+            }
+            raster.terminate();
             let source = include_str!("../../../../tests/native-math/fixtures/numbered-alignment.tex");
             let projection = std::fs::read_to_string(directory.join("alignment-projection.tex")).unwrap();
             let alignment = Session::create(source).unwrap();

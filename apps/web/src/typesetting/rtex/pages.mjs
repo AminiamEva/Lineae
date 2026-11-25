@@ -104,12 +104,22 @@ export function installNativePages({host,getFont,getTypeOneFont,getRaster,onPain
     }
     const verifiedDrawings=[];
     for(const page of observed){
-      const raw=pages.get(page.page).dl,measured=page.dl;
+      const entry=pages.get(page.page),raw=entry.dl,measured=page.dl;
       const originalItems=[raw.other,...raw.lines.map(line=>line.items)];
       const boxes=originalItems.flat().map(cachedDrawingBox).filter(Boolean);
-      const matched=drawings.filter(candidate=>candidate.number===page.page&&
+      const matched=drawings.filter(candidate=>candidate.number===page.page&&!candidate.drawing.raster&&
         boxes.filter(box=>box.every((value,axis)=>value===candidate.box[axis])).length===1);
-      if(drawing(raw)!==drawing(measured)){
+      if(drawing(raw)===drawing(measured)){
+        const rasters=drawings.filter(candidate=>candidate.number===page.page&&candidate.drawing.raster);
+        const hits=rasters.length?registeredRasterHits(raw,getRaster):[];
+        const identity=[1,0,0,1,0,0];
+        for(const candidate of rasters){
+          const path=stagedRasterPath(candidate.drawing.raster);
+          const exact=hits.filter(hit=>hit.path===path&&hit.box.every((value,axis)=>value===candidate.box[axis])&&
+            hit.transform.every((value,axis)=>value===identity[axis]));
+          if(exact.length===1)verifiedDrawings.push(candidate);
+        }
+      }else{
         if(!pdfBacked||page.exact||!matched.length)return false;
         const normalized=matchObservedDrawingFonts(raw,measured);
         if(!normalized||drawing(raw,false)!==drawing(normalized,false))return false;
@@ -316,12 +326,14 @@ export function installNativePages({host,getFont,getTypeOneFont,getRaster,onPain
     if(entry?.canvas!==canvas)return;
     const rect=canvas.getBoundingClientRect(),scale=CSS_PER_SP*zoom;
     const x=(event.clientX-rect.left)/scale,y=(event.clientY-rect.top)/scale;
+    if(ownership?.stamp.sourceRevision===revision&&ownership?.stamp.layoutVersion===layoutVersion){
+      const drawings=ownership.drawings.filter(({number,box:[left,top,width,height]})=>
+        number===entry.number&&x>=left&&x<=left+width&&y>=top&&y<=top+height);
+      if(drawings.length===1){onDrawingHit?.(drawings[0].drawing,ownership.stamp);return;}
+      if(drawings.length>1)return;
+    }
     const hits=entry.rasterHits?.filter(hit=>rasterContains(hit,x,y));
     if(hits?.length===1)onImageHit?.(hits[0].path,revision);
-    if(hits?.length||ownership?.stamp.sourceRevision!==revision||ownership?.stamp.layoutVersion!==layoutVersion)return;
-    const drawings=ownership.drawings.filter(({number,box:[left,top,width,height]})=>
-      number===Number(canvas.parentElement.dataset.nativePage)&&x>=left&&x<=left+width&&y>=top&&y<=top+height);
-    if(drawings.length===1)onDrawingHit?.(drawings[0].drawing,ownership.stamp);
   });
   async function prepare(dl,attempt) {
     for(const info of Object.values(dl.images_info??{})){

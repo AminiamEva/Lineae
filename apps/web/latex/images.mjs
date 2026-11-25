@@ -22,6 +22,32 @@ export function tikzDrawingRanges(source,node){
   return spans.map((span,index)=>({...span,child:drawings[index].child}));
 }
 
+export function rasterDrawingRanges(source,node){
+  if(!source.includes('\\includegraphics'))return [];
+  node??=parseImageBlock(source);
+  const children=node?.type==='subfigures'?node.content??[]:node?.type==='documentImage'?[node]:[];
+  const images=children.flatMap((child,index)=>child.attrs?.path?
+    [{child:node.type==='subfigures'?index:null,path:child.attrs.path}]:[]);
+  if(!images.length)return [];
+  const tokens=[...sourceStructure(source)];
+  if(tokens.some(token=>token.kind==='invalid'))return [];
+  const commands=tokens.filter(token=>token.value==='\\includegraphics');
+  if(commands.length!==images.length)return [];
+  const ranges=[];
+  for(const [index,token] of commands.entries()){
+    let cursor=trivia(source,token.end);
+    if(source[cursor]==='['){
+      const options=group(source,cursor,'[',']');
+      if(!options)return [];
+      cursor=trivia(source,options.end);
+    }
+    const arg=group(source,cursor),image=images[index];
+    if(arg?.value!==image.path||/[\\%{}]/.test(arg.value))return [];
+    if(/\.(?:png|jpe?g)$/i.test(image.path))ranges.push({from:token.index,to:arg.end,...image});
+  }
+  return ranges;
+}
+
 // A subfigure/figure body may contain a TikZ picture instead of \includegraphics.
 // Keep the drawing (including any resizebox wrapper) and drop the surrounding
 // alignment and caption commands, which the editor stores separately.
