@@ -324,6 +324,8 @@ export function installNativePages({host,getFont,getTypeOneFont,getRaster,onPain
     if(entry?.canvas!==canvas)return;
     const rect=canvas.getBoundingClientRect(),scale=CSS_PER_SP*zoom;
     const x=(event.clientX-rect.left)/scale,y=(event.clientY-rect.top)/scale;
+    if(event.ctrlKey||event.metaKey)console.debug('[ref-check]',JSON.stringify({x,y,zoom,revision,layoutVersion,
+      stamp:ownership?.stamp,boxes:ownership?.references.get(entry.number)}));
     if(ownership?.stamp.sourceRevision===revision&&ownership?.stamp.layoutVersion===layoutVersion){
       if(event.ctrlKey||event.metaKey){
         const references=(ownership.references.get(entry.number)??[]).filter(({bbox:[left,top,right,bottom]})=>

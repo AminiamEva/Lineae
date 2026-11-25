@@ -4001,6 +4001,9 @@ function revealNativeSearchResult({from,to}){
 }
 function navigateNativeReference(reference){
   const project=projectExplorer?.model,file=project?.files.get(reference.filePath);
+  console.debug('[ref-check]',JSON.stringify({verifiedSource:(file?.draft??source())===reference.source,
+    labelCount:collectReferenceLabels(editor.state.doc).length,
+    target:collectReferenceLabels(editor.state.doc).find(label=>label.key===reference.key)}));
   if((file?.draft??source())!==reference.source)return false;
   const target=collectReferenceLabels(editor.state.doc).find(label=>label.key===reference.key);
   if(!target||target.ambiguous||!['heading','equation'].includes(target.kind))return false;

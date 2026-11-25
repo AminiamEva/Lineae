@@ -1902,6 +1902,7 @@ const server=createServer(async(req,res)=>{
     }
     await page.close();
     page=await browser.newPage({locale:'en-US',viewport:{width:1600,height:1100}});
+    page.on('console',message=>{if(message.text().startsWith('[ref-check]'))console.log(message.text());});
     await page.addInitScript(installMockNativeTex);
     await page.route('**/vendor/mathlive/**',route=>route.abort());
     const base='http://127.0.0.1:'+server.address().port+'/';
