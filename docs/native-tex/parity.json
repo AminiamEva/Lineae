@@ -195,6 +195,73 @@
       "keydownToPixels": 100
     },
     "browserInstrumentation": "apps/web/src/ui/native-tex-preview.mjs",
-    "browserPaint": "Animation frame estimate, excludes OS input and physical display scan-out."
+    "browserPaint": "Animation frame estimate, excludes OS input and physical display scan-out.",
+    "engineBaseline": {
+      "evidence": "https://github.com/AminiamEva/Lineae/actions/runs/45579797136",
+      "scope": "Warm rtex edit dispatch on stdin to matching stdout event, in CI.",
+      "samples": [
+        {
+          "platform": "macOS arm64",
+          "pages": 10,
+          "sampleCount": 1000,
+          "p50Ms": 2.9581669999970472,
+          "p95Ms": 5.996875000004366,
+          "p99Ms": 10.574000000000524
+        },
+        {
+          "platform": "macOS arm64",
+          "pages": 100,
+          "sampleCount": 1000,
+          "p50Ms": 3.2674580000020796,
+          "p95Ms": 6.332291999999143,
+          "p99Ms": 8.607332999999926
+        },
+        {
+          "platform": "macOS arm64",
+          "pages": 300,
+          "sampleCount": 1000,
+          "p50Ms": 3.2912079999950947,
+          "p95Ms": 19.62237499999901,
+          "p99Ms": 32.76512499999808
+        },
+        {
+          "platform": "Windows x64",
+          "pages": 10,
+          "sampleCount": 1000,
+          "p50Ms": 1.7563000000009197,
+          "p95Ms": 2.910600000002887,
+          "p99Ms": 5.034399999996822
+        },
+        {
+          "platform": "Windows x64",
+          "pages": 100,
+          "sampleCount": 1000,
+          "p50Ms": 1.6576999999961117,
+          "p95Ms": 2.512699999999313,
+          "p99Ms": 3.359600000003411
+        },
+        {
+          "platform": "Windows x64",
+          "pages": 300,
+          "sampleCount": 1000,
+          "p50Ms": 1.6010000000023865,
+          "p95Ms": 2.453300000001036,
+          "p99Ms": 2.9302999999999884
+        }
+      ]
+    }
+  },
+  "phaseA": {
+    "status": "partial",
+    "shared": [
+      "caret and selection mechanics",
+      "pending source offset recovery",
+      "native preview commit dispatch"
+    ],
+    "pending": [
+      "unified document session and command registry",
+      "stable semantic addresses across composed files",
+      "cross-adapter selection and transactions"
+    ]
   }
 }
