@@ -4,7 +4,7 @@ import {readFileSync} from 'node:fs';
 import {importBlocks,serialize} from '../apps/web/src/editor/latex-codec.js';
 import {sourceProjection,richSourceChanges} from '../apps/web/src/editor/source-sync.js';
 import {parseDocument} from '../apps/web/latex/document.mjs';
-import {editTblrColumn,editTblrRow,splitTblrCell} from '../apps/web/latex/tblr.mjs';
+import {editTblrColumn,editTblrRow,mergeTblrCells,splitTblrCell} from '../apps/web/latex/tblr.mjs';
 const fixture=JSON.parse(readFileSync(new URL('./fixtures/academic-tblr.json',import.meta.url),'utf8'));
 const table=source=>{const nodes=importBlocks(source);assert.equal(nodes.length,1);assert.equal(nodes[0].type,'table');return nodes[0];};
 const wrap=body=>'\\begin{document}\r\nBefore.\n\n'+body+'\r\n\nAfter.\n\\end{document}\r\n';
@@ -52,6 +52,15 @@ test('splitting a tabularray cell reveals the preserved covered cells',()=>{
   assert.equal(draft,source.replace(' c = 2 ',' c = 1 '));
   assert.equal(draft.slice(patch.offset,patch.offset+4),'Lead');
   assert.equal(table(draft).content[0].content[1].content[0].content[0].text,'Hidden');
+});
+
+test('merging adjacent tabularray cells keeps the selected text and remaining fields',()=>{
+  const source='\\begin{tblr}{lcr}\r\nA & $z$ & C \\\\\r\nD & E & F\r\n\\end{tblr}';
+  const patch=mergeTblrCells(source,0,0,1);
+  const draft=source.slice(0,patch.from)+patch.insert+source.slice(patch.to);
+  assert.equal(draft,source.replace('A & $z$','\\SetCell[c=2]{l} A $z$ & '));
+  assert.equal(draft.slice(patch.offset-3,patch.offset),'$z$');
+  assert.equal(table(draft).content[0].content[0].attrs.colspan,2);
 });
 const edit=(source,mutate)=>{
   const doc={type:'doc',content:parseDocument(source).blocks.flatMap(importBlocks)};

@@ -4,7 +4,7 @@ import {readFileSync} from 'node:fs';
 import {importBlocks,serialize} from '../apps/web/src/editor/latex-codec.js';
 import {parseDocument} from '../apps/web/latex/document.mjs';
 import {sourceProjection,richSourceChanges} from '../apps/web/src/editor/source-sync.js';
-import {insertTableSourceColumn,insertTableSourceRow,parseTabularx,removeTableSourceColumn,removeTableSourceRow,splitTableSourceCell} from '../apps/web/latex/tabularx.mjs';
+import {insertTableSourceColumn,insertTableSourceRow,mergeTableSourceCells,parseTabularx,removeTableSourceColumn,removeTableSourceRow,splitTableSourceCell} from '../apps/web/latex/tabularx.mjs';
 const fixture=JSON.parse(readFileSync(new URL('./fixtures/academic-tabularx.json',import.meta.url),'utf8'));
 const table=source=>{const nodes=importBlocks(source);assert.equal(nodes.length,1);assert.equal(nodes[0].type,'table');assert.ok(nodes[0].attrs.tabularx);return nodes[0];};
 const wrap=source=>'\\begin{document}\r\nBefore.\n\n'+source+'\r\n\nAfter.\n\\end{document}\r\n';
@@ -187,4 +187,13 @@ test('splitting a native multicolumn cell keeps the original content, rule forma
   assert.equal(draft,source.replace('{ 2 }','{ 1 }').replace('Title}} & Tail','Title}} &  & Tail'));
   assert.equal(draft.slice(patch.offset,patch.offset+5),'Title');
   assert.equal(parseTabularx(draft).rows[0].length,3);
+});
+
+test('merging adjacent source cells keeps their visible content and following rows',()=>{
+  const source=['\\begin{tabularx}{\\textwidth}{lXr}','\\textbf{A} & $z$ & C \\\\','D & E & F','\\end{tabularx}'].join('\r\n');
+  const patch=mergeTableSourceCells(source,0,0,1);
+  const draft=source.slice(0,patch.from)+patch.insert+source.slice(patch.to);
+  assert.equal(draft,source.replace('\\textbf{A} & $z$','\\multicolumn{2}{l}{\\textbf{A} $z$}'));
+  assert.equal(draft[patch.offset],'}');
+  assert.equal(mergeTableSourceCells(source.replace(' & $z$',' % retained\r\n& $z$'),0,0,1),null);
 });

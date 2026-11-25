@@ -284,6 +284,24 @@ export function splitTableSourceCell(source,row,column,offset){
   return {from:start+from,to:start+cell.sourceEnd,insert,offset:offset+single.length-count.length};
 }
 
+export function mergeTableSourceCells(source,row,first,last){
+  const location=columnTableSource(source);
+  if(!location||first>=last)return null;
+  const {table,start,parse}=location;
+  const selected=table.rows[row]?.slice(first,last+1);
+  if(!selected||selected.length!==last-first+1||selected.some(cell=>cell.attrs.colspan!==1||cell.spanRange))return null;
+  const from=selected[0].sourceStart,to=selected.at(-1).sourceEnd;
+  if(table.source.slice(from,to).includes('%'))return null;
+  const format={left:'l',center:'c',right:'r'}[selected[0].attrs.align]??'l';
+  const body=selected.map(cell=>cell.text).filter(Boolean).join(' ');
+  const insert='\\multicolumn{'+selected.length+'}{'+format+'}{'+body+'}';
+  const draft=table.source.slice(0,from)+insert+table.source.slice(to);
+  const next=parse(draft);
+  const merged=next?.rows[row]?.[first];
+  if(next?.rows.length!==table.rows.length||merged?.attrs.colspan!==selected.length||merged.text!==body)return null;
+  return {from:start+from,to:start+to,insert,offset:start+from+insert.length-1};
+}
+
 export function importTabularx(source,inline) {
   return importSourceTable(source,inline,parseTabularx,'tabularx');
 }

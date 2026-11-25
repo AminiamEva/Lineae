@@ -294,6 +294,17 @@ const server=createServer(async(req,res)=>{
       await page.waitForFunction(expected=>nativeProbe.source===expected,plainEdited.replace('\nQThree','\n & \\\\\nQThree'));
       await page.keyboard.press(mod+'+z');
       await page.waitForFunction(expected=>nativeProbe.source===expected,plainEdited);
+      await panel.getByText('Click text on the native page',{exact:false}).waitFor();
+      await revealToolbar(page);await page.locator('[data-group=table]').click();
+      const cellBounds=await canvas.boundingBox();
+      await page.mouse.move(cellBounds.x+6550000*scale,cellBounds.y+9250000*scale);
+      await page.mouse.down();
+      await page.mouse.move(cellBounds.x+7150000*scale,cellBounds.y+9250000*scale,{steps:8});
+      await page.mouse.up();
+      await page.locator('button[data-source-action=merge]').click();
+      await page.waitForFunction(expected=>nativeProbe.source===expected,plainEdited.replace('One  & Two','\\multicolumn{2}{l}{One Two}'));
+      await page.keyboard.press(mod+'+z');
+      await page.waitForFunction(expected=>nativeProbe.source===expected,plainEdited);
       await page.locator('#native-tex-close').click();
       const tableWithMath=tableSource.replace('\\begin{document}','\\usepackage{tabularx}\n\\begin{document}')
         .replace('\\begin{tabular}{ll}','\\begin{tabularx}{\\textwidth}{lX}')

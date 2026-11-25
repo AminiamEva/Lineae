@@ -364,6 +364,27 @@ export function splitTblrCell(source,row,column,offset){
   return patch;
 }
 
+export function mergeTblrCells(source,row,first,last){
+  const located=editableTblr(source);
+  if(!located||first>=last)return null;
+  const {table,base}=located;
+  const cells=table.rows[row];
+  const selected=cells?.slice(first,last+1);
+  if(!selected||selected.length!==last-first+1||selected.some(cell=>cell.attrs.colspan!==1))return null;
+  const column=cells.slice(0,first).reduce((sum,cell)=>sum+cell.attrs.colspan,0);
+  const raw=table.rawRows[row].slice(column,column+selected.length);
+  const from=selected[0].from,to=selected.at(-1).to;
+  if(raw.some((cell,index)=>cell.raw.trim()!==selected[index].text)||table.source.slice(from,to).includes('%'))return null;
+  const format={left:'l',center:'c',right:'r'}[selected[0].attrs.align]??'l';
+  const body=selected.map(cell=>cell.text).filter(Boolean).join(' ');
+  const merged='\\SetCell[c='+selected.length+']{'+format+'} '+body;
+  const insert=merged+' & '.repeat(selected.length-1);
+  const {patch,draft}=applyTblrEdits(located,[{from,to,insert}]);
+  const cell=parseTblr(draft)?.rows[row]?.[first];
+  if(cell?.attrs.colspan!==selected.length||cell.text!==body)return null;
+  return {...patch,offset:base+from+merged.length};
+}
+
 const tableKeys=['columns','booktabs','borderMode','borderWidth','caption','label','placement','centered','align'];
 function tableShape(attrs){return JSON.stringify(tableKeys.map(k=>attrs[k]??null));}
 function cellShape(cell){return JSON.stringify([cell.type,cell.attrs?.colspan??1,cell.attrs?.rowspan??1,cell.attrs?.align??null,cell.attrs?.colwidth??null,cell.attrs?.tblrStyle??null]);}

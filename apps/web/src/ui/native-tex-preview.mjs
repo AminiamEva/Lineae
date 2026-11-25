@@ -1170,6 +1170,14 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
       const [from,to]=nativeDocument.surface.range;
       return from?.kind==='text'&&from.paragraph===to?.paragraph?[from,to]:null;
     },
+    verifiedTableRange(){
+      if(!acceptsInput()||!nativeEditing||!current()||!observation||pendingEdit)return null;
+      const [from,to]=nativeDocument.surface.range;
+      if(from?.kind!=='text'||to?.kind!=='text'||from===to)return null;
+      const a=from.paragraph.tableCell,b=to.paragraph.tableCell;
+      return a&&b&&a.from16===b.from16&&a.row===b.row&&a.column!==b.column&&
+        from.paragraph.filePath===to.paragraph.filePath?[from,to]:null;
+    },
     insertLiteralText:text=>nativeDocument.surface.caret?.kind==='text'&&
       submitInput({insert:text,paste:true,started:performance.now()}),
     clipboardSelection,

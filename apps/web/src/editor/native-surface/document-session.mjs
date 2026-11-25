@@ -7,6 +7,10 @@ const sameOwner=(left,right)=>Boolean(left&&right&&left.kind===right.kind&&
   (left.kind==='math'?sameFormula(left,right):sameParagraph(left,right)));
 const fileOf=stop=>(stop.formula??stop.paragraph).filePath;
 const tableCellOf=stop=>(stop?.paragraph??stop?.formula)?.tableCell;
+const sameTable=(left,right)=>{
+  const a=tableCellOf(left),b=tableCellOf(right);
+  return Boolean(a&&b&&a.from16===b.from16&&a.row===b.row&&fileOf(left)===fileOf(right));
+};
 const overlapsLine=(left,right)=>left?.page===right.page&&left.top<right.bottom&&left.bottom>right.top;
 
 // Text and math contribute geometry and edit operations. The document session
@@ -18,8 +22,8 @@ export function createNativeDocumentSession(resolve) {
   const order=stop=>orderByFile.get(fileOf(stop))?.find(region=>
     stop.docOffset>=region.from&&stop.docOffset<=region.to)?.index??-1;
   const canSelect=(from,to)=>sameOwner(from,to)||Boolean(from?.kind==='text'&&to?.kind==='text'&&
-    !from.paragraph.tableCell&&!to.paragraph.tableCell&&
-    (fileOf(from)===fileOf(to)||(order(from)>=0&&order(to)>=0)));
+    (sameTable(from,to)||!from.paragraph.tableCell&&!to.paragraph.tableCell&&
+      (fileOf(from)===fileOf(to)||(order(from)>=0&&order(to)>=0))));
   const compare=(left,right)=>order(left)-order(right)||left.docOffset-right.docOffset;
   const selection=createSelectionModel(sameOwner,fileOf,canSelect);
   const math=createMathSurface({resolve,selection});
@@ -122,7 +126,7 @@ export function createNativeDocumentSession(resolve) {
       if(!caret)return false;
       const stops=selection.stops.filter(stop=>caret.kind==='math'
         ?stop.kind==='math'&&sameFormula(caret,stop)&&caret.slot.id===stop.slot.id
-        :stop.kind==='text'&&canSelect(caret,stop));
+        :stop.kind==='text'&&(caret.paragraph.tableCell?sameOwner(caret,stop):canSelect(caret,stop)));
       preferredX=null;
       return stops.length>0&&selection.selectTargets(stops[0],stops.at(-1));
     },
@@ -147,6 +151,16 @@ export function createNativeDocumentSession(resolve) {
          (anchor.paragraph===head.paragraph&&anchor.local===head.local))return [];
       const [from,to]=compare(anchor,head)<=0?[anchor,head]:[head,anchor];
       if(from.paragraph===to.paragraph)return [{paragraph:from.paragraph,from:from.local,to:to.local}];
+      if(sameTable(from,to)){
+        const a=tableCellOf(from),b=tableCellOf(to);
+        const first=Math.min(a.column,b.column),last=Math.max(a.column,b.column);
+        const paragraphs=new Set(selection.stops.flatMap(stop=>{
+          if(stop.kind!=='text'||!sameTable(from,stop))return [];
+          const cell=tableCellOf(stop);
+          return cell.column>=first&&cell.column<=last?[stop.paragraph]:[];
+        }));
+        return [...paragraphs].map(paragraph=>({paragraph,from:0,to:paragraph.text.length}));
+      }
       const groups=new Set([from.paragraph]);
       for(const stop of selection.stops){
         if((order(from)>=0?order(stop)>=0:fileOf(stop)===fileOf(from))&&compare(stop,from)>0&&compare(stop,to)<0){
