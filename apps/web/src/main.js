@@ -3708,7 +3708,7 @@ function insertDocumentImage(native=nativeParagraphFormattingActive()){
 }
 function insertNativeImages(grouped,replacement){
   const document=editor.state.doc,project=projectExplorer?.model;
-  const current=()=>editor.state.doc===document&&projectExplorer?.model===project;
+  const current=()=>sourceView.hidden&&editor.state.doc===document&&projectExplorer?.model===project;
   return chooseImageFile(async selected=>{
     if(!current())return;
     const files=grouped?selected:[selected];
@@ -5473,6 +5473,54 @@ function changeFontSize(direction) {
   if (!next) return false;
   return applyTextStyle({fontSize:next+'pt'});
 }
+function applyNativeFormatPainter({marks,textStyle,paragraph:attributes}){
+  if(!nativeTexPreview.hasNativeTextFocus?.())return null;
+  const range=nativeTexPreview.verifiedTextRange();
+  if(!range)return false;
+  const [first,last]=range,{paragraph}=first;
+  if(first===last||paragraph!==last.paragraph||paragraph.heading||paragraph.container||paragraph.tableCell||
+    paragraph.parts.some(part=>part.kind!=='text'))return false;
+  const target=nativeProsePosition(paragraph,first.local,last.local);
+  if(!target)return false;
+  const {state}=editor,{from,to,match}=target.range;
+  const {schema}=state,{source}=paragraph;
+  let owner=null;
+  forEachNativeDocumentBlock('paragraph',(node,position,block,_path,text,base)=>{
+    if(position===match.offset&&block?.count===1&&text===source&&block.raw.trim()===serialize(node.toJSON()).trim())
+      owner={position,from:base+block.from+block.raw.length-block.raw.trimStart().length,
+        to:base+block.from+block.raw.trimEnd().length};
+  });
+  if(!owner)return false;
+  const tr=state.tr.removeMark(from,to);
+  for(const {name,attrs} of marks)tr.addMark(from,to,schema.marks[name].create({...attrs,...(name==='boxed'&&{boxId:null})}));
+  if(Object.keys(textStyle).length)tr.addMark(from,to,schema.marks.textStyle.create(textStyle));
+  const node=tr.doc.nodeAt(owner.position);
+  tr.setNodeMarkup(owner.position,undefined,{...node.attrs,...attributes});
+  if(tr.doc.eq(state.doc))return true;
+  const insert=serialize(tr.doc.nodeAt(owner.position).toJSON()).trim();
+  const [verified,...rest]=importBlocks(insert);
+  if(!verified||rest.length||!schema.nodeFromJSON(verified).eq(tr.doc.nodeAt(owner.position)))return false;
+  let change={from:owner.from,to:owner.to,insert};
+  let draft=source.slice(0,change.from)+insert+source.slice(change.to);
+  const {composition,project,file}=target,rootId=composition?.rootId;
+  const root=composition&&rootId!==file.id?project.file(rootId).draft:source;
+  const dependency=nativePackagePatch(root,insert);
+  if(dependency===false)return false;
+  if(composition){
+    const drafts=new Map([[file.id,draft]]);
+    if(dependency){
+      const prior=drafts.get(rootId)??root;
+      drafts.set(rootId,prior.slice(0,dependency.from)+dependency.insert+prior.slice(dependency.to));
+    }
+    return dispatchNativeProjectChange(state,tr,project,drafts);
+  }
+  if(dependency){
+    draft=draft.slice(0,dependency.from)+dependency.insert+draft.slice(dependency.to);
+    [change]=textPatch(source,draft);
+  }
+  const projected=sourceProjection(draft,tr.doc.toJSON(),{fragment:projectFileKind==='tex'});
+  return Boolean(projected&&dispatchNativeParagraphChange(state,tr,source,draft,change,projected));
+}
 homeRibbon=buildHomeRibbon(home,{documentClass:documentClassFromSource(documentParts.start),actions:{
   copy:()=>clipboard.copy().catch(reportClipboardError),
   cut:()=>clipboard.cut().catch(reportClipboardError),
@@ -5525,7 +5573,9 @@ homeRibbon=buildHomeRibbon(home,{documentClass:documentClassFromSource(documentP
   },
   find:documentFind.show,
 }});
-formatPainter=installFormatPainter(editor,{button:homeRibbon.refs.formatPainter,getField:activeMath});
+formatPainter=installFormatPainter(editor,{button:homeRibbon.refs.formatPainter,getField:activeMath,
+  prepareCapture:()=>!nativeTexPreview.hasNativeTextFocus?.()||nativeTexPreview.useTextSelection(),
+  applyNative:applyNativeFormatPainter});
 if (fontFamilyControl) homeRibbon.slots.font.prepend(fontFamilyControl);
 if (fontSizeControl) homeRibbon.slots.font.insertBefore(fontSizeControl,fontFamilyControl?.nextSibling??homeRibbon.slots.font.firstChild);
 if (colorControl) homeRibbon.slots.color.append(colorControl);

@@ -249,8 +249,18 @@ const server=createServer(async(req,res)=>{
       await canvas.click({position:{x:6550000*scale,y:9250000*scale}});
       await page.keyboard.press(mod+'+b');
       await page.keyboard.type('T');
-      await page.waitForFunction(source=>nativeProbe.source===source,
-        afterLeaving.replace('XYZAlpha','\\textbf{T}XYZAlpha'));
+      const boldSource=afterLeaving.replace('XYZAlpha','\\textbf{T}XYZAlpha');
+      await page.waitForFunction(source=>nativeProbe.source===source,boldSource);
+      await panel.getByText('Click prose on the native page',{exact:false}).waitFor();
+      await canvas.click({position:{x:6670000*scale,y:9250000*scale}});
+      const painter=page.getByRole('button',{name:'Format Painter',exact:false});
+      if(!await painter.isVisible())await page.locator('[data-ribbon-group=clipboard] .ribbon-group-toggle').click();
+      await painter.click();
+      await canvas.click({position:{x:6750000*scale,y:9250000*scale}});
+      await page.keyboard.press('Shift+ArrowRight');
+      await page.waitForFunction(source=>nativeProbe.source===source,boldSource.replace('\\textbf{T}X','\\textbf{TX}'));
+      await page.keyboard.press(mod+'+z');
+      await page.waitForFunction(source=>nativeProbe.source===source,boldSource);
       await page.keyboard.press(mod+'+z');
       await page.waitForFunction(source=>nativeProbe.source===source,afterLeaving);
       await panel.getByText('Click prose on the native page',{exact:false}).waitFor();

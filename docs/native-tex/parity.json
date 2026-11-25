@@ -140,7 +140,7 @@
         "https://github.com/AminiamEva/Lineae/actions/runs/45656057369",
         "https://github.com/AminiamEva/Lineae/actions/runs/45665234676"
       ],
-      "scope": "A staged raster can be edited from native Canvas or a registered PDF. Repeated PNG occurrences have distinct measured targets. The browser gates cover project PNG insertion with unchanged binary bytes, undo and redo of its reference, and native TikZ insertion and preamble dependencies in one edit. Direct clicks open verified TikZ and supported subfigures. More nested float and image operations still need direct editing coverage. Insertion gates: https://github.com/AminiamEva/Lineae/actions/runs/45693569036 and https://github.com/AminiamEva/Lineae/actions/runs/45694599386"
+      "scope": "A staged raster can be edited from native Canvas or a registered PDF. Repeated PNG occurrences have distinct measured targets. Browser gates cover project PNG insertion, grouping staged assets into subfigures, and replacing a raster argument without changing the surrounding figure. They verify exact binary staging and reference undo. Direct clicks open verified TikZ and supported subfigures. Complex nested floats still need direct editing coverage. Image gates: https://github.com/AminiamEva/Lineae/actions/runs/45705845058 and https://github.com/AminiamEva/Lineae/actions/runs/45706402628"
     },
     {
       "id": "page-layout-and-pdf",
@@ -239,12 +239,12 @@
       "evidence": ["https://github.com/AminiamEva/Lineae/actions/runs/45617906617", "https://github.com/AminiamEva/Lineae/actions/runs/45671660810"]
     },
     "pending": [
-      "broader project structures and edits across complex selections",
-      "full native command coverage",
-      "complex table cell targeting and editing",
-      "figure, float and TikZ editing",
-      "PDF semantics for complex objects and document layouts beyond verified text and formulas",
-      "physical device IME and latency"
+      "cross-file selection across complex cells, partial formula structures, or multiple copies of the same source",
+      "full native command coverage including format painter and direct edits inside opaque macros",
+      "additional complex cell styles and span combinations",
+      "direct figure editing inside unsupported nested float wrappers",
+      "PDF semantics for complex objects beyond verified text, formulas, references, rasters and TikZ",
+      "physical device verification on Windows and macOS for IME, native shortcut delivery, and keydown-to-pixels latency"
     ]
   },
   "latency": {
