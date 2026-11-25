@@ -178,6 +178,21 @@ test('plain cell writeback leaves a neighboring inline formula and its spelling 
   ]);
 });
 
+test('inline math edits preserve repeated formula delimiters and untouched prose',()=>{
+  const source=wrap('Text with  $ x $ and \\(x\\).\r\n');
+  const original={type:'doc',content:parseDocument(source).blocks.flatMap(importBlocks)};
+  const edited=structuredClone(original);
+  const maths=edited.content[0].content.filter(node=>node.type==='math');
+  maths[1].attrs.latex='y';
+  const at=source.indexOf('\\(x\\)')+2;
+  const expected=[{from:at,to:at+1,insert:'y'}];
+  const projection=sourceProjection(source,original);
+  assert.deepEqual(standaloneMathChanges(projection,edited),expected);
+  assert.deepEqual(richSourceChanges(projection,edited),expected);
+  maths[1].attrs.delimiter='$';
+  assert.equal(standaloneMathChanges(projection,edited),null);
+});
+
 test('nested prose edits preserve a proof title, an abstract declaration, and mixed line endings',()=>{
   const source=wrap('\\begin{proof}[Claim]\r\n  First step.\r\n\\end{proof}\r\n\r\n'+
     '\\begin{abstract}\n% preserve this comment\r\n\\small\r\nSummary.\r\n\\end{abstract}');

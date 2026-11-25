@@ -143,7 +143,7 @@ export function richSourceChanges(projection, doc) {
     const nodes = doc.content.slice(block.index, block.index + block.count);
     if (JSON.stringify(nodes) === block.snapshot) continue;
     const patch = block.editable ? patchBlock(block,nodes) :
-      plainTableChanges(block,nodes)??plainContainerChanges(block,nodes)??patchIsolatedTables(block,nodes);
+      inlineMathChanges(block,nodes)??plainTableChanges(block,nodes)??plainContainerChanges(block,nodes)??patchIsolatedTables(block,nodes);
     if (!patch) return null;
     changes.push(...patch);
   }
@@ -158,7 +158,7 @@ export function standaloneMathChanges(projection,doc) {
   for(const block of projection.blocks){
     const nodes=doc.content.slice(block.index,block.index+block.count);
     if(JSON.stringify(nodes)===block.snapshot)continue;
-    const patch=mathBodyChanges(block,nodes)??plainTableChanges(block,nodes)??plainContainerChanges(block,nodes);
+    const patch=mathBodyChanges(block,nodes)??inlineMathChanges(block,nodes)??plainTableChanges(block,nodes)??plainContainerChanges(block,nodes);
     if(!patch)return null;
     changes.push(...patch);
   }
@@ -248,6 +248,26 @@ function mathBodyChanges(block,nodes) {
   return minimalChange(body,after.attrs.latex.trim(),block.from+spelling.start+leading.length);
 }
 
+function inlineMathChanges(block,nodes) {
+  const [before]=JSON.parse(block.snapshot),[after]=nodes;
+  if(block.count!==1||nodes.length!==1||before?.type!=='paragraph'||after?.type!=='paragraph'||
+    before.content?.length!==after.content?.length)return null;
+  const math=(before.content??[]).flatMap((node,index)=>node.type==='math'?[index]:[]);
+  if(!math.length)return null;
+  const tokens=[...sourceStructure(block.raw)].filter(token=>token.kind==='inlineMath');
+  if(tokens.length!==math.length)return null;
+  const restored=structuredClone(after),patches=[];
+  for(const [ordinal,index] of math.entries()){
+    const original=before.content[index],updated=after.content[index],token=tokens[ordinal];
+    if(original.attrs.latex!==token.latex||original.attrs.delimiter!==token.delimiter||
+      updated?.type!=='math'||typeof updated.attrs.latex!=='string')return null;
+    restored.content[index].attrs.latex=token.latex;
+    if(token.latex!==updated.attrs.latex)patches.push(...minimalChange(token.latex,updated.attrs.latex,
+      block.from+token.index+token.delimiter.length));
+  }
+  return patches.length&&JSON.stringify([restored])===block.snapshot?patches:null;
+}
+
 // A protected neighbor must stay untouched, but need not block a source-backed
 // table's cell edit. Locate only real outer environments, never quoted examples
 // in comments, macro definitions or Raw containers. Equal tables map by order.
@@ -283,7 +303,7 @@ function patchIsolatedTables(block,nodes) {
 }
 
 function patchBlock(block,nodes) {
-    const math=mathBodyChanges(block,nodes)??plainTableChanges(block,nodes)??plainContainerChanges(block,nodes);
+    const math=mathBodyChanges(block,nodes)??inlineMathChanges(block,nodes)??plainTableChanges(block,nodes)??plainContainerChanges(block,nodes);
     if(math)return math;
     if (nodes.some(node => node.type === 'raw')) return null;
     const environments=list=>list.flatMap(node=>[
