@@ -102,6 +102,20 @@ const server=createServer(async(req,res)=>{
       await page.keyboard.type('X');
       await page.waitForFunction(expected=>nativeProbe.source===expected,markedSource.replace('Bold prose.','XBold prose.'));
       assert.equal(await page.locator('.ProseMirror strong').textContent(),'XBold prose.');
+      await page.locator('#native-tex-close').click();
+      const tableSource='\\documentclass{article}\n\\begin{document}\n\\begin{tabular}{ll}\nOne  & Two \\\\\nThree & Four\n\\end{tabular}\n\\end{document}\n';
+      await page.locator('input#file').setInputFiles({name:'table.tex',mimeType:'text/plain',buffer:Buffer.from(tableSource)});
+      await page.waitForFunction(()=>document.querySelector('.ProseMirror td')?.textContent==='One');
+      await page.locator('#native-tex-toggle').click();
+      await page.waitForFunction(()=>document.querySelector('#native-tex-preview').dataset.state==='current');
+      await page.locator('#native-tex-target').click();
+      await panel.getByText('Click text on the native page',{exact:false}).waitFor();
+      await page.locator('#native-tex-edit').click();
+      await panel.locator('[data-native-page="1"] canvas').click({position:{x:6550000*scale,y:9250000*scale}});
+      await page.keyboard.type('X');
+      await page.waitForFunction(expected=>nativeProbe.source===expected,tableSource.replace('One','XOne'));
+      await page.keyboard.press(mod+'+z');
+      await page.waitForFunction(expected=>nativeProbe.source===expected,tableSource);
       console.log('PASS native mixed editing with MathLive and JS pagination disabled');
       return;
     }

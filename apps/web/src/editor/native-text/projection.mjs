@@ -1,3 +1,4 @@
+import {plainTableCells} from './table-cells.mjs';
 import {parseDocument} from '../../../latex/document.mjs';
 import {sourceStructure} from '../../../latex/source-structure.mjs';
 import {projectDocumentFormulas} from '../native-math/document.mjs';
@@ -35,6 +36,25 @@ function proseBody(block) {
   return {leading:leading+mark[1].length+2,text:mark[2],mark:textMarks[mark[1]]};
 }
 
+function instrumentTable(block, source, blockFrom, firstOwner, attribute, filePath) {
+  const cells=plainTableCells(block)?.filter(cell=>cell.text);
+  if(!cells?.length)return null;
+  let projection='',cursor=0,nextTag=firstOwner;
+  const paragraphs=[];
+  for(const cell of cells){
+    const {text,offset,row,column}=cell;
+    const built=instrumentText(text,nextTag,attribute);
+    nextTag=built.nextTag;
+    projection+=block.slice(cursor,offset)+built.instrumented;
+    cursor=offset+text.length;
+    paragraphs.push({source,filePath,from16:blockFrom+offset,text,glyphs:built.glyphs,
+      parts:[{kind:'text',from16:0,to16:text.length,text}],
+      runs:[{from16:0,to16:text.length,text,partIndex:0}],
+      tableCell:{from16:blockFrom,row,column}});
+  }
+  return {projection:projection+block.slice(cursor),paragraphs,nextTag};
+}
+
 // Prose-only documents: every plain paragraph becomes a native target.
 export function projectTextDocument(source, {firstOwner=1, attribute=65000, fragment=false, filePath}={}) {
   const doc = parseDocument(source,{fragment});
@@ -47,6 +67,18 @@ export function projectTextDocument(source, {firstOwner=1, attribute=65000, frag
     const blockStart = bodyOffset;
     bodyOffset += block.length;
     if (!block.trim()) continue;
+    const blockFrom=doc.start.length+blockStart;
+    const table=instrumentTable(block,source,blockFrom,next,attribute,filePath);
+    if(table){
+      output+=source.slice(cursor,blockFrom)+table.projection;
+      cursor=blockFrom+block.length;
+      next=table.nextTag;
+      for(const paragraph of table.paragraphs){
+        paragraphs.push(paragraph);
+        for(const glyph of paragraph.glyphs)owners.set(glyph.tag,{paragraph,glyph});
+      }
+      continue;
+    }
     const {leading,text,mark}=proseBody(block);
     if (!text || unsupported.test(text)) continue;
     const built = instrumentText(text, next, attribute);
@@ -93,6 +125,17 @@ export function projectMixedDocument(source, {previous=[], attribute=65000, frag
       return {...math, kind:'math', paragraphs:[]};
     }
     output += source.slice(cursor, from16);
+    const table=!overlapping.length&&instrumentTable(block,source,from16,next,attribute,filePath);
+    if(table){
+      output+=table.projection;
+      cursor=to16;
+      next=table.nextTag;
+      for(const paragraph of table.paragraphs){
+        paragraphs.push(paragraph);
+        for(const glyph of paragraph.glyphs)owners.set(glyph.tag,{paragraph,glyph});
+      }
+      continue;
+    }
     const {leading,text,mark}=overlapping.length ? {...plainBlock(block),mark:null} : proseBody(block);
     const contentFrom = from16 + leading;
     if (!overlapping.length) {

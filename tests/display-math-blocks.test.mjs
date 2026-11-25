@@ -130,3 +130,16 @@ test('the typing paragraph after final display math owns no source bytes',()=>{
   assert.deepEqual(standaloneMathChanges(sourceProjection(changed,edited),original),
     [{from:insertion,to:insertion+1,insert:''}]);
 });
+
+test('plain table cell edits preserve layout tokens and row line endings',()=>{
+  const source=wrap('\\begin{tabular}{ll}\r\nOne  & Two \\\\\r\nThree & Four\r\n\\end{tabular}');
+  const original={type:'doc',content:[...parseDocument(source).blocks.flatMap(importBlocks),{type:'paragraph'}]};
+  const edited=structuredClone(original);
+  edited.content[0].content[1].content[1].content[0].content[0].text='XFour';
+  const at=source.indexOf('Four');
+  const projection=sourceProjection(source,original);
+  assert.deepEqual(standaloneMathChanges(projection,edited),[{from:at,to:at,insert:'X'}]);
+  assert.deepEqual(richSourceChanges(projection,edited),[{from:at,to:at,insert:'X'}]);
+  const changed=source.slice(0,at)+'X'+source.slice(at);
+  assert.deepEqual(standaloneMathChanges(sourceProjection(changed,edited),original),[{from:at,to:at+1,insert:''}]);
+});

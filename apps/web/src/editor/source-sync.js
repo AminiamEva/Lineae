@@ -1,3 +1,4 @@
+import {plainTableCells} from './native-text/table-cells.mjs';
 import {paragraphSpelling,mathSpelling} from './source-spelling.mjs';
 import {includeEmptyParagraphs,ownsEditedRange,blockWhitespace,splitEditableBoundaries} from './source-boundaries.mjs';
 import { parseDocument } from '../../latex/document.mjs';
@@ -18,7 +19,8 @@ export function sourceProjection(text, doc, options) {
     const count = importBlocks(raw).length;
     const nodes = doc.content.slice(index, index + count);
     const canonical = nodes.map(serialize).join('').trim();
-    const spelling=mathSpelling(raw,nodes)??paragraphSpelling(raw,canonical,nodes);
+    const spelling=mathSpelling(raw,nodes)??paragraphSpelling(raw,canonical,nodes)??
+      (nodes.length===1&&nodes[0].type==='table'&&plainTableCells(raw)?{plainTable:true}:null);
     const block = { spelling, from: offset, to: offset + raw.length, index, count, raw,
       editable: count > 0 && !nodes.some(node => node.type === 'raw') && (raw.trim() === canonical || !!spelling),
       snapshot: JSON.stringify(nodes) };
@@ -154,12 +156,44 @@ export function standaloneMathChanges(projection,doc) {
   for(const block of projection.blocks){
     const nodes=doc.content.slice(block.index,block.index+block.count);
     if(JSON.stringify(nodes)===block.snapshot)continue;
-    const patch=mathBodyChanges(block,nodes);
+    const patch=mathBodyChanges(block,nodes)??plainTableChanges(block,nodes);
     if(!patch)return null;
     changes.push(...patch);
   }
   return changes;
 }
+
+function plainTableChanges(block,nodes) {
+  const previous=JSON.parse(block.snapshot);
+  const [before]=previous,[after]=nodes;
+  if(before?.type!=='table'||after?.type!=='table'||nodes.length!==previous.length)return null;
+  if(before.attrs?.caption||before.attrs?.tblr||before.attrs?.tabularx)return null;
+  const cells=plainTableCells(block.raw);
+  if(!cells)return null;
+  const restored=structuredClone(nodes);
+  const patches=[];
+  function read(cell) {
+    const [paragraph]=cell?.content??[];
+    if(cell?.content?.length!==1||paragraph.type!=='paragraph')return null;
+    const content=paragraph.content??[];
+    if(content.some(node=>node.type!=='text'||node.marks?.length))return null;
+    return content.map(node=>node.text).join('');
+  }
+  for(const {row,column,text,offset} of cells){
+    const oldCell=before.content[row]?.content[column];
+    const nextCell=after.content[row]?.content[column];
+    if(JSON.stringify(oldCell)===JSON.stringify(nextCell))continue;
+    const next=read(nextCell);
+    if(read(oldCell)!==text||next===null||/[\\{}$%&#_^~\r\n]/.test(next)||next!==next.trim())return null;
+    const target=restored[0].content[row].content[column].content[0];
+    if(oldCell.content[0].content)target.content=oldCell.content[0].content;
+    else delete target.content;
+    patches.push(...minimalChange(text,next,block.from+offset));
+  }
+  if(!patches.length||JSON.stringify(restored)!==block.snapshot)return null;
+  return patches;
+}
+
 
 function mathBodyChanges(block,nodes) {
   const previous=JSON.parse(block.snapshot);
@@ -213,7 +247,7 @@ function patchIsolatedTables(block,nodes) {
 }
 
 function patchBlock(block,nodes) {
-    const math=mathBodyChanges(block,nodes);
+    const math=mathBodyChanges(block,nodes)??plainTableChanges(block,nodes);
     if(math)return math;
     if (nodes.some(node => node.type === 'raw')) return null;
     const environments=list=>list.flatMap(node=>[

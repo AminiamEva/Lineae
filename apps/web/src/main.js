@@ -2716,9 +2716,24 @@ nativeTexPreview=installNativeTexPreview({host:footer,before:modes,
       block.count===1 && block.from<=paragraph.from16 &&
       block.to>=paragraph.from16+paragraph.text.length);
     const matches=[];
+    function collect(node,offset,index,sourceOwner){
+      if(!paragraph.tableCell){
+        if(matchesParts(node))matches.push({node,offset,index,verified:sourceOwner?.index===index});
+        return;
+      }
+      if(node.type.name!=='table'||sourceOwner?.index!==index)return;
+      const {row,column}=paragraph.tableCell;
+      if(row>=node.childCount||column>=node.child(row).childCount)return;
+      const rowNode=node.child(row),cell=rowNode.child(column);
+      if(cell.childCount!==1||!matchesParts(cell.firstChild))return;
+      let position=offset+3;
+      for(let i=0;i<row;i++)position+=node.child(i).nodeSize;
+      for(let i=0;i<column;i++)position+=rowNode.child(i).nodeSize;
+      matches.push({node:cell.firstChild,offset:position,index,verified:true});
+    }
     editor.state.doc.forEach((node,offset,index)=>{
       if(!composition){
-        if(matchesParts(node))matches.push({node,offset,index});
+        collect(node,offset,index,owner);
         return;
       }
       if(node.type.name!=='projectRegion'||node.attrs.path!==file.path)return;
@@ -2727,9 +2742,7 @@ nativeTexPreview=installNativeTexPreview({host:footer,before:modes,
       const sourceOwner=composition.sources.get(file.id)===paragraph.source && region.projection?.blocks.find(block=>
         block.count===1&&region.from+block.from<=paragraph.from16 &&
         region.from+block.to>=paragraph.from16+paragraph.text.length);
-      node.forEach((child,childOffset,childIndex)=>{
-        if(matchesParts(child))matches.push({node:child,offset:offset+1+childOffset,verified:sourceOwner?.index===childIndex});
-      });
+      node.forEach((child,childOffset,childIndex)=>collect(child,offset+1+childOffset,childIndex,sourceOwner));
     });
     const match=matches.find(candidate=>composition?candidate.verified: candidate.index===owner?.index) ??
       (matches.length===1 ? matches[0] : null);
@@ -2750,6 +2763,13 @@ nativeTexPreview=installNativeTexPreview({host:footer,before:modes,
       const drafts=projectDocument.changes(tr.doc.toJSON());
       if(drafts?.get(file.id)!==expected)return false;
       for(const [id,draft] of drafts)if(id!==file.id&&draft!==project.file(id).draft)return false;
+    }
+    if(!composition&&paragraph.tableCell){
+      const patchList=standaloneMathChanges(projection,tr.doc.toJSON());
+      const from=paragraph.from16+patch.from,to=paragraph.from16+patch.to;
+      const expected=paragraph.source.slice(0,from)+patch.insert+paragraph.source.slice(to);
+      if(!patchList?.length||patchList.reduceRight((source,change)=>
+        source.slice(0,change.from)+change.insert+source.slice(change.to),paragraph.source)!==expected)return false;
     }
     if(endpoints.start!==endpoints.end)closeHistory(tr);
     if(!composition&&endpoints.start!==endpoints.end){

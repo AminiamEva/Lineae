@@ -273,3 +273,11 @@ test('native math commands insert validated structures and target the new field'
     assert.equal(surface.insert(insert),null,'Raw typing cannot inject a TeX structure');
   }
 });
+
+test('tagged plain table text maps to the original cell and exact byte range',()=>{
+  const source='\\begin{document}\n\\begin{tabular}{ll}\nOne & Two \\\\\nThree & Four\n\\end{tabular}\n\\end{document}\n';
+  const projection=projectTextDocument(source);
+  assert.deepEqual(projection.paragraphs.map(({tableCell:{row,column}})=>[row,column]),[[0,0],[0,1],[1,0],[1,1]]);
+  const paragraph=projection.paragraphs[3];
+  assert.equal(textEdit(projection,{paragraph,from16:0,to16:0,insert:'X'}).source,source.replace('Four','XFour'));
+});
