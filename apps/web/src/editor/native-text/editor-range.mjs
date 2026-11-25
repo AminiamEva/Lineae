@@ -1,3 +1,5 @@
+import {headingAt} from '../../../latex/headings.mjs';
+import {serialize} from '../latex-codec.js';
 import {proseEditEndpoints} from './projection.mjs';
 
 export function nativeEditorRange({doc,projection,composition,file,paragraph,from,to}) {
@@ -5,7 +7,7 @@ export function nativeEditorRange({doc,projection,composition,file,paragraph,fro
   if(!endpoints)return null;
   const matchesParts=node=>{
     if(node.type.name!==(paragraph.heading?'heading':'paragraph'))return null;
-    if(paragraph.heading&&node.attrs.command!==paragraph.heading)return null;
+    if(paragraph.heading&&(node.attrs.command??headingAt(serialize({type:'heading',attrs:node.attrs}))?.name)!==paragraph.heading)return null;
     const parts=[];
     let index=0,offset=0;
     for(const part of paragraph.parts){

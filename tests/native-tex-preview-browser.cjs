@@ -236,6 +236,8 @@ const server=createServer(async(req,res)=>{
       await page.waitForFunction(expected=>nativeProbe.source===expected,tableWithMath.replace('\\frac{a}{}','\\frac{a}{b}'));
       await page.keyboard.press(mod+'+z');
       await page.waitForFunction(expected=>nativeProbe.source===expected,tableWithMath);
+      await page.waitForFunction(()=>nativeProbe.calls.some(call=>call.command==='native_tex_observe_formula'&&
+        call.args.sourceRevision===nativeProbe.revision));
       await panel.getByText('Click prose on the native page',{exact:false}).waitFor();
       await canvas.click({position:{x:7150000*scale,y:9250000*scale}});
       await page.keyboard.type('X');
@@ -395,6 +397,14 @@ const server=createServer(async(req,res)=>{
       await page.keyboard.press('Enter');
       await page.waitForFunction(()=>nativeProbe.source?.includes('\\newpage'));
       assert.equal(await page.locator('.ProseMirror [data-page-break]').count(),1);
+      await panel.getByText('Click text on the native page',{exact:false}).waitFor();
+      await canvas.click({position:{x:6550000*scale,y:9250000*scale}});
+      await page.keyboard.press('Backslash');
+      await prosePalette.getByRole('textbox',{name:'LaTeX command',exact:true}).fill('title');
+      await page.keyboard.press('Enter');
+      await page.locator('.editor-dialog input').fill('Yield 50%');
+      await page.keyboard.press('Enter');
+      await page.waitForFunction(()=>nativeProbe.source?.includes('\\title{Yield 50\\%}')&&nativeProbe.source.includes('\\maketitle'));
       await page.locator('#native-tex-close').click();
       const literalProse='\\documentclass{article}\n\\begin{document}\n\\textasciicircum{}Alpha\n\\end{document}\n';
       await page.locator('input#file').setInputFiles({name:'literal-prose.tex',mimeType:'text/plain',buffer:Buffer.from(literalProse)});
@@ -568,10 +578,23 @@ const server=createServer(async(req,res)=>{
       await page.locator('.tex-preview > #native-tex-preview[data-editing=false] canvas').waitFor();
       assert.equal(await page.locator('.tex-preview > .document-page').isVisible(),false);
       assert.equal(await page.locator('#native-tex-input').isVisible(),false);
+      await page.locator('.cm-content .cm-line').filter({hasText:'XNative document.'}).click();
+      await page.keyboard.press('Home');
+      await page.keyboard.insertText('S');
+      await page.waitForFunction(expected=>nativeProbe.source===expected,workspaceSource.replace('Native document.','SXNative document.'));
       await page.locator('[data-source-mode=body]').click();
       await panel.getByText('Click text on the native page',{exact:false}).waitFor();
       assert.equal(await page.evaluate(()=>nativeProbe.calls.filter(call=>call.command==='native_tex_open').length),openedSessions);
       assert.equal(await page.evaluate(()=>customElements.get('math-field')),undefined);
+      const rawBlock='\\custom{Original}';
+      const sourceWithRaw=workspaceSource.replace('\\begin{document}',
+        '\\newcommand{\\custom}[1]{#1}\n\\begin{document}').replace('Native document.',`Before.\n\n${rawBlock}\n\nAfter.`);
+      await page.locator('input#file').setInputFiles({name:'custom-block.tex',mimeType:'text/plain',buffer:Buffer.from(sourceWithRaw)});
+      await page.getByRole('button',{name:'Edit source block',exact:true}).click();
+      await page.locator('.cm-content').waitFor();
+      await page.keyboard.insertText('\\custom{Updated}');
+      await page.waitForFunction(expected=>nativeProbe.source===expected,sourceWithRaw.replace(rawBlock,'\\custom{Updated}'));
+      await page.locator('[data-source-mode=body]').click();
       const blank='\\documentclass{article}\n\\begin{document}\n\n\\end{document}\n';
       await page.locator('input#file').setInputFiles({name:'empty-workspace.tex',mimeType:'text/plain',buffer:Buffer.from(blank)});
       await page.getByRole('button',{name:'Start typing',exact:true}).click();

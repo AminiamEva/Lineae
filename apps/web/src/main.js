@@ -1478,6 +1478,12 @@ let importedSnapshot=null;
 function readMeta(key) {
   return documentMetadata(documentParts.start,key)?.value??'';
 }
+async function editMetadata(key,label) {
+  const raw=readMeta(key);
+  const current=key==='date'&&raw==='\\today'?raw:metaDisplay(raw);
+  const value=await askText(label,current);
+  if(value!==null&&(value!==current||(key==='date'&&!documentMetadata(documentParts.start,key))))writeMeta(key,value);
+}
 function writeMeta(key,value) {
   const escaped=key==='date'&&value==='\\today'?value:serialize({type:'text',text:value});
   const before=sourceView.hidden?source():sourceView.value;
@@ -1909,18 +1915,9 @@ const structureCommands = {
   },
   includegraphics: () => insertLocalImage(editor),
   tableofcontents: () => editor.chain().focus().insertContent({type:'tableOfContents'}).run(),
-  title: async () => {
-    const value=await askText(t('标题','Title'),readMeta('title'));
-    if(value!==null)writeMeta('title',value);
-  },
-  author: async () => {
-    const value=await askText(t('作者','Author'),readMeta('author'));
-    if(value!==null)writeMeta('author',value);
-  },
-  date: async () => {
-    const value=await askText(t('日期','Date'),readMeta('date'));
-    if(value!==null)writeMeta('date',value);
-  },
+  title:()=>editMetadata('title',t('标题','Title')),
+  author:()=>editMetadata('author',t('作者','Author')),
+  date:()=>editMetadata('date',t('日期','Date')),
   textbf: () => editor.chain().focus().toggleBold().run(),
   textit: () => editor.chain().focus().toggleItalic().run(),
   emph: () => editor.chain().focus().toggleItalic().run(),
@@ -2055,8 +2052,10 @@ function completionActions() {
     name,()=>nativeTexPreview.runMathCommand(name==='newline'?'enterLine':name),
   ]));
   if(completionNative==='text'){
-    const actions={section:structureCommands.section,subsection:structureCommands.subsection,
-      subsubsection:structureCommands.subsubsection,appendix:structureCommands.appendix,
+    const actions={chapter:structureCommands.chapter,section:structureCommands.section,
+      subsection:structureCommands.subsection,subsubsection:structureCommands.subsubsection,
+      appendix:structureCommands.appendix,title:structureCommands.title,
+      author:structureCommands.author,date:structureCommands.date,
       newpage:()=>editor.commands.insertContent({type:'pageBreak'})};
     if(projectExplorer?.active){actions.input=structureCommands.input;actions.include=structureCommands.include;}
     const input=completionField;
@@ -2757,26 +2756,59 @@ function emptyContinuation(region,composition,doc){
   for(let i=0;i<index;i++)start+=doc.child(i).nodeSize;
   return {source,start:start+1};
 }
-function nativeTikzDrawings(){
-  if(!sourceView.hidden)return [];
-  const results=[],composition=projectDocument.composition;
-  const add=(node,position,block,path)=>{
-    if(node.type.name!=='documentImage'||!block?.tikz||!node.attrs.tikzSource)return;
-    results.push({position,label:node.attrs.caption||node.attrs.label||path});
-  };
+function forEachNativeDocumentBlock(type,visit){
+  if(!sourceView.hidden)return;
+  const composition=projectDocument.composition;
   editor.state.doc.forEach((node,position,index)=>{
     if(!composition){
-      if(node.type.name==='documentImage')add(node,position,projection?.blocks.find(block=>block.index===index),filename);
+      if(node.type.name===type)
+        visit(node,position,projection?.blocks.find(block=>block.index===index&&block.count),filename,projection?.text,0);
       return;
     }
     const region=composition.regions[index];
     if(node.type.name!=='projectRegion'||!region)return;
+    const text=composition.sources.get(region.id);
     node.forEach((child,offset,childIndex)=>{
-      if(child.type.name==='documentImage')
-        add(child,position+offset+1,region.projection?.blocks.find(block=>block.index===childIndex),region.path);
+      if(child.type.name===type)visit(child,position+offset+1,region.projection?.blocks.find(block=>block.index===childIndex&&block.count),
+        region.path,text,region.from,region.id);
     });
   });
+}
+function nativeTikzDrawings(){
+  const results=[];
+  forEachNativeDocumentBlock('documentImage',(node,position,block,path)=>{
+    if(block?.tikz&&node.attrs.tikzSource)
+      results.push({position,label:node.attrs.caption||node.attrs.label||path});
+  });
   return results;
+}
+function nativeSourceBlocks(){
+  const results=[];
+  forEachNativeDocumentBlock('raw',(node,_position,block,path,text,base,fileId)=>{
+    if(block?.count!==1||typeof text!=='string')return;
+    const raw=block.raw.trim();
+    if(!raw||raw!==node.attrs.source?.trim())return;
+    const from=base+block.from+block.raw.length-block.raw.trimStart().length;
+    const to=from+raw.length;
+    if(text.slice(from,to)!==raw)return;
+    const label=raw.split(/\r?\n/,1)[0].slice(0,64);
+    results.push({path,fileId,text,from,to,label:label===raw?label:`${label}…`});
+  });
+  return results;
+}
+async function openNativeSourceBlock(block){
+  if(!sourceView.hidden)return;
+  const project=projectExplorer?.model;
+  const file=block.fileId?project?.files.get(block.path):null;
+  if(block.fileId&&file?.id!==block.fileId)return;
+  if((file?.draft??source())!==block.text)return;
+  setSourceMode(true);
+  if(sourceView.hidden)return;
+  if(file&&project.activeFileId!==file.id){
+    await projectExplorer.openFile(file.id);
+    if(projectExplorer.model!==project||project.activeFileId!==file.id)return;
+  }
+  if(!sourceView.hidden&&sourceView.value===block.text)sourceView.select(block.from,block.to);
 }
 function nativeProjectEntry(project){
   const main=project.file(project.mainFileId),active=project.file(project.activeFileId);
@@ -2819,6 +2851,8 @@ nativeTexPreview=installNativeTexPreview({host:footer,before:modes,primary:nativ
   },
   isComposing:()=>editor.view.composing||sourceView.composing,
   listTikzDrawings:nativeTikzDrawings,
+  listSourceBlocks:nativeSourceBlocks,
+  openSourceBlock:openNativeSourceBlock,
   editTikzDrawing:position=>{
     if(!nativeTikzDrawings().some(drawing=>drawing.position===position))return;
     editTikzVisual(editor,position,tr=>{
@@ -3149,9 +3183,7 @@ nativeTexPreview=installNativeTexPreview({host:footer,before:modes,primary:nativ
       const expected=paragraph.source.slice(0,from)+patch.insert+paragraph.source.slice(to);
       if(!patchList?.length||patchList.reduceRight((source,change)=>
         source.slice(0,change.from)+change.insert+source.slice(change.to),paragraph.source)!==expected)return false;
-    }
-    if(endpoints.start!==endpoints.end)closeHistory(tr);
-    if(!composition&&(patch.latex||endpoints.start!==endpoints.end||
+    }else if(!composition&&(patch.latex||endpoints.start!==endpoints.end||
         paragraph.parts.some(part=>part.marks?.length||part.offsets))){
       const from=paragraph.from16+patch.from,to=paragraph.from16+patch.to;
       const expected=paragraph.source.slice(0,from)+(patch.latex??patch.insert)+paragraph.source.slice(to);
@@ -3159,6 +3191,7 @@ nativeTexPreview=installNativeTexPreview({host:footer,before:modes,primary:nativ
         editor.state.doc.toJSON(),tr.doc.toJSON(),match.index);
       if(draft?.draft!==expected)return false;
     }
+    if(endpoints.start!==endpoints.end)closeHistory(tr);
     const before=editor.state.doc;
     editor.view.dispatch(tr);
     return editor.state.doc!==before;

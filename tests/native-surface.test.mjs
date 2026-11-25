@@ -819,6 +819,23 @@ test('changing a project paragraph leaves untouched native ownership and instrum
   assert.deepEqual(next.files,initial.files);
 });
 
+test('verified prose glyph ownership restores a caret when an earlier source command shifts its offset',()=>{
+  const source='\\begin{document}\nIntro.\n\nFocus here.\n\\end{document}\n';
+  const initial=projectMixedDocument(source);
+  const revised=source.replace('Focus here.','\\newpage\n\nFocus here.');
+  const next=projectMixedDocument(revised,{previous:initial});
+  const session=createNativeDocumentSession(()=>null);
+  const observed=projection=>page([],projection.paragraphs.flatMap(paragraph=>paragraph.glyphs)
+    .map((entry,index)=>glyph(entry.tag,index*20)));
+  session.setObservation(observed(initial),initial);
+  const owner=initial.paragraphs[1].glyphs[1].tag;
+  const target=textTarget(initial,owner,true);
+  assert.equal(session.select(target,target),true);
+  session.setObservation(observed(next),next);
+  assert.equal(session.surface.caret.docOffset,revised.indexOf('Focus')+2);
+  assert.equal(session.surface.caret.glyph.tag,owner);
+});
+
 test('native prose edits retain emphasis, color and small-caps commands verbatim',()=>{
   const source='\\begin{document}\n\\emph{Alpha $x$} \\textcolor[HTML]{AABBCC}{Beta} \\textsc{Gamma}.\n\\end{document}\n';
   const draft=source.replace('{Beta}','{Delta}');

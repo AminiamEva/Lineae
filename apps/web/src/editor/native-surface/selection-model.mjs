@@ -3,6 +3,16 @@ export function createSelectionModel(sameOwner, fileOf = () => undefined, canSel
   const address = stop => stop && {offset:stop.docOffset,file:fileOf(stop),kind:stop.kind};
   const matches = (stop, target) => target && stop.docOffset===target.offset &&
     fileOf(stop)===target.file&&stop.kind===target.kind;
+  const restore = previous => {
+    if(previous?.kind==='text'&&previous.glyph){
+      const {glyph,local}=previous;
+      const shifted=stops.findIndex(stop=>stop.kind==='text'&&fileOf(stop)===fileOf(previous)&&
+        stop.glyph?.tag===glyph.tag&&stop.glyph.char===glyph.char&&
+        stop.local-stop.glyph.from16===local-glyph.from16);
+      if(shifted>=0)return shifted;
+    }
+    return stops.findIndex(stop=>matches(stop,address(previous)));
+  };
   let pendingAddress = null;
   let stops = [], index = -1, anchor = -1, pendingOffset = null, lastEdit = null;
   return {
@@ -13,8 +23,8 @@ export function createSelectionModel(sameOwner, fileOf = () => undefined, canSel
     get pendingOffset() { return pendingOffset; },
     get lastEdit() { return lastEdit; },
     setStops(next) {
-      const previousHead = address(stops[index]);
-      const previousAnchor = address(stops[anchor]);
+      const previousHead = stops[index];
+      const previousAnchor = stops[anchor];
       stops = next;
       if (!stops.length) { index = anchor = -1; return false; }
       if (pendingOffset !== null) {
@@ -23,9 +33,9 @@ export function createSelectionModel(sameOwner, fileOf = () => undefined, canSel
         pendingAddress = null;
         if (nextIndex >= 0) { index = anchor = nextIndex; return true; }
       }
-      const headIndex = stops.findIndex(stop => matches(stop,previousHead));
+      const headIndex = restore(previousHead);
       index = headIndex >= 0 ? headIndex : Math.max(0, Math.min(index, stops.length - 1));
-      const anchorIndex = stops.findIndex(stop => matches(stop,previousAnchor));
+      const anchorIndex = restore(previousAnchor);
       anchor = anchorIndex >= 0 && canSelect(stops[anchorIndex], stops[index]) ? anchorIndex : index;
       return true;
     },

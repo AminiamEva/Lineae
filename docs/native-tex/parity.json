@@ -63,9 +63,10 @@
         "https://github.com/AminiamEva/Lineae/actions/runs/45583564517",
         "https://github.com/AminiamEva/Lineae/actions/runs/45589155092",
         "https://github.com/AminiamEva/Lineae/actions/runs/45596378294",
-        "https://github.com/AminiamEva/Lineae/actions/runs/45602854334"
+        "https://github.com/AminiamEva/Lineae/actions/runs/45602854334",
+        "https://github.com/AminiamEva/Lineae/actions/runs/45623818094"
       ],
-      "scope": "Plain headings and escaped literals, paragraphs with nested marks, and source mapping for proof, abstract and nested lists. Browser checks cover editing marked text alongside inline math. Math inside a mark and more text environments remain pending."
+      "scope": "Plain headings and escaped literals, paragraphs with nested marks, and source mapping for proof, abstract and nested lists. Browser checks cover editing marked text alongside inline math and round-tripping literal caret, tilde and backslash. LuaLaTeX reports a native glyph for the escaped caret. More text environments remain pending."
     },
     {
       "id": "tables-including-spans",
@@ -102,9 +103,10 @@
         "https://github.com/AminiamEva/Lineae/actions/runs/45602854334",
         "https://github.com/AminiamEva/Lineae/actions/runs/45613386465",
         "https://github.com/AminiamEva/Lineae/actions/runs/45617906617",
-        "https://github.com/AminiamEva/Lineae/actions/runs/45621393391"
+        "https://github.com/AminiamEva/Lineae/actions/runs/45621393391",
+        "https://github.com/AminiamEva/Lineae/actions/runs/45624267696"
       ],
-      "scope": "Included prose and display math edit the owning source file. The native exit shortcut resumes typing in the parent. Cross-file copying can include complete display formulas. Adjacent plain paragraphs support cross-file replacement with undo and redo. Independent documents switch the compilation entry. Detached fragments inherit the preamble and keep their original source offsets. Verified spacing can show editor-only file dividers and fold complete intervening pages while preserving original numbering and partial edge placeholders. Actual LuaLaTeX tests confirm that edits to a staged child retain both the live and geometry-observation sessions. Broader structural edits and folding where ownership shares the same visual line remain pending."
+      "scope": "Included prose and display math edit the owning source file. The native exit shortcut resumes typing in the parent. Cross-file copying can include complete display formulas. Adjacent paragraphs support cross-file replacement and undo, including complete inline formulas and surviving marked text. Independent documents switch the compilation entry. Detached fragments inherit the preamble and keep their original source offsets. Verified spacing can show editor-only file dividers and fold complete intervening pages while preserving original numbering and partial edge placeholders. Actual LuaLaTeX tests confirm that edits to a staged child retain both the live and geometry-observation sessions. Broader structural edits and folding where ownership shares the same visual line remain pending."
     },
     {
       "id": "images-floats-tikz",
@@ -151,7 +153,8 @@
         "tests/shortcuts-browser.cjs"
       ],
       "nativeStatus": "partial",
-      "evidence": []
+      "evidence": ["https://github.com/AminiamEva/Lineae/actions/runs/45620299673", "https://github.com/AminiamEva/Lineae/actions/runs/45622916182"],
+      "scope": "The native command palette covers verified math structures and displays the active nested field. The prose palette inserts page breaks and offers project input and include commands."
     },
     {
       "id": "clipboard-ime-cross-run",
@@ -177,8 +180,8 @@
         "tests/native-tex-preview-browser.cjs"
       ],
       "nativeStatus": "partial",
-      "evidence": ["https://github.com/AminiamEva/Lineae/actions/runs/45596378294"],
-      "scope": "The opt-in desktop workspace replaces the document surface and returns after switching from Source. Browser tests verify that the old paginator and MathLive do not load. Full coverage and physical device checks are required before making this the default."
+      "evidence": ["https://github.com/AminiamEva/Lineae/actions/runs/45596378294", "https://github.com/AminiamEva/Lineae/actions/runs/45622916182"],
+      "scope": "The opt-in desktop workspace uses the same native engine session across Document, Source and the read-only Split preview. Browser tests verify that the old paginator and MathLive do not load. Full coverage and physical device checks are required before making this the default."
     }
   ],
   "acceptance": {
