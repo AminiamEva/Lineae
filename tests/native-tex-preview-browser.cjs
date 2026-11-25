@@ -1903,7 +1903,21 @@ const server=createServer(async(req,res)=>{
     await search.press('Escape');
     await page.waitForFunction(()=>document.activeElement?.id==='native-tex-input');
     await page.keyboard.insertText('Next');
-    await page.waitForFunction(expected=>nativeProbe.source===expected,outlinedEdit.replace('XRepeat','XNext'));
+    const layoutSource=outlinedEdit.replace('XRepeat','XNext');
+    await page.waitForFunction(expected=>nativeProbe.source===expected,layoutSource);
+    await revealToolbar(page);await page.locator('[data-group=layout]').click();
+    const margin=page.getByRole('combobox',{name:'Margin preset'});
+    if(!await margin.isVisible())await page.locator('[data-ribbon-group=layout-page-setup] .ribbon-group-toggle').click();
+    await margin.selectOption('narrow');
+    const narrow=layoutSource.replace('\\begin{document}','\\usepackage[letterpaper,margin=1.27cm]{geometry}\n\\begin{document}');
+    await page.waitForFunction(expected=>nativeProbe.source===expected,narrow);
+    await page.getByText('Click text on the native page',{exact:false}).waitFor();
+    const layoutScale=Number(await page.locator('.document-status input[type=range]').inputValue())/100*(96/72)/65781.76;
+    await page.locator('[data-native-page="1"] canvas').click({position:{x:6550000*layoutScale,y:9250000*layoutScale}});
+    await page.keyboard.press(mod+'+z');
+    await page.waitForFunction(expected=>nativeProbe.source===expected,layoutSource);
+    await page.keyboard.press(mod+'+Shift+z');
+    await page.waitForFunction(expected=>nativeProbe.source===expected,narrow);
 
     await page.goto(base+'?native-only-acceptance=1',{waitUntil:'networkidle'});
     const duplicateImages='\\documentclass{article}\n\\usepackage{graphicx}\n\\begin{document}\n'+
