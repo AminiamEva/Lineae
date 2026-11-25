@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {nativeProjectSnapshot} from '../apps/web/src/typesetting/rtex/project-snapshot.mjs';
-import {stagedRaster,stagedRasterPath} from '../apps/web/src/typesetting/rtex/raster-assets.mjs';
+import {rasterContains,stagedRaster,stagedRasterPath} from '../apps/web/src/typesetting/rtex/raster-assets.mjs';
 
 test('native raster commands can only resolve staged PNG and JPEG assets',()=>{
   const path='figures/plot.png';
@@ -14,6 +14,13 @@ test('native raster commands can only resolve staged PNG and JPEG assets',()=>{
   for(const reported of ['../figures/plot.png',`C:/${path}`,`/${path}`,`https://example.com/${path}`,'corrupt.jpg']){
     assert.equal(stagedRaster(snapshot,reported),null);
   }
+});
+
+test('native image hits follow rotation and scaling from the painter',()=>{
+  const image={transform:[0,2,-3,0,50,30],box:[4,5,10,8]};
+  assert.equal(rasterContains(image,26,44),true);
+  assert.equal(rasterContains(image,36,44),false);
+  assert.equal(rasterContains({...image,transform:[0,0,0,0,0,0]},26,44),false);
 });
 
 const encode = text => new TextEncoder().encode(text);

@@ -7,6 +7,8 @@ const installMockNativeTex=require('./native-math/mock-bridge.cjs');
 const {revealToolbar}=require('./workspace-ui-helpers.cjs');
 
 const projectMain='\\documentclass{article}\n\\begin{document}\n\\[\\frac{a}{}\\]\n\\input{chapters/one}\n\\end{document}\n';
+const projectMainWithImage=projectMain.replace('\\begin{document}','\\usepackage{graphicx}\n\\begin{document}')
+  .replace('\\end{document}','\\begin{figure}[ht]\n\\centering\n\\includegraphics[width=18pt]{plot.png}\n\\end{figure}\n\\end{document}');
 const projectChapter='Original chapter.\n\n\\[\\frac{z}{}\\]\n';
 async function openMockProject(page,raster=false) {
   await page.evaluate(async({main,child,raster})=>{
@@ -30,7 +32,7 @@ async function openMockProject(page,raster=false) {
       nativeProbe.raster=true;
     }
     window.showDirectoryPicker=async()=>folder;
-  },{main:projectMain,child:projectChapter,raster});
+  },{main:raster?projectMainWithImage:projectMain,child:projectChapter,raster});
   page.on('dialog',dialog=>dialog.accept());
   await revealToolbar(page);await page.locator('[data-group=files]').click();
   await page.locator('#project-open').click();
@@ -459,6 +461,14 @@ const server=createServer(async(req,res)=>{
     assert.match(projectOpen.source,/\\input\{chapters\/one\}/,'Compile the actual main source rather than a flattened editor projection');
     assert.ok(projectOpen.files.some(file=>file.path==='chapters/one.tex'));
     assert.deepEqual(projectOpen.files.find(file=>file.path==='image.png').bytes,[0,255,13,10]);
+    await panel.locator('[data-native-page="1"] canvas').click({position:{x:3500000*scale,y:3500000*scale}});
+    await revealToolbar(page);
+    const imageTools=page.locator('.image-tools');
+    await imageTools.waitFor();
+    const width=page.getByRole('spinbutton',{name:'Width',exact:true});
+    if(!await width.isVisible())await imageTools.locator('[data-ribbon-group=image-transform] .ribbon-group-toggle').click();
+    await width.fill('24');
+    await page.waitForFunction(expected=>nativeProbe.source===expected,projectMainWithImage.replace('18pt','24pt'));
     await page.locator('#native-tex-target').click();
     await panel.getByText('Click the empty numerator or denominator',{exact:false}).waitFor();
     await panel.locator('[data-native-page="1"] canvas').click({position:{x:6500000*scale,y:7000000*scale}});

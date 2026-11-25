@@ -23,3 +23,13 @@ export function stagedRaster(snapshot,file) {
   if(!png&&!jpeg)return null;
   return {kind:'raster',mime:png?'image/png':'image/jpeg',data};
 }
+
+export function rasterContains({transform,box},x,y) {
+  const [a,b,c,d,e,f]=transform;
+  const determinant=a*d-b*c;
+  if(!Number.isFinite(determinant)||determinant===0)return false;
+  const localX=(d*(x-e)-c*(y-f))/determinant;
+  const localY=(a*(y-f)-b*(x-e))/determinant;
+  const [left,top,width,height]=box;
+  return localX>=left&&localX<=left+width&&localY>=top&&localY<=top+height;
+}

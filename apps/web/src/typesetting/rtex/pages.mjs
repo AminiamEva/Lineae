@@ -1,4 +1,4 @@
-import {stagedRasterPath} from './raster-assets.mjs';
+import {rasterContains,stagedRasterPath} from './raster-assets.mjs';
 import {FontStore,Painter,inexactReason} from './upstream/webview/render.ts';
 import {fontKey} from './upstream/src/fontKey.ts';
 import {hitMathField,hitMathGlyph} from '../../editor/native-math/hit.mjs';
@@ -8,7 +8,7 @@ const CSS_PER_SP=(96/72)/65781.76;
 
 // Strict read-only full-page adapter. No browser font fallback or inferred
 // glyph positions: a page is shown only when all its resources are exact.
-export function installNativePages({host,getFont,getRaster,onPaint,onError,onMathHit}) {
+export function installNativePages({host,getFont,getRaster,onPaint,onError,onMathHit,onImageHit}) {
   let generation=0,epoch=0,zoom=.75,revision=-1,layoutVersion=-1;
   let fonts=new FontStore();
   const imageResources=new Map(),imageLoads=new Map();
@@ -170,6 +170,17 @@ export function installNativePages({host,getFont,getRaster,onPaint,onError,onMat
     showCaret(hit);
   });
   host.addEventListener('pointercancel',()=>{drag=null;clearSelection();});
+  host.addEventListener('click',event=>{
+    if(warm||event.button!==0)return;
+    const canvas=event.target.closest?.('canvas');
+    if(!canvas||locate(canvas,event))return;
+    const entry=pages.get(Number(canvas.parentElement.dataset.nativePage));
+    if(entry?.canvas!==canvas)return;
+    const rect=canvas.getBoundingClientRect(),scale=CSS_PER_SP*zoom;
+    const x=(event.clientX-rect.left)/scale,y=(event.clientY-rect.top)/scale;
+    const hits=entry.rasterHits?.filter(hit=>rasterContains(hit,x,y));
+    if(hits?.length===1)onImageHit?.(hits[0].path,revision);
+  });
   async function prepare(dl,attempt) {
     for(const info of Object.values(dl.images_info??{})){
       if(info.cached_picture||info.page>1||info.pages>1)throw new Error('Native image requires PDF rendering');
@@ -212,7 +223,11 @@ export function installNativePages({host,getFont,getRaster,onPaint,onError,onMat
     const ctx=canvas.getContext('2d');
     ctx.fillStyle='#fff';ctx.fillRect(0,0,canvas.width,canvas.height);
     const scale=CSS_PER_SP*zoom*dpr;
-    const painter=new Painter(ctx,[scale,0,0,scale,0,0],fonts,images);
+    entry.rasterHits=[];
+    const painter=new Painter(ctx,[scale,0,0,scale,0,0],fonts,images,(file,transform,box)=>{
+      const path=stagedRasterPath(file);
+      if(path)entry.rasterHits.push({path,transform,box});
+    });
     painter.draw(dl,dl.other??[]);
     const rows=warm?.pages.get(Number(entry.dom.dataset.nativePage));
     for(const [index,line] of (dl.lines??[]).entries()){

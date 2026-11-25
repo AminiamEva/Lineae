@@ -11,7 +11,7 @@ import {nativeTarget} from '../editor/native-math/resolve.mjs';
 // Native LaTeX output is the primary page. The opt-in native input mode sends
 // supported keys, caret and IME through this surface into ProseMirror; the old
 // JS-formatted page and MathLive inputs stay available as the migration fallback.
-export function installNativeTexPreview({host,before,getSource,getSnapshot,isComposing,focusMathSlot,commitMath,commitText,history}) {
+export function installNativeTexPreview({host,before,getSource,getSnapshot,isComposing,focusMathSlot,focusImage,commitMath,commitText,history}) {
   const invoke=window.__TAURI__?.core?.invoke;
   if(!invoke) return {refresh(){},documentChanged(){},relocalize(){}};
   const button=document.createElement('button');
@@ -244,6 +244,9 @@ export function installNativeTexPreview({host,before,getSource,getSnapshot,isCom
       syncCaret();
     },
     onError:(failure,revision)=>{if(active&&mode==='canvas')void fallback(failure,revision);},
+    onImageHit:(path,revision)=>{
+      if(current()&&mode==='canvas'&&revision===sourceRevision)focusImage?.(path);
+    },
     onMathHit:async(hit,stamp,origin,sameGesture)=>{
       if(!current()||mode!=='canvas'||!observation||
           stamp.sessionId!==observation.stamp.sessionId||

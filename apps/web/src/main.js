@@ -22,6 +22,7 @@ import {installShortcutPriority} from './ui/shortcut-priority.mjs';
 import {installNativeTexPreview} from './ui/native-tex-preview.mjs';
 import {matchesRichFormula,richSlotPosition} from './editor/native-math/rich-slot.mjs';
 import {nativeProjectSnapshot} from './typesetting/rtex/project-snapshot.mjs';
+import {stagedRasterPath} from './typesetting/rtex/raster-assets.mjs';
 import {installSettingsPanel} from './ui/settings-panel.js';
 import { buildHomeRibbon } from './ui/home-ribbon.js';
 import { activeStyleKey, documentClassFromSource } from './ui/style-presets.mjs';
@@ -2626,6 +2627,20 @@ nativeTexPreview=installNativeTexPreview({host:footer,before:modes,
     return {source:text,mainFile:'main.tex',signature:text};
   },
   isComposing:()=>editor.view.composing||sourceView.composing,
+  focusImage:path=>{
+    if(!sourceView.hidden)return;
+    const matches=[];
+    editor.state.doc.descendants((node,position)=>{
+      if(node.type.name!=='documentImage')return;
+      const sourcePath=stagedRasterPath(node.attrs.path);
+      if(sourcePath&&(sourcePath===path||sourcePath===path.replace(/\.(?:png|jpe?g)$/i,'')))
+        matches.push(position);
+      return false;
+    });
+    if(matches.length!==1)return;
+    const {state}=editor;
+    editor.view.dispatch(state.tr.setSelection(NodeSelection.create(state.doc,matches[0])));
+  },
   focusMathSlot:async(anchor,head,isCurrent)=>{    const project=projectExplorer?.model;
     const formula=head.formula;
     if(anchor.formula.filePath!==formula.filePath)return;
