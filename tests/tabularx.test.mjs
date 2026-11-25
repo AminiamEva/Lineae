@@ -261,6 +261,23 @@ test('splitting a combined tabularx span restores both axes and retains exact ce
   assert.deepEqual(parseTabularx(draft).rows.map(row=>row.map(cell=>cell.text)),[['Lead','','Far'],['','','After']]);
 });
 
+test('tabularx column edits keep the raw slots beneath a combined span aligned',()=>{
+  const source=['\\begin{tabularx}{\\linewidth}{llX}',
+    '\\multicolumn{2}{c}{\\multirow{2}{*}{Lead}} & Far \\\\[3pt]',
+    ' & & After \\\\', 'Later & B & C','\\end{tabularx}'].join('\r\n');
+  const apply=(text,{from,to,insert})=>text.slice(0,from)+insert+text.slice(to);
+  const patch=insertTableSourceColumn(source,2,0,source.indexOf('Later'));
+  const inserted=apply(source,patch);
+  assert.equal(inserted,source.replace('{llX}','{lllX}').replace('\\multicolumn{2}','\\multicolumn{3}')
+    .replace(' & & After','  & & & After').replace('Later & B','Later &  & B'));
+  assert.equal(inserted.slice(patch.offset,patch.offset+5),'Later');
+  const removed=apply(source,removeTableSourceColumn(source,2,0));
+  assert.equal(removed,source.replace('{llX}','{lX}').replace('\\multicolumn{2}','\\multicolumn{1}')
+    .replace(' & & After','  & After').replace('Later & B',' B'));
+  assert.equal(parseTabularx(removed).rows[0][0].attrs.rowspan,2);
+  assert.equal(removeTableSourceColumn(removed,2,0),null,'deleting the only column holding the span would lose the anchor');
+});
+
 test('a fully covered row serializes when the editor omits its empty content array',()=>{
   const source=['\\begin{tabularx}{\\linewidth}{lX}',
     '\\multicolumn{2}{c}{\\multirow{2}{*}{Lead}} \\\\',

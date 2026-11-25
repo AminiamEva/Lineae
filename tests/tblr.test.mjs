@@ -37,12 +37,29 @@ test('native tabularray column edits retain column declarations, rules and caret
   assert.equal(draft[patch.offset],'A');
   assert.equal(apply(editTblrColumn(source,0,0,0,true)),source.replace('l X[c]',' X[c]')
     .replace('A  & B',' B').replace(' C & D','  D'));
-  assert.equal(editTblrColumn(source.replace('A  & B','\\SetCell[c=2]{c} A & '),1,0,0),null);
+  const combined=source.replace('A  & B','\\SetCell[c=2]{c} A & ');
+  const combinedPatch=editTblrColumn(combined,1,0,0);
+  assert.equal(combined.slice(0,combinedPatch.from)+combinedPatch.insert+combined.slice(combinedPatch.to),
+    draft.replace('A &   & B','\\SetCell[c=3]{c} A &  & '));
   const indexed=source.replace('vlines={solid}','vline{2}={solid}');
   const indexedPatch=editTblrColumn(indexed,0,0,0);
   assert.equal(indexed.slice(0,indexedPatch.from)+indexedPatch.insert+indexed.slice(indexedPatch.to),
     draft.replace('vlines={solid}','vline{3}={solid}'));
   assert.equal(editTblrColumn(indexed,0,0,0,true),null);
+});
+
+test('tabularray column changes inside a combined span keep its vertical count and options',()=>{
+  const source=['\\begin{tblr}{lll}', '\\SetCell[r = 2, c = 2]{c} Lead & Hidden & Far \\\\',
+    ' & & After \\\\', 'A & B & C','\\end{tblr}'].join('\r\n');
+  const apply=(text,{from,to,insert})=>text.slice(0,from)+insert+text.slice(to);
+  const expanded=apply(source,editTblrColumn(source,2,0,source.indexOf('A & B')));
+  assert.equal(expanded,source.replace('{lll}','{llll}').replace('c = 2','c = 3')
+    .replace('Lead & Hidden','Lead &  & Hidden').replace(' & & After','  & & & After').replace('A & B','A &  & B'));
+  const contracted=apply(source,editTblrColumn(source,2,1,0,true));
+  assert.equal(contracted,source.replace('{lll}','{ll}').replace('c = 2','c = 1')
+    .replace('Lead & Hidden','Lead ').replace(' & & After','  & After').replace('A & B','A '));
+  assert.equal(table(contracted).content[0].content[0].attrs.rowspan,2);
+  assert.equal(editTblrColumn(source,2,0,0,true),null);
 });
 
 test('splitting a tabularray cell reveals the preserved covered cells',()=>{

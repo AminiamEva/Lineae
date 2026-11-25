@@ -121,17 +121,18 @@ function parseColumnTable(source,environment,{allowMultirow=false,trackRowSpans=
     cells=[];
   }
   if(!rawRows.length)return null;
-  const rows=[],coveredUntil=Array(specs.length).fill(0);
+  const rows=[],sourceRows=[],coveredUntil=Array(specs.length).fill(0);
   for(let r=0;r<rawRows.length;r++) {
-    let column=0;const row=[];
+    let column=0;const row=[],slots=[];
     for(const raw of rawRows[r]) {
       if(column>=specs.length)return null;
+      const trimmed=raw.raw.trimEnd().length,sourceEnd=raw.from+trimmed;
       if(coveredUntil[column]>r){
         if(clean(raw.raw))return null;
+        slots.push({column,sourceStart:raw.from,sourceEnd,sourceDelimiter:raw.to});
         column++;
         continue;
       }
-      const trimmed=raw.raw.trimEnd().length,sourceEnd=raw.from+trimmed;
       let begin=trivia(raw.raw),end=Math.max(begin,trimmed),span=1,rowspan=1,spec=specs[column],override=null,spanRange,rowspanRange;
       const command=/^\\multicolumn(?![A-Za-z])/.exec(raw.raw.slice(begin));
       if(command) {
@@ -164,21 +165,23 @@ function parseColumnTable(source,environment,{allowMultirow=false,trackRowSpans=
       if(spec.widthCSS)css.width=spec.widthCSS;
       if((override?.gaps??gaps).some(g=>g.column===(override?0:column)&&!clean(g.source)))css.paddingLeft='0px';
       if((override?.gaps??gaps).some(g=>g.column===(override?1:column+span)&&!clean(g.source)))css.paddingRight='0px';
-      row.push({text:raw.raw.slice(begin,end),from:raw.from+begin,to:raw.from+end,
+      const cell={text:raw.raw.slice(begin,end),from:raw.from+begin,to:raw.from+end,column,
         sourceStart:raw.from,sourceEnd,sourceDelimiter:raw.to,spanRange,rowspanRange,
-        attrs:{colspan:span,rowspan,align:spec.align,tblrStyle:css}});
+        attrs:{colspan:span,rowspan,align:spec.align,tblrStyle:css}};
+      row.push(cell);
+      for(let i=0;i<span;i++)slots.push(cell);
       column+=span;
     }
-    if(column!==specs.length)return null;rows.push(row);
+    if(column!==specs.length)return null;
+    rows.push(row);
+    sourceRows.push(slots);
   }
   return {source,columns:specs.map(s=>alignments[s.type]?s.type:s.type==='p'?'p{'+s.width+'}':'l').join(''),
-    booktabs:rules.length>0,rows,rowEnds,unsupported,
+    booktabs:rules.length>0,rows,sourceRows,rowEnds,unsupported,
     columnStarts:columns.starts.map(start=>preamble.end-preamble.value.length-1+start),
     columnEnds:columns.ends.map(end=>preamble.end-preamble.value.length-1+end),
     metadata:{width:width.value,widthCSS:widthCSS(width.value),position,preamble:preamble.value,specs,gaps,rules}};
 }
-
-const hasRowSpans=table=>table.rows.some(row=>row.some(({attrs})=>attrs.rowspan>1));
 
 function columnTableSource(source,options){
   const parse=raw=>parseTabularx(raw)??parseColumnTable(raw,'tabular',options);
@@ -233,24 +236,21 @@ export function insertTableSourceRow(source,index,offset) {
 }
 
 export function insertTableSourceColumn(source,row,column,offset){
-  const location=columnTableSource(source);
+  const location=columnTableSource(source,{allowMultirow:true,trackRowSpans:true});
   if(!location)return null;
-  const {table,start}=location,cells=table.rows[row];
-  if(!cells?.[column]||hasRowSpans(table))return null;
-  const boundary=cells.slice(0,column+1).reduce((count,cell)=>count+cell.attrs.colspan,0);
+  const {table}=location,target=table.rows[row]?.[column];
+  if(!target)return null;
+  const boundary=target.column+target.attrs.colspan;
   const from=table.columnEnds[boundary-1],edits=[{from,to:from,insert:'l'}];
-  for(const cells of table.rows){
-    let index=0;
-    for(const cell of cells){
-      index+=cell.attrs.colspan;
-      if(index<boundary)continue;
-      if(index===boundary)edits.push({from:cell.sourceEnd,to:cell.sourceEnd,insert:' & '});
-      else {
-        if(!cell.spanRange)return null;
-        const old=table.source.slice(cell.spanRange.from,cell.spanRange.to);
-        edits.push({...cell.spanRange,insert:old.replace(/\d+/,String(cell.attrs.colspan+1))});
-      }
-      break;
+  for(const slots of table.sourceRows){
+    const cell=slots[boundary-1];
+    if(cell===slots[boundary]){
+      if(!cell.spanRange)return null;
+      const old=table.source.slice(cell.spanRange.from,cell.spanRange.to);
+      edits.push({...cell.spanRange,insert:old.replace(/\d+/,String(cell.attrs.colspan+1))});
+    }else{
+      if(!cell.attrs&&table.source.slice(cell.sourceStart,cell.sourceEnd).includes('%'))return null;
+      edits.push({from:cell.sourceEnd,to:cell.sourceEnd,insert:' & '});
     }
   }
   return changeTableSourceColumns(location,edits,1,offset);
@@ -269,28 +269,24 @@ function changeTableSourceColumns({table,start,parse},edits,count,offset){
 }
 
 export function removeTableSourceColumn(source,row,column){
-  const location=columnTableSource(source);
+  const location=columnTableSource(source,{allowMultirow:true,trackRowSpans:true});
   if(!location)return null;
-  const {table,start}=location,cells=table.rows[row];
-  if(!cells?.[column]||table.metadata.specs.length<2||hasRowSpans(table))return null;
-  const logical=cells.slice(0,column).reduce((count,cell)=>count+cell.attrs.colspan,0);
+  const {table}=location,target=table.rows[row]?.[column];
+  if(!target||table.metadata.specs.length<2)return null;
+  const logical=target.column;
   if(table.metadata.specs[logical].prefix||table.metadata.preamble.includes('<'))return null;
   const edits=[{from:table.columnStarts[logical],to:table.columnEnds[logical],insert:''}];
-  for(const cells of table.rows){
-    let position=0;
-    for(const [index,cell] of cells.entries()){
-      position+=cell.attrs.colspan;
-      if(position<=logical)continue;
-      if(cell.attrs.colspan>1&&cell.spanRange){
-        const old=table.source.slice(cell.spanRange.from,cell.spanRange.to);
-        edits.push({...cell.spanRange,insert:old.replace(/\d+/,String(cell.attrs.colspan-1))});
-      }else{
-        const from=index?cell.sourceStart-1:cell.sourceStart;
-        const to=index?cell.sourceEnd:cell.sourceDelimiter+1;
-        if(table.source[index?from:to-1]!=='&')return null;
-        edits.push({from,to,insert:''});
-      }
-      break;
+  for(const slots of table.sourceRows){
+    const cell=slots[logical],attrs=cell.attrs;
+    if(attrs?.colspan>1&&cell.spanRange){
+      const old=table.source.slice(cell.spanRange.from,cell.spanRange.to);
+      edits.push({...cell.spanRange,insert:old.replace(/\d+/,String(attrs.colspan-1))});
+    }else{
+      if(attrs?.rowspan>1)return null;
+      const from=logical?cell.sourceStart-1:cell.sourceStart;
+      const to=logical?cell.sourceEnd:cell.sourceDelimiter+1;
+      if(table.source[logical?from:to-1]!=='&'||!attrs&&table.source.slice(from,to).includes('%'))return null;
+      edits.push({from,to,insert:''});
     }
   }
   return changeTableSourceColumns(location,edits,-1);

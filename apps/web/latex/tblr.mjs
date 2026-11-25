@@ -266,6 +266,14 @@ function applyTblrEdits({table,base},edits,offset){
   return {patch:{from:base+from,to:base+to,insert,offset:nextOffset},draft};
 }
 
+function changeSpan(source,range,axis,count){
+  if(!range)return null;
+  const option=source.slice(range.from,range.to);
+  const field=axis==='row'?/(^|,)\s*r\s*=\s*\d+/:/(^|,)\s*c\s*=\s*\d+/;
+  const insert=option.replace(field,value=>value.replace(/\d+$/,String(count)));
+  return insert===option?null:{...range,insert};
+}
+
 function columnSettingRanges(settings,colspec){
   const base=settings.end-settings.value.length-1;
   let from=0,to=settings.value.length;
@@ -320,12 +328,10 @@ export function editTblrRow(source,index,remove=false,offset) {
   for(const [row,cells] of table.rows.slice(0,index+1).entries()){
     for(const {attrs,spanRange} of cells){
       if(attrs.rowspan<2||index>=row+attrs.rowspan-(remove?0:1))continue;
-      if(!spanRange||remove&&row===index)return null;
-      const option=raw.slice(spanRange.from,spanRange.to);
-      const insert=option.replace(/(^|,)\s*r\s*=\s*\d+/,value=>
-        value.replace(/\d+$/,String(attrs.rowspan+(remove?-1:1))));
-      if(insert===option)return null;
-      spans.push({...spanRange,insert});
+      if(remove&&row===index)return null;
+      const span=changeSpan(raw,spanRange,'row',attrs.rowspan+(remove?-1:1));
+      if(!span)return null;
+      spans.push(span);
     }
   }
   let {from}=edge,to=from;
@@ -351,16 +357,29 @@ export function editTblrColumn(source,row,column,offset,remove=false) {
   const {table}=located;
   const count=table.columnRanges.length;
   const target=table.rows[row]?.[column];
-  if(!target||remove&&count<2||table.rows.some(cells=>cells.some(cell=>cell.attrs.colspan!==1)))return null;
-  column=target.column;
-  if(remove&&table.rows.some(cells=>cells.some(cell=>cell.column===column&&cell.attrs.rowspan>1)))return null;
+  if(!target||remove&&count<2)return null;
+  column=target.column+(remove?0:target.attrs.colspan-1);
+  if(remove&&table.rows.some(cells=>cells.some(cell=>cell.column===column&&
+    (cell.attrs.rowspan>1||cell.attrs.colspan>1))))return null;
   const {from,to}=table.columnRanges[column];
   const selectors=adjustAxes(table,'column',column+1,remove);
   if(!selectors)return null;
   const edits=[...selectors,remove?{from,to,insert:''}:{from:to,to,insert:'l'}];
+  const boundary=column+(remove?0:1);
+  for(const row of table.rows){
+    const spanning=row.find(cell=>cell.column<boundary&&boundary<cell.column+cell.attrs.colspan);
+    if(!spanning)continue;
+    const edit=changeSpan(table.source,spanning.spanRange,'column',spanning.attrs.colspan+(remove?-1:1));
+    if(!edit)return null;
+    edits.push(edit);
+  }
   for(const cells of table.rawRows){
     const cell=cells[column],end=cell.from+cell.raw.trimEnd().length;
-    if(!remove){edits.push({from:end,to:end,insert:' & '});continue;}
+    if(!remove){
+      const position=Math.max(end,cell.from+trivia(cell.raw));
+      edits.push({from:position,to:position,insert:' & '});
+      continue;
+    }
     const a=column?cell.from-1:cell.from+trivia(cell.raw);
     const b=column?end:cell.to+1;
     if(table.source[column?a:b-1]!=='&'||a>b||table.source.slice(a,b).includes('%'))return null;
