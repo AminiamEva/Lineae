@@ -185,7 +185,7 @@ jobs:
           node --input-type=module -e '
             import {readFileSync,writeFileSync} from "node:fs";
             import {join} from "node:path";
-            import {projectMixedDocument} from "./apps/web/src/editor/native-text/projection.mjs";
+            import {projectMixedDocument,projectMixedSnapshot} from "./apps/web/src/editor/native-text/projection.mjs";
             import {mergeTableSourceRows} from "./apps/web/latex/tabularx.mjs";
             import {mergeTblrRows} from "./apps/web/latex/tblr.mjs";
             const source=readFileSync("tests/native-math/fixtures/empty-denominator.tex","utf8");
@@ -227,6 +227,15 @@ jobs:
             const [referenceTag]=[...referenceProbe.owners].find(([,owner])=>owner.reference?.key==="sec:first");
             writeFileSync(join(process.env.LINEAE_NATIVE_EVIDENCE_DIR,"native-reference-probe.json"),
               JSON.stringify({projection:referenceProbe.projection,tag:referenceTag}));
+            const repeatedRoot="\\documentclass{article}\n\\usepackage{amsmath}\n\\begin{document}\n"+
+              "Before.\n\n\\input{chapters/one}\n\nBetween.\n\n\\input{chapters/one}\n\nAfter.\n\\end{document}\n";
+            const repeatedChild="Child.\n\n\\[\\frac{x}{}\\]\n", path="chapters/one.tex";
+            const repeated=projectMixedSnapshot({source:repeatedRoot,mainFile:"main.tex",
+              files:[{path,bytes:new TextEncoder().encode(repeatedChild)}]});
+            const glyph=repeated.paragraphs.find(paragraph=>paragraph.filePath===path).glyphs[0].tag;
+            const denominator=repeated.formulas.find(formula=>formula.filePath===path).math.slots.find(slot=>slot.role==="denominator").tag;
+            writeFileSync(join(process.env.LINEAE_NATIVE_EVIDENCE_DIR,"repeated-input-probe.json"),
+              JSON.stringify({source:repeatedRoot,child:repeatedChild,projection:repeated.projection,files:repeated.files,glyph,denominator}));
           '
           node tests/native-math/rtex-probe.mjs
           node apps/desktop/scripts/stage.mjs

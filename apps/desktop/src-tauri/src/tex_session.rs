@@ -1649,6 +1649,41 @@ mod tests {
         assert!(initial["pages_total"].as_i64().unwrap() > 0);
         if let Some(directory) = std::env::var_os("LINEAE_NATIVE_EVIDENCE_DIR") {
             let directory = PathBuf::from(directory);
+            let repeated: Value = serde_json::from_slice(
+                &std::fs::read(directory.join("repeated-input-probe.json")).unwrap(),
+            ).unwrap();
+            let snapshot = Snapshot::new(
+                repeated["source"].as_str().unwrap(),
+                "main.tex".into(),
+                vec![NativeTexFile {
+                    path: "chapters/one.tex".into(),
+                    bytes: repeated["child"].as_str().unwrap().as_bytes().to_vec(),
+                }],
+            ).unwrap();
+            let input = Session::create_snapshot(snapshot).unwrap();
+            let opened = input.start().expect("repeated project input must start");
+            let layout = wait_layout(&input, opened.source_revision);
+            let files = serde_json::from_value(repeated["files"].clone()).unwrap();
+            let observed = input.observe_formula(
+                opened.source_revision, repeated["projection"].as_str().unwrap(), files,
+            ).expect("repeated project source must preserve both geometry instances");
+            for (list, tag) in [("glyphs", "glyph"), ("fields", "denominator")] {
+                let owner = &repeated[tag];
+                let boxes = observed.iter().flat_map(|page| {
+                    let number = &page["page"];
+                    page["dl"]["math_owners"][list].as_array().into_iter().flatten().filter_map(move |item| {
+                        (&item["owner"] == owner && (list != "fields" || item["role"] == "den"))
+                            .then(|| (number.clone(), item["bbox"].clone()))
+                    })
+                }).collect::<Vec<_>>();
+                assert_eq!(boxes.len(), 2, "both expansions report the same source tag: {tag}");
+                assert_ne!(boxes[0], boxes[1], "the two locations must be distinct: {tag}");
+            }
+            std::fs::write(directory.join("native-repeated-input-pages.json"), serde_json::to_vec(&json!({
+                "raw":layout["pages_changed"],"observed":observed,"source":repeated["source"],
+                "child":repeated["child"],"glyph":repeated["glyph"],"denominator":repeated["denominator"],
+            })).unwrap()).unwrap();
+            input.terminate();
             let raw_source = include_str!("../../../../tests/native-math/fixtures/degraded-page.tex");
             let projection = std::fs::read_to_string(directory.join("degraded-projection.tex")).unwrap();
             let degraded = Session::create(raw_source).unwrap();
