@@ -2849,11 +2849,10 @@ function refreshNativeTextEnvironment(tr,position,sourceBlock,source,change){
   const raw=source.slice(sourceBlock.from,change.from)+change.insert+source.slice(change.to,sourceBlock.to);
   const [parsed,...rest]=importBlocks(raw);
   const node=tr.doc.nodeAt(position);
-  if(rest.length||parsed?.type!=='blockquote'||!parsed.attrs.environmentSource||
-     node?.type.name!=='blockquote'||parsed.attrs.latexEnvironment!==node.attrs.latexEnvironment)return false;
+  if(rest.length||parsed?.type!=='blockquote'||node?.type.name!=='blockquote')return false;
   const verified=tr.doc.type.schema.nodeFromJSON(parsed);
-  if(!verified.content.eq(node.content))return false;
-  tr.setNodeMarkup(position,undefined,verified.attrs);
+  if(verified.attrs.latexEnvironment!==node.attrs.latexEnvironment||!verified.content.eq(node.content))return false;
+  if(verified.attrs.environmentSource)tr.setNodeMarkup(position,undefined,verified.attrs);
   return true;
 }
 function runNativeTextStructure(command,...args){
@@ -3426,8 +3425,9 @@ nativeTexPreview=installNativeTexPreview({host:footer,before:modes,primary:nativ
         next.from16<=offset&&offset<=next.from16+next.text.length&&next.container?.type==='theoremBlock'));
       if(!projected||patches?.length!==1||!owner||
         paragraph.source.slice(0,patches[0].from)+patches[0].insert+paragraph.source.slice(patches[0].to)!==draft)return null;
-    }else if(!projected?.blocks.some(block=>block.index===tr.doc.resolve(next).index(0)&&
+    }else if(!environment&&!projected?.blocks.some(block=>block.index===tr.doc.resolve(next).index(0)&&
         block.from<=offset&&block.to>=offset&&block.editable))return null;
+    if(!projected)return null;
     return dispatchNativeParagraphChange(state,tr,paragraph.source,draft,change,projected)
       ?{source:draft,offset,path:paragraph.filePath}:null;
   },
@@ -3477,7 +3477,8 @@ nativeTexPreview=installNativeTexPreview({host:footer,before:modes,primary:nativ
       const patches=richSourceChanges(projection,tr.doc.toJSON());
       if(!projected||patches?.length!==1||
          source.slice(0,patches[0].from)+patches[0].insert+source.slice(patches[0].to)!==draft)return null;
-    }else if(!projected?.blocks.some(block=>block.index===left.range.match.index&&block.editable&&block.from<=from&&block.to>=from))return null;
+    }else if(!environment&&!projected?.blocks.some(block=>block.index===left.range.match.index&&block.editable&&block.from<=from&&block.to>=from))return null;
+    if(!projected)return null;
     return dispatchNativeParagraphChange(state,tr,source,draft,change,projected)
       ?{source:draft,offset,path:first.paragraph.filePath}:null;
   },

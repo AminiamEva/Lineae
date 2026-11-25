@@ -293,7 +293,7 @@ function theoremParagraphChanges(block,nodes) {
   const delta=after.content?.length-before.content?.length;
   if(Math.abs(delta)!==1)return null;
   const removed=delta>0?1:2,added=delta>0?2:1;
-  const paragraphs=plainContainerParagraphs(block.raw);
+  const paragraphs=plainContainerParagraphs(block.raw).filter(({path})=>path.length===1);
   const eol=block.raw.includes('\r\n')?'\r\n':'\n';
   for(const {from,text,container,path:[index]} of paragraphs){
     if(container!=='theoremBlock')continue;

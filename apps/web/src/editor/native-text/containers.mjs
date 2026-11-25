@@ -18,7 +18,15 @@ function paragraphRange(source,from,to,container,path,node) {
   return {from:from+body.indexOf(text),text,container,path,node};
 }
 
-export function containerParagraphRanges(source) {
+export function containerParagraphRanges(source,depth=0) {
+  if(depth>16)return [];
+  function descendants(from,to,container,index,node){
+    const part=paragraphRange(source,from,to,container,[index],node);
+    if(part)return [part];
+    if(!['blockquote','theoremBlock','orderedList','bulletList','descriptionList'].includes(node?.type))return [];
+    return containerParagraphRanges(source.slice(from,to),depth+1).filter(part=>part.container===node.type)
+      .map(part=>({...part,from:from+part.from,container,path:[index,...part.path]}));
+  }
   const theorem=theoremParts(source);
   if(theorem){
     const doc=parseDocument(theorem.body,{fragment:true});
@@ -28,10 +36,7 @@ export function containerParagraphRanges(source) {
     for(const raw of doc.blocks){
       const nodes=importBlocks(raw);
       if(nodes.some(node=>node.type==='raw'))return [];
-      if(nodes.length===1){
-        const part=paragraphRange(source,offset,offset+raw.length,'theoremBlock',[index],nodes[0]);
-        if(part)paragraphs.push(part);
-      }
+      if(nodes.length===1)paragraphs.push(...descendants(offset,offset+raw.length,'theoremBlock',index,nodes[0]));
       offset+=raw.length;
       index+=nodes.length;
     }
@@ -42,11 +47,11 @@ export function containerParagraphRanges(source) {
       const range=paragraphRange(source,from,to,container,path,node);
       return range?[range]:[];
     });
-  const environment=importTextEnvironment(source,raw=>importBlocks(raw,{groups:true}));
+  const environment=importTextEnvironment(source,raw=>importBlocks(raw,{groups:true}),{includeQuote:true});
+  if(environment?.attrs.latexEnvironment==='quote'&&importBlocks(source)[0]?.type!=='blockquote')return [];
   return (environment?.attrs.environmentSource.parts??[]).flatMap(part=>{
     if(part.count!==1||part.protected)return [];
-    const range=paragraphRange(source,part.from,part.to,'blockquote',[part.index],part.nodes[0]);
-    return range?[range]:[];
+    return descendants(part.from,part.to,'blockquote',part.index,environment.content[part.index]);
   });
 }
 

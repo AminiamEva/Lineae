@@ -945,6 +945,29 @@ test('splitting a proof paragraph keeps its title, indentation and CRLF bytes',(
     [['Alpha',[0]],['Beta',[1]],['Untouched.',[2]]]);
 });
 
+test('legacy quote markup has native paragraph owners without changing its import',()=>{
+  const environment='\\begin{quote}\r\nFirst.\r\n\r\nSecond.\r\n\\end{quote}';
+  const source='\\begin{document}\r\n'+environment+'\r\n\\end{document}\r\n';
+  assert.equal(importBlocks(environment)[0].attrs?.latexEnvironment,undefined);
+  const projection=projectTextDocument(source);
+  assert.deepEqual(projection.paragraphs.map(paragraph=>paragraph.container.path),[[0],[1]]);
+  const paragraph=projection.paragraphs[1];
+  assert.equal(textEdit(projection,{paragraph,from16:0,to16:6,insert:'Next'}).source,
+    source.replace('Second.','Next.'));
+});
+
+test('nested text environments resolve repeated prose by its exact container path',()=>{
+  const source='\\begin{document}\n\\begin{center}\nSame.\n\n\\begin{quote}\nSame.\n\\end{quote}\n\\end{center}\n\\end{document}\n';
+  const projection=projectTextDocument(source),[outer,inner]=projection.paragraphs;
+  assert.deepEqual([outer.container.path,inner.container.path],[[0],[1,0]]);
+  const doc={type:'doc',content:parseDocument(source).blocks.flatMap(importBlocks)};
+  const after=structuredClone(doc);
+  after.content[0].content[1].content[0].content[0].text='New.';
+  const [patch]=richSourceChanges(sourceProjection(source,doc),after);
+  const apply=(source,{from,to,insert})=>source.slice(0,from)+insert+source.slice(to);
+  assert.equal(apply(source,patch),source.slice(0,inner.from16)+'New.'+source.slice(inner.from16+inner.text.length));
+});
+
 test('native proof ownership and source writeback retain marked prose, formulas, and proof titles',()=>{
   const source='\\begin{document}\r\n\\begin{proof}[Idea]\r\n  \\emph{Step} $x$ here.\r\n\\end{proof}\r\n\\end{document}\r\n';
   const projected=projectMixedDocument(source);

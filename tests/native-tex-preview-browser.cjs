@@ -542,24 +542,26 @@ const server=createServer(async(req,res)=>{
       await page.keyboard.press(mod+'+z');
       await page.waitForFunction(expected=>nativeProbe.source===expected,splitProof);
       await page.locator('#native-tex-close').click();
-      const abstract='\\documentclass{article}\r\n\\begin{document}\r\n\\begin{abstract}\r\n'+
-        '\\small AlphaBeta.\r\n\\end{abstract}\r\n\\end{document}\r\n';
-      await page.locator('input#file').setInputFiles({name:'abstract.tex',mimeType:'text/plain',buffer:Buffer.from(abstract)});
-      await page.locator('#native-tex-toggle').click();
-      await page.waitForFunction(()=>document.querySelector('#native-tex-preview').dataset.state==='current');
-      await page.locator('#native-tex-target').click();
-      await panel.getByText('Click text on the native page',{exact:false}).waitFor();
-      await page.locator('#native-tex-edit').click();
-      await canvas.click({position:{x:7520000*scale,y:9250000*scale}});
-      await page.keyboard.press('Enter');
-      const splitAbstract=abstract.replace('AlphaBeta','Alpha\r\n\r\nBeta');
-      await page.waitForFunction(expected=>nativeProbe.source===expected,splitAbstract);
-      await panel.getByText('Click text on the native page',{exact:false}).waitFor();
-      await page.keyboard.press('Backspace');
-      await page.waitForFunction(expected=>nativeProbe.source===expected,abstract);
-      await page.keyboard.press(mod+'+z');
-      await page.waitForFunction(expected=>nativeProbe.source===expected,splitAbstract);
-      await page.locator('#native-tex-close').click();
+      for(const [name,prefix] of [['abstract','\\small '],['quote','']]){
+        const source=`\\documentclass{article}\r\n\\begin{document}\r\n\\begin{${name}}\r\n`+
+          `${prefix}AlphaBeta.\r\n\\end{${name}}\r\n\\end{document}\r\n`;
+        await page.locator('input#file').setInputFiles({name:name+'.tex',mimeType:'text/plain',buffer:Buffer.from(source)});
+        await page.locator('#native-tex-toggle').click();
+        await page.waitForFunction(()=>document.querySelector('#native-tex-preview').dataset.state==='current');
+        await page.locator('#native-tex-target').click();
+        await panel.getByText('Click text on the native page',{exact:false}).waitFor();
+        await page.locator('#native-tex-edit').click();
+        await canvas.click({position:{x:7520000*scale,y:9250000*scale}});
+        await page.keyboard.press('Enter');
+        const split=source.replace('AlphaBeta','Alpha\r\n\r\nBeta');
+        await page.waitForFunction(expected=>nativeProbe.source===expected,split);
+        await panel.getByText('Click text on the native page',{exact:false}).waitFor();
+        await page.keyboard.press('Backspace');
+        await page.waitForFunction(expected=>nativeProbe.source===expected,source);
+        await page.keyboard.press(mod+'+z');
+        await page.waitForFunction(expected=>nativeProbe.source===expected,split);
+        await page.locator('#native-tex-close').click();
+      }
       const mixedProof=proofSource.replace('One step.','\\emph{Step} $\\frac{a}{}$ here.');
       await page.locator('input#file').setInputFiles({name:'mixed-proof.tex',mimeType:'text/plain',buffer:Buffer.from(mixedProof)});
       await page.locator('#native-tex-toggle').click();
