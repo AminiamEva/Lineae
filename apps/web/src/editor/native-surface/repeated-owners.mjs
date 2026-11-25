@@ -32,10 +32,12 @@ export function separateRepeatedOwners(pages,projection,regions=[]){
       if(!['glyphs','fields'].includes(kind))continue;
       for(const event of events){
         const target=repeated.get(event.owner);
-        if(!target)continue;
+        if(!target||kind==='fields'&&!event.empty)continue;
         const role=kind==='glyphs'?'glyph':event.role;
-        if(!target.events.has(role))target.events.set(role,[]);
-        target.events.get(role).push(event);
+        if(!target.events.has(role))target.events.set(role,new Map());
+        const bounds=JSON.stringify([page.page,event.bbox]);
+        const distinct=target.events.get(role);
+        if(!distinct.has(bounds))distinct.set(bounds,event);
       }
     }
   }
@@ -43,8 +45,8 @@ export function separateRepeatedOwners(pages,projection,regions=[]){
     // A missing or duplicated event cannot be attributed to a particular
     // expansion. Leave it visible but without a semantic hit target.
     for(const values of events.values()){
-      if(values.length!==count||!entry.paragraph&&!entry.formula)continue;
-      for(const [index,event] of values.entries()){
+      if(values.size!==count||!entry.paragraph&&!entry.formula)continue;
+      for(const [index,event] of [...values.values()].entries()){
         if(aliases[index]===undefined){
           const target=entry.paragraph?{paragraph:occurrence(entry.paragraph,index,paragraphs)}:
             {formula:occurrence(entry.formula,index,formulas)};

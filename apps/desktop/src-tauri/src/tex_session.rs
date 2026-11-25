@@ -1669,14 +1669,17 @@ mod tests {
             ).expect("repeated project source must preserve both geometry instances");
             for (list, tag) in [("glyphs", "glyph"), ("fields", "denominator")] {
                 let owner = &repeated[tag];
-                let boxes = observed.iter().flat_map(|page| {
+                let mut boxes = observed.iter().flat_map(|page| {
                     let number = &page["page"];
                     page["dl"]["math_owners"][list].as_array().into_iter().flatten().filter_map(move |item| {
-                        (&item["owner"] == owner && (list != "fields" || item["role"] == "den"))
-                            .then(|| (number.clone(), item["bbox"].clone()))
+                        (&item["owner"] == owner && (list != "fields" ||
+                            item["role"] == "den" && item["empty"] == true))
+                            .then(|| (number.as_u64().unwrap(), item["bbox"].to_string()))
                     })
                 }).collect::<Vec<_>>();
-                assert_eq!(boxes.len(), 2, "both expansions report the same source tag: {tag}");
+                boxes.sort_unstable();
+                boxes.dedup();
+                assert_eq!(boxes.len(), 2, "both expansions report the same source tag: {tag}, {boxes:?}");
                 assert_ne!(boxes[0], boxes[1], "the two locations must be distinct: {tag}");
             }
             std::fs::write(directory.join("native-repeated-input-pages.json"), serde_json::to_vec(&json!({
