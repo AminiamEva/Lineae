@@ -1268,6 +1268,7 @@ editor.on('update', ({transaction}) => {
     if(transaction.doc.attrs.layoutPreamble!==transaction.before.attrs.layoutPreamble){
       documentParts=parseDocument(root,{fragment:true});
       pageSetup=readPageSetup(documentParts.start);applyPageSetup();renderMeta();
+      if(headerFooterPanel?.active&&isHistoryTransaction(transaction))headerFooterPanel.refresh();
     }
     sourceView.reset(root);
     projectExplorer.changed();
@@ -1285,6 +1286,7 @@ editor.on('update', ({transaction}) => {
       renderMeta();
       if(transaction.doc.attrs.layoutPreamble!==transaction.before.attrs.layoutPreamble){
         pageSetup=readPageSetup(documentParts.start);applyPageSetup();
+        if(headerFooterPanel?.active&&isHistoryTransaction(transaction))headerFooterPanel.refresh();
       }
       typesetPagination?.setMaketitle(/\\maketitle\b/.test(documentParts.blocks.join('\n')));
     }
@@ -1344,6 +1346,10 @@ let imagePanel;
 let imageSelection = null;
 let pagePaper,pageOrientation,pageMarginPreset,pageMarginTop,pageMarginRight,pageMarginBottom,pageMarginLeft,layoutColumns,layoutLocalColumns;
 function applyFurnitureState(state){
+  if(sourceView.hidden&&nativeWorkspaceRequested()){
+    updateNativeLayout(preamble=>writePageFurniture(preamble,state));
+    return;
+  }
   const before=documentParts.start;
   const after=writePageFurniture(before,state);
   if(after===before)return;
@@ -1495,6 +1501,8 @@ function updateNativeLayout(transform){
   const [change]=textPatch(parsed.start,preamble);
   if(!change)return;
   const {state}=editor,tr=state.tr.setDocAttribute('layoutPreamble',preamble);
+  const furniture=readPageFurniture(preamble);
+  if(JSON.stringify(state.doc.attrs.pageFurniture)!==JSON.stringify(furniture))tr.setDocAttribute('pageFurniture',furniture);
   const draft=preamble+before.slice(parsed.start.length);
   if(root){
     dispatchNativeProjectChange(state,tr,project,new Map([[root,draft]]));
@@ -4723,7 +4731,7 @@ for(const control of [...tools.children]) {
 }
 const groups={files,home,insert,layout:layoutGroup,table:tableGroup,format:formatGroup,reference:referenceGroup,math:mathGroup};
 headerFooterPanel=installHeaderFooterPanel({
-  readState:()=>readPageFurniture(documentParts.start),
+  readState:()=>readPageFurniture(projectFileKind==='tex'?projectLayoutPreamble(projectExplorer?.model,documentParts.start):documentParts.start),
   onChange:applyFurnitureState,
 });
 groups.headerFooter=headerFooterPanel.panel;

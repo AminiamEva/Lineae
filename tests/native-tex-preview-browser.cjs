@@ -2046,6 +2046,27 @@ const server=createServer(async(req,res)=>{
     await verifyLayout(twoColumns);
     assert.equal(await columns.inputValue(),'2');
 
+    const {readPageFurniture,writePageFurniture}=await import('../apps/web/latex/page-furniture.mjs');
+    const boundary=twoColumns.indexOf('\\begin{document}');
+    const basePreamble=twoColumns.slice(0,boundary),body=twoColumns.slice(boundary);
+    const furniture=readPageFurniture(basePreamble);
+    furniture.enabled=true;
+    const enabledPreamble=writePageFurniture(basePreamble,furniture);
+    await revealToolbar(page);await page.locator('[data-group=headerFooter]').click();
+    await page.getByRole('switch',{name:'Enable header/footer'}).click();
+    await verifyLayout(enabledPreamble+body);
+    const header=page.locator('.hf-cell input[data-region=header][data-slot=left][data-parity=odd]');
+    await header.fill('Native Header');
+    furniture.header.left.odd=furniture.header.left.even='Native Header';
+    await verifyLayout(writePageFurniture(enabledPreamble,furniture)+body);
+    await page.locator('[data-group=home]').click();
+    await page.getByText('Click text on the native page',{exact:false}).waitFor();
+    await page.locator('[data-native-page="1"] canvas').click({position:{x:6550000*projectScale,y:9250000*projectScale}});
+    await page.keyboard.press(mod+'+z');
+    await verifyLayout(enabledPreamble+body);
+    await page.keyboard.press(mod+'+z');
+    await verifyLayout(twoColumns);
+
     await page.goto(base+'?native-only-acceptance=1',{waitUntil:'networkidle'});
     const duplicateImages='\\documentclass{article}\n\\usepackage{graphicx}\n\\begin{document}\n'+
       '\\includegraphics[width=18pt]{plot.png}\n\n\\includegraphics[width=25pt]{plot.png}\n\\end{document}\n';
