@@ -9,7 +9,7 @@ const CSS_PER_SP=(96/72)/65781.76;
 
 // Strict read-only full-page adapter. No browser font fallback or inferred
 // glyph positions: a page is shown only when all its resources are exact.
-export function installNativePages({host,getFont,getRaster,onPaint,onError,onMathHit,onImageHit,proseRanges}) {
+export function installNativePages({host,getFont,getRaster,onPaint,onError,onMathHit,onImageHit,proseRanges,foldLabel,onExpandFile}) {
   let generation=0,epoch=0,zoom=.75,revision=-1,layoutVersion=-1;
   let fonts=new FontStore();
   const imageResources=new Map(),imageLoads=new Map();
@@ -18,6 +18,7 @@ export function installNativePages({host,getFont,getRaster,onPaint,onError,onMat
   let frame=0;
   let ownership=null;
   let boundaries=[],boundaryMarks=[];
+  let foldedRanges=[],foldMasks=[],hiddenPages=[];
   let complete=null,warm=null;
   let pdfBacked=false;
   function drawing(dl) {
@@ -121,6 +122,37 @@ export function installNativePages({host,getFont,getRaster,onPaint,onError,onMat
       dom.append(mark);
       boundaryMarks.push(mark);
     }
+  }
+  function showFoldedFiles(next,repaint=true){
+    if(!next.length&&!foldedRanges.length)return;
+    for(const mask of foldMasks)mask.remove();
+    for(const entry of hiddenPages)entry.hidden=false;
+    foldedRanges=next;foldMasks=[];hiddenPages=[];
+    const skipped=new Set(),scale=CSS_PER_SP*zoom;
+    for(const {path,firstPage,lastPage,from,to} of next){
+      const interior=[];
+      for(let number=firstPage+1;number<lastPage;number++){
+        const dom=pages.get(number)?.dom;
+        if(!dom)continue;
+        dom.hidden=true;hiddenPages.push(dom);
+        skipped.add(number);interior.push(number);
+      }
+      for(const number of new Set([firstPage,lastPage])){
+        const dom=pages.get(number)?.dom;
+        if(!dom)continue;
+        const mask=document.createElement('button');
+        mask.type='button';mask.className='native-tex-fold-mask';
+        mask.dataset.foldPath=path;mask.dataset.originalPage=String(number);
+        mask.style.top=(number===firstPage?from*scale:0)+'px';
+        mask.style.bottom=number===lastPage?`calc(100% - ${to*scale}px)`:'0';
+        mask.textContent=foldLabel(path,interior);
+        mask.onclick=()=>onExpandFile(path);
+        dom.append(mask);foldMasks.push(mask);
+      }
+    }
+    if(skipped.size)host.dataset.skippedPages=[...skipped].sort((a,b)=>a-b).join(',');
+    else delete host.dataset.skippedPages;
+    if(repaint)redraw();
   }
   function showCaret(hit){
     if(!ownership||ownership.stamp.sourceRevision!==revision||ownership.stamp.layoutVersion!==layoutVersion)return;
@@ -301,6 +333,7 @@ export function installNativePages({host,getFont,getRaster,onPaint,onError,onMat
     frame=requestAnimationFrame(()=>{
       try {
         for(const entry of pages.values()) {
+          if(entry.dom.hidden)continue;
           const box=entry.dom.getBoundingClientRect(),viewport=host.getBoundingClientRect();
           if(box.bottom>=viewport.top-1000 && box.top<=Math.min(viewport.bottom,window.innerHeight)+1000)draw(entry);
           else if(entry.painted){
@@ -346,6 +379,7 @@ export function installNativePages({host,getFont,getRaster,onPaint,onError,onMat
       delete host.dataset.warmRevision;
       clearCaret();
       showFileBoundaries([]);
+      showFoldedFiles([],false);
       for(const entry of pages.values()) {
         entry.dom.style.width=entry.dl.page_width*CSS_PER_SP*zoom+'px';
         entry.dom.style.height=entry.dl.page_height*CSS_PER_SP*zoom+'px';
@@ -370,7 +404,7 @@ export function installNativePages({host,getFont,getRaster,onPaint,onError,onMat
         if(currentEpoch!==epoch)return;
         warm={pages:overlay,dl:message.dl,revision:message.versions.source_revision};
         host.dataset.warmRevision=String(warm.revision);
-        ownership=null;clearCaret();showFileBoundaries([]);redraw();
+        ownership=null;clearCaret();showFileBoundaries([]);showFoldedFiles([],false);redraw();
       } catch {/* Complete layout will handle unsupported resources. */}
     }).catch(onError);
   }
@@ -378,7 +412,7 @@ export function installNativePages({host,getFont,getRaster,onPaint,onError,onMat
     epoch++;generation++;revision=-1;layoutVersion=-1;pending=Promise.resolve();ownership=null;drag=null;
     complete=null;warm=null;pdfBacked=false;
     delete host.dataset.warmRevision;
-    cancelAnimationFrame(frame);clearCaret();showFileBoundaries([]);previousCaret=null;pages.clear();loaded.clear();fonts=new FontStore();
+    clearCaret();showFileBoundaries([]);showFoldedFiles([],false);cancelAnimationFrame(frame);previousCaret=null;pages.clear();loaded.clear();fonts=new FontStore();
     for(const resource of imageResources.values())resource.image.close();
     imageResources.clear();imageLoads.clear();if(clear)host.replaceChildren();
   }
@@ -395,7 +429,7 @@ export function installNativePages({host,getFont,getRaster,onPaint,onError,onMat
       return {number,dom,canvas,dl:page.dl,exact:page.exact};
     });
     if(entries.some(entry=>!entry))return false;
-    clearCaret();showFileBoundaries([]);ownership=null;pages.clear();pdfBacked=true;
+    clearCaret();showFileBoundaries([]);showFoldedFiles([],false);ownership=null;pages.clear();pdfBacked=true;
     revision=stamp.source_revision;layoutVersion=stamp.layout_version;
     for(const entry of entries){
       const {number,dom}=entry;
@@ -407,7 +441,7 @@ export function installNativePages({host,getFont,getRaster,onPaint,onError,onMat
   host.addEventListener('scroll',redraw,{passive:true});
   host.parentElement?.addEventListener('scroll',redraw,{passive:true});
   window.addEventListener('resize',redraw);
-  return {accept,reset,attachOwners,bindPdfLayout,showCaret,showSelection,showFileBoundaries,clearCaret,setZoom(value){clearCaret();zoom=value;showFileBoundaries(boundaries);if(pdfBacked)return;for(const entry of pages.values()){
+  return {accept,reset,attachOwners,bindPdfLayout,showCaret,showSelection,showFileBoundaries,showFoldedFiles,clearCaret,setZoom(value){clearCaret();zoom=value;showFileBoundaries(boundaries);showFoldedFiles(foldedRanges,false);if(pdfBacked)return;for(const entry of pages.values()){
     entry.dom.style.width=entry.dl.page_width*CSS_PER_SP*zoom+'px';
     entry.dom.style.height=entry.dl.page_height*CSS_PER_SP*zoom+'px';
   }redraw();}};

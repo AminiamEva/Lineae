@@ -359,6 +359,7 @@ main { padding:125px 24px 60px; overflow:auto; }
 .native-tex-operator-caret::after { content:''; position:absolute; top:.14em; left:3px; width:.68em; height:.68em; border:1px solid #96bdb1; border-radius:3px; background:#85bdab26; }
 .native-tex-selection { position:absolute; background:#2f6fd04d; pointer-events:none; }
 .native-tex-file-boundary { position:absolute; inset-inline:8%; border-top:1px solid #d9dee5; pointer-events:none; }
+.native-tex-fold-mask { position:absolute; inset-inline:2%; z-index:2; display:grid; place-items:center; padding:6px; overflow:hidden; border:1px dashed #c7cbd3; background:#f2f3f5; color:#515d6d; font:12px system-ui; }
 .native-delimiter-ghost { position:fixed; z-index:21; display:inline-flex; gap:3px; pointer-events:none; }
 .native-delimiter-ghost .delimiter-ghost-slot { min-width:.75em; min-height:1em; text-align:center; border-radius:3px; background:#8959ae24; }
 .native-delimiter-ghost .delimiter-ghost-slot.is-active { background:#4386d94d; outline:1px solid #4386d9; }

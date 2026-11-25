@@ -28,14 +28,22 @@ module.exports=function installMockNativeTex() {
     if(this.canvas.closest('#native-tex-preview'))p.ruleRects.push({w,h});
     return fillRect.call(this,x,y,w,h);
   };
-  p.layout=()=>({event:'LayoutUpdate',compile:{state:'Ok'},convergence:{state:'Converged'},    pdf_fallback_registered:Boolean(p.registeredPdf),
+  p.layout=()=>{
+    const layout={event:'LayoutUpdate',compile:{state:'Ok'},convergence:{state:'Converged'},pdf_fallback_registered:Boolean(p.registeredPdf),
     versions:{source_revision:p.revision,context_revision:1,engine_generation:0,layout_version:p.revision},
     placements:[{par_id:1,fragments:[{page:1,first_line:1,last_line:1,xs:[6500000],baselines:[6500000],approximate:false}]}],
     pages_total:1,pages_changed:[{page:1,exact:!p.semanticPdf,dl:{kind:'page',page:1,
       page_width:39000000,page_height:55000000,width:0,height:0,depth:0,flags:{},images_info:p.raster?{'1':{file:'plot.png'}}:{},
       fonts:{15:{id:15,filename:p.collection?'/fixture/native.otc':'/fixture/lmroman10-regular.otf',subfont:1,size:655360,extend:1000,squeeze:1000}},
       other:p.raster?[['i',1,3000000,3000000,1000000,1000000]]:[],lines:[{x:6500000,y:6500000,w:600000,h:600000,d:0,
-        items:[['g',15,97,28,6500000,6500000,327680,0],['r',6500000,7000000,3000000,6554]]}]}}]});
+        items:[['g',15,97,28,6500000,6500000,327680,0],['r',6500000,7000000,3000000,6554]]}]}}]};
+    if(p.foldProject){
+      const [first]=layout.pages_changed;
+      layout.pages_total=3;
+      layout.pages_changed=[1,2,3].map(page=>({...first,page,dl:{...first.dl,page}}));
+    }
+    return layout;
+  };
   window.__TAURI__={core:{invoke:async(command,args)=>{
     p.calls.push({command,args});
     if(command==='native_tex_open') {
@@ -112,6 +120,18 @@ module.exports=function installMockNativeTex() {
         .replace(/\$[^$]*\$/g,'')
         .replace(/\\begin\{(?:equation|align|gather)\*?\}[\s\S]*?\\end\{(?:equation|align|gather)\*?\}/g,'')
         .matchAll(/\\attribute65000=(\d+) (.)/gsu)];
+      if(p.foldProject){
+        const root=textTags(args.projection);
+        const child=textTags(args.files.find(file=>file.path==='chapters/one.tex').source);
+        const observed=p.layout().pages_changed;
+        const owners=(items,y)=>items.map(([,owner,char],index)=>{
+          const x=6500000+index*200000;
+          return {owner:Number(owner),char:char.codePointAt(0),bbox:[x,y,x+200000,y+500000]};
+        });
+        observed[0].dl.math_owners={fields:[],glyphs:[...owners(root.slice(0,7),9000000),...owners(child.slice(0,6),27000000)]};
+        observed[2].dl.math_owners={fields:[],glyphs:[...owners(child.slice(6),27000000),...owners(root.slice(7),33000000)]};
+        return observed;
+      }
       const proseTags=[...textTags(input),...(p.targetInclude&&p.includeMainText?textTags(args.projection):[])];
       if(!match&&!script&&!cellOwner){
         const text=proseTags;

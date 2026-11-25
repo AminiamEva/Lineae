@@ -2843,7 +2843,11 @@ nativeTexPreview=installNativeTexPreview({host:footer,before:modes,primary:nativ
     if(!continuation)return null;
     return {...continuation,empty:Boolean(emptyContinuation(continuation,composition,editor.state.doc))};
   },
-  selectionRegions:()=>currentNativeProjectComposition()?.regions,
+  selectionRegions:()=>{
+    const composition=currentNativeProjectComposition();
+    return composition?.regions.map((region,index)=>({...region,trail:composition.content[index]?.attrs.trail}));
+  },
+  foldedFiles:()=>projectPresentation?.foldedFiles()??[],
   selectText:(anchor,head)=>{
     if(!anchor||anchor.paragraph!==head?.paragraph)return false;
     const forward=anchor.local<=head.local;

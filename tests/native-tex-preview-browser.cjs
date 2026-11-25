@@ -628,6 +628,24 @@ const server=createServer(async(req,res)=>{
       const continued=endingWithInput.replace('\\end{document}','Parent continuation.\n\\end{document}');
       await page.waitForFunction(expected=>nativeProbe.source===expected,continued);
       await page.locator('#native-tex-close').click();
+      const foldSource='\\documentclass{article}\n\\begin{document}\nBefore.\n\n\\input{chapters/one}\n\nAfter.\n\\end{document}\n';
+      await openMockProject(page,false,foldSource,'Start.\n\nEnd.\n');
+      await page.evaluate(()=>{nativeProbe.foldProject=true;nativeProbe.targetInclude=false;});
+      await page.locator('#native-tex-toggle').click();
+      await page.locator('#native-tex-target').click();
+      await panel.getByText('Click text on the native page',{exact:false}).waitFor();
+      await page.locator('#native-tex-edit').click();
+      await page.evaluate(()=>document.dispatchEvent(new CustomEvent('lineae-toggle-project-file',{
+        detail:{path:'chapters/one.tex'},
+      })));
+      await panel.locator('.native-tex-pages[data-skipped-pages="2"]').waitFor();
+      assert.equal(await panel.locator('[data-native-page="2"]').isHidden(),true);
+      assert.deepEqual(await panel.locator('.native-tex-fold-mask').evaluateAll(nodes=>nodes.map(node=>node.dataset.originalPage)),['1','3']);
+      await panel.locator('.native-tex-fold-mask').first().click();
+      await panel.locator('[data-native-page="2"]').waitFor();
+      assert.equal(await panel.locator('.native-tex-fold-mask').count(),0);
+      assert.equal(await page.evaluate(()=>nativeProbe.source),foldSource);
+      await page.locator('#native-tex-close').click();
       await page.locator('#settings-open').click();
       await page.locator('[data-native-workspace-preference]').check();
       await page.locator('#settings-apply').click();

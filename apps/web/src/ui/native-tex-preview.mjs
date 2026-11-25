@@ -14,7 +14,7 @@ import {readDelimiterPair} from '../editor/delimiter-input.js';
 // Native LaTeX output is the primary page. The opt-in native input mode sends
 // supported keys, caret and IME through this surface into ProseMirror; the old
 // JS-formatted page and MathLive inputs stay available as the migration fallback.
-export function installNativeTexPreview({host,before,primary=false,documentZoom=100,isDocumentMode,getSource,getSnapshot,isComposing,focusMathSlot,focusImage,listTikzDrawings,editTikzDrawing,continuationRegion,selectionRegions,selectText,commitMath,commitText,commitTextLines,commitProjectRange,canStartText,commitInitialText,commitParagraphBreak,commitParagraphJoin,commitNewMath,onEnvironmentChange,history}) {
+export function installNativeTexPreview({host,before,primary=false,documentZoom=100,isDocumentMode,getSource,getSnapshot,isComposing,focusMathSlot,focusImage,listTikzDrawings,editTikzDrawing,continuationRegion,selectionRegions,foldedFiles,selectText,commitMath,commitText,commitTextLines,commitProjectRange,canStartText,commitInitialText,commitParagraphBreak,commitParagraphJoin,commitNewMath,onEnvironmentChange,history}) {
   const invoke=window.__TAURI__?.core?.invoke;
   if(!invoke) return {refresh(){},documentChanged(){},relocalize(){}};
   const button=document.createElement('button');
@@ -65,6 +65,7 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
   let pollEpoch=0;
   let targeting=null,observation=null,targetArmed=false,lastTarget=null,targetTimer=null;
   let previousProjection=null;
+  let foldsDirty=false;
   let mirror=null;
   let primaryRequested=false;
   let draftInput=null;
@@ -480,6 +481,9 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
     renderedRevision=revision;pdfRendered=revision;if(!terminal&&revision>=sourceRevision)error='';renderStatus();
   },onError:failure=>{if(active&&mode==='pdf')fail(failure);}});
   const renderer=installNativePages({host:pages,
+    foldLabel:(path,skipped)=>path+' · '+t('已折叠，点击展开','Folded; click to expand')+
+      (skipped.length?' · '+t('隐藏页 ','Hidden pages ')+skipped.join(', '):''),
+    onExpandFile:path=>document.dispatchEvent(new CustomEvent('lineae-toggle-project-file',{detail:{path}})),
     getFont:key=>invoke('native_tex_font',{sessionId:session,key}),
     getRaster:file=>sentSnapshot?.dependencySignature===wantedSnapshot?.dependencySignature
       ? stagedRaster(sentSnapshot,file) : null,
@@ -547,6 +551,7 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
       wantedSource===sentSource && renderedRevision===sourceRevision;
   }
   function renderStatus() {
+    if(foldsDirty&&nativeEditing&&current()&&observation)refreshFoldView();
     exportButton.disabled=!current();
     targetButton.disabled=!current()||!hasGeometry()||targeting===generation;
     editButton.disabled=!current()||!hasGeometry()||!observation;
@@ -605,7 +610,7 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
     const previous=session;session=null;
     wantedSnapshot=null;sentSnapshot=null;wantedSource='';sentSource='';
     observation=null;targetStatus.textContent='';
-    previousProjection=null;
+    previousProjection=null;foldsDirty=false;
     nativeEditing=false;draftInput=null;nativeDocument.reset();
     input.blur();input.value='';
     clearQueuedInput();
@@ -840,7 +845,7 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
       if(nativeEditing){
         const expectedOffset=nativeDocument.surface.pendingOffset;
         const applied=nativeDocument.setObservation(observed,projection,pdfGeometryAvailable,selectionRegions?.());
-        renderer.showFileBoundaries(nativeDocument.fileBoundaries());
+        paintFilePresentation();
         if(pendingEdit){
           const stop=nativeDocument.surface.caret;
           const previous=pendingEdit.paragraph??pendingEdit.formula;
@@ -934,11 +939,28 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
   targetButton.addEventListener('click',()=>{
     targetArmed=true;clearTimeout(targetTimer);targetTimer=null;void observe();
   });
+  function paintFilePresentation(){
+    foldsDirty=false;
+    const folded=nativeDocument.foldFiles(foldedFiles?.()??[]);
+    renderer.showFoldedFiles(folded);
+    renderer.showFileBoundaries(nativeDocument.fileBoundaries());
+  }
+  function refreshFoldView(){
+    paintFilePresentation();
+    renderer.clearCaret();
+    paintSurfaceSelection(true);
+    positionInput();
+  }
+  document.addEventListener('lineae-project-fold-state',()=>{
+    if(!nativeEditing)return;
+    foldsDirty=true;
+    if(current()&&observation)refreshFoldView();
+  });
   editButton.addEventListener('mousedown',event=>event.preventDefault());
   editButton.addEventListener('click',()=>{
     if(nativeEditing){
       nativeEditing=false;draftInput=null;clearQueuedInput();nativeDocument.surface.clearPending();
-      renderer.showFileBoundaries([]);input.blur();renderStatus();return;
+      renderer.showFileBoundaries([]);renderer.showFoldedFiles([]);input.blur();renderStatus();return;
     }
     if(!observation)return;
     nativeEditing=true;targetArmed=true;
@@ -949,7 +971,7 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
     if(nativeDocument.surface.caret){
       paintSurfaceSelection();positionInput();input.focus({preventScroll:true});
     }
-    renderer.showFileBoundaries(nativeDocument.fileBoundaries());
+    paintFilePresentation();
     renderStatus();
   });
   function setNativeZoom(value){

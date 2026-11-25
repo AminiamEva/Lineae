@@ -401,6 +401,31 @@ test('native project boundaries follow verified vertical space without splitting
   assert.deepEqual(session.fileBoundaries(),[{path:'main.tex',page:1,y:130}]);
 });
 
+test('native include folding preserves the first and last page boundaries and hides its stops',()=>{
+  const source='\\begin{document}\nBefore.\n\n\\input{chapter}\n\nAfter.\n\\end{document}\n';
+  const child='Start.\n\nEnd.\n';
+  const projection=projectMixedSnapshot({source,mainFile:'main.tex',
+    files:[{path:'chapter.tex',bytes:new TextEncoder().encode(child)}]});
+  const [before,after,start,end]=projection.paragraphs;
+  const regions=[{path:'main.tex',from:0,to:source.indexOf('\\input')},
+    {path:'chapter.tex',from:0,to:child.length,trail:['main.tex']},
+    {path:'main.tex',from:source.indexOf('After.'),to:source.length}];
+  const onLine=(paragraph,y)=>({...glyph(paragraph.glyphs[0].tag,100),bbox:[100,y,120,y+10]});
+  const session=createNativeDocumentSession(()=>null);
+  const first=page([],[onLine(before,100),onLine(start,150)])[0];
+  const third=page([],[onLine(end,100),onLine(after,170)])[0];
+  third.page=3;
+  session.setObservation([first,third],projection,false,regions);
+  assert.deepEqual(session.foldFiles(['chapter.tex']),[{path:'chapter.tex',firstPage:1,lastPage:3,from:130,to:140,indices:[1]}]);
+  const childCaret=textTarget(projection,start.glyphs[0].tag,false);
+  assert.equal(session.select(childCaret,childCaret),false);
+  assert.deepEqual(session.foldFiles([]),[]);
+  assert.equal(session.select(childCaret,childCaret),true);
+  first.dl.math_owners.glyphs=[onLine(before,100),onLine(start,100)];
+  session.setObservation([first,third],projection,false,regions);
+  assert.deepEqual(session.foldFiles(['chapter.tex']),[]);
+});
+
 test('prose can replace a complete inline formula but cannot edit part of its source', () => {
   const inlineSource = '\\begin{document}\nBefore $x$ after.\n\\end{document}\n';
   const projection = projectMixedDocument(inlineSource);

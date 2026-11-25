@@ -13,6 +13,7 @@ const tableCellOf=stop=>(stop?.paragraph??stop?.formula)?.tableCell;
 export function createNativeDocumentSession(resolve) {
   let orderByFile=new Map();
   let documentRegions=[];
+  let observedStops=[];
   const order=stop=>orderByFile.get(fileOf(stop))?.find(region=>
     stop.docOffset>=region.from&&stop.docOffset<=region.to)?.index??-1;
   const canSelect=(from,to)=>sameOwner(from,to)||Boolean(from?.kind==='text'&&to?.kind==='text'&&
@@ -25,6 +26,18 @@ export function createNativeDocumentSession(resolve) {
   let sourceProjection=null;
   let preferredX=null;
   const center=stop=>(stop.top+stop.bottom)/2;
+  function regionBounds(stops){
+    const bounds=new Map();
+    for(const stop of stops){
+      const index=order(stop);
+      if(index<0)continue;
+      const known=bounds.get(index);
+      if(!known){bounds.set(index,{first:stop,last:stop});continue;}
+      if(stop.page<known.first.page||stop.page===known.first.page&&stop.top<known.first.top)known.first=stop;
+      if(stop.page>known.last.page||stop.page===known.last.page&&stop.bottom>known.last.bottom)known.last=stop;
+    }
+    return bounds;
+  }
   return {
     get surface(){return selection.caret?.kind==='text'?text:math;},
     setObservation(observed,projection,verified=false,regions=[]){
@@ -36,23 +49,15 @@ export function createNativeDocumentSession(resolve) {
       }
       sourceProjection=projection;
       text.setProjection(projection);
-      const stops=[
+      observedStops=[
         ...(projection.kind==='text'?[]:math.collectStops(observed,verified)),
         ...(projection.kind==='math'?[]:text.collectStops(observed,verified)),
       ].sort(compare);
-      return selection.setStops(stops);
+      return selection.setStops(observedStops);
     },
     fileBoundaries(){
       if(documentRegions.length<2)return [];
-      const bounds=new Map();
-      for(const stop of selection.stops){
-        const index=order(stop);
-        if(index<0)continue;
-        const known=bounds.get(index);
-        if(!known){bounds.set(index,{first:stop,last:stop});continue;}
-        if(stop.page<known.first.page||stop.page===known.first.page&&stop.top<known.first.top)known.first=stop;
-        if(stop.page>known.last.page||stop.page===known.last.page&&stop.bottom>known.last.bottom)known.last=stop;
-      }
+      const bounds=regionBounds(selection.stops);
       const positions=[];
       for(let index=1;index<documentRegions.length;index++){
         const previous=bounds.get(index-1)?.last,next=bounds.get(index)?.first;
@@ -65,6 +70,35 @@ export function createNativeDocumentSession(resolve) {
         }
       }
       return positions;
+    },
+    foldFiles(paths){
+      if(!paths.length){
+        if(selection.stops!==observedStops)selection.setStops(observedStops);
+        return [];
+      }
+      const bounds=regionBounds(observedStops),hidden=new Set(),ranges=[];
+      const positions=[...bounds];
+      for(const path of paths){
+        if(path===documentRegions[0]?.path)continue;
+        const indices=documentRegions.flatMap((region,index)=>region.path===path||region.trail?.includes(path)?[index]:[]);
+        if(!indices.length||indices.at(-1)-indices[0]+1!==indices.length)continue;
+        const regions=indices.map(index=>bounds.get(index)).filter(Boolean);
+        const first=regions[0]?.first,last=regions.at(-1)?.last;
+        if(!first||!last||first.page>last.page)continue;
+        const previous=positions.findLast(([index])=>index<indices[0])?.[1].last;
+        const following=positions.find(([index])=>index>indices.at(-1))?.[1].first;
+        if(previous?.page===first.page&&previous.bottom>=first.top||
+           following?.page===last.page&&following.top<=last.bottom)continue;
+        const from=previous?.page===first.page?(previous.bottom+first.top)/2:first.top;
+        const to=following?.page===last.page?(last.bottom+following.top)/2:last.bottom;
+        const outer=ranges.find(range=>range.indices.includes(indices[0]));
+        if(outer)continue;
+        for(const index of indices)hidden.add(index);
+        ranges.push({path,firstPage:first.page,lastPage:last.page,from,to,indices});
+      }
+      selection.setStops(observedStops.filter(stop=>!hidden.has(order(stop))));
+      return ranges.filter((range,index)=>!ranges.some((other,otherIndex)=>
+        index!==otherIndex&&other.indices.length>range.indices.length&&other.indices.includes(range.indices[0])));
     },
     select(from,to){preferredX=null;return selection.selectTargets(from,to);},
     selectAll(){
@@ -183,6 +217,6 @@ export function createNativeDocumentSession(resolve) {
     expectInitialMath(edit,offset,path){
       selection.record(edit,offset,{kind:'math',formula:{filePath:path}});
     },
-    reset(){selection.reset();sourceProjection=null;preferredX=null;documentRegions=[];orderByFile.clear();},
+    reset(){selection.reset();sourceProjection=null;preferredX=null;observedStops=[];documentRegions=[];orderByFile.clear();},
   };
 }
