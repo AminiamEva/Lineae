@@ -15,12 +15,21 @@ let suppressImageClickUntil = 0;
 export function chooseImageFile(callback) {
   const input = document.createElement('input');
   input.type = 'file';
+  input.hidden = true;
   input.accept = [...rasterTypes].join(',');
-  input.addEventListener('change', () => {
-    const file = input.files[0];
-    if (file && (rasterTypes.has(file.type) || /\.(png|jpe?g|webp|gif|avif)$/i.test(file.name))) callback(file);
-  }, { once:true });
-  input.click();
+  return new Promise((resolve,reject)=>{
+    const close=()=>{input.remove();resolve();};
+    input.addEventListener('cancel',close,{once:true});
+    input.addEventListener('change',async()=>{
+      const file=input.files[0];
+      try{
+        if(file&&(rasterTypes.has(file.type)||/\.(png|jpe?g|webp|gif|avif)$/i.test(file.name)))await callback(file);
+        close();
+      }catch(error){input.remove();reject(error);}
+    },{once:true});
+    document.body.append(input);
+    input.click();
+  });
 }
 
 function remember(path, file) {

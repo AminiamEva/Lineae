@@ -85,7 +85,7 @@ export function markedRuns(text,offset=0,marks=[],inline,styles=[]) {
     const argument=groupedStyle?cursor:cursor+(color??command)[0].length;
     const valueFrom=groupedStyle?cursor+(size??declaration)[0].length:argument+1;
     const group=readGroup(text,argument);
-    if(!group||valueFrom>=group.end-1)return null;
+    if(!group||valueFrom>group.end-1)return null;
     const nested=markedRuns(text.slice(valueFrom,group.end-1),offset+valueFrom,
       marks.includes(mark)?marks:[...marks,mark],inline,style?[...styles,style]:styles);
     if(!nested)return null;

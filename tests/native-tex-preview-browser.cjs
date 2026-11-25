@@ -56,7 +56,7 @@ const server=createServer(async(req,res)=>{
     const key=url.searchParams.get('key');
     const font=nativeEvidence.raw.flatMap(page=>Object.values(page.dl.fonts)).find(desc=>
       key===`file:${desc.filename}#${desc.subfont??0}`&&
-      /^(?:lmroman10-regular|lmroman12-bold|latinmodern-math|fandolsong-regular)\.otf$/i.test((desc.filename??'').split(/[\\/]/).at(-1)));
+      /^(?:lmroman(?:5|7|8|10)-regular|lmroman12-bold|latinmodern-math|fandolsong-regular)\.otf$/i.test((desc.filename??'').split(/[\\/]/).at(-1)));
     if(!font)return res.writeHead(404).end();
     try {res.end(await readFile(font.filename));}catch{res.writeHead(404).end();}
     return;
@@ -354,6 +354,17 @@ const server=createServer(async(req,res)=>{
       await canvas.click({position:{x:8050000*scale,y:9250000*scale}});
       await page.keyboard.type('X');
       await page.waitForFunction(expected=>nativeProbe.source===expected,styledSource.replace('Styled','StXyled'));
+      await page.keyboard.press(mod+'+z');
+      await page.waitForFunction(expected=>nativeProbe.source===expected,styledSource);
+      await panel.getByText('Click text on the native page',{exact:false}).waitFor();
+      const styledBounds=await canvas.boundingBox();
+      await page.mouse.move(styledBounds.x+8050000*scale,styledBounds.y+9250000*scale);
+      await page.mouse.down();
+      await page.mouse.move(styledBounds.x+9250000*scale,styledBounds.y+9250000*scale,{steps:8});
+      await page.mouse.up();
+      await page.keyboard.insertText('Z');
+      const crossedStyle=styledSource.replace('Styled}}}} after.','StZ}}}}ter.');
+      await page.waitForFunction(expected=>nativeProbe.source===expected,crossedStyle);
       await page.keyboard.press(mod+'+z');
       await page.waitForFunction(expected=>nativeProbe.source===expected,styledSource);
       await page.locator('#native-tex-close').click();
@@ -1257,10 +1268,9 @@ const server=createServer(async(req,res)=>{
       await canvas.click({position:{x:6550000*scale,y:9250000*scale}});
       await page.keyboard.press('Backslash');
       await page.getByRole('textbox',{name:'LaTeX command',exact:true}).fill('includegraphics');
-      const fileChooser=page.waitForEvent('filechooser');
-      await page.keyboard.press('Enter');
+      const [fileChooser]=await Promise.all([page.waitForEvent('filechooser'),page.locator('#complete-includegraphics').click()]);
       const picture=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jB9kAAAAASUVORK5CYII=','base64');
-      await (await fileChooser).setFiles({name:'added.png',mimeType:'image/png',buffer:picture});
+      await fileChooser.setFiles({name:'added.png',mimeType:'image/png',buffer:picture});
       const insertedPicture=pictureSource.replace('Project text.','\\includegraphics{added.png}\n\nProject text.')
         .replace('\\begin{document}','\\usepackage{graphicx}\n\\begin{document}');
       await page.waitForFunction(({source,bytes})=>nativeProbe.calls.some(call=>{

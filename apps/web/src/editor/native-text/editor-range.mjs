@@ -9,39 +9,40 @@ export function nativeEditorRange({doc,projection,composition,file,paragraph,fro
     if(node.type.name!==(paragraph.heading?'heading':'paragraph'))return null;
     if(paragraph.heading&&(node.attrs.command??headingAt(serialize({type:'heading',attrs:node.attrs}))?.name)!==paragraph.heading)return null;
     const parts=[];
-    let index=0,offset=0;
+    let index=0,offset=0,within=0;
     for(const part of paragraph.parts){
       if(part.kind==='caret'){parts.push({offset,marks:[]});continue;}
-      const child=node.maybeChild(index++);
+      const child=node.maybeChild(index);
       if(!child)return null;
       const marks=child.marks.filter(mark=>mark.type.name!=='textCommand');
       parts.push({offset,marks});
-      offset+=child.nodeSize;
+      if(part.kind==='text'){
+        // A text node can cover several source runs separated by invisible
+        // formatting groups, or one run can cover named-literal text nodes.
+        const expected=part.marks??[];
+        let value='';
+        while(value.length<part.text.length){
+          const run=node.maybeChild(index);
+          const visible=run?.marks.filter(mark=>mark.type.name!=='textCommand');
+          if(!run?.isText||visible.length!==expected.length||
+             visible.some(mark=>!expected.includes(mark.type.name)||!marks.some(first=>first.eq(mark))))return null;
+          const length=Math.min(part.text.length-value.length,run.text.length-within);
+          value+=run.text.slice(within,within+length);
+          within+=length;offset+=length;
+          if(within===run.text.length){index++;within=0;}
+        }
+        if(value!==part.text)return null;
+        continue;
+      }
+      if(within)return null;
+      index++;offset+=child.nodeSize;
       if(part.kind==='break'){
         if(child.type.name!=='hardBreak')return null;
       }else if(part.kind==='math'){
         if(!['math','mathBlock'].includes(child.type.name)||child.attrs.latex!==part.latex)return null;
       }else if(part.kind==='reference'||part.kind==='atom'){
         if(child.type.name!==part.type||serialize(child.toJSON())!==part.source)return null;
-      }else{
-        // Named text symbols are separate rich nodes but share the source run's
-        // formatting and UTF-16 boundaries with the surrounding prose.
-        const expected=part.marks??[];
-        const matches=run=>{
-          const visibleMarks=run.marks.filter(mark=>mark.type.name!=='textCommand');
-          return run.isText&&visibleMarks.length===expected.length&&
-            visibleMarks.every(mark=>expected.includes(mark.type.name)&&marks.some(first=>first.eq(mark)));
-        };
-        if(!matches(child))return null;
-        let value=child.text;
-        while(value.length<part.text.length){
-          const run=node.maybeChild(index++);
-          if(!run||!matches(run))return null;
-          value+=run.text;
-          offset+=run.nodeSize;
-        }
-        if(value!==part.text)return null;
-      }
+      }else return null;
     }
     return index===node.childCount?parts:null;
   };

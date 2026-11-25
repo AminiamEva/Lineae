@@ -3557,7 +3557,7 @@ function insertNativeDrawing(source,preambleLines){
 function insertDocumentImage(native=nativeParagraphFormattingActive()){
   if(!native)return insertLocalImage(editor);
   const document=editor.state.doc,project=projectExplorer?.model;
-  chooseImageFile(async file=>{
+  return chooseImageFile(async file=>{
     if(editor.state.doc!==document||projectExplorer?.model!==project)return;
     if(!/^[\p{L}\p{N}_. -]+\.(?:png|jpe?g)$/iu.test(file.name)||file.size>16*1024*1024){
       sourceView.error(t('原生文档支持不超过 16 MB 的 PNG 和 JPEG。','Native documents support PNG and JPEG images up to 16 MB.'));
@@ -4197,7 +4197,9 @@ nativeTexPreview=installNativeTexPreview({host:footer,before:modes,primary:nativ
     tr.setSelection(TextSelection.create(tr.doc,start+patch.insert.length));
     const inlineBoundary=endpoints.start!==endpoints.end&&paragraph.parts
       .slice(endpoints.start.partIndex+1,endpoints.end.partIndex).some(part=>part.kind!=='math');
-    if((paragraph.wrapped||inlineBoundary||endpoints.start.kind==='caret')&&!paragraph.container&&!paragraph.tableCell&&!paragraph.heading){
+    if((paragraph.wrapped||inlineBoundary||endpoints.start.kind==='caret'||
+      endpoints.start!==endpoints.end&&paragraph.parts.some(part=>part.marks?.length))&&
+      !paragraph.container&&!paragraph.tableCell&&!paragraph.heading){
       const {state}=editor,{source}=paragraph;
       const change={from:paragraph.from16+patch.from,to:paragraph.from16+patch.to,insert:patch.latex??patch.insert};
       const draft=source.slice(0,change.from)+change.insert+source.slice(change.to);

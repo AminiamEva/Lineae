@@ -201,7 +201,10 @@ jobs:
             const classic=readFileSync("tests/native-math/fixtures/classic-font.tex","utf8");
             writeFileSync(join(process.env.LINEAE_NATIVE_EVIDENCE_DIR,"classic-projection.tex"),projectMixedDocument(classic).projection);
             const prose=readFileSync("tests/native-math/fixtures/prose-font.tex","utf8");
-            writeFileSync(join(process.env.LINEAE_NATIVE_EVIDENCE_DIR,"prose-projection.tex"),projectMixedDocument(prose).projection);
+            const proseProbe=projectMixedDocument(prose);
+            writeFileSync(join(process.env.LINEAE_NATIVE_EVIDENCE_DIR,"prose-projection.tex"),proseProbe.projection);
+            const terminalTag=[...proseProbe.owners].find(([,owner])=>owner.glyph?.terminal)[0];
+            writeFileSync(join(process.env.LINEAE_NATIVE_EVIDENCE_DIR,"prose-terminal-owner.txt"),String(terminalTag));
             const table=readFileSync("tests/native-math/fixtures/table-rowspan.tex","utf8");
             const tabularray=table.replace("{multirow}","{tabularray}").replaceAll("{tabular}","{tblr}");
             const tabularx=table.replace("{multirow}","{multirow,tabularx}").replaceAll("{tabular}","{tabularx}")

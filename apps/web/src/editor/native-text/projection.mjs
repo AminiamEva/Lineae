@@ -439,9 +439,8 @@ export function proseEditEndpoints(paragraph, from, to) {
   const end=runs.find(run=>contains(run,to));
   if(!start||!end||start.partIndex>=end.partIndex)return null;
   const between=paragraph.parts.slice(start.partIndex+1,end.partIndex);
-  if(!between.length||between.some(part=>!['math','reference','atom','break'].includes(part.kind)||
+  if(between.some(part=>!['text','math','reference','atom','break'].includes(part.kind)||
     part.from16<from||part.to16>to))return null;
-  if((start.marks?.length||end.marks?.length)&&between.some(part=>part.kind!=='math'))return null;
   return {start,end};
 }
 
@@ -459,12 +458,23 @@ export function canBeginProseFormula(first,last,display) {
 export function textEdit(projection, {paragraph, from16, to16, insert}) {
   if (!projection || (projection.source!==paragraph.source && !projection.paragraphs?.includes(paragraph))) return null;
   if (!Number.isInteger(from16) || !Number.isInteger(to16) || from16 < 0 || to16 < from16 || to16 > paragraph.text.length) return null;
-  if (paragraph.runs && !proseEditEndpoints(paragraph,from16,to16)) return null;
+  const endpoints=paragraph.runs&&proseEditEndpoints(paragraph,from16,to16);
+  if(paragraph.runs&&!endpoints)return null;
   if(typeof insert!=='string')return null;
-  const latex=escapeText(insert);
+  const escaped=escapeText(insert);
+  let latex=escaped;
+  if(endpoints&&endpoints.start!==endpoints.end){
+    let retained=paragraph.text.slice(from16,to16);
+    const parts=paragraph.parts.slice(endpoints.start.partIndex,endpoints.end.partIndex+1);
+    for(const part of parts.reverse()){
+      const from=Math.max(part.from16,from16)-from16,to=Math.min(part.to16,to16)-from16;
+      if(from<to)retained=retained.slice(0,from)+retained.slice(to);
+    }
+    latex+=retained;
+  }
   if((paragraph.container||paragraph.tableCell)&&(latex!==insert||unsupported.test(insert)))return null;
   const next = paragraph.text.slice(0, from16) + latex + paragraph.text.slice(to16);
   const source = paragraph.source.slice(0, paragraph.from16) + next + paragraph.source.slice(paragraph.from16 + paragraph.text.length);
   const patch={from:from16,to:to16,insert,...(latex!==insert&&{latex})};
-  return {text:next,patch,source,selection:from16+latex.length};
+  return {text:next,patch,source,selection:from16+escaped.length};
 }

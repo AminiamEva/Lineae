@@ -1560,6 +1560,12 @@ mod tests {
         assert!(observed.iter().any(|page| page["dl"]["math_owners"]["glyphs"].as_array()
             .is_some_and(|glyphs| glyphs.iter().any(|glyph| glyph["owner"] == 11))),
             "the escaped caret must have native text geometry");
+        let terminal: u64 = std::fs::read_to_string(directory.join("prose-terminal-owner.txt"))
+            .unwrap().parse().unwrap();
+        assert!(observed.iter().any(|page| page["dl"]["math_owners"]["fields"].as_array()
+            .is_some_and(|fields| fields.iter().any(|field|
+                field["owner"] == terminal && field["role"] == "math" && field["empty"] == true))),
+            "the terminal footnote must leave an exact native typing position");
         let raw = lock(&session.messages).events.iter()
             .filter(|event| event["event"] == "LayoutUpdate"
                 && event["versions"]["source_revision"].as_u64() == Some(info.source_revision))

@@ -656,7 +656,8 @@ test('native prose edits a nested marked run without rewriting its wrappers or n
   const {from16,to16}=paragraph.parts[2];
   assert.equal(textEdit(projection,{paragraph,from16,to16,insert:'inside'}).source,
     source.replace('{both}','{inside}'));
-  assert.equal(textEdit(projection,{paragraph,from16:0,to16,insert:'ambiguous'}),null);
+  assert.equal(textEdit(projection,{paragraph,from16:0,to16,insert:'New'}).source,
+    '\\begin{document}\r\nNew\\textbf{\\textit{}} after.\r\n\\end{document}\r\n');
   assert.match(projection.projection,/\\textbf\{\\begingroup.*\\textit\{\\begingroup/);
 });
 
