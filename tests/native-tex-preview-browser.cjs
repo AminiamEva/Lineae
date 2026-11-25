@@ -56,7 +56,7 @@ const server=createServer(async(req,res)=>{
     const key=url.searchParams.get('key');
     const font=nativeEvidence.raw.flatMap(page=>Object.values(page.dl.fonts)).find(desc=>
       key===`file:${desc.filename}#${desc.subfont??0}`&&
-      /^(?:lmroman10-regular|latinmodern-math|fandolsong-regular)\.otf$/i.test((desc.filename??'').split(/[\\/]/).at(-1)));
+      /^(?:lmroman10-regular|lmroman12-bold|latinmodern-math|fandolsong-regular)\.otf$/i.test((desc.filename??'').split(/[\\/]/).at(-1)));
     if(!font)return res.writeHead(404).end();
     try {res.end(await readFile(font.filename));}catch{res.writeHead(404).end();}
     return;
@@ -258,6 +258,16 @@ const server=createServer(async(req,res)=>{
       await page.waitForFunction(source=>nativeProbe.source===source,rightAligned.replace('\\par}','\\par}\n\nTail.'));
       await page.keyboard.press(mod+'+z');
       await page.waitForFunction(source=>nativeProbe.source===source,rightAligned);
+      await page.keyboard.press(mod+'+z');
+      await page.waitForFunction(source=>nativeProbe.source===source,afterLeaving);
+      await panel.getByText('Click prose on the native page',{exact:false}).waitFor();
+      await canvas.click({position:{x:6550000*scale,y:9250000*scale}});
+      await page.keyboard.press(mod+'+Shift+6');
+      await page.waitForFunction(original=>{
+        const source=nativeProbe.source;
+        const table=/\\begin\{tabular\}\{\|l\|l\|\}[\s\S]*?\\end\{tabular\}\r?\n\r?\n/.exec(source);
+        return Boolean(table)&&source.slice(0,table.index)+source.slice(table.index+table[0].length)===original;
+      },afterLeaving);
       await page.keyboard.press(mod+'+z');
       await page.waitForFunction(source=>nativeProbe.source===source,afterLeaving);
       await panel.getByText('Click prose on the native page',{exact:false}).waitFor();
@@ -2047,8 +2057,8 @@ const server=createServer(async(req,res)=>{
     assert.equal(await columns.inputValue(),'2');
 
     const {readPageFurniture,writePageFurniture}=await import('../apps/web/latex/page-furniture.mjs');
-    const boundary=twoColumns.indexOf('\\begin{document}');
-    const basePreamble=twoColumns.slice(0,boundary),body=twoColumns.slice(boundary);
+    const {parseDocument}=await import('../apps/web/latex/document.mjs');
+    const {start:basePreamble}=parseDocument(twoColumns),body=twoColumns.slice(basePreamble.length);
     const furniture=readPageFurniture(basePreamble);
     furniture.enabled=true;
     const enabledPreamble=writePageFurniture(basePreamble,furniture);

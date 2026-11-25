@@ -208,7 +208,7 @@
     },
     "legacyDisabled": {
       "command": "LINEAE_NATIVE_ONLY=1 node tests/native-tex-preview-browser.cjs",
-      "scope": "Two-platform Chromium with legacy pagination and MathLive disabled. Mixed prose and display formula edit, undo/redo, root insertion, exact source bytes, plain bold prose, table cells, headings, and synthetic IME. Real LuaLaTeX geometry is replayed in a separate browser gate with a simulated transport.",
+      "scope": "Windows, macOS and Ubuntu Chromium with legacy pagination and MathLive disabled covers mixed prose and math, exact source history, formula insertion, and synthetic IME. The same workflow covers table spans including fully covered rows, project layout, and cross-reference navigation in the native preview and workspace. Real LuaLaTeX geometry is replayed in a separate browser gate with a simulated transport.",
       "status": "browser-passed",
       "evidence": [
         "https://github.com/AminiamEva/Lineae/actions/runs/45579797136",
@@ -218,13 +218,14 @@
         "https://github.com/AminiamEva/Lineae/actions/runs/45596378294",
         "https://github.com/AminiamEva/Lineae/actions/runs/45608889023",
         "https://github.com/AminiamEva/Lineae/actions/runs/45613386465",
-        "https://github.com/AminiamEva/Lineae/actions/runs/45617906617"
+        "https://github.com/AminiamEva/Lineae/actions/runs/45617906617",
+        "https://github.com/AminiamEva/Lineae/actions/runs/45673715541"
       ]
     },
     "desktopWebView": {
       "status": "smoke-passed",
-      "scope": "GitHub-hosted WebView2 and WKWebView start with legacy pagination and MathLive disabled. The embedded font, PDF worker, and native IPC are checked. Physical key delivery, candidate placement and display scan-out remain separate acceptance items.",
-      "evidence": ["https://github.com/AminiamEva/Lineae/actions/runs/45617906617"]
+      "scope": "GitHub-hosted WebView2, WKWebView and WebKitGTK start with legacy pagination and MathLive disabled. The embedded font, PDF worker, and native IPC are checked. Physical key delivery, candidate placement and display scan-out remain separate acceptance items.",
+      "evidence": ["https://github.com/AminiamEva/Lineae/actions/runs/45617906617", "https://github.com/AminiamEva/Lineae/actions/runs/45671660810"]
     },
     "pending": [
       "broader project structures and edits across complex selections",
