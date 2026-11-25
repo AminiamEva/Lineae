@@ -201,3 +201,15 @@ test('inline math splits prose into runs that never edit across the math node', 
     paragraph, from16:paragraph.runs[0].to16 - 1, to16:paragraph.runs[1].from16 + 1, insert:'',
   }), null);
 });
+
+test('a protected block does not disable targeting in neighboring plain prose', () => {
+  const source = '\\begin{document}\n\\section{Heading}\n\nPlain prose.\n\n\\custom{Keep me}\n\\end{document}\n';
+  const projection = projectTextDocument(source);
+  assert.equal(projection.paragraphs.length, 1);
+  const [paragraph] = projection.paragraphs;
+  assert.equal(paragraph.text, 'Plain prose.');
+  assert.ok(projection.projection.includes('\\section{Heading}'));
+  assert.ok(projection.projection.includes('\\custom{Keep me}'));
+  assert.equal(textEdit(projection, {paragraph, from16:0, to16:0, insert:'X'}).source,
+    source.replace('Plain prose.', 'XPlain prose.'));
+});

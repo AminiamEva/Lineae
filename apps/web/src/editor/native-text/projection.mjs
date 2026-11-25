@@ -40,7 +40,7 @@ export function projectTextDocument(source, {firstOwner=1, attribute=65000}={}) 
     bodyOffset += block.length;
     if (!block.trim()) continue;
     const {leading, trailing, text} = plainBlock(block);
-    if (!text || unsupported.test(text)) return null;
+    if (!text || unsupported.test(text)) continue;
     const built = instrumentText(text, next, attribute);
     next = built.nextTag;
     const from16 = doc.start.length + blockStart + leading;
