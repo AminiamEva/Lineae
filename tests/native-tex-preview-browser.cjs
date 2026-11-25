@@ -62,10 +62,22 @@ const server=createServer(async(req,res)=>{
       const scale=Number(await page.locator('#native-tex-zoom').inputValue())/100*(96/72)/65781.76;
       await canvas.click({position:{x:6550000*scale,y:9250000*scale}});
       await page.waitForFunction(()=>document.activeElement?.id==='native-tex-input');
+      const observations=await page.evaluate(()=>nativeProbe.calls.filter(call=>call.command==='native_tex_observe_formula').length);
       await page.keyboard.type('X');
-      await page.waitForFunction(()=>nativeProbe.source?.includes('XAlpha beta.') && document.querySelector('#native-tex-preview').dataset.state==='current');
+      await page.waitForFunction(count=>nativeProbe.source?.includes('XAlpha beta.') &&
+        nativeProbe.calls.filter(call=>call.command==='native_tex_observe_formula').length>count,observations);
+      await panel.getByText('Click prose on the native page',{exact:false}).waitFor();
       await canvas.click({position:{x:6510000*scale,y:6950000*scale}});
       await page.keyboard.type('c');
+      await page.waitForFunction(()=>nativeProbe.source?.includes('\\frac{a}{cb}'),null,{timeout:5000})
+        .catch(async error=>{
+          console.error('Native-only edit failed',await panel.getByRole('status').allTextContents(),
+            await page.evaluate(()=>({source:nativeProbe.source,focus:document.activeElement?.id})));
+          throw error;
+        });
+      await page.keyboard.press(mod+'+z');
+      await page.waitForFunction(()=>nativeProbe.source?.includes('\\frac{a}{b}'));
+      await page.keyboard.press(mod+'+Shift+z');
       await page.waitForFunction(()=>nativeProbe.source?.includes('\\frac{a}{cb}'));
       assert.deepEqual(errors,[]);
       console.log('PASS native mixed editing with MathLive and JS pagination disabled');
