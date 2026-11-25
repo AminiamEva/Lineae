@@ -3386,7 +3386,10 @@ function editNativeTable(operation,style){
     change={from,to:change.to,insert:insert+owner.source.slice(to,change.from)+change.insert};
   }
   const restoreCaret=()=>{
-    if(style)nativeTexPreview.refocusTextInput();
+    if(style){
+      editor.view.dispatch(closeHistory(editor.state.tr));
+      nativeTexPreview.refocusTextInput();
+    }
     if(!deleting)return nativeTexPreview.preserveSourceCaret({source:draft,offset,path:owner.filePath},started,caret.kind);
     const model=projectMixedDocument(draft,{fragment:projectFileKind==='tex',filePath:owner.filePath});
     const target=model?.paragraphs.find(({tableCell})=>tableCell?.from16===start&&tableCell.row===rowIndex&&tableCell.column===columnIndex);
