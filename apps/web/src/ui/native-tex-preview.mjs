@@ -244,8 +244,10 @@ export function installNativeTexPreview({host,before,getSource,getSnapshot,isCom
     targetButton.disabled=!current()||mode!=='canvas'||targeting===generation;
     editButton.disabled=!current()||mode!=='canvas'||!observation;
     editButton.setAttribute('aria-pressed',String(nativeEditing));
-    if(targetArmed&&!targetButton.disabled&&!sentSnapshot?.files&&sentSource.length<=32*1024&&targetTimer===null&&
-        (lastTarget?.sessionId!==session||lastTarget?.sourceRevision!==sourceRevision)){
+    const canRefreshTargets=nativeEditing||(!sentSnapshot?.files&&sentSource.length<=32*1024);
+    if(targetArmed&&!targetButton.disabled&&canRefreshTargets&&targetTimer===null&&
+        (lastTarget?.sessionId!==session||lastTarget?.sourceRevision!==sourceRevision||
+         lastTarget?.signature!==sentSnapshot?.signature)){
       targetTimer=setTimeout(()=>{
         targetTimer=null;
         if(targetArmed&&!targetButton.disabled)void observe();
