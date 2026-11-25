@@ -522,8 +522,6 @@ const server=createServer(async(req,res)=>{
       fallback:document.querySelector('#native-tex-preview')?.dataset.fallbackReason,
       status:document.querySelector('#native-tex-preview [role=status]')?.textContent,
       targetStatus:document.querySelectorAll('#native-tex-preview [role=status]')[1]?.textContent,
-      hitDebug:window.__lineaeHit,
-      lastHit:window.__lineaeLastHit,
       source:window.nativeProbe?.source?.slice(0,1600),
       value:document.querySelector('math-field')?.value,
       focus:document.activeElement?.tagName,

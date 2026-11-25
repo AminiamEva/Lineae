@@ -31,11 +31,12 @@
         "status": "vertical_slice",
         "slice": "display formula caret, keyboard, drag selection, IME-capable input, ProseMirror transactions and history; plain-document prose grapheme projection through the same surface",
         "evidence": {
-          "nativeWorkflowRun": 45522091356,
+          "nativeWorkflowRun": 45527387822,
           "browserRegression": "tests/native-tex-preview-browser.cjs",
           "unitTests": ["tests/native-surface.test.mjs", "tests/native-math-source.test.mjs"],
           "textOwnershipRun": 45522091356,
-          "scope": "Mock-transport browser interaction and real host/event-driven session on both target platforms; real text-glyph ownership outside math passed on Windows and macOS; physical-device IME and latency pending"
+          "realProseEditRun": 45527387822,
+          "scope": "Mock-transport browser interaction and real host/event-driven session on both target platforms; real text-glyph ownership outside math and a real-geometry prose click, caret and exact source patch passed on Windows and macOS; physical-device IME and latency pending"
         },
         "entryPoints": [
           "apps/web/src/editor/native-surface/math-surface.mjs",

@@ -66,6 +66,11 @@ in-flight update loop instead.
 Demonstrated in the browser regression by asserting that typing produces a
 source update without any additional `native_tex_poll` call.
 
+Real-engine evidence on both target platforms now covers prose as well:
+rtex reports attribute-tagged text glyphs outside math, and the browser
+regression clicks a recorded LuaLaTeX text box, places the native caret and
+writes the exact source byte.
+
 ## Latency
 
 `#native-tex-preview` records `data-latency-samples`, `data-latency-p50` and
