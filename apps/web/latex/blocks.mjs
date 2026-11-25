@@ -454,6 +454,16 @@ function splitParagraphs(block) {
   return parts;
 }
 
+export function structuralCommandAt(source,token){
+  if(token.kind!=='command')return null;
+  const toc=token.value==='\\tableofcontents';
+  const title=toc?null:headingAt(source,token.index,headingBase);
+  const structural=/^\\(?:appendix|frontmatter|mainmatter|backmatter|newpage|clearpage|pagebreak)$/.test(token.value);
+  const layout=/^\\(?:pagestyle|thispagestyle)\{[^{}]*\}|^\\(?:maketitle\b|mbox\{\})/.exec(source.slice(token.index));
+  if(!toc&&!title&&!structural&&!layout)return null;
+  return {toc,title,structural,layout,end:title?.end??(layout?token.index+layout[0].length:token.end)};
+}
+
 function importSegment(block,options) {
   const nodes = [];
   let cursor = 0;
@@ -487,19 +497,16 @@ function importSegment(block,options) {
     }
     const declaration=counterDeclarationAt(block,token.index);
     if(declaration){const before=importBlock(block.slice(cursor,token.index),options);if(before)nodes.push(before);nodes.push({type:'counterDirective',attrs:{latex:declaration.latex}});cursor=declaration.to;continue;}
-    if (token.kind!=='command') continue;
-    const toc=token.value==='\\tableofcontents';
-    const title=toc ? null : headingAt(block,token.index,headingBase);
-    const structural=/^\\(?:appendix|frontmatter|mainmatter|backmatter|newpage|clearpage|pagebreak)$/.test(token.value);
-    const layout=/^\\(?:pagestyle|thispagestyle)\{[^{}]*\}|^\\(?:maketitle\b|mbox\{\})/.exec(block.slice(token.index));
-    if (!toc && !title && !structural && !layout) continue;
+    const command=structuralCommandAt(block,token);
+    if(!command)continue;
+    const {toc,title,structural,layout,end}=command;
     const before = importBlock(block.slice(cursor, token.index),options);
     if (before) nodes.push(before);
     if (toc) nodes.push({ type: 'tableOfContents' });
     else if(structural)nodes.push(importBlock(token.value,options));
     else if(layout)nodes.push({type:'layoutCommand',attrs:{command:layout[0]}});
     else nodes.push(heading(title.name,title.star,title.short,title.title,title.label,title.labelSource) ?? rawNode(block.slice(token.index,title.end)));
-    cursor = title?.end ?? (layout ? token.index+layout[0].length : token.end);
+    cursor = end;
   }
   const after = importBlock(block.slice(cursor),options);
   if (after) nodes.push(after);

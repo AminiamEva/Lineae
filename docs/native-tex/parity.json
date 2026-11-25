@@ -14,8 +14,10 @@
       ],
       "nativeStatus": "single-file",
       "evidence": [
-        "https://github.com/AminiamEva/Lineae/actions/runs/45527337822"
-      ]
+        "https://github.com/AminiamEva/Lineae/actions/runs/45527337822",
+        "https://github.com/AminiamEva/Lineae/actions/runs/45650991434"
+      ],
+      "scope": "Actual Latin and Fandol CJK glyph geometry, including opening a Chinese caret position and committing synthetic composition once with unchanged surrounding LaTeX bytes."
     },
     {
       "id": "inline-math",

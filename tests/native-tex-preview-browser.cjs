@@ -223,6 +223,14 @@ const server=createServer(async(req,res)=>{
       await page.waitForFunction(source=>nativeProbe.source===source,rightAligned.replace('XYZAlpha','TXYZAlpha'));
       await page.keyboard.press(mod+'+z');
       await page.waitForFunction(source=>nativeProbe.source===source,rightAligned);
+      await panel.getByText('Click prose on the native page',{exact:false}).waitFor();
+      await canvas.click({position:{x:6550000*scale,y:9250000*scale}});
+      await page.keyboard.press('End');
+      await page.keyboard.press('Enter');
+      await page.keyboard.insertText('Tail.');
+      await page.waitForFunction(source=>nativeProbe.source===source,rightAligned.replace('\\par}','\\par}\n\nTail.'));
+      await page.keyboard.press(mod+'+z');
+      await page.waitForFunction(source=>nativeProbe.source===source,rightAligned);
       await page.keyboard.press(mod+'+z');
       await page.waitForFunction(source=>nativeProbe.source===source,afterLeaving);
       await panel.getByText('Click prose on the native page',{exact:false}).waitFor();
@@ -441,6 +449,22 @@ const server=createServer(async(req,res)=>{
       await page.keyboard.press('Shift+End');
       await page.keyboard.press(mod+'+b');
       await page.waitForFunction(()=>document.querySelector('.ProseMirror h1 strong')?.textContent==='文XLong title');
+      await page.locator('#native-tex-close').click();
+      const book=['\\documentclass{book}','\\title{Sample}','\\author{Author}','\\date{\\today}',
+        '\\begin{document}','\\frontmatter','\\maketitle','\\mainmatter','\\chapter{Opening}',
+        'Main text.','','\\backmatter','\\chapter{Notes}','Back text.','\\end{document}',''].join('\r\n');
+      await page.locator('input#file').setInputFiles({name:'book.tex',mimeType:'text/plain',buffer:Buffer.from(book)});
+      await page.locator('#native-tex-toggle').click();
+      await page.waitForFunction(()=>document.querySelector('#native-tex-preview').dataset.state==='current');
+      await page.locator('#native-tex-target').click();
+      await panel.getByText('Click text on the native page',{exact:false}).waitFor();
+      await page.locator('#native-tex-edit').click();
+      const backTextGlyph='OpeningMaintext.Notes'.length;
+      await canvas.click({position:{x:(6550000+200000*backTextGlyph)*scale,y:9250000*scale}});
+      await page.keyboard.type('X');
+      await page.waitForFunction(expected=>nativeProbe.source===expected,book.replace('Back text.','XBack text.'));
+      await page.keyboard.press(mod+'+z');
+      await page.waitForFunction(expected=>nativeProbe.source===expected,book);
       await page.locator('#native-tex-close').click();
       const proofSource='\\documentclass{article}\r\n\\usepackage{amsthm}\r\n\\begin{document}\r\n'+
         '\\begin{proof}[Reason]\r\n  One step.\r\n\\end{proof}\r\n\\end{document}\r\n';

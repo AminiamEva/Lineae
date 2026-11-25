@@ -3,7 +3,9 @@ import {escapeText} from '../../../latex/inline.mjs';
 import {tableCellRanges} from './table-cells.mjs';
 import {containerParagraphRanges} from './containers.mjs';
 import {parseDocument} from '../../../latex/document.mjs';
-import {unwrapParagraphWrappers} from '../../../latex/blocks.mjs';
+import {structuralCommandAt,unwrapParagraphWrappers} from '../../../latex/blocks.mjs';
+import {displayEnvironment} from '../../../latex/math-environments.mjs';
+import {environmentEnd} from '../../../latex/tblr.mjs';
 import {sourceStructure} from '../../../latex/source-structure.mjs';
 import {decodeProse,markedRuns} from './prose-runs.mjs';
 import {projectDocumentFormulas} from '../native-math/document.mjs';
@@ -68,12 +70,12 @@ function proseBody(block,keepThrough) {
     return {leading:leading+heading.titleFrom,text:heading.title,heading:heading.name,headingEnd:leading+heading.end};
   const wrapper=unwrapParagraphWrappers(text);
   const indent=/^\\(?:noindent|indent)(?![A-Za-z])[ \t]*/.exec(wrapper.text)?.[0].length??0;
-  if(wrapper.from||indent)return {leading:leading+wrapper.from+indent,text:wrapper.text.slice(indent),wrapped:true};
+  if(wrapper.from||indent)return {leading:leading+wrapper.from+indent,text:wrapper.text.slice(indent),wrapperEnd:leading+text.length};
   return {leading,text};
 }
 
 function instrumentProse(block, source, blockFrom, firstOwner, attribute, filePath, keepThrough, reuse, formulas=[]) {
-  const {leading,text,heading,headingEnd,wrapped}=proseBody(block,keepThrough-blockFrom);
+  const {leading,text,heading,headingEnd,wrapperEnd}=proseBody(block,keepThrough-blockFrom);
   const base=blockFrom+leading;
   const inline=new Map(formulas.map(formula=>[formula.outerFrom16-base,{formula,end:formula.outerTo16-base,latex:formula.math.source}]));
   const parts=markedRuns(text,0,[],inline);
@@ -100,7 +102,8 @@ function instrumentProse(block, source, blockFrom, firstOwner, attribute, filePa
   }
   if(!glyphs.length)return null;
   const paragraph={source,filePath,from16:blockFrom+leading,text,heading,glyphs,parts,runs,
-    ...(headingEnd===undefined?{}:{headingEnd:blockFrom+headingEnd}),...(wrapped?{wrapped}:{})};
+    ...(headingEnd===undefined?{}:{headingEnd:blockFrom+headingEnd}),
+    ...(wrapperEnd===undefined?{}:{wrapped:true,wrapperEnd:blockFrom+wrapperEnd})};
   return {projection:block.slice(0,leading)+projection+text.slice(cursor)+block.slice(leading+text.length),
     paragraphs:[paragraph],nextTag};
 }
@@ -178,15 +181,22 @@ function instrumentTextBlock(block,source,from,next,attribute,filePath,keepThrou
     instrumentProse(block,source,from,next,attribute,filePath,keepThrough,reuse);
 }
 
-function includeSeparatedBlocks(doc){
+function observationBlocks(doc,splitIncludes){
   const body=doc.blocks.join('');
   const tokens=[...sourceStructure(body)];
   if(tokens.some(token=>token.kind==='invalid'))return doc.blocks;
   const boundaries=[];
+  let last=0;
   for(const token of tokens){
-    if(!token.topLevel||!['\\input','\\include'].includes(token.value))continue;
-    const argument=/^[ \t]*\{[^{}\\%\r\n]+\}/.exec(body.slice(token.end));
-    if(argument)boundaries.push(token.index,token.end+argument[0].length);
+    if(!token.topLevel||token.index<last)continue;
+    const argument=splitIncludes&&['\\input','\\include'].includes(token.value)&&
+      /^[ \t]*\{[^{}\\%\r\n]+\}/.exec(body.slice(token.end));
+    const environment=token.kind==='begin'&&displayEnvironment(token.value);
+    const commandEnd=structuralCommandAt(body,token)?.end||
+      (argument&&token.end+argument[0].length)||
+      (environment&&environmentEnd(body,token.index,environment)?.end)||
+      (token.kind==='displayMath'&&token.end);
+    if(commandEnd){boundaries.push(token.index,commandEnd);last=commandEnd;}
   }
   let from=0,index=0;
   return doc.blocks.flatMap(block=>{
@@ -212,7 +222,7 @@ export function projectTextDocument(source, {firstOwner=1, attribute=65000, frag
   const reuse=reusableProseTags(previous,source,filePath);
   let output = '', cursor = 0, next = Math.max(firstOwner,previous?.nextTag??1), bodyOffset = 0;
   const paragraphs = [], owners = new Map();
-  for (const block of splitIncludes?includeSeparatedBlocks(doc):doc.blocks) {
+  for (const block of observationBlocks(doc,splitIncludes)) {
     const blockStart = bodyOffset;
     bodyOffset += block.length;
     if (!block.trim()) continue;
@@ -252,7 +262,7 @@ export function projectMixedDocument(source, {previous=[], attribute=65000, frag
     token.kind === 'inlineMath' || token.kind === 'displayMath');
   const owners = new Map(math.owners), paragraphs = [];
   let output='',cursor=0,next=math.nextTag,bodyOffset=0,firstFormula=0,firstToken=0;
-  for (const block of splitIncludes?includeSeparatedBlocks(doc):doc.blocks) {
+  for (const block of observationBlocks(doc,splitIncludes)) {
     const blockStart = bodyOffset;
     const from16 = doc.start.length + bodyOffset;
     bodyOffset += block.length;

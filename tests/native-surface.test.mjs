@@ -1011,6 +1011,18 @@ test('nested paragraph formatting keeps indent and inline math outside a native 
   assert.equal(textEdit(projection,{paragraph,from16:0,to16:0,insert:'X'}).source,source.replace('Text','XText'));
 });
 
+test('book matter and date commands keep exact bytes when editing native prose',()=>{
+  const source=['\\documentclass{book}','\\title{Sample}','\\author{Author}','\\date{\\today}',
+    '\\begin{document}','\\frontmatter','\\maketitle','\\mainmatter','\\chapter{Opening}',
+    'Main text.','','\\backmatter','\\chapter{Notes}','Back text.','\\end{document}',''].join('\r\n');
+  const projection=projectMixedDocument(source);
+  const paragraph=projection.paragraphs.find(paragraph=>paragraph.text==='Back text.');
+  assert.ok(paragraph);
+  const edit=textEdit(projection,{paragraph,from16:0,to16:4,insert:'Edited'});
+  assert.equal(edit.source,source.replace('Back text.','Edited text.'));
+  assert.equal(projection.paragraphs.find(paragraph=>paragraph.text==='Notes').heading,'chapter');
+});
+
 test('native math context identifies an integral body, its limits and a nested fraction',()=>{
   const source='\\begin{document}\n\\[\\int_{0}^{1}{\\frac{x}{y}}\\]\n\\end{document}\n';
   const projection=projectDocumentFormulas(source),[formula]=projection.formulas;

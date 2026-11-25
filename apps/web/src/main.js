@@ -3294,9 +3294,15 @@ nativeTexPreview=installNativeTexPreview({host:footer,before:modes,primary:nativ
     if(text&&!text.trim())return null;
     const newline=paragraph.source.includes('\r\n')?'\r\n':'\n';
     const raw=serialize({type:'text',text});
-    const insert=newline+newline+raw;
-    const change={from:paragraph.headingEnd??paragraph.from16+from,to:paragraph.headingEnd??paragraph.from16+to,insert};
-    const draft=paragraph.source.slice(0,change.from)+insert+paragraph.source.slice(change.to);
+    const start=paragraph.headingEnd??paragraph.from16+from,end=paragraph.headingEnd??paragraph.from16+to;
+    const proseEnd=paragraph.from16+paragraph.text.length;
+    const wrapper=paragraph.wrapped&&paragraph.wrapperEnd>proseEnd;
+    if(wrapper&&paragraph.container)return null;
+    const close=wrapper?paragraph.source.slice(proseEnd,paragraph.wrapperEnd):'';
+    const insert=close+newline+newline+raw;
+    const change={from:start,to:wrapper?paragraph.wrapperEnd:end,
+      insert:insert+(wrapper?paragraph.source.slice(end,proseEnd):'')};
+    const draft=paragraph.source.slice(0,change.from)+change.insert+paragraph.source.slice(change.to);
     const tr=state.tr;
     if(range.to>range.from)tr.delete(range.from,range.to);
     tr.split(range.from,1,[{type:editor.schema.nodes.paragraph}]);
@@ -3306,6 +3312,8 @@ nativeTexPreview=installNativeTexPreview({host:footer,before:modes,primary:nativ
     const offset=change.from+insert.length;
     if(composition){
       const drafts=projectDocument.changes(tr.doc.toJSON());
+      if(wrapper&&drafts?.get(file.id)!==draft)return dispatchNativeProjectChange(state,tr,project,new Map([[file.id,draft]]))
+        ?{source:draft,offset,path:paragraph.filePath}:null;
       if(drafts?.get(file.id)!==draft)return null;
       for(const [id,value] of drafts)if(id!==file.id&&value!==project.file(id).draft)return null;
       editor.view.dispatch(closeHistory(tr));
