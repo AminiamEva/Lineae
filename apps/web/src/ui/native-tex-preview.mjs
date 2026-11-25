@@ -646,9 +646,10 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
     try {
       while(active && attempt===generation && wantedSnapshot?.signature!==sentSnapshot?.signature) {
         const snapshot=wantedSnapshot;
-        if(snapshot.mainFile!==sentSnapshot.mainFile)throw new Error(t('主文件已改变，请重新打开原生预览。','Main document changed; reopen native preview.'));
-        const files=snapshot.dependencySignature===sentSnapshot.dependencySignature?undefined:snapshot.files;
-        const result=await invoke('native_tex_update',{sessionId:session,source:snapshot.source,files});
+        const changedEntry=snapshot.mainFile!==sentSnapshot.mainFile;
+        const files=!changedEntry&&snapshot.dependencySignature===sentSnapshot.dependencySignature?undefined:snapshot.files;
+        const result=await invoke('native_tex_update',{sessionId:session,source:snapshot.source,files,
+          mainFile:changedEntry?snapshot.mainFile:undefined});
         if(attempt!==generation){
           if(result.sessionId)await invoke('native_tex_close',{sessionId:result.sessionId}).catch(()=>{});
           return;

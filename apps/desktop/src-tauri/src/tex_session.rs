@@ -1135,12 +1135,19 @@ fn update_snapshot(
     session: Arc<Session>,
     source: String,
     files: Option<Vec<NativeTexFile>>,
+    main_file: Option<String>,
 ) -> Result<NativeTexUpdate, NativeTexError> {
     let _serial = lock(&session.commands);
     session.check()?;
+    let current_main = lock(&session.snapshot).main_file.clone();
+    let next_main = main_file.unwrap_or_else(|| current_main.clone());
+    if next_main != current_main && !files.as_ref().is_some_and(|entries|
+        entries.iter().any(|file| file.path == next_main)) {
+        return Err(error("project_main", "The new compilation entry is missing from the project snapshot."));
+    }
     let snapshot = match files {
         None => return session.set_source(source),
-        Some(files) => Snapshot::new(&source, lock(&session.snapshot).main_file.clone(), files)?,
+        Some(files) => Snapshot::new(&source, next_main, files)?,
     };
     if lock(&session.snapshot).dependencies_equal(&snapshot) {
         return session.set_source(source);
@@ -1223,12 +1230,12 @@ pub async fn native_tex_open(
 }
 
 #[tauri::command]
-pub async fn native_tex_update(state: State<'_, NativeTexSessions>, session_id: String, source: String, files: Option<Vec<NativeTexFile>>) -> Result<NativeTexUpdate, NativeTexError> {
+pub async fn native_tex_update(state: State<'_, NativeTexSessions>, session_id: String, source: String, files: Option<Vec<NativeTexFile>>, main_file: Option<String>) -> Result<NativeTexUpdate, NativeTexError> {
     validate_source(&source)?;
     let session = state.get(&session_id)?;
     let manager = state.0.clone();
     blocking(move || {
-        let result = update_snapshot(&manager, session.clone(), source, files);
+        let result = update_snapshot(&manager, session.clone(), source, files, main_file);
         // Snapshot validation failures leave the current project usable.
         if let Err(problem) = &result {
             if !matches!(problem.code, "project_path" | "project_limit" | "project_main" | "temporary_project" | "invalid_source" | "stale_session") {
@@ -1669,7 +1676,7 @@ mod tests {
         }), "export completion must remain visible to the frontend poller");
         let project = session.root.clone();
         let replaced = update_snapshot(&manager.0, session.clone(), updated.clone(),
-            Some(files("\\SnapshotWord{} unsaved sibling change.\n"))).expect("changed dependencies must replace the native engine");
+            Some(files("\\SnapshotWord{} unsaved sibling change.\n")), None).expect("changed dependencies must replace the native engine");
         let replaced_id = replaced.session_id.as_ref().expect("dependency replacement must return its new session ID");
         assert_ne!(replaced_id, &session.id);
         assert!(manager.get(&session.id).is_err());
@@ -1694,12 +1701,26 @@ mod tests {
         assert!(type_one_pdf.starts_with(b"%PDF-"));
         save_pdf_evidence("native-type1.pdf", &type_one_pdf);
         assert_eq!(active.render_pdf(replaced.source_revision).unwrap_err().code, "revision_mismatch");
+        let alternate = "\\documentclass{article}\n\\begin{document}\nAnother project document.\n\\end{document}\n".to_string();
+        let alternate_path = "docs/standalone.tex".to_string();
+        let missing_entry = update_snapshot(&manager.0, active.clone(), alternate.clone(), None,
+            Some(alternate_path.clone())).err().expect("an unstaged entry must be rejected");
+        assert_eq!(missing_entry.code, "project_main");
+        let switched = update_snapshot(&manager.0, active.clone(), alternate.clone(), Some(vec![
+            NativeTexFile { path: "main.tex".into(), bytes: updated.as_bytes().to_vec() },
+            NativeTexFile { path: alternate_path.clone(), bytes: alternate.as_bytes().to_vec() },
+        ]), Some(alternate_path.clone())).expect("a verified entry change must replace the session");
+        let alternate_session = manager.get(switched.session_id.as_ref().unwrap()).unwrap();
+        wait_layout(&alternate_session, switched.source_revision);
+        assert_eq!(lock(&alternate_session.snapshot).main_file, alternate_path);
+        assert_eq!(std::fs::read_to_string(alternate_session.root.join("main.tex")).unwrap(), updated);
         let active_root = active.root.clone();
         manager.close_all();
         assert!(active.closed.load(Ordering::Acquire));
         assert!(lock(&active.processes).is_empty());
         assert!(!active_root.exists(), "closing must remove the temporary project");
         assert!(manager.get(&active.id).is_err());
+        assert!(!alternate_session.root.exists());
         assert!(std::fs::read(&destination).unwrap().starts_with(b"%PDF-"),
             "closing a session must not remove the independently saved PDF");
         let saved_root = saved.root.clone();

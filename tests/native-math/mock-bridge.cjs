@@ -39,7 +39,7 @@ module.exports=function installMockNativeTex() {
   window.__TAURI__={core:{invoke:async(command,args)=>{
     p.calls.push({command,args});
     if(command==='native_tex_open') {
-      p.source=args.source;p.revision=1;p.events=[];
+      p.source=args.source;p.mainFile=args.mainFile;p.revision=1;p.events=[];
       const sessionId=String(++p.session);
       if(p.delayOpen)await new Promise(done=>{p.resolveOpen=done;});
       emit(p.layout());
@@ -54,9 +54,10 @@ module.exports=function installMockNativeTex() {
         p.holdUpdate=false;
         await new Promise(resolve=>{p.releaseUpdate=resolve;});
       }
-      if(p.restartNext){
+      if(p.restartNext||args.mainFile&&p.mainFile!==args.mainFile){
         p.restartNext=false;p.session++;p.revision=0;p.events=[];
       }
+      if(args.mainFile)p.mainFile=args.mainFile;
       p.source=args.source;p.revision++;
       if(p.warmNext){
         p.warmNext=false;

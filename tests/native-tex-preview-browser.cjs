@@ -522,6 +522,7 @@ const server=createServer(async(req,res)=>{
       if(!await page.locator('.project-file[data-path="chapters/one.tex"]').isVisible())await folder.click();
       await page.locator('.project-file[data-path="chapters/one.tex"]').click();
       await page.waitForFunction(expected=>nativeProbe.source===expected,independent);
+      assert.equal(await page.evaluate(()=>nativeProbe.mainFile),'chapters/one.tex');
       await panel.getByText('Click text on the native page',{exact:false}).waitFor();
       await canvas.click({position:{x:6550000*scale,y:9250000*scale}});
       await page.keyboard.type('X');
