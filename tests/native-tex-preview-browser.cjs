@@ -1488,8 +1488,12 @@ const server=createServer(async(req,res)=>{
       await page.waitForFunction(expected=>nativeProbe.source===expected,evidence.source.replace('\\frac{a}{}','\\frac{a}{b}'));
       console.log('PASS semantic edit on an actual registered LuaLaTeX PDF with TikZ');
     }
-    if(process.env.LINEAE_NATIVE_ALIGNMENT_PAGE){
-      nativeEvidence=JSON.parse(await readFile(process.env.LINEAE_NATIVE_ALIGNMENT_PAGE,'utf8'));
+    for(const [record,filename,numerator] of [
+      [process.env.LINEAE_NATIVE_ALIGNMENT_PAGE,'numbered-alignment.tex','d'],
+      [process.env.LINEAE_NATIVE_TYPE_ONE_PAGE,'classic-font.tex','a'],
+    ]){
+      if(!record)continue;
+      nativeEvidence=JSON.parse(await readFile(record,'utf8'));
       await page.close();
       page=await browser.newPage({locale:'en-US',viewport:{width:1600,height:1100}});
       await page.addInitScript(installMockNativeTex);
@@ -1500,7 +1504,7 @@ const server=createServer(async(req,res)=>{
         p.realEvidence=evidence;
         p.layout=()=>({...originalLayout(),pages_changed:evidence.raw,pages_total:evidence.raw.length});
       },nativeEvidence);
-      await page.locator('input#file').setInputFiles({name:'numbered-alignment.tex',mimeType:'text/plain',
+      await page.locator('input#file').setInputFiles({name:filename,mimeType:'text/plain',
         buffer:Buffer.from(nativeEvidence.source)});
       await page.locator('#native-tex-toggle').click();
       await page.waitForFunction(()=>{
@@ -1511,24 +1515,26 @@ const server=createServer(async(req,res)=>{
       await page.getByText('Click the empty numerator or denominator',{exact:false}).waitFor();
       await page.locator('#native-tex-edit').click();
       const scale=.75*(96/72)/65781.76;
-      const labelPage=nativeEvidence.observed.find(page=>page.dl.math_owners?.fields.some(field=>
-        field.owner===nativeEvidence.labelOwner&&field.role==='den'&&field.empty));
-      assert.ok(labelPage,'Real geometry exposes the labelled numbered row');
-      const [labelX,labelY]=labelPage.dl.math_owners.fields.find(field=>
-        field.owner===nativeEvidence.labelOwner&&field.role==='den').bbox;
-      await page.locator(`[data-native-page="${labelPage.page}"] canvas`).click({position:{x:labelX*scale,y:labelY*scale}});
-      await page.waitForFunction(()=>document.activeElement?.id==='native-tex-input');
-      await page.keyboard.press('Backslash');
-      await page.getByRole('textbox',{name:'LaTeX command',exact:true}).fill('label');
-      await page.keyboard.press('Enter');
-      const labelInput=page.locator('.editor-dialog input');
-      assert.equal(await labelInput.inputValue(),'eq:alignment');
-      await labelInput.fill('eq:updated');
-      await labelInput.press('Enter');
-      await page.waitForFunction(expected=>nativeProbe.source===expected,nativeEvidence.source.replace('eq:alignment','eq:updated'));
-      await page.keyboard.press(mod+'+z');
-      await page.waitForFunction(expected=>nativeProbe.source===expected,nativeEvidence.source);
-      await page.getByText('Click the empty numerator or denominator',{exact:false}).waitFor();
+      if(nativeEvidence.labelOwner){
+        const labelPage=nativeEvidence.observed.find(page=>page.dl.math_owners?.fields.some(field=>
+          field.owner===nativeEvidence.labelOwner&&field.role==='den'&&field.empty));
+        assert.ok(labelPage,'Real geometry exposes the labelled numbered row');
+        const [labelX,labelY]=labelPage.dl.math_owners.fields.find(field=>
+          field.owner===nativeEvidence.labelOwner&&field.role==='den').bbox;
+        await page.locator(`[data-native-page="${labelPage.page}"] canvas`).click({position:{x:labelX*scale,y:labelY*scale}});
+        await page.waitForFunction(()=>document.activeElement?.id==='native-tex-input');
+        await page.keyboard.press('Backslash');
+        await page.getByRole('textbox',{name:'LaTeX command',exact:true}).fill('label');
+        await page.keyboard.press('Enter');
+        const labelInput=page.locator('.editor-dialog input');
+        assert.equal(await labelInput.inputValue(),'eq:alignment');
+        await labelInput.fill('eq:updated');
+        await labelInput.press('Enter');
+        await page.waitForFunction(expected=>nativeProbe.source===expected,nativeEvidence.source.replace('eq:alignment','eq:updated'));
+        await page.keyboard.press(mod+'+z');
+        await page.waitForFunction(expected=>nativeProbe.source===expected,nativeEvidence.source);
+        await page.getByText('Click the empty numerator or denominator',{exact:false}).waitFor();
+      }else assert.equal(await page.evaluate(()=>nativeProbe.calls.some(call=>call.command==='native_tex_type_one_font')),true);
       const nativePage=nativeEvidence.observed.find(page=>page.dl.math_owners?.fields.some(field=>
         field.owner===nativeEvidence.targetOwner&&field.role==='den'&&field.empty));
       const field=nativePage.dl.math_owners.fields.find(field=>field.owner===nativeEvidence.targetOwner&&field.role==='den');
@@ -1536,8 +1542,9 @@ const server=createServer(async(req,res)=>{
       await page.locator(`[data-native-page="${nativePage.page}"] canvas`).click({position:{x:x*scale,y:y*scale}});
       await page.waitForFunction(()=>document.activeElement?.id==='native-tex-input');
       await page.keyboard.type('e');
-      await page.waitForFunction(expected=>nativeProbe.source===expected,nativeEvidence.source.replace('\\frac{d}{}','\\frac{d}{e}'));
-      console.log('PASS real LuaLaTeX alignat* geometry and source writeback beside a labeled numbered row');
+      await page.waitForFunction(expected=>nativeProbe.source===expected,
+        nativeEvidence.source.replace(`\\frac{${numerator}}{}`,`\\frac{${numerator}}{e}`));
+      console.log(`PASS real LuaLaTeX geometry, original fonts and source writeback for ${filename}`);
     }
     console.log('PASS native preview transport/UI: explicit startup, Canvas resources, retained editor/history, sync, export revision and cancellation (not engine evidence)');
   }catch(error){

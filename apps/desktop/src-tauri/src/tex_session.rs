@@ -1,15 +1,15 @@
 //! Experimental, trusted-document-only rtex 0.0.8 host.
 //!
-//! Source is never instrumented. Only a disposable main.tex is exposed to rtex;
-//! Assets are copied from validated byte snapshots, never original filesystem
-//! paths. PDF fallback is read-only, not editable glyph geometry. LuaLaTeX is
+//! The live renderer receives unchanged source. A separate disposable session
+//! observes editing geometry. Assets are staged from validated byte snapshots.
+//! Clean PDF snapshots do not grant semantic caret targeting. LuaLaTeX is
 //! NOT a sandbox, even with shell escape disabled.
 //! Call close_all on window/app teardown in addition to the explicit close IPC.
 
 use command_group::{CommandGroup, GroupChild};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use std::collections::{BTreeMap, HashMap, VecDeque};
+use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 use std::io::{BufRead, BufReader, Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{ChildStdin, Command, Stdio};
@@ -332,6 +332,31 @@ pub struct NativeTexExport {
     path: String,
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NativeTypeOneFont {
+    bytes: Vec<u8>,
+    map_entry: String,
+    encoding: Option<String>,
+}
+
+fn tex_resource_name(name: &str) -> bool {
+    name.len() <= 255 && name.starts_with(|ch: char| ch.is_ascii_alphanumeric())
+        && name.bytes().all(|byte| byte.is_ascii_alphanumeric() || b"-+_.".contains(&byte))
+}
+
+fn type_one_map_entry<'a>(map: &'a str, name: &str) -> Option<(&'a str, &'a str, Option<&'a str>)> {
+    let line = map.lines().filter(|line| line.len() <= 4096)
+        .find(|line| line.split_ascii_whitespace().next() == Some(name))?;
+    let files = line.split('"').step_by(2).flat_map(str::split_ascii_whitespace)
+        .filter(|token| token.starts_with('<'))
+        .map(|token| token.trim_start_matches(|ch| ch == '<' || ch == '['))
+        .filter(|token| tex_resource_name(token));
+    let font = files.clone().find(|file| file.ends_with(".pfb") || file.ends_with(".pfa"))?;
+    let encoding = files.clone().find(|file| file.ends_with(".enc"));
+    Some((line, font, encoding))
+}
+
 #[derive(Default)]
 struct Messages {
     events: VecDeque<Value>,
@@ -340,6 +365,7 @@ struct Messages {
     reply: Option<Value>,
     exports: HashMap<u64, Value>,
     fonts: HashMap<String, String>,
+    type_one_fonts: HashSet<String>,
     failure: Option<NativeTexError>,
     tail: VecDeque<u8>,
     command_deadline: Option<Instant>,
@@ -375,7 +401,15 @@ impl Messages {
     fn register_dl(&mut self, dl: &Value) -> Result<(), NativeTexError> {
         if let Some(fonts) = dl.get("fonts").and_then(Value::as_object) {
             for font in fonts.values() {
-                let Some(filename) = font.get("filename").and_then(Value::as_str) else { continue };
+                let Some(filename) = font.get("filename").and_then(Value::as_str).filter(|name| !name.is_empty()) else {
+                    if let Some(name) = font.get("name").and_then(Value::as_str).filter(|name| tex_resource_name(name)) {
+                        if self.type_one_fonts.len() >= 2048 && !self.type_one_fonts.contains(name) {
+                            return Err(error("resource_limit", "Too many native Type 1 fonts."));
+                        }
+                        self.type_one_fonts.insert(name.to_string());
+                    }
+                    continue;
+                };
                 let extension = Path::new(filename).extension().and_then(|s| s.to_str()).unwrap_or("");
                 if !["otf", "ttf", "otc", "ttc"].iter().any(|allowed| extension.eq_ignore_ascii_case(allowed)) {
                     continue;
@@ -918,6 +952,46 @@ impl Session {
         Ok(bytes)
     }
 
+    fn tex_font_file(self: &Arc<Self>, name: &str, limit: u64) -> Result<Vec<u8>, NativeTexError> {
+        let kpsewhich = self.tex_bin.as_ref()
+            .map(|bin| bin.join(if cfg!(windows) { "kpsewhich.exe" } else { "kpsewhich" }))
+            .unwrap_or_else(|| PathBuf::from("kpsewhich"));
+        let found = self.tool(Command::new(kpsewhich).arg("--").arg(name))?;
+        if found.is_empty() || found.lines().count() != 1 {
+            return Err(error("font_missing", format!("Cannot locate the TeX font resource '{name}'.")));
+        }
+        let file = std::fs::File::open(found)
+            .map_err(|_| error("font_missing", format!("Cannot open the TeX font resource '{name}'.")))?;
+        let mut bytes = Vec::new();
+        file.take(limit + 1).read_to_end(&mut bytes).map_err(|problem| error("font_io", problem.to_string()))?;
+        if bytes.len() as u64 > limit {
+            return Err(error("font_limit", "The Type 1 font resource exceeds the size limit."));
+        }
+        Ok(bytes)
+    }
+
+    fn type_one_font(self: &Arc<Self>, key: String) -> Result<NativeTypeOneFont, NativeTexError> {
+        let name = key.strip_prefix("tfm:").filter(|name| tex_resource_name(name))
+            .ok_or_else(|| error("font_resource", "Invalid native Type 1 resource token."))?;
+        if !lock(&self.messages).type_one_fonts.contains(name) {
+            return Err(error("font_resource", "Type 1 font was not captured in this session."));
+        }
+        let _serial = lock(&self.commands);
+        self.check()?;
+        let map = self.tex_font_file("pdftex.map", 8 << 20)?;
+        let map = String::from_utf8_lossy(&map);
+        let (entry, file, encoding) = type_one_map_entry(&map, name)
+            .ok_or_else(|| error("font_missing", format!("No Type 1 outline mapping exists for '{name}'.")))?;
+        let bytes = self.tex_font_file(file, 2 << 20)?;
+        if !(bytes.starts_with(&[0x80, 1]) || bytes.starts_with(b"%!")) {
+            return Err(error("font_format", "The captured outline is not a Type 1 font."));
+        }
+        let encoding = encoding.map(|name| self.tex_font_file(name, 256 << 10)
+            .map(|bytes| String::from_utf8_lossy(&bytes).into_owned())).transpose()?;
+        self.check()?;
+        Ok(NativeTypeOneFont { bytes, map_entry: entry.to_string(), encoding })
+    }
+
     /// Caller holds commands to freeze the raw source/assets through compilation.
     /// PDF bytes have no editable geometry contract.
     fn compile_pdf(&self, revision: u64) -> Result<(u64, Vec<u8>), NativeTexError> {
@@ -1318,6 +1392,12 @@ pub async fn native_tex_font(state: State<'_, NativeTexSessions>, session_id: St
     blocking(move || session.font(key)).await.map(Response::new)
 }
 
+#[tauri::command]
+pub async fn native_tex_type_one_font(state: State<'_, NativeTexSessions>, session_id: String, key: String) -> Result<NativeTypeOneFont, NativeTexError> {
+    let session = state.get(&session_id)?;
+    blocking(move || session.type_one_font(key)).await
+}
+
 /// Only the PDF provenance registered by this exact current layout is accepted.
 #[tauri::command]
 pub async fn native_tex_pdf(state: State<'_, NativeTexSessions>, session_id: String, source_revision: u64, layout_version: u64) -> Result<Response, NativeTexError> {
@@ -1388,6 +1468,20 @@ pub async fn native_tex_close(state: State<'_, NativeTexSessions>, session_id: S
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn type_one_font_names_and_map_resources_are_bounded() {
+        let map = "cmmi100 Another <other.pfb\ncmmi10 CMMI10 \"0.1 SlantFont\" <[math.enc <cmmi10.pfb\n";
+        let (_, font, encoding) = type_one_map_entry(map, "cmmi10").unwrap();
+        assert_eq!(font, "cmmi10.pfb");
+        assert_eq!(encoding, Some("math.enc"));
+        assert!(type_one_map_entry("cmmi10 CMMI10 </private/cmmi10.pfb", "cmmi10").is_none());
+        assert!(!tex_resource_name("../cmmi10"));
+        assert!(!tex_resource_name("-output"));
+        let mut messages = Messages::default();
+        messages.register_dl(&json!({"fonts":{"1":{"name":"cmmi10"},"2":{"name":"../hidden"}}})).unwrap();
+        assert_eq!(messages.type_one_fonts, HashSet::from(["cmmi10".into()]));
+    }
 
     fn save_pdf_evidence(name: &str, bytes: &[u8]) {
         if let Some(directory) = std::env::var_os("LINEAE_NATIVE_EVIDENCE_DIR") {
@@ -1648,6 +1742,28 @@ mod tests {
                 "source": source, "targetOwner": denominators[1], "labelOwner": denominators[0],
             })).unwrap()).unwrap();
             alignment.terminate();
+            if let Some(path) = std::env::var_os("LINEAE_NATIVE_TYPE_ONE_PAGE") {
+                let source = include_str!("../../../../tests/native-math/fixtures/classic-font.tex");
+                let projection = std::fs::read_to_string(directory.join("classic-projection.tex")).unwrap();
+                let classic = Session::create(source).unwrap();
+                let info = classic.start().expect("classic Computer Modern compiles");
+                let raw = wait_layout(&classic, info.source_revision);
+                let names = lock(&classic.messages).type_one_fonts.clone();
+                assert!(names.contains("cmmi10"), "classic math reports a captured TFM font");
+                let fonts = names.into_iter().map(|name| {
+                    let key = format!("tfm:{name}");
+                    let resource = classic.type_one_font(key.clone()).expect("resolve the captured TFM mapping");
+                    (key, resource)
+                }).collect::<BTreeMap<_, _>>();
+                assert!(classic.type_one_font("tfm:not-captured".into()).is_err());
+                let observed = classic.observe_formula(info.source_revision, &projection, Vec::new()).unwrap();
+                let target = observed.iter().filter_map(|page| page["dl"]["math_owners"]["fields"].as_array())
+                    .flatten().find(|field| field["role"] == "den" && field["empty"] == true).unwrap();
+                std::fs::write(path, serde_json::to_vec(&json!({"raw": raw["pages_changed"],
+                    "observed": observed, "projection": projection, "source": source,
+                    "targetOwner": target["owner"], "fonts": fonts})).unwrap()).unwrap();
+                classic.terminate();
+            }
         }
         let project_projection = source.replace("\\frac{a}{}", "\\begingroup\\attribute65000=11 \\frac{a}{}\\endgroup");
         let project_observed = session.observe_formula(info.source_revision, &project_projection, vec![

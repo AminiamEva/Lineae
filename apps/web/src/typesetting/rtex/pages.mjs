@@ -2,6 +2,7 @@ import {rasterContains,registeredRasterHits,stagedRasterPath} from './raster-ass
 import {nativeFontFace} from './font-collection.mjs';
 import {FontStore,Painter,inexactReason} from './upstream/webview/render.ts';
 import {fontKey} from './upstream/src/fontKey.ts';
+import {parseMapFile,parseEncFile,type1Outlines} from './upstream/src/type1.ts';
 import {hitMathField,hitMathGlyph} from '../../editor/native-math/hit.mjs';
 import {warmRows} from './warm-rows.mjs';
 
@@ -9,7 +10,7 @@ const CSS_PER_SP=(96/72)/65781.76;
 
 // Strict read-only full-page adapter. No browser font fallback or inferred
 // glyph positions: a page is shown only when all its resources are exact.
-export function installNativePages({host,getFont,getRaster,onPaint,onError,onMathHit,onImageHit,proseRanges,foldLabel,onExpandFile}) {
+export function installNativePages({host,getFont,getTypeOneFont,getRaster,onPaint,onError,onMathHit,onImageHit,proseRanges,foldLabel,onExpandFile}) {
   let generation=0,epoch=0,zoom=.75,revision=-1,layoutVersion=-1;
   let fonts=new FontStore();
   const imageResources=new Map(),imageLoads=new Map();
@@ -299,13 +300,23 @@ export function installNativePages({host,getFont,getRaster,onPaint,onError,onMat
       if(!['g','r','c','m','M','i'].includes(item[0]))throw new Error('Unsupported native drawing operation: '+item[0]);
     }
     for(const desc of Object.values(dl.fonts??{})) {
-      if(!desc.filename||!/\.(?:otf|ttf|otc|ttc)$/i.test(desc.filename)||
-          (desc.squeeze&&desc.squeeze!==1000))throw new Error('Native preview requires a supported OpenType font');
+      if(desc.squeeze&&desc.squeeze!==1000)throw new Error('Unsupported native font squeeze');
       const key=fontKey(desc);
       if(!loaded.has(key))loaded.set(key,(async()=>{
-        const bytes=await getFont(key);
-        if(attempt!==generation)return;
-        fonts.add(key,{kind:'sfnt',data:nativeFontFace(new Uint8Array(bytes),desc.subfont)});
+        if(!desc.filename&&desc.name){
+          const {bytes,mapEntry,encoding}=await getTypeOneFont(key);
+          if(attempt!==generation)return;
+          const entry=parseMapFile(mapEntry).get(desc.name),enc=encoding&&parseEncFile(encoding);
+          if(!entry||encoding&&!enc.length)throw new Error('Invalid Type 1 font encoding');
+          const {upem,glyphs}=type1Outlines(new Uint8Array(bytes),enc||undefined);
+          if(!Number.isFinite(upem)||upem<=0||!Object.keys(glyphs).length)throw new Error('No usable Type 1 font outlines');
+          fonts.add(key,{kind:'type1',upem,glyphs,slant:entry.slant,extend:entry.extend});
+        }else {
+          if(!/\.(?:otf|ttf|otc|ttc)$/i.test(desc.filename??''))throw new Error('Unsupported native font format');
+          const bytes=await getFont(key);
+          if(attempt!==generation)return;
+          fonts.add(key,{kind:'sfnt',data:nativeFontFace(new Uint8Array(bytes),desc.subfont)});
+        }
       })());
       await loaded.get(key);
     }

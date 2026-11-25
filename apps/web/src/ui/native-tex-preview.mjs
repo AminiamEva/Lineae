@@ -523,6 +523,7 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
       (skipped.length?' · '+t('隐藏页 ','Hidden pages ')+skipped.join(', '):''),
     onExpandFile:path=>document.dispatchEvent(new CustomEvent('lineae-toggle-project-file',{detail:{path}})),
     getFont:key=>invoke('native_tex_font',{sessionId:session,key}),
+    getTypeOneFont:key=>invoke('native_tex_type_one_font',{sessionId:session,key}),
     getRaster:file=>sentSnapshot?.dependencySignature===wantedSnapshot?.dependencySignature
       ? stagedRaster(sentSnapshot,file) : null,
     onPaint:revision=>{

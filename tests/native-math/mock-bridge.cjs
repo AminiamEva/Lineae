@@ -100,6 +100,7 @@ module.exports=function installMockNativeTex() {
       }
       return [...collection];
     }
+    if(command==='native_tex_type_one_font'&&p.realEvidence?.fonts?.[args.key])return p.realEvidence.fonts[args.key];
     if(command==='native_tex_observe_formula'){
       if(p.realEvidence){
         if(args.projection!==p.realEvidence.projection)throw new Error('Editor projection differs from the actual recorded compile');

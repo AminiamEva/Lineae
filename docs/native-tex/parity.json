@@ -40,11 +40,13 @@
       ],
       "tests": [
         "tests/native-surface.test.mjs",
-        "tests/math-editing-browser.cjs"
+        "tests/math-editing-browser.cjs",
+        "tests/native-tex-preview-browser.cjs"
       ],
       "nativeStatus": "single-file",
       "evidence": [
-        "https://github.com/AminiamEva/Lineae/actions/runs/45527337822"
+        "https://github.com/AminiamEva/Lineae/actions/runs/45527337822",
+        "https://github.com/AminiamEva/Lineae/actions/runs/45639252258"
       ]
     },
     {
@@ -82,8 +84,8 @@
         "tests/native-tex-preview-browser.cjs"
       ],
       "nativeStatus": "partial",
-      "evidence": ["https://github.com/AminiamEva/Lineae/actions/runs/45590498054", "https://github.com/AminiamEva/Lineae/actions/runs/45628338101"],
-      "scope": "The browser gates cover empty and nonempty cells and editing marked text and math in the same tabularx cell. Multicolumn and multirow range mapping has direct tests. The real engine reports an empty-cell anchor, marked cell glyphs and an inline formula field with unchanged page drawing on both platforms. Broader table structure and cell styling commands remain pending."
+      "evidence": ["https://github.com/AminiamEva/Lineae/actions/runs/45590498054", "https://github.com/AminiamEva/Lineae/actions/runs/45628338101", "https://github.com/AminiamEva/Lineae/actions/runs/45639252258"],
+      "scope": "The browser gates cover empty and nonempty cells, mixed marked text and math in tabularx, and inserting rows and columns with exact source writeback and undo. Multicolumn and multirow range mapping has direct tests. The real engine reports an empty-cell anchor, marked cell glyphs and an inline formula field with unchanged page drawing on both platforms. Broader table structure and cell styling commands remain pending."
     },
     {
       "id": "project-composition",
@@ -105,9 +107,10 @@
         "https://github.com/AminiamEva/Lineae/actions/runs/45613386465",
         "https://github.com/AminiamEva/Lineae/actions/runs/45617906617",
         "https://github.com/AminiamEva/Lineae/actions/runs/45621393391",
-        "https://github.com/AminiamEva/Lineae/actions/runs/45624267696"
+        "https://github.com/AminiamEva/Lineae/actions/runs/45624267696",
+        "https://github.com/AminiamEva/Lineae/actions/runs/45639252258"
       ],
-      "scope": "Included prose and display math edit the owning source file. The native exit shortcut resumes typing in the parent. Cross-file copying can include complete display formulas. Adjacent paragraphs support cross-file replacement and undo, including complete inline formulas and surviving marked text. Independent documents switch the compilation entry. Detached fragments inherit the preamble and keep their original source offsets. Verified spacing can show editor-only file dividers and fold complete intervening pages while preserving original numbering and partial edge placeholders. Actual LuaLaTeX tests confirm that edits to a staged child retain both the live and geometry-observation sessions. Broader structural edits and folding where ownership shares the same visual line remain pending."
+      "scope": "Included prose and display math edit the owning source file. The native exit shortcut resumes typing in the parent. Cross-file copying can include complete display formulas. Adjacent paragraphs support cross-file replacement and undo, including complete inline formulas and surviving marked text. Independent documents switch the compilation entry. Detached fragments inherit the preamble and keep their original source offsets. Folding preserves original page numbering and partial edge placeholders. The browser gate also verifies that folding an include that shares a line with the parent only masks its own measured horizontal span. Actual LuaLaTeX tests confirm that edits to a staged child retain both the live and geometry-observation sessions. Broader structural edits and geometry with overlapping owners remain pending."
     },
     {
       "id": "images-floats-tikz",
@@ -123,9 +126,10 @@
       "evidence": [
         "https://github.com/AminiamEva/Lineae/actions/runs/45590498054",
         "https://github.com/AminiamEva/Lineae/actions/runs/45591990969",
-        "https://github.com/AminiamEva/Lineae/actions/runs/45628338101"
+        "https://github.com/AminiamEva/Lineae/actions/runs/45628338101",
+        "https://github.com/AminiamEva/Lineae/actions/runs/45639252258"
       ],
-      "scope": "Real staged PNG drawing metadata is unchanged by ownership. The browser gate selects a raster figure from its painted position and patches its width through the Image controls. Recognized TikZ blocks use the existing visual editor. The native workspace can also select an exact opaque block in Source. Direct hit targets for complex floats and TikZ remain pending."
+      "scope": "Real staged PNG drawing metadata is unchanged by ownership. Browser gates select a raster from Canvas and a transformed raster in a simulated registered PDF frame, then patch its width through the Image controls. Recognized TikZ blocks use the existing visual editor. The native workspace can also select an exact opaque block in Source. Direct hit targets for complex floats and TikZ remain pending."
     },
     {
       "id": "page-layout-and-pdf",
@@ -155,8 +159,8 @@
         "tests/shortcuts-browser.cjs"
       ],
       "nativeStatus": "partial",
-      "evidence": ["https://github.com/AminiamEva/Lineae/actions/runs/45620299673", "https://github.com/AminiamEva/Lineae/actions/runs/45622916182", "https://github.com/AminiamEva/Lineae/actions/runs/45628338101"],
-      "scope": "The native command palette covers verified math structures and the status bar displays the active nested field. The prose palette inserts an exact page break, edits document metadata, and offers project input and include commands."
+      "evidence": ["https://github.com/AminiamEva/Lineae/actions/runs/45620299673", "https://github.com/AminiamEva/Lineae/actions/runs/45622916182", "https://github.com/AminiamEva/Lineae/actions/runs/45628338101", "https://github.com/AminiamEva/Lineae/actions/runs/45639252258"],
+      "scope": "The native command palette covers verified math structures and the status bar displays the active nested field. Formula label changes preserve the selected equation or alignment row and its surroundings. Keyboard commands insert inline and numbered display formulas and accept an initial display formula in a blank document. The prose palette inserts an exact page break, edits document metadata, and offers project input and include commands."
     },
     {
       "id": "clipboard-ime-cross-run",
@@ -169,8 +173,8 @@
         "tests/native-tex-preview-browser.cjs"
       ],
       "nativeStatus": "partial",
-      "evidence": ["https://github.com/AminiamEva/Lineae/actions/runs/45596378294", "https://github.com/AminiamEva/Lineae/actions/runs/45599661375", "https://github.com/AminiamEva/Lineae/actions/runs/45629535428"],
-      "scope": "Copy, cut, paste, whole inline formula selection, synthetic Chinese composition, and queued input during a forced geometry delay. Verified selections within one paragraph copy formatting alongside plain text, and native math accepts validated LaTeX fragments from the clipboard. The browser also covers vertical caret navigation, page navigation, and the textarea anchor during scrolling. Physical input methods and broader cross-file editing remain pending."
+      "evidence": ["https://github.com/AminiamEva/Lineae/actions/runs/45596378294", "https://github.com/AminiamEva/Lineae/actions/runs/45599661375", "https://github.com/AminiamEva/Lineae/actions/runs/45629535428", "https://github.com/AminiamEva/Lineae/actions/runs/45639252258"],
+      "scope": "Copy, cut, formatted paste, whole inline formula selection, synthetic Chinese composition, and queued input during a forced geometry delay. Verified selections within one paragraph copy formatting alongside plain text, and native math accepts validated LaTeX fragments from the clipboard. Browser checks cover vertical caret and page navigation, the textarea anchor during scrolling, and the first preedit after exiting inline math. Physical input methods and broader cross-file editing remain pending."
     },
     {
       "id": "default-native-engine",

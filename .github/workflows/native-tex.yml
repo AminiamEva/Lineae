@@ -130,6 +130,7 @@ jobs:
           export TEXMFCONFIG="$PWD/.native-tex/texlive/texmf-config"
           export TEXMFHOME="$PWD/.native-tex/texlive/texmf-home"
           export LINEAE_NATIVE_EVIDENCE_DIR="$PWD/artifacts/native-tex/host"
+          export LINEAE_NATIVE_TYPE_ONE_PAGE="$RUNNER_TEMP/lineae-native-type-one-pages.json"
           mkdir -p "$LINEAE_NATIVE_EVIDENCE_DIR"
           node --input-type=module -e '
             import {readFileSync,writeFileSync} from "node:fs";
@@ -142,6 +143,8 @@ jobs:
             writeFileSync(join(process.env.LINEAE_NATIVE_EVIDENCE_DIR,"degraded-projection.tex"),projectMixedDocument(degraded).projection);
             const alignment=readFileSync("tests/native-math/fixtures/numbered-alignment.tex","utf8");
             writeFileSync(join(process.env.LINEAE_NATIVE_EVIDENCE_DIR,"alignment-projection.tex"),projectMixedDocument(alignment).projection);
+            const classic=readFileSync("tests/native-math/fixtures/classic-font.tex","utf8");
+            writeFileSync(join(process.env.LINEAE_NATIVE_EVIDENCE_DIR,"classic-projection.tex"),projectMixedDocument(classic).projection);
           '
           node tests/native-math/rtex-probe.mjs
           node apps/desktop/scripts/stage.mjs
