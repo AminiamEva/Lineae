@@ -157,7 +157,7 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
       : commitMath?.({ formula: edit.formula, patch: edit.patch, text: edit.text, structure:edit.structure,
         needsAmsmath,cursor:nativeDocument.surface.pendingOffset });
     input.value = '';
-    if(applied&&typeof applied==='object')return awaitSourcePosition(applied,started,true);
+    if(applied&&typeof applied==='object')return awaitSourcePosition(applied,started,edit.kind!=='text');
     if (!applied) {
       nativeDocument.surface.clearPending();
       queuedInput.length=0;

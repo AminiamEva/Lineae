@@ -2730,6 +2730,7 @@ const nativeSelectionCommands=new Set(['toggleBold','toggleItalic','toggleUnderl
   'toggleSuperscript','toggleSubscript','clearFormatting','toggleContextMarker','insertTable']);
 const nativeRangeCommands=new Set(['toggleBold','toggleItalic','toggleUnderline','toggleStrike','toggleCode',
   'toggleSuperscript','toggleSubscript','clearFormatting']);
+const nativeTypingCommands=new Set(['toggleBold','toggleItalic','toggleUnderline']);
 const nativeTextStructures={
   paragraph:['setParagraph'],section:['toggleHeading',{level:1,command:null}],
   subsection:['toggleHeading',{level:2,command:null}],subsubsection:['toggleHeading',{level:3,command:null}],
@@ -2744,7 +2745,13 @@ function nativeParagraphFormattingActive(){
 }
 function runNativeTextCommand(command,context,event){
   if(Object.hasOwn(nativeTextStructures,command))return runNativeTextStructure(...nativeTextStructures[command]);
-  return nativeSelectionCommands.has(command)&&nativeTexPreview.useTextSelection(nativeRangeCommands.has(command))&&
+  const range=nativeTexPreview.verifiedTextRange?.();
+  const caret=range?.[0];
+  const unmarked=caret&&caret===range[1]&&nativeTypingCommands.has(command)&&
+    !caret.paragraph.heading&&!caret.paragraph.container&&!caret.paragraph.tableCell&&!caret.paragraph.wrapped&&
+    caret.paragraph.runs.some(run=>run.from16<=caret.local&&run.to16>=caret.local&&
+      !caret.paragraph.parts[run.partIndex]?.marks?.length);
+  return nativeSelectionCommands.has(command)&&nativeTexPreview.useTextSelection(nativeRangeCommands.has(command)&&!unmarked)&&
     shortcutActions.editor[command](context,event);
 }
 function withNativeTextCommand(command,legacy){
@@ -2867,6 +2874,27 @@ function refreshNativeTextEnvironment(tr,position,sourceBlock,source,change){
   if(verified.attrs.latexEnvironment!==node.attrs.latexEnvironment||!verified.content.eq(node.content))return false;
   if(verified.attrs.environmentSource)tr.setNodeMarkup(position,undefined,verified.attrs);
   return true;
+}
+function insertNativeMarkedText(paragraph,patch,target,marks){
+  const {state}=editor,{range,composition,project,file}=target;
+  const node=editor.schema.text(patch.insert,marks),insert=serialize(node.toJSON());
+  const raw=patch.latex??patch.insert,inside=insert.lastIndexOf(raw);
+  if(inside<0||insert===raw)return null;
+  const {source,filePath:path}=paragraph,from=paragraph.from16+patch.from;
+  const draft=source.slice(0,from)+insert+source.slice(from),offset=from+inside+raw.length;
+  const tr=state.tr.insert(range.from,node);
+  tr.setSelection(TextSelection.create(tr.doc,range.from+node.nodeSize)).setStoredMarks(marks);
+  const fragment=projectFileKind==='tex';
+  const candidate=projectMixedDocument(draft,{filePath:path,fragment,splitIncludes:Boolean(composition)})?.paragraphs.find(next=>
+    next.from16<=offset&&next.runs.some(run=>next.from16+run.from16<=offset&&next.from16+run.to16>=offset));
+  if(!candidate)return null;
+  if(composition)return dispatchNativeProjectChange(state,tr,project,new Map([[file.id,draft]]))?{source:draft,offset,path}:null;
+  const owner=projection?.blocks.find(block=>block.index===range.match.index&&block.count===1&&from>=block.from&&from<=block.to);
+  if(!owner)return null;
+  const [updated,...rest]=importBlocks(draft.slice(owner.from,owner.to+insert.length));
+  if(rest.length||updated?.type!=='paragraph'||!editor.schema.nodeFromJSON(updated).eq(tr.doc.child(owner.index)))return null;
+  const projected=sourceProjection(draft,tr.doc.toJSON(),{fragment});
+  return projected&&dispatchNativeParagraphChange(state,tr,source,draft,{from,to:from,insert},projected)?{source:draft,offset,path}:null;
 }
 function runNativeTextStructure(command,...args){
   const started=performance.now();
@@ -3691,6 +3719,11 @@ nativeTexPreview=installNativeTexPreview({host:footer,before:modes,primary:nativ
     if(!position)return false;
     const {range,project,composition,file}=position;
     const {from:start,to:end,match,endpoints,marks}=range;
+    const stored=editor.state.storedMarks;
+    if(stored?.length&&stored.every(mark=>['bold','italic','underline'].includes(mark.type.name))&&
+       patch.insert&&start===end&&editor.state.selection.from===start&&!marks?.length&&
+       !paragraph.container&&!paragraph.tableCell&&!paragraph.heading&&!paragraph.wrapped)
+      return insertNativeMarkedText(paragraph,patch,position,stored);
     const tr=editor.state.tr;
     if(end>start)tr.delete(start,end);
     if(patch.insert)tr.insert(start,editor.schema.text(patch.insert,marks));

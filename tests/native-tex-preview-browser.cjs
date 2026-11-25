@@ -225,6 +225,14 @@ const server=createServer(async(req,res)=>{
       await page.waitForFunction(source=>nativeProbe.source===source,afterLeaving);
       await panel.getByText('Click prose on the native page',{exact:false}).waitFor();
       await canvas.click({position:{x:6550000*scale,y:9250000*scale}});
+      await page.keyboard.press(mod+'+b');
+      await page.keyboard.type('T');
+      await page.waitForFunction(source=>nativeProbe.source===source,
+        afterLeaving.replace('XYZAlpha','\\textbf{T}XYZAlpha'));
+      await page.keyboard.press(mod+'+z');
+      await page.waitForFunction(source=>nativeProbe.source===source,afterLeaving);
+      await panel.getByText('Click prose on the native page',{exact:false}).waitFor();
+      await canvas.click({position:{x:6550000*scale,y:9250000*scale}});
       await page.keyboard.press(mod+'+e');await page.keyboard.press('r');
       const rightAligned=afterLeaving.replace('XYZAlpha beta.','{\\raggedleft XYZAlpha beta.\\par}');
       await page.waitForFunction(source=>nativeProbe.source===source,rightAligned);
