@@ -15,6 +15,19 @@ export class ProjectDocumentSession {
     }
     this.#composition = composition;
   }
+  rebase(composition, document) {
+    const current=this.#composition;
+    if(!current||!composition||composition.rootId!==current.rootId||
+      composition.regions.length!==document.content.length||composition.regions.length!==current.regions.length)return false;
+    for(const [index,region] of composition.regions.entries()){
+      const node=document.content[index],before=current.regions[index];
+      if(node.type!=='projectRegion'||region.key!==node.attrs.regionKey||region.id!==before.id||
+        region.path!==node.attrs.path)return false;
+      Object.assign(region,{continuation:before.continuation,beforeReference:before.beforeReference,eol:before.eol});
+    }
+    this.hydrate(composition,document);
+    return true;
+  }
   changes(document) {
     return this.#composition ? projectDocumentEdits(this.#composition,document) : null;
   }

@@ -2744,6 +2744,7 @@ nativeTexPreview=installNativeTexPreview({host:footer,before:modes,primary:nativ
   commitParagraphBreak:(paragraph,from,to,text)=>{
     if(paragraph.heading||paragraph.tableCell||paragraph.container||paragraph.parts.length!==1||
        paragraph.parts[0].marks?.length||!from||/[\r\n]/.test(text))return null;
+    if(projectDocument.composition&&!projectDocument.rebase(currentNativeProjectComposition(),editor.getJSON()))return null;
     const target=nativeProsePosition(paragraph,from,to);
     if(!target)return null;
     const {range,project,composition,file}=target,{state}=editor;

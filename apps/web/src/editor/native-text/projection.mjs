@@ -225,17 +225,24 @@ export function projectMixedDocument(source, {previous=[], attribute=65000, frag
     const addText = (from, to) => {
       const raw = text.slice(from, to);
       if (!raw) return;
-      const partIndex = parts.length;
-      const supported=plainTokens.exec(raw)?.[0]===raw;
-      const part={kind:'text',from16:from,to16:to,...(supported?decodeProse(raw):{text:raw})};
-      parts.push(part);
-      if (!supported) { run += raw; return; }
-      const built = instrumentText(raw, next, attribute);
-      next = built.nextTag;
-      runs.push({...part,partIndex});
-      for (const glyph of built.glyphs)
-        glyphs.push({...glyph, from16:glyph.from16 + from, to16:glyph.to16 + from});
-      run += built.instrumented;
+      const marked=markedRuns(raw,from);
+      if(!marked){
+        parts.push({kind:'text',from16:from,to16:to,text:raw});
+        run+=raw;
+        return;
+      }
+      let offset=from;
+      for(const part of marked){
+        const partIndex=parts.push(part)-1;
+        const built=instrumentText(text.slice(part.from16,part.to16),next,attribute);
+        next=built.nextTag;
+        runs.push({...part,partIndex});
+        for(const glyph of built.glyphs)
+          glyphs.push({...glyph,from16:glyph.from16+part.from16,to16:glyph.to16+part.from16});
+        run+=text.slice(offset,part.from16)+built.instrumented;
+        offset=part.to16;
+      }
+      run+=text.slice(offset,to);
     };
     const segments = overlapping.map(formula => ({
       formula,

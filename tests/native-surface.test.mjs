@@ -389,6 +389,19 @@ test('mixed project prose edits refer to the child file, not the main snapshot',
   assert.equal(textEdit(projection,{paragraph,from16:0,to16:0,insert:'X'}).source,'X'+child);
 });
 
+test('native mixed prose keeps marked runs and neighboring inline formula addresses',()=>{
+  const source='\\begin{document}\nBefore \\textbf{bold \\textit{both}} $x$ after.\n\\end{document}\n';
+  const projection=projectMixedDocument(source);
+  const [paragraph]=projection.paragraphs;
+  assert.deepEqual(paragraph.parts.map(part=>part.kind==='math'?part.latex:[part.text,part.marks]),[
+    ['Before ',[]],['bold ',['bold']],['both',['bold','italic']],[' ',[]],'x',[' after.',[]],
+  ]);
+  const {from16,to16}=paragraph.parts[2];
+  assert.equal(textEdit(projection,{paragraph,from16,to16,insert:'inside'}).source,
+    source.replace('{both}','{inside}'));
+  assert.equal(projection.formulas[0].math.source,'x');
+});
+
 test('native math commands insert validated structures and target the new field',()=>{
   const {projection,formula,denominator}=setup();
   for(const [command,insert,caret] of [

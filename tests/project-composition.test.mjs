@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {composeProject,projectDocumentEdits} from '../apps/web/src/project/include-document.mjs';
+import {ProjectDocumentSession} from '../apps/web/src/project/document-session.mjs';
 function fixture(entries){
   const files=new Map(entries.map(([path,draft],i)=>[path,{id:String(i),path,draft,kind:'tex'}]));
   return {files,file:id=>[...files.values()].find(f=>f.id===id)};
@@ -55,4 +56,24 @@ test('editing an empty parent slot before or between inputs creates source parag
   const changes=projectDocumentEdits(c,doc);assert.ok(changes);
   assert.equal(changes.get('0'),'\\documentclass{article}\n\\begin{document}\nBefore.\n\n\\input{a}\n\nBetween.\n\n\\input{b}\n\\end{document}\n');
   assert.equal(changes.get('1'),'A.\n');assert.equal(changes.get('2'),'B.\n');
+});
+
+test('rebasing project regions keeps an earlier formula edit during a later native paragraph split',()=>{
+  const root='\\begin{document}\n\\input{child}\n\\end{document}\n';
+  const child='AlphaBeta\n\n\\[\\frac{z}{}\\]\n';
+  const project=fixture([['main.tex',root],['child.tex',child]]);
+  const session=new ProjectDocumentSession();
+  const initial=session.compose(project,'0');
+  const document=structuredClone({content:initial.content});
+  session.hydrate(initial,document);
+  document.content[1].content[1].attrs.latex='\\frac{z}{q}';
+  const withFormula=child.replace('}{','}{q');
+  project.file('1').draft=withFormula;
+  assert.ok(session.rebase(session.compose(project,'0',{boundariesOnly:true}),document));
+  const split=structuredClone(document);
+  split.content[1].content.splice(0,1,...['Alpha','Beta'].map(text=>
+    ({type:'paragraph',content:[{type:'text',text}]})));
+  assert.equal(session.changes(split)?.get('1'),withFormula.replace('AlphaBeta','Alpha\n\nBeta'));
+  assert.equal(session.changes(split)?.get('0'),root);
+  assert.equal(session.changes(document)?.get('1'),withFormula);
 });
