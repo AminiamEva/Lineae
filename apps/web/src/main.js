@@ -2651,19 +2651,39 @@ nativeTexPreview=installNativeTexPreview({host:footer,before:modes,
     return {field};
   },
   commitMath:({formula,patch,text})=>{
-    if(projectExplorer?.active||projectDocument.composition)return false;
-    if((sourceView.hidden?source():sourceView.value)!==formula.source)return false;
-    if(!text||text===formula.math.source)return false;
+    if(!sourceView.hidden||!text||text===formula.math.source)return false;
+    const project=projectExplorer?.model;
+    const composition=projectDocument.composition;
+    const file=project?.files.get(formula.filePath);
+    if(project ? !composition||file?.draft!==formula.source : source()!==formula.source)return false;
     const type=formula.kind==='displayMath'?'mathBlock':'math';
     const positions=[];
     editor.state.doc.descendants((node,pos)=>{
-      if(node.type.name===type)positions.push(pos);
+      if(node.type.name!==type)return;
+      if(composition){
+        const containing=editor.state.doc.resolve(pos);
+        let region;
+        for(let depth=containing.depth;depth>0;depth--){
+          const ancestor=containing.node(depth);
+          if(ancestor.type.name==='projectRegion'){region=ancestor;break;}
+        }
+        if(region?.attrs.path!==file.path)return;
+      }
+      positions.push(pos);
     });
     if(positions.length!==formula.count)return false;
     const position=positions[formula.ordinal];
     const node=Number.isInteger(position)?editor.state.doc.nodeAt(position):null;
     if(node?.attrs.latex!==formula.math.source)return false;
-    editor.view.dispatch(editor.state.tr.setNodeMarkup(position,undefined,{...node.attrs,latex:text}));
+    const transaction=editor.state.tr.setNodeMarkup(position,undefined,{...node.attrs,latex:text});
+    if(composition){
+      const from=formula.from16+patch.from,to=formula.from16+patch.to;
+      const expected=file.draft.slice(0,from)+patch.insert+file.draft.slice(to);
+      const drafts=projectDocument.changes(transaction.doc.toJSON());
+      if(drafts?.get(file.id)!==expected)return false;
+      for(const [id,draft] of drafts)if(id!==file.id&&draft!==project.file(id).draft)return false;
+    }
+    editor.view.dispatch(transaction);
     return editor.state.doc.nodeAt(position)?.attrs.latex===text;
   },
   commitText:({paragraph,patch,text})=>{

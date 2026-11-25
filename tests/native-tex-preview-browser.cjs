@@ -351,6 +351,20 @@ const server=createServer(async(req,res)=>{
     });
     await page.keyboard.type('b');
     await page.waitForFunction(()=>nativeProbe.source?.includes('\\frac{a}{b}'));
+    await page.waitForFunction(()=>document.querySelector('#native-tex-preview').dataset.state==='current');
+    await page.evaluate(()=>{nativeProbe.targetInclude=true;});
+    await page.locator('#native-tex-target').click();
+    await panel.getByText('Click the empty numerator or denominator',{exact:false}).waitFor();
+    await page.locator('#native-tex-edit').click();
+    await panel.locator('[data-native-page="1"] canvas').click({position:{x:6500000*scale,y:7000000*scale}});
+    await page.waitForFunction(()=>document.activeElement?.id==='native-tex-input');
+    await page.keyboard.type('q');
+    await page.waitForFunction(()=>nativeProbe.calls.some(call=>call.command==='native_tex_update' &&
+      call.args.source.includes('\\frac{a}{b}') &&
+      call.args.files?.some(file=>file.path==='chapters/one.tex' &&
+        new TextDecoder().decode(new Uint8Array(file.bytes))==='Original chapter.\n\\[\\frac{z}{q}\\]\n')));
+    await page.locator('#native-tex-edit').click();
+    await page.evaluate(()=>{nativeProbe.targetInclude=false;});
     const previousId=await page.evaluate(()=>String(nativeProbe.session));
     if(!await page.locator('#project-explorer').isVisible())await page.locator('#project-toggle').click();
     const folder=page.locator('#project-explorer summary').filter({hasText:/^chapters$/});
