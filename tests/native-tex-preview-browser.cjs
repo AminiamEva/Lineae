@@ -859,7 +859,7 @@ const server=createServer(async(req,res)=>{
       await page.locator('#native-tex-toggle').click();
       await page.waitForFunction(()=>document.querySelector('#native-tex-preview').dataset.state==='current');
       await page.locator('#native-tex-target').click();
-      await panel.getByText('Click prose on the native page',{exact:false}).waitFor();
+      await panel.getByText('Click text on the native page',{exact:false}).waitFor();
       await page.locator('#native-tex-edit').click();
       const containerBounds=await canvas.boundingBox();
       await page.mouse.move(containerBounds.x+9850000*scale,containerBounds.y+9250000*scale);
@@ -1826,7 +1826,23 @@ const server=createServer(async(req,res)=>{
     page=await browser.newPage({locale:'en-US',viewport:{width:1600,height:1100}});
     await page.addInitScript(installMockNativeTex);
     await page.route('**/vendor/mathlive/**',route=>route.abort());
-    await page.goto('http://127.0.0.1:'+server.address().port+'/?native-only-acceptance=1',{waitUntil:'networkidle'});
+    const base='http://127.0.0.1:'+server.address().port+'/';
+    await page.goto(base+'?native-workspace=1',{waitUntil:'networkidle'});
+    const outlined='\\documentclass{article}\n\\begin{document}\n\\section{Repeat}\n\nFirst paragraph.\n\n'+
+      '\\section{Repeat}\n\nSecond paragraph.\n\\end{document}\n';
+    await page.locator('input#file').setInputFiles({name:'outlined.tex',mimeType:'text/plain',buffer:Buffer.from(outlined)});
+    await page.locator('#native-tex-toggle').click();
+    await page.getByText('Click text on the native page',{exact:false}).waitFor();
+    await revealToolbar(page);
+    await page.locator('[data-group=reference]').click();
+    await page.getByRole('button',{name:'Outline',exact:true}).click();
+    await page.locator('#document-outline [data-heading-position]').last().click();
+    await page.waitForFunction(()=>document.activeElement?.id==='native-tex-input');
+    await page.keyboard.type('X');
+    await page.waitForFunction(expected=>nativeProbe.source===expected,
+      outlined.replace('Repeat}\n\nSecond','XRepeat}\n\nSecond'));
+
+    await page.goto(base+'?native-only-acceptance=1',{waitUntil:'networkidle'});
     const duplicateImages='\\documentclass{article}\n\\usepackage{graphicx}\n\\begin{document}\n'+
       '\\includegraphics[width=18pt]{plot.png}\n\n\\includegraphics[width=25pt]{plot.png}\n\\end{document}\n';
     await openMockProject(page,true,duplicateImages,'');

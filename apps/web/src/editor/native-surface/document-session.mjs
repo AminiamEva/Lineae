@@ -257,8 +257,10 @@ export function createNativeDocumentSession(resolve) {
         fileOf(stop)===fileOf(caret)&&stop.docOffset>=caret.formula.to16);
       return following?selection.selectTargets(following,following):false;
     },
-    selectRegion({path,from,to}){
-      const first=selection.stops.find(stop=>fileOf(stop)===path&&stop.docOffset>=from&&stop.docOffset<=to);
+    selectRegion({path,from,to,source,heading}){
+      const first=selection.stops.find(stop=>fileOf(stop)===path&&stop.docOffset>=from&&stop.docOffset<=to&&
+        (source===undefined||(stop.paragraph??stop.formula).source===source)&&
+        (heading===undefined||stop.paragraph?.heading===heading));
       return first?selection.selectTargets(first,first):false;
     },
     expectInitialText(edit,offset,path){

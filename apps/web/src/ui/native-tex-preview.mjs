@@ -86,6 +86,7 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
   let pendingLatency=null;
   let inputStart=0;
   let pendingEdit=null;
+  let outlineTarget=null;
   const queuedInput=[];
   const latency=[];
   const eventApi=window.__TAURI__?.event;
@@ -131,6 +132,17 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
     input.style.left = rect.x + 'px';
     input.style.top = rect.y + 'px';
     input.style.height = Math.max(14, rect.height) + 'px';
+  }
+  function selectOutlineTarget(address){
+    if(!nativeEditing||!acceptsInput()||!current()||!observation||pendingEdit)return false;
+    if((foldedFiles?.()??[]).includes(address.path))
+      document.dispatchEvent(new CustomEvent('lineae-toggle-project-file',{detail:{path:address.path}}));
+    if(!nativeDocument.selectRegion(address))return false;
+    cancelDraftInput();
+    paintSurfaceSelection(true);
+    positionInput(true);
+    input.focus({preventScroll:true});
+    return true;
   }
   function commitSurface(edit) {
     if (!edit) return;
@@ -706,6 +718,7 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
     const previous=session;session=null;
     wantedSnapshot=null;sentSnapshot=null;wantedSource='';sentSource='';
     observation=null;targetStatus.textContent='';
+    outlineTarget=null;
     previousProjection=null;foldsDirty=false;
     nativeEditing=false;draftInput=null;nativeDocument.reset();
     input.blur();input.value='';
@@ -1010,6 +1023,11 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
           }
         }
       }
+      if(outlineTarget){
+        const address=outlineTarget;
+        outlineTarget=null;
+        selectOutlineTarget(address);
+      }
       requestAnimationFrame(syncCaret);
       targetStatus.textContent=kind==='text'&&!projection.paragraphs.length
         ?t('点击已定位的图形进行编辑。','Click a verified drawing to edit it.')
@@ -1160,6 +1178,14 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
       if(isDocumentMode?.()||splitHost?.())void start();
     },
     setDocumentZoom:value=>{if(primary)setNativeZoom(value);},
+    navigateOutline(address){
+      if(!acceptsInput()||!nativeEditing||pendingEdit)return false;
+      if(observation&&current())return selectOutlineTarget(address);
+      outlineTarget=address;
+      targetArmed=true;
+      renderStatus();
+      return true;
+    },
     pagePresentation:()=>panel.dataset.pagePresentation,
     togglePagePresentation(){
       if(!primary)return false;

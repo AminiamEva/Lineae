@@ -366,6 +366,20 @@ test('native vertical movement keeps the visual column and extends to another pa
     ['Top.','Bottom.']);
 });
 
+test('native outline targeting selects the second repeated heading on its measured page',()=>{
+  const source='\\begin{document}\n\\section{Repeat}\n\n\\section{Repeat}\n\\end{document}\n';
+  const projection=projectMixedDocument(source);
+  const [a,b]=projection.paragraphs.map(paragraph=>paragraph.glyphs[0]);
+  const [first]=page([],[glyph(a.tag,100)]),[second]=page([],[glyph(b.tag,100)]);
+  second.page=2;
+  const session=createNativeDocumentSession(()=>null);
+  session.setObservation([first,second],projection);
+  const target={from:source.lastIndexOf('\\section'),to:source.length,heading:'section',source};
+  assert.equal(session.selectRegion(target),true);
+  assert.equal(session.surface.caret.page,2);
+  assert.equal(session.selectRegion({...target,source:source+'% edited'}),false);
+});
+
 test('native cross-file replacement produces one edit per file and a parent caret address',()=>{
   const source='\\begin{document}\nAlpha beta.\n\n\\input{chapter}\n\\end{document}\n';
   const chapter='XYZ child.\n';

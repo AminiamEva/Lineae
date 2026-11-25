@@ -9,6 +9,7 @@ import {sourceStructure} from '../latex/source-structure.mjs';
 import {insertTableSourceColumn,insertTableSourceRow,mergeTableSourceCells,mergeTableSourceRows,removeTableSourceColumn,removeTableSourceRow,splitTableSourceCell,splitTableSourceRowspan} from '../latex/tabularx.mjs';
 import {editTblrColumn,editTblrRow,mergeTblrCells,mergeTblrRows,splitTblrCell} from '../latex/tblr.mjs';
 import {rasterDrawingRanges,tikzDrawingRanges} from '../latex/images.mjs';
+import {headingAt} from '../latex/headings.mjs';
 import {loadLegacyMath,nativeOnlyAcceptance,nativeWorkspaceRequested} from './editor/native-surface/acceptance-mode.mjs';
 import {sameTable} from './editor/native-surface/document-session.mjs';
 import {AppendixStart,MatterStart,LayoutCommand} from './editor/appendix.js';
@@ -3838,6 +3839,24 @@ function showProjectComposition(){return compositionController.show();}
 function editIncludeSource(transform,owner){return compositionController.edit(transform,owner);}
 function requestProjectInclude(command){return compositionController.request(command);}
 function appendInclude(id,beforePath,command){return compositionController.append(id,beforePath,command);}
+documentOutline.panel.addEventListener('lineae-outline-navigate',event=>{
+  if(!sourceView.hidden)return;
+  const {position}=event.detail,{doc}=editor.state;
+  if(doc.nodeAt(position)?.type.name!=='heading')return;
+  const resolved=doc.resolve(position),composition=projectDocument.composition;
+  const region=composition?.regions[resolved.index(0)];
+  if(composition&&(!region||resolved.depth!==1)||!composition&&resolved.depth!==0)return;
+  const projected=region?.projection??projection,index=resolved.index(region?1:0);
+  const block=projected?.blocks.find(entry=>entry.index===index&&entry.count===1);
+  const heading=block&&headingAt(block.raw.trimStart());
+  if(!heading)return;
+  const project=projectExplorer?.model;
+  const path=region?.path??project?.file(project.activeFileId)?.path;
+  const text=region?composition.sources.get(region.id):projected.text;
+  const base=region?.from??0;
+  if(nativeTexPreview.navigateOutline?.({path,source:text,heading:heading.name,from:base+block.from,to:base+block.to}))
+    event.preventDefault();
+});
 installProjectNavigation({outline:documentOutline.panel,paper,sourceView,editor,getProjection:()=>projection,appendInclude,editIncludeSource});
 const projectWorkspace=new ProjectWorkspaceState();
 let standaloneSession;
