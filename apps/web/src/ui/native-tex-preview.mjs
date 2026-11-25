@@ -1,11 +1,10 @@
 import {t} from './i18n.mjs';
 import {installNativePages} from '../typesetting/rtex/pages.mjs';
 import {installNativePdf} from '../typesetting/rtex/pdf.mjs';
-import {projectSnapshotFormulas} from '../editor/native-math/document.mjs';
 import {matchesRichFormula,nativeCaretTargets} from '../editor/native-math/rich-slot.mjs';
 import {createMathSurface,surfaceCaretRect} from '../editor/native-surface/math-surface.mjs';
 import {createTextSurface} from '../editor/native-surface/text-surface.mjs';
-import {projectMixedDocument,textTarget} from '../editor/native-text/projection.mjs';
+import {projectMixedDocument,projectMixedSnapshot,textTarget} from '../editor/native-text/projection.mjs';
 import {nativeTarget} from '../editor/native-math/resolve.mjs';
 
 // Native LaTeX output is the primary page. The opt-in native input mode sends
@@ -191,11 +190,12 @@ export function installNativeTexPreview({host,before,getSource,getSnapshot,isCom
           stamp.sessionId!==observation.stamp.sessionId||
           stamp.sourceRevision!==observation.stamp.sourceRevision)return;
       const head=resolveEndpoint(hit),anchor=origin?resolveEndpoint(origin):head;
-      if(!head||!anchor)return false;
-      if(observation.kind==='text'&&!nativeEditing)return false;
+      if(!head||!anchor||head.kind!==anchor.kind)return false;
+      if((anchor.kind==='text'||head.kind==='text')&&!nativeEditing)return false;
       if(nativeEditing){
         const next=targetSurface(head);
-        if(!next||!next.selectBetween(anchor.docOffset,head.docOffset,anchor.formula?.filePath,head.formula?.filePath))return false;
+        if(!next||!next.selectBetween(anchor.docOffset,head.docOffset,anchor.formula?.filePath??anchor.paragraph?.filePath,
+          head.formula?.filePath??head.paragraph?.filePath))return false;
         surface=next;
         inputStart=performance.now();
         paintSurfaceSelection();positionInput();input.focus({preventScroll:true});
@@ -462,7 +462,7 @@ export function installNativeTexPreview({host,before,getSource,getSnapshot,isCom
     const stamp={sessionId:session,sourceRevision};
     lastTarget=stamp;
     const projection=sentSnapshot?.files?.length
-      ?projectSnapshotFormulas(sentSnapshot,previousProjection)
+      ?projectMixedSnapshot(sentSnapshot,previousProjection)
       :projectMixedDocument(sentSource,{previous:previousProjection??[]});
     if(!projection||!projection.owners.size){
       targetStatus.textContent=t('当前文档没有可定位的公式或纯文本段落。','No supported formula or plain paragraph in this document snapshot.');

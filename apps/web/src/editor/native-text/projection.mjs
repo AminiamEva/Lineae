@@ -28,8 +28,8 @@ function plainBlock(block) {
 }
 
 // Prose-only documents: every plain paragraph becomes a native target.
-export function projectTextDocument(source, {firstOwner=1, attribute=65000}={}) {
-  const doc = parseDocument(source);
+export function projectTextDocument(source, {firstOwner=1, attribute=65000, fragment=false, filePath}={}) {
+  const doc = parseDocument(source,{fragment});
   if (!doc) return null;
   const body = doc.blocks.join('');
   if (doc.start + body + doc.end !== source) return null;
@@ -44,7 +44,7 @@ export function projectTextDocument(source, {firstOwner=1, attribute=65000}={}) 
     const built = instrumentText(text, next, attribute);
     next = built.nextTag;
     const from16 = doc.start.length + blockStart + leading;
-    const paragraph = {source, from16, text, glyphs:built.glyphs, index:paragraphs.length,
+    const paragraph = {source, filePath, from16, text, glyphs:built.glyphs, index:paragraphs.length,
       parts:[{kind:'text', from16:0, to16:text.length, text}],
       runs:[{from16:0, to16:text.length, text, partIndex:0}]};
     for (const glyph of built.glyphs) owners.set(glyph.tag, {paragraph, glyph});
@@ -61,13 +61,13 @@ export function projectTextDocument(source, {firstOwner=1, attribute=65000}={}) 
 // plain runs beside inline math are tagged individually. Runs never cross
 // math; a paragraph records the exact text/math child sequence so the editor
 // can map a run patch to one ProseMirror text node.
-export function projectMixedDocument(source, {previous=[], attribute=65000}={}) {
-  const doc = parseDocument(source);
+export function projectMixedDocument(source, {previous=[], attribute=65000, fragment=false, firstOwner=1, filePath}={}) {
+  const doc = parseDocument(source,{fragment});
   if (!doc) return null;
   const body = doc.blocks.join('');
   if (doc.start + body + doc.end !== source) return null;
-  const math = projectDocumentFormulas(source, {previous:previous?.formulas ?? []});
-  if (!math) return projectTextDocument(source, {attribute});
+  const math = projectDocumentFormulas(source, {previous:previous?.formulas ?? [], firstTag:firstOwner, fragment, filePath});
+  if (!math) return projectTextDocument(source, {attribute,firstOwner,fragment,filePath});
   const formulas = [...math.formulas].sort((left, right) => left.from16 - right.from16);
   const mathTokens = [...sourceStructure(body)].filter(token =>
     token.kind === 'inlineMath' || token.kind === 'displayMath');
@@ -91,7 +91,7 @@ export function projectMixedDocument(source, {previous=[], attribute=65000}={}) 
       if (text && !unsupported.test(text)) {
         const built = instrumentText(text, next, attribute);
         next = built.nextTag;
-        const paragraph = {source, from16:contentFrom, text, glyphs:built.glyphs, index:paragraphs.length,
+        const paragraph = {source, filePath, from16:contentFrom, text, glyphs:built.glyphs, index:paragraphs.length,
           parts:[{kind:'text', from16:0, to16:text.length, text}],
           runs:[{from16:0, to16:text.length, text, partIndex:0}]};
         for (const glyph of built.glyphs) owners.set(glyph.tag, {paragraph, glyph});
@@ -146,7 +146,7 @@ export function projectMixedDocument(source, {previous=[], attribute=65000}={}) 
     output += source.slice(from16, contentFrom) + run +
       source.slice(contentFrom + text.length, to16);
     if (runs.length) {
-      const paragraph = {source, from16:contentFrom, text, glyphs, runs, parts, index:paragraphs.length};
+      const paragraph = {source, filePath, from16:contentFrom, text, glyphs, runs, parts, index:paragraphs.length};
       for (const glyph of glyphs) owners.set(glyph.tag, {paragraph, glyph});
       paragraphs.push(paragraph);
     }
@@ -155,6 +155,32 @@ export function projectMixedDocument(source, {previous=[], attribute=65000}={}) 
   output += source.slice(cursor);
   const kind = paragraphs.length ? 'mixed' : 'math';
   return {source, projection:output, owners, formulas, paragraphs, nextTag:next, kind};
+}
+
+// Instrument each file independently while sharing the owner ID namespace.
+export function projectMixedSnapshot(snapshot, previous) {
+  let nextTag=previous?.nextTag??1;
+  const owners=new Map(), formulas=[], paragraphs=[], files=[];
+  function add(source,filePath,fragment) {
+    const projection=projectMixedDocument(source,{previous,firstOwner:nextTag,filePath,fragment});
+    if(!projection)return null;
+    nextTag=projection.nextTag;
+    for(const [tag,target] of projection.owners)owners.set(tag,target);
+    formulas.push(...projection.formulas);
+    paragraphs.push(...projection.paragraphs);
+    return projection.projection;
+  }
+  const root=add(snapshot.source,snapshot.mainFile,false)??snapshot.source;
+  const decoder=new TextDecoder('utf-8',{fatal:true,ignoreBOM:true});
+  for(const file of snapshot.files??[]){
+    if(file.path===snapshot.mainFile||!/\.tex$/i.test(file.path)||file.bytes.length>2*1024*1024)continue;
+    let source;
+    try {source=decoder.decode(new Uint8Array(file.bytes));} catch {continue;}
+    const projection=add(source,file.path,true);
+    if(projection!==null)files.push({path:file.path,source:projection});
+  }
+  const kind=paragraphs.length ? (formulas.length?'mixed':'text') : 'math';
+  return owners.size ? {source:snapshot.source,projection:root,owners,formulas,paragraphs,files,nextTag,kind} : null;
 }
 
 export function textTarget(projection, owner, after) {
@@ -170,7 +196,7 @@ export function textTarget(projection, owner, after) {
 }
 
 export function textEdit(projection, {paragraph, from16, to16, insert}) {
-  if (!projection || projection.source !== paragraph.source) return null;
+  if (!projection || (projection.source!==paragraph.source && !projection.paragraphs?.includes(paragraph))) return null;
   if (!Number.isInteger(from16) || !Number.isInteger(to16) || from16 < 0 || to16 < from16 || to16 > paragraph.text.length) return null;
   if (paragraph.runs && !paragraph.runs.some(run => from16 >= run.from16 && to16 <= run.to16)) return null;
   if (typeof insert !== 'string' || unsupported.test(insert)) return null;

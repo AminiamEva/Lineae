@@ -2687,9 +2687,11 @@ nativeTexPreview=installNativeTexPreview({host:footer,before:modes,
     return editor.state.doc.nodeAt(position)?.attrs.latex===text;
   },
   commitText:({paragraph,patch,text})=>{
-    if(projectExplorer?.active||projectDocument.composition)return false;
-    if((sourceView.hidden?source():sourceView.value)!==paragraph.source)return false;
-    if(!text||text===paragraph.text||!paragraph.parts)return false;
+    if(!sourceView.hidden||!text||text===paragraph.text||!paragraph.parts)return false;
+    const project=projectExplorer?.model;
+    const composition=projectDocument.composition;
+    const file=project?.files.get(paragraph.filePath);
+    if(project ? !composition||file?.draft!==paragraph.source : source()!==paragraph.source)return false;
     const run=paragraph.runs?.find(candidate=>patch.from>=candidate.from16&&patch.to<=candidate.to16);
     if(!run)return false;
     const matchesParts=node=>{
@@ -2708,9 +2710,21 @@ nativeTexPreview=installNativeTexPreview({host:footer,before:modes,
       block.to>=paragraph.from16+paragraph.text.length);
     const matches=[];
     editor.state.doc.forEach((node,offset,index)=>{
-      if(matchesParts(node))matches.push({node,offset,index});
+      if(!composition){
+        if(matchesParts(node))matches.push({node,offset,index});
+        return;
+      }
+      if(node.type.name!=='projectRegion'||node.attrs.path!==file.path)return;
+      const region=composition.regions[index];
+      if(!region||paragraph.from16<region.from)return;
+      const sourceOwner=composition.sources.get(file.id)===paragraph.source && region.projection?.blocks.find(block=>
+        block.count===1&&region.from+block.from<=paragraph.from16 &&
+        region.from+block.to>=paragraph.from16+paragraph.text.length);
+      node.forEach((child,childOffset,childIndex)=>{
+        if(matchesParts(child))matches.push({node:child,offset:offset+1+childOffset,verified:sourceOwner?.index===childIndex});
+      });
     });
-    const match=matches.find(candidate=>candidate.index===owner?.index) ??
+    const match=matches.find(candidate=>composition?candidate.verified: candidate.index===owner?.index) ??
       (matches.length===1 ? matches[0] : null);
     if(!match)return false;
     const {offset:found,node:foundNode}=match;
@@ -2721,6 +2735,13 @@ nativeTexPreview=installNativeTexPreview({host:footer,before:modes,
     if(end>start)tr.delete(start,end);
     if(patch.insert)tr.insertText(patch.insert,start);
     tr.setSelection(TextSelection.create(tr.doc,start+patch.insert.length));
+    if(composition){
+      const from=paragraph.from16+patch.from,to=paragraph.from16+patch.to;
+      const expected=file.draft.slice(0,from)+patch.insert+file.draft.slice(to);
+      const drafts=projectDocument.changes(tr.doc.toJSON());
+      if(drafts?.get(file.id)!==expected)return false;
+      for(const [id,draft] of drafts)if(id!==file.id&&draft!==project.file(id).draft)return false;
+    }
     const before=editor.state.doc;
     editor.view.dispatch(tr);
     return editor.state.doc!==before;

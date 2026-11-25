@@ -326,7 +326,7 @@ const server=createServer(async(req,res)=>{
       };
       await put(luaProjectDirectory,'main.tex','\\documentclass{article}\n\\begin{document}\n\\[\\frac{a}{}\\]\n\\input{chapters/one}\n\\end{document}\n');
       const chapter=await luaProjectDirectory.getDirectoryHandle('chapters',{create:true});
-      await put(chapter,'one.tex','Original chapter.\n\\[\\frac{z}{}\\]\n');
+      await put(chapter,'one.tex','Original chapter.\n\n\\[\\frac{z}{}\\]\n');
       await put(luaProjectDirectory,'image.png',new Uint8Array([0,255,13,10]));
       window.showDirectoryPicker=async()=>luaProjectDirectory;
     });
@@ -362,7 +362,14 @@ const server=createServer(async(req,res)=>{
     await page.waitForFunction(()=>nativeProbe.calls.some(call=>call.command==='native_tex_update' &&
       call.args.source.includes('\\frac{a}{b}') &&
       call.args.files?.some(file=>file.path==='chapters/one.tex' &&
-        new TextDecoder().decode(new Uint8Array(file.bytes))==='Original chapter.\n\\[\\frac{z}{q}\\]\n')));
+        new TextDecoder().decode(new Uint8Array(file.bytes))==='Original chapter.\n\n\\[\\frac{z}{q}\\]\n')));
+    await panel.getByText('Click prose on the native page',{exact:false}).waitFor();
+    await panel.locator('[data-native-page="1"] canvas').click({position:{x:6550000*scale,y:9250000*scale}});
+    await page.keyboard.type('X');
+    await page.waitForFunction(()=>nativeProbe.calls.some(call=>call.command==='native_tex_update' &&
+      call.args.source.includes('\\frac{a}{b}') &&
+      call.args.files?.some(file=>file.path==='chapters/one.tex' &&
+        new TextDecoder().decode(new Uint8Array(file.bytes))==='XOriginal chapter.\n\n\\[\\frac{z}{q}\\]\n')));
     await page.locator('#native-tex-edit').click();
     await page.evaluate(()=>{nativeProbe.targetInclude=false;});
     const previousId=await page.evaluate(()=>String(nativeProbe.session));

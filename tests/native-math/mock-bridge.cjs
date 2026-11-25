@@ -96,7 +96,7 @@ module.exports=function installMockNativeTex() {
         .replace(/\\begin\{(?:equation|align|gather)\*?\}[\s\S]*?\\end\{(?:equation|align|gather)\*?\}/g,'')
         .matchAll(/\\attribute65000=(\d+) (.)/gsu)];
       if(!match&&!script&&!cellOwner){
-        const text=textTags(args.projection);
+        const text=textTags(input);
         if(!text.length||args.sourceRevision!==p.revision)throw new Error('Unexpected formula observation request');
         const observed=p.layout().pages_changed;
         observed[0].dl.math_owners={fields:[],glyphs:[]};
@@ -126,7 +126,7 @@ module.exports=function installMockNativeTex() {
       if(token)observed[0].dl.math_owners.glyphs.push({owner:Number(token[1]),char:97,
         bbox:[6500000,6000000,6800000,6500000]});
       let textX=6500000;
-      for(const [,owner,char] of textTags(args.projection)){
+      for(const [,owner,char] of textTags(input)){
         observed[0].dl.math_owners.glyphs.push({owner:Number(owner),char:char.codePointAt(0),
           bbox:[textX,9000000,textX+200000,9500000]});
         textX+=200000;

@@ -17,10 +17,11 @@ function stopsFor(observed, projection) {
           x: after ? glyph.bbox[2] : glyph.bbox[0],
           top: glyph.bbox[1], bottom: glyph.bbox[3],
         };
-        const previous = byOffset.get(target.docOffset);
+        const key=JSON.stringify([target.paragraph.filePath,target.docOffset]);
+        const previous = byOffset.get(key);
         // Prefer the boundary whose paragraph/glyph is stable; either side of a
         // space has no tag, so the nearest glyph edge is the caret.
-        if (!previous || (!previous.after && after)) byOffset.set(target.docOffset, stop);
+        if (!previous || (!previous.after && after)) byOffset.set(key, stop);
       }
     }
   }
@@ -28,6 +29,7 @@ function stopsFor(observed, projection) {
 }
 
 const sameParagraph = (a, b) =>
+  a?.paragraph.filePath === b?.paragraph.filePath &&
   a?.paragraph.from16 === b?.paragraph.from16 && a?.paragraph.source === b?.paragraph.source;
 const runsOf = paragraph => paragraph.runs ?? [{from16:0, to16:paragraph.text.length}];
 const runFor = (paragraph, from16, to16) =>
@@ -43,7 +45,7 @@ const boundariesOf = (run, fallback) => {
 
 export function createTextSurface({projection}) {
   let sourceProjection = projection;
-  const selection = createSelectionModel(sameParagraph);
+  const selection = createSelectionModel(sameParagraph,stop=>stop.paragraph.filePath);
   return Object.assign(selection, {
     setProjection(next) { if (next) sourceProjection = next; },
     setObservation(observed) { return selection.setStops(stopsFor(observed, sourceProjection)); },
