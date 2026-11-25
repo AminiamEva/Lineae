@@ -72,7 +72,7 @@ import { deleteTableKeepingScroll } from './editor/table-utils.js';
 import { createConfigStore } from './editor/config.mjs';
 import { compileKeybindings, installKeybindings } from './editor/keybindings.mjs';
 import defaultConfigYaml from '../config.yaml';
-import { askText } from './editor/dialog.js';
+import { askText, promptDialog } from './editor/dialog.js';
 import { installDocumentFind } from './editor/find.js';
 import { DocumentImage, Subfigures, chooseImageFile, availableImagePath, insertLocalImage, insertSubfigures, insertSubfigureImage, replaceLocalImage, startImageCrop, installImageDrop, editTikzVisual } from './editor/image-node.js';
 import { installImagePanel } from './ui/image-panel.js';
@@ -3661,7 +3661,7 @@ function nativeSourceBlocks(){
     'tableOfContents','layoutCommand','counterDirective']);
   const hasSource=node=>['raw','codeBlock'].includes(node.type.name)||directives.has(node.type.name)||
     node.type.name==='paragraph'&&node.childCount===1&&node.firstChild.type.name==='lipsum';
-  forEachNativeDocumentBlock(hasSource,(node,_position,block,path,text,base,fileId)=>{
+  forEachNativeDocumentBlock(hasSource,(node,position,block,path,text,base,fileId)=>{
     if(block?.count!==1||typeof text!=='string'||text.slice(base+block.from,base+block.to)!==block.raw)return;
     const type=node.type.name,raw=block.raw.trim();
     if(type==='codeBlock'){
@@ -3669,7 +3669,8 @@ function nativeSourceBlocks(){
       const end=/\r?\n\\end\{lstlisting\}\s*$/.exec(block.raw);
       if(!start||!end||end.index<start[0].length)return;
       const from=base+block.from+start[0].length,to=base+block.from+end.index;
-      if(text.slice(from,to)===node.textContent)results.push({path,fileId,text,from,to,label:start[1]});
+      if(text.slice(from,to)===node.textContent)results.push({path,fileId,text,from,to,label:start[1],
+        code:{position,from:base+block.from,to:base+block.to,eol:start[0].endsWith('\r\n')?'\r\n':'\n'}});
       return;
     }
     if(!raw||type==='raw'&&raw!==node.attrs.source?.trim())return;
@@ -3679,12 +3680,37 @@ function nativeSourceBlocks(){
   });
   return results;
 }
+async function editNativeCodeBlock(block,project,file){
+  const {state}=editor,{code,text,from,to}=block;
+  const node=state.doc.nodeAt(code.position),original=text.slice(from,to);
+  if(node?.type.name!=='codeBlock'||node.textContent!==original)return;
+  const value=await promptDialog({title:t('代码块','Code block'),value:original,multiline:true});
+  if(value===null||editor.state.doc!==state.doc||!sourceView.hidden||projectExplorer?.model!==project||
+    (file?.draft??source())!==text)return;
+  const insert=value.replace(/\r\n|\r|\n/g,code.eol);
+  if(insert===original)return;
+  if(/\\end\{lstlisting\}/.test(insert))return refuseStandaloneWriteback();
+  const revised=node.type.create(node.attrs,insert?editor.schema.text(insert):null);
+  const draft=text.slice(0,from)+insert+text.slice(to);
+  const [parsed,...rest]=importBlocks(draft.slice(code.from,code.to+draft.length-text.length));
+  if(rest.length||parsed?.type!=='codeBlock'||!editor.schema.nodeFromJSON(parsed).eq(revised))return refuseStandaloneWriteback();
+  const tr=editor.state.tr.replaceWith(code.position,code.position+node.nodeSize,revised);
+  if(projectDocument.composition){
+    if(!file||!projectDocument.rebase(currentNativeProjectComposition(),editor.getJSON())||
+      !dispatchNativeProjectChange(editor.state,tr,project,new Map([[file.id,draft]])))return refuseStandaloneWriteback();
+  }else{
+    const projected=sourceProjection(draft,tr.doc.toJSON(),{fragment:projectFileKind==='tex'});
+    if(!projected||!dispatchNativeParagraphChange(editor.state,tr,text,draft,{from,to,insert},projected))return refuseStandaloneWriteback();
+  }
+  nativeTexPreview.refocusTextInput();
+}
 async function openNativeSourceBlock(block){
   if(!sourceView.hidden)return;
   const project=projectExplorer?.model;
   const file=block.fileId?project?.files.get(block.path):null;
   if(block.fileId&&file?.id!==block.fileId)return;
   if((file?.draft??source())!==block.text)return;
+  if(block.code)return editNativeCodeBlock(block,project,file);
   setSourceMode(true);
   if(sourceView.hidden)return;
   if(file&&project.activeFileId!==file.id){

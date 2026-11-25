@@ -304,7 +304,8 @@ main { padding:125px 24px 60px; overflow:auto; }
 .editor-dialog-backdrop { position:fixed; inset:0; z-index:1600; display:flex; align-items:center; justify-content:center; background:#0003; }
 .editor-dialog { width:min(380px,90vw); display:flex; flex-direction:column; gap:10px; padding:16px; border-radius:12px; background:light-dark(#fff,#29292d); box-shadow:0 10px 40px #0005; border:1px solid light-dark(#ddd,#555); }
 .editor-dialog label { font-weight:600; }
-.editor-dialog input { padding:8px; border-radius:7px; border:1px solid light-dark(#ccd0d8,#555); background:light-dark(#fff,#303035); color:inherit; }
+.editor-dialog :is(input,textarea) { padding:8px; border-radius:7px; border:1px solid light-dark(#ccd0d8,#555); background:light-dark(#fff,#303035); color:inherit; }
+.editor-dialog textarea { font-family:monospace; resize:vertical; }
 .citation-dialog select,.reference-dialog select { min-height:190px; padding:4px; border-radius:7px; border:1px solid light-dark(#ccd0d8,#555); background:light-dark(#fff,#303035); color:inherit; }
 .citation-panel { width:min(620px,94vw); max-height:88vh; overflow:auto; }
 .citation-panel-list { display:flex; flex-direction:column; gap:6px; max-height:34vh; overflow:auto; }

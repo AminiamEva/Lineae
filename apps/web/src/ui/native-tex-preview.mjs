@@ -39,6 +39,9 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
   const sourceBlockEdit=document.createElement('button');
   sourceBlockEdit.id='native-tex-edit-source-block';sourceBlockEdit.type='button';sourceBlockEdit.hidden=true;
   let availableBlocks=[],lastSourceBlocks='';
+  const labelSourceBlockEdit=()=>{sourceBlockEdit.textContent=availableBlocks[sourceBlock.selectedIndex]?.code
+    ?t('编辑代码块','Edit code block'):t('编辑源码块','Edit source block');};
+  sourceBlock.addEventListener('change',labelSourceBlockEdit);
   const targetStatus=document.createElement('p');targetStatus.setAttribute('role','status');
   const startText=document.createElement('button');
   startText.id='native-tex-start-text';startText.type='button';startText.hidden=true;
@@ -680,6 +683,7 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
       if([...sourceBlock.options].some(option=>option.value===selected))sourceBlock.value=selected;
       lastSourceBlocks=sourceBlocksKey;
     }
+    labelSourceBlockEdit();
     sourceBlock.hidden=availableBlocks.length<2;
     sourceBlockEdit.hidden=availableBlocks.length===0;
     startText.hidden=!primary||!acceptsInput()||!current()||Boolean(observation)||!canStartText?.();
@@ -713,7 +717,7 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
     tikzSelect.setAttribute('aria-label',t('TikZ 图形','TikZ drawing'));
     tikzEdit.textContent=t('编辑 TikZ','Edit TikZ');
     sourceBlock.setAttribute('aria-label',t('LaTeX 源码块','LaTeX source block'));
-    sourceBlockEdit.textContent=t('编辑源码块','Edit source block');
+    labelSourceBlockEdit();
     closeButton.textContent=t('关闭','Close');
     targetButton.textContent=t('定位公式光标（实验）','Target formula caret (experimental)');
     editButton.textContent=nativeEditing?t('退出原生输入','Leave native input'):t('原生输入（实验）','Native input (experimental)');

@@ -1463,12 +1463,17 @@ const server=createServer(async(req,res)=>{
       await page.waitForFunction(expected=>nativeProbe.source===expected,beforeListing);
       await page.keyboard.press(mod+'+Shift+z');
       await page.waitForFunction(expected=>nativeProbe.source===expected,listingSource);
-      await page.getByRole('button',{name:'Edit source block',exact:true}).click();
-      await page.locator('.cm-content').waitFor();
-      await page.keyboard.insertText('print(1)');
-      const listingEdited=listingSource.replace('[language=Python]\n\n','[language=Python]\nprint(1)\n');
+      await page.getByRole('button',{name:'Edit code block',exact:true}).click();
+      const codeDialog=page.locator('.editor-dialog');
+      await codeDialog.getByRole('textbox',{name:'Code block',exact:true}).fill('if True:\n    print("50%")');
+      await codeDialog.getByRole('button',{name:'OK',exact:true}).click();
+      const listingEdited=listingSource.replace('[language=Python]\n\n','[language=Python]\nif True:\n    print("50%")\n');
       await page.waitForFunction(expected=>nativeProbe.source===expected,listingEdited);
-      await page.locator('[data-source-mode=body]').click();
+      assert.equal(await page.locator('.cm-content').isVisible(),false);
+      await page.keyboard.press(mod+'+z');
+      await page.waitForFunction(expected=>nativeProbe.source===expected,listingSource);
+      await page.keyboard.press(mod+'+Shift+z');
+      await page.waitForFunction(expected=>nativeProbe.source===expected,listingEdited);
       const rawBlock='\\custom{Original}';
       const sourceWithRaw=workspaceSource.replace('\\begin{document}',
         '\\newcommand{\\custom}[1]{#1}\n\\begin{document}').replace('Native document.',`Before.\n\n\\newpage\n\n${rawBlock}\n\nAfter.`);
