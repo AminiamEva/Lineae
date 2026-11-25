@@ -356,16 +356,34 @@ const HistoryTable = Table.extend({
   },
 });
 function insertDefaultTable() {
-  if(nativeTexPreview?.hasNativeTextFocus?.()){
-    const table=createTable(editor.schema,2,2,false);
-    const grid=table.type.create({...table.attrs,borderMode:'grid'},table.content);
-    const latex=serialize(grid.toJSON()).trimEnd();
-    const [parsed]=importBlocks(latex);
-    return parsed?.type==='table'&&insertNativeProseBlock(editor.schema.nodeFromJSON(parsed),latex);
-  }
+  if(nativeTexPreview?.hasNativeTextFocus?.())return insertNativeTableFromProse();
   return editor.chain().focus(undefined,{scrollIntoView:false})
     .insertTable({rows:2,cols:2,withHeaderRow:false})
     .updateAttributes('table',{borderMode:'grid'}).run();
+}
+function insertNativeTableFromProse(){
+  const table=createTable(editor.schema,2,2,false);
+  const grid=table.type.create({...table.attrs,borderMode:'grid'},table.content);
+  const latex=serialize(grid.toJSON()).trimEnd();
+  const [parsed]=importBlocks(latex);
+  if(parsed?.type!=='table')return false;
+  const block=editor.schema.nodeFromJSON(parsed);
+  return canStartNativeText()?insertNativeInitialTable(block,latex):insertNativeProseBlock(block,latex);
+}
+function insertNativeInitialTable(block,latex){
+  const started=performance.now(),{state}=editor;
+  const sourceBefore=source(),fragment=projectFileKind==='tex';
+  const document=parseDocument(sourceBefore,{fragment});
+  const from=document.start.length;
+  const insert=latex.replaceAll('\n',document.eol)+(document.end?document.eol:'');
+  const draft=sourceBefore.slice(0,from)+insert+sourceBefore.slice(from);
+  const tr=state.tr.insert(0,block);
+  tr.setSelection(Selection.near(tr.doc.resolve(1),1));
+  const projected=sourceProjection(draft,tr.doc.toJSON(),{fragment});
+  if(!projected||!dispatchNativeParagraphChange(state,tr,sourceBefore,draft,{from,to:from,insert},projected))return false;
+  const project=projectExplorer?.model,path=project?.file(project.activeFileId).path;
+  focusNativeTableInsertion(draft,from,path,fragment,false,started);
+  return true;
 }
 function insertEquation() {
   if(nativeTexPreview?.hasNativeTextFocus?.())return nativeTexPreview.startFormula(true,'equation');
@@ -2206,12 +2224,13 @@ function insertNativeProseBlock(block,latex){
     const projected=sourceProjection(draft,tr.doc.toJSON(),{fragment});
     applied=Boolean(projected&&dispatchNativeParagraphChange(state,tr,source,draft,change,projected));
   }
-  if(applied&&table){
-    const firstCell=projectMixedDocument(draft,{fragment,filePath:path,splitIncludes:Boolean(target.composition)})?.paragraphs
-      .find(({tableCell})=>tableCell?.from16===from+prefix.length);
-    if(firstCell)nativeTexPreview.preserveSourceCaret({source:draft,path,offset:firstCell.from16},started,'text');
-  }
+  if(applied&&table)focusNativeTableInsertion(draft,from+prefix.length,path,fragment,Boolean(target.composition),started);
   return applied;
+}
+function focusNativeTableInsertion(source,from,path,fragment,splitIncludes,started){
+  const firstCell=projectMixedDocument(source,{fragment,filePath:path,splitIncludes})?.paragraphs
+    .find(({tableCell})=>tableCell?.from16===from);
+  if(firstCell)nativeTexPreview.preserveSourceCaret({source,path,offset:firstCell.from16},started,'text');
 }
 function completionActions() {
   if(completionNative==='math')return {
@@ -2221,11 +2240,13 @@ function completionActions() {
     label:editFormulaLabel,
   };
   if(completionNative==='text'){
-    const actions={chapter:structureCommands.chapter,section:structureCommands.section,
-      subsection:structureCommands.subsection,subsubsection:structureCommands.subsubsection,
+    const actions={
+      chapter:()=>runNativeTextStructure('setHeading',{level:1,command:'chapter'}),
+      ...Object.fromEntries(['section','subsection','subsubsection'].map((command,index)=>
+        [command,()=>runNativeTextStructure('setHeading',{level:index+1,command})])),
       appendix:structureCommands.appendix,title:structureCommands.title,
       author:structureCommands.author,date:structureCommands.date,
-      newpage:insertNativePageBreak};
+      table:insertNativeTableFromProse,tabular:insertNativeTableFromProse,newpage:insertNativePageBreak};
     if(projectExplorer?.active){actions.input=structureCommands.input;actions.include=structureCommands.include;}
     const input=completionField;
     return Object.fromEntries(Object.entries(actions).map(([name,action])=>[name,async()=>{
@@ -2814,7 +2835,7 @@ const nativeTypingCommands=new Map([
 ]);
 const nativeTypingMarks=new Set(nativeTypingCommands.values());
 const nativeRangeCommands=new Set([...nativeTypingCommands.keys(),'toggleStrike','clearFormatting']);
-const nativeSelectionCommands=new Set([...nativeRangeCommands,'toggleContextMarker','insertTable']);
+const nativeSelectionCommands=new Set([...nativeRangeCommands,'toggleContextMarker']);
 const nativeTextStructures={
   paragraph:['setParagraph'],section:['toggleHeading',{level:1,command:null}],
   subsection:['toggleHeading',{level:2,command:null}],subsubsection:['toggleHeading',{level:3,command:null}],
@@ -2828,6 +2849,7 @@ function nativeParagraphFormattingActive(){
   return nativeTexPreview?.hasNativeTextFocus?.()||nativeWorkspaceRequested()&&nativeTexPreview?.verifiedTextRange?.();
 }
 function runNativeTextCommand(command,context,event){
+  if(command==='insertTable')return insertNativeTableFromProse();
   if(Object.hasOwn(nativeTextStructures,command))return runNativeTextStructure(...nativeTextStructures[command]);
   const range=nativeTexPreview.verifiedTextRange?.();
   const caret=range?.[0];

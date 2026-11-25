@@ -753,8 +753,17 @@ const server=createServer(async(req,res)=>{
       const prosePalette=page.getByRole('dialog',{name:'LaTeX completion',exact:true});
       await prosePalette.getByRole('textbox',{name:'LaTeX command',exact:true}).fill('newpage');
       await page.keyboard.press('Enter');
-      await page.waitForFunction(expected=>nativeProbe.source===expected,pagedProse.replace('Beta','\\newpage\n\nBeta'));
+      const pageBreakSource=pagedProse.replace('Beta','\\newpage\n\nBeta');
+      await page.waitForFunction(expected=>nativeProbe.source===expected,pageBreakSource);
       assert.equal(await page.locator('.ProseMirror [data-page-break]').count(),1);
+      await panel.getByText('Click text on the native page',{exact:false}).waitFor();
+      await canvas.click({position:{x:6550000*scale,y:9250000*scale}});
+      await page.keyboard.press('Backslash');
+      await prosePalette.getByRole('textbox',{name:'LaTeX command',exact:true}).fill('section');
+      await page.keyboard.press('Enter');
+      await page.waitForFunction(expected=>nativeProbe.source===expected,pageBreakSource.replace('Alpha','\\section{Alpha}'));
+      await page.keyboard.press(mod+'+z');
+      await page.waitForFunction(expected=>nativeProbe.source===expected,pageBreakSource);
       await panel.getByText('Click text on the native page',{exact:false}).waitFor();
       await canvas.click({position:{x:6550000*scale,y:9250000*scale}});
       await page.keyboard.press('Backslash');
@@ -1074,6 +1083,13 @@ const server=createServer(async(req,res)=>{
       await page.waitForFunction(expected=>nativeProbe.source===expected,initialFormula.replace('\\]','\\]\n\nX'));
       await page.keyboard.press(mod+'+z');
       await page.waitForFunction(expected=>nativeProbe.source===expected,initialFormula);
+      await page.keyboard.press(mod+'+z');
+      await page.waitForFunction(expected=>nativeProbe.source===expected,blank);
+      await page.getByRole('button',{name:'Start typing',exact:true}).click();
+      await page.keyboard.press(mod+'+Shift+6');
+      await page.waitForFunction(original=>nativeProbe.source
+        ?.replace(/\\begin\{tabular\}\{\|l\|l\|\}[\s\S]*?\\end\{tabular\}\n/,'')===original&&
+        document.querySelector('.environment-tag')?.textContent.endsWith('Row 1, column 1'),blank);
       await page.keyboard.press(mod+'+z');
       await page.waitForFunction(expected=>nativeProbe.source===expected,blank);
       await page.getByRole('button',{name:'Start typing',exact:true}).click();

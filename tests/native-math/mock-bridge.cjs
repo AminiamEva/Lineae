@@ -153,15 +153,15 @@ module.exports=function installMockNativeTex() {
         return observed;
       }
       const proseTags=[...textTags(input),...(p.targetInclude&&p.includeMainText?textTags(args.projection):[])];
+      const emptyFields=[...input.matchAll(emptyCells)].map(([,owner],index)=>{
+        const x=6500000+index*1000000;
+        return {owner:Number(owner),role:'math',empty:true,bbox:[x,10500000,x,10500000]};
+      });
       if(!match&&!script&&!cellOwner){
         const text=proseTags;
-        const fields=[...input.matchAll(emptyCells)].map(([,owner],index)=>{
-          const x=6500000+index*1000000;
-          return {owner:Number(owner),role:'math',empty:true,bbox:[x,10500000,x,10500000]};
-        });
-        if((!text.length&&!fields.length)||args.sourceRevision!==p.revision)throw new Error('Unexpected formula observation request');
+        if((!text.length&&!emptyFields.length)||args.sourceRevision!==p.revision)throw new Error('Unexpected formula observation request');
         const observed=p.layout().pages_changed;
-        observed[0].dl.math_owners={fields,glyphs:[]};
+        observed[0].dl.math_owners={fields:emptyFields,glyphs:[]};
         let x=6500000;
         for(const [,owner,char] of text){
           observed[0].dl.math_owners.glyphs.push({owner:Number(owner),char:char.codePointAt(0),
@@ -174,7 +174,7 @@ module.exports=function installMockNativeTex() {
       const observed=p.layout().pages_changed;
       const denominator=/\\frac\{[^{}]*\}\{(?:\\attribute65000=(\d+) )?([^{}]*)\}/.exec(mathInput);
       observed[0].dl.math_owners={fields:[{owner:Number(match?.[1]??script?.[1]??cellOwner),role:match?(match[2]==='frac'?'den':'radicand'):script?'sup':'cell',
-        bbox:[6500000,7000000,6500000,7000000],empty:match?denominator?.[2]==='':true}],glyphs:[]};
+        bbox:[6500000,7000000,6500000,7000000],empty:match?denominator?.[2]==='':true},...emptyFields],glyphs:[]};
       if(match&&denominator){
         let x=6500000;
         for(const char of denominator[2]??''){

@@ -1214,7 +1214,10 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
     focusedCaret:()=>document.activeElement===input&&nativeEditing&&acceptsInput()?nativeDocument.surface.caret:null,
     verifiedCaret:()=>document.activeElement===input&&nativeEditing&&acceptsInput()&&current()&&observation&&!pendingEdit
       ?nativeDocument.surface.caret:null,
-    preserveSourceCaret:(position,started,kind)=>awaitSourcePosition(position,started,kind==='math'),
+    preserveSourceCaret(position,started,kind){
+      draftInput=null;
+      return awaitSourcePosition(position,started,kind==='math');
+    },
     verifiedTextRange(){
       if(!acceptsInput()||!nativeEditing||!current()||!observation||pendingEdit)return null;
       const [from,to]=nativeDocument.surface.range;
