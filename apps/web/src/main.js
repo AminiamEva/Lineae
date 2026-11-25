@@ -379,14 +379,20 @@ function insertNativeInitialBlock(block,latex){
   const document=parseDocument(sourceBefore,{fragment});
   const from=document.start.length;
   const insert=latex.replaceAll('\n',document.eol)+(document.end?document.eol:'');
-  const draft=sourceBefore.slice(0,from)+insert+sourceBefore.slice(from);
+  let draft=sourceBefore.slice(0,from)+insert+sourceBefore.slice(from),change={from,to:from,insert};
+  const dependency=nativePackagePatch(sourceBefore,latex);
+  if(dependency===false)return false;
+  if(dependency){
+    draft=draft.slice(0,dependency.from)+dependency.insert+draft.slice(dependency.to);
+    [change]=textPatch(sourceBefore,draft);
+  }
   const tr=state.tr.insert(0,block);
   const table=block.type.name==='table';
   tr.setSelection(Selection.near(tr.doc.resolve(table?1:block.nodeSize),1));
   const projected=sourceProjection(draft,tr.doc.toJSON(),{fragment});
-  if(!projected||!dispatchNativeParagraphChange(state,tr,sourceBefore,draft,{from,to:from,insert},projected))return false;
+  if(!projected||!dispatchNativeParagraphChange(state,tr,sourceBefore,draft,change,projected))return false;
   const project=projectExplorer?.model,path=project?.file(project.activeFileId).path;
-  if(table)focusNativeTableInsertion(draft,from,path,fragment,false,started);
+  if(table)focusNativeTableInsertion(draft,from+(dependency?.delta??0),path,fragment,false,started);
   return true;
 }
 function insertEquation() {
@@ -2220,21 +2226,36 @@ function insertNativeProseBlock(block,latex){
   const to=collapsed?from:right.size?last.docOffset:blockEnd;
   const prefix=left.size?eol+eol:'';
   const insert=prefix+latex.replaceAll('\n',eol)+(right.size?eol+eol:'');
-  const draft=source.slice(0,from)+insert+source.slice(to);
-  const change={from,to,insert};
+  let draft=source.slice(0,from)+insert+source.slice(to),shift=0,change={from,to,insert};
+  const rootId=target.composition?.rootId;
+  const root=rootId&&rootId!==target.file.id?target.project.file(rootId).draft:source;
+  const dependency=nativePackagePatch(root,latex);
+  if(dependency===false)return false;
   let applied;
   if(target.composition){
-    applied=dispatchNativeProjectChange(state,tr,target.project,new Map([[target.file.id,draft]]));
+    const drafts=new Map([[target.file.id,draft]]);
+    if(dependency){
+      const previous=drafts.get(rootId)??root;
+      const updated=previous.slice(0,dependency.from)+dependency.insert+previous.slice(dependency.to);
+      drafts.set(rootId,updated);
+      if(rootId===target.file.id){draft=updated;shift=dependency.delta;}
+    }
+    applied=dispatchNativeProjectChange(state,tr,target.project,drafts);
   }else{
     const owner=projection?.blocks.find(entry=>entry.index===target.range.match.index&&entry.count===1&&
       entry.from<=from&&entry.to>=to);
     if(!owner)return false;
     const revised=importBlocks(draft.slice(owner.from,owner.to+draft.length-source.length));
     if(revised.length!==nodes.length||revised.some((value,index)=>!state.schema.nodeFromJSON(value).eq(nodes[index])))return false;
+    if(dependency){
+      shift=dependency.delta;
+      draft=draft.slice(0,dependency.from)+dependency.insert+draft.slice(dependency.to);
+      [change]=textPatch(source,draft);
+    }
     const projected=sourceProjection(draft,tr.doc.toJSON(),{fragment});
     applied=Boolean(projected&&dispatchNativeParagraphChange(state,tr,source,draft,change,projected));
   }
-  if(applied&&table)focusNativeTableInsertion(draft,from+prefix.length,path,fragment,Boolean(target.composition),started);
+  if(applied&&table)focusNativeTableInsertion(draft,from+prefix.length+shift,path,fragment,Boolean(target.composition),started);
   return applied;
 }
 function focusNativeTableInsertion(source,from,path,fragment,splitIncludes,started){
@@ -2263,6 +2284,7 @@ function completionActions() {
       hrule:()=>insertNativeDirective('horizontalRule'),
       toc:()=>insertNativeDirective('tableOfContents'),
       tableofcontents:()=>insertNativeDirective('tableOfContents'),
+      lstlisting:editCodeBlockLanguage,
       title:structureCommands.title,
       author:structureCommands.author,date:structureCommands.date,
       table:insertNativeTableFromProse,tabular:insertNativeTableFromProse,newpage:insertNativePageBreak};
@@ -3069,16 +3091,16 @@ function commitNativeMarkedText(paragraph,patch,target,marks){
     const drafts=new Map([[file.id,draft]]);
     if(dependency){
       const before=rootId===file.id?draft:root;
-      const rootDraft=before.slice(0,dependency.from)+dependency.insert+before.slice(dependency.from);
+      const rootDraft=before.slice(0,dependency.from)+dependency.insert+before.slice(dependency.to);
       drafts.set(rootId,rootDraft);
-      if(rootId===file.id){draft=rootDraft;offset+=dependency.insert.length;}
+      if(rootId===file.id){draft=rootDraft;offset+=dependency.delta;}
     }
     return dispatchNativeProjectChange(state,tr,project,drafts)?{source:draft,offset,path}:null;
   }
   if(!dependency)return dispatchVerifiedNativeProse(state,tr,source,draft,change,range.match.index)?{source:draft,offset,path}:null;
   if(!matchesNativeProseBlock(state,tr,source,draft,change,range.match.index))return null;
-  draft=draft.slice(0,dependency.from)+dependency.insert+draft.slice(dependency.from);
-  offset+=dependency.insert.length;
+  draft=draft.slice(0,dependency.from)+dependency.insert+draft.slice(dependency.to);
+  offset+=dependency.delta;
   const [combined]=textPatch(source,draft);
   const projected=sourceProjection(draft,tr.doc.toJSON(),{fragment});
   return projected&&dispatchNativeParagraphChange(state,tr,source,draft,combined,projected)?{source:draft,offset,path}:null;
@@ -3113,10 +3135,10 @@ function runNativeTextStructure(command,...args){
     ({from,to}=textPatch(source,draft)[0]);
     if(dependency){
       const amended=rootId===file.id?draft:root;
-      const rootDraft=amended.slice(0,dependency.from)+dependency.insert+amended.slice(dependency.from);
+      const rootDraft=amended.slice(0,dependency.from)+dependency.insert+amended.slice(dependency.to);
       const drafts=new Map([[file.id,draft],[rootId,rootDraft]]);
       if(!dispatchNativeProjectChange(state,tr,project,drafts))return false;
-      if(rootId===file.id){draft=rootDraft;shift=dependency.insert.length;}
+      if(rootId===file.id){draft=rootDraft;shift=dependency.delta;}
     }else editor.view.dispatch(closeHistory(tr));
     if(editor.state.doc===state.doc)return false;
   }else {
@@ -3129,9 +3151,9 @@ function runNativeTextStructure(command,...args){
     draft=source.slice(0,change.from)+change.insert+source.slice(change.to);
     ({from,to}=change);
     if(dependency){
-      shift=dependency.insert.length;
-      draft=draft.slice(0,dependency.from)+dependency.insert+draft.slice(dependency.from);
-      change={from:dependency.from,to,insert:dependency.insert+source.slice(dependency.from,from)+change.insert};
+      shift=dependency.delta;
+      draft=draft.slice(0,dependency.from)+dependency.insert+draft.slice(dependency.to);
+      change={from:dependency.from,to,insert:dependency.insert+source.slice(dependency.to,from)+change.insert};
     }
     const projected=sourceProjection(draft,tr.doc.toJSON(),{fragment});
     if(!projected||!dispatchNativeParagraphChange(state,tr,source,draft,change,projected))return false;
@@ -3174,11 +3196,18 @@ function addNativeTableAxis(axis){
 }
 function nativePackagePatch(root,body){
   const {start,eol}=parseDocument(root,{fragment:true});
-  const required=[...resolvePackages(start,body).map(({name})=>'\\usepackage{'+name+'}'),
+  const packages=resolvePackages(start,body);
+  const early=packages.filter(rule=>rule.beforeClass).map(({name})=>'\\RequirePackage{'+name+'}');
+  const required=[...packages.filter(rule=>!rule.beforeClass).map(({name})=>'\\usepackage{'+name+'}'),
     ...resolveTheoremDeclarations(start,body)];
-  if(!required.length)return null;
-  const from=start.lastIndexOf('\\begin{document}');
-  return from<0?false:{from,insert:required.join(eol)+eol};
+  if(!early.length&&!required.length)return null;
+  const begin=start.lastIndexOf('\\begin{document}');
+  if(begin<0)return false;
+  const classStart=early.length?start.search(/^[ \t]*\\documentclass\b/m):begin;
+  if(classStart<0)return false;
+  const from=early.length?classStart:begin,to=required.length?begin:classStart;
+  const first=early.length?early.join(eol)+eol:'',last=required.length?required.join(eol)+eol:'';
+  return {from,to,insert:first+start.slice(from,to)+last,delta:first.length+last.length};
 }
 function editNativeTable(operation){
   const started=performance.now();
@@ -3265,10 +3294,10 @@ function editNativeTable(operation){
   const dependency=requiresMultirow&&nativePackagePatch(root,'\\multirow');
   if(requiresMultirow&&dependency===false)return false;
   if(dependency&&(!rootId||rootId===file.id)){
-    const {from,insert}=dependency;
-    draft=draft.slice(0,from)+insert+draft.slice(from);
-    offset+=insert.length;
-    change={from,to:change.to,insert:insert+owner.source.slice(from,change.from)+change.insert};
+    const {from,to,insert,delta}=dependency;
+    draft=draft.slice(0,from)+insert+draft.slice(to);
+    offset+=delta;
+    change={from,to:change.to,insert:insert+owner.source.slice(to,change.from)+change.insert};
   }
   const restoreCaret=()=>{
     if(!deleting)return nativeTexPreview.preserveSourceCaret({source:draft,offset,path:owner.filePath},started,caret.kind);
@@ -3282,8 +3311,8 @@ function editNativeTable(operation){
     if(dependency){
       const drafts=new Map([[file.id,draft]]);
       if(rootId!==file.id){
-        const {from,insert}=dependency;
-        drafts.set(rootId,root.slice(0,from)+insert+root.slice(from));
+        const {from,to,insert}=dependency;
+        drafts.set(rootId,root.slice(0,from)+insert+root.slice(to));
       }
       return dispatchNativeProjectChange(state,tr,project,drafts)&&restoreCaret();
     }
@@ -3392,6 +3421,15 @@ function nativeSourceBlocks(){
     if(text.slice(from,to)!==raw)return;
     const label=raw.split(/\r?\n/,1)[0].slice(0,64);
     results.push({path,fileId,text,from,to,label:label===raw?label:`${label}…`});
+  });
+  forEachNativeDocumentBlock('codeBlock',(node,_position,block,path,text,base,fileId)=>{
+    if(block?.count!==1||typeof text!=='string'||text.slice(base+block.from,base+block.to)!==block.raw)return;
+    const start=/^\s*(\\begin\{lstlisting\}(?:\[language=[A-Za-z0-9+_-]+\])?)\r?\n/.exec(block.raw);
+    const end=/\r?\n\\end\{lstlisting\}\s*$/.exec(block.raw);
+    if(!start||!end||end.index<start[0].length)return;
+    const from=base+block.from+start[0].length,to=base+block.from+end.index;
+    if(text.slice(from,to)!==node.textContent)return;
+    results.push({path,fileId,text,from,to,label:start[1]});
   });
   return results;
 }
@@ -4835,12 +4873,20 @@ groupButton(insert,['分页','New page'],()=>nativeTexPreview.hasNativeTextFocus
   editor.chain().focus().insertContent({type:'pageBreak'}).run());
 groupButton(insert,['图片','Image'],()=>insertLocalImage(editor));
 groupButton(insert,['子图','Subfigure'],()=>insertSubfigures(editor));
-const codeLanguageButton=groupButton(insert,['代码块','Code block'],async()=>{
+const codeLanguageButton=groupButton(insert,['代码块','Code block'],editCodeBlockLanguage);
+async function editCodeBlockLanguage(){
+  const native=nativeParagraphFormattingActive();
   const language=await askText(t('代码语言，例如 Python、Java 或 C++','Code language, e.g. Python, Java or C++'),editor.getAttributes('codeBlock').language??'');
   if(language===null || (language && !/^[A-Za-z0-9+_-]+$/.test(language))) return;
+  if(native){
+    const block=editor.schema.nodes.codeBlock.create({language:language||null});
+    const result=insertNativeDocumentBlock(block,serialize(block.toJSON()).trimEnd());
+    if(result)nativeTexPreview.refocusTextInput();
+    return result;
+  }
   if(editor.isActive('codeBlock')) editor.chain().focus().updateAttributes('codeBlock',{language:language||null}).run();
   else editor.chain().focus().setCodeBlock({language:language||null}).run();
-});
+}
 groupButton(insert,['CircuiTikZ','CircuiTikZ'],()=>{
   try{
     const editorEl=document.querySelector('.document-page .ProseMirror');

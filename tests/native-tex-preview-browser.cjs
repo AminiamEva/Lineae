@@ -1127,7 +1127,7 @@ const server=createServer(async(req,res)=>{
       await revealToolbar(page);
       await page.locator('[data-group=home]').click();
       await page.locator('[data-format-attribute=fontSize]').selectOption('16pt');
-      const resized=workspaceSource.replace('Native document.','{\\fontsize{16}{20}\\selectfont Native document.}');
+      const resized='\\RequirePackage{fix-cm}\n'+workspaceSource.replace('Native document.','{\\fontsize{16}{20}\\selectfont Native document.}');
       await page.waitForFunction(expected=>nativeProbe.source===expected,resized);
       await page.keyboard.press(mod+'+z');
       await page.waitForFunction(expected=>nativeProbe.source===expected,workspaceSource);
@@ -1183,6 +1183,28 @@ const server=createServer(async(req,res)=>{
       await panel.getByText('Click text on the native page',{exact:false}).waitFor();
       assert.equal(await page.evaluate(()=>nativeProbe.calls.filter(call=>call.command==='native_tex_open').length),openedSessions);
       assert.equal(await page.evaluate(()=>customElements.get('math-field')),undefined);
+      const bodyText='SHXNative document.';
+      const beforeListing=workspaceSource.replace('Native document.',bodyText);
+      await canvas.click({position:{x:6550000*scale,y:9250000*scale}});
+      await page.keyboard.press('Backslash');
+      await page.getByRole('textbox',{name:'LaTeX command',exact:true}).fill('lstlisting');
+      await page.keyboard.press('Enter');
+      await page.locator('.editor-dialog input').fill('Python');
+      await page.locator('.editor-dialog').getByRole('button',{name:'OK',exact:true}).click();
+      const emptyListing='\\begin{lstlisting}[language=Python]\n\n\\end{lstlisting}';
+      const listingSource=beforeListing.replace(bodyText,emptyListing+'\n\n'+bodyText)
+        .replace('\\begin{document}','\\usepackage{listings}\n\\begin{document}');
+      await page.waitForFunction(expected=>nativeProbe.source===expected,listingSource);
+      await page.keyboard.press(mod+'+z');
+      await page.waitForFunction(expected=>nativeProbe.source===expected,beforeListing);
+      await page.keyboard.press(mod+'+Shift+z');
+      await page.waitForFunction(expected=>nativeProbe.source===expected,listingSource);
+      await page.getByRole('button',{name:'Edit source block',exact:true}).click();
+      await page.locator('.cm-content').waitFor();
+      await page.keyboard.insertText('print(1)');
+      const listingEdited=listingSource.replace('[language=Python]\n\n','[language=Python]\nprint(1)\n');
+      await page.waitForFunction(expected=>nativeProbe.source===expected,listingEdited);
+      await page.locator('[data-source-mode=body]').click();
       const rawBlock='\\custom{Original}';
       const sourceWithRaw=workspaceSource.replace('\\begin{document}',
         '\\newcommand{\\custom}[1]{#1}\n\\begin{document}').replace('Native document.',`Before.\n\n${rawBlock}\n\nAfter.`);
