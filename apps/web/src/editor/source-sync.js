@@ -212,7 +212,6 @@ function plainTableChanges(block,nodes) {
   const previous=JSON.parse(block.snapshot);
   const [before]=previous,[after]=nodes;
   if(before?.type!=='table'||after?.type!=='table'||nodes.length!==previous.length)return null;
-  if(before.attrs?.caption||before.attrs?.tblr||before.attrs?.tabularx)return null;
   const cells=tableCellRanges(block.raw);
   if(!cells)return null;
   const restored=structuredClone(nodes);

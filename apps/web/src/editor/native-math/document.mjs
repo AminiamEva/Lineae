@@ -35,8 +35,9 @@ export function projectDocumentFormulas(source,{fragment=false,firstTag=1,filePa
   const tokens=[...sourceStructure(body)];
   if(tokens.some(token=>token.kind==='invalid'))return null;
   const tableCells=new Map(tokens.flatMap(token=>{
-    if(!token.topLevel||token.kind!=='begin'||token.value!=='\\begin{tabular}')return [];
-    const close=environmentEnd(body,token.index,'tabular');
+    const table=token.topLevel&&token.kind==='begin'&&/^\\begin\{(tabular|tblr|tabularx|table\*?)\}$/.exec(token.value)?.[1];
+    if(!table)return [];
+    const close=environmentEnd(body,token.index,table);
     if(!close)return [];
     return (tableCellRanges(body.slice(token.index,close.end))??[]).map(cell=>
       [token.index+cell.offset,token.index+cell.offset+cell.text.length]);

@@ -1,5 +1,9 @@
 import {parseTable,splitCells} from '../../../latex/tables.mjs';
 import {placeRow,readGroup} from '../../../latex/table-spans.mjs';
+import {parseTblr,environmentEnd} from '../../../latex/tblr.mjs';
+import {parseTabularx} from '../../../latex/tabularx.mjs';
+import {parseTableFloat} from '../../../latex/table-floats.mjs';
+import {sourceStructure} from '../../../latex/source-structure.mjs';
 
 function contentRange(part,offset) {
   let text=part.trim();
@@ -18,6 +22,23 @@ function contentRange(part,offset) {
 // Reuse the importer's span placement so skipped multirow placeholders do
 // not shift ProseMirror cell indexes. Only edit text inside known wrappers.
 export function tableCellRanges(block) {
+  const structured=parseTblr(block)??parseTabularx(block);
+  if(structured){
+    const cells=structured.rows.flatMap((row,rowIndex)=>row.map((cell,column)=>
+      ({row:rowIndex,column,text:cell.text,offset:cell.from})));
+    return cells.every(cell=>Number.isInteger(cell.offset)&&cell.offset>=0&&
+      block.slice(cell.offset,cell.offset+cell.text.length)===cell.text)?cells:null;
+  }
+  const floating=parseTableFloat(block);
+  if(floating){
+    const starts=[...sourceStructure(floating.body)].filter(token=>token.topLevel&&token.kind==='begin');
+    const start=starts[0];
+    const name=starts.length===1&&/^\\begin\{(tabular|tabularx|tblr)\}$/.exec(start.value)?.[1];
+    const end=name&&environmentEnd(floating.body,start.index,name);
+    if(!end)return null;
+    const cells=tableCellRanges(floating.body.slice(start.index,end.end));
+    return cells?.map(cell=>({...cell,offset:cell.offset+floating.open.length+start.index}))??null;
+  }
   const leading=block.length-block.trimStart().length;
   const raw=block.trim(),begin='\\begin{tabular}';
   if(!raw.startsWith(begin))return null;

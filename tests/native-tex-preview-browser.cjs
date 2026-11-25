@@ -215,7 +215,9 @@ const server=createServer(async(req,res)=>{
       await page.keyboard.press(mod+'+e');await page.keyboard.press('Shift+r');
       await page.waitForFunction(()=>document.querySelectorAll('.ProseMirror table tr').length===3);
       await page.locator('#native-tex-close').click();
-      const tableWithMath=tableSource.replace('Two','$\\frac{a}{}$');
+      const tableWithMath=tableSource.replace('\\begin{document}','\\usepackage{tabularx}\n\\begin{document}')
+        .replace('\\begin{tabular}{ll}','\\begin{tabularx}{\\textwidth}{lX}')
+        .replace('\\end{tabular}','\\end{tabularx}').replace('Two','$\\frac{a}{}$');
       await page.locator('input#file').setInputFiles({name:'mixed-table.tex',mimeType:'text/plain',buffer:Buffer.from(tableWithMath)});
       await page.locator('#native-tex-toggle').click();
       await page.waitForFunction(()=>document.querySelector('#native-tex-preview').dataset.state==='current');

@@ -580,6 +580,16 @@ test('native table projection includes plain and empty cells beside protected ce
   assert.equal(source[mixed.formulas[0].from16],'x');
 });
 
+test('native table geometry keeps complex float declarations out of editable cell ranges',()=>{
+  const source='\\begin{document}\n\\begin{table}[ht]\n\\caption{Keep}\n'+
+    '\\begin{tabularx}{\\textwidth}{lX}\nLeft & $\\frac{a}{}$\n\\end{tabularx}\n\\end{table}\n\\end{document}\n';
+  const mixed=projectMixedDocument(source);
+  const [paragraph]=mixed.paragraphs;
+  assert.deepEqual([paragraph.text,paragraph.from16],['Left',source.indexOf('Left')]);
+  assert.ok(mixed.projection.includes('\\caption{Keep}'));
+  assert.equal(mixed.formulas[0].math.source,'\\frac{a}{}');
+});
+
 test('native tab visits unfilled fields in source order without leaving the formula',()=>{
   const {projection,numerator,denominator}=setup(source.replace('{a}','{}'));
   const surface=createMathSurface({resolve:endpoint=>nativeTarget(projection,endpoint)});

@@ -192,6 +192,24 @@ test('plain cell writeback leaves a neighboring inline formula and its spelling 
   ]);
 });
 
+test('complex table cell edits preserve float captions and column declarations',()=>{
+  for(const [open,close] of [
+    ['\\begin{tblr}{colspec={ll},row{1}={font=\\bfseries}}','\\end{tblr}'],
+    ['\\begin{tabularx}{\\textwidth}{p{3cm}X}','\\end{tabularx}'],
+  ]){
+    const source=wrap('\\begin{table}[ht]\r\n\\caption{A caption}\r\n'+open+'\r\nLeft & $x$\r\n'+close+'\r\n\\end{table}');
+    const original={type:'doc',content:parseDocument(source).blocks.flatMap(importBlocks)};
+    assert.equal(original.content[0].type,'table');
+    const edited=structuredClone(original);
+    edited.content[0].content[0].content[0].content[0].content[0].text='XLeft';
+    edited.content[0].content[0].content[1].content[0].content[0].attrs.latex='y';
+    const projection=sourceProjection(source,original),at=source.indexOf('Left'),math=source.indexOf('$x$')+1;
+    const expected=[{from:at,to:at,insert:'X'},{from:math,to:math+1,insert:'y'}];
+    assert.deepEqual(richSourceChanges(projection,edited),expected);
+    assert.deepEqual(standaloneMathChanges(projection,edited),expected);
+  }
+});
+
 test('inline math edits preserve repeated formula delimiters and untouched prose',()=>{
   const source=wrap('Text with  $ x $ and \\(x\\).\r\n');
   const original={type:'doc',content:parseDocument(source).blocks.flatMap(importBlocks)};
