@@ -874,6 +874,13 @@ const server=createServer(async(req,res)=>{
       await projectDrafts(containerProject,proofChild);
       await page.keyboard.press(mod+'+Shift+z');
       await projectDrafts(updatedParent,updatedProof);
+      await panel.getByText('Click text on the native page',{exact:false}).waitFor();
+      await revealToolbar(page);await page.locator('[data-group=reference]').click();
+      await page.locator('.floating-toolbar').getByRole('button',{name:'Outline',exact:true}).click();
+      await page.locator('#document-outline [data-outline-file="chapters/one.tex"]').click();
+      await page.waitForFunction(()=>document.activeElement?.id==='native-tex-input');
+      await page.keyboard.type('X');
+      await projectDrafts(updatedParent,updatedProof.replace('Child.','XChild.'));
 
       await page.goto('http://127.0.0.1:'+server.address().port+'/?native-workspace=1',{waitUntil:'networkidle'});
       const workspaceSource='\\documentclass{article}\n\\begin{document}\nNative document.\n\\end{document}\n';
@@ -1835,7 +1842,7 @@ const server=createServer(async(req,res)=>{
     await page.getByText('Click text on the native page',{exact:false}).waitFor();
     await revealToolbar(page);
     await page.locator('[data-group=reference]').click();
-    await page.getByRole('button',{name:'Outline',exact:true}).click();
+    await page.locator('.floating-toolbar').getByRole('button',{name:'Outline',exact:true}).click();
     await page.locator('#document-outline [data-heading-position]').last().click();
     await page.waitForFunction(()=>document.activeElement?.id==='native-tex-input');
     await page.keyboard.type('X');

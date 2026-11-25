@@ -61,6 +61,8 @@ export function createOutlinePanel(editor,{readOutline,navigate}) {
       file.textContent = node.attrs.path;
       file.dataset.outlineFile = node.attrs.path;
       file.addEventListener('click',() => {
+        const request=new CustomEvent('lineae-outline-file-navigate',{cancelable:true,detail:{position:offset}});
+        if(!panel.dispatchEvent(request))return;
         editor.commands.setTextSelection(offset + 2);
         editor.commands.scrollIntoView();
         revealBelowToolbar(editor,offset);

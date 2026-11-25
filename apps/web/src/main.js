@@ -3854,8 +3854,19 @@ documentOutline.panel.addEventListener('lineae-outline-navigate',event=>{
   const path=region?.path??project?.file(project.activeFileId)?.path;
   const text=region?composition.sources.get(region.id):projected.text;
   const base=region?.from??0;
-  if(nativeTexPreview.navigateOutline?.({path,source:text,heading:heading.name,from:base+block.from,to:base+block.to}))
+  const trail=region?doc.child(resolved.index(0)).attrs.trail:undefined;
+  if(nativeTexPreview.navigateOutline?.({path,trail,source:text,heading:heading.name,from:base+block.from,to:base+block.to}))
     event.preventDefault();
+});
+documentOutline.panel.addEventListener('lineae-outline-file-navigate',event=>{
+  if(!sourceView.hidden)return;
+  const {position}=event.detail,{doc}=editor.state;
+  const node=doc.nodeAt(position),composition=projectDocument.composition;
+  if(!composition||node?.type.name!=='projectRegion')return;
+  const region=composition.regions[doc.resolve(position).index(0)];
+  if(!region||region.path!==node.attrs.path)return;
+  if(nativeTexPreview.navigateOutline?.({path:region.path,trail:node.attrs.trail,
+    source:composition.sources.get(region.id),from:region.from,to:region.to}))event.preventDefault();
 });
 installProjectNavigation({outline:documentOutline.panel,paper,sourceView,editor,getProjection:()=>projection,appendInclude,editIncludeSource});
 const projectWorkspace=new ProjectWorkspaceState();

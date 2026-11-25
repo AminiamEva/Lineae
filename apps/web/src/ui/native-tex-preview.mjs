@@ -135,8 +135,10 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
   }
   function selectOutlineTarget(address){
     if(!nativeEditing||!acceptsInput()||!current()||!observation||pendingEdit)return false;
-    if((foldedFiles?.()??[]).includes(address.path))
-      document.dispatchEvent(new CustomEvent('lineae-toggle-project-file',{detail:{path:address.path}}));
+    const containing=new Set([...(address.trail??[]),address.path]);
+    for(const path of foldedFiles?.()??[]){
+      if(containing.has(path))document.dispatchEvent(new CustomEvent('lineae-toggle-project-file',{detail:{path}}));
+    }
     if(!nativeDocument.selectRegion(address))return false;
     cancelDraftInput();
     paintSurfaceSelection(true);
