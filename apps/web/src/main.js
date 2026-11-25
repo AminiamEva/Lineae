@@ -2923,7 +2923,7 @@ function editNativeTableAxis(operation){
     return table?.type==='table'&&!rest.length&&Boolean(table.attrs.tabularx)===Boolean(node.attrs.tabularx)
       ?state.schema.nodeFromJSON(table):null;
   };
-  if(!decode(original)?.eq(node))return false;
+  if(node.attrs.tabularx?serialize(node.toJSON())!==original:!decode(original)?.eq(node))return false;
   const deleting=operation.startsWith('delete');
   const patch={
     insertRow:()=>insertTableSourceRow(original,cell.row),
