@@ -113,7 +113,7 @@ The actual folder picker and physical Linux IME still need device checks.
 
 For physical input review, the workflow's optional `desktop_input_probe`
 retains the unbundled debug executables from the same commit. The three-platform
-[full software run](https://github.com/AminiamEva/Lineae/actions/runs/45702308052)
+[full software run](https://github.com/AminiamEva/Lineae/actions/runs/45709683498)
 includes these executables and the recorded LuaLaTeX geometry. Launch an
 executable with `--lineae-native-workspace` on the device under test. This
 opens the engine-off workspace with the normal TeX trust dialog. The
@@ -137,6 +137,9 @@ on the legacy path and record cold startup separately from warm edits.
    between prose endpoints. It verifies the rebuilt document against the source
    drafts and records both drafts in the same undo step. Covered endpoints
    include nested lists, a proof, and the edge of a numbered or starred heading.
+   Within a file, a prose selection can also start or end with a complete
+   display formula. The browser verifies copying, deletion and undo when that
+   formula is at the start of a page.
    Tables, scopes spanning two copies of the same input, and partially selected
    formula structures still need coverage.
 3. Automated composition proves commit-once and cancellation. Candidate
