@@ -312,3 +312,11 @@ test('repeated images match the measured page box after the paint transformation
   assert.equal(matchingRasterHit(hits,'plot.png',[50,50,10,10]),null);
   assert.equal(matchingRasterHit([hits[1],hits[1]],'plot.png',[50,40,20,20]),null);
 });
+
+test('image matching accepts the measured rounding in a LuaLaTeX graphics matrix',()=>{
+  const hit={path:'plot.png',transform:[.7472,0,0,.7472,2473030.6624,2373622.3712],
+    box:[9782558,7810567,1578762,1578762]};
+  const observed=[9782558,8209694,1179648,1179635];
+  assert.equal(matchingRasterHit([hit],'plot.png',observed),hit);
+  assert.equal(matchingRasterHit([hit],'plot.png',[observed[0]+100,...observed.slice(1)]),null);
+});

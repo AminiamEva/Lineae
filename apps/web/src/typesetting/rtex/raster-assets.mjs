@@ -45,7 +45,7 @@ export function matchingRasterHit(hits,file,box){
     const bounds=[left,top,Math.max(...xs)-left,Math.max(...ys)-top];
     // The PDF transformation coefficients are decimal approximations. Compare
     // the image in page coordinates, allowing for the serialized precision.
-    const rounding=2+(w+h)*1e-6;
+    const rounding=2+(w+h)*1e-5;
     return bounds.every((value,axis)=>Math.abs(value-box[axis])<=rounding);
   });
   return matches.length===1?matches[0]:null;
