@@ -147,11 +147,13 @@ export function createNativeDocumentSession(resolve) {
       const [first,last]=selection.range;
       if(first?.kind!=='text'||last?.kind!=='text'||fileOf(first)===fileOf(last))return null;
       const ranges=this.proseRanges(first,last);
-      if(ranges.length!==2||ranges.some(range=>!range.paragraph||range.paragraph.container||
-         range.paragraph.parts.length!==1||range.paragraph.parts[0].kind!=='text'||
-         range.paragraph.parts[0].marks?.length))return null;
+      if(ranges.length!==2||ranges.some(({paragraph})=>!paragraph||paragraph.container||
+         paragraph.tableCell||paragraph.heading))return null;
       const edits=ranges.map(({paragraph,from,to},index)=>{
-        const edit=textEdit(sourceProjection,{paragraph,from16:from,to16:to,insert:index===0?insert:''});
+        const firstPart=paragraph.parts[0],lastPart=paragraph.parts.at(-1);
+        const from16=from===0&&firstPart?.kind==='text'?firstPart.from16:from;
+        const to16=to===paragraph.text.length&&lastPart?.kind==='text'?lastPart.to16:to;
+        const edit=textEdit(sourceProjection,{paragraph,from16,to16,insert:index===0?insert:''});
         return edit?.text.trim()?{...edit,paragraph}:null;
       });
       if(edits.some(edit=>!edit))return null;

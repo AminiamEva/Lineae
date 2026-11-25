@@ -380,6 +380,23 @@ test('native cross-file replacement produces one edit per file and a parent care
   assert.equal(edit.paragraph.filePath,'main.tex');
 });
 
+test('native cross-file replacement covers inline math and preserves surviving text marks',()=>{
+  const source='\\begin{document}\nBefore $z$ end.\n\n\\input{chapter}\n\\end{document}\n';
+  const chapter='\\textbf{XYZ} child.\n';
+  const projection=projectMixedSnapshot({source,mainFile:'main.tex',
+    files:[{path:'chapter.tex',bytes:new TextEncoder().encode(chapter)}]});
+  const session=createNativeDocumentSession(()=>null);
+  const [root,child]=projection.paragraphs;
+  const from=textTarget(projection,root.glyphs[5].tag,true),to=textTarget(projection,child.glyphs[1].tag,true);
+  const regions=[{path:'main.tex',from:0,to:source.indexOf('\\input')},{path:'chapter.tex',from:0,to:chapter.length}];
+  session.setObservation(page([],[glyph(from.owner,100),glyph(to.owner,200)]),projection,false,regions);
+  assert.equal(session.select(from,to),true);
+  const edit=session.editAcrossFiles(' updated.');
+  assert.deepEqual(edit.edits.map(change=>change.source),[
+    source.replace('Before $z$ end.','Before updated.'),'\\textbf{Z} child.\n',
+  ]);
+});
+
 test('native project boundaries follow verified vertical space without splitting a shared line',()=>{
   const source='\\begin{document}\nBefore.\n\n\\input{chapter}\n\nAfter.\n\\end{document}\n';
   const chapter='Child.\n';

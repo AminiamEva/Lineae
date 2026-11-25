@@ -514,6 +514,27 @@ const server=createServer(async(req,res)=>{
       await projectDrafts(editedMain,childWithMath);
       assert.deepEqual(errors,[]);
 
+      await page.goto('http://127.0.0.1:'+server.address().port+'/?native-only-acceptance=1',{waitUntil:'networkidle'});
+      const mixedProject=projectMain.replace('\\[\\frac{a}{}\\]\n\n','').replace('Before chapter.','Before $z$ end.');
+      const markedChild='\\textbf{XYZ} child.\n';
+      await openMockProject(page,false,mixedProject,markedChild);
+      await page.evaluate(()=>{nativeProbe.targetInclude=true;nativeProbe.includeMainText=true;});
+      await page.locator('#native-tex-toggle').click();
+      await page.waitForFunction(()=>document.querySelector('#native-tex-preview').dataset.state==='current');
+      await page.locator('#native-tex-target').click();
+      await panel.getByText('Click prose on the native page',{exact:false}).waitFor();
+      await page.locator('#native-tex-edit').click();
+      const mixedBounds=await canvas.boundingBox();
+      const rootBefore='XYZchild.Before'.length;
+      await page.mouse.move(mixedBounds.x+(6500000+rootBefore*200000-50000)*scale,mixedBounds.y+9250000*scale);
+      await page.mouse.down();
+      await page.mouse.move(mixedBounds.x+6850000*scale,mixedBounds.y+9250000*scale,{steps:12});
+      await page.mouse.up();
+      await page.keyboard.insertText(' updated.');
+      await projectDrafts(mixedProject.replace('Before $z$ end.','Before updated.'),'\\textbf{Z} child.\n');
+      await page.keyboard.press(mod+'+z');
+      await projectDrafts(mixedProject,markedChild);
+
       await page.goto('http://127.0.0.1:'+server.address().port+'/?native-workspace=1',{waitUntil:'networkidle'});
       const workspaceSource='\\documentclass{article}\n\\begin{document}\nNative document.\n\\end{document}\n';
       await page.locator('input#file').setInputFiles({name:'workspace.tex',mimeType:'text/plain',buffer:Buffer.from(workspaceSource)});

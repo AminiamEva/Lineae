@@ -3216,7 +3216,7 @@ nativeTexPreview=installNativeTexPreview({host:footer,before:modes,primary:nativ
     const tr=state.tr;
     for(const {range,patch} of [last,first]){
       if(range.to>range.from)tr.delete(range.from,range.to);
-      if(patch.insert)tr.insert(range.from,editor.schema.text(patch.insert));
+      if(patch.insert)tr.insert(range.from,editor.schema.text(patch.insert,range.marks));
     }
     tr.setSelection(TextSelection.create(tr.doc,first.range.from+first.patch.insert.length));
     const drafts=projectDocument.changes(tr.doc.toJSON());
