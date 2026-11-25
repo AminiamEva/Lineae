@@ -1,9 +1,23 @@
 // Opt-in check of the packaged WebView and embedded resources on both platforms.
+const smokeErrors=[];
+window.addEventListener('error',event=>{
+  const message=event.message??event.target?.getAttribute?.('src');
+  if(message)smokeErrors.push(message);
+},true);
+window.addEventListener('unhandledrejection',event=>{
+  smokeErrors.push(String(event.reason?.message??event.reason));
+});
 window.addEventListener('load', async () => {
   try {
-    if ((location.protocol !== 'tauri:' && location.hostname !== 'tauri.localhost') ||
-        !document.querySelector('.ProseMirror')?.editor) {
-      throw new Error('the packaged editor did not initialize');
+    if(location.protocol!=='tauri:'&&location.hostname!=='tauri.localhost'){
+      throw new Error('unexpected desktop origin '+location.origin);
+    }
+    const started=performance.now();
+    while(!document.querySelector('.ProseMirror')?.editor&&!smokeErrors.length&&performance.now()-started<8000){
+      await new Promise(resolve=>setTimeout(resolve,50));
+    }
+    if(!document.querySelector('.ProseMirror')?.editor){
+      throw new Error('the packaged editor did not initialize'+(smokeErrors[0]?' ('+smokeErrors[0]+')':''));
     }
     const nativeWorkspace = new URLSearchParams(location.search).has('native-only-acceptance');
     if (nativeWorkspace) {
