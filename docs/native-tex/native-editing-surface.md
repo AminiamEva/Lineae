@@ -105,12 +105,14 @@ Engine-only protocol timings are in `parity.json` and the
 The run recorded 1,000 warm edits each at 10, 100, and 300 pages.
 
 GitHub-hosted WebView2 and WKWebView checks start the engine-off workspace and
-verify the embedded fonts, PDF worker and native session bridge without an
-installer. The browser regression and the real LuaLaTeX host tests still run
-separately from the WebView check.
+verify the embedded fonts, PDF worker and native session bridge. The workflow
+also runs on Ubuntu x64 with pinned rtex and a WebKitGTK smoke check under Xvfb.
+Browser regressions and real LuaLaTeX host tests run separately from these
+WebView checks. Native folder handles and physical Linux IME are outside the
+Ubuntu smoke check.
 
 For physical input review, the workflow's optional `desktop_input_probe`
-retains the two unbundled debug executables from the same commit. Launch an
+retains the unbundled debug executables from the same commit. Launch an
 executable with `--lineae-native-workspace` on the device under test. This
 opens the engine-off workspace with the normal TeX trust dialog. The
 `--lineae-native-workspace-smoke` argument is for the automated check that

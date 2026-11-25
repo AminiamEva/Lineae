@@ -11,8 +11,9 @@ arch=universal-darwin
 windows=false
 case "$(uname -s)" in
   Darwin) ;;
+  Linux) arch=x86_64-linux ;;
   MINGW*|MSYS*|CYGWIN*) windows=true; arch=windows ;;
-  *) echo 'This checkpoint targets macOS arm64 and Windows x64 only' >&2; exit 1 ;;
+  *) echo 'Unsupported host for the frozen native TeX environment' >&2; exit 1 ;;
 esac
 if $windows; then texdir=$(cygpath -m "$texdir"); fi
 bin="$texdir/bin/$arch"

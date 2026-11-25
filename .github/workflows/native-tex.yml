@@ -16,7 +16,7 @@ on:
         type: boolean
         default: false
       desktop_input_probe:
-        description: Keep the unbundled Windows and macOS debug executables for physical input checks
+        description: Keep the unbundled debug executables for physical input checks
         type: boolean
         default: false
   workflow_call:
@@ -44,6 +44,11 @@ jobs:
             archive: rtex-x86_64-pc-windows-msvc.zip
             sha256: b36a2e5abc6216301d180d7b800b1dbbb34672b04946d0b25d227ce6f9590e54
             tlarch: windows
+          - os: ubuntu-24.04
+            target: x86_64-unknown-linux-gnu
+            archive: rtex-x86_64-unknown-linux-gnu.tar.gz
+            sha256: aeea57a8d1db33fdc509e0ac45a324043cef00e8fbe82b5d2aeba33b8bb5542d
+            tlarch: x86_64-linux
     runs-on: ${{ matrix.os }}
     timeout-minutes: 45
     defaults:
@@ -57,6 +62,12 @@ jobs:
         with:
           node-version: 22
           cache: npm
+      - name: Install Linux WebView dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libwebkit2gtk-4.1-dev libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev xvfb xauth
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
         with:
@@ -79,7 +90,11 @@ jobs:
           temp="$RUNNER_TEMP"
           if [[ "$RUNNER_OS" == Windows ]]; then temp=$(cygpath -u "$temp"); fi
           tar -xzf "$temp/$archive" -C apps/web/vendor/mathlive --strip-components=1 package/mathlive.min.js package/fonts
-          npx playwright install --only-shell chromium
+          if [[ "$RUNNER_OS" == Linux ]]; then
+            npx playwright install --with-deps --only-shell chromium
+          else
+            npx playwright install --only-shell chromium
+          fi
           node tests/native-tex-preview-browser.cjs
           LINEAE_NATIVE_ONLY=1 node tests/native-tex-preview-browser.cjs
           LINEAE_TEST_NATIVE_PREVIEW=1 node tests/math-editing-browser.cjs
@@ -214,7 +229,9 @@ jobs:
             import {execFileSync} from "node:child_process";
             import {resolve} from "node:path";
             const executable=resolve("apps/desktop/src-tauri/target/debug/lineae"+(process.platform==="win32"?".exe":""));
-            const output=execFileSync(executable,["--lineae-native-workspace-smoke"],{
+            const command=process.platform==="linux"?"xvfb-run":executable;
+            const args=process.platform==="linux"?["-a",executable]:[];
+            const output=execFileSync(command,[...args,"--lineae-native-workspace-smoke"],{
               timeout:60000,encoding:"utf8",stdio:["ignore","pipe","inherit"],
             });
             if(output)process.stdout.write(output);
@@ -237,7 +254,7 @@ jobs:
           path: apps/desktop/src-tauri/target/debug/lineae.exe
           if-no-files-found: error
           retention-days: 3
-      - name: Preserve the two-platform unbundled input probes
+      - name: Preserve the unbundled input probes
         if: ${{ inputs.desktop_input_probe }}
         uses: actions/upload-artifact@v4
         with:
