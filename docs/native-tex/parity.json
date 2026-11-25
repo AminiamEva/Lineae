@@ -64,9 +64,10 @@
         "https://github.com/AminiamEva/Lineae/actions/runs/45589155092",
         "https://github.com/AminiamEva/Lineae/actions/runs/45596378294",
         "https://github.com/AminiamEva/Lineae/actions/runs/45602854334",
-        "https://github.com/AminiamEva/Lineae/actions/runs/45623818094"
+        "https://github.com/AminiamEva/Lineae/actions/runs/45623818094",
+        "https://github.com/AminiamEva/Lineae/actions/runs/45628338101"
       ],
-      "scope": "Plain headings and escaped literals, paragraphs with nested marks, and source mapping for proof, abstract and nested lists. Browser checks cover editing marked text alongside inline math and round-tripping literal caret, tilde and backslash. LuaLaTeX reports a native glyph for the escaped caret. More text environments remain pending."
+      "scope": "Plain headings and escaped literals, paragraphs with nested marks, and source mapping for proof, abstract and nested lists. Browser checks cover editing marked text alongside inline math, including inside a proof. Prose paste and direct typing preserve supported escaped characters, and LuaLaTeX reports a native glyph for the escaped caret. More text environments remain pending."
     },
     {
       "id": "tables-including-spans",
@@ -81,8 +82,8 @@
         "tests/native-tex-preview-browser.cjs"
       ],
       "nativeStatus": "partial",
-      "evidence": ["https://github.com/AminiamEva/Lineae/actions/runs/45590498054"],
-      "scope": "Editing empty and nonempty plain cells passes the browser gate. Multicolumn and multirow range mapping has direct tests. The real engine reports an empty-cell anchor with unchanged page drawing on both platforms."
+      "evidence": ["https://github.com/AminiamEva/Lineae/actions/runs/45590498054", "https://github.com/AminiamEva/Lineae/actions/runs/45628338101"],
+      "scope": "The browser gates cover empty and nonempty cells and editing marked text and math in the same tabularx cell. Multicolumn and multirow range mapping has direct tests. The real engine reports an empty-cell anchor, marked cell glyphs and an inline formula field with unchanged page drawing on both platforms. Broader table structure and cell styling commands remain pending."
     },
     {
       "id": "project-composition",
@@ -121,9 +122,10 @@
       "nativeStatus": "partial",
       "evidence": [
         "https://github.com/AminiamEva/Lineae/actions/runs/45590498054",
-        "https://github.com/AminiamEva/Lineae/actions/runs/45591990969"
+        "https://github.com/AminiamEva/Lineae/actions/runs/45591990969",
+        "https://github.com/AminiamEva/Lineae/actions/runs/45628338101"
       ],
-      "scope": "Real staged PNG drawing metadata is unchanged by ownership. The browser gate selects a raster figure from its painted position and patches its width through the existing Image controls. Complex floats and TikZ remain open."
+      "scope": "Real staged PNG drawing metadata is unchanged by ownership. The browser gate selects a raster figure from its painted position and patches its width through the Image controls. Recognized TikZ blocks use the existing visual editor. The native workspace can also select an exact opaque block in Source. Direct hit targets for complex floats and TikZ remain pending."
     },
     {
       "id": "page-layout-and-pdf",
@@ -153,8 +155,8 @@
         "tests/shortcuts-browser.cjs"
       ],
       "nativeStatus": "partial",
-      "evidence": ["https://github.com/AminiamEva/Lineae/actions/runs/45620299673", "https://github.com/AminiamEva/Lineae/actions/runs/45622916182"],
-      "scope": "The native command palette covers verified math structures and displays the active nested field. The prose palette inserts page breaks and offers project input and include commands."
+      "evidence": ["https://github.com/AminiamEva/Lineae/actions/runs/45620299673", "https://github.com/AminiamEva/Lineae/actions/runs/45622916182", "https://github.com/AminiamEva/Lineae/actions/runs/45628338101"],
+      "scope": "The native command palette covers verified math structures and the status bar displays the active nested field. The prose palette inserts an exact page break, edits document metadata, and offers project input and include commands."
     },
     {
       "id": "clipboard-ime-cross-run",
@@ -180,8 +182,8 @@
         "tests/native-tex-preview-browser.cjs"
       ],
       "nativeStatus": "partial",
-      "evidence": ["https://github.com/AminiamEva/Lineae/actions/runs/45596378294", "https://github.com/AminiamEva/Lineae/actions/runs/45622916182"],
-      "scope": "The opt-in desktop workspace uses the same native engine session across Document, Source and the read-only Split preview. Browser tests verify that the old paginator and MathLive do not load. Full coverage and physical device checks are required before making this the default."
+      "evidence": ["https://github.com/AminiamEva/Lineae/actions/runs/45596378294", "https://github.com/AminiamEva/Lineae/actions/runs/45622916182", "https://github.com/AminiamEva/Lineae/actions/runs/45628338101"],
+      "scope": "The opt-in desktop workspace uses the same native engine session across Document, Source and the read-only Split preview. Source edits reach the same session without rasterizing hidden pages. Browser tests verify that the old paginator and MathLive do not load. Full coverage and physical device checks are required before making this the default."
     }
   ],
   "acceptance": {

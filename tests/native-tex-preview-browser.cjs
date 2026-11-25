@@ -150,6 +150,15 @@ const server=createServer(async(req,res)=>{
       await page.waitForFunction(count=>nativeProbe.calls.filter(call=>call.command==='native_tex_observe_formula').length>count,rootObservations);
       await panel.getByText('Click prose on the native page',{exact:false}).waitFor();
       await canvas.click({position:{x:6510000*scale,y:6950000*scale}});
+      await page.evaluate(()=>navigator.clipboard.writeText('\\alpha'));
+      await page.keyboard.press(mod+'+v');
+      await page.waitForFunction(source=>nativeProbe.source===source,expected.replace('}{cb}','}{\\alpha cb}'));
+      await page.keyboard.press(mod+'+z');
+      await page.waitForFunction(source=>nativeProbe.source===source,expected);
+      await page.waitForFunction(()=>nativeProbe.calls.some(call=>call.command==='native_tex_observe_formula'&&
+        call.args.sourceRevision===nativeProbe.revision));
+      await panel.getByText('Click prose on the native page',{exact:false}).waitFor();
+      await canvas.click({position:{x:6510000*scale,y:6950000*scale}});
       await page.keyboard.insertText('^');
       await page.keyboard.insertText('^');
       await page.waitForFunction(source=>nativeProbe.source===source,expected.replace('}{cb}','}{\\text{ˆ}cb}'));
@@ -365,6 +374,15 @@ const server=createServer(async(req,res)=>{
       await page.waitForFunction(()=>nativeProbe.calls.some(call=>call.command==='native_tex_observe_formula'&&
         call.args.sourceRevision===nativeProbe.revision));
       await panel.getByText('Click prose on the native page',{exact:false}).waitFor();
+      await canvas.click({position:{x:6550000*scale,y:9250000*scale}});
+      await page.keyboard.press('Shift+End');
+      await page.keyboard.press(mod+'+c');
+      await page.waitForFunction(async()=>{
+        const [item]=await navigator.clipboard.read();
+        if(!item?.types.includes('text/html'))return false;
+        const html=await(await item.getType('text/html')).text();
+        return new DOMParser().parseFromString(html,'text/html').querySelector('em')?.textContent==='XStep';
+      });
       await canvas.click({position:{x:6500000*scale,y:7000000*scale}});
       await page.keyboard.type('b');
       await page.waitForFunction(expected=>nativeProbe.source===expected,editedProof.replace('\\frac{a}{}','\\frac{a}{b}'));

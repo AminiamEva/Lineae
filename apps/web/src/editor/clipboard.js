@@ -56,7 +56,8 @@ export function createClipboard(editor,{getField = () => null, getSource = () =>
     const native=getNative();
     if(native){
       if(native.text===null)return false;
-      await writeText(native.text);
+      if(native.html)await writeRich(native);
+      else await writeText(native.text);
       return cut?native.cut():true;
     }
     const field = getField();

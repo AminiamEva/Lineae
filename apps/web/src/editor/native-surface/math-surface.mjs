@@ -1,9 +1,9 @@
 import {createSelectionModel} from './selection-model.mjs';
-import {applySlotEdit,applyStructureCommand,expandMatrix,insertDisplayLine,removeEmptyScript,applySingleCharacterScript,applyScalableFence,nativeOperatorBody} from '../native-math/source.mjs';
+import {applyPastedMath,applySlotEdit,applyStructureCommand,expandMatrix,insertDisplayLine,removeEmptyScript,applySingleCharacterScript,applyScalableFence,nativeOperatorBody} from '../native-math/source.mjs';
 
 // Native surface geometry adapter. Display-list coordinates are page space;
 // callers provide the zoom used for the current painted page.
-const stopsFor = (observed, resolve, verified) => {
+const stopsFor = (observed, resolve, verified, pasted, pasteOffset) => {
   const byAddress = new Map();
   const push = (owner, role, after, page, bbox, empty = false) => {
     const target = resolve({owner, role, after});
@@ -77,6 +77,20 @@ const stopsFor = (observed, resolve, verified) => {
       tails.push({...end,slot,local:wrapper.to16-slot.from16,docOffset,atom:wrapper,
         hit:{...end.hit,page,caretBox:[x,top,x,bottom]}});
     }
+    if(pasted?.paste&&pasted.formula.filePath===formula.filePath&&pasted.formula.from16===formula.from16&&
+       !byAddress.has(JSON.stringify([formula.filePath,pasteOffset]))){
+      const local=pasteOffset-formula.from16;
+      const atom=formula.math.atoms.find(atom=>atom.kind!=='formula'&&atom.kind!=='token'&&atom.to16===local);
+      const children=atom?stops.filter(stop=>stop.docOffset>=formula.from16+atom.from16&&stop.docOffset<=pasteOffset):[];
+      const end=children.filter(stop=>stop.after||stop.empty).sort((left,right)=>right.x-left.x)[0];
+      const slot=atom&&formula.math.slots.filter(slot=>slot.from16<=atom.from16&&slot.to16>=local)
+        .sort((left,right)=>left.raw.length-right.raw.length)[0];
+      if(end&&slot&&children.every(stop=>stop.page===end.page)){
+        const {x,top,bottom,page}=end;
+        tails.push({...end,slot,local:local-slot.from16,docOffset:pasteOffset,atom,
+          hit:{...end.hit,page,caretBox:[x,top,x,bottom]}});
+      }
+    }
   }
   for(const stop of tails){
     const key=JSON.stringify([stop.formula.filePath,stop.docOffset]);
@@ -100,8 +114,8 @@ function formattingBodies(formula){
 
 export function createMathSurface({resolve,selection=createSelectionModel(sameFormula,stop=>stop.formula.filePath)}) {
   return Object.assign(Object.create(selection), {
-    collectStops(observed,verified) { return stopsFor(observed,resolve,verified); },
-    setObservation(observed) { return selection.setStops(stopsFor(observed, resolve)); },
+    collectStops(observed,verified) { return stopsFor(observed,resolve,verified,selection.lastEdit,selection.pendingOffset); },
+    setObservation(observed) { return selection.setStops(this.collectStops(observed)); },
     leaveFormatting(){
       const caret=selection.caret;
       if(caret?.kind!=='math'||selection.anchor!==caret)return false;
@@ -113,17 +127,25 @@ export function createMathSurface({resolve,selection=createSelectionModel(sameFo
         stop.docOffset===caret.formula.from16+enclosing.wrapper.to16);
       return next?selection.selectTargets(next,next):false;
     },
-    insert(text) {
+    insert(text,{paste=false}={}) {
       const stop = selection.caret;
       if (!stop || typeof text !== 'string' || !text) return null;
       const [from, to] = selection.range;
       if (!sameFormula(from, stop) || from.slot.id !== to.slot.id) return null;
       try {
         const body=from===to&&stop.after&&stop.slot.role==='nucleus'?nativeOperatorBody(stop.formula.math,stop.atom):null;
-        const result = applySlotEdit(stop.formula.math, {
+        const edit={
           slotId:body?.slot.id??stop.slot.id,from16:body?0:from.local,to16:body?0:to.local,insert:text,
-        });
-        return selection.record({formula:stop.formula,patch:result.patch,text:result.source},
+        };
+        let result,structure=false;
+        try{result=applySlotEdit(stop.formula.math,edit);}
+        catch(error){
+          if(!paste)throw error;
+          result=applyPastedMath(stop.formula.math,edit);structure=true;
+        }
+        if(!result)return null;
+        return selection.record({formula:stop.formula,patch:result.patch,text:result.source,
+          ...(structure&&{structure,paste:true,requiresAmsmath:true})},
           stop.formula.from16+result.selection.head16);
       } catch { return null; }
     },

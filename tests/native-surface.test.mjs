@@ -627,6 +627,25 @@ test('right arrow leaves a native math font wrapper within its enclosing fractio
   assert.equal(session.surface.insert('Z').text,'\\frac{\\mathbf{ab}Z}{c}');
 });
 
+test('native math paste accepts a complete fragment and restores the caret after it',()=>{
+  const source='\\begin{document}\n\\[x\\]\n\\end{document}\n';
+  let projection=projectDocumentFormulas(source);
+  const surface=createMathSurface({resolve:endpoint=>nativeTarget(projection,endpoint)});
+  const [formula]=projection.formulas;
+  surface.setObservation(page([],[glyph(formula.math.atoms.find(atom=>atom.nucleus==='x').tag,100)]));
+  surface.nearest(1,120,100);
+  assert.equal(surface.insert('\\frac{a}{b}'),null);
+  assert.equal(surface.insert('\\input{bad}',{paste:true}),null);
+  const pasted=surface.insert('\\frac{a}{b}',{paste:true});
+  assert.equal(pasted.text,'x\\frac{a}{b}');
+  const next=source.slice(0,formula.from16)+pasted.text+source.slice(formula.to16);
+  projection=projectDocumentFormulas(next);
+  surface.setObservation(page([],projection.formulas[0].math.atoms.filter(atom=>atom.nucleus)
+    .map((atom,index)=>glyph(atom.tag,index*30))));
+  assert.equal(surface.caret.docOffset,formula.from16+pasted.text.length);
+  assert.equal(surface.insert('y').text,'x\\frac{a}{b}y');
+});
+
 test('tagged plain table text maps to the original cell and exact byte range',()=>{
   const source='\\begin{document}\n\\begin{tabular}{ll}\nOne & Two \\\\\nThree & Four\n\\end{tabular}\n\\end{document}\n';
   const projection=projectTextDocument(source);

@@ -14,7 +14,7 @@ import {readDelimiterPair} from '../editor/delimiter-input.js';
 // Native LaTeX output is the primary page. The opt-in native input mode sends
 // supported keys, caret and IME through this surface into ProseMirror; the old
 // JS-formatted page and MathLive inputs stay available as the migration fallback.
-export function installNativeTexPreview({host,before,primary=false,documentZoom=100,isDocumentMode,splitHost,getSource,getSnapshot,isComposing,focusMathSlot,focusImage,listTikzDrawings,editTikzDrawing,listSourceBlocks,openSourceBlock,continuationRegion,selectionRegions,foldedFiles,selectText,commitMath,commitText,commitTextLines,commitProjectRange,canStartText,commitInitialText,commitParagraphBreak,commitParagraphJoin,commitNewMath,onEnvironmentChange,showTextCommands,history}) {
+export function installNativeTexPreview({host,before,primary=false,documentZoom=100,isDocumentMode,splitHost,getSource,getSnapshot,isComposing,focusMathSlot,focusImage,listTikzDrawings,editTikzDrawing,listSourceBlocks,openSourceBlock,continuationRegion,selectionRegions,foldedFiles,selectText,serializeTextSelection,commitMath,commitText,commitTextLines,commitProjectRange,canStartText,commitInitialText,commitParagraphBreak,commitParagraphJoin,commitNewMath,onEnvironmentChange,showTextCommands,history}) {
   const invoke=window.__TAURI__?.core?.invoke;
   if(!invoke) return {refresh(){},documentChanged(){},relocalize(){}};
   const button=document.createElement('button');
@@ -160,7 +160,7 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
     const [first,last]=surface.range;
     if(first?.kind==='text'&&last?.kind==='text'&&first.paragraph.filePath!==last.paragraph.filePath)
       return nativeDocument.editAcrossFiles(action.insert??'');
-    return action.insert?surface.insert(action.insert):surface.erase(action.backward);
+    return action.insert?surface.insert(action.insert,{paste:action.paste}):surface.erase(action.backward);
   }
   function replaceParagraphSelection(action){
     const [first,last]=nativeDocument.surface.range;
@@ -244,7 +244,7 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
         return true;
       }
     }
-    if(surface.caret.kind==='math'&&surface.caret===surface.anchor&&['^','_'].includes(action.insert)){
+    if(!action.paste&&surface.caret.kind==='math'&&surface.caret===surface.anchor&&['^','_'].includes(action.insert)){
       draftInput={kind:'script',marker:action.insert};
       targetStatus.textContent=action.insert==='^'?t('输入一个上标字符','Type one superscript character'):
         t('输入一个下标字符','Type one subscript character');
@@ -293,8 +293,10 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
     const {caret,anchor}=nativeDocument.surface,frame=observation;
     const valid=()=>current()&&frame&&observation===frame&&!pendingEdit&&
       nativeDocument.surface.caret===caret&&nativeDocument.surface.anchor===anchor;
+    const text=valid()?selectedSource():null;
     return {
-      text:valid()?selectedSource():null,
+      text,
+      html:text!==null&&useTextSelection(true)?serializeTextSelection?.():null,
       cut:()=>valid()&&cutSelection(),
       paste:text=>{
         if(!valid()||!text)return false;
@@ -332,13 +334,13 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
   }
   for(const type of ['copy','cut']){
     input.addEventListener(type,event=>{
-      const text=selectedSource();
+      const selection=clipboardSelection(),text=selection?.text??null;
       if(text===null||!event.clipboardData)return;
       if(type==='cut'){
-        if(!current()||!observation||pendingEdit)return;
-        if(!cutSelection())return;
+        if(!selection.cut())return;
       }
       event.clipboardData.setData('text/plain',text);
+      if(selection.html)event.clipboardData.setData('text/html',selection.html);
       event.preventDefault();
     });
   }

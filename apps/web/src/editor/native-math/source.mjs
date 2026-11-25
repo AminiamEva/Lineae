@@ -540,6 +540,15 @@ export function applySlotEdit(snapshot, edit) {
   return editSlot(snapshot,edit,false);
 }
 
+export function applyPastedMath(snapshot,edit){
+  const slot=snapshot.slots.find(candidate=>candidate.id===edit.slotId);
+  if(!slot||typeof edit.insert!=='string'||edit.insert.includes('%')||!parse(edit.insert).root.fields[0].children.length)
+    return null;
+  const following=snapshot.source[slot.from16+edit.to16]??'';
+  const terminator=/\\[A-Za-z]+$/.test(edit.insert)&&/[A-Za-z]/.test(following)?' ':'';
+  return editSlot(snapshot,{...edit,insert:edit.insert+terminator},true);
+}
+
 export function nativeOperatorBody(snapshot,atom) {
   if(!largeOperators.includes(atom?.nucleus?.slice(1))||!atom.nucleus.startsWith('\\'))return null;
   const boundary=atom.path.lastIndexOf('/');

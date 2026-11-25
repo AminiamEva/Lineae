@@ -2051,13 +2051,17 @@ function insertNativePageBreak(){
   const range=nativeTexPreview.verifiedTextRange();
   if(!range)return false;
   const [first,last]=range,{paragraph}=first;
-  if(paragraph.heading||paragraph.tableCell||paragraph.container||paragraph.parts.some(part=>part.marks?.length))return false;
+  if(paragraph.heading||paragraph.tableCell||paragraph.container)return false;
   const target=nativeProsePosition(paragraph,first.local,last.local);
   if(!target)return false;
   const {state}=editor,{from:start,to:end}=target.range;
   const $start=state.doc.resolve(start),$end=state.doc.resolve(end);
   if(!$start.sameParent($end)||$start.parent.type.name!=='paragraph')return false;
   const parent=$start.parent,left=parent.content.cut(0,$start.parentOffset),right=parent.content.cut($end.parentOffset);
+  const {start:fromRun,end:toRun}=target.range.endpoints;
+  const collapsed=state.selection.empty;
+  if(left.size&&(!collapsed||right.size)&&fromRun.marks?.length||
+     right.size&&(!collapsed||left.size)&&toRun.marks?.length)return false;
   const pageBreak=editor.schema.nodes.pageBreak.create();
   const nodes=[...(left.size?[parent.copy(left)]:[]),pageBreak,...(right.size?[parent.copy(right)]:[])];
   const tr=state.tr.replaceWith($start.before(),$end.after(),nodes);
@@ -2065,7 +2069,9 @@ function insertNativePageBreak(){
   tr.setSelection(TextSelection.near(tr.doc.resolve(afterBreak),right.size?1:-1));
   const source=paragraph.source,eol=parseDocument(source,{fragment:target.file?.kind==='tex'})?.eol;
   if(!eol)return false;
-  const from=first.docOffset,to=last.docOffset;
+  const blockEnd=paragraph.from16+paragraph.text.length;
+  const from=!left.size?paragraph.from16:collapsed&&!right.size?blockEnd:first.docOffset;
+  const to=collapsed?from:right.size?last.docOffset:blockEnd;
   const insert=(left.size?eol+eol:'')+'\\newpage'+(right.size?eol+eol:'');
   const draft=source.slice(0,from)+insert+source.slice(to);
   if(target.composition){
@@ -2933,6 +2939,7 @@ nativeTexPreview=installNativeTexPreview({host:footer,before:modes,primary:nativ
     return composition?.regions.map((region,index)=>({...region,trail:composition.content[index]?.attrs.trail}));
   },
   foldedFiles:()=>projectPresentation?.foldedFiles()??[],
+  serializeTextSelection:()=>editor.view.serializeForClipboard(editor.state.selection.content()).dom.innerHTML,
   selectText:(anchor,head)=>{
     if(!anchor||anchor.paragraph!==head?.paragraph)return false;
     const forward=anchor.local<=head.local;
