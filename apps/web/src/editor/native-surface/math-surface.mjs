@@ -117,10 +117,9 @@ const stopsFor = (observed, resolve, verified, pasted, pasteOffset) => {
 };
 
 export const sameFormula = (left, right) =>
-  left?.formula.from16 === right?.formula.from16 &&
-  left?.formula.kind === right?.formula.kind &&
-  left?.formula.occurrence === right?.formula.occurrence &&
-  left?.formula.filePath === right?.formula.filePath;
+  Boolean(left?.formula&&right?.formula&&left.formula.from16===right.formula.from16&&
+    left.formula.kind===right.formula.kind&&left.formula.occurrence===right.formula.occurrence&&
+    left.formula.filePath===right.formula.filePath);
 
 function formattingBodies(formula){
   return formula.math.atoms.filter(atom=>atom.kind==='wrapper').flatMap(wrapper=>{

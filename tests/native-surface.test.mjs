@@ -336,6 +336,7 @@ test('one native session restores the selected text or math address through obse
   assert.equal(session.surface.caret.kind,'math');
   assert.equal(session.surface.caret.docOffset,pending);
   assert.equal(session.surface.anchor,session.surface.caret);
+  assert.doesNotThrow(()=>session.moveVertical(-1,false));
   assert.equal(session.leaveFormula(),true);
   assert.equal(session.surface.caret.paragraph.text,'Outro.');
   assert.equal(session.editAdjacentFormula(),true);
@@ -400,6 +401,19 @@ test('native vertical movement keeps the visual column and extends to another pa
   assert.equal(session.surface.anchor.page,1);
   assert.deepEqual(session.proseRanges(session.surface.anchor,session.surface.caret).map(range=>range.paragraph.text),
     ['Top.','Bottom.']);
+});
+
+test('Page Up moves one viewport within a tall native page instead of selecting every line',()=>{
+  const projection=projectMixedDocument('\\begin{document}\nTop.\n\nMiddle.\n\nBottom.\n\\end{document}\n');
+  const [top,middle,bottom]=projection.paragraphs.map(paragraph=>paragraph.glyphs[0].tag);
+  const line=(tag,y)=>({...glyph(tag,100),bbox:[100,y,120,y+15]});
+  const session=createNativeDocumentSession(()=>null);
+  session.setObservation(page([],[line(top,20),line(middle,180),line(bottom,270)]),projection);
+  const start=textTarget(projection,bottom,false);
+  session.select(start,start);
+  assert.equal(session.moveVertical(-1,true,true,{height:90,position:stop=>(stop.top+stop.bottom)/2}),true);
+  assert.equal(session.surface.caret.paragraph.text,'Middle.');
+  assert.equal(session.surface.anchor.paragraph.text,'Bottom.');
 });
 
 test('native outline targeting selects the second repeated heading on its measured page',()=>{

@@ -539,8 +539,15 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
     }
     if(['ArrowUp','ArrowDown','PageUp','PageDown'].includes(event.key)){
       event.preventDefault();
+      const jumpPage=event.key.startsWith('Page'),pageTops=new Map();
+      const scale=zoomPercent/100*(96/72)/65781.76;
+      const positions=jumpPage?{height:Math.max(1,panel.clientHeight-24),position:stop=>{
+        if(!pageTops.has(stop.page))pageTops.set(stop.page,
+          pages.querySelector(`[data-native-page="${stop.page}"] canvas`)?.getBoundingClientRect().top);
+        return pageTops.get(stop.page)+(stop.top+stop.bottom)/2*scale;
+      }}:undefined;
       if(!pendingEdit&&nativeDocument.moveVertical(
-        event.key.endsWith('Up')?-1:1,event.shiftKey,event.key.startsWith('Page'))){
+        event.key.endsWith('Up')?-1:1,event.shiftKey,jumpPage,positions)){
         paintSurfaceSelection(true);
         positionInput(true);
       }

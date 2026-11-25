@@ -244,21 +244,30 @@ export function createNativeDocumentSession(resolve) {
       }
       return Boolean(local);
     },
-    moveVertical(direction,extend,jumpPage=false){
+    moveVertical(direction,extend,jumpPage=false,viewport){
       const from=selection.caret;
       if(!from||Math.abs(direction)!==1)return false;
       preferredX??=from.x;
       const anchor=extend?selection.anchor:null;
+      const currentY=viewport?.position(from);
+      const useViewport=Number.isFinite(currentY);
       let target=null,targetPage=Infinity,targetY=Infinity,targetX=Infinity;
       for(const stop of selection.stops){
         if(stop===from||fileOf(stop)!==fileOf(from)&&order(stop)<0||
             (from.kind==='math'&&!sameFormula(from,stop))||
             (anchor&&!canSelect(anchor,stop)))continue;
-        const pageDelta=(stop.page-from.page)*direction;
-        const yDelta=(center(stop)-center(from))*direction;
-        const minLineGap=Math.min(from.bottom-from.top,stop.bottom-stop.top)/2;
-        if(pageDelta<0||(!pageDelta&&(jumpPage||yDelta<=minLineGap)))continue;
-        const distanceY=jumpPage?Math.abs(yDelta):pageDelta?(direction>0?center(stop):-center(stop)):yDelta;
+        let pageDelta=0,distanceY;
+        if(useViewport){
+          const distance=(viewport.position(stop)-currentY)*direction;
+          if(!Number.isFinite(distance)||distance<=2)continue;
+          distanceY=Math.abs(distance-viewport.height);
+        }else{
+          pageDelta=(stop.page-from.page)*direction;
+          const yDelta=(center(stop)-center(from))*direction;
+          const minLineGap=Math.min(from.bottom-from.top,stop.bottom-stop.top)/2;
+          if(pageDelta<0||(!pageDelta&&(jumpPage||yDelta<=minLineGap)))continue;
+          distanceY=jumpPage?Math.abs(yDelta):pageDelta?(direction>0?center(stop):-center(stop)):yDelta;
+        }
         const distanceX=Math.abs(stop.x-preferredX);
         if(pageDelta>targetPage||(pageDelta===targetPage&&
            (distanceY>targetY||distanceY===targetY&&distanceX>=targetX)))continue;
@@ -270,7 +279,7 @@ export function createNativeDocumentSession(resolve) {
       const caret=selection.caret;
       if(caret?.kind!=='math')return false;
       const following=selection.stops.find(stop=>stop.kind==='text'&&
-        fileOf(stop)===fileOf(caret)&&stop.docOffset>=caret.formula.to16);
+        fileOf(stop)===fileOf(caret)&&copyOf(stop)===copyOf(caret)&&stop.docOffset>=caret.formula.to16);
       return following?selection.selectTargets(following,following):false;
     },
     editAdjacentFormula(){
