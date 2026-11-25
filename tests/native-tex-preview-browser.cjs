@@ -1156,6 +1156,17 @@ const server=createServer(async(req,res)=>{
       await projectDrafts(repeatedProject,repeatedChild.replace('Child.','XChild.'));
       await page.keyboard.press(mod+'+z');
       await projectDrafts(repeatedProject,repeatedChild);
+      await panel.getByText('Click prose on the native page',{exact:false}).waitFor();
+      await page.evaluate(()=>document.dispatchEvent(new CustomEvent('lineae-toggle-project-file',{
+        detail:{path:'chapters/one.tex'},
+      })));
+      await page.waitForFunction(()=>document.querySelectorAll('.native-tex-fold-mask[data-fold-path="chapters/one.tex"]').length===2);
+      await panel.locator('.native-tex-fold-mask').last().click();
+      await panel.locator('.native-tex-fold-mask').first().waitFor({state:'detached'});
+      await canvas.click({position:{x:6550000*scale,y:20250000*scale}});
+      await page.keyboard.press(mod+'+Alt+j');
+      await page.keyboard.type('X');
+      await page.waitForFunction(expected=>nativeProbe.source===expected,repeatedProject.replace('After.','XAfter.'));
 
       await page.goto('http://127.0.0.1:'+server.address().port+'/?native-workspace=1',{waitUntil:'networkidle'});
       const workspaceSource='\\documentclass{article}\n\\begin{document}\nNative document.\n\\end{document}\n';

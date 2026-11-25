@@ -161,11 +161,11 @@ module.exports=function installMockNativeTex() {
         });
         const fields=[],mathGlyphs=[];
         const denominator=/\\frac\{[^{}]*\}\{(?:\\attribute65000=(\d+) )?([^{}]*)\}/.exec(input);
-        if(denominator?.[1]){
+        if(denominator&&match){
           for(const y of [14000000,22000000]){
             const x=6500000;
-            if(!denominator[2])fields.push({owner:Number(denominator[1]),role:'den',empty:true,bbox:[x,y,x,y]});
-            else mathGlyphs.push(...glyphs([[null,denominator[1],denominator[2]]],y));
+            if(!denominator[2])fields.push({owner:Number(match[1]),role:'den',empty:true,bbox:[x,y,x,y]});
+            else if(denominator[1])mathGlyphs.push(...glyphs([[null,denominator[1],denominator[2]]],y));
           }
         }
         observed[0].dl.math_owners={fields,glyphs:[
