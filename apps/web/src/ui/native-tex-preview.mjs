@@ -166,7 +166,7 @@ export function installNativeTexPreview({host,before,primary=false,isDocumentMod
     }
     if(initialTyping){
       if(!current()||!action.insert)return false;
-      const edit=commitInitialText?.(action.insert);
+      const edit=commitInitialText?.(action.insert,initialTyping.region);
       if(!edit)return false;
       initialTyping=false;
       return awaitTextPosition(edit,action.started);
@@ -213,7 +213,15 @@ export function installNativeTexPreview({host,before,primary=false,isDocumentMod
   function leaveFile(){
     if(!current()||!observation||pendingEdit)return false;
     const target=continuationRegion?.(nativeDocument.surface.caret);
-    if(!target||!nativeDocument.selectRegion(target))return false;
+    if(!target)return false;
+    if(!nativeDocument.selectRegion(target)){
+      if(!target.empty)return false;
+      initialTyping={region:target};
+      renderer.clearCaret();
+      targetStatus.textContent=t('继续编辑 ','Continue editing ')+target.path;
+      return true;
+    }
+    initialTyping=false;
     paintSurfaceSelection(true);
     positionInput();
     return true;
@@ -284,6 +292,14 @@ export function installNativeTexPreview({host,before,primary=false,isDocumentMod
       inputStart=performance.now();
     }
     const mod = event.metaKey || event.ctrlKey;
+    if(initialTyping.region&&(['Backspace','Delete','ArrowLeft','ArrowRight','ArrowUp','ArrowDown','Home','End','PageUp','PageDown'].includes(event.key)||
+      (mod&&['z','y'].includes(event.key.toLowerCase())))){
+      initialTyping=false;
+      paintSurfaceSelection(true);
+      positionInput();
+      event.preventDefault();
+      return;
+    }
     if (mod && event.key.toLowerCase() === 'z') {
       event.preventDefault();
       if(paragraphBreak){submitInput({backward:true,started:performance.now()});return;}
@@ -387,6 +403,7 @@ export function installNativeTexPreview({host,before,primary=false,isDocumentMod
       if(nativeEditing){
         if(pendingEdit)return false;
         if(!nativeDocument.select(anchor,head))return false;
+        initialTyping=false;
         paragraphBreak=null;
         inputStart=performance.now();
         paintSurfaceSelection(true);positionInput();input.focus({preventScroll:true});
@@ -781,7 +798,7 @@ export function installNativeTexPreview({host,before,primary=false,isDocumentMod
   button.addEventListener('click',toggle);
   startText.addEventListener('click',()=>{
     if(startText.hidden||!current())return;
-    initialTyping=true;
+    initialTyping={};
     const rect=startText.getBoundingClientRect();
     input.style.left=rect.left+'px';input.style.top=rect.top+'px';
     input.focus({preventScroll:true});

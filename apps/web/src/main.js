@@ -1,5 +1,5 @@
 import {nativeEditorRange} from './editor/native-text/editor-range.mjs';
-import {projectTextDocument} from './editor/native-text/projection.mjs';
+import {projectMixedDocument,projectTextDocument} from './editor/native-text/projection.mjs';
 import {loadLegacyMath,nativeOnlyAcceptance,nativeWorkspaceRequested} from './editor/native-surface/acceptance-mode.mjs';
 import {AppendixStart,MatterStart,LayoutCommand} from './editor/appendix.js';
 import {Lipsum} from './editor/lipsum.js';
@@ -2664,6 +2664,19 @@ function currentNativeProjectComposition(){
   const composition=projectDocument.compose(project,active.rootId,{boundariesOnly:true});
   return composition.issues.length?null:composition;
 }
+function emptyContinuation(region,composition,doc){
+  const index=Number(region.key);
+  const latest=composition?.regions[index];
+  const node=Number.isInteger(index)&&index>=0&&index<doc.childCount?doc.child(index):null;
+  if(!latest||latest.path!==region.path||latest.from!==region.from||latest.to!==region.to||
+    node?.type.name!=='projectRegion'||node.attrs.regionKey!==region.key||node.attrs.path!==region.path||
+    node.childCount!==1||node.firstChild.type.name!=='paragraph'||node.firstChild.content.size)return null;
+  const source=composition.sources.get(region.id);
+  if(source===undefined||source.slice(region.from,region.to).trim())return null;
+  let start=1;
+  for(let i=0;i<index;i++)start+=doc.child(i).nodeSize;
+  return {source,start:start+1};
+}
 function canStartNativeText(){
   if(!sourceView.hidden||projectDocument.composition||editor.state.doc.childCount!==1)return false;
   const paragraph=editor.state.doc.firstChild,project=projectExplorer?.model;
@@ -2712,7 +2725,9 @@ nativeTexPreview=installNativeTexPreview({host:footer,before:modes,primary:nativ
       region.from<=caret.docOffset&&region.to>=caret.docOffset&&composition.sources.get(region.id)===owner.source);
     const parent=composition.content[index]?.attrs.trail?.at(-1);
     if(!parent)return null;
-    return composition.regions.slice(index+1).find(region=>region.path===parent)??null;
+    const continuation=composition.regions.slice(index+1).find(region=>region.path===parent);
+    if(!continuation)return null;
+    return {...continuation,empty:Boolean(emptyContinuation(continuation,composition,editor.state.doc))};
   },
   selectionRegions:()=>currentNativeProjectComposition()?.regions,
   selectText:(anchor,head)=>{
@@ -2727,7 +2742,27 @@ nativeTexPreview=installNativeTexPreview({host:footer,before:modes,primary:nativ
     return true;
   },
   canStartText:canStartNativeText,
-  commitInitialText:text=>{
+  commitInitialText:(text,region)=>{
+    if(region){
+      if(!text.trim()||/[\r\n]/.test(text))return null;
+      const {state}=editor,project=projectExplorer?.model,composition=currentNativeProjectComposition();
+      const target=emptyContinuation(region,composition,state.doc);
+      if(!target||!project||!projectDocument.rebase(composition,editor.getJSON()))return null;
+      const tr=state.tr.insertText(text,target.start);
+      tr.setSelection(TextSelection.create(tr.doc,target.start+text.length));
+      const updates=projectDocument.changes(tr.doc.toJSON());
+      const draft=updates?.get(region.id);
+      if(!draft||draft===target.source)return null;
+      for(const [id,value] of updates)if(id!==region.id&&value!==project.file(id).draft)return null;
+      const tail=region.to+draft.length-target.source.length;
+      if(!draft.startsWith(target.source.slice(0,region.from))||draft.slice(tail)!==target.source.slice(region.to))return null;
+      const candidate=projectMixedDocument(draft,{fragment:true,filePath:region.path})?.paragraphs.find(paragraph=>
+        paragraph.from16>=region.from&&paragraph.from16+paragraph.text.length<=tail);
+      if(!candidate?.glyphs.length)return null;
+      const offset=candidate.from16+candidate.glyphs.at(-1).to16;
+      editor.view.dispatch(closeHistory(tr));
+      return editor.state.doc===state.doc?null:{source:draft,offset,path:region.path};
+    }
     if(!text.trim()||/[\r\n]/.test(text)||!canStartNativeText())return null;
     const {state}=editor;
     const tr=state.tr.insertText(text,1);
