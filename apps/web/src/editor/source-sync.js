@@ -170,14 +170,16 @@ function plainParagraphJoin(projection,[left,right],joined,index) {
   if(nodes.some(node=>node?.type!=='paragraph'||node.content?.length!==1||
     node.content[0].type!=='text'||node.content[0].marks?.length))return null;
   const a=left.content[0].text,b=right.content[0].text;
-  if(JSON.stringify({...joined,content:left.content})!==JSON.stringify(left)||joined.content[0].text!==a+b)return null;
+  if(JSON.stringify({...joined,content:left.content})!==JSON.stringify(left))return null;
   const owners=nodes.slice(0,2).map((_,offset)=>projection.blocks.find(block=>
     block.index===index+offset&&block.count===1&&block.editable));
   const [first,last]=owners;
   if(first?.raw.trim()!==a||last?.raw.trim()!==b)return null;
   const from=first.from+first.raw.trimEnd().length,to=last.to-last.raw.trimStart().length;
-  if(!/^[ \t]*\r?\n[ \t]*\r?\n[\s]*$/.test(projection.text.slice(from,to)))return null;
-  return [{from,to,insert:''}];
+  const gap=projection.text.slice(from,to),replacement=serialize(joined).slice(0,-2);
+  if(!/^[ \t]*\r?\n[ \t]*\r?\n\s*$/.test(gap)||
+     importBlocks(replacement).map(serialize).join('')!==serialize(joined))return null;
+  return minimalChange(a+gap+b,replacement,from-a.length);
 }
 
 // The plain rich view normally serializes structural changes. A formula-only

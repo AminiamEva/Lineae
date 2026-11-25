@@ -2921,9 +2921,10 @@ nativeTexPreview=installNativeTexPreview({host:footer,before:modes,primary:nativ
     if(first?.kind!=='text'||last?.kind!=='text'||first.paragraph===last.paragraph||
       first.paragraph.filePath!==last.paragraph.filePath||first.paragraph.source!==last.paragraph.source||
       /[\r\n]/.test(text))return null;
+    const theorem=first.paragraph.container?.type==='theoremBlock'&&last.paragraph.container?.type==='theoremBlock';
     for(const stop of [first,last]){
       const {paragraph}=stop;
-      if(paragraph.heading||paragraph.tableCell||paragraph.container||paragraph.parts.length!==1||
+      if(paragraph.heading||paragraph.tableCell||paragraph.container&&!theorem||paragraph.parts.length!==1||
         paragraph.parts[0].marks?.length)return null;
     }
     const from=first.docOffset,to=last.docOffset,source=first.paragraph.source;
@@ -2932,8 +2933,9 @@ nativeTexPreview=installNativeTexPreview({host:footer,before:modes,primary:nativ
       !(first.paragraph.text.slice(0,first.local)+text+last.paragraph.text.slice(last.local)).trim())return null;
     if(projectDocument.composition&&!projectDocument.rebase(currentNativeProjectComposition(),editor.getJSON()))return null;
     const left=nativeProsePosition(first.paragraph,first.local,first.local);
-    const right=nativeProsePosition(last.paragraph,0,0);
-    if(!left||!right||left.range.match.offset+left.range.match.node.nodeSize!==right.range.match.offset)return null;
+    const right=nativeProsePosition(last.paragraph,last.local,last.local);
+    if(!left||!right||left.range.match.offset+left.range.match.node.nodeSize!==right.range.match.offset||
+      theorem&&left.range.match.index!==right.range.match.index)return null;
     const {state}=editor,tr=state.tr.insertText(text,left.range.from,right.range.from);
     tr.setSelection(TextSelection.create(tr.doc,left.range.from+text.length));
     const insert=serialize({type:'text',text}),offset=from+insert.length;
@@ -2947,7 +2949,11 @@ nativeTexPreview=installNativeTexPreview({host:footer,before:modes,primary:nativ
       return editor.state.doc===state.doc?null:{source:draft,offset,path:first.paragraph.filePath};
     }
     const projected=sourceProjection(draft,tr.doc.toJSON(),{fragment:projectFileKind==='tex'});
-    if(!projected?.blocks.some(block=>block.index===left.range.match.index&&block.editable&&block.from<=from&&block.to>=from))return null;
+    if(theorem){
+      const patches=richSourceChanges(projection,tr.doc.toJSON());
+      if(!projected||patches?.length!==1||
+         source.slice(0,patches[0].from)+patches[0].insert+source.slice(patches[0].to)!==draft)return null;
+    }else if(!projected?.blocks.some(block=>block.index===left.range.match.index&&block.editable&&block.from<=from&&block.to>=from))return null;
     const change={from,to,insert};
     return dispatchNativeParagraphChange(state,tr,source,draft,change,projected)
       ?{source:draft,offset,path:first.paragraph.filePath}:null;
@@ -3842,7 +3848,7 @@ const fontFamilyControl=home.querySelector('[data-format-attribute="fontFamily"]
 const fontSizeControl=home.querySelector('[data-format-attribute="fontSize"]');
 const colorControl=home.querySelector('.color-control');
 const clipboard=createClipboard(editor,{getField:activeMath,getSource:()=>sourceView.editorView,
-  getNative:()=>nativeTexPreview?.clipboardSelection()});
+  getNative:()=>nativeTexPreview?.clipboardSelection?.()});
 let formatPainter;
 let clipboardStatusTimer;
 function reportClipboardError(error){

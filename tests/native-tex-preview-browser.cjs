@@ -330,9 +330,13 @@ const server=createServer(async(req,res)=>{
       await canvas.click({position:{x:6550000*scale,y:9250000*scale}});
       await page.keyboard.press('ArrowRight');
       await page.keyboard.press('Enter');
-      await page.waitForFunction(expected=>nativeProbe.source===expected,proofSource.replace('One step.','X\r\n\r\nOne step.'));
-      await page.keyboard.press(mod+'+z');
+      const splitProof=proofSource.replace('One step.','X\r\n\r\nOne step.');
+      await page.waitForFunction(expected=>nativeProbe.source===expected,splitProof);
+      await panel.getByText('Click text on the native page',{exact:false}).waitFor();
+      await page.keyboard.press('Backspace');
       await page.waitForFunction(expected=>nativeProbe.source===expected,proofSource.replace('One step.','XOne step.'));
+      await page.keyboard.press(mod+'+z');
+      await page.waitForFunction(expected=>nativeProbe.source===expected,splitProof);
       await page.locator('#native-tex-close').click();
       const listSource='\\documentclass{article}\n\\begin{document}\n\\begin{enumerate}\n\\item One item.\n'+
         '\\begin{itemize}\n\\item Nested.\n\\end{itemize}\n\\item Last.\n\\end{enumerate}\n\\end{document}\n';
@@ -499,12 +503,13 @@ const server=createServer(async(req,res)=>{
       await page.keyboard.press(mod+'+a');
       await page.keyboard.press(mod+'+c');
       await page.waitForFunction(async()=>await navigator.clipboard.readText()==='Alpha\n\nBeta');
-      await canvas.click({position:{x:7520000*scale,y:9250000*scale}});
+      await canvas.click({position:{x:7720000*scale,y:9250000*scale}});
+      await page.keyboard.press('Shift+ArrowLeft');
       await page.keyboard.press('Shift+ArrowLeft');
       await page.keyboard.press('Shift+ArrowLeft');
       await page.keyboard.type('X');
-      await page.waitForFunction(expected=>nativeProbe.source===expected,beforeBreak.replace('AlphaBeta','AlphXBeta'));
-      assert.deepEqual(await page.locator('.ProseMirror p').allTextContents(),['AlphXBeta']);
+      await page.waitForFunction(expected=>nativeProbe.source===expected,beforeBreak.replace('AlphaBeta','AlphXeta'));
+      assert.deepEqual(await page.locator('.ProseMirror p').allTextContents(),['AlphXeta']);
       await page.keyboard.press(mod+'+z');
       await page.waitForFunction(expected=>nativeProbe.source===expected,split);
       await panel.getByText('Click text on the native page',{exact:false}).waitFor();
