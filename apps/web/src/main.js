@@ -2112,7 +2112,14 @@ for (const [environment, row] of Object.entries({
   for (const suffix of ['', '*']) {
     const name=environment+suffix;
     const columns=environment==='alignat' ? '{1}' : '';
-    structureCommands[name]=()=>insertMath(true,'\\begin{'+name+'}'+columns+row+'\\\\'+row+'\\end{'+name+'}');
+    const build=content=>'\\begin{'+name+'}'+columns+content+'\\\\'+content+'\\end{'+name+'}';
+    structureCommands[name]=()=>{
+      if(!nativeParagraphFormattingActive())return insertMath(true,build(row));
+      const latex=build(row.replaceAll(mathSlot,'').replaceAll(' ',''));
+      const [block]=importBlocks(latex);
+      return block?.type==='mathBlock'&&projectMath(latex).supported&&
+        insertNativeDocumentBlock(editor.schema.nodeFromJSON(block),latex);
+    };
   }
 }
 let completionField = null;
@@ -2281,10 +2288,11 @@ function insertNativeProseBlock(block,latex,preambleLines){
   return applied;
 }
 function focusNativeBlockInsertion(block,source,from,path,fragment,splitIncludes,started){
-  if(block.type.name==='mathBlock'&&block.attrs.delimiter==='\\['){
+  if(block.type.name==='mathBlock'){
     const math=projectMath(block.attrs.latex);
     const firstCell=math.slots.find(slot=>slot.role==='cell'&&!slot.raw.length);
-    if(firstCell)nativeTexPreview.preserveSourceCaret({source,path,offset:from+2+firstCell.from16},started,'math');
+    const opening=displayEnvironment(block.attrs.latex)?0:2;
+    if(firstCell)nativeTexPreview.preserveSourceCaret({source,path,offset:from+opening+firstCell.from16},started,'math');
     return;
   }
   if(block.type.name!=='table')return;
@@ -2301,6 +2309,8 @@ function completionActions() {
   };
   if(completionNative==='text'){
     const actions={
+      ...Object.fromEntries(Object.entries(structureCommands).filter(([name])=>
+        /^(?:align(?:at)?|flalign|gather|multline|eqnarray)\*?$/.test(name))),
       chapter:()=>runNativeTextStructure('setHeading',{level:1,command:'chapter'}),
       ...Object.fromEntries(['section','subsection','subsubsection'].map((command,index)=>
         [command,()=>runNativeTextStructure('setHeading',{level:index+1,command})])),
