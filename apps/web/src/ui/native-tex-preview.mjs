@@ -48,6 +48,7 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
   controls.append(zoom,editButton,tikzSelect,tikzEdit,sourceBlock,sourceBlockEdit,exportButton,targetButton,closeButton);
   if(primary){
     panel.dataset.primary='true';
+    panel.dataset.pagePresentation='pages';
     targetButton.hidden=true;editButton.hidden=true;zoom.hidden=true;
   }
   const pages=document.createElement('div');pages.className='native-tex-pages';
@@ -938,17 +939,21 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
     }
     void(active?stop():start());
   }
+  function redrawPresentation(){
+    if(mode==='pdf')pdf.redraw();
+    else renderer.redraw();
+  }
   function syncPresentation(){
     const nextSplit=active&&primary?splitHost?.()??null:null;
     if(mountedSplit!==nextSplit){
       if(mountedSplit){
         delete mountedSplit.dataset.native;
-        mountedSplit.removeEventListener('scroll',renderer.redraw);
+        mountedSplit.removeEventListener('scroll',redrawPresentation);
       }
       mountedSplit=nextSplit;
       if(mountedSplit){
         mountedSplit.dataset.native='true';
-        mountedSplit.addEventListener('scroll',renderer.redraw,{passive:true});
+        mountedSplit.addEventListener('scroll',redrawPresentation,{passive:true});
         mountedSplit.append(panel);
       }else document.body.append(panel);
     }
@@ -961,7 +966,7 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
       if(!observation)lastTarget=null;
       renderer.clearCaret();renderer.showFileBoundaries([]);renderer.showFoldedFiles([]);
     }else if(active&&observation&&current())refreshFoldView();
-    if(active&&!panel.hidden)renderer.redraw();
+    if(active&&!panel.hidden)redrawPresentation();
   }
   function documentChanged(){
     const afterStop=stop(),stamp=generation;
@@ -1054,6 +1059,16 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
       if(isDocumentMode?.()||splitHost?.())void start();
     },
     setDocumentZoom:value=>{if(primary)setNativeZoom(value);},
+    pagePresentation:()=>panel.dataset.pagePresentation,
+    togglePagePresentation(){
+      if(!primary)return false;
+      panel.dataset.pagePresentation=panel.dataset.pagePresentation==='pages'?'flow':'pages';
+      if(active&&!panel.hidden){
+        redrawPresentation();
+        if(acceptsInput()&&nativeEditing)positionInput();
+      }
+      return true;
+    },
     hasTextInput:event=>event.target===input&&nativeEditing&&acceptsInput()&&nativeDocument.surface.caret?.kind==='text',
     inTableCell:()=>Boolean(nativeDocument.surface.caret?.paragraph?.tableCell),
     hasMathInput: event => event.target===input && nativeEditing && acceptsInput() && nativeDocument.surface.caret?.kind==='math',

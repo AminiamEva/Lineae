@@ -2280,16 +2280,18 @@ const paginationButton=document.createElement('button');
 paginationButton.type='button';paginationButton.className='pagination-toggle';
 paginationButton.addEventListener('mousedown',event=>event.preventDefault());
 paginationButton.addEventListener('click',()=>{
-  typesetPagination?.toggle();
+  if(!nativeTexPreview?.togglePagePresentation?.())typesetPagination?.toggle();
   updatePaginationButton();
 });
 function updatePaginationButton(){
-  const pages=typesetPagination?.getMode()==='pages';
+  const nativeMode=nativeTexPreview?.pagePresentation?.()??(nativeWorkspaceRequested()?'pages':null);
+  const pages=(nativeMode??typesetPagination?.getMode())==='pages';
   paginationButton.textContent=pages?t('分页','Pages'):t('连续流','Continuous');
   paginationButton.dataset.mode=pages?'pages':'flow';
   paginationButton.setAttribute('aria-pressed',String(pages));
-  paginationButton.dataset.tooltipZh=pages?'切换到连续流预览':'切换到分页预览';
-  paginationButton.dataset.tooltipEn=pages?'Switch to continuous flow':'Switch to paginated pages';
+  paginationButton.dataset.tooltipZh=nativeMode?(pages?'连续显示原生页面':'显示原生页边界'):(pages?'切换到连续流预览':'切换到分页预览');
+  paginationButton.dataset.tooltipEn=nativeMode?(pages?'Show native pages continuously':'Show native page boundaries'):
+    (pages?'Switch to continuous flow':'Switch to paginated pages');
 }
 function scale() {
   const value=Number(zoom.value);
@@ -2761,8 +2763,11 @@ function forEachNativeDocumentBlock(type,visit){
   const composition=projectDocument.composition;
   editor.state.doc.forEach((node,position,index)=>{
     if(!composition){
-      if(node.type.name===type)
-        visit(node,position,projection?.blocks.find(block=>block.index===index&&block.count),filename,projection?.text,0);
+      if(node.type.name===type){
+        const project=projectExplorer?.model,file=project&&project.file(project.activeFileId);
+        visit(node,position,projection?.blocks.find(block=>block.index===index&&block.count),
+          file?.path??filename,projection?.text,0,file?.id);
+      }
       return;
     }
     const region=composition.regions[index];

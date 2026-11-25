@@ -351,6 +351,24 @@ const server=createServer(async(req,res)=>{
       await page.keyboard.press(mod+'+z');
       await page.waitForFunction(expected=>nativeProbe.source===expected,splitProof);
       await page.locator('#native-tex-close').click();
+      const mixedProof=proofSource.replace('One step.','\\emph{Step} $\\frac{a}{}$ here.');
+      await page.locator('input#file').setInputFiles({name:'mixed-proof.tex',mimeType:'text/plain',buffer:Buffer.from(mixedProof)});
+      await page.locator('#native-tex-toggle').click();
+      await page.waitForFunction(()=>document.querySelector('#native-tex-preview').dataset.state==='current');
+      await page.locator('#native-tex-target').click();
+      await panel.getByText('Click prose on the native page',{exact:false}).waitFor();
+      await page.locator('#native-tex-edit').click();
+      await canvas.click({position:{x:6550000*scale,y:9250000*scale}});
+      await page.keyboard.type('X');
+      const editedProof=mixedProof.replace('Step','XStep');
+      await page.waitForFunction(expected=>nativeProbe.source===expected,editedProof);
+      await page.waitForFunction(()=>nativeProbe.calls.some(call=>call.command==='native_tex_observe_formula'&&
+        call.args.sourceRevision===nativeProbe.revision));
+      await panel.getByText('Click prose on the native page',{exact:false}).waitFor();
+      await canvas.click({position:{x:6500000*scale,y:7000000*scale}});
+      await page.keyboard.type('b');
+      await page.waitForFunction(expected=>nativeProbe.source===expected,editedProof.replace('\\frac{a}{}','\\frac{a}{b}'));
+      await page.locator('#native-tex-close').click();
       const brokenProse='\\documentclass{article}\r\n\\begin{document}\r\nAlpha\\newline\r\nBeta\\\\[2pt]\r\nGamma\r\n\\end{document}\r\n';
       await page.locator('input#file').setInputFiles({name:'prose-breaks.tex',mimeType:'text/plain',buffer:Buffer.from(brokenProse)});
       await page.locator('#native-tex-toggle').click();
@@ -403,7 +421,7 @@ const server=createServer(async(req,res)=>{
       await prosePalette.getByRole('textbox',{name:'LaTeX command',exact:true}).fill('title');
       await page.keyboard.press('Enter');
       await page.locator('.editor-dialog input').fill('Yield 50%');
-      await page.keyboard.press('Enter');
+      await page.locator('.editor-dialog button[type=submit]').click();
       await page.waitForFunction(()=>nativeProbe.source?.includes('\\title{Yield 50\\%}')&&nativeProbe.source.includes('\\maketitle'));
       await page.locator('#native-tex-close').click();
       const literalProse='\\documentclass{article}\n\\begin{document}\n\\textasciicircum{}Alpha\n\\end{document}\n';
@@ -568,6 +586,13 @@ const server=createServer(async(req,res)=>{
       await page.waitForFunction(width=>Math.abs(document.querySelector('[data-native-page="1"] canvas')
         .getBoundingClientRect().width-width*.75)<2,at100);
       assert.equal(await page.locator('#native-tex-zoom').isVisible(),false);
+      const pagePresentation=page.locator('.pagination-toggle');
+      assert.equal(await pagePresentation.getAttribute('data-mode'),'pages');
+      await pagePresentation.click();
+      assert.equal(await panel.getAttribute('data-page-presentation'),'flow');
+      assert.equal(await panel.locator('.native-tex-page').evaluate(node=>getComputedStyle(node).marginTop),'0px');
+      assert.ok(Math.abs((await canvas.boundingBox()).width-at100*.75)<2);
+      await pagePresentation.click();
       await canvas.click({position:{x:6550000*scale,y:9250000*scale}});
       await page.keyboard.type('X');
       await page.waitForFunction(expected=>nativeProbe.source===expected,workspaceSource.replace('Native document.','XNative document.'));
@@ -1306,6 +1331,9 @@ const server=createServer(async(req,res)=>{
       fallback:document.querySelector('#native-tex-preview')?.dataset.fallbackReason,
       status:document.querySelector('#native-tex-preview [role=status]')?.textContent,
       targetStatus:document.querySelectorAll('#native-tex-preview [role=status]')[1]?.textContent,
+      editorStatus:document.querySelector('#status')?.textContent,
+      sourceStatus:document.querySelector('.tex-message')?.textContent,
+      docTitle:document.querySelector('.doc-title')?.textContent,
       source:window.nativeProbe?.source?.slice(0,1600),
       value:document.querySelector('math-field')?.value,
       focus:document.activeElement?.tagName,

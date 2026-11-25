@@ -11,13 +11,14 @@ export function plainParagraphText(node) {
 }
 
 function paragraphRange(source,from,to,container,path,node) {
+  if(node?.type!=='paragraph')return null;
   const body=source.slice(from,to);
   const text=body.trim();
-  if(!text||text!==plainParagraphText(node)||/[\\{}$%&#_^~\r\n]/.test(text))return null;
-  return {from:from+body.indexOf(text),text,container,path};
+  if(!text)return null;
+  return {from:from+body.indexOf(text),text,container,path,node};
 }
 
-export function plainContainerParagraphs(source) {
+export function containerParagraphRanges(source) {
   const theorem=theoremParts(source);
   if(theorem){
     const doc=parseDocument(theorem.body,{fragment:true});
@@ -47,4 +48,9 @@ export function plainContainerParagraphs(source) {
     const range=paragraphRange(source,part.from,part.to,'blockquote',[part.index],part.nodes[0]);
     return range?[range]:[];
   });
+}
+
+export function plainContainerParagraphs(source) {
+  return containerParagraphRanges(source).filter(({text,node})=>text===plainParagraphText(node)&&
+    !/[\\{}$%&#_^~\r\n]/.test(text));
 }

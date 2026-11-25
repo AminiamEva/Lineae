@@ -1,7 +1,7 @@
 import {headingAt} from '../../../latex/headings.mjs';
 import {escapeText} from '../../../latex/inline.mjs';
 import {tableCellRanges} from './table-cells.mjs';
-import {plainContainerParagraphs} from './containers.mjs';
+import {containerParagraphRanges} from './containers.mjs';
 import {parseDocument} from '../../../latex/document.mjs';
 import {sourceStructure} from '../../../latex/source-structure.mjs';
 import {decodeProse,markedRuns} from './prose-runs.mjs';
@@ -100,6 +100,20 @@ function instrumentProse(block, source, blockFrom, firstOwner, attribute, filePa
     paragraphs:[paragraph],nextTag};
 }
 
+function renderInstrumentedBlock(block,blockFrom,replacements,formulas,projectedFormulas){
+  for(const formula of formulas)if(!projectedFormulas.has(formula))replacements.push({
+    from:formula.from16-blockFrom,to:formula.to16-blockFrom,insert:formula.math.projection,
+  });
+  if(!replacements.length)return null;
+  let projection='',cursor=0;
+  for(const {from,to,insert} of replacements.sort((left,right)=>left.from-right.from)){
+    if(from<cursor||to>block.length)return null;
+    projection+=block.slice(cursor,from)+insert;
+    cursor=to;
+  }
+  return projection+block.slice(cursor);
+}
+
 function instrumentTable(block, source, blockFrom, firstOwner, attribute, filePath, reuse, formulas=[]) {
   const cells=tableCellRanges(block);
   if(!cells||!cells.length&&!formulas.length)return null;
@@ -128,33 +142,27 @@ function instrumentTable(block, source, blockFrom, firstOwner, attribute, filePa
         parts:[],runs:[{from16:0,to16:0,text,partIndex:0}],tableCell});
     }
   }
-  for(const formula of formulas)if(!projectedFormulas.has(formula))replacements.push({
-    from:formula.from16-blockFrom,to:formula.to16-blockFrom,insert:formula.math.projection,
-  });
-  let projection='',cursor=0;
-  for(const {from,to,insert} of replacements.sort((left,right)=>left.from-right.from)){
-    if(from<cursor||to>block.length)return null;
-    projection+=block.slice(cursor,from)+insert;
-    cursor=to;
-  }
-  return {projection:projection+block.slice(cursor),paragraphs,nextTag};
+  const projection=renderInstrumentedBlock(block,blockFrom,replacements,formulas,projectedFormulas);
+  return projection===null?null:{projection,paragraphs,nextTag};
 }
 
-function instrumentContainer(block,source,blockFrom,firstOwner,attribute,filePath,reuse) {
-  const parts=plainContainerParagraphs(block);
+function instrumentContainer(block,source,blockFrom,firstOwner,attribute,filePath,reuse,formulas=[]) {
+  const parts=containerParagraphRanges(block);
   if(!parts.length)return null;
-  const paragraphs=[];
-  let projection='',cursor=0,nextTag=firstOwner;
+  const paragraphs=[],replacements=[],projectedFormulas=new Set();
+  let nextTag=firstOwner;
   for(const {from,text,container,path} of parts){
-    const built=instrumentText(text,nextTag,attribute,blockFrom+from,reuse);
-    projection+=block.slice(cursor,from)+built.instrumented;
-    cursor=from+text.length;
+    const start=blockFrom+from;
+    const inline=formulas.filter(formula=>formula.outerFrom16>=start&&formula.outerTo16<=start+text.length);
+    const built=instrumentProse(text,source,start,nextTag,attribute,filePath,0,reuse,inline);
+    if(!built||built.paragraphs.some(paragraph=>paragraph.heading))continue;
+    replacements.push({from,to:from+text.length,insert:built.projection});
+    inline.forEach(formula=>projectedFormulas.add(formula));
+    paragraphs.push(...built.paragraphs.map(paragraph=>({...paragraph,container:{type:container,path}})));
     nextTag=built.nextTag;
-    const part={kind:'text',from16:0,to16:text.length,text};
-    paragraphs.push({source,filePath,from16:blockFrom+from,text,glyphs:built.glyphs,
-      parts:[part],runs:[{...part,partIndex:0}],container:{type:container,path}});
   }
-  return {projection:projection+block.slice(cursor),paragraphs,nextTag};
+  const projection=renderInstrumentedBlock(block,blockFrom,replacements,formulas,projectedFormulas);
+  return projection===null?null:{projection,paragraphs,nextTag};
 }
 
 function instrumentTextBlock(block,source,from,next,attribute,filePath,keepThrough,reuse){
@@ -228,6 +236,7 @@ export function projectMixedDocument(source, {previous=[], attribute=65000, frag
     }
     output += source.slice(cursor, from16);
     const result=overlapping.length?(instrumentTable(block,source,from16,next,attribute,filePath,reuse,overlapping)??
+      instrumentContainer(block,source,from16,next,attribute,filePath,reuse,overlapping)??
       (overlapping.every(formula=>formula.kind==='inlineMath')&&
         instrumentProse(block,source,from16,next,attribute,filePath,keepThrough,reuse,overlapping))):
       instrumentTextBlock(block,source,from16,next,attribute,filePath,keepThrough,reuse);

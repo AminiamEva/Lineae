@@ -95,7 +95,7 @@ export function installNativePdf({host,onPaint,onError}) {
   host.addEventListener('scroll',redraw,{passive:true});
   host.parentElement?.addEventListener('scroll',redraw,{passive:true});
   window.addEventListener('resize',redraw);
-  return {show,reset,setZoom(value){
+  return {show,reset,redraw,setZoom(value){
     zoom=value;clearTasks();
     for(const entry of pages) {
       const viewport=entry.page.getViewport({scale:zoom*96/72});

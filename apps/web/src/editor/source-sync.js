@@ -1,5 +1,5 @@
 import {plainTableCells,tableCellRanges} from './native-text/table-cells.mjs';
-import {plainContainerParagraphs,plainParagraphText} from './native-text/containers.mjs';
+import {containerParagraphRanges,plainContainerParagraphs,plainParagraphText} from './native-text/containers.mjs';
 import {paragraphSpelling,mathSpelling} from './source-spelling.mjs';
 import {includeEmptyParagraphs,ownsEditedRange,blockWhitespace,splitEditableBoundaries} from './source-boundaries.mjs';
 import { parseDocument } from '../../latex/document.mjs';
@@ -158,7 +158,7 @@ export function richSourceChanges(projection, doc) {
     if (JSON.stringify(nodes) === block.snapshot) continue;
     const patch = block.editable ? patchBlock(block,nodes) :
       inlineMathChanges(block,nodes)??markedInlineProseChanges(block,nodes)??plainTableChanges(block,nodes)??tikzFigureChanges(block,nodes)??
-      theoremParagraphChanges(block,nodes)??plainContainerChanges(block,nodes)??patchIsolatedTables(block,nodes);
+      theoremParagraphChanges(block,nodes)??containerProseChanges(block,nodes)??patchIsolatedTables(block,nodes);
     if (!patch) return null;
     changes.push(...patch);
   }
@@ -200,7 +200,7 @@ export function standaloneMathChanges(projection,doc) {
     const nodes=doc.content.slice(block.index,block.index+block.count);
     if(JSON.stringify(nodes)===block.snapshot)continue;
     const patch=mathBodyChanges(block,nodes)??inlineMathChanges(block,nodes)??markedInlineProseChanges(block,nodes)??plainTableChanges(block,nodes)??
-      tikzFigureChanges(block,nodes)??plainContainerChanges(block,nodes);
+      tikzFigureChanges(block,nodes)??containerProseChanges(block,nodes);
     if(!patch)return null;
     changes.push(...patch);
   }
@@ -266,7 +266,7 @@ function plainTableChanges(block,nodes) {
   return patches;
 }
 
-function plainContainerChanges(block,nodes) {
+function containerProseChanges(block,nodes) {
   const [previous]=JSON.parse(block.snapshot);
   const [current]=nodes;
   if(nodes.length!==1||block.count!==1||
@@ -274,14 +274,18 @@ function plainContainerChanges(block,nodes) {
      current?.type!==previous.type)return null;
   const restored=structuredClone(current),changes=[];
   const at=(node,path)=>path.reduce((parent,index)=>parent?.content?.[index],node);
-  for(const {from,text,container,path} of plainContainerParagraphs(block.raw)){
+  for(const {from,text,container,path} of containerParagraphRanges(block.raw)){
     if(container!==previous.type)continue;
     const before=at(previous,path),after=at(current,path);
     if(JSON.stringify(before)===JSON.stringify(after))continue;
     const next=plainParagraphText(after);
-    if(plainParagraphText(before)!==text||!next||next!==next.trim()||/[\\{}$%&#_^~\r\n]/.test(next))return null;
+    const start=block.from+from;
+    const region={raw:text,from:start,count:1,snapshot:JSON.stringify([before])};
+    const edits=plainParagraphText(before)===text&&next&&next===next.trim()&&!/[\\{}$%&#_^~\r\n]/.test(next)
+      ?minimalChange(text,next,start):inlineMathChanges(region,[after])??markedInlineProseChanges(region,[after]);
+    if(!edits)return null;
     at(restored,path).content=before.content;
-    changes.push(...minimalChange(text,next,block.from+from));
+    changes.push(...edits);
   }
   if(!changes.length||JSON.stringify(restored)!==JSON.stringify(previous))return null;
   return changes;
@@ -422,7 +426,7 @@ function patchIsolatedTables(block,nodes) {
 
 function patchBlock(block,nodes) {
     const math=mathBodyChanges(block,nodes)??inlineMathChanges(block,nodes)??markedInlineProseChanges(block,nodes)??plainTableChanges(block,nodes)??
-      tikzFigureChanges(block,nodes)??theoremParagraphChanges(block,nodes)??plainContainerChanges(block,nodes);
+      tikzFigureChanges(block,nodes)??theoremParagraphChanges(block,nodes)??containerProseChanges(block,nodes);
     if(math)return math;
     if (nodes.some(node => node.type === 'raw')) return null;
     const environments=list=>list.flatMap(node=>[

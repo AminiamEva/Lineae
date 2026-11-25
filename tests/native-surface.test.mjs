@@ -781,6 +781,25 @@ test('splitting a proof paragraph keeps its title, indentation and CRLF bytes',(
     [['Alpha',[0]],['Beta',[1]],['Untouched.',[2]]]);
 });
 
+test('native proof ownership and source writeback retain marked prose, formulas, and proof titles',()=>{
+  const source='\\begin{document}\r\n\\begin{proof}[Idea]\r\n  \\emph{Step} $x$ here.\r\n\\end{proof}\r\n\\end{document}\r\n';
+  const projected=projectMixedDocument(source);
+  const [paragraph]=projected.paragraphs;
+  assert.equal(paragraph.container.type,'theoremBlock');
+  assert.deepEqual(paragraph.parts[0].marks,['italic']);
+  assert.equal(projected.formulas[0].math.source,'x');
+  const doc={type:'doc',content:parseDocument(source).blocks.flatMap(importBlocks)};
+  const layout=sourceProjection(source,doc);
+  const revised=structuredClone(doc);
+  revised.content[0].content[0].content[0].text='Next step';
+  const from=source.indexOf('Step');
+  assert.deepEqual(richSourceChanges(layout,revised),[{from,to:from+1,insert:'Next s'}]);
+  const formula=structuredClone(doc);
+  formula.content[0].content[0].content.find(node=>node.type==='math').attrs.latex='y';
+  const mathFrom=source.indexOf('$x$')+1;
+  assert.deepEqual(richSourceChanges(layout,formula),[{from:mathFrom,to:mathFrom+1,insert:'y'}]);
+});
+
 test('native prose targets both sides of explicit LaTeX line breaks and preserves the spelling',()=>{
   const source='\\begin{document}\r\nAlpha\\newline\r\nBeta\\\\[2pt]\r\nGamma\r\n\\end{document}\r\n';
   const draft=source.replace('Beta','Delta');

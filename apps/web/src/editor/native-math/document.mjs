@@ -1,5 +1,6 @@
 import {parseDocument} from '../../../latex/document.mjs';
 import {tableCellRanges} from '../native-text/table-cells.mjs';
+import {containerParagraphRanges} from '../native-text/containers.mjs';
 import {markedRuns} from '../native-text/prose-runs.mjs';
 import {sourceStructure} from '../../../latex/source-structure.mjs';
 import {environmentEnd} from '../../../latex/tblr.mjs';
@@ -54,6 +55,10 @@ export function projectDocumentFormulas(source,{fragment=false,firstTag=1,filePa
     if(block.includes('{')&&nested.size){
       for(const run of markedRuns(block,blockStart,[],nested)??[])
         if(run.kind==='math'&&run.insideMark)markedMath.add(run.from16);
+      for(const {from,text} of containerParagraphRanges(block)){
+        for(const run of markedRuns(text,blockStart+from,[],nested)??[])
+          if(run.kind==='math')markedMath.add(run.from16);
+      }
     }
     blockStart+=block.length;
   }
