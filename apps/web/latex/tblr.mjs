@@ -80,17 +80,17 @@ function styles(value,unsupported) {
   }
   return result;
 }
-function columns(source,unsupported) {
+function columns(source,unsupported,ranges=[]) {
   const result=[];
   for(let i=0;i<source.length;) {
     if(/\s/.test(source[i])){i++;continue;}
-    const type=source[i++];if(!'Xlcr'.includes(type))return null;
+    const start=i,type=source[i++];if(!'Xlcr'.includes(type))return null;
     let style={align:alignments[type]??'left'};
     if(type==='X' && source[i]==='[') {
       const arg=group(source,i,'[',']');if(!arg)return null;
       style={...style,...styles(arg.value,unsupported)};i=arg.end;
     }
-    result.push(style);if(result.length>4096)return null;
+    result.push(style);ranges.push({from:start,to:i});if(result.length>4096)return null;
   }
   return result.length?result:null;
 }
@@ -207,10 +207,38 @@ export function parseTblr(source) {
   const structural=options.every(([key,value])=>!colspec||['colspec','width','rows','cells'].includes(key)||
     ['hlines','vlines'].includes(key)&&(value===null||group(value,0)?.end===value.length));
   return {source,columns:specs.map(s=>({left:'l',center:'c',right:'r'}[s.align]??'l')).join(''),rows:parsed,unsupported,
-    ...(structural&&source[trivia(source,start[0].length)]!=='['?{rowEnds}:{})};
+    ...(structural&&source[trivia(source,start[0].length)]!=='['?{rowEnds,rawRows:rows,
+      columnRanges:columnSettingRanges(settings,colspec)}:{})};
 }
 
-export function editTblrRow(source,index,remove=false) {
+function columnSettingRanges(settings,colspec){
+  const base=settings.end-settings.value.length-1;
+  let from=0,to=settings.value.length;
+  if(colspec){
+    const cuts=delimiters(settings.value,[','],true);
+    let start=0,found=false;
+    for(const cut of [...cuts,{index:to,end:to}]){
+      const section=settings.value.slice(start,cut.index);
+      if(assignment(clean(section))[0]==='colspec'){
+        if(found)return [];
+        const equals=delimiters(section,['='],true)?.[0];
+        if(!equals)return [];
+        from=start+trivia(section,equals.end);
+        const value=group(settings.value,from);
+        if(value){from++;to=value.end-1;}
+        else to=cut.index;
+        found=true;
+      }
+      start=cut.end;
+    }
+    if(!found)return [];
+  }
+  const ranges=[];
+  if(!columns(settings.value.slice(from,to),[],ranges))return [];
+  return ranges.map(range=>({from:base+from+range.from,to:base+from+range.to}));
+}
+
+function editableTblr(source) {
   let table=parseTblr(source),base=0;
   if(!table){
     const float=parseTableFloat(source);
@@ -221,6 +249,13 @@ export function editTblrRow(source,index,remove=false) {
     table=parseTblr(float.body.slice(opening.index,closing.end));
     base=float.open.length+opening.index;
   }
+  return table?.rowEnds?{table,base}:null;
+}
+
+export function editTblrRow(source,index,remove=false) {
+  const located=editableTblr(source);
+  if(!located)return null;
+  const {table,base}=located;
   const edge=table?.rowEnds?.[index];
   if(!edge||remove&&table.rows.length===1)return null;
   const raw=table.source,eol=raw.includes('\r\n')?'\r\n':'\n';
@@ -238,6 +273,34 @@ export function editTblrRow(source,index,remove=false) {
   if(updated?.rows.length!==table.rows.length+(remove?-1:1)||
     !remove&&updated.rows[index+1].some(cell=>cell.text))return null;
   return {from:base+from,to:base+to,insert};
+}
+
+export function editTblrColumn(source,row,column,offset,remove=false) {
+  const located=editableTblr(source);
+  if(!located)return null;
+  const {table,base}=located;
+  const count=table.columnRanges.length;
+  if(!table.rows[row]?.[column]||!table.columnRanges[column]||remove&&count<2||
+    table.rows.some(cells=>cells.length!==count))return null;
+  const {from,to}=table.columnRanges[column];
+  const edits=[remove?{from,to,insert:''}:{from:to,to,insert:'l'}];
+  for(const cells of table.rawRows){
+    const cell=cells[column],end=cell.from+cell.raw.trimEnd().length;
+    if(!remove){edits.push({from:end,to:end,insert:' & '});continue;}
+    const a=column?cell.from-1:cell.from+trivia(cell.raw);
+    const b=column?end:cell.to+1;
+    if(table.source[column?a:b-1]!=='&'||a>b||table.source.slice(a,b).includes('%'))return null;
+    edits.push({from:a,to:b,insert:''});
+  }
+  const start=edits[0].from,end=edits.at(-1).to;
+  const insert=edits.toReversed().reduce((value,edit)=>value.slice(0,edit.from-start)+
+    edit.insert+value.slice(edit.to-start),table.source.slice(start,end));
+  const draft=table.source.slice(0,start)+insert+table.source.slice(end);
+  const next=parseTblr(draft);
+  if(next?.rows.length!==table.rows.length||next.columns.length!==count+(remove?-1:1))return null;
+  const nextOffset=edits.filter(edit=>base+edit.from<offset)
+    .reduce((point,edit)=>point+edit.insert.length-(edit.to-edit.from),offset);
+  return {from:base+start,to:base+end,insert,offset:nextOffset};
 }
 
 const tableKeys=['columns','booktabs','borderMode','borderWidth','caption','label','placement','centered','align'];

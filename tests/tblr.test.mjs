@@ -4,7 +4,7 @@ import {readFileSync} from 'node:fs';
 import {importBlocks,serialize} from '../apps/web/src/editor/latex-codec.js';
 import {sourceProjection,richSourceChanges} from '../apps/web/src/editor/source-sync.js';
 import {parseDocument} from '../apps/web/latex/document.mjs';
-import {editTblrRow} from '../apps/web/latex/tblr.mjs';
+import {editTblrColumn,editTblrRow} from '../apps/web/latex/tblr.mjs';
 const fixture=JSON.parse(readFileSync(new URL('./fixtures/academic-tblr.json',import.meta.url),'utf8'));
 const table=source=>{const nodes=importBlocks(source);assert.equal(nodes.length,1);assert.equal(nodes[0].type,'table');return nodes[0];};
 const wrap=body=>'\\begin{document}\r\nBefore.\n\n'+body+'\r\n\nAfter.\n\\end{document}\r\n';
@@ -21,6 +21,20 @@ test('native tabularray row edits preserve global options, spans and source triv
   assert.equal(deleted,source.replace('A & B\r\n',''));
   assert.equal(table(deleted).content.length,1);
   assert.equal(editTblrRow(source.replace(settings,settings+', row{2}={r}'),0),null);
+});
+
+test('native tabularray column edits retain column declarations, rules and caret ownership',()=>{
+  const settings='colspec={l X[c]}, rows={m}, vlines={solid}';
+  const source=['\\begin{tblr}{'+settings+'}','A  & B \\\\',' C & D','\\end{tblr}'].join('\r\n');
+  const apply=({from,to,insert})=>source.slice(0,from)+insert+source.slice(to);
+  const patch=editTblrColumn(source,0,0,source.indexOf('A'));
+  const draft=apply(patch);
+  assert.equal(draft,source.replace('l X[c]','ll X[c]').replace('A  & B','A &   & B').replace('C & D','C &  & D'));
+  assert.equal(draft[patch.offset],'A');
+  assert.equal(apply(editTblrColumn(source,0,0,0,true)),source.replace('l X[c]',' X[c]')
+    .replace('A  & B',' B').replace(' C & D','  D'));
+  assert.equal(editTblrColumn(source.replace('A  & B','\\SetCell[c=2]{c} A & '),1,0,0),null);
+  assert.equal(editTblrColumn(source.replace('vlines={solid}','vline{2}={solid}'),0,0,0),null);
 });
 const edit=(source,mutate)=>{
   const doc={type:'doc',content:parseDocument(source).blocks.flatMap(importBlocks)};

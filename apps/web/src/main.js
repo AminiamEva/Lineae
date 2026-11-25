@@ -7,7 +7,7 @@ import {resolvePackages} from '../latex/packages.mjs';
 import {referenceAt} from '../latex/reference-commands.mjs';
 import {sourceStructure} from '../latex/source-structure.mjs';
 import {insertTableSourceColumn,insertTableSourceRow,removeTableSourceColumn,removeTableSourceRow} from '../latex/tabularx.mjs';
-import {editTblrRow} from '../latex/tblr.mjs';
+import {editTblrColumn,editTblrRow} from '../latex/tblr.mjs';
 import {loadLegacyMath,nativeOnlyAcceptance,nativeWorkspaceRequested} from './editor/native-surface/acceptance-mode.mjs';
 import {AppendixStart,MatterStart,LayoutCommand} from './editor/appendix.js';
 import {Lipsum} from './editor/lipsum.js';
@@ -2928,7 +2928,8 @@ function editNativeTableAxis(operation){
   };
   if(structured?(original.trimEnd()!==rawTable||!owner.source.startsWith(original,start)):!decode(original)?.eq(node))return false;
   const deleting=operation.startsWith('delete');
-  const patch=node.attrs.tblr?(operation.endsWith('Row')?editTblrRow(original,cell.row,deleting):null):{
+  const patch=node.attrs.tblr?(operation.endsWith('Row')?editTblrRow(original,cell.row,deleting):
+    editTblrColumn(original,cell.row,cell.column,caret.docOffset-start,deleting)):{
     insertRow:()=>insertTableSourceRow(original,cell.row),
     insertColumn:()=>insertTableSourceColumn(original,cell.row,cell.column,caret.docOffset-start),
     deleteRow:()=>removeTableSourceRow(original,cell.row),

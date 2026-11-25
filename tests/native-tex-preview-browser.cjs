@@ -336,6 +336,13 @@ const server=createServer(async(req,res)=>{
       await page.waitForFunction(expected=>nativeProbe.source===expected,tabularray.replace('\nThree','\n & \\\\\nThree'));
       await page.keyboard.press(mod+'+z');
       await page.waitForFunction(expected=>nativeProbe.source===expected,tabularray);
+      await panel.getByText('Click text on the native page',{exact:false}).waitFor();
+      await canvas.click({position:{x:6550000*scale,y:9250000*scale}});
+      await page.keyboard.press(mod+'+e');await page.keyboard.press('Shift+c');
+      await page.waitForFunction(expected=>nativeProbe.source===expected,tabularray.replace('colspec={ll}','colspec={lll}')
+        .replace('One  & Two','One &   & Two').replace('Three & ','Three &  & '));
+      await page.keyboard.press(mod+'+z');
+      await page.waitForFunction(expected=>nativeProbe.source===expected,tabularray);
       await page.locator('#native-tex-close').click();
       const matrixSource='\\documentclass{article}\n\\usepackage{amsmath}\n\\begin{document}\n'+
         '\\[\\begin{bmatrix}a&\\\\&d\\end{bmatrix}\\]\n\\end{document}\n';

@@ -58,13 +58,16 @@ export class ProjectDocumentSession {
     this.#history.set(project,history);
   }
   restore(project, transaction) {
-    for(const transition of this.#history.get(project)?.toReversed()??[]){
+    const history=this.#history.get(project);
+    if(!history?.length)return null;
+    const files=new Map([...project.files.values()].map(file=>[file.id,file]));
+    for(const transition of history.toReversed()){
       const forward=transition.before.doc.eq(transaction.before)&&transition.after.doc.eq(transaction.doc);
       const backward=transition.after.doc.eq(transaction.before)&&transition.before.doc.eq(transaction.doc);
       if(!forward&&!backward)continue;
       const [previous,next]=forward?[transition.before,transition.after]:[transition.after,transition.before];
       if([...previous.drafts].some(([id,draft])=>!this.#composition?.sources.has(id)||
-        project.file(id).draft!==draft))continue;
+        files.get(id)?.draft!==draft))continue;
       const composition=this.verify(project,transaction.doc,next.drafts);
       if(composition)return {composition,drafts:next.drafts};
     }
