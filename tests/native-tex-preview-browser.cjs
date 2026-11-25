@@ -189,6 +189,11 @@ const server=createServer(async(req,res)=>{
       assert.equal(await page.evaluate(()=>nativeProbe.source),typedHeading);
       const beforeComposition=await page.evaluate(()=>nativeProbe.calls.filter(call=>call.command==='native_tex_observe_formula').length);
       await page.locator('#native-tex-input').evaluate(input=>{
+        nativeProbe.compositionEvents=[];
+        for(const type of ['compositionstart','compositionend','input','keydown'])
+          input.addEventListener(type,event=>nativeProbe.compositionEvents.push({
+            type:event.type,data:event.data,inputType:event.inputType,composing:event.isComposing,value:input.value,
+          }),true);
         input.dispatchEvent(new CompositionEvent('compositionstart',{bubbles:true}));
         input.value='文';
         input.dispatchEvent(new InputEvent('input',{bubbles:true,inputType:'insertCompositionText',data:'文',isComposing:true}));
@@ -202,7 +207,8 @@ const server=createServer(async(req,res)=>{
       await page.waitForFunction(expected=>nativeProbe.source===expected,composedHeading);
       await page.waitForFunction(count=>nativeProbe.calls.filter(call=>call.command==='native_tex_observe_formula').length>count,beforeComposition);
       await panel.getByText('Click text on the native page',{exact:false}).waitFor();
-      assert.equal(await page.evaluate(()=>nativeProbe.source),composedHeading);
+      const compositionResult=await page.evaluate(()=>({source:nativeProbe.source,events:nativeProbe.compositionEvents}));
+      assert.equal(compositionResult.source,composedHeading,JSON.stringify(compositionResult.events));
       await canvas.click({position:{x:6655000*scale,y:9250000*scale}});
       await page.keyboard.type('%');
       const escapedHeading=composedHeading.replace('文X','文\\%X');
@@ -216,6 +222,12 @@ const server=createServer(async(req,res)=>{
       await panel.getByText('Click text on the native page',{exact:false}).waitFor();
       await page.keyboard.press('Backspace');
       await page.waitForFunction(expected=>nativeProbe.source===expected,composedHeading);
+      await panel.getByText('Click text on the native page',{exact:false}).waitFor();
+      await canvas.click({position:{x:6550000*scale,y:9250000*scale}});
+      await page.keyboard.press('Home');
+      await page.keyboard.press('Shift+End');
+      await page.keyboard.press(mod+'+b');
+      await page.waitForFunction(()=>document.querySelector('.ProseMirror h1 strong')?.textContent==='文XLong title');
       await page.locator('#native-tex-close').click();
       const proofSource='\\documentclass{article}\r\n\\usepackage{amsthm}\r\n\\begin{document}\r\n'+
         '\\begin{proof}[Reason]\r\n  One step.\r\n\\end{proof}\r\n\\end{document}\r\n';

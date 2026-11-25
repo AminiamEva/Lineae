@@ -1,4 +1,4 @@
-import {proseEditEndpoints} from './editor/native-text/projection.mjs';
+import {nativeEditorRange} from './editor/native-text/editor-range.mjs';
 import {nativeOnlyAcceptance} from './editor/native-surface/acceptance-mode.mjs';
 import {AppendixStart,MatterStart,LayoutCommand} from './editor/appendix.js';
 import {Lipsum} from './editor/lipsum.js';
@@ -2541,6 +2541,8 @@ const nativeBindings=compileKeybindings({
   math:{undo:['ctrl+z','meta+z'],redo:['ctrl+y','meta+y','ctrl+shift+z','meta+shift+z'],
     palette:'backslash',nextSlot:'tab',previousSlot:'shift+tab'},
 },{isMac});
+const nativeSelectionCommands=new Set(['toggleBold','toggleItalic','toggleUnderline','toggleStrike','toggleCode',
+  'toggleSuperscript','toggleSubscript','alignLeft','alignRight','alignCenter','toggleContextMarker']);
 installKeybindings(window, {
   getBindings: () => config.bindings,
   nativeBindings,
@@ -2572,7 +2574,11 @@ installKeybindings(window, {
     return { element:editor.view.dom, scopes };
   },
   run({scope,command},context,event) {
-    if(context.nativeText&&scope==='editor')return command==='leaveFile'&&nativeTexPreview.leaveFile();
+    if(context.nativeText&&scope==='editor'){
+      if(command==='leaveFile')return nativeTexPreview.leaveFile();
+      return nativeSelectionCommands.has(command)&&nativeTexPreview.useTextSelection(command.startsWith('toggle')&&
+        command!=='toggleContextMarker')&&shortcutActions.editor[command](context,event);
+    }
     if (scope === 'math') return context.nativeMath
       ? nativeTexPreview.runMathCommand(command)
       : runMathShortcut(command,context.field,event);
@@ -2615,6 +2621,14 @@ function updateEnvironment() {
 }
 footer.append(count,document.querySelector('#status'),environment,zoom,percent,paginationButton,themeButton,modes);document.body.append(footer);sourceView.mountStatus(footer);scale();updatePaginationButton();
 const shortcutPriority=installShortcutPriority({host:footer,before:modes,getBindings:()=>config.bindings});
+function nativeProsePosition(paragraph,from,to){
+  if(!sourceView.hidden||!paragraph?.parts)return null;
+  const project=projectExplorer?.model,composition=projectDocument.composition;
+  const file=project?.files.get(paragraph.filePath);
+  if(project?!composition||file?.draft!==paragraph.source:source()!==paragraph.source)return null;
+  const range=nativeEditorRange({doc:editor.state.doc,projection,composition,file,paragraph,from,to});
+  return range?{range,project,composition,file}:null;
+}
 nativeTexPreview=installNativeTexPreview({host:footer,before:modes,
   getSnapshot:async()=>{
     if(projectExplorer?.active){
@@ -2654,6 +2668,17 @@ nativeTexPreview=installNativeTexPreview({host:footer,before:modes,
     const parent=composition.content[index]?.attrs.trail?.at(-1);
     if(!parent)return null;
     return composition.regions.slice(index+1).find(region=>region.path===parent)??null;
+  },
+  selectText:(anchor,head)=>{
+    if(!anchor||anchor.paragraph!==head?.paragraph)return false;
+    const forward=anchor.local<=head.local;
+    const position=nativeProsePosition(head.paragraph,Math.min(anchor.local,head.local),Math.max(anchor.local,head.local));
+    if(!position)return false;
+    const {from,to}=position.range;
+    const {state}=editor;
+    const selection=TextSelection.create(state.doc,forward?from:to,forward?to:from);
+    if(!selection.eq(state.selection))editor.view.dispatch(state.tr.setSelection(selection).setMeta('addToHistory',false));
+    return true;
   },
   focusMathSlot:async(anchor,head,isCurrent)=>{    const project=projectExplorer?.model;
     const formula=head.formula;
@@ -2722,84 +2747,12 @@ nativeTexPreview=installNativeTexPreview({host:footer,before:modes,
     return editor.state.doc.nodeAt(position)?.attrs.latex===text;
   },
   commitText:({paragraph,patch,text})=>{
-    if(!sourceView.hidden||(!text&&!paragraph.tableCell)||text===paragraph.text||!paragraph.parts)return false;
-    const project=projectExplorer?.model;
-    const composition=projectDocument.composition;
-    const file=project?.files.get(paragraph.filePath);
-    if(project ? !composition||file?.draft!==paragraph.source : source()!==paragraph.source)return false;
-    const endpoints=proseEditEndpoints(paragraph,patch.from,patch.to);
-    if(!endpoints)return false;
-    const matchesParts=node=>{
-      if(node.type.name!==(paragraph.heading?'heading':'paragraph')||node.childCount!==paragraph.parts.length)return false;
-      if(paragraph.heading&&node.attrs.command!==paragraph.heading)return false;
-      return paragraph.parts.every((part,index)=>{
-        const child=node.child(index);
-        const marks=part.marks??[];
-        return part.kind==='text'
-          ?child.isText&&child.text===part.text&&
-            child.marks.length===marks.length&&child.marks.every(mark=>marks.includes(mark.type.name))
-          :(child.type.name==='math'||child.type.name==='mathBlock')&&child.attrs.latex===part.latex;
-      });
-    };
-    // Resolve repeated prose by its verified source block before falling back
-    // to an unambiguous structural match.
-    const owner=projection?.text===paragraph.source && projection.blocks.find(block=>
-      (block.count===1||paragraph.tableCell) && block.from<=paragraph.from16 &&
-      block.to>=paragraph.from16+paragraph.text.length);
-    const matches=[];
-    function collect(node,offset,index,sourceOwner){
-      if(paragraph.container){
-        const {type,path}=paragraph.container;
-        if(sourceOwner?.index!==index||node.type.name!==type)return;
-        let child=node,position=offset;
-        for(const childIndex of path){
-          if(childIndex>=child.childCount)return;
-          position++;
-          for(let i=0;i<childIndex;i++)position+=child.child(i).nodeSize;
-          child=child.child(childIndex);
-        }
-        if(!matchesParts(child))return;
-        matches.push({node:child,offset:position,index,verified:true});
-        return;
-      }
-      if(!paragraph.tableCell){
-        if(matchesParts(node))matches.push({node,offset,index,verified:sourceOwner?.index===index});
-        return;
-      }
-      if(node.type.name!=='table'||sourceOwner?.index!==index)return;
-      const {row,column}=paragraph.tableCell;
-      if(row>=node.childCount||column>=node.child(row).childCount)return;
-      const rowNode=node.child(row),cell=rowNode.child(column);
-      if(cell.childCount!==1||!matchesParts(cell.firstChild))return;
-      let position=offset+3;
-      for(let i=0;i<row;i++)position+=node.child(i).nodeSize;
-      for(let i=0;i<column;i++)position+=rowNode.child(i).nodeSize;
-      matches.push({node:cell.firstChild,offset:position,index,verified:true});
-    }
-    editor.state.doc.forEach((node,offset,index)=>{
-      if(!composition){
-        collect(node,offset,index,owner);
-        return;
-      }
-      if(node.type.name!=='projectRegion'||node.attrs.path!==file.path)return;
-      const region=composition.regions[index];
-      if(!region||paragraph.from16<region.from)return;
-      const sourceOwner=composition.sources.get(file.id)===paragraph.source && region.projection?.blocks.find(block=>
-        (block.count===1||paragraph.tableCell)&&region.from+block.from<=paragraph.from16 &&
-        region.from+block.to>=paragraph.from16+paragraph.text.length);
-      node.forEach((child,childOffset,childIndex)=>collect(child,offset+1+childOffset,childIndex,sourceOwner));
-    });
-    const match=matches.find(candidate=>composition?candidate.verified: candidate.index===owner?.index) ??
-      (matches.length===1 ? matches[0] : null);
-    if(!match)return false;
-    const {offset:found,node:foundNode}=match;
-    const at=(run,offset)=>{
-      let position=found+1;
-      for(let index=0;index<run.partIndex;index++)position+=foundNode.child(index).nodeSize;
-      const local=offset-run.from16;
-      return position+(run.offsets?.indexOf(local)??local);
-    };
-    const start=at(endpoints.start,patch.from),end=at(endpoints.end,patch.to),tr=editor.state.tr;
+    if((!text&&!paragraph.tableCell)||text===paragraph.text)return false;
+    const position=nativeProsePosition(paragraph,patch.from,patch.to);
+    if(!position)return false;
+    const {range,project,composition,file}=position;
+    const {from:start,to:end,match,endpoints}=range;
+    const foundNode=match.node,tr=editor.state.tr;
     if(end>start)tr.delete(start,end);
     if(patch.insert)tr.insert(start,editor.schema.text(patch.insert,foundNode.maybeChild(endpoints.start.partIndex)?.marks));
     tr.setSelection(TextSelection.create(tr.doc,start+patch.insert.length));

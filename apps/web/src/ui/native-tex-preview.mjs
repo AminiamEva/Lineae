@@ -11,7 +11,7 @@ import {nativeTarget} from '../editor/native-math/resolve.mjs';
 // Native LaTeX output is the primary page. The opt-in native input mode sends
 // supported keys, caret and IME through this surface into ProseMirror; the old
 // JS-formatted page and MathLive inputs stay available as the migration fallback.
-export function installNativeTexPreview({host,before,getSource,getSnapshot,isComposing,focusMathSlot,focusImage,continuationRegion,commitMath,commitText,history}) {
+export function installNativeTexPreview({host,before,getSource,getSnapshot,isComposing,focusMathSlot,focusImage,continuationRegion,selectText,commitMath,commitText,history}) {
   const invoke=window.__TAURI__?.core?.invoke;
   if(!invoke) return {refresh(){},documentChanged(){},relocalize(){}};
   const button=document.createElement('button');
@@ -72,11 +72,17 @@ export function installNativeTexPreview({host,before,getSource,getSnapshot,isCom
       return textTarget(observation.projection, endpoint.owner, Boolean(endpoint.after));
     return nativeTarget(observation?.projection, endpoint);
   }
-  function paintSurfaceSelection() {
+  function useTextSelection(requireRange=false){
+    const {caret,anchor}=nativeDocument.surface;
+    return Boolean(current()&&observation&&!pendingEdit&&caret?.kind==='text'&&
+      (!requireRange||anchor!==caret)&&selectText?.(anchor,caret));
+  }
+  function paintSurfaceSelection(reflect=false) {
     const caret = nativeDocument.surface.caret, anchor = nativeDocument.surface.anchor;
     if (!caret) return;
     if (anchor && anchor.docOffset !== caret.docOffset) renderer.showSelection(anchor.hit, caret.hit);
     else renderer.showCaret(caret.hit);
+    if(reflect)useTextSelection();
   }
   function positionInput() {
     const stop = nativeDocument.surface.caret;
@@ -144,7 +150,7 @@ export function installNativeTexPreview({host,before,getSource,getSnapshot,isCom
     if(!current()||!observation||pendingEdit)return false;
     const target=continuationRegion?.(nativeDocument.surface.caret);
     if(!target||!nativeDocument.selectRegion(target))return false;
-    paintSurfaceSelection();
+    paintSurfaceSelection(true);
     positionInput();
     return true;
   }
@@ -167,38 +173,50 @@ export function installNativeTexPreview({host,before,getSource,getSnapshot,isCom
     const text=event.clipboardData.getData('text/plain');
     if(text)submitInput({insert:text,started:performance.now()});
   });
-  let committedComposition=null;
+  let inputComposition=null;
+  function commitComposition(composition){
+    if(composition.committed||!composition.text)return;
+    composition.committed=true;
+    submitInput({insert:composition.text,started:inputStart||performance.now()});
+  }
   input.addEventListener('compositionstart', () => {
-    committedComposition=null;
+    inputComposition={text:'',ended:false,committed:false};
     compositionField=input;
   });
   input.addEventListener('compositionend', event => {
     compositionField=null;
-    committedComposition=event.data||null;
+    const composition=inputComposition??{committed:false};
+    composition.text=event.data||'';
+    composition.ended=true;
+    inputComposition=composition;
     input.value='';
-    if(committedComposition)submitInput({insert:committedComposition,started:inputStart||performance.now()});
+    queueMicrotask(()=>{if(inputComposition===composition)commitComposition(composition);});
     setTimeout(refresh,0);
   });
   input.addEventListener('input', event => {
-    if(event.isComposing||event.inputType==='insertCompositionText')return;
+    const composition=inputComposition;
+    if(event.isComposing||event.inputType==='insertCompositionText'||(composition&&!composition.ended))return;
     const insert=event.data??input.value;
     input.value='';
-    if(event.inputType==='insertFromComposition'){
-      if(!insert||insert===committedComposition)return;
-      committedComposition=insert;
-    }else{
-      const repeatedCommit=event.inputType==='insertText'&&insert===committedComposition;
-      committedComposition=null;
-      if(repeatedCommit||composing())return;
+    if(composition){
+      const replay=insert===composition.text||event.inputType==='insertFromComposition';
+      if(replay){
+        composition.text||=insert;
+        commitComposition(composition);
+        return;
+      }
+      commitComposition(composition);
+      inputComposition=null;
     }
-    if(insert)submitInput({insert,started:inputStart||performance.now()});
+    if(insert&&!composing())submitInput({insert,started:inputStart||performance.now()});
   });
   input.addEventListener('keydown', event => {
-    if (event.isComposing || event.keyCode === 229) return;
+    if (event.isComposing || event.keyCode === 229 || (inputComposition&&!inputComposition.ended))return;
     if (nativeEditing === false) return;
     const {surface}=nativeDocument;
     if (!event.metaKey && !event.ctrlKey && !event.altKey && [...event.key].length===1){
-      committedComposition=null;
+      if(inputComposition?.ended)commitComposition(inputComposition);
+      inputComposition=null;
       inputStart=performance.now();
     }
     const mod = event.metaKey || event.ctrlKey;
@@ -219,7 +237,7 @@ export function installNativeTexPreview({host,before,getSource,getSnapshot,isCom
     if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
       event.preventDefault();
       if (!pendingEdit&&nativeDocument.move(event.key==='ArrowLeft'?-1:1,event.shiftKey)) {
-        paintSurfaceSelection();
+        paintSurfaceSelection(true);
         positionInput();
       }
       return;
@@ -227,7 +245,7 @@ export function installNativeTexPreview({host,before,getSource,getSnapshot,isCom
     if (event.key === 'Home' || event.key === 'End') {
       event.preventDefault();
       if(!pendingEdit&&nativeDocument.move(event.key==='Home'?-1e6:1e6,event.shiftKey)){
-        paintSurfaceSelection();
+        paintSurfaceSelection(true);
         positionInput();
       }
       return;
@@ -282,7 +300,7 @@ export function installNativeTexPreview({host,before,getSource,getSnapshot,isCom
         if(pendingEdit)return false;
         if(!nativeDocument.select(anchor,head))return false;
         inputStart=performance.now();
-        paintSurfaceSelection();positionInput();input.focus({preventScroll:true});
+        paintSurfaceSelection(true);positionInput();input.focus({preventScroll:true});
         return true;
       }
       const focused=await focusMathSlot?.(anchor,head,()=>
@@ -376,6 +394,7 @@ export function installNativeTexPreview({host,before,getSource,getSnapshot,isCom
     delete panel.dataset.latencyLastGeometry;
     delete panel.dataset.latencyLastRepaint;
     compositionField=null;
+    inputComposition=null;
     mirror?.lifetime.abort();mirror=null;
     targetArmed=false;lastTarget=null;clearTimeout(targetTimer);targetTimer=null;
     renderer.reset();pdf.reset();mode='canvas';pdfWanted=-1;pdfLayout=null;pdfRendered=-1;renderedRevision=-1;renderStatus();
@@ -695,6 +714,7 @@ export function installNativeTexPreview({host,before,getSource,getSnapshot,isCom
     hasTextInput:event=>event.target===input&&nativeEditing&&nativeDocument.surface.caret?.kind==='text',
     hasMathInput: event => event.target===input && nativeEditing && nativeDocument.surface.caret?.kind==='math',
     hasNativeMathFocus:()=>document.activeElement===input&&nativeEditing&&nativeDocument.surface.caret?.kind==='math',
+    useTextSelection,
     leaveFile,
     runMathCommand(command) {
       const {surface}=nativeDocument;
@@ -715,7 +735,7 @@ export function installNativeTexPreview({host,before,getSource,getSnapshot,isCom
       if(!current()||!observation||pendingEdit||surface.caret?.kind!=='math')return false;
       if(command==='leaveFormula'){
         if(!nativeDocument.leaveFormula())return false;
-        paintSurfaceSelection();
+        paintSurfaceSelection(true);
         positionInput();
         return true;
       }
