@@ -143,8 +143,8 @@ export function createClipboard(editor,{getField = () => null, getSource = () =>
     }
     const native=getNative();
     if(native){
-      const {text}=await read();
-      return native.paste(text);
+      const {text,html}=await read();
+      return native.paste({text,html:mode==='text'?'':html,mode});
     }
     const field = getField();
     if (field) {

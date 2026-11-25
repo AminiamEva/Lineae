@@ -89,6 +89,11 @@ function parse(source) {
         const start = at++;
         while (at < source.length && !/[\r\n]/.test(source[at])) at++;
         protect(start, at, 'comment');
+      } else if(source[at]==='\\'){
+        const annotation=/^\\(?:label[ \t]*\{[^{}\\%\s]+\}|tag\*?[ \t]*\{[^{}\\%\r\n]*\}|(?:notag|nonumber)(?![A-Za-z]))/.exec(source.slice(at));
+        if(!annotation)break;
+        const start=at;at+=annotation[0].length;
+        protect(start,at,'annotation');
       } else break;
     }
   }
@@ -637,7 +642,7 @@ function editSlot(snapshot, {slotId, from16, to16, insert,preserved}, structure)
   }
   for (const range of state.tree.protectedRanges) {
     if(removeSymbol&&range.from16>=from&&range.to16<=to)continue;
-    if(structure&&preserved&&range.kind!=='comment'&&range.from16>=from&&range.to16<=to)continue;
+    if(structure&&preserved&&!['comment','annotation'].includes(range.kind)&&range.from16>=from&&range.to16<=to)continue;
     if ((from < range.to16 && to > range.from16) ||
         (from === to && from > range.from16 && from < range.to16) ||
         (range.kind === 'comment' && from === range.to16)) {

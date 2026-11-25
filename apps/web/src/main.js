@@ -3,6 +3,9 @@ import {projectMixedDocument,projectTextDocument} from './editor/native-text/pro
 import {nativeMathCommandNames,projectMath} from './editor/native-math/source.mjs';
 import {nativeMathContext} from './editor/native-math/resolve.mjs';
 import {documentMetadata,writeDocumentMetadata} from '../latex/document-metadata.mjs';
+import {resolvePackages} from '../latex/packages.mjs';
+import {referenceAt} from '../latex/reference-commands.mjs';
+import {sourceStructure} from '../latex/source-structure.mjs';
 import {loadLegacyMath,nativeOnlyAcceptance,nativeWorkspaceRequested} from './editor/native-surface/acceptance-mode.mjs';
 import {AppendixStart,MatterStart,LayoutCommand} from './editor/appendix.js';
 import {Lipsum} from './editor/lipsum.js';
@@ -96,6 +99,7 @@ import TableRow from '@tiptap/extension-table-row';
 import TableCell from '@tiptap/extension-table-cell';
 import TableHeader from '@tiptap/extension-table-header';
 import { Plugin, Selection, NodeSelection, TextSelection } from '@tiptap/pm/state';
+import { DOMParser as ProseMirrorParser, Fragment } from '@tiptap/pm/model';
 import { parseDocument } from '../latex/document.mjs';
 import { exportDocument } from '../latex/packages.mjs';
 import { appendAlignmentPair, displayEnvironment, numberedMathRows } from '../latex/math-environments.mjs';
@@ -2085,9 +2089,12 @@ function insertNativePageBreak(){
   return Boolean(projected&&dispatchNativeParagraphChange(state,tr,source,draft,{from,to,insert},projected));
 }
 function completionActions() {
-  if(completionNative==='math')return Object.fromEntries([...nativeMathCommandNames,'left','right','newline'].map(name=>[
-    name,()=>nativeTexPreview.runMathCommand(name==='newline'?'enterLine':name),
-  ]));
+  if(completionNative==='math')return {
+    ...Object.fromEntries([...nativeMathCommandNames,'left','right','newline'].map(name=>[
+      name,()=>nativeTexPreview.runMathCommand(name==='newline'?'enterLine':name),
+    ])),
+    label:editFormulaLabel,
+  };
   if(completionNative==='text'){
     const actions={chapter:structureCommands.chapter,section:structureCommands.section,
       subsection:structureCommands.subsection,subsubsection:structureCommands.subsubsection,
@@ -2776,6 +2783,29 @@ function nativeProsePosition(paragraph,from,to){
   const range=nativeEditorRange({doc:editor.state.doc,projection,composition,file,paragraph,from,to});
   return range?{range,project,composition,file}:null;
 }
+function nativeFormulaPosition(formula){
+  if(!sourceView.hidden)return null;
+  const project=projectExplorer?.model,composition=projectDocument.composition;
+  const file=project?.files.get(formula.filePath);
+  if(project&&(file?.draft!==formula.source||!composition&&file?.id!==project.activeFileId))return null;
+  if(!composition&&source()!==formula.source)return null;
+  const type=formula.kind==='displayMath'?'mathBlock':'math',positions=[];
+  editor.state.doc.descendants((node,position)=>{
+    if(node.type.name!==type)return;
+    if(composition){
+      const at=editor.state.doc.resolve(position);
+      let region;
+      for(let depth=at.depth;depth>0;depth--){
+        if(at.node(depth).type.name==='projectRegion'){region=at.node(depth);break;}
+      }
+      if(region?.attrs.path!==file.path)return;
+    }
+    positions.push(position);
+  });
+  if(positions.length!==formula.count)return null;
+  const position=positions[formula.ordinal];
+  return Number.isInteger(position)?{position,node:editor.state.doc.nodeAt(position),type,project,composition,file}:null;
+}
 function currentNativeProjectComposition(){
   const active=projectDocument.composition,project=projectExplorer?.model;
   if(!active||!project)return null;
@@ -2940,6 +2970,52 @@ nativeTexPreview=installNativeTexPreview({host:footer,before:modes,primary:nativ
   },
   foldedFiles:()=>projectPresentation?.foldedFiles()??[],
   serializeTextSelection:()=>editor.view.serializeForClipboard(editor.state.selection.content()).dom.innerHTML,
+  commitInlinePaste:(first,last,html,mode)=>{
+    if(first?.kind!=='text'||first.paragraph!==last?.paragraph)return null;
+    const {paragraph}=first,{state}=editor;
+    if(paragraph.heading||paragraph.tableCell||paragraph.container)return null;
+    const target=nativeProsePosition(paragraph,first.local,last.local);
+    if(!target||target.range.endpoints.start.marks?.length||target.range.endpoints.end.marks?.length)return null;
+    const parsed=new DOMParser().parseFromString(html,'text/html');
+    const slice=ProseMirrorParser.fromSchema(state.schema).parseSlice(parsed.body);
+    const fragment=slice.content.childCount===1&&slice.content.firstChild.type.name==='paragraph'
+      ?slice.content.firstChild.content:slice.content;
+    if(!fragment.childCount||fragment.content.some(node=>!node.isText&&
+       (node.type.name!=='math'||node.attrs.display||!projectMath(node.attrs.latex).supported)))return null;
+    const keptMarks=new Set(mode==='merge'?['bold','italic','underline','strike']:
+      ['bold','italic','underline','strike','code','superscript','subscript','smallcaps','textCommand','textStyle']);
+    const content=Fragment.fromArray(fragment.content.map(node=>node.mark(node.marks.filter(mark=>keptMarks.has(mark.type.name)))));
+    if(!content.content.some(node=>node.type.name==='math'||node.marks.length))return null;
+    const insert=content.content.map(node=>serialize(node.toJSON())).join('');
+    if(!insert||resolvePackages(documentParts.start,insert).length)return null;
+    const {from:start,to:end}=target.range;
+    const tr=state.tr.replaceWith(start,end,content);
+    tr.setSelection(TextSelection.create(tr.doc,start+content.size));
+    const from=first.docOffset,to=last.docOffset,source=paragraph.source;
+    const draft=source.slice(0,from)+insert+source.slice(to),endOffset=from+insert.length;
+    const fragmentSource=projectFileKind==='tex';
+    const mixed=projectMixedDocument(draft,{fragment:fragmentSource,filePath:paragraph.filePath});
+    const candidate=mixed?.paragraphs.find(next=>next.from16===paragraph.from16);
+    if(!candidate)return null;
+    const local=endOffset-candidate.from16;
+    const direct=candidate.runs.some(run=>local>=run.from16&&local<=run.to16&&
+      (!run.offsets||run.offsets.includes(local-run.from16)));
+    const stop=direct?local:candidate.glyphs.findLast(glyph=>glyph.to16<=local)?.to16;
+    if(stop===undefined)return null;
+    const offset=candidate.from16+stop;
+    if(target.composition){
+      const updates=projectDocument.changes(tr.doc.toJSON());
+      if(updates?.get(target.file.id)!==draft)return null;
+      for(const [id,text] of updates)if(id!==target.file.id&&text!==target.project.file(id).draft)return null;
+      editor.view.dispatch(closeHistory(tr));
+      return editor.state.doc===state.doc?null:{source:draft,offset,path:paragraph.filePath};
+    }
+    const projected=sourceProjection(draft,tr.doc.toJSON(),{fragment:fragmentSource});
+    const caret=offset-candidate.from16;
+    if(!nativeEditorRange({doc:tr.doc,projection:projected,paragraph:candidate,from:caret,to:caret}))return null;
+    return dispatchNativeParagraphChange(state,tr,source,draft,{from,to,insert},projected)
+      ?{source:draft,offset,path:paragraph.filePath}:null;
+  },
   selectText:(anchor,head)=>{
     if(!anchor||anchor.paragraph!==head?.paragraph)return false;
     const forward=anchor.local<=head.local;
@@ -3147,35 +3223,23 @@ nativeTexPreview=installNativeTexPreview({host:footer,before:modes,primary:nativ
     return {field};
   },
   commitMath:({formula,patch,text,structure,needsAmsmath,cursor})=>{
-    if(!sourceView.hidden||!text||text===formula.math.source)return false;
-    const project=projectExplorer?.model;
-    const composition=projectDocument.composition;
-    const file=project?.files.get(formula.filePath);
-    if(project&&(file?.draft!==formula.source||!composition&&file?.id!==project.activeFileId))return false;
-    if(!composition&&source()!==formula.source)return false;
-    const type=formula.kind==='displayMath'?'mathBlock':'math';
-    const positions=[];
-    editor.state.doc.descendants((node,pos)=>{
-      if(node.type.name!==type)return;
-      if(composition){
-        const containing=editor.state.doc.resolve(pos);
-        let region;
-        for(let depth=containing.depth;depth>0;depth--){
-          const ancestor=containing.node(depth);
-          if(ancestor.type.name==='projectRegion'){region=ancestor;break;}
-        }
-        if(region?.attrs.path!==file.path)return;
-      }
-      positions.push(pos);
-    });
-    if(positions.length!==formula.count)return false;
-    const position=positions[formula.ordinal];
-    const node=Number.isInteger(position)?editor.state.doc.nodeAt(position):null;
-    if(node?.attrs.latex!==formula.math.source)return false;
-    const transaction=editor.state.tr.setNodeMarkup(position,undefined,{...node.attrs,latex:text});
-    if(structure)closeHistory(transaction);
+    if(!text||text===formula.math.source)return false;
+    const target=nativeFormulaPosition(formula);
+    if(!target?.node)return false;
+    const {position,node,type,project,composition,file}=target;
     const from=formula.from16+patch.from,to=formula.from16+patch.to;
     const expected=formula.source.slice(0,from)+patch.insert+formula.source.slice(to);
+    let latex=text,detachedLabel=false;
+    if(node.attrs.latex!==formula.math.source){
+      if(type!=='mathBlock'||node.attrs.delimiter!=='equation'||!node.attrs.label)return false;
+      const [original]=importBlocks(formula.source.slice(formula.outerFrom16,formula.outerTo16));
+      const [revised]=importBlocks(expected.slice(formula.outerFrom16,formula.outerTo16+patch.insert.length-(to-from)));
+      if(original?.type!=='mathBlock'||original.attrs.latex!==node.attrs.latex||original.attrs.label!==node.attrs.label||
+        revised?.type!=='mathBlock'||revised.attrs.label!==node.attrs.label)return false;
+      latex=revised.attrs.latex;detachedLabel=true;
+    }
+    const transaction=editor.state.tr.setNodeMarkup(position,undefined,{...node.attrs,latex});
+    if(structure)closeHistory(transaction);
     if(needsAmsmath){
       const doc=!composition&&parseDocument(formula.source);
       if(!doc||!Number.isInteger(cursor))return false;
@@ -3191,6 +3255,11 @@ nativeTexPreview=installNativeTexPreview({host:footer,before:modes,primary:nativ
       return dispatchNativeParagraphChange(editor.state,transaction,formula.source,draft,change,projected)
         ?{source:draft,path:formula.filePath,offset:cursor+packageLine.length}:false;
     }
+    if(detachedLabel&&!composition){
+      const projected=sourceProjection(expected,transaction.doc.toJSON(),{fragment:projectFileKind==='tex'});
+      return Boolean(projected&&dispatchNativeParagraphChange(editor.state,transaction,formula.source,expected,
+        {from,to,insert:patch.insert},projected));
+    }
     if(composition){
       const drafts=projectDocument.changes(transaction.doc.toJSON());
       if(drafts?.get(file.id)!==expected)return false;
@@ -3201,7 +3270,7 @@ nativeTexPreview=installNativeTexPreview({host:footer,before:modes,primary:nativ
         source.slice(0,change.from)+change.insert+source.slice(change.to),formula.source)!==expected)return false;
     }
     editor.view.dispatch(transaction);
-    return editor.state.doc.nodeAt(position)?.attrs.latex===text;
+    return editor.state.doc.nodeAt(position)?.attrs.latex===latex;
   },
   commitText:({paragraph,patch,text})=>{
     if((!text&&!paragraph.tableCell)||text===paragraph.text)return false;
@@ -3872,7 +3941,58 @@ groupButton(referenceGroup,'date',structureCommands.date);
 groupButton(mathGroup,'$',()=>insertMath());
 groupButton(mathGroup,'$$',()=>insertMath(true)).dataset.shortcut='editor.insertDisplayMath';
 groupButton(mathGroup,'equation',()=>insertEquation());
+const equationLabelKey=/^[\p{L}\p{N}:_.-]*$/u;
+async function editNativeEquationLabel({formula}) {
+  const target=nativeFormulaPosition(formula);
+  if(target?.node?.attrs.delimiter!=='equation')return false;
+  const {node,position,composition,file,project}=target,{state}=editor;
+  const {source,outerFrom16,outerTo16,math}=formula,body=math.source;
+  const tokens=[...sourceStructure(body)];
+  const labels=tokens.flatMap(token=>{
+    if(!token.topLevel||token.kind!=='command'||token.value!=='\\label')return [];
+    const reference=referenceAt(body,token.index);
+    return reference?[{...reference,from:token.index}]:[];
+  });
+  if(labels.length>1)return false;
+  const [existing]=labels,field=document.activeElement;
+  const label=await askText(t('公式标签','Equation label'),existing?.key??'');
+  if(field?.isConnected&&sourceView.hidden)field.focus({preventScroll:true});
+  if(label===null||label===(existing?.key??'')||!equationLabelKey.test(label)||
+     editor.state.doc!==state.doc||!nativeFormulaPosition(formula))return false;
+  let from,to,insert;
+  if(existing&&label){
+    from=existing.keyFrom;to=existing.keyTo;insert=label;
+  }else if(existing){
+    from=existing.from;to=existing.end;insert='';
+    const lineStart=body.lastIndexOf('\n',from-1)+1;
+    const ending=/^[ \t]*\r?\n/.exec(body.slice(to));
+    if(ending&&!body.slice(lineStart,from).trim()){from=lineStart;to+=ending[0].length;}
+  }else{
+    from=to=body.trimEnd().length;
+    const eol=source.includes('\r\n')?'\r\n':'\n';
+    const lastLine=body.slice(body.lastIndexOf('\n',from-1)+1,from);
+    const comment=/(^|[^\\])(?:\\\\)*%/.test(lastLine);
+    insert=(comment?eol:'')+'\\label{'+label+'}';
+  }
+  from+=formula.from16;to+=formula.from16;
+  const draft=source.slice(0,from)+insert+source.slice(to);
+  const [updated]=importBlocks(draft.slice(outerFrom16,outerTo16+insert.length-(to-from)));
+  if(updated?.type!=='mathBlock'||updated.attrs.delimiter!=='equation')return false;
+  const tr=editor.state.tr.setNodeMarkup(position,undefined,{...node.attrs,
+    latex:updated.attrs.latex,label:updated.attrs.label??null,labelRow:null});
+  if(composition){
+    const updates=projectDocument.changes(tr.doc.toJSON());
+    if(updates?.get(file.id)!==draft)return false;
+    for(const [id,text] of updates)if(id!==file.id&&text!==project.file(id).draft)return false;
+    editor.view.dispatch(closeHistory(tr));
+    return editor.state.doc!==state.doc;
+  }
+  const projected=sourceProjection(draft,tr.doc.toJSON(),{fragment:projectFileKind==='tex'});
+  return Boolean(projected&&dispatchNativeParagraphChange(editor.state,tr,source,draft,{from,to,insert},projected));
+}
 async function editFormulaLabel() {
+  const native=nativeTexPreview.focusedCaret?.();
+  if(native?.kind==='math')return editNativeEquationLabel(native);
   const field=activeMath();
   const position=field?.closest('[data-math-view]')?.getMathPosition?.() ?? formulaAtSelection()?.position;
   if (position === undefined) return;
@@ -3888,7 +4008,7 @@ async function editFormulaLabel() {
   const label=await askText(t('公式标签','Equation label'),node.attrs.label??'');
   const currentPosition=field?.closest('[data-math-view]')?.getMathPosition?.() ?? position;
   const current=editor.state.doc.nodeAt(currentPosition);
-  if(label===null || !/^[\p{L}\p{N}:_.-]*$/u.test(label) ||
+  if(label===null || !equationLabelKey.test(label) ||
       current?.type!==node.type || current.attrs.delimiter!==node.attrs.delimiter ||
       (current!==node && (!field?.isConnected || current.attrs.id!==node.attrs.id)))return;
   editor.view.dispatch(editor.state.tr.setNodeMarkup(currentPosition,undefined,{...current.attrs,label:label||null,labelRow:label?row.index:null}));

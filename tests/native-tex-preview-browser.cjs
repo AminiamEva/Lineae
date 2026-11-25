@@ -456,6 +456,32 @@ const server=createServer(async(req,res)=>{
       await page.keyboard.press('Backspace');
       await page.waitForFunction(expected=>nativeProbe.source===expected,literalProse);
       await page.locator('#native-tex-close').click();
+      const numbered='\\documentclass{article}\n\\begin{document}\n\\begin{equation}\n'+
+        '\\label{eq:keep}\n\\frac{a}{}\n\\end{equation}\n\\end{document}\n';
+      await page.locator('input#file').setInputFiles({name:'numbered-equation.tex',mimeType:'text/plain',buffer:Buffer.from(numbered)});
+      await page.locator('#native-tex-toggle').click();
+      await page.waitForFunction(()=>document.querySelector('#native-tex-preview').dataset.state==='current');
+      await page.locator('#native-tex-target').click();
+      await panel.getByText('Click the empty numerator or denominator',{exact:false}).waitFor();
+      await page.locator('#native-tex-edit').click();
+      await canvas.click({position:{x:6500000*scale,y:7000000*scale}});
+      await page.keyboard.type('b');
+      await page.waitForFunction(expected=>nativeProbe.source===expected,numbered.replace('\\frac{a}{}','\\frac{a}{b}'));
+      await page.keyboard.press(mod+'+z');
+      await page.waitForFunction(expected=>nativeProbe.source===expected,numbered);
+      await page.waitForFunction(()=>nativeProbe.calls.some(call=>call.command==='native_tex_observe_formula'&&
+        call.args.sourceRevision===nativeProbe.revision));
+      await panel.getByText('Click the empty numerator or denominator',{exact:false}).waitFor();
+      await canvas.click({position:{x:6500000*scale,y:7000000*scale}});
+      await page.keyboard.press('Backslash');
+      await prosePalette.getByRole('textbox',{name:'LaTeX command',exact:true}).fill('label');
+      await page.keyboard.press('Enter');
+      const labelInput=page.locator('.editor-dialog input');
+      assert.equal(await labelInput.inputValue(),'eq:keep');
+      await labelInput.fill('eq:changed');
+      await page.locator('.editor-dialog button[type=submit]').click();
+      await page.waitForFunction(expected=>nativeProbe.source===expected,numbered.replace('eq:keep','eq:changed'));
+      await page.locator('#native-tex-close').click();
       const listSource='\\documentclass{article}\n\\begin{document}\n\\begin{enumerate}\n\\item One item.\n'+
         '\\begin{itemize}\n\\item Nested.\n\\end{itemize}\n\\item Last.\n\\end{enumerate}\n\\end{document}\n';
       await page.locator('input#file').setInputFiles({name:'list.tex',mimeType:'text/plain',buffer:Buffer.from(listSource)});
@@ -611,6 +637,19 @@ const server=createServer(async(req,res)=>{
       assert.equal(await panel.locator('.native-tex-page').evaluate(node=>getComputedStyle(node).marginTop),'0px');
       assert.ok(Math.abs((await canvas.boundingBox()).width-at100*.75)<2);
       await pagePresentation.click();
+      await canvas.click({position:{x:6550000*scale,y:9250000*scale}});
+      await page.evaluate(()=>navigator.clipboard.write([new ClipboardItem({
+        'text/plain':new Blob(['Bold'],{type:'text/plain'}),
+        'text/html':new Blob(['<strong>Bold</strong>'],{type:'text/html'}),
+      })]));
+      await page.keyboard.press(mod+'+v');
+      await page.waitForFunction(expected=>nativeProbe.source===expected,
+        workspaceSource.replace('Native document.','\\textbf{Bold}Native document.'));
+      await page.keyboard.press(mod+'+z');
+      await page.waitForFunction(expected=>nativeProbe.source===expected,workspaceSource);
+      await page.waitForFunction(()=>nativeProbe.calls.some(call=>call.command==='native_tex_observe_formula'&&
+        call.args.sourceRevision===nativeProbe.revision));
+      await panel.getByText('Click text on the native page',{exact:false}).waitFor();
       await canvas.click({position:{x:6550000*scale,y:9250000*scale}});
       await page.keyboard.type('X');
       await page.waitForFunction(expected=>nativeProbe.source===expected,workspaceSource.replace('Native document.','XNative document.'));

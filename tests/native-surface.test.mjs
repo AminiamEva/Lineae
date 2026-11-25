@@ -646,6 +646,17 @@ test('native math paste accepts a complete fragment and restores the caret after
   assert.equal(surface.insert('y').text,'x\\frac{a}{b}y');
 });
 
+test('native edits keep numbered equation annotations in the source and out of editable slots',()=>{
+  const source='\\begin{document}\n\\begin{equation}\n\\label{eq:repeat}\n\\frac{a}{}\\tag{4}\n\\end{equation}\n\\end{document}\n';
+  const {formula,denominator}=setup(source);
+  assert.ok(formula.math.projection.includes('\\label{eq:repeat}'));
+  assert.ok(formula.math.projection.includes('\\tag{4}'));
+  const changed=applySlotEdit(formula.math,{slotId:denominator.id,from16:0,to16:0,insert:'b'});
+  assert.equal(changed.source,formula.math.source.replace('\\frac{a}{}','\\frac{a}{b}'));
+  const body=formula.math.slots[0],start=body.raw.indexOf('\\label');
+  assert.throws(()=>applySlotEdit(formula.math,{slotId:body.id,from16:start,to16:start+5,insert:''}));
+});
+
 test('tagged plain table text maps to the original cell and exact byte range',()=>{
   const source='\\begin{document}\n\\begin{tabular}{ll}\nOne & Two \\\\\nThree & Four\n\\end{tabular}\n\\end{document}\n';
   const projection=projectTextDocument(source);

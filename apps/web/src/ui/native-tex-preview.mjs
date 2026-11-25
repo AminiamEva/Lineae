@@ -14,7 +14,7 @@ import {readDelimiterPair} from '../editor/delimiter-input.js';
 // Native LaTeX output is the primary page. The opt-in native input mode sends
 // supported keys, caret and IME through this surface into ProseMirror; the old
 // JS-formatted page and MathLive inputs stay available as the migration fallback.
-export function installNativeTexPreview({host,before,primary=false,documentZoom=100,isDocumentMode,splitHost,getSource,getSnapshot,isComposing,focusMathSlot,focusImage,listTikzDrawings,editTikzDrawing,listSourceBlocks,openSourceBlock,continuationRegion,selectionRegions,foldedFiles,selectText,serializeTextSelection,commitMath,commitText,commitTextLines,commitProjectRange,canStartText,commitInitialText,commitParagraphBreak,commitParagraphJoin,commitNewMath,onEnvironmentChange,showTextCommands,history}) {
+export function installNativeTexPreview({host,before,primary=false,documentZoom=100,isDocumentMode,splitHost,getSource,getSnapshot,isComposing,focusMathSlot,focusImage,listTikzDrawings,editTikzDrawing,listSourceBlocks,openSourceBlock,continuationRegion,selectionRegions,foldedFiles,selectText,serializeTextSelection,commitMath,commitText,commitTextLines,commitInlinePaste,commitProjectRange,canStartText,commitInitialText,commitParagraphBreak,commitParagraphJoin,commitNewMath,onEnvironmentChange,showTextCommands,history}) {
   const invoke=window.__TAURI__?.core?.invoke;
   if(!invoke) return {refresh(){},documentChanged(){},relocalize(){}};
   const button=document.createElement('button');
@@ -227,6 +227,11 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
       showTextCommands?.(input);
       return true;
     }
+    if(action.paste&&action.html&&surface.caret.kind==='text'){
+      const edit=commitInlinePaste?.(...surface.range,action.html,action.mode);
+      if(edit)return awaitSourcePosition(edit,action.started);
+    }
+    if(action.paste&&!action.insert)return false;
     if(action.paste&&/[\r\n]/.test(action.insert)&&surface.caret.kind==='text'){
       const edit=commitTextLines?.(...surface.range,action.insert);
       return edit?awaitSourcePosition(edit,action.started):false;
@@ -298,10 +303,10 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
       text,
       html:text!==null&&useTextSelection(true)?serializeTextSelection?.():null,
       cut:()=>valid()&&cutSelection(),
-      paste:text=>{
-        if(!valid()||!text)return false;
+      paste:({text,html,mode})=>{
+        if(!valid()||!text&&!html)return false;
         input.focus({preventScroll:true});
-        return submitInput({insert:text,paste:true,started:performance.now()});
+        return submitInput({insert:text,html,mode,paste:true,started:performance.now()});
       },
     };
   }
@@ -347,8 +352,8 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
   input.addEventListener('paste',event=>{
     if(!nativeEditing||!event.clipboardData)return;
     event.preventDefault();
-    const text=event.clipboardData.getData('text/plain');
-    if(text)submitInput({insert:text,paste:true,started:performance.now()});
+    const text=event.clipboardData.getData('text/plain'),html=event.clipboardData.getData('text/html');
+    if(text||html)submitInput({insert:text,html,paste:true,started:performance.now()});
   });
   let inputComposition=null;
   function commitComposition(composition){

@@ -169,8 +169,8 @@
         "tests/native-tex-preview-browser.cjs"
       ],
       "nativeStatus": "partial",
-      "evidence": ["https://github.com/AminiamEva/Lineae/actions/runs/45596378294", "https://github.com/AminiamEva/Lineae/actions/runs/45599661375"],
-      "scope": "Copy, cut, paste, whole inline formula selection, synthetic Chinese composition, and queued input during a forced geometry delay. The browser also covers vertical caret navigation, page navigation, and the textarea anchor during scrolling. Physical input methods and broader cross-file editing remain pending."
+      "evidence": ["https://github.com/AminiamEva/Lineae/actions/runs/45596378294", "https://github.com/AminiamEva/Lineae/actions/runs/45599661375", "https://github.com/AminiamEva/Lineae/actions/runs/45629535428"],
+      "scope": "Copy, cut, paste, whole inline formula selection, synthetic Chinese composition, and queued input during a forced geometry delay. Verified selections within one paragraph copy formatting alongside plain text, and native math accepts validated LaTeX fragments from the clipboard. The browser also covers vertical caret navigation, page navigation, and the textarea anchor during scrolling. Physical input methods and broader cross-file editing remain pending."
     },
     {
       "id": "default-native-engine",
