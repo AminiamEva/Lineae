@@ -66,6 +66,15 @@ export function resolvePackages(preamble, body, { chineseTypesetting=false } = {
   return required;
 }
 
+export function resolveTheoremDeclarations(preamble,body){
+  const declarations=[],source=withoutComments(preamble);
+  for(const [kind,title] of Object.entries(theoremNames)){
+    if(kind==='proof'||!body.includes('\\begin{'+kind+'}')||new RegExp('\\\\newtheorem\\*?\\s*\\{'+kind+'\\}').test(source))continue;
+    declarations.push('\\ifcsname '+kind+'\\endcsname\\else\\newtheorem{'+kind+'}{'+title+'}\\fi');
+  }
+  return declarations;
+}
+
 export function exportDocument({ start, end, eol }, body, options) {
   let preamble = start;
   for (const { name, beforeClass } of resolvePackages(start, body, options)) {
@@ -75,9 +84,7 @@ export function exportDocument({ start, end, eol }, body, options) {
       preamble = preamble.replace(/^\\begin\{document\}/m, '\\usepackage{' + name + '}' + eol + '\\begin{document}');
     }
   }
-  for(const [kind,title] of Object.entries(theoremNames)) {
-    if(kind==='proof' || !body.includes('\\begin{'+kind+'}') || new RegExp('\\\\newtheorem\\*?\\s*\\{'+kind+'\\}').test(withoutComments(start)))continue;
-    const declaration='\\ifcsname '+kind+'\\endcsname\\else\\newtheorem{'+kind+'}{'+title+'}\\fi';
+  for(const declaration of resolveTheoremDeclarations(start,body)){
     preamble=preamble.replace(/^\\begin\{document\}/m,()=>declaration+eol+'\\begin{document}');
   }
   if (/\\lineaeStem\b/.test(withoutComments(body)) && !/\\lineaeStem\b/.test(withoutComments(start))) {

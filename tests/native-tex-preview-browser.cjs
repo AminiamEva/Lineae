@@ -778,6 +778,16 @@ const server=createServer(async(req,res)=>{
       await panel.getByText('Click text on the native page',{exact:false}).waitFor();
       await canvas.click({position:{x:6550000*scale,y:9250000*scale}});
       await page.keyboard.press('Backslash');
+      await prosePalette.getByRole('textbox',{name:'LaTeX command',exact:true}).fill('proof');
+      await page.keyboard.press('Enter');
+      const wrappedProof=pageBreakSource.replace('Alpha','\\begin{proof}\nAlpha\n\\end{proof}')
+        .replace('\\begin{document}','\\usepackage{amsthm}\n\\begin{document}');
+      await page.waitForFunction(expected=>nativeProbe.source===expected,wrappedProof);
+      await page.keyboard.press(mod+'+z');
+      await page.waitForFunction(expected=>nativeProbe.source===expected,pageBreakSource);
+      await panel.getByText('Click text on the native page',{exact:false}).waitFor();
+      await canvas.click({position:{x:6550000*scale,y:9250000*scale}});
+      await page.keyboard.press('Backslash');
       await prosePalette.getByRole('textbox',{name:'LaTeX command',exact:true}).fill('title');
       await page.keyboard.press('Enter');
       await page.locator('.editor-dialog input').fill('Yield 50%');

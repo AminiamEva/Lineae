@@ -3,7 +3,7 @@ import {canBeginProseFormula,projectMixedDocument,projectTextDocument} from './e
 import {nativeMathCommandNames,projectMath} from './editor/native-math/source.mjs';
 import {nativeMathContext} from './editor/native-math/resolve.mjs';
 import {documentMetadata,writeDocumentMetadata} from '../latex/document-metadata.mjs';
-import {resolvePackages} from '../latex/packages.mjs';
+import {resolvePackages,resolveTheoremDeclarations} from '../latex/packages.mjs';
 import {referenceAt} from '../latex/reference-commands.mjs';
 import {sourceStructure} from '../latex/source-structure.mjs';
 import {insertTableSourceColumn,insertTableSourceRow,mergeTableSourceCells,mergeTableSourceRows,removeTableSourceColumn,removeTableSourceRow,splitTableSourceCell,splitTableSourceRowspan} from '../latex/tabularx.mjs';
@@ -2244,6 +2244,11 @@ function completionActions() {
       chapter:()=>runNativeTextStructure('setHeading',{level:1,command:'chapter'}),
       ...Object.fromEntries(['section','subsection','subsubsection'].map((command,index)=>
         [command,()=>runNativeTextStructure('setHeading',{level:index+1,command})])),
+      itemize:()=>runNativeTextStructure('toggleBulletList'),
+      enumerate:()=>runNativeTextStructure('toggleOrderedList'),
+      quote:()=>runNativeTextStructure('toggleBlockquote'),
+      ...Object.fromEntries(Object.keys(theoremNames).map(kind=>
+        [kind,()=>runNativeTextStructure('wrapIn','theoremBlock',{kind})])),
       appendix:structureCommands.appendix,title:structureCommands.title,
       author:structureCommands.author,date:structureCommands.date,
       table:insertNativeTableFromProse,tabular:insertNativeTableFromProse,newpage:insertNativePageBreak};
@@ -3026,7 +3031,9 @@ function runNativeTextStructure(command,...args){
   const rootId=composition?.rootId;
   const root=rootId&&rootId!==file.id?project.file(rootId).draft:source;
   const attributes=command==='updateAttributes'&&args[0]==='paragraph'&&args[1];
-  const packageBody=(attributes?.align==='justify'?'\\justifying ':'')+(attributes?.shading?'\\colorbox':'');
+  const theorem=command==='wrapIn'&&args[0]==='theoremBlock'&&args[1]?.kind;
+  const packageBody=(attributes?.align==='justify'?'\\justifying ':'')+(attributes?.shading?'\\colorbox':'')+
+    (theorem?'\\begin{'+theorem+'}':'');
   const dependency=packageBody?nativePackagePatch(root,packageBody):null;
   if(dependency===false)return false;
   let draft,from,to,shift=0;
@@ -3099,10 +3106,11 @@ function addNativeTableAxis(axis){
 }
 function nativePackagePatch(root,body){
   const {start,eol}=parseDocument(root,{fragment:true});
-  const required=resolvePackages(start,body);
+  const required=[...resolvePackages(start,body).map(({name})=>'\\usepackage{'+name+'}'),
+    ...resolveTheoremDeclarations(start,body)];
   if(!required.length)return null;
   const from=start.lastIndexOf('\\begin{document}');
-  return from<0?false:{from,insert:required.map(({name})=>'\\usepackage{'+name+'}'+eol).join('')};
+  return from<0?false:{from,insert:required.join(eol)+eol};
 }
 function editNativeTable(operation){
   const started=performance.now();
