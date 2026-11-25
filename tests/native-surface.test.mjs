@@ -410,6 +410,27 @@ test('native cross-file selection treats a complete table as one exact source ra
   assert.equal(change.edits[2].source,source.replace('Main.','ain.'));
 });
 
+test('native project select-all keeps cross-file endpoints editable when a child starts with math',()=>{
+  const source='\\begin{document}\n\\input{chapter}\n\nMain.\n\\end{document}\n';
+  const chapter='\\[x\\]\n\nChild.\n';
+  const projection=projectMixedSnapshot({source,mainFile:'main.tex',
+    files:[{path:'chapter.tex',bytes:new TextEncoder().encode(chapter)}]});
+  const session=createNativeDocumentSession(endpoint=>nativeTarget(projection,endpoint));
+  const child=projection.paragraphs.find(paragraph=>paragraph.text==='Child.');
+  const root=projection.paragraphs.find(paragraph=>paragraph.text==='Main.');
+  const [formula]=projection.formulas,tag=formula.math.atoms.find(atom=>atom.nucleus==='x').tag;
+  const glyphs=[tag,...child.glyphs.map(g=>g.tag),...root.glyphs.map(g=>g.tag)];
+  session.setObservation(page([],glyphs.map((owner,index)=>glyph(owner,100+index*40))),projection,false,[
+    {path:'chapter.tex',from:0,to:chapter.length},{path:'main.tex',from:source.indexOf('Main.'),to:source.length},
+  ]);
+  const caret=textTarget(projection,child.glyphs[0].tag,false);
+  assert.equal(session.select(caret,caret),true);
+  assert.equal(session.selectAll(),true);
+  const [first,last]=session.surface.range;
+  assert.equal(first.paragraph,child);
+  assert.equal(last.paragraph,root);
+});
+
 test('native vertical movement keeps the visual column and extends to another page',()=>{
   const projection=projectMixedDocument('\\begin{document}\nTop.\n\nBottom.\n\\end{document}\n');
   const top=projection.paragraphs[0].glyphs[0],bottom=projection.paragraphs[1].glyphs[0];

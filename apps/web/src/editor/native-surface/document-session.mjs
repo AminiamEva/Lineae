@@ -154,9 +154,12 @@ export function createNativeDocumentSession(resolve) {
     selectAll(){
       const caret=selection.caret;
       if(!caret)return false;
-      const stops=selection.stops.filter(stop=>caret.kind==='math'
+      let stops=selection.stops.filter(stop=>caret.kind==='math'
         ?stop.kind==='math'&&sameFormula(caret,stop)&&caret.slot.id===stop.slot.id
         :caret.paragraph.tableCell?sameOwner(caret,stop):canSelect(caret,stop));
+      // Multi-file replacement still needs two editable prose endpoints.
+      if(caret.kind==='text'&&stops.length&&order(stops[0])!==order(stops.at(-1)))
+        stops=stops.filter(stop=>stop.kind==='text');
       preferredX=null;
       return stops.length>0&&selection.selectTargets(stops[0],stops.at(-1));
     },
