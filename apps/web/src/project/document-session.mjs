@@ -41,7 +41,7 @@ export class ProjectDocumentSession {
       if(!file||!current.sources.has(id))return null;
       files.set(id,{...file,draft});
     }
-    const next=composeProject({files,file:id=>files.get(id)},current.rootId);
+    const next=composeProject({files,file:id=>files.get(id)},current.rootId,{repeated:current.repeated});
     if(next.regions.length!==current.regions.length||next.regions.length!==document.childCount||
       JSON.stringify(next.issues)!==JSON.stringify(current.issues))return null;
     for(const [index,region] of next.regions.entries()){

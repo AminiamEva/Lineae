@@ -3,6 +3,7 @@ import {applyPastedMath,applySlotEdit,applyStructureCommand,expandMatrix,insertD
 
 const structuralAtom=atom=>['frac','sqrt','fence','group','wrapper','matrix'].includes(atom.kind)&&
   !(atom.kind==='matrix'&&/^(?:align|flalign|gather|multline|eqnarray)/.test(atom.command));
+const address=(formula,offset)=>JSON.stringify([formula.filePath,formula.occurrence,offset]);
 
 // Native surface geometry adapter. Display-list coordinates are page space;
 // callers provide the zoom used for the current painted page.
@@ -17,7 +18,7 @@ const stopsFor = (observed, resolve, verified, pasted, pasteOffset) => {
       x: after||fenceGlyph?bbox[2]:bbox[0],top:bbox[1],bottom:bbox[3],
       ...(fenceGlyph?{hit:{...target.hit,page,caretBox:[bbox[2],bbox[1],bbox[2],bbox[3]]}}:{}),
     };
-    const key = JSON.stringify([target.formula.filePath,target.docOffset]);
+    const key = address(target.formula,target.docOffset);
     const previous = byAddress.get(key);
     // A glyph boundary inside a slot is the precise caret target; an empty
     // field marker at the same offset is only a fallback.
@@ -56,7 +57,7 @@ const stopsFor = (observed, resolve, verified, pasted, pasteOffset) => {
     const docOffset=formula.from16+parent.to16;
     const slot=formula.math.slots.find(slot=>slot.role==='body'&&slot.from16===0&&slot.to16===formula.math.source.length);
     if(!slot)continue;
-    const base=byAddress.get(JSON.stringify([formula.filePath,formula.from16+parent.from16]))??stop;
+    const base=byAddress.get(address(formula,formula.from16+parent.from16))??stop;
     const x=Math.max(stop.x,base.page===stop.page?base.x:stop.x);
     const {top,bottom}=base.page===stop.page?base:stop;
     tails.push({...stop,slot,local:parent.to16,docOffset,atom:parent,x,top,bottom,
@@ -70,7 +71,7 @@ const stopsFor = (observed, resolve, verified, pasted, pasteOffset) => {
   for(const [formula,stops] of observedFormulas){
     for(const {wrapper,body} of formattingBodies(formula)){
       const docOffset=formula.from16+wrapper.to16;
-      if(byAddress.has(JSON.stringify([formula.filePath,docOffset])))continue;
+      if(byAddress.has(address(formula,docOffset)))continue;
       const end=stops.filter(stop=>stop.after&&stop.docOffset>=formula.from16+body.from16&&
         stop.docOffset<=formula.from16+body.to16).sort((left,right)=>right.docOffset-left.docOffset)[0];
       const slot=formula.math.slots.filter(slot=>slot.from16<=wrapper.from16&&slot.to16>=wrapper.to16)
@@ -82,7 +83,7 @@ const stopsFor = (observed, resolve, verified, pasted, pasteOffset) => {
     }
     for(const atom of formula.math.atoms.filter(atom=>structuralAtom(atom)&&atom.kind!=='wrapper')){
       const docOffset=formula.from16+atom.to16;
-      if(byAddress.has(JSON.stringify([formula.filePath,docOffset])))continue;
+      if(byAddress.has(address(formula,docOffset)))continue;
       const body=stops.filter(stop=>stop.docOffset>formula.from16+atom.from16&&stop.docOffset<=docOffset);
       const right=body.filter(stop=>stop.after||stop.empty).sort((a,b)=>b.x-a.x)[0];
       const slot=formula.math.slots.filter(slot=>slot.from16<=atom.from16&&slot.to16>=atom.to16)
@@ -93,7 +94,7 @@ const stopsFor = (observed, resolve, verified, pasted, pasteOffset) => {
         hit:{...right.hit,page,caretBox:[x,top,x,bottom]}});
     }
     if(pasted?.paste&&pasted.formula.filePath===formula.filePath&&pasted.formula.from16===formula.from16&&
-       !byAddress.has(JSON.stringify([formula.filePath,pasteOffset]))){
+       !byAddress.has(address(formula,pasteOffset))){
       const local=pasteOffset-formula.from16;
       const atom=formula.math.atoms.find(atom=>atom.kind!=='formula'&&atom.kind!=='token'&&atom.to16===local);
       const children=atom?stops.filter(stop=>stop.docOffset>=formula.from16+atom.from16&&stop.docOffset<=pasteOffset):[];
@@ -108,7 +109,7 @@ const stopsFor = (observed, resolve, verified, pasted, pasteOffset) => {
     }
   }
   for(const stop of tails){
-    const key=JSON.stringify([stop.formula.filePath,stop.docOffset]);
+    const key=address(stop.formula,stop.docOffset);
     if(!byAddress.has(key)||byAddress.get(key).hit.caretBox&&byAddress.get(key).x<stop.x)byAddress.set(key,stop);
   }
   return [...byAddress.values()].sort((left, right) => left.docOffset - right.docOffset ||
@@ -118,6 +119,7 @@ const stopsFor = (observed, resolve, verified, pasted, pasteOffset) => {
 export const sameFormula = (left, right) =>
   left?.formula.from16 === right?.formula.from16 &&
   left?.formula.kind === right?.formula.kind &&
+  left?.formula.occurrence === right?.formula.occurrence &&
   left?.formula.filePath === right?.formula.filePath;
 
 function formattingBodies(formula){

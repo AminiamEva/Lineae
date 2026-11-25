@@ -2,6 +2,7 @@ import {createSelectionModel} from './selection-model.mjs';
 import {textTarget, textEdit} from '../native-text/projection.mjs';
 
 const segmenter = new Intl.Segmenter('und', {granularity:'grapheme'});
+const address=(paragraph,offset)=>JSON.stringify([paragraph.filePath,paragraph.occurrence,offset]);
 
 function stopsFor(observed, projection, verified) {
   const byOffset = new Map();
@@ -11,7 +12,7 @@ function stopsFor(observed, projection, verified) {
       if(!field.empty||!['math','cell'].includes(field.role))continue;
       const target=textTarget(projection,field.owner,false);
       if(!target?.paragraph.tableCell||target.paragraph.text)continue;
-      byOffset.set(JSON.stringify([target.paragraph.filePath,target.docOffset]),{
+      byOffset.set(address(target.paragraph,target.docOffset),{
         ...target,hit:{owner:field.owner,role:field.role},page:page.page,
         x:field.bbox[0],top:field.bbox[1],bottom:field.bbox[3],
       });
@@ -26,7 +27,7 @@ function stopsFor(observed, projection, verified) {
           x: after ? glyph.bbox[2] : glyph.bbox[0],
           top: glyph.bbox[1], bottom: glyph.bbox[3],
         };
-        const key=JSON.stringify([target.paragraph.filePath,target.docOffset]);
+        const key=address(target.paragraph,target.docOffset);
         const previous = byOffset.get(key);
         // Prefer the boundary whose paragraph/glyph is stable; either side of a
         // space has no tag, so the nearest glyph edge is the caret.
@@ -37,7 +38,7 @@ function stopsFor(observed, projection, verified) {
           // positions at the last painted glyph edge.
           for(let local=target.local+1;local<=target.paragraph.text.length;local++){
             const docOffset=target.paragraph.from16+local;
-            byOffset.set(JSON.stringify([target.paragraph.filePath,docOffset]),{...stop,local,docOffset});
+            byOffset.set(address(target.paragraph,docOffset),{...stop,local,docOffset});
           }
         }
       }
@@ -48,6 +49,7 @@ function stopsFor(observed, projection, verified) {
 
 export const sameParagraph = (a, b) =>
   a?.paragraph.filePath === b?.paragraph.filePath &&
+  a?.paragraph.occurrence === b?.paragraph.occurrence &&
   a?.paragraph.from16 === b?.paragraph.from16 && a?.paragraph.source === b?.paragraph.source;
 const runsOf = paragraph => paragraph.runs ?? [{from16:0, to16:paragraph.text.length}];
 const runAt = (paragraph, offset, backward) => runsOf(paragraph).find(run =>

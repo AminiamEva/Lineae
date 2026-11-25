@@ -1132,6 +1132,31 @@ const server=createServer(async(req,res)=>{
       await page.keyboard.press(mod+'+z');
       await projectDrafts(containerProject,nestedChild);
 
+      await page.goto('http://127.0.0.1:'+server.address().port+'/?native-only-acceptance=1',{waitUntil:'networkidle'});
+      const repeatedProject='\\documentclass{article}\n\\begin{document}\nBefore.\n\n\\input{chapters/one}\n\n'+
+        'Between.\n\n\\input{chapters/one}\n\nAfter.\n\\end{document}\n';
+      const repeatedChild='Child.\n\n\\[\\frac{x}{}\\]\n';
+      await openMockProject(page,false,repeatedProject,repeatedChild);
+      await page.evaluate(()=>{nativeProbe.targetInclude=true;nativeProbe.repeatedInput=true;});
+      await page.locator('#native-tex-toggle').click();
+      await page.waitForFunction(()=>document.querySelector('#native-tex-preview').dataset.state==='current');
+      await page.locator('#native-tex-target').click();
+      await panel.getByText('Click prose on the native page',{exact:false}).waitFor();
+      await page.locator('#native-tex-edit').click();
+      await canvas.click({position:{x:6550000*scale,y:20250000*scale}});
+      await page.keyboard.type('X');
+      await projectDrafts(repeatedProject,repeatedChild.replace('Child.','XChild.'));
+      await panel.getByText('Click prose on the native page',{exact:false}).waitFor();
+      assert.ok(Number.parseFloat(await panel.locator('.native-tex-caret').evaluate(caret=>caret.style.top))>18000000*scale);
+      await canvas.click({position:{x:6500000*scale,y:22000000*scale}});
+      await page.keyboard.type('q');
+      const repeatedEdited=repeatedChild.replace('Child.','XChild.').replace('}{','}{q');
+      await projectDrafts(repeatedProject,repeatedEdited);
+      await page.keyboard.press(mod+'+z');
+      await projectDrafts(repeatedProject,repeatedChild.replace('Child.','XChild.'));
+      await page.keyboard.press(mod+'+z');
+      await projectDrafts(repeatedProject,repeatedChild);
+
       await page.goto('http://127.0.0.1:'+server.address().port+'/?native-workspace=1',{waitUntil:'networkidle'});
       const workspaceSource='\\documentclass{article}\n\\begin{document}\nNative document.\n\\end{document}\n';
       await page.locator('input#file').setInputFiles({name:'workspace.tex',mimeType:'text/plain',buffer:Buffer.from(workspaceSource)});

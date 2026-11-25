@@ -1,12 +1,13 @@
 // Shared caret and range mechanics for geometry-backed editing adapters.
 export function createSelectionModel(sameOwner, fileOf = () => undefined, canSelect=sameOwner) {
-  const address = stop => stop && {offset:stop.docOffset,file:fileOf(stop),kind:stop.kind};
+  const occurrence=stop=>(stop.formula??stop.paragraph)?.occurrence??0;
+  const address = stop => stop && {offset:stop.docOffset,file:fileOf(stop),kind:stop.kind,occurrence:occurrence(stop)};
   const matches = (stop, target) => target && stop.docOffset===target.offset &&
-    fileOf(stop)===target.file&&stop.kind===target.kind;
+    fileOf(stop)===target.file&&stop.kind===target.kind&&occurrence(stop)===target.occurrence;
   const restore = previous => {
     if(previous?.kind==='text'&&previous.glyph){
       const {glyph,local}=previous;
-      const shifted=stops.findIndex(stop=>stop.kind==='text'&&fileOf(stop)===fileOf(previous)&&
+      const shifted=stops.findIndex(stop=>stop.kind==='text'&&fileOf(stop)===fileOf(previous)&&occurrence(stop)===occurrence(previous)&&
         stop.glyph?.tag===glyph.tag&&stop.glyph.char===glyph.char&&
         stop.local-stop.glyph.from16===local-glyph.from16);
       if(shifted>=0)return shifted;
@@ -63,8 +64,9 @@ export function createSelectionModel(sameOwner, fileOf = () => undefined, canSel
       return stops[index];
     },
     selectBetween(fromOffset, toOffset, fromFile, toFile = fromFile) {
-      const from = stops.findIndex(stop => stop.docOffset === fromOffset && fileOf(stop)===fromFile);
-      const to = stops.findIndex(stop => stop.docOffset === toOffset && fileOf(stop)===toFile);
+      const origin=stops[index],copy=origin&&fileOf(origin)===fromFile?occurrence(origin):0;
+      const from = stops.findIndex(stop => stop.docOffset === fromOffset && fileOf(stop)===fromFile&&occurrence(stop)===copy);
+      const to = stops.findIndex(stop => stop.docOffset === toOffset && fileOf(stop)===toFile&&occurrence(stop)===(toFile===fromFile?copy:0));
       if (from < 0 || to < 0 || !sameOwner(stops[from], stops[to])) return false;
       anchor = from; index = to;
       return true;

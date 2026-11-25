@@ -6,6 +6,26 @@ import {applySlotEdit,applyStructureCommand,applyScalableFence,nativeMathCommand
 import {createMathSurface} from '../apps/web/src/editor/native-surface/math-surface.mjs';
 import {createTextSurface} from '../apps/web/src/editor/native-surface/text-surface.mjs';
 import {createNativeDocumentSession} from '../apps/web/src/editor/native-surface/document-session.mjs';
+import {separateRepeatedOwners} from '../apps/web/src/editor/native-surface/repeated-owners.mjs';
+
+test('repeated geometry gets distinct hit IDs only when every occurrence can be matched',()=>{
+  const paragraph={filePath:'child.tex',text:'AB'};
+  const base={nextTag:3,paragraphs:[paragraph],formulas:[],owners:new Map([
+    [1,{paragraph,glyph:{tag:1,char:'A'}}],[2,{paragraph,glyph:{tag:2,char:'B'}}],
+  ])};
+  const page=(number,glyphs)=>({page:number,dl:{math_owners:{glyphs:glyphs.map(owner=>({owner}))}}});
+  const frames=[page(2,[1]),page(1,[1,2])];
+  const {pages,projection}=separateRepeatedOwners(frames,base,[
+    {path:'child.tex',occurrence:0},{path:'child.tex',occurrence:1},
+  ]);
+  const [[second],[first]]=pages.map(frame=>frame.dl.math_owners.glyphs.map(glyph=>glyph.owner));
+  assert.notEqual(first,second);
+  assert.equal(projection.owners.get(first).paragraph.occurrence,0);
+  assert.equal(projection.owners.get(second).paragraph.occurrence,1);
+  assert.equal(projection.owners.get(first).sourceTag,1);
+  assert.equal(projection.owners.has(2),false);
+  assert.deepEqual(frames[1].dl.math_owners.glyphs.map(glyph=>glyph.owner),[1,2]);
+});
 import {canBeginProseFormula,projectTextDocument,projectMixedDocument,projectMixedSnapshot,textTarget,textEdit} from '../apps/web/src/editor/native-text/projection.mjs';
 import {richSourceChanges,sourceProjection,standaloneMathChanges} from '../apps/web/src/editor/source-sync.js';
 import {importBlocks} from '../apps/web/latex/blocks.mjs';

@@ -10,6 +10,7 @@ import {nativeTarget} from '../editor/native-math/resolve.mjs';
 import {parseDocument} from '../../latex/document.mjs';
 import {resolvePackages} from '../../latex/packages.mjs';
 import {readDelimiterPair} from '../editor/delimiter-input.js';
+import {separateRepeatedOwners} from '../editor/native-surface/repeated-owners.mjs';
 
 // Native LaTeX output is the primary page. The opt-in native input mode sends
 // supported keys, caret and IME through this surface into ProseMirror; the old
@@ -182,7 +183,8 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
   function replaceParagraphSelection(action){
     const [first,last]=nativeDocument.surface.range;
     if(first?.kind!=='text'||last?.kind!=='text'||first.paragraph===last.paragraph||
-      first.paragraph.filePath!==last.paragraph.filePath)return false;
+      first.paragraph.filePath!==last.paragraph.filePath||
+      first.paragraph.occurrence!==last.paragraph.occurrence)return false;
     const applied=commitParagraphJoin?.(first,last,action.insert??'');
     return applied?awaitSourcePosition(applied,action.started):false;
   }
@@ -955,30 +957,33 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
     const attempt=generation;
     const currentStamp=()=>attempt===generation&&acceptsInput()&&stamp.sessionId===session&&stamp.sourceRevision===sourceRevision&&
       sentSnapshot?.signature===signature&&wantedSnapshot?.signature===signature&&sentSource===projection?.source&&wantedSource===projection?.source;
+    const regions=selectionRegions?.();
     async function observeProjection(){
       const frames=await invoke('native_tex_observe_formula',{...stamp,projection:projection.projection,files:projection.files});
       if(!currentStamp())return null;
-      if(!renderer.attachOwners(frames,stamp,projection.owners))throw new Error(t('标记版排版与当前页面不一致，未启用命中。','Projected geometry differs from the displayed page; targeting remains disabled.'));
-      return frames;
+      const observed=separateRepeatedOwners(frames,projection,regions);
+      if(!renderer.attachOwners(observed.pages,stamp,observed.projection.owners))throw new Error(t('标记版排版与当前页面不一致，未启用命中。','Projected geometry differs from the displayed page; targeting remains disabled.'));
+      return observed;
     }
     targeting=attempt;observation=null;renderStatus();
     targetStatus.textContent=t('正在核对源码标记及实际排版…','Checking projected source against the visible layout…');
     try {
-      let observed;
-      try {observed=await observeProjection();}
+      let output;
+      try {output=await observeProjection();}
       catch(failure){
         if(!currentStamp()||![...projection.owners.values()].some(({drawing})=>drawing))throw failure;
         projection=project(false);
         if(!projection?.owners.size)throw failure;
-        observed=await observeProjection();
+        output=await observeProjection();
       }
-      if(!observed)return;
+      if(!output)return;
+      const {pages:observed,projection:visibleProjection}=output;
       const kind=projection.kind;
       previousProjection=projection;
-      observation={kind,projection,stamp,observed};
+      observation={kind,projection:visibleProjection,stamp,observed};
       if(nativeEditing){
         const expectedOffset=nativeDocument.surface.pendingOffset;
-        const applied=nativeDocument.setObservation(observed,projection,pdfGeometryAvailable,selectionRegions?.());
+        const applied=nativeDocument.setObservation(observed,visibleProjection,pdfGeometryAvailable,regions);
         paintFilePresentation();
         let editRestored=false;
         if(pendingEdit){

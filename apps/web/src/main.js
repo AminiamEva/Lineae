@@ -3387,8 +3387,14 @@ function editNativeTable(operation){
 function currentNativeProjectComposition(){
   const active=projectDocument.composition,project=projectExplorer?.model;
   if(!active||!project)return null;
-  const composition=projectDocument.compose(project,active.rootId,{boundariesOnly:true});
+  const composition=projectDocument.compose(project,active.rootId,{boundariesOnly:true,repeated:active.repeated});
   return composition.issues.length?null:composition;
+}
+function nativeSelectionComposition(canonical){
+  const project=projectExplorer?.model;
+  if(canonical?.repeated!=='first'||!project)return canonical;
+  const expanded=projectDocument.compose(project,canonical.rootId,{boundariesOnly:true,repeated:'all'});
+  return expanded.issues.length?canonical:expanded;
 }
 function emptyContinuation(region,composition,doc){
   const index=Number(region.key);
@@ -3582,16 +3588,19 @@ nativeTexPreview=installNativeTexPreview({host:footer,before:modes,primary:nativ
     const composition=currentNativeProjectComposition();
     const owner=caret.formula??caret.paragraph;
     if(!composition||!owner.filePath)return null;
-    const index=composition.regions.findIndex(region=>region.path===owner.filePath&&
-      region.from<=caret.docOffset&&region.to>=caret.docOffset&&composition.sources.get(region.id)===owner.source);
-    const parent=composition.content[index]?.attrs.trail?.at(-1);
+    const visible=nativeSelectionComposition(composition);
+    const index=visible.regions.findIndex(region=>region.path===owner.filePath&&
+      (region.occurrence??0)===(owner.occurrence??0)&&region.from<=caret.docOffset&&region.to>=caret.docOffset&&
+      visible.sources.get(region.id)===owner.source);
+    const parent=visible.content[index]?.attrs.trail?.at(-1);
     if(!parent)return null;
-    const continuation=composition.regions.slice(index+1).find(region=>region.path===parent);
+    const next=visible.regions.slice(index+1).find(region=>region.path===parent);
+    const continuation=next&&composition.regions.find(region=>region.id===next.id&&region.from===next.from&&region.to===next.to);
     if(!continuation)return null;
-    return {...continuation,empty:Boolean(emptyContinuation(continuation,composition,editor.state.doc))};
+    return {...continuation,occurrence:next.occurrence,empty:Boolean(emptyContinuation(continuation,composition,editor.state.doc))};
   },
   selectionRegions:()=>{
-    const composition=currentNativeProjectComposition();
+    const composition=nativeSelectionComposition(currentNativeProjectComposition());
     return composition?.regions.map((region,index)=>({...region,trail:composition.content[index]?.attrs.trail}));
   },
   foldedFiles:()=>projectPresentation?.foldedFiles()??[],
@@ -3796,6 +3805,7 @@ nativeTexPreview=installNativeTexPreview({host:footer,before:modes,primary:nativ
   commitParagraphJoin:(first,last,text='')=>{
     if(first?.kind!=='text'||last?.kind!=='text'||first.paragraph===last.paragraph||
       first.paragraph.filePath!==last.paragraph.filePath||first.paragraph.source!==last.paragraph.source||
+      first.paragraph.occurrence!==last.paragraph.occurrence||
       /[\r\n]/.test(text))return null;
     if(!text&&isNativeListParagraph(first.paragraph)&&isNativeListParagraph(last.paragraph)){
       if(projectDocument.composition&&!projectDocument.rebase(currentNativeProjectComposition(),editor.getJSON()))return null;
@@ -4194,6 +4204,7 @@ editor.on('update',()=>nativeTexPreview.refresh());
 onAssetsChanged(()=>nativeTexPreview.refresh());
 const compositionController=createCompositionController({
   explorer:()=>projectExplorer,fileKind:()=>projectFileKind,session:projectDocument,
+  nativeWorkspace:nativeOnlyAcceptance,
   sourceHidden:()=>sourceView.hidden,composing:()=>editor.view.composing||sourceView.composing,
   read:()=>sourceView.hidden?source():sourceView.value,report:text=>sourceView.error(text),ask:askText,
   present(composed){

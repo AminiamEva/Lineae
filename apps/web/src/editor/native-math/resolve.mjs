@@ -12,14 +12,15 @@ export function nativeTarget(projection, endpoint) {
   const owned = projection.owners.get(endpoint.owner);
   if (!owned?.formula || !owned?.atom) return null;
   const { formula, atom } = owned;
+  const sourceTag=owned.sourceTag??endpoint.owner;
   const fence=atom.kind==='fence'&&['nucleus','math','body'].includes(endpoint.role);
   const role = fence?'body':roleOf[endpoint.role];
   const slot = formula.math.slots.find(candidate =>
-    candidate.tag === endpoint.owner && candidate.role === role);
+    candidate.tag === sourceTag && candidate.role === role);
   if (!slot||fence&&slot.raw) return null;
   const local = endpoint.after ? slot.raw.length : 0;
   try {
-    const target = editDisplayMathSlot(formula, formula.source, fence?{...endpoint,role:'body'}:endpoint,
+    const target = editDisplayMathSlot(formula, formula.source, {...endpoint,owner:sourceTag,role:fence?'body':endpoint.role},
       { from16: local, to16: local, insert: '' });
     if (!target) return null;
     return {

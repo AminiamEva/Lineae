@@ -6,10 +6,11 @@ import {textEdit} from '../native-text/projection.mjs';
 const sameOwner=(left,right)=>Boolean(left&&right&&left.kind===right.kind&&
   (left.kind==='math'?sameFormula(left,right):sameParagraph(left,right)));
 const fileOf=stop=>(stop.formula??stop.paragraph).filePath;
+const copyOf=stop=>(stop.formula??stop.paragraph).occurrence??0;
 const tableCellOf=stop=>(stop?.paragraph??stop?.formula)?.tableCell;
 export const sameTable=(left,right)=>{
   const a=tableCellOf(left),b=tableCellOf(right);
-  return Boolean(a&&b&&a.from16===b.from16&&fileOf(left)===fileOf(right)&&
+  return Boolean(a&&b&&a.from16===b.from16&&fileOf(left)===fileOf(right)&&copyOf(left)===copyOf(right)&&
     (a.row===b.row||a.vertical&&b.vertical&&a.column===b.column));
 };
 const overlapsLine=(left,right)=>left?.page===right.page&&left.top<right.bottom&&left.bottom>right.top;
@@ -22,7 +23,7 @@ export function createNativeDocumentSession(resolve) {
   let documentRegions=[];
   let observedStops=[];
   const order=stop=>orderByFile.get(fileOf(stop))?.find(region=>
-    stop.docOffset>=region.from&&stop.docOffset<=region.to)?.index??-1;
+    copyOf(stop)===region.occurrence&&stop.docOffset>=region.from&&stop.docOffset<=region.to)?.index??-1;
   const canSelect=(from,to)=>sameOwner(from,to)||Boolean(from?.kind==='text'&&to?.kind==='text'&&
     (sameTable(from,to)||!from.paragraph.tableCell&&!to.paragraph.tableCell&&
       (fileOf(from)===fileOf(to)||(order(from)>=0&&order(to)>=0))));
@@ -50,9 +51,9 @@ export function createNativeDocumentSession(resolve) {
     setObservation(observed,projection,verified=false,regions=[]){
       documentRegions=regions;
       orderByFile=new Map();
-      for(const [index,{path,from,to}] of regions.entries()){
+      for(const [index,{path,from,to,occurrence=0}] of regions.entries()){
         if(!orderByFile.has(path))orderByFile.set(path,[]);
-        orderByFile.get(path).push({index,from,to});
+        orderByFile.get(path).push({index,from,to,occurrence});
       }
       sourceProjection=projection;
       text.setProjection(projection);
@@ -85,10 +86,18 @@ export function createNativeDocumentSession(resolve) {
       }
       const bounds=regionBounds(observedStops),hidden=new Set(),ranges=[];
       const positions=[...bounds];
-      for(const path of paths){
-        if(path===documentRegions[0]?.path)continue;
-        const indices=documentRegions.flatMap((region,index)=>region.path===path||region.trail?.includes(path)?[index]:[]);
-        if(!indices.length||indices.at(-1)-indices[0]+1!==indices.length)continue;
+      const groups=paths.flatMap(path=>{
+        if(path===documentRegions[0]?.path)return [];
+        const groups=[];
+        for(const [index,region] of documentRegions.entries()){
+          if(region.path!==path&&!region.trail?.includes(path))continue;
+          const last=groups.at(-1);
+          if(last?.indices.at(-1)===index-1)last.indices.push(index);
+          else groups.push({path,indices:[index]});
+        }
+        return groups;
+      });
+      for(const {path,indices} of groups){
         const regions=indices.map(index=>bounds.get(index)).filter(Boolean);
         const first=regions[0]?.first,last=regions.at(-1)?.last;
         if(!first||!last||first.page>last.page)continue;
@@ -138,7 +147,7 @@ export function createNativeDocumentSession(resolve) {
       const cells=new Map();
       for(const stop of selection.stops){
         const target=tableCellOf(stop);
-        if(target?.from16!==cell.from16||fileOf(stop)!==fileOf(caret))continue;
+        if(target?.from16!==cell.from16||fileOf(stop)!==fileOf(caret)||copyOf(stop)!==copyOf(caret))continue;
         const key=`${target.row}/${target.column}`;
         if(!cells.has(key))cells.set(key,stop);
       }
@@ -180,6 +189,12 @@ export function createNativeDocumentSession(resolve) {
       const [first,last]=selection.range;
       if(first?.kind!=='text'||last?.kind!=='text'||order(first)<0||order(last)<=order(first))return null;
       const ranges=this.proseRanges(first,last);
+      const sources=new Map();
+      for(const {paragraph,formula} of ranges){
+        const owner=paragraph??formula;
+        if(sources.has(owner.filePath)&&sources.get(owner.filePath)!==owner.occurrence)return null;
+        sources.set(owner.filePath,owner.occurrence);
+      }
       if(ranges.length<2||ranges.some(({paragraph})=>paragraph&&(paragraph.tableCell||paragraph.heading||
         paragraph.container&&!editableRangeContainers.has(paragraph.container.type))))return null;
       const edits=ranges.map(({paragraph,formula,from,to},index)=>{
@@ -257,8 +272,9 @@ export function createNativeDocumentSession(resolve) {
         fileOf(stop)===fileOf(caret)&&stop.docOffset>=caret.formula.to16);
       return following?selection.selectTargets(following,following):false;
     },
-    selectRegion({path,from,to,source,heading}){
+    selectRegion({path,from,to,source,heading,occurrence=0}){
       const first=selection.stops.find(stop=>fileOf(stop)===path&&stop.docOffset>=from&&stop.docOffset<=to&&
+        copyOf(stop)===occurrence&&
         (source===undefined||(stop.paragraph??stop.formula).source===source)&&
         (heading===undefined||stop.paragraph?.heading===heading));
       return first?selection.selectTargets(first,first):false;
@@ -270,10 +286,12 @@ export function createNativeDocumentSession(resolve) {
       return Boolean(start&&end&&sameParagraph(start,end)&&selection.selectTargets(start,end));
     },
     expectInitialText(edit,offset,path){
-      selection.record(edit,offset,{kind:'text',paragraph:{filePath:path}});
+      const caret=selection.caret,occurrence=caret&&fileOf(caret)===path?copyOf(caret):0;
+      selection.record(edit,offset,{kind:'text',paragraph:{filePath:path,occurrence}});
     },
     expectInitialMath(edit,offset,path){
-      selection.record(edit,offset,{kind:'math',formula:{filePath:path}});
+      const caret=selection.caret,occurrence=caret&&fileOf(caret)===path?copyOf(caret):0;
+      selection.record(edit,offset,{kind:'math',formula:{filePath:path,occurrence}});
     },
     reset(){selection.reset();sourceProjection=null;preferredX=null;observedStops=[];documentRegions=[];orderByFile.clear();},
   };

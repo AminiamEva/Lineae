@@ -88,7 +88,7 @@ export function installNativePages({host,getFont,getTypeOneFont,getRaster,onPain
         if(!formula)continue;
         if(!formulaParagraphs.has(formula)){
           const paragraphs=proseByFile.get(formula.filePath);
-          const matches=[...(paragraphs??[])].filter(paragraph=>paragraph.parts.some(part=>
+          const matches=[...(paragraphs??[])].filter(paragraph=>paragraph.occurrence===formula.occurrence&&paragraph.parts.some(part=>
             part.kind==='math'&&paragraph.from16+part.from16<=formula.from16&&
             paragraph.from16+part.to16>=formula.to16));
           formulaParagraphs.set(formula,matches);

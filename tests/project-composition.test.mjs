@@ -28,6 +28,19 @@ test('cyclic and repeated includes are diagnosed before exposing an editable pro
   assert.ok(c.issues.some(s=>s.startsWith('Cycle:')));
   assert.ok(c.issues.some(s=>s.startsWith('Repeated include:')));
 });
+test('native repeated inputs have one editable source and two visible occurrences',()=>{
+  const root='Before.\n\n\\input{a}\n\nBetween.\n\n\\input{a}\n\nAfter.\n';
+  const project=fixture([['main.tex',root],['a.tex','Child.\n']]);
+  const editable=composeProject(project,'0',{repeated:'first'});
+  const visible=composeProject(project,'0',{boundariesOnly:true,repeated:'all'});
+  assert.deepEqual(editable.issues,[]);
+  assert.deepEqual(visible.issues,[]);
+  assert.deepEqual(visible.regions.filter(region=>region.path==='a.tex').map(region=>region.occurrence),[0,1]);
+  assert.equal(editable.regions.filter(region=>region.path==='a.tex').length,1);
+  const doc=structuredClone({content:editable.content});
+  doc.content[1].content[0].content[0].text='Edited once.';
+  assert.deepEqual(projectDocumentEdits(editable,doc),new Map([['0',root],['1','Edited once.\n']]));
+});
 test('missing includes are retained in authoritative source and diagnosed',()=>{
   const p=fixture([['main.tex','before\n\\input{missing}\nafter']]);
   const c=composeProject(p,'0');

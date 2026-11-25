@@ -152,6 +152,28 @@ module.exports=function installMockNativeTex() {
         observed[2].dl.math_owners={fields:[],glyphs:[...owners(child.slice(6),27000000),...owners(root.slice(7),33000000)]};
         return observed;
       }
+      if(p.repeatedInput){
+        const root=textTags(args.projection),child=textTags(input);
+        const observed=p.layout().pages_changed;
+        const glyphs=(items,y)=>items.map(([,tag,char],index)=>{
+          const x=6500000+index*200000;
+          return {owner:Number(tag),char:char.codePointAt(0),bbox:[x,y,x+200000,y+500000]};
+        });
+        const fields=[],mathGlyphs=[];
+        const denominator=/\\frac\{[^{}]*\}\{(?:\\attribute65000=(\d+) )?([^{}]*)\}/.exec(input);
+        if(denominator?.[1]){
+          for(const y of [14000000,22000000]){
+            const x=6500000;
+            if(!denominator[2])fields.push({owner:Number(denominator[1]),role:'den',empty:true,bbox:[x,y,x,y]});
+            else mathGlyphs.push(...glyphs([[null,denominator[1],denominator[2]]],y));
+          }
+        }
+        observed[0].dl.math_owners={fields,glyphs:[
+          ...glyphs(root.slice(0,7),9000000),...glyphs(child,12000000),...glyphs(root.slice(7,15),16000000),
+          ...glyphs(child,20000000),...glyphs(root.slice(15),25000000),...mathGlyphs,
+        ]};
+        return observed;
+      }
       const proseTags=[...textTags(input),...(p.targetInclude&&p.includeMainText?textTags(args.projection):[])];
       const emptyFields=[...input.matchAll(emptyCells)].map(([,owner],index)=>{
         const x=6500000+index*1000000;
