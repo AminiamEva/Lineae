@@ -53,10 +53,9 @@ This is a separate **prerelease**, not an update to the stable release.
 - Both packages, checksums, exact tracked source, denominator samples and an authored LuaLaTeX project fixture are included.
 - No Intel Mac or Linux package is part of this preview.
 - Packages retain the stable application's identifier and preference storage; back up documents and exported preferences.
-- Optional local LuaLaTeX page preview and clean PDF export require separately installed rtex 0.0.8 and LuaLaTeX, plus explicit document trust.
-- For supported formulas, select **Target formula caret (experimental)** to use the native page's clicks and drags. The existing editor still handles input, commands and history.
-- Semantic editing of PDF fallback, full native parity, automatic updates and frontend hot reload are not claimed.
-- Existing JS typesetting and MathLive remain the active editing implementation. The unmerged Lua JS engine is not modified or substituted.
+- LuaLaTeX opens in Document mode by default. Both downloads include rtex 0.0.8 and its support files. A local LuaLaTeX installation and explicit document trust are required.
+- Use the engine button in the bottom-right status bar to switch between the native LuaLaTeX document and the existing XeLaTeX-aligned editor.
+- Native editing coverage and remaining gaps are recorded in the compatibility inventory.
 
 Check \`BUILD.txt\` and \`SHA256SUMS\`, then follow
 [the two-device checklist]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/blob/$GITHUB_SHA/docs/native-tex/README.md).

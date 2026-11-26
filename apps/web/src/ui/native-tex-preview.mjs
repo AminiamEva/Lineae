@@ -1,4 +1,5 @@
 import {stagedRaster} from '../typesetting/rtex/raster-assets.mjs';
+import {desktopEngineToggle,nativeWorkspaceRequested,selectDesktopEngine} from '../editor/native-surface/acceptance-mode.mjs';
 import {t} from './i18n.mjs';
 import {installNativePages} from '../typesetting/rtex/pages.mjs';
 import {installNativePdf} from '../typesetting/rtex/pdf.mjs';
@@ -79,7 +80,8 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
   let previousProjection=null;
   let foldsDirty=false;
   let mirror=null;
-  let primaryRequested=false;
+  const engineToggle=desktopEngineToggle();
+  let primaryRequested=engineToggle&&nativeWorkspaceRequested();
   let mountedSplit=null;
   const acceptsInput=()=>!primary||isDocumentMode?.();
   let draftInput=null;
@@ -758,7 +760,11 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
       },nativeEditing?0:350);
     }
     button.setAttribute('aria-pressed',String(active));
-    if(primary)button.textContent=active?t('退出原生文档','Leave native document'):t('原生文档','Native document');
+    if(engineToggle){
+      button.disabled=Boolean(inputComposition&&!inputComposition.ended||pendingEdit||queuedInput.length);
+      button.textContent=primaryRequested?'LuaLaTeX':'XeLaTeX';
+      button.setAttribute('aria-label',primaryRequested?t('切换到 XeLaTeX','Switch to XeLaTeX'):t('切换到 LuaLaTeX','Switch to LuaLaTeX'));
+    }else if(primary)button.textContent=active?t('退出原生文档','Leave native document'):t('原生文档','Native document');
     else button.textContent=active?t('关闭 LuaLaTeX 预览','Close LuaLaTeX preview'):t('LuaLaTeX 预览（实验）','LuaLaTeX preview (experimental)');
     panel.dataset.state=error?'error':current()?'current':active?'stale':'off';
     panel.dataset.renderer=mode;
@@ -985,11 +991,28 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
         if(opened)await invoke('native_tex_close',{sessionId:opened.sessionId});
         return;
       }
-      if(!opened) {primaryRequested=false;await stop();return;}
+      if(!opened) {
+        primaryRequested=false;
+        if(engineToggle)selectDesktopEngine(false,{remember:false});
+        await stop();
+        return;
+      }
       session=opened.sessionId;sourceRevision=opened.sourceRevision;sentSource=initial.source;sentSnapshot=initial;opening=false;
       renderer.reset();pdf.reset();void poll(attempt);
       refresh();renderStatus();
-    } catch(failure) {if(attempt===generation){opening=false;fail(failure);}}
+    } catch(failure) {
+      if(attempt!==generation)return;
+      opening=false;
+      if(!engineToggle){fail(failure);return;}
+      primaryRequested=false;
+      selectDesktopEngine(false,{remember:false});
+      await stop();
+      const message=document.querySelector('#status');
+      if(message){
+        message.hidden=false;
+        message.textContent=t('LuaLaTeX 无法启动：','Could not start LuaLaTeX: ')+String(failure?.message??failure);
+      }
+    }
   }
   async function exportPdf() {
     if(!current())return;
@@ -1134,6 +1157,15 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
     }
   }
   function toggle(){
+    if(engineToggle){
+      if(button.disabled)return;
+      primaryRequested=!primaryRequested;
+      selectDesktopEngine(primaryRequested);
+      if(!primaryRequested)void stop();
+      else if(isDocumentMode?.()||splitHost?.())void start();
+      else renderStatus();
+      return;
+    }
     if(primary){
       if(!isDocumentMode?.())return;
       primaryRequested=!active;
@@ -1194,7 +1226,11 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
     if(!current()||sourceBlock.selectedIndex<0)return;
     void openSourceBlock?.(availableBlocks[sourceBlock.selectedIndex]);
   });
-  closeButton.addEventListener('click',()=>{primaryRequested=false;void stop();});
+  closeButton.addEventListener('click',()=>{
+    if(engineToggle){toggle();return;}
+    primaryRequested=false;
+    void stop();
+  });
   exportButton.addEventListener('click',()=>{void exportPdf();});
   targetButton.addEventListener('click',()=>{
     targetArmed=true;clearTimeout(targetTimer);targetTimer=null;void observe();

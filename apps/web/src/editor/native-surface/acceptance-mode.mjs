@@ -1,4 +1,12 @@
 const workspacePreference='lineae.native-document-workspace';
+let desktopEngine;
+
+export const desktopEngineToggle=()=>window.__LINEAE_DESKTOP_ENGINE_TOGGLE__===true;
+
+export function selectDesktopEngine(lua,{remember=true}={}){
+  desktopEngine=lua;
+  if(remember)try {window.localStorage.setItem(workspacePreference,lua?'1':'0');} catch {}
+}
 
 export function nativeWorkspacePreference() {
   if(!window.__TAURI__?.core?.invoke)return null;
@@ -6,20 +14,20 @@ export function nativeWorkspacePreference() {
   catch{return null;}
 }
 
-export function saveNativeWorkspacePreference(enabled) {
-  if(enabled===nativeWorkspacePreference())return;
-  window.localStorage.setItem(workspacePreference,enabled?'1':'0');
-}
-
 export function nativeWorkspaceRequested() {
   if(!window.__TAURI__?.core?.invoke)return false;
   const requested=new URLSearchParams(location.search).get('native-workspace');
+  if(desktopEngineToggle())return desktopEngine??(requested===null?nativeWorkspacePreference()||!hasEnginePreference():requested==='1');
   return requested===null?nativeWorkspacePreference()===true:requested==='1';
+}
+
+function hasEnginePreference(){
+  try{return window.localStorage.getItem(workspacePreference)!==null;}catch{return false;}
 }
 
 export function nativeOnlyAcceptance() {
   return Boolean(window.__TAURI__?.core?.invoke) &&
-    (nativeWorkspaceRequested()||new URLSearchParams(location.search).get('native-only-acceptance')==='1');
+    ((!desktopEngineToggle()&&nativeWorkspaceRequested())||new URLSearchParams(location.search).get('native-only-acceptance')==='1');
 }
 
 export async function loadLegacyMath(){

@@ -18,6 +18,9 @@
     "active": true,
     "targets": ["nsis"],
     "category": "Productivity",
+    "resources": {
+      "resources/rtex/": "rtex/"
+    },
     "shortDescription": "Offline LaTeX editor",
     "longDescription": "Lineae is an offline LaTeX editor with a visual formula and document editor.",
     "icon": [

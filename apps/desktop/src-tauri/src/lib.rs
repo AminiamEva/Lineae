@@ -230,6 +230,9 @@ pub fn run() {
             }
         })
         .setup(|app| {
+            if let Ok(resources) = app.path().resource_dir() {
+                tex_session::set_bundled_rtex(resources.join("rtex"));
+            }
             let native_smoke = cfg!(debug_assertions)
                 && std::env::args_os().any(|arg| arg == "--lineae-native-workspace-smoke");
             let native_input_review = cfg!(debug_assertions)
@@ -258,7 +261,11 @@ pub fn run() {
                         include_str!("bridge.js")
                     )
                 });
-            let window = if native_smoke || std::env::args_os().any(|arg| arg == "--lineae-smoke-test") {
+            let legacy_smoke = std::env::args_os().any(|arg| arg == "--lineae-smoke-test");
+            let window = if !native_smoke && !native_input_review && !legacy_smoke {
+                window.initialization_script("window.__LINEAE_DESKTOP_ENGINE_TOGGLE__ = true;")
+            } else { window };
+            let window = if native_smoke || legacy_smoke {
                 window
                     .initialization_script(format!("window.__LINEAE_SMOKE_UNAUTHORIZED_PATH__={};",
                         serde_json::to_string(&std::env::temp_dir().join("lineae-smoke-not-authorized.tex").to_string_lossy()).unwrap()))
