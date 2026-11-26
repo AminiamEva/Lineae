@@ -261,6 +261,20 @@ pub fn run() {
                         include_str!("bridge.js")
                     )
                 });
+            #[cfg(all(debug_assertions, target_os = "windows"))]
+            let window = if std::env::args_os().any(|arg| arg == "--lineae-typing-check") {
+                window.initialization_script(include_str!("desktop-typing-check.js"))
+                    .on_document_title_changed(|window, title| {
+                        if title == "Lineae typing ready" {
+                            eprintln!("{title}");
+                        } else if let Some(result) = title.strip_prefix("Lineae typing result: ") {
+                            eprintln!("Lineae typing result: {result}");
+                            window.app_handle().exit(if result == "ok" { 0 } else { 1 });
+                        }
+                    })
+            } else {
+                window
+            };
             let legacy_smoke = std::env::args_os().any(|arg| arg == "--lineae-smoke-test");
             let window = if !native_smoke && !native_input_review && !legacy_smoke {
                 window.initialization_script("window.__LINEAE_DESKTOP_ENGINE_TOGGLE__ = true;")
