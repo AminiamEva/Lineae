@@ -7,7 +7,7 @@ export function installProjectPresentation({editor,page,getComposition,requestLa
   const style=document.createElement('style');style.dataset.projectPresentation='';
   page.append(style,layer);
   const emptyAnchors=new Map();
-  let root=null,folded=new Set(),layoutPending=false,adjusting=false,lastHead=0;
+  let root=null,rootProject=null,folded=new Set(),layoutPending=false,adjusting=false,lastHead=0;
   const broadcast=()=>document.dispatchEvent(new CustomEvent('lineae-project-fold-state',{detail:{paths:[...folded]}}));
   function reset(){
     style.textContent='';layer.replaceChildren();
@@ -19,7 +19,9 @@ export function installProjectPresentation({editor,page,getComposition,requestLa
   function toggle(path){
     ensureDocument();
     if(!getComposition())return;
-    if(root!==getComposition().rootId){root=getComposition().rootId;folded.clear();}
+    if(root!==getComposition().rootId||rootProject!==getProject()){
+      root=getComposition().rootId;rootProject=getProject();folded.clear();
+    }
     if(folded.has(path))folded.delete(path);else folded.add(path);
     if(folded.has(path)){
       let target=null;
@@ -38,7 +40,9 @@ export function installProjectPresentation({editor,page,getComposition,requestLa
     const composition=getComposition();
     reset();
     if(!composition||page.hidden)return;
-    if(root!==composition.rootId){root=composition.rootId;folded.clear();broadcast();}
+    if(root!==composition.rootId||rootProject!==getProject()){
+      root=composition.rootId;rootProject=getProject();folded.clear();broadcast();
+    }
     const rect=page.getBoundingClientRect(),zoom=rect.width/page.offsetWidth||1;
     const {elements,selectors}=documentLayoutBlocks(editor.view.dom);
     const regions=new Map(composition.regions.map(region=>[region.key,region]));
@@ -271,5 +275,6 @@ export function installProjectPresentation({editor,page,getComposition,requestLa
     if(point){adjusting=true;try{editor.commands.setTextSelection(selection.empty?(backwards?point.to:point.from):{anchor:selection.anchor,head:backwards?point.to:point.from});}finally{adjusting=false;}}
   });
   editor.on('transaction',transaction=>{if(transaction.transaction.docChanged)refresh();queueMicrotask(()=>{normalizeGap();syncEmptySelection();});});
-  return {toggle,exitFile,canExitFile,appendToMain,expandAll(){folded.clear();broadcast();refresh();}};
+  return {toggle,exitFile,canExitFile,appendToMain,foldedFiles(){return rootProject===getProject()&&root===getComposition()?.rootId?[...folded]:[];},
+    expandAll(){folded.clear();broadcast();refresh();}};
 }

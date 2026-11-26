@@ -1,15 +1,15 @@
 //! Experimental, trusted-document-only rtex 0.0.8 host.
 //!
-//! Source is never instrumented. Only a disposable main.tex is exposed to rtex;
-//! Assets are copied from validated byte snapshots, never original filesystem
-//! paths. PDF fallback is read-only, not editable glyph geometry. LuaLaTeX is
+//! The live renderer receives unchanged source. A separate disposable session
+//! observes editing geometry. Assets are staged from validated byte snapshots.
+//! Clean PDF snapshots do not grant semantic caret targeting. LuaLaTeX is
 //! NOT a sandbox, even with shell escape disabled.
 //! Call close_all on window/app teardown in addition to the explicit close IPC.
 
 use command_group::{CommandGroup, GroupChild};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use std::collections::{BTreeMap, HashMap, VecDeque};
+use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 use std::io::{BufRead, BufReader, Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{ChildStdin, Command, Stdio};
@@ -251,6 +251,21 @@ impl Snapshot {
             && self.files.iter().filter(|(path, _)| path.as_str() != self.main_file.as_str())
                 .eq(other.files.iter().filter(|(path, _)| path.as_str() != other.main_file.as_str()))
     }
+
+    fn changed_tex_buffers(&self, other: &Self) -> Option<Vec<(String, String)>> {
+        if self.main_file != other.main_file || !self.files.keys().eq(other.files.keys()) {
+            return None;
+        }
+        let mut changes = Vec::new();
+        for ((path, before), (_, after)) in self.files.iter().zip(&other.files) {
+            if before == after { continue; }
+            if !path.to_ascii_lowercase().ends_with(".tex") { return None; }
+            let text = std::str::from_utf8(after).ok()?;
+            validate_source(text).ok()?;
+            changes.push((path.clone(), text.to_owned()));
+        }
+        Some(changes)
+    }
 }
 
 #[derive(Default)]
@@ -317,6 +332,31 @@ pub struct NativeTexExport {
     path: String,
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NativeTypeOneFont {
+    bytes: Vec<u8>,
+    map_entry: String,
+    encoding: Option<String>,
+}
+
+fn tex_resource_name(name: &str) -> bool {
+    name.len() <= 255 && name.starts_with(|ch: char| ch.is_ascii_alphanumeric())
+        && name.bytes().all(|byte| byte.is_ascii_alphanumeric() || b"-+_.".contains(&byte))
+}
+
+fn type_one_map_entry<'a>(map: &'a str, name: &str) -> Option<(&'a str, &'a str, Option<&'a str>)> {
+    let line = map.lines().filter(|line| line.len() <= 4096)
+        .find(|line| line.split_ascii_whitespace().next() == Some(name))?;
+    let files = line.split('"').step_by(2).flat_map(str::split_ascii_whitespace)
+        .filter(|token| token.starts_with('<'))
+        .map(|token| token.trim_start_matches(|ch| ch == '<' || ch == '['))
+        .filter(|token| tex_resource_name(token));
+    let font = files.clone().find(|file| file.ends_with(".pfb") || file.ends_with(".pfa"))?;
+    let encoding = files.clone().find(|file| file.ends_with(".enc"));
+    Some((line, font, encoding))
+}
+
 #[derive(Default)]
 struct Messages {
     events: VecDeque<Value>,
@@ -325,6 +365,7 @@ struct Messages {
     reply: Option<Value>,
     exports: HashMap<u64, Value>,
     fonts: HashMap<String, String>,
+    type_one_fonts: HashSet<String>,
     failure: Option<NativeTexError>,
     tail: VecDeque<u8>,
     command_deadline: Option<Instant>,
@@ -360,9 +401,17 @@ impl Messages {
     fn register_dl(&mut self, dl: &Value) -> Result<(), NativeTexError> {
         if let Some(fonts) = dl.get("fonts").and_then(Value::as_object) {
             for font in fonts.values() {
-                let Some(filename) = font.get("filename").and_then(Value::as_str) else { continue };
+                let Some(filename) = font.get("filename").and_then(Value::as_str).filter(|name| !name.is_empty()) else {
+                    if let Some(name) = font.get("name").and_then(Value::as_str).filter(|name| tex_resource_name(name)) {
+                        if self.type_one_fonts.len() >= 2048 && !self.type_one_fonts.contains(name) {
+                            return Err(error("resource_limit", "Too many native Type 1 fonts."));
+                        }
+                        self.type_one_fonts.insert(name.to_string());
+                    }
+                    continue;
+                };
                 let extension = Path::new(filename).extension().and_then(|s| s.to_str()).unwrap_or("");
-                if !extension.eq_ignore_ascii_case("otf") && !extension.eq_ignore_ascii_case("ttf") {
+                if !["otf", "ttf", "otc", "ttc"].iter().any(|allowed| extension.eq_ignore_ascii_case(allowed)) {
                     continue;
                 }
                 if filename.is_empty() || filename.len() > 4096 || filename.contains('\0') {
@@ -828,7 +877,22 @@ impl Session {
             }
             snapshot.main_file.clone()
         };
-        let reply = self.request(json!({"cmd": "set_document", "path": &main_file, "text": &source}), "set_document")?;
+        self.apply_tex_buffers(vec![(main_file, source)])
+    }
+
+    // Caller owns commands and has already validated every staged path and buffer.
+    fn apply_tex_buffers(&self, changes: Vec<(String, String)>) -> Result<NativeTexUpdate, NativeTexError> {
+        let mut update = None;
+        for (path, source) in changes {
+            update = Some(self.set_tex_buffer(path, source)?);
+        }
+        let update = update.ok_or_else(|| error("protocol", "No native TeX buffers to update."))?;
+        self.request(json!({"cmd": "request_layout"}), "request_layout")?;
+        Ok(update)
+    }
+
+    fn set_tex_buffer(&self, path: String, source: String) -> Result<NativeTexUpdate, NativeTexError> {
+        let reply = self.request(json!({"cmd": "set_document", "path": &path, "text": &source}), "set_document")?;
         let result = &reply["result"];
         let revision = integer(result, "source_revision")?;
         let edit_id = integer(result, "edit_id")?;
@@ -844,10 +908,7 @@ impl Session {
                 messages.layout_deadline.get_or_insert(Instant::now() + LAYOUT_TIMEOUT);
             }
         }
-        lock(&self.snapshot).files.insert(main_file, source.into_bytes());
-        // Always obtain a whole-page result: the checkpoint does not paint fast
-        // paragraph overlays. The event queue still contains all original frames.
-        self.request(json!({"cmd": "request_layout"}), "request_layout")?;
+        lock(&self.snapshot).files.insert(path, source.into_bytes());
         Ok(NativeTexUpdate { session_id: None, edit_id, source_revision: revision, routed })
     }
 
@@ -857,7 +918,7 @@ impl Session {
         }
         self.check()?;
         let filename = lock(&self.messages).fonts.get(&key).cloned()
-            .ok_or_else(|| error("font_resource", "Font token was not referenced by this session's captured display lists (only OTF/TTF are supported)."))?;
+            .ok_or_else(|| error("font_resource", "Font token was not referenced by this session's captured OpenType display lists."))?;
         let _serial = lock(&self.commands);
         self.check()?;
         let path = PathBuf::from(&filename);
@@ -884,11 +945,51 @@ impl Session {
         }
         let mut bytes = Vec::new();
         file.take(FONT_LIMIT + 1).read_to_end(&mut bytes).map_err(|e| error("font_io", e.to_string()))?;
-        if bytes.len() as u64 > FONT_LIMIT || !(bytes.starts_with(b"OTTO") || bytes.starts_with(&[0, 1, 0, 0]) || bytes.starts_with(b"true")) {
-            return Err(error("font_format", format!("Captured font '{filename}' is not a supported OTF/TTF file.")));
+        if bytes.len() as u64 > FONT_LIMIT || !(bytes.starts_with(b"OTTO") || bytes.starts_with(&[0, 1, 0, 0]) || bytes.starts_with(b"true") || bytes.starts_with(b"ttcf")) {
+            return Err(error("font_format", format!("Captured font '{filename}' is not a supported OpenType font.")));
         }
         self.check()?;
         Ok(bytes)
+    }
+
+    fn tex_font_file(self: &Arc<Self>, name: &str, limit: u64) -> Result<Vec<u8>, NativeTexError> {
+        let kpsewhich = self.tex_bin.as_ref()
+            .map(|bin| bin.join(if cfg!(windows) { "kpsewhich.exe" } else { "kpsewhich" }))
+            .unwrap_or_else(|| PathBuf::from("kpsewhich"));
+        let found = self.tool(Command::new(kpsewhich).arg("--").arg(name))?;
+        if found.is_empty() || found.lines().count() != 1 {
+            return Err(error("font_missing", format!("Cannot locate the TeX font resource '{name}'.")));
+        }
+        let file = std::fs::File::open(found)
+            .map_err(|_| error("font_missing", format!("Cannot open the TeX font resource '{name}'.")))?;
+        let mut bytes = Vec::new();
+        file.take(limit + 1).read_to_end(&mut bytes).map_err(|problem| error("font_io", problem.to_string()))?;
+        if bytes.len() as u64 > limit {
+            return Err(error("font_limit", "The Type 1 font resource exceeds the size limit."));
+        }
+        Ok(bytes)
+    }
+
+    fn type_one_font(self: &Arc<Self>, key: String) -> Result<NativeTypeOneFont, NativeTexError> {
+        let name = key.strip_prefix("tfm:").filter(|name| tex_resource_name(name))
+            .ok_or_else(|| error("font_resource", "Invalid native Type 1 resource token."))?;
+        if !lock(&self.messages).type_one_fonts.contains(name) {
+            return Err(error("font_resource", "Type 1 font was not captured in this session."));
+        }
+        let _serial = lock(&self.commands);
+        self.check()?;
+        let map = self.tex_font_file("pdftex.map", 8 << 20)?;
+        let map = String::from_utf8_lossy(&map);
+        let (entry, file, encoding) = type_one_map_entry(&map, name)
+            .ok_or_else(|| error("font_missing", format!("No Type 1 outline mapping exists for '{name}'.")))?;
+        let bytes = self.tex_font_file(file, 2 << 20)?;
+        if !(bytes.starts_with(&[0x80, 1]) || bytes.starts_with(b"%!")) {
+            return Err(error("font_format", "The captured outline is not a Type 1 font."));
+        }
+        let encoding = encoding.map(|name| self.tex_font_file(name, 256 << 10)
+            .map(|bytes| String::from_utf8_lossy(&bytes).into_owned())).transpose()?;
+        self.check()?;
+        Ok(NativeTypeOneFont { bytes, map_entry: entry.to_string(), encoding })
     }
 
     /// Caller holds commands to freeze the raw source/assets through compilation.
@@ -1017,12 +1118,14 @@ impl Session {
             snapshot
         };
         let previous = lock(&self.observer).clone();
-        let reusable = previous.filter(|active| {
-            active.check().is_ok() && lock(&active.snapshot).dependencies_equal(&snapshot)
+        let reusable = previous.and_then(|active| {
+            active.check().ok()?;
+            let changes = lock(&active.snapshot).changed_tex_buffers(&snapshot)?;
+            Some((active, changes))
         });
         let mut pages = lock(&self.observation_pages);
-        let (observer, starting) = if let Some(active) = reusable {
-            (active, false)
+        let (observer, changes) = if let Some((active, changes)) = reusable {
+            (active, Some(changes))
         } else {
             let observer = Self::create_snapshot(snapshot)?;
             let old = {
@@ -1032,15 +1135,20 @@ impl Session {
             };
             if let Some(old) = old { old.terminate(); }
             pages.clear();
-            (observer, true)
+            (observer, None)
         };
         let result: Result<Vec<Value>, NativeTexError> = (|| {
-            let target = if starting {
-                observer.start_with_owners(true)?.source_revision
-            } else {
-                observer.update(projection.to_owned())?.source_revision
+            let target = match changes {
+                Some(changes) if changes.is_empty() => observer.update(projection.to_owned())?.source_revision,
+                Some(changes) => {
+                    let _serial = lock(&observer.commands);
+                    observer.apply_tex_buffers(changes)?.source_revision
+                }
+                None => observer.start_with_owners(true)?.source_revision,
             };
-            let deadline = Instant::now() + Duration::from_secs(30);
+            // A cold observation may need the same complete passes as the primary layout.
+            // Source revisions are still checked on every wake while those passes run.
+            let deadline = Instant::now() + LAYOUT_TIMEOUT;
             let mut messages = lock(&observer.messages);
             loop {
                 self.check()?;
@@ -1074,7 +1182,7 @@ impl Session {
                 if ready { return Ok(pages.values().cloned().collect()); }
                 let remaining = deadline.saturating_duration_since(Instant::now());
                 if remaining.is_zero() {
-                    return Err(error("formula_observation", "No converged instrumented formula layout."));
+                    return Err(messages.diagnostic(error("formula_observation", "No converged instrumented formula layout.")));
                 }
                 messages = observer.changed.wait_timeout(messages, remaining.min(Duration::from_millis(100)))
                     .unwrap_or_else(|p| p.into_inner()).0;
@@ -1129,23 +1237,43 @@ async fn blocking<T: Send + 'static>(work: impl FnOnce() -> Result<T, NativeTexE
 
 /// `files: Some` is a complete replacement dependency snapshot, not a patch.
 /// A changed dependency (including deletion/binary changes) starts a new engine
-/// session so no stale parsed files, aux state, or cached pictures survive.
+/// session so no stale parsed assets, aux state, or cached pictures survive.
 fn update_snapshot(
     manager: &Mutex<Manager>,
     session: Arc<Session>,
     source: String,
     files: Option<Vec<NativeTexFile>>,
+    main_file: Option<String>,
 ) -> Result<NativeTexUpdate, NativeTexError> {
     let _serial = lock(&session.commands);
     session.check()?;
+    let current_main = lock(&session.snapshot).main_file.clone();
+    let next_main = main_file.unwrap_or_else(|| current_main.clone());
+    if next_main != current_main && !files.as_ref().is_some_and(|entries|
+        entries.iter().any(|file| file.path == next_main)) {
+        return Err(error("project_main", "The new compilation entry is missing from the project snapshot."));
+    }
     let snapshot = match files {
         None => return session.set_source(source),
-        Some(files) => Snapshot::new(&source, lock(&session.snapshot).main_file.clone(), files)?,
+        Some(files) => Snapshot::new(&source, next_main, files)?,
     };
     if lock(&session.snapshot).dependencies_equal(&snapshot) {
         return session.set_source(source);
     }
-    let replacement = Session::create_snapshot(snapshot)?;
+    let buffers = lock(&session.snapshot).changed_tex_buffers(&snapshot);
+    let incremental_failure = match buffers.map(|changes| session.apply_tex_buffers(changes)) {
+        Some(Ok(update)) => return Ok(update),
+        Some(Err(problem)) => Some(problem),
+        None => None,
+    };
+    let replacement = Session::create_snapshot(snapshot).map_err(|problem| {
+        if let Some(incremental) = incremental_failure {
+            session.fail(incremental);
+            session.terminate();
+            return error("session_closed", format!("Cannot restage the native TeX update: {}", problem.message));
+        }
+        problem
+    })?;
     if let Some(sink) = lock(manager).events.clone() {
         replacement.set_events(sink);
     }
@@ -1223,12 +1351,12 @@ pub async fn native_tex_open(
 }
 
 #[tauri::command]
-pub async fn native_tex_update(state: State<'_, NativeTexSessions>, session_id: String, source: String, files: Option<Vec<NativeTexFile>>) -> Result<NativeTexUpdate, NativeTexError> {
+pub async fn native_tex_update(state: State<'_, NativeTexSessions>, session_id: String, source: String, files: Option<Vec<NativeTexFile>>, main_file: Option<String>) -> Result<NativeTexUpdate, NativeTexError> {
     validate_source(&source)?;
     let session = state.get(&session_id)?;
     let manager = state.0.clone();
     blocking(move || {
-        let result = update_snapshot(&manager, session.clone(), source, files);
+        let result = update_snapshot(&manager, session.clone(), source, files, main_file);
         // Snapshot validation failures leave the current project usable.
         if let Err(problem) = &result {
             if !matches!(problem.code, "project_path" | "project_limit" | "project_main" | "temporary_project" | "invalid_source" | "stale_session") {
@@ -1264,6 +1392,12 @@ pub fn native_tex_poll(state: State<'_, NativeTexSessions>, session_id: String) 
 pub async fn native_tex_font(state: State<'_, NativeTexSessions>, session_id: String, key: String) -> Result<Response, NativeTexError> {
     let session = state.get(&session_id)?;
     blocking(move || session.font(key)).await.map(Response::new)
+}
+
+#[tauri::command]
+pub async fn native_tex_type_one_font(state: State<'_, NativeTexSessions>, session_id: String, key: String) -> Result<NativeTypeOneFont, NativeTexError> {
+    let session = state.get(&session_id)?;
+    blocking(move || session.type_one_font(key)).await
 }
 
 /// Only the PDF provenance registered by this exact current layout is accepted.
@@ -1337,6 +1471,20 @@ pub async fn native_tex_close(state: State<'_, NativeTexSessions>, session_id: S
 mod tests {
     use super::*;
 
+    #[test]
+    fn type_one_font_names_and_map_resources_are_bounded() {
+        let map = "cmmi100 Another <other.pfb\ncmmi10 CMMI10 \"0.1 SlantFont\" <[math.enc <cmmi10.pfb\n";
+        let (_, font, encoding) = type_one_map_entry(map, "cmmi10").unwrap();
+        assert_eq!(font, "cmmi10.pfb");
+        assert_eq!(encoding, Some("math.enc"));
+        assert!(type_one_map_entry("cmmi10 CMMI10 </private/cmmi10.pfb", "cmmi10").is_none());
+        assert!(!tex_resource_name("../cmmi10"));
+        assert!(!tex_resource_name("-output"));
+        let mut messages = Messages::default();
+        messages.register_dl(&json!({"fonts":{"1":{"name":"cmmi10"},"2":{"name":"../hidden"}}})).unwrap();
+        assert_eq!(messages.type_one_fonts, HashSet::from(["cmmi10".into()]));
+    }
+
     fn save_pdf_evidence(name: &str, bytes: &[u8]) {
         if let Some(directory) = std::env::var_os("LINEAE_NATIVE_EVIDENCE_DIR") {
             assert!(!directory.is_empty(), "configured evidence directory must not be empty");
@@ -1378,13 +1526,10 @@ mod tests {
         for name in ["LINEAE_RTEX_PATH", "RTEX_TEXLIVE_BIN"] {
             assert!(!std::env::var_os(name).unwrap_or_else(|| panic!("{name} is required")).is_empty());
         }
-        let source = "\\documentclass{article}\n\\begin{document}\nAlpha beta.\n\\end{document}\n";
-        let projection = source.replace(
-            "Alpha beta.",
-            "\\begingroup\\attribute65000=1 A\\attribute65000=2 l\\attribute65000=3 p\\attribute65000=4 h\
-             \\attribute65000=5 a \\attribute65000=6 b\\attribute65000=7 e\\attribute65000=8 t\
-             \\attribute65000=9 a\\attribute65000=10 .\\endgroup",
-        );
+        let source = include_str!("../../../../tests/native-math/fixtures/prose-font.tex");
+        let directory = PathBuf::from(std::env::var_os("LINEAE_NATIVE_EVIDENCE_DIR")
+            .expect("the real prose fixture needs the generated production projection"));
+        let projection = std::fs::read_to_string(directory.join("prose-projection.tex")).unwrap();
         let session = Session::create(source).unwrap();
         let info = session.start_with_owners(true).expect("prose owner session must start");
         {
@@ -1410,21 +1555,29 @@ mod tests {
                 .any(|glyph| glyph["owner"] == owner && glyph["char"] == ch))
         });
         assert!(owned(1, 65) && owned(2, 108), "text glyph ownership must survive compilation");
-        if let Some(directory) = std::env::var_os("LINEAE_NATIVE_EVIDENCE_DIR") {
-            let directory = PathBuf::from(directory);
-            std::fs::create_dir_all(&directory).unwrap();
-            let raw = lock(&session.messages).events.iter().rev()
-                .filter(|event| event["event"] == "LayoutUpdate")
-                .filter_map(|event| event["pages_changed"].as_array())
-                .flatten()
-                .filter(|page| observed.iter().any(|item| item["page"] == page["page"]))
-                .cloned()
-                .collect::<Vec<_>>();
-            assert!(!raw.is_empty(), "raw pages must be available for prose evidence");
-            std::fs::write(directory.join("native-text-pages.json"), serde_json::to_vec(&json!({
-                "raw":raw, "observed":observed, "projection":projection, "source":source,
-            })).unwrap()).unwrap();
-        }
+        assert!(owned(12, '汉' as i64) && owned(13, '字' as i64),
+            "each CJK glyph needs its own editable source address");
+        assert!(observed.iter().any(|page| page["dl"]["math_owners"]["glyphs"].as_array()
+            .is_some_and(|glyphs| glyphs.iter().any(|glyph| glyph["owner"] == 11))),
+            "the escaped caret must have native text geometry");
+        let terminal: u64 = std::fs::read_to_string(directory.join("prose-terminal-owner.txt"))
+            .unwrap().parse().unwrap();
+        assert!(observed.iter().any(|page| page["dl"]["math_owners"]["fields"].as_array()
+            .is_some_and(|fields| fields.iter().any(|field|
+                field["owner"] == terminal && field["role"] == "math" && field["empty"] == true))),
+            "the terminal footnote must leave an exact native typing position");
+        let raw = lock(&session.messages).events.iter()
+            .filter(|event| event["event"] == "LayoutUpdate"
+                && event["versions"]["source_revision"].as_u64() == Some(info.source_revision))
+            .filter_map(|event| event["pages_changed"].as_array())
+            .flatten()
+            .filter(|page| observed.iter().any(|item| item["page"] == page["page"]))
+            .filter_map(|page| Some((page["page"].as_u64()?, page.clone())))
+            .collect::<BTreeMap<_, _>>().into_values().collect::<Vec<_>>();
+        assert!(!raw.is_empty(), "raw pages must be available for prose evidence");
+        std::fs::write(directory.join("native-text-pages.json"), serde_json::to_vec(&json!({
+            "raw":raw, "observed":observed, "projection":projection, "source":source,
+        })).unwrap()).unwrap();
         session.terminate();
     }
 
@@ -1479,13 +1632,19 @@ mod tests {
             let mut messages = lock(&session.messages);
             loop {
                 messages.check().expect("real engine failed while waiting for geometry");
-                if let Some(event) = messages.events.iter().find(|event| {
-                    event["event"] == "LayoutUpdate"
-                        && event["versions"]["source_revision"].as_u64() == Some(revision)
-                        && event["compile"]["state"] == "Ok"
-                        && event["convergence"]["state"] == "Converged"
-                }) {
-                    return event.clone();
+                let mut pages = BTreeMap::new();
+                for event in messages.events.iter().filter(|event| event["event"] == "LayoutUpdate"
+                    && event["versions"]["source_revision"].as_u64() == Some(revision)) {
+                    for page in event["pages_changed"].as_array().into_iter().flatten() {
+                        if let Some(number) = page["page"].as_u64() { pages.insert(number, page.clone()); }
+                    }
+                    let total = event["pages_total"].as_u64().unwrap_or(0);
+                    if total > 0 && pages.keys().filter(|&&page| page<=total).copied().eq(1..=total)
+                        && event["compile"]["state"] == "Ok" && event["convergence"]["state"] == "Converged" {
+                        let mut frame = event.clone();
+                        frame["pages_changed"] = json!(pages.into_iter().filter_map(|(number,page)| (number<=total).then_some(page)).collect::<Vec<_>>());
+                        return frame;
+                    }
                 }
                 let remaining = deadline.saturating_duration_since(Instant::now());
                 assert!(!remaining.is_zero(), "no successful converged layout for revision {revision}");
@@ -1494,6 +1653,234 @@ mod tests {
         };
         let initial = wait_layout(&session, info.source_revision);
         assert!(initial["pages_total"].as_i64().unwrap() > 0);
+        if let Some(directory) = std::env::var_os("LINEAE_NATIVE_EVIDENCE_DIR") {
+            let directory = PathBuf::from(directory);
+            let repeated: Value = serde_json::from_slice(
+                &std::fs::read(directory.join("repeated-input-probe.json")).unwrap(),
+            ).unwrap();
+            let snapshot = Snapshot::new(
+                repeated["source"].as_str().unwrap(),
+                "main.tex".into(),
+                vec![NativeTexFile {
+                    path: "chapters/one.tex".into(),
+                    bytes: repeated["child"].as_str().unwrap().as_bytes().to_vec(),
+                }],
+            ).unwrap();
+            let input = Session::create_snapshot(snapshot).unwrap();
+            let opened = input.start().expect("repeated project input must start");
+            let layout = wait_layout(&input, opened.source_revision);
+            let files = serde_json::from_value(repeated["files"].clone()).unwrap();
+            let observed = input.observe_formula(
+                opened.source_revision, repeated["projection"].as_str().unwrap(), files,
+            ).expect("repeated project source must preserve both geometry instances");
+            for (list, tag) in [("glyphs", "glyph"), ("fields", "denominator")] {
+                let owner = &repeated[tag];
+                let mut boxes = observed.iter().flat_map(|page| {
+                    let number = &page["page"];
+                    page["dl"]["math_owners"][list].as_array().into_iter().flatten().filter_map(move |item| {
+                        (&item["owner"] == owner && (list != "fields" ||
+                            item["role"] == "den" && item["empty"] == true))
+                            .then(|| (number.as_u64().unwrap(), item["bbox"].to_string()))
+                    })
+                }).collect::<Vec<_>>();
+                boxes.sort_unstable();
+                boxes.dedup();
+                assert_eq!(boxes.len(), 2, "both expansions report the same source tag: {tag}, {boxes:?}");
+                assert_ne!(boxes[0], boxes[1], "the two locations must be distinct: {tag}");
+            }
+            std::fs::write(directory.join("native-repeated-input-pages.json"), serde_json::to_vec(&json!({
+                "raw":layout["pages_changed"],"observed":observed,"source":repeated["source"],
+                "child":repeated["child"],"glyph":repeated["glyph"],"denominator":repeated["denominator"],
+                "projection":repeated["projection"],"files":repeated["files"],
+            })).unwrap()).unwrap();
+            input.terminate();
+            let raw_source = include_str!("../../../../tests/native-math/fixtures/degraded-page.tex");
+            let projection = std::fs::read_to_string(directory.join("degraded-projection.tex")).unwrap();
+            let degraded = Session::create(raw_source).unwrap();
+            let opened = degraded.start().expect("TikZ and formula snapshot starts");
+            let layout = wait_layout(&degraded, opened.source_revision);
+            let version = integer(&layout["versions"], "layout_version").unwrap();
+            let pdf = degraded.pdf(opened.source_revision, version)
+                .expect("the converged TikZ layout has an authoritative registered PDF");
+            let observed = degraded.observe_formula(opened.source_revision, &projection, Vec::new())
+                .expect("the same TikZ page retains formula ownership");
+            let target = observed.iter().filter_map(|page| page["dl"]["math_owners"]["fields"].as_array())
+                .flatten().find(|field| field["role"] == "den" && field["empty"] == true)
+                .expect("the real degraded page reports an empty denominator");
+            let drawing: Value = serde_json::from_slice(&std::fs::read(directory.join("degraded-drawing-probe.json")).unwrap()).unwrap();
+            let measured_projection = drawing["projection"].as_str().unwrap();
+            let measured = degraded.observe_formula(opened.source_revision, measured_projection, Vec::new())
+                .expect("observe the two exact corners of a floating TikZ drawing");
+            for corner in ["top", "bottom"] {
+                assert!(measured.iter().any(|page| page["dl"]["math_owners"]["fields"].as_array().into_iter().flatten()
+                    .any(|field| field["owner"] == drawing["corners"][corner] && field["empty"] == true)),
+                    "the measured drawing must expose its {corner} corner");
+            }
+            save_pdf_evidence("native-degraded.pdf", &pdf);
+            std::fs::write(directory.join("native-degraded-pages.json"), serde_json::to_vec(&json!({
+                "raw": layout["pages_changed"], "observed": observed, "projection": projection,
+                "measuredObserved": measured, "measuredProjection": measured_projection, "drawingCorners": drawing["corners"],
+                "source": raw_source, "targetOwner": target["owner"],
+            })).unwrap()).unwrap();
+            degraded.terminate();
+        }
+        let table_source = concat!(
+            "\\documentclass{article}\n\\usepackage{graphicx}\n\\begin{document}\n",
+            "\\begin{tabular}{lc}\n & \\textbf{Entry} $\\frac{a}{}$ \\\\\nRow & Value\n\\end{tabular}\n\n",
+            "\\includegraphics[width=18pt]{figures/preview.png}\n\\end{document}\n"
+        );
+        let table = Session::create_snapshot(Snapshot::new(
+            table_source, "main.tex".into(),
+            vec![NativeTexFile {
+                path: "figures/preview.png".into(),
+                bytes: include_bytes!("../icons/32x32.png").to_vec(),
+            }],
+        ).unwrap()).unwrap();
+        let table_info = table.start().unwrap();
+        let raw_table = wait_layout(&table, table_info.source_revision);
+        let projected_table = table_source.replace("\n & \\textbf{Entry} $\\frac{a}{}$",
+            "\n \\begingroup\\mathsurround=0pt\\attribute65000=91 $ $\\endgroup& \
+             \\textbf{\\begingroup\\attribute65000=92 Entry\\endgroup} \
+             $\\begingroup\\attribute65000=93 \\frac{a}{}\\endgroup$");
+        let observed_table = table.observe_formula(table_info.source_revision, &projected_table, Vec::new())
+            .expect("the observer retains the staged raster asset");
+        let raw_page = &raw_table["pages_changed"][0];
+        let observed_page = &observed_table[0];
+        assert_eq!(raw_page["exact"], true);
+        assert_eq!(observed_page["exact"], true);
+        assert!(observed_page["dl"]["math_owners"]["fields"].as_array().is_some_and(|fields|
+            fields.iter().any(|field| field["owner"] == 91 && field["empty"] == true &&
+                matches!(field["role"].as_str(), Some("math" | "cell")))), "missing empty-cell position");
+        assert!(observed_page["dl"]["math_owners"]["glyphs"].as_array().is_some_and(|glyphs|
+            glyphs.iter().any(|glyph| glyph["owner"] == 92)), "missing marked table prose");
+        assert!(observed_page["dl"]["math_owners"]["fields"].as_array().is_some_and(|fields|
+            fields.iter().any(|field| field["owner"] == 93 && field["role"] == "den" && field["empty"] == true)),
+            "missing a formula field next to marked prose in the same cell");
+        let image_entries = |page: &Value| page["dl"]["images_info"].as_object().unwrap().values()
+            .map(|entry| entry["file"].as_str().unwrap().replace('\\', "/"))
+            .collect::<Vec<_>>();
+        for page in [raw_page, observed_page] {
+            assert!(image_entries(page).iter().any(|file| file.ends_with("figures/preview.png")));
+        }
+        let drawing_without_markers = |page: &Value| {
+            let dl = &page["dl"];
+            let drawing_items = |items: &Value| items.as_array().unwrap().iter()
+                .filter(|item| item[0] != "m").cloned().collect::<Vec<_>>();
+            let lines = dl["lines"].as_array().unwrap().iter().map(|line|
+                json!([line["x"], line["y"], line["w"], line["h"], line["d"], drawing_items(&line["items"])]))
+                .collect::<Vec<_>>();
+            json!([dl["page_width"], dl["page_height"], dl["fonts"], drawing_items(&dl["other"]), lines])
+        };
+        assert!(drawing_without_markers(raw_page) == drawing_without_markers(observed_page),
+            "an empty-cell observation must preserve visible table and image geometry");
+        table.terminate();
+        if let Some(directory) = std::env::var_os("LINEAE_NATIVE_EVIDENCE_DIR") {
+            let directory = PathBuf::from(directory);
+            for environment in ["tabular", "tabularx", "tblr"] {
+                let probe: Value = serde_json::from_slice(&std::fs::read(directory.join(format!("{environment}-rowspan-probe.json"))).unwrap()).unwrap();
+                let rowspan = Session::create(probe["source"].as_str().unwrap()).unwrap();
+                let info = rowspan.start().expect("the editor-generated row span compiles");
+                let layout = wait_layout(&rowspan, info.source_revision);
+                let observed = rowspan.observe_formula(info.source_revision, probe["projection"].as_str().unwrap(), Vec::new())
+                    .expect("the merged cell and its neighbors remain observable");
+                let raw_page = &layout["pages_changed"][0];
+                let observed_page = &observed[0];
+                assert!(observed_page["dl"]["math_owners"]["glyphs"].as_array().is_some_and(|glyphs|
+                    glyphs.iter().any(|glyph| glyph["owner"] == probe["tag"] && glyph["char"] == u32::from('F'))),
+                    "missing glyph owner inside the merged {environment} cell");
+                assert!(drawing_without_markers(raw_page) == drawing_without_markers(observed_page),
+                    "instrumentation must preserve visible row span geometry in {environment}");
+                rowspan.terminate();
+            }
+            let raster_source = include_str!("../../../../tests/native-math/fixtures/raster-repeat.tex");
+            let raster_probe: Value = serde_json::from_slice(&std::fs::read(directory.join("raster-repeat-probe.json")).unwrap()).unwrap();
+            let raster = Session::create_snapshot(Snapshot::new(raster_source, "main.tex".into(), vec![NativeTexFile {
+                path: "plot.png".into(), bytes: include_bytes!("../icons/32x32.png").to_vec(),
+            }]).unwrap()).unwrap();
+            let info = raster.start().unwrap();
+            let layout = wait_layout(&raster, info.source_revision);
+            let measured = raster.observe_formula(info.source_revision, raster_probe["projection"].as_str().unwrap(), Vec::new()).unwrap();
+            assert!(drawing_without_markers(&layout["pages_changed"][0]) == drawing_without_markers(&measured[0]),
+                "instrumentation must preserve both occurrences of the staged image");
+            let display = &measured[0]["dl"];
+            let images = display["other"].as_array().unwrap().iter().chain(display["lines"].as_array().unwrap().iter()
+                .flat_map(|line| line["items"].as_array().unwrap())).filter(|item| item[0] == "i").collect::<Vec<_>>();
+            assert_eq!(images.len(), 2);
+            let fields = display["math_owners"]["fields"].as_array().unwrap();
+            let tags = raster_probe["tags"].as_array().unwrap();
+            assert_eq!(tags.len(), 4);
+            std::fs::write(directory.join("native-raster-repeat-pages.json"), serde_json::to_vec(&json!({
+                "raw": layout["pages_changed"], "observed": measured, "tags": tags,
+            })).unwrap()).unwrap();
+            for tag in tags {
+                assert_eq!(fields.iter().filter(|entry| entry["owner"] == *tag && entry["empty"] == true).count(), 1,
+                    "each repeated raster corner must have exactly one observed owner");
+            }
+            raster.terminate();
+            let reference_source = include_str!("../../../../tests/native-math/fixtures/native-reference.tex");
+            let reference_probe: Value = serde_json::from_slice(&std::fs::read(directory.join("native-reference-probe.json")).unwrap()).unwrap();
+            let reference = Session::create(reference_source).unwrap();
+            let info = reference.start().unwrap();
+            let layout = wait_layout(&reference, info.source_revision);
+            let measured = reference.observe_formula(info.source_revision, reference_probe["projection"].as_str().unwrap(), Vec::new()).unwrap();
+            assert!(drawing_without_markers(&layout["pages_changed"][0]) == drawing_without_markers(&measured[0]),
+                "observing a reference must preserve the original line and glyph geometry");
+            assert!(measured[0]["dl"]["math_owners"]["glyphs"].as_array().is_some_and(|glyphs|
+                glyphs.iter().any(|glyph| glyph["owner"] == reference_probe["tag"])),
+                "the reference expansion must retain its exact source owner");
+            std::fs::write(directory.join("native-reference-pages.json"), serde_json::to_vec(&json!({
+                "raw": layout["pages_changed"], "observed": measured, "projection": reference_probe["projection"],
+                "source": reference_source, "targetOwner": reference_probe["tag"],
+            })).unwrap()).unwrap();
+            reference.terminate();
+            let source = include_str!("../../../../tests/native-math/fixtures/numbered-alignment.tex");
+            let projection = std::fs::read_to_string(directory.join("alignment-projection.tex")).unwrap();
+            let alignment = Session::create(source).unwrap();
+            let info = alignment.start().expect("numbered and starred alignat compile");
+            let raw = wait_layout(&alignment, info.source_revision);
+            let observed = alignment.observe_formula(info.source_revision, &projection, Vec::new())
+                .expect("production alignment projection renders alongside the unmarked original");
+            let mut denominators = Vec::new();
+            for page in &observed {
+                let original = raw["pages_changed"].as_array().unwrap().iter()
+                    .find(|original| original["page"] == page["page"]).unwrap();
+                assert!(drawing_without_markers(original) == drawing_without_markers(page),
+                    "alignat ownership must preserve the original page drawing");
+                denominators.extend(page["dl"]["math_owners"]["fields"].as_array().into_iter().flatten()
+                    .filter(|field| field["role"] == "den" && field["empty"] == true)
+                    .filter_map(|field| field["owner"].as_u64()));
+            }
+            denominators.sort_unstable();
+            denominators.dedup();
+            assert_eq!(denominators.len(), 2, "both alignat variants keep an editable empty denominator");
+            std::fs::write(directory.join("native-alignment-pages.json"), serde_json::to_vec(&json!({
+                "raw": raw["pages_changed"], "observed": observed, "projection": projection,
+                "source": source, "targetOwner": denominators[1], "labelOwner": denominators[0],
+            })).unwrap()).unwrap();
+            alignment.terminate();
+            if let Some(path) = std::env::var_os("LINEAE_NATIVE_TYPE_ONE_PAGE") {
+                let source = include_str!("../../../../tests/native-math/fixtures/classic-font.tex");
+                let projection = std::fs::read_to_string(directory.join("classic-projection.tex")).unwrap();
+                let classic = Session::create(source).unwrap();
+                let info = classic.start().expect("classic Computer Modern compiles");
+                let raw = wait_layout(&classic, info.source_revision);
+                let names = lock(&classic.messages).type_one_fonts.clone();
+                assert!(names.contains("cmmi10"), "classic math reports a captured TFM font");
+                let fonts = names.into_iter().map(|name| {
+                    let key = format!("tfm:{name}");
+                    let resource = classic.type_one_font(key.clone()).expect("resolve the captured TFM mapping");
+                    (key, resource)
+                }).collect::<BTreeMap<_, _>>();
+                assert!(classic.type_one_font("tfm:not-captured".into()).is_err());
+                let observed = classic.observe_formula(info.source_revision, &projection, Vec::new()).unwrap();
+                let target = observed.iter().filter_map(|page| page["dl"]["math_owners"]["fields"].as_array())
+                    .flatten().find(|field| field["role"] == "den" && field["empty"] == true).unwrap();
+                std::fs::write(path, serde_json::to_vec(&json!({"raw": raw["pages_changed"],
+                    "observed": observed, "projection": projection, "source": source,
+                    "targetOwner": target["owner"], "fonts": fonts})).unwrap()).unwrap();
+                classic.terminate();
+            }
+        }
         let project_projection = source.replace("\\frac{a}{}", "\\begingroup\\attribute65000=11 \\frac{a}{}\\endgroup");
         let project_observed = session.observe_formula(info.source_revision, &project_projection, vec![
             NativeTexProjection {
@@ -1507,6 +1894,24 @@ mod tests {
                 .as_array().is_some_and(|fields| fields.iter().any(|field| field["owner"] == owner && field["role"] == "den"))));
         }
         assert_eq!(std::fs::read_to_string(session.root.join("dependency.tex")).unwrap(), dependency);
+        let observer_id = lock(&session.observer).as_ref().unwrap().id.clone();
+        let child_draft = dependency.replace("first.", "first warm.");
+        let child_update = update_snapshot(&manager.0, session.clone(), source.into(),
+            Some(files(&child_draft)), None).expect("an included TeX edit must use the current native engine");
+        assert!(child_update.session_id.is_none());
+        assert!(child_update.source_revision > info.source_revision);
+        wait_layout(&session, child_update.source_revision);
+        assert_eq!(lock(&session.snapshot).files["dependency.tex"], child_draft.as_bytes());
+        assert_eq!(std::fs::read_to_string(session.root.join("dependency.tex")).unwrap(), dependency);
+        let observed_child = session.observe_formula(child_update.source_revision, &project_projection, vec![
+            NativeTexProjection {
+                path: "dependency.tex".into(),
+                source: child_draft.replace("\\frac{z}{}", "\\begingroup\\attribute65000=12 \\frac{z}{}\\endgroup"),
+            },
+        ]).expect("changed child geometry must come from the existing observer");
+        assert_eq!(lock(&session.observer).as_ref().unwrap().id, observer_id);
+        assert!(observed_child.iter().any(|page| page["dl"]["math_owners"]["fields"]
+            .as_array().is_some_and(|fields| fields.iter().any(|field| field["owner"] == 12))));
         let standalone = include_str!("../../../../tests/native-math/fixtures/empty-denominator.tex");
         let targeting = Session::create(standalone).unwrap();
         let target_info = targeting.start().unwrap();
@@ -1558,6 +1963,14 @@ mod tests {
         })));
         assert!(Arc::ptr_eq(lock(&targeting.observer).as_ref().unwrap(), &observer));
         assert_eq!(std::fs::read_to_string(targeting.root.join("main.tex")).unwrap(), standalone);
+        let integral = standalone.replace("\\frac{a}{}", "\\int{}");
+        let integral_edit = targeting.update(integral.clone()).unwrap();
+        wait_layout(&targeting, integral_edit.source_revision);
+        let observed_integral = targeting.observe_formula(integral_edit.source_revision,
+            &integral.replace("\\int{}", "\\begingroup\\attribute65000=413 \\int{}\\endgroup"), Vec::new())
+            .expect("native integral ownership provides the operator insertion boundary");
+        assert!(observed_integral.iter().any(|page| page["dl"]["math_owners"]["glyphs"].as_array()
+            .is_some_and(|glyphs| glyphs.iter().any(|glyph| glyph["owner"] == 413))));
         targeting.terminate();
         assert!(!observer.root.exists());
         assert!(lock(&session.messages).events.iter().any(|event| {
@@ -1604,7 +2017,7 @@ mod tests {
         }), "export completion must remain visible to the frontend poller");
         let project = session.root.clone();
         let replaced = update_snapshot(&manager.0, session.clone(), updated.clone(),
-            Some(files("\\SnapshotWord{} unsaved sibling change.\n"))).expect("changed dependencies must replace the native engine");
+            Some(files("\\SnapshotWord{} unsaved sibling change.\n")), None).expect("changed dependencies must replace the native engine");
         let replaced_id = replaced.session_id.as_ref().expect("dependency replacement must return its new session ID");
         assert_ne!(replaced_id, &session.id);
         assert!(manager.get(&session.id).is_err());
@@ -1629,12 +2042,26 @@ mod tests {
         assert!(type_one_pdf.starts_with(b"%PDF-"));
         save_pdf_evidence("native-type1.pdf", &type_one_pdf);
         assert_eq!(active.render_pdf(replaced.source_revision).unwrap_err().code, "revision_mismatch");
+        let alternate = "\\documentclass{article}\n\\begin{document}\nAnother project document.\n\\end{document}\n".to_string();
+        let alternate_path = "docs/standalone.tex".to_string();
+        let missing_entry = update_snapshot(&manager.0, active.clone(), alternate.clone(), None,
+            Some(alternate_path.clone())).err().expect("an unstaged entry must be rejected");
+        assert_eq!(missing_entry.code, "project_main");
+        let switched = update_snapshot(&manager.0, active.clone(), alternate.clone(), Some(vec![
+            NativeTexFile { path: "main.tex".into(), bytes: updated.as_bytes().to_vec() },
+            NativeTexFile { path: alternate_path.clone(), bytes: alternate.as_bytes().to_vec() },
+        ]), Some(alternate_path.clone())).expect("a verified entry change must replace the session");
+        let alternate_session = manager.get(switched.session_id.as_ref().unwrap()).unwrap();
+        wait_layout(&alternate_session, switched.source_revision);
+        assert_eq!(lock(&alternate_session.snapshot).main_file, alternate_path);
+        assert_eq!(std::fs::read_to_string(alternate_session.root.join("main.tex")).unwrap(), updated);
         let active_root = active.root.clone();
         manager.close_all();
         assert!(active.closed.load(Ordering::Acquire));
         assert!(lock(&active.processes).is_empty());
         assert!(!active_root.exists(), "closing must remove the temporary project");
         assert!(manager.get(&active.id).is_err());
+        assert!(!alternate_session.root.exists());
         assert!(std::fs::read(&destination).unwrap().starts_with(b"%PDF-"),
             "closing a session must not remove the independently saved PDF");
         let saved_root = saved.root.clone();
@@ -1808,13 +2235,16 @@ mod tests {
         let mut messages = Messages { waiting: Some("status"), ..Default::default() };
         messages.receive(json!({"event": "LayoutUpdate", "versions": {"source_revision": 1},
             "pages_changed": [{"dl": {"fonts": {
-                "20": {"filename": "/tex/latinmodern-math.otf", "subfont": 1}
+                "20": {"filename": "/tex/latinmodern-math.otf", "subfont": 1},
+                "21": {"filename": "/tex/cjk.ttc", "subfont": 2}
             }}}]}), 100).unwrap();
         messages.receive(json!({"reply": "status", "versions": {"source_revision": 1}}), 40).unwrap();
         assert_eq!(messages.layout_revision, Some(1));
         assert_eq!(integer(&messages.reply.unwrap()["versions"], "source_revision").unwrap(), 1);
         assert!(messages.fonts.contains_key("file:/tex/latinmodern-math.otf#1"));
         assert!(!messages.fonts.contains_key("file:/tex/latinmodern-math.otf#0"));
+        assert!(messages.fonts.contains_key("file:/tex/cjk.ttc#2"));
+        assert!(!messages.fonts.contains_key("file:/tex/cjk.ttc#1"));
     }
 
     #[test]

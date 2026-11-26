@@ -1,0 +1,437 @@
+{
+  "schemaVersion": 1,
+  "reference": "0c1d12b",
+  "features": [
+    {
+      "id": "plain-prose",
+      "phase": "B",
+      "entryPoints": [
+        "apps/web/src/main.js",
+        "apps/web/src/editor/source-sync.js"
+      ],
+      "tests": [
+        "tests/native-tex-preview-browser.cjs"
+      ],
+      "nativeStatus": "single-file",
+      "evidence": [
+        "https://github.com/AminiamEva/Lineae/actions/runs/45527337822",
+        "https://github.com/AminiamEva/Lineae/actions/runs/45650991434"
+      ],
+      "scope": "Actual Latin and Fandol CJK glyph geometry, including opening a Chinese caret position and committing synthetic composition once with unchanged surrounding LaTeX bytes."
+    },
+    {
+      "id": "inline-math",
+      "phase": "A",
+      "entryPoints": [
+        "apps/web/src/editor/math-node.js"
+      ],
+      "tests": [
+        "tests/native-surface.test.mjs",
+        "tests/native-tex-preview-browser.cjs"
+      ],
+      "nativeStatus": "single-file",
+      "evidence": [
+        "https://github.com/AminiamEva/Lineae/actions/runs/45527337822"
+      ]
+    },
+    {
+      "id": "display-math",
+      "phase": "A",
+      "entryPoints": [
+        "apps/web/src/editor/math-node.js"
+      ],
+      "tests": [
+        "tests/native-surface.test.mjs",
+        "tests/math-editing-browser.cjs",
+        "tests/native-tex-preview-browser.cjs"
+      ],
+      "nativeStatus": "single-file",
+      "evidence": [
+        "https://github.com/AminiamEva/Lineae/actions/runs/45527337822",
+        "https://github.com/AminiamEva/Lineae/actions/runs/45639252258"
+      ]
+    },
+    {
+      "id": "text-containers-and-marks",
+      "phase": "B",
+      "entryPoints": [
+        "apps/web/src/editor/paper-behavior.js",
+        "apps/web/src/editor/latex-codec.js"
+      ],
+      "tests": [
+        "tests/latex.test.mjs",
+        "tests/editor.cjs"
+      ],
+      "nativeStatus": "partial",
+      "evidence": [
+        "https://github.com/AminiamEva/Lineae/actions/runs/45583564517",
+        "https://github.com/AminiamEva/Lineae/actions/runs/45589155092",
+        "https://github.com/AminiamEva/Lineae/actions/runs/45596378294",
+        "https://github.com/AminiamEva/Lineae/actions/runs/45602854334",
+        "https://github.com/AminiamEva/Lineae/actions/runs/45623818094",
+        "https://github.com/AminiamEva/Lineae/actions/runs/45628338101",
+        "https://github.com/AminiamEva/Lineae/actions/runs/45665234676",
+        "https://github.com/AminiamEva/Lineae/actions/runs/45690765126",
+        "https://github.com/AminiamEva/Lineae/actions/runs/45692829962"
+      ],
+      "scope": "The browser tests verify typing within existing nested colors and fonts, selected font-size changes, typing in a selected color, list item splitting and joining, and native insertion, splitting and joining in starred local columns. Prior tests cover abstract, quote, proof, heading and inline math. Native styling of already formatted selections and some nested structural operations still need coverage."
+    },
+    {
+      "id": "tables-including-spans",
+      "phase": "C",
+      "entryPoints": [
+        "apps/web/src/editor/table-utils.js",
+        "apps/web/src/editor/latex-codec.js"
+      ],
+      "tests": [
+        "tests/editor.cjs",
+        "tests/native-surface.test.mjs",
+        "tests/native-tex-preview-browser.cjs"
+      ],
+      "nativeStatus": "partial",
+      "evidence": ["https://github.com/AminiamEva/Lineae/actions/runs/45590498054", "https://github.com/AminiamEva/Lineae/actions/runs/45628338101", "https://github.com/AminiamEva/Lineae/actions/runs/45639252258", "https://github.com/AminiamEva/Lineae/actions/runs/45649964814", "https://github.com/AminiamEva/Lineae/actions/runs/45656057369", "https://github.com/AminiamEva/Lineae/actions/runs/45658008577", "https://github.com/AminiamEva/Lineae/actions/runs/45665234676"],
+      "scope": "The browser gates cover empty and nonempty cells, mixed marked text and math, supported row and column operations in tabular, tabularx and tabularray, vertical spans, and combined spans in tabularx. An ordinary tabular keeps its cell source when row stretch or font size changes. Typing and formatting undo separately. Arbitrary cell styles, float wrappers and additional span configurations still need coverage. Table-style gate: https://github.com/AminiamEva/Lineae/actions/runs/45694209910"
+    },
+    {
+      "id": "project-composition",
+      "phase": "D",
+      "entryPoints": [
+        "apps/web/src/project/presentation.js",
+        "apps/web/src/main.js"
+      ],
+      "tests": [
+        "tests/project-composition-browser.cjs"
+      ],
+      "nativeStatus": "partial",
+      "evidence": [
+        "https://github.com/AminiamEva/Lineae/actions/runs/45583564517",
+        "https://github.com/AminiamEva/Lineae/actions/runs/45591125903",
+        "https://github.com/AminiamEva/Lineae/actions/runs/45596378294",
+        "https://github.com/AminiamEva/Lineae/actions/runs/45599179386",
+        "https://github.com/AminiamEva/Lineae/actions/runs/45602854334",
+        "https://github.com/AminiamEva/Lineae/actions/runs/45613386465",
+        "https://github.com/AminiamEva/Lineae/actions/runs/45617906617",
+        "https://github.com/AminiamEva/Lineae/actions/runs/45621393391",
+        "https://github.com/AminiamEva/Lineae/actions/runs/45624267696",
+        "https://github.com/AminiamEva/Lineae/actions/runs/45639252258",
+        "https://github.com/AminiamEva/Lineae/actions/runs/45649964814",
+        "https://github.com/AminiamEva/Lineae/actions/runs/45665234676"
+      ],
+      "scope": "Included prose and display math edit the owning source file. Repeated literal inputs keep one editable source and distinct geometry in each rendering, including folded copies and the return to the correct parent segment. Actual LuaLaTeX reports distinct glyph and math-slot boxes. Browser replay targets the second expansion. Cross-file replacement includes nested list paragraphs. Repeated floats and ranges spanning two copies of the same source remain outside verified editing. Repeated input gates: https://github.com/AminiamEva/Lineae/actions/runs/45692208893 and https://github.com/AminiamEva/Lineae/actions/runs/45692782713"
+    },
+    {
+      "id": "images-floats-tikz",
+      "phase": "E",
+      "entryPoints": [
+        "apps/web/src/editor/image-node.js",
+        "apps/web/src/ui/tikz-studio.js"
+      ],
+      "tests": [
+        "tests/editor.cjs"
+      ],
+      "nativeStatus": "partial",
+      "evidence": [
+        "https://github.com/AminiamEva/Lineae/actions/runs/45590498054",
+        "https://github.com/AminiamEva/Lineae/actions/runs/45591990969",
+        "https://github.com/AminiamEva/Lineae/actions/runs/45628338101",
+        "https://github.com/AminiamEva/Lineae/actions/runs/45639252258",
+        "https://github.com/AminiamEva/Lineae/actions/runs/45646995464",
+        "https://github.com/AminiamEva/Lineae/actions/runs/45649964814",
+        "https://github.com/AminiamEva/Lineae/actions/runs/45656057369",
+        "https://github.com/AminiamEva/Lineae/actions/runs/45665234676"
+      ],
+      "scope": "A staged raster can be edited from native Canvas or a registered PDF. Repeated PNG occurrences have distinct measured targets. Browser gates cover project PNG insertion, grouping staged assets into subfigures, and replacing a raster argument without changing the surrounding figure. They verify exact binary staging and reference undo. Direct clicks open verified TikZ and supported subfigures. Complex nested floats still need direct editing coverage. Image gates: https://github.com/AminiamEva/Lineae/actions/runs/45705845058 and https://github.com/AminiamEva/Lineae/actions/runs/45706402628"
+    },
+    {
+      "id": "page-layout-and-pdf",
+      "phase": "F",
+      "entryPoints": [
+        "apps/web/src/editor/typeset-pagination.js",
+        "apps/web/src/ui/native-tex-preview.mjs"
+      ],
+      "tests": [
+        "tests/native-tex-preview-browser.cjs"
+      ],
+      "nativeStatus": "partial",
+      "evidence": [
+        "https://github.com/AminiamEva/Lineae/actions/runs/45527337822",
+        "https://github.com/AminiamEva/Lineae/actions/runs/45591990969",
+        "https://github.com/AminiamEva/Lineae/actions/runs/45599179386",
+        "https://github.com/AminiamEva/Lineae/actions/runs/45646995464"
+      ],
+      "scope": "A registered PDF with matching page dimensions and ownership supports semantic editing. Native geometry from a real two-platform LuaLaTeX run provides browser evidence for opening standalone TikZ for editing and updating a nearby formula. Mismatched dimensions disable editing. More complex page objects remain pending."
+    },
+    {
+      "id": "commands-toolbar-shortcuts",
+      "phase": "G",
+      "entryPoints": [
+        "apps/web/src/main.js"
+      ],
+      "tests": [
+        "tests/shortcuts-browser.cjs"
+      ],
+      "nativeStatus": "partial",
+      "evidence": ["https://github.com/AminiamEva/Lineae/actions/runs/45620299673", "https://github.com/AminiamEva/Lineae/actions/runs/45622916182", "https://github.com/AminiamEva/Lineae/actions/runs/45628338101", "https://github.com/AminiamEva/Lineae/actions/runs/45639252258", "https://github.com/AminiamEva/Lineae/actions/runs/45646995464"],
+      "scope": "The native math palette supports verified structures, formatting, display style and formula labels. The prose palette supports page breaks, appendix, contents, horizontal rules, book matter, listings, columns, metadata, and project inputs. The code block editor preserves the listing wrapper and supports independent undo and redo in Document. Known directives can be edited there, including source spellings that represent an identical rich node. The cases shortcut adds amsmath and targets the first empty cell. The alignment and inline formula toolbar actions use the native document. The browser tests also cover opening a formula at its right edge, explicit prose breaks, boxed text and continuing beyond a proof. Opaque source blocks open at their exact source range. Browser command gates: https://github.com/AminiamEva/Lineae/actions/runs/45701809530 and https://github.com/AminiamEva/Lineae/actions/runs/45703676672"
+    },
+    {
+      "id": "clipboard-ime-cross-run",
+      "phase": "G",
+      "entryPoints": [
+        "apps/web/src/main.js",
+        "apps/web/src/ui/native-tex-preview.mjs"
+      ],
+      "tests": [
+        "tests/native-tex-preview-browser.cjs"
+      ],
+      "nativeStatus": "partial",
+      "evidence": ["https://github.com/AminiamEva/Lineae/actions/runs/45596378294", "https://github.com/AminiamEva/Lineae/actions/runs/45599661375", "https://github.com/AminiamEva/Lineae/actions/runs/45629535428", "https://github.com/AminiamEva/Lineae/actions/runs/45639252258", "https://github.com/AminiamEva/Lineae/actions/runs/45646995464"],
+      "scope": "Copy, cut, formatted paste, whole inline formula selection, synthetic Chinese composition, and queued input during a forced geometry delay. Verified selections within one paragraph copy formatting alongside plain text, and native math accepts validated LaTeX fragments from the clipboard. Browser checks cover vertical caret and page navigation, the textarea anchor during scrolling, the first preedit after exiting inline math, rapid prose after exiting an included file, and entering inline math while prose geometry is pending. Cross-file selection can replace the edge of a heading, escape percent in the parent source, and undo both files together. Physical input methods and broader cross-file editing remain pending. Browser gates: https://github.com/AminiamEva/Lineae/actions/runs/45699836032, https://github.com/AminiamEva/Lineae/actions/runs/45700117546 and https://github.com/AminiamEva/Lineae/actions/runs/45704768975"
+    },
+    {
+      "id": "default-native-engine",
+      "phase": "H",
+      "entryPoints": [
+        "apps/web/src/main.js"
+      ],
+      "tests": [
+        "tests/native-tex-preview-browser.cjs"
+      ],
+      "nativeStatus": "partial",
+      "evidence": ["https://github.com/AminiamEva/Lineae/actions/runs/45596378294", "https://github.com/AminiamEva/Lineae/actions/runs/45622916182", "https://github.com/AminiamEva/Lineae/actions/runs/45628338101"],
+      "scope": "The opt-in desktop workspace uses the same native engine session across Document, Source and the read-only Split preview. Source edits reach the same session without rasterizing hidden pages. Browser tests verify that the old paginator and MathLive do not load. Full coverage and physical device checks are required before making this the default."
+    }
+  ],
+  "acceptance": {
+    "latestBrowserRun": {
+      "revision": "9efd5d8968ee60def21a2fe42105228638cc9f5a",
+      "status": "passed-on-windows-macos-ubuntu",
+      "scope": "Native editing and legacy regressions. Single-file Select All from prose includes complete boundary display equations. Copy, replacement and undo are verified. Project Select All preserves editable prose endpoints across files. Additional gates cover combined table spans, cross-file whole-table selection and format painting around inline math.",
+      "evidence": "https://github.com/AminiamEva/Lineae/actions/runs/45718933612",
+      "legacyRegression": "https://github.com/AminiamEva/Lineae/actions/runs/45717799881"
+    },
+    "fullSoftwareRun": {
+      "revision": "9efd5d8968ee60def21a2fe42105228638cc9f5a",
+      "status": "passed-on-windows-macos-ubuntu",
+      "scope": "All three jobs passed the browser gates, real host geometry including repeated source expansion and empty cases cells, recorded PDF editing including a scaled TikZ drawing, and the engine-off desktop WebView smoke. Unbundled debug executables are retained for physical device input review.",
+      "evidence": "https://github.com/AminiamEva/Lineae/actions/runs/45719223473",
+      "priorEvidence": "https://github.com/AminiamEva/Lineae/actions/runs/45716499706"
+    },
+    "nativeHost": {
+      "status": "protocol-and-project-tests-passed",
+      "scope": "Windows x64, macOS arm64 and Ubuntu x64 passed their Rust native host tests and the three real LuaLaTeX session, project and text-observation tests. Browser cross-reference navigation and desktop WebView acceptance are separate gates.",
+      "evidence": ["https://github.com/AminiamEva/Lineae/actions/runs/45669290104", "https://github.com/AminiamEva/Lineae/actions/runs/45678406254"]
+    },
+    "legacyDisabled": {
+      "command": "LINEAE_NATIVE_ONLY=1 node tests/native-tex-preview-browser.cjs",
+      "scope": "Windows, macOS and Ubuntu Chromium with legacy pagination and MathLive disabled covers mixed prose and math, exact source history, formula insertion, and synthetic IME. The same workflow covers table spans including fully covered rows, project layout, and cross-reference navigation in the native preview and workspace. Real LuaLaTeX geometry is replayed in a separate browser gate with a simulated transport.",
+      "status": "browser-passed",
+      "evidence": [
+        "https://github.com/AminiamEva/Lineae/actions/runs/45579797136",
+        "https://github.com/AminiamEva/Lineae/actions/runs/45581410790",
+        "https://github.com/AminiamEva/Lineae/actions/runs/45583564517",
+        "https://github.com/AminiamEva/Lineae/actions/runs/45589155092",
+        "https://github.com/AminiamEva/Lineae/actions/runs/45596378294",
+        "https://github.com/AminiamEva/Lineae/actions/runs/45608889023",
+        "https://github.com/AminiamEva/Lineae/actions/runs/45613386465",
+        "https://github.com/AminiamEva/Lineae/actions/runs/45617906617",
+        "https://github.com/AminiamEva/Lineae/actions/runs/45673715541",
+        "https://github.com/AminiamEva/Lineae/actions/runs/45677040987",
+        "https://github.com/AminiamEva/Lineae/actions/runs/45685981178"
+      ]
+    },
+    "desktopWebView": {
+      "status": "smoke-passed",
+      "scope": "GitHub-hosted WebView2, WKWebView and WebKitGTK start with legacy pagination and MathLive disabled. The embedded font, PDF worker, and native IPC are checked. Physical key delivery, candidate placement and display scan-out remain separate acceptance items.",
+      "evidence": ["https://github.com/AminiamEva/Lineae/actions/runs/45617906617", "https://github.com/AminiamEva/Lineae/actions/runs/45671660810"]
+    },
+    "pending": [
+      "cross-file selection with endpoints inside cells or at display formula edges, partial formula structures, or multiple copies of the same source",
+      "remaining native commands across nested mixed selections and direct editing inside unsupported macro expansions",
+      "additional complex cell styles, occupied source slots that would be overwritten by moving a span anchor, and conflicting indexed rules on a collapsed boundary",
+      "direct figure editing inside unsupported nested float wrappers",
+      "PDF semantics for complex objects beyond verified text, formulas, references, rasters and TikZ",
+      "continuous body flow that joins LaTeX blocks across page boundaries while keeping page-dependent content tied to a converged layout",
+      "physical device verification on Windows and macOS for IME, native shortcut delivery, and keydown-to-pixels latency"
+    ]
+  },
+  "latency": {
+    "pages": [
+      10,
+      100,
+      300
+    ],
+    "percentiles": [
+      50,
+      95,
+      99
+    ],
+    "segments": [
+      "keydown-to-transaction",
+      "transaction-to-geometry",
+      "geometry-to-repaint",
+      "keydown-to-pixels"
+    ],
+    "budgetStatus": "provisional",
+    "provisionalP95Ms": {
+      "keydownToTransaction": 16,
+      "transactionToGeometry": 50,
+      "geometryToRepaint": 34,
+      "keydownToPixels": 100
+    },
+    "acceptanceP95Ms": {
+      "keydownToPixelsExclusive": 30
+    },
+    "browserInstrumentation": "apps/web/src/ui/native-tex-preview.mjs",
+    "browserPaint": "Animation frame estimate, excludes OS input and physical display scan-out.",
+    "remainingMeasurements": [
+      "physical keydown to display on the target hardware"
+    ],
+    "coldBaseline": {
+      "evidence": "https://github.com/AminiamEva/Lineae/actions/runs/45712134045",
+      "revision": "f817621bb9dd9a808948a5fad2247a118edbc823",
+      "scope": "One observation per platform and page count for rtex process spawn through first converged layout, and legacy file import through the first editable formula in an opened Chromium workspace. Legacy workspace navigation through editor initialization is measured once per platform and repeated in its rows.",
+      "samples": [
+        {"platform": "macOS arm64", "pages": 10, "rtexConvergedMs": 2020.8, "legacyWorkspaceMs": 289.6, "legacyImportMs": 290.2},
+        {"platform": "macOS arm64", "pages": 100, "rtexConvergedMs": 2482.6, "legacyWorkspaceMs": 289.6, "legacyImportMs": 507.8},
+        {"platform": "macOS arm64", "pages": 300, "rtexConvergedMs": 3802, "legacyWorkspaceMs": 289.6, "legacyImportMs": 2001.3},
+        {"platform": "Windows x64", "pages": 10, "rtexConvergedMs": 2285.3, "legacyWorkspaceMs": 399.9, "legacyImportMs": 302.2},
+        {"platform": "Windows x64", "pages": 100, "rtexConvergedMs": 2915.8, "legacyWorkspaceMs": 399.9, "legacyImportMs": 628.5},
+        {"platform": "Windows x64", "pages": 300, "rtexConvergedMs": 4308.4, "legacyWorkspaceMs": 399.9, "legacyImportMs": 2398.2},
+        {"platform": "Linux x64", "pages": 10, "rtexConvergedMs": 1184.1, "legacyWorkspaceMs": 300.5, "legacyImportMs": 210.8},
+        {"platform": "Linux x64", "pages": 100, "rtexConvergedMs": 1364.1, "legacyWorkspaceMs": 300.5, "legacyImportMs": 389.1},
+        {"platform": "Linux x64", "pages": 300, "rtexConvergedMs": 2002.8, "legacyWorkspaceMs": 300.5, "legacyImportMs": 1358.6}
+      ]
+    },
+    "legacyBrowserBaseline": {
+      "evidence": "https://github.com/AminiamEva/Lineae/actions/runs/45711830079",
+      "revision": "1d631ca10053003c5386994a07c0c711f31edc60",
+      "scope": "The same generated source and alternating denominator edits. Transaction measures browser keydown to the editor update. Frame measures keydown through two animation frames. Values are P50, P95 and P99 in milliseconds.",
+      "samples": [
+        {"platform": "macOS arm64", "pages": 10, "sampleCount": 1000, "transactionMs": [29.7, 96.4, 124.1], "frameMs": [90.9, 186.9, 220.1]},
+        {"platform": "macOS arm64", "pages": 100, "sampleCount": 1000, "transactionMs": [35.1, 99.8, 118.9], "frameMs": [176.8, 270.9, 333.8]},
+        {"platform": "macOS arm64", "pages": 300, "sampleCount": 1000, "transactionMs": [50.4, 114.5, 143.1], "frameMs": [472.2, 605.5, 720.6]},
+        {"platform": "Windows x64", "pages": 10, "sampleCount": 1000, "transactionMs": [16.2, 29.2, 31.1], "frameMs": [55.7, 69.4, 72.3]},
+        {"platform": "Windows x64", "pages": 100, "sampleCount": 1000, "transactionMs": [26, 31.6, 34.6], "frameMs": [151.2, 162.1, 174.5]},
+        {"platform": "Windows x64", "pages": 300, "sampleCount": 1000, "transactionMs": [33.2, 39.4, 42.2], "frameMs": [570.4, 591, 625.6]},
+        {"platform": "Linux x64", "pages": 10, "sampleCount": 1000, "transactionMs": [15.5, 23.9, 25.6], "frameMs": [52.3, 62.6, 64]},
+        {"platform": "Linux x64", "pages": 100, "sampleCount": 1000, "transactionMs": [21.9, 29.4, 32.7], "frameMs": [122.2, 132.3, 140.8]},
+        {"platform": "Linux x64", "pages": 300, "sampleCount": 1000, "transactionMs": [29.4, 39.1, 44], "frameMs": [446.6, 467.3, 476.6]}
+      ]
+    },
+    "engineBaseline": {
+      "evidence": "https://github.com/AminiamEva/Lineae/actions/runs/45711830079",
+      "priorEvidence": "https://github.com/AminiamEva/Lineae/actions/runs/45709683498",
+      "revision": "1d631ca10053003c5386994a07c0c711f31edc60",
+      "scope": "Warm rtex edit dispatch on stdin to matching stdout event, with the same fixture and edit sequence used in the legacy browser.",
+      "samples": [
+        {
+          "platform": "macOS arm64",
+          "pages": 10,
+          "sampleCount": 1000,
+          "p50Ms": 2.6158,
+          "p95Ms": 5.7508,
+          "p99Ms": 7.243
+        },
+        {
+          "platform": "macOS arm64",
+          "pages": 100,
+          "sampleCount": 1000,
+          "p50Ms": 2.6313,
+          "p95Ms": 5.422,
+          "p99Ms": 6.9844
+        },
+        {
+          "platform": "macOS arm64",
+          "pages": 300,
+          "sampleCount": 1000,
+          "p50Ms": 2.4573,
+          "p95Ms": 5.1999,
+          "p99Ms": 6.466
+        },
+        {
+          "platform": "Windows x64",
+          "pages": 10,
+          "sampleCount": 1000,
+          "p50Ms": 2.6733,
+          "p95Ms": 3.8886,
+          "p99Ms": 4.2387
+        },
+        {
+          "platform": "Windows x64",
+          "pages": 100,
+          "sampleCount": 1000,
+          "p50Ms": 2.5823,
+          "p95Ms": 3.5822,
+          "p99Ms": 3.9824
+        },
+        {
+          "platform": "Windows x64",
+          "pages": 300,
+          "sampleCount": 1000,
+          "p50Ms": 2.4822,
+          "p95Ms": 3.1277,
+          "p99Ms": 3.79
+        },
+        {
+          "platform": "Ubuntu x64",
+          "pages": 10,
+          "sampleCount": 1000,
+          "p50Ms": 1.7262,
+          "p95Ms": 2.6718,
+          "p99Ms": 3.0591
+        },
+        {
+          "platform": "Ubuntu x64",
+          "pages": 100,
+          "sampleCount": 1000,
+          "p50Ms": 1.6455,
+          "p95Ms": 2.6049,
+          "p99Ms": 2.8489
+        },
+        {
+          "platform": "Ubuntu x64",
+          "pages": 300,
+          "sampleCount": 1000,
+          "p50Ms": 1.675,
+          "p95Ms": 2.174,
+          "p99Ms": 2.4205
+        }
+      ]
+    }
+  },
+  "inventory": {
+    "editorSchema": "apps/web/src/main.js",
+    "latexImport": "apps/web/latex/blocks.mjs",
+    "latexExport": "apps/web/src/editor/latex-codec.js",
+    "nodes": {
+      "verifiedTextOrMath": ["paragraph", "text", "heading", "math", "mathBlock"],
+      "verifiedTableOperations": ["table", "tableRow", "tableCell", "tableHeader"],
+      "partialNativeEditing": ["blockquote", "theoremBlock", "bulletList", "orderedList", "listItem", "descriptionList", "descriptionItem", "projectRegion", "documentImage", "subfigures", "multiColumn"],
+      "protectedInlineOrStructural": ["hardBreak", "ref", "cite", "label", "footnote", "pageBreak", "appendixStart", "matterStart", "counterDirective", "layoutCommand"],
+      "nativeDialogRoutes": ["codeBlock", "pageBreak", "appendixStart", "matterStart", "tableOfContents", "layoutCommand", "counterDirective", "horizontalRule", "lipsum"],
+      "exactSourceFallback": ["raw"]
+    },
+    "legacyDecorationsDisabledInNativeMode": ["mathGlue", "lipsumPreviewExpansion"],
+    "marks": {
+      "nativeTyping": ["bold", "italic", "underline", "code", "superscript", "subscript", "smallcaps", "strike", "textStyle", "boxed", "circled"],
+      "verifiedSourceRuns": ["textCommand", "textStyle", "boxed", "circled"],
+      "pending": "Typing and changing style attributes inside formatted or structural runs, including package-backed variants."
+    }
+  },
+  "phaseA": {
+    "status": "partial",
+    "shared": [
+      "native document session for prose and math adapters",
+      "caret and selection mechanics",
+      "pending source offset recovery",
+      "native preview commit dispatch",
+      "file-aware source ownership within verified project regions"
+    ],
+    "pending": [
+      "full native command registry",
+      "semantic addresses for opaque or complex project structures",
+      "general cross-adapter replacement and structural transactions"
+    ]
+  }
+}

@@ -12,30 +12,45 @@ const rasterTypes = new Set(['image/png','image/jpeg','image/jpg','image/pjpeg',
 let measureContext = null;
 let suppressImageClickUntil = 0;
 
-function chooseFile(callback) {
+export function chooseImageFile(callback, {multiple=false}={}) {
   const input = document.createElement('input');
   input.type = 'file';
+  input.multiple = multiple;
+  input.hidden = true;
   input.accept = [...rasterTypes].join(',');
-  input.addEventListener('change', () => {
-    const file = input.files[0];
-    if (file && (rasterTypes.has(file.type) || /\.(png|jpe?g|webp|gif|avif)$/i.test(file.name))) callback(file);
-  }, { once:true });
-  input.click();
+  return new Promise((resolve,reject)=>{
+    const close=()=>{input.remove();resolve();};
+    input.addEventListener('cancel',close,{once:true});
+    input.addEventListener('change',async()=>{
+      const file=input.files[0];
+      try{
+        if(file&&multiple)await callback([...input.files]);
+        else if(file&&(rasterTypes.has(file.type)||/\.(png|jpe?g|webp|gif|avif)$/i.test(file.name)))await callback(file);
+        close();
+      }catch(error){input.remove();reject(error);}
+    },{once:true});
+    document.body.append(input);
+    input.click();
+  });
 }
 
 function remember(path, file) {
   rememberAsset(path,file);
 }
 
-export function editTikzVisual(editor, position) {
+export function editTikzVisual(editor, position, commit) {
   const node = editor.state.doc.nodeAt(position);
   const source = node?.attrs?.tikzSource;
   if (!source) return false;
   const apply = code => {
-    if (typeof code !== 'string' || !code.trim()) return;
+    if (typeof code !== 'string' || !code.trim()) return false;
     const current = editor.state.doc.nodeAt(position);
-    if (!current || current.attrs.tikzSource == null) return;
-    editor.view.dispatch(closeHistory(editor.state.tr).setNodeMarkup(position, undefined, { ...current.attrs, tikzSource: code }));
+    if (!current || current.attrs.tikzSource == null) return false;
+    if(commit&&current!==node)return false;
+    const tr=closeHistory(editor.state.tr).setNodeMarkup(position,undefined,{...current.attrs,tikzSource:code});
+    if(commit)return commit(tr);
+    editor.view.dispatch(tr);
+    return true;
   };
   const circuit = node.attrs.tikzEditor === 'circuit' || (!node.attrs.tikzEditor && tikzLooksCircuit(source));
   if (circuit) {
@@ -46,22 +61,26 @@ export function editTikzVisual(editor, position) {
     openTikzStudio({
       initialBody: source,
       initialLibraries: tikzStagingFromPreamble(getTikzPreamble()),
-      onInsert: ({ body }) => apply(body),
+      onInsert: ({body})=>apply(body)?undefined:{error:t('未能写回图形，请保留当前修改并核对源码。','The drawing could not be saved. Your edits are still available here.')},
     });
   }
   return true;
 }
 
-function registerImage(file, previousPath) {
+export function availableImagePath(file,previousPath,isOccupied=resolveImageAsset){
   let path = file.name;
-  if (path === previousPath || path.replace(/\.[^.]+$/,'') === previousPath || resolveImageAsset(path)) {
+  if (path === previousPath || path.replace(/\.[^.]+$/,'') === previousPath || isOccupied(path)) {
     const dot = path.lastIndexOf('.');
     const stem = dot > 0 ? path.slice(0,dot) : path;
     const extension = dot > 0 ? path.slice(dot) : '';
     let version = 2;
     do { path = stem + '-' + version++ + extension; }
-    while (path === previousPath || resolveImageAsset(path));
+    while (path === previousPath || isOccupied(path));
   }
+  return path;
+}
+function registerImage(file, previousPath) {
+  const path=availableImagePath(file,previousPath);
   remember(path,file);
   return path;
 }
@@ -101,7 +120,7 @@ export function installImageDrop(editor, paper) {
 export function insertLocalImage(editor) {
   const documentBefore = editor.state.doc;
   const range = { from:editor.state.selection.from, to:editor.state.selection.to };
-  chooseFile(file => {
+  chooseImageFile(file => {
     if (editor.state.doc !== documentBefore) return;
     if (!/^[\p{L}\p{N}_. -]+$/u.test(file.name)) return;
     const path = registerImage(file);
@@ -112,7 +131,7 @@ export function insertLocalImage(editor) {
 export function replaceLocalImage(editor, position) {
   const node = editor.state.doc.nodeAt(position);
   if (node?.type.name !== 'documentImage') return;
-  chooseFile(file => {
+  chooseImageFile(file => {
     if (!/^[\p{L}\p{N}_. -]+$/u.test(file.name) || editor.state.doc.nodeAt(position) !== node) return;
     const path = registerImage(file,node.attrs.path);
     editor.view.dispatch(closeHistory(editor.state.tr).setNodeMarkup(position,undefined,{...node.attrs,path}));
@@ -147,7 +166,7 @@ export function insertSubfigureImage(editor) {
   if(position===null)return false;
   const node=editor.state.doc.nodeAt(position);
   if(node?.type.name!=='subfigures')return false;
-  chooseFile(file=>{
+  chooseImageFile(file=>{
     if(!/^[\p{L}\p{N}_. -]+$/u.test(file.name)||editor.state.doc.nodeAt(position)!==node)return;
     const path=registerImage(file);
     const child=editor.schema.nodes.documentImage.create({figure:false,centered:true,align:'center',wrap:false,width:'0.48\\textwidth',pos:'c',captionEnabled:false,caption:null,path});
@@ -681,7 +700,7 @@ export const DocumentImage = Node.create({
       image.addEventListener('load',()=>{if(!destroyed && previewURL && image.currentSrc===previewURL){resourceState='ready';showResourceState();refresh();}});
       image.addEventListener('error',()=>{if(!destroyed && previewURL && image.getAttribute('src')===previewURL){resourceState='error';showResourceState();}});
       const unsubscribe=onAssetsChanged(refresh);
-      button.addEventListener('click',()=>chooseFile(file=>{
+      button.addEventListener('click',()=>chooseImageFile(file=>{
         const path=node.attrs.path||file.name;
         remember(path,file);
         if(path!==node.attrs.path){update({path},node);return;}

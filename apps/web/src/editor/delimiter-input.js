@@ -3,12 +3,12 @@ import { t } from '../ui/i18n.mjs';
 
 const DELIMITER_KEY = /^[()[\]{}.|]$/;
 
-function readInlineDelimiterPair(formulaView, rightFirst) {
+function readInlineDelimiterPair(formulaView, rightFirst, nativeField) {
   return new Promise(resolve => {
-    const field = formulaView.querySelector('math-field');
+    const field = nativeField??formulaView.querySelector('math-field');
     const root = field?.shadowRoot;
     const findCaret = () => root?.querySelector('.ML__caret, .ML__text-caret, .ML__latex-caret');
-    const caret = findCaret();
+    const caret = nativeField??findCaret();
     if (!caret) { resolve(null); return; }
     const ghost = document.createElement('span');
     ghost.className = 'delimiter-ghost';
@@ -19,7 +19,12 @@ function readInlineDelimiterPair(formulaView, rightFirst) {
     other.className = 'delimiter-ghost-slot';
     ghost.append(slot, other);
     // Place the preview in the MathLive row so the matrix measures its width.
-    caret.before(ghost);
+    if(nativeField){
+      const box=nativeField.getBoundingClientRect();
+      ghost.classList.add('native-delimiter-ghost');
+      ghost.style.left=box.left+'px';ghost.style.top=box.top+'px';
+      document.body.append(ghost);
+    }else caret.before(ghost);
 
     const values = ['', ''];
     const order = rightFirst ? [1, 0] : [0, 1];
@@ -30,7 +35,7 @@ function readInlineDelimiterPair(formulaView, rightFirst) {
     const caretStyle = document.createElement('style');
     caretStyle.dataset.lineaeDelimiter = '';
     caretStyle.textContent = '.ML__caret,.ML__text-caret,.ML__latex-caret{visibility:hidden!important}';
-    root.append(caretStyle);
+    root?.append(caretStyle);
     const paint = () => {
       slots.forEach((element, index) => {
         element.textContent = values[index];
@@ -39,7 +44,7 @@ function readInlineDelimiterPair(formulaView, rightFirst) {
     };
     const close = pair => {
       controllers.abort();
-      observer.disconnect();
+      observer?.disconnect();
       caretStyle.remove();
       ghost.remove();
       resolve(pair);
@@ -92,16 +97,16 @@ function readInlineDelimiterPair(formulaView, rightFirst) {
     }, { capture:true, signal });
     field.addEventListener('blur', () => close(null), { signal });
     // MathLive can replace the entire rendered row after focusing the field.
-    const observer = new MutationObserver(() => {
-      if (!root.contains(ghost)) findCaret()?.before(ghost);
-    });
-    observer.observe(root, { subtree:true, childList:true });
+    const observer=root?new MutationObserver(()=>{
+      if(!root.contains(ghost))findCaret()?.before(ghost);
+    }):null;
+    observer?.observe(root,{subtree:true,childList:true});
     paint();
   });
 }
 
-export function readDelimiterPair(anchor, rightFirst, formulaView) {
-  if (formulaView) return readInlineDelimiterPair(formulaView, rightFirst);
+export function readDelimiterPair(anchor, rightFirst, formulaView, nativeField) {
+  if (formulaView||nativeField) return readInlineDelimiterPair(formulaView, rightFirst,nativeField);
   return new Promise(resolve => {
     const form = document.createElement('form');
     form.className = 'delimiter-input';

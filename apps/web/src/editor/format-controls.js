@@ -2,7 +2,8 @@ import {t} from '../ui/i18n.mjs';
 import {openColorPalette} from '../ui/color-palette.js';
 import {FONT_FAMILIES,selectionTypography} from './selection-typography.js';
 
-export function installFormatControls(editor, parent, {isUnavailable = () => false} = {}) {
+export function installFormatControls(editor, parent, {isUnavailable = () => false,
+  applyStyle=patch=>editor.chain().focus().setMark('textStyle',patch).run()} = {}) {
   const unavailable = () => Boolean(isUnavailable());
   const color = document.createElement('button');
   color.type = 'button';
@@ -22,8 +23,8 @@ export function installFormatControls(editor, parent, {isUnavailable = () => fal
       anchor: color,
       value: selectionTypography(editor).color,
       allowAuto: true,
-      onPick: hex => { if (!unavailable()) editor.chain().focus().setMark('textStyle',{color:hex}).run(); },
-      onAuto: () => { if (!unavailable()) editor.chain().focus().setMark('textStyle',{color:null}).run(); },
+      onPick: hex => { if (!unavailable()) applyStyle({color:hex}); },
+      onAuto: () => { if (!unavailable()) applyStyle({color:null}); },
     });
   });
   parent.append(color);
@@ -45,7 +46,7 @@ export function installFormatControls(editor, parent, {isUnavailable = () => fal
     [menu.dataset.tooltipZh,menu.dataset.tooltipEn] = definition.labels;
     menu.setAttribute('aria-label',t(...definition.labels));
     for (const value of definition.values) appendOption(menu,definition.attribute,value);
-    menu.addEventListener('change',() => { if (!unavailable()) editor.chain().focus().setMark('textStyle',{[definition.attribute]:menu.value}).run(); });
+    menu.addEventListener('change',() => { if (!unavailable()) applyStyle({[definition.attribute]:menu.value}); });
     menus.set(definition.attribute,menu);
     parent.append(menu);
   }

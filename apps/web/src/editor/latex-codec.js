@@ -1,7 +1,7 @@
 import {richTableRow,wrapCell} from '../../latex/table-spans.mjs';
 import { importBlock, importBlocks } from '../../latex/blocks.mjs';
 import { listLabel, bulletLabel } from '../../latex/list-numbering.mjs';
-import { textCommands } from '../../latex/inline.mjs';
+import { escapeText, textCommands } from '../../latex/inline.mjs';
 import { serializeImage, serializeSubfigures } from '../../latex/images.mjs';
 import {serializeReference,serializeHeadingLabel} from '../../latex/reference-commands.mjs';
 import { alignmentLabel, displayEnvironment } from '../../latex/math-environments.mjs';
@@ -9,14 +9,7 @@ export { importBlock, importBlocks };
 export {parseTableFloat} from '../../latex/table-floats.mjs';
 import {serializeTblr,serializeSourceTable} from '../../latex/tblr.mjs';
 import {serializeTextEnvironment} from '../../latex/text-environments.mjs';
-
-const escape = text => text.replace(/[\u00A0\\{}%$&#_^~§¶•…–—‘’“”®™©]/g, char => ({
-  '\\': '\\textbackslash{}', '~': '\\textasciitilde{}', '^': '\\textasciicircum{}', '\u00A0': '~',
-  '§': '\\textsection{}', '¶': '\\textparagraph{}', '•': '\\textbullet{}', '…': '\\ldots{}',
-  '–': '\\textendash{}', '—': '\\textemdash{}', '‘': '\\textquoteleft{}', '’': '\\textquoteright{}',
-  '“': '\\textquotedblleft{}', '”': '\\textquotedblright{}', '®': '\\textregistered{}',
-  '™': '\\texttrademark{}', '©': '\\copyright{}',
-}[char] ?? '\\' + char));
+import {serializeTableStyle} from '../../latex/table-styles.mjs';
 
 // MathLive placeholders are editing aids with no LaTeX meaning.
 const withoutPlaceholders = latex => latex.replace(/\\placeholder\{[^{}]*\}/g, '');
@@ -37,7 +30,7 @@ export function serialize(node) {
     const glyph=Object.hasOwn(textCommands,command) ? textCommands[command] : '';
     const count=glyph ? node.text.length/glyph.length : 0;
     let value = count && Number.isInteger(count) && glyph.repeat(count)===node.text
-      ? ('\\' + command + '{}').repeat(count) : escape(node.text);
+      ? ('\\' + command + '{}').repeat(count) : escapeText(node.text);
     for (const mark of node.marks ?? []) {
       if (mark.type === 'bold') value = '\\textbf{' + value + '}';
       if (mark.type === 'italic') value = '\\textit{' + value + '}';
@@ -108,7 +101,10 @@ export function serialize(node) {
     case 'matterStart': return '\\' + (node.attrs.matter || 'main') + 'matter\n\n';
     case 'tableOfContents': return '\\tableofcontents\n\n';
     case 'pageBreak': return '\\newpage\n\n';
-    case 'multiColumn': return '\\begin{multicols}{' + (node.attrs.count ?? 2) + '}\n' + content + '\\end{multicols}\n\n';
+    case 'multiColumn': {
+      const environment=node.attrs.starred?'multicols*':'multicols';
+      return '\\begin{'+environment+'}{'+(node.attrs.count??2)+'}\n'+content+'\\end{'+environment+'}\n\n';
+    }
     case 'blockquote': return node.attrs?.environmentSource
       ? serializeTextEnvironment(node,serialize)??node.attrs.environmentSource.source
       : '\\begin{quote}\n' + content + '\\end{quote}\n\n';
@@ -159,7 +155,7 @@ export function serialize(node) {
     case 'table': {
       if(node.attrs.tblr)return serializeTblr(node,serialize)??node.attrs.tblr.source;
       if(node.attrs.tabularx)return serializeSourceTable(node,serialize,'tabularx')??node.attrs.tabularx.source;
-      let columns = node.attrs.columns || 'l'.repeat(node.content[0]?.content.length ?? 1);
+      let columns = node.attrs.columns || 'l'.repeat(node.content[0]?.content?.length ?? 1);
       const columnCount=(node.content[0]?.content??[]).reduce((total,cell)=>total+(cell.attrs.colspan??1),0)||1;
       const occupied=Array(columnCount).fill(0);
       const border = node.attrs.borderMode;
@@ -183,16 +179,7 @@ export function serialize(node) {
       if (border && border!=='none') body += '\\hline\n';
       if (!border && !customRules && node.attrs.booktabs) body += '\\bottomrule\n';
       if (customRules && node.attrs.bottomRule) body += '\\bottomrule\n';
-      let tabular='\\begin{tabular}{' + columns + '}\n' + body + '\\end{tabular}';
-      if (node.attrs.arrayStretch && Number(node.attrs.arrayStretch) !== 1) tabular='{\\renewcommand{\\arraystretch}{'+node.attrs.arrayStretch+'}\n'+tabular+'\n}';
-      if (node.attrs.fontSize && /^(small|footnotesize|scriptsize)$/.test(node.attrs.fontSize)) tabular='{\\'+node.attrs.fontSize+' '+tabular+'}';
-      else if (node.attrs.fontSize && /^\d+(?:\.\d+)?pt$/.test(node.attrs.fontSize)) {
-        const points=Number.parseFloat(node.attrs.fontSize);
-        tabular='{\\fontsize{'+node.attrs.fontSize+'}{'+(points*1.2).toFixed(1)+'pt}\\selectfont '+tabular+'}';
-      }
-      if (node.attrs.tableScale && Number(node.attrs.tableScale) !== 1) tabular='\\scalebox{'+node.attrs.tableScale+'}{'+tabular+'}';
-      if (/^\d+(?:\.\d+)?pt$/.test(node.attrs.borderWidth??''))
-        tabular='{\\setlength{\\arrayrulewidth}{'+node.attrs.borderWidth+'}\n'+tabular+'\n}';
+      const tabular=serializeTableStyle('\\begin{tabular}{'+columns+'}\n'+body+'\\end{tabular}',node.attrs);
       const hasCaption = node.attrs.captionEnabled || node.attrs.caption!=null;
       if (hasCaption || node.attrs.label || node.attrs.centered || node.attrs.placement)
         return '\\begin{table}'+(node.attrs.placement?'['+node.attrs.placement+']':'')+'\n'
@@ -202,7 +189,7 @@ export function serialize(node) {
           +tabular+'\n\\end{table}\n\n';
       return tabular+'\n\n';
     }
-    case 'tableRow': return node.content.map(cell => serialize(cell)).join(' & ') + ' \\\\\n';
+    case 'tableRow': return (node.content??[]).map(cell => serialize(cell)).join(' & ') + ' \\\\\n';
     case 'tableCell':
     case 'tableHeader': {
       const value = (node.content ?? []).map(serialize).join('').trim();

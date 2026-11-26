@@ -1,6 +1,111 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {nativeProjectSnapshot} from '../apps/web/src/typesetting/rtex/project-snapshot.mjs';
+import {nativeAttachedSnapshot,nativeProjectSnapshot} from '../apps/web/src/typesetting/rtex/project-snapshot.mjs';
+import {matchingRasterHit,rasterContains,registeredRasterHits,stagedRaster,stagedRasterPath} from '../apps/web/src/typesetting/rtex/raster-assets.mjs';
+import {nativeFontFace} from '../apps/web/src/typesetting/rtex/font-collection.mjs';
+import {matchObservedDrawingFonts,sameCachedDrawingItems} from '../apps/web/src/typesetting/rtex/cached-drawings.mjs';
+import {projectMixedSnapshot,textEdit} from '../apps/web/src/editor/native-text/projection.mjs';
+
+test('native raster commands can only resolve staged PNG and JPEG assets',()=>{
+  const path='figures/plot.png';
+  const staged=`C:\\Temp\\lineae-native-tex-12345678-${'a'.repeat(32)}-${'b'.repeat(16)}\\figures\\plot.png`;
+  const bytes=[137,80,78,71,13,10,26,10];
+  const snapshot={files:[{path,bytes},{path:'corrupt.jpg',bytes}]};
+  assert.equal(stagedRasterPath(staged),path);
+  assert.equal(stagedRaster(snapshot,staged)?.mime,'image/png');
+  assert.deepEqual([...stagedRaster(snapshot,`./${path}`).data],bytes);
+  for(const reported of ['../figures/plot.png',`C:/${path}`,`/${path}`,`https://example.com/${path}`,'corrupt.jpg']){
+    assert.equal(stagedRaster(snapshot,reported),null);
+  }
+});
+
+test('native image hits follow rotation and scaling from the painter',()=>{
+  const image={transform:[0,2,-3,0,50,30],box:[4,5,10,8]};
+  assert.equal(rasterContains(image,26,44),true);
+  assert.equal(rasterContains(image,36,44),false);
+  assert.equal(rasterContains({...image,transform:[0,0,0,0,0,0]},26,44),false);
+});
+
+test('registered PDF raster hits retain scoped page-space transforms',()=>{
+  const snapshot={files:[{path:'figure.png',bytes:[137,80,78,71,13,10,26,10]}]};
+  const display={images_info:{1:{file:'figure.png'},2:{file:'other.png'},3:{file:'figure.png',page:2}},
+    other:[['i',1,10,20,50,40]],lines:[{items:[['i',2,30,30,40,40],['i',3,40,40,50,50]]}]};
+  const load=file=>stagedRaster(snapshot,file);
+  const [hit,...others]=registeredRasterHits(display,load);
+  assert.equal(hit.path,'figure.png');
+  assert.equal(rasterContains(hit,35,40),true);
+  assert.equal(others.length,0);
+  const [rotated,plain]=registeredRasterHits({...display,
+    other:[['M','save'],['M','set',10,20,'0 1 -1 0'],...display.other],
+    lines:[{items:[['M','restore'],...display.other]}]},load);
+  assert.equal(rasterContains(rotated,30,-10),true);
+  assert.equal(rasterContains(rotated,35,40),false);
+  assert.deepEqual(plain,hit);
+  assert.deepEqual(registeredRasterHits({...display,other:[['M','matrix',0,0,'0 1 -1 0'],...display.other]},load),[]);
+  assert.deepEqual(registeredRasterHits({...display,other:[['M','save'],...display.other]},load),[]);
+});
+
+test('observed PDF drawing ownership keeps the original cached box and all neighboring operators',()=>{
+  const original=[['u','cached_picture','1 100 200 30 40'],['r',100,245,40,1]];
+  const observed=[['l',0,'data'],['l',0,'data'],['r',100,245,40,1]];
+  const drawing={box:[100,200,30,40]};
+  assert.equal(sameCachedDrawingItems(original,observed,[drawing]),true);
+  assert.equal(sameCachedDrawingItems(original,observed,[]),false);
+  assert.equal(sameCachedDrawingItems(original,observed,[drawing,drawing]),false);
+  assert.equal(sameCachedDrawingItems(original,[...observed.slice(0,2),['r',100,246,40,1]],[drawing]),false);
+});
+
+test('picture observation maps engine font IDs only when complete descriptors and glyph coordinates agree',()=>{
+  const make=(id,size,position)=>({
+    fonts:{[id]:{id,filename:'/font.otf',subfont:1,size,extend:1000,slant:0,squeeze:1000}},
+    other:[],lines:[{items:[['g',id,65,37,position,42]]}],
+  });
+  const original=make(1,655360,24);
+  const map=matchObservedDrawingFonts(original,make(9,655360,24));
+  assert.deepEqual(map,original);
+  assert.equal(matchObservedDrawingFonts(original,make(9,655361,24)),null);
+  const shifted=matchObservedDrawingFonts(original,make(9,655360,25));
+  assert.equal(sameCachedDrawingItems(original.lines[0].items,shifted.lines[0].items,[]),false);
+});
+
+test('native font extraction follows LuaTeX face numbers and rejects malformed offsets',()=>{
+  const collection=new Uint8Array(85),view=new DataView(collection.buffer);
+  view.setUint32(0,0x74746366);
+  view.setUint32(4,0x00010000);
+  view.setUint32(8,2);
+  for(const [index,offset,tableAt,value] of [[0,20,76,123],[1,48,80,231]]){
+    view.setUint32(12+index*4,offset);
+    view.setUint32(offset,0x4f54544f);
+    view.setUint16(offset+4,1);
+    view.setUint32(offset+12,0x6e616d65);
+    view.setUint32(offset+20,tableAt);
+    view.setUint32(offset+24,4);
+    view.setUint32(tableAt,value);
+  }
+  assert.deepEqual(nativeFontFace(collection,0),nativeFontFace(collection,1));
+  const second=new DataView(nativeFontFace(collection,2).buffer);
+  assert.equal(second.getUint32(20),28);
+  assert.equal(second.getUint32(28),231);
+  assert.throws(()=>nativeFontFace(collection,3),/collection face/);
+  view.setUint32(68,83);
+  assert.throws(()=>nativeFontFace(collection,2),/table range/);
+});
+
+test('a standalone snapshot stages only the transitive references already attached',async()=>{
+  const root='\\documentclass{article}\n\\input{chapter}\n\\includegraphics{figures/chart}';
+  const chapter=new Blob(['\\bibliography{refs}']);
+  const attachments=[
+    ['chapter.tex',chapter],['figures/chart.png',new Blob([Uint8Array.of(7,8)])],
+    ['refs.bib',new Blob(['@article{one}'])],['unrelated.tex',new Blob(['ignore'])],
+  ];
+  const snapshot=await nativeAttachedSnapshot(root,attachments);
+  assert.deepEqual(snapshot.files.map(file=>file.path),['chapter.tex','figures/chart.png','refs.bib']);
+  assert.deepEqual(snapshot.files[1].bytes,[7,8]);
+  const reordered=await nativeAttachedSnapshot(root+'\nUnrelated edit',attachments.toReversed());
+  assert.equal(reordered.dependencySignature,snapshot.dependencySignature);
+  assert.notEqual(reordered.signature,snapshot.signature);
+  assert.deepEqual((await nativeAttachedSnapshot(root,[])).files,[]);
+});
 
 const encode = text => new TextEncoder().encode(text);
 const decode = bytes => new TextDecoder('utf-8', {ignoreBOM:true}).decode(new Uint8Array(bytes));
@@ -63,6 +168,42 @@ test('fresh asset reads and dependency edits change a stable order-independent s
   project.mainFileId = 'chapter.tex';
   assert.equal((await nativeProjectSnapshot(project)).mainFile, 'chapter.tex');
   assert.notEqual((await nativeProjectSnapshot(project)).signature, changed.signature);
+});
+
+test('previewing another complete TeX file changes only the compilation entry',async()=>{
+  const root='\\begin{document}\nMain.\n\\end{document}\n';
+  const notes='\\begin{document}\nNotes.\n\\end{document}\n';
+  const {project}=model([['main.tex',root],['notes/notes.tex',notes]]);
+  const original=await nativeProjectSnapshot(project);
+  const direct=await nativeProjectSnapshot(project,{entryFileId:'notes/notes.tex'});
+  assert.equal(project.mainFileId,'main.tex');
+  assert.equal(direct.mainFile,'notes/notes.tex');
+  assert.equal(direct.source,notes);
+  assert.deepEqual(direct.files,original.files);
+  assert.notEqual(direct.dependencySignature,original.dependencySignature);
+});
+
+test('a detached fragment inherits the project preamble and keeps its native editing offsets',async()=>{
+  const start='\\documentclass{article}\r\n\\usepackage{amsmath}\r\n\\begin{document}\r\n';
+  const root=start+'Main.\r\n\\end{document}\r\n',fragment='Notes $x$ and prose.';
+  const {project}=model([['main.tex',root],['notes/notes.tex',fragment]]);
+  const options={entryFileId:'notes/notes.tex',wrapFragment:true};
+  const snapshot=await nativeProjectSnapshot(project,options);
+  assert.equal(snapshot.source,start+fragment+'\r\n\\end{document}\r\n');
+  assert.equal(decode(snapshot.files.find(file=>file.path==='main.tex').bytes),root);
+  const observed=projectMixedSnapshot({...snapshot,editablePaths:new Set(['notes/notes.tex'])});
+  const [paragraph]=observed.paragraphs,[formula]=observed.formulas;
+  assert.equal(paragraph.source,fragment);
+  assert.equal(paragraph.from16,0);
+  assert.equal(formula.from16,fragment.indexOf('$')+1);
+  assert.equal(formula.filePath,'notes/notes.tex');
+  assert.ok(observed.projection.startsWith(start));
+  assert.equal(textEdit(observed,{paragraph,from16:0,to16:0,insert:'Draft '}).source,'Draft '+fragment);
+  assert.equal(project.files.get('notes/notes.tex').draft,fragment);
+  project.files.get('notes/notes.tex').draft='Updated '+fragment;
+  const next=await nativeProjectSnapshot(project,options);
+  assert.notEqual(snapshot.signature,next.signature);
+  assert.equal(snapshot.dependencySignature,next.dependencySignature);
 });
 test('live typing may use the explicitly refreshed model asset snapshot without disk I/O',async()=>{
   const {project,reads}=model([['main.tex','main'],['image.png',null,[1,2,3],'image']]);
@@ -161,4 +302,21 @@ test('rejects membership changes while reading instead of sending a partial proj
     return read(path);
   };
   await assert.rejects(nativeProjectSnapshot(project), /Project changed/);
+});
+test('repeated images match the measured page box after the paint transformation',()=>{
+  const display={images_info:{1:{file:'plot.png'}},other:[
+    ['i',1,10,10,10,10],['M','save'],['M','set',50,60,'2 0 0 2'],['i',1,50,50,10,10],['M','restore'],
+  ]};
+  const hits=registeredRasterHits(display,()=>true);
+  assert.equal(matchingRasterHit(hits,'plot.png',[50,40,20,20]),hits[1]);
+  assert.equal(matchingRasterHit(hits,'plot.png',[50,50,10,10]),null);
+  assert.equal(matchingRasterHit([hits[1],hits[1]],'plot.png',[50,40,20,20]),null);
+});
+
+test('image matching accepts the measured rounding in a LuaLaTeX graphics matrix',()=>{
+  const hit={path:'plot.png',transform:[.7472,0,0,.7472,2473030.6624,2373622.3712],
+    box:[9782558,7810567,1578762,1578762]};
+  const observed=[9782558,8209694,1179648,1179635];
+  assert.equal(matchingRasterHit([hit],'plot.png',observed),hit);
+  assert.equal(matchingRasterHit([hit],'plot.png',[observed[0]+100,...observed.slice(1)]),null);
 });

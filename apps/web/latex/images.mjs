@@ -3,6 +3,66 @@ import {group,trivia,clean,environmentEnd} from './tblr.mjs';
 
 export const imageWidthPattern = /^(?:(?:\d+(?:\.\d+)?|\.\d+)?\\(?:linewidth|textwidth|columnwidth)|(?:\d+(?:\.\d+)?|\.\d+)(?:cm|mm|pt|in))$/;
 
+function scaledTikzEnd(source,afterCommand){
+  const width=group(source,trivia(source,afterCommand));
+  const height=width&&group(source,trivia(source,width.end));
+  const body=height&&group(source,trivia(source,height.end));
+  if(!body)return null;
+  const start=trivia(body.value,0);
+  const name=/^\\begin\{(tikzpicture|circuitikz)\}/.exec(body.value.slice(start))?.[1];
+  const end=name&&environmentEnd(body.value,start,name);
+  return end&&trivia(body.value,end.end)===body.value.length?{end:body.end}:null;
+}
+
+export function tikzDrawingRanges(source,node){
+  if(!/\\begin\{(?:tikzpicture|circuitikz)\}/.test(source))return [];
+  const tokens=[...sourceStructure(source)];
+  if(tokens.some(token=>token.kind==='invalid'))return [];
+  const spans=[];
+  for(const token of tokens){
+    if(spans.at(-1)?.to>token.index)continue;
+    const name=token.kind==='begin'&&/^\\begin\{(tikzpicture|circuitikz)\}$/.exec(token.value)?.[1];
+    const scaled=token.value==='\\resizebox';
+    const close=name?environmentEnd(source,token.index,name):scaled?scaledTikzEnd(source,token.end):null;
+    if(close)spans.push({from:token.index,to:close.end,...(scaled&&{scaled:true})});
+  }
+  if(!node&&spans.length===1&&source.trim()===source.slice(spans[0].from,spans[0].to))
+    return [{...spans[0],child:null}];
+  node??=parseImageBlock(source);
+  const children=node?.type==='subfigures'?node.content??[]:node?.type==='documentImage'?[node]:[];
+  const drawings=children.flatMap((child,index)=>child.attrs?.tikzSource?
+    [{child:node.type==='subfigures'?index:null,tikz:child.attrs.tikzSource}]:[]);
+  if(spans.length!==drawings.length||spans.some(({from,to},index)=>source.slice(from,to)!==drawings[index].tikz))return [];
+  return spans.map((span,index)=>({...span,child:drawings[index].child}));
+}
+
+export function rasterDrawingRanges(source,node){
+  if(!source.includes('\\includegraphics'))return [];
+  node??=parseImageBlock(source);
+  const children=node?.type==='subfigures'?node.content??[]:node?.type==='documentImage'?[node]:[];
+  const images=children.flatMap((child,index)=>child.attrs?.path?
+    [{child:node.type==='subfigures'?index:null,path:child.attrs.path}]:[]);
+  if(!images.length)return [];
+  const tokens=[...sourceStructure(source)];
+  if(tokens.some(token=>token.kind==='invalid'))return [];
+  const commands=tokens.filter(token=>token.value==='\\includegraphics');
+  if(commands.length!==images.length)return [];
+  const ranges=[];
+  for(const [index,token] of commands.entries()){
+    let cursor=trivia(source,token.end);
+    if(source[cursor]==='['){
+      const options=group(source,cursor,'[',']');
+      if(!options)return [];
+      cursor=trivia(source,options.end);
+    }
+    const arg=group(source,cursor),image=images[index];
+    if(arg?.value!==image.path||/[\\%{}]/.test(arg.value))return [];
+    if(/\.(?:png|jpe?g)$/i.test(image.path))ranges.push({from:token.index,to:arg.end,...image,
+      argument:{from:cursor+1,to:arg.end-1}});
+  }
+  return ranges;
+}
+
 // A subfigure/figure body may contain a TikZ picture instead of \includegraphics.
 // Keep the drawing (including any resizebox wrapper) and drop the surrounding
 // alignment and caption commands, which the editor stores separately.

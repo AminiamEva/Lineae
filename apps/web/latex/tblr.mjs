@@ -80,17 +80,17 @@ function styles(value,unsupported) {
   }
   return result;
 }
-function columns(source,unsupported) {
+function columns(source,unsupported,ranges=[]) {
   const result=[];
   for(let i=0;i<source.length;) {
     if(/\s/.test(source[i])){i++;continue;}
-    const type=source[i++];if(!'Xlcr'.includes(type))return null;
+    const start=i,type=source[i++];if(!'Xlcr'.includes(type))return null;
     let style={align:alignments[type]??'left'};
     if(type==='X' && source[i]==='[') {
       const arg=group(source,i,'[',']');if(!arg)return null;
       style={...style,...styles(arg.value,unsupported)};i=arg.end;
     }
-    result.push(style);if(result.length>4096)return null;
+    result.push(style);ranges.push({from:start,to:i});if(result.length>4096)return null;
   }
   return result.length?result:null;
 }
@@ -144,18 +144,23 @@ export function parseTblr(source) {
   const colspec=options.find(([key])=>key==='colspec');
   const specs=columns(colspec?unwrap(colspec[1]??''):clean(settings.value),unsupported);if(!specs)return null;
   const body=source.slice(settings.end,closing.start),tokens=delimiters(body,['&','\\\\']);if(!tokens)return null;
-  const rows=[];let cells=[],from=0;
+  const rows=[],rowEnds=[];let cells=[],from=0;
   for(const token of [...tokens,{index:body.length,end:body.length,value:'end'}]) {
     if(token.index<from)continue;
     cells.push({from:settings.end+from,to:settings.end+token.index,raw:body.slice(from,token.index)});
     from=token.end;
     if(token.value==='&')continue;
-    if(cells.length>1||clean(cells[0].raw))rows.push(cells);
-    cells=[];
+    const terminated=token.value==='\\\\';
     if(token.value==='\\\\') {
-      let next=trivia(body,from);if(body[next]==='*')next++;
+      let next=trivia(body,from);if(body[next]==='*'){from=++next;next=trivia(body,next);}
       if(body[next]==='['){const spacing=group(body,next,'[',']');if(!spacing)return null;from=spacing.end;}
     }
+    if(terminated||cells.length>1||clean(cells[0].raw)){
+      rows.push(cells);
+      rowEnds.push({start:cells[0].from+trivia(cells[0].raw),
+        from:settings.end+(terminated?from:body.trimEnd().length),terminated});
+    }
+    cells=[];
   }
   if(!rows.length||rows.some(row=>row.length!==specs.length))return null;
   const h=Array.from({length:rows.length+1},()=>Array(specs.length).fill(null));
@@ -172,34 +177,288 @@ export function parseTblr(source) {
       const style=styles(value,unsupported);for(const r of selected)for(const s of cellStyles[r-1])Object.assign(s,style);
     } else unsupported.push(key+(value===null?'':'='+value));
   }
-  const parsed=[];
+  const parsed=[],coveredUntil=Array(specs.length).fill(0);
   for(let r=0;r<rows.length;r++) {
     const row=[];
     for(let c=0;c<specs.length;) {
-      const cell=rows[r][c];let offset=trivia(cell.raw),span=1,style={...cellStyles[r][c]};
+      if(coveredUntil[c]>r){c++;continue;}
+      const cell=rows[r][c];let offset=trivia(cell.raw),span=1,rowspan=1,style={...cellStyles[r][c]},spanRange;
       if(/^\\SetCell(?![A-Za-z])/.test(cell.raw.slice(offset))) {
         offset=trivia(cell.raw,offset+8);
         if(cell.raw[offset]==='[') {
           const opt=group(cell.raw,offset,'[',']');if(!opt)return null;
-          const match=/^\s*c\s*=\s*(\d+)\s*$/.exec(opt.value);if(!match)return null;
-          span=Number(match[1]);offset=trivia(cell.raw,opt.end);
+          const fields=split(opt.value)?.map(field=>/^\s*([cr])\s*=\s*(\d+)\s*$/.exec(field));
+          if(!fields?.length||fields.some(field=>!field)||new Set(fields.map(field=>field[1])).size!==fields.length)return null;
+          for(const [,key,value] of fields){
+            if(key==='c')span=Number(value);
+            else rowspan=Number(value);
+          }
+          spanRange={from:cell.from+offset+1,to:cell.from+opt.end-1};
+          offset=trivia(cell.raw,opt.end);
         }
         const format=group(cell.raw,offset);if(!format)return null;
         Object.assign(style,styles(format.value,unsupported));offset=trivia(cell.raw,format.end);
       }
-      if(span<1||c+span>specs.length)return null;
+      if(span<1||c+span>specs.length||rowspan<1||r+rowspan>rows.length||
+         coveredUntil.slice(c,c+span).some(end=>end>r))return null;
+      coveredUntil.fill(r+rowspan,c,c+span);
       const text=cell.raw.slice(offset).trimEnd();
       const {align,...css}=style;
       // Rules inside a spanning cell are omitted by tabularray as well.
-      for(const [side,values] of [['Top',h[r].slice(c,c+span)],['Bottom',h[r+1].slice(c,c+span)],['Left',[v[c][r]]],['Right',[v[c+span][r]]]]) {
+      for(const [side,values] of [['Top',h[r].slice(c,c+span)],['Bottom',h[r+rowspan].slice(c,c+span)],
+        ['Left',v[c].slice(r,r+rowspan)],['Right',v[c+span].slice(r,r+rowspan)]]) {
         css['border'+side]=values.every(x=>x===values[0])?(values[0]??'0px solid currentColor'):'0px solid currentColor';
       }
-      row.push({text,from:cell.from+offset,to:cell.from+offset+text.length,attrs:{colspan:span,rowspan:1,align,tblrStyle:css}});
+      row.push({text,from:cell.from+offset,to:cell.from+offset+text.length,spanRange,column:c,
+        attrs:{colspan:span,rowspan,align,tblrStyle:css}});
       c+=span;
     }
     parsed.push(row);
   }
-  return {source,columns:specs.map(s=>({left:'l',center:'c',right:'r'}[s.align]??'l')).join(''),rows:parsed,unsupported};
+  const indexed=axisOptions(settings,colspec,rows.length,specs.length);
+  return {source,columns:specs.map(s=>({left:'l',center:'c',right:'r'}[s.align]??'l')).join(''),rows:parsed,unsupported,
+    ...(indexed&&source[trivia(source,start[0].length)]!=='['?{rowEnds,rawRows:rows,indexed,
+      columnRanges:columnSettingRanges(settings,colspec)}:{})};
+}
+
+function axisOptions(settings,colspec,height,width){
+  if(!colspec)return [];
+  const end=settings.value.length,base=settings.end-end-1;
+  const indexed=[];
+  let from=0;
+  for(const cut of [...delimiters(settings.value,[','],true),{index:end,end}]){
+    const optionStart=from;
+    const raw=settings.value.slice(from,cut.index);
+    const [key,value]=assignment(clean(raw));
+    const start=from+trivia(raw);
+    from=cut.end;
+    if(!key||['colspec','width','rows','cells'].includes(key))continue;
+    if(['hlines','vlines'].includes(key)&&(value===null||group(value,0)?.end===value.length))continue;
+    const match=/^(row|hline|vline)(\{\s*)([1-9]\d*)\s*\}/.exec(settings.value.slice(start,cut.index));
+    if(!match||key!==match[0])return null;
+    const [,kind,gap,digits]=match;
+    const index=Number(digits),limit={row:height,hline:height+1,vline:width+1}[kind];
+    if(index>limit||kind!=='row'&&value!==null&&group(value,0)?.end!==value.length)return null;
+    const at=base+start+kind.length+gap.length;
+    const removal=kind==='row'&&!raw.includes('%')?{from:base+(optionStart?optionStart-1:start),
+      to:base+(optionStart?optionStart+raw.trimEnd().length:cut.end),insert:''}:null;
+    indexed.push({kind,index,from:at,to:at+digits.length,removal});
+  }
+  return indexed;
+}
+
+function adjustAxes(table,axis,position,remove){
+  const relevant=axis==='row'?['row','hline']:['vline'];
+  const edits=[];
+  const boundary=axis==='row'?'hline':'vline';
+  const mergingRules=remove&&table.indexed.some(({kind,index})=>kind===boundary&&index===position)&&
+    table.indexed.some(({kind,index})=>kind===boundary&&index===position+1);
+  if(mergingRules)return null;
+  let removedStyle=false;
+  for(const {kind,index,from,to,removal} of table.indexed){
+    if(!relevant.includes(kind))continue;
+    if(remove&&kind==='row'&&index===position){
+      if(removedStyle||!removal)return null;
+      edits.push(removal);
+      removedStyle=true;
+    }
+    if(index>position)edits.push({from,to,insert:String(index+(remove?-1:1))});
+  }
+  return edits;
+}
+
+function applyTblrEdits({table,base},edits,offset){
+  edits.sort((left,right)=>left.from-right.from);
+  const from=edits[0].from,to=edits.at(-1).to,source=table.source;
+  const insert=edits.toReversed().reduce((value,edit)=>value.slice(0,edit.from-from)+
+    edit.insert+value.slice(edit.to-from),source.slice(from,to));
+  const draft=source.slice(0,from)+insert+source.slice(to);
+  const nextOffset=edits.filter(edit=>base+edit.from<offset)
+    .reduce((point,edit)=>point+edit.insert.length-(edit.to-edit.from),offset);
+  return {patch:{from:base+from,to:base+to,insert,offset:nextOffset},draft};
+}
+
+function changeSpan(source,range,axis,count){
+  if(!range)return null;
+  const option=source.slice(range.from,range.to);
+  const field=axis==='row'?/(^|,)\s*r\s*=\s*\d+/:/(^|,)\s*c\s*=\s*\d+/;
+  const insert=option.replace(field,value=>value.replace(/\d+$/,String(count)));
+  return insert===option?null:{...range,insert};
+}
+
+function columnSettingRanges(settings,colspec){
+  const base=settings.end-settings.value.length-1;
+  let from=0,to=settings.value.length;
+  if(colspec){
+    const cuts=delimiters(settings.value,[','],true);
+    let start=0,found=false;
+    for(const cut of [...cuts,{index:to,end:to}]){
+      const section=settings.value.slice(start,cut.index);
+      if(assignment(clean(section))[0]==='colspec'){
+        if(found)return [];
+        const equals=delimiters(section,['='],true)?.[0];
+        if(!equals)return [];
+        from=start+trivia(section,equals.end);
+        const value=group(settings.value,from);
+        if(value){from++;to=value.end-1;}
+        else to=cut.index;
+        found=true;
+      }
+      start=cut.end;
+    }
+    if(!found)return [];
+  }
+  const ranges=[];
+  if(!columns(settings.value.slice(from,to),[],ranges))return [];
+  return ranges.map(range=>({from:base+from+range.from,to:base+from+range.to}));
+}
+
+function editableTblr(source) {
+  let table=parseTblr(source),base=0;
+  if(!table){
+    const float=parseTableFloat(source);
+    const [opening,...rest]=float?[...sourceStructure(float.body)].filter(token=>token.topLevel&&token.kind==='begin'):[];
+    if(opening?.value!=='\\begin{tblr}'||rest.length)return null;
+    const closing=environmentEnd(float.body,opening.index,'tblr');
+    if(!closing)return null;
+    table=parseTblr(float.body.slice(opening.index,closing.end));
+    base=float.open.length+opening.index;
+  }
+  return table?.rowEnds?{table,base}:null;
+}
+
+export function editTblrRow(source,index,remove=false,offset) {
+  const located=editableTblr(source);
+  if(!located)return null;
+  const {table}=located;
+  const edge=table?.rowEnds?.[index];
+  if(!edge||remove&&table.rows.length===1)return null;
+  const selectors=adjustAxes(table,'row',index+1,remove);
+  if(!selectors)return null;
+  const raw=table.source,eol=raw.includes('\r\n')?'\r\n':'\n';
+  const spans=[];
+  for(const [row,cells] of table.rows.slice(0,index+1).entries()){
+    for(const {attrs,spanRange,column,to} of cells){
+      if(attrs.rowspan<2||index>=row+attrs.rowspan-(remove?0:1))continue;
+      const span=changeSpan(raw,spanRange,'row',attrs.rowspan+(remove?-1:1));
+      if(!span)return null;
+      if(remove&&row===index){
+        const first=table.rawRows[row][column],next=table.rawRows[row+1][column];
+        if(next.raw.trim())return null;
+        const start=first.from+trivia(first.raw),at=next.from+trivia(next.raw);
+        spans.push({from:at,to:at,insert:raw.slice(start,span.from)+span.insert+raw.slice(span.to,to)});
+      }else spans.push(span);
+    }
+  }
+  let {from}=edge,to=from;
+  let insert=(edge.terminated?'':' \\\\')+eol+' & '.repeat(table.columns.length-1)+'\\\\';
+  if(remove){
+    const lineStart=raw.lastIndexOf('\n',edge.start-1)+1;
+    const newline=/^[ \t]*\r?\n/.exec(raw.slice(edge.from));
+    const wholeLine=newline&&!raw.slice(lineStart,edge.start).trim();
+    from=wholeLine?lineStart:edge.start;
+    to=edge.from+(wholeLine?newline[0].length:0);
+    insert='';
+  }
+  const {patch,draft}=applyTblrEdits(located,[...selectors,...spans,{from,to,insert}],offset);
+  const updated=parseTblr(draft);
+  if(updated?.rows.length!==table.rows.length+(remove?-1:1)||
+    !remove&&updated.rows[index+1].some(cell=>cell.text))return null;
+  return patch;
+}
+
+export function editTblrColumn(source,row,column,offset,remove=false) {
+  const located=editableTblr(source);
+  if(!located)return null;
+  const {table}=located;
+  const count=table.columnRanges.length;
+  const target=table.rows[row]?.[column];
+  if(!target||remove&&count<2)return null;
+  column=target.column+(remove?0:target.attrs.colspan-1);
+  const {from,to}=table.columnRanges[column];
+  const selectors=adjustAxes(table,'column',column+1,remove);
+  if(!selectors)return null;
+  const edits=[...selectors,remove?{from,to,insert:''}:{from:to,to,insert:'l'}];
+  const boundary=column+(remove?0:1);
+  for(const [row,cells] of table.rawRows.entries()){
+    const span=table.rows[row].find(cell=>cell.attrs.colspan>1&&
+      cell.column<boundary+(remove?1:0)&&boundary<cell.column+cell.attrs.colspan);
+    if(span){
+      const edit=changeSpan(table.source,span.spanRange,'column',span.attrs.colspan+(remove?-1:1));
+      if(!edit)return null;
+      edits.push(edit);
+    }
+    const slot=remove&&span?.column===column?column+1:column;
+    const cell=cells[slot],end=cell.from+cell.raw.trimEnd().length;
+    if(slot!==column&&cell.raw.trim())return null;
+    if(!remove){
+      const position=Math.max(end,cell.from+trivia(cell.raw));
+      edits.push({from:position,to:position,insert:' & '});
+      continue;
+    }
+    const a=slot?cell.from-1:cell.from+trivia(cell.raw);
+    const b=slot?end:cell.to+1;
+    if(table.source[slot?a:b-1]!=='&'||a>b||table.source.slice(a,b).includes('%'))return null;
+    edits.push({from:a,to:b,insert:''});
+  }
+  const {patch,draft}=applyTblrEdits(located,edits,offset);
+  const next=parseTblr(draft);
+  if(next?.rows.length!==table.rows.length||next.columns.length!==count+(remove?-1:1))return null;
+  return patch;
+}
+
+export function splitTblrCell(source,row,column,offset){
+  const located=editableTblr(source);
+  if(!located)return null;
+  const {table}=located,cell=table.rows[row]?.[column];
+  if(!cell?.spanRange||cell.attrs.colspan===1&&cell.attrs.rowspan===1)return null;
+  const {from,to}=cell.spanRange;
+  const insert=table.source.slice(from,to).replace(/\d+/g,'1');
+  const {patch,draft}=applyTblrEdits(located,[{from,to,insert}],offset);
+  const next=parseTblr(draft);
+  if(next?.rows[row]?.length!==table.rows[row].length+cell.attrs.colspan-1||
+     next.rows[row][column].text!==cell.text||next.rows[row][column].attrs.rowspan!==1)return null;
+  return patch;
+}
+
+export function mergeTblrCells(source,row,first,last){
+  const located=editableTblr(source);
+  if(!located||first>=last)return null;
+  const {table,base}=located;
+  const cells=table.rows[row];
+  const selected=cells?.slice(first,last+1);
+  if(!selected||selected.length!==last-first+1||selected.some(cell=>cell.attrs.colspan!==1)||
+     table.rows.some(row=>row.some(cell=>cell.attrs.rowspan>1)))return null;
+  const column=cells.slice(0,first).reduce((sum,cell)=>sum+cell.attrs.colspan,0);
+  const raw=table.rawRows[row].slice(column,column+selected.length);
+  const from=selected[0].from,to=selected.at(-1).to;
+  if(raw.some((cell,index)=>cell.raw.trim()!==selected[index].text)||table.source.slice(from,to).includes('%'))return null;
+  const format={left:'l',center:'c',right:'r'}[selected[0].attrs.align]??'l';
+  const body=selected.map(cell=>cell.text).filter(Boolean).join(' ');
+  const merged='\\SetCell[c='+selected.length+']{'+format+'} '+body;
+  const insert=merged+' & '.repeat(selected.length-1);
+  const {patch,draft}=applyTblrEdits(located,[{from,to,insert}]);
+  const cell=parseTblr(draft)?.rows[row]?.[first];
+  if(cell?.attrs.colspan!==selected.length||cell.text!==body)return null;
+  return {...patch,offset:base+from+merged.length};
+}
+
+export function mergeTblrRows(source,first,last,column){
+  const located=editableTblr(source);
+  if(!located||first>=last)return null;
+  const {table,base}=located;
+  if(last>=table.rows.length||table.rows.some(row=>row.length!==table.columns.length))return null;
+  const cells=table.rows.slice(first,last+1).map(row=>row[column]);
+  if(cells.some((cell,index)=>!cell||cell.attrs.rowspan!==1||cell.text.includes('%')||
+    table.rawRows[first+index][column].raw.trim()!==cell.text))return null;
+  const format={left:'l',center:'c',right:'r'}[cells[0].attrs.align]??'l';
+  const text=cells.map(cell=>cell.text).filter(Boolean).join(' ');
+  const merged='\\SetCell[r='+cells.length+']{'+format+'} '+text;
+  const edits=cells.map(({from,to},index)=>({from,to,insert:index?'':merged}));
+  const {patch,draft}=applyTblrEdits(located,edits);
+  const cell=parseTblr(draft)?.rows[first]?.[column];
+  if(cell?.attrs.rowspan!==cells.length||cell.text!==text)return null;
+  return {...patch,offset:base+cells[0].from+merged.length};
 }
 
 const tableKeys=['columns','booktabs','borderMode','borderWidth','caption','label','placement','centered','align'];
@@ -265,8 +524,8 @@ export function serializeTblr(node,serialize) {
 
 export function serializeSourceTable(node,serialize,name) {
   const saved=node.attrs?.[name];if(!saved)return null;
-  if(tableShape(node.attrs)!==saved.shape||JSON.stringify(node.content.map(r=>r.content.length))!==JSON.stringify(saved.rows))return null;
-  const cells=node.content.flatMap(r=>r.content),edits=[];
+  if(tableShape(node.attrs)!==saved.shape||JSON.stringify(node.content.map(row=>row.content?.length??0))!==JSON.stringify(saved.rows))return null;
+  const cells=node.content.flatMap(row=>row.content??[]),edits=[];
   for(let i=0;i<cells.length;i++) {
     const cell=cells[i],original=saved.cells[i];
     if(!original||cellShape(cell)!==original.shape)return null;

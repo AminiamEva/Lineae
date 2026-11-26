@@ -3,7 +3,17 @@ import test from 'node:test';
 import { parseDocument } from '../apps/web/latex/document.mjs';
 import { parseInline } from '../apps/web/latex/inline.mjs';
 import { exportDocument, resolvePackages } from '../apps/web/latex/packages.mjs';
-import { appendAlignmentPair, mathDocumentSource, mathEditorSource, numberedMathRows } from '../apps/web/latex/math-environments.mjs';
+import { alignmentLabelRange, appendAlignmentPair, mathDocumentSource, mathEditorSource, numberedMathRows } from '../apps/web/latex/math-environments.mjs';
+
+test('alignment label commands map only the requested numbered row',()=>{
+  const source='\\begin{alignat}{1}\r\na &= b \\\\[3pt]\r\n'+
+    'c &= \\frac{x}{y} \\label{eq:second} \\\\\r\nd &= e \\notag\r\n\\end{alignat}';
+  const first=alignmentLabelRange(source,0),second=alignmentLabelRange(source,1);
+  assert.equal(source.slice(first.from,first.to),'\r\na &= b ');
+  assert.equal(source.slice(second.from,second.to),'\r\nc &= \\frac{x}{y} \\label{eq:second} ');
+  assert.equal(alignmentLabelRange(source,2),null);
+  assert.equal(alignmentLabelRange(source.replaceAll('{alignat}','{alignat*}'),1),null);
+});
 import { serialize } from '../apps/web/src/editor/latex-codec.js';
 import { importBlocks } from '../apps/web/latex/blocks.mjs';
 import { listMarker, markerInput } from '../apps/web/latex/list-numbering.mjs';

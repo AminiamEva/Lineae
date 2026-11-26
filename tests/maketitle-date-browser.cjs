@@ -47,6 +47,17 @@ const pageSource = (title, date) => `\\documentclass{article}\n\\title{${title}}
     const suppressed = await load('suppressed', 'Suppressed', '');
     assert.equal(suppressed.visible, false, '\\date{} suppresses the date');
 
+    const fresh='\\documentclass{article}\n\\begin{document}\nBody.\n\\end{document}\n';
+    await page.locator('input[type=file]').setInputFiles({name:'untitled.tex',mimeType:'text/plain',buffer:Buffer.from(fresh)});
+    await page.waitForFunction(()=>document.querySelector('#document-meta .doc-title')?.textContent==='');
+    const title=page.locator('#document-meta .doc-title');
+    await title.fill('Yield 50%');
+    await title.press('Enter');
+    await page.locator('[data-source-mode=source]').click();
+    const generated=await page.locator('.cm-content').innerText();
+    assert.match(generated,/\\title\{Yield 50\\%\}/);
+    assert.equal(generated.match(/\\maketitle\b/g)?.length,1);
+
     assert.deepEqual(errors, []);
     console.log('PASS title date metadata');
   } finally {

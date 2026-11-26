@@ -543,12 +543,16 @@ async function verifySelectionGeometry(page, paper, importSource) {
     await page.keyboard.type('\\');
     await page.waitForFunction(()=>!document.querySelector('.command-menu').hidden);
     const completion=page.locator('.command-menu');
+    await completion.evaluate(async menu=>{
+      await Promise.allSettled(menu.getAnimations().map(animation=>animation.finished));
+    });
     const initialBounds=await completion.boundingBox();
     const initialScroll=await page.evaluate(()=>window.scrollY);
     assert.ok(initialBounds.y>=caretBounds.y && initialBounds.x<caretBounds.x+80,
       'Completion appears below the text entry position: '+JSON.stringify({initialBounds,caretBounds}));
     for(let index=0;index<16;index++) await page.keyboard.press('ArrowDown');
     assert.equal(await page.evaluate(()=>window.scrollY),initialScroll);
+    await page.evaluate(()=>document.querySelector('.document-page').dispatchEvent(new Event('scroll')));
     await page.locator('.command-menu input').fill('sqrt');
     assert.deepEqual(await completion.boundingBox(),initialBounds,'Filtering must not move or resize completion');
     await page.keyboard.press('Enter');
