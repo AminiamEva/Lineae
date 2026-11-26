@@ -210,6 +210,20 @@ struct Snapshot {
 }
 
 impl Snapshot {
+    fn is_lineae_blank_page(&self) -> bool {
+        const BLANK: &str = concat!(
+            "\\documentclass[a4paper]{article}\n",
+            "\\usepackage[margin=2.2cm]{geometry}\n",
+            "\\usepackage{amsmath}\n",
+            "\\usepackage{indentfirst}\n",
+            "\\begin{document}\n\n",
+            "\\thispagestyle{empty}\\null\n",
+            "\\end{document}\n",
+        );
+        self.main_file == "main.tex" && self.files.len() == 1
+            && self.files.get("main.tex").is_some_and(|source| source.as_slice() == BLANK.as_bytes())
+    }
+
     fn new(source: &str, main_file: String, files: Vec<NativeTexFile>) -> Result<Self, NativeTexError> {
         validate_source(source)?;
         validate_project_path(&main_file)?;
@@ -1328,15 +1342,17 @@ pub async fn native_tex_open(
         (manager.generation, manager.session.take())
     };
     if let Some(old) = old { blocking(move || { old.terminate(); Ok(()) }).await?; }
-    let (sender, receiver) = tokio::sync::oneshot::channel();
-    let dialog_app = app.clone();
-    app.run_on_main_thread(move || dialog_app.dialog().message("Compile this project with native LuaLaTeX?\n\nOnly continue if you trust its source and included project assets. LuaLaTeX can execute Lua and access or change files with your account's permissions, even without shell escape. The temporary snapshot is not a security sandbox.")
-        .title("Trust native TeX source")
-        .buttons(MessageDialogButtons::OkCancelCustom("Trust and compile".into(), "Cancel".into()))
-        .show(move |approved| { let _ = sender.send(approved); }))
-        .map_err(|e| error("trust_dialog", format!("Cannot show native TeX trust dialog: {e}")))?;
-    if !receiver.await.map_err(|_| error("trust_canceled", "Native TeX trust dialog was closed."))? {
-        return Ok(None);
+    if !snapshot.is_lineae_blank_page() {
+        let (sender, receiver) = tokio::sync::oneshot::channel();
+        let dialog_app = app.clone();
+        app.run_on_main_thread(move || dialog_app.dialog().message("Compile this project with native LuaLaTeX?\n\nOnly continue if you trust its source and included project assets. LuaLaTeX can execute Lua and access or change files with your account's permissions, even without shell escape. The temporary snapshot is not a security sandbox.")
+            .title("Trust native TeX source")
+            .buttons(MessageDialogButtons::OkCancelCustom("Trust and compile".into(), "Cancel".into()))
+            .show(move |approved| { let _ = sender.send(approved); }))
+            .map_err(|e| error("trust_dialog", format!("Cannot show native TeX trust dialog: {e}")))?;
+        if !receiver.await.map_err(|_| error("trust_canceled", "Native TeX trust dialog was closed."))? {
+            return Ok(None);
+        }
     }
     let session = blocking(move || Session::create_snapshot(snapshot)).await?;
     let session_id = session.id.clone();

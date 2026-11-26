@@ -1,5 +1,6 @@
 import {stagedRaster} from '../typesetting/rtex/raster-assets.mjs';
 import {desktopEngineToggle,nativeWorkspaceRequested,selectDesktopEngine} from '../editor/native-surface/acceptance-mode.mjs';
+import {DEFAULT_DOCUMENT_SOURCE} from '../editor/default-document.mjs';
 import {t} from './i18n.mjs';
 import {installNativePages} from '../typesetting/rtex/pages.mjs';
 import {installNativePdf} from '../typesetting/rtex/pdf.mjs';
@@ -81,6 +82,11 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
   let foldsDirty=false;
   let mirror=null;
   const engineToggle=desktopEngineToggle();
+  if(engineToggle){
+    heading.hidden=true;
+    notice.hidden=true;
+    closeButton.hidden=true;
+  }
   let primaryRequested=engineToggle&&nativeWorkspaceRequested();
   let mountedSplit=null;
   const acceptsInput=()=>!primary||isDocumentMode?.();
@@ -770,7 +776,7 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
     panel.dataset.renderer=mode;
     panel.dataset.editing=String(nativeEditing&&acceptsInput());
     status.textContent=error?t('原生预览不可用：','Native preview unavailable: ')+error:
-      opening?t('等待信任确认并启动引擎…','Confirm trust and start the engine…'):
+      opening?t('正在启动 LuaLaTeX…','Starting LuaLaTeX…'):
       exporting===generation?t('正在导出已确认版本的 PDF…','Exporting the confirmed PDF revision…'):
       current()?t('已显示源码修订 ','Showing source revision ')+sourceRevision+(mode==='pdf'?' · PDF':''):
       t('排版中；现有画面可能过期。编辑可以继续。','Typesetting; the last frame may be stale. Editing can continue.');
@@ -919,7 +925,18 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
     finally {if(updating===attempt)updating=null;if(attempt===generation)renderStatus();}
   }
   async function readSnapshot() {
-    if(getSnapshot)return getSnapshot();
+    if(getSnapshot){
+      const snapshot=await getSnapshot();
+      // A blank LaTeX document otherwise ships no page. Keep the synthetic
+      // page out of the editor's source, history, and files on disk.
+      if(engineToggle&&snapshot.mainFile==='main.tex'&&!snapshot.files?.length&&
+        snapshot.source.replace(/\s*\\end\{document\}\s*$/,'\\end{document}')===
+          DEFAULT_DOCUMENT_SOURCE.replace(/\s*\\end\{document\}\s*$/,'\\end{document}')){
+        const source=DEFAULT_DOCUMENT_SOURCE.replace('\\end{document}','\\thispagestyle{empty}\\null\n\\end{document}');
+        return {...snapshot,source,signature:source};
+      }
+      return snapshot;
+    }
     const source=getSource();
     return {source,mainFile:'main.tex',signature:source};
   }
@@ -967,7 +984,8 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
         pdfLayout=event.pdf_fallback_registered&&event.convergence?.state==='Converged'?event.versions:null;
       }
       if(event.event==='LayoutUpdate' && event.compile?.state!=='Ok') {
-        error=t('LuaLaTeX 编译未成功；保留上次有效画面。','LuaLaTeX compilation failed; keeping the last valid frame.');
+        const detail=event.compile?.message??event.diagnostics?.map(item=>item.message).filter(Boolean).join('\n');
+        error=detail||error||t('LuaLaTeX 编译失败。请查看源码或检查 TeX 宏包。','LuaLaTeX compilation failed. Check the source and installed TeX packages.');
       } else {
         if(mode==='pdf'&&event.event==='LayoutUpdate')void fallback(null,event.versions.source_revision);
         else renderer.accept(event);
