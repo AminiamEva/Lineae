@@ -1,0 +1,256 @@
+module.exports=function installMockNativeTex() {
+  // UI/interaction preservation only, never evidence of actual TeX geometry.
+  window.nativeProbe={calls:[],events:[],revision:1,session:0,failFont:false,failPdf:false,delayOpen:false,ruleRects:[]};
+  const p=window.nativeProbe;
+  p.listeners=[];
+  const emit=event=>{
+    p.events.push(event);
+    for(const listener of p.listeners) {
+      try {listener({payload:{sessionId:String(p.session),event}});} catch {}
+    }
+  };
+  p.pdf=()=>{
+    const text='BT /F1 18 Tf 72 720 Td (LuaLaTeX PDF fallback) Tj ET\n';
+    const size=p.semanticPdf?`${39000000/65781.76} ${55000000/65781.76}`:'612 792';
+    const objects=['<< /Type /Catalog /Pages 2 0 R >>','<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
+      `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${size}] /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>`,
+      `<< /Length ${text.length} >>\nstream\n${text}endstream`,
+      '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>'];
+    let output='%PDF-1.4\n';const offsets=[0];
+    for(let i=0;i<objects.length;i++){offsets.push(output.length);output+=`${i+1} 0 obj\n${objects[i]}\nendobj\n`;}
+    const start=output.length;output+='xref\n0 6\n0000000000 65535 f \n';
+    for(const offset of offsets.slice(1))output+=String(offset).padStart(10,'0')+' 00000 n \n';
+    output+=`trailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n${start}\n%%EOF\n`;
+    return [...new TextEncoder().encode(output)];
+  };
+  const fillRect=CanvasRenderingContext2D.prototype.fillRect;
+  CanvasRenderingContext2D.prototype.fillRect=function(x,y,w,h) {
+    if(this.canvas.closest('#native-tex-preview'))p.ruleRects.push({w,h});
+    return fillRect.call(this,x,y,w,h);
+  };
+  p.layout=()=>{
+    const layout={event:'LayoutUpdate',compile:{state:'Ok'},convergence:{state:'Converged'},pdf_fallback_registered:Boolean(p.registeredPdf),
+    versions:{source_revision:p.revision,context_revision:1,engine_generation:0,layout_version:p.revision},
+    placements:[{par_id:1,fragments:[{page:1,first_line:1,last_line:1,xs:[6500000],baselines:[6500000],approximate:false}]}],
+    pages_total:1,pages_changed:[{page:1,exact:!p.semanticPdf,dl:{kind:'page',page:1,
+      page_width:39000000,page_height:55000000,width:0,height:0,depth:0,flags:{},images_info:p.raster?{'1':{file:'plot.png'}}:{},
+      fonts:{15:{id:15,filename:p.collection?'/fixture/native.otc':'/fixture/lmroman10-regular.otf',subfont:1,size:655360,extend:1000,squeeze:1000}},
+      other:p.raster?[['i',1,3000000,3000000,1000000,1000000]]:[],lines:[{x:6500000,y:6500000,w:600000,h:600000,d:0,
+        items:[['g',15,97,28,6500000,6500000,327680,0],['r',6500000,7000000,3000000,6554]]}]}}]};
+    if(p.foldProject===true){
+      const [first]=layout.pages_changed;
+      layout.pages_total=3;
+      layout.pages_changed=[1,2,3].map(page=>({...first,page,dl:{...first.dl,page}}));
+    }
+    if(p.raster&&p.transformedRaster){
+      const other=layout.pages_changed[0].dl.other;
+      other.unshift(['M','save'],['M','set',3000000,3000000,'2 0 0 1']);
+      other.push(['M','restore']);
+    }
+    if(p.duplicateRaster)layout.pages_changed[0].dl.other.push(['i',1,3000000,6500000,1500000,1500000]);
+    return layout;
+  };
+  window.__TAURI__={core:{invoke:async(command,args)=>{
+    p.calls.push({command,args});
+    if(command==='native_tex_open') {
+      p.source=args.source;p.mainFile=args.mainFile;p.revision=1;p.events=[];
+      const sessionId=String(++p.session);
+      if(p.delayOpen)await new Promise(done=>{p.resolveOpen=done;});
+      emit(p.layout());
+      return {sessionId,sourceRevision:1};
+    }
+    if(command==='native_tex_poll'){
+      if(args.sessionId!==String(p.session))throw {code:'stale_session',message:'stale test session'};
+      return p.events.splice(0);
+    }
+    if(command==='native_tex_update') {
+      if(p.holdUpdate){
+        p.holdUpdate=false;
+        await new Promise(resolve=>{p.releaseUpdate=resolve;});
+      }
+      if(p.restartNext||args.mainFile&&p.mainFile!==args.mainFile){
+        p.restartNext=false;p.session++;p.revision=0;p.events=[];
+      }
+      if(args.mainFile)p.mainFile=args.mainFile;
+      p.source=args.source;p.revision++;
+      if(p.warmNext){
+        p.warmNext=false;
+        const frame=p.layout();
+        emit({event:'ParagraphUpdate',par_id:1,status:'ok',pagination_stale:false,context_stale:false,
+          versions:{...frame.versions,layout_version:frame.versions.layout_version-1},fragments:frame.placements[0].fragments,
+          dl:frame.pages_changed[0].dl});
+        p.finishWarm=()=>emit(frame);
+      }else emit(p.layout());
+      return {sessionId:String(p.session),editId:p.revision,sourceRevision:p.revision,routed:'fast'};
+    }
+    if(command==='native_tex_font') {
+      if(p.realEvidence){
+        const result=await fetch('/native-formula-font?key='+encodeURIComponent(args.key));
+        if(!result.ok)throw new Error('The exact recorded native font is not available');
+        return result.arrayBuffer();
+      }
+      if(p.failFont)throw 'The native font is unavailable';
+      const face=new Uint8Array(await(await fetch('/assets/fonts/latin-modern/lmroman10-regular.otf')).arrayBuffer());
+      if(!p.collection)return [...face];
+      const collection=new Uint8Array(face.length+16),view=new DataView(collection.buffer);
+      view.setUint32(0,0x74746366);view.setUint32(4,0x00010000);view.setUint32(8,1);view.setUint32(12,16);
+      collection.set(face,16);
+      for(let index=0;index<view.getUint16(20);index++){
+        const offset=16+12+index*16+8;
+        view.setUint32(offset,view.getUint32(offset)+16);
+      }
+      return [...collection];
+    }
+    if(command==='native_tex_type_one_font'&&p.realEvidence?.fonts?.[args.key])return p.realEvidence.fonts[args.key];
+    if(command==='native_tex_observe_formula'){
+      if(p.rejectObservation)throw new Error('No verified geometry for this frame');
+      if(p.realEvidence){
+        if(args.projection===p.realEvidence.measuredProjection&&p.realEvidence.measuredObserved)return p.realEvidence.measuredObserved;
+        if(args.projection!==p.realEvidence.projection)throw new Error('Editor projection differs from the actual recorded compile');
+        if(p.realEvidence.files&&JSON.stringify(p.realEvidence.files)!==JSON.stringify(args.files))
+          throw new Error('Staged project projection differs from the actual recorded compile');
+        return p.realEvidence.observed;
+      }
+      const input=p.targetInclude?args.files?.find(file=>file.path==='chapters/one.tex')?.source:args.projection;
+      if(!input)throw new Error('No target source in observation request');
+      if(p.duplicateRaster){
+        const observed=p.layout().pages_changed;
+        const markers=[...input.matchAll(/\\attribute65000=(\d+) \$ \$/g)];
+        const anchors=observed[0].dl.other.flatMap(([, ,x,y,w,h])=>[[x,y],[x+w,y+h]]);
+        if(markers.length!==anchors.length)throw new Error('Missing raster source anchors');
+        observed[0].dl.math_owners={glyphs:[],fields:anchors.map(([x,y],index)=>
+          ({owner:Number(markers[index][1]),role:'math',empty:true,bbox:[x,y,x,y]}))};
+        return observed;
+      }
+      // The mock only treats tags inside math delimiters as formula owners.
+      const mathGroups=/\\\[([\s\S]*?)\\\]|\$\$([\s\S]*?)\$\$|\$([^$]*)\$|\\begin\{((?:equation|align(?:at)?|flalign|gather|multline|eqnarray)\*?)\}([\s\S]*?)\\end\{\4\}/g;
+      const mathOnly=text=>[...text.matchAll(mathGroups)].map(found=>found[1]??found[2]??found[3]??found[5]).join('\n');
+      const mathInput=mathOnly(input);
+      const matches=[...mathInput.matchAll(/\\attribute65000=(\d+) \\(frac|sqrt)/g)];
+      const match=matches.at(-1);
+      const script=/\\attribute65000=(\d+) x\^\{\}/.exec(mathInput);
+      const cell=/&\\attribute65000=(\d+) \s*\\\\/.exec(mathInput);
+      const aligned=/&\\aftergroup\\LineaeNativeCell([A-J]+)\s*\\\\/.exec(mathInput);
+      const cellOwner=cell?.[1]??(aligned?[...aligned[1]].map(letter=>letter.charCodeAt(0)-65).join(''):null);
+      // Prose tags are the attribute assignments outside instrumented math groups.
+      const emptyCells=/\\begingroup\\mathsurround=0pt\\attribute65000=(\d+) \$ \$\\endgroup/g;
+      const textTags=projection=>[...projection
+        .replace(emptyCells,'')
+        .replace(mathGroups,'')
+        .matchAll(/\\attribute65000=(\d+) (.)/gsu)];
+      if(p.foldProject){
+        const root=textTags(args.projection);
+        const child=textTags(args.files.find(file=>file.path==='chapters/one.tex').source);
+        const observed=p.layout().pages_changed;
+        const owners=(items,y,start=6500000)=>items.map(([,owner,char],index)=>{
+          const x=start+index*200000;
+          return {owner:Number(owner),char:char.codePointAt(0),bbox:[x,y,x+200000,y+500000]};
+        });
+        if(p.foldProject==='inline'){
+          observed[0].dl.math_owners={fields:[],glyphs:[...owners(root.slice(0,6),9000000),
+            ...owners(child,9000000,8000000),...owners(root.slice(6),9000000,9400000)]};
+          return observed;
+        }
+        observed[0].dl.math_owners={fields:[],glyphs:[...owners(root.slice(0,7),9000000),...owners(child.slice(0,6),27000000)]};
+        observed[2].dl.math_owners={fields:[],glyphs:[...owners(child.slice(6),27000000),...owners(root.slice(7),33000000)]};
+        return observed;
+      }
+      if(p.repeatedInput){
+        const root=textTags(args.projection),child=textTags(input);
+        const observed=p.layout().pages_changed;
+        const glyphs=(items,y)=>items.map(([,tag,char],index)=>{
+          const x=6500000+index*200000;
+          return {owner:Number(tag),char:char.codePointAt(0),bbox:[x,y,x+200000,y+500000]};
+        });
+        const fields=[],mathGlyphs=[];
+        const denominator=/\\frac\{[^{}]*\}\{(?:\\attribute65000=(\d+) )?([^{}]*)\}/.exec(input);
+        if(denominator&&match){
+          for(const y of [14000000,22000000]){
+            const x=6500000;
+            if(!denominator[2])fields.push({owner:Number(match[1]),role:'den',empty:true,bbox:[x,y,x,y]});
+            else if(denominator[1])mathGlyphs.push(...glyphs([[null,denominator[1],denominator[2]]],y));
+          }
+        }
+        observed[0].dl.math_owners={fields,glyphs:[
+          ...glyphs(root.slice(0,7),9000000),...glyphs(child,12000000),...glyphs(root.slice(7,15),16000000),
+          ...glyphs(child,20000000),...glyphs(root.slice(15),25000000),...mathGlyphs,
+        ]};
+        return observed;
+      }
+      const proseTags=[...textTags(input),...(p.targetInclude&&p.includeMainText?textTags(args.projection):[])];
+      const emptyFields=[...input.matchAll(emptyCells)].map(([,owner],index)=>{
+        const x=6500000+index*1000000;
+        return {owner:Number(owner),role:'math',empty:true,bbox:[x,10500000,x,10500000]};
+      });
+      const cases=/\\begin\{cases\}([\s\S]*?)\\end\{cases\}/.exec(mathInput);
+      if(cases){
+        const observed=p.layout().pages_changed;
+        const fields=[...cases[1].matchAll(/\\attribute65000=(\d+) (?=[&\\]|$)/g)].map(([,owner],index)=>{
+          const x=6500000+index%2*1000000,y=7000000+Math.floor(index/2)*1000000;
+          return {owner:Number(owner),role:'cell',empty:true,bbox:[x,y,x,y]};
+        });
+        observed[0].dl.math_owners={fields,glyphs:[]};
+        return observed;
+      }
+      if(!match&&!script&&!cellOwner){
+        const text=proseTags;
+        if((!text.length&&!emptyFields.length)||args.sourceRevision!==p.revision)throw new Error('Unexpected formula observation request');
+        const observed=p.layout().pages_changed;
+        observed[0].dl.math_owners={fields:emptyFields,glyphs:[]};
+        let x=6500000;
+        for(const [,owner,char] of text){
+          observed[0].dl.math_owners.glyphs.push({owner:Number(owner),char:char.codePointAt(0),
+            bbox:[x,9000000,x+200000,9500000]});
+          x+=200000;
+        }
+        return observed;
+      }
+      if((!match&&!script&&!cellOwner)||args.sourceRevision!==p.revision)throw new Error('Unexpected formula observation request');
+      const observed=p.layout().pages_changed;
+      const denominator=/\\frac\{[^{}]*\}\{(?:\\attribute65000=(\d+) )?([^{}]*)\}/.exec(mathInput);
+      observed[0].dl.math_owners={fields:[{owner:Number(match?.[1]??script?.[1]??cellOwner),role:match?(match[2]==='frac'?'den':'radicand'):script?'sup':'cell',
+        bbox:[6500000,7000000,6500000,7000000],empty:match?denominator?.[2]==='':true},...emptyFields],glyphs:[]};
+      if(match&&denominator){
+        let x=6500000;
+        for(const char of denominator[2]??''){
+          observed[0].dl.math_owners.glyphs.push({owner:Number(denominator[1]),char:char.codePointAt(0),
+            bbox:[x,6900000,x+200000,7000000]});
+          x+=200000;
+        }
+      }
+      if(cellOwner)observed[0].dl.math_owners.fields.push({owner:2,role:'cell',bbox:[6500000,7000000,6500000,7000000],empty:true});
+      const token=/\\attribute65000=(\d+) a(?=\\attribute)/.exec(mathInput);
+      if(token)observed[0].dl.math_owners.glyphs.push({owner:Number(token[1]),char:97,
+        bbox:[6500000,6000000,6800000,6500000]});
+      let textX=6500000;
+      for(const [,owner,char] of proseTags){
+        observed[0].dl.math_owners.glyphs.push({owner:Number(owner),char:char.codePointAt(0),
+          bbox:[textX,9000000,textX+200000,9500000]});
+        textX+=200000;
+      }
+      if(p.mismatchObservedDrawing)observed[0].dl.lines[0].items[0][4]++;
+      return observed;
+    }
+    if(command==='native_tex_render_pdf'){
+      if(args.sourceRevision!==p.revision)throw {code:'revision_mismatch',message:'stale test revision'};
+      if(p.failPdf)throw new Error('PDF compilation failed');
+      return p.pdf();
+    }
+    if(command==='native_tex_pdf'){
+      if(!p.registeredPdf||args.sourceRevision!==p.revision||args.layoutVersion!==p.revision)
+        throw {code:'revision_mismatch',message:'stale test layout'};
+      return p.pdf();
+    }
+    if(command==='native_tex_export')return {jobId:1,sourceRevision:args.sourceRevision,path:'approved.pdf'};
+    if(command==='native_tex_close') {
+      if(args.sessionId===String(p.session))p.events=[];
+      return;
+    }
+    throw new Error('Unexpected IPC command '+command);
+  }},
+  event:{listen:async(name,listener)=>{
+    if(name!=='lineae-native-tex')throw new Error('Unexpected event '+name);
+    p.listeners.push(listener);
+    return ()=>{p.listeners=p.listeners.filter(candidate=>candidate!==listener);};
+  }}};
+};

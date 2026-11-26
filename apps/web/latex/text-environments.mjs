@@ -1,9 +1,9 @@
 import {sourceStructure} from './source-structure.mjs';
 import {group,trivia,environmentEnd} from './tblr.mjs';
 
-export function textEnvironmentAt(source,start=0) {
-  const open=/^\\begin\{(abstract|center)\}/.exec(source.slice(start));
-  if(!open)return null;
+function textEnvironmentAt(source,start,includeQuote) {
+  const open=/^\\begin\{(abstract|center|quote)\}/.exec(source.slice(start));
+  if(!open||open[1]==='quote'&&!includeQuote)return null;
   const close=environmentEnd(source,start,open[1]);
   return close?{name:open[1],bodyStart:start+open[0].length,bodyEnd:close.start,end:close.end}:null;
 }
@@ -26,8 +26,8 @@ function contentStart(source,start,end) {
   return Math.min(cursor,end);
 }
 
-export function importTextEnvironment(source,importChildren) {
-  const start=source.length-source.trimStart().length,env=textEnvironmentAt(source,start);
+export function importTextEnvironment(source,importChildren,{includeQuote=false}={}) {
+  const start=source.length-source.trimStart().length,env=textEnvironmentAt(source,start,includeQuote);
   if(!env || source.slice(env.end).trim() || [...sourceStructure(source)].some(t=>t.kind==='invalid'))return null;
   const content=[],parts=[];
   const append=(from,to,layout=true)=>{

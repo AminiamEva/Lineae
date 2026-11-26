@@ -55,7 +55,8 @@ const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR
     // Crop is a single button that enters the interactive crop overlay.
     assert.equal(await page.locator('.image-crop').count(), 0, 'numeric crop fields are gone');
     const beforeCrop = await imageNode.locator('.document-image-frame').evaluate(frame => ({ width: frame.clientWidth, height: frame.clientHeight }));
-    await page.locator('.image-crop-button').click();
+    await page.locator('.image-tools [data-ribbon-group="image-appearance"] .ribbon-group-toggle').click();
+    await page.locator('.ribbon-flyout .image-crop-button').click();
     await page.locator('.image-crop-layer').waitFor({ state: 'visible' });
     assert.equal(await page.locator('.image-crop-mask').count(), 4);
     assert.equal(await page.locator('.image-crop-handle').count(), 8);
@@ -116,9 +117,14 @@ const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR
     // Wrap text exposes the \centering control immediately after it.
     const wrapText = page.getByLabel('Wrap text');
     const centerWrap = page.getByLabel('Center in wrap');
-    assert.equal(await centerWrap.isDisabled(), true, 'Wrap centering is disabled until wrap text is enabled');
+    for (const label of ['Center in wrap','Wrap side','Wrap width','Overhang','Wrapped lines']) {
+      assert.equal(await page.getByLabel(label,{exact:true}).isDisabled(), true, label+' is disabled until wrap text is enabled');
+    }
     await wrapText.check();
     await page.waitForFunction(() => !document.querySelector('.image-tools input[aria-label="Center in wrap"]')?.disabled);
+    for (const label of ['Center in wrap','Wrap side','Wrap width','Overhang','Wrapped lines']) {
+      assert.equal(await page.getByLabel(label,{exact:true}).isDisabled(), false, label+' is enabled when wrap text is on');
+    }
     await centerWrap.check();
     await page.waitForFunction(() => document.querySelector('.document-image')?.dataset.centered === 'true');
     const wrapAttrs = await page.locator('.ProseMirror').evaluate(element => element.editor.getJSON().content.find(node => node.type === 'documentImage').attrs);

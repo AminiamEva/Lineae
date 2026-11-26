@@ -92,3 +92,73 @@ test('resource listeners refresh attached images and clear on project changes',(
   const dispose=assets.onAssetsChanged(()=>changes++);assets.rememberAsset('a.png',new Blob(['a']));assets.clearProjectAssets();
   assert.equal(changes,2);dispose();assets.rememberAsset('b.png',new Blob(['b']));assert.equal(changes,2);assets.clearProjectAssets();
 });
+test('subfigures keep their [pos] alignment, {width} and per-subfigure label',()=>{
+  const source='\\begin{figure}[htbp]\n\\centering\n'
+    +'\\begin{subfigure}[t]{0.48\\textwidth}\n\\centering\n\\includegraphics{a.png}\n\\caption{Left}\n\\label{sub:a}\n\\end{subfigure}\\hfill\n'
+    +'\\begin{subfigure}{0.32\\linewidth}\n\\centering\n\\includegraphics{b.png}\n\\end{subfigure}\n'
+    +'\\caption{Both}\n\\label{fig:both}\n\\end{figure}';
+  const nodes=importBlocks(source);
+  assert.equal(nodes.length,1);
+  assert.equal(nodes[0].type,'subfigures');
+  const children=nodes[0].content;
+  assert.equal(children.length,2);
+  assert.equal(children[0].attrs.pos,'t');
+  assert.equal(children[0].attrs.width,'0.48\\textwidth');
+  assert.equal(children[0].attrs.label,'sub:a');
+  assert.equal(children[1].attrs.pos,'c','missing [pos] defaults to centered');
+  assert.equal(children[1].attrs.width,'0.32\\linewidth');
+  const tex=serialize(nodes[0]);
+  assert.ok(tex.includes('\\begin{subfigure}[t]{0.48\\textwidth}'));
+  assert.ok(tex.includes('\\begin{subfigure}{0.32\\linewidth}'),'the centered default omits [c]');
+  assert.ok(tex.includes('\\label{sub:a}'));
+  assert.ok(tex.includes('\\includegraphics[width=\\linewidth]{a.png}'),'subfigure graphics fill the box width');
+  assert.ok(tex.includes('\\end{subfigure}\\hfill'),'an explicit separator is preserved');
+  const unspaced=JSON.parse(JSON.stringify(nodes[0]));delete unspaced.attrs.spacing;
+  assert.ok(serialize(unspaced).includes('\\end{subfigure}\\quad'),'the default subfigure gap is \\quad');
+  const reparsed=importBlocks(tex)[0];
+  assert.equal(reparsed.content[0].attrs.pos,'t');
+  assert.equal(reparsed.content[0].attrs.width,'0.48\\textwidth');
+  assert.equal(reparsed.content[0].attrs.label,'sub:a');
+});
+test('imports and exports subfigures containing tikz and circuitikz',()=>{
+  const source='\\begin{figure}\n\\centering\n'
+    +'\\begin{subfigure}[t]{0.48\\textwidth}\n\\centering\n\\begin{tikzpicture}\n\\draw (0,0) -- (1,1);\n\\end{tikzpicture}\n\\caption{Tik}\n\\end{subfigure}\\quad\n'
+    +'\\begin{subfigure}{0.32\\textwidth}\n\\centering\n\\begin{circuitikz}\n\\draw (0,0) to[R] (2,0);\n\\end{circuitikz}\n\\caption{Circuit}\n\\end{subfigure}\n'
+    +'\\caption{Both}\n\\end{figure}';
+  const nodes=importBlocks(source);
+  assert.equal(nodes.length,1);
+  assert.equal(nodes[0].type,'subfigures');
+  const children=nodes[0].content;
+  assert.equal(children.length,2);
+  assert.ok(children[0].attrs.tikzSource.includes('\\begin{tikzpicture}'));
+  assert.equal(children[0].attrs.pos,'t');
+  assert.equal(children[0].attrs.width,'0.48\\textwidth');
+  assert.equal(children[0].attrs.caption,'Tik');
+  assert.ok(children[1].attrs.tikzSource.includes('\\begin{circuitikz}'));
+  assert.equal(children[1].attrs.pos,'c');
+  assert.equal(children[1].attrs.width,'0.32\\textwidth');
+  const tex=serialize(nodes[0]);
+  assert.ok(tex.includes('\\begin{subfigure}[t]{0.48\\textwidth}'));
+  assert.ok(tex.includes('\\begin{tikzpicture}'));
+  assert.ok(tex.includes('\\begin{circuitikz}'));
+  assert.ok(tex.includes('\\caption{Tik}'));
+  assert.ok(!tex.includes('\\includegraphics'));
+  const reparsed=importBlocks(tex)[0];
+  assert.equal(reparsed.type,'subfigures');
+  assert.ok(reparsed.content[0].attrs.tikzSource.includes('\\begin{tikzpicture}'));
+  assert.equal(reparsed.content[0].attrs.pos,'t');
+});
+test('imports a single tikz figure as a document image',()=>{
+  const source='\\begin{figure}[H]\n\\centering\n\\begin{tikzpicture}\n\\draw (0,0) -- (1,1);\n\\end{tikzpicture}\n\\caption{Single}\n\\end{figure}';
+  const nodes=importBlocks(source);
+  assert.equal(nodes.length,1);
+  assert.equal(nodes[0].type,'documentImage');
+  assert.equal(nodes[0].attrs.figure,true);
+  assert.equal(nodes[0].attrs.placement,'H');
+  assert.ok(nodes[0].attrs.tikzSource.includes('\\begin{tikzpicture}'));
+  assert.equal(nodes[0].attrs.caption,'Single');
+  const tex=serialize(nodes[0]);
+  assert.ok(tex.includes('\\begin{figure}[H]'));
+  assert.ok(tex.includes('\\begin{tikzpicture}'));
+  assert.ok(tex.includes('\\caption{Single}'));
+});

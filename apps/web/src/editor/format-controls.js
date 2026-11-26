@@ -1,22 +1,32 @@
 import {t} from '../ui/i18n.mjs';
+import {openColorPalette} from '../ui/color-palette.js';
 import {FONT_FAMILIES,selectionTypography} from './selection-typography.js';
 
-export function installFormatControls(editor, parent, {isUnavailable = () => false} = {}) {
+export function installFormatControls(editor, parent, {isUnavailable = () => false,
+  applyStyle=patch=>editor.chain().focus().setMark('textStyle',patch).run()} = {}) {
   const unavailable = () => Boolean(isUnavailable());
-  const color = document.createElement('label');
+  const color = document.createElement('button');
+  color.type = 'button';
   color.className = 'color-control';
   color.dataset.home = '';
   color.dataset.tooltipZh = '文字颜色';
   color.dataset.tooltipEn = 'Text color';
+  color.dataset.zhTitle = '文字颜色';
+  color.dataset.enTitle = 'Text color';
+  color.setAttribute('aria-label',t('文字颜色','Text color'));
   const glyph = document.createElement('span');
   glyph.textContent = 'A';
-  const picker = document.createElement('input');
-  picker.type = 'color';
-  picker.dataset.zhTitle = '文字颜色';
-  picker.dataset.enTitle = 'Text color';
-  picker.setAttribute('aria-label',t('文字颜色','Text color'));
-  picker.addEventListener('input',() => { if (!unavailable()) editor.chain().focus().setMark('textStyle',{color:picker.value}).run(); });
-  color.append(glyph,picker);
+  color.append(glyph);
+  color.addEventListener('click',() => {
+    if (unavailable()) return;
+    openColorPalette({
+      anchor: color,
+      value: selectionTypography(editor).color,
+      allowAuto: true,
+      onPick: hex => { if (!unavailable()) applyStyle({color:hex}); },
+      onAuto: () => { if (!unavailable()) applyStyle({color:null}); },
+    });
+  });
   parent.append(color);
 
   const menus = new Map();
@@ -36,7 +46,7 @@ export function installFormatControls(editor, parent, {isUnavailable = () => fal
     [menu.dataset.tooltipZh,menu.dataset.tooltipEn] = definition.labels;
     menu.setAttribute('aria-label',t(...definition.labels));
     for (const value of definition.values) appendOption(menu,definition.attribute,value);
-    menu.addEventListener('change',() => { if (!unavailable()) editor.chain().focus().setMark('textStyle',{[definition.attribute]:menu.value}).run(); });
+    menu.addEventListener('change',() => { if (!unavailable()) applyStyle({[definition.attribute]:menu.value}); });
     menus.set(definition.attribute,menu);
     parent.append(menu);
   }
@@ -45,7 +55,6 @@ export function installFormatControls(editor, parent, {isUnavailable = () => fal
   function synchronize() {
     if (disposed) return;
     const format = selectionTypography(editor);
-    picker.value = format.color;
     glyph.style.borderBottomColor = format.color;
     for (const [attribute,menu] of menus) {
       const value = format[attribute];
@@ -59,7 +68,7 @@ export function installFormatControls(editor, parent, {isUnavailable = () => fal
   }
   function refreshDisabled() {
     const blocked = unavailable();
-    picker.disabled = blocked;
+    color.disabled = blocked;
     color.classList.toggle('is-unavailable',blocked);
     for (const menu of menus.values()) menu.disabled = blocked;
   }

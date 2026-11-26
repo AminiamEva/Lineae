@@ -3,38 +3,84 @@ import { Node, mergeAttributes } from '@tiptap/core';
 import { closeHistory } from '@tiptap/pm/history';
 import { t } from '../ui/i18n.mjs';
 import { askText } from './dialog.js';
-import { imageWidthPattern, relativeImageWidth } from '../../latex/images.mjs';
+import { imageWidthPattern, relativeImageWidth, tikzLooksCircuit } from '../../latex/images.mjs';
 import { rememberAsset, resolveImageAsset, onAssetsChanged } from './project-assets.js';
+import { renderTikz, getTikzPreamble, openTikzStudio, tikzStagingFromPreamble } from '../ui/tikz-studio.js';
+import { TikzEditor } from '../tikz/controllers/tikzEditor.js';
 
-const rasterTypes = new Set(['image/png','image/jpeg','image/webp','image/gif','image/avif']);
+const rasterTypes = new Set(['image/png','image/jpeg','image/jpg','image/pjpeg','image/webp','image/gif','image/avif']);
 let measureContext = null;
 let suppressImageClickUntil = 0;
 
-function chooseFile(callback) {
+export function chooseImageFile(callback, {multiple=false}={}) {
   const input = document.createElement('input');
   input.type = 'file';
+  input.multiple = multiple;
+  input.hidden = true;
   input.accept = [...rasterTypes].join(',');
-  input.addEventListener('change', () => {
-    const file = input.files[0];
-    if (file && rasterTypes.has(file.type)) callback(file);
-  }, { once:true });
-  input.click();
+  return new Promise((resolve,reject)=>{
+    const close=()=>{input.remove();resolve();};
+    input.addEventListener('cancel',close,{once:true});
+    input.addEventListener('change',async()=>{
+      const file=input.files[0];
+      try{
+        if(file&&multiple)await callback([...input.files]);
+        else if(file&&(rasterTypes.has(file.type)||/\.(png|jpe?g|webp|gif|avif)$/i.test(file.name)))await callback(file);
+        close();
+      }catch(error){input.remove();reject(error);}
+    },{once:true});
+    document.body.append(input);
+    input.click();
+  });
 }
 
 function remember(path, file) {
   rememberAsset(path,file);
 }
 
-function registerImage(file, previousPath) {
+export function editTikzVisual(editor, position, commit) {
+  const node = editor.state.doc.nodeAt(position);
+  const source = node?.attrs?.tikzSource;
+  if (!source) return false;
+  const apply = code => {
+    if (typeof code !== 'string' || !code.trim()) return false;
+    const current = editor.state.doc.nodeAt(position);
+    if (!current || current.attrs.tikzSource == null) return false;
+    if(commit&&current!==node)return false;
+    const tr=closeHistory(editor.state.tr).setNodeMarkup(position,undefined,{...current.attrs,tikzSource:code});
+    if(commit)return commit(tr);
+    editor.view.dispatch(tr);
+    return true;
+  };
+  const circuit = node.attrs.tikzEditor === 'circuit' || (!node.attrs.tikzEditor && tikzLooksCircuit(source));
+  if (circuit) {
+    const width = editor.view.dom.clientWidth || 600;
+    const tikz = new TikzEditor({ getTextwidthCm: () => width * 2.54 / 96 });
+    tikz.open(code => { if (code) apply(code); }, source);
+  } else {
+    openTikzStudio({
+      initialBody: source,
+      initialLibraries: tikzStagingFromPreamble(getTikzPreamble()),
+      onInsert: ({body})=>apply(body)?undefined:{error:t('未能写回图形，请保留当前修改并核对源码。','The drawing could not be saved. Your edits are still available here.')},
+    });
+  }
+  return true;
+}
+
+export function availableImagePath(file,previousPath,isOccupied=resolveImageAsset){
   let path = file.name;
-  if (path === previousPath || path.replace(/\.[^.]+$/,'') === previousPath || resolveImageAsset(path)) {
+  if (path === previousPath || path.replace(/\.[^.]+$/,'') === previousPath || isOccupied(path)) {
     const dot = path.lastIndexOf('.');
     const stem = dot > 0 ? path.slice(0,dot) : path;
     const extension = dot > 0 ? path.slice(dot) : '';
     let version = 2;
     do { path = stem + '-' + version++ + extension; }
-    while (path === previousPath || resolveImageAsset(path));
+    while (path === previousPath || isOccupied(path));
   }
+  return path;
+}
+function registerImage(file, previousPath) {
+  const path=availableImagePath(file,previousPath);
   remember(path,file);
   return path;
 }
@@ -74,7 +120,7 @@ export function installImageDrop(editor, paper) {
 export function insertLocalImage(editor) {
   const documentBefore = editor.state.doc;
   const range = { from:editor.state.selection.from, to:editor.state.selection.to };
-  chooseFile(file => {
+  chooseImageFile(file => {
     if (editor.state.doc !== documentBefore) return;
     if (!/^[\p{L}\p{N}_. -]+$/u.test(file.name)) return;
     const path = registerImage(file);
@@ -85,7 +131,7 @@ export function insertLocalImage(editor) {
 export function replaceLocalImage(editor, position) {
   const node = editor.state.doc.nodeAt(position);
   if (node?.type.name !== 'documentImage') return;
-  chooseFile(file => {
+  chooseImageFile(file => {
     if (!/^[\p{L}\p{N}_. -]+$/u.test(file.name) || editor.state.doc.nodeAt(position) !== node) return;
     const path = registerImage(file,node.attrs.path);
     editor.view.dispatch(closeHistory(editor.state.tr).setNodeMarkup(position,undefined,{...node.attrs,path}));
@@ -93,6 +139,7 @@ export function replaceLocalImage(editor, position) {
 }
 
 export function startImageCrop(editor, position) {
+  if (editor.state.doc.nodeAt(position)?.attrs?.tikzSource) return false;
   const dom = editor.view.nodeDOM(position);
   if (!dom?.dispatchEvent) return false;
   const event = new CustomEvent('lineae-image-crop', { bubbles:false, cancelable:true });
@@ -108,12 +155,33 @@ export function insertSubfigures(editor) {
   editor.chain().focus().insertContent({type:'subfigures',content:[sub(0),sub(1)]}).run();
 }
 
+export function insertSubfigureImage(editor) {
+  const selection=editor.state.selection;
+  let position=null;
+  if(selection.node?.type?.name==='subfigures')position=selection.from;
+  else if(selection.node?.type?.name==='documentImage'){
+    const $pos=editor.state.doc.resolve(selection.from);
+    for(let depth=$pos.depth;depth>0;depth-=1)if($pos.node(depth).type.name==='subfigures'){position=$pos.before(depth);break;}
+  }
+  if(position===null)return false;
+  const node=editor.state.doc.nodeAt(position);
+  if(node?.type.name!=='subfigures')return false;
+  chooseImageFile(file=>{
+    if(!/^[\p{L}\p{N}_. -]+$/u.test(file.name)||editor.state.doc.nodeAt(position)!==node)return;
+    const path=registerImage(file);
+    const child=editor.schema.nodes.documentImage.create({figure:false,centered:true,align:'center',wrap:false,width:'0.48\\textwidth',pos:'c',captionEnabled:false,caption:null,path});
+    const next=node.type.create(node.attrs,[...node.content.content,child]);
+    editor.view.dispatch(closeHistory(editor.state.tr).replaceWith(position,position+node.nodeSize,next));
+  });
+  return true;
+}
+
 export const Subfigures = Node.create({
   name:'subfigures', group:'block', content:'documentImage+', defining:true,
   addAttributes:()=>({
     placement:{default:null},fixed:{default:false},
     caption:{default:null},captionEnabled:{default:false},captionNumbered:{default:true},
-    label:{default:null},
+    label:{default:null},spacing:{default:'\\quad'},
   }),
   parseHTML(){return [{tag:'div[data-subfigures]'}];},
   renderHTML({HTMLAttributes}){return ['div',mergeAttributes(HTMLAttributes,{'data-subfigures':'true'}),0];},
@@ -128,33 +196,77 @@ export const Subfigures = Node.create({
       caption.className='document-subfigures-caption';
       caption.contentEditable='false';
       const captionLabel=document.createElement('span');
-      captionLabel.className='caption-label';
+      captionLabel.className='document-caption-label';
+      captionLabel.setAttribute('aria-hidden','true');
       const captionText=document.createElement('span');
-      captionText.className='caption-text';
+      captionText.className='document-caption-text';
       captionText.contentEditable='true';
-      captionText.setAttribute('data-placeholder','Caption');
+      captionText.spellcheck=false;
+      localizedPlaceholder(captionText,'题注','Caption');
       caption.append(captionLabel,captionText);
-      dom.append(row,caption);
+      const groupHandle=document.createElement('button');
+      groupHandle.type='button';
+      groupHandle.className='subfigures-select-handle';
+      groupHandle.textContent='⠿';
+      groupHandle.setAttribute('aria-label',t('选择整体','Select group'));
+      groupHandle.title=t('选择整体','Select group');
+      groupHandle.addEventListener('mousedown',event=>{
+        event.preventDefault();event.stopPropagation();
+        const position=getPos();
+        if(typeof position==='number')editor.commands.setNodeSelection(position);
+      });
+      dom.append(row,caption,groupHandle);
+      const updateCaption=text=>{
+        const position=getPos();
+        if(typeof position!=='number')return;
+        editor.view.dispatch(closeHistory(editor.state.tr).setNodeMarkup(position,undefined,{...node.attrs,caption:text,captionEnabled:true}));
+      };
+      const measureCaption=()=>{
+        if(!caption.getClientRects().length)return;
+        const style=getComputedStyle(captionText);
+        measureContext??=document.createElement('canvas').getContext('2d');
+        if(measureContext)measureContext.font=[style.fontStyle,style.fontWeight,style.fontSize,style.fontFamily].join(' ');
+        const text=captionText.textContent??'';
+        const numbered=caption.dataset.captionNumbered==='true';
+        const labelWidth=numbered?captionLabel.getBoundingClientRect().width:0;
+        const gap=numbered?(Number.parseFloat(getComputedStyle(caption).columnGap)||0):0;
+        const textWidth=measureContext?.measureText(text).width??0;
+        const available=caption.clientWidth;
+        caption.dataset.captionStyle=!text||labelWidth+gap+textWidth<=available+0.5?'single':'multi';
+      };
+      captionText.addEventListener('keydown',event=>{if(event.key==='Enter'){event.preventDefault();captionText.blur();}});
+      captionText.addEventListener('blur',()=>{
+        const text=captionText.textContent.trim();
+        if(text!==(node.attrs.caption??''))updateCaption(text);
+      });
+      captionText.addEventListener('input',measureCaption);
+      captionText.addEventListener('click',()=>captionText.focus());
       const refresh=()=>{
         const enabled=node.attrs.captionEnabled ?? (node.attrs.caption!==null);
         caption.hidden=!enabled;
-        captionLabel.textContent=enabled?(node.attrs.captionNumbered===false?'Figure:':'Figure 1:').replace('1',captionNumber(getPos()))+' ':'';
-        captionText.textContent=node.attrs.caption??'';
-        captionText.addEventListener('input',()=>{
-          const pos=getPos();
-          if(typeof pos!=='number')return;
-          editor.view.dispatch(editor.state.tr.setNodeMarkup(pos,undefined,{...node.attrs,caption:captionText.textContent,captionEnabled:true}));
-        },{once:true});
+        dom.dataset.captionNumbered=String(Boolean(enabled&&node.attrs.captionNumbered!==false));
+        caption.dataset.captionNumbered=dom.dataset.captionNumbered;
+        const zh=editor.view.dom.closest('.document-page')?.dataset.captionLanguage==='zh';
+        caption.dataset.captionName=zh?t('图','Figure'):'Figure';
+        captionLabel.dataset.captionName=caption.dataset.captionName;
+        captionText.setAttribute('data-placeholder',zh?t('题注','Caption'):'Caption');
+        if(document.activeElement!==captionText)captionText.textContent=node.attrs.caption??'';
+        const spacing=node.attrs.spacing??'\\quad';
+        row.dataset.spacing=/hfill/.test(spacing)?'hfill':/quad/.test(spacing)?'quad':'other';
+        requestAnimationFrame(measureCaption);
       };
-      function captionNumber(pos){
-        if(typeof pos!=='number')return'1';
-        let count=0;
-        editor.state.doc.nodesBetween(0,pos,n=>{if(n.type.name==='subfigures')count++;return true;});
-        return String(count+1);
-      }
-      captionText.addEventListener('blur',()=>refresh());
+      const selectGroup=event=>{
+        if(event.target!==row&&event.target!==captionLabel)return;
+        const position=getPos();
+        if(typeof position!=='number')return;
+        event.preventDefault();event.stopPropagation();
+        editor.commands.setNodeSelection(position);
+      };
+      row.addEventListener('mousedown',selectGroup);
+      captionLabel.addEventListener('mousedown',selectGroup);
       refresh();
-      return {dom,contentDOM:row,stopEvent:event=>caption.contains(event.target),
+      return {dom,contentDOM:row,stopEvent:event=>caption.contains(event.target)||groupHandle.contains(event.target),
+        ignoreMutation:mutation=>!row.contains(mutation.target),
         update(next){if(next.type!==node.type)return false;node=next;refresh();return true;}};
     };
   },
@@ -169,7 +281,7 @@ function cssDimension(value) {
 export const DocumentImage = Node.create({
   name:'documentImage', group:'block', atom:true, draggable:true,
   addAttributes:()=>({
-    rule:{default:null},ruleSource:{default:null},figureSource:{default:null},path:{default:''},width:{default:null},height:{default:null},scale:{default:null},
+    rule:{default:null},ruleSource:{default:null},figureSource:{default:null},path:{default:''},tikzSource:{default:null},tikzEditor:{default:null},width:{default:null},height:{default:null},scale:{default:null},pos:{default:'c'},
     angle:{default:null},origin:{default:null},keepAspect:{default:true},
     flipH:{default:false},flipV:{default:false},
     figure:{default:false},placement:{default:null},fixed:{default:false},
@@ -186,8 +298,10 @@ export const DocumentImage = Node.create({
     try {return {...JSON.parse(element.dataset.imageAttrs??'{}'),path:element.dataset.documentImage};}
     catch {return false;}
   }}],
-  renderText:({node})=>'\\includegraphics{'+node.attrs.path+'}',
-  renderHTML:({node})=>['figure',{'data-document-image':node.attrs.path,'data-image-attrs':JSON.stringify(node.attrs)},node.attrs.path],
+  renderText:({node})=>node.attrs.tikzSource??('\\includegraphics{'+node.attrs.path+'}'),
+  renderHTML:({node})=>node.attrs.tikzSource
+    ? ['figure',{'data-document-image':'','data-image-attrs':JSON.stringify(node.attrs)},node.attrs.tikzSource]
+    : ['figure',{'data-document-image':node.attrs.path,'data-image-attrs':JSON.stringify(node.attrs)},node.attrs.path],
   addNodeView() {
     return ({node,editor,getPos}) => {
       const dom=document.createElement('figure');
@@ -214,7 +328,22 @@ export const DocumentImage = Node.create({
       let previewFile=null,previewURL=null,resourceState='missing',destroyed=false;
       const imageFrame=document.createElement('div');
       imageFrame.className='document-image-frame';
-      imageFrame.append(image);
+      const tikzPreview=document.createElement('div');
+      tikzPreview.className='document-image-tikz';
+      imageFrame.append(image,tikzPreview);
+      let tikzRendered=null,tikzToken=0;
+      tikzPreview.addEventListener('dblclick',event=>{
+        if(!node.attrs.tikzSource)return;
+        event.preventDefault();event.stopPropagation();
+        const position=getPos();
+        if(typeof position==='number')editTikzVisual(editor,position);
+      });
+      tikzPreview.addEventListener('click',event=>{
+        if(!node.attrs.tikzSource)return;
+        event.preventDefault();event.stopPropagation();
+        const position=getPos();
+        if(typeof position==='number')editor.commands.setNodeSelection(position);
+      });
       const syncHandleVisibility=()=>{dom.dataset.smallImage=String(image.naturalWidth>0&&image.naturalWidth<24);};
       image.addEventListener('load',()=>{
         syncHandleVisibility();
@@ -472,6 +601,38 @@ export const DocumentImage = Node.create({
         let subIndex=-1;
         try{const $pos=editor.state.doc.resolve(getPos());if($pos.parent.type.name==='subfigures')subIndex=$pos.index();}catch{}
         dom.dataset.subfigure=String(subIndex>=0);
+        const tikz=node.attrs.tikzSource;
+        if(tikz){
+          dom.classList.add('is-tikz');
+          dom.dataset.resourceState='ready';
+          image.hidden=true;button.hidden=true;resourceStatus.hidden=true;
+          if(tikzRendered!==tikz){
+            tikzRendered=tikz;
+            const token=++tikzToken;
+            tikzPreview.classList.remove('is-ready');
+            tikzPreview.textContent=t('TikZ 渲染中…','TikZ rendering…');
+            const circuitPreview=node.attrs.tikzEditor==='circuit'||/\\begin\{circuitikz\}/.test(tikz)||tikzLooksCircuit(tikz);
+            const staging=tikzStagingFromPreamble(getTikzPreamble());
+            const hasCircuitikzPackage=/\\usepackage(?:\[[^\]]*\])?\{[^}]*circuitikz[^}]*\}/.test(staging);
+            const preamble=circuitPreview&&!hasCircuitikzPackage?`${staging}\n\\usepackage{circuitikz}`:staging;
+            let drawing=tikz.trim();
+            if(/^\\resizebox\{[^{}]*\}\{!\}\{%?\s*/.test(drawing))drawing=drawing.replace(/^\\resizebox\{[^{}]*\}\{!\}\{%?\s*/,'').replace(/%?\s*\}$/,'');
+            drawing=drawing.trim()||tikz;
+            renderTikz(drawing,preamble).then(result=>{
+              if(token!==tikzToken||destroyed)return;
+              if(!result.svg){tikzPreview.textContent=result.diagnostics?.map(item=>item.message).join('\n')||'TikZ';return;}
+              const holder=document.createElement('div');holder.innerHTML=result.svg;
+              tikzPreview.replaceChildren(...holder.childNodes);
+              tikzPreview.classList.add('is-ready');
+              window.dispatchEvent(new Event('lineae-image-layout'));
+            }).catch(error=>{if(token===tikzToken)tikzPreview.textContent=String(error?.message||error);});
+          }
+        }else{
+          dom.classList.remove('is-tikz');
+          tikzRendered=null;
+          tikzPreview.replaceChildren();
+          tikzPreview.classList.remove('is-ready');
+        }
         image.alt=node.attrs.path;
         syncHandleVisibility();
         captionText.textContent=node.attrs.caption??'';
@@ -489,7 +650,8 @@ export const DocumentImage = Node.create({
         dom.dataset.wrapSide=node.attrs.wrapSide??'r';
         dom.dataset.wrapOverhang=node.attrs.wrapOverhang??'';
         dom.dataset.captionPosition=node.attrs.captionPosition??'below';
-        if(subIndex>=0)captionLabel.textContent='('+String.fromCharCode(97+subIndex)+') ';
+        if(subIndex>=0){captionLabel.textContent='('+String.fromCharCode(97+subIndex)+') ';dom.dataset.subfigurePos=node.attrs.pos??'c';}
+        else delete dom.dataset.subfigurePos;
         if(node.attrs.wrap&&subIndex<0){
           dom.style.float=node.attrs.wrapSide==='l'||node.attrs.wrapSide==='L'?'left':'right';
           dom.style.width=cssDimension(node.attrs.wrapWidth||'0.4\\textwidth');
@@ -500,11 +662,16 @@ export const DocumentImage = Node.create({
         if(node.attrs.align)dom.dataset.align=node.attrs.align;
         else delete dom.dataset.align;
         localizedLabel(button,'定位图片 · '+node.attrs.path,'Locate image · '+node.attrs.path);
-        const imageWidth=subIndex>=0
-          ? '100%'
-          : node.attrs.wrap
-            ? relativeImageWidth(node.attrs.width,node.attrs.wrapWidth||'0.4\\textwidth')
-            : cssDimension(node.attrs.width);
+        const tikzFixedWidth=cssDimension(node.attrs.width);
+        const naturalTikz=Boolean(tikz)&&subIndex<0&&!node.attrs.wrap&&!tikzFixedWidth;
+        const imageWidth=tikz
+          ? (subIndex>=0?'100%':node.attrs.wrap?'100%':tikzFixedWidth||'')
+          : subIndex>=0
+            ? '100%'
+            : node.attrs.wrap
+              ? relativeImageWidth(node.attrs.width,node.attrs.wrapWidth||'0.4\\textwidth')
+              : cssDimension(node.attrs.width);
+        tikzPreview.classList.toggle('natural-size',naturalTikz);
         // Clear any previous crop geometry before measuring the full image.
         imageFrame.style.height='';
         imageFrame.style.overflow='';
@@ -523,11 +690,13 @@ export const DocumentImage = Node.create({
         if(node.attrs.flipV)transforms.push('scaleY(-1)');
         image.style.transform=transforms.join(' ');
         image.style.transformOrigin={c:'center',l:'left center',r:'right center',t:'center top',b:'center bottom',lt:'left top',lb:'left bottom',rt:'right top',rb:'right bottom'}[node.attrs.origin??'c']??'center';
+        tikzPreview.style.transform=tikz?image.style.transform:'';
+        tikzPreview.style.transformOrigin=tikz?image.style.transformOrigin:'';
         const crops=[node.attrs.cropTop,node.attrs.cropRight,node.attrs.cropBottom,node.attrs.cropLeft];
         const cropLeft=cropPx(node.attrs.cropLeft),cropRight=cropPx(node.attrs.cropRight);
         const cropTop=cropPx(node.attrs.cropTop),cropBottom=cropPx(node.attrs.cropBottom);
         const fullWidth=imageFrame.clientWidth,fullHeight=imageFrame.clientHeight;
-        if(!cropping&&crops.some(Boolean)&&fullWidth>0&&fullHeight>0){
+        if(!tikz&&!cropping&&crops.some(Boolean)&&fullWidth>0&&fullHeight>0){
           const visibleWidth=Math.max(1,fullWidth-cropLeft-cropRight);
           const visibleHeight=Math.max(1,fullHeight-cropTop-cropBottom);
           imageFrame.style.width=visibleWidth+'px';
@@ -549,7 +718,17 @@ export const DocumentImage = Node.create({
       image.addEventListener('load',()=>{if(!destroyed && previewURL && image.currentSrc===previewURL){resourceState='ready';showResourceState();refresh();}});
       image.addEventListener('error',()=>{if(!destroyed && previewURL && image.getAttribute('src')===previewURL){resourceState='error';showResourceState();}});
       const unsubscribe=onAssetsChanged(refresh);
-      button.addEventListener('click',()=>chooseFile(file=>{remember(node.attrs.path,file);refresh();}));
+      button.addEventListener('click',()=>chooseImageFile(file=>{
+        const path=node.attrs.path||file.name;
+        remember(path,file);
+        if(path!==node.attrs.path){update({path},node);return;}
+        if(previewURL)URL.revokeObjectURL(previewURL);
+        previewURL=URL.createObjectURL(file);
+        previewFile=file;
+        image.src=previewURL;
+        resourceState='loading';
+        showResourceState();
+      }));
       image.addEventListener('click',event=>{
         if(performance.now()<suppressImageClickUntil){event.preventDefault();return;}
         if(event.target!==image||event.defaultPrevented)return;
@@ -557,7 +736,7 @@ export const DocumentImage = Node.create({
         if(typeof position==='number')editor.commands.setNodeSelection(position);
       });
       imageFrame.addEventListener('mousedown',event=>{
-        if(event.button!==0||cropping)return;
+        if(event.button!==0||cropping||node.attrs.tikzSource)return;
         if(event.target.closest?.('.image-resize-handle, .image-crop-layer, .document-image-controls'))return;
         const startPos=getPos();
         if(typeof startPos!=='number')return;

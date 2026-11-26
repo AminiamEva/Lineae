@@ -58,9 +58,9 @@ This is an editing surface, not a TeX math engine. The set of commands and envir
 
 **TikZ.** The **Insert → TikZ** studio combines a code pane with a live preview rendered by the TeX engine. It accepts a preamble/library block and a TikZ body, can insert the result into the document, and also renders `tikz-general` code blocks in the body. The preview runs entirely in the browser through the prebuilt `mp-tikz-wasm` runtime.
 
-**CircuiTikZ.** A visual CircuiTikZ editor provides circuit-specific component libraries, a snap grid, orthogonal wiring, and draggable component and terminal placement. Components expose editable values, labels, rotation, and properties; existing `circuitikz` source can be imported, edited visually, and exported again. The generated environment is inserted back into the document and previewed through the same TeX runtime.
+**CircuiTikZ.** A visual CircuiTikZ editor provides circuit-specific component libraries, a snap grid, orthogonal wiring, and draggable component and terminal placement. Components expose editable values, labels, rotation, and properties; existing `circuitikz` source can be imported, edited visually, and exported again. The generated environment is inserted back into the document and previewed through the same TeX runtime. Its editor architecture is adapted from [Circuit2TikZ/CircuiTikZ-Designer](https://github.com/Circuit2TikZ/CircuiTikZ-Designer) (GPL-3.0).
 
-The general TikZ dialog and `tikz-general` body preview use the prebuilt `mp-tikz-wasm` runtime (LGPL-3.0-or-later). Its large WASM/TeX bundle is intentionally kept out of the source tree. Install it once with `npm run vendor:tikz`; this downloads the pinned release into `apps/web/vendor/mp-tikz-wasm/` (see `scripts/install-mp-tikz-wasm.mjs` and the vendor `LICENSE` / `NOTICE.md`).
+The general TikZ dialog and `tikz-general` body preview use the prebuilt `mp-tikz-wasm` runtime ([jmckalex/mp-tikz-wasm](https://github.com/jmckalex/mp-tikz-wasm), LGPL-3.0-or-later). Its large WASM/TeX bundle is intentionally kept out of the source tree. Install it once with `npm run vendor:tikz`; this downloads the pinned release into `apps/web/vendor/mp-tikz-wasm/` (see `scripts/install-mp-tikz-wasm.mjs` and the vendor `LICENSE` / `NOTICE.md`).
 
 ### LaTeX import and export
 

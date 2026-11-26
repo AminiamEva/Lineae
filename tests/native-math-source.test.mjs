@@ -1,0 +1,430 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {projectDisplayMath,projectDocumentFormulas,projectSnapshotFormulas,editDisplayMathSlot} from '../apps/web/src/editor/native-math/document.mjs';
+import {projectMath, applySlotEdit, applyStructureCommand, expandMatrix, toggleFormulaDisplayStyle} from '../apps/web/src/editor/native-math/source.mjs';
+import {richSlotPosition} from '../apps/web/src/editor/native-math/rich-slot.mjs';
+
+test('native math keeps style declarations out of editable content and toggles display style exactly',()=>{
+  const original=String.raw`\frac{a}{b}`;
+  const styled=toggleFormulaDisplayStyle(projectMath(original),original.indexOf('b'));
+  assert.equal(styled.source,'\\displaystyle '+original);
+  assert.equal(styled.source[styled.cursor],'b');
+  const snapshot=projectMath(styled.source);
+  assert.ok(snapshot.supported);
+  assert.deepEqual(snapshot.atoms.filter(atom=>atom.kind==='token').map(atom=>atom.nucleus),['a','b']);
+  assert.equal(toggleFormulaDisplayStyle(snapshot,styled.cursor).source,original);
+  assert.ok(projectMath(String.raw`\begin{matrix}\scriptstyle x&\textstyle y\end{matrix}`).supported);
+  const b=snapshot.slots.find(slot=>slot.role==='nucleus'&&slot.raw==='b');
+  const bold=applyStructureCommand(snapshot,{slotId:b.id,from16:0,to16:1,command:'mathbf'});
+  assert.equal(bold.source,styled.source.replace('{b}','{\\mathbf{b}}'));
+  assert.equal(bold.source[bold.cursor],'b');
+});
+
+test('native matrix row and column commands preserve the current cell inside a fraction',()=>{
+  const source=String.raw`\frac{\begin{bmatrix}a&b\\c&d\end{bmatrix}}{x}`;
+  const snapshot=projectMath(source);
+  const cell=snapshot.slots.find(slot=>slot.role==='nucleus'&&slot.raw==='d');
+  const row=expandMatrix(snapshot,cell,1,'row');
+  assert.equal(row.source,source.replace('d\\end','d\\\\&\\end'));
+  assert.equal(row.cursor,cell.to16);
+  const column=expandMatrix(snapshot,cell,1,'column');
+  assert.equal(column.source,source.replace('b\\\\','b&\\\\').replace('d\\end','d&\\end'));
+  assert.equal(column.cursor,cell.to16+1);
+  assert.equal(column.source.slice(0,column.cursor).at(-1),'d');
+  assert.equal(expandMatrix(snapshot,snapshot.slots.find(slot=>slot.raw==='x'),1,'column'),null);
+});
+
+test('a native nested hit follows MathLive ancestry rather than the first fraction',()=>{
+  const snapshot=projectMath(String.raw`\frac{\frac{7}{}}{c}`);
+  const den=snapshot.slots.find(slot=>slot.role==='denominator'&&slot.raw==='');
+  const atom=snapshot.atoms.find(atom=>atom.id===den.ownerId);
+  const first={type:'first'},innerFirst={type:'first'};
+  const node=(type,branches)=>({type,branch:name=>branches[name]});
+  const inner=node('genfrac',{above:[first,{type:'mord'}],below:[innerFirst]});
+  const outer=node('genfrac',{above:[first,inner],below:[first,{type:'mord'}]});
+  const model={root:node('root',{body:[first,outer]}),offsetOf:element=>element===innerFirst?8:-1};
+  assert.equal(richSlotPosition(model,snapshot.atoms,atom,{role:'den'}),8);
+  model.root=node('root',{body:[first,outer,{type:'subsup'}]});
+  assert.equal(richSlotPosition(model,snapshot.atoms,atom,{role:'den'}),null,'Different AST topology must reject the hit');
+});
+
+test('a native script anchor resolves to the adjacent MathLive script sibling',()=>{
+  const snapshot=projectMath('x^{}_{1}');
+  const owner=snapshot.atoms.find(atom=>atom.nucleus==='x');
+  const digit=snapshot.atoms.find(atom=>atom.nucleus==='1');
+  const first={type:'first'},scriptFirst={type:'first'},one={type:'mord',value:'1'};
+  const token={type:'mord',value:'x',branch:()=>undefined,leftSibling:first};
+  const scripts={type:'subsup',leftSibling:token,
+    branch:name=>({superscript:[scriptFirst],subscript:[first,one]})[name]};
+  token.rightSibling=scripts;
+  const model={root:{branch:()=>[first,token,scripts]},
+    offsetOf:atom=>atom===scriptFirst?3:atom===one?5:-1};
+  assert.equal(richSlotPosition(model,snapshot.atoms,owner,{role:'sup'}),3);
+  assert.equal(richSlotPosition(model,snapshot.atoms,digit,{role:'nucleus',after:true}),5);
+  scripts.leftSibling=first;
+  assert.equal(richSlotPosition(model,snapshot.atoms,owner,{role:'sup'}),null);
+});
+
+test('one display projection translates a TeX owner into an exact full-document patch',()=>{
+  const source='\\documentclass{article}\r\n\\begin{document}\r\n% 中文 𝔸\r\n\\[\r\n\\frac{a}{}\r\n\\]\r\n\\end{document}\r\n';
+  const projection=projectDisplayMath(source);
+  assert.ok(projection);
+  const slot=projection.math.slots.find(slot=>slot.role==='denominator');
+  const hit={owner:slot.tag,role:'den'};
+  const edit={from16:0,to16:0,insert:'b'};
+  const at=source.indexOf('\\frac{a}{}')+9;
+  assert.deepEqual(editDisplayMathSlot(projection,source,hit,edit),{
+    patch:{from:at,to:at,insert:'b'},selection:{anchor:at+1,head:at+1,slotId:slot.id},
+  });
+  assert.equal(editDisplayMathSlot(projection,source+'%',hit,edit),null);
+  assert.equal(editDisplayMathSlot(projection,source,{...hit,owner:-1},edit),null);
+  assert.equal(projectDisplayMath(source.replace('\\end{document}','\\[x\\]\\end{document}')),null);
+  assert.equal(projectDisplayMath(source.replace('\\frac{a}{}','\\unknown{a}')),null);
+});
+
+test('disjoint document owners preserve ordinals across unsupported displays',()=>{
+  const source=String.raw`\documentclass{article}
+\begin{document}
+Inline $x$ and \(\frac{a}{}\).
+\[\frac{x}{}\]
+\[\unknown{y}\]
+\[\frac{z}{}\]
+\end{document}`;
+  const compiled=projectDocumentFormulas(source);
+  assert.deepEqual(compiled.formulas.map(formula=>[formula.kind,formula.ordinal,formula.count]),
+    [['inlineMath',0,2],['inlineMath',1,2],['displayMath',0,3],['displayMath',2,3]]);
+  assert.ok(compiled.projection.includes(String.raw`\[\unknown{y}\]`));
+  assert.equal(compiled.owners.size,compiled.formulas.reduce((size,formula)=>size+formula.math.atoms.length,0));
+  const formula=compiled.formulas[3],slot=formula.math.slots.find(slot=>slot.role==='denominator');
+  const result=editDisplayMathSlot(formula,source,{owner:slot.tag,role:'den'},{from16:0,to16:0,insert:'b'});
+  assert.equal(result.patch.from,source.indexOf('\\frac{z}{}')+9);
+  assert.equal(editDisplayMathSlot(compiled.formulas[0],source,{owner:slot.tag,role:'den'},
+    {from16:0,to16:0,insert:'b'}),null);
+});
+
+test('a numbered equation wraps the same exact native field without changing its environment',()=>{
+  const source=String.raw`\documentclass{article}
+\begin{document}
+\begin{equation}
+\frac{x}{}
+\end{equation}
+\end{document}`;
+  const compiled=projectDocumentFormulas(source),[formula]=compiled.formulas;
+  assert.equal(formula.kind,'displayMath');
+  const slot=formula.math.slots.find(slot=>slot.role==='denominator');
+  const {patch}=editDisplayMathSlot(formula,source,{owner:slot.tag,role:'den'},{from16:0,to16:0,insert:'b'});
+  assert.equal(source.slice(0,patch.from)+patch.insert+source.slice(patch.to),source.replace('\\frac{x}{}','\\frac{x}{b}'));
+  assert.ok(compiled.projection.includes('\\begin{equation}\\begingroup'));
+});
+
+test('project-wide ownership maps an included fragment to its own UTF-16 offsets',()=>{
+  const source='\\begin{document}\n\\[\\frac{x}{}\\]\n\\input{parts/y}\n\\end{document}';
+  const child='% 中文 𝔸\r\n\\[\\frac{y}{}\\]\r\n';
+  const snapshot={source,mainFile:'main.tex',files:[{path:'parts/y.tex',bytes:new TextEncoder().encode(child)}]};
+  const projected=projectSnapshotFormulas(snapshot);
+  const owners=[...projected.owners].filter(([,owner])=>owner.atom.kind==='frac');
+  assert.deepEqual(owners.map(([,owner])=>owner.formula.filePath),['main.tex','parts/y.tex']);
+  const [tag,{formula}]=owners[1];
+  const hit={role:'den',owner:tag},edit={from16:0,to16:0,insert:'b'};
+  assert.deepEqual(editDisplayMathSlot(formula,child,hit,edit).patch,
+    {from:child.indexOf('\\frac{y}{}')+9,to:child.indexOf('\\frac{y}{}')+9,insert:'b'});
+  assert.equal(editDisplayMathSlot(formula,source,hit,edit),null);
+});
+
+test('new atoms do not renumber unaffected owners in later or included formulas',()=>{
+  const source='\\begin{document}\n\\[\\frac{a}{}\\]\n\\[\\frac{z}{}\\]\n\\input{parts/y}\n\\end{document}';
+  const child='\\[\\frac{y}{}\\]\n',files=[{path:'parts/y.tex',bytes:new TextEncoder().encode(child)}];
+  const before=projectSnapshotFormulas({source,mainFile:'main.tex',files});
+  const changed=source.replace('\\frac{a}{}','\\frac{a}{b}');
+  const after=projectSnapshotFormulas({source:changed,mainFile:'main.tex',files},before);
+  const slotIds=projection=>projection.formulas.map(formula=>formula.math.slots.find(slot=>slot.role==='denominator').id);
+  assert.deepEqual(slotIds(before),slotIds(after));
+  const [newTag]=[...after.owners].filter(([,value])=>value.atom.nucleus==='b').map(([tag])=>tag);
+  assert.ok(newTag>=before.nextTag);
+  assert.equal(after.owners.size,before.owners.size+1);
+});
+
+test('literal operators have owners without becoming TeX structure',()=>{
+  const snapshot=projectMath(String.raw`\frac{a+1}{b-2}=x`);
+  assert.ok(snapshot.supported);
+  assert.deepEqual(snapshot.atoms.filter(atom=>['+','-','='].includes(atom.nucleus)).map(atom=>atom.nucleus),['+','-','=']);
+  const plus=snapshot.slots.find(slot=>slot.role==='nucleus'&&slot.raw==='+');
+  const result=applySlotEdit(snapshot,{slotId:plus.id,from16:0,to16:1,insert:'-'});
+  assert.equal(result.source,String.raw`\frac{a-1}{b-2}=x`);
+  assert.equal(projectMath('x^+').supported,false);
+});
+
+test('approved symbol commands are atomic positioning targets',()=>{
+  const math=projectMath(String.raw`\alpha+\beta\leq x`);
+  assert.ok(math.supported);
+  const alpha=math.slots.find(slot=>slot.role==='nucleus'&&slot.raw===String.raw`\alpha`);
+  assert.equal(applySlotEdit(math,{slotId:alpha.id,from16:0,to16:0,insert:''}).selection.anchor16,0);
+  assert.throws(()=>applySlotEdit(math,{slotId:alpha.id,from16:2,to16:2,insert:'b'}),/structural/);
+  assert.equal(projectMath(String.raw`\sin x`).supported,false);
+});
+
+test('matched scalable delimiters preserve the source of a nested fraction',()=>{
+  const source=String.raw`\left\langle\frac{a}{}\right\rangle`;
+  const math=projectMath(source),den=math.slots.find(slot=>slot.role==='denominator');
+  assert.ok(math.supported);
+  assert.equal(applySlotEdit(math,{slotId:den.id,from16:0,to16:0,insert:'b'}).source,source.replace('{}','{b}'));
+  assert.equal(projectMath(String.raw`\left(\frac{a}{b}`).supported,false);
+});
+
+test('known font and box wrappers keep their TeX spelling while exposing nested slots',()=>{
+  const source=String.raw`\boxed{\mathrm{A}\frac{a}{}}`;
+  const math=projectMath(source),den=math.slots.find(slot=>slot.role==='denominator');
+  assert.ok(math.supported);
+  assert.deepEqual(math.atoms.filter(atom=>atom.kind==='wrapper').map(atom=>atom.command),['\\boxed','\\mathrm']);
+  assert.equal(applySlotEdit(math,{slotId:den.id,from16:0,to16:0,insert:'b'}).source,source.replace('{}','{b}'));
+  assert.equal(projectMath(String.raw`\customfont{A}`).supported,false);
+});
+
+test('math text preserves CJK graphemes and source spaces without interpreting TeX commands',()=>{
+  const source=String.raw`\text{中文 段落}`;
+  const math=projectMath(source);
+  assert.ok(math.supported);
+  assert.deepEqual(math.atoms.filter(atom=>atom.kind==='token').map(atom=>atom.nucleus),['中','文','段','落']);
+  const text=math.slots.find(slot=>slot.role==='body'&&slot.raw==='中文 段落');
+  const edit=applySlotEdit(math,{slotId:text.id,from16:4,to16:5,insert:'文'});
+  assert.equal(edit.source,String.raw`\text{中文 段文}`);
+  assert.equal(projectMath(String.raw`\text{unsafe \command}`).supported,false);
+});
+
+test('an indexed radical preserves an empty degree and maps its TeX owner to a minimal patch',()=>{
+  const source='\\begin{document}\n\\[\\sqrt[]{x}\\]\n\\end{document}\n';
+  const projection=projectDocumentFormulas(source),[formula]=projection.formulas;
+  const slot=formula.math.slots.find(slot=>slot.role==='degree');
+  assert.equal(slot.raw,'');
+  assert.ok(projection.projection.includes('\\sqrt[]{'));
+  const hit={owner:slot.tag,role:'degree'};
+  const {patch}=editDisplayMathSlot(formula,source,hit,{from16:0,to16:0,insert:'3'});
+  assert.equal(source.slice(0,patch.from)+patch.insert+source.slice(patch.to),source.replace('[]','[3]'));
+  assert.equal(projectMath(String.raw`\sqrt[3{a}`).supported,false);
+});
+
+test('matrix separators stay structural while empty cells keep distinct owners',()=>{
+  const source=String.raw`\begin{pmatrix}a & \\ & d\end{pmatrix}`;
+  const math=projectMath(source);
+  const slots=math.slots.filter(slot=>slot.role==='cell'&&!slot.raw.trim());
+  assert.equal(slots.length,2);
+  assert.notEqual(slots[0].tag,slots[1].tag);
+  const patch=applySlotEdit(math,{slotId:slots[1].id,from16:0,to16:0,insert:'b'}).patch;
+  assert.equal(patched(source,patch),source.replace('\\\\ &','\\\\b &'));
+  const first={type:'first'},matrix={type:'array',getCell:(row,col)=>row===1&&col===0?[first]:null};
+  const model={root:{branch:()=>[first,matrix]},offsetOf:atom=>atom===first?7:-1};
+  const owner=math.atoms.find(atom=>atom.id===slots[1].ownerId);
+  assert.equal(richSlotPosition(model,math.atoms,owner,{role:'cell'}),7);
+  assert.equal(projectMath(String.raw`\begin{pmatrix}a\\[2pt]b\end{pmatrix}`).supported,false);
+});
+
+test('aligned and gathered rows preserve separate owners and their original row breaks',()=>{
+  for(const source of [String.raw`\begin{aligned}a&=b\\&\end{aligned}`,String.raw`\begin{gathered}a\\\end{gathered}`]){
+    const math=projectMath(source);
+    assert.ok(math.supported);
+    const slot=math.slots.find(slot=>slot.role==='cell'&&!slot.raw.trim());
+    const result=applySlotEdit(math,{slotId:slot.id,from16:0,to16:0,insert:'x'});
+    assert.ok(result.source.includes('\\\\x'));
+    assert.equal(result.source.length,source.length+1);
+    if(source.startsWith('\\begin{aligned}')){
+      assert.ok(math.projection.includes('\\aftergroup\\LineaeNativeCell'));
+      assert.ok(math.projection.includes('\\def\\LineaeNativeCell'));
+    }
+  }
+});
+
+const field = (snapshot, role, raw) => snapshot.slots.find(s => s.role === role && (raw === undefined || s.raw === raw));
+const edit = (snapshot, slot, from16, to16, insert) => applySlotEdit(snapshot, {slotId: slot.id, from16, to16, insert});
+const patched = (source, patch) => source.slice(0, patch.from) + patch.insert + source.slice(patch.to);
+
+test('empty fraction fields remain empty and denominator insertion is exactly one source character', () => {
+  const source = String.raw`\frac{a}{}`;
+  const snapshot = projectMath(source);
+  assert.equal(snapshot.supported, true);
+  assert.equal(snapshot.source, source);
+  const denominator = field(snapshot, 'denominator');
+  const owner = snapshot.atoms.find(a => a.id === denominator.ownerId);
+  assert.equal(denominator.raw, '');
+  assert.equal(denominator.tag, owner.tag);
+  assert.match(snapshot.projection, /\\frac\{/);
+  assert.ok(snapshot.projection.includes('}{}'), 'nothing is inserted into an empty denominator');
+  assert.ok(snapshot.projection.indexOf(`\\attribute65000=${owner.tag} `) < snapshot.projection.indexOf('\\frac'));
+  const result = edit(snapshot, denominator, 0, 0, 'b');
+  assert.deepEqual(result.patch, {from: 9, to: 9, insert: 'b'});
+  assert.equal(result.source, String.raw`\frac{a}{b}`);
+  assert.equal(patched(source, result.patch), result.source);
+  assert.deepEqual(result.selection, {
+    slotId: denominator.id, from16: 1, to16: 1, anchor16: 10, head16: 10,
+  });
+  assert.equal(snapshot.source, source);
+  assert.equal(denominator.raw, '');
+  assert.ok(projectMath(String.raw`\frac{}{}`).projection.includes('\\frac{}{}'));
+});
+
+test('nested owners expose independent source fields and reconcile edited and shifted siblings', () => {
+  const source = String.raw`\frac{\sqrt{a}}{\frac{b}{}}z`;
+  const before = projectMath(source);
+  const empty = field(before, 'denominator', '');
+  const change = edit(before, empty, 0, 0, 'c');
+  const after = projectMath(change.source, {previous: before});
+  assert.equal(field(after, 'denominator', 'c').id, empty.id);
+  assert.equal(field(after, 'radicand', 'a').id, field(before, 'radicand', 'a').id);
+  assert.equal(after.atoms.find(a => a.raw === 'z').id, before.atoms.find(a => a.raw === 'z').id);
+  const undo = projectMath(source, {previous: after});
+  assert.equal(field(undo, 'denominator', '').id, empty.id);
+  const redo = projectMath(change.source, {previous: undo});
+  assert.equal(field(redo, 'denominator', 'c').id, empty.id);
+  assert.equal(redo.source, change.source);
+});
+
+test('unchanged identical siblings retain range-matched IDs after a prefix insertion', () => {
+  const before = projectMath('aa');
+  const after = projectMath('baa', {previous: before});
+  const oldTokens = before.atoms.filter(a => a.kind === 'token');
+  const newTokens = after.atoms.filter(a => a.kind === 'token');
+  assert.deepEqual(newTokens.slice(1).map(a => a.id), oldTokens.map(a => a.id));
+  assert.ok(!oldTokens.some(a => a.id === newTokens[0].id));
+});
+
+test('scripts support grouped, empty and single arguments with projection-only single-argument braces', () => {
+  const snapshot = projectMath(String.raw`x^2_{ab}y_{}^{\frac{a}{b}}`);
+  assert.equal(snapshot.supported, true);
+  const exponent = field(snapshot, 'superscript', '2');
+  assert.equal(exponent.single, true);
+  assert.match(snapshot.projection, /\^\{\\attribute65000=\d+ 2/);
+  assert.ok(snapshot.projection.includes('_{}'));
+  assert.equal(edit(snapshot, exponent, 0, 1, '3').source, String.raw`x^3_{ab}y_{}^{\frac{a}{b}}`);
+  assert.throws(() => edit(snapshot, exponent, 0, 1, '34'), /ungrouped script/);
+  assert.throws(() => edit(snapshot, exponent, 0, 1, ''), /ungrouped script/);
+  const grouped = field(snapshot, 'subscript', 'ab');
+  assert.equal(edit(snapshot, grouped, 1, 1, 'c').source, String.raw`x^2_{acb}y_{}^{\frac{a}{b}}`);
+});
+
+test('comments, whitespace and mixed EOL are byte-for-byte preserved', () => {
+  const source = ' \r\n\\frac % macro comment\r\n{a% }\\unknown\r\n}{% empty\n}\t';
+  const snapshot = projectMath(source);
+  assert.equal(snapshot.supported, true);
+  assert.equal(snapshot.source, source);
+  assert.equal(field(snapshot, 'denominator').raw, '% empty\n');
+  const numerator = field(snapshot, 'numerator');
+  const result = edit(snapshot, numerator, 0, 1, 'b');
+  assert.equal(result.source, source.replace('{a%', '{b%'));
+  assert.deepEqual(result.patch, {from: numerator.from16, to: numerator.from16 + 1, insert: 'b'});
+  assert.throws(() => edit(snapshot, numerator, 2, 3, 'x'), /comment/);
+  const trailing = projectMath('a% retained');
+  assert.ok(trailing.projection.endsWith('% retained\n\\endgroup'));
+});
+
+test('UTF-16, UTF-8 and inserted projection maps round trip Unicode and CRLF', () => {
+  const source = '\\frac{𝑥a\u0301}{β}\r\n';
+  const snapshot = projectMath(source);
+  assert.equal(snapshot.supported, true);
+  const m = snapshot.mapping;
+  assert.equal(m.source16To8[source.length], Buffer.byteLength(source));
+  assert.equal(m.projection16To8[snapshot.projection.length], Buffer.byteLength(snapshot.projection));
+  const astral = source.indexOf('𝑥');
+  assert.equal(m.source16To8[astral + 1], null);
+  assert.equal(m.sourceToProjection16[astral + 1], null);
+  for (let i = 0; i <= source.length; i++) {
+    if (m.source16To8[i] === null) continue;
+    const projected = m.sourceToProjection16[i];
+    assert.equal(m.projectionToSource16[projected], i);
+    const byte = m.source16To8[i];
+    assert.equal(m.source8To16[byte], i);
+    assert.equal(m.projectionToSource8[m.sourceToProjection8[byte]], byte);
+  }
+  assert.equal(m.source8To16[m.source16To8[astral] + 1], null);
+  for (const insertion of m.insertions) {
+    assert.equal(snapshot.projection.slice(insertion.from16, insertion.to16), insertion.text);
+    assert.equal(m.projectionToSource16[insertion.from16], insertion.source16);
+    assert.equal(m.projectionToSource16[insertion.to16], insertion.source16);
+  }
+  // Removing exactly the recorded insertion spans reproduces every source byte.
+  let recovered = snapshot.projection;
+  for (const insertion of [...m.insertions].reverse()) {
+    recovered = recovered.slice(0, insertion.from16) + recovered.slice(insertion.to16);
+  }
+  assert.equal(recovered, source);
+});
+
+test('slot-relative offsets, grapheme-safe minimal replacement, and immutable results', () => {
+  const snapshot = projectMath(String.raw`\frac{𝑥á}{β}`);
+  const numerator = field(snapshot, 'numerator');
+  const result = edit(snapshot, numerator, 0, numerator.raw.length, '𝑥b');
+  assert.deepEqual(result.patch, {from: numerator.from16 + 2, to: numerator.to16, insert: 'b'});
+  assert.equal(result.source, String.raw`\frac{𝑥b}{β}`);
+  assert.throws(() => edit(snapshot, numerator, 1, 1, 'a'), /grapheme/);
+  assert.throws(() => edit(snapshot, numerator, 3, 3, 'a'), /grapheme/);
+  assert.throws(() => edit(snapshot, numerator, 0, 0, '\ud800'), /surrogate/);
+  assert.ok(Object.isFrozen(snapshot));
+  assert.ok(Object.isFrozen(snapshot.slots[0]));
+  assert.ok(Object.isFrozen(snapshot.mapping.sourceToProjection16));
+  assert.ok(Object.isFrozen(result.patch));
+  assert.throws(() => { snapshot.slots[0].raw = 'changed'; }, TypeError);
+});
+
+test('unknown syntax and malformed input fail closed with explicit diagnostics', () => {
+  for (const source of [
+    String.raw`\unknown{a}`, String.raw`\sin x`, String.raw`\sqrt[3{a}`,
+    String.raw`\frac a b`, String.raw`\frac{a}`, '{a', 'a}', 'x^', 'x^a^b',
+    String.raw`x^\sqrt{a}`, '$a$', String.raw`\[a\]`, 'a&b', '😀', '\ud800',
+  ]) {
+    const snapshot = projectMath(source);
+    assert.equal(snapshot.supported, false, JSON.stringify(source));
+    assert.equal(snapshot.source, source);
+    assert.equal(snapshot.projection, source);
+    assert.deepEqual(snapshot.slots, []);
+    assert.deepEqual(snapshot.atoms, []);
+    assert.equal(snapshot.mapping, undefined);
+    assert.equal(snapshot.diagnostics[0].code, 'unsupported-math');
+    assert.throws(() => applySlotEdit(snapshot, {slotId: 'missing', from16: 0, to16: 0, insert: 'b'}));
+  }
+});
+
+test('reject unknown/stale IDs, invalid ranges, structural edits and manufactured snapshots', () => {
+  const snapshot = projectMath(String.raw`\frac{a}{b}`);
+  const numerator = field(snapshot, 'numerator');
+  assert.throws(() => edit(snapshot, {id: 'missing'}, 0, 0, 'a'), /stale/);
+  for (const [from, to] of [[-1, 0], [1, 0], [0, 2], [0.5, 1], [NaN, 1]]) {
+    assert.throws(() => edit(snapshot, numerator, from, to, 'a'), /range/);
+  }
+  for (const insert of ['{', '}', '\\alpha', '^', '_', '%', '$', '&']) {
+    assert.throws(() => edit(snapshot, numerator, 0, 0, insert), /unsupported/);
+  }
+  const root = field(snapshot, 'body');
+  assert.throws(() => edit(snapshot, root, 0, 5, ''), /structural/);
+  assert.throws(() => edit(snapshot, root, 2, 2, 'a'), /structural/);
+  const later = projectMath('b', {previous: snapshot});
+  assert.throws(() => edit(later, numerator, 0, 0, 'a'), /stale/);
+  assert.throws(() => projectMath('a', {previous: {...snapshot}}), /Previous/);
+  assert.throws(() => applySlotEdit({...snapshot}, {slotId: numerator.id, from16: 0, to16: 0, insert: 'b'}), /snapshot/);
+});
+
+test('attribute configuration is explicit and no-op patches stay empty', () => {
+  const snapshot = projectMath('abc', {attribute: 64000});
+  assert.match(snapshot.projection, /\\attribute64000=/);
+  assert.doesNotMatch(snapshot.projection, /65000/);
+  const result = edit(snapshot, field(snapshot, 'body'), 0, 3, 'abc');
+  assert.deepEqual(result.patch, {from: 3, to: 3, insert: ''});
+  assert.equal(result.source, snapshot.source);
+  for (const attribute of [-1, 65536, 1.5, NaN]) {
+    assert.throws(() => projectMath('a', {attribute}), /Attribute/);
+  }
+});
+
+test('unsupported intermediate snapshots do not recycle old owner/slot IDs', () => {
+  const before = projectMath(String.raw`\frac{a}{b}`);
+  const opaque = projectMath(String.raw`\unknown{a}`, {previous: before});
+  const after = projectMath('b', {previous: opaque});
+  const oldIds = new Set(before.atoms.map(a => a.id));
+  assert.equal(after.supported, true);
+  assert.ok(after.atoms.every(a => !oldIds.has(a.id)));
+});
+
+test('CRLF is one grapheme boundary and edits via ancestor slots cannot escape a single script', () => {
+  const snapshot = projectMath('x^a\r\nb');
+  const root = field(snapshot, 'body');
+  assert.throws(() => edit(snapshot, root, 4, 4, 'c'), /grapheme/);
+  assert.throws(() => edit(snapshot, root, 2, 3, 'ab'), /ungrouped script/);
+  assert.equal(edit(snapshot, root, 5, 6, 'c').source, 'x^a\r\nc');
+});

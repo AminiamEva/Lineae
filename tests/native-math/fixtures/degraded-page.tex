@@ -1,0 +1,30 @@
+\documentclass{article}
+\usepackage{graphicx}
+\usepackage{tikz}
+\usepackage{subcaption}
+\begin{document}
+\begin{figure}[ht]
+\centering
+\begin{subfigure}{.35\textwidth}
+\begin{tikzpicture}
+\draw (0,0) -- (1,1);
+\end{tikzpicture}
+\caption{First drawing}
+\end{subfigure}
+\hfill
+\begin{subfigure}{.35\textwidth}
+\resizebox{.6\linewidth}{!}{%
+\begin{tikzpicture}
+\draw (0,0) -- (2,1);
+\end{tikzpicture}
+}
+\caption{Second drawing}
+\end{subfigure}
+\caption{Two measured drawings}
+\label{fig:drawing}
+\end{figure}
+
+\[
+\frac{a}{}
+\]
+\end{document}

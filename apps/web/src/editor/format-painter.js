@@ -1,7 +1,7 @@
 const markNames = ['bold','italic','underline','strike','code','subscript','superscript','smallcaps','boxed'];
 const paragraphAttributes = ['align','indent','indentLevel','explicitIndent'];
 
-export function installFormatPainter(editor,{button,getField = () => null} = {}) {
+export function installFormatPainter(editor,{button,getField = () => null,prepareCapture,applyNative} = {}) {
   let captured = null;
   let armed = false;
   let sticky = false;
@@ -36,6 +36,11 @@ export function installFormatPainter(editor,{button,getField = () => null} = {})
     if (field) return false;
     applying = true;
     try {
+      const nativeResult=applyNative?.(captured);
+      if(nativeResult!=null){
+        if(nativeResult&&!sticky)setArmed(false);
+        return nativeResult;
+      }
       const chain = editor.chain().focus();
       chain.unsetAllMarks();
       for (const mark of captured.marks) chain.setMark(mark.name,mark.attrs);
@@ -55,6 +60,7 @@ export function installFormatPainter(editor,{button,getField = () => null} = {})
       setArmed(false);
       return;
     }
+    if(prepareCapture?.()===false)return;
     capture();
     sticky = event?.detail >= 2;
     setArmed(true);

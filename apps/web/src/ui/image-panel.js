@@ -1,6 +1,14 @@
 import { t } from './i18n.mjs';
 import { icon } from '../editor/icons.js';
 import { buildRibbonGroups } from './ribbon-groups.js';
+import { openColorPalette } from './color-palette.js';
+
+function setColorButton(button, hex) {
+  button.dataset.hex = hex;
+  button.style.setProperty('--swatch', hex);
+  button.title = hex;
+  button.setAttribute('aria-label', hex);
+}
 
 function labelText(element, zh, en) {
   element.dataset.zh = zh;
@@ -18,7 +26,7 @@ function spacingNumber(value) {
   return String(value ?? '').match(/\d+(?:\.\d+)?/)?.[0] ?? '';
 }
 
-export function installImagePanel({onUpdate, onReplace, onSpacing, getSpacing, onCrop, onGroup, onUngroup}) {
+export function installImagePanel({onUpdate, onReplace, onSpacing, getSpacing, onCrop, onGroup, onUngroup, onInsertFigure}) {
   const panel = document.createElement('div');
   panel.className = 'tools home-ribbon image-tools';
   panel.hidden = true;
@@ -78,8 +86,12 @@ export function installImagePanel({onUpdate, onReplace, onSpacing, getSpacing, o
   const flipH=document.createElement('button');flipH.type='button';labelText(flipH,'水平翻转','Flip horizontal');
   const flipV=document.createElement('button');flipV.type='button';labelText(flipV,'垂直翻转','Flip vertical');
   flipRow.append(flipH,flipV);
-  basicGrid.append(width.field,height.field,scaleField,angleField,originField,keepField,flipRow);
-  basic.append(basicTitle,basicGrid);
+  const basicRows=document.createElement('div');
+  basicRows.className='image-rows';
+  const basicRow=(...items)=>{const row=document.createElement('div');row.className='image-grid';row.append(...items);basicRows.append(row);};
+  basicRow(width.field,height.field);
+  basicRow(scaleField,angleField,originField);
+  basicRow(keepField,flipRow);
 
   const layout = document.createElement('section');
   layout.className='image-group';
@@ -98,7 +110,7 @@ export function installImagePanel({onUpdate, onReplace, onSpacing, getSpacing, o
   const alignCaption=document.createElement('span');labelText(alignCaption,'对齐','Alignment');
   const align=document.createElement('select');
   align.setAttribute('aria-label',t('对齐','Alignment'));
-  for(const [value,zh,en] of [['','默认','Default'],['left','左','Left'],['center','居中','Center'],['right','右','Right']])align.append(new Option(t(zh,en),value));
+  for(const [value,zh,en] of [['center','居中','Center'],['','默认','Default'],['left','左','Left'],['right','右','Right']])align.append(new Option(t(zh,en),value));
   alignField.append(alignCaption,align);
   const captionEnabledField=document.createElement('label');captionEnabledField.className='image-check';
   const captionEnabled=document.createElement('input');captionEnabled.type='checkbox';
@@ -121,7 +133,7 @@ export function installImagePanel({onUpdate, onReplace, onSpacing, getSpacing, o
   const wrapCenteringField=document.createElement('label');wrapCenteringField.className='image-check';
   const wrapCentering=document.createElement('input');wrapCentering.type='checkbox';
   wrapCentering.setAttribute('aria-label',t('环绕内居中','Center in wrap'));
-  const wrapCenteringCaption=document.createElement('span');labelText(wrapCenteringCaption,'环绕内居中 \\centering','Center in wrap \\centering');
+  const wrapCenteringCaption=document.createElement('span');labelText(wrapCenteringCaption,'环绕内居中\\centering','Center in wrap \\centering');
   wrapCenteringField.append(wrapCentering,wrapCenteringCaption);
   const wrapSideField=document.createElement('label');wrapSideField.className='image-field';
   const wrapSideCaption=document.createElement('span');labelText(wrapSideCaption,'环绕方向','Wrap side');
@@ -140,8 +152,12 @@ export function installImagePanel({onUpdate, onReplace, onSpacing, getSpacing, o
   const wrapLinesCaption=document.createElement('span');labelText(wrapLinesCaption,'行数','Lines');
   const wrapLines=document.createElement('input');wrapLines.type='number';wrapLines.min='1';wrapLines.max='80';wrapLines.setAttribute('aria-label',t('环绕行数','Wrapped lines'));
   wrapLinesField.append(wrapLinesCaption,wrapLines);
-  layoutGrid.append(figureField,placementField,alignField,captionEnabledField,captionNumberedField,captionPositionField,labelField,wrapEnabledField,wrapCenteringField,wrapSideField,wrapWidthField,wrapOverhangField,wrapLinesField);
-  layout.append(layoutTitle,layoutGrid);
+  const layoutRows=document.createElement('div');
+  layoutRows.className='image-rows';
+  const layoutRow=(...items)=>{const row=document.createElement('div');row.className='image-grid';row.append(...items);layoutRows.append(row);};
+  layoutRow(figureField,placementField,alignField);
+  layoutRow(captionEnabledField,captionNumberedField,captionPositionField,labelField);
+  layoutRow(wrapEnabledField,wrapCenteringField,wrapSideField,wrapWidthField,wrapOverhangField,wrapLinesField);
 
   const appearance=document.createElement('section');appearance.className='image-group';
   const appearanceTitle=document.createElement('div');appearanceTitle.className='image-group-title';labelText(appearanceTitle,'裁剪与外观','Crop & appearance');
@@ -155,10 +171,16 @@ export function installImagePanel({onUpdate, onReplace, onSpacing, getSpacing, o
   const border=document.createElement('input');border.type='checkbox';
   const borderCaption=document.createElement('span');labelText(borderCaption,'边框','Border');borderField.append(border,borderCaption);
   const borderWidth=document.createElement('select');for(const value of ['0.2pt','0.4pt','0.8pt','1pt'])borderWidth.append(new Option(value,value));
-  const borderColor=document.createElement('input');borderColor.type='color';borderColor.value='#000000';
+  const borderColor=document.createElement('button');borderColor.type='button';borderColor.className='image-color-button';
+  setColorButton(borderColor,'#000000');
+  borderColor.addEventListener('click',()=>openColorPalette({anchor:borderColor,value:borderColor.dataset.hex,
+    onPick:hex=>{setColorButton(borderColor,hex);update({borderColor:hex});}}));
   const backgroundField=document.createElement('label');backgroundField.className='image-field';
   const bgCaption=document.createElement('span');labelText(bgCaption,'背景色','Background');
-  const background=document.createElement('input');background.type='color';background.value='#ffffff';
+  const background=document.createElement('button');background.type='button';background.className='image-color-button';
+  setColorButton(background,'#ffffff');
+  background.addEventListener('click',()=>openColorPalette({anchor:background,value:background.dataset.hex,
+    onPick:hex=>{setColorButton(background,hex);if(useBackground.checked)update({background:hex});}}));
   const useBackground=document.createElement('input');useBackground.type='checkbox';
   backgroundField.append(bgCaption,useBackground,background);
   appearanceGrid.append(cropButton,borderField,borderWidth,borderColor,backgroundField);
@@ -187,18 +209,42 @@ export function installImagePanel({onUpdate, onReplace, onSpacing, getSpacing, o
   const groupingLabel=document.createElement('span');
   labelText(groupingLabel,'组合为子图','Combine as subfigure');
   groupingButton.append(groupingLabel);
+  const insertFigure=document.createElement('button');
+  insertFigure.type='button';
+  insertFigure.className='image-insert-figure';
+  insertFigure.append(icon('image'));
+  const insertFigureLabel=document.createElement('span');
+  labelText(insertFigureLabel,'插入图片','Insert figure');
+  insertFigure.append(insertFigureLabel);
+  insertFigure.disabled=true;
+  insertFigure.addEventListener('click',()=>onInsertFigure?.());
   const groupingBody=document.createElement('div');
   groupingBody.className='image-grouping-body';
-  groupingBody.append(groupingButton);
+  groupingBody.append(groupingButton,insertFigure);
   const ribbonGroups=buildRibbonGroups(panel,[
-    {id:'image-transform',zh:'基础变换',en:'Transform',iconName:'image',width:310,body:basicGrid},
-    {id:'image-layout',zh:'布局与题注',en:'Layout & caption',iconName:'layout',width:300,body:layoutGrid},
+    {id:'image-transform',zh:'基础变换',en:'Transform',iconName:'image',width:330,body:basicRows},
+    {id:'image-layout',zh:'布局与题注',en:'Layout & caption',iconName:'layout',width:560,body:layoutRows},
     {id:'image-appearance',zh:'裁剪与外观',en:'Crop & appearance',iconName:'settings',width:300,body:appearanceGrid},
     {id:'image-spacing',zh:'全局图片间距',en:'Global image spacing',iconName:'paragraph',width:220,body:spacingBody},
-    {id:'image-grouping',zh:'子图',en:'Subfigure',iconName:'image',width:175,body:groupingBody},
+    {id:'image-grouping',zh:'子图',en:'Subfigure',iconName:'image',width:190,body:groupingBody},
   ],['image-spacing','image-appearance','image-layout','image-transform','image-grouping']);
   const groupingGroups=ribbonGroups.filter(state=>state.id!=='image-grouping');
-  let multiCount=0,groupMode='none';
+  const perImageGroups=ribbonGroups.filter(state=>state.id==='image-transform'||state.id==='image-appearance');
+  const wrapControls=[wrapEnabled,wrapCentering,wrapSide,wrapWidth,wrapOverhang,wrapLines];
+  const wrapDetails=[wrapCentering,wrapSide,wrapWidth,wrapOverhang,wrapLines];
+  let groupMode=false;
+  function setGroupMode(enabled){
+    groupMode=Boolean(enabled);
+    panel.dataset.groupMode=String(groupMode);
+    for(const state of perImageGroups){
+      state.section.classList.toggle('is-disabled',groupMode);
+      state.body.inert=groupMode||state.section.classList.contains('is-collapsed');
+    }
+    for(const control of [figure,align,captionPosition,...wrapControls])control.disabled=groupMode;
+    if(groupMode)replace.disabled=true;
+    insertFigure.disabled=!groupMode;
+  }
+  let multiCount=0,groupingState='none';
   function setMultiSelection(count){
     multiCount=Number(count)||0;
     const active=multiCount>0;
@@ -211,18 +257,18 @@ export function installImagePanel({onUpdate, onReplace, onSpacing, getSpacing, o
     if(active)path.textContent=t(multiCount+' 张图片',multiCount+' images');
   }
   function setGroupState(mode){
-    groupMode=mode==='ungroup'?'ungroup':mode==='group'?'group':'none';
-    const ungroup=groupMode==='ungroup';
+    groupingState=mode==='ungroup'?'ungroup':mode==='group'?'group':'none';
+    const ungroup=groupingState==='ungroup';
     const zh=ungroup?'解除组合':'组合为子图',en=ungroup?'Ungroup':'Combine as subfigure';
     labelText(groupingLabel,zh,en);
-    groupingButton.dataset.mode=groupMode;
+    groupingButton.dataset.mode=groupingState;
     groupingButton.dataset.zhTitle=zh;groupingButton.dataset.enTitle=en;
     groupingButton.title=t(zh,en);groupingButton.setAttribute('aria-label',t(zh,en));
-    groupingButton.disabled=groupMode==='none';
+    groupingButton.disabled=groupingState==='none';
   }
   groupingButton.addEventListener('click',()=>{
-    if(groupMode==='ungroup')onUngroup?.();
-    else if(groupMode==='group')onGroup?.();
+    if(groupingState==='ungroup')onUngroup?.();
+    else if(groupingState==='group')onGroup?.();
   });
   setGroupState('none');
 
@@ -314,23 +360,27 @@ export function installImagePanel({onUpdate, onReplace, onSpacing, getSpacing, o
     const placementValue=next.fixed?'H':(next.placement??'');
     if(placementValue && ![...placement.options].some(option=>option.value===placementValue))placement.append(new Option(placementValue,placementValue));
     placement.value=placementValue;
-    align.value=next.align??(next.centered?'center':'');
+    align.value=next.align??'center';
     captionPosition.value=next.captionPosition??'below';
     label.value=next.label??'';
     wrapEnabled.checked=Boolean(next.wrap);
     wrapCentering.checked=Boolean(next.centered||next.align==='center');
-    wrapCentering.disabled=!next.wrap;
+    for(const control of wrapDetails)control.disabled=!next.wrap;
     wrapSide.value=next.wrapSide??'r';
     wrapWidth.value=next.wrapWidth??'0.4\\textwidth';
     wrapOverhang.value=next.wrapOverhang??'';
     wrapLines.value=next.wrapLines??'';
     border.checked=Boolean(next.border);
     borderWidth.value=next.borderWidth??'0.4pt';
-    borderColor.value=next.borderColor??'#000000';
+    setColorButton(borderColor,next.borderColor??'#000000');
     useBackground.checked=Boolean(next.background);
-    background.value=next.background??'#ffffff';
+    setColorButton(background,next.background??'#ffffff');
     const spacingValues=getSpacing();
     for(const [name,input] of Object.entries(spacingInputs))input.value=spacingNumber(spacingValues[name]);
+    const tikzMode=Boolean(next.tikzSource);
+    replace.disabled=tikzMode;
+    cropButton.disabled=tikzMode;
+    panel.dataset.tikz=String(tikzMode);
   }
   function update(patch){ if(attrs){attrs={...attrs,...patch};onUpdate?.(patch);} }
   function updateDimension(which){
@@ -353,7 +403,10 @@ export function installImagePanel({onUpdate, onReplace, onSpacing, getSpacing, o
   keep.addEventListener('change',()=>update({keepAspect:keep.checked}));
   flipH.addEventListener('click',()=>{const value=!attrs?.flipH;update({flipH:value});flipH.setAttribute('aria-pressed',String(value));});
   flipV.addEventListener('click',()=>{const value=!attrs?.flipV;update({flipV:value});flipV.setAttribute('aria-pressed',String(value));});
-  figure.addEventListener('change',()=>update({figure:figure.checked}));
+  figure.addEventListener('change',()=>{
+    if(figure.checked&&!attrs?.align&&attrs?.centered!==true)update({figure:true,centered:true,align:'center'});
+    else update({figure:figure.checked});
+  });
   captionEnabled.addEventListener('change',()=>{
     const on=captionEnabled.checked;
     for(const control of [captionNumbered,captionPosition,label])control.disabled=!on;
@@ -365,7 +418,7 @@ export function installImagePanel({onUpdate, onReplace, onSpacing, getSpacing, o
   captionPosition.addEventListener('change',()=>update({captionPosition:captionPosition.value}));
   label.addEventListener('input',()=>update({label:label.value||null}));
   wrapEnabled.addEventListener('change',()=>{
-    wrapCentering.disabled=!wrapEnabled.checked;
+    for(const control of wrapDetails)control.disabled=!wrapEnabled.checked;
     update({wrap:wrapEnabled.checked,figure:wrapEnabled.checked?false:undefined});
   });
   wrapCentering.addEventListener('change',()=>update({centered:wrapCentering.checked,align:wrapCentering.checked?'center':null}));
@@ -375,9 +428,7 @@ export function installImagePanel({onUpdate, onReplace, onSpacing, getSpacing, o
   wrapLines.addEventListener('change',()=>update({wrapLines:wrapLines.value||null}));
   border.addEventListener('change',()=>update({border:border.checked}));
   borderWidth.addEventListener('change',()=>update({borderWidth:borderWidth.value}));
-  borderColor.addEventListener('input',()=>update({borderColor:borderColor.value}));
-  useBackground.addEventListener('change',()=>update({background:useBackground.checked?background.value:null}));
-  background.addEventListener('input',()=>{if(useBackground.checked)update({background:background.value});});
+  useBackground.addEventListener('change',()=>update({background:useBackground.checked?background.dataset.hex:null}));
   for(const [name,input] of Object.entries(spacingInputs))input.addEventListener('change',()=>{
     const current={...getSpacing()};
     current[name]=input.value===''?IMAGE_DEFAULTS[name]:input.value+'pt';
@@ -389,7 +440,7 @@ export function installImagePanel({onUpdate, onReplace, onSpacing, getSpacing, o
     if(panel.hidden)return;
     setDimensions(event.detail?.width,event.detail?.wrapWidth);
   });
-  return {panel,setValues,setPath,setDimensions,setMultiSelection,setGroupState,setSpacing(values){for(const [name,input] of Object.entries(spacingInputs))input.value=spacingNumber(values[name]);}};
+  return {panel,setValues,setPath,setDimensions,setMultiSelection,setGroupState,setGroupMode,setSpacing(values){for(const [name,input] of Object.entries(spacingInputs))input.value=spacingNumber(values[name]);}};
 }
 
 const IMAGE_DEFAULTS = Object.freeze({textfloatsep:'20pt plus 2pt minus 4pt',intextsep:'12pt plus 2pt minus 2pt',floatsep:'12pt plus 2pt minus 2pt'});

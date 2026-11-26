@@ -2,6 +2,11 @@ name: Desktop release
 
 on:
   workflow_dispatch:
+    inputs:
+      publish_preview:
+        description: Publish a Windows x64 and macOS arm64 preview after checks (no Linux)
+        type: boolean
+        default: false
   push:
     tags: ["v*"]
 
@@ -36,11 +41,15 @@ jobs:
         run: |
           node --test tests/latex.test.mjs tests/config.test.mjs tests/keybindings.test.mjs \
             tests/ui/i18n.test.mjs tests/typeset-layout.test.mjs tests/release-policy.test.mjs \
-            tests/project-native-bridge.test.mjs
+             tests/project-native-bridge.test.mjs
+          node --test tests/native-math-baseline.test.mjs
+          bash -n apps/desktop/scripts/publish-preview.sh
           node --test tests/bib/*.test.mjs tests/bib/*/*.test.mjs
           npx playwright install --only-shell chromium
           node tests/editor.cjs
           node tests/shortcuts-browser.cjs
+          node tests/math-editing-browser.cjs
+          node tests/shortcut-priority-browser.cjs
 
   build:
     runs-on: macos-15
@@ -112,7 +121,44 @@ jobs:
     secrets: inherit
 
   linux:
+    if: ${{ !inputs.publish_preview }}
     uses: ./.github/workflows/linux-release.yml
+
+  native:
+    if: github.event_name == 'workflow_dispatch' && inputs.publish_preview
+    uses: ./.github/workflows/native-tex.yml
+
+  preview:
+    if: github.event_name == 'workflow_dispatch' && inputs.publish_preview
+    needs: [web, build, windows, native]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v8.0.2
+        with:
+          name: lineae-macos-aarch64
+          path: artifacts/macos
+      - uses: actions/download-artifact@v8.0.2
+        with:
+          name: lineae-desktop-${{ github.sha }}
+          path: artifacts/windows
+      - name: Publish the verified two-device preview
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.build.outputs.version }}
+          PUBLISH_PREVIEW: ${{ inputs.publish_preview }}
+        run: bash apps/desktop/scripts/publish-preview.sh
+      - name: Preserve the verified publication bundle
+        if: ${{ always() && hashFiles('artifacts/preview/SHA256SUMS') != '' }}
+        uses: actions/upload-artifact@v7.0.2
+        with:
+          name: lineae-verified-preview-${{ github.sha }}
+          path: artifacts/preview/*
+          if-no-files-found: error
 
   release:
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') && needs.build.outputs.tag == github.ref_name

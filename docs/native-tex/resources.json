@@ -1,0 +1,54 @@
+{
+  "schemaVersion": 1,
+  "resources": [
+    {
+      "name": "pdfjs-dist",
+      "version": "4.10.38",
+      "source": "https://registry.npmjs.org/pdfjs-dist/-/pdfjs-dist-4.10.38.tgz",
+      "preferredSource": "https://github.com/mozilla/pdf.js/tree/v4.10.38",
+      "rights": "redistributable",
+      "license": "Apache-2.0",
+      "distributed": ["legacy/build/pdf.mjs", "legacy/build/pdf.worker.mjs", "LICENSE"],
+      "changes": "none; selected files from integrity-verified upstream archive"
+    },
+    {
+      "name": "PDF.js Adobe CMaps",
+      "version": "pdfjs-dist-4.10.38",
+      "rights": "redistributable",
+      "license": "BSD-3-Clause",
+      "distributed": ["vendor/pdfjs/cmaps/"],
+      "notice": "vendor/pdfjs/cmaps/LICENSE",
+      "changes": "none"
+    },
+    {
+      "name": "PDF.js standard Foxit fonts",
+      "version": "pdfjs-dist-4.10.38",
+      "rights": "redistributable",
+      "license": "BSD-3-Clause",
+      "distributed": ["vendor/pdfjs/standard_fonts/Foxit*.pfb"],
+      "notice": "vendor/pdfjs/standard_fonts/LICENSE_FOXIT",
+      "changes": "none"
+    },
+    {
+      "name": "PDF.js standard Liberation fonts",
+      "version": "pdfjs-dist-4.10.38",
+      "rights": "redistributable",
+      "license": "OFL-1.1",
+      "distributed": ["vendor/pdfjs/standard_fonts/LiberationSans-*.ttf"],
+      "notice": "vendor/pdfjs/standard_fonts/LICENSE_LIBERATION",
+      "changes": "none; reserved font names are not changed"
+    },
+    {
+      "name": "User-installed TeX distribution and fonts",
+      "rights": "local_only_review",
+      "distributed": [],
+      "note": "Discovered/read on the user's device after trust; never copied from font caches into Lineae packages"
+    },
+    {
+      "name": "User project snapshots",
+      "rights": "excluded",
+      "distributed": [],
+      "note": "User content remains local; snapshot/export authority does not imply redistribution permission"
+    }
+  ]
+}

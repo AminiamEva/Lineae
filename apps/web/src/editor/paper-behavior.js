@@ -6,7 +6,7 @@ import { NodeSelection, Plugin, TextSelection } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import { listMarkerCSS } from '../../latex/list-numbering.mjs';
 import { t } from '../ui/i18n.mjs';
-import { generalTikzPreviewWidget, openTikzStudio, tikzStagingFromPreamble } from '../ui/tikz-studio.js';
+import { generalTikzPreviewWidget, openTikzStudio, tikzStagingFromPreamble, setTikzPreamble } from '../ui/tikz-studio.js';
 import { TikzEditor } from '../tikz/controllers/tikzEditor.js';
 
 function tableCaptionWidget(caption,number) {
@@ -521,6 +521,7 @@ function codeTokenRegex(family) {
   }
 }
 function formattingMarks(doc, preamble = '') {
+  setTikzPreamble(preamble);
   const decorations = [];
   doc.descendants((node, position, parent, index) => {
     if (node.type.name==='math' && parent) {
@@ -548,11 +549,11 @@ function formattingMarks(doc, preamble = '') {
     }
     if (node.type.name === 'codeBlock') {
       if (node.attrs.language === 'tikz-general') {
-        decorations.push(Decoration.widget(position, generalTikzPreviewWidget(node.textContent, preamble, () => openTikzStudio({
+        decorations.push(Decoration.widget(position, () => generalTikzPreviewWidget(node.textContent, preamble, () => openTikzStudio({
           initialLibraries: tikzStagingFromPreamble(preamble),
           initialBody: node.textContent,
           onInsert: ({ body }) => replaceTikzCode(paperEditor, position, body),
-        })), { side: -1 }));
+        })), { side: -1, key:JSON.stringify([position,node.textContent,preamble]) }));
       } else if (node.attrs.language === 'tikz' || node.attrs.language === 'circuitikz') {
         const circuitPreamble = `${tikzStagingFromPreamble(preamble)}\n\\usepackage{circuitikz}`.trim();
         const openCircuitEditor = () => {
@@ -562,7 +563,7 @@ function formattingMarks(doc, preamble = '') {
             if (code) replaceTikzCode(paperEditor, position, code);
           }, node.textContent);
         };
-        decorations.push(Decoration.widget(position, generalTikzPreviewWidget(node.textContent, circuitPreamble, openCircuitEditor), { side: -1 }));
+        decorations.push(Decoration.widget(position, () => generalTikzPreviewWidget(node.textContent, circuitPreamble, openCircuitEditor), { side: -1, key:JSON.stringify([position,node.textContent,circuitPreamble]) }));
       }
       const tokenPattern = codeTokenRegex(codeFamily(node.attrs.language));
       for (const match of node.textContent.matchAll(tokenPattern)) {
@@ -890,7 +891,10 @@ export const PaperBehavior = Extension.create({
             const widgets = [];
             state.doc.descendants((node, position) => {
               if (node.type.name === 'table' && (node.attrs.captionEnabled || node.attrs.caption)) {
-                widgets.push(Decoration.widget(position, tableCaptionWidget(node.attrs.caption ?? '',documentNumbers(state.doc).objects.get(position)?.number), {side:-1}));
+                const number=documentNumbers(state.doc).objects.get(position)?.number;
+                widgets.push(Decoration.widget(position, tableCaptionWidget(node.attrs.caption ?? '',number), {
+                  side:-1, key:`table-caption-${position}-${number ?? ''}-${node.attrs.caption ?? ''}`,
+                }));
               }
             });
             return widgets.length ? DecorationSet.create(state.doc, widgets) : null;

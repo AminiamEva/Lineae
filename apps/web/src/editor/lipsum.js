@@ -9,16 +9,19 @@ export function lipsumParagraphs(range='1-7'){
 }
 export const Lipsum=Node.create({
  name:'lipsum',group:'inline',inline:true,atom:true,selectable:true,
+ addOptions:()=>({expandPreview:true}),
  addAttributes:()=>({range:{default:'1-7'}}),
  parseHTML:()=>[{tag:'span[data-lipsum]',getAttrs:dom=>({range:dom.dataset.lipsum||'1-7'})}],
  renderHTML:({node})=>['span',{'data-lipsum':node.attrs.range,contenteditable:'false'},'\\lipsum['+node.attrs.range+']'],
  addNodeView(){
+  const expandPreview=this.options.expandPreview;
   return ({node})=>{
    const dom=document.createElement('span');
    dom.className='lipsum-content';
    dom.dataset.lipsum=node.attrs.range;
    dom.contentEditable='false';
    const render=()=>{
+    if(!expandPreview){dom.textContent='\\lipsum['+node.attrs.range+']';return;}
     dom.replaceChildren(...lipsumParagraphs(node.attrs.range).map(text=>{
      const p=document.createElement('span');p.className='lipsum-paragraph';p.textContent=text;return p;
     }));

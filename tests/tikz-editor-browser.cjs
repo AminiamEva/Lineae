@@ -97,6 +97,33 @@ const server = createServer(async (request, response) => {
     assert.equal(await page.locator('.tikz-layer-items > [data-uid]').last().locator('line').count(), 2, 'path endpoints are connected to the natural symbol with two leads');
     assert.equal(await page.locator('.tikz-layer-items > [data-uid]').last().locator('line').first().getAttribute('stroke-width'), '1', 'path leads use the hairline wire width');
 
+    // Capacitor label: text, side and distance are editable and exported.
+    await place('Capacitive and dynamic bipoles', 'Capacitor', .78, .52);
+    const setField = async (name, value) => {
+      await page.evaluate(([name, value]) => {
+        const label = [...document.querySelectorAll('.tikz-property-panel label')]
+          .find(node => node.querySelector('span')?.textContent === name);
+        const control = label?.querySelector('input,select,textarea');
+        if (!control) return;
+        control.value = value;
+        control.dispatchEvent(new Event('input', { bubbles: true }));
+        control.dispatchEvent(new Event('change', { bubbles: true }));
+      }, [name, value]);
+      await page.waitForTimeout(120);
+    };
+    await setField('Label', 'C_1');
+    await setField('Label orientation', 'below');
+    await setField('Label distance (cm)', '0.25');
+    await page.waitForTimeout(150);
+    assert.ok(await page.locator('.tikz-layer-items foreignObject').count() > 0, 'label math renders on the canvas');
+    await page.evaluate(() => document.fonts.ready);
+    const labelFonts = await page.evaluate(() => {
+      const math = document.querySelector('.tikz-layer-items foreignObject math');
+      return { family: math ? getComputedStyle(math).fontFamily : '', loaded: document.fonts.check('16px "Latin Modern Math"') };
+    });
+    assert.match(labelFonts.family, /Latin Modern Math/, 'label math uses Latin Modern Math');
+    assert.ok(labelFonts.loaded, 'Latin Modern Math is loaded');
+
     // Instruments must keep the artwork fill so their letter glyphs stay visible.
     await place('Instruments', 'Ampere meter', .25, .72);
     const meter = page.locator('.tikz-layer-items > [data-uid]').last();
@@ -139,18 +166,27 @@ const server = createServer(async (request, response) => {
     assert.notEqual(await page.locator('.tikz-layer-items').getAttribute('transform'), beforePan, 'pan changes the view transform');
 
     await page.locator('.tikz-finish').click();
-    await page.locator('.tikz-general-preview svg').waitFor({ state: 'visible', timeout: 120000 });
-    assert.equal(await page.locator('.tikz-general-preview svg').count(), 1, 'inserted CircuiTikZ has a complete TeX-rendered preview');
-    assert.equal(await page.locator('.ProseMirror pre[data-language="tikz"]').isHidden(), true, 'source code block stays out of the document body');
-    const tikz = await page.locator('.ProseMirror pre code').innerText();
+    await page.locator('.document-image-tikz svg').waitFor({ state: 'visible', timeout: 120000 });
+    assert.equal(await page.locator('.document-image-tikz svg').count(), 1, 'inserted CircuiTikZ has a complete TeX-rendered preview');
+    assert.ok(await page.locator('.document-image-tikz.natural-size').count() > 0, 'TikZ preview uses its intrinsic size instead of stretching to the text width');
+    const tikz = await page.locator('.ProseMirror').evaluate(element => element.editor.getJSON().content.find(node => node.type === 'documentImage')?.attrs?.tikzSource ?? '');
+    assert.equal(await page.locator('.ProseMirror').evaluate(element => element.editor.getJSON().content.find(node => node.type === 'documentImage')?.attrs?.tikzEditor), 'circuit', 'CircuiTikZ uses the circuit editor');
     assert.doesNotMatch(tikz, /\\resizebox\{/);
     assert.match(tikz, /\\node\[npn, bodydiode\]/);
     assert.match(tikz, /\\node\[transformer, cute\]/);
     assert.match(tikz, /\\draw .* to\[vco, box\]/);
-    await page.locator('.tikz-code-preview').dblclick();
+    assert.match(tikz, /to\[capacitor, l_=\{\$C_1\$\}, label distance=0\.25cm\]/, 'capacitor label side and distance are exported');
+    await page.locator('.document-image-tikz').dblclick();
     await page.locator('.tikz-window').waitFor({ state: 'visible' });
     await page.waitForFunction(() => document.querySelectorAll('.tikz-layer-items > [data-uid]').length > 0);
     assert.ok(await page.locator('.tikz-layer-items > [data-uid]').count() > 0, 'double-click opens the CircuiTikZ editor with the current drawing');
+    const origin = await page.evaluate(() => {
+      const layer = document.querySelector('.tikz-layer-items');
+      const canvas = document.querySelector('.tikz-canvas').getBoundingClientRect();
+      const match = /translate\(([\d.]+),([\d.]+)\)/.exec(layer.getAttribute('transform') || '');
+      return match ? { x: Number(match[1]), y: Number(match[2]), w: canvas.width, h: canvas.height } : null;
+    });
+    assert.ok(origin && Math.abs(origin.x - origin.w / 2) < 2 && Math.abs(origin.y - origin.h / 2) < 2, 'editor centers the world origin');
     await page.locator('.tikz-exit').click();
     assert.deepEqual(errors, [], 'TikZ editor has no page errors');
     console.log('TikZ editor browser regressions passed');

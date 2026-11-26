@@ -8,7 +8,7 @@ export function createCompositionController(port){
     const project=model();
     if(!project||!port.sourceHidden()||port.fileKind()!=='tex')return;
     if(port.session.composition?.rootId===project.activeFileId)return;
-    const composed=port.session.compose(project,project.activeFileId);
+    const composed=port.session.compose(project,project.activeFileId,{repeated:port.nativeWorkspace?.()?'first':'reject'});
     if(composed.issues.length){port.report(composed.issues.join('; '));return;}
     if(composed.regions.length>1)port.present(composed);
   }

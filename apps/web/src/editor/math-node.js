@@ -1,3 +1,4 @@
+import {nativeOnlyAcceptance} from './native-surface/acceptance-mode.mjs';
 import {documentNumbers} from '../../latex/document-numbering.mjs';
 import {localizedTitle} from '../ui/localized-control.mjs';
 import { Node } from '@tiptap/core';
@@ -10,6 +11,25 @@ let mathPointerField=null;
 if(typeof document!=='undefined')document.addEventListener('pointerdown',event=>{mathPointerField=event.composedPath().find(node=>node?.tagName==='MATH-FIELD')??null;},true);
 let smartFences;
 export function configureMathFences(value) { smartFences = value; }
+
+export function mathPositionPath(model,offset) {
+  const path=[];
+  for(let atom=model.at(offset);atom?.parent;atom=atom.parent){
+    const branch=atom.parentBranch;
+    path.unshift([branch,atom.parent.branch(branch).indexOf(atom)]);
+  }
+  return path;
+}
+
+export function mathOffsetAtPath(model,path) {
+  let atom=model.root;
+  for(const [branch,child] of path){
+    if(!atom||child<0||
+      (Array.isArray(branch)&&(atom.type!=='array'||branch[0]>=atom.rowCount||branch[1]>=atom.colCount)))return -1;
+    atom=atom.branch(branch)?.[child];
+  }
+  return atom?model.offsetOf(atom):-1;
+}
 
 const isIntegral = atom => /^\\(?:i{1,3}nt|oi{1,3}nt)$/.test(atom?.command ?? '');
 export const isMathOperatorWithBody = name => /^(?:i{1,3}nt|oi{1,3}nt|sum|prod)$/.test(name);
@@ -517,6 +537,22 @@ export const MathNode = Node.create({
       dom.dataset.numbered = String(node.isBlock && node.attrs.delimiter === 'equation');
       dom.getMathPosition = getPos;
       dom.contentEditable = 'false';
+      if (nativeOnlyAcceptance()) {
+        // Keep the semantic node in the document and history without mounting
+        // a MathLive editor in the native-only acceptance run.
+        dom.textContent = node.attrs.latex;
+        return {
+          dom,
+          update(next) {
+            if (next.type !== node.type) return false;
+            node = next;
+            dom.dataset.latex = next.attrs.latex;
+            dom.textContent = next.attrs.latex;
+            return true;
+          },
+          ignoreMutation: () => true,
+        };
+      }
       // A draggable node view swallows pointer hit-testing inside MathLive, so
       // clicking a placeholder box or a matrix cell would not move its caret.
       // ProseMirror re-enables dragging temporarily on mousedown for the handle.
@@ -545,6 +581,33 @@ export const MathNode = Node.create({
       const field = document.createElement('math-field');
       field.setAttribute('default-mode', node.isBlock ? 'math' : 'inline-math');
       field.textContent = mathEditorSource(node.attrs.latex, { inline:!node.isBlock });
+      const historySelections=new Map();
+      let applyingHistory=false;
+      function rememberSelection(){
+        const model=field._mathfield?.model;
+        if(applyingHistory||!model||!field.hasFocus()||
+          mathDocumentSource(field.value,node.attrs.latex,{inline:!node.isBlock}).trim()!==node.attrs.latex.trim())return;
+        const {ranges,direction}=field.selection;
+        historySelections.set(node.attrs.latex,{paths:ranges.map(range=>range.map(offset=>mathPositionPath(model,offset))),direction});
+        if(historySelections.size>64)historySelections.delete(historySelections.keys().next().value);
+      }
+      field.addEventListener('lineae-before-math-history',()=>{
+        rememberSelection();
+        applyingHistory=true;
+      });
+      field.addEventListener('lineae-after-math-history',()=>{
+        const selection=historySelections.get(node.attrs.latex);
+        try {
+          const model=field._mathfield?.model;
+          if(field.isConnected&&selection&&model){
+            const ranges=selection.paths.map(path=>path.map(endpoint=>mathOffsetAtPath(model,endpoint)));
+            if(ranges.every(range=>range.every(offset=>offset>=0&&offset<=field.lastOffset))){
+              field.selection={ranges,direction:selection.direction};
+            }
+          }
+        }finally{applyingHistory=false;}
+      });
+      field.addEventListener('beforeinput',rememberSelection);
       dom.append(handle, field);
       const numbers = document.createElement('span');
       numbers.className = 'math-equation-numbers';
@@ -666,6 +729,7 @@ export const MathNode = Node.create({
         queueMicrotask(()=>{if(field.isConnected&&!field.hasFocus()&&!commandPalette)clearEmptyScripts(field);});
       });
       field.addEventListener('selection-change',()=>{
+        rememberSelection();
         if (scriptCleanupQueued) return;
         scriptCleanupQueued=true;
         queueMicrotask(()=>{
@@ -694,6 +758,7 @@ export const MathNode = Node.create({
         const position = getPos();
         if (typeof position === 'number') {
           editor.view.dispatch(editor.state.tr.setNodeMarkup(position, undefined, { ...node.attrs, latex }));
+          rememberSelection();
         }
       });
       let leavingStructure = false;

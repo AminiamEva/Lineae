@@ -244,9 +244,17 @@ export class Project {
   get tree() { return directoryTree(this.files.values(), this.directories); }
   create(value, text) { return this.operation(()=>this.createNow(value,text)); }
   async createNow(value, text) {
+    return this.createFile(value,new TextEncoder().encode(text),text);
+  }
+  importAsset(value,bytes){
+    return this.operation(()=>{
+      if(fileKind(value)!=='image'||!(bytes instanceof Uint8Array))throw new TypeError('Invalid project image');
+      return this.createFile(value,bytes,null);
+    });
+  }
+  async createFile(value,bytes,text){
     const path = projectPath(value);
     if (this.files.has(path) || this.directories.includes(path)) throw new Error('Path already exists');
-    const bytes = new TextEncoder().encode(text);
     await this.adapter.create(path, bytes);
     const file = {id:crypto.randomUUID(), path, kind:fileKind(path), bytes, saved:text, draft:text, dirty:false};
     this.files.set(path, file); this.scan(file); this.resolveDependencies();this.persistMetadata(); return file;

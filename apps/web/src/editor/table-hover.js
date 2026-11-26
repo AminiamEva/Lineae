@@ -146,9 +146,8 @@ export function installTableHoverAddRow(editor, paper) {
       });
       if (firstCell === null) return;
       editor.view.dispatch(editor.state.tr
-        .setSelection(new CellSelection(editor.state.doc.resolve(firstCell), editor.state.doc.resolve(lastCell)))
-        .scrollIntoView());
-      editor.view.focus();
+        .setSelection(new CellSelection(editor.state.doc.resolve(firstCell), editor.state.doc.resolve(lastCell))));
+      editor.commands.focus(undefined,{scrollIntoView:false});
     } finally {
       hide();
     }

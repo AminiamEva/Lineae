@@ -3,6 +3,85 @@ import {group,trivia,clean,environmentEnd} from './tblr.mjs';
 
 export const imageWidthPattern = /^(?:(?:\d+(?:\.\d+)?|\.\d+)?\\(?:linewidth|textwidth|columnwidth)|(?:\d+(?:\.\d+)?|\.\d+)(?:cm|mm|pt|in))$/;
 
+function scaledTikzEnd(source,afterCommand){
+  const width=group(source,trivia(source,afterCommand));
+  const height=width&&group(source,trivia(source,width.end));
+  const body=height&&group(source,trivia(source,height.end));
+  if(!body)return null;
+  const start=trivia(body.value,0);
+  const name=/^\\begin\{(tikzpicture|circuitikz)\}/.exec(body.value.slice(start))?.[1];
+  const end=name&&environmentEnd(body.value,start,name);
+  return end&&trivia(body.value,end.end)===body.value.length?{end:body.end}:null;
+}
+
+export function tikzDrawingRanges(source,node){
+  if(!/\\begin\{(?:tikzpicture|circuitikz)\}/.test(source))return [];
+  const tokens=[...sourceStructure(source)];
+  if(tokens.some(token=>token.kind==='invalid'))return [];
+  const spans=[];
+  for(const token of tokens){
+    if(spans.at(-1)?.to>token.index)continue;
+    const name=token.kind==='begin'&&/^\\begin\{(tikzpicture|circuitikz)\}$/.exec(token.value)?.[1];
+    const scaled=token.value==='\\resizebox';
+    const close=name?environmentEnd(source,token.index,name):scaled?scaledTikzEnd(source,token.end):null;
+    if(close)spans.push({from:token.index,to:close.end,...(scaled&&{scaled:true})});
+  }
+  if(!node&&spans.length===1&&source.trim()===source.slice(spans[0].from,spans[0].to))
+    return [{...spans[0],child:null}];
+  node??=parseImageBlock(source);
+  const children=node?.type==='subfigures'?node.content??[]:node?.type==='documentImage'?[node]:[];
+  const drawings=children.flatMap((child,index)=>child.attrs?.tikzSource?
+    [{child:node.type==='subfigures'?index:null,tikz:child.attrs.tikzSource}]:[]);
+  if(spans.length!==drawings.length||spans.some(({from,to},index)=>source.slice(from,to)!==drawings[index].tikz))return [];
+  return spans.map((span,index)=>({...span,child:drawings[index].child}));
+}
+
+export function rasterDrawingRanges(source,node){
+  if(!source.includes('\\includegraphics'))return [];
+  node??=parseImageBlock(source);
+  const children=node?.type==='subfigures'?node.content??[]:node?.type==='documentImage'?[node]:[];
+  const images=children.flatMap((child,index)=>child.attrs?.path?
+    [{child:node.type==='subfigures'?index:null,path:child.attrs.path}]:[]);
+  if(!images.length)return [];
+  const tokens=[...sourceStructure(source)];
+  if(tokens.some(token=>token.kind==='invalid'))return [];
+  const commands=tokens.filter(token=>token.value==='\\includegraphics');
+  if(commands.length!==images.length)return [];
+  const ranges=[];
+  for(const [index,token] of commands.entries()){
+    let cursor=trivia(source,token.end);
+    if(source[cursor]==='['){
+      const options=group(source,cursor,'[',']');
+      if(!options)return [];
+      cursor=trivia(source,options.end);
+    }
+    const arg=group(source,cursor),image=images[index];
+    if(arg?.value!==image.path||/[\\%{}]/.test(arg.value))return [];
+    if(/\.(?:png|jpe?g)$/i.test(image.path))ranges.push({from:token.index,to:arg.end,...image,
+      argument:{from:cursor+1,to:arg.end-1}});
+  }
+  return ranges;
+}
+
+// A subfigure/figure body may contain a TikZ picture instead of \includegraphics.
+// Keep the drawing (including any resizebox wrapper) and drop the surrounding
+// alignment and caption commands, which the editor stores separately.
+function tikzSourceFrom(body) {
+  return String(body)
+    .replace(/\\centering\b/g,'')
+    .replace(/\\caption\*?\{[^{}]*\}/g,'')
+    .replace(/\\label\{[^{}]*\}/g,'')
+    .trim() || null;
+}
+
+// Distinguish a circuit drawing (CircuiTikZ editor) from a general TikZ picture.
+export function tikzLooksCircuit(source) {
+  const text = String(source ?? '');
+  if (/\\begin\{circuitikz\}|\\circuitikzset\b|\\ctikzset\b/.test(text)) return true;
+  const styles = [...text.matchAll(/\b(?:to|node)\s*\[([^\]]*)\]/g)].map(match => match[1]).join(',');
+  return /(?:^|,)\s*(?:npn|pnp|resistor|capacitor|inductor|diode|ground|battery\d*|transformer|vco|lamp|switch|ammeter|voltmeter|op ?amp|voltage source|current source|american|european|cute|R|C|L|V|I|sV|sI|pR|pC|pL|eR|eC|eL|vR|vC|vL)\b/.test(styles);
+}
+
 // A single-image float is editable using the existing image node. Every other
 // construct stays Raw: never flatten subfigures or silently drop unknown code.
 function figureParts(source) {
@@ -224,31 +303,57 @@ export function parseImageBlock(source) {
   if (subfigureMatch && /\\begin\{subfigure\}/.test(subfigureMatch[2])) {
     const inner = subfigureMatch[2];
     const subs = [];
-    const subRe = /\\begin\{subfigure\}\{([^{}]*)\}([\s\S]*?)\\end\{subfigure\}/g;
+    const matches = [];
+    const subRe = /\\begin\{subfigure\}(?:\[([^\]]*)\])?\{([^{}]*)\}([\s\S]*?)\\end\{subfigure\}/g;
     let sub;
     while ((sub = subRe.exec(inner)) !== null) {
-      const body = sub[2];
+      matches.push(sub);
+      const body = sub[3];
       const graphic = parseImageMarkup(/\\includegraphics(?:\[[^\]]*\])?\{[^{}\\\r\n%]+\}/.exec(body)?.[0] ?? '');
-      if (!graphic) continue;
+      const tikz = !graphic && /\\begin\{(?:tikzpicture|circuitikz)\}/.test(body) ? tikzSourceFrom(body) : null;
+      if (!graphic && !tikz) continue;
       const cap = /\\caption(\*)?\{([^{}\r\n]*)\}/.exec(body);
-      subs.push({ type:'documentImage', attrs:{ ...graphic.attrs,
-        width:/\\textwidth$/.test(sub[1]) ? sub[1] : '0.48\\textwidth',
+      subs.push({ type:'documentImage', attrs:{ ...(graphic?.attrs ?? {tikzSource:tikz}),
+        ...(tikz ? {tikzEditor:tikzLooksCircuit(tikz)?'circuit':'general'} : {}),
+        width:imageWidthPattern.test((sub[2] ?? '').trim()) ? sub[2].trim() : '0.48\\textwidth',
+        pos:/^[tcb]$/.test((sub[1] ?? '').trim()) ? sub[1].trim() : 'c',
         caption:cap?.[2] ?? null, captionEnabled:Boolean(cap), captionNumbered:cap ? !cap[1] : true,
-        figure:false, centered:true, wrap:false } });
+        label:/\\label\{([^{}\r\n]+)\}/.exec(body)?.[1] ?? null,
+        figure:false, centered:true, align:'center', wrap:false } });
     }
     if (!subs.length) return null;
+    let spacing = null;
+    if (matches.length > 1) {
+      const between = inner.slice(matches[0].index + matches[0][0].length, matches[1].index);
+      spacing = /\\(?:hfill|quad|qquad|hspace\*?\{[^{}]*\})/.exec(between)?.[0] ?? null;
+    }
     const tail = inner.slice(inner.lastIndexOf('\\end{subfigure}'));
     const mainCap = /\\caption(\*)?\{([^{}\r\n]*)\}/.exec(tail);
     return { type:'subfigures', attrs:{
       placement:subfigureMatch[1] || null, fixed:subfigureMatch[1]?.includes('H') || false,
       caption:mainCap?.[2] ?? null, captionEnabled:Boolean(mainCap), captionNumbered:mainCap ? !mainCap[1] : true,
+      spacing:spacing ?? '\\quad',
       label:/\\label\{([^{}\r\n]+)\}/.exec(tail)?.[1] ?? null }, content:subs };
   }
   const figure = /^\\begin\{figure\}(?:\[([^\]]*)\])?\s*([\s\S]*?)\\end\{figure\}$/.exec(text);
   if (figure) {
     const inner = figure[2];
     const imageMatch = /\\includegraphics(?:\[[^\]]*\])?\{[^{}\\\r\n%]+\}/.exec(inner);
-    if (!imageMatch) return null;
+    if (!imageMatch) {
+      if (!/\\begin\{(?:tikzpicture|circuitikz)\}/.test(inner)) return null;
+      const source=tikzSourceFrom(inner);
+      if (!source) return null;
+      const alignment = /\\centering\b/.test(inner) ? 'center' : /\\raggedleft\b/.test(inner) ? 'right' : /\\raggedright\b/.test(inner) ? 'left' : null;
+      const captionMatch = /\\caption(\*)?\{([^{}\r\n]*)\}/.exec(inner);
+      const captionIndex = inner.search(/\\caption\*?\{/);
+      const tikzIndex = inner.search(/\\begin\{(?:tikzpicture|circuitikz)\}/);
+      return { type:'documentImage', attrs:{
+        tikzSource:source, tikzEditor:tikzLooksCircuit(source)?'circuit':'general', figure:true, placement:figure[1] || null, fixed:figure[1]?.includes('H') || false,
+        centered:alignment === 'center', align:alignment,
+        caption:captionMatch?.[2] ?? null, captionEnabled:Boolean(captionMatch), captionNumbered:captionMatch? !captionMatch[1]:true,
+        captionPosition:captionIndex >= 0 && captionIndex < tikzIndex ? 'above' : 'below',
+        label:/\\label\{([^{}\r\n]+)\}/.exec(inner)?.[1] ?? null } };
+    }
     const image = parseImageMarkup(imageMatch[0]);
     if (!image) return null;
     const alignment = /\\centering\b/.test(inner) ? 'center'
@@ -336,11 +441,17 @@ function captionLine(attrs) {
 }
 
 export function serializeSubfigures(attrs, children) {
+  const spacing = /^\\(?:hfill|quad|qquad|hspace\*?\{[^{}]*\})$/.test(String(attrs.spacing ?? '').trim())
+    ? String(attrs.spacing).trim() : '\\quad';
   const subs = children.map((child, index) => {
-    const width = /^\d+(?:\.\d+)?\\textwidth$/.test(child.attrs.width ?? '') ? child.attrs.width : '0.48\\textwidth';
+    const width = imageWidthPattern.test(String(child.attrs.width ?? '').trim()) ? String(child.attrs.width).trim() : '0.48\\textwidth';
+    const pos = /^[tcb]$/.test(child.attrs.pos ?? '') ? child.attrs.pos : 'c';
+    const posOption = pos === 'c' ? '' : '[' + pos + ']';
     const cap = captionEnabled(child.attrs) ? '\\caption{' + (child.attrs.caption ?? '') + '}\n' : '';
-    return '\\begin{subfigure}{' + width + '}\n\\centering\n' + serializeGraphic({...child.attrs, width:null, height:null, scale:null})
-      + '\n' + cap + '\\end{subfigure}' + (index < children.length - 1 ? '\\hfill\n' : '\n');
+    const label = child.attrs.label ? '\\label{' + child.attrs.label + '}\n' : '';
+    const drawing = child.attrs.tikzSource ?? serializeGraphic({...child.attrs, width:'\\linewidth', height:null, scale:null});
+    return '\\begin{subfigure}' + posOption + '{' + width + '}\n\\centering\n' + drawing
+      + '\n' + cap + label + '\\end{subfigure}' + (index < children.length - 1 ? spacing + '\n' : '\n');
   }).join('');
   const body = subs + captionLine(attrs);
   const placement = attrs.fixed ? 'H' : attrs.placement;
@@ -352,6 +463,14 @@ export function serializeSubfigures(attrs, children) {
 export function serializeImage(attrs) {
   if(attrs.rule && attrs.ruleSource)return attrs.ruleSource;
   if(attrs.figureSource)return serializeSourceFigure(attrs)??attrs.figureSource;
+  if(attrs.tikzSource){
+    const caption=captionLine(attrs);
+    const label=attrs.label?'\\label{'+attrs.label+'}\n':'';
+    if(!attrs.figure)return attrs.tikzSource+'\n\n';
+    const body=attrs.captionPosition==='above'?caption+attrs.tikzSource:attrs.tikzSource+'\n'+caption;
+    const placement=attrs.fixed?'H':attrs.placement;
+    return '\\begin{figure}'+(placement?'['+placement+']':'')+'\n\\centering\n'+body+(body.endsWith('\n')?'':'\n')+label+'\\end{figure}\n\n';
+  }
   const graphic = serializeGraphic(attrs);
   const caption = captionLine(attrs);
   const label = attrs.label ? '\\label{' + attrs.label + '}\n' : '';

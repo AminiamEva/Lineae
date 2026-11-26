@@ -3,7 +3,17 @@ import test from 'node:test';
 import { parseDocument } from '../apps/web/latex/document.mjs';
 import { parseInline } from '../apps/web/latex/inline.mjs';
 import { exportDocument, resolvePackages } from '../apps/web/latex/packages.mjs';
-import { appendAlignmentPair, mathDocumentSource, mathEditorSource, numberedMathRows } from '../apps/web/latex/math-environments.mjs';
+import { alignmentLabelRange, appendAlignmentPair, mathDocumentSource, mathEditorSource, numberedMathRows } from '../apps/web/latex/math-environments.mjs';
+
+test('alignment label commands map only the requested numbered row',()=>{
+  const source='\\begin{alignat}{1}\r\na &= b \\\\[3pt]\r\n'+
+    'c &= \\frac{x}{y} \\label{eq:second} \\\\\r\nd &= e \\notag\r\n\\end{alignat}';
+  const first=alignmentLabelRange(source,0),second=alignmentLabelRange(source,1);
+  assert.equal(source.slice(first.from,first.to),'\r\na &= b ');
+  assert.equal(source.slice(second.from,second.to),'\r\nc &= \\frac{x}{y} \\label{eq:second} ');
+  assert.equal(alignmentLabelRange(source,2),null);
+  assert.equal(alignmentLabelRange(source.replaceAll('{alignat}','{alignat*}'),1),null);
+});
 import { serialize } from '../apps/web/src/editor/latex-codec.js';
 import { importBlocks } from '../apps/web/latex/blocks.mjs';
 import { listMarker, markerInput } from '../apps/web/latex/list-numbering.mjs';
@@ -169,6 +179,18 @@ test('preserves local image paths and supported widths and requests graphicx', (
   assert.equal(importBlocks(String.raw`\includegraphics[angle=90]{plot.png}`)[0].attrs.angle,'90');
   const figure=['\\begin{figure}[ht]','\\centering',image,'\\caption{Plot}','\\label{fig:plot}','\\end{figure}'].join('\n');
   assert.equal(serialize(importBlocks(figure)[0]).trim(),figure);
+});
+test('requests subcaption for subfigure environments and only once', () => {
+  const source=['\\begin{figure}','\\centering','\\begin{subfigure}[t]{0.4\\textwidth}','\\centering','\\includegraphics[width=\\linewidth]{a.png}','\\caption{A}','\\end{subfigure}\\quad','\\begin{subfigure}{0.4\\textwidth}','\\centering','\\includegraphics[width=\\linewidth]{b.png}','\\end{subfigure}','\\caption{Both}','\\end{figure}'].join('\n');
+  const node=importBlocks(source)[0];
+  assert.equal(node.type,'subfigures');
+  const body=serialize(node);
+  assert.ok(resolvePackages('',body).some(rule=>rule.name==='subcaption'));
+  assert.ok(resolvePackages('',body).some(rule=>rule.name==='graphicx'));
+  assert.equal(resolvePackages('\\usepackage{subcaption}\n',body).some(rule=>rule.name==='subcaption'),false);
+  const output=exportDocument({start:'\\documentclass{article}\n\\begin{document}\n',end:'\\end{document}',eol:'\n'},body);
+  assert.ok(output.includes('\\usepackage{subcaption}'));
+  assert.equal((output.match(/\\usepackage\{subcaption\}/g)??[]).length,1);
 });
 import { parseDelimiterPair, wrapMathWithDelimiters } from '../apps/web/latex/delimiters.mjs';
 

@@ -1,7 +1,7 @@
 const { chromium } = require('playwright');
 const { createServer } = require('node:http');
-const { readFile } = require('node:fs/promises');
-const { resolve, extname, sep } = require('node:path');
+const { mkdir, readFile, writeFile } = require('node:fs/promises');
+const { resolve, extname, sep, join } = require('node:path');
 const assert = require('node:assert/strict');
 
 const root = resolve('apps/web');
@@ -17,11 +17,79 @@ const server = createServer(async (req, res) => {
   } catch { res.writeHead(404).end(); }
 });
 
+async function measureLegacyEditing(page,origin,artifactDirectory){
+  const repetitions=Number(process.env.LINEAE_WARM_REPETITIONS);
+  assert.ok(Number.isInteger(repetitions)&&repetitions>0&&repetitions<=1000);
+  const destination=join(artifactDirectory,'legacy-browser');
+  await mkdir(destination,{recursive:true});
+  const coldStartup=performance.now();
+  await page.goto(origin,{waitUntil:'domcontentloaded'});
+  await page.waitForFunction(()=>Boolean(document.querySelector('.ProseMirror')?.editor));
+  const coldWorkspaceMs=performance.now()-coldStartup;
+  for(const pages of [10,100,300]){
+    const source=await readFile(join(artifactDirectory,`lf-pages-${pages}`,'source-after.tex'));
+    await page.goto(origin,{waitUntil:'networkidle'});
+    const cold=performance.now();
+    await page.locator('input#file').setInputFiles({name:`legacy-${pages}.tex`,mimeType:'text/plain',buffer:source});
+    await page.waitForFunction(()=>/\\frac\{a\}\{b\}/.test(document.querySelector('math-field')?.value??''));
+    const field=page.locator('math-field').first();
+    await field.click();
+    await field.evaluate(node=>{
+      const editor=document.querySelector('.ProseMirror').editor;
+      let started=null;
+      window.legacyLatencySamples=[];
+      node.addEventListener('keydown',event=>{
+        if(event.key==='b'||event.key==='c')started=performance.now();
+      },true);
+      editor.on('update',()=>{
+        if(started===null)return;
+        const timestamp=started,transaction=performance.now()-timestamp;
+        started=null;
+        requestAnimationFrame(()=>requestAnimationFrame(()=>{
+          window.legacyLatencySamples.push({transaction,frame:performance.now()-timestamp});
+        }));
+      });
+    });
+    const coldImportMs=performance.now()-cold;
+    for(let index=0;index<repetitions;index++){
+      const previous=index%2?'c':'b',next=index%2?'b':'c';
+      await field.evaluate((node,expected)=>{
+        const model=node._mathfield.model;
+        const fraction=model.root.branch('body').find(atom=>atom.type==='genfrac');
+        const denominator=fraction?.branch('below')?.at(-1);
+        if(denominator?.value!==expected)throw new Error('Expected denominator '+expected+' before editing');
+        const end=model.offsetOf(denominator),start=model.offsetOf(denominator.leftSibling);
+        node.selection={ranges:[[start,end]],direction:'forward'};
+      },previous);
+      await field.press(next);
+      await page.waitForFunction(({count,value})=>window.legacyLatencySamples.length===count&&
+        document.querySelector('math-field')?.value.includes('\\frac{a}{'+value+'}'),{count:index+1,value:next});
+    }
+    const samples=await page.evaluate(()=>window.legacyLatencySamples);
+    const percentiles=segment=>{
+      const ordered=samples.map(sample=>sample[segment]).sort((a,b)=>a-b);
+      const percentile=value=>ordered[Math.ceil(value*ordered.length)-1];
+      return {p50Ms:percentile(.5),p95Ms:percentile(.95),p99Ms:percentile(.99)};
+    };
+    const result={pages,repetitions,coldWorkspaceMs,coldImportMs,transaction:percentiles('transaction'),frame:percentiles('frame'),samples,
+      scope:'Same source and denominator replacements as rtex. Browser keydown to editor update and animation frame, excluding physical display scan-out.'};
+    await writeFile(join(destination,`lf-pages-${pages}.json`),JSON.stringify(result,null,2)+'\n');
+    console.log(`Legacy ${pages} pages, ${repetitions} edits, transaction P95 ${result.transaction.p95Ms.toFixed(2)}ms, frame P95 ${result.frame.p95Ms.toFixed(2)}ms`);
+  }
+}
+
 (async () => {
   await new Promise(done => server.listen(0, '127.0.0.1', done));
   const browser = await chromium.launch({ headless: true });
   try {
     const page = await browser.newPage({ locale: 'en-US', viewport: { width: 1280, height: 1000 } });
+    if(process.env.LINEAE_LEGACY_LATENCY_DIR){
+      await measureLegacyEditing(page,'http://127.0.0.1:'+server.address().port,process.env.LINEAE_LEGACY_LATENCY_DIR);
+      return;
+    }
+    const mod=process.platform==='darwin'?'Meta':'Control';
+    if(process.env.LINEAE_TEST_NATIVE_PREVIEW==='1')
+      await page.addInitScript(require('./native-math/mock-bridge.cjs'));
     const errors = [];
     page.on('pageerror', error => errors.push(error.message));
     await page.goto('http://127.0.0.1:' + server.address().port, { waitUntil: 'networkidle' });
@@ -32,6 +100,10 @@ const server = createServer(async (req, res) => {
     await page.waitForFunction(() => document.querySelector('math-field')?.value === 'x');
     const field = page.locator('math-field');
     await field.click();
+    if(process.env.LINEAE_TEST_NATIVE_PREVIEW==='1') {
+      await page.locator('#native-tex-toggle').click();
+      await page.waitForFunction(()=>document.querySelector('#native-tex-preview').dataset.state==='current');
+    }
     const reset = async latex => {
       await field.evaluate((field, latex) => {
         // MathLive's replaceAll leaves empty containers behind in 0.108.
@@ -230,7 +302,22 @@ const server = createServer(async (req, res) => {
       await page.keyboard.press(backward ? 'Backspace' : 'Delete');
       assert.equal(normalized((await state()).value), 'z++w', 'Second press removes the empty operator without touching siblings');
     }
-    await reset('\\frac{z+\\boxed{abc}+w}{uv}');
+    // Start a real document for document-history assertions. Earlier cases
+    // reset the private MathLive model repeatedly to exercise isolated atoms.
+    await page.locator('input[type=file]').setInputFiles({
+      name:'history.tex',mimeType:'text/plain',
+      buffer:Buffer.from('\\documentclass{article}\n\\begin{document}\n\\[\\frac{z+\\boxed{abc}+w}{uv}\\]\n\\end{document}\n'),
+    });
+    await page.waitForFunction(()=>document.querySelector('math-field')?.value.includes('\\boxed{abc}'));
+    assert.equal(await page.locator('.ProseMirror').evaluate(node=>node.editor.can().undo()),false,
+      'Opening a separate document must not retain the previous document’s undo steps');
+    await field.click();
+    if(process.env.LINEAE_TEST_NATIVE_PREVIEW==='1'){
+      await page.locator('#native-tex-toggle').click();
+      await page.waitForFunction(()=>document.querySelector('#native-tex-preview').dataset.state==='current');
+    }
+    await page.waitForFunction(()=>document.activeElement?.tagName==='MATH-FIELD'&&
+      !document.activeElement._mathfield?.focusBlurInProgress);
     const undoValue = (await state()).value;
     await page.waitForTimeout(600);
     await field.evaluate(field => {
@@ -241,10 +328,17 @@ const server = createServer(async (req, res) => {
     });
     await page.keyboard.press('Backspace');
     await page.keyboard.press('Backspace');
-    await page.waitForTimeout(50);
-    await page.keyboard.press('Control+z');
+    await page.waitForFunction(()=>{
+      const doc=document.querySelector('.ProseMirror')?.editor?.state.doc;
+      return document.querySelector('math-field')?.value.replace(/\s/g,'')==='\\frac{z++w}{uv}'&&
+        doc?.firstChild?.attrs.latex?.replace(/\s/g,'')==='\\frac{z++w}{uv}';
+    });
+    await page.keyboard.press(mod+'+z');
+    await page.waitForFunction(value=>document.querySelector('math-field')?.value.replace(/\s/g,'')===
+      value.replace(/\s/g,''),undoValue);
     assert.equal(normalized((await state()).value), normalized(undoValue), 'Editor undo restores the deleted structure');
-    await page.keyboard.press('Control+y');
+    await page.keyboard.press(mod+'+y');
+    await page.waitForFunction(()=>document.querySelector('math-field')?.value.replace(/\s/g,'')==='\\frac{z++w}{uv}');
     assert.equal(normalized((await state()).value), '\\frac{z++w}{uv}', 'Editor redo does not widen deletion');
 
     // Real arrow keys must visit every letter/digit, in both directions.
@@ -277,11 +371,13 @@ const server = createServer(async (req, res) => {
     // Empty-row box shares the following row's glyph baseline, even after zoom.
     for (const zoom of [1, 1.5]) {
       await reset('abc');
+      await page.evaluate(()=>document.fonts.ready);
       await field.evaluate((field, zoom) => { field.style.zoom = zoom; }, zoom);
       await field.evaluate(field => field.executeCommand('moveToMathfieldEnd'));
       await page.dispatchEvent('math-field', 'lineae-math-newline');
       if (zoom === 1) await page.dispatchEvent('math-field', 'lineae-math-newline');
       await page.waitForFunction(() => document.querySelector('math-field').hasAttribute('data-empty-matrix-cell'));
+      await page.evaluate(()=>new Promise(done=>requestAnimationFrame(()=>requestAnimationFrame(done))));
       const hint = await field.evaluate(field => {
         const caret = field.shadowRoot.querySelector('.ML__caret');
         const box = caret.getBoundingClientRect();
@@ -293,12 +389,15 @@ const server = createServer(async (req, res) => {
       assert.ok(Math.abs(hint.fieldCenter - hint.containerCenter) < 1, 'Hidden drag handle does not shift display math');
       await page.keyboard.type('x');
       await page.waitForFunction(() => !document.querySelector('math-field').hasAttribute('data-empty-matrix-cell'));
+      await page.evaluate(()=>document.fonts.ready);
+      await page.evaluate(()=>new Promise(done=>requestAnimationFrame(()=>requestAnimationFrame(done))));
       const glyphCenter = await field.evaluate(field => {
         const glyph = [...field.shadowRoot.querySelectorAll('.ML__mathit')].find(el => el.textContent === 'x');
         const rect = glyph.getBoundingClientRect();
         return (rect.top + rect.bottom) / 2;
       });
-      assert.ok(Math.abs(glyphCenter - hint.center) < 3 * zoom, 'Empty-row hint is aligned with the typed glyph');
+      assert.ok(Math.abs(glyphCenter - hint.center) < 3 * zoom,
+        'Empty-row hint is aligned with the typed glyph: '+JSON.stringify({zoom,hintCenter:hint.center,glyphCenter}));
       assert.match((await state()).value, /\\\\ x\\end/);
     }
     await field.evaluate(field => { field.style.zoom = ''; });
@@ -318,6 +417,8 @@ const server = createServer(async (req, res) => {
     }
     assert.deepEqual(errors, []);
     console.log('PASS: exact bidirectional math editing, safe multiline deletion, nested structures, row hints, toolbar view memory');
+    if(process.env.LINEAE_TEST_NATIVE_PREVIEW==='1')
+      console.log('PASS: existing math interaction suite with native preview enabled (mock transport, not native geometry evidence)');
   } finally {
     await browser.close();
     server.close();

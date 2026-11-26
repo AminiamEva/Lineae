@@ -1,4 +1,21 @@
 import {handleStorageId} from './project/project.mjs';
+import {nativeEditorRange,sourceOffsetAtEditorPosition} from './editor/native-text/editor-range.mjs';
+import {canBeginProseFormula,projectMixedDocument,projectTextDocument} from './editor/native-text/projection.mjs';
+import {tableCellRanges} from './editor/native-text/table-cells.mjs';
+import {decodeProse} from './editor/native-text/prose-runs.mjs';
+import {tableStyleParts,writeTableStyle} from '../latex/table-styles.mjs';
+import {nativeMathCommandNames,nativeOperatorBody,projectMath} from './editor/native-math/source.mjs';
+import {nativeMathContext} from './editor/native-math/resolve.mjs';
+import {documentMetadata,writeDocumentMetadata} from '../latex/document-metadata.mjs';
+import {resolvePackages,resolveTheoremDeclarations} from '../latex/packages.mjs';
+import {referenceAt} from '../latex/reference-commands.mjs';
+import {sourceStructure} from '../latex/source-structure.mjs';
+import {insertTableSourceColumn,insertTableSourceRow,mergeTableSourceCells,mergeTableSourceRows,removeTableSourceColumn,removeTableSourceRow,splitTableSourceCell,splitTableSourceRowspan} from '../latex/tabularx.mjs';
+import {editTblrColumn,editTblrRow,mergeTblrCells,mergeTblrRows,splitTblrCell} from '../latex/tblr.mjs';
+import {rasterDrawingRanges,tikzDrawingRanges} from '../latex/images.mjs';
+import {headingAt} from '../latex/headings.mjs';
+import {desktopEngineToggle,loadLegacyMath,nativeOnlyAcceptance,nativeWorkspaceRequested} from './editor/native-surface/acceptance-mode.mjs';
+import {sameTable} from './editor/native-surface/document-session.mjs';
 import {AppendixStart,MatterStart,LayoutCommand} from './editor/appendix.js';
 import {Lipsum} from './editor/lipsum.js';
 import {CounterDirective} from './editor/counter-directive.js';
@@ -11,19 +28,23 @@ import {createCompositionController} from './project/composition-controller.js';
 import {applicationCommandActions} from './editor/application-commands.js';
 import {captureRichSession,restoreRichSession,copyModeHistory,readModeHistory} from './project/rich-session.js';
 import {changePageLayout,mergePageLayout,PageLayoutHistory,textPatch} from './editor/page-layout-history.js';
-import {setParagraphIndent,paragraphHasIndent} from './editor/paragraph-format.js';
+import {indentationAttributes,setParagraphIndent,paragraphHasIndent} from './editor/paragraph-format.js';
 import {installProjectNavigation} from './project/navigation.js';
 import {ProjectWorkspaceState} from './project/workspace-state.mjs';
 import {exitProjectHeading} from './project/editing.js';
 import {ProjectDocumentSession} from './project/document-session.mjs';
 import {installFloatingToolbar} from './ui/floating-toolbar.js';
 import {installShortcutPriority} from './ui/shortcut-priority.mjs';
+import {installNativeTexPreview} from './ui/native-tex-preview.mjs';
+import {matchesRichFormula,richSlotPosition} from './editor/native-math/rich-slot.mjs';
+import {nativeAttachedSnapshot,nativeProjectSnapshot} from './typesetting/rtex/project-snapshot.mjs';
+import {stagedRasterPath} from './typesetting/rtex/raster-assets.mjs';
 import {installSettingsPanel} from './ui/settings-panel.js';
 import { buildHomeRibbon } from './ui/home-ribbon.js';
 import { activeStyleKey, documentClassFromSource } from './ui/style-presets.mjs';
 import { buildRibbonGroups } from './ui/ribbon-groups.js';
 import {installHeaderFooterPanel} from './ui/header-footer-panel.js';
-import { sourceProjection, richSourceChanges, standaloneParagraphDraft } from './editor/source-sync.js';
+import { sourceProjection, richSourceChanges, standaloneParagraphDraft, standaloneMathChanges, matchesParagraphGap } from './editor/source-sync.js';
 import { installSourceToolbar } from './editor/source-toolbar.js';
 import { createSourceWorkspace } from './editor/source-workspace.js';
 import { DEFAULT_DOCUMENT_SOURCE } from './editor/default-document.mjs';
@@ -31,7 +52,7 @@ import { indentLatex } from './editor/latex-indent.mjs';
 import { installContextMenu } from './editor/context-menu.js';
 import { textCommands } from '../latex/inline.mjs';
 import { markerInput, listMarker } from '../latex/list-numbering.mjs';
-import { closeHistory } from '@tiptap/pm/history';
+import { closeHistory, isHistoryTransaction } from '@tiptap/pm/history';
 import { exitCode } from '@tiptap/pm/commands';
 import { mathFontStyles, applyMathFont } from './editor/math-formatting.js';
 import { installFormatControls } from './editor/format-controls.js';
@@ -40,7 +61,7 @@ import { createClipboard } from './editor/clipboard.js';
 import { installFormatPainter } from './editor/format-painter.js';
 import { decorateToolbar, applyToolbarDescriptions, icon } from './editor/icons.js';
 import { PaperBehavior } from './editor/paper-behavior.js';
-import { MathNode, MathBlock, configureMathFences, focusInsertedOperator, insertFormula, isMathOperatorWithBody, mathEnvironment, toggleDisplayStyle } from './editor/math-node.js';
+import { MathNode, MathBlock, configureMathFences, focusInsertedOperator, insertFormula, isMathOperatorWithBody, mathEnvironment, mathPositionPath, mathOffsetAtPath, toggleDisplayStyle } from './editor/math-node.js';
 import { MathGlue } from './editor/math-glue.js';
 import { Ref, Label, Cite, Footnote, TableOfContents, refreshReferences, collectReferenceLabels, installDocumentOutline } from './editor/references.js';
 import { createCitationLibrary, openCitationPanel } from './editor/citation-library.js';
@@ -48,22 +69,25 @@ import { installProjectExplorer } from './project/explorer.js';
 import { applyCitationRenames } from '../bib/index.mjs';
 import { chooseReference } from './editor/reference-index.js';
 import { installTableHoverAddRow } from './editor/table-hover.js';
+import { deleteTableKeepingScroll } from './editor/table-utils.js';
 import { createConfigStore } from './editor/config.mjs';
 import { compileKeybindings, installKeybindings } from './editor/keybindings.mjs';
 import defaultConfigYaml from '../config.yaml';
-import { askText } from './editor/dialog.js';
+import { askText, promptDialog } from './editor/dialog.js';
 import { installDocumentFind } from './editor/find.js';
-import { DocumentImage, Subfigures, insertLocalImage, insertSubfigures, replaceLocalImage, startImageCrop, installImageDrop } from './editor/image-node.js';
+import { DocumentImage, Subfigures, chooseImageFile, availableImagePath, insertLocalImage, insertSubfigures, insertSubfigureImage, replaceLocalImage, startImageCrop, installImageDrop, editTikzVisual } from './editor/image-node.js';
 import { installImagePanel } from './ui/image-panel.js';
 import { installSubfigurePanel } from './ui/subfigure-panel.js';
 import { MultiColumn } from './editor/multi-column.js';
 import { readGlobalColumns, writeGlobalColumns } from '../latex/columns.mjs';
-import { readImageSpacing, writeImageSpacing, IMAGE_SPACING_DEFAULTS } from '../latex/images.mjs';
+import { readImageSpacing, writeImageSpacing, IMAGE_SPACING_DEFAULTS, imageWidthPattern } from '../latex/images.mjs';
 import {
   clearProjectAssets,
+  onAssetsChanged,
   projectAssets,
   readBibliographyMetadata,
   rememberAsset,
+  resolveImageAsset,
   writeBibliographyMetadata,
 } from './editor/project-assets.js';
 import { buildProjectZip, safeProjectPath, projectDependencies } from './editor/project-zip.mjs';
@@ -79,17 +103,20 @@ import { serialize, importBlocks, parseTableFloat, setSerializationClass } from 
 import {TblrSource} from './editor/tblr-extension.js';
 import {TabularxSource,syncTabularxWidths} from './editor/tabularx-extension.js';
 import { setHeadingBase } from '../latex/blocks.mjs';
-import { Editor, Node, Extension, Mark, mergeAttributes, wrappingInputRule } from '@tiptap/core';
+import { CommandManager, Editor, Node, Extension, Mark, mergeAttributes, wrappingInputRule } from '@tiptap/core';
 import StarterKit from '@tiptap/starter-kit';
 import CodeBlock from '@tiptap/extension-code-block';
-import Table from '@tiptap/extension-table';
+import Table, {createTable} from '@tiptap/extension-table';
 import TableRow from '@tiptap/extension-table-row';
 import TableCell from '@tiptap/extension-table-cell';
 import TableHeader from '@tiptap/extension-table-header';
 import { Plugin, Selection, NodeSelection, TextSelection } from '@tiptap/pm/state';
+import {canSplit} from '@tiptap/pm/transform';
+import { DOMParser as ProseMirrorParser, Fragment } from '@tiptap/pm/model';
+import { CellSelection } from '@tiptap/pm/tables';
 import { parseDocument } from '../latex/document.mjs';
 import { exportDocument } from '../latex/packages.mjs';
-import { appendAlignmentPair, displayEnvironment, numberedMathRows } from '../latex/math-environments.mjs';
+import { alignmentLabelRange, appendAlignmentPair, displayEnvironment, numberedMathRows } from '../latex/math-environments.mjs';
 import { MARGIN_PRESETS, readPageSetup, writePageSetup, pageMetrics } from '../latex/geometry.mjs';
 import { readPageFurniture, writePageFurniture } from '../latex/page-furniture.mjs';
 import { mathSymbols } from '../latex/math-symbols.mjs';
@@ -101,6 +128,7 @@ import { getLanguage, localize, normalizeLanguage, setLanguage, t } from './ui/i
 import { TikzEditor } from './tikz/controllers/tikzEditor.js';
 import { openTikzStudio } from './ui/tikz-studio.js';
 
+await loadLegacyMath();
 const citationLibrary = createCitationLibrary();
 
 const cssColor = value => {
@@ -303,6 +331,10 @@ function insertLiveMath(field, latex, notify = true) {
   }
 }
 function insertMath(display = false, latex = '') {
+  if(nativeTexPreview?.hasNativeTextFocus?.()){
+    const template=latex.replaceAll('\\mathord{\\placeholder{}}','{}').replaceAll('\\placeholder{}','');
+    return nativeTexPreview.startFormula(display,undefined,template);
+  }
   if (display) {
     if (!latex) return insertFormula(editor, true, '');
     if (displayEnvironment(latex)) {
@@ -355,12 +387,56 @@ const HistoryTable = Table.extend({
   },
 });
 function insertDefaultTable() {
-  return editor.chain().focus()
+  if(nativeTexPreview?.hasNativeTextFocus?.())return insertNativeTableFromProse();
+  return editor.chain().focus(undefined,{scrollIntoView:false})
     .insertTable({rows:2,cols:2,withHeaderRow:false})
     .updateAttributes('table',{borderMode:'grid'}).run();
 }
+function insertNativeTableFromProse(){
+  const table=createTable(editor.schema,2,2,false);
+  const grid=table.type.create({...table.attrs,borderMode:'grid'},table.content);
+  const latex=serialize(grid.toJSON()).trimEnd();
+  const [parsed]=importBlocks(latex);
+  if(parsed?.type!=='table')return false;
+  const block=editor.schema.nodeFromJSON(parsed);
+  return insertNativeDocumentBlock(block,latex);
+}
+function insertNativeDocumentBlock(block,latex,preambleLines){
+  return canStartNativeText()?insertNativeInitialBlock(block,latex,preambleLines):insertNativeProseBlock(block,latex,preambleLines);
+}
+function insertNativeInitialBlock(block,latex,preambleLines){
+  const started=performance.now(),{state}=editor;
+  const sourceBefore=source(),fragment=projectFileKind==='tex';
+  const document=parseDocument(sourceBefore,{fragment});
+  const from=document.start.length;
+  const insert=latex.replaceAll('\n',document.eol)+(document.end?document.eol:'');
+  let draft=sourceBefore.slice(0,from)+insert+sourceBefore.slice(from),change={from,to:from,insert};
+  const dependency=nativePackagePatch(sourceBefore,latex,preambleLines);
+  if(dependency===false)return false;
+  if(dependency){
+    draft=draft.slice(0,dependency.from)+dependency.insert+draft.slice(dependency.to);
+    [change]=textPatch(sourceBefore,draft);
+  }
+  const tr=state.tr.insert(0,block);
+  const table=block.type.name==='table';
+  tr.setSelection(Selection.near(tr.doc.resolve(table?1:block.nodeSize),1));
+  const projected=sourceProjection(draft,tr.doc.toJSON(),{fragment});
+  if(!projected||!dispatchNativeParagraphChange(state,tr,sourceBefore,draft,change,projected))return false;
+  const project=projectExplorer?.model,path=project?.file(project.activeFileId).path;
+  focusNativeBlockInsertion(block,draft,from+(dependency?.delta??0),path,fragment,false,started);
+  return true;
+}
 function insertEquation() {
+  if(nativeTexPreview?.hasNativeTextFocus?.())return nativeTexPreview.startFormula(true,'equation');
   insertFormula(editor, true, '', undefined, field => insertLiveMath(field, '\\placeholder{}'), { delimiter:'equation' });
+}
+function insertCases(){
+  if(nativeParagraphFormattingActive()){
+    const latex='\\begin{cases}&\\\\&\\end{cases}';
+    const formula=newNativeMath(latex,true);
+    return Boolean(formula&&insertNativeDocumentBlock(formula.node,formula.open+latex+formula.close));
+  }
+  return insertMath(true,'\\begin{cases}\\placeholder{} & \\placeholder{}\\\\ \\placeholder{} & \\placeholder{}\\end{cases}');
 }
 const matrixEnvironments = new Set(['matrix', 'pmatrix', 'bmatrix', 'Bmatrix', 'vmatrix', 'Vmatrix']);
 function matrixSource(name, content = '\\placeholder{}') {
@@ -412,6 +488,7 @@ function outdentCurrentLine(editor) {
   return true;
 }
 let backticks = null;
+let nativeTexPreview;
 function replaceTypedLigatures(view, from, to, text, defaultTransaction) {
   const { autoReplaceLigatures, ligatures } = config.value.editing;
   if (!autoReplaceLigatures || from !== to || !/^[\s.,;:!?)]$/u.test(text)) return false;
@@ -507,16 +584,19 @@ const Shortcuts = Extension.create({
       const parent = view.state.doc.resolve(from).parent;
       if (text === '`' && parent.type.name !== 'codeBlock') {
         const now=performance.now();
-        const continued=backticks && now-backticks.time<900 && backticks.doc===view.state.doc && backticks.pos===from;
+        const continued=backticks && now-backticks.time<650 && backticks.doc===view.state.doc && backticks.pos===from && from===to;
         if (continued && backticks.count===2 && view.state.doc.textBetween(from-1,from)==='`') {
-          editor.chain().deleteRange({from:from-1,to:from}).setCodeBlock().run();
           backticks=null;
+          insertFormula(editor,true,'',{from:from-1,to:from});
         } else if (continued && backticks.count===1) {
-          view.dispatch(view.state.tr.insertText('`',from,to));
+          // The first press only changed stored marks. Do not let that code
+          // mark leak into the literal produced by the second press.
+          view.dispatch(view.state.tr.setStoredMarks(backticks.marks).insertText('`',from,to).setStoredMarks(backticks.marks));
           backticks={time:now,count:2,doc:view.state.doc,pos:view.state.selection.from};
         } else {
+          const marks=(view.state.storedMarks ?? view.state.selection.$from.marks()).filter(mark=>mark.type.name!=='code');
           editor.commands.toggleCode();
-          backticks={time:now,count:1,doc:view.state.doc,pos:view.state.selection.from};
+          backticks={time:now,count:1,doc:view.state.doc,pos:view.state.selection.from,marks};
         }
         return true;
       }
@@ -733,7 +813,7 @@ paper.before(documentPage);documentPage.append(paper);
 paper.replaceChildren();
 editor=new Editor({
   element:paper,
-  extensions:[CounterDirective,AppendixStart,MatterStart,LayoutCommand,Lipsum,ProjectRegion,PageLayoutHistory,ConfigurableStarterKit.configure({heading:{levels:[1,2,3]},codeBlock:false}),LanguageCodeBlock,MultiSelection,PaperBehavior,TextStyle,TextCommand,Underline,Superscript,Subscript,SmallCaps,Boxed,Circled,PageBreak,MultiColumn,HistoryTable.configure({resizable:true,View:PaperTableView}),TableRow,TableCell,TableHeader,TblrSource,TabularxSource,Raw,DocumentImage,TheoremBlock,DescriptionList,DescriptionItem,MathNode,MathBlock,MathGlue,Ref,Cite.configure({library:citationLibrary}),Footnote,Label,Subfigures,TableOfContents,Shortcuts],
+  extensions:[CounterDirective,AppendixStart,MatterStart,LayoutCommand,Lipsum.configure({expandPreview:!nativeOnlyAcceptance()}),ProjectRegion,PageLayoutHistory,ConfigurableStarterKit.configure({heading:{levels:[1,2,3]},codeBlock:false}),LanguageCodeBlock,MultiSelection,PaperBehavior,TextStyle,TextCommand,Underline,Superscript,Subscript,SmallCaps,Boxed,Circled,PageBreak,MultiColumn,HistoryTable.configure({resizable:true,View:PaperTableView}),TableRow,TableCell,TableHeader,TblrSource,TabularxSource,Raw,DocumentImage,TheoremBlock,DescriptionList,DescriptionItem,MathNode,MathBlock,...(nativeOnlyAcceptance()?[]:[MathGlue]),Ref,Cite.configure({library:citationLibrary}),Footnote,Label,Subfigures,TableOfContents,Shortcuts],
   content:'<p></p>',
 });
 function installMarginSelection(editor,page,paper) {
@@ -837,7 +917,8 @@ editor.on('update',()=>{refreshReferences(paper,editor);syncTableAttributes();})
 syncTableAttributes();
 installTableHoverAddRow(editor, paper);
 installImageDrop(editor,paper);
-const documentFind = installDocumentFind(editor);
+const documentFind = installDocumentFind(editor,{reveal:revealNativeSearchResult,
+  focusDocument:()=>nativeTexPreview?.focusInput?.()});
 const documentOutline = installDocumentOutline(editor);
 const tools=document.querySelector('#insert');
 tools.replaceChildren();
@@ -851,9 +932,9 @@ function button(label, action) {
 }
 const undoButton=button('↶',undoDocument);
 const redoButton=button('↷',redoDocument);
-const boldButton=button('B',()=>editor.chain().focus().toggleBold().run());
-const italicButton=button('I',()=>editor.chain().focus().toggleItalic().run());
-const underlineButton=button('U',()=>editor.chain().focus().toggleMark('underline').run());
+const boldButton=button('B',withNativeTextCommand('toggleBold',()=>editor.chain().focus().toggleBold().run()));
+const italicButton=button('I',withNativeTextCommand('toggleItalic',()=>editor.chain().focus().toggleItalic().run()));
+const underlineButton=button('U',withNativeTextCommand('toggleUnderline',()=>editor.chain().focus().toggleMark('underline').run()));
 function syncUndoButtons(){
   try{
     const source=!sourceView.hidden;
@@ -874,7 +955,7 @@ editor.on('transaction',()=>{
   syncUndoButtons();
 });
 let editingMath = null;
-installFormatControls(editor, tools, {isUnavailable:()=>Boolean(activeMath())});
+installFormatControls(editor, tools, {isUnavailable:()=>Boolean(activeMath()),applyStyle:applyTextStyle});
 const headingMenu = document.createElement('select');
 headingMenu.setAttribute('aria-label', t('段落样式','Paragraph style'));
 const textStyleOption = new Option(t('正文','Text'), '0');
@@ -888,8 +969,8 @@ headingMenu.addEventListener('change', () => {
 });
 editor.on('transaction', () => { headingMenu.value = String(editor.getAttributes('heading').level ?? 0); });
 // 旧工具栏不再挂载 headingMenu（样式下拉已从主页-样式移除）。
-button('itemize',()=>editor.chain().focus().toggleBulletList().run());
-button('enumerate',()=>editor.chain().focus().toggleOrderedList().run());
+button('itemize',withNativeTextCommand('toggleBulletList',()=>editor.chain().focus().toggleBulletList().run()));
+button('enumerate',withNativeTextCommand('toggleOrderedList',()=>editor.chain().focus().toggleOrderedList().run()));
 button('▦',()=>insertDefaultTable());
 document.addEventListener('focusin', event => {
   if (event.target.closest?.('.delimiter-input-embedded')) return;
@@ -903,14 +984,6 @@ function activeMath() {
   if(document.activeElement?.tagName==='MATH-FIELD') return document.activeElement;
   return editingMath?.isConnected ? editingMath : null;
 }
-function mathPositionPath(model, offset) {
-  const path=[];
-  for (let atom=model.at(offset); atom?.parent; atom=atom.parent) {
-    const branch=atom.parentBranch;
-    path.unshift([branch,atom.parent.branch(branch).indexOf(atom)]);
-  }
-  return path;
-}
 function preserveMathSelection(field, update) {
   const model=field._mathfield?.model;
   const selection=structuredClone(field.selection);
@@ -919,15 +992,7 @@ function preserveMathSelection(field, update) {
   const updated=field._mathfield?.model;
   if (!paths || !updated) return;
   const ranges=paths.map((range,index)=>range.map((path,end)=>{
-    let atom=updated.root;
-    for (const [branch,child] of path) {
-      if (Array.isArray(branch) && (!atom || atom.type!=='array' || branch[0]>=atom.rowCount || branch[1]>=atom.colCount)) {
-        atom=null;
-        break;
-      }
-      atom=atom?.branch(branch)?.[child];
-    }
-    const offset=atom ? updated.offsetOf(atom) : -1;
+    const offset=mathOffsetAtPath(updated,path);
     return offset>=0 ? offset : Math.min(selection.ranges[index][end],field.lastOffset);
   }));
   field.selection={...selection,ranges};
@@ -1006,11 +1071,17 @@ function editTableAxis(axis) {
   else chain.addColumnAfter().run();
 }
 function addMatrixRow() {
+  if(nativeTexPreview?.hasNativeMathFocus?.()&&nativeTexPreview.runMathCommand('addRow'))return true;
+  const added=addNativeTableAxis('row');
+  if(added!==undefined)return added;
   const field=activeMath();
   if(!field) { editor.chain().focus(undefined,{scrollIntoView:false}).addRowAfter().run(); return; }
   if(!fillMatrixAxis(field,'row')) editTableAxis('row');
 }
 function addMatrixColumn() {
+  if(nativeTexPreview?.hasNativeMathFocus?.()&&nativeTexPreview.runMathCommand('addColumn'))return true;
+  const added=addNativeTableAxis('column');
+  if(added!==undefined)return added;
   const field=activeMath();
   if(!field) { editor.chain().focus(undefined,{scrollIntoView:false}).addColumnAfter().run(); return; }
   if(!fillMatrixAxis(field,'column')) editTableAxis('column');
@@ -1075,8 +1146,8 @@ const sourceView = createSourceWorkspace({
     } finally { syncApplying = false; }
   },
   onPreviewZoom: value => setZoom(value),
-  onChange: () => { syncPending = true; scheduleEngine(); projectExplorer?.changed(); },
-  onLayout: () => updateSourceButton(),
+  onChange: () => { syncPending = true; scheduleEngine(); projectExplorer?.changed(); nativeTexPreview?.refresh(); },
+  onLayout: () => {updateSourceButton();nativeTexPreview?.documentModeChanged?.();},
   metadata: () => ({name: filename, saved: savedSource}),
 });
 let sourceModeEntry,sourceModeCommits=[],sourceModeRedos=[];
@@ -1110,7 +1181,7 @@ function undoDocument() {
     checkpoint.beforeDoc=editor.state.doc;checkpoint.beforePreamble=documentParts.start;return true;
   }
   if(!sourceView.hidden){sourceView.undo();sourceView.flush();syncUndoButtons();return true;}
-  const done=editor.commands.undo();syncUndoButtons();return done;
+  const done=applyEditorHistory('undo',activeMath());syncUndoButtons();return done;
 }
 function redoDocument() {
   const checkpoint=sourceModeRedos.at(-1);
@@ -1121,7 +1192,13 @@ function redoDocument() {
     checkpoint.afterDoc=editor.state.doc;checkpoint.afterPreamble=documentParts.start;return true;
   }
   if(!sourceView.hidden){sourceView.redo();sourceView.flush();syncUndoButtons();return true;}
-  const done=editor.commands.redo();syncUndoButtons();return done;
+  const done=applyEditorHistory('redo',activeMath());syncUndoButtons();return done;
+}
+function applyEditorHistory(command,field) {
+  if(!field)return editor.commands[command]();
+  field.dispatchEvent(new Event('lineae-before-math-history'));
+  try {return editor.commands[command]();}
+  finally {field.dispatchEvent(new Event('lineae-after-math-history'));}
 }
 paper.addEventListener('focusin', () => { if (!sourceView.hidden && syncPending) sourceView.flush(); syncUndoButtons(); });
 function usesSourceProjection() {
@@ -1139,7 +1216,7 @@ function standaloneParagraphEdit(tr) {
   if (start===null) return -1;
   const end=before.content.findDiffEnd(doc.content);
   const a=before.resolve(start), b=doc.resolve(start);
-  if (a.depth!==1 || b.depth!==1 || a.parent.type.name!=='paragraph' || !a.parent.sameMarkup(b.parent) ||
+  if (a.depth!==1 || b.depth!==1 || !['paragraph','heading'].includes(a.parent.type.name) || !a.parent.sameMarkup(b.parent) ||
       a.parent.textContent===b.parent.textContent) return -1;
   // Identical runs can make the diff endpoints overlap on insertion/deletion.
   const oldEnd=Math.max(start,end.a), newEnd=Math.max(start,end.b);
@@ -1147,9 +1224,9 @@ function standaloneParagraphEdit(tr) {
   // creating a new box), with its own package-generation behavior.
   const priorRuns=a.parent.content.content;
   const inline = a.sameParent(before.resolve(oldEnd)) && b.sameParent(doc.resolve(newEnd)) &&
-    a.parent.content.cut(a.parentOffset,oldEnd-a.start()).content.every(node=>node.isText) &&
-    b.parent.content.cut(b.parentOffset,newEnd-b.start()).content.every(node=>node.isText &&
-      (!node.marks.length || priorRuns.some(run=>run.sameMarkup(node))));
+    a.parent.content.cut(a.parentOffset,oldEnd-a.start()).content.every(node=>node.isText||node.type.name==='math') &&
+    b.parent.content.cut(b.parentOffset,newEnd-b.start()).content.every(node=>node.type.name==='math'||(node.isText &&
+      (!node.marks.length || priorRuns.some(run=>run.sameMarkup(node)))));
   return inline ? a.index(0) : -1;
 }
 function refuseStandaloneWriteback() {
@@ -1158,10 +1235,51 @@ function refuseStandaloneWriteback() {
   status.textContent=t('该修改无法无损回写，请在源码中编辑；原文已保留。','This edit cannot round-trip safely. Edit the source; original text is preserved.');
   return false;
 }
+const nativeParagraphTransitions=[];
+function dispatchNativeProjectChange(state,tr,project,drafts) {
+  const composition=projectDocument.verify(project,tr.doc,drafts);
+  if(!composition)return false;
+  const before={doc:state.doc,drafts:new Map([...drafts.keys()].map(id=>[id,project.file(id).draft]))};
+  tr.setMeta('nativeProjectDraft',{project,composition,drafts});
+  editor.view.dispatch(closeHistory(tr));
+  if(!editor.state.doc.eq(tr.doc))return false;
+  projectDocument.record(project,{before,after:{doc:tr.doc,drafts}});
+  return true;
+}
+function dispatchNativeParagraphChange(state,tr,source,draft,change,nextProjection) {
+  tr.setMeta('standaloneParagraph',{draft,changes:[change],projection:nextProjection});
+  editor.view.dispatch(closeHistory(tr));
+  if(editor.state.doc===state.doc)return false;
+  nativeParagraphTransitions.push({change,
+    before:{source,snapshot:JSON.stringify(state.doc.toJSON())},
+    after:{source:draft,snapshot:importedSnapshot}});
+  if(nativeParagraphTransitions.length>100)nativeParagraphTransitions.shift();
+  return true;
+}
+function prepareNativeParagraphHistory(transaction) {
+  if(!isHistoryTransaction(transaction)||!nativeParagraphTransitions.length)return false;
+  const before=JSON.stringify(transaction.before.toJSON()),after=JSON.stringify(transaction.doc.toJSON());
+  for(let index=nativeParagraphTransitions.length-1;index>=0;index--){
+    const transition=nativeParagraphTransitions[index];
+    const forward=transition.before.snapshot===before&&transition.before.source===importedSource;
+    const previous=forward?transition.before:transition.after;
+    const next=forward?transition.after:transition.before;
+    if(previous.source!==importedSource||previous.snapshot!==before||next.snapshot!==after)continue;
+    const {change}=transition;
+    const patch=forward?change:{from:change.from,to:change.from+change.insert.length,
+      insert:next.source.slice(change.from,change.to)};
+    const nextProjection=sourceProjection(next.source,transaction.doc.toJSON(),{fragment:projectFileKind==='tex'});
+    if(!nextProjection)return false;
+    transaction.setMeta('standaloneParagraph',{draft:next.source,changes:[patch],projection:nextProjection});
+    return true;
+  }
+  return false;
+}
 editor.registerPlugin(new Plugin({
   state: {
     init:()=>false,
-    apply:tr=>!!(tr.getMeta('standaloneParagraph') || tr.getMeta('appendedTransaction')?.getMeta('standaloneParagraph')),
+    apply:tr=>['standaloneParagraph','nativeProjectDraft'].some(key=>
+      tr.getMeta(key)||tr.getMeta('appendedTransaction')?.getMeta(key)),
   },
   props: {handleKeyDown(view,event) {
     if (sourceView.hidden || event.isComposing || !(event.ctrlKey || event.metaKey) || event.altKey) return false;
@@ -1178,10 +1296,23 @@ editor.registerPlugin(new Plugin({
     // Its extra document changes have no authority over the approved source range.
     if(state!==editor.state && this.getState(state) && !transaction.doc.eq(state.doc))return refuseStandaloneWriteback();
     if(projectDocument.composition){
+      const project=projectExplorer.model;
+      const verified=transaction.getMeta('nativeProjectDraft');
+      if(verified)return transaction.before===state.doc&&verified.project===project;
+      if(isHistoryTransaction(transaction)){
+        const restored=projectDocument.restore(project,transaction);
+        if(restored){
+          transaction.setMeta('nativeProjectDraft',{...restored,project});
+          return true;
+        }
+      }
       const valid=projectDocument.changes(transaction.doc.toJSON());
       if(!valid)sourceView.error(t('请在对应文件的源码中修改此结构','Edit this structure in its source file'));
       return !!valid;
     }
+    const verified=transaction.getMeta('standaloneParagraph');
+    if(verified)return !syncPending&&transaction.before===state.doc&&verified.projection?.text===verified.draft;
+    if(sourceView.hidden&&prepareNativeParagraphHistory(transaction))return true;
     if(!usesSourceProjection()) {
       const diff=transaction.before.content.findDiffStart(transaction.doc.content);
       if(importedSource!==null && diff!==null){
@@ -1230,13 +1361,37 @@ editor.registerPlugin(new Plugin({
 }));
 editor.on('update', ({transaction}) => {
   if (syncApplying) return;
+  const nativeProject=transaction.getMeta('nativeProjectDraft');
+  if(nativeProject&&editor.state.doc.eq(transaction.doc)){
+    const {project,composition,drafts}=nativeProject;
+    for(const [id,draft] of drafts)project.edit(id,draft);
+    projectDocument.hydrate(composition,editor.getJSON());
+    const root=composition.sources.get(composition.rootId);
+    if(transaction.doc.attrs.layoutPreamble!==transaction.before.attrs.layoutPreamble){
+      documentParts=parseDocument(root,{fragment:true});
+      pageSetup=readPageSetup(documentParts.start);applyPageSetup();renderMeta();
+      if(headerFooterPanel?.active&&isHistoryTransaction(transaction))headerFooterPanel.refresh();
+    }
+    sourceView.reset(root);
+    projectExplorer.changed();
+    return;
+  }
   const paragraph=transaction.getMeta('standaloneParagraph');
   if (paragraph && editor.state.doc.eq(transaction.doc)) {
     if(sourceView.value===importedSource)sourceView.applyChanges(paragraph.changes);
     importedSource=paragraph.draft;
     importedSnapshot=JSON.stringify(editor.getJSON());
-    documentParts=parseDocument(importedSource);
+    const previousPreamble=documentParts.start;
+    documentParts=parseDocument(importedSource,{fragment:projectFileKind==='tex'});
     projection=paragraph.projection;
+    if(documentParts.start!==previousPreamble){
+      renderMeta();
+      if(transaction.doc.attrs.layoutPreamble!==transaction.before.attrs.layoutPreamble){
+        pageSetup=readPageSetup(documentParts.start);applyPageSetup();
+        if(headerFooterPanel?.active&&isHistoryTransaction(transaction))headerFooterPanel.refresh();
+      }
+      typesetPagination?.setMaketitle(/\\maketitle\b/.test(documentParts.blocks.join('\n')));
+    }
     return;
   }
   if(projectDocument.composition){
@@ -1272,8 +1427,9 @@ editor.on('update', ({transaction}) => {
     }
     pageSetup=readPageSetup(preamble);applyPageSetup();projectExplorer?.changed();
   }
-  if(!usesSourceProjection())return;
-  const changes = richSourceChanges(projection,editor.getJSON());
+  const mathChanges=standaloneMathChanges(projection,editor.getJSON());
+  if(!mathChanges?.length&&!usesSourceProjection())return;
+  const changes = mathChanges?.length?mathChanges:richSourceChanges(projection,editor.getJSON());
   if (!changes?.length) return;
   sourceView.applyChanges(changes);
   importedSource = sourceView.value;
@@ -1292,6 +1448,10 @@ let imagePanel;
 let imageSelection = null;
 let pagePaper,pageOrientation,pageMarginPreset,pageMarginTop,pageMarginRight,pageMarginBottom,pageMarginLeft,layoutColumns,layoutLocalColumns;
 function applyFurnitureState(state){
+  if(sourceView.hidden&&nativeWorkspaceRequested()){
+    updateNativeLayout(preamble=>writePageFurniture(preamble,state));
+    return;
+  }
   const before=documentParts.start;
   const after=writePageFurniture(before,state);
   if(after===before)return;
@@ -1361,14 +1521,18 @@ function applyTikzPreamble(after) {
   projectExplorer?.changed();
 }
 
-function insertTikzStudioBlock({ libraries = [], macros = [], declarations = '', body = '' } = {}) {
+function insertTikzStudioBlock({ libraries = [], macros = [], declarations = '', body = '' } = {},nativeDocument=null) {
+  const failed=()=>({error:t('未能插入图形，请核对正文光标和源码。','The drawing could not be inserted. Check the document caret and source.')});
+  if(nativeDocument&&editor.state.doc!==nativeDocument)return failed();
   body = body
     .replace(/^\s*\\documentclass(?:\[[^\]]*\])?\{[^{}]+\}[^\n]*(?:\r?\n|$)/m, '')
     .replace(/^\s*\\(?:usepackage|RequirePackage)(?:\[[^\]]*\])?\{[^{}]*\}[^\n]*(?:\r?\n|$)/gm, '')
     .replace(/\\begin\{document\}/g, '')
     .replace(/\\end\{document\}/g, '')
     .trim();
-  const before = documentParts.start;
+  const rootId=projectDocument.composition?.rootId;
+  const root=nativeDocument&&rootId?projectExplorer.model.file(rootId).draft:null;
+  const before=root?parseDocument(root,{fragment:true}).start:documentParts.start;
   const existingMacros = tikzMacroNames(before);
   const seen = new Set();
   const duplicates = [];
@@ -1388,6 +1552,12 @@ function insertTikzStudioBlock({ libraries = [], macros = [], declarations = '',
     .replace(/^\s*\\usetikzlibrary(?:\[[^\]]*\])?\{[^{}]*\}[ \t]*$/gm, '')
     .trim();
   const preambleAdditions = declarationText ? [declarationText] : sortedMacros;
+  if(nativeDocument){
+    const existing=new Set(tikzLibraries(before));
+    const added=allLibraries.filter(name=>!existing.has(name));
+    const lines=[...(added.length?[`\\usetikzlibrary{${added.join(',')}}`]:[]),...preambleAdditions];
+    return insertNativeDrawing(body,lines)?{ok:true}:failed();
+  }
   const beginAt = before.indexOf('\\begin{document}');
   if (beginAt >= 0) {
     let preamble = before.slice(0, beginAt)
@@ -1404,14 +1574,18 @@ function insertTikzStudioBlock({ libraries = [], macros = [], declarations = '',
   }
   if (body.trim()) {
     editor.chain().focus().insertContent({
-      type: 'codeBlock', attrs: { language: 'tikz-general' },
-      content: [{ type: 'text', text: body.trim() }],
+      type: 'documentImage', attrs: { tikzSource: body.trim(), tikzEditor: 'general', centered: true, align: 'center' },
     }).run();
   }
   return { ok: true };
 }
 
-function updateGlobalColumns(count){  const before=documentParts.start;
+function updateGlobalColumns(count){
+  if(sourceView.hidden&&nativeWorkspaceRequested()){
+    updateNativeLayout(preamble=>writeGlobalColumns(preamble,count));
+    return;
+  }
+  const before=documentParts.start;
   const after=writeGlobalColumns(before,count);
   if(after===before)return;
   if(!sourceView.hidden){
@@ -1423,6 +1597,31 @@ function updateGlobalColumns(count){  const before=documentParts.start;
   documentParts.start=after;
   if(importedSource?.startsWith(before))importedSource=after+importedSource.slice(before.length);
   applyPageSetup();
+}
+function updateNativeLayout(transform){
+  const composition=projectDocument.composition,project=projectExplorer?.model;
+  if(projectFileKind==='tex'&&project&&project.activeFileId!==project.mainFileId){
+    updateDetachedProjectLayout(project,transform);
+    return;
+  }
+  const root=composition?.rootId;
+  const before=root?project.file(root).draft:source();
+  const fragment=projectFileKind==='tex';
+  const parsed=parseDocument(before,{fragment});
+  if(!parsed?.start)return;
+  const preamble=transform(parsed.start);
+  const [change]=textPatch(parsed.start,preamble);
+  if(!change)return;
+  const {state}=editor,tr=state.tr.setDocAttribute('layoutPreamble',preamble);
+  const furniture=readPageFurniture(preamble);
+  if(JSON.stringify(state.doc.attrs.pageFurniture)!==JSON.stringify(furniture))tr.setDocAttribute('pageFurniture',furniture);
+  const draft=preamble+before.slice(parsed.start.length);
+  if(root){
+    dispatchNativeProjectChange(state,tr,project,new Map([[root,draft]]));
+    return;
+  }
+  const projected=sourceProjection(draft,tr.doc.toJSON(),{fragment});
+  if(projected)dispatchNativeParagraphChange(state,tr,before,draft,change,projected);
 }
 function applyPageSetup(){
   const layoutPreamble=projectFileKind==='tex'?projectLayoutPreamble(projectExplorer?.model,documentParts.start):documentParts.start;
@@ -1460,18 +1659,30 @@ function applyPageSetup(){
     pageMarginPreset.value=Object.keys(MARGIN_PRESETS).find(key=>MARGIN_PRESETS[key]===pageSetup.margin)??'custom';
   }
 }
+function updateDetachedProjectLayout(project,transform){
+  if(sourceView.composing||editor.view.composing)return;
+  if(!sourceView.hidden)sourceView.flush();
+  const owner=project.mainFileId,before=project.file(owner).draft;
+  const preamble=parseDocument(before,{fragment:true})?.start;
+  if(!preamble)return;
+  const after=transform(preamble)+before.slice(preamble.length);
+  if(after!==before){
+    project.edit(owner,after);
+    sourceModeCommits.push({owner,before,after,afterDoc:editor.state.doc,afterPreamble:documentParts.start,sourceText:sourceView.value});
+    sourceModeRedos=[];syncUndoButtons();
+  }
+  applyPageSetup();projectExplorer.changed();nativeTexPreview?.refresh();
+}
 function updatePageSetup(patch){
   const project=projectExplorer?.model;
+  const transform=preamble=>writePageSetup(preamble,mergePageLayout(readPageSetup(preamble),patch));
   if(projectFileKind==='tex'&&project&&project.activeFileId!==project.mainFileId){
-    if(sourceView.composing||editor.view.composing)return;
-    if(!sourceView.hidden)sourceView.flush();
-    const owner=project.mainFileId,before=project.file(owner).draft;
-    const preamble=parseDocument(before,{fragment:true})?.start;
-    if(!preamble)return;
-    const after=writePageSetup(before,mergePageLayout(readPageSetup(preamble),patch));
-    if(after!==before){project.edit(owner,after);sourceModeCommits.push({owner,before,after,afterDoc:editor.state.doc,afterPreamble:documentParts.start,sourceText:sourceView.value});
-syncUndoButtons();sourceModeRedos=[];}
-    applyPageSetup();projectExplorer.changed();return;
+    updateDetachedProjectLayout(project,transform);
+    return;
+  }
+  if(sourceView.hidden&&nativeWorkspaceRequested()){
+    updateNativeLayout(transform);
+    return;
   }
   pageSetup=changePageLayout({editor,sourceView,current:pageSetup,preamble:documentParts.start,patch});
   applyPageSetup();
@@ -1483,18 +1694,31 @@ let documentGeneration=0;
 let importedSource=null;
 let importedSnapshot=null;
 function readMeta(key) {
-  const match=documentParts.start.match(new RegExp('\\\\'+key+'\\{([^{}]*)\\}'));
-  return match?match[1]:'';
+  return documentMetadata(documentParts.start,key)?.value??'';
+}
+async function editMetadata(key,label) {
+  const raw=readMeta(key);
+  const current=key==='date'&&raw==='\\today'?raw:metaDisplay(raw);
+  const value=await askText(label,current);
+  if(value!==null&&(value!==current||(key==='date'&&!documentMetadata(documentParts.start,key))))writeMeta(key,value);
 }
 function writeMeta(key,value) {
-  const line='\\'+key+'{'+value+'}';
-  const pattern=new RegExp('\\\\'+key+'\\{([^{}]*)\\}');
-  const apply=text=>pattern.test(text)
-    ? text.replace(pattern,line)
-    : text.replace(/\\begin\{document\}/,line+'\n\\begin{document}');
-  documentParts.start=apply(documentParts.start);
-  if(importedSource)importedSource=apply(importedSource);
-  renderMeta();
+  const escaped=key==='date'&&value==='\\today'?value:serialize({type:'text',text:value});
+  const before=sourceView.hidden?source():sourceView.value;
+  const edited=writeDocumentMetadata(before,key,escaped);
+  if(!edited||edited.draft===before){renderMeta();return;}
+  if(projectDocument.composition){
+    editIncludeSource(text=>text===before?edited.draft:text,projectDocument.composition.rootId);
+    return;
+  }
+  if(!sourceView.hidden){sourceView.applyChanges([edited.change]);sourceView.flush();return;}
+  const {state}=editor;
+  const tr=state.tr.setDocAttribute('layoutPreamble',edited.preamble);
+  if(edited.addMaketitle)tr.insert(0,editor.schema.nodes.layoutCommand.create({command:'\\maketitle'}));
+  const projected=sourceProjection(edited.draft,tr.doc.toJSON());
+  if(!projected||!dispatchNativeParagraphChange(state,tr,before,edited.draft,edited.change,projected)){
+    refuseStandaloneWriteback();renderMeta();
+  }
 }
 function persistCitationState() {
   const paths = projectDependencies(source()).filter(path => path.endsWith('.bib'));
@@ -1513,7 +1737,7 @@ function editMeta(element,key){
   element.addEventListener('keydown',event=>{if(event.key==='Enter'){event.preventDefault();element.blur();}});
   element.addEventListener('blur',()=>{
     const value=element.textContent.trim();
-    if(value!==readMeta(key))writeMeta(key,value);
+    if(value!==metaDisplay(readMeta(key)))writeMeta(key,value);
     else renderMeta();
   });
 }
@@ -1531,13 +1755,16 @@ metaDate.addEventListener('blur',()=>{
   if(value!==metaDateDisplay)writeMeta('date',value);
   else renderMeta();
 });
+function metaDisplay(raw){
+  const nodes=importBlocks(raw);
+  const text=node=>node.type==='text'?node.text:(node.content??[]).map(text).join('');
+  return nodes.some(node=>node.type==='raw')?raw:nodes.map(text).join('');
+}
 function renderMeta() {
-  metaTitle.textContent=readMeta('title');
-  metaAuthor.textContent=readMeta('author');
-  const hasDate=/\\date\s*\{/.test(documentParts.start);
-  const rawDate=readMeta('date');
-  const showDefault=!hasDate&&Boolean(readMeta('title'));
-  metaDateDisplay=hasDate?displayDate(rawDate):showDefault?todayText():'';
+  metaTitle.textContent=metaDisplay(readMeta('title'));
+  metaAuthor.textContent=metaDisplay(readMeta('author'));
+  const date=documentMetadata(documentParts.start,'date');
+  metaDateDisplay=date?displayDate(date.value):readMeta('title')?todayText():'';
   metaDate.textContent=metaDateDisplay;
   metaDate.hidden=!metaDateDisplay;
   metaTitle.dataset.zhPlaceholder='标题';metaTitle.dataset.enPlaceholder='Title';metaTitle.dataset.placeholder=t('标题','Title');
@@ -1566,7 +1793,7 @@ function refreshEngine() {
   const {result}=engineSettingsState();
   if (activeEngine!==result.resolvedEngine) {
     activeEngine=result.resolvedEngine;
-    typesetPagination.setEngine(activeEngine?getTypesettingProfile(activeEngine):null);
+    typesetPagination?.setEngine(activeEngine?getTypesettingProfile(activeEngine):null);
   }
   settingsPanel.refreshEngine();
 }
@@ -1608,8 +1835,8 @@ function reportCjkPrecision(family) {
   precisionStatus.dataset.en = family + ' CJK preview: spacing and line breaks are uncalibrated';
   precisionStatus.textContent = t(precisionStatus.dataset.zh, precisionStatus.dataset.en);
 }
-typesetPagination=installTypesetPagination(documentPage,paper,metaBar,editor,getTypesettingProfile(activeEngine),reportCjkPrecision);
-typesetPagination.setTableContinuation(config.value.interface.continuedTables);
+if(!nativeOnlyAcceptance())typesetPagination=installTypesetPagination(documentPage,paper,metaBar,editor,getTypesettingProfile(activeEngine),reportCjkPrecision);
+typesetPagination?.setTableContinuation(config.value.interface.continuedTables);
 window.addEventListener('lineae-image-layout',()=>{typesetPagination?.refresh();syncImageTab?.();});
 function source() {
   if(projectDocument.composition)return projectExplorer.model.file(projectDocument.composition.rootId).draft;
@@ -1630,12 +1857,13 @@ function identifyImportedBoxes(node) {
   }
 }
 function load(text, markSaved = true) {
+  if(markSaved)nativeTexPreview?.documentChanged();
   projectDocument.composition=null;
   const wasApplying = syncApplying; syncApplying = true;
   try {
   const parsed=parseDocument(text, {fragment:projectFileKind === 'tex'});
   if(!parsed)throw new Error(t('无法识别文档','Invalid document'));
-  if (markSaved) {clearProjectAssets();sourceModeEntry=undefined;sourceModeCommits=[];sourceModeRedos=[];}
+  if (markSaved) {clearProjectAssets();sourceModeEntry=undefined;sourceModeCommits=[];sourceModeRedos=[];nativeParagraphTransitions.length=0;}
   citationLibrary.restoreState(readBibliographyMetadata(text));
   // The book/report heading mapping must be active before blocks are imported;
   // applyProfile() runs later, during pagination, which is too late for the
@@ -1647,10 +1875,19 @@ function load(text, markSaved = true) {
   if (/\\documentclass/.test(parsed.start)) homeRibbon?.setDocumentClass?.(documentClass);
   // Preserve imported source exactly. Unsupported blocks remain directly accessible in source mode.
   documentParts=parsed;
-  const content=parsed.blocks.flatMap((block,index)=>importBlocks(index===0 && readMeta('title')
-    ? block.replace(/^\s*\\maketitle\b[ \t]*(?:\r?\n|$)/gm,'') : block));
+  const content=parsed.blocks.flatMap(block=>importBlocks(block));
   for (const block of content) identifyImportedBoxes(block);
   editor.chain().setMeta('addToHistory', false).setContent({type:'doc',attrs:{layoutPreamble:parsed.start,pageFurniture:readPageFurniture(parsed.start)},content:content.length?content:[{type:'paragraph'}]}).command(({tr})=>{tr.setDocAttribute('layoutPreamble',parsed.start);tr.setDocAttribute('pageFurniture',readPageFurniture(parsed.start));return true;}).run();
+  if(markSaved){
+    // Mapping old history through a non-history import leaves undo steps that
+    // can insert content from the previous file into the newly opened one.
+    const state=editor.state,plugins=state.plugins;
+    const withoutHistory=plugins.filter(plugin=>!plugin.key.startsWith('history$'));
+    if(withoutHistory.length!==plugins.length){
+      editor.view.updateState(state.reconfigure({plugins:withoutHistory}).reconfigure({plugins}));
+    }
+    syncUndoButtons();
+  }
   refreshReferences(paper,editor);syncTableAttributes();
   importedSource=text;importedSnapshot=JSON.stringify(editor.getJSON());
   if(markSaved) {savedSource=text;documentGeneration++;}
@@ -1714,6 +1951,7 @@ syncUndoButtons();
   updateSourceButton();
   updateEnvironment();
   syncImageTab?.();
+  nativeTexPreview?.documentModeChanged?.();
 }
 function locateMissingCitation(missing) {
   setSourceMode(true);
@@ -1933,6 +2171,8 @@ const formulaCommands = {
 for (const name of mathSymbols) {
   if (/^[A-Za-z]+$/.test(name) && !(name in formulaCommands)) formulaCommands[name] = '\\' + name;
 }
+const nativeProseMathTemplates=Object.entries(formulaCommands).filter(([name])=>
+  nativeMathCommandNames.includes(name)||name==='intbody');
 const structureCommands = {
   appendix:()=>editor.chain().focus().insertContent({type:'appendixStart'}).run(),
   chapter:()=>editor.chain().focus().setHeading({level:1}).updateAttributes('heading',{command:'chapter'}).run(),
@@ -1953,10 +2193,7 @@ const structureCommands = {
   quote: () => editor.chain().focus().toggleBlockquote().run(),
   hrule: () => editor.chain().focus().setHorizontalRule().run(),
   description: () => editor.chain().focus().insertContent({type:'descriptionList',content:[{type:'descriptionItem',attrs:{term:''},content:[{type:'paragraph'}]}]}).run(),
-  toc: () => {
-    if(editor.isActive('tableOfContents'))editor.chain().focus().deleteSelection().run();
-    else editor.chain().focus().insertContent({type:'tableOfContents'}).run();
-  },
+  toc: toggleDocumentContents,
   label: async () => {
     if (activeMath() || formulaAtSelection()) return editFormulaLabel();
     if(editor.isActive('heading')) {
@@ -1980,16 +2217,11 @@ const structureCommands = {
     const value=await askText(t('脚注内容','Footnote text'));
     if(value)editor.chain().focus().insertContent({type:'footnote',attrs:{text:value}}).run();
   },
-  includegraphics: () => insertLocalImage(editor),
+  includegraphics: insertDocumentImage,
   tableofcontents: () => editor.chain().focus().insertContent({type:'tableOfContents'}).run(),
-  title: async () => {
-    const value=await askText(t('标题','Title'),readMeta('title'));
-    if(value!==null)writeMeta('title',value);
-  },
-  author: async () => {
-    const value=await askText(t('作者','Author'),readMeta('author'));
-    if(value!==null)writeMeta('author',value);
-  },
+  title:()=>editMetadata('title',t('标题','Title')),
+  author:()=>editMetadata('author',t('作者','Author')),
+  date:()=>editMetadata('date',t('日期','Date')),
   textbf: () => editor.chain().focus().toggleBold().run(),
   textit: () => editor.chain().focus().toggleItalic().run(),
   emph: () => editor.chain().focus().toggleItalic().run(),
@@ -2013,7 +2245,7 @@ const structureCommands = {
   Bmatrix: () => insertMath(false,matrixSource('Bmatrix')),
   vmatrix: () => insertMath(false,matrixSource('vmatrix')),
   Vmatrix: () => insertMath(false,matrixSource('Vmatrix')),
-  cases: () => insertMath(true,'\\begin{cases}\\placeholder{} & \\placeholder{}\\\\ \\placeholder{} & \\placeholder{}\\end{cases}'),
+  cases: insertCases,
 };
 const mathSlot = '\\placeholder{}';
 const alignedRow = mathSlot + ' & ' + mathSlot;
@@ -2025,11 +2257,20 @@ for (const [environment, row] of Object.entries({
   for (const suffix of ['', '*']) {
     const name=environment+suffix;
     const columns=environment==='alignat' ? '{1}' : '';
-    structureCommands[name]=()=>insertMath(true,'\\begin{'+name+'}'+columns+row+'\\\\'+row+'\\end{'+name+'}');
+    const build=content=>'\\begin{'+name+'}'+columns+content+'\\\\'+content+'\\end{'+name+'}';
+    structureCommands[name]=()=>{
+      if(!nativeParagraphFormattingActive())return insertMath(true,build(row));
+      const latex=build(row.replaceAll(mathSlot,'').replaceAll(' ',''));
+      const [block]=importBlocks(latex);
+      return block?.type==='mathBlock'&&projectMath(latex).supported&&
+        insertNativeDocumentBlock(editor.schema.nodeFromJSON(block),latex);
+    };
   }
 }
 let completionField = null;
+let completionNative = false;
 let completionAnchor = null;
+let completionOrigin = null;
 let candidateIndex = 0;
 
 function positionCommands() {
@@ -2049,18 +2290,21 @@ function closeCommands(restoreFocus = false) {
     else editor.view.focus();
   }
 }
-function showCommands(field = null) {
+function commandAnchor(field){
+  if(!field)return editor.view.coordsAtPos(editor.state.selection.from);
+  return (field.shadowRoot?.querySelector('.ML__caret')??field).getBoundingClientRect();
+}
+function showCommands(field = null, native = null) {
   completionField = field;
-  if (field) {
-    const caret = field.shadowRoot?.querySelector('.ML__caret');
-    completionAnchor = (caret ?? field).getBoundingClientRect();
-  } else completionAnchor = editor.view.coordsAtPos(editor.state.selection.from);
+  completionNative = native;
+  completionAnchor=commandAnchor(field);
   commands.hidden = false;
   fadeIn(commands, { prefersReducedMotion: prefersReducedMotion() });
   filter.value = '';
   renderCommands();
   positionCommands();
-  filter.focus();
+  filter.focus({preventScroll:true});
+  completionOrigin=(field??editor.view.dom).getBoundingClientRect();
 }
 function insertFormulaCommand(latex) {
   const fragment = latex.replaceAll('#?', '\\placeholder{}');
@@ -2114,8 +2358,161 @@ function highlightCandidate(index) {
   else if (bottom > candidates.scrollTop + candidates.clientHeight)
     candidates.scrollTop = bottom - candidates.clientHeight;
 }
-function renderCommands() {
-  candidates.replaceChildren();
+function insertNativePageBreak(){
+  return insertNativeDocumentBlock(editor.schema.nodes.pageBreak.create(),'\\newpage');
+}
+function insertNativeDirective(type,attrs){
+  const block=editor.schema.nodes[type].create(attrs);
+  return insertNativeDocumentBlock(block,serialize(block.toJSON()).trimEnd());
+}
+function toggleDocumentContents(){
+  if(nativeParagraphFormattingActive())return insertNativeDirective('tableOfContents');
+  if(editor.isActive('tableOfContents'))return editor.chain().focus().deleteSelection().run();
+  return structureCommands.tableofcontents();
+}
+function insertNativeProseBlock(block,latex,preambleLines){
+  const started=performance.now();
+  const range=nativeTexPreview.verifiedTextRange();
+  if(!range)return false;
+  const [first,last]=range,{paragraph}=first;
+  if(paragraph.heading||paragraph.tableCell||paragraph.container||paragraph.wrapped)return false;
+  const target=nativeProsePosition(paragraph,first.local,last.local);
+  if(!target)return false;
+  const {state}=editor,{from:start,to:end}=target.range;
+  const $start=state.doc.resolve(start),$end=state.doc.resolve(end);
+  if(!$start.sameParent($end)||$start.parent.type.name!=='paragraph')return false;
+  const parent=$start.parent,left=parent.content.cut(0,$start.parentOffset),right=parent.content.cut($end.parentOffset);
+  const {start:fromRun,end:toRun}=target.range.endpoints;
+  const collapsed=first.local===last.local;
+  if(left.size&&(!collapsed||right.size)&&fromRun.marks?.length||
+     right.size&&(!collapsed||left.size)&&toRun.marks?.length)return false;
+  const nodes=[...(left.size?[parent.copy(left)]:[]),block,...(right.size?[parent.copy(right)]:[])];
+  const tr=state.tr.replaceWith($start.before(),$end.after(),nodes);
+  const blockPosition=$start.before()+(left.size?left.size+2:0);
+  const table=block.type.name==='table';
+  const selection=table?blockPosition+1:blockPosition+block.nodeSize;
+  tr.setSelection(Selection.near(tr.doc.resolve(selection),table||right.size?1:-1));
+  const {source,filePath:path}=paragraph,fragment=projectFileKind==='tex';
+  const eol=parseDocument(source,{fragment})?.eol;
+  if(!eol)return false;
+  const blockEnd=paragraph.from16+paragraph.text.length;
+  const from=!left.size?paragraph.from16:collapsed&&!right.size?blockEnd:first.docOffset;
+  const to=collapsed?from:right.size?last.docOffset:blockEnd;
+  const prefix=left.size?eol+eol:'';
+  const insert=prefix+latex.replaceAll('\n',eol)+(right.size?eol+eol:'');
+  let draft=source.slice(0,from)+insert+source.slice(to),shift=0,change={from,to,insert};
+  const rootId=target.composition?.rootId;
+  const root=rootId&&rootId!==target.file.id?target.project.file(rootId).draft:source;
+  const dependency=nativePackagePatch(root,latex,preambleLines);
+  if(dependency===false)return false;
+  let applied;
+  if(target.composition){
+    const drafts=new Map([[target.file.id,draft]]);
+    if(dependency){
+      const previous=drafts.get(rootId)??root;
+      const updated=previous.slice(0,dependency.from)+dependency.insert+previous.slice(dependency.to);
+      drafts.set(rootId,updated);
+      if(rootId===target.file.id){draft=updated;shift=dependency.delta;}
+    }
+    applied=dispatchNativeProjectChange(state,tr,target.project,drafts);
+  }else{
+    const owner=projection?.blocks.find(entry=>entry.index===target.range.match.index&&entry.count===1&&
+      entry.from<=from&&entry.to>=to);
+    if(!owner)return false;
+    const revised=parseDocument(draft.slice(owner.from,owner.to+draft.length-source.length),{fragment:true})?.blocks.flatMap(importBlocks);
+    if(revised?.length!==nodes.length||revised.some((value,index)=>!state.schema.nodeFromJSON(value).eq(nodes[index])))return false;
+    if(dependency){
+      shift=dependency.delta;
+      draft=draft.slice(0,dependency.from)+dependency.insert+draft.slice(dependency.to);
+      [change]=textPatch(source,draft);
+    }
+    const projected=sourceProjection(draft,tr.doc.toJSON(),{fragment});
+    applied=Boolean(projected&&dispatchNativeParagraphChange(state,tr,source,draft,change,projected));
+  }
+  if(applied)focusNativeBlockInsertion(block,draft,from+prefix.length+shift,path,fragment,Boolean(target.composition),started);
+  return applied;
+}
+function focusNativeBlockInsertion(block,source,from,path,fragment,splitIncludes,started){
+  if(block.type.name==='mathBlock'){
+    const math=projectMath(block.attrs.latex);
+    const firstCell=math.slots.find(slot=>slot.role==='cell'&&!slot.raw.length);
+    const opening=displayEnvironment(block.attrs.latex)?0:2;
+    if(firstCell)nativeTexPreview.preserveSourceCaret({source,path,offset:from+opening+firstCell.from16},started,'math');
+    return;
+  }
+  if(block.type.name!=='table')return;
+  const firstCell=projectMixedDocument(source,{fragment,filePath:path,splitIncludes})?.paragraphs
+    .find(({tableCell})=>tableCell?.from16===from);
+  if(firstCell)nativeTexPreview.preserveSourceCaret({source,path,offset:firstCell.from16},started,'text');
+}
+function completionActions() {
+  if(completionNative==='math')return {
+    ...Object.fromEntries([...nativeMathCommandNames,'left','right','newline'].map(name=>[
+      name,()=>nativeTexPreview.runMathCommand(name==='newline'?'enterLine':name),
+    ])),
+    label:editFormulaLabel,
+    displaystyle:()=>nativeTexPreview.runMathCommand('toggleDisplayStyle'),
+  };
+  if(completionNative==='text'){
+    const actions={
+      ...Object.fromEntries(nativeProseMathTemplates.map(([name,latex])=>[
+        name,()=>insertMath(false,/^\\(?:o?i{1,3}nt|sum|prod)$/.test(latex)?latex+'{}':
+          latex.replaceAll('#?','\\placeholder{}')),
+      ])),
+      ...Object.fromEntries(Object.entries(structureCommands).filter(([name])=>
+        /^(?:align(?:at)?|flalign|gather|multline|eqnarray)\*?$/.test(name))),
+      chapter:()=>runNativeTextStructure('setHeading',{level:1,command:'chapter'}),
+      ...Object.fromEntries(['section','subsection','subsubsection'].map((command,index)=>
+        [command,()=>runNativeTextStructure('setHeading',{level:index+1,command})])),
+      itemize:()=>runNativeTextStructure('toggleBulletList'),
+      enumerate:()=>runNativeTextStructure('toggleOrderedList'),
+      description:()=>editNativeDescription(false),
+      descriptionterm:()=>editNativeDescription(true),
+      indent:()=>updateSelectedParagraphs(indentationAttributes(editor.getAttributes('paragraph'),true)),
+      noindent:()=>updateSelectedParagraphs(indentationAttributes(editor.getAttributes('paragraph'),false)),
+      quote:()=>runNativeTextStructure('toggleBlockquote'),
+      ...Object.fromEntries(Object.keys(theoremNames).map(kind=>
+        [kind,()=>runNativeTextStructure('wrapIn','theoremBlock',{kind})])),
+      appendix:()=>insertNativeDirective('appendixStart'),
+      hrule:()=>insertNativeDirective('horizontalRule'),
+      toc:()=>insertNativeDirective('tableOfContents'),
+      tableofcontents:()=>insertNativeDirective('tableOfContents'),
+      lstlisting:editCodeBlockLanguage,
+      includegraphics:()=>insertDocumentImage(true),
+      ref:()=>nativeInlineCommand('ref'),
+      eqref:()=>nativeInlineCommand('ref',true),
+      cases:insertCases,
+      fbox:()=>runNativeTextCommand('toggleBox'),
+      textcircled:()=>runNativeTextCommand('toggleCircled'),
+      cite:()=>nativeInlineCommand('cite'),
+      footnote:()=>nativeInlineCommand('footnote'),
+      lipsum:async()=>{
+        const document=editor.state.doc;
+        const range=await askText(t('段落范围','Paragraph range'),'1-7');
+        if(!range||!/^\d+(?:-\d+)?$/.test(range)||editor.state.doc!==document)return false;
+        const [first,last=first]=range.split('-').map(Number);
+        if(!Number.isSafeInteger(first)||!Number.isSafeInteger(last)||first<1||last<first)return false;
+        return insertNativeInlineNode('lipsum',{range});
+      },
+      togglemarker:()=>runNativeTextCommand('toggleContextMarker'),
+      multicols:()=>runNativeTextStructure('wrapIn','multiColumn',{count:2}),
+      'multicols*':()=>runNativeTextStructure('wrapIn','multiColumn',{count:2,starred:true}),
+      title:structureCommands.title,
+      author:structureCommands.author,date:structureCommands.date,
+      table:insertNativeTableFromProse,tabular:insertNativeTableFromProse,newpage:insertNativePageBreak};
+    if(documentClassFromSource(documentParts.start)==='book'){
+      for(const matter of ['front','main','back'])
+        actions[matter+'matter']=()=>insertNativeDirective('matterStart',{matter});
+    }
+    if(projectExplorer?.active){actions.input=structureCommands.input;actions.include=structureCommands.include;}
+    const input=completionField;
+    return Object.fromEntries(Object.entries(actions).map(([name,action])=>[name,async()=>{
+      if(!nativeTexPreview.useTextSelection()&&!(canStartNativeText()&&nativeTexPreview.hasNativeTextFocus()))return;
+      try{await action();}
+      catch(error){sourceView.error(error?.message??String(error));}
+      if(input.isConnected&&input.closest('#native-tex-preview')?.dataset.editing==='true')input.focus({preventScroll:true});
+    }]));
+  }
   const actions = Object.fromEntries(Object.entries(formulaCommands).map(([name, latex]) =>
     [name, () => insertFormulaCommand(latex)]));
   actions.left = () => chooseMathDelimiters(completionField);
@@ -2142,6 +2539,11 @@ function renderCommands() {
     actions.outdentitem = () => editor.chain().focus().liftListItem('listItem').run();
     for (const name of Object.keys(textCommands)) actions[name] = () => insertTextCommand(name);
   }
+  return actions;
+}
+function renderCommands() {
+  candidates.replaceChildren();
+  const actions=completionActions();
   const exactQuery = filter.value.replace(/^\\/, '').replace(/^begin\{([^{}]*)\}?$/, '$1');
   const query = exactQuery.toLowerCase();
   for (const [name, action] of Object.entries(actions).filter(([name]) => name.toLowerCase().startsWith(query)).sort(([a],[b]) => Number(b===exactQuery)-Number(a===exactQuery) || Number(b.startsWith(exactQuery))-Number(a.startsWith(exactQuery)) || Number(b.toLowerCase()===query)-Number(a.toLowerCase()===query))) {
@@ -2152,7 +2554,7 @@ function renderCommands() {
     control.textContent = '\\' + name;
     control.tabIndex = -1;
     control.addEventListener('mousedown', event => event.preventDefault());
-    control.addEventListener('click', () => { closeCommands(); action(); });
+    control.addEventListener('click', () => { closeCommands(completionNative); action(); });
     candidates.append(control);
   }
   if (!candidates.children.length) {
@@ -2164,13 +2566,15 @@ function renderCommands() {
 }
 document.addEventListener('focusin', event => {
   if (commands.hidden || commands.contains(event.target)) return;
-  queueMicrotask(() => { if (!commands.hidden) filter.focus(); });
+  queueMicrotask(() => { if (!commands.hidden) filter.focus({preventScroll:true}); });
 }, true);
 filter.addEventListener('input', renderCommands);
 filter.addEventListener('keydown', event => {
   if (event.key === '\\' && !filter.value && !event.ctrlKey && !event.altKey && !event.metaKey && !event.isComposing) {
     event.preventDefault();
     closeCommands(true);
+    if(completionNative==='text'){nativeTexPreview.insertLiteralText('\\');return;}
+    if(completionNative)return;
     if (completionField?.isConnected) insertLiveMath(completionField,'\\backslash');
     else insertTextCommand('textbackslash');
     return;
@@ -2211,8 +2615,7 @@ function runMathShortcut(command, field, event) {
   }
   if (event.repeat && !['undo','redo','leaveEnvironment','superscript','subscript'].includes(command)) return;
   switch (command) {
-    case 'undo': editor.commands.undo(); return;
-    case 'redo': editor.commands.redo(); return;
+    case 'undo': case 'redo': applyEditorHistory(command,field); return;
     case 'superscript': field.executeCommand('moveToSuperscript'); return;
     case 'subscript': field.executeCommand('moveToSubscript'); return;
     case 'leaveEnvironment': field.dispatchEvent(new Event('lineae-leave-math-environment')); return;
@@ -2236,10 +2639,20 @@ function runMathShortcut(command, field, event) {
   else insertLiveMath(field, '\\'+command);
 }
 document.addEventListener('pointerdown', event => { if (!commands.contains(event.target)) closeCommands(); }, true);
-document.addEventListener('scroll', event => {
-  if (!commands.hidden && !commands.contains(event.target)) closeCommands();
-}, true);
-window.addEventListener('resize', () => closeCommands());
+function commandViewportChanged(event){
+  if(commands.hidden||event.target instanceof Node&&commands.contains(event.target))return;
+  requestAnimationFrame(()=>{
+    if(commands.hidden)return;
+    if(completionField&&!completionField.isConnected){closeCommands();return;}
+    const origin=(completionField??editor.view.dom).getBoundingClientRect();
+    const dx=origin.left-completionOrigin.left,dy=origin.top-completionOrigin.top;
+    completionAnchor={left:completionAnchor.left+dx,top:completionAnchor.top+dy,bottom:completionAnchor.bottom+dy};
+    completionOrigin=origin;
+    positionCommands();
+  });
+}
+document.addEventListener('scroll',commandViewportChanged,true);
+window.addEventListener('resize',commandViewportChanged);
 document.addEventListener('keydown', event => {
   if (event.key !== 'Escape' || event.isComposing || event.keyCode === 229 || editor.view.composing) return;
   if (!editor.state.storedMarks?.some(mark => mark.type.name === 'boxed')) return;
@@ -2304,7 +2717,7 @@ function updateSourceButton() {
 let continueTablesButton;
 function updateContinueTablesButton(){
   if(!continueTablesButton)return;
-  const enabled=typesetPagination.getTableContinuation();
+  const enabled=typesetPagination?.getTableContinuation();
   continueTablesButton.textContent=enabled?t('续表 开','Continue on'):t('续表 关','Continue off');
   continueTablesButton.setAttribute('aria-pressed',String(enabled));
   continueTablesButton.dataset.tooltipZh=enabled?'超过一页的表格自动拆分并重复表头':'表格不自动拆分';
@@ -2314,20 +2727,24 @@ const paginationButton=document.createElement('button');
 paginationButton.type='button';paginationButton.className='pagination-toggle';
 paginationButton.addEventListener('mousedown',event=>event.preventDefault());
 paginationButton.addEventListener('click',()=>{
-  typesetPagination.toggle();
+  if(!nativeTexPreview?.togglePagePresentation?.())typesetPagination?.toggle();
   updatePaginationButton();
 });
 function updatePaginationButton(){
-  const pages=typesetPagination.getMode()==='pages';
+  const nativeMode=nativeTexPreview?.pagePresentation?.()??(nativeWorkspaceRequested()?'pages':null);
+  const pages=(nativeMode??typesetPagination?.getMode())==='pages';
   paginationButton.textContent=pages?t('分页','Pages'):t('连续流','Continuous');
   paginationButton.dataset.mode=pages?'pages':'flow';
   paginationButton.setAttribute('aria-pressed',String(pages));
-  paginationButton.dataset.tooltipZh=pages?'切换到连续流预览':'切换到分页预览';
-  paginationButton.dataset.tooltipEn=pages?'Switch to continuous flow':'Switch to paginated pages';
+  paginationButton.dataset.tooltipZh=nativeMode?(pages?'连续显示原生页面':'显示原生页边界'):(pages?'切换到连续流预览':'切换到分页预览');
+  paginationButton.dataset.tooltipEn=nativeMode?(pages?'Show native pages continuously':'Show native page boundaries'):
+    (pages?'Switch to continuous flow':'Switch to paginated pages');
 }
 function scale() {
-  documentPage.style.zoom=Number(zoom.value)/100;
-  sourceView.setPreviewZoom(Number(zoom.value));
+  const value=Number(zoom.value);
+  documentPage.style.zoom=value/100;
+  sourceView.setPreviewZoom(value);
+  nativeTexPreview?.setDocumentZoom?.(value);
   percent.textContent=zoom.value+'%';
   requestAnimationFrame(()=>{
     const brand=document.querySelector('header h1');
@@ -2440,6 +2857,7 @@ function selectedParagraphPositions() {
   return [...new Set(positions)];
 }
 function updateSelectedParagraphs(attributes) {
+  if(nativeParagraphFormattingActive())return runNativeTextStructure('updateAttributes','paragraph',attributes);
   const positions = selectedParagraphPositions();
   if (!positions.length) return false;
   const transaction = editor.state.tr;
@@ -2467,9 +2885,9 @@ function setParagraphAlignment(align) {
   }
   if (editor.isActive('table')) {
     if(selection.isRowSelection?.()&&selection.isColSelection?.())
-      return editor.chain().focus().updateAttributes('table',{align}).run();
+      return editor.chain().focus(undefined,{scrollIntoView:false}).updateAttributes('table',{align}).run();
     const type=editor.isActive('tableHeader')?'tableHeader':'tableCell';
-    return editor.chain().focus().updateAttributes(type,{align}).run();
+    return editor.chain().focus(undefined,{scrollIntoView:false}).updateAttributes(type,{align}).run();
   }
   if (selection instanceof NodeSelection && selection.node.type.name==='documentImage') {
     editor.view.dispatch(editor.state.tr.setNodeMarkup(selection.from,undefined,{
@@ -2482,6 +2900,13 @@ function setParagraphAlignment(align) {
   return updateSelectedParagraphs({align});
 }
 function indentSelectedParagraph(direction) {
+  if(nativeParagraphFormattingActive()){
+    if(editor.isActive('listItem')){
+      if(direction>0&&!canIndentList(editor,listItemLevelAt))return false;
+      return runNativeTextStructure(direction>0?'sinkListItem':'liftListItem','listItem');
+    }
+    return updateSelectedParagraphs(indentationAttributes(editor.getAttributes('paragraph'),direction>0));
+  }
   if (editor.isActive('listItem')) {
     return direction > 0
       ? indentListItem(editor)
@@ -2489,7 +2914,9 @@ function indentSelectedParagraph(direction) {
   }
   return setParagraphIndent(editor,direction > 0);
 }
-function insertMultiColumn(count=2) {  const {from,to}=editor.state.selection;
+function insertMultiColumn(count=2) {
+  if(nativeParagraphFormattingActive())return runNativeTextStructure('wrapIn','multiColumn',{count});
+  const {from,to}=editor.state.selection;
   const doc=editor.state.doc;
   let start,end;
   try {
@@ -2506,6 +2933,20 @@ function insertMultiColumn(count=2) {  const {from,to}=editor.state.selection;
   return editor.chain().focus().insertContentAt({from:start,to:end},node).run();
 }
 function updateSelectedImageAttrs(patch){
+  const selection=editor.state.selection;
+  if(selection instanceof NodeSelection&&selection.node.type.name==='subfigures'){
+    const allowed=['placement','fixed','caption','captionEnabled','captionNumbered','label'];
+    const clean=Object.fromEntries(Object.entries(patch).filter(([key,value])=>value!==undefined&&allowed.includes(key)));
+    if(Object.entries(clean).every(([key,value])=>selection.node.attrs[key]===value))return false;
+    editor.view.dispatch(closeHistory(editor.state.tr).setNodeMarkup(selection.from,undefined,{...selection.node.attrs,...clean}));
+    const updated=editor.state.doc.nodeAt(selection.from);
+    if(updated?.type.name==='subfigures'){
+      imagePanel?.setValues?.({...updated.attrs,figure:true,centered:true,align:'center'});
+      imagePanel?.setPath?.(t(updated.childCount+' 张子图',updated.childCount+' subfigures'));
+      imagePanel?.setGroupMode?.(true);
+    }
+    return true;
+  }
   if(imageSelection===null)return false;
   const current=editor.state.doc.nodeAt(imageSelection);
   if(current?.type.name!=='documentImage')return false;
@@ -2516,15 +2957,7 @@ function updateSelectedImageAttrs(patch){
   if(updated?.type.name==='documentImage')imagePanel?.setValues?.(updated.attrs);
   return true;
 }
-function sortParagraphs(mode) {
-  const { from,to }=editor.state.selection;
-  const items=[];
-  editor.state.doc.forEach((node,offset) => {
-    const end=offset+node.nodeSize;
-    if (end<=from || offset>=to) return;
-    items.push({node,offset});
-  });
-  if (items.length<2 || items.some(item=>item.node.type.name!=='paragraph')) return false;
+function sortedParagraphs(items,mode) {
   let collator;
   try {
     collator = mode==='alphabet' ? new Intl.Collator(undefined,{sensitivity:'base'})
@@ -2533,7 +2966,7 @@ function sortParagraphs(mode) {
   } catch {
     collator = new Intl.Collator('zh-Hans',{usage:'sort'});
   }
-  const sorted=[...items].sort((left,right) => {
+  return [...items].sort((left,right) => {
     if (mode==='alphabet') {
       const leftLatin=/^[\x00-\x7F]/.test(left.node.textContent) ? 0 : 1;
       const rightLatin=/^[\x00-\x7F]/.test(right.node.textContent) ? 0 : 1;
@@ -2541,12 +2974,54 @@ function sortParagraphs(mode) {
     }
     return collator.compare(left.node.textContent,right.node.textContent);
   });
+}
+function sortParagraphs(mode) {
+  if(nativeTexPreview.hasNativeTextFocus?.())return sortNativeParagraphs(mode);
+  const { from,to }=editor.state.selection;
+  const items=[];
+  editor.state.doc.forEach((node,offset) => {
+    const end=offset+node.nodeSize;
+    if (end<=from || offset>=to) return;
+    items.push({node,offset});
+  });
+  if (items.length<2 || items.some(item=>item.node.type.name!=='paragraph')) return false;
+  const sorted=sortedParagraphs(items,mode);
   if (sorted.every((item,index) => item===items[index])) return false;
   const first=items[0].offset;
   const last=items.at(-1).offset+items.at(-1).node.nodeSize;
   editor.view.dispatch(editor.state.tr.replaceWith(first,last,sorted.map(item=>item.node)).scrollIntoView());
   editor.view.focus();
   return true;
+}
+function sortNativeParagraphs(mode){
+  const spans=nativeTexPreview.verifiedProseSpan();
+  const origin=spans[0]?.paragraph;
+  if(!origin||spans.length<2||spans.some(({paragraph})=>!paragraph||paragraph.heading||paragraph.container||
+    paragraph.tableCell||paragraph.source!==origin.source||paragraph.filePath!==origin.filePath||
+    paragraph.occurrence!==origin.occurrence))return false;
+  const positions=spans.map(({paragraph,from,to})=>nativeProsePosition(paragraph,from,to));
+  if(positions.some(position=>!position))return false;
+  const byPosition=new Map();
+  forEachNativeDocumentBlock('paragraph',(node,offset,block,path,source,base)=>{
+    if(positions[0].project&&path!==origin.filePath||source!==origin.source||block?.count!==1||!block.editable)return;
+    const raw=block.raw.trim();
+    if(raw===serialize(node.toJSON()).trim())byPosition.set(offset,{node,raw,offset,
+      from:base+block.from+block.raw.length-block.raw.trimStart().length,to:base+block.from+block.raw.trimEnd().length});
+  });
+  const items=positions.map(({range})=>byPosition.get(range.match.offset));
+  const {source}=origin;
+  if(items.some((item,index)=>!item||index>0&&(items[index-1].offset+items[index-1].node.nodeSize!==item.offset||
+    !/^[ \t]*(?:\r?\n[ \t]*){2,}$/.test(source.slice(items[index-1].to,item.from)))))return false;
+  const sorted=sortedParagraphs(items,mode);
+  if(sorted.every((item,index)=>item===items[index]))return false;
+  const start=items[0].offset,end=items.at(-1).offset+items.at(-1).node.nodeSize;
+  const {state}=editor;
+  const tr=state.tr.replaceWith(start,end,sorted.map(item=>item.node));
+  const draft=items.reduceRight((text,item,index)=>text.slice(0,item.from)+sorted[index].raw+text.slice(item.to),source);
+  const {composition,project,file}=positions[0];
+  if(composition)return dispatchNativeProjectChange(state,tr,project,new Map([[file.id,draft]]));
+  const projected=sourceProjection(draft,tr.doc.toJSON(),{fragment:projectFileKind==='tex'});
+  return Boolean(projected&&dispatchNativeParagraphChange(state,tr,source,draft,textPatch(source,draft)[0],projected));
 }
 function zoomByKeyboard(amount, {source}={}) {
   if(source)return false;
@@ -2581,7 +3056,7 @@ const shortcutActions = {
     insertDisplayMath: () => insertMath(true),
     insertInlineMath: () => insertMath(),
     insertEquation,
-    insertCases: () => insertMath(true,'\\begin{cases}\\placeholder{} & \\placeholder{}\\\\ \\placeholder{} & \\placeholder{}\\end{cases}'),
+    insertCases,
     dollar: (_context,event) => {
       if(event.key.length===1&&!event.ctrlKey&&!event.metaKey&&!event.altKey)return 'native';
       insertMath();
@@ -2596,17 +3071,10 @@ const shortcutActions = {
     leaveAllEnvironments: leaveAllTextEnvironments,
     leaveFile:()=>projectPresentation?.exitFile()??false,
     toggleContextMarker: () => {
-      const { $from }=editor.state.selection;
-      for (let depth=$from.depth;depth>0;depth--) {
-        const node=$from.node(depth);
-        const key={orderedList:'labelStyle',bulletList:'marker',heading:'numbered'}[node.type.name];
-        if (!key) continue;
-        const choices={orderedList:[null,'decimal-parens','lower-alpha','lower-roman'],bulletList:[null,'◦','▪'],heading:[true,false]}[node.type.name];
-        const value=choices[(choices.indexOf(node.attrs[key])+1)%choices.length];
-        editor.view.dispatch(editor.state.tr.setNodeMarkup($from.before(depth),undefined,{...node.attrs,[key]:value}));
-        return true;
-      }
-      return false;
+      const target=nextContextMarker(editor.state.selection.$from);
+      if(!target)return false;
+      editor.view.dispatch(editor.state.tr.setNodeMarkup(target.position,undefined,{...target.node.attrs,...target.attrs}));
+      return true;
     },
     ignoreBrowserZoomReset: resetPageZoom,
     literalBacktick: () => editor.commands.insertContent('`'),
@@ -2615,8 +3083,10 @@ const shortcutActions = {
     toggleBold: () => editor.commands.toggleBold(),
     toggleItalic: () => editor.commands.toggleItalic(),
     toggleUnderline: () => editor.commands.toggleMark('underline'),
+    toggleSmallCaps: () => editor.commands.toggleMark('smallcaps'),
     toggleStrike: () => editor.commands.toggleStrike(),
     toggleCode: () => editor.commands.toggleCode(),
+    clearFormatting: () => editor.commands.unsetAllMarks(),
     toggleCodeBlock: () => editor.commands.toggleCodeBlock(),
     toggleBlockquote: () => editor.commands.toggleBlockquote(),
     toggleBulletList: () => editor.commands.toggleBulletList(),
@@ -2636,10 +3106,10 @@ const shortcutActions = {
     toggleIndent: () => setParagraphIndent(editor,!paragraphHasIndent(editor)),
   },
   table: {
-    addRow: () => editor.commands.addRowAfter(),
-    addColumn: () => editor.commands.addColumnAfter(),
-    deleteRow: () => editor.commands.deleteRow(),
-    deleteColumn: () => editor.commands.deleteColumn(),
+    addRow: () => addNativeTableAxis('row')??editor.commands.addRowAfter(),
+    addColumn: () => addNativeTableAxis('column')??editor.commands.addColumnAfter(),
+    deleteRow: () => editNativeTable('deleteRow')??editor.commands.deleteRow(),
+    deleteColumn: () => editNativeTable('deleteColumn')??editor.commands.deleteColumn(),
   },
 };
 const nativeBindings=compileKeybindings({
@@ -2649,10 +3119,74 @@ const nativeBindings=compileKeybindings({
   math:{undo:['ctrl+z','meta+z'],redo:['ctrl+y','meta+y','ctrl+shift+z','meta+shift+z'],
     palette:'backslash',nextSlot:'tab',previousSlot:'shift+tab'},
 },{isMac});
+const nativeTypingCommands=new Map([
+  ['toggleBold','bold'],['toggleItalic','italic'],['toggleUnderline','underline'],['toggleCode','code'],['toggleStrike','strike'],
+  ['toggleSuperscript','superscript'],['toggleSubscript','subscript'],['toggleSmallCaps','smallcaps'],
+  ['toggleBox','boxed'],['toggleCircled','circled'],
+]);
+const nativeTypingMarks=new Set([...nativeTypingCommands.values(),'textStyle']);
+const nativeRangeCommands=new Set([...nativeTypingCommands.keys(),'clearFormatting']);
+function nextContextMarker($from){
+  for(let depth=$from.depth;depth>0;depth--){
+    const node=$from.node(depth),type=node.type.name;
+    const key={orderedList:'labelStyle',bulletList:'marker',heading:'numbered'}[type];
+    if(!key)continue;
+    const choices={orderedList:[null,'decimal-parens','lower-alpha','lower-roman'],bulletList:[null,'◦','▪'],heading:[true,false]}[type];
+    const value=choices[(choices.indexOf(node.attrs[key])+1)%choices.length];
+    return {node,position:$from.before(depth),attrs:{[key]:value}};
+  }
+  return null;
+}
+const nativeTextStructures={
+  paragraph:['setParagraph'],section:['toggleHeading',{level:1,command:null}],
+  subsection:['toggleHeading',{level:2,command:null}],subsubsection:['toggleHeading',{level:3,command:null}],
+  toggleBulletList:['toggleBulletList'],toggleOrderedList:['toggleOrderedList'],toggleBlockquote:['toggleBlockquote'],
+  alignLeft:['updateAttributes','paragraph',{align:'left'}],
+  alignRight:['updateAttributes','paragraph',{align:'right'}],
+  alignCenter:['updateAttributes','paragraph',{align:'center'}],
+  alignJustify:['updateAttributes','paragraph',{align:'justify'}],
+};
+function nativeParagraphFormattingActive(){
+  return nativeTexPreview?.hasNativeTextFocus?.()||nativeWorkspaceRequested()&&nativeTexPreview?.verifiedTextRange?.();
+}
+function runNativeTextCommand(command,context,event){
+  if(command==='insertTable')return insertNativeTableFromProse();
+  if(command==='literalBacktick')return nativeTexPreview.insertLiteralText('`');
+  if(command==='hardBreak')return nativeTexPreview.startHardBreak();
+  if(command==='leaveEnvironment'||command==='leaveAllEnvironments')
+    return nativeTexPreview.leaveTextEnvironment(command==='leaveAllEnvironments');
+  if(command==='openTikz'||command==='codeLanguage'){
+    shortcutActions.editor[command]();
+    return true;
+  }
+  if(command==='toggleContextMarker'){
+    if(!nativeTexPreview.useTextSelection())return false;
+    const target=nextContextMarker(editor.state.selection.$from);
+    return Boolean(target&&runNativeTextStructure('updateAttributes',target.node.type.name,target.attrs));
+  }
+  if(Object.hasOwn(nativeTextStructures,command))return runNativeTextStructure(...nativeTextStructures[command]);
+  const range=nativeTexPreview.verifiedTextRange?.();
+  const caret=range?.[0];
+  const unmarked=caret&&caret===range[1]&&nativeTypingCommands.has(command)&&
+    !caret.paragraph.heading&&!caret.paragraph.container&&!caret.paragraph.tableCell&&!caret.paragraph.wrapped&&
+    caret.paragraph.runs.some(run=>run.from16<=caret.local&&run.to16>=caret.local&&
+      !caret.paragraph.parts[run.partIndex]?.marks?.length);
+  if(!nativeRangeCommands.has(command)||!nativeTexPreview.useTextSelection(!unmarked))return false;
+  if(command==='toggleBox'||command==='toggleCircled')return editor.commands.toggleMark(nativeTypingCommands.get(command));
+  return shortcutActions.editor[command](context,event);
+}
+function withNativeTextCommand(command,legacy){
+  return (...args)=>nativeTexPreview?.hasNativeTextFocus?.()?runNativeTextCommand(command):legacy(...args);
+}
 installKeybindings(window, {
   getBindings: () => config.bindings,
   nativeBindings,
   getContext(event) {
+    if(nativeTexPreview?.hasMathInput?.(event))
+      return {element:event.target,nativeMath:true,scopes:['math','editor','system','global']};
+    if(nativeTexPreview?.hasTextInput?.(event))
+      return {element:event.target,nativeText:true,
+        scopes:nativeTexPreview.inTableCell()?['table','editor','system','global']:['paragraph','editor','system','global']};
     if (event.target.closest?.('.tex-code .cm-content'))
       return {element:sourceView.editorView?.contentDOM,source:true,scopes:['source','system','global']};
     if (event.target.closest?.('.tex-code'))return {element:event.target,scopes:['global'],only:'save'};
@@ -2676,10 +3210,32 @@ installKeybindings(window, {
     return { element:editor.view.dom, scopes };
   },
   run({scope,command},context,event) {
-    if (scope === 'math') return runMathShortcut(command,context.field,event);
+    if((context.nativeText||context.nativeMath)&&scope==='editor'&&command==='find'){
+      documentFind.show();return true;
+    }
+    if((context.nativeText||context.nativeMath)&&scope==='editor'&&command==='editMath')
+      return nativeTexPreview.editAdjacentFormula();
+    if(context.nativeMath&&scope==='editor')return false;
+    if(context.nativeText&&scope==='editor'){
+      if(command==='leaveFile')return nativeTexPreview.leaveFile();
+      if(['insertDisplayMath','insertInlineMath','insertEquation','insertCases'].includes(command))return shortcutActions.editor[command]();
+      return runNativeTextCommand(command,context,event);
+    }
+    if(context.nativeText&&scope==='table'&&!nativeTexPreview.useTextSelection())return false;
+    if(context.nativeText&&scope==='paragraph'&&command==='toggleIndent'){
+      return nativeTexPreview.useTextSelection()&&updateSelectedParagraphs(
+        indentationAttributes(editor.getAttributes('paragraph'),!paragraphHasIndent(editor)));
+    }
+    if (scope === 'math') {
+      if(!context.nativeMath)return runMathShortcut(command,context.field,event);
+      if(command==='palette'){showCommands(context.element,'math');return true;}
+      return nativeTexPreview.runMathCommand(command)||
+        (command==='addRow'&&addNativeTableAxis('row')===true)||(command==='addColumn'&&addNativeTableAxis('column')===true);
+    }
     if (scope === 'source') return sourceView.runShortcut(command);
     if (scope === 'system') {
       if(command==='selectAll') {
+        if(context.nativeText||context.nativeMath)return nativeTexPreview.selectAll();
         if(context.source)return sourceView.runShortcut('selectAll');
         if(context.field)return context.field.executeCommand('selectAll');
         return editor.commands.selectAll();
@@ -2708,16 +3264,1616 @@ window.addEventListener('wheel', event => {
 const environment = document.createElement('span'); environment.className='environment-tag';
 function updateEnvironment() {
   const field=document.activeElement?.tagName==='MATH-FIELD' ? document.activeElement : null;
-  const name=field ? (field.closest('.math-display')?'display math':'inline math') :
+  const native=nativeTexPreview?.focusedCaret?.();
+  const name=native?.kind==='math'?(native.formula.kind==='displayMath'?'display math':'inline math'):
+    field ? (field.closest('.math-display')?'display math':'inline math') :
     !sourceView.hidden?'LaTeX': ['table','listItem','heading'].find(type=>editor.isActive(type)) ?? 'text';
   const labels={matrix:t('矩阵','Matrix'),'display math':t('行间公式','Display math'),'inline math':t('行内公式','Inline math'),table:t('表格','Table'),listItem:t('列表','List'),heading:t('标题','Heading'),text:t('正文','Text'),LaTeX:t('源码','Source')};
-  environment.textContent=[labels[name],...(field ? mathEnvironment(field) : [])].join(' › ');
+  const nativeLabels={frac:t('分式','Fraction'),sqrt:t('根式','Radical'),numerator:t('分子','Numerator'),
+    denominator:t('分母','Denominator'),radicand:t('被开方数','Radicand'),degree:t('根指数','Root degree'),
+    superscript:t('上标','Superscript'),subscript:t('下标','Subscript'),integrand:t('被积式','Integrand'),operand:t('运算主体','Operand')};
+  const location=({row,column})=>t('第 '+row+' 行，第 '+column+' 列','Row '+row+', column '+column);
+  const context=native?.kind==='math'?nativeMathContext(native).map(entry=>entry.text??
+    (entry.key==='cell'?location(entry):nativeLabels[entry.key])):
+    native?.paragraph?.tableCell?[location({row:native.paragraph.tableCell.row+1,column:native.paragraph.tableCell.column+1})]:
+    field?mathEnvironment(field):[];
+  environment.textContent=[labels[name],...context].join(' › ');
   environment.dataset.environment=name;
 }
 footer.append(count,document.querySelector('#status'),precisionStatus,environment,zoom,percent,paginationButton,themeButton,modes);document.body.append(footer);sourceView.mountStatus(footer);scale();updatePaginationButton();
 const shortcutPriority=installShortcutPriority({host:footer,before:modes,getBindings:()=>config.bindings});
+function nativeProsePosition(paragraph,from,to){
+  if(!sourceView.hidden||!paragraph?.parts)return null;
+  const project=projectExplorer?.model,composition=projectDocument.composition;
+  const file=project?.files.get(paragraph.filePath);
+  if(project&&(file?.draft!==paragraph.source||!composition&&file?.id!==project.activeFileId))return null;
+  if(!composition&&source()!==paragraph.source)return null;
+  const range=nativeEditorRange({doc:editor.state.doc,projection,composition,file,paragraph,from,to});
+  return range?{range,project,composition,file}:null;
+}
+function refreshNativeTextEnvironment(tr,position,sourceBlock,source,change){
+  return refreshNativeTextEnvironmentChanges(tr,position,sourceBlock,source,[change]);
+}
+function refreshNativeTextEnvironmentChanges(tr,position,sourceBlock,source,changes){
+  if(!sourceBlock||changes.some(change=>change.from<sourceBlock.from||change.to>sourceBlock.to))return false;
+  const raw=changes.reduce((value,change)=>value.slice(0,change.from-sourceBlock.from)+
+    change.insert+value.slice(change.to-sourceBlock.from),source.slice(sourceBlock.from,sourceBlock.to));
+  const [parsed,...rest]=importBlocks(raw);
+  const node=tr.doc.nodeAt(position);
+  if(rest.length||parsed?.type!=='blockquote'||node?.type.name!=='blockquote')return false;
+  const verified=tr.doc.type.schema.nodeFromJSON(parsed);
+  if(verified.attrs.latexEnvironment!==node.attrs.latexEnvironment||!verified.content.eq(node.content))return false;
+  if(verified.attrs.environmentSource)tr.setNodeMarkup(position,undefined,verified.attrs);
+  return true;
+}
+function matchesNativeProseBlock(state,tr,source,draft,change,index){
+  const owner=projection?.blocks.find(block=>block.index===index&&block.count===1&&
+    change.from>=block.from&&change.to<=block.to);
+  if(!owner)return false;
+  const [updated,...rest]=importBlocks(draft.slice(owner.from,owner.to+draft.length-source.length));
+  return !rest.length&&updated?.type==='paragraph'&&state.schema.nodeFromJSON(updated).eq(tr.doc.child(index));
+}
+function dispatchVerifiedNativeProse(state,tr,source,draft,change,index){
+  if(!matchesNativeProseBlock(state,tr,source,draft,change,index))return false;
+  const projected=sourceProjection(draft,tr.doc.toJSON(),{fragment:projectFileKind==='tex'});
+  return Boolean(projected&&dispatchNativeParagraphChange(state,tr,source,draft,change,projected));
+}
+async function nativeInlineCommand(type,equation=false){
+  const original=editor.state.doc;
+  const note=type==='footnote';
+  const label=note?t('脚注内容','Footnote text'):type==='cite'?t('文献键','Citation key'):t('引用标签','Reference label');
+  const value=await askText(label);
+  if(!value||editor.state.doc!==original||!note&&!equationLabelKey.test(value))return false;
+  const attrs=note?{text:serialize({type:'text',text:value})}:{key:value,...(equation&&{equation:true,command:'eqref'})};
+  return insertNativeInlineNode(type,attrs);
+}
+function insertNativeInlineNode(type,attrs){
+  const stops=nativeTexPreview.verifiedTextRange();
+  if(!stops)return false;
+  const [first,last]=stops,{paragraph}=first;
+  if(paragraph.heading||paragraph.tableCell||paragraph.container||paragraph.wrapped)return false;
+  const target=nativeProsePosition(paragraph,first.local,last.local);
+  if(!target||target.range.marks?.length||target.range.endpoints.start!==target.range.endpoints.end)return false;
+  const started=performance.now(),{state}=editor;
+  const latex=serialize(state.schema.nodes[type].create(attrs).toJSON());
+  const [parsed]=importBlocks(latex),item=parsed?.content?.[0];
+  if(parsed?.type!=='paragraph'||parsed.content.length!==1||item?.type!==type)return false;
+  const node=state.schema.nodeFromJSON(item),{range,composition,project,file}=target;
+  const tr=state.tr.replaceWith(range.from,range.to,node);
+  tr.setSelection(TextSelection.create(tr.doc,range.from+node.nodeSize));
+  const {source,filePath:path}=paragraph;
+  const {docOffset:from}=first,{docOffset:to}=last;
+  const change={from,to,insert:latex};
+  let draft=source.slice(0,from)+latex+source.slice(to),offset=from+latex.length;
+  const rootId=composition?.rootId,root=rootId&&rootId!==file.id?project.file(rootId).draft:source;
+  const dependency=nativePackagePatch(root,latex);
+  if(dependency===false)return false;
+  let applied;
+  if(composition){
+    const drafts=new Map([[file.id,draft]]);
+    if(dependency){
+      const before=drafts.get(rootId)??root;
+      const updated=before.slice(0,dependency.from)+dependency.insert+before.slice(dependency.to);
+      drafts.set(rootId,updated);
+      if(rootId===file.id){draft=updated;offset+=dependency.delta;}
+    }
+    applied=dispatchNativeProjectChange(state,tr,project,drafts);
+  }else if(dependency){
+    if(!matchesNativeProseBlock(state,tr,source,draft,change,range.match.index))return false;
+    draft=draft.slice(0,dependency.from)+dependency.insert+draft.slice(dependency.to);
+    offset+=dependency.delta;
+    const projected=sourceProjection(draft,tr.doc.toJSON(),{fragment:projectFileKind==='tex'});
+    applied=Boolean(projected&&dispatchNativeParagraphChange(state,tr,source,draft,textPatch(source,draft)[0],projected));
+  }else applied=dispatchVerifiedNativeProse(state,tr,source,draft,change,range.match.index);
+  if(!applied)return false;
+  editor.view.dispatch(closeHistory(editor.state.tr));
+  nativeTexPreview.refocusTextInput();
+  return nativeTexPreview.preserveSourceCaret({source:draft,offset,path},started,'text');
+}
+function commitNativeContainerDraft(state,tr,target,paragraph,change,offset){
+  const {source,filePath:path}=paragraph;
+  const {range,composition,project,file}=target;
+  const draft=source.slice(0,change.from)+change.insert+source.slice(change.to);
+  const result={source:draft,offset,path};
+  if(composition)return dispatchNativeProjectChange(state,tr,project,new Map([[file.id,draft]]))?result:null;
+  const block=range.match.sourceBlock;
+  if(!block||change.from<block.from||change.to>block.to)return null;
+  const raw=draft.slice(block.from,block.to+draft.length-source.length);
+  const parsed=parseDocument(raw,{fragment:true})?.blocks.flatMap(importBlocks);
+  if(parsed?.length!==1||!state.schema.nodeFromJSON(parsed[0]).eq(tr.doc.child(range.match.index)))return null;
+  const projected=sourceProjection(draft,tr.doc.toJSON(),{fragment:projectFileKind==='tex'});
+  return projected&&dispatchNativeParagraphChange(state,tr,source,draft,change,projected)?result:null;
+}
+function isNativeListParagraph(paragraph){
+  return ['bulletList','orderedList'].includes(paragraph.container?.type)&&paragraph.parts.length===1&&
+    !paragraph.parts[0].marks?.length&&!paragraph.wrapped;
+}
+function splitNativeListItem(state,target,paragraph,from,to,text){
+  const {range}=target,{source}=paragraph;
+  const position=state.doc.resolve(range.from);
+  if(position.depth<2||position.index(position.depth-1)!==0||
+    position.node(position.depth-1).type.name!=='listItem')return null;
+  const {listItem,paragraph:paragraphType}=state.schema.nodes;
+  const types=[{type:listItem},{type:paragraphType}];
+  const tr=state.tr.delete(range.from,range.to);
+  if(!canSplit(tr.doc,range.from,2,types))return null;
+  const eol=source.includes('\r\n')?'\r\n':'\n';
+  const before=source.slice(0,paragraph.from16).split(/\r?\n/).at(-1);
+  const indent=/^([ \t]*)\\item\b/.exec(before)?.[1]??'';
+  const insert=eol+indent+'\\item '+serialize({type:'text',text});
+  const change={from:paragraph.from16+from,to:paragraph.from16+to,insert};
+  tr.split(range.from,2,types);
+  const next=range.from+4;
+  if(text)tr.insertText(text,next);
+  tr.setSelection(TextSelection.create(tr.doc,next+text.length));
+  return commitNativeContainerDraft(state,tr,target,paragraph,change,change.from+insert.length);
+}
+function joinNativeListItems(first,last,from,to){
+  if(first.local!==first.paragraph.text.length||last.local!==0||
+    !/^\s*\\item[\t \r\n]+$/.test(first.paragraph.source.slice(from,to)))return null;
+  const left=nativeProsePosition(first.paragraph,first.local,first.local);
+  const right=nativeProsePosition(last.paragraph,last.local,last.local);
+  if(!left||!right||left.range.match.sourceBlock?.from!==right.range.match.sourceBlock?.from)return null;
+  const {state}=editor;
+  const $left=state.doc.resolve(left.range.from),$right=state.doc.resolve(right.range.from),item=$left.depth-1;
+  if(item<1||$left.depth!==$right.depth||$left.node(item).type.name!=='listItem'||
+     $right.node(item).type.name!=='listItem'||$left.node(item).childCount!==1||
+     $right.node(item).childCount!==1||$left.after(item)!==$right.before(item))return null;
+  const tr=state.tr.join($left.after(item),2);
+  tr.setSelection(TextSelection.create(tr.doc,left.range.from));
+  return commitNativeContainerDraft(state,tr,left,first.paragraph,{from,to,insert:''},from);
+}
+function applyTextStyle(attributes){
+  if(!nativeParagraphFormattingActive())return editor.chain().focus().setMark('textStyle',attributes).run();
+  const stops=nativeTexPreview.verifiedTextRange();
+  if(!stops||!nativeTexPreview.useTextSelection())return false;
+  const [first,last]=stops,{paragraph}=first,{state}=editor;
+  if(paragraph.container||paragraph.heading||paragraph.wrapped||paragraph.tableCell)return false;
+  const target=nativeProsePosition(paragraph,first.local,last.local);
+  if(!target||target.range.endpoints.start!==target.range.endpoints.end)return false;
+  const type=state.schema.marks.textStyle,stored=state.storedMarks??[];
+  const baseline=target.range.marks??[];
+  const style=type.create(first===last?{...stored.find(mark=>mark.type===type)?.attrs,...attributes}:attributes);
+  const [sample]=importBlocks(serialize(state.schema.text('x',[style]).toJSON()));
+  const canonical=sample?.content?.[0]?.marks?.find(mark=>mark.type==='textStyle');
+  if(first===last){
+    if(baseline.length)return false;
+    const marks=stored.filter(mark=>mark.type!==type);
+    if(canonical)marks.push(state.schema.markFromJSON(canonical));
+    editor.view.dispatch(state.tr.setStoredMarks(marks));
+    nativeTexPreview.refocusTextInput();
+    return true;
+  }
+  if(!canonical)return false;
+  const started=performance.now(),{from,to}=target.range;
+  const insert=state.doc.textBetween(from,to),latex=paragraph.text.slice(first.local,last.local);
+  const marks=baseline.filter(mark=>mark.type!==type);
+  marks.push(type.create({...baseline.find(mark=>mark.type===type)?.attrs,...canonical.attrs}));
+  const wrapper=state.schema.markFromJSON(canonical);
+  const serialized=serialize(state.schema.text(insert,[wrapper]).toJSON());
+  const committed=commitNativeMarkedText(paragraph,{from:first.local,to:last.local,insert,latex},target,marks,serialized);
+  if(!committed)return false;
+  nativeTexPreview.refocusTextInput();
+  return nativeTexPreview.preserveSourceCaret(committed,started,'text');
+}
+async function editNativeDescription(existing){
+  if(existing&&!editor.isActive('descriptionItem'))return false;
+  const document=editor.state.doc;
+  const raw=existing?editor.getAttributes('descriptionItem').term:'';
+  const current=decodeProse(raw)?.text??raw;
+  const term=await askText(t('术语','Term'),current);
+  if(term===null||existing&&term===current||/[\[\]\r\n]/.test(term)||editor.state.doc!==document)return false;
+  return runNativeTextStructure(existing?'updateAttributes':'wrapIn','descriptionItem',
+    {term:serialize({type:'text',text:term})});
+}
+function commitNativeMarkedText(paragraph,patch,target,marks,serialized){
+  const {state}=editor,{range,composition,project,file}=target;
+  const node=editor.schema.text(patch.insert,marks),insert=serialized??serialize(node.toJSON());
+  const raw=patch.latex??patch.insert,inside=insert.lastIndexOf(raw);
+  if(inside<0||insert===raw)return null;
+  const {source,filePath:path}=paragraph,from=paragraph.from16+patch.from,to=paragraph.from16+patch.to;
+  const change={from,to,insert};
+  let draft=source.slice(0,from)+insert+source.slice(to),offset=from+inside+raw.length;
+  const tr=state.tr.replaceWith(range.from,range.to,node);
+  tr.setSelection(TextSelection.create(tr.doc,range.from+node.nodeSize)).setStoredMarks(marks);
+  const fragment=projectFileKind==='tex';
+  const candidate=projectMixedDocument(draft,{filePath:path,fragment,splitIncludes:Boolean(composition)})?.paragraphs.find(next=>
+    next.from16<=offset&&next.runs.some(run=>next.from16+run.from16<=offset&&next.from16+run.to16>=offset));
+  if(!candidate)return null;
+  const rootId=composition?.rootId;
+  const root=rootId&&rootId!==file.id?project.file(rootId).draft:source;
+  const dependency=nativePackagePatch(root,insert);
+  if(dependency===false)return null;
+  if(composition){
+    const drafts=new Map([[file.id,draft]]);
+    if(dependency){
+      const before=rootId===file.id?draft:root;
+      const rootDraft=before.slice(0,dependency.from)+dependency.insert+before.slice(dependency.to);
+      drafts.set(rootId,rootDraft);
+      if(rootId===file.id){draft=rootDraft;offset+=dependency.delta;}
+    }
+    return dispatchNativeProjectChange(state,tr,project,drafts)?{source:draft,offset,path}:null;
+  }
+  if(!dependency)return dispatchVerifiedNativeProse(state,tr,source,draft,change,range.match.index)?{source:draft,offset,path}:null;
+  if(!matchesNativeProseBlock(state,tr,source,draft,change,range.match.index))return null;
+  draft=draft.slice(0,dependency.from)+dependency.insert+draft.slice(dependency.to);
+  offset+=dependency.delta;
+  const [combined]=textPatch(source,draft);
+  const projected=sourceProjection(draft,tr.doc.toJSON(),{fragment});
+  return projected&&dispatchNativeParagraphChange(state,tr,source,draft,combined,projected)?{source:draft,offset,path}:null;
+}
+function runNativeTextStructure(command,...args){
+  const started=performance.now();
+  const verified=nativeTexPreview.verifiedTextRange?.();
+  if(!verified||!nativeTexPreview.useTextSelection())return false;
+  const [first,last]=verified,{paragraph}=first;
+  if(paragraph.tableCell||paragraph.container&&!['bulletList','orderedList','descriptionList','blockquote'].includes(paragraph.container.type))return false;
+  const target=nativeProsePosition(paragraph,first.local,last.local);
+  if(!target)return false;
+  const {state}=editor,tr=state.tr;
+  const chain=new CommandManager({editor}).createChain(tr);
+  if(!chain[command](...args).run()||!tr.docChanged)return false;
+  const {source,filePath}=paragraph,{composition,project,file}=target;
+  const fragment=projectFileKind==='tex';
+  const rootId=composition?.rootId;
+  const root=rootId&&rootId!==file.id?project.file(rootId).draft:source;
+  const attributes=command==='updateAttributes'&&args[0]==='paragraph'&&args[1];
+  const theorem=command==='wrapIn'&&args[0]==='theoremBlock'&&args[1]?.kind;
+  const listStyle=command==='updateAttributes'&&
+    (args[0]==='orderedList'&&args[1].labelStyle?'enumerate':args[0]==='bulletList'&&args[1].marker?'itemize':null);
+  const packageBody=(attributes?.align==='justify'?'\\justifying ':'')+(attributes?.shading?'\\colorbox':'')+
+    (theorem?'\\begin{'+theorem+'}':'')+(command==='wrapIn'&&args[0]==='multiColumn'?'\\begin{multicols}':'')+
+    (listStyle?'\\begin{'+listStyle+'}[':'');
+  const dependency=packageBody?nativePackagePatch(root,packageBody):null;
+  if(dependency===false)return false;
+  let draft,from,to,shift=0;
+  if(composition){
+    const updates=projectDocument.changes(tr.doc.toJSON());
+    draft=updates?.get(file.id);
+    if(!draft||draft===source)return false;
+    for(const [id,value] of updates)if(id!==file.id&&value!==project.file(id).draft)return false;
+    ({from,to}=textPatch(source,draft)[0]);
+    if(dependency){
+      const amended=rootId===file.id?draft:root;
+      const rootDraft=amended.slice(0,dependency.from)+dependency.insert+amended.slice(dependency.to);
+      const drafts=new Map([[file.id,draft],[rootId,rootDraft]]);
+      if(!dispatchNativeProjectChange(state,tr,project,drafts))return false;
+      if(rootId===file.id){draft=rootDraft;shift=dependency.delta;}
+    }else editor.view.dispatch(closeHistory(tr));
+    if(editor.state.doc===state.doc)return false;
+  }else {
+    const owner=projection?.blocks.find(block=>block.from<=paragraph.from16&&
+      block.to>=paragraph.from16+paragraph.text.length);
+    const changes=richSourceChanges(projection,tr.doc.toJSON());
+    if(!owner||changes?.length!==1)return false;
+    let [change]=changes;
+    if(change.from<owner.from||change.to>owner.to)return false;
+    draft=source.slice(0,change.from)+change.insert+source.slice(change.to);
+    ({from,to}=change);
+    if(dependency){
+      shift=dependency.delta;
+      draft=draft.slice(0,dependency.from)+dependency.insert+draft.slice(dependency.to);
+      change={from:dependency.from,to,insert:dependency.insert+source.slice(dependency.to,from)+change.insert};
+    }
+    const projected=sourceProjection(draft,tr.doc.toJSON(),{fragment});
+    if(!projected||!dispatchNativeParagraphChange(state,tr,source,draft,change,projected))return false;
+  }
+  const changeEnd=to+draft.length-source.length;
+  const projectedText=projectMixedDocument(draft,{fragment,filePath,splitIncludes:Boolean(composition)});
+  const candidates=projectedText?.paragraphs.filter(next=>next.text===paragraph.text&&
+    next.from16<=changeEnd&&next.from16+next.text.length>=from+shift)??[];
+  if(candidates.length===1){
+    nativeTexPreview.preserveSourceCaret({source:draft,path:filePath,offset:candidates[0].from16+last.local},started,'text');
+    nativeTexPreview.focusInput();
+  }
+  return true;
+}
+function nativeFormulaPosition(formula){
+  if(!sourceView.hidden)return null;
+  const project=projectExplorer?.model,composition=projectDocument.composition;
+  const file=project?.files.get(formula.filePath);
+  if(project&&(file?.draft!==formula.source||!composition&&file?.id!==project.activeFileId))return null;
+  if(!composition&&source()!==formula.source)return null;
+  const type=formula.kind==='displayMath'?'mathBlock':'math',positions=[];
+  editor.state.doc.descendants((node,position)=>{
+    if(node.type.name!==type)return;
+    if(composition){
+      const at=editor.state.doc.resolve(position);
+      let region;
+      for(let depth=at.depth;depth>0;depth--){
+        if(at.node(depth).type.name==='projectRegion'){region=at.node(depth);break;}
+      }
+      if(region?.attrs.path!==file.path)return;
+    }
+    positions.push(position);
+  });
+  if(positions.length!==formula.count)return null;
+  const position=positions[formula.ordinal];
+  return Number.isInteger(position)?{position,node:editor.state.doc.nodeAt(position),type,project,composition,file}:null;
+}
+function addNativeTableAxis(axis){
+  return editNativeTable(axis==='row'?'insertRow':'insertColumn');
+}
+function nativePackagePatch(root,body,preambleLines=[]){
+  const {start,eol}=parseDocument(root,{fragment:true});
+  const packages=resolvePackages(start,body);
+  const early=packages.filter(rule=>rule.beforeClass).map(({name})=>'\\RequirePackage{'+name+'}');
+  const required=[...packages.filter(rule=>!rule.beforeClass).map(({name})=>'\\usepackage{'+name+'}'),
+    ...resolveTheoremDeclarations(start,body),...preambleLines.map(line=>line.replace(/\r?\n/g,eol))];
+  if(!early.length&&!required.length)return null;
+  const begin=start.lastIndexOf('\\begin{document}');
+  if(begin<0)return false;
+  const classStart=early.length?start.search(/^[ \t]*\\documentclass\b/m):begin;
+  if(classStart<0)return false;
+  const from=early.length?classStart:begin,to=required.length?begin:classStart;
+  const first=early.length?early.join(eol)+eol:'',last=required.length?required.join(eol)+eol:'';
+  return {from,to,insert:first+start.slice(from,to)+last,delta:first.length+last.length};
+}
+function editNativeTable(operation,style){
+  const started=performance.now();
+  const caret=nativeTexPreview?.verifiedCaret?.(Boolean(style&&nativeWorkspaceRequested()));
+  if(!caret&&nativeTexPreview?.focusedCaret?.())return false;
+  const owner=caret?.kind==='text'?caret.paragraph:caret?.formula;
+  const cell=owner?.tableCell;
+  if(!cell)return caret?false:undefined;
+  const target=caret.kind==='text'?nativeProsePosition(owner,caret.local,caret.local):nativeFormulaPosition(owner);
+  if(!target)return false;
+  const {state}=editor,{project,composition,file}=target;
+  const position=target.range?.from??target.position;
+  const at=state.doc.resolve(position);
+  let depth=at.depth;
+  while(depth>0&&at.node(depth).type.name!=='table')depth--;
+  if(!depth)return false;
+  const node=at.node(depth);
+  if(at.depth!==depth+3)return false;
+  const start=cell.from16;
+  const rawTable=owner.source.slice(start,cell.to16);
+  const structured=node.attrs.tabularx||node.attrs.tblr;
+  const original=structured?serialize(node.toJSON()):rawTable;
+  const decode=source=>{
+    const [table,...rest]=importBlocks(source);
+    return table?.type==='table'&&!rest.length&&Boolean(table.attrs.tabularx)===Boolean(node.attrs.tabularx)&&
+      Boolean(table.attrs.tblr)===Boolean(node.attrs.tblr)
+      ?state.schema.nodeFromJSON(table):null;
+  };
+  if(structured?(original.trimEnd()!==rawTable||!owner.source.startsWith(original,start)):!decode(original)?.eq(node))return false;
+  const tableFrom=at.before(depth);
+  if(operation==='deleteTable'){
+    const tr=state.tr.delete(tableFrom,tableFrom+node.nodeSize);
+    tr.setSelection(Selection.near(tr.doc.resolve(Math.min(tableFrom,tr.doc.content.size))));
+    const change={from:start,to:cell.to16,insert:''};
+    const draft=owner.source.slice(0,change.from)+owner.source.slice(change.to);
+    if(composition)return dispatchNativeProjectChange(state,tr,project,new Map([[file.id,draft]]));
+    const projected=sourceProjection(draft,tr.doc.toJSON(),{fragment:projectFileKind==='tex'});
+    return Boolean(projected&&dispatchNativeParagraphChange(state,tr,owner.source,draft,change,projected));
+  }
+  const deleting=operation.startsWith('delete');
+  const mergeRange=operation==='mergeCells'?nativeTexPreview.verifiedTableRange():null;
+  if(operation==='mergeCells'&&!mergeRange)return false;
+  const mergeStart=mergeRange?.[0].paragraph.tableCell,mergeEnd=mergeRange?.[1].paragraph.tableCell;
+  const mergeColumn=mergeStart?.column;
+  const verticalMerge=mergeStart&&mergeStart.row!==mergeEnd.row;
+  const offsetInTable=caret.docOffset-start;
+  const wrappers=structured?null:tableStyleParts(original);
+  const body=wrappers?.body??original,bodyFrom=wrappers?.from??0;
+  const caretInBody=offsetInTable-bodyFrom;
+  const tabularrayCommands={
+    insertRow:()=>editTblrRow(original,cell.row,false,offsetInTable),
+    insertColumn:()=>editTblrColumn(original,cell.row,cell.column,offsetInTable),
+    deleteRow:()=>editTblrRow(original,cell.row,true),
+    deleteColumn:()=>editTblrColumn(original,cell.row,cell.column,offsetInTable,true),
+    splitCell:()=>splitTblrCell(original,cell.row,cell.column,offsetInTable),
+    mergeCells:()=>verticalMerge?mergeTblrRows(original,mergeStart.row,mergeEnd.row,mergeColumn):
+      mergeTblrCells(original,cell.row,mergeColumn,mergeEnd.column),
+  };
+  const columnTableCommands={
+    insertRow:()=>insertTableSourceRow(body,cell.row,caretInBody),
+    insertColumn:()=>insertTableSourceColumn(body,cell.row,cell.column,caretInBody),
+    deleteRow:()=>removeTableSourceRow(body,cell.row),
+    deleteColumn:()=>removeTableSourceColumn(body,cell.row,cell.column),
+    splitCell:()=>splitTableSourceCell(body,cell.row,cell.column,caretInBody)??
+      splitTableSourceRowspan(body,cell.row,cell.column,caretInBody),
+    mergeCells:()=>verticalMerge?mergeTableSourceRows(body,mergeStart.row,mergeEnd.row,mergeColumn):
+      mergeTableSourceCells(body,cell.row,mergeColumn,mergeEnd.column),
+  };
+  let patch;
+  if(style){
+    const [key,value]=Object.entries(style)[0];
+    if(node.attrs[key]===value)return false;
+    const revised=writeTableStyle(original,key,value,owner.source.includes('\r\n')?'\r\n':'\n');
+    const before=tableCellRanges(original)?.find(entry=>entry.row===cell.row&&entry.column===cell.column);
+    const after=revised&&tableCellRanges(revised)?.find(entry=>entry.row===cell.row&&entry.column===cell.column);
+    const [change]=revised?textPatch(original,revised):[];
+    if(!change||!before||!after)return false;
+    patch={...change,offset:after.offset+offsetInTable-before.offset};
+  }else{
+    patch=(node.attrs.tblr?tabularrayCommands:columnTableCommands)[operation]();
+    if(patch&&bodyFrom)patch={...patch,from:patch.from+bodyFrom,to:patch.to+bodyFrom,
+      ...(patch.offset!==undefined&&{offset:patch.offset+bodyFrom})};
+  }
+  if(!patch)return false;
+  const raw=original.slice(0,patch.from)+patch.insert+original.slice(patch.to);
+  const replacement=decode(raw);
+  if(!replacement||style&&!replacement.eq(node.type.create({...node.attrs,...style},node.content)))return false;
+  const tr=state.tr.replaceWith(tableFrom,tableFrom+node.nodeSize,replacement);
+  const rowIndex=Math.min(mergeStart?.row??cell.row,replacement.childCount-1),row=replacement.child(rowIndex);
+  const columnIndex=Math.min(mergeColumn??cell.column,row.childCount-1);
+  let next=tableFrom+4+(mergeRange?row.child(columnIndex).firstChild.content.size:deleting?0:position-at.start(depth+3));
+  replacement.forEach((before,_position,index)=>{if(index<rowIndex)next+=before.nodeSize;});
+  row.forEach((before,_position,index)=>{if(index<columnIndex)next+=before.nodeSize;});
+  tr.setSelection(TextSelection.create(tr.doc,next));
+  let change={from:start+patch.from,to:start+patch.to,insert:patch.insert};
+  let draft=owner.source.slice(0,change.from)+change.insert+owner.source.slice(change.to);
+  let offset=patch.offset===undefined?caret.docOffset:start+patch.offset;
+  const rootId=composition?.rootId;
+  const root=rootId&&rootId!==file.id?project.file(rootId).draft:owner.source;
+  const requiresMultirow=verticalMerge&&!node.attrs.tblr;
+  const feature=requiresMultirow?'\\multirow':style?.fontSize?.endsWith('pt')?'\\fontsize{10pt}{12pt}\\selectfont':
+    style?.tableScale&&style.tableScale!==1?'\\scalebox':null;
+  const dependency=feature&&nativePackagePatch(root,feature);
+  if(dependency===false)return false;
+  if(dependency&&(!rootId||rootId===file.id)){
+    const {from,to,insert,delta}=dependency;
+    draft=draft.slice(0,from)+insert+draft.slice(to);
+    offset+=delta;
+    change={from,to:change.to,insert:insert+owner.source.slice(to,change.from)+change.insert};
+  }
+  const restoreCaret=()=>{
+    editor.view.dispatch(closeHistory(editor.state.tr));
+    if(style)nativeTexPreview.refocusTextInput();
+    if(!deleting)return nativeTexPreview.preserveSourceCaret({source:draft,offset,path:owner.filePath},started,caret.kind);
+    const model=projectMixedDocument(draft,{fragment:projectFileKind==='tex',filePath:owner.filePath});
+    const target=model?.paragraphs.find(({tableCell})=>tableCell?.from16===start&&tableCell.row===rowIndex&&tableCell.column===columnIndex);
+    if(target?.glyphs.length)nativeTexPreview.preserveSourceCaret({source:draft,
+      offset:target.from16+target.glyphs[0].from16,path:owner.filePath},started,'text');
+    return true;
+  };
+  if(composition){
+    if(dependency){
+      const drafts=new Map([[file.id,draft]]);
+      if(rootId!==file.id){
+        const {from,to,insert}=dependency;
+        drafts.set(rootId,root.slice(0,from)+insert+root.slice(to));
+      }
+      return dispatchNativeProjectChange(state,tr,project,drafts)&&restoreCaret();
+    }
+    const updates=projectDocument.changes(tr.doc.toJSON());
+    if(updates?.get(file.id)!==draft)
+      return dispatchNativeProjectChange(state,tr,project,new Map([[file.id,draft]]))&&restoreCaret();
+    for(const [id,value] of updates)if(id!==file.id&&value!==project.file(id).draft)return false;
+    editor.view.dispatch(closeHistory(tr));
+    return editor.state.doc!==state.doc&&restoreCaret();
+  }
+  const projected=sourceProjection(draft,tr.doc.toJSON(),{fragment:projectFileKind==='tex'});
+  return Boolean(projected&&dispatchNativeParagraphChange(state,tr,owner.source,draft,change,projected)&&restoreCaret());
+}
+function currentNativeProjectComposition(){
+  const active=projectDocument.composition,project=projectExplorer?.model;
+  if(!active||!project)return null;
+  const composition=projectDocument.compose(project,active.rootId,{boundariesOnly:true,repeated:active.repeated});
+  return composition.issues.length?null:composition;
+}
+function nativeSelectionComposition(canonical){
+  const project=projectExplorer?.model;
+  if(!canonical?.hasRepeated||canonical.repeated!=='first'||!project)return canonical;
+  const expanded=projectDocument.compose(project,canonical.rootId,{boundariesOnly:true,repeated:'all'});
+  return expanded.issues.length?canonical:expanded;
+}
+function emptyContinuation(region,composition,doc){
+  const index=Number(region.key);
+  const latest=composition?.regions[index];
+  const node=Number.isInteger(index)&&index>=0&&index<doc.childCount?doc.child(index):null;
+  if(!latest||latest.path!==region.path||latest.from!==region.from||latest.to!==region.to||
+    node?.type.name!=='projectRegion'||node.attrs.regionKey!==region.key||node.attrs.path!==region.path||
+    node.childCount!==1||node.firstChild.type.name!=='paragraph'||node.firstChild.content.size)return null;
+  const source=composition.sources.get(region.id);
+  if(source===undefined||source.slice(region.from,region.to).trim())return null;
+  let start=1;
+  for(let i=0;i<index;i++)start+=doc.child(i).nodeSize;
+  return {source,start:start+1};
+}
+const nativeTextContainers=new Set(['blockquote','theoremBlock','orderedList','bulletList','descriptionList','multiColumn','table']);
+function nativeTextEnvironment(caret,outermost){
+  if(caret?.kind!=='text')return null;
+  const {paragraph}=caret,{source,filePath:path,occurrence=0}=paragraph;
+  const target=nativeProsePosition(paragraph,caret.local,caret.local);
+  if(!target)return null;
+  const {state}=editor,{range,composition,file}=target;
+  const $from=state.doc.resolve(range.from),depth=composition?2:1;
+  if($from.depth<=depth||!nativeTextContainers.has($from.node(depth).type.name))return null;
+  if(!outermost){
+    for(let level=depth+1;level<$from.depth;level++)if(nativeTextContainers.has($from.node(level).type.name))return null;
+  }
+  const owner=range.match.sourceBlock??(paragraph.tableCell&&{from:paragraph.tableCell.from16,to:paragraph.tableCell.to16});
+  if(!owner)return null;
+  const region=composition?.regions[$from.index(0)];
+  if(composition&&(!region||region.id!==file.id||owner.to>region.to))return null;
+  const document=parseDocument(source,{fragment:projectFileKind==='tex'});
+  if(!document)return null;
+  const limit=region?.to??source.length-document.end.length;
+  return {path,source,occurrence,from:owner.to,to:limit,owner,after:$from.after(depth),eol:document.eol};
+}
+function continueNativeTextEnvironment(caret,outermost,text){
+  const end=nativeTextEnvironment(caret,outermost);
+  if(!end||!text.trim()||/[\r\n]/.test(text))return null;
+  const {source,path,after,owner,eol,to}=end;
+  if(source.slice(owner.to,to).trim())return null;
+  const tail=source.slice(owner.from,owner.to);
+  const from=owner.from+tail.trimEnd().length;
+  const line=eol+eol+serialize({type:'text',text});
+  const insert=line+(from===to&&to<source.length?eol:'');
+  const draft=source.slice(0,from)+insert+source.slice(from);
+  const {state}=editor,{schema}=state;
+  const paragraph=schema.nodes.paragraph.create(null,schema.text(text));
+  const tr=state.tr.insert(after,paragraph);
+  tr.setSelection(TextSelection.create(tr.doc,after+text.length+1));
+  const composition=projectDocument.composition,project=projectExplorer?.model;
+  if(composition){
+    const file=project?.files.get(path);
+    if(!file||!dispatchNativeProjectChange(state,tr,project,new Map([[file.id,draft]])))return null;
+  }else{
+    const revised=parseDocument(draft.slice(owner.from,to+insert.length),{fragment:true})?.blocks.flatMap(importBlocks);
+    if(revised?.length!==2||!schema.nodeFromJSON(revised[0]).eq(state.doc.resolve(after).nodeBefore)||
+      !schema.nodeFromJSON(revised[1]).eq(paragraph))return null;
+    const projected=sourceProjection(draft,tr.doc.toJSON(),{fragment:projectFileKind==='tex'});
+    if(!projected||!dispatchNativeParagraphChange(state,tr,source,draft,{from,to:from,insert},projected))return null;
+  }
+  return {source:draft,offset:from+line.length,path};
+}
+function nativeWholeTablePosition(table){
+  const {owner,from16,to16}=table;
+  const target=owner.parts?nativeProsePosition(owner,owner.runs[0]?.from16,owner.runs[0]?.from16):
+    nativeFormulaPosition(owner);
+  if(!target)return null;
+  const {state}=editor;
+  const current=state.doc.resolve(target.range?.from??target.position);
+  let depth=current.depth;
+  while(depth>0&&current.node(depth).type.name!=='table')depth--;
+  if(depth!==(target.composition?2:1))return null;
+  const node=current.node(depth),position=current.before(depth);
+  const raw=owner.source.slice(from16,to16);
+  const [parsed,...rest]=importBlocks(raw);
+  if(parsed?.type!=='table'||rest.length||!state.schema.nodeFromJSON(parsed).eq(node))return null;
+  return {...target,node,position};
+}
+function editNativeMixedSelection(spans,insert){
+  if(spans.length<2||/[\r\n]/.test(insert)||!spans.some(span=>span.formula||span.table))return null;
+  const {state}=editor;
+  const items=spans.map(({formula,paragraph,table,from,to})=>{
+    if(table){
+      const target=nativeWholeTablePosition(table);
+      const {owner,from16,to16}=table;
+      return target?{...target,path:owner.filePath,source:owner.source,occurrence:owner.occurrence,
+        left:from16,right:to16,begin:from16,end:to16}:null;
+    }
+    if(formula){
+      const target=nativeFormulaPosition(formula);
+      if(target?.type!=='mathBlock')return null;
+      const [parsed,...rest]=importBlocks(formula.source.slice(formula.outerFrom16,formula.outerTo16));
+      if(!parsed||rest.length||!state.schema.nodeFromJSON(parsed).eq(target.node))return null;
+      return {...target,path:formula.filePath,source:formula.source,occurrence:formula.occurrence,
+        left:formula.outerFrom16,right:formula.outerTo16,begin:formula.outerFrom16,end:formula.outerTo16};
+    }
+    if(!paragraph||paragraph.heading||paragraph.container||paragraph.tableCell||paragraph.wrapped||
+      paragraph.parts.some(part=>part.kind!=='text'||part.marks?.length))return null;
+    const target=nativeProsePosition(paragraph,from,to);
+    if(!target||target.range.match.node.type.name!=='paragraph'||target.range.match.node.attrs.explicitIndent||
+      target.range.match.node.attrs.indent===false)return null;
+    return {...target,node:target.range.match.node,position:target.range.match.offset,path:paragraph.filePath,
+      source:paragraph.source,occurrence:paragraph.occurrence,left:paragraph.from16+from,right:paragraph.from16+to,
+      begin:paragraph.from16,end:paragraph.from16+paragraph.text.length};
+  });
+  if(items.some(item=>!item))return null;
+  const first=items[0],last=items.at(-1),{source,path,composition,project,file}=first;
+  if(items.some((item,index)=>item.source!==source||item.path!==path||item.occurrence!==first.occurrence||
+    index>0&&(items[index-1].position+items[index-1].node.nodeSize!==item.position||
+      source.slice(items[index-1].end,item.begin).trim())))return null;
+  const $from=state.doc.resolve(first.position),$to=state.doc.resolve(last.position);
+  if(!$from.sameParent($to)||$from.depth!==(composition?1:0))return null;
+  const change={from:first.left,to:last.right,insert:serialize({type:'text',text:insert})};
+  const draft=source.slice(0,change.from)+change.insert+source.slice(change.to);
+  const raw=draft.slice(first.begin,last.end+draft.length-source.length);
+  const parsed=importBlocks(raw);
+  if(parsed.length>1||parsed.length===1&&parsed[0].type!=='paragraph'||!parsed.length&&raw.trim())return null;
+  const nodes=parsed.map(item=>state.schema.nodeFromJSON(item));
+  if(!nodes.length&&$from.parent.childCount===items.length)nodes.push(state.schema.nodes.paragraph.create());
+  const tr=state.tr.replaceWith(first.position,last.position+last.node.nodeSize,nodes);
+  const offset=raw.trim()?change.from+change.insert.length:null;
+  const result={source:draft,offset,path};
+  if(composition)return dispatchNativeProjectChange(state,tr,project,new Map([[file.id,draft]]))?result:null;
+  const projected=sourceProjection(draft,tr.doc.toJSON(),{fragment:projectFileKind==='tex'});
+  return projected&&dispatchNativeParagraphChange(state,tr,source,draft,change,projected)?result:null;
+}
+function forEachNativeDocumentBlock(type,visit){
+  if(!sourceView.hidden)return;
+  const accepts=typeof type==='function'?type:node=>node.type.name===type;
+  const composition=projectDocument.composition;
+  editor.state.doc.forEach((node,position,index)=>{
+    if(!composition){
+      if(accepts(node)){
+        const project=projectExplorer?.model,file=project&&project.file(project.activeFileId);
+        visit(node,position,projection?.blocks.find(block=>block.index===index&&block.count),
+          file?.path??filename,projection?.text,0,file?.id);
+      }
+      return;
+    }
+    const region=composition.regions[index];
+    if(node.type.name!=='projectRegion'||!region)return;
+    const text=composition.sources.get(region.id);
+    node.forEach((child,offset,childIndex)=>{
+      if(accepts(child))visit(child,position+offset+1,region.projection?.blocks.find(block=>block.index===childIndex&&block.count),
+        region.path,text,region.from,region.id);
+    });
+  });
+}
+function nativeDrawingTargets(ranges){
+  const results=[];
+  function collect(node,position,block,path,text,base,fileId){
+    if(block?.count!==1||typeof text!=='string'||text.slice(base+block.from,base+block.to)!==block.raw)return;
+    for(const range of ranges(block.raw,node.toJSON())){
+      const child=range.child===null?node:node.child(range.child);
+      let at=position;
+      if(range.child!==null){
+        at++;
+        node.forEach((_,offset,index)=>{if(index===range.child)at+=offset;});
+      }
+      const blockFrom=base+block.from,blockTo=base+block.to;
+      const argument=range.argument&&{from:blockFrom+range.argument.from,to:blockFrom+range.argument.to};
+      results.push({position:at,path,text,fileId,blockPosition:position,blockFrom,blockTo,argument,imagePath:range.path,
+        from:blockFrom+range.from,to:blockFrom+range.to,
+        label:child.attrs.caption||child.attrs.label||path});
+    }
+  }
+  forEachNativeDocumentBlock('documentImage',collect);
+  forEachNativeDocumentBlock('subfigures',collect);
+  return results;
+}
+function nativeTikzDrawings(){
+  return nativeDrawingTargets(tikzDrawingRanges).map(({position,label})=>({position,label}));
+}
+function insertNativeDrawing(source,preambleLines){
+  const latex=source.trim();
+  const [node,...rest]=importBlocks(latex);
+  if(rest.length||node?.type!=='documentImage'||!node.attrs.tikzSource)return false;
+  const result=insertNativeDocumentBlock(editor.schema.nodeFromJSON(node),latex,preambleLines);
+  if(result)nativeTexPreview.refocusTextInput();
+  return result;
+}
+function insertDocumentImage(native=nativeParagraphFormattingActive()){
+  if(!native)return insertLocalImage(editor);
+  return insertNativeImages(false);
+}
+function insertNativeImages(grouped,replacement){
+  const document=editor.state.doc,project=projectExplorer?.model;
+  const current=()=>sourceView.hidden&&editor.state.doc===document&&projectExplorer?.model===project;
+  return chooseImageFile(async selected=>{
+    if(!current())return;
+    const files=grouped?selected:[selected];
+    if(files.some(file=>!/^[\p{L}\p{N}_. -]+\.(?:png|jpe?g)$/iu.test(file.name)||file.size>16*1024*1024)){
+      sourceView.error(t('原生文档支持不超过 16 MB 的 PNG 和 JPEG。','Native documents support PNG and JPEG images up to 16 MB.'));
+      return;
+    }
+    const imported=[];
+    let applied=false;
+    try{
+      const occupied=new Set(project?[...project.files.keys(),...project.directories].map(path=>path.toLowerCase()):[]);
+      const images=files.map(file=>{
+        const path=availableImagePath(file,replacement?.imagePath,
+          name=>occupied.has(name.toLowerCase())||!project&&Boolean(resolveImageAsset(name)));
+        occupied.add(path.toLowerCase());
+        return {file,path};
+      });
+      const {documentImage,subfigures}=editor.schema.nodes;
+      const nodes=images.map(({path})=>documentImage.create({path}));
+      const latex=serialize((grouped?subfigures.create(null,nodes):nodes[0]).toJSON()).trimEnd();
+      const [node,...rest]=importBlocks(latex);
+      if(node?.type!==(grouped?'subfigures':'documentImage')||rest.length)return;
+      if(project)for(const {path,file} of images){
+        const bytes=new Uint8Array(await file.arrayBuffer());
+        if(!current())return;
+        const {id}=await project.importAsset(path,bytes);
+        imported.push({id,path});
+      }
+      if(!current())return;
+      const accepted=replacement?replaceNativeRaster(replacement,images[0].path,project):
+        insertNativeDocumentBlock(editor.schema.nodeFromJSON(node),latex);
+      if(!accepted)return;
+      applied=true;
+      if(!project)for(const {path,file} of images)rememberAsset(path,file);
+      nativeTexPreview.refocusTextInput();
+    }catch(error){
+      sourceView.error(error?.message??String(error));
+    }finally{
+      if(!applied)for(const image of imported){
+        if(project.files.get(image.path)?.id!==image.id)continue;
+        try{await project.remove(image.id);}
+        catch(error){sourceView.error(error?.message??String(error));}
+      }
+    }
+  },{multiple:grouped});
+}
+function replaceNativeRaster(target,path,project){
+  const {state}=editor,{text:original,position,blockPosition,blockFrom,blockTo,argument}=target;
+  if(!argument||original.slice(argument.from,argument.to)!==target.imagePath)return false;
+  const file=target.fileId?project?.files.get(target.path):null;
+  if((file?.draft??source())!==original||target.fileId&&file?.id!==target.fileId)return false;
+  const before=state.doc.nodeAt(blockPosition);
+  const change={...argument,insert:path};
+  const draft=original.slice(0,change.from)+path+original.slice(change.to);
+  const [parsed,...rest]=importBlocks(draft.slice(blockFrom,blockTo+draft.length-original.length));
+  if(!parsed||!before||rest.length||parsed.type!==before.type.name)return false;
+  const revised=state.schema.nodeFromJSON(parsed);
+  if(revised.childCount!==before.childCount)return false;
+  const tr=state.tr.replaceWith(blockPosition,blockPosition+before.nodeSize,revised);
+  if(tr.doc.nodeAt(position)?.attrs.path!==path)return false;
+  tr.setSelection(NodeSelection.create(tr.doc,position));
+  if(projectDocument.composition)return Boolean(file&&dispatchNativeProjectChange(state,tr,project,new Map([[file.id,draft]])));
+  const projected=sourceProjection(draft,tr.doc.toJSON(),{fragment:projectFileKind==='tex'});
+  return Boolean(projected&&dispatchNativeParagraphChange(state,tr,original,draft,change,projected));
+}
+function editNativeDrawing(position){
+  if(!nativeTikzDrawings().some(drawing=>drawing.position===position))return;
+  editTikzVisual(editor,position,tr=>{
+    if(!tr.docChanged||tr.doc.eq(tr.before))return true;
+    if(projectDocument.composition){
+      if(!projectDocument.rebase(currentNativeProjectComposition(),editor.getJSON())||
+        !projectDocument.changes(tr.doc.toJSON()))return refuseStandaloneWriteback();
+    }else if(!standaloneMathChanges(projection,tr.doc.toJSON())?.length)return refuseStandaloneWriteback();
+    editor.view.dispatch(tr);
+    return editor.state.doc!==tr.before;
+  });
+}
+function openNativeMeasuredDrawing(drawing){
+  const matches=nativeDrawingTargets(drawing.raster?rasterDrawingRanges:tikzDrawingRanges).filter(target=>target.text===drawing.source&&
+    (!drawing.filePath||target.path===drawing.filePath)&&target.from===drawing.from16&&target.to===drawing.to16);
+  if(matches.length!==1)return;
+  const [{position}]=matches;
+  if(drawing.raster){
+    const {state}=editor;
+    editor.view.dispatch(state.tr.setSelection(NodeSelection.create(state.doc,position)));
+  }else editNativeDrawing(position);
+}
+function nativeSourceBlocks(){
+  const results=[];
+  const directives=new Set(['pageBreak','horizontalRule','appendixStart','matterStart',
+    'tableOfContents','layoutCommand','counterDirective']);
+  const hasSource=node=>['raw','codeBlock'].includes(node.type.name)||directives.has(node.type.name)||
+    node.type.name==='paragraph'&&node.childCount===1&&node.firstChild.type.name==='lipsum';
+  forEachNativeDocumentBlock(hasSource,(node,position,block,path,text,base,fileId)=>{
+    if(block?.count!==1||typeof text!=='string'||text.slice(base+block.from,base+block.to)!==block.raw)return;
+    const type=node.type.name,raw=block.raw.trim();
+    if(type==='codeBlock'){
+      const start=/^\s*(\\begin\{lstlisting\}(?:\[language=[A-Za-z0-9+_-]+\])?)\r?\n/.exec(block.raw);
+      const end=/\r?\n\\end\{lstlisting\}\s*$/.exec(block.raw);
+      if(!start||!end||end.index<start[0].length)return;
+      const from=base+block.from+start[0].length,to=base+block.from+end.index;
+      if(text.slice(from,to)===node.textContent)results.push({path,fileId,text,from,to,label:start[1],
+        edit:{position,from:base+block.from,to:base+block.to,kind:'code',eol:start[0].endsWith('\r\n')?'\r\n':'\n'}});
+      return;
+    }
+    if(!raw||type==='raw'&&raw!==node.attrs.source?.trim())return;
+    const from=base+block.from+block.raw.length-block.raw.trimStart().length,to=from+raw.length;
+    const label=raw.split(/\r?\n/,1)[0].slice(0,64);
+    const edit=type!=='raw'&&!/[\r\n]/.test(raw)?{position,from,to,kind:'command'}:null;
+    results.push({path,fileId,text,from,to,label:label===raw?label:`${label}…`,edit});
+  });
+  return results;
+}
+async function editNativeSourceContent(block,project,file){
+  const {state}=editor,{edit,text,from,to}=block;
+  const node=state.doc.nodeAt(edit.position),original=text.slice(from,to);
+  const code=edit.kind==='code';
+  if(!node||code&&node.textContent!==original)return;
+  const value=await promptDialog({title:code?t('代码块','Code block'):t('LaTeX 命令','LaTeX command'),value:original,multiline:code});
+  if(editor.state.doc!==state.doc||!sourceView.hidden||projectExplorer?.model!==project||
+    (file?.draft??source())!==text)return;
+  nativeTexPreview.refocusTextInput();
+  if(value===null)return;
+  const insert=code?value.replace(/\r\n|\r|\n/g,edit.eol):value.trim();
+  if(insert===original)return;
+  if(code&&/\\end\{lstlisting\}/.test(insert))return refuseStandaloneWriteback();
+  const draft=text.slice(0,from)+insert+text.slice(to);
+  const [parsed,...rest]=importBlocks(draft.slice(edit.from,edit.to+draft.length-text.length));
+  if(rest.length||parsed?.type!==node.type.name)return refuseStandaloneWriteback();
+  const revised=editor.schema.nodeFromJSON(parsed);
+  if(code?revised.textContent!==insert||revised.attrs.language!==node.attrs.language:
+    node.type.name==='paragraph'&&(revised.childCount!==1||revised.firstChild.type!==node.firstChild.type))return refuseStandaloneWriteback();
+  const tr=editor.state.tr.replaceWith(edit.position,edit.position+node.nodeSize,revised);
+  if(projectDocument.composition){
+    if(!file||!projectDocument.rebase(currentNativeProjectComposition(),editor.getJSON())||
+      !dispatchNativeProjectChange(editor.state,tr,project,new Map([[file.id,draft]])))return refuseStandaloneWriteback();
+  }else{
+    const projected=sourceProjection(draft,tr.doc.toJSON(),{fragment:projectFileKind==='tex'});
+    if(!projected||!dispatchNativeParagraphChange(editor.state,tr,text,draft,{from,to,insert},projected))return refuseStandaloneWriteback();
+  }
+  nativeTexPreview.refocusTextInput();
+}
+async function openNativeSourceBlock(block){
+  if(!sourceView.hidden)return;
+  const project=projectExplorer?.model;
+  const file=block.fileId?project?.files.get(block.path):null;
+  if(block.fileId&&file?.id!==block.fileId)return;
+  if((file?.draft??source())!==block.text)return;
+  if(block.edit)return editNativeSourceContent(block,project,file);
+  setSourceMode(true);
+  if(sourceView.hidden)return;
+  if(file&&project.activeFileId!==file.id){
+    await projectExplorer.openFile(file.id);
+    if(projectExplorer.model!==project||project.activeFileId!==file.id)return;
+  }
+  if(!sourceView.hidden&&sourceView.value===block.text)sourceView.select(block.from,block.to);
+}
+function nativeProjectEntry(project){
+  const main=project.file(project.mainFileId),active=project.file(project.activeFileId);
+  const composition=projectDocument.compose(project,main.id,{boundariesOnly:true});
+  if(active.id===main.id||active.kind!=='tex'||composition.sources.has(active.id))
+    return {file:main,composition};
+  const wrapFragment=!parseDocument(active.draft);
+  if(wrapFragment&&!parseDocument(main.draft))return {file:main,composition};
+  return {file:active,wrapFragment,composition:projectDocument.compose(project,active.id,{boundariesOnly:true})};
+}
+function canStartNativeText(){
+  if(!sourceView.hidden||projectDocument.composition||editor.state.doc.childCount!==1)return false;
+  const paragraph=editor.state.doc.firstChild,project=projectExplorer?.model;
+  if(paragraph?.type.name!=='paragraph'||paragraph.content.size)return false;
+  const entry=project&&nativeProjectEntry(project);
+  if(entry&&entry.file.id!==project.activeFileId)return false;
+  const value=source();
+  const document=parseDocument(value,{fragment:entry?.wrapFragment});
+  return Boolean(document&&value.slice(document.start.length,value.length-document.end.length).trim()==='');
+}
+function newNativeMath(text,display,numbering){
+  if(!text.trim()||/[\r\n]/.test(text))return null;
+  const model=projectMath(text);
+  if(!model.supported)return null;
+  const delimiter=numbering==='equation'?'equation':display?'\\[':'$';
+  const [open,close]=delimiter==='equation'?['\\begin{equation}','\\end{equation}']:
+    display?['\\[','\\]']:['$','$'];
+  const empty=model.slots.find(slot=>['numerator','denominator','radicand','degree','superscript','subscript','cell']
+    .includes(slot.role)&&slot.raw.length===0);
+  const operator=model.atoms.find(atom=>nativeOperatorBody(model,atom)?.slot.raw==='');
+  const node=editor.schema.nodes[display?'mathBlock':'math'].create({latex:text,display,delimiter});
+  return {node,open,close,initial:empty?.from16??operator?.to16??text.length};
+}
+nativeTexPreview=installNativeTexPreview({host:footer,before:modes,primary:desktopEngineToggle()||nativeWorkspaceRequested(),documentZoom:Number(zoom.value),
+  isDocumentMode:()=>sourceView.hidden,
+  splitHost:()=>!sourceView.hidden&&sourceView.split&&projectFileKind!=='bib'?sourceView.previewHost:null,
+  getSnapshot:async()=>{
+    if(projectExplorer?.active){
+      const project=projectExplorer.model;
+      if(!sourceView.hidden)sourceView.flush();
+      else editor.view.domObserver.flush();
+      projectExplorer.changed();
+      const active=project.activeFileId,{file,composition,wrapFragment}=nativeProjectEntry(project);
+      const snapshot=await nativeProjectSnapshot(project,{useModelAssets:true,includeGeneratedInputs:true,
+        entryFileId:file.id,wrapFragment});
+      if(projectExplorer.model!==project||project.activeFileId!==active)
+        throw new Error(t('工程已改变，请重试。','Project changed; retry the preview.'));
+      return {...snapshot,editablePaths:new Set(composition.regions.map(region=>region.path))};
+    }
+    if(projectFileKind==='bib')throw new Error(t('请打开 .tex 文档。','Open a .tex document.'));
+    const text=sourceView.hidden?source():sourceView.value;
+    return nativeAttachedSnapshot(text,projectAssets());
+  },
+  isComposing:()=>editor.view.composing||sourceView.composing,
+  listTikzDrawings:nativeTikzDrawings,
+  listSourceBlocks:nativeSourceBlocks,
+  openSourceBlock:openNativeSourceBlock,
+  editTikzDrawing:editNativeDrawing,
+  openMeasuredDrawing:openNativeMeasuredDrawing,
+  navigateReference:navigateNativeReference,
+  focusImage:path=>{
+    if(!sourceView.hidden)return;
+    const matches=[];
+    editor.state.doc.descendants((node,position)=>{
+      if(node.type.name!=='documentImage')return;
+      const sourcePath=stagedRasterPath(node.attrs.path);
+      if(sourcePath&&(sourcePath===path||sourcePath===path.replace(/\.(?:png|jpe?g)$/i,'')))
+        matches.push(position);
+      return false;
+    });
+    if(matches.length!==1)return;
+    const {state}=editor;
+    editor.view.dispatch(state.tr.setSelection(NodeSelection.create(state.doc,matches[0])));
+  },
+  continuationRegion:caret=>{
+    if(!caret||!sourceView.hidden)return null;
+    const composition=currentNativeProjectComposition();
+    const owner=caret.formula??caret.paragraph;
+    if(!composition||!owner.filePath)return null;
+    const visible=nativeSelectionComposition(composition);
+    const index=visible.regions.findIndex(region=>region.path===owner.filePath&&
+      (region.occurrence??0)===(owner.occurrence??0)&&region.from<=caret.docOffset&&region.to>=caret.docOffset&&
+      visible.sources.get(region.id)===owner.source);
+    const parent=visible.content[index]?.attrs.trail?.at(-1);
+    if(!parent)return null;
+    const next=visible.regions.slice(index+1).find(region=>region.path===parent);
+    const continuation=next&&composition.regions.find(region=>region.id===next.id&&region.from===next.from&&region.to===next.to);
+    if(!continuation)return null;
+    return {...continuation,occurrence:next.occurrence,empty:Boolean(emptyContinuation(continuation,composition,editor.state.doc))};
+  },
+  nativeTextEnvironment,continueNativeTextEnvironment,
+  commitMixedSelection:editNativeMixedSelection,
+  selectionRegions:()=>{
+    const composition=nativeSelectionComposition(currentNativeProjectComposition());
+    return composition?.regions.map((region,index)=>({...region,trail:composition.content[index]?.attrs.trail}));
+  },
+  foldedFiles:()=>projectPresentation?.foldedFiles()??[],
+  serializeTextSelection:()=>editor.view.serializeForClipboard(editor.state.selection.content()).dom.innerHTML,
+  commitInlinePaste:(first,last,html,mode)=>{
+    if(first?.kind!=='text'||first.paragraph!==last?.paragraph)return null;
+    const {paragraph}=first,{state}=editor;
+    if(paragraph.heading||paragraph.tableCell||paragraph.container)return null;
+    const target=nativeProsePosition(paragraph,first.local,last.local);
+    if(!target||target.range.endpoints.start.marks?.length||target.range.endpoints.end.marks?.length)return null;
+    const parsed=new DOMParser().parseFromString(html,'text/html');
+    const slice=ProseMirrorParser.fromSchema(state.schema).parseSlice(parsed.body);
+    const fragment=slice.content.childCount===1&&slice.content.firstChild.type.name==='paragraph'
+      ?slice.content.firstChild.content:slice.content;
+    if(!fragment.childCount||fragment.content.some(node=>!node.isText&&
+       (node.type.name!=='math'||node.attrs.display||!projectMath(node.attrs.latex).supported)))return null;
+    const keptMarks=new Set(mode==='merge'?['bold','italic','underline','strike']:
+      ['bold','italic','underline','strike','code','superscript','subscript','smallcaps','textCommand','textStyle']);
+    const content=Fragment.fromArray(fragment.content.map(node=>node.mark(node.marks.filter(mark=>keptMarks.has(mark.type.name)))));
+    if(!content.content.some(node=>node.type.name==='math'||node.marks.length))return null;
+    const insert=content.content.map(node=>serialize(node.toJSON())).join('');
+    if(!insert||resolvePackages(documentParts.start,insert).length)return null;
+    const {from:start,to:end}=target.range;
+    const tr=state.tr.replaceWith(start,end,content);
+    tr.setSelection(TextSelection.create(tr.doc,start+content.size));
+    const from=first.docOffset,to=last.docOffset,source=paragraph.source;
+    const draft=source.slice(0,from)+insert+source.slice(to),endOffset=from+insert.length;
+    const fragmentSource=projectFileKind==='tex';
+    const mixed=projectMixedDocument(draft,{fragment:fragmentSource,filePath:paragraph.filePath});
+    const candidate=mixed?.paragraphs.find(next=>next.from16===paragraph.from16);
+    if(!candidate)return null;
+    const local=endOffset-candidate.from16;
+    const direct=candidate.runs.some(run=>local>=run.from16&&local<=run.to16&&
+      (!run.offsets||run.offsets.includes(local-run.from16)));
+    const stop=direct?local:candidate.glyphs.findLast(glyph=>glyph.to16<=local)?.to16;
+    if(stop===undefined)return null;
+    const offset=candidate.from16+stop;
+    if(target.composition){
+      const updates=projectDocument.changes(tr.doc.toJSON());
+      if(updates?.get(target.file.id)!==draft)return null;
+      for(const [id,text] of updates)if(id!==target.file.id&&text!==target.project.file(id).draft)return null;
+      editor.view.dispatch(closeHistory(tr));
+      return editor.state.doc===state.doc?null:{source:draft,offset,path:paragraph.filePath};
+    }
+    const projected=sourceProjection(draft,tr.doc.toJSON(),{fragment:fragmentSource});
+    const caret=offset-candidate.from16;
+    if(!nativeEditorRange({doc:tr.doc,projection:projected,paragraph:candidate,from:caret,to:caret}))return null;
+    return dispatchNativeParagraphChange(state,tr,source,draft,{from,to,insert},projected)
+      ?{source:draft,offset,path:paragraph.filePath}:null;
+  },
+  selectText:(anchor,head)=>{
+    if(!anchor||!head)return false;
+    if(anchor.paragraph!==head.paragraph){
+      if(!sameTable(anchor,head))return false;
+      const {state}=editor;
+      const address=stop=>{
+        const target=nativeProsePosition(stop.paragraph,stop.local,stop.local);
+        if(!target)return null;
+        const pos=state.doc.resolve(target.range.from);
+        return ['tableCell','tableHeader'].includes(pos.node(pos.depth-1).type.name)?pos.before(pos.depth-1):null;
+      };
+      const from=address(anchor),to=address(head);
+      if(from===null||to===null)return false;
+      const selected=CellSelection.create(state.doc,from,to);
+      if(!selected.eq(state.selection))editor.view.dispatch(state.tr.setSelection(selected).setMeta('addToHistory',false));
+      return true;
+    }
+    const forward=anchor.local<=head.local;
+    const position=nativeProsePosition(head.paragraph,Math.min(anchor.local,head.local),Math.max(anchor.local,head.local));
+    if(!position)return false;
+    const {from,to}=position.range;
+    const {state}=editor;
+    const selection=TextSelection.create(state.doc,forward?from:to,forward?to:from);
+    if(!selection.eq(state.selection))editor.view.dispatch(state.tr.setSelection(selection).setMeta('addToHistory',false));
+    return true;
+  },
+  canStartText:canStartNativeText,
+  initialPageMetrics:()=>pageMetrics(pageSetup),
+  commitHardBreak:(first,last,text)=>{
+    if(first?.kind!=='text'||first.paragraph!==last?.paragraph)return null;
+    const {paragraph}=first,{source,filePath:path}=paragraph;
+    if(paragraph.heading||paragraph.tableCell||paragraph.container||paragraph.wrapped||
+      !paragraph.text.slice(0,first.local).trim()||/[\r\n]/.test(text))return null;
+    const target=nativeProsePosition(paragraph,first.local,last.local);
+    if(!target||target.range.endpoints.start!==target.range.endpoints.end||target.range.marks?.length)return null;
+    if(!text&&last.local===paragraph.text.length)return {awaitingText:true};
+    const {state}=editor,{range,composition,project,file}=target;
+    const eol=source.includes('\r\n')?'\r\n':'\n';
+    const next=state.schema.nodes.hardBreak.create();
+    const replacement=text?Fragment.fromArray([next,state.schema.text(text)]):next;
+    const tr=state.tr.replaceWith(range.from,range.to,replacement);
+    tr.setSelection(TextSelection.create(tr.doc,range.from+next.nodeSize+text.length));
+    const from=first.docOffset,to=last.docOffset,insert='\\\\'+eol+serialize({type:'text',text});
+    const draft=source.slice(0,from)+insert+source.slice(to);
+    const applied=composition?dispatchNativeProjectChange(state,tr,project,new Map([[file.id,draft]])):
+      dispatchVerifiedNativeProse(state,tr,source,draft,{from,to,insert},range.match.index);
+    return applied?{source:draft,offset:from+insert.length,path}:null;
+  },
+  commitInitialMath:(text,display,numbering)=>{
+    if(!canStartNativeText())return null;
+    const prepared=newNativeMath(text,display,numbering);
+    if(!prepared)return null;
+    const {state}=editor,original=source(),fragment=projectFileKind==='tex';
+    const document=parseDocument(original,{fragment});
+    if(!document)return null;
+    const {node,open,close,initial}=prepared;
+    const from=document.start.length;
+    const eol=!document.end&&from===original.length?'':document.eol;
+    const insert=open+text+close+eol;
+    let draft=original.slice(0,from)+insert+original.slice(from),change={from,to:from,insert};
+    const dependency=nativePackagePatch(original,text);
+    if(dependency===false)return null;
+    const shift=dependency?.delta??0;
+    if(dependency){
+      draft=draft.slice(0,dependency.from)+dependency.insert+draft.slice(dependency.to);
+      [change]=textPatch(original,draft);
+    }
+    const tr=state.tr;
+    if(display)tr.insert(0,node).setSelection(NodeSelection.create(tr.doc,0));
+    else tr.insert(1,node).setSelection(TextSelection.create(tr.doc,2));
+    const projected=sourceProjection(draft,tr.doc.toJSON(),{fragment});
+    if(!projected?.blocks.some(block=>block.editable&&block.from<=from+shift&&block.to>=from+shift+insert.trimEnd().length))return null;
+    const project=projectExplorer?.model;
+    const path=project?.file(project.activeFileId).path;
+    return dispatchNativeParagraphChange(state,tr,original,draft,change,projected)
+      ?{source:draft,offset:from+shift+open.length+initial,path}:null;
+  },
+  commitInitialText:(text,region,continuing=false)=>{
+    if(region){
+      if(!text.trim()||/[\r\n]/.test(text))return null;
+      const {state}=editor,project=projectExplorer?.model,composition=currentNativeProjectComposition();
+      const target=emptyContinuation(region,composition,state.doc);
+      if(!target||!project||!projectDocument.rebase(composition,editor.getJSON()))return null;
+      const tr=state.tr.insertText(text,target.start);
+      tr.setSelection(TextSelection.create(tr.doc,target.start+text.length));
+      const updates=projectDocument.changes(tr.doc.toJSON());
+      const draft=updates?.get(region.id);
+      if(!draft||draft===target.source)return null;
+      for(const [id,value] of updates)if(id!==region.id&&value!==project.file(id).draft)return null;
+      const tail=region.to+draft.length-target.source.length;
+      if(!draft.startsWith(target.source.slice(0,region.from))||draft.slice(tail)!==target.source.slice(region.to))return null;
+      const candidate=projectMixedDocument(draft,{fragment:true,filePath:region.path})?.paragraphs.find(paragraph=>
+        paragraph.from16>=region.from&&paragraph.from16+paragraph.text.length<=tail);
+      if(!candidate?.glyphs.length)return null;
+      const offset=candidate.from16+candidate.glyphs.at(-1).to16;
+      editor.view.dispatch(closeHistory(tr));
+      return editor.state.doc===state.doc?null:{source:draft,offset,path:region.path};
+    }
+    if(!text||/[\r\n]/.test(text))return null;
+    const {state}=editor;
+    const paragraph=state.doc.firstChild;
+    if(continuing){
+      if(projectExplorer?.active||!sourceView.hidden||state.doc.childCount!==1||
+        paragraph?.type.name!=='paragraph'||!paragraph.content.content.every(node=>node.isText&&!node.marks.length)||
+        !paragraph.textContent)return null;
+    }else if(!text.trim()||!canStartNativeText())return null;
+    const end=1+paragraph.content.size;
+    const tr=state.tr.insertText(text,end);
+    tr.setSelection(TextSelection.create(tr.doc,end+text.length));
+    const prepared=standaloneParagraphDraft(importedSource,projection,importedSnapshot,
+      state.doc.toJSON(),tr.doc.toJSON(),0);
+    const project=projectExplorer?.model;
+    const path=project?.file(project.activeFileId).path;
+    const first=prepared&&projectTextDocument(prepared.draft,{filePath:path,fragment:projectFileKind==='tex',
+      keepThrough:continuing?prepared.changes[0].from+prepared.changes[0].insert.length:0})?.paragraphs[0];
+    if(!first)return null;
+    const offset=first.from16+first.text.length;
+    tr.setMeta('standaloneParagraph',prepared);
+    editor.view.dispatch(continuing?tr:closeHistory(tr));
+    return editor.state.doc===state.doc?null:{source:prepared.draft,offset,path};
+  },
+  commitParagraphBreak:(paragraph,from,to,text)=>{
+    const theorem=paragraph.container?.type==='theoremBlock';
+    const environment=paragraph.container?.type==='blockquote';
+    const list=isNativeListParagraph(paragraph);
+    const columns=paragraph.container?.type==='multiColumn';
+    const mixed=paragraph.parts.length!==1;
+    if(paragraph.tableCell||paragraph.container&&!theorem&&!environment&&!list&&!columns||
+       mixed&&(paragraph.container||paragraph.heading||paragraph.wrapped)||!from||/[\r\n]/.test(text))return null;
+    if(paragraph.heading&&(!Number.isInteger(paragraph.headingEnd)||from!==to||to!==paragraph.text.length))return null;
+    if(projectDocument.composition&&!projectDocument.rebase(currentNativeProjectComposition(),editor.getJSON()))return null;
+    const target=nativeProsePosition(paragraph,from,to);
+    if(!target)return null;
+    const {range,project,composition,file}=target,{state}=editor;
+    if(range.endpoints.start!==range.endpoints.end||range.endpoints.start.marks?.length)return null;
+    if(!text&&to===paragraph.text.length)return {awaitingText:true};
+    if(text&&!text.trim())return null;
+    if(list)return splitNativeListItem(state,target,paragraph,from,to,text);
+    const newline=paragraph.source.includes('\r\n')?'\r\n':'\n';
+    const raw=serialize({type:'text',text});
+    const start=paragraph.headingEnd??paragraph.from16+from,end=paragraph.headingEnd??paragraph.from16+to;
+    const proseEnd=paragraph.from16+paragraph.text.length;
+    const wrapper=paragraph.wrapped&&paragraph.wrapperEnd>proseEnd;
+    if(wrapper&&paragraph.container)return null;
+    const close=wrapper?paragraph.source.slice(proseEnd,paragraph.wrapperEnd):'';
+    const insert=close+newline+newline+raw;
+    const change={from:start,to:wrapper?paragraph.wrapperEnd:end,
+      insert:insert+(wrapper?paragraph.source.slice(end,proseEnd):'')};
+    const draft=paragraph.source.slice(0,change.from)+change.insert+paragraph.source.slice(change.to);
+    const at=state.doc.resolve(range.from);
+    const parent=environment?at.before(at.depth-1):null;
+    const tr=state.tr;
+    if(range.to>range.from)tr.delete(range.from,range.to);
+    tr.split(range.from,1,[{type:editor.schema.nodes.paragraph}]);
+    const next=range.from+2;
+    if(text)tr.insertText(text,next);
+    if(environment&&!refreshNativeTextEnvironment(tr,parent,range.match.sourceBlock,paragraph.source,change))return null;
+    tr.setSelection(TextSelection.create(tr.doc,next+text.length));
+    const offset=change.from+insert.length;
+    if(columns)return commitNativeContainerDraft(state,tr,target,paragraph,change,offset);
+    if(composition){
+      const drafts=projectDocument.changes(tr.doc.toJSON());
+      if((wrapper||environment||mixed)&&drafts?.get(file.id)!==draft)return dispatchNativeProjectChange(state,tr,project,new Map([[file.id,draft]]))
+        ?{source:draft,offset,path:paragraph.filePath}:null;
+      if(drafts?.get(file.id)!==draft)return null;
+      for(const [id,value] of drafts)if(id!==file.id&&value!==project.file(id).draft)return null;
+      editor.view.dispatch(closeHistory(tr));
+      return editor.state.doc===state.doc?null:{source:draft,offset,path:paragraph.filePath};
+    }
+    const projected=sourceProjection(draft,tr.doc.toJSON(),{fragment:projectFileKind==='tex'});
+    if(mixed){
+      const index=range.match.index;
+      const owner=projection?.blocks.find(block=>block.index===index&&block.count===1&&block.from<=start&&block.to>=end);
+      if(!owner)return null;
+      const fragmentSource=draft.slice(owner.from,owner.to+draft.length-paragraph.source.length);
+      const revised=parseDocument(fragmentSource,{fragment:true})?.blocks.flatMap(importBlocks);
+      if(revised?.length!==2||revised.some((value,position)=>!state.schema.nodeFromJSON(value).eq(tr.doc.child(index+position))))return null;
+    }
+    if(theorem){
+      const patches=richSourceChanges(projection,tr.doc.toJSON());
+      const owner=projectTextDocument(draft,{filePath:paragraph.filePath,fragment:projectFileKind==='tex'})?.paragraphs.find(next=>(
+        next.from16<=offset&&offset<=next.from16+next.text.length&&next.container?.type==='theoremBlock'));
+      if(!projected||patches?.length!==1||!owner||
+        paragraph.source.slice(0,patches[0].from)+patches[0].insert+paragraph.source.slice(patches[0].to)!==draft)return null;
+    }else if(!environment&&!projected?.blocks.some(block=>block.index===tr.doc.resolve(next).index(0)&&
+        block.from<=offset&&block.to>=offset&&block.editable))return null;
+    if(!projected)return null;
+    return dispatchNativeParagraphChange(state,tr,paragraph.source,draft,change,projected)
+      ?{source:draft,offset,path:paragraph.filePath}:null;
+  },
+  commitParagraphJoin:(first,last,text='')=>{
+    if(first?.kind!=='text'||last?.kind!=='text'||first.paragraph===last.paragraph||
+      first.paragraph.filePath!==last.paragraph.filePath||first.paragraph.source!==last.paragraph.source||
+      first.paragraph.occurrence!==last.paragraph.occurrence||
+      /[\r\n]/.test(text))return null;
+    if(!text&&isNativeListParagraph(first.paragraph)&&isNativeListParagraph(last.paragraph)){
+      if(projectDocument.composition&&!projectDocument.rebase(currentNativeProjectComposition(),editor.getJSON()))return null;
+      return joinNativeListItems(first,last,first.docOffset,last.docOffset);
+    }
+    const theorem=first.paragraph.container?.type==='theoremBlock'&&last.paragraph.container?.type==='theoremBlock';
+    const environment=first.paragraph.container?.type==='blockquote'&&last.paragraph.container?.type==='blockquote';
+    const columns=first.paragraph.container?.type==='multiColumn'&&last.paragraph.container?.type==='multiColumn';
+    const mixed=first.paragraph.parts.length!==1||last.paragraph.parts.length!==1;
+    for(const stop of [first,last]){
+      const {paragraph}=stop;
+      if(paragraph.heading||paragraph.tableCell||paragraph.container&&!theorem&&!environment&&!columns||
+        mixed&&(paragraph.container||paragraph.wrapped))return null;
+    }
+    const from=first.docOffset,to=last.docOffset,source=first.paragraph.source;
+    const gap=source.slice(first.paragraph.from16+first.paragraph.text.length,last.paragraph.from16);
+    if(!(first.paragraph.text.slice(0,first.local)+text+last.paragraph.text.slice(last.local)).trim())return null;
+    if(projectDocument.composition&&!projectDocument.rebase(currentNativeProjectComposition(),editor.getJSON()))return null;
+    const left=nativeProsePosition(first.paragraph,first.local,first.local);
+    const right=nativeProsePosition(last.paragraph,last.local,last.local);
+    if(!left||!right||left.range.endpoints.start.marks?.length||right.range.endpoints.start.marks?.length)return null;
+    const {state}=editor;
+    const start=state.doc.resolve(left.range.from),end=state.doc.resolve(right.range.from),depth=start.depth-1;
+    if(end.depth!==start.depth||start.start(depth)!==end.start(depth))return null;
+    const middle=start.node(depth).content.content.slice(start.index(depth)+1,end.index(depth));
+    const explicitBreak=environment&&/^\s*\\par\s*$/.test(gap);
+    if((theorem||environment)&&middle.length||!explicitBreak&&!matchesParagraphGap(gap,middle.map(node=>node.toJSON())))return null;
+    const tr=state.tr.insertText(text,left.range.from,right.range.from);
+    const insert=serialize({type:'text',text}),offset=from+insert.length;
+    const change={from,to,insert};
+    if(environment&&!refreshNativeTextEnvironment(tr,start.before(depth),left.range.match.sourceBlock,source,change))return null;
+    tr.setSelection(TextSelection.create(tr.doc,left.range.from+text.length));
+    const draft=source.slice(0,from)+insert+source.slice(to);
+    if(columns)return commitNativeContainerDraft(state,tr,left,first.paragraph,change,offset);
+    if(left.composition){
+      if(left.file!==right.file)return null;
+      const drafts=projectDocument.changes(tr.doc.toJSON());
+      if((environment||mixed)&&drafts?.get(left.file.id)!==draft)
+        return dispatchNativeProjectChange(state,tr,left.project,new Map([[left.file.id,draft]]))
+          ?{source:draft,offset,path:first.paragraph.filePath}:null;
+      if(drafts?.get(left.file.id)!==draft)return null;
+      for(const [id,value] of drafts)if(id!==left.file.id&&value!==left.project.file(id).draft)return null;
+      editor.view.dispatch(closeHistory(tr));
+      return editor.state.doc===state.doc?null:{source:draft,offset,path:first.paragraph.filePath};
+    }
+    const projected=sourceProjection(draft,tr.doc.toJSON(),{fragment:projectFileKind==='tex'});
+    if(mixed){
+      const before=projection?.blocks.find(block=>block.index===left.range.match.index&&block.count===1);
+      const after=projection?.blocks.find(block=>block.index===right.range.match.index&&block.count===1);
+      if(!before||!after||before.from>from||after.to<to)return null;
+      const revised=importBlocks(draft.slice(before.from,after.to+draft.length-source.length));
+      if(revised.length!==1||!state.schema.nodeFromJSON(revised[0]).eq(tr.doc.child(before.index)))return null;
+    }
+    if(theorem){
+      const patches=richSourceChanges(projection,tr.doc.toJSON());
+      if(!projected||patches?.length!==1||
+         source.slice(0,patches[0].from)+patches[0].insert+source.slice(patches[0].to)!==draft)return null;
+    }else if(!environment&&!projected?.blocks.some(block=>block.index===left.range.match.index&&block.editable&&block.from<=from&&block.to>=from))return null;
+    if(!projected)return null;
+    return dispatchNativeParagraphChange(state,tr,source,draft,change,projected)
+      ?{source:draft,offset,path:first.paragraph.filePath}:null;
+  },
+  commitNewMath:(first,last,text,display,numbering)=>{
+    if(!canBeginProseFormula(first,last,display))return null;
+    const prepared=newNativeMath(text,display,numbering);
+    if(!prepared)return null;
+    const {paragraph}=first;
+    if(projectDocument.composition&&!projectDocument.rebase(currentNativeProjectComposition(),editor.getJSON()))return null;
+    const target=nativeProsePosition(paragraph,first.local,last.local);
+    if(!target)return null;
+    const {state}=editor;
+    const {range}=target;
+    const {node:math,open,close,initial}=prepared;
+    const tr=state.tr;
+    let prefix=open,suffix=close;
+    if(display){
+      const head=first.local===0;
+      const eol=paragraph.source.includes('\r\n')?'\r\n':'\n';
+      prefix=(head?'':eol+eol)+open;
+      suffix=close+(head?eol+eol:'');
+      const at=head?range.match.offset:range.match.offset+range.match.node.nodeSize;
+      tr.insert(at,math);
+      tr.setSelection(NodeSelection.create(tr.doc,at));
+    }else{
+      tr.replaceWith(range.from,range.to,math);
+      tr.setSelection(TextSelection.create(tr.doc,range.from+1));
+    }
+    let change={from:first.docOffset,to:last.docOffset,insert:prefix+text+suffix};
+    let draft=paragraph.source.slice(0,change.from)+change.insert+paragraph.source.slice(change.to);
+    let offset=change.from+prefix.length+initial;
+    const result={source:draft,offset,path:paragraph.filePath};
+    const {composition,project,file}=target,rootId=composition?.rootId;
+    const root=composition&&rootId!==file.id?project.file(rootId).draft:paragraph.source;
+    const dependency=nativePackagePatch(root,text);
+    if(dependency===false)return null;
+    if(dependency&&composition){
+      const drafts=new Map([[file.id,draft]]),prior=drafts.get(rootId)??root;
+      const updated=prior.slice(0,dependency.from)+dependency.insert+prior.slice(dependency.to);
+      drafts.set(rootId,updated);
+      if(rootId===file.id){result.source=updated;result.offset+=dependency.delta;}
+      return dispatchNativeProjectChange(state,tr,project,drafts)?result:null;
+    }
+    if(target.composition){
+      const drafts=projectDocument.changes(tr.doc.toJSON());
+      if(drafts?.get(target.file.id)!==draft)return null;
+      for(const [id,value] of drafts)if(id!==target.file.id&&value!==target.project.file(id).draft)return null;
+      editor.view.dispatch(closeHistory(tr));
+      return editor.state.doc===state.doc?null:result;
+    }
+    const projected=sourceProjection(draft,tr.doc.toJSON(),{fragment:projectFileKind==='tex'});
+    if(!projected)return null;
+    if(display){
+      if(!projected.blocks.some(block=>block.editable&&block.from<=offset&&block.to>=offset))return null;
+    }else{
+      const owner=projection?.blocks.find(block=>block.index===range.match.index&&block.count===1&&
+        block.from<=change.from&&block.to>=change.to);
+      if(!owner)return null;
+      const [updated,...rest]=importBlocks(draft.slice(owner.from,owner.to+draft.length-paragraph.source.length));
+      if(!updated||rest.length||!state.schema.nodeFromJSON(updated).eq(tr.doc.child(owner.index)))return null;
+    }
+    let verifiedProjection=projected;
+    if(dependency){
+      draft=draft.slice(0,dependency.from)+dependency.insert+draft.slice(dependency.to);
+      [change]=textPatch(paragraph.source,draft);
+      offset+=dependency.delta;
+      verifiedProjection=sourceProjection(draft,tr.doc.toJSON(),{fragment:projectFileKind==='tex'});
+    }
+    return verifiedProjection&&dispatchNativeParagraphChange(state,tr,paragraph.source,draft,change,verifiedProjection)
+      ?{...result,source:draft,offset}:null;
+  },
+  commitAfterFormulaText:(formula,text)=>{
+    if(!text.trim()||/[\r\n]/.test(text))return null;
+    const target=nativeFormulaPosition(formula);
+    if(!target?.node)return null;
+    const {state}=editor,{position,node,project,composition,file}=target;
+    const {source,outerTo16:from}=formula;
+    const fragment=projectFileKind==='tex',document=parseDocument(source,{fragment});
+    if(!document)return null;
+    const next=position+node.nodeSize,encoded=serialize({type:'text',text});
+    let insert=encoded,caret=next+text.length;
+    const tr=state.tr;
+    if(formula.kind==='inlineMath')tr.insertText(text,next);
+    else {
+      const parent=state.doc.resolve(position).parent.type.name;
+      if(parent!=='doc'&&parent!=='projectRegion')return null;
+      const following=state.doc.nodeAt(next);
+      if(following?.type.name==='paragraph'&&!following.content.size)tr.insertText(text,next+1);
+      else tr.insert(next,state.schema.nodes.paragraph.create(null,state.schema.text(text)));
+      caret++;
+      insert=document.eol+document.eol+encoded;
+    }
+    tr.setSelection(TextSelection.create(tr.doc,caret));
+    const draft=source.slice(0,from)+insert+source.slice(from);
+    const offset=from+insert.length,path=formula.filePath;
+    const candidate=projectMixedDocument(draft,{fragment,filePath:path,splitIncludes:Boolean(composition)})?.paragraphs.find(paragraph=>
+      offset>=paragraph.from16&&offset<=paragraph.from16+paragraph.text.length);
+    if(!candidate)return null;
+    if(composition){
+      const updates=projectDocument.changes(tr.doc.toJSON());
+      if(updates?.get(file.id)!==draft)return null;
+      for(const [id,value] of updates)if(id!==file.id&&value!==project.file(id).draft)return null;
+      editor.view.dispatch(closeHistory(tr));
+      return editor.state.doc!==state.doc?{source:draft,offset,path}:null;
+    }
+    const projected=sourceProjection(draft,tr.doc.toJSON(),{fragment});
+    const local=offset-candidate.from16;
+    const projectedCaret=nativeEditorRange({doc:tr.doc,projection:projected,paragraph:candidate,from:local,to:local});
+    if(projectedCaret?.from!==caret)return null;
+    const change={from,to:from,insert};
+    return projected&&dispatchNativeParagraphChange(state,tr,source,draft,change,projected)?{source:draft,offset,path}:null;
+  },
+  focusMathSlot:async(anchor,head,isCurrent)=>{    const project=projectExplorer?.model;
+    const formula=head.formula;
+    if(anchor.formula.filePath!==formula.filePath)return;
+    const file=project?.files.get(formula.filePath);
+    if(project&&(!file||file.draft!==formula.source))return;
+    if(!sourceView.hidden){
+      if(project&&project.activeFileId!==file.id){
+        await projectExplorer.openFile(file.id);
+        if(projectExplorer.model!==project||project.activeFileId!==file.id)return;
+      }
+      if(sourceView.hidden||sourceView.value!==formula.source)return;
+      sourceView.select(anchor.position,head.position);
+      return true;
+    }
+    if(!projectDocument.composition&&((project&&project.activeFileId!==file.id)||source()!==formula.source))return;
+    if(anchor.formula!==formula)return;
+    const fields=[...paper.querySelectorAll(formula.kind==='displayMath'?'.math-display math-field':'.math-inline math-field')]
+      .filter(field=>!projectDocument.composition||field.closest('[data-project-region]')?.dataset.filePath===formula.filePath);
+    const field=fields[formula.ordinal];
+    if(fields.length!==formula.count||!matchesRichFormula(field,formula))return;
+    const model=field._mathfield?.model;
+    const from=model&&richSlotPosition(model,formula.math.atoms,anchor.owner,anchor.hit);
+    const to=anchor===head?from:model&&richSlotPosition(model,formula.math.atoms,head.owner,head.hit);
+    if(from==null||to==null)return;
+    field.focus();
+    if(from===to)field.position=from;
+    else field.selection={ranges:[[Math.min(from,to),Math.max(from,to)]],direction:from<to?'forward':'backward'};
+    return {field};
+  },
+  commitMath:({formula,patch,text,structure,needsAmsmath,cursor})=>{
+    if(!text||text===formula.math.source)return false;
+    const target=nativeFormulaPosition(formula);
+    if(!target?.node)return false;
+    const {position,node,type,project,composition,file}=target;
+    const from=formula.from16+patch.from,to=formula.from16+patch.to;
+    const expected=formula.source.slice(0,from)+patch.insert+formula.source.slice(to);
+    let latex=text,detachedLabel=false;
+    const environment=type==='mathBlock'&&displayEnvironment(formula.math.source);
+    if(node.attrs.latex!==formula.math.source){
+      if(type!=='mathBlock'||node.attrs.delimiter!=='equation'||!node.attrs.label)return false;
+      const [original]=importBlocks(formula.source.slice(formula.outerFrom16,formula.outerTo16));
+      const [revised]=importBlocks(expected.slice(formula.outerFrom16,formula.outerTo16+patch.insert.length-(to-from)));
+      if(original?.type!=='mathBlock'||original.attrs.latex!==node.attrs.latex||original.attrs.label!==node.attrs.label||
+        revised?.type!=='mathBlock'||revised.attrs.label!==node.attrs.label)return false;
+      latex=revised.attrs.latex;detachedLabel=true;
+    }
+    const transaction=editor.state.tr.setNodeMarkup(position,undefined,{...node.attrs,latex});
+    if(structure)closeHistory(transaction);
+    const finish=()=>{
+      if(structure==='displayStyle')editor.view.dispatch(closeHistory(editor.state.tr));
+      return true;
+    };
+    if(needsAmsmath){
+      const doc=!composition&&parseDocument(formula.source);
+      if(!doc||!Number.isInteger(cursor))return false;
+      const at=doc.start.lastIndexOf('\\begin{document}');
+      if(at<0||from<doc.start.length)return false;
+      const packageLine='\\usepackage{amsmath}'+doc.eol;
+      const preamble=doc.start.slice(0,at)+packageLine+doc.start.slice(at);
+      const draft=expected.slice(0,at)+packageLine+expected.slice(at);
+      transaction.setDocAttribute('layoutPreamble',preamble);
+      const projected=sourceProjection(draft,transaction.doc.toJSON());
+      if(!projected)return false;
+      const change={from:at,to,insert:packageLine+formula.source.slice(at,from)+patch.insert};
+      return dispatchNativeParagraphChange(editor.state,transaction,formula.source,draft,change,projected)
+        ?{source:draft,path:formula.filePath,offset:cursor+packageLine.length}:false;
+    }
+    if((detachedLabel||environment)&&!composition){
+      if(environment){
+        const revised=importBlocks(expected.slice(formula.outerFrom16,formula.outerTo16+patch.insert.length-(to-from)));
+        if(revised.length!==1||revised[0].type!=='mathBlock'||revised[0].attrs.latex!==latex||
+            displayEnvironment(latex)!==environment)return false;
+      }
+      const projected=sourceProjection(expected,transaction.doc.toJSON(),{fragment:projectFileKind==='tex'});
+      return Boolean(projected&&dispatchNativeParagraphChange(editor.state,transaction,formula.source,expected,
+        {from,to,insert:patch.insert},projected)&&finish());
+    }
+    if(composition){
+      const drafts=projectDocument.changes(transaction.doc.toJSON());
+      if(drafts?.get(file.id)!==expected)return false;
+      for(const [id,draft] of drafts)if(id!==file.id&&draft!==project.file(id).draft)return false;
+    }else if(project){
+      const changes=standaloneMathChanges(projection,transaction.doc.toJSON());
+      if(!changes?.length||changes.reduceRight((source,change)=>
+        source.slice(0,change.from)+change.insert+source.slice(change.to),formula.source)!==expected)return false;
+    }
+    editor.view.dispatch(transaction);
+    return editor.state.doc.nodeAt(position)?.attrs.latex===latex&&finish();
+  },
+  commitText:({paragraph,patch,text})=>{
+    if((!text&&!paragraph.tableCell)||text===paragraph.text)return false;
+    const position=nativeProsePosition(paragraph,patch.from,patch.to);
+    if(!position)return false;
+    const {range,project,composition,file}=position;
+    const {from:start,to:end,match,endpoints,marks}=range;
+    const stored=editor.state.storedMarks;
+    if(stored?.length&&stored.every(mark=>nativeTypingMarks.has(mark.type.name))&&
+       patch.insert&&start===end&&editor.state.selection.from===start&&!marks?.length&&
+       !paragraph.container&&!paragraph.tableCell&&!paragraph.heading&&!paragraph.wrapped)
+      return commitNativeMarkedText(paragraph,patch,position,stored);
+    const tr=editor.state.tr;
+    if(end>start)tr.delete(start,end);
+    if(patch.insert)tr.insert(start,editor.schema.text(patch.insert,marks));
+    tr.setSelection(TextSelection.create(tr.doc,start+patch.insert.length));
+    const inlineBoundary=endpoints.start!==endpoints.end&&paragraph.parts
+      .slice(endpoints.start.partIndex+1,endpoints.end.partIndex).some(part=>part.kind!=='math');
+    if((paragraph.wrapped||inlineBoundary||endpoints.start.kind==='caret'||
+      endpoints.start!==endpoints.end&&paragraph.parts.some(part=>part.marks?.length))&&
+      !paragraph.container&&!paragraph.tableCell&&!paragraph.heading){
+      const {state}=editor,{source}=paragraph;
+      const change={from:paragraph.from16+patch.from,to:paragraph.from16+patch.to,insert:patch.latex??patch.insert};
+      const draft=source.slice(0,change.from)+change.insert+source.slice(change.to);
+      if(composition)return dispatchNativeProjectChange(state,tr,project,new Map([[file.id,draft]]));
+      return dispatchVerifiedNativeProse(state,tr,source,draft,change,match.index);
+    }
+    if(composition){
+      const from=paragraph.from16+patch.from,to=paragraph.from16+patch.to;
+      const expected=file.draft.slice(0,from)+(patch.latex??patch.insert)+file.draft.slice(to);
+      const drafts=projectDocument.changes(tr.doc.toJSON());
+      if(drafts?.get(file.id)!==expected)return false;
+      for(const [id,draft] of drafts)if(id!==file.id&&draft!==project.file(id).draft)return false;
+    }
+    if(!composition&&(paragraph.tableCell||paragraph.container)){
+      const patchList=standaloneMathChanges(projection,tr.doc.toJSON());
+      const from=paragraph.from16+patch.from,to=paragraph.from16+patch.to;
+      const expected=paragraph.source.slice(0,from)+patch.insert+paragraph.source.slice(to);
+      if(!patchList?.length||patchList.reduceRight((source,change)=>
+        source.slice(0,change.from)+change.insert+source.slice(change.to),paragraph.source)!==expected)return false;
+    }else if(!composition&&(patch.latex||endpoints.start!==endpoints.end||
+        paragraph.parts.some(part=>part.marks?.length||part.offsets))){
+      const from=paragraph.from16+patch.from,to=paragraph.from16+patch.to;
+      const expected=paragraph.source.slice(0,from)+(patch.latex??patch.insert)+paragraph.source.slice(to);
+      const draft=standaloneParagraphDraft(importedSource,projection,importedSnapshot,
+        editor.state.doc.toJSON(),tr.doc.toJSON(),match.index);
+      if(draft?.draft!==expected)return false;
+    }
+    if(endpoints.start!==endpoints.end)closeHistory(tr);
+    const before=editor.state.doc;
+    editor.view.dispatch(tr);
+    return editor.state.doc!==before;
+  },
+  commitTextLines:(first,last,text)=>{
+    if(first?.kind!=='text'||first.paragraph!==last?.paragraph)return null;
+    const {paragraph}=first;
+    if(paragraph.heading||paragraph.tableCell||paragraph.container||
+      paragraph.parts.some(part=>part.kind==='math'||part.marks?.length))return null;
+    const lines=text.split(/\r\n|\r|\n/);
+    if(lines.some(line=>!line||line!==line.trim()))return null;
+    if(projectDocument.composition&&!projectDocument.rebase(currentNativeProjectComposition(),editor.getJSON()))return null;
+    const target=nativeProsePosition(paragraph,first.local,last.local);
+    if(!target||target.range.endpoints.start!==target.range.endpoints.end)return null;
+    const {state}=editor,hardBreak=editor.schema.nodes.hardBreak;
+    const content=lines.flatMap((line,index)=>index?[hardBreak.create(),editor.schema.text(line)]:[editor.schema.text(line)]);
+    const {from:start,to:end,match}=target.range;
+    const tr=state.tr.replaceWith(start,end,content);
+    tr.setSelection(TextSelection.create(tr.doc,start+lines.join('').length+lines.length-1));
+    const from=first.docOffset,to=last.docOffset,source=paragraph.source;
+    const eol=source.includes('\r\n')?'\r\n':'\n';
+    const insert=lines.map(line=>serialize({type:'text',text:line})).join(serialize({type:'hardBreak'}).replace('\n',eol));
+    const draft=source.slice(0,from)+insert+source.slice(to),offset=from+insert.length;
+    const candidate=projectTextDocument(draft,{fragment:projectFileKind==='tex',filePath:paragraph.filePath})
+      ?.paragraphs.find(next=>next.from16===paragraph.from16);
+    if(!candidate)return null;
+    const local=offset-candidate.from16;
+    if(!candidate.runs.some(run=>local>=run.from16&&local<=run.to16))return null;
+    if(target.composition){
+      const drafts=projectDocument.changes(tr.doc.toJSON());
+      if(drafts?.get(target.file.id)!==draft)return null;
+      for(const [id,value] of drafts)if(id!==target.file.id&&value!==target.project.file(id).draft)return null;
+      editor.view.dispatch(closeHistory(tr));
+      return editor.state.doc===state.doc?null:{source:draft,offset,path:paragraph.filePath};
+    }
+    const projected=sourceProjection(draft,tr.doc.toJSON(),{fragment:projectFileKind==='tex'});
+    const selection=nativeEditorRange({doc:tr.doc,projection:projected,paragraph:candidate,from:local,to:local});
+    if(!projected||selection?.match.index!==match.index||selection.from!==tr.selection.from)return null;
+    return dispatchNativeParagraphChange(state,tr,source,draft,{from,to,insert},projected)
+      ?{source:draft,offset,path:paragraph.filePath}:null;
+  },
+  commitProjectRange:edits=>{
+    const {state}=editor,project=projectExplorer?.model,composition=projectDocument.composition;
+    if(!project||!composition||edits.length<2)return false;
+    const mapped=edits.map(edit=>{
+      if(edit.table){
+        const target=nativeWholeTablePosition(edit.table);
+        if(!target?.file)return null;
+        const {position,node}=target;
+        return {...edit,...target,range:{from:position,to:position+node.nodeSize},
+          change:{from:edit.table.from16,to:edit.table.to16,insert:''}};
+      }
+      if(edit.formula){
+        const {formula,patch}=edit;
+        const target=nativeFormulaPosition(formula);
+        if(!target?.file||target.type!=='mathBlock'||target.node.attrs.labelSource)return null;
+        const {position,node}=target;
+        return {...edit,...target,range:{from:position,to:position+node.nodeSize},
+          change:{from:formula.outerFrom16,to:formula.outerTo16,insert:patch.insert}};
+      }
+      const target=nativeProsePosition(edit.paragraph,edit.patch.from,edit.patch.to);
+      const {paragraph,patch}=edit;
+      return target?.file?{...edit,...target,change:{from:paragraph.from16+patch.from,
+        to:paragraph.from16+patch.to,insert:patch.latex??patch.insert}}:null;
+    });
+    if(mapped.some(edit=>!edit))return false;
+    const first=mapped[0];
+    const positions=mapped.map(edit=>state.doc.resolve(edit.range.from));
+    if(positions.some((position,index)=>{
+      const {formula,paragraph,table,range}=mapped[index];
+      if(!position.depth||position.node(1).type.name!=='projectRegion')return true;
+      if(!paragraph?.container)return position.depth!==(formula||table?1:2);
+      return position.depth<3||position.node(2).type.name!==paragraph.container.type||!range.match.sourceBlock;
+    }))return false;
+    const firstRegion=positions[0].index(0),lastRegion=positions.at(-1).index(0);
+    const leafPositions=mapped.map(({formula,table,range})=>formula||table?range.from:range.match.offset);
+    const expectedNodes=[],containers=new Set(['projectRegion','theoremBlock','blockquote',
+      'orderedList','bulletList','listItem','descriptionList','descriptionItem','multiColumn']);
+    state.doc.nodesBetween(leafPositions[0],leafPositions.at(-1)+1,(node,position,parent,index)=>{
+      if(node.type.name==='projectRegion'&&index>firstRegion&&index<lastRegion&&
+         node.childCount===1&&node.firstChild.type.name==='paragraph'&&!node.firstChild.content.size){
+        const region=composition.regions[index],source=region&&composition.sources.get(region.id);
+        if(typeof source==='string'&&!source.slice(region.from,region.to).trim())return false;
+      }
+      if(containers.has(node.type.name))return true;
+      expectedNodes.push(position);
+      return false;
+    });
+    if(expectedNodes.length!==leafPositions.length||leafPositions.some((position,index)=>position!==expectedNodes[index]))return false;
+    const tr=state.tr;
+    const patches=new Map(),environments=new Map();
+    for(let index=mapped.length-1;index>=0;index--){
+      const {file,range,patch,change,paragraph}=mapped[index];
+      if(range.to>range.from)tr.delete(range.from,range.to);
+      if(patch.insert)tr.insert(range.from,editor.schema.text(patch.insert,range.marks));
+      if(paragraph?.container?.type==='blockquote'){
+        const position=positions[index].before(2);
+        if(!environments.has(position))environments.set(position,{paragraph,sourceBlock:range.match.sourceBlock,changes:[]});
+        environments.get(position).changes.push(change);
+      }
+      if(!patches.has(file.id))patches.set(file.id,[]);
+      patches.get(file.id).push(change);
+    }
+    for(const [position,{paragraph,sourceBlock,changes}] of environments){
+      if(!refreshNativeTextEnvironmentChanges(tr,tr.mapping.map(position),sourceBlock,paragraph.source,changes))return false;
+    }
+    tr.setSelection(TextSelection.create(tr.doc,first.range.from+first.patch.insert.length));
+    const drafts=projectDocument.changes(tr.doc.toJSON());
+    const expected=new Map([...patches].map(([id,changes])=>[id,changes.sort((a,b)=>b.from-a.from)
+      .reduce((draft,change)=>draft.slice(0,change.from)+change.insert+draft.slice(change.to),project.file(id).draft)]));
+    if(mapped.some(edit=>edit.formula||edit.table||edit.paragraph.container||edit.paragraph.heading))
+      return dispatchNativeProjectChange(state,tr,project,expected);
+    if(!drafts||[...expected].some(([id,value])=>drafts.get(id)!==value))return false;
+    for(const [id,draft] of drafts)if(draft!==(expected.get(id)??project.file(id).draft))return false;
+    editor.view.dispatch(closeHistory(tr));
+    return editor.state.doc!==state.doc;
+  },
+  history:command=>{command==='redo'?redoDocument():undoDocument();},
+  onEnvironmentChange:updateEnvironment,
+  showTextCommands:field=>showCommands(field,'text'),
+});
+editor.on('update',()=>nativeTexPreview.refresh());
+onAssetsChanged(()=>nativeTexPreview.refresh());
 const compositionController=createCompositionController({
   explorer:()=>projectExplorer,fileKind:()=>projectFileKind,session:projectDocument,
+  nativeWorkspace:nativeOnlyAcceptance,
   sourceHidden:()=>sourceView.hidden,composing:()=>editor.view.composing||sourceView.composing,
   read:()=>sourceView.hidden?source():sourceView.value,report:text=>sourceView.error(text),ask:askText,
   present(composed){
@@ -2748,6 +4904,67 @@ function showProjectComposition(){return compositionController.show();}
 function editIncludeSource(transform,owner){return compositionController.edit(transform,owner);}
 function requestProjectInclude(command){return compositionController.request(command);}
 function appendInclude(id,beforePath,command){return compositionController.append(id,beforePath,command);}
+function nativeSourceBlockAt(position){
+  if(!sourceView.hidden)return null;
+  const {doc}=editor.state;
+  const resolved=doc.resolve(position),composition=projectDocument.composition;
+  const region=composition?.regions[resolved.index(0)];
+  if(composition&&(!region||resolved.depth!==1)||!composition&&resolved.depth!==0)return null;
+  const projected=region?.projection??projection,index=resolved.index(region?1:0);
+  const block=projected?.blocks.find(entry=>entry.index===index&&entry.count===1);
+  if(!block)return null;
+  const project=projectExplorer?.model;
+  const path=region?.path??project?.file(project.activeFileId)?.path;
+  const text=region?composition.sources.get(region.id):projected.text;
+  const base=region?.from??0;
+  const trail=region?doc.child(resolved.index(0)).attrs.trail:undefined;
+  return {raw:block.raw,path,trail,source:text,from:base+block.from,to:base+block.to};
+}
+function revealNativeSearchResult({from,to}){
+  const paragraphs=nativeTexPreview?.nativeParagraphs?.();
+  if(!paragraphs?.length)return false;
+  const {doc}=editor.state,start=doc.resolve(from),end=doc.resolve(to),depth=projectDocument.composition?2:1;
+  if(start.depth<depth||start.parent!==end.parent)return false;
+  const address=nativeSourceBlockAt(start.before(depth));
+  if(!address)return false;
+  for(const paragraph of paragraphs){
+    if(paragraph.filePath!==address.path||paragraph.source!==address.source||
+      paragraph.from16<address.from||paragraph.from16>=address.to||!paragraph.runs.length)continue;
+    const first=paragraph.runs[0].from16;
+    const target=nativeProsePosition(paragraph,first,first)?.range.match;
+    if(!target||target.offset!==start.before())continue;
+    const begin=sourceOffsetAtEditorPosition(paragraph,target,from),finish=sourceOffsetAtEditorPosition(paragraph,target,to);
+    if(begin!==null&&finish!==null)return nativeTexPreview.navigate({...address,range:true,from:begin,to:finish});
+  }
+  return false;
+}
+function navigateNativeReference(reference){
+  const project=projectExplorer?.model,file=project?.files.get(reference.filePath);
+  if((file?.draft??source())!==reference.source)return false;
+  const target=collectReferenceLabels(editor.state.doc).find(label=>label.key===reference.key);
+  if(!target||target.ambiguous||!['heading','equation'].includes(target.kind))return false;
+  const address=nativeSourceBlockAt(target.position);
+  if(!address)return false;
+  const heading=target.kind==='heading'?headingAt(address.raw.trimStart())?.name:undefined;
+  return nativeTexPreview.navigate({...address,heading});
+}
+documentOutline.panel.addEventListener('lineae-outline-navigate',event=>{
+  const {position}=event.detail;
+  if(editor.state.doc.nodeAt(position)?.type.name!=='heading')return;
+  const address=nativeSourceBlockAt(position),heading=address&&headingAt(address.raw.trimStart());
+  if(heading&&nativeTexPreview.navigate?.({...address,heading:heading.name}))
+    event.preventDefault();
+});
+documentOutline.panel.addEventListener('lineae-outline-file-navigate',event=>{
+  if(!sourceView.hidden)return;
+  const {position}=event.detail,{doc}=editor.state;
+  const node=doc.nodeAt(position),composition=projectDocument.composition;
+  if(!composition||node?.type.name!=='projectRegion')return;
+  const region=composition.regions[doc.resolve(position).index(0)];
+  if(!region||region.path!==node.attrs.path)return;
+  if(nativeTexPreview.navigate?.({path:region.path,trail:node.attrs.trail,
+    source:composition.sources.get(region.id),from:region.from,to:region.to}))event.preventDefault();
+});
 installProjectNavigation({outline:documentOutline.panel,paper,sourceView,editor,getProjection:()=>projection,appendInclude,editIncludeSource});
 const projectWorkspace=new ProjectWorkspaceState();
 let standaloneSession;
@@ -2777,6 +4994,7 @@ projectExplorer = installProjectExplorer({footer, filePanel:document.querySelect
     ? t('保留当前单文件草稿并新建或打开工程？','Keep the current single-file draft and create or open a project?')
     : t('保留当前单文件草稿并打开工程？','Keep the current single-file draft and open a project?')),
   begin() {
+    nativeTexPreview?.documentChanged();
     projectWorkspace.select('body');
     if (!standaloneSession) standaloneSession = {
       text:sourceView.hidden?source():sourceView.value, filename, fileHandle, savedSource,
@@ -2814,11 +5032,14 @@ projectExplorer = installProjectExplorer({footer, filePanel:document.querySelect
     if (file.kind === 'bib') sourceView.setSplit(false);
     updateSourceButton();
     showProjectComposition();
+    nativeTexPreview?.refresh();
 
   },
   saved(text) { savedSource = text; sourceView.refresh(); },
+  changed() { nativeTexPreview?.refresh(); },
   error(text) { const status = document.querySelector('#status'); status.hidden = false; status.textContent = text; },
   end() {
+    nativeTexPreview?.documentChanged();
     documentGeneration++;
     projectDocument.composition=null;
     projectFileKind = undefined; returnedDraft = undefined;
@@ -2990,44 +5211,44 @@ editor.on('selectionUpdate',()=>syncLayoutParagraph?.());
 applyPageSetup();
 groupButton(tableGroup,'▦',()=>insertDefaultTable());
 continueTablesButton=groupButton(tableGroup,['续表','Continue'],()=>{
-  const enabled=!typesetPagination.getTableContinuation();
-  typesetPagination.setTableContinuation(enabled);
+  const enabled=!typesetPagination?.getTableContinuation();
+  typesetPagination?.setTableContinuation(enabled);
   config.updateInterface({continuedTables:enabled});
   updateContinueTablesButton();
 });
 updateContinueTablesButton();
 groupButton(tableGroup,['＋ 行','＋ Row'],addMatrixRow,'＋ Row');
 groupButton(tableGroup,['＋ 列','＋ Column'],addMatrixColumn,'＋ Column');
-groupButton(tableGroup,['－ 行','－ Row'],()=>editor.chain().focus().deleteRow().run(),'－ Row');
-groupButton(tableGroup,['－ 列','－ Column'],()=>editor.chain().focus().deleteColumn().run(),'－ Column');
-groupButton(tableGroup,['删除表格','Delete table'],()=>editor.chain().focus().deleteTable().run());
-groupButton(tableGroup,['合并','Merge'],()=>editor.chain().focus().mergeCells().run(),'merge');
-groupButton(tableGroup,['拆分','Split'],()=>editor.chain().focus().splitCell().run(),'split');
-groupButton(tableGroup,'booktabs',()=>{if(editor.isActive('table'))editor.chain().focus().updateAttributes('table',{booktabs:!editor.getAttributes('table').booktabs}).run();});
+groupButton(tableGroup,['－ 行','－ Row'],()=>editNativeTable('deleteRow')??editor.chain().focus(undefined,{scrollIntoView:false}).deleteRow().run(),'－ Row');
+groupButton(tableGroup,['－ 列','－ Column'],()=>editNativeTable('deleteColumn')??editor.chain().focus(undefined,{scrollIntoView:false}).deleteColumn().run(),'－ Column');
+groupButton(tableGroup,['删除表格','Delete table'],()=>editNativeTable('deleteTable')??deleteTableKeepingScroll(editor));
+groupButton(tableGroup,['合并','Merge'],()=>editNativeTable('mergeCells')??editor.chain().focus(undefined,{scrollIntoView:false}).mergeCells().run(),'merge');
+groupButton(tableGroup,['拆分','Split'],()=>editNativeTable('splitCell')??editor.chain().focus(undefined,{scrollIntoView:false}).splitCell().run(),'split');
+groupButton(tableGroup,'booktabs',()=>{if(editor.isActive('table'))editor.chain().focus(undefined,{scrollIntoView:false}).updateAttributes('table',{booktabs:!editor.getAttributes('table').booktabs}).run();});
 groupButton(tableGroup,['题注','Caption'],async()=>{
   if(!editor.isActive('table'))return;
   const value=await askText(t('表格题注（LaTeX）','Table caption (LaTeX)'),editor.getAttributes('table').caption??'');
-  if(value!==null)editor.chain().focus().updateAttributes('table',{caption:value||null,centered:true,placement:editor.getAttributes('table').placement??'htbp'}).run();
+  if(value!==null)editor.chain().focus(undefined,{scrollIntoView:false}).updateAttributes('table',{caption:value||null,centered:true,placement:editor.getAttributes('table').placement??'htbp'}).run();
 });
 groupButton(tableGroup,'label',async()=>{
   if(!editor.isActive('table'))return;
   const value=await askText(t('表格标签键','Table label key'),editor.getAttributes('table').label??'');
-  if(value!==null)editor.chain().focus().updateAttributes('table',{label:value||null}).run();
+  if(value!==null)editor.chain().focus(undefined,{scrollIntoView:false}).updateAttributes('table',{label:value||null}).run();
 });
 groupButton(tableGroup,['边框','Borders'],async()=>{
   if(!editor.isActive('table'))return;
   const mode=await askText(t('边框：grid 全部、outer 外框、horizontal 横线、none 无','Borders: grid, outer, horizontal, none'),editor.getAttributes('table').borderMode??'grid');
-  if(mode && ['grid','outer','horizontal','none'].includes(mode)) editor.chain().focus().updateAttributes('table',{borderMode:mode,booktabs:false}).run();
+  if(mode && ['grid','outer','horizontal','none'].includes(mode)) editor.chain().focus(undefined,{scrollIntoView:false}).updateAttributes('table',{borderMode:mode,booktabs:false}).run();
 });
 groupButton(tableGroup,['线宽','Rule width'],async()=>{
   if(!editor.isActive('table'))return;
   const width=await askText(t('表格线宽（例如 0.8pt）','Table rule width (e.g. 0.8pt)'),editor.getAttributes('table').borderWidth??'0.4pt');
-  if(width!==null && (!width || /^\d+(?:\.\d+)?pt$/.test(width))) editor.chain().focus().updateAttributes('table',{borderWidth:width||null}).run();
+  if(width!==null && (!width || /^\d+(?:\.\d+)?pt$/.test(width))) editor.chain().focus(undefined,{scrollIntoView:false}).updateAttributes('table',{borderWidth:width||null}).run();
 });
 for(const [label,align] of [[['左','Left'],'left'],[['中','Center'],'center'],[['右','Right'],'right']]) groupButton(tableGroup,label,()=>{
   if(!editor.isActive('table'))return;
   const type=editor.isActive('tableHeader')?'tableHeader':'tableCell';
-  editor.chain().focus().updateAttributes(type,{align}).run();
+  editor.chain().focus(undefined,{scrollIntoView:false}).updateAttributes(type,{align}).run();
 });
 function tableOption(label,control){
   const field=document.createElement('label');
@@ -3099,13 +5320,16 @@ tableStretchGrid.append(
 );
 tableStretchSection.append(tableStretchGrid);
 function updateTableAttributes(patch,focus=true){
+  if(Object.keys(patch).length===1&&['fontSize','arrayStretch','tableScale'].some(key=>Object.hasOwn(patch,key))&&
+    (nativeTexPreview?.focusedCaret?.()||nativeWorkspaceRequested()&&nativeTexPreview?.verifiedCaret?.(true)))
+    return editNativeTable('style',patch);
   const lineKeys=['leftRule','rightRule','middleVerticalRule','verticalFirstRow','topRule','bottomRule','midRuleMode','ruleStyle','ruleWidth'];
   if(Object.keys(patch).some(key=>lineKeys.includes(key)))patch={...patch,borderMode:null,booktabs:false,horizontalRuleMode:null};
   if(editor.isActive('table')){
     const current=editor.getAttributes('table');
     if(Object.entries(patch).every(([key,value])=>current[key]===value))return;
     const chain=editor.chain();
-    if(focus)chain.focus().command(({tr})=>Boolean(closeHistory(tr)));
+    if(focus)chain.focus(undefined,{scrollIntoView:false}).command(({tr})=>Boolean(closeHistory(tr)));
     chain.updateAttributes('table',patch).run();
   }
 }
@@ -3140,21 +5364,21 @@ tableArrayStretch.addEventListener('change',()=>updateTableAttributes({arrayStre
 tableFontSize.addEventListener('change',()=>updateTableAttributes({fontSize:tableFontSize.value||null}));
 tableScale.addEventListener('change',()=>updateTableAttributes({tableScale:Number(tableScale.value)||1}));
 editor.on('transaction',syncTableControls);editor.on('selectionUpdate',syncTableControls);syncTableControls();
-groupButton(formatGroup,'B',()=>editor.chain().focus().toggleBold().run());
+groupButton(formatGroup,'B',withNativeTextCommand('toggleBold',()=>editor.chain().focus().toggleBold().run()));
 for (const [align,label] of [['left',['左对齐','Align left']],['right',['右对齐','Align right']],['center',['居中','Center']]]) {
-  groupButton(formatGroup,label,()=>setParagraphAlignment(align));
+  groupButton(formatGroup,label,withNativeTextCommand('align'+align[0].toUpperCase()+align.slice(1),()=>setParagraphAlignment(align)));
 }
-groupButton(formatGroup,'I',()=>editor.chain().focus().toggleItalic().run());
-groupButton(formatGroup,'U',()=>editor.chain().focus().toggleMark('underline').run());
-groupButton(formatGroup,'S',()=>editor.chain().focus().toggleStrike().run());
-groupButton(formatGroup,['清除格式','Clear formatting'],()=>editor.chain().focus().unsetAllMarks().run());
-groupButton(formatGroup,'code',()=>editor.chain().focus().toggleCode().run());
-groupButton(formatGroup,'quote',()=>editor.chain().focus().toggleBlockquote().run());
+groupButton(formatGroup,'I',withNativeTextCommand('toggleItalic',()=>editor.chain().focus().toggleItalic().run()));
+groupButton(formatGroup,'U',withNativeTextCommand('toggleUnderline',()=>editor.chain().focus().toggleMark('underline').run()));
+groupButton(formatGroup,'S',withNativeTextCommand('toggleStrike',()=>editor.chain().focus().toggleStrike().run()));
+groupButton(formatGroup,['清除格式','Clear formatting'],withNativeTextCommand('clearFormatting',()=>editor.chain().focus().unsetAllMarks().run()));
+groupButton(formatGroup,'code',withNativeTextCommand('toggleCode',()=>editor.chain().focus().toggleCode().run()));
+groupButton(formatGroup,'quote',withNativeTextCommand('toggleBlockquote',()=>editor.chain().focus().toggleBlockquote().run()));
 groupButton(formatGroup,'hr',()=>editor.chain().focus().setHorizontalRule().run());
-groupButton(formatGroup,'x²',()=>editor.chain().focus().toggleMark('superscript').run());
-groupButton(formatGroup,'x₂',()=>editor.chain().focus().toggleMark('subscript').run());
-groupButton(formatGroup,'sc',()=>editor.chain().focus().toggleMark('smallcaps').run());
-groupButton(formatGroup,'box',()=>spaceOverlay.toggleBox()).dataset.shortcut='editor.toggleBox';
+groupButton(formatGroup,'x²',withNativeTextCommand('toggleSuperscript',()=>editor.chain().focus().toggleMark('superscript').run()));
+groupButton(formatGroup,'x₂',withNativeTextCommand('toggleSubscript',()=>editor.chain().focus().toggleMark('subscript').run()));
+groupButton(formatGroup,'sc',withNativeTextCommand('toggleSmallCaps',()=>editor.chain().focus().toggleMark('smallcaps').run()));
+groupButton(formatGroup,'box',withNativeTextCommand('toggleBox',()=>spaceOverlay.toggleBox())).dataset.shortcut='editor.toggleBox';
 groupButton(formatGroup,'\\LaTeX',()=>insertTextCommand('LaTeX'));
 groupButton(formatGroup,'\\TeX',()=>insertTextCommand('TeX'));
 const spaceOverlay=installSpaceOverlay(editor,paper,{selectionFocus:zoom});
@@ -3176,7 +5400,9 @@ function setListStyle(style) {
   else if(editor.isActive('bulletList'))editor.chain().focus().updateAttributes('bulletList',{marker:style}).run();
 }
 groupButton(formatGroup,'1.',()=>setListStyle('decimal'));
-groupButton(formatGroup,['切换标记','Cycle marker'],()=>{ editor.view.focus(); shortcutActions.editor.toggleContextMarker(); }).dataset.shortcut='editor.toggleContextMarker';
+groupButton(formatGroup,['切换标记','Cycle marker'],withNativeTextCommand('toggleContextMarker',()=>{
+  editor.view.focus();return shortcutActions.editor.toggleContextMarker();
+})).dataset.shortcut='editor.toggleContextMarker';
 groupButton(formatGroup,['列表降一级','Indent list item'],()=>indentListItem(editor));
 groupButton(formatGroup,['列表升一级','Outdent list item'],()=>editor.chain().focus().liftListItem('listItem').run());
 groupButton(formatGroup,'a.',()=>setListStyle('lower-alpha'));
@@ -3261,28 +5487,79 @@ async function manageCitations(){
 }
 groupButton(referenceGroup,'cite',manageCitations);
 
-groupButton(referenceGroup,'toc',()=>{
-  if(editor.isActive('tableOfContents'))editor.chain().focus().deleteSelection().run();
-  else editor.chain().focus().insertContent({type:'tableOfContents'}).run();
-});
+groupButton(referenceGroup,'toc',toggleDocumentContents);
 groupButton(referenceGroup,['大纲','Outline'],documentOutline.show);
 groupButton(referenceGroup,'short',async()=>{
   if(!editor.isActive('heading'))return;
   const value=await askText(t('短标题','Short title'),editor.getAttributes('heading').shortTitle??'');
   if(value!==null)editor.chain().focus().updateAttributes('heading',{shortTitle:value||null}).run();
 });
-groupButton(referenceGroup,'title',async()=>{
-  const value=await askText(t('标题','Title'),readMeta('title'));
-  if(value!==null)writeMeta('title',value);
-});
-groupButton(referenceGroup,'author',async()=>{
-  const value=await askText(t('作者','Author'),readMeta('author'));
-  if(value!==null)writeMeta('author',value);
-});
+groupButton(referenceGroup,'title',structureCommands.title);
+groupButton(referenceGroup,'author',structureCommands.author);
+groupButton(referenceGroup,'date',structureCommands.date);
 groupButton(mathGroup,'$',()=>insertMath());
 groupButton(mathGroup,'$$',()=>insertMath(true)).dataset.shortcut='editor.insertDisplayMath';
 groupButton(mathGroup,'equation',()=>insertEquation());
+const equationLabelKey=/^[\p{L}\p{N}:_.-]*$/u;
+async function editNativeEquationLabel(caret) {
+  const {formula,atom,slot}=caret;
+  const target=nativeFormulaPosition(formula);
+  if(target?.type!=='mathBlock')return false;
+  const {node,position,composition,file,project}=target,{state}=editor;
+  const {source,outerFrom16,outerTo16,math}=formula;
+  const equation=node.attrs.delimiter==='equation';
+  const cell=/^formula\/body\/0\/cell\.(\d+)\.\d+(?:\/|$)/.exec(`${atom.path}/${slot.role}`);
+  const range=equation?{from:0,to:math.source.length}:node.attrs.latex===math.source&&cell&&
+    alignmentLabelRange(math.source,Number(cell[1]));
+  if(!range)return false;
+  const body=math.source.slice(range.from,range.to);
+  const tokens=[...sourceStructure(body)];
+  const labels=tokens.flatMap(token=>{
+    if(!token.topLevel||token.kind!=='command'||token.value!=='\\label')return [];
+    const reference=referenceAt(body,token.index);
+    return reference?[{...reference,from:token.index}]:[];
+  });
+  if(labels.length>1)return false;
+  const [existing]=labels,field=document.activeElement;
+  const label=await askText(t('公式标签','Equation label'),existing?.key??'');
+  if(field?.isConnected&&sourceView.hidden)field.focus({preventScroll:true});
+  if(label===null||label===(existing?.key??'')||!equationLabelKey.test(label)||
+     editor.state.doc!==state.doc||!nativeFormulaPosition(formula))return false;
+  let from,to,insert;
+  if(existing&&label){
+    from=existing.keyFrom;to=existing.keyTo;insert=label;
+  }else if(existing){
+    from=existing.from;to=existing.end;insert='';
+    const lineStart=body.lastIndexOf('\n',from-1)+1;
+    const ending=/^[ \t]*\r?\n/.exec(body.slice(to));
+    if(ending&&!body.slice(lineStart,from).trim()){from=lineStart;to+=ending[0].length;}
+  }else{
+    from=to=body.trimEnd().length;
+    const eol=source.includes('\r\n')?'\r\n':'\n';
+    const lastLine=body.slice(body.lastIndexOf('\n',from-1)+1,from);
+    const comment=/(^|[^\\])(?:\\\\)*%/.test(lastLine);
+    insert=(comment?eol:'')+'\\label{'+label+'}';
+  }
+  from+=formula.from16+range.from;to+=formula.from16+range.from;
+  const draft=source.slice(0,from)+insert+source.slice(to);
+  const [updated]=importBlocks(draft.slice(outerFrom16,outerTo16+insert.length-(to-from)));
+  if(updated?.type!=='mathBlock'||(equation?updated.attrs.delimiter!=='equation':
+    displayEnvironment(updated.attrs.latex)!==displayEnvironment(math.source)))return false;
+  const tr=editor.state.tr.setNodeMarkup(position,undefined,{...node.attrs,
+    latex:updated.attrs.latex,label:updated.attrs.label??null,labelRow:null});
+  if(composition){
+    const updates=projectDocument.changes(tr.doc.toJSON());
+    if(updates?.get(file.id)!==draft)return false;
+    for(const [id,text] of updates)if(id!==file.id&&text!==project.file(id).draft)return false;
+    editor.view.dispatch(closeHistory(tr));
+    return editor.state.doc!==state.doc;
+  }
+  const projected=sourceProjection(draft,tr.doc.toJSON(),{fragment:projectFileKind==='tex'});
+  return Boolean(projected&&dispatchNativeParagraphChange(editor.state,tr,source,draft,{from,to,insert},projected));
+}
 async function editFormulaLabel() {
+  const native=nativeTexPreview.focusedCaret?.();
+  if(native?.kind==='math')return editNativeEquationLabel(native);
   const field=activeMath();
   const position=field?.closest('[data-math-view]')?.getMathPosition?.() ?? formulaAtSelection()?.position;
   if (position === undefined) return;
@@ -3298,16 +5575,23 @@ async function editFormulaLabel() {
   const label=await askText(t('公式标签','Equation label'),node.attrs.label??'');
   const currentPosition=field?.closest('[data-math-view]')?.getMathPosition?.() ?? position;
   const current=editor.state.doc.nodeAt(currentPosition);
-  if(label===null || !/^[\p{L}\p{N}:_.-]*$/u.test(label) ||
+  if(label===null || !equationLabelKey.test(label) ||
       current?.type!==node.type || current.attrs.delimiter!==node.attrs.delimiter ||
       (current!==node && (!field?.isConnected || current.attrs.id!==node.attrs.id)))return;
   editor.view.dispatch(editor.state.tr.setNodeMarkup(currentPosition,undefined,{...current.attrs,label:label||null,labelRow:label?row.index:null}));
   field?.focus();
 }
 groupButton(mathGroup,'equation label',editFormulaLabel);
-groupButton(mathGroup,'frac',()=>insertMath(false,'\\frac{\\placeholder{}}{\\placeholder{}}'));
-groupButton(mathGroup,['公式换行','Math line break'],()=>activeMath()?.dispatchEvent(new Event('lineae-math-newline')));
-groupButton(mathGroup,['退出公式','Exit formula'],()=>activeMath()?.dispatchEvent(new Event('lineae-leave-formula'))).dataset.shortcut='math.leaveFormula';
+function runNativeMathToolbarCommand(command,fallback){
+  if(nativeTexPreview.hasNativeMathFocus?.())return nativeTexPreview.runMathCommand(command);
+  return fallback();
+}
+groupButton(mathGroup,'frac',()=>runNativeMathToolbarCommand('frac',
+  ()=>insertMath(false,'\\frac{\\placeholder{}}{\\placeholder{}}')));
+groupButton(mathGroup,['公式换行','Math line break'],()=>nativeTexPreview.hasNativeMathFocus?.()
+  ?nativeTexPreview.runMathCommand('enterLine'):activeMath()?.dispatchEvent(new Event('lineae-math-newline')));
+groupButton(mathGroup,['退出公式','Exit formula'],()=>nativeTexPreview.hasNativeMathFocus?.()
+  ?nativeTexPreview.runMathCommand('leaveFormula'):activeMath()?.dispatchEvent(new Event('lineae-leave-formula'))).dataset.shortcut='math.leaveFormula';
 for (const [label,command,latex] of [
   ['sqrt','sqrt','\\sqrt{\\placeholder{}}'],
   ['ⁿ√','indexedRoot','\\sqrt[\\placeholder{}]{\\placeholder{}}'],
@@ -3315,17 +5599,17 @@ for (const [label,command,latex] of [
     ['sum','int'].includes(name) ? name : '\\'+name,name,'\\'+name+'\\mathord{\\placeholder{}}',
   ]),
 ]) {
-  groupButton(mathGroup,label,()=>{
+  groupButton(mathGroup,label,()=>runNativeMathToolbarCommand(command,()=>{
     const field=activeMath();
-    if(field)runMathShortcut(command,field,{repeat:false});
-    else insertMath(false,latex);
-  }).dataset.shortcut='math.'+command;
+    if(field)return runMathShortcut(command,field,{repeat:false});
+    return insertMath(false,latex);
+  })).dataset.shortcut='math.'+command;
 }
-groupButton(mathGroup,'\\left',()=>chooseMathDelimiters(activeMath()));
-groupButton(mathGroup,'\\right',()=>chooseMathDelimiters(activeMath(),true));
+groupButton(mathGroup,'\\left',()=>runNativeMathToolbarCommand('left',()=>chooseMathDelimiters(activeMath())));
+groupButton(mathGroup,'\\right',()=>runNativeMathToolbarCommand('right',()=>chooseMathDelimiters(activeMath(),true)));
 groupButton(mathGroup,['单括号','Literal fence'],()=>armLiteralFence(activeMath()));
-groupButton(mathGroup,'matrix',()=>insertMath(false,matrixSource('matrix')));
-groupButton(mathGroup,'cases',()=>insertMath(true,'\\begin{cases}\\placeholder{} & \\placeholder{}\\\\ \\placeholder{} & \\placeholder{}\\end{cases}'));
+groupButton(mathGroup,'matrix',()=>runNativeMathToolbarCommand('matrix',()=>insertMath(false,matrixSource('matrix'))));
+groupButton(mathGroup,'cases',()=>runNativeMathToolbarCommand('cases',insertCases));
 groupButton(mathGroup,'align',structureCommands.align);
 groupButton(mathGroup,'align*',structureCommands['align*']);
 
@@ -3334,27 +5618,43 @@ const ribbon=document.createElement('div');ribbon.className='ribbon';
 const tabs=document.createElement('nav');tabs.className='ribbon-tabs';
 const home=document.createElement('div');home.className='tools';
 const insert=document.createElement('div');insert.className='tools';
-groupButton(insert,['分页','New page'],()=>editor.chain().focus().insertContent({type:'pageBreak'}).run());
-groupButton(insert,['图片','Image'],()=>insertLocalImage(editor));
-groupButton(insert,['子图','Subfigure'],()=>insertSubfigures(editor));
-const codeLanguageButton=groupButton(insert,['代码块','Code block'],async()=>{
+groupButton(insert,['分页','New page'],()=>nativeTexPreview.hasNativeTextFocus?.()?insertNativePageBreak():
+  editor.chain().focus().insertContent({type:'pageBreak'}).run());
+groupButton(insert,['图片','Image'],()=>insertDocumentImage());
+groupButton(insert,['子图','Subfigure'],()=>nativeParagraphFormattingActive()?insertNativeImages(true):insertSubfigures(editor));
+const codeLanguageButton=groupButton(insert,['代码块','Code block'],editCodeBlockLanguage);
+async function editCodeBlockLanguage(){
+  const native=nativeParagraphFormattingActive();
   const language=await askText(t('代码语言，例如 Python、Java 或 C++','Code language, e.g. Python, Java or C++'),editor.getAttributes('codeBlock').language??'');
   if(language===null || (language && !/^[A-Za-z0-9+_-]+$/.test(language))) return;
+  if(native){
+    const block=editor.schema.nodes.codeBlock.create({language:language||null});
+    const result=insertNativeDocumentBlock(block,serialize(block.toJSON()).trimEnd());
+    if(result)nativeTexPreview.refocusTextInput();
+    return result;
+  }
   if(editor.isActive('codeBlock')) editor.chain().focus().updateAttributes('codeBlock',{language:language||null}).run();
   else editor.chain().focus().setCodeBlock({language:language||null}).run();
-});
+}
 groupButton(insert,['CircuiTikZ','CircuiTikZ'],()=>{
   try{
+    const nativeDocument=nativeParagraphFormattingActive()?editor.state.doc:null;
     const editorEl=document.querySelector('.document-page .ProseMirror');
     const textwidthCm=editorEl?editorEl.clientWidth*2.54/96:15;
     const tikz=new TikzEditor({getTextwidthCm:()=>textwidthCm});
-    tikz.open(code=>{ if(code) editor.chain().focus().insertContent({type:'codeBlock',attrs:{language:'tikz'},content:[{type:'text',text:code}]}).run(); });
+    tikz.open(code=>{
+      if(!code)return;
+      if(nativeDocument){
+        if(editor.state.doc!==nativeDocument||!insertNativeDrawing(code))refuseStandaloneWriteback();
+      }else editor.chain().focus().insertContent({type:'documentImage',attrs:{tikzSource:code,tikzEditor:'circuit',centered:true,align:'center'}}).run();
+    });
   }catch(error){ console.error(error); alert('CircuiTikZ editor failed: '+(error?.message||error)); }
 });
 const tikzButton=groupButton(insert,['TikZ','TikZ'],()=>{
   try{
+    const nativeDocument=nativeParagraphFormattingActive()?editor.state.doc:null;
     openTikzStudio({
-      onInsert:payload=>insertTikzStudioBlock(payload),
+      onInsert:payload=>insertTikzStudioBlock(payload,nativeDocument),
     });
   }catch(error){ console.error(error); alert('TikZ editor failed: '+(error?.message||error)); }
 });
@@ -3377,7 +5677,7 @@ for(const control of [...tools.children]) {
 }
 const groups={files,home,insert,layout:layoutGroup,table:tableGroup,format:formatGroup,reference:referenceGroup,math:mathGroup};
 headerFooterPanel=installHeaderFooterPanel({
-  readState:()=>readPageFurniture(documentParts.start),
+  readState:()=>readPageFurniture(projectFileKind==='tex'?projectLayoutPreamble(projectExplorer?.model,documentParts.start):documentParts.start),
   onChange:applyFurnitureState,
 });
 groups.headerFooter=headerFooterPanel.panel;
@@ -3385,10 +5685,16 @@ headerFooterPanel.refresh();
 imagePanel=installImagePanel({
   getSpacing:()=>readImageSpacing(documentParts.start),
   onSpacing:updateImageSpacing,
-  onReplace:()=>{if(imageSelection!==null)replaceLocalImage(editor,imageSelection);},
+  onReplace:()=>{
+    if(imageSelection===null)return;
+    if(!nativeOnlyAcceptance())return replaceLocalImage(editor,imageSelection);
+    const target=nativeDrawingTargets(rasterDrawingRanges).find(drawing=>drawing.position===imageSelection);
+    if(target)return insertNativeImages(false,target);
+  },
   onCrop:()=>{if(imageSelection!==null)startImageCrop(editor,imageSelection);},
   onGroup:groupSelectedImages,
   onUngroup:ungroupSelectedImages,
+  onInsertFigure:()=>insertSubfigureImage(editor),
   onUpdate:patch=>updateSelectedImageAttrs(patch),
 });
 groups.image=imagePanel.panel;
@@ -3401,7 +5707,8 @@ const language=document.querySelector('#language');
 const fontFamilyControl=home.querySelector('[data-format-attribute="fontFamily"]');
 const fontSizeControl=home.querySelector('[data-format-attribute="fontSize"]');
 const colorControl=home.querySelector('.color-control');
-const clipboard=createClipboard(editor,{getField:activeMath,getSource:()=>sourceView.editorView});
+const clipboard=createClipboard(editor,{getField:activeMath,getSource:()=>sourceView.editorView,
+  getNative:()=>nativeTexPreview?.clipboardSelection?.()});
 let formatPainter;
 let clipboardStatusTimer;
 function reportClipboardError(error){
@@ -3420,7 +5727,61 @@ function changeFontSize(direction) {
     ? sizes.find(size => size>current+0.01)
     : [...sizes].reverse().find(size => size<current-0.01);
   if (!next) return false;
-  return editor.chain().focus().setMark('textStyle',{fontSize:next+'pt'}).run();
+  return applyTextStyle({fontSize:next+'pt'});
+}
+function applyNativeFormatPainter({marks,textStyle,paragraph:attributes}){
+  if(!nativeTexPreview.hasNativeTextFocus?.())return null;
+  const range=nativeTexPreview.verifiedTextRange();
+  if(!range)return false;
+  const [first,last]=range,{paragraph}=first;
+  if(first===last||paragraph!==last.paragraph||paragraph.heading||paragraph.container||paragraph.tableCell||
+    paragraph.parts.some(part=>!['text','math'].includes(part.kind)))return false;
+  const target=nativeProsePosition(paragraph,first.local,last.local);
+  if(!target)return false;
+  const {state}=editor,{from,to,match}=target.range;
+  const {schema}=state,{source}=paragraph;
+  let owner=null;
+  forEachNativeDocumentBlock('paragraph',(node,position,block,_path,text,base)=>{
+    if(position===match.offset&&block?.count===1&&text===source&&block.raw.trim()===serialize(node.toJSON()).trim())
+      owner={position,from:base+block.from+block.raw.length-block.raw.trimStart().length,
+        to:base+block.from+block.raw.trimEnd().length};
+  });
+  if(!owner)return false;
+  const captured=marks.map(({name,attrs})=>schema.marks[name].create({...attrs,...(name==='boxed'&&{boxId:null})}));
+  if(Object.keys(textStyle).length)captured.push(schema.marks.textStyle.create(textStyle));
+  const tr=state.tr;
+  state.doc.nodesBetween(from,to,(node,position)=>{
+    if(!node.isText)return true;
+    const start=Math.max(from,position),end=Math.min(to,position+node.nodeSize);
+    tr.removeMark(start,end);
+    for(const mark of captured)tr.addMark(start,end,mark);
+  });
+  const node=tr.doc.nodeAt(owner.position);
+  tr.setNodeMarkup(owner.position,undefined,{...node.attrs,...attributes});
+  if(tr.doc.eq(state.doc))return true;
+  const insert=serialize(tr.doc.nodeAt(owner.position).toJSON()).trim();
+  const [verified,...rest]=importBlocks(insert);
+  if(!verified||rest.length||!schema.nodeFromJSON(verified).eq(tr.doc.nodeAt(owner.position)))return false;
+  let change={from:owner.from,to:owner.to,insert};
+  let draft=source.slice(0,change.from)+insert+source.slice(change.to);
+  const {composition,project,file}=target,rootId=composition?.rootId;
+  const root=composition&&rootId!==file.id?project.file(rootId).draft:source;
+  const dependency=nativePackagePatch(root,insert);
+  if(dependency===false)return false;
+  if(composition){
+    const drafts=new Map([[file.id,draft]]);
+    if(dependency){
+      const prior=drafts.get(rootId)??root;
+      drafts.set(rootId,prior.slice(0,dependency.from)+dependency.insert+prior.slice(dependency.to));
+    }
+    return dispatchNativeProjectChange(state,tr,project,drafts);
+  }
+  if(dependency){
+    draft=draft.slice(0,dependency.from)+dependency.insert+draft.slice(dependency.to);
+    [change]=textPatch(source,draft);
+  }
+  const projected=sourceProjection(draft,tr.doc.toJSON(),{fragment:projectFileKind==='tex'});
+  return Boolean(projected&&dispatchNativeParagraphChange(state,tr,source,draft,change,projected));
 }
 homeRibbon=buildHomeRibbon(home,{documentClass:documentClassFromSource(documentParts.start),actions:{
   copy:()=>clipboard.copy().catch(reportClipboardError),
@@ -3429,29 +5790,29 @@ homeRibbon=buildHomeRibbon(home,{documentClass:documentClassFromSource(documentP
   formatPainter:event=>formatPainter?.activate(event),
   undo:undoDocument,
   redo:redoDocument,
-  bold:textOnly(()=>editor.chain().focus().toggleBold().run()),
-  italic:textOnly(()=>editor.chain().focus().toggleItalic().run()),
-  underline:textOnly(()=>editor.chain().focus().toggleMark('underline').run()),
+  bold:textOnly(withNativeTextCommand('toggleBold',()=>editor.chain().focus().toggleBold().run())),
+  italic:textOnly(withNativeTextCommand('toggleItalic',()=>editor.chain().focus().toggleItalic().run())),
+  underline:textOnly(withNativeTextCommand('toggleUnderline',()=>editor.chain().focus().toggleMark('underline').run())),
   underlineStyle:textOnly(style=>editor.chain().focus().setMark('underline',{style}).run()),
-  strike:textOnly(()=>editor.chain().focus().toggleStrike().run()),
-  subscript:textOnly(()=>editor.chain().focus().toggleMark('subscript').run()),
-  superscript:textOnly(()=>editor.chain().focus().toggleMark('superscript').run()),
-  clearFormatting:textOnly(()=>editor.chain().focus().unsetAllMarks().run()),
-  characterBorder:textOnly(()=>spaceOverlay.toggleBox()),
+  strike:textOnly(withNativeTextCommand('toggleStrike',()=>editor.chain().focus().toggleStrike().run())),
+  subscript:textOnly(withNativeTextCommand('toggleSubscript',()=>editor.chain().focus().toggleMark('subscript').run())),
+  superscript:textOnly(withNativeTextCommand('toggleSuperscript',()=>editor.chain().focus().toggleMark('superscript').run())),
+  clearFormatting:textOnly(withNativeTextCommand('clearFormatting',()=>editor.chain().focus().unsetAllMarks().run())),
+  characterBorder:textOnly(withNativeTextCommand('toggleBox',()=>spaceOverlay.toggleBox())),
   fontGrow:textOnly(()=>changeFontSize(1)),
   fontShrink:textOnly(()=>changeFontSize(-1)),
-  highlight:textOnly(color=>editor.chain().focus().setMark('textStyle',{backgroundColor:color??null}).run()),
-  circled:textOnly(()=>editor.chain().focus().toggleMark('circled').run()),
-  bullets:()=>editor.chain().focus().toggleBulletList().run(),
-  numbering:()=>editor.chain().focus().toggleOrderedList().run(),
+  highlight:textOnly(color=>applyTextStyle({backgroundColor:color??null})),
+  circled:textOnly(withNativeTextCommand('toggleCircled',()=>editor.chain().focus().toggleMark('circled').run())),
+  bullets:withNativeTextCommand('toggleBulletList',()=>editor.chain().focus().toggleBulletList().run()),
+  numbering:withNativeTextCommand('toggleOrderedList',()=>editor.chain().focus().toggleOrderedList().run()),
   bulletStyle:marker=>setListStyle(marker),
   numberStyle:style=>setListStyle(style),
   indentDecrease:()=>indentSelectedParagraph(-1),
   indentIncrease:()=>indentSelectedParagraph(1),
-  alignLeft:()=>setParagraphAlignment('left'),
-  alignCenter:()=>setParagraphAlignment('center'),
-  alignRight:()=>setParagraphAlignment('right'),
-  alignJustify:()=>setParagraphAlignment('justify'),
+  alignLeft:withNativeTextCommand('alignLeft',()=>setParagraphAlignment('left')),
+  alignCenter:withNativeTextCommand('alignCenter',()=>setParagraphAlignment('center')),
+  alignRight:withNativeTextCommand('alignRight',()=>setParagraphAlignment('right')),
+  alignJustify:()=>nativeParagraphFormattingActive()?runNativeTextCommand('alignJustify'):setParagraphAlignment('justify'),
   lineSpacing:value=>updateSelectedParagraphs({lineSpacing:value&&value!==1?value:null}),
   paragraphSpacing:(before,after)=>updateSelectedParagraphs({spaceBefore:before??null,spaceAfter:after??null}),
   paragraphShading:color=>updateSelectedParagraphs({shading:color??null}),
@@ -3474,7 +5835,9 @@ homeRibbon=buildHomeRibbon(home,{documentClass:documentClassFromSource(documentP
   },
   find:documentFind.show,
 }});
-formatPainter=installFormatPainter(editor,{button:homeRibbon.refs.formatPainter,getField:activeMath});
+formatPainter=installFormatPainter(editor,{button:homeRibbon.refs.formatPainter,getField:activeMath,
+  prepareCapture:()=>!nativeTexPreview.hasNativeTextFocus?.()||nativeTexPreview.useTextSelection(),
+  applyNative:applyNativeFormatPainter});
 if (fontFamilyControl) homeRibbon.slots.font.prepend(fontFamilyControl);
 if (fontSizeControl) homeRibbon.slots.font.insertBefore(fontSizeControl,fontFamilyControl?.nextSibling??homeRibbon.slots.font.firstChild);
 if (colorControl) homeRibbon.slots.color.append(colorControl);
@@ -3583,6 +5946,7 @@ function updateLanguage() {
   document.documentElement.lang=getLanguage();
   localize(document);
   shortcutPriority.relocalize();
+  nativeTexPreview?.relocalize();
   for(const tab of tabs.children)tab.textContent=t(captions[tab.dataset.group][0],captions[tab.dataset.group][1]);
   commands.setAttribute('aria-label',t('LaTeX 补全','LaTeX completion'));
   filter.placeholder=t('LaTeX 命令','LaTeX command');
@@ -3702,11 +6066,13 @@ function subfiguresAncestor(position){
 function groupSelectedImages(){
   const blocks=selectedImageBlocks();
   if(blocks.length<2)return false;
-  const width=(Math.min(0.48,0.94/blocks.length)).toFixed(2)+'\\textwidth';
+  const fallback=(Math.min(0.48,0.94/blocks.length)).toFixed(2)+'\\textwidth';
   const children=blocks.map(({node})=>editor.schema.nodes.documentImage.create({
     ...node.attrs,
     figure:false,wrap:false,figureSource:null,placement:null,fixed:false,
-    centered:true,align:'center',height:null,scale:null,width,
+    centered:true,align:'center',height:null,scale:null,
+    width:imageWidthPattern.test(String(node.attrs.width??'').trim())?node.attrs.width:fallback,
+    pos:/^[tcb]$/.test(node.attrs.pos??'')?node.attrs.pos:'c',
   }));
   const subfigures=editor.schema.nodes.subfigures.create({
     placement:null,fixed:false,caption:null,captionEnabled:false,captionNumbered:true,label:null,
@@ -3751,22 +6117,47 @@ function ungroupSelectedImages(){
 }
 function updateSelectedSubfigureAttrs(patch){
   const selection=editor.state.selection;
-  if(!(selection instanceof NodeSelection)||selection.node.type.name!=='subfigures')return;
-  editor.commands.updateAttributes('subfigures',patch);
-  subfigurePanel?.setValues({...selection.node.attrs,...patch});
+  if(!(selection instanceof NodeSelection)||selection.node.type.name!=='documentImage')return;
+  if(subfiguresAncestor(selection.from)===null)return;
+  const current=selection.node;
+  const clean=Object.fromEntries(Object.entries(patch).filter(([,value])=>value!==undefined));
+  if(Object.entries(clean).every(([key,value])=>current.attrs[key]===value))return;
+  editor.view.dispatch(closeHistory(editor.state.tr).setNodeMarkup(selection.from,undefined,{...current.attrs,...clean}));
+  const updated=editor.state.doc.nodeAt(selection.from);
+  subfigurePanel?.setValues(updated?.type.name==='documentImage'?updated.attrs:null);
 }
 function syncImageTab(){
   if(!imageTab)return;
   const found=sourceView.hidden ? currentImageSelection() : null;
   imageSelection=found?.position??null;
-  const selectedImages=sourceView.hidden && !found ? imageBlocksInSelection() : [];
-  const multi=selectedImages.length>=2 ? selectedImageBlocks() : [];
-  imageTab.hidden=!found&&selectedImages.length<2;
   const subSel=sourceView.hidden&&editor.state.selection instanceof NodeSelection&&editor.state.selection.node.type.name==='subfigures'?editor.state.selection.node:null;
-  if(subfigureTab)subfigureTab.hidden=!subSel;
-  subfigurePanel?.setValues(subSel?.attrs??null);
-  if(subSel&&ribbon.dataset.ribbonPage!=='subfigure'&&ribbon.dataset.ribbonPage!=='headerFooter')selectGroup('subfigure');
-  else if(!subSel&&ribbon.dataset.ribbonPage==='subfigure')selectGroup('home');
+  const insideSub=found?subfiguresAncestor(found.position)!==null:false;
+  const selectedImages=sourceView.hidden && !found && !subSel ? imageBlocksInSelection() : [];
+  const multi=selectedImages.length>=2 ? selectedImageBlocks() : [];
+  const showSubfigure=Boolean(found&&insideSub);
+  const showImage=Boolean(subSel)||Boolean(found&&!insideSub)||selectedImages.length>=2;
+  if(subfigureTab)subfigureTab.hidden=!showSubfigure;
+  imageTab.hidden=!showImage;
+
+  if(showSubfigure){
+    subfigurePanel?.setValues(found.node.attrs);
+    imagePanel.setGroupMode(false);
+    if(ribbon.dataset.ribbonPage!=='subfigure'&&ribbon.dataset.ribbonPage!=='headerFooter')selectGroup('subfigure');
+    return;
+  }
+  subfigurePanel?.setValues(null);
+  imagePanel.setGroupMode(false);
+
+  if(subSel){
+    imagePanel.setMultiSelection(0);
+    imagePanel.setValues({...subSel.attrs,figure:true,centered:true,align:'center'});
+    imagePanel.setPath(t(subSel.childCount+' 张子图',subSel.childCount+' subfigures'));
+    imagePanel.setGroupMode(true);
+    imagePanel.setGroupState('ungroup');
+    if(ribbon.dataset.ribbonPage!=='image' && ribbon.dataset.ribbonPage!=='headerFooter')selectGroup('image');
+    return;
+  }
+
   if(found){
     imagePanel.setMultiSelection(0);
     imagePanel.setPath(found.node.attrs.path);
@@ -3783,7 +6174,7 @@ function syncImageTab(){
       naturalHeight:imageElement?.naturalHeight||0,
       textWidth,
     });
-    imagePanel.setGroupState(subfiguresAncestor(found.position)!==null?'ungroup':'none');
+    imagePanel.setGroupState('none');
     if(ribbon.dataset.ribbonPage!=='image' && ribbon.dataset.ribbonPage!=='headerFooter')selectGroup('image');
   }else if(selectedImages.length>=2){
     imagePanel.setMultiSelection(selectedImages.length);
@@ -3792,13 +6183,13 @@ function syncImageTab(){
   }else{
     imagePanel.setMultiSelection(0);
     imagePanel.setGroupState('none');
-    if(ribbon.dataset.ribbonPage==='image')selectGroup('home');
+    if(ribbon.dataset.ribbonPage==='image'||ribbon.dataset.ribbonPage==='subfigure')selectGroup('home');
   }
 }
 editor.on('selectionUpdate',syncImageTab);
 editor.on('transaction',({transaction})=>{if(transaction.selectionSet)syncImageTab();});
 ribbon.append(tabs,files,home,insert,layoutGroup,tableGroup,formatGroup,referenceGroup,mathGroup,imagePanel.panel,subfigurePanel.panel,headerFooterPanel.panel);header.append(ribbon);tools.remove();
-groupButton(insert,'figure',()=>insertLocalImage(editor));
+groupButton(insert,'figure',()=>insertDocumentImage());
 sourceToolbar = installSourceToolbar({ribbon,groups,source:sourceView,rich:paper,heading:headingMenu});
 const toolbarController=installFloatingToolbar({header,ribbon,sourceView,getAutoHide:()=>sourceView.hidden?config.value.interface.toolbarAutoHide:config.value.interface.sourceToolbarAutoHide});
 installMathFloatToolbar({ editor });
@@ -3834,3 +6225,8 @@ installContextMenu(editor, paper, language, message => {
   status.hidden = false;
   status.textContent = message;
 });
+if(desktopEngineToggle()){
+  load(DEFAULT_DOCUMENT_SOURCE,false);
+  savedSource=DEFAULT_DOCUMENT_SOURCE;
+  nativeTexPreview.documentModeChanged?.();
+}

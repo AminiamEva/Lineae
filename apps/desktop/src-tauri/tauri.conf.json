@@ -11,13 +11,16 @@
     "withGlobalTauri": true,
     "windows": [],
     "security": {
-      "csp": "default-src 'self'; img-src 'self' data: blob:; font-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self' ipc: http://ipc.localhost; media-src 'self' blob:"
+      "csp": "default-src 'self'; img-src 'self' data: blob:; font-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self'; worker-src 'self' blob:; connect-src 'self' ipc: http://ipc.localhost; media-src 'self' blob:"
     }
   },
   "bundle": {
     "active": true,
     "targets": ["nsis"],
     "category": "Productivity",
+    "resources": {
+      "resources/rtex/": "rtex/"
+    },
     "shortDescription": "Offline LaTeX editor",
     "longDescription": "Lineae is an offline LaTeX editor with a visual formula and document editor.",
     "icon": [

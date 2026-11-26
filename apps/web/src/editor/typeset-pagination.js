@@ -71,7 +71,8 @@ function unscaledRect(element, pageRect, zoom) {
 }
 
 function paragraphLines(editor, element, block, pageRect, zoom) {
-  if (!element.textContent || block.height < (parseFloat(getComputedStyle(element).lineHeight) || 0) * 1.5) return null;
+  const lineHeight = parseFloat(getComputedStyle(element).lineHeight) || 0;
+  if (!element.textContent || block.height < lineHeight * 1.5) return null;
   let from, to;
   try {
     from = editor.view.posAtDOM(element, 0);
@@ -81,9 +82,44 @@ function paragraphLines(editor, element, block, pageRect, zoom) {
   }
   if (!Number.isInteger(from) || !Number.isInteger(to) || to <= from) return null;
   const topAt = position => {
-    try { return (editor.view.coordsAtPos(position, 1).top - pageRect.top) / zoom; }
-    catch { return Number.NaN; }
+    // ProseMirror's coordsAtPos clamps positions that are scrolled out of the
+    // viewport to the visible edge, which made line detection depend on the
+    // scroll position and produced different plans for the same document.
+    // Measure a one-character range instead: layout rectangles are available
+    // for every position regardless of scrolling.
+    try {
+      const { node, offset } = editor.view.domAtPos(position);
+      const range = document.createRange();
+      if (node.nodeType === Node.TEXT_NODE) {
+        const length = node.data.length;
+        if (!length) {
+          const parent = node.parentElement;
+          return parent ? (parent.getBoundingClientRect().top - pageRect.top) / zoom : Number.NaN;
+        }
+        const start = Math.max(0, Math.min(offset, length - 1));
+        range.setStart(node, start);
+        range.setEnd(node, Math.min(length, start + 1));
+      } else if (offset < node.childNodes.length) {
+        range.setStart(node, offset);
+        range.setEnd(node, offset + 1);
+      } else if (node.childNodes.length) {
+        range.selectNodeContents(node);
+      } else {
+        return (node.getBoundingClientRect().top - pageRect.top) / zoom;
+      }
+      const rects = range.getClientRects();
+      const rect = rects.length ? rects[0] : range.getBoundingClientRect();
+      if (!rect || (!rect.width && !rect.height)) {
+        const fallback = node.nodeType === Node.TEXT_NODE ? node.parentElement : node;
+        return fallback ? (fallback.getBoundingClientRect().top - pageRect.top) / zoom : Number.NaN;
+      }
+      return (rect.top - pageRect.top) / zoom;
+    } catch { return Number.NaN; }
   };
+  // Character rectangles report glyph ink boxes, so glyphs on the same line can
+  // differ by a couple of pixels.  Require a real advance before treating a
+  // position as a new visual line.
+  const advance = Math.max(1, lineHeight * .4);
   const bottom = block.top + block.height;
   const firstTop = topAt(from);
   if (!Number.isFinite(firstTop) || firstTop > bottom + 1) return null;
@@ -92,19 +128,19 @@ function paragraphLines(editor, element, block, pageRect, zoom) {
   while (cursor < to) {
     const currentTop = starts.at(-1).top;
     let high = Math.min(to, cursor + 16);
-    while (high < to && topAt(high) <= currentTop + 1) {
+    while (high < to && topAt(high) <= currentTop + advance) {
       high = Math.min(to, cursor + (high - cursor) * 2);
     }
-    if (topAt(high) <= currentTop + 1) break;
+    if (topAt(high) <= currentTop + advance) break;
     let low = cursor + 1;
     while (low < high) {
       const middle = Math.floor((low + high) / 2);
-      if (topAt(middle) > currentTop + 1) high = middle;
+      if (topAt(middle) > currentTop + advance) high = middle;
       else low = middle + 1;
     }
     const position = nextGraphemePosition(editor, low);
     const top = topAt(position);
-    if (!Number.isFinite(top) || top <= currentTop + 1 || top > bottom + 1) break;
+    if (!Number.isFinite(top) || top <= currentTop + advance || top > bottom + 1) break;
     starts.push({ position, top });
     cursor = position;
   }
@@ -134,6 +170,9 @@ export function installTypesetPagination(page, paper, meta, editor, engineProfil
   let maketitle = false;
   let lineBreaks = [];
   let lineBreaksDoc = null;
+  let lastLayoutDoc = null;
+  let layoutPass = 0;
+  let settled = false;
   installLineBreaks(editor);
 
   function setLineBreaks(entries) {
@@ -372,6 +411,8 @@ export function installTypesetPagination(page, paper, meta, editor, engineProfil
     page.style.setProperty('--editor-min-height', '0');
     page.style.setProperty('--page-stack-height', 'var(--page-height)');
     renderSheets(1);
+    if (layoutPass >= 2) settleLayout();
+    lastLayoutDoc = editor.state.doc;
     window.dispatchEvent(new CustomEvent('lineae-layout'));
   }
 
@@ -383,12 +424,30 @@ export function installTypesetPagination(page, paper, meta, editor, engineProfil
       return;
     }
     deferredLayout = false;
+    // Measuring removes the page's reserved height, which briefly shrinks the
+    // scrollable document. While scrolled down the browser clamps scrollY to
+    // that smaller height and never restores it, so the page jumped whenever a
+    // layout pass ran (for example after inserting a table row). Remember the
+    // visible position and put it back before the next paint.
+    const preserveScrollX = window.scrollX;
+    const preserveScrollY = window.scrollY;
+    const restoreScroll = () => {
+      if (window.scrollX !== preserveScrollX || window.scrollY !== preserveScrollY) {
+        window.scrollTo(preserveScrollX, preserveScrollY);
+      }
+    };
+    if (editor.state.doc !== lastLayoutDoc) {
+      layoutPass = 0;
+      settled = false;
+    }
+    layoutPass += 1;
     window.dispatchEvent(new Event('lineae-before-layout'));
     const emptyMeta = !meta.textContent.trim();
     meta.dataset.empty = String(emptyMeta);
     page.dataset.pagination = mode;
     if (mode === 'flow') {
       layoutFlow();
+      restoreScroll();
       return;
     }
     paginationStyle.textContent = '';
@@ -687,11 +746,19 @@ export function installTypesetPagination(page, paper, meta, editor, engineProfil
     renderSheets(plan.pageCount);
     renderTableHeaders(tablePlans, blocks);
     delete page.dataset.paginationMeasuring;
+    if (layoutPass >= 2) settleLayout();
+    restoreScroll();
+    lastLayoutDoc = editor.state.doc;
     window.dispatchEvent(new CustomEvent('lineae-layout'));
   }
 
   function schedule() {
     if (!frame) frame = requestAnimationFrame(layout);
+  }
+  function repaginate() {
+    settled = false;
+    layoutPass = 0;
+    schedule();
   }
 
   const measured = new WeakMap();
@@ -709,9 +776,35 @@ export function installTypesetPagination(page, paper, meta, editor, engineProfil
       const next={width:rect.width/scale,height:rect.height/scale};
       const previous=measured.get(target);
       measured.set(target,next);
-      const changed=!previous||Math.abs(previous.width-next.width)>.5||Math.abs(previous.height-next.height)>.5;
+      const widthChanged=previous?Math.abs(previous.width-next.width)>.5:false;
+      const changed=widthChanged||(previous?Math.abs(previous.height-next.height)>.5:true);
+      if (settled) {
+        // Our own gaps/translations change heights, and ProseMirror recreates
+        // decoration widgets (table captions, page-break markers) while the
+        // selection or hover moves. A newly observed node has no previous box,
+        // so it must not be mistaken for a width change. Only a real width
+        // change of an already measured box (resize/zoom) warrants a fresh
+        // pagination; document changes arrive through the mutation observer.
+        if (!widthChanged) continue;
+        settled = false;
+        layoutPass = 0;
+      }
       if (deferredLayout || changed) schedule();
     }
+  }
+  function seedMeasuredSizes() {
+    const zoom=page.offsetWidth?page.getBoundingClientRect().width/page.offsetWidth:1;
+    const scale=zoom||1;
+    for(const target of [editable,meta,...editable.children]){
+      if(!target.getClientRects().length)continue;
+      const rect=target.getBoundingClientRect();
+      measured.set(target,{width:rect.width/scale,height:rect.height/scale});
+    }
+  }
+  function settleLayout() {
+    if (settled) return;
+    settled = true;
+    seedMeasuredSizes();
   }
   const resize = new ResizeObserver(onResize);
   resize.observe(editable);
@@ -725,11 +818,19 @@ export function installTypesetPagination(page, paper, meta, editor, engineProfil
   observeChildren();
   const mutations = new MutationObserver(() => {
     observeChildren();
-    schedule();
+    // Decoration-only updates (selection marks, table/cell classes) mutate the
+    // DOM without changing the document; re-paginating for them makes layout
+    // depend on selection and jumps the page. Real layout changes still arrive
+    // through the document version or the resize observers.
+    if (editor.state.doc !== lastLayoutDoc) {
+      settled = false;
+      layoutPass = 0;
+      schedule();
+    }
   });
   mutations.observe(editable, { subtree: true, childList: true, characterData: true });
   mutations.observe(meta, { subtree: true, childList: true, characterData: true });
-  document.fonts?.addEventListener('loadingdone', schedule);
+  document.fonts?.addEventListener('loadingdone', repaginate);
 
   return {
     setEngine(next) {
@@ -742,27 +843,27 @@ export function installTypesetPagination(page, paper, meta, editor, engineProfil
     },
     update(preamble) {
       applyProfile(preamble);
-      schedule();
+      repaginate();
     },
-    refresh: schedule,
+    refresh: repaginate,
     setMaketitle(value) {
       const next = Boolean(value);
       if (next !== maketitle) {
         maketitle = next;
         sheetCount = 0;
       }
-      schedule();
+      repaginate();
     },
     getMode: () => mode,
     getTableContinuation: () => continuedTables,
     setTableContinuation(enabled) {
       continuedTables = Boolean(enabled);
-      schedule();
+      repaginate();
       return continuedTables;
     },
     setMode(next) {
       mode = next === 'flow' ? 'flow' : 'pages';
-      schedule();
+      repaginate();
       return mode;
     },
     toggle() {

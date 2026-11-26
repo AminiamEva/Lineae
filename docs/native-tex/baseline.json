@@ -1,0 +1,100 @@
+{
+  "schemaVersion": 1,
+  "lineaeReference": "e7abfe976930886e2e0d8d23b0a7e055863bdff0",
+  "platforms": ["x86_64-pc-windows-msvc", "aarch64-apple-darwin"],
+  "buildPolicy": "remote_only",
+  "engines": {
+    "xelatexJs": {
+      "policy": "retain",
+      "status": "existing_xelatex_aligned_js_rendering",
+      "entryPoints": [
+        "apps/web/src/editor/typeset-pagination.js",
+        "apps/web/src/typesetting/paragraph-layout.js",
+        "apps/web/src/typesetting/optimum-paragraph.mjs",
+        "apps/web/src/editor/math-node.js"
+      ],
+      "note": "Observed main-branch rendering entry points, not a claim of a native XeTeX binary or WASM engine."
+    },
+    "luaJs": {
+      "policy": "retain",
+      "status": "unmerged_reference_pending",
+      "sourceReference": null,
+      "note": "User reports a separate unmerged implementation. Do not replace it with rtex or infer its capabilities."
+    },
+    "rtex": {
+      "status": "experimental_native_editing_surface",
+      "repository": "https://github.com/HenryXiaoYang/realtime-tex",
+      "version": "v0.0.8",
+      "commit": "6e54e11755ed8b41aeb1739517213c6c8182df47",
+      "license": "MIT",
+      "nativeEditing": {
+        "status": "vertical_slice",
+        "slice": "display formula caret, keyboard, drag selection, IME-capable input, ProseMirror transactions and history; plain-document prose grapheme projection through the same surface",
+        "evidence": {
+          "nativeWorkflowRun": 45527387822,
+          "browserRegression": "tests/native-tex-preview-browser.cjs",
+          "unitTests": ["tests/native-surface.test.mjs", "tests/native-math-source.test.mjs"],
+          "textOwnershipRun": 45522091356,
+          "realProseEditRun": 45527387822,
+          "scope": "Mock-transport browser interaction and real host/event-driven session on both target platforms; real text-glyph ownership outside math and a real-geometry prose click, caret and exact source patch passed on Windows and macOS; physical-device IME and latency pending"
+        },
+        "entryPoints": [
+          "apps/web/src/editor/native-surface/math-surface.mjs",
+          "apps/web/src/editor/native-surface/text-surface.mjs",
+          "apps/web/src/editor/native-text/projection.mjs",
+          "apps/web/src/editor/native-math/resolve.mjs",
+          "apps/web/src/ui/native-tex-preview.mjs",
+          "apps/desktop/src-tauri/src/tex_session.rs"
+        ],
+        "ipc": "Rust reader emits lineae-native-tex events; polling remains fallback only",
+        "notYet": [
+          "project prose pages",
+          "cross-run selection across inline math",
+          "native structure commands and multiline editing",
+          "semantic editing on PDF fallback",
+          "physical-device IME and end-to-end latency",
+          "editing with the old JS engine disabled"
+        ]
+      },
+      "hostEvidence": {
+        "runId": 45384269123,
+        "commit": "c427a9380071f93493ff8cfaedccfe273bb16ff6",
+        "platforms": ["x86_64-pc-windows-msvc", "aarch64-apple-darwin"],
+        "scope": "Real Rust session, captured fonts, raw-buffer update, clean converged PDF export and close cleanup; UI tests also retain existing math editing and exact one-letter source history"
+      },
+      "geometryEvidence": {
+        "runId": 45377663490,
+        "commit": "8080d0f0e93c21f2d55bd0679077335f8ed7255c",
+        "platforms": ["x86_64-pc-windows-msvc", "aarch64-apple-darwin"],
+        "cases": ["lf", "unicode-crlf"],
+        "texlive": 2025,
+        "fontSha256": "6075562b771f8b82f0c179e363389684f2dd09de30038269e2628e504bd7be0f",
+        "scope": "Observed empty den owner, revision-matched warm edit and independent clean reference PDF; not editor parity or export identity"
+      }
+    },
+    "rtexPainter": {
+      "status": "vendored_experimental_canvas_adapter",
+      "entryPoint": "apps/web/src/typesetting/rtex/pages.mjs",
+      "repository": "https://github.com/HenryXiaoYang/realtime-tex-vsc-plugin",
+      "version": "v0.0.6",
+      "commit": "fcf6bea3f2c62f89890a5473539119b6185fb4dd",
+      "license": "MIT"
+    },
+    "texpile": {
+      "status": "reference_only",
+      "repository": "https://github.com/texpile/texpile",
+      "commit": "1949c77b68fd7254f26c9e975f0c0b48575362d7",
+      "license": "AGPL-3.0-only",
+      "note": "Review individual file licensing before copying; no code or fonts imported."
+    }
+  },
+  "fixture": {
+    "before": "tests/native-math/fixtures/empty-denominator.tex",
+    "after": "tests/native-math/fixtures/filled-denominator.tex",
+    "formulaBefore": "\\frac{a}{}",
+    "formulaAfter": "\\frac{a}{b}",
+    "patch": {"from16": 9, "to16": 9, "insert": "b"},
+    "rights": "redistributable",
+    "provenance": "Lineae-authored synthetic test; no external corpus payload"
+  }
+}

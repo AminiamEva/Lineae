@@ -67,6 +67,8 @@ jobs:
         run: node --test "tests/bib/**/*.test.mjs"
       - name: Install Chromium
         run: npx playwright install --only-shell chromium
+      - name: Requested document regressions
+        run: node tests/document-request-browser.cjs
       - name: Appendix numbering and source editing
         run: node tests/appendix-browser.cjs
       - name: Book style gallery integration
@@ -77,10 +79,16 @@ jobs:
         run: node tests/wrapfigure-layout-browser.cjs
       - name: Table row/column insert keeps scroll
         run: node tests/table-scroll-browser.cjs
+      - name: Table toolbar actions keep scroll
+        run: node tests/table-toolbar-scroll-browser.cjs
       - name: Table row insert leaves earlier pages intact
         run: node tests/table-reflow-browser.cjs
+      - name: Table pagination stays stable across selection
+        run: node tests/table-pagination-selection-browser.cjs
       - name: Image crop, sizing and wrap centering
         run: node tests/image-toolbar-browser.cjs
+      - name: Image grouping and subfigure tabs
+        run: node tests/image-grouping-browser.cjs
       - name: Title date metadata
         run: node tests/maketitle-date-browser.cjs
       - name: xeCJK paragraph reference
@@ -163,6 +171,24 @@ jobs:
           WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
           WINDOWS_TIMESTAMP_URL: ${{ secrets.WINDOWS_TIMESTAMP_URL }}
         run: npm --prefix apps/desktop run tauri build
+      - name: Packaged WebView2 and offline PDF smoke test
+        if: ${{ !inputs.checks_only }}
+        shell: pwsh
+        run: |
+          $out = Join-Path $env:RUNNER_TEMP 'lineae-smoke.stdout.log'
+          $err = Join-Path $env:RUNNER_TEMP 'lineae-smoke.stderr.log'
+          $app = Start-Process -FilePath 'apps/desktop/src-tauri/target/release/lineae.exe' `
+            -ArgumentList '--lineae-smoke-test' -PassThru -RedirectStandardOutput $out -RedirectStandardError $err
+          if (-not $app.WaitForExit(90000)) {
+            $app.Kill($true)
+            throw 'Packaged WebView2/PDF smoke test timed out'
+          }
+          $app.WaitForExit()
+          $text = [IO.File]::ReadAllText($out) + [IO.File]::ReadAllText($err)
+          Write-Output $text.Substring([Math]::Max(0,$text.Length-6000))
+          if ($app.ExitCode -ne 0 -or $text -notmatch 'Lineae smoke: ok') {
+            throw 'Packaged WebView2/PDF smoke test failed'
+          }
       - name: Verify Windows signatures
         env:
           UNSIGNED_RELEASE: ${{ steps.release_request.outputs.unsigned }}
@@ -204,14 +230,16 @@ jobs:
           New-Item -ItemType Directory -Force $out | Out-Null
           Get-ChildItem "$target/bundle/nsis/*.exe" | Copy-Item -Destination $out
           Copy-Item "$target/lineae.exe" "$out/Lineae-portable.exe"
+          Copy-Item "apps/desktop/src-tauri/resources/rtex" "$out/rtex" -Recurse
           @(
             "Lineae portable"
             ""
-            "Run Lineae-portable.exe directly. No installer is required."
+            "Extract the ZIP and run Lineae-portable.exe next to the rtex folder."
+            "LuaLaTeX document mode uses bundled rtex and a local LuaLaTeX installation."
             "Windows WebView2 Runtime must be available on the machine."
             "The offline installer already includes WebView2."
           ) | Set-Content "$out/PORTABLE.txt" -Encoding utf8
-          Compress-Archive -Path "$out/Lineae-portable.exe","$out/PORTABLE.txt" -DestinationPath "$out/Lineae-portable.zip"
+          Compress-Archive -Path "$out/Lineae-portable.exe","$out/PORTABLE.txt","$out/rtex" -DestinationPath "$out/Lineae-portable.zip"
           Remove-Item "$out/Lineae-portable.exe","$out/PORTABLE.txt"
           $sums = Get-ChildItem -LiteralPath $out -File | Sort-Object Name | ForEach-Object {
             (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant() + '  ' + $_.Name

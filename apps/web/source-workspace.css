@@ -81,6 +81,7 @@ body:has(.tex-workspace.is-expanded) {overflow:hidden}
   width:auto;height:auto;margin:0;border-radius:0;z-index:8;
   border-inline:0;box-shadow:none;
 }
+body.native-tex-open .tex-workspace {right:min(44vw,720px)}
 body:has(.tex-workspace:not([hidden])) {overflow:hidden}
 .tex-code .cm-editor {font-size:var(--tex-font-size,16px)}
 .tex-code .cm-scroller {font-size:var(--tex-font-size,16px);overscroll-behavior:contain}

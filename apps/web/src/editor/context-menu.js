@@ -2,7 +2,9 @@ import { DOMSerializer } from '@tiptap/pm/model';
 import { icon } from './icons.js';
 import { promptDialog, askText } from './dialog.js';
 import { toggleDisplayStyle } from './math-node.js';
-import { startImageCrop } from './image-node.js';
+import { startImageCrop, editTikzVisual } from './image-node.js';
+import { tikzLooksCircuit } from '../../latex/images.mjs';
+import { deleteTableKeepingScroll } from './table-utils.js';
 import { popIn } from '../ui/motion.mjs';
 import { localizeText, t } from '../ui/i18n.mjs';
 
@@ -52,6 +54,10 @@ async function copySelection(context, cut) {
 
 export function contextCommands(context) {
   const { editor, field, imagePosition = null } = context;
+  const imageNode = imagePosition !== null ? editor.state.doc.nodeAt(imagePosition) : null;
+  const tikzSource = imageNode?.attrs?.tikzSource ?? null;
+  const circuitTikz = Boolean(tikzSource) && (imageNode.attrs.tikzEditor === 'circuit' ||
+    (!imageNode.attrs.tikzEditor && tikzLooksCircuit(tikzSource)));
   const selectionEmpty = field ? field.selection.ranges.every(([from, to]) => from === to) : editor.state.selection.empty;
   return [
     ...[['addRowAfter','在下方插入矩阵行','Insert matrix row'], ['addColumnAfter','在右侧插入矩阵列','Insert matrix column'],
@@ -107,8 +113,16 @@ export function contextCommands(context) {
       toggleDisplayStyle(field);
     }},
     { id:'image-crop', labels:['裁剪图片','Crop image'], icon:'crop',
-      visible:!field && imagePosition !== null,
+      visible:!field && imagePosition !== null && !tikzSource,
       run:()=>{ startImageCrop(editor, imagePosition); },
+    },
+    { id:'edit-tikz', labels:['编辑 TikZ','Edit TikZ'], icon:'image',
+      visible:!field && Boolean(tikzSource) && !circuitTikz,
+      run:()=>{ editTikzVisual(editor, imagePosition); },
+    },
+    { id:'edit-circuitikz', labels:['编辑 CircuiTikZ','Edit CircuiTikZ'], icon:'image',
+      visible:!field && Boolean(tikzSource) && circuitTikz,
+      run:()=>{ editTikzVisual(editor, imagePosition); },
     },
     { id: 'undo', labels: ['撤销', 'Undo'], enabled: editor.can().undo(), run: () => editor.chain().focus().undo().run() },
     { id: 'redo', labels: ['重做', 'Redo'], enabled: editor.can().redo(), run: () => editor.chain().focus().redo().run() },
@@ -210,11 +224,11 @@ export function contextCommands(context) {
     { id: 'column-after', labels: ['在右侧插入列', 'Insert column right'], visible: !field && editor.isActive('table'),
       run: () => editor.chain().focus(undefined,{scrollIntoView:false}).addColumnAfter().run() },
     { id: 'delete-row', labels: ['删除行', 'Delete row'], visible: !field && editor.isActive('table'),
-      run: () => editor.chain().focus().deleteRow().run() },
+      run: () => editor.chain().focus(undefined,{scrollIntoView:false}).deleteRow().run() },
     { id: 'delete-column', labels: ['删除列', 'Delete column'], visible: !field && editor.isActive('table'),
-      run: () => editor.chain().focus().deleteColumn().run() },
+      run: () => editor.chain().focus(undefined,{scrollIntoView:false}).deleteColumn().run() },
     { id: 'delete-table', labels: ['删除表格', 'Delete table'], visible: !field && editor.isActive('table'),
-      run: () => editor.chain().focus().deleteTable().run() },
+      run: () => deleteTableKeepingScroll(editor) },
     { id: 'delete-formula', labels: ['删除公式', 'Delete formula'], visible: Boolean(field), run: () => {
       const position = field.closest('[data-math-view]')?.getMathPosition();
       if (typeof position !== 'number') return;

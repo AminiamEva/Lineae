@@ -29,7 +29,7 @@ function collectMatches(doc, query, options = {}) {
   return matches;
 }
 
-export function installDocumentFind(editor) {
+export function installDocumentFind(editor,{reveal,focusDocument}={}) {
   let query = '';
   let activeFrom = -1;
   let resultStatus = '';
@@ -136,6 +136,7 @@ export function installDocumentFind(editor) {
     activeFrom = matches[current].from;
     resultStatus = '';
     editor.chain().setTextSelection(matches[current]).scrollIntoView().run();
+    reveal?.(matches[current]);
     refresh();
     status.textContent = `${current + 1} / ${matches.length}`;
   }
@@ -190,7 +191,7 @@ export function installDocumentFind(editor) {
     query = '';
     activeFrom = -1;
     refresh();
-    editor.view.focus();
+    if(!focusDocument?.())editor.view.focus();
   }
   panel.addEventListener('submit', event => {
     event.preventDefault();

@@ -3,6 +3,7 @@
 // half-selected objects never show it.
 import { t } from './i18n.mjs';
 import { mathFontStyles } from '../editor/math-formatting.js';
+import { LATEX_COLOR_NAMES, LATEX_COLOR_SWATCHES } from './color-palette.js';
 
 // ---------------- pure latex transforms (unit-tested) ----------------
 const FONT_WRAPPERS = new Set(Object.keys(mathFontStyles));
@@ -25,8 +26,24 @@ export function wrapMath(latex, wrapper, arg) {
   if (latex.startsWith(open)) return latex; // already wrapped
   return open + latex + '}';
 }
+function stripTextcolor(latex) {
+  const match = /^\\textcolor\s*(?:\[[^\]]*\])?\s*\{[^{}]*\}\s*/.exec(latex);
+  if (!match) return latex;
+  const start = match[0].length;
+  if (latex[start] !== '{') return latex;
+  let depth = 0;
+  for (let i = start; i < latex.length; i++) {
+    if (latex[i] === '{') depth++;
+    else if (latex[i] === '}' && --depth === 0) {
+      return latex.slice(i + 1).trim() ? latex : latex.slice(start + 1, i);
+    }
+  }
+  return latex;
+}
 export function setMathColor(latex, color) {
-  const stripped = stripOuter(latex, 'textcolor', 1);
+  const stripped = stripTextcolor(latex);
+  if (!color) return stripped;
+  if (/^#[0-9a-f]{6}$/i.test(color)) return `\\textcolor[HTML]{${color.slice(1).toUpperCase()}}{${stripped}}`;
   return `\\textcolor{${color}}{${stripped}}`;
 }
 export function setMathSize(latex, size) {
@@ -184,10 +201,7 @@ export function classifyContent(latex) {
 }
 
 // ---------------- UI ----------------
-export const LATEX_COLORS = [
-  'black', 'blue', 'brown', 'cyan', 'darkgray', 'gray', 'green', 'lightgray', 'lime', 'magenta',
-  'olive', 'orange', 'pink', 'purple', 'red', 'teal', 'violet', 'white', 'yellow', 'lightblue',
-];
+export const LATEX_COLORS = LATEX_COLOR_NAMES;
 export const MATH_FONTS_ALPHA = [
   ['mathbf', '𝐀'], ['mathrm', 'A'], ['mathit', '𝐴'], ['mathsf', '𝖠'],
   ['mathtt', '𝙰'], ['mathcal', '𝒜'], ['mathscr', '𝒜'], ['mathbb', '𝔸'], ['mathfrak', '𝔄'],
@@ -339,6 +353,11 @@ export function installMathFloatToolbar({ editor }) {
     const before = field.value;
     field.applyStyle(style);
     if (field.value === before) return false;
+    const hex = /^#([0-9a-f]{6})$/i.exec(style.color ?? '');
+    if (hex) {
+      const next = field.value.split(`\\textcolor{${style.color}}`).join(`\\textcolor[HTML]{${hex[1].toUpperCase()}}`);
+      if (next !== field.value) field.value = next;
+    }
     holdToolbarUntil = performance.now() + 1000;
     field.dispatchEvent(new Event('input', { bubbles: true }));
     field.focus();
@@ -359,10 +378,10 @@ export function installMathFloatToolbar({ editor }) {
     // color grid (Word-like swatches, LaTeX official base colors)
     const grid = document.createElement('div');
     grid.className = 'mft-colors';
-    for (const c of LATEX_COLORS) {
+    for (const { name: c, hex } of LATEX_COLOR_SWATCHES) {
       const s = document.createElement('button');
       s.type = 'button'; s.className = 'mft-swatch'; s.dataset.color = c;
-      s.style.background = c === 'white' ? '#fff' : c;
+      s.style.background = hex;
       s.title = c; s.setAttribute('aria-label', '\\textcolor{' + c + '}');
       s.addEventListener('mousedown', e => e.preventDefault());
       s.addEventListener('click', () => current?.partial
@@ -370,6 +389,19 @@ export function installMathFloatToolbar({ editor }) {
         : applyLatex(l => setMathColor(l, c)));
       grid.append(s);
     }
+    const custom = document.createElement('button');
+    custom.type = 'button'; custom.className = 'mft-color-custom';
+    custom.title = t('调色盘…', 'Custom…'); custom.setAttribute('aria-label', custom.title);
+    const customInput = document.createElement('input');
+    customInput.type = 'color'; customInput.hidden = true;
+    custom.addEventListener('mousedown', e => e.preventDefault());
+    custom.addEventListener('click', () => customInput.click());
+    customInput.addEventListener('change', () => {
+      const color = customInput.value;
+      if (current?.partial) applySelectionStyle({ color });
+      else applyLatex(l => setMathColor(l, color));
+    });
+    grid.append(custom, customInput);
     bar.append(grid);
     bar.append(mk('mft-btn', t('框', 'Box'), () => applyLatex(l => wrapMath(l, 'boxed')), t('加包围框 \\boxed', 'Add \\boxed frame')));
     bar.append(mk('mft-btn mft-underline', t('下划线', 'U'), () => applyLatex(l => toggleWrapMath(l, 'underline')), t('下划线 \\underline（再次点击取消）', 'Underline \\underline (click again to remove)')));
@@ -451,6 +483,29 @@ export function installMathFloatToolbar({ editor }) {
     current = null;
   }
 
+  let visibilityTimer = 0;
+  const selectedDom = () => {
+    if (!current) return null;
+    if (current.partial) return current.field;
+    return current.dom ?? editor.view.nodeDOM(current.pos);
+  };
+  // The toolbar only appears while the pointer is over the selected content (or
+  // the toolbar itself); a short grace period lets the pointer reach it.
+  function syncVisibility() {
+    clearTimeout(visibilityTimer);
+    const target = selectedDom();
+    if (!current || !target?.isConnected) { bar.hidden = true; return; }
+    if (target.matches(':hover') || bar.matches(':hover')) {
+      const rect = target.getBoundingClientRect();
+      if (rect) position(bar, rect);
+      return;
+    }
+    visibilityTimer = setTimeout(() => {
+      const still = selectedDom();
+      if (!bar.matches(':hover') && !still?.matches(':hover')) bar.hidden = true;
+    }, 150);
+  }
+
   function showPartial(detail) {
     const node = editor.state.doc.nodeAt(detail.position);
     if (!node || !['math', 'mathBlock'].includes(node.type.name)) return hide();
@@ -467,9 +522,7 @@ export function installMathFloatToolbar({ editor }) {
     buildBarOnce();
     fillFonts(selected);
     bar.querySelector('.mft-accents').hidden = true;
-    const rect = detail.field.getBoundingClientRect();
-    if (!rect) return hide();
-    position(bar, rect);
+    syncVisibility();
   }
 
   function update() {
@@ -482,14 +535,13 @@ export function installMathFloatToolbar({ editor }) {
     }
     const sel = selState();
     if (!sel) return hide();
-    current = { ...sel, partial: false };
     const dom = editor.view.nodeDOM(sel.pos);
-    const rect = dom?.getBoundingClientRect();
-    if (!rect) return hide();
+    if (!dom) return hide();
+    current = { ...sel, partial: false, dom };
     buildBarOnce();
     fillFonts(sel.node.attrs.latex ?? '');
     bar.querySelector('.mft-accents').hidden = true;
-    position(bar, rect);
+    syncVisibility();
   }
   let built = false;
   function buildBarOnce() { if (!built) { buildBar(); built = true; } }
@@ -541,6 +593,10 @@ export function installMathFloatToolbar({ editor }) {
   document.addEventListener('pointerdown', e => {
     if (!bar.contains(e.target) && !menu.contains(e.target)) hide(true);
   });
+  const onPointerMove = () => { if (current) syncVisibility(); };
+  document.addEventListener('pointerover', onPointerMove, true);
+  document.addEventListener('pointerout', onPointerMove, true);
+  bar.addEventListener('pointerenter', () => clearTimeout(visibilityTimer));
   document.addEventListener('keydown', e => { if (e.key === 'Escape') hide(true); });
   editor.on('selectionUpdate', update);
   editor.on('blur', () => { setTimeout(() => { if (!bar.matches(':hover') && performance.now() >= holdToolbarUntil) bar.hidden = true; }, 150); });
