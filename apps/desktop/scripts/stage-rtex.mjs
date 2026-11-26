@@ -26,7 +26,9 @@ if(!bundled(destination)||!existsSync(marker)||readFileSync(marker,'utf8')!==sha
     const url='https://github.com/HenryXiaoYang/realtime-tex/releases/download/v'+version+'/'+archiveName;
     execFileSync(process.platform==='win32'?'curl.exe':'curl',['-fsSL','--retry','3','--max-time','120',url,'-o',archive],{stdio:'inherit'});
     if(createHash('sha256').update(readFileSync(archive)).digest('hex')!==sha256)throw new Error('rtex archive checksum mismatch');
-    execFileSync('tar',['-xf',archive,'-C',temporary],{stdio:'inherit'});
+    // Windows runners may put Git's GNU tar first, which cannot extract ZIPs.
+    const extractor=process.platform==='win32'?join(process.env.SystemRoot,'System32','tar.exe'):'tar';
+    execFileSync(extractor,['-xf',archiveName],{cwd:temporary,stdio:'inherit'});
     const unpacked=join(temporary,'rtex-'+version+'-'+target);
     if(!bundled(unpacked))throw new Error('rtex archive is missing its executable or TeX assets');
     rmSync(destination,{recursive:true,force:true});
