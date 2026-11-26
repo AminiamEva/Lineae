@@ -11,7 +11,99 @@
 import { variantFor } from './symbols-meta.js';
 
 const SVGNS = 'http://www.w3.org/2000/svg';
+const PX_PER_CM = 37.7952755906;
+// Match XeLaTeX's defaults (no explicit font): Latin Modern Roman for text and
+// Latin Modern Math for math, with the bundled FandolSong for Chinese.
+const LATIN_TEXT_FONT = '"Latin Modern Roman","FandolSong","Songti SC",SimSun,serif';
+const LATIN_MATH_FONT = '"Latin Modern Math","FandolSong","Songti SC",SimSun,"Cambria Math",math,serif';
 let nextId = 1;
+
+// Label helpers shared by path and node components, mirroring the label model
+// of Circuit2TikZ/CircuiTikZ-Designer: a label is math content placed on the
+// chosen side at an adjustable distance, optionally tinted.
+export function labelColorModel(color) {
+  if (!color) return null;
+  if (/^#[0-9a-f]{6}$/i.test(color)) return `[HTML]{${color.slice(1)}}`;
+  return `{${color}}`;
+}
+
+export function labelContent(value, color) {
+  const math = `$${value}$`;
+  return color ? `\\textcolor${labelColorModel(color)}{${math}}` : math;
+}
+
+export function roundCm(value) {
+  return String(Number(Number(value).toFixed(3)));
+}
+
+export function cmToPx(value) {
+  return value * PX_PER_CM;
+}
+
+// Options owned by the component model are emitted separately; anything else
+// (e.g. /tikz/circuitikz/bipoles/length=1.12cm) must survive a round trip.
+const SERIALIZED_OPTION = /^(?:scale|rotate|mirror|invert|xscale|yscale|xshift|yshift|fill|draw|text|text width|inner sep|line width|fill opacity|minimum width|minimum height|label|label distance|align|font|l|a|v|i)\b/;
+export function extraOptions(component) {
+  const variantOptions = new Set(component.variant?.().options || []);
+  return [...new Set(component.options || [])]
+    .filter(option => !variantOptions.has(option) && !SERIALIZED_OPTION.test(option));
+}
+
+// Label placement directions, mirroring CircuiTikZ-Designer's
+// basicDirections (north/south/east/west + the four diagonals).
+const LABEL_DIRECTIONS = {
+  above: [0, -1], below: [0, 1], left: [-1, 0], right: [1, 0],
+  'above left': [-1, -1], 'above right': [1, -1],
+  'below left': [-1, 1], 'below right': [1, 1],
+  center: [0, 0],
+};
+const LABEL_ANGLES = {
+  above: 90, 'above right': 45, right: 0, 'below right': 315,
+  below: 270, 'below left': 225, left: 180, 'above left': 135,
+};
+
+export function labelDirection(position) {
+  return LABEL_DIRECTIONS[position] || LABEL_DIRECTIONS.above;
+}
+
+// Render a label as math. The circuit editor canvas is SVG, so the MathML is
+// placed in a foreignObject and scaled with the rest of the drawing. When
+// MathLive is unavailable (Node tests), fall back to a plain text node.
+function mathLabel(latex, { x, y, side = 'above', color = '#222' }) {
+  const text = String(latex ?? '');
+  const [dx, dy] = labelDirection(side);
+  const mathml = typeof window !== 'undefined' && window.MathLive?.convertLatexToMathMl
+    ? window.MathLive.convertLatexToMathMl(text)
+    : null;
+  if (mathml) {
+    const width = 320, height = 44;
+    const boxX = dx < 0 ? x - width : dx > 0 ? x : x - width / 2;
+    const boxY = dy < 0 ? y - height : dy > 0 ? y : y - height / 2;
+    const justify = dx < 0 ? 'flex-end' : dx > 0 ? 'flex-start' : 'center';
+    const align = dy < 0 ? 'flex-end' : dy > 0 ? 'flex-start' : 'center';
+    const object = svg('foreignObject', { x: boxX, y: boxY, width, height, overflow: 'visible' });
+    const div = document.createElement('div');
+    div.setAttribute('xmlns', 'http://www.w3.org/1999/xhtml');
+    div.style.cssText = `display:flex;justify-content:${justify};align-items:${align};width:${width}px;height:${height}px;font-family:${LATIN_TEXT_FONT};font-size:11px;line-height:1.15;color:${color};overflow:visible;pointer-events:none;`;
+    div.innerHTML = `<math xmlns="http://www.w3.org/1998/Math/MathML">${mathml}</math>`;
+    const math = div.firstElementChild;
+    if (math) {
+      math.style.fontFamily = LATIN_MATH_FONT;
+      // \text{...} should use the text font (Latin Modern Roman / FandolSong).
+      for (const mtext of math.querySelectorAll('mtext')) mtext.style.fontFamily = LATIN_TEXT_FONT;
+    }
+    object.append(div);
+    return object;
+  }
+  const element = svg('text', {
+    x, y,
+    'text-anchor': dx < 0 ? 'end' : dx > 0 ? 'start' : 'middle',
+    'dominant-baseline': dy > 0 ? 'hanging' : dy < 0 ? 'auto' : 'middle',
+    'font-size': 11, 'font-family': LATIN_TEXT_FONT, fill: color,
+  });
+  element.textContent = text;
+  return element;
+}
 
 function svg(name, attrs = {}) {
   const element = document.createElementNS(SVGNS, name);
@@ -75,6 +167,9 @@ export class NodeSymbol extends Component {
     this.mirror = false;
     this.label = '';
     this.value = '';
+    this.labelPosition = 'above';
+    this.labelDistance = null;
+    this.labelColor = null;
   }
   variant() { return variantOf(this.def, this.options); }
   localToWorld(point) {
@@ -125,22 +220,34 @@ export class NodeSymbol extends Component {
     g.append(use);
     if (this.selected) g.setAttribute('opacity', '0.88');
     if (this.label || this.value) {
-      const text = svg('text', {
-        x: 0,
-        y: variant.viewBox[3] - variant.mid[1] + 13,
-        'text-anchor': 'middle',
-        'font-size': 11,
-        'font-family': 'serif',
-        fill: this.selected ? '#2f6fed' : '#222',
-      });
-      text.textContent = this.label || this.value;
-      g.append(text);
+      const [vx, vy, vw, vh] = variant.viewBox;
+      const left = vx - variant.mid[0], right = vx + vw - variant.mid[0];
+      const top = vy - variant.mid[1], bottom = vy + vh - variant.mid[1];
+      const gap = 4 + cmToPx(this.labelDistance || 0);
+      const position = this.labelPosition || 'above';
+      const [dx, dy] = labelDirection(position);
+      const x = (dx < 0 ? left : dx > 0 ? right : 0) + dx * gap;
+      const y = (dy < 0 ? top : dy > 0 ? bottom : 0) + dy * gap;
+      g.append(mathLabel(this.label || this.value, {
+        x, y, side: position,
+        color: this.labelColor || (this.selected ? '#2f6fed' : '#222'),
+      }));
     }
     return g;
   }
   toTikZ(X, Y) {
-    const words = optionWords([...this.def.tikz ? [this.def.tikz] : [], ...this.variant().options]);
-    if (this.label) words.push(`label={$${this.label}$}`);
+    const words = optionWords([...this.def.tikz ? [this.def.tikz] : [], ...this.variant().options, ...extraOptions(this)]);
+    if (this.label) {
+      const angle = LABEL_ANGLES[this.labelPosition || 'above'] ?? 90;
+      const custom = angle !== 90 || this.labelDistance != null || this.labelColor;
+      if (!custom) {
+        words.push(`label={$${this.label}$}`);
+      } else {
+        const options = [];
+        if (this.labelDistance != null) options.push('label distance=' + roundCm(this.labelDistance) + 'cm');
+        words.push(`label={${options.length ? '[' + options.join(', ') + ']' : ''}${angle}:${labelContent(this.label, this.labelColor)}}`);
+      }
+    }
     if (this.rotate) words.push('rotate=' + this.rotate);
     if (this.mirror) words.push('xscale=' + (-this.scaleValue));
     if (this.flipY) words.push('yscale=' + (-this.scaleValue));
@@ -167,6 +274,9 @@ export class PathComponent extends Component {
     this.value = '';
     this.voltage = '';
     this.current = '';
+    this.labelSide = false;
+    this.labelDistance = null;
+    this.labelColor = null;
     this.mirror = false;
     this.invert = false;
     const variant = this.variant();
@@ -255,6 +365,13 @@ export class PathComponent extends Component {
     const variant = this.variant();
     return this.localToWorld({ x: pin.x, y: pin.y });
   }
+  labelPoint() {
+    const variant = this.variant();
+    const gap = 6 + cmToPx(this.labelDistance || 0);
+    const top = variant.viewBox[1] - variant.mid[1];
+    const bottom = variant.viewBox[1] + variant.viewBox[3] - variant.mid[1];
+    return this.localToWorld({ x: 0, y: this.labelSide ? bottom + gap : top - gap });
+  }
   toSvg() {
     const variant = this.variant();
     const g = svg('g', { 'data-uid': this.uid });
@@ -275,13 +392,11 @@ export class PathComponent extends Component {
     const { start, end } = variantStartEnd(variant);
     const stroke = this.selected ? '#2f6fed' : '#222';
     if (this.label || this.value) {
-      const text = svg('text', {
-        x: mid.x, y: mid.y - 9,
-        'text-anchor': 'middle', 'font-size': 11, 'font-family': 'serif',
-        fill: this.selected ? '#2f6fed' : '#222',
-      });
-      text.textContent = this.label || this.value;
-      g.append(text);
+      const point = this.labelPoint();
+      g.append(mathLabel(this.label || this.value, {
+        x: point.x, y: point.y, side: this.labelSide ? 'below' : 'above',
+        color: this.labelColor || (this.selected ? '#2f6fed' : '#222'),
+      }));
     }
     if (start && end) {
       const a = this.symbolPoint(start), b = this.symbolPoint(end);
@@ -295,8 +410,14 @@ export class PathComponent extends Component {
     return g;
   }
   optionsText() {
-    const words = [...this.variant().options];
-    if (this.label) words.push(`l=$${this.label}$`);
+    const words = [...this.variant().options, ...extraOptions(this)];
+    if (this.label) {
+      const inner = labelContent(this.label, this.labelColor);
+      if (this.labelSide) words.push(`l_={${inner}}`);
+      else if (this.labelDistance != null || this.labelColor) words.push(`l={${inner}}`);
+      else words.push(`l=${inner}`);
+      if (this.labelDistance != null) words.push(`label distance=${roundCm(this.labelDistance)}cm`);
+    }
     if (this.value) words.push(`v=$${this.value}$`);
     if (this.mirror) words.push('mirror');
     if (this.invert) words.push('invert');
@@ -322,6 +443,9 @@ export class OpenComponent extends Component {
     this.gap = def.gap || 30;
     this.label = '';
     this.value = '';
+    this.labelSide = false;
+    this.labelDistance = null;
+    this.labelColor = null;
     this.mirror = false;
     this.start = { x, y };
     this.end = { x: x + this.gap, y };
@@ -366,11 +490,26 @@ export class OpenComponent extends Component {
     for (const x of [this.start.x, this.end.x]) {
       g.append(svg('circle', { cx: x, cy: this.start.y, r: 4, fill: 'none', stroke, 'stroke-width': 1 }));
     }
+    if (this.label || this.value) {
+      const gap = 10 + cmToPx(this.labelDistance || 0);
+      g.append(mathLabel(this.label || this.value, {
+        x: (this.start.x + this.end.x) / 2,
+        y: this.start.y + (this.labelSide ? gap : -gap),
+        side: this.labelSide ? 'below' : 'above',
+        color: this.labelColor || (this.selected ? '#2f6fed' : '#222'),
+      }));
+    }
     return g;
   }
   toTikZ(X, Y) {
     const options = [];
-    if (this.label) options.push(`l=$${this.label}$`);
+    if (this.label) {
+      const inner = labelContent(this.label, this.labelColor);
+      if (this.labelSide) options.push(`l_={${inner}}`);
+      else if (this.labelDistance != null || this.labelColor) options.push(`l={${inner}}`);
+      else options.push(`l=${inner}`);
+      if (this.labelDistance != null) options.push(`label distance=${roundCm(this.labelDistance)}cm`);
+    }
     if (this.value) options.push(`v=$${this.value}$`);
     return `\\draw (${X(this.start.x)},${Y(this.start.y)}) to[${this.def.tikz || 'open'}${options.length ? ', ' + options.join(', ') : ''}] (${X(this.end.x)},${Y(this.end.y)});`;
   }
@@ -440,7 +579,7 @@ export class RectComponent extends Component {
       const baseline = this.justify === 'top' ? 'hanging' : this.justify === 'bottom' ? 'text-after-edge' : 'middle';
       const x = this.align === 'left' ? -this.w / 2 + this.innerSep : this.align === 'right' ? this.w / 2 - this.innerSep : 0;
       const y = this.justify === 'top' ? -this.h / 2 + this.innerSep : this.justify === 'bottom' ? this.h / 2 - this.innerSep : 0;
-      g.append(svg('text', { x, y, 'text-anchor': anchor, 'dominant-baseline': baseline, 'font-size': this.fontSize, 'font-family': 'serif', fill: this.textColor || '#222' }));
+      g.append(svg('text', { x, y, 'text-anchor': anchor, 'dominant-baseline': baseline, 'font-size': this.fontSize, 'font-family': LATIN_TEXT_FONT, fill: this.textColor || '#222' }));
       g.lastChild.textContent = this.label || 'Text';
       if (this.showPlaceholder && !this.label) g.lastChild.setAttribute('fill', '#9aa4b5');
     }
@@ -467,7 +606,7 @@ export class RectComponent extends Component {
 export class TextItem extends Component {
   constructor(text, size, x, y) { super('text', x, y); this.text = text; this.size = size || 12; this.align = 'center'; }
   toSvg() {
-    const t = svg('text', { x: this.x, y: this.y, 'text-anchor': this.align === 'left' ? 'start' : this.align === 'right' ? 'end' : 'middle', 'font-size': `${this.size}pt`, 'font-family': '"Latin Modern Roman", serif', fill: this.selected ? '#2f6fed' : '#111', 'data-uid': this.uid });
+    const t = svg('text', { x: this.x, y: this.y, 'text-anchor': this.align === 'left' ? 'start' : this.align === 'right' ? 'end' : 'middle', 'font-size': `${this.size}pt`, 'font-family': LATIN_TEXT_FONT, fill: this.selected ? '#2f6fed' : '#111', 'data-uid': this.uid });
     t.textContent = this.text;
     return t;
   }

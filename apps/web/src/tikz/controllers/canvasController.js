@@ -64,8 +64,9 @@ export class CanvasController {
   fit() {
     const r = this.svg.getBoundingClientRect();
     this.svg.setAttribute('viewBox', `0 0 ${r.width} ${r.height}`);
-    // At 100% the visible canvas spans exactly one textwidth.
-    this.view = { x: 0, y: 20, k: 1 };
+    // Put the world origin at the centre of the viewport so a circuit opens
+    // around a predictable reference point instead of hugging the top-left.
+    this.view = { x: r.width / 2, y: r.height / 2, k: 1 };
     this.setZoomPercent(100);
     this.apply();
   }
