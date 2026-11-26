@@ -131,9 +131,18 @@ const server=createServer(async(req,res)=>{
         const blankSession=await desktopPage.evaluate(()=>nativeProbe.session);
         await desktopPage.evaluate(()=>{
           nativeProbe.restartNext=true;
+          nativeProbe.holdUpdate=true;
           nativeProbe.rejectObservation=true;
         });
         await desktopPage.keyboard.type('F');
+        await desktopPage.waitForFunction(()=>Boolean(nativeProbe.releaseUpdate));
+        await desktopPage.keyboard.type('ast');
+        await desktopPage.keyboard.press('Backspace');
+        assert.equal(await desktopPage.locator('.document-page .ProseMirror').textContent(),'Fas');
+        assert.equal(await preview.locator('.native-tex-pages').evaluate(el=>getComputedStyle(el).opacity),'1');
+        await desktopPage.keyboard.press('Backspace');
+        await desktopPage.keyboard.press('Backspace');
+        await desktopPage.evaluate(()=>nativeProbe.releaseUpdate());
         await desktopPage.waitForFunction(()=>nativeProbe.calls.some(call=>call.command==='native_tex_observe_formula'));
         assert.equal(await desktopPage.evaluate(()=>nativeProbe.session),blankSession+1);
         await desktopPage.keyboard.type('irst');

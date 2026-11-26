@@ -301,6 +301,9 @@ jobs:
             });
             if(output)process.stdout.write(output);
           '
+      - name: Type continuously in the Windows desktop Lua document
+        if: ${{ !inputs.browser_only && runner.os == 'Windows' }}
+        run: node tests/native-desktop-typing.cjs
       - name: Preserve actual protocol, source, logs and clean reference PDF
         if: ${{ always() && !inputs.browser_only }}
         uses: actions/upload-artifact@v4

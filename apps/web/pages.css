@@ -362,7 +362,7 @@ html:has(body.native-tex-primary-open) { overflow:hidden; }
 #native-tex-preview h2 { font-size:16px; margin:0 0 8px; }
 #native-tex-preview p { font-size:12px; white-space:pre-wrap; overflow-wrap:anywhere; }
 #native-tex-preview[data-state=error] [role=status] { color:light-dark(#a32c25,#ffb4ac); }
-#native-tex-preview[data-state=stale] .native-tex-pages { opacity:.65; }
+/* Keep the last typeset frame at full contrast during edits. */
 .native-tex-controls { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
 .native-tex-pages { overflow:auto; }
 .native-tex-page { background:white; margin:12px auto; position:relative; box-shadow:0 1px 8px #0003; }

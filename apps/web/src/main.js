@@ -4273,6 +4273,32 @@ nativeTexPreview=installNativeTexPreview({host:footer,before:modes,primary:deskt
     return true;
   },
   canStartText:canStartNativeText,
+  continuePendingProse:(expected,offset,action)=>{
+    if(projectExplorer?.active||!sourceView.hidden||expected!==importedSource||!Number.isInteger(offset))return null;
+    const {state}=editor,{$from,empty}=state.selection;
+    const paragraph=$from.parent;
+    if(!empty||$from.depth!==1||paragraph.type.name!=='paragraph'||
+      paragraph.content.content.some(node=>!node.isText||node.marks.length))return null;
+    const pos=$from.pos;
+    let from=pos,to=pos;
+    if(action.backward===true){
+      const previous=[...paragraph.textContent.slice(0,$from.parentOffset)].at(-1);
+      if(!previous)return null;
+      from-=previous.length;
+    }else if(action.backward===false){
+      const next=[...paragraph.textContent.slice($from.parentOffset)][0];
+      if(!next)return null;
+      to+=next.length;
+    }
+    const tr=action.insert?state.tr.insertText(action.insert,from,to):state.tr.delete(from,to);
+    const prepared=standaloneParagraphDraft(expected,projection,importedSnapshot,
+      state.doc.toJSON(),tr.doc.toJSON(),$from.index(0));
+    if(!prepared)return null;
+    const nextOffset=offset+prepared.draft.length-expected.length;
+    if(nextOffset<0||nextOffset>prepared.draft.length)return null;
+    editor.view.dispatch(tr.setMeta('standaloneParagraph',prepared));
+    return editor.state.doc===tr.doc?{source:prepared.draft,offset:nextOffset}:null;
+  },
   initialPageMetrics:()=>pageMetrics(pageSetup),
   commitHardBreak:(first,last,text)=>{
     if(first?.kind!=='text'||first.paragraph!==last?.paragraph)return null;
