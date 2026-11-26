@@ -13,7 +13,7 @@ import {insertTableSourceColumn,insertTableSourceRow,mergeTableSourceCells,merge
 import {editTblrColumn,editTblrRow,mergeTblrCells,mergeTblrRows,splitTblrCell} from '../latex/tblr.mjs';
 import {rasterDrawingRanges,tikzDrawingRanges} from '../latex/images.mjs';
 import {headingAt} from '../latex/headings.mjs';
-import {loadLegacyMath,nativeOnlyAcceptance,nativeWorkspaceRequested} from './editor/native-surface/acceptance-mode.mjs';
+import {desktopEngineToggle,loadLegacyMath,nativeOnlyAcceptance,nativeWorkspaceRequested} from './editor/native-surface/acceptance-mode.mjs';
 import {sameTable} from './editor/native-surface/document-session.mjs';
 import {AppendixStart,MatterStart,LayoutCommand} from './editor/appendix.js';
 import {Lipsum} from './editor/lipsum.js';
@@ -3996,7 +3996,7 @@ function newNativeMath(text,display,numbering){
   const node=editor.schema.nodes[display?'mathBlock':'math'].create({latex:text,display,delimiter});
   return {node,open,close,initial:empty?.from16??operator?.to16??text.length};
 }
-nativeTexPreview=installNativeTexPreview({host:footer,before:modes,primary:nativeWorkspaceRequested(),documentZoom:Number(zoom.value),
+nativeTexPreview=installNativeTexPreview({host:footer,before:modes,primary:desktopEngineToggle()||nativeWorkspaceRequested(),documentZoom:Number(zoom.value),
   isDocumentMode:()=>sourceView.hidden,
   splitHost:()=>!sourceView.hidden&&sourceView.split&&projectFileKind!=='bib'?sourceView.previewHost:null,
   getSnapshot:async()=>{
@@ -6063,3 +6063,4 @@ installContextMenu(editor, paper, language, message => {
   status.hidden = false;
   status.textContent = message;
 });
+if(desktopEngineToggle())nativeTexPreview.documentModeChanged?.();

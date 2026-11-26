@@ -91,6 +91,33 @@ const server=createServer(async(req,res)=>{
     await page.addInitScript(installMockNativeTex);
 
     if(process.env.LINEAE_NATIVE_ONLY==='1'){
+      const desktopPage=await browser.newPage({locale:'en-US'});
+      try{
+        await desktopPage.addInitScript(installMockNativeTex);
+        await desktopPage.addInitScript(()=>{window.__LINEAE_DESKTOP_ENGINE_TOGGLE__=true;});
+        await desktopPage.goto('http://127.0.0.1:'+server.address().port+'/');
+        const engine=desktopPage.locator('#native-tex-toggle');
+        const preview=desktopPage.locator('#native-tex-preview');
+        await preview.locator('[data-native-page="1"] canvas').waitFor();
+        assert.equal(await engine.textContent(),'LuaLaTeX');
+        assert.equal(await desktopPage.locator('body').evaluate(body=>body.classList.contains('native-tex-primary-open')),true);
+        const source=await desktopPage.evaluate(()=>nativeProbe.source);
+        await engine.click();
+        await preview.waitFor({state:'hidden'});
+        assert.equal(await engine.textContent(),'XeLaTeX');
+        await desktopPage.reload();
+        await desktopPage.waitForFunction(()=>document.querySelector('#native-tex-toggle')?.textContent==='XeLaTeX');
+        assert.equal(await preview.isVisible(),false);
+        await engine.click();
+        await preview.locator('[data-native-page="1"] canvas').waitFor();
+        assert.equal(await desktopPage.evaluate(()=>nativeProbe.source),source);
+        assert.equal(await desktopPage.evaluate(()=>localStorage.getItem('lineae.native-document-workspace')),'1');
+      }finally{
+        await desktopPage.close();
+      }
+    }
+
+    if(process.env.LINEAE_NATIVE_ONLY==='1'){
       await page.goto('http://127.0.0.1:'+server.address().port+'/?native-only-acceptance=1',{waitUntil:'networkidle'});
       const mixedSource='\\documentclass{article}\n\\begin{document}\nAlpha beta.\n\n\\[\n\\frac{a}{b}\n\\]\n\nOmega.\n\\end{document}\n';
       await page.locator('input#file').setInputFiles({name:'mixed.tex',mimeType:'text/plain',
@@ -1960,11 +1987,7 @@ const server=createServer(async(req,res)=>{
       await page.keyboard.press(mod+'+z');
       await projectDrafts(inlineInclude,'Child');
       await page.locator('#native-tex-close').click();
-      await page.locator('#settings-open').click();
-      await page.locator('[data-native-workspace-preference]').check();
-      await page.locator('#settings-apply').click();
-      assert.equal(await page.locator('#settings-panel').isVisible(),true);
-      await page.goto('http://127.0.0.1:'+server.address().port+'/',{waitUntil:'networkidle'});
+      await page.goto('http://127.0.0.1:'+server.address().port+'/?native-workspace=1',{waitUntil:'networkidle'});
       await page.getByRole('button',{name:'Native document',exact:true}).waitFor();
       assert.equal(await page.evaluate(()=>customElements.get('math-field')),undefined);
       assert.equal(await page.locator('.document-sheets').count(),0);

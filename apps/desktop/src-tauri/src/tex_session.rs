@@ -14,7 +14,7 @@ use std::io::{BufRead, BufReader, Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{ChildStdin, Command, Stdio};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::sync::{Arc, Condvar, Mutex, MutexGuard};
+use std::sync::{Arc, Condvar, Mutex, MutexGuard, OnceLock};
 use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tauri::{ipc::Response, AppHandle, Emitter, State};
@@ -128,9 +128,19 @@ fn installed_tex_bin() -> Option<PathBuf> {
     None
 }
 
+static BUNDLED_RTEX: OnceLock<PathBuf> = OnceLock::new();
+
+pub(crate) fn set_bundled_rtex(root: PathBuf) {
+    let _ = BUNDLED_RTEX.set(root);
+}
+
 fn installed_rtex() -> PathBuf {
     if let Some(configured) = std::env::var_os("LINEAE_RTEX_PATH") {
         return PathBuf::from(configured);
+    }
+    if let Some(root) = BUNDLED_RTEX.get() {
+        let path = root.join("bin").join(format!("rtex{}", std::env::consts::EXE_SUFFIX));
+        if path.is_file() { return path; }
     }
     #[cfg(target_os = "macos")]
     {
@@ -778,6 +788,11 @@ impl Session {
         let new_command = || {
             let mut command = Command::new(&executable);
             if let Some(bin) = &self.tex_bin { command.env("RTEX_TEXLIVE_BIN", bin); }
+            if std::env::var_os("RTEX_TEXDIR").is_none() {
+                if let Some(root) = BUNDLED_RTEX.get().filter(|root| executable.starts_with(root)) {
+                    command.env("RTEX_TEXDIR", root.join("share").join("rtex").join("tex"));
+                }
+            }
             command
         };
         let version = self.tool(new_command().arg("--version"))?;

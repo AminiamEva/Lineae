@@ -230,14 +230,16 @@ jobs:
           New-Item -ItemType Directory -Force $out | Out-Null
           Get-ChildItem "$target/bundle/nsis/*.exe" | Copy-Item -Destination $out
           Copy-Item "$target/lineae.exe" "$out/Lineae-portable.exe"
+          Copy-Item "apps/desktop/src-tauri/resources/rtex" "$out/rtex" -Recurse
           @(
             "Lineae portable"
             ""
-            "Run Lineae-portable.exe directly. No installer is required."
+            "Extract the ZIP and run Lineae-portable.exe next to the rtex folder."
+            "LuaLaTeX document mode uses bundled rtex and a local LuaLaTeX installation."
             "Windows WebView2 Runtime must be available on the machine."
             "The offline installer already includes WebView2."
           ) | Set-Content "$out/PORTABLE.txt" -Encoding utf8
-          Compress-Archive -Path "$out/Lineae-portable.exe","$out/PORTABLE.txt" -DestinationPath "$out/Lineae-portable.zip"
+          Compress-Archive -Path "$out/Lineae-portable.exe","$out/PORTABLE.txt","$out/rtex" -DestinationPath "$out/Lineae-portable.zip"
           Remove-Item "$out/Lineae-portable.exe","$out/PORTABLE.txt"
           $sums = Get-ChildItem -LiteralPath $out -File | Sort-Object Name | ForEach-Object {
             (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant() + '  ' + $_.Name

@@ -2,7 +2,6 @@ import {t} from './i18n.mjs';
 import {toYaml} from '../editor/config.mjs';
 import {MARGIN_PRESETS} from '../../latex/geometry.mjs';
 import {settingsProposal,layoutProposal} from './settings-values.mjs';
-import {nativeWorkspacePreference,saveNativeWorkspacePreference} from '../editor/native-surface/acceptance-mode.mjs';
 
 const LABELS = {
   interface:['界面','Appearance'], editing:['编辑','Editing'], keybindings:['快捷键','Keyboard shortcuts'],
@@ -71,7 +70,6 @@ export function installSettingsPanel({config,onApply,onImport,onExport,getDocume
   let layoutControls = null;
   let originalLayout = null;
   let yaml;
-  let nativeWorkspace;
   let yamlChanged = false;
 
   function inputFor(path, value) {
@@ -147,15 +145,6 @@ export function installSettingsPanel({config,onApply,onImport,onExport,getDocume
     fields.replaceChildren();
     error.textContent = '';
     configFields(config.value,fields);
-    nativeWorkspace=null;
-    const nativePreference=nativeWorkspacePreference();
-    if(nativePreference!==null){
-      nativeWorkspace=document.createElement('input');
-      nativeWorkspace.type='checkbox';
-      nativeWorkspace.checked=nativePreference;
-      nativeWorkspace.dataset.nativeWorkspacePreference='';
-      fields.append(labeledRow(t('重启后使用原生文档工作区（实验）','Use the native document workspace after restart (experimental)'),nativeWorkspace));
-    }
     originalLayout = getDocument?.() ?? null;
     layoutControls = null;
     if (originalLayout) documentFields(originalLayout);
@@ -175,7 +164,6 @@ export function installSettingsPanel({config,onApply,onImport,onExport,getDocume
       const layout = layoutProposal(originalLayout,layoutControls);
       const proposal = yamlChanged ? yaml.value : toYaml(settingsProposal(config.value,controls));
       config.importYaml(proposal);
-      if(nativeWorkspace)saveNativeWorkspacePreference(nativeWorkspace.checked);
       if (layout) applyDocument(layout);
       onApply();
       render();
