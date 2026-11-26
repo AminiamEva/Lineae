@@ -1158,7 +1158,7 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
   }
   function toggle(){
     if(engineToggle){
-      if(button.disabled)return;
+      if(inputComposition&&!inputComposition.ended||pendingEdit||queuedInput.length)return;
       primaryRequested=!primaryRequested;
       selectDesktopEngine(primaryRequested);
       if(!primaryRequested)void stop();

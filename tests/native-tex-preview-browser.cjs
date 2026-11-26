@@ -105,6 +105,9 @@ const server=createServer(async(req,res)=>{
         await engine.click();
         await preview.waitFor({state:'hidden'});
         assert.equal(await engine.textContent(),'XeLaTeX');
+        await desktopPage.reload();
+        await desktopPage.waitForFunction(()=>document.querySelector('#native-tex-toggle')?.textContent==='XeLaTeX');
+        assert.equal(await preview.isVisible(),false);
         await engine.click();
         await preview.locator('[data-native-page="1"] canvas').waitFor();
         assert.equal(await desktopPage.evaluate(()=>nativeProbe.source),source);
@@ -1984,11 +1987,7 @@ const server=createServer(async(req,res)=>{
       await page.keyboard.press(mod+'+z');
       await projectDrafts(inlineInclude,'Child');
       await page.locator('#native-tex-close').click();
-      await page.locator('#settings-open').click();
-      await page.locator('[data-native-workspace-preference]').check();
-      await page.locator('#settings-apply').click();
-      assert.equal(await page.locator('#settings-panel').isVisible(),true);
-      await page.goto('http://127.0.0.1:'+server.address().port+'/',{waitUntil:'networkidle'});
+      await page.goto('http://127.0.0.1:'+server.address().port+'/?native-workspace=1',{waitUntil:'networkidle'});
       await page.getByRole('button',{name:'Native document',exact:true}).waitFor();
       assert.equal(await page.evaluate(()=>customElements.get('math-field')),undefined);
       assert.equal(await page.locator('.document-sheets').count(),0);
