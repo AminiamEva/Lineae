@@ -24,19 +24,6 @@ export function installFloatingToolbar({header,ribbon,sourceView,getAutoHide}) {
   function measure() {
     cancelAnimationFrame(frame);
     frame = requestAnimationFrame(() => {
-      // Reserve the tallest ribbon panel so switching groups (or the table tab
-      // appearing) cannot change the toolbar height and shift the document.
-      let tallest = 0;
-      for (const panel of ribbon.querySelectorAll(':scope > .tools')) {
-        const hidden = panel.hidden;
-        if (!hidden) { tallest = Math.max(tallest,panel.getBoundingClientRect().height); continue; }
-        panel.hidden = false;
-        panel.style.visibility = 'hidden';
-        tallest = Math.max(tallest,panel.getBoundingClientRect().height);
-        panel.hidden = true;
-        panel.style.visibility = '';
-      }
-      holder.style.minHeight = tallest ? Math.ceil(tallest) + 'px' : '';
       const bottom = Math.ceil(holder.getBoundingClientRect().bottom) + 6;
       document.documentElement.style.setProperty('--tex-toolbar-bottom',bottom + 'px');
     });

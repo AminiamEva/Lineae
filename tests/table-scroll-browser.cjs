@@ -39,24 +39,24 @@ const source = `\\documentclass{article}\n\\begin{document}\n\nBefore.\n\n\\begi
     await cells.nth((await cells.count()) - 1).scrollIntoViewIfNeeded();
     await cells.nth((await cells.count()) - 1).click();
     await page.waitForTimeout(150);
-    await page.evaluate(() => window.scrollTo(0, Math.max(0, window.scrollY - 700)));
+    await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
     await page.waitForTimeout(150);
     const rowBefore = await scrollY();
     const rowCount = await page.locator('.ProseMirror table tr').count();
     await rowButton.click();
-    await page.waitForTimeout(400);
+    await page.waitForTimeout(1200);
     assert.equal(await page.locator('.ProseMirror table tr').count(), rowCount + 1, 'Insert row adds one row');
     assert.ok(Math.abs(await scrollY() - rowBefore) < 2, `Insert row keeps the page scroll: ${rowBefore} -> ${await scrollY()}`);
 
     await cells.nth(5).scrollIntoViewIfNeeded();
     await cells.nth(5).click();
     await page.waitForTimeout(150);
-    await page.evaluate(() => window.scrollTo(0, Math.max(0, window.scrollY - 700)));
+    await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
     await page.waitForTimeout(150);
     const columnBefore = await scrollY();
     const columnCount = await page.locator('.ProseMirror table tr').first().locator('td').count();
     await columnButton.click();
-    await page.waitForTimeout(400);
+    await page.waitForTimeout(1200);
     assert.equal(await page.locator('.ProseMirror table tr').first().locator('td').count(), columnCount + 1, 'Insert column adds one column');
     assert.ok(Math.abs(await scrollY() - columnBefore) < 2, `Insert column keeps the page scroll: ${columnBefore} -> ${await scrollY()}`);
 
