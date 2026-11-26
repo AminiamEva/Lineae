@@ -86,6 +86,7 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
     heading.hidden=true;
     notice.hidden=true;
     closeButton.hidden=true;
+    document.querySelector('header .tools').append(exportButton);
   }
   let primaryRequested=engineToggle&&nativeWorkspaceRequested();
   let mountedSplit=null;
@@ -224,6 +225,7 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
     return true;
   }
   function cancelDraftInput(){
+    delete input.dataset.initial;
     draftInput=null;
     paintSurfaceSelection(true);
     positionInput();
@@ -306,6 +308,7 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
         edit=commitInitialText?.(action.insert,draft.region);
     }
     if(!edit)return false;
+    delete input.dataset.initial;
     draftInput=null;
     return awaitSourcePosition(edit,action.started,draft.kind==='formula');
   }
@@ -541,7 +544,7 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
     const mod = event.metaKey || event.ctrlKey;
     if(draftInput&&(['Escape','Backspace','Delete','ArrowLeft','ArrowRight','ArrowUp','ArrowDown','Home','End','PageUp','PageDown'].includes(event.key)||
       (mod&&['z','y'].includes(event.key.toLowerCase())))){
-      cancelDraftInput();
+      if(!startingText()||event.key==='Escape')cancelDraftInput();
       event.preventDefault();
       return;
     }
@@ -754,7 +757,13 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
     labelSourceBlockEdit();
     sourceBlock.hidden=availableBlocks.length<2;
     sourceBlockEdit.hidden=availableBlocks.length===0;
-    startText.hidden=!primary||!acceptsInput()||!current()||Boolean(observation)||!canStartText?.();
+    startText.hidden=engineToggle||!primary||!acceptsInput()||!current()||Boolean(observation)||!canStartText?.();
+    if(engineToggle){
+      exportButton.hidden=!active;
+      controls.hidden=[...controls.children].every(control=>control.hidden);
+      status.hidden=!error;
+      targetStatus.hidden=true;
+    }
     editButton.setAttribute('aria-pressed',String(nativeEditing));
     const canRefreshTargets=nativeEditing||(!sentSnapshot?.files?.length&&sentSource.length<=32*1024);
     if(targetArmed&&!targetButton.disabled&&canRefreshTargets&&targetTimer===null&&
@@ -785,7 +794,7 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
     heading.textContent=t('LuaLaTeX 原生排版预览','Native LuaLaTeX preview');
     notice.textContent=t('此处显示 LuaLaTeX 输出。已核对位置的文字和公式可直接编辑。',
       'This view shows LuaLaTeX output. Text and formulas with verified positions can be edited here.');
-    exportButton.textContent=t('导出干净 PDF','Export clean PDF');
+    exportButton.textContent=engineToggle?t('导出 PDF','Export PDF'):t('导出干净 PDF','Export clean PDF');
     tikzSelect.setAttribute('aria-label',t('TikZ 图形','TikZ drawing'));
     tikzEdit.textContent=t('编辑 TikZ','Edit TikZ');
     sourceBlock.setAttribute('aria-label',t('LaTeX 源码块','LaTeX source block'));
@@ -1227,14 +1236,23 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
     });
   }
   button.addEventListener('click',toggle);
-  startText.addEventListener('click',()=>{
-    if(startText.hidden||!current())return;
+  function focusInitialText(x,y){
+    if(!nativeEditing||!acceptsInput()||!current()||pendingEdit||composing()||!canStartText?.())return;
     nativeDocument.reset();
     renderer.clearCaret();
     draftInput={kind:'initial'};
-    const rect=startText.getBoundingClientRect();
-    input.style.left=rect.left+'px';input.style.top=rect.top+'px';
+    input.style.left=x+'px';input.style.top=y+'px';
+    input.toggleAttribute('data-initial',engineToggle);
     input.focus({preventScroll:true});
+  }
+  pages.addEventListener('click',event=>{
+    if(engineToggle&&event.button===0&&event.target.closest?.('canvas'))
+      focusInitialText(event.clientX,event.clientY);
+  });
+  startText.addEventListener('click',()=>{
+    if(startText.hidden)return;
+    const rect=startText.getBoundingClientRect();
+    focusInitialText(rect.left,rect.top);
   });
   button.addEventListener('mousedown',event=>event.preventDefault());
   tikzEdit.addEventListener('click',()=>{
@@ -1298,7 +1316,10 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
   window.addEventListener('resize',()=>{if(nativeEditing)positionInput();});
   panel.addEventListener('scroll',()=>{if(nativeEditing)positionInput();},{passive:true});
   window.addEventListener('pagehide',()=>{void stop();});
-  input.addEventListener('blur',()=>queueMicrotask(()=>onEnvironmentChange?.()));
+  input.addEventListener('blur',()=>{
+    delete input.dataset.initial;
+    queueMicrotask(()=>onEnvironmentChange?.());
+  });
   document.addEventListener('compositionstart',event=>{
     if(event.target===input)return;
     if(event.target?.tagName==='MATH-FIELD')compositionField=event.target;

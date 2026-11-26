@@ -115,6 +115,15 @@ const server=createServer(async(req,res)=>{
         await preview.locator('[data-native-page="1"] canvas').waitFor();
         assert.equal(await desktopPage.evaluate(()=>nativeProbe.source),source);
         assert.equal(await desktopPage.evaluate(()=>localStorage.getItem('lineae.native-document-workspace')),'1');
+        assert.equal(await preview.locator('#native-tex-start-text').isVisible(),false);
+        assert.equal(await preview.locator(':scope > [role="status"]').first().isVisible(),false);
+        await desktopPage.locator('[data-group="files"]').click();
+        await desktopPage.locator('header .tools #native-tex-export').waitFor();
+        await preview.locator('[data-native-page="1"] canvas').click({position:{x:70,y:90}});
+        assert.equal(await desktopPage.locator('#native-tex-input').evaluate(input=>input===document.activeElement),true);
+        await desktopPage.keyboard.insertText('First paragraph.');
+        await desktopPage.waitForFunction(()=>nativeProbe.source.includes('First paragraph.'));
+        assert.equal(await desktopPage.evaluate(()=>nativeProbe.source.includes('\\thispagestyle{empty}\\null')),false);
       }finally{
         await desktopPage.close();
       }
