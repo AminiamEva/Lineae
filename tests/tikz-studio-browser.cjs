@@ -35,22 +35,30 @@ const knotDocument = `\\documentclass[tikz]{standalone}\n${knotLibraries}\n\\beg
 (async()=>{await new Promise(d=>server.listen(0,'127.0.0.1',d));const browser=await chromium.launch({headless:true});try{const page=await browser.newPage({viewport:{width:1280,height:900},locale:'en-US'});const errors=[];page.on('pageerror',e=>errors.push(e.message));await page.goto(`http://127.0.0.1:${server.address().port}`,{waitUntil:'networkidle'});await page.waitForTimeout(700);await page.locator('.ribbon-tabs [data-group=insert]').click();await page.getByRole('button',{name:'TikZ',exact:true}).click();
 const libraries=page.locator('.tikz-studio-libraries');const code=page.locator('.tikz-studio-code');const status=page.locator('.tikz-studio-status');
 await page.locator('.tikz-studio-window').waitFor({state:'visible'});await page.locator('.tikz-studio-preview svg').waitFor({state:'visible',timeout:120000});
+// Each successful render replaces the SVG, including a cached redraw.
+async function previousSvg(){return page.locator('.tikz-studio-preview svg').elementHandle();}
+async function waitForRedraw(previous){
+  await page.waitForFunction(old=>document.querySelector('.tikz-studio-preview svg')!==old,previous,{timeout:120000});
+}
 // graph drawing exercises the LuaTeX bundle and \usegdlibrary.
+let previous=await previousSvg();
 await libraries.fill(String.raw`\usetikzlibrary{graphs,graphdrawing}
 \usegdlibrary{layered}`);
 await code.fill(String.raw`\tikz \graph[layered layout]{a -> b -> c};`);
-await page.waitForTimeout(4000);
+await waitForRedraw(previous);
 assert.match(await status.innerText(), /^\s*$/, 'graph drawing renders without diagnostics');
 // a fragment with a multi-line \newcommand in the staging pane.
+previous=await previousSvg();
 await libraries.fill(knotLibraries);
 await code.fill(knotPicture);
-await page.waitForTimeout(20000);
+await waitForRedraw(previous);
 assert.match(await status.innerText(), /^\s*$/, 'fragment libraries and macro render');
 assert.equal(await page.locator('.tikz-studio-preview svg').count(),1);
 // a complete standalone document still passes through unchanged.
+previous=await previousSvg();
 await libraries.fill('');
 await code.fill(knotDocument);
-await page.waitForTimeout(20000);
+await waitForRedraw(previous);
 assert.match(await status.innerText(), /^\s*$/, 'standalone document renders');
 // the split divider is draggable.
 const topBefore=await libraries.evaluate(el=>el.closest('.tikz-studio-code-shell').getBoundingClientRect().height);

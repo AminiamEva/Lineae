@@ -6,7 +6,14 @@ function cssWidth(value) {
 
 export const TabularxSource=Extension.create({
   name:'tabularxSource',
-  addGlobalAttributes(){return [{types:['table'],attributes:{tabularx:{
+  addGlobalAttributes(){return [{types:['table'],attributes:{atomicTabular:{
+    default:false,parseHTML:element=>element.hasAttribute('data-atomic-tabular'),
+    renderHTML:({atomicTabular})=>atomicTabular?{'data-atomic-tabular':''}:{},
+  },longtable:{
+    default:null,
+    parseHTML:element=>{try{return JSON.parse(element.dataset.longtableSource);}catch{return null;}},
+    renderHTML:({longtable})=>longtable?{'data-longtable-source':JSON.stringify(longtable)}:{},
+  },tabularx:{
     default:null,
     parseHTML:element=>{try{return JSON.parse(element.getAttribute('data-tabularx-source'));}catch{return null;}},
     renderHTML:({tabularx})=>tabularx?{'data-tabularx':'','data-tabularx-source':JSON.stringify(tabularx),

@@ -153,6 +153,7 @@ export function serialize(node) {
     case 'raw': return node.attrs.source;
     case 'hardBreak': return '\\\\\n';
     case 'table': {
+      if(node.attrs.longtable)return serializeSourceTable(node,serialize,'longtable')??node.attrs.longtable.source;
       if(node.attrs.tblr)return serializeTblr(node,serialize)??node.attrs.tblr.source;
       if(node.attrs.tabularx)return serializeSourceTable(node,serialize,'tabularx')??node.attrs.tabularx.source;
       let columns = node.attrs.columns || 'l'.repeat(node.content[0]?.content?.length ?? 1);

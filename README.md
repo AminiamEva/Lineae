@@ -17,6 +17,8 @@ Lineae is an experimental browser-based **WYSIWYG LaTeX editor** for academic an
 
 The project is in early development. Its browser prototype supports direct editing and a growing subset of LaTeX, but it does not yet reproduce TeX's exact line breaking, pagination, or final PDF layout. Close correspondence between the editing view and compiled output is the project's objective, **not a feature already delivered**.
 
+Auto uses LuaLaTeX for a new plain article and detects XeLaTeX for an unconditional xeCJK dependency. The Engine panel lets you override that decision and inspect conflicts at their source locations. These choices control the browser preview. Whole-document PDF compilation is available in the reference tests. [Selection](docs/dual-engine/ENGINE_RESOLUTION.md) · [Accuracy and limitations](docs/dual-engine/ACCURACY_MATRIX.md)
+
 ## Why Lineae
 
 Direct manipulation alone is not the same as WYSIWYG typesetting. A visual editor may let users edit equations, tables, and headings while displaying a layout that differs substantially from the document ultimately produced by TeX. Lineae aims to close that gap: the editing surface should become a trustworthy view of the typeset document, not just a convenient representation of its structure.

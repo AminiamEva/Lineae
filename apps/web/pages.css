@@ -81,6 +81,7 @@ main { padding:125px 24px 60px; overflow:auto; }
 .ProseMirror [data-theorem="proof"]::after { content:"□"; display:block; text-align:right; }
 .document-image { margin:var(--image-intextsep,12pt) 0; }
 .document-image[data-figure="true"] { margin-block:var(--image-textfloatsep,20pt); }
+.document-fixed-rule { display:block; background:currentColor; }
 .document-image[data-figure="true"][data-wrap="true"] { margin-block:var(--image-intextsep,12pt); }
 .document-image[data-wrap="true"] { margin-block-start:calc(var(--image-intextsep,12pt) + var(--tex-line-height,11.9552pt) * .5); margin-block-end:calc(var(--tex-line-height,11.9552pt) * 2); padding-block-end:0; }
 
@@ -506,6 +507,9 @@ button,select,.color-control { transition:background-color .14s ease,color .14s 
 .table-continuation-header { position:absolute; z-index:0; pointer-events:none; background:light-dark(#fff,#242426); }
 .table-continuation-header table { width:100%; border-collapse:collapse; table-layout:fixed; }
 .table-continuation-header td { padding:2px 5.9776pt; border-bottom:1px solid light-dark(#d5d9e1,#4a505c); font:var(--tex-font-size)/var(--tex-line-height) var(--tex-font-family,"Latin Modern Roman"),var(--tex-cjk-font-family,"Songti SC",SimSun),serif; }
+.longtable-section { background:transparent; }
+.longtable-section :is(th,td) { padding-block:0; border:0; vertical-align:top; }
+.longtable-section p { margin:0; text-indent:0; position:relative; top:var(--section-baseline-adjust); }
 .document-sheet { position:relative; flex:0 0 var(--page-height,11in); width:100%; background:light-dark(#fff,#242426); box-shadow:0 2px 14px #0002; }
 .document-page-header,
 .document-page-footer {
@@ -618,6 +622,12 @@ button,select,.color-control { transition:background-color .14s ease,color .14s 
 .document-page .ProseMirror > .tableWrapper:has(> table[data-table-align="center"]) { margin-inline:auto; }
 .document-page .ProseMirror > .tableWrapper:has(> table[data-table-align="right"]) { margin-inline-start:auto; margin-inline-end:0; }
 .document-page .ProseMirror > .tableWrapper:has(> table[data-table-align="left"]) { margin-inline-start:var(--tex-paragraph-indent); margin-inline-end:auto; }
+.document-page .ProseMirror > .tableWrapper:has(>table[data-longtable]):not(:first-child) { margin-block-start:calc(12 * 1in / 72.27 + var(--lt-depth-adjust,0px)); }
+.document-page .ProseMirror table:is([data-longtable],[data-atomic-tabular]) :is(td,th) { padding-block:0; }
+.tableWrapper[data-paper-overflow]::after {
+  content:attr(title); position:sticky; bottom:0; display:block; width:max-content; max-width:100%;
+  background:Canvas; color:CanvasText; font:12px/1.4 system-ui; pointer-events:none;
+}
 .document-page .ProseMirror .tableWrapper { width:max-content; max-width:100%; }
 .document-page .ProseMirror > .tableWrapper { margin-inline:auto; }
 .document-page .ProseMirror > .tableWrapper > table { min-width:0!important; }
@@ -668,7 +678,7 @@ button,select,.color-control { transition:background-color .14s ease,color .14s 
 .document-page .ProseMirror table[data-horizontal-rule-mode="explicit"][data-booktabs][data-trailing-rule="bottomrule"] tr:last-child > :is(td,th) { border-bottom:var(--booktabs-heavy) solid currentColor; padding-bottom:calc(2px + var(--booktabs-above)); }
 /* Editing grid for tabulars without explicit rules. Booktabs, explicit
    column rules and bordered tables keep their typeset rules. */
-.document-page .ProseMirror table:not([data-border-mode="grid"]):not([data-border-mode="outer"]):not([data-border-mode="horizontal"]):not([data-border-mode="none"]):not([data-booktabs]):not([data-column-rules]):not([data-top-rule]):not([data-bottom-rule]):not([data-left-rule]):not([data-right-rule]):not([data-mid-rule-mode]) :is(td,th) {
+.document-page .ProseMirror table:not([data-atomic-tabular]):not([data-border-mode="grid"]):not([data-border-mode="outer"]):not([data-border-mode="horizontal"]):not([data-border-mode="none"]):not([data-booktabs]):not([data-column-rules]):not([data-top-rule]):not([data-bottom-rule]):not([data-left-rule]):not([data-right-rule]):not([data-mid-rule-mode]) :is(td,th) {
   border:1px solid light-dark(#d5d9e1,#4a505c);
 }
 
@@ -1372,6 +1382,11 @@ body.format-painter-active .ProseMirror * { cursor:copy; }
 /* twoside: mirror furniture margins on even sheets (body column mirroring deferred) */
 .document-page .document-sheet[data-parity="even"] .document-page-header { left:var(--page-margin-right,47.456mm); right:var(--page-margin-left,47.191mm); }
 .document-page .document-sheet[data-parity="even"] .document-page-footer { left:var(--page-margin-right,47.456mm); right:var(--page-margin-left,47.191mm); }
+/* Lua JFM has already placed adjacent punctuation. Disable the browser's second compression. */
+[data-tex-engine="lualatex"] { text-spacing-trim: space-all; }
+/* A one-glyph inline formula fits the text strut. MathLive's editing
+   padding must not enlarge the paragraph's baseline distance. */
+[data-tex-engine="lualatex"] .tex-simple-math math-field { margin-block: -.4em; }
 .tex-paragraph-break{display:block;height:0;line-height:0;pointer-events:none;}
 .tex-interchar-glue{display:inline-block;height:0;text-indent:0;pointer-events:none;}
 .tex-discretionary-hyphen::before{content:"-";}
@@ -1444,4 +1459,3 @@ body.format-painter-active .ProseMirror * { cursor:copy; }
 .tikz-studio-preview svg { max-width:none; height:auto; }
 .tikz-studio-status { position:sticky; left:0; bottom:0; padding:6px 12px; white-space:pre-wrap; font:11px/1.4 ui-monospace,monospace; color:#a33; background:light-dark(rgba(255,255,255,.94),rgba(17,23,34,.94)); border-top:1px solid light-dark(#eee,#333c4e); }
 @media (max-width:760px){ .tikz-studio-body { grid-template-columns:1fr; grid-template-rows:1fr 1fr; } }
-

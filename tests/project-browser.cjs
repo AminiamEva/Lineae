@@ -25,7 +25,7 @@ async function clickOpenProject(page) {
   await new Promise(done => server.listen(0,'127.0.0.1',done));
   const browser = await chromium.launch({headless:true,executablePath:process.env.LINEAE_CHROMIUM_EXECUTABLE});
   try {
-    const page = await browser.newPage({viewport:{width:1440,height:900}});
+    const page = await browser.newPage({locale:'en-US',viewport:{width:1440,height:900}});
     const errors = []; page.on('pageerror',error => errors.push(error.message));
     await page.goto('http://127.0.0.1:'+server.address().port);
     await showFilePanel(page);

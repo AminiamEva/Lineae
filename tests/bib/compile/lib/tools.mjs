@@ -27,12 +27,17 @@ import {
   parsePgm,
 } from '../../pdf/visual-lib.mjs';
 
-const TOOL_NAMES = ['xelatex', 'bibtex', 'biber', 'pdfinfo', 'pdftotext', 'pdffonts', 'pdftoppm'];
+import { compile, validateCompiler } from './tex-runner.mjs';
+
+const TOOL_NAMES = ['latexmk', 'lualatex', 'xelatex', 'bibtex', 'biber', 'pdfinfo', 'pdftotext', 'pdffonts', 'pdftoppm'];
 
 /**
- * @param {{extraPaths?: string[], cwd?: string}} [options]
+ * @param {{extraPaths?: string[], engine?: string, driver?: string}} [options]
  */
 export function createToolchain(options = {}) {
+  const engine = options.engine ?? 'xelatex';
+  const driver = options.driver ?? 'latexmk';
+  validateCompiler(engine, driver);
   const extraPaths = (options.extraPaths ?? []).filter(Boolean);
   const env = {
     ...process.env,
@@ -115,23 +120,7 @@ export function createToolchain(options = {}) {
 
   /** @param {string} directory @param {string} backend @param {string} logPath */
   function compileProject(directory, backend, logPath) {
-    if (!commands.xelatex) throw new Error('xelatex is not available');
-    const backendCommand = backend === 'bibtex' ? commands.bibtex : commands.biber;
-    if (!backendCommand) throw new Error(`${backend} is not available`);
-    const common = ['-interaction=nonstopmode', '-halt-on-error', '-file-line-error', 'main.tex'];
-    const steps = [
-      ['xelatex', common],
-      [backendCommand, ['main']],
-      ['xelatex', common],
-      ['xelatex', common],
-    ];
-    for (const [command, args] of steps) {
-      const result = run(command, args, { cwd: directory, logPath });
-      if (result.error || result.status !== 0) {
-        const log = readFileSync(logPath, 'utf8');
-        throw new Error(`${command} failed in ${directory}\n${tail(log, 40)}`);
-      }
-    }
+    return compile({ cwd: directory, backend, logPath, env, engine, driver });
   }
 
   /** @param {string} directory */

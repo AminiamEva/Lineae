@@ -45,7 +45,7 @@
 
   function handle(path) {
     return {
-      name: fileName(path),
+      name: fileName(path), nativePath:path,
       async requestPermission() {
         return 'granted';
       },

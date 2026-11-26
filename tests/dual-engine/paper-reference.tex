@@ -1,0 +1,13 @@
+% Reference-only driver. Set \LineaeInput on the command line or supply main.tex.
+% Synchronize the physical stock to LaTeX after class and package options.
+\providecommand{\LineaeInput}{main.tex}
+\AddToHook{begindocument/end}{%
+  \ifdefined\XeTeXversion
+    \special{papersize=\the\paperwidth,\the\paperheight}%
+  \else
+    \pagewidth=\paperwidth \pageheight=\paperheight
+  \fi
+  \typeout{LINEAE-PAPER width=\the\paperwidth, height=\the\paperheight,
+    textwidth=\the\textwidth, textheight=\the\textheight}%
+}
+\input{\LineaeInput}

@@ -21,6 +21,16 @@ pub fn operate(
     expected: Option<Vec<u8>>,
 ) -> Result<Vec<u8>, String> {
     let _guard = super::project::ProcessSaveLock::acquire(root)?;
+    let preference_path = root.join(".lineae-engine.json");
+    let preference = match std::fs::symlink_metadata(&preference_path) {
+        Ok(meta) if meta.is_file() && !meta.is_symlink() => {
+            let raw = std::fs::read(&preference_path).map_err(|e| e.to_string())?;
+            serde_json::from_slice::<Value>(&raw).map_err(|e| e.to_string())?
+        }
+        Ok(_) => return Err("Invalid engine preference file".into()),
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => Value::Null,
+        Err(err) => return Err(err.to_string()),
+    };
     if operation == "load_state" {
         let mut versions = Vec::new();
         let mut latest = None;
@@ -63,6 +73,10 @@ pub fn operate(
         let mut state = latest
             .map(|(_, state)| state)
             .unwrap_or(json!({"files":{},"main":null}));
+        if !preference.is_null() {
+            state["engineChoice"] = preference["engineChoice"].clone();
+            state["engineRevision"] = preference["engineRevision"].clone();
+        }
         state["drafts"] = json!([]);
         state["recoveryVersions"] = json!(versions);
         return serde_json::to_vec(&state).map_err(|e| e.to_string());
@@ -94,6 +108,18 @@ pub fn operate(
     if !state["files"].is_object() || !state["drafts"].is_array() {
         return Err("Invalid checkpoint payload".into());
     }
+    if state["engineRevision"].as_u64().unwrap_or(0) > preference["engineRevision"].as_u64().unwrap_or(0) {
+        if !matches!(state["engineChoice"].as_str(), Some("auto" | "xelatex" | "lualatex")) {
+            return Err("Invalid engine choice".into());
+        }
+        let data = serde_json::to_vec(&json!({"engineChoice":state["engineChoice"],"engineRevision":state["engineRevision"]})).map_err(|e| e.to_string())?;
+        write_state(root, &preference_path, "preference", &data)?;
+    }
+    write_state(root, &path, id, &bytes)?;
+    Ok(Vec::new())
+}
+
+fn write_state(root: &Path, path: &Path, id: &str, bytes: &[u8]) -> Result<(), String> {
     if !path.exists() {
         use std::io::Write;
         let temporary = root.join(format!(".lineae-save-initial-{id}"));
@@ -110,5 +136,5 @@ pub fn operate(
     } else {
         super::project::safe_write(&path, &bytes, None)?;
     }
-    Ok(Vec::new())
+    Ok(())
 }

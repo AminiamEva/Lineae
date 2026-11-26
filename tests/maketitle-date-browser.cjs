@@ -1,3 +1,4 @@
+const {openXeReference}=require('./xe-reference-page.cjs');
 const { chromium } = require('playwright');
 const { createServer } = require('node:http');
 const { readFile } = require('node:fs/promises');
@@ -22,7 +23,7 @@ const pageSource = (title, date) => `\\documentclass{article}\n\\title{${title}}
     const page = await browser.newPage({ viewport: { width: 1400, height: 900 } });
     const errors = [];
     page.on('pageerror', error => errors.push(error.message));
-    await page.goto('http://127.0.0.1:' + server.address().port);
+    await openXeReference(page,'http://127.0.0.1:' + server.address().port);
     await page.waitForTimeout(600);
     const date = page.locator('#document-meta .doc-date');
     const load = async (name, title, value) => {

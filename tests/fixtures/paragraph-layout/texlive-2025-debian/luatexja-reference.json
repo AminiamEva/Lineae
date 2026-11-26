@@ -1,0 +1,1144 @@
+{
+  "schema": 1,
+  "engine": "lualatex",
+  "units": {
+    "origin": "top-left, unrotated PDF page",
+    "bbox": "Poppler word-box union, bp",
+    "baseline": "PDF text origin y (MuPDF), bp",
+    "cssPxPerBp": 1.3333333333333333,
+    "cssPxPerTexPt": 1.3283520132835203,
+    "spPerTexPt": 65536
+  },
+  "provenance": {
+    "tools": {
+      "xelatex": "XeTeX 3.141592653-2.6-0.999996 (TeX Live 2025/dev/Debian)",
+      "lualatex": "This is LuaHBTeX, Version 1.18.0 (TeX Live 2025/dev/Debian)",
+      "latexmk": "Latexmk, John Collins, 11 Dec. 2024. Version 4.86",
+      "bibtex": "BibTeX 0.99d (TeX Live 2025/dev/Debian)",
+      "biber": "biber version: 2.21",
+      "pdfinfo": "pdfinfo version 25.03.0",
+      "pdftotext": "pdftotext version 25.03.0",
+      "pdffonts": "pdffonts version 25.03.0"
+    },
+    "packages": {
+      "ctex.sty": {
+        "file": "ctex.sty",
+        "sha256": "dd868cf1e82815ff9544e222c5eebe528dfc7799b69f7fe1762646ebe23dcd6b",
+        "declarations": [
+          "\\GetIdInfo$Id: ctex.dtx 13a2256 2022-07-14 18:54:09 +0800 Qing Lee <sobenlee@gmail.com> $",
+          "{\\ExplFileDate}{2.5.10}{\\ExplFileDescription}"
+        ]
+      },
+      "xeCJK.sty": {
+        "file": "xeCJK.sty",
+        "sha256": "c61660692befbcec0b52dfb3e2e69b360cbd3e187e07565d722a296df8e893ef",
+        "declarations": [
+          "\\GetIdInfo$Id: xeCJK.dtx c4ccfae 2022-08-05 21:02:32 +0800 Qing Lee <sobenlee@gmail.com> $",
+          "{\\ExplFileDate}{3.9.1}{\\ExplFileDescription}"
+        ]
+      },
+      "luatexja.sty": {
+        "file": "luatexja.sty",
+        "sha256": "ca481726f4aea811226eb9b4b7b8ff2f7fc5e6bcb34cb22ccf0d20fd2a16525e",
+        "declarations": [
+          "\\def\\LuaTeXjaversion{20260130.1}"
+        ]
+      },
+      "luatexja-fontspec.sty": {
+        "file": "luatexja-fontspec.sty",
+        "sha256": "b1daa7a27d32b59680ce8aded5b351c5194afcacf1af92fe47ffe620925694e3",
+        "declarations": [
+          "\\ProvidesPackage{luatexja-fontspec}[2025-09-30 fontspec support of LuaTeX-ja]"
+        ]
+      },
+      "jfm-quanjiao.lua": {
+        "file": "jfm-quanjiao.lua",
+        "sha256": "39f1b83a274ef68bc8b41679dc76f925ef901e1e412069790be70093c1a2f22f",
+        "declarations": []
+      },
+      "fontspec.sty": {
+        "file": "fontspec.sty",
+        "sha256": "6aba297fb68d994b2a92644e0391e99c9bd95645680282c72dce3ad164b22ed0",
+        "declarations": [
+          "{2024/05/11}{2.9e}{Font selection for XeLaTeX and LuaLaTeX}"
+        ]
+      },
+      "biblatex.sty": {
+        "file": "biblatex.sty",
+        "sha256": "6124a851489d7a73b935019d6cd7dd31be30561fe5ab1a2eaa62f2de29016d16",
+        "declarations": [
+          "\\def\\abx@date{2025/07/10}",
+          "\\def\\abx@version{3.21}"
+        ]
+      }
+    },
+    "fonts": {
+      "lmroman10-regular.otf": {
+        "file": "lmroman10-regular.otf",
+        "sha256": "1aa18cfefa58132c52ce5de70db1fd1154201c19cd2b2cdaffba4906a33e6852",
+        "version": "Version 2.004;PS 2.004;hotconv 1.0.49;makeotf.lib2.0.14853",
+        "postscript": "LMRoman10-Regular"
+      },
+      "FandolSong-Regular.otf": {
+        "file": "FandolSong-Regular.otf",
+        "sha256": "a3820003227d4abe31fe28b493200d94a849ccfd078b50a019264f70353020b0",
+        "version": "Version 1.300;PS 1;hotconv 1.0.81;makeotf.lib2.5.63406 DEVELOPMENT",
+        "postscript": "FandolSong-Regular"
+      }
+    },
+    "locale": "C.UTF-8",
+    "pymupdf": "1.26.6",
+    "mupdf": "1.26.11",
+    "fonttools": "4.61.1"
+  },
+  "cases": [
+    {
+      "id": "zh-han-45",
+      "sourceSha256": "1ec1bfd6f58f312b07bf9d112ec9f54ea7258f1d6fce4ff1e1379a54e9b47a01",
+      "pageSizeBp": [
+        595.2760009765625,
+        841.8900146484375
+      ],
+      "lines": [
+        {
+          "text": "中文排版应当根据整段内容决定每一行的位置并使编辑与编译采用相同的断",
+          "bbox": [
+            142.503,
+            129.551888,
+            467.72342,
+            139.514528
+          ],
+          "widthBp": 325.22042,
+          "baselineBp": 137.52203,
+          "runBaselinesBp": [
+            137.52203
+          ],
+          "lineBoxSp": {
+            "width": 22376158,
+            "height": 576717,
+            "depth": 78643
+          }
+        },
+        {
+          "text": "行规则中文排版应当根据整段内容决定每一行的位置并使编辑与编译采用相同",
+          "bbox": [
+            127.559,
+            141.506888,
+            467.713418,
+            151.469528
+          ],
+          "widthBp": 340.154418,
+          "baselineBp": 149.47699,
+          "runBaselinesBp": [
+            149.47699
+          ],
+          "lineBoxSp": {
+            "width": 22376158,
+            "height": 576717,
+            "depth": 78643
+          }
+        },
+        {
+          "text": "的断行规则中文排版应当根据整段内容决定每一行的位置并使编辑与编译采用",
+          "bbox": [
+            127.559,
+            153.461888,
+            467.713418,
+            163.424528
+          ],
+          "widthBp": 340.154418,
+          "baselineBp": 161.43201,
+          "runBaselinesBp": [
+            161.43201
+          ],
+          "lineBoxSp": {
+            "width": 22376158,
+            "height": 576717,
+            "depth": 78643
+          }
+        },
+        {
+          "text": "相同的断行规则",
+          "bbox": [
+            127.559,
+            165.416888,
+            197.29748,
+            175.379528
+          ],
+          "widthBp": 69.73848,
+          "baselineBp": 173.38702,
+          "runBaselinesBp": [
+            173.38702
+          ],
+          "lineBoxSp": {
+            "width": 22376158,
+            "height": 576717,
+            "depth": 78643
+          }
+        }
+      ],
+      "paragraph": {
+        "hsizeSp": 22376158,
+        "parindentSp": 983040,
+        "language": 0,
+        "leftHyphenMin": 2,
+        "rightHyphenMin": 3
+      },
+      "hasToUnicodeMap": {
+        "FandolSong-Regular.otf": true
+      },
+      "embeddedFontFiles": [
+        "FandolSong-Regular.otf"
+      ]
+    },
+    {
+      "id": "zh-control",
+      "sourceSha256": "2d08c8a419505186338321a5b0f6f91da655cd2eda18460aa0d4346fe29e792f",
+      "pageSizeBp": [
+        595.2760009765625,
+        841.8900146484375
+      ],
+      "lines": [
+        {
+          "text": "中文排版",
+          "bbox": [
+            127.559,
+            129.551888,
+            167.40956,
+            139.514528
+          ],
+          "widthBp": 39.85056,
+          "baselineBp": 137.52203,
+          "runBaselinesBp": [
+            137.52203
+          ],
+          "lineBoxSp": {
+            "width": 22376158,
+            "height": 576717,
+            "depth": 78643
+          }
+        }
+      ],
+      "paragraph": {
+        "hsizeSp": 22376158,
+        "parindentSp": 983040,
+        "language": 0,
+        "leftHyphenMin": 2,
+        "rightHyphenMin": 3
+      },
+      "hasToUnicodeMap": {
+        "FandolSong-Regular.otf": true
+      },
+      "embeddedFontFiles": [
+        "FandolSong-Regular.otf"
+      ],
+      "controlAdvanceSp": 2621440
+    },
+    {
+      "id": "zh-han-65",
+      "sourceSha256": "3ac2ac19f38346c14fb2ebdab035ce7be183fd4305059a857ffca9ebff96e8a4",
+      "pageSizeBp": [
+        595.2760009765625,
+        841.8900146484375
+      ],
+      "lines": [
+        {
+          "text": "中文排版应当根据整段内容决定每一行的位置并",
+          "bbox": [
+            199.196,
+            186.244888,
+            411.021652,
+            196.207528
+          ],
+          "widthBp": 211.825652,
+          "baselineBp": 194.21503,
+          "runBaselinesBp": [
+            194.21503
+          ],
+          "lineBoxSp": {
+            "width": 14917440,
+            "height": 576717,
+            "depth": 78643
+          }
+        },
+        {
+          "text": "使编辑与编译采用相同的断行规则中文排版应当根据",
+          "bbox": [
+            184.252,
+            198.199888,
+            411.031574,
+            208.162528
+          ],
+          "widthBp": 226.779574,
+          "baselineBp": 206.17004,
+          "runBaselinesBp": [
+            206.17004
+          ],
+          "lineBoxSp": {
+            "width": 14917440,
+            "height": 576717,
+            "depth": 78643
+          }
+        },
+        {
+          "text": "整段内容决定每一行的位置并使编辑与编译采用相同",
+          "bbox": [
+            184.252,
+            210.154888,
+            411.031574,
+            220.117528
+          ],
+          "widthBp": 226.779574,
+          "baselineBp": 218.125,
+          "runBaselinesBp": [
+            218.125
+          ],
+          "lineBoxSp": {
+            "width": 14917440,
+            "height": 576717,
+            "depth": 78643
+          }
+        },
+        {
+          "text": "的断行规则中文排版应当根据整段内容决定每一行的",
+          "bbox": [
+            184.252,
+            222.109888,
+            411.031574,
+            232.072528
+          ],
+          "widthBp": 226.779574,
+          "baselineBp": 230.08002,
+          "runBaselinesBp": [
+            230.08002
+          ],
+          "lineBoxSp": {
+            "width": 14917440,
+            "height": 576717,
+            "depth": 78643
+          }
+        },
+        {
+          "text": "位置并使编辑与编译采用相同的断行规则",
+          "bbox": [
+            184.252,
+            234.065888,
+            363.57952,
+            244.028528
+          ],
+          "widthBp": 179.32752,
+          "baselineBp": 242.03601,
+          "runBaselinesBp": [
+            242.03601
+          ],
+          "lineBoxSp": {
+            "width": 14917440,
+            "height": 576717,
+            "depth": 78643
+          }
+        }
+      ],
+      "paragraph": {
+        "hsizeSp": 14917440,
+        "parindentSp": 983040,
+        "language": 0,
+        "leftHyphenMin": 2,
+        "rightHyphenMin": 3
+      },
+      "hasToUnicodeMap": {
+        "FandolSong-Regular.otf": true
+      },
+      "embeddedFontFiles": [
+        "FandolSong-Regular.otf"
+      ]
+    },
+    {
+      "id": "zh-punctuation-45",
+      "sourceSha256": "763c22a85f181e3157ad97ce889bd7579cf25b6632a5ae65d11b5f3907929ff1",
+      "pageSizeBp": [
+        595.2760009765625,
+        841.8900146484375
+      ],
+      "lines": [
+        {
+          "text": "中文排版需要处理标点，不能让句号出现在行首。整段文字应该采用统一的",
+          "bbox": [
+            142.503,
+            129.551888,
+            467.72342,
+            139.514528
+          ],
+          "widthBp": 325.22042,
+          "baselineBp": 137.52203,
+          "runBaselinesBp": [
+            137.52203
+          ],
+          "lineBoxSp": {
+            "width": 22376158,
+            "height": 576717,
+            "depth": 78643
+          }
+        },
+        {
+          "text": "断行规则，同时保留中文输入和选择行为。中文排版需要处理标点，不能让句",
+          "bbox": [
+            127.559,
+            141.506888,
+            467.713418,
+            151.469528
+          ],
+          "widthBp": 340.154418,
+          "baselineBp": 149.47699,
+          "runBaselinesBp": [
+            149.47699
+          ],
+          "lineBoxSp": {
+            "width": 22376158,
+            "height": 576717,
+            "depth": 78643
+          }
+        },
+        {
+          "text": "号出现在行首。整段文字应该采用统一的断行规则，同时保留中文输入和选择",
+          "bbox": [
+            127.559,
+            153.461888,
+            467.713418,
+            163.424528
+          ],
+          "widthBp": 340.154418,
+          "baselineBp": 161.43201,
+          "runBaselinesBp": [
+            161.43201
+          ],
+          "lineBoxSp": {
+            "width": 22376158,
+            "height": 576717,
+            "depth": 78643
+          }
+        },
+        {
+          "text": "行为。中文排版需要处理标点，不能让句号出现在行首。整段文字应该采用统",
+          "bbox": [
+            127.559,
+            165.416888,
+            467.713418,
+            175.379528
+          ],
+          "widthBp": 340.154418,
+          "baselineBp": 173.38702,
+          "runBaselinesBp": [
+            173.38702
+          ],
+          "lineBoxSp": {
+            "width": 22376158,
+            "height": 576717,
+            "depth": 78643
+          }
+        },
+        {
+          "text": "一的断行规则，同时保留中文输入和选择行为。",
+          "bbox": [
+            127.559,
+            177.372888,
+            336.77444,
+            187.335528
+          ],
+          "widthBp": 209.21544,
+          "baselineBp": 185.34302,
+          "runBaselinesBp": [
+            185.34302
+          ],
+          "lineBoxSp": {
+            "width": 22376158,
+            "height": 576717,
+            "depth": 78643
+          }
+        }
+      ],
+      "paragraph": {
+        "hsizeSp": 22376158,
+        "parindentSp": 983040,
+        "language": 0,
+        "leftHyphenMin": 2,
+        "rightHyphenMin": 3
+      },
+      "hasToUnicodeMap": {
+        "FandolSong-Regular.otf": true
+      },
+      "embeddedFontFiles": [
+        "FandolSong-Regular.otf"
+      ]
+    },
+    {
+      "id": "zh-punctuation-65",
+      "sourceSha256": "830c12d6e48a7862e5e2ec0951e1600d8f1c48dfd776666569c5e42d0d3fda69",
+      "pageSizeBp": [
+        595.2760009765625,
+        841.8900146484375
+      ],
+      "lines": [
+        {
+          "text": "中文排版需要处理标点，不能让句号出现在行首。",
+          "bbox": [
+            199.196,
+            186.244888,
+            416.012934,
+            196.207528
+          ],
+          "widthBp": 216.816934,
+          "baselineBp": 194.21503,
+          "runBaselinesBp": [
+            194.21503
+          ],
+          "lineBoxSp": {
+            "width": 14917440,
+            "height": 576717,
+            "depth": 78643
+          }
+        },
+        {
+          "text": "整段文字应该采用统一的断行规则，同时保留中文输",
+          "bbox": [
+            184.252,
+            198.199888,
+            411.031574,
+            208.162528
+          ],
+          "widthBp": 226.779574,
+          "baselineBp": 206.17004,
+          "runBaselinesBp": [
+            206.17004
+          ],
+          "lineBoxSp": {
+            "width": 14917440,
+            "height": 576717,
+            "depth": 78643
+          }
+        },
+        {
+          "text": "入和选择行为。中文排版需要处理标点，不能让句号",
+          "bbox": [
+            184.252,
+            210.154888,
+            411.031574,
+            220.117528
+          ],
+          "widthBp": 226.779574,
+          "baselineBp": 218.125,
+          "runBaselinesBp": [
+            218.125
+          ],
+          "lineBoxSp": {
+            "width": 14917440,
+            "height": 576717,
+            "depth": 78643
+          }
+        },
+        {
+          "text": "出现在行首。整段文字应该采用统一的断行规则，同",
+          "bbox": [
+            184.252,
+            222.109888,
+            411.031574,
+            232.072528
+          ],
+          "widthBp": 226.779574,
+          "baselineBp": 230.08002,
+          "runBaselinesBp": [
+            230.08002
+          ],
+          "lineBoxSp": {
+            "width": 14917440,
+            "height": 576717,
+            "depth": 78643
+          }
+        },
+        {
+          "text": "时保留中文输入和选择行为。中文排版需要处理标点，",
+          "bbox": [
+            184.252,
+            234.065888,
+            416.012894,
+            244.028528
+          ],
+          "widthBp": 231.760894,
+          "baselineBp": 242.03601,
+          "runBaselinesBp": [
+            242.03601
+          ],
+          "lineBoxSp": {
+            "width": 14917440,
+            "height": 576717,
+            "depth": 78643
+          }
+        },
+        {
+          "text": "不能让句号出现在行首。整段文字应该采用统一的断",
+          "bbox": [
+            184.252,
+            246.020888,
+            411.031574,
+            255.983528
+          ],
+          "widthBp": 226.779574,
+          "baselineBp": 253.99103,
+          "runBaselinesBp": [
+            253.99103
+          ],
+          "lineBoxSp": {
+            "width": 14917440,
+            "height": 576717,
+            "depth": 78643
+          }
+        },
+        {
+          "text": "行规则，同时保留中文输入和选择行为。",
+          "bbox": [
+            184.252,
+            257.975888,
+            363.57952,
+            267.938528
+          ],
+          "widthBp": 179.32752,
+          "baselineBp": 265.94604,
+          "runBaselinesBp": [
+            265.94604
+          ],
+          "lineBoxSp": {
+            "width": 14917440,
+            "height": 576717,
+            "depth": 78643
+          }
+        }
+      ],
+      "paragraph": {
+        "hsizeSp": 14917440,
+        "parindentSp": 983040,
+        "language": 0,
+        "leftHyphenMin": 2,
+        "rightHyphenMin": 3
+      },
+      "hasToUnicodeMap": {
+        "FandolSong-Regular.otf": true
+      },
+      "embeddedFontFiles": [
+        "FandolSong-Regular.otf"
+      ]
+    },
+    {
+      "id": "zh-mixed-45",
+      "sourceSha256": "bd8e24a75df53e0789afde670b3be59c931bb5af3302da86c2ba988c4112d917",
+      "pageSizeBp": [
+        595.2760009765625,
+        841.8900146484375
+      ],
+      "lines": [
+        {
+          "text": "中文 typography 应当采用 paragraph breaking 规则保持一致，中文与 En-",
+          "bbox": [
+            142.503,
+            126.294105,
+            467.716345,
+            140.411166
+          ],
+          "widthBp": 325.213345,
+          "baselineBp": 137.52203,
+          "runBaselinesBp": [
+            137.52203
+          ],
+          "lineBoxSp": {
+            "width": 22376158,
+            "height": 576717,
+            "depth": 135004
+          }
+        },
+        {
+          "text": "glish words 之间需要正确的弹性间距。中文 typography 应当采用 paragraph",
+          "bbox": [
+            127.559,
+            138.249105,
+            467.716673,
+            152.366166
+          ],
+          "widthBp": 340.157673,
+          "baselineBp": 149.47699,
+          "runBaselinesBp": [
+            149.47699
+          ],
+          "lineBoxSp": {
+            "width": 22376158,
+            "height": 576717,
+            "depth": 135004
+          }
+        },
+        {
+          "text": "breaking 规则保持一致，中文与 English words 之间需要正确的弹性间距。中",
+          "bbox": [
+            127.559,
+            150.204105,
+            467.708144,
+            164.321166
+          ],
+          "widthBp": 340.149144,
+          "baselineBp": 161.43201,
+          "runBaselinesBp": [
+            161.43201
+          ],
+          "lineBoxSp": {
+            "width": 22376158,
+            "height": 576717,
+            "depth": 135004
+          }
+        },
+        {
+          "text": "文 typography 应当采用 paragraph breaking 规则保持一致，中文与 English",
+          "bbox": [
+            127.559,
+            162.159105,
+            467.716842,
+            176.276166
+          ],
+          "widthBp": 340.157842,
+          "baselineBp": 173.38702,
+          "runBaselinesBp": [
+            173.38702
+          ],
+          "lineBoxSp": {
+            "width": 22376158,
+            "height": 576717,
+            "depth": 135004
+          }
+        },
+        {
+          "text": "words 之间需要正确的弹性间距。",
+          "bbox": [
+            127.559,
+            174.115105,
+            275.69368,
+            188.232166
+          ],
+          "widthBp": 148.13468,
+          "baselineBp": 185.34302,
+          "runBaselinesBp": [
+            185.34302
+          ],
+          "lineBoxSp": {
+            "width": 22376158,
+            "height": 576717,
+            "depth": 78643
+          }
+        }
+      ],
+      "paragraph": {
+        "hsizeSp": 22376158,
+        "parindentSp": 983040,
+        "language": 0,
+        "leftHyphenMin": 2,
+        "rightHyphenMin": 3
+      },
+      "hasToUnicodeMap": {
+        "FandolSong-Regular.otf": true,
+        "lmroman10-regular.otf": true
+      },
+      "embeddedFontFiles": [
+        "FandolSong-Regular.otf",
+        "lmroman10-regular.otf"
+      ]
+    },
+    {
+      "id": "zh-mixed-65",
+      "sourceSha256": "1cc4e87471bb007e23a775bafb8179ac1a041c2da84eab8e48abe93e785bf701",
+      "pageSizeBp": [
+        595.2760009765625,
+        841.8900146484375
+      ],
+      "lines": [
+        {
+          "text": "中文 typography 应当采用 paragraph breaking",
+          "bbox": [
+            199.196,
+            182.987105,
+            411.017379,
+            197.104166
+          ],
+          "widthBp": 211.821379,
+          "baselineBp": 194.21503,
+          "runBaselinesBp": [
+            194.21503
+          ],
+          "lineBoxSp": {
+            "width": 14917440,
+            "height": 576717,
+            "depth": 135004
+          }
+        },
+        {
+          "text": "规则保持一致，中文与 English words 之间需要正确",
+          "bbox": [
+            184.252,
+            194.942105,
+            411.029915,
+            209.059166
+          ],
+          "widthBp": 226.777915,
+          "baselineBp": 206.17004,
+          "runBaselinesBp": [
+            206.17004
+          ],
+          "lineBoxSp": {
+            "width": 14917440,
+            "height": 576717,
+            "depth": 135004
+          }
+        },
+        {
+          "text": "的弹性间距。中文 typography 应当采用 paragraph",
+          "bbox": [
+            184.252,
+            206.897105,
+            411.023673,
+            221.014166
+          ],
+          "widthBp": 226.771673,
+          "baselineBp": 218.125,
+          "runBaselinesBp": [
+            218.125
+          ],
+          "lineBoxSp": {
+            "width": 14917440,
+            "height": 576717,
+            "depth": 135004
+          }
+        },
+        {
+          "text": "breaking 规则保持一致，中文与 English words 之",
+          "bbox": [
+            184.252,
+            218.852105,
+            411.02364,
+            232.969166
+          ],
+          "widthBp": 226.77164,
+          "baselineBp": 230.08002,
+          "runBaselinesBp": [
+            230.08002
+          ],
+          "lineBoxSp": {
+            "width": 14917440,
+            "height": 576717,
+            "depth": 135004
+          }
+        },
+        {
+          "text": "间需要正确的弹性间距。中文 typography 应当采用",
+          "bbox": [
+            184.252,
+            230.808105,
+            411.022962,
+            244.925166
+          ],
+          "widthBp": 226.770962,
+          "baselineBp": 242.03601,
+          "runBaselinesBp": [
+            242.03601
+          ],
+          "lineBoxSp": {
+            "width": 14917440,
+            "height": 576717,
+            "depth": 135004
+          }
+        },
+        {
+          "text": "paragraph breaking 规则保持一致，中文与 English",
+          "bbox": [
+            184.252,
+            242.763105,
+            411.023842,
+            256.880166
+          ],
+          "widthBp": 226.771842,
+          "baselineBp": 253.99103,
+          "runBaselinesBp": [
+            253.99103
+          ],
+          "lineBoxSp": {
+            "width": 14917440,
+            "height": 576717,
+            "depth": 135004
+          }
+        },
+        {
+          "text": "words 之间需要正确的弹性间距。",
+          "bbox": [
+            184.252,
+            254.718105,
+            332.38668,
+            268.835166
+          ],
+          "widthBp": 148.13468,
+          "baselineBp": 265.94604,
+          "runBaselinesBp": [
+            265.94604
+          ],
+          "lineBoxSp": {
+            "width": 14917440,
+            "height": 576717,
+            "depth": 78643
+          }
+        }
+      ],
+      "paragraph": {
+        "hsizeSp": 14917440,
+        "parindentSp": 983040,
+        "language": 0,
+        "leftHyphenMin": 2,
+        "rightHyphenMin": 3
+      },
+      "hasToUnicodeMap": {
+        "FandolSong-Regular.otf": true,
+        "lmroman10-regular.otf": true
+      },
+      "embeddedFontFiles": [
+        "FandolSong-Regular.otf",
+        "lmroman10-regular.otf"
+      ]
+    },
+    {
+      "id": "zh-pairs-45",
+      "sourceSha256": "173882eabc70877ce716967f97438971997b5555847995eff9c1e7711258b404",
+      "pageSizeBp": [
+        595.2760009765625,
+        841.8900146484375
+      ],
+      "lines": [
+        {
+          "text": "（中文排版） “整段断行”需要兼顾标点与汉字的相邻关系，编辑过程中也应",
+          "bbox": [
+            137.522,
+            129.551888,
+            467.72374,
+            139.514528
+          ],
+          "widthBp": 330.20174,
+          "baselineBp": 137.52203,
+          "runBaselinesBp": [
+            137.52203
+          ],
+          "lineBoxSp": {
+            "width": 22376158,
+            "height": 576717,
+            "depth": 78643
+          }
+        },
+        {
+          "text": "保持位置稳定。（中文排版）“整段断行”需要兼顾标点与汉字的相邻关系，编",
+          "bbox": [
+            127.559,
+            141.506888,
+            467.713418,
+            151.469528
+          ],
+          "widthBp": 340.154418,
+          "baselineBp": 149.47699,
+          "runBaselinesBp": [
+            149.47699
+          ],
+          "lineBoxSp": {
+            "width": 22376158,
+            "height": 576717,
+            "depth": 78643
+          }
+        },
+        {
+          "text": "辑过程中也应保持位置稳定。（中文排版）“整段断行”需要兼顾标点与汉字的",
+          "bbox": [
+            127.559,
+            153.461888,
+            467.713418,
+            163.424528
+          ],
+          "widthBp": 340.154418,
+          "baselineBp": 161.43201,
+          "runBaselinesBp": [
+            161.43201
+          ],
+          "lineBoxSp": {
+            "width": 22376158,
+            "height": 576717,
+            "depth": 78643
+          }
+        },
+        {
+          "text": "相邻关系，编辑过程中也应保持位置稳定。",
+          "bbox": [
+            127.559,
+            165.416888,
+            316.84916,
+            175.379528
+          ],
+          "widthBp": 189.29016,
+          "baselineBp": 173.38702,
+          "runBaselinesBp": [
+            173.38702
+          ],
+          "lineBoxSp": {
+            "width": 22376158,
+            "height": 576717,
+            "depth": 78643
+          }
+        }
+      ],
+      "paragraph": {
+        "hsizeSp": 22376158,
+        "parindentSp": 983040,
+        "language": 0,
+        "leftHyphenMin": 2,
+        "rightHyphenMin": 3
+      },
+      "hasToUnicodeMap": {
+        "FandolSong-Regular.otf": true
+      },
+      "embeddedFontFiles": [
+        "FandolSong-Regular.otf"
+      ]
+    },
+    {
+      "id": "zh-pairs-65",
+      "sourceSha256": "2dde399e3bd44fd100111320dd99fc42a5d17dbbeb798e43a5b04b4659c5899a",
+      "pageSizeBp": [
+        595.2760009765625,
+        841.8900146484375
+      ],
+      "lines": [
+        {
+          "text": "（中文排版） “整段断行”需要兼顾标点与汉字的相",
+          "bbox": [
+            194.215,
+            186.244888,
+            411.031934,
+            196.207528
+          ],
+          "widthBp": 216.816934,
+          "baselineBp": 194.21503,
+          "runBaselinesBp": [
+            194.21503
+          ],
+          "lineBoxSp": {
+            "width": 14917440,
+            "height": 576717,
+            "depth": 78643
+          }
+        },
+        {
+          "text": "邻关系，编辑过程中也应保持位置稳定。 （中文排版）",
+          "bbox": [
+            184.252,
+            198.199888,
+            416.012894,
+            208.162528
+          ],
+          "widthBp": 231.760894,
+          "baselineBp": 206.17004,
+          "runBaselinesBp": [
+            206.17004
+          ],
+          "lineBoxSp": {
+            "width": 14917440,
+            "height": 576717,
+            "depth": 78643
+          }
+        },
+        {
+          "text": "“整段断行”需要兼顾标点与汉字的相邻关系，编辑过",
+          "bbox": [
+            179.271,
+            210.154888,
+            411.031894,
+            220.117528
+          ],
+          "widthBp": 231.760894,
+          "baselineBp": 218.125,
+          "runBaselinesBp": [
+            218.125
+          ],
+          "lineBoxSp": {
+            "width": 14917440,
+            "height": 576717,
+            "depth": 78643
+          }
+        },
+        {
+          "text": "程中也应保持位置稳定。 （中文排版） “整段断行”需",
+          "bbox": [
+            184.252,
+            222.109888,
+            411.031574,
+            232.072528
+          ],
+          "widthBp": 226.779574,
+          "baselineBp": 230.08002,
+          "runBaselinesBp": [
+            230.08002
+          ],
+          "lineBoxSp": {
+            "width": 14917440,
+            "height": 576717,
+            "depth": 78643
+          }
+        },
+        {
+          "text": "要兼顾标点与汉字的相邻关系，编辑过程中也应保持",
+          "bbox": [
+            184.252,
+            234.065888,
+            411.031574,
+            244.028528
+          ],
+          "widthBp": 226.779574,
+          "baselineBp": 242.03601,
+          "runBaselinesBp": [
+            242.03601
+          ],
+          "lineBoxSp": {
+            "width": 14917440,
+            "height": 576717,
+            "depth": 78643
+          }
+        },
+        {
+          "text": "位置稳定。",
+          "bbox": [
+            184.252,
+            246.020888,
+            234.0652,
+            255.983528
+          ],
+          "widthBp": 49.8132,
+          "baselineBp": 253.99103,
+          "runBaselinesBp": [
+            253.99103
+          ],
+          "lineBoxSp": {
+            "width": 14917440,
+            "height": 576717,
+            "depth": 78643
+          }
+        }
+      ],
+      "paragraph": {
+        "hsizeSp": 14917440,
+        "parindentSp": 983040,
+        "language": 0,
+        "leftHyphenMin": 2,
+        "rightHyphenMin": 3
+      },
+      "hasToUnicodeMap": {
+        "FandolSong-Regular.otf": true
+      },
+      "embeddedFontFiles": [
+        "FandolSong-Regular.otf"
+      ]
+    }
+  ]
+}

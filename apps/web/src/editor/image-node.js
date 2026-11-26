@@ -272,10 +272,16 @@ export const Subfigures = Node.create({
   },
 });
 
+function cssDimension(value) {
+  const match=/^(\d*(?:\.\d+)?)(\\textwidth|\\linewidth|\\columnwidth|cm|mm|pt|in)$/.exec(value??'');
+  if(!match)return '';
+  return match[2].startsWith('\\') ? Number(match[1]||1)*100+'%' : value;
+}
+
 export const DocumentImage = Node.create({
   name:'documentImage', group:'block', atom:true, draggable:true,
   addAttributes:()=>({
-    figureSource:{default:null},path:{default:''},tikzSource:{default:null},tikzEditor:{default:null},width:{default:null},height:{default:null},scale:{default:null},pos:{default:'c'},
+    rule:{default:null},ruleSource:{default:null},figureSource:{default:null},path:{default:''},tikzSource:{default:null},tikzEditor:{default:null},width:{default:null},height:{default:null},scale:{default:null},pos:{default:'c'},
     angle:{default:null},origin:{default:null},keepAspect:{default:true},
     flipH:{default:false},flipV:{default:false},
     figure:{default:false},placement:{default:null},fixed:{default:false},
@@ -301,6 +307,21 @@ export const DocumentImage = Node.create({
       const dom=document.createElement('figure');
       dom.className='document-image';
       dom.contentEditable='false';
+      if(node.attrs.rule){
+        const {rule,wrapSide,wrapWidth}=node.attrs;
+        dom.dataset.wrap='true';
+        dom.dataset.wrapSide=wrapSide;
+        dom.style.float=/^l$/i.test(wrapSide)?'left':'right';
+        dom.style.width=cssDimension(wrapWidth);
+        const rect=document.createElement('span');
+        const length=value=>value.endsWith('bp')?parseFloat(value)*96/72+'px':
+          value.endsWith('pt')?parseFloat(value)*96/72.27+'px':value;
+        rect.className='document-fixed-rule';
+        rect.style.width=length(rule.width);
+        rect.style.height=length(rule.height);
+        dom.append(rect);
+        return {dom};
+      }
       const image=document.createElement('img');
       const resourceStatus=document.createElement('div');
       resourceStatus.setAttribute('role','status');
@@ -580,12 +601,6 @@ export const DocumentImage = Node.create({
         let subIndex=-1;
         try{const $pos=editor.state.doc.resolve(getPos());if($pos.parent.type.name==='subfigures')subIndex=$pos.index();}catch{}
         dom.dataset.subfigure=String(subIndex>=0);
-        const cssDimension=value => {
-          if(!value)return '';
-          const match=/^(\d*(?:\.\d+)?)(\\textwidth|\\linewidth|\\columnwidth|cm|mm|pt|in)$/.exec(value);
-          if(!match)return '';
-          return match[2].startsWith('\\') ? `${Number(match[1]||1)*100}%` : value;
-        };
         const tikz=node.attrs.tikzSource;
         if(tikz){
           dom.classList.add('is-tikz');

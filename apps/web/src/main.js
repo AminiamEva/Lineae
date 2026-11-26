@@ -1,3 +1,4 @@
+import {handleStorageId} from './project/project.mjs';
 import {nativeEditorRange,sourceOffsetAtEditorPosition} from './editor/native-text/editor-range.mjs';
 import {canBeginProseFormula,projectMixedDocument,projectTextDocument} from './editor/native-text/projection.mjs';
 import {tableCellRanges} from './editor/native-text/table-cells.mjs';
@@ -93,6 +94,8 @@ import { buildProjectZip, safeProjectPath, projectDependencies } from './editor/
 import { theoremNames } from '../latex/theorem.mjs';
 import { MultiSelection } from './editor/multi-selection.js';
 import { installSpaceOverlay } from './editor/space-overlay.js';
+import {resolveEngine} from './typesetting/engine-resolution.mjs';
+import { getTypesettingProfile } from './typesetting/engine-profile.mjs';
 import { installTypesetPagination } from './editor/typeset-pagination.js';
 import { wrapMathWithDelimiters } from '../latex/delimiters.mjs';
 import { readDelimiterPair } from './editor/delimiter-input.js';
@@ -346,6 +349,26 @@ function insertMath(display = false, latex = '') {
     });
   }
   insertFormula(editor, false, '', undefined, field => insertLiveMath(field, latex));
+}
+class PaperTableView extends Table.options.View {
+  constructor(node,minWidth){super(node,minWidth);this.syncEnvironment(node);}
+  update(node){
+    if(!super.update(node))return false;
+    this.syncEnvironment(node);
+    return true;
+  }
+  ignoreMutation(mutation){
+    // These are view-only pagination attributes on the wrapper. Rebuilding
+    // its NodeView would discard scroll position and measured overflow.
+    if(mutation.type==='attributes' && mutation.target===this.dom &&
+       ['data-paper-overflow','title','style'].includes(mutation.attributeName))return true;
+    return super.ignoreMutation(mutation);
+  }
+  syncEnvironment(node){
+    this.table.toggleAttribute('data-longtable',Boolean(node.attrs.longtable));
+    this.table.lineaeSections=node.attrs.longtable?.sections;
+    this.table.toggleAttribute('data-atomic-tabular',Boolean(node.attrs.atomicTabular));
+  }
 }
 const HistoryTable = Table.extend({
   addCommands() {
@@ -790,7 +813,7 @@ paper.before(documentPage);documentPage.append(paper);
 paper.replaceChildren();
 editor=new Editor({
   element:paper,
-  extensions:[CounterDirective,AppendixStart,MatterStart,LayoutCommand,Lipsum.configure({expandPreview:!nativeOnlyAcceptance()}),ProjectRegion,PageLayoutHistory,ConfigurableStarterKit.configure({heading:{levels:[1,2,3]},codeBlock:false}),LanguageCodeBlock,MultiSelection,PaperBehavior,TextStyle,TextCommand,Underline,Superscript,Subscript,SmallCaps,Boxed,Circled,PageBreak,MultiColumn,HistoryTable.configure({resizable:true}),TableRow,TableCell,TableHeader,TblrSource,TabularxSource,Raw,DocumentImage,TheoremBlock,DescriptionList,DescriptionItem,MathNode,MathBlock,...(nativeOnlyAcceptance()?[]:[MathGlue]),Ref,Cite.configure({library:citationLibrary}),Footnote,Label,Subfigures,TableOfContents,Shortcuts],
+  extensions:[CounterDirective,AppendixStart,MatterStart,LayoutCommand,Lipsum.configure({expandPreview:!nativeOnlyAcceptance()}),ProjectRegion,PageLayoutHistory,ConfigurableStarterKit.configure({heading:{levels:[1,2,3]},codeBlock:false}),LanguageCodeBlock,MultiSelection,PaperBehavior,TextStyle,TextCommand,Underline,Superscript,Subscript,SmallCaps,Boxed,Circled,PageBreak,MultiColumn,HistoryTable.configure({resizable:true,View:PaperTableView}),TableRow,TableCell,TableHeader,TblrSource,TabularxSource,Raw,DocumentImage,TheoremBlock,DescriptionList,DescriptionItem,MathNode,MathBlock,...(nativeOnlyAcceptance()?[]:[MathGlue]),Ref,Cite.configure({library:citationLibrary}),Footnote,Label,Subfigures,TableOfContents,Shortcuts],
   content:'<p></p>',
 });
 function installMarginSelection(editor,page,paper) {
@@ -1069,6 +1092,8 @@ button('$',()=>insertMath());
 button('$$',()=>insertMath(true)).dataset.shortcut='editor.insertDisplayMath';
 const projectDocument=new ProjectDocumentSession();
 let projection, syncApplying = false, syncPending = false, sourceToolbar, projectExplorer, projectFileKind, projectPresentation;
+let settingsPanel,engineFrame,compositionActive=false;
+let standaloneChoice='auto',standaloneKey=null,preferenceError='';
 let splitMapping;
 function splitBlocks(text) {
   if (syncPending || projection?.text !== text) return [];
@@ -1121,7 +1146,7 @@ const sourceView = createSourceWorkspace({
     } finally { syncApplying = false; }
   },
   onPreviewZoom: value => setZoom(value),
-  onChange: () => { syncPending = true; projectExplorer?.changed(); nativeTexPreview?.refresh(); },
+  onChange: () => { syncPending = true; scheduleEngine(); projectExplorer?.changed(); nativeTexPreview?.refresh(); },
   onLayout: () => {updateSourceButton();nativeTexPreview?.documentModeChanged?.();},
   metadata: () => ({name: filename, saved: savedSource}),
 });
@@ -1180,7 +1205,7 @@ function usesSourceProjection() {
   let referenceSource=false;
   editor.state.doc.descendants(node=>{if(node.attrs.sourceCommand||node.attrs.labelSource||node.attrs.environmentSource)referenceSource=true;});
   return referenceSource || !sourceView.hidden || (projectExplorer?.active && projectFileKind==='tex') ||
-    editor.getJSON().content.some(node=>node.type==='raw'||node.attrs?.tblr||node.attrs?.tabularx||node.attrs?.figureSource);
+    editor.getJSON().content.some(node=>node.type==='raw'||node.attrs?.longtable||node.attrs?.tblr||node.attrs?.tabularx||node.attrs?.figureSource);
 }
 // Limit standalone writeback to text edits within one top-level paragraph.
 function standaloneParagraphEdit(tr) {
@@ -1289,6 +1314,32 @@ editor.registerPlugin(new Plugin({
     if(verified)return !syncPending&&transaction.before===state.doc&&verified.projection?.text===verified.draft;
     if(sourceView.hidden&&prepareNativeParagraphHistory(transaction))return true;
     if(!usesSourceProjection()) {
+      const diff=transaction.before.content.findDiffStart(transaction.doc.content);
+      if(importedSource!==null && diff!==null){
+        const from=transaction.before.resolve(diff),to=transaction.doc.resolve(diff);
+        const table = from.depth && from.node(1);
+        const nextTable = to.depth && to.node(1);
+        if (table?.attrs?.atomicTabular && nextTable && table.sameMarkup(nextTable)) {
+          const cellEdit = from.depth >= 4 && to.depth === from.depth &&
+            from.parent.type.name === 'paragraph' && from.parent.sameMarkup(to.parent) &&
+            from.parent.textContent !== to.parent.textContent;
+          // Keep the source projection current across a row edit and its undo,
+          // so the next keystroke still maps to the author's original cell.
+          if (cellEdit || table.childCount !== nextTable.childCount) {
+            const after = transaction.doc.toJSON();
+            const changes = !syncPending && projection?.text === importedSource && richSourceChanges(projection, after);
+            if (changes?.length) {
+              const draft = changes.reduceRight((text,{from,to,insert}) => text.slice(0,from)+insert+text.slice(to), importedSource);
+              const next = sourceProjection(draft, after);
+              if (next) {
+                transaction.setMeta('standaloneParagraph',{draft, changes, projection:next});
+                return true;
+              }
+            }
+            if (cellEdit) return refuseStandaloneWriteback();
+          }
+        }
+      }
       const index=standaloneParagraphEdit(transaction);
       if (index<0) return true;
       const current=transaction.before.toJSON();
@@ -1594,6 +1645,7 @@ function applyPageSetup(){
   documentPage.style.setProperty('--page-margin-right',metrics.margins.right);
   documentPage.style.setProperty('--page-margin-bottom',metrics.margins.bottom);
   documentPage.style.setProperty('--page-margin-left',metrics.margins.left);
+  scheduleEngine();
   typesetPagination?.update(layoutPreamble);
   typesetPagination?.setMaketitle(/\\maketitle\b/.test((documentParts.blocks??[]).join('\n')));
   if(headerFooterPanel && !headerFooterPanel.active)headerFooterPanel.refresh();
@@ -1720,7 +1772,70 @@ function renderMeta() {
   metaDate.dataset.zhPlaceholder='日期';metaDate.dataset.enPlaceholder='Date';metaDate.dataset.placeholder=t('日期','Date');
 }
 renderMeta();
-if(!nativeOnlyAcceptance())typesetPagination=installTypesetPagination(documentPage,paper,metaBar,editor);
+const bootstrapEngine=document.documentElement.dataset.typesettingEngine;
+const pinnedEngine=['xelatex','lualatex'].includes(bootstrapEngine)?bootstrapEngine:null;
+let activeEngine=pinnedEngine ?? config.value.typesetting.defaultEngine;
+function engineSettingsState(draft,globalDefault=config.value.typesetting.defaultEngine) {
+  const project=projectExplorer?.model;
+  const choice=project?.engineChoice ?? standaloneChoice;
+  const requested=pinnedEngine ?? draft ?? choice;
+  const text=sourceView.hidden?source():sourceView.value;
+  const liveId=sourceView.hidden && projectDocument.composition ? projectDocument.composition.rootId : project?.activeFileId;
+  const result=project?.mainFileId
+    ? project.resolveTypesetting(globalDefault,{id:liveId,text},requested)
+    : resolveEngine({explicitChoice:requested,globalDefault,source:{path:filename,text}});
+  return {result,choice,globalDefault:config.value.typesetting.defaultEngine,project:Boolean(project),
+    error:project ? project.persistenceError : preferenceError};
+}
+function refreshEngine() {
+  engineFrame=0;
+  if (!settingsPanel || compositionActive || editor.view.composing || sourceView.composing) return;
+  const {result}=engineSettingsState();
+  if (activeEngine!==result.resolvedEngine) {
+    activeEngine=result.resolvedEngine;
+    typesetPagination?.setEngine(activeEngine?getTypesettingProfile(activeEngine):null);
+  }
+  settingsPanel.refreshEngine();
+}
+function scheduleEngine() {
+  if(settingsPanel && !engineFrame)engineFrame=requestAnimationFrame(refreshEngine);
+}
+function persistStandaloneChoice() {
+  if(!standaloneKey){if(fileHandle)preferenceError=t('文档偏好无法保存','Document preference cannot be saved');return;}
+  try {
+    if(standaloneChoice==='auto')localStorage.removeItem(standaloneKey);
+    else localStorage.setItem(standaloneKey,standaloneChoice);
+  } catch { preferenceError=t('文档引擎设置未保存','Document engine preference could not be saved'); }
+}
+function changeEngine(choice) {
+  preferenceError='';
+  if(compositionActive || editor.view.composing || sourceView.composing) {
+    throw new Error(t('请先完成输入法组词','Finish composing text first'));
+  }
+  const project=projectExplorer?.model;
+  if(choice===(project?.engineChoice ?? standaloneChoice))return;
+  if(project) {
+    project.setEngineChoice(choice);
+    project.pendingCheckpoint.then(scheduleEngine);
+  }
+  else {standaloneChoice=choice;persistStandaloneChoice();}
+  scheduleEngine();
+}
+document.addEventListener('compositionstart',()=>{compositionActive=true;},true);
+document.addEventListener('compositionend',()=>{compositionActive=false;scheduleEngine();},true);
+editor.on('update',scheduleEngine);
+const precisionStatus = document.createElement('span');
+precisionStatus.id = 'typesetting-precision';
+precisionStatus.setAttribute('role', 'status');
+precisionStatus.hidden = true;
+function reportCjkPrecision(family) {
+  precisionStatus.hidden = !family;
+  if (!family) return;
+  precisionStatus.dataset.zh = family + ' 中文排版预览：字距和断行尚未校准';
+  precisionStatus.dataset.en = family + ' CJK preview: spacing and line breaks are uncalibrated';
+  precisionStatus.textContent = t(precisionStatus.dataset.zh, precisionStatus.dataset.en);
+}
+if(!nativeOnlyAcceptance())typesetPagination=installTypesetPagination(documentPage,paper,metaBar,editor,getTypesettingProfile(activeEngine),reportCjkPrecision);
 typesetPagination?.setTableContinuation(config.value.interface.continuedTables);
 window.addEventListener('lineae-image-layout',()=>{typesetPagination?.refresh();syncImageTab?.();});
 function source() {
@@ -1945,6 +2060,11 @@ async function writeDocument(snapshot,saveAs) {
     if(!snapshot.isCurrentDocument())return;
     fileHandle=handle;
     if(handle.name)filename=handle.name;
+    if(!projectExplorer?.active){
+      const key=await engineStorageKey(filename,new TextEncoder().encode(snapshot.text),handle).catch(()=>null);
+      if(!snapshot.isCurrentDocument())return;
+      standaloneKey=key;persistStandaloneChoice();
+    }
     savedSource=snapshot.text;
     snapshot.commit();
     sourceView.refresh();
@@ -1953,13 +2073,32 @@ async function writeDocument(snapshot,saveAs) {
   }
   await downloadProject(false,snapshot.text,name);
 }
+async function engineStorageKey(name,bytes,handle) {
+  if(handle?.nativePath)return 'lineae:document-engine:path:'+handle.nativePath;
+  if(handle?.isSameEntry){
+    const id=await handleStorageId(handle);
+    if(id)return 'lineae:document-engine:handle:'+id;
+  }
+  const hash=await crypto.subtle.digest('SHA-256',bytes);
+  return 'lineae:document-engine:'+name+':'+Array.from(new Uint8Array(hash),v=>v.toString(16).padStart(2,'0')).join('');
+}
+async function openStandalone(file,handle) {
+  const bytes=await file.arrayBuffer();
+  const text=new TextDecoder('utf-8',{fatal:true,ignoreBOM:true}).decode(bytes);
+  const key=await engineStorageKey(file.name,bytes,handle).catch(()=>null);
+  load(text);
+  fileHandle=handle;filename=file.name;standaloneKey=key;preferenceError=key?'':t('文档偏好无法保存','Document preference cannot be saved');
+  let stored;
+  try {stored=localStorage.getItem(key);} catch {preferenceError=t('无法读取文档设置','Document settings unavailable');}
+  standaloneChoice=['xelatex','lualatex'].includes(stored)?stored:'auto';
+  sourceView.refresh();scheduleEngine();
+}
 async function openDocument() {
   if (projectExplorer?.active && !projectExplorer.close()) return true;
   try {
     const [handle]=await window.showOpenFilePicker({types:[{description:'LaTeX',accept:{'text/plain':['.tex']}}],multiple:false});
     const file=await handle.getFile();
-    fileHandle=handle;filename=file.name;
-    load(await file.text());
+    await openStandalone(file,handle);
     return true;
   } catch(error) {
     if(error?.name==='AbortError')return true;
@@ -1981,7 +2120,7 @@ window.addEventListener('beforeunload',event=>{
 document.querySelector('#file').addEventListener('change',async event=>{
   if (projectExplorer?.active && !projectExplorer.close()) return;
   const file=event.target.files[0];if(!file)return;
-  try {fileHandle=null;load(new TextDecoder('utf-8',{fatal:true,ignoreBOM:true}).decode(await file.arrayBuffer()));filename=file.name;sourceView.refresh();}
+  try {await openStandalone(file,null);}
   catch(error){const status=document.querySelector('#status');status.hidden=false;status.textContent=error.message;}
 });
 const commands = document.createElement('div');
@@ -3141,7 +3280,7 @@ function updateEnvironment() {
   environment.textContent=[labels[name],...context].join(' › ');
   environment.dataset.environment=name;
 }
-footer.append(count,document.querySelector('#status'),environment,zoom,percent,paginationButton,themeButton,modes);document.body.append(footer);sourceView.mountStatus(footer);scale();updatePaginationButton();
+footer.append(count,document.querySelector('#status'),precisionStatus,environment,zoom,percent,paginationButton,themeButton,modes);document.body.append(footer);sourceView.mountStatus(footer);scale();updatePaginationButton();
 const shortcutPriority=installShortcutPriority({host:footer,before:modes,getBindings:()=>config.bindings});
 function nativeProsePosition(paragraph,from,to){
   if(!sourceView.hidden||!paragraph?.parts)return null;
@@ -4830,6 +4969,7 @@ installProjectNavigation({outline:documentOutline.panel,paper,sourceView,editor,
 const projectWorkspace=new ProjectWorkspaceState();
 let standaloneSession;
 projectExplorer = installProjectExplorer({footer, filePanel:document.querySelector('header .tools'), sessions:{
+  engineChanged:scheduleEngine,
   prepareSave:prepareExplicitSave,
   outline:documentOutline,preferences:()=>config.value,
   sidebarChanged:(key,open)=>config.updateInterface({sidebar:{[key]:open}}),
@@ -5771,6 +5911,7 @@ function updateFileTools() {
   releaseFileNavigation=installRovingFocus(files,{onActivate:control=>control.click()});
 }
 function applyImportedPreferences() {
+  scheduleEngine();
   clearTimeout(zoomSaveTimer);
   language.value=configuredLanguage();
   theme.set(config.value.interface.theme);
@@ -5830,6 +5971,7 @@ function updateLanguage() {
   pageMarginBottom.setAttribute('aria-label',t('下边距','Bottom margin'));
   pageMarginLeft.setAttribute('aria-label',t('左边距','Left margin'));
   tooltips?.setLanguage(language.value);
+  scheduleEngine();
   projectExplorer?.relocalize?.();
   documentFind.relocalize();
   documentOutline.relocalize();
@@ -6051,8 +6193,18 @@ groupButton(insert,'figure',()=>insertDocumentImage());
 sourceToolbar = installSourceToolbar({ribbon,groups,source:sourceView,rich:paper,heading:headingMenu});
 const toolbarController=installFloatingToolbar({header,ribbon,sourceView,getAutoHide:()=>sourceView.hidden?config.value.interface.toolbarAutoHide:config.value.interface.sourceToolbarAutoHide});
 installMathFloatToolbar({ editor });
-const settingsPanel=installSettingsPanel({config,onApply:applyImportedPreferences,onImport:()=>importConfig.click(),onExport:()=>exportConfig.click(),getDocument:()=>{sourceView.flush();return documentParts.start?structuredClone(pageSetup):null;},applyDocument:updatePageSetup});
+function restoreSettingsFocus() {
+  // Native dialog focus restoration does not redraw CodeMirror's DOM selection.
+  if (sourceView.editorView?.hasFocus) sourceView.focus();
+  else if (editor.view.hasFocus()) editor.view.focus();
+}
+settingsPanel=installSettingsPanel({config,onClose:restoreSettingsFocus,getEngine:engineSettingsState,applyEngine:changeEngine,onApply:applyImportedPreferences,onImport:()=>importConfig.click(),onExport:()=>exportConfig.click(),getDocument:()=>{sourceView.flush();return documentParts.start?structuredClone(pageSetup):null;},applyDocument:updatePageSetup});
+scheduleEngine();
 const settingsButton=document.createElement('button');settingsButton.id='settings-open';settingsButton.type='button';settingsButton.append(icon('settings'));settingsButton.onclick=()=>settingsPanel.show();footer.insertBefore(settingsButton,footer.querySelector(':scope>.tex-foot')??count);
+// Let the native dialog return focus to the active editor and its selection.
+settingsButton.addEventListener('mousedown',event=>{
+  if (event.button===0 && (editor.view.hasFocus() || sourceView.editorView?.hasFocus)) event.preventDefault();
+});
 document.addEventListener('lineae-open-settings',()=>settingsPanel.show());
 document.addEventListener('lineae-open-outline',()=>projectExplorer.showOutline());
 document.addEventListener('lineae-open-includes',()=>projectExplorer.showIncludes());

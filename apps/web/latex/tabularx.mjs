@@ -67,7 +67,7 @@ export function parseTabularx(source) {
 }
 
 function parseColumnTable(source,environment,{allowMultirow=false,trackRowSpans=environment==='tabularx'}={}) {
-  const opening=/^\s*\\begin\{(tabularx|tabular)\}/.exec(source);
+  const opening=/^\s*\\begin\{(tabularx|tabular|longtable)\}/.exec(source);
   if(opening?.[1]!==environment)return null;
   if([...sourceStructure(source)].some(t=>t.kind==='invalid'))return null;
   const close=environmentEnd(source,opening[0].indexOf('\\begin'),environment);
@@ -78,18 +78,30 @@ function parseColumnTable(source,environment,{allowMultirow=false,trackRowSpans=
   let at=trivia(source,width.end),position=null;
   if(source[at]==='['){const pos=group(source,at,'[',']');if(!pos)return null;position=pos.value;at=trivia(source,pos.end);}
   const preamble=group(source,at);if(!preamble||preamble.end>close.start)return null;
+  if(environment==='longtable' && (!/^(?:[lcr|\s]|p\{\d+(?:\.\d+)?(?:mm|cm|pt|in)\})+$/.test(preamble.value) || /\\(?:caption|kill|noalign)\b/.test(source.slice(preamble.end,close.start))))return null;
   const unsupported=[],columns=parseColumns(preamble.value,width.value,unsupported);if(!columns)return null;
   const {specs,gaps,vertical}=columns;
   if(environment==='tabular'&&(specs.some(spec=>spec.type==='X')||
     /\\(?:cline|cmidrule)(?![A-Za-z])/.test(source)||
     !allowMultirow&&/\\multirow(?![A-Za-z])/.test(source)))return null;
   const body=source.slice(preamble.end,close.start),tokens=delimiters(body,['&','\\\\']);if(!tokens)return null;
-  let from=0,cells=[];const rawRows=[],rowEnds=[],rules=[];
+  let from=0,cells=[],sectionStart=0;const rawRows=[],rowEnds=[],rules=[],sections={};
   for(const token of [...tokens,{index:body.length,end:body.length,value:'end'}]) {
     if(token.index<from)continue;
     let begin=from;
     if(!cells.length) {
       begin=trivia(body,begin);
+      if(environment==='longtable'){
+        for(;;){
+          const marker=/^\\end(firsthead|head|foot|lastfoot)(?![a-zA-Z])/.exec(body.slice(begin));
+          if(!marker)break;
+          const kind=marker[1];
+          if(Object.hasOwn(sections,kind))return null;
+          sections[kind]=[sectionStart,rawRows.length];
+          sectionStart=rawRows.length;
+          begin=trivia(body,begin+marker[0].length);
+        }
+      }
       for(;;) {
         const rule=/^\\(toprule|midrule|bottomrule|hline)(?![A-Za-z])/.exec(body.slice(begin));
         if(!rule||rule[1]==='hline'&&environment!=='tabular')break;
@@ -120,7 +132,7 @@ function parseColumnTable(source,environment,{allowMultirow=false,trackRowSpans=
     }
     cells=[];
   }
-  if(!rawRows.length)return null;
+  if(rawRows.length<=sectionStart)return null;
   const rows=[],sourceRows=[],coveredUntil=Array(specs.length).fill(0);
   for(let r=0;r<rawRows.length;r++) {
     let column=0;const row=[],slots=[];
@@ -180,7 +192,12 @@ function parseColumnTable(source,environment,{allowMultirow=false,trackRowSpans=
     booktabs:rules.length>0,rows,sourceRows,rowEnds,unsupported,
     columnStarts:columns.starts.map(start=>preamble.end-preamble.value.length-1+start),
     columnEnds:columns.ends.map(end=>preamble.end-preamble.value.length-1+end),
-    metadata:{width:width.value,widthCSS:widthCSS(width.value),position,preamble:preamble.value,specs,gaps,rules}};
+    metadata:{...(Object.keys(sections).length?{sections}:{}),width:width.value,widthCSS:widthCSS(width.value),position,preamble:preamble.value,specs,gaps,rules}};
+
+}
+
+export function importLongtable(source,inline) {
+  return importSourceTable(source,inline,text=>parseColumnTable(text,'longtable'),'longtable');
 }
 
 function columnTableSource(source,options){
