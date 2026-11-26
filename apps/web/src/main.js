@@ -6063,4 +6063,8 @@ installContextMenu(editor, paper, language, message => {
   status.hidden = false;
   status.textContent = message;
 });
-if(desktopEngineToggle())nativeTexPreview.documentModeChanged?.();
+if(desktopEngineToggle()){
+  load(DEFAULT_DOCUMENT_SOURCE,false);
+  savedSource=DEFAULT_DOCUMENT_SOURCE;
+  nativeTexPreview.documentModeChanged?.();
+}

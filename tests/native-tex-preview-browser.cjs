@@ -102,6 +102,9 @@ const server=createServer(async(req,res)=>{
         assert.equal(await engine.textContent(),'LuaLaTeX');
         assert.equal(await desktopPage.locator('body').evaluate(body=>body.classList.contains('native-tex-primary-open')),true);
         const source=await desktopPage.evaluate(()=>nativeProbe.source);
+        assert.ok(source.includes('\\thispagestyle{empty}\\null'));
+        assert.equal(await preview.locator('h2').isVisible(),false);
+        assert.equal(await preview.locator('#native-tex-close').isVisible(),false);
         await engine.click();
         await preview.waitFor({state:'hidden'});
         assert.equal(await engine.textContent(),'XeLaTeX');
