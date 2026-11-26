@@ -103,6 +103,7 @@ module.exports=function installMockNativeTex() {
     }
     if(command==='native_tex_type_one_font'&&p.realEvidence?.fonts?.[args.key])return p.realEvidence.fonts[args.key];
     if(command==='native_tex_observe_formula'){
+      if(p.rejectObservation)throw new Error('No verified geometry for this frame');
       if(p.realEvidence){
         if(args.projection===p.realEvidence.measuredProjection&&p.realEvidence.measuredObserved)return p.realEvidence.measuredObserved;
         if(args.projection!==p.realEvidence.projection)throw new Error('Editor projection differs from the actual recorded compile');

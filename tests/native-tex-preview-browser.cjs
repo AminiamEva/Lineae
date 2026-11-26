@@ -100,6 +100,8 @@ const server=createServer(async(req,res)=>{
         const preview=desktopPage.locator('#native-tex-preview');
         await preview.locator('[data-native-page="1"] canvas').waitFor();
         assert.equal(await engine.textContent(),'LuaLaTeX');
+        assert.equal(await engine.getAttribute('data-engine'),'lua');
+        assert.equal(await desktopPage.locator('html').evaluate(el=>getComputedStyle(el).overflow),'hidden');
         assert.equal(await desktopPage.locator('body').evaluate(body=>body.classList.contains('native-tex-primary-open')),true);
         const source=await desktopPage.evaluate(()=>nativeProbe.source);
         assert.ok(source.includes('\\thispagestyle{empty}\\null'));
@@ -108,6 +110,7 @@ const server=createServer(async(req,res)=>{
         await engine.click();
         await preview.waitFor({state:'hidden'});
         assert.equal(await engine.textContent(),'XeLaTeX');
+        assert.equal(await engine.getAttribute('data-engine'),'xe');
         await desktopPage.reload();
         await desktopPage.waitForFunction(()=>document.querySelector('#native-tex-toggle')?.textContent==='XeLaTeX');
         assert.equal(await preview.isVisible(),false);
@@ -119,9 +122,19 @@ const server=createServer(async(req,res)=>{
         assert.equal(await preview.locator(':scope > [role="status"]').first().isVisible(),false);
         await desktopPage.locator('[data-group="files"]').click();
         await desktopPage.locator('header .tools #native-tex-export').waitFor();
-        await preview.locator('[data-native-page="1"] canvas').click({position:{x:70,y:90}});
+        const canvas=preview.locator('[data-native-page="1"] canvas');
+        await canvas.click({position:{x:160,y:190}});
         assert.equal(await desktopPage.locator('#native-tex-input').evaluate(input=>input===document.activeElement),true);
-        await desktopPage.keyboard.insertText('First paragraph.');
+        const origin=await canvas.boundingBox();
+        const caret=await desktopPage.locator('#native-tex-input').boundingBox();
+        assert.ok(caret.y-origin.y<150,'The first caret follows the first text line rather than the click');
+        await desktopPage.evaluate(()=>{nativeProbe.rejectObservation=true;});
+        await desktopPage.keyboard.type('F');
+        await desktopPage.waitForFunction(()=>nativeProbe.calls.some(call=>call.command==='native_tex_observe_formula'));
+        await desktopPage.keyboard.type('irst');
+        await desktopPage.waitForFunction(()=>nativeProbe.source.includes('First'));
+        await desktopPage.evaluate(()=>{nativeProbe.rejectObservation=false;});
+        await desktopPage.keyboard.insertText(' paragraph.');
         await desktopPage.waitForFunction(()=>nativeProbe.source.includes('First paragraph.'));
         assert.equal(await desktopPage.evaluate(()=>nativeProbe.source.includes('\\thispagestyle{empty}\\null')),false);
       }finally{

@@ -17,7 +17,7 @@ import {separateRepeatedOwners} from '../editor/native-surface/repeated-owners.m
 // Native LaTeX output is the primary page. The opt-in native input mode sends
 // supported keys, caret and IME through this surface into ProseMirror; the old
 // JS-formatted page and MathLive inputs stay available as the migration fallback.
-export function installNativeTexPreview({host,before,primary=false,documentZoom=100,isDocumentMode,splitHost,getSource,getSnapshot,isComposing,focusMathSlot,focusImage,listTikzDrawings,editTikzDrawing,openMeasuredDrawing,navigateReference,listSourceBlocks,openSourceBlock,continuationRegion,nativeTextEnvironment,continueNativeTextEnvironment,selectionRegions,foldedFiles,selectText,serializeTextSelection,commitMath,commitText,commitTextLines,commitInlinePaste,commitProjectRange,commitMixedSelection,canStartText,commitInitialText,commitInitialMath,commitParagraphBreak,commitParagraphJoin,commitHardBreak,commitNewMath,commitAfterFormulaText,onEnvironmentChange,showTextCommands,history}) {
+export function installNativeTexPreview({host,before,primary=false,documentZoom=100,isDocumentMode,splitHost,getSource,getSnapshot,isComposing,focusMathSlot,focusImage,listTikzDrawings,editTikzDrawing,openMeasuredDrawing,navigateReference,listSourceBlocks,openSourceBlock,continuationRegion,nativeTextEnvironment,continueNativeTextEnvironment,selectionRegions,foldedFiles,selectText,serializeTextSelection,commitMath,commitText,commitTextLines,commitInlinePaste,commitProjectRange,commitMixedSelection,canStartText,initialPageMetrics,commitInitialText,commitInitialMath,commitParagraphBreak,commitParagraphJoin,commitHardBreak,commitNewMath,commitAfterFormulaText,onEnvironmentChange,showTextCommands,history}) {
   const invoke=window.__TAURI__?.core?.invoke;
   if(!invoke) return {refresh(){},documentChanged(){},relocalize(){}};
   const button=document.createElement('button');
@@ -305,12 +305,16 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
         break;
       default:
         if(['$','$$'].includes(action.insert)&&!action.paste&&startFormula(action.insert==='$$'))return true;
-        edit=commitInitialText?.(action.insert,draft.region);
+        if(!action.insert)return false;
+        edit=commitInitialText?.(action.insert,draft.region,draft.kind==='bootstrap');
     }
     if(!edit)return false;
     delete input.dataset.initial;
     draftInput=null;
-    return awaitSourcePosition(edit,action.started,draft.kind==='formula');
+    const applied=awaitSourcePosition(edit,action.started,draft.kind==='formula');
+    pendingEdit.bootstrap=engineToggle&&!draft.region&&edit.path===undefined&&
+      ['initial','bootstrap'].includes(draft.kind);
+    return applied;
   }
   function submitLineBreak(action){
     if(!current()||!observation||draftInput)return false;
@@ -777,6 +781,7 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
     button.setAttribute('aria-pressed',String(active));
     if(engineToggle){
       button.disabled=Boolean(inputComposition&&!inputComposition.ended||pendingEdit||queuedInput.length);
+      button.dataset.engine=primaryRequested?'lua':'xe';
       button.textContent=primaryRequested?'LuaLaTeX':'XeLaTeX';
       button.setAttribute('aria-label',primaryRequested?t('切换到 XeLaTeX','Switch to XeLaTeX'):t('切换到 LuaLaTeX','Switch to LuaLaTeX'));
     }else if(primary)button.textContent=active?t('退出原生文档','Leave native document'):t('原生文档','Native document');
@@ -1052,6 +1057,14 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
     } catch(failure) {if(attempt===generation)fail(failure);}
     finally {if(exporting===attempt)exporting=null;if(attempt===generation){void flush();exportButton.disabled=!current();}}
   }
+  function resumeBootstrapInput(){
+    if(!pendingEdit?.bootstrap)return false;
+    pendingEdit=null;pendingLatency=null;
+    nativeDocument.surface.clearPending();
+    draftInput={kind:'bootstrap'};
+    input.toggleAttribute('data-initial',true);
+    return true;
+  }
   async function observe() {
     if(targetButton.disabled)return;
     const stamp={sessionId:session,sourceRevision};
@@ -1065,6 +1078,10 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
       :projectMixedDocument(sentSource,{previous:previousProjection??[],keepThrough:pending?.offset,...markers});
     let projection=project();
     if(!projection||!projection.owners.size){
+      if(resumeBootstrapInput()){
+        renderStatus();
+        while(queuedInput.length&&!pendingEdit)submitInput(queuedInput.shift());
+      }
       targetStatus.textContent=primary&&canStartText?.()?'':t('当前文档没有可定位的公式或纯文本段落。','No supported formula or plain paragraph in this document snapshot.');
       return;
     }
@@ -1117,12 +1134,12 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
           const expected=pendingEdit.source??(previous.source.slice(0,previous.from16)+
             pendingEdit.text+previous.source.slice(previous.to16));
           editRestored=expectedOffset===stop?.docOffset&&next?.filePath===previous.filePath&&next?.source===expected;
-          if(!editRestored)queuedInput.length=0;
+          if(!editRestored&&!resumeBootstrapInput())queuedInput.length=0;
           pendingEdit=null;
         }
         const sample=pendingLatency;
         pendingLatency=null;
-        if(applied){
+        if(applied&&draftInput?.kind!=='bootstrap'){
           paintSurfaceSelection();
           positionInput();
           if(editRestored&&sample?.signature===signature&&sample.revision===stamp.sourceRevision){
@@ -1171,14 +1188,14 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
         :t('点击预览中的空槽或字符边缘，继续在编辑器输入。','Click the empty numerator or denominator, another supported empty slot, or a glyph edge to continue typing in the editor.');
     } catch(failure) {
       if(attempt===generation){
-        clearQueuedInput();
+        if(!resumeBootstrapInput())clearQueuedInput();
         targetStatus.textContent=String(failure?.message??failure);
       }
     } finally {
       if(targeting===attempt)targeting=null;
       if(attempt===generation){
         renderStatus();
-        while(queuedInput.length&&!pendingEdit&&current()&&observation)
+        while(queuedInput.length&&!pendingEdit&&current()&&(observation||draftInput?.kind==='bootstrap'))
           submitInput(queuedInput.shift());
       }
     }
@@ -1246,8 +1263,16 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
     input.focus({preventScroll:true});
   }
   pages.addEventListener('click',event=>{
-    if(engineToggle&&event.button===0&&event.target.closest?.('canvas'))
-      focusInitialText(event.clientX,event.clientY);
+    const canvas=event.target.closest?.('canvas');
+    if(!engineToggle||event.button!==0||!canvas)return;
+    const metrics=initialPageMetrics?.();
+    if(!metrics)return;
+    const points=length=>parseFloat(length)*({pt:1,in:72,cm:72/2.54,mm:72/25.4}[length.match(/[a-z]+$/)?.[0]]??1);
+    const first=pages.querySelector('canvas')??canvas;
+    const rect=first.getBoundingClientRect(),scale=rect.width/points(metrics.width);
+    const height=12*scale;
+    input.style.height=Math.max(14,height)+'px';
+    focusInitialText(rect.left+(points(metrics.margins.left)+15)*scale,rect.top+points(metrics.margins.top)*scale);
   });
   startText.addEventListener('click',()=>{
     if(startText.hidden)return;

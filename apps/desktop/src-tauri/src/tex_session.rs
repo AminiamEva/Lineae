@@ -1282,14 +1282,19 @@ fn update_snapshot(
         entries.iter().any(|file| file.path == next_main)) {
         return Err(error("project_main", "The new compilation entry is missing from the project snapshot."));
     }
+    // The startup page has a different shipout structure from a prose page.
+    // Compile the first real source from scratch before measuring its caret.
+    let from_blank = lock(&session.snapshot).is_lineae_blank_page();
     let snapshot = match files {
-        None => return session.set_source(source),
+        None if !from_blank => return session.set_source(source),
+        None => Snapshot::new(&source, next_main, Vec::new())?,
         Some(files) => Snapshot::new(&source, next_main, files)?,
     };
-    if lock(&session.snapshot).dependencies_equal(&snapshot) {
+    let first_edit = from_blank && !snapshot.is_lineae_blank_page();
+    if !first_edit && lock(&session.snapshot).dependencies_equal(&snapshot) {
         return session.set_source(source);
     }
-    let buffers = lock(&session.snapshot).changed_tex_buffers(&snapshot);
+    let buffers = if first_edit { None } else { lock(&session.snapshot).changed_tex_buffers(&snapshot) };
     let incremental_failure = match buffers.map(|changes| session.apply_tex_buffers(changes)) {
         Some(Ok(update)) => return Ok(update),
         Some(Err(problem)) => Some(problem),
@@ -1315,7 +1320,14 @@ fn update_snapshot(
         manager.session = Some(replacement.clone());
     }
     session.terminate();
-    let result = replacement.start().and_then(|_| replacement.update(source)).map(|mut update| {
+    let result = replacement.start().and_then(|info| {
+        if first_edit {
+            Ok(NativeTexUpdate { session_id: None, edit_id: 0,
+                source_revision: info.source_revision, routed: "background".into() })
+        } else {
+            replacement.update(source)
+        }
+    }).map(|mut update| {
         update.session_id = Some(replacement.id.clone());
         update
     });

@@ -4134,6 +4134,7 @@ nativeTexPreview=installNativeTexPreview({host:footer,before:modes,primary:deskt
     return true;
   },
   canStartText:canStartNativeText,
+  initialPageMetrics:()=>pageMetrics(pageSetup),
   commitHardBreak:(first,last,text)=>{
     if(first?.kind!=='text'||first.paragraph!==last?.paragraph)return null;
     const {paragraph}=first,{source,filePath:path}=paragraph;
@@ -4183,7 +4184,7 @@ nativeTexPreview=installNativeTexPreview({host:footer,before:modes,primary:deskt
     return dispatchNativeParagraphChange(state,tr,original,draft,change,projected)
       ?{source:draft,offset:from+shift+open.length+initial,path}:null;
   },
-  commitInitialText:(text,region)=>{
+  commitInitialText:(text,region,continuing=false)=>{
     if(region){
       if(!text.trim()||/[\r\n]/.test(text))return null;
       const {state}=editor,project=projectExplorer?.model,composition=currentNativeProjectComposition();
@@ -4204,18 +4205,27 @@ nativeTexPreview=installNativeTexPreview({host:footer,before:modes,primary:deskt
       editor.view.dispatch(closeHistory(tr));
       return editor.state.doc===state.doc?null:{source:draft,offset,path:region.path};
     }
-    if(!text.trim()||/[\r\n]/.test(text)||!canStartNativeText())return null;
+    if(!text||/[\r\n]/.test(text))return null;
     const {state}=editor;
-    const tr=state.tr.insertText(text,1);
-    tr.setSelection(TextSelection.create(tr.doc,1+text.length));
+    const paragraph=state.doc.firstChild;
+    if(continuing){
+      if(projectExplorer?.active||!sourceView.hidden||state.doc.childCount!==1||
+        paragraph?.type.name!=='paragraph'||!paragraph.content.content.every(node=>node.isText&&!node.marks.length)||
+        !paragraph.textContent)return null;
+    }else if(!text.trim()||!canStartNativeText())return null;
+    const end=1+paragraph.content.size;
+    const tr=state.tr.insertText(text,end);
+    tr.setSelection(TextSelection.create(tr.doc,end+text.length));
     const prepared=standaloneParagraphDraft(importedSource,projection,importedSnapshot,
       state.doc.toJSON(),tr.doc.toJSON(),0);
     const project=projectExplorer?.model;
     const path=project?.file(project.activeFileId).path;
-    const first=prepared&&projectTextDocument(prepared.draft,{filePath:path,fragment:projectFileKind==='tex'})?.paragraphs[0];
+    const first=prepared&&projectTextDocument(prepared.draft,{filePath:path,fragment:projectFileKind==='tex',
+      keepThrough:continuing?prepared.changes[0].from+prepared.changes[0].insert.length:0})?.paragraphs[0];
     if(!first)return null;
-    const offset=first.from16+first.glyphs.at(-1).to16;
-    editor.view.dispatch(closeHistory(tr.setMeta('standaloneParagraph',prepared)));
+    const offset=first.from16+first.text.length;
+    tr.setMeta('standaloneParagraph',prepared);
+    editor.view.dispatch(continuing?tr:closeHistory(tr));
     return editor.state.doc===state.doc?null:{source:prepared.draft,offset,path};
   },
   commitParagraphBreak:(paragraph,from,to,text)=>{
