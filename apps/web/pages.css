@@ -111,6 +111,8 @@ main { padding:125px 24px 60px; overflow:auto; }
 .document-image-tikz { display:block; width:100%; }
 .document-image:not(.is-tikz) .document-image-tikz { display:none; }
 .document-image-tikz svg { display:block; width:100%; height:auto; margin:0 auto; }
+.document-image-tikz.natural-size { width:auto; max-width:100%; }
+.document-image-tikz.natural-size svg { width:auto; height:auto; max-width:100%; }
 .document-image-tikz:not(.is-ready) { min-height:1.4em; color:light-dark(#8b95a7,#7d879c); font-size:12px; text-align:center; white-space:pre-wrap; }
 .document-image.is-tikz .document-image-frame { height:auto; }
 .document-image[data-caption-position="above"] figcaption { order:-1; }
@@ -440,6 +442,7 @@ button,select,.color-control { transition:background-color .14s ease,color .14s 
 @font-face { font-family:"Latin Modern Roman 12"; src:url("./assets/fonts/latin-modern/lmroman12-bold.otf") format("opentype"); font-style:normal; font-weight:700; font-display:swap; unicode-range:U+0000-024F,U+1E00-1EFF,U+2000-206F,U+20A0-20CF,U+2100-214F,U+2190-21FF,U+2200-22FF,U+2C60-2C7F,U+A720-A7FF; }
 @font-face { font-family:"Latin Modern Roman Caps"; src:url("./assets/fonts/latin-modern/lmromancaps10-regular.otf") format("opentype"); font-style:normal; font-weight:400; font-display:swap; unicode-range:U+0000-024F,U+1E00-1EFF,U+2000-206F,U+20A0-20CF,U+2100-214F,U+2190-21FF,U+2200-22FF,U+2C60-2C7F,U+A720-A7FF; }
 @font-face { font-family:"Latin Modern Mono"; src:url("./assets/fonts/latin-modern/lmmono10-regular.otf") format("opentype"); font-style:normal; font-weight:400; font-display:swap; unicode-range:U+0000-024F,U+1E00-1EFF,U+2000-206F,U+20A0-20CF,U+2100-214F,U+2190-21FF,U+2200-22FF,U+2C60-2C7F,U+A720-A7FF; }
+@font-face { font-family:"Latin Modern Math"; src:url("./vendor/mp-tikz-wasm/bundles/otf-fonts/files/fonts/opentype/public/lm-math/latinmodern-math.otf") format("opentype"); font-style:normal; font-weight:400; font-display:swap; }
 
 .document-page {
   --page-gap:24px;
@@ -1246,6 +1249,7 @@ body.format-painter-active .ProseMirror * { cursor:copy; }
 .tikz-info-line { font-size:10px; color:light-dark(#687386,#aab3c1); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .tikz-option-field { flex-direction:row; align-items:center; gap:6px; }
 .tikz-option-field > span { flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.tikz-option-field.tikz-field-wide > span { flex:0 0 auto; overflow:visible; text-overflow:clip; }
 .tikz-option-field input[type=checkbox] { margin:0; }
 .tikz-option-field select { min-width:0; flex:1; }
 .tikz-zoom-readout { font-size:11px; color:light-dark(#8b95a7,#7d879c); }

@@ -628,13 +628,16 @@ export const DocumentImage = Node.create({
         if(node.attrs.align)dom.dataset.align=node.attrs.align;
         else delete dom.dataset.align;
         localizedLabel(button,'定位图片 · '+node.attrs.path,'Locate image · '+node.attrs.path);
+        const tikzFixedWidth=cssDimension(node.attrs.width);
+        const naturalTikz=Boolean(tikz)&&subIndex<0&&!node.attrs.wrap&&!tikzFixedWidth;
         const imageWidth=tikz
-          ? (subIndex>=0?'100%':cssDimension(node.attrs.width)||'100%')
+          ? (subIndex>=0?'100%':node.attrs.wrap?'100%':tikzFixedWidth||'')
           : subIndex>=0
             ? '100%'
             : node.attrs.wrap
               ? relativeImageWidth(node.attrs.width,node.attrs.wrapWidth||'0.4\\textwidth')
               : cssDimension(node.attrs.width);
+        tikzPreview.classList.toggle('natural-size',naturalTikz);
         // Clear any previous crop geometry before measuring the full image.
         imageFrame.style.height='';
         imageFrame.style.overflow='';
