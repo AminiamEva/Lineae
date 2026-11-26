@@ -128,14 +128,22 @@ const server=createServer(async(req,res)=>{
         const origin=await canvas.boundingBox();
         const caret=await desktopPage.locator('#native-tex-input').boundingBox();
         assert.ok(caret.y-origin.y<150,'The first caret follows the first text line rather than the click');
-        await desktopPage.evaluate(()=>{nativeProbe.rejectObservation=true;});
+        const blankSession=await desktopPage.evaluate(()=>nativeProbe.session);
+        await desktopPage.evaluate(()=>{
+          nativeProbe.restartNext=true;
+          nativeProbe.rejectObservation=true;
+        });
         await desktopPage.keyboard.type('F');
         await desktopPage.waitForFunction(()=>nativeProbe.calls.some(call=>call.command==='native_tex_observe_formula'));
+        assert.equal(await desktopPage.evaluate(()=>nativeProbe.session),blankSession+1);
         await desktopPage.keyboard.type('irst');
         await desktopPage.waitForFunction(()=>nativeProbe.source.includes('First'));
         await desktopPage.evaluate(()=>{nativeProbe.rejectObservation=false;});
         await desktopPage.keyboard.insertText(' paragraph.');
         await desktopPage.waitForFunction(()=>nativeProbe.source.includes('First paragraph.'));
+        await desktopPage.waitForFunction(()=>!document.querySelector('#native-tex-toggle').disabled);
+        await desktopPage.keyboard.insertText(' More.');
+        await desktopPage.waitForFunction(()=>nativeProbe.source.includes('First paragraph. More.'));
         assert.equal(await desktopPage.evaluate(()=>nativeProbe.source.includes('\\thispagestyle{empty}\\null')),false);
       }finally{
         await desktopPage.close();

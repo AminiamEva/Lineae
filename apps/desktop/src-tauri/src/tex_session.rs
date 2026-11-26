@@ -22,7 +22,7 @@ use tauri_plugin_dialog::{DialogExt, MessageDialogButtons};
 
 /// Event-driven protocol delivery. Polling remains as a compatibility fallback,
 /// but an interactive surface never waits for a timer to receive geometry.
-type EventSink = Arc<dyn Fn(Value) + Send + Sync>;
+type EventSink = Arc<dyn Fn(&str, Value) + Send + Sync>;
 
 const SOURCE_LIMIT: usize = 2 * 1024 * 1024;
 const LINE_LIMIT: usize = 16 * 1024 * 1024;
@@ -385,6 +385,7 @@ fn type_one_map_entry<'a>(map: &'a str, name: &str) -> Option<(&'a str, &'a str,
 struct Messages {
     events: VecDeque<Value>,
     event_bytes: usize,
+    live_events: bool,
     waiting: Option<&'static str>,
     reply: Option<Value>,
     exports: HashMap<u64, Value>,
@@ -505,6 +506,7 @@ impl Messages {
             }
             _ => {}
         }
+        if self.live_events { return Ok(()); }
         if self.events.len() >= EVENT_LIMIT || self.event_bytes.saturating_add(bytes) > QUEUE_LIMIT {
             // Never silently lose a changed-page delta and leave the UI corrupted.
             return Err(error("event_overflow", "Native preview event queue filled. Reopen the preview."));
@@ -714,7 +716,7 @@ impl Session {
                             return captured;
                         }
                         if let Some(event) = dispatched {
-                            if let Some(sink) = lock(&session.events).clone() { sink(event); }
+                            if let Some(sink) = lock(&session.events).clone() { sink(&session.id, event); }
                         }
                         session.changed.notify_all();
                     }
@@ -1367,12 +1369,11 @@ pub async fn native_tex_open(
         }
     }
     let session = blocking(move || Session::create_snapshot(snapshot)).await?;
-    let session_id = session.id.clone();
     let event_app = app.clone();
-    session.set_events(Arc::new(move |event| {
+    session.set_events(Arc::new(move |session_id, event| {
         let _ = event_app.emit("lineae-native-tex", json!({
             "sessionId": session_id,
-            "event": event,
+            "event": public_event(event),
         }));
     }));
     {
@@ -1412,23 +1413,25 @@ pub async fn native_tex_update(state: State<'_, NativeTexSessions>, session_id: 
 }
 
 #[tauri::command]
-pub fn native_tex_poll(state: State<'_, NativeTexSessions>, session_id: String) -> Result<Vec<Value>, NativeTexError> {
+pub fn native_tex_poll(state: State<'_, NativeTexSessions>, session_id: String, live_events: Option<bool>) -> Result<Vec<Value>, NativeTexError> {
     let session = state.get(&session_id)?;
     let mut messages = lock(&session.messages);
     messages.check()?;
     messages.event_bytes = 0;
-    Ok(messages.events.drain(..).map(|mut event| {
-        // Keep engine versions/geometry/diagnostics intact, but never publish
-        // host-private PDF paths as web resources. Provenance stays in the hub.
-        if event["event"] == "LayoutUpdate" {
-            let available = event["pdf_fallback"].as_str().is_some_and(|path| !path.is_empty());
-            event["pdf_fallback_registered"] = json!(available);
-            event["pdf_fallback"] = Value::Null;
-        } else if event["event"] == "PdfExported" {
-            event["path"] = Value::Null;
-        }
-        event
-    }).collect())
+    messages.live_events = live_events.unwrap_or(false);
+    Ok(messages.events.drain(..).map(public_event).collect())
+}
+
+fn public_event(mut event: Value) -> Value {
+    // Publish PDF availability while keeping host paths in the native session.
+    if event["event"] == "LayoutUpdate" {
+        let available = event["pdf_fallback"].as_str().is_some_and(|path| !path.is_empty());
+        event["pdf_fallback_registered"] = json!(available);
+        event["pdf_fallback"] = Value::Null;
+    } else if event["event"] == "PdfExported" {
+        event["path"] = Value::Null;
+    }
+    event
 }
 
 #[tauri::command]
@@ -2059,6 +2062,14 @@ mod tests {
             event["event"] == "PdfExported" && event["job_id"].as_u64() == Some(exported.job_id)
         }), "export completion must remain visible to the frontend poller");
         let project = session.root.clone();
+        let (events_tx, events_rx) = std::sync::mpsc::channel();
+        lock(&manager.0).events = Some(Arc::new(move |id, event| {
+            if event["event"] == "LayoutUpdate" && event["convergence"]["state"] == "Converged" {
+                if let Some(revision) = event["versions"]["source_revision"].as_u64() {
+                    let _ = events_tx.send((id.to_owned(), revision));
+                }
+            }
+        }));
         let replaced = update_snapshot(&manager.0, session.clone(), updated.clone(),
             Some(files("\\SnapshotWord{} unsaved sibling change.\n")), None).expect("changed dependencies must replace the native engine");
         let replaced_id = replaced.session_id.as_ref().expect("dependency replacement must return its new session ID");
@@ -2069,6 +2080,12 @@ mod tests {
         assert!(!project.exists());
         let active = manager.get(replaced_id).unwrap();
         wait_layout(&active, replaced.source_revision);
+        loop {
+            let (id, revision) = events_rx.recv_timeout(Duration::from_secs(10))
+                .expect("the replacement engine must push its completed layout");
+            assert_eq!(&id, replaced_id, "pushed layouts must carry the emitting session ID");
+            if revision == replaced.source_revision { break; }
+        }
         assert_eq!(std::fs::read_to_string(active.root.join("main.tex")).unwrap(), updated,
             "dependency/style/Lua/binary updates must not need a main source change");
         assert_eq!(std::fs::read(active.root.join("assets/payload.bin")).unwrap(), vec![0, 255, 13, 10, 128, 2]);

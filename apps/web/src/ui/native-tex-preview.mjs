@@ -971,8 +971,9 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
   }
   async function poll(attempt,epoch=pollEpoch) {
     if(!active || attempt!==generation || epoch!==pollEpoch || session===null)return;
+    const liveEvents=eventsLive;
     try {
-      const events=await invoke('native_tex_poll',{sessionId:session});
+      const events=await invoke('native_tex_poll',{sessionId:session,liveEvents});
       if(attempt!==generation||epoch!==pollEpoch)return;
       for(const event of events)handleEvent(event);
       renderStatus();
@@ -980,7 +981,7 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
       if(attempt===generation&&epoch===pollEpoch&&!eventsLive)fail(failure);
     }
     finally {
-      if(!eventsLive&&active && !terminal && attempt===generation&&epoch===pollEpoch)
+      if(!liveEvents&&active && !terminal && attempt===generation&&epoch===pollEpoch)
         pollTimer=setTimeout(()=>poll(attempt,epoch),100);
     }
   }
