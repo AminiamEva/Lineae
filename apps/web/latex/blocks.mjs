@@ -12,7 +12,6 @@ import {parseTableFloat} from './table-floats.mjs';
 import {importTblr,environmentEnd,trivia} from './tblr.mjs';
 import {importTabularx,importLongtable} from './tabularx.mjs';
 import {importTextEnvironment} from './text-environments.mjs';
-import {displayEnvironment} from './math-environments.mjs';
 import {tableStyleParts} from './table-styles.mjs';
 
 function importedTableCells(row,specs,layout) {
@@ -482,9 +481,12 @@ function importSegment(block,options) {
   let cursor = 0;
   for (const token of sourceStructure(block)) {
     if (!token.topLevel || token.index<cursor) continue;
-    // The scanner keeps nested environments and literal content opaque.
-    const environment=token.kind==='begin'&&(displayEnvironment(token.value)??
-      /^\\begin\{(figure\*?|wrapfigure|table\*?|tabular\*?|tblr|tabularx|longtable|abstract|center)\}$/.exec(token.value)?.[1]);
+    // The scanner keeps nested environments and literal content opaque. Split
+    // any top-level environment from the surrounding text, even without a
+    // preceding blank line (TeX does not require one). Unknown environments
+    // stay Raw, but the prefix/suffix still render as paragraphs.
+    const environment=token.kind==='begin'?
+      (/^\\begin\{([^{}\r\n]+)\}$/.exec(token.value)?.[1]??null):null;
     const closing=environment&&environmentEnd(block,token.index,environment);
     if(closing) {
       const prefix=block.slice(cursor,token.index);

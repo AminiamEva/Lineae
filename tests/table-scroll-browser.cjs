@@ -89,6 +89,7 @@ const source = `\\documentclass{article}\n\\begin{document}\n\nBefore.\n\n\\begi
     await page.locator('#file').setInputFiles({name:'short.tex',mimeType:'text/plain',buffer:Buffer.from(shortSource)});
     await page.waitForFunction(() => document.querySelectorAll('.ProseMirror table tr').length === 2);
     await cells.last().click();
+    await page.locator('[data-group=insert]').click();
     const shortBefore = await scrollY();
     await rowButton.click();
     await page.waitForFunction(() => document.querySelectorAll('.ProseMirror table tr').length === 3);

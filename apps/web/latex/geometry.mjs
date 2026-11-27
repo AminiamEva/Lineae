@@ -63,17 +63,41 @@ function commonMargin(margins) {
   return SIDES.every(side => margins[side] === margins.top) ? margins.top : 'custom';
 }
 
+function readBraceGroup(text, start) {
+  if (text[start] !== '{') return null;
+  let depth = 0;
+  for (let index = start; index < text.length; index++) {
+    if (text[index] === '\\') { index++; continue; }
+    if (text[index] === '{') depth++;
+    else if (text[index] === '}' && --depth === 0) return { value: text.slice(start + 1, index), start: start + 1, end: index + 1 };
+  }
+  return null;
+}
+
+// geometry.sty also accepts a runtime \geometry{...} command, which overrides
+// package options. Return the last one in the preamble.
+function geometryCommand(preamble) {
+  let found = null;
+  for (const match of preamble.matchAll(/\\geometry(?![A-Za-z])\s*/g)) {
+    const group = readBraceGroup(preamble, match.index + match[0].length);
+    if (group) found = { ...group, commandStart: match.index };
+  }
+  return found;
+}
+
 export function readPageSetup(preamble = '') {
   const match = /\\usepackage(?:\[([^\]]*)\])?\{geometry\}/.exec(preamble);
+  const command = geometryCommand(preamble);
   const parseOptions = value => String(value ?? '').split(',').map(option => option.trim()).filter(Boolean);
   const classOptions = parseOptions(/\\documentclass(?:\[([^\]]*)\])?\{[^{}]+\}/.exec(preamble)?.[1]);
-  const geometryOptions = parseOptions(match?.[1]);
-  const options = match ? geometryOptions : classOptions;
+  const geometryOptions = [...parseOptions(match?.[1]), ...parseOptions(command?.value)];
+  const geometryPresent = Boolean(match || command);
+  const options = geometryPresent ? geometryOptions : classOptions;
   const layoutOptions = [...classOptions, ...geometryOptions];
   const paperOption = layoutOptions.filter(option => /^(?:a4|a5|letter|legal)paper$/.test(option)).at(-1);
   const paper = paperOption?.replace('paper', '') ?? 'letter';
   const orientation = layoutOptions.filter(option => /^(?:landscape|portrait)$/.test(option)).at(-1) ?? 'portrait';
-  if (!match && orientation === 'portrait' && NATIVE_MARGINS[paper]) {
+  if (!geometryPresent && orientation === 'portrait' && NATIVE_MARGINS[paper]) {
     const margins = { ...NATIVE_MARGINS[paper] };
     return { paper, orientation, margin: 'custom', margins };
   }
@@ -83,9 +107,17 @@ export function readPageSetup(preamble = '') {
     const dimension=/^paper(width|height)\s*=\s*(\d+(?:\.\d+)?(?:mm|cm|in|pt))$/.exec(option);
     if(dimension && parseFloat(dimension[2])>0)customSize[dimension[1]]=dimension[2];
   }
-  const defaults = match ? geometryDefaultMargins({...size,...customSize}, orientation) : Object.fromEntries(
+  const defaults = geometryPresent ? geometryDefaultMargins({...size,...customSize}, orientation) : Object.fromEntries(
     SIDES.map(side => [side, FALLBACK_MARGIN]));
-  const optionValue = name => options.find(option => new RegExp('^' + name + '=').test(option))?.slice(name.length + 1);
+  // Package options are applied first and \geometry{...} last; use the final
+  // declaration for each key.
+  const optionValue = name => {
+    const pattern = new RegExp('^' + name + '=');
+    for (let index = options.length - 1; index >= 0; index--) {
+      if (pattern.test(options[index])) return options[index].slice(name.length + 1);
+    }
+    return undefined;
+  };
   const uniform = optionValue('margin');
   const hmargin = optionValue('hmargin');
   const vmargin = optionValue('vmargin');
@@ -105,9 +137,9 @@ export function writePageSetup(preamble, setup = {}) {
   const orientation = setup.orientation === 'landscape' ? 'landscape' : 'portrait';
   const margins = normalizedMargins(setup);
   const match = /\\usepackage(?:\[([^\]]*)\])?\{geometry\}/.exec(preamble);
-  const kept = (match?.[1] ?? '').split(',')
-    .map(option => option.trim())
-    .filter(Boolean)
+  const command = geometryCommand(preamble);
+  const splitOptions = value => String(value ?? '').split(',').map(option => option.trim()).filter(Boolean);
+  const kept = splitOptions(command ? command.value : match?.[1])
     .filter(option => !/^(?:a4paper|a5paper|letterpaper|legalpaper|landscape|portrait|margin=|top=|bottom=|left=|right=|inner=|outer=|hmargin=|vmargin=)/.test(option));
   const marginOptions = commonMargin(margins) === 'custom'
     ? SIDES.map(side => side + '=' + margins[side])
@@ -115,6 +147,10 @@ export function writePageSetup(preamble, setup = {}) {
   const options = [...kept, paper + 'paper', orientation === 'landscape' ? 'landscape' : '', ...marginOptions]
     .filter(Boolean)
     .join(',');
+  if (command) {
+    // Keep the runtime command form; its options override the package options.
+    return preamble.slice(0, command.start) + options + preamble.slice(command.end - 1);
+  }
   const line = '\\usepackage[' + options + ']{geometry}';
   if (match) return preamble.slice(0, match.index) + line + preamble.slice(match.index + match[0].length);
   return preamble.replace(/^(\s*\\begin\{document\})/m, line + '\n$1');
