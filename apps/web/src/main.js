@@ -2042,8 +2042,10 @@ async function ensureCtexBeforeSave(snapshot, {notify=true}={}) {
   const project=projectExplorer?.model;
   // Project saves preserve the on-disk source (comments, CRLF and exact
   // spelling). ctex can be enabled explicitly with the status toggle; only
-  // standalone/export saves receive the automatic declaration.
+  // standalone/export saves receive the automatic declaration. BibTeX is not a
+  // TeX document and must never receive a ctex declaration.
   if (projectFileKind==='tex' && project) return snapshot;
+  if (projectFileKind==='bib' || /\.bib$/i.test(filename)) return snapshot;
   const text=snapshot.text??'';
   const analysis=analyzeCtexSource(text);
   if (analysis.enabled || analysis.hasOtherCjkProvider || !hasHanDocumentText(text)) return snapshot;
