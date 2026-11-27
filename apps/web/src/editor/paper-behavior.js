@@ -366,6 +366,14 @@ function paperFormatting(editor = null) {
         session=null;
         return;
       }
+      // Chromium can paint the commit inside the trailing cursor wrapper.
+      // Reconciliation then discards it with the wrapper. Replay the committed
+      // string once, only at the unchanged formula boundary and document.
+      if(doc.eq(pending.doc) && view.state.selection.empty && view.state.selection.from===from) {
+        session=null;
+        view.dispatch(view.state.tr.insertText(committed,from));
+        return;
+      }
       if(end>doc.content.size || doc.textBetween(from,end,'\0','\0')!==preedit+committed) {
         if (doc.textBetween(from,Math.min(from+committed.length,doc.content.size),'\0','\0')===committed) session=null;
         return;
@@ -404,7 +412,7 @@ function paperFormatting(editor = null) {
           composing = true;
           const from = compositionAnchor(view);
           if (from !== null && !preeditDOM) {
-            session = {from, preedit:''};
+            session = {from, doc:view.state.doc, preedit:''};
             // Ask ProseMirror for its native cursor wrapper once, before its
             // compositionstart handler runs. No selection transaction during
             // preedit should create another wrapper.
