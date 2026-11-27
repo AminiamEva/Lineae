@@ -323,10 +323,12 @@ export function installTypesetPagination(page, paper, meta, editor) {
     paragraphPreamble=preamble;
     profile = typesetProfile(preamble);
     furniture = readPageFurniture(preamble);
-    page.dataset.documentClass = profile.className;
+    page.dataset.documentClass = profile.baseClassName;
+    page.dataset.rawDocumentClass = profile.rawClassName;
+    page.dataset.indentFirst = String(profile.indentFirst);
     page.dataset.frontmatter = String(/\\frontmatter/.test(preamble));
-    setSerializationClass(profile.className);
-    setHeadingBase(profile.className === 'book' || profile.className === 'report' ? 'chapter' : null);
+    setSerializationClass(profile.baseClassName);
+    setHeadingBase(profile.baseClassName === 'book' || profile.baseClassName === 'report' ? 'chapter' : null);
     page.dataset.pageStyle = furniture.style === 'fancy' ? 'fancy' : profile.pageStyle;
     page.style.setProperty('--page-head-rule-width', furniture.rules.headWidth);
     page.style.setProperty('--page-head-rule-color', furniture.rules.headColor);
@@ -615,6 +617,12 @@ export function installTypesetPagination(page, paper, meta, editor) {
     renderTableHeaders(tablePlans, blocks);
     delete page.dataset.paginationMeasuring;
     if (layoutPass >= 2) settleLayout();
+    // A document change (or a fresh width) resets layoutPass to 1. Always run
+    // one verification pass instead of waiting for a ResizeObserver callback:
+    // when the applied plan does not change any measured size there is no
+    // callback, and the layout would otherwise stay unsettled until an
+    // unrelated decoration re-render forced the second pass.
+    if (layoutPass === 1) schedule();
     restoreScroll();
     lastLayoutDoc = editor.state.doc;
     window.dispatchEvent(new CustomEvent('lineae-layout'));

@@ -1,5 +1,7 @@
 import {documentNumbers} from '../../latex/document-numbering.mjs';
 import {headingOutline} from '../../latex/heading-numbering.mjs';
+import {buildTocModel,pageIndexAtSourcePosition} from '../../latex/toc-model.mjs';
+import {resolveChineseProfile} from '../../latex/chinese-profile.mjs';
 import {createOutlinePanel} from '../ui/outline-panel.js';
 import { Node } from '@tiptap/core';
 import { t } from '../ui/i18n.mjs';
@@ -37,6 +39,29 @@ export function citationTargets(keys,library) {
 }
 
 export const outline=headingOutline;
+
+const TOC_LEVELS={
+  article:{
+    part:{indent:0,numwidth:1.5,special:true},
+    section:{indent:0,numwidth:1.5,special:true},
+    subsection:{indent:1.5,numwidth:2.3},
+    subsubsection:{indent:3.8,numwidth:3.2},
+    paragraph:{indent:7,numwidth:4.1},
+    subparagraph:{indent:10,numwidth:5},
+  },
+  chapters:{
+    part:{indent:0,numwidth:1.5,special:true},
+    chapter:{indent:1,numwidth:1.5,special:true},
+    section:{indent:1.5,numwidth:2.3},
+    subsection:{indent:3.8,numwidth:3.2},
+    subsubsection:{indent:7,numwidth:4.1},
+    paragraph:{indent:10,numwidth:5},
+    subparagraph:{indent:12,numwidth:6},
+  },
+};
+function tocLevelConfig(command,chapters){
+  return (chapters?TOC_LEVELS.chapters:TOC_LEVELS.article)[command]??{indent:0,numwidth:2.3};
+}
 
 export function collectReferenceLabels(doc) {return documentNumbers(doc).labels;}
 
@@ -250,6 +275,8 @@ export const TableOfContents = Node.create({
       dom.dataset.tocView = '';
       dom.contentEditable = 'false';
       let rows = [];
+      let retry = 0;
+      let currentKeys = '';
       const updatePages = () => {
         const page = editor.view.dom.closest('.document-page');
         const sheet = page?.querySelector('.document-sheet');
@@ -257,13 +284,13 @@ export const TableOfContents = Node.create({
         const pageRect = page.getBoundingClientRect();
         const pitch = sheet.offsetHeight + (Number.parseFloat(getComputedStyle(page).getPropertyValue('--page-gap')) || 0);
         const zoom = pageRect.width / page.offsetWidth || 1;
-        const headingElements = [...editor.view.dom.querySelectorAll('h1,h2,h3')];
-        rows.forEach((row, rowIndex) => {
-          const node = headingElements[rowIndex];
+        let unresolved = false;
+        rows.forEach(row => {
+          const node = editor.view.nodeDOM(row.position) ?? editor.view.dom.querySelector(`[data-heading-position="${row.position}"]`);
           const rect = node?.getBoundingClientRect?.();
-          const index = node?.getAttribute?.('data-page-index') != null
-            ? Number(node.getAttribute('data-page-index'))
-            : rect?.height ? Math.floor((rect.top - pageRect.top) / zoom / pitch) : -1;
+          let index = pageIndexAtSourcePosition(editor.view, row.position);
+          if (index == null && rect?.height) index = Math.floor((rect.top - pageRect.top) / zoom / pitch);
+          if (index == null || index < 0) { unresolved = true; index = -1; }
           const mainStart = page.dataset.mainStart ? Number(page.dataset.mainStart) : null;
           const frontmatter = page.dataset.frontmatter === 'true' || mainStart !== null;
           const pageIndex = row.matter === 'main' && mainStart !== null && index >= 0 && index < mainStart
@@ -272,42 +299,67 @@ export const TableOfContents = Node.create({
             ? displayPageNumber(pageIndex, { frontmatter, mainStart }).text
             : '';
         });
+        if (unresolved && retry < 3) { retry += 1; requestAnimationFrame(updatePages); }
+        else retry = 0;
       };
       const render = () => {
+        const preamble = editor.state.doc.attrs.layoutPreamble || '';
+        const chinese = resolveChineseProfile({ preamble });
+        const model = buildTocModel(editor.state.doc);
+        const chapters = Boolean(model.chapters);
+        const keys = model.entries.map(item => `${item.position}:${item.command}:${item.displayLabel || item.number}:${item.tocText}`).join('|');
+        if (keys === currentKeys) { updatePages(); return; }
+        const focusPosition = document.activeElement?.closest?.('.toc-entry')?.dataset?.headingPosition;
+        currentKeys = keys;
         dom.replaceChildren();
+        retry = 0;
         const title = document.createElement('div');
         title.className = 'toc-title';
         title.dataset.zh = '目录';
         title.dataset.en = 'Contents';
-        const preamble = editor.state.doc.attrs.layoutPreamble || '';
-        title.textContent = usesCtex(preamble) ? '目录' : 'Contents';
+        title.textContent = chinese.names.contentsname || 'Contents';
+        dom.dataset.tocChapters = String(chapters);
         dom.append(title);
-        rows = outline(editor.state.doc).map(item => {
+        rows = model.entries.map(item => {
+          const config = tocLevelConfig(item.command, chapters);
           const row = document.createElement('div');
           row.className = 'toc-entry';
           row.setAttribute('role','link');
           row.tabIndex = 0;
           row.dataset.headingPosition = String(item.position);
-          row.style.paddingLeft = (item.level - 1) + 'em';
+          row.dataset.tocCommand = item.command;
+          row.dataset.tocDepth = String(item.depth);
+          row.dataset.tocLevel = String(item.level);
+          row.dataset.tocExplicit = String(item.explicit);
+          row.dataset.tocSpecial = String(Boolean(config.special));
+          row.style.setProperty('--toc-indent', config.indent + 'em');
+          row.style.setProperty('--toc-numwidth', config.numwidth + 'em');
+          const number = document.createElement('span');
+          number.className = 'toc-number';
+          number.textContent = item.displayLabel || item.number || '';
+          const body = document.createElement('span');
+          body.className = 'toc-entry-body';
           const content = document.createElement('span');
           content.className = 'toc-entry-text';
-          content.textContent = (item.number ? item.number + '  ' : '') + item.text;
+          content.textContent = item.tocText ?? item.text;
           const leader = document.createElement('span');
           leader.className = 'toc-leader';
           leader.setAttribute('aria-hidden','true');
+          body.append(content, leader);
           const pageNumber = document.createElement('span');
           pageNumber.className = 'toc-page';
           const jump=()=>navigateTo(editor,item);
           row.addEventListener('click',jump);
           row.addEventListener('keydown',event=>{if(event.key==='Enter' || event.key===' '){event.preventDefault();jump();}});
-          row.append(content,leader,pageNumber);
+          row.append(number, body, pageNumber);
           dom.append(row);
           return {position:item.position,page:pageNumber,matter:item.matter};
         });
         updatePages();
+        if (focusPosition) dom.querySelector(`.toc-entry[data-heading-position="${focusPosition}"]`)?.focus();
       };
       render();
-      const layout = () => updatePages();
+      const layout = () => { retry = 0; updatePages(); };
       window.addEventListener('lineae-layout',layout);
       dom.refreshToc = render;
       return {

@@ -42,7 +42,9 @@ const source = `\\documentclass{article}\n\\begin{document}\n\n${before}\n\n\\be
       return {
         pageCount: Number(pageElement.dataset.pageCount),
         scrollY: window.scrollY,
-        first: [Math.round(firstRect.top), Math.round(firstRect.height)],
+        // Relative to the page so an intentional ribbon-panel height change is
+        // not mistaken for content reflow.
+        first: [Math.round(firstRect.top - pageRect.top), Math.round(firstRect.height)],
         pageBreaksInFirst: first.querySelectorAll('.pagination-line-break').length,
         rows: document.querySelectorAll('.ProseMirror table tr').length,
       };
@@ -51,6 +53,9 @@ const source = `\\documentclass{article}\n\\begin{document}\n\n${before}\n\n\\be
     await cells.nth(8).scrollIntoViewIfNeeded();
     await cells.nth(8).click();
     await page.waitForTimeout(200);
+    // Selecting a cell opens the Table tab (step 24); the Insert row command
+    // lives in the Insert tab.
+    await page.locator('[data-group=insert]').click();
     const selected = await snapshot();
     await page.locator('button').filter({ hasText: 'Row' }).first().click();
     await page.waitForTimeout(700);

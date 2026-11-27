@@ -1,0 +1,60 @@
+{
+ "name": "cjk-params",
+ "ok": true,
+ "sourceHash": "9fbdc66e92daaea4cfa748d805f07c7d1b15beb866b6135cf8608261f785e4e6",
+ "pages": [
+  {
+   "width": 595.28,
+   "height": 841.89,
+   "words": [
+    {
+     "text": "中文参数探针。",
+     "x": 82.287,
+     "y": 63.767,
+     "w": 69.738,
+     "h": 9.963
+    },
+    {
+     "text": "1",
+     "x": 295.147,
+     "y": 801.385,
+     "w": 4.981,
+     "h": 9.963
+    }
+   ],
+   "lines": [
+    {
+     "y": 63.767,
+     "baseline": 73.73,
+     "x": 82.287,
+     "xMax": 152.025,
+     "text": "中文参数探针。"
+    },
+    {
+     "y": 801.385,
+     "baseline": 811.348,
+     "x": 295.147,
+     "xMax": 300.128,
+     "text": "1"
+    }
+   ]
+  }
+ ],
+ "toc": [],
+ "probes": {
+  "CJKecglue": "\\protected\\long macro:->",
+  "CJKspace": "false",
+  "CJKmath": "false",
+  "AllowBreakBetweenPuncts": "false",
+  "PunctStyle": "quanjiao",
+  "cjkLatin": "20.83pt",
+  "cjkTilde": "20.83pt",
+  "cjkSpaceInput": "20.0pt",
+  "cjkNoSpaceInput": "20.0pt"
+ },
+ "diagnostics": {
+  "missing": [],
+  "overfull": 0,
+  "underfull": 0
+ }
+}

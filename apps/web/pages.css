@@ -259,8 +259,6 @@ main { padding:125px 24px 60px; overflow:auto; }
 .math-equation-number::after { content:"(" counter(lineae-equation) ")"; }
 .ProseMirror math-field { min-width:1em; max-width:100%; border:0; background:transparent; color:inherit; font-family:inherit; text-indent:0; }
 .ProseMirror .math-inline { display:inline-block; max-width:100%; vertical-align:baseline; text-indent:0; }
-.ProseMirror .math-inline.math-cjk-before { margin-inline-start:.25em; }
-.ProseMirror .math-inline.math-cjk-after { margin-inline-end:.25em; }
 .ProseMirror > p[data-indent="true"] .math-inline { max-width:calc(100% - 2ic); }
 .ProseMirror .math-display math-field { max-width:calc(100% - 16px); }
 .ProseMirror math-field::part(content) { overflow-x:visible; }
@@ -278,6 +276,7 @@ main { padding:125px 24px 60px; overflow:auto; }
 .ProseMirror blockquote { margin:.6em 0; padding-left:1em; border-left:3px solid light-dark(#d5dce8,#4a5568); }
 .ProseMirror blockquote[data-latex-environment] { border-left:0; padding:0; }
 .ProseMirror blockquote[data-latex-environment="abstract"] { margin-inline:2em; text-align:justify; }
+.ProseMirror blockquote[data-latex-environment="abstract"]::before { content: attr(data-abstract-name); display:block; text-align:center; font-weight:700; font-size:1.2em; margin:0 0 1em; }
 .ProseMirror blockquote[data-latex-environment="center"] { text-align:center; }
 .document-page .ProseMirror blockquote[data-latex-environment="center"] > p:not([data-align]) { text-align:center; text-indent:0; }
 .ProseMirror code { font-family:ui-monospace,SFMono-Regular,monospace; background:light-dark(#f2f3f6,#2e3138); border-radius:3px; padding:0 .2em; }
@@ -328,12 +327,45 @@ main { padding:125px 24px 60px; overflow:auto; }
 #document-meta .doc-title:empty::before,#document-meta .doc-author:empty::before,#document-meta .doc-date:empty::before { content:attr(data-placeholder); opacity:.35; }
 #document-meta .doc-title,#document-meta .doc-author,#document-meta .doc-date { outline:none; border-radius:4px; }
 #document-meta .doc-title:focus,#document-meta .doc-author:focus,#document-meta .doc-date:focus { background:light-dark(#f3f6fb,#2c3038); }
-.ProseMirror .toc-block { padding:0; margin:.6em 0; }
-.ProseMirror .toc-title { font-weight:700; font-size:1.44em; margin:.4em 0 .6em; }
-.ProseMirror .toc-entry { display:flex; align-items:baseline; gap:.45em; font-size:1em; line-height:var(--tex-line-height); }
-.ProseMirror .toc-entry-text { flex:0 1 auto; }
-.ProseMirror .toc-leader { flex:1 1 auto; min-width:1em; border-bottom:1px dotted currentColor; opacity:.35; translate:0 -.2em; }
-.ProseMirror .toc-page { flex:0 0 auto; font-variant-numeric:tabular-nums; text-align:right; }
+.ProseMirror .toc-block { padding:0; margin:.6em 0; --toc-pnumwidth:1.55em; --toc-tocrmarg:2.55em; --toc-dotsep:.25em; }
+.ProseMirror .toc-title { font-weight:700; font-size:1.44em; margin:.4em 0 .6em; text-align:center; }
+.ProseMirror .toc-block[data-toc-chapters="false"] .toc-title { text-align:left; }
+.ProseMirror .toc-entry {
+  display:grid;
+  grid-template-columns:var(--toc-numwidth,2.3em) minmax(0,1fr) var(--toc-pnumwidth);
+  column-gap:0;
+  padding-left:var(--toc-indent,0em);
+  padding-right:calc(var(--toc-tocrmarg) - var(--toc-pnumwidth));
+  font-size:1em;
+  line-height:var(--tex-line-height);
+  min-width:0;
+  outline:none;
+}
+.ProseMirror .toc-number { align-self:start; min-width:0; text-align:left; white-space:nowrap; }
+.ProseMirror .toc-entry-body { display:flex; align-items:flex-end; min-width:0; }
+.ProseMirror .toc-entry-text { flex:0 1 auto; min-width:0; overflow-wrap:anywhere; }
+.ProseMirror .toc-leader {
+  flex:1 1 0;
+  align-self:flex-end;
+  min-width:0;
+  height:1em;
+  margin:0 .15em;
+  background-image:radial-gradient(circle,currentColor .055em,transparent .06em);
+  background-size:var(--toc-dotsep) 100%;
+  background-position:0 100%;
+  background-repeat:repeat-x;
+  opacity:.5;
+}
+.ProseMirror .toc-page { align-self:end; font-variant-numeric:tabular-nums; text-align:right; white-space:nowrap; }
+.ProseMirror .toc-entry[data-toc-special="true"] { font-weight:700; }
+.ProseMirror .toc-entry[data-toc-special="true"] .toc-leader { display:none; }
+.ProseMirror .toc-entry[data-toc-command="part"] {
+  grid-template-columns:max-content minmax(0,1fr) var(--toc-pnumwidth);
+  column-gap:.5em;
+  margin-top:1.2em;
+}
+.ProseMirror .toc-entry[data-toc-command="chapter"] { margin-top:.6em; }
+.ProseMirror .toc-block[data-toc-chapters="false"] .toc-entry[data-toc-command="section"] { margin-top:1em; }
 .ProseMirror pre[data-raw] { white-space:pre-wrap; background:light-dark(#f4f4f6,#333); font:12px/1.5 monospace; padding:.5em; }
 .document-status { position:fixed; inset:auto 0 0; display:flex; align-items:center; gap:6px; padding:1px 10px; min-height:22px; font-size:10px; background:light-dark(#fffffff2,#242426f2); border-top:1px solid light-dark(#e1e4ea,#3b3d42); backdrop-filter:blur(18px); z-index:4; }
 .document-status span { margin-right:auto; }
@@ -342,6 +374,8 @@ main { padding:125px 24px 60px; overflow:auto; }
 .document-status button:active { transform:scale(.96); }
 .document-status #keyboard-priority { flex-shrink:0; max-width:180px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .document-status #keyboard-priority[aria-pressed=true] { color:light-dark(#0059c7,#9bc8ff); background:light-dark(#dceaff,#343d50); }
+.document-status #enable-ctex { flex-shrink:0; white-space:nowrap; }
+.document-status #enable-ctex[aria-pressed=true] { color:light-dark(#0059c7,#9bc8ff); background:light-dark(#dceaff,#343d50); }
 .document-status .shortcut-priority-message { margin:0; max-width:200px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; color:light-dark(#a32c25,#ffb4ac); }
 .native-tex-open main { margin-right:min(44vw,720px); }
 #native-tex-preview { position:fixed; right:0; top:var(--tex-toolbar-bottom,100px); bottom:28px; width:min(44vw,720px); z-index:10; background:light-dark(#f2f3f5,#242426); border-left:1px solid light-dark(#ccd1d9,#555); padding:12px; overflow:auto; box-sizing:border-box; }
@@ -548,9 +582,6 @@ button,select,.color-control { transition:background-color .14s ease,color .14s 
   pointer-events:none;
 }
 .document-page[data-pagination-measuring] .pagination-line-break { display:none; }
-/* XeCJK inserts about 1/3 em between CJK and Latin letters or digits. */
-.document-page .ProseMirror .cjk-latin.cjk-latin-before { margin-inline-start:.333em; }
-.document-page .ProseMirror .cjk-latin.cjk-latin-after { margin-inline-end:.333em; }
 .document-page .ProseMirror :is(p,li,td,th) { text-align:justify; hyphens:auto; }
 .document-page .ProseMirror p { margin:var(--tex-parskip) 0; }
 .document-page .ProseMirror > p[data-indent="true"] { text-indent:var(--tex-paragraph-indent); }
@@ -576,11 +607,11 @@ button,select,.color-control { transition:background-color .14s ease,color .14s 
 .document-page .ProseMirror :is(ul,ol) :is(ul,ol) :is(ul,ol) :is(ul,ol) { padding-inline-start:16.9365pt; }
 .document-page .ProseMirror :is(ul,ol) :is(ul,ol) :is(ul,ol) :is(ul,ol) :is(ul,ol) { padding-inline-start:clamp(0px,100% - 10em,14pt); }
 
-.table-style-group { display:flex; flex-direction:column; gap:4px; min-width:150px; padding:3px 7px; border-inline-end:1px solid light-dark(#e2e5eb,#3f4249); }
+.table-style-group { display:flex; flex-direction:column; justify-content:space-between; gap:4px; min-width:150px; padding:3px 7px; border-inline-end:1px solid light-dark(#e2e5eb,#3f4249); }
 .table-style-group:last-child { border-inline-end:0; }
-.table-style-group-title { color:light-dark(#687386,#aab3c1); font-size:10px; font-weight:600; }
-.table-style-group-body { display:flex; flex-direction:column; gap:4px; }
-.table-options-grid { display:flex; flex-wrap:wrap; gap:4px 8px; max-width:320px; }
+.table-style-group-title { margin-top:auto; width:100%; color:light-dark(#687386,#aab3c1); font-size:10px; font-weight:600; text-align:center; }
+.table-style-group-body { display:grid; grid-template-rows:repeat(2,minmax(0,auto)); grid-auto-flow:column; align-content:space-between; gap:4px; }
+.table-options-grid { display:grid; grid-template-rows:repeat(2,minmax(0,auto)); grid-auto-flow:column; gap:4px 8px; max-width:100%; }
 .table-option { display:flex; align-items:center; gap:4px; color:light-dark(#687386,#aab3c1); font-size:10px; white-space:nowrap; }
 .table-option input[type=checkbox] { margin:0; }
 .table-option input[type=number] { width:52px; }
@@ -597,7 +628,20 @@ button,select,.color-control { transition:background-color .14s ease,color .14s 
 .document-page .ProseMirror > .tableWrapper:has(> table[data-table-align="right"]) { margin-inline-start:auto; margin-inline-end:0; }
 .document-page .ProseMirror > .tableWrapper:has(> table[data-table-align="left"]) { margin-inline-start:var(--tex-paragraph-indent); margin-inline-end:auto; }
 .document-page .ProseMirror .tableWrapper { width:max-content; max-width:100%; }
-.document-page .ProseMirror > .tableWrapper { margin-inline:auto; }
+.document-page .ProseMirror > .tableWrapper { margin-inline:auto; margin-block:0; }
+/* A caption widget is the existing sibling that marks a table float; a bare
+   tabular has none and keeps zero block margin. \textfloatsep/\intextsep/
+   \floatsep are the global float lengths already exposed as --image-*
+   variables. The [data-placement] selectors remain for hosts that render the
+   placement attribute; the sibling selectors cover the current DOM. */
+.document-page .ProseMirror > .table-caption-widget + .tableWrapper { margin-block:0 var(--image-textfloatsep,20pt); }
+.document-page .ProseMirror > .table-caption-widget:has(+ .tableWrapper) { margin-block:calc(var(--image-textfloatsep,20pt) + var(--caption-above-skip,10pt)) 0; }
+.document-page .ProseMirror > .tableWrapper:has(> table:is([data-placement="h"],[data-placement="H"])) { margin-block:0 var(--image-intextsep,12pt); }
+.document-page .ProseMirror > .tableWrapper:has(> table:is([data-placement="h"],[data-placement="H"])):has(+ .table-caption-widget) { margin-block-end:var(--image-intextsep,12pt); }
+.document-page .ProseMirror > .tableWrapper + .table-caption-widget + .tableWrapper { margin-block-start:0; }
+.document-page .ProseMirror > .tableWrapper + .table-caption-widget:has(+ .tableWrapper) { margin-block-start:calc(var(--image-floatsep,12pt) + var(--caption-above-skip,10pt)); }
+.document-page .ProseMirror > .tableWrapper:has(+ .table-caption-widget) { margin-block-end:var(--image-floatsep,12pt); }
+.document-page { --caption-above-skip:10pt; --caption-below-skip:0pt; }
 .document-page .ProseMirror > .tableWrapper > table { min-width:0!important; }
 .document-page .ProseMirror > .tableWrapper col { width:auto!important; min-width:0!important; }
 .document-page .ProseMirror td,.document-page .ProseMirror th { min-width:0; border:0; padding:0 var(--tabcolsep); line-height:var(--tex-line-height); }
@@ -623,7 +667,8 @@ button,select,.color-control { transition:background-color .14s ease,color .14s 
 .document-page .ProseMirror table[data-border-mode="outer"] { border:var(--table-rule-width) solid currentColor; }
 .document-page .ProseMirror table[data-border-mode="horizontal"] :is(td,th) { border-block:var(--table-rule-width) solid currentColor; }
 .document-page .ProseMirror table[data-booktabs] :is(td,th) { border-inline:0; }
-.document-page .ProseMirror table[data-booktabs] { margin-block:var(--booktabs-above) 0; }
+/* Booktabs above/below rule space stays in the row padding (below); the table
+   itself must not gain a block margin. */
 .document-page .ProseMirror table[data-booktabs] tr[data-booktabs-rule="toprule"] > :is(td,th) {
   border-top:0; padding-top:var(--booktabs-below);
   background-image:linear-gradient(currentColor,currentColor); background-repeat:repeat-x;
@@ -1309,7 +1354,7 @@ body.format-painter-active .ProseMirror * { cursor:copy; }
 .document-page[data-document-class="book"] .ProseMirror h1,
 .document-page[data-document-class="report"] .ProseMirror h1 {
   font-size: 2.26em; font-weight: 700; line-height: 1.2;
-  margin: calc(50pt - 3.5ex) 0 40pt; counter-increment: lineae-chapter;
+  margin: calc(50pt - 3.5ex) 0 40pt;
 }
 .document-page[data-frontmatter="true"] .ProseMirror h1:first-of-type::before,
 .document-page[data-has-backmatter="true"] .ProseMirror h1:last-of-type::before,
@@ -1317,31 +1362,19 @@ body.format-painter-active .ProseMirror * { cursor:copy; }
 .document-page[data-has-backmatter="true"] .ProseMirror h1:last-of-type::before,
 .document-page[data-frontmatter="true"] .ProseMirror h1:first-of-type::before,
 .document-page[data-has-backmatter="true"] .ProseMirror h1:last-of-type::before { content:none; }
-.document-page[data-document-class="book"] .ProseMirror h1::before,
-.document-page[data-document-class="report"] .ProseMirror h1::before {
-  content: "Chapter " counter(lineae-chapter);
-  display: block;
-}
 .document-page[data-document-class="book"] .ProseMirror h1[data-matter="front"]::before,
 .document-page[data-document-class="report"] .ProseMirror h1[data-matter="front"]::before {
   content: none;
 }
-.document-page[data-document-class="book"] .ProseMirror,
-.document-page[data-document-class="report"] .ProseMirror { counter-reset: lineae-chapter lineae-part; }
-/* \part: centred display heading that numbers with Roman numerals and restarts
-   chapter numbering, matching book/report output. */
+/* \part: centred display heading; the label comes from the outline. */
 .document-page[data-document-class="book"] .ProseMirror h1[data-heading-command="part"],
 .document-page[data-document-class="report"] .ProseMirror h1[data-heading-command="part"] {
   font-size: 2.6em; font-weight: 700; line-height: 1.2; text-align: center;
-  margin: 4ex 0 3ex; counter-increment: lineae-part; counter-reset: lineae-chapter;
+  margin: 4ex 0 3ex;
 }
 .document-page[data-document-class="book"] .ProseMirror h1[data-heading-command="part"]::before,
 .document-page[data-document-class="report"] .ProseMirror h1[data-heading-command="part"]::before {
-  content: "Part " counter(lineae-part, upper-roman); display: block;
-}
-.document-page[data-document-class="book"] .ProseMirror h1[data-heading-command="part"][data-numbered="false"],
-.document-page[data-document-class="report"] .ProseMirror h1[data-heading-command="part"][data-numbered="false"] {
-  counter-increment: none;
+  content: attr(data-section-number); display: block;
 }
 .document-page[data-document-class="book"] .ProseMirror h1[data-heading-command="part"][data-numbered="false"]::before,
 .document-page[data-document-class="report"] .ProseMirror h1[data-heading-command="part"][data-numbered="false"]::before {
@@ -1370,14 +1403,38 @@ body.format-painter-active .ProseMirror * { cursor:copy; }
 .document-page .ProseMirror h1[data-heading-command="chapter"]{position:relative;top:0;margin:0 0 39.8506pt;padding-top:var(--tex-chapter-top-padding,64.7572pt);font-size:24.7871pt;line-height:29.8879pt;font-weight:700;}
 .document-page .ProseMirror h1[data-heading-command="chapter"]::before{content:none;}
 .document-page .ProseMirror h1[data-heading-command="chapter"][data-chapter-label]::before{content:attr(data-chapter-label);display:block;margin:0 0 19.9253pt;font-size:var(--tex-chapter-label-size,20.6625pt);line-height:var(--tex-chapter-label-line-height,24.9066pt);}
+/* Declarative ctex heading styles (article part/section; numbering comes from
+   the outline decoration, never from a separate CSS counter). */
+.document-page .ProseMirror [data-heading-style="true"] {
+  text-align: var(--tex-heading-align, left);
+  font-size: var(--tex-heading-size, inherit);
+  font-weight: var(--tex-heading-weight, inherit);
+  font-style: var(--tex-heading-font-style, normal);
+}
+.document-page .ProseMirror [data-heading-style="true"]:not([data-heading-command="chapter"]) {
+  margin-block: var(--tex-heading-before, 3.5ex) var(--tex-heading-after, 2.3ex);
+  margin-inline-start: var(--tex-heading-indent, 0);
+  text-indent: var(--tex-heading-indent, 0);
+}
+.document-page .ProseMirror [data-heading-style="true"]::before { margin-inline-end: var(--tex-heading-aftername, 1em); }
+/* ctexbook/ctexrep put the Chinese chapter label and title on one line; the
+   standard classes keep the label on its own block line. */
+.document-page[data-raw-document-class="ctexbook"] .ProseMirror h1[data-heading-command="chapter"][data-chapter-label]::before,
+.document-page[data-raw-document-class="ctexrep"] .ProseMirror h1[data-heading-command="chapter"][data-chapter-label]::before {
+  display: inline;
+  margin: 0 var(--tex-heading-aftername, 1em) 0 0;
+  font-size: inherit;
+  line-height: inherit;
+}
+.document-page .ProseMirror h1[data-heading-command="part"]::before { display: block; }
+.document-page .ProseMirror [data-heading-runin="true"] { margin-block-end: 0; }
+.document-page .ProseMirror :is(h1,h2,h3)[data-after-indent="true"] + p[data-indent="true"]:not([data-explicit-indent="true"]) { text-indent: var(--tex-paragraph-indent) !important; }
+.document-page .ProseMirror :is(h1,h2,h3)[data-after-indent="false"] + p[data-indent="true"]:not([data-explicit-indent="true"]) { text-indent: 0 !important; }
 @font-face{font-family:"FandolSong";font-style:normal;font-weight:400;src:url("./assets/fonts/fandol/FandolSong-Regular.woff2") format("woff2");font-display:swap;ascent-override:112.7%;descent-override:29%;line-gap-override:0%;}
 @font-face{font-family:"FandolSong";font-style:normal;font-weight:700;src:url("./assets/fonts/fandol/FandolSong-Bold.woff2") format("woff2");font-display:swap;ascent-override:113.3%;descent-override:29.5%;line-gap-override:0%;}
 
-.document-page .ProseMirror p[data-tex-paragraph]{text-autospace:no-autospace;}
-.document-page .ProseMirror p[data-tex-paragraph] .cjk-latin{margin-inline:0;}
+.document-page .ProseMirror [data-tex-paragraph]{text-autospace:no-autospace;}
 .ProseMirror [data-counter-directive]{height:0;min-height:0;margin:0;padding:0;font-size:0;line-height:0;}
-
-.document-page .ProseMirror p[data-tex-paragraph] .math-inline:is(.math-cjk-before,.math-cjk-after){margin-inline:0;}
 
 
 /* New TeX template dialog (new feature, additive) */

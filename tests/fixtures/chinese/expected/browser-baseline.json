@@ -1,0 +1,48 @@
+{
+ "generatedBy": "tests/chinese-browser-baseline.cjs",
+ "imported": {
+  "text": "中文标题中文粘贴与导入测试段落。第二句包含 Latin words 与数字 123。",
+  "pageCount": "1",
+  "ctexEnabled": "true",
+  "ctexScheme": "chinese",
+  "captionLanguage": "zh",
+  "texFont": "\"Latin Modern Roman\"",
+  "cjkFont": "\"FandolSong\",\"Songti SC\",\"SimSun\"",
+  "pageWidth": 794,
+  "latinRoman": true,
+  "fandol": true
+ },
+ "saved": {
+  "suggested": "chinese-article.zip",
+  "bytes": 368,
+  "status": "",
+  "dialogs": [],
+  "texEntry": "chinese-article.tex",
+  "tex": "\\documentclass[a4paper,10pt]{article}\n\\usepackage[margin=22mm]{geometry}\n\\usepackage[UTF8]{ctex}\n\\begin{document}\n\\section{中文标题}\n中文粘贴与导入测试段落。第二句包含 Latin words 与数字 123。\n\\end{document}",
+  "hasChinese": true,
+  "hasCtex": true
+ },
+ "pasted": {
+  "text": "中文粘贴测试，第二句与 Latin。",
+  "pageCount": "1",
+  "ctexEnabled": "true",
+  "ctexScheme": "chinese",
+  "captionLanguage": "zh",
+  "texFont": "\"Latin Modern Roman\"",
+  "cjkFont": "\"FandolSong\",\"Songti SC\",\"SimSun\"",
+  "pageWidth": 794,
+  "latinRoman": true,
+  "fandol": true
+ },
+ "table": {
+  "captionSame": true,
+  "captionCount": 1,
+  "captionTexts": [
+   "中文表标题"
+  ],
+  "tableTabVisible": true,
+  "ribbonPage": "table"
+ },
+ "projectSave": "deferred to step 4 (save-chain tests)",
+ "errors": []
+}

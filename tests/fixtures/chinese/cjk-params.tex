@@ -1,0 +1,32 @@
+\documentclass[a4paper,10pt]{article}
+\usepackage[margin=22mm]{geometry}
+\usepackage[UTF8]{ctex}
+\newlength\lineaeprobelen
+\ExplSyntaxOn
+\AtBeginDocument
+  {
+    \cs_if_exist:NTF \CJKecglue
+      { \typeout{LIENAE-CJKecglue=\meaning\CJKecglue} }
+      { \typeout{LIENAE-CJKecglue=undefined} }
+    \bool_if:NTF \l__xeCJK_reserve_space_bool
+      { \typeout{LIENAE-CJKspace=true} } { \typeout{LIENAE-CJKspace=false} }
+    \bool_if:NTF \g__xeCJK_math_bool
+      { \typeout{LIENAE-CJKmath=true} } { \typeout{LIENAE-CJKmath=false} }
+    \bool_if:NTF \l__xeCJK_punct_breakable_bool
+      { \typeout{LIENAE-AllowBreakBetweenPuncts=true} } { \typeout{LIENAE-AllowBreakBetweenPuncts=false} }
+    \cs_if_exist:NTF \l_xeCJK_punct_style_tl
+      { \typeout{LIENAE-PunctStyle=\l_xeCJK_punct_style_tl} }
+      { \typeout{LIENAE-PunctStyle=unknown} }
+    \settowidth{\lineaeprobelen}{中A}
+    \typeout{LIENAE-cjkLatin=\the\lineaeprobelen}
+    \settowidth{\lineaeprobelen}{中~A}
+    \typeout{LIENAE-cjkTilde=\the\lineaeprobelen}
+    \settowidth{\lineaeprobelen}{中 中}
+    \typeout{LIENAE-cjkSpaceInput=\the\lineaeprobelen}
+    \settowidth{\lineaeprobelen}{中中}
+    \typeout{LIENAE-cjkNoSpaceInput=\the\lineaeprobelen}
+  }
+\ExplSyntaxOff
+\begin{document}
+中文参数探针。
+\end{document}

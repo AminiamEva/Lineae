@@ -1,4 +1,5 @@
 const TEX_POINT_SCALE = 72 / 72.27;
+import { resolveChineseProfile } from './chinese-profile.mjs';
 
 function cssPoints(texPoints) {
   return `${(texPoints * TEX_POINT_SCALE).toFixed(4)}pt`;
@@ -36,29 +37,76 @@ function commandArgument(source, command) {
   return match?.[1] ?? null;
 }
 
-function ctexFontset(preamble, options) {
+function ctexFontsetOption(preamble, options) {
   const fromClass = options.find(option => option.startsWith('fontset='))?.slice('fontset='.length);
   const fromPackage = /\\usepackage\s*\[([^\]]*)\]\s*\{ctex\}/.exec(preamble)?.[1]
     ?.split(',').map(option => option.trim()).find(option => option.startsWith('fontset='))
     ?.slice('fontset='.length);
-  return ctexFontsets[(fromClass ?? fromPackage ?? '').trim().toLowerCase()] ?? null;
+  return (fromClass ?? fromPackage ?? '').trim().toLowerCase() || null;
+}
+
+function splitFontOptions(text) {
+  const parts = [];
+  let depth = 0, start = 0;
+  for (let index = 0; index < text.length; index++) {
+    const char = text[index];
+    if (char === '{') depth++;
+    else if (char === '}') depth = Math.max(0, depth - 1);
+    else if (char === ',' && depth === 0) { parts.push(text.slice(start, index)); start = index + 1; }
+  }
+  parts.push(text.slice(start));
+  return parts.map(part => part.trim()).filter(Boolean);
+}
+
+function stripOptionBraces(value) {
+  const text = String(value ?? '').trim();
+  return text.startsWith('{') && text.endsWith('}') ? text.slice(1, -1).trim() : text;
+}
+
+function fontOptions(source, command) {
+  const match = new RegExp('\\\\' + command + '\\s*\\[([^\\]]*)\\]\\s*\\{').exec(source);
+  const options = {};
+  if (!match) return options;
+  for (const part of splitFontOptions(match[1])) {
+    const equal = part.indexOf('=');
+    if (equal < 0) options[part.trim()] = true;
+    else options[part.slice(0, equal).trim()] = stripOptionBraces(part.slice(equal + 1));
+  }
+  return options;
 }
 
 function readFonts(preamble, options) {
-  const fontset = ctexFontset(preamble, options);
+  const fontsetValue = ctexFontsetOption(preamble, options);
+  const fontset = fontsetValue ? ctexFontsets[fontsetValue] ?? null : null;
+  const cjkOptions = fontOptions(preamble, 'setCJKmainfont');
+  const hasCtex = /\\documentclass(?:\[[^\]]*\])?\{ctex|\\usepackage(?:\[[^\]]*\])?\{[^}]*ctex/.test(preamble);
+  // fontset=none must not be overridden by the ctex Fandol default.
+  const cjkFallback = fontsetValue === 'none' ? null : hasCtex ? 'FandolSong' : null;
   return {
     serif: fontFamily(commandArgument(preamble, 'setmainfont')),
     mono: fontFamily(commandArgument(preamble, 'setmonofont')),
-    cjk: fontFamily(commandArgument(preamble, 'setCJKmainfont')) ?? fontset
-      ?? (/\\documentclass(?:\[[^\]]*\])?\{ctex|\\usepackage(?:\[[^\]]*\])?\{[^}]*ctex/.test(preamble)?'FandolSong':null),
+    cjk: fontFamily(commandArgument(preamble, 'setCJKmainfont')) ?? fontset ?? cjkFallback,
+    cjkBold: fontFamily(cjkOptions.BoldFont),
+    cjkItalic: fontFamily(cjkOptions.ItalicFont),
+    cjkBoldItalic: fontFamily(cjkOptions.BoldItalicFont),
+    cjkFeatures: cjkOptions,
+    fontset: fontsetValue,
   };
 }
 
 function readLinespread(preamble) {
   const spread = /\\linespread\s*\{([\d.]+)\}/.exec(preamble)?.[1]
     ?? /\\renewcommand\s*\{?\s*\\baselinestretch\s*\}?\s*\{([\d.]+)\}/.exec(preamble)?.[1];
-  const value = Number.parseFloat(spread ?? '1');
-  return Number.isFinite(value) && value > 0 ? value : 1;
+  if (spread === undefined) return null;
+  const value = Number.parseFloat(spread);
+  return Number.isFinite(value) && value > 0 ? value : null;
+}
+
+function readBaselineskip(preamble) {
+  const match = /\\baselineskip\s*=\s*([\d.]+)(?:pt)?/.exec(preamble)
+    ?? /\\setlength\s*\{\s*\\baselineskip\s*\}\s*\{([\d.]+)(?:pt)?\}/.exec(preamble);
+  const value = Number.parseFloat(match?.[1] ?? '');
+  return Number.isFinite(value) ? value : null;
 }
 
 function readFontsize(preamble) {
@@ -69,39 +117,76 @@ function readFontsize(preamble) {
   return Number.isFinite(size) && Number.isFinite(baseline) ? { size, baseline } : null;
 }
 
+// ctex zihao sizes are declared in big points; convert to TeX points so the
+// existing cssPoints mapping produces the matching CSS size.
+const BP_TO_TEX = 72.27 / 72;
+const ZIHAO_TEX = {
+  8: 5 * BP_TO_TEX, 7: 5.5 * BP_TO_TEX, '-6': 6.5 * BP_TO_TEX, 6: 7.5 * BP_TO_TEX,
+  '-5': 9 * BP_TO_TEX, 5: 10.5 * BP_TO_TEX, '-4': 12 * BP_TO_TEX, 4: 14 * BP_TO_TEX,
+  '-3': 15 * BP_TO_TEX, 3: 16 * BP_TO_TEX, '-2': 18 * BP_TO_TEX, 2: 22 * BP_TO_TEX,
+  '-1': 24 * BP_TO_TEX, 1: 26 * BP_TO_TEX, '-0': 36 * BP_TO_TEX, 0: 42 * BP_TO_TEX,
+};
+const STANDARD_BASELINE = { 10: 12, 11: 13.6, 12: 14.5 };
+const STANDARD_INDENT = { 10: 15, 11: 17, 12: 18 };
+
 export function typesetProfile(preamble = '') {
   const match = /\\documentclass(?:\[([^\]]*)\])?\{([^{}]+)\}/.exec(preamble);
   const options = (match?.[1] ?? '').split(',').map(option => option.trim()).filter(Boolean);
-  const className = (match?.[2] ?? 'article').trim().toLowerCase();
-  const pageNumbers = !/\\pagestyle\s*\{empty\}/.test(preamble);
+  const rawClassName = (match?.[2] ?? 'article').trim().toLowerCase();
+  const chinese = resolveChineseProfile({ preamble });
+  const baseClassName = chinese.enabled ? chinese.baseClassName : rawClassName;
   const fonts = readFonts(preamble, options);
-  const linespread = readLinespread(preamble);
+  const explicitSpread = readLinespread(preamble);
+  const chineseScheme = chinese.scheme === 'chinese';
+  const linespread = explicitSpread ?? (chineseScheme ? 1.3 : 1);
   const explicit = readFontsize(preamble);
+  const baselineskip = readBaselineskip(preamble);
+  const classSize = options.includes('12pt') ? 12 : options.includes('11pt') ? 11 : options.includes('10pt') ? 10 : null;
+  const effectiveClassSize = classSize ?? 10;
+  const standardBaseline = STANDARD_BASELINE[effectiveClassSize] ?? 12;
+  const standardIndent = STANDARD_INDENT[effectiveClassSize] ?? 15;
+  const zihao = chinese.zihao == null ? null : String(chinese.zihao).trim();
+  const zihaoFalse = zihao !== null && /^(?:false|none)$/i.test(zihao);
+  const zihaoSize = zihao && !zihaoFalse && chinese.zihaoExplicit ? ZIHAO_TEX[zihao] ?? null : null;
 
-  if (className === 'ctexart') {
-    const classSize = options.includes('12pt') ? 12 : options.includes('11pt') ? 11 : options.includes('10pt') ? 10 : null;
-    const classBaseline = classSize === 12 ? 14.5 : classSize === 11 ? 13.6 : 12;
-    return {
-      className,
-      fontSize: explicit ? cssPoints(explicit.size) : classSize ? cssPoints(classSize) : '10.5pt',
-      lineHeight: explicit ? cssPoints(explicit.baseline * linespread)
-        : classSize ? cssPoints(classBaseline * linespread) : points(15.75 * linespread),
-      paragraphIndent: classSize === 12 ? cssPoints(18) : classSize === 11 ? cssPoints(17)
-        : classSize === 10 ? cssPoints(15) : '21pt',
-      pageStyle: pageNumbers ? 'headings' : 'empty',
-      fonts,
-    };
+  let size, baseline, indent;
+  if (explicit) {
+    size = explicit.size;
+    baseline = explicit.baseline * linespread;
+    indent = chineseScheme ? (chinese.autoindent ? size * 2 : standardIndent) : standardIndent;
+  } else if (chineseScheme) {
+    if (zihaoSize !== null) {
+      size = zihaoSize;
+      baseline = size * 1.2 * linespread;
+    } else if (zihaoFalse || classSize !== null) {
+      size = effectiveClassSize;
+      baseline = standardBaseline * linespread;
+    } else {
+      size = ZIHAO_TEX[5];
+      baseline = size * 1.2 * linespread;
+    }
+    indent = chinese.autoindent ? size * 2 : standardIndent;
+  } else if (zihaoSize !== null) {
+    size = zihaoSize;
+    baseline = size * 1.2 * linespread;
+    indent = standardIndent;
+  } else {
+    size = effectiveClassSize;
+    baseline = standardBaseline * linespread;
+    indent = standardIndent;
   }
+  if (baselineskip) baseline = baselineskip;
 
-  const size = options.includes('12pt') ? 12 : options.includes('11pt') ? 11 : 10;
-  const baseline = size === 12 ? 14.5 : size === 11 ? 13.6 : 12;
-  const indent = size === 12 ? 18 : size === 11 ? 17 : 15;
+  const pagestyle = [...preamble.matchAll(/\\pagestyle\s*\{([^}]*)\}/g)].at(-1)?.[1]?.trim();
   return {
-    className,
-    fontSize: explicit ? cssPoints(explicit.size) : cssPoints(size),
-    lineHeight: cssPoints((explicit?.baseline ?? baseline) * linespread),
+    className: baseClassName,
+    rawClassName,
+    baseClassName,
+    fontSize: cssPoints(size),
+    lineHeight: cssPoints(baseline),
     paragraphIndent: cssPoints(indent),
-    pageStyle: pageNumbers ? 'plain' : 'empty',
+    pageStyle: pagestyle || (chineseScheme ? 'headings' : 'plain'),
+    indentFirst: chineseScheme ? chinese.autoindent : /\\usepackage(?:\[[^\]]*\])?\{[^}]*indentfirst\b/.test(preamble),
     fonts,
   };
 }

@@ -1,0 +1,455 @@
+{
+ "generatedBy": "tests/chinese-xelatex.spec.mjs",
+ "xetex": "XeTeX 3.141592653-2.6-0.999997 (TeX Live 2025) kpathsea version 6.4.1",
+ "kpathsea": "kpathsea version 6.4.1",
+ "paths": {
+  "ctex": "c:/texlive/2025/texmf-dist/tex/latex/ctex/ctex.sty",
+  "xeCJK": "c:/texlive/2025/texmf-dist/tex/xelatex/xecjk/xeCJK.sty",
+  "ctexart": "c:/texlive/2025/texmf-dist/tex/latex/ctex/ctexart.cls",
+  "article": "c:/texlive/2025/texmf-dist/tex/latex/base/article.cls",
+  "book": "c:/texlive/2025/texmf-dist/tex/latex/base/book.cls",
+  "report": "c:/texlive/2025/texmf-dist/tex/latex/base/report.cls",
+  "fandolSongRegular": "c:/texlive/2025/texmf-dist/fonts/opentype/public/fandol/FandolSong-Regular.otf"
+ },
+ "hashes": {
+  "ctex": "dd868cf1e82815ff9544e222c5eebe528dfc7799b69f7fe1762646ebe23dcd6b",
+  "xeCJK": "c61660692befbcec0b52dfb3e2e69b360cbd3e187e07565d722a296df8e893ef",
+  "ctexart": "822d4a8c15e964c068c28be77c026ab891c4ab5b224503546c2994ac077efd93",
+  "article": "44171ebeb4bbfd734a0fff29351073a0b51ed7407cd09dbd7a4530c669d3f833",
+  "book": "53d9f87705424867adcb8d6e65c2b278df26a052b72adedb444b59acc9c9402d",
+  "report": "91b6beec64fa747dd2494eae31148334956e1e1feb7afbaa43fc7e79b5782008",
+  "fandolSongRegular": "a3820003227d4abe31fe28b493200d94a849ccfd078b50a019264f70353020b0"
+ },
+ "conversion": {
+  "pdfPtToCssPx": 1.3333333333333333,
+  "cssPxPerTexPt": 1.3283520132835203,
+  "texPtPerCssPx": 0.7528125
+ },
+ "fixtures": [
+  {
+   "name": "article-ctex",
+   "ok": true,
+   "sourceHash": "e656cde3dfdee869ca6dc2d861e3db2f77dbb85d4175249800e16c7d14526386",
+   "pages": 1,
+   "words": 26,
+   "tocEntries": 0,
+   "probes": 0
+  },
+  {
+   "name": "autoindent-false",
+   "ok": true,
+   "sourceHash": "134e12eedd7d7ee083570f582a11b7fc8a4fe703e15c80121d5b02f0b9c9b610",
+   "pages": 1,
+   "words": 12,
+   "tocEntries": 0,
+   "probes": 0
+  },
+  {
+   "name": "book-ctex",
+   "ok": true,
+   "sourceHash": "3a94c472294b0f7a31637c83a64a705fb56f8c15016c891ac4fadc472b6231db",
+   "pages": 1,
+   "words": 15,
+   "tocEntries": 0,
+   "probes": 0
+  },
+  {
+   "name": "caption-abstract-proof",
+   "ok": true,
+   "sourceHash": "28ad321607028da40c826e0d8b9c90dd13c91bd20d6087969d251aa7b4897ffe",
+   "pages": 1,
+   "words": 18,
+   "tocEntries": 0,
+   "probes": 0
+  },
+  {
+   "name": "checkfullright",
+   "ok": true,
+   "sourceHash": "015c2a4cff33557ec0deb2c1ce756ab28fcc9ea2ea13427c0e15f1fceb986efd",
+   "pages": 1,
+   "words": 6,
+   "tocEntries": 0,
+   "probes": 0
+  },
+  {
+   "name": "checksingle",
+   "ok": true,
+   "sourceHash": "7841f453aa1eeaa58a07e978ea8e869c56c5ec4010c94320b64a67b83420c560",
+   "pages": 1,
+   "words": 8,
+   "tocEntries": 0,
+   "probes": 0
+  },
+  {
+   "name": "cjk-params",
+   "ok": true,
+   "sourceHash": "9fbdc66e92daaea4cfa748d805f07c7d1b15beb866b6135cf8608261f785e4e6",
+   "pages": 1,
+   "words": 2,
+   "tocEntries": 0,
+   "probes": 9
+  },
+  {
+   "name": "cjkmath",
+   "ok": true,
+   "sourceHash": "708c341fb491ad0cb929472450932e5382760e5debd2c7da2982c26f977773f8",
+   "pages": 1,
+   "words": 14,
+   "tocEntries": 0,
+   "probes": 0
+  },
+  {
+   "name": "ctexart",
+   "ok": true,
+   "sourceHash": "18cb6f248215ac1b6a10e0cb740ee76825b43f681d8e25131c408846cfbb0faa",
+   "pages": 1,
+   "words": 28,
+   "tocEntries": 0,
+   "probes": 0
+  },
+  {
+   "name": "ctexbook",
+   "ok": true,
+   "sourceHash": "d31ecd867b080e6f52224c41cc5daa9c84e6def287c0f542a6ae13b39d5525cd",
+   "pages": 1,
+   "words": 14,
+   "tocEntries": 0,
+   "probes": 0
+  },
+  {
+   "name": "ctexrep",
+   "ok": true,
+   "sourceHash": "ca918d678419d95beac77ec79b7de4dba8ba983ace9f20d090dc0a667515793d",
+   "pages": 1,
+   "words": 14,
+   "tocEntries": 0,
+   "probes": 0
+  },
+  {
+   "name": "heading-false",
+   "ok": true,
+   "sourceHash": "36f47fe2c362726f9b0069e336112ddbbcf6f13fb6c4c74e8ea64b88cdf409ee",
+   "pages": 1,
+   "words": 14,
+   "tocEntries": 0,
+   "probes": 0
+  },
+  {
+   "name": "linespread-15",
+   "ok": true,
+   "sourceHash": "b86b8ff306e32103af143b49c493abaf571eeeebeaaa9db765d11d011349badc",
+   "pages": 1,
+   "words": 25,
+   "tocEntries": 0,
+   "probes": 0
+  },
+  {
+   "name": "math-mixed",
+   "ok": true,
+   "sourceHash": "b25a78b82189630f45a36c46d00bed07f0bba173bd7ef9163fe3c2e764b8ec07",
+   "pages": 1,
+   "words": 31,
+   "tocEntries": 0,
+   "probes": 0
+  },
+  {
+   "name": "punct-banjiao",
+   "ok": true,
+   "sourceHash": "119353a234a62bfc91278703937912a79812b6551ab8a228b23f9b7756fc7ad6",
+   "pages": 1,
+   "words": 20,
+   "tocEntries": 0,
+   "probes": 0
+  },
+  {
+   "name": "punct-cct",
+   "ok": true,
+   "sourceHash": "ac060efc48727b7bce76b08236a0d00f5ea013049bd2880abc82027131d4be10",
+   "pages": 1,
+   "words": 22,
+   "tocEntries": 0,
+   "probes": 0
+  },
+  {
+   "name": "punct-hangmobanjiao",
+   "ok": true,
+   "sourceHash": "4e76734447328b68ecb831539094a8b10a9258af0190940b342135d22cf3478f",
+   "pages": 1,
+   "words": 13,
+   "tocEntries": 0,
+   "probes": 0
+  },
+  {
+   "name": "punct-kaiming",
+   "ok": true,
+   "sourceHash": "5986127e16708244adea7334d902cd37de8244b26b32ff54258b45e48d4545ef",
+   "pages": 1,
+   "words": 20,
+   "tocEntries": 0,
+   "probes": 0
+  },
+  {
+   "name": "punct-plain",
+   "ok": true,
+   "sourceHash": "519e690ef596b3df904c042bf12242529dd6b3017410476654b7ae7b7a07e500",
+   "pages": 1,
+   "words": 13,
+   "tocEntries": 0,
+   "probes": 0
+  },
+  {
+   "name": "punct-quanjiao",
+   "ok": true,
+   "sourceHash": "e604db4d27879f7d74551e98ee71cd1eff4124f50c2d315f746539c7384007ec",
+   "pages": 1,
+   "words": 23,
+   "tocEntries": 0,
+   "probes": 0
+  },
+  {
+   "name": "report-ctex",
+   "ok": true,
+   "sourceHash": "6b940e7de2c3b39ab9270e55e4778a7d02680ca429b0670a2f67ddb93648d6b9",
+   "pages": 1,
+   "words": 15,
+   "tocEntries": 0,
+   "probes": 0
+  },
+  {
+   "name": "scheme-plain",
+   "ok": true,
+   "sourceHash": "93cb77f875b0efa2422fd7d9f675a0830b27d1a8d1fb387da9dc4b78dd05d7d0",
+   "pages": 1,
+   "words": 22,
+   "tocEntries": 0,
+   "probes": 0
+  },
+  {
+   "name": "space-false",
+   "ok": true,
+   "sourceHash": "8c413636097274c5b72fe6d93ddab2206f858ecb785354fe15a37c5060d52ac3",
+   "pages": 1,
+   "words": 7,
+   "tocEntries": 0,
+   "probes": 0
+  },
+  {
+   "name": "space-true",
+   "ok": true,
+   "sourceHash": "78e214b463dcac1d2a555e09edc9ac13eaef2249360a34ca6d8a08efaa7b3c8c",
+   "pages": 1,
+   "words": 11,
+   "tocEntries": 0,
+   "probes": 0
+  },
+  {
+   "name": "toc-book",
+   "ok": true,
+   "sourceHash": "de3690e30b24090fd2d60e48bb321313e2f6ecbcb6a475eed2d53f72a373e1da",
+   "pages": 8,
+   "words": 135,
+   "tocEntries": 5,
+   "probes": 0
+  },
+  {
+   "name": "toc-default-article",
+   "ok": true,
+   "sourceHash": "be41b1b66a03303115348d8af445fd2f7bbca12fb19a70e53d4a4211402af638",
+   "pages": 1,
+   "words": 7,
+   "tocEntries": 0,
+   "probes": 3
+  },
+  {
+   "name": "toc-default-book",
+   "ok": true,
+   "sourceHash": "609d8d9a7ef99310060c7da43ae3037aaf57b76fcab44ca4c8a5d0a6b565314e",
+   "pages": 1,
+   "words": 8,
+   "tocEntries": 0,
+   "probes": 3
+  },
+  {
+   "name": "toc-default-report",
+   "ok": true,
+   "sourceHash": "265efd16522e32e26dbc696318113efbf36a1f5f9da1dab4eb00ad34259666e0",
+   "pages": 1,
+   "words": 8,
+   "tocEntries": 0,
+   "probes": 3
+  },
+  {
+   "name": "toc-structure",
+   "ok": true,
+   "sourceHash": "07705454832dd0bde0a745c48b49c398b8be16837989fc10c014bf630fe84394",
+   "pages": 1,
+   "words": 120,
+   "tocEntries": 5,
+   "probes": 3
+  },
+  {
+   "name": "zihao-false",
+   "ok": true,
+   "sourceHash": "65e6352c3d128c663c2cee0e2ef8bbe50c7c70bfb323ba4cd773b2bf737a86c1",
+   "pages": 1,
+   "words": 11,
+   "tocEntries": 0,
+   "probes": 0
+  },
+  {
+   "name": "zihao-linespread",
+   "ok": true,
+   "sourceHash": "33abb7f712faa1d873a973ea478f4a5dc348890ae5139b75e4d30a00eeb02641",
+   "pages": 1,
+   "words": 24,
+   "tocEntries": 0,
+   "probes": 0
+  },
+  {
+   "name": "zihao-minus4",
+   "ok": true,
+   "sourceHash": "507ae1ede377b53525751d80ffb1bac56626b4bd02a22ecc78ffce2c973c554a",
+   "pages": 1,
+   "words": 27,
+   "tocEntries": 0,
+   "probes": 0
+  }
+ ],
+ "tocParameters": {
+  "article": {
+   "path": "c:/texlive/2025/texmf-dist/tex/latex/base/article.cls",
+   "levels": {
+    "subsection": {
+     "depth": 2,
+     "indent": 1.5,
+     "numwidth": 2.3,
+     "dotted": true
+    },
+    "subsubsection": {
+     "depth": 3,
+     "indent": 3.8,
+     "numwidth": 3.2,
+     "dotted": true
+    },
+    "paragraph": {
+     "depth": 4,
+     "indent": 7,
+     "numwidth": 4.1,
+     "dotted": true
+    },
+    "subparagraph": {
+     "depth": 5,
+     "indent": 10,
+     "numwidth": 5,
+     "dotted": true
+    },
+    "figure": {
+     "depth": 1,
+     "indent": 1.5,
+     "numwidth": 2.3,
+     "dotted": true
+    },
+    "part": {
+     "dotted": false
+    },
+    "section": {
+     "dotted": false
+    }
+   }
+  },
+  "book": {
+   "path": "c:/texlive/2025/texmf-dist/tex/latex/base/book.cls",
+   "levels": {
+    "section": {
+     "depth": 1,
+     "indent": 1.5,
+     "numwidth": 2.3,
+     "dotted": true
+    },
+    "subsection": {
+     "depth": 2,
+     "indent": 3.8,
+     "numwidth": 3.2,
+     "dotted": true
+    },
+    "subsubsection": {
+     "depth": 3,
+     "indent": 7,
+     "numwidth": 4.1,
+     "dotted": true
+    },
+    "paragraph": {
+     "depth": 4,
+     "indent": 10,
+     "numwidth": 5,
+     "dotted": true
+    },
+    "subparagraph": {
+     "depth": 5,
+     "indent": 12,
+     "numwidth": 6,
+     "dotted": true
+    },
+    "figure": {
+     "depth": 1,
+     "indent": 1.5,
+     "numwidth": 2.3,
+     "dotted": true
+    },
+    "part": {
+     "dotted": false
+    },
+    "chapter": {
+     "dotted": false
+    }
+   }
+  },
+  "report": {
+   "path": "c:/texlive/2025/texmf-dist/tex/latex/base/report.cls",
+   "levels": {
+    "section": {
+     "depth": 1,
+     "indent": 1.5,
+     "numwidth": 2.3,
+     "dotted": true
+    },
+    "subsection": {
+     "depth": 2,
+     "indent": 3.8,
+     "numwidth": 3.2,
+     "dotted": true
+    },
+    "subsubsection": {
+     "depth": 3,
+     "indent": 7,
+     "numwidth": 4.1,
+     "dotted": true
+    },
+    "paragraph": {
+     "depth": 4,
+     "indent": 10,
+     "numwidth": 5,
+     "dotted": true
+    },
+    "subparagraph": {
+     "depth": 5,
+     "indent": 12,
+     "numwidth": 6,
+     "dotted": true
+    },
+    "figure": {
+     "depth": 1,
+     "indent": 1.5,
+     "numwidth": 2.3,
+     "dotted": true
+    },
+    "part": {
+     "dotted": false
+    },
+    "chapter": {
+     "dotted": false
+    }
+   }
+  }
+ }
+}

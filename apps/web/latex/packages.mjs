@@ -1,4 +1,5 @@
 import { theoremNames } from './theorem.mjs';
+import { analyzeCtexSource } from './ctex-source.mjs';
 
 // Each rule describes a feature emitted by the editor or recognized in source.
 // Dependencies are added only when that feature appears in the document body.
@@ -35,9 +36,7 @@ function withoutComments(source) {
 }
 
 export function usesCtex(preamble) {
-  const source = withoutComments(preamble || '');
-  return /\\documentclass\s*(?:\[[^\]]*\]\s*)?\{ctex(?:art|rep|book|beamer)\}/.test(source) ||
-    /\\(?:usepackage|RequirePackage)\s*(?:\[[^\]]*\]\s*)?\{ctex\}/.test(source);
+  return analyzeCtexSource(preamble || '').enabled;
 }
 
 export function hasTitleCommand(source) {
@@ -60,8 +59,8 @@ export function resolvePackages(preamble, body, { chineseTypesetting=false } = {
     return !alternative || Boolean(rule.onlyUrl?.test(source));
   });
   const cleanPreamble=withoutComments(preamble);
-  const chineseClass=/\\documentclass\s*(?:\[[^\]]*\]\s*)?\{ctex(?:art|rep|book|beamer)\}/.test(cleanPreamble);
-  if (chineseTypesetting && !chineseClass && !existing.has('ctex') && !existing.has('xeCJK') &&
+  const ctexAnalysis=analyzeCtexSource(preamble || '');
+  if (chineseTypesetting && !ctexAnalysis.enabled && !ctexAnalysis.hasOtherCjkProvider &&
       /\p{Script=Han}|\\(?:lineaeStem|zhnum|zhnumber)\b/u.test(cleanPreamble + source)) required.push({name:'ctex'});
   return required;
 }
