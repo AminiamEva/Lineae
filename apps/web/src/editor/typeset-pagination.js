@@ -418,6 +418,11 @@ export function installTypesetPagination(page, paper, meta, editor, engineProfil
 
   let deferredLayout = false;
   let composingText = false;
+  let editQuietUntil=0,quietTimer=0;
+  function noteHybridChange(){
+    if(document.body.classList.contains('native-tex-rich-edit'))editQuietUntil=performance.now()+180;
+  }
+  editor.on('transaction',({transaction})=>{if(transaction.docChanged)noteHybridChange();});
   editable.addEventListener('compositionstart', () => { composingText = true; }, true);
   editable.addEventListener('compositionend', () => {
     composingText = false;
@@ -433,6 +438,13 @@ export function installTypesetPagination(page, paper, meta, editor, engineProfil
     frame = 0;
     if (composingText || editor.view.composing || !editable.isConnected || !page.getClientRects().length) {
       deferredLayout = true;
+      return;
+    }
+    // Native pages already present the rest of the document. Keep the last
+    // pagination while the editable paragraph is changing. Flush the latest
+    // model on the first quiet frame, or immediately after leaving hybrid edit.
+    if(document.body.classList.contains('native-tex-rich-edit')&&performance.now()<editQuietUntil){
+      schedule();
       return;
     }
     deferredLayout = false;
@@ -765,6 +777,12 @@ export function installTypesetPagination(page, paper, meta, editor, engineProfil
   }
 
   function schedule() {
+    const delay=editQuietUntil-performance.now();
+    if(delay>0&&document.body.classList.contains('native-tex-rich-edit')){
+      if(!quietTimer)quietTimer=setTimeout(()=>{quietTimer=0;schedule();},Math.ceil(delay));
+      return;
+    }
+    clearTimeout(quietTimer);quietTimer=0;
     if (!frame) frame = requestAnimationFrame(layout);
   }
   function repaginate() {
@@ -824,12 +842,13 @@ export function installTypesetPagination(page, paper, meta, editor, engineProfil
   // MathLive mounts and measures inside a shadow root, so the editor's own
   // border box can stay at its minimum height while a paragraph grows.
   const childResize = new ResizeObserver(onResize);
-  const observeChildren = () => {
-    for (const child of editable.children) childResize.observe(child);
-  };
-  observeChildren();
-  const mutations = new MutationObserver(() => {
-    observeChildren();
+  for (const child of editable.children) childResize.observe(child);
+  const mutations = new MutationObserver(records => {
+    for(const record of records){
+      if(record.target!==editable||record.type!=='childList')continue;
+      for(const child of record.removedNodes)if(child.nodeType===1)childResize.unobserve(child);
+      for(const child of record.addedNodes)if(child.nodeType===1)childResize.observe(child);
+    }
     // Decoration-only updates (selection marks, table/cell classes) mutate the
     // DOM without changing the document; re-paginating for them makes layout
     // depend on selection and jumps the page. Real layout changes still arrive

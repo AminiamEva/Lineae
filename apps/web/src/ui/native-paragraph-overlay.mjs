@@ -15,7 +15,7 @@ export function nativeParagraphOverlay(editor, panel, pages, framePending) {
       editor.querySelector('.math-display.ProseMirror-selectednode');
   }
   function position(){
-    const current=canvas(),sheet=page.querySelectorAll('.document-sheet')[number-1]??page;
+    const current=canvas(),sheet=page.querySelector('.document-sheets')?.children[number-1]??page;
     if(!current)return;
     if(block&&!editor.contains(block)){block=selectedBlock();anchor=null;}
     const box=current.getBoundingClientRect(),paper=sheet.getBoundingClientRect();
@@ -37,11 +37,13 @@ export function nativeParagraphOverlay(editor, panel, pages, framePending) {
     const viewport=panel.getBoundingClientRect(),host=main.getBoundingClientRect();
     const viewRight=viewport.left+panel.clientWidth;
     dx+=shiftX;dy+=shiftY;
-    page.style.setProperty('--native-edit-shift',`${dx/scale}px ${dy/scale}px`);
+    const shift=`${(dx/scale).toFixed(3)}px ${(dy/scale).toFixed(3)}px`;
+    if(page.style.getPropertyValue('--native-edit-shift')!==shift)page.style.setProperty('--native-edit-shift',shift);
     if(!bounds)return;
     const top=Math.max(bounds.top+shiftY-1,box.top,viewport.top);
     const bottom=Math.min(bounds.bottom+shiftY+1,box.bottom,viewport.bottom);
-    const left=Math.max(bounds.left+shiftX-2,box.left,viewport.left);
+    const gutter=block.matches('h1,h2,h3')?32*scale:2;
+    const left=Math.max(bounds.left+shiftX-gutter,box.left,viewport.left);
     const right=Math.min(bounds.right+shiftX+2,box.right,viewRight);
     main.style.setProperty('--native-edit-clip',`inset(${top-host.top}px ${host.right-right}px ${host.bottom-bottom}px ${left-host.left}px)`);
   }
@@ -119,11 +121,15 @@ export function nativeParagraphOverlay(editor, panel, pages, framePending) {
     range.collapse(selection.focusNode===range.startContainer&&selection.focusOffset===range.startOffset);
     const caret=range.getBoundingClientRect();
     if(!caret.height)return;
-    const sheets=[...page.querySelectorAll('.document-sheet')];
+    const sheets=page.querySelector('.document-sheets')?.children;
     const y=(caret.top+caret.bottom)/2;
-    const index=sheets.findIndex(sheet=>{
-      const rect=sheet.getBoundingClientRect();return y>=rect.top&&y<=rect.bottom;
-    });
+    let low=0,high=(sheets?.length??0)-1,index=-1;
+    while(low<=high){
+      const middle=(low+high)>>>1,rect=sheets[middle].getBoundingClientRect();
+      if(y<rect.top)high=middle-1;
+      else if(y>rect.bottom)low=middle+1;
+      else {index=middle;break;}
+    }
     if(index>=0 && index+1!==number && pages.querySelector('[data-native-page="'+(index+1)+'"],[data-pdf-page="'+(index+1)+'"]')){
       number=index+1;anchor=null;position();
     }
@@ -137,6 +143,7 @@ export function nativeParagraphOverlay(editor, panel, pages, framePending) {
   }
   panel.addEventListener('scroll',schedule,{passive:true});
   window.addEventListener('resize',schedule);
+  window.addEventListener('lineae-layout',schedule);
   document.addEventListener('selectionchange',schedule);
   page.addEventListener('focusin',schedule);
   page.addEventListener('input',schedule);

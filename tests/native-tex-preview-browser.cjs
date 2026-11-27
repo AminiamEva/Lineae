@@ -161,6 +161,31 @@ const server=createServer(async(req,res)=>{
         await desktopPage.waitForFunction(()=>!document.querySelector('#native-tex-toggle').disabled);
         await desktopPage.keyboard.insertText(' More.');
         await desktopPage.waitForFunction(()=>nativeProbe.source.includes('First paragraph. More.'));
+        // Typing must update the paragraph every frame without repaginating the
+        // hidden rich document once per key. The trailing pass must still run.
+        const burst=await rich.evaluate(async el=>{
+          const before=el.textContent;
+          const trace={passes:0,updates:0};
+          const onLayout=()=>trace.passes++;
+          window.addEventListener('lineae-before-layout',onLayout);
+          try{
+            for(const c of 'abcdef'){
+              el.editor.commands.insertContent(c);
+              await new Promise(requestAnimationFrame);
+              if(el.textContent.endsWith(c))trace.updates++;
+            }
+            const during=trace.passes;
+            await new Promise((resolve,reject)=>{
+              const timer=setTimeout(()=>{window.removeEventListener('lineae-layout',done);reject(Error('No trailing pagination'));},5000);
+              function done(){clearTimeout(timer);resolve();}
+              window.addEventListener('lineae-layout',done,{once:true});
+            });
+            const end=el.editor.state.selection.from;
+            el.editor.commands.deleteRange({from:end-6,to:end});
+            return {...trace,during,restored:before===el.textContent};
+          }finally{window.removeEventListener('lineae-before-layout',onLayout);}
+        });
+        assert.equal(burst.during,0);assert.equal(burst.updates,6);assert.ok(burst.restored);
         assert.equal(await rich.evaluate(el=>el===document.activeElement),true);
         const clip=await desktopPage.locator('main').evaluate(el=>getComputedStyle(el).clipPath);
         assert.ok(clip.startsWith('inset('));

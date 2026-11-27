@@ -305,6 +305,11 @@ export function installSpaceOverlay(editor, paper, { selectionFocus = null } = {
 
   function drawMarks() {
     marksFrame=0;
+    const hybrid=document.body.classList.contains('native-tex-hybrid');
+    if(hybrid&&!document.body.classList.contains('native-tex-rich-edit')){
+      marksOverlay.style.display='none';
+      return;
+    }
     const {pageRect,zoom}=measurePage(page);
     const visible=enabled && pageRect.width && pageRect.height;
     marksOverlay.style.display=visible?'':'none';
@@ -326,7 +331,16 @@ export function installSpaceOverlay(editor, paper, { selectionFocus = null } = {
       width:rect.width/zoom,
       height:rect.height/zoom,
     });
-    for (const block of editor.view.dom.querySelectorAll('p,h1,h2,h3,pre')) {
+    const editable=editor.view.dom;
+    const focus=editable.contains(document.activeElement)&&document.activeElement!==editable
+      ?document.activeElement:document.getSelection()?.focusNode;
+    const active=(focus?.nodeType===1?focus:focus?.parentElement);
+    const markedBlocks=selector=>{
+      if(!hybrid)return editable.querySelectorAll(selector);
+      const match=active?.closest(selector);
+      return match&&editable.contains(match)?[match]:[];
+    };
+    for (const block of markedBlocks('p,h1,h2,h3,pre')) {
       if(block.closest('[data-project-region]')&&(!block.getClientRects().length||getComputedStyle(block).visibility==='hidden'))continue;
       const bounds=local(block.getBoundingClientRect());
       if(bounds.bottom<0 || bounds.top>height || bounds.right<0 || bounds.left>width)continue;
@@ -411,11 +425,11 @@ export function installSpaceOverlay(editor, paper, { selectionFocus = null } = {
       mark.textContent=text;
       marks.append(mark);
     };
-    for (const heading of editor.view.dom.querySelectorAll('h1,h2,h3')) {
+    for (const heading of markedBlocks('h1,h2,h3')) {
       if(page.dataset.projectFolding==='true'&&getComputedStyle(heading).visibility==='hidden')continue;
       label('H'+heading.tagName[1],heading);
     }
-    for (const item of editor.view.dom.querySelectorAll('li')) {
+    for (const item of markedBlocks('li')) {
       if(page.dataset.projectFolding==='true'&&getComputedStyle(item).visibility==='hidden')continue;
       const list=item.closest('ul,ol');
       if(!list)continue;
@@ -540,7 +554,11 @@ export function installSpaceOverlay(editor, paper, { selectionFocus = null } = {
     compositionOrigin=null;
     scheduleLayout();
   },{capture:true,signal});
-  document.addEventListener('selectionchange',()=>scheduleCaret('navigate',true),{signal});
+  document.addEventListener('selectionchange',()=>{
+    scheduleCaret('navigate',true);
+    if(document.body.classList.contains('native-tex-rich-edit'))scheduleMarks();
+  },{signal});
+  document.addEventListener('lineae-desktop-engine',scheduleLayout,{signal});
   document.addEventListener('pointerdown',()=>{pendingEdit=null;},{capture:true,signal});
   document.addEventListener('visibilitychange',()=>{yieldCaret();scheduleCaret();},{signal});
   window.addEventListener('blur',yieldCaret,{signal});
