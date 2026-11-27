@@ -31,13 +31,10 @@ Commit: $GITHUB_SHA
 Workflow: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID
 Windows: x64, unsigned
 macOS: Apple Silicon only, ad-hoc signed, not notarized
-Native LuaLaTeX page preview: opt-in; native pages are the geometry source
-Native Canvas: supported formula input, caret and selections route into ProseMirror
-Prose text, structure commands and PDF pages: existing editor remains the fallback
-Full replacement of the existing editing surface: not yet complete
-XeLaTeX-aligned JS renderer: retained
-Lua JS engine: retained separately; unmerged reference not yet supplied
-No TeX engine, TeX distribution or user font cache is bundled by this preview.
+Desktop document default: LuaLaTeX on first launch; the status bar remembers the selected engine.
+Native pages use rtex output. The focused block uses ProseMirror and MathLive for editing.
+The XeLaTeX-aligned editor is available from the same engine switch.
+The preview includes rtex. LuaLaTeX and its TeX packages come from the user's TeX distribution.
 PDF.js includes its licensed unmodified standard-font and Adobe CMap resources.
 The application identifier and preference storage are shared with stable Lineae.
 Back up documents and exported preferences before testing.

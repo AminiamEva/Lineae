@@ -29,6 +29,17 @@ test('paragraph alignment round-trips without leaking into the next paragraph', 
   }
 });
 
+test('generated Chinese Lua documents use the portable ctex fonts and respect an explicit fontset',()=>{
+  const source=start=>exportDocument({start:start+'\n\\begin{document}\n',end:'\\end{document}',eol:'\n'},'中文',{chineseTypesetting:true});
+  assert.ok(source('\\documentclass{article}').includes('\\ifdefined\\directlua\\PassOptionsToPackage{fontset=fandol}{ctex}\\fi\n\\usepackage{ctex}'));
+  for(const setting of ['\\documentclass[fontset=windows]{article}',
+    '\\documentclass{article}\n\\PassOptionsToPackage{fontset=none}{ctex}',
+    '\\documentclass{article}\n\\usepackage[fontset=mac]{ctex}']){
+    assert.ok(source(setting).startsWith(setting));
+    assert.ok(!source(setting).includes('fontset=fandol'));
+  }
+});
+
 test('Word-style numbering preserves the marker and starting number in TeX', () => {
   for (const [input, style, start] of [
     ['b. ','lower-alpha',2], ['AA. ','upper-alpha',27], ['（３） ','decimal-parens',3], ['IV) ','upper-roman-paren',4],

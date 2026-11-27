@@ -82,7 +82,11 @@ export function exportDocument({ start, end, eol }, body, options) {
     if (beforeClass) {
       preamble = preamble.replace(/^([ \t]*\\documentclass)/m, '\\RequirePackage{' + name + '}' + eol + '$1');
     } else {
-      preamble = preamble.replace(/^\\begin\{document\}/m, '\\usepackage{' + name + '}' + eol + '\\begin{document}');
+      // A minimal Windows installation lacks several fonts in ctex's automatic
+      // Windows set. Use TeX's Fandol family for editor-generated Lua documents.
+      const luaFonts=name==='ctex'&&!/\bfontset\s*=/.test(withoutComments(start))
+        ? '\\ifdefined\\directlua\\PassOptionsToPackage{fontset=fandol}{ctex}\\fi'+eol : '';
+      preamble = preamble.replace(/^\\begin\{document\}/m, ()=>luaFonts+'\\usepackage{' + name + '}' + eol + '\\begin{document}');
     }
   }
   for(const declaration of resolveTheoremDeclarations(start,body)){
