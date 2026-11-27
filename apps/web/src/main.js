@@ -1791,9 +1791,13 @@ function engineSettingsState(draft,globalDefault=config.value.typesetting.defaul
 function refreshEngine() {
   engineFrame=0;
   if (!settingsPanel || compositionActive || editor.view.composing || sourceView.composing) return;
-  const {result}=engineSettingsState();
-  if (activeEngine!==result.resolvedEngine) {
-    activeEngine=result.resolvedEngine;
+  // A pinned desktop renderer cannot change in response to typing. Computing
+  // its diagnostics here serializes and scans the whole document per key.
+  // The settings panel requests diagnostics itself when it is open.
+  const forced=desktopEngineToggle()&&nativeWorkspaceRequested()?'lualatex':pinnedEngine;
+  const resolved=forced??engineSettingsState().result.resolvedEngine;
+  if (activeEngine!==resolved) {
+    activeEngine=resolved;
     typesetPagination?.setEngine(activeEngine?getTypesettingProfile(activeEngine):null);
   }
   settingsPanel.refreshEngine();

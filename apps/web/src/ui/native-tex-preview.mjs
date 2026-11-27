@@ -1,4 +1,5 @@
 import {nativeParagraphOverlay} from './native-paragraph-overlay.mjs';
+import {ctexEditStyle} from '../typesetting/rtex/ctex-edit-style.mjs';
 import {stagedRaster} from '../typesetting/rtex/raster-assets.mjs';
 import {desktopEngineToggle,nativeWorkspaceRequested,selectDesktopEngine} from '../editor/native-surface/acceptance-mode.mjs';
 import {DEFAULT_DOCUMENT_SOURCE} from '../editor/default-document.mjs';
@@ -92,6 +93,19 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
   let primaryRequested=engineToggle&&nativeWorkspaceRequested();
   let mountedSplit=null;
   const richPage=richEditor?.closest('.document-page');
+  let editPreamble=null;
+  function syncEditMetrics(source){
+    if(!engineToggle||!richEditor)return;
+    const end=source.search(/^[ \t]*\\begin\s*\{document\}/m);
+    const preamble=end<0?'':source.slice(0,end);
+    if(preamble===editPreamble)return;
+    editPreamble=preamble;
+    const metrics=ctexEditStyle(preamble);
+    richEditor.toggleAttribute('data-native-ctex',Boolean(metrics));
+    if(metrics){
+      for(const [name,value] of Object.entries(metrics))richEditor.style.setProperty('--native-ctex-'+name,value);
+    }
+  }
   const overlay=engineToggle&&richPage?nativeParagraphOverlay(richEditor,panel,pages,()=>!current()):null;
   let richEditing=false,richRefreshTimer=null;
   function showRichEditor(number){
@@ -978,7 +992,7 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
   }
   async function flush() {
     if(!active || terminal || session===null || !wantedSnapshot || updating===generation || exporting===generation ||
-      capturing===generation || composing())return;
+      capturing===generation || composing() || wantedSnapshot.signature===sentSnapshot?.signature)return;
     const attempt=generation;
     updating=attempt;renderStatus();
     try {
@@ -1050,6 +1064,7 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
       const snapshot=await readSnapshot();
       if(attempt!==generation)return;
       wantedSnapshot=snapshot;wantedSource=snapshot.source;
+      syncEditMetrics(snapshot.source);
     }catch(failure){
       if(attempt===generation&&!captureAgain)fail(failure);
       return;
@@ -1129,6 +1144,7 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
       const initial=await readSnapshot();
       if(attempt!==generation)return;
       wantedSource=initial.source;wantedSnapshot=initial;
+      syncEditMetrics(initial.source);
       const opened=await invoke('native_tex_open',{source:initial.source,mainFile:initial.mainFile,files:initial.files});
       if(attempt!==generation) {
         if(opened)await invoke('native_tex_close',{sessionId:opened.sessionId});

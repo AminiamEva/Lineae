@@ -1,3 +1,5 @@
+import {alignPageCanvas,sizePageCanvas} from './page-pixels.mjs';
+
 let library;
 async function pdfjs() {
   if(!library)library=(async()=>{
@@ -24,8 +26,7 @@ export function installNativePdf({host,onPaint,onError}) {
     if(entry.painted?.zoom===renderZoom&&entry.painted.dpr===dpr)return;
     if(viewport.width*dpr>16384 || viewport.height*dpr>16384)throw new Error('PDF page exceeds supported Canvas size at this zoom');
     entry.painted=null;
-    entry.canvas.width=Math.ceil(viewport.width*dpr);entry.canvas.height=Math.ceil(viewport.height*dpr);
-    entry.canvas.style.width=viewport.width+'px';entry.canvas.style.height=viewport.height+'px';
+    sizePageCanvas(entry.canvas,viewport.width,viewport.height,dpr);
     entry.dom.style.width=viewport.width+'px';entry.dom.style.height=viewport.height+'px';
     const task=entry.page.render({canvasContext:entry.canvas.getContext('2d'),viewport,
       transform:dpr===1?null:[dpr,0,0,dpr,0,0],annotationMode:0});
@@ -48,7 +49,10 @@ export function installNativePdf({host,onPaint,onError}) {
       if(!viewport.width||!viewport.height)return;
       for(const entry of pages) {
         const box=entry.dom.getBoundingClientRect();
-        if(box.bottom>=0 && box.top<window.innerHeight+600)void draw(entry,attempt).catch(onError);
+        if(box.bottom>=0 && box.top<window.innerHeight+600){
+          alignPageCanvas(entry.canvas,box,window.devicePixelRatio||1);
+          void draw(entry,attempt).catch(onError);
+        }
         else if(!entry.render&&entry.painted){
           entry.canvas.width=1;entry.canvas.height=1;entry.painted=null;
         }

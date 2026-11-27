@@ -108,12 +108,15 @@ export function nativeParagraphOverlay(editor, panel, pages, framePending) {
     if(frame||!document.body.classList.contains('native-tex-rich-edit'))return;
     frame=requestAnimationFrame(()=>{frame=0;update();});
   }
-  panel.addEventListener('scroll',update,{passive:true});
+  panel.addEventListener('scroll',schedule,{passive:true});
   window.addEventListener('resize',schedule);
   document.addEventListener('selectionchange',schedule);
   page.addEventListener('focusin',schedule);
   page.addEventListener('input',schedule);
-  page.addEventListener('keyup',()=>requestAnimationFrame(followCaret));
+  let followFrame=0;
+  page.addEventListener('keyup',()=>{
+    if(!followFrame)followFrame=requestAnimationFrame(()=>{followFrame=0;followCaret();});
+  });
   main.addEventListener('pointerdown',event=>{
     if(!block || event.button!==0 || !document.body.classList.contains('native-tex-rich-edit'))return;
     if(block.contains(event.target)&&!block.textContent.trim())return;
@@ -145,6 +148,7 @@ export function nativeParagraphOverlay(editor, panel, pages, framePending) {
     update:schedule,releaseRows,
     clear(){
       releaseRows();
+      cancelAnimationFrame(followFrame);followFrame=0;
       cancelAnimationFrame(frame);frame=0;dx=0;dy=0;anchor=null;block=null;
       main.style.removeProperty('--native-edit-clip');page.style.removeProperty('--native-edit-shift');
       document.body.classList.remove('native-tex-rich-edit');

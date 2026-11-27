@@ -354,6 +354,14 @@ body.native-tex-hybrid:not(.native-tex-rich-edit) main { visibility:visible; cli
 body.native-tex-rich-edit main { z-index:11; visibility:visible;
   clip-path:var(--native-edit-clip,inset(100%)); }
 .native-tex-rich-edit main .document-page { translate:var(--native-edit-shift,0 0); }
+.native-tex-hybrid .document-page .ProseMirror[data-native-ctex] {
+  --tex-font-size:var(--native-ctex-font);
+  --tex-line-height:var(--native-ctex-line);
+  --tex-paragraph-indent:var(--native-ctex-indent);
+  --tex-cjk-font-family:"FandolSong";
+  font-size:var(--tex-font-size);
+  font-family:var(--tex-font-family,"Latin Modern Roman"),"FandolSong",serif;
+}
 html:has(body.native-tex-primary-open) { overflow:hidden; }
 #native-tex-preview[data-primary=true]:not([data-split]) .native-tex-pages { overflow:visible; }
 #native-tex-toggle[data-engine=lua] { background:light-dark(#e0f2e8,#234538); color:light-dark(#175b40,#a8e5c6); }
@@ -372,7 +380,7 @@ html:has(body.native-tex-primary-open) { overflow:hidden; }
 .native-tex-pages { overflow:auto; }
 .native-tex-page { background:white; margin:12px auto; position:relative; box-shadow:0 1px 8px #0003; }
 #native-tex-preview[data-page-presentation=flow] .native-tex-page { margin:0 auto; box-shadow:none; }
-.native-tex-page canvas { display:block; }
+.native-tex-page canvas { display:block; position:relative; }
 .native-tex-caret { position:absolute; width:2px; background:#2f6fd0; pointer-events:none; }
 .native-tex-operator-caret::after { content:''; position:absolute; top:.14em; left:3px; width:.68em; height:.68em; border:1px solid #96bdb1; border-radius:3px; background:#85bdab26; }
 .native-tex-selection { position:absolute; background:#2f6fd04d; pointer-events:none; }

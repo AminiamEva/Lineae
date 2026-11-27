@@ -181,6 +181,13 @@ const server=createServer(async(req,res)=>{
         await cdp.send('Input.imeSetComposition',{text:'wen',selectionStart:3,selectionEnd:3});
         await cdp.send('Input.insertText',{text:'文'});
         await desktopPage.waitForFunction(()=>nativeProbe.source.includes('More.中文'));
+        const metrics=await rich.evaluate(el=>{
+          const style=getComputedStyle(el);
+          return [parseFloat(style.fontSize),parseFloat(style.lineHeight),style.fontFamily];
+        });
+        assert.ok(Math.abs(metrics[0]-14)<0.02,'Generated ctex uses 10.5bp text');
+        assert.ok(Math.abs(metrics[1]-21.84)<0.02,'The active line uses the ctex baseline spacing');
+        assert.match(metrics[2],/FandolSong/);
         const bodyTextPoint=await rich.evaluate(el=>{
           const range=document.createRange();
           range.selectNodeContents(el.querySelector('p'));

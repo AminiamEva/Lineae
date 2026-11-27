@@ -1,5 +1,6 @@
 import {matchingRasterHit,rasterContains,registeredRasterHits,stagedRasterPath} from './raster-assets.mjs';
 import {nativeFontFace} from './font-collection.mjs';
+import {alignPageCanvas,sizePageCanvas} from './page-pixels.mjs';
 import {FontStore,Painter,inexactReason} from './upstream/webview/render.ts';
 import {fontKey} from './upstream/src/fontKey.ts';
 import {parseMapFile,parseEncFile,type1Outlines} from './upstream/src/type1.ts';
@@ -405,10 +406,7 @@ export function installNativePages({host,getFont,getTypeOneFont,getRaster,onPain
     if(!Number.isFinite(width) || !Number.isFinite(height) || width<=0 || height<=0 ||
         width*dpr>16384 || height*dpr>16384)throw new Error('Unsupported native page dimensions or zoom');
     entry.dom.style.width=width+'px';entry.dom.style.height=height+'px';
-    canvas.style.width=width+'px';canvas.style.height=height+'px';
-    const pixelsWide=Math.ceil(width*dpr),pixelsHigh=Math.ceil(height*dpr);
-    if(canvas.width!==pixelsWide)canvas.width=pixelsWide;
-    if(canvas.height!==pixelsHigh)canvas.height=pixelsHigh;
+    sizePageCanvas(canvas,width,height,dpr);
     const ctx=canvas.getContext('2d');
     ctx.resetTransform();
     ctx.fillStyle='#fff';ctx.fillRect(0,0,canvas.width,canvas.height);
@@ -433,11 +431,16 @@ export function installNativePages({host,getFont,getTypeOneFont,getRaster,onPain
       try {
         const viewport=host.getBoundingClientRect();
         if(viewport.width&&viewport.height){
-          const bottom=Math.min(viewport.bottom,window.innerHeight)+1000;
+          const scrollBox=host.parentElement?.getBoundingClientRect()??viewport;
+          const top=Math.max(0,viewport.top,scrollBox.top)-1000;
+          const bottom=Math.min(viewport.bottom,scrollBox.bottom,window.innerHeight)+1000;
           for(const entry of pages.values()) {
             if(entry.dom.hidden)continue;
             const box=entry.dom.getBoundingClientRect();
-            if(box.bottom>=viewport.top-1000&&box.top<=bottom)draw(entry);
+            if(box.bottom>=top&&box.top<=bottom){
+              alignPageCanvas(entry.canvas,box,window.devicePixelRatio||1);
+              draw(entry);
+            }
             else if(entry.painted){
               entry.canvas.width=1;entry.canvas.height=1;
               entry.painted=null;entry.rasterHits=[];
