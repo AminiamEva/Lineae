@@ -2076,7 +2076,11 @@ async function downloadProject(checkPlaceholders=true, snapshot, nameAtSave=file
   let text=snapshot;
   if(text===undefined) {
     const draft=sourceView.hidden?source():sourceView.value;
-    text=(await ensureCtexBeforeSave({original:draft,text:draft},{notify:true})).text;
+    // An imported/opened file keeps its exact bytes on export. ctex is opt-in
+    // for such sources; only documents authored in the editor (no standalone
+    // file identity) receive the automatic declaration and notice.
+    const imported=Boolean(standaloneKey||fileHandle);
+    text=imported?draft:(await ensureCtexBeforeSave({original:draft,text:draft},{notify:true})).text;
   }
   const status=document.querySelector('#status');
   try {
@@ -2114,7 +2118,7 @@ async function prepareExplicitSave(options={}) {
   const formatted=sourceView.indentOnSave && projectFileKind!=='bib' ? indentLatex(input) : null;
   const generation=documentGeneration;
   const isCurrentDocument=()=>generation===documentGeneration;
-  return await ensureCtexBeforeSave({
+  const snapshot={
     original, text:formatted?.text ?? input, isCurrentDocument,
     commit() {
       // The saved snapshot is authoritative on disk. Only apply its changes
@@ -2128,7 +2132,10 @@ async function prepareExplicitSave(options={}) {
       sourceView.applySaveFormatting(preamble,formatted?.changes ?? [],input);
       if(rich)setSourceMode(false);
     }
-  }, options);
+  };
+  // Direct saves (Ctrl+S / file picker / project save) preserve the source;
+  // the ZIP export path applies the ctex notice and declaration explicitly.
+  return options.autoCtex ? await ensureCtexBeforeSave(snapshot, options) : snapshot;
 }
 let savingFile=false;
 async function saveDocument(saveAs=false) {
@@ -6169,10 +6176,11 @@ function selectGroup(name) {
   groups[name]?.refreshLayout?.();
   if(name==='home')homeRibbon.refreshLayout?.();
 }
+let tableTabPinned=false,lastTableActive=false;
 for(const name of Object.keys(groups)) {
   const tab=document.createElement('button');tab.type='button';tab.dataset.group=name;
   tab.addEventListener('mousedown',event=>event.preventDefault());
-  tab.addEventListener('click',()=>{toolbarController.show();selectGroup(name);});tabs.append(tab);
+  tab.addEventListener('click',()=>{toolbarController.show();tableTabPinned=true;selectGroup(name);});tabs.append(tab);
 }
 const imageTab=tabs.querySelector('[data-group=image]');
 if(imageTab)imageTab.hidden=true;
@@ -6183,11 +6191,19 @@ if(tableTab)tableTab.hidden=true;
 function syncTableTab(){
   if(!tableTab)return;
   const active=sourceView.hidden&&editor.isActive('table');
+  const entered=active&&!lastTableActive;
+  lastTableActive=active;
   tableTab.hidden=!active;
   if(active){
+    // Auto-open when the caret enters a table, but respect a tab the user
+    // explicitly selected while still editing that table.
+    if(entered)tableTabPinned=false;
     syncTableControls();
-    if(ribbon.dataset.ribbonPage!=='table'&&ribbon.dataset.ribbonPage!=='headerFooter')selectGroup('table');
-  }else if(ribbon.dataset.ribbonPage==='table')selectGroup('home');
+    if(!tableTabPinned&&ribbon.dataset.ribbonPage!=='table'&&ribbon.dataset.ribbonPage!=='headerFooter')selectGroup('table');
+  }else{
+    tableTabPinned=false;
+    if(ribbon.dataset.ribbonPage==='table')selectGroup('home');
+  }
 }
 editor.on('selectionUpdate',syncTableTab);
 editor.on('transaction',({transaction})=>{if(transaction.selectionSet)syncTableTab();});

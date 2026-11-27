@@ -83,7 +83,14 @@ export function analyzeCtexSource(source = '') {
   const ctexDeclarations = packages.filter(declaration => declaration.items.some(item => item.name === 'ctex'));
   const ctexDeclaration = ctexDeclarations[0] ?? null;
   const ctexItem = ctexDeclaration?.items.find(item => item.name === 'ctex') ?? null;
-  const otherCjk = packages.some(declaration => declaration.items.some(item => /^xeCJK$/.test(item.name)));
+  const otherCjkPackages = packages.some(declaration => declaration.items.some(item => /^(?:xeCJK|luatexja|luatexja-fontspec|CJK|CJKutf8)$/.test(item.name)));
+  // A document may already supply CJK with fontspec/xeCJK-style families
+  // instead of ctex (for example \newfontfamily\han{Microsoft YaHei}).
+  const cjkFontCommand = /\\(?:setCJKmainfont|setCJKsansfont|setCJKmonofont|setCJKfamilyfont|newCJKfontfamily|CJKfamily)\b/.test(masked);
+  const cjkFamilyName = /\\newfontfamily\s*\\?[A-Za-z@]*(?:han|cjk|chinese|song|hei|kai|fang|ming)[A-Za-z@]*\s*\{/.test(masked);
+  const cjkNamedFont = [...masked.matchAll(/\\newfontfamily\s*\\?[A-Za-z@]+\s*\{([^}]*)\}/g)].some(match =>
+    /(?:YaHei|SimSun|SimHei|KaiTi|FangSong|Songti|Heiti|Kaiti|PingFang|Noto\s+(?:Serif|Sans)\s+CJK|Source\s+Han|Fandol|MingLiU|Hiragino|STSong|STHeiti|Microsoft\s+JhengHei)/i.test(match[1]));
+  const otherCjk = otherCjkPackages || cjkFontCommand || cjkFamilyName || cjkNamedFont;
   const beginDocument = masked.search(/\\begin\s*\{document\}/);
   return {
     enabled: ctexClass || Boolean(ctexDeclaration),

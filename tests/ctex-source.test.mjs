@@ -113,6 +113,15 @@ test('hasHanDocumentText ignores comments but includes preamble arguments and bo
   assert.equal(hasHanDocumentText('\\documentclass{article}\n\\begin{document}\nEnglish only\n\\end{document}\n'), false);
 });
 
+test('explicit CJK font providers suppress automatic ctex injection', () => {
+  const hanFamily = analyzeCtexSource('\\documentclass{article}\n\\usepackage{fontspec}\n\\newfontfamily\\han{Microsoft YaHei}\n\\begin{document}\n信号\n\\end{document}\n');
+  assert.equal(hanFamily.enabled, false);
+  assert.equal(hanFamily.hasOtherCjkProvider, true);
+  assert.equal(analyzeCtexSource('\\documentclass{article}\n\\setCJKmainfont{SimSun}\n').hasOtherCjkProvider, true);
+  assert.equal(analyzeCtexSource('\\documentclass{article}\n\\usepackage{luatexja}\n').hasOtherCjkProvider, true);
+  assert.equal(analyzeCtexSource('\\documentclass{article}\n\\newfontfamily\\body{Times New Roman}\n').hasOtherCjkProvider, false);
+});
+
 test('usesCtex and resolvePackages use the shared analyzer', () => {
   assert.equal(usesCtex('\\documentclass{ctexart}'), true);
   assert.equal(usesCtex('\\usepackage{ctex}'), true);

@@ -117,9 +117,9 @@ async function replaceSource(page, text) {
     await page.locator('input[type=file]').first().setInputFiles({ name: 'chinese.tex', mimeType: 'text/plain', buffer: Buffer.from(CHINESE_NO_CTEX) });
     await page.waitForFunction(() => (document.querySelector('.ProseMirror')?.textContent || '').includes('中文'), { timeout: 30000 });
     await page.waitForTimeout(800);
-    const imported = await downloadText({ expectNotice: true });
-    assert.ok(imported.dialog.includes(NOTICE));
-    assert.match(imported.text, /\\usepackage\[UTF8\]\{ctex\}/, 'untouched import is saved with ctex');
+    const imported = await downloadText({ expectNotice: false });
+    assert.equal(imported.dialog, '', 'imported source shows no ctex notice');
+    assert.equal(imported.text, CHINESE_NO_CTEX, 'imported source keeps its exact bytes without ctex');
 
     assert.deepEqual(errors, []);
     console.log('PASS ctex save chain');
