@@ -16,6 +16,14 @@ const ctexFontsets = {
   ubuntu: 'Noto Serif CJK SC',
   adobe: 'Source Han Serif SC',
 };
+// ctex maps CJK bold (i.e. heading) text to the hei/sans family.
+const ctexHeiFontsets = {
+  fandol: 'FandolHei',
+  windows: 'SimHei',
+  mac: 'Heiti SC',
+  ubuntu: 'Noto Sans CJK SC',
+  adobe: 'Source Han Sans SC',
+};
 
 // fontspec accepts either a family name or a font file name. Map the Latin
 // Modern files that ship with TeX distributions back to their family name so
@@ -83,6 +91,7 @@ function readFonts(preamble, options, activeFonts) {
   const hasCtex = /\\documentclass(?:\[[^\]]*\])?\{ctex|\\usepackage(?:\[[^\]]*\])?\{[^}]*ctex/.test(preamble);
   // fontset=none must not be overridden by the ctex Fandol default.
   const cjkFallback = fontsetValue === 'none' ? null : hasCtex ? 'FandolSong' : null;
+  const heiFallback = fontsetValue === 'none' ? null : ctexHeiFontsets[fontsetValue] ?? (hasCtex ? 'FandolHei' : null);
   return {
     serif: family('setmainfont'),
     mono: family('setmonofont'),
@@ -91,6 +100,9 @@ function readFonts(preamble, options, activeFonts) {
     cjkItalic: fontFamily(cjkOptions.ItalicFont),
     cjkBoldItalic: fontFamily(cjkOptions.BoldItalicFont),
     cjkFeatures: cjkOptions,
+    // Heading CJK face: explicit sans family, then the main font's BoldFont
+    // (ctex's bold face), then the fontset's hei family.
+    cjkHei: family('setCJKsansfont') ?? fontFamily(cjkOptions.BoldFont) ?? heiFallback,
     fontset: fontsetValue,
   };
 }

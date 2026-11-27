@@ -1449,7 +1449,16 @@ body.format-painter-active .ProseMirror * { cursor:copy; }
   font-size: var(--tex-heading-size, inherit);
   font-weight: var(--tex-heading-weight, inherit);
   font-style: var(--tex-heading-font-style, normal);
+  font-family: var(--tex-heading-font-family,"Latin Modern Roman 12","Latin Modern Roman"),var(--tex-heading-cjk-family,var(--tex-cjk-font-family,"FandolSong")),serif;
 }
+/* ctex headings set the Chinese face independently of the Latin heading font.
+   hei is the default (ctex maps CJK \bfseries to zhhei). */
+.document-page .ProseMirror [data-heading-cjk-face="hei"] { --tex-heading-cjk-family:var(--tex-cjk-heading-font-family,"FandolHei","Heiti SC","SimHei"); }
+.document-page .ProseMirror [data-heading-cjk-face="sans"] { --tex-heading-cjk-family:var(--tex-cjk-heading-font-family,"FandolHei","Heiti SC","SimHei"); }
+.document-page .ProseMirror [data-heading-cjk-face="song"] { --tex-heading-cjk-family:var(--tex-cjk-font-family,"FandolSong"); }
+.document-page .ProseMirror [data-heading-cjk-face="kai"] { --tex-heading-cjk-family:"KaiTi","Kaiti SC","STKaiti",var(--tex-cjk-font-family,"FandolSong"); }
+.document-page .ProseMirror [data-heading-cjk-face="fang"] { --tex-heading-cjk-family:"FangSong","STFangsong",var(--tex-cjk-font-family,"FandolSong"); }
+.document-page .ProseMirror [data-heading-cjk-face="main"] { --tex-heading-cjk-family:var(--tex-cjk-font-family,"FandolSong"); }
 .document-page .ProseMirror [data-heading-style="true"]:not([data-heading-command="chapter"]) {
   margin-block: var(--tex-heading-before, 3.5ex) var(--tex-heading-after, 2.3ex);
   margin-inline-start: var(--tex-heading-indent, 0);
@@ -1471,6 +1480,8 @@ body.format-painter-active .ProseMirror * { cursor:copy; }
 .document-page .ProseMirror :is(h1,h2,h3)[data-after-indent="false"] + p[data-indent="true"]:not([data-explicit-indent="true"]) { text-indent: 0 !important; }
 @font-face{font-family:"FandolSong";font-style:normal;font-weight:400;src:url("./assets/fonts/fandol/FandolSong-Regular.woff2") format("woff2");font-display:swap;ascent-override:112.7%;descent-override:29%;line-gap-override:0%;}
 @font-face{font-family:"FandolSong";font-style:normal;font-weight:700;src:url("./assets/fonts/fandol/FandolSong-Bold.woff2") format("woff2");font-display:swap;ascent-override:113.3%;descent-override:29.5%;line-gap-override:0%;}
+@font-face{font-family:"FandolHei";font-style:normal;font-weight:400;src:url("./assets/fonts/fandol/FandolHei-Regular.otf") format("opentype");font-display:swap;ascent-override:112.7%;descent-override:29%;line-gap-override:0%;}
+@font-face{font-family:"FandolHei";font-style:normal;font-weight:700;src:url("./assets/fonts/fandol/FandolHei-Bold.otf") format("opentype");font-display:swap;ascent-override:113.3%;descent-override:29.5%;line-gap-override:0%;}
 
 .document-page .ProseMirror [data-tex-paragraph]{text-autospace:no-autospace;}
 .ProseMirror [data-counter-directive]{height:0;min-height:0;margin:0;padding:0;font-size:0;line-height:0;}

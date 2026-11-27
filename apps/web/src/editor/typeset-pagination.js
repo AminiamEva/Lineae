@@ -390,6 +390,8 @@ export function installTypesetPagination(page, paper, meta, editor, engineProfil
       : '"Latin Modern Roman 12","Latin Modern Roman"');
     page.style.setProperty('--tex-cjk-font-family', fonts.cjk
       ? stack(fonts.cjk, 'Songti SC', 'SimSun') : '"Songti SC",SimSun');
+    page.style.setProperty('--tex-cjk-heading-font-family', fonts.cjkHei
+      ? stack(fonts.cjkHei, 'Heiti SC', 'SimHei') : '"Heiti SC",SimHei');
     if (reportCjkPrecision && engineProfile.cjk?.assess) {
       const family = page.style.getPropertyValue('--tex-cjk-font-family');
       const assessment = engineProfile.cjk.assess(preamble, family);

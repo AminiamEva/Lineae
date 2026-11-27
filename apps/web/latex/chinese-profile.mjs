@@ -81,12 +81,15 @@ const HEADING_SIZE = {
   '\\large': '1.2em', '\\normalsize': '1em', '\\small': '0.9em', '\\footnotesize': '0.8em',
   '\\scriptsize': '0.7em', '\\tiny': '0.6em',
 };
+// ctex maps CJK \bfseries to the hei family (zhhei), so Chinese headings use
+// FandolHei/SimHei rather than a bold Song face. cjkFace keeps that dimension
+// separate from the Latin weight/style commands.
 const DEFAULT_HEADING_STYLE = {
-  part: { align: 'center', size: '1.44em', weight: 700, style: 'normal', before: '3.5ex', after: '2.3ex', afterName: '1em', indent: '0', afterIndent: true, runin: false },
-  chapter: { align: 'center', size: '2.07em', weight: 700, style: 'normal', before: '3.5ex', after: '2.3ex', afterName: '1em', indent: '0', afterIndent: true, runin: false },
-  section: { align: 'center', size: '1.44em', weight: 700, style: 'normal', before: '3.5ex', after: '2.3ex', afterName: '1em', indent: '0', afterIndent: true, runin: false },
-  subsection: { align: 'left', size: '1.2em', weight: 700, style: 'normal', before: '3.25ex', after: '1.5ex', afterName: '1em', indent: '0', afterIndent: true, runin: false },
-  subsubsection: { align: 'left', size: '1em', weight: 700, style: 'normal', before: '3.25ex', after: '1.5ex', afterName: '1em', indent: '0', afterIndent: true, runin: false },
+  part: { align: 'center', size: '1.44em', weight: 700, style: 'normal', cjkFace: 'hei', before: '3.5ex', after: '2.3ex', afterName: '1em', indent: '0', afterIndent: true, runin: false },
+  chapter: { align: 'center', size: '2.07em', weight: 700, style: 'normal', cjkFace: 'hei', before: '3.5ex', after: '2.3ex', afterName: '1em', indent: '0', afterIndent: true, runin: false },
+  section: { align: 'center', size: '1.44em', weight: 700, style: 'normal', cjkFace: 'hei', before: '3.5ex', after: '2.3ex', afterName: '1em', indent: '0', afterIndent: true, runin: false },
+  subsection: { align: 'left', size: '1.2em', weight: 700, style: 'normal', cjkFace: 'hei', before: '3.25ex', after: '1.5ex', afterName: '1em', indent: '0', afterIndent: true, runin: false },
+  subsubsection: { align: 'left', size: '1em', weight: 700, style: 'normal', cjkFace: 'hei', before: '3.25ex', after: '1.5ex', afterName: '1em', indent: '0', afterIndent: true, runin: false },
 };
 
 function headingLength(value) {
@@ -100,6 +103,9 @@ function headingLength(value) {
   return length ? length[1] : null;
 }
 
+const FACE_COMMANDS = { heiti: 'hei', songti: 'song', kaishu: 'kai', fangsong: 'fang', yahei: 'sans', pingfang: 'sans' };
+const CJK_FAMILY_FACES = { zhhei: 'hei', zhsong: 'song', zhkai: 'kai', zhfs: 'fang', zhsfs: 'fang', zhyahei: 'sans' };
+
 function applyHeadingCommands(style, value) {
   const text = String(value ?? '');
   if (/\\centering\b/.test(text)) style.align = 'center';
@@ -112,10 +118,25 @@ function applyHeadingCommands(style, value) {
   for (const [command, size] of Object.entries(HEADING_SIZE)) {
     if (text.includes(command)) { style.size = size; break; }
   }
+  // Chinese font-family commands; the last declaration wins.
+  const faces = [];
+  for (const match of text.matchAll(/\\(heiti|songti|kaishu|fangsong|yahei|pingfang)\b/g)) {
+    faces.push({ index: match.index, face: FACE_COMMANDS[match[1]] });
+  }
+  for (const match of text.matchAll(/\\CJKfamily\s*\{\s*([A-Za-z]+)\s*\}/g)) {
+    const face = CJK_FAMILY_FACES[match[1]];
+    if (face) faces.push({ index: match.index, face });
+  }
+  if (faces.length) {
+    faces.sort((a, b) => a.index - b.index);
+    style.cjkFace = faces.at(-1).face;
+  }
 }
 
-function resolveHeadingStyles(scheme, enabled, sections, { ctexClass = false, chapters = false } = {}) {
-  if (!enabled || scheme !== 'chinese') return null;
+function resolveHeadingStyles(scheme, enabled, sections, { ctexClass = false, chapters = false, heading = true } = {}) {
+  // heading=false disables ctex heading styling entirely; the consumer then
+  // uses the standard article heading path.
+  if (!enabled || scheme !== 'chinese' || !heading) return null;
   const styles = {};
   for (const level of HEADING_LEVELS) {
     if (level === 'chapter' && (!ctexClass || !chapters)) continue;
@@ -262,6 +283,7 @@ export function resolveChineseProfile({ className, preamble = '' } = {}) {
     headingStyles: resolveHeadingStyles(scheme, enabled, sections, {
       ctexClass: /^ctex(?:art|rep|book|beamer)$/i.test(rawClassName),
       chapters: baseClassName === 'book' || baseClassName === 'report',
+      heading: settings.heading,
     }),
     ctexset,
   };

@@ -123,6 +123,18 @@ test('heading styles parse ctex defaults and declarative overrides', () => {
   assert.equal(custom.headingStyles.section.after, '0');
   assert.equal(custom.headingStyles.section.runin, true);
   assert.equal(custom.headingStyles.section.afterIndent, false);
+  // ctex maps CJK bold headings to the hei family by default.
+  assert.equal(ctex.headingStyles.section.cjkFace, 'hei');
+  assert.equal(ctex.headingStyles.subsection.cjkFace, 'hei');
+  assert.equal(book.headingStyles.chapter.cjkFace, 'hei');
+  const song = resolveChineseProfile({ preamble: '\\documentclass[UTF8,scheme=chinese]{ctexart}\n\\ctexset{section/format=\\Large\\songti}' });
+  assert.equal(song.headingStyles.section.cjkFace, 'song');
+  const kai = resolveChineseProfile({ preamble: '\\documentclass[UTF8,scheme=chinese]{ctexart}\n\\ctexset{section/format=\\Large\\CJKfamily{zhkai}}' });
+  assert.equal(kai.headingStyles.section.cjkFace, 'kai');
+  // heading=false disables ctex heading styling entirely.
+  const noHeading = resolveChineseProfile({ preamble: '\\documentclass[UTF8,scheme=chinese]{ctexart}\n\\ctexset{heading=false}' });
+  assert.equal(noHeading.heading, false);
+  assert.equal(noHeading.headingStyles, null);
 });
 
 test('comments do not declare ctex or names', () => {

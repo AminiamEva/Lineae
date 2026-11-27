@@ -537,6 +537,7 @@ function numberedHeadings(doc){
   if(item.afterIndent!=null)attrs['data-after-indent']=String(item.afterIndent);
   if(style){
     attrs['data-heading-style']='true';
+    attrs['data-heading-cjk-face']=style.cjkFace||'main';
     if(item.afterIndent==null)attrs['data-after-indent']=String(style.afterIndent);
     attrs.style=[
       '--tex-heading-align:'+style.align,
