@@ -2040,21 +2040,10 @@ function ensureCtexText(text) {
 async function ensureCtexBeforeSave(snapshot, {notify=true}={}) {
   if (!snapshot) return snapshot;
   const project=projectExplorer?.model;
-  if (projectFileKind==='tex' && project && project.activeFileId!==project.mainFileId) {
-    const main=project.file(project.mainFileId);
-    const mainAnalysis=analyzeCtexSource(main.draft||'');
-    const projectText=[...project.files.values()].map(file=>file.draft??'').join('\n');
-    if (!mainAnalysis.enabled && !mainAnalysis.hasOtherCjkProvider && hasHanDocumentText(projectText)) {
-      if (notify) await noticeDialog({title:CTEX_SAVE_NOTICE});
-      const next=setCtexEnabled(main.draft, true);
-      if (next!==main.draft) {
-        project.edit(project.mainFileId, next);
-        snapshot.extraFiles=[...(snapshot.extraFiles||[]),{id:project.mainFileId,text:next}];
-        projectExplorer.changed();
-      }
-    }
-    return snapshot;
-  }
+  // Project saves preserve the on-disk source (comments, CRLF and exact
+  // spelling). ctex can be enabled explicitly with the status toggle; only
+  // standalone/export saves receive the automatic declaration.
+  if (projectFileKind==='tex' && project) return snapshot;
   const text=snapshot.text??'';
   const analysis=analyzeCtexSource(text);
   if (analysis.enabled || analysis.hasOtherCjkProvider || !hasHanDocumentText(text)) return snapshot;
