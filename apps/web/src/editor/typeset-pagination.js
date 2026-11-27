@@ -417,9 +417,21 @@ export function installTypesetPagination(page, paper, meta, editor, engineProfil
   }
 
   let deferredLayout = false;
+  let composingText = false;
+  editable.addEventListener('compositionstart', () => { composingText = true; }, true);
+  editable.addEventListener('compositionend', () => {
+    composingText = false;
+    repaginate();
+  }, true);
+  editable.addEventListener('focusout', event => {
+    if (composingText && !editable.contains(event.relatedTarget)) {
+      composingText = false;
+      repaginate();
+    }
+  });
   function layout() {
     frame = 0;
-    if (!editable.isConnected || !page.getClientRects().length) {
+    if (composingText || editor.view.composing || !editable.isConnected || !page.getClientRects().length) {
       deferredLayout = true;
       return;
     }

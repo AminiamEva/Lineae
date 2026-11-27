@@ -162,6 +162,23 @@ const server=createServer(async(req,res)=>{
         const clip=await desktopPage.locator('main').evaluate(el=>getComputedStyle(el).clipPath);
         assert.ok(clip.startsWith('inset('));
         assert.equal(await canvas.isVisible(),true);
+        // Keep a live composition in existing prose across a requested reflow.
+        await desktopPage.evaluate(()=>{
+          window.imeLayouts=0;
+          window.addEventListener('lineae-before-layout',()=>window.imeLayouts++);
+        });
+        await cdp.send('Input.imeSetComposition',{text:'zhong',selectionStart:5,selectionEnd:5});
+        await desktopPage.evaluate(()=>{
+          window.imeLayouts=0;
+          window.dispatchEvent(new Event('lineae-image-layout'));
+        });
+        await desktopPage.evaluate(()=>new Promise(done=>requestAnimationFrame(()=>requestAnimationFrame(done))));
+        assert.equal(await desktopPage.evaluate(()=>window.imeLayouts),0);
+        assert.match(await rich.textContent(),/More\.zhong$/);
+        await cdp.send('Input.insertText',{text:'中'});
+        await cdp.send('Input.imeSetComposition',{text:'wen',selectionStart:3,selectionEnd:3});
+        await cdp.send('Input.insertText',{text:'文'});
+        await desktopPage.waitForFunction(()=>nativeProbe.source.includes('More.中文'));
         const bodyTextPoint=await rich.evaluate(el=>{
           const range=document.createRange();
           range.selectNodeContents(el.querySelector('p'));
