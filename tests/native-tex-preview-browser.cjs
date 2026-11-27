@@ -198,6 +198,8 @@ const server=createServer(async(req,res)=>{
         await rich.evaluate(()=>{
           const animate=Element.prototype.animate;
           window.desktopCaretGlides=0;
+          window.inputTrace=[];
+          for(const type of ['focusin','focusout','beforeinput','input','compositionstart','compositionend','keydown'])document.addEventListener(type,event=>{window.inputTrace.push([type,event.target.tagName,event.target.className,event.data??event.key]);if(window.inputTrace.length>24)window.inputTrace.shift();},true);
           Element.prototype.animate=function(frames,options){
             if(options?.id==='lineae-caret-glide' && this.matches('.document-caret'))window.desktopCaretGlides++;
             return animate.call(this,frames,options);
@@ -226,7 +228,7 @@ const server=createServer(async(req,res)=>{
           await cdp.send('Input.imeSetComposition',{text:'han',selectionStart:3,selectionEnd:3});
           await cdp.send('Input.insertText',{text:'汉'});
           await desktopPage.keyboard.type('Z');
-          assert.match(await rich.textContent(),/汉Z$/,name+' post-formula composition: '+await rich.innerHTML());
+          assert.match(await rich.textContent(),/汉Z$/,name+' post-formula composition: '+await rich.evaluate(el=>JSON.stringify({html:el.innerHTML,focus:document.activeElement.outerHTML.slice(0,160),range:document.getSelection().focusNode?.parentElement?.outerHTML.slice(0,200),clip:getComputedStyle(el.closest('main')).clipPath,events:window.inputTrace})));
         }
         assert.equal(await desktopPage.evaluate(()=>nativeProbe.source.includes('\\thispagestyle{empty}\\null')),false);
       }finally{

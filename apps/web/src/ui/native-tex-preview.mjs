@@ -108,11 +108,14 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
     richPage.addEventListener('focusin',()=>{
       if(active && isDocumentMode())showRichEditor();
     });
-    richPage.addEventListener('focusout',()=>queueMicrotask(()=>{
-      if(!richEditing || richPage.contains(document.activeElement) || composing())return;
+    // MathLive and the IME can briefly release focus to the document body
+    // while installing the next DOM selection. Hide the editor only when
+    // focus actually lands outside it, or the user clicks the native paper.
+    document.addEventListener('focusin',event=>{
+      if(!richEditing || richPage.contains(event.target) || event.target===document.body)return;
       leaveRichEditor();
       void refresh();
-    }));
+    });
   }
   const acceptsInput=()=>!primary||isDocumentMode?.();
   let draftInput=null;
