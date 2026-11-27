@@ -1846,7 +1846,7 @@ function source() {
   const untouched=importedSnapshot===JSON.stringify(document);
   // Viewing an imported document must not repair its TeX or serialize visual
   // wrapping. Safe rich edits already update this source and its snapshot.
-  if (untouched) return importedSource;
+  if (untouched) return importedSource ?? DEFAULT_DOCUMENT_SOURCE;
   return exportDocument(documentParts,serialize(document),{chineseTypesetting:true});
 }
 savedSource=source();
@@ -6290,6 +6290,10 @@ installContextMenu(editor, paper, language, message => {
 });
 if(desktopEngineToggle()){
   load(DEFAULT_DOCUMENT_SOURCE,false);
+  // The new desktop document has no imported bytes to preserve. Use the
+  // regular authoring serializer as soon as its initial snapshot changes.
+  importedSource=null;
+  projection=null;
   savedSource=DEFAULT_DOCUMENT_SOURCE;
   nativeTexPreview.documentModeChanged?.();
 }
