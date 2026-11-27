@@ -37,8 +37,10 @@ const read = page => page.evaluate(() => {
   const pageTop = pageElement.getBoundingClientRect().top;
   const cellTop = table.querySelector('td').getBoundingClientRect().top;
   return {
-    documentCellTop: cellTop + scrollY,
-    documentLastParagraphTop: lastParagraph.getBoundingClientRect().top + scrollY,
+    // Position inside the page, so an intentional ribbon-panel height change
+    // does not count as pagination movement.
+    documentCellTop: cellTop - pageTop,
+    documentLastParagraphTop: lastParagraph.getBoundingClientRect().top - pageTop,
     pageTop: pageTop + scrollY,
     rules: document.querySelector('[data-lineae-pagination]')?.textContent?.length ?? 0,
     toolbar: parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--tex-toolbar-bottom')),
@@ -60,6 +62,18 @@ async function check(browser, wrap) {
     await revealToolbar(page);
     await page.evaluate(() => document.fonts?.ready);
     await page.waitForTimeout(1600);
+    // Let the verification pass settle before measuring (font loading and the
+    // profile update can schedule one extra pass).
+    const waitStable = async () => {
+      let last = -1;
+      for (let index = 0; index < 30; index++) {
+        const count = await page.evaluate(() => window.__layoutEvents);
+        if (count === last) return;
+        last = count;
+        await page.waitForTimeout(150);
+      }
+    };
+    await waitStable();
 
     const cell = page.locator('.ProseMirror table td').first();
     await cell.scrollIntoViewIfNeeded();
@@ -96,6 +110,7 @@ async function check(browser, wrap) {
     // Hovering the interactive table controls recreates the caption decoration.
     // That used to look like a width change and repaginated the page, which
     // shifted the document while the pointer merely moved over the table.
+    await waitStable();
     const beforeHover = await read(page);
     const cellBox = await cell.boundingBox();
     await page.mouse.move(cellBox.x + cellBox.width - 2, cellBox.y + cellBox.height / 2);

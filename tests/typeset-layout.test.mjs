@@ -8,38 +8,52 @@ import { wrapLineWidthAt } from '../apps/web/src/typesetting/paragraph-layout.js
 const typesetProfile = getTypesettingProfile('xelatex').documentStyle;
 
 test('derives XeLaTeX article and ctex typography profiles', () => {
-  const fonts = { serif: null, mono: null, cjk: null };
+  const fonts = { serif: null, mono: null, cjk: null, cjkBold: null, cjkItalic: null, cjkBoldItalic: null, cjkFeatures: {}, cjkHei: null, fontset: null };
+  const css = value => `${(value * 72 / 72.27).toFixed(4)}pt`;
+  const BP = 72.27 / 72;
   assert.deepEqual(typesetProfile('\\documentclass{article}'), {
     className: 'article',
-    fontSize: '9.9626pt',
-    lineHeight: '11.9552pt',
-    paragraphIndent: '14.9440pt',
+    rawClassName: 'article',
+    baseClassName: 'article',
+    fontSize: css(10),
+    lineHeight: css(12),
+    paragraphIndent: css(15),
     pageStyle: 'plain',
+    indentFirst: false,
     fonts,
   });
   assert.deepEqual(typesetProfile('\\documentclass[12pt]{article}\\pagestyle{empty}'), {
     className: 'article',
-    fontSize: '11.9552pt',
-    lineHeight: '14.4458pt',
-    paragraphIndent: '17.9328pt',
+    rawClassName: 'article',
+    baseClassName: 'article',
+    fontSize: css(12),
+    lineHeight: css(14.5),
+    paragraphIndent: css(18),
     pageStyle: 'empty',
+    indentFirst: false,
     fonts,
   });
   assert.deepEqual(typesetProfile('\\documentclass[fontset=fandol]{ctexart}'), {
-    className: 'ctexart',
-    fontSize: '10.5pt',
-    lineHeight: '15.75pt',
-    paragraphIndent: '21pt',
+    className: 'article',
+    rawClassName: 'ctexart',
+    baseClassName: 'article',
+    fontSize: css(10.5 * BP),
+    lineHeight: css(10.5 * BP * 1.2 * 1.3),
+    paragraphIndent: css(2 * 10.5 * BP),
     pageStyle: 'headings',
-    fonts: { serif: null, mono: null, cjk: 'FandolSong' },
+    indentFirst: true,
+    fonts: { ...fonts, cjk: 'FandolSong', cjkHei: 'FandolHei', fontset: 'fandol' },
   });
   assert.deepEqual(typesetProfile('\\documentclass[12pt]{ctexart}'), {
-    className: 'ctexart',
-    fontSize: '11.9552pt',
-    lineHeight: '14.4458pt',
-    paragraphIndent: '17.9328pt',
+    className: 'article',
+    rawClassName: 'ctexart',
+    baseClassName: 'article',
+    fontSize: css(12),
+    lineHeight: css(14.5 * 1.3),
+    paragraphIndent: css(24),
     pageStyle: 'headings',
-    fonts: {...fonts,cjk:'FandolSong'},
+    indentFirst: true,
+    fonts: {...fonts,cjk:'FandolSong',cjkHei:'FandolHei'},
   });
 });
 
@@ -55,11 +69,33 @@ test('reads fontspec, ctex, linespread and fontsize declarations', () => {
   assert.equal(profile.fonts.serif, 'Times New Roman');
   assert.equal(profile.fonts.mono, 'Latin Modern Mono');
   assert.equal(profile.fonts.cjk, 'Noto Serif CJK SC');
-  assert.equal(profile.lineHeight, '16.2590pt');
+  assert.equal(profile.lineHeight, `${(13.6 * 1.2 * 72 / 72.27).toFixed(4)}pt`);
   assert.equal(typesetProfile('\\documentclass{ctexart}\n\\usepackage[fontset=windows]{ctex}').fonts.cjk, 'SimSun');
+  assert.equal(typesetProfile('\\documentclass{ctexart}\n\\usepackage[fontset=windows]{ctex}').fonts.cjkHei, 'SimHei');
   const sized = typesetProfile('\\documentclass{article}\n\\fontsize{12}{15}\\selectfont');
   assert.equal(sized.fontSize, '11.9552pt');
   assert.equal(sized.lineHeight, '14.9440pt');
+});
+
+test('parses CJK bold/italic faces and honours fontset=none', () => {
+  const profile = typesetProfile([
+    '\\documentclass{ctexart}',
+    '\\setCJKmainfont[BoldFont=Noto Serif CJK SC Bold,ItalicFont=Noto Serif CJK SC Italic,BoldItalicFont=Noto Serif CJK SC Bold Italic,AutoFakeBold=2]{Noto Serif CJK SC}',
+  ].join('\n'));
+  assert.equal(profile.fonts.cjk, 'Noto Serif CJK SC');
+  assert.equal(profile.fonts.cjkBold, 'Noto Serif CJK SC Bold');
+  assert.equal(profile.fonts.cjkItalic, 'Noto Serif CJK SC Italic');
+  assert.equal(profile.fonts.cjkBoldItalic, 'Noto Serif CJK SC Bold Italic');
+  assert.equal(profile.fonts.cjkFeatures.AutoFakeBold, '2');
+  assert.equal(profile.fonts.cjkHei, 'Noto Serif CJK SC Bold');
+  assert.equal(typesetProfile('\\documentclass{ctexart}\n\\usepackage[fontset=none]{ctex}').fonts.cjk, null);
+  assert.equal(typesetProfile('\\documentclass{ctexart}\n\\usepackage[fontset=none]{ctex}').fonts.cjkHei, null);
+  const user = typesetProfile('\\documentclass{ctexart}\n\\usepackage[fontset=none]{ctex}\n\\setCJKmainfont{Source Han Serif SC}');
+  assert.equal(user.fonts.cjk, 'Source Han Serif SC');
+  assert.equal(user.fonts.fontset, 'none');
+  assert.equal(user.fonts.cjkHei, null);
+  assert.equal(typesetProfile('\\documentclass{article}').fonts.cjk, null);
+  assert.equal(typesetProfile('\\documentclass{article}').fonts.cjkHei, null);
 });
 
 test('paginates at block boundaries without changing document nodes', () => {

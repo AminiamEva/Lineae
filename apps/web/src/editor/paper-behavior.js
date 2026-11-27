@@ -1,5 +1,6 @@
 import {documentNumbers} from '../../latex/document-numbering.mjs';
 import {headingOutline} from '../../latex/heading-numbering.mjs';
+import {resolveChineseProfile} from '../../latex/chinese-profile.mjs';
 import { Extension } from '@tiptap/core';
 import { Fragment, Slice } from '@tiptap/pm/model';
 import { NodeSelection, Plugin, TextSelection } from '@tiptap/pm/state';
@@ -9,29 +10,81 @@ import { t } from '../ui/i18n.mjs';
 import { generalTikzPreviewWidget, openTikzStudio, tikzStagingFromPreamble, setTikzPreamble } from '../ui/tikz-studio.js';
 import { TikzEditor } from '../tikz/controllers/tikzEditor.js';
 
-function tableCaptionWidget(caption,number) {
+function captionNameForPage(){
+  const page=document.querySelector('.document-page');
+  return page?.dataset.tableName||(page?.dataset.captionLanguage==='zh'?t('表','Table'):'Table');
+}
+
+// One caption widget instance per semantic key. The DOM is created once and
+// only its text/number/data attributes are updated; async measurement is
+// epoch-guarded so stale frames cannot touch a replaced widget.
+function createCaptionWidget(caption,number) {
   const element=document.createElement('div');
   element.className='table-caption-widget';
   element.dataset.captionNumbered='true';
   const label=document.createElement('span');
   label.className='table-caption-label';
-  if(number)label.dataset.captionValue=number;
-  label.dataset.captionName=document.querySelector('.document-page')?.dataset.captionLanguage==='zh'?t('表','Table'):'Table';
   const text=document.createElement('span');
   text.className='table-caption-text';
-  text.textContent=caption;
   element.append(label,text);
-  requestAnimationFrame(() => {
-    if (!element.isConnected) return;
-    const style=getComputedStyle(text);
-    const context=document.createElement('canvas').getContext('2d');
-    if (!context) return;
-    context.font=[style.fontStyle,style.fontWeight,style.fontSize,style.fontFamily].join(' ');
-    const labelWidth=label.getBoundingClientRect().width;
-    const gap=Number.parseFloat(getComputedStyle(element).columnGap)||0;
-    element.dataset.captionStyle=!caption||labelWidth+gap+context.measureText(caption).width<=element.clientWidth+0.5?'single':'multi';
+  let frame=0,epoch=0,currentCaption='',currentSignature='';
+  const measure=()=>{
+    if(frame)cancelAnimationFrame(frame);
+    const token=++epoch,signature=currentSignature;
+    frame=requestAnimationFrame(()=>{
+      frame=0;
+      if(!element.isConnected||token!==epoch||signature!==currentSignature)return;
+      const style=getComputedStyle(text);
+      const context=document.createElement('canvas').getContext('2d');
+      if(!context)return;
+      context.font=[style.fontStyle,style.fontWeight,style.fontSize,style.fontFamily].join(' ');
+      const labelWidth=label.getBoundingClientRect().width;
+      const gap=Number.parseFloat(getComputedStyle(element).columnGap)||0;
+      element.dataset.captionStyle=!currentCaption||labelWidth+gap+context.measureText(currentCaption).width<=element.clientWidth+0.5?'single':'multi';
+    });
+  };
+  const update=(nextCaption,nextNumber,signature)=>{
+    const numberText=nextNumber==null?'':String(nextNumber);
+    if(numberText)label.dataset.captionValue=numberText;else delete label.dataset.captionValue;
+    label.dataset.captionName=captionNameForPage();
+    if(text.textContent!==nextCaption)text.textContent=nextCaption;
+    currentCaption=nextCaption;currentSignature=signature;
+    measure();
+  };
+  update(caption,number,'init');
+  return {
+    dom:element,
+    update,
+    destroy(){epoch++;if(frame)cancelAnimationFrame(frame);frame=0;},
+  };
+}
+
+// Rebuilds the caption decoration set from the current doc while reusing the
+// stable-key widget DOM. Only the decoration position is recomputed; the
+// signature decides whether the cached widget's text/number must be updated.
+function captionState(doc,widgets){
+  const decorations=[],seen=new Map(),used=new Set();
+  const numbers=documentNumbers(doc).objects;
+  const language=typeof document==='undefined'?'':(document.querySelector('.document-page')?.dataset.captionLanguage||'');
+  doc.descendants((node,position)=>{
+    if(node.type.name!=='table'||!(node.attrs.captionEnabled||node.attrs.caption))return;
+    const number=numbers.get(position)?.number;
+    const numberText=number==null?'':String(number);
+    const captionText=node.attrs.caption??'';
+    // The key is semantic and stable across content/language changes: table
+    // number, or an occurrence index for repeated unnumbered tables.
+    const identity=numberText?`numbered:${numberText}`:'unnumbered';
+    const signature=JSON.stringify([numberText,captionText,Boolean(node.attrs.captionEnabled),Boolean(node.attrs.captionNumbered),language]);
+    const base=`table-caption:${identity}`;
+    const occurrence=seen.get(base)||0;seen.set(base,occurrence+1);
+    const key=`${base}:${occurrence}`;used.add(key);
+    let widget=widgets.get(key);
+    if(!widget){widget=createCaptionWidget(captionText,numberText);widgets.set(key,widget);}
+    widget.update(captionText,numberText,signature);
+    decorations.push(Decoration.widget(position,()=>widget.dom,{side:-1,key}));
   });
-  return element;
+  for(const [key,widget] of widgets)if(!used.has(key)){widget.destroy();widgets.delete(key);}
+  return {set:decorations.length?DecorationSet.create(doc,decorations):null};
 }
 
 const tableRulePattern=/^\\(?:toprule|midrule|bottomrule|hline|cmidrule)/;
@@ -452,30 +505,55 @@ function paperFormatting(editor = null) {
   return plugin;
 }
 
-function numberedHeadings(doc){
- return DecorationSet.create(doc,headingOutline(doc).filter(item=>item.number).map(item=>{
-  const node=doc.nodeAt(item.position);
-  return Decoration.node(item.position,item.position+node.nodeSize,{'data-section-number':item.number,...(item.chapterLabel?{'data-chapter-label':item.chapterLabel}:{}),...(item.appendix?{'data-appendix-heading':'true'}:{})});
- }));
-}
-
-const CJK_CHAR = /[\u2E80-\u2FFF\u3040-\u30FF\u3400-\u4DBF\u4E00-\u9FFF\uAC00-\uD7AF\uF900-\uFAFF]/;
-function cjkLatinSpacing(doc) {
+function namedEnvironments(doc) {
+  const chinese = resolveChineseProfile({ preamble: doc.attrs?.layoutPreamble ?? '' });
   const decorations = [];
   doc.descendants((node, position) => {
-    if (!node.isText || !node.text) return;
-    for (const match of node.text.matchAll(/[A-Za-z0-9]+/g)) {
-      const before = CJK_CHAR.test(node.text[match.index - 1] ?? '');
-      const after = CJK_CHAR.test(node.text[match.index + match[0].length] ?? '');
-      if (!before && !after) continue;
-      decorations.push(Decoration.inline(
-        position + match.index,
-        position + match.index + match[0].length,
-        { class: ['cjk-latin', before && 'cjk-latin-before', after && 'cjk-latin-after'].filter(Boolean).join(' ') },
-      ));
+    if (node.type.name === 'theoremBlock' && node.attrs.kind === 'proof' && chinese.names.proofname && chinese.names.proofname !== 'Proof') {
+      decorations.push(Decoration.node(position, position + node.nodeSize, { 'data-theorem-heading': chinese.names.proofname.replace(/\.$/, '') + '.' }));
+    }
+    if (node.type.name === 'blockquote' && node.attrs.latexEnvironment === 'abstract') {
+      decorations.push(Decoration.node(position, position + node.nodeSize, { 'data-abstract-name': chinese.names.abstractname || 'Abstract' }));
     }
   });
-  return DecorationSet.create(doc, decorations);
+  return decorations;
+}
+
+function numberedHeadings(doc){
+ const preamble=doc.attrs?.layoutPreamble??'';
+ const chinese=resolveChineseProfile({preamble});
+ const styles=chinese.headingStyles;
+ const headingDecorations=headingOutline(doc).map(item=>{
+  const node=doc.nodeAt(item.position);
+  const style=styles?.[item.command]??null;
+  const attrs={
+    'data-heading-position':String(item.position),
+    'data-heading-numbered':String(item.numbered),
+  };
+  if(item.number||item.displayLabel)attrs['data-section-number']=item.command==='part'?item.displayLabel:item.number;
+  if(item.chapterLabel)attrs['data-chapter-label']=item.chapterLabel;
+  if(item.appendix)attrs['data-appendix-heading']='true';
+  if(item.matter)attrs['data-matter']=item.matter;
+  if(item.afterIndent!=null)attrs['data-after-indent']=String(item.afterIndent);
+  if(style){
+    attrs['data-heading-style']='true';
+    attrs['data-heading-cjk-face']=style.cjkFace||'main';
+    if(item.afterIndent==null)attrs['data-after-indent']=String(style.afterIndent);
+    attrs.style=[
+      '--tex-heading-align:'+style.align,
+      '--tex-heading-size:'+style.size,
+      '--tex-heading-weight:'+style.weight,
+      '--tex-heading-font-style:'+style.style,
+      '--tex-heading-before:'+style.before,
+      '--tex-heading-after:'+style.after,
+      '--tex-heading-indent:'+style.indent,
+      '--tex-heading-aftername:'+style.afterName,
+    ].join(';');
+    if(style.runin)attrs['data-heading-runin']='true';
+  }
+  return Decoration.node(item.position,item.position+node.nodeSize,attrs);
+ });
+ return DecorationSet.create(doc,[...headingDecorations,...namedEnvironments(doc)]);
 }
 
 const clikeKeywords = 'abstract|as|async|await|break|case|catch|class|const|continue|default|delete|do|else|enum|export|extends|final|finally|for|from|function|goto|if|implements|import|in|instanceof|interface|let|namespace|new|package|private|protected|public|return|sealed|static|super|switch|this|throw|throws|try|type|typeof|var|void|while|with|yield|true|false|null|None|True|False|undefined|nil';
@@ -524,15 +602,6 @@ function formattingMarks(doc, preamble = '') {
   setTikzPreamble(preamble);
   const decorations = [];
   doc.descendants((node, position, parent, index) => {
-    if (node.type.name==='math' && parent) {
-      const before=parent.maybeChild(index-1);
-      const after=parent.maybeChild(index+1);
-      const classes=[];
-      if (before?.isText && /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]$/u.test(before.text)) classes.push('math-cjk-before');
-      if (after?.isText && /^[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/u.test(after.text)) classes.push('math-cjk-after');
-      if (classes.length) decorations.push(Decoration.node(position,position+node.nodeSize,{class:classes.join(' ')}));
-    }
-
     if (node.isText) {
       const logo = node.marks.find(mark=>mark.type.name==='textCommand')?.attrs.name;
       if (logo === 'LaTeX' || logo === 'TeX') {
@@ -882,23 +951,23 @@ export const PaperBehavior = Extension.create({
     }];
   },
   addProseMirrorPlugins() {
+    const captionWidgets = new Map();
     return [
       paperFormatting(this.editor),
       tikzBackspaceSelectionPlugin(),
       new Plugin({
-        props: {
-          decorations(state) {
-            const widgets = [];
-            state.doc.descendants((node, position) => {
-              if (node.type.name === 'table' && (node.attrs.captionEnabled || node.attrs.caption)) {
-                const number=documentNumbers(state.doc).objects.get(position)?.number;
-                widgets.push(Decoration.widget(position, tableCaptionWidget(node.attrs.caption ?? '',number), {
-                  side:-1, key:`table-caption-${position}-${number ?? ''}-${node.attrs.caption ?? ''}`,
-                }));
-              }
-            });
-            return widgets.length ? DecorationSet.create(state.doc, widgets) : null;
-          },
+        state: {
+          init: (_, state) => captionState(state.doc, captionWidgets),
+          apply: (transaction, previous, _oldState, newState) => transaction.docChanged ? captionState(newState.doc, captionWidgets) : previous,
+        },
+        props: { decorations(state) { return this.getState(state).set; } },
+        view() {
+          return {
+            destroy() {
+              for (const widget of captionWidgets.values()) widget.destroy();
+              captionWidgets.clear();
+            },
+          };
         },
       }),
       new Plugin({
@@ -907,23 +976,6 @@ export const PaperBehavior = Extension.create({
           apply: (transaction, previous) => transaction.docChanged ? numberedHeadings(transaction.doc) : previous,
         },
         props: { decorations(state) { return this.getState(state); } },
-      }),
-      new Plugin({
-        state: {
-          init: (_, state) => ({
-            text: state.doc.textBetween(0, state.doc.content.size, '\n', '\n'),
-            size: state.doc.content.size,
-            decorations: cjkLatinSpacing(state.doc),
-          }),
-          apply: (transaction, previous) => {
-            if (!transaction.docChanged) return previous;
-            const text = transaction.doc.textBetween(0, transaction.doc.content.size, '\n', '\n');
-            const size = transaction.doc.content.size;
-            if (text === previous.text && size === previous.size) return previous;
-            return { text, size, decorations: cjkLatinSpacing(transaction.doc) };
-          },
-        },
-        props: { decorations(state) { return this.getState(state).decorations; } },
       }),
       new Plugin({
         props: {

@@ -52,6 +52,45 @@ export async function askText(title, value = '') {
   return result === null ? null : result.trim();
 }
 
+// A single-button acknowledgement dialog. Enter, Escape and the confirm button
+// all mean "acknowledged"; there is no cancel branch.
+export function noticeDialog({ title, confirm }) {
+  return new Promise(resolve => {
+    const backdrop = document.createElement('div');
+    backdrop.className = 'editor-dialog-backdrop';
+    const form = document.createElement('form');
+    form.className = 'editor-dialog';
+    const label = document.createElement('label');
+    label.textContent = title;
+    const actions = document.createElement('div');
+    actions.className = 'editor-dialog-actions';
+    const confirmButton = document.createElement('button');
+    confirmButton.type = 'submit';
+    confirmButton.textContent = confirm ?? t('确定','OK');
+    actions.append(confirmButton);
+    form.append(label, actions);
+    backdrop.append(form);
+
+    const close = () => {
+      document.removeEventListener('keydown', onKey, true);
+      backdrop.remove();
+      resolve();
+    };
+    const onKey = event => {
+      if (event.key !== 'Escape' && event.key !== 'Enter') return;
+      event.preventDefault();
+      event.stopPropagation();
+      close();
+    };
+    form.addEventListener('submit', event => { event.preventDefault(); close(); });
+    backdrop.addEventListener('pointerdown', event => { if (event.target === backdrop) close(); });
+    document.addEventListener('keydown', onKey, true);
+    document.body.append(backdrop);
+    popIn(form, { prefersReducedMotion: window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false });
+    confirmButton.focus();
+  });
+}
+
 export function confirmDialog({ title, confirm, cancel }) {
   return new Promise(resolve => {
     const backdrop = document.createElement('div');

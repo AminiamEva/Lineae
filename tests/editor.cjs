@@ -361,7 +361,9 @@ async function verifySelectionGeometry(page, paper, importSource) {
     assert.ok(await page.evaluate(() => window.lineaeMotionFrames.some(frame => frame.object && frame.id === 'lineae-selection-glide')),
       'The formula highlight animates as the drag crosses it');
 
-    const longLine = '样'.repeat(140);
+    // CJK paragraphs use the token line-break layout, so measure the browser
+    // soft-wrap path with a Latin run; the CJK path has its own layout tests.
+    const longLine = 'a'.repeat(140);
     await importSource(longLine);
     await page.waitForFunction(text => document.querySelector('.ProseMirror p')?.textContent === text, longLine);
     const firstLineLength = await paragraphs.first().evaluate(paragraph => {
@@ -385,7 +387,7 @@ async function verifySelectionGeometry(page, paper, importSource) {
     await page.keyboard.press('End');
     await settle();
     const beforeWrap = await snapshot();
-    for (const [edit, count] of [[() => page.keyboard.insertText('样'), firstLineLength + 1],
+    for (const [edit, count] of [[() => page.keyboard.insertText('a'), firstLineLength + 1],
       [() => page.keyboard.press('Backspace'), firstLineLength]]) {
       await page.evaluate(() => { window.lineaeMotionFrames.length = 0; });
       await edit();
@@ -1415,10 +1417,10 @@ async function verifySelectionGeometry(page, paper, importSource) {
           if(rect.width)chars.push({char:node.data[index],left:rect.left,right:rect.right});
         }
       }
-      return {spans:document.querySelectorAll('.ProseMirror .cjk-latin').length,
+      return {spans:document.querySelectorAll('.ProseMirror .tex-interchar-glue').length,
         gaps:chars.slice(1).map((char,index)=>char.left-chars[index].right)};
     });
-    assert.equal(cjkSpacing.spans,2,'CJK/Latin runs use a spacing decoration');
+    assert.equal(cjkSpacing.spans,4,'CJK/Latin boundaries use the token inter-character glue');
     assert.ok(cjkSpacing.gaps.every(gap=>gap>=3),'CJK and Latin text keep the xeCJK gap: '+JSON.stringify(cjkSpacing));
     const fontSelect=page.locator('select[data-format-attribute="fontFamily"]');
     assert.ok(await fontSelect.locator('option').count()>=10,'The toolbar offers a broad font list');
@@ -2105,7 +2107,7 @@ A & B \\
       name:'ctex-fonts.tex',mimeType:'text/plain',
       buffer:Buffer.from('\\documentclass[fontset=fandol]{ctexart}\n\\begin{document}\n\n中文测试。\n\n\\end{document}\n'),
     });
-    await page.waitForFunction(()=>document.querySelector('.document-page')?.dataset.documentClass==='ctexart'&&
+    await page.waitForFunction(()=>document.querySelector('.document-page')?.dataset.rawDocumentClass==='ctexart'&&
       document.querySelector('.ProseMirror')?.textContent.includes('中文测试'));
     assert.match(await page.evaluate(()=>document.querySelector('.document-page').style.getPropertyValue('--tex-cjk-font-family')),
       /FandolSong/,'ctex fontset selects the matching CJK font');
@@ -2813,7 +2815,7 @@ A & B \\
     await clickIme.send('Input.imeSetComposition',{text:'士',selectionStart:1,selectionEnd:1});
     await page.waitForFunction(()=>document.querySelector('.ProseMirror p')?.textContent.endsWith('士'));
     assert.ok(await paper.evaluate(element=>element.editor.view.composing),'Showing a candidate keeps composition active');
-    assert.equal(await paper.locator('.math-inline.math-cjk-after').count(),0,
+    assert.equal(await paper.locator('.tex-interchar-glue').count(),0,
       'The formula keeps its layout until the candidate is committed');
     await clickIme.send('Input.insertText',{text:'是'});
     await page.waitForFunction(()=>{
@@ -2821,7 +2823,7 @@ A & B \\
       return text === '正文 是';
     },null,{timeout:3000}).catch(async()=>assert.fail('IME committed beside inline math: '+await preedit.textContent()));
     assert.doesNotMatch(await paper.locator('p').first().textContent(),/shi/);
-    await paper.locator('.math-inline.math-cjk-after').waitFor();
+    await paper.locator('.tex-interchar-glue').first().waitFor({state:'attached'});
     await clickIme.detach();
     await page.keyboard.press('Control+0');
     assert.equal(await page.locator('input[type=range]').inputValue(),'100');
@@ -2894,9 +2896,9 @@ A & B \\
     assert.equal(await paper.locator('p').first().textContent(),centeredText,
       'Resetting the alignment does not delete text');
     await importSource('中文$x$汉字 and $y$ text');
-    await paper.locator('.math-cjk-before.math-cjk-after').waitFor();
-    assert.equal(await paper.locator('.math-cjk-before').count(),1);
-    assert.equal(await paper.locator('.math-cjk-after').count(),1);
+    await paper.locator('.tex-interchar-glue').first().waitFor({state:'attached'});
+    assert.equal(await paper.locator('.tex-interchar-glue').count(),2,
+      'CJK/formula boundaries use one token glue on each side');
     await importSource('\\[a\\]');
     const display=paper.locator('.math-display math-field');
     await display.click();

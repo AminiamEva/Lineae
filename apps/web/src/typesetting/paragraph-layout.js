@@ -1,14 +1,18 @@
 import {createFontMeasurement} from './font-measurement.mjs';
 import {layoutScale,lineBoxAscent} from './layout-geometry.js';
-import {interwordGlue, texDimension} from './paragraph-parameters.mjs';
+import {fandolPairs} from './fandol-pairs.mjs';
+import {fandolPunctuation} from './fandol-punctuation.mjs';
+import {interwordGlue,paragraphParameters,resolveCjkOptions,texDimension} from './paragraph-parameters.mjs';
+import {resolveChineseProfile} from '../../latex/chinese-profile.mjs';
+import {englishHyphenation} from './english-hyphenation.mjs';
 import {TextSelection,Plugin,PluginKey} from '@tiptap/pm/state';
 import {Decoration,DecorationSet} from '@tiptap/pm/view';
 import {optimumParagraph} from './optimum-paragraph.mjs';
+import {containsCjk,isCjk,isCjkPunctuation,isOpening,isClosing,parseCjkClassDeclarations} from './cjk-characters.mjs';
+import {ctexCjkGlue,evaluateCjkGlue,zijuFraction} from './cjk-glue.mjs';
+import {resolvePunctuationStyle,punctuationMetrics,pairKerning,punctuationBreakRules} from './cjk-punctuation.mjs';
 
 const key=new PluginKey('texParagraphLayout');
-const cjk=/[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/u;
-const closing=/^[、。，．？！：；）］｝〉》」』】”’…,.!?;:)]$/u,opening=/[（［｛〈《「『【“‘(\[]$/u;
-const cjkPunctuation=/^[、。，．？！：；（）［］｛｝〈〉《》「」『』【】“”‘’]$/u;
 const canvas=typeof document==='undefined'?null:document.createElement('canvas');
 const context=canvas?.getContext('2d');
 function cssLengthPx(value){
@@ -27,7 +31,16 @@ function elementTranslateY(element){
   const parts=value.match(/-?(?:\d+\.?\d*|\.\d+)(?:px)?/g)??[];
   return parts.length>1?Number.parseFloat(parts[1])||0:0;
 }
-function tokensFor(editor,node,start,element,options,profile,metric,lineWidth,measure){
+const metricCache=new Map();
+if(typeof document!=='undefined'){document.fonts?.addEventListener('loadingdone',()=>metricCache.clear());document.fonts?.ready.then(()=>metricCache.clear());}
+function browserMeasure(text,style){
+  const font=style.font||[style.fontStyle,style.fontWeight,style.fontSize,style.fontFamily].join(' ');
+  const id=font+'|'+style.letterSpacing+'|'+text;
+  if(metricCache.has(id))return metricCache.get(id);
+  context.font=font;const width=context.measureText(text).width+Math.max(0,text.length-1)*(parseFloat(style.letterSpacing)||0);
+  if(metricCache.size>10000)metricCache.clear();metricCache.set(id,width);return width;
+}
+function tokensFor(editor,node,start,element,options,profile,metric,lineWidth,measure=browserMeasure){
   const runs=[],atoms=new Map();let text='';
   node.forEach((child,offset)=>{
     const from=start+1+offset;
@@ -43,8 +56,19 @@ function tokensFor(editor,node,start,element,options,profile,metric,lineWidth,me
     let result=0;for(const run of runs){const from=Math.max(offset,run.from),to=Math.min(offset+value.length,run.to);if(to>from)result+=measure(value.slice(from-offset,to-offset),run.style);}return result;
   };
   const items=[];const emit=item=>items.push(item);let spaceFactor=1000;
-  const chinese=cjk.test(text),baseline=parseFloat(style.lineHeight)||parseFloat(style.fontSize)*1.2;
-  const cjkFamily=style.getPropertyValue('--tex-cjk-font-family')||profile.cjk?.family||'serif';
+  const chinese=containsCjk(text),baseline=parseFloat(style.lineHeight)||parseFloat(style.fontSize)*1.2;
+  const cjkFamily=style.getPropertyValue('--tex-cjk-font-family')||profile.cjk?.family||'FandolSong';
+  const em=parseFloat(style.fontSize)||16;
+  const cjkContext={em,ccwd:em,baselineskip:baseline};
+  const ziju=zijuFraction(options.ziju,cjkContext);
+  const punctStyle=resolvePunctuationStyle(options.punctStyle,options.punctOverrides,options.rubberPunctSkip);
+  const calibratedFont=/FandolSong/i.test(cjkFamily);
+  const cjkChar=options.cjkClassify?value=>{const type=options.cjkClassify(value);return type==='CJK'||type==='HangulJamo';}:isCjk;
+  const cjkCjkGlue=(localEm,localStyle)=>{
+    const context={linewidth:options.linewidthPx??0,ccwd:localEm,linestretch:options.linestretch,ziju,parindent:options.parindentPx??0,baselineskip:baseline,linespread:options.linespread??1,glueTouched:options.cjkGlueTouched};
+    const glue=options.ctex?ctexCjkGlue(context):null;
+    return glue??evaluateCjkGlue(options.cjkGlue,{space:measure(' ',localStyle),em:localEm,ccwd:localEm,baselineskip:baseline,zijuPx:ziju*localEm});
+  };
   const updateFactor=character=>{const code=/[A-Z]/.test(character)?999:/[.!?]/.test(character)?3000:character===':'?2000:character===';'?1500:character===','?1250:/[)\]\"']/.test(character)?0:1000;if(code)spaceFactor=code>1000&&spaceFactor<1000?1000:code;};
   const pieces=[...text.matchAll(/[A-Za-z]+|[^\S\n\u00a0]+|\n|[^]/gu)];
   for(let n=0;n<pieces.length;n++){
@@ -61,11 +85,28 @@ function tokensFor(editor,node,start,element,options,profile,metric,lineWidth,me
     }
     if(value==='\ufffc'){
       const atom=atoms.get(at);if(atom)emit({type:'box',width:atom.width/zoom,from,to:from+atom.size,simpleMath:metric && atom.simpleMath});
-      if(!metric&&atom?.kind==='math'&&cjk.test(pieces[n+1]?.[0]??'')){const space=measure(' ',local);emit({type:'glue',width:space,stretch:space/2,shrink:space/3,from:from+atom.size,to:from+atom.size,cjk:true});}
+      if(!metric&&atom?.kind==='math'&&cjkChar(pieces[n+1]?.[0]??'')){
+        const localEm=parseFloat(local.fontSize)||em;
+        const glue=evaluateCjkGlue(options.cjkEcGlue,{space:measure(' ',local),em:localEm,ccwd:localEm,baselineskip:baseline,zijuPx:ziju*localEm});
+        if(glue.width||glue.stretch||glue.shrink){emit({type:'penalty',width:0,cost:10000,from:from+atom.size,to:from+atom.size});emit({type:'glue',width:glue.width,stretch:glue.stretch,shrink:glue.shrink,from:from+atom.size,to:from+atom.size,cjk:true});}
+      }
       continue;
     }
     if(value==='\n'){emit({type:'glue',width:0,stretch:1e10,shrink:0,from,to:from});emit({type:'penalty',width:0,cost:-10000,from:from+1,to:from+1,forced:true});continue;}
     if(/^\s+$/u.test(value)&&value!=='\u00a0'){
+      const previousToken=pieces[n-1]?.[0]??'',nextToken=pieces[n+1]?.[0]??'',localEm=parseFloat(local.fontSize)||em;
+      const previousCjk=cjkChar(previousToken),nextCjk=cjkChar(nextToken);
+      // CJKspace=false drops CJK–CJK source spaces, leaving only the CJK glue.
+      if(previousCjk&&nextCjk&&!options.cjkSpace){
+        const glue=cjkCjkGlue(localEm,local);
+        emit({type:'glue',width:glue.width,stretch:glue.stretch,shrink:glue.shrink,from,to:from,cjk:true});
+        continue;
+      }
+      // xCJKecglue replaces spaces at CJK boundaries with the non-breaking ecglue.
+      if(options.xCJKecGlue&&(previousCjk||nextCjk)){
+        const glue=evaluateCjkGlue(options.cjkEcGlue,{space:measure(' ',local),em:localEm,ccwd:localEm,baselineskip:baseline,zijuPx:ziju*localEm});
+        if(glue.width||glue.stretch||glue.shrink){emit({type:'penalty',width:0,cost:10000,from,to:from});emit({type:'glue',width:glue.width,stretch:glue.stretch,shrink:glue.shrink,from,to:from,cjk:true});continue;}
+      }
       const space=measure(' ',local),em=parseFloat(local.fontSize),skip=options.spaceSkip;
       const factor = options.frenchSpacing ? 1 : spaceFactor / 1000;
       const extra = spaceFactor >= 2000 && !options.frenchSpacing;
@@ -78,19 +119,28 @@ function tokensFor(editor,node,start,element,options,profile,metric,lineWidth,me
       const before = -jfmBox.offset;
       const after = measure(value,local,font) - jfmBox.width - before;
       emit({type:'box',width:jfmBox.width,from,to:from+value.length,punctuation:true,before,after,font});
-    } else if(!metric&&chinese&&cjkPunctuation.test(value)){
+    } else if(!metric&&chinese&&isCjkPunctuation(value)){
       const font=[local.fontStyle,local.fontWeight,local.fontSize,cjkFamily].join(' ');context.font=font;
-      const metrics=context.measureText(value),em=parseFloat(local.fontSize),bounds=profile.cjk.punctuation[Number(local.fontWeight)>=600?'bold':'regular'][value],left=bounds?bounds.left*em:Math.max(0,-metrics.actualBoundingBoxLeft),right=bounds?bounds.right*em:Math.max(0,metrics.width-metrics.actualBoundingBoxRight);
-      const before=opening.test(value)?left:0,after=closing.test(value)?right:0;
-      const previous=pieces[n-1]?.[0],pair=cjkPunctuation.test(previous??'')?profile.cjk.pairs[Number(local.fontWeight)>=600?'bold':'regular'][previous+value]:null;
-      if(pair){
+      const metrics=context.measureText(value),localEm=parseFloat(local.fontSize),weight=Number(local.fontWeight)>=600?'bold':'regular';
+      const calibrated=calibratedFont?fandolPunctuation[weight][value]:null;
+      const {before,after,boxWidth}=punctuationMetrics({character:value,style:punctStyle,calibrated,metrics,em:localEm,opening:isOpening(value),closing:isClosing(value)});
+      const previous=pieces[n-1]?.[0];
+      const previousPunct=isCjkPunctuation(previous??'');
+      const rules=punctuationBreakRules(value,{previous:previous??'',allowBreakBetweenPuncts:options.allowBreakBetweenPuncts});
+      const calibratedPair=calibratedFont&&previousPunct?fandolPairs[weight][previous+value]:null;
+      const kern=pairKerning(calibratedPair,punctStyle);
+      if(kern){
         while(items.at(-1)?.type==='glue'&&items.at(-1).from===from)items.pop();
         emit({type:'penalty',width:0,cost:10000,from,to:from});
-        emit({type:'glue',width:pair.width*em,stretch:pair.stretch*em,shrink:pair.shrink*em,from,to:from,cjk:true});
+        emit({type:'glue',width:kern.width*localEm,stretch:kern.stretch*localEm,shrink:kern.shrink*localEm,from,to:from,cjk:true});
+      }else if(n>0&&previous!=='\n'&&rules.noBreakBefore){
+        emit({type:'penalty',width:0,cost:10000,from,to:from});
       }
-      if(before&&!pair&&n>0&&previous!=='\n')emit({type:'glue',width:before,stretch:0,shrink:Math.min(em/2,before),from,to:from,cjk:true});
-      emit({type:'box',width:measure(value,local,font)-before-after,from,to:from+value.length,punctuation:true,before,after,font});
-      if(after)emit({type:'glue',width:after,stretch:0,shrink:Math.min(em/2,after),from:from+value.length,to:from+value.length,cjk:true});
+      if(before&&!kern&&n>0&&previous!=='\n')emit({type:'glue',width:before,stretch:0,shrink:Math.min(localEm/2,before),from,to:from,cjk:true});
+      emit({type:'box',width:boxWidth,from,to:from+value.length,punctuation:true,before,after,font,checkFullRight:Boolean(options.checkFullRight)});
+      if(after)emit({type:'glue',width:after,stretch:0,shrink:Math.min(localEm/2,after),from:from+value.length,to:from+value.length,cjk:true});
+      // 行尾禁则: an opening punctuation may not end a line.
+      if(rules.noBreakAfter&&pieces[n+1]&&!/^\s*$/.test(pieces[n+1][0]))emit({type:'penalty',width:0,cost:10000,from:from+value.length,to:from+value.length});
     }else if(/^[A-Za-z]{5,}$/.test(value)){
       const exception=options.exceptions.get(value.toLowerCase());
       const parts=exception?exception.map((part,i)=>value.slice(exception.slice(0,i).join('').length,exception.slice(0,i+1).join('').length)):profile.englishHyphenation(value,{leftMin:options.leftHyphenMin,rightMin:options.rightHyphenMin});let position=0;
@@ -108,10 +158,23 @@ function tokensFor(editor,node,start,element,options,profile,metric,lineWidth,me
     }
     updateFactor(value.at(-1));
     const next=pieces[n+1]?.[0];
-    if(!metric&&next&&!(cjkPunctuation.test(value)&&cjkPunctuation.test(next))&&value!=='\u00a0'&&next!=='\u00a0'&&!/\s/.test(next)&&!closing.test(next)&&!opening.test(value)&&(cjk.test(value)||cjk.test(next)||cjkPunctuation.test(value)||cjkPunctuation.test(next))){
-      const mixed=(cjk.test(value)&&(/^[A-Za-z0-9]/.test(next)||atoms.get(pieces[n+1]?.index)?.kind==='math'))||(/[A-Za-z0-9]$/.test(value)&&cjk.test(next));
-      const space=mixed?measure(' ',local):0;
-      emit({type:'glue',width:space,stretch:mixed?space/2:profile.cjk.intercharStretch(options,lineWidth,em,baseline),shrink:mixed?space/3:0,from:from+value.length,to:from+value.length,cjk:true});
+    if(!metric&&next&&!(isCjkPunctuation(value)&&isCjkPunctuation(next))&&value!=='\u00a0'&&next!=='\u00a0'&&!/\s/.test(next)&&!isClosing(next)&&!isOpening(value)&&(cjkChar(value)||cjkChar(next)||isCjkPunctuation(value)||isCjkPunctuation(next))){
+      const localEm=parseFloat(local.fontSize)||em;
+      const valueCjk=cjkChar(value),nextCjk=cjkChar(next);
+      const nextMath=atoms.get(pieces[n+1]?.index)?.kind==='math';
+      const mixed=(valueCjk&&(/^[A-Za-z0-9]/.test(next)||nextMath))||(/[A-Za-z0-9]$/.test(value)&&nextCjk);
+      if(valueCjk&&nextCjk){
+        const glue=cjkCjkGlue(localEm,local);
+        emit({type:'glue',width:glue.width,stretch:glue.stretch,shrink:glue.shrink,from:from+value.length,to:from+value.length,cjk:true});
+        // CheckSingle: discourage the break that leaves one Han character alone.
+        const trailing=pieces.slice(n+2).some(match=>!/^\s+$/.test(match[0])&&match[0]!=='\n');
+        if(options.checkSingle&&!trailing)emit({type:'penalty',width:0,cost:10000,from:from+value.length,to:from+value.length});
+      }else if(mixed){
+        const glue=evaluateCjkGlue(options.cjkEcGlue,{space:measure(' ',local),em:localEm,ccwd:localEm,baselineskip:baseline,zijuPx:ziju*localEm});
+        if(glue.width||glue.stretch||glue.shrink){emit({type:'penalty',width:0,cost:10000,from:from+value.length,to:from+value.length});emit({type:'glue',width:glue.width,stretch:glue.stretch,shrink:glue.shrink,from:from+value.length,to:from+value.length,cjk:true});}
+      }else{
+        emit({type:'glue',width:0,stretch:baseline*.08,shrink:0,from:from+value.length,to:from+value.length,cjk:true});
+      }
     }
   }
   while(items.at(-1)?.type==='glue')items.pop();
@@ -165,7 +228,11 @@ export function installParagraphLayout(editor,profile){
   function layout(preamble=current){
     current=preamble;if(!profile||running||editor.view.composing)return;
     fontMetrics.select(profile,preamble);
-    const entries=[],options=profile.paragraphParameters(preamble);let signature=preamble;
+    const chineseProfile=resolveChineseProfile({preamble});
+    const declarations=parseCjkClassDeclarations(preamble);
+    const cjkOptions=resolveCjkOptions(preamble,chineseProfile);
+    if(declarations.declarations.length)cjkOptions.cjkClassify=declarations.classify;
+    const entries=[],options={...profile.paragraphParameters(preamble),...cjkOptions};let signature=preamble;
     const page=editor.view.dom.closest('.document-page');
     const intextsepText=page?getComputedStyle(page).getPropertyValue('--image-intextsep').trim():'';
     const intextsep=intextsepText?cssLengthPx(intextsepText):cssLengthPx('12pt');
@@ -220,7 +287,7 @@ export function installParagraphLayout(editor,profile){
         if(dom)pending.push({dom,attrs:node.attrs,position:start,remaining:null});
         return false;
       }
-      if(node.type.name!=='paragraph'||!node.content.size)return;
+      if(!['paragraph','heading'].includes(node.type.name)||!node.content.size)return;
       const element=editor.view.nodeDOM(start);if(!element?.offsetWidth||getComputedStyle(element).visibility==='hidden')return false;
       const style=getComputedStyle(element);
       const page=element.closest('.document-page');
@@ -250,16 +317,12 @@ export function installParagraphLayout(editor,profile){
         for(let index=pending.length-1;index>=0;index--)if(pending[index].remaining!==null&&pending[index].remaining<=0)pending.splice(index,1);
       };
       const estimate=()=>Math.max(1,Math.round(elementRect.height/lineHeight));
-      // Apply measured xeCJK glue only for its calibrated font and punctuation profile.
-      if(cjk.test(node.textContent)&&!supportsCjk){
+      const isHeading=node.type.name==='heading',inTable=Boolean(element.closest('td,th'));
+      if((!isHeading&&!inTable&&node.attrs.align&&node.attrs.align!=='justify')||(!isHeading&&!inTable&&!element.hasAttribute('data-tex-paragraph')&&!['justify','start'].includes(style.textAlign))||(!inTable&&element.closest('[data-columns],.image-wrap-left,.image-wrap-right'))){
         if(active.length)consume(estimate());
         return false;
       }
-      if((node.attrs.align&&node.attrs.align!=='justify')||(!element.hasAttribute('data-tex-paragraph')&&!['justify','start'].includes(style.textAlign))||element.closest('[data-columns],.image-wrap-left,.image-wrap-right')){
-        if(active.length)consume(estimate());
-        return false;
-      }
-      const {items}=tokensFor(editor,node,start,element,options,profile,metric,baseWidth,measure);
+      const {items}=tokensFor(editor,node,start,element,{...options,linewidthPx:baseWidth,parindentPx:indent},profile,metric,baseWidth,measure);
       const widthAt=line=>wrapLineWidthAt(line,{elementTop,lineHeight,baseWidth,wraps,zoom});
       const wrapOptions=wraps.length?{...options,tolerance:9999}:options;
       const plan=optimumParagraph(items,line=>widthAt(line)-(line===0?indent:0),{...wrapOptions,texFinalPass:profile.texFinalPass,emergencyStretch:options.emergency?texDimension(options.emergency,parseFloat(style.fontSize)):0});
@@ -274,7 +337,7 @@ export function installParagraphLayout(editor,profile){
         if(content)break;
         plan.lines.pop();
       }
-      if(plan.lines.length===1&&!cjk.test(node.textContent)){
+      if(plan.lines.length===1&&!containsCjk(node.textContent)){
         if(active.length)consume(1);
         return false;
       }

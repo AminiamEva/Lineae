@@ -36,6 +36,9 @@ import {ProjectDocumentSession} from './project/document-session.mjs';
 import {installFloatingToolbar} from './ui/floating-toolbar.js';
 import {installShortcutPriority} from './ui/shortcut-priority.mjs';
 import {installNativeTexPreview} from './ui/native-tex-preview.mjs';
+import {installEnableCtex} from './ui/enable-ctex.mjs';
+import {analyzeCtexSource,hasHanDocumentText,setCtexEnabled} from '../latex/ctex-source.mjs';
+import {resolveChineseProfile} from '../latex/chinese-profile.mjs';
 import {matchesRichFormula,richSlotPosition} from './editor/native-math/rich-slot.mjs';
 import {nativeAttachedSnapshot,nativeProjectSnapshot} from './typesetting/rtex/project-snapshot.mjs';
 import {stagedRasterPath} from './typesetting/rtex/raster-assets.mjs';
@@ -73,7 +76,7 @@ import { deleteTableKeepingScroll } from './editor/table-utils.js';
 import { createConfigStore } from './editor/config.mjs';
 import { compileKeybindings, installKeybindings } from './editor/keybindings.mjs';
 import defaultConfigYaml from '../config.yaml';
-import { askText, promptDialog } from './editor/dialog.js';
+import { askText, noticeDialog, promptDialog } from './editor/dialog.js';
 import { installDocumentFind } from './editor/find.js';
 import { DocumentImage, Subfigures, chooseImageFile, availableImagePath, insertLocalImage, insertSubfigures, insertSubfigureImage, replaceLocalImage, startImageCrop, installImageDrop, editTikzVisual } from './editor/image-node.js';
 import { installImagePanel } from './ui/image-panel.js';
@@ -489,6 +492,7 @@ function outdentCurrentLine(editor) {
 }
 let backticks = null;
 let nativeTexPreview;
+let ctexControl=null;
 function replaceTypedLigatures(view, from, to, text, defaultTransaction) {
   const { autoReplaceLigatures, ligatures } = config.value.editing;
   if (!autoReplaceLigatures || from !== to || !/^[\s.,;:!?)]$/u.test(text)) return false;
@@ -913,7 +917,7 @@ function syncTableAttributes() {
     table.style.setProperty('--arrayrulewidth',node.attrs.borderWidth??'0.4pt');
   });
 }
-editor.on('update',()=>{refreshReferences(paper,editor);syncTableAttributes();});
+editor.on('update',()=>{refreshReferences(paper,editor);syncTableAttributes();ctexControl?.refresh();});
 syncTableAttributes();
 installTableHoverAddRow(editor, paper);
 installImageDrop(editor,paper);
@@ -1146,8 +1150,8 @@ const sourceView = createSourceWorkspace({
     } finally { syncApplying = false; }
   },
   onPreviewZoom: value => setZoom(value),
-  onChange: () => { syncPending = true; scheduleEngine(); projectExplorer?.changed(); nativeTexPreview?.refresh(); },
-  onLayout: () => {updateSourceButton();nativeTexPreview?.documentModeChanged?.();},
+  onChange: () => { syncPending = true; scheduleEngine(); projectExplorer?.changed(); nativeTexPreview?.refresh(); ctexControl?.refresh(); },
+  onLayout: () => { updateSourceButton(); nativeTexPreview?.documentModeChanged?.(); },
   metadata: () => ({name: filename, saved: savedSource}),
 });
 let sourceModeEntry,sourceModeCommits=[],sourceModeRedos=[];
@@ -1636,7 +1640,25 @@ function applyPageSetup(){
   imagePanel?.setSpacing?.(imageSpacing);
   const globalColumns=readGlobalColumns(layoutPreamble);
   documentPage.dataset.globalColumns=String(globalColumns);
-  documentPage.dataset.captionLanguage=/\\usepackage(?:\[[^\]]*\])?\{ctex\}/.test(layoutPreamble)?'zh':'en';
+  const chinese=resolveChineseProfile({preamble:layoutPreamble});
+  documentPage.dataset.ctexEnabled=String(chinese.enabled);
+  documentPage.dataset.ctexScheme=chinese.scheme;
+  documentPage.dataset.captionLanguage=chinese.scheme==='chinese'?'zh':'en';
+  documentPage.dataset.figureName=chinese.names.figurename;
+  documentPage.dataset.tableName=chinese.names.tablename;
+  documentPage.dataset.abstractName=chinese.names.abstractname;
+  documentPage.dataset.proofName=chinese.names.proofname;
+  documentPage.dataset.contentsName=chinese.names.contentsname;
+  documentPage.dataset.listFigureName=chinese.names.listfigurename;
+  documentPage.dataset.listTableName=chinese.names.listtablename;
+  documentPage.dataset.indexName=chinese.names.indexname;
+  documentPage.dataset.bibName=chinese.names.bibname;
+  documentPage.dataset.refName=chinese.names.refname;
+  documentPage.dataset.appendixName=chinese.names.appendixname;
+  documentPage.dataset.partNameFirst=chinese.part.first;
+  documentPage.dataset.partNameLast=chinese.part.last;
+  documentPage.dataset.chapterNameFirst=chinese.chapter.first;
+  documentPage.dataset.chapterNameLast=chinese.chapter.last;
   if(layoutColumns)layoutColumns.value=String(globalColumns);
   const metrics=pageMetrics(pageSetup);
   documentPage.style.setProperty('--page-width',metrics.width);
@@ -1658,6 +1680,7 @@ function applyPageSetup(){
     pageMarginLeft.value=pageSetup.margins.left;
     pageMarginPreset.value=Object.keys(MARGIN_PRESETS).find(key=>MARGIN_PRESETS[key]===pageSetup.margin)??'custom';
   }
+  ctexControl?.refresh();
 }
 function updateDetachedProjectLayout(project,transform){
   if(sourceView.composing||editor.view.composing)return;
@@ -1685,6 +1708,44 @@ function updatePageSetup(patch){
     return;
   }
   pageSetup=changePageLayout({editor,sourceView,current:pageSetup,preamble:documentParts.start,patch});
+  applyPageSetup();
+}
+function ctexEffectiveSource() {
+  const project=projectExplorer?.model;
+  if (projectFileKind==='tex' && project && project.activeFileId!==project.mainFileId) return project.file(project.mainFileId).draft;
+  return sourceView?.hidden===false ? sourceView.value : source();
+}
+function ctexHasHan() {
+  return hasHanDocumentText(ctexEffectiveSource());
+}
+function updateCtexEnabled(enabled) {
+  const project=projectExplorer?.model;
+  if (projectFileKind==='tex' && project && project.activeFileId!==project.mainFileId) {
+    if (sourceView.composing || editor.view.composing) return;
+    if (!sourceView.hidden) sourceView.flush();
+    const owner=project.mainFileId, before=project.file(owner).draft;
+    const after=setCtexEnabled(before, enabled);
+    if (after===before) return;
+    project.edit(owner, after);
+    sourceModeCommits.push({owner,before,after,afterDoc:editor.state.doc,afterPreamble:documentParts.start,sourceText:sourceView.value});
+    syncUndoButtons(); sourceModeRedos=[];
+    applyPageSetup(); projectExplorer.changed(); return;
+  }
+  if (!sourceView.hidden) sourceView.flush();
+  if (sourceView.hidden) {
+    const before=documentParts.start;
+    const after=setCtexEnabled(before, enabled);
+    if (after===before) return;
+    documentParts.start=after;
+    if (importedSource) importedSource=setCtexEnabled(importedSource, enabled);
+    editor.view.dispatch(closeHistory(editor.state.tr).setDocAttribute('layoutPreamble', after));
+    applyPageSetup();
+    return;
+  }
+  const before=sourceView.value, after=setCtexEnabled(before, enabled);
+  if (after===before) return;
+  sourceView.applyChanges(textPatch(before, after));
+  sourceView.flush();
   applyPageSetup();
 }
 let filename='lineae.tex';
@@ -1969,9 +2030,58 @@ function confirmMathPlaceholders() {
   return !count || confirm(t(`仍有 ${count} 个公式占位符未填写；保存后这些位置将留空。是否继续？`,
     `${count} formula placeholders are unfinished and will be empty after saving. Continue?`));
 }
+const CTEX_SAVE_NOTICE='检测到您输入了中文，在保存时为您自动加入ctex声明';
+function ensureCtexText(text) {
+  const source=String(text||'');
+  const analysis=analyzeCtexSource(source);
+  if (analysis.enabled || analysis.hasOtherCjkProvider || !hasHanDocumentText(source)) return source;
+  return setCtexEnabled(source, true);
+}
+async function ensureCtexBeforeSave(snapshot, {notify=true}={}) {
+  if (!snapshot) return snapshot;
+  const project=projectExplorer?.model;
+  // Project saves preserve the on-disk source (comments, CRLF and exact
+  // spelling). ctex can be enabled explicitly with the status toggle; only
+  // standalone/export saves receive the automatic declaration. BibTeX is not a
+  // TeX document and must never receive a ctex declaration.
+  if (projectFileKind==='tex' && project) return snapshot;
+  if (projectFileKind==='bib' || /\.bib$/i.test(filename)) return snapshot;
+  const text=snapshot.text??'';
+  const analysis=analyzeCtexSource(text);
+  if (analysis.enabled || analysis.hasOtherCjkProvider || !hasHanDocumentText(text)) return snapshot;
+  if (notify) await noticeDialog({title:CTEX_SAVE_NOTICE});
+  snapshot.text=setCtexEnabled(text, true);
+  if (!sourceView.hidden) {
+    const before=sourceView.value;
+    if (!analyzeCtexSource(before).enabled) {
+      sourceView.applyChanges(textPatch(before, setCtexEnabled(before, true)));
+      sourceView.flush();
+    }
+  } else {
+    if (snapshot.original===importedSource) {
+      importedSource=snapshot.text;
+      importedSnapshot=JSON.stringify(editor.getJSON());
+    }
+    const preamble=setCtexEnabled(documentParts.start, true);
+    if (preamble!==documentParts.start) {
+      documentParts.start=preamble;
+      editor.view.dispatch(closeHistory(editor.state.tr).setDocAttribute('layoutPreamble', preamble));
+    }
+  }
+  ctexControl?.refresh();
+  return snapshot;
+}
 async function downloadProject(checkPlaceholders=true, snapshot, nameAtSave=filename) {
   if(checkPlaceholders && !confirmMathPlaceholders())return;
-  const text=snapshot ?? (sourceView.hidden?source():sourceView.value);
+  let text=snapshot;
+  if(text===undefined) {
+    const draft=sourceView.hidden?source():sourceView.value;
+    // An imported/opened file keeps its exact bytes on export. ctex is opt-in
+    // for such sources; only documents authored in the editor (no standalone
+    // file identity) receive the automatic declaration and notice.
+    const imported=Boolean(standaloneKey||fileHandle);
+    text=imported?draft:(await ensureCtexBeforeSave({original:draft,text:draft},{notify:true})).text;
+  }
   const status=document.querySelector('#status');
   try {
     const assets=new Map(projectAssets().filter(([path])=>safeProjectPath(path)));
@@ -1999,7 +2109,7 @@ async function downloadProject(checkPlaceholders=true, snapshot, nameAtSave=file
     status.hidden=false;status.textContent=error.message;
   }
 }
-function prepareExplicitSave() {
+async function prepareExplicitSave(options={}) {
   if (sourceView.composing || editor.view.composing || !confirmMathPlaceholders()) return null;
   const readDraft=()=>sourceView.hidden ? source() : sourceView.value;
   const original=readDraft();
@@ -2008,7 +2118,7 @@ function prepareExplicitSave() {
   const formatted=sourceView.indentOnSave && projectFileKind!=='bib' ? indentLatex(input) : null;
   const generation=documentGeneration;
   const isCurrentDocument=()=>generation===documentGeneration;
-  return {
+  const snapshot={
     original, text:formatted?.text ?? input, isCurrentDocument,
     commit() {
       // The saved snapshot is authoritative on disk. Only apply its changes
@@ -2023,6 +2133,9 @@ function prepareExplicitSave() {
       if(rich)setSourceMode(false);
     }
   };
+  // Direct saves (Ctrl+S / file picker / project save) preserve the source;
+  // the ZIP export path applies the ctex notice and declaration explicitly.
+  return options.autoCtex ? await ensureCtexBeforeSave(snapshot, options) : snapshot;
 }
 let savingFile=false;
 async function saveDocument(saveAs=false) {
@@ -2032,7 +2145,7 @@ async function saveDocument(saveAs=false) {
     status.hidden=false;status.textContent=t('正在保存，请稍候','Save in progress');
     return;
   }
-  const snapshot=prepareExplicitSave();
+  const snapshot=await prepareExplicitSave();
   if (!snapshot) return;
   savingFile=true;
   try {await writeDocument(snapshot,saveAs);}
@@ -4137,41 +4250,27 @@ function newNativeMath(text,display,numbering){
   const node=editor.schema.nodes[display?'mathBlock':'math'].create({latex:text,display,delimiter});
   return {node,open,close,initial:empty?.from16??operator?.to16??text.length};
 }
+ctexControl=installEnableCtex({host:footer,before:modes,getSource:ctexEffectiveSource,hasHan:ctexHasHan,setEnabled:updateCtexEnabled});
 nativeTexPreview=installNativeTexPreview({host:footer,before:modes,primary:desktopEngineToggle()||nativeWorkspaceRequested(),documentZoom:Number(zoom.value),
   richEditor:editor.view.dom,
-  focusRichPage:(page,x,y,empty,show)=>{
+  focusRichPage:(page,x,y,clientY)=>{
     const sheet=documentPage.querySelectorAll('.document-sheet')[page-1]??documentPage;
-    const rect=sheet.getBoundingClientRect();
+    let rect=sheet.getBoundingClientRect();
+    if(page>1||window.scrollY){
+      window.scrollBy(0,rect.top+y*rect.height-clientY);
+      rect=sheet.getBoundingClientRect();
+    }
     const left=rect.left+x*rect.width,top=rect.top+y*rect.height;
-    // When the capture has no semantic hit, only enter a visible text run.
-    // posAtCoords alone snaps blank paper to the nearest paragraph.
-    let block=empty?editor.view.dom.firstElementChild:null;
-    if(!block){
-      for(const candidate of editor.view.dom.querySelectorAll('p,h1,h2,h3,h4,h5,h6,pre,.math-display')){
-        const bounds=candidate.getBoundingClientRect();
-        if(left<bounds.left||left>bounds.right||top<bounds.top||top>bounds.bottom)continue;
-        const range=document.createRange();
-        range.selectNodeContents(candidate);
-        if([...range.getClientRects()].some(r=>left>=r.left&&left<=r.right&&top>=r.top&&top<=r.bottom)){
-          block=candidate;break;
-        }
-      }
-    }
-    if(!block)return null;
-    show(block);
-    const aligned=sheet.getBoundingClientRect();
-    const point={left:aligned.left+x*aligned.width,top:aligned.top+y*aligned.height};
-    const field=document.elementFromPoint(point.left,point.top)?.closest('math-field');
-    if(field && block.contains(field)){
+    const field=document.elementFromPoint(left,top)?.closest('math-field');
+    if(field && paper.contains(field)){
       field.focus();
-      const position=field.getOffsetFromPoint?.(point.left,point.top);
+      const position=field.getOffsetFromPoint?.(left,top);
       if(Number.isInteger(position)&&position>=0)field.position=position;
-    }else{
-      const hit=empty?null:editor.view.posAtCoords(point);
-      if(hit)editor.view.dispatch(editor.state.tr.setSelection(Selection.near(editor.state.doc.resolve(hit.pos))).setMeta('addToHistory',false));
-      editor.view.focus();
+      return;
     }
-    return block;
+    const hit=editor.view.posAtCoords({left,top});
+    if(hit)editor.view.dispatch(editor.state.tr.setSelection(Selection.near(editor.state.doc.resolve(hit.pos))).setMeta('addToHistory',false));
+    editor.view.focus();
   },
   isDocumentMode:()=>sourceView.hidden,
   splitHost:()=>!sourceView.hidden&&sourceView.split&&projectFileKind!=='bib'?sourceView.previewHost:null,
@@ -4189,7 +4288,7 @@ nativeTexPreview=installNativeTexPreview({host:footer,before:modes,primary:deskt
       return {...snapshot,editablePaths:new Set(composition.regions.map(region=>region.path))};
     }
     if(projectFileKind==='bib')throw new Error(t('请打开 .tex 文档。','Open a .tex document.'));
-    const text=sourceView.hidden?source():sourceView.value;
+    const text=ensureCtexText(sourceView.hidden?source():sourceView.value);
     return nativeAttachedSnapshot(text,projectAssets());
   },
   isComposing:()=>editor.view.composing||sourceView.composing,
@@ -5322,15 +5421,19 @@ function tableOption(label,control){
   field.append(text,control);
   return field;
 }
+let tableSectionIndex=0;
 function tableSection(title){
   const section=document.createElement('section');
   section.className='table-style-group';
   const heading=document.createElement('div');
   heading.className='table-style-group-title';
+  heading.id=`table-style-group-title-${++tableSectionIndex}`;
   heading.textContent=title;
   const body=document.createElement('div');
   body.className='table-style-group-body';
-  section.append(heading,body);
+  // Content first, group title at the bottom (DOM and visual order).
+  section.setAttribute('aria-labelledby',heading.id);
+  section.append(body,heading);
   tableGroup.append(section);
   return body;
 }
@@ -6073,10 +6176,11 @@ function selectGroup(name) {
   groups[name]?.refreshLayout?.();
   if(name==='home')homeRibbon.refreshLayout?.();
 }
+let tableTabPinned=false,lastTableActive=false;
 for(const name of Object.keys(groups)) {
   const tab=document.createElement('button');tab.type='button';tab.dataset.group=name;
   tab.addEventListener('mousedown',event=>event.preventDefault());
-  tab.addEventListener('click',()=>{toolbarController.show();selectGroup(name);});tabs.append(tab);
+  tab.addEventListener('click',()=>{toolbarController.show();tableTabPinned=true;selectGroup(name);});tabs.append(tab);
 }
 const imageTab=tabs.querySelector('[data-group=image]');
 if(imageTab)imageTab.hidden=true;
@@ -6087,9 +6191,19 @@ if(tableTab)tableTab.hidden=true;
 function syncTableTab(){
   if(!tableTab)return;
   const active=sourceView.hidden&&editor.isActive('table');
+  const entered=active&&!lastTableActive;
+  lastTableActive=active;
   tableTab.hidden=!active;
-  if(active)syncTableControls();
-  else if(ribbon.dataset.ribbonPage==='table')selectGroup('home');
+  if(active){
+    // Auto-open when the caret enters a table, but respect a tab the user
+    // explicitly selected while still editing that table.
+    if(entered)tableTabPinned=false;
+    syncTableControls();
+    if(!tableTabPinned&&ribbon.dataset.ribbonPage!=='table'&&ribbon.dataset.ribbonPage!=='headerFooter')selectGroup('table');
+  }else{
+    tableTabPinned=false;
+    if(ribbon.dataset.ribbonPage==='table')selectGroup('home');
+  }
 }
 editor.on('selectionUpdate',syncTableTab);
 editor.on('transaction',({transaction})=>{if(transaction.selectionSet)syncTableTab();});
@@ -6290,11 +6404,6 @@ installContextMenu(editor, paper, language, message => {
 });
 if(desktopEngineToggle()){
   load(DEFAULT_DOCUMENT_SOURCE,false);
-  // The new desktop document has no imported bytes to preserve. Use the
-  // regular authoring serializer as soon as its initial snapshot changes.
-  importedSource=null;
-  importedSnapshot=null;
-  projection=null;
-  savedSource=source();
+  savedSource=DEFAULT_DOCUMENT_SOURCE;
   nativeTexPreview.documentModeChanged?.();
 }

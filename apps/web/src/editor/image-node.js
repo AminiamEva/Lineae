@@ -246,8 +246,9 @@ export const Subfigures = Node.create({
         caption.hidden=!enabled;
         dom.dataset.captionNumbered=String(Boolean(enabled&&node.attrs.captionNumbered!==false));
         caption.dataset.captionNumbered=dom.dataset.captionNumbered;
-        const zh=editor.view.dom.closest('.document-page')?.dataset.captionLanguage==='zh';
-        caption.dataset.captionName=zh?t('图','Figure'):'Figure';
+        const page=editor.view.dom.closest('.document-page');
+        const zh=page?.dataset.captionLanguage==='zh';
+        caption.dataset.captionName=page?.dataset.figureName||(zh?t('图','Figure'):'Figure');
         captionLabel.dataset.captionName=caption.dataset.captionName;
         captionText.setAttribute('data-placeholder',zh?t('题注','Caption'):'Caption');
         if(document.activeElement!==captionText)captionText.textContent=node.attrs.caption??'';
@@ -639,8 +640,9 @@ export const DocumentImage = Node.create({
         const captionEnabled=node.attrs.captionEnabled;
         caption.hidden=!captionEnabled;
         caption.dataset.captionNumbered=String(Boolean(captionEnabled && node.attrs.captionNumbered!==false));
-        const captionLanguage=editor.view.dom.closest('.document-page')?.dataset.captionLanguage==='zh'?'zh':'en';
-        caption.dataset.captionName=captionLanguage==='zh'?t('图','Figure'):'Figure';
+        const page=editor.view.dom.closest('.document-page');
+        const captionLanguage=page?.dataset.captionLanguage==='zh'?'zh':'en';
+        caption.dataset.captionName=page?.dataset.figureName||(captionLanguage==='zh'?t('图','Figure'):'Figure');
         captionText.setAttribute('data-placeholder',captionLanguage==='zh'?t('题注','Caption'):'Caption');
         captionLabel.dataset.captionName=caption.dataset.captionName;
         dom.dataset.captionNumbered=caption.dataset.captionNumbered;

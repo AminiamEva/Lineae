@@ -1,0 +1,18 @@
+\documentclass[a4paper,10pt]{article}
+\usepackage[margin=22mm]{geometry}
+\usepackage[UTF8]{ctex}
+\setcounter{secnumdepth}{-2}
+\setcounter{tocdepth}{3}
+\begin{document}
+\typeout{LIENAE class=article-independent}
+\typeout{LIENAE tocdepth=\arabic{tocdepth}}
+\typeout{LIENAE secnumdepth=\arabic{secnumdepth}}
+\tableofcontents
+\section{正文无编号但目录收录}
+\subsection{二级}
+\subsubsection{三级}
+\section*{星号标题}
+\addcontentsline{toc}{section}{显式目录项}
+\appendix
+\section{附录节}
+\end{document}

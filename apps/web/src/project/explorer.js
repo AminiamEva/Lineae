@@ -125,7 +125,7 @@ export function installProjectExplorer({footer, filePanel, sessions}) {
     if(next.persistenceError){message.textContent=next.persistenceError;sessions.error(next.persistenceError);}
   }
   async function save() {
-    const snapshot=sessions.prepareSave();
+    const snapshot=await sessions.prepareSave();
     if(!snapshot)return;
     const file = project.file(project.activeFileId);
     project.edit(file.id,snapshot.original);
@@ -137,6 +137,12 @@ export function installProjectExplorer({footer, filePanel, sessions}) {
         snapshot.commit();
         capture();
       }else if(project.file(id).dirty)await project.save(id);
+    }
+    const saveIdSet=new Set(saveIds);
+    for(const extra of snapshot.extraFiles??[]){
+      if(saveIdSet.has(extra.id))continue;
+      const target=project.file(extra.id);
+      if(target && (target.dirty || target.saved!==extra.text))await project.save(extra.id,extra.text);
     }
     message.textContent = t('已保存','Saved'); render();
   }

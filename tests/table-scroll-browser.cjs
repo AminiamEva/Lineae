@@ -40,6 +40,9 @@ const source = `\\documentclass{article}\n\\begin{document}\n\nBefore.\n\n\\begi
     await cells.nth((await cells.count()) - 1).scrollIntoViewIfNeeded();
     await cells.nth((await cells.count()) - 1).click();
     await page.waitForTimeout(150);
+    // Selecting a cell opens the Table tab (step 24); return to Insert for the
+    // row/column commands this regression exercises.
+    await page.locator('[data-group=insert]').click();
     await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
     await page.waitForTimeout(150);
     const rowBefore = await scrollY();
@@ -71,6 +74,7 @@ const source = `\\documentclass{article}\n\\begin{document}\n\nBefore.\n\n\\begi
     await cells.nth(5).scrollIntoViewIfNeeded();
     await cells.nth(5).click();
     await page.waitForTimeout(150);
+    await page.locator('[data-group=insert]').click();
     await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
     await page.waitForTimeout(150);
     assert.deepEqual(await caretCell(), [2, 1], 'Navigation to a distant cell still works');
@@ -85,6 +89,7 @@ const source = `\\documentclass{article}\n\\begin{document}\n\nBefore.\n\n\\begi
     await page.locator('#file').setInputFiles({name:'short.tex',mimeType:'text/plain',buffer:Buffer.from(shortSource)});
     await page.waitForFunction(() => document.querySelectorAll('.ProseMirror table tr').length === 2);
     await cells.last().click();
+    await page.locator('[data-group=insert]').click();
     const shortBefore = await scrollY();
     await rowButton.click();
     await page.waitForFunction(() => document.querySelectorAll('.ProseMirror table tr').length === 3);
