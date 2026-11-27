@@ -62,10 +62,13 @@ const server=createServer(async(req,res)=>{
   await longRow.locator('.include-drag-handle').dragTo(newRow);await page.waitForFunction(()=>Array.from(document.querySelectorAll('.include-file')).map(n=>n.textContent).join(',')==='new,long');
   await longRow.locator('[data-include-fold]').click();
   await page.waitForFunction(()=>!!document.querySelector('.document-page[data-project-folding=true]')?.dataset.skippedPages);
-  await page.locator('.project-fold-placeholder').first().scrollIntoViewIfNeeded();
+  const waitFolded=async()=>{let last='';for(let i=0;i<25;i++){const signature=await page.evaluate(()=>{const nodes=[...document.querySelectorAll('.project-fold-placeholder')];return nodes.map(node=>node.dataset.foldPath+':'+node.style.top).join('|')+':'+nodes.length;});if(signature===last&&signature)return;last=signature;await page.waitForTimeout(120);}};
+  await waitFolded();
+  await page.evaluate(()=>document.querySelector('.project-fold-placeholder')?.scrollIntoView({block:'center'}));
   await page.evaluate(()=>new Promise(done=>requestAnimationFrame(()=>requestAnimationFrame(done))));
   await page.screenshot({path:'test-results/project-folded-start.png'});
-  await page.locator('.project-fold-placeholder').last().scrollIntoViewIfNeeded();
+  await waitFolded();
+  await page.evaluate(()=>{const nodes=[...document.querySelectorAll('.project-fold-placeholder')];nodes.at(-1)?.scrollIntoView({block:'center'});});
   await page.evaluate(()=>new Promise(done=>requestAnimationFrame(()=>requestAnimationFrame(done))));
   await page.screenshot({path:'test-results/project-folded-end.png'});
   const skipped=await page.locator('.document-page').getAttribute('data-skipped-pages');assert.ok(skipped.length>0);
