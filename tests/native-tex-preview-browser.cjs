@@ -93,6 +93,7 @@ const server=createServer(async(req,res)=>{
     if(process.env.LINEAE_NATIVE_ONLY==='1'){
       const desktopPage=await browser.newPage({locale:'en-US'});
       try{
+        desktopPage.on('pageerror',err=>console.error('Desktop editing error',err));
         await desktopPage.addInitScript(installMockNativeTex);
         await desktopPage.addInitScript(()=>{window.__LINEAE_DESKTOP_ENGINE_TOGGLE__=true;});
         await desktopPage.goto('http://127.0.0.1:'+server.address().port+'/');
@@ -158,10 +159,44 @@ const server=createServer(async(req,res)=>{
         await desktopPage.keyboard.insertText(' More.');
         await desktopPage.waitForFunction(()=>nativeProbe.source.includes('First paragraph. More.'));
         assert.equal(await rich.evaluate(el=>el===document.activeElement),true);
-        await rich.evaluate(el=>el.blur());
+        const clip=await desktopPage.locator('main').evaluate(el=>getComputedStyle(el).clipPath);
+        assert.ok(clip.startsWith('inset('));
+        assert.equal(await canvas.isVisible(),true);
+        const bodyTextPoint=await rich.evaluate(el=>{
+          const range=document.createRange();
+          range.selectNodeContents(el.querySelector('p'));
+          const r=range.getBoundingClientRect(),c=document.querySelector('[data-native-page] canvas').getBoundingClientRect();
+          return {x:r.left+r.width/2-c.left,y:r.top+r.height/2-c.top};
+        });
+        const rootScroll=await desktopPage.evaluate(()=>document.scrollingElement.scrollTop);
+        const initialScroll=await preview.evaluate(el=>el.scrollTop);
+        await preview.evaluate(el=>{el.scrollTop+=40;});
+        await desktopPage.waitForFunction(start=>document.querySelector('#native-tex-preview').scrollTop>start,initialScroll);
+        await desktopPage.evaluate(()=>new Promise(requestAnimationFrame));
+        assert.equal(await desktopPage.evaluate(()=>document.scrollingElement.scrollTop),rootScroll);
+        const beforeScroll=await preview.evaluate(el=>el.scrollTop);
+        const originalPageCount=await preview.locator('canvas').count();
+        await desktopPage.keyboard.press('End');
+        await desktopPage.keyboard.press('Enter');
+        await desktopPage.keyboard.type('Second paragraph');
+        await desktopPage.waitForFunction(()=>document.querySelector('.ProseMirror p:last-child')?.textContent==='Second paragraph');
+        await desktopPage.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
+        assert.equal(await rich.evaluate(el=>{
+          const first=el.querySelector('p').getBoundingClientRect(),second=el.querySelector('p:last-child').getBoundingClientRect();
+          const at=r=>document.elementFromPoint(r.left+8,(r.top+r.bottom)/2);
+          return at(first)?.tagName==='CANVAS' && el.contains(at(second));
+        }),true,'Only the active paragraph receives DOM input; its neighbor belongs to the rtex page');
+        await desktopPage.keyboard.press('Home');
+        await desktopPage.keyboard.press('Shift+End');
+        await desktopPage.keyboard.press('Backspace');
+        await desktopPage.keyboard.press('Backspace');
+        assert.equal(await preview.locator('canvas').count(),originalPageCount);
+        await canvas.click({position:{x:15,y:260}});
+        assert.equal(await preview.evaluate(el=>el.scrollTop),beforeScroll);
+        assert.equal(await desktopPage.locator('html').evaluate(el=>getComputedStyle(el).overflow),'hidden');
         await desktopPage.waitForFunction(()=>!document.body.classList.contains('native-tex-rich-edit'));
         assert.equal(await canvas.isVisible(),true);
-        await rich.evaluate(()=>{
+        await rich.evaluate(el=>{
           const animate=Element.prototype.animate;
           window.desktopCaretGlides=0;
           Element.prototype.animate=function(frames,options){
@@ -171,7 +206,7 @@ const server=createServer(async(req,res)=>{
         });
         // Replay the same interaction through both desktop engines.
         for(const name of ['lua','xe']){
-          if(name==='lua')await canvas.click({position:{x:160,y:190}});
+          if(name==='lua')await canvas.click({position:bodyTextPoint});
           else {await engine.click();await rich.click();}
           await desktopPage.keyboard.press('End');
           await desktopPage.evaluate(()=>{window.desktopCaretGlides=0;});
@@ -192,7 +227,7 @@ const server=createServer(async(req,res)=>{
           await cdp.send('Input.imeSetComposition',{text:'han',selectionStart:3,selectionEnd:3});
           await cdp.send('Input.insertText',{text:'汉'});
           await desktopPage.keyboard.type('Z');
-          assert.ok((await rich.textContent()).endsWith('汉Z'));
+          assert.match(await rich.textContent(),/汉Z$/,name);
         }
         assert.equal(await desktopPage.evaluate(()=>nativeProbe.source.includes('\\thispagestyle{empty}\\null')),false);
       }finally{

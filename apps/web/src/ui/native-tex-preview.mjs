@@ -1,3 +1,4 @@
+import {nativeParagraphOverlay} from './native-paragraph-overlay.mjs';
 import {stagedRaster} from '../typesetting/rtex/raster-assets.mjs';
 import {desktopEngineToggle,nativeWorkspaceRequested,selectDesktopEngine} from '../editor/native-surface/acceptance-mode.mjs';
 import {DEFAULT_DOCUMENT_SOURCE} from '../editor/default-document.mjs';
@@ -91,28 +92,30 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
   let primaryRequested=engineToggle&&nativeWorkspaceRequested();
   let mountedSplit=null;
   const richPage=richEditor?.closest('.document-page');
-  let richEditing=false,returnToFrame=false,richRefreshTimer=null;
-  function showRichEditor(){
+  const overlay=engineToggle&&richPage?nativeParagraphOverlay(richEditor,panel,pages):null;
+  let richEditing=false,richRefreshTimer=null;
+  function showRichEditor(number){
+    if(!richEditing || number)overlay?.begin(number);
     richEditing=true;
-    returnToFrame=false;
-    document.body.classList.add('native-tex-rich-edit');
   }
   function leaveRichEditor(){
     clearTimeout(richRefreshTimer);
     richRefreshTimer=null;
     richEditing=false;
-    returnToFrame=false;
-    document.body.classList.remove('native-tex-rich-edit');
+    overlay?.clear();
   }
   if(engineToggle && richPage){
     richPage.addEventListener('focusin',()=>{
       if(active && isDocumentMode())showRichEditor();
     });
-    richPage.addEventListener('focusout',()=>queueMicrotask(()=>{
-      if(!richEditing || richPage.contains(document.activeElement) || composing())return;
-      returnToFrame=true;
+    // MathLive and the IME can briefly release focus to the document body
+    // while installing the next DOM selection. Hide the editor only when
+    // focus actually lands outside it, or the user clicks the native paper.
+    document.addEventListener('focusin',event=>{
+      if(!richEditing || richPage.contains(event.target) || event.target===document.body)return;
+      leaveRichEditor();
       void refresh();
-    }));
+    });
   }
   const acceptsInput=()=>!primary||isDocumentMode?.();
   let draftInput=null;
@@ -684,7 +687,7 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
   }
   const pdf=installNativePdf({host:pages,onPaint:revision=>{
     if(!active||mode!=='pdf')return;
-    renderedRevision=revision;pdfRendered=revision;if(!terminal&&revision>=sourceRevision)error='';renderStatus();
+    overlay?.update();renderedRevision=revision;pdfRendered=revision;if(!terminal&&revision>=sourceRevision)error='';renderStatus();
   },onError:failure=>{if(active&&mode==='pdf')fail(failure);}});
   const renderer=installNativePages({host:pages,
     foldLabel:(path,skipped)=>path+' · '+t('已折叠，点击展开','Folded; click to expand')+
@@ -696,7 +699,7 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
       ? stagedRaster(sentSnapshot,file) : null,
     onPaint:revision=>{
       if(!active||mode!=='canvas')return;
-      renderedRevision=revision;if(!terminal&&revision>=sourceRevision)error='';renderStatus();
+      overlay?.update();renderedRevision=revision;if(!terminal&&revision>=sourceRevision)error='';renderStatus();
       syncCaret();
     },
     onError:(failure,revision)=>{if(active&&mode==='canvas')void fallback(failure,revision);},
@@ -720,13 +723,15 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
       if(!head||!anchor||head.kind!==anchor.kind)return false;
       if((anchor.kind==='text'||head.kind==='text')&&!nativeEditing)return false;
       if(engineToggle && richEditor && isDocumentMode()){
-        showRichEditor();
+        const bounds=renderer.blockAnchor(hit);
+        showRichEditor(bounds.page);
         if(head.kind==='text' && selectText?.(anchor,head)){
           richEditor.focus();
+          overlay.reveal(null,bounds.y);
           return true;
         }
-        if(head.kind==='math' && await focusMathSlot?.(anchor,head,sameGesture))return true;
-        richEditor.focus();
+        if(head.kind==='math' && await focusMathSlot?.(anchor,head,sameGesture)){overlay.reveal(null,bounds.y);return true;}
+        richEditor.focus();overlay.reveal();
         return true;
       }
       if(nativeEditing){
@@ -781,18 +786,6 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
     // Changing the preview controls can move the page and its IME anchor.
     if(inputComposition&&!inputComposition.ended)return;
     if(foldsDirty&&nativeEditing&&acceptsInput()&&current()&&observation)refreshFoldView();
-    if(returnToFrame && current() && !richPage.contains(document.activeElement)){
-      // Preserve the first visible sheet across the two independent scroll containers.
-      const top=panel.getBoundingClientRect().top;
-      const sheets=[...richPage.querySelectorAll('.document-sheet')];
-      const index=sheets.findIndex(sheet=>sheet.getBoundingClientRect().bottom>top);
-      const frame=pages.querySelector('[data-native-page="'+(index+1)+'"],[data-pdf-page="'+(index+1)+'"]');
-      if(frame && index>=0){
-        const sheet=sheets[index].getBoundingClientRect(),box=frame.getBoundingClientRect();
-        if(sheet.height)panel.scrollTop+=box.top-top+(top-sheet.top)*box.height/sheet.height;
-      }
-      leaveRichEditor();
-    }
     exportButton.disabled=!current();
     targetButton.disabled=!acceptsInput()||!current()||!hasGeometry()||targeting===generation;
     editButton.disabled=!current()||!hasGeometry()||!observation;
@@ -1015,7 +1008,7 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
   function refresh() {
     clearTimeout(richRefreshTimer);
     richRefreshTimer=null;
-    if(richEditing && !returnToFrame){
+    if(richEditing){
       exportButton.disabled=true;
       richRefreshTimer=setTimeout(()=>{richRefreshTimer=null;void captureRichFrame();},200);
       return;
@@ -1333,16 +1326,30 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
     input.toggleAttribute('data-initial',engineToggle);
     input.focus({preventScroll:true});
   }
+  function dismissRichEdit(){
+    if(!richEditing)return;
+    if(richPage.contains(document.activeElement))document.activeElement.blur();
+    leaveRichEditor();void refresh();
+  }
+  let closingEmpty=false;
+  panel.addEventListener('lineae-native-paper-blank',dismissRichEdit);
+  panel.addEventListener('pointerdown',event=>{
+    closingEmpty=event.button===0 && richEditing && canStartText?.();
+    if(event.button===0 && richEditing)dismissRichEdit();
+  },true);
   pages.addEventListener('click',event=>{
     const canvas=event.target.closest?.('canvas');
     if(!engineToggle||event.button!==0||!canvas)return;
     if(richEditor && isDocumentMode()){
-      if(richEditing)return;
+      if(richEditing||closingEmpty){closingEmpty=false;return;}
       const box=canvas.getBoundingClientRect();
       const sheet=canvas.closest('[data-native-page],[data-pdf-page]');
       const page=Number(sheet?.dataset.nativePage??sheet?.dataset.pdfPage??1);
-      showRichEditor();
-      focusRichPage(page,(event.clientX-box.left)/box.width,(event.clientY-box.top)/box.height,event.clientY);
+      const x=(event.clientX-box.left)/box.width,y=(event.clientY-box.top)/box.height;
+      const block=focusRichPage(page,x,y,canStartText?.(),candidate=>{
+        showRichEditor(page);overlay.reveal(candidate);
+      });
+      if(block)overlay.reveal(block);
       return;
     }
     const metrics=initialPageMetrics?.();
@@ -1414,7 +1421,7 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
   function setNativeZoom(value){
     if(zoomPercent===value)return;
     zoomPercent=value;
-    renderer.setZoom(value/100);pdf.setZoom(value/100);
+    renderer.setZoom(value/100);pdf.setZoom(value/100);overlay?.update();
     if(nativeEditing&&acceptsInput()){paintSurfaceSelection();positionInput();}
   }
   zoom.addEventListener('change',()=>setNativeZoom(Number(zoom.value)));
