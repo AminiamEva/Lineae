@@ -174,6 +174,22 @@ const server=createServer(async(req,res)=>{
         await desktopPage.evaluate(()=>new Promise(requestAnimationFrame));
         assert.equal(await desktopPage.evaluate(()=>document.scrollingElement.scrollTop),rootScroll);
         const beforeScroll=await preview.evaluate(el=>el.scrollTop);
+        const originalPageCount=await preview.locator('canvas').count();
+        await desktopPage.keyboard.press('End');
+        await desktopPage.keyboard.press('Enter');
+        await desktopPage.keyboard.type('Second paragraph');
+        await desktopPage.waitForFunction(()=>document.querySelector('.ProseMirror p:last-child')?.textContent==='Second paragraph');
+        await desktopPage.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
+        assert.equal(await rich.evaluate(el=>{
+          const first=el.querySelector('p').getBoundingClientRect(),second=el.querySelector('p:last-child').getBoundingClientRect();
+          const at=r=>document.elementFromPoint(r.left+8,(r.top+r.bottom)/2);
+          return at(first)?.tagName==='CANVAS' && el.contains(at(second));
+        }),true,'Only the active paragraph receives DOM input; its neighbor belongs to the rtex page');
+        await desktopPage.keyboard.press('Home');
+        await desktopPage.keyboard.press('Shift+End');
+        await desktopPage.keyboard.press('Backspace');
+        await desktopPage.keyboard.press('Backspace');
+        assert.equal(await preview.locator('canvas').count(),originalPageCount);
         await canvas.click({position:{x:15,y:260}});
         assert.equal(await preview.evaluate(el=>el.scrollTop),beforeScroll);
         assert.equal(await desktopPage.locator('html').evaluate(el=>getComputedStyle(el).overflow),'hidden');
