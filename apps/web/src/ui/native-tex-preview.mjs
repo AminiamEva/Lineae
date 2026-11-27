@@ -1464,24 +1464,24 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
     hasMathInput: event => event.target===input && nativeEditing && acceptsInput() && nativeDocument.surface.caret?.kind==='math',
     hasNativeMathFocus:()=>document.activeElement===input&&nativeEditing&&acceptsInput()&&nativeDocument.surface.caret?.kind==='math',
     focusedCaret:()=>document.activeElement===input&&nativeEditing&&acceptsInput()?nativeDocument.surface.caret:null,
-    verifiedCaret:(allowUnfocused=false)=>(allowUnfocused||document.activeElement===input)&&nativeEditing&&acceptsInput()&&current()&&observation&&!pendingEdit
+    verifiedCaret:(allowUnfocused=false)=>!richEditing&&(allowUnfocused||document.activeElement===input)&&nativeEditing&&acceptsInput()&&current()&&observation&&!pendingEdit
       ?nativeDocument.surface.caret:null,
     preserveSourceCaret(position,started,kind){
       draftInput=null;
       return awaitSourcePosition(position,started,kind==='math');
     },
     verifiedTextRange(){
-      if(!acceptsInput()||!nativeEditing||!current()||!observation||pendingEdit)return null;
+      if(richEditing||!acceptsInput()||!nativeEditing||!current()||!observation||pendingEdit)return null;
       const [from,to]=nativeDocument.surface.range;
       return from?.kind==='text'&&from.paragraph===to?.paragraph?[from,to]:null;
     },
     verifiedProseSpan(){
-      if(!acceptsInput()||!nativeEditing||!current()||!observation||pendingEdit)return [];
+      if(richEditing||!acceptsInput()||!nativeEditing||!current()||!observation||pendingEdit)return [];
       const [from,to]=nativeDocument.surface.range;
       return nativeDocument.proseRanges(from,to);
     },
     verifiedTableRange(){
-      if(!acceptsInput()||!nativeEditing||!current()||!observation||pendingEdit)return null;
+      if(richEditing||!acceptsInput()||!nativeEditing||!current()||!observation||pendingEdit)return null;
       const [from,to]=nativeDocument.surface.range;
       if(from?.kind!=='text'||to?.kind!=='text'||from===to)return null;
       const a=from.paragraph.tableCell,b=to.paragraph.tableCell;

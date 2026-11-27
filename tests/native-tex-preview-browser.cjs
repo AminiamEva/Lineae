@@ -161,6 +161,28 @@ const server=createServer(async(req,res)=>{
         await rich.evaluate(el=>el.blur());
         await desktopPage.waitForFunction(()=>!document.body.classList.contains('native-tex-rich-edit'));
         assert.equal(await canvas.isVisible(),true);
+        // Replay the same interaction through both desktop engines.
+        for(const name of ['lua','xe']){
+          if(name==='lua')await canvas.click({position:{x:160,y:190}});
+          else {await engine.click();await rich.click();}
+          await desktopPage.keyboard.press('End');
+          await desktopPage.keyboard.type('abc');
+          await desktopPage.keyboard.press('Backspace');
+          await desktopPage.waitForFunction(()=>document.querySelector('.ProseMirror.has-document-caret'));
+          assert.match(await rich.textContent(),/ab$/);
+          await desktopPage.keyboard.type('$');
+          const formula=rich.locator('math-field').last();
+          await formula.waitFor();
+          await desktopPage.keyboard.type('xy');
+          await desktopPage.keyboard.press('Backspace');
+          await desktopPage.waitForFunction(()=>[...document.querySelectorAll('.ProseMirror math-field')].at(-1)?.value==='x');
+          await desktopPage.keyboard.press('Control+Shift+j');
+          await desktopPage.waitForFunction(()=>document.activeElement?.classList.contains('ProseMirror'));
+          await cdp.send('Input.imeSetComposition',{text:'han',selectionStart:3,selectionEnd:3});
+          await cdp.send('Input.insertText',{text:'汉'});
+          await desktopPage.keyboard.type('Z');
+          assert.ok((await rich.textContent()).endsWith('汉Z'));
+        }
         assert.equal(await desktopPage.evaluate(()=>nativeProbe.source.includes('\\thispagestyle{empty}\\null')),false);
       }finally{
         await desktopPage.close();
