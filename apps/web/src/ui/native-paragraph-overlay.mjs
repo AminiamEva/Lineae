@@ -25,7 +25,15 @@ export function nativeParagraphOverlay(editor, panel, pages) {
     if(!block)return;
     let bounds=block.getBoundingClientRect();
     if(anchor?.block===block){
-      dy+=box.top+anchor.y*box.height-bounds.top;
+      let textBox=null;
+      if(Number.isFinite(anchor.x) && block.firstChild?.nodeType===Node.TEXT_NODE){
+        const range=document.createRange();
+        range.setStart(block.firstChild,0);
+        range.setEnd(block.firstChild,Math.min(1,block.firstChild.length));
+        textBox=range.getClientRects()[0];
+      }
+      if(textBox)dx+=box.left+anchor.x*box.width-textBox.left;
+      dy+=box.top+anchor.y*box.height-(textBox?.top??bounds.top);
       move();
       bounds=block.getBoundingClientRect();
     }
@@ -95,9 +103,9 @@ export function nativeParagraphOverlay(editor, panel, pages) {
       document.body.classList.add('native-tex-rich-edit');
       position();
     },
-    reveal(target,y){
+    reveal(target,y,x){
       block=target??selectedBlock()??editor.firstElementChild;
-      anchor=Number.isFinite(y)?{block,y}:null;
+      anchor=Number.isFinite(y)?{block,y,x}:null;
       position();schedule();
     },
     update:schedule,

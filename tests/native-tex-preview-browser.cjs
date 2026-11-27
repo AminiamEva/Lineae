@@ -153,7 +153,9 @@ const server=createServer(async(req,res)=>{
         await desktopPage.keyboard.type('irst');
         await desktopPage.waitForFunction(()=>nativeProbe.source.includes('First'));
         await desktopPage.evaluate(()=>{nativeProbe.rejectObservation=false;});
-        await desktopPage.keyboard.insertText(' paragraph.');
+        await desktopPage.keyboard.type(' paragr',{delay:45});
+        assert.match(await desktopPage.evaluate(()=>nativeProbe.source),/First par/);
+        await desktopPage.keyboard.type('aph.');
         await desktopPage.waitForFunction(()=>nativeProbe.source.includes('First paragraph.'));
         await desktopPage.waitForFunction(()=>!document.querySelector('#native-tex-toggle').disabled);
         await desktopPage.keyboard.insertText(' More.');

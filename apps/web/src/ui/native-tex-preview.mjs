@@ -727,10 +727,10 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
         showRichEditor(bounds.page);
         if(head.kind==='text' && selectText?.(anchor,head)){
           richEditor.focus();
-          overlay.reveal(null,bounds.y);
+          overlay.reveal(null,bounds.y,bounds.x);
           return true;
         }
-        if(head.kind==='math' && await focusMathSlot?.(anchor,head,sameGesture)){overlay.reveal(null,bounds.y);return true;}
+        if(head.kind==='math' && await focusMathSlot?.(anchor,head,sameGesture)){overlay.reveal(null,bounds.y,bounds.x);return true;}
         richEditor.focus();overlay.reveal();
         return true;
       }
@@ -1006,11 +1006,10 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
     return {source,mainFile:'main.tex',signature:source};
   }
   function refresh() {
-    clearTimeout(richRefreshTimer);
-    richRefreshTimer=null;
     if(richEditing){
       exportButton.disabled=true;
-      richRefreshTimer=setTimeout(()=>{richRefreshTimer=null;void captureRichFrame();},200);
+      if(richRefreshTimer===null)
+        richRefreshTimer=setTimeout(()=>{richRefreshTimer=null;void captureRichFrame();},32);
       return;
     }
     return captureRichFrame();

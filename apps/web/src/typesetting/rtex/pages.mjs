@@ -548,9 +548,15 @@ export function installNativePages({host,getFont,getTypeOneFont,getRaster,onPain
     const glyphs=ownership?.selectionGlyphs.get(group);
     const page=hit.page,entry=pages.get(page);
     if(!entry||!glyphs)return {page};
-    let top=Infinity;
-    for(const glyph of glyphs)if(glyph.number===page)top=Math.min(top,glyph.glyph.bbox[1]);
-    return {page,y:Number.isFinite(top)?top/entry.dl.page_height:undefined};
+    let first=null,top=Infinity;
+    for(const glyph of glyphs){
+      if(glyph.number!==page)continue;
+      top=Math.min(top,glyph.glyph.bbox[1]);
+      if(!first||glyph.from16<first.from16)first=glyph;
+    }
+    return {page,y:Number.isFinite(top)?top/entry.dl.page_height:undefined,
+      x:first && group===owner?.paragraph && !glyphs.some(g=>g.number<page)
+        ?first.glyph.bbox[0]/entry.dl.page_width:undefined};
   }
   return {blockAnchor,accept,reset,attachOwners,bindPdfLayout,showCaret,showSelection,showFileBoundaries,showFoldedFiles,clearCaret,redraw,setZoom(value){clearCaret();zoom=value;showFileBoundaries(boundaries);showFoldedFiles(foldedRanges,false);if(pdfBacked)return;for(const entry of pages.values()){
     entry.dom.style.width=entry.dl.page_width*CSS_PER_SP*zoom+'px';
