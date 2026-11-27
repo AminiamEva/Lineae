@@ -48,28 +48,49 @@ export function nativeParagraphOverlay(editor, panel, pages, framePending) {
   // On Enter the editing clip moves immediately, but a cold TeX pass may
   // still be drawing the preceding paragraph. Bridge ordinary prose only.
   const pendingRows=new Map();
-  function releaseRows(){
-    for(const row of pendingRows.values())row.remove();
-    pendingRows.clear();
+  function releaseRows(revision){
+    for(const [element,row] of pendingRows){
+      if(revision!==undefined&&row.isConnected&&row.parentElement.dataset.paintRevision!==String(revision))continue;
+      row.remove();pendingRows.delete(element);
+    }
   }
   function retainText(previous){
     const surface=canvas();
     if(!surface || !previous?.isConnected || previous.tagName!=='P' ||
-       !previous.textContent || [...previous.children].some(el=>el.tagName!=='BR'))return;
+       previous.querySelector('math-field,img,input,[contenteditable=false]'))return;
     const sheet=surface.getBoundingClientRect(),rect=previous.getBoundingClientRect();
     if(!sheet.width || rect.top<sheet.top || rect.bottom>sheet.bottom)return;
     const row=document.createElement('div'),style=getComputedStyle(previous);
     const scale=rect.width/previous.offsetWidth;
     if(!Number.isFinite(scale)||scale<=0)return;
-    for(const key of ['font','letterSpacing','wordSpacing','whiteSpace','textAlign','textIndent','direction','color'])
-      row.style[key]=style[key];
+    function copyTextStyle(target,computed){
+      for(const key of ['fontFamily','fontSize','fontWeight','fontStyle','fontVariant','lineHeight','fontFeatureSettings',
+        'letterSpacing','wordSpacing','whiteSpace','textAlign','textIndent','direction','color','textDecoration','verticalAlign'])
+        target.style[key]=computed[key];
+    }
+    copyTextStyle(row,style);
+    function copyInline(parent,target){
+      for(const child of parent.childNodes){
+        if(child.nodeType===Node.TEXT_NODE){target.append(document.createTextNode(child.data));continue;}
+        if(child.nodeType!==Node.ELEMENT_NODE)continue;
+        const copy=document.createElement(child.tagName==='BR'?'br':'span');
+        copyTextStyle(copy,getComputedStyle(child));
+        copyInline(child,copy);target.append(copy);
+      }
+    }
+    copyInline(previous,row);
     Object.assign(row.style,{position:'absolute',background:'white',pointerEvents:'none',
       overflow:'hidden',transformOrigin:'top left',transform:'scale('+scale+')',
       left:((rect.left-sheet.left)/sheet.width*100)+'%',top:((rect.top-sheet.top)/sheet.height*100)+'%',
       width:(rect.width/scale)+'px',height:(rect.height/scale)+'px'});
     row.className='native-pending-prose';
     row.setAttribute('aria-hidden','true');
-    row.textContent=previous.textContent;
+    const indent=parseFloat(style.textIndent);
+    if(indent>4){
+      row.style.setProperty('--pending-indent',(indent-4)+'px');
+      row.style.setProperty('--pending-midline',(parseFloat(style.lineHeight)/2)+'px');
+      row.dataset.indented='true';
+    }
     pendingRows.get(previous)?.remove();
     surface.parentElement.append(row);
     pendingRows.set(previous,row);
@@ -142,12 +163,14 @@ export function nativeParagraphOverlay(editor, panel, pages, framePending) {
     },
     reveal(target,y,x){
       block=target??selectedBlock()??editor.firstElementChild;
+      pendingRows.get(block)?.remove();pendingRows.delete(block);
       anchor=Number.isFinite(y)?{block,y,x}:null;
       position();schedule();
     },
     update:schedule,releaseRows,
-    clear(){
-      releaseRows();
+    clear(retain=false){
+      if(retain)retainText(block);
+      else releaseRows();
       cancelAnimationFrame(followFrame);followFrame=0;
       cancelAnimationFrame(frame);frame=0;dx=0;dy=0;anchor=null;block=null;
       main.style.removeProperty('--native-edit-clip');page.style.removeProperty('--native-edit-shift');

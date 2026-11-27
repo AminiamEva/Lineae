@@ -128,6 +128,7 @@ const server=createServer(async(req,res)=>{
         const rich=desktopPage.locator('.document-page .ProseMirror');
         assert.equal(await rich.evaluate(el=>el===document.activeElement),true);
         const cdp=await desktopPage.context().newCDPSession(desktopPage);
+        assert.match(await rich.evaluate(el=>getComputedStyle(el).fontFamily),/FandolSong/,'Choose Song before the first composition begins');
         await cdp.send('Input.imeSetComposition',{text:'zhong',selectionStart:5,selectionEnd:5});
         assert.ok(await rich.evaluate(el=>el.textContent.includes('zhong')&&el.getBoundingClientRect().width>0&&getComputedStyle(el).visibility==='visible'));
         await cdp.send('Input.insertText',{text:'中'});
@@ -277,6 +278,16 @@ const server=createServer(async(req,res)=>{
             await cdp.send('Input.imeSetComposition',{text:'jiu',selectionStart:3,selectionEnd:3});
             await cdp.send('Input.insertText',{text:'就'});
             await desktopPage.waitForFunction(()=>document.querySelector('.document-page .ProseMirror').textContent.endsWith('就'));
+            await desktopPage.keyboard.press('Enter');
+            await desktopPage.keyboard.type('#');
+            assert.equal(await rich.locator('h1').last().textContent(),'','The first hash converts the empty paragraph immediately');
+            await desktopPage.keyboard.type('# ');
+            await cdp.send('Input.imeSetComposition',{text:'han',selectionStart:3,selectionEnd:3});
+            await cdp.send('Input.insertText',{text:'朱墨涵'});
+            assert.equal(await rich.locator('h2').last().textContent(),'朱墨涵');
+            await desktopPage.waitForFunction(()=>nativeProbe.source.includes('\\subsection{朱墨涵}'));
+            await desktopPage.keyboard.press('Enter');
+            await desktopPage.keyboard.type('Next');
           }
         }
         assert.equal(await desktopPage.evaluate(()=>nativeProbe.source.includes('\\thispagestyle{empty}\\null')),false);

@@ -572,9 +572,34 @@ function applyCodeFenceLanguage(editor) {
   editor.view.dispatch(transaction);
   return true;
 }
+let hashHeading=null;
+function typeHybridHeading(view,from,to,text){
+  if(!document.body.classList.contains('native-tex-rich-edit')||view.composing||from!==to)return false;
+  const {doc,selection}=view.state;
+  const pos=doc.resolve(from);
+  const continuing=hashHeading?.doc===doc&&hashHeading.pos===from&&pos.parent.type===view.state.schema.nodes.heading;
+  if(continuing&&text===' '){
+    hashHeading=null;
+    return true;
+  }
+  if(text!=='#'||!selection.empty||selection.from!==from||pos.parent.content.size||
+     !(pos.parent.type===view.state.schema.nodes.paragraph||continuing))return false;
+  const level=continuing?pos.parent.attrs.level+1:1;
+  const type=view.state.schema.nodes.heading;
+  if(level>3||!pos.node(-1).canReplaceWith(pos.index(-1),pos.index(-1)+1,type))return false;
+  view.dispatch(view.state.tr.setBlockType(from,to,type,{level}));
+  hashHeading={doc:view.state.doc,pos:from};
+  return true;
+}
 const Shortcuts = Extension.create({
   name:'documentShortcuts',
   addProseMirrorPlugins:()=>[new Plugin({props:{
+    handleKeyDown(view,event){
+      if(event.isComposing||event.keyCode===229||event.ctrlKey||event.metaKey||event.altKey||
+        !['#',' '].includes(event.key))return false;
+      const {from,to}=view.state.selection;
+      return typeHybridHeading(view,from,to,event.key);
+    },
     handleTextInput(view,from,to,text,defaultTransaction) {
       const commandTrigger = text === '`' || text === '\\' || text === '$';
       if (view.composing || (commandTrigger && defaultTransaction().getMeta('composition'))) {
@@ -582,6 +607,7 @@ const Shortcuts = Extension.create({
         return false;
       }
       const parent = view.state.doc.resolve(from).parent;
+      if((text==='#'||text===' ')&&!defaultTransaction().getMeta('composition')&&typeHybridHeading(view,from,to,text))return true;
       if (text === '`' && parent.type.name !== 'codeBlock') {
         const now=performance.now();
         const continued=backticks && now-backticks.time<650 && backticks.doc===view.state.doc && backticks.pos===from && from===to;

@@ -94,6 +94,7 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
   let mountedSplit=null;
   const richPage=richEditor?.closest('.document-page');
   let editPreamble=null;
+  let songRequested=false;
   function syncEditMetrics(source){
     if(!engineToggle||!richEditor)return;
     const end=source.search(/^[ \t]*\\begin\s*\{document\}/m);
@@ -101,6 +102,16 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
     if(preamble===editPreamble)return;
     editPreamble=preamble;
     const metrics=ctexEditStyle(preamble);
+    // Before the first Han character the exporter has not emitted ctex yet.
+    // Select the same bundled face for composition as for its committed text.
+    const autoSong=Boolean(metrics)||/\\documentclass(?:\[[^\]]*\])?\{article\}/.test(preamble)&&
+      !/\\(?:setCJKmainfont|setmainjfont)\b|\bfontset\s*=/.test(preamble)&&
+      resolvePackages(preamble,'文',{chineseTypesetting:true}).some(pkg=>pkg.name==='ctex');
+    richEditor.toggleAttribute('data-native-song',autoSong);
+    if(autoSong&&!songRequested&&document.fonts){
+      songRequested=true;
+      for(const weight of [400,700])void document.fonts.load(weight+' 14px FandolSong','文').catch(()=>{});
+    }
     richEditor.toggleAttribute('data-native-ctex',Boolean(metrics));
     if(metrics){
       for(const [name,value] of Object.entries(metrics))richEditor.style.setProperty('--native-ctex-'+name,value);
@@ -113,11 +124,12 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
     richEditing=true;
     clearTimeout(targetTimer);targetTimer=null;
   }
-  function leaveRichEditor(){
+  function leaveRichEditor(bridge=false){
+    const retain=bridge&&richEditing&&!current();
     clearTimeout(richRefreshTimer);
     richRefreshTimer=null;
     richEditing=false;
-    overlay?.clear();
+    overlay?.clear(retain);
   }
   if(engineToggle && richPage){
     richPage.addEventListener('focusin',()=>{
@@ -132,7 +144,7 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
         void refresh();
       }
       if(!richEditing || richPage.contains(event.target) || event.target===document.body)return;
-      leaveRichEditor();
+      leaveRichEditor(true);
       void refresh();
     });
   }
@@ -713,6 +725,12 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
     overlay?.update();renderedRevision=revision;pdfRendered=revision;if(!terminal&&revision>=sourceRevision)error='';renderStatus();
   },onError:failure=>{if(active&&mode==='pdf')fail(failure);}});
   const renderer=installNativePages({host:pages,
+    paragraphIndent:()=>{
+      if(!engineToggle||!richEditor)return 0;
+      const style=getComputedStyle(richEditor),value=style.getPropertyValue('--tex-paragraph-indent').trim();
+      const [,amount,unit]=/^([\d.]+)(pt|px|em)$/.exec(value)??[];
+      return Number(amount)*(unit==='pt'?96/72:unit==='em'?parseFloat(style.fontSize):1);
+    },
     foldLabel:(path,skipped)=>path+' · '+t('已折叠，点击展开','Folded; click to expand')+
       (skipped.length?' · '+t('隐藏页 ','Hidden pages ')+skipped.join(', '):''),
     onExpandFile:path=>document.dispatchEvent(new CustomEvent('lineae-toggle-project-file',{detail:{path}})),
@@ -841,7 +859,7 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
     // Changing the preview controls can move the page and its IME anchor.
     if(inputComposition&&!inputComposition.ended)return;
     if(foldsDirty&&nativeEditing&&acceptsInput()&&current()&&observation)refreshFoldView();
-    if(current())overlay?.releaseRows();
+    if(current())overlay?.releaseRows(sourceRevision);
     exportButton.disabled=!current();
     targetButton.disabled=!acceptsInput()||!current()||!hasGeometry()||targeting===generation;
     editButton.disabled=!current()||!hasGeometry()||!observation;
@@ -1398,7 +1416,7 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
   function dismissRichEdit(){
     if(!richEditing)return;
     if(richPage.contains(document.activeElement))document.activeElement.blur();
-    leaveRichEditor();void refresh();
+    leaveRichEditor(true);void refresh();
   }
   let closingEmpty=false;
   panel.addEventListener('lineae-native-paper-blank',dismissRichEdit);

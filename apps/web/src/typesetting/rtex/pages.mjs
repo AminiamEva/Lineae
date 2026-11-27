@@ -12,7 +12,7 @@ const CSS_PER_SP=(96/72)/65781.76;
 
 // Strict read-only full-page adapter. No browser font fallback or inferred
 // glyph positions: a page is shown only when all its resources are exact.
-export function installNativePages({host,getFont,getTypeOneFont,getRaster,onPaint,onError,onMathHit,onImageHit,onDrawingHit,onReferenceHit,proseRanges,foldLabel,onExpandFile}) {
+export function installNativePages({host,getFont,getTypeOneFont,getRaster,paragraphIndent,onPaint,onError,onMathHit,onImageHit,onDrawingHit,onReferenceHit,proseRanges,foldLabel,onExpandFile}) {
   let generation=0,epoch=0,zoom=.75,revision=-1,layoutVersion=-1;
   let fonts=new FontStore();
   const imageResources=new Map(),imageLoads=new Map();
@@ -396,13 +396,41 @@ export function installNativePages({host,getFont,getTypeOneFont,getRaster,onPain
     const reason=inexactReason(dl,fonts,images);
     if(reason)throw new Error('Inexact native display list: '+reason);
   }
+  function drawIndentMarks(entry,rows){
+    entry.dom.querySelector('.native-indent-marks')?.remove();
+    const indent=paragraphIndent?.()/CSS_PER_SP;
+    if(!Number.isFinite(indent)||indent<=0)return;
+    const dl=entry.dl,commands=[];
+    for(const [index,line] of dl.lines.entries()){
+      const replacement=rows?.get(index);
+      const current=replacement?.line??line;
+      const first=current.items.find(item=>item[0]==='g'||item[0]==='i'||item[0]==='r');
+      if(first?.[0]!=='g'||!Number.isFinite(current.x))continue;
+      const gap=first[4]-current.x;
+      // TeX's actual first-line indent box; skip centered lines, noindent
+      // paragraphs, and lines that start with a drawing or a rule.
+      if(Math.abs(gap-indent)>Math.max(256,indent*.015))continue;
+      const x=current.x+(replacement?.dx??0),y=first[5]+(replacement?.dy??0)-current.h*.45;
+      const end=x+gap-3/CSS_PER_SP,tick=2.5/CSS_PER_SP;
+      commands.push('M'+(x+1/CSS_PER_SP)+' '+y+'H'+end+'m0 '+(-tick)+'v'+(2*tick));
+    }
+    if(!commands.length)return;
+    const ns='http://www.w3.org/2000/svg',svg=document.createElementNS(ns,'svg'),path=document.createElementNS(ns,'path');
+    svg.setAttribute('class','native-indent-marks');svg.setAttribute('aria-hidden','true');
+    svg.setAttribute('viewBox','0 0 '+dl.page_width+' '+dl.page_height);
+    path.setAttribute('vector-effect','non-scaling-stroke');path.setAttribute('d',commands.join(' '));
+    svg.append(path);entry.dom.prepend(svg);
+  }
   function draw(entry) {
     const {canvas,dl}=entry;
     const width=dl.page_width*CSS_PER_SP*zoom,height=dl.page_height*CSS_PER_SP*zoom;
     const dpr=window.devicePixelRatio||1;
     const rows=warm?.pages.get(Number(entry.dom.dataset.nativePage));
     const previous=entry.painted;
-    if(previous?.dl===dl&&previous.rows===rows&&previous.zoom===zoom&&previous.dpr===dpr)return;
+    if(previous?.dl===dl&&previous.rows===rows&&previous.zoom===zoom&&previous.dpr===dpr){
+      entry.dom.dataset.paintRevision=String(warm?.revision??revision);
+      return;
+    }
     if(!Number.isFinite(width) || !Number.isFinite(height) || width<=0 || height<=0 ||
         width*dpr>16384 || height*dpr>16384)throw new Error('Unsupported native page dimensions or zoom');
     entry.dom.style.width=width+'px';entry.dom.style.height=height+'px';
@@ -423,6 +451,8 @@ export function installNativePages({host,getFont,getTypeOneFont,getRaster,onPain
       else painter.draw(dl,line.items);
     }
     entry.painted={dl,rows,zoom,dpr};
+    entry.dom.dataset.paintRevision=String(warm?.revision??revision);
+    drawIndentMarks(entry,rows);
   }
   function redraw() {
     if(pdfBacked||frame)return;
@@ -543,6 +573,7 @@ export function installNativePages({host,getFont,getTypeOneFont,getRaster,onPain
       const {number,dom}=entry;
       dom.dataset.nativePage=String(number);
       pages.set(number,entry);
+      drawIndentMarks(entry);
     }
     return true;
   }

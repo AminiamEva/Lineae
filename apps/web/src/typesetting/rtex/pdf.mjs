@@ -26,15 +26,20 @@ export function installNativePdf({host,onPaint,onError}) {
     if(entry.painted?.zoom===renderZoom&&entry.painted.dpr===dpr)return;
     if(viewport.width*dpr>16384 || viewport.height*dpr>16384)throw new Error('PDF page exceeds supported Canvas size at this zoom');
     entry.painted=null;
-    sizePageCanvas(entry.canvas,viewport.width,viewport.height,dpr);
-    entry.dom.style.width=viewport.width+'px';entry.dom.style.height=viewport.height+'px';
-    const task=entry.page.render({canvasContext:entry.canvas.getContext('2d'),viewport,
+    // PDF.js can yield many times while drawing fonts. Keep the committed
+    // canvas (and its hit-test identity) intact until the replacement is ready.
+    const buffer=document.createElement('canvas');
+    sizePageCanvas(buffer,viewport.width,viewport.height,dpr);
+    const task=entry.page.render({canvasContext:buffer.getContext('2d'),viewport,
       transform:dpr===1?null:[dpr,0,0,dpr,0,0],annotationMode:0});
     entry.render=task;
     try {
       await task.promise;
       if(attempt===epoch&&entry.render===task){
+        sizePageCanvas(entry.canvas,viewport.width,viewport.height,dpr);
+        entry.canvas.getContext('2d').drawImage(buffer,0,0);
         entry.painted={zoom:renderZoom,dpr};
+        entry.dom.dataset.paintRevision=String(revision);
         onPaint(revision);
       }
     }catch(error){if(error.name!=='RenderingCancelledException'&&attempt===epoch)onError(error);}
@@ -80,15 +85,17 @@ export function installNativePdf({host,onPaint,onError}) {
       const page=await doc.getPage(number);
       if(attempt!==epoch)return;
       const viewport=page.getViewport({scale:zoom*96/72});
-      const dom=document.createElement('div'),canvas=document.createElement('canvas');
+      const old=host.querySelector('[data-pdf-page="'+number+'"],[data-native-page="'+number+'"]');
+      const dom=old??document.createElement('div'),canvas=dom.querySelector('canvas')??document.createElement('canvas');
       dom.className='native-tex-page';dom.dataset.pdfPage=String(number);
-      canvas.width=1;canvas.height=1;
+      if(!canvas.parentNode){canvas.width=1;canvas.height=1;dom.append(canvas);}
       dom.style.width=viewport.width+'px';dom.style.height=viewport.height+'px';
       canvas.setAttribute('aria-label','LuaLaTeX PDF page '+number);
-      dom.append(canvas);next.push({number,dom,canvas,page,render:null});
+      next.push({number,dom,canvas,page,render:null});
     }
     pages=next;revision=sourceRevision;
-    host.replaceChildren(...pages.map(entry=>entry.dom));
+    if(host.children.length!==pages.length||pages.some((entry,i)=>host.children[i]!==entry.dom))
+      host.replaceChildren(...pages.map(entry=>entry.dom));
     redraw();
     return pages.map(({number,dom,canvas,page})=>{
       const standard=page.rotate===0&&page.userUnit===1&&page.view[0]===0&&page.view[1]===0;
