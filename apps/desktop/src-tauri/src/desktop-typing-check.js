@@ -21,6 +21,14 @@ window.addEventListener('load', async () => {
     const expected = 'First paragraph 正文';
     await until(() => document.querySelector('.document-page .ProseMirror')?.textContent === expected,
       'continuous desktop input');
+    document.querySelector('button[data-group="math"]').click();
+    const equation = document.querySelector('button[data-source-action="equation"]');
+    equation.focus();
+    equation.click();
+    const field = await until(() => document.activeElement?.matches('.math-display math-field') && document.activeElement,
+      'numbered equation keyboard focus');
+    document.title = 'Lineae typing equation';
+    await until(() => field.value.trim().endsWith('12'), 'continuous desktop equation input and deletion');
     await until(() => panel()?.matches('[data-state=current]'), 'updated Lua page');
     document.querySelector('[data-source-mode=source]').click();
     await until(() => document.querySelector('.cm-content')?.textContent.includes(expected), 'saved source');

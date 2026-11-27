@@ -11,20 +11,19 @@ export function nativeParagraphOverlay(editor, panel, pages, framePending) {
       ? document.activeElement : selection?.focusNode;
     const element=target?.nodeType===1?target:target?.parentElement;
     const candidate=element?.closest('p,h1,h2,h3,h4,h5,h6,.math-display,pre,figcaption,[contenteditable=true]');
-    return candidate && candidate!==editor && page.contains(candidate)?candidate:null;
+    return candidate && candidate!==editor && page.contains(candidate)?candidate:
+      editor.querySelector('.math-display.ProseMirror-selectednode');
   }
   function position(){
     const current=canvas(),sheet=page.querySelectorAll('.document-sheet')[number-1]??page;
     if(!current)return;
+    if(block&&!editor.contains(block)){block=selectedBlock();anchor=null;}
     const box=current.getBoundingClientRect(),paper=sheet.getBoundingClientRect();
-    dx+=box.left-paper.left;
-    dy+=box.top-paper.top;
+    let shiftX=box.left-paper.left,shiftY=box.top-paper.top;
+    const bounds=block?.getBoundingClientRect();
     const scale=page.offsetWidth?paper.width/page.offsetWidth:1;
-    const move=()=>page.style.setProperty('--native-edit-shift',`${dx/scale}px ${dy/scale}px`);
-    move();
-    if(!block)return;
-    let bounds=block.getBoundingClientRect();
-    if(anchor?.block===block){
+    if(!Number.isFinite(scale)||scale<=0)return;
+    if(bounds&&anchor?.block===block){
       let textBox=null;
       if(Number.isFinite(anchor.x) && block.firstChild?.nodeType===Node.TEXT_NODE){
         const range=document.createRange();
@@ -32,16 +31,18 @@ export function nativeParagraphOverlay(editor, panel, pages, framePending) {
         range.setEnd(block.firstChild,Math.min(1,block.firstChild.length));
         textBox=range.getClientRects()[0];
       }
-      if(textBox)dx+=box.left+anchor.x*box.width-textBox.left;
-      dy+=box.top+anchor.y*box.height-(textBox?.top??bounds.top);
-      move();
-      bounds=block.getBoundingClientRect();
+      if(textBox)shiftX=box.left+anchor.x*box.width-textBox.left;
+      shiftY=box.top+anchor.y*box.height-(textBox?.top??bounds.top);
     }
     const viewport=panel.getBoundingClientRect(),host=main.getBoundingClientRect();
-    const top=Math.max(bounds.top-1,box.top,viewport.top);
-    const bottom=Math.min(bounds.bottom+1,box.bottom,viewport.bottom);
-    const left=Math.max(bounds.left-2,box.left,viewport.left);
-    const right=Math.min(bounds.right+2,box.right,viewport.left+panel.clientWidth);
+    const viewRight=viewport.left+panel.clientWidth;
+    dx+=shiftX;dy+=shiftY;
+    page.style.setProperty('--native-edit-shift',`${dx/scale}px ${dy/scale}px`);
+    if(!bounds)return;
+    const top=Math.max(bounds.top+shiftY-1,box.top,viewport.top);
+    const bottom=Math.min(bounds.bottom+shiftY+1,box.bottom,viewport.bottom);
+    const left=Math.max(bounds.left+shiftX-2,box.left,viewport.left);
+    const right=Math.min(bounds.right+shiftX+2,box.right,viewRight);
     main.style.setProperty('--native-edit-clip',`inset(${top-host.top}px ${host.right-right}px ${host.bottom-bottom}px ${left-host.left}px)`);
   }
   // On Enter the editing clip moves immediately, but a cold TeX pass may

@@ -265,7 +265,7 @@ pub fn run() {
             let window = if std::env::args_os().any(|arg| arg == "--lineae-typing-check") {
                 window.initialization_script(include_str!("desktop-typing-check.js"))
                     .on_document_title_changed(|window, title| {
-                        if title == "Lineae typing ready" {
+                        if title == "Lineae typing ready" || title == "Lineae typing equation" {
                             eprintln!("{title}");
                         } else if let Some(result) = title.strip_prefix("Lineae typing result: ") {
                             eprintln!("Lineae typing result: {result}");

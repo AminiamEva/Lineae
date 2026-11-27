@@ -658,7 +658,7 @@ export const MathNode = Node.create({
         let attempts=0;
         const settleFocus=()=>{
           const active=editor.view.dom.ownerDocument.activeElement;
-          if(active===editor.view.dom)return;
+          if(!escaping||editor.isDestroyed||active!==field&&active!==field.ownerDocument.body)return;
           editor.view.focus();
           if(++attempts<4)requestAnimationFrame(settleFocus);
         };

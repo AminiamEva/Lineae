@@ -40,9 +40,10 @@ export function installNativePdf({host,onPaint,onError}) {
     finally {if(entry.render===task)entry.render=null;}
   }
   function redraw() {
-    cancelAnimationFrame(frame);
-    const attempt=epoch;
+    if(frame)return;
     frame=requestAnimationFrame(()=>{
+      frame=0;
+      const attempt=epoch;
       const viewport=host.getBoundingClientRect();
       if(!viewport.width||!viewport.height)return;
       for(const entry of pages) {
@@ -57,6 +58,7 @@ export function installNativePdf({host,onPaint,onError}) {
   async function show(bytes,sourceRevision) {
     const attempt=++epoch;
     clearTasks();
+    pages=[];
     const previous=documentTask;
     documentTask=null;
     await previous?.destroy();
@@ -91,7 +93,7 @@ export function installNativePdf({host,onPaint,onError}) {
     });
   }
   function reset({clear=true}={}) {
-    epoch++;revision=-1;cancelAnimationFrame(frame);clearTasks();pages=[];
+    epoch++;revision=-1;cancelAnimationFrame(frame);frame=0;clearTasks();pages=[];
     void documentTask?.destroy();documentTask=null;if(clear)host.replaceChildren();
   }
   host.addEventListener('scroll',redraw,{passive:true});

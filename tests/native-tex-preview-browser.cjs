@@ -232,7 +232,7 @@ const server=createServer(async(req,res)=>{
         // Replay the same interaction through both desktop engines.
         for(const name of ['lua','xe']){
           if(name==='lua')await canvas.click({position:bodyTextPoint});
-          else {await engine.click();await rich.click();}
+          else {await engine.click();await rich.locator('p').last().click();}
           await desktopPage.keyboard.press('End');
           await desktopPage.evaluate(()=>{window.desktopCaretGlides=0;});
           await desktopPage.keyboard.type('abc',{delay:140});
@@ -253,6 +253,24 @@ const server=createServer(async(req,res)=>{
           await cdp.send('Input.insertText',{text:'汉'});
           await desktopPage.keyboard.type('Z');
           assert.match(await rich.textContent(),/汉Z$/,name);
+          if(name==='lua'){
+            await desktopPage.keyboard.press('Enter');
+            await desktopPage.locator('[data-group="math"]').click();
+            const equation=desktopPage.getByRole('button',{name:'equation',exact:true});
+            await equation.focus();
+            await equation.press('Enter');
+            const display=rich.locator('.math-display math-field').last();
+            await desktopPage.waitForFunction(()=>document.activeElement?.closest('.math-display'));
+            await desktopPage.keyboard.type('123');
+            await desktopPage.keyboard.press('Backspace');
+            await desktopPage.waitForFunction(()=>document.activeElement?.value?.endsWith('12'));
+            assert.equal(await display.evaluate(el=>el===document.activeElement),true);
+            await desktopPage.keyboard.press('Control+Shift+j');
+            await desktopPage.waitForFunction(()=>document.activeElement?.classList.contains('ProseMirror'));
+            await cdp.send('Input.imeSetComposition',{text:'jiu',selectionStart:3,selectionEnd:3});
+            await cdp.send('Input.insertText',{text:'就'});
+            await desktopPage.waitForFunction(()=>document.querySelector('.document-page .ProseMirror').textContent.endsWith('就'));
+          }
         }
         assert.equal(await desktopPage.evaluate(()=>nativeProbe.source.includes('\\thispagestyle{empty}\\null')),false);
       }finally{

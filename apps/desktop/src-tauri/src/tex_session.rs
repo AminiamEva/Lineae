@@ -458,7 +458,7 @@ impl Messages {
 
     /// Replies never enter the event queue. Events are retained even if they
     /// precede their command's reply (including PdfExported).
-    fn receive(&mut self, message: Value, bytes: usize) -> Result<(), NativeTexError> {
+    fn receive(&mut self, message: Value, bytes: usize) -> Result<Option<Value>, NativeTexError> {
         if let Some(reply) = message.get("reply").and_then(Value::as_str) {
             if self.waiting.is_none()
                 || (Some(reply) != self.waiting && reply != "error")
@@ -467,7 +467,7 @@ impl Messages {
                 return Err(error("protocol", "Unexpected or duplicate rtex command reply."));
             }
             self.reply = Some(message);
-            return Ok(());
+            return Ok(None);
         }
         let event = message.get("event").and_then(Value::as_str)
             .ok_or_else(|| error("protocol", "rtex output was neither a reply nor an event."))?;
@@ -506,14 +506,14 @@ impl Messages {
             }
             _ => {}
         }
-        if self.live_events { return Ok(()); }
+        if self.live_events { return Ok(Some(message)); }
         if self.events.len() >= EVENT_LIMIT || self.event_bytes.saturating_add(bytes) > QUEUE_LIMIT {
             // Never silently lose a changed-page delta and leave the UI corrupted.
             return Err(error("event_overflow", "Native preview event queue filled. Reopen the preview."));
         }
         self.event_bytes += bytes;
         self.events.push_back(message);
-        Ok(())
+        Ok(None)
     }
 }
 
@@ -592,11 +592,19 @@ impl Session {
     }
 
     fn fail(&self, problem: NativeTexError) {
-        let mut messages = lock(&self.messages);
-        if messages.failure.is_none() {
-            messages.failure = Some(problem);
-        }
+        let live = {
+            let mut messages = lock(&self.messages);
+            if messages.failure.is_some() { return; }
+            messages.failure = Some(problem.clone());
+            messages.live_events
+        };
         self.changed.notify_all();
+        if live {
+            let sink = lock(&self.events).clone();
+            if let Some(sink) = sink {
+                sink(&self.id, json!({"event": "SessionFailure", "failure": problem}));
+            }
+        }
     }
 
     fn terminate(&self) {
@@ -700,10 +708,6 @@ impl Session {
                         return captured;
                     }
                     Ok(_) if protocol => {
-                        let dispatched = if line.len() <= LINE_LIMIT {
-                            serde_json::from_slice::<Value>(&line).ok()
-                                .filter(|value| value.get("event").is_some())
-                        } else { None };
                         let received = if line.len() > LINE_LIMIT {
                             Err(error("protocol_limit", "rtex protocol frame exceeded 16 MiB."))
                         } else {
@@ -711,14 +715,19 @@ impl Session {
                                 .map_err(|_| error("protocol", "Invalid JSON from rtex."))
                                 .and_then(|message| lock(&session.messages).receive(message, line.len()))
                         };
-                        if let Err(problem) = received {
-                            session.fail(problem);
-                            return captured;
+                        match received {
+                            Ok(event) => {
+                                session.changed.notify_all();
+                                if let Some(event) = event {
+                                    let sink = lock(&session.events).clone();
+                                    if let Some(sink) = sink { sink(&session.id, event); }
+                                }
+                            }
+                            Err(problem) => {
+                                session.fail(problem);
+                                return captured;
+                            }
                         }
-                        if let Some(event) = dispatched {
-                            if let Some(sink) = lock(&session.events).clone() { sink(&session.id, event); }
-                        }
-                        session.changed.notify_all();
                     }
                     Ok(_) => {
                         lock(&session.messages).append_tail(&line);
@@ -1413,13 +1422,18 @@ pub async fn native_tex_update(state: State<'_, NativeTexSessions>, session_id: 
 }
 
 #[tauri::command]
-pub fn native_tex_poll(state: State<'_, NativeTexSessions>, session_id: String, live_events: Option<bool>) -> Result<Vec<Value>, NativeTexError> {
+pub async fn native_tex_poll(state: State<'_, NativeTexSessions>, session_id: String, live_events: Option<bool>) -> Result<Vec<Value>, NativeTexError> {
     let session = state.get(&session_id)?;
-    let mut messages = lock(&session.messages);
-    messages.check()?;
-    messages.event_bytes = 0;
-    messages.live_events = live_events.unwrap_or(false);
-    Ok(messages.events.drain(..).map(public_event).collect())
+    blocking(move || {
+        let queued = {
+            let mut messages = lock(&session.messages);
+            messages.check()?;
+            messages.event_bytes = 0;
+            messages.live_events = live_events.unwrap_or(false);
+            std::mem::take(&mut messages.events)
+        };
+        Ok(queued.into_iter().map(public_event).collect())
+    }).await
 }
 
 fn public_event(mut event: Value) -> Value {
@@ -2260,6 +2274,16 @@ mod tests {
         assert!(!path.exists());
         assert!(!two.closed.load(Ordering::Acquire));
         assert!(one.check().is_err());
+    }
+
+    #[test]
+    fn events_are_delivered_once_across_the_live_handoff() {
+        let mut messages = Messages::default();
+        let event = json!({"event": "EngineState"});
+        assert_eq!(messages.receive(event.clone(), 32).unwrap(), None);
+        messages.live_events = true;
+        assert_eq!(messages.receive(event.clone(), 32).unwrap(), Some(event.clone()));
+        assert_eq!(messages.events.into_iter().collect::<Vec<_>>(), vec![event]);
     }
 
     #[test]

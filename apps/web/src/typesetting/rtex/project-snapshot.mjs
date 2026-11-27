@@ -16,7 +16,7 @@ const digestHex=async buffer=>hex(await crypto.subtle.digest('SHA-256',buffer));
 // Stage only dependencies already present as immutable, selected File objects.
 export async function nativeAttachedSnapshot(source,attachments) {
   const mainFile='main.tex',files=[],manifest=[];
-  const pending=projectDependencies(source),used=new Set(),portable=new Set();
+  const pending=attachments.length?projectDependencies(source):[],used=new Set(),portable=new Set();
   const known=new Map(attachments.filter(([path])=>{
     try{return path!==mainFile&&projectPath(path)===path;}
     catch{return false;}

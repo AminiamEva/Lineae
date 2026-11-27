@@ -24,15 +24,17 @@ createInterface({input: app.stderr}).on('line', line => {
     passed = line === 'Lineae typing result: ok';
     if (!passed) console.error('::error::' + line);
   }
-  if (line !== 'Lineae typing ready') return;
+  const formula = line === 'Lineae typing equation';
+  if (!formula && line !== 'Lineae typing ready') return;
   const script = [
     'Add-Type -AssemblyName System.Windows.Forms',
     '$shell = New-Object -ComObject WScript.Shell',
     'if (!$shell.AppActivate(' + app.pid + ')) { throw "Window activation failed" }',
     'Start-Sleep -Milliseconds 300',
+    ...(formula ? ["[Windows.Forms.SendKeys]::SendWait('123{BACKSPACE}')"] : [
     "[Windows.Forms.SendKeys]::SendWait('First paragraph!{BACKSPACE} ')",
     '[Windows.Forms.Clipboard]::SetText([string][char]0x6b63 + [char]0x6587)',
-    "[Windows.Forms.SendKeys]::SendWait('^v')"
+    "[Windows.Forms.SendKeys]::SendWait('^v')"])
   ].join('; ');
   const driver = spawn('powershell.exe', ['-NoProfile','-STA','-Command',script],
     {stdio:'inherit', windowsHide:true});

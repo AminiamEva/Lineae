@@ -4150,6 +4150,7 @@ nativeTexPreview=installNativeTexPreview({host:footer,before:modes,primary:deskt
       for(const candidate of editor.view.dom.querySelectorAll('p,h1,h2,h3,h4,h5,h6,pre,.math-display')){
         const bounds=candidate.getBoundingClientRect();
         if(left<bounds.left||left>bounds.right||top<bounds.top||top>bounds.bottom)continue;
+        if(candidate.matches('.math-display')){block=candidate;break;}
         const range=document.createRange();
         range.selectNodeContents(candidate);
         if([...range.getClientRects()].some(r=>left>=r.left&&left<=r.right&&top>=r.top&&top<=r.bottom)){
@@ -4161,7 +4162,8 @@ nativeTexPreview=installNativeTexPreview({host:footer,before:modes,primary:deskt
     show(block);
     const aligned=sheet.getBoundingClientRect();
     const point={left:aligned.left+x*aligned.width,top:aligned.top+y*aligned.height};
-    const field=document.elementFromPoint(point.left,point.top)?.closest('math-field');
+    const field=document.elementFromPoint(point.left,point.top)?.closest('math-field')??
+      (block.matches('.math-display')?block.querySelector('math-field'):null);
     if(field && block.contains(field)){
       field.focus();
       const position=field.getOffsetFromPoint?.(point.left,point.top);
@@ -4674,7 +4676,8 @@ nativeTexPreview=installNativeTexPreview({host:footer,before:modes,primary:deskt
     const change={from,to:from,insert};
     return projected&&dispatchNativeParagraphChange(state,tr,source,draft,change,projected)?{source:draft,offset,path}:null;
   },
-  focusMathSlot:async(anchor,head,isCurrent)=>{    const project=projectExplorer?.model;
+  focusMathSlot:async(anchor,head,isCurrent,beforeFocus)=>{
+    const project=projectExplorer?.model;
     const formula=head.formula;
     if(anchor.formula.filePath!==formula.filePath)return;
     const file=project?.files.get(formula.filePath);
@@ -4684,7 +4687,7 @@ nativeTexPreview=installNativeTexPreview({host:footer,before:modes,primary:deskt
         await projectExplorer.openFile(file.id);
         if(projectExplorer.model!==project||project.activeFileId!==file.id)return;
       }
-      if(sourceView.hidden||sourceView.value!==formula.source)return;
+      if(!isCurrent()||sourceView.hidden||sourceView.value!==formula.source)return;
       sourceView.select(anchor.position,head.position);
       return true;
     }
@@ -4697,7 +4700,8 @@ nativeTexPreview=installNativeTexPreview({host:footer,before:modes,primary:deskt
     const model=field._mathfield?.model;
     const from=model&&richSlotPosition(model,formula.math.atoms,anchor.owner,anchor.hit);
     const to=anchor===head?from:model&&richSlotPosition(model,formula.math.atoms,head.owner,head.hit);
-    if(from==null||to==null)return;
+    if(from==null||to==null||!isCurrent())return;
+    beforeFocus?.();
     field.focus();
     if(from===to)field.position=from;
     else field.selection={ranges:[[Math.min(from,to),Math.max(from,to)]],direction:from<to?'forward':'backward'};

@@ -161,7 +161,7 @@ function instrumentTable(block, source, blockFrom, firstOwner, attribute, filePa
       const built=instrumentProse(text,source,from,nextTag,attribute,filePath,0,reuse,inline);
       if(!built||built.paragraphs.some(paragraph=>paragraph.heading))continue;
       nextTag=built.nextTag;
-      owners.push(...built.owners);
+      for(const entry of built.owners)owners.push(entry);
       inline.forEach(formula=>projectedFormulas.add(formula));
       replacements.push({from:offset,to:offset+text.length,insert:built.projection});
       paragraphs.push(...built.paragraphs.map(paragraph=>({...paragraph,tableCell})));
@@ -188,7 +188,7 @@ function instrumentContainer(block,source,blockFrom,firstOwner,attribute,filePat
     const built=instrumentProse(text,source,start,nextTag,attribute,filePath,0,reuse,inline);
     if(!built||built.paragraphs.some(paragraph=>paragraph.heading))continue;
     replacements.push({from,to:from+text.length,insert:built.projection});
-    owners.push(...built.owners);
+    for(const entry of built.owners)owners.push(entry);
     inline.forEach(formula=>projectedFormulas.add(formula));
     paragraphs.push(...built.paragraphs.map(paragraph=>({...paragraph,container:{type:container,path}})));
     nextTag=built.nextTag;
