@@ -683,11 +683,13 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
   });
   let unlisten=null;
   let eventsLive=false;
-  let initialEvents=null;
+  let initialEvents=null,liveSession=null,lastEventSequence=0;
   if(eventApi?.listen){
     eventApi.listen('lineae-native-tex',({payload})=>{
       if(!active||!payload||payload.sessionId!==session)return;
       if(initialEvents){initialEvents.push(payload.event);return;}
+      // Before the handoff, the host retains the complete ordered queue.
+      if(liveSession!==session)return;
       handleEvent(payload.event);
       renderStatus();
     }).then(fn=>{unlisten=fn;eventsLive=true;}).catch(()=>{});
@@ -886,7 +888,7 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
   }
   async function stop() {
     leaveRichEditor();
-    generation++;captureAgain=false;pollEpoch++;active=false;opening=false;error='';capturing=null;terminal=false;
+    generation++;captureAgain=false;pollEpoch++;lastEventSequence=0;liveSession=null;active=false;opening=false;error='';capturing=null;terminal=false;
     clearTimeout(timer);clearTimeout(pollTimer);
     syncPresentation();
     const previous=session;session=null;
@@ -998,7 +1000,7 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
           sample.route=restarted?'restart':files?'project':result.routed??'unknown';
         }
         if(restarted){
-          session=result.sessionId;pollEpoch++;renderedRevision=-1;pdfRendered=-1;pdfWanted=-1;pdfLayout=null;
+          session=result.sessionId;pollEpoch++;lastEventSequence=0;renderedRevision=-1;pdfRendered=-1;pdfWanted=-1;pdfLayout=null;
           pdfGeometryAvailable=false;recordedPages.clear();
           renderer.reset({clear:false});pdf.reset({clear:false});
           void poll(attempt,pollEpoch);
@@ -1066,6 +1068,7 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
   }
   async function poll(attempt,epoch=pollEpoch) {
     if(!active || attempt!==generation || epoch!==pollEpoch || session===null)return;
+    pollTimer=null;
     const liveEvents=eventsLive;
     const buffered=liveEvents?[]:null;
     initialEvents=buffered;
@@ -1073,7 +1076,10 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
       const events=await invoke('native_tex_poll',{sessionId:session,liveEvents});
       if(attempt!==generation||epoch!==pollEpoch)return;
       for(const event of events)handleEvent(event);
-      if(buffered)for(const event of buffered)handleEvent(event);
+      if(buffered){
+        for(const event of buffered)handleEvent(event);
+        liveSession=session;
+      }
       renderStatus();
     } catch(failure) {
       if(attempt===generation&&epoch===pollEpoch)fail(failure);
@@ -1088,6 +1094,10 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
   // compatibility fallback for hosts without a Tauri event bridge.
   function handleEvent(event) {
     if(!event)return;
+    if(Number.isSafeInteger(event.lineaeSequence)){
+      if(event.lineaeSequence<=lastEventSequence)return;
+      lastEventSequence=event.lineaeSequence;
+    }
     if(event.event==='SessionFailure'){terminal=true;fail(event.failure);return;}
     if(event.event==='ParagraphUpdate'&&event.status==='error'){
       error=event.diagnostics?.map(item=>item.message??String(item)).join('\n').slice(0,2400)||

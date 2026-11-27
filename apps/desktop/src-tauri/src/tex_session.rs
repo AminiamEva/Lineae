@@ -695,6 +695,7 @@ impl Session {
         thread::Builder::new().name("native-tex-reader".into()).spawn(move || {
             let mut reader = BufReader::new(pipe);
             let mut captured = Vec::new();
+            let mut event_sequence = 0u64;
             loop {
                 let mut line = Vec::new();
                 // take() bounds allocation even for a malformed/missing newline.
@@ -708,18 +709,31 @@ impl Session {
                         return captured;
                     }
                     Ok(_) if protocol => {
+                        let sink = lock(&session.events).clone();
                         let received = if line.len() > LINE_LIMIT {
                             Err(error("protocol_limit", "rtex protocol frame exceeded 16 MiB."))
                         } else {
                             serde_json::from_slice::<Value>(&line)
                                 .map_err(|_| error("protocol", "Invalid JSON from rtex."))
-                                .and_then(|message| lock(&session.messages).receive(message, line.len()))
+                                .and_then(|mut message| {
+                                    let is_event = message.get("event").is_some();
+                                    if is_event {
+                                        event_sequence += 1;
+                                        message["lineaeSequence"] = json!(event_sequence);
+                                    }
+                                    let mut messages = lock(&session.messages);
+                                    let live = messages.receive(message, line.len())?;
+                                    // Subscribers may already be listening when a replacement
+                                    // engine starts. Retain its bootstrap events for late clients.
+                                    Ok(live.or_else(|| if is_event && sink.is_some() {
+                                        messages.events.back().cloned()
+                                    } else { None }))
+                                })
                         };
                         match received {
                             Ok(event) => {
                                 session.changed.notify_all();
                                 if let Some(event) = event {
-                                    let sink = lock(&session.events).clone();
                                     if let Some(sink) = sink { sink(&session.id, event); }
                                 }
                             }
