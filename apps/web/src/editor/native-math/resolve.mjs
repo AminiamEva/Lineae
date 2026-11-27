@@ -1,4 +1,4 @@
-import {editDisplayMathSlot} from './document.mjs';
+import {caretSlot} from './source.mjs';
 
 const roleOf = {
   num: 'numerator', den: 'denominator', radicand: 'radicand', degree: 'degree',
@@ -15,19 +15,11 @@ export function nativeTarget(projection, endpoint) {
   const sourceTag=owned.sourceTag??endpoint.owner;
   const fence=atom.kind==='fence'&&['nucleus','math','body'].includes(endpoint.role);
   const role = fence?'body':roleOf[endpoint.role];
-  const slot = formula.math.slots.find(candidate =>
-    candidate.tag === sourceTag && candidate.role === role);
+  const slot = caretSlot(formula.math,sourceTag,role,endpoint.after);
   if (!slot||fence&&slot.raw) return null;
   const local = endpoint.after ? slot.raw.length : 0;
-  try {
-    const target = editDisplayMathSlot(formula, formula.source, {...endpoint,owner:sourceTag,role:fence?'body':endpoint.role},
-      { from16: local, to16: local, insert: '' });
-    if (!target) return null;
-    return {
-      kind:'math', formula, atom, owner: atom, slot, local, hit: endpoint,
-      docOffset: target.selection.head, position: target.selection.head,
-    };
-  } catch { return null; }
+  const position=formula.from16+slot.from16+local;
+  return {kind:'math',formula,atom,owner:atom,slot,local,hit:endpoint,docOffset:position,position};
 }
 
 export function createTargetResolver(getProjection) {

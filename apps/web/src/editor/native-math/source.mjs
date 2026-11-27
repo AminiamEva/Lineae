@@ -574,6 +574,30 @@ export function applyStructureCommand(snapshot, {slotId,from16,to16,command}) {
   return {source:result.source,patch:result.patch,cursor};
 }
 
+// Geometry asks for both edges of every glyph. Index the immutable source once
+// so looking up a caret never constructs, segments, or parses a hypothetical edit.
+export function caretSlot(snapshot, tag, role, after) {
+  const state=snapshots.get(snapshot);
+  if(!state?.tree)return null;
+  if(!state.caretIndex){
+    const allowed=new Uint8Array(snapshot.source.length+1);
+    for(const part of segmenter.segment(snapshot.source))allowed[part.index]=1;
+    allowed[snapshot.source.length]=1;
+    for(const {from16,to16,kind} of state.tree.protectedRanges){
+      allowed.fill(0,from16+1,to16+(kind==='comment'?1:0));
+    }
+    const slots=new Map();
+    for(const slot of snapshot.slots){
+      const key=slot.tag+':'+slot.role;
+      slots.set(key,slots.has(key)?null:slot);
+    }
+    state.caretIndex={allowed,slots};
+  }
+  const {allowed,slots}=state.caretIndex;
+  const slot=slots.get(tag+':'+role);
+  return slot&&allowed[after?slot.to16:slot.from16]?slot:null;
+}
+
 export function applySlotEdit(snapshot, edit) {
   return editSlot(snapshot,edit,false);
 }

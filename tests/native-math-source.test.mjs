@@ -1,8 +1,23 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {projectDisplayMath,projectDocumentFormulas,projectSnapshotFormulas,editDisplayMathSlot} from '../apps/web/src/editor/native-math/document.mjs';
-import {projectMath, applySlotEdit, applyStructureCommand, expandMatrix, toggleFormulaDisplayStyle} from '../apps/web/src/editor/native-math/source.mjs';
+import {projectMath, caretSlot, applySlotEdit, applyStructureCommand, expandMatrix, toggleFormulaDisplayStyle} from '../apps/web/src/editor/native-math/source.mjs';
 import {richSlotPosition} from '../apps/web/src/editor/native-math/rich-slot.mjs';
+
+test('layout hit positions agree with validated empty edits on both edges of each math slot',()=>{
+  for(const latex of [String.raw`\frac{a_b}{\sqrt{}}`,String.raw`\int_{0}^{1}{}+\alpha`,
+    String.raw`\left(\begin{matrix}a&b\\c&d\end{matrix}\right)`, 'a% comment\n+b']){
+    const snapshot=projectMath(latex);
+    assert.equal(snapshot.supported,true);
+    for(const slot of snapshot.slots)for(const after of [false,true]){
+      const local=after?slot.raw.length:0;
+      let expected=null;
+      try{expected=applySlotEdit(snapshot,{slotId:slot.id,from16:local,to16:local,insert:''}).selection.head16;}catch{}
+      const hit=caretSlot(snapshot,slot.tag,slot.role,after);
+      assert.equal(hit?hit.from16+local:null,expected,`${latex} ${slot.id} ${local}`);
+    }
+  }
+});
 
 test('native math keeps style declarations out of editable content and toggles display style exactly',()=>{
   const original=String.raw`\frac{a}{b}`;
