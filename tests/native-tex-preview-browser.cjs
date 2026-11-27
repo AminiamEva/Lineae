@@ -173,9 +173,10 @@ const server=createServer(async(req,res)=>{
           await desktopPage.keyboard.type('$');
           const formula=rich.locator('math-field').last();
           await formula.waitFor();
+          await desktopPage.waitForFunction(()=>document.activeElement?.matches('math-field'));
           await desktopPage.keyboard.type('xy');
           await desktopPage.keyboard.press('Backspace');
-          await desktopPage.waitForFunction(()=>[...document.querySelectorAll('.ProseMirror math-field')].at(-1)?.value==='x');
+          await desktopPage.waitForFunction(()=>[...document.querySelectorAll('.ProseMirror math-field')].at(-1)?.value.trim()==='\\displaystyle x');
           await desktopPage.keyboard.press('Control+Shift+j');
           await desktopPage.waitForFunction(()=>document.activeElement?.classList.contains('ProseMirror'));
           await cdp.send('Input.imeSetComposition',{text:'han',selectionStart:3,selectionEnd:3});
