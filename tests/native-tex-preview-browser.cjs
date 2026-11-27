@@ -167,6 +167,12 @@ const server=createServer(async(req,res)=>{
           const r=range.getBoundingClientRect(),c=document.querySelector('[data-native-page] canvas').getBoundingClientRect();
           return {x:r.left+r.width/2-c.left,y:r.top+r.height/2-c.top};
         });
+        const rootScroll=await desktopPage.evaluate(()=>document.scrollingElement.scrollTop);
+        const initialScroll=await preview.evaluate(el=>el.scrollTop);
+        await preview.evaluate(el=>{el.scrollTop+=40;});
+        await desktopPage.waitForFunction(start=>document.querySelector('#native-tex-preview').scrollTop>start,initialScroll);
+        await desktopPage.evaluate(()=>new Promise(requestAnimationFrame));
+        assert.equal(await desktopPage.evaluate(()=>document.scrollingElement.scrollTop),rootScroll);
         const beforeScroll=await preview.evaluate(el=>el.scrollTop);
         await canvas.click({position:{x:15,y:260}});
         assert.equal(await preview.evaluate(el=>el.scrollTop),beforeScroll);

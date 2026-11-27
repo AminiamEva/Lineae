@@ -348,8 +348,8 @@ main { padding:125px 24px 60px; overflow:auto; }
 .native-tex-open main { margin-right:min(44vw,720px); }
 #native-tex-preview { position:fixed; right:0; top:var(--tex-toolbar-bottom,100px); bottom:28px; width:min(44vw,720px); z-index:10; background:light-dark(#f2f3f5,#242426); border-left:1px solid light-dark(#ccd1d9,#555); padding:12px; overflow:auto; box-sizing:border-box; }
 #native-tex-preview[hidden] { display:none; }
-.native-tex-primary-open main { visibility:hidden; margin-right:0; }
-body.native-tex-rich-edit main { position:fixed; inset:0; overflow:clip; z-index:11; visibility:visible;
+.native-tex-primary-open main { position:fixed; inset:0; overflow:clip; visibility:hidden; margin-right:0; }
+body.native-tex-rich-edit main { z-index:11; visibility:visible;
   clip-path:var(--native-edit-clip,inset(100%)); }
 .native-tex-rich-edit main .document-page { translate:var(--native-edit-shift,0 0); }
 html:has(body.native-tex-primary-open) { overflow:hidden; }

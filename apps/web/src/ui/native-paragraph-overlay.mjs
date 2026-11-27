@@ -79,6 +79,7 @@ export function nativeParagraphOverlay(editor, panel, pages) {
       anchor=Number.isFinite(y)?{block,y}:null;
       position();schedule();
     },
+    update:schedule,
     clear(){
       cancelAnimationFrame(frame);frame=0;dx=0;dy=0;anchor=null;block=null;
       main.style.removeProperty('--native-edit-clip');page.style.removeProperty('--native-edit-shift');

@@ -1328,15 +1328,17 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
     if(richPage.contains(document.activeElement))document.activeElement.blur();
     leaveRichEditor();void refresh();
   }
+  let closingEmpty=false;
   panel.addEventListener('lineae-native-paper-blank',dismissRichEdit);
   panel.addEventListener('pointerdown',event=>{
+    closingEmpty=event.button===0 && richEditing && canStartText?.();
     if(event.button===0 && richEditing)dismissRichEdit();
   },true);
   pages.addEventListener('click',event=>{
     const canvas=event.target.closest?.('canvas');
     if(!engineToggle||event.button!==0||!canvas)return;
     if(richEditor && isDocumentMode()){
-      if(richEditing)return;
+      if(richEditing||closingEmpty){closingEmpty=false;return;}
       const box=canvas.getBoundingClientRect();
       const sheet=canvas.closest('[data-native-page],[data-pdf-page]');
       const page=Number(sheet?.dataset.nativePage??sheet?.dataset.pdfPage??1);
@@ -1416,7 +1418,7 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
   function setNativeZoom(value){
     if(zoomPercent===value)return;
     zoomPercent=value;
-    renderer.setZoom(value/100);pdf.setZoom(value/100);
+    renderer.setZoom(value/100);pdf.setZoom(value/100);overlay?.update();
     if(nativeEditing&&acceptsInput()){paintSurfaceSelection();positionInput();}
   }
   zoom.addEventListener('change',()=>setNativeZoom(Number(zoom.value)));
