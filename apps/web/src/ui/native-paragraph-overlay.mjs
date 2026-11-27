@@ -1,7 +1,7 @@
 /** Align the mounted editor with the native page, exposing only its active block.
  * Moving or cloning a contenteditable subtree would invalidate the IME range.
  */
-export function nativeParagraphOverlay(editor, panel, pages) {
+export function nativeParagraphOverlay(editor, panel, pages, framePending) {
   const page=editor.closest('.document-page'),main=page.closest('main');
   let number=1, anchor=null, block=null, dx=0, dy=0, frame=0;
   const canvas=()=>pages.querySelector(`[data-native-page="${number}"] canvas,[data-pdf-page="${number}"] canvas`);
@@ -44,10 +44,43 @@ export function nativeParagraphOverlay(editor, panel, pages) {
     const right=Math.min(bounds.right+2,box.right,viewport.left+panel.clientWidth);
     main.style.setProperty('--native-edit-clip',`inset(${top-host.top}px ${host.right-right}px ${host.bottom-bottom}px ${left-host.left}px)`);
   }
+  // On Enter the editing clip moves immediately, but a cold TeX pass may
+  // still be drawing the preceding paragraph. Bridge ordinary prose only.
+  const pendingRows=new Map();
+  function releaseRows(){
+    for(const row of pendingRows.values())row.remove();
+    pendingRows.clear();
+  }
+  function retainText(previous){
+    const surface=canvas();
+    if(!surface || !previous?.isConnected || previous.tagName!=='P' ||
+       !previous.textContent || [...previous.children].some(el=>el.tagName!=='BR'))return;
+    const sheet=surface.getBoundingClientRect(),rect=previous.getBoundingClientRect();
+    if(!sheet.width || rect.top<sheet.top || rect.bottom>sheet.bottom)return;
+    const row=document.createElement('div'),style=getComputedStyle(previous);
+    const scale=rect.width/previous.offsetWidth;
+    if(!Number.isFinite(scale)||scale<=0)return;
+    for(const key of ['font','letterSpacing','wordSpacing','whiteSpace','textAlign','textIndent','direction','color'])
+      row.style[key]=style[key];
+    Object.assign(row.style,{position:'absolute',background:'white',pointerEvents:'none',
+      overflow:'hidden',transformOrigin:'top left',transform:'scale('+scale+')',
+      left:((rect.left-sheet.left)/sheet.width*100)+'%',top:((rect.top-sheet.top)/sheet.height*100)+'%',
+      width:(rect.width/scale)+'px',height:(rect.height/scale)+'px'});
+    row.className='native-pending-prose';
+    row.setAttribute('aria-hidden','true');
+    row.textContent=previous.textContent;
+    pendingRows.get(previous)?.remove();
+    surface.parentElement.append(row);
+    pendingRows.set(previous,row);
+  }
   function update(){
     if(!document.body.classList.contains('native-tex-rich-edit'))return;
     const next=selectedBlock();
-    if(next && block!==next){block=next;anchor=null;}
+    if(next && block!==next){
+      if(framePending() && block?.nextElementSibling===next)retainText(block);
+      pendingRows.get(next)?.remove();pendingRows.delete(next);
+      block=next;anchor=null;
+    }
     position();
   }
   function followCaret(){
@@ -108,8 +141,9 @@ export function nativeParagraphOverlay(editor, panel, pages) {
       anchor=Number.isFinite(y)?{block,y,x}:null;
       position();schedule();
     },
-    update:schedule,
+    update:schedule,releaseRows,
     clear(){
+      releaseRows();
       cancelAnimationFrame(frame);frame=0;dx=0;dy=0;anchor=null;block=null;
       main.style.removeProperty('--native-edit-clip');page.style.removeProperty('--native-edit-shift');
       document.body.classList.remove('native-tex-rich-edit');

@@ -195,9 +195,15 @@ const server=createServer(async(req,res)=>{
         assert.equal(await desktopPage.evaluate(()=>document.scrollingElement.scrollTop),rootScroll);
         const beforeScroll=await preview.evaluate(el=>el.scrollTop);
         const originalPageCount=await preview.locator('canvas').count();
+        await desktopPage.evaluate(()=>{nativeProbe.holdUpdate=true;});
         await desktopPage.keyboard.press('End');
+        await desktopPage.keyboard.insertText('!');
+        await desktopPage.waitForFunction(()=>Boolean(nativeProbe.releaseUpdate));
         await desktopPage.keyboard.press('Enter');
         await desktopPage.keyboard.type('Second paragraph');
+        await preview.locator('.native-pending-prose').filter({hasText:'中文!'}).waitFor();
+        await desktopPage.evaluate(()=>nativeProbe.releaseUpdate());
+        await preview.locator('.native-pending-prose').waitFor({state:'detached'});
         await desktopPage.waitForFunction(()=>document.querySelector('.ProseMirror p:last-child')?.textContent==='Second paragraph');
         await desktopPage.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
         assert.equal(await rich.evaluate(el=>{

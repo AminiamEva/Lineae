@@ -406,8 +406,11 @@ export function installNativePages({host,getFont,getTypeOneFont,getRaster,onPain
         width*dpr>16384 || height*dpr>16384)throw new Error('Unsupported native page dimensions or zoom');
     entry.dom.style.width=width+'px';entry.dom.style.height=height+'px';
     canvas.style.width=width+'px';canvas.style.height=height+'px';
-    canvas.width=Math.ceil(width*dpr);canvas.height=Math.ceil(height*dpr);
+    const pixelsWide=Math.ceil(width*dpr),pixelsHigh=Math.ceil(height*dpr);
+    if(canvas.width!==pixelsWide)canvas.width=pixelsWide;
+    if(canvas.height!==pixelsHigh)canvas.height=pixelsHigh;
     const ctx=canvas.getContext('2d');
+    ctx.resetTransform();
     ctx.fillStyle='#fff';ctx.fillRect(0,0,canvas.width,canvas.height);
     const scale=CSS_PER_SP*zoom*dpr;
     entry.rasterHits=[];
@@ -424,9 +427,9 @@ export function installNativePages({host,getFont,getTypeOneFont,getRaster,onPain
     entry.painted={dl,rows,zoom,dpr};
   }
   function redraw() {
-    if(pdfBacked)return;
-    cancelAnimationFrame(frame);
+    if(pdfBacked||frame)return;
     frame=requestAnimationFrame(()=>{
+      frame=0;
       try {
         const viewport=host.getBoundingClientRect();
         if(viewport.width&&viewport.height){
@@ -473,7 +476,9 @@ export function installNativePages({host,getFont,getTypeOneFont,getRaster,onPain
         if(number>message.pages_total){entry.dom.remove();pages.delete(number);}
       }
       if(pages.size!==message.pages_total)throw new Error('Native layout is missing page geometry');
-      host.replaceChildren(...[...pages].sort(([a],[b])=>a-b).map(([,entry])=>entry.dom));
+      const ordered=[...pages].sort(([a],[b])=>a-b).map(([,entry])=>entry.dom);
+      if(host.childElementCount!==ordered.length || ordered.some((dom,i)=>host.children[i]!==dom))
+        host.replaceChildren(...ordered);
       revision=stamp.source_revision;layoutVersion=stamp.layout_version;
       complete=message;warm=null;
       delete host.dataset.warmRevision;
@@ -512,7 +517,7 @@ export function installNativePages({host,getFont,getTypeOneFont,getRaster,onPain
     epoch++;generation++;revision=-1;layoutVersion=-1;pending=Promise.resolve();ownership=null;drag=null;
     complete=null;warm=null;pdfBacked=false;
     delete host.dataset.warmRevision;
-    clearCaret();showFileBoundaries([]);showFoldedFiles([],false);cancelAnimationFrame(frame);previousCaret=null;pages.clear();loaded.clear();fonts=new FontStore();
+    clearCaret();showFileBoundaries([]);showFoldedFiles([],false);cancelAnimationFrame(frame);frame=0;previousCaret=null;pages.clear();loaded.clear();fonts=new FontStore();
     for(const resource of imageResources.values())resource.image.close();
     imageResources.clear();imageLoads.clear();if(clear)host.replaceChildren();
   }

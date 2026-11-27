@@ -92,7 +92,7 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
   let primaryRequested=engineToggle&&nativeWorkspaceRequested();
   let mountedSplit=null;
   const richPage=richEditor?.closest('.document-page');
-  const overlay=engineToggle&&richPage?nativeParagraphOverlay(richEditor,panel,pages):null;
+  const overlay=engineToggle&&richPage?nativeParagraphOverlay(richEditor,panel,pages,()=>!current()):null;
   let richEditing=false,richRefreshTimer=null;
   function showRichEditor(number){
     if(!richEditing || number)overlay?.begin(number);
@@ -786,6 +786,7 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
     // Changing the preview controls can move the page and its IME anchor.
     if(inputComposition&&!inputComposition.ended)return;
     if(foldsDirty&&nativeEditing&&acceptsInput()&&current()&&observation)refreshFoldView();
+    if(current())overlay?.releaseRows();
     exportButton.disabled=!current();
     targetButton.disabled=!acceptsInput()||!current()||!hasGeometry()||targeting===generation;
     editButton.disabled=!current()||!hasGeometry()||!observation;
