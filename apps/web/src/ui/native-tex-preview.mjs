@@ -17,7 +17,7 @@ import {separateRepeatedOwners} from '../editor/native-surface/repeated-owners.m
 // Native LaTeX output is the primary page. The opt-in native input mode sends
 // supported keys, caret and IME through this surface into ProseMirror; the old
 // JS-formatted page and MathLive inputs stay available as the migration fallback.
-export function installNativeTexPreview({host,before,primary=false,documentZoom=100,isDocumentMode,splitHost,getSource,getSnapshot,isComposing,focusMathSlot,focusImage,listTikzDrawings,editTikzDrawing,openMeasuredDrawing,navigateReference,listSourceBlocks,openSourceBlock,continuationRegion,nativeTextEnvironment,continueNativeTextEnvironment,selectionRegions,foldedFiles,selectText,serializeTextSelection,commitMath,commitText,commitTextLines,commitInlinePaste,commitProjectRange,commitMixedSelection,canStartText,continuePendingProse,initialPageMetrics,commitInitialText,commitInitialMath,commitParagraphBreak,commitParagraphJoin,commitHardBreak,commitNewMath,commitAfterFormulaText,onEnvironmentChange,showTextCommands,history}) {
+export function installNativeTexPreview({host,before,primary=false,documentZoom=100,richEditor,focusRichPage,isDocumentMode,splitHost,getSource,getSnapshot,isComposing,focusMathSlot,focusImage,listTikzDrawings,editTikzDrawing,openMeasuredDrawing,navigateReference,listSourceBlocks,openSourceBlock,continuationRegion,nativeTextEnvironment,continueNativeTextEnvironment,selectionRegions,foldedFiles,selectText,serializeTextSelection,commitMath,commitText,commitTextLines,commitInlinePaste,commitProjectRange,commitMixedSelection,canStartText,continuePendingProse,initialPageMetrics,commitInitialText,commitInitialMath,commitParagraphBreak,commitParagraphJoin,commitHardBreak,commitNewMath,commitAfterFormulaText,onEnvironmentChange,showTextCommands,history}) {
   const invoke=window.__TAURI__?.core?.invoke;
   if(!invoke) return {refresh(){},documentChanged(){},relocalize(){}};
   const button=document.createElement('button');
@@ -90,6 +90,28 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
   }
   let primaryRequested=engineToggle&&nativeWorkspaceRequested();
   let mountedSplit=null;
+  let richEditing=false,returnToFrame=false,richRefreshTimer=null;
+  function showRichEditor(){
+    richEditing=true;
+    returnToFrame=false;
+    document.body.classList.add('native-tex-rich-edit');
+  }
+  function leaveRichEditor(){
+    clearTimeout(richRefreshTimer);
+    richEditing=false;
+    returnToFrame=false;
+    document.body.classList.remove('native-tex-rich-edit');
+  }
+  if(engineToggle && richEditor){
+    richEditor.addEventListener('focusin',()=>{
+      if(active && isDocumentMode())showRichEditor();
+    });
+    richEditor.addEventListener('focusout',()=>queueMicrotask(()=>{
+      if(!richEditing || richEditor.contains(document.activeElement) || composing())return;
+      returnToFrame=true;
+      void refresh();
+    }));
+  }
   const acceptsInput=()=>!primary||isDocumentMode?.();
   let draftInput=null;
   let compositionField=null;
@@ -695,6 +717,16 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
       const head=resolveEndpoint(hit),anchor=origin?resolveEndpoint(origin):head;
       if(!head||!anchor||head.kind!==anchor.kind)return false;
       if((anchor.kind==='text'||head.kind==='text')&&!nativeEditing)return false;
+      if(engineToggle && richEditor && isDocumentMode()){
+        showRichEditor();
+        if(head.kind==='text' && selectText?.(anchor,head)){
+          richEditor.focus();
+          return true;
+        }
+        if(head.kind==='math' && await focusMathSlot?.(anchor,head,sameGesture))return true;
+        richEditor.focus();
+        return true;
+      }
       if(nativeEditing){
         if(pendingEdit)return false;
         if(!nativeDocument.select(anchor,head))return false;
@@ -747,6 +779,7 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
     // Changing the preview controls can move the page and its IME anchor.
     if(inputComposition&&!inputComposition.ended)return;
     if(foldsDirty&&nativeEditing&&acceptsInput()&&current()&&observation)refreshFoldView();
+    if(returnToFrame && current() && !richEditor.contains(document.activeElement))leaveRichEditor();
     exportButton.disabled=!current();
     targetButton.disabled=!acceptsInput()||!current()||!hasGeometry()||targeting===generation;
     editButton.disabled=!current()||!hasGeometry()||!observation;
@@ -781,7 +814,7 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
     }
     editButton.setAttribute('aria-pressed',String(nativeEditing));
     const canRefreshTargets=nativeEditing||(!sentSnapshot?.files?.length&&sentSource.length<=32*1024);
-    if(targetArmed&&!targetButton.disabled&&canRefreshTargets&&targetTimer===null&&
+    if(!richEditing&&targetArmed&&!targetButton.disabled&&canRefreshTargets&&targetTimer===null&&
         (lastTarget?.sessionId!==session||lastTarget?.sourceRevision!==sourceRevision||
          lastTarget?.signature!==sentSnapshot?.signature)){
       targetTimer=setTimeout(()=>{
@@ -823,6 +856,7 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
     renderStatus();
   }
   async function stop() {
+    leaveRichEditor();
     generation++;captureId++;pollEpoch++;active=false;opening=false;error='';capturing=null;terminal=false;
     clearTimeout(timer);clearTimeout(pollTimer);
     syncPresentation();
@@ -965,7 +999,15 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
     const source=getSource();
     return {source,mainFile:'main.tex',signature:source};
   }
-  async function refresh() {
+  function refresh() {
+    clearTimeout(richRefreshTimer);
+    if(richEditing && !returnToFrame){
+      richRefreshTimer=setTimeout(captureRichFrame,200);
+      return;
+    }
+    return captureRichFrame();
+  }
+  async function captureRichFrame() {
     if(!active)return;
     if(composing()) {renderStatus();return;}
     const attempt=generation,request=++captureId;
@@ -1217,6 +1259,7 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
       if(inputComposition&&!inputComposition.ended||pendingEdit||queuedInput.length)return;
       primaryRequested=!primaryRequested;
       selectDesktopEngine(primaryRequested);
+      document.dispatchEvent(new Event('lineae-desktop-engine'));
       if(!primaryRequested)void stop();
       else if(isDocumentMode?.()||splitHost?.())void start();
       else renderStatus();
@@ -1251,6 +1294,7 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
     document.body.classList.toggle('native-tex-open',active&&!primary);
     document.body.classList.toggle('native-tex-primary-open',active&&primary&&acceptsInput());
     if(!acceptsInput()){
+      leaveRichEditor();
       input.blur();draftInput=null;queuedInput.length=0;
       if(!observation)lastTarget=null;
       renderer.clearCaret();renderer.showFileBoundaries([]);renderer.showFoldedFiles([]);
@@ -1277,6 +1321,15 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
   pages.addEventListener('click',event=>{
     const canvas=event.target.closest?.('canvas');
     if(!engineToggle||event.button!==0||!canvas)return;
+    if(richEditor && isDocumentMode()){
+      if(richEditing)return;
+      const box=canvas.getBoundingClientRect();
+      const sheet=canvas.closest('[data-native-page],[data-pdf-page]');
+      const page=Number(sheet?.dataset.nativePage??sheet?.dataset.pdfPage??1);
+      showRichEditor();
+      focusRichPage(page,(event.clientX-box.left)/box.width,(event.clientY-box.top)/box.height,event.clientY);
+      return;
+    }
     const metrics=initialPageMetrics?.();
     if(!metrics)return;
     const points=length=>parseFloat(length)*({pt:1,in:72,cm:72/2.54,mm:72/25.4}[length.match(/[a-z]+$/)?.[0]]??1);
@@ -1376,7 +1429,7 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
     },
     setDocumentZoom:value=>{if(primary)setNativeZoom(value);},
     navigate(address){
-      if(!acceptsInput()||!nativeEditing||pendingEdit)return false;
+      if(richEditing||!acceptsInput()||!nativeEditing||pendingEdit)return false;
       if(observation&&current())return selectNavigationTarget(address);
       outlineTarget=address;
       targetArmed=true;
@@ -1396,10 +1449,10 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
     hasTextInput:event=>event.target===input&&hasNativeTextFocus(),
     hasNativeTextFocus,
     refocusTextInput(){
-      if(nativeEditing&&acceptsInput())input.focus({preventScroll:true});
+      if(!richEditing&&nativeEditing&&acceptsInput())input.focus({preventScroll:true});
     },
     focusInput(){
-      if(!nativeEditing||!acceptsInput())return false;
+      if(richEditing||!nativeEditing||!acceptsInput())return false;
       input.focus({preventScroll:true});return true;
     },
     nativeParagraphs:()=>current()?observation?.projection.paragraphs:undefined,

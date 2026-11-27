@@ -1778,7 +1778,8 @@ let activeEngine=pinnedEngine ?? config.value.typesetting.defaultEngine;
 function engineSettingsState(draft,globalDefault=config.value.typesetting.defaultEngine) {
   const project=projectExplorer?.model;
   const choice=project?.engineChoice ?? standaloneChoice;
-  const requested=pinnedEngine ?? draft ?? choice;
+  const desktopChoice=desktopEngineToggle() && nativeWorkspaceRequested() ? 'lualatex' : null;
+  const requested=desktopChoice ?? pinnedEngine ?? draft ?? choice;
   const text=sourceView.hidden?source():sourceView.value;
   const liveId=sourceView.hidden && projectDocument.composition ? projectDocument.composition.rootId : project?.activeFileId;
   const result=project?.mainFileId
@@ -1800,6 +1801,7 @@ function refreshEngine() {
 function scheduleEngine() {
   if(settingsPanel && !engineFrame)engineFrame=requestAnimationFrame(refreshEngine);
 }
+document.addEventListener('lineae-desktop-engine',scheduleEngine);
 function persistStandaloneChoice() {
   if(!standaloneKey){if(fileHandle)preferenceError=t('文档偏好无法保存','Document preference cannot be saved');return;}
   try {
@@ -4136,6 +4138,18 @@ function newNativeMath(text,display,numbering){
   return {node,open,close,initial:empty?.from16??operator?.to16??text.length};
 }
 nativeTexPreview=installNativeTexPreview({host:footer,before:modes,primary:desktopEngineToggle()||nativeWorkspaceRequested(),documentZoom:Number(zoom.value),
+  richEditor:editor.view.dom,
+  focusRichPage:(page,x,y,clientY)=>{
+    const sheet=documentPage.querySelectorAll('.document-sheet')[page-1]??documentPage;
+    let rect=sheet.getBoundingClientRect();
+    if(page>1){
+      window.scrollBy(0,rect.top+y*rect.height-clientY);
+      rect=sheet.getBoundingClientRect();
+    }
+    const hit=editor.view.posAtCoords({left:rect.left+x*rect.width,top:rect.top+y*rect.height});
+    if(hit)editor.view.dispatch(editor.state.tr.setSelection(Selection.near(editor.state.doc.resolve(hit.pos))).setMeta('addToHistory',false));
+    editor.view.focus();
+  },
   isDocumentMode:()=>sourceView.hidden,
   splitHost:()=>!sourceView.hidden&&sourceView.split&&projectFileKind!=='bib'?sourceView.previewHost:null,
   getSnapshot:async()=>{

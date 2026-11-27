@@ -124,10 +124,14 @@ const server=createServer(async(req,res)=>{
         await desktopPage.locator('header .tools #native-tex-export').waitFor();
         const canvas=preview.locator('[data-native-page="1"] canvas');
         await canvas.click({position:{x:160,y:190}});
-        assert.equal(await desktopPage.locator('#native-tex-input').evaluate(input=>input===document.activeElement),true);
-        const origin=await canvas.boundingBox();
-        const caret=await desktopPage.locator('#native-tex-input').boundingBox();
-        assert.ok(caret.y-origin.y<150,'The first caret follows the first text line rather than the click');
+        const rich=desktopPage.locator('.document-page .ProseMirror');
+        assert.equal(await rich.evaluate(el=>el===document.activeElement),true);
+        const cdp=await desktopPage.context().newCDPSession(desktopPage);
+        await cdp.send('Input.imeSetComposition',{text:'zhong',selectionStart:5,selectionEnd:5});
+        assert.ok(await rich.evaluate(el=>el.textContent.includes('zhong')&&el.getBoundingClientRect().width>0&&getComputedStyle(el).visibility==='visible'));
+        await cdp.send('Input.insertText',{text:'中'});
+        await desktopPage.keyboard.press('Backspace');
+        assert.equal(await rich.textContent(),'');
         const blankSession=await desktopPage.evaluate(()=>nativeProbe.session);
         await desktopPage.evaluate(()=>{
           nativeProbe.restartNext=true;
@@ -143,7 +147,7 @@ const server=createServer(async(req,res)=>{
         await desktopPage.keyboard.press('Backspace');
         await desktopPage.keyboard.press('Backspace');
         await desktopPage.evaluate(()=>nativeProbe.releaseUpdate());
-        await desktopPage.waitForFunction(()=>nativeProbe.calls.some(call=>call.command==='native_tex_observe_formula'));
+        await desktopPage.waitForFunction(previous=>nativeProbe.session===previous+1,blankSession);
         assert.equal(await desktopPage.evaluate(()=>nativeProbe.session),blankSession+1);
         await desktopPage.keyboard.type('irst');
         await desktopPage.waitForFunction(()=>nativeProbe.source.includes('First'));
@@ -153,6 +157,10 @@ const server=createServer(async(req,res)=>{
         await desktopPage.waitForFunction(()=>!document.querySelector('#native-tex-toggle').disabled);
         await desktopPage.keyboard.insertText(' More.');
         await desktopPage.waitForFunction(()=>nativeProbe.source.includes('First paragraph. More.'));
+        assert.equal(await rich.evaluate(el=>el===document.activeElement),true);
+        await rich.evaluate(el=>el.blur());
+        await desktopPage.waitForFunction(()=>!document.body.classList.contains('native-tex-rich-edit'));
+        assert.equal(await canvas.isVisible(),true);
         assert.equal(await desktopPage.evaluate(()=>nativeProbe.source.includes('\\thispagestyle{empty}\\null')),false);
       }finally{
         await desktopPage.close();
