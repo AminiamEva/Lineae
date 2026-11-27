@@ -93,6 +93,7 @@ const server=createServer(async(req,res)=>{
     if(process.env.LINEAE_NATIVE_ONLY==='1'){
       const desktopPage=await browser.newPage({locale:'en-US'});
       try{
+        desktopPage.on('pageerror',err=>console.error('Desktop editing error',err));
         await desktopPage.addInitScript(installMockNativeTex);
         await desktopPage.addInitScript(()=>{window.__LINEAE_DESKTOP_ENGINE_TOGGLE__=true;});
         await desktopPage.goto('http://127.0.0.1:'+server.address().port+'/');
@@ -195,11 +196,11 @@ const server=createServer(async(req,res)=>{
         assert.equal(await desktopPage.locator('html').evaluate(el=>getComputedStyle(el).overflow),'hidden');
         await desktopPage.waitForFunction(()=>!document.body.classList.contains('native-tex-rich-edit'));
         assert.equal(await canvas.isVisible(),true);
-        await rich.evaluate(()=>{
+        await rich.evaluate(el=>{
           const animate=Element.prototype.animate;
           window.desktopCaretGlides=0;
           window.inputTrace=[];
-          for(const type of ['focusin','focusout','beforeinput','input','compositionstart','compositionend','keydown'])document.addEventListener(type,event=>{window.inputTrace.push([type,event.target.tagName,event.target.className,event.data??event.key]);if(window.inputTrace.length>24)window.inputTrace.shift();},true);
+          for(const type of ['focusin','focusout','beforeinput','input','compositionstart','compositionend','keydown'])document.addEventListener(type,event=>{window.inputTrace.push([type,event.target.tagName,event.target.className,event.data??event.key,el.textContent,document.getSelection()?.focusOffset]);if(window.inputTrace.length>24)window.inputTrace.shift();},true);
           Element.prototype.animate=function(frames,options){
             if(options?.id==='lineae-caret-glide' && this.matches('.document-caret'))window.desktopCaretGlides++;
             return animate.call(this,frames,options);
