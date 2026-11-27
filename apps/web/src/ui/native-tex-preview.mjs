@@ -99,6 +99,7 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
   }
   function leaveRichEditor(){
     clearTimeout(richRefreshTimer);
+    richRefreshTimer=null;
     richEditing=false;
     returnToFrame=false;
     document.body.classList.remove('native-tex-rich-edit');
@@ -772,7 +773,7 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
     field.addEventListener('selection-change',()=>requestAnimationFrame(syncCaret),{signal:lifetime.signal});
   }
   function current() {
-    return active && session!==null && !opening && !composing() && updating!==generation && exporting!==generation &&
+    return richRefreshTimer===null && active && session!==null && !opening && !composing() && updating!==generation && exporting!==generation &&
       capturing!==generation && !terminal && !error && wantedSnapshot?.signature===sentSnapshot?.signature &&
       wantedSource===sentSource && renderedRevision===sourceRevision;
   }
@@ -1013,8 +1014,10 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
   }
   function refresh() {
     clearTimeout(richRefreshTimer);
+    richRefreshTimer=null;
     if(richEditing && !returnToFrame){
-      richRefreshTimer=setTimeout(captureRichFrame,200);
+      exportButton.disabled=true;
+      richRefreshTimer=setTimeout(()=>{richRefreshTimer=null;void captureRichFrame();},200);
       return;
     }
     return captureRichFrame();
