@@ -56,7 +56,7 @@ export function nativeParagraphOverlay(editor, panel, pages, framePending) {
   }
   function retainText(previous){
     const surface=canvas();
-    if(!surface || !previous?.isConnected || previous.tagName!=='P' ||
+    if(!surface || !previous?.isConnected || !previous.matches('p,h1,h2,h3') ||
        previous.querySelector('math-field,img,input,[contenteditable=false]'))return;
     const sheet=surface.getBoundingClientRect(),rect=previous.getBoundingClientRect();
     if(!sheet.width || rect.top<sheet.top || rect.bottom>sheet.bottom)return;
@@ -69,6 +69,12 @@ export function nativeParagraphOverlay(editor, panel, pages, framePending) {
         target.style[key]=computed[key];
     }
     copyTextStyle(row,style);
+    if(previous.hasAttribute('data-section-number')&&getComputedStyle(previous,'::before').content!=='none'){
+      const prefix=document.createElement('span');
+      prefix.textContent=previous.getAttribute('data-section-number');
+      prefix.style.marginInlineEnd=getComputedStyle(previous,'::before').marginInlineEnd;
+      row.append(prefix);
+    }
     function copyInline(parent,target){
       for(const child of parent.childNodes){
         if(child.nodeType===Node.TEXT_NODE){target.append(document.createTextNode(child.data));continue;}

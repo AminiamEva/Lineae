@@ -96,7 +96,7 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
   let editPreamble=null;
   let songRequested=false;
   function syncEditMetrics(source){
-    if(!engineToggle||!richEditor)return;
+    if(!engineToggle||!richEditor||composing())return;
     const end=source.search(/^[ \t]*\\begin\s*\{document\}/m);
     const preamble=end<0?'':source.slice(0,end);
     if(preamble===editPreamble)return;
@@ -581,12 +581,16 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
     const composition=inputComposition??{committed:false};
     composition.text=event.data||'';
     composition.ended=true;
+    composition.acceptPlainReplay=true;
     inputComposition=composition;
     delete input.dataset.composing;
     input.value='';
     if(!composition.text)paintSurfaceSelection();
     queueMicrotask(()=>{if(inputComposition===composition)commitComposition(composition);});
-    setTimeout(refresh,0);
+    setTimeout(()=>{
+      composition.acceptPlainReplay=false;
+      refresh();
+    },0);
   });
   input.addEventListener('input', event => {
     const composition=inputComposition;
@@ -594,7 +598,7 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
     const insert=event.data??input.value;
     input.value='';
     if(composition){
-      const replay=insert===composition.text||event.inputType==='insertFromComposition';
+      const replay=event.inputType==='insertFromComposition'||composition.acceptPlainReplay&&insert===composition.text;
       if(replay){
         composition.text||=insert;
         commitComposition(composition);

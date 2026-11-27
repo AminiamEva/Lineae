@@ -210,6 +210,9 @@ const server=createServer(async(req,res)=>{
         await desktopPage.keyboard.press('Enter');
         await desktopPage.keyboard.type('Second paragraph');
         await preview.locator('.native-pending-prose').filter({hasText:'中文!'}).waitFor();
+        assert.equal(await preview.locator('.native-pending-prose').filter({hasText:'中文!'}).evaluate(el=>
+          getComputedStyle(el).fontFamily===getComputedStyle(document.querySelector('.ProseMirror p')).fontFamily),true,
+          'The retained line keeps the editing font while waiting for TeX');
         await desktopPage.evaluate(()=>nativeProbe.releaseUpdate());
         await preview.locator('.native-pending-prose').waitFor({state:'detached'});
         await desktopPage.waitForFunction(()=>document.querySelector('.ProseMirror p:last-child')?.textContent==='Second paragraph');
@@ -286,8 +289,19 @@ const server=createServer(async(req,res)=>{
             await cdp.send('Input.insertText',{text:'朱墨涵'});
             assert.equal(await rich.locator('h2').last().textContent(),'朱墨涵');
             await desktopPage.waitForFunction(()=>nativeProbe.source.includes('\\subsection{朱墨涵}'));
+            await desktopPage.evaluate(()=>{
+              const original=nativeProbe.layout;
+              nativeProbe.layout=()=>{
+                const frame=original();
+                // Mock only the line geometry; 21bp is the measured ctex indent.
+                const line=frame.pages_changed[0].dl.lines[0];
+                line.x=line.items[0][4]-Math.round(21*65781.76);
+                return frame;
+              };
+            });
             await desktopPage.keyboard.press('Enter');
             await desktopPage.keyboard.type('Next');
+            await preview.locator('.native-indent-marks path').first().waitFor({state:'attached'});
           }
         }
         assert.equal(await desktopPage.evaluate(()=>nativeProbe.source.includes('\\thispagestyle{empty}\\null')),false);
@@ -1007,6 +1021,15 @@ const server=createServer(async(req,res)=>{
       await panel.getByText('Click text on the native page',{exact:false}).waitFor();
       const compositionResult=await page.evaluate(()=>({source:nativeProbe.source,events:nativeProbe.compositionEvents}));
       assert.equal(compositionResult.source,composedHeading,JSON.stringify(compositionResult.events));
+      // Text services may commit the same character again without a keydown.
+      await page.locator('#native-tex-input').evaluate(input=>{
+        input.dispatchEvent(new InputEvent('input',{bubbles:true,inputType:'insertText',data:'文'}));
+      });
+      await page.waitForFunction(expected=>nativeProbe.source===expected,composedHeading.replace('文X','文文X'));
+      await panel.getByText('Click text on the native page',{exact:false}).waitFor();
+      await page.keyboard.press('Backspace');
+      await page.waitForFunction(expected=>nativeProbe.source===expected,composedHeading);
+      await panel.getByText('Click text on the native page',{exact:false}).waitFor();
       await canvas.click({position:{x:6655000*scale,y:9250000*scale}});
       await page.keyboard.type('%');
       const escapedHeading=composedHeading.replace('文X','文\\%X');
