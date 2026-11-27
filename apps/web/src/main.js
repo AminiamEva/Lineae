@@ -4139,24 +4139,39 @@ function newNativeMath(text,display,numbering){
 }
 nativeTexPreview=installNativeTexPreview({host:footer,before:modes,primary:desktopEngineToggle()||nativeWorkspaceRequested(),documentZoom:Number(zoom.value),
   richEditor:editor.view.dom,
-  focusRichPage:(page,x,y,clientY)=>{
+  focusRichPage:(page,x,y,empty,show)=>{
     const sheet=documentPage.querySelectorAll('.document-sheet')[page-1]??documentPage;
-    let rect=sheet.getBoundingClientRect();
-    if(page>1||window.scrollY){
-      window.scrollBy(0,rect.top+y*rect.height-clientY);
-      rect=sheet.getBoundingClientRect();
-    }
+    const rect=sheet.getBoundingClientRect();
     const left=rect.left+x*rect.width,top=rect.top+y*rect.height;
-    const field=document.elementFromPoint(left,top)?.closest('math-field');
-    if(field && paper.contains(field)){
-      field.focus();
-      const position=field.getOffsetFromPoint?.(left,top);
-      if(Number.isInteger(position)&&position>=0)field.position=position;
-      return;
+    // When the capture has no semantic hit, only enter a visible text run.
+    // posAtCoords alone snaps blank paper to the nearest paragraph.
+    let block=empty?editor.view.dom.firstElementChild:null;
+    if(!block){
+      for(const candidate of editor.view.dom.querySelectorAll('p,h1,h2,h3,h4,h5,h6,pre,.math-display')){
+        const bounds=candidate.getBoundingClientRect();
+        if(left<bounds.left||left>bounds.right||top<bounds.top||top>bounds.bottom)continue;
+        const range=document.createRange();
+        range.selectNodeContents(candidate);
+        if([...range.getClientRects()].some(r=>left>=r.left&&left<=r.right&&top>=r.top&&top<=r.bottom)){
+          block=candidate;break;
+        }
+      }
     }
-    const hit=editor.view.posAtCoords({left,top});
-    if(hit)editor.view.dispatch(editor.state.tr.setSelection(Selection.near(editor.state.doc.resolve(hit.pos))).setMeta('addToHistory',false));
-    editor.view.focus();
+    if(!block)return null;
+    show(block);
+    const aligned=sheet.getBoundingClientRect();
+    const point={left:aligned.left+x*aligned.width,top:aligned.top+y*aligned.height};
+    const field=document.elementFromPoint(point.left,point.top)?.closest('math-field');
+    if(field && block.contains(field)){
+      field.focus();
+      const position=field.getOffsetFromPoint?.(point.left,point.top);
+      if(Number.isInteger(position)&&position>=0)field.position=position;
+    }else{
+      const hit=empty?null:editor.view.posAtCoords(point);
+      if(hit)editor.view.dispatch(editor.state.tr.setSelection(Selection.near(editor.state.doc.resolve(hit.pos))).setMeta('addToHistory',false));
+      editor.view.focus();
+    }
+    return block;
   },
   isDocumentMode:()=>sourceView.hidden,
   splitHost:()=>!sourceView.hidden&&sourceView.split&&projectFileKind!=='bib'?sourceView.previewHost:null,

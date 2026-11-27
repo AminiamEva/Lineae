@@ -145,8 +145,9 @@ export function installNativePages({host,getFont,getTypeOneFont,getRaster,onPain
     const page=Number(canvas.parentElement.dataset.nativePage);
     const args=[canvas.getBoundingClientRect(),{x:event.clientX,y:event.clientY},zoom,ownership.stamp,
       {...ownership.stamp,sourceRevision:revision,layoutVersion}];
-    return hitMathGlyph(ownership.glyphs.get(page)??[],...args)||
+    const hit=hitMathGlyph(ownership.glyphs.get(page)??[],...args)||
       hitMathField(ownership.fields.get(page)??[],...args);
+    return hit?{...hit,page}:null;
   }
   let drag=null,caret=null,selection=[],gesture=0;
   function clearSelection(){
@@ -540,7 +541,16 @@ export function installNativePages({host,getFont,getTypeOneFont,getRaster,onPain
   host.addEventListener('scroll',redraw,{passive:true});
   host.parentElement?.addEventListener('scroll',redraw,{passive:true});
   window.addEventListener('resize',redraw);
-  return {accept,reset,attachOwners,bindPdfLayout,showCaret,showSelection,showFileBoundaries,showFoldedFiles,clearCaret,redraw,setZoom(value){clearCaret();zoom=value;showFileBoundaries(boundaries);showFoldedFiles(foldedRanges,false);if(pdfBacked)return;for(const entry of pages.values()){
+  function blockAnchor(hit){
+    const owner=ownership?.owners.get(hit.owner),group=owner?.paragraph??owner?.formula;
+    const glyphs=ownership?.selectionGlyphs.get(group);
+    const page=hit.page,entry=pages.get(page);
+    if(!entry||!glyphs)return {page};
+    let top=Infinity;
+    for(const glyph of glyphs)if(glyph.number===page)top=Math.min(top,glyph.glyph.bbox[1]);
+    return {page,y:Number.isFinite(top)?top/entry.dl.page_height:undefined};
+  }
+  return {blockAnchor,accept,reset,attachOwners,bindPdfLayout,showCaret,showSelection,showFileBoundaries,showFoldedFiles,clearCaret,redraw,setZoom(value){clearCaret();zoom=value;showFileBoundaries(boundaries);showFoldedFiles(foldedRanges,false);if(pdfBacked)return;for(const entry of pages.values()){
     entry.dom.style.width=entry.dl.page_width*CSS_PER_SP*zoom+'px';
     entry.dom.style.height=entry.dl.page_height*CSS_PER_SP*zoom+'px';
   }redraw();}};

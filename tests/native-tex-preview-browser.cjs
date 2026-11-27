@@ -158,7 +158,19 @@ const server=createServer(async(req,res)=>{
         await desktopPage.keyboard.insertText(' More.');
         await desktopPage.waitForFunction(()=>nativeProbe.source.includes('First paragraph. More.'));
         assert.equal(await rich.evaluate(el=>el===document.activeElement),true);
-        await rich.evaluate(el=>el.blur());
+        const clip=await desktopPage.locator('main').evaluate(el=>getComputedStyle(el).clipPath);
+        assert.ok(clip.startsWith('inset('));
+        assert.equal(await canvas.isVisible(),true);
+        const bodyTextPoint=await rich.evaluate(el=>{
+          const range=document.createRange();
+          range.selectNodeContents(el.querySelector('p'));
+          const r=range.getBoundingClientRect(),c=document.querySelector('[data-native-page] canvas').getBoundingClientRect();
+          return {x:r.left+r.width/2-c.left,y:r.top+r.height/2-c.top};
+        });
+        const beforeScroll=await preview.evaluate(el=>el.scrollTop);
+        await canvas.click({position:{x:15,y:260}});
+        assert.equal(await preview.evaluate(el=>el.scrollTop),beforeScroll);
+        assert.equal(await desktopPage.locator('html').evaluate(el=>getComputedStyle(el).overflow),'hidden');
         await desktopPage.waitForFunction(()=>!document.body.classList.contains('native-tex-rich-edit'));
         assert.equal(await canvas.isVisible(),true);
         await rich.evaluate(()=>{
@@ -171,7 +183,7 @@ const server=createServer(async(req,res)=>{
         });
         // Replay the same interaction through both desktop engines.
         for(const name of ['lua','xe']){
-          if(name==='lua')await canvas.click({position:{x:160,y:190}});
+          if(name==='lua')await canvas.click({position:bodyTextPoint});
           else {await engine.click();await rich.click();}
           await desktopPage.keyboard.press('End');
           await desktopPage.evaluate(()=>{window.desktopCaretGlides=0;});
