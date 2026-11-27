@@ -1,3 +1,4 @@
+const {openXeReference}=require('./xe-reference-page.cjs');
 const {revealToolbar,setIndentOnSave,createTreeEntry}=require('./workspace-ui-helpers.cjs');
 const { chromium } = require('playwright');
 const { expect } = require('playwright/test');
@@ -421,7 +422,7 @@ async function verifySelectionGeometry(page, paper, importSource) {
     const page=await browserContext.newPage();
     const errors=[];
     page.on('pageerror',error=>{errors.push(error.message);console.log('PAGE ERROR',error.message);});
-    await page.goto('http://127.0.0.1:'+server.address().port);
+    await openXeReference(page,'http://127.0.0.1:'+server.address().port);
     await page.evaluate(async()=>{
       await document.fonts.load('10pt "Latin Modern Roman"');
       await document.fonts.ready;
@@ -543,12 +544,16 @@ async function verifySelectionGeometry(page, paper, importSource) {
     await page.keyboard.type('\\');
     await page.waitForFunction(()=>!document.querySelector('.command-menu').hidden);
     const completion=page.locator('.command-menu');
+    await completion.evaluate(async menu=>{
+      await Promise.allSettled(menu.getAnimations().map(animation=>animation.finished));
+    });
     const initialBounds=await completion.boundingBox();
     const initialScroll=await page.evaluate(()=>window.scrollY);
     assert.ok(initialBounds.y>=caretBounds.y && initialBounds.x<caretBounds.x+80,
       'Completion appears below the text entry position: '+JSON.stringify({initialBounds,caretBounds}));
     for(let index=0;index<16;index++) await page.keyboard.press('ArrowDown');
     assert.equal(await page.evaluate(()=>window.scrollY),initialScroll);
+    await page.evaluate(()=>document.querySelector('.document-page').dispatchEvent(new Event('scroll')));
     await page.locator('.command-menu input').fill('sqrt');
     assert.deepEqual(await completion.boundingBox(),initialBounds,'Filtering must not move or resize completion');
     await page.keyboard.press('Enter');
@@ -2545,6 +2550,25 @@ A & B \\
       'Nested tables keep most of the page width: '+JSON.stringify(tableWidths));
     await importSource('\\begin{tabular}{ll}\n'+
       Array.from({length:60},(_,index)=>`${index+1} & Row ${index+1} \\\\`).join('\n')+'\n\\end{tabular}');
+    await page.waitForFunction(()=>document.querySelectorAll('.ProseMirror tr').length===60);
+    await page.waitForFunction(()=>{
+      const view=document.querySelector('.tableWrapper:has(table[data-atomic-tabular])');
+      return view && view.scrollHeight>view.clientHeight && getComputedStyle(view).overflowY==='auto';
+    });
+    assert.equal(await page.locator('.table-continuation-header').count(),0,
+      'A TeX tabular is one overflowing box and has no continuation header');
+
+    // Authored rich tables still support the editor's optional continuation headers.
+    await importSource('Rich table');
+    await paper.locator('p').last().click();
+    await page.keyboard.press('End');
+    await page.keyboard.press('Enter');
+    await paper.evaluate(element=>{
+      const clipboard=new DataTransfer();
+      const rows=Array.from({length:60},(_,i)=>'<tr><td>'+ (i+1) +'</td><td>Row '+(i+1)+'</td></tr>');
+      clipboard.setData('text/html','<table><tbody>'+rows.join('')+'</tbody></table>');
+      element.dispatchEvent(new ClipboardEvent('paste',{bubbles:true,cancelable:true,clipboardData:clipboard}));
+    });
     await page.waitForFunction(()=>document.querySelectorAll('.ProseMirror tr').length===60);
     await page.waitForFunction(()=>Number(document.querySelector('.document-page')?.dataset.pageCount)>1);
     await page.waitForFunction(()=>document.querySelectorAll('.table-continuation-header').length>0);

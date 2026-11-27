@@ -29,9 +29,8 @@ const NATIVE_MARGINS = Object.freeze({
 // paper width on each side and 12%/18% of the paper height at top/bottom.
 // These are the values XeLaTeX produces for \usepackage{geometry} with no
 // margin-related options.
-function geometryDefaultMargins(paper, orientation) {
-  const size = PAGE_PAPERS[paper] ?? PAGE_PAPERS.a4;
-  const number = value => Number.parseFloat(value);
+function geometryDefaultMargins(size, orientation) {
+  const number = value => parseFloat(value)*({mm:1,cm:10,in:25.4,pt:25.4/72.27}[value.match(/[a-z]+$/)[0]]);
   const width = number(orientation === 'landscape' ? size.height : size.width);
   const height = number(orientation === 'landscape' ? size.width : size.height);
   const side = (width * 0.15).toFixed(3) + 'mm';
@@ -78,7 +77,13 @@ export function readPageSetup(preamble = '') {
     const margins = { ...NATIVE_MARGINS[paper] };
     return { paper, orientation, margin: 'custom', margins };
   }
-  const defaults = match ? geometryDefaultMargins(paper, orientation) : Object.fromEntries(
+  const size={...PAGE_PAPERS[paper]};
+  const customSize={};
+  for (const option of geometryOptions) {
+    const dimension=/^paper(width|height)\s*=\s*(\d+(?:\.\d+)?(?:mm|cm|in|pt))$/.exec(option);
+    if(dimension && parseFloat(dimension[2])>0)customSize[dimension[1]]=dimension[2];
+  }
+  const defaults = match ? geometryDefaultMargins({...size,...customSize}, orientation) : Object.fromEntries(
     SIDES.map(side => [side, FALLBACK_MARGIN]));
   const optionValue = name => options.find(option => new RegExp('^' + name + '=').test(option))?.slice(name.length + 1);
   const uniform = optionValue('margin');
@@ -92,7 +97,7 @@ export function readPageSetup(preamble = '') {
       ?? defaults[side]];
   }));
   const normalized = Object.fromEntries(SIDES.map(side => [side, normalizeMargin(margins[side])]));
-  return { paper, orientation, margin: commonMargin(normalized), margins: normalized };
+  return { paper, orientation, margin: commonMargin(normalized), margins: normalized, ...(Object.keys(customSize).length && {customSize}) };
 }
 
 export function writePageSetup(preamble, setup = {}) {
@@ -119,7 +124,7 @@ export function pageMetrics(setup = DEFAULT_PAGE_SETUP) {
   const paper = PAGE_PAPERS[setup.paper] ? setup.paper : 'a4';
   const orientation = setup.orientation === 'landscape' ? 'landscape' : 'portrait';
   const margins = normalizedMargins(setup);
-  const size = PAGE_PAPERS[paper];
+  const size = {...PAGE_PAPERS[paper],...setup.customSize};
   return orientation === 'landscape'
     ? { width: size.height, height: size.width, margin: commonMargin(margins), margins }
     : { width: size.width, height: size.height, margin: commonMargin(margins), margins };

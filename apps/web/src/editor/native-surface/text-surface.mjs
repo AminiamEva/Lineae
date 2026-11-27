@@ -1,11 +1,22 @@
+import {createSelectionModel} from './selection-model.mjs';
 import {textTarget, textEdit} from '../native-text/projection.mjs';
 
 const segmenter = new Intl.Segmenter('und', {granularity:'grapheme'});
+const address=(paragraph,offset)=>JSON.stringify([paragraph.filePath,paragraph.occurrence,offset]);
 
-function stopsFor(observed, projection) {
+function stopsFor(observed, projection, verified) {
   const byOffset = new Map();
   for (const page of observed ?? []) {
-    if (page?.exact !== true || !page.dl?.math_owners) continue;
+    if ((!verified&&page?.exact!==true)||!page?.dl?.math_owners)continue;
+    for (const field of page.dl.math_owners.fields ?? []) {
+      if(!field.empty||!['math','cell'].includes(field.role))continue;
+      const target=textTarget(projection,field.owner,false);
+      if(!target||!target.glyph.terminal&&(!target.paragraph.tableCell||target.paragraph.text))continue;
+      byOffset.set(address(target.paragraph,target.docOffset),{
+        ...target,hit:{owner:field.owner,role:field.role},page:page.page,
+        x:field.bbox[0],top:field.bbox[1],bottom:field.bbox[3],
+      });
+    }
     for (const glyph of page.dl.math_owners.glyphs ?? []) {
       if (!projection.owners.has(glyph.owner)) continue;
       for (const after of [false, true]) {
@@ -16,108 +27,74 @@ function stopsFor(observed, projection) {
           x: after ? glyph.bbox[2] : glyph.bbox[0],
           top: glyph.bbox[1], bottom: glyph.bbox[3],
         };
-        const previous = byOffset.get(target.docOffset);
+        const key=address(target.paragraph,target.docOffset);
+        const previous = byOffset.get(key);
         // Prefer the boundary whose paragraph/glyph is stable; either side of a
         // space has no tag, so the nearest glyph edge is the caret.
-        if (!previous || (!previous.after && after)) byOffset.set(target.docOffset, stop);
+        if (!previous || (!previous.after && after)) byOffset.set(key, stop);
+        if(after&&target.glyph===target.paragraph.glyphs.at(-1)&&
+           /^[ \t]+$/.test(target.paragraph.text.slice(target.local))){
+          // TeX discards trailing paragraph glue. Keep its logical typing
+          // positions at the last painted glyph edge.
+          for(let local=target.local+1;local<=target.paragraph.text.length;local++){
+            const docOffset=target.paragraph.from16+local;
+            byOffset.set(address(target.paragraph,docOffset),{...stop,local,docOffset});
+          }
+        }
       }
     }
   }
   return [...byOffset.values()].sort((a, b) => a.docOffset - b.docOffset);
 }
 
-const sameParagraph = (a, b) =>
+export const sameParagraph = (a, b) =>
+  a?.paragraph.filePath === b?.paragraph.filePath &&
+  a?.paragraph.occurrence === b?.paragraph.occurrence &&
   a?.paragraph.from16 === b?.paragraph.from16 && a?.paragraph.source === b?.paragraph.source;
 const runsOf = paragraph => paragraph.runs ?? [{from16:0, to16:paragraph.text.length}];
-const runFor = (paragraph, from16, to16) =>
-  runsOf(paragraph).find(run => from16 >= run.from16 && to16 <= run.to16) ?? null;
 const runAt = (paragraph, offset, backward) => runsOf(paragraph).find(run =>
   backward ? offset > run.from16 && offset <= run.to16 : offset >= run.from16 && offset < run.to16) ?? null;
 const boundariesOf = (run, fallback) => {
-  const boundaries = [run.from16];
-  for (const {segment} of segmenter.segment(run.text ?? fallback))
-    boundaries.push(boundaries.at(-1) + segment.length);
+  const boundaries=[run.from16];
+  let local=0;
+  for(const {segment} of segmenter.segment(run.text??fallback)){
+    local+=segment.length;
+    boundaries.push(run.from16+(run.offsets?.[local]??local));
+  }
   return boundaries;
 };
 
-export function createTextSurface({projection}) {
+export function createTextSurface({projection,selection=createSelectionModel(sameParagraph,stop=>stop.paragraph.filePath)}) {
   let sourceProjection = projection;
-  let stops = [], index = -1, anchor = -1, pendingOffset = null, lastEdit = null;
-
-  const own = () => index < 0 ? [] :
-    stops.filter(stop => sameParagraph(stop, stops[index]));
-
-  return {
-    get stops() { return stops; },
-    get caret() { return stops[index] ?? null; },
-    get anchor() { return stops[anchor] ?? null; },
-    get pendingOffset() { return pendingOffset; },
-    get lastEdit() { return lastEdit; },
+  return Object.assign(Object.create(selection), {
     setProjection(next) { if (next) sourceProjection = next; },
-    setObservation(observed) {
-      stops = stopsFor(observed, sourceProjection);
-      if (!stops.length) { index = anchor = -1; return false; }
-      if (pendingOffset !== null) {
-        const exact = stops.findIndex(stop => stop.docOffset === pendingOffset);
-        pendingOffset = null;
-        if (exact >= 0) { index = anchor = exact; return true; }
-      }
-      const current = stops[index];
-      index = current ? Math.max(0, stops.findIndex(stop => stop.docOffset === current.docOffset)) : 0;
-      anchor = index;
-      return true;
-    },
-    nearest(page, x, y) {
-      let best = -1, distance = Infinity;
-      for (let i = 0; i < stops.length; i++) {
-        const stop = stops[i];
-        if (stop.page !== page) continue;
-        const height = Math.max(1, stop.bottom - stop.top);
-        const value = (stop.x - x) ** 2 + (((stop.top + stop.bottom) / 2 - y) / height) ** 2;
-        if (value < distance) { distance = value; best = i; }
-      }
-      if (best < 0) return null;
-      index = anchor = best;
-      return stops[best];
-    },
-    move(delta, extend = false) {
-      const list = own();
-      if (!list.length) return null;
-      const position = list.indexOf(stops[index]);
-      const next = Math.max(0, Math.min(list.length - 1, position + delta));
-      index = stops.indexOf(list[next]);
-      if (!extend) anchor = index;
-      return stops[index];
-    },
-    selectBetween(fromOffset, toOffset) {
-      const from = stops.findIndex(stop => stop.docOffset === fromOffset);
-      const to = stops.findIndex(stop => stop.docOffset === toOffset);
-      if (from < 0 || to < 0 || !sameParagraph(stops[from], stops[to])) return false;
-      anchor = from; index = to;
-      return true;
-    },
+    collectStops(observed,verified) { return stopsFor(observed,sourceProjection,verified); },
+    setObservation(observed) { return selection.setStops(stopsFor(observed, sourceProjection)); },
     insert(text) {
-      const stop = stops[index];
+      const stop = selection.caret;
       if (!stop || !text) return null;
-      const start = stops[Math.min(anchor, index)], end = stops[Math.max(anchor, index)];
-      if (!sameParagraph(start, stop) || !runFor(stop.paragraph, start.local, end.local)) return null;
+      const [start, end] = selection.range;
+      if (!sameParagraph(start, stop)||!sameParagraph(end, stop))return null;
       const result = textEdit(sourceProjection, {
         paragraph: stop.paragraph, from16: start.local, to16: end.local, insert: text,
       });
       if (!result) return null;
-      pendingOffset = stop.paragraph.from16 + result.selection;
-      lastEdit = {kind:'text', paragraph: stop.paragraph, ...result};
-      return lastEdit;
+      return selection.record({kind:'text', paragraph: stop.paragraph, ...result}, stop.paragraph.from16 + result.selection);
     },
-    erase(backward = true) {
-      const stop = stops[index];
+    erase(backward = true, {indent=false} = {}) {
+      const stop = selection.caret;
       if (!stop) return null;
       let from, to;
-      if (anchor !== index) {
-        const start = stops[Math.min(anchor, index)], end = stops[Math.max(anchor, index)];
+      if (selection.anchor !== stop) {
+        const [start, end] = selection.range;
+        if(!sameParagraph(start,end))return null;
         from = Math.min(start.local, end.local);
         to = Math.max(start.local, end.local);
-        if (!runFor(stop.paragraph, from, to)) return null;
+      } else if(indent){
+        to=stop.local;
+        const spaces=/ {1,4}$/.exec(stop.paragraph.text.slice(0,to));
+        if(!spaces)return null;
+        from=to-spaces[0].length;
       } else {
         const run = runAt(stop.paragraph, stop.local, backward);
         if (!run) return null;
@@ -135,11 +112,8 @@ export function createTextSurface({projection}) {
         paragraph: stop.paragraph, from16: from, to16: to, insert: '',
       });
       if (!result) return null;
-      pendingOffset = stop.paragraph.from16 + result.selection;
-      lastEdit = {kind:'text', paragraph: stop.paragraph, ...result};
-      return lastEdit;
+      return selection.record({kind:'text', paragraph: stop.paragraph, ...result}, stop.paragraph.from16 + result.selection);
     },
-    clearPending() { pendingOffset = null; lastEdit = null; },
-    reset() { stops = []; index = anchor = -1; pendingOffset = null; lastEdit = null; },
-  };
+
+  });
 }

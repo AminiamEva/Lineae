@@ -1,3 +1,4 @@
+const {openXeReference}=require('./xe-reference-page.cjs');
 const { revealToolbar } = require('./workspace-ui-helpers.cjs');
 const { chromium } = require('playwright');
 const { createServer } = require('node:http');
@@ -14,7 +15,7 @@ const server = createServer(async (request, response) => {
     response.end(await readFile(path));
   } catch { response.writeHead(404).end(); }
 });
-const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jB9kAAAAASUVORK5CYII=', 'base64');
+const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+ip1sAAAAASUVORK5CYII=', 'base64');
 const sentence = 'The quick brown fox jumps over the lazy dog while the typesetter balances lines around the floating figure. ';
 const paragraph = sentence.repeat(26);
 const source = (side, lines, overhang) => `\\documentclass{article}\\usepackage{wrapfig}\\usepackage{graphicx}\n\\begin{document}\n\\begin{wrapfigure}${lines}{${side}}${overhang}{0.2\\linewidth}\n\\includegraphics[width=\\linewidth]{plot.png}\n\\end{wrapfigure}\n${paragraph}\n\\end{document}\n`;
@@ -26,7 +27,7 @@ const source = (side, lines, overhang) => `\\documentclass{article}\\usepackage{
     const page = await browser.newPage({ viewport: { width: 1600, height: 1100 } });
     const errors = [];
     page.on('pageerror', error => errors.push(error.message));
-    await page.goto('http://127.0.0.1:' + server.address().port);
+    await openXeReference(page,'http://127.0.0.1:' + server.address().port);
     await revealToolbar(page);
     for (const { side, lines, overhang } of [
       { side: 'r', lines: '[12]', overhang: '' },

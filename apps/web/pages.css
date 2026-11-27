@@ -81,6 +81,7 @@ main { padding:125px 24px 60px; overflow:auto; }
 .ProseMirror [data-theorem="proof"]::after { content:"□"; display:block; text-align:right; }
 .document-image { margin:var(--image-intextsep,12pt) 0; }
 .document-image[data-figure="true"] { margin-block:var(--image-textfloatsep,20pt); }
+.document-fixed-rule { display:block; background:currentColor; }
 .document-image[data-figure="true"][data-wrap="true"] { margin-block:var(--image-intextsep,12pt); }
 .document-image[data-wrap="true"] { margin-block-start:calc(var(--image-intextsep,12pt) + var(--tex-line-height,11.9552pt) * .5); margin-block-end:calc(var(--tex-line-height,11.9552pt) * 2); padding-block-end:0; }
 
@@ -305,7 +306,8 @@ main { padding:125px 24px 60px; overflow:auto; }
 .editor-dialog-backdrop { position:fixed; inset:0; z-index:1600; display:flex; align-items:center; justify-content:center; background:#0003; }
 .editor-dialog { width:min(380px,90vw); display:flex; flex-direction:column; gap:10px; padding:16px; border-radius:12px; background:light-dark(#fff,#29292d); box-shadow:0 10px 40px #0005; border:1px solid light-dark(#ddd,#555); }
 .editor-dialog label { font-weight:600; }
-.editor-dialog input { padding:8px; border-radius:7px; border:1px solid light-dark(#ccd0d8,#555); background:light-dark(#fff,#303035); color:inherit; }
+.editor-dialog :is(input,textarea) { padding:8px; border-radius:7px; border:1px solid light-dark(#ccd0d8,#555); background:light-dark(#fff,#303035); color:inherit; }
+.editor-dialog textarea { font-family:monospace; resize:vertical; }
 .citation-dialog select,.reference-dialog select { min-height:190px; padding:4px; border-radius:7px; border:1px solid light-dark(#ccd0d8,#555); background:light-dark(#fff,#303035); color:inherit; }
 .citation-panel { width:min(620px,94vw); max-height:88vh; overflow:auto; }
 .citation-panel-list { display:flex; flex-direction:column; gap:6px; max-height:34vh; overflow:auto; }
@@ -380,19 +382,42 @@ main { padding:125px 24px 60px; overflow:auto; }
 .native-tex-open main { margin-right:min(44vw,720px); }
 #native-tex-preview { position:fixed; right:0; top:var(--tex-toolbar-bottom,100px); bottom:28px; width:min(44vw,720px); z-index:10; background:light-dark(#f2f3f5,#242426); border-left:1px solid light-dark(#ccd1d9,#555); padding:12px; overflow:auto; box-sizing:border-box; }
 #native-tex-preview[hidden] { display:none; }
+.native-tex-primary-open main { visibility:hidden; margin-right:0; }
+body.native-tex-rich-edit main { visibility:visible; }
+.native-tex-rich-edit #native-tex-preview:not([data-split]) { visibility:hidden; pointer-events:none; }
+html:has(body.native-tex-primary-open:not(.native-tex-rich-edit)) { overflow:hidden; }
+#native-tex-preview[data-primary=true]:not([data-split]) .native-tex-pages { overflow:visible; }
+#native-tex-toggle[data-engine=lua] { background:light-dark(#e0f2e8,#234538); color:light-dark(#175b40,#a8e5c6); }
+#native-tex-toggle[data-engine=xe] { background:light-dark(#e6edff,#293957); color:light-dark(#234e9d,#bbd3ff); }
+#native-tex-preview[data-primary=true] { left:var(--sidebar-width,0px); width:auto; border-left:0; }
+#native-tex-preview[data-primary=true] .native-tex-controls { justify-content:center; }
+.tex-preview[data-native=true] > .document-page { display:none; }
+#native-tex-preview[data-split] { position:relative; inset:auto; width:max-content; min-width:100%; padding:0; background:transparent; overflow:visible; }
+#native-tex-preview[data-split] > :is(h2,p:not([role=status]),.native-tex-controls,.native-tex-input,#native-tex-start-text),
+#native-tex-preview[data-split][data-state=current] > p[role=status] { display:none; }
 #native-tex-preview h2 { font-size:16px; margin:0 0 8px; }
 #native-tex-preview p { font-size:12px; white-space:pre-wrap; overflow-wrap:anywhere; }
 #native-tex-preview[data-state=error] [role=status] { color:light-dark(#a32c25,#ffb4ac); }
-#native-tex-preview[data-state=stale] .native-tex-pages { opacity:.65; }
+/* Keep the last typeset frame at full contrast during edits. */
 .native-tex-controls { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
 .native-tex-pages { overflow:auto; }
 .native-tex-page { background:white; margin:12px auto; position:relative; box-shadow:0 1px 8px #0003; }
+#native-tex-preview[data-page-presentation=flow] .native-tex-page { margin:0 auto; box-shadow:none; }
 .native-tex-page canvas { display:block; }
 .native-tex-caret { position:absolute; width:2px; background:#2f6fd0; pointer-events:none; }
+.native-tex-operator-caret::after { content:''; position:absolute; top:.14em; left:3px; width:.68em; height:.68em; border:1px solid #96bdb1; border-radius:3px; background:#85bdab26; }
 .native-tex-selection { position:absolute; background:#2f6fd04d; pointer-events:none; }
-.native-tex-input { position:fixed; z-index:20; width:2px; height:16px; padding:0; margin:0; border:0;
+.native-tex-file-boundary { position:absolute; inset-inline:8%; border-top:1px solid #d9dee5; pointer-events:none; }
+.native-tex-fold-mask { position:absolute; inset-inline:2%; z-index:2; display:grid; place-items:center; padding:6px; overflow:hidden; border:1px dashed #c7cbd3; background:#f2f3f5; color:#515d6d; font:12px system-ui; }
+.native-tex-fold-inline { display:block; padding:0; white-space:nowrap; text-overflow:ellipsis; font-size:10px; }
+.native-delimiter-ghost { position:fixed; z-index:21; display:inline-flex; gap:3px; pointer-events:none; }
+.native-delimiter-ghost .delimiter-ghost-slot { min-width:.75em; min-height:1em; text-align:center; border-radius:3px; background:#8959ae24; }
+.native-delimiter-ghost .delimiter-ghost-slot.is-active { background:#4386d94d; outline:1px solid #4386d9; }
+.native-tex-input { position:fixed; z-index:20; width:12ch; height:16px; padding:0; margin:0; border:0;
   background:transparent; color:transparent; caret-color:transparent; resize:none; overflow:hidden;
-  outline:none; font-size:16px; line-height:1; }
+  outline:none; font-size:16px; line-height:1; pointer-events:none; }
+.native-tex-input[data-composing=true] { color:#20242b; caret-color:#2f6fd0; }
+.native-tex-input[data-initial]:focus:not([data-composing]) { border-inline-start:1px solid #2f6fd0; }
 #native-tex-preview[data-editing=true] .native-tex-page canvas { cursor:text; }
 .document-status output { min-width:38px; font-variant-numeric:tabular-nums; }
 .document-status .pagination-toggle[data-mode="pages"] {
@@ -518,6 +543,9 @@ button,select,.color-control { transition:background-color .14s ease,color .14s 
 .table-continuation-header { position:absolute; z-index:0; pointer-events:none; background:light-dark(#fff,#242426); }
 .table-continuation-header table { width:100%; border-collapse:collapse; table-layout:fixed; }
 .table-continuation-header td { padding:2px 5.9776pt; border-bottom:1px solid light-dark(#d5d9e1,#4a505c); font:var(--tex-font-size)/var(--tex-line-height) var(--tex-font-family,"Latin Modern Roman"),var(--tex-cjk-font-family,"Songti SC",SimSun),serif; }
+.longtable-section { background:transparent; }
+.longtable-section :is(th,td) { padding-block:0; border:0; vertical-align:top; }
+.longtable-section p { margin:0; text-indent:0; position:relative; top:var(--section-baseline-adjust); }
 .document-sheet { position:relative; flex:0 0 var(--page-height,11in); width:100%; background:light-dark(#fff,#242426); box-shadow:0 2px 14px #0002; }
 .document-page-header,
 .document-page-footer {
@@ -627,6 +655,12 @@ button,select,.color-control { transition:background-color .14s ease,color .14s 
 .document-page .ProseMirror > .tableWrapper:has(> table[data-table-align="center"]) { margin-inline:auto; }
 .document-page .ProseMirror > .tableWrapper:has(> table[data-table-align="right"]) { margin-inline-start:auto; margin-inline-end:0; }
 .document-page .ProseMirror > .tableWrapper:has(> table[data-table-align="left"]) { margin-inline-start:var(--tex-paragraph-indent); margin-inline-end:auto; }
+.document-page .ProseMirror > .tableWrapper:has(>table[data-longtable]):not(:first-child) { margin-block-start:calc(12 * 1in / 72.27 + var(--lt-depth-adjust,0px)); }
+.document-page .ProseMirror table:is([data-longtable],[data-atomic-tabular]) :is(td,th) { padding-block:0; }
+.tableWrapper[data-paper-overflow]::after {
+  content:attr(title); position:sticky; bottom:0; display:block; width:max-content; max-width:100%;
+  background:Canvas; color:CanvasText; font:12px/1.4 system-ui; pointer-events:none;
+}
 .document-page .ProseMirror .tableWrapper { width:max-content; max-width:100%; }
 .document-page .ProseMirror > .tableWrapper { margin-inline:auto; margin-block:0; }
 /* A caption widget is the existing sibling that marks a table float; a bare
@@ -691,7 +725,7 @@ button,select,.color-control { transition:background-color .14s ease,color .14s 
 .document-page .ProseMirror table[data-horizontal-rule-mode="explicit"][data-booktabs][data-trailing-rule="bottomrule"] tr:last-child > :is(td,th) { border-bottom:var(--booktabs-heavy) solid currentColor; padding-bottom:calc(2px + var(--booktabs-above)); }
 /* Editing grid for tabulars without explicit rules. Booktabs, explicit
    column rules and bordered tables keep their typeset rules. */
-.document-page .ProseMirror table:not([data-border-mode="grid"]):not([data-border-mode="outer"]):not([data-border-mode="horizontal"]):not([data-border-mode="none"]):not([data-booktabs]):not([data-column-rules]):not([data-top-rule]):not([data-bottom-rule]):not([data-left-rule]):not([data-right-rule]):not([data-mid-rule-mode]) :is(td,th) {
+.document-page .ProseMirror table:not([data-atomic-tabular]):not([data-border-mode="grid"]):not([data-border-mode="outer"]):not([data-border-mode="horizontal"]):not([data-border-mode="none"]):not([data-booktabs]):not([data-column-rules]):not([data-top-rule]):not([data-bottom-rule]):not([data-left-rule]):not([data-right-rule]):not([data-mid-rule-mode]) :is(td,th) {
   border:1px solid light-dark(#d5d9e1,#4a505c);
 }
 
@@ -1383,6 +1417,11 @@ body.format-painter-active .ProseMirror * { cursor:copy; }
 /* twoside: mirror furniture margins on even sheets (body column mirroring deferred) */
 .document-page .document-sheet[data-parity="even"] .document-page-header { left:var(--page-margin-right,47.456mm); right:var(--page-margin-left,47.191mm); }
 .document-page .document-sheet[data-parity="even"] .document-page-footer { left:var(--page-margin-right,47.456mm); right:var(--page-margin-left,47.191mm); }
+/* Lua JFM has already placed adjacent punctuation. Disable the browser's second compression. */
+[data-tex-engine="lualatex"] { text-spacing-trim: space-all; }
+/* A one-glyph inline formula fits the text strut. MathLive's editing
+   padding must not enlarge the paragraph's baseline distance. */
+[data-tex-engine="lualatex"] .tex-simple-math math-field { margin-block: -.4em; }
 .tex-paragraph-break{display:block;height:0;line-height:0;pointer-events:none;}
 .tex-interchar-glue{display:inline-block;height:0;text-indent:0;pointer-events:none;}
 .tex-discretionary-hyphen::before{content:"-";}
@@ -1479,4 +1518,3 @@ body.format-painter-active .ProseMirror * { cursor:copy; }
 .tikz-studio-preview svg { max-width:none; height:auto; }
 .tikz-studio-status { position:sticky; left:0; bottom:0; padding:6px 12px; white-space:pre-wrap; font:11px/1.4 ui-monospace,monospace; color:#a33; background:light-dark(rgba(255,255,255,.94),rgba(17,23,34,.94)); border-top:1px solid light-dark(#eee,#333c4e); }
 @media (max-width:760px){ .tikz-studio-body { grid-template-columns:1fr; grid-template-rows:1fr 1fr; } }
-

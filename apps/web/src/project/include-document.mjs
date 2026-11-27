@@ -23,14 +23,24 @@ function regionFor(text, from, to, file, key, continuation, beforeReference) {
   return region;
 }
 
-export function composeProject(project, rootId) {
-  const result = {rootId, regions:[], sources:new Map(), issues:[], content:[]};
-  const included = new Set();
+export function composeProject(project, rootId, {boundariesOnly=false,repeated='reject'}={}) {
+  const result = {rootId,repeated,hasRepeated:false,regions:[],sources:new Map(),issues:[],content:[]};
+  const included = new Map();
+  let expanded=0;
   function visit(id, ancestry) {
     const file = project.file(id);
     if (ancestry.has(id)) { result.issues.push('Cycle: ' + file.path); return; }
-    if (included.has(id)) { result.issues.push('Repeated include: ' + file.path); return; }
-    included.add(id);
+    if(repeated==='all'&&++expanded>10000){
+      if(expanded===10001)result.issues.push('Too many expanded includes');
+      return;
+    }
+    const occurrence=included.get(id)??0;
+    if(occurrence)result.hasRepeated=true;
+    if(occurrence&&repeated!=='all'){
+      if(repeated==='reject')result.issues.push('Repeated include: '+file.path);
+      return;
+    }
+    included.set(id,occurrence+1);
     const source = file.draft;
     result.sources.set(id,source);
     const document = parseDocument(source,{fragment:true});
@@ -39,9 +49,12 @@ export function composeProject(project, rootId) {
     const limit = source.length - document.end.length;
     let position = start;
     const append = (end,beforeReference=false) => {
-      const region = regionFor(source,position,end,file,String(result.regions.length),position>start,beforeReference);
+      const key=String(result.regions.length);
+      const region=boundariesOnly?{key,id:file.id,path:file.path,from:position,to:end}:
+        regionFor(source,position,end,file,key,position>start,beforeReference);
+      if(repeated==='all')region.occurrence=occurrence;
       result.regions.push(region);
-      result.content.push({type:'projectRegion',attrs:{regionKey:region.key,path:file.path,trail:[...ancestry].map(parent=>project.file(parent).path)},content:region.doc.content});
+      result.content.push({type:'projectRegion',attrs:{regionKey:region.key,path:file.path,trail:[...ancestry].map(parent=>project.file(parent).path)},content:region.doc?.content??[]});
     };
     const nextAncestry = new Set(ancestry).add(id);
     for (const reference of includeEdges(source)) {
@@ -60,6 +73,7 @@ export function composeProject(project, rootId) {
 }
 
 export function projectDocumentEdits(composition, doc) {
+  if(composition.repeated==='all')return null;
   if (doc.content?.length !== composition.regions.length) return null;
   const changesByFile = new Map();
   for (const [index, region] of composition.regions.entries()) {

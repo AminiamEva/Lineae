@@ -1,3 +1,4 @@
+import {tikzRuntime} from '../typesetting/engine-resolution.mjs';
 // General TikZ studio: code left, real TeX/TikZ SVG right.  The renderer is
 // mp-tikz-wasm (LGPL-3.0-or-later), loaded lazily from a local vendor copy.
 import { t } from './i18n.mjs';
@@ -51,9 +52,9 @@ function previewPreamble(preamble) {
     .trim();
 }
 
-function needsLuaTex(source) {
-  return /\usegdlibrary|graphdrawing|\directlua|\latelua|luacode|fontspec|unicode-math/.test(source);
-}
+// This runtime has pdfTeX and LuaTeX. Unicode packages are neutral evidence
+// for the document resolver, but require the Unicode-capable WASM backend.
+export {tikzRuntime};
 
 const PREAMBLE_COMMAND = /^\s*\\(?:usepackage|RequirePackage|usetikzlibrary|usegdlibrary|usepgfplotslibrary|usepgflibrary|newcommand|renewcommand|providecommand|DeclareRobustCommand|newenvironment|renewenvironment|NewDocumentCommand|RenewDocumentCommand|ProvideDocumentCommand|DeclareDocumentCommand|DeclareMathOperator|newtheorem|def|gdef|edef|xdef|let|newcounter|newlength|setlength|tikzset|tikzstyle|ctikzset|pgfplotsset|pgfkeys|pgfqkeys|pgfdeclarelayer|pgfsetlayers|colorlet|definecolor|providecolor|DeclareGraphicsExtensions|graphicspath|newfontfamily|setmainfont|setsansfont|setmonofont)\b/;
 
@@ -170,22 +171,24 @@ function splitStandaloneDocument(source) {
 }
 
 function tikzDocument(source, figures) {
-  if (figures.isCompleteDocument(source)) return { document: source, engine: needsLuaTex(source) ? 'lualatex' : 'auto' };
+  if (figures.isCompleteDocument(source)) return source;
   const { preamble, body } = splitTikzFragment(source);
   const document = figures.wrapTikz(body, { preamble });
-  return { document, engine: needsLuaTex(document) ? 'lualatex' : 'auto' };
+  return document;
 }
 
 export async function renderTikz(source, preamble = '') {
   const cacheKey = source + '\0' + preamble;
   if (svgCache.has(cacheKey)) return svgCache.get(cacheKey);
-  const engine = await loadEngine();
-  const figures = await import(new URL('/vendor/mp-tikz-wasm/figures.js', location.href).href);
   const complete = /\\documentclass|\\bye\b/.test(source);
   const prefix = previewPreamble(preamble);
   const combined = complete || !prefix ? source : `${prefix}\n${source}`;
-  const { document, engine: texEngine } = tikzDocument(combined, figures);
-  const result = await engine.latex(document, { engine: texEngine });
+  const texEngine=tikzRuntime(combined);
+  if (texEngine === 'unsupported-xe') return {svg:'',status:'unsupported',diagnostics:[{message:t('此图需要 XeTeX，TikZ 预览运行时不支持。','This figure requires XeTeX, which the TikZ preview runtime does not support.')}]};
+  const engine = await loadEngine();
+  const figures = await import(new URL('/vendor/mp-tikz-wasm/figures.js', location.href).href);
+  const document=tikzDocument(combined,figures);
+  const result = await engine.latex(document, { engine: texEngine === 'unicode' ? 'lualatex' : texEngine });
   const rendered = {
     svg: result.status === 'ok' && result.pages?.length ? result.pages[0] : '',
     status: result.status,
@@ -405,6 +408,7 @@ export function openTikzStudio({ onInsert, initialLibraries, initialBody } = {})
       declarations,
       body,
     });
+    if(result?.error){setStatus(result.error);return;}
     if (result?.duplicates?.length) {
       const duplicateLines = staging.macros
         .filter(macro => result.duplicates.includes(macro.name))

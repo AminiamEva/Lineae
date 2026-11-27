@@ -139,7 +139,7 @@ module.exports = async function checkSourceWorkspace(context, url) {
     await documentMode.click();
     await source.click();
     await sameClipboardText(draft);
-    await button(/展开工作区|Split editing/).click();
+    await page.locator('[data-source-mode=split]').click();
     const heading = panel.locator('.tex-preview .ProseMirror h1');
     await heading.filter({hasText:'Signal power'}).waitFor();
     const separator = panel.getByRole('separator');

@@ -1,5 +1,6 @@
 export const fontFamilies = { Georgia: '\\rmfamily', Arial: '\\sffamily', monospace: '\\ttfamily' };
 export const fontSizes = { 1: '\\scriptsize', 2: '\\small', 3: '\\normalsize', 4: '\\large', 5: '\\Large', 6: '\\LARGE', 7: '\\Huge' };
+export const lipsumAt=source=>/^\\lipsum(?![A-Za-z])(?:\[([^\]]*)\])?/.exec(source);
 
 const textSymbols = {
   textbackslash: '\\', textasciitilde: '~', textasciicircum: '^', textasciigrave: '`',
@@ -16,10 +17,18 @@ const textSymbols = {
 };
 const simpleCommands = { LaTeX: 'LaTeX', TeX: 'TeX', copyright: '©', ldots: '…', dots: '…' };
 export const textCommands = Object.freeze({ ...textSymbols, ...simpleCommands });
+export const escapeText = text => text.replace(/[\u00A0\\{}%$&#_^~§¶•…–—‘’“”®™©]/g, char => ({
+  '\\': '\\textbackslash{}', '~': '\\textasciitilde{}', '^': '\\textasciicircum{}', '\u00A0': '~',
+  '§': '\\textsection{}', '¶': '\\textparagraph{}', '•': '\\textbullet{}', '…': '\\ldots{}',
+  '–': '\\textendash{}', '—': '\\textemdash{}', '‘': '\\textquoteleft{}', '’': '\\textquoteright{}',
+  '“': '\\textquotedblleft{}', '”': '\\textquotedblright{}', '®': '\\textregistered{}',
+  '™': '\\texttrademark{}', '©': '\\copyright{}',
+}[char] ?? '\\' + char));
 const textCommandPattern = /^\\([A-Za-z]+)(?:\{\}|[ \t]+)?/;
 const plainPattern = /^\\(textup|textmd|textnormal|mbox|hbox)\{/;
 const stylePattern = /^\\(textsc|fbox)\{/;
 const scriptPattern = /^\\(textsuperscript|textsubscript)\{/;
+export const footnoteAt = source => /^\\footnote\{([^{}\r\n]*)\}/.exec(source);
 const ignoredPattern = /^\\(?:noindent|indent|smallskip|medskip|bigskip|newpage|clearpage|pagebreak|nolinebreak|hspace|vspace)(?![A-Za-z])(?:\{[^{}]*\})?[ \t]*/;
 
 import {referenceAt} from './reference-commands.mjs';
@@ -62,8 +71,12 @@ export function parseInline(source, depth = 0, options = {}) {
     const newline = rest.match(/^[ \t]*\r?\n[ \t]*/);
     if (newline) { nodes.push(' '); cursor += newline[0].length; continue; }
 
-    const lipsum = rest.match(/^\\lipsum(?:\[([^\]]*)\])?[ \t]*/);
-    if (lipsum) { nodes.push({ lipsum: lipsum[1] || '1-7' }); cursor += lipsum[0].length; continue; }
+    const lipsum=lipsumAt(rest);
+    if(lipsum){
+      nodes.push({lipsum:lipsum[1]||'1-7'});
+      cursor+=lipsum[0].length+(rest.slice(lipsum[0].length).match(/^[ \t]*/)?.[0].length??0);
+      continue;
+    }
 
     const text = rest.match(/^[^\\{}%$&#_^~\r\n]+/);
     const math = rest.match(/^\$([^$\r\n]+)\$/) ?? rest.match(/^\\\(([^\r\n]+?)\\\)/);
@@ -73,7 +86,7 @@ export function parseInline(source, depth = 0, options = {}) {
       continue;
     }
 
-    const footnote = rest.match(/^\\footnote\{([^{}\r\n]*)\}/);
+    const footnote = footnoteAt(rest);
     if (footnote) { nodes.push({ footnote: footnote[1] }); cursor += footnote[0].length; continue; }
 
     const reference=referenceAt(rest);

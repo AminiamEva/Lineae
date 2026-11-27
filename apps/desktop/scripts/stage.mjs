@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 const desktop = dirname(dirname(fileURLToPath(import.meta.url)));
 const web = join(desktop, '..', 'web');
 const dist = join(desktop, 'dist');
+execFileSync(process.execPath,[join(desktop,'scripts','stage-rtex.mjs')],{stdio:'inherit'});
 execFileSync(process.execPath,[join(desktop,'..','..','scripts','install-pdfjs.mjs')],{stdio:'inherit'});
 const entries = ['index.html', 'pages.css', 'source-workspace.css', 'project.css', 'editor.mjs', 'assets', 'vendor'];
 

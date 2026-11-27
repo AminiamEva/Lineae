@@ -227,6 +227,7 @@ export class Painter {
     private readonly base: Mat,
     private readonly fonts: FontStore,
     private readonly images: ImageStore,
+    private readonly onBitmap?: (file: string, transform: Mat, box: [number, number, number, number]) => void,
   ) {}
 
   /** Draw `items` of `dl` translated by (dx, dy) sp. */
@@ -287,7 +288,11 @@ export class Painter {
           const im = info && this.images.get(info.file);
           const m = mul(this.base, this.cur);
           ctx.setTransform(m[0], m[1], m[2], m[3], m[4], m[5]);
-          if (im?.kind === 'bitmap') ctx.drawImage(im.image, x + dx, yTop + dy, w, h);
+          if (im?.kind === 'bitmap' && info) {
+            ctx.drawImage(im.image, x + dx, yTop + dy, w, h);
+            // Report the same page-space transform that painted the image.
+            this.onBitmap?.(info.file, this.cur, [x + dx, yTop + dy, w, h]);
+          }
           else {
             ctx.fillStyle = 'rgba(128,128,128,0.15)';
             ctx.fillRect(x + dx, yTop + dy, w, h);

@@ -1,8 +1,7 @@
 /**
  * Conservative source model for ONE display's contents (no $/$$/\[ wrappers).
- * This is not a TeX interpreter: only letters/numbers with combining marks,
- * groups, \frac, \sqrt and ^/_ arguments are recognized. Everything else fails
- * closed. No macro expansion, catcode changes, operators or environments.
+ * Parse the supported structural commands, symbols, scripts and aligned cells
+ * without expanding macros or changing category codes.
  *
  * Ranges are half-open UTF-16 source offsets; slot edit offsets are relative to
  * slot.raw. Slots describe source fields, not inferred glyph/empty-field boxes.
@@ -24,17 +23,23 @@
  */
 
 import {mathCommandCatalog} from '../../../latex/command-catalog.mjs';
+import {parseDelimiterPair} from '../../../latex/delimiters.mjs';
 
 const snapshots = new WeakMap();
 const segmenter = new Intl.Segmenter('und', {granularity: 'grapheme'});
 const ordinary = /^[\p{L}\p{N}]\p{M}*$/u;
 const operator = /^[+=,.:!?<>/|()\[\]-]$/u;
 const editable = /^[\p{L}\p{N}\p{M}+=,.:!?<>/|()\[\] \t\r\n-]*$/u;
+const largeOperators=['int','iint','iiint','oint','oiint','sum','prod'];
 // Only single-symbol catalog entries here. Function names may paint multiple
 // glyphs while representing one operator and need different caret handling.
-const symbols = new Set(mathCommandCatalog.filter(entry=>entry.category!=='operator').map(entry=>entry.latex));
+const symbols = new Set([
+  ...mathCommandCatalog.filter(entry=>entry.category!=='operator').map(entry=>entry.latex),
+  ...largeOperators.map(command=>'\\'+command),
+]);
 const mathWrappers = new Set(['\\boxed','\\mathord','\\mathrm','\\mathbf','\\mathit','\\mathsf',
   '\\mathtt','\\mathcal','\\mathscr','\\mathbb','\\mathfrak']);
+const mathStyle=/^\\(display|text|script|scriptscript)style(?![A-Za-z])/;
 
 function freeze(value) {
   if (value && typeof value === 'object') {
@@ -77,6 +82,14 @@ function parse(source) {
   function protect(from16, to16, kind) {
     protectedRanges.push({from16, to16, kind});
   }
+  function skipStyle() {
+    const style=mathStyle.exec(source.slice(at));
+    if(!style)return false;
+    const start=at;
+    at+=style[0].length;
+    protect(start,at,'command');
+    return true;
+  }
   function trivia() {
     while (at < source.length) {
       if (/[ \t\r\n]/.test(source[at])) {
@@ -85,6 +98,11 @@ function parse(source) {
         const start = at++;
         while (at < source.length && !/[\r\n]/.test(source[at])) at++;
         protect(start, at, 'comment');
+      } else if(source[at]==='\\'){
+        const annotation=/^\\(?:label[ \t]*\{[^{}\\%\s]+\}|tag\*?[ \t]*\{[^{}\\%\r\n]*\}|(?:notag|nonumber)(?![A-Za-z]))/.exec(source.slice(at));
+        if(!annotation)break;
+        const start=at;at+=annotation[0].length;
+        protect(start,at,'annotation');
       } else break;
     }
   }
@@ -117,12 +135,12 @@ function parse(source) {
       node = {kind: 'group', from16, fields: [body]};
     } else if (source[at] === '\\') {
       const command = /^\\[A-Za-z]+/.exec(source.slice(at))?.[0];
-      const matrix = command==='\\begin'&&/^\\begin\{(matrix|[pbBvV]matrix|aligned|gathered|align\*?|gather\*?)\}/.exec(source.slice(at));
+      const matrix = command==='\\begin'&&/^\\begin\{(matrix|[pbBvV]matrix|aligned(?:at)?|gathered|align(?:at)?\*?|flalign\*?|gather\*?|multline\*?|eqnarray\*?|split|cases|dcases|rcases|drcases)\}/.exec(source.slice(at));
       if(command==='\\left'){
         function delimiter(prefix) {
           const start=at;
           at+=prefix.length;trivia();
-          const spelling=/^(?:\\(?:[{}|]|(?:langle|rangle|lvert|rvert|lVert|rVert|vert|Vert)(?![A-Za-z]))|[()[\].|])/.exec(source.slice(at))?.[0];
+          const spelling=/^(?:\\(?:[{}|]|(?:langle|rangle|lvert|rvert|lVert|rVert|vert|Vert|lfloor|rfloor|lceil|rceil|lbrace|rbrace)(?![A-Za-z]))|[()[\].|])/.exec(source.slice(at))?.[0];
           if(!spelling)fail('Unsupported fence delimiter');
           at+=spelling.length;protect(start,at,'delimiter');
         }
@@ -139,14 +157,20 @@ function parse(source) {
         node={kind:'fence',from16,fields:[{role:'body',from16:start,to16:end,grouped:true,children}]};
       } else if(matrix){
         at+=matrix[0].length;protect(from16,at,'command');
-        node={kind:'matrix',from16,fields:[]};
+        if(/^align(?:ed)?at\*?$/.test(matrix[1])){
+          const count=/^[ \t\r\n]*\{[1-9]\d*\}/.exec(source.slice(at));
+          if(!count)fail('Expected an alignment pair count');
+          protect(at,at+count[0].length,'delimiter');
+          at+=count[0].length;
+        }
+        node={kind:'matrix',command:matrix[1],from16,fields:[]};
         let row=0,column=0;
         while(true){
           const start=at,children=[];
           while(true){
             trivia();
             if(at===source.length||source[at]==='&'||source.startsWith('\\\\',at)||source.startsWith('\\end{',at))break;
-            children.push(atom(depth+1));
+            if(!skipStyle())children.push(atom(depth+1));
           }
           const cell={kind:'cell',from16:start,to16:at,afterGroup:/^align/.test(matrix[1])&&!children.length,
             fields:[{role:'cell',from16:start,to16:at,grouped:false,children}]};
@@ -230,7 +254,7 @@ function parse(source) {
     while (true) {
       trivia();
       if (at === source.length || source[at] === close) break;
-      children.push(atom(depth));
+      if(!skipStyle())children.push(atom(depth));
     }
     return children;
   }
@@ -436,7 +460,192 @@ export function projectMath(source, {previous, attribute = 65000, firstTag = 1} 
  * offsets; selection includes both document and updated slot-local offsets.
  * It is a single minimal patch, trimmed only at grapheme boundaries.
  */
-export function applySlotEdit(snapshot, {slotId, from16, to16, insert}) {
+const structureTemplates = {
+  frac: text => ({before:'\\frac{', body:text, after:'}{}', next:text ? 'denominator' : 'first'}),
+  sqrt: text => ({before:'\\sqrt{', body:text, after:'}', next:'first'}),
+  indexedRoot: text => ({before:'\\sqrt[', body:'', after:']{'+text+'}', next:'first'}),
+  superscript: text => ({before:text+'^{',body:'',after:'}',next:'first'}),
+  subscript: text => ({before:text+'_{',body:'',after:'}',next:'first'}),
+  ...Object.fromEntries([...mathWrappers].filter(command=>command!=='\\mathord').map(command=>[
+    command.slice(1),text=>({before:command+'{',body:text,after:'}',next:'first'}),
+  ])),
+  ...Object.fromEntries(largeOperators.map(operator=>[
+    operator,
+    text=>({before:'\\'+operator+'{',body:text,after:'}',next:'operator'}),
+  ])),
+  ...Object.fromEntries(['matrix','pmatrix','bmatrix','Bmatrix','vmatrix','Vmatrix'].map(environment=>[
+    environment,
+    text=>({before:'\\begin{'+environment+'}',body:text,after:'&\\\\&\\end{'+environment+'}',next:'first'}),
+  ])),
+  cases: text => ({before:'\\begin{cases}',body:text,after:'&\\\\&\\end{cases}',next:'first'}),
+};
+
+export const nativeMathCommandNames=Object.freeze([...new Set([
+  ...Object.keys(structureTemplates),...[...symbols].filter(command=>/^\\[A-Za-z]+$/.test(command)).map(command=>command.slice(1)),
+])]);
+
+export function expandMatrix(snapshot,slot,local,axis,{enterRow=false}={}) {
+  if(!snapshots.get(snapshot)?.tree||!snapshot.slots.includes(slot)||
+      !Number.isInteger(local)||local<0||local>slot.raw.length||!['row','column'].includes(axis))return null;
+  const cursor=slot.from16+local;
+  const matrices=snapshot.atoms.filter(atom=>atom.kind==='matrix'&&atom.from16<cursor&&atom.to16>cursor&&
+    (!enterRow||/^(?:align(?:ed)?(?:at)?|flalign|gather(?:ed)?|multline|eqnarray|split)\*?$/.test(atom.command)))
+    .sort((left,right)=>(left.to16-left.from16)-(right.to16-right.from16));
+  const byId=new Map(snapshot.slots.map(candidate=>[candidate.id,candidate]));
+  for(const atom of matrices){
+    const rows=[];
+    let origin;
+    for(const id of atom.slotIds){
+      const cell=byId.get(id),coordinates=/^cell\.(\d+)\.(\d+)$/.exec(cell?.role??'');
+      if(!coordinates)continue;
+      const row=Number(coordinates[1]),column=Number(coordinates[2]);
+      (rows[row]??=[]).push(cell);
+      if(slot.from16>=cell.from16&&slot.to16<=cell.to16)origin={row,column};
+    }
+    if(!origin)continue;
+    if(axis==='column'&&(/^(?:align(?:ed)?at|gather(?:ed)?|multline|eqnarray|split)\*?$|cases$/.test(atom.command)||
+        rows.some(row=>row.length<=origin.column)))return null;
+    const width=rows.reduce((maximum,row)=>Math.max(maximum,row.length),0);
+    const edits=axis==='row'
+      ?[{from:rows[origin.row].at(-1).to16,insert:'\\\\'+'&'.repeat(width-1)}]
+      :rows.map(row=>({from:row[origin.column].to16,insert:'&'}));
+    const from=edits[0].from,to=edits.at(-1).from;
+    const insert=edits.reduceRight((body,edit)=>
+      body.slice(0,edit.from-from)+edit.insert+body.slice(edit.from-from),snapshot.source.slice(from,to));
+    const source=snapshot.source.slice(0,from)+insert+snapshot.source.slice(to);
+    parse(source);
+    const next=enterRow ? from+2+origin.column :
+      cursor+edits.filter(edit=>edit.from<cursor).reduce((count,edit)=>count+edit.insert.length,0);
+    return {source,patch:{from,to,insert},cursor:next};
+  }
+  return null;
+}
+
+export function insertDisplayLine(snapshot,slot,local) {
+  if(!snapshots.get(snapshot)?.tree||!snapshot.slots.includes(slot)||!Number.isInteger(local)||
+    local<0||local>slot.raw.length)return null;
+  const row=expandMatrix(snapshot,slot,local,'row',{enterRow:true});
+  if(row)return row;
+  const caret=slot.from16+local;
+  const {source}=snapshot;
+  const root=snapshots.get(snapshot).tree.root;
+  const isBoundary=caret===0||caret===source.length||root.fields[0].children.some(atom=>
+    caret===atom.from16||caret===atom.to16);
+  const split=isBoundary?caret:source.length;
+  const open='\\begin{gathered}',close='\\end{gathered}';
+  const insert=open+source.slice(0,split)+'\\\\'+source.slice(split)+close;
+  parse(insert);
+  return {source:insert,patch:{from:0,to:source.length,insert},cursor:open.length+split+2,requiresAmsmath:true};
+}
+
+export function toggleFormulaDisplayStyle(snapshot,cursor) {
+  if(!snapshots.get(snapshot)?.tree||!Number.isInteger(cursor)||cursor<0||cursor>snapshot.source.length)return null;
+  const {source}=snapshot;
+  const from=source.search(/\S/);
+  if(from<0)return null;
+  const existing=mathStyle.exec(source.slice(from));
+  const inserted=existing?.[1]==='display'?'':'\\displaystyle ';
+  let to=from+(existing?.[0].length??0);
+  if(existing&&/[ \t]/.test(source[to]??''))to++;
+  const patch={from,to,insert:inserted};
+  const revised=source.slice(0,from)+inserted+source.slice(to);
+  if(!revised.trim()||!projectMath(revised).supported)return null;
+  return {source:revised,patch,cursor:Math.max(from+inserted.length,cursor+inserted.length-(to-from))};
+}
+
+export function applyStructureCommand(snapshot, {slotId,from16,to16,command}) {
+  const slot=snapshot.slots.find(candidate=>candidate.id===slotId);
+  if(!slot)return null;
+  if(!Object.hasOwn(structureTemplates,command)){
+    const tex='\\'+command;
+    if(!symbols.has(tex))return null;
+    const after=snapshot.source[slot.from16+to16];
+    const insert=tex+(after&&/[A-Za-z]/.test(after)?' ':'');
+    const result=editSlot(snapshot,{slotId,from16,to16,insert},true);
+    return {source:result.source,patch:result.patch,cursor:slot.from16+from16+tex.length};
+  }
+  const selected=slot.raw.slice(from16,to16);
+  if(!editable.test(selected))return null;
+  const template=structureTemplates[command](selected);
+  const insert=template.before+template.body+template.after;
+  const result=editSlot(snapshot,{slotId,from16,to16,insert},true);
+  const cursor=slot.from16+from16+template.before.length+
+    (template.next==='denominator'?template.body.length+2:template.next==='operator'?-1:0);
+  return {source:result.source,patch:result.patch,cursor};
+}
+
+export function applySlotEdit(snapshot, edit) {
+  return editSlot(snapshot,edit,false);
+}
+
+export function applyPastedMath(snapshot,edit){
+  const slot=snapshot.slots.find(candidate=>candidate.id===edit.slotId);
+  if(!slot||typeof edit.insert!=='string'||edit.insert.includes('%')||!parse(edit.insert).root.fields[0].children.length)
+    return null;
+  const following=snapshot.source[slot.from16+edit.to16]??'';
+  const terminator=/\\[A-Za-z]+$/.test(edit.insert)&&/[A-Za-z]/.test(following)?' ':'';
+  return editSlot(snapshot,{...edit,insert:edit.insert+terminator},true);
+}
+
+export function nativeOperatorBody(snapshot,atom) {
+  if(!largeOperators.includes(atom?.nucleus?.slice(1))||!atom.nucleus.startsWith('\\'))return null;
+  const boundary=atom.path.lastIndexOf('/');
+  const nextPath=atom.path.slice(0,boundary+1)+(Number(atom.path.slice(boundary+1))+1);
+  const body=snapshot.atoms.find(candidate=>candidate.kind==='group'&&candidate.path===nextPath);
+  if(!body||snapshot.source.slice(atom.to16,body.from16).trim())return null;
+  const slot=snapshot.slots.find(candidate=>candidate.ownerId===body.id&&candidate.role==='body');
+  return slot?{atom:body,slot}:null;
+}
+
+export function applyScalableFence(snapshot,slot,from16,to16,pair) {
+  const delimiters=Array.isArray(pair)&&parseDelimiterPair(pair.join(' '));
+  if(!delimiters||!snapshots.get(snapshot)?.tree||!snapshot.slots.includes(slot))return null;
+  const [left,right]=delimiters;
+  const selected=slot.raw.slice(from16,to16);
+  // The gap terminates named delimiters when the selected text starts with a letter.
+  const prefix='\\left'+left+(/\\[A-Za-z]+$/.test(left)&&/^[A-Za-z]/.test(selected)?' ':'');
+  const after=snapshot.source[slot.from16+to16];
+  const suffix='\\right'+right+(/\\[A-Za-z]+$/.test(right)&&after&&/[A-Za-z]/.test(after)?' ':'');
+  const edit=editSlot(snapshot,{slotId:slot.id,from16,to16,insert:prefix+selected+suffix,
+    preserved: selected},true);
+  return {source:edit.source,patch:edit.patch,cursor:slot.from16+from16+prefix.length};
+}
+
+export function removeEmptyScript(snapshot,slot) {
+  if(!snapshots.get(snapshot)?.tree||!snapshot.slots.includes(slot)||slot.raw||
+    !['superscript','subscript'].includes(slot.role)||!slot.grouped)return null;
+  const from=slot.from16-2,to=slot.to16+1;
+  const expected=slot.role==='superscript'?'^{}':'_{}';
+  if(snapshot.source.slice(from,to)!==expected)return null;
+  const source=snapshot.source.slice(0,from)+snapshot.source.slice(to);
+  parse(source);
+  return {source,patch:{from,to,insert:''},cursor:from};
+}
+
+export function applySingleCharacterScript(snapshot,slot,local,marker,text) {
+  if(!snapshots.get(snapshot)?.tree||!snapshot.slots.includes(slot)||!['^','_'].includes(marker)||
+    [...segmenter.segment(text)].length!==1)return null;
+  const at=slot.from16+local;
+  if(marker==='^'&&text==='^'){
+    const literal='\\text{ˆ}';
+    const edit=editSlot(snapshot,{slotId:slot.id,from16:local,to16:local,insert:literal},true);
+    return {source:edit.source,patch:edit.patch,cursor:at+literal.length};
+  }
+  if(!editable.test(text)||!text.trim())return null;
+  const role=marker==='^'?'superscript':'subscript';
+  const owner=snapshot.atoms.find(atom=>atom.id===slot.ownerId);
+  const existing=snapshot.slots.find(field=>field.ownerId===owner?.id&&field.role===role);
+  if(existing){
+    if(existing.raw.trim())return null;
+    const edit=editSlot(snapshot,{slotId:existing.id,from16:0,to16:existing.raw.length,insert:text},true);
+    return {source:edit.source,patch:edit.patch,cursor:owner.to16+text.length-existing.raw.length};
+  }
+  const insert=marker+'{'+text+'}';
+  const edit=editSlot(snapshot,{slotId:slot.id,from16:local,to16:local,insert},true);
+  return {source:edit.source,patch:edit.patch,cursor:at+insert.length};
+}
+
+function editSlot(snapshot, {slotId, from16, to16, insert,preserved}, structure) {
   const state = snapshots.get(snapshot);
   if (!state?.tree || !snapshot.supported) throw new TypeError('Expected a supported projectMath snapshot');
   const slot = snapshot.slots.find(candidate => candidate.id === slotId);
@@ -451,8 +660,22 @@ export function applySlotEdit(snapshot, {slotId, from16, to16, insert}) {
   for (const part of segmenter.segment(snapshot.source)) boundaries.add(part.index);
   let from = slot.from16 + from16, to = slot.from16 + to16;
   if (!boundaries.has(from) || !boundaries.has(to)) throw new RangeError('Edit splits a grapheme');
-  if (!editable.test(insert)) throw new SyntaxError('Structural or unsupported math insertion');
+  if (!structure && !editable.test(insert)) throw new SyntaxError('Structural or unsupported math insertion');
+  if(!structure&&/^[A-Za-z]/.test(insert)){
+    const control=state.tree.protectedRanges.find(range=>range.kind==='command'&&range.to16===from);
+    if(control&&symbols.has(snapshot.source.slice(control.from16,from)))insert=' '+insert;
+  }
+  const symbol=!structure&&!insert&&slot.role==='nucleus'&&from===slot.from16&&to===slot.to16&&symbols.has(slot.raw)
+    ?snapshot.atoms.find(atom=>atom.id===slot.ownerId):null;
+  const removeSymbol=symbol&&snapshot.slots.every(candidate=>candidate.ownerId!==symbol.id||
+    candidate.role==='nucleus'||!candidate.raw.trim());
+  if(removeSymbol){
+    to=symbol.to16;
+    if(largeOperators.includes(slot.raw.slice(1))&&snapshot.source.startsWith('{}',to))to+=2;
+  }
   for (const range of state.tree.protectedRanges) {
+    if(removeSymbol&&range.from16>=from&&range.to16<=to)continue;
+    if(structure&&preserved&&!['comment','annotation'].includes(range.kind)&&range.from16>=from&&range.to16<=to)continue;
     if ((from < range.to16 && to > range.from16) ||
         (from === to && from > range.from16 && from < range.to16) ||
         (range.kind === 'comment' && from === range.to16)) {
@@ -465,6 +688,8 @@ export function applySlotEdit(snapshot, {slotId, from16, to16, insert}) {
   for (const part of segmenter.segment(source)) newBoundaries.add(part.index);
   if (!newBoundaries.has(cursor)) throw new RangeError('Selection would split a grapheme');
   for (const arg of state.tree.singleArguments) {
+    if(removeSymbol&&arg.from16>=from&&arg.to16<=to)continue;
+    if(structure&&preserved&&arg.from16>from&&arg.to16<to)continue;
     if (from <= arg.to16 && to >= arg.from16) {
       // Check the original single-argument field, even when editing via an
       // ancestor slot. Inserting "ab" into x^a must not silently escape ^.

@@ -10,8 +10,10 @@ import {parseDocument} from './document.mjs';
 import {headingAt} from './headings.mjs';
 import {parseTableFloat} from './table-floats.mjs';
 import {importTblr,environmentEnd,trivia} from './tblr.mjs';
-import {importTabularx} from './tabularx.mjs';
+import {importTabularx,importLongtable} from './tabularx.mjs';
 import {importTextEnvironment} from './text-environments.mjs';
+import {displayEnvironment} from './math-environments.mjs';
+import {tableStyleParts} from './table-styles.mjs';
 
 function importedTableCells(row,specs,layout) {
   return row.cells.map((cell,index) => {
@@ -55,7 +57,9 @@ function inlineContent(text, groups=false) {
         part.attribute === 'background' ? { backgroundColor: part.value } :
         part.attribute === 'face' ? { fontFamily: part.value } : null;
       if (!attrs) throw new Error('Unsupported inline formatting');
-      return convert(part.children, [...marks, { type: 'textStyle', attrs }]);
+      const current=marks.find(mark=>mark.type==='textStyle');
+      const style={type:'textStyle',attrs:{...current?.attrs,...attrs}};
+      return convert(part.children,current?marks.map(mark=>mark===current?style:mark):[...marks,style]);
     });
   }
   try { return convert(parsed); } catch { return null; }
@@ -114,55 +118,65 @@ function splitListItems(body) {
     if (token.startsWith('\\end')) { depth = Math.max(0, depth - 1); continue; }
     if (depth !== 0) continue;
     if (start === null && body.slice(0,match.index).trim()) return null;
-    if (start !== null) items.push(body.slice(start, match.index));
+    if (start !== null) items.push({from:start,to:match.index});
     start = match.index + token.length;
   }
   if (start === null) return null;
-  items.push(body.slice(start));
+  items.push({from:start,to:body.length});
   return items;
 }
 
-function paragraphs(text) {
-  const nodes=text.split(/\n\s*\n/).map(part => part.trim()).filter(Boolean).map(part => {
+function paragraphs(text,record) {
+  const nodes=[];
+  let from=0;
+  function append(to){
+    const raw=text.slice(from,to),part=raw.trim();
+    if(!part)return;
     const imported=importBlock(part);
-    return imported?.type==='paragraph'
+    const node=imported?.type==='paragraph'
       ? imported
       : {type:'paragraph',content:inlineContent(part) ?? undefined};
-  });
+    record?.(node,nodes.length,from,to);
+    nodes.push(node);
+  }
+  for(const separator of text.matchAll(/\n\s*\n/g)){
+    append(separator.index);
+    from=separator.index+separator[0].length;
+  }
+  append(text.length);
   return nodes.every(node=>node.content) ? nodes : null;
 }
 
-function itemParts(content) {
+function itemParts(content,location) {
   const parts = [];
   let cursor = 0;
+  function append(from,to) {
+    const nodes=paragraphs(content.slice(from,to),location&&((node,index,start,end)=>
+      location.record(node,[...location.path,parts.length+index],location.offset+from+start,location.offset+from+end)));
+    if(!nodes)return false;
+    parts.push(...nodes);
+    return true;
+  }
   const pattern = /\\begin\{(itemize|enumerate|description)\}/g;
   let match;
   while ((match = pattern.exec(content))) {
-    const before = content.slice(cursor, match.index).trim();
-    if (before) {
-      const nodes = paragraphs(before);
-      if (!nodes) return null;
-      parts.push(...nodes);
-    }
+    if(!append(cursor,match.index))return null;
     const end = matchingListEnd(content, match.index, match[1]);
     if (end < 0) return null;
     const close = '\\end{' + match[1] + '}';
-    const nested = parseListBlock(content.slice(match.index, end + close.length));
+    const nested = parseListBlock(content.slice(match.index, end + close.length),location&&{
+      ...location,offset:location.offset+match.index,path:[...location.path,parts.length],
+    });
     if (!nested) return null;
     parts.push(nested);
     cursor = end + close.length;
     pattern.lastIndex = cursor;
   }
-  const after = content.slice(cursor).trim();
-  if (after) {
-    const nodes = paragraphs(after);
-    if (!nodes) return null;
-    parts.push(...nodes);
-  }
+  if(!append(cursor,content.length))return null;
   return parts.length ? parts : [{ type: 'paragraph' }];
 }
 
-function parseListBlock(text) {
+function parseListBlock(text,location) {
   const open = text.match(/^\\begin\{(itemize|enumerate|description)\}(?:\[([^\]]*)\])?/);
   if (!open) return null;
   const env = open[1];
@@ -173,13 +187,14 @@ function parseListBlock(text) {
   if (!items) return null;
   const content = [];
   for (const item of items) {
-    let body = item;
+    let from=open[0].length+item.from;
+    let body=text.slice(from,open[0].length+item.to);
     let term = '';
     if (env === 'description') {
       const match = body.match(/^\s*\[([^\]]*)\]/);
-      if (match) { term = match[1]; body = body.slice(match[0].length); }
+      if (match) { term = match[1]; body = body.slice(match[0].length); from+=match[0].length; }
     }
-    const parts = itemParts(body);
+    const parts = itemParts(body,location&&{...location,offset:location.offset+from,path:[...location.path,content.length]});
     if (!parts) return null;
     if (env === 'description') content.push({ type: 'descriptionItem', attrs: { term }, content: parts });
     else content.push({ type: 'listItem', content: parts });
@@ -197,6 +212,13 @@ function parseListBlock(text) {
   if (env === 'enumerate' && start) attrs.start = Number(start);
   if (env === 'description') return { type: 'descriptionList', content };
   return { type: env === 'itemize' ? 'bulletList' : 'orderedList', attrs, content };
+}
+
+export function listParagraphRanges(source) {
+  const ranges=[];
+  const list=parseListBlock(source.trim(),{offset:source.length-source.trimStart().length,path:[],
+    record:(node,path,from,to)=>ranges.push({node,path,from,to})});
+  return list?ranges.map(range=>({...range,container:list.type})):[];
 }
 
 function bracedGroup(text,start) {
@@ -221,7 +243,7 @@ function unwrapParagraphBorder(text) {
   if (!fbox.inner.startsWith(prefix)) return null;
   const body = bracedGroup(fbox.inner,prefix.length - 1);
   if (!body || body.end !== fbox.inner.length) return null;
-  return {inner:body.inner,attrs:{border:true}};
+  return {inner:body.inner,from:7+prefix.length,attrs:{border:true}};
 }
 
 function unwrapParagraphShading(text) {
@@ -234,7 +256,7 @@ function unwrapParagraphShading(text) {
   if (!parbox.inner.startsWith(prefix)) return null;
   const body = bracedGroup(parbox.inner,prefix.length - 1);
   if (!body || body.end !== parbox.inner.length) return null;
-  return {inner:body.inner,attrs:{shading:color.inner.trim()}};
+  return {inner:body.inner,from:color.end+1+prefix.length,attrs:{shading:color.inner.trim()}};
 }
 
 function unwrapParagraphSpacing(text) {
@@ -249,6 +271,7 @@ function unwrapParagraphSpacing(text) {
   const normalize = value => value.trim() === '0pt' ? null : value.trim();
   return {
     inner:text.slice(before.end,at),
+    from:before.end,
     attrs:{spaceBefore:normalize(before.inner),spaceAfter:normalize(after.inner)},
   };
 }
@@ -258,27 +281,37 @@ function unwrapParagraphLineSpacing(text) {
   if (!match) return null;
   const value = Number(match[1]);
   if (!Number.isFinite(value) || value <= 0) return null;
-  return {inner:match[2],attrs:{lineSpacing:value}};
+  return {inner:match[2],from:'{\\linespread{}\\selectfont '.length+match[1].length,attrs:{lineSpacing:value}};
 }
 
 function unwrapParagraphAlignment(text) {
   const match = /^\{\\(raggedright|raggedleft|centering|justifying) ([\s\S]*)\\par\}$/.exec(text);
   if (!match) return null;
   const align = {raggedright:'left',raggedleft:'right',centering:'center',justifying:'justify'}[match[1]];
-  return {inner:match[2],attrs:{align}};
+  return {inner:match[2],from:match[1].length+3,attrs:{align}};
 }
 
-function unwrapParagraphWrappers(block) {
+export function unwrapParagraphWrappers(block) {
   let text = block.trim();
   let attrs = {};
+  let from=block.length-block.trimStart().length;
   for (;;) {
     const wrapper = unwrapParagraphBorder(text) ?? unwrapParagraphShading(text) ??
       unwrapParagraphSpacing(text) ?? unwrapParagraphLineSpacing(text) ?? unwrapParagraphAlignment(text);
     if (!wrapper) break;
     attrs = {...attrs,...wrapper.attrs};
+    from+=wrapper.from+wrapper.inner.length-wrapper.inner.trimStart().length;
     text = wrapper.inner.trim();
   }
-  return {text,attrs};
+  return {text,attrs,from};
+}
+export function multicolParts(source){
+  const text=source.trim();
+  const match=/^\\begin\{(multicols\*?)\}\{(\d+)\}([\s\S]*?)\\end\{\1\}$/.exec(text);
+  if(!match||Number(match[2])<2||Number(match[2])>20)return null;
+  const [,environment,count,body]=match;
+  return {count:Number(count),starred:environment.endsWith('*'),body,
+    bodyFrom:source.indexOf(text)+text.length-body.length-environment.length-6};
 }
 
 export function importBlock(block, options={}) {
@@ -300,10 +333,11 @@ export function importBlock(block, options={}) {
   if (text === '\\tableofcontents') return { type: 'tableOfContents' };
   if (/^\\(?:newpage|clearpage|pagebreak)(?:\[[^\]]*\])?$/.test(text)) return { type: 'pageBreak' };
   if (text === '\\hrule') return { type: 'horizontalRule' };
-  const multicol = text.match(/^\\begin\{multicols\*?\}\{(\d+)\}([\s\S]*?)\\end\{multicols\*?\}$/);
+  const multicol = multicolParts(block);
   if (multicol) {
-    const content = importBlocks(multicol[2].trim());
-    return {type:'multiColumn',attrs:{count:Math.max(2,Math.min(4,Number(multicol[1])||2))},content:content.length?content:[{type:'paragraph'}]};
+    const {count,starred,body}=multicol;
+    const content=parseDocument(body,{fragment:true})?.blocks.flatMap(raw=>importBlocks(raw))??[];
+    return {type:'multiColumn',attrs:{count,starred},content:content.length?content:[{type:'paragraph'}]};
   }
   const math = text.match(/^\\\[([\s\S]*?)\\\]$/) ?? text.match(/^\$\$([\s\S]*?)\$\$$/) ?? text.match(/^\\begin\{equation\*?\}([\s\S]*?)\\end\{equation\*?\}$/);
   if (math) {
@@ -327,6 +361,7 @@ export function importBlock(block, options={}) {
   }
   const list = parseListBlock(text);
   if (list) return list;
+  if (/^\\begin\{longtable\}/.test(text)) return importLongtable(block,inlineContent) ?? rawNode(block);
   const tblr=importTblr(block,inlineContent);
   if(tblr)return tblr;
   const tabularx=importTabularx(block,inlineContent);
@@ -385,7 +420,7 @@ export function importBlock(block, options={}) {
     const borderMode = all && vertical ? 'grid' : all ? 'horizontal' : ends && vertical ? 'outer' : null;
     return {
       type: 'table',
-      attrs: { columns: table.columns, booktabs, borderMode,
+      attrs: { atomicTabular:true, columns: table.columns, booktabs, borderMode,
         columnLayout: JSON.stringify(table.columnLayout?.boundaries??[]),
         columnRules: table.columnLayout?.boundaries?.some(boundary=>boundary.rules>0||boundary.at) || false },
       content: table.rows.map(row => ({
@@ -432,16 +467,25 @@ function splitParagraphs(block) {
   return parts;
 }
 
+export function structuralCommandAt(source,token){
+  if(token.kind!=='command')return null;
+  const toc=token.value==='\\tableofcontents';
+  const title=toc?null:headingAt(source,token.index,headingBase);
+  const structural=/^\\(?:appendix|frontmatter|mainmatter|backmatter|newpage|clearpage|pagebreak|hrule)$/.test(token.value);
+  const layout=/^\\(?:pagestyle|thispagestyle)\{[^{}]*\}|^\\(?:maketitle\b|mbox\{\})/.exec(source.slice(token.index));
+  if(!toc&&!title&&!structural&&!layout)return null;
+  return {toc,title,structural,layout,end:title?.end??(layout?token.index+layout[0].length:token.end)};
+}
+
 function importSegment(block,options) {
   const nodes = [];
   let cursor = 0;
   for (const token of sourceStructure(block)) {
     if (!token.topLevel || token.index<cursor) continue;
-    // Split outer source-backed environments without losing their separators.
-    // The scanner
-    // keeps nested environments, macro arguments and literal content opaque.
-    const floating=token.kind==='begin' && /^\\begin\{(figure\*?|wrapfigure|table\*?|tabular\*?|tblr|tabularx|abstract|center|equation\*?)\}$/.exec(token.value);
-    const closing=floating && environmentEnd(block,token.index,floating[1]);
+    // The scanner keeps nested environments and literal content opaque.
+    const environment=token.kind==='begin'&&(displayEnvironment(token.value)??
+      /^\\begin\{(figure\*?|wrapfigure|table\*?|tabular\*?|tblr|tabularx|longtable|abstract|center)\}$/.exec(token.value)?.[1]);
+    const closing=environment&&environmentEnd(block,token.index,environment);
     if(closing) {
       const prefix=block.slice(cursor,token.index);
       const start=prefix.trim()?token.index:cursor;
@@ -466,19 +510,16 @@ function importSegment(block,options) {
     }
     const declaration=counterDeclarationAt(block,token.index);
     if(declaration){const before=importBlock(block.slice(cursor,token.index),options);if(before)nodes.push(before);nodes.push({type:'counterDirective',attrs:{latex:declaration.latex}});cursor=declaration.to;continue;}
-    if (token.kind!=='command') continue;
-    const toc=token.value==='\\tableofcontents';
-    const title=toc ? null : headingAt(block,token.index,headingBase);
-    const structural=/^\\(?:appendix|frontmatter|mainmatter|backmatter|newpage|clearpage|pagebreak)$/.test(token.value);
-    const layout=/^\\(?:pagestyle|thispagestyle)\{[^{}]*\}|^\\(?:maketitle\b|mbox\{\})/.exec(block.slice(token.index));
-    if (!toc && !title && !structural && !layout) continue;
+    const command=structuralCommandAt(block,token);
+    if(!command)continue;
+    const {toc,title,structural,layout,end}=command;
     const before = importBlock(block.slice(cursor, token.index),options);
     if (before) nodes.push(before);
     if (toc) nodes.push({ type: 'tableOfContents' });
     else if(structural)nodes.push(importBlock(token.value,options));
     else if(layout)nodes.push({type:'layoutCommand',attrs:{command:layout[0]}});
     else nodes.push(heading(title.name,title.star,title.short,title.title,title.label,title.labelSource) ?? rawNode(block.slice(token.index,title.end)));
-    cursor = title?.end ?? (layout ? token.index+layout[0].length : token.end);
+    cursor = end;
   }
   const after = importBlock(block.slice(cursor),options);
   if (after) nodes.push(after);
@@ -496,16 +537,10 @@ export function importBlocks(block, options={}) {
     if (content.some(node => node.type === 'raw')) return [rawNode(block)];
     return [{type:'theoremBlock',attrs:{kind:theorem.kind,title:theorem.title},content:content.length?content:[{type:'paragraph'}]}];
   }
-  const ruledTable = /^\{\\setlength\{\\arrayrulewidth\}\{(\d+(?:\.\d+)?pt)\}\s*(\\begin\{tabular\}[\s\S]*\\end\{tabular\})\s*\}$/.exec(block.trim());
-  if (ruledTable) {
-    const node=importBlock(ruledTable[2]);
-    if(node?.type==='table')return [{...node,attrs:{...node.attrs,borderWidth:ruledTable[1]}}];
-  }
-  const stretchedTable = /^\{\s*\\renewcommand\s*\{\\arraystretch\}\s*\{([^{}]+)\}\s*(\\begin\{tabular\}[\s\S]*\\end\{tabular\})\s*\}$/.exec(block.trim());
-  if (stretchedTable) {
-    const node=importBlock(stretchedTable[2]);
-    const value=Number.parseFloat(stretchedTable[1]);
-    if(node?.type==='table')return [{...node,attrs:{...node.attrs,...(Number.isFinite(value)?{arrayStretch:value}:{})}}];
+  const styled=tableStyleParts(block);
+  if(styled&&Object.keys(styled.attrs).length){
+    const node=importBlock(styled.body);
+    if(node?.type==='table')return [{...node,attrs:{...node.attrs,...styled.attrs}}];
   }
   const listing = /^\\begin\{lstlisting\}(?:\[language=([A-Za-z0-9+_-]+)\])?\r?\n([\s\S]*?)\r?\n\\end\{lstlisting\}$/.exec(block.trim());
   if (listing) return [{type:'codeBlock',attrs:{language:listing[1]??null},content:listing[2]?[{type:'text',text:listing[2]}]:[]}];

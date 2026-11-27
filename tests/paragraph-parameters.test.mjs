@@ -1,6 +1,9 @@
+import {getTypesettingProfile} from '../apps/web/src/typesetting/engine-profile.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {texDimension,paragraphParameters} from '../apps/web/src/typesetting/paragraph-parameters.mjs';
+import {texDimension} from '../apps/web/src/typesetting/paragraph-parameters.mjs';
+const {paragraphParameters} = getTypesettingProfile('xelatex');
+
 test('TeX dimensions distinguish TeX pt from CSS bp and preserve glue orders',()=>{
  assert.equal(texDimension('1in'),96);assert.equal(texDimension('72.27pt'),96);assert.equal(texDimension('72bp'),96);assert.equal(texDimension('2em',14),28);
  const p=paragraphParameters('\\spaceskip=4pt plus 2pt minus 1pt\n\\tolerance=500\n% \\tolerance=1');

@@ -6,7 +6,6 @@ export function createDefaultDocument() {
     '\\usepackage{amsmath}',
     '\\usepackage[UTF8]{ctex}',
     '\\usepackage{indentfirst}',
-    '\\usepackage{docmute}',
     '\\begin{document}',
     '',
     '\\end{document}',

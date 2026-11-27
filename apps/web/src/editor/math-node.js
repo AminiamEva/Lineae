@@ -1,3 +1,4 @@
+import {nativeOnlyAcceptance} from './native-surface/acceptance-mode.mjs';
 import {documentNumbers} from '../../latex/document-numbering.mjs';
 import {localizedTitle} from '../ui/localized-control.mjs';
 import { Node } from '@tiptap/core';
@@ -536,6 +537,22 @@ export const MathNode = Node.create({
       dom.dataset.numbered = String(node.isBlock && node.attrs.delimiter === 'equation');
       dom.getMathPosition = getPos;
       dom.contentEditable = 'false';
+      if (nativeOnlyAcceptance()) {
+        // Keep the semantic node in the document and history without mounting
+        // a MathLive editor in the native-only acceptance run.
+        dom.textContent = node.attrs.latex;
+        return {
+          dom,
+          update(next) {
+            if (next.type !== node.type) return false;
+            node = next;
+            dom.dataset.latex = next.attrs.latex;
+            dom.textContent = next.attrs.latex;
+            return true;
+          },
+          ignoreMutation: () => true,
+        };
+      }
       // A draggable node view swallows pointer hit-testing inside MathLive, so
       // clicking a placeholder box or a matrix cell would not move its caret.
       // ProseMirror re-enables dragging temporarily on mousedown for the handle.

@@ -75,7 +75,8 @@ function fontOptions(source, command) {
   return options;
 }
 
-function readFonts(preamble, options) {
+function readFonts(preamble, options, activeFonts) {
+  const family = command => fontFamily(activeFonts ? activeFonts[command] : commandArgument(preamble, command));
   const fontsetValue = ctexFontsetOption(preamble, options);
   const fontset = fontsetValue ? ctexFontsets[fontsetValue] ?? null : null;
   const cjkOptions = fontOptions(preamble, 'setCJKmainfont');
@@ -83,9 +84,9 @@ function readFonts(preamble, options) {
   // fontset=none must not be overridden by the ctex Fandol default.
   const cjkFallback = fontsetValue === 'none' ? null : hasCtex ? 'FandolSong' : null;
   return {
-    serif: fontFamily(commandArgument(preamble, 'setmainfont')),
-    mono: fontFamily(commandArgument(preamble, 'setmonofont')),
-    cjk: fontFamily(commandArgument(preamble, 'setCJKmainfont')) ?? fontset ?? cjkFallback,
+    serif: family('setmainfont'),
+    mono: family('setmonofont'),
+    cjk: family('setCJKmainfont') ?? fontset ?? cjkFallback,
     cjkBold: fontFamily(cjkOptions.BoldFont),
     cjkItalic: fontFamily(cjkOptions.ItalicFont),
     cjkBoldItalic: fontFamily(cjkOptions.BoldItalicFont),
@@ -129,16 +130,18 @@ const ZIHAO_TEX = {
 const STANDARD_BASELINE = { 10: 12, 11: 13.6, 12: 14.5 };
 const STANDARD_INDENT = { 10: 15, 11: 17, 12: 18 };
 
-export function typesetProfile(preamble = '') {
+export function typesetProfile(preamble = '', activeFonts) {
   const match = /\\documentclass(?:\[([^\]]*)\])?\{([^{}]+)\}/.exec(preamble);
   const options = (match?.[1] ?? '').split(',').map(option => option.trim()).filter(Boolean);
   const rawClassName = (match?.[2] ?? 'article').trim().toLowerCase();
+  const className = rawClassName;
   const chinese = resolveChineseProfile({ preamble });
   const baseClassName = chinese.enabled ? chinese.baseClassName : rawClassName;
-  const fonts = readFonts(preamble, options);
+  const fonts = readFonts(preamble, options, activeFonts);
   const explicitSpread = readLinespread(preamble);
   const chineseScheme = chinese.scheme === 'chinese';
   const linespread = explicitSpread ?? (chineseScheme ? 1.3 : 1);
+  const pageNumbers = !/\\pagestyle\s*\{empty\}/.test(preamble);
   const explicit = readFontsize(preamble);
   const baselineskip = readBaselineskip(preamble);
   const classSize = options.includes('12pt') ? 12 : options.includes('11pt') ? 11 : options.includes('10pt') ? 10 : null;
@@ -211,7 +214,8 @@ export function planPagination(blocks, { pageHeight, pageGap, marginTop, marginB
     const block = blocks[index];
     let top = block.top + translation;
     let bottom = top + block.height;
-    let bodyTop = pageIndex * pitch + marginTop;
+    const pageStart=marginTop+(block.pageStartAdjustment??0);
+    let bodyTop = pageIndex * pitch + pageStart;
     let bodyBottom = pageIndex * pitch + pageHeight - marginBottom;
     const next = blocks[index + 1];
     let groupBottom = block.keepWithNext && next ? next.top + next.height + translation : bottom;
@@ -230,7 +234,7 @@ export function planPagination(blocks, { pageHeight, pageGap, marginTop, marginB
         groupBottom += space;
       }
       pageIndex = Math.max(pageIndex, nextPage);
-      bodyTop = pageIndex * pitch + marginTop;
+      bodyTop = pageIndex * pitch + pageStart;
       bodyBottom = pageIndex * pitch + pageHeight - marginBottom;
       const space = bodyTop - top;
       translation += space;
@@ -250,7 +254,7 @@ export function planPagination(blocks, { pageHeight, pageGap, marginTop, marginB
       groupBottom += space;
     }
 
-    if (canMove && top > bodyTop + tolerance && groupBottom > bodyBottom + tolerance) {
+    if ((canMove || block.atomicTable) && top > bodyTop + tolerance && groupBottom > bodyBottom + tolerance) {
       // Move a keep-with-previous chain as a unit when it fits on the next
       // page. This covers display formulas and the first two lines of a
       // paragraph without changing the editable document.
@@ -267,7 +271,7 @@ export function planPagination(blocks, { pageHeight, pageGap, marginTop, marginB
         }
       }
       pageIndex++;
-      bodyTop = pageIndex * pitch + marginTop;
+      bodyTop = pageIndex * pitch + (blocks[breakIndex].pageStartAdjustment??0) + marginTop;
       bodyBottom = pageIndex * pitch + pageHeight - marginBottom;
       const space = bodyTop - anchorTop;
       translation += space;
@@ -281,6 +285,14 @@ export function planPagination(blocks, { pageHeight, pageGap, marginTop, marginB
 
     // A single table, image, or paragraph can be taller than the body. Do not
     // split its editable DOM; account for every sheet it visually reaches.
+    if (block.atomicTable && block.height > bodyHeight + tolerance && next) {
+      // An overfull tabular occupies one sheet. Its overflow stays editable in
+      // the table viewport; the following block starts on the following sheet.
+      pageIndex++;
+      translation=pageIndex*pitch+marginTop-next.top;
+      continue;
+    }
+    if (block.atomicTable) continue;
     while (bottom > pageIndex * pitch + pageHeight - marginBottom + tolerance) pageIndex++;
   }
 
@@ -289,7 +301,7 @@ export function planPagination(blocks, { pageHeight, pageGap, marginTop, marginB
 
 export function planTableRows(rows, {
   top, pageHeight, pageGap, marginTop, marginBottom,
-  headerHeight = 0, repeatHeader = true,
+  headerHeight = 0, repeatHeader = true, lastRowDepth = 0, pageInset = 0, sections = null,
 }) {
   if (!rows.length) return { breaks:[], extra:0, pageCount:1 };
   const pitch = pageHeight + pageGap;
@@ -300,14 +312,26 @@ export function planTableRows(rows, {
   let pageIndex = Math.max(0, Math.floor(top / pitch));
   let bodyBottom = pageIndex * pitch + pageHeight - marginBottom;
 
+  const copies=[];
+  const firstHead=sections?.firsthead ?? sections?.head;
+  const finalFoot=sections?.lastfoot ?? sections?.foot;
+  const copy=(section,y)=>{if(section?.height)copies.push({section:section.kind,top:y});};
+  const atTop=Math.abs(top-(pageIndex*pitch+marginTop))<tolerance;
+  let firstPadding=(atTop?pageInset:0)+(firstHead?.height??0);
   for (let index = 0; index < rows.length; index++) {
     const row = rows[index];
     let rowTop = top + row.top + extra;
-    let rowBottom = rowTop + row.height;
-    if (rowBottom > bodyBottom + tolerance && row.height <= bodyHeight + tolerance) {
+    let rowBottom = rowTop + row.height - lastRowDepth;
+    const foot=index===rows.length-1?finalFoot:sections?.foot;
+    const reserve=(foot?.height??0)+(index===0?firstPadding:0);
+    if (rowBottom + reserve > bodyBottom + tolerance && row.height <= bodyHeight + tolerance) {
+      if(index)copy(sections?.foot,rowTop);
       const nextPage = pageIndex + 1;
       const bodyTop = nextPage * pitch + marginTop;
-      const header = repeatHeader && index > 0 ? headerHeight : 0;
+      const section=index===0?firstHead:sections?.head;
+      const header = pageInset+(section?.height ?? (repeatHeader && index>0?headerHeight:0));
+      copy(section,bodyTop+pageInset);
+      firstPadding=0;
       const padding = Math.max(0, bodyTop + header - rowTop);
       if (padding > .01) {
         breaks.push({ row:index, padding, headerTop:bodyTop });
@@ -318,7 +342,17 @@ export function planTableRows(rows, {
         rowBottom += padding;
       }
     }
+    if(index===0 && firstPadding){
+      copy(firstHead,top+(atTop?pageInset:0));
+      breaks.push({row:0,padding:firstPadding});
+      extra+=firstPadding;
+      rowBottom+=firstPadding;
+    }
+    if(index===rows.length-1 && finalFoot?.height){
+      copy(finalFoot,rowBottom+lastRowDepth);
+      extra+=finalFoot.height;
+    }
     while (rowBottom > pageIndex * pitch + pageHeight - marginBottom + tolerance) pageIndex++;
   }
-  return { breaks, extra, pageCount: Math.max(1, pageIndex + 1) };
+  return { breaks, extra, ...(sections?{copies}:{}), pageCount: Math.max(1, pageIndex + 1) };
 }

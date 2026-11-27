@@ -1,8 +1,11 @@
+import {getTypesettingProfile} from '../apps/web/src/typesetting/engine-profile.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { planPagination, planTableRows, typesetProfile } from '../apps/web/latex/typeset-layout.mjs';
+import { planPagination, planTableRows } from '../apps/web/latex/typeset-layout.mjs';
 import { wrapLineWidthAt } from '../apps/web/src/typesetting/paragraph-layout.js';
+
+const typesetProfile = getTypesettingProfile('xelatex').documentStyle;
 
 test('derives XeLaTeX article and ctex typography profiles', () => {
   const fonts = { serif: null, mono: null, cjk: null, cjkBold: null, cjkItalic: null, cjkBoldItalic: null, cjkFeatures: {}, fontset: null };

@@ -1,9 +1,9 @@
-//! macOS project capabilities. Wire this file as `project`, not as a second
+//! Unix project capabilities. Wire this file as `project`, not as a second
 //! project module. All ambient access ends at the native folder selection.
 //!
-//! macOS has no rename-by-verified-file-handle or mandatory Windows sharing
+//! These hosts have no rename-by-verified-file-handle or mandatory Windows sharing
 //! locks. `flock` serializes Lineae processes, not unrelated editors. Saves use
-//! RENAME_SWAP and retain the displaced inode; a late external change therefore
+//! atomic exchange and retain the displaced inode; a late external change therefore
 //! produces an explicit conflict with a recovery location, never lost bytes.
 //! Removal is an archival rename, never recursive unlink. Recovery material is
 //! deliberately not garbage-collected: deleting it safely needs a separate,
@@ -99,6 +99,13 @@ fn child_dir(parent: &Dir, name: &str) -> Result<Dir, String> {
     )
     .map(Dir::from)
     .map_err(error)
+}
+
+fn open_project_root(path: &Path) -> Result<Dir, String> {
+    let selected = Dir::open_ambient_dir(path, cap_std::ambient_authority()).map_err(error)?;
+    // cap-std can keep an O_PATH handle on Linux. Open the directory itself
+    // relative to that authority so flock and fsync use a readable descriptor.
+    child_dir(&selected, ".")
 }
 
 fn parent(root: &Dir, path: &str) -> Result<(Dir, String), String> {
@@ -432,6 +439,8 @@ fn checkpoints(root: &Dir) -> Result<(HashMap<String, Checkpoint>, u64), String>
     for entry in root.entries().map_err(error)? {
         let name = entry.map_err(error)?.file_name().into_string()
             .map_err(|_| "Non-UTF-8 project path")?;
+        // Retain the original checkpoint name so a project can move between
+        // macOS and Linux without losing its checkpoint history.
         let (id, revision) = if let Some(tail) = name.strip_prefix(".lineae-macos-state-").and_then(|s| s.strip_suffix(".json")) {
             let (id, revision) = tail.rsplit_once('-').ok_or("Invalid checkpoint filename; retained")?;
             session(id)?;
@@ -527,7 +536,7 @@ pub async fn open_project(
     let path = folder.into_path().map_err(error)?.canonicalize().map_err(error)?;
     let key = path.to_str().ok_or("Non-UTF-8 project root")?.to_owned();
     // The canonical string is an IPC lookup key only; never reopen it later.
-    let directory = Dir::open_ambient_dir(&path, cap_std::ambient_authority()).map_err(error)?;
+    let directory = open_project_root(&path)?;
     roots.0.lock().map_err(error)?.entry(path).or_insert(directory);
     Ok(Some(key))
 }
@@ -602,12 +611,12 @@ mod tests {
     use super::*;
 
     fn fixture() -> (ProjectRoots, PathBuf) {
-        let path = std::env::temp_dir().join(format!("lineae-macos-原生 {}", nonce()));
+        let path = std::env::temp_dir().join(format!("lineae-unix-原生 {}", nonce()));
         std::fs::create_dir(&path).unwrap();
         let path = path.canonicalize().unwrap();
         let roots = ProjectRoots::default();
         roots.0.lock().unwrap().insert(
-            path.clone(), Dir::open_ambient_dir(&path, cap_std::ambient_authority()).unwrap(),
+            path.clone(), open_project_root(&path).unwrap(),
         );
         (roots, path)
     }
@@ -684,7 +693,7 @@ mod tests {
         assert_eq!(std::fs::read_dir(root.join("source")).unwrap().count(), 1);
         assert!(call(&roots, &root, "move", Some("source/a.tex"), Some("occupied.tex"), None, Some(b"saved")).is_err());
         assert!(call(&roots, &root, "remove", Some("source/a.tex"), None, None, Some(b"stale")).is_err());
-        let dir = Dir::open_ambient_dir(&root, cap_std::ambient_authority()).unwrap();
+        let dir = open_project_root(&root).unwrap();
         let manifest = serde_json::to_vec(&snapshot(&dir, "source", "source").unwrap()).unwrap();
         std::fs::write(root.join("source/late.tex"), b"unrelated").unwrap();
         assert!(call(&roots, &root, "remove", Some("source"), None, Some(&manifest), None).is_err());
@@ -723,7 +732,7 @@ mod tests {
         assert!(load()["recoveryVersions"].as_array().unwrap().is_empty());
         drop(roots);
         let reopened = ProjectRoots::default();
-        reopened.0.lock().unwrap().insert(root.clone(), Dir::open_ambient_dir(&root, cap_std::ambient_authority()).unwrap());
+        reopened.0.lock().unwrap().insert(root.clone(), open_project_root(&root).unwrap());
         let state: Value = serde_json::from_slice(&call(&reopened, &root, "load_state", None, None, None, None).unwrap().bytes).unwrap();
         assert!(state["recoveryVersions"].as_array().unwrap().is_empty());
     }

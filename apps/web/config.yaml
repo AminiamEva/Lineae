@@ -1,4 +1,6 @@
 version: 2
+typesetting:
+  defaultEngine: lualatex
 interface:
   sourceFontSize: 16
   toolbarAutoHide: false
@@ -124,7 +126,7 @@ keybindings:
     oint: alt+i
     oiint: alt+shift+i
     undo: mod+z
-    redo: mod+y
+    redo: [mod+y, mod+shift+z]
     palette: backslash
     nextSlot: tab
     previousSlot: shift+tab

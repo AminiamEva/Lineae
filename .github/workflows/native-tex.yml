@@ -3,6 +3,10 @@ name: Native TeX geometry
 on:
   workflow_dispatch:
     inputs:
+      browser_only:
+        description: Run the native editing browser gates without TeX Live or a desktop build
+        type: boolean
+        default: false
       warm_repetitions:
         description: Optional warm edit timing samples for the authored LF fixture (0 to 1000)
         type: number
@@ -11,13 +15,21 @@ on:
         description: Also measure synthetic 10, 100 and 300 page documents
         type: boolean
         default: false
+      windows_input_probe:
+        description: Keep the unbundled Windows executable for physical input checks
+        type: boolean
+        default: false
+      desktop_input_probe:
+        description: Keep the unbundled debug executables for physical input checks
+        type: boolean
+        default: false
   workflow_call:
 
 permissions:
   contents: read
 
 concurrency:
-  group: native-tex-${{ github.ref }}
+  group: native-tex-${{ github.ref }}-${{ inputs.browser_only && 'browser' || (inputs.warm_repetitions > 0 && 'engine' || 'verification') }}
   cancel-in-progress: false
 
 jobs:
@@ -36,6 +48,11 @@ jobs:
             archive: rtex-x86_64-pc-windows-msvc.zip
             sha256: b36a2e5abc6216301d180d7b800b1dbbb34672b04946d0b25d227ce6f9590e54
             tlarch: windows
+          - os: ubuntu-24.04
+            target: x86_64-unknown-linux-gnu
+            archive: rtex-x86_64-unknown-linux-gnu.tar.gz
+            sha256: aeea57a8d1db33fdc509e0ac45a324043cef00e8fbe82b5d2aeba33b8bb5542d
+            tlarch: x86_64-linux
     runs-on: ${{ matrix.os }}
     timeout-minutes: 45
     defaults:
@@ -49,17 +66,38 @@ jobs:
         with:
           node-version: 22
           cache: npm
+      - name: Install Linux WebView dependencies
+        if: ${{ runner.os == 'Linux' && !inputs.browser_only }}
+        timeout-minutes: 6
+        run: |
+          packages=(libwebkit2gtk-4.1-dev libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev xvfb xauth)
+          missing=()
+          for package in "${packages[@]}"; do
+            if [[ $(dpkg-query -W -f='${db:Status-Status}' "$package" 2>/dev/null) != installed ]]; then
+              missing+=("$package")
+            fi
+          done
+          if (( ${#missing[@]} )); then
+            apt_options=(-o Acquire::Retries=2 -o Acquire::http::Timeout=25 -o Acquire::https::Timeout=25)
+            sudo apt-get "${apt_options[@]}" -o APT::Update::Error-Mode=any update
+            sudo apt-get "${apt_options[@]}" install -y --no-install-recommends "${missing[@]}"
+          fi
       - uses: dtolnay/rust-toolchain@stable
+        if: ${{ !inputs.browser_only }}
       - uses: Swatinem/rust-cache@v2
+        if: ${{ !inputs.browser_only }}
         with:
           workspaces: apps/desktop/src-tauri -> target
           key: native-tex-debug
       - run: npm ci --no-audit --no-fund
       - name: Probe harness and projection unit tests
         run: |
-          node --test tests/native-math-baseline.test.mjs tests/native-math-probe.test.mjs tests/display-math-blocks.test.mjs tests/native-tex-project.test.mjs tests/native-math-hit.test.mjs tests/native-math-source.test.mjs tests/native-math-warm-pages.test.mjs tests/native-surface.test.mjs
+          node --test tests/native-math-baseline.test.mjs tests/native-math-probe.test.mjs \
+            tests/display-math-blocks.test.mjs tests/native-tex-project.test.mjs tests/native-math-hit.test.mjs \
+            tests/native-math-source.test.mjs tests/native-math-warm-pages.test.mjs tests/native-surface.test.mjs \
+            tests/project-composition.test.mjs
           bash -n scripts/install-native-tex-ci.sh
-      - name: Build and verify the native preview frontend
+      - name: Build the native preview frontend
         run: |
           npm run build
           node scripts/install-pdfjs.mjs
@@ -68,16 +106,35 @@ jobs:
           temp="$RUNNER_TEMP"
           if [[ "$RUNNER_OS" == Windows ]]; then temp=$(cygpath -u "$temp"); fi
           tar -xzf "$temp/$archive" -C apps/web/vendor/mathlive --strip-components=1 package/mathlive.min.js package/fonts
-          npx playwright install --only-shell chromium
+          if [[ "$RUNNER_OS" == Linux ]]; then
+            npx playwright install --with-deps --only-shell chromium
+          else
+            npx playwright install --only-shell chromium
+          fi
+      - name: Verify browser editing with and without the legacy engine
+        id: browser_editing
+        continue-on-error: true
+        run: |
           node tests/native-tex-preview-browser.cjs
+          LINEAE_NATIVE_ONLY=1 node tests/native-tex-preview-browser.cjs
           LINEAE_TEST_NATIVE_PREVIEW=1 node tests/math-editing-browser.cjs
-      - uses: actions/cache@v4
+      - uses: actions/cache/restore@v4
+        if: ${{ !inputs.browser_only }}
+        id: texlive_cache
         with:
           path: .native-tex/texlive
           key: native-tex-tl2025-${{ matrix.target }}-${{ hashFiles('scripts/install-native-tex-ci.sh') }}
+          restore-keys: native-tex-tl2025-${{ matrix.target }}-
       - name: Install the frozen TeX Live environment
+        if: ${{ !inputs.browser_only }}
         run: bash scripts/install-native-tex-ci.sh
+      - uses: actions/cache/save@v4
+        if: ${{ !inputs.browser_only && steps.texlive_cache.outputs.cache-hit != 'true' }}
+        with:
+          path: .native-tex/texlive
+          key: ${{ steps.texlive_cache.outputs.cache-primary-key }}
       - name: Download and verify the pinned rtex release
+        if: ${{ !inputs.browser_only }}
         env:
           ARCHIVE: ${{ matrix.archive }}
           EXPECTED_SHA256: ${{ matrix.sha256 }}
@@ -98,6 +155,7 @@ jobs:
             tar -xzf ".native-tex/$ARCHIVE" -C .native-tex/rtex
           fi
       - name: Observe real geometry and a revision-matched warm edit
+        if: ${{ !inputs.browser_only }}
         env:
           RTEX_ARCHIVE_SHA256: ${{ matrix.sha256 }}
           RTEX_TARGET: ${{ matrix.target }}
@@ -122,26 +180,132 @@ jobs:
           export TEXMFCONFIG="$PWD/.native-tex/texlive/texmf-config"
           export TEXMFHOME="$PWD/.native-tex/texlive/texmf-home"
           export LINEAE_NATIVE_EVIDENCE_DIR="$PWD/artifacts/native-tex/host"
+          export LINEAE_NATIVE_TYPE_ONE_PAGE="$RUNNER_TEMP/lineae-native-type-one-pages.json"
           mkdir -p "$LINEAE_NATIVE_EVIDENCE_DIR"
           node --input-type=module -e '
             import {readFileSync,writeFileSync} from "node:fs";
             import {join} from "node:path";
-            import {projectMixedDocument} from "./apps/web/src/editor/native-text/projection.mjs";
+            import {projectMixedDocument,projectMixedSnapshot} from "./apps/web/src/editor/native-text/projection.mjs";
+            import {mergeTableSourceRows} from "./apps/web/latex/tabularx.mjs";
+            import {mergeTblrRows} from "./apps/web/latex/tblr.mjs";
             const source=readFileSync("tests/native-math/fixtures/empty-denominator.tex","utf8");
             const target=projectMixedDocument(source);
             writeFileSync(join(process.env.LINEAE_NATIVE_EVIDENCE_DIR,"production-projection.tex"),target.projection);
+            const degraded=readFileSync("tests/native-math/fixtures/degraded-page.tex","utf8");
+            writeFileSync(join(process.env.LINEAE_NATIVE_EVIDENCE_DIR,"degraded-projection.tex"),projectMixedDocument(degraded).projection);
+            const measured=projectMixedDocument(degraded,{measureDrawings:true});
+            const corners=Object.fromEntries([...measured.owners].filter(([,entry])=>entry.drawing).map(([tag,{corner}])=>[corner,tag]));
+            writeFileSync(join(process.env.LINEAE_NATIVE_EVIDENCE_DIR,"degraded-drawing-probe.json"),JSON.stringify({projection:measured.projection,corners}));
+            const alignment=readFileSync("tests/native-math/fixtures/numbered-alignment.tex","utf8");
+            writeFileSync(join(process.env.LINEAE_NATIVE_EVIDENCE_DIR,"alignment-projection.tex"),projectMixedDocument(alignment).projection);
+            const classic=readFileSync("tests/native-math/fixtures/classic-font.tex","utf8");
+            writeFileSync(join(process.env.LINEAE_NATIVE_EVIDENCE_DIR,"classic-projection.tex"),projectMixedDocument(classic).projection);
+            const prose=readFileSync("tests/native-math/fixtures/prose-font.tex","utf8");
+            const proseProbe=projectMixedDocument(prose);
+            writeFileSync(join(process.env.LINEAE_NATIVE_EVIDENCE_DIR,"prose-projection.tex"),proseProbe.projection);
+            const terminalTag=[...proseProbe.owners].find(([,owner])=>owner.glyph?.terminal)[0];
+            writeFileSync(join(process.env.LINEAE_NATIVE_EVIDENCE_DIR,"prose-terminal-owner.txt"),String(terminalTag));
+            const table=readFileSync("tests/native-math/fixtures/table-rowspan.tex","utf8");
+            const tabularray=table.replace("{multirow}","{tabularray}").replaceAll("{tabular}","{tblr}");
+            const tabularx=table.replace("{multirow}","{multirow,tabularx}").replaceAll("{tabular}","{tabularx}")
+              .replace("{tabularx}{ll}","{tabularx}{\\linewidth}{lX}");
+            for(const [environment,raw,merge] of [["tabular",table,mergeTableSourceRows],["tabularx",tabularx,mergeTableSourceRows],
+              ["tblr",tabularray,mergeTblrRows]]){
+              const open=`\\begin{${environment}}`,close=`\\end{${environment}}`;
+              const from=raw.indexOf(open),to=raw.indexOf(close)+close.length;
+              const patch=merge(raw.slice(from,to),0,1,0);
+              const rowspan=raw.slice(0,from+patch.from)+patch.insert+raw.slice(from+patch.to);
+              const native=projectMixedDocument(rowspan);
+              const merged=native.paragraphs.find(paragraph=>paragraph.text==="First Second");
+              writeFileSync(join(process.env.LINEAE_NATIVE_EVIDENCE_DIR,`${environment}-rowspan-probe.json`),
+                JSON.stringify({source:rowspan,projection:native.projection,tag:merged.glyphs[0].tag}));
+            }
+            const raster=readFileSync("tests/native-math/fixtures/raster-repeat.tex","utf8");
+            const rasterProbe=projectMixedDocument(raster,{measureDrawings:true});
+            const rasterTags=[...rasterProbe.owners].filter(([,owner])=>owner.drawing?.raster).map(([tag])=>tag);
+            writeFileSync(join(process.env.LINEAE_NATIVE_EVIDENCE_DIR,"raster-repeat-probe.json"),
+              JSON.stringify({projection:rasterProbe.projection,tags:rasterTags}));
+            const reference=readFileSync("tests/native-math/fixtures/native-reference.tex","utf8");
+            const referenceProbe=projectMixedDocument(reference);
+            const [referenceTag]=[...referenceProbe.owners].find(([,owner])=>owner.reference?.key==="sec:first");
+            writeFileSync(join(process.env.LINEAE_NATIVE_EVIDENCE_DIR,"native-reference-probe.json"),
+              JSON.stringify({projection:referenceProbe.projection,tag:referenceTag}));
+            const repeatedRoot="\\documentclass{article}\n\\usepackage{unicode-math}\n\\setmathfont{Latin Modern Math}\n\\begin{document}\n"+
+              "Before.\n\n\\input{chapters/one}\n\nBetween.\n\n\\input{chapters/one}\n\nAfter.\n\\end{document}\n";
+            const repeatedChild="Child.\n\n\\[\\frac{x}{}\\]\n", path="chapters/one.tex";
+            const repeated=projectMixedSnapshot({source:repeatedRoot,mainFile:"main.tex",
+              files:[{path,bytes:new TextEncoder().encode(repeatedChild)}]});
+            const glyph=repeated.paragraphs.find(paragraph=>paragraph.filePath===path).glyphs[0].tag;
+            const denominator=repeated.formulas.find(formula=>formula.filePath===path).math.slots.find(slot=>slot.role==="denominator").tag;
+            writeFileSync(join(process.env.LINEAE_NATIVE_EVIDENCE_DIR,"repeated-input-probe.json"),
+              JSON.stringify({source:repeatedRoot,child:repeatedChild,projection:repeated.projection,files:repeated.files,glyph,denominator}));
           '
           node tests/native-math/rtex-probe.mjs
           node apps/desktop/scripts/stage.mjs
           cargo test --locked --manifest-path apps/desktop/src-tauri/Cargo.toml --lib
           cargo test --locked --manifest-path apps/desktop/src-tauri/Cargo.toml --lib \
             tex_session::tests::real_native -- --ignored --test-threads=1
+          node --input-type=module -e '
+            import assert from "node:assert/strict";
+            import {readFileSync} from "node:fs";
+            import {join} from "node:path";
+            import {registeredRasterHits,matchingRasterHit} from "./apps/web/src/typesetting/rtex/raster-assets.mjs";
+            const evidence=JSON.parse(readFileSync(join(process.env.LINEAE_NATIVE_EVIDENCE_DIR,"native-raster-repeat-pages.json")));
+            const hits=registeredRasterHits(evidence.raw[0].dl,()=>true);
+            const fields=evidence.observed[0].dl.math_owners.fields;
+            const points=evidence.tags.map(tag=>fields.find(field=>field.owner===tag&&field.empty).bbox);
+            const matches=[];
+            for(let index=0;index<points.length;index+=2){
+              const [x,y]=points[index],[right,bottom]=points[index+1];
+              const box=[x,y,right-x,bottom-y];
+              const hit=matchingRasterHit(hits,"plot.png",box);
+              assert.ok(hit,JSON.stringify({box,hits}));
+              matches.push(hit);
+            }
+            assert.equal(new Set(matches).size,2);
+          '
+      - name: Verify edits against recorded LuaLaTeX pages
+        if: ${{ !inputs.browser_only }}
+        id: recorded_editing
+        continue-on-error: true
+        run: |
+          LINEAE_NATIVE_EVIDENCE_DIR="$PWD/artifacts/native-tex/host"
           LINEAE_NATIVE_PDF="$LINEAE_NATIVE_EVIDENCE_DIR/native-lua-project.pdf" \
           LINEAE_NATIVE_PAGE="$LINEAE_NATIVE_EVIDENCE_DIR/native-formula-pages.json" \
           LINEAE_NATIVE_TEXT_PAGE="$LINEAE_NATIVE_EVIDENCE_DIR/native-text-pages.json" \
+          LINEAE_NATIVE_REFERENCE_PAGE="$LINEAE_NATIVE_EVIDENCE_DIR/native-reference-pages.json" \
+          LINEAE_NATIVE_REPEATED_INPUT_PAGE="$LINEAE_NATIVE_EVIDENCE_DIR/native-repeated-input-pages.json" \
+          LINEAE_NATIVE_ALIGNMENT_PAGE="$LINEAE_NATIVE_EVIDENCE_DIR/native-alignment-pages.json" \
+          LINEAE_NATIVE_DEGRADED_PAGE="$LINEAE_NATIVE_EVIDENCE_DIR/native-degraded-pages.json" \
+          LINEAE_NATIVE_DEGRADED_PDF="$LINEAE_NATIVE_EVIDENCE_DIR/native-degraded.pdf" \
           node tests/native-tex-preview-browser.cjs
+      - name: Measure the legacy browser on the same source and edits
+        if: ${{ !inputs.browser_only && inputs.large_documents }}
+        env:
+          LINEAE_WARM_REPETITIONS: ${{ inputs.warm_repetitions }}
+          LINEAE_LEGACY_LATENCY_DIR: ${{ github.workspace }}/artifacts/native-tex
+        run: node tests/math-editing-browser.cjs
+      - name: Check the engine-off workspace in the desktop WebView
+        if: ${{ !inputs.browser_only }}
+        run: |
+          npm ci --prefix apps/desktop --no-audit --no-fund
+          npm --prefix apps/desktop run tauri -- build --debug --no-bundle
+          node --input-type=module -e '
+            import {execFileSync} from "node:child_process";
+            import {resolve} from "node:path";
+            const executable=resolve("apps/desktop/src-tauri/target/debug/lineae"+(process.platform==="win32"?".exe":""));
+            const command=process.platform==="linux"?"xvfb-run":executable;
+            const args=process.platform==="linux"?["-a",executable]:[];
+            const output=execFileSync(command,[...args,"--lineae-native-workspace-smoke"],{
+              timeout:60000,encoding:"utf8",stdio:["ignore","pipe","inherit"],
+            });
+            if(output)process.stdout.write(output);
+          '
+      - name: Type continuously in the Windows desktop Lua document
+        if: ${{ !inputs.browser_only && runner.os == 'Windows' }}
+        run: node tests/native-desktop-typing.cjs
       - name: Preserve actual protocol, source, logs and clean reference PDF
-        if: always()
+        if: ${{ always() && !inputs.browser_only }}
         uses: actions/upload-artifact@v4
         with:
           name: native-tex-geometry-${{ matrix.target }}-${{ github.sha }}
@@ -150,3 +314,24 @@ jobs:
             !artifacts/native-tex/**/build/
           if-no-files-found: warn
           retention-days: 30
+      - name: Preserve the unbundled Windows input probe
+        if: ${{ runner.os == 'Windows' && inputs.windows_input_probe && !inputs.browser_only }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-windows-input-probe-${{ github.sha }}
+          path: apps/desktop/src-tauri/target/debug/lineae.exe
+          if-no-files-found: error
+          retention-days: 3
+      - name: Preserve the unbundled input probes
+        if: ${{ inputs.desktop_input_probe && !inputs.browser_only }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-input-probe-${{ matrix.target }}-${{ github.sha }}
+          path: apps/desktop/src-tauri/target/debug/${{ runner.os == 'Windows' && 'lineae.exe' || 'lineae' }}
+          if-no-files-found: error
+          retention-days: 3
+      - name: Enforce browser editing results
+        if: ${{ always() && (steps.browser_editing.outcome == 'failure' || steps.recorded_editing.outcome == 'failure') }}
+        run: |
+          echo '::error::The native browser editing gate failed. See its step above.'
+          exit 1

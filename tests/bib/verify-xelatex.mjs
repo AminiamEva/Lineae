@@ -15,10 +15,12 @@
  * Exit codes: 0 verified, 1 mismatch/failure, 2 toolchain unavailable.
  */
 
+import { createToolchain } from './compile/lib/tools.mjs';
 import { spawnSync } from 'node:child_process';
 import {
   copyFileSync,
   existsSync,
+  readdirSync,
   mkdtempSync,
   mkdirSync,
   readFileSync,
@@ -40,88 +42,37 @@ const CASES = [
   { name: 'biblatex', backend: 'biber', directory: join('tests', 'bib', 'xelatex', 'biblatex') },
 ];
 
-/** @param {string} name */
-function resolveTool(name) {
-  const candidates = process.platform === 'win32' ? [`${name}.exe`, name] : [name];
-  // Poppler tools use -v; TeX tools use --version.
-  const versionFlag = name.startsWith('pdf') ? '-v' : '--version';
-  for (const candidate of candidates) {
-    try {
-      const probe = spawnSync(candidate, [versionFlag], { stdio: 'ignore', timeout: 15000 });
-      if (!probe.error && probe.status === 0) return candidate;
-    } catch {
-      // fall through: a sandbox can deny spawning entirely
-    }
-  }
-  return null;
-}
-
-/** @param {string|null} command */
-function version(command) {
-  if (!command) return null;
-  const flag = command.includes('pdf') ? '-v' : '--version';
-  const result = spawnSync(command, [flag], { encoding: 'utf8', timeout: 15000 });
-  return result.status === 0 ? (result.stdout || result.stderr).split(/\r?\n/)[0] : null;
-}
-
-/**
- * @param {string} command
- * @param {string[]} args
- * @param {string} cwd
- * @param {string} logPath
- */
-function run(command, args, cwd, logPath) {
-  const log = readFileSync(logPath, 'utf8');
-  const result = spawnSync(command, args, {
-    cwd,
-    timeout: 180000,
-    stdio: ['ignore', 'inherit', 'inherit'],
-  });
-  writeFileSync(logPath, log + `\n$ ${command} ${args.join(' ')}\nexit=${result.status ?? 'null'}\n`);
-  if (result.error || result.status !== 0) {
-    throw new Error(`${command} ${args.join(' ')} failed (${result.error?.message ?? result.status})`);
-  }
-}
-
 /** @param {string} file */
 function normalize(text) {
   return text.replace(/\r\n/g, '\n').replace(/[ \t]+$/gm, '').trim();
 }
 
-/** @param {string} directory @param {string} backend @param {string} logPath */
-function compile(directory, backend, logPath) {
-  const xelatex = TOOLS.xelatex;
-  run(xelatex, ['-interaction=nonstopmode', '-halt-on-error', 'main.tex'], directory, logPath);
-  if (backend === 'bibtex') run(TOOLS.bibtex, ['main'], directory, logPath);
-  else run(TOOLS.biber, ['main'], directory, logPath);
-  run(xelatex, ['-interaction=nonstopmode', '-halt-on-error', 'main.tex'], directory, logPath);
-  run(xelatex, ['-interaction=nonstopmode', '-halt-on-error', 'main.tex'], directory, logPath);
-}
+const engine = process.argv.find(arg => arg.startsWith('--engine='))?.slice(9) ?? 'xelatex';
+const driver = process.argv.find(arg => arg.startsWith('--driver='))?.slice(9) ?? 'latexmk';
 
-const TOOLS = {
-  xelatex: resolveTool('xelatex'),
-  bibtex: resolveTool('bibtex'),
-  biber: resolveTool('biber'),
-  pdftotext: resolveTool('pdftotext'),
-};
+const toolchain = createToolchain({ engine, driver });
+const TOOLS = toolchain.commands;
+process.on('exit', () => toolchain.cleanup());
 
-if (!TOOLS.xelatex) {
-  console.log('UNVERIFIED: xelatex is not installed or cannot be executed in this environment.');
+if (!TOOLS[engine] || (driver === 'latexmk' && !TOOLS.latexmk)) {
+  console.log('BLOCKED: unavailable compiler or driver: ' + engine + ' / ' + driver);
   console.log('L3 (BibTeX/Biber) and L4 (PDF text) verification were NOT performed.');
   console.log('Install a TeX distribution that provides xelatex, bibtex and biber, then run:');
   console.log('  node tests/bib/verify-xelatex.mjs');
   process.exitCode = 2;
 } else {
-  const work = OUT_DIR ?? mkdtempSync(join(tmpdir(), 'lineae-bib-xelatex-'));
-  if (OUT_DIR) mkdirSync(work, { recursive: true });
+  if (OUT_DIR) mkdirSync(OUT_DIR, { recursive: true });
+  const work = OUT_DIR
+    ? (readdirSync(OUT_DIR).length ? mkdtempSync(join(OUT_DIR, 'run-')) : OUT_DIR)
+    : mkdtempSync(join(tmpdir(), 'lineae-bib-'));
   console.log(`Work directory: ${work}`);
   let failures = 0;
   let skipped = 0;
+  const { versions } = toolchain.versions();
   const report = {
-    tools: Object.fromEntries(Object.entries(TOOLS).map(([name, command]) => [name, {
-      command,
-      version: version(command),
-    }])),
+    engine, driver,
+    tools: Object.fromEntries(Object.entries(TOOLS).map(([name, command]) =>
+      [name, { command, version: versions[name] }])),
     cases: [],
     browserPreview: 'not-run: browser preview has no TeX layout engine',
   };
@@ -130,9 +81,9 @@ if (!TOOLS.xelatex) {
       const backendTool = testCase.backend === 'bibtex' ? TOOLS.bibtex : TOOLS.biber;
       console.log(`\n=== ${testCase.name} (${testCase.backend}) ===`);
       if (!backendTool) {
-        console.log(`UNVERIFIED: ${testCase.backend} is not installed; case skipped.`);
+        console.log(`BLOCKED: ${testCase.backend} is not installed; case skipped.`);
         skipped += 1;
-        report.cases.push({ name: testCase.name, status: 'UNVERIFIED', reason: `${testCase.backend} missing` });
+        report.cases.push({ name: testCase.name, status: 'BLOCKED', reason: `${testCase.backend} missing` });
         continue;
       }
       const refsPath = join(testCase.directory, 'refs.bib');
@@ -145,8 +96,8 @@ if (!TOOLS.xelatex) {
       }
       const original = join(work, `${testCase.name}-original`);
       const round = join(work, `${testCase.name}-roundtrip`);
-      mkdirSync(original, { recursive: true });
-      mkdirSync(round, { recursive: true });
+      mkdirSync(original);
+      mkdirSync(round);
       for (const directory of [original, round]) {
         copyFileSync(join(testCase.directory, 'main.tex'), join(directory, 'main.tex'));
       }
@@ -155,7 +106,7 @@ if (!TOOLS.xelatex) {
       for (const directory of [original, round]) {
         const logPath = join(directory, 'compile.log');
         writeFileSync(logPath, '');
-        compile(directory, testCase.backend, logPath);
+        await toolchain.compileProject(directory, testCase.backend, logPath);
       }
       const bblOriginal = normalize(readFileSync(join(original, 'main.bbl'), 'utf8'));
       const bblRound = normalize(readFileSync(join(round, 'main.bbl'), 'utf8'));
@@ -189,8 +140,9 @@ if (!TOOLS.xelatex) {
         console.log('PASS: .bbl and PDF text are identical.');
         report.cases.push({ name: testCase.name, status: 'PASS', backend: testCase.backend, output: work });
       } else {
-        console.log('PASS: .bbl is identical (pdftotext not installed; PDF text comparison skipped).');
-        report.cases.push({ name: testCase.name, status: 'PASS', backend: testCase.backend, output: work, pdfText: 'skipped' });
+        console.log('BLOCKED: .bbl matches; pdftotext unavailable.');
+        skipped += 1;
+        report.cases.push({ name: testCase.name, status: 'BLOCKED', backend: testCase.backend, output: work, pdfText: 'skipped' });
       }
     }
     if (ACCEPTANCE) {
@@ -207,15 +159,10 @@ if (!TOOLS.xelatex) {
         const logPath = join(directory, 'compile.log');
         writeFileSync(logPath, '');
         try {
-          compile(directory, testCase.backend, logPath);
-          const log = readFileSync(logPath, 'utf8');
+          await toolchain.compileProject(directory, testCase.backend, logPath);
           if (testCase.expectedFailure) {
-            if (!testCase.expectedFailure.test(log)) {
-              failures += 1;
-              report.cases.push({ name: testCase.name, status: 'FAIL', reason: 'expected failure diagnostic not found', output: directory });
-            } else {
-              report.cases.push({ name: testCase.name, status: 'PASS', expected: 'failure', output: directory });
-            }
+            failures += 1;
+            report.cases.push({ name: testCase.name, status: 'FAIL', reason: 'expected a nonzero compiler exit', output: directory });
           } else {
             const pdfText = TOOLS.pdftotext
               ? spawnSync(TOOLS.pdftotext, ['main.pdf', '-'], { cwd: directory, encoding: 'utf8' }).stdout
@@ -229,8 +176,9 @@ if (!TOOLS.xelatex) {
             }
           }
         } catch (error) {
-          const log = readFileSync(logPath, 'utf8');
-          if (testCase.expectedFailure && testCase.expectedFailure.test(log)) {
+          const backendLog = join(directory, 'main.blg');
+          const diagnostic = existsSync(backendLog) ? readFileSync(backendLog, 'utf8') : '';
+          if (testCase.expectedFailure && error.status > 0 && testCase.expectedFailure.test(diagnostic)) {
             report.cases.push({ name: testCase.name, status: 'PASS', expected: 'failure', output: directory });
           } else {
             failures += 1;
@@ -243,16 +191,15 @@ if (!TOOLS.xelatex) {
     console.error(`FAIL: ${error.message}`);
     failures += 1;
   } finally {
-    if (OUT_DIR || KEEP) {
+    if (OUT_DIR || KEEP || failures) {
       writeFileSync(join(work, 'acceptance-report.json'), JSON.stringify(report, null, 2));
       console.log(`Kept work directory: ${work}`);
     }
-    if (!KEEP && !OUT_DIR) rmSync(work, { recursive: true, force: true });
+    if (!failures && !KEEP && !OUT_DIR) rmSync(work, { recursive: true, force: true });
   }
   if (failures > 0) process.exitCode = 1;
-  else if (skipped === CASES.length) process.exitCode = 2;
+  else if (skipped > 0) process.exitCode = 2;
   else {
-    if (skipped > 0) console.log(`\n${skipped} case(s) UNVERIFIED.`);
-    console.log('\nXeLaTeX bibliography verification finished.');
+    console.log(engine + ' bibliography verification finished.');
   }
 }
