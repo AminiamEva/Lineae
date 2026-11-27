@@ -90,6 +90,7 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
   }
   let primaryRequested=engineToggle&&nativeWorkspaceRequested();
   let mountedSplit=null;
+  const richPage=richEditor?.closest('.document-page');
   let richEditing=false,returnToFrame=false,richRefreshTimer=null;
   function showRichEditor(){
     richEditing=true;
@@ -102,12 +103,12 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
     returnToFrame=false;
     document.body.classList.remove('native-tex-rich-edit');
   }
-  if(engineToggle && richEditor){
-    richEditor.addEventListener('focusin',()=>{
+  if(engineToggle && richPage){
+    richPage.addEventListener('focusin',()=>{
       if(active && isDocumentMode())showRichEditor();
     });
-    richEditor.addEventListener('focusout',()=>queueMicrotask(()=>{
-      if(!richEditing || richEditor.contains(document.activeElement) || composing())return;
+    richPage.addEventListener('focusout',()=>queueMicrotask(()=>{
+      if(!richEditing || richPage.contains(document.activeElement) || composing())return;
       returnToFrame=true;
       void refresh();
     }));
@@ -779,7 +780,18 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
     // Changing the preview controls can move the page and its IME anchor.
     if(inputComposition&&!inputComposition.ended)return;
     if(foldsDirty&&nativeEditing&&acceptsInput()&&current()&&observation)refreshFoldView();
-    if(returnToFrame && current() && !richEditor.contains(document.activeElement))leaveRichEditor();
+    if(returnToFrame && current() && !richPage.contains(document.activeElement)){
+      // Preserve the first visible sheet across the two independent scroll containers.
+      const top=panel.getBoundingClientRect().top;
+      const sheets=[...richPage.querySelectorAll('.document-sheet')];
+      const index=sheets.findIndex(sheet=>sheet.getBoundingClientRect().bottom>top);
+      const frame=pages.querySelector('[data-native-page="'+(index+1)+'"],[data-pdf-page="'+(index+1)+'"]');
+      if(frame && index>=0){
+        const sheet=sheets[index].getBoundingClientRect(),box=frame.getBoundingClientRect();
+        if(sheet.height)panel.scrollTop+=box.top-top+(top-sheet.top)*box.height/sheet.height;
+      }
+      leaveRichEditor();
+    }
     exportButton.disabled=!current();
     targetButton.disabled=!acceptsInput()||!current()||!hasGeometry()||targeting===generation;
     editButton.disabled=!current()||!hasGeometry()||!observation;

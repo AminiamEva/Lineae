@@ -161,12 +161,22 @@ const server=createServer(async(req,res)=>{
         await rich.evaluate(el=>el.blur());
         await desktopPage.waitForFunction(()=>!document.body.classList.contains('native-tex-rich-edit'));
         assert.equal(await canvas.isVisible(),true);
+        await rich.evaluate(()=>{
+          const animate=Element.prototype.animate;
+          window.desktopCaretGlides=0;
+          Element.prototype.animate=function(frames,options){
+            if(options?.id==='lineae-caret-glide' && this.matches('.document-caret'))window.desktopCaretGlides++;
+            return animate.call(this,frames,options);
+          };
+        });
         // Replay the same interaction through both desktop engines.
         for(const name of ['lua','xe']){
           if(name==='lua')await canvas.click({position:{x:160,y:190}});
           else {await engine.click();await rich.click();}
           await desktopPage.keyboard.press('End');
-          await desktopPage.keyboard.type('abc');
+          await desktopPage.evaluate(()=>{window.desktopCaretGlides=0;});
+          await desktopPage.keyboard.type('abc',{delay:140});
+          await desktopPage.waitForFunction(()=>window.desktopCaretGlides>0);
           await desktopPage.keyboard.press('Backspace');
           await desktopPage.waitForFunction(()=>document.querySelector('.ProseMirror.has-document-caret'));
           assert.match(await rich.textContent(),/ab$/);

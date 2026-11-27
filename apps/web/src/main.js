@@ -4142,11 +4142,19 @@ nativeTexPreview=installNativeTexPreview({host:footer,before:modes,primary:deskt
   focusRichPage:(page,x,y,clientY)=>{
     const sheet=documentPage.querySelectorAll('.document-sheet')[page-1]??documentPage;
     let rect=sheet.getBoundingClientRect();
-    if(page>1){
+    if(page>1||window.scrollY){
       window.scrollBy(0,rect.top+y*rect.height-clientY);
       rect=sheet.getBoundingClientRect();
     }
-    const hit=editor.view.posAtCoords({left:rect.left+x*rect.width,top:rect.top+y*rect.height});
+    const left=rect.left+x*rect.width,top=rect.top+y*rect.height;
+    const field=document.elementFromPoint(left,top)?.closest('math-field');
+    if(field && paper.contains(field)){
+      field.focus();
+      const position=field.getOffsetFromPoint?.(left,top);
+      if(Number.isInteger(position)&&position>=0)field.position=position;
+      return;
+    }
+    const hit=editor.view.posAtCoords({left,top});
     if(hit)editor.view.dispatch(editor.state.tr.setSelection(Selection.near(editor.state.doc.resolve(hit.pos))).setMeta('addToHistory',false));
     editor.view.focus();
   },
