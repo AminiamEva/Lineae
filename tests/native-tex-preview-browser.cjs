@@ -226,7 +226,7 @@ const server=createServer(async(req,res)=>{
           await cdp.send('Input.imeSetComposition',{text:'han',selectionStart:3,selectionEnd:3});
           await cdp.send('Input.insertText',{text:'汉'});
           await desktopPage.keyboard.type('Z');
-          assert.ok((await rich.textContent()).endsWith('汉Z'));
+          assert.match(await rich.textContent(),/汉Z$/,name+' post-formula composition: '+await rich.innerHTML());
         }
         assert.equal(await desktopPage.evaluate(()=>nativeProbe.source.includes('\\thispagestyle{empty}\\null')),false);
       }finally{

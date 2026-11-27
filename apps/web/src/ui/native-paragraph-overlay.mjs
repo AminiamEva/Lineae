@@ -42,6 +42,26 @@ export function nativeParagraphOverlay(editor, panel, pages) {
     if(next && block!==next){block=next;anchor=null;}
     position();
   }
+  function followCaret(){
+    if(!document.body.classList.contains('native-tex-rich-edit')||!editor.contains(document.activeElement))return;
+    const selection=document.getSelection();
+    if(!selection?.rangeCount||!editor.contains(selection.focusNode))return;
+    const range=selection.getRangeAt(0).cloneRange();
+    range.collapse(selection.focusNode===range.startContainer&&selection.focusOffset===range.startOffset);
+    const caret=range.getBoundingClientRect();
+    if(!caret.height)return;
+    const sheets=[...page.querySelectorAll('.document-sheet')];
+    const y=(caret.top+caret.bottom)/2;
+    const index=sheets.findIndex(sheet=>{
+      const rect=sheet.getBoundingClientRect();return y>=rect.top&&y<=rect.bottom;
+    });
+    if(index>=0 && index+1!==number && pages.querySelector('[data-native-page="'+(index+1)+'"],[data-pdf-page="'+(index+1)+'"]')){
+      number=index+1;anchor=null;position();
+    }
+    const rect=range.getBoundingClientRect(),view=panel.getBoundingClientRect();
+    if(rect.bottom>view.bottom-8)panel.scrollTop+=rect.bottom-view.bottom+8;
+    else if(rect.top<view.top+8)panel.scrollTop+=rect.top-view.top-8;
+  }
   function schedule(){
     if(frame||!document.body.classList.contains('native-tex-rich-edit'))return;
     frame=requestAnimationFrame(()=>{frame=0;update();});
@@ -51,6 +71,7 @@ export function nativeParagraphOverlay(editor, panel, pages) {
   document.addEventListener('selectionchange',schedule);
   page.addEventListener('focusin',schedule);
   page.addEventListener('input',schedule);
+  page.addEventListener('keyup',()=>requestAnimationFrame(followCaret));
   main.addEventListener('pointerdown',event=>{
     if(!block || event.button!==0 || !document.body.classList.contains('native-tex-rich-edit'))return;
     if(block.contains(event.target)&&!block.textContent.trim())return;

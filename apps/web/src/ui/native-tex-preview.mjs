@@ -684,7 +684,7 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
   }
   const pdf=installNativePdf({host:pages,onPaint:revision=>{
     if(!active||mode!=='pdf')return;
-    renderedRevision=revision;pdfRendered=revision;if(!terminal&&revision>=sourceRevision)error='';renderStatus();
+    overlay?.update();renderedRevision=revision;pdfRendered=revision;if(!terminal&&revision>=sourceRevision)error='';renderStatus();
   },onError:failure=>{if(active&&mode==='pdf')fail(failure);}});
   const renderer=installNativePages({host:pages,
     foldLabel:(path,skipped)=>path+' · '+t('已折叠，点击展开','Folded; click to expand')+
@@ -696,7 +696,7 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
       ? stagedRaster(sentSnapshot,file) : null,
     onPaint:revision=>{
       if(!active||mode!=='canvas')return;
-      renderedRevision=revision;if(!terminal&&revision>=sourceRevision)error='';renderStatus();
+      overlay?.update();renderedRevision=revision;if(!terminal&&revision>=sourceRevision)error='';renderStatus();
       syncCaret();
     },
     onError:(failure,revision)=>{if(active&&mode==='canvas')void fallback(failure,revision);},

@@ -137,7 +137,7 @@ export function installNativePages({host,getFont,getTypeOneFont,getRaster,onPain
       }));
     }
     if(!verifiedDrawings.length&&![...fields.values(),...glyphs.values(),...references.values()].some(items=>items.length))return false;
-    ownership={stamp:{...stamp,layoutVersion},fields,glyphs,references,selectionGlyphs,owners,drawings:verifiedDrawings};
+    ownership={stamp:{...stamp,layoutVersion},fields,glyphs,references,selectionGlyphs,formulaParagraphs,owners,drawings:verifiedDrawings};
     return true;
   }
   function locate(canvas,event) {
@@ -542,7 +542,9 @@ export function installNativePages({host,getFont,getTypeOneFont,getRaster,onPain
   host.parentElement?.addEventListener('scroll',redraw,{passive:true});
   window.addEventListener('resize',redraw);
   function blockAnchor(hit){
-    const owner=ownership?.owners.get(hit.owner),group=owner?.paragraph??owner?.formula;
+    const owner=ownership?.owners.get(hit.owner);
+    const parents=ownership?.formulaParagraphs.get(owner?.formula);
+    const group=owner?.paragraph??(parents?.length===1?parents[0]:owner?.formula);
     const glyphs=ownership?.selectionGlyphs.get(group);
     const page=hit.page,entry=pages.get(page);
     if(!entry||!glyphs)return {page};
