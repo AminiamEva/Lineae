@@ -1,6 +1,6 @@
 import {plainTableCells,tableCellRanges} from './native-text/table-cells.mjs';
 import {containerParagraphRanges,plainContainerParagraphs,plainParagraphText} from './native-text/containers.mjs';
-import {paragraphSpelling,mathSpelling} from './source-spelling.mjs';
+import {paragraphSpelling,mathSpelling,proseSpelling} from './source-spelling.mjs';
 import {includeEmptyParagraphs,ownsEditedRange,blockWhitespace,splitEditableBoundaries} from './source-boundaries.mjs';
 import { parseDocument } from '../../latex/document.mjs';
 import { importBlocks, serialize } from './latex-codec.js';
@@ -161,6 +161,10 @@ function standaloneTextChanges(text,projection,snapshot,before,after,index) {
     if(start>=0 && !block.raw.slice(0,start).trim() && !block.raw.slice(start+oldBody.length).trim())
       return minimalChange(oldBody,newBody,block.from+start);
   }
+  if(!block.editable){
+    const changes=typedProseChange(block,previous,next);
+    if(changes)return changes;
+  }
   const updated=nodes.slice();
   updated[sourceIndex]=next;
   const changes=richSourceChanges(base,{...after,content:updated});
@@ -191,7 +195,7 @@ export function standaloneParagraphDraft(text,projection,snapshot,before,after,i
   return {draft,changes,projection:sourceProjection(draft,after)};
 }
 
-export function richSourceChanges(projection, doc) {
+export function richSourceChanges(projection, doc, {editProse=false}={}) {
   if (!projection) return null;
   if (doc.content.length !== projection.count) {
     const before = projection.blocks.flatMap(block => JSON.parse(block.snapshot));
@@ -200,8 +204,11 @@ export function richSourceChanges(projection, doc) {
     while(first<oldEnd && first<newEnd && same(before[first],doc.content[first])) first++;
     while(oldEnd>first && newEnd>first && same(before[oldEnd-1],doc.content[newEnd-1])) {oldEnd--;newEnd--;}
     const block=projection.blocks.find(block=>ownsEditedRange(block,first,oldEnd));
-    if (!block) return oldEnd>=first+2&&newEnd===first+1
-      ?plainParagraphJoin(projection,before.slice(first,oldEnd),doc.content[first],first):null;
+    if (!block) {
+      if(oldEnd>=first+2 && newEnd===first+1)return plainParagraphJoin(projection,before.slice(first,oldEnd),doc.content[first],first);
+      const owner=oldEnd===first+1 && projection.blocks.find(b=>b.index===first && b.count===1);
+      return owner?paragraphSplitChange(projection,owner,before[first],doc.content.slice(first,newEnd)):null;
+    }
     const nodes=doc.content.slice(block.index,block.index+block.count+doc.content.length-before.length);
     const split=paragraphSplitChange(projection,block,before[block.index],nodes);
     if(split)return split;
@@ -211,13 +218,30 @@ export function richSourceChanges(projection, doc) {
   for (const block of projection.blocks) {
     const nodes = doc.content.slice(block.index, block.index + block.count);
     if (JSON.stringify(nodes) === block.snapshot) continue;
-    const patch = patchPlainTabular(block,nodes) ?? (block.editable ? patchBlock(block,nodes) :
+    const typed=editProse && !block.editable && nodes.length===1
+      ?typedProseChange(block,JSON.parse(block.snapshot)[0],nodes[0]):null;
+    const patch = typed ?? patchPlainTabular(block,nodes) ?? (block.editable ? patchBlock(block,nodes) :
       inlineMathChanges(block,nodes)??markedInlineProseChanges(block,nodes)??plainTableChanges(block,nodes)??tikzFigureChanges(block,nodes)??
       theoremParagraphChanges(block,nodes)??containerProseChanges(block,nodes)??patchIsolatedTables(block,nodes));
     if (!patch) return null;
     changes.push(...patch);
   }
   return changes;
+}
+
+function typedProseChange(block,before,after) {
+  if(block.count!==1 || before?.type!=='paragraph' || after?.type!=='paragraph' ||
+    JSON.stringify(before.attrs)!==JSON.stringify(after.attrs) || !before.content?.length ||
+    before.content.length!==after.content?.length)return null;
+  let changed=0;
+  for(const [index,old] of before.content.entries()){
+    const next=after.content[index];
+    if(old.type!=='text' || next.type!=='text' || JSON.stringify(old.marks)!==JSON.stringify(next.marks))return null;
+    if(old.text!==next.text)changed++;
+  }
+  if(changed!==1)return null;
+  const spelling=proseSpelling(block.raw,serialize(before).slice(0,-2));
+  return spelling?patchSpelling(block,serialize(after).slice(0,-2),spelling):null;
 }
 
 // Enter is an authored separator. A TeX import discards horizontal space at
@@ -240,14 +264,17 @@ function paragraphSplitChange(projection,block,original,parts) {
     projection.text.match(/\r?\n/)?.[0]??'\n';
   let replacement=parts.map(node=>serialize(node).slice(0,-2)).join(eol+eol);
   const spelling=block.spelling;
-  if(spelling?.unicode && spelling.canonicalBody===previous)return patchUnicodeSpelling(block,replacement);
+  if(spelling?.unicode && spelling.canonicalBody===previous)return patchSpelling(block,replacement,spelling);
   if(spelling?.canonical && previous.startsWith(spelling.canonical) && replacement.startsWith(spelling.canonical)){
     previous=spelling.original+previous.slice(spelling.canonical.length);
     replacement=spelling.original+replacement.slice(spelling.canonical.length);
   }
   const at=block.raw.indexOf(previous);
-  if(at<0 || block.raw.slice(0,at).trim() || block.raw.slice(at+previous.length).trim())return null;
-  return minimalChange(previous,replacement,block.from+at);
+  if(at>=0 && !block.raw.slice(0,at).trim() && !block.raw.slice(at+previous.length).trim())
+    return minimalChange(previous,replacement,block.from+at);
+  if(!original.content?.every(child=>child.type==='text'))return null;
+  const mapped=proseSpelling(block.raw,previous);
+  return mapped?patchSpelling(block,replacement,mapped,true):null;
 }
 
 // Imported tabular rows may have extra space before their terminators.
@@ -555,15 +582,25 @@ function patchIsolatedTables(block,nodes) {
   return changes;
 }
 
-function patchUnicodeSpelling(block,body){
-  const {canonicalBody:old,map,start}=block.spelling;
+function patchSpelling(block,body,spelling,split=false){
+  const {canonicalBody:old,map,start,comments=[],italic=[]}=spelling;
   const [patch]=minimalChange(old,body,0);
   let {from,to}=patch;
   while(from>0 && map[start+from]===null)from--;
   while(to<old.length && map[start+to]===null)to++;
-  const a=map[start+from],b=map[start+to];
+  const trailing=from===to && comments.find(c=>c.offset===start+from && !/[\r\n]$/.test(block.raw.slice(c.from,c.to)));
+  // When the source block ends inside a comment, appending after it would
+  // comment out the newly typed text. Keep that insertion on its left edge.
+  const a=trailing?trailing.from:map[start+from];
+  const b=from===to?a:comments.find(c=>c.offset===start+to)?.from??map[start+to];
   if(!Number.isInteger(a)||!Number.isInteger(b))return null;
-  return [{from:block.from+a,to:block.from+b,insert:old.slice(from,patch.from)+patch.insert+old.slice(patch.to,to)}];
+  if(comments.some(c=>a<c.to && b>c.from))return null;
+  let insert=patch.insert;
+  if(split && insert.includes('\\textit{')){
+    const mark=italic.findLast(m=>m.from<=a && a<=m.to);
+    if(mark)insert=insert.replaceAll('\\textit{',mark.command+'{');
+  }
+  return [{from:block.from+a,to:block.from+b,insert:old.slice(from,patch.from)+insert+old.slice(patch.to,to)}];
 }
 
 function patchBlock(block,nodes) {
@@ -583,7 +620,7 @@ function patchBlock(block,nodes) {
     if(nodes.some(unsafe))return null;
     if(block.spelling?.unicode){
       if(nodes.length!==1||nodes[0].type!=='paragraph')return null;
-      return patchUnicodeSpelling(block,serialize(nodes[0]).slice(0,-2));
+      return patchSpelling(block,serialize(nodes[0]).slice(0,-2),block.spelling);
     }
     let [leading,trailing] = block.emptyPrefix!==undefined&&!block.raw.trim()?[block.emptyPrefix,block.emptySuffix??'']:blockWhitespace(block.raw);
     const body = nodes.map(serialize).join('').trim();

@@ -44,8 +44,13 @@ const server=createServer(async(req,res)=>{
   await page.locator('#project-close').click();await revealToolbar(page);await page.locator('[data-group=files]').click();await page.locator('#project-open').click();await append(' Reopened');
   for(const width of [1440,900,600]){
    await page.setViewportSize({width,height:900});await revealToolbar(page);
-   const boxes=await page.evaluate(()=>{const a=document.querySelector('.floating-toolbar>.ribbon').getBoundingClientRect(),b=document.querySelector('#toolbar-collapse').getBoundingClientRect();return {gap:b.left-a.right,right:b.right,width:innerWidth};});
-   assert.ok(boxes.gap>=0,'Collapse control is beside the ribbon, without overlap');assert.ok(boxes.right<=boxes.width,'Collapse control stays inside viewport');
+   const boxes=await page.evaluate(()=>{
+     const row=document.querySelector('.ribbon-tab-row'),button=row.querySelector('#toolbar-collapse').getBoundingClientRect();
+     const tabs=[...row.children].filter(el=>el.id!=='toolbar-collapse' && !el.hidden);
+     return {gap:button.left-Math.max(...tabs.map(el=>el.getBoundingClientRect().right)),right:button.right,width:innerWidth};
+   });
+   assert.ok(boxes.gap>=0,'Collapse control sits beside the tabs and scroll arrows without overlap');
+   assert.ok(boxes.right<=boxes.width,'Collapse control stays inside viewport');
   }
   assert.deepEqual(errors,[]);console.log('PASS: visible project tree, imported CJK body edits, exact source spelling/CRLF, file switching, Source return, save/reopen, visible code selection and adjacent toolbar control');
  }finally{await browser.close();server.close();}

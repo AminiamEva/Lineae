@@ -7,6 +7,9 @@ import {completePageDeltas} from '../apps/web/src/typesetting/rtex/page-deltas.m
 import {changedTextblocks} from '../apps/web/src/editor/changed-textblocks.mjs';
 import {EditorState} from '@tiptap/pm/state';
 import {sourceProjection,requiresSourceProjection,standaloneParagraphDraft} from '../apps/web/src/editor/source-sync.js';
+import {importBlocks} from '../apps/web/src/editor/latex-codec.js';
+import {parseDocument} from '../apps/web/latex/document.mjs';
+import {projectDocumentEdits} from '../apps/web/src/project/include-document.mjs';
 
 const schema=new Schema({nodes:{doc:{content:'paragraph+'},paragraph:{content:'text*'},text:{}}});
 const p=text=>schema.nodes.paragraph.create(null,text?schema.text(text):null);
@@ -102,6 +105,68 @@ test('splitting a paragraph preserves the original Unicode spelling on both side
       before=saved=after;projection=result.projection;source=result.draft;
     }
   }
+});
+
+test('splitting text across original TeX line breaks, comments and emphasis preserves source bytes',()=>{
+  const wrap=body=>'\\begin{document}\r\n'+body+'\r\n\r\nneighbor\r\n\\end{document}\r\n';
+  const prose=new Schema({nodes:schema.spec.nodes,marks:{italic:{}}});
+  const read=body=>prose.nodeFromJSON({type:'doc',content:parseDocument(wrap(body)).blocks.flatMap(importBlocks)}).toJSON();
+  for(const [body,run,cut,expected] of [
+    ['alpha beta\r\n  gamma delta',0,5,'alpha\r\n\r\nX中Y beta\r\n  gamma delta'],
+    ['甲乙\r\n丙丁',0,1,'甲\r\n\r\nX中Y乙\r\n丙丁'],
+    ['alpha% keep this\r\nbeta gamma',0,5,'alpha% keep this\r\n\r\n\r\nX中Ybeta gamma'],
+    ['alpha \\emph{two words} end',0,5,'alpha\r\n\r\nX中Y \\emph{two words} end'],
+    ['alpha \\emph{two words} end',1,3,'alpha \\emph{two}\r\n\r\n\\emph{X中Y words} end'],
+    ['alpha \\% beta\r\ngamma \\textsl{AB} end',1,1,'alpha \\% beta\r\ngamma \\textsl{A}\r\n\r\n\\textsl{X中YB} end'],
+  ]){
+    const saved=read(body),original=saved.content[0],leaf=original.content[run];
+    const left={...original,content:[...original.content.slice(0,run),{...leaf,text:leaf.text.slice(0,cut)}]};
+    const right={...original,content:[{...leaf,text:leaf.text.slice(cut)},...original.content.slice(run+1)]};
+    let source=wrap(body),before={...saved,content:[left,right,...saved.content.slice(1)]};
+    let snapshot=JSON.stringify(saved),projection=sourceProjection(source,saved);
+    for(const key of ['X','中','Y']){
+      const after=structuredClone(before);
+      const first=after.content[1].content[0];
+      const at=first.text.indexOf(leaf.text.slice(cut));
+      first.text=first.text.slice(0,at)+key+first.text.slice(at);
+      const result=standaloneParagraphDraft(source,projection,snapshot,before,after,1);
+      assert.ok(result,'Lost '+key+' after splitting '+body);
+      source=result.draft;projection=result.projection;snapshot=JSON.stringify(after);before=after;
+    }
+    assert.equal(source,wrap(expected));
+  }
+});
+
+test('an edit next to an end-of-line comment remains visible and cannot erase the comment',()=>{
+  const saved=schema.nodes.doc.create(null,[p('alpha'),p('tail')]).toJSON();
+  const source='\\begin{document}\r\nalpha% keep verbatim\r\n\r\ntail\r\n\\end{document}\r\n';
+  const typed=schema.nodes.doc.create(null,[p('alphaZ'),p('tail')]).toJSON();
+  const result=standaloneParagraphDraft(source,sourceProjection(source,saved),JSON.stringify(saved),saved,typed,0);
+  assert.equal(result?.draft,source.replace('alpha%','alphaZ%'));
+  const joined=schema.nodes.doc.create(null,[p('alphaomega'),p('tail')]).toJSON();
+  const separated=source.replace('verbatim','verbatim\r\nomega');
+  assert.equal(standaloneParagraphDraft(separated,sourceProjection(separated,joined),
+    JSON.stringify(joined),joined,typed,0)?.draft,separated.replace('omega','Z'));
+  const overwritten=schema.nodes.doc.create(null,[p('aZ'),p('tail')]).toJSON();
+  assert.equal(standaloneParagraphDraft(separated,sourceProjection(separated,joined),
+    JSON.stringify(joined),joined,overwritten,0),null);
+});
+
+test('typing after a split in an included file updates just its original source span',()=>{
+  const main='\\input{child}\n', prefix='% preserved\n', raw='alpha beta\r\n  gamma';
+  const saved=schema.nodes.doc.create(null,[p('alpha beta gamma')]).toJSON();
+  const split=schema.nodes.doc.create(null,[p('alpha'),p(' beta gamma')]).toJSON();
+  const typed=schema.nodes.doc.create(null,[p('alpha'),p('X beta gamma')]).toJSON();
+  const region={key:'child:0',id:'child',from:prefix.length};
+  function apply(body,before,after){
+    const composition={regions:[{...region,projection:sourceProjection(body,before,{fragment:true})}],
+      sources:new Map([['main',main],['child',prefix+body]])};
+    return projectDocumentEdits(composition,{content:[{type:'projectRegion',attrs:{regionKey:region.key},content:after.content}]});
+  }
+  const first=apply(raw,saved,split);
+  assert.deepEqual([...first],[['child',prefix+'alpha\r\n\r\n beta\r\n  gamma']]);
+  const second=apply(first.get('child').slice(prefix.length),split,typed);
+  assert.deepEqual([...second],[['child',prefix+'alpha\r\n\r\nX beta\r\n  gamma']]);
 });
 
 test('a CJK soft wrap has two physical caret stops for the same model offset',()=>{

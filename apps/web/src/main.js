@@ -1376,7 +1376,7 @@ editor.registerPlugin(new Plugin({
       }
       return refuseStandaloneWriteback();
     }
-    const changes = !syncPending && richSourceChanges(projection,transaction.doc.toJSON());
+    const changes = !syncPending && richSourceChanges(projection,transaction.doc.toJSON(),{editProse:true});
     if (!changes) {
       sourceView.error(t('该修改无法无损回写，请在源码中编辑；原文已保留','This edit cannot round-trip safely. Edit the source; original text is preserved.'));
       return false;
@@ -1454,7 +1454,7 @@ editor.on('update', ({transaction}) => {
   }
   const mathChanges=standaloneMathChanges(projection,editor.getJSON());
   if(!mathChanges?.length&&!usesSourceProjection())return;
-  const changes = mathChanges?.length?mathChanges:richSourceChanges(projection,editor.getJSON());
+  const changes = mathChanges?.length?mathChanges:richSourceChanges(projection,editor.getJSON(),{editProse:true});
   if (!changes?.length) return;
   sourceView.applyChanges(changes);
   importedSource = sourceView.value;

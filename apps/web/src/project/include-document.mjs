@@ -79,7 +79,7 @@ export function projectDocumentEdits(composition, doc) {
   for (const [index, region] of composition.regions.entries()) {
     const node = doc.content[index];
     if (node.type !== 'projectRegion' || node.attrs?.regionKey !== region.key) return null;
-    const changes = richSourceChanges(region.projection,{type:'doc',content:node.content ?? []});
+    const changes = richSourceChanges(region.projection,{type:'doc',content:node.content ?? []},{editProse:true});
     if(!changes)return null;
     const owned = changesByFile.get(region.id) ?? [];
     owned.push(...changes.map(change => ({...change,from:region.from + change.from,to:region.from + change.to})));

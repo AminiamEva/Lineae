@@ -2704,12 +2704,13 @@ A & B \\
     await page.waitForFunction(()=>!document.querySelector('math-field')?._mathfield?.focusBlurInProgress);
     // Transfer focus to a real control. Calling MathLive.blur() directly can
     // race its queued native focus restoration before a different element owns it.
-    await page.locator('#settings-open').focus();
-    await page.waitForFunction(()=>document.activeElement?.id==='settings-open');
+    await page.locator('#settings-open').click();
+    await page.waitForFunction(()=>document.activeElement?.closest('dialog[open]')?.contains(document.querySelector('#settings-close')));
     await page.waitForFunction(()=>!document.querySelector('math-field')?.hasAttribute('data-lineae-editing'));
     const blurredBackground=await operandMark.evaluate(el=>getComputedStyle(el).backgroundColor);
     assert.ok(blurredBackground===''||blurredBackground==='rgba(0, 0, 0, 0)',
       'The operand highlight clears when editing ends: '+blurredBackground);
+    await page.locator('#settings-close').click();
     await importSource('\\[\\frac{\\placeholder{}}{\\placeholder{}}\\]');
     const slotField=paper.locator('math-field').first();
     await slotField.evaluate(field=>{field.focus();field.position=0;});

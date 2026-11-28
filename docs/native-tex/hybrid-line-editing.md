@@ -4,7 +4,7 @@ ProseMirror owns input, composition, selection and history for the lifetime of a
 
 | Path reviewed | Behavior at the boundary | Regression evidence |
 | --- | --- | --- |
-| Document transaction → TeX source | Splitting an imported paragraph preserves its two pieces, original spaces, Unicode spelling and surrounding source bytes. Subsequent keys can edit either piece. | `tests/native-paragraph-geometry.test.mjs`, `tests/native-hybrid-baseline-browser.cjs --app` |
+| Document transaction → TeX source | Splitting an imported paragraph preserves its two pieces, physical line breaks, spaces, comments, emphasis commands and Unicode spelling. Subsequent keys can edit either piece. | `tests/native-paragraph-geometry.test.mjs`, `tests/native-hybrid-baseline-browser.cjs --app` |
 | Text layout → editable DOM | Editing invalidates break and justification decorations on every changed text block. A soft wrap can have two physical caret stops at one document offset. | `tests/native-paragraph-geometry.test.mjs`, `tests/native-hybrid-baseline-browser.cjs` |
 | Composition → committed text | The focused DOM node stays mounted. Placement uses the browser's measured font baseline, the native text column, paragraph indentation and the current zoom. | `tests/native-hybrid-typing-webview.cjs` |
 | Split or blur → pending page | The completed lines retain their measured word and glyph positions on each sheet. Obsolete glyphs are masked until that sheet has painted the matching revision. | `tests/native-hybrid-baseline-browser.cjs` compares per-character rectangles and deliberately stalls the host |

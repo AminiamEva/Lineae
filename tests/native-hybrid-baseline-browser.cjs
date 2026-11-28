@@ -310,6 +310,24 @@ async function testDesktopDocument(browser, origin, initial) {
     await page.waitForFunction(()=>document.querySelector('main.native-ink-confirmed') &&
       document.querySelector('.document-page .ProseMirror').editor.state.doc.textContent.includes('X中Y beta'),null,{timeout:60000});
     assert.equal(liveSource,beforeUndo,'Redo must recover the same split paragraph and exact TeX bytes');
+    const wrapped='alpha beta\r\n  gamma \\emph{two words} end';
+    const file=['\\documentclass{article}','\\usepackage[fontset=fandol]{ctex}','\\begin{document}',
+      wrapped,'','neighbor','\\end{document}',''].join('\r\n');
+    const oldRevision=revision;
+    await page.locator('input#file').setInputFiles({name:'wrapped.tex',mimeType:'text/plain',buffer:Buffer.from(file)});
+    await page.waitForFunction(old=>document.querySelector('#native-tex-preview')?.dataset.state==='current' &&
+      Number(document.querySelector('[data-native-page]')?.dataset.paintRevision)>old,oldRevision,{timeout:60000});
+    const word=await paperPoint(wrapped);
+    await page.mouse.click(word.x,word.y);
+    await page.keyboard.press('Home');
+    for(let i=0;i<5;i++)await page.keyboard.press('ArrowRight');
+    assert.equal(await doc.evaluate(el=>el.editor.state.selection.$head.parentOffset),5);
+    await page.keyboard.press('Enter');await page.keyboard.type('X');
+    await cdp.send('Input.imeSetComposition',{text:'zhong',selectionStart:5,selectionEnd:5});
+    await cdp.send('Input.insertText',{text:'中'});await page.keyboard.type('Y');
+    await page.waitForFunction(()=>document.querySelector('main.native-ink-confirmed') &&
+      document.querySelector('.ProseMirror').editor.state.selection.$head.parent.textContent==='X中Y beta gamma two words end',null,{timeout:60000});
+    assert.equal(liveSource,file.replace('alpha beta','alpha\r\n\r\nX中Y beta'),'Physical source lines and original emphasis survive a typed split');
     assert.deepEqual(errors,[]);
     console.log('PASS: shipped Lua document, repeated Enter, caret X/Y, CJK preedit/commit, and split-prefix ink through a delayed native frame');
   }catch(error){
