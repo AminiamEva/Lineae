@@ -69,6 +69,11 @@ window.addEventListener('load', async () => {
     const words=(await page.getTextContent()).items.map(item=>item.str??'').join(' ');
     if(!words.includes('Offline LuaLaTeX PDF preview'))throw new Error('packaged PDF worker/font preview failed');
     await task.destroy();canvas.remove();
+    const desktopWindow = window.__TAURI__.window.getCurrentWindow();
+    await window.lineaeDesktop.setTitle('smoke.tex', true);
+    if (await desktopWindow.title() !== 'Lineae - smoke.tex*') throw new Error('dirty window title not applied');
+    await window.lineaeDesktop.setTitle('smoke.tex', false);
+    if (await desktopWindow.title() !== 'Lineae - smoke.tex') throw new Error('saved window title not applied');
     document.title = 'Lineae smoke: ok';
   } catch (error) {
     document.title = 'Lineae smoke: ' + error.message;

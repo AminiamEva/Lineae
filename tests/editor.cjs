@@ -2357,6 +2357,19 @@ A & B \\
         assert.equal(layout.height,ribbonHeight,'Switching tabs preserves the ribbon height');
       }
     }
+    const chrome=await page.evaluate(()=>{
+      const modes=document.querySelector('.tex-modes').getBoundingClientRect();
+      return {
+        collapseInside:Boolean(document.querySelector('.ribbon #toolbar-collapse')),
+        modesFit:modes.left>=0&&modes.right<=innerWidth,
+        environmentClipped:getComputedStyle(document.querySelector('.environment-tag')).clipPath,
+      };
+    });
+    assert.deepEqual(chrome,{collapseInside:true,modesFit:true,environmentClipped:'inset(50%)'});
+    await page.locator('[data-group=headerFooter]').click();
+    await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
+    assert.equal(await page.evaluate(()=>Boolean(document.activeElement.closest('.hf-cell'))),false,
+      'Opening Header/Footer leaves header and footer fields unfocused');
     const layoutFrames=await page.evaluate(async()=>{
       document.querySelector('[data-group="layout"]').click();
       const positions=()=>[...document.querySelectorAll('#layout-panel > .ribbon-group')].map(group=>{

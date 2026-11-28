@@ -1174,7 +1174,7 @@ const sourceView = createSourceWorkspace({
     } finally { syncApplying = false; }
   },
   onPreviewZoom: value => setZoom(value),
-  onChange: () => { syncPending = true; scheduleEngine(); projectExplorer?.changed(); nativeTexPreview?.refresh(); },
+  onChange: () => { syncPending = true; scheduleEngine(); projectExplorer?.changed(); nativeTexPreview?.refresh(); scheduleDesktopTitle(); },
   onLayout: () => {updateSourceButton();nativeTexPreview?.documentModeChanged?.();},
   metadata: () => ({name: filename, saved: savedSource}),
 });
@@ -1718,6 +1718,28 @@ function updatePageSetup(patch){
 let filename='lineae.tex';
 let fileHandle=null;
 let savedSource='';
+let hasSavedFile=false;
+let desktopTitleTimer;
+let sentDesktopTitle;
+function scheduleDesktopTitle(){
+  const desktop=window.lineaeDesktop;
+  if(!desktop)return;
+  clearTimeout(desktopTitleTimer);
+  desktopTitleTimer=setTimeout(()=>{
+    const project=projectExplorer?.model;
+    const name=(project?.file(project.activeFileId)?.path??filename).split(/[\\\\/]/).at(-1);
+    const dirty=project
+      ? [...project.files.values()].some(file=>file.dirty)
+      : !hasSavedFile||(sourceView.hidden?source():sourceView.value)!==savedSource;
+    if(sentDesktopTitle?.name===name&&sentDesktopTitle.dirty===dirty)return;
+    const requested={name,dirty};
+    sentDesktopTitle=requested;
+    desktop.setTitle(name,dirty).catch(error=>{
+      if(sentDesktopTitle===requested)sentDesktopTitle=null;
+      console.error(error);
+    });
+  },120);
+}
 let documentGeneration=0;
 let importedSource=null;
 let importedSnapshot=null;
@@ -1934,7 +1956,7 @@ function load(text, markSaved = true) {
   } finally { syncApplying = wasApplying; }
 }
 let returnedDraft, sourceModeDoc, sourceModeComposition;
-function setSourceMode(active) {
+function setSourceMode(active,{focus=true}={}) {
   if (!active && projectFileKind==='bib') {sourceView.error(t('BibTeX 文件只能使用源码模式','BibTeX files use Source mode'));return;}
   if (editor.view.composing || sourceView.composing) { sourceView.error(t("请先完成当前输入。","Finish the current composition before switching modes.")); return; }
   if (active === !sourceView.hidden) return;
@@ -1976,7 +1998,7 @@ syncUndoButtons();
         refreshReferences(paper);syncTableAttributes();documentOutline.relocalize();syncUndoButtons();
       }
       showProjectComposition();
-      editor.commands.focus(undefined,{scrollIntoView:false});
+      if(focus)editor.commands.focus(undefined,{scrollIntoView:false});
     } catch (error) {
       sourceView.error(error.message);
       return;
@@ -2099,8 +2121,9 @@ async function writeDocument(snapshot,saveAs) {
       if(!snapshot.isCurrentDocument())return;
       standaloneKey=key;persistStandaloneChoice();
     }
-    savedSource=snapshot.text;
+    savedSource=snapshot.text;hasSavedFile=true;
     snapshot.commit();
+    scheduleDesktopTitle();
     sourceView.refresh();
     status.hidden=false;status.textContent=t('已保存','Saved');
     return;
@@ -2121,17 +2144,23 @@ async function openStandalone(file,handle) {
   const text=new TextDecoder('utf-8',{fatal:true,ignoreBOM:true}).decode(bytes);
   const key=await engineStorageKey(file.name,bytes,handle).catch(()=>null);
   load(text);
-  fileHandle=handle;filename=file.name;standaloneKey=key;preferenceError=key?'':t('文档偏好无法保存','Document preference cannot be saved');
+  fileHandle=handle;filename=file.name;hasSavedFile=true;standaloneKey=key;preferenceError=key?'':t('文档偏好无法保存','Document preference cannot be saved');
   let stored;
   try {stored=localStorage.getItem(key);} catch {preferenceError=t('无法读取文档设置','Document settings unavailable');}
   standaloneChoice=['xelatex','lualatex'].includes(stored)?stored:'auto';
-  sourceView.refresh();scheduleEngine();
+  sourceView.refresh();scheduleEngine();scheduleDesktopTitle();
+}
+function approveDesktopReplacement() {
+  if (editor.view.composing || sourceView.composing) return false;
+  if (projectExplorer?.active) return projectExplorer.close();
+  return (sourceView.hidden?source():sourceView.value)===savedSource ||
+    confirm(t('放弃当前文档的未保存修改？','Discard unsaved changes in the current document?'));
 }
 async function openDocument() {
-  if (projectExplorer?.active && !projectExplorer.close()) return true;
   try {
     const [handle]=await window.showOpenFilePicker({types:[{description:'LaTeX',accept:{'text/plain':['.tex']}}],multiple:false});
     const file=await handle.getFile();
+    if (window.lineaeDesktop ? !approveDesktopReplacement() : projectExplorer?.active&&!projectExplorer.close()) return true;
     await openStandalone(file,handle);
     return true;
   } catch(error) {
@@ -2694,6 +2723,7 @@ document.addEventListener('keydown', event => {
 }, true);
 
 const footer=document.createElement('footer');footer.className='document-status';
+const statusItems=document.createElement('div');statusItems.className='document-status-items';
 const count=document.createElement('span');
 const zoom=document.createElement('input');zoom.type='range';zoom.min='50';zoom.max='300';zoom.value='100';
 const percent=document.createElement('output');
@@ -3314,8 +3344,9 @@ function updateEnvironment() {
   environment.textContent=[labels[name],...context].join(' › ');
   environment.dataset.environment=name;
 }
-footer.append(count,document.querySelector('#status'),precisionStatus,environment,zoom,percent,paginationButton,themeButton,modes);document.body.append(footer);sourceView.mountStatus(footer);scale();updatePaginationButton();
-const shortcutPriority=installShortcutPriority({host:footer,before:modes,getBindings:()=>config.bindings});
+statusItems.append(count,document.querySelector('#status'),precisionStatus,environment,zoom,percent,paginationButton,themeButton);
+footer.append(statusItems,modes);document.body.append(footer);sourceView.mountStatus(statusItems);scale();updatePaginationButton();
+const shortcutPriority=installShortcutPriority({host:statusItems,before:null,getBindings:()=>config.bindings});
 function nativeProsePosition(paragraph,from,to){
   if(!sourceView.hidden||!paragraph?.parts)return null;
   const project=projectExplorer?.model,composition=projectDocument.composition;
@@ -4169,7 +4200,7 @@ function newNativeMath(text,display,numbering){
   const node=editor.schema.nodes[display?'mathBlock':'math'].create({latex:text,display,delimiter});
   return {node,open,close,initial:empty?.from16??operator?.to16??text.length};
 }
-nativeTexPreview=installNativeTexPreview({host:footer,before:modes,primary:desktopEngineToggle()||nativeWorkspaceRequested(),documentZoom:Number(zoom.value),
+nativeTexPreview=installNativeTexPreview({host:statusItems,before:null,primary:desktopEngineToggle()||nativeWorkspaceRequested(),documentZoom:Number(zoom.value),
   richEditor:editor.view.dom,
   focusRichOffset:(element,offset)=>{
     if(!editor.view.dom.contains(element))return false;
@@ -5084,7 +5115,7 @@ installProjectNavigation({outline:documentOutline.panel,paper,sourceView,editor,
 const projectWorkspace=new ProjectWorkspaceState();
 let standaloneSession;
 projectExplorer = installProjectExplorer({footer, filePanel:document.querySelector('header .tools'), sessions:{
-  engineChanged:scheduleEngine,
+  engineChanged:()=>{scheduleEngine();scheduleDesktopTitle();},
   prepareSave:prepareExplicitSave,
   outline:documentOutline,preferences:()=>config.value,
   sidebarChanged:(key,open)=>config.updateInterface({sidebar:{[key]:open}}),
@@ -5112,7 +5143,7 @@ projectExplorer = installProjectExplorer({footer, filePanel:document.querySelect
     nativeTexPreview?.documentChanged();
     projectWorkspace.select('body');
     if (!standaloneSession) standaloneSession = {
-      text:sourceView.hidden?source():sourceView.value, filename, fileHandle, savedSource,
+      text:sourceView.hidden?source():sourceView.value, filename, fileHandle, savedSource, hasSavedFile,
       sourceVisible:!sourceView.hidden, sourceSession:sourceView.captureSession(), split:sourceView.split,
       richState:editor.state,modeHistory:copyModeHistory(sourceModeEntry,sourceModeCommits,sourceModeRedos),
     };
@@ -5161,7 +5192,7 @@ projectExplorer = installProjectExplorer({footer, filePanel:document.querySelect
     projectWorkspace.select('body');
     if (standaloneSession) {
       const previous = standaloneSession; standaloneSession = null;
-      filename = previous.filename; fileHandle = previous.fileHandle;
+      filename = previous.filename; fileHandle = previous.fileHandle; hasSavedFile = previous.hasSavedFile;
       // The standalone workspace is suspended while a project is open. Restore
       // its immutable editor states, including undo and selection, rather than
       // treating the same draft as a newly imported document.
@@ -5189,6 +5220,7 @@ projectExplorer = installProjectExplorer({footer, filePanel:document.querySelect
 }});
 projectPresentation=installProjectPresentation({editor,page:documentPage,getProject:()=>projectExplorer.model,openMain:()=>projectExplorer.openFile(projectExplorer.model.mainFileId),getComposition:()=>projectDocument.composition,requestLayout:()=>typesetPagination?.refresh(),ensureDocument:()=>{if(!sourceView.hidden)setSourceMode(false);showProjectComposition();}});
 editor.on('transaction',updateEnvironment);
+editor.on('update',scheduleDesktopTitle);
 document.addEventListener('focusin',updateEnvironment);paper.addEventListener('input',updateEnvironment);
 paper.addEventListener('selection-change',updateEnvironment,true);
 paper.addEventListener('lineae-math-position',updateEnvironment);
@@ -5796,7 +5828,7 @@ let subfigurePanel=null;
 subfigurePanel=installSubfigurePanel({onUpdate:patch=>updateSelectedSubfigureAttrs(patch),onUngroup:ungroupSelectedImages});
 groups.subfigure=subfigurePanel.panel;
 imagePanel.setSpacing(readImageSpacing(documentParts.start));
-const captions={files:['文件','File'],home:['主页','Home'],insert:['插入','Insert'],layout:['布局','Layout'],table:['表格','Table'],format:['格式','Format'],reference:['引用','Reference'],math:['数学','Math'],headerFooter:['页眉页脚','Header & Footer'],image:['图片','Image'],subfigure:['子图','Subfigure']};
+const captions={files:['文件','File'],home:['主页','Home'],insert:['插入','Insert'],layout:['布局','Layout'],table:['表格','Table'],format:['格式','Format'],reference:['引用','Reference'],math:['数学','Math'],headerFooter:['页眉页脚','Header/Footer'],image:['图片','Image'],subfigure:['子图','Subfigure']};
 const language=document.querySelector('#language');
 const fontFamilyControl=home.querySelector('[data-format-attribute="fontFamily"]');
 const fontSizeControl=home.querySelector('[data-format-attribute="fontSize"]');
@@ -6087,7 +6119,6 @@ function updateLanguage() {
 let headerFooterMode=false;
 function setHeaderFooterMode(active){
   if(active===headerFooterMode)return;
-  if(active && !sourceView.hidden)setSourceMode(false);
   headerFooterMode=active;
   documentPage.classList.toggle('header-footer-mode',active);
   editor.setEditable(!active);
@@ -6099,6 +6130,10 @@ function setHeaderFooterMode(active){
   }
 }
 function selectGroup(name) {
+  if(name==='headerFooter'&&!sourceView.hidden){
+    setSourceMode(false,{focus:false});
+    if(!sourceView.hidden)return;
+  }
   ribbon.dataset.ribbonPage=name;
   for(const [key,panel] of Object.entries(groups)) panel.hidden=key!==name;
   for(const tab of tabs.children)tab.setAttribute('aria-pressed',String(tab.dataset.group===name));
@@ -6289,7 +6324,7 @@ ribbon.append(tabs,files,home,insert,layoutGroup,tableGroup,formatGroup,referenc
 groupButton(insert,'figure',()=>insertDocumentImage());
 installCommandRibbons({insert,format:formatGroup,reference:referenceGroup,math:mathGroup,table:tableGroup,tableStyles});
 sourceToolbar = installSourceToolbar({groups,source:sourceView,rich:paper,heading:headingMenu});
-const toolbarController=installFloatingToolbar({header,ribbon,sourceView,getAutoHide:()=>sourceView.hidden?config.value.interface.toolbarAutoHide:config.value.interface.sourceToolbarAutoHide});
+const toolbarController=installFloatingToolbar({header,ribbon,tabs,sourceView,getAutoHide:()=>sourceView.hidden?config.value.interface.toolbarAutoHide:config.value.interface.sourceToolbarAutoHide});
 installMathFloatToolbar({ editor });
 function restoreSettingsFocus() {
   // Native dialog focus restoration does not redraw CodeMirror's DOM selection.
@@ -6298,7 +6333,7 @@ function restoreSettingsFocus() {
 }
 settingsPanel=installSettingsPanel({config,onClose:restoreSettingsFocus,getEngine:engineSettingsState,applyEngine:changeEngine,onApply:applyImportedPreferences,onImport:()=>importConfig.click(),onExport:()=>exportConfig.click(),getDocument:()=>{sourceView.flush();return documentParts.start?structuredClone(pageSetup):null;},applyDocument:updatePageSetup});
 scheduleEngine();
-const settingsButton=document.createElement('button');settingsButton.id='settings-open';settingsButton.type='button';settingsButton.append(icon('settings'));settingsButton.onclick=()=>settingsPanel.show();footer.insertBefore(settingsButton,footer.querySelector(':scope>.tex-foot')??count);
+const settingsButton=document.createElement('button');settingsButton.id='settings-open';settingsButton.type='button';settingsButton.append(icon('settings'));settingsButton.onclick=()=>settingsPanel.show();statusItems.insertBefore(settingsButton,statusItems.querySelector(':scope>.tex-foot')??count);
 // Let the native dialog return focus to the active editor and its selection.
 settingsButton.addEventListener('mousedown',event=>{
   if (event.button===0 && (editor.view.hasFocus() || sourceView.editorView?.hasFocus)) event.preventDefault();
@@ -6332,4 +6367,52 @@ if(desktopEngineToggle()){
   projection=null;
   savedSource=source();
   nativeTexPreview.documentModeChanged?.();
+}
+
+if(window.lineaeDesktop){
+  const desktop=window.lineaeDesktop;
+  async function newDocument(){
+    if(!approveDesktopReplacement())return;
+    if(!sourceView.hidden)setSourceMode(false,{focus:false});
+    filename='lineae.tex';fileHandle=null;hasSavedFile=false;
+    standaloneKey=null;standaloneChoice='auto';preferenceError='';
+    load(DEFAULT_DOCUMENT_SOURCE,true);
+    selectGroup('home');
+    sourceView.refresh();scheduleEngine();scheduleDesktopTitle();
+  }
+  const nativeActions={
+    new:newDocument,
+    open:openDocument,
+    'open-project':()=>document.querySelector('#project-open')?.click(),
+    save:()=>saveDocument(),
+    'save-as':()=>saveDocument(true),
+    undo:()=>document.activeElement?.matches('textarea,input[type=text]')?document.execCommand('undo'):undoDocument(),
+    redo:()=>document.activeElement?.matches('textarea,input[type=text]')?document.execCommand('redo'):redoDocument(),
+    find:()=>!sourceView.hidden&&(!sourceView.split||sourceView.editorView?.hasFocus)?sourceView.find():documentFind.show(),
+    document:()=>bodyButton.click(),
+    source:()=>sourceButton.click(),
+    split:()=>splitButton.click(),
+    'toggle-toolbar':()=>toolbarController.button.click(),
+  };
+  function reportDesktopError(error){
+    const status=document.querySelector('#status');
+    status.hidden=false;status.textContent=String(error?.message??error);
+  }
+  desktop.onMenuAction(action=>{
+    if(Object.hasOwn(nativeActions,action))Promise.resolve().then(nativeActions[action]).catch(reportDesktopError);
+  }).catch(reportDesktopError);
+
+  let openingFromFinder=false;
+  async function openFinderDocuments(){
+    if(openingFromFinder)return;
+    openingFromFinder=true;
+    try{
+      for(let selected; (selected=await desktop.takeFinderDocument());){
+        if(approveDesktopReplacement())await openStandalone(selected.file,selected.handle);
+      }
+    }catch(error){reportDesktopError(error);}
+    finally{openingFromFinder=false;}
+  }
+  desktop.onFinderOpen(openFinderDocuments).then(openFinderDocuments,reportDesktopError);
+  scheduleDesktopTitle();
 }
