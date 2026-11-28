@@ -34,6 +34,9 @@ export function textBoundary(element,offset) {
   const doc=element.ownerDocument;
   const walker=doc.createTreeWalker(element,NodeFilter.SHOW_TEXT|NodeFilter.SHOW_ELEMENT,{
     acceptNode(node){
+      // The formula is one ProseMirror atom. Its handle and source text
+      // inside the field must not advance offsets in the surrounding prose.
+      if(node.parentElement?.closest('.math-inline,math-field'))return NodeFilter.FILTER_REJECT;
       if(node.nodeType===Node.TEXT_NODE)return NodeFilter.FILTER_ACCEPT;
       if(node.matches('.ProseMirror-widget,.ProseMirror-trailingBreak,.ProseMirror-separator'))return NodeFilter.FILTER_REJECT;
       if(node.matches('.math-inline,math-field,img'))return NodeFilter.FILTER_ACCEPT;
@@ -45,7 +48,6 @@ export function textBoundary(element,offset) {
   let left=offset,last=null,node;
   while((node=walker.nextNode())){
     if(node.nodeType===Node.ELEMENT_NODE && node.nodeName!=='BR'){
-      if(node.parentElement.closest('.math-inline') && node.nodeName==='MATH-FIELD')continue;
       const field=node.matches('math-field')?node:node.querySelector('math-field');
       const ink=field?.shadowRoot?.querySelector('.ML__latex');
       const rect=(ink??node).getBoundingClientRect();

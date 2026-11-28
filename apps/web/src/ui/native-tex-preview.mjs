@@ -201,7 +201,8 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
         compositionField=null;
         void refresh();
       }
-      if(!richEditing || richPage.contains(event.target) || event.target===document.body)return;
+      if(!richEditing || richPage.contains(event.target) || event.target===document.body ||
+         event.target.closest('.command-menu,.delimiter-input'))return;
       leaveRichEditor(true);
       void refresh();
     });

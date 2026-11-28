@@ -38,6 +38,7 @@ export function nativeParagraphOverlay(editor, panel, pages, framePending, selec
   }
   function selectedBlock(){
     const view=editor.editor?.view;
+    if(block?.isConnected && document.activeElement?.closest('.command-menu,.delimiter-input'))return block;
     if(document.activeElement===editor && view && !view.composing && !composing){
       const selection=view.state.selection;
       const active=selection.node?view.nodeDOM(selection.from):

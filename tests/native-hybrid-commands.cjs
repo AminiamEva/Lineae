@@ -1,0 +1,78 @@
+const assert=require('node:assert/strict');
+
+// The same keystrokes run in the browser against rtex and in the distributed
+// Windows WebView. Never insert a template through the editor's command API.
+module.exports=async function checkCommands(page,{hybrid=true}={}) {
+  const pm=page.locator('.document-page .ProseMirror');
+  const menu=page.locator('.command-menu'),input=menu.getByRole('combobox');
+  const cdp=await page.context().newCDPSession(page);
+  const key=key=>page.keyboard.press(key),type=text=>page.keyboard.type(text);
+  const choose=async name=>{await type('\\'+name);await key('Enter');};
+  const model=()=>pm.evaluate(el=>el.editor.getJSON());
+  try{
+    await type('\\');
+    assert.equal(await input.evaluate(el=>el===document.activeElement),true);
+    if(hybrid)assert.equal(await page.locator('body.native-tex-rich-edit').count(),1,'The command input retains the active paper');
+    const menuState=await menu.evaluate(m=>{
+      const option=m.querySelector('[role=option]'),b=option.getBoundingClientRect();
+      return {visible:option.contains(document.elementFromPoint(b.left+b.width/2,b.top+b.height/2)),
+        top:m.getBoundingClientRect().top,toolbar:document.querySelector('header .ribbon').getBoundingClientRect().bottom,
+        mounted:m.querySelectorAll('[role=option]').length,total:Number(option.getAttribute('aria-setsize'))};
+    });
+    assert.ok(menuState.visible && menuState.top>=menuState.toolbar && menuState.total>300 && menuState.mounted<50,JSON.stringify(menuState));
+    await key('ArrowUp');
+    assert.equal(await menu.getByRole('option',{selected:true}).getAttribute('aria-posinset'),String(menuState.total));
+    await key('ArrowDown');
+    await type('section');
+    await cdp.send('Input.imeSetComposition',{text:'x',selectionStart:1,selectionEnd:1});
+    await key('Enter');
+    assert.ok(await menu.isVisible(),'The composition Enter must leave completion open');
+    await cdp.send('Input.imeSetComposition',{text:'',selectionStart:0,selectionEnd:0});
+    await input.fill('section');
+    await menu.getByRole('option',{name:'\\section',exact:true}).click();
+    await cdp.send('Input.imeSetComposition',{text:'biao',selectionStart:4,selectionEnd:4});
+    assert.equal(await pm.locator('h1').textContent(),'biao');
+    await cdp.send('Input.insertText',{text:'标题'});
+    await key('Enter');
+    await type('Lead ');await choose('textbf');await type('Bold');await choose('textbf');await type(' ');
+    await type('\\missingCommand');await key('Escape');await type('P');
+    const prose=(await model()).content;
+    assert.equal(prose[0].type,'heading');
+    assert.equal(prose[0].content[0].text,'标题');
+    assert.equal(prose[1].content.find(n=>n.marks?.some(m=>m.type==='bold'))?.text,'Bold');
+    assert.equal(prose[1].content.at(-1).text,' P');
+    // Invoke a math template from prose and send its first argument in the
+    // very next keyboard event; a wait for focus would hide the regression.
+    await choose('sqrt');await type('x');await key('Control+Shift+j');await type('tail');
+    assert.match((await model()).content[1].content.find(n=>n.type==='math').attrs.latex,/\\sqrt\{x\}/);
+    assert.ok((await model()).content[1].content.at(-1).text.endsWith('tail'));
+    await key('Enter');await type('$$\\frac');await key('Enter');
+    await type('a');await key('Tab');await type('b');
+    const display=pm.locator('.math-display math-field');
+    assert.equal(await display.evaluate(f=>f.value),'\\frac{a}{b}');
+    await type('\\');await key('Escape');await type('c');await key('Backspace');
+    assert.equal(await display.evaluate(f=>f.value),'\\frac{a}{b}');
+    // Capture a and b on their own baselines, including the denominator.
+    const points=async locator=>{
+      await page.waitForFunction(f=>[...f.shadowRoot.querySelectorAll('.ML__mathit')]
+        .filter(e=>/^[ab]$/.test(e.textContent)).length===2,await locator.elementHandle());
+      return locator.evaluate(field=>{
+        const paper=document.querySelector('[data-native-page] canvas')?.getBoundingClientRect()??{left:0,top:0};
+        return [...field.shadowRoot.querySelectorAll('.ML__mathit')].filter(el=>/^[ab]$/.test(el.textContent)).map(el=>{
+          const text=el.textContent,rect=el.getBoundingClientRect(),probe=document.createElement('i');
+          probe.style.cssText='display:inline-block;width:0;height:0;vertical-align:baseline;margin:0;padding:0;border:0';
+          el.append(probe);
+          const y=probe.getBoundingClientRect().top-paper.top;
+          probe.remove();
+          return {text,x:rect.left-paper.left,y};
+        });
+      });
+    };
+    const live=await points(display);
+    await key('Control+Shift+j');await type('After');
+    const result=(await model()).content;
+    assert.equal(result.find(n=>n.type==='mathBlock').attrs.latex,'\\frac{a}{b}');
+    assert.equal(result.at(-1).content[0].text,'After');
+    return {live,points};
+  }finally{await cdp.detach();}
+};

@@ -34,6 +34,7 @@ const largeOperators=['int','iint','iiint','oint','oiint','sum','prod'];
 // Only single-symbol catalog entries here. Function names may paint multiple
 // glyphs while representing one operator and need different caret handling.
 const symbols = new Set([
+  '\\backslash',
   ...mathCommandCatalog.filter(entry=>entry.category!=='operator').map(entry=>entry.latex),
   ...largeOperators.map(command=>'\\'+command),
 ]);

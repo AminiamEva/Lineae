@@ -8,8 +8,7 @@ function readInlineDelimiterPair(formulaView, rightFirst, nativeField) {
     const field = nativeField??formulaView.querySelector('math-field');
     const root = field?.shadowRoot;
     const findCaret = () => root?.querySelector('.ML__caret, .ML__text-caret, .ML__latex-caret');
-    const caret = nativeField??findCaret();
-    if (!caret) { resolve(null); return; }
+    if (!nativeField && !root) { resolve(null); return; }
     const ghost = document.createElement('span');
     ghost.className = 'delimiter-ghost';
     ghost.setAttribute('aria-hidden', 'true');
@@ -24,7 +23,7 @@ function readInlineDelimiterPair(formulaView, rightFirst, nativeField) {
       ghost.classList.add('native-delimiter-ghost');
       ghost.style.left=box.left+'px';ghost.style.top=box.top+'px';
       document.body.append(ghost);
-    }else caret.before(ghost);
+    }else findCaret()?.before(ghost);
 
     const values = ['', ''];
     const order = rightFirst ? [1, 0] : [0, 1];
@@ -56,6 +55,7 @@ function readInlineDelimiterPair(formulaView, rightFirst, nativeField) {
       return true;
     };
     const onKeyDown = event => {
+      if(event.isComposing || event.keyCode===229)return;
       if (event.key === 'Escape') {
         event.preventDefault();
         event.stopImmediatePropagation();
@@ -144,6 +144,7 @@ export function readDelimiterPair(anchor, rightFirst, formulaView, nativeField) 
     }, options);
     form.addEventListener('submit', event => { event.preventDefault(); submit(); }, options);
     form.addEventListener('keydown', event => {
+      if(event.isComposing || event.keyCode===229)return;
       if (event.key === 'Escape') { event.preventDefault(); finish(null); }
       if (event.key === 'Enter') {
         event.preventDefault();

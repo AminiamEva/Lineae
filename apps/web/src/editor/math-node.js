@@ -229,7 +229,7 @@ function eraseMathObject(field, backward) {
   return true;
 }
 
-function focusMathKeyboard(field) {
+export function focusMathKeyboard(field) {
   field.focus();
   // MathLive marks itself focused before its keyboard sink accepts input.
   if (!field.matches(':focus-within'))
@@ -237,14 +237,18 @@ function focusMathKeyboard(field) {
 }
 
 export function focusFormula(editor, id, onFocus) {
-  requestAnimationFrame(() => {
-    editor.state.doc.descendants((node, position) => {
-      if (node.attrs.id === id) {
-        const field=editor.view.nodeDOM(position)?.querySelector('math-field');
-        if(field){focusMathKeyboard(field);onFocus?.(field);}
-        return false;
-      }
-    });
+  editor.state.doc.descendants((node, position) => {
+    if (node.attrs.id !== id) return;
+    const field = editor.view.nodeDOM(position)?.querySelector('math-field');
+    if (!field) return false;
+    const activate = () => {
+      if (!field.isConnected) return;
+      focusMathKeyboard(field);
+      onFocus?.(field);
+    };
+    if (field._mathfield) activate();
+    else field.addEventListener('mount', activate, {once:true});
+    return false;
   });
 }
 
@@ -260,7 +264,9 @@ export function insertFormula(editor, display = false, latex = '', range, onFocu
       range = { from:$start.before(), to:$start.after() };
     }
   }
-  const chain = editor.chain().focus();
+  // The new field receives the very next key. A deferred editor.focus()
+  // here would take the keyboard back from MathLive after insertion.
+  const chain = editor.chain();
   if (range) chain.insertContentAt(range, content);
   else chain.insertContent(content);
   chain.run();
@@ -687,7 +693,6 @@ export const MathNode = Node.create({
       let pendingKey = null;
       let pendingDollar = false;
       let oneScript = null;
-      let commandPalette = false;
       let exitedStyleAt = null;
       let replacedOperator = null;
       let pointerFocus = 0;
@@ -787,24 +792,27 @@ export const MathNode = Node.create({
           });
           return;
         }
-        commandPalette = false;
         field.setAttribute('data-lineae-editing','');
       });
+      function finishBlur() {
+        if (!field.isConnected || field.hasFocus() || field.hasAttribute('data-lineae-command-open')) return;
+        field.removeAttribute('data-lineae-editing');
+        clearEmptyScripts(field);
+        flushField();
+      }
+      field.addEventListener('lineae-close-math-command', finishBlur);
       field.addEventListener('compositionstart', () => enterEmptyOperatorBody(field), true);
       field.addEventListener('blur', event => {
         if (event.relatedTarget || escaping) {
           pointerFocus++;
           if (field._mathfield?.focusBlurInProgress) leftDuringFocus = true;
         }
+        if (field.hasAttribute('data-lineae-command-open')) return;
         field.removeAttribute('data-lineae-editing');
         pendingKey=null; pendingDollar=false; oneScript=null; replacedOperator=null;
         // The command palette takes focus, so a blank subscript typed with "_"
         // must survive until the chosen command is inserted into it.
-        queueMicrotask(()=>{
-          if(!field.isConnected||field.hasFocus()||commandPalette)return;
-          clearEmptyScripts(field);
-          flushField();
-        });
+        queueMicrotask(finishBlur);
       });
       field.addEventListener('selection-change',()=>{
         rememberSelection();
@@ -812,7 +820,8 @@ export const MathNode = Node.create({
         scriptCleanupQueued=true;
         queueMicrotask(()=>{
           scriptCleanupQueued=false;
-          if(field.isConnected && caretCollapsed(field))clearEmptyScripts(field,field.hasFocus());
+          if(field.isConnected && !field.hasAttribute('data-lineae-command-open') && caretCollapsed(field))
+            clearEmptyScripts(field,field.hasFocus());
         });
         queueMicrotask(()=>{
           if(!field.isConnected)return;
@@ -834,7 +843,6 @@ export const MathNode = Node.create({
       field.addEventListener('lineae-math-builtin', event => {
         const {command,backward}=event.detail;
         if(command==='palette') {
-          commandPalette=true;
           dom.dispatchEvent(new CustomEvent('lineae-math-command',{bubbles:true,detail:{field}}));
         } else if(command==='nextSlot'||command==='previousSlot') {
           const next=command==='nextSlot'&&replacedOperator?.arrow&&caretCollapsed(field)&&

@@ -583,6 +583,29 @@ async function testDesktopDocument(browser, origin, initial) {
     const equation={x:paper.width*first[4]/mathDL.page_width,y:paper.height*mathLine.y/mathDL.page_height};
     console.log('Display equation in editing, retained ink, and Lua',JSON.stringify({activeMath,retainedMath,equation}));
     for(const point of [activeMath,retainedMath])assert.ok(Math.abs(point.x-equation.x)<=2 && Math.abs(point.y-equation.y)<=2);
+    await freshPage();
+    const beforeCommands=revision;
+    holdUpdate=new Promise(resolve=>{proceed=resolve;});
+    let checked,retained;
+    try{
+      checked=await require('./native-hybrid-commands.cjs')(page);
+      retained=await checked.points(page.locator('.native-pending-formula').last());
+    }finally{holdUpdate=null;proceed();}
+    await expect.poll(()=>paintedSourceAfter(beforeCommands),{timeout:60000}).toContain('After');
+    assert.ok(liveSource.includes('\\section{标题}') && liveSource.includes('\\textbf{Bold}') &&
+      liveSource.includes('\\sqrt{x}') && liveSource.includes('\\frac{a}{b}'),liveSource);
+    const fractionDL=published.pages[1].dl, bounds=await sheet.locator('canvas').boundingBox();
+    const fractionRow=fractionDL.lines.find(line=>line.items.some(i=>i[0]==='r') &&
+      ['a','b'].every(c=>line.items.some(i=>i[0]==='g' && i[2]===c.codePointAt(0))));
+    assert.ok(fractionRow,'The real display list contains both arguments and the fraction bar');
+    for(const positions of [checked.live,retained]){
+      const errors=positions.map(p=>{
+        const glyph=fractionRow.items.find(i=>i[0]==='g' && i[2]===p.text.codePointAt(0));
+        return {text:p.text,x:p.x-bounds.width*glyph[4]/fractionDL.page_width,y:p.y-bounds.height*glyph[5]/fractionDL.page_height};
+      });
+      console.log('Command fraction displacement at 144%',JSON.stringify(errors));
+      assert.ok(errors.every(e=>Math.abs(e.x)<=2 && Math.abs(e.y)<=2),JSON.stringify(errors));
+    }
     assert.deepEqual(errors,[]);
     console.log('PASS: shipped Lua document, repeated Enter, caret X/Y, CJK preedit/commit, and split-prefix ink through a delayed native frame');
   }catch(error){

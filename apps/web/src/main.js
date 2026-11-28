@@ -64,7 +64,7 @@ import { createClipboard } from './editor/clipboard.js';
 import { installFormatPainter } from './editor/format-painter.js';
 import { decorateToolbar, applyToolbarDescriptions, icon } from './editor/icons.js';
 import { PaperBehavior } from './editor/paper-behavior.js';
-import { MathNode, MathBlock, configureMathFences, focusInsertedOperator, insertFormula, isMathOperatorWithBody, mathEnvironment, mathPositionPath, mathOffsetAtPath, toggleDisplayStyle } from './editor/math-node.js';
+import { MathNode, MathBlock, configureMathFences, focusInsertedOperator, focusMathKeyboard, insertFormula, isMathOperatorWithBody, mathEnvironment, mathPositionPath, mathOffsetAtPath, toggleDisplayStyle } from './editor/math-node.js';
 import { MathGlue } from './editor/math-glue.js';
 import { Ref, Label, Cite, Footnote, TableOfContents, refreshReferences, collectReferenceLabels, installDocumentOutline } from './editor/references.js';
 import { createCitationLibrary, openCitationPanel } from './editor/citation-library.js';
@@ -127,7 +127,7 @@ import { createThemeController } from './ui/theme.mjs';
 import { installTooltips } from './ui/tooltips.mjs';
 import { installRovingFocus } from './ui/keyboard-nav.mjs';
 import { installMacWindowShortcuts } from './ui/macos-window-shortcuts.mjs';
-import { fadeIn } from './ui/motion.mjs';
+import {latexCompletion} from './ui/latex-completion.mjs';
 import { getLanguage, localize, normalizeLanguage, setLanguage, t } from './ui/i18n.mjs';
 import { TikzEditor } from './tikz/controllers/tikzEditor.js';
 import { openTikzStudio } from './ui/tikz-studio.js';
@@ -308,31 +308,23 @@ function configuredLanguage() {
 setLanguage(configuredLanguage());
 const theme=createThemeController({root:document.documentElement,storage:null,preference:config.value.interface.theme});
 configureMathFences(config.value.editing.smartFences);
-const prefersReducedMotion=()=>window.matchMedia?.('(prefers-reduced-motion: reduce)').matches??false;
 let editor;
 // Insert into the live field so MathLive selects the first placeholder.
 // Creating the node with the source already set leaves the caret at offset 0.
 function insertLiveMath(field, latex, notify = true) {
-  const apply = () => {
-    if (!field.isConnected) return;
-    const name = /^\\([a-z]+)(?=$|\\mathord\{)/.exec(latex)?.[1];
-    const operator = isMathOperatorWithBody(name);
-    const start = field.selection.ranges[0]?.[0] ?? field.position;
-    const source = operator && latex === '\\'+name
-      ? latex+'\\mathord{\\placeholder{}}' : latex;
-    field.executeCommand(['insert', source]);
-    if (operator) focusInsertedOperator(field, start);
-    if (latex === '\\text{x}') {
-      const end = field.selection?.ranges?.[0]?.[1];
-      if (end > 0) field.selection = { ranges: [[end - 1, end]], direction: 'none' };
-    }
-    if (notify) field.dispatchEvent(new Event('input', { bubbles: true }));
-  };
-  if (field.hasFocus()) apply();
-  else {
-    field.focus();
-    requestAnimationFrame(apply);
+  if (!field.isConnected) return;
+  focusMathKeyboard(field);
+  const name = /^\\([a-z]+)(?=$|\\mathord\{)/.exec(latex)?.[1];
+  const operator = isMathOperatorWithBody(name);
+  const start = field.selection.ranges[0]?.[0] ?? field.position;
+  const source = operator && latex === '\\'+name ? latex+'\\mathord{\\placeholder{}}' : latex;
+  field.executeCommand(['insert', source]);
+  if (operator) focusInsertedOperator(field, start);
+  if (latex === '\\text{x}') {
+    const end = field.selection?.ranges?.[0]?.[1];
+    if (end > 0) field.selection = {ranges:[[end-1,end]],direction:'none'};
   }
+  if (notify) field.dispatchEvent(new Event('input', {bubbles:true}));
 }
 function insertMath(display = false, latex = '') {
   if(nativeTexPreview?.hasNativeTextFocus?.()){
@@ -2217,22 +2209,7 @@ document.querySelector('#file').addEventListener('change',async event=>{
   try {await openStandalone(file,null);}
   catch(error){const status=document.querySelector('#status');status.hidden=false;status.textContent=error.message;}
 });
-const commands = document.createElement('div');
-commands.className = 'command-menu';
-commands.hidden = true;
-commands.setAttribute('role', 'dialog');
-commands.setAttribute('aria-label', t('LaTeX 补全','LaTeX completion'));
-const filter = document.createElement('input');
-filter.placeholder = t('LaTeX 命令','LaTeX command');
-filter.setAttribute('aria-label', filter.placeholder);
-filter.setAttribute('aria-controls', 'latex-candidates');
-filter.setAttribute('aria-autocomplete', 'list');
-const candidates = document.createElement('div');
-candidates.id = 'latex-candidates';
-candidates.className = 'command-candidates';
-candidates.setAttribute('role', 'listbox');
-commands.append(filter, candidates);
-document.body.append(commands);
+const completion=latexCompletion();
 
 const formulaCommands = {
   frac: '\\frac{#?}{#?}', sqrt: '\\sqrt{#?}', sum: '\\sum',
@@ -2273,6 +2250,7 @@ const structureCommands = {
   indent: () => { editor.view.focus(); return setParagraphIndent(editor,true); },
   noindent: () => { editor.view.focus(); return setParagraphIndent(editor,false); },
   par: () => editor.chain().focus().splitBlock().run(),
+  newpage: () => editor.chain().focus().insertContent({type:'pageBreak'}).run(),
   ...Object.fromEntries(Object.keys(theoremNames).map(kind=>[kind,()=>editor.chain().focus().wrapIn('theoremBlock',{kind}).run()])),
   section: () => editor.chain().focus().setHeading({ level: 1, command:null }).run(),
   subsection: () => editor.chain().focus().setHeading({ level: 2, command:null }).run(),
@@ -2361,50 +2339,53 @@ for (const [environment, row] of Object.entries({
     };
   }
 }
-let completionField = null;
-let completionNative = false;
-let completionAnchor = null;
-let completionOrigin = null;
-let candidateIndex = 0;
-
-function positionCommands() {
-  if (!completionAnchor) return;
-  const width = Math.min(320, window.innerWidth - 16);
-  commands.style.width = width + 'px';
-  commands.style.left = Math.max(8, Math.min(completionAnchor.left, window.innerWidth - width - 8)) + 'px';
-  const below = completionAnchor.bottom + 6;
-  const height = commands.getBoundingClientRect().height;
-  commands.style.top = (below + height <= window.innerHeight - 32
-    ? below : Math.max(8, completionAnchor.top - height - 6)) + 'px';
+function showCommands(field=null,native=null) {
+  const view=editor.view, origin=field??view.dom;
+  const math=field?.matches('math-field')?field:null;
+  const selection=math?structuredClone(math.selection):view.state.selection;
+  const before=math?math.value:view.state.doc;
+  // MathLive removes its painted caret on blur. Keep its offset in this field
+  // so scrolling or translating the live paragraph also moves the menu.
+  const bounds=origin.getBoundingClientRect();
+  const anchor=math?.shadowRoot?.querySelector('.ML__caret,.ML__text-caret,.ML__latex-caret,.ML__selection')?.getBoundingClientRect()
+    ??math?.shadowRoot?.querySelector('.ML__latex')?.getBoundingClientRect()??bounds;
+  math?.setAttribute('data-lineae-command-open','');
+  completion.open({
+    origin,actions:completionActions(field,native),
+    valid:()=>origin.isConnected && (native || (math?math.value:view.state.doc)===before),
+    anchor:()=>{
+      if(!field)return view.coordsAtPos(selection.from);
+      const rect=origin.getBoundingClientRect();
+      return {left:rect.left+anchor.left-bounds.left,top:rect.top+anchor.top-bounds.top,bottom:rect.top+anchor.bottom-bounds.top};
+    },
+    focus:()=>{
+      if(math){
+        focusMathKeyboard(math);
+        math.selection=selection;
+      }else if(field)field.focus({preventScroll:true});
+      else{
+        if(!view.state.selection.eq(selection))view.dispatch(view.state.tr.setSelection(selection));
+        view.focus();
+      }
+    },
+    dismiss:()=>{
+      if(math){
+        math.removeAttribute('data-lineae-command-open');
+        math.dispatchEvent(new Event('lineae-close-math-command'));
+      }
+    },
+    literal:()=>{
+      if(native==='text')return nativeTexPreview.insertLiteralText('\\');
+      if(native==='math')return nativeTexPreview.runMathCommand('backslash');
+      if(math)return insertLiveMath(math,'\\backslash');
+      return insertTextCommand('textbackslash');
+    },
+  });
 }
-function closeCommands(restoreFocus = false) {
-  commands.hidden = true;
-  if (restoreFocus) {
-    if (completionField?.isConnected) completionField.focus();
-    else editor.view.focus();
-  }
-}
-function commandAnchor(field){
-  if(!field)return editor.view.coordsAtPos(editor.state.selection.from);
-  return (field.shadowRoot?.querySelector('.ML__caret')??field).getBoundingClientRect();
-}
-function showCommands(field = null, native = null) {
-  completionField = field;
-  completionNative = native;
-  completionAnchor=commandAnchor(field);
-  commands.hidden = false;
-  fadeIn(commands, { prefersReducedMotion: prefersReducedMotion() });
-  filter.value = '';
-  renderCommands();
-  positionCommands();
-  filter.focus({preventScroll:true});
-  completionOrigin=(field??editor.view.dom).getBoundingClientRect();
-}
-function insertFormulaCommand(latex) {
-  const fragment = latex.replaceAll('#?', '\\placeholder{}');
-  if (completionField?.isConnected) {
-    insertLiveMath(completionField, fragment);
-  } else insertMath(false, fragment);
+function insertFormulaCommand(latex,field) {
+  const fragment=latex.replaceAll('#?','\\placeholder{}');
+  if(field)insertLiveMath(field,fragment);
+  else insertMath(false,fragment);
 }
 async function chooseMathDelimiters(field, rightFirst = false) {
   const selection = field && structuredClone(field.selection);
@@ -2416,7 +2397,6 @@ async function chooseMathDelimiters(field, rightFirst = false) {
       const position=field.position;
       field.selection={ranges:[[position,position]],direction:'forward'};
     }
-    await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
   }
   const documentBefore = editor.state.doc;
   const anchor = field?.getBoundingClientRect() ?? editor.view.coordsAtPos(editor.state.selection.from);
@@ -2438,19 +2418,6 @@ async function chooseMathDelimiters(field, rightFirst = false) {
   } else if (editor.state.doc === documentBefore) {
     insertMath(false, wrapMathWithDelimiters(pair, ''));
   }
-}
-function highlightCandidate(index) {
-  const controls = [...candidates.querySelectorAll('button')];
-  if (!controls.length) { filter.removeAttribute('aria-activedescendant'); return; }
-  candidateIndex = (index + controls.length) % controls.length;
-  for (let i = 0; i < controls.length; i++) controls[i].setAttribute('aria-selected', String(i === candidateIndex));
-  filter.setAttribute('aria-activedescendant', controls[candidateIndex].id);
-  const selected = controls[candidateIndex];
-  const top = selected.offsetTop;
-  const bottom = top + selected.offsetHeight;
-  if (top < candidates.scrollTop) candidates.scrollTop = top;
-  else if (bottom > candidates.scrollTop + candidates.clientHeight)
-    candidates.scrollTop = bottom - candidates.clientHeight;
 }
 function insertNativePageBreak(){
   return insertNativeDocumentBlock(editor.schema.nodes.pageBreak.create(),'\\newpage');
@@ -2539,7 +2506,7 @@ function focusNativeBlockInsertion(block,source,from,path,fragment,splitIncludes
     .find(({tableCell})=>tableCell?.from16===from);
   if(firstCell)nativeTexPreview.preserveSourceCaret({source,path,offset:firstCell.from16},started,'text');
 }
-function completionActions() {
+function completionActions(completionField,completionNative) {
   if(completionNative==='math')return {
     ...Object.fromEntries([...nativeMathCommandNames,'left','right','newline'].map(name=>[
       name,()=>nativeTexPreview.runMathCommand(name==='newline'?'enterLine':name),
@@ -2608,7 +2575,7 @@ function completionActions() {
     }]));
   }
   const actions = Object.fromEntries(Object.entries(formulaCommands).map(([name, latex]) =>
-    [name, () => insertFormulaCommand(latex)]));
+    [name, () => insertFormulaCommand(latex,completionField)]));
   actions.left = () => chooseMathDelimiters(completionField);
   actions.right = () => chooseMathDelimiters(completionField, true);
   if (completionField) {
@@ -2635,54 +2602,6 @@ function completionActions() {
   }
   return actions;
 }
-function renderCommands() {
-  candidates.replaceChildren();
-  const actions=completionActions();
-  const exactQuery = filter.value.replace(/^\\/, '').replace(/^begin\{([^{}]*)\}?$/, '$1');
-  const query = exactQuery.toLowerCase();
-  for (const [name, action] of Object.entries(actions).filter(([name]) => name.toLowerCase().startsWith(query)).sort(([a],[b]) => Number(b===exactQuery)-Number(a===exactQuery) || Number(b.startsWith(exactQuery))-Number(a.startsWith(exactQuery)) || Number(b.toLowerCase()===query)-Number(a.toLowerCase()===query))) {
-    const control = document.createElement('button');
-    control.type = 'button';
-    control.id = 'complete-' + name;
-    control.setAttribute('role', 'option');
-    control.textContent = '\\' + name;
-    control.tabIndex = -1;
-    control.addEventListener('mousedown', event => event.preventDefault());
-    control.addEventListener('click', () => { closeCommands(completionNative); action(); });
-    candidates.append(control);
-  }
-  if (!candidates.children.length) {
-    const empty = document.createElement('p');
-    empty.textContent = t('无匹配命令','No matching command');
-    candidates.append(empty);
-  }
-  highlightCandidate(0);
-}
-document.addEventListener('focusin', event => {
-  if (commands.hidden || commands.contains(event.target)) return;
-  queueMicrotask(() => { if (!commands.hidden) filter.focus({preventScroll:true}); });
-}, true);
-filter.addEventListener('input', renderCommands);
-filter.addEventListener('keydown', event => {
-  if (event.key === '\\' && !filter.value && !event.ctrlKey && !event.altKey && !event.metaKey && !event.isComposing) {
-    event.preventDefault();
-    closeCommands(true);
-    if(completionNative==='text'){nativeTexPreview.insertLiteralText('\\');return;}
-    if(completionNative)return;
-    if (completionField?.isConnected) insertLiveMath(completionField,'\\backslash');
-    else insertTextCommand('textbackslash');
-    return;
-  }
-  if (event.key === 'Escape') { event.preventDefault(); closeCommands(true); }
-  if (['Enter', 'Tab'].includes(event.key)) {
-    event.preventDefault();
-    candidates.querySelectorAll('button')[candidateIndex]?.click();
-  }
-  if (['ArrowDown', 'ArrowUp'].includes(event.key)) {
-    event.preventDefault();
-    highlightCandidate(candidateIndex + (event.key === 'ArrowDown' ? 1 : -1));
-  }
-});
 paper.addEventListener('lineae-math-command', event => showCommands(event.detail.field));
 const literalFences = { '(': '(', ')': ')', '[':'[', ']':']', '{':'\\{', '}':'\\}', '|':'\\vert' };
 function armLiteralFence(field) {
@@ -2732,21 +2651,6 @@ function runMathShortcut(command, field, event) {
   }
   else insertLiveMath(field, '\\'+command);
 }
-document.addEventListener('pointerdown', event => { if (!commands.contains(event.target)) closeCommands(); }, true);
-function commandViewportChanged(event){
-  if(commands.hidden||event.target instanceof Node&&commands.contains(event.target))return;
-  requestAnimationFrame(()=>{
-    if(commands.hidden)return;
-    if(completionField&&!completionField.isConnected){closeCommands();return;}
-    const origin=(completionField??editor.view.dom).getBoundingClientRect();
-    const dx=origin.left-completionOrigin.left,dy=origin.top-completionOrigin.top;
-    completionAnchor={left:completionAnchor.left+dx,top:completionAnchor.top+dy,bottom:completionAnchor.bottom+dy};
-    completionOrigin=origin;
-    positionCommands();
-  });
-}
-document.addEventListener('scroll',commandViewportChanged,true);
-window.addEventListener('resize',commandViewportChanged);
 document.addEventListener('keydown', event => {
   if (event.key !== 'Escape' || event.isComposing || event.keyCode === 229 || editor.view.composing) return;
   if (!editor.state.storedMarks?.some(mark => mark.type.name === 'boxed')) return;
@@ -5777,8 +5681,7 @@ const ribbon=document.createElement('div');ribbon.className='ribbon';
 const tabs=document.createElement('nav');tabs.className='ribbon-tabs';
 const home=document.createElement('div');home.className='tools';
 const insert=document.createElement('div');insert.className='tools';
-groupButton(insert,['分页','New page'],()=>nativeTexPreview.hasNativeTextFocus?.()?insertNativePageBreak():
-  editor.chain().focus().insertContent({type:'pageBreak'}).run());
+groupButton(insert,['分页','New page'],()=>nativeTexPreview.hasNativeTextFocus?.()?insertNativePageBreak():structureCommands.newpage());
 groupButton(insert,['图片','Image'],()=>insertDocumentImage());
 groupButton(insert,['子图','Subfigure'],()=>nativeParagraphFormattingActive()?insertNativeImages(true):insertSubfigures(editor));
 const codeLanguageButton=groupButton(insert,['代码块','Code block'],editCodeBlockLanguage);
@@ -6114,9 +6017,7 @@ function updateLanguage() {
   shortcutPriority.relocalize();
   nativeTexPreview?.relocalize();
   for(const tab of tabs.children)tab.textContent=t(captions[tab.dataset.group][0],captions[tab.dataset.group][1]);
-  commands.setAttribute('aria-label',t('LaTeX 补全','LaTeX completion'));
-  filter.placeholder=t('LaTeX 命令','LaTeX command');
-  filter.setAttribute('aria-label',filter.placeholder);
+  completion.localize();
   headingMenu.setAttribute('aria-label',t('段落样式','Paragraph style'));
   const styleLabels=[['正文','Normal'],['标题 1','Heading 1'],['标题 2','Heading 2'],['标题 3','Heading 3']];
   [...headingMenu.options].forEach((option,index)=>{if(styleLabels[index])option.text=t(...styleLabels[index]);});
