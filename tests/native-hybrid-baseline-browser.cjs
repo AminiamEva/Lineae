@@ -121,22 +121,45 @@ async function testDesktopDocument(browser, origin, initial) {
     await page.keyboard.type('rj');
     await page.waitForFunction(()=>document.querySelector('main.native-ink-confirmed') &&
       document.querySelector('.ProseMirror').editor.state.selection.$from.parent.textContent==='rj',null,{timeout:60000});
-    const dom=await doc.evaluate(el=>{
-      const view=el.editor.view,{from}=view.state.selection;
-      const p=view.domAtPos(from).node.parentElement.closest('p');
-      const r=document.createRange();r.selectNodeContents(p);
+    const match=/rj!(?:\s)+(?<edited>rj)(?=\s+2)/d.exec(liveSource);
+    assert.ok(match,'The new rj and the following paragraph both survive source writeback');
+    const start=Buffer.byteLength(liveSource.slice(0,match.indices.groups.edited[0]));
+    const owner=published.spans.find(s=>s.range.start<=start&&s.range.end>=start+2);
+    const fragment=published.placements.find(p=>p.par_id===owner.id).fragments.at(-1);
+    const lastPage=published.pages[fragment.page].dl;
+    const line=lastPage.lines.find(l=>Math.abs(l.x-fragment.xs.at(-1))<=64&&Math.abs(l.y-fragment.baselines.at(-1))<=64);
+    const glyph=line.items.filter(it=>it[0]==='g').at(-1);
+    const dom=await doc.evaluate((el,{number,x,y})=>{
+      const view=el.editor.view,head=view.state.selection.$head,p=view.nodeDOM(head.before());
+      const r=window.getSelection().getRangeAt(0).getBoundingClientRect(),style=getComputedStyle(p);
+      const canvas=document.querySelector('[data-native-page="'+number+'"] canvas').getBoundingClientRect();
       const caret=document.querySelector('.native-rich-caret').getBoundingClientRect();
-      const b=r.getBoundingClientRect();
-      return {x:b.right-caret.left,y:(b.top+b.bottom-caret.top-caret.bottom)/2,
-        rows:[...el.querySelectorAll('p')].map(n=>n.textContent).filter(s=>s==='rj!')};
-    });
-    assert.deepEqual(dom.rows,['rj!']);assert.ok(Math.abs(dom.x)<2&&Math.abs(dom.y)<4,JSON.stringify(dom));
+      const ctx=document.createElement('canvas').getContext('2d');
+      ctx.font=style.fontStyle+' '+style.fontWeight+' '+style.fontSize+' '+style.fontFamily;
+      return {x:r.left-(canvas.left+x*canvas.width),nativeX:caret.left-(canvas.left+x*canvas.width),
+        y:r.top+ctx.measureText('Mg').fontBoundingBoxAscent*(p.currentCSSZoom||1)-(canvas.top+y*canvas.height),
+        rows:[...el.querySelectorAll('p')].filter(n=>n.textContent==='rj!').length};
+    },{number:fragment.page,x:(glyph[4]+glyph[6])/lastPage.page_width,y:glyph[5]/lastPage.page_height});
+    assert.equal(dom.rows,1);
+    assert.ok(Math.abs(dom.x)<2&&Math.abs(dom.nativeX)<2&&Math.abs(dom.y)<2,JSON.stringify(dom));
     const cdp=await page.context().newCDPSession(page);
     await cdp.send('Input.imeSetComposition',{text:'zhong',selectionStart:5,selectionEnd:5});
     assert.ok(await doc.evaluate(el=>el.textContent.includes('rjzhong')&&!document.querySelector('main.native-ink-confirmed')&&el===document.activeElement));
     await cdp.send('Input.insertText',{text:'中'});
     await page.keyboard.type('x');
     assert.equal(await doc.evaluate(el=>el.editor.state.selection.$from.parent.textContent),'rj中x');
+    await page.keyboard.press('Backspace');await page.keyboard.press('Backspace');
+    assert.equal(await doc.evaluate(el=>el.editor.state.selection.$from.parent.textContent),'rj');
+    const initialCount=await doc.evaluate(el=>[...el.querySelectorAll('p')].filter(p=>p.textContent==='rj').length);
+    await page.keyboard.press('Enter');await page.keyboard.type('#');
+    assert.equal(await doc.evaluate(el=>el.editor.state.selection.$from.parent.type.name),'heading');
+    await page.keyboard.press('Enter');await page.keyboard.type('rj');
+    await page.waitForFunction(()=>document.querySelector('main.native-ink-confirmed') &&
+      document.querySelector('.ProseMirror').editor.state.selection.$from.parent.textContent==='rj',null,{timeout:60000});
+    assert.equal(await doc.evaluate(el=>[...el.querySelectorAll('p')].filter(p=>p.textContent==='rj').length),initialCount+1);
+    assert.match(liveSource,/\\section\{\}\s+rj\s+2/);
+    assert.equal(await page.locator('.native-rich-caret').count(),1);
+    assert.equal(await page.locator('.native-pending-prose,.native-draft-mask').count(),0);
     assert.deepEqual(errors,[]);
     console.log('PASS: shipped Lua document, click duplicate by native coordinates, typing, repeated Enter, caret X/Y and CJK preedit/commit');
   }catch(error){
@@ -202,32 +225,39 @@ async function testDesktopDocument(browser, origin, initial) {
       const overlay=nativeParagraphOverlay(editor,panel,panel,()=>false);
       overlay.present(frame,captured.versions.source_revision);
       const results=[];
-      for(const e of entries){
-        const p=frame.byElement.get(e.element);
-        if(!p?.stops?.has(e.text.length))throw Error('No terminal stop for '+e.text.slice(0,50)+' '+JSON.stringify([p?.rows.length,p?.rows.flatMap(r=>r.glyphs).slice(0,12)]));
-        const stop=p.stops.get(e.text.length);
-        const sheet=panel.querySelector('[data-native-page="'+stop.row.page+'"]');
-        panel.scrollTop=sheet.offsetTop;
-        editor.focus({preventScroll:true});
-        document.getSelection().collapse(e.element.firstChild,e.text.length);
-        overlay.begin(stop.row.page);overlay.reveal(e.element);
-        const caret=sheet.querySelector('.native-rich-caret');
-        if(!caret)throw Error('No confirmed caret '+e.text.slice(0,24));
-        const pos=()=>{const b=sheet.querySelector('canvas').getBoundingClientRect(),c=caret.getBoundingClientRect();
-          return Math.abs(c.left-(b.left+b.width*stop.x));};
-        function editingPoint(){
-          const range=document.getSelection().getRangeAt(0);
-          const rect=range.getBoundingClientRect(),box=sheet.querySelector('canvas').getBoundingClientRect();
-          const ctx=document.createElement('canvas').getContext('2d'),style=getComputedStyle(e.element);
-          ctx.font=style.fontStyle+' '+style.fontWeight+' '+style.fontSize+' '+style.fontFamily;
-          return Math.max(Math.abs(rect.left-box.left-box.width*stop.x),
-            Math.abs(rect.top+ctx.measureText('Mg').fontBoundingBoxAscent-box.top-box.height*stop.y));
+      for(const zoom of [1,1.22,1.34]){
+        document.querySelector('.document-page').style.zoom=zoom;
+        for(const sheet of panel.children){
+          const dl=pages.get(+sheet.dataset.nativePage).dl;
+          sheet.style.width=560*zoom+'px';sheet.style.height=560*zoom*dl.page_height/dl.page_width+'px';
         }
-        const error=Math.max(pos(),editingPoint());
-        for(let i=0;i<8;i++)overlay.present(frame,captured.versions.source_revision);
-        const hit=paragraphHit(frame,stop.row.page,stop.x,stop.y);
-        results.push({text:e.text.slice(0,12),pages:new Set(p.rows.map(r=>r.page)).size,page:stop.row.page,
-          baseline:stop.y,error:Math.max(error,pos(),editingPoint()),hit:hit?.element===e.element&&hit.offset===e.text.length});
+        for(const e of entries){
+          const p=frame.byElement.get(e.element);
+          if(!p?.stops?.has(e.text.length))throw Error('No terminal stop for '+e.text.slice(0,50)+' '+JSON.stringify([p?.rows.length,p?.rows.flatMap(r=>r.glyphs).slice(0,12)]));
+          const stop=p.stops.get(e.text.length);
+          const sheet=panel.querySelector('[data-native-page="'+stop.row.page+'"]');
+          panel.scrollTop=sheet.offsetTop;
+          editor.focus({preventScroll:true});
+          document.getSelection().collapse(e.element.firstChild,e.text.length);
+          overlay.begin(stop.row.page);overlay.reveal(e.element);
+          const caret=sheet.querySelector('.native-rich-caret');
+          if(!caret)throw Error('No confirmed caret '+e.text.slice(0,24));
+          const pos=()=>{const b=sheet.querySelector('canvas').getBoundingClientRect(),c=caret.getBoundingClientRect();
+            return Math.abs(c.left-(b.left+b.width*stop.x));};
+          function editingPoint(){
+            const range=document.getSelection().getRangeAt(0);
+            const rect=range.getBoundingClientRect(),box=sheet.querySelector('canvas').getBoundingClientRect();
+            const ctx=document.createElement('canvas').getContext('2d'),style=getComputedStyle(e.element);
+            ctx.font=style.fontStyle+' '+style.fontWeight+' '+style.fontSize+' '+style.fontFamily;
+            return Math.max(Math.abs(rect.left-box.left-box.width*stop.x),
+              Math.abs(rect.top+ctx.measureText('Mg').fontBoundingBoxAscent*zoom-box.top-box.height*stop.y));
+          }
+          const error=Math.max(pos(),editingPoint());
+          for(let i=0;i<8;i++)overlay.present(frame,captured.versions.source_revision);
+          const hit=paragraphHit(frame,stop.row.page,stop.x,stop.y);
+          results.push({text:e.text.slice(0,12),pages:new Set(p.rows.map(r=>r.page)).size,page:stop.row.page,
+            baseline:stop.y,error:Math.max(error,pos(),editingPoint()),hit:hit?.element===e.element&&hit.offset===e.text.length});
+        }
       }
       const last=entries.at(-1),lastFrame=frame.byElement.get(last.element);
       last.element.dispatchEvent(new InputEvent('beforeinput',{bubbles:true,inputType:'insertCompositionText'}));

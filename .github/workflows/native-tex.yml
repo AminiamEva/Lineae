@@ -155,6 +155,7 @@ jobs:
             tar -xzf ".native-tex/$ARCHIVE" -C .native-tex/rtex
           fi
       - name: Observe real geometry and a revision-matched warm edit
+        id: hybrid_host
         if: ${{ !inputs.browser_only }}
         env:
           RTEX_ARCHIVE_SHA256: ${{ matrix.sha256 }}
@@ -305,6 +306,13 @@ jobs:
       - name: Type continuously in the Windows desktop Lua document
         if: ${{ !inputs.browser_only && runner.os == 'Windows' }}
         run: node tests/native-desktop-typing.cjs
+      - name: Preserve the tested browser bundle for diagnosing native replay failures
+        if: failure() && runner.os == 'Linux' && steps.hybrid_host.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-hybrid-browser-${{ github.sha }}
+          path: apps/web/editor.mjs
+          retention-days: 2
       - name: Preserve actual protocol, source, logs and clean reference PDF
         if: ${{ always() && !inputs.browser_only }}
         uses: actions/upload-artifact@v4
