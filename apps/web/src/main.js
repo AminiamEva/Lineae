@@ -5805,7 +5805,6 @@ headerFooterPanel=installHeaderFooterPanel({
   readState:()=>readPageFurniture(projectFileKind==='tex'?projectLayoutPreamble(projectExplorer?.model,documentParts.start):documentParts.start),
   onChange:applyFurnitureState,
 });
-groups.headerFooter=headerFooterPanel.panel;
 headerFooterPanel.refresh();
 imagePanel=installImagePanel({
   getSpacing:()=>readImageSpacing(documentParts.start),
@@ -5826,8 +5825,9 @@ groups.image=imagePanel.panel;
 let subfigurePanel=null;
 subfigurePanel=installSubfigurePanel({onUpdate:patch=>updateSelectedSubfigureAttrs(patch),onUngroup:ungroupSelectedImages});
 groups.subfigure=subfigurePanel.panel;
+groups.headerFooter=headerFooterPanel.panel;
 imagePanel.setSpacing(readImageSpacing(documentParts.start));
-const captions={files:['文件','File'],home:['主页','Home'],insert:['插入','Insert'],layout:['布局','Layout'],table:['表格','Table'],format:['格式','Format'],reference:['引用','Reference'],math:['数学','Math'],headerFooter:['页眉页脚','Header/Footer'],image:['图片','Image'],subfigure:['子图','Subfigure']};
+const captions={files:['文件','File'],home:['主页','Home'],insert:['插入','Insert'],layout:['布局','Layout'],table:['表格','Table'],format:['格式','Format'],reference:['引用','Reference'],math:['数学','Math'],headerFooter:['页眉页脚','Header & Footer'],image:['图片','Image'],subfigure:['子图','Subfigure']};
 const language=document.querySelector('#language');
 const fontFamilyControl=home.querySelector('[data-format-attribute="fontFamily"]');
 const fontSizeControl=home.querySelector('[data-format-attribute="fontSize"]');

@@ -883,11 +883,6 @@ header .floating-toolbar>.ribbon[data-ribbon-page] {
   max-width:none;
   padding-inline:6px;
 }
-@media (min-width:700px) {
-  header .floating-toolbar>.ribbon[data-ribbon-page] {
-    margin-inline-start:100px;
-  }
-}
 @media (max-width:699px) {
   header h1 { display:none; }
 }
@@ -1277,23 +1272,16 @@ body.format-painter-active .ProseMirror * { cursor:copy; }
 }
 .ribbon-tab-row {
   --ribbon-tab-button-size:24px;
-  --ribbon-tab-scroll-space:0px;
-  display:grid;
-  grid-template-columns:var(--ribbon-tab-button-size) var(--ribbon-tab-scroll-space)
-    minmax(0,1fr) var(--ribbon-tab-scroll-space) var(--ribbon-tab-button-size);
+  display:flex;
+  justify-content:center;
   align-items:center;
+  gap:2px;
   min-width:0;
 }
-.ribbon-tab-row:has(> .ribbon-tab-scroll:not([hidden])) {
-  --ribbon-tab-scroll-space:calc(var(--ribbon-tab-button-size) + 2px);
-}
-.ribbon-tab-row > * { grid-row:1; }
-.ribbon-tab-row > [data-direction="previous"] { grid-column:2; }
-.ribbon-tab-row > [data-direction="next"] { grid-column:4; justify-self:end; }
-.ribbon-tab-row > #toolbar-collapse { grid-column:5; }
 .ribbon-tab-row > button {
   display:grid;
   place-items:center;
+  flex:none;
   inline-size:var(--ribbon-tab-button-size);
   block-size:var(--ribbon-tab-button-size);
   padding:0;
@@ -1310,7 +1298,6 @@ body.format-painter-active .ProseMirror * { cursor:copy; }
 }
 .ribbon-tab-row > button:disabled { opacity:.32; cursor:default; }
 .ribbon[data-ribbon-page] .ribbon-tabs {
-  grid-column:3;
   min-width:0;
   flex-wrap:nowrap;
   justify-content:safe center;
