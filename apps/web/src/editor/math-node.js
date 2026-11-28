@@ -378,6 +378,29 @@ function unwrapBraces(value) {
   return text;
 }
 
+function applyDefaultDisplayStyle(field) {
+  if (!field.hasAttribute('data-lineae-default-displaystyle')) return;
+  const value = field.value;
+  const oldModel = field._mathfield?.model;
+  if (!oldModel || !value.trim() || value.includes('\\')) return;
+  const selection = field.selection;
+  const paths = selection.ranges.map(range => range.map(offset => mathPositionPath(oldModel, offset)));
+  field.removeAttribute('data-lineae-default-displaystyle');
+  // MathLive may deliver one input notification after multiple typed letters.
+  // The style creates an extra outer atom. Keep the same editable positions
+  // inside it so the next Backspace deletes the letter beside the caret.
+  field.setValue('\\displaystyle ' + value, {silenceNotifications: true});
+  const model = field._mathfield.model;
+  const wrapper = model.root.body.find(atom => atom.command === '\\displaystyle');
+  const parent = wrapper ? mathPositionPath(model, model.offsetOf(wrapper)) : [];
+  const endOfBody = model.offsetOf((wrapper ?? model.root).body.at(-1));
+  const ranges = paths.map(range => range.map(path => {
+    const offset = mathOffsetAtPath(model, [...parent, ...path]);
+    return offset >= 0 ? offset : Math.max(0, endOfBody);
+  }));
+  field.selection = {direction: selection.direction, ranges};
+}
+
 export function toggleDisplayStyle(field) {
   field.removeAttribute('data-lineae-default-displaystyle');
   const latex = unwrapBraces(field.value);
@@ -745,14 +768,7 @@ export const MathNode = Node.create({
       field.addEventListener('lineae-commit-fences', () => commitUnclosedFences(field));
 
       field.addEventListener('input', () => {
-        if (field.hasAttribute('data-lineae-default-displaystyle') && field.value.trim() &&
-            !field.value.includes('\\') && !/^\\displaystyle\b/.test(field.value)) {
-          field.removeAttribute('data-lineae-default-displaystyle');
-          field.value = '\\displaystyle ' + field.value;
-          field.executeCommand('moveToMathfieldEnd');
-          field.dispatchEvent(new Event('input',{bubbles:true}));
-          return;
-        }
+        applyDefaultDisplayStyle(field);
         const latex=mathDocumentSource(field.value,node.attrs.latex,{inline:!node.isBlock});
         if(node.attrs.latex===latex)return;
         const position = getPos();

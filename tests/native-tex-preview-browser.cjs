@@ -300,6 +300,21 @@ const server=createServer(async(req,res)=>{
           await desktopPage.keyboard.press('Backspace');
           try {
             await desktopPage.waitForFunction(field=>document.activeElement===field && field.value.trim()==='\\displaystyle x',formula);
+            // MathLive can coalesce notifications for successive keystrokes.
+            // Reproduce the first notification arriving with both letters in
+            // the field, regardless of the machine's keyboard event timing.
+            const wrappedSelection=await formula.evaluate(field=>{
+              field.setAttribute('data-lineae-default-displaystyle','');
+              field.setValue('xy',{silenceNotifications:true});
+              field.position=field.lastOffset;
+              field.dispatchEvent(new InputEvent('input',{bubbles:true,inputType:'insertText',data:'y'}));
+              return [field.value,field._mathfield.model.at(field.position)?.value,field.selection.ranges[0]];
+            });
+            assert.equal(wrappedSelection[0],'\\displaystyle xy');
+            assert.equal(wrappedSelection[1],'y','Default styling keeps the caret at the second letter');
+            assert.equal(wrappedSelection[2][0],wrappedSelection[2][1],'The input caret stays collapsed');
+            await desktopPage.keyboard.press('Backspace');
+            await desktopPage.waitForFunction(field=>field.value.trim()==='\\displaystyle x',formula);
           }catch(error){
             console.error('Inline formula after xy and Backspace',name,await fieldTrace.evaluate(probe=>probe.trace),await formula.evaluate(field=>({
               value:field.value,position:field.position,connected:field.isConnected,focus:document.activeElement?.tagName
