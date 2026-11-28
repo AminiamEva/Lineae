@@ -8,6 +8,7 @@ import {hitMathField,hitMathGlyph} from '../../editor/native-math/hit.mjs';
 import {warmRows} from './warm-rows.mjs';
 import {completePageDeltas} from './page-deltas.mjs';
 import {cachedDrawingBox,matchObservedDrawingFonts,sameCachedDrawingItems} from './cached-drawings.mjs';
+import {indentStroke,markCenter} from '../../editor/paragraph-marks.mjs';
 
 const CSS_PER_SP=(96/72)/65781.76;
 
@@ -412,9 +413,10 @@ export function installNativePages({host,getFont,getTypeOneFont,getRaster,paragr
       // TeX's actual first-line indent box; skip centered lines, noindent
       // paragraphs, and lines that start with a drawing or a rule.
       if(Math.abs(gap-indent)>Math.max(256,indent*.015))continue;
-      const x=current.x+(replacement?.dx??0),y=first[5]+(replacement?.dy??0)-current.h*.45;
-      const end=x+gap-3/CSS_PER_SP,tick=2.5/CSS_PER_SP;
-      commands.push('M'+(x+1/CSS_PER_SP)+' '+y+'H'+end+'m0 '+(-tick)+'v'+(2*tick));
+      const x=current.x+(replacement?.dx??0);
+      const fonts=replacement?warm.dl.fonts:dl.fonts;
+      const y=markCenter(first[5]+(replacement?.dy??0),fonts[first[1]]?.size??655360);
+      commands.push(indentStroke(x,x+gap,y,1/CSS_PER_SP));
     }
     if(!commands.length)return;
     const ns='http://www.w3.org/2000/svg',svg=document.createElementNS(ns,'svg'),path=document.createElementNS(ns,'path');
@@ -458,7 +460,9 @@ export function installNativePages({host,getFont,getTypeOneFont,getRaster,paragr
   }
   function redraw() {
     if(pdfBacked||frame)return;
-    frame=requestAnimationFrame(()=>{
+    frame=requestAnimationFrame(paintVisible);
+  }
+  function paintVisible(){
       frame=0;
       try {
         const viewport=host.getBoundingClientRect();
@@ -484,7 +488,6 @@ export function installNativePages({host,getFont,getTypeOneFont,getRaster,paragr
         // origin only after those controls have assumed their final size.
         if(revision>=0)onFrame?.();
       } catch(error) {onError(error,revision);}
-    });
   }
   async function layout(message) {
     const stamp=message.versions;
@@ -503,11 +506,14 @@ export function installNativePages({host,getFont,getTypeOneFont,getRaster,paragr
       for(const page of next.values()) {
         let entry=pages.get(page.page);
         if(!entry) {
-          const dom=document.createElement('div'),canvas=document.createElement('canvas');
+          // A preamble change restarts the host. Keep the presented canvas
+          // and its pending edits mounted until we paint their replacement.
+          const retained=host.querySelector(':scope > [data-native-page="'+page.page+'"]:not([data-pdf-page])');
+          const dom=retained??document.createElement('div'),canvas=retained?.querySelector('canvas')??document.createElement('canvas');
           dom.className='native-tex-page';canvas.setAttribute('aria-label','LuaLaTeX page '+page.page);
-          canvas.width=1;canvas.height=1;
+          if(!retained){canvas.width=1;canvas.height=1;dom.append(canvas);}
           dom.dataset.nativePage=String(page.page);
-          dom.append(canvas);entry={dom,canvas};pages.set(page.page,entry);
+          entry={dom,canvas};pages.set(page.page,entry);
         }
         entry.dl=page.dl;entry.exact=page.exact;
       }
@@ -528,7 +534,10 @@ export function installNativePages({host,getFont,getTypeOneFont,getRaster,paragr
         entry.dom.style.width=entry.dl.page_width*CSS_PER_SP*zoom+'px';
         entry.dom.style.height=entry.dl.page_height*CSS_PER_SP*zoom+'px';
       }
-      redraw();
+      // A new sheet, its display list and its ownership map become visible
+      // together. A separately scheduled redraw exposes a blank/stale frame.
+      cancelAnimationFrame(frame);
+      paintVisible();
     } catch(error) {if(attempt===generation)onError(error,stamp.source_revision);}
   }
   // Preserve deltas in order while resources load. A later layout may omit an

@@ -147,7 +147,14 @@ body:has(.tex-workspace:not([hidden])) {overflow:hidden}
 .document-status button[aria-pressed] {transition:color .14s ease,border-color .14s ease;}
 body.source-workspace-visible header {z-index:13;}
 body.source-workspace-visible:not(.project-visible) header h1 {display:none;}
-body:not(.source-workspace-visible) main {padding-top:calc(var(--tex-toolbar-bottom,76px) + 10px);}
+@media screen {
+  body:not(.source-workspace-visible) > main {
+    position:fixed;
+    inset:var(--tex-toolbar-bottom,125px) 0 var(--document-status-clearance);
+    padding-top:10px;
+    overscroll-behavior:contain;
+  }
+}
 :root {--sidebar-width:0px;}
 body.project-visible {--sidebar-width:230px;}
 header .floating-toolbar {position:relative;display:flex;justify-content:center;pointer-events:auto;max-width:calc(100vw - var(--sidebar-width) - 24px);transform:translateX(calc(var(--sidebar-width)/2));}

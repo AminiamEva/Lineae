@@ -7,7 +7,7 @@ function revealBelowToolbar(editor, position) {
     if (!(target instanceof Element) || !target.getClientRects().length) return;
     const toolbar = document.querySelector('header .floating-toolbar');
     if (!toolbar) return;
-    const scrollPane = target.closest('.tex-preview') ?? window;
+    const scrollPane = target.closest('.tex-preview,main') ?? window;
     const top = Math.max(toolbar.getBoundingClientRect().bottom,
       scrollPane === window ? 0 : scrollPane.getBoundingClientRect().top) + 8;
     const offset = target.getBoundingClientRect().top - top;

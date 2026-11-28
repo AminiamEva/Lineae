@@ -104,6 +104,10 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
     if(preamble===editPreamble)return;
     editPreamble=preamble;
     const metrics=ctexEditStyle(preamble);
+    const reflow=richEditor.hasAttribute('data-native-ctex')!==Boolean(metrics) ? overlay?.measureTypographyChange() : null;
+    const standardSections=/\\documentclass\s*(?:\[[^\]]*\]\s*)?\{article\}/.test(preamble) &&
+      !/\\(?:ctexset|titleformat|titlespacing|@startsection|RedeclareSectionCommand)\b|\\(?:renewcommand|def)\s*\{?\s*\\(?:sub)*section\b|\{[^{}\r\n]*\btitlesec\b[^{}\r\n]*\}/.test(preamble);
+    richEditor.toggleAttribute('data-native-article-sections',standardSections);
     // Before the first Han character the exporter has not emitted ctex yet.
     // Select the same bundled face for composition as for its committed text.
     const autoSong=Boolean(metrics)||/\\documentclass(?:\[[^\]]*\])?\{article\}/.test(preamble)&&
@@ -118,12 +122,13 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
     if(metrics){
       for(const [name,value] of Object.entries(metrics))richEditor.style.setProperty('--native-ctex-'+name,value);
     }
+    reflow?.();
     overlay?.painted();
   }
   const overlay=engineToggle&&richPage?nativeParagraphOverlay(richEditor,panel,pages,()=>!current(),focusRichOffset):null;
   const richSources=new Map();
   const futureFrames=[];
-  let geometryStamp=null,geometryOwners=null,lastSpans=null,boundDocument=null;
+  let geometryStamp=null,geometryOwners=null,lastSpans=null,boundDocument=null,awaitingReplacement=false;
   function spanPaths(snapshot){
     if(!overlay)return undefined;
     return [...new Set([snapshot.mainFile,...(snapshot.editablePaths??[]),...(snapshot.richBindings?.keys()??[])].filter(Boolean))];
@@ -144,6 +149,8 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
     if(!overlay)return;
     const frame=renderer.paragraphLayout(), token=frame?.warm??frame?.layout;
     const stamp=frame?.revision??(mode==='pdf'?pdfRendered:-1);
+    if(awaitingReplacement && !frame && stamp<0)return;
+    awaitingReplacement=false;
     const captured=richSources.get(stamp),owners=captured?.owners;
     if(geometryStamp===token&&geometryOwners===owners){overlay.painted();return;}
     geometryStamp=token;geometryOwners=owners;
@@ -159,9 +166,10 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
     overlay.present(frame?paragraphFrame(frame.layout,frame.pages,paintedOwners,frame.warm):null,stamp,
       frame?.warm ? null : captured?.doc);
   }
-  function resetParagraphFrames(){
+  function resetParagraphFrames(retain=false){
     richSources.clear();futureFrames.length=0;geometryStamp=null;geometryOwners=null;lastSpans=null;boundDocument=null;
-    overlay?.present(null,-1);
+    awaitingReplacement=retain;
+    if(!retain)overlay?.present(null,-1);
   }
   let richEditing=false,richRefreshTimer=null;
   function showRichEditor(number){
@@ -1091,7 +1099,7 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
         if(restarted){
           session=result.sessionId;pollEpoch++;lastEventSequence=0;renderedRevision=-1;pdfRendered=-1;pdfWanted=-1;pdfLayout=null;
           pdfGeometryAvailable=false;recordedVersions=null;recordedPages.clear();
-          renderer.reset({clear:false});pdf.reset({clear:false});resetParagraphFrames();
+          renderer.reset({clear:false});pdf.reset({clear:false});resetParagraphFrames(true);
           void poll(attempt,pollEpoch);
         }
         if(observation&&snapshot.signature!==sentSnapshot.signature){

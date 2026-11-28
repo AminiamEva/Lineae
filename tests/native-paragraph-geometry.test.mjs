@@ -16,7 +16,7 @@ import {StandaloneSourceHistory} from '../apps/web/src/editor/standalone-source-
 test('the imported Fandol article uses the same editing line and indent as the generated preamble',()=>{
   const article='\\documentclass{article}\n';
   const generated='\\PassOptionsToPackage{fontset=fandol}{ctex}\n\\usepackage{ctex}';
-  const standard={font:'10.5pt',line:'16.38pt',indent:'21pt'};
+  const standard={font:'10.5pt',line:'16.38pt',indent:'21pt',section:'15pt'};
   for(const declaration of [generated,'\\usepackage[fontset=fandol]{ctex}',
     '\\RequirePackage[UTF8, fontset = fandol]{ctex}', '\\usepackage[fontset={fandol}]{ctex}',
     '\\PassOptionsToPackage{fontset={fandol}}{ctex}\\usepackage{ctex}']){

@@ -42,7 +42,7 @@ const source = `\\documentclass{article}\n\\begin{document}\n\n${before}\n\n\\be
       const firstRect = first.getBoundingClientRect();
       return {
         pageCount: Number(pageElement.dataset.pageCount),
-        scrollY: window.scrollY,
+        scrollY: pageElement.closest('main').scrollTop,
         first: [Math.round(firstRect.top), Math.round(firstRect.height)],
         pageBreaksInFirst: first.querySelectorAll('.pagination-line-break').length,
         rows: document.querySelectorAll('.ProseMirror table tr').length,

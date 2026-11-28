@@ -398,6 +398,9 @@ body.native-tex-rich-edit main .document-sheets { visibility:hidden; }
   font-family:var(--tex-font-family,"Latin Modern Roman"),"FandolSong",serif;
 }
 html:has(body.native-tex-primary-open) { overflow:hidden; }
+.native-tex-hybrid .document-page .ProseMirror[data-native-ctex][data-native-article-sections] > h1 {
+  font-size:var(--native-ctex-section);
+}
 #native-tex-preview[data-primary=true]:not([data-split]) .native-tex-pages { overflow:visible; }
 #native-tex-toggle[data-engine=lua] { background:light-dark(#e0f2e8,#234538); color:light-dark(#175b40,#a8e5c6); }
 #native-tex-toggle[data-engine=xe] { background:light-dark(#e6edff,#293957); color:light-dark(#234e9d,#bbd3ff); }
@@ -424,10 +427,11 @@ body:has(.document-page[data-formatting-marks=true]) .native-pending-indent {
 }
 .native-tex-caret { position:absolute; width:2px; background:#2f6fd0; pointer-events:none; }
 body.native-tex-rich-edit main.native-ink-confirmed { opacity:0; }
-.native-draft-mask { position:absolute; background:white; pointer-events:none; }
+.native-draft-mask { position:absolute; z-index:1; background:white; pointer-events:none; }
 .native-pending-prose { position:absolute; inset:0; z-index:2; pointer-events:none; user-select:none; }
 .native-rich-caret { position:absolute; z-index:2; width:1px; background:#222; pointer-events:none; }
-.native-rich-endmark { position:absolute; z-index:1; color:#999; line-height:1; transform:translateY(-80%); pointer-events:none; }
+.native-rich-endmark { position:absolute; z-index:1; width:1px; height:1px; overflow:visible; fill:#80808094; font-family:sans-serif; pointer-events:none; }
+body:not(:has(.document-page[data-formatting-marks=true])) .native-rich-endmark { display:none; }
 .native-tex-operator-caret::after { content:''; position:absolute; top:.14em; left:3px; width:.68em; height:.68em; border:1px solid #96bdb1; border-radius:3px; background:#85bdab26; }
 .native-tex-selection { position:absolute; background:#2f6fd04d; pointer-events:none; }
 .native-tex-file-boundary { position:absolute; inset-inline:8%; border-top:1px solid #d9dee5; pointer-events:none; }

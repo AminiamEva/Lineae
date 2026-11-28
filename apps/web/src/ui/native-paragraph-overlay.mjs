@@ -3,6 +3,7 @@ import {paragraphHit,paragraphLineEdge} from '../typesetting/rtex/paragraph-geom
 import {nativeEditMetrics,textBoundary} from './native-edit-metrics.mjs';
 import {snapshotDraft} from './native-draft-ink.mjs';
 import {changedTextblocks} from '../editor/changed-textblocks.mjs';
+import {markCenter,paragraphEndMarker} from '../editor/paragraph-marks.mjs';
 
 // The document model and the IME always own the same mounted editable node.
 // The paper owns confirmed pixels. A dirty paragraph temporarily owns its ink
@@ -69,6 +70,12 @@ export function nativeParagraphOverlay(editor, panel, pages, framePending, selec
     return r.toString().length;
   }
   function boundary(block,offset,scale,caret=false) {
+    if(block.matches('.math-display')){
+      const shadow=block.querySelector('math-field')?.shadowRoot;
+      const ink=shadow?.querySelector('.ML__latex')?.getBoundingClientRect();
+      const strut=shadow?.querySelector('.ML__latex > .ML__strut')?.getBoundingClientRect();
+      if(ink?.width && strut?.height)return {x:ink.left,y:strut.bottom,rise:strut.bottom-ink.top};
+    }
     let point=textBoundary(block,offset);
     const s=document.getSelection();
     if(caret && !composing && s?.rangeCount && s.isCollapsed && selectionOffset(block)===offset){
@@ -77,11 +84,20 @@ export function nativeParagraphOverlay(editor, panel, pages, framePending, selec
         element:s.focusNode.nodeType===1?s.focusNode:s.focusNode.parentElement??block};
     }
     if(point){
-      const rise=metrics(point.element,point.char).aboveRange*scale;
+      const rise=Number.isFinite(point.baseline)?point.baseline-point.top:metrics(point.element,point.char).aboveRange*scale;
       return {x:point.x,y:point.top+rise,rise};
     }
     const box=block.getBoundingClientRect(),style=getComputedStyle(block);
     const rise=metrics(block).aboveLine*scale;
+    // An empty heading still has a generated section number; the trailing
+    // break is at the real insertion point beyond that number and its gap.
+    const br=block.lastElementChild;
+    if(br?.matches('br.ProseMirror-trailingBreak')){
+      const range=block.ownerDocument.createRange();
+      range.selectNode(br);
+      const rect=range.getBoundingClientRect();
+      if(rect.height)return {x:rect.left,y:rect.top+metrics(block).aboveRange*scale,rise:metrics(block).aboveRange*scale};
+    }
     return {x:box.left+((parseFloat(style.paddingLeft)||0)+(parseFloat(style.textIndent)||0))*scale,
       y:box.top+(parseFloat(style.paddingTop)||0)*scale+rise,rise};
   }
@@ -97,7 +113,8 @@ export function nativeParagraphOverlay(editor, panel, pages, framePending, selec
       const sheet=sheetFor(row.page);
       if(!sheet || sheet.dataset.paintRevision!==String(revision))continue;
       const m=document.createElement('span');m.className='native-draft-mask';m.setAttribute('aria-hidden','true');
-      Object.assign(m.style,{left:'calc('+row.left*100+'% - 1px)',width:'calc('+(row.right-row.left)*100+'% + 2px)',
+      const left=Math.min(row.left,row.origin);
+      Object.assign(m.style,{left:'calc('+left*100+'% - 1px)',width:'calc('+(row.right-left)*100+'% + 2px)',
         top:'calc('+row.top*100+'% - 1px)',height:'calc('+(row.bottom-row.top)*100+'% + 2px)'});
       sheet.append(m);covered.push(m);
     }
@@ -128,15 +145,37 @@ export function nativeParagraphOverlay(editor, panel, pages, framePending, selec
     marker.style.left=stop.x*100+'%';marker.style.top=stop.y*100+'%';
     marker.style.height=height+'px';marker.style.transform='translateY(-'+rise+'px)';
     const end=paragraph.stops.get(paragraph.entry.text.length);
-    if(end && page.dataset.formattingMarks==='true'){
-      if(!finishMark){finishMark=document.createElement('span');finishMark.className='native-rich-endmark';finishMark.setAttribute('aria-hidden','true');finishMark.textContent='¶';}
+    if(end && block.matches('p') && page.dataset.formattingMarks==='true'){
+      if(!finishMark)finishMark=paragraphEndMarker(page.ownerDocument);
       const last=sheetFor(end.row.page);
       if(last && last.dataset.paintRevision===String(revision)){
         if(finishMark.parentElement!==last)last.append(finishMark);
-        finishMark.style.left=end.x*100+'%';finishMark.style.top=end.y*100+'%';finishMark.style.fontSize=height*.60+'px';
+        const scale=page.currentCSSZoom||1,size=parseFloat(getComputedStyle(block).fontSize)*scale;
+        finishMark.style.left='calc('+end.x*100+'% + '+3*scale+'px)';
+        finishMark.style.top='calc('+end.y*100+'% + '+markCenter(0,size)+'px)';
+        finishMark.style.fontSize=height*.55+'px';
       }else finishMark.remove();
     }else {finishMark?.remove();finishMark=null;}
     main.classList.add('native-ink-confirmed');
+  }
+  function afterHeading(prev,next){
+    if(!editor.hasAttribute('data-native-article-sections') || !next.matches('p'))return null;
+    const units={H1:2.3,H2:1.5,H3:1.5}[prev.tagName];
+    // article evaluates the section's afterskip in the surrounding body
+    // font. The browser's heading margin is measured in the larger title font.
+    return units ? units*metrics(next).ex : null;
+  }
+  function firstHeadingReference(scale){
+    if(number!==1 || block!==editor.firstElementChild || !block?.matches('h1') ||
+      !editor.hasAttribute('data-native-ctex') || !editor.hasAttribute('data-native-article-sections') ||
+      !/^\p{Script=Han}+$/u.test(block.textContent) || page.querySelector('#document-meta')?.textContent.trim())return null;
+    const sheet=page.querySelector('.document-sheet')??page,box=canvas()?.getBoundingClientRect();
+    if(!box?.height || !box.width)return null;
+    // At the top of a page the first tall box sits flush with the typeset
+    // area. The horizontal Chinese JFM gives a Han glyph a height of .88em.
+    const height=parseFloat(getComputedStyle(page).paddingTop)+.88*parseFloat(getComputedStyle(block).fontSize);
+    const x=(boundary(block,0,scale).x-sheet.getBoundingClientRect().left)/box.width;
+    return {offset:0,stop:{row:{page:1},x,y:height*scale/box.height},pinned:true};
   }
   function referenceFor(paragraph,scale) {
     if(paragraph){
@@ -146,6 +185,7 @@ export function nativeParagraphOverlay(editor, panel, pages, framePending, selec
       if(!composing && sameNode && offset!==null && old===live && paragraph.stops?.has(offset) &&
           (!pin || !framePending() || paintedDocument===view?.state.doc && paintedDocument))
         return {stop:physicalStop(paragraph,offset,scale),offset,exact:true};
+      if(!old){const first=firstHeadingReference(scale);if(first)return first;}
       if(pin)return pinnedReference();
       // Anchor the common prefix nearest the edit, including wrapped lines.
       let i=0,limit=Math.min(offset??0,live.length,old?.length??0);
@@ -154,6 +194,8 @@ export function nativeParagraphOverlay(editor, panel, pages, framePending, selec
       const first=paragraph.rows[0];
       return {offset:i,stop:paragraph.stops?.get(i)??{row:first,x:first.left,y:first.baseline}};
     }
+    const first=firstHeadingReference(scale);
+    if(first)return first;
     if(pin)return pinnedReference();
     // Consecutive empty editor paragraphs have no TeX line boxes. New ink
     // starts below the last authored line, independent of how many Enters
@@ -167,7 +209,8 @@ export function nativeParagraphOverlay(editor, panel, pages, framePending, selec
         const lineHeight=parseFloat(getComputedStyle(block).lineHeight)*scale/sheet.height;
         if(!Number.isFinite(lineHeight))break;
         const first=prior.rows[0],x=paragraphStartX(block,prev.matches('p')?first.origin:null,sheet,scale);
-        return {offset:0,stop:{row:last,x,y:last.baseline+lineHeight*distance}};
+        const skip=(afterHeading(prev,block)??0)*scale/sheet.height;
+        return {offset:0,stop:{row:last,x,y:last.baseline+lineHeight*distance+skip}};
       }
       if(prev.textContent.trim() || prev.matches('.math-display,figure,table'))distance++;
     }
@@ -217,8 +260,36 @@ export function nativeParagraphOverlay(editor, panel, pages, framePending, selec
     if(row){
       for(const [at,stop] of paragraph.stops)if(stop.row===row){start=at;break;}
     }
-    storePin(block,start,boundary(block,start,scale),canvas()?.getBoundingClientRect());
+    const box=canvas()?.getBoundingClientRect();
+    const point=boundary(block,start,scale);
+    if(row && box && matches(paragraph,block)){
+      const stop=paragraph.stops.get(start);
+      const at=stop.row===row?stop:stop.upstream;
+      if(at){point.x=box.left+at.x*box.width;point.y=box.top+at.y*box.height;}
+    }
+    storePin(block,start,point,box);
     if(pin && start===0 && row && block.matches('p'))pin.column=row.origin;
+  }
+  function measureTypographyChange(){
+    // The first Chinese commit can change baselines throughout a formerly
+    // Latin article. Measure the preceding lines once on either side of
+    // that font change. Keep the edited line at its new paper coordinate
+    // and preserve its viewport position during that document-wide reflow.
+    if(!document.body.classList.contains('native-tex-rich-edit') || !block?.matches('p') || !block.isConnected)return;
+    const first=block.parentElement.firstElementChild;
+    if(first===block || !first?.matches('p') || !first.textContent)return;
+    const scale=page.currentCSSZoom||1;
+    const separation=()=>boundary(block,0,scale).y-boundary(first,0,scale).y;
+    pinCurrent();
+    const saved=pin,box=canvas()?.getBoundingClientRect(),before=separation();
+    if(!saved || !box?.height)return;
+    return ()=>{
+      if(pin!==saved || !block.isConnected)return;
+      const delta=separation()-before;
+      if(Math.abs(delta)<.01)return;
+      saved.y+=delta/box.height;
+      panel.scrollTop+=delta;
+    };
   }
   function position(){
     if(block&&!editor.contains(block)){hideRemovedInk();block=selectedBlock();anchor=null;pin=null;}
@@ -231,29 +302,14 @@ export function nativeParagraphOverlay(editor, panel, pages, framePending, selec
     if(reference)number=reference.stop.row.page;
     const current=canvas(),sheet=page.querySelector('.document-sheets')?.children[number-1]??page;
     if(!current)return;
-    let box=current.getBoundingClientRect();
+    const box=current.getBoundingClientRect();
     const paper=sheet.getBoundingClientRect();
     let shiftX=box.left-paper.left,shiftY=box.top-paper.top;
     const bounds=block?.getBoundingClientRect();
     let target=reference?.stop,point;
     if(target && bounds){
       point=boundary(block,reference.offset,scale,reference.exact);
-      if(reference.exact && pin){
-        // Keep the visible insertion line stationary when a whole-document
-        // reflow (for example the first ctex character) changes earlier rows.
-        const pinned=canvas(pin.page)?.getBoundingClientRect();
-        const first=boundary(block,pin.offset,scale);
-        const previous=pinned && pinned.top+pin.y*pinned.height+point.y-first.y;
-        const viewport=panel.getBoundingClientRect();
-        if(pinned && previous>=viewport.top && previous<=viewport.bottom){
-          const delta=box.top+target.y*box.height-previous;
-          if(Math.abs(delta)>1 && panel.scrollHeight>panel.clientHeight){
-            panel.scrollTop+=delta;
-            box=current.getBoundingClientRect();
-          }
-        }
-        pin=null;
-      }
+      if(reference.exact)pin=null;
       if(Number.isFinite(target.x))shiftX=box.left+target.x*box.width-point.x;
       shiftY=box.top+target.y*box.height-point.y;
     }else if(bounds && anchor?.block?.isConnected){
@@ -296,7 +352,11 @@ export function nativeParagraphOverlay(editor, panel, pages, framePending, selec
     const view=editor.editor?.view;
     if(!view || !editor.contains(element))return null;
     const pos=view.posAtDOM(element,0);
-    return pos<0?null:view.state.doc.resolve(pos).parent;
+    if(pos<0)return null;
+    // An atom has no editable interior. posAtDOM(atom,0) can resolve to
+    // its parent's content rather than to the displayed equation itself.
+    if(view.nodeDOM(pos)===element)return view.state.doc.nodeAt(pos);
+    return view.state.doc.resolve(pos).parent;
   }
   function matches(paragraph,element){
     if(!paragraph || !editor.contains(element))return false;
@@ -365,8 +425,7 @@ export function nativeParagraphOverlay(editor, panel, pages, framePending, selec
     const next=selectedBlock();
     if(next && block!==next){
       const previous=block,adjacent=previous?.nextElementSibling===next;
-      const previousRow=paragraphFor(previous)?.rows[0];
-      const column=previousRow?.page===number && previous?.matches('p')?previousRow.origin:pin?.column;
+      const previousParagraph=paragraphFor(previous);
       hideRemovedInk();
       if(previous?.isConnected)retainText(previous);
       discard(next);
@@ -375,16 +434,32 @@ export function nativeParagraphOverlay(editor, panel, pages, framePending, selec
       if(adjacent && !paragraphFor(next)){
         const scale=page.currentCSSZoom||1;
         const point=boundary(next,0,scale);
-        // Empty editing paragraphs are consumed as one separator by TeX.
-        if(previous.matches('p')&&!previous.textContent.length)point.y=boundary(previous,0,scale).y;
+        const last=previousParagraph?.rows.at(-1);
+        if(last)number=last.page;
         const box=canvas()?.getBoundingClientRect();
+        if(!box?.height){position();return;}
+        const headingSkip=afterHeading(previous,next);
+        if(next.matches('p') && (previous.matches('p') || headingSkip!==null)){
+          // TeX consumes consecutive empty paragraphs and advances by one
+          // baseline from the last line containing ink, including a soft wrap.
+          const offset=previous.textContent.length;
+          const end=boundary(previous,offset,scale);
+          const baseline=last && matches(previousParagraph,previous) ? box.top+last.baseline*box.height : end.y;
+          const style=getComputedStyle(next),line=parseFloat(style.lineHeight);
+          if(!previous.querySelector('math-field,img') && Number.isFinite(line)){
+            const advance=offset || headingSkip!==null ? line+(headingSkip??0)+(parseFloat(style.marginTop)||0) : 0;
+            point.y=baseline+advance*scale;
+          }
+        }
         storePin(next,0,point,box);
-        if(pin && previous.matches('p') && Number.isFinite(column)){
-          // Carry the typeset column edge, not the previous paragraph's
-          // first glyph. The first Han commit can change ctex's paragraph indent.
-          pin.column=column;
-          const x=paragraphStartX(next,column,box,scale);
-          if(x!==null)pin.x=x;
+        if(pin && next.matches('p')){
+          // The page was translated to edit the previous block. The new
+          // paragraph's column is relative to its sheet, not that translation.
+          const richSheet=page.querySelector('.document-sheets')?.children[number-1]??page;
+          const paper=richSheet.getBoundingClientRect(),style=getComputedStyle(next);
+          const column=last && previous.matches('p') ? previousParagraph.rows[0].origin :
+            (next.getBoundingClientRect().left-paper.left+(parseFloat(style.paddingLeft)||0)*scale)/box.width;
+          if(paragraphStartX(next,column,box,scale)!==null)pin.column=column;
         }
       }
     }
@@ -463,7 +538,7 @@ export function nativeParagraphOverlay(editor, panel, pages, framePending, selec
       const element=view.nodeDOM(pos);
       if(element && element!==next && element!==block)retainText(element);
     }
-    if(next && next!==block)update();else schedule();
+    if(next && (next!==block || main.classList.contains('native-ink-confirmed')))update();else schedule();
   });
   let followFrame=0;
   page.addEventListener('keyup',()=>{
@@ -511,7 +586,7 @@ export function nativeParagraphOverlay(editor, panel, pages, framePending, selec
       const element=mountedElement(layout.byElement.get(hit.element).entry);
       return element?.isConnected && editingText(element)===hit.text ? {...hit,element}:null;
     },
-    update:schedule,
+    update:schedule,measureTypographyChange,
     clear(retain=false){
       if(retain)retainText(block);
       else for(const element of pendingRows.keys())discard(element);
