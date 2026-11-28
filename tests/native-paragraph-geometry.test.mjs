@@ -11,6 +11,7 @@ import {importBlocks} from '../apps/web/src/editor/latex-codec.js';
 import {parseDocument} from '../apps/web/latex/document.mjs';
 import {projectDocumentEdits} from '../apps/web/src/project/include-document.mjs';
 import {ctexEditStyle} from '../apps/web/src/typesetting/rtex/ctex-edit-style.mjs';
+import {StandaloneSourceHistory} from '../apps/web/src/editor/standalone-source-history.mjs';
 
 test('the imported Fandol article uses the same editing line and indent as the generated preamble',()=>{
   const article='\\documentclass{article}\n';
@@ -35,6 +36,28 @@ const prose=new Schema({nodes:{doc:{content:'paragraph+'},paragraph:{content:'in
   hardBreak:{inline:true,group:'inline'}
 },marks:{italic:{}}});
 const p=text=>schema.nodes.paragraph.create(null,text?schema.text(text):null);
+test('grouped undo and redo restore the exact authoring bytes, including after a history branch or eviction',()=>{
+  const history=new StandaloneSourceHistory();
+  const [a,b,c,d,e]=['a','b','c','d','e'].map(text=>schema.nodes.doc.create(null,p(text)));
+  const move=(before,after,from,to,source,replay=false)=>history.transition(
+    {depth:from,source,snapshot:JSON.stringify(before.toJSON())},before,after,to,replay);
+  const raw='a\r\n% author spelling\r\n';
+  move(a,b,0,1,raw);
+  move(b,c,1,1,'intermediate');
+  assert.equal(move(c,a,1,0,'final c',true),raw);
+  assert.equal(move(a,c,0,1,raw,true),'final c');
+  assert.equal(move(c,a,1,0,'final c',true),raw);
+  move(a,d,0,1,raw);
+  assert.equal(history.matches(1,c),false,'a new edit discards the old redo branch');
+  move(d,b,1,2,'d source');
+  move(b,c,2,3,'b source');
+  move(c,e,3,2,'c source'); // The history plugin evicted its oldest two events.
+  assert.equal(move(e,c,2,1,'e source',true),'c source');
+  assert.equal(move(c,b,1,0,'c source',true),'b source');
+  assert.equal(move(b,d,0,1,'b source',true),undefined,'a different target document cannot use stored bytes');
+  history.clear();
+  assert.equal(history.matches(0,b),false);
+});
 const file='main.tex';
 function fixture(){
   const values=['rj','','','rj','中文𝔸','22'];
