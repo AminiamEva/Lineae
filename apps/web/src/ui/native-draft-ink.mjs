@@ -43,6 +43,34 @@ export function snapshotDraft(block,sheets,measure) {
     ink.textContent=text;
     place.group.append(ink);
   }
+  const graphemes=new Intl.Segmenter(undefined,{granularity:'grapheme'});
+  const eastAsian=/[\p{sc=Han}\p{sc=Hiragana}\p{sc=Katakana}\p{sc=Hangul}\u3000-\u303f\uff00-\uffef]/u;
+  function paintLine(node,from,to){
+    const text=node.data.slice(from,to);
+    const style=getComputedStyle(node.parentElement);
+    const emit=(start,end)=>{
+      range.setStart(node,from+start);range.setEnd(node,from+end);
+      paintText(text.slice(start,end),range.getBoundingClientRect(),node.parentElement);
+    };
+    if(!style.textAlign.startsWith('justify')){emit(0,text.length);return;}
+    // Justification is computed for the entire line. A detached span loses
+    // the extra space between words and between Han glyphs. Retain the
+    // measured origins of those runs, keeping Latin ligatures shaped together.
+    for(const match of text.matchAll(/\s+|\S+/gu)){
+      const start=match.index,end=start+match[0].length;
+      if(!eastAsian.test(match[0]) && style.textJustify!=='inter-character'){
+        emit(start,end);continue;
+      }
+      let word=start;
+      for(const {segment,index} of graphemes.segment(match[0])){
+        if(!eastAsian.test(segment) && style.textJustify!=='inter-character')continue;
+        const at=start+index;
+        if(at>word)emit(word,at);
+        word=at+segment.length;emit(at,word);
+      }
+      if(word<end)emit(word,end);
+    }
+  }
   function textRuns(node) {
     let from=0;
     while(from<node.length){
@@ -62,7 +90,7 @@ export function snapshotDraft(block,sheets,measure) {
         if(to<node.length && /[\uDC00-\uDFFF]/.test(node.data[to]))to++;
         range.setEnd(node,to);
       }
-      paintText(node.data.slice(from,to),range.getBoundingClientRect(),node.parentElement);
+      paintLine(node,from,to);
       from=to;
     }
   }

@@ -2,7 +2,7 @@
 // screen. Keep its pages as the base of the next full layout without ever
 // presenting the older revision over newer ink.
 export function completePageDeltas() {
-  const pages=new Map();
+  let pages=new Map();
   let revision=-1,version=-1;
   const accepts=stamp=>stamp.source_revision>revision ||
     (stamp.source_revision===revision && stamp.layout_version>=version);
@@ -10,12 +10,15 @@ export function completePageDeltas() {
     accepts,
     apply(message,visibleRevision){
       if(!accepts(message.versions))return null;
-      for(const page of message.pages_changed??[])pages.set(page.page,page);
-      for(const number of pages.keys())if(number>message.pages_total)pages.delete(number);
-      if(pages.size!==message.pages_total)throw Error('Native layout is missing page geometry');
+      const next=new Map(pages);
+      for(const page of message.pages_changed??[])next.set(page.page,page);
+      for(const number of next.keys())if(number>message.pages_total)next.delete(number);
+      if(next.size!==message.pages_total || [...next.keys()].some(n=>!Number.isInteger(n)||n<1))
+        throw Error('Native layout is missing page geometry');
+      pages=next;
       revision=message.versions.source_revision;version=message.versions.layout_version;
       return revision>=visibleRevision?pages:null;
     },
-    reset(){revision=-1;version=-1;pages.clear();},
+    reset(){revision=-1;version=-1;pages=new Map();},
   };
 }

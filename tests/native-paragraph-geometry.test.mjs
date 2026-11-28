@@ -113,6 +113,8 @@ test('a delayed full page delta becomes the next base without rolling back visib
   assert.equal(cache.apply(delta(5,2,[b],1),5),null);
   cache.reset();
   assert.throws(()=>cache.apply(delta(1,2,[b]),1),/missing page/);
+  assert.throws(()=>cache.apply(delta(2,2,[a]),2),/missing page/);
+  assert.deepEqual([...cache.apply(delta(3,1,[a]),3).values()],[a]);
 });
 
 test('multi-step edits locate both halves of a split in final document coordinates',()=>{
@@ -121,4 +123,12 @@ test('multi-step edits locate both halves of a split in final document coordinat
   const changed=[...changedTextblocks(tr)].sort((a,b)=>a[0]-b[0]);
   assert.deepEqual(changed.map(([,node])=>node.textContent),['!alpha','中 beta']);
   for(const [pos,node] of changed)assert.equal(tr.doc.nodeAt(pos),node);
+});
+
+test('a formatting transaction still invalidates the changed text when positions do not move',()=>{
+  const marked=new Schema({nodes:schema.spec.nodes,marks:{strong:{}}});
+  const doc=marked.node('doc',null,['before','edited words','after'].map(s=>marked.node('paragraph',null,marked.text(s))));
+  const start=doc.child(0).nodeSize+2;
+  const tr=EditorState.create({schema:marked,doc}).tr.addMark(start,start+5,marked.mark('strong'));
+  assert.deepEqual([...changedTextblocks(tr).values()].map(node=>node.textContent),['edited words']);
 });

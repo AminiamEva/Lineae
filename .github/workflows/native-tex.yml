@@ -313,6 +313,16 @@ jobs:
       - name: Type continuously in the Windows desktop Lua document
         if: ${{ !inputs.browser_only && runner.os == 'Windows' }}
         run: node tests/native-desktop-typing.cjs
+      - name: Measure line stability during real WebView composition and native repaint
+        if: ${{ !inputs.browser_only && runner.os == 'Windows' }}
+        env:
+          LINEAE_RTEX_PATH: ${{ github.workspace }}/.native-tex/rtex/rtex-0.0.8-x86_64-pc-windows-msvc/bin/rtex.exe
+          RTEX_TEXDIR: ${{ github.workspace }}/.native-tex/rtex/rtex-0.0.8-x86_64-pc-windows-msvc/share/rtex/tex
+          RTEX_TEXLIVE_BIN: ${{ github.workspace }}/.native-tex/texlive/bin/windows
+          TEXMFVAR: ${{ github.workspace }}/.native-tex/texlive/texmf-var
+          TEXMFCONFIG: ${{ github.workspace }}/.native-tex/texlive/texmf-config
+          TEXMFHOME: ${{ github.workspace }}/.native-tex/texlive/texmf-home
+        run: node tests/native-hybrid-typing-webview.cjs
       - name: Preserve actual protocol, source, logs and clean reference PDF
         if: ${{ always() && !inputs.browser_only }}
         uses: actions/upload-artifact@v4

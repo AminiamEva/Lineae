@@ -51,6 +51,57 @@ async function capture(inputSource=source) {
   }
 }
 
+async function testDraftPixels(page){
+  const result=await page.evaluate(async()=>{
+    const {snapshotDraft}=await import('/src/ui/native-draft-ink.mjs');
+    const {nativeEditMetrics}=await import('/src/ui/native-edit-metrics.mjs');
+    const style=document.createElement('style');
+    style.textContent='.native-pending-prose{position:absolute;inset:0}';
+    document.head.append(style);
+    const section=document.createElement('section');
+    section.style.cssText='position:fixed;top:0;left:0;z-index:5;width:600px;';
+    const block=document.createElement('p');
+    Object.assign(block.style,{position:'absolute',left:'29px',top:'37px',width:'186px',font:'16px/24px serif',
+      textAlign:'justify',whiteSpace:'pre-wrap',margin:'0'});
+    block.append('A quick brown fox jumps over the lazy dog. ');
+    const strong=document.createElement('strong');strong.textContent='First 中文';
+    const em=document.createElement('em');em.textContent=' next words stay here.';
+    block.append(strong,em,document.createElement('br'),'最后一行的字完整保留。');
+    section.append(block);
+    const sheets=[0,78].map(top=>{
+      const element=document.createElement('div');
+      element.style.cssText='position:absolute;left:0;width:600px;top:'+top+'px;height:'+(top?400:78)+'px;';
+      section.append(element);return element;
+    });
+    document.body.append(section);
+    function characters(roots){
+      const out=[],range=document.createRange();
+      for(const root of roots){
+        const walker=document.createTreeWalker(root,NodeFilter.SHOW_TEXT);
+        let node;
+        while((node=walker.nextNode()))for(let i=0;i<node.length;i++){
+          const char=node.data[i];if(/\s/.test(char))continue;
+          range.setStart(node,i);range.setEnd(node,i+1);
+          const r=range.getBoundingClientRect();
+          out.push({char,x:r.left,y:r.top});
+        }
+      }
+      return out;
+    }
+    const before=characters([block]);
+    const ink=snapshotDraft(block,sheets.map(element=>({element,box:element.getBoundingClientRect()})),nativeEditMetrics(document));
+    const after=characters(ink);
+    section.remove();style.remove();
+    return {count:ink.length,text:after.map(c=>c.char).join(''),expected:before.map(c=>c.char).join(''),
+      dx:Math.max(...before.map((c,i)=>Math.abs(c.x-after[i]?.x))),
+      dy:Math.max(...before.map((c,i)=>Math.abs(c.y-after[i]?.y)))};
+  });
+  assert.equal(result.count,2);
+  assert.equal(result.text,result.expected);
+  assert.ok(result.dx<1 && result.dy<1,'Intermediate ink moved while waiting for native layout '+JSON.stringify(result));
+  console.log('Intermediate glyph origin displacement in CSS pixels',JSON.stringify({x:result.dx,y:result.dy}));
+}
+
 // Exercise the shipped editor entry point. The bridge transports real rtex
 // display lists and recorded font resources. Editing, transactions, source
 // snapshots and the DOM handoff all run through the production application.
@@ -346,6 +397,7 @@ async function testDesktopDocument(browser, origin, initial) {
     assert.equal(new Set(result.results.filter(r=>r.text==='rj').map(r=>r.page+'/'+r.baseline)).size,3);
     assert.equal(new Set(result.results.filter(r=>r.text==='2').map(r=>r.baseline)).size,2);
     assert.ok(result.composing);assert.equal(result.staleCaret,false);
+    await testDraftPixels(page);
     if(process.argv.includes('--app'))await testDesktopDocument(browser,'http://127.0.0.1:'+server.address().port,captured);
     console.log('PASS: actual LuaLaTeX spans, repeated lines and empty paragraphs, marks, wraps and page crossings, native caret X, IME, stale frames');
   }finally{await browser?.close();server.closeAllConnections();await new Promise(done=>server.close(done));}

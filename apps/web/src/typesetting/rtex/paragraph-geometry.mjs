@@ -53,7 +53,7 @@ function rowGeometry(record, page) {
     }
   }
   if (!Number.isFinite(left)) return null;
-  record.geometry={page,left,right,baseline:record.y/h,top:(record.y-line.h)/h,bottom:(record.y+line.d)/h,glyphs};
+  record.geometry={page,origin:record.x/w,left,right,baseline:record.y/h,top:(record.y-line.h)/h,bottom:(record.y+line.d)/h,glyphs};
   return record.geometry;
 }
 

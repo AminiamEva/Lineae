@@ -145,7 +145,7 @@ export function nativeParagraphOverlay(editor, panel, pages, framePending) {
         if(!sheet?.height)break;
         const lineHeight=parseFloat(getComputedStyle(block).lineHeight)*scale/sheet.height;
         if(!Number.isFinite(lineHeight))break;
-        const first=prior.rows[0],x=block.matches('p')&&prev.matches('p')?first.left:null;
+        const first=prior.rows[0],x=paragraphStartX(block,prev.matches('p')?first.origin:null,sheet,scale);
         return {offset:0,stop:{row:last,x,y:last.baseline+lineHeight*distance}};
       }
       if(prev.textContent.trim() || prev.matches('.math-display,figure,table'))distance++;
@@ -171,6 +171,16 @@ export function nativeParagraphOverlay(editor, panel, pages, framePending) {
   function storePin(element,offset,point,canvasRect){
     if(!canvasRect?.height||!canvasRect.width)return;
     pin={element,offset,page:number,x:(point.x-canvasRect.left)/canvasRect.width,y:(point.y-canvasRect.top)/canvasRect.height};
+    if(offset===0){
+      const indent=paragraphStartX(element,0,canvasRect,page.currentCSSZoom||1);
+      if(indent!==null)pin.column=pin.x-indent;
+    }
+  }
+  function paragraphStartX(element,column,box,scale){
+    if(!Number.isFinite(column) || !box?.width || !element?.matches('p'))return null;
+    const style=getComputedStyle(element);
+    if(!['left','start','justify'].includes(style.textAlign) || style.direction==='rtl')return null;
+    return column+(parseFloat(style.textIndent)||0)*scale/box.width;
   }
   function pinCurrent(){
     if(!block || pin?.element===block)return;
@@ -328,6 +338,8 @@ export function nativeParagraphOverlay(editor, panel, pages, framePending) {
     const next=selectedBlock();
     if(next && block!==next){
       const previous=block,adjacent=previous?.nextElementSibling===next;
+      const previousRow=layout?.byElement.get(previous)?.rows[0];
+      const column=previousRow?.page===number && previous?.matches('p')?previousRow.origin:pin?.column;
       hideRemovedInk();
       if(previous?.isConnected)retainText(previous);
       discard(next);
@@ -338,7 +350,15 @@ export function nativeParagraphOverlay(editor, panel, pages, framePending) {
         const point=boundary(next,0,scale);
         // Empty editing paragraphs are consumed as one separator by TeX.
         if(previous.matches('p')&&!previous.textContent.length)point.y=boundary(previous,0,scale).y;
-        storePin(next,0,point,canvas()?.getBoundingClientRect());
+        const box=canvas()?.getBoundingClientRect();
+        storePin(next,0,point,box);
+        if(pin && previous.matches('p') && Number.isFinite(column)){
+          // Carry the typeset column edge, not the previous paragraph's
+          // first glyph. The first Han commit can change ctex's paragraph indent.
+          pin.column=column;
+          const x=paragraphStartX(next,column,box,scale);
+          if(x!==null)pin.x=x;
+        }
       }
     }
     position();
