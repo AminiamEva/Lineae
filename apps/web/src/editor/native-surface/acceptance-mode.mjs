@@ -35,7 +35,12 @@ export async function loadLegacyMath(){
   await new Promise(resolve=>{
     const script=document.createElement('script');
     script.src=new URL('vendor/mathlive/mathlive.min.js',document.baseURI).href;
-    script.addEventListener('load',resolve,{once:true});
+    script.addEventListener('load',()=>{
+      // MathLive starts decoding its bundled faces when this directory is set.
+      // The first editable formula must measure the same glyphs as later ones.
+      if(window.MathfieldElement)window.MathfieldElement.fontsDirectory=new URL('fonts/',script.src).href;
+      resolve();
+    },{once:true});
     script.addEventListener('error',resolve,{once:true});
     document.head.append(script);
   });

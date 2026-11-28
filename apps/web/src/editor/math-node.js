@@ -695,12 +695,30 @@ export const MathNode = Node.create({
       let scriptCleanupQueued = false;
       let escaping = false;
       let escapingTimer = 0;
+      let lastFieldValue;
+      function commitField() {
+        if (!field.isConnected || !field._mathfield) return;
+        const position = getPos();
+        if (!Number.isInteger(position) || editor.state.doc.nodeAt(position) !== node) return;
+        const value = editedFieldValue(field, node.attrs.latex);
+        const latex = mathDocumentSource(value, node.attrs.latex, {inline: !node.isBlock});
+        lastFieldValue = field.value;
+        if (node.attrs.latex === latex) return;
+        editor.view.dispatch(editor.state.tr.setNodeMarkup(position, undefined, {...node.attrs, latex}));
+        rememberSelection();
+      }
+      function flushField() {
+        // MathLive can deliver its input event on the next animation frame.
+        // Transfer the last keystroke before the outer selection moves.
+        if (lastFieldValue !== undefined && lastFieldValue !== field.value) commitField();
+      }
       const clearEscape=()=>{escaping=false;};
       document.addEventListener('pointerdown',clearEscape,true);
       const finish = backward => {
         pointerFocus++;
         commitUnclosedFences(field);
         clearEmptyScripts(field);
+        flushField();
         escaping = true;
         clearTimeout(escapingTimer);
         escapingTimer = setTimeout(() => { escaping = false; }, 700);
@@ -761,6 +779,7 @@ export const MathNode = Node.create({
         });
       },true);
       field.addEventListener('focus', () => {
+        lastFieldValue ??= field.value;
         leftDuringFocus = false;
         if (escaping) {
           queueMicrotask(() => {
@@ -781,7 +800,11 @@ export const MathNode = Node.create({
         pendingKey=null; pendingDollar=false; oneScript=null; replacedOperator=null;
         // The command palette takes focus, so a blank subscript typed with "_"
         // must survive until the chosen command is inserted into it.
-        queueMicrotask(()=>{if(field.isConnected&&!field.hasFocus()&&!commandPalette)clearEmptyScripts(field);});
+        queueMicrotask(()=>{
+          if(!field.isConnected||field.hasFocus()||commandPalette)return;
+          clearEmptyScripts(field);
+          flushField();
+        });
       });
       field.addEventListener('selection-change',()=>{
         rememberSelection();
@@ -799,16 +822,7 @@ export const MathNode = Node.create({
       });
       field.addEventListener('lineae-commit-fences', () => commitUnclosedFences(field));
 
-      field.addEventListener('input', () => {
-        const value = editedFieldValue(field, node.attrs.latex);
-        const latex=mathDocumentSource(value,node.attrs.latex,{inline:!node.isBlock});
-        if(node.attrs.latex===latex)return;
-        const position = getPos();
-        if (typeof position === 'number') {
-          editor.view.dispatch(editor.state.tr.setNodeMarkup(position, undefined, { ...node.attrs, latex }));
-          rememberSelection();
-        }
-      });
+      field.addEventListener('input', commitField);
       let leavingStructure = false;
       field.addEventListener('lineae-leave-formula',()=>finish(false));
       field.addEventListener('lineae-math-newline',()=>{if(node.isBlock){field.focus();addDisplayLine(field);}});
@@ -992,6 +1006,7 @@ export const MathNode = Node.create({
         if (['forward','backward'].includes(event.detail.direction)) finish(event.detail.direction === 'backward');
       });
       field.addEventListener('mount', () => {
+        lastFieldValue ??= field.value;
         field.mathVirtualKeyboardPolicy = 'manual';
         field.popoverPolicy = 'off';
         field.inlineShortcuts = {};
@@ -1052,12 +1067,16 @@ export const MathNode = Node.create({
         dom,
         update(next) {
           if (next.type !== node.type) return false;
+          const sourceChanged = next.attrs.latex !== node.attrs.latex;
           node = next;
           dom.dataset.latex = node.attrs.latex;
           renderNumbers();
-          if (mathDocumentSource(field.value,node.attrs.latex,{inline:!node.isBlock}) !== node.attrs.latex) {
-            const latex=mathEditorSource(node.attrs.latex,{inline:!node.isBlock});
-            if (field.value !== latex) field.value=latex;
+          if (sourceChanged) {
+            if (mathDocumentSource(field.value,node.attrs.latex,{inline:!node.isBlock}) !== node.attrs.latex) {
+              const latex=mathEditorSource(node.attrs.latex,{inline:!node.isBlock});
+              if (field.value !== latex) field.value=latex;
+            }
+            lastFieldValue = field.value;
           }
           return true;
         },

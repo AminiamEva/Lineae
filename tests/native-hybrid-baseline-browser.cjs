@@ -566,6 +566,8 @@ async function testDesktopDocument(browser, origin, initial) {
       await page.waitForFunction(()=>document.querySelector('.math-display math-field')?.shadowRoot?.querySelector('.ML__latex')?.textContent.includes('1'));
       activeMath=await mathPoint('.math-display math-field');
       await page.keyboard.press('Control+Shift+j');
+      assert.equal(await doc.evaluate(el=>el.editor.state.doc.firstChild.attrs.latex),'x+1',
+        'The equation is committed before the first key in the following paragraph');
       await expect.poll(()=>mathPoint('.native-pending-formula')).not.toBeNull();
       retainedMath=await mathPoint('.native-pending-formula');
       assert.equal(await page.locator('.native-pending-prose math-field').count(),0);
