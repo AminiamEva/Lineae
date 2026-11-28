@@ -744,7 +744,7 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
       ? stagedRaster(sentSnapshot,file) : null,
     onPaint:revision=>{
       if(!active||mode!=='canvas')return;
-      overlay?.update();renderedRevision=revision;if(!terminal&&revision>=sourceRevision)error='';renderStatus();
+      renderedRevision=revision;if(richEditing&&current())overlay?.alignPainted(renderer);else overlay?.update();if(!terminal&&revision>=sourceRevision)error='';renderStatus();
       syncCaret();
     },
     onError:(failure,revision)=>{if(active&&mode==='canvas')void fallback(failure,revision);},

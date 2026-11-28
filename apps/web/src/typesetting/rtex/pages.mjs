@@ -597,7 +597,27 @@ export function installNativePages({host,getFont,getTypeOneFont,getRaster,paragr
       x:first && group===owner?.paragraph && !glyphs.some(g=>g.number<page)
         ?first.glyph.bbox[0]/entry.dl.page_width:undefined};
   }
-  return {blockAnchor,accept,reset,attachOwners,bindPdfLayout,showCaret,showSelection,showFileBoundaries,showFoldedFiles,clearCaret,redraw,setZoom(value){clearCaret();zoom=value;showFileBoundaries(boundaries);showFoldedFiles(foldedRanges,false);if(pdfBacked)return;for(const entry of pages.values()){
+  // Index the visible pixels once per painted frame. A paragraph update may
+  // translate a replacement line relative to its own display list.
+  function paintedLines(number,text){
+    const frame=pages.get(number)?.painted;
+    if(!frame)return [];
+    if(!frame.textLines){
+      frame.textLines=new Map();
+      for(const [i,original] of frame.dl.lines.entries()){
+        const replacement=frame.rows?.get(i),line=replacement?.line??original;
+        if(!line.items.every(item=>['g','m','c'].includes(item[0])))continue;
+        const glyphs=line.items.filter(item=>item[0]==='g');
+        if(!glyphs.length||glyphs.some(g=>!Number.isInteger(g[2])||g[2]<0||g[2]>0x10ffff))continue;
+        const key=glyphs.map(g=>String.fromCodePoint(g[2])).join('');
+        if(!frame.textLines.has(key))frame.textLines.set(key,[]);
+        frame.textLines.get(key).push({x:(glyphs[0][4]+(replacement?.dx??0))/frame.dl.page_width,
+          baseline:(glyphs[0][5]+(replacement?.dy??0))/frame.dl.page_height});
+      }
+    }
+    return frame.textLines.get(text)??[];
+  }
+  return {paintedLines,blockAnchor,accept,reset,attachOwners,bindPdfLayout,showCaret,showSelection,showFileBoundaries,showFoldedFiles,clearCaret,redraw,setZoom(value){clearCaret();zoom=value;showFileBoundaries(boundaries);showFoldedFiles(foldedRanges,false);if(pdfBacked)return;for(const entry of pages.values()){
     entry.dom.style.width=entry.dl.page_width*CSS_PER_SP*zoom+'px';
     entry.dom.style.height=entry.dl.page_height*CSS_PER_SP*zoom+'px';
   }redraw();}};

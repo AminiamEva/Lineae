@@ -23,16 +23,17 @@ export function nativeParagraphOverlay(editor, panel, pages, framePending) {
     const bounds=block?.getBoundingClientRect();
     const scale=page.offsetWidth?paper.width/page.offsetWidth:1;
     if(!Number.isFinite(scale)||scale<=0)return;
-    if(bounds&&anchor?.block===block){
+    if(bounds&&anchor?.block?.isConnected){
+      const reference=anchor.block;
       let textBox=null;
-      if(Number.isFinite(anchor.x) && block.firstChild?.nodeType===Node.TEXT_NODE){
+      if(Number.isFinite(anchor.x) && reference.firstChild?.nodeType===Node.TEXT_NODE){
         const range=document.createRange();
-        range.setStart(block.firstChild,0);
-        range.setEnd(block.firstChild,Math.min(1,block.firstChild.length));
+        range.setStart(reference.firstChild,0);
+        range.setEnd(reference.firstChild,Math.min(1,reference.firstChild.length));
         textBox=range.getClientRects()[0];
       }
       if(textBox)shiftX=box.left+anchor.x*box.width-textBox.left;
-      shiftY=box.top+anchor.y*box.height-(textBox?.top??bounds.top);
+      shiftY=box.top+anchor.y*box.height-(textBox?.top??reference.getBoundingClientRect().top)-(anchor.ascent??0)*scale;
     }
     const viewport=panel.getBoundingClientRect(),host=main.getBoundingClientRect();
     const viewRight=viewport.left+panel.clientWidth;
@@ -109,7 +110,8 @@ export function nativeParagraphOverlay(editor, panel, pages, framePending) {
     if(next && block!==next){
       if(framePending() && block?.nextElementSibling===next)retainText(block);
       pendingRows.get(next)?.remove();pendingRows.delete(next);
-      block=next;anchor=null;
+      if(block?.nextElementSibling!==next)anchor=null;
+      block=next;
     }
     position();
   }
@@ -179,6 +181,24 @@ export function nativeParagraphOverlay(editor, panel, pages, framePending) {
       pendingRows.get(block)?.remove();pendingRows.delete(block);
       anchor=Number.isFinite(y)?{block,y,x}:null;
       position();schedule();
+    },
+    alignPainted(renderer){
+      update();
+      if(!block?.matches('p')||block.childNodes.length!==1||block.firstChild.nodeType!==Node.TEXT_NODE)return;
+      const text=block.textContent;
+      if(!text||/\s/.test(text))return;
+      const lines=renderer.paintedLines(number,text);
+      if(!lines.length)return;
+      const matches=[...editor.querySelectorAll('p')].filter(p=>p.textContent===text);
+      if(matches.length!==lines.length||matches.length>1&&pages.querySelectorAll('canvas').length!==1)return;
+      const line=lines[matches.indexOf(block)];
+      if(!line)return;
+      const style=getComputedStyle(block),ctx=document.createElement('canvas').getContext('2d');
+      ctx.font=style.fontStyle+' '+style.fontWeight+' '+style.fontSize+' '+style.fontFamily;
+      const ascent=ctx.measureText(text).fontBoundingBoxAscent;
+      if(!Number.isFinite(ascent))return;
+      anchor={block,x:line.x,y:line.baseline,ascent};
+      position();
     },
     update:schedule,releaseRows,
     clear(retain=false){
