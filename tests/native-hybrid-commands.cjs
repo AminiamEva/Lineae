@@ -85,7 +85,7 @@ module.exports=async function checkCommands(page,{hybrid=true}={}) {
     // Capture a and b on their own baselines, including the denominator.
     const points=async locator=>{
       await page.waitForFunction(f=>[...f.shadowRoot.querySelectorAll('.ML__mathit')]
-        .filter(e=>/^[ab]$/.test(e.textContent)).length===2,await locator.elementHandle());
+        .map(e=>e.textContent).sort().join('')==='ab',await locator.elementHandle());
       return locator.evaluate(field=>{
         const paper=document.querySelector('[data-native-page] canvas')?.getBoundingClientRect()??{left:0,top:0};
         return [...field.shadowRoot.querySelectorAll('.ML__mathit')].filter(el=>/^[ab]$/.test(el.textContent)).map(el=>{
@@ -99,7 +99,9 @@ module.exports=async function checkCommands(page,{hybrid=true}={}) {
       });
     };
     const live=await points(display);
-    await key('Control+Shift+j');await type('After');
+    // Leave immediately after another deletion. The retained ink must not
+    // clone the pending "bc" denominator before MathLive paints "b".
+    await type('c');await key('Backspace');await key('Control+Shift+j');await type('After');
     const result=(await model()).content;
     assert.equal(result.find(n=>n.type==='mathBlock').attrs.latex,'\\frac{a}{b}');
     assert.equal(result.at(-1).content[0].text,'After');

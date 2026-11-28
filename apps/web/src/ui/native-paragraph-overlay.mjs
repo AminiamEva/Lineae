@@ -212,6 +212,7 @@ export function nativeParagraphOverlay(editor, panel, pages, framePending, selec
     const row=paragraph?.rows[0],targetPage=row?.page??number;
     const box=canvas(targetPage)?.getBoundingClientRect();
     if(!box?.height || !box.width)return null;
+    element.querySelector('math-field')?.flushPendingLayout?.();
     const richSheet=page.querySelector('.document-sheets')?.children[targetPage-1]??page;
     const paper=richSheet.getBoundingClientRect(),start=boundary(element,0,scale);
     // MathLive centers the expression again as it grows. Pinning the left
@@ -482,6 +483,7 @@ export function nativeParagraphOverlay(editor, panel, pages, framePending, selec
     if(!previous?.isConnected || !previous.matches('p,h1,h2,h3,h4,h5,h6,pre,figcaption,.math-display'))return;
     const owner=paragraphFor(previous);
     if(painted(owner)&&matches(owner,previous)){discard(previous);return;}
+    for(const field of previous.querySelectorAll('math-field'))field.flushPendingLayout?.();
     const bounds=previous.getBoundingClientRect();
     const sheets=pages.querySelectorAll('[data-native-page],[data-pdf-page]');
     let lo=0,hi=sheets.length;

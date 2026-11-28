@@ -455,7 +455,7 @@ const server=createServer(async(req,res)=>{
       const nativePalette=page.getByRole('dialog',{name:'LaTeX completion',exact:true});
       await nativePalette.waitFor();
       await panel.dispatchEvent('scroll');
-      await nativePalette.getByRole('textbox',{name:'LaTeX command',exact:true}).fill('sqrt');
+      await nativePalette.getByRole('combobox',{name:'LaTeX command',exact:true}).fill('sqrt');
       await page.keyboard.press('Enter');
       await page.waitForFunction(()=>nativeProbe.source?.includes('\\sqrt{}'));
       const rootObservations=await page.evaluate(()=>nativeProbe.calls.filter(call=>call.command==='native_tex_observe_formula').length);
@@ -653,7 +653,7 @@ const server=createServer(async(req,res)=>{
       await page.locator('#native-tex-edit').click();
       await canvas.click({position:{x:7450000*scale,y:9250000*scale}});
       await page.keyboard.press('Backslash');
-      await page.getByRole('textbox',{name:'LaTeX command',exact:true}).fill('footnote');
+      await page.getByRole('combobox',{name:'LaTeX command',exact:true}).fill('footnote');
       await page.keyboard.press('Enter');
       await page.locator('.editor-dialog input').fill('Yield 50%');
       await page.locator('.editor-dialog button[type=submit]').click();
@@ -669,7 +669,7 @@ const server=createServer(async(req,res)=>{
       await panel.getByText('Click text on the native page',{exact:false}).waitFor();
       await canvas.click({position:{x:6550000*scale,y:9250000*scale}});
       await page.keyboard.press('Backslash');
-      await page.getByRole('textbox',{name:'LaTeX command',exact:true}).fill('lipsum');
+      await page.getByRole('combobox',{name:'LaTeX command',exact:true}).fill('lipsum');
       await page.keyboard.press('Enter');
       await page.locator('.editor-dialog input').fill('2');
       await page.locator('.editor-dialog button[type=submit]').click();
@@ -1265,7 +1265,7 @@ const server=createServer(async(req,res)=>{
         await panel.getByText('Click text on the native page',{exact:false}).waitFor();
         await canvas.click({position:{x:7520000*scale,y:9250000*scale}});
         await page.keyboard.press('Backslash');
-        await prosePalette.getByRole('textbox',{name:'LaTeX command',exact:true}).fill(command);
+        await prosePalette.getByRole('combobox',{name:'LaTeX command',exact:true}).fill(command);
         await page.keyboard.press('Enter');
         await page.waitForFunction(expected=>nativeProbe.source===expected,pagedProse.replace('Beta',latex+'\n\nBeta'));
         assert.equal(await page.locator('.ProseMirror').locator(node).count(),1);
@@ -1275,7 +1275,7 @@ const server=createServer(async(req,res)=>{
       await panel.getByText('Click text on the native page',{exact:false}).waitFor();
       await canvas.click({position:{x:6550000*scale,y:9250000*scale}});
       await page.keyboard.press('Backslash');
-      await prosePalette.getByRole('textbox',{name:'LaTeX command',exact:true}).fill('multicols*');
+      await prosePalette.getByRole('combobox',{name:'LaTeX command',exact:true}).fill('multicols*');
       await page.keyboard.press('Enter');
       const wrappedColumns=pagedProse.replace('Alpha','\\begin{multicols*}{2}\nAlpha\n\n\\end{multicols*}')
         .replace('\\begin{document}','\\usepackage{multicol}\n\\begin{document}');
@@ -1286,7 +1286,7 @@ const server=createServer(async(req,res)=>{
       await panel.getByText('Click text on the native page',{exact:false}).waitFor();
       await canvas.click({position:{x:7520000*scale,y:9250000*scale}});
       await page.keyboard.press('Backslash');
-      await prosePalette.getByRole('textbox',{name:'LaTeX command',exact:true}).fill('newpage');
+      await prosePalette.getByRole('combobox',{name:'LaTeX command',exact:true}).fill('newpage');
       await page.keyboard.press('Enter');
       const pageBreakSource=pagedProse.replace('Beta','\\newpage\n\nBeta');
       await page.waitForFunction(expected=>nativeProbe.source===expected,pageBreakSource);
@@ -1294,7 +1294,7 @@ const server=createServer(async(req,res)=>{
       await panel.getByText('Click text on the native page',{exact:false}).waitFor();
       await canvas.click({position:{x:6550000*scale,y:9250000*scale}});
       await page.keyboard.press('Backslash');
-      await prosePalette.getByRole('textbox',{name:'LaTeX command',exact:true}).fill('section');
+      await prosePalette.getByRole('combobox',{name:'LaTeX command',exact:true}).fill('section');
       await page.keyboard.press('Enter');
       const numberedHeading=pageBreakSource.replace('Alpha','\\section{Alpha}');
       await page.waitForFunction(expected=>nativeProbe.source===expected,numberedHeading);
@@ -1309,7 +1309,7 @@ const server=createServer(async(req,res)=>{
       await panel.getByText('Click text on the native page',{exact:false}).waitFor();
       await canvas.click({position:{x:6550000*scale,y:9250000*scale}});
       await page.keyboard.press('Backslash');
-      await prosePalette.getByRole('textbox',{name:'LaTeX command',exact:true}).fill('proof');
+      await prosePalette.getByRole('combobox',{name:'LaTeX command',exact:true}).fill('proof');
       await page.keyboard.press('Enter');
       const wrappedProof=pageBreakSource.replace('Alpha','\\begin{proof}\nAlpha\n\\end{proof}')
         .replace('\\begin{document}','\\usepackage{amsthm}\n\\begin{document}');
@@ -1319,7 +1319,7 @@ const server=createServer(async(req,res)=>{
       await panel.getByText('Click text on the native page',{exact:false}).waitFor();
       await canvas.click({position:{x:6550000*scale,y:9250000*scale}});
       await page.keyboard.press('Backslash');
-      await prosePalette.getByRole('textbox',{name:'LaTeX command',exact:true}).fill('description');
+      await prosePalette.getByRole('combobox',{name:'LaTeX command',exact:true}).fill('description');
       await page.keyboard.press('Enter');
       await page.locator('.editor-dialog input').fill('Name 50%');
       await page.locator('.editor-dialog button[type=submit]').click();
@@ -1330,7 +1330,7 @@ const server=createServer(async(req,res)=>{
       await panel.getByText('Click text on the native page',{exact:false}).waitFor();
       await canvas.click({position:{x:6550000*scale,y:9250000*scale}});
       await page.keyboard.press('Backslash');
-      await prosePalette.getByRole('textbox',{name:'LaTeX command',exact:true}).fill('title');
+      await prosePalette.getByRole('combobox',{name:'LaTeX command',exact:true}).fill('title');
       await page.keyboard.press('Enter');
       await page.locator('.editor-dialog input').fill('Yield 50%');
       await page.locator('.editor-dialog button[type=submit]').click();
@@ -1393,7 +1393,7 @@ const server=createServer(async(req,res)=>{
         await panel.getByText('Click text on the native page',{exact:false}).waitFor();
         await canvas.click({position:{x:7520000*scale,y:9250000*scale}});
         await page.keyboard.press('Backslash');
-        await prosePalette.getByRole('textbox',{name:'LaTeX command',exact:true}).fill(matter+'matter');
+        await prosePalette.getByRole('combobox',{name:'LaTeX command',exact:true}).fill(matter+'matter');
         await page.keyboard.press('Enter');
         await page.waitForFunction(expected=>nativeProbe.source===expected,bookSource.replace('Beta','\\'+matter+'matter\n\nBeta'));
         assert.equal(await page.locator(`.ProseMirror [data-matter-start="${matter}"]`).count(),1);
@@ -1433,7 +1433,7 @@ const server=createServer(async(req,res)=>{
       await panel.getByText('Click the empty numerator or denominator',{exact:false}).waitFor();
       await canvas.click({position:{x:6500000*scale,y:7000000*scale}});
       await page.keyboard.press('Backslash');
-      await prosePalette.getByRole('textbox',{name:'LaTeX command',exact:true}).fill('label');
+      await prosePalette.getByRole('combobox',{name:'LaTeX command',exact:true}).fill('label');
       await page.keyboard.press('Enter');
       const labelInput=page.locator('.editor-dialog input');
       assert.equal(await labelInput.inputValue(),'eq:keep');
@@ -1757,7 +1757,7 @@ const server=createServer(async(req,res)=>{
       await canvas.click({position:{x:6550000*scale,y:9250000*scale}});
       await stubImagePicker(page);
       await page.keyboard.press('Backslash');
-      await page.getByRole('textbox',{name:'LaTeX command',exact:true}).fill('includegraphics');
+      await page.getByRole('combobox',{name:'LaTeX command',exact:true}).fill('includegraphics');
       await page.keyboard.press('Enter');
       const picture=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jB9kAAAAASUVORK5CYII=','base64');
       await page.locator('input[type=file][accept*="image/png"]').setInputFiles({name:'added.png',mimeType:'image/png',buffer:picture});
@@ -1917,7 +1917,7 @@ const server=createServer(async(req,res)=>{
       await panel.getByText('Click text on the native page',{exact:false}).waitFor();
       await canvas.click({position:{x:6550000*scale,y:9250000*scale}});
       await page.keyboard.press('Backslash');
-      await page.getByRole('textbox',{name:'LaTeX command',exact:true}).fill('lstlisting');
+      await page.getByRole('combobox',{name:'LaTeX command',exact:true}).fill('lstlisting');
       await page.keyboard.press('Enter');
       await page.locator('.editor-dialog input').fill('Python');
       await page.locator('.editor-dialog').getByRole('button',{name:'OK',exact:true}).click();
@@ -1998,7 +1998,7 @@ const server=createServer(async(req,res)=>{
       await page.waitForFunction(expected=>nativeProbe.source===expected,blank);
       await page.getByRole('button',{name:'Start typing',exact:true}).click();
       await page.keyboard.press('Backslash');
-      await page.getByRole('textbox',{name:'LaTeX command',exact:true}).fill('frac');
+      await page.getByRole('combobox',{name:'LaTeX command',exact:true}).fill('frac');
       await page.keyboard.press('Enter');
       const inlineFraction=blank.replace('\\begin{document}\n','\\begin{document}\n$\\frac{}{}$\n');
       await page.waitForFunction(expected=>nativeProbe.source===expected,inlineFraction);
@@ -2135,7 +2135,7 @@ const server=createServer(async(req,res)=>{
       await page.locator('#native-tex-edit').click();
       await canvas.click({position:{x:6550000*scale,y:9250000*scale}});
       await page.keyboard.press('Backslash');
-      await prosePalette.getByRole('textbox',{name:'LaTeX command',exact:true}).fill('input');
+      await prosePalette.getByRole('combobox',{name:'LaTeX command',exact:true}).fill('input');
       await prosePalette.getByRole('option',{name:'\\input',exact:true}).waitFor();
       await page.keyboard.press('Escape');
       await page.keyboard.type('X');
@@ -2989,7 +2989,7 @@ const server=createServer(async(req,res)=>{
         await page.locator(`[data-native-page="${labelPage.page}"] canvas`).click({position:{x:labelX*scale,y:labelY*scale}});
         await page.waitForFunction(()=>document.activeElement?.id==='native-tex-input');
         await page.keyboard.press('Backslash');
-        await page.getByRole('textbox',{name:'LaTeX command',exact:true}).fill('label');
+        await page.getByRole('combobox',{name:'LaTeX command',exact:true}).fill('label');
         await page.keyboard.press('Enter');
         const labelInput=page.locator('.editor-dialog input');
         assert.equal(await labelInput.inputValue(),'eq:alignment');
