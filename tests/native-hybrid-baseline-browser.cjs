@@ -7,6 +7,7 @@ const {tmpdir}=require('node:os');
 const {join,resolve,sep,extname,isAbsolute,basename}=require('node:path');
 const {createInterface}=require('node:readline');
 const {chromium}=require('playwright');
+const {expect}=require('playwright/test');
 
 const paragraph='Office first, multiple words and \\textbf{bold words}, followed by enough ordinary text to occupy several lines. ';
 const raw=['\\section{Caption}','rj','rj','2','','','','2',paragraph.repeat(13),'\\newpage','rj'];
@@ -132,15 +133,22 @@ async function testDesktopDocument(browser, origin, initial) {
   const page=await browser.newPage({viewport:{width:1280,height:900}});
   const errors=[], events=[], fonts=new Map();
   let revision=0, liveSource='', published=null,holdUpdate=null;
-  const seen=[];
+  const seen=[],sources=new Map();
+  async function paintedSourceAfter(previous){
+    const number=await page.evaluate(()=>{
+      const panel=document.querySelector('#native-tex-preview');
+      return panel?.dataset.state==='current' ? Number(panel.querySelector('[data-native-page]')?.dataset.paintRevision) : 0;
+    });
+    return number>previous && sources.get(number)===liveSource ? liveSource : '';
+  }
   page.on('pageerror',e=>errors.push(e.message));
   try{
-    await page.exposeFunction('nativeTestSourceMatches',expected=>liveSource===expected);
     await page.exposeFunction('nativeTestCommand',async(command,args={})=>{
       if(command==='native_tex_open'||command==='native_tex_update'){
         if(command==='native_tex_update' && holdUpdate)await holdUpdate;
         const next=++revision;
         liveSource=args.source;
+        sources.set(next,args.source);
         const measured=liveSource===source?initial:await capture(liveSource);
         for(const p of Object.values(measured.pages))for(const f of Object.values(p.dl.fonts)){
           if(f.filename)fonts.set('file:'+f.filename+'#'+(f.subfont??0),f.filename);
@@ -279,6 +287,9 @@ async function testDesktopDocument(browser, origin, initial) {
     await page.keyboard.type(' alpha beta');
     await page.waitForFunction(()=>document.querySelector('main.native-ink-confirmed') &&
       document.querySelector('.ProseMirror').editor.state.selection.$from.parent.textContent==='rj! alpha beta',null,{timeout:60000});
+    await expect.poll(()=>paintedSourceAfter(beforeModeSwitch),{timeout:60000}).toContain('rj! alpha beta');
+    const beforeSplitSource=await paintedSourceAfter(beforeModeSwitch);
+    const beforeSplitDoc=await doc.evaluate(el=>JSON.stringify(el.editor.state.doc.toJSON()));
     for(let i=0;i<5;i++)await page.keyboard.press('ArrowLeft');
     let release;
     holdUpdate=new Promise(resolve=>{release=resolve;});
@@ -305,15 +316,21 @@ async function testDesktopDocument(browser, origin, initial) {
       document.querySelector('.ProseMirror').editor.state.selection.$head.parent.textContent==='X中Y beta',null,{timeout:60000});
     assert.match(liveSource,/rj! alpha\s+X中Y beta/);
     const beforeUndo=liveSource;
-    await page.keyboard.press('ControlOrMeta+z');
-    await page.waitForFunction(()=>!document.querySelector('.document-page .ProseMirror').editor.state.doc.textContent.includes('X中Y beta'));
-    await page.keyboard.press('ControlOrMeta+Shift+z');
-    await page.waitForFunction(async expected=>{
-      const preview=document.querySelector('#native-tex-preview');
-      const doc=document.querySelector('.document-page .ProseMirror');
-      return preview?.dataset.state==='current' && doc?.editor?.state.doc.textContent.includes('X中Y beta') &&
-        await window.nativeTestSourceMatches(expected);
-    },beforeUndo,{timeout:60000,polling:100});
+    const typedRevision=revision;
+    let undos=0;
+    while(undos<8 && await doc.evaluate(el=>JSON.stringify(el.editor.state.doc.toJSON()))!==beforeSplitDoc){
+      await page.keyboard.press('ControlOrMeta+z');
+      undos++;
+    }
+    assert.ok(undos>0);
+    assert.equal(await doc.evaluate(el=>JSON.stringify(el.editor.state.doc.toJSON())),beforeSplitDoc);
+    await expect.poll(()=>paintedSourceAfter(typedRevision),{timeout:60000,
+      message:'Undo restores the original source bytes, including paragraph separators'}).toBe(beforeSplitSource);
+    const undoneRevision=revision;
+    for(let i=0;i<undos;i++)await page.keyboard.press('ControlOrMeta+Shift+z');
+    await expect.poll(()=>paintedSourceAfter(undoneRevision),{timeout:60000,
+      message:'Redo restores the same split paragraph and exact source bytes'}).toBe(beforeUndo);
+    assert.ok(await doc.evaluate(el=>el.editor.state.doc.textContent.includes('X中Y beta')));
     assert.equal(liveSource,beforeUndo,'Redo must recover the same split paragraph and exact TeX bytes');
     const wrapped='alpha beta\r\n  gamma \\emph{two words} end';
     const file=['\\documentclass{article}','\\usepackage[fontset=fandol]{ctex}','\\begin{document}',
@@ -331,7 +348,12 @@ async function testDesktopDocument(browser, origin, initial) {
       return [head.parent.textContent,head.parentOffset];
     }),
       ['alpha beta gamma two words end',5]);
-    await page.keyboard.press('Enter');await page.keyboard.type('X');
+    const beforeWrappedBreak=revision;
+    await page.keyboard.press('Enter');
+    await expect.poll(()=>paintedSourceAfter(beforeWrappedBreak),{timeout:60000,
+      message:'Enter alone preserves the original physical lines and inserts a paragraph separator'}).toBe(
+        file.replace('alpha beta','alpha\r\n\r\n beta'));
+    await page.keyboard.type('X');
     await cdp.send('Input.imeSetComposition',{text:'zhong',selectionStart:5,selectionEnd:5});
     await cdp.send('Input.insertText',{text:'中'});await page.keyboard.type('Y');
     await page.waitForFunction(()=>document.querySelector('main.native-ink-confirmed') &&

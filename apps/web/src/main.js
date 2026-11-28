@@ -54,7 +54,8 @@ import { indentLatex } from './editor/latex-indent.mjs';
 import { installContextMenu } from './editor/context-menu.js';
 import { textCommands } from '../latex/inline.mjs';
 import { markerInput, listMarker } from '../latex/list-numbering.mjs';
-import { closeHistory, isHistoryTransaction } from '@tiptap/pm/history';
+import { closeHistory, isHistoryTransaction, undoDepth } from '@tiptap/pm/history';
+import { StandaloneSourceHistory } from './editor/standalone-source-history.mjs';
 import { exitCode } from '@tiptap/pm/commands';
 import { mathFontStyles, applyMathFont } from './editor/math-formatting.js';
 import { installFormatControls } from './editor/format-controls.js';
@@ -1232,6 +1233,25 @@ paper.addEventListener('focusin', () => { if (!sourceView.hidden && syncPending)
 function usesSourceProjection() {
   return !sourceView.hidden || (projectExplorer?.active && projectFileKind==='tex') || requiresSourceProjection(editor.state.doc);
 }
+function splitsTopLevelParagraph({steps,before,doc}) {
+  const [step]=steps;
+  if(steps.length!==1 || !step.structure || step.from!==step.to ||
+      step.slice?.openStart!==1 || step.slice.openEnd!==1 || doc.childCount!==before.childCount+1)return false;
+  const at=before.resolve(step.from);
+  return at.depth===1 && at.parent.type.name==='paragraph' &&
+    step.slice.content.content.every(node=>node.type.name==='paragraph');
+}
+function applyStandaloneSourcePatch(transaction) {
+  if(syncPending || !projection || projection.text!==importedSource)return false;
+  const after=transaction.doc.toJSON();
+  const changes=richSourceChanges(projection,after);
+  if(!changes?.length)return false;
+  const draft=changes.reduceRight((text,{from,to,insert})=>text.slice(0,from)+insert+text.slice(to),importedSource);
+  const next=sourceProjection(draft,after);
+  if(!next)return false;
+  transaction.setMeta('standaloneParagraph',{draft,changes,projection:next});
+  return true;
+}
 // Limit standalone writeback to text edits within one top-level paragraph.
 function standaloneParagraphEdit(tr) {
   if (!sourceView.hidden || projectExplorer?.active || importedSource===null) return -1;
@@ -1261,6 +1281,7 @@ function refuseStandaloneWriteback() {
   return false;
 }
 const nativeParagraphTransitions=[];
+const standaloneSourceHistory=new StandaloneSourceHistory();
 function dispatchNativeProjectChange(state,tr,project,drafts) {
   const composition=projectDocument.verify(project,tr.doc,drafts);
   if(!composition)return false;
@@ -1335,10 +1356,21 @@ editor.registerPlugin(new Plugin({
       if(!valid)sourceView.error(t('请在对应文件的源码中修改此结构','Edit this structure in its source file'));
       return !!valid;
     }
+    if(sourceView.hidden && !projectExplorer?.active && importedSource!==null && !syncPending && state===editor.state) {
+      const depth=undoDepth(state);
+      transaction.setMeta('standaloneHistoryOrigin',{depth,source:importedSource,snapshot:importedSnapshot});
+      if(isHistoryTransaction(transaction)){
+        const history=state.plugins.find(plugin=>plugin.key.startsWith('history$'));
+        const redo=history && transaction.getMeta(history)?.redo;
+        if(typeof redo==='boolean' && standaloneSourceHistory.matches(depth+(redo?1:-1),transaction.doc))return true;
+      }
+    }
     const verified=transaction.getMeta('standaloneParagraph');
     if(verified)return !syncPending&&transaction.before===state.doc&&verified.projection?.text===verified.draft;
     if(sourceView.hidden&&prepareNativeParagraphHistory(transaction))return true;
     if(!usesSourceProjection()) {
+      if(importedSource!==null && splitsTopLevelParagraph(transaction) &&
+          importedSnapshot===JSON.stringify(transaction.before.toJSON()) && applyStandaloneSourcePatch(transaction))return true;
       const diff=transaction.before.content.findDiffStart(transaction.doc.content);
       if(importedSource!==null && diff!==null){
         const from=transaction.before.resolve(diff),to=transaction.doc.resolve(diff);
@@ -1351,16 +1383,7 @@ editor.registerPlugin(new Plugin({
           // Keep the source projection current across a row edit and its undo,
           // so the next keystroke still maps to the author's original cell.
           if (cellEdit || table.childCount !== nextTable.childCount) {
-            const after = transaction.doc.toJSON();
-            const changes = !syncPending && projection?.text === importedSource && richSourceChanges(projection, after);
-            if (changes?.length) {
-              const draft = changes.reduceRight((text,{from,to,insert}) => text.slice(0,from)+insert+text.slice(to), importedSource);
-              const next = sourceProjection(draft, after);
-              if (next) {
-                transaction.setMeta('standaloneParagraph',{draft, changes, projection:next});
-                return true;
-              }
-            }
+            if (applyStandaloneSourcePatch(transaction)) return true;
             if (cellEdit) return refuseStandaloneWriteback();
           }
         }
@@ -1401,7 +1424,16 @@ editor.on('update', ({transaction}) => {
     projectExplorer.changed();
     return;
   }
-  const paragraph=transaction.getMeta('standaloneParagraph');
+  let paragraph=transaction.getMeta('standaloneParagraph');
+  const origin=transaction.getMeta('standaloneHistoryOrigin');
+  if(origin && editor.state.doc.eq(transaction.doc)){
+    const restored=standaloneSourceHistory.transition(origin,transaction.before,transaction.doc,
+      undoDepth(editor.state),isHistoryTransaction(transaction));
+    if(restored!==undefined){
+      paragraph={draft:restored,changes:textPatch(importedSource,restored),
+        projection:sourceProjection(restored,transaction.doc.toJSON(),{fragment:projectFileKind==='tex'})};
+    }
+  }
   if (paragraph && editor.state.doc.eq(transaction.doc)) {
     if(sourceView.value===importedSource)sourceView.applyChanges(paragraph.changes);
     importedSource=paragraph.draft;
@@ -1916,6 +1948,7 @@ function load(text, markSaved = true) {
   try {
   const parsed=parseDocument(text, {fragment:projectFileKind === 'tex'});
   if(!parsed)throw new Error(t('无法识别文档','Invalid document'));
+  standaloneSourceHistory.clear();
   if (markSaved) {clearProjectAssets();sourceModeEntry=undefined;sourceModeCommits=[];sourceModeRedos=[];nativeParagraphTransitions.length=0;}
   citationLibrary.restoreState(readBibliographyMetadata(text));
   // The book/report heading mapping must be active before blocks are imported;

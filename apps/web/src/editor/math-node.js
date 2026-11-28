@@ -229,13 +229,19 @@ function eraseMathObject(field, backward) {
   return true;
 }
 
+function focusMathKeyboard(field) {
+  field.focus();
+  // MathLive marks itself focused before its keyboard sink accepts input.
+  if (!field.matches(':focus-within'))
+    field.shadowRoot?.querySelector('[part~="keyboard-sink"]')?.focus({preventScroll:true});
+}
+
 export function focusFormula(editor, id, onFocus) {
   requestAnimationFrame(() => {
     editor.state.doc.descendants((node, position) => {
       if (node.attrs.id === id) {
         const field=editor.view.nodeDOM(position)?.querySelector('math-field');
-        field?.focus();
-        if(field)onFocus?.(field);
+        if(field){focusMathKeyboard(field);onFocus?.(field);}
         return false;
       }
     });
@@ -420,7 +426,7 @@ export function toggleDisplayStyle(field) {
   const grouped = /^\\displaystyle\{([\s\S]*)\}$/.exec(latex);
   const prefixed = /^\\displaystyle\s*([\s\S]*)$/.exec(latex);
   const removingStyle = Boolean(grouped || prefixed);
-  field.focus();
+  focusMathKeyboard(field);
   field.value = removingStyle ? (grouped ? grouped[1] : prefixed[1]).trim() : '\\displaystyle{' + latex + '}';
   field.executeCommand('moveToMathfieldEnd');
   // The wrapper's closing braces occupy two offsets. Keep the caret inside it.
@@ -429,6 +435,9 @@ export function toggleDisplayStyle(field) {
   if (!removingStyle) field.position = position;
   field.dispatchEvent(new Event('input', { bubbles: true }));
 
+  if (!field.isConnected) return !removingStyle;
+  focusMathKeyboard(field);
+  if (field.matches(':focus-within')) return !removingStyle;
   const owner = field.ownerDocument;
   const previousFocus = owner.activeElement;
   const deadline = performance.now() + 500;
@@ -439,7 +448,7 @@ export function toggleDisplayStyle(field) {
       if (performance.now() < deadline) requestAnimationFrame(restoreFocus);
       return;
     }
-    field.focus();
+    focusMathKeyboard(field);
     field.position = removingStyle ? position : styledPosition();
   }
   requestAnimationFrame(restoreFocus);
@@ -747,11 +756,7 @@ export const MathNode = Node.create({
         }
         requestAnimationFrame(() => {
           if(field.isConnected&&focusRequest===pointerFocus&&mathPointerField===field){
-            field.focus();
-            // Moving a table row can leave MathLive's focus flag set while its
-            // native keyboard sink is blurred. Restore the actual DOM focus.
-            if(field.ownerDocument.activeElement!==field)
-              field.shadowRoot?.querySelector('[part~="keyboard-sink"]')?.focus({preventScroll:true});
+            focusMathKeyboard(field);
           }
         });
       },true);

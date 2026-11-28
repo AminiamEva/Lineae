@@ -3062,7 +3062,7 @@ A & B \\
     await page.waitForFunction(()=>{
       const field=document.querySelector('.ProseMirror math-field');
       return field===document.activeElement && field?.value.startsWith('\\displaystyle') &&
-        !field._mathfield?.focusBlurInProgress && field.position===Math.max(0,field.lastOffset-2);
+        field.hasFocus() && !field._mathfield?.focusBlurInProgress && field.position===Math.max(0,field.lastOffset-2);
     });
     await page.keyboard.type('c');
     const styledValue=await styleField.evaluate(field=>field.value);
