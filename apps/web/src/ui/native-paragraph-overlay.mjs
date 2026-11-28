@@ -16,6 +16,25 @@ export function nativeParagraphOverlay(editor, panel, pages, framePending, selec
   const removedInk=new Map();
   const sheetFor=n=>pages.querySelector('[data-native-page="'+n+'"],[data-pdf-page="'+n+'"]');
   const canvas=(n=number)=>sheetFor(n)?.querySelector('canvas');
+  // A view redraw can replace every paragraph element without a document
+  // transaction or a new TeX frame. Positions belong to that exact document.
+  function mountedElement(entry) {
+    const view=editor.editor?.view;
+    return paintedDocument && view?.state.doc===paintedDocument && Number.isInteger(entry.position)
+      ? view.nodeDOM(entry.position) : entry.element;
+  }
+  function paragraphFor(element) {
+    const captured=layout?.byElement.get(element);
+    const view=editor.editor?.view;
+    if(captured || !element || !layout || !paintedDocument || paintedDocument!==view?.state.doc ||
+       !editor.contains(element))return captured;
+    const insidePos=view.posAtDOM(element,0);
+    if(insidePos<0)return null;
+    const inside=paintedDocument.resolve(insidePos);
+    const pos=inside.depth && inside.parent.isTextblock ? inside.before() : inside.pos;
+    const paragraph=layout.byPosition.get(pos);
+    return paragraph && mountedElement(paragraph.entry)===element ? paragraph : null;
+  }
   function selectedBlock(){
     const view=editor.editor?.view;
     if(document.activeElement===editor && view && !view.composing && !composing){
@@ -96,7 +115,8 @@ export function nativeParagraphOverlay(editor, panel, pages, framePending, selec
   }
   function hideRemovedInk(){
     const previous=layout?.byElement.get(block);
-    if(previous && !editor.contains(block) && !removedInk.has(previous))removedInk.set(previous,coverRows(previous));
+    if(previous && !editor.contains(block) && !mountedElement(previous.entry)?.isConnected && !removedInk.has(previous))
+      removedInk.set(previous,coverRows(previous));
   }
   function confirmedCaret(stop,paragraph,height,rise) {
     const sheet=sheetFor(stop.row.page);
@@ -140,7 +160,7 @@ export function nativeParagraphOverlay(editor, panel, pages, framePending, selec
     // were used to reach it. DOM-only paragraphs still being typed count once.
     let distance=1;
     for(let prev=block?.previousElementSibling;prev;prev=prev.previousElementSibling){
-      const prior=layout?.byElement.get(prev);
+      const prior=paragraphFor(prev);
       if(prior){
         const last=prior.rows.at(-1),sheet=canvas(last.page)?.getBoundingClientRect();
         if(!sheet?.height)break;
@@ -191,7 +211,7 @@ export function nativeParagraphOverlay(editor, panel, pages, framePending, selec
   function pinCurrent(){
     if(!block || pin?.element===block)return;
     const scale=page.currentCSSZoom||1,offset=selectionOffset(block)??0;
-    const paragraph=layout?.byElement.get(block);
+    const paragraph=paragraphFor(block);
     let start=0;
     const row=paragraph?.stops?.has(offset)?physicalStop(paragraph,offset,scale).row:null;
     if(row){
@@ -204,7 +224,7 @@ export function nativeParagraphOverlay(editor, panel, pages, framePending, selec
     if(block&&!editor.contains(block)){hideRemovedInk();block=selectedBlock();anchor=null;pin=null;}
     const scale=page.currentCSSZoom||page.getBoundingClientRect().width/page.offsetWidth;
     if(!Number.isFinite(scale)||scale<=0)return;
-    const paragraph=layout?.byElement.get(block);
+    const paragraph=paragraphFor(block);
     let reference=block&&referenceFor(paragraph,scale);
     if(reference && !reference.pinned && sheetFor(reference.stop.row.page)?.dataset.paintRevision!==String(revision))
       reference=pin?pinnedReference():null;
@@ -294,13 +314,13 @@ export function nativeParagraphOverlay(editor, panel, pages, framePending, selec
       }
     }
     for(const [element,pending] of pendingRows){
-      const paragraph=layout?.byElement.get(element);
+      const paragraph=paragraphFor(element);
       const fullyPainted=paintedDocument && paintedDocument===editor.editor?.state.doc &&
         [...pending.pages].every(n=>{
           const sheet=sheetFor(n);
           return !sheet || sheet.dataset.paintRevision===String(revision);
         });
-      if(!element.isConnected && pending.owner && !removedInk.has(pending.owner))
+      if(!element.isConnected && pending.owner && !mountedElement(pending.owner.entry)?.isConnected && !removedInk.has(pending.owner))
         removedInk.set(pending.owner,pending.masks.splice(0));
       if(!element.isConnected || fullyPainted || (painted(paragraph)&&matches(paragraph,element))){
         discard(element);
@@ -314,7 +334,7 @@ export function nativeParagraphOverlay(editor, panel, pages, framePending, selec
   }
   function retainText(previous){
     if(!previous?.isConnected || !previous.matches('p,h1,h2,h3,h4,h5,h6,pre,figcaption,.math-display'))return;
-    const owner=layout?.byElement.get(previous);
+    const owner=paragraphFor(previous);
     if(painted(owner)&&matches(owner,previous)){discard(previous);return;}
     const bounds=previous.getBoundingClientRect();
     const sheets=pages.querySelectorAll('[data-native-page],[data-pdf-page]');
@@ -345,14 +365,14 @@ export function nativeParagraphOverlay(editor, panel, pages, framePending, selec
     const next=selectedBlock();
     if(next && block!==next){
       const previous=block,adjacent=previous?.nextElementSibling===next;
-      const previousRow=layout?.byElement.get(previous)?.rows[0];
+      const previousRow=paragraphFor(previous)?.rows[0];
       const column=previousRow?.page===number && previous?.matches('p')?previousRow.origin:pin?.column;
       hideRemovedInk();
       if(previous?.isConnected)retainText(previous);
       discard(next);
       if(!adjacent)anchor=null;
       block=next;pin=null;
-      if(adjacent && !layout?.byElement.has(next)){
+      if(adjacent && !paragraphFor(next)){
         const scale=page.currentCSSZoom||1;
         const point=boundary(next,0,scale);
         // Empty editing paragraphs are consumed as one separator by TeX.
@@ -387,7 +407,7 @@ export function nativeParagraphOverlay(editor, panel, pages, framePending, selec
       else if(y>rect.bottom)low=middle+1;
       else {index=middle;break;}
     }
-    if(!pin && !layout?.byElement.has(block) && index>=0 && index+1!==number && sheetFor(index+1)){
+    if(!pin && !paragraphFor(block) && index>=0 && index+1!==number && sheetFor(index+1)){
       number=index+1;anchor=null;position();
     }
     const rect=range.getBoundingClientRect(),view=panel.getBoundingClientRect();
@@ -408,7 +428,7 @@ export function nativeParagraphOverlay(editor, panel, pages, framePending, selec
     if(!document.body.classList.contains('native-tex-rich-edit'))return;
     pinCurrent();
     clickedBoundary=null;
-    clearExact();mask(layout?.byElement.get(block)??null);
+    clearExact();mask(paragraphFor(block)??null);
   }
   page.addEventListener('beforeinput',beginDraft,true);
   page.addEventListener('keydown',event=>{
@@ -417,7 +437,7 @@ export function nativeParagraphOverlay(editor, panel, pages, framePending, selec
     if((event.key!=='Home' && event.key!=='End') || event.defaultPrevented || event.ctrlKey || event.altKey ||
         event.metaKey || event.target!==editor || !selectOffset || !document.body.classList.contains('native-tex-rich-edit'))return;
     const view=editor.editor.view, head=view.state.selection.$head;
-    const element=selectedBlock(), paragraph=layout?.byElement.get(element);
+    const element=selectedBlock(), paragraph=paragraphFor(element);
     if(view.composing || !paragraph?.stops?.has(head.parentOffset) || !matches(paragraph,element))return;
     if(element!==block)update();
     const scale=page.currentCSSZoom||1;
@@ -487,7 +507,9 @@ export function nativeParagraphOverlay(editor, panel, pages, framePending, selec
     hit(page,x,y){
       if(sheetFor(page)?.dataset.paintRevision!==String(revision))return null;
       const hit=paragraphHit(layout,page,x,y);
-      return hit?.element.isConnected && editingText(hit.element)===hit.text ? hit:null;
+      if(!hit)return null;
+      const element=mountedElement(layout.byElement.get(hit.element).entry);
+      return element?.isConnected && editingText(element)===hit.text ? {...hit,element}:null;
     },
     update:schedule,
     clear(retain=false){

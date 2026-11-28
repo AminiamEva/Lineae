@@ -92,8 +92,8 @@ function caretStops(rows,entry) {
 }
 
 export function paragraphFrame(layout, pages, owners, warm) {
-  const byElement=new Map(),byPage=new Map(),indices=new Map();
-  if (!layout || !owners?.size) return {byElement,byPage};
+  const byElement=new Map(),byPage=new Map(),byPosition=new Map(),indices=new Map();
+  if (!layout || !owners?.size) return {byElement,byPage,byPosition};
   for(const place of layout.placements??[]) {
     const entry=owners.get(place.par_id);
     if (!entry) continue;
@@ -122,12 +122,13 @@ export function paragraphFrame(layout, pages, owners, warm) {
       return stops;
     }};
     byElement.set(entry.element,paragraph);
+    if(Number.isInteger(entry.position))byPosition.set(entry.position,paragraph);
     for(const row of rows) {
       if (!byPage.has(row.page)) byPage.set(row.page,[]);
       byPage.get(row.page).push({paragraph,row});
     }
   }
-  return {byElement,byPage};
+  return {byElement,byPage,byPosition};
 }
 
 export function paragraphHit(frame,page,x,y) {

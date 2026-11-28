@@ -17,6 +17,8 @@ If focus moves out of a formula while MathLive is still opening its keyboard, th
 
 Splitting an imported paragraph writes the original line-ending style as soon as Enter is pressed. A grouped undo or redo restores the source recorded at the corresponding ProseMirror history boundary. The real-host regression waits for the new page revision and compares both source states byte for byte.
 
+If ProseMirror rebuilds paragraph elements while the document stays the same, a native caret or paper click can still resolve its paragraph by its recorded document position. The browser test redraws two identical paragraphs and checks that the second retains its caret and accepts the next key.
+
 The Windows WebView test samples animation frames across pinyin composition, Han text commitment, repeated Enter, and the return of confirmed ink. It checks model and source contents separately from movement on screen. A delayed change from the article indent to the Chinese indent is also replayed before a new paragraph has a native line box. An imported article declaring `\usepackage[fontset=fandol]{ctex}` uses the same paragraph metrics as a generated Fandol article. The test uses the browser's composition protocol. Candidate-window placement in a particular system IME needs a separate hardware test.
 
 LuaLaTeX may legitimately change page or line placement after a font, paper, or paragraph-style change. Multiple empty TeX paragraphs can also typeset as a single break. In that case the active insertion point stays visible while the user edits, and the confirmed result uses TeX's spacing.

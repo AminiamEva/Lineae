@@ -204,6 +204,23 @@ async function testDesktopDocument(browser, origin, initial) {
     await page.mouse.click(coords.x,coords.y);
     await page.locator('main.native-ink-confirmed').waitFor({state:'attached',timeout:15000});
     assert.equal(await doc.evaluate(el=>el===document.activeElement&&el.editor.state.selection.$from.parent.textContent),'rj');
+    // ProseMirror can redraw a view without changing the document or sending
+    // new TeX. Keep the caret at this occurrence of the repeated paragraph.
+    const location=await doc.evaluate(el=>{
+      const view=el.editor.view, before=view.state.doc, pos=view.state.selection.$head.before();
+      const old=view.nodeDOM(pos), render=view.nodeViews.paragraph;
+      view.setProps({nodeViews:{...view.props.nodeViews,paragraph:(...args)=>render?.(...args)}});
+      view.focus();
+      window.dispatchEvent(new Event('lineae-layout'));
+      if(old.isConnected || before!==view.state.doc)throw Error('Expected a view-only paragraph redraw');
+      return pos;
+    });
+    await page.waitForFunction(()=>document.querySelector('main.native-ink-confirmed') && !document.querySelector('.native-draft-mask'));
+    const firstOccurrence=await paperPoint('rj',0);
+    await page.mouse.click(firstOccurrence.x,firstOccurrence.y);
+    assert.notEqual(await doc.evaluate(el=>el.editor.state.selection.$head.before()),location);
+    await page.mouse.click(coords.x,coords.y);
+    assert.equal(await doc.evaluate(el=>el.editor.state.selection.$head.before()),location);
     await page.keyboard.press('End');
     await page.keyboard.type('!');
     assert.equal(await doc.evaluate(el=>el.editor.state.selection.$from.parent.textContent),'rj!');
@@ -372,7 +389,8 @@ async function testDesktopDocument(browser, origin, initial) {
       spans:published?.spans?.map(s=>[s.id,s.range.start,s.range.end]),
       editor:await page.evaluate(()=>{
         const el=document.querySelector('.document-page .ProseMirror'),preview=document.querySelector('#native-tex-preview');
-        return {selection:el?.editor?.state.selection.toJSON(),paragraphs:[...el?.querySelectorAll('h1,p')??[]].slice(0,16).map(p=>p.textContent.slice(0,22)),
+        return {selection:el?.editor?.state.selection.toJSON(),confirmed:Boolean(document.querySelector('main.native-ink-confirmed')),
+          pending:[...document.querySelectorAll('.native-pending-prose')].map(row=>row.textContent.slice(0,24)),paragraphs:[...el?.querySelectorAll('h1,p')??[]].slice(0,16).map(p=>p.textContent.slice(0,22)),
           focus:document.activeElement?.className,state:preview?.dataset.state,fallback:preview?.dataset.fallbackReason,message:preview?.querySelector('[role=status]')?.textContent,
           paints:[...preview?.querySelectorAll('[data-native-page]')??[]].map(p=>p.dataset.paintRevision)};
       }).catch(()=>null),errors}));

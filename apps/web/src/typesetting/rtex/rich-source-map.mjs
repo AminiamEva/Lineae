@@ -61,7 +61,7 @@ export function richSourceMap(view, {path, source, projection, composition, pref
       const element = view.nodeDOM(position + offset);
       if (element?.nodeType !== 1) return;
       const simple = node.isTextblock && node.content.content.every(child => child.isText || child.type.name === 'hardBreak');
-      group.entries.push({element,node, text:simple ? node.textBetween(0,node.content.size,'','\n') : null,
+      group.entries.push({element,node,position:position+offset, text:simple ? node.textBetween(0,node.content.size,'','\n') : null,
         heading:node.type.name === 'heading', start:from, end:from + raw.length});
     });
   }
