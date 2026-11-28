@@ -8,6 +8,122 @@ import { parseLibrary, BASIC_COMPONENTS, GROUP_LABELS } from '../components/symb
 import { exportTikz } from './exportController.js';
 import { confirmDialog } from '../../editor/dialog.js';
 
+// Split a TikZ option list on top-level commas, respecting braces and brackets.
+// Labels can contain \textcolor[HTML]{rrggbb}{$...$}, so a naive split breaks.
+function splitTikzOptions(text) {
+  const parts = [];
+  let braces = 0, brackets = 0, start = 0;
+  for (let index = 0; index < text.length; index++) {
+    const char = text[index];
+    if (char === '{') braces++;
+    else if (char === '}') braces = Math.max(0, braces - 1);
+    else if (char === '[') brackets++;
+    else if (char === ']') brackets = Math.max(0, brackets - 1);
+    else if (char === ',' && braces === 0 && brackets === 0) {
+      parts.push(text.slice(start, index));
+      start = index + 1;
+    }
+  }
+  parts.push(text.slice(start));
+  return parts.map(part => part.trim()).filter(Boolean);
+}
+
+// Return the content between the balanced pair that starts at `index`.
+function readBalanced(text, index, open, close) {
+  let depth = 0;
+  for (let cursor = index; cursor < text.length; cursor++) {
+    if (text[cursor] === open) depth++;
+    else if (text[cursor] === close) {
+      depth--;
+      if (depth === 0) return { content: text.slice(index + 1, cursor), end: cursor + 1 };
+    }
+  }
+  return { content: text.slice(index + 1), end: text.length };
+}
+
+function stripMathDelimiters(text) {
+  return String(text || '').trim().replace(/^\$+/, '').replace(/\$+$/, '').trim();
+}
+
+function tikzLengthToCm(value, unit = 'cm') {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return null;
+  if (unit === 'mm') return Number((number / 10).toFixed(4));
+  if (unit === 'pt') return Number((number / 28.4527559056).toFixed(4));
+  return number;
+}
+
+function parseTikzLength(text) {
+  const match = /^\s*([-\d.]+)\s*(cm|mm|pt)?\s*$/.exec(String(text || ''));
+  return match ? tikzLengthToCm(match[1], match[2]) : null;
+}
+
+function labelColorFromLatex(model, name) {
+  if (model && /^HTML$/i.test(model) && /^[0-9a-f]{6}$/i.test(name)) return '#' + name.toLowerCase();
+  return name ? name.trim() : null;
+}
+
+// Parse `$...$` / `{...}` label content, optionally wrapped in \textcolor.
+function parseLabelLatex(raw) {
+  let value = String(raw || '').trim();
+  if (value.startsWith('{') && value.endsWith('}')) value = value.slice(1, -1).trim();
+  let color = null;
+  const colored = /^\\textcolor(?:\[([^\]]*)\])?\{([^}]*)\}\s*\{([\s\S]*)\}\s*$/.exec(value);
+  if (colored) {
+    color = labelColorFromLatex(colored[1], colored[2]);
+    value = colored[3];
+  }
+  return { text: stripMathDelimiters(value.replace(/^\{+|\}+$/g, '')), color };
+}
+
+// Apply a node's `label={...}` option, which may carry `[options]angle:content`.
+function applyNodeLabelOption(item, raw) {
+  let value = String(raw || '').trim();
+  if (value.startsWith('{') && value.endsWith('}')) value = value.slice(1, -1).trim();
+  let options = '';
+  if (value.startsWith('[')) {
+    const bracket = readBalanced(value, 0, '[', ']');
+    options = bracket.content;
+    value = value.slice(bracket.end).trim();
+  }
+  let content = value;
+  let position = null;
+  const colon = value.indexOf(':');
+  if (colon >= 0) {
+    const direction = value.slice(0, colon).trim();
+    content = value.slice(colon + 1);
+    position = {
+      '90': 'above', '270': 'below', '-90': 'below',
+      '0': 'right', '180': 'left',
+      '45': 'above right', '135': 'above left', '225': 'below left', '315': 'below right', '-45': 'below right',
+      above: 'above', below: 'below', left: 'left', right: 'right',
+      north: 'above', south: 'below', east: 'right', west: 'left',
+      'north east': 'above right', 'north west': 'above left',
+      'south east': 'below right', 'south west': 'below left',
+      northeast: 'above right', northwest: 'above left',
+      southeast: 'below right', southwest: 'below left',
+    }[direction.toLowerCase()] || null;
+  }
+  const parsed = parseLabelLatex(content);
+  item.label = parsed.text;
+  if (parsed.color) item.labelColor = parsed.color;
+  if (position) item.labelPosition = position;
+  const distance = /(?:^|,)\s*label distance\s*=\s*([-\d.]+)\s*(cm|mm|pt)?/.exec(options);
+  if (distance) item.labelDistance = tikzLengthToCm(distance[1], distance[2]);
+}
+
+// Label positions mirror CircuiTikZ-Designer's basicDirections.
+const LABEL_POSITION_OPTIONS = [
+  ['above', '上方', 'Above'],
+  ['below', '下方', 'Below'],
+  ['left', '左侧', 'Left'],
+  ['right', '右侧', 'Right'],
+  ['above left', '左上', 'Above left'],
+  ['above right', '右上', 'Above right'],
+  ['below left', '左下', 'Below left'],
+  ['below right', '右下', 'Below right'],
+];
+
 export class TikzEditor {
   constructor({ getTextwidthCm } = {}) {
     this.getTextwidthCm = getTextwidthCm || (() => 15);
@@ -20,6 +136,8 @@ export class TikzEditor {
     this.onDone = null;
     this.history = []; this.future = [];
     this.baseline = undefined;
+    this.tikzEnvironment = [];
+    this.tikzCtikzset = [];
     this.envSettings = { voltages: 'european', voltageConvention: 'noold', labelOrientation: 'smart' };
     try {
       const saved = JSON.parse(localStorage.getItem('lineae.tikz.environment') || 'null');
@@ -65,66 +183,200 @@ export class TikzEditor {
 
   importTikz(source) {
     const text = String(source || '').replace(/^\s*\\resizebox\{[^{}]*\}\{!\}\{%?/, '').replace(/%\}\s*$/, '');
+    const begin = /\\begin\{(?:tikzpicture|circuitikz)\}(?:\[([^\]]*)\])?/.exec(text);
+    this.tikzEnvironment = begin?.[1]
+      ? begin[1].split(',').map(option => option.trim()).filter(Boolean)
+      : [];
+    this.tikzCtikzset = [...text.matchAll(/\\ctikzset\{([^{}]*)\}/g)]
+      .map(match => match[1].trim()).filter(Boolean);
     const body = text
-      .replace(/^[\s\S]*?\\begin\{tikzpicture\}(?:\[[^\]]*\])?/, '')
-      .replace(/\\end\{tikzpicture\}[\s\S]*$/, '')
+      .replace(/^[\s\S]*?\\begin\{(?:tikzpicture|circuitikz)\}(?:\[[^\]]*\])?/, '')
+      .replace(/\\end\{(?:tikzpicture|circuitikz)\}[\s\S]*$/, '')
       .replace(/\\ctikzset\{[^{}]*\}\s*/g, '');
     this.items = [];
     this.unparsed = [];
     const coordinates = new Map();
+    const anchors = new Map();
     const scale = PX_PER_CM;
     const pointOf = raw => {
       const value = String(raw || '').trim();
+      if (anchors.has(value)) return anchors.get(value);
       if (coordinates.has(value)) return coordinates.get(value);
+      const dot = value.indexOf('.');
+      if (dot > 0 && anchors.has(value.slice(0, dot))) return anchors.get(value.slice(0, dot));
       const match = /^([+-]?\d*\.?\d+)\s*,\s*([+-]?\d*\.?\d+)$/.exec(value);
       if (!match) return null;
       return { x: Number(match[1]) * scale + 60, y: -Number(match[2]) * scale + 60 };
     };
     const defs = this.componentDefs || BASIC_COMPONENTS;
     const findDef = style => defs.find(def => def.tikz === style) || defs.find(def => def.name === style) || null;
+    // Named TikZ nodes expose anchors (name, name.text, name.north, ...) that
+    // later coordinates and attached label nodes refer to.
+    const registerNodeAnchors = (name, item, point) => {
+      if (!name) return;
+      anchors.set(name, point);
+      const box = item.bbox?.();
+      if (!box) return;
+      const cx = box.x + box.w / 2, cy = box.y + box.h / 2;
+      anchors.set(name + '.center', point);
+      anchors.set(name + '.text', point);
+      anchors.set(name + '.north', { x: cx, y: box.y });
+      anchors.set(name + '.south', { x: cx, y: box.y + box.h });
+      anchors.set(name + '.east', { x: box.x + box.w, y: cy });
+      anchors.set(name + '.west', { x: box.x, y: cy });
+      anchors.set(name + '.north east', { x: box.x + box.w, y: box.y });
+      anchors.set(name + '.north west', { x: box.x, y: box.y });
+      anchors.set(name + '.south east', { x: box.x + box.w, y: box.y + box.h });
+      anchors.set(name + '.south west', { x: box.x, y: box.y + box.h });
+    };
+    // A chained `node[anchor=south] at (N1.text){$label$}` places a label node
+    // relative to another node. Fold it into the owning component's label.
+    // The label's anchor is opposite to where the label sits, so `anchor=north
+    // east` means the label extends to the south-west of the reference point.
+    const ANCHOR_POSITION = {
+      north: 'below', south: 'above', east: 'left', west: 'right',
+      northeast: 'below left', northwest: 'below right',
+      southeast: 'above left', southwest: 'above right',
+      'north east': 'below left', 'north west': 'below right',
+      'south east': 'above left', 'south west': 'above right',
+      center: 'center',
+    };
+    const attachNodeLabel = (item, text, anchor, distance) => {
+      item.label = text;
+      const distanceCm = distance ? parseTikzLength(distance) : null;
+      if (distanceCm != null) item.labelDistance = distanceCm;
+      const value = String(anchor || '').toLowerCase().replace(/\s+/g, ' ').trim();
+      const position = ANCHOR_POSITION[value] || ANCHOR_POSITION[value.replace(/\s+/g, '')] || 'above';
+      if ('labelPosition' in item) item.labelPosition = position;
+      else if ('labelSide' in item) item.labelSide = /^below/.test(position);
+    };
 
     for (const match of body.matchAll(/\\coordinate\s*\(([^)]+)\)\s*at\s*\(([^)]+)\)\s*;/g)) {
       const point = pointOf(match[2]);
       if (point) coordinates.set(match[1].trim(), point);
     }
 
-    for (const match of body.matchAll(/\\node\s*\[([^\]]*)\]\s*at\s*\(([^)]+)\)\s*\{([\s\S]*?)\}\s*;/g)) {
-      const point = pointOf(match[2]);
-      const options = match[1].split(',').map(value => value.trim()).filter(Boolean);
-      let def = findDef(options[0]);
-      if (!def && options.includes('draw')) {
-        const width = Number(/(?:minimum width)\s*=\s*([\d.]+)\s*cm/.exec(match[1])?.[1]) || 1;
-        const height = Number(/(?:minimum height)\s*=\s*([\d.]+)\s*cm/.exec(match[1])?.[1]) || 1;
-        const ellipse = options.includes('ellipse');
-        const trapezium = options.includes('trapezium');
+    for (let index = 0; index < body.length; index++) {
+      if (!body.startsWith('\\node', index)) continue;
+      const boundary = body[index + 5];
+      if (boundary && /[A-Za-z@]/.test(boundary)) continue;
+      let cursor = index + 5;
+      const skip = () => { while (cursor < body.length && /\s/.test(body[cursor])) cursor++; };
+      const readOptional = (open, close) => {
+        skip();
+        if (body[cursor] !== open) return null;
+        const group = readBalanced(body, cursor, open, close);
+        cursor = group.end;
+        return group.content;
+      };
+      skip();
+      let optionsText = readOptional('[', ']') ?? '';
+      const name = readOptional('(', ')');
+      const trailingOptions = readOptional('[', ']');
+      if (trailingOptions) optionsText = trailingOptions;
+      skip();
+      if (!body.startsWith('at', cursor)) continue;
+      cursor += 2;
+      const coordinate = readOptional('(', ')');
+      if (coordinate === null) continue;
+      const content = readOptional('{', '}') ?? '';
+      const started = index;
+      const point = pointOf(coordinate);
+      const options = splitTikzOptions(optionsText);
+      const labelOption = options.find(option => /^label\s*=/.test(option));
+      const nameOption = options.find(option => /^name\s*=/.test(option));
+      const positional = options.filter(option => !/^label\s*=/.test(option) && !/^name\s*=/.test(option));
+      const nodeName = (name || (nameOption ? nameOption.slice(nameOption.indexOf('=') + 1) : '')).trim();
+      let def = positional.length ? findDef(positional[0]) : null;
+      if (!def && positional.includes('draw')) {
+        const width = Number(/(?:minimum width)\s*=\s*([\d.]+)\s*cm/.exec(optionsText)?.[1]) || 1;
+        const height = Number(/(?:minimum height)\s*=\s*([\d.]+)\s*cm/.exec(optionsText)?.[1]) || 1;
+        const ellipse = positional.includes('ellipse');
+        const trapezium = positional.includes('trapezium');
         def = {
           kind: 'rect', tikz: ellipse ? 'ellipse' : trapezium ? 'trapezium' : 'rectangle',
           name: 'draw', w: width * PX_PER_CM, h: height * PX_PER_CM,
           round: ellipse, shape: trapezium ? 'trapezoid' : '', anchor: [0, 0], id: '',
         };
       }
-      if (!point || !def) { this.unparsed.push(match[0]); continue; }
+      if (!point || !def) { this.unparsed.push(body.slice(started, cursor) + ';'); index = Math.max(index, cursor - 1); continue; }
       const item = def.kind === 'node' ? new NodeSymbol(def, point.x, point.y)
         : def.kind === 'open' ? new OpenComponent(def, point.x, point.y)
         : def.kind === 'rect' ? new RectComponent(def, point.x, point.y)
         : new PathComponent(def, point.x, point.y);
-      item.options = options.slice(1);
-      const label = match[3].trim();
-      if (label) item.label = label.replace(/^\$|\$$/g, '');
+      item.options = positional.slice(1);
+      if (labelOption) applyNodeLabelOption(item, labelOption.slice(labelOption.indexOf('=') + 1));
+      else if (content.trim()) item.label = stripMathDelimiters(content);
       this.items.push(item);
+      if (nodeName) registerNodeAnchors(nodeName, item, point);
+
+      // Chained nodes: `node[opts] at (ref){...}` may repeat before the final `;`.
+      while (true) {
+        const chainStart = cursor;
+        skip();
+        if (!body.startsWith('node', cursor) || /[A-Za-z@]/.test(body[cursor + 4] || '')) { cursor = chainStart; break; }
+        cursor += 4;
+        const chainedOptionsText = readOptional('[', ']') ?? '';
+        const chainedName = readOptional('(', ')');
+        skip();
+        if (!body.startsWith('at', cursor)) { cursor = chainStart; break; }
+        cursor += 2;
+        const reference = readOptional('(', ')');
+        if (reference === null) { cursor = chainStart; break; }
+        const chainedContent = readOptional('{', '}') ?? '';
+        const text = stripMathDelimiters(chainedContent);
+        const chainedOptions = splitTikzOptions(chainedOptionsText);
+        const anchorValue = chainedOptions.find(option => /^anchor\s*=/.test(option));
+        const distanceValue = chainedOptions.find(option => /^label distance\s*=/.test(option));
+        if (text) {
+          const ref = String(reference).trim();
+          const owner = nodeName && (ref === nodeName || ref.startsWith(nodeName + '.')) ? item : null;
+          if (owner) {
+            attachNodeLabel(owner, text,
+              anchorValue ? anchorValue.slice(anchorValue.indexOf('=') + 1).trim() : '',
+              distanceValue ? distanceValue.slice(distanceValue.indexOf('=') + 1).trim() : '');
+          } else {
+            const refPoint = pointOf(ref);
+            if (refPoint) this.items.push(new TextItem(text, 11, refPoint.x, refPoint.y));
+          }
+        }
+        if (chainedName) registerNodeAnchors(chainedName.trim(), item, point);
+      }
+      index = Math.max(index, cursor - 1);
     }
 
-    for (const match of body.matchAll(/\\draw\s*([\s\S]*?);/g)) {
-      const tokens = [...match[1].matchAll(/\(([^)]+)\)|to\[([^\]]*)\]/g)];
+    for (const match of body.matchAll(/\\draw\b/g)) {
+      let end = match.index + match[0].length, braces = 0, brackets = 0;
+      for (; end < body.length; end++) {
+        const char = body[end];
+        if (char === '{') braces++;
+        else if (char === '}') braces = Math.max(0, braces - 1);
+        else if (char === '[') brackets++;
+        else if (char === ']') brackets = Math.max(0, brackets - 1);
+        else if (char === ';' && braces === 0 && brackets === 0) break;
+      }
+      const segment = body.slice(match.index + match[0].length, end);
+      const tokens = [];
+      for (let index = 0; index < segment.length; index++) {
+        if (segment[index] === '(') {
+          const group = readBalanced(segment, index, '(', ')');
+          tokens.push({ coordinate: group.content });
+          index = group.end - 1;
+        } else if (segment.startsWith('to', index) && segment[index + 2] === '[') {
+          const group = readBalanced(segment, index + 2, '[', ']');
+          tokens.push({ style: group.content });
+          index = group.end - 1;
+        }
+      }
       let previous = null;
       let style = null;
       let added = false;
       for (const token of tokens) {
-        if (token[1] === undefined) { style = token[2]; continue; }
-        const point = pointOf(token[1]);
+        if (token.style !== undefined) { style = token.style; continue; }
+        const point = pointOf(token.coordinate);
         if (!point) { previous = null; style = null; continue; }
         if (previous) {
-          const options = String(style || '').split(',').map(value => value.trim()).filter(Boolean);
+          const options = splitTikzOptions(String(style || ''));
           const def = options.length ? findDef(options[0]) : null;
           if (def && ['path', 'open', 'rect'].includes(def.kind)) {
             const item = def.kind === 'open' ? new OpenComponent(def, previous.x, previous.y)
@@ -134,11 +386,35 @@ export class TikzEditor {
             item.end = { ...point };
             item.x = previous.x;
             item.y = previous.y;
-            item.options = options.slice(1);
-            const label = /(?:^|,)\s*l\s*=\s*\$([^$]*)\$/.exec(style || '')?.[1];
-            const value = /(?:^|,)\s*v\s*=\s*\$([^$]*)\$/.exec(style || '')?.[1];
-            if (label) item.label = label;
-            if (value) item.value = value;
+            const kept = [];
+            for (const option of options) {
+              const equal = option.indexOf('=');
+              const key = (equal >= 0 ? option.slice(0, equal) : option).trim();
+              const value = equal >= 0 ? option.slice(equal + 1).trim() : '';
+              if (key === 'l' || key === 'l_' || key === 'a' || key === 'a_') {
+                if (key === 'l' || key === 'l_') {
+                  const parsed = parseLabelLatex(value);
+                  item.label = parsed.text;
+                  item.labelSide = key === 'l_';
+                  if (parsed.color) item.labelColor = parsed.color;
+                }
+                continue;
+              }
+              if (key === 'label distance') {
+                const distance = parseTikzLength(value);
+                if (distance != null) item.labelDistance = distance;
+                continue;
+              }
+              if (key === 'v' || key === 'i') {
+                const content = stripMathDelimiters(value.replace(/^\{+|\}+$/g, ''));
+                if (key === 'i') item.current = content;
+                else if (value.startsWith('{')) item.voltage = content;
+                else item.value = content;
+                continue;
+              }
+              kept.push(option);
+            }
+            item.options = kept.slice(1);
             this.items.push(item);
           } else {
             this.items.push(new Wire([{ ...previous }, { ...point }]));
@@ -148,10 +424,20 @@ export class TikzEditor {
         previous = point;
         style = null;
       }
-      if (!added) this.unparsed.push(`\\draw ${match[1]};`);
+      if (!added) this.unparsed.push(`\\draw ${segment};`);
     }
     this.recomputeSnap?.();
     this.render?.();
+  }
+
+  exportCode() {
+    const environment = [...new Set([...(this.tikzEnvironment || []), ...this.environmentOptions()])];
+    const ctikzset = [...new Set([...(this.tikzCtikzset || []), ...this.environmentPreamble()])];
+    let code = exportTikz(this.items, { environment, ctikzset });
+    if (this.unparsed?.length) {
+      code = code.replace(/\\end\{tikzpicture\}\s*$/, this.unparsed.join('\n') + '\n\\end{tikzpicture}');
+    }
+    return code;
   }
 
   buildDom() {
@@ -214,10 +500,7 @@ export class TikzEditor {
 
     o.querySelector('.tikz-exit').onclick = () => this.close();
     o.querySelector('.tikz-finish').onclick = () => {
-      let code = exportTikz(this.items, { environment: this.environmentOptions(), ctikzset: this.environmentPreamble() });
-      if (this.unparsed?.length) {
-        code = code.replace(/\\end\{tikzpicture\}\s*$/, this.unparsed.join('\n') + '\n\\end{tikzpicture}');
-      }
+      const code = this.exportCode();
       this.close(true); this.onDone?.(code);
     };
     const slider = o.querySelector('.tikz-zoom-slider'), input = o.querySelector('.tikz-zoom-input');
@@ -1025,7 +1308,7 @@ export class TikzEditor {
     }
 
     const shared = this.propertySection(panel, this.t('共有属性', 'Shared properties'));
-    for (const [key, label] of [['label', 'Label'], ['value', 'Value']]) {
+    for (const [key, label] of [['label', 'Label']]) {
       if (!this.selection.every(item => key in item)) continue;
       const input = document.createElement('input');
       input.type = 'text';
@@ -1033,6 +1316,40 @@ export class TikzEditor {
       input.placeholder = this.t('批量设置', 'Set all');
       input.oninput = () => { for (const item of this.selection) item[key] = input.value; this.refreshProperties(); };
       this.propertyField(shared, label, input);
+    }
+    if (this.selection.every(item => 'labelSide' in item)) {
+      const side = document.createElement('select');
+      for (const [value, text] of [['above', this.t('上方', 'Above')], ['below', this.t('下方', 'Below')]]) side.append(new Option(text, value));
+      side.value = this.selection.every(item => !!item.labelSide) ? 'below' : 'above';
+      side.onchange = () => { for (const item of this.selection) item.labelSide = side.value === 'below'; this.refreshProperties(); };
+      this.propertyField(shared, this.t('标签方位', 'Label orientation'), side).classList.add('tikz-field-wide');
+    }
+    if (this.selection.every(item => 'labelPosition' in item)) {
+      const position = document.createElement('select');
+      for (const [value, zh, en] of LABEL_POSITION_OPTIONS) position.append(new Option(this.t(zh, en), value));
+      position.value = this.selection[0].labelPosition || 'above';
+      position.onchange = () => { for (const item of this.selection) item.labelPosition = position.value; this.refreshProperties(); };
+      this.propertyField(shared, this.t('标签方位', 'Label orientation'), position).classList.add('tikz-field-wide');
+    }
+    if (this.selection.every(item => 'labelDistance' in item)) {
+      const distance = document.createElement('input');
+      distance.type = 'number'; distance.step = '0.01';
+      const same = this.selection.every(item => item.labelDistance === this.selection[0].labelDistance);
+      distance.value = same && this.selection[0].labelDistance != null ? String(this.selection[0].labelDistance) : '';
+      distance.placeholder = '0.12';
+      distance.onchange = () => {
+        const value = distance.value.trim();
+        for (const item of this.selection) item.labelDistance = value === '' ? null : Number(value);
+        this.refreshProperties();
+      };
+      this.propertyField(shared, this.t('标签距离(cm)', 'Label distance (cm)'), distance).classList.add('tikz-field-wide');
+    }
+    if (this.selection.every(item => 'labelColor' in item)) {
+      const color = document.createElement('input');
+      color.type = 'color';
+      color.value = /^#[0-9a-f]{6}$/i.test(this.selection[0].labelColor || '') ? this.selection[0].labelColor : '#222222';
+      color.oninput = () => { for (const item of this.selection) item.labelColor = color.value; this.refreshProperties(); };
+      this.propertyField(shared, this.t('标签颜色', 'Label color'), color);
     }
     for (const [key, label] of [['voltage', 'Voltage v'], ['current', 'Current i'], ['textColor', 'Text color']]) {
       if (!this.selection.every(item => key in item)) continue;
@@ -1224,11 +1541,44 @@ export class TikzEditor {
     }
 
     const labelSection = this.propertySection(panel, this.t('标签', 'Label'));
-    for (const [key, label] of [['label', 'Label'], ['value', 'Value']]) {
+    {
       const input = document.createElement('input');
-      input.type = 'text'; input.value = p[key] || '';
-      input.oninput = () => { p[key] = input.value; this.refreshProperties(); };
-      this.propertyField(labelSection, label, input);
+      input.type = 'text'; input.value = p.label || '';
+      input.oninput = () => { p.label = input.value; this.refreshProperties(); };
+      this.propertyField(labelSection, 'Label', input);
+    }
+    if ('labelSide' in p) {
+      const side = document.createElement('select');
+      for (const [value, text] of [['above', this.t('上方', 'Above')], ['below', this.t('下方', 'Below')]]) side.append(new Option(text, value));
+      side.value = p.labelSide ? 'below' : 'above';
+      side.onchange = () => { p.labelSide = side.value === 'below'; this.refreshProperties(); };
+      this.propertyField(labelSection, this.t('标签方位', 'Label orientation'), side).classList.add('tikz-field-wide');
+    }
+    if ('labelPosition' in p) {
+      const position = document.createElement('select');
+      for (const [value, zh, en] of LABEL_POSITION_OPTIONS) position.append(new Option(this.t(zh, en), value));
+      position.value = p.labelPosition || 'above';
+      position.onchange = () => { p.labelPosition = position.value; this.refreshProperties(); };
+      this.propertyField(labelSection, this.t('标签方位', 'Label orientation'), position).classList.add('tikz-field-wide');
+    }
+    if ('labelDistance' in p) {
+      const distance = document.createElement('input');
+      distance.type = 'number'; distance.step = '0.01';
+      distance.value = p.labelDistance == null ? '' : String(p.labelDistance);
+      distance.placeholder = '0.12';
+      distance.onchange = () => {
+        const value = distance.value.trim();
+        p.labelDistance = value === '' ? null : Number(value);
+        this.refreshProperties();
+      };
+      this.propertyField(labelSection, this.t('标签距离(cm)', 'Label distance (cm)'), distance).classList.add('tikz-field-wide');
+    }
+    if ('labelColor' in p) {
+      const color = document.createElement('input');
+      color.type = 'color';
+      color.value = /^#[0-9a-f]{6}$/i.test(p.labelColor || '') ? p.labelColor : '#222222';
+      color.oninput = () => { p.labelColor = color.value; this.refreshProperties(); };
+      this.propertyField(labelSection, this.t('标签颜色', 'Label color'), color);
     }
     if (p.kind === 'path') {
       for (const [sectionTitle, key, label] of [['电压', 'voltage', 'Voltage v'], ['电流', 'current', 'Current i']]) {

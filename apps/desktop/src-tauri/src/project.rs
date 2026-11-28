@@ -1221,7 +1221,7 @@ mod tests {
         if let Some(root) = std::env::var_os("LINEAE_TEST_CHECKPOINT_ROOT") {
             let id = std::env::var("LINEAE_TEST_CHECKPOINT_SESSION").unwrap();
             for revision in 0..10 {
-                let bytes=serde_json::to_vec(&serde_json::json!({"files":{},"drafts":[{"path":"main.tex","saved":"base","draft":format!("{id}-{revision}")}]})).unwrap();
+                let bytes=serde_json::to_vec(&serde_json::json!({"engineChoice":"xelatex","files":{},"drafts":[{"path":"main.tex","saved":"base","draft":format!("{id}-{revision}")}]})).unwrap();
                 super::super::project_checkpoints::operate(
                     Path::new(&root),
                     "checkpoint",
@@ -1247,6 +1247,25 @@ mod tests {
         }
     }
     #[test]
+    fn stale_checkpoint_preserves_explicit_engine_and_both_drafts() {
+        use super::super::project_checkpoints::operate;
+        let (_, root) = fixture();
+        let save = |id: &str, choice: &str, revision: u64| {
+            let data = serde_json::json!({"files":{},"drafts":[{"path":"main.tex","draft":id}],
+                "engineChoice":choice,"engineRevision":revision});
+            operate(&root,"checkpoint",Some(id),Some(serde_json::to_vec(&data).unwrap()),None).unwrap();
+        };
+        let check = |choice: &str| {
+            let data:serde_json::Value=serde_json::from_slice(&operate(&root,"load_state",None,None,None).unwrap()).unwrap();
+            assert_eq!(data["engineChoice"],choice);
+            assert_eq!(data["recoveryVersions"].as_array().unwrap().len(),2);
+        };
+        save("A","xelatex",1);save("B","auto",0);check("xelatex");
+        save("A","auto",2);save("B","xelatex",1);check("auto");
+        save("B","lualatex",3);save("A","auto",2);check("lualatex");
+        std::fs::remove_dir_all(root).unwrap();
+    }
+    #[test]
     fn independent_process_checkpoints_survive_saves_and_stale_acknowledgement() {
         let (_, root) = fixture();
         let spawn = |id: &str| {
@@ -1269,6 +1288,7 @@ mod tests {
             .unwrap()
         };
         let state = read();
+        assert_eq!(state["engineChoice"], "xelatex");
         let versions = state["recoveryVersions"].as_array().unwrap();
         assert_eq!(versions.len(), 2);
         let old = std::fs::read(root.join(".lineae-state-instance-one.json")).unwrap();

@@ -87,7 +87,7 @@ export function createSourceWorkspace({ page, render, metadata, previewRange, so
   let savedText, savedDoc;
   let lastRendered, expanded = false, previewOnly = false, receiving = false;
   let sourceScroll, previewScroll, alignFrame;
-  const syncVisible = () => expanded && preview.clientHeight && view?.scrollDOM.clientHeight;
+  const syncVisible = () => expanded && !preview.dataset.native && preview.clientHeight && view?.scrollDOM.clientHeight;
   function alignPreview(offset, followCursor = false) {
     if (!syncVisible() || lastRendered === undefined) return;
     const range = previewRange?.(offset, lastRendered);
@@ -362,6 +362,7 @@ export function createSourceWorkspace({ page, render, metadata, previewRange, so
     setPreviewZoom,
     get hidden() { return panel.hidden; },
     get split() { return expanded; },
+    get previewHost() { return preview; },
     get composing() { return view?.composing ?? false; },
     get editorView() { return view; },
     get indentOnSave() { return indentOnSave(); },

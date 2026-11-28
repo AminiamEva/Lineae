@@ -1,0 +1,1610 @@
+{
+  "phase": "A",
+  "verdict": "FAIL",
+  "baseSha": "cb52ec41f13246f0e11d8c28a0158224ddbb9700",
+  "baseTree": "0090516f9adb5aa4ec8a6db22c8f05d716f85806",
+  "branch": "feat/lualatex-dual-engine",
+  "firstRemoteFetch": {
+    "command": "git fetch --no-tags origin refs/heads/main:refs/remotes/origin/main",
+    "exit": 0,
+    "log": "setup/fetch.log"
+  },
+  "environment": {
+    "os": "Debian GNU/Linux/13",
+    "arch": "x86_64",
+    "git": "git version 2.56.1",
+    "node": "v24.22.3",
+    "npm": "11.19.1",
+    "playwright": "1.56.1",
+    "chromium": "141.0.7390.37",
+    "mathLive": "0.108.0",
+    "tikzRuntime": "0.5.1",
+    "tex": {
+      "xelatex": "XeTeX 3.141592653-2.6-0.999996 (TeX Live 2025/dev/Debian)",
+      "bibtex": "BibTeX 0.99d (TeX Live 2025/dev/Debian)",
+      "biber": "biber version: 2.21",
+      "pdfinfo": "pdfinfo version 26.05.0",
+      "pdftotext": "pdftotext version 25.03.0",
+      "pdffonts": "pdffonts version 25.03.0",
+      "pdftoppm": "pdftoppm version 26.05.0"
+    },
+    "lualatex": "This is LuaHBTeX, Version 1.18.0 (TeX Live 2025/dev/Debian)",
+    "fonts": [
+      {
+        "path": "apps/web/assets/fonts/latin-modern/lmroman10-regular.otf",
+        "sha256": "1aa18cfefa58132c52ce5de70db1fd1154201c19cd2b2cdaffba4906a33e6852",
+        "fcScan": "Latin Modern Roman,LM Roman 10|10 Regular,Regular|131334"
+      },
+      {
+        "path": "apps/web/assets/fonts/fandol/FandolSong-Regular.woff2",
+        "sha256": "923cb033fa24663ca02200fce879b0043eebbf0f721e0347387646fdaa7eff78",
+        "fcScan": "FandolSong|Regular|85196"
+      },
+      {
+        "path": "test-evidence/texmf-additions/fonts/opentype/public/lm/lmroman10-regular.otf",
+        "sha256": "1aa18cfefa58132c52ce5de70db1fd1154201c19cd2b2cdaffba4906a33e6852",
+        "fcScan": "Latin Modern Roman,LM Roman 10|10 Regular,Regular|131334"
+      },
+      {
+        "path": "test-evidence/texmf-additions/fonts/opentype/public/fandol/FandolSong-Regular.otf",
+        "sha256": "a3820003227d4abe31fe28b493200d94a849ccfd078b50a019264f70353020b0",
+        "fcScan": "FandolSong|Regular|85196"
+      }
+    ],
+    "texPackageVersionsLog": "setup/tex-package-versions.log"
+  },
+  "setup": [
+    {
+      "command": "npm ci --no-audit --no-fund",
+      "exit": 0,
+      "log": "setup/npm-ci.log"
+    },
+    {
+      "command": "npm run build",
+      "exit": 0,
+      "log": "setup/build.log"
+    },
+    {
+      "command": "PLAYWRIGHT_DOWNLOAD_CONNECTION_TIMEOUT=12000 npx playwright install --only-shell chromium",
+      "exit": 0,
+      "log": "setup/playwright-install.log"
+    },
+    {
+      "command": "node scripts/install-mp-tikz-wasm.mjs",
+      "exit": 1,
+      "log": "setup/tikz-install.log",
+      "note": "The runtime archive lacks dist/ghostscript; provisioned the two separately verified 0.5.1 release files."
+    }
+  ],
+  "browserBundle": {
+    "bytes": 3270649,
+    "gzipBytes": 782313,
+    "sha256": "3f1c0860714074f9e5543208f5d31c77f26eb8b150b30f904fd7c2b0b10fb4e8",
+    "productDeltaBytes": 0
+  },
+  "fixtureHashes": {
+    "tests/fixtures/appendix-xelatex.json": "ccb7f4603dd070cce704dd8a21df426aee1122d813d88a8a8a48c19091aa3449",
+    "tests/fixtures/chapter-xelatex.json": "a09b7ba791feadcec0f580073664c4d5150452418253fd5da6129a327376c45f",
+    "tests/fixtures/paragraph-layout/xecjk-reference.json": "715794d9d15eda6f9dfac1cff8463b47a2be102bc496f2c61d6723ac1461dd87",
+    "tests/fixtures/paragraph-layout/xelatex-reference.json": "5601d40949ca9c29ec9a22f4294f3fc8253c28aeaf8d98eeed5e605867a1e085"
+  },
+  "testCommandSummary": {
+    "node": {
+      "PASS": 5
+    },
+    "layout": {
+      "FAIL": 3,
+      "PASS": 6,
+      "BLOCKED": 1
+    },
+    "project": {
+      "PASS": 11
+    },
+    "source": {
+      "PASS": 18,
+      "FAIL": 1
+    },
+    "editor": {
+      "PASS": 3
+    },
+    "tikz": {
+      "PASS": 2
+    },
+    "native": {
+      "PASS": 1,
+      "BLOCKED": 3
+    },
+    "bib": {
+      "PASS": 2
+    }
+  },
+  "testCommands": {
+    "node": [
+      {
+        "id": "optimum-paragraph",
+        "status": "PASS",
+        "exit": 0,
+        "log": "phase-a/node/optimum-paragraph.log",
+        "command": "node --test tests/optimum-paragraph.test.mjs",
+        "assertions": {
+          "tests": 4,
+          "pass": 4,
+          "fail": 0,
+          "cancelled": 0,
+          "skipped": 0,
+          "todo": 0
+        }
+      },
+      {
+        "id": "typeset-layout",
+        "status": "PASS",
+        "exit": 0,
+        "log": "phase-a/node/typeset-layout.log",
+        "command": "node --test tests/typeset-layout.test.mjs",
+        "assertions": {
+          "tests": 11,
+          "pass": 11,
+          "fail": 0,
+          "cancelled": 0,
+          "skipped": 0,
+          "todo": 0
+        }
+      },
+      {
+        "id": "paragraph-parameters",
+        "status": "PASS",
+        "exit": 0,
+        "log": "phase-a/node/paragraph-parameters.log",
+        "command": "node --test tests/paragraph-parameters.test.mjs",
+        "assertions": {
+          "tests": 2,
+          "pass": 2,
+          "fail": 0,
+          "cancelled": 0,
+          "skipped": 0,
+          "todo": 0
+        }
+      },
+      {
+        "id": "config",
+        "status": "PASS",
+        "exit": 0,
+        "log": "phase-a/node/config.log",
+        "command": "node --test tests/config.test.mjs",
+        "assertions": {
+          "tests": 7,
+          "pass": 7,
+          "fail": 0,
+          "cancelled": 0,
+          "skipped": 0,
+          "todo": 0
+        }
+      },
+      {
+        "id": "all-node",
+        "status": "PASS",
+        "exit": 0,
+        "log": "phase-a/node/all-node.log",
+        "command": "node --test tests/\\*\\*/\\*.test.mjs",
+        "assertions": {
+          "tests": 927,
+          "pass": 927,
+          "fail": 0,
+          "cancelled": 0,
+          "skipped": 0,
+          "todo": 0
+        }
+      }
+    ],
+    "layout": [
+      {
+        "id": "paragraph-layout-browser",
+        "status": "FAIL",
+        "exit": 1,
+        "log": "phase-a/layout/paragraph-layout-browser.log",
+        "command": "node tests/paragraph-layout-browser.cjs"
+      },
+      {
+        "id": "xecjk-layout-browser",
+        "status": "FAIL",
+        "exit": 1,
+        "log": "phase-a/layout/xecjk-layout-browser.log",
+        "command": "node tests/xecjk-layout-browser.cjs"
+      },
+      {
+        "id": "appendix-browser",
+        "status": "PASS",
+        "exit": 0,
+        "log": "phase-a/layout/appendix-browser.log",
+        "command": "node tests/appendix-browser.cjs"
+      },
+      {
+        "id": "book-fixtures-browser",
+        "status": "BLOCKED",
+        "exit": 1,
+        "log": "phase-a/layout/book-fixtures-browser.log",
+        "command": "node tests/book-fixtures-browser.cjs",
+        "note": "git tree lacks bookreporttest/test_book.tex; ENOENT"
+      },
+      {
+        "id": "book-styles-browser",
+        "status": "PASS",
+        "exit": 0,
+        "log": "phase-a/layout/book-styles-browser.log",
+        "command": "node tests/book-styles-browser.cjs"
+      },
+      {
+        "id": "wrapfigure-layout-browser",
+        "status": "FAIL",
+        "exit": 1,
+        "log": "phase-a/layout/wrapfigure-layout-browser.log",
+        "command": "node tests/wrapfigure-layout-browser.cjs"
+      },
+      {
+        "id": "table-scroll-browser",
+        "status": "PASS",
+        "exit": 0,
+        "log": "phase-a/layout/table-scroll-browser.log",
+        "command": "node tests/table-scroll-browser.cjs"
+      },
+      {
+        "id": "table-reflow-browser",
+        "status": "PASS",
+        "exit": 0,
+        "log": "phase-a/layout/table-reflow-browser.log",
+        "command": "node tests/table-reflow-browser.cjs"
+      },
+      {
+        "id": "pagination-idempotency-browser",
+        "status": "PASS",
+        "exit": 0,
+        "log": "phase-a/layout/pagination-idempotency-browser.log",
+        "command": "node tests/pagination-idempotency-browser.cjs"
+      },
+      {
+        "id": "maketitle-date-browser",
+        "status": "PASS",
+        "exit": 0,
+        "log": "phase-a/layout/maketitle-date-browser.log",
+        "command": "node tests/maketitle-date-browser.cjs"
+      }
+    ],
+    "project": [
+      {
+        "id": "project-browser",
+        "status": "PASS",
+        "exit": 0,
+        "log": "phase-a/project/project-browser.log",
+        "command": "node tests/project-browser.cjs"
+      },
+      {
+        "id": "project-separator-browser",
+        "status": "PASS",
+        "exit": 0,
+        "log": "phase-a/project/project-separator-browser.log",
+        "command": "node tests/project-separator-browser.cjs"
+      },
+      {
+        "id": "project-boundary-browser",
+        "status": "PASS",
+        "exit": 0,
+        "log": "phase-a/project/project-boundary-browser.log",
+        "command": "node tests/project-boundary-browser.cjs"
+      },
+      {
+        "id": "project-reopen-browser",
+        "status": "PASS",
+        "exit": 0,
+        "log": "phase-a/project/project-reopen-browser.log",
+        "command": "node tests/project-reopen-browser.cjs"
+      },
+      {
+        "id": "project-usability-browser",
+        "status": "PASS",
+        "exit": 0,
+        "log": "phase-a/project/project-usability-browser.log",
+        "command": "node tests/project-usability-browser.cjs"
+      },
+      {
+        "id": "project-render-parity-browser",
+        "status": "PASS",
+        "exit": 0,
+        "log": "phase-a/project/project-render-parity-browser.log",
+        "command": "node tests/project-render-parity-browser.cjs"
+      },
+      {
+        "id": "project-editing-browser",
+        "status": "PASS",
+        "exit": 0,
+        "log": "phase-a/project/project-editing-browser.log",
+        "command": "node tests/project-editing-browser.cjs"
+      },
+      {
+        "id": "project-composition-browser",
+        "status": "PASS",
+        "exit": 0,
+        "log": "phase-a/project/project-composition-browser.log",
+        "command": "node tests/project-composition-browser.cjs"
+      },
+      {
+        "id": "workspace-navigation-browser",
+        "status": "PASS",
+        "exit": 0,
+        "log": "phase-a/project/workspace-navigation-browser.log",
+        "command": "node tests/workspace-navigation-browser.cjs"
+      },
+      {
+        "id": "file-tree-browser",
+        "status": "PASS",
+        "exit": 0,
+        "log": "phase-a/project/file-tree-browser.log",
+        "command": "node tests/file-tree-browser.cjs"
+      },
+      {
+        "id": "file-tree-sessions",
+        "status": "PASS",
+        "exit": 0,
+        "log": "phase-a/project/file-tree-sessions.log",
+        "command": "node tests/file-tree-sessions.cjs"
+      }
+    ],
+    "source": [
+      {
+        "id": "source-v2",
+        "status": "PASS",
+        "exit": 0,
+        "log": "phase-a/source/source-v2.log",
+        "command": "node tests/run-source-browser.cjs source-v2"
+      },
+      {
+        "id": "source-v21",
+        "status": "PASS",
+        "exit": 0,
+        "log": "phase-a/source/source-v21.log",
+        "command": "node tests/run-source-browser.cjs source-v21"
+      },
+      {
+        "id": "source-workspace",
+        "status": "FAIL",
+        "exit": 1,
+        "log": "phase-a/source/source-workspace.log",
+        "command": "node tests/run-source-browser.cjs source-workspace",
+        "note": "Focused suite hit native clipboard read timeout; full editor and standalone EOL runner passed."
+      },
+      {
+        "id": "source-workspace-lifecycle",
+        "status": "PASS",
+        "exit": 0,
+        "log": "phase-a/source/source-workspace-lifecycle.log",
+        "command": "node tests/run-source-browser.cjs source-workspace-lifecycle"
+      },
+      {
+        "id": "source-workspace-mixed-eol",
+        "status": "PASS",
+        "exit": 0,
+        "log": "phase-a/source/source-workspace-mixed-eol.log",
+        "command": "node tests/run-source-browser.cjs source-workspace-mixed-eol"
+      },
+      {
+        "id": "source-workspace-eol-state",
+        "status": "PASS",
+        "exit": 0,
+        "log": "phase-a/source/source-workspace-eol-state.log",
+        "command": "node tests/run-source-browser.cjs source-workspace-eol-state"
+      },
+      {
+        "id": "source-raw",
+        "status": "PASS",
+        "exit": 0,
+        "log": "phase-a/source/source-raw.log",
+        "command": "node tests/run-source-browser.cjs source-raw"
+      },
+      {
+        "id": "source-separator-fidelity",
+        "status": "PASS",
+        "exit": 0,
+        "log": "phase-a/source/source-separator-fidelity.log",
+        "command": "node tests/run-source-browser.cjs source-separator-fidelity"
+      },
+      {
+        "id": "source-standalone-paragraph",
+        "status": "PASS",
+        "exit": 0,
+        "log": "phase-a/source/source-standalone-paragraph.log",
+        "command": "node tests/run-source-browser.cjs source-standalone-paragraph"
+      },
+      {
+        "id": "source-split-reuse",
+        "status": "PASS",
+        "exit": 0,
+        "log": "phase-a/source/source-split-reuse.log",
+        "command": "node tests/run-source-browser.cjs source-split-reuse"
+      },
+      {
+        "id": "source-marker-batching",
+        "status": "PASS",
+        "exit": 0,
+        "log": "phase-a/source/source-marker-batching.log",
+        "command": "node tests/run-source-browser.cjs source-marker-batching"
+      },
+      {
+        "id": "source-display-math",
+        "status": "PASS",
+        "exit": 0,
+        "log": "phase-a/source/source-display-math.log",
+        "command": "node tests/run-source-browser.cjs source-display-math"
+      },
+      {
+        "id": "source-figures",
+        "status": "PASS",
+        "exit": 0,
+        "log": "phase-a/source/source-figures.log",
+        "command": "node tests/run-source-browser.cjs source-figures"
+      },
+      {
+        "id": "source-headings",
+        "status": "PASS",
+        "exit": 0,
+        "log": "phase-a/source/source-headings.log",
+        "command": "node tests/run-source-browser.cjs source-headings"
+      },
+      {
+        "id": "source-references",
+        "status": "PASS",
+        "exit": 0,
+        "log": "phase-a/source/source-references.log",
+        "command": "node tests/run-source-browser.cjs source-references"
+      },
+      {
+        "id": "source-table-floats",
+        "status": "PASS",
+        "exit": 0,
+        "log": "phase-a/source/source-table-floats.log",
+        "command": "node tests/run-source-browser.cjs source-table-floats"
+      },
+      {
+        "id": "source-tabularx",
+        "status": "PASS",
+        "exit": 0,
+        "log": "phase-a/source/source-tabularx.log",
+        "command": "node tests/run-source-browser.cjs source-tabularx"
+      },
+      {
+        "id": "source-tblr",
+        "status": "PASS",
+        "exit": 0,
+        "log": "phase-a/source/source-tblr.log",
+        "command": "node tests/run-source-browser.cjs source-tblr"
+      },
+      {
+        "id": "source-text-environments",
+        "status": "PASS",
+        "exit": 0,
+        "log": "phase-a/source/source-text-environments.log",
+        "command": "node tests/run-source-browser.cjs source-text-environments"
+      }
+    ],
+    "editor": [
+      {
+        "id": "editor",
+        "status": "PASS",
+        "exit": 0,
+        "log": "phase-a/editor/editor.log",
+        "command": "node tests/editor.cjs"
+      },
+      {
+        "id": "source-eol-browser",
+        "status": "PASS",
+        "exit": 0,
+        "log": "phase-a/editor/source-eol-browser.log",
+        "command": "node tests/source-eol-browser.cjs"
+      },
+      {
+        "id": "shortcuts-browser",
+        "status": "PASS",
+        "exit": 0,
+        "log": "phase-a/editor/shortcuts-browser.log",
+        "command": "node tests/shortcuts-browser.cjs"
+      }
+    ],
+    "tikz": [
+      {
+        "id": "tikz-editor-browser",
+        "status": "PASS",
+        "exit": 0,
+        "log": "phase-a/tikz/tikz-editor-browser.log",
+        "command": "node tests/tikz-editor-browser.cjs"
+      },
+      {
+        "id": "tikz-studio-browser",
+        "status": "PASS",
+        "exit": 0,
+        "log": "phase-a/tikz/tikz-studio-browser.log",
+        "command": "node tests/tikz-studio-browser.cjs"
+      }
+    ],
+    "native": [
+      {
+        "id": "native-stage",
+        "status": "PASS",
+        "exit": 0,
+        "log": "phase-a/native/native-stage.log",
+        "command": "node apps/desktop/scripts/stage.mjs"
+      },
+      {
+        "id": "native-pkg-config",
+        "status": "BLOCKED",
+        "exit": 1,
+        "log": "phase-a/native/native-pkg-config.log",
+        "command": "pkg-config --modversion webkit2gtk-4.1 gtk+-3.0 javascriptcoregtk-4.1",
+        "note": "Missing development packages webkit2gtk-4.1, GTK 3 and JavaScriptCore 4.1"
+      },
+      {
+        "id": "native-rust",
+        "status": "BLOCKED",
+        "exit": 127,
+        "log": "phase-a/native/native-rust.log",
+        "command": "cargo test --locked --manifest-path apps/desktop/src-tauri/Cargo.toml --lib"
+      },
+      {
+        "id": "native-build",
+        "status": "BLOCKED",
+        "exit": 127,
+        "log": "phase-a/native/native-build.log",
+        "command": "cargo check --locked --manifest-path apps/desktop/src-tauri/Cargo.toml"
+      }
+    ],
+    "bib": [
+      {
+        "id": "biber-version",
+        "status": "PASS",
+        "exit": 0,
+        "log": "phase-a/bib-retry/bib/biber-version.log",
+        "command": "biber --version"
+      },
+      {
+        "id": "bib-compile",
+        "status": "PASS",
+        "exit": 0,
+        "log": "phase-a/bib-retry/bib/bib-compile.log",
+        "command": "node tests/bib/compile/run-editor-compile.mjs --json --out=test-evidence/phase-a/bib-retry/bib/bib-report.json"
+      }
+    ]
+  },
+  "byteProbe": {
+    "command": "node docs/dual-engine/probe-layout.cjs /absolute/evidence/byte-probe",
+    "exit": 0,
+    "log": "phase-a/byte-probe-final.log",
+    "evidence": "phase-a/byte-probe-final/results.json",
+    "result": {
+      "chromium": "141.0.7390.37",
+      "cases": [
+        {
+          "name": "xelatex-reference",
+          "before": {
+            "width": 627,
+            "fontFamily": "\"Latin Modern Roman\", \"Latin Modern Roman\", \"Songti SC\", SimSun, serif",
+            "fontSize": "13.2835px",
+            "lineHeight": "15.9403px",
+            "visualBreaks": 4,
+            "discretionaryHyphens": 1,
+            "fonts": [
+              {
+                "family": "Latin Modern Roman",
+                "style": "normal",
+                "weight": "400"
+              },
+              {
+                "family": "Latin Modern Roman",
+                "style": "normal",
+                "weight": "700"
+              }
+            ]
+          },
+          "after": {
+            "width": 627,
+            "fontFamily": "\"Latin Modern Roman\", \"Latin Modern Roman\", \"Songti SC\", SimSun, serif",
+            "fontSize": "13.2835px",
+            "lineHeight": "15.9403px",
+            "visualBreaks": 4,
+            "discretionaryHyphens": 1,
+            "fonts": [
+              {
+                "family": "Latin Modern Roman",
+                "style": "normal",
+                "weight": "400"
+              },
+              {
+                "family": "Latin Modern Roman",
+                "style": "normal",
+                "weight": "700"
+              }
+            ]
+          },
+          "beforeSha256": "3a02e5d3798901588a8375abd0e94aa3a54ba2dba1126becf5a061a6cea36985",
+          "afterSha256": "3a02e5d3798901588a8375abd0e94aa3a54ba2dba1126becf5a061a6cea36985",
+          "bytesEqual": true,
+          "astEqual": true
+        },
+        {
+          "name": "xecjk-reference",
+          "before": {
+            "width": 454,
+            "fontFamily": "\"Latin Modern Roman\", \"Latin Modern Roman\", FandolSong, \"Songti SC\", SimSun, serif",
+            "fontSize": "13.2835px",
+            "lineHeight": "15.9403px",
+            "visualBreaks": 3,
+            "discretionaryHyphens": 0,
+            "fonts": [
+              {
+                "family": "Latin Modern Roman",
+                "style": "normal",
+                "weight": "400"
+              },
+              {
+                "family": "Latin Modern Roman",
+                "style": "normal",
+                "weight": "700"
+              },
+              {
+                "family": "FandolSong",
+                "style": "normal",
+                "weight": "400"
+              }
+            ]
+          },
+          "after": {
+            "width": 454,
+            "fontFamily": "\"Latin Modern Roman\", \"Latin Modern Roman\", FandolSong, \"Songti SC\", SimSun, serif",
+            "fontSize": "13.2835px",
+            "lineHeight": "15.9403px",
+            "visualBreaks": 3,
+            "discretionaryHyphens": 0,
+            "fonts": [
+              {
+                "family": "Latin Modern Roman",
+                "style": "normal",
+                "weight": "400"
+              },
+              {
+                "family": "Latin Modern Roman",
+                "style": "normal",
+                "weight": "700"
+              },
+              {
+                "family": "FandolSong",
+                "style": "normal",
+                "weight": "400"
+              }
+            ]
+          },
+          "beforeSha256": "523c03f9ca29875c21ab86a546eb71e162a583123177dd43c187a838f75e64d5",
+          "afterSha256": "523c03f9ca29875c21ab86a546eb71e162a583123177dd43c187a838f75e64d5",
+          "bytesEqual": true,
+          "astEqual": true
+        }
+      ],
+      "assets": [
+        {
+          "filename": "/assets/fonts/latin-modern/lmroman10-regular.otf",
+          "status": 200
+        },
+        {
+          "filename": "/assets/fonts/latin-modern/lmroman10-bold.otf",
+          "status": 200
+        },
+        {
+          "filename": "/assets/fonts/fandol/FandolSong-Regular.woff2",
+          "status": 200
+        }
+      ],
+      "errors": []
+    }
+  },
+  "realTeX": {
+    "command": "python3 docs/dual-engine/probe-tex.py /absolute/evidence/tex",
+    "exit": 1,
+    "resultPath": "phase-a/tex-verified/results.json",
+    "cases": [
+      {
+        "id": "xelatex-article",
+        "engine": "xelatex",
+        "status": "PASS",
+        "sourceUnchanged": true,
+        "sourceSha256": "7c3dd7bf9ce00b1d8094f2316e34b3e386cdbf9b178624d90fafeb3a1a0b6f38",
+        "commands": [
+          {
+            "command": [
+              "xelatex",
+              "-no-shell-escape",
+              "-interaction=nonstopmode",
+              "-halt-on-error",
+              "-file-line-error",
+              "main.tex"
+            ],
+            "exit": 0,
+            "log": "phase-a/tex-verified/xelatex-article/compile.log"
+          },
+          {
+            "command": [
+              "pdftotext",
+              "-bbox-layout",
+              "main.pdf",
+              "main.bbox.html"
+            ],
+            "exit": 0,
+            "log": "phase-a/tex-verified/xelatex-article/bbox.log"
+          },
+          {
+            "command": [
+              "pdffonts",
+              "main.pdf"
+            ],
+            "exit": 0,
+            "log": "phase-a/tex-verified/xelatex-article/fonts.log"
+          },
+          {
+            "command": [
+              "pdfinfo",
+              "main.pdf"
+            ],
+            "exit": 0,
+            "log": "phase-a/tex-verified/xelatex-article/page-info.log"
+          }
+        ],
+        "lineCount": 1
+      },
+      {
+        "id": "xelatex-cjk",
+        "engine": "xelatex",
+        "status": "PASS",
+        "sourceUnchanged": true,
+        "sourceSha256": "0b257733604e759f6f8fe460e6af8f8cbce318fb7900836b39dba4aef5ff9fb0",
+        "commands": [
+          {
+            "command": [
+              "xelatex",
+              "-no-shell-escape",
+              "-interaction=nonstopmode",
+              "-halt-on-error",
+              "-file-line-error",
+              "main.tex"
+            ],
+            "exit": 0,
+            "log": "phase-a/tex-verified/xelatex-cjk/compile.log"
+          },
+          {
+            "command": [
+              "pdftotext",
+              "-bbox-layout",
+              "main.pdf",
+              "main.bbox.html"
+            ],
+            "exit": 0,
+            "log": "phase-a/tex-verified/xelatex-cjk/bbox.log"
+          },
+          {
+            "command": [
+              "pdffonts",
+              "main.pdf"
+            ],
+            "exit": 0,
+            "log": "phase-a/tex-verified/xelatex-cjk/fonts.log"
+          },
+          {
+            "command": [
+              "pdfinfo",
+              "main.pdf"
+            ],
+            "exit": 0,
+            "log": "phase-a/tex-verified/xelatex-cjk/page-info.log"
+          }
+        ],
+        "lineCount": 1
+      },
+      {
+        "id": "lualatex-article",
+        "engine": "lualatex",
+        "status": "PASS",
+        "sourceUnchanged": true,
+        "sourceSha256": "7c3dd7bf9ce00b1d8094f2316e34b3e386cdbf9b178624d90fafeb3a1a0b6f38",
+        "commands": [
+          {
+            "command": [
+              "lualatex",
+              "-no-shell-escape",
+              "-interaction=nonstopmode",
+              "-halt-on-error",
+              "-file-line-error",
+              "main.tex"
+            ],
+            "exit": 0,
+            "log": "phase-a/tex-verified/lualatex-article/compile.log"
+          },
+          {
+            "command": [
+              "pdftotext",
+              "-bbox-layout",
+              "main.pdf",
+              "main.bbox.html"
+            ],
+            "exit": 0,
+            "log": "phase-a/tex-verified/lualatex-article/bbox.log"
+          },
+          {
+            "command": [
+              "pdffonts",
+              "main.pdf"
+            ],
+            "exit": 0,
+            "log": "phase-a/tex-verified/lualatex-article/fonts.log"
+          },
+          {
+            "command": [
+              "pdfinfo",
+              "main.pdf"
+            ],
+            "exit": 0,
+            "log": "phase-a/tex-verified/lualatex-article/page-info.log"
+          }
+        ],
+        "lineCount": 1
+      },
+      {
+        "id": "lualatex-cjk",
+        "engine": "lualatex",
+        "status": "PASS",
+        "sourceUnchanged": true,
+        "sourceSha256": "d759cc93500e33536a80a8fd9699c3ba5320faea043f13c5f2e96da8f8a04263",
+        "commands": [
+          {
+            "command": [
+              "lualatex",
+              "-no-shell-escape",
+              "-interaction=nonstopmode",
+              "-halt-on-error",
+              "-file-line-error",
+              "main.tex"
+            ],
+            "exit": 0,
+            "log": "phase-a/tex-verified/lualatex-cjk/compile.log"
+          },
+          {
+            "command": [
+              "pdftotext",
+              "-bbox-layout",
+              "main.pdf",
+              "main.bbox.html"
+            ],
+            "exit": 0,
+            "log": "phase-a/tex-verified/lualatex-cjk/bbox.log"
+          },
+          {
+            "command": [
+              "pdffonts",
+              "main.pdf"
+            ],
+            "exit": 0,
+            "log": "phase-a/tex-verified/lualatex-cjk/fonts.log"
+          },
+          {
+            "command": [
+              "pdfinfo",
+              "main.pdf"
+            ],
+            "exit": 0,
+            "log": "phase-a/tex-verified/lualatex-cjk/page-info.log"
+          }
+        ],
+        "lineCount": 1
+      },
+      {
+        "id": "xelatex-reference-01",
+        "engine": "xelatex",
+        "status": "PASS",
+        "sourceUnchanged": true,
+        "sourceSha256": "3306e2b40f4f967b48965b9060e8efe63e6d92b739dc4e8e02f220c171a1390a",
+        "commands": [
+          {
+            "command": [
+              "xelatex",
+              "-no-shell-escape",
+              "-interaction=nonstopmode",
+              "-halt-on-error",
+              "-file-line-error",
+              "main.tex"
+            ],
+            "exit": 0,
+            "log": "phase-a/tex-verified/xelatex-reference-01/compile.log"
+          },
+          {
+            "command": [
+              "pdftotext",
+              "-bbox-layout",
+              "main.pdf",
+              "main.bbox.html"
+            ],
+            "exit": 0,
+            "log": "phase-a/tex-verified/xelatex-reference-01/bbox.log"
+          },
+          {
+            "command": [
+              "pdffonts",
+              "main.pdf"
+            ],
+            "exit": 0,
+            "log": "phase-a/tex-verified/xelatex-reference-01/fonts.log"
+          },
+          {
+            "command": [
+              "pdfinfo",
+              "main.pdf"
+            ],
+            "exit": 0,
+            "log": "phase-a/tex-verified/xelatex-reference-01/page-info.log"
+          }
+        ],
+        "frozenComparison": {
+          "textEqual": true,
+          "expectedLineCount": 5,
+          "actualLineCount": 5,
+          "maxWidthErrorBp": 0.00010899999995217513,
+          "maxRelativeYErrorBp": 3.9999999827955435e-06,
+          "status": "PASS"
+        },
+        "lineCount": 5
+      },
+      {
+        "id": "xelatex-reference-02",
+        "engine": "xelatex",
+        "status": "PASS",
+        "sourceUnchanged": true,
+        "sourceSha256": "6527fc8840a542aec81e25614897c00d252c2dea69ae39e6da3c04bb6567d614",
+        "commands": [
+          {
+            "command": [
+              "xelatex",
+              "-no-shell-escape",
+              "-interaction=nonstopmode",
+              "-halt-on-error",
+              "-file-line-error",
+              "main.tex"
+            ],
+            "exit": 0,
+            "log": "phase-a/tex-verified/xelatex-reference-02/compile.log"
+          },
+          {
+            "command": [
+              "pdftotext",
+              "-bbox-layout",
+              "main.pdf",
+              "main.bbox.html"
+            ],
+            "exit": 0,
+            "log": "phase-a/tex-verified/xelatex-reference-02/bbox.log"
+          },
+          {
+            "command": [
+              "pdffonts",
+              "main.pdf"
+            ],
+            "exit": 0,
+            "log": "phase-a/tex-verified/xelatex-reference-02/fonts.log"
+          },
+          {
+            "command": [
+              "pdfinfo",
+              "main.pdf"
+            ],
+            "exit": 0,
+            "log": "phase-a/tex-verified/xelatex-reference-02/page-info.log"
+          }
+        ],
+        "frozenComparison": {
+          "textEqual": true,
+          "expectedLineCount": 7,
+          "actualLineCount": 7,
+          "maxWidthErrorBp": 0.00011800000004313915,
+          "maxRelativeYErrorBp": 1.3999999993075107e-05,
+          "status": "PASS"
+        },
+        "lineCount": 7
+      },
+      {
+        "id": "xelatex-reference-03",
+        "engine": "xelatex",
+        "status": "PASS",
+        "sourceUnchanged": true,
+        "sourceSha256": "2177ecd7021f6f67e32da24387654c6f8fdb4f625ba3ff65f0867ccafb32a44b",
+        "commands": [
+          {
+            "command": [
+              "xelatex",
+              "-no-shell-escape",
+              "-interaction=nonstopmode",
+              "-halt-on-error",
+              "-file-line-error",
+              "main.tex"
+            ],
+            "exit": 0,
+            "log": "phase-a/tex-verified/xelatex-reference-03/compile.log"
+          },
+          {
+            "command": [
+              "pdftotext",
+              "-bbox-layout",
+              "main.pdf",
+              "main.bbox.html"
+            ],
+            "exit": 0,
+            "log": "phase-a/tex-verified/xelatex-reference-03/bbox.log"
+          },
+          {
+            "command": [
+              "pdffonts",
+              "main.pdf"
+            ],
+            "exit": 0,
+            "log": "phase-a/tex-verified/xelatex-reference-03/fonts.log"
+          },
+          {
+            "command": [
+              "pdfinfo",
+              "main.pdf"
+            ],
+            "exit": 0,
+            "log": "phase-a/tex-verified/xelatex-reference-03/page-info.log"
+          }
+        ],
+        "frozenComparison": {
+          "textEqual": false,
+          "expectedLineCount": 10,
+          "actualLineCount": 10,
+          "maxWidthErrorBp": 37.35974999999999,
+          "maxRelativeYErrorBp": 3.399999999942338e-05,
+          "status": "FAIL"
+        },
+        "lineCount": 10
+      },
+      {
+        "id": "xelatex-reference-04",
+        "engine": "xelatex",
+        "status": "PASS",
+        "sourceUnchanged": true,
+        "sourceSha256": "6357b10872bbfbed2c64b8d309847bae232eccc2f734cc411afc5255806e7cf7",
+        "commands": [
+          {
+            "command": [
+              "xelatex",
+              "-no-shell-escape",
+              "-interaction=nonstopmode",
+              "-halt-on-error",
+              "-file-line-error",
+              "main.tex"
+            ],
+            "exit": 0,
+            "log": "phase-a/tex-verified/xelatex-reference-04/compile.log"
+          },
+          {
+            "command": [
+              "pdftotext",
+              "-bbox-layout",
+              "main.pdf",
+              "main.bbox.html"
+            ],
+            "exit": 0,
+            "log": "phase-a/tex-verified/xelatex-reference-04/bbox.log"
+          },
+          {
+            "command": [
+              "pdffonts",
+              "main.pdf"
+            ],
+            "exit": 0,
+            "log": "phase-a/tex-verified/xelatex-reference-04/fonts.log"
+          },
+          {
+            "command": [
+              "pdfinfo",
+              "main.pdf"
+            ],
+            "exit": 0,
+            "log": "phase-a/tex-verified/xelatex-reference-04/page-info.log"
+          }
+        ],
+        "frozenComparison": {
+          "textEqual": true,
+          "expectedLineCount": 7,
+          "actualLineCount": 7,
+          "maxWidthErrorBp": 0.00011800000004313915,
+          "maxRelativeYErrorBp": 1.3999999993075107e-05,
+          "status": "PASS"
+        },
+        "lineCount": 7
+      },
+      {
+        "id": "xecjk-reference-01",
+        "engine": "xelatex",
+        "status": "PASS",
+        "sourceUnchanged": true,
+        "sourceSha256": "502de7e940e134fabf55fda22fca3af8322b291e79649551b80b68474277fafe",
+        "commands": [
+          {
+            "command": [
+              "xelatex",
+              "-no-shell-escape",
+              "-interaction=nonstopmode",
+              "-halt-on-error",
+              "-file-line-error",
+              "main.tex"
+            ],
+            "exit": 0,
+            "log": "phase-a/tex-verified/xecjk-reference-01/compile.log"
+          },
+          {
+            "command": [
+              "pdftotext",
+              "-bbox-layout",
+              "main.pdf",
+              "main.bbox.html"
+            ],
+            "exit": 0,
+            "log": "phase-a/tex-verified/xecjk-reference-01/bbox.log"
+          },
+          {
+            "command": [
+              "pdffonts",
+              "main.pdf"
+            ],
+            "exit": 0,
+            "log": "phase-a/tex-verified/xecjk-reference-01/fonts.log"
+          },
+          {
+            "command": [
+              "pdfinfo",
+              "main.pdf"
+            ],
+            "exit": 0,
+            "log": "phase-a/tex-verified/xecjk-reference-01/page-info.log"
+          }
+        ],
+        "frozenComparison": {
+          "textEqual": true,
+          "expectedLineCount": 4,
+          "actualLineCount": 4,
+          "maxWidthErrorBp": 0.00010199999996984843,
+          "maxRelativeYErrorBp": 1.0000000003174137e-05,
+          "status": "PASS"
+        },
+        "lineCount": 5
+      },
+      {
+        "id": "xecjk-reference-02",
+        "engine": "xelatex",
+        "status": "PASS",
+        "sourceUnchanged": true,
+        "sourceSha256": "77014c9611605ff1d5fc9ac0fc5c89e8ecd0d2c8cea14949e8ba0605ad8319d9",
+        "commands": [
+          {
+            "command": [
+              "xelatex",
+              "-no-shell-escape",
+              "-interaction=nonstopmode",
+              "-halt-on-error",
+              "-file-line-error",
+              "main.tex"
+            ],
+            "exit": 0,
+            "log": "phase-a/tex-verified/xecjk-reference-02/compile.log"
+          },
+          {
+            "command": [
+              "pdftotext",
+              "-bbox-layout",
+              "main.pdf",
+              "main.bbox.html"
+            ],
+            "exit": 0,
+            "log": "phase-a/tex-verified/xecjk-reference-02/bbox.log"
+          },
+          {
+            "command": [
+              "pdffonts",
+              "main.pdf"
+            ],
+            "exit": 0,
+            "log": "phase-a/tex-verified/xecjk-reference-02/fonts.log"
+          },
+          {
+            "command": [
+              "pdfinfo",
+              "main.pdf"
+            ],
+            "exit": 0,
+            "log": "phase-a/tex-verified/xecjk-reference-02/page-info.log"
+          }
+        ],
+        "frozenComparison": {
+          "textEqual": true,
+          "expectedLineCount": 5,
+          "actualLineCount": 5,
+          "maxWidthErrorBp": 0.00010099999997237319,
+          "maxRelativeYErrorBp": 2.842170943040401e-14,
+          "status": "PASS"
+        },
+        "lineCount": 6
+      },
+      {
+        "id": "xecjk-reference-03",
+        "engine": "xelatex",
+        "status": "PASS",
+        "sourceUnchanged": true,
+        "sourceSha256": "19514ffc69d450388d1466b38b1b10e4b965a950ffdadade5eea2c65fd29f6ff",
+        "commands": [
+          {
+            "command": [
+              "xelatex",
+              "-no-shell-escape",
+              "-interaction=nonstopmode",
+              "-halt-on-error",
+              "-file-line-error",
+              "main.tex"
+            ],
+            "exit": 0,
+            "log": "phase-a/tex-verified/xecjk-reference-03/compile.log"
+          },
+          {
+            "command": [
+              "pdftotext",
+              "-bbox-layout",
+              "main.pdf",
+              "main.bbox.html"
+            ],
+            "exit": 0,
+            "log": "phase-a/tex-verified/xecjk-reference-03/bbox.log"
+          },
+          {
+            "command": [
+              "pdffonts",
+              "main.pdf"
+            ],
+            "exit": 0,
+            "log": "phase-a/tex-verified/xecjk-reference-03/fonts.log"
+          },
+          {
+            "command": [
+              "pdfinfo",
+              "main.pdf"
+            ],
+            "exit": 0,
+            "log": "phase-a/tex-verified/xecjk-reference-03/page-info.log"
+          }
+        ],
+        "frozenComparison": {
+          "textEqual": true,
+          "expectedLineCount": 5,
+          "actualLineCount": 5,
+          "maxWidthErrorBp": 0.00019200000002683737,
+          "maxRelativeYErrorBp": 1.0000000003174137e-05,
+          "status": "PASS"
+        },
+        "lineCount": 6
+      },
+      {
+        "id": "xecjk-reference-04",
+        "engine": "xelatex",
+        "status": "PASS",
+        "sourceUnchanged": true,
+        "sourceSha256": "c5ecd27e1efbbbdd84e8d71fea014c04ae5c354957456a9447e1dfe316bca18f",
+        "commands": [
+          {
+            "command": [
+              "xelatex",
+              "-no-shell-escape",
+              "-interaction=nonstopmode",
+              "-halt-on-error",
+              "-file-line-error",
+              "main.tex"
+            ],
+            "exit": 0,
+            "log": "phase-a/tex-verified/xecjk-reference-04/compile.log"
+          },
+          {
+            "command": [
+              "pdftotext",
+              "-bbox-layout",
+              "main.pdf",
+              "main.bbox.html"
+            ],
+            "exit": 0,
+            "log": "phase-a/tex-verified/xecjk-reference-04/bbox.log"
+          },
+          {
+            "command": [
+              "pdffonts",
+              "main.pdf"
+            ],
+            "exit": 0,
+            "log": "phase-a/tex-verified/xecjk-reference-04/fonts.log"
+          },
+          {
+            "command": [
+              "pdfinfo",
+              "main.pdf"
+            ],
+            "exit": 0,
+            "log": "phase-a/tex-verified/xecjk-reference-04/page-info.log"
+          }
+        ],
+        "frozenComparison": {
+          "textEqual": true,
+          "expectedLineCount": 7,
+          "actualLineCount": 7,
+          "maxWidthErrorBp": 0.0001700000000255386,
+          "maxRelativeYErrorBp": 1.0000000031595846e-05,
+          "status": "PASS"
+        },
+        "lineCount": 8
+      },
+      {
+        "id": "xecjk-reference-05",
+        "engine": "xelatex",
+        "status": "PASS",
+        "sourceUnchanged": true,
+        "sourceSha256": "e8e6a3296c997430f76a3a867b12dc90c2517346e592edaec1de25fd46af2022",
+        "commands": [
+          {
+            "command": [
+              "xelatex",
+              "-no-shell-escape",
+              "-interaction=nonstopmode",
+              "-halt-on-error",
+              "-file-line-error",
+              "main.tex"
+            ],
+            "exit": 0,
+            "log": "phase-a/tex-verified/xecjk-reference-05/compile.log"
+          },
+          {
+            "command": [
+              "pdftotext",
+              "-bbox-layout",
+              "main.pdf",
+              "main.bbox.html"
+            ],
+            "exit": 0,
+            "log": "phase-a/tex-verified/xecjk-reference-05/bbox.log"
+          },
+          {
+            "command": [
+              "pdffonts",
+              "main.pdf"
+            ],
+            "exit": 0,
+            "log": "phase-a/tex-verified/xecjk-reference-05/fonts.log"
+          },
+          {
+            "command": [
+              "pdfinfo",
+              "main.pdf"
+            ],
+            "exit": 0,
+            "log": "phase-a/tex-verified/xecjk-reference-05/page-info.log"
+          }
+        ],
+        "frozenComparison": {
+          "textEqual": true,
+          "expectedLineCount": 5,
+          "actualLineCount": 5,
+          "maxWidthErrorBp": 0.00013699999999516876,
+          "maxRelativeYErrorBp": 2.0000000006348273e-05,
+          "status": "PASS"
+        },
+        "lineCount": 6
+      },
+      {
+        "id": "xecjk-reference-06",
+        "engine": "xelatex",
+        "status": "PASS",
+        "sourceUnchanged": true,
+        "sourceSha256": "1ec4db1c2d26d4dad033b009135de50092e680225030be5efc829fa35ca67628",
+        "commands": [
+          {
+            "command": [
+              "xelatex",
+              "-no-shell-escape",
+              "-interaction=nonstopmode",
+              "-halt-on-error",
+              "-file-line-error",
+              "main.tex"
+            ],
+            "exit": 0,
+            "log": "phase-a/tex-verified/xecjk-reference-06/compile.log"
+          },
+          {
+            "command": [
+              "pdftotext",
+              "-bbox-layout",
+              "main.pdf",
+              "main.bbox.html"
+            ],
+            "exit": 0,
+            "log": "phase-a/tex-verified/xecjk-reference-06/bbox.log"
+          },
+          {
+            "command": [
+              "pdffonts",
+              "main.pdf"
+            ],
+            "exit": 0,
+            "log": "phase-a/tex-verified/xecjk-reference-06/fonts.log"
+          },
+          {
+            "command": [
+              "pdfinfo",
+              "main.pdf"
+            ],
+            "exit": 0,
+            "log": "phase-a/tex-verified/xecjk-reference-06/page-info.log"
+          }
+        ],
+        "frozenComparison": {
+          "textEqual": true,
+          "expectedLineCount": 7,
+          "actualLineCount": 7,
+          "maxWidthErrorBp": 9.999999997489795e-05,
+          "maxRelativeYErrorBp": 1.0000000003174137e-05,
+          "status": "PASS"
+        },
+        "lineCount": 8
+      },
+      {
+        "id": "xecjk-reference-07",
+        "engine": "xelatex",
+        "status": "PASS",
+        "sourceUnchanged": true,
+        "sourceSha256": "c824a2b4e383fde8617be982d17ee934205bc038d843e3999c4e437de11bc3ae",
+        "commands": [
+          {
+            "command": [
+              "xelatex",
+              "-no-shell-escape",
+              "-interaction=nonstopmode",
+              "-halt-on-error",
+              "-file-line-error",
+              "main.tex"
+            ],
+            "exit": 0,
+            "log": "phase-a/tex-verified/xecjk-reference-07/compile.log"
+          },
+          {
+            "command": [
+              "pdftotext",
+              "-bbox-layout",
+              "main.pdf",
+              "main.bbox.html"
+            ],
+            "exit": 0,
+            "log": "phase-a/tex-verified/xecjk-reference-07/bbox.log"
+          },
+          {
+            "command": [
+              "pdffonts",
+              "main.pdf"
+            ],
+            "exit": 0,
+            "log": "phase-a/tex-verified/xecjk-reference-07/fonts.log"
+          },
+          {
+            "command": [
+              "pdfinfo",
+              "main.pdf"
+            ],
+            "exit": 0,
+            "log": "phase-a/tex-verified/xecjk-reference-07/page-info.log"
+          }
+        ],
+        "frozenComparison": {
+          "textEqual": true,
+          "expectedLineCount": 4,
+          "actualLineCount": 4,
+          "maxWidthErrorBp": 0.00020299999999906504,
+          "maxRelativeYErrorBp": 1.0000000003174137e-05,
+          "status": "PASS"
+        },
+        "lineCount": 6
+      },
+      {
+        "id": "xecjk-reference-08",
+        "engine": "xelatex",
+        "status": "PASS",
+        "sourceUnchanged": true,
+        "sourceSha256": "75064a4914d38f09dafaf3c8d9c1ddd0c6d151da8646f3882a20a2428ce9bfce",
+        "commands": [
+          {
+            "command": [
+              "xelatex",
+              "-no-shell-escape",
+              "-interaction=nonstopmode",
+              "-halt-on-error",
+              "-file-line-error",
+              "main.tex"
+            ],
+            "exit": 0,
+            "log": "phase-a/tex-verified/xecjk-reference-08/compile.log"
+          },
+          {
+            "command": [
+              "pdftotext",
+              "-bbox-layout",
+              "main.pdf",
+              "main.bbox.html"
+            ],
+            "exit": 0,
+            "log": "phase-a/tex-verified/xecjk-reference-08/bbox.log"
+          },
+          {
+            "command": [
+              "pdffonts",
+              "main.pdf"
+            ],
+            "exit": 0,
+            "log": "phase-a/tex-verified/xecjk-reference-08/fonts.log"
+          },
+          {
+            "command": [
+              "pdfinfo",
+              "main.pdf"
+            ],
+            "exit": 0,
+            "log": "phase-a/tex-verified/xecjk-reference-08/page-info.log"
+          }
+        ],
+        "frozenComparison": {
+          "textEqual": true,
+          "expectedLineCount": 6,
+          "actualLineCount": 6,
+          "maxWidthErrorBp": 0.00012099999997872146,
+          "maxRelativeYErrorBp": 2.842170943040401e-14,
+          "status": "PASS"
+        },
+        "lineCount": 9
+      }
+    ]
+  },
+  "bib": {
+    "pass": 19,
+    "fail": 0,
+    "unverified": 0,
+    "roundTrips": [
+      {
+        "backend": "bibtex",
+        "status": "PASS"
+      },
+      {
+        "backend": "biblatex",
+        "status": "PASS"
+      }
+    ]
+  },
+  "unverified": [
+    {
+      "scope": "Native Tauri/WebView picker/desktop app",
+      "status": "UNVERIFIED",
+      "exit": null,
+      "log": null
+    },
+    {
+      "scope": "xeCJK browser CDP IME assertions after first golden comparison",
+      "status": "UNVERIFIED",
+      "exit": null,
+      "log": null
+    },
+    {
+      "scope": "Engine switching and independent Lua/browser layout accuracy",
+      "status": "UNVERIFIED",
+      "exit": null,
+      "log": null
+    }
+  ]
+}

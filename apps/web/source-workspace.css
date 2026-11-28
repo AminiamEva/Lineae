@@ -64,7 +64,7 @@ body:has(.tex-workspace.is-expanded) {overflow:hidden}
   .tex-head,.tex-foot {padding-inline:12px}
   .tex-code .cm-line {padding-inline:12px}
 }
-.tex-modes {display:inline-flex;flex:none;gap:2px;padding:2px;border-radius:9px;background:light-dark(#eef0f4,#30333a)}
+.tex-modes {display:inline-flex;flex:none;gap:2px;padding:1px;border-radius:7px;background:light-dark(#ffffff55,#ffffff14)}
 .document-status .tex-modes button {box-shadow:none;padding:2px 8px;font:inherit;color:inherit;border-radius:7px;background:transparent;transition:background .16s,box-shadow .16s}
 .document-status .tex-modes button[aria-pressed=true] {background:light-dark(#fff,#474c58);box-shadow:0 1px 3px #18223b20}
 @keyframes tex-enter {from {opacity:.85;transform:translateY(3px)}}
@@ -77,7 +77,7 @@ body:has(.tex-workspace.is-expanded) {overflow:hidden}
 
 /* V2 uses the entire available workspace, below the existing ribbon. */
 .tex-workspace,.tex-workspace.is-expanded {
-  position:fixed;inset:var(--tex-toolbar-bottom,110px) 0 36px;
+  position:fixed;inset:var(--tex-toolbar-bottom,110px) 0 var(--document-status-clearance);
   width:auto;height:auto;margin:0;border-radius:0;z-index:8;
   border-inline:0;box-shadow:none;
 }
@@ -106,8 +106,8 @@ body:has(.tex-workspace:not([hidden])) {overflow:hidden}
 .tex-indent-setting {display:flex;align-items:center;gap:4px;margin-left:auto;white-space:nowrap;cursor:pointer}
 .tex-indent-setting input {margin:0;accent-color:var(--tex-command)}
 .tex-foot .tex-format {margin-left:0}
-.tex-modes {display:grid;grid-template-columns:repeat(3,minmax(0,1fr));width:222px;gap:2px;box-sizing:border-box}
-.document-status .tex-modes button {display:flex;justify-content:center;align-items:center;min-width:0;min-height:26px;padding:2px 4px;white-space:nowrap}
+.tex-modes {display:grid;grid-template-columns:repeat(3,minmax(0,1fr));width:194px;gap:2px;box-sizing:border-box}
+.document-status .tex-modes button {display:flex;justify-content:center;align-items:center;min-width:0;min-height:19px;padding:1px 4px;white-space:nowrap}
 .document-status .tex-modes button:hover {background:light-dark(#e0e5ee,#3e4350)}
 .document-status .tex-modes button:focus-visible {outline:2px solid light-dark(#685596,#c3b2e8);outline-offset:1px}
 @media(max-width:540px) {
@@ -115,9 +115,8 @@ body:has(.tex-workspace:not([hidden])) {overflow:hidden}
   .tex-actions {gap:2px;flex:none}
   .tex-foot {gap:6px;padding-inline:8px}
   .tex-foot .tex-format {display:none}
-  .tex-modes {width:204px}
-  .document-status:has(.tex-modes) .environment-tag {display:none}
-  .document-status:has([data-source-mode=body][aria-pressed=false]) > :is(input[type=range],output) {display:none}
+  .tex-modes {width:174px}
+  .document-status:has([data-source-mode=body][aria-pressed=false]) .document-status-items > :is(input[type=range],output) {display:none}
   .document-status:has(.tex-modes) > span:first-child {white-space:nowrap}
 }
 @media(max-width:899px) {
@@ -135,7 +134,7 @@ body:has(.tex-workspace:not([hidden])) {overflow:hidden}
 .tex-workspace .tex-preview .document-page::before {cursor:default;}
 .tex-workspace .tex-preview {padding:16px;overflow:auto;}
 .tex-foot[hidden],.tex-rich-actions[hidden] {display:none!important;}
-.source-workspace-visible .document-status>span:first-of-type {display:none;}
+.source-workspace-visible .document-status-items>span:first-of-type {display:none;}
 .tex-head {min-height:38px;padding-inline:12px;gap:8px;flex-wrap:wrap;}
 .tex-head>.tex-filename {max-width:160px;}
 .tex-head>.tex-actions {margin-left:auto;gap:2px;}
@@ -153,10 +152,9 @@ body:not(.source-workspace-visible) main {padding-top:calc(var(--tex-toolbar-bot
 body.project-visible {--sidebar-width:230px;}
 header .floating-toolbar {position:relative;display:flex;justify-content:center;pointer-events:auto;max-width:calc(100vw - var(--sidebar-width) - 24px);transform:translateX(calc(var(--sidebar-width)/2));}
 header .floating-toolbar>.ribbon {padding-right:8px;max-width:min(960px,calc(100vw - var(--sidebar-width) - 24px));}
-header .floating-toolbar>#toolbar-collapse {position:static;align-self:flex-start;flex:none;margin:4px 0 0 2px;width:24px;height:24px;display:grid;place-items:center;padding:0;border-radius:7px;pointer-events:auto;}
 header .floating-toolbar.is-hidden>.ribbon {display:block;}
 header .floating-toolbar.is-hidden .ribbon>.tools {display:none!important;}
-header .floating-toolbar #layout-panel input {box-sizing:border-box;min-width:0;flex:0 1 64px;max-width:64px;padding:4px 5px;border:1px solid var(--tex-border,#d8dce5);border-radius:6px;font:12px system-ui;}
+header .floating-toolbar #layout-panel input {box-sizing:border-box;min-width:0;flex:0 1 64px;max-width:64px;height:24px;padding:2px 4px;border:1px solid var(--tex-border,#d8dce5);border-radius:6px;font:11px system-ui;}
 @media(max-width:700px) {.tex-head{gap:3px;padding-inline:6px;}.tex-head>.tex-filename{max-width:100px;}.tex-rich-title{display:none;}}
 @media(max-width:600px) {body.project-visible{--sidebar-width:150px;}}
 /* Fonts are inherited from the document, including its explicit CJK family. */
@@ -178,6 +176,10 @@ header .floating-toolbar #layout-panel input {box-sizing:border-box;min-width:0;
 .setting-row {display:grid;grid-template-columns:minmax(0,1fr) minmax(90px,46%);gap:12px;align-items:center;margin:8px 0;font:12px system-ui;}
 .setting-row input,.setting-row select {box-sizing:border-box;min-width:0;width:100%;font:12px system-ui;}
 .setting-row input[type=checkbox] {justify-self:end;width:16px;height:16px;}
+#engine-resolution, #engine-diagnostics, #default-engine-help {display:block;margin:4px 0 10px;font:12px/1.45 system-ui;overflow-wrap:anywhere;}
+#engine-diagnostics {padding-inline-start:1.4em;}
+#engine-diagnostics[hidden] {display:none;}
+@media (max-width:420px) { .settings-actions {flex-wrap:wrap;} }
 .settings-panel textarea {box-sizing:border-box;width:100%;font:12px/1.5 Consolas,monospace;margin-top:8px;}
 .settings-actions {position:sticky;bottom:-20px;display:flex;gap:8px;justify-content:flex-end;padding:12px 0;background:light-dark(#fbfcff,#262930);}
 .settings-panel [role=alert] {color:light-dark(#b33737,#efa2a2);font-size:12px;}

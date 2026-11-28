@@ -4,6 +4,7 @@ import {readFileSync} from 'node:fs';
 import {importBlocks,serialize} from '../apps/web/src/editor/latex-codec.js';
 import {parseDocument} from '../apps/web/latex/document.mjs';
 import {sourceProjection,richSourceChanges} from '../apps/web/src/editor/source-sync.js';
+import {insertTableSourceColumn,insertTableSourceRow,mergeTableSourceCells,mergeTableSourceRows,parseTabularx,removeTableSourceColumn,removeTableSourceRow,splitTableSourceCell,splitTableSourceRowspan} from '../apps/web/latex/tabularx.mjs';
 const fixture=JSON.parse(readFileSync(new URL('./fixtures/academic-tabularx.json',import.meta.url),'utf8'));
 const table=source=>{const nodes=importBlocks(source);assert.equal(nodes.length,1);assert.equal(nodes[0].type,'table');assert.ok(nodes[0].attrs.tabularx);return nodes[0];};
 const wrap=source=>'\\begin{document}\r\nBefore.\n\n'+source+'\r\n\nAfter.\n\\end{document}\r\n';
@@ -70,6 +71,59 @@ c&=d\end{aligned}\) & \textbf{a \textit{b \& c}} \\[6pt]
   const node=table(source);assert.equal(node.content.length,2);assert.equal(node.content[0].content[0].content[0].content[0].type,'math');
   assert.equal(serialize(node),source);
 });
+test('inserting a row preserves column declarations, row spacing and mixed EOLs',()=>{
+  const source='\\begin{tabularx}{\\textwidth}{p{3cm}XX}\r\n'+
+    '\\multicolumn{2}{c}{A} & B \\\\*[6pt]\n\\midrule\nC & D & E\r\n\\end{tabularx}';
+  for(const index of [0,1]){
+    const change=insertTableSourceRow(source,index);
+    assert.ok(change);
+    assert.equal(change.from,change.to);
+    const draft=source.slice(0,change.from)+change.insert+source.slice(change.to);
+    const parsed=parseTabularx(draft);
+    assert.equal(parsed.rows.length,3);
+    assert.deepEqual(parsed.rows[index+1].map(cell=>cell.text),['','','']);
+    assert.deepEqual(parsed.rows.filter((_,row)=>row!==index+1).map(row=>row.map(cell=>cell.text)),[['A','B'],['C','D','E']]);
+  }
+});
+test('inserting a row in a table float changes only its tabularx body',()=>{
+  const {source,caption,label,expectedRows}=fixture.tables[0];
+  const {from,to,insert}=insertTableSourceRow(source,0);
+  assert.equal(from,to);
+  const node=table(source.slice(0,from)+insert+source.slice(to));
+  assert.equal(node.attrs.caption,caption);
+  assert.equal(node.attrs.label,label);
+  assert.equal(node.content.length,expectedRows+1);
+});
+test('inserting a column widens intersected spans and retains the caret in its original cell',()=>{
+  const source=String.raw`\begin{tabularx}{\textwidth}{p{3cm}XX} \multicolumn{ 2 }{c}{A} & B\\[4pt] C & D & E\end{tabularx}`;
+  const {from,to,insert,offset}=insertTableSourceColumn(source,1,0,source.indexOf('C'));
+  const draft=source.slice(0,from)+insert+source.slice(to);
+  assert.equal(draft,source.replace('p{3cm}XX','p{3cm}lXX').replace('{ 2 }','{ 3 }').replace('C & D','C &  & D'));
+  assert.equal(draft[offset],'C');
+  const updated=parseTabularx(draft);
+  assert.deepEqual(updated.rows.map(row=>row.map(cell=>[cell.text,cell.attrs.colspan])),[
+    [['A',3],['B',1]],[['C',1],['',1],['D',1],['E',1]],
+  ]);
+});
+test('deleting a row preserves directives and neighboring comments',()=>{
+  const removed='  C & \\textit{Delete} \\\\[4pt]\r\n';
+  const source='\\begin{tabularx}{\\textwidth}{XX}\n'+
+    '\\toprule\nA & B \\\\\n% Keep with neighboring rows\r\n'+removed+
+    '\\midrule\nE & F \\\\\n\\bottomrule\n\\end{tabularx}';
+  const {from,to,insert}=removeTableSourceRow(source,1);
+  assert.equal(source.slice(from,to),removed);
+  assert.equal(insert,'');
+  assert.deepEqual(parseTabularx(source.slice(0,from)+source.slice(to)).rows.map(row=>row.map(cell=>cell.text)),[
+    ['A','B'],['E','F'],
+  ]);
+});
+test('deleting a column preserves neighboring alignment and shrinks crossing spans',()=>{
+  const source=String.raw`\begin{tabularx}{\textwidth}{p{3cm}XX} \multicolumn{ 2 }{c}{A} & B\\[4pt] C & D & E\end{tabularx}`;
+  const {from,to,insert}=removeTableSourceColumn(source,1,1);
+  const draft=source.slice(0,from)+insert+source.slice(to);
+  assert.equal(draft,source.replace('p{3cm}XX','p{3cm}X').replace('{ 2 }','{ 1 }').replace(' & D',' '));
+  assert.deepEqual(parseTabularx(draft).rows.map(row=>row.map(cell=>cell.text)),[['A','B'],['C','E']]);
+});
 for(const eol of ['\n','\r\n'])test('comments and '+JSON.stringify(eol)+' survive a neighboring cell edit',()=>{
   const source=['\\begin{tabularx}{\\textwidth}{XX}','\\toprule','A % & \\\\ ignored','&B \\\\','\\bottomrule','\\end{tabularx}'].join(eol);
   assert.equal(serialize(table(source)),source);
@@ -95,4 +149,156 @@ test('spaced column prefixes and multicolumn-local spacing override the base for
   const style=node.content[0].content[0].attrs.tblrStyle;
   assert.equal(style.paddingLeft,'0px');assert.equal(style.paddingRight,'0px');
   assert.equal(serialize(node),source);
+});
+
+test('ordinary tabular axis edits preserve CRLF, rules, spans and noncanonical cell spacing',()=>{
+  const source=['\\begin{tabular}{|lcr|}','\\hline','\\multicolumn{2}{c}{Title} & Tail \\\\',
+    '\\hline','A  & B  & C \\\\','\\hline','\\end{tabular}'].join('\r\n');
+  const apply=({from,to,insert})=>source.slice(0,from)+insert+source.slice(to);
+  assert.equal(apply(insertTableSourceRow(source,0)),source.replace('Tail \\\\\r\n','Tail \\\\\r\n &  & \\\\\r\n'));
+  const at=source.indexOf('A  ');
+  const added=insertTableSourceColumn(source,1,0,at);
+  const expanded=apply(added);
+  assert.equal(expanded,source.replace('|lcr|','|llcr|').replace('{2}','{3}').replace('A  & B','A &   & B'));
+  assert.equal(expanded[added.offset],'A');
+  assert.equal(apply(removeTableSourceColumn(source,1,0)),source.replace('|lcr|','|cr|')
+    .replace('{2}','{1}').replace('A  & B',' B'));
+  assert.equal(apply(removeTableSourceRow(source,1)),source.replace('A  & B  & C \\\\\r\n',''));
+  assert.equal(removeTableSourceColumn(source.replace('\\hline','\\cline{1-2}'),1,0),null);
+});
+
+test('single-column tables expose empty rows for native insertion and deletion',()=>{
+  for(const declaration of ['\\begin{tabular}{l}','\\begin{tabularx}{\\textwidth}{X}']){
+    const environment=declaration.includes('tabularx')?'tabularx':'tabular';
+    const source=declaration+'\nEntry \\\\\n\\end{'+environment+'}';
+    const add=insertTableSourceRow(source,0),draft=source.slice(0,add.from)+add.insert+source.slice(add.to);
+    assert.equal(draft,source.replace('\n\\end','\n\\\\\n\\end'));
+    assert.equal(importBlocks(draft)[0].content.length,2);
+    const remove=removeTableSourceRow(draft,1);
+    assert.equal(draft.slice(0,remove.from)+remove.insert+draft.slice(remove.to),source);
+  }
+});
+
+test('splitting a native multicolumn cell keeps the original content, rule format and caret',()=>{
+  const source=['\\begin{tabularx}{\\textwidth}{lXr}','\\multicolumn{ 2 }{|c|}{\\textbf{Title}} & Tail \\\\',
+    'A & B & C','\\end{tabularx}'].join('\r\n');
+  const patch=splitTableSourceCell(source,0,0,source.indexOf('Title'));
+  const draft=source.slice(0,patch.from)+patch.insert+source.slice(patch.to);
+  assert.equal(draft,source.replace('{ 2 }','{ 1 }').replace('Title}} & Tail','Title}} &  & Tail'));
+  assert.equal(draft.slice(patch.offset,patch.offset+5),'Title');
+  assert.equal(parseTabularx(draft).rows[0].length,3);
+});
+
+test('merging adjacent source cells keeps their visible content and following rows',()=>{
+  const source=['\\begin{tabularx}{\\textwidth}{lXr}','\\textbf{A} & $z$ & C \\\\','D & E & F','\\end{tabularx}'].join('\r\n');
+  const patch=mergeTableSourceCells(source,0,0,1);
+  const draft=source.slice(0,patch.from)+patch.insert+source.slice(patch.to);
+  assert.equal(draft,source.replace('\\textbf{A} & $z$','\\multicolumn{2}{l}{\\textbf{A} $z$}'));
+  assert.equal(draft[patch.offset],'}');
+  assert.equal(mergeTableSourceCells(source.replace(' & $z$',' % retained\r\n& $z$'),0,0,1),null);
+});
+
+test('native multirow keeps neighboring cells and can be split back into ordinary cells',()=>{
+  const source=['\\begin{tabular}{ll}','One  & Two \\\\','Three & Four','\\end{tabular}'].join('\r\n');
+  const apply=(value,{from,to,insert})=>value.slice(0,from)+insert+value.slice(to);
+  const patch=mergeTableSourceRows(source,0,1,0);
+  const merged=apply(source,patch);
+  assert.equal(merged,source.replace('One','\\multirow{2}{*}{One Three}').replace('Three &',' &'));
+  const [node]=importBlocks(merged);
+  assert.equal(node.content[0].content[0].attrs.rowspan,2);
+  assert.equal(node.content[1].content.length,1);
+  const split=splitTableSourceRowspan(merged,0,0,merged.indexOf('Three'));
+  const restored=apply(merged,split);
+  assert.equal(restored,merged.replace('\\multirow{2}{*}{One Three}','One Three'));
+  assert.equal(restored.slice(split.offset,split.offset+5),'Three');
+  assert.equal(importBlocks(restored)[0].content[1].content.length,2);
+  assert.equal(mergeTableSourceRows(source.replace('Three','\\hline\r\nThree'),0,1,0),null);
+  const expanded=apply(merged,insertTableSourceRow(merged,0));
+  assert.equal(expanded,merged.replace('\\multirow{2}','\\multirow{3}').replace('\r\n & Four','\r\n & \\\\\r\n & Four'));
+  assert.equal(importBlocks(expanded)[0].content[0].content[0].attrs.rowspan,3);
+  assert.equal(apply(expanded,removeTableSourceRow(expanded,1)),merged);
+});
+
+test('tabularx keeps exact preambles and hidden slots when a row-span cell is merged or split',()=>{
+  const source=['\\begin{tabularx}{\\linewidth}{lX}','One  & Two \\\\[3pt]','Three & Four','\\end{tabularx}'].join('\r\n');
+  const apply=(value,{from,to,insert})=>value.slice(0,from)+insert+value.slice(to);
+  const merged=apply(source,mergeTableSourceRows(source,0,1,0));
+  assert.equal(merged,source.replace('One','\\multirow{2}{*}{One Three}').replace('Three &',' &'));
+  const imported=table(merged);
+  assert.equal(imported.content[0].content[0].attrs.rowspan,2);
+  assert.equal(imported.content[1].content.length,1);
+  assert.equal(serialize(imported),merged);
+  const split=splitTableSourceRowspan(merged,0,0,merged.indexOf('Three'));
+  const restored=apply(merged,split);
+  assert.equal(restored,merged.replace('\\multirow{2}{*}{One Three}','One Three'));
+  assert.equal(restored.slice(split.offset,split.offset+5),'Three');
+  assert.equal(table(restored).content[1].content.length,2);
+  const expanded=apply(merged,insertTableSourceRow(merged,0));
+  assert.equal(expanded,merged.replace('\\multirow{2}','\\multirow{3}')
+    .replace('\\\\[3pt]\r\n','\\\\[3pt]\r\n & \\\\\r\n'));
+  assert.equal(apply(expanded,removeTableSourceRow(expanded,1)),merged);
+  const moved=apply(expanded,removeTableSourceRow(expanded,0));
+  assert.equal(moved,expanded.replace('\\multirow{3}{*}{One Three}  & Two \\\\[3pt]\r\n & \\\\',
+    ' \\multirow{2}{*}{One Three}& \\\\'));
+});
+
+test('splitting a combined tabularx span restores both axes and retains exact cell spelling',()=>{
+  const source=['\\begin{tabularx}{\\linewidth}{llX}',
+    '\\multicolumn{2}{c}{\\multirow{2}{*}{Lead}} & Far \\\\[3pt]',
+    ' & & After','\\end{tabularx}'].join('\r\n');
+  const original=parseTabularx(source);
+  assert.equal(original.rows[0][0].attrs.rowspan,2);
+  assert.equal(original.rows[0][0].attrs.colspan,2);
+  const rowEdit=insertTableSourceRow(source,0,source.indexOf('Lead'));
+  const withRow=source.slice(0,rowEdit.from)+rowEdit.insert+source.slice(rowEdit.to);
+  assert.equal(withRow,source.replace('\\multirow{2}','\\multirow{3}')
+    .replace('\\\\[3pt]\r\n','\\\\[3pt]\r\n &  & \\\\\r\n'));
+  assert.equal(withRow.slice(rowEdit.offset,rowEdit.offset+4),'Lead');
+  const deletion=removeTableSourceRow(withRow,1);
+  assert.equal(withRow.slice(0,deletion.from)+deletion.insert+withRow.slice(deletion.to),source);
+  const move=removeTableSourceRow(source,0);
+  const moved=source.slice(0,move.from)+move.insert+source.slice(move.to);
+  assert.equal(moved,source.replace(
+    '\\multicolumn{2}{c}{\\multirow{2}{*}{Lead}} & Far \\\\[3pt]\r\n & & After',
+    ' \\multicolumn{2}{c}{\\multirow{1}{*}{Lead}} & After'));
+  const split=splitTableSourceCell(source,0,0,source.indexOf('Lead')+2);
+  const draft=source.slice(0,split.from)+split.insert+source.slice(split.to);
+  assert.equal(draft,source.replace('\\multicolumn{2}{c}{\\multirow{2}{*}{Lead}}','\\multicolumn{1}{c}{Lead} & '));
+  assert.equal(draft.slice(split.offset-2,split.offset+2),'Lead');
+  assert.deepEqual(parseTabularx(draft).rows.map(row=>row.map(cell=>cell.text)),[['Lead','','Far'],['','','After']]);
+});
+
+test('tabularx column edits keep the raw slots beneath a combined span aligned',()=>{
+  const source=['\\begin{tabularx}{\\linewidth}{llX}',
+    '\\multicolumn{2}{c}{\\multirow{2}{*}{Lead}} & Far \\\\[3pt]',
+    ' & & After \\\\', 'Later & B & C','\\end{tabularx}'].join('\r\n');
+  const apply=(text,{from,to,insert})=>text.slice(0,from)+insert+text.slice(to);
+  const patch=insertTableSourceColumn(source,2,0,source.indexOf('Later'));
+  const inserted=apply(source,patch);
+  assert.equal(inserted,source.replace('{llX}','{lllX}').replace('\\multicolumn{2}','\\multicolumn{3}')
+    .replace(' & & After','  & & & After').replace('Later & B','Later &  & B'));
+  assert.equal(inserted.slice(patch.offset,patch.offset+5),'Later');
+  const removed=apply(source,removeTableSourceColumn(source,2,0));
+  assert.equal(removed,source.replace('{llX}','{lX}').replace('\\multicolumn{2}','\\multicolumn{1}')
+    .replace(' & & After','  & After').replace('Later & B',' B'));
+  assert.equal(parseTabularx(removed).rows[0][0].attrs.rowspan,2);
+  const lastColumn=apply(removed,removeTableSourceColumn(removed,2,0));
+  assert.deepEqual(parseTabularx(lastColumn).rows.map(row=>row.map(cell=>cell.text)),[['Far'],['After'],['C']]);
+});
+
+test('a fully covered row serializes when the editor omits its empty content array',()=>{
+  const source=['\\begin{tabularx}{\\linewidth}{lX}',
+    '\\multicolumn{2}{c}{\\multirow{2}{*}{Lead}} \\\\',
+    ' & ','\\end{tabularx}'].join('\r\n');
+  const node=table(source);
+  assert.deepEqual(node.content[1].content,[]);
+  delete node.content[1].content;
+  assert.equal(serialize(node),source);
+  const text=node.content[0].content[0].content[0].content[0];
+  text.text='Changed';
+  assert.equal(serialize(node),source.replace('Lead','Changed'));
+  text.text='Lead';
+  const patch=splitTableSourceCell(serialize(node),0,0,source.indexOf('Lead'));
+  const draft=source.slice(0,patch.from)+patch.insert+source.slice(patch.to);
+  assert.deepEqual(parseTabularx(draft).rows.map(row=>row.map(cell=>cell.text)),[['Lead',''],['','']]);
 });

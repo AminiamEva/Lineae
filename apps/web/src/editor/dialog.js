@@ -1,7 +1,7 @@
 import { popIn } from '../ui/motion.mjs';
 import { t } from '../ui/i18n.mjs';
 
-export function promptDialog({ title, value = '', confirm, cancel }) {
+export function promptDialog({ title, value = '', confirm, cancel, multiline = false }) {
   return new Promise(resolve => {
     const backdrop = document.createElement('div');
     backdrop.className = 'editor-dialog-backdrop';
@@ -9,8 +9,12 @@ export function promptDialog({ title, value = '', confirm, cancel }) {
     form.className = 'editor-dialog';
     const label = document.createElement('label');
     label.textContent = title;
-    const input = document.createElement('input');
-    input.type = 'text';
+    const input = document.createElement(multiline ? 'textarea' : 'input');
+    if (multiline) {
+      input.rows = 12;
+      input.spellcheck = false;
+      input.setAttribute('aria-label', title);
+    } else input.type = 'text';
     input.value = value;
     const actions = document.createElement('div');
     actions.className = 'editor-dialog-actions';

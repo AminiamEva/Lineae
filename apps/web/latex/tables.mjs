@@ -24,7 +24,7 @@ function parseColumns(spec) {
   return columns.length ? columns : null;
 }
 
-function splitCells(line) {
+export function splitCells(line) {
   const cells = [];
   let current = '';
   let escaped = false;

@@ -1,3 +1,4 @@
+const {openXeReference}=require('./xe-reference-page.cjs');
 const { chromium } = require('playwright');
 const { createServer } = require('node:http');
 const { readFile } = require('node:fs/promises');
@@ -22,7 +23,7 @@ const pageSource = (title, date) => `\\documentclass{article}\n\\title{${title}}
     const page = await browser.newPage({ viewport: { width: 1400, height: 900 } });
     const errors = [];
     page.on('pageerror', error => errors.push(error.message));
-    await page.goto('http://127.0.0.1:' + server.address().port);
+    await openXeReference(page,'http://127.0.0.1:' + server.address().port);
     await page.waitForTimeout(600);
     const date = page.locator('#document-meta .doc-date');
     const load = async (name, title, value) => {
@@ -46,6 +47,17 @@ const pageSource = (title, date) => `\\documentclass{article}\n\\title{${title}}
 
     const suppressed = await load('suppressed', 'Suppressed', '');
     assert.equal(suppressed.visible, false, '\\date{} suppresses the date');
+
+    const fresh='\\documentclass{article}\n\\begin{document}\nBody.\n\\end{document}\n';
+    await page.locator('input[type=file]').setInputFiles({name:'untitled.tex',mimeType:'text/plain',buffer:Buffer.from(fresh)});
+    await page.waitForFunction(()=>document.querySelector('#document-meta .doc-title')?.textContent==='');
+    const title=page.locator('#document-meta .doc-title');
+    await title.fill('Yield 50%');
+    await title.press('Enter');
+    await page.locator('[data-source-mode=source]').click();
+    const generated=await page.locator('.cm-content').innerText();
+    assert.match(generated,/\\title\{Yield 50\\%\}/);
+    assert.equal(generated.match(/\\maketitle\b/g)?.length,1);
 
     assert.deepEqual(errors, []);
     console.log('PASS title date metadata');

@@ -1,3 +1,4 @@
+const {openXeReference}=require('./xe-reference-page.cjs');
 const {revealToolbar,setIndentOnSave,createTreeEntry}=require('./workspace-ui-helpers.cjs');
 const { chromium } = require('playwright');
 const { expect } = require('playwright/test');
@@ -421,7 +422,7 @@ async function verifySelectionGeometry(page, paper, importSource) {
     const page=await browserContext.newPage();
     const errors=[];
     page.on('pageerror',error=>{errors.push(error.message);console.log('PAGE ERROR',error.message);});
-    await page.goto('http://127.0.0.1:'+server.address().port);
+    await openXeReference(page,'http://127.0.0.1:'+server.address().port);
     await page.evaluate(async()=>{
       await document.fonts.load('10pt "Latin Modern Roman"');
       await document.fonts.ready;
@@ -543,12 +544,16 @@ async function verifySelectionGeometry(page, paper, importSource) {
     await page.keyboard.type('\\');
     await page.waitForFunction(()=>!document.querySelector('.command-menu').hidden);
     const completion=page.locator('.command-menu');
+    await completion.evaluate(async menu=>{
+      await Promise.allSettled(menu.getAnimations().map(animation=>animation.finished));
+    });
     const initialBounds=await completion.boundingBox();
     const initialScroll=await page.evaluate(()=>window.scrollY);
     assert.ok(initialBounds.y>=caretBounds.y && initialBounds.x<caretBounds.x+80,
       'Completion appears below the text entry position: '+JSON.stringify({initialBounds,caretBounds}));
     for(let index=0;index<16;index++) await page.keyboard.press('ArrowDown');
     assert.equal(await page.evaluate(()=>window.scrollY),initialScroll);
+    await page.evaluate(()=>document.querySelector('.document-page').dispatchEvent(new Event('scroll')));
     await page.locator('.command-menu input').fill('sqrt');
     assert.deepEqual(await completion.boundingBox(),initialBounds,'Filtering must not move or resize completion');
     await page.keyboard.press('Enter');
@@ -1542,7 +1547,7 @@ async function verifySelectionGeometry(page, paper, importSource) {
     assert.equal(await page.locator('#project-open').textContent(),'打开工程');
     assert.equal(await page.locator('#project-new').textContent(),'新建工程');
     assert.equal(await page.locator('#project-new-empty').textContent(),'新建/打开工程');
-    assert.equal(await page.locator('#project-open').evaluate(button=>button.parentElement===document.querySelector('.ribbon > .tools')),true,
+    assert.equal(await page.locator('#project-open').evaluate(button=>button.closest('.ribbon > .tools')===document.querySelector('.ribbon > .tools')),true,
       'Open project is in the File panel');
     assert.equal(await page.locator('footer #project-open').count(),0,'Open project is not in the status bar');
     await revealToolbar(page); await page.locator('[data-group=home]').click();
@@ -2339,16 +2344,64 @@ A & B \\
     await page.keyboard.press('Escape');
     for (const width of [1280,390]) {
       await page.setViewportSize({width,height:1400});
+      let ribbonHeight;
       for (const group of ['files','home','insert','layout','format','reference','math']) {
         await revealToolbar(page); await page.locator(`[data-group=${group}]`).click();
         const layout=await page.locator('.ribbon').evaluate(element=>{
           const panel=[...element.querySelectorAll('.tools')].find(node=>!node.hidden);
           const bounds=element.getBoundingClientRect();
-          return {left:bounds.left,right:bounds.right,scroll:panel.scrollWidth,client:panel.clientWidth};
+          const tabs=element.querySelector('.ribbon-tabs');
+          const collapse=element.querySelector('#toolbar-collapse').getBoundingClientRect();
+          const headerFooter=tabs.querySelector('[data-group=headerFooter]').getBoundingClientRect();
+          const sidebar=parseFloat(getComputedStyle(document.body).getPropertyValue('--sidebar-width'));
+          return {left:bounds.left,right:bounds.right,height:bounds.height,scroll:panel.scrollWidth,client:panel.clientWidth,
+            panelHeight:panel.clientHeight,toolbarOffset:(bounds.left+bounds.right-innerWidth-sidebar)/2,
+            tabOffset:(tabs.getBoundingClientRect().left+collapse.right-bounds.left-bounds.right)/2,
+            collapseGap:tabs.scrollWidth===tabs.clientWidth ? collapse.left-headerFooter.right : null};
         });
         assert.ok(layout.left>=-1 && layout.right<=width+1 && layout.scroll<=layout.client+1,JSON.stringify({group,width,layout}));
+        assert.ok(Math.abs(layout.toolbarOffset)<0.5,'The ribbon is centered in the editor area');
+        assert.ok(Math.abs(layout.tabOffset)<0.5,'Tabs and the collapse button are centered together');
+        if (layout.collapseGap!==null) assert.ok(layout.collapseGap>=0 && layout.collapseGap<=5,'Collapse follows Header & Footer');
+        assert.ok(layout.panelHeight<72,'The ribbon command area is more compact');
+        ribbonHeight??=layout.height;
+        assert.equal(layout.height,ribbonHeight,'Switching tabs preserves the ribbon height');
       }
     }
+    const chrome=await page.evaluate(()=>{
+      const modes=document.querySelector('.tex-modes').getBoundingClientRect();
+      return {
+        collapseInside:Boolean(document.querySelector('.ribbon #toolbar-collapse')),
+        modesFit:modes.left>=0&&modes.right<=innerWidth,
+        environmentClipped:getComputedStyle(document.querySelector('.environment-tag')).clipPath,
+      };
+    });
+    assert.deepEqual(chrome,{collapseInside:true,modesFit:true,environmentClipped:'inset(50%)'});
+    await page.locator('[data-group=headerFooter]').click();
+    await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
+    assert.equal(await page.evaluate(()=>Boolean(document.activeElement.closest('.hf-cell'))),false,
+      'Opening Header & Footer leaves header and footer fields unfocused');
+    await page.emulateMedia({reducedMotion:'no-preference'});
+    const layoutFrames=await page.evaluate(async()=>{
+      document.querySelector('[data-group="layout"]').click();
+      const positions=()=>[...document.querySelectorAll('#layout-panel > .ribbon-group')].map(group=>{
+        const {x,y,width,height}=group.getBoundingClientRect();
+        return [x,y,width,height];
+      });
+      const first=positions();
+      const animations=document.querySelector('#layout-panel').getAnimations().map(animation=>animation.animationName);
+      await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
+      return {animations,first,last:positions()};
+    });
+    assert.ok(layoutFrames.animations.includes('ribbon-panel-enter'),'Switching to Layout animates the panel');
+    assert.deepEqual(layoutFrames.first,layoutFrames.last,'Layout groups do not move after the tab opens');
+    await page.emulateMedia({reducedMotion:'reduce'});
+    await page.locator('[data-group=files]').click();
+    assert.deepEqual(await page.locator('.file-ribbon').evaluate(panel=>panel.getAnimations().map(animation=>animation.animationName)),
+      [],'Tab switches respect reduced motion');
+    assert.deepEqual(await page.locator('.file-ribbon > [data-ribbon-group]').evaluateAll(groups=>groups.map(group=>group.dataset.ribbonGroup)),
+      ['file-document','file-project','file-resources'],'File actions use distinct document, project and resource groups');
+    await page.emulateMedia({reducedMotion:null});
     await page.setViewportSize({width:1280,height:1400});
     const assertUntouchedFormulaSource=async body=>{
       await page.evaluate(()=>{navigator.clipboard.writeText=async text=>{window.formulaSourceCopy=text;};});
@@ -2546,6 +2599,25 @@ A & B \\
     await importSource('\\begin{tabular}{ll}\n'+
       Array.from({length:60},(_,index)=>`${index+1} & Row ${index+1} \\\\`).join('\n')+'\n\\end{tabular}');
     await page.waitForFunction(()=>document.querySelectorAll('.ProseMirror tr').length===60);
+    await page.waitForFunction(()=>{
+      const view=document.querySelector('.tableWrapper:has(table[data-atomic-tabular])');
+      return view && view.scrollHeight>view.clientHeight && getComputedStyle(view).overflowY==='auto';
+    });
+    assert.equal(await page.locator('.table-continuation-header').count(),0,
+      'A TeX tabular is one overflowing box and has no continuation header');
+
+    // Authored rich tables still support the editor's optional continuation headers.
+    await importSource('Rich table');
+    await paper.locator('p').last().click();
+    await page.keyboard.press('End');
+    await page.keyboard.press('Enter');
+    await paper.evaluate(element=>{
+      const clipboard=new DataTransfer();
+      const rows=Array.from({length:60},(_,i)=>'<tr><td>'+ (i+1) +'</td><td>Row '+(i+1)+'</td></tr>');
+      clipboard.setData('text/html','<table><tbody>'+rows.join('')+'</tbody></table>');
+      element.dispatchEvent(new ClipboardEvent('paste',{bubbles:true,cancelable:true,clipboardData:clipboard}));
+    });
+    await page.waitForFunction(()=>document.querySelectorAll('.ProseMirror tr').length===60);
     await page.waitForFunction(()=>Number(document.querySelector('.document-page')?.dataset.pageCount)>1);
     await page.waitForFunction(()=>document.querySelectorAll('.table-continuation-header').length>0);
     assert.equal(await page.locator('.table-continuation-header').first().textContent(),'1Row 1',
@@ -2639,26 +2711,44 @@ A & B \\
     assert.notEqual(await integralWithLimit.evaluate(field=>field.value),'','Backspacing at an empty limit first selects the integral');
     await page.keyboard.press('Backspace');
     assert.equal(await integralWithLimit.evaluate(field=>field.value),'','A second Backspace at an empty limit removes the selected integral');
-    await importSource('\\[\\int\\mathord{x}\\]');
+    await importSource('\\[\\int\\mathord{x}\\]\n\nafter');
     const operandField=paper.locator('math-field').first();
     const operandMark=operandField.locator('[data-lineae-integrand]').first();
     await operandMark.waitFor();
     await operandField.click();
-    await operandField.evaluate(field=>field.focus());
-    await page.waitForFunction(()=>document.activeElement?.matches('math-field[data-lineae-editing]'));
-    const editingBackground=await operandMark.evaluate(el=>getComputedStyle(el).backgroundColor);
-    assert.ok(editingBackground && editingBackground!=='rgba(0, 0, 0, 0)',
-      'Formula operands highlight while editing: '+editingBackground);
-    // MathLive delays native focus; do not blur during that transition.
-    await page.waitForFunction(()=>!document.querySelector('math-field')?._mathfield?.focusBlurInProgress);
-    // Transfer focus to a real control. Calling MathLive.blur() directly can
-    // race its queued native focus restoration before a different element owns it.
-    await page.locator('#settings-open').focus();
-    await page.waitForFunction(()=>document.activeElement?.id==='settings-open');
+    await page.waitForFunction(()=>{
+      const field=document.activeElement;
+      if (!field?.matches('math-field[data-lineae-editing]') || field._mathfield?.focusBlurInProgress) return false;
+      const operand=field.shadowRoot?.querySelector('[data-lineae-integrand]');
+      const background=operand && getComputedStyle(operand).backgroundColor;
+      return Boolean(background && background!=='rgba(0, 0, 0, 0)');
+    });
+    // Click the already selected Document mode to leave the formula without
+    // changing the document or opening a dialog.
+    const documentMode=page.locator('[data-source-mode="body"][aria-pressed="true"]');
+    await documentMode.click();
+    assert.equal(await documentMode.evaluate(button=>button===document.activeElement),true);
     await page.waitForFunction(()=>!document.querySelector('math-field')?.hasAttribute('data-lineae-editing'));
-    const blurredBackground=await operandMark.evaluate(el=>getComputedStyle(el).backgroundColor);
-    assert.ok(blurredBackground===''||blurredBackground==='rgba(0, 0, 0, 0)',
-      'The operand highlight clears when editing ends: '+blurredBackground);
+    await expect(operandMark,'The visible operand loses its highlight on blur')
+      .toHaveCSS('background-color','rgba(0, 0, 0, 0)');
+    const leftWhilePending=await operandField.evaluate(field=>{
+      const editor=field.closest('.ProseMirror').editor;
+      const next=[...editor.view.dom.querySelectorAll('p')].find(p=>p.textContent==='after');
+      // Deliver both real DOM focus changes in one task. The MathLive timer
+      // is still pending when the user moves back to the prose paragraph.
+      field.focus();
+      field.shadowRoot.querySelector('[part~="keyboard-sink"]').focus();
+      const pending=field._mathfield.focusBlurInProgress && document.activeElement===field;
+      editor.commands.setTextSelection(editor.view.posAtDOM(next,next.childNodes.length));
+      editor.view.focus();
+      return pending;
+    });
+    assert.equal(leftWhilePending,true,'The formula lost focus before its keyboard was ready');
+    await page.waitForFunction(()=>!document.querySelector('.document-page math-field')._mathfield.focusBlurInProgress);
+    await expect(paper,'The paragraph keeps keyboard focus when MathLive finishes opening').toBeFocused();
+    await page.keyboard.type('X');
+    await expect(paper.locator('p').filter({hasText:'after'})).toHaveText('afterX');
+    await expect(operandMark).toHaveCSS('background-color','rgba(0, 0, 0, 0)');
     await importSource('\\[\\frac{\\placeholder{}}{\\placeholder{}}\\]');
     const slotField=paper.locator('math-field').first();
     await slotField.evaluate(field=>{field.focus();field.position=0;});
@@ -2969,7 +3059,11 @@ A & B \\
     const styleField=paper.locator('math-field').first();
     await styleField.click({button:'right'});
     await page.locator('[data-command="display-style"]').click();
-    await page.waitForFunction(()=>document.querySelector('math-field')?.value.startsWith('\\displaystyle'));
+    await page.waitForFunction(()=>{
+      const field=document.querySelector('.ProseMirror math-field');
+      return field===document.activeElement && field?.value.startsWith('\\displaystyle') &&
+        !field._mathfield?.focusBlurInProgress && field.position===Math.max(0,field.lastOffset-2);
+    });
     await page.keyboard.type('c');
     const styledValue=await styleField.evaluate(field=>field.value);
     assert.match(styledValue,/\\displaystyle[\s\S]*c\s*\}+$/,'Typing continues inside the display-style formula: '+styledValue);

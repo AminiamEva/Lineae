@@ -1,11 +1,37 @@
 // Opt-in check of the packaged WebView and embedded resources on both platforms.
+const smokeErrors=[];
+window.addEventListener('error',event=>{
+  const message=event.message??event.target?.getAttribute?.('src');
+  if(message)smokeErrors.push(message);
+},true);
+window.addEventListener('unhandledrejection',event=>{
+  smokeErrors.push(String(event.reason?.message??event.reason));
+});
 window.addEventListener('load', async () => {
   try {
-    if ((location.protocol !== 'tauri:' && location.hostname !== 'tauri.localhost') ||
-        !document.querySelector('.ProseMirror')?.editor) {
-      throw new Error('the packaged editor did not initialize');
+    if(location.protocol!=='tauri:'&&location.hostname!=='tauri.localhost'){
+      throw new Error('unexpected desktop origin '+location.origin);
     }
-    if (!customElements.get('math-field')) throw new Error('MathLive did not load');
+    const started=performance.now();
+    while(!document.querySelector('.ProseMirror')?.editor&&!smokeErrors.length&&performance.now()-started<8000){
+      await new Promise(resolve=>setTimeout(resolve,50));
+    }
+    if(!document.querySelector('.ProseMirror')?.editor){
+      throw new Error('the packaged editor did not initialize'+(smokeErrors[0]?' ('+smokeErrors[0]+')':''));
+    }
+    const nativeWorkspace = new URLSearchParams(location.search).has('native-only-acceptance');
+    if (nativeWorkspace) {
+      if (customElements.get('math-field') || document.querySelector('.document-sheets')) {
+        throw new Error('the legacy page or MathLive loaded in the engine-off workspace');
+      }
+      if (!document.querySelector('#native-tex-toggle')) throw new Error('the native document controls did not initialize');
+      const rejection = await window.__TAURI__.core.invoke('native_tex_poll', {
+        sessionId: 'tex-00000000-00000000000000000000000000000000-0000000000000000',
+      }).then(() => '', error => error?.code);
+      if (rejection !== 'stale_session') throw new Error('the native session bridge did not reject an unknown session');
+    } else if (!customElements.get('math-field')) {
+      throw new Error('MathLive did not load');
+    }
     const fonts = await document.fonts.load('10pt "Latin Modern Roman"', 'Lineae');
     if (!fonts.length) throw new Error('the packaged Latin Modern font did not load');
     const symbols = await fetch('assets/tikz-symbols.svg');
@@ -43,6 +69,11 @@ window.addEventListener('load', async () => {
     const words=(await page.getTextContent()).items.map(item=>item.str??'').join(' ');
     if(!words.includes('Offline LuaLaTeX PDF preview'))throw new Error('packaged PDF worker/font preview failed');
     await task.destroy();canvas.remove();
+    const desktopWindow = window.__TAURI__.window.getCurrentWindow();
+    await window.lineaeDesktop.setTitle('smoke.tex', true);
+    if (await desktopWindow.title() !== 'Lineae - smoke.tex*') throw new Error('dirty window title not applied');
+    await window.lineaeDesktop.setTitle('smoke.tex', false);
+    if (await desktopWindow.title() !== 'Lineae - smoke.tex') throw new Error('saved window title not applied');
     document.title = 'Lineae smoke: ok';
   } catch (error) {
     document.title = 'Lineae smoke: ' + error.message;

@@ -1,4 +1,6 @@
 import {projectPath} from '../../project/paths.mjs';
+import {projectDependencies} from '../../editor/project-zip.mjs';
+import {parseDocument} from '../../../latex/document.mjs';
 
 const encoder = new TextEncoder();
 const limits = {maxFiles:512, maxSourceBytes:2 * 1024 * 1024, maxFileBytes:16 * 1024 * 1024,
@@ -6,6 +8,53 @@ const limits = {maxFiles:512, maxSourceBytes:2 * 1024 * 1024, maxFileBytes:16 * 
 const outputDirectories = new Set(['build', 'dist', 'out', 'target', 'node_modules', '__pycache__']);
 const generatedFile = /\.(?:aux|log|toc|lof|lot|out|fls|fdb_latexmk|synctex(?:\.gz)?|xdv|dvi|nav|snm|vrb|bcf|run\.xml|blg)$/i;
 const cachedFiles=new WeakMap();
+const cachedAttachments=new WeakMap();
+const hex=buffer=>Array.from(new Uint8Array(buffer),byte=>byte.toString(16).padStart(2,'0')).join('');
+const digestHex=async buffer=>hex(await crypto.subtle.digest('SHA-256',buffer));
+
+// A standalone document may reference files from the user's attached folder.
+// Stage only dependencies already present as immutable, selected File objects.
+export async function nativeAttachedSnapshot(source,attachments) {
+  const mainFile='main.tex',files=[],manifest=[];
+  const pending=attachments.length?projectDependencies(source):[],used=new Set(),portable=new Set();
+  const known=new Map(attachments.filter(([path])=>{
+    try{return path!==mainFile&&projectPath(path)===path;}
+    catch{return false;}
+  }));
+  let total=encoder.encode(source).byteLength;
+  if(total>limits.maxSourceBytes)throw new RangeError('Document source exceeds snapshot limit');
+  for(let index=0;index<pending.length;index++){
+    const wanted=pending[index].replace(/^\.\//,'');
+    const candidates=known.has(wanted)?[wanted]:
+      [...known.keys()].filter(path=>path.replace(/\.[^./]+$/,'')===wanted);
+    if(candidates.length!==1||used.has(candidates[0]))continue;
+    const path=candidates[0],file=known.get(path);
+    const key=path.toLowerCase();
+    if(portable.has(key))throw new TypeError('Duplicate attached snapshot path');
+    used.add(path);portable.add(key);
+    if(files.length>=limits.maxFiles-1)throw new RangeError('Too many attached snapshot files');
+    const tex=/\.tex$/i.test(path);
+    if(file.size>(tex?limits.maxSourceBytes:limits.maxFileBytes))
+      throw new RangeError('Attached file exceeds snapshot limit: '+path);
+    total+=file.size;
+    if(total>limits.maxTotalBytes)throw new RangeError('Attached snapshot exceeds total byte limit');
+    let resource=cachedAttachments.get(file);
+    if(!resource){
+      const bytes=new Uint8Array(await file.arrayBuffer());
+      if(bytes.byteLength!==file.size)throw new Error('Attached file changed while preparing the snapshot: '+path);
+      resource={bytes:Object.freeze(Array.from(bytes)),digest:await digestHex(bytes)};
+      cachedAttachments.set(file,resource);
+    }
+    files.push({path,bytes:resource.bytes});
+    manifest.push([path,resource.digest]);
+    if(tex)pending.push(...projectDependencies(new TextDecoder().decode(Uint8Array.from(resource.bytes))));
+  }
+  files.sort((left,right)=>left.path.localeCompare(right.path,'en'));
+  manifest.sort(([left],[right])=>left.localeCompare(right,'en'));
+  const dependencySignature=files.length?await digestHex(encoder.encode(JSON.stringify(manifest))):'';
+  const signature=dependencySignature?await digestHex(encoder.encode(source+'\0'+dependencySignature)):source;
+  return {mainFile,source,files,signature,dependencySignature};
+}
 
 /**
  * Read-only snapshot of the current Project model, not a disk export.
@@ -18,7 +67,7 @@ const cachedFiles=new WeakMap();
  * Recheck model identity/document generation after awaiting, before opening a
  * native session. Pass source, main_file:mainFile, and files to native open.
  * Send changed snapshots to the same trusted project session. A different
- * main file/project requires a new session and trust confirmation.
+ * project requires trust confirmation.
  *
  * changed() uses the explorer's existing sessions.text()/Project.edit() capture;
  * rich composition edits already update individual dependency drafts. Never use
@@ -44,7 +93,8 @@ export async function nativeProjectSnapshot(project, options = {}) {
   }
   // Moves, saves, and refreshes already serialize through this model promise.
   await project.pendingOperation;
-  const mainId = project.mainFileId, membership = project.files, fileCount = membership.size;
+  const projectMainId=project.mainFileId;
+  const entryId=options.entryFileId??projectMainId, membership=project.files, fileCount=membership.size;
   const records = [];
   const paths = new Set();
   let main;
@@ -62,15 +112,23 @@ export async function nativeProjectSnapshot(project, options = {}) {
     if (records.length >= bounds.maxFiles) throw new RangeError('Project snapshot has too many files');
     const record = {file, path, draft:file.draft, revision:file.revision, bytes:file.bytes};
     records.push(record);
-    if (file.id === mainId) main = record;
+    if (file.id === entryId) main = record;
   }
   if (!main || main.file.kind !== 'tex' || typeof main.draft !== 'string') {
     throw new TypeError('Project snapshot requires a TeX main document');
   }
+  const projectMain=records.find(record=>record.file.id===projectMainId);
+  const inherited=options.wrapFragment&&main!==projectMain&&typeof projectMain?.draft==='string'
+    ?parseDocument(projectMain.draft):null;
+  const fragment=inherited&& !parseDocument(main.draft)
+    ?{start:inherited.start,source:main.draft,end:inherited.eol+'\\end{document}'+inherited.eol}:null;
+  const source=fragment?fragment.start+fragment.source+fragment.end:main.draft;
   records.sort((a, b) => a.path < b.path ? -1 : a.path > b.path ? 1 : 0);
   const files = [], manifest = [];
   let total = 0;
-  for (const {file,path, draft, bytes:knownBytes} of records) {
+  for (const record of records) {
+    const {file,path,bytes:knownBytes}=record;
+    const draft=record===main?source:record.draft;
     const cached=cachedFiles.get(file);
     if(cached && ((typeof draft==='string'&&cached.draft===draft) ||
         (typeof draft!=='string'&&options.useModelAssets&&cached.asset===knownBytes))){
@@ -96,8 +154,7 @@ export async function nativeProjectSnapshot(project, options = {}) {
     if (total > bounds.maxTotalBytes) throw new RangeError('Project snapshot exceeds total byte limit');
     // Own the bytes before yielding to hashing; adapters may reuse their buffer.
     const copy = bytes.slice();
-    const digest = await crypto.subtle.digest('SHA-256', copy);
-    const hash=Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('');
+    const hash=await digestHex(copy);
     const values=Object.freeze(Array.from(copy));
     manifest.push([path, copy.byteLength,hash]);files.push({path,bytes:values});
     cachedFiles.set(file,{draft,asset:typeof draft!=='string'&&options.useModelAssets?knownBytes:null,
@@ -106,13 +163,13 @@ export async function nativeProjectSnapshot(project, options = {}) {
   const digest = await crypto.subtle.digest('SHA-256', encoder.encode(JSON.stringify([main.path, manifest])));
   const dependencyDigest=await crypto.subtle.digest('SHA-256',
     encoder.encode(JSON.stringify([main.path,manifest.filter(([path])=>path!==main.path)])));
-  if (project.files !== membership || project.mainFileId !== mainId || membership.size !== fileCount
+  if (project.files !== membership || project.mainFileId !== projectMainId || membership.size !== fileCount
       || records.some(({file, path, draft, revision,bytes}) =>
         membership.get(path) !== file || file.path !== path || file.draft !== draft || file.revision !== revision ||
         (options.useModelAssets && file.bytes!==bytes))) {
     throw new Error('Project changed while preparing native preview; try again');
   }
-  const signature = Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('');
-  const dependencySignature=Array.from(new Uint8Array(dependencyDigest),byte=>byte.toString(16).padStart(2,'0')).join('');
-  return {mainFile:main.path, source:main.draft, files, signature,dependencySignature};
+  const signature=hex(digest);
+  const dependencySignature=hex(dependencyDigest);
+  return {mainFile:main.path,source,files,signature,dependencySignature,...(fragment&&{fragment})};
 }

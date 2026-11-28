@@ -58,7 +58,7 @@ export function placeRow(rawCells,occupied){
     const cell=parsed[cursor++];
     if(!cell||column+cell.colspan>occupied.length)return null;
     for(let delta=0;delta<cell.colspan;delta++)if(occupied[column+delta])return null;
-    cells.push({...cell,column});
+    cells.push({...cell,column,sourceIndex:cursor-1});
     for(let delta=0;delta<cell.colspan;delta++)occupied[column+delta]=cell.rowspan-1;
     column+=cell.colspan;
   }

@@ -31,13 +31,10 @@ Commit: $GITHUB_SHA
 Workflow: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID
 Windows: x64, unsigned
 macOS: Apple Silicon only, ad-hoc signed, not notarized
-Native LuaLaTeX page preview: opt-in; native pages are the geometry source
-Native Canvas: supported formula input, caret and selections route into ProseMirror
-Prose text, structure commands and PDF pages: existing editor remains the fallback
-Full replacement of the existing editing surface: not yet complete
-XeLaTeX-aligned JS renderer: retained
-Lua JS engine: retained separately; unmerged reference not yet supplied
-No TeX engine, TeX distribution or user font cache is bundled by this preview.
+Desktop document default: LuaLaTeX on first launch; the status bar remembers the selected engine.
+Native pages use rtex output. The focused block uses ProseMirror and MathLive for editing.
+The XeLaTeX-aligned editor is available from the same engine switch.
+The preview includes rtex. LuaLaTeX and its TeX packages come from the user's TeX distribution.
 PDF.js includes its licensed unmodified standard-font and Adobe CMap resources.
 The application identifier and preference storage are shared with stable Lineae.
 Back up documents and exported preferences before testing.
@@ -53,10 +50,9 @@ This is a separate **prerelease**, not an update to the stable release.
 - Both packages, checksums, exact tracked source, denominator samples and an authored LuaLaTeX project fixture are included.
 - No Intel Mac or Linux package is part of this preview.
 - Packages retain the stable application's identifier and preference storage; back up documents and exported preferences.
-- Optional local LuaLaTeX page preview and clean PDF export require separately installed rtex 0.0.8 and LuaLaTeX, plus explicit document trust.
-- For supported formulas, select **Target formula caret (experimental)** to use the native page's clicks and drags. The existing editor still handles input, commands and history.
-- Semantic editing of PDF fallback, full native parity, automatic updates and frontend hot reload are not claimed.
-- Existing JS typesetting and MathLive remain the active editing implementation. The unmerged Lua JS engine is not modified or substituted.
+- LuaLaTeX opens in Document mode by default. Both downloads include rtex 0.0.8 and its support files. A local LuaLaTeX installation and explicit document trust are required.
+- Use the engine button in the bottom-right status bar to switch between the native LuaLaTeX document and the existing XeLaTeX-aligned editor.
+- Native editing coverage and remaining gaps are recorded in the compatibility inventory.
 
 Check \`BUILD.txt\` and \`SHA256SUMS\`, then follow
 [the two-device checklist]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/blob/$GITHUB_SHA/docs/native-tex/README.md).

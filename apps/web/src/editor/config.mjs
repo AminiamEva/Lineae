@@ -40,6 +40,7 @@ function checkKeys(defaults, override, path = '') {
 
 function validateConfig(settings) {
   const { interface: ui, editing, keybindings } = settings;
+  if (!['lualatex','xelatex'].includes(settings.typesetting?.defaultEngine)) throw new Error('Invalid typesetting.defaultEngine');
   if (settings.version !== 2) throw new Error('Unsupported configuration version');
   if (!['auto', 'en', 'zh-CN', 'zh-Hant'].includes(ui.language)) throw new Error('Invalid interface.language');
   if (!Number.isInteger(ui.sourceFontSize) || ui.sourceFontSize<11 || ui.sourceFontSize>32) throw new Error('Source font must be between 11 and 32 px');

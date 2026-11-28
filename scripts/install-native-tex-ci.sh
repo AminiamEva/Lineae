@@ -11,8 +11,9 @@ arch=universal-darwin
 windows=false
 case "$(uname -s)" in
   Darwin) ;;
+  Linux) arch=x86_64-linux ;;
   MINGW*|MSYS*|CYGWIN*) windows=true; arch=windows ;;
-  *) echo 'This checkpoint targets macOS arm64 and Windows x64 only' >&2; exit 1 ;;
+  *) echo 'Unsupported host for the frozen native TeX environment' >&2; exit 1 ;;
 esac
 if $windows; then texdir=$(cygpath -m "$texdir"); fi
 bin="$texdir/bin/$arch"
@@ -58,7 +59,7 @@ export TEXMFCONFIG="$texdir/texmf-config"
 export TEXMFHOME="$texdir/texmf-home"
 "$tlmgr" option repository "$repo"
 "$tlmgr" install collection-latex collection-latexrecommended collection-luatex amsmath amsfonts \
-  fontspec unicode-math lm lm-math pgf ctex fandol biblatex biber latexmk luacode
+  fontspec unicode-math lm lm-math pgf ctex fandol biblatex biber latexmk luacode caption multirow tabularray
 mkdir -p artifacts/native-tex
 "$tlmgr" info --only-installed --data name,localrev > artifacts/native-tex/packages.txt
 fmtutil-sys --byfmt lualatex

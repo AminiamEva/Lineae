@@ -1,11 +1,10 @@
-import {layoutScale} from './layout-geometry.js';
-import {fandolPairs} from './fandol-pairs.mjs';
-import {fandolPunctuation} from './fandol-punctuation.mjs';
-import {paragraphParameters,texDimension} from './paragraph-parameters.mjs';
-import {englishHyphenation} from './english-hyphenation.mjs';
+import {createFontMeasurement} from './font-measurement.mjs';
+import {layoutScale,lineBoxAscent} from './layout-geometry.js';
+import {interwordGlue, texDimension} from './paragraph-parameters.mjs';
 import {TextSelection,Plugin,PluginKey} from '@tiptap/pm/state';
 import {Decoration,DecorationSet} from '@tiptap/pm/view';
 import {optimumParagraph} from './optimum-paragraph.mjs';
+import {changedTextblocks} from '../editor/changed-textblocks.mjs';
 
 const key=new PluginKey('texParagraphLayout');
 const cjk=/[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/u;
@@ -29,16 +28,7 @@ function elementTranslateY(element){
   const parts=value.match(/-?(?:\d+\.?\d*|\.\d+)(?:px)?/g)??[];
   return parts.length>1?Number.parseFloat(parts[1])||0:0;
 }
-const metricCache=new Map();
-if(typeof document!=='undefined')document.fonts?.addEventListener('loadingdone',()=>metricCache.clear());
-function measure(text,style){
-  const font=style.font||[style.fontStyle,style.fontWeight,style.fontSize,style.fontFamily].join(' ');
-  const id=font+'|'+style.letterSpacing+'|'+text;
-  if(metricCache.has(id))return metricCache.get(id);
-  context.font=font;const width=context.measureText(text).width+Math.max(0,text.length-1)*(parseFloat(style.letterSpacing)||0);
-  if(metricCache.size>10000)metricCache.clear();metricCache.set(id,width);return width;
-}
-function tokensFor(editor,node,start,element,options){
+function tokensFor(editor,node,start,element,options,profile,metric,lineWidth,measure){
   const runs=[],atoms=new Map();let text='';
   node.forEach((child,offset)=>{
     const from=start+1+offset;
@@ -46,7 +36,7 @@ function tokensFor(editor,node,start,element,options){
       const point=editor.view.domAtPos(from),dom=point.node.nodeType===3?point.node.parentElement:point.node;
       runs.push({from:text.length,to:text.length+child.text.length,style:getComputedStyle(dom.closest('.tex-word-glue,.tex-cjk-punctuation')?.parentElement??dom)});text+=child.text;
     }else if(child.type.name==='hardBreak'){text+='\n';}
-    else if(child.isInline){const dom=editor.view.nodeDOM(from);atoms.set(text.length,{from,kind:child.type.name,size:child.nodeSize,width:dom?.getBoundingClientRect().width??0});text+='\ufffc'.repeat(child.nodeSize);}
+    else if(child.isInline){const dom=editor.view.nodeDOM(from);atoms.set(text.length,{from,kind:child.type.name,simpleMath:child.type.name==='math'&&/^[A-Za-z0-9]$/.test(child.attrs.latex),size:child.nodeSize,width:dom?.getBoundingClientRect().width??0});text+='\ufffc'.repeat(child.nodeSize);}
   });
   const style=getComputedStyle(element),zoom=layoutScale(element.closest('.document-page'));
   const styleAt=offset=>runs.find(run=>offset>=run.from&&offset<run.to)?.style??style;
@@ -55,48 +45,74 @@ function tokensFor(editor,node,start,element,options){
   };
   const items=[];const emit=item=>items.push(item);let spaceFactor=1000;
   const chinese=cjk.test(text),baseline=parseFloat(style.lineHeight)||parseFloat(style.fontSize)*1.2;
-  const cjkFamily=style.getPropertyValue('--tex-cjk-font-family')||'FandolSong';
+  const cjkFamily=style.getPropertyValue('--tex-cjk-font-family')||profile.cjk?.family||'serif';
   const updateFactor=character=>{const code=/[A-Z]/.test(character)?999:/[.!?]/.test(character)?3000:character===':'?2000:character===';'?1500:character===','?1250:/[)\]\"']/.test(character)?0:1000;if(code)spaceFactor=code>1000&&spaceFactor<1000?1000:code;};
   const pieces=[...text.matchAll(/[A-Za-z]+|[^\S\n\u00a0]+|\n|[^]/gu)];
   for(let n=0;n<pieces.length;n++){
     const match=pieces[n],value=match[0],at=match.index,from=start+1+at,local=styleAt(at);
+    const em = parseFloat(local.fontSize);
+    const symbol = piece => atoms.get(piece?.index)?.kind === 'math' ? '$x$' : piece?.[0];
+    if (metric && n > 0) {
+      const boundary = profile.cjk.boundary(metric, symbol(pieces[n-1]), symbol(match), em, lineWidth);
+      if (boundary) {
+        const {cost, ...glue} = boundary;
+        if (cost) emit({type:'penalty', width:0, cost, from, to:from});
+        emit({type:'glue', ...glue, from, to:from, cjk:true});
+      }
+    }
     if(value==='\ufffc'){
-      const atom=atoms.get(at);if(atom)emit({type:'box',width:atom.width/zoom,from,to:from+atom.size});
-      if(atom?.kind==='math'&&cjk.test(pieces[n+1]?.[0]??'')){const space=measure(' ',local);emit({type:'glue',width:space,stretch:space/2,shrink:space/3,from:from+atom.size,to:from+atom.size,cjk:true});}
+      const atom=atoms.get(at);if(atom)emit({type:'box',width:atom.width/zoom,from,to:from+atom.size,simpleMath:metric && atom.simpleMath});
+      if(!metric&&atom?.kind==='math'&&cjk.test(pieces[n+1]?.[0]??'')){const space=measure(' ',local);emit({type:'glue',width:space,stretch:space/2,shrink:space/3,from:from+atom.size,to:from+atom.size,cjk:true});}
       continue;
     }
     if(value==='\n'){emit({type:'glue',width:0,stretch:1e10,shrink:0,from,to:from});emit({type:'penalty',width:0,cost:-10000,from:from+1,to:from+1,forced:true});continue;}
     if(/^\s+$/u.test(value)&&value!=='\u00a0'){
       const space=measure(' ',local),em=parseFloat(local.fontSize),skip=options.spaceSkip;
-      const custom=skip&&texDimension(skip.width,em)!==0,factor=options.frenchSpacing?1:spaceFactor/1000;emit({type:'glue',width:custom?texDimension(skip.width,em):space+(spaceFactor>=2000&&!options.frenchSpacing?space/3:0),stretch:(custom?texDimension(skip.stretch,em):space/2)*factor,shrink:(custom?texDimension(skip.shrink,em):space/3)/factor,from,to:from+value.length});continue;
+      const factor = options.frenchSpacing ? 1 : spaceFactor / 1000;
+      const extra = spaceFactor >= 2000 && !options.frenchSpacing;
+      emit({type:'glue', ...interwordGlue({space, em, skip, factor, extra, profile}), from, to:from+value.length});
+      continue;
     }
-    if(chinese&&cjkPunctuation.test(value)){
+    const jfmBox = metric && profile.cjk.box(metric, value, em);
+    if (jfmBox) {
+      const font = [local.fontStyle,local.fontWeight,local.fontSize,cjkFamily].join(' ');
+      const before = -jfmBox.offset;
+      const after = measure(value,local,font) - jfmBox.width - before;
+      emit({type:'box',width:jfmBox.width,from,to:from+value.length,punctuation:true,before,after,font});
+    } else if(!metric&&chinese&&cjkPunctuation.test(value)){
       const font=[local.fontStyle,local.fontWeight,local.fontSize,cjkFamily].join(' ');context.font=font;
-      const metrics=context.measureText(value),em=parseFloat(local.fontSize),bounds=fandolPunctuation[Number(local.fontWeight)>=600?'bold':'regular'][value],left=bounds?bounds.left*em:Math.max(0,-metrics.actualBoundingBoxLeft),right=bounds?bounds.right*em:Math.max(0,metrics.width-metrics.actualBoundingBoxRight);
+      const metrics=context.measureText(value),em=parseFloat(local.fontSize),bounds=profile.cjk.punctuation[Number(local.fontWeight)>=600?'bold':'regular'][value],left=bounds?bounds.left*em:Math.max(0,-metrics.actualBoundingBoxLeft),right=bounds?bounds.right*em:Math.max(0,metrics.width-metrics.actualBoundingBoxRight);
       const before=opening.test(value)?left:0,after=closing.test(value)?right:0;
-      const previous=pieces[n-1]?.[0],pair=cjkPunctuation.test(previous??'')?fandolPairs[Number(local.fontWeight)>=600?'bold':'regular'][previous+value]:null;
+      const previous=pieces[n-1]?.[0],pair=cjkPunctuation.test(previous??'')?profile.cjk.pairs[Number(local.fontWeight)>=600?'bold':'regular'][previous+value]:null;
       if(pair){
         while(items.at(-1)?.type==='glue'&&items.at(-1).from===from)items.pop();
         emit({type:'penalty',width:0,cost:10000,from,to:from});
         emit({type:'glue',width:pair.width*em,stretch:pair.stretch*em,shrink:pair.shrink*em,from,to:from,cjk:true});
       }
       if(before&&!pair&&n>0&&previous!=='\n')emit({type:'glue',width:before,stretch:0,shrink:Math.min(em/2,before),from,to:from,cjk:true});
-      emit({type:'box',width:metrics.width-before-after,from,to:from+value.length,punctuation:true,before,after,font});
+      emit({type:'box',width:measure(value,local,font)-before-after,from,to:from+value.length,punctuation:true,before,after,font});
       if(after)emit({type:'glue',width:after,stretch:0,shrink:Math.min(em/2,after),from:from+value.length,to:from+value.length,cjk:true});
     }else if(/^[A-Za-z]{5,}$/.test(value)){
       const exception=options.exceptions.get(value.toLowerCase());
-      const parts=exception?exception.map((part,i)=>value.slice(exception.slice(0,i).join('').length,exception.slice(0,i+1).join('').length)):englishHyphenation(value,{leftMin:options.leftHyphenMin,rightMin:options.rightHyphenMin});let position=0;
+      const parts=exception?exception.map((part,i)=>value.slice(exception.slice(0,i).join('').length,exception.slice(0,i+1).join('').length)):profile.englishHyphenation(value,{leftMin:options.leftHyphenMin,rightMin:options.rightHyphenMin});let position=0;
       for(let i=0;i<parts.length;i++){
         const part=parts[i];emit({type:'box',width:width(value.slice(0,position+part.length),at)-width(value.slice(0,position),at),from:from+position,to:from+position+part.length});position+=part.length;
         if(i<parts.length-1&&position>=options.leftHyphenMin&&value.length-position>=options.rightHyphenMin)emit({type:'penalty',width:measure('-',styleAt(at+position)),cost:options.hyphenPenalty,hyphen:true,from:from+position,to:from+position});
       }
-    }else emit({type:'box',width:width(value,at),from,to:from+value.length});
+    }else {
+      const previous = pieces[n-1]?.[0];
+      // Keep the kern across the word/punctuation token boundary (e.g. y.).
+      // The browser shapes both characters in the same uninterrupted run.
+      const advance = profile.engine === 'lualatex' && /^[A-Za-z]+$/.test(previous ?? '') && /^[.,:;!?]$/.test(value)
+        ? width(previous + value, at-previous.length) - width(previous, at-previous.length) : width(value,at);
+      emit({type:'box',width:advance,from,to:from+value.length});
+    }
     updateFactor(value.at(-1));
     const next=pieces[n+1]?.[0];
-    if(next&&!(cjkPunctuation.test(value)&&cjkPunctuation.test(next))&&value!=='\u00a0'&&next!=='\u00a0'&&!/\s/.test(next)&&!closing.test(next)&&!opening.test(value)&&(cjk.test(value)||cjk.test(next)||cjkPunctuation.test(value)||cjkPunctuation.test(next))){
+    if(!metric&&next&&!(cjkPunctuation.test(value)&&cjkPunctuation.test(next))&&value!=='\u00a0'&&next!=='\u00a0'&&!/\s/.test(next)&&!closing.test(next)&&!opening.test(value)&&(cjk.test(value)||cjk.test(next)||cjkPunctuation.test(value)||cjkPunctuation.test(next))){
       const mixed=(cjk.test(value)&&(/^[A-Za-z0-9]/.test(next)||atoms.get(pieces[n+1]?.index)?.kind==='math'))||(/[A-Za-z0-9]$/.test(value)&&cjk.test(next));
       const space=mixed?measure(' ',local):0;
-      emit({type:'glue',width:space,stretch:mixed?space/2:baseline*.08,shrink:mixed?space/3:0,from:from+value.length,to:from+value.length,cjk:true});
+      emit({type:'glue',width:space,stretch:mixed?space/2:profile.cjk.intercharStretch(options,lineWidth,em,baseline),shrink:mixed?space/3:0,from:from+value.length,to:from+value.length,cjk:true});
     }
   }
   while(items.at(-1)?.type==='glue')items.pop();
@@ -116,11 +132,31 @@ export function wrapLineWidthAt(line,{elementTop,lineHeight,baseWidth,wraps,zoom
   }
   return Math.max(24,available);
 }
-export function installParagraphLayout(editor){
+export function installParagraphLayout(editor,profile){
+  const fontMetrics=createFontMeasurement(context,globalThis.document?.fonts,globalThis.document);
+  const {measure}=fontMetrics;
+  globalThis.document?.fonts?.addEventListener('loadingdone',fontMetrics.clear);
+  editor.on('destroy',()=>{document.fonts?.removeEventListener('loadingdone',fontMetrics.clear);fontMetrics.dispose();});
+  editor.view.dom.dataset.paragraphProfile=profile.engine;
   let current='',lastSignature='',running=false,preferredX=null;
   editor.view.dom.addEventListener('pointerdown',()=>{preferredX=null;});
   editor.on('transaction',({transaction})=>{if(transaction.docChanged)preferredX=null;});
-  editor.registerPlugin(new Plugin({key,state:{init:()=>DecorationSet.empty,apply(tr,previous){return tr.getMeta(key)??previous.map(tr.mapping,tr.doc);}},props:{decorations:state=>key.getState(state),handleKeyDown(view,event){
+  editor.registerPlugin(new Plugin({key,state:{init:()=>DecorationSet.empty,apply(tr,previous){
+    const replacement=tr.getMeta(key);
+    if(replacement)return replacement;
+    const mapped=previous.map(tr.mapping,tr.doc);
+    if(!tr.docChanged || mapped===DecorationSet.empty || editor.view.composing ||
+        !document.body.classList.contains('native-tex-rich-edit'))return mapped;
+    // A computed break belongs to the text that was measured. Mapping it
+    // through a split can hide the first character of the new line until idle.
+    const expired=[];
+    for(const [pos,node] of changedTextblocks(tr)){
+      const end=pos+node.nodeSize;
+      expired.push(...mapped.find(pos,end).filter(d=>d.from>=pos && d.to<=end));
+    }
+    if(expired.length)lastSignature='';
+    return mapped.remove(expired);
+  }},props:{decorations:state=>key.getState(state),handleKeyDown(view,event){
     if(event.isComposing||event.ctrlKey||event.metaKey||event.altKey||!['ArrowUp','ArrowDown'].includes(event.key)||event.target.closest?.('math-field')||!view.dom.querySelector('[data-tex-paragraph]')){if(!['Shift','Control','Alt','Meta'].includes(event.key))preferredX=null;return false;}
     const selection=view.state.selection;if(!selection.$head.parent.isTextblock)return false;
     const direction=event.key==='ArrowUp'?-1:1,origin=view.coordsAtPos(selection.head,1);
@@ -143,22 +179,52 @@ export function installParagraphLayout(editor){
     view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc,event.shiftKey?selection.anchor:target.position,target.position)).scrollIntoView());return true;
   }}}));
   function layout(preamble=current){
-    current=preamble;if(running||editor.view.composing)return;
-    const entries=[],options=paragraphParameters(preamble);let signature=preamble;
+    current=preamble;if(!profile||running||editor.view.composing)return;
+    fontMetrics.select(profile,preamble);
+    const entries=[],options=profile.paragraphParameters(preamble);let signature=preamble;
     const page=editor.view.dom.closest('.document-page');
     const intextsepText=page?getComputedStyle(page).getPropertyValue('--image-intextsep').trim():'';
     const intextsep=intextsepText?cssLengthPx(intextsepText):cssLengthPx('12pt');
+    const family = getComputedStyle(editor.view.dom).getPropertyValue('--tex-cjk-font-family');
+    const metric = profile.cjk.assess?.(preamble, family).metric;
+    const supportsCjk = metric || profile.cjk.supports?.(options, family);
     const pending=[];
-    function anchorWrap(wrap,lineHeight){
+    function anchorWrap(wrap,lineHeight,paragraph){
       // Keep the float's natural box.  Any line it partially overlaps is still
       // a wrapped line in TeX, so round up instead of trimming the float band.
-      const marginTop=intextsep+lineHeight*.5;
+      const topRule=wrap.attrs.rule && wrap.position===0;
+      // wrapfig drops the top intextsep at the head of a page. A tall
+      // first box is lowered from the first baseline by its -1.4ex vskip.
+      let marginTop=intextsep+lineHeight*.5;
+      let ruleDepth=0;
+      if(wrap.attrs.rule){
+        const style=getComputedStyle(wrap.dom);
+        context.font=style.fontSize+' '+style.fontFamily;
+        const correction=1.4*context.measureText('x').actualBoundingBoxAscent;
+        const firstBaseline=parseFloat(style.fontSize);
+        ruleDepth=wrap.dom.offsetHeight-correction;
+        marginTop=firstBaseline-correction+(topRule?0:intextsep);
+      }
+      const image=wrap.dom.querySelector('img');
+      if(!wrap.attrs.rule && wrap.position>0 && image?.naturalHeight && !wrap.attrs.caption){
+        // wrapfig aligns its tall vtop to the text baseline with a -1.4ex skip.
+        const style=getComputedStyle(paragraph);
+        context.font='1000px '+style.fontFamily;
+        const correction=1.4*context.measureText('x').actualBoundingBoxAscent*parseFloat(style.fontSize)/1000;
+        if(image.getBoundingClientRect().height>parseFloat(style.fontSize))
+          marginTop=lineBoxAscent(paragraph)-correction+intextsep;
+      }
       // The bottom margin is spacing only; it must not add another narrowed line.
       const marginBottom=intextsep;
       wrap.dom.style.marginBlockStart=marginTop.toFixed(2)+'px';
       wrap.dom.style.marginBlockEnd=marginBottom.toFixed(2)+'px';
-      const raw=(marginTop+wrap.dom.offsetHeight+marginBottom)/lineHeight;
-      const lines=Math.max(1,Math.ceil(raw-1e-6));
+      const raw=(intextsep+lineHeight*.5+wrap.dom.offsetHeight+marginBottom)/lineHeight;
+      // wrapfig.sty computes a guess from box depth, intextsep and the
+      // baseline grid; its counter includes the line after the wrapped band.
+      const guess=wrap.attrs.rule
+        ? Math.floor((ruleDepth+(topRule?1:2)*intextsep)/lineHeight+2.6)-1
+        : Math.ceil(raw-1e-6);
+      const lines=Math.max(1,wrap.attrs.rule && Number(wrap.attrs.wrapLines) || guess);
       wrap.remaining=lines;
       wrap.dom.dataset.wrapLines=String(lines);
       wrap.dom.dataset.wrapStart='0';
@@ -184,7 +250,7 @@ export function installParagraphLayout(editor){
       const lineHeight=lineHeightLayout*zoom;
       const active=pending.filter(wrap=>wrap.remaining===null||wrap.remaining>0);
       for(const wrap of active){
-        if(wrap.remaining===null)anchorWrap(wrap,lineHeightLayout);
+        if(wrap.remaining===null)anchorWrap(wrap,lineHeightLayout,element);
       }
       // TeX narrows the first n lines after the figure, even across paragraphs.
       const wraps=active.map(wrap=>{
@@ -201,7 +267,7 @@ export function installParagraphLayout(editor){
       };
       const estimate=()=>Math.max(1,Math.round(elementRect.height/lineHeight));
       // Apply measured xeCJK glue only for its calibrated font and punctuation profile.
-      if(cjk.test(node.textContent)&&(options.cjkPunctStyle!=='quanjiao'||options.cjkCustomGlue||!getComputedStyle(editor.view.dom).getPropertyValue('--tex-cjk-font-family').includes('FandolSong'))){
+      if(cjk.test(node.textContent)&&!supportsCjk){
         if(active.length)consume(estimate());
         return false;
       }
@@ -209,10 +275,10 @@ export function installParagraphLayout(editor){
         if(active.length)consume(estimate());
         return false;
       }
-      const {items}=tokensFor(editor,node,start,element,options);
+      const {items}=tokensFor(editor,node,start,element,options,profile,metric,baseWidth,measure);
       const widthAt=line=>wrapLineWidthAt(line,{elementTop,lineHeight,baseWidth,wraps,zoom});
       const wrapOptions=wraps.length?{...options,tolerance:9999}:options;
-      const plan=optimumParagraph(items,line=>widthAt(line)-(line===0?indent:0),{...wrapOptions,emergencyStretch:options.emergency?texDimension(options.emergency,parseFloat(style.fontSize)):0});
+      const plan=optimumParagraph(items,line=>widthAt(line)-(line===0?indent:0),{...wrapOptions,texFinalPass:profile.texFinalPass,emergencyStretch:options.emergency?texDimension(options.emergency,parseFloat(style.fontSize)):0});
       if(!plan){if(active.length)consume(estimate());return false;}
       // The token stream ends with infinite glue and a forced penalty. If the
       // optimizer leaves them on a trailing line with no text, rendering a
@@ -228,11 +294,12 @@ export function installParagraphLayout(editor){
         if(active.length)consume(1);
         return false;
       }
-      entries.push(Decoration.node(start,start+node.nodeSize,{'data-tex-paragraph':'true'}));
+      entries.push(Decoration.node(start,start+node.nodeSize,{'data-tex-paragraph':'true','data-tex-engine':profile.engine}));
       for(const [lineNumber,line] of plan.lines.entries()){
         const last=lineNumber===plan.lines.length-1;
         for(let index=line.start;index<line.end;index++){
           const item=items[index];
+          if(item.simpleMath)entries.push(Decoration.node(item.from,item.to,{class:'tex-simple-math'}));
           if(item.punctuation)entries.push(Decoration.inline(item.from,item.to,{class:'tex-cjk-punctuation',style:'font:'+item.font+';line-height:inherit;margin-left:'+(-item.before)+'px;margin-right:'+(-item.after)+'px'}));
           if(item.type!=='glue'||item.stretch>=1e10)continue;
           const adjusted=item.width+(last?0:line.ratio*(line.ratio<0?item.shrink:item.stretch)),size=item.cjk?adjusted:Math.max(0,adjusted);
@@ -241,18 +308,30 @@ export function installParagraphLayout(editor){
         }
         const end=items[line.end];
         if(!last){
-          if(end.type==='glue'&&end.to>end.from)entries.push(Decoration.inline(end.from,end.to,{class:'tex-word-glue',style:'font-size:0;line-height:0'}));
+          if(end.type==='glue'&&end.to>end.from){
+            // Collapse the advance of actual spaces, without hiding letters
+            // the browser IME may temporarily place in the same inline run.
+            const styleValue=document.body.classList.contains('native-tex-hybrid')
+              ? 'white-space:pre;word-spacing:'+(-measure(' ',style))+'px;text-indent:0'
+              : 'font-size:0;line-height:0';
+            entries.push(Decoration.inline(end.from,end.to,{class:'tex-word-glue',style:styleValue}));
+          }
           if(end.hyphen)entries.push(widget(end.from,'tex-discretionary-hyphen'));
           // A visual break is a view decoration, never a hardBreak/source edit.
           if(!end.forced)entries.push(widget(end.to,'tex-paragraph-break'));
         }
       }
-      signature+='|'+start+':'+baseWidth+':'+wraps.map(w=>w.remaining+','+w.width.toFixed(1)+','+w.columnsep.toFixed(1)+','+w.overhang.toFixed(1)+','+w.side+','+w.marginTop.toFixed(2)+','+w.marginBottom.toFixed(2)).join(';')+':'+items.map(item=>item.width.toFixed(3)).join(',')+':'+plan.lines.map(line=>line.end+','+line.ratio.toFixed(5)).join(';');
+      signature+='|'+start+':'+baseWidth+':'+wraps.map(w=>w.remaining+','+w.width.toFixed(1)+','+w.columnsep.toFixed(1)+','+w.overhang.toFixed(1)+','+w.side+','+w.marginTop.toFixed(2)+','+w.marginBottom.toFixed(2)).join(';')+':'+items.map(item=>item.punctuation && metric ? [item.width,item.before,item.after,item.font].join('/') : item.width.toFixed(3)).join(',')+':'+plan.lines.map(line=>line.end+','+line.ratio.toFixed(5)).join(';');
       if(active.length)consume(plan.lines.length);
       return false;
     });
     if(signature===lastSignature)return;lastSignature=signature;
     running=true;try{editor.view.dispatch(editor.state.tr.setMeta(key,DecorationSet.create(editor.state.doc,entries)).setMeta('addToHistory',false));}finally{running=false;}
   }
-  return {layout, invalidate(){lastSignature='';}};
+  return {layout, invalidate(){lastSignature='';}, setProfile(next) {
+    if (profile === next) return;
+    profile=next; lastSignature=''; fontMetrics.clear();
+    editor.view.dom.dataset.paragraphProfile=next?.engine ?? 'unresolved';
+    if (!next) editor.view.dispatch(editor.state.tr.setMeta(key,DecorationSet.empty).setMeta('addToHistory',false));
+  }};
 }

@@ -1,3 +1,4 @@
+import {getTypesettingProfile} from '../apps/web/src/typesetting/engine-profile.mjs';
 import {readFileSync} from 'node:fs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -25,7 +26,9 @@ test('a second appendix command resets counters; stars do not consume letters',(
 });
 
 test('appendix reference values agree with actual XeLaTeX compilation',()=>{
- const reference=JSON.parse(readFileSync(new URL('./fixtures/appendix-xelatex.json',import.meta.url),'utf8'));
+ const {engine}=getTypesettingProfile('xelatex');
+ const reference=JSON.parse(readFileSync(new URL('./fixtures/appendix-'+engine+'.json',import.meta.url),'utf8'));
+ assert.equal(reference.engine.split(',')[0].toLowerCase(),engine);
  for(const [kind,labels] of Object.entries(reference.labels)){
   const primary=kind==='article'?'section':'chapter';
   const source='\\'+primary+'{Main}\n\\appendix\n\\'+primary+'{Proofs}\n\\subsection{Detail}\n\\'+primary+'{Data}';

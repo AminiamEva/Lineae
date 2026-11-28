@@ -1,0 +1,18 @@
+\documentclass{article}
+\usepackage{iftex,fontspec}
+\listfiles
+\usepackage[a4paper,margin=45mm]{geometry}
+\setmainfont{lmroman10-regular.otf}
+\ifXeTeX
+\usepackage{xeCJK}
+\setCJKmainfont[Scale=1]{FandolSong-Regular.otf}
+\else
+\usepackage{luatexja-fontspec}
+\setmainjfont[Scale=1,JFM=quanjiao]{FandolSong-Regular.otf}
+\fi
+\pagestyle{empty}
+\parindent=15pt
+\lefthyphenmin=2 \righthyphenmin=3
+\begin{document}
+中文排版应当根据整段内容决定每一行的位置并使编辑与编译采用相同的断行规则中文排版应当根据整段内容决定每一行的位置并使编辑与编译采用相同的断行规则中文排版应当根据整段内容决定每一行的位置并使编辑与编译采用相同的断行规则
+\end{document}

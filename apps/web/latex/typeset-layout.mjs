@@ -62,11 +62,20 @@ const PDFTEX_FONT_PACKAGES = {
   courier: { mono: 'Courier' },
 };
 
-function readFonts(preamble, options, engine = 'xelatex') {
+function readFonts(preamble, options, activeFonts) {
   const fontset = ctexFontset(preamble, options);
   const cjkFallback = fontset
     ?? (/\\documentclass(?:\[[^\]]*\])?\{ctex|\\usepackage(?:\[[^\]]*\])?\{[^}]*ctex/.test(preamble) ? 'FandolSong' : null);
-  // XeLaTeX uses fontspec commands (\setmainfont, \setmonofont, \setCJKmainfont).
+  // When activeFonts is provided (LuaLaTeX path), use fontspec commands from it.
+  if (activeFonts) {
+    const family = command => fontFamily(activeFonts[command]);
+    return {
+      serif: family('setmainfont'),
+      mono: family('setmonofont'),
+      cjk: family('setCJKmainfont') ?? cjkFallback,
+    };
+  }
+  // XeLaTeX and pdfLaTeX paths: read fontspec commands from preamble.
   const serif = fontFamily(commandArgument(preamble, 'setmainfont'));
   const mono = fontFamily(commandArgument(preamble, 'setmonofont'));
   const cjk = fontFamily(commandArgument(preamble, 'setCJKmainfont'));
@@ -75,16 +84,11 @@ function readFonts(preamble, options, engine = 'xelatex') {
   }
   // pdfLaTeX uses \usepackage{fontpackage} instead of fontspec.
   // Detect common font packages and map them to CSS font families.
-  if (engine === 'pdflatex') {
-    // Strip comments and %-escaped percent signs before matching.
-    const clean = preamble.replace(/(?<!\\)%.*/g, '').replace(/\\%/g, '%');
-    const hasT1 = /\\usepackage(?:\[[^\]]*\])?\{fontenc\}/.test(clean);
-    const used = [...Object.entries(PDFTEX_FONT_PACKAGES)]
-      .filter(([name]) => new RegExp('\\\\usepackage(?:\\[[^\\]]*\\])?\\{(?:[^{},]*,\\s*)*' + name + '(?:\\s*,[^{}]*)*\\}').test(clean));
-    const fonts = Object.assign({}, ...used.map(([, v]) => v));
-    return { serif: fonts.serif ?? null, mono: fonts.mono ?? null, cjk: cjkFallback };
-  }
-  return { serif: null, mono: null, cjk: cjkFallback };
+  const clean = preamble.replace(/(?<!\\)%.*/g, '').replace(/\\%/g, '%');
+  const used = [...Object.entries(PDFTEX_FONT_PACKAGES)]
+    .filter(([name]) => new RegExp('\\\\usepackage(?:\\[[^\\]]*\\])?\\{(?:[^{},]*,\\s*)*' + name + '(?:\\s*,[^{}]*)*\\}').test(clean));
+  const fonts = Object.assign({}, ...used.map(([, v]) => v));
+  return { serif: fonts.serif ?? null, mono: fonts.mono ?? null, cjk: cjkFallback };
 }
 
 function readLinespread(preamble) {
@@ -102,12 +106,12 @@ function readFontsize(preamble) {
   return Number.isFinite(size) && Number.isFinite(baseline) ? { size, baseline } : null;
 }
 
-export function typesetProfile(preamble = '', engine = 'xelatex') {
+export function typesetProfile(preamble = '', activeFonts) {
   const match = /\\documentclass(?:\[([^\]]*)\])?\{([^{}]+)\}/.exec(preamble);
   const options = (match?.[1] ?? '').split(',').map(option => option.trim()).filter(Boolean);
   const className = (match?.[2] ?? 'article').trim().toLowerCase();
   const pageNumbers = !/\\pagestyle\s*\{empty\}/.test(preamble);
-  const fonts = readFonts(preamble, options, engine);
+  const fonts = readFonts(preamble, options, activeFonts);
   const linespread = readLinespread(preamble);
   const explicit = readFontsize(preamble);
 
@@ -119,7 +123,10 @@ export function typesetProfile(preamble = '', engine = 'xelatex') {
       engine,
       fontSize: explicit ? cssPoints(explicit.size) : classSize ? cssPoints(classSize) : '10.5pt',
       lineHeight: explicit ? cssPoints(explicit.baseline * linespread)
-        : classSize ? cssPoints(classBaseline * linespread) : points(15.75 * linespread),
+        : classSize ? cssPoints(classBaseline * linespread)
+        // Keep explicitly selected fontsets on their existing calibrated profile.
+        : options.some(option=>option.startsWith('fontset=')) ? points(15.75 * linespread)
+        : points(10.5 * 1.2 * (/\\(?:linespread|baselinestretch)\b/.test(preamble) ? linespread : 1.3)),
       paragraphIndent: classSize === 12 ? cssPoints(18) : classSize === 11 ? cssPoints(17)
         : classSize === 10 ? cssPoints(15) : '21pt',
       pageStyle: pageNumbers ? 'headings' : 'empty',
@@ -128,14 +135,11 @@ export function typesetProfile(preamble = '', engine = 'xelatex') {
   }
 
   const size = options.includes('12pt') ? 12 : options.includes('11pt') ? 11 : 10;
-  // pdfLaTeX's Computer Modern uses slightly different baseline values than
-  // XeLaTeX's Latin Modern, but for CSS rendering purposes they are equivalent.
-  // The key difference is in the font stack and font encoding, handled below.
   const baseline = size === 12 ? 14.5 : size === 11 ? 13.6 : 12;
   const indent = size === 12 ? 18 : size === 11 ? 17 : 15;
   return {
     className,
-    engine,
+    engine: 'xelatex',
     fontSize: explicit ? cssPoints(explicit.size) : cssPoints(size),
     lineHeight: cssPoints((explicit?.baseline ?? baseline) * linespread),
     paragraphIndent: cssPoints(indent),
@@ -164,7 +168,8 @@ export function planPagination(blocks, { pageHeight, pageGap, marginTop, marginB
     const block = blocks[index];
     let top = block.top + translation;
     let bottom = top + block.height;
-    let bodyTop = pageIndex * pitch + marginTop;
+    const pageStart=marginTop+(block.pageStartAdjustment??0);
+    let bodyTop = pageIndex * pitch + pageStart;
     let bodyBottom = pageIndex * pitch + pageHeight - marginBottom;
     const next = blocks[index + 1];
     let groupBottom = block.keepWithNext && next ? next.top + next.height + translation : bottom;
@@ -183,7 +188,7 @@ export function planPagination(blocks, { pageHeight, pageGap, marginTop, marginB
         groupBottom += space;
       }
       pageIndex = Math.max(pageIndex, nextPage);
-      bodyTop = pageIndex * pitch + marginTop;
+      bodyTop = pageIndex * pitch + pageStart;
       bodyBottom = pageIndex * pitch + pageHeight - marginBottom;
       const space = bodyTop - top;
       translation += space;
@@ -203,7 +208,7 @@ export function planPagination(blocks, { pageHeight, pageGap, marginTop, marginB
       groupBottom += space;
     }
 
-    if (canMove && top > bodyTop + tolerance && groupBottom > bodyBottom + tolerance) {
+    if ((canMove || block.atomicTable) && top > bodyTop + tolerance && groupBottom > bodyBottom + tolerance) {
       // Move a keep-with-previous chain as a unit when it fits on the next
       // page. This covers display formulas and the first two lines of a
       // paragraph without changing the editable document.
@@ -220,7 +225,7 @@ export function planPagination(blocks, { pageHeight, pageGap, marginTop, marginB
         }
       }
       pageIndex++;
-      bodyTop = pageIndex * pitch + marginTop;
+      bodyTop = pageIndex * pitch + (blocks[breakIndex].pageStartAdjustment??0) + marginTop;
       bodyBottom = pageIndex * pitch + pageHeight - marginBottom;
       const space = bodyTop - anchorTop;
       translation += space;
@@ -234,6 +239,14 @@ export function planPagination(blocks, { pageHeight, pageGap, marginTop, marginB
 
     // A single table, image, or paragraph can be taller than the body. Do not
     // split its editable DOM; account for every sheet it visually reaches.
+    if (block.atomicTable && block.height > bodyHeight + tolerance && next) {
+      // An overfull tabular occupies one sheet. Its overflow stays editable in
+      // the table viewport; the following block starts on the following sheet.
+      pageIndex++;
+      translation=pageIndex*pitch+marginTop-next.top;
+      continue;
+    }
+    if (block.atomicTable) continue;
     while (bottom > pageIndex * pitch + pageHeight - marginBottom + tolerance) pageIndex++;
   }
 
@@ -242,7 +255,7 @@ export function planPagination(blocks, { pageHeight, pageGap, marginTop, marginB
 
 export function planTableRows(rows, {
   top, pageHeight, pageGap, marginTop, marginBottom,
-  headerHeight = 0, repeatHeader = true,
+  headerHeight = 0, repeatHeader = true, lastRowDepth = 0, pageInset = 0, sections = null,
 }) {
   if (!rows.length) return { breaks:[], extra:0, pageCount:1 };
   const pitch = pageHeight + pageGap;
@@ -253,14 +266,26 @@ export function planTableRows(rows, {
   let pageIndex = Math.max(0, Math.floor(top / pitch));
   let bodyBottom = pageIndex * pitch + pageHeight - marginBottom;
 
+  const copies=[];
+  const firstHead=sections?.firsthead ?? sections?.head;
+  const finalFoot=sections?.lastfoot ?? sections?.foot;
+  const copy=(section,y)=>{if(section?.height)copies.push({section:section.kind,top:y});};
+  const atTop=Math.abs(top-(pageIndex*pitch+marginTop))<tolerance;
+  let firstPadding=(atTop?pageInset:0)+(firstHead?.height??0);
   for (let index = 0; index < rows.length; index++) {
     const row = rows[index];
     let rowTop = top + row.top + extra;
-    let rowBottom = rowTop + row.height;
-    if (rowBottom > bodyBottom + tolerance && row.height <= bodyHeight + tolerance) {
+    let rowBottom = rowTop + row.height - lastRowDepth;
+    const foot=index===rows.length-1?finalFoot:sections?.foot;
+    const reserve=(foot?.height??0)+(index===0?firstPadding:0);
+    if (rowBottom + reserve > bodyBottom + tolerance && row.height <= bodyHeight + tolerance) {
+      if(index)copy(sections?.foot,rowTop);
       const nextPage = pageIndex + 1;
       const bodyTop = nextPage * pitch + marginTop;
-      const header = repeatHeader && index > 0 ? headerHeight : 0;
+      const section=index===0?firstHead:sections?.head;
+      const header = pageInset+(section?.height ?? (repeatHeader && index>0?headerHeight:0));
+      copy(section,bodyTop+pageInset);
+      firstPadding=0;
       const padding = Math.max(0, bodyTop + header - rowTop);
       if (padding > .01) {
         breaks.push({ row:index, padding, headerTop:bodyTop });
@@ -271,7 +296,17 @@ export function planTableRows(rows, {
         rowBottom += padding;
       }
     }
+    if(index===0 && firstPadding){
+      copy(firstHead,top+(atTop?pageInset:0));
+      breaks.push({row:0,padding:firstPadding});
+      extra+=firstPadding;
+      rowBottom+=firstPadding;
+    }
+    if(index===rows.length-1 && finalFoot?.height){
+      copy(finalFoot,rowBottom+lastRowDepth);
+      extra+=finalFoot.height;
+    }
     while (rowBottom > pageIndex * pitch + pageHeight - marginBottom + tolerance) pageIndex++;
   }
-  return { breaks, extra, pageCount: Math.max(1, pageIndex + 1) };
+  return { breaks, extra, ...(sections?{copies}:{}), pageCount: Math.max(1, pageIndex + 1) };
 }

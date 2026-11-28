@@ -1,8 +1,53 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {projectDisplayMath,projectDocumentFormulas,projectSnapshotFormulas,editDisplayMathSlot} from '../apps/web/src/editor/native-math/document.mjs';
-import {projectMath, applySlotEdit} from '../apps/web/src/editor/native-math/source.mjs';
+import {projectMath, caretSlot, applySlotEdit, applyStructureCommand, expandMatrix, toggleFormulaDisplayStyle} from '../apps/web/src/editor/native-math/source.mjs';
 import {richSlotPosition} from '../apps/web/src/editor/native-math/rich-slot.mjs';
+
+test('layout hit positions agree with validated empty edits on both edges of each math slot',()=>{
+  for(const latex of [String.raw`\frac{a_b}{\sqrt{}}`,String.raw`\int_{0}^{1}{}+\alpha`,
+    String.raw`\left(\begin{matrix}a&b\\c&d\end{matrix}\right)`, 'a% comment\n+b']){
+    const snapshot=projectMath(latex);
+    assert.equal(snapshot.supported,true);
+    for(const slot of snapshot.slots)for(const after of [false,true]){
+      const local=after?slot.raw.length:0;
+      let expected=null;
+      try{expected=applySlotEdit(snapshot,{slotId:slot.id,from16:local,to16:local,insert:''}).selection.head16;}catch{}
+      const hit=caretSlot(snapshot,slot.tag,slot.role,after);
+      assert.equal(hit?hit.from16+local:null,expected,`${latex} ${slot.id} ${local}`);
+    }
+  }
+});
+
+test('native math keeps style declarations out of editable content and toggles display style exactly',()=>{
+  const original=String.raw`\frac{a}{b}`;
+  const styled=toggleFormulaDisplayStyle(projectMath(original),original.indexOf('b'));
+  assert.equal(styled.source,'\\displaystyle '+original);
+  assert.equal(styled.source[styled.cursor],'b');
+  const snapshot=projectMath(styled.source);
+  assert.ok(snapshot.supported);
+  assert.deepEqual(snapshot.atoms.filter(atom=>atom.kind==='token').map(atom=>atom.nucleus),['a','b']);
+  assert.equal(toggleFormulaDisplayStyle(snapshot,styled.cursor).source,original);
+  assert.ok(projectMath(String.raw`\begin{matrix}\scriptstyle x&\textstyle y\end{matrix}`).supported);
+  const b=snapshot.slots.find(slot=>slot.role==='nucleus'&&slot.raw==='b');
+  const bold=applyStructureCommand(snapshot,{slotId:b.id,from16:0,to16:1,command:'mathbf'});
+  assert.equal(bold.source,styled.source.replace('{b}','{\\mathbf{b}}'));
+  assert.equal(bold.source[bold.cursor],'b');
+});
+
+test('native matrix row and column commands preserve the current cell inside a fraction',()=>{
+  const source=String.raw`\frac{\begin{bmatrix}a&b\\c&d\end{bmatrix}}{x}`;
+  const snapshot=projectMath(source);
+  const cell=snapshot.slots.find(slot=>slot.role==='nucleus'&&slot.raw==='d');
+  const row=expandMatrix(snapshot,cell,1,'row');
+  assert.equal(row.source,source.replace('d\\end','d\\\\&\\end'));
+  assert.equal(row.cursor,cell.to16);
+  const column=expandMatrix(snapshot,cell,1,'column');
+  assert.equal(column.source,source.replace('b\\\\','b&\\\\').replace('d\\end','d&\\end'));
+  assert.equal(column.cursor,cell.to16+1);
+  assert.equal(column.source.slice(0,column.cursor).at(-1),'d');
+  assert.equal(expandMatrix(snapshot,snapshot.slots.find(slot=>slot.raw==='x'),1,'column'),null);
+});
 
 test('a native nested hit follows MathLive ancestry rather than the first fraction',()=>{
   const snapshot=projectMath(String.raw`\frac{\frac{7}{}}{c}`);

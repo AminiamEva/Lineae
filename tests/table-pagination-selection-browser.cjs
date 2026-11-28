@@ -93,21 +93,58 @@ async function check(browser, wrap) {
     assert.equal(afterTable.rules, beforeTable.rules, 'pagination rules stay stable');
     assert.equal(await page.locator('[data-group=table]').isVisible(), true, 'table tab is available');
 
-    // Switching to the Table panel and back must not change the toolbar
-    // height or shift the document (the selection jitter).
-    const toolbarBefore = beforeTable.toolbar;
+    // Hovering the interactive table controls recreates the caption decoration.
+    // That used to look like a width change and repaginated the page, which
+    // shifted the document while the pointer merely moved over the table.
+    const beforeHover = await read(page);
+    const cellBox = await cell.boundingBox();
+    await page.mouse.move(cellBox.x + cellBox.width - 2, cellBox.y + cellBox.height / 2);
+    await page.waitForTimeout(450);
+    const afterColumnHover = await read(page);
+    assert.ok(Math.abs(afterColumnHover.documentCellTop - beforeHover.documentCellTop) < 3,
+      `hovering the column control must not move the table (wrap=${wrap})`);
+    assert.equal(afterColumnHover.layouts, beforeHover.layouts,
+      `hovering the column control must not repaginate (wrap=${wrap})`);
+
+    await page.mouse.move(cellBox.x + cellBox.width / 2, cellBox.y + cellBox.height - 2);
+    await page.waitForTimeout(450);
+    const afterRowHover = await read(page);
+    assert.ok(Math.abs(afterRowHover.documentCellTop - beforeHover.documentCellTop) < 3,
+      `hovering the row control must not move the table (wrap=${wrap})`);
+    assert.equal(afterRowHover.layouts, beforeHover.layouts,
+      `hovering the row control must not repaginate (wrap=${wrap})`);
+
+    const selectedHandle = await page.evaluate(() => {
+      const handle = document.querySelector('.table-select-handle');
+      if (!handle || handle.hidden) return false;
+      handle.click();
+      return true;
+    });
+    if (selectedHandle) {
+      await page.waitForTimeout(500);
+      const afterHandle = await read(page);
+      assert.ok(Math.abs(afterHandle.documentCellTop - beforeHover.documentCellTop) < 3,
+        `selecting the table must not move it (wrap=${wrap})`);
+      assert.equal(afterHandle.layouts, beforeHover.layouts,
+        `selecting the table must not repaginate (wrap=${wrap})`);
+    }
+
+    // The ribbon is only as tall as its active panel (no reserved blank band),
+    // so manually switching panels may change its height. That must not
+    // repaginate the document or move content between pages.
+    const pagesBeforePanels = await page.evaluate(() => document.querySelector('.document-page')?.dataset.pageCount);
     await page.locator('.ribbon-tabs [data-group=table]').click();
-    await page.waitForTimeout(350);
+    await page.waitForTimeout(400);
     const tablePanel = await read(page);
-    assert.equal(tablePanel.toolbar, toolbarBefore, `toolbar height is stable on the Table panel (wrap=${wrap})`);
-    assert.ok(Math.abs(tablePanel.documentCellTop - afterTable.documentCellTop) < 3,
-      `switching panels must not move the table (wrap=${wrap})`);
+    assert.equal(tablePanel.layouts, afterTable.layouts,
+      `switching to the Table panel must not repaginate (wrap=${wrap})`);
+    assert.equal(await page.evaluate(() => document.querySelector('.document-page')?.dataset.pageCount), pagesBeforePanels,
+      `switching to the Table panel must not change the page count (wrap=${wrap})`);
     await page.locator('.ribbon-tabs [data-group=home]').click();
-    await page.waitForTimeout(350);
+    await page.waitForTimeout(400);
     const homePanel = await read(page);
-    assert.equal(homePanel.toolbar, toolbarBefore, `toolbar height is stable on the Home panel (wrap=${wrap})`);
-    assert.ok(Math.abs(homePanel.documentCellTop - afterTable.documentCellTop) < 3,
-      `switching back must not move the table (wrap=${wrap})`);
+    assert.equal(homePanel.layouts, afterTable.layouts,
+      `switching back must not repaginate (wrap=${wrap})`);
   } finally {
     await page.close();
   }

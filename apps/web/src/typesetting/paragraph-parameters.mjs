@@ -1,3 +1,18 @@
+import {sourceStructure} from '../../latex/source-structure.mjs';
+
+export function usesCtex(preamble, commands = [...sourceStructure(preamble)].filter(t => t.topLevel && t.kind === 'command')) {
+  return commands.some(t =>
+    t.value === '\\documentclass' && /^\s*(?:\[[^\]]*\]\s*)?\{ctex(?:art|book|rep)\}/.test(preamble.slice(t.end))
+    || t.value === '\\usepackage' && /^\s*(?:\[[^\]]*\]\s*)?\{[^}]*\bctex\b[^}]*\}/.test(preamble.slice(t.end)));
+}
+
+// ctex_update_stretch_auxiii distributes the remaining column width over
+// the inter-character gaps, reserving one ideograph for line stretch.
+export function ctexIntercharStretch(lineWidth, em) {
+  const spaces = Math.trunc(lineWidth / em - 2);
+  return spaces > 0 ? (lineWidth - em * (spaces + 1)) / spaces : 0;
+}
+
 // TeX dimensions are 72.27 pt/in; CSS pt is 72 pt/in.
 export function texDimension(value,em=16){
  const match=String(value).trim().match(/^(-?(?:\d*\.)?\d+)\s*(sp|pt|pc|in|bp|cm|mm|em|ex)$/);
@@ -15,4 +30,15 @@ export function paragraphParameters(source){
  const cjkCustomGlue=/\b(?:CJKglue|CJKecglue)\s*=|\\CJKset(?:ec)?glue\b/.test(text);
  const spacing=[...text.matchAll(/\\(nonfrenchspacing|frenchspacing)\b/g)].at(-1)?.[1];
  return {cjkPunctStyle,cjkCustomGlue,frenchSpacing:spacing==='frenchspacing',pretolerance:number('pretolerance',100),tolerance:number('tolerance',200),linePenalty:number('linepenalty',10),hyphenPenalty:number('hyphenpenalty',50),adjDemerits:number('adjdemerits',10000),doubleHyphenDemerits:number('doublehyphendemerits',10000),finalHyphenDemerits:number('finalhyphendemerits',5000),leftHyphenMin:number('lefthyphenmin',2),rightHyphenMin:number('righthyphenmin',3),spaceSkip:glue('spaceskip'),emergency:glue('emergencystretch')?.width,exceptions};
+}
+// space is the current face's normal interword advance. For the calibrated
+// Latin Modern face its extra-space dimension is one third of that advance.
+export function interwordGlue({space, em, skip, factor, extra, profile}) {
+  const custom = skip && texDimension(skip.width, em) !== 0;
+  const sentenceSpace = extra && (!custom || profile.engine === 'lualatex') ? space / 3 : 0;
+  return {
+    width: (custom ? texDimension(skip.width, em) : space) + sentenceSpace,
+    stretch: (custom ? texDimension(skip.stretch, em) : space / 2) * factor,
+    shrink: (custom ? texDimension(skip.shrink, em) : space / 3) / factor,
+  };
 }

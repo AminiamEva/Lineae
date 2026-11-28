@@ -3,6 +3,18 @@
   "bundle": {
     "targets": ["app", "dmg"],
     "icon": ["../../web/assets/brand/lineae-logo.png"],
+    "fileAssociations": [
+      {
+        "ext": ["tex"],
+        "name": "LaTeX Document",
+        "role": "Editor",
+        "rank": "Alternate",
+        "exportedType": {
+          "identifier": "app.lineae.latex",
+          "conformsTo": ["public.plain-text"]
+        }
+      }
+    ],
     "macOS": {
       "minimumSystemVersion": "13.0",
       "signingIdentity": "-"

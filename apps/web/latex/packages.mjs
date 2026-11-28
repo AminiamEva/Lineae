@@ -4,7 +4,7 @@ import { theoremNames } from './theorem.mjs';
 // Dependencies are added only when that feature appears in the document body.
 const dependencies = [
   { name: 'ulem', pattern: /\\(?:sout|uline|uuline|uwave|dashuline|dotuline)\b/ },
-  { name: 'amsmath', pattern: /\\(?:begin\{(?:align|alignat|flalign|gather|multline|equation|split|aligned|alignedat|gathered|cases|[pbBvV]?(?:small)?matrix)\*?\}|(?:dfrac|tfrac|text|operatorname|eqref)\b)/ },
+  { name: 'amsmath', pattern: /\\(?:begin\{(?:align|alignat|flalign|gather|multline|equation|split|aligned|alignedat|gathered|cases|[pbBvV]?(?:small)?matrix)\*?\}|(?:dfrac|tfrac|text|operatorname|eqref)\b)/, satisfies: ['mathtools'] },
   { name: 'mathtools', pattern: /\\begin\{(?:[dr]cases|drcases|multlined|[pbBvV]smallmatrix)\*?\}/ },
   { name: 'xcolor', pattern: /\\(?:textcolor|colorbox|fcolorbox|definecolor)\b/ },
   { name: 'ragged2e', pattern: /\\justifying\b/ },
@@ -16,14 +16,15 @@ const dependencies = [
   { name: 'graphicx', pattern: /\\(?:includegraphics|scalebox|resizebox)\b/ },
   { name: 'subcaption', pattern: /\\(?:begin\{subfigure\}|subref\b|subcaptionbox\b)/ },
   { name: 'tikz', pattern: /\\begin\{tikzpicture\}/, satisfies: ['circuitikz'] },
-  { name: 'circuitikz', pattern: /\\(?:node|to)\[[^\]]*(?:ground|rground|sground|nground|vcc|vee|ocirc|diamondpole)\b/ },
-  { name: 'multicol', pattern: /\\begin\{multicols\}/ },
+  { name: 'circuitikz', pattern: /\\(?:begin\{circuitikz\}|(?:node|to)\[[^\]]*(?:ground|rground|sground|nground|vcc|vee|ocirc|diamondpole)\b)/ },
+  { name: 'multicol', pattern: /\\begin\{multicols\*?\}/ },
   { name: 'adjustbox', pattern: /\\adjustbox\b/ },
   { name: 'caption', pattern: /\\caption\*/ },
   { name: 'wrapfig', pattern: /\\begin\{wrapfigure\}/ },
   { name: 'float', pattern: /\\begin\{figure\}\[H\]/ },
   { name: 'amsthm', pattern: /\\begin\{proof\}/ },
   { name: 'listings', pattern: /\\begin\{lstlisting\}/ },
+  { name: 'lipsum', pattern: /\\lipsum\b/ },
   { name: 'textcomp', pattern: /\\(?:textdegree|textcelsius|textmu|textohm|textcent|textyen|texteuro|textperthousand|textnumero)\b/ },
   { name: 'hyperref', pattern: /\\(?:href|url|hyperref|autoref)\b/, satisfies: ['url'], onlyUrl: /\\(?:href|hyperref|autoref)\b/ },
   { name: 'fix-cm', pattern: /\\fontsize\s*\{[^{}]+\}\s*\{[^{}]+\}\s*\\selectfont\b/,
@@ -66,18 +67,29 @@ export function resolvePackages(preamble, body, { chineseTypesetting=false } = {
   return required;
 }
 
+export function resolveTheoremDeclarations(preamble,body){
+  const declarations=[],source=withoutComments(preamble);
+  for(const [kind,title] of Object.entries(theoremNames)){
+    if(kind==='proof'||!body.includes('\\begin{'+kind+'}')||new RegExp('\\\\newtheorem\\*?\\s*\\{'+kind+'\\}').test(source))continue;
+    declarations.push('\\ifcsname '+kind+'\\endcsname\\else\\newtheorem{'+kind+'}{'+title+'}\\fi');
+  }
+  return declarations;
+}
+
 export function exportDocument({ start, end, eol }, body, options) {
   let preamble = start;
   for (const { name, beforeClass } of resolvePackages(start, body, options)) {
     if (beforeClass) {
       preamble = preamble.replace(/^([ \t]*\\documentclass)/m, '\\RequirePackage{' + name + '}' + eol + '$1');
     } else {
-      preamble = preamble.replace(/^\\begin\{document\}/m, '\\usepackage{' + name + '}' + eol + '\\begin{document}');
+      // A minimal Windows installation lacks several fonts in ctex's automatic
+      // Windows set. Use TeX's Fandol family for editor-generated Lua documents.
+      const luaFonts=name==='ctex'&&!/\bfontset\s*=/.test(withoutComments(start))
+        ? '\\ifdefined\\directlua\\PassOptionsToPackage{fontset=fandol}{ctex}\\fi'+eol : '';
+      preamble = preamble.replace(/^\\begin\{document\}/m, ()=>luaFonts+'\\usepackage{' + name + '}' + eol + '\\begin{document}');
     }
   }
-  for(const [kind,title] of Object.entries(theoremNames)) {
-    if(kind==='proof' || !body.includes('\\begin{'+kind+'}') || new RegExp('\\\\newtheorem\\*?\\s*\\{'+kind+'\\}').test(withoutComments(start)))continue;
-    const declaration='\\ifcsname '+kind+'\\endcsname\\else\\newtheorem{'+kind+'}{'+title+'}\\fi';
+  for(const declaration of resolveTheoremDeclarations(start,body)){
     preamble=preamble.replace(/^\\begin\{document\}/m,()=>declaration+eol+'\\begin{document}');
   }
   if (/\\lineaeStem\b/.test(withoutComments(body)) && !/\\lineaeStem\b/.test(withoutComments(start))) {

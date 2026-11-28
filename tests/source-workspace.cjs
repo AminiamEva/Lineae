@@ -57,6 +57,8 @@ module.exports = async function checkSourceWorkspace(context, url) {
     const evidence = async (expected, label) => {
       const {source, readback} = await read();
       await revealToolbar(page); await page.locator('[data-group=files]').click();
+      const menu = page.locator('[data-ribbon-group="file-resources"].is-collapsed .ribbon-group-toggle');
+      if (await menu.isVisible()) await menu.click();
       const downloading = page.waitForEvent('download');
       await page.locator('#download').click();
       const zip = await readFile(await (await downloading).path());
@@ -139,7 +141,7 @@ module.exports = async function checkSourceWorkspace(context, url) {
     await documentMode.click();
     await source.click();
     await sameClipboardText(draft);
-    await button(/展开工作区|Split editing/).click();
+    await page.locator('[data-source-mode=split]').click();
     const heading = panel.locator('.tex-preview .ProseMirror h1');
     await heading.filter({hasText:'Signal power'}).waitFor();
     const separator = panel.getByRole('separator');

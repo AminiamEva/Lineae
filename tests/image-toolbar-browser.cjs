@@ -1,4 +1,4 @@
-const { revealToolbar } = require('./workspace-ui-helpers.cjs');
+const { revealToolbar, revealRibbonControl } = require('./workspace-ui-helpers.cjs');
 const { chromium } = require('playwright');
 const { createServer } = require('node:http');
 const { readFile } = require('node:fs/promises');
@@ -46,8 +46,10 @@ const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR
     assert.equal(await page.getByLabel('Numbered caption').isDisabled(), true, 'numbered caption is disabled');
     assert.equal(await page.getByLabel('Caption position').isDisabled(), true, 'caption position is disabled');
     assert.equal(await page.getByLabel('Label', { exact: true }).isDisabled(), true, 'caption label is disabled');
-    await page.getByLabel('Enable caption').check();
-    await page.waitForFunction(() => !document.querySelector('.image-tools')?.querySelector('input[aria-label="Caption position"]')?.disabled);
+    const enableCaption = page.getByLabel('Enable caption');
+    await revealRibbonControl(page,'image-layout',enableCaption);
+    await enableCaption.check();
+    await page.waitForFunction(() => document.querySelector('select[aria-label="Caption position"]')?.disabled === false);
     assert.equal(await page.getByLabel('Numbered caption').isDisabled(), false);
     assert.equal(await page.getByLabel('Caption position').isDisabled(), false);
     assert.equal(await page.getByLabel('Label', { exact: true }).isDisabled(), false);
@@ -120,8 +122,9 @@ const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR
     for (const label of ['Center in wrap','Wrap side','Wrap width','Overhang','Wrapped lines']) {
       assert.equal(await page.getByLabel(label,{exact:true}).isDisabled(), true, label+' is disabled until wrap text is enabled');
     }
+    await revealRibbonControl(page,'image-layout',wrapText);
     await wrapText.check();
-    await page.waitForFunction(() => !document.querySelector('.image-tools input[aria-label="Center in wrap"]')?.disabled);
+    await page.waitForFunction(() => document.querySelector('input[aria-label="Center in wrap"]')?.disabled === false);
     for (const label of ['Center in wrap','Wrap side','Wrap width','Overhang','Wrapped lines']) {
       assert.equal(await page.getByLabel(label,{exact:true}).isDisabled(), false, label+' is enabled when wrap text is on');
     }

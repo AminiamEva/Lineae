@@ -1,3 +1,4 @@
+import {nativeOnlyAcceptance} from './native-surface/acceptance-mode.mjs';
 import {documentNumbers} from '../../latex/document-numbering.mjs';
 import {localizedTitle} from '../ui/localized-control.mjs';
 import { Node } from '@tiptap/core';
@@ -377,29 +378,72 @@ function unwrapBraces(value) {
   return text;
 }
 
+function editedFieldValue(field, previous) {
+  const oldModel = field._mathfield?.model;
+  const value = field.value;
+  if (!oldModel) return value;
+  if (!field.hasAttribute('data-lineae-default-displaystyle')) {
+    // After an edit MathLive reserializes a style as a braced group. Preserve
+    // the author's original whole-field declaration. The root's source cache
+    // is invalidated by the next model change, including inserting a sibling.
+    if (previous.startsWith('\\displaystyle ') && value.startsWith('{\\displaystyle ') &&
+        oldModel.root.body.length === 2 && oldModel.root.body[1].command === '\\displaystyle') {
+      const source = unwrapBraces(value);
+      oldModel.root.verbatimLatex = source;
+      return source;
+    }
+    return value;
+  }
+  if (!value.trim() || value.includes('\\')) return value;
+  const selection = field.selection;
+  const paths = selection.ranges.map(range => range.map(offset => mathPositionPath(oldModel, offset)));
+  field.removeAttribute('data-lineae-default-displaystyle');
+  // MathLive may deliver one input notification after multiple typed letters.
+  // The style creates an extra outer atom. Keep the same editable positions
+  // inside it so the next Backspace deletes the letter beside the caret.
+  field.setValue('\\displaystyle ' + value, {silenceNotifications: true});
+  const model = field._mathfield.model;
+  const wrapper = model.root.body.find(atom => atom.command === '\\displaystyle');
+  const parent = wrapper ? mathPositionPath(model, model.offsetOf(wrapper)) : [];
+  const endOfBody = model.offsetOf((wrapper ?? model.root).body.at(-1));
+  const ranges = paths.map(range => range.map(path => {
+    const offset = mathOffsetAtPath(model, [...parent, ...path]);
+    return offset >= 0 ? offset : Math.max(0, endOfBody);
+  }));
+  field.selection = {direction: selection.direction, ranges};
+  return field.value;
+}
+
 export function toggleDisplayStyle(field) {
   field.removeAttribute('data-lineae-default-displaystyle');
   const latex = unwrapBraces(field.value);
   const grouped = /^\\displaystyle\{([\s\S]*)\}$/.exec(latex);
   const prefixed = /^\\displaystyle\s*([\s\S]*)$/.exec(latex);
+  const removingStyle = Boolean(grouped || prefixed);
   field.focus();
-  if (grouped || prefixed) {
-    field.value = (grouped ? grouped[1] : prefixed[1]).trim();
-    field.executeCommand('moveToMathfieldEnd');
-    const position = field.position;
-    field.dispatchEvent(new Event('input', { bubbles: true }));
-    requestAnimationFrame(() => { if (field.isConnected) { field.focus(); field.position = position; } });
-    return false;
-  }
-  field.value = '\\displaystyle{' + latex + '}';
+  field.value = removingStyle ? (grouped ? grouped[1] : prefixed[1]).trim() : '\\displaystyle{' + latex + '}';
   field.executeCommand('moveToMathfieldEnd');
-  // The two closing braces of the wrapper are offsets of their own; the caret
-  // belongs two steps earlier, inside the styled body, so typing keeps editing
-  // the formula instead of appending after it.
-  field.position = Math.max(0, field.lastOffset - 2);
+  // The wrapper's closing braces occupy two offsets. Keep the caret inside it.
+  const styledPosition = () => Math.max(0, field.lastOffset - 2);
+  const position = removingStyle ? field.position : styledPosition();
+  if (!removingStyle) field.position = position;
   field.dispatchEvent(new Event('input', { bubbles: true }));
-  requestAnimationFrame(() => { if (field.isConnected) { field.focus(); field.position = Math.max(0, field.lastOffset - 2); } });
-  return true;
+
+  const owner = field.ownerDocument;
+  const previousFocus = owner.activeElement;
+  const deadline = performance.now() + 500;
+  function restoreFocus() {
+    if (!field.isConnected || (owner.activeElement !== previousFocus && owner.activeElement !== field)) return;
+    // MathLive ignores focus requests while its previous keyboard transition is pending.
+    if (field._mathfield?.focusBlurInProgress) {
+      if (performance.now() < deadline) requestAnimationFrame(restoreFocus);
+      return;
+    }
+    field.focus();
+    field.position = removingStyle ? position : styledPosition();
+  }
+  requestAnimationFrame(restoreFocus);
+  return !removingStyle;
 }
 
 function leaveFormula(editor, position, node, backward) {
@@ -536,6 +580,22 @@ export const MathNode = Node.create({
       dom.dataset.numbered = String(node.isBlock && node.attrs.delimiter === 'equation');
       dom.getMathPosition = getPos;
       dom.contentEditable = 'false';
+      if (nativeOnlyAcceptance()) {
+        // Keep the semantic node in the document and history without mounting
+        // a MathLive editor in the native-only acceptance run.
+        dom.textContent = node.attrs.latex;
+        return {
+          dom,
+          update(next) {
+            if (next.type !== node.type) return false;
+            node = next;
+            dom.dataset.latex = next.attrs.latex;
+            dom.textContent = next.attrs.latex;
+            return true;
+          },
+          ignoreMutation: () => true,
+        };
+      }
       // A draggable node view swallows pointer hit-testing inside MathLive, so
       // clicking a placeholder box or a matrix cell would not move its caret.
       // ProseMirror re-enables dragging temporarily on mousedown for the handle.
@@ -622,6 +682,7 @@ export const MathNode = Node.create({
       let exitedStyleAt = null;
       let replacedOperator = null;
       let pointerFocus = 0;
+      let leftDuringFocus = false;
       let scriptCleanupQueued = false;
       let escaping = false;
       let escapingTimer = 0;
@@ -641,7 +702,7 @@ export const MathNode = Node.create({
         let attempts=0;
         const settleFocus=()=>{
           const active=editor.view.dom.ownerDocument.activeElement;
-          if(active===editor.view.dom)return;
+          if(!escaping||editor.isDestroyed||active!==field&&active!==field.ownerDocument.body)return;
           editor.view.focus();
           if(++attempts<4)requestAnimationFrame(settleFocus);
         };
@@ -662,6 +723,7 @@ export const MathNode = Node.create({
         // A freshly moved/undone node can still have a queued outer-editor focus.
         // Finish the explicit formula click after that frame without moving its caret.
         if (event.button !== 0 || event.shiftKey) return;
+        leftDuringFocus = false;
         const focusRequest=++pointerFocus;
         const model=field._mathfield?.model;
         const target=event.composedPath().find(element=>element?.dataset?.atomId);
@@ -694,6 +756,7 @@ export const MathNode = Node.create({
         });
       },true);
       field.addEventListener('focus', () => {
+        leftDuringFocus = false;
         if (escaping) {
           queueMicrotask(() => {
             if (escaping && field.ownerDocument.activeElement !== editor.view.dom) editor.view.focus();
@@ -704,7 +767,11 @@ export const MathNode = Node.create({
         field.setAttribute('data-lineae-editing','');
       });
       field.addEventListener('compositionstart', () => enterEmptyOperatorBody(field), true);
-      field.addEventListener('blur', () => {
+      field.addEventListener('blur', event => {
+        if (event.relatedTarget || escaping) {
+          pointerFocus++;
+          if (field._mathfield?.focusBlurInProgress) leftDuringFocus = true;
+        }
         field.removeAttribute('data-lineae-editing');
         pendingKey=null; pendingDollar=false; oneScript=null; replacedOperator=null;
         // The command palette takes focus, so a blank subscript typed with "_"
@@ -728,15 +795,8 @@ export const MathNode = Node.create({
       field.addEventListener('lineae-commit-fences', () => commitUnclosedFences(field));
 
       field.addEventListener('input', () => {
-        if (field.hasAttribute('data-lineae-default-displaystyle') && field.value.trim() &&
-            !field.value.includes('\\') && !/^\\displaystyle\b/.test(field.value)) {
-          field.removeAttribute('data-lineae-default-displaystyle');
-          field.value = '\\displaystyle ' + field.value;
-          field.executeCommand('moveToMathfieldEnd');
-          field.dispatchEvent(new Event('input',{bubbles:true}));
-          return;
-        }
-        const latex=mathDocumentSource(field.value,node.attrs.latex,{inline:!node.isBlock});
+        const value = editedFieldValue(field, node.attrs.latex);
+        const latex=mathDocumentSource(value,node.attrs.latex,{inline:!node.isBlock});
         if(node.attrs.latex===latex)return;
         const position = getPos();
         if (typeof position === 'number') {
@@ -937,6 +997,26 @@ export const MathNode = Node.create({
         field.mathModeSpace = '\\space';
         installMathFieldStyle(field);
         field.toggleAttribute('data-lineae-editing',field.hasFocus());
+        // MathLive completes onFocus on a timer and ignores onBlur until then.
+        // If focus has already left the field, that timer must not take the
+        // next keystroke or interrupt composition in the newly focused editor.
+        const mathfield = field._mathfield;
+        const keyboard = mathfield?.keyboardDelegate;
+        if (!keyboard) return;
+        const focusKeyboard = keyboard.focus;
+        keyboard.focus = (...args) => {
+          if (!leftDuringFocus || field.matches(':focus-within')) return focusKeyboard.apply(keyboard, args);
+          leftDuringFocus = false;
+          // Finish the ignored blur after MathLive has finished its focus callback.
+          queueMicrotask(() => {
+            if (field._mathfield === mathfield && !field.matches(':focus-within'))
+              mathfield.onBlur({dispatchEvents:false});
+          });
+        };
+        field.addEventListener('unmount', () => {
+          keyboard.focus = focusKeyboard;
+          leftDuringFocus = false;
+        }, {once:true});
         const root=field.shadowRoot;
         if (!root) return;
         const markIntegrands=()=>{

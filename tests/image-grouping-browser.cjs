@@ -1,4 +1,4 @@
-const { revealToolbar } = require('./workspace-ui-helpers.cjs');
+const { revealToolbar, revealRibbonControl } = require('./workspace-ui-helpers.cjs');
 const { chromium } = require('playwright');
 const { createServer } = require('node:http');
 const { readFile } = require('node:fs/promises');
@@ -120,13 +120,15 @@ async function dragSelectAll(page) {
       assert.equal(child.attrs.width, '0.3\\linewidth', 'grouping inherits each image width');
       assert.equal(child.attrs.pos, 'c', 'subfigures default to centered vertical alignment');
     }
-    assert.equal(await page.getByLabel('Alignment',{exact:true}).inputValue(), 'center', 'figure alignment defaults to center');
+    assert.equal(await page.locator('.image-tools').getByLabel('Alignment',{exact:true}).inputValue(), 'center', 'figure alignment defaults to center');
     const subLabels=page.locator('.document-subfigures .document-image .document-caption-label');
     assert.ok((await subLabels.first().textContent()).includes('(a)'), 'subfigure label shows its letter');
     assert.equal(await subLabels.first().evaluate(element=>getComputedStyle(element,'::before').content), 'none', 'subfigure caption omits the figure number');
 
     // The main caption is edited on canvas, mirroring the child-figure caption editor.
-    await page.getByLabel('Enable caption').check();
+    const enableCaption=page.getByRole('checkbox',{name:'Enable caption',exact:true,includeHidden:true});
+    await revealRibbonControl(page,'image-layout',enableCaption);
+    await enableCaption.check();
     const mainCaption=page.locator('.document-subfigures-caption .document-caption-text');
     await mainCaption.waitFor({ state:'visible' });
     await mainCaption.click();
@@ -162,7 +164,9 @@ async function dragSelectAll(page) {
     assert.equal(await page.locator('.ribbon-tabs [data-group=image]').isVisible(), false, 'Image tab is hidden for a single subfigure');
     assert.equal(await page.locator('.subfigure-tools .subfigure-ungroup').isDisabled(), false);
 
-    await page.getByLabel('Vertical alignment').selectOption('t');
+    const vertical=page.getByLabel('Vertical alignment');
+    await revealRibbonControl(page,'subfigure-fields',vertical);
+    await vertical.selectOption('t');
     await page.getByLabel('Subfigure width').fill('0.4\\textwidth');
     await page.getByLabel('Subfigure width').press('Enter');
     await page.waitForTimeout(250);
@@ -221,7 +225,9 @@ async function dragSelectAll(page) {
     await page.evaluate(() => document.querySelector('.image-group-button').click());
     await page.waitForFunction(() => document.querySelector('.ProseMirror').editor.getJSON().content.some(node => node.type === 'subfigures'));
     const chooser = page.waitForEvent('filechooser');
-    await page.locator('.image-insert-figure').click();
+    const insertFigure=page.locator('.image-insert-figure');
+    await revealRibbonControl(page,'image-grouping',insertFigure);
+    await insertFigure.click();
     await (await chooser).setFiles({ name: 'd.png', mimeType: 'image/png', buffer: PNG });
     await page.waitForFunction(() => (document.querySelector('.ProseMirror').editor.getJSON().content.find(node => node.type === 'subfigures')?.content?.length ?? 0) === 4);
 

@@ -1,10 +1,51 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
 import {importBlocks,serialize} from '../apps/web/src/editor/latex-codec.js';
 import {parseDocument} from '../apps/web/latex/document.mjs';
 import {sourceProjection,richSourceChanges,standaloneMathChanges} from '../apps/web/src/editor/source-sync.js';
+import {documentMetadata,writeDocumentMetadata} from '../apps/web/latex/document-metadata.mjs';
 const text=n=>(n.content??[]).map(c=>c.text??'').join('');
 const wrap=s=>'\\begin{document}\r\n'+s+'\n\\end{document}\r\n';
+
+test('adjacent numbered and starred alignments retain separate source owners',()=>{
+  const source=readFileSync(new URL('./native-math/fixtures/numbered-alignment.tex',import.meta.url),'utf8');
+  const content=parseDocument(source).blocks.flatMap(raw=>importBlocks(raw));
+  assert.deepEqual(content.map(node=>node.type),['mathBlock','mathBlock']);
+  assert.match(content[0].attrs.latex,/\\label\{eq:alignment\}/);
+  assert.match(content[1].attrs.latex,/^\\begin\{alignat\*\}\{1\}/);
+  content.push({type:'paragraph'});
+  const doc={type:'doc',content};
+  const projection=sourceProjection(source,doc);
+  assert.deepEqual(projection.blocks.map(block=>[block.index,block.count]),[[0,1],[1,2]]);
+  assert.deepEqual(richSourceChanges(projection,doc),[]);
+});
+
+test('a terminal labelled equation has a separate, source-free typing paragraph',()=>{
+  const source=wrap('\\begin{equation}\n\\label{eq:keep}\n\\frac{a}{b}\n\\end{equation}');
+  const content=parseDocument(source).blocks.flatMap(raw=>importBlocks(raw));
+  content.push({type:'paragraph'});
+  const doc={type:'doc',content};
+  const projection=sourceProjection(source,doc);
+  assert.equal(projection.count,2);
+  assert.equal(projection.blocks[0].editable,false);
+  const {from,to,raw,index}=projection.blocks.at(-1);
+  assert.deepEqual({from,to,raw,index},{from:source.indexOf('\\end{document}'),to:from,raw:'',index:1});
+  assert.deepEqual(richSourceChanges(projection,doc),[]);
+});
+
+test('title edits preserve preamble trivia and generate a single real maketitle',()=>{
+  const source='\\documentclass{article}\r\n% \\title{Comment}\r\n\\title  {Before {Nested}}\r\n'+
+    '\\begin{document}\r\n% \\maketitle\r\nBody.\r\n\\end{document}\r\n';
+  assert.equal(documentMetadata(parseDocument(source).start,'title').value,'Before {Nested}');
+  const title=writeDocumentMetadata(source,'title','Yield 50\\%');
+  assert.equal(title.draft,source.replace('Before {Nested}','Yield 50\\%')
+    .replace('\\begin{document}\r\n','\\begin{document}\r\n\\maketitle\r\n\r\n'));
+  assert.equal(source.slice(0,title.change.from)+title.change.insert+source.slice(title.change.to),title.draft);
+  const date=writeDocumentMetadata(title.draft,'date','');
+  assert.equal(date.addMaketitle,false);
+  assert.equal(documentMetadata(date.preamble,'date').value,'');
+});
 
 for(const [open,close] of [['\\[','\\]'],['$$','$$']]) {
   for(const eol of ['\n','\r\n'])test('formula edits retain display spelling '+open+' '+JSON.stringify(eol),()=>{
@@ -116,4 +157,173 @@ test('headings and math are not extracted from inside inline math',()=>{
 test('top-level heading followed immediately by a display retains both structures',()=>{
   const nodes=importBlocks(String.raw`\section{\textbf{Title}}Text.$$x$$Tail.`);
   assert.deepEqual(nodes.map(n=>n.type),['heading','paragraph','mathBlock','paragraph']);
+});
+
+test('the typing paragraph after final display math owns no source bytes',()=>{
+  const source=wrap('Before.\n\n\\[\n\\frac{a}{b}\n\\]');
+  const original={type:'doc',content:[...parseDocument(source).blocks.flatMap(importBlocks),{type:'paragraph'}]};
+  const edited=structuredClone(original);
+  edited.content.find(node=>node.type==='mathBlock').attrs.latex='\n\\frac{a}{cb}\n';
+  const insertion=source.indexOf('{b}')+1;
+  assert.deepEqual(standaloneMathChanges(sourceProjection(source,original),edited),
+    [{from:insertion,to:insertion,insert:'c'}]);
+  const changed=source.slice(0,insertion)+'c'+source.slice(insertion);
+  assert.deepEqual(standaloneMathChanges(sourceProjection(changed,edited),original),
+    [{from:insertion,to:insertion+1,insert:''}]);
+});
+
+test('plain table cell edits preserve layout tokens and row line endings',()=>{
+  const source=wrap('\\begin{tabular}{ll}\r\nOne  & Two \\\\\r\nThree & Four\r\n\\end{tabular}');
+  const original={type:'doc',content:[...parseDocument(source).blocks.flatMap(importBlocks),{type:'paragraph'}]};
+  const edited=structuredClone(original);
+  edited.content[0].content[1].content[1].content[0].content[0].text='XFour';
+  const at=source.indexOf('Four');
+  const projection=sourceProjection(source,original);
+  assert.deepEqual(standaloneMathChanges(projection,edited),[{from:at,to:at,insert:'X'}]);
+  assert.deepEqual(richSourceChanges(projection,edited),[{from:at,to:at,insert:'X'}]);
+  const changed=source.slice(0,at)+'X'+source.slice(at);
+  assert.deepEqual(standaloneMathChanges(sourceProjection(changed,edited),original),[{from:at,to:at+1,insert:''}]);
+});
+
+test('span placeholders never shift the cell byte range on writeback',()=>{
+  const source=wrap(String.raw`\begin{tabular}{lll}
+\multicolumn{2}{c}{Total} & One \\
+\multirow{2}{*}{Group} & Two & Three \\
+ & Four & Five
+\end{tabular}`);
+  const original={type:'doc',content:parseDocument(source).blocks.flatMap(importBlocks)};
+  const edited=structuredClone(original);
+  const table=edited.content[0];
+  table.content[1].content[0].content[0].content[0].text='XGroup';
+  table.content[2].content[0].content[0].content[0].text='YFour';
+  assert.deepEqual(standaloneMathChanges(sourceProjection(source,original),edited),[
+    {from:source.indexOf('Group'),to:source.indexOf('Group'),insert:'X'},
+    {from:source.indexOf('Four'),to:source.indexOf('Four'),insert:'Y'},
+  ]);
+});
+
+test('plain cell writeback leaves a neighboring inline formula and its spelling intact',()=>{
+  const source=wrap('\\begin{tabular}{ll}\r\nLeft & $ x $ \\\\\r\nBelow & Right\r\n\\end{tabular}');
+  const original={type:'doc',content:[...parseDocument(source).blocks.flatMap(importBlocks),{type:'paragraph'}]};
+  const edited=structuredClone(original);
+  edited.content[0].content[0].content[0].content[0].content[0].text='XLeft';
+  const projection=sourceProjection(source,original),at=source.indexOf('Left');
+  assert.deepEqual(standaloneMathChanges(projection,edited),[{from:at,to:at,insert:'X'}]);
+  assert.deepEqual(richSourceChanges(projection,edited),[{from:at,to:at,insert:'X'}]);
+  const formula=edited.content[0].content[0].content[1].content[0].content[0];
+  assert.equal(formula.type,'math');
+  formula.attrs.latex=' z ';
+  const math=source.indexOf('$ x $')+2;
+  assert.deepEqual(standaloneMathChanges(projection,edited),[
+    {from:at,to:at,insert:'X'}, {from:math,to:math+1,insert:'z'},
+  ]);
+});
+
+test('complex table cell edits preserve float captions and column declarations',()=>{
+  for(const [open,close] of [
+    ['\\begin{tblr}{colspec={ll},row{1}={font=\\bfseries}}','\\end{tblr}'],
+    ['\\begin{tabularx}{\\textwidth}{p{3cm}X}','\\end{tabularx}'],
+  ]){
+    const source=wrap('\\begin{table}[ht]\r\n\\caption{A caption}\r\n'+open+'\r\nLeft & $x$\r\n'+close+'\r\n\\end{table}');
+    const original={type:'doc',content:parseDocument(source).blocks.flatMap(importBlocks)};
+    assert.equal(original.content[0].type,'table');
+    const edited=structuredClone(original);
+    edited.content[0].content[0].content[0].content[0].content[0].text='XLeft';
+    edited.content[0].content[0].content[1].content[0].content[0].attrs.latex='y';
+    const projection=sourceProjection(source,original),at=source.indexOf('Left'),math=source.indexOf('$x$')+1;
+    const expected=[{from:at,to:at,insert:'X'},{from:math,to:math+1,insert:'y'}];
+    assert.deepEqual(richSourceChanges(projection,edited),expected);
+    assert.deepEqual(standaloneMathChanges(projection,edited),expected);
+  }
+});
+
+test('editing marked text or math in the same table cell patches only the edited run',()=>{
+  const source=wrap('\\begin{tabular}{ll}\r\nLeft  & \\textbf{Value} $ x $ unit\r\n\\end{tabular}');
+  const original={type:'doc',content:parseDocument(source).blocks.flatMap(importBlocks)};
+  const projection=sourceProjection(source,original);
+  const cell=doc=>doc.content[0].content[0].content[1].content[0].content;
+  const edited=structuredClone(original),value=source.indexOf('Value');
+  cell(edited)[0].text='XValue';
+  assert.deepEqual(standaloneMathChanges(projection,edited),[{from:value,to:value,insert:'X'}]);
+  const math=structuredClone(original),at=source.indexOf('$ x $')+2;
+  cell(math).find(node=>node.type==='math').attrs.latex=' y ';
+  assert.deepEqual(standaloneMathChanges(projection,math),[{from:at,to:at+1,insert:'y'}]);
+});
+
+test('inline math edits preserve repeated formula delimiters and untouched prose',()=>{
+  const source=wrap('Text with  $ x $ and \\(x\\).\r\n');
+  const original={type:'doc',content:parseDocument(source).blocks.flatMap(importBlocks)};
+  const edited=structuredClone(original);
+  const maths=edited.content[0].content.filter(node=>node.type==='math');
+  maths[1].attrs.latex='y';
+  const at=source.indexOf('\\(x\\)')+2;
+  const expected=[{from:at,to:at+1,insert:'y'}];
+  const projection=sourceProjection(source,original);
+  assert.deepEqual(standaloneMathChanges(projection,edited),expected);
+  assert.deepEqual(richSourceChanges(projection,edited),expected);
+  maths[1].attrs.delimiter='$';
+  assert.equal(standaloneMathChanges(projection,edited),null);
+});
+
+test('an inline formula inside a formatting command keeps its original enclosing braces',()=>{
+  const source=wrap('Before \\textbf{bold $x$ inside} after.');
+  const original={type:'doc',content:parseDocument(source).blocks.flatMap(importBlocks)};
+  const projection=sourceProjection(source,original);
+  const textEdit=structuredClone(original);
+  textEdit.content[0].content[3].text=' around';
+  const from=source.indexOf('inside');
+  assert.deepEqual(richSourceChanges(projection,textEdit),[{from,to:from+6,insert:'around'}]);
+  const formula=structuredClone(original);
+  formula.content[0].content[2].attrs.latex='y';
+  const at=source.indexOf('$x$')+1;
+  assert.deepEqual(richSourceChanges(projection,formula),[{from:at,to:at+1,insert:'y'}]);
+});
+
+test('TikZ visual updates replace only the verified drawing body inside a figure',()=>{
+  const source=wrap('\\begin{figure}[ht]\r\n  \\centering\r\n'+
+    '\\begin{tikzpicture}\r\n\\draw (0,0) -- (1,1);\r\n\\end{tikzpicture}\r\n'+
+    '  \\caption{Diagonal}\r\n  \\label{fig:keep}\r\n\\end{figure}');
+  const original={type:'doc',content:[...parseDocument(source).blocks.flatMap(importBlocks),{type:'paragraph'}]};
+  const edited=structuredClone(original);
+  edited.content[0].attrs.tikzSource=edited.content[0].attrs.tikzSource.replace('(1,1)','(2,1)');
+  const at=source.indexOf('(1,1)')+1;
+  const expected=[{from:at,to:at+1,insert:'2'}];
+  const projection=sourceProjection(source,original);
+  assert.deepEqual(standaloneMathChanges(projection,edited),expected);
+  assert.deepEqual(richSourceChanges(projection,edited),expected);
+  edited.content[0].attrs.tikzSource+='\n\\caption{Not part of the drawing}';
+  assert.equal(standaloneMathChanges(projection,edited),null);
+});
+
+test('nested prose edits preserve a proof title, an abstract declaration, and mixed line endings',()=>{
+  const source=wrap('\\begin{proof}[Claim]\r\n  First step.\r\n\\end{proof}\r\n\r\n'+
+    '\\begin{abstract}\n% preserve this comment\r\n\\small\r\nSummary.\r\n\\end{abstract}');
+  const before={type:'doc',content:parseDocument(source).blocks.flatMap(importBlocks)};
+  const after=structuredClone(before);
+  after.content.find(node=>node.type==='theoremBlock').content[0].content[0].text='First proof step.';
+  after.content.find(node=>node.type==='blockquote').content[0].content[0].text='Brief Summary.';
+  const changes=[
+    {from:source.indexOf('step.'),to:source.indexOf('step.'),insert:'proof '},
+    {from:source.indexOf('Summary.'),to:source.indexOf('Summary.'),insert:'Brief '},
+  ];
+  const projection=sourceProjection(source,before);
+  assert.deepEqual(standaloneMathChanges(projection,after),changes);
+  assert.deepEqual(richSourceChanges(projection,after),changes);
+  const changed=source.replace('First step.','First proof step.').replace('Summary.','Brief Summary.');
+  const undo=standaloneMathChanges(sourceProjection(changed,after),before);
+  assert.equal(undo.toReversed().reduce((text,c)=>text.slice(0,c.from)+c.insert+text.slice(c.to),changed),source);
+});
+
+test('nested list edits preserve item commands, list options and adjacent identical text',()=>{
+  const source=wrap('\\begin{enumerate}[start=3]\r\n\\item Same text.\r\n'+
+    '  \\begin{description}\n  \\item[Term] Same text.\r\n  \\end{description}\r\n'+
+    '\\item Same text.\r\n\\end{enumerate}');
+  const before={type:'doc',content:parseDocument(source).blocks.flatMap(importBlocks)};
+  const after=structuredClone(before);
+  after.content[0].content[0].content[1].content[0].content[0].content[0].text='XSame text.';
+  const at=source.indexOf('Same text.',source.indexOf('[Term]'));
+  const projection=sourceProjection(source,before);
+  const expected=[{from:at,to:at,insert:'X'}];
+  assert.deepEqual(standaloneMathChanges(projection,after),expected);
+  assert.deepEqual(richSourceChanges(projection,after),expected);
 });

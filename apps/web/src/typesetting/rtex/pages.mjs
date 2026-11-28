@@ -1,54 +1,146 @@
-import {FontStore,ImageStore,Painter,inexactReason} from './upstream/webview/render.ts';
+import {matchingRasterHit,rasterContains,registeredRasterHits,stagedRasterPath} from './raster-assets.mjs';
+import {nativeFontFace} from './font-collection.mjs';
+import {alignPageCanvas,sizePageCanvas} from './page-pixels.mjs';
+import {FontStore,Painter,inexactReason} from './upstream/webview/render.ts';
 import {fontKey} from './upstream/src/fontKey.ts';
+import {parseMapFile,parseEncFile,type1Outlines} from './upstream/src/type1.ts';
 import {hitMathField,hitMathGlyph} from '../../editor/native-math/hit.mjs';
 import {warmRows} from './warm-rows.mjs';
+import {completePageDeltas} from './page-deltas.mjs';
+import {cachedDrawingBox,matchObservedDrawingFonts,sameCachedDrawingItems} from './cached-drawings.mjs';
 
 const CSS_PER_SP=(96/72)/65781.76;
 
 // Strict read-only full-page adapter. No browser font fallback or inferred
 // glyph positions: a page is shown only when all its resources are exact.
-export function installNativePages({host,getFont,onPaint,onError,onMathHit}) {
+export function installNativePages({host,getFont,getTypeOneFont,getRaster,paragraphIndent,onPaint,onFrame,onError,onMathHit,onImageHit,onDrawingHit,onReferenceHit,proseRanges,foldLabel,onExpandFile}) {
   let generation=0,epoch=0,zoom=.75,revision=-1,layoutVersion=-1;
   let fonts=new FontStore();
-  const images=new ImageStore(async()=>{throw new Error('Native PDF image resources are not supported yet');});
+  const imageResources=new Map(),imageLoads=new Map();
+  const images={get:file=>imageResources.get(file)};
   const pages=new Map(),loaded=new Map();
+  const deltas=completePageDeltas();
   let frame=0;
   let ownership=null;
+  let boundaries=[],boundaryMarks=[];
+  let foldedRanges=[],foldMasks=[],hiddenPages=[];
   let complete=null,warm=null;
-  function drawing(dl) {
-    return JSON.stringify([dl.page_width,dl.page_height,dl.fonts,dl.other,
-      dl.lines.map(line=>[line.x,line.y,line.w,line.h,line.d,line.items])]);
+  let pdfBacked=false;
+  function drawing(dl,includeItems=true) {
+    const resources=Object.entries(dl.images_info??{}).map(([key,info])=>
+      [key,{...info,file:stagedRasterPath(info.file)??info.file}]);
+    const paintable=items=>includeItems?items.filter(item=>item[0]!=='m'):[];
+    return JSON.stringify([dl.page_width,dl.page_height,dl.fonts,paintable(dl.other),resources,
+      dl.lines.map(line=>[line.x,line.y,line.w,line.h,line.d,paintable(line.items)])]);
   }
   function attachOwners(observed,stamp,owners) {
     if(warm||stamp.sourceRevision!==revision||observed.length!==pages.size)return false;
-    const fields=new Map(),glyphs=new Map(),selectionGlyphs=new Map(),seen=new Set();
+    const fields=new Map(),glyphs=new Map(),references=new Map(),selectionGlyphs=new Map(),seen=new Set();
+    const corners=new Map();
+    const proseByFile=new Map(),formulaParagraphs=new Map();
+    for(const {paragraph} of owners.values()){
+      if(!paragraph)continue;
+      if(!proseByFile.has(paragraph.filePath))proseByFile.set(paragraph.filePath,new Set());
+      proseByFile.get(paragraph.filePath).add(paragraph);
+    }
+    const addGlyph=(group,entry)=>{
+      if(!selectionGlyphs.has(group))selectionGlyphs.set(group,[]);
+      selectionGlyphs.get(group).push(entry);
+    };
     for(const page of observed) {
       const entry=pages.get(page.page);
-      if(!entry||page.exact!==true||drawing(entry.dl)!==drawing(page.dl))return false;
-      const targets=page.dl.math_owners?.fields?.filter(field=>
-        field.empty&&(['num','den','radicand','degree','sup','sub'].includes(field.role)||
-          (field.role==='cell'&&owners.get(field.owner)?.atom.kind==='cell')))??[];
+      if(!entry||page.exact!==entry.exact)return false;
+      const targets=page.dl.math_owners?.fields?.filter(field=>{
+        if(!field.empty)return false;
+        const owner=owners.get(field.owner);
+        if(owner?.drawing){
+          const {drawing,corner}=owner;
+          if(!corners.has(drawing))corners.set(drawing,new Map());
+          const pair=corners.get(drawing);
+          if(pair.has(corner)||!field.bbox.every(Number.isFinite))pair.set(corner,null);
+          else pair.set(corner,{number:page.page,bbox:field.bbox});
+          return false;
+        }
+        return ['num','den','radicand','degree','sup','sub'].includes(field.role)||
+          (field.role==='cell'&&owner?.atom?.kind==='cell')||
+          (['body','math'].includes(field.role)&&owner?.atom?.kind==='fence')||
+          (['math','cell'].includes(field.role)&&(owner?.glyph?.terminal||
+            owner?.paragraph?.tableCell&&owner.paragraph.text===''));
+      })??[];
       for(const field of targets){
         const key=`${field.owner}/${field.role}`;
         if(seen.has(key))return false;
         seen.add(key);
       }
       fields.set(page.page,targets);
-      const tokens=page.dl.math_owners?.glyphs?.filter(glyph=>owners.has(glyph.owner))??[];
+      references.set(page.page,page.dl.math_owners?.glyphs?.filter(glyph=>owners.get(glyph.owner)?.reference)??[]);
+      const tokens=page.dl.math_owners?.glyphs?.filter(glyph=>{
+        const owner=owners.get(glyph.owner);
+        return owner?.paragraph||owner?.formula;
+      })??[];
       glyphs.set(page.page,tokens);
       for(const glyph of tokens){
         const owner=owners.get(glyph.owner);
         const group=owner.formula??owner.paragraph;
         const from16=owner.formula?owner.formula.from16+owner.atom.from16:owner.paragraph.from16+owner.glyph.from16;
         const to16=owner.formula
-          ?owner.formula.from16+owner.atom.from16+owner.atom.nucleus.length
+          ?owner.formula.from16+(owner.atom.nucleus===undefined?owner.atom.to16:owner.atom.from16+owner.atom.nucleus.length)
           :owner.paragraph.from16+owner.glyph.to16;
-        if(!selectionGlyphs.has(group))selectionGlyphs.set(group,[]);
-        selectionGlyphs.get(group).push({number:page.page,glyph,from16,to16});
+        const entry={number:page.page,glyph,from16,to16};
+        addGlyph(group,entry);
+        const formula=owner.formula;
+        if(!formula)continue;
+        if(!formulaParagraphs.has(formula)){
+          const paragraphs=proseByFile.get(formula.filePath);
+          const matches=[...(paragraphs??[])].filter(paragraph=>paragraph.occurrence===formula.occurrence&&paragraph.parts.some(part=>
+            part.kind==='math'&&paragraph.from16+part.from16<=formula.from16&&
+            paragraph.from16+part.to16>=formula.to16));
+          formulaParagraphs.set(formula,matches);
+        }
+        for(const paragraph of formulaParagraphs.get(formula))addGlyph(paragraph,entry);
       }
     }
-    if(![...fields.values(),...glyphs.values()].some(items=>items.length))return false;
-    ownership={stamp:{...stamp,layoutVersion},fields,glyphs,selectionGlyphs,owners};
+    const drawings=[];
+    for(const [drawing,pair] of corners){
+      const top=pair.get('top'),bottom=pair.get('bottom');
+      if(!top||!bottom||top.number!==bottom.number)continue;
+      const [left,y]=top.bbox,[right,edge]=bottom.bbox;
+      if(right>left&&edge>y)drawings.push({drawing,number:top.number,box:[left,y,right-left,edge-y]});
+    }
+    const verifiedDrawings=[];
+    for(const page of observed){
+      const entry=pages.get(page.page),raw=entry.dl,measured=page.dl;
+      const originalItems=[raw.other,...raw.lines.map(line=>line.items)];
+      const boxes=originalItems.flat().map(cachedDrawingBox).filter(Boolean);
+      const pageDrawings=drawings.filter(candidate=>candidate.number===page.page&&!candidate.drawing.raster);
+      const matched=pageDrawings.filter(candidate=>
+        boxes.filter(box=>box.every((value,axis)=>value===candidate.box[axis])).length===1);
+      if(drawing(raw)===drawing(measured)){
+        const rasters=drawings.filter(candidate=>candidate.number===page.page&&candidate.drawing.raster);
+        const hits=rasters.length?registeredRasterHits(raw,getRaster):[];
+        for(const candidate of rasters){
+          const rasterHit=matchingRasterHit(hits,candidate.drawing.raster,candidate.box);
+          if(rasterHit)verifiedDrawings.push({...candidate,rasterHit});
+        }
+      }else{
+        if(!pdfBacked||page.exact||!matched.length)return false;
+        const normalized=matchObservedDrawingFonts(raw,measured);
+        if(!normalized||drawing(raw,false)!==drawing(normalized,false))return false;
+        const measuredItems=[normalized.other,...normalized.lines.map(line=>line.items)];
+        if(originalItems.some((items,index)=>!sameCachedDrawingItems(items,measuredItems[index],matched)))return false;
+      }
+      verifiedDrawings.push(...matched);
+      // A resized TikZ box can be literal PDF drawing operators instead of
+      // a cached_picture. Its measured corners are valid after the original
+      // and instrumented display lists have passed the same comparison.
+      verifiedDrawings.push(...pageDrawings.filter(candidate=>{
+        const [x,y,width,height]=candidate.box;
+        return candidate.drawing.scaled&&!matched.includes(candidate)&&x>=0&&y>=0&&
+          x+width<=raw.page_width&&y+height<=raw.page_height;
+      }));
+    }
+    if(!verifiedDrawings.length&&![...fields.values(),...glyphs.values(),...references.values()].some(items=>items.length))return false;
+    ownership={stamp:{...stamp,layoutVersion},fields,glyphs,references,selectionGlyphs,formulaParagraphs,owners,drawings:verifiedDrawings};
     return true;
   }
   function locate(canvas,event) {
@@ -56,39 +148,128 @@ export function installNativePages({host,getFont,onPaint,onError,onMathHit}) {
     const page=Number(canvas.parentElement.dataset.nativePage);
     const args=[canvas.getBoundingClientRect(),{x:event.clientX,y:event.clientY},zoom,ownership.stamp,
       {...ownership.stamp,sourceRevision:revision,layoutVersion}];
-    return hitMathGlyph(ownership.glyphs.get(page)??[],...args)||
+    const hit=hitMathGlyph(ownership.glyphs.get(page)??[],...args)||
       hitMathField(ownership.fields.get(page)??[],...args);
+    return hit?{...hit,page}:null;
   }
   let drag=null,caret=null,selection=[],gesture=0;
   function clearSelection(){
     for(const box of selection)box.remove();
     selection=[];
   }
-  function clearCaret(){gesture++;caret?.remove();caret=null;clearSelection();}
+  let previousCaret=null;
+  function takeCaret(){
+    if(caret){
+      previousCaret={page:caret.parentElement,x:parseFloat(caret.style.left),y:parseFloat(caret.style.top),
+        time:performance.now()};
+      caret.remove();caret=null;
+    }
+  }
+  function clearCaret(){gesture++;takeCaret();clearSelection();}
+  function showFileBoundaries(next){
+    for(const mark of boundaryMarks)mark.remove();
+    boundaryMarks=[];
+    boundaries=next;
+    for(const {path,page,y,atPageStart} of next){
+      const dom=pages.get(page)?.dom;
+      if(!dom)continue;
+      const mark=document.createElement('span');
+      mark.className='native-tex-file-boundary';
+      mark.dataset.file=path;
+      mark.setAttribute('aria-hidden','true');
+      mark.style.top=Math.max(0,y*CSS_PER_SP*zoom-(atPageStart?6:0))+'px';
+      dom.append(mark);
+      boundaryMarks.push(mark);
+    }
+  }
+  function showFoldedFiles(next,repaint=true){
+    if(!next.length&&!foldedRanges.length)return;
+    for(const mask of foldMasks)mask.remove();
+    for(const entry of hiddenPages)entry.hidden=false;
+    foldedRanges=next;foldMasks=[];hiddenPages=[];
+    const skipped=new Set(),scale=CSS_PER_SP*zoom;
+    for(const {path,firstPage,lastPage,from,to,lineMasks=[],sameLine} of next){
+      const interior=[];
+      for(let number=firstPage+1;number<lastPage;number++){
+        const dom=pages.get(number)?.dom;
+        if(!dom)continue;
+        dom.hidden=true;hiddenPages.push(dom);
+        skipped.add(number);interior.push(number);
+      }
+      function maskFor(number){
+        const dom=pages.get(number)?.dom;
+        if(!dom)return null;
+        const mask=document.createElement('button');
+        mask.type='button';mask.className='native-tex-fold-mask';
+        mask.dataset.foldPath=path;mask.dataset.originalPage=String(number);
+        mask.textContent=mask.title=foldLabel(path,interior);
+        mask.onclick=()=>onExpandFile(path);
+        dom.append(mask);foldMasks.push(mask);
+        return mask;
+      }
+      if(!sameLine)for(const number of new Set([firstPage,lastPage])){
+        if(firstPage===lastPage&&from>=to)continue;
+        const mask=maskFor(number);
+        if(!mask)continue;
+        mask.style.top=(number===firstPage?from*scale:0)+'px';
+        mask.style.bottom=number===lastPage?`calc(100% - ${to*scale}px)`:'0';
+      }
+      for(const {page,left,right,top,bottom} of lineMasks){
+        const mask=maskFor(page);
+        if(!mask)continue;
+        mask.classList.add('native-tex-fold-inline');
+        Object.assign(mask.style,{left:`${left*scale}px`,right:'auto',top:`${top*scale}px`,
+          width:`${(right-left)*scale}px`,height:`${(bottom-top)*scale}px`});
+      }
+    }
+    if(skipped.size)host.dataset.skippedPages=[...skipped].sort((a,b)=>a-b).join(',');
+    else delete host.dataset.skippedPages;
+    if(repaint)redraw();
+  }
   function showCaret(hit){
     if(!ownership||ownership.stamp.sourceRevision!==revision||ownership.stamp.layoutVersion!==layoutVersion)return;
     clearSelection();
-    caret?.remove();caret=null;
+    takeCaret();
     const candidates=hit.role==='nucleus'?ownership.glyphs:ownership.fields;
     const targets=[];
     for(const [number,entries] of candidates)
       for(const field of entries)
         if(field.owner===hit.owner&&(hit.role==='nucleus'||field.role===hit.role))targets.push({number,field});
-    if(targets.length!==1)return;
-    const [{number,field}]=targets;
-    const [left,top,right,bottom]=field.bbox,scale=CSS_PER_SP*zoom;
+    const target=hit.caretBox?targets.find(target=>target.number===hit.page):targets.length===1?targets[0]:null;
+    if(!target)return;
+    const {number,field}=target;
+    const [left,top,right,bottom]=hit.page===number&&hit.caretBox?hit.caretBox:field.bbox,scale=CSS_PER_SP*zoom;
     const height=Math.max(12,(bottom-top)*scale);
     caret=document.createElement('span');caret.className='native-tex-caret';caret.setAttribute('aria-hidden','true');
-    caret.style.left=(hit.after?right:left)*scale+'px';
-    caret.style.top=(top+bottom)*scale/2-height/2+'px';
-    caret.style.height=height+'px';pages.get(number)?.dom.append(caret);
+    if(hit.operatorHint){
+      caret.classList.add('native-tex-operator-caret');
+      caret.style.fontSize=height+'px';
+    }
+    const x=(hit.after?right:left)*scale,y=(top+bottom)*scale/2-height/2,page=pages.get(number)?.dom;
+    caret.style.left=x+'px';caret.style.top=y+'px';
+    caret.style.height=height+'px';page?.append(caret);
+    if(previousCaret?.page===page&&performance.now()-previousCaret.time<250&&
+       Math.hypot(previousCaret.x-x,previousCaret.y-y)<96&&
+       !window.matchMedia('(prefers-reduced-motion: reduce)').matches){
+      caret.animate([{transform:`translate(${previousCaret.x-x}px,${previousCaret.y-y}px)`},{transform:'none'}],
+        {duration:85,easing:'ease-out'});
+    }
+    previousCaret=null;
   }
-  function showSelection(start,end){
+  function showSelection(start,end,documentRanges){
     clearSelection();
     caret?.remove();caret=null;
-    if(!ownership||ownership.stamp.sourceRevision!==revision||ownership.stamp.layoutVersion!==layoutVersion||
-      start?.role!=='nucleus'||end?.role!=='nucleus')return;
+    previousCaret=null;
+    if(!ownership||ownership.stamp.sourceRevision!==revision||ownership.stamp.layoutVersion!==layoutVersion)return;
+    if(!documentRanges&&(start?.role!=='nucleus'||end?.role!=='nucleus'))return;
     const a=ownership.owners.get(start.owner),b=ownership.owners.get(end.owner);
+    if(documentRanges||a?.paragraph&&b?.paragraph){
+      for(const {paragraph,formula,from,to} of documentRanges??proseRanges?.(start,end)??[]){
+        if(formula)paintRange(formula,formula.from16,formula.to16);
+        else paintRange(paragraph,paragraph.from16+from,paragraph.from16+to);
+      }
+      return;
+    }
     const group=a?.formula??a?.paragraph;
     if(!a||!b||group!==(b?.formula??b?.paragraph))return;
     const at=(owner,hit)=>owner.formula
@@ -96,7 +277,10 @@ export function installNativePages({host,getFont,onPaint,onError,onMathHit}) {
       :owner.paragraph.from16+owner.glyph.from16+(hit.after?owner.glyph.to16-owner.glyph.from16:0);
     const x=at(a,start),y=at(b,end);
     if(x===y)return;
-    const from=Math.min(x,y),to=Math.max(x,y),scale=CSS_PER_SP*zoom;
+    paintRange(group,Math.min(x,y),Math.max(x,y));
+  }
+  function paintRange(group,from,to){
+    const scale=CSS_PER_SP*zoom;
     for(const {number,glyph,from16,to16} of ownership.selectionGlyphs.get(group)??[]){
       if(from16<from||to16>to)continue;
       const [left,top,right,bottom]=glyph.bbox;
@@ -108,6 +292,7 @@ export function installNativePages({host,getFont,onPaint,onError,onMathHit}) {
     }
   }
   window.addEventListener('keydown',event=>{
+    if(event.isComposing||(event.ctrlKey||event.metaKey)&&event.key.toLowerCase()==='c')return;
     if(!['Shift','Control','Alt','Meta','AltGraph'].includes(event.key))clearCaret();
   },true);
   window.addEventListener('pointerdown',clearCaret,true);
@@ -120,13 +305,17 @@ export function installNativePages({host,getFont,onPaint,onError,onMathHit}) {
   });
   host.addEventListener('pointermove',event=>{
     if(drag?.id!==event.pointerId||drag.ownership!==ownership)return;
-    showSelection(drag.hit,locate(drag.canvas,event));
+    showSelection(drag.hit,locate(canvasAt(event)??drag.canvas,event));
   });
+  function canvasAt(event){
+    const canvas=document.elementFromPoint(event.clientX,event.clientY)?.closest('canvas');
+    return canvas&&host.contains(canvas)?canvas:null;
+  }
   host.addEventListener('pointerup',async event=>{
     if(drag?.id!==event.pointerId)return;
     const start=drag;drag=null;
     if(start.ownership!==ownership){clearSelection();return;}
-    const hit=locate(start.canvas,event);
+    const hit=locate(canvasAt(event)??start.canvas,event);
     if(!hit){clearSelection();return;}
     const moved=Math.hypot(start.x-event.clientX,start.y-event.clientY)>=4;
     const attempt=gesture,stamp=ownership.stamp;
@@ -135,69 +324,171 @@ export function installNativePages({host,getFont,onPaint,onError,onMathHit}) {
     try {accepted=await onMathHit?.(hit,stamp,moved?start.hit:null,sameGesture);}
     catch {accepted=false;}
     if(!sameGesture())return;
-    if(!accepted){clearSelection();return;}
+    if(!accepted||accepted==='rich'){clearSelection();return;}
     if(moved){showSelection(start.hit,hit);return;}
     clearSelection();
     showCaret(hit);
   });
   host.addEventListener('pointercancel',()=>{drag=null;clearSelection();});
+  host.addEventListener('click',event=>{
+    if(warm||event.button!==0)return;
+    const canvas=event.target.closest?.('canvas');
+    if(!canvas)return;
+    const pageNumber=Number(canvas.parentElement.dataset.nativePage);
+    const entry=pages.get(pageNumber);
+    if(entry?.canvas!==canvas)return;
+    const rect=canvas.getBoundingClientRect(),scale=CSS_PER_SP*zoom;
+    const x=(event.clientX-rect.left)/scale,y=(event.clientY-rect.top)/scale;
+    if(ownership?.stamp.sourceRevision===revision&&ownership?.stamp.layoutVersion===layoutVersion){
+      if(event.ctrlKey||event.metaKey){
+        const references=(ownership.references.get(pageNumber)??[]).filter(({bbox:[left,top,right,bottom]})=>
+          x>=left&&x<=right&&y>=top&&y<=bottom);
+        const unique=new Set(references.map(glyph=>glyph.owner));
+        if(unique.size===1){
+          onReferenceHit?.(ownership.owners.get(references[0].owner).reference,ownership.stamp,event);
+          return;
+        }
+      }
+      if(locate(canvas,event))return;
+      const drawings=ownership.drawings.filter(({number,box:[left,top,width,height],rasterHit})=>
+        number===pageNumber&&(rasterHit?rasterContains(rasterHit,x,y):x>=left&&x<=left+width&&y>=top&&y<=top+height));
+      if(drawings.length===1){onDrawingHit?.(drawings[0].drawing,ownership.stamp);return;}
+      if(drawings.length>1)return;
+    }
+    const hits=entry.rasterHits?.filter(hit=>rasterContains(hit,x,y));
+    if(hits?.length===1)onImageHit?.(hits[0].path,revision);
+  });
   async function prepare(dl,attempt) {
-    if(Object.keys(dl.images_info??{}).length)throw new Error('Native image resources are not supported yet');
+    for(const info of Object.values(dl.images_info??{})){
+      if(info.cached_picture||info.page>1||info.pages>1)throw new Error('Native image requires PDF rendering');
+      if(!imageLoads.has(info.file)){
+        const resource=getRaster?.(info.file);
+        if(!resource)throw new Error('Native image is not a raster asset in the current snapshot');
+        imageLoads.set(info.file,createImageBitmap(new Blob([resource.data],{type:resource.mime})).then(image=>{
+          if(attempt===generation)imageResources.set(info.file,{kind:'bitmap',image});
+          else image.close();
+        }));
+      }
+      await imageLoads.get(info.file);
+    }
     for(const item of [...(dl.other??[]),...(dl.lines??[]).flatMap(line=>line.items)]) {
-      if(!['g','r','c','m','M'].includes(item[0]))throw new Error('Unsupported native drawing operation: '+item[0]);
+      if(!['g','r','c','m','M','i'].includes(item[0]))throw new Error('Unsupported native drawing operation: '+item[0]);
     }
     for(const desc of Object.values(dl.fonts??{})) {
-      if(!desc.filename || !/\.(?:otf|ttf)$/i.test(desc.filename) || (desc.subfont && desc.subfont!==1) ||
-          (desc.squeeze && desc.squeeze!==1000))throw new Error('Native preview requires a supported single-face OTF/TTF font');
+      if(desc.squeeze&&desc.squeeze!==1000)throw new Error('Unsupported native font squeeze');
       const key=fontKey(desc);
       if(!loaded.has(key))loaded.set(key,(async()=>{
-        const bytes=await getFont(key);
-        if(attempt!==generation)return;
-        fonts.add(key,{kind:'sfnt',data:new Uint8Array(bytes)});
+        if(!desc.filename&&desc.name){
+          const {bytes,mapEntry,encoding}=await getTypeOneFont(key);
+          if(attempt!==generation)return;
+          const entry=parseMapFile(mapEntry).get(desc.name),enc=encoding&&parseEncFile(encoding);
+          if(!entry||encoding&&!enc.length)throw new Error('Invalid Type 1 font encoding');
+          const {upem,glyphs}=type1Outlines(new Uint8Array(bytes),enc||undefined);
+          if(!Number.isFinite(upem)||upem<=0||!Object.keys(glyphs).length)throw new Error('No usable Type 1 font outlines');
+          fonts.add(key,{kind:'type1',upem,glyphs,slant:entry.slant,extend:entry.extend});
+        }else {
+          if(!/\.(?:otf|ttf|otc|ttc)$/i.test(desc.filename??''))throw new Error('Unsupported native font format');
+          const bytes=await getFont(key);
+          if(attempt!==generation)return;
+          fonts.add(key,{kind:'sfnt',data:nativeFontFace(new Uint8Array(bytes),desc.subfont)});
+        }
       })());
       await loaded.get(key);
     }
     const reason=inexactReason(dl,fonts,images);
     if(reason)throw new Error('Inexact native display list: '+reason);
   }
+  function drawIndentMarks(entry,rows){
+    entry.dom.querySelector('.native-indent-marks')?.remove();
+    const indent=paragraphIndent?.()/CSS_PER_SP;
+    if(!Number.isFinite(indent)||indent<=0)return;
+    const dl=entry.dl,commands=[];
+    for(const [index,line] of dl.lines.entries()){
+      const replacement=rows?.get(index);
+      const current=replacement?.line??line;
+      const first=current.items.find(item=>item[0]==='g'||item[0]==='i'||item[0]==='r');
+      if(first?.[0]!=='g'||!Number.isFinite(current.x))continue;
+      const gap=first[4]-current.x;
+      // TeX's actual first-line indent box; skip centered lines, noindent
+      // paragraphs, and lines that start with a drawing or a rule.
+      if(Math.abs(gap-indent)>Math.max(256,indent*.015))continue;
+      const x=current.x+(replacement?.dx??0),y=first[5]+(replacement?.dy??0)-current.h*.45;
+      const end=x+gap-3/CSS_PER_SP,tick=2.5/CSS_PER_SP;
+      commands.push('M'+(x+1/CSS_PER_SP)+' '+y+'H'+end+'m0 '+(-tick)+'v'+(2*tick));
+    }
+    if(!commands.length)return;
+    const ns='http://www.w3.org/2000/svg',svg=document.createElementNS(ns,'svg'),path=document.createElementNS(ns,'path');
+    svg.setAttribute('class','native-indent-marks');svg.setAttribute('aria-hidden','true');
+    svg.setAttribute('viewBox','0 0 '+dl.page_width+' '+dl.page_height);
+    path.setAttribute('vector-effect','non-scaling-stroke');path.setAttribute('d',commands.join(' '));
+    svg.append(path);entry.dom.prepend(svg);
+  }
   function draw(entry) {
     const {canvas,dl}=entry;
     const width=dl.page_width*CSS_PER_SP*zoom,height=dl.page_height*CSS_PER_SP*zoom;
     const dpr=window.devicePixelRatio||1;
+    const rows=warm?.pages.get(Number(entry.dom.dataset.nativePage));
+    const previous=entry.painted;
+    if(previous?.dl===dl&&previous.rows===rows&&previous.zoom===zoom&&previous.dpr===dpr){
+      entry.dom.dataset.paintRevision=String(warm?.revision??revision);
+      return;
+    }
     if(!Number.isFinite(width) || !Number.isFinite(height) || width<=0 || height<=0 ||
         width*dpr>16384 || height*dpr>16384)throw new Error('Unsupported native page dimensions or zoom');
     entry.dom.style.width=width+'px';entry.dom.style.height=height+'px';
-    canvas.style.width=width+'px';canvas.style.height=height+'px';
-    canvas.width=Math.ceil(width*dpr);canvas.height=Math.ceil(height*dpr);
+    sizePageCanvas(canvas,width,height,dpr);
     const ctx=canvas.getContext('2d');
+    ctx.resetTransform();
     ctx.fillStyle='#fff';ctx.fillRect(0,0,canvas.width,canvas.height);
     const scale=CSS_PER_SP*zoom*dpr;
-    const painter=new Painter(ctx,[scale,0,0,scale,0,0],fonts,images);
+    entry.rasterHits=[];
+    const painter=new Painter(ctx,[scale,0,0,scale,0,0],fonts,images,(file,transform,box)=>{
+      const path=stagedRasterPath(file);
+      if(path)entry.rasterHits.push({path,transform,box});
+    });
     painter.draw(dl,dl.other??[]);
-    const rows=warm?.pages.get(Number(entry.dom.dataset.nativePage));
     for(const [index,line] of (dl.lines??[]).entries()){
       const replacement=rows?.get(index);
       if(replacement)painter.draw(warm.dl,replacement.line.items,replacement.dx,replacement.dy);
       else painter.draw(dl,line.items);
     }
+    entry.painted={dl,rows,zoom,dpr};
+    entry.dom.dataset.paintRevision=String(warm?.revision??revision);
+    drawIndentMarks(entry,rows);
   }
   function redraw() {
-    cancelAnimationFrame(frame);
+    if(pdfBacked||frame)return;
     frame=requestAnimationFrame(()=>{
+      frame=0;
       try {
-        for(const entry of pages.values()) {
-          const box=entry.dom.getBoundingClientRect(),viewport=host.getBoundingClientRect();
-          if(box.bottom>=viewport.top-1000 && box.top<=Math.min(viewport.bottom,window.innerHeight)+1000)draw(entry);
-          else {entry.canvas.width=1;entry.canvas.height=1;}
+        const viewport=host.getBoundingClientRect();
+        if(viewport.width&&viewport.height){
+          const scrollBox=host.parentElement?.getBoundingClientRect()??viewport;
+          const top=Math.max(0,viewport.top,scrollBox.top)-1000;
+          const bottom=Math.min(viewport.bottom,scrollBox.bottom,window.innerHeight)+1000;
+          for(const entry of pages.values()) {
+            if(entry.dom.hidden)continue;
+            const box=entry.dom.getBoundingClientRect();
+            if(box.bottom>=top&&box.top<=bottom){
+              alignPageCanvas(entry.canvas,box,window.devicePixelRatio||1);
+              draw(entry);
+            }
+            else if(entry.painted){
+              entry.canvas.width=1;entry.canvas.height=1;
+              entry.painted=null;entry.rasterHits=[];delete entry.dom.dataset.paintRevision;
+            }
+          }
         }
         if(revision>=0&&!warm)onPaint(revision);
+        // Status and document actions may move the paper. Read its pixel
+        // origin only after those controls have assumed their final size.
+        if(revision>=0)onFrame?.();
       } catch(error) {onError(error,revision);}
     });
   }
   async function layout(message) {
     const stamp=message.versions;
-    if(stamp.source_revision<revision ||
-        (stamp.source_revision===revision && stamp.layout_version<layoutVersion))return;
+    if(!deltas.accepts(stamp))return;
     const attempt=++generation;
     const changed=message.pages_changed??[];
     try {
@@ -207,25 +498,32 @@ export function installNativePages({host,getFont,onPaint,onError,onMathHit}) {
         await prepare(page.dl,attempt);
         if(attempt!==generation)return;
       }
-      for(const page of changed) {
+      const next=deltas.apply(message,warm?.revision??revision);
+      if(!next)return;
+      for(const page of next.values()) {
         let entry=pages.get(page.page);
         if(!entry) {
           const dom=document.createElement('div'),canvas=document.createElement('canvas');
           dom.className='native-tex-page';canvas.setAttribute('aria-label','LuaLaTeX page '+page.page);
+          canvas.width=1;canvas.height=1;
           dom.dataset.nativePage=String(page.page);
           dom.append(canvas);entry={dom,canvas};pages.set(page.page,entry);
         }
-        entry.dl=page.dl;
+        entry.dl=page.dl;entry.exact=page.exact;
       }
       for(const [number,entry] of pages) {
         if(number>message.pages_total){entry.dom.remove();pages.delete(number);}
       }
       if(pages.size!==message.pages_total)throw new Error('Native layout is missing page geometry');
-      host.replaceChildren(...[...pages].sort(([a],[b])=>a-b).map(([,entry])=>entry.dom));
+      const ordered=[...pages].sort(([a],[b])=>a-b).map(([,entry])=>entry.dom);
+      if(host.childElementCount!==ordered.length || ordered.some((dom,i)=>host.children[i]!==dom))
+        host.replaceChildren(...ordered);
       revision=stamp.source_revision;layoutVersion=stamp.layout_version;
       complete=message;warm=null;
       delete host.dataset.warmRevision;
       clearCaret();
+      showFileBoundaries([]);
+      showFoldedFiles([],false);
       for(const entry of pages.values()) {
         entry.dom.style.width=entry.dl.page_width*CSS_PER_SP*zoom+'px';
         entry.dom.style.height=entry.dl.page_height*CSS_PER_SP*zoom+'px';
@@ -242,28 +540,75 @@ export function installNativePages({host,getFont,onPaint,onError,onMathHit}) {
     pending=pending.then(async()=>{
       if(currentEpoch!==epoch)return;
       if(message.event==='LayoutUpdate')return layout(message);
-      if(warm&&message.versions.source_revision<=warm.revision)return;
+      if(warm && (message.versions.source_revision<=warm.revision || message.par_id!==warm.update.par_id))return;
       const overlay=warmRows(message,complete,pages);
       if(!overlay)return;
       try {
         await prepare(message.dl,generation);
         if(currentEpoch!==epoch)return;
-        warm={pages:overlay,dl:message.dl,revision:message.versions.source_revision};
+        warm={pages:overlay,dl:message.dl,revision:message.versions.source_revision,update:message};
         host.dataset.warmRevision=String(warm.revision);
-        ownership=null;clearCaret();redraw();
+        ownership=null;clearCaret();showFileBoundaries([]);showFoldedFiles([],false);redraw();
       } catch {/* Complete layout will handle unsupported resources. */}
     }).catch(onError);
   }
   function reset({clear=true}={}) {
     epoch++;generation++;revision=-1;layoutVersion=-1;pending=Promise.resolve();ownership=null;drag=null;
-    complete=null;warm=null;
+    complete=null;warm=null;pdfBacked=false;deltas.reset();
     delete host.dataset.warmRevision;
-    cancelAnimationFrame(frame);clearCaret();pages.clear();loaded.clear();fonts=new FontStore();if(clear)host.replaceChildren();
+    clearCaret();showFileBoundaries([]);showFoldedFiles([],false);cancelAnimationFrame(frame);frame=0;previousCaret=null;pages.clear();loaded.clear();fonts=new FontStore();
+    for(const resource of imageResources.values())resource.image.close();
+    imageResources.clear();imageLoads.clear();if(clear)host.replaceChildren();
+  }
+  function bindPdfLayout(message,geometry,views) {
+    const stamp=message.versions;
+    if(geometry.size!==views.length||!views.length)return false;
+    const entries=views.map(({number,dom,canvas,width,height})=>{
+      const page=geometry.get(number);
+      // The PDF writer rounds media boxes in bp. One thousandth of a bp is
+      // smaller than a CSS pixel at every supported zoom.
+      const tolerance=66;
+      if(!page||!Number.isFinite(width)||!Number.isFinite(height)||
+          Math.abs(width*65781.76-page.dl.page_width)>tolerance||
+          Math.abs(height*65781.76-page.dl.page_height)>tolerance)return null;
+      return {number,dom,canvas,dl:page.dl,exact:page.exact,rasterHits:registeredRasterHits(page.dl,getRaster)};
+    });
+    if(entries.some(entry=>!entry))return false;
+    clearCaret();showFileBoundaries([]);showFoldedFiles([],false);ownership=null;pages.clear();pdfBacked=true;
+    revision=stamp.source_revision;layoutVersion=stamp.layout_version;
+    complete=message;warm=null;
+    for(const entry of entries){
+      const {number,dom}=entry;
+      dom.dataset.nativePage=String(number);
+      pages.set(number,entry);
+      drawIndentMarks(entry);
+    }
+    return true;
   }
   host.addEventListener('scroll',redraw,{passive:true});
   host.parentElement?.addEventListener('scroll',redraw,{passive:true});
   window.addEventListener('resize',redraw);
-  return {accept,reset,attachOwners,showCaret,showSelection,clearCaret,setZoom(value){clearCaret();zoom=value;for(const entry of pages.values()){
+  function blockAnchor(hit){
+    const owner=ownership?.owners.get(hit.owner);
+    const parents=ownership?.formulaParagraphs.get(owner?.formula);
+    const group=owner?.paragraph??(parents?.length===1?parents[0]:owner?.formula);
+    const glyphs=ownership?.selectionGlyphs.get(group);
+    const page=hit.page,entry=pages.get(page);
+    if(!entry||!glyphs)return {page};
+    let first=null,top=Infinity;
+    for(const glyph of glyphs){
+      if(glyph.number!==page)continue;
+      top=Math.min(top,glyph.glyph.bbox[1]);
+      if(!first||glyph.from16<first.from16)first=glyph;
+    }
+    return {page,y:Number.isFinite(top)?top/entry.dl.page_height:undefined,
+      x:first && group===owner?.paragraph && !glyphs.some(g=>g.number<page)
+        ?first.glyph.bbox[0]/entry.dl.page_width:undefined};
+  }
+  function paragraphLayout(){
+    return complete && {layout:complete,pages,warm,revision:warm?.revision??revision};
+  }
+  return {paragraphLayout,blockAnchor,accept,reset,attachOwners,bindPdfLayout,showCaret,showSelection,showFileBoundaries,showFoldedFiles,clearCaret,redraw,setZoom(value){clearCaret();zoom=value;showFileBoundaries(boundaries);showFoldedFiles(foldedRanges,false);if(pdfBacked)return;for(const entry of pages.values()){
     entry.dom.style.width=entry.dl.page_width*CSS_PER_SP*zoom+'px';
     entry.dom.style.height=entry.dl.page_height*CSS_PER_SP*zoom+'px';
   }redraw();}};
