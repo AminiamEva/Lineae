@@ -596,6 +596,12 @@ export function nativeParagraphOverlay(editor, panel, pages, framePending, selec
   document.fonts?.addEventListener('loadingdone',update);
   document.addEventListener('selectionchange',schedule);
   page.addEventListener('focusin',schedule);
+  // MathLive replaces the shaped boxes in its shadow tree after the input
+  // transaction. Align that ink before it is presented, including for a
+  // fraction that just grew taller or the very first display on a blank page.
+  page.addEventListener('lineae-math-position',event=>{
+    if(block?.contains(event.target) || event.target.contains(document.activeElement))update();
+  });
   function beginDraft(){
     if(!document.body.classList.contains('native-tex-rich-edit'))return;
     pinCurrent();

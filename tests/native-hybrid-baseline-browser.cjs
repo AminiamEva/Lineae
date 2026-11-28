@@ -48,7 +48,7 @@ async function capture(inputSource=source) {
   }finally{
     child.stdin.end();
     await done;
-    await fs.rm(root,{recursive:true,force:true});
+    await fs.rm(root,{recursive:true,force:true,maxRetries:6,retryDelay:100});
   }
 }
 
@@ -203,13 +203,6 @@ async function testDesktopDocument(browser, origin, initial) {
         return {sessionId:'paper',sourceRevision:next,editId:next,routed:'background',sourceSpans:{'main.tex':measured.spans}};
       }
       if(command==='native_tex_poll')return events.splice(0);
-      if(command==='native_tex_font'){
-        const filename=fonts.get(args.key);
-        assert.ok(filename,'Unregistered test font '+args.key);
-        let actual=filename;
-        if(!isAbsolute(actual))actual=locate(basename(filename));
-        return [...await fs.readFile(actual)];
-      }
       if(command==='native_tex_type_one_font'){
         fontMap??=(await fs.readFile(locate('pdftex.map'),'utf8')).split(/\r?\n/);
         const name=args.key.replace(/^tfm:/,'');
@@ -223,10 +216,27 @@ async function testDesktopDocument(browser, origin, initial) {
       if(command==='native_tex_close')return;
       return null;
     });
+    // The desktop's native_tex_font returns an IPC binary Response. Sending
+    // a full CJK font as millions of Playwright arguments can stall the paper
+    // long after TeX has returned the correct display list.
+    await page.route('**/__rtex_font?*',async route=>{
+      const key=new URL(route.request().url()).searchParams.get('key');
+      const file=fonts.get(key);
+      if(!file){
+        errors.push('Unregistered native font '+key);
+        return route.fulfill({status:404});
+      }
+      return route.fulfill({path:isAbsolute(file)?file:locate(basename(file)),contentType:'application/octet-stream'});
+    });
     await page.addInitScript(()=>{
       localStorage.setItem('lineae.native-document-workspace','0');
       window.__LINEAE_DESKTOP_ENGINE_TOGGLE__=true;
-      window.__TAURI__={core:{invoke:(name,args)=>window.nativeTestCommand(name,args)}};
+      window.__TAURI__={core:{invoke:async(name,args)=>{
+        if(name!=='native_tex_font')return window.nativeTestCommand(name,args);
+        const response=await fetch('/__rtex_font?key='+encodeURIComponent(args.key));
+        if(!response.ok)throw Error('Missing native font '+args.key);
+        return response.arrayBuffer();
+      }}};
     });
     let releaseEditor;
     const startup=new Promise(resolve=>{releaseEditor=resolve;});
@@ -555,20 +565,35 @@ async function testDesktopDocument(browser, origin, initial) {
     assert.ok(titleDrift.x<=2 && titleDrift.y<=2,JSON.stringify(titleDrift));
     await freshPage();
     const beforeMath=revision;
-    let proceed,activeMath,retainedMath;
+    let proceed,activeMath,retainedMath,firstMath;
     holdUpdate=new Promise(resolve=>{proceed=resolve;});
-    const mathPoint=selector=>page.evaluate(selector=>{
-      const field=document.querySelector(selector);
-      const strut=field?.shadowRoot?.querySelector('.ML__latex > .ML__strut');
-      const ink=field?.shadowRoot?.querySelector('.ML__mathit');
-      if(!strut||!ink)return null;
-      const rect=document.querySelector('[data-native-page] canvas').getBoundingClientRect();
-      return {x:ink.getBoundingClientRect().left-rect.left,y:strut.getBoundingClientRect().bottom-rect.top};
-    },selector);
+    const mathPoint=(selector,firstPaint=false)=>page.evaluate(({selector,firstPaint})=>{
+      const read=()=>{
+        const root=document.querySelector(selector)?.shadowRoot;
+        const strut=root?.querySelector('.ML__latex > .ML__strut'),ink=root?.querySelector('.ML__mathit');
+        if(!strut||!ink||firstPaint&&!root.querySelector('.ML__latex').textContent.includes('1'))return null;
+        const rect=document.querySelector('[data-native-page] canvas').getBoundingClientRect();
+        return {x:ink.getBoundingClientRect().left-rect.left,y:strut.getBoundingClientRect().bottom-rect.top};
+      };
+      if(!firstPaint)return read();
+      return new Promise((resolve,reject)=>{
+        const sample=()=>{
+          const point=read();
+          if(!point)return;
+          document.removeEventListener('lineae-math-position',sample);
+          clearTimeout(timer);resolve(point);
+        };
+        const timer=setTimeout(()=>{
+          document.removeEventListener('lineae-math-position',sample);
+          reject(Error('The first shaped equation did not report its position'));
+        },10000);
+        document.addEventListener('lineae-math-position',sample);
+      });
+    },{selector,firstPaint});
     try{
       await page.keyboard.type('$$');
       await page.waitForFunction(()=>document.activeElement.matches('math-field'));
-      await page.keyboard.type('x+1');
+      [firstMath]=await Promise.all([mathPoint('.math-display math-field',true),page.keyboard.type('x+1')]);
       await page.waitForFunction(()=>document.querySelector('.math-display math-field')?.shadowRoot?.querySelector('.ML__latex')?.textContent.includes('1'));
       activeMath=await mathPoint('.math-display math-field');
       await page.keyboard.press('Control+Shift+j');
@@ -584,8 +609,8 @@ async function testDesktopDocument(browser, origin, initial) {
     const mathLine=mathDL.lines.find(l=>l.items.filter(i=>i[0]==='g').length>=3);
     const first=mathLine.items.find(i=>i[0]==='g'),paper=await sheet.locator('canvas').boundingBox();
     const equation={x:paper.width*first[4]/mathDL.page_width,y:paper.height*mathLine.y/mathDL.page_height};
-    console.log('Display equation in editing, retained ink, and Lua',JSON.stringify({activeMath,retainedMath,equation}));
-    for(const point of [activeMath,retainedMath])assert.ok(Math.abs(point.x-equation.x)<=2 && Math.abs(point.y-equation.y)<=2);
+    console.log('Display equation at first paint, during editing, retained, and in Lua',JSON.stringify({firstMath,activeMath,retainedMath,equation}));
+    for(const point of [firstMath,activeMath,retainedMath])assert.ok(Math.abs(point.x-equation.x)<=2 && Math.abs(point.y-equation.y)<=2);
     await freshPage();
     const beforeCommands=revision;
     holdUpdate=new Promise(resolve=>{proceed=resolve;});
