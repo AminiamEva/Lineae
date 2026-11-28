@@ -179,7 +179,15 @@ async function testDesktopDocument(browser, origin, initial) {
       window.__LINEAE_DESKTOP_ENGINE_TOGGLE__=true;
       window.__TAURI__={core:{invoke:(name,args)=>window.nativeTestCommand(name,args)}};
     });
-    await page.goto(origin);
+    let releaseEditor;
+    const startup=new Promise(resolve=>{releaseEditor=resolve;});
+    await page.route('**/editor.mjs',async route=>{await startup;await route.continue();},{times:1});
+    await page.goto(origin,{waitUntil:'commit'});
+    try{
+      await page.locator('header .open').waitFor({state:'attached'});
+      assert.equal(await page.locator('header .open').isVisible(),false,'The initial paint must not expose the unassembled File controls');
+    }finally{releaseEditor();}
+    await page.waitForLoadState('domcontentloaded');
     const doc=page.locator('.document-page .ProseMirror');
     await page.locator('input#file').setInputFiles({name:'coordinates.tex',mimeType:'text/plain',buffer:Buffer.from(source)});
     await doc.getByText('Caption',{exact:true}).first().waitFor({state:'attached'});

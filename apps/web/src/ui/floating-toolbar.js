@@ -35,14 +35,10 @@ export function installFloatingToolbar({header,ribbon,tabs,sourceView,getAutoHid
   let currentView = view();
   const remembered = new Map();
   let timer;
-  let frame;
-
   function measure() {
-    cancelAnimationFrame(frame);
-    frame = requestAnimationFrame(() => {
-      const bottom = Math.ceil(holder.getBoundingClientRect().bottom) + 6;
-      document.documentElement.style.setProperty('--tex-toolbar-bottom',bottom + 'px');
-    });
+    const bottom = Math.ceil(holder.getBoundingClientRect().bottom) + 6 + 'px';
+    const style = document.documentElement.style;
+    if (style.getPropertyValue('--tex-toolbar-bottom') !== bottom) style.setProperty('--tex-toolbar-bottom',bottom);
   }
   function updateTabOverflow() {
     // Decide whether arrows are needed using the width available without them.
@@ -113,7 +109,6 @@ export function installFloatingToolbar({header,ribbon,tabs,sourceView,getAutoHid
     tabChanges.disconnect();
     mode.disconnect();
     clearTimeout(timer);
-    cancelAnimationFrame(frame);
   }
   window.addEventListener('pagehide',event => { if (!event.persisted) destroy(); },options);
   collapse(getAutoHide());

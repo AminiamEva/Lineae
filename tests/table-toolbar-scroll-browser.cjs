@@ -33,7 +33,7 @@ const source = `\\documentclass{article}\n\\begin{document}\n\n${before}\n\n\\be
     await page.waitForFunction(() => document.querySelectorAll('.ProseMirror table tr').length >= 10);
     await revealToolbar(page);
 
-    const scrollY = () => page.evaluate(() => window.scrollY);
+    const scrollY = () => page.evaluate(() => document.querySelector('main').scrollTop);
     const rowCount = () => page.locator('.ProseMirror table tr').count();
     const colCount = () => page.locator('.ProseMirror table tr').first().locator('td').count();
     const cells = page.locator('.ProseMirror table td');
@@ -53,7 +53,7 @@ const source = `\\documentclass{article}\n\\begin{document}\n\n${before}\n\n\\be
     // Put the table low in the viewport so a scroll-into-view focus would move the page.
     await page.evaluate(() => {
       const cell = document.querySelectorAll('.ProseMirror table td')[6];
-      window.scrollBy(0, cell.getBoundingClientRect().top - 650);
+      cell.closest('main').scrollBy(0, cell.getBoundingClientRect().top - 650);
     });
     await page.waitForTimeout(150);
 
@@ -85,7 +85,7 @@ const source = `\\documentclass{article}\n\\begin{document}\n\n${before}\n\n\\be
 
     // Scroll away so the table selection is off-screen: the historical bug scrolled
     // the page back to the selection when a toolbar action called focus().
-    await page.evaluate(() => window.scrollTo(0, 0));
+    await page.evaluate(() => document.querySelector('main').scrollTo(0, 0));
     await page.waitForTimeout(150);
     before = await scrollY();
 

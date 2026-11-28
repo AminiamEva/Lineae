@@ -35,13 +35,25 @@ export function textBoundary(element,offset) {
   const walker=doc.createTreeWalker(element,NodeFilter.SHOW_TEXT|NodeFilter.SHOW_ELEMENT,{
     acceptNode(node){
       if(node.nodeType===Node.TEXT_NODE)return NodeFilter.FILTER_ACCEPT;
-      if(node.matches('.ProseMirror-widget,.ProseMirror-trailingBreak,[contenteditable=false]'))return NodeFilter.FILTER_REJECT;
+      if(node.matches('.ProseMirror-widget,.ProseMirror-trailingBreak,.ProseMirror-separator'))return NodeFilter.FILTER_REJECT;
+      if(node.matches('.math-inline,math-field,img'))return NodeFilter.FILTER_ACCEPT;
+      if(node.matches('[contenteditable=false]'))return NodeFilter.FILTER_REJECT;
       return node.nodeName==='BR'?NodeFilter.FILTER_ACCEPT:NodeFilter.FILTER_SKIP;
     },
   });
   const range=doc.createRange();
   let left=offset,last=null,node;
   while((node=walker.nextNode())){
+    if(node.nodeType===Node.ELEMENT_NODE && node.nodeName!=='BR'){
+      if(node.parentElement.closest('.math-inline') && node.nodeName==='MATH-FIELD')continue;
+      const field=node.matches('math-field')?node:node.querySelector('math-field');
+      const ink=field?.shadowRoot?.querySelector('.ML__latex');
+      const rect=(ink??node).getBoundingClientRect();
+      const baseline=ink?.querySelector(':scope > .ML__strut')?.getBoundingClientRect().bottom;
+      const point={x:left===0?rect.left:rect.right,top:rect.top,element:node,baseline};
+      if(left===0)return point;
+      left--;last=point;continue;
+    }
     if(node.nodeName==='BR'){if(left===0)return last;left--;last=null;continue;}
     if(!node.length)continue;
     if(left>node.length){left-=node.length;continue;}

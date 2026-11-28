@@ -474,11 +474,12 @@ if (engineProfile.engine === 'pdflatex') {
     // that smaller height and never restores it, so the page jumped whenever a
     // layout pass ran (for example after inserting a table row). Remember the
     // visible position and put it back before the next paint.
-    const preserveScrollX = window.scrollX;
-    const preserveScrollY = window.scrollY;
+    const viewport = page.closest('.tex-preview,main') ?? document.scrollingElement;
+    const preserveScrollX = viewport.scrollLeft;
+    const preserveScrollY = viewport.scrollTop;
     const restoreScroll = () => {
-      if (window.scrollX !== preserveScrollX || window.scrollY !== preserveScrollY) {
-        window.scrollTo(preserveScrollX, preserveScrollY);
+      if (viewport.scrollLeft !== preserveScrollX || viewport.scrollTop !== preserveScrollY) {
+        viewport.scrollTo(preserveScrollX, preserveScrollY);
       }
     };
     if (editor.state.doc !== lastLayoutDoc) {

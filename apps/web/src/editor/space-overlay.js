@@ -1,4 +1,6 @@
 import { createCaretMotion, measurePage } from './caret-motion.js';
+import {markCenter} from './paragraph-marks.mjs';
+import {nativeEditMetrics,textBoundary} from '../ui/native-edit-metrics.mjs';
 
 const SVG = 'http://www.w3.org/2000/svg';
 const TEXT_EDIT = new Set([
@@ -15,6 +17,7 @@ function shape(name, attributes = {}) {
 
 export function installSpaceOverlay(editor, paper, { selectionFocus = null } = {}) {
   const page = paper.closest('.document-page') ?? paper;
+  const fontMetrics=nativeEditMetrics(paper.ownerDocument);
   const overlay = shape('svg', { class:'space-overlay', 'aria-hidden':'true' });
   const activeBoxOverlay = shape('g');
   const marksOverlay = shape('g');
@@ -361,10 +364,17 @@ export function installSpaceOverlay(editor, paper, { selectionFocus = null } = {
           if (rect.width>0 && rect.bottom>=bounds.top-1 && rect.top<=bounds.bottom+1) rects.push(rect);
         }
         const rect=rects.reduce((last, rect) => !last || rect.top>last.top+lineHeight/2 || (Math.abs(rect.top-last.top)<lineHeight/2 && rect.right>last.right) ? rect : last, null);
-        const y=bounds.top+lineHeight/2;
+        let y=bounds.top+lineHeight/2, endY=rect?(rect.top+rect.bottom)/2:y;
+        if(hybrid){
+          const size=parseFloat(style.fontSize);
+          const center=point=>point ? markCenter((point.top-pageRect.top)/zoom+fontMetrics(point.element,point.char).aboveRange,size) :
+            markCenter(bounds.top+(parseFloat(style.paddingTop)||0)+fontMetrics(block).aboveLine,size);
+          y=center(textBoundary(block,0));
+          endY=center(textBoundary(block,block.textContent.length));
+        }
         const mark=shape('text',{
           x:(rect?.right??bounds.left+indent)+3,
-          y:rect?(rect.top+rect.bottom)/2:y,
+          y:endY,
           'font-size':lineHeight*.55,
           'font-family':'sans-serif',
           'text-anchor':'start',

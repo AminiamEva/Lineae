@@ -548,11 +548,11 @@ async function verifySelectionGeometry(page, paper, importSource) {
       await Promise.allSettled(menu.getAnimations().map(animation=>animation.finished));
     });
     const initialBounds=await completion.boundingBox();
-    const initialScroll=await page.evaluate(()=>window.scrollY);
+    const initialScroll=await page.evaluate(()=>document.querySelector('main').scrollTop);
     assert.ok(initialBounds.y>=caretBounds.y && initialBounds.x<caretBounds.x+80,
       'Completion appears below the text entry position: '+JSON.stringify({initialBounds,caretBounds}));
     for(let index=0;index<16;index++) await page.keyboard.press('ArrowDown');
-    assert.equal(await page.evaluate(()=>window.scrollY),initialScroll);
+    assert.equal(await page.evaluate(()=>document.querySelector('main').scrollTop),initialScroll);
     await page.evaluate(()=>document.querySelector('.document-page').dispatchEvent(new Event('scroll')));
     await page.locator('.command-menu input').fill('sqrt');
     assert.deepEqual(await completion.boundingBox(),initialBounds,'Filtering must not move or resize completion');
@@ -642,7 +642,7 @@ async function verifySelectionGeometry(page, paper, importSource) {
     assert.equal(await outlinePanel.isVisible(),true);
     assert.equal(await outlinePanel.locator('.document-outline-list button').count(),5);
     const secondHeading=paper.locator('h1').last();
-    await secondHeading.evaluate(node=>window.scrollBy({top:node.getBoundingClientRect().top-24,behavior:'instant'}));
+    await secondHeading.evaluate(node=>node.closest('main').scrollBy({top:node.getBoundingClientRect().top-24,behavior:'instant'}));
     assert.equal(await secondHeading.evaluate(node=>node.getBoundingClientRect().top <
       document.querySelector('header .floating-toolbar').getBoundingClientRect().bottom),true);
     await outlinePanel.getByRole('button',{name:/Second$/}).click();

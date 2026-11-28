@@ -33,7 +33,7 @@ const read = page => page.evaluate(() => {
   const pageElement = document.querySelector('.document-page');
   const lastParagraph = [...document.querySelectorAll('.ProseMirror > p')]
     .filter(node => node.compareDocumentPosition(table) & Node.DOCUMENT_POSITION_FOLLOWING).at(-1);
-  const scrollY = document.scrollingElement.scrollTop;
+  const scrollY = pageElement.closest('main').scrollTop;
   const pageTop = pageElement.getBoundingClientRect().top;
   const cellTop = table.querySelector('td').getBoundingClientRect().top;
   return {

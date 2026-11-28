@@ -1,3 +1,5 @@
+import {markCenter} from '../editor/paragraph-marks.mjs';
+
 const graphemes=new Intl.Segmenter(undefined,{granularity:'grapheme'});
 const eastAsian=/[\p{sc=Han}\p{sc=Hiragana}\p{sc=Katakana}\p{sc=Hangul}\u3000-\u303f\uff00-\uffef]/u;
 
@@ -121,11 +123,32 @@ export function snapshotDraft(block,sheets,measure) {
   let node;
   while((node=walker.nextNode())){
     if(node.nodeType===Node.TEXT_NODE){if(!node.parentElement.closest('math-field'))textRuns(node);continue;}
-    const rect=node.getBoundingClientRect(),place=point(rect.left,rect.top);
+    const formula=node.matches('math-field');
+    const painted=formula?node.shadowRoot?.querySelector('.ML__latex'):node;
+    if(!painted)continue;
+    const rect=painted.getBoundingClientRect(),place=point(rect.left,rect.top);
     if(!place)continue;
-    const copy=node.cloneNode(false);
-    copy.removeAttribute('id');copy.removeAttribute('autofocus');
-    if(node.matches('math-field')){copy.readOnly=true;copy.tabIndex=-1;copy.value=node.value;}
+    let copy;
+    if(formula){
+      // Preserve the glyphs MathLive has already shaped. Mounting a second
+      // field queues a fresh layout and briefly paints an empty input frame.
+      copy=doc.createElement('span');
+      copy.className='native-pending-formula';
+      const shadow=copy.attachShadow({mode:'open'}),source=node.shadowRoot;
+      shadow.adoptedStyleSheets=source.adoptedStyleSheets;
+      for(const style of source.querySelectorAll('style'))shadow.append(style.cloneNode(true));
+      const glyphs=painted.cloneNode(true);
+      for(const item of glyphs.querySelectorAll('.ML__caret,.ML__text-caret,.ML__latex-caret,.ML__selection'))item.remove();
+      for(const item of glyphs.querySelectorAll('.ML__selected,.ML__contains-caret,.ML__contains-highlight'))
+        item.classList.remove('ML__selected','ML__contains-caret','ML__contains-highlight');
+      const style=getComputedStyle(painted);
+      Object.assign(copy.style,{font:style.font,color:style.color,lineHeight:style.lineHeight,display:'block',padding:'0',border:'0',background:'transparent'});
+      Object.assign(glyphs.style,{position:'absolute',top:'0',left:'0',margin:'0'});
+      shadow.append(glyphs);
+    }else{
+      copy=node.cloneNode(false);
+      copy.removeAttribute('id');
+    }
     Object.assign(copy.style,{position:'absolute',left:place.left,top:place.top,margin:'0',
       width:rect.width/scale+'px',height:rect.height/scale+'px',transformOrigin:'0 0',transform:'scale('+scale+')'});
     place.group.append(copy);
@@ -140,10 +163,10 @@ export function snapshotDraft(block,sheets,measure) {
   }
   const indent=(parseFloat(style.textIndent)||0)*scale;
   if(block.matches('p[data-indent=true]') && indent>2*scale && block.closest('.document-page')?.dataset.formattingMarks==='true'){
-    const place=point(x+scale,firstBaseline-parseFloat(style.fontSize)*scale*.32);
+    const place=point(x+2*scale,markCenter(firstBaseline,parseFloat(style.fontSize)*scale));
     const mark=doc.createElement('span');
     mark.className='native-pending-indent';
-    Object.assign(mark.style,{left:place.left,top:place.top,width:(indent-2*scale)+'px'});
+    Object.assign(mark.style,{left:place.left,top:place.top,width:Math.max(0,indent-6*scale)+'px',height:6*scale+'px'});
     place.group.append(mark);
   }
   for(const [sheet,group] of groups)sheet.append(group);

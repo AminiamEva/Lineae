@@ -34,13 +34,13 @@ const source = `\\documentclass{article}\n\\begin{document}\n\nBefore.\n\n\\begi
 
     const rowButton = page.locator('button').filter({ hasText: 'Row' }).first();
     const columnButton = page.locator('button').filter({ hasText: 'Column' }).first();
-    const scrollY = () => page.evaluate(() => window.scrollY);
+    const scrollY = () => page.evaluate(() => document.querySelector('main').scrollTop);
 
     const cells = page.locator('.ProseMirror table td');
     await cells.nth((await cells.count()) - 1).scrollIntoViewIfNeeded();
     await cells.nth((await cells.count()) - 1).click();
     await page.waitForTimeout(150);
-    await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+    await page.evaluate(() => { const pane=document.querySelector('main'); pane.scrollTop=pane.scrollHeight; });
     await page.waitForTimeout(150);
     const rowBefore = await scrollY();
     const rowCount = await page.locator('.ProseMirror table tr').count();
@@ -71,7 +71,7 @@ const source = `\\documentclass{article}\n\\begin{document}\n\nBefore.\n\n\\begi
     await cells.nth(5).scrollIntoViewIfNeeded();
     await cells.nth(5).click();
     await page.waitForTimeout(150);
-    await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+    await page.evaluate(() => { const pane=document.querySelector('main'); pane.scrollTop=pane.scrollHeight; });
     await page.waitForTimeout(150);
     assert.deepEqual(await caretCell(), [2, 1], 'Navigation to a distant cell still works');
     const columnBefore = await scrollY();

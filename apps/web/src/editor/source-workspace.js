@@ -324,7 +324,7 @@ export function createSourceWorkspace({ page, render, metadata, previewRange, so
     if (pageState.hidden === null) page.removeAttribute('hidden');
     else page.setAttribute('hidden', pageState.hidden);
     page.inert = pageState.inert;
-    if (!page.hidden) window.scrollTo(pageState.x,pageState.y);
+    if (!page.hidden) pageState.viewport.scrollTo(pageState.x,pageState.y);
     pageState = undefined;
   }
   function destroy() {
@@ -409,7 +409,10 @@ export function createSourceWorkspace({ page, render, metadata, previewRange, so
     get value() { return value(); },
     open(text, mounted = false) {
       if (lifecycle.signal.aborted) return;
-      pageState ??= {hidden:page.getAttribute('hidden'), inert:page.inert, x:window.scrollX, y:window.scrollY};
+      if (!pageState) {
+        const viewport = page.closest('main') ?? document.scrollingElement;
+        pageState = {hidden:page.getAttribute('hidden'), inert:page.inert, viewport, x:viewport.scrollLeft, y:viewport.scrollTop};
+      }
       panel.hidden = false;
       replace(text);
       page.hidden = true;
