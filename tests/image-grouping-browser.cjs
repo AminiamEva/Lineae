@@ -120,7 +120,7 @@ async function dragSelectAll(page) {
       assert.equal(child.attrs.width, '0.3\\linewidth', 'grouping inherits each image width');
       assert.equal(child.attrs.pos, 'c', 'subfigures default to centered vertical alignment');
     }
-    assert.equal(await page.getByLabel('Alignment',{exact:true}).inputValue(), 'center', 'figure alignment defaults to center');
+    assert.equal(await page.locator('.image-tools').getByLabel('Alignment',{exact:true}).inputValue(), 'center', 'figure alignment defaults to center');
     const subLabels=page.locator('.document-subfigures .document-image .document-caption-label');
     assert.ok((await subLabels.first().textContent()).includes('(a)'), 'subfigure label shows its letter');
     assert.equal(await subLabels.first().evaluate(element=>getComputedStyle(element,'::before').content), 'none', 'subfigure caption omits the figure number');

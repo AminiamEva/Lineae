@@ -139,7 +139,8 @@ export function installResponsiveGroups(panel, states, priority = [...states].re
     const collapsedWidth = parseFloat(getComputedStyle(panel).getPropertyValue('--collapsed-group-width')) || 84;
     const collapsed = new Set();
     let total = [...fullWidths.values()].reduce((sum, value) => sum + value, 0);
-    for (const id of priority) {
+    const collapseOrder = typeof priority === "function" ? priority() : priority;
+    for (const id of collapseOrder) {
       if (total <= available) break;
       total -= (fullWidths.get(id) ?? 0) - collapsedWidth;
       collapsed.add(id);
@@ -150,7 +151,8 @@ export function installResponsiveGroups(panel, states, priority = [...states].re
       if (openFlyout?.state === state && !isCollapsed) closeFlyout();
       state.section.classList.toggle('is-collapsed', isCollapsed);
       state.section.classList.toggle('is-compact', isCollapsed && compact);
-      const concealed = isCollapsed && openFlyout?.state !== state;
+      const concealed = state.section.classList.contains('is-disabled') ||
+        (isCollapsed && openFlyout?.state !== state);
       state.body.inert = concealed;
       state.body.setAttribute('aria-hidden', String(concealed));
       state.toggle.setAttribute('aria-expanded', String(openFlyout?.state === state));

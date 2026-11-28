@@ -221,19 +221,26 @@ export function installImagePanel({onUpdate, onReplace, onSpacing, getSpacing, o
   const groupingBody=document.createElement('div');
   groupingBody.className='image-grouping-body';
   groupingBody.append(groupingButton,insertFigure);
+  let groupMode=false;
+  let multiCount=0,groupingState='none';
   const ribbonGroups=buildRibbonGroups(panel,[
     {id:'image-transform',zh:'基础变换',en:'Transform',iconName:'image',width:330,body:basicRows},
     {id:'image-layout',zh:'布局与题注',en:'Layout & caption',iconName:'layout',width:560,body:layoutRows},
     {id:'image-appearance',zh:'裁剪与外观',en:'Crop & appearance',iconName:'settings',width:300,body:appearanceGrid},
     {id:'image-spacing',zh:'全局图片间距',en:'Global image spacing',iconName:'paragraph',width:220,body:spacingBody},
     {id:'image-grouping',zh:'子图',en:'Subfigure',iconName:'image',width:190,body:groupingBody},
-  ],['image-spacing','image-appearance','image-layout','image-transform','image-grouping']);
+  ],()=>{
+    const secondary=['image-spacing','image-appearance'];
+    if(groupMode)return [...secondary,'image-transform','image-layout','image-grouping'];
+    if(multiCount>0)return [...secondary,'image-layout','image-transform','image-grouping'];
+    return [...secondary,'image-grouping','image-layout','image-transform'];
+  });
   const groupingGroups=ribbonGroups.filter(state=>state.id!=='image-grouping');
   const perImageGroups=ribbonGroups.filter(state=>state.id==='image-transform'||state.id==='image-appearance');
   const wrapControls=[wrapEnabled,wrapCentering,wrapSide,wrapWidth,wrapOverhang,wrapLines];
   const wrapDetails=[wrapCentering,wrapSide,wrapWidth,wrapOverhang,wrapLines];
-  let groupMode=false;
   function setGroupMode(enabled){
+    const changed=groupMode!==Boolean(enabled);
     groupMode=Boolean(enabled);
     panel.dataset.groupMode=String(groupMode);
     for(const state of perImageGroups){
@@ -243,9 +250,10 @@ export function installImagePanel({onUpdate, onReplace, onSpacing, getSpacing, o
     for(const control of [figure,align,captionPosition,...wrapControls])control.disabled=groupMode;
     if(groupMode)replace.disabled=true;
     insertFigure.disabled=!groupMode;
+    if(changed)panel.refreshLayout();
   }
-  let multiCount=0,groupingState='none';
   function setMultiSelection(count){
+    const wasActive=multiCount>0;
     multiCount=Number(count)||0;
     const active=multiCount>0;
     panel.dataset.multiSelection=String(multiCount);
@@ -255,6 +263,7 @@ export function installImagePanel({onUpdate, onReplace, onSpacing, getSpacing, o
     }
     replace.disabled=active;
     if(active)path.textContent=t(multiCount+' 张图片',multiCount+' images');
+    if(wasActive!==active)panel.refreshLayout();
   }
   function setGroupState(mode){
     groupingState=mode==='ungroup'?'ungroup':mode==='group'?'group':'none';
