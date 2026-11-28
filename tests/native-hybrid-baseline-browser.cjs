@@ -102,15 +102,20 @@ async function testDesktopDocument(browser, origin, initial) {
     const sheet=page.locator('#native-tex-preview [data-native-page]').first();
     await sheet.locator('canvas').waitFor();
     assert.deepEqual(seen.find(f=>f.hasSource)?.paths,['main.tex'],'The production snapshot supplies source ownership');
-    const entry=published.spans.filter(span=>Buffer.from(liveSource).subarray(span.range.start,span.range.end).toString().trim()==='rj')[1];
-    const frag=published.placements.find(p=>p.par_id===entry.id).fragments[0];
-    const dl=published.pages[frag.page].dl;
-    const row=dl.lines.find(l=>Math.abs(l.x-frag.xs[0])<=64&&Math.abs(l.y-frag.baselines[0])<=64);
-    const last=row.items.filter(it=>it[0]==='g').at(-1);
-    const coords=await sheet.locator('canvas').evaluate((canvas,{x,y})=>{
-      const box=canvas.getBoundingClientRect();
-      return {x:box.left+x*box.width,y:box.top+y*box.height};
-    },{x:(last[4]+.8*last[6])/dl.page_width,y:(last[5]-row.h/2)/dl.page_height});
+    async function paperPoint(spelling, occurrence=0) {
+      const bytes=Buffer.from(liveSource);
+      const owner=published.spans.filter(span=>bytes.subarray(span.range.start,span.range.end).toString().trim()===spelling)[occurrence];
+      assert.ok(owner,'No native source span for '+spelling);
+      const frag=published.placements.find(p=>p.par_id===owner.id).fragments[0];
+      const dl=published.pages[frag.page].dl;
+      const row=dl.lines.find(l=>Math.abs(l.x-frag.xs[0])<=64&&Math.abs(l.y-frag.baselines[0])<=64);
+      const last=row.items.filter(it=>it[0]==='g').at(-1);
+      return page.locator('[data-native-page="'+frag.page+'"] canvas').evaluate((canvas,{x,y})=>{
+        const box=canvas.getBoundingClientRect();
+        return {x:box.left+x*box.width,y:box.top+y*box.height};
+      },{x:(last[4]+.8*last[6])/dl.page_width,y:(last[5]-row.h/2)/dl.page_height});
+    }
+    const coords=await paperPoint('rj',1);
     await page.mouse.click(coords.x,coords.y);
     await page.locator('main.native-ink-confirmed').waitFor({state:'attached',timeout:15000});
     assert.equal(await doc.evaluate(el=>el===document.activeElement&&el.editor.state.selection.$from.parent.textContent),'rj');
@@ -138,6 +143,11 @@ async function testDesktopDocument(browser, origin, initial) {
       ctx.font=style.fontStyle+' '+style.fontWeight+' '+style.fontSize+' '+style.fontFamily;
       return {x:r.left-(canvas.left+x*canvas.width),nativeX:caret.left-(canvas.left+x*canvas.width),
         y:r.top+ctx.measureText('Mg').fontBoundingBoxAscent*(p.currentCSSZoom||1)-(canvas.top+y*canvas.height),
+        nativeY:caret.top-(canvas.top+y*canvas.height),nativeHeight:caret.height,
+        selection:[window.getSelection().focusNode.nodeName,window.getSelection().focusOffset,r.toJSON()],
+        font:[ctx.font,ctx.measureText('Mg').fontBoundingBoxAscent,p.currentCSSZoom,style.lineHeight],
+        page:el.closest('.document-page').getBoundingClientRect().toJSON(),
+        caret:caret.toJSON(),expectedY:canvas.top+y*canvas.height,
         rows:[...el.querySelectorAll('p')].filter(n=>n.textContent==='rj!').length};
     },{number:fragment.page,x:(glyph[4]+glyph[6])/lastPage.page_width,y:glyph[5]/lastPage.page_height});
     assert.equal(dom.rows,1);
@@ -160,6 +170,16 @@ async function testDesktopDocument(browser, origin, initial) {
     assert.match(liveSource,/\\section\{\}\s+rj\s+2/);
     assert.equal(await page.locator('.native-rich-caret').count(),1);
     assert.equal(await page.locator('.native-pending-prose,.native-draft-mask').count(),0);
+    const currentDocument=await doc.evaluateHandle(el=>el.editor.state.doc);
+    const beforeReload=revision;
+    await page.locator('input#file').setInputFiles({name:'coordinates.tex',mimeType:'text/plain',buffer:Buffer.from(liveSource)});
+    await page.waitForFunction(old=>document.querySelector('.document-page .ProseMirror').editor.state.doc!==old,currentDocument);
+    await currentDocument.dispose();
+    const restored=await paperPoint('rj!');
+    await page.mouse.click(restored.x,restored.y);
+    await page.waitForFunction(()=>document.querySelector('main.native-ink-confirmed') &&
+      document.querySelector('.ProseMirror').editor.state.selection.$from.parent.textContent==='rj!',null,{timeout:15000});
+    assert.equal(revision,beforeReload,'Reopening identical bytes reuses the confirmed Lua frame');
     assert.deepEqual(errors,[]);
     console.log('PASS: shipped Lua document, click duplicate by native coordinates, typing, repeated Enter, caret X/Y and CJK preedit/commit');
   }catch(error){

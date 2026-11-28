@@ -477,8 +477,10 @@ export function installNativePages({host,getFont,getTypeOneFont,getRaster,paragr
             }
           }
         }
-        if(revision>=0)onFrame?.();
         if(revision>=0&&!warm)onPaint(revision);
+        // Status and document actions may move the paper. Read its pixel
+        // origin only after those controls have assumed their final size.
+        if(revision>=0)onFrame?.();
       } catch(error) {onError(error,revision);}
     });
   }

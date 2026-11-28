@@ -4232,12 +4232,14 @@ nativeTexPreview=installNativeTexPreview({host:footer,before:modes,primary:deskt
         path:activeFile.path,source:activeFile.draft,projection,composition:composingView,
         prefix:wrapFragment?snapshot.fragment?.start:''
       }) : null;
-      return {...snapshot,richBindings,editablePaths:new Set(composition.regions.map(region=>region.path))};
+      return {...snapshot,richBindings,richDocument:richBindings ? doc : null,
+        editablePaths:new Set(composition.regions.map(region=>region.path))};
     }
     if(projectFileKind==='bib')throw new Error(t('请打开 .tex 文档。','Open a .tex document.'));
     const text=sourceView.hidden?source():sourceView.value;
+    const doc=editor.state.doc;
     const richBindings=sourceView.hidden ? richSourceMap(editor.view,{path:'main.tex',source:text,projection}) : null;
-    return {...await nativeAttachedSnapshot(text,projectAssets()),richBindings};
+    return {...await nativeAttachedSnapshot(text,projectAssets()),richBindings,richDocument:richBindings ? doc : null};
   },
   isComposing:()=>editor.view.composing||sourceView.composing,
   listTikzDrawings:nativeTikzDrawings,

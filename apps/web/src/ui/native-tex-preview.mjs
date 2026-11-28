@@ -122,13 +122,22 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
   const overlay=engineToggle&&richPage?nativeParagraphOverlay(richEditor,panel,pages,()=>!current()):null;
   const richSources=new Map();
   const futureFrames=[];
-  let geometryStamp=null,geometryOwners=null;
-  function recordSource(reply,snapshot){
-    if(!overlay)return;
-    const owners=bindRichSpans(snapshot.richBindings,reply.sourceSpans);
-    richSources.set(reply.sourceRevision,owners);
+  let geometryStamp=null,geometryOwners=null,lastSpans=null,boundDocument=null;
+  function spanPaths(snapshot){
+    if(!overlay)return undefined;
+    return [...new Set([snapshot.mainFile,...(snapshot.editablePaths??[]),...(snapshot.richBindings?.keys()??[])].filter(Boolean))];
+  }
+  function bindDocument(revision,snapshot){
+    const owners=bindRichSpans(snapshot.richBindings,lastSpans);
+    boundDocument=snapshot.richDocument;
+    richSources.set(revision,owners);
     while(richSources.size>5)richSources.delete(richSources.keys().next().value);
     syncParagraphFrame();
+  }
+  function recordSource(reply,snapshot){
+    if(!overlay)return;
+    lastSpans=reply.sourceSpans;
+    bindDocument(reply.sourceRevision,wantedSnapshot?.signature===snapshot.signature ? wantedSnapshot : snapshot);
   }
   function syncParagraphFrame(){
     if(!overlay)return;
@@ -148,7 +157,8 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
     overlay.present(frame?paragraphFrame(frame.layout,frame.pages,paintedOwners,frame.warm):null,frame?.revision??-1);
   }
   function resetParagraphFrames(){
-    richSources.clear();futureFrames.length=0;geometryStamp=null;geometryOwners=null;overlay?.present(null,-1);
+    richSources.clear();futureFrames.length=0;geometryStamp=null;geometryOwners=null;lastSpans=null;boundDocument=null;
+    overlay?.present(null,-1);
   }
   let richEditing=false,richRefreshTimer=null;
   function showRichEditor(number){
@@ -758,7 +768,8 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
   }
   const pdf=installNativePdf({host:pages,onPaint:revision=>{
     if(!active||mode!=='pdf')return;
-    syncParagraphFrame();renderedRevision=revision;pdfRendered=revision;if(!terminal&&revision>=sourceRevision)error='';renderStatus();
+    renderedRevision=revision;pdfRendered=revision;if(!terminal&&revision>=sourceRevision)error='';
+    renderStatus();syncParagraphFrame();
   },onError:failure=>{if(active&&mode==='pdf')fail(failure);}});
   const renderer=installNativePages({host:pages,
     paragraphIndent:()=>{
@@ -900,7 +911,11 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
     exportButton.disabled=!current();
     targetButton.disabled=!acceptsInput()||!current()||!hasGeometry()||targeting===generation;
     editButton.disabled=!current()||!hasGeometry()||!observation;
-    const snapshot=current()&&isDocumentMode?.()?sentSnapshot:null;
+    const ready=current();
+    // Keep the paper origin stationary while TeX is catching up. Disabling
+    // these actions preserves their space through ordinary typing and IME.
+    for(const control of [tikzEdit,tikzSelect,sourceBlockEdit,sourceBlock])control.disabled=!ready;
+    const snapshot=active && isDocumentMode?.() ? (ready ? sentSnapshot : controlsSnapshot) : null;
     if(snapshot!==controlsSnapshot){
       controlsSnapshot=snapshot;
       updateDocumentControls(snapshot);
@@ -1060,7 +1075,7 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
         const files=!changedEntry&&snapshot.dependencySignature===sentSnapshot.dependencySignature?undefined:snapshot.files;
         const sample=pendingLatency;
         const result=await invoke('native_tex_update',{sessionId:session,source:snapshot.source,files,
-          mainFile:changedEntry?snapshot.mainFile:undefined,spanPaths:overlay&&snapshot.richBindings?[...snapshot.richBindings.keys()]:undefined});
+          mainFile:changedEntry?snapshot.mainFile:undefined,spanPaths:spanPaths(snapshot)});
         if(attempt!==generation){
           if(result.sessionId)await invoke('native_tex_close',{sessionId:result.sessionId}).catch(()=>{});
           return;
@@ -1123,6 +1138,12 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
       const snapshot=await readSnapshot();
       if(attempt!==generation)return;
       wantedSnapshot=snapshot;wantedSource=snapshot.source;
+      // Empty Enters, same-content reloads and switching back to Document can
+      // remount editor nodes without changing a single byte of TeX. Reuse the
+      // existing frame and its span IDs, binding them to the new document.
+      if(overlay && snapshot.signature===sentSnapshot?.signature && boundDocument!==snapshot.richDocument){
+        bindDocument(sourceRevision,snapshot);
+      }
       syncEditMetrics(snapshot.source);
     }catch(failure){
       if(attempt===generation&&!captureAgain)fail(failure);
@@ -1212,7 +1233,7 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
       if(attempt!==generation)return;
       wantedSource=initial.source;wantedSnapshot=initial;
       syncEditMetrics(initial.source);
-      const opened=await invoke('native_tex_open',{source:initial.source,mainFile:initial.mainFile,files:initial.files,spanPaths:overlay&&initial.richBindings?[...initial.richBindings.keys()]:undefined});
+      const opened=await invoke('native_tex_open',{source:initial.source,mainFile:initial.mainFile,files:initial.files,spanPaths:spanPaths(initial)});
       if(attempt!==generation) {
         if(opened)await invoke('native_tex_close',{sessionId:opened.sessionId});
         return;
