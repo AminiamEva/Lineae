@@ -276,13 +276,23 @@ const server=createServer(async(req,res)=>{
           await desktopPage.keyboard.press('Backspace');
           await desktopPage.waitForFunction(()=>document.querySelector('.ProseMirror.has-document-caret'));
           assert.match(await rich.textContent(),/ab$/);
+          const earlierFields=await rich.evaluateHandle(el=>new Set(el.querySelectorAll('math-field')));
           await desktopPage.keyboard.type('$');
-          const formula=rich.locator('math-field').last();
-          await formula.waitFor();
-          await desktopPage.waitForFunction(()=>document.activeElement?.matches('math-field'));
+          const formula=await desktopPage.waitForFunction(earlier=>{
+            const field=document.activeElement;
+            return field?.matches('.document-page .ProseMirror math-field') && !earlier.has(field) ? field : null;
+          },earlierFields);
+          await earlierFields.dispose();
           await desktopPage.keyboard.type('xy');
           await desktopPage.keyboard.press('Backspace');
-          await desktopPage.waitForFunction(()=>[...document.querySelectorAll('.ProseMirror math-field')].at(-1)?.value.trim()==='\\displaystyle x');
+          try {
+            await desktopPage.waitForFunction(field=>document.activeElement===field && field.value.trim()==='\\displaystyle x',formula);
+          }catch(error){
+            console.error('Inline formula after xy and Backspace',name,await formula.evaluate(field=>({
+              value:field.value,position:field.position,connected:field.isConnected,focus:document.activeElement?.tagName
+            })));
+            throw error;
+          }finally{await formula.dispose();}
           await desktopPage.keyboard.press('Control+Shift+j');
           await desktopPage.waitForFunction(()=>document.activeElement?.classList.contains('ProseMirror'));
           await cdp.send('Input.imeSetComposition',{text:'han',selectionStart:3,selectionEnd:3});
