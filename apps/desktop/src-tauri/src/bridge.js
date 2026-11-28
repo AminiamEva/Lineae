@@ -55,6 +55,20 @@
     };
   }
 
+  window.lineaeDesktop = {
+    setTitle: (filename, dirty) => invoke('set_document_title', { filename, dirty }),
+    onMenuAction: callback => window.__TAURI__.event.listen('lineae-menu-action', event => callback(event.payload)),
+    onFinderOpen: callback => window.__TAURI__.event.listen('lineae-finder-open', callback),
+    async takeFinderDocument() {
+      const selected = await invoke('take_finder_document');
+      if (!selected) return null;
+      return {
+        file: new File([selected.contents],selected.name,{type:'text/plain'}),
+        handle: handle(selected.path),
+      };
+    },
+  };
+
   window.showOpenFilePicker = async function () {
     const opened = await invoke('open_tex');
     if (!opened) throw abortError();

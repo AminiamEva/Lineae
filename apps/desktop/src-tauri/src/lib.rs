@@ -1,9 +1,9 @@
-use std::collections::HashSet;
+use std::collections::{HashSet, VecDeque};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
 use serde::Serialize;
-use tauri::{AppHandle, Manager, State, WebviewUrl, WebviewWindowBuilder};
+use tauri::{AppHandle, Manager, State, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
 use tauri_plugin_dialog::DialogExt;
 #[cfg(target_os = "windows")]
 mod project;
@@ -12,6 +12,8 @@ mod project;
 mod project;
 #[cfg(target_os = "windows")]
 mod project_checkpoints;
+#[cfg(desktop)]
+mod desktop_menu;
 mod tex_session;
 #[cfg(all(debug_assertions, target_os = "windows"))]
 mod hybrid_typing_check;
@@ -21,6 +23,9 @@ mod hybrid_typing_check;
 /// arbitrary files on disk.
 #[derive(Default)]
 struct AllowedFiles(Mutex<HashSet<PathBuf>>);
+
+#[derive(Default)]
+struct FinderFiles(Mutex<VecDeque<PathBuf>>);
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -94,6 +99,10 @@ async fn open_tex(
     let Some(selected) = pick_file(&app, &[TEX_FILTER]).await? else {
         return Ok(None);
     };
+    read_selected_tex(selected, &allowed).map(Some)
+}
+
+fn read_selected_tex(selected: PathBuf, allowed: &AllowedFiles) -> Result<OpenedFile, String> {
     let path = normalize(&selected)?;
     let bytes = std::fs::read(&path).map_err(|error| error.to_string())?;
     let contents = String::from_utf8(bytes)
@@ -108,11 +117,29 @@ async fn open_tex(
         .and_then(|value| value.to_str())
         .unwrap_or("document.tex")
         .to_string();
-    Ok(Some(OpenedFile {
+    Ok(OpenedFile {
         path: path.to_string_lossy().into_owned(),
         name,
         contents,
-    }))
+    })
+}
+
+#[tauri::command]
+async fn take_finder_document(
+    pending: State<'_, FinderFiles>,
+    allowed: State<'_, AllowedFiles>,
+) -> Result<Option<OpenedFile>, String> {
+    let next = pending.0.lock().map_err(|error| error.to_string())?.pop_front();
+    next.map(|selected| read_selected_tex(selected, &allowed)).transpose()
+}
+
+#[tauri::command]
+fn set_document_title(window: WebviewWindow, filename: String, dirty: bool) -> Result<(), String> {
+    let name: String = filename.chars().filter(|ch| !ch.is_control()).collect();
+    let suffix = if dirty { "*" } else { "" };
+    window
+        .set_title(&format!("Lineae - {name}{suffix}"))
+        .map_err(|error| error.to_string())
 }
 
 #[tauri::command]
@@ -186,12 +213,17 @@ pub fn run() {
     let builder = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .manage(AllowedFiles::default())
+        .manage(FinderFiles::default())
         .manage(tex_session::NativeTexSessions::default());
+    #[cfg(desktop)]
+    let builder = builder.menu(desktop_menu::build).on_menu_event(desktop_menu::dispatch);
     #[cfg(any(target_os = "windows", target_os = "macos", target_os = "linux"))]
     let builder = builder
         .manage(project::ProjectRoots::default())
         .invoke_handler(tauri::generate_handler![
             open_tex,
+            take_finder_document,
+            set_document_title,
             pick_save_tex,
             write_tex,
             save_bytes,
@@ -225,7 +257,7 @@ pub fn run() {
         tex_session::native_tex_observe_formula,
         tex_session::native_tex_close
     ]);
-    builder
+    let app = builder
         .on_window_event(|window,event| {
             if matches!(event,tauri::WindowEvent::Destroyed) {
                 window.state::<tex_session::NativeTexSessions>().close_all();
@@ -247,7 +279,7 @@ pub fn run() {
                 "index.html"
             };
             let window = WebviewWindowBuilder::new(app, "main", WebviewUrl::App(entry.into()))
-                .title("Lineae")
+                .title("Lineae - lineae.tex*")
                 .inner_size(1280.0, 900.0)
                 .min_inner_size(960.0, 640.0)
                 .center()
@@ -305,6 +337,21 @@ pub fn run() {
             window.build()?;
             Ok(())
         })
-        .run(tauri::generate_context!())
-        .expect("failed to run Lineae");
+        .build(tauri::generate_context!())
+        .expect("failed to build Lineae");
+
+    app.run(|_handle, _event| {
+        #[cfg(target_os = "macos")]
+        if let tauri::RunEvent::Opened { urls } = _event {
+            use tauri::Emitter;
+
+            let files = urls.into_iter().filter_map(|url| url.to_file_path().ok()).filter(|path| {
+                path.extension().is_some_and(|ext| ext.eq_ignore_ascii_case("tex"))
+            });
+            if let Ok(mut pending) = _handle.state::<FinderFiles>().0.lock() {
+                pending.extend(files);
+            }
+            let _ = _handle.emit_to("main", "lineae-finder-open", ());
+        }
+    });
 }

@@ -24,6 +24,8 @@ verify_app() {
   plutil -lint "$plist"
   [[ "$(plutil -extract CFBundleIdentifier raw "$plist")" == app.lineae.desktop ]]
   [[ "$(plutil -extract CFBundleShortVersionString raw "$plist")" == "$version" ]]
+  [[ "$(plutil -extract CFBundleDocumentTypes.0.CFBundleTypeExtensions.0 raw "$plist")" == tex ]]
+  [[ "$(plutil -extract CFBundleDocumentTypes.0.CFBundleTypeRole raw "$plist")" == Editor ]]
   executable="$path/Contents/MacOS/$(plutil -extract CFBundleExecutable raw "$plist")"
   icon=$(plutil -extract CFBundleIconFile raw "$plist")
   [[ -s "$path/Contents/Resources/$icon" && -x "$executable" ]]

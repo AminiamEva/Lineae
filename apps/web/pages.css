@@ -349,10 +349,16 @@ main { padding:125px 24px 60px; overflow:auto; }
   backdrop-filter:blur(9px) saturate(160%);
   z-index:4;
 }
-@media (max-width:800px) {
-  .document-status { overflow-x:auto; scrollbar-width:none; }
-  .document-status > :is(button,select,.tex-modes) { flex-shrink:0; white-space:nowrap; }
+.document-status-items {
+  display:flex;
+  flex:1 1 auto;
+  align-items:center;
+  gap:inherit;
+  min-width:0;
+  overflow-x:auto;
+  scrollbar-width:none;
 }
+.document-status-items > :is(button,select) { flex-shrink:0; white-space:nowrap; }
 @media (max-width:600px) {
   .document-status { inset-inline:4px; }
 }
@@ -503,7 +509,14 @@ button,select,.color-control { transition:background-color .14s ease,color .14s 
 .color-popover-custom:hover { background:light-dark(#e2e8f3,#42424b); }
 .image-color-button { width:28px; height:22px; border-radius:4px; border:1px solid light-dark(#c3cad6,#4a5568); background:var(--swatch,#000); cursor:pointer; }
 .image-color-button:hover { outline:2px solid #2f6fed; outline-offset:1px; }
-.document-status .environment-tag { margin-right:8px; padding:1px 7px; border-radius:6px; color:light-dark(#31518a,#bdd4ff); background:light-dark(#edf2fc,#303d54); }
+.environment-tag {
+  position:absolute;
+  width:1px;
+  height:1px;
+  overflow:hidden;
+  clip-path:inset(50%);
+  white-space:nowrap;
+}
 .environment-tag[data-environment*="math"],.environment-tag[data-environment="matrix"] { color:light-dark(#70409a,#dfbbff); background:light-dark(#f3eafa,#473154); }
 .environment-tag[data-environment="table"] { color:light-dark(#176d59,#a0e1ce); background:light-dark(#e5f5ee,#25473e); }
 .ui-icon { display:inline-block; width:16px; height:16px; flex:none; vertical-align:-3px; fill:none; stroke:currentColor; stroke-width:1.6; stroke-linecap:round; stroke-linejoin:round; }
@@ -1243,7 +1256,7 @@ body.format-painter-active .ProseMirror * { cursor:copy; }
 }
 
 .ribbon[data-ribbon-page] {
-  --ribbon-panel-height:76px;
+  --ribbon-panel-height:72px;
   --ribbon-control-height:24px;
   --ribbon-control-radius:7px;
   --ribbon-control-hover:light-dark(#2529360d,#ffffff12);
@@ -1252,11 +1265,29 @@ body.format-painter-active .ProseMirror * { cursor:copy; }
 .ribbon[data-ribbon-page] > .tools {
   block-size:var(--ribbon-panel-height);
   inline-size:100%;
-  padding:4px 6px;
-  justify-content:flex-start;
+  padding:2px 6px;
+  justify-content:safe center;
   animation:none;
 }
+.ribbon-tab-row {
+  display:flex;
+  align-items:center;
+  gap:3px;
+  min-width:0;
+}
+.ribbon-tab-row > button {
+  display:grid;
+  place-items:center;
+  flex:0 0 24px;
+  height:24px;
+  padding:0;
+  border-radius:7px;
+  background:light-dark(#ffffff52,#ffffff14);
+}
+.ribbon-tab-row > button:disabled { opacity:.32; cursor:default; }
 .ribbon[data-ribbon-page] .ribbon-tabs {
+  flex:1 1 auto;
+  min-width:0;
   flex-wrap:nowrap;
   justify-content:safe center;
   overflow-x:auto;

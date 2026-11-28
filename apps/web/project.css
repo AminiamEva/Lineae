@@ -12,7 +12,7 @@ body.project-visible .tex-workspace,body.project-visible .tex-workspace.is-expan
 .document-status {z-index:12}
 body.project-visible main,.tex-workspace {transition:margin-left .15s ease,left .15s ease}
 #project-open {white-space:nowrap;flex-shrink:0}
-@media(max-width:600px) {.document-status{gap:3px}.document-status #status,.document-status .environment-tag,.document-status input[type=range],.document-status output{display:none}.document-status button{white-space:nowrap;flex-shrink:0}.document-status span{min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}}
+@media(max-width:600px) {.document-status{gap:3px}.document-status #status,.document-status input[type=range],.document-status output{display:none}.document-status button{white-space:nowrap;flex-shrink:0}.document-status span{min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}}
 @media(prefers-reduced-motion:reduce){body.project-visible main,.tex-workspace{transition:none}}
 @media(max-width:600px) {#project-explorer{width:150px;padding:6px}body.project-visible main{margin-left:150px}body.project-visible .tex-workspace,body.project-visible .tex-workspace.is-expanded{left:150px}}
 @media print {#project-explorer{display:none!important}body.project-visible main{margin-left:0}}
@@ -72,7 +72,7 @@ body.project-visible header .brand {top:0;}
   #project-explorer>strong {padding-right:0;}
   .project-actions button {max-width:56px;overflow:hidden;}
   .document-status {gap:3px;}
-  .document-status #status,.document-status .environment-tag,.document-status input[type=range],.document-status output {display:none;}
+  .document-status #status,.document-status input[type=range],.document-status output {display:none;}
   .document-status button {white-space:nowrap;flex-shrink:0;}
   .document-status span {min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 }

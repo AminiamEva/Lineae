@@ -116,8 +116,7 @@ body:has(.tex-workspace:not([hidden])) {overflow:hidden}
   .tex-foot {gap:6px;padding-inline:8px}
   .tex-foot .tex-format {display:none}
   .tex-modes {width:174px}
-  .document-status:has(.tex-modes) .environment-tag {display:none}
-  .document-status:has([data-source-mode=body][aria-pressed=false]) > :is(input[type=range],output) {display:none}
+  .document-status:has([data-source-mode=body][aria-pressed=false]) .document-status-items > :is(input[type=range],output) {display:none}
   .document-status:has(.tex-modes) > span:first-child {white-space:nowrap}
 }
 @media(max-width:899px) {
@@ -135,7 +134,7 @@ body:has(.tex-workspace:not([hidden])) {overflow:hidden}
 .tex-workspace .tex-preview .document-page::before {cursor:default;}
 .tex-workspace .tex-preview {padding:16px;overflow:auto;}
 .tex-foot[hidden],.tex-rich-actions[hidden] {display:none!important;}
-.source-workspace-visible .document-status>span:first-of-type {display:none;}
+.source-workspace-visible .document-status-items>span:first-of-type {display:none;}
 .tex-head {min-height:38px;padding-inline:12px;gap:8px;flex-wrap:wrap;}
 .tex-head>.tex-filename {max-width:160px;}
 .tex-head>.tex-actions {margin-left:auto;gap:2px;}
@@ -153,7 +152,6 @@ body:not(.source-workspace-visible) main {padding-top:calc(var(--tex-toolbar-bot
 body.project-visible {--sidebar-width:230px;}
 header .floating-toolbar {position:relative;display:flex;justify-content:center;pointer-events:auto;max-width:calc(100vw - var(--sidebar-width) - 24px);transform:translateX(calc(var(--sidebar-width)/2));}
 header .floating-toolbar>.ribbon {padding-right:8px;max-width:min(960px,calc(100vw - var(--sidebar-width) - 24px));}
-header .floating-toolbar>#toolbar-collapse {position:static;align-self:flex-start;flex:none;margin:4px 0 0 2px;width:24px;height:24px;display:grid;place-items:center;padding:0;border-radius:7px;pointer-events:auto;}
 header .floating-toolbar.is-hidden>.ribbon {display:block;}
 header .floating-toolbar.is-hidden .ribbon>.tools {display:none!important;}
 header .floating-toolbar #layout-panel input {box-sizing:border-box;min-width:0;flex:0 1 64px;max-width:64px;height:24px;padding:2px 4px;border:1px solid var(--tex-border,#d8dce5);border-radius:6px;font:11px system-ui;}

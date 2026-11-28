@@ -246,7 +246,6 @@ export function installHeaderFooterPanel({readState, onChange}) {
     enter() {
       active = true;
       refresh();
-      requestAnimationFrame(() => cells.values().next().value?.odd.focus());
     },
     leave() {
       active = false;
