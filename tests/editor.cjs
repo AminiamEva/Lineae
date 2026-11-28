@@ -2350,9 +2350,13 @@ A & B \\
         const layout=await page.locator('.ribbon').evaluate(element=>{
           const panel=[...element.querySelectorAll('.tools')].find(node=>!node.hidden);
           const bounds=element.getBoundingClientRect();
-          return {left:bounds.left,right:bounds.right,height:bounds.height,scroll:panel.scrollWidth,client:panel.clientWidth};
+          const tabs=element.querySelector('.ribbon-tabs').getBoundingClientRect();
+          return {left:bounds.left,right:bounds.right,height:bounds.height,scroll:panel.scrollWidth,client:panel.clientWidth,
+            panelHeight:panel.clientHeight,tabOffset:(tabs.left+tabs.right-bounds.left-bounds.right)/2};
         });
         assert.ok(layout.left>=-1 && layout.right<=width+1 && layout.scroll<=layout.client+1,JSON.stringify({group,width,layout}));
+        assert.ok(Math.abs(layout.tabOffset)<0.5,'Tabs remain centered with a separate collapse button');
+        assert.ok(layout.panelHeight<72,'The ribbon command area is more compact');
         ribbonHeight??=layout.height;
         assert.equal(layout.height,ribbonHeight,'Switching tabs preserves the ribbon height');
       }
@@ -2370,6 +2374,7 @@ A & B \\
     await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
     assert.equal(await page.evaluate(()=>Boolean(document.activeElement.closest('.hf-cell'))),false,
       'Opening Header/Footer leaves header and footer fields unfocused');
+    await page.emulateMedia({reducedMotion:'no-preference'});
     const layoutFrames=await page.evaluate(async()=>{
       document.querySelector('[data-group="layout"]').click();
       const positions=()=>[...document.querySelectorAll('#layout-panel > .ribbon-group')].map(group=>{
@@ -2377,10 +2382,19 @@ A & B \\
         return [x,y,width,height];
       });
       const first=positions();
+      const animations=document.querySelector('#layout-panel').getAnimations().map(animation=>animation.animationName);
       await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
-      return [first,positions()];
+      return {animations,first,last:positions()};
     });
-    assert.deepEqual(layoutFrames[0],layoutFrames[1],'Layout groups do not move after the tab opens');
+    assert.ok(layoutFrames.animations.includes('ribbon-panel-enter'),'Switching to Layout animates the panel');
+    assert.deepEqual(layoutFrames.first,layoutFrames.last,'Layout groups do not move after the tab opens');
+    await page.emulateMedia({reducedMotion:'reduce'});
+    await page.locator('[data-group=files]').click();
+    assert.deepEqual(await page.locator('.file-ribbon').evaluate(panel=>panel.getAnimations().map(animation=>animation.animationName)),
+      [],'Tab switches respect reduced motion');
+    assert.deepEqual(await page.locator('.file-ribbon > [data-ribbon-group]').evaluateAll(groups=>groups.map(group=>group.dataset.ribbonGroup)),
+      ['file-document','file-project','file-resources'],'File actions use distinct document, project and resource groups');
+    await page.emulateMedia({reducedMotion:null});
     await page.setViewportSize({width:1280,height:1400});
     const assertUntouchedFormulaSource=async body=>{
       await page.evaluate(()=>{navigator.clipboard.writeText=async text=>{window.formulaSourceCopy=text;};});

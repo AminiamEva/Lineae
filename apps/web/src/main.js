@@ -6027,12 +6027,18 @@ const exportConfig=groupButton(files,['导出 YAML','Export YAML'],()=>{
 exportConfig.hidden=true;
 const saveAsButton=groupButton(files,['另存为','Save as'],()=>saveDocument(true));
 saveAsButton.dataset.tool='saveAs';
-const fileActions=installFileRibbon(files);
+const configurableFileTools=new Map([...files.querySelectorAll('[data-tool]')].map(control=>[control.dataset.tool,control]));
+const fileGroups=installFileRibbon(files);
 let releaseFileNavigation;
 function updateFileTools() {
   const order=config.value.interface.toolbar;
-  for (const control of fileActions.querySelectorAll('[data-tool]')) control.hidden=control.dataset.tool==='language'||!order.includes(control.dataset.tool);
-  for (const name of order) fileActions.insertBefore(fileActions.querySelector(`[data-tool="${name}"]`),importConfig);
+  for (const [name,control] of configurableFileTools) control.hidden=name==='language'||!order.includes(name);
+  for (const name of order) {
+    const control=configurableFileTools.get(name);
+    if (control && !control.hidden) control.parentElement.append(control);
+  }
+  for (const group of fileGroups) group.section.hidden=!group.body.querySelector('.ribbon-command-grid > :not([hidden])');
+  files.refreshLayout({remeasure:true});
   releaseFileNavigation?.();
   releaseFileNavigation=installRovingFocus(files,{onActivate:control=>control.click()});
 }

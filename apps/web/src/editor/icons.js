@@ -70,6 +70,8 @@ const paths = {
   image:'M3 4h18v16H3zM5 17l4-5 3 3 3-4 4 6M15 8h.01',
   crop:'M6 2v14a2 2 0 0 0 2 2h14M2 6h14a2 2 0 0 1 2 2v14',
   folder:'M3 6h7l2 2h9v11H3z',
+  folderOpen:'M3 19V6h7l2 2h8v3M3 19l4-8h15l-4 8z',
+  folderPlus:'M3 6h7l2 2h9v11H3zM9 13h6m-3-3v6',
   borders:'M4 4h16v16H4zM4 12h16M12 4v16',
   ruler:'M3 7h18v10H3zM7 7v4m4-4v3m4-3v4m4-4v3',
   citation:'M5 5h5v6H5zM14 5h5v6h-5zM8 11l-2 6m11-6-2 6',
@@ -309,6 +311,8 @@ export function decorateToolbar(root) {
     '\\prod':['product','插入连乘 / Insert a product',true],
     'Delete table':['delete','删除表格 / Delete table',true],
     'Save as':['save','另存为 / Save as',true],
+    'Open project':['folderOpen','打开工程 / Open project',true],
+    'New project':['folderPlus','新建工程 / New project',true],
     'Attach asset folder':['folder','关联资源目录 / Attach asset folder',true],
     download:['download','下载项目 / Download project',true]};
   for(const control of root.querySelectorAll('button')) {
