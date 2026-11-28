@@ -165,7 +165,7 @@ export function installTypesetPagination(page, paper, meta, editor, engineProfil
   document.head.append(paginationStyle);
 
   let frame = 0;
-  let profile = engineProfile.documentStyle();
+let profile = engineProfile.documentStyle();
   let furniture = readPageFurniture();
   let maketitle = false;
   let lineBreaks = [];
@@ -341,9 +341,10 @@ export function installTypesetPagination(page, paper, meta, editor, engineProfil
 
   function applyProfile(preamble) {
     paragraphPreamble=preamble;
-    profile = engineProfile.documentStyle(preamble);
+profile = engineProfile.documentStyle(preamble);
     furniture = readPageFurniture(preamble);
     page.dataset.documentClass = profile.className;
+    page.dataset.engine = engineProfile.engine;
     page.dataset.frontmatter = String(/\\frontmatter/.test(preamble));
     setSerializationClass(profile.className);
     setHeadingBase(profile.className === 'book' || profile.className === 'report' ? 'chapter' : null);
@@ -381,13 +382,35 @@ export function installTypesetPagination(page, paper, meta, editor, engineProfil
       editor.view.dom.style.removeProperty('font-variant-ligatures');
     }
     const fonts = profile.fonts ?? {};
-    page.style.setProperty('--tex-font-family', fonts.serif
-      ? stack(fonts.serif, 'Latin Modern Roman') : '"Latin Modern Roman"');
-    page.style.setProperty('--tex-heading-font-family', fonts.serif
-      ? stack(fonts.serif, 'Latin Modern Roman 12', 'Latin Modern Roman')
-      : '"Latin Modern Roman 12","Latin Modern Roman"');
-    page.style.setProperty('--tex-cjk-font-family', fonts.cjk
-      ? stack(fonts.cjk, 'Songti SC', 'SimSun') : '"Songti SC",SimSun');
+if (engineProfile.engine === 'pdflatex') {
+      // pdfLaTeX uses Computer Modern (Type1) by default. When lmodern is
+      // loaded, it uses Latin Modern Type1 which is metrically identical to
+      // the OTF version. We serve Computer Modern via the CMU Serif webfont
+      // family for the closest match.
+      page.style.setProperty('--tex-font-family', fonts.serif
+        ? stack(fonts.serif, 'Computer Modern', 'CMU Serif')
+        : '"Computer Modern","CMU Serif"');
+      page.style.setProperty('--tex-heading-font-family', fonts.serif
+        ? stack(fonts.serif, 'Computer Modern', 'CMU Serif')
+        : '"Computer Modern","CMU Serif"');
+      page.style.setProperty('--tex-cjk-font-family', fonts.cjk
+        ? stack(fonts.cjk, 'Songti SC', 'SimSun') : '"Songti SC",SimSun');
+      page.style.setProperty('--tex-mono-font-family', fonts.mono
+        ? stack(fonts.mono, 'Computer Modern Typewriter', 'CMU Typewriter Text')
+        : '"Computer Modern Typewriter","CMU Typewriter Text"');
+      page.style.setProperty('--tex-math-font-family', '"Computer Modern Math","CMU Serif"');
+    } else {
+      page.style.setProperty('--tex-font-family', fonts.serif
+        ? stack(fonts.serif, 'Latin Modern Roman') : '"Latin Modern Roman"');
+      page.style.setProperty('--tex-heading-font-family', fonts.serif
+        ? stack(fonts.serif, 'Latin Modern Roman 12', 'Latin Modern Roman')
+        : '"Latin Modern Roman 12","Latin Modern Roman"');
+      page.style.setProperty('--tex-cjk-font-family', fonts.cjk
+        ? stack(fonts.cjk, 'Songti SC', 'SimSun') : '"Songti SC",SimSun');
+      page.style.setProperty('--tex-mono-font-family', fonts.mono
+        ? stack(fonts.mono, 'Latin Modern Mono') : '"Latin Modern Mono"');
+      page.style.removeProperty('--tex-math-font-family');
+    }
     if (reportCjkPrecision && engineProfile.cjk?.assess) {
       const family = page.style.getPropertyValue('--tex-cjk-font-family');
       const assessment = engineProfile.cjk.assess(preamble, family);
@@ -395,8 +418,6 @@ export function installTypesetPagination(page, paper, meta, editor, engineProfil
       reportCjkPrecision(show ? (fonts.cjk || family) : null);
     }
     else reportCjkPrecision?.(null);
-    page.style.setProperty('--tex-mono-font-family', fonts.mono
-      ? stack(fonts.mono, 'Latin Modern Mono') : '"Latin Modern Mono"');
   }
 
   function layoutFlow() {
@@ -899,6 +920,14 @@ export function installTypesetPagination(page, paper, meta, editor, engineProfil
     },
     toggle() {
       return this.setMode(mode === 'pages' ? 'flow' : 'pages');
+    },
+    getEngine: () => engine,
+    setEngine(nextEngine) {
+      if (nextEngine === 'pdflatex' || nextEngine === 'xelatex') {
+        engine = nextEngine;
+        applyProfile(paragraphPreamble || '');
+        repaginate();
+      }
     },
   };
 }

@@ -1702,3 +1702,28 @@ body.format-painter-active .ProseMirror * { cursor:copy; }
 .tikz-studio-preview svg { max-width:none; height:auto; }
 .tikz-studio-status { position:sticky; left:0; bottom:0; padding:6px 12px; white-space:pre-wrap; font:11px/1.4 ui-monospace,monospace; color:#a33; background:light-dark(rgba(255,255,255,.94),rgba(17,23,34,.94)); border-top:1px solid light-dark(#eee,#333c4e); }
 @media (max-width:760px){ .tikz-studio-body { grid-template-columns:1fr; grid-template-rows:1fr 1fr; } }
+
+/* pdfLaTeX engine: use Computer Modern (CMU Serif) font stack instead of
+   Latin Modern. Computer Modern is metrically equivalent to Latin Modern
+   but uses T1 encoding with slightly different spacing defaults. */
+.document-page[data-engine="pdflatex"] .ProseMirror {
+  font-family:var(--tex-font-family,"Computer Modern","CMU Serif"),var(--tex-cjk-font-family,"Songti SC",SimSun),serif;
+}
+.document-page[data-engine="pdflatex"] .ProseMirror h1 {
+  font-family:var(--tex-heading-font-family,"Computer Modern","CMU Serif"),var(--tex-cjk-font-family,"FandolSong"),serif;
+}
+.document-page[data-engine="pdflatex"] .ProseMirror h2,
+.document-page[data-engine="pdflatex"] .ProseMirror h3 {
+  font-family:var(--tex-heading-font-family,"Computer Modern","CMU Serif"),var(--tex-cjk-font-family,"FandolSong"),serif;
+}
+.document-page[data-engine="pdflatex"] .ProseMirror code,
+.document-page[data-engine="pdflatex"] .ProseMirror pre {
+  font-family:var(--tex-mono-font-family,"Computer Modern Typewriter","CMU Typewriter Text"),monospace;
+}
+
+/* Engine toggle button in the status bar */
+.engine-toggle { display:inline-flex; align-items:center; gap:4px; padding:2px 8px; border:0; border-radius:4px; background:transparent; color:inherit; font-size:11px; cursor:pointer; }
+.engine-toggle:hover { background:light-dark(#e5e8ee,#3a3d45); }
+.engine-toggle[data-engine="xelatex"] { color:#1a73e8; }
+.engine-toggle[data-engine="pdflatex"] { color:#e8710a; }
+.engine-toggle[data-engine="lualatex"] { color:#34a853; }

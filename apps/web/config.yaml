@@ -18,6 +18,8 @@ interface:
   formattingMarks: true
   caretMotion: true
   toolbar: [open, saveAs, download, language, assets]
+typesetting:
+  engine: xelatex
 editing:
   indentOnSave: true
   smartFences: true

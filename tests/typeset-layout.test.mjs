@@ -11,6 +11,7 @@ test('derives XeLaTeX article and ctex typography profiles', () => {
   const fonts = { serif: null, mono: null, cjk: null };
   assert.deepEqual(typesetProfile('\\documentclass{article}'), {
     className: 'article',
+    engine: 'xelatex',
     fontSize: '9.9626pt',
     lineHeight: '11.9552pt',
     paragraphIndent: '14.9440pt',
@@ -19,6 +20,7 @@ test('derives XeLaTeX article and ctex typography profiles', () => {
   });
   assert.deepEqual(typesetProfile('\\documentclass[12pt]{article}\\pagestyle{empty}'), {
     className: 'article',
+    engine: 'xelatex',
     fontSize: '11.9552pt',
     lineHeight: '14.4458pt',
     paragraphIndent: '17.9328pt',
@@ -27,6 +29,7 @@ test('derives XeLaTeX article and ctex typography profiles', () => {
   });
   assert.deepEqual(typesetProfile('\\documentclass[fontset=fandol]{ctexart}'), {
     className: 'ctexart',
+    engine: 'xelatex',
     fontSize: '10.5pt',
     lineHeight: '15.75pt',
     paragraphIndent: '21pt',
@@ -35,6 +38,7 @@ test('derives XeLaTeX article and ctex typography profiles', () => {
   });
   assert.deepEqual(typesetProfile('\\documentclass[12pt]{ctexart}'), {
     className: 'ctexart',
+    engine: 'xelatex',
     fontSize: '11.9552pt',
     lineHeight: '14.4458pt',
     paragraphIndent: '17.9328pt',
@@ -56,10 +60,40 @@ test('reads fontspec, ctex, linespread and fontsize declarations', () => {
   assert.equal(profile.fonts.mono, 'Latin Modern Mono');
   assert.equal(profile.fonts.cjk, 'Noto Serif CJK SC');
   assert.equal(profile.lineHeight, '16.2590pt');
+  assert.equal(profile.engine, 'xelatex');
   assert.equal(typesetProfile('\\documentclass{ctexart}\n\\usepackage[fontset=windows]{ctex}').fonts.cjk, 'SimSun');
   const sized = typesetProfile('\\documentclass{article}\n\\fontsize{12}{15}\\selectfont');
   assert.equal(sized.fontSize, '11.9552pt');
   assert.equal(sized.lineHeight, '14.9440pt');
+  assert.equal(sized.engine, 'xelatex');
+});
+
+test('derives pdfLaTeX typography profile with font package detection', () => {
+  const fonts = { serif: null, mono: null, cjk: null };
+  // Default pdfLaTeX (no font package) uses Computer Modern fallback
+  assert.deepEqual(typesetProfile('\\documentclass{article}', 'pdflatex'), {
+    className: 'article',
+    engine: 'pdflatex',
+    fontSize: '9.9626pt',
+    lineHeight: '11.9552pt',
+    paragraphIndent: '14.9440pt',
+    pageStyle: 'plain',
+    fonts,
+  });
+  // lmodern package detected
+  const lmodern = typesetProfile('\\documentclass{article}\n\\usepackage[T1]{fontenc}\n\\usepackage{lmodern}', 'pdflatex');
+  assert.equal(lmodern.fonts.serif, 'Latin Modern Roman');
+  assert.equal(lmodern.fonts.mono, 'Latin Modern Mono');
+  // mathpazo package detected
+  const mathpazo = typesetProfile('\\documentclass{article}\n\\usepackage{mathpazo}', 'pdflatex');
+  assert.equal(mathpazo.fonts.serif, 'Palatino');
+  // newtxtext package detected
+  const newtx = typesetProfile('\\documentclass{article}\n\\usepackage{newtxtext,newtxmath}', 'pdflatex');
+  assert.equal(newtx.fonts.serif, 'Times New Roman');
+  // helvet+courier: only mono mapped
+  const hc = typesetProfile('\\documentclass{article}\n\\usepackage{helvet}\n\\usepackage{courier}', 'pdflatex');
+  assert.equal(hc.fonts.serif, null);
+  assert.equal(hc.fonts.mono, 'Courier');
 });
 
 test('paginates at block boundaries without changing document nodes', () => {

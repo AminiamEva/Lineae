@@ -44,15 +44,47 @@ function ctexFontset(preamble, options) {
   return ctexFontsets[(fromClass ?? fromPackage ?? '').trim().toLowerCase()] ?? null;
 }
 
+// pdfLaTeX font packages and their corresponding CSS font families.
+// These are detected when fontspec commands (\setmainfont etc.) are absent.
+const PDFTEX_FONT_PACKAGES = {
+  lmodern: { serif: 'Latin Modern Roman', mono: 'Latin Modern Mono' },
+  mathpazo: { serif: 'Palatino' },
+  mathptmx: { serif: 'Times New Roman' },
+  newtxtext: { serif: 'Times New Roman' },
+  newtxmath: { serif: 'Times New Roman' },
+  libertine: { serif: 'Linux Libertine' },
+  libertinus: { serif: 'Libertinus Serif' },
+  tgpagella: { serif: 'TeX Gyre Pagella' },
+  tgtermes: { serif: 'TeX Gyre Termes' },
+  tgbonum: { serif: 'TeX Gyre Bonum' },
+  tgscho: { serif: 'TeX Gyre Schola' },
+  helvet: { mono: 'Courier' },
+  courier: { mono: 'Courier' },
+};
+
 function readFonts(preamble, options, activeFonts) {
   const family = command => fontFamily(activeFonts ? activeFonts[command] : commandArgument(preamble, command));
   const fontset = ctexFontset(preamble, options);
-  return {
-    serif: family('setmainfont'),
-    mono: family('setmonofont'),
-    cjk: family('setCJKmainfont') ?? fontset
-      ?? (/\\documentclass(?:\[[^\]]*\])?\{ctex|\\usepackage(?:\[[^\]]*\])?\{[^}]*ctex/.test(preamble)?'FandolSong':null),
-  };
+  const cjkFallback = fontset
+    ?? (/\\documentclass(?:\[[^\]]*\])?\{ctex|\\usepackage(?:\[[^\]]*\])?\{[^}]*ctex/.test(preamble) ? 'FandolSong' : null);
+  // XeLaTeX uses fontspec commands (\setmainfont, \setmonofont, \setCJKmainfont).
+  const serif = family('setmainfont');
+  const mono = family('setmonofont');
+  const cjk = family('setCJKmainfont');
+  if (serif || mono || cjk) {
+    return { serif: serif ?? null, mono: mono ?? null, cjk: cjk ?? cjkFallback };
+  }
+  // pdfLaTeX uses \usepackage{fontpackage} instead of fontspec.
+  // Detect common font packages and map them to CSS font families.
+  // Strip comments and %-escaped percent signs before matching.
+  const clean = preamble.replace(/(?<!\\)%.*/g, '').replace(/\\%/g, '%');
+  const used = [...Object.entries(PDFTEX_FONT_PACKAGES)]
+    .filter(([name]) => new RegExp('\\\\usepackage(?:\\[[^\\]]*\\])?\\{(?:[^{},]*,\\s*)*' + name + '(?:\\s*,[^{}]*)*\\}').test(clean));
+  const fonts = Object.assign({}, ...used.map(([, v]) => v));
+  if (fonts.serif || fonts.mono) {
+    return { serif: fonts.serif ?? null, mono: fonts.mono ?? null, cjk: cjkFallback };
+  }
+  return { serif: null, mono: null, cjk: cjkFallback };
 }
 
 function readLinespread(preamble) {
@@ -70,12 +102,12 @@ function readFontsize(preamble) {
   return Number.isFinite(size) && Number.isFinite(baseline) ? { size, baseline } : null;
 }
 
-export function typesetProfile(preamble = '', activeFonts) {
+export function typesetProfile(preamble = '', activeFonts, engineOverride) {
   const match = /\\documentclass(?:\[([^\]]*)\])?\{([^{}]+)\}/.exec(preamble);
   const options = (match?.[1] ?? '').split(',').map(option => option.trim()).filter(Boolean);
   const className = (match?.[2] ?? 'article').trim().toLowerCase();
   const pageNumbers = !/\\pagestyle\s*\{empty\}/.test(preamble);
-  const fonts = readFonts(preamble, options, activeFonts);
+const fonts = readFonts(preamble, options, activeFonts);
   const linespread = readLinespread(preamble);
   const explicit = readFontsize(preamble);
 
@@ -84,6 +116,7 @@ export function typesetProfile(preamble = '', activeFonts) {
     const classBaseline = classSize === 12 ? 14.5 : classSize === 11 ? 13.6 : 12;
     return {
       className,
+      engine: engineOverride || 'xelatex',
       fontSize: explicit ? cssPoints(explicit.size) : classSize ? cssPoints(classSize) : '10.5pt',
       lineHeight: explicit ? cssPoints(explicit.baseline * linespread)
         : classSize ? cssPoints(classBaseline * linespread)
@@ -98,10 +131,14 @@ export function typesetProfile(preamble = '', activeFonts) {
   }
 
   const size = options.includes('12pt') ? 12 : options.includes('11pt') ? 11 : 10;
+  // pdfLaTeX's Computer Modern uses slightly different baseline values than
+  // XeLaTeX's Latin Modern, but for CSS rendering purposes they are equivalent.
+  // The key difference is in the font stack and font encoding, handled below.
   const baseline = size === 12 ? 14.5 : size === 11 ? 13.6 : 12;
   const indent = size === 12 ? 18 : size === 11 ? 17 : 15;
   return {
     className,
+    engine: engineOverride || 'xelatex',
     fontSize: explicit ? cssPoints(explicit.size) : cssPoints(size),
     lineHeight: cssPoints((explicit?.baseline ?? baseline) * linespread),
     paragraphIndent: cssPoints(indent),
