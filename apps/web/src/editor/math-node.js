@@ -675,6 +675,7 @@ export const MathNode = Node.create({
       let exitedStyleAt = null;
       let replacedOperator = null;
       let pointerFocus = 0;
+      let leftDuringFocus = false;
       let scriptCleanupQueued = false;
       let escaping = false;
       let escapingTimer = 0;
@@ -715,6 +716,7 @@ export const MathNode = Node.create({
         // A freshly moved/undone node can still have a queued outer-editor focus.
         // Finish the explicit formula click after that frame without moving its caret.
         if (event.button !== 0 || event.shiftKey) return;
+        leftDuringFocus = false;
         const focusRequest=++pointerFocus;
         const model=field._mathfield?.model;
         const target=event.composedPath().find(element=>element?.dataset?.atomId);
@@ -747,6 +749,7 @@ export const MathNode = Node.create({
         });
       },true);
       field.addEventListener('focus', () => {
+        leftDuringFocus = false;
         if (escaping) {
           queueMicrotask(() => {
             if (escaping && field.ownerDocument.activeElement !== editor.view.dom) editor.view.focus();
@@ -757,7 +760,11 @@ export const MathNode = Node.create({
         field.setAttribute('data-lineae-editing','');
       });
       field.addEventListener('compositionstart', () => enterEmptyOperatorBody(field), true);
-      field.addEventListener('blur', () => {
+      field.addEventListener('blur', event => {
+        if (event.relatedTarget || escaping) {
+          pointerFocus++;
+          if (field._mathfield?.focusBlurInProgress) leftDuringFocus = true;
+        }
         field.removeAttribute('data-lineae-editing');
         pendingKey=null; pendingDollar=false; oneScript=null; replacedOperator=null;
         // The command palette takes focus, so a blank subscript typed with "_"
@@ -983,6 +990,26 @@ export const MathNode = Node.create({
         field.mathModeSpace = '\\space';
         installMathFieldStyle(field);
         field.toggleAttribute('data-lineae-editing',field.hasFocus());
+        // MathLive completes onFocus on a timer and ignores onBlur until then.
+        // If focus has already left the field, that timer must not take the
+        // next keystroke or interrupt composition in the newly focused editor.
+        const mathfield = field._mathfield;
+        const keyboard = mathfield?.keyboardDelegate;
+        if (!keyboard) return;
+        const focusKeyboard = keyboard.focus;
+        keyboard.focus = (...args) => {
+          if (!leftDuringFocus || field.matches(':focus-within')) return focusKeyboard.apply(keyboard, args);
+          leftDuringFocus = false;
+          // Finish the ignored blur after MathLive has finished its focus callback.
+          queueMicrotask(() => {
+            if (field._mathfield === mathfield && !field.matches(':focus-within'))
+              mathfield.onBlur({dispatchEvents:false});
+          });
+        };
+        field.addEventListener('unmount', () => {
+          keyboard.focus = focusKeyboard;
+          leftDuringFocus = false;
+        }, {once:true});
         const root=field.shadowRoot;
         if (!root) return;
         const markIntegrands=()=>{

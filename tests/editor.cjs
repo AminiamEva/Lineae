@@ -2704,7 +2704,7 @@ A & B \\
     assert.notEqual(await integralWithLimit.evaluate(field=>field.value),'','Backspacing at an empty limit first selects the integral');
     await page.keyboard.press('Backspace');
     assert.equal(await integralWithLimit.evaluate(field=>field.value),'','A second Backspace at an empty limit removes the selected integral');
-    await importSource('\\[\\int\\mathord{x}\\]');
+    await importSource('\\[\\int\\mathord{x}\\]\n\nafter');
     const operandField=paper.locator('math-field').first();
     const operandMark=operandField.locator('[data-lineae-integrand]').first();
     await operandMark.waitFor();
@@ -2722,9 +2722,26 @@ A & B \\
     await documentMode.click();
     assert.equal(await documentMode.evaluate(button=>button===document.activeElement),true);
     await page.waitForFunction(()=>!document.querySelector('math-field')?.hasAttribute('data-lineae-editing'));
-    const blurredBackground=await operandMark.evaluate(el=>getComputedStyle(el).backgroundColor);
-    assert.ok(blurredBackground===''||blurredBackground==='rgba(0, 0, 0, 0)',
-      'The operand highlight clears when editing ends: '+blurredBackground);
+    await expect(operandMark,'The visible operand loses its highlight on blur')
+      .toHaveCSS('background-color','rgba(0, 0, 0, 0)');
+    const leftWhilePending=await operandField.evaluate(field=>{
+      const editor=field.closest('.ProseMirror').editor;
+      const next=[...editor.view.dom.querySelectorAll('p')].find(p=>p.textContent==='after');
+      // Deliver both real DOM focus changes in one task. The MathLive timer
+      // is still pending when the user moves back to the prose paragraph.
+      field.focus();
+      field.shadowRoot.querySelector('[part~="keyboard-sink"]').focus();
+      const pending=field._mathfield.focusBlurInProgress && document.activeElement===field;
+      editor.commands.setTextSelection(editor.view.posAtDOM(next,next.childNodes.length));
+      editor.view.focus();
+      return pending;
+    });
+    assert.equal(leftWhilePending,true,'The formula lost focus before its keyboard was ready');
+    await page.waitForFunction(()=>!document.querySelector('.document-page math-field')._mathfield.focusBlurInProgress);
+    await expect(paper,'The paragraph keeps keyboard focus when MathLive finishes opening').toBeFocused();
+    await page.keyboard.type('X');
+    await expect(paper.locator('p').filter({hasText:'after'})).toHaveText('afterX');
+    await expect(operandMark).toHaveCSS('background-color','rgba(0, 0, 0, 0)');
     await importSource('\\[\\frac{\\placeholder{}}{\\placeholder{}}\\]');
     const slotField=paper.locator('math-field').first();
     await slotField.evaluate(field=>{field.focus();field.position=0;});
