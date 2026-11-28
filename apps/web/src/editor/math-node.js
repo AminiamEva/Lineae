@@ -843,6 +843,10 @@ export const MathNode = Node.create({
       field.addEventListener('lineae-math-builtin', event => {
         const {command,backward}=event.detail;
         if(command==='palette') {
+          // The first character of a new inline field may still be awaiting
+          // normalization to displaystyle. Save its mapped selection before
+          // the completion session takes a snapshot and temporarily owns focus.
+          flushField();
           dom.dispatchEvent(new CustomEvent('lineae-math-command',{bubbles:true,detail:{field}}));
         } else if(command==='nextSlot'||command==='previousSlot') {
           const next=command==='nextSlot'&&replacedOperator?.arrow&&caretCollapsed(field)&&

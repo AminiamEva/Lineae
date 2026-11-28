@@ -2244,13 +2244,30 @@ for (const name of mathSymbols) {
 }
 const nativeProseMathTemplates=Object.entries(formulaCommands).filter(([name])=>
   nativeMathCommandNames.includes(name)||name==='intbody');
+function insertDocumentMarker(type){
+  const inserted=editor.chain().insertContent({type}).command(({tr})=>{
+    // At the end of a document ProseMirror may leave the inserted atom
+    // selected. Put the next keystroke into a paragraph in the same undo step.
+    if(tr.selection.node?.type.name!==type)return true;
+    const end=tr.selection.to,$end=tr.doc.resolve(end);
+    if(!$end.nodeAfter?.isTextblock){
+      const paragraph=editor.schema.nodes.paragraph;
+      if(!$end.parent.canReplaceWith($end.index(),$end.index(),paragraph))return false;
+      tr.insert(end,paragraph.create());
+    }
+    tr.setSelection(TextSelection.create(tr.doc,end+1));
+    return true;
+  }).run();
+  if(inserted)editor.view.focus();
+  return inserted;
+}
 const structureCommands = {
-  appendix:()=>editor.chain().focus().insertContent({type:'appendixStart'}).run(),
+  appendix:()=>insertDocumentMarker('appendixStart'),
   chapter:()=>editor.chain().focus().setHeading({level:1}).updateAttributes('heading',{command:'chapter'}).run(),
   indent: () => { editor.view.focus(); return setParagraphIndent(editor,true); },
   noindent: () => { editor.view.focus(); return setParagraphIndent(editor,false); },
   par: () => editor.chain().focus().splitBlock().run(),
-  newpage: () => editor.chain().focus().insertContent({type:'pageBreak'}).run(),
+  newpage: () => insertDocumentMarker('pageBreak'),
   ...Object.fromEntries(Object.keys(theoremNames).map(kind=>[kind,()=>editor.chain().focus().wrapIn('theoremBlock',{kind}).run()])),
   section: () => editor.chain().focus().setHeading({ level: 1, command:null }).run(),
   subsection: () => editor.chain().focus().setHeading({ level: 2, command:null }).run(),
@@ -2290,7 +2307,7 @@ const structureCommands = {
     if(value)editor.chain().focus().insertContent({type:'footnote',attrs:{text:value}}).run();
   },
   includegraphics: insertDocumentImage,
-  tableofcontents: () => editor.chain().focus().insertContent({type:'tableOfContents'}).run(),
+  tableofcontents: () => insertDocumentMarker('tableOfContents'),
   title:()=>editMetadata('title',t('标题','Title')),
   author:()=>editMetadata('author',t('作者','Author')),
   date:()=>editMetadata('date',t('日期','Date')),
