@@ -13,6 +13,8 @@ mod project;
 #[cfg(target_os = "windows")]
 mod project_checkpoints;
 mod tex_session;
+#[cfg(all(debug_assertions, target_os = "windows"))]
+mod hybrid_typing_check;
 
 /// Paths the user has explicitly chosen in a native dialog during this session.
 /// Write commands only accept paths from this set, so the webview cannot touch
@@ -275,6 +277,13 @@ pub fn run() {
             } else {
                 window
             };
+            #[cfg(all(debug_assertions, target_os = "windows"))]
+            let window = if std::env::args_os().any(|arg| arg == "--lineae-hybrid-typing-check") {
+                window.initialization_script(concat!(
+                    include_str!("../../../../tests/native-hybrid-typing-scenario.cjs"), "\n",
+                    include_str!("hybrid-typing-check.js")
+                )).on_document_title_changed(hybrid_typing_check::on_title)
+            } else { window };
             let legacy_smoke = std::env::args_os().any(|arg| arg == "--lineae-smoke-test");
             let window = if !native_smoke && !native_input_review && !legacy_smoke {
                 window.initialization_script("window.__LINEAE_DESKTOP_ENGINE_TOGGLE__ = true;")

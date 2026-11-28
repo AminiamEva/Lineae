@@ -322,8 +322,7 @@ jobs:
           TEXMFVAR: ${{ github.workspace }}/.native-tex/texlive/texmf-var
           TEXMFCONFIG: ${{ github.workspace }}/.native-tex/texlive/texmf-config
           TEXMFHOME: ${{ github.workspace }}/.native-tex/texlive/texmf-home
-        shell: pwsh
-        run: ./tests/native-hybrid-webview-ci.ps1
+        run: node tests/native-hybrid-typing-webview.cjs --embedded
       - name: Preserve actual protocol, source, logs and clean reference PDF
         if: ${{ always() && !inputs.browser_only }}
         uses: actions/upload-artifact@v4

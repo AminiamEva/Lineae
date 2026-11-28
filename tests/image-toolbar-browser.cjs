@@ -40,14 +40,22 @@ const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR
     await revealToolbar(page);
     await page.locator('.ribbon-tabs [data-group=image]').click();
     await page.locator('.image-tools').waitFor({ state: 'visible' });
+    const showLayout = async control => {
+      if (!await control.isVisible()) {
+        await page.locator('.image-tools [data-ribbon-group="image-layout"] .ribbon-group-toggle').click();
+        await control.waitFor({state:'visible'});
+      }
+    };
 
     // Caption-dependent controls follow the Enable caption toggle.
     assert.equal(await page.getByLabel('Enable caption').isChecked(), false);
     assert.equal(await page.getByLabel('Numbered caption').isDisabled(), true, 'numbered caption is disabled');
     assert.equal(await page.getByLabel('Caption position').isDisabled(), true, 'caption position is disabled');
     assert.equal(await page.getByLabel('Label', { exact: true }).isDisabled(), true, 'caption label is disabled');
-    await page.getByLabel('Enable caption').check();
-    await page.waitForFunction(() => !document.querySelector('.image-tools')?.querySelector('input[aria-label="Caption position"]')?.disabled);
+    const enableCaption = page.getByLabel('Enable caption');
+    await showLayout(enableCaption);
+    await enableCaption.check();
+    await page.waitForFunction(() => document.querySelector('select[aria-label="Caption position"]')?.disabled === false);
     assert.equal(await page.getByLabel('Numbered caption').isDisabled(), false);
     assert.equal(await page.getByLabel('Caption position').isDisabled(), false);
     assert.equal(await page.getByLabel('Label', { exact: true }).isDisabled(), false);
@@ -120,8 +128,9 @@ const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR
     for (const label of ['Center in wrap','Wrap side','Wrap width','Overhang','Wrapped lines']) {
       assert.equal(await page.getByLabel(label,{exact:true}).isDisabled(), true, label+' is disabled until wrap text is enabled');
     }
+    await showLayout(wrapText);
     await wrapText.check();
-    await page.waitForFunction(() => !document.querySelector('.image-tools input[aria-label="Center in wrap"]')?.disabled);
+    await page.waitForFunction(() => document.querySelector('input[aria-label="Center in wrap"]')?.disabled === false);
     for (const label of ['Center in wrap','Wrap side','Wrap width','Overhang','Wrapped lines']) {
       assert.equal(await page.getByLabel(label,{exact:true}).isDisabled(), false, label+' is enabled when wrap text is on');
     }
