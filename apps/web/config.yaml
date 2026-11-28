@@ -1,6 +1,7 @@
 version: 2
 typesetting:
   defaultEngine: lualatex
+  engine: xelatex
 interface:
   sourceFontSize: 16
   toolbarAutoHide: false
@@ -18,8 +19,6 @@ interface:
   formattingMarks: true
   caretMotion: true
   toolbar: [open, saveAs, download, language, assets]
-typesetting:
-  engine: xelatex
 editing:
   indentOnSave: true
   smartFences: true

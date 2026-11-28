@@ -390,6 +390,61 @@ async function testDesktopDocument(browser, origin, initial) {
       const { $anchor,$head }=el.editor.state.selection;
       return [$anchor.parentOffset,$head.parentOffset,$head.parent.textContent];
     }),['X中Y beta gamma two words end'.length,0,'X中Y beta gamma two words end']);
+    const headingSource=file.replace('\\begin{document}', '\\usepackage{indentfirst}\r\n\\begin{document}')
+      .replace(wrapped+'\r\n\r\nneighbor','\\section{这是标题}');
+    const beforeHeading=revision;
+    await page.locator('input#file').setInputFiles({name:'heading.tex',mimeType:'text/plain',buffer:Buffer.from(headingSource)});
+    await expect.poll(()=>paintedSourceAfter(beforeHeading),{timeout:60000}).toBe(headingSource);
+    await page.locator('.document-status input[type=range]').evaluate(zoom=>{
+      zoom.value='144';zoom.dispatchEvent(new Event('input',{bubbles:true}));
+    });
+    await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
+    const title=await paperPoint('\\section{这是标题}');
+    await page.mouse.click(title.x,title.y);
+    await page.keyboard.press('End');
+    async function glyphPositions(){
+      return doc.evaluate(async editor=>{
+        const {nativeEditMetrics,textBoundary}=await import('/src/ui/native-edit-metrics.mjs');
+        const measure=nativeEditMetrics(document);
+        const block=editor.editor.view.nodeDOM(editor.editor.state.selection.$head.before());
+        const sheet=document.querySelector('[data-native-page] canvas').getBoundingClientRect();
+        return Array.from(block.textContent,(_,i)=>{
+          const p=textBoundary(block,i);
+          return {x:p.x-sheet.left,y:p.top+measure(p.element,p.char).aboveRange*block.currentCSSZoom-sheet.top};
+        });
+      });
+    }
+    const displacement=[];
+    for(const phrase of ['这是段落','但是呢','你仍然存在字符跳跃']){
+      const before=revision;
+      let resume;
+      holdUpdate=new Promise(resolve=>{resume=resolve;});
+      let draft,paperTop;
+      try{
+        await page.keyboard.press('Enter');
+        await cdp.send('Input.imeSetComposition',{text:'wen',selectionStart:3,selectionEnd:3});
+        await cdp.send('Input.insertText',{text:phrase});
+        await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
+        assert.equal(await doc.evaluate(e=>e.editor.state.selection.$head.parent.textContent),phrase);
+        assert.equal(await page.locator('main.native-ink-confirmed').count(),0,'Input must be visible while TeX is held');
+        draft=await glyphPositions();
+        paperTop=(await sheet.locator('canvas').boundingBox()).y;
+      }finally{holdUpdate=null;resume();}
+      await expect.poll(()=>paintedSourceAfter(before),{timeout:60000}).toContain(phrase);
+      const owner=published.spans.find(s=>Buffer.from(liveSource).subarray(s.range.start,s.range.end).toString().trim()===phrase);
+      const fragment=published.placements.find(p=>p.par_id===owner.id).fragments[0];
+      const dl=published.pages[fragment.page].dl;
+      const row=dl.lines.find(l=>Math.abs(l.x-fragment.xs[0])<=64 && Math.abs(l.y-fragment.baselines[0])<=64);
+      const native=row.items.filter(i=>i[0]==='g');
+      assert.equal(native.map(i=>String.fromCodePoint(i[2])).join(''),phrase);
+      const box=await sheet.locator('canvas').boundingBox();
+      for(const [i,glyph] of native.entries())displacement.push(Math.abs(draft[i].x-box.width*glyph[4]/dl.page_width),
+        Math.abs(draft[i].y-box.height*glyph[5]/dl.page_height));
+      assert.ok(Math.abs(box.y-paperTop)<=1,'Completing TeX must not scroll the paper');
+    }
+    const maxDisplacement=Math.max(...displacement);
+    console.log('Heading and CJK paragraphs: draft to real glyph origin at 144%',maxDisplacement);
+    assert.ok(maxDisplacement<=2,'CJK glyph moved by '+maxDisplacement+' CSS pixels');
     assert.deepEqual(errors,[]);
     console.log('PASS: shipped Lua document, repeated Enter, caret X/Y, CJK preedit/commit, and split-prefix ink through a delayed native frame');
   }catch(error){
