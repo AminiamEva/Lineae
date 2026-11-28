@@ -78,7 +78,11 @@ function caretStops(rows,entry) {
       if (g.char==='-' && glyphs[i+1]?.row!==row && offset>0) continue;
       return null;
     }
+    // Both ends of a soft wrap have the same UTF-16 offset, especially in
+    // Chinese without spaces. Keep both physical insertion positions.
     const at={row,x:g.left,y:g.y};
+    const previous=stops.get(offset);
+    if(previous && previous.row!==row)at.upstream=previous;
     stops.set(offset,at);
     offset+=g.char.length;
     stops.set(offset,{row,x:g.right,y:g.y});
@@ -134,8 +138,9 @@ export function paragraphHit(frame,page,x,y) {
   if(!paragraph.stops) return null;
   let offset=null, distance=Infinity;
   for(const [pos,stop] of paragraph.stops) {
-    if(stop.row!==row) continue;
-    if(Math.abs(stop.x-x)<distance) {offset=pos;distance=Math.abs(stop.x-x);}
+    const candidate=stop.row===row?stop:stop.upstream?.row===row?stop.upstream:null;
+    if(candidate && Math.abs(candidate.x-x)<distance){offset=pos;distance=Math.abs(candidate.x-x);}
   }
-  return offset===null?null:{element:paragraph.entry.element,text:paragraph.entry.text,offset};
+  return offset===null?null:{element:paragraph.entry.element,text:paragraph.entry.text,offset,
+    upstream:paragraph.stops.get(offset).upstream?.row===row};
 }

@@ -186,6 +186,8 @@ export function richSourceChanges(projection, doc) {
     if (!block) return oldEnd>=first+2&&newEnd===first+1
       ?plainParagraphJoin(projection,before.slice(first,oldEnd),doc.content[first],first):null;
     const nodes=doc.content.slice(block.index,block.index+block.count+doc.content.length-before.length);
+    const split=paragraphSplitChange(projection,block,before[block.index],nodes);
+    if(split)return split;
     return patchBlock(block,nodes);
   }
   const changes = [];
@@ -199,6 +201,30 @@ export function richSourceChanges(projection, doc) {
     changes.push(...patch);
   }
   return changes;
+}
+
+// Enter is an authored separator. A TeX import discards horizontal space at
+// paragraph edges, so re-importing the joined result cannot prove this edit.
+// Verify the original bytes and both inline halves before inserting the break.
+function paragraphSplitChange(projection,block,original,parts) {
+  if(block.count!==1 || parts.length<2 || original?.type!=='paragraph' ||
+      parts.some(node=>node.type!=='paragraph') || block.snapshot!==JSON.stringify([original]))return null;
+  const joined=[];
+  for(const part of parts)for(const child of part.content??[]){
+    const last=joined.at(-1);
+    if(child.type==='text' && last?.type==='text' && JSON.stringify(last.marks)===JSON.stringify(child.marks)){
+      joined[joined.length-1]={...last,text:last.text+child.text};
+    }else joined.push(child);
+  }
+  if(JSON.stringify(original.content??[])!==JSON.stringify(joined))return null;
+  const previous=serialize(original).slice(0,-2);
+  if(!previous.trim())return null;
+  const at=block.raw.indexOf(previous);
+  if(at<0 || block.raw.slice(0,at).trim() || block.raw.slice(at+previous.length).trim())return null;
+  const eol=block.raw.match(/\r?\n/)?.[0]??projection.text.slice(block.to).match(/\r?\n/)?.[0]??
+    projection.text.match(/\r?\n/)?.[0]??'\n';
+  const replacement=parts.map(node=>serialize(node).slice(0,-2)).join(eol+eol);
+  return minimalChange(previous,replacement,block.from+at);
 }
 
 // Imported tabular rows may have extra space before their terminators.

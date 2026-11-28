@@ -4223,13 +4223,14 @@ nativeTexPreview=installNativeTexPreview({host:footer,before:modes,primary:deskt
       else editor.view.domObserver.flush();
       projectExplorer.changed();
       const active=project.activeFileId,{file,composition,wrapFragment}=nativeProjectEntry(project);
-      const activeFile=project.file(active), doc=editor.state.doc, composingView=projectDocument.composition;
+      const {path,draft}=project.file(active), doc=editor.state.doc, composingView=projectDocument.composition;
+      const sourceMap=projection;
       const snapshot=await nativeProjectSnapshot(project,{useModelAssets:true,includeGeneratedInputs:true,
         entryFileId:file.id,wrapFragment});
       if(projectExplorer.model!==project||project.activeFileId!==active)
         throw new Error(t('工程已改变，请重试。','Project changed; retry the preview.'));
       const richBindings=sourceView.hidden && editor.state.doc===doc ? richSourceMap(editor.view,{
-        path:activeFile.path,source:activeFile.draft,projection,composition:composingView,
+        path,source:draft,projection:sourceMap,composition:composingView,
         prefix:wrapFragment?snapshot.fragment?.start:''
       }) : null;
       return {...snapshot,richBindings,richDocument:richBindings ? doc : null,

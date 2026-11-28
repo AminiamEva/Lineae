@@ -4,6 +4,7 @@ import {interwordGlue, texDimension} from './paragraph-parameters.mjs';
 import {TextSelection,Plugin,PluginKey} from '@tiptap/pm/state';
 import {Decoration,DecorationSet} from '@tiptap/pm/view';
 import {optimumParagraph} from './optimum-paragraph.mjs';
+import {changedTextblocks} from '../editor/changed-textblocks.mjs';
 
 const key=new PluginKey('texParagraphLayout');
 const cjk=/[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/u;
@@ -140,7 +141,22 @@ export function installParagraphLayout(editor,profile){
   let current='',lastSignature='',running=false,preferredX=null;
   editor.view.dom.addEventListener('pointerdown',()=>{preferredX=null;});
   editor.on('transaction',({transaction})=>{if(transaction.docChanged)preferredX=null;});
-  editor.registerPlugin(new Plugin({key,state:{init:()=>DecorationSet.empty,apply(tr,previous){return tr.getMeta(key)??previous.map(tr.mapping,tr.doc);}},props:{decorations:state=>key.getState(state),handleKeyDown(view,event){
+  editor.registerPlugin(new Plugin({key,state:{init:()=>DecorationSet.empty,apply(tr,previous){
+    const replacement=tr.getMeta(key);
+    if(replacement)return replacement;
+    const mapped=previous.map(tr.mapping,tr.doc);
+    if(!tr.docChanged || mapped===DecorationSet.empty || editor.view.composing ||
+        !document.body.classList.contains('native-tex-rich-edit'))return mapped;
+    // A computed break belongs to the text that was measured. Mapping it
+    // through a split can hide the first character of the new line until idle.
+    const expired=[];
+    for(const [pos,node] of changedTextblocks(tr)){
+      const end=pos+node.nodeSize;
+      expired.push(...mapped.find(pos,end).filter(d=>d.from>=pos && d.to<=end));
+    }
+    if(expired.length)lastSignature='';
+    return mapped.remove(expired);
+  }},props:{decorations:state=>key.getState(state),handleKeyDown(view,event){
     if(event.isComposing||event.ctrlKey||event.metaKey||event.altKey||!['ArrowUp','ArrowDown'].includes(event.key)||event.target.closest?.('math-field')||!view.dom.querySelector('[data-tex-paragraph]')){if(!['Shift','Control','Alt','Meta'].includes(event.key))preferredX=null;return false;}
     const selection=view.state.selection;if(!selection.$head.parent.isTextblock)return false;
     const direction=event.key==='ArrowUp'?-1:1,origin=view.coordsAtPos(selection.head,1);
@@ -292,7 +308,14 @@ export function installParagraphLayout(editor,profile){
         }
         const end=items[line.end];
         if(!last){
-          if(end.type==='glue'&&end.to>end.from)entries.push(Decoration.inline(end.from,end.to,{class:'tex-word-glue',style:'font-size:0;line-height:0'}));
+          if(end.type==='glue'&&end.to>end.from){
+            // Collapse the advance of actual spaces, without hiding letters
+            // the browser IME may temporarily place in the same inline run.
+            const styleValue=document.body.classList.contains('native-tex-hybrid')
+              ? 'white-space:pre;word-spacing:'+(-measure(' ',style))+'px;text-indent:0'
+              : 'font-size:0;line-height:0';
+            entries.push(Decoration.inline(end.from,end.to,{class:'tex-word-glue',style:styleValue}));
+          }
           if(end.hyphen)entries.push(widget(end.from,'tex-discretionary-hyphen'));
           // A visual break is a view decoration, never a hardBreak/source edit.
           if(!end.forced)entries.push(widget(end.to,'tex-paragraph-break'));

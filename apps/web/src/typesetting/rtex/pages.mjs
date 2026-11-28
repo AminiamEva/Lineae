@@ -6,6 +6,7 @@ import {fontKey} from './upstream/src/fontKey.ts';
 import {parseMapFile,parseEncFile,type1Outlines} from './upstream/src/type1.ts';
 import {hitMathField,hitMathGlyph} from '../../editor/native-math/hit.mjs';
 import {warmRows} from './warm-rows.mjs';
+import {completePageDeltas} from './page-deltas.mjs';
 import {cachedDrawingBox,matchObservedDrawingFonts,sameCachedDrawingItems} from './cached-drawings.mjs';
 
 const CSS_PER_SP=(96/72)/65781.76;
@@ -18,6 +19,7 @@ export function installNativePages({host,getFont,getTypeOneFont,getRaster,paragr
   const imageResources=new Map(),imageLoads=new Map();
   const images={get:file=>imageResources.get(file)};
   const pages=new Map(),loaded=new Map();
+  const deltas=completePageDeltas();
   let frame=0;
   let ownership=null;
   let boundaries=[],boundaryMarks=[];
@@ -486,8 +488,7 @@ export function installNativePages({host,getFont,getTypeOneFont,getRaster,paragr
   }
   async function layout(message) {
     const stamp=message.versions;
-    if(stamp.source_revision<revision ||
-        (stamp.source_revision===revision && stamp.layout_version<layoutVersion))return;
+    if(!deltas.accepts(stamp))return;
     const attempt=++generation;
     const changed=message.pages_changed??[];
     try {
@@ -497,7 +498,9 @@ export function installNativePages({host,getFont,getTypeOneFont,getRaster,paragr
         await prepare(page.dl,attempt);
         if(attempt!==generation)return;
       }
-      for(const page of changed) {
+      const next=deltas.apply(message,warm?.revision??revision);
+      if(!next)return;
+      for(const page of next.values()) {
         let entry=pages.get(page.page);
         if(!entry) {
           const dom=document.createElement('div'),canvas=document.createElement('canvas');
@@ -537,7 +540,7 @@ export function installNativePages({host,getFont,getTypeOneFont,getRaster,paragr
     pending=pending.then(async()=>{
       if(currentEpoch!==epoch)return;
       if(message.event==='LayoutUpdate')return layout(message);
-      if(warm&&message.versions.source_revision<=warm.revision)return;
+      if(warm && (message.versions.source_revision<=warm.revision || message.par_id!==warm.update.par_id))return;
       const overlay=warmRows(message,complete,pages);
       if(!overlay)return;
       try {
@@ -551,7 +554,7 @@ export function installNativePages({host,getFont,getTypeOneFont,getRaster,paragr
   }
   function reset({clear=true}={}) {
     epoch++;generation++;revision=-1;layoutVersion=-1;pending=Promise.resolve();ownership=null;drag=null;
-    complete=null;warm=null;pdfBacked=false;
+    complete=null;warm=null;pdfBacked=false;deltas.reset();
     delete host.dataset.warmRevision;
     clearCaret();showFileBoundaries([]);showFoldedFiles([],false);cancelAnimationFrame(frame);frame=0;previousCaret=null;pages.clear();loaded.clear();fonts=new FontStore();
     for(const resource of imageResources.values())resource.image.close();

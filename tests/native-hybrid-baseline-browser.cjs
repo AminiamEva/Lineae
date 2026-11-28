@@ -57,12 +57,13 @@ async function capture(inputSource=source) {
 async function testDesktopDocument(browser, origin, initial) {
   const page=await browser.newPage({viewport:{width:1280,height:900}});
   const errors=[], events=[], fonts=new Map();
-  let revision=0, liveSource='', published=null;
+  let revision=0, liveSource='', published=null,holdUpdate=null;
   const seen=[];
   page.on('pageerror',e=>errors.push(e.message));
   try{
     await page.exposeFunction('nativeTestCommand',async(command,args={})=>{
       if(command==='native_tex_open'||command==='native_tex_update'){
+        if(command==='native_tex_update' && holdUpdate)await holdUpdate;
         const next=++revision;
         liveSource=args.source;
         const measured=liveSource===source?initial:await capture(liveSource);
@@ -199,8 +200,37 @@ async function testDesktopDocument(browser, origin, initial) {
     await page.waitForFunction(()=>document.querySelector('main.native-ink-confirmed') &&
       document.querySelector('.ProseMirror').editor.state.selection.$from.parent.textContent==='rj!',null,{timeout:15000});
     assert.equal(revision,beforeModeSwitch,'View changes reuse the native frame for unchanged source');
+    await page.keyboard.press('End');
+    await page.keyboard.type(' alpha beta');
+    await page.waitForFunction(()=>document.querySelector('main.native-ink-confirmed') &&
+      document.querySelector('.ProseMirror').editor.state.selection.$from.parent.textContent==='rj! alpha beta',null,{timeout:60000});
+    for(let i=0;i<5;i++)await page.keyboard.press('ArrowLeft');
+    let release;
+    holdUpdate=new Promise(resolve=>{release=resolve;});
+    try{
+      await page.keyboard.press('Enter');
+      await page.keyboard.type('X');
+      await cdp.send('Input.imeSetComposition',{text:'zhong',selectionStart:5,selectionEnd:5});
+      assert.ok(await doc.evaluate(el=>el.textContent.includes('Xzhong beta')&&el===document.activeElement));
+      await cdp.send('Input.insertText',{text:'中'});
+      await page.keyboard.type('Y');
+      const at=await doc.evaluate(el=>{
+        const head=el.editor.state.selection.$head;
+        return [head.nodeBefore?.textContent,head.nodeAfter?.textContent,head.parent.textContent,
+          el.editor.state.doc.child(head.index(0)-1).textContent];
+      });
+      assert.deepEqual(at,['X中Y',' beta','X中Y beta','rj! alpha']);
+      const held=page.locator('.native-pending-prose').filter({hasText:'rj! alpha'});
+      await held.waitFor();
+      const row=await held.locator('span').filter({hasText:'rj!'}).first().boundingBox();
+      assert.ok(row?.width>0 && row.height>0,'The split prefix has ink while native layout is held');
+    }finally{holdUpdate=null;release();}
+    await page.waitForFunction(()=>document.querySelector('main.native-ink-confirmed') &&
+      !document.querySelector('.native-pending-prose') &&
+      document.querySelector('.ProseMirror').editor.state.selection.$head.parent.textContent==='X中Y beta',null,{timeout:60000});
+    assert.match(liveSource,/rj! alpha\s+X中Y beta/);
     assert.deepEqual(errors,[]);
-    console.log('PASS: shipped Lua document, click duplicate by native coordinates, typing, repeated Enter, caret X/Y and CJK preedit/commit');
+    console.log('PASS: shipped Lua document, repeated Enter, caret X/Y, CJK preedit/commit, and split-prefix ink through a delayed native frame');
   }catch(error){
     console.error('Hybrid replay',JSON.stringify({seen,body:liveSource.slice(liveSource.indexOf('Caption')-12,liveSource.indexOf('Caption')+112),
       spans:published?.spans?.map(s=>[s.id,s.range.start,s.range.end]),

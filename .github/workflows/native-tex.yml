@@ -111,6 +111,13 @@ jobs:
           else
             npx playwright install --only-shell chromium
           fi
+      - name: Preserve the browser bundle used for WebView input replay
+        if: runner.os == 'Linux' && !inputs.browser_only
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-hybrid-browser-${{ github.sha }}
+          path: apps/web/editor.mjs
+          retention-days: 2
       - name: Verify browser editing with and without the legacy engine
         id: browser_editing
         continue-on-error: true
@@ -306,13 +313,6 @@ jobs:
       - name: Type continuously in the Windows desktop Lua document
         if: ${{ !inputs.browser_only && runner.os == 'Windows' }}
         run: node tests/native-desktop-typing.cjs
-      - name: Preserve the tested browser bundle for diagnosing native replay failures
-        if: failure() && runner.os == 'Linux' && steps.hybrid_host.outcome == 'failure'
-        uses: actions/upload-artifact@v4
-        with:
-          name: native-hybrid-browser-${{ github.sha }}
-          path: apps/web/editor.mjs
-          retention-days: 2
       - name: Preserve actual protocol, source, logs and clean reference PDF
         if: ${{ always() && !inputs.browser_only }}
         uses: actions/upload-artifact@v4

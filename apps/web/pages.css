@@ -354,6 +354,10 @@ body.native-tex-hybrid:not(.native-tex-rich-edit) main { visibility:visible; cli
 body.native-tex-rich-edit main { z-index:11; visibility:visible;
   clip-path:var(--native-edit-clip,inset(100%)); }
 .native-tex-rich-edit main .document-page { translate:var(--native-edit-shift,0 0); }
+/* Only the active glyphs and editing marks overlay the real paper. An opaque
+   copy of the whole rich sheet used to erase ink from neighbouring lines. */
+body.native-tex-rich-edit main :is(.document-page,.document-sheet) { background:transparent; box-shadow:none; }
+body.native-tex-rich-edit main .document-sheets { visibility:hidden; }
 .native-tex-hybrid .document-page .ProseMirror[data-native-song] {
   --tex-cjk-font-family:"FandolSong";
   font-family:var(--tex-font-family,"Latin Modern Roman"),"FandolSong",serif;
@@ -387,14 +391,14 @@ html:has(body.native-tex-primary-open) { overflow:hidden; }
 .native-tex-page canvas { display:block; position:relative; }
 .native-indent-marks { display:none; position:absolute; inset:0; width:100%; height:100%; z-index:1; pointer-events:none; stroke:#80808094; fill:none; }
 body.native-tex-hybrid:has(.document-page[data-formatting-marks=true]) .native-indent-marks { display:block; }
-body:has(.document-page[data-formatting-marks=true]) .native-pending-prose[data-indented=true]::before {
-  content:""; position:absolute; left:2px; width:calc(var(--pending-indent) - 2px);
-  top:calc(var(--pending-midline) - 3px); height:6px; border-right:1px solid #80808094;
+body:has(.document-page[data-formatting-marks=true]) .native-pending-indent {
+  position:absolute; transform:translateY(-50%); height:6px; border-right:1px solid #80808094;
   background:linear-gradient(#80808094,#80808094) left center / 100% 1px no-repeat;
 }
 .native-tex-caret { position:absolute; width:2px; background:#2f6fd0; pointer-events:none; }
 body.native-tex-rich-edit main.native-ink-confirmed { opacity:0; }
 .native-draft-mask { position:absolute; background:white; pointer-events:none; }
+.native-pending-prose { position:absolute; inset:0; z-index:2; pointer-events:none; user-select:none; }
 .native-rich-caret { position:absolute; z-index:2; width:1px; background:#222; pointer-events:none; }
 .native-rich-endmark { position:absolute; z-index:1; color:#999; line-height:1; transform:translateY(-80%); pointer-events:none; }
 .native-tex-operator-caret::after { content:''; position:absolute; top:.14em; left:3px; width:.68em; height:.68em; border:1px solid #96bdb1; border-radius:3px; background:#85bdab26; }

@@ -77,7 +77,7 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
   let sentSnapshot=null,wantedSnapshot=null,captureAgain=false,capturing=null,pdfRendered=-1;
   let renderedRevision=-1,error='',active=false,terminal=false;
   let mode='canvas',pdfWanted=-1,pdfAttempt=null,pdfLayout=null;
-  let pdfGeometryAvailable=false;
+  let pdfGeometryAvailable=false,recordedVersions=null;
   const recordedPages=new Map();
   const hasGeometry=()=>mode==='canvas'||pdfGeometryAvailable;
   let pollEpoch=0;
@@ -118,6 +118,7 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
     if(metrics){
       for(const [name,value] of Object.entries(metrics))richEditor.style.setProperty('--native-ctex-'+name,value);
     }
+    overlay?.painted();
   }
   const overlay=engineToggle&&richPage?nativeParagraphOverlay(richEditor,panel,pages,()=>!current()):null;
   const richSources=new Map();
@@ -130,7 +131,7 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
   function bindDocument(revision,snapshot){
     const owners=bindRichSpans(snapshot.richBindings,lastSpans);
     boundDocument=snapshot.richDocument;
-    richSources.set(revision,owners);
+    richSources.set(revision,{owners,doc:boundDocument});
     while(richSources.size>5)richSources.delete(richSources.keys().next().value);
     syncParagraphFrame();
   }
@@ -142,19 +143,21 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
   function syncParagraphFrame(){
     if(!overlay)return;
     const frame=renderer.paragraphLayout(), token=frame?.warm??frame?.layout;
-    const owners=richSources.get(frame?.revision);
-    if(geometryStamp===token&&geometryOwners===owners){overlay.update();return;}
+    const stamp=frame?.revision??(mode==='pdf'?pdfRendered:-1);
+    const captured=richSources.get(stamp),owners=captured?.owners;
+    if(geometryStamp===token&&geometryOwners===owners){overlay.painted();return;}
     geometryStamp=token;geometryOwners=owners;
     let paintedOwners=owners;
     if(frame?.warm && owners){
-      const base=richSources.get(frame.layout.versions.source_revision);
+      const base=richSources.get(frame.layout.versions.source_revision)?.owners;
       paintedOwners=new Map([...owners].filter(([id,entry])=>{
         if(id===frame.warm.update.par_id)return true;
         const previous=base?.get(id);
-        return previous && entry && previous.element===entry.element && previous.text===entry.text;
+        return previous && entry && previous.element===entry.element && previous.node===entry.node;
       }));
     }
-    overlay.present(frame?paragraphFrame(frame.layout,frame.pages,paintedOwners,frame.warm):null,frame?.revision??-1);
+    overlay.present(frame?paragraphFrame(frame.layout,frame.pages,paintedOwners,frame.warm):null,stamp,
+      frame?.warm ? null : captured?.doc);
   }
   function resetParagraphFrames(){
     richSources.clear();futureFrames.length=0;geometryStamp=null;geometryOwners=null;lastSpans=null;boundDocument=null;
@@ -907,7 +910,6 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
     // Changing the preview controls can move the page and its IME anchor.
     if(inputComposition&&!inputComposition.ended)return;
     if(foldsDirty&&nativeEditing&&acceptsInput()&&current()&&observation)refreshFoldView();
-    if(current())overlay?.releaseRows(sourceRevision);
     exportButton.disabled=!current();
     targetButton.disabled=!acceptsInput()||!current()||!hasGeometry()||targeting===generation;
     editButton.disabled=!current()||!hasGeometry()||!observation;
@@ -997,7 +999,7 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
     mirror?.lifetime.abort();mirror=null;
     targetArmed=false;lastTarget=null;clearTimeout(targetTimer);targetTimer=null;
     renderer.reset();pdf.reset();mode='canvas';pdfWanted=-1;pdfLayout=null;pdfRendered=-1;renderedRevision=-1;renderStatus();
-    pdfGeometryAvailable=false;recordedPages.clear();
+    pdfGeometryAvailable=false;recordedVersions=null;recordedPages.clear();
     delete panel.dataset.fallbackReason;
     if(previous!==null) {
       try {await invoke('native_tex_close',{sessionId:previous});}
@@ -1088,7 +1090,7 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
         }
         if(restarted){
           session=result.sessionId;pollEpoch++;lastEventSequence=0;renderedRevision=-1;pdfRendered=-1;pdfWanted=-1;pdfLayout=null;
-          pdfGeometryAvailable=false;recordedPages.clear();
+          pdfGeometryAvailable=false;recordedVersions=null;recordedPages.clear();
           renderer.reset({clear:false});pdf.reset({clear:false});resetParagraphFrames();
           void poll(attempt,pollEpoch);
         }
@@ -1206,7 +1208,10 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
       error=event.diagnostics?.map(item=>item.message??String(item)).join('\n').slice(0,2400)||
         t('LuaLaTeX 增量排版失败；修正源码后重试。','LuaLaTeX incremental compilation failed; correct the source and retry.');
     } else if(event.event==='LayoutUpdate' || event.event==='ParagraphUpdate') {
+      if(event.event==='LayoutUpdate' && recordedVersions && (event.versions.source_revision<recordedVersions.source_revision ||
+          event.versions.source_revision===recordedVersions.source_revision && event.versions.layout_version<recordedVersions.layout_version))return;
       if(event.event==='LayoutUpdate'&&event.compile?.state==='Ok'){
+        recordedVersions=event.versions;
         for(const page of event.pages_changed??[])recordedPages.set(page.page,page);
         for(const page of recordedPages.keys())if(page>event.pages_total)recordedPages.delete(page);
         pdfLayout=event.pdf_fallback_registered&&event.convergence?.state==='Converged'?{versions:event.versions,placements:event.placements}:null;
@@ -1505,7 +1510,7 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
       const x=(event.clientX-box.left)/box.width,y=(event.clientY-box.top)/box.height;
       const hit=overlay.hit(page,x,y);
       if(hit && focusRichOffset){
-        showRichEditor(page);overlay.reveal(hit.element);
+        showRichEditor(page);overlay.reveal(hit.element,undefined,undefined,hit);
         if(focusRichOffset(hit.element,hit.offset)){overlay.update();return;}
       }
       const block=focusRichPage(page,x,y,canStartText?.(),candidate=>{
