@@ -9,6 +9,35 @@ module.exports=async function checkCommands(page,{hybrid=true}={}) {
   const key=key=>page.keyboard.press(key),type=text=>page.keyboard.type(text);
   const choose=async name=>{await type('\\'+name);await key('Enter');};
   const model=()=>pm.evaluate(el=>el.editor.getJSON());
+  function prosePoints(paragraph){
+    return paragraph.evaluate(el=>{
+      const paper=document.querySelector('[data-native-page] canvas')?.getBoundingClientRect()??{left:0,top:0};
+      function glyphPoint(text){
+        const range=document.createRange();
+        range.setStart(text,0);range.setEnd(text,1);
+        const live=range.getBoundingClientRect(),style=getComputedStyle(text.parentElement);
+        const sample=document.createElement('span'),baseline=document.createElement('i');
+        sample.style.cssText='position:fixed;left:0;top:0;visibility:hidden;white-space:pre';
+        for(const property of ['fontFamily','fontWeight','fontStyle','fontSize','lineHeight'])
+          sample.style[property]=style[property];
+        sample.style.zoom=String(text.parentElement.currentCSSZoom||1);
+        baseline.style.cssText='display:inline-block;height:0;width:0;vertical-align:baseline';
+        sample.append(text.data[0],baseline);document.body.append(sample);
+        range.selectNodeContents(sample.firstChild);
+        const rise=baseline.getBoundingClientRect().top-range.getBoundingClientRect().top;
+        sample.remove();
+        return {text:text.data[0],x:live.left-paper.left,y:live.top+rise-paper.top};
+      }
+      const walker=document.createTreeWalker(el,NodeFilter.SHOW_TEXT),out=[];
+      while(walker.nextNode()){
+        const n=walker.currentNode;
+        if(/^(Lead |Bold|tail|After)/.test(n.data) && !n.parentElement.closest('math-field'))out.push(glyphPoint(n));
+      }
+      const radicalX=el.querySelector('math-field')?.shadowRoot?.querySelector('.ML__mathit')?.firstChild;
+      if(radicalX?.nodeType===3)out.push(glyphPoint(radicalX));
+      return out;
+    });
+  }
   try{
     await type('\\');
     assert.equal(await input.evaluate(el=>el===document.activeElement),true);
@@ -46,6 +75,7 @@ module.exports=async function checkCommands(page,{hybrid=true}={}) {
     await choose('sqrt');await type('x');await key('Control+Shift+j');await type('tail');
     assert.match((await model()).content[1].content.find(n=>n.type==='math').attrs.latex,/\\sqrt\{x\}/);
     assert.ok((await model()).content[1].content.at(-1).text.endsWith('tail'));
+    const before=await prosePoints(pm.locator('p').filter({hasText:'Lead'}));
     await key('Enter');await type('$$\\frac');await key('Enter');
     await type('a');await key('Tab');await type('b');
     const display=pm.locator('.math-display math-field');
@@ -73,6 +103,9 @@ module.exports=async function checkCommands(page,{hybrid=true}={}) {
     const result=(await model()).content;
     assert.equal(result.find(n=>n.type==='mathBlock').attrs.latex,'\\frac{a}{b}');
     assert.equal(result.at(-1).content[0].text,'After');
-    return {live,points};
+    const after=await prosePoints(pm.locator('p').filter({hasText:'After'}));
+    assert.deepEqual(before.map(p=>p.text).sort(),['B','L','t','x']);
+    assert.deepEqual(after.map(p=>p.text),['A']);
+    return {live,points,before,after};
   }finally{await cdp.detach();}
 };

@@ -9,6 +9,7 @@ export function nativeEditMetrics(doc) {
   baseline.style.cssText='display:inline-block;width:1ex;height:0;vertical-align:baseline;';
   line.append(sample,baseline);
   const range=doc.createRange();
+  const context=doc.createElement('canvas').getContext('2d');
   doc.fonts?.addEventListener('loadingdone',()=>cache.clear());
   return (element,character='M')=>{
     const style=getComputedStyle(element);
@@ -20,7 +21,9 @@ export function nativeEditMetrics(doc) {
     doc.body.append(line);
     range.selectNodeContents(sample);
     const {top:y,width:ex}=baseline.getBoundingClientRect();
-    const result={aboveRange:y-range.getBoundingClientRect().top,aboveLine:y-line.getBoundingClientRect().top,ex};
+    context.font=[style.fontStyle,style.fontWeight,style.fontSize,style.fontFamily].join(' ');
+    const result={aboveRange:y-range.getBoundingClientRect().top,aboveLine:y-line.getBoundingClientRect().top,ex,
+      inkAscent:context.measureText(character||'M').actualBoundingBoxAscent};
     line.remove();
     if(cache.size>=256)cache.clear();
     cache.set(key,result);

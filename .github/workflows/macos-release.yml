@@ -34,10 +34,7 @@ jobs:
       - run: npm run build
       - name: Package the formula editor for browser tests
         run: |
-          archive=$(npm pack mathlive@0.108.0 --pack-destination "$RUNNER_TEMP" --silent)
-          mkdir -p apps/web/vendor/mathlive
-          tar -xzf "$RUNNER_TEMP/$archive" -C apps/web/vendor/mathlive --strip-components=1 \
-            package/mathlive.min.js package/fonts
+          npm run vendor:mathlive
       - name: Web and release-policy regressions
         run: |
           node --test tests/latex.test.mjs tests/config.test.mjs tests/keybindings.test.mjs \
@@ -92,10 +89,7 @@ jobs:
       - name: Build the editor and package offline resources
         run: |
           npm run build
-          archive=$(npm pack mathlive@0.108.0 --pack-destination "$RUNNER_TEMP" --silent)
-          mkdir -p apps/web/vendor/mathlive
-          tar -xzf "$RUNNER_TEMP/$archive" -C apps/web/vendor/mathlive --strip-components=1 \
-            package/mathlive.min.js package/fonts
+          npm run vendor:mathlive
       - name: Build the ad-hoc signed application and DMG
         uses: tauri-apps/tauri-action@action-v1.0.0
         env:

@@ -39,10 +39,7 @@ jobs:
       - name: Build and vendor the offline editor
         run: |
           npm run build
-          archive=$(npm pack mathlive@0.108.0 --pack-destination "$RUNNER_TEMP" --silent)
-          mkdir -p apps/web/vendor/mathlive
-          tar -xzf "$RUNNER_TEMP/$archive" -C apps/web/vendor/mathlive --strip-components=1 \
-            package/mathlive.min.js package/fonts
+          npm run vendor:mathlive
       - name: Build Debian and AppImage bundles
         run: npm --prefix apps/desktop run tauri -- build --bundles deb,appimage -- --locked
       - name: Verify packages and checksum

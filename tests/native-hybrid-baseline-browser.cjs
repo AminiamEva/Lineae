@@ -598,6 +598,18 @@ async function testDesktopDocument(browser, origin, initial) {
     const fractionRow=fractionDL.lines.find(line=>line.items.some(i=>i[0]==='r') &&
       ['a','b'].every(c=>line.items.some(i=>i[0]==='g' && i[2]===c.codePointAt(0))));
     assert.ok(fractionRow,'The real display list contains both arguments and the fraction bar');
+    for(const [needle,points] of [['L',checked.before],['A',checked.after]]){
+      const row=fractionDL.lines.find(line=>line.items.some(i=>i[0]==='g' && i[2]===needle.codePointAt(0)));
+      const ink=row?.items.filter(i=>i[0]==='g');
+      const displacement=points.map(point=>{
+        const glyph=ink?.find(i=>i[2]===point.text.codePointAt(0));
+        assert.ok(glyph,'Missing typeset glyph '+point.text);
+        return {text:point.text,x:point.x-bounds.width*glyph[4]/fractionDL.page_width,
+          y:point.y-bounds.height*glyph[5]/fractionDL.page_height};
+      });
+      console.log('Command paragraph displacement at 144%',JSON.stringify(displacement));
+      assert.ok(displacement.every(e=>Math.abs(e.x)<=2 && Math.abs(e.y)<=2),JSON.stringify(displacement));
+    }
     for(const positions of [checked.live,retained]){
       const errors=positions.map(p=>{
         const glyph=fractionRow.items.find(i=>i[0]==='g' && i[2]===p.text.codePointAt(0));

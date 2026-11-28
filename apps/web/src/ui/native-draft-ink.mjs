@@ -13,7 +13,7 @@ function copyTypography(ink,style){
 // Keep completed edits visible while TeX is working. These fragments come
 // from the *laid-out* editable DOM; a second paragraph layout would wrap and
 // clip the text differently. No element here accepts input.
-export function snapshotDraft(block,sheets,measure) {
+export function snapshotDraft(block,sheets,measure,baselineShift=0) {
   if(!block?.isConnected)return [];
   // Native canvases snap to device pixels. Decorations are positioned in the
   // enclosing sheet, whose CSS edges can still be fractional at this zoom.
@@ -23,6 +23,7 @@ export function snapshotDraft(block,sheets,measure) {
   const doc=block.ownerDocument,scale=block.currentCSSZoom||1;
   const groups=new Map(),range=doc.createRange();
   const point=(x,y)=>{
+    y+=baselineShift;
     let sheet=sheets[0],distance=Infinity;
     for(const candidate of sheets){
       const gap=Math.max(candidate.box.top-y,y-candidate.box.bottom,0);

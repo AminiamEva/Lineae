@@ -3,7 +3,8 @@
   "scripts": {
     "build": "esbuild apps/web/src/main.js --bundle --format=esm --loader:.yaml=text --outfile=apps/web/editor.mjs",
     "start": "node scripts/serve.mjs apps/web 8000",
-    "vendor:tikz": "node scripts/install-mp-tikz-wasm.mjs"
+    "vendor:tikz": "node scripts/install-mp-tikz-wasm.mjs",
+    "vendor:mathlive": "node scripts/install-mathlive.mjs"
   },
   "dependencies": {
     "@codemirror/autocomplete": "6.18.7",

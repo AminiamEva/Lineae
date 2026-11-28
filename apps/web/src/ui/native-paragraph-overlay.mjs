@@ -166,47 +166,96 @@ export function nativeParagraphOverlay(editor, panel, pages, framePending, selec
     // font. The browser's heading margin is measured in the larger title font.
     return units ? units*metrics(next).ex : null;
   }
-  function firstHeadingReference(scale){
-    if(number!==1 || block!==editor.firstElementChild || !block?.matches('h1') ||
+  function firstHeadingReference(scale,element=block,targetPage=number){
+    if(targetPage!==1 || element!==editor.firstElementChild || !element?.matches('h1') ||
       !editor.hasAttribute('data-native-ctex') || !editor.hasAttribute('data-native-article-sections') ||
-      !/^\p{Script=Han}+$/u.test(block.textContent) || page.querySelector('#document-meta')?.textContent.trim())return null;
-    const sheet=page.querySelector('.document-sheet')??page,box=canvas()?.getBoundingClientRect();
+      !/^\p{Script=Han}+$/u.test(element.textContent) || page.querySelector('#document-meta')?.textContent.trim())return null;
+    const sheet=page.querySelector('.document-sheet')??page,box=canvas(targetPage)?.getBoundingClientRect();
     if(!box?.height || !box.width)return null;
     // At the top of a page the first tall box sits flush with the typeset
     // area. The horizontal Chinese JFM gives a Han glyph a height of .88em.
-    const height=parseFloat(getComputedStyle(page).paddingTop)+.88*parseFloat(getComputedStyle(block).fontSize);
-    const x=(boundary(block,0,scale).x-sheet.getBoundingClientRect().left)/box.width;
+    const height=parseFloat(getComputedStyle(page).paddingTop)+.88*parseFloat(getComputedStyle(element).fontSize);
+    const x=(boundary(element,0,scale).x-sheet.getBoundingClientRect().left)/box.width;
     return {offset:0,stop:{row:{page:1},x,y:height*scale/box.height},pinned:true};
   }
-  function displayReference(paragraph,scale){
+  // The rich sheet is translated to align whichever block owns the caret.
+  // Native rows and retained draft baselines are relative to the paper and
+  // remain valid as the user moves into another paragraph or the formula menu.
+  function lastBaseline(element,targetPage,box,scale){
+    const owner=paragraphFor(element),row=owner?.rows.at(-1);
+    if(row?.page===targetPage && matches(owner,element))return row.baseline*box.height;
+    const first=firstHeadingReference(scale,element,targetPage) ??
+      (element.matches('p') ? afterHeadingReference(element,targetPage,box,scale) : null);
+    if(first){
+      const extent=currentNode(element)?.content.size??0;
+      return first.stop.y*box.height+boundary(element,extent,scale).y-boundary(element,0,scale).y;
+    }
+    const end=pendingRows.get(element)?.end;
+    return end?.page===targetPage ? end.y*box.height : null;
+  }
+  function paragraphReference(element,targetPage,box,scale,baseline){
+    const sheet=page.querySelector('.document-sheets')?.children[targetPage-1]??page;
+    const x=(boundary(element,0,scale).x-sheet.getBoundingClientRect().left)/box.width;
+    return {offset:0,pinned:true,stop:{row:{page:targetPage},x,y:baseline/box.height}};
+  }
+  function afterHeadingReference(element,targetPage,box,scale){
+    const prev=element.previousElementSibling;
+    if(!prev || !box?.height)return null;
+    const skip=afterHeading(prev,element);
+    if(skip===null)return null;
+    const base=lastBaseline(prev,targetPage,box,scale);
+    const line=parseFloat(getComputedStyle(element).lineHeight);
+    return Number.isFinite(base) && Number.isFinite(line)
+      ? paragraphReference(element,targetPage,box,scale,base+(line+skip)*scale) : null;
+  }
+  function displayReference(paragraph,scale,element=block){
     const row=paragraph?.rows[0],targetPage=row?.page??number;
     const box=canvas(targetPage)?.getBoundingClientRect();
     if(!box?.height || !box.width)return null;
     const richSheet=page.querySelector('.document-sheets')?.children[targetPage-1]??page;
-    const paper=richSheet.getBoundingClientRect(),start=boundary(block,0,scale);
+    const paper=richSheet.getBoundingClientRect(),start=boundary(element,0,scale);
     // MathLive centers the expression again as it grows. Pinning the left
     // edge of its initially empty field instead can move it half a page.
     const x=(start.x-paper.left)/box.width;
-    let y=row?.baseline;
-    if(y===undefined && block.parentElement===editor && editor.hasAttribute('data-native-top-skip')){
+    let y=matches(paragraph,element)?row?.baseline:undefined;
+    if(y===undefined && element.parentElement===editor && editor.hasAttribute('data-native-top-skip')){
       const line=parseFloat(getComputedStyle(editor).lineHeight)*scale;
-      let prev=block.previousElementSibling;
+      let prev=element.previousElementSibling;
       while(prev?.matches('p:empty,p:has(> br:only-child)'))prev=prev.previousElementSibling;
       let preceding;
       if(!prev && targetPage===1 && !page.querySelector('#document-meta')?.textContent.trim()){
         preceding=(parseFloat(getComputedStyle(page).paddingTop)+Number(editor.dataset.nativeTopSkip))*scale;
       }else if(prev?.matches('p')){
-        const prior=paragraphFor(prev),last=prior?.rows.at(-1);
-        if(last?.page===targetPage && matches(prior,prev))preceding=last.baseline*box.height+line;
-        else preceding=boundary(prev,prev.textContent.length,scale).y-paper.top+line;
+        const end=lastBaseline(prev,targetPage,box,scale);
+        preceding=(end??(boundary(prev,currentNode(prev)?.content.size??0,scale).y-paper.top))+line;
       }
       if(Number.isFinite(preceding) && Number.isFinite(line)){
-        const strut=block.querySelector('math-field')?.shadowRoot?.querySelector('.ML__latex > .ML__strut');
+        const strut=element.querySelector('math-field')?.shadowRoot?.querySelector('.ML__latex > .ML__strut');
         const height=strut?.getBoundingClientRect().height??0;
         y=(preceding+(height>line ? height+96/72.27*scale : line))/box.height;
       }
     }
-    return {offset:0,pinned:true,stop:{row:{page:targetPage},x,y:y??pin?.y??(start.y-paper.top)/box.height}};
+    return {offset:0,pinned:true,stop:{row:{page:targetPage},x,y:y??row?.baseline??(pin?.element===element?pin.y:null)??(start.y-paper.top)/box.height}};
+  }
+  function bodyReference(element,scale){
+    if(!element?.matches('p') || element.parentElement!==editor)return null;
+    const box=canvas()?.getBoundingClientRect();
+    if(!box?.height || !box.width)return null;
+    const heading=afterHeadingReference(element,number,box,scale);
+    if(heading)return heading;
+    const prev=element.previousElementSibling,skip=editor.dataset.nativeBelowShortDisplay;
+    if(skip===undefined || !prev?.matches('.math-display'))return null;
+    const end=displayReference(paragraphFor(prev),scale,prev)?.stop;
+    if(!end || end.row.page!==number)return null;
+    const line=parseFloat(getComputedStyle(element).lineHeight)*scale;
+    const field=prev.querySelector('math-field')?.shadowRoot?.querySelector('.ML__latex');
+    const depth=field?.querySelector(':scope > .ML__strut--bottom')?.getBoundingClientRect();
+    const axis=field?.querySelector(':scope > .ML__strut')?.getBoundingClientRect().bottom;
+    const glyph=textBoundary(element,0);
+    const rise=metrics(glyph?.element??element,glyph?.char).inkAscent*scale;
+    const minimum=depth && Number.isFinite(axis)?depth.bottom-axis+rise:0;
+    const advance=minimum>line?minimum+96/72.27*scale:line;
+    return paragraphReference(element,number,box,scale,end.y*box.height+advance+Number(skip)*scale);
   }
   function referenceFor(paragraph,scale) {
     if(block.matches('.math-display'))return displayReference(paragraph,scale);
@@ -218,6 +267,11 @@ export function nativeParagraphOverlay(editor, panel, pages, framePending, selec
           (!pin || !framePending() || paintedDocument===view?.state.doc && paintedDocument))
         return {stop:physicalStop(paragraph,offset,scale),offset,exact:true};
       if(!old){const first=firstHeadingReference(scale);if(first)return first;}
+      if(matches(paragraph,block) && !paragraph.stops?.size && paragraph.rows[0]){
+        const row=paragraph.rows[0],box=canvas(row.page)?.getBoundingClientRect();
+        if(block.matches('p') && box?.height)return paragraphReference(block,row.page,box,scale,row.baseline*box.height);
+      }
+      const body=bodyReference(block,scale);if(body)return body;
       if(pin)return pinnedReference();
       // Anchor the common prefix nearest the edit, including wrapped lines.
       let i=0,limit=Math.min(offset??0,live.length,old?.length??0);
@@ -226,7 +280,7 @@ export function nativeParagraphOverlay(editor, panel, pages, framePending, selec
       const first=paragraph.rows[0];
       return {offset:i,stop:paragraph.stops?.get(i)??{row:first,x:first.left,y:first.baseline}};
     }
-    const first=firstHeadingReference(scale);
+    const first=firstHeadingReference(scale)??bodyReference(block,scale);
     if(first)return first;
     if(pin)return pinnedReference();
     // Consecutive empty editor paragraphs have no TeX line boxes. New ink
@@ -444,12 +498,21 @@ export function nativeParagraphOverlay(editor, panel, pages, framePending, selec
       if(box.bottom>=bounds.top)visible.push({element,box});
     }
     if(!visible.length && canvas())visible.push({element:sheetFor(number),box:canvas().getBoundingClientRect()});
-    const ink=snapshotDraft(previous,visible,metrics);
+    const node=currentNode(previous),scale=page.currentCSSZoom||1;
+    const reference=previous.matches('.math-display')?displayReference(owner,scale,previous):
+      firstHeadingReference(scale,previous)??bodyReference(previous,scale);
+    const target=reference?.stop,surface=target && canvas(target.row.page)?.getBoundingClientRect();
+    let delta=0;
+    if(surface?.height)delta=surface.top+target.y*surface.height-boundary(previous,0,scale).y;
+    const y=boundary(previous,node?.content.size??0,scale).y+delta;
+    const last=visible.find(({box})=>y>=box.top && y<=box.bottom)??visible.at(-1);
+    const end=last?.box.height?{page:Number(last.element.dataset.nativePage??last.element.dataset.pdfPage),y:(y-last.box.top)/last.box.height}:null;
+    const ink=snapshotDraft(previous,visible,metrics,delta);
     discard(previous);
     if(ink.length || owner){
       const sheetNumbers=new Set(owner?.rows.map(r=>r.page));
       for(const item of ink)sheetNumbers.add(Number(item.parentElement.dataset.nativePage??item.parentElement.dataset.pdfPage));
-      pendingRows.set(previous,{ink,masks:coverRows(owner),pages:sheetNumbers,owner,stamp:revision});
+      pendingRows.set(previous,{ink,masks:coverRows(owner),pages:sheetNumbers,owner,stamp:revision,end});
     }
   }
   function update(){

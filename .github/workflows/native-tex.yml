@@ -101,11 +101,7 @@ jobs:
         run: |
           npm run build
           node scripts/install-pdfjs.mjs
-          archive=$(npm pack mathlive@0.108.0 --pack-destination "$RUNNER_TEMP" --silent)
-          mkdir -p apps/web/vendor/mathlive
-          temp="$RUNNER_TEMP"
-          if [[ "$RUNNER_OS" == Windows ]]; then temp=$(cygpath -u "$temp"); fi
-          tar -xzf "$temp/$archive" -C apps/web/vendor/mathlive --strip-components=1 package/mathlive.min.js package/fonts
+          npm run vendor:mathlive
           if [[ "$RUNNER_OS" == Linux ]]; then
             npx playwright install --with-deps --only-shell chromium
           else
@@ -116,7 +112,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: native-hybrid-browser-${{ github.sha }}
-          path: apps/web/editor.mjs
+          path: |
+            apps/web/editor.mjs
+            apps/web/vendor/mathlive/mathlive.min.js
           retention-days: 2
       - name: Verify browser editing with and without the legacy engine
         id: browser_editing

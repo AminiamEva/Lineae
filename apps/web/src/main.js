@@ -2346,16 +2346,16 @@ function showCommands(field=null,native=null) {
   const before=math?math.value:view.state.doc;
   // MathLive removes its painted caret on blur. Keep its offset in this field
   // so scrolling or translating the live paragraph also moves the menu.
-  const bounds=origin.getBoundingClientRect();
-  const anchor=math?.shadowRoot?.querySelector('.ML__caret,.ML__text-caret,.ML__latex-caret,.ML__selection')?.getBoundingClientRect()
-    ??math?.shadowRoot?.querySelector('.ML__latex')?.getBoundingClientRect()??bounds;
+  const reference=field??(selection.$head.depth?view.nodeDOM(selection.$head.before()):null)??origin;
+  const bounds=reference.getBoundingClientRect();
+  const anchor=field ? (math?.shadowRoot?.querySelector('.ML__caret,.ML__text-caret,.ML__latex-caret,.ML__selection')?.getBoundingClientRect()
+    ??math?.shadowRoot?.querySelector('.ML__latex')?.getBoundingClientRect()??bounds) : view.coordsAtPos(selection.from);
   math?.setAttribute('data-lineae-command-open','');
   completion.open({
     origin,actions:completionActions(field,native),
     valid:()=>origin.isConnected && (native || (math?math.value:view.state.doc)===before),
     anchor:()=>{
-      if(!field)return view.coordsAtPos(selection.from);
-      const rect=origin.getBoundingClientRect();
+      const rect=reference.getBoundingClientRect();
       return {left:rect.left+anchor.left-bounds.left,top:rect.top+anchor.top-bounds.top,bottom:rect.top+anchor.bottom-bounds.top};
     },
     focus:()=>{

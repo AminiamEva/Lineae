@@ -54,11 +54,7 @@ jobs:
       - run: npm ci --no-audit --no-fund
       - run: npm run build
       - name: Vendor MathLive
-        shell: pwsh
-        run: |
-          $archive = npm pack mathlive@0.108.0 --pack-destination $env:RUNNER_TEMP --silent
-          New-Item -ItemType Directory -Force apps/web/vendor/mathlive | Out-Null
-          tar -xzf "$env:RUNNER_TEMP/$archive" -C apps/web/vendor/mathlive --strip-components=1 package/mathlive.min.js package/fonts
+        run: npm run vendor:mathlive
       - name: Data tests
         run: node --test tests/*.test.mjs
       - name: UI tests

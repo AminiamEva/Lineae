@@ -31,10 +31,7 @@ jobs:
       - run: node --test tests/bib/*.test.mjs tests/bib/*/*.test.mjs
       - name: Package the formula editor
         run: |
-          archive=$(npm pack mathlive@0.108.0 --pack-destination "$RUNNER_TEMP" --silent)
-          mkdir -p apps/web/vendor/mathlive
-          tar -xzf "$RUNNER_TEMP/$archive" -C apps/web/vendor/mathlive --strip-components=1 \
-            package/mathlive.min.js package/fonts
+          npm run vendor:mathlive
       - name: Install Chromium for headless regression
         run: npx playwright install --only-shell chromium
         timeout-minutes: 5
