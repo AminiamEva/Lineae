@@ -280,6 +280,13 @@ async function testDesktopDocument(browser, origin, initial) {
       !document.querySelector('.native-pending-prose') &&
       document.querySelector('.ProseMirror').editor.state.selection.$head.parent.textContent==='X中Y beta',null,{timeout:60000});
     assert.match(liveSource,/rj! alpha\s+X中Y beta/);
+    const beforeUndo=liveSource;
+    await page.keyboard.press('ControlOrMeta+z');
+    await page.waitForFunction(()=>!document.querySelector('.document-page .ProseMirror').editor.state.doc.textContent.includes('X中Y beta'));
+    await page.keyboard.press('ControlOrMeta+Shift+z');
+    await page.waitForFunction(()=>document.querySelector('main.native-ink-confirmed') &&
+      document.querySelector('.document-page .ProseMirror').editor.state.doc.textContent.includes('X中Y beta'),null,{timeout:60000});
+    assert.equal(liveSource,beforeUndo,'Redo must recover the same split paragraph and exact TeX bytes');
     assert.deepEqual(errors,[]);
     console.log('PASS: shipped Lua document, repeated Enter, caret X/Y, CJK preedit/commit, and split-prefix ink through a delayed native frame');
   }catch(error){

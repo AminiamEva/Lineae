@@ -45,7 +45,7 @@ import { buildHomeRibbon } from './ui/home-ribbon.js';
 import { activeStyleKey, documentClassFromSource } from './ui/style-presets.mjs';
 import { buildRibbonGroups } from './ui/ribbon-groups.js';
 import {installHeaderFooterPanel} from './ui/header-footer-panel.js';
-import { sourceProjection, richSourceChanges, standaloneParagraphDraft, standaloneMathChanges, matchesParagraphGap } from './editor/source-sync.js';
+import { sourceProjection, requiresSourceProjection, richSourceChanges, standaloneParagraphDraft, standaloneMathChanges, matchesParagraphGap } from './editor/source-sync.js';
 import { installSourceToolbar } from './editor/source-toolbar.js';
 import { createSourceWorkspace } from './editor/source-workspace.js';
 import { DEFAULT_DOCUMENT_SOURCE } from './editor/default-document.mjs';
@@ -1229,10 +1229,7 @@ function applyEditorHistory(command,field) {
 }
 paper.addEventListener('focusin', () => { if (!sourceView.hidden && syncPending) sourceView.flush(); syncUndoButtons(); });
 function usesSourceProjection() {
-  let referenceSource=false;
-  editor.state.doc.descendants(node=>{if(node.attrs.sourceCommand||node.attrs.labelSource||node.attrs.environmentSource)referenceSource=true;});
-  return referenceSource || !sourceView.hidden || (projectExplorer?.active && projectFileKind==='tex') ||
-    editor.getJSON().content.some(node=>node.type==='raw'||node.attrs?.longtable||node.attrs?.tblr||node.attrs?.tabularx||node.attrs?.figureSource);
+  return !sourceView.hidden || (projectExplorer?.active && projectFileKind==='tex') || requiresSourceProjection(editor.state.doc);
 }
 // Limit standalone writeback to text edits within one top-level paragraph.
 function standaloneParagraphEdit(tr) {
@@ -1874,7 +1871,7 @@ window.addEventListener('lineae-image-layout',()=>{typesetPagination?.refresh();
 function source() {
   if(projectDocument.composition)return projectExplorer.model.file(projectDocument.composition.rootId).draft;
   const document=editor.getJSON();
-  const untouched=importedSnapshot===JSON.stringify(document);
+  const untouched=importedSnapshot!==null && importedSnapshot===JSON.stringify(document);
   // Viewing an imported document must not repair its TeX or serialize visual
   // wrapping. Safe rich edits already update this source and its snapshot.
   if (untouched) return importedSource;

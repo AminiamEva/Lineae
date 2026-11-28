@@ -1,3 +1,6 @@
+const graphemes=new Intl.Segmenter(undefined,{granularity:'grapheme'});
+const eastAsian=/[\p{sc=Han}\p{sc=Hiragana}\p{sc=Katakana}\p{sc=Hangul}\u3000-\u303f\uff00-\uffef]/u;
+
 // Keep completed edits visible while TeX is working. These fragments come
 // from the *laid-out* editable DOM; a second paragraph layout would wrap and
 // clip the text differently. No element here accepts input.
@@ -43,8 +46,6 @@ export function snapshotDraft(block,sheets,measure) {
     ink.textContent=text;
     place.group.append(ink);
   }
-  const graphemes=new Intl.Segmenter(undefined,{granularity:'grapheme'});
-  const eastAsian=/[\p{sc=Han}\p{sc=Hiragana}\p{sc=Katakana}\p{sc=Hangul}\u3000-\u303f\uff00-\uffef]/u;
   function paintLine(node,from,to){
     const text=node.data.slice(from,to);
     const style=getComputedStyle(node.parentElement);

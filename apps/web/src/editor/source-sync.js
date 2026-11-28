@@ -15,6 +15,23 @@ import {markedRuns} from './native-text/prose-runs.mjs';
 // exactly. All other bytes (including comments, macros and separators) survive.
 const typingGap = node => node.type === 'paragraph' && !node.content?.length && !serialize(node).trim();
 
+const referenceSubtrees=new WeakMap();
+function containsSourceReference(node){
+  if(referenceSubtrees.has(node))return referenceSubtrees.get(node);
+  const attrs=node.attrs;
+  const result=Boolean(attrs.sourceCommand || attrs.labelSource || attrs.environmentSource ||
+    node.content.content.some(containsSourceReference));
+  referenceSubtrees.set(node,result);
+  return result;
+}
+
+export function requiresSourceProjection(doc){
+  // A keystroke replaces only its ancestors in the immutable ProseMirror
+  // tree. Never serialize the entire document just to choose a writeback path.
+  return containsSourceReference(doc) || doc.content.content.some(node=>node.type.name==='raw' ||
+    node.attrs.longtable || node.attrs.tblr || node.attrs.tabularx || node.attrs.figureSource);
+}
+
 export function sourceProjection(text, doc, options) {
   const ordinary = projectBlocks(text,doc,options);
   if (ordinary) return ordinary;
@@ -217,13 +234,19 @@ function paragraphSplitChange(projection,block,original,parts) {
     }else joined.push(child);
   }
   if(JSON.stringify(original.content??[])!==JSON.stringify(joined))return null;
-  const previous=serialize(original).slice(0,-2);
+  let previous=serialize(original).slice(0,-2);
   if(!previous.trim())return null;
-  const at=block.raw.indexOf(previous);
-  if(at<0 || block.raw.slice(0,at).trim() || block.raw.slice(at+previous.length).trim())return null;
   const eol=block.raw.match(/\r?\n/)?.[0]??projection.text.slice(block.to).match(/\r?\n/)?.[0]??
     projection.text.match(/\r?\n/)?.[0]??'\n';
-  const replacement=parts.map(node=>serialize(node).slice(0,-2)).join(eol+eol);
+  let replacement=parts.map(node=>serialize(node).slice(0,-2)).join(eol+eol);
+  const spelling=block.spelling;
+  if(spelling?.unicode && spelling.canonicalBody===previous)return patchUnicodeSpelling(block,replacement);
+  if(spelling?.canonical && previous.startsWith(spelling.canonical) && replacement.startsWith(spelling.canonical)){
+    previous=spelling.original+previous.slice(spelling.canonical.length);
+    replacement=spelling.original+replacement.slice(spelling.canonical.length);
+  }
+  const at=block.raw.indexOf(previous);
+  if(at<0 || block.raw.slice(0,at).trim() || block.raw.slice(at+previous.length).trim())return null;
   return minimalChange(previous,replacement,block.from+at);
 }
 
@@ -532,6 +555,17 @@ function patchIsolatedTables(block,nodes) {
   return changes;
 }
 
+function patchUnicodeSpelling(block,body){
+  const {canonicalBody:old,map,start}=block.spelling;
+  const [patch]=minimalChange(old,body,0);
+  let {from,to}=patch;
+  while(from>0 && map[start+from]===null)from--;
+  while(to<old.length && map[start+to]===null)to++;
+  const a=map[start+from],b=map[start+to];
+  if(!Number.isInteger(a)||!Number.isInteger(b))return null;
+  return [{from:block.from+a,to:block.from+b,insert:old.slice(from,patch.from)+patch.insert+old.slice(patch.to,to)}];
+}
+
 function patchBlock(block,nodes) {
     const math=mathBodyChanges(block,nodes)??inlineMathChanges(block,nodes)??markedInlineProseChanges(block,nodes)??plainTableChanges(block,nodes)??
       tikzFigureChanges(block,nodes)??theoremParagraphChanges(block,nodes)??containerProseChanges(block,nodes);
@@ -549,12 +583,7 @@ function patchBlock(block,nodes) {
     if(nodes.some(unsafe))return null;
     if(block.spelling?.unicode){
       if(nodes.length!==1||nodes[0].type!=='paragraph')return null;
-      const spelling=block.spelling,body=serialize(nodes[0]).slice(0,-2),old=spelling.canonicalBody;
-      const [patch]=minimalChange(old,body,0);let from=patch.from,to=patch.to;
-      while(from>0&&spelling.map[spelling.start+from]===null)from--;
-      while(to<old.length&&spelling.map[spelling.start+to]===null)to++;
-      const a=spelling.map[spelling.start+from],b=spelling.map[spelling.start+to];if(!Number.isInteger(a)||!Number.isInteger(b))return null;
-      return [{from:block.from+a,to:block.from+b,insert:old.slice(from,patch.from)+patch.insert+old.slice(patch.to,to)}];
+      return patchUnicodeSpelling(block,serialize(nodes[0]).slice(0,-2));
     }
     let [leading,trailing] = block.emptyPrefix!==undefined&&!block.raw.trim()?[block.emptyPrefix,block.emptySuffix??'']:blockWhitespace(block.raw);
     const body = nodes.map(serialize).join('').trim();

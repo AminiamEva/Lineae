@@ -54,7 +54,8 @@ export function nativeParagraphOverlay(editor, panel, pages, framePending) {
     const s=document.getSelection();
     if(caret && !composing && s?.rangeCount && s.isCollapsed && selectionOffset(block)===offset){
       const rect=s.getRangeAt(0).getBoundingClientRect();
-      if(rect.height)point={...point,x:rect.left,top:rect.top,element:s.focusNode.parentElement??block};
+      if(rect.height)point={...point,x:rect.left,top:rect.top,
+        element:s.focusNode.nodeType===1?s.focusNode:s.focusNode.parentElement??block};
     }
     if(point){
       const rise=metrics(point.element,point.char).aboveRange*scale;

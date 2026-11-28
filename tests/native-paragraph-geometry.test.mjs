@@ -6,7 +6,7 @@ import {paragraphFrame,paragraphHit} from '../apps/web/src/typesetting/rtex/para
 import {completePageDeltas} from '../apps/web/src/typesetting/rtex/page-deltas.mjs';
 import {changedTextblocks} from '../apps/web/src/editor/changed-textblocks.mjs';
 import {EditorState} from '@tiptap/pm/state';
-import {sourceProjection,standaloneParagraphDraft} from '../apps/web/src/editor/source-sync.js';
+import {sourceProjection,requiresSourceProjection,standaloneParagraphDraft} from '../apps/web/src/editor/source-sync.js';
 
 const schema=new Schema({nodes:{doc:{content:'paragraph+'},paragraph:{content:'text*'},text:{}}});
 const p=text=>schema.nodes.paragraph.create(null,text?schema.text(text):null);
@@ -88,6 +88,22 @@ test('after splitting on either side of a space the first and subsequent keys su
   }
 });
 
+test('splitting a paragraph preserves the original Unicode spelling on both sides',()=>{
+  const doc=words=>schema.nodes.doc.create(null,words.map(p)).toJSON();
+  for(const [left,right] of [['甲—乙',' 丙'],['alpha',' “中文” beta'],['中“文” ','A—B']]){
+    const original=doc([left+right,'nearby']),split=doc([left,right,'nearby']);
+    const raw='% exact bytes\r\n\\begin{document}\r\n'+left+right+'\r\n\r\nnearby\r\n\\end{document}\r\n';
+    let before=split,saved=original,source=raw,projection=sourceProjection(source,original);
+    for(const typed of ['X','X中']){
+      const after=doc([left,typed+right,'nearby']);
+      const result=standaloneParagraphDraft(source,projection,JSON.stringify(saved),before,after,1);
+      assert.ok(result,JSON.stringify({left,right,typed}));
+      assert.equal(result.draft,raw.replace(left+right,left+'\r\n\r\n'+typed+right));
+      before=saved=after;projection=result.projection;source=result.draft;
+    }
+  }
+});
+
 test('a CJK soft wrap has two physical caret stops for the same model offset',()=>{
   const element={},entry={element,text:'文文'};
   const lines=[500,1200].map(y=>({x:300,y,h:200,d:50,items:[['g',1,0x6587,0,300,y,250,0]]}));
@@ -131,4 +147,18 @@ test('a formatting transaction still invalidates the changed text when positions
   const start=doc.child(0).nodeSize+2;
   const tr=EditorState.create({schema:marked,doc}).tr.addMark(start,start+5,marked.mark('strong'));
   assert.deepEqual([...changedTextblocks(tr).values()].map(node=>node.textContent),['edited words']);
+});
+
+test('edit routing follows nested source commands when neighboring immutable subtrees are reused',()=>{
+  const s=new Schema({nodes:{doc:{content:'block+'},quote:{group:'block',content:'block+'},
+    paragraph:{group:'block',content:'inline*'},reference:{inline:true,group:'inline',attrs:{sourceCommand:{default:null}}},
+    raw:{group:'block'},text:{group:'inline'}}});
+  const plain=s.node('paragraph',null,s.text('alpha')),ref=s.node('reference',{sourceCommand:'ref'});
+  const quote=s.node('quote',null,s.node('paragraph',null,ref));
+  const doc=nodes=>s.node('doc',null,nodes);
+  const refDoc=doc([plain,quote]),bare=doc([plain,s.node('quote',null,plain)]);
+  assert.equal(requiresSourceProjection(refDoc),true);
+  assert.equal(requiresSourceProjection(bare),false);
+  assert.equal(requiresSourceProjection(doc([plain,s.node('raw')])),true);
+  assert.equal(requiresSourceProjection(EditorState.create({doc:refDoc}).tr.insertText('!',2).doc),true);
 });
