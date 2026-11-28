@@ -56,8 +56,13 @@
   }
 
   window.lineaeDesktop = {
+    isMac: /Mac/.test(navigator.platform || navigator.userAgent),
     setTitle: (filename, dirty) => invoke('set_document_title', { filename, dirty }),
     onMenuAction: callback => window.__TAURI__.event.listen('lineae-menu-action', event => callback(event.payload)),
+    onCloseRequested: callback => window.__TAURI__.event.listen('lineae-close-requested', () => callback()),
+    windowAction: action => invoke('window_action', { action }),
+    closeWindow: () => invoke('close_main_window'),
+    quitApp: () => invoke('quit_app'),
     onFinderOpen: callback => window.__TAURI__.event.listen('lineae-finder-open', callback),
     async takeFinderDocument() {
       const selected = await invoke('take_finder_document');

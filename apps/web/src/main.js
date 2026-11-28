@@ -126,6 +126,7 @@ import { mathSymbols } from '../latex/math-symbols.mjs';
 import { createThemeController } from './ui/theme.mjs';
 import { installTooltips } from './ui/tooltips.mjs';
 import { installRovingFocus } from './ui/keyboard-nav.mjs';
+import { installMacWindowShortcuts } from './ui/macos-window-shortcuts.mjs';
 import { fadeIn } from './ui/motion.mjs';
 import { getLanguage, localize, normalizeLanguage, setLanguage, t } from './ui/i18n.mjs';
 import { TikzEditor } from './tikz/controllers/tikzEditor.js';
@@ -6422,6 +6423,8 @@ if(window.lineaeDesktop){
     new:newDocument,
     open:openDocument,
     'open-project':()=>document.querySelector('#project-open')?.click(),
+    'close-window':()=>leaveDesktop(false),
+    quit:()=>leaveDesktop(true),
     save:()=>saveDocument(),
     'save-as':()=>saveDocument(true),
     undo:()=>document.activeElement?.matches('textarea,input[type=text]')?document.execCommand('undo'):undoDocument(),
@@ -6431,14 +6434,32 @@ if(window.lineaeDesktop){
     source:()=>sourceButton.click(),
     split:()=>splitButton.click(),
     'toggle-toolbar':()=>toolbarController.button.click(),
+    'window-fill':()=>desktop.windowAction('fill'),
+    'window-center':()=>desktop.windowAction('center'),
+    'window-restore':()=>desktop.windowAction('restore'),
+    'window-left':()=>desktop.windowAction('left'),
+    'window-right':()=>desktop.windowAction('right'),
+    'window-top':()=>desktop.windowAction('top'),
+    'window-bottom':()=>desktop.windowAction('bottom'),
   };
   function reportDesktopError(error){
     const status=document.querySelector('#status');
     status.hidden=false;status.textContent=String(error?.message??error);
   }
+  let leavingDesktop=false;
+  async function leaveDesktop(quit){
+    if(leavingDesktop)return;
+    leavingDesktop=true;
+    try{
+      if(!approveDesktopReplacement())return;
+      if(quit)await desktop.quitApp();else await desktop.closeWindow();
+    }finally{leavingDesktop=false;}
+  }
   desktop.onMenuAction(action=>{
     if(Object.hasOwn(nativeActions,action))Promise.resolve().then(nativeActions[action]).catch(reportDesktopError);
   }).catch(reportDesktopError);
+  desktop.onCloseRequested(()=>leaveDesktop(false).catch(reportDesktopError)).catch(reportDesktopError);
+  installMacWindowShortcuts(window,{isMac:desktop.isMac,run:action=>desktop.windowAction(action).catch(reportDesktopError)});
 
   let openingFromFinder=false;
   async function openFinderDocuments(){

@@ -1,9 +1,12 @@
 use std::collections::{HashSet, VecDeque};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 
 use serde::Serialize;
 use tauri::{AppHandle, Manager, State, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
+#[cfg(target_os = "macos")]
+use tauri::Emitter;
 use tauri_plugin_dialog::DialogExt;
 #[cfg(target_os = "windows")]
 mod project;
@@ -12,8 +15,10 @@ mod project;
 mod project;
 #[cfg(target_os = "windows")]
 mod project_checkpoints;
-#[cfg(desktop)]
+#[cfg(target_os = "macos")]
 mod desktop_menu;
+#[cfg(desktop)]
+mod window_layout;
 mod tex_session;
 #[cfg(all(debug_assertions, target_os = "windows"))]
 mod hybrid_typing_check;
@@ -26,6 +31,12 @@ struct AllowedFiles(Mutex<HashSet<PathBuf>>);
 
 #[derive(Default)]
 struct FinderFiles(Mutex<VecDeque<PathBuf>>);
+
+#[derive(Default)]
+struct WindowLifecycle {
+    allow_close: AtomicBool,
+    stay_alive: AtomicBool,
+}
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -143,6 +154,26 @@ fn set_document_title(window: WebviewWindow, filename: String, dirty: bool) -> R
 }
 
 #[tauri::command]
+fn close_main_window(
+    window: WebviewWindow,
+    lifecycle: State<'_, WindowLifecycle>,
+) -> Result<(), String> {
+    lifecycle.allow_close.store(true, Ordering::SeqCst);
+    lifecycle.stay_alive.store(true, Ordering::SeqCst);
+    if let Err(error) = window.close() {
+        lifecycle.allow_close.store(false, Ordering::SeqCst);
+        lifecycle.stay_alive.store(false, Ordering::SeqCst);
+        return Err(error.to_string());
+    }
+    Ok(())
+}
+
+#[tauri::command]
+fn quit_app(app: AppHandle) {
+    app.exit(0);
+}
+
+#[tauri::command]
 async fn pick_save_tex(
     app: AppHandle,
     allowed: State<'_, AllowedFiles>,
@@ -209,14 +240,90 @@ async fn save_bytes(
     Ok(Some(path.to_string_lossy().into_owned()))
 }
 
+fn create_main_window(app: &AppHandle) -> tauri::Result<WebviewWindow> {
+    let native_smoke = cfg!(debug_assertions)
+        && std::env::args_os().any(|arg| arg == "--lineae-native-workspace-smoke");
+    let native_input_review = cfg!(debug_assertions)
+        && std::env::args_os().any(|arg| arg == "--lineae-native-workspace");
+    let entry = if native_smoke {
+        "index.html?native-only-acceptance=1"
+    } else if native_input_review {
+        "index.html?native-workspace=1"
+    } else {
+        "index.html"
+    };
+    let window = WebviewWindowBuilder::new(app, "main", WebviewUrl::App(entry.into()))
+        .title("Lineae - lineae.tex*")
+        .inner_size(1280.0, 900.0)
+        .min_inner_size(960.0, 640.0)
+        .center()
+        // WebView2 drops ctrl+wheel and trackpad pinch gestures unless
+        // zoom control is enabled, so the page would never receive the
+        // wheel events that drive the document zoom.
+        .zoom_hotkeys_enabled(true)
+        .initialization_script(if cfg!(any(target_os = "windows", target_os = "macos", target_os = "linux")) {
+            include_str!("bridge.js")
+        } else {
+            concat!(
+                "window.__LINEAE_DESKTOP_NATIVE_PROJECTS__ = false;\n",
+                include_str!("bridge.js")
+            )
+        });
+    #[cfg(all(debug_assertions, target_os = "windows"))]
+    let window = if std::env::args_os().any(|arg| arg == "--lineae-typing-check") {
+        window.initialization_script(include_str!("desktop-typing-check.js"))
+            .on_document_title_changed(|window, title| {
+                if title == "Lineae typing ready" || title == "Lineae typing equation" {
+                    eprintln!("{title}");
+                } else if let Some(result) = title.strip_prefix("Lineae typing result: ") {
+                    eprintln!("Lineae typing result: {result}");
+                    window.app_handle().exit(if result == "ok" { 0 } else { 1 });
+                }
+            })
+    } else {
+        window
+    };
+    #[cfg(all(debug_assertions, target_os = "windows"))]
+    let window = if std::env::args_os().any(|arg| arg == "--lineae-hybrid-typing-check") {
+        window.initialization_script(concat!(
+            include_str!("../../../../tests/native-hybrid-typing-scenario.cjs"), "\n",
+            include_str!("hybrid-typing-check.js")
+        )).on_document_title_changed(hybrid_typing_check::on_title)
+    } else { window };
+    let legacy_smoke = std::env::args_os().any(|arg| arg == "--lineae-smoke-test");
+    let window = if !native_smoke && !native_input_review && !legacy_smoke {
+        window.initialization_script("window.__LINEAE_DESKTOP_ENGINE_TOGGLE__ = true;")
+    } else { window };
+    let window = if native_smoke || legacy_smoke {
+        window
+            .initialization_script(format!("window.__LINEAE_SMOKE_UNAUTHORIZED_PATH__={};",
+                serde_json::to_string(&std::env::temp_dir().join("lineae-smoke-not-authorized.tex").to_string_lossy()).unwrap()))
+            .initialization_script(include_str!("macos-smoke.js"))
+            .on_document_title_changed(|window, title| {
+                if let Some(result) = title.strip_prefix("Lineae smoke: ") {
+                    eprintln!("Lineae smoke: {result}");
+                    window.app_handle().exit(if result == "ok" { 0 } else { 1 });
+                }
+            })
+    } else {
+        window
+    };
+    window.build()
+}
+
 pub fn run() {
     let builder = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .manage(AllowedFiles::default())
         .manage(FinderFiles::default())
+        .manage(WindowLifecycle::default())
         .manage(tex_session::NativeTexSessions::default());
     #[cfg(desktop)]
-    let builder = builder.menu(desktop_menu::build).on_menu_event(desktop_menu::dispatch);
+    let builder = builder.manage(window_layout::WindowLayout::default());
+    #[cfg(target_os = "macos")]
+    let builder = builder
+        .menu(desktop_menu::build)
+        .on_menu_event(desktop_menu::dispatch);
     #[cfg(any(target_os = "windows", target_os = "macos", target_os = "linux"))]
     let builder = builder
         .manage(project::ProjectRoots::default())
@@ -224,6 +331,9 @@ pub fn run() {
             open_tex,
             take_finder_document,
             set_document_title,
+            close_main_window,
+            quit_app,
+            window_layout::window_action,
             pick_save_tex,
             write_tex,
             save_bytes,
@@ -258,100 +368,74 @@ pub fn run() {
         tex_session::native_tex_close
     ]);
     let app = builder
-        .on_window_event(|window,event| {
-            if matches!(event,tauri::WindowEvent::Destroyed) {
-                window.state::<tex_session::NativeTexSessions>().close_all();
+        .on_window_event(|window, event| {
+            match event {
+                tauri::WindowEvent::CloseRequested { api, .. } => {
+                    #[cfg(target_os = "macos")]
+                    {
+                        let lifecycle = window.state::<WindowLifecycle>();
+                        if !lifecycle.allow_close.swap(false, Ordering::SeqCst) {
+                            api.prevent_close();
+                            let _ = window.emit_to("main", "lineae-close-requested", ());
+                        }
+                    }
+                    #[cfg(not(target_os = "macos"))]
+                    let _ = api;
+                }
+                tauri::WindowEvent::Destroyed => {
+                    window.state::<tex_session::NativeTexSessions>().close_all();
+                }
+                _ => {}
             }
         })
         .setup(|app| {
             if let Ok(resources) = app.path().resource_dir() {
                 tex_session::set_bundled_rtex(resources.join("rtex"));
             }
-            let native_smoke = cfg!(debug_assertions)
-                && std::env::args_os().any(|arg| arg == "--lineae-native-workspace-smoke");
-            let native_input_review = cfg!(debug_assertions)
-                && std::env::args_os().any(|arg| arg == "--lineae-native-workspace");
-            let entry = if native_smoke {
-                "index.html?native-only-acceptance=1"
-            } else if native_input_review {
-                "index.html?native-workspace=1"
-            } else {
-                "index.html"
-            };
-            let window = WebviewWindowBuilder::new(app, "main", WebviewUrl::App(entry.into()))
-                .title("Lineae - lineae.tex*")
-                .inner_size(1280.0, 900.0)
-                .min_inner_size(960.0, 640.0)
-                .center()
-                // WebView2 drops ctrl+wheel and trackpad pinch gestures unless
-                // zoom control is enabled, so the page would never receive the
-                // wheel events that drive the document zoom.
-                .zoom_hotkeys_enabled(true)
-                .initialization_script(if cfg!(any(target_os = "windows", target_os = "macos", target_os = "linux")) {
-                    include_str!("bridge.js")
-                } else {
-                    concat!(
-                        "window.__LINEAE_DESKTOP_NATIVE_PROJECTS__ = false;\n",
-                        include_str!("bridge.js")
-                    )
-                });
-            #[cfg(all(debug_assertions, target_os = "windows"))]
-            let window = if std::env::args_os().any(|arg| arg == "--lineae-typing-check") {
-                window.initialization_script(include_str!("desktop-typing-check.js"))
-                    .on_document_title_changed(|window, title| {
-                        if title == "Lineae typing ready" || title == "Lineae typing equation" {
-                            eprintln!("{title}");
-                        } else if let Some(result) = title.strip_prefix("Lineae typing result: ") {
-                            eprintln!("Lineae typing result: {result}");
-                            window.app_handle().exit(if result == "ok" { 0 } else { 1 });
-                        }
-                    })
-            } else {
-                window
-            };
-            #[cfg(all(debug_assertions, target_os = "windows"))]
-            let window = if std::env::args_os().any(|arg| arg == "--lineae-hybrid-typing-check") {
-                window.initialization_script(concat!(
-                    include_str!("../../../../tests/native-hybrid-typing-scenario.cjs"), "\n",
-                    include_str!("hybrid-typing-check.js")
-                )).on_document_title_changed(hybrid_typing_check::on_title)
-            } else { window };
-            let legacy_smoke = std::env::args_os().any(|arg| arg == "--lineae-smoke-test");
-            let window = if !native_smoke && !native_input_review && !legacy_smoke {
-                window.initialization_script("window.__LINEAE_DESKTOP_ENGINE_TOGGLE__ = true;")
-            } else { window };
-            let window = if native_smoke || legacy_smoke {
-                window
-                    .initialization_script(format!("window.__LINEAE_SMOKE_UNAUTHORIZED_PATH__={};",
-                        serde_json::to_string(&std::env::temp_dir().join("lineae-smoke-not-authorized.tex").to_string_lossy()).unwrap()))
-                    .initialization_script(include_str!("macos-smoke.js"))
-                    .on_document_title_changed(|window, title| {
-                        if let Some(result) = title.strip_prefix("Lineae smoke: ") {
-                            eprintln!("Lineae smoke: {result}");
-                            window.app_handle().exit(if result == "ok" { 0 } else { 1 });
-                        }
-                    })
-            } else {
-                window
-            };
-            window.build()?;
+            create_main_window(app.handle())?;
             Ok(())
         })
         .build(tauri::generate_context!())
         .expect("failed to build Lineae");
 
-    app.run(|_handle, _event| {
-        #[cfg(target_os = "macos")]
-        if let tauri::RunEvent::Opened { urls } = _event {
-            use tauri::Emitter;
-
-            let files = urls.into_iter().filter_map(|url| url.to_file_path().ok()).filter(|path| {
-                path.extension().is_some_and(|ext| ext.eq_ignore_ascii_case("tex"))
-            });
-            if let Ok(mut pending) = _handle.state::<FinderFiles>().0.lock() {
-                pending.extend(files);
+    app.run(|handle, event| {
+        #[cfg(not(target_os = "macos"))]
+        let _ = &handle;
+        match event {
+            tauri::RunEvent::ExitRequested { code, api, .. } => {
+                #[cfg(target_os = "macos")]
+                if code.is_none()
+                    && handle
+                        .state::<WindowLifecycle>()
+                        .stay_alive
+                        .swap(false, Ordering::SeqCst)
+                {
+                    api.prevent_exit();
+                }
+                #[cfg(not(target_os = "macos"))]
+                {
+                    let _ = (code, api);
+                }
             }
-            let _ = _handle.emit_to("main", "lineae-finder-open", ());
+            #[cfg(target_os = "macos")]
+            tauri::RunEvent::Reopen { .. } => {
+                if handle.get_webview_window("main").is_none() {
+                    if let Err(error) = create_main_window(handle) {
+                        eprintln!("failed to reopen Lineae: {error}");
+                    }
+                }
+            }
+            #[cfg(target_os = "macos")]
+            tauri::RunEvent::Opened { urls } => {
+                let files = urls.into_iter().filter_map(|url| url.to_file_path().ok()).filter(|path| {
+                    path.extension().is_some_and(|ext| ext.eq_ignore_ascii_case("tex"))
+                });
+                if let Ok(mut pending) = handle.state::<FinderFiles>().0.lock() {
+                    pending.extend(files);
+                }
+                let _ = handle.emit_to("main", "lineae-finder-open", ());
+            }
+            _ => {}
         }
     });
 }

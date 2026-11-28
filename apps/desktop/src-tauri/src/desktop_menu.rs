@@ -1,5 +1,5 @@
 use tauri::menu::{Menu, MenuEvent, MenuItem, MenuItemKind, PredefinedMenuItem, Submenu};
-use tauri::{AppHandle, Emitter, Wry};
+use tauri::{AppHandle, Emitter, Manager, Wry};
 
 fn find_submenu(menu: &Menu<Wry>, name: &str) -> tauri::Result<Option<Submenu<Wry>>> {
     for item in menu.items()? {
@@ -35,22 +35,106 @@ fn action(
     MenuItem::with_id(handle, format!("lineae:{id}"), label, true, accelerator)
 }
 
+#[cfg(target_os = "macos")]
+fn replace_quit(handle: &AppHandle, menu: &Menu<Wry>) -> tauri::Result<()> {
+    let Some(app_menu) = menu.items()?.into_iter().find_map(|item| match item {
+        MenuItemKind::Submenu(submenu) => Some(submenu),
+        _ => None,
+    }) else {
+        return Ok(());
+    };
+    let quit = app_menu.items()?.into_iter().find_map(|item| match item {
+        MenuItemKind::Predefined(item)
+            if item.text().unwrap_or_default().starts_with("Quit") =>
+        {
+            Some(item)
+        }
+        _ => None,
+    });
+    if let Some(quit) = quit {
+        app_menu.remove(&quit)?;
+    }
+    app_menu.append(&action(handle, "quit", "Quit Lineae", Some("CmdOrCtrl+Q"))?)?;
+    Ok(())
+}
+
+#[cfg(target_os = "macos")]
+fn customize_window_menu(
+    handle: &AppHandle,
+    menu: &Menu<Wry>,
+) -> tauri::Result<()> {
+    let window = submenu(handle, menu, "Window", 4)?;
+    for _ in 0..window.items()?.len() {
+        window.remove_at(0)?;
+    }
+    let resize = Submenu::with_items(
+        handle,
+        "Move & Resize",
+        true,
+        &[
+            &action(handle, "window-left", "Left", Some("Ctrl+Left"))?,
+            &action(handle, "window-right", "Right", Some("Ctrl+Right"))?,
+            &action(handle, "window-top", "Top", Some("Ctrl+Up"))?,
+            &action(handle, "window-bottom", "Bottom", Some("Ctrl+Down"))?,
+            &PredefinedMenuItem::separator(handle)?,
+            &action(
+                handle,
+                "window-restore",
+                "Return to Previous Size",
+                Some("Ctrl+R"),
+            )?,
+        ],
+    )?;
+    window.append_items(&[
+        &PredefinedMenuItem::minimize(handle, None)?,
+        &PredefinedMenuItem::maximize(handle, None)?,
+        &PredefinedMenuItem::separator(handle)?,
+        &action(handle, "window-fill", "Fill", Some("Ctrl+F"))?,
+        &action(handle, "window-center", "Center", Some("Ctrl+C"))?,
+        &resize,
+        &PredefinedMenuItem::separator(handle)?,
+        &PredefinedMenuItem::bring_all_to_front(handle, None)?,
+    ])?;
+    Ok(())
+}
+
 pub fn build(handle: &AppHandle) -> tauri::Result<Menu<Wry>> {
     let menu = Menu::default(handle)?;
     let file_position = usize::from(cfg!(target_os = "macos"));
+    #[cfg(target_os = "macos")]
+    {
+        replace_quit(handle, &menu)?;
+        if let Some(default_file) = find_submenu(&menu, "File")? {
+            menu.remove(&default_file)?;
+        }
+    }
     let file = submenu(handle, &menu, "File", file_position)?;
     file.insert_items(
         &[
             &action(handle, "new", "New Document", Some("CmdOrCtrl+N"))?,
             &action(handle, "open", "Open…", Some("CmdOrCtrl+O"))?,
-            &action(handle, "open-project", "Open Project…", Some("CmdOrCtrl+Shift+O"))?,
+            &action(
+                handle,
+                "open-project",
+                "Open Project…",
+                Some("CmdOrCtrl+Shift+O"),
+            )?,
             &PredefinedMenuItem::separator(handle)?,
             &action(handle, "save", "Save", Some("CmdOrCtrl+S"))?,
             &action(handle, "save-as", "Save As…", Some("CmdOrCtrl+Shift+S"))?,
-            &PredefinedMenuItem::separator(handle)?,
         ],
         0,
     )?;
+    #[cfg(target_os = "macos")]
+    {
+        file.append(&PredefinedMenuItem::separator(handle)?)?;
+        file.append(&action(
+            handle,
+            "close-window",
+            "Close Window",
+            Some("CmdOrCtrl+W"),
+        )?)?;
+    }
 
     if let Some(default_edit) = find_submenu(&menu, "Edit")? {
         menu.remove(&default_edit)?;
@@ -84,11 +168,17 @@ pub fn build(handle: &AppHandle) -> tauri::Result<Menu<Wry>> {
         ],
         0,
     )?;
+    #[cfg(target_os = "macos")]
+    customize_window_menu(handle, &menu)?;
     Ok(menu)
 }
 
 pub fn dispatch(handle: &AppHandle, event: MenuEvent) {
     if let Some(action) = event.id().as_ref().strip_prefix("lineae:") {
+        if action == "quit" && handle.get_webview_window("main").is_none() {
+            handle.exit(0);
+            return;
+        }
         let _ = handle.emit_to("main", "lineae-menu-action", action);
     }
 }
