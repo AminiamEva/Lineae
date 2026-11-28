@@ -362,6 +362,7 @@ function installResponsiveGroups(panel,states) {
     }
     panel.dataset.collapsedGroups = String(collapsed.size);
     panel.dataset.compactGroups = String(compact);
+    panel.dispatchEvent(new Event('ribbonlayout'));
   }
 
   function schedule() {
@@ -555,6 +556,7 @@ export function buildHomeRibbon(panel,{actions = {},documentClass = 'article'} =
   const editing = group(panel,'editing','编辑','Editing','find');
   const editingRow = editing.row();
   refs.find = button({iconName:'find',zh:'查找',en:'Find',hintZh:'在文档中查找文本',hintEn:'Find text in the document',large:true,action:run('find'),sourceAction:'Find'});
+  refs.find.classList.add('rb-find');
   editingRow.append(refs.find);
 
   const responsive = installResponsiveGroups(panel,groupStates);

@@ -737,7 +737,7 @@ const server=createServer(async(req,res)=>{
         .replace('\\end{tabular}','\\end{tabular}\n}');
       await page.waitForFunction(expected=>nativeProbe.source===expected,stretchedTable);
       await panel.getByText('Click text on the native page',{exact:false}).waitFor();
-      await page.locator('.table-style-group select[aria-label="Font size"]').evaluate(control=>{
+      await page.locator('[data-ribbon-group=table-size] select[aria-label="Font size"]').evaluate(control=>{
         control.value='small';control.dispatchEvent(new Event('change',{bubbles:true}));
       });
       const smallTable=stretchedTable.replace('{\\renewcommand','{\\small {\\renewcommand').replace('\\end{tabular}\n}','\\end{tabular}\n}}');
@@ -3040,7 +3040,7 @@ const server=createServer(async(req,res)=>{
     await page.getByText('Click text on the native page',{exact:false}).waitFor();
     await revealToolbar(page);await page.locator('[data-group=layout]').click();
     const columns=page.getByRole('combobox',{name:'Global columns'});
-    if(!await columns.isVisible())await page.locator('[data-ribbon-group=layout-page-setup] .ribbon-group-toggle').click();
+    if(!await columns.isVisible())await page.locator('[data-ribbon-group=layout-columns] .ribbon-group-toggle').click();
     await columns.selectOption('2');
     const twoColumns=projectLayout.replace('\\documentclass{article}','\\documentclass[twocolumn]{article}');
     const verifyLayout=expected=>page.waitForFunction(({expected,child})=>{
