@@ -56,7 +56,7 @@
   }
 
   window.lineaeDesktop = {
-    isMac: /Mac/.test(navigator.platform || navigator.userAgent),
+    isMac: typeof navigator !== 'undefined' && /Mac/.test(navigator.platform || navigator.userAgent),
     setTitle: (filename, dirty) => invoke('set_document_title', { filename, dirty }),
     onMenuAction: callback => window.__TAURI__.event.listen('lineae-menu-action', event => callback(event.payload)),
     onCloseRequested: callback => window.__TAURI__.event.listen('lineae-close-requested', () => callback()),

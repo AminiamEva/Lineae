@@ -28,12 +28,17 @@ test('the native math fixture changes only one denominator letter',()=>{
   assert.equal(after.slice(0,start+from16)+after.slice(start+from16+insert.length),before);
   assert.equal(fixture.rights,'redistributable');
 });
-test('desktop preview is opt-in, waits for both platforms and does not require Linux',()=>{
+test('desktop previews run automatically on main, also support opt-in branches and skip Linux',()=>{
   const workflow=parse(readFileSync('.github/workflows/macos-release.yml','utf8'));
   assert.equal(workflow.on.workflow_dispatch.inputs.publish_preview.default,false);
+  assert.deepEqual(workflow.on.push.branches,['main']);
   assert.deepEqual(workflow.jobs.preview.needs,['web','build','windows','native']);
-  assert.match(workflow.jobs.preview.if,/workflow_dispatch.*inputs.publish_preview/);
-  assert.match(workflow.jobs.linux.if,/!inputs.publish_preview/);
+  for(const job of ['native','preview']){
+    assert.match(workflow.jobs[job].if,/inputs\.publish_preview/);
+    assert.match(workflow.jobs[job].if,/refs\/heads\/main/);
+  }
+  assert.match(workflow.jobs.linux.if,/!\(inputs\.publish_preview/);
+  assert.match(workflow.jobs.linux.if,/refs\/heads\/main/);
   assert.deepEqual(workflow.jobs.release.needs,['web','build','windows','linux']);
   assert.match(workflow.jobs.release.if,/github.event_name == 'push'/);
 });
