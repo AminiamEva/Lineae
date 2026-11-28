@@ -71,7 +71,7 @@ body.project-visible header .brand {top:0;}
   #project-explorer>.project-actions {top:66px;}
   #project-explorer>strong {padding-right:0;}
   .project-actions button {max-width:56px;overflow:hidden;}
-  .document-status {gap:3px;flex-wrap:wrap;}
+  .document-status {gap:3px;}
   .document-status #status,.document-status .environment-tag,.document-status input[type=range],.document-status output {display:none;}
   .document-status button {white-space:nowrap;flex-shrink:0;}
   .document-status span {min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
@@ -94,8 +94,8 @@ body.project-visible header .brand {top:0;}
 .ProseMirror [data-project-region]::before {content:none!important;}
 .ProseMirror [data-project-region][data-empty-region=true] {display:none;}
 .document-page[data-indent-first=true] .ProseMirror :is(h1,h2,h3)+p[data-indent=true] {text-indent:var(--tex-paragraph-indent);}
-#settings-open {margin-right:2px;display:grid;place-items:center;padding:4px;}
-#settings-open svg {width:16px;height:16px;}
+#settings-open {margin-right:1px;display:grid;place-items:center;padding:2px;}
+#settings-open svg {width:14px;height:14px;}
 #toolbar-collapse svg {width:15px;height:15px;stroke-width:1.8;}
 
 .project-source-overlay {position:absolute;inset:0;pointer-events:none;z-index:3;}

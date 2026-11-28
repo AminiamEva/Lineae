@@ -1,6 +1,7 @@
+import { ribbonFlyoutFor } from '../ui/ribbon-groups.js';
 import { toolbarSnippets, commandSnippets, environmentSnippet } from './latex-snippets.js';
 
-export function installSourceToolbar({ribbon, groups, source, rich, heading}) {
+export function installSourceToolbar({groups, source, rich, heading}) {
   let target = 'source';
   const disabled = new Map();
   const templates = {...toolbarSnippets,
@@ -19,7 +20,11 @@ export function installSourceToolbar({ribbon, groups, source, rich, heading}) {
     for (const [name, group] of Object.entries(groups)) {
       if (name === 'files') continue;
       group.inert = false;
-      for (const control of group.querySelectorAll('button,input,select')) {
+      const controls = [...group.querySelectorAll('button,input,select')];
+      const flyout = ribbonFlyoutFor(group);
+      if (flyout) controls.push(...flyout.querySelectorAll('button,input,select'));
+      for (const control of controls) {
+        if (control.classList.contains('ribbon-group-toggle')) continue;
         const supported = name === 'layout' || control === heading || ['↶','↷','Find','查找'].includes(key(control)) || Object.hasOwn(templates,key(control));
         const preambleControl = ['title','author','short','cite'].includes(key(control));
         if ((active && !supported) || (!source.hidden && !active && preambleControl)) {
@@ -33,14 +38,18 @@ export function installSourceToolbar({ribbon, groups, source, rich, heading}) {
       }
     }
   }
-  ribbon.addEventListener('click', event => {
-    const control = event.target.closest('button');
-    if (!source.hidden && control && ['↶','↷'].includes(key(control))) {
+  document.addEventListener('click', event => {
+    const control = event.target.closest?.('button');
+    if (!control || control.classList.contains('ribbon-group-toggle')) return;
+    const owner = Object.entries(groups).find(([,panel]) =>
+      panel.contains(control) || ribbonFlyoutFor(panel)?.contains(control));
+    if (!owner) return;
+    if (!source.hidden && ['↶','↷'].includes(key(control))) {
       event.preventDefault(); event.stopImmediatePropagation();
       key(control) === '↶' ? source.undo() : source.redo(); source.flush(); return;
     }
     if (!isSource()) return;
-    if (!control || !ribbon.contains(control) || control.closest('.ribbon-tabs') || control.dataset.group || groups.files.contains(control) || groups.layout.contains(control)) return;
+    if (owner[0] === 'files' || owner[0] === 'layout') return;
     event.preventDefault(); event.stopImmediatePropagation();
     const action = key(control);
     if (action === '↶') source.undo();

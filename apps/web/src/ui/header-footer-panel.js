@@ -1,3 +1,5 @@
+import {buildRibbonGroups} from './ribbon-groups.js';
+import {icon} from '../editor/icons.js';
 import { t } from './i18n.mjs';
 import { PAGE_FIELD, LEFTMARK_FIELD, RIGHTMARK_FIELD } from '../../latex/page-furniture.mjs';
 
@@ -85,8 +87,6 @@ export function installHeaderFooterPanel({readState, onChange}) {
 
   const fields = document.createElement('div');
   fields.className = 'hf-fields';
-  const fieldsLabel = document.createElement('span');
-  label(fieldsLabel,'插入动态字段：','Insert dynamic field:');
   const pageField = document.createElement('button');
   pageField.type='button';pageField.textContent='\\thepage';
   const leftField = document.createElement('button');
@@ -99,7 +99,10 @@ export function installHeaderFooterPanel({readState, onChange}) {
   leftField.setAttribute('aria-label',leftField.title);
   rightField.title = t('插入书名','Insert book title');
   rightField.setAttribute('aria-label',rightField.title);
-  fields.append(fieldsLabel,pageField,leftField,rightField);
+  pageField.prepend(icon('sourceFile'));
+  leftField.prepend(icon('title'));
+  rightField.prepend(icon('paragraph'));
+  fields.append(pageField,leftField,rightField);
 
   const rules = document.createElement('div');
   rules.className = 'hf-rules';
@@ -129,11 +132,15 @@ export function installHeaderFooterPanel({readState, onChange}) {
   const scopeSelect = document.createElement('select');
   scopeSelect.append(new Option(t('应用于全文','Apply to document'),'document'),new Option(t('应用于本节','Apply to section'),'section'));
   scope.append(scopeLabel,scopeSelect);
-  const controls = document.createElement('div');
-  controls.className = 'hf-controls';
-  controls.append(switches,fields,rules,scope);
-  panel.append(controls,grid);
-
+  const options = document.createElement('div');
+  options.className = 'hf-options';
+  options.append(switches,scope);
+  buildRibbonGroups(panel,[
+    {id:'hf-options',zh:'页眉页脚设置',en:'Header & footer options',iconName:'layout',body:options},
+    {id:'hf-content',zh:'页眉与页脚内容',en:'Header & footer content',iconName:'sourceFile',width:540,body:grid},
+    {id:'hf-fields',zh:'动态字段',en:'Dynamic fields',iconName:'title',body:fields},
+    {id:'hf-rules',zh:'分隔线',en:'Rules',iconName:'hr',body:rules},
+  ],['hf-rules','hf-fields','hf-options','hf-content']);
 
   let state = null;
   let active = false;
@@ -182,11 +189,10 @@ export function installHeaderFooterPanel({readState, onChange}) {
     emit();
   }
 
-  panel.addEventListener('input', event => {
-    if (!event.target.matches('.hf-cell input')) return;
-    updateInput(event.target);
+  grid.addEventListener('input', event => {
+    if (event.target.matches('.hf-cell input')) updateInput(event.target);
   });
-  panel.addEventListener('focusin', event => {
+  grid.addEventListener('focusin', event => {
     if (event.target.matches('.hf-cell input')) lastInput = event.target;
   });
   enable.addEventListener('click', () => {

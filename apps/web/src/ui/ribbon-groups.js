@@ -1,20 +1,27 @@
 import { t } from './i18n.mjs';
 import { icon } from '../editor/icons.js';
+import { installRovingFocus } from './keyboard-nav.mjs';
 
 let openFlyout = null;
 
-function closeFlyout() {
+export function ribbonFlyoutFor(panel) {
+  return openFlyout && openFlyout.state.section.parentElement === panel ? openFlyout.flyout : null;
+}
+
+function closeFlyout({restoreFocus = false} = {}) {
   if (!openFlyout) return;
-  const {state, flyout} = openFlyout;
+  const {state, flyout, releaseNavigation} = openFlyout;
   openFlyout = null;
+  releaseNavigation();
   flyout.remove();
   state.section.insertBefore(state.body, state.label);
   state.body.inert = state.section.classList.contains('is-collapsed');
   state.body.setAttribute('aria-hidden', String(state.body.inert));
   state.toggle.setAttribute('aria-expanded', 'false');
+  if (restoreFocus) state.toggle.focus();
 }
 
-function openGroupFlyout(state) {
+function openGroupFlyout(state, keyboard) {
   if (openFlyout?.state === state) {
     closeFlyout();
     return;
@@ -31,7 +38,7 @@ function openGroupFlyout(state) {
   state.body.inert = false;
   state.body.removeAttribute('aria-hidden');
   document.body.append(flyout);
-  flyout.style.width = Math.min(320, window.innerWidth - 16) + 'px';
+  flyout.style.maxWidth = Math.min(490, window.innerWidth - 16) + 'px';
   const anchor = state.toggle.getBoundingClientRect();
   const groupBounds = state.section.getBoundingClientRect();
   const size = flyout.getBoundingClientRect();
@@ -40,9 +47,11 @@ function openGroupFlyout(state) {
   if (top + size.height > window.innerHeight - 8) top = Math.max(8, groupBounds.top - size.height - 4);
   flyout.style.left = left + 'px';
   flyout.style.top = top + 'px';
-  openFlyout = {state, flyout};
+  const releaseNavigation = installRovingFocus(flyout,{onActivate:control=>control.click()});
+  openFlyout = {state, flyout, releaseNavigation};
   state.toggle.setAttribute('aria-expanded', 'true');
   requestAnimationFrame(() => flyout.classList.add('is-open'));
+  if (keyboard) flyout.querySelector(':is(button,select,input):not(:disabled,[hidden])')?.focus();
 }
 
 if (typeof document !== 'undefined') {
@@ -54,18 +63,20 @@ if (typeof document !== 'undefined') {
   document.addEventListener('keydown', event => {
     if (event.key === 'Escape' && openFlyout) {
       event.preventDefault();
-      closeFlyout();
+      closeFlyout({restoreFocus:true});
     }
   }, true);
   window.addEventListener('resize', () => closeFlyout());
-  window.addEventListener('scroll', () => closeFlyout(), true);
+  window.addEventListener('scroll', event => {
+    if (openFlyout && !openFlyout.flyout.contains(event.target)) closeFlyout();
+  }, true);
 }
 
-export function createRibbonGroup(panel, {id, zh, en, iconName = 'layout', width = 240}) {
+export function createRibbonGroup(panel, {id, zh, en, iconName = 'layout', width}) {
   const section = document.createElement('section');
   section.className = 'ribbon-group';
   section.dataset.ribbonGroup = id;
-  section.style.width = width + 'px';
+  section.style.width = width == null ? 'max-content' : width + 'px';
   const body = document.createElement('div');
   body.className = 'ribbon-group-body';
   const label = document.createElement('div');
@@ -77,6 +88,8 @@ export function createRibbonGroup(panel, {id, zh, en, iconName = 'layout', width
   toggle.type = 'button';
   toggle.className = 'ribbon-group-toggle';
   toggle.setAttribute('aria-label', t(zh, en));
+  toggle.dataset.zhTitle = zh;
+  toggle.dataset.enTitle = en;
   toggle.title = t(zh, en);
   toggle.append(icon(iconName));
   const chevron = icon('chevronDown');
@@ -86,7 +99,7 @@ export function createRibbonGroup(panel, {id, zh, en, iconName = 'layout', width
   toggle.addEventListener('click', event => {
     event.preventDefault();
     event.stopPropagation();
-    openGroupFlyout(state);
+    openGroupFlyout(state, event.detail === 0);
   });
   section.append(body, label, toggle);
   panel.append(section);
@@ -117,33 +130,36 @@ export function installResponsiveGroups(panel, states, priority = [...states].re
 
   function apply() {
     frame = 0;
+    if (panel.hidden) {
+      if (ribbonFlyoutFor(panel)) closeFlyout();
+      return;
+    }
     if (!fullWidths && !measure()) return;
-    closeFlyout();
     const available = availableWidth();
+    const collapsedWidth = parseFloat(getComputedStyle(panel).getPropertyValue('--collapsed-group-width')) || 84;
     const collapsed = new Set();
     let total = [...fullWidths.values()].reduce((sum, value) => sum + value, 0);
     for (const id of priority) {
       if (total <= available) break;
-      total -= (fullWidths.get(id) ?? 0) - 84;
+      total -= (fullWidths.get(id) ?? 0) - collapsedWidth;
       collapsed.add(id);
     }
-    let compact = false;
-    if (total > available && collapsed.size === states.length) {
-      compact = true;
-      total -= collapsed.size * (84 - 40);
-    }
+    const compact = total > available && collapsed.size === states.length;
     for (const state of states) {
       const isCollapsed = collapsed.has(state.id);
+      if (openFlyout?.state === state && !isCollapsed) closeFlyout();
       state.section.classList.toggle('is-collapsed', isCollapsed);
       state.section.classList.toggle('is-compact', isCollapsed && compact);
-      state.body.inert = isCollapsed;
-      state.body.setAttribute('aria-hidden', String(isCollapsed));
+      const concealed = isCollapsed && openFlyout?.state !== state;
+      state.body.inert = concealed;
+      state.body.setAttribute('aria-hidden', String(concealed));
       state.toggle.setAttribute('aria-expanded', String(openFlyout?.state === state));
       if (isCollapsed && compact) state.label.setAttribute('aria-hidden', 'true');
       else state.label.removeAttribute('aria-hidden');
     }
     panel.dataset.collapsedGroups = String(collapsed.size);
     panel.dataset.compactGroups = String(compact);
+    panel.dispatchEvent(new Event('ribbonlayout'));
   }
 
   function schedule() {
@@ -157,7 +173,11 @@ export function installResponsiveGroups(panel, states, priority = [...states].re
   document.fonts?.ready.then(schedule);
   schedule();
   return {
-    refresh: schedule,
+    refresh({remeasure = false} = {}) {
+      if (remeasure) fullWidths = null;
+      cancelAnimationFrame(frame);
+      apply();
+    },
     disconnect() {
       observer?.disconnect();
       window.removeEventListener('resize', schedule);
@@ -166,7 +186,7 @@ export function installResponsiveGroups(panel, states, priority = [...states].re
 }
 
 export function buildRibbonGroups(panel, definitions, priority) {
-  panel.classList.add('home-ribbon');
+  panel.classList.add('home-ribbon','grouped-ribbon');
   const states = definitions.map(definition => {
     const state = createRibbonGroup(panel, definition);
     state.body.append(definition.body);

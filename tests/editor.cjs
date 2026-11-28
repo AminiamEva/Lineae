@@ -1547,7 +1547,7 @@ async function verifySelectionGeometry(page, paper, importSource) {
     assert.equal(await page.locator('#project-open').textContent(),'打开工程');
     assert.equal(await page.locator('#project-new').textContent(),'新建工程');
     assert.equal(await page.locator('#project-new-empty').textContent(),'新建/打开工程');
-    assert.equal(await page.locator('#project-open').evaluate(button=>button.parentElement===document.querySelector('.ribbon > .tools')),true,
+    assert.equal(await page.locator('#project-open').evaluate(button=>button.closest('.ribbon > .tools')===document.querySelector('.ribbon > .tools')),true,
       'Open project is in the File panel');
     assert.equal(await page.locator('footer #project-open').count(),0,'Open project is not in the status bar');
     await revealToolbar(page); await page.locator('[data-group=home]').click();
@@ -2344,16 +2344,30 @@ A & B \\
     await page.keyboard.press('Escape');
     for (const width of [1280,390]) {
       await page.setViewportSize({width,height:1400});
+      let ribbonHeight;
       for (const group of ['files','home','insert','layout','format','reference','math']) {
         await revealToolbar(page); await page.locator(`[data-group=${group}]`).click();
         const layout=await page.locator('.ribbon').evaluate(element=>{
           const panel=[...element.querySelectorAll('.tools')].find(node=>!node.hidden);
           const bounds=element.getBoundingClientRect();
-          return {left:bounds.left,right:bounds.right,scroll:panel.scrollWidth,client:panel.clientWidth};
+          return {left:bounds.left,right:bounds.right,height:bounds.height,scroll:panel.scrollWidth,client:panel.clientWidth};
         });
         assert.ok(layout.left>=-1 && layout.right<=width+1 && layout.scroll<=layout.client+1,JSON.stringify({group,width,layout}));
+        ribbonHeight??=layout.height;
+        assert.equal(layout.height,ribbonHeight,'Switching tabs preserves the ribbon height');
       }
     }
+    const layoutFrames=await page.evaluate(async()=>{
+      document.querySelector('[data-group="layout"]').click();
+      const positions=()=>[...document.querySelectorAll('#layout-panel > .ribbon-group')].map(group=>{
+        const {x,y,width,height}=group.getBoundingClientRect();
+        return [x,y,width,height];
+      });
+      const first=positions();
+      await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
+      return [first,positions()];
+    });
+    assert.deepEqual(layoutFrames[0],layoutFrames[1],'Layout groups do not move after the tab opens');
     await page.setViewportSize({width:1280,height:1400});
     const assertUntouchedFormulaSource=async body=>{
       await page.evaluate(()=>{navigator.clipboard.writeText=async text=>{window.formulaSourceCopy=text;};});
