@@ -2709,11 +2709,13 @@ A & B \\
     const operandMark=operandField.locator('[data-lineae-integrand]').first();
     await operandMark.waitFor();
     await operandField.click();
-    await page.waitForFunction(()=>document.activeElement?.matches('math-field[data-lineae-editing]')&&
-      !document.activeElement._mathfield?.focusBlurInProgress);
-    const editingBackground=await operandMark.evaluate(el=>getComputedStyle(el).backgroundColor);
-    assert.ok(editingBackground && editingBackground!=='rgba(0, 0, 0, 0)',
-      'Formula operands highlight while editing: '+editingBackground);
+    await page.waitForFunction(()=>{
+      const field=document.activeElement;
+      if (!field?.matches('math-field[data-lineae-editing]') || field._mathfield?.focusBlurInProgress) return false;
+      const operand=field.shadowRoot?.querySelector('[data-lineae-integrand]');
+      const background=operand && getComputedStyle(operand).backgroundColor;
+      return Boolean(background && background!=='rgba(0, 0, 0, 0)');
+    });
     // Click the already selected Document mode to leave the formula without
     // changing the document or opening a dialog.
     const documentMode=page.locator('[data-source-mode="body"][aria-pressed="true"]');
