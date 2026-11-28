@@ -1,5 +1,12 @@
 const assert=require('node:assert/strict');
 async function revealToolbar(page){if(await page.locator('#toolbar-collapse').getAttribute('aria-expanded')==='false')await page.locator('#toolbar-collapse').click();}
+async function revealRibbonControl(page,group,control){
+  if(!await control.isVisible()){
+    await page.locator(`.ribbon [data-ribbon-group="${group}"] .ribbon-group-toggle`).click();
+    await control.waitFor({state:'visible'});
+  }
+  return control;
+}
 async function setIndentOnSave(page,enabled){
   await page.locator('#settings-open').click();
   const control=page.locator('[data-setting="editing.indentOnSave"]');
@@ -30,4 +37,4 @@ async function readEngineSettings(page){
   await page.locator('#settings-close').click();
   return state;
 }
-module.exports={openEngineSettings,chooseEngine,readEngineSettings,revealToolbar,setIndentOnSave,createTreeEntry};
+module.exports={openEngineSettings,chooseEngine,readEngineSettings,revealToolbar,revealRibbonControl,setIndentOnSave,createTreeEntry};

@@ -13,6 +13,6 @@ ProseMirror owns input, composition, selection and history for the lifetime of a
 
 A complete justified line in one text run retains its measured width and is shaped together. Where several marks share a line, their partial runs retain their individual origins. The browser regression checks every visible character in both cases and checks that a long plain paragraph creates just one fragment per visual line.
 
-The Windows WebView test samples animation frames across pinyin composition, Han text commitment, repeated Enter, and the return of confirmed ink. It checks model and source contents separately from movement on screen. It uses the browser's composition protocol. Candidate-window placement in a particular system IME needs a separate hardware test.
+The Windows WebView test samples animation frames across pinyin composition, Han text commitment, repeated Enter, and the return of confirmed ink. It checks model and source contents separately from movement on screen. A delayed change from the article indent to the Chinese indent is also replayed before a new paragraph has a native line box. It uses the browser's composition protocol. Candidate-window placement in a particular system IME needs a separate hardware test.
 
 LuaLaTeX may legitimately change page or line placement after a font, paper, or paragraph-style change. Multiple empty TeX paragraphs can also typeset as a single break. In that case the active insertion point stays visible while the user edits, and the confirmed result uses TeX's spacing.

@@ -1606,7 +1606,14 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
   },true);
   document.addEventListener('compositionend',event=>{
     if(event.target===compositionField)compositionField=null;
-    setTimeout(refresh,0);
+    // A first Han commit may change the entire article's ctex metrics. Read
+    // the committed transaction before a subsequent Enter positions its line.
+    // A live composition must still own its DOM until the WebView ends it.
+    if(richEditing && richEditor?.contains(event.target) &&
+      richEditor.hasAttribute('data-native-song') && !richEditor.hasAttribute('data-native-ctex') &&
+      /\p{Script=Han}/u.test(event.data??'')){
+      setTimeout(()=>{clearTimeout(richRefreshTimer);richRefreshTimer=null;void captureRichFrame();},0);
+    }else setTimeout(refresh,0);
   },true);
   relocalize();renderer.setZoom(zoomPercent/100);pdf.setZoom(zoomPercent/100);
   return {

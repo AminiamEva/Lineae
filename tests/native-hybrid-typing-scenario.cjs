@@ -36,7 +36,10 @@ async function measureHybridTyping() {
     const rect=selection.rangeCount && selection.getRangeAt(0).getBoundingClientRect();
     if(rect?.height){
       const sheet=panel().querySelector('canvas').getBoundingClientRect();
-      const row={paragraph:head.index(0),text:head.parent.textContent,x:rect.left,y:rect.top,sheetY:sheet.top,confirmed:confirmed()};
+      const block=head.depth?editor.editor.view.nodeDOM(head.before()):null;
+      const style=block&&getComputedStyle(block);
+      const row={paragraph:head.index(0),text:head.parent.textContent,x:rect.left,y:rect.top,sheetX:sheet.left,sheetY:sheet.top,
+        indent:style?.textIndent,font:style?.fontSize,ctex:editor.hasAttribute('data-native-ctex'),confirmed:confirmed()};
       const last=samples.at(-1);
       if(!last || Object.keys(row).some(k=>last[k]!==row[k]))samples.push(row);
     }

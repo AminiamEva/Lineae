@@ -167,7 +167,12 @@ export function nativeParagraphOverlay(editor, panel, pages, framePending) {
     return distance(forward.upstream)<distance(forward)?forward.upstream:forward;
   }
   function pinnedReference(){
-    return {offset:pin.offset,stop:{row:{page:pin.page},x:pin.x,y:pin.y},pinned:true};
+    // A new paragraph can be laid out before the first Han commit turns on
+    // ctex. Keep its column and apply the live first-line indent, even if the
+    // source snapshot that changed the font arrived between two keystrokes.
+    const box=canvas(pin.page)?.getBoundingClientRect();
+    const x=pin.offset===0?paragraphStartX(block,pin.column,box,page.currentCSSZoom||1):null;
+    return {offset:pin.offset,stop:{row:{page:pin.page},x:x??pin.x,y:pin.y},pinned:true};
   }
   function storePin(element,offset,point,canvasRect){
     if(!canvasRect?.height||!canvasRect.width)return;
@@ -193,6 +198,7 @@ export function nativeParagraphOverlay(editor, panel, pages, framePending) {
       for(const [at,stop] of paragraph.stops)if(stop.row===row){start=at;break;}
     }
     storePin(block,start,boundary(block,start,scale),canvas()?.getBoundingClientRect());
+    if(pin && start===0 && row && block.matches('p'))pin.column=row.origin;
   }
   function position(){
     if(block&&!editor.contains(block)){hideRemovedInk();block=selectedBlock();anchor=null;pin=null;}

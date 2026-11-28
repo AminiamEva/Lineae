@@ -410,6 +410,26 @@ async function testDesktopDocument(browser, origin, initial) {
         }
       }
       const last=entries.at(-1),lastFrame=frame.byElement.get(last.element);
+      // The first Han commit can enable ctex while an adjacent paragraph is
+      // still waiting for its first native box. Its column must survive that
+      // change independently of the former 15pt indentation.
+      const pending=document.createElement('p');
+      pending.textContent='NEW';pending.style.textIndent='15px';
+      last.element.after(pending);
+      document.getSelection().collapse(pending.firstChild,3);
+      overlay.painted();
+      const startX=()=>{
+        const range=document.createRange();range.setStart(pending.firstChild,0);range.collapse(true);
+        return range.getBoundingClientRect().left;
+      };
+      const scale=document.querySelector('.document-page').currentCSSZoom;
+      const firstX=startX();
+      pending.style.textIndent='23px';
+      overlay.painted();
+      const indentError=Math.abs(startX()-firstX-8*scale);
+      pending.remove();
+      document.getSelection().collapse(last.element.firstChild,last.text.length);
+      overlay.reveal(last.element);
       last.element.dispatchEvent(new InputEvent('beforeinput',{bubbles:true,inputType:'insertCompositionText'}));
       last.element.dispatchEvent(new CompositionEvent('compositionstart',{bubbles:true}));
       last.element.firstChild.appendData('zhong');
@@ -420,13 +440,14 @@ async function testDesktopDocument(browser, origin, initial) {
       last.element.dispatchEvent(new CompositionEvent('compositionend',{bubbles:true}));
       // A frame for which the page has no pixels must not draw a confirmed caret.
       overlay.present(frame,captured.versions.source_revision+1);
-      return {results,composing,staleCaret:Boolean(document.querySelector('.native-rich-caret'))};
+      return {results,composing,indentError,staleCaret:Boolean(document.querySelector('.native-rich-caret'))};
     },{captured,source,raw});
     assert.ok(result.results.every(r=>r.hit&&r.error<1),JSON.stringify(result));
     assert.ok(result.results.some(r=>r.pages>1));
     assert.equal(new Set(result.results.filter(r=>r.text==='rj').map(r=>r.page+'/'+r.baseline)).size,3);
     assert.equal(new Set(result.results.filter(r=>r.text==='2').map(r=>r.baseline)).size,2);
     assert.ok(result.composing);assert.equal(result.staleCaret,false);
+    assert.ok(result.indentError<.1,'Pending first line used its previous indent: '+result.indentError);
     await testDraftPixels(page);
     if(process.argv.includes('--app'))await testDesktopDocument(browser,'http://127.0.0.1:'+server.address().port,captured);
     console.log('PASS: actual LuaLaTeX spans, repeated lines and empty paragraphs, marks, wraps and page crossings, native caret X, IME, stale frames');
