@@ -398,6 +398,9 @@ body.native-tex-rich-edit main .document-sheets { visibility:hidden; }
   font-family:var(--tex-font-family,"Latin Modern Roman"),"FandolSong",serif;
 }
 html:has(body.native-tex-primary-open) { overflow:hidden; }
+.native-tex-hybrid .document-page .ProseMirror[data-native-ctex][data-native-article-sections] > h1 {
+  font-size:var(--native-ctex-section);
+}
 #native-tex-preview[data-primary=true]:not([data-split]) .native-tex-pages { overflow:visible; }
 #native-tex-toggle[data-engine=lua] { background:light-dark(#e0f2e8,#234538); color:light-dark(#175b40,#a8e5c6); }
 #native-tex-toggle[data-engine=xe] { background:light-dark(#e6edff,#293957); color:light-dark(#234e9d,#bbd3ff); }

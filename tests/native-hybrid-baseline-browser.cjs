@@ -178,7 +178,7 @@ async function testDesktopDocument(browser, origin, initial) {
   try{
     await page.exposeFunction('nativeTestCommand',async(command,args={})=>{
       if(command==='native_tex_open'||command==='native_tex_update'){
-        if(command==='native_tex_update' && holdUpdate)await holdUpdate;
+        if(holdUpdate)await holdUpdate;
         const next=++revision;
         liveSource=args.source;
         sources.set(next,args.source);
@@ -441,10 +441,13 @@ async function testDesktopDocument(browser, origin, initial) {
         const measure=nativeEditMetrics(document);
         const block=editor.editor.view.nodeDOM(editor.editor.state.selection.$head.before());
         const sheet=document.querySelector('[data-native-page] canvas').getBoundingClientRect();
-        return Array.from(block.textContent,(_,i)=>{
+        const glyphs=Array.from(block.textContent,(_,i)=>{
           const p=textBoundary(block,i);
           return {x:p.x-sheet.left,y:p.top+measure(p.element,p.char).aboveRange*block.currentCSSZoom-sheet.top};
         });
+        const mark=editor.closest('.document-page').querySelector('.space-overlay line');
+        const at=mark && new DOMPoint(mark.x1.baseVal.value,mark.y1.baseVal.value).matrixTransform(mark.getScreenCTM());
+        return {glyphs,indent:at && {x:at.x-sheet.left,y:at.y-sheet.top}};
       });
     }
     const displacement=[];
@@ -471,12 +474,66 @@ async function testDesktopDocument(browser, origin, initial) {
       const native=row.items.filter(i=>i[0]==='g');
       assert.equal(native.map(i=>String.fromCodePoint(i[2])).join(''),phrase);
       const box=await sheet.locator('canvas').boundingBox();
-      displacement.push({phrase,x:Math.max(...native.map((g,i)=>Math.abs(draft[i].x-box.width*g[4]/dl.page_width))),
-        y:Math.max(...native.map((g,i)=>Math.abs(draft[i].y-box.height*g[5]/dl.page_height)))});
+      const nativeMark=await sheet.locator('.native-indent-marks path').evaluate(path=>{
+        const rect=path.closest('[data-native-page]').querySelector('canvas').getBoundingClientRect();
+        const strokes=[...path.getAttribute('d').matchAll(/M([\d.e+-]+) ([\d.e+-]+)H/g)];
+        const [,x,y]=strokes.at(-1);
+        const at=new DOMPoint(Number(x),Number(y)).matrixTransform(path.getScreenCTM());
+        return {x:at.x-rect.left,y:at.y-rect.top};
+      });
+      assert.ok(draft.indent,'Live first-line indent mark');
+      displacement.push({phrase,x:Math.max(...native.map((g,i)=>Math.abs(draft.glyphs[i].x-box.width*g[4]/dl.page_width))),
+        y:Math.max(...native.map((g,i)=>Math.abs(draft.glyphs[i].y-box.height*g[5]/dl.page_height))),
+        indent:Math.max(Math.abs(draft.indent.x-nativeMark.x),Math.abs(draft.indent.y-nativeMark.y))});
       assert.ok(Math.abs(box.y-paperTop)<=1,'Completing TeX must not scroll the paper');
     }
     console.log('Heading and CJK paragraphs: draft to real glyph origin at 144%',JSON.stringify(displacement));
-    assert.ok(displacement.every(v=>v.x<=2 && v.y<=2),JSON.stringify(displacement));
+    assert.ok(displacement.every(v=>v.x<=2 && v.y<=2 && v.indent<=2),JSON.stringify(displacement));
+    const toolbarClear=await page.evaluate(()=>{
+      const panel=document.querySelector('#native-tex-preview');
+      const bar=document.querySelector('#toolbar-collapse').closest('header').getBoundingClientRect();
+      const top=panel.scrollTop;
+      panel.scrollTop+=150;
+      const fits=panel.scrollTop>top && panel.getBoundingClientRect().top>=bar.bottom &&
+        !document.elementsFromPoint((bar.left+bar.right)/2,bar.bottom-2).some(el=>panel.contains(el));
+      panel.scrollTop=top;
+      return fits;
+    });
+    assert.ok(toolbarClear,'The scrolling Lua sheet is clipped below the ribbon');
+    // A fresh unsaved document lets the exporter introduce ctex on the first
+    // Chinese input. An imported TeX file deliberately owns its preamble.
+    const previousFile=revision;
+    await page.evaluate(()=>localStorage.clear());
+    await page.reload();
+    await page.locator('header #toolbar-collapse').waitFor();
+    await expect.poll(()=>doc.evaluate(el=>el.editor.state.doc.textContent)).toBe('');
+    const toggle=page.locator('#native-tex-toggle');
+    if(await toggle.getAttribute('data-engine')!=='lua')await toggle.click();
+    await expect.poll(()=>paintedSourceAfter(previousFile),{timeout:60000}).toContain('\\thispagestyle{empty}\\null');
+    await page.locator('.document-status input[type=range]').evaluate(zoom=>{
+      zoom.value='144';zoom.dispatchEvent(new Event('input',{bubbles:true}));
+    });
+    await sheet.locator('canvas').click();
+    const beforeTitle=revision;
+    let resumeHeading,draftTitle;
+    holdUpdate=new Promise(resolve=>{resumeHeading=resolve;});
+    try{
+      await page.keyboard.type('#');
+      await cdp.send('Input.imeSetComposition',{text:'biaoti',selectionStart:6,selectionEnd:6});
+      await cdp.send('Input.insertText',{text:'这是标题'});
+      await page.evaluate(()=>new Promise(done=>requestAnimationFrame(()=>requestAnimationFrame(done))));
+      assert.equal(await doc.locator('h1').innerText(),'这是标题');
+      draftTitle=(await glyphPositions()).glyphs;
+    }finally{holdUpdate=null;resumeHeading();}
+    await expect.poll(()=>paintedSourceAfter(beforeTitle),{timeout:60000}).toContain('\\section{这是标题}');
+    const headingDL=published.pages[0]?.dl??Object.values(published.pages)[0].dl;
+    const titleGlyphs=headingDL.lines.flatMap(l=>l.items).filter(g=>g[0]==='g' && '这是标题'.includes(String.fromCodePoint(g[2])));
+    assert.equal(titleGlyphs.map(g=>String.fromCodePoint(g[2])).join(''),'这是标题');
+    const titleBox=await sheet.locator('canvas').boundingBox();
+    const titleDrift={x:Math.max(...titleGlyphs.map((g,i)=>Math.abs(draftTitle[i].x-titleBox.width*g[4]/headingDL.page_width))),
+      y:Math.max(...titleGlyphs.map((g,i)=>Math.abs(draftTitle[i].y-titleBox.height*g[5]/headingDL.page_height)))};
+    console.log('First typed Chinese heading at 144%',titleDrift);
+    assert.ok(titleDrift.x<=2 && titleDrift.y<=2,JSON.stringify(titleDrift));
     assert.deepEqual(errors,[]);
     console.log('PASS: shipped Lua document, repeated Enter, caret X/Y, CJK preedit/commit, and split-prefix ink through a delayed native frame');
   }catch(error){

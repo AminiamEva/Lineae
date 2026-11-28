@@ -7,6 +7,7 @@ const eastAsian=/[\p{sc=Han}\p{sc=Hiragana}\p{sc=Katakana}\p{sc=Hangul}\u3000-\u
 // from the *laid-out* editable DOM; a second paragraph layout would wrap and
 // clip the text differently. No element here accepts input.
 export function snapshotDraft(block,sheets,measure) {
+  sheets=sheets.filter(sheet=>sheet.box.width>0 && sheet.box.height>0);
   if(!block?.isConnected || !sheets.length)return [];
   const doc=block.ownerDocument,scale=block.currentCSSZoom||1;
   const groups=new Map(),range=doc.createRange();
@@ -17,7 +18,6 @@ export function snapshotDraft(block,sheets,measure) {
       if(gap<distance){sheet=candidate;distance=gap;}
       if(!gap)break;
     }
-    if(!sheet.box.width||!sheet.box.height)return null;
     let group=groups.get(sheet.element);
     if(!group){
       group=doc.createElement('div');

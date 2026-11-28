@@ -104,6 +104,7 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
     if(preamble===editPreamble)return;
     editPreamble=preamble;
     const metrics=ctexEditStyle(preamble);
+    const reflow=richEditor.hasAttribute('data-native-ctex')!==Boolean(metrics) ? overlay?.measureTypographyChange() : null;
     const standardSections=/\\documentclass\s*(?:\[[^\]]*\]\s*)?\{article\}/.test(preamble) &&
       !/\\(?:ctexset|titleformat|titlespacing|@startsection|RedeclareSectionCommand)\b|\\(?:renewcommand|def)\s*\{?\s*\\(?:sub)*section\b|\{[^{}\r\n]*\btitlesec\b[^{}\r\n]*\}/.test(preamble);
     richEditor.toggleAttribute('data-native-article-sections',standardSections);
@@ -121,6 +122,7 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
     if(metrics){
       for(const [name,value] of Object.entries(metrics))richEditor.style.setProperty('--native-ctex-'+name,value);
     }
+    reflow?.();
     overlay?.painted();
   }
   const overlay=engineToggle&&richPage?nativeParagraphOverlay(richEditor,panel,pages,()=>!current(),focusRichOffset):null;

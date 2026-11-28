@@ -23,5 +23,6 @@ export function ctexEditStyle(preamble) {
   const texPt=72/72.27;
   const font=size?({'10':10,'11':10.95,'12':12}[size]*texPt):10.5;
   const baseline=size?({'10':12,'11':13.6,'12':14.5}[size]*texPt):12.6;
-  return {font:font+'pt',line:baseline*1.3+'pt',indent:2*font+'pt'};
+  const section=size?({'10':14.4,'11':14.4,'12':17.28}[size]*texPt):15;
+  return {font:font+'pt',line:baseline*1.3+'pt',indent:2*font+'pt',section:section+'pt'};
 }

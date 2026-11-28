@@ -165,6 +165,18 @@ export function nativeParagraphOverlay(editor, panel, pages, framePending, selec
     // font. The browser's heading margin is measured in the larger title font.
     return units ? units*metrics(next).ex : null;
   }
+  function firstHeadingReference(scale){
+    if(number!==1 || block!==editor.firstElementChild || !block?.matches('h1') ||
+      !editor.hasAttribute('data-native-ctex') || !editor.hasAttribute('data-native-article-sections') ||
+      !/^\p{Script=Han}+$/u.test(block.textContent) || page.querySelector('#document-meta')?.textContent.trim())return null;
+    const sheet=page.querySelector('.document-sheet')??page,box=canvas()?.getBoundingClientRect();
+    if(!box?.height || !box.width)return null;
+    // At the top of a page the first tall box sits flush with the typeset
+    // area. The horizontal Chinese JFM gives a Han glyph a height of .88em.
+    const height=parseFloat(getComputedStyle(page).paddingTop)+.88*parseFloat(getComputedStyle(block).fontSize);
+    const x=(boundary(block,0,scale).x-sheet.getBoundingClientRect().left)/box.width;
+    return {offset:0,stop:{row:{page:1},x,y:height*scale/box.height},pinned:true};
+  }
   function referenceFor(paragraph,scale) {
     if(paragraph){
       const offset=selectionOffset(block),old=paragraph.entry.text, live=editingText(block);
@@ -173,6 +185,7 @@ export function nativeParagraphOverlay(editor, panel, pages, framePending, selec
       if(!composing && sameNode && offset!==null && old===live && paragraph.stops?.has(offset) &&
           (!pin || !framePending() || paintedDocument===view?.state.doc && paintedDocument))
         return {stop:physicalStop(paragraph,offset,scale),offset,exact:true};
+      if(!old){const first=firstHeadingReference(scale);if(first)return first;}
       if(pin)return pinnedReference();
       // Anchor the common prefix nearest the edit, including wrapped lines.
       let i=0,limit=Math.min(offset??0,live.length,old?.length??0);
@@ -181,6 +194,8 @@ export function nativeParagraphOverlay(editor, panel, pages, framePending, selec
       const first=paragraph.rows[0];
       return {offset:i,stop:paragraph.stops?.get(i)??{row:first,x:first.left,y:first.baseline}};
     }
+    const first=firstHeadingReference(scale);
+    if(first)return first;
     if(pin)return pinnedReference();
     // Consecutive empty editor paragraphs have no TeX line boxes. New ink
     // starts below the last authored line, independent of how many Enters
@@ -254,6 +269,27 @@ export function nativeParagraphOverlay(editor, panel, pages, framePending, selec
     }
     storePin(block,start,point,box);
     if(pin && start===0 && row && block.matches('p'))pin.column=row.origin;
+  }
+  function measureTypographyChange(){
+    // The first Chinese commit can change baselines throughout a formerly
+    // Latin article. Measure the preceding lines once on either side of
+    // that font change. Keep the edited line at its new paper coordinate
+    // and preserve its viewport position during that document-wide reflow.
+    if(!document.body.classList.contains('native-tex-rich-edit') || !block?.matches('p') || !block.isConnected)return;
+    const first=block.parentElement.firstElementChild;
+    if(first===block || !first?.matches('p') || !first.textContent)return;
+    const scale=page.currentCSSZoom||1;
+    const separation=()=>boundary(block,0,scale).y-boundary(first,0,scale).y;
+    pinCurrent();
+    const saved=pin,box=canvas()?.getBoundingClientRect(),before=separation();
+    if(!saved || !box?.height)return;
+    return ()=>{
+      if(pin!==saved || !block.isConnected)return;
+      const delta=separation()-before;
+      if(Math.abs(delta)<.01)return;
+      saved.y+=delta/box.height;
+      panel.scrollTop+=delta;
+    };
   }
   function position(){
     if(block&&!editor.contains(block)){hideRemovedInk();block=selectedBlock();anchor=null;pin=null;}
@@ -550,7 +586,7 @@ export function nativeParagraphOverlay(editor, panel, pages, framePending, selec
       const element=mountedElement(layout.byElement.get(hit.element).entry);
       return element?.isConnected && editingText(element)===hit.text ? {...hit,element}:null;
     },
-    update:schedule,
+    update:schedule,measureTypographyChange,
     clear(retain=false){
       if(retain)retainText(block);
       else for(const element of pendingRows.keys())discard(element);
