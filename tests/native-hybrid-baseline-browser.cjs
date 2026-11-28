@@ -167,6 +167,9 @@ async function testDesktopDocument(browser, origin, initial) {
   const errors=[], events=[], fonts=new Map();
   let revision=0, liveSource='', published=null,holdUpdate=null;
   const seen=[],sources=new Map();
+  let fontMap;
+  const locate=name=>execFileSync(join(process.env.RTEX_TEXLIVE_BIN,process.platform==='win32'?'kpsewhich.exe':'kpsewhich'),
+    [name],{encoding:'utf8',windowsHide:true}).trim();
   async function paintedSourceAfter(previous){
     const number=await page.evaluate(()=>{
       const panel=document.querySelector('#native-tex-preview');
@@ -198,11 +201,18 @@ async function testDesktopDocument(browser, origin, initial) {
         const filename=fonts.get(args.key);
         assert.ok(filename,'Unregistered test font '+args.key);
         let actual=filename;
-        if(!isAbsolute(actual)){
-          const which=join(process.env.RTEX_TEXLIVE_BIN,process.platform==='win32'?'kpsewhich.exe':'kpsewhich');
-          actual=execFileSync(which,[basename(filename)],{encoding:'utf8',windowsHide:true}).trim();
-        }
+        if(!isAbsolute(actual))actual=locate(basename(filename));
         return [...await fs.readFile(actual)];
+      }
+      if(command==='native_tex_type_one_font'){
+        fontMap??=(await fs.readFile(locate('pdftex.map'),'utf8')).split(/\r?\n/);
+        const name=args.key.replace(/^tfm:/,'');
+        const mapEntry=fontMap.find(line=>line.trim().split(/\s+/,1)[0]===name);
+        assert.ok(mapEntry,'Type 1 font mapping for '+name);
+        const outline=mapEntry.match(/<+([^<\s]+\.pf[ab])\b/i)?.[1];
+        const encoding=mapEntry.match(/<+\[?([^<\s]+\.enc)\b/i)?.[1];
+        assert.ok(outline,mapEntry);
+        return {bytes:[...await fs.readFile(locate(outline))],mapEntry,encoding:encoding?await fs.readFile(locate(encoding),'utf8'):null};
       }
       if(command==='native_tex_close')return;
       return null;
@@ -502,18 +512,21 @@ async function testDesktopDocument(browser, origin, initial) {
     assert.ok(toolbarClear,'The scrolling Lua sheet is clipped below the ribbon');
     // A fresh unsaved document lets the exporter introduce ctex on the first
     // Chinese input. An imported TeX file deliberately owns its preamble.
-    const previousFile=revision;
-    await page.evaluate(()=>localStorage.clear());
-    await page.reload();
-    await page.locator('header #toolbar-collapse').waitFor();
-    await expect.poll(()=>doc.evaluate(el=>el.editor.state.doc.textContent)).toBe('');
-    const toggle=page.locator('#native-tex-toggle');
-    if(await toggle.getAttribute('data-engine')!=='lua')await toggle.click();
-    await expect.poll(()=>paintedSourceAfter(previousFile),{timeout:60000}).toContain('\\thispagestyle{empty}\\null');
-    await page.locator('.document-status input[type=range]').evaluate(zoom=>{
-      zoom.value='144';zoom.dispatchEvent(new Event('input',{bubbles:true}));
-    });
-    await sheet.locator('canvas').click();
+    async function freshPage(){
+      const previousFile=revision;
+      await page.evaluate(()=>localStorage.clear());
+      await page.reload();
+      await page.locator('header #toolbar-collapse').waitFor();
+      await expect.poll(()=>doc.evaluate(el=>el.editor.state.doc.textContent)).toBe('');
+      const toggle=page.locator('#native-tex-toggle');
+      if(await toggle.getAttribute('data-engine')!=='lua')await toggle.click();
+      await expect.poll(()=>paintedSourceAfter(previousFile),{timeout:60000}).toContain('\\thispagestyle{empty}\\null');
+      await page.locator('.document-status input[type=range]').evaluate(zoom=>{
+        zoom.value='144';zoom.dispatchEvent(new Event('input',{bubbles:true}));
+      });
+      await sheet.locator('canvas').click();
+    }
+    await freshPage();
     const beforeTitle=revision;
     let resumeHeading,draftTitle;
     holdUpdate=new Promise(resolve=>{resumeHeading=resolve;});
@@ -534,6 +547,37 @@ async function testDesktopDocument(browser, origin, initial) {
       y:Math.max(...titleGlyphs.map((g,i)=>Math.abs(draftTitle[i].y-titleBox.height*g[5]/headingDL.page_height)))};
     console.log('First typed Chinese heading at 144%',titleDrift);
     assert.ok(titleDrift.x<=2 && titleDrift.y<=2,JSON.stringify(titleDrift));
+    await freshPage();
+    const beforeMath=revision;
+    let proceed,activeMath,retainedMath;
+    holdUpdate=new Promise(resolve=>{proceed=resolve;});
+    const mathPoint=selector=>page.evaluate(selector=>{
+      const field=document.querySelector(selector);
+      const strut=field?.shadowRoot?.querySelector('.ML__latex > .ML__strut');
+      const ink=field?.shadowRoot?.querySelector('.ML__mathit');
+      if(!strut||!ink)return null;
+      const rect=document.querySelector('[data-native-page] canvas').getBoundingClientRect();
+      return {x:ink.getBoundingClientRect().left-rect.left,y:strut.getBoundingClientRect().bottom-rect.top};
+    },selector);
+    try{
+      await page.keyboard.type('$$');
+      await page.waitForFunction(()=>document.activeElement.matches('math-field'));
+      await page.keyboard.type('x+1');
+      await page.waitForFunction(()=>document.querySelector('.math-display math-field')?.shadowRoot?.querySelector('.ML__latex')?.textContent.includes('1'));
+      activeMath=await mathPoint('.math-display math-field');
+      await page.keyboard.press('Control+Shift+j');
+      await expect.poll(()=>mathPoint('.native-pending-formula')).not.toBeNull();
+      retainedMath=await mathPoint('.native-pending-formula');
+      assert.equal(await page.locator('.native-pending-prose math-field').count(),0);
+      assert.doesNotMatch(await page.locator('.native-pending-prose').first().textContent(),/⠿/);
+    }finally{holdUpdate=null;proceed();}
+    await expect.poll(()=>paintedSourceAfter(beforeMath),{timeout:60000}).toContain('x+1');
+    const mathDL=Object.values(published.pages)[0].dl;
+    const mathLine=mathDL.lines.find(l=>l.items.filter(i=>i[0]==='g').length>=3);
+    const first=mathLine.items.find(i=>i[0]==='g'),paper=await sheet.locator('canvas').boundingBox();
+    const equation={x:paper.width*first[4]/mathDL.page_width,y:paper.height*mathLine.y/mathDL.page_height};
+    console.log('Display equation in editing, retained ink, and Lua',JSON.stringify({activeMath,retainedMath,equation}));
+    for(const point of [activeMath,retainedMath])assert.ok(Math.abs(point.x-equation.x)<=2 && Math.abs(point.y-equation.y)<=2);
     assert.deepEqual(errors,[]);
     console.log('PASS: shipped Lua document, repeated Enter, caret X/Y, CJK preedit/commit, and split-prefix ink through a delayed native frame');
   }catch(error){

@@ -107,6 +107,9 @@ export function paragraphFrame(layout, pages, owners, warm) {
       if (!indices.has(frag.page)) indices.set(frag.page,pageIndex(page,warm?.pages.get(frag.page)));
       for(let i=0;i<count;i++) {
         const row=placedRow(indices.get(frag.page),frag.xs[i],frag.baselines[i]);
+        // A display entered in vertical mode is preceded by TeX's empty
+        // paragraph line. Its placement is real, but it owns no painted ink.
+        if(entry.node?.type.name==='mathBlock' && row?.line.items.length===0)continue;
         const geometry=row && rowGeometry(row,frag.page);
         if (!geometry) {valid=false;break;}
         rows.push(geometry);

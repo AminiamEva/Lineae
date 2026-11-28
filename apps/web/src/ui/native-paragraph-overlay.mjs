@@ -177,7 +177,38 @@ export function nativeParagraphOverlay(editor, panel, pages, framePending, selec
     const x=(boundary(block,0,scale).x-sheet.getBoundingClientRect().left)/box.width;
     return {offset:0,stop:{row:{page:1},x,y:height*scale/box.height},pinned:true};
   }
+  function displayReference(paragraph,scale){
+    const row=paragraph?.rows[0],targetPage=row?.page??number;
+    const box=canvas(targetPage)?.getBoundingClientRect();
+    if(!box?.height || !box.width)return null;
+    const richSheet=page.querySelector('.document-sheets')?.children[targetPage-1]??page;
+    const paper=richSheet.getBoundingClientRect(),start=boundary(block,0,scale);
+    // MathLive centers the expression again as it grows. Pinning the left
+    // edge of its initially empty field instead can move it half a page.
+    const x=(start.x-paper.left)/box.width;
+    let y=row?.baseline;
+    if(y===undefined && block.parentElement===editor && editor.hasAttribute('data-native-top-skip')){
+      const line=parseFloat(getComputedStyle(editor).lineHeight)*scale;
+      let prev=block.previousElementSibling;
+      while(prev?.matches('p:empty,p:has(> br:only-child)'))prev=prev.previousElementSibling;
+      let preceding;
+      if(!prev && targetPage===1 && !page.querySelector('#document-meta')?.textContent.trim()){
+        preceding=(parseFloat(getComputedStyle(page).paddingTop)+Number(editor.dataset.nativeTopSkip))*scale;
+      }else if(prev?.matches('p')){
+        const prior=paragraphFor(prev),last=prior?.rows.at(-1);
+        if(last?.page===targetPage && matches(prior,prev))preceding=last.baseline*box.height+line;
+        else preceding=boundary(prev,prev.textContent.length,scale).y-paper.top+line;
+      }
+      if(Number.isFinite(preceding) && Number.isFinite(line)){
+        const strut=block.querySelector('math-field')?.shadowRoot?.querySelector('.ML__latex > .ML__strut');
+        const height=strut?.getBoundingClientRect().height??0;
+        y=(preceding+(height>line ? height+96/72.27*scale : line))/box.height;
+      }
+    }
+    return {offset:0,pinned:true,stop:{row:{page:targetPage},x,y:y??pin?.y??(start.y-paper.top)/box.height}};
+  }
   function referenceFor(paragraph,scale) {
+    if(block.matches('.math-display'))return displayReference(paragraph,scale);
     if(paragraph){
       const offset=selectionOffset(block),old=paragraph.entry.text, live=editingText(block);
       const view=editor.editor?.view,head=view?.state.selection.$head;

@@ -118,7 +118,7 @@ export function snapshotDraft(block,sheets,measure) {
   const walker=doc.createTreeWalker(block,NodeFilter.SHOW_ELEMENT|NodeFilter.SHOW_TEXT,{
     acceptNode(n){
       if(n.nodeType===Node.TEXT_NODE || n.matches('math-field,img'))return NodeFilter.FILTER_ACCEPT;
-      return n.matches('.ProseMirror-widget,.ProseMirror-trailingBreak')?NodeFilter.FILTER_REJECT:NodeFilter.FILTER_SKIP;
+      return n.matches('.ProseMirror-widget,.ProseMirror-trailingBreak,.math-drag-handle')?NodeFilter.FILTER_REJECT:NodeFilter.FILTER_SKIP;
     },
   });
   let node;

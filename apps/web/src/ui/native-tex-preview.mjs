@@ -105,9 +105,14 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
     editPreamble=preamble;
     const metrics=ctexEditStyle(preamble);
     const reflow=richEditor.hasAttribute('data-native-ctex')!==Boolean(metrics) ? overlay?.measureTypographyChange() : null;
-    const standardSections=/\\documentclass\s*(?:\[[^\]]*\]\s*)?\{article\}/.test(preamble) &&
+    const article=/\\documentclass\s*(?:\[([^\]]*)\]\s*)?\{article\}/.exec(preamble);
+    const standardSections=article &&
       !/\\(?:ctexset|titleformat|titlespacing|@startsection|RedeclareSectionCommand)\b|\\(?:renewcommand|def)\s*\{?\s*\\(?:sub)*section\b|\{[^{}\r\n]*\btitlesec\b[^{}\r\n]*\}/.test(preamble);
     richEditor.toggleAttribute('data-native-article-sections',standardSections);
+    if(article && !/\\(?:topskip|abovedisplayshortskip|lineskiplimit)\b/.test(preamble)){
+      const size=/(?:^|,)\s*(10|11|12)pt\s*(?:,|$)/.exec(article[1]??'')?.[1]??10;
+      richEditor.dataset.nativeTopSkip=String(Number(size)*96/72.27);
+    }else delete richEditor.dataset.nativeTopSkip;
     // Before the first Han character the exporter has not emitted ctex yet.
     // Select the same bundled face for composition as for its committed text.
     const autoSong=Boolean(metrics)||/\\documentclass(?:\[[^\]]*\])?\{article\}/.test(preamble)&&
