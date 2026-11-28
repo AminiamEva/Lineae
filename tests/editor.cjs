@@ -3033,7 +3033,10 @@ A & B \\
     const styleField=paper.locator('math-field').first();
     await styleField.click({button:'right'});
     await page.locator('[data-command="display-style"]').click();
-    await page.waitForFunction(()=>document.querySelector('math-field')?.value.startsWith('\\displaystyle'));
+    await page.waitForFunction(()=>{
+      const field=document.querySelector('.ProseMirror math-field');
+      return field?.value.startsWith('\\displaystyle') && field.hasFocus() && field.position===Math.max(0,field.lastOffset-2);
+    });
     await page.keyboard.type('c');
     const styledValue=await styleField.evaluate(field=>field.value);
     assert.match(styledValue,/\\displaystyle[\s\S]*c\s*\}+$/,'Typing continues inside the display-style formula: '+styledValue);
