@@ -319,6 +319,8 @@ async function testDesktopDocument(browser, origin, initial) {
       Number(document.querySelector('[data-native-page]')?.dataset.paintRevision)>old,oldRevision,{timeout:60000});
     const word=await paperPoint(wrapped,0,4);
     await page.mouse.click(word.x,word.y);
+    assert.equal(await doc.evaluate(el=>el.hasAttribute('data-native-ctex')),true,
+      'An imported explicit Fandol article uses the native paragraph baseline and indent during editing');
     assert.deepEqual(await doc.evaluate(el=>{
       const head=el.editor.state.selection.$head;
       return [head.parent.textContent,head.parentOffset];

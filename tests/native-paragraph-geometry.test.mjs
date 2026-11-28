@@ -10,6 +10,23 @@ import {sourceProjection,requiresSourceProjection,standaloneParagraphDraft} from
 import {importBlocks} from '../apps/web/src/editor/latex-codec.js';
 import {parseDocument} from '../apps/web/latex/document.mjs';
 import {projectDocumentEdits} from '../apps/web/src/project/include-document.mjs';
+import {ctexEditStyle} from '../apps/web/src/typesetting/rtex/ctex-edit-style.mjs';
+
+test('the imported Fandol article uses the same editing line and indent as the generated preamble',()=>{
+  const article='\\documentclass{article}\n';
+  const generated='\\PassOptionsToPackage{fontset=fandol}{ctex}\n\\usepackage{ctex}';
+  const standard={font:'10.5pt',line:'16.38pt',indent:'21pt'};
+  for(const declaration of [generated,'\\usepackage[fontset=fandol]{ctex}',
+    '\\RequirePackage[UTF8, fontset = fandol]{ctex}', '\\usepackage[fontset={fandol}]{ctex}',
+    '\\PassOptionsToPackage{fontset={fandol}}{ctex}\\usepackage{ctex}']){
+    assert.deepEqual(ctexEditStyle(article+declaration),standard);
+  }
+  for(const declaration of ['\\usepackage[fontset=windows]{ctex}', '\\usepackage[fontset=fandol]{other}\\usepackage{ctex}',
+    generated+'\n\\setCJKmainfont{SimSun}', '\\usepackage[scheme=plain,fontset=fandol]{ctex}',
+    '% \\usepackage[fontset=fandol]{ctex}', '\\PassOptionsToPackage{fontset=windows}{ctex}\n'+generated]){
+    assert.equal(ctexEditStyle(article+declaration),null);
+  }
+});
 
 const schema=new Schema({nodes:{doc:{content:'paragraph+'},paragraph:{content:'text*'},text:{}}});
 const prose=new Schema({nodes:{doc:{content:'paragraph+'},paragraph:{content:'inline*'},text:{group:'inline'},
