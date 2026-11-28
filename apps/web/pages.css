@@ -428,6 +428,9 @@ body:has(.document-page[data-formatting-marks=true]) .native-pending-indent {
 .native-tex-caret { position:absolute; width:2px; background:#2f6fd0; pointer-events:none; }
 body.native-tex-rich-edit main.native-ink-confirmed { opacity:0; }
 .native-draft-mask { position:absolute; z-index:1; background:white; pointer-events:none; }
+:is([data-native-page],[data-pdf-page]) > :is(.native-indent-marks,.native-rich-caret,.native-rich-endmark,.native-draft-mask) {
+  translate:var(--native-raster-x,0px) var(--native-raster-y,0px);
+}
 .native-pending-prose { position:absolute; inset:0; z-index:2; pointer-events:none; user-select:none; }
 .native-rich-caret { position:absolute; z-index:2; width:1px; background:#222; pointer-events:none; }
 .native-rich-endmark { position:absolute; z-index:1; width:1px; height:1px; overflow:visible; fill:#80808094; font-family:sans-serif; pointer-events:none; }

@@ -2,13 +2,24 @@ import {markCenter,paragraphEndMarker} from '../editor/paragraph-marks.mjs';
 
 const graphemes=new Intl.Segmenter(undefined,{granularity:'grapheme'});
 const eastAsian=/[\p{sc=Han}\p{sc=Hiragana}\p{sc=Katakana}\p{sc=Hangul}\u3000-\u303f\uff00-\uffef]/u;
+const fontProperties=['fontFamily','fontSize','fontStyle','fontWeight','fontStretch','fontVariant','fontFeatureSettings','fontKerning',
+  'lineHeight','letterSpacing','wordSpacing','color','textDecoration','direction','textTransform'];
+
+function copyTypography(ink,style){
+  // CSSOM can return an empty font shorthand for a fully resolved math font.
+  for(const property of fontProperties)ink.style[property]=style[property];
+}
 
 // Keep completed edits visible while TeX is working. These fragments come
 // from the *laid-out* editable DOM; a second paragraph layout would wrap and
 // clip the text differently. No element here accepts input.
 export function snapshotDraft(block,sheets,measure) {
-  sheets=sheets.filter(sheet=>sheet.box.width>0 && sheet.box.height>0);
-  if(!block?.isConnected || !sheets.length)return [];
+  if(!block?.isConnected)return [];
+  // Native canvases snap to device pixels. Decorations are positioned in the
+  // enclosing sheet, whose CSS edges can still be fractional at this zoom.
+  sheets=sheets.map(sheet=>({...sheet,bounds:sheet.element.getBoundingClientRect()}))
+    .filter(({box,bounds})=>box.width>0 && box.height>0 && bounds.width>0 && bounds.height>0);
+  if(!sheets.length)return [];
   const doc=block.ownerDocument,scale=block.currentCSSZoom||1;
   const groups=new Map(),range=doc.createRange();
   const point=(x,y)=>{
@@ -27,7 +38,8 @@ export function snapshotDraft(block,sheets,measure) {
       group.style.fontFamily=getComputedStyle(block).fontFamily;
       groups.set(sheet.element,group);
     }
-    return {group,left:(x-sheet.box.left)*100/sheet.box.width+'%',top:(y-sheet.box.top)*100/sheet.box.height+'%'};
+    const box=sheet.bounds;
+    return {group,left:(x-box.left)*100/box.width+'%',top:(y-box.top)*100/box.height+'%'};
   };
   let firstBaseline=null,lastEnd=null;
   function paintText(text,rect,parent,wholeJustifiedLine=false) {
@@ -40,9 +52,7 @@ export function snapshotDraft(block,sheets,measure) {
     const place=point(rect.left,baseline);
     if(!place)return;
     const ink=doc.createElement('span');
-    for(const prop of ['fontFamily','fontSize','fontStyle','fontWeight','fontStretch','fontVariant','fontFeatureSettings','fontKerning',
-      'lineHeight','letterSpacing','wordSpacing','color','textDecoration','direction','textTransform'])
-      ink.style[prop]=style[prop];
+    copyTypography(ink,style);
     ink.style.position='absolute';ink.style.whiteSpace='pre';ink.style.textIndent='0';
     if(wholeJustifiedLine){
       // Give the browser the width of this *already broken* line, including
@@ -147,16 +157,21 @@ export function snapshotDraft(block,sheets,measure) {
       for(const item of glyphs.querySelectorAll('.ML__caret,.ML__text-caret,.ML__latex-caret,.ML__selection'))item.remove();
       for(const item of glyphs.querySelectorAll('.ML__selected,.ML__contains-caret,.ML__contains-highlight'))
         item.classList.remove('ML__selected','ML__contains-caret','ML__contains-highlight');
-      const style=getComputedStyle(painted);
-      Object.assign(copy.style,{font:style.font,color:style.color,lineHeight:style.lineHeight,display:'block',padding:'0',border:'0',background:'transparent'});
-      Object.assign(glyphs.style,{position:'absolute',top:'0',left:'0',margin:'0'});
+      copyTypography(copy,getComputedStyle(painted));
+      Object.assign(copy.style,{display:'block',padding:'0',border:'0',background:'transparent',
+        width:rect.width+'px',height:rect.height+'px'});
+      // Match the editing sheet's layout zoom. Magnifying an unzoomed copy
+      // with a transform reshapes glyph advances and rounds MathLive's strut
+      // at a different pixel size when the user leaves the field.
+      Object.assign(glyphs.style,{position:'absolute',top:'0',left:'0',margin:'0',zoom:String(scale)});
       shadow.append(glyphs);
     }else{
       copy=node.cloneNode(false);
       copy.removeAttribute('id');
+      Object.assign(copy.style,{width:rect.width/scale+'px',height:rect.height/scale+'px',
+        transformOrigin:'0 0',transform:'scale('+scale+')'});
     }
-    Object.assign(copy.style,{position:'absolute',left:place.left,top:place.top,margin:'0',
-      width:rect.width/scale+'px',height:rect.height/scale+'px',transformOrigin:'0 0',transform:'scale('+scale+')'});
+    Object.assign(copy.style,{position:'absolute',left:place.left,top:place.top,margin:'0'});
     place.group.append(copy);
   }
   const style=getComputedStyle(block),bounds=block.getBoundingClientRect();

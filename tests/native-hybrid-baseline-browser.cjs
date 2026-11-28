@@ -133,7 +133,7 @@ async function testFormulaDraft(page){
     const {nativeEditMetrics}=await import('/src/ui/native-edit-metrics.mjs');
     const root=document.createElement('section'),block=document.createElement('div'),sheet=document.createElement('div');
     root.style.cssText='position:fixed;inset:0;z-index:9;';
-    block.style.cssText='position:absolute;left:23px;top:55px;zoom:1.44;font:14px serif;';
+    block.style.cssText='position:absolute;left:23px;top:55px;zoom:1.44;font:13.2835px serif;font-feature-settings:"kern" 1;';
     sheet.style.cssText='position:absolute;inset:0;';
     const field=document.createElement('math-field');
     field.value='\\frac{x+1}{2}';block.append(field);root.append(block,sheet);document.body.append(root);
@@ -143,7 +143,7 @@ async function testFormulaDraft(page){
         await new Promise(resolve=>requestAnimationFrame(resolve));
       await document.fonts.ready;
       const glyphs=shadow=>[...shadow.querySelectorAll('.ML__mathit,.ML__cmr')].filter(n=>!n.childElementCount).map(n=>{
-        const rect=n.getBoundingClientRect();return {text:n.textContent,x:rect.left,y:rect.top};
+        const rect=n.getBoundingClientRect();return {text:n.textContent,x:rect.left,y:rect.top,width:rect.width,fontSize:getComputedStyle(n).fontSize};
       });
       const before=glyphs(field.shadowRoot);
       const [held]=snapshotDraft(block,[{element:sheet,box:sheet.getBoundingClientRect()}],nativeEditMetrics(document));
@@ -155,8 +155,11 @@ async function testFormulaDraft(page){
   assert.equal(result.fields,0);
   assert.ok(result.before.length>=3);
   assert.deepEqual(result.before.map(g=>g.text),result.after.map(g=>g.text));
-  for(const [i,glyph] of result.before.entries())
+  for(const [i,glyph] of result.before.entries()){
+    assert.equal(result.after[i].fontSize,glyph.fontSize);
+    assert.ok(Math.abs(result.after[i].width-glyph.width)<.1,JSON.stringify(result));
     assert.ok(Math.max(Math.abs(result.after[i].x-glyph.x),Math.abs(result.after[i].y-glyph.y))<=1,JSON.stringify(result));
+  }
 }
 
 // Exercise the shipped editor entry point. The bridge transports real rtex
