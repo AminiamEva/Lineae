@@ -33,8 +33,32 @@ const lua = Object.freeze({
   texFinalPass:true,
 });
 
+function pdfDocumentStyle(preamble, activeFonts) {
+  return typesetProfile(preamble, activeFonts, 'pdflatex');
+}
+const pdf = Object.freeze({
+  engine:'pdflatex',version:2,
+  capabilities:Object.freeze({resolution:'supported', browserLayout:'supported', cjk:'fandol-quanjiao', english:'supported'}),
+  documentStyle:pdfDocumentStyle, englishHyphenation,
+  paragraphParameters(preamble) {
+    const options = paragraphParameters(preamble);
+    options.ctexDefaultStretch = usesCtex(preamble) && !/\blinestretch\s*=/.test(preamble);
+    return options;
+  },
+  cjk:Object.freeze({
+    family:'FandolSong', pairs:fandolPairs, punctuation:fandolPunctuation,
+    intercharStretch(options, lineWidth, em, baseline) {
+      return options.ctexDefaultStretch ? ctexIntercharStretch(lineWidth, em) : baseline * .08;
+    },
+    supports(options,family) {
+      return options.cjkPunctStyle === 'quanjiao' && !options.cjkCustomGlue && family.includes(this.family);
+    },
+  }),
+});
+
 export function getTypesettingProfile(resolvedEngine) {
   if (resolvedEngine === 'xelatex') return xe;
+  if (resolvedEngine === 'pdflatex') return pdf;
   if (resolvedEngine === 'lualatex') return lua;
   throw new TypeError('A resolved typesetting engine is required');
 }

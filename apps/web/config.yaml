@@ -1,7 +1,6 @@
 version: 2
 typesetting:
   defaultEngine: lualatex
-  engine: xelatex
 interface:
   sourceFontSize: 16
   toolbarAutoHide: false

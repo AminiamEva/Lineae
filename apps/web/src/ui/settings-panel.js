@@ -86,7 +86,7 @@ export function installSettingsPanel({config,onApply,onImport,onExport,getDocume
     if (id === 'interface.language') control = selectFrom([
       ['auto',t('跟随系统','System')],['en','English'],['zh-CN','简体中文'],['zh-Hant','繁體中文'],
     ]);
-    else if (id === 'typesetting.defaultEngine') control = selectFrom([['lualatex','LuaLaTeX'],['xelatex','XeLaTeX']]);
+    else if (id === 'typesetting.defaultEngine') control = selectFrom([['lualatex','LuaLaTeX'],['xelatex','XeLaTeX'],['pdflatex','pdfLaTeX']]);
     else if (id === 'interface.theme') control = selectFrom([
       ['system',t('跟随系统','System')],['light',t('浅色','Light')],['dark',t('深色','Dark')],
     ]);
