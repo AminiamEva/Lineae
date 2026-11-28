@@ -44,6 +44,7 @@ import {installSettingsPanel} from './ui/settings-panel.js';
 import { buildHomeRibbon } from './ui/home-ribbon.js';
 import { activeStyleKey, documentClassFromSource } from './ui/style-presets.mjs';
 import { buildRibbonGroups } from './ui/ribbon-groups.js';
+import { installCommandRibbons, installFileRibbon } from './ui/command-ribbon.js';
 import {installHeaderFooterPanel} from './ui/header-footer-panel.js';
 import { sourceProjection, richSourceChanges, standaloneParagraphDraft, standaloneMathChanges, matchesParagraphGap } from './editor/source-sync.js';
 import { installSourceToolbar } from './editor/source-toolbar.js';
@@ -5236,25 +5237,23 @@ for(const value of ['2','3','4'])layoutLocalColumns.append(new Option(t(value+' 
 const insertColumnsButton=document.createElement('button');
 insertColumnsButton.type='button';
 insertColumnsButton.textContent=t('应用到选区','Apply to selection');
-const layoutPageSetup=document.createElement('section');
-layoutPageSetup.className='layout-group';
-layoutPageSetup.id='layout-page-setup';
-const layoutPageSetupTitle=document.createElement('div');
-layoutPageSetupTitle.className='layout-group-title';
-layoutPageSetupTitle.dataset.zh='页面设置';
-layoutPageSetupTitle.dataset.en='Page Setup';
-layoutPageSetupTitle.textContent=t('页面设置','Page Setup');
-const layoutPageSetupControls=document.createElement('div');
-layoutPageSetupControls.className='layout-group-controls';
+function layoutControls(...controls){
+  const body=document.createElement('div');
+  body.className='layout-group-controls ribbon-command-grid';
+  body.append(...controls);
+  return body;
+}
+const layoutPageSetupControls=layoutControls();
+const layoutMarginControls=layoutControls();
 const paperLabel=document.createElement('label');
 paperLabel.className='layout-field';
-paperLabel.append(t('纸张大小','Paper size'),pagePaper);
+paperLabel.append(icon('sourceFile'),pagePaper);
 const orientationLabel=document.createElement('label');
 orientationLabel.className='layout-field';
-orientationLabel.append(t('纸张方向','Orientation'),pageOrientation);
+orientationLabel.append(icon('orientation'),pageOrientation);
 const marginLabel=document.createElement('label');
 marginLabel.className='layout-field';
-marginLabel.append(t('页边距','Margins'),pageMarginPreset);
+marginLabel.append(icon('layout'),pageMarginPreset);
 layoutPageSetupControls.append(paperLabel,orientationLabel,marginLabel);
 for(const [sideText,input] of [[t('上边距','Top'),pageMarginTop],[t('右边距','Right'),pageMarginRight],[t('下边距','Bottom'),pageMarginBottom],[t('左边距','Left'),pageMarginLeft]]){
   const field=document.createElement('label');
@@ -5262,30 +5261,15 @@ for(const [sideText,input] of [[t('上边距','Top'),pageMarginTop],[t('右边�
   const caption=document.createElement('span');
   caption.textContent=sideText;
   field.append(caption,input);
-  layoutPageSetupControls.append(field);
+  layoutMarginControls.append(field);
 }
 const columnsField=document.createElement('label');
 columnsField.className='layout-field';
-const columnsCaption=document.createElement('span');
-columnsCaption.textContent=t('全局分栏','Global columns');
-columnsField.append(columnsCaption,layoutColumns);
+columnsField.append(icon('columns'),layoutColumns);
 const localColumnsField=document.createElement('label');
 localColumnsField.className='layout-field';
-const localColumnsCaption=document.createElement('span');
-localColumnsCaption.textContent=t('局部分栏','Local columns');
-localColumnsField.append(localColumnsCaption,layoutLocalColumns,insertColumnsButton);
-layoutPageSetupControls.append(columnsField,localColumnsField);
-layoutPageSetup.append(layoutPageSetupTitle,layoutPageSetupControls);
-const layoutParagraph=document.createElement('section');
-layoutParagraph.className='layout-group';
-layoutParagraph.id='layout-paragraph';
-const layoutParagraphTitle=document.createElement('div');
-layoutParagraphTitle.className='layout-group-title';
-layoutParagraphTitle.dataset.zh='段落';
-layoutParagraphTitle.dataset.en='Paragraph';
-layoutParagraphTitle.textContent=t('段落','Paragraph');
-const layoutParagraphControls=document.createElement('div');
-layoutParagraphControls.className='layout-group-controls';
+localColumnsField.append(icon('columns'),layoutLocalColumns,insertColumnsButton);
+const layoutParagraphControls=layoutControls();
 const layoutIndentDecrease=groupButton(layoutParagraphControls,['减少缩进','Decrease indent'],()=>indentSelectedParagraph(-1));
 const layoutIndentIncrease=groupButton(layoutParagraphControls,['增加缩进','Increase indent'],()=>indentSelectedParagraph(1));
 const layoutBefore=document.createElement('select');
@@ -5297,11 +5281,12 @@ layoutAfter.append(new Option(t('段后 0pt','After 0pt'),'0pt'),new Option(t('�
 layoutBefore.addEventListener('change',()=>updateSelectedParagraphs({spaceBefore:layoutBefore.value==='0pt'?null:layoutBefore.value}));
 layoutAfter.addEventListener('change',()=>updateSelectedParagraphs({spaceAfter:layoutAfter.value==='0pt'?null:layoutAfter.value}));
 layoutParagraphControls.append(layoutBefore,layoutAfter);
-layoutParagraph.append(layoutParagraphTitle,layoutParagraphControls);
 buildRibbonGroups(layoutGroup,[
-  {id:'layout-page-setup',zh:'页面设置',en:'Page Setup',iconName:'layout',width:840,body:layoutPageSetupControls},
-  {id:'layout-paragraph',zh:'段落',en:'Paragraph',iconName:'paragraph',width:300,body:layoutParagraphControls},
-],['layout-paragraph','layout-page-setup']);
+  {id:'layout-page-setup',zh:'页面设置',en:'Page setup',iconName:'layout',body:layoutPageSetupControls},
+  {id:'layout-margins',zh:'自定义边距',en:'Custom margins',iconName:'ruler',body:layoutMarginControls},
+  {id:'layout-columns',zh:'分栏',en:'Columns',iconName:'columns',body:layoutControls(columnsField,localColumnsField)},
+  {id:'layout-paragraph',zh:'段落',en:'Paragraph',iconName:'paragraph',body:layoutParagraphControls},
+],['layout-paragraph','layout-columns','layout-margins','layout-page-setup']);
 syncLayoutParagraph=()=>{
   if(!layoutBefore||!layoutAfter)return;
   const attrs=editor.getAttributes('paragraph');
@@ -5373,19 +5358,14 @@ function tableOption(label,control){
   field.append(text,control);
   return field;
 }
-function tableSection(title){
-  const section=document.createElement('section');
-  section.className='table-style-group';
-  const heading=document.createElement('div');
-  heading.className='table-style-group-title';
-  heading.textContent=title;
+const tableStyles=[];
+function tableSection(id,zh,en,iconName){
   const body=document.createElement('div');
   body.className='table-style-group-body';
-  section.append(heading,body);
-  tableGroup.append(section);
+  tableStyles.push({id,zh,en,iconName,body});
   return body;
 }
-const tableCaptionSection=tableSection('表格样式');
+const tableCaptionSection=tableSection('table-caption','题注','Caption','label');
 const tableCaptionEnabled=document.createElement('input');tableCaptionEnabled.type='checkbox';
 const tableCaptionInput=document.createElement('input');tableCaptionInput.type='text';tableCaptionInput.placeholder='Caption';
 tableCaptionEnabled.setAttribute('aria-label',t('启用表格题注','Enable table caption'));
@@ -5395,7 +5375,7 @@ const tableCaptionToggleText=document.createElement('span');tableCaptionToggleTe
 tableCaptionToggleField.append(tableCaptionEnabled,tableCaptionToggleText);
 const tableCaptionField=document.createElement('div');tableCaptionField.className='table-caption-field';tableCaptionField.append(tableCaptionInput);
 tableCaptionSection.append(tableCaptionToggleField,tableCaptionField);
-const tableRuleSection=tableSection('样式');
+const tableRuleSection=tableSection('table-rules','边框样式','Border style','borders');
 const tableLeftRule=document.createElement('input');tableLeftRule.type='checkbox';
 const tableRightRule=document.createElement('input');tableRightRule.type='checkbox';
 const tableMiddleVerticalRule=document.createElement('input');tableMiddleVerticalRule.type='checkbox';
@@ -5421,7 +5401,7 @@ tableRuleGrid.append(
   tableOption(t('线宽','Line width'),tableRuleWidth),
 );
 tableRuleSection.append(tableRuleGrid);
-const tableStretchSection=tableSection('伸缩');
+const tableStretchSection=tableSection('table-size','大小与间距','Size & spacing','ruler');
 const tableArrayStretch=document.createElement('input');tableArrayStretch.type='number';tableArrayStretch.min='0.5';tableArrayStretch.max='3';tableArrayStretch.step='0.1';tableArrayStretch.value='1';
 const tableFontSize=document.createElement('select');
 for(const [value,label] of [['','默认'],['small','small'],['footnotesize','footnotesize'],['scriptsize','scriptsize'],['10pt','10pt'],['9pt','9pt']])tableFontSize.append(new Option(t(label,value),value));
@@ -6016,11 +5996,12 @@ const exportConfig=groupButton(files,['导出 YAML','Export YAML'],()=>{
 exportConfig.hidden=true;
 const saveAsButton=groupButton(files,['另存为','Save as'],()=>saveDocument(true));
 saveAsButton.dataset.tool='saveAs';
+const fileActions=installFileRibbon(files);
 let releaseFileNavigation;
 function updateFileTools() {
   const order=config.value.interface.toolbar;
-  for (const control of files.querySelectorAll('[data-tool]')) control.hidden=control.dataset.tool==='language'||!order.includes(control.dataset.tool);
-  for (const name of order) files.insertBefore(files.querySelector(`[data-tool="${name}"]`),importConfig);
+  for (const control of fileActions.querySelectorAll('[data-tool]')) control.hidden=control.dataset.tool==='language'||!order.includes(control.dataset.tool);
+  for (const name of order) fileActions.insertBefore(fileActions.querySelector(`[data-tool="${name}"]`),importConfig);
   releaseFileNavigation?.();
   releaseFileNavigation=installRovingFocus(files,{onActivate:control=>control.click()});
 }
@@ -6090,6 +6071,7 @@ function updateLanguage() {
   documentFind.relocalize();
   documentOutline.relocalize();
   sourceView.relocalize();toolbarController.relocalize();settingsPanel.relocalize();settingsButton.title=t('设置','Settings');settingsButton.setAttribute('aria-label',settingsButton.title);
+  for(const panel of Object.values(groups))panel.refreshLayout?.({remeasure:true});
   applyToolbarDescriptions(ribbon);
   updateShortcutHints();
   updateThemeButton();
@@ -6120,9 +6102,9 @@ function selectGroup(name) {
   ribbon.dataset.ribbonPage=name;
   for(const [key,panel] of Object.entries(groups)) panel.hidden=key!==name;
   for(const tab of tabs.children)tab.setAttribute('aria-pressed',String(tab.dataset.group===name));
+  groups[name]?.refreshLayout?.();
   tabs.querySelector('[aria-pressed=true]')?.scrollIntoView({block:'nearest',inline:'nearest'});
   setHeaderFooterMode(name==='headerFooter');
-  groups[name]?.refreshLayout?.();
   if(name==='home')homeRibbon.refreshLayout?.();
 }
 for(const name of Object.keys(groups)) {
@@ -6305,7 +6287,8 @@ editor.on('selectionUpdate',syncImageTab);
 editor.on('transaction',({transaction})=>{if(transaction.selectionSet)syncImageTab();});
 ribbon.append(tabs,files,home,insert,layoutGroup,tableGroup,formatGroup,referenceGroup,mathGroup,imagePanel.panel,subfigurePanel.panel,headerFooterPanel.panel);header.append(ribbon);tools.remove();
 groupButton(insert,'figure',()=>insertDocumentImage());
-sourceToolbar = installSourceToolbar({ribbon,groups,source:sourceView,rich:paper,heading:headingMenu});
+installCommandRibbons({insert,format:formatGroup,reference:referenceGroup,math:mathGroup,table:tableGroup,tableStyles});
+sourceToolbar = installSourceToolbar({groups,source:sourceView,rich:paper,heading:headingMenu});
 const toolbarController=installFloatingToolbar({header,ribbon,sourceView,getAutoHide:()=>sourceView.hidden?config.value.interface.toolbarAutoHide:config.value.interface.sourceToolbarAutoHide});
 installMathFloatToolbar({ editor });
 function restoreSettingsFocus() {

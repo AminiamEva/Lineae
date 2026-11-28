@@ -66,7 +66,9 @@ export function installRovingFocus(container, {
 } = {}) {
   if (!container?.querySelectorAll) return () => {};
   const items = () => [...container.querySelectorAll(itemSelector)].filter(element =>
-    !element.hidden && !element.disabled && element.getAttribute?.('aria-disabled') !== 'true');
+    !element.hidden && !element.disabled && element.getAttribute?.('aria-disabled') !== 'true' &&
+    !element.closest?.('.ribbon-group-body[inert]') &&
+    (!element.classList?.contains('ribbon-group-toggle') || element.parentElement?.classList.contains('is-collapsed')));
   let active = 0;
   const sync = index => {
     const list = items();
@@ -105,9 +107,12 @@ export function installRovingFocus(container, {
   };
   container.addEventListener?.('keydown', onKey);
   container.addEventListener?.('focusin', onFocusIn);
+  const onLayout = () => sync(Math.max(0,active));
+  container.addEventListener?.('ribbonlayout', onLayout);
   sync(initial);
   return () => {
     container.removeEventListener?.('keydown', onKey);
     container.removeEventListener?.('focusin', onFocusIn);
+    container.removeEventListener?.('ribbonlayout', onLayout);
   };
 }

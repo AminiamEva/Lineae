@@ -18,6 +18,17 @@ const paths = {
   undo:'M8 4 3 9l5 5M3 9h10a6 6 0 0 1 0 12',
   redo:'m16 4 5 5-5 5m5-5H11a6 6 0 0 0 0 12',
   list:'M9 6h12M9 12h12M9 18h12M3 6h1M3 12h1M3 18h1',
+  layout:'M5 3h14v18H5zM8 6h8v12H8z',
+  orientation:'M4 6h16v12H4zM8 9h8M8 12h6',
+  columns:'M4 4h16v16H4zM12 4v16M7 8h2m6 0h2m-10 4h2m6 0h2',
+  pageBreak:'M5 8V3h14v5M5 16v5h14v-5M3 12h3m3 0h3m3 0h3m3 0h1',
+  save:'M4 3h13l3 3v15H4zM8 3v6h8V3M8 21v-7h8v7',
+  download:'M12 3v12m-4-4 4 4 4-4M4 16v5h16v-5',
+  calendar:'M4 5h16v16H4zM8 3v4m8-4v4M4 10h16M8 14h2m4 0h2',
+  circuit:'M9 9h6v6H9zM12 3v6m0 6v6M3 12h6m6 0h6',
+  drawing:'M4 18l5-11 6 9 5-8M4 20h16',
+  fence:'M9 4c-3 2-4 5-4 8s1 6 4 8m6-16c3 2 4 5 4 8s-1 6-4 8',
+  product:'M4 5h16M7 5v15M17 5v15',
   table:'M3 4h18v16H3zM3 10h18M10 4v16',
   row:'M3 4h18v16H3zM3 10h18M9 15h6m-3-3v6',
   column:'M3 4h18v16H3zM10 4v16M13 12h6m-3-3v6',
@@ -41,7 +52,7 @@ const paths = {
   toc:'M4 6h16M4 12h16M4 18h10',
   title:'M4 6h16M12 6v14',
   author:'M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4 21a8 8 0 0 1 16 0',
-  frac:'M4 6h6l10 12M20 6H10',
+  frac:'M4 12h16M10 4h4v4h-4zM10 16h4v4h-4z',
   sqrt:'M4 12l3 6 4-12h9',
   sum:'M18 4H6l7 8-7 8h12',
   int:'M9 4c4 0 2 16 6 16',
@@ -272,10 +283,35 @@ export function decorateToolbar(root) {
     '图片':['image','图片 / Image',true],Image:['image','图片 / Image',true],
     '边框':['borders','边框 / Borders',true],Borders:['borders','边框 / Borders',true],
     '线宽':['ruler','线宽 / Rule width',true],'Rule width':['ruler','线宽 / Rule width',true],
-    '$':['math','$',true],'$$':['math','$$',true],LaTeX:['code','LaTeX',true]};
+    '$':['math','$',true],'$$':['math','$$',true],LaTeX:['code','LaTeX',true],
+    'New page':['pageBreak','新建页面 / New page',true],
+    Subfigure:['image','插入子图 / Insert a subfigure',true],
+    figure:['image','插入插图 / Insert a figure',true],
+    TikZ:['drawing','打开 TikZ 编辑器 / Open TikZ editor',true],
+    CircuiTikZ:['circuit','打开电路图编辑器 / Open circuit editor',true],
+    'Clear formatting':['clearFormat','清除格式 / Clear formatting',true],
+    'Align left':['left','左对齐 / Align left',false], 'Align right':['right','右对齐 / Align right',false],
+    Center:['center','居中 / Center',false], 'x²':['superscript','上标 / Superscript',false],
+    'x₂':['subscript','下标 / Subscript',false], '¶':['pilcrow','显示格式标记 / Show formatting marks',false],
+    'Cycle marker':['list','切换列表标记 / Cycle list marker',true],
+    'Indent list item':['indentIncrease','列表降一级 / Indent list item',true],
+    'Outdent list item':['indentDecrease','列表升一级 / Outdent list item',true],
+    'Decrease indent':['indentDecrease','减少缩进 / Decrease indent',false],
+    'Increase indent':['indentIncrease','增加缩进 / Increase indent',false],
+    fn:['citation','插入脚注 / Insert a footnote',true], date:['calendar','文档日期 / Document date',true],
+    'equation label':['label','设置公式标签 / Set the equation label',true],
+    'ⁿ√':['sqrt','插入任意次根 / Insert an indexed root',true],
+    '\\left':['fence','选择左定界符 / Choose a left delimiter',true],
+    '\\right':['fence','选择右定界符 / Choose a right delimiter',true],
+    'Literal fence':['fence','插入单个定界符 / Insert a literal delimiter',true],
+    '\\prod':['product','插入连乘 / Insert a product',true],
+    'Delete table':['delete','删除表格 / Delete table',true],
+    'Save as':['save','另存为 / Save as',true],
+    'Attach asset folder':['folder','关联资源目录 / Attach asset folder',true],
+    download:['download','下载项目 / Download project',true]};
   for(const control of root.querySelectorAll('button')) {
     const label=control.dataset.zh ? t(control.dataset.zh,control.dataset.en) : control.textContent;
-    const entry=map[control.dataset.zh] ?? map[label] ?? map[control.textContent]; if(!entry)continue;
+    const entry=map[control.dataset.tool] ?? map[control.dataset.en] ?? map[control.dataset.zh] ?? map[label] ?? map[control.textContent]; if(!entry)continue;
     control.setAttribute('aria-label',label);
     const [zh,en]=entry[1].split(' / ');
     setDescription(control,{zh,en:en??zh});
@@ -283,5 +319,6 @@ export function decorateToolbar(root) {
     control.replaceChildren(icon(entry[0]));
     if(entry[2])control.append(document.createTextNode(label));
   }
+  root.querySelector('label.open[data-tool="open"]')?.prepend(icon('folder'));
   applyToolbarDescriptions(root);
 }
