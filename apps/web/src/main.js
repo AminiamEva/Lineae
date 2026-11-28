@@ -1852,7 +1852,7 @@ function renderMeta() {
 }
 renderMeta();
 const bootstrapEngine=document.documentElement.dataset.typesettingEngine;
-const pinnedEngine=['xelatex','lualatex'].includes(bootstrapEngine)?bootstrapEngine:null;
+const pinnedEngine=['xelatex','lualatex','pdflatex'].includes(bootstrapEngine)?bootstrapEngine:null;
 let activeEngine=pinnedEngine ?? config.value.typesetting.defaultEngine;
 function engineSettingsState(draft,globalDefault=config.value.typesetting.defaultEngine) {
   const project=projectExplorer?.model;
@@ -2177,7 +2177,7 @@ async function openStandalone(file,handle) {
   fileHandle=handle;filename=file.name;hasSavedFile=true;standaloneKey=key;preferenceError=key?'':t('文档偏好无法保存','Document preference cannot be saved');
   let stored;
   try {stored=localStorage.getItem(key);} catch {preferenceError=t('无法读取文档设置','Document settings unavailable');}
-  standaloneChoice=['xelatex','lualatex'].includes(stored)?stored:'auto';
+  standaloneChoice=['xelatex','lualatex','pdflatex'].includes(stored)?stored:'auto';
   sourceView.refresh();scheduleEngine();scheduleDesktopTitle();
 }
 function approveDesktopReplacement() {

@@ -3,7 +3,7 @@ import {sourceStructure, groupEnd} from '../../latex/source-structure.mjs';
 import {resolveMetadata} from '../project/dependencies.mjs';
 import {dependencyRanges} from '../project/reference-paths.mjs';
 
-const engines = new Set(['xelatex', 'lualatex']);
+const engines = new Set(['xelatex', 'lualatex', 'pdflatex']);
 const primitives = new Map([
   ...['XeTeXversion','XeTeXrevision','XeTeXinterchartokenstate','XeTeXinterchartoks',
     'XeTeXcharclass','XeTeXglyph','XeTeXglyphindex','XeTeXfontname','XeTeXlinebreaklocale',

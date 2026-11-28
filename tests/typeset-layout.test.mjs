@@ -71,7 +71,7 @@ test('reads fontspec, ctex, linespread and fontsize declarations', () => {
 test('derives pdfLaTeX typography profile with font package detection', () => {
   const fonts = { serif: null, mono: null, cjk: null };
   // Default pdfLaTeX (no font package) uses Computer Modern fallback
-  assert.deepEqual(typesetProfile('\\documentclass{article}', 'pdflatex'), {
+  assert.deepEqual(typesetProfile('\\documentclass{article}', undefined, 'pdflatex'), {
     className: 'article',
     engine: 'pdflatex',
     fontSize: '9.9626pt',
@@ -81,17 +81,17 @@ test('derives pdfLaTeX typography profile with font package detection', () => {
     fonts,
   });
   // lmodern package detected
-  const lmodern = typesetProfile('\\documentclass{article}\n\\usepackage[T1]{fontenc}\n\\usepackage{lmodern}', 'pdflatex');
+  const lmodern = typesetProfile('\\documentclass{article}\n\\usepackage[T1]{fontenc}\n\\usepackage{lmodern}', undefined, 'pdflatex');
   assert.equal(lmodern.fonts.serif, 'Latin Modern Roman');
   assert.equal(lmodern.fonts.mono, 'Latin Modern Mono');
   // mathpazo package detected
-  const mathpazo = typesetProfile('\\documentclass{article}\n\\usepackage{mathpazo}', 'pdflatex');
+  const mathpazo = typesetProfile('\\documentclass{article}\n\\usepackage{mathpazo}', undefined, 'pdflatex');
   assert.equal(mathpazo.fonts.serif, 'Palatino');
   // newtxtext package detected
-  const newtx = typesetProfile('\\documentclass{article}\n\\usepackage{newtxtext,newtxmath}', 'pdflatex');
+  const newtx = typesetProfile('\\documentclass{article}\n\\usepackage{newtxtext,newtxmath}', undefined, 'pdflatex');
   assert.equal(newtx.fonts.serif, 'Times New Roman');
   // helvet+courier: only mono mapped
-  const hc = typesetProfile('\\documentclass{article}\n\\usepackage{helvet}\n\\usepackage{courier}', 'pdflatex');
+  const hc = typesetProfile('\\documentclass{article}\n\\usepackage{helvet}\n\\usepackage{courier}', undefined, 'pdflatex');
   assert.equal(hc.fonts.serif, null);
   assert.equal(hc.fonts.mono, 'Courier');
 });
