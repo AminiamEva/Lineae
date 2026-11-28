@@ -1768,6 +1768,9 @@ mod tests {
         let info = session.start().expect("the pinned real native engine must start");
         assert_eq!(info.session_id, session.id);
         assert!(info.source_revision > 0, "use the engine's actual initial revision");
+        let paths = Some(vec!["main.tex".to_owned()]);
+        let initial_spans = session.layout_reply((), info.source_revision, paths.clone()).unwrap();
+        assert!(!initial_spans.source_spans["main.tex"].is_empty());
         let wait_layout = |session: &Arc<Session>, revision: u64| {
             let deadline = Instant::now() + Duration::from_secs(180);
             let mut messages = lock(&session.messages);
@@ -2041,6 +2044,8 @@ mod tests {
             Some(files(&child_draft)), None).expect("an included TeX edit must use the current native engine");
         assert!(child_update.session_id.is_none());
         assert!(child_update.source_revision > info.source_revision);
+        assert!(session.layout_reply((), info.source_revision, paths.clone()).unwrap().source_spans.is_empty(),
+            "An included-file edit invalidates the previous project revision");
         wait_layout(&session, child_update.source_revision);
         assert_eq!(lock(&session.snapshot).files["dependency.tex"], child_draft.as_bytes());
         assert_eq!(std::fs::read_to_string(session.root.join("dependency.tex")).unwrap(), dependency);
@@ -2130,8 +2135,6 @@ mod tests {
         assert!(font.starts_with(b"OTTO") || font.starts_with(&[0, 1, 0, 0]));
 
         let updated = source.replace("\\frac{a}{}", "\\frac{a}{b}");
-        let paths = Some(vec!["main.tex".to_owned()]);
-        let initial_spans = session.layout_reply((), info.source_revision, paths.clone()).unwrap();
         let edit = session.update(updated.clone()).expect("rtex must accept the incremental source edit");
         let current_spans = session.layout_reply((), edit.source_revision, paths.clone()).unwrap();
         let byte_index = updated.find("\\frac{a}{b}").unwrap();
@@ -2139,7 +2142,6 @@ mod tests {
             span["range"]["start"].as_u64().is_some_and(|start| start <= byte_index as u64) &&
             span["range"]["end"].as_u64().is_some_and(|end| end > byte_index as u64)
         }));
-        assert!(!initial_spans.source_spans["main.tex"].is_empty());
         assert!(session.layout_reply((), info.source_revision, paths).unwrap().source_spans.is_empty());
         assert!(edit.source_revision > info.source_revision);
         let layout = wait_layout(&session, edit.source_revision);
