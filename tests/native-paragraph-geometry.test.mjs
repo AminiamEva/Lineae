@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {Schema} from '@tiptap/pm/model';
 import {richSourceMap,bindRichSpans} from '../apps/web/src/typesetting/rtex/rich-source-map.mjs';
-import {paragraphFrame,paragraphHit} from '../apps/web/src/typesetting/rtex/paragraph-geometry.mjs';
+import {paragraphFrame,paragraphHit,paragraphLineEdge} from '../apps/web/src/typesetting/rtex/paragraph-geometry.mjs';
 import {completePageDeltas} from '../apps/web/src/typesetting/rtex/page-deltas.mjs';
 import {changedTextblocks} from '../apps/web/src/editor/changed-textblocks.mjs';
 import {EditorState} from '@tiptap/pm/state';
@@ -179,6 +179,8 @@ test('a CJK soft wrap has two physical caret stops for the same model offset',()
   assert.deepEqual([boundary.upstream.x,boundary.upstream.y,boundary.x,boundary.y],[.55,.25,.3,.6]);
   assert.deepEqual(paragraphHit(frame,1,.55,.25),{element,text:'文文',offset:1,upstream:true});
   assert.deepEqual(paragraphHit(frame,1,.3,.6),{element,text:'文文',offset:1,upstream:false});
+  assert.deepEqual(paragraphLineEdge(frame.byElement.get(element).stops,boundary.upstream.row,true),{offset:1,upstream:true});
+  assert.deepEqual(paragraphLineEdge(frame.byElement.get(element).stops,boundary.row,false),{offset:1,upstream:false});
 });
 
 test('a delayed full page delta becomes the next base without rolling back visible warm ink',()=>{

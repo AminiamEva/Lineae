@@ -4199,11 +4199,12 @@ function newNativeMath(text,display,numbering){
 }
 nativeTexPreview=installNativeTexPreview({host:statusItems,before:null,primary:desktopEngineToggle()||nativeWorkspaceRequested(),documentZoom:Number(zoom.value),
   richEditor:editor.view.dom,
-  focusRichOffset:(element,offset)=>{
+  focusRichOffset:(element,offset,extend=false)=>{
     if(!editor.view.dom.contains(element))return false;
     const pos=editor.view.posAtDOM(element,0),node=editor.state.doc.resolve(pos).parent;
     if(!node.isTextblock||offset<0||offset>node.content.size)return false;
-    editor.view.dispatch(editor.state.tr.setSelection(TextSelection.create(editor.state.doc,pos+offset)).setMeta('addToHistory',false));
+    const head=pos+offset,anchor=extend?editor.state.selection.anchor:head;
+    editor.view.dispatch(editor.state.tr.setSelection(TextSelection.create(editor.state.doc,anchor,head)).setMeta('addToHistory',false));
     editor.view.focus();
     return true;
   },

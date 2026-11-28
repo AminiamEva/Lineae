@@ -120,7 +120,7 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
     }
     overlay?.painted();
   }
-  const overlay=engineToggle&&richPage?nativeParagraphOverlay(richEditor,panel,pages,()=>!current()):null;
+  const overlay=engineToggle&&richPage?nativeParagraphOverlay(richEditor,panel,pages,()=>!current(),focusRichOffset):null;
   const richSources=new Map();
   const futureFrames=[];
   let geometryStamp=null,geometryOwners=null,lastSpans=null,boundDocument=null;

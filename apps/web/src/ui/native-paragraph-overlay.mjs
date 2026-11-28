@@ -1,5 +1,5 @@
 import {blinkCaret} from '../editor/caret-motion.js';
-import {paragraphHit} from '../typesetting/rtex/paragraph-geometry.mjs';
+import {paragraphHit,paragraphLineEdge} from '../typesetting/rtex/paragraph-geometry.mjs';
 import {nativeEditMetrics,textBoundary} from './native-edit-metrics.mjs';
 import {snapshotDraft} from './native-draft-ink.mjs';
 import {changedTextblocks} from '../editor/changed-textblocks.mjs';
@@ -7,7 +7,7 @@ import {changedTextblocks} from '../editor/changed-textblocks.mjs';
 // The document model and the IME always own the same mounted editable node.
 // The paper owns confirmed pixels. A dirty paragraph temporarily owns its ink
 // and masks only its old native rows until both representations match again.
-export function nativeParagraphOverlay(editor, panel, pages, framePending) {
+export function nativeParagraphOverlay(editor, panel, pages, framePending, selectOffset) {
   const page=editor.closest('.document-page'),main=page.closest('main');
   const metrics=nativeEditMetrics(editor.ownerDocument);
   let number=1, anchor=null, block=null, frame=0, layout=null, revision=-1, composing=false;
@@ -412,7 +412,24 @@ export function nativeParagraphOverlay(editor, panel, pages, framePending) {
   }
   page.addEventListener('beforeinput',beginDraft,true);
   page.addEventListener('keydown',event=>{
-    if(['Enter','Backspace','Delete'].includes(event.key) && !event.isComposing)beginDraft();
+    if(event.isComposing || composing || event.keyCode===229)return;
+    if(['Enter','Backspace','Delete'].includes(event.key))beginDraft();
+    if((event.key!=='Home' && event.key!=='End') || event.defaultPrevented || event.ctrlKey || event.altKey ||
+        event.metaKey || event.target!==editor || !selectOffset || !document.body.classList.contains('native-tex-rich-edit'))return;
+    const view=editor.editor.view, head=view.state.selection.$head;
+    const element=selectedBlock(), paragraph=layout?.byElement.get(element);
+    if(view.composing || !paragraph?.stops?.has(head.parentOffset) || !matches(paragraph,element))return;
+    if(element!==block)update();
+    const scale=page.currentCSSZoom||1;
+    const {row}=physicalStop(paragraph,head.parentOffset,scale);
+    if(sheetFor(row.page)?.dataset.paintRevision!==String(revision))return;
+    const edge=paragraphLineEdge(paragraph.stops,row,event.key==='End');
+    if(edge && selectOffset(element,edge.offset,event.shiftKey)){
+      clickedBoundary={element,...edge};
+      event.preventDefault();
+      event.stopPropagation();
+      schedule();
+    }
   },true);
   page.addEventListener('compositionstart',()=>{composing=true;beginDraft();},true);
   page.addEventListener('compositionend',()=>{composing=false;schedule();},true);

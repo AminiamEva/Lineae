@@ -178,18 +178,18 @@ async function testDesktopDocument(browser, origin, initial) {
     const sheet=page.locator('#native-tex-preview [data-native-page]').first();
     await sheet.locator('canvas').waitFor();
     assert.deepEqual(seen.find(f=>f.hasSource)?.paths,['main.tex'],'The production snapshot supplies source ownership');
-    async function paperPoint(spelling, occurrence=0) {
+    async function paperPoint(spelling, occurrence=0, glyphIndex=-1) {
       const bytes=Buffer.from(liveSource);
       const owner=published.spans.filter(span=>bytes.subarray(span.range.start,span.range.end).toString().trim()===spelling)[occurrence];
       assert.ok(owner,'No native source span for '+spelling);
       const frag=published.placements.find(p=>p.par_id===owner.id).fragments[0];
       const dl=published.pages[frag.page].dl;
       const row=dl.lines.find(l=>Math.abs(l.x-frag.xs[0])<=64&&Math.abs(l.y-frag.baselines[0])<=64);
-      const last=row.items.filter(it=>it[0]==='g').at(-1);
+      const glyph=row.items.filter(it=>it[0]==='g').at(glyphIndex);
       return page.locator('[data-native-page="'+frag.page+'"] canvas').evaluate((canvas,{x,y})=>{
         const box=canvas.getBoundingClientRect();
         return {x:box.left+x*box.width,y:box.top+y*box.height};
-      },{x:(last[4]+.8*last[6])/dl.page_width,y:(last[5]-row.h/2)/dl.page_height});
+      },{x:(glyph[4]+.8*glyph[6])/dl.page_width,y:(glyph[5]-row.h/2)/dl.page_height});
     }
     const coords=await paperPoint('rj',1);
     await page.mouse.click(coords.x,coords.y);
@@ -317,17 +317,25 @@ async function testDesktopDocument(browser, origin, initial) {
     await page.locator('input#file').setInputFiles({name:'wrapped.tex',mimeType:'text/plain',buffer:Buffer.from(file)});
     await page.waitForFunction(old=>document.querySelector('#native-tex-preview')?.dataset.state==='current' &&
       Number(document.querySelector('[data-native-page]')?.dataset.paintRevision)>old,oldRevision,{timeout:60000});
-    const word=await paperPoint(wrapped);
+    const word=await paperPoint(wrapped,0,4);
     await page.mouse.click(word.x,word.y);
-    await page.keyboard.press('Home');
-    for(let i=0;i<5;i++)await page.keyboard.press('ArrowRight');
-    assert.equal(await doc.evaluate(el=>el.editor.state.selection.$head.parentOffset),5);
+    assert.deepEqual(await doc.evaluate(el=>{
+      const head=el.editor.state.selection.$head;
+      return [head.parent.textContent,head.parentOffset];
+    }),
+      ['alpha beta gamma two words end',5]);
     await page.keyboard.press('Enter');await page.keyboard.type('X');
     await cdp.send('Input.imeSetComposition',{text:'zhong',selectionStart:5,selectionEnd:5});
     await cdp.send('Input.insertText',{text:'中'});await page.keyboard.type('Y');
     await page.waitForFunction(()=>document.querySelector('main.native-ink-confirmed') &&
       document.querySelector('.ProseMirror').editor.state.selection.$head.parent.textContent==='X中Y beta gamma two words end',null,{timeout:60000});
     assert.equal(liveSource,file.replace('alpha beta','alpha\r\n\r\nX中Y beta'),'Physical source lines and original emphasis survive a typed split');
+    await page.keyboard.press('End');
+    await page.keyboard.press('Shift+Home');
+    assert.deepEqual(await doc.evaluate(el=>{
+      const { $anchor,$head }=el.editor.state.selection;
+      return [$anchor.parentOffset,$head.parentOffset,$head.parent.textContent];
+    }),['X中Y beta gamma two words end'.length,0,'X中Y beta gamma two words end']);
     assert.deepEqual(errors,[]);
     console.log('PASS: shipped Lua document, repeated Enter, caret X/Y, CJK preedit/commit, and split-prefix ink through a delayed native frame');
   }catch(error){

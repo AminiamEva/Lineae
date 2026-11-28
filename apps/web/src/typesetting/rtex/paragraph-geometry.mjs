@@ -144,3 +144,15 @@ export function paragraphHit(frame,page,x,y) {
   return offset===null?null:{element:paragraph.entry.element,text:paragraph.entry.text,offset,
     upstream:paragraph.stops.get(offset).upstream?.row===row};
 }
+
+// Wrap boundaries belong to the end of one line and the start of the next.
+export function paragraphLineEdge(stops,row,end) {
+  let edge=null;
+  for(const [offset,stop] of stops){
+    const upstream=stop.upstream?.row===row;
+    if(stop.row!==row && !upstream)continue;
+    edge={offset,upstream};
+    if(!end)break;
+  }
+  return edge;
+}
