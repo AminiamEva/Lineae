@@ -283,16 +283,29 @@ const server=createServer(async(req,res)=>{
             return field?.matches('.document-page .ProseMirror math-field') && !earlier.has(field) ? field : null;
           },earlierFields);
           await earlierFields.dispose();
+          const fieldTrace=await formula.evaluateHandle(field=>{
+            const trace=[],controller=new AbortController();
+            function record(label){
+              const caret=field._mathfield?.model?.at(field.position);
+              trace.push([label,field.value,field.position,field.selection?.ranges?.[0]?.slice(),
+                caret?.type,caret?.command,caret?.value,caret?.parent?.type]);
+              if(trace.length>24)trace.shift();
+            }
+            record('focused');
+            for(const type of ['keydown','beforeinput','input','mount','unmount','focus','blur'])
+              field.addEventListener(type,e=>record(type+':'+(e.key??e.inputType??'')),{capture:true,signal:controller.signal});
+            return {trace,stop:()=>controller.abort()};
+          });
           await desktopPage.keyboard.type('xy');
           await desktopPage.keyboard.press('Backspace');
           try {
             await desktopPage.waitForFunction(field=>document.activeElement===field && field.value.trim()==='\\displaystyle x',formula);
           }catch(error){
-            console.error('Inline formula after xy and Backspace',name,await formula.evaluate(field=>({
+            console.error('Inline formula after xy and Backspace',name,await fieldTrace.evaluate(probe=>probe.trace),await formula.evaluate(field=>({
               value:field.value,position:field.position,connected:field.isConnected,focus:document.activeElement?.tagName
             })));
             throw error;
-          }finally{await formula.dispose();}
+          }finally{await fieldTrace.evaluate(probe=>probe.stop());await fieldTrace.dispose();await formula.dispose();}
           await desktopPage.keyboard.press('Control+Shift+j');
           await desktopPage.waitForFunction(()=>document.activeElement?.classList.contains('ProseMirror'));
           await cdp.send('Input.imeSetComposition',{text:'han',selectionStart:3,selectionEnd:3});
