@@ -10,7 +10,8 @@ const {chromium}=require('playwright');
 
 const paragraph='Office first, multiple words and \\textbf{bold words}, followed by enough ordinary text to occupy several lines. ';
 const raw=['\\section{Caption}','rj','rj','2','','','','2',paragraph.repeat(13),'\\newpage','rj'];
-const source=['\\documentclass{article}','% UTF-8 source offsets: 中文𠮷','\\usepackage{fontspec}','\\setmainfont{Latin Modern Roman}','\\usepackage[paperwidth=5in,paperheight=4in,margin=.65in]{geometry}',
+const source=['\\documentclass{article}','% UTF-8 source offsets: 中文𠮷','\\usepackage{fontspec}','\\directlua{luaotfload.add_fallback("lineaehybrid",{"file:FandolSong-Regular.otf:mode=node;"})}',
+  '\\setmainfont[RawFeature={fallback=lineaehybrid}]{Latin Modern Roman}','\\usepackage[paperwidth=5in,paperheight=4in,margin=.65in]{geometry}',
   '\\begin{document}',raw.join('\r\n\r\n'),'\\end{document}',''].join('\r\n');
 
 async function capture(inputSource=source) {
@@ -72,7 +73,7 @@ async function testDesktopDocument(browser, origin, initial) {
           compile:{state:'Ok'},convergence:{state:'Converged'},placements:measured.placements,
           pages_total:Object.keys(measured.pages).length,pages_changed:Object.values(measured.pages)});
         published=measured;
-        seen.push({next,paths:args.spanPaths,hasSource:liveSource.includes('Caption')});
+        seen.push({command,next,paths:args.spanPaths,hasSource:liveSource.includes('Caption')});
         return {sessionId:'paper',sourceRevision:next,editId:next,routed:'background',sourceSpans:{'main.tex':measured.spans}};
       }
       if(command==='native_tex_poll')return events.splice(0);
@@ -158,6 +159,10 @@ async function testDesktopDocument(browser, origin, initial) {
     await cdp.send('Input.insertText',{text:'中'});
     await page.keyboard.type('x');
     assert.equal(await doc.evaluate(el=>el.editor.state.selection.$from.parent.textContent),'rj中x');
+    await page.waitForFunction(()=>document.querySelector('main.native-ink-confirmed') &&
+      document.querySelector('.ProseMirror').editor.state.selection.$from.parent.textContent==='rj中x',null,{timeout:60000});
+    assert.ok(Object.values(published.pages).some(p=>p.dl.lines.some(l=>l.items.some(it=>it[0]==='g'&&it[2]===0x4e2d))),
+      'The committed Han character reaches real LuaLaTeX ink before the next edit');
     await page.keyboard.press('Backspace');await page.keyboard.press('Backspace');
     assert.equal(await doc.evaluate(el=>el.editor.state.selection.$from.parent.textContent),'rj');
     const initialCount=await doc.evaluate(el=>[...el.querySelectorAll('p')].filter(p=>p.textContent==='rj').length);
@@ -170,16 +175,30 @@ async function testDesktopDocument(browser, origin, initial) {
     assert.match(liveSource,/\\section\{\}\s+rj\s+2/);
     assert.equal(await page.locator('.native-rich-caret').count(),1);
     assert.equal(await page.locator('.native-pending-prose,.native-draft-mask').count(),0);
+    const saved=liveSource;
     const currentDocument=await doc.evaluateHandle(el=>el.editor.state.doc);
     const beforeReload=revision;
     await page.locator('input#file').setInputFiles({name:'coordinates.tex',mimeType:'text/plain',buffer:Buffer.from(liveSource)});
     await page.waitForFunction(old=>document.querySelector('.document-page .ProseMirror').editor.state.doc!==old,currentDocument);
     await currentDocument.dispose();
+    await page.waitForFunction(rev=>{const panel=document.querySelector('#native-tex-preview');
+      return panel.dataset.state==='current'&&Number(panel.querySelector('[data-native-page]')?.dataset.paintRevision)>rev;
+    },beforeReload,{timeout:60000});
+    assert.equal(seen.at(-1).command,'native_tex_open','Opening a file creates an isolated host session');
+    assert.equal(liveSource,saved,'Reopened source matches the saved bytes');
     const restored=await paperPoint('rj!');
     await page.mouse.click(restored.x,restored.y);
     await page.waitForFunction(()=>document.querySelector('main.native-ink-confirmed') &&
       document.querySelector('.ProseMirror').editor.state.selection.$from.parent.textContent==='rj!',null,{timeout:15000});
-    assert.equal(revision,beforeReload,'Reopening identical bytes reuses the confirmed Lua frame');
+    const beforeModeSwitch=revision;
+    await page.locator('[data-source-mode=split]').click();
+    await page.locator('.tex-preview[data-native=true]').waitFor({state:'attached'});
+    await page.locator('[data-source-mode=body]').click();
+    const again=await paperPoint('rj!');
+    await page.mouse.click(again.x,again.y);
+    await page.waitForFunction(()=>document.querySelector('main.native-ink-confirmed') &&
+      document.querySelector('.ProseMirror').editor.state.selection.$from.parent.textContent==='rj!',null,{timeout:15000});
+    assert.equal(revision,beforeModeSwitch,'View changes reuse the native frame for unchanged source');
     assert.deepEqual(errors,[]);
     console.log('PASS: shipped Lua document, click duplicate by native coordinates, typing, repeated Enter, caret X/Y and CJK preedit/commit');
   }catch(error){
@@ -188,7 +207,7 @@ async function testDesktopDocument(browser, origin, initial) {
       editor:await page.evaluate(()=>{
         const el=document.querySelector('.document-page .ProseMirror'),preview=document.querySelector('#native-tex-preview');
         return {selection:el?.editor?.state.selection.toJSON(),paragraphs:[...el?.querySelectorAll('h1,p')??[]].slice(0,16).map(p=>p.textContent.slice(0,22)),
-          focus:document.activeElement?.className,state:preview?.dataset.state,message:preview?.querySelector('[role=status]')?.textContent,
+          focus:document.activeElement?.className,state:preview?.dataset.state,fallback:preview?.dataset.fallbackReason,message:preview?.querySelector('[role=status]')?.textContent,
           paints:[...preview?.querySelectorAll('[data-native-page]')??[]].map(p=>p.dataset.paintRevision)};
       }).catch(()=>null),errors}));
     throw error;
