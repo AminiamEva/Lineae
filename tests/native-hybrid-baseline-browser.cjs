@@ -135,6 +135,7 @@ async function testDesktopDocument(browser, origin, initial) {
   const seen=[];
   page.on('pageerror',e=>errors.push(e.message));
   try{
+    await page.exposeFunction('nativeTestSourceMatches',expected=>liveSource===expected);
     await page.exposeFunction('nativeTestCommand',async(command,args={})=>{
       if(command==='native_tex_open'||command==='native_tex_update'){
         if(command==='native_tex_update' && holdUpdate)await holdUpdate;
@@ -307,8 +308,12 @@ async function testDesktopDocument(browser, origin, initial) {
     await page.keyboard.press('ControlOrMeta+z');
     await page.waitForFunction(()=>!document.querySelector('.document-page .ProseMirror').editor.state.doc.textContent.includes('X中Y beta'));
     await page.keyboard.press('ControlOrMeta+Shift+z');
-    await page.waitForFunction(()=>document.querySelector('main.native-ink-confirmed') &&
-      document.querySelector('.document-page .ProseMirror').editor.state.doc.textContent.includes('X中Y beta'),null,{timeout:60000});
+    await page.waitForFunction(async expected=>{
+      const preview=document.querySelector('#native-tex-preview');
+      const doc=document.querySelector('.document-page .ProseMirror');
+      return preview?.dataset.state==='current' && doc?.editor?.state.doc.textContent.includes('X中Y beta') &&
+        await window.nativeTestSourceMatches(expected);
+    },beforeUndo,{timeout:60000,polling:100});
     assert.equal(liveSource,beforeUndo,'Redo must recover the same split paragraph and exact TeX bytes');
     const wrapped='alpha beta\r\n  gamma \\emph{two words} end';
     const file=['\\documentclass{article}','\\usepackage[fontset=fandol]{ctex}','\\begin{document}',

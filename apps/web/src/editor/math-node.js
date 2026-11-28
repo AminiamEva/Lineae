@@ -419,24 +419,31 @@ export function toggleDisplayStyle(field) {
   const latex = unwrapBraces(field.value);
   const grouped = /^\\displaystyle\{([\s\S]*)\}$/.exec(latex);
   const prefixed = /^\\displaystyle\s*([\s\S]*)$/.exec(latex);
+  const removingStyle = Boolean(grouped || prefixed);
   field.focus();
-  if (grouped || prefixed) {
-    field.value = (grouped ? grouped[1] : prefixed[1]).trim();
-    field.executeCommand('moveToMathfieldEnd');
-    const position = field.position;
-    field.dispatchEvent(new Event('input', { bubbles: true }));
-    requestAnimationFrame(() => { if (field.isConnected) { field.focus(); field.position = position; } });
-    return false;
-  }
-  field.value = '\\displaystyle{' + latex + '}';
+  field.value = removingStyle ? (grouped ? grouped[1] : prefixed[1]).trim() : '\\displaystyle{' + latex + '}';
   field.executeCommand('moveToMathfieldEnd');
-  // The two closing braces of the wrapper are offsets of their own; the caret
-  // belongs two steps earlier, inside the styled body, so typing keeps editing
-  // the formula instead of appending after it.
-  field.position = Math.max(0, field.lastOffset - 2);
+  // The wrapper's closing braces occupy two offsets. Keep the caret inside it.
+  const styledPosition = () => Math.max(0, field.lastOffset - 2);
+  const position = removingStyle ? field.position : styledPosition();
+  if (!removingStyle) field.position = position;
   field.dispatchEvent(new Event('input', { bubbles: true }));
-  requestAnimationFrame(() => { if (field.isConnected) { field.focus(); field.position = Math.max(0, field.lastOffset - 2); } });
-  return true;
+
+  const owner = field.ownerDocument;
+  const previousFocus = owner.activeElement;
+  const deadline = performance.now() + 500;
+  function restoreFocus() {
+    if (!field.isConnected || (owner.activeElement !== previousFocus && owner.activeElement !== field)) return;
+    // MathLive ignores focus requests while its previous keyboard transition is pending.
+    if (field._mathfield?.focusBlurInProgress) {
+      if (performance.now() < deadline) requestAnimationFrame(restoreFocus);
+      return;
+    }
+    field.focus();
+    field.position = removingStyle ? position : styledPosition();
+  }
+  requestAnimationFrame(restoreFocus);
+  return !removingStyle;
 }
 
 function leaveFormula(editor, position, node, backward) {
