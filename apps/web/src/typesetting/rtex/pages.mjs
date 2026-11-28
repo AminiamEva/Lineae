@@ -322,7 +322,7 @@ export function installNativePages({host,getFont,getTypeOneFont,getRaster,paragr
     try {accepted=await onMathHit?.(hit,stamp,moved?start.hit:null,sameGesture);}
     catch {accepted=false;}
     if(!sameGesture())return;
-    if(!accepted){clearSelection();return;}
+    if(!accepted||accepted==='rich'){clearSelection();return;}
     if(moved){showSelection(start.hit,hit);return;}
     clearSelection();
     showCaret(hit);

@@ -20,8 +20,10 @@ function generatedBlocks(source, doc) {
     const raw = serializedBlock(node);
     blocks.push({from:body.length, to:body.length + raw.length, raw, index, count:1});
     body += raw;
-    if (node.type.name === 'raw' && index + 1 < doc.childCount && !/(?:\r?\n)[ \t]*(?:\r?\n)[ \t]*$/.test(raw))
-      body += raw.match(/\r?\n[ \t]*$/)?.[0]?.startsWith('\r\n') ? '\r\n' : raw.endsWith('\n') ? '\n' : '\n\n';
+    if (node.type.name === 'raw' && index + 1 < doc.childCount && !/(?:\r?\n)[ \t]*(?:\r?\n)[ \t]*$/.test(raw)) {
+      const ending=raw.match(/\r?\n[ \t]*$/)?.[0];
+      body+=ending?(ending.startsWith('\r\n')?'\r\n':'\n'):'\n\n';
+    }
   });
   const actual = source.slice(parsed.start.length, source.length - parsed.end.length);
   const separator = body && !body.endsWith('\n') ? parsed.eol : '';
@@ -40,11 +42,18 @@ export function richSourceMap(view, {path, source, projection, composition, pref
     let group = files.get(file);
     if (!group) files.set(file, group = {source:bytes, entries:[]});
     if (group.source !== bytes) return;
-    const index = new Map(blocks.filter(b => b.count === 1).map(b => [b.index,b]));
+    const index = new Map(blocks.filter(b => b.count > 0).map(b => [b.index,b]));
     doc.forEach((node, offset, i) => {
       if (!['paragraph','heading','mathBlock'].includes(node.type.name)) return;
       const b = index.get(i);
-      if (!b || b.snapshot && b.snapshot !== JSON.stringify([node.toJSON()])) return;
+      if (!b) return;
+      // The lossless source codec can group a final paragraph and its empty
+      // typing tail. The final paragraph still has exactly one ink owner.
+      if (b.snapshot) {
+        const group=Array.from({length:b.count},(_,n)=>doc.maybeChild(i+n));
+        if(group.some(n=>!n) || group.slice(1).some(n=>n.type.name!=='paragraph'||n.content.size) ||
+           JSON.stringify(group.map(n=>n.toJSON()))!==b.snapshot)return;
+      }
       if (bytes.slice(base + b.from, base + b.to) !== b.raw) return;
       const raw = b.raw.trim();
       if (!raw) return;

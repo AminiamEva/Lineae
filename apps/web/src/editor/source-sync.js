@@ -13,7 +13,40 @@ import {markedRuns} from './native-text/prose-runs.mjs';
 // This is a projection of the authoritative source, not a second document.
 // A rich edit may only replace a block whose original spelling round-trips
 // exactly. All other bytes (including comments, macros and separators) survive.
+const typingGap = node => node.type === 'paragraph' && !node.content?.length && !serialize(node).trim();
+
 export function sourceProjection(text, doc, options) {
+  const ordinary = projectBlocks(text,doc,options);
+  if (ordinary) return ordinary;
+  // TeX consumes a run of empty authoring paragraphs as one separator. Keep
+  // their zero-byte insertion points separate from the next serialized block.
+  const indices = doc.content.map((_,i)=>i).filter(i=>!typingGap(doc.content[i]));
+  if (!indices.length || indices.length===doc.content.length) return null;
+  const compact = projectBlocks(text,{...doc,content:indices.map(i=>doc.content[i])},options);
+  if (!compact) return null;
+  const blocks=[];
+  for (const block of compact.blocks) {
+    const index=indices[block.index]??doc.content.length;
+    if (block.count && indices[block.index+block.count-1]!==index+block.count-1) return null;
+    blocks.push({...block,index});
+  }
+  const starts=new Map(blocks.filter(b=>b.count).map(b=>[b.index,b.from]));
+  const parsed=parseDocument(text,options);
+  let next=text.length-parsed.end.length;
+  for(let index=doc.content.length-1;index>=0;index--){
+    if(!typingGap(doc.content[index])){next=starts.get(index);continue;}
+    if(next===undefined)return null;
+    const spacing=parsed.eol+parsed.eol;
+    const emptyPrefix=/(?:\r?\n)[ \t]*(?:\r?\n)[ \t]*$/.test(text.slice(0,next))?'':spacing;
+    const emptySuffix=/^[ \t]*(?:\r?\n)[ \t]*(?:\r?\n)/.test(text.slice(next))?'':spacing;
+    blocks.push({emptyPrefix,emptySuffix,index,count:1,raw:'',from:next,to:next,editable:true,typingGap:true,
+      snapshot:JSON.stringify([doc.content[index]])});
+  }
+  blocks.sort((a,b)=>a.from-b.from || a.index-b.index || a.to-b.to);
+  return {text,blocks,count:doc.content.length};
+}
+
+function projectBlocks(text, doc, options) {
   const parsed = parseDocument(text, options);
   if (!parsed) return null;
   let offset = parsed.start.length, index = 0;
@@ -42,8 +75,20 @@ export function sourceProjection(text, doc, options) {
 // trivia. Only the transaction's top-level paragraph may own the patch.
 function standaloneTextChanges(text,projection,snapshot,before,after,index) {
   const previous=before.content[index], next=after.content[index];
-  const empty=node=>node.type==='paragraph' && !node.content?.length && !serialize(node).trim();
-  if(!['paragraph','heading'].includes(previous?.type)||next?.type!==previous.type)return null;
+  const empty=typingGap;
+  if(!snapshot||!['paragraph','heading'].includes(previous?.type)||next?.type!==previous.type)return null;
+  // Enter can change only the number of visual paragraphs. Their source
+  // ownership is an insertion point, never the following paragraph's bytes.
+  if(empty(previous) && index<before.content.length-1){
+    const saved=JSON.parse(snapshot);
+    if(JSON.stringify(saved.content.filter(node=>!empty(node)))===JSON.stringify(before.content.filter(node=>!empty(node)))){
+      const base=projection?.text===text && snapshot===JSON.stringify(before)?projection:null;
+      const gap=(base??sourceProjection(text,before))?.blocks.find(b=>b.typingGap&&b.index===index);
+      if(gap){
+        return [{from:gap.from,to:gap.to,insert:gap.emptyPrefix+serialize(next).slice(0,-2)+gap.emptySuffix}];
+      }
+    }
+  }
   if(snapshot!==JSON.stringify(before)) {
     // Double-clicking below a terminal table can add a visual typing paragraph.
     // Accept only extra empty paragraphs after the exact imported document.
@@ -77,6 +122,7 @@ function standaloneTextChanges(text,projection,snapshot,before,after,index) {
     if(at<mapped.from || at>mapped.to)return null;
     return [{from:at,to:at,insert:serialize(next).slice(0,-2)}];
   }
+  if(empty(previous) && !mapped && index<before.content.length-1)return null;
   const nodes=mapped ? before.content : before.content.filter(node=>!empty(node));
   const sourceIndex=mapped ? index : before.content.slice(0,index).filter(node=>!empty(node)).length;
   if(empty(previous) && index===before.content.length-1) {
@@ -111,7 +157,7 @@ export function standaloneParagraphDraft(text,projection,snapshot,before,after,i
   const draft=changes.reduceRight((value,{from,to,insert})=>value.slice(0,from)+insert+value.slice(to),text);
   const [patch]=changes;
   const owner=projection?.text===text && projection.blocks.find(block=>block.index===index &&
-    block.count===1 && block.editable && !block.spelling && block.snapshot===JSON.stringify([before.content[index]]));
+    block.count===1 && block.editable && !block.typingGap && !block.spelling && block.snapshot===JSON.stringify([before.content[index]]));
   // Retain a proven block boundary across keystrokes, including when deleting
   // its last character. Re-parsing whitespace alone would lose that position.
   if(owner && changes.length===1 && patch.from>=owner.from && patch.to<=owner.to) {

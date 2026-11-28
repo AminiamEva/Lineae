@@ -4,15 +4,19 @@ const ligatures = new Map([...'\uFB00\uFB01\uFB02\uFB03\uFB04\uFB05\uFB06'].map(
 const space = c => Boolean(c && /\s/u.test(c));
 const tolerance = 64; // SP rounding of independently recorded fragment positions
 
+const rowIndices=new WeakMap();
 function pageIndex(entry, replacements) {
-  const dl=entry.dl;
+  const dl=entry.dl, cacheKey=replacements??dl;
+  if(rowIndices.has(cacheKey))return rowIndices.get(cacheKey);
   const rows=dl.lines.map((original,index) => {
     const replacement=replacements?.get(index);
     const line=replacement?.line ?? original;
     const dx=replacement?.dx ?? 0, dy=replacement?.dy ?? 0;
     return {x:line.x+dx,y:line.y+dy,line,dx,dy,dl};
   });
-  return rows.sort((a,b)=>a.y-b.y);
+  rows.sort((a,b)=>a.y-b.y);
+  rowIndices.set(cacheKey,rows);
+  return rows;
 }
 
 function placedRow(rows,x,y) {
@@ -31,6 +35,7 @@ function placedRow(rows,x,y) {
 }
 
 function rowGeometry(record, page) {
+  if(record.geometry?.page===page)return record.geometry;
   const {line,dx,dy,dl}=record,w=dl.page_width,h=dl.page_height;
   if (!(w>0 && h>0)) return null;
   const glyphs=[];
@@ -48,7 +53,8 @@ function rowGeometry(record, page) {
     }
   }
   if (!Number.isFinite(left)) return null;
-  return {page, left,right,baseline:record.y/h,top:(record.y-line.h)/h,bottom:(record.y+line.d)/h,glyphs};
+  record.geometry={page,left,right,baseline:record.y/h,top:(record.y-line.h)/h,bottom:(record.y+line.d)/h,glyphs};
+  return record.geometry;
 }
 
 // Only map caret boundaries if the glyph sequence of this *already owned*
@@ -104,7 +110,13 @@ export function paragraphFrame(layout, pages, owners, warm) {
       if (!valid) break;
     }
     if (!rows.length||!valid) continue;
-    const paragraph={entry,rows,stops:caretStops(rows,entry)};
+    // Most paragraphs never receive a caret in this frame. Shape-to-text
+    // alignment is only needed for a hit or the active selection.
+    let stops;
+    const paragraph={entry,rows,get stops(){
+      if(stops===undefined)stops=caretStops(rows,entry);
+      return stops;
+    }};
     byElement.set(entry.element,paragraph);
     for(const row of rows) {
       if (!byPage.has(row.page)) byPage.set(row.page,[]);

@@ -809,13 +809,13 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
           showRichEditor(bounds.page);
           richEditor.focus();
           overlay.reveal(null,bounds.y,bounds.x);
-          return true;
+          return 'rich';
         }
         if(head.kind==='math'){
           const focused=await focusMathSlot?.(anchor,head,valid,()=>showRichEditor(bounds.page));
           if(focused?.field&&valid()){
             overlay.reveal(focused.field.closest('.math-display,p,h1,h2,h3,h4,h5,h6'),bounds.y,bounds.x);
-            return true;
+            return 'rich';
           }
         }
         return false;
@@ -1483,7 +1483,7 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
       const page=Number(sheet?.dataset.nativePage??sheet?.dataset.pdfPage??1);
       const x=(event.clientX-box.left)/box.width,y=(event.clientY-box.top)/box.height;
       const hit=overlay.hit(page,x,y);
-      if(hit?.element.isConnected && hit.element.textContent===hit.text && focusRichOffset){
+      if(hit && focusRichOffset){
         showRichEditor(page);overlay.reveal(hit.element);
         if(focusRichOffset(hit.element,hit.offset)){overlay.update();return;}
       }

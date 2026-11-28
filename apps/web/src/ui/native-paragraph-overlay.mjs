@@ -38,9 +38,19 @@ export function nativeParagraphOverlay(editor, panel, pages, framePending) {
     }
     return null;
   }
+  function editingText(element) {
+    const view=editor.editor?.view, selection=view?.state.selection;
+    if(selection?.$head.depth && view.nodeDOM(selection.$head.before())===element){
+      const node=selection.$head.parent;
+      if(node.isTextblock)return node.textBetween(0,node.content.size,'','\n');
+    }
+    return element.textContent;
+  }
   function selectionOffset(element) {
     const selection=document.getSelection();
     if(!selection?.isCollapsed||!element.contains(selection.focusNode))return null;
+    const view=editor.editor?.view, head=view?.state.selection.$head;
+    if(head?.depth && view.nodeDOM(head.before())===element)return head.parentOffset;
     const r=document.createRange();r.selectNodeContents(element);
     r.setEnd(selection.focusNode,selection.focusOffset);
     return r.toString().length;
@@ -103,7 +113,7 @@ export function nativeParagraphOverlay(editor, panel, pages, framePending) {
   }
   function referenceFor(paragraph,scale) {
     if(paragraph){
-      const offset=selectionOffset(block),old=paragraph.entry.text, live=block.textContent;
+      const offset=selectionOffset(block),old=paragraph.entry.text, live=editingText(block);
       if(!composing && offset!==null && old===live && paragraph.stops?.has(offset))
         return {stop:paragraph.stops.get(offset),offset,exact:true};
       // Anchor the common prefix nearest the edit, including wrapped lines.
@@ -146,7 +156,13 @@ export function nativeParagraphOverlay(editor, panel, pages, framePending) {
     const bounds=block?.getBoundingClientRect();
     const target=reference?.stop;
     if(target && bounds){
-      const point=rangePoint(block,reference.offset);
+      let point;
+      const s=document.getSelection();
+      if(!composing && s?.rangeCount && selectionOffset(block)===reference.offset){
+        const rect=s.getRangeAt(0).getBoundingClientRect();
+        if(rect.height)point={x:rect.left,top:rect.top,element:s.focusNode.parentElement??block};
+      }
+      point??=rangePoint(block,reference.offset);
       const style=getComputedStyle(block);
       const fallbackX=bounds.left+((parseFloat(style.paddingLeft)||0)+(parseFloat(style.textIndent)||0))*scale;
       if(Number.isFinite(target.x))shiftX=box.left+target.x*box.width-(point?.x??fallbackX);
@@ -327,7 +343,11 @@ export function nativeParagraphOverlay(editor, panel, pages, framePending) {
       }
       if(document.body.classList.contains('native-tex-rich-edit'))update();
     },
-    hit(page,x,y){return sheetFor(page)?.dataset.paintRevision===String(revision)?paragraphHit(layout,page,x,y):null;},
+    hit(page,x,y){
+      if(sheetFor(page)?.dataset.paintRevision!==String(revision))return null;
+      const hit=paragraphHit(layout,page,x,y);
+      return hit?.element.isConnected && editingText(hit.element)===hit.text ? hit:null;
+    },
     update:schedule,releaseRows,
     clear(retain=false){
       if(retain)retainText(block);

@@ -943,9 +943,13 @@ impl Session {
 
     fn layout_reply<T>(&self, reply: T, revision: u64, paths: Option<Vec<String>>) -> Result<NativeLayoutReply<T>, NativeTexError> {
         let mut source_spans = BTreeMap::new();
+        let Some(paths) = paths.filter(|paths| !paths.is_empty()) else {
+            return Ok(NativeLayoutReply { reply, source_spans });
+        };
         let _serial = lock(&self.commands);
-        if lock(&self.messages).revision == Some(revision) {
-            for path in paths.unwrap_or_default().into_iter().take(FILE_COUNT_LIMIT) {
+        let current = lock(&self.messages).revision;
+        if current == Some(revision) {
+            for path in paths.into_iter().take(FILE_COUNT_LIMIT) {
                 if source_spans.contains_key(&path) || !path.to_ascii_lowercase().ends_with(".tex")
                     || !lock(&self.snapshot).files.contains_key(&path) { continue; }
                 // An included file can be staged but have no separately tracked rtex spans.
@@ -2126,7 +2130,17 @@ mod tests {
         assert!(font.starts_with(b"OTTO") || font.starts_with(&[0, 1, 0, 0]));
 
         let updated = source.replace("\\frac{a}{}", "\\frac{a}{b}");
-        let edit = session.update(updated.clone()).expect("set_document must accept the raw edited document");
+        let paths = Some(vec!["main.tex".to_owned()]);
+        let initial_spans = session.layout_reply((), info.source_revision, paths.clone()).unwrap();
+        let edit = session.update(updated.clone()).expect("rtex must accept the incremental source edit");
+        let current_spans = session.layout_reply((), edit.source_revision, paths.clone()).unwrap();
+        let byte_index = updated.find("\\frac{a}{b}").unwrap();
+        assert!(current_spans.source_spans["main.tex"].iter().any(|span| {
+            span["range"]["start"].as_u64().is_some_and(|start| start <= byte_index as u64) &&
+            span["range"]["end"].as_u64().is_some_and(|end| end > byte_index as u64)
+        }));
+        assert!(!initial_spans.source_spans["main.tex"].is_empty());
+        assert!(session.layout_reply((), info.source_revision, paths).unwrap().source_spans.is_empty());
         assert!(edit.source_revision > info.source_revision);
         let layout = wait_layout(&session, edit.source_revision);
         assert_eq!(layout["versions"]["source_revision"].as_u64(), Some(edit.source_revision));

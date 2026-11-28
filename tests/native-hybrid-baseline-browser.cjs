@@ -139,6 +139,16 @@ async function testDesktopDocument(browser, origin, initial) {
     assert.equal(await doc.evaluate(el=>el.editor.state.selection.$from.parent.textContent),'rj中x');
     assert.deepEqual(errors,[]);
     console.log('PASS: shipped Lua document, click duplicate by native coordinates, typing, repeated Enter, caret X/Y and CJK preedit/commit');
+  }catch(error){
+    console.error('Hybrid replay',JSON.stringify({seen,body:liveSource.slice(liveSource.indexOf('Caption')-12,liveSource.indexOf('Caption')+112),
+      spans:published?.spans?.map(s=>[s.id,s.range.start,s.range.end]),
+      editor:await page.evaluate(()=>{
+        const el=document.querySelector('.document-page .ProseMirror'),preview=document.querySelector('#native-tex-preview');
+        return {selection:el?.editor?.state.selection.toJSON(),paragraphs:[...el?.querySelectorAll('h1,p')??[]].slice(0,16).map(p=>p.textContent.slice(0,22)),
+          focus:document.activeElement?.className,state:preview?.dataset.state,message:preview?.querySelector('[role=status]')?.textContent,
+          paints:[...preview?.querySelectorAll('[data-native-page]')??[]].map(p=>p.dataset.paintRevision)};
+      }).catch(()=>null),errors}));
+    throw error;
   }finally{await page.close();}
 }
 
@@ -153,7 +163,7 @@ async function testDesktopDocument(browser, origin, initial) {
     }
     const path=resolve(web,'.'+(pathname==='/'?'/index.html':pathname));
     if(!path.startsWith(web+sep))return res.writeHead(404).end();
-    try{res.setHeader('Content-Type',({'.html':'text/html','.css':'text/css','.js':'text/javascript','.mjs':'text/javascript','.wasm':'application/wasm','.otf':'font/otf','.woff2':'font/woff2'})[extname(path)]??'application/octet-stream');res.end(await fs.readFile(path));}
+    try{res.setHeader('Content-Type',({'.html':'text/html','.css':'text/css','.js':'text/javascript','.mjs':'text/javascript','.wasm':'application/wasm','.otf':'font/otf','.woff2':'font/woff2'})[extname(path)]??'application/octet-stream');res.end(await fs.readFile(pathname==='/editor.mjs'&&process.env.LINEAE_TEST_BUNDLE?process.env.LINEAE_TEST_BUNDLE:path));}
     catch{res.writeHead(404).end();}
   });
   await new Promise(ok=>server.listen(0,'127.0.0.1',ok));
@@ -205,11 +215,19 @@ async function testDesktopDocument(browser, origin, initial) {
         if(!caret)throw Error('No confirmed caret '+e.text.slice(0,24));
         const pos=()=>{const b=sheet.querySelector('canvas').getBoundingClientRect(),c=caret.getBoundingClientRect();
           return Math.abs(c.left-(b.left+b.width*stop.x));};
-        const error=pos();
+        function editingPoint(){
+          const range=document.getSelection().getRangeAt(0);
+          const rect=range.getBoundingClientRect(),box=sheet.querySelector('canvas').getBoundingClientRect();
+          const ctx=document.createElement('canvas').getContext('2d'),style=getComputedStyle(e.element);
+          ctx.font=style.fontStyle+' '+style.fontWeight+' '+style.fontSize+' '+style.fontFamily;
+          return Math.max(Math.abs(rect.left-box.left-box.width*stop.x),
+            Math.abs(rect.top+ctx.measureText('Mg').fontBoundingBoxAscent-box.top-box.height*stop.y));
+        }
+        const error=Math.max(pos(),editingPoint());
         for(let i=0;i<8;i++)overlay.present(frame,captured.versions.source_revision);
         const hit=paragraphHit(frame,stop.row.page,stop.x,stop.y);
         results.push({text:e.text.slice(0,12),pages:new Set(p.rows.map(r=>r.page)).size,page:stop.row.page,
-          baseline:stop.y,error:Math.max(error,pos()),hit:hit?.element===e.element&&hit.offset===e.text.length});
+          baseline:stop.y,error:Math.max(error,pos(),editingPoint()),hit:hit?.element===e.element&&hit.offset===e.text.length});
       }
       const last=entries.at(-1),lastFrame=frame.byElement.get(last.element);
       last.element.dispatchEvent(new InputEvent('beforeinput',{bubbles:true,inputType:'insertCompositionText'}));
