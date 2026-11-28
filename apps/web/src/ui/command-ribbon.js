@@ -1,4 +1,4 @@
-import {buildRibbonGroups,createRibbonGroup} from './ribbon-groups.js';
+import {buildRibbonGroups} from './ribbon-groups.js';
 
 function commandBody(controls) {
   const body = document.createElement('div');
@@ -57,9 +57,16 @@ export function installCommandRibbons({insert, format, reference, math, table, t
 }
 
 export function installFileRibbon(panel) {
-  const body = commandBody([...panel.children]);
-  panel.classList.add('home-ribbon');
-  const group = createRibbonGroup(panel,{id:'file-actions',zh:'文件与项目',en:'Files & projects',iconName:'folder'});
-  group.body.append(body);
-  return body;
+  const definitions = [
+    ['file-document','文档','Document','sourceFile','[data-tool="open"], [data-tool="saveAs"]'],
+    ['file-project','项目','Project','folder','#project-new, #project-open'],
+    ['file-resources','资源与下载','Assets & downloads','download','[data-tool="assets"], [data-tool="download"]'],
+  ];
+  const groups = definitions.map(([id,zh,en,iconName,selector]) => ({
+    id, zh, en, iconName, body:commandBody(panel.querySelectorAll(selector)),
+  }));
+  panel.classList.add('file-ribbon');
+  return buildRibbonGroups(panel, groups, () => [...groups].reverse()
+    .filter(group => !group.body.closest('.ribbon-group')?.hidden)
+    .map(group => group.id));
 }

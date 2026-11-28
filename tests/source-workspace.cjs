@@ -57,6 +57,8 @@ module.exports = async function checkSourceWorkspace(context, url) {
     const evidence = async (expected, label) => {
       const {source, readback} = await read();
       await revealToolbar(page); await page.locator('[data-group=files]').click();
+      const menu = page.locator('[data-ribbon-group="file-resources"].is-collapsed .ribbon-group-toggle');
+      if (await menu.isVisible()) await menu.click();
       const downloading = page.waitForEvent('download');
       await page.locator('#download').click();
       const zip = await readFile(await (await downloading).path());

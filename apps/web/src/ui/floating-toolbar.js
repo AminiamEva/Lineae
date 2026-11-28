@@ -45,7 +45,8 @@ export function installFloatingToolbar({header,ribbon,tabs,sourceView,getAutoHid
     });
   }
   function updateTabOverflow() {
-    const available = tabRow.clientWidth - button.offsetWidth - parseFloat(getComputedStyle(tabRow).columnGap);
+    // The tab strip gets the same clearance on both sides.
+    const available = tabRow.clientWidth - 2 * button.offsetWidth;
     const overflow = tabs.scrollWidth > available + 1;
     previous.hidden = next.hidden = !overflow;
     previous.disabled = tabs.scrollLeft <= 1;
