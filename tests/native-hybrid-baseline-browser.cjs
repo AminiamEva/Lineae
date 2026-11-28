@@ -618,6 +618,13 @@ async function testDesktopDocument(browser, origin, initial) {
       console.log('Command fraction displacement at 144%',JSON.stringify(errors));
       assert.ok(errors.every(e=>Math.abs(e.x)<=2 && Math.abs(e.y)<=2),JSON.stringify(errors));
     }
+    await freshPage();
+    const beforeBoundaries=revision;
+    holdUpdate=new Promise(resolve=>{proceed=resolve;});
+    try{await require('./native-hybrid-commands.cjs').checkBoundaries(page);}
+    finally{holdUpdate=null;proceed();}
+    await expect.poll(()=>paintedSourceAfter(beforeBoundaries),{timeout:60000}).toContain('End');
+    assert.ok(liveSource.includes('\\newpage') && liveSource.includes('\\textbackslash') && liveSource.includes('\\frac{q}{d}'),liveSource);
     assert.deepEqual(errors,[]);
     console.log('PASS: shipped Lua document, repeated Enter, caret X/Y, CJK preedit/commit, and split-prefix ink through a delayed native frame');
   }catch(error){

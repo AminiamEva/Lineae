@@ -2383,7 +2383,12 @@ function showCommands(field=null,native=null) {
   });
 }
 function insertFormulaCommand(latex,field) {
-  const fragment=latex.replaceAll('#?','\\placeholder{}');
+  let selection=field && latex.includes('#?') ? field.selection.ranges.map(range=>field.getValue(range)).join('') : '';
+  const fragment=latex.replaceAll('#?',()=>{
+    const value=selection || '\\placeholder{}';
+    selection='';
+    return value;
+  });
   if(field)insertLiveMath(field,fragment);
   else insertMath(false,fragment);
 }

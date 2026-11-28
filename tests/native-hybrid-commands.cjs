@@ -109,3 +109,21 @@ module.exports=async function checkCommands(page,{hybrid=true}={}) {
     return {live,points,before,after};
   }finally{await cdp.detach();}
 };
+
+module.exports.checkBoundaries=async function checkBoundaries(page){
+  const pm=page.locator('.document-page .ProseMirror'),key=k=>page.keyboard.press(k),type=s=>page.keyboard.type(s);
+  const choose=async name=>{await type('\\'+name);await key('Enter');};
+  await type('First');await choose('newpage');await type('Tail');
+  await type('\\\\');await type('next');
+  const content=await pm.evaluate(el=>el.editor.getJSON().content);
+  const breakAt=content.findIndex(n=>n.type==='pageBreak');
+  assert.ok(breakAt>0 && content[breakAt-1].content.at(-1).text==='First',JSON.stringify(content));
+  assert.equal(content[breakAt+1].content.map(n=>n.text).join(''),'Tail\\next');
+  await type('$z');await key('Shift+ArrowLeft');await choose('left');await type('()');
+  const field=pm.locator('.math-inline math-field').last();
+  assert.match(await field.evaluate(f=>f.value),/\\left\(z\\right\)/);
+  await key('End');await type('q');await key('Shift+ArrowLeft');await choose('frac');await type('d');
+  assert.match(await field.evaluate(f=>f.value),/\\frac\{q\}\{d\}/);
+  await key('Control+Shift+j');await type('End');
+  assert.ok((await pm.evaluate(el=>el.editor.state.selection.$head.parent.textContent)).endsWith('End'));
+};
