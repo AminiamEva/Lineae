@@ -96,9 +96,9 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
   let mountedSplit=null;
   const richPage=richEditor?.closest('.document-page');
   let editPreamble=null;
-  let songRequested=false;
+  let songRequested=false,richComposition=null;
   function syncEditMetrics(source){
-    if(!engineToggle||!richEditor||composing())return;
+    if(!engineToggle||!richEditor||richComposition?.isConnected)return;
     const end=source.search(/^[ \t]*\\begin\s*\{document\}/m);
     const preamble=end<0?'':source.slice(0,end);
     if(preamble===editPreamble)return;
@@ -201,6 +201,7 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
     // while installing the next DOM selection. Hide the editor only when
     // focus actually lands outside it, or the user clicks the native paper.
     document.addEventListener('focusin',event=>{
+      if(richComposition && event.target!==richComposition && event.target!==document.body)richComposition=null;
       if(compositionField&&event.target!==compositionField&&event.target!==document.body){
         compositionField=null;
         void refresh();
@@ -1014,6 +1015,7 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
     delete panel.dataset.latencyRoutes;
     compositionField=null;
     inputComposition=null;
+    richComposition=null;
     mirror?.lifetime.abort();mirror=null;
     targetArmed=false;lastTarget=null;clearTimeout(targetTimer);targetTimer=null;
     renderer.reset();pdf.reset();mode='canvas';pdfWanted=-1;pdfLayout=null;pdfRendered=-1;renderedRevision=-1;renderStatus();
@@ -1138,7 +1140,20 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
     const source=getSource();
     return {source,mainFile:'main.tex',signature:source};
   }
-  function refresh() {
+  function needsHanMetrics(){
+    return active && engineToggle && !richComposition?.isConnected && isDocumentMode() &&
+      richEditor?.hasAttribute('data-native-song') && !richEditor.hasAttribute('data-native-ctex');
+  }
+  function syncSnapshotMetrics(snapshot,doc){
+    // A slow asset read may still be useful to the compositor, but its
+    // preamble must not move a newer paragraph back to the old font/indent.
+    if(!isDocumentMode() || doc===richEditor?.editor?.state.doc)syncEditMetrics(snapshot.source);
+  }
+  function refresh(transaction) {
+    if(transaction?.docChanged && getSource && needsHanMetrics() && transaction.steps.some(step=>{
+      const fragment=step.slice?.content;
+      return fragment && /\p{Script=Han}/u.test(fragment.textBetween(0,fragment.size,' ',node=>node.attrs.latex??''));
+    }))syncEditMetrics(getSource());
     if(richEditing){
       exportButton.disabled=true;
       if(richRefreshTimer===null)
@@ -1155,6 +1170,7 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
     capturing=attempt;
     renderStatus();
     try {
+      const doc=richEditor?.editor?.state.doc;
       const snapshot=await readSnapshot();
       if(attempt!==generation)return;
       wantedSnapshot=snapshot;wantedSource=snapshot.source;
@@ -1164,7 +1180,7 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
       if(overlay && snapshot.signature===sentSnapshot?.signature && boundDocument!==snapshot.richDocument){
         bindDocument(sourceRevision,snapshot);
       }
-      syncEditMetrics(snapshot.source);
+      syncSnapshotMetrics(snapshot,doc);
     }catch(failure){
       if(attempt===generation&&!captureAgain)fail(failure);
       return;
@@ -1252,10 +1268,11 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
     if(primary){nativeEditing=true;targetArmed=true;}
     syncPresentation();renderStatus();
     try {
+      const doc=richEditor?.editor?.state.doc;
       const initial=await readSnapshot();
       if(attempt!==generation)return;
       wantedSource=initial.source;wantedSnapshot=initial;
-      syncEditMetrics(initial.source);
+      syncSnapshotMetrics(initial,doc);
       const opened=await invoke('native_tex_open',{source:initial.source,mainFile:initial.mainFile,files:initial.files,spanPaths:spanPaths(initial)});
       if(attempt!==generation) {
         if(opened)await invoke('native_tex_close',{sessionId:opened.sessionId});
@@ -1619,19 +1636,27 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
   });
   document.addEventListener('compositionstart',event=>{
     if(event.target===input)return;
+    if(richEditor?.contains(event.target))richComposition=event.target;
     if(event.target?.tagName==='MATH-FIELD')compositionField=event.target;
     if(active){renderer.clearCaret();renderStatus();}
   },true);
   document.addEventListener('compositionend',event=>{
     if(event.target===compositionField)compositionField=null;
-    // A first Han commit may change the entire article's ctex metrics. Read
-    // the committed transaction before a subsequent Enter positions its line.
-    // A live composition must still own its DOM until the WebView ends it.
-    if(richEditing && richEditor?.contains(event.target) &&
-      richEditor.hasAttribute('data-native-song') && !richEditor.hasAttribute('data-native-ctex') &&
-      /\p{Script=Han}/u.test(event.data??'')){
-      setTimeout(()=>{clearTimeout(richRefreshTimer);richRefreshTimer=null;void captureRichFrame();},0);
-    }else setTimeout(refresh,0);
+    if(event.target===richComposition){
+      richComposition=null;
+      // Some WebViews update the model during composition, others deliver
+      // the final input after compositionend. Read the committed document
+      // before the next key. refresh(transaction) handles the latter order.
+      if(getSource && needsHanMetrics() && /\p{Script=Han}/u.test(event.data??'')){
+        const docView=richEditor.editor?.view,attempt=generation;
+        queueMicrotask(()=>{
+          if(attempt!==generation || !needsHanMetrics())return;
+          docView?.domObserver.flush();
+          if(needsHanMetrics())syncEditMetrics(getSource());
+        });
+      }
+    }
+    setTimeout(refresh,0);
   },true);
   relocalize();renderer.setZoom(zoomPercent/100);pdf.setZoom(zoomPercent/100);
   return {

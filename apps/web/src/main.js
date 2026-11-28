@@ -4206,6 +4206,14 @@ nativeTexPreview=installNativeTexPreview({host:statusItems,before:null,primary:d
   },
   isDocumentMode:()=>sourceView.hidden,
   splitHost:()=>!sourceView.hidden&&sourceView.split&&projectFileKind!=='bib'?sourceView.previewHost:null,
+  getSource:()=>{
+    const project=projectExplorer?.model;
+    if(!projectExplorer?.active)return sourceView.hidden?source():sourceView.value;
+    const {file,wrapFragment}=nativeProjectEntry(project);
+    // A separately opened fragment inherits the main document's preamble,
+    // exactly as it does in the native project snapshot.
+    return (wrapFragment?project.file(project.mainFileId):file).draft;
+  },
   getSnapshot:async()=>{
     if(projectExplorer?.active){
       const project=projectExplorer.model;
@@ -4974,7 +4982,7 @@ nativeTexPreview=installNativeTexPreview({host:statusItems,before:null,primary:d
   onEnvironmentChange:updateEnvironment,
   showTextCommands:field=>showCommands(field,'text'),
 });
-editor.on('update',()=>nativeTexPreview.refresh());
+editor.on('update',({transaction})=>nativeTexPreview.refresh(transaction));
 onAssetsChanged(()=>nativeTexPreview.refresh());
 const compositionController=createCompositionController({
   explorer:()=>projectExplorer,fileKind:()=>projectFileKind,session:projectDocument,

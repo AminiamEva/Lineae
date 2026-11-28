@@ -188,7 +188,11 @@ async function testDesktopDocument(browser, origin, initial) {
         const next=++revision;
         liveSource=args.source;
         sources.set(next,args.source);
+        const replay={command,next,paths:args.spanPaths,hasSource:args.source.includes('Caption'),
+          bodyEnd:args.source.split('\\begin{document}').at(-1).slice(-105),compiled:false};
+        seen.push(replay);
         const measured=liveSource===source?initial:await capture(liveSource);
+        replay.compiled=true;
         for(const p of Object.values(measured.pages))for(const f of Object.values(p.dl.fonts)){
           if(f.filename)fonts.set('file:'+f.filename+'#'+(f.subfont??0),f.filename);
         }
@@ -196,7 +200,6 @@ async function testDesktopDocument(browser, origin, initial) {
           compile:{state:'Ok'},convergence:{state:'Converged'},placements:measured.placements,
           pages_total:Object.keys(measured.pages).length,pages_changed:Object.values(measured.pages)});
         published=measured;
-        seen.push({command,next,paths:args.spanPaths,hasSource:liveSource.includes('Caption')});
         return {sessionId:'paper',sourceRevision:next,editId:next,routed:'background',sourceSpans:{'main.tex':measured.spans}};
       }
       if(command==='native_tex_poll')return events.splice(0);
@@ -628,13 +631,14 @@ async function testDesktopDocument(browser, origin, initial) {
     assert.deepEqual(errors,[]);
     console.log('PASS: shipped Lua document, repeated Enter, caret X/Y, CJK preedit/commit, and split-prefix ink through a delayed native frame');
   }catch(error){
-    console.error('Hybrid replay',JSON.stringify({seen,body:liveSource.slice(liveSource.indexOf('Caption')-12,liveSource.indexOf('Caption')+112),
+    console.error('Hybrid replay',JSON.stringify({seen:seen.slice(-6),
       spans:published?.spans?.map(s=>[s.id,s.range.start,s.range.end]),
       editor:await page.evaluate(()=>{
         const el=document.querySelector('.document-page .ProseMirror'),preview=document.querySelector('#native-tex-preview');
         return {selection:el?.editor?.state.selection.toJSON(),confirmed:Boolean(document.querySelector('main.native-ink-confirmed')),
           pending:[...document.querySelectorAll('.native-pending-prose')].map(row=>row.textContent.slice(0,24)),paragraphs:[...el?.querySelectorAll('h1,p')??[]].slice(0,16).map(p=>p.textContent.slice(0,22)),
-          focus:document.activeElement?.className,state:preview?.dataset.state,fallback:preview?.dataset.fallbackReason,message:preview?.querySelector('[role=status]')?.textContent,
+          focus:document.activeElement?.className,composing:el?.editor?.view.composing,ctex:el?.hasAttribute('data-native-ctex'),
+          state:preview?.dataset.state,fallback:preview?.dataset.fallbackReason,message:preview?.querySelector('[role=status]')?.textContent,
           paints:[...preview?.querySelectorAll('[data-native-page]')??[]].map(p=>p.dataset.paintRevision)};
       }).catch(()=>null),errors}));
     throw error;

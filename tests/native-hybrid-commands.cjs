@@ -59,10 +59,28 @@ module.exports=async function checkCommands(page,{hybrid=true}={}) {
     await cdp.send('Input.imeSetComposition',{text:'',selectionStart:0,selectionEnd:0});
     await input.fill('section');
     await menu.getByRole('option',{name:'\\section',exact:true}).click();
+    const headingStyle=hybrid && await pm.evaluateHandle(el=>{
+      const observed={};
+      const listen=event=>{
+        if(event.key!=='Enter')return;
+        observed.ctex=el.hasAttribute('data-native-ctex');
+        observed.indent=getComputedStyle(el).getPropertyValue('--tex-paragraph-indent');
+        observed.text=el.editor.state.doc.firstChild.textContent;
+        el.removeEventListener('keydown',listen,true);
+      };
+      el.addEventListener('keydown',listen,true);
+      return observed;
+    });
     await cdp.send('Input.imeSetComposition',{text:'biao',selectionStart:4,selectionEnd:4});
     assert.equal(await pm.locator('h1').textContent(),'biao');
     await cdp.send('Input.insertText',{text:'标题'});
     await key('Enter');
+    if(headingStyle){
+      const atEnter=await headingStyle.jsonValue();
+      await headingStyle.dispose();
+      assert.ok(atEnter.ctex && atEnter.text==='标题',
+        'Use the committed heading metrics before Enter places the first body line: '+JSON.stringify(atEnter));
+    }
     await type('Lead ');await choose('textbf');await type('Bold');await choose('textbf');await type(' ');
     await type('\\missingCommand');await key('Escape');await type('P');
     const prose=(await model()).content;
