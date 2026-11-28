@@ -6120,6 +6120,7 @@ function selectGroup(name) {
   ribbon.dataset.ribbonPage=name;
   for(const [key,panel] of Object.entries(groups)) panel.hidden=key!==name;
   for(const tab of tabs.children)tab.setAttribute('aria-pressed',String(tab.dataset.group===name));
+  tabs.querySelector('[aria-pressed=true]')?.scrollIntoView({block:'nearest',inline:'nearest'});
   setHeaderFooterMode(name==='headerFooter');
   groups[name]?.refreshLayout?.();
   if(name==='home')homeRibbon.refreshLayout?.();

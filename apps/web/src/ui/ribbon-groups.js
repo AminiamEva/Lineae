@@ -100,10 +100,11 @@ export function installResponsiveGroups(panel, states, priority = [...states].re
   let observer = null;
 
   function availableWidth() {
-    const width = window.innerWidth;
-    const sidebar = Number.parseFloat(getComputedStyle(document.body).getPropertyValue('--sidebar-width')) || 0;
-    const max = Math.min(1320, Math.max(300, width - sidebar - 160), width - sidebar - 24);
-    return Math.max(0, max - 24);
+    const style = getComputedStyle(panel);
+    const padding = parseFloat(style.paddingInlineStart) + parseFloat(style.paddingInlineEnd);
+    const fixedControls = [...panel.children].filter(child => !child.classList.contains('ribbon-group'));
+    const fixedWidth = fixedControls.reduce((width, child) => width + child.getBoundingClientRect().width, 0);
+    return Math.max(0, panel.clientWidth - padding - fixedWidth);
   }
 
   function measure() {

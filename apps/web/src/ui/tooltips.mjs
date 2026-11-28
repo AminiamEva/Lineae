@@ -128,12 +128,19 @@ export function installTooltips(root, {
   };
   const onFocusOut = () => hide();
   const onKey = event => { if (event.key === 'Escape') hide(); };
+  const onScroll = event => {
+    hide();
+    // A toolbar can scroll a control into view while the pointer is already over it.
+    if (!event.target.matches?.('.ribbon-tabs,.ribbon > .tools')) return;
+    const hovered = event.target.querySelector(`:is(${selector}):hover`);
+    if (hovered) show(hovered);
+  };
   root.addEventListener('pointerover', onPointerOver);
   root.addEventListener('pointerout', onPointerOut);
   root.addEventListener('focusin', onFocusIn);
   root.addEventListener('focusout', onFocusOut);
   doc.addEventListener('keydown', onKey, true);
-  doc.defaultView?.addEventListener?.('scroll', hide, true);
+  doc.defaultView?.addEventListener?.('scroll', onScroll, true);
   doc.defaultView?.addEventListener?.('resize', hide);
   return {
     element: tip,
@@ -149,7 +156,7 @@ export function installTooltips(root, {
       root.removeEventListener('focusin', onFocusIn);
       root.removeEventListener('focusout', onFocusOut);
       doc.removeEventListener('keydown', onKey, true);
-      doc.defaultView?.removeEventListener?.('scroll', hide, true);
+      doc.defaultView?.removeEventListener?.('scroll', onScroll, true);
       doc.defaultView?.removeEventListener?.('resize', hide);
       tip.remove?.();
     },
