@@ -5,22 +5,35 @@ import {groupEnd} from '../../latex/source-structure.mjs';
 // Map only source tokens whose rendered spelling can be checked against the
 // entire old paragraph. Offsets inside a rewritten TeX token have no owner.
 // A comment has two source boundaries at the same visible text position.
-export function proseSpelling(raw,target) {
+export function proseSpelling(raw,target,children=[]) {
   if(!target)return null;
-  const map=[0],comments=[],italic=[];
-  let normalized='';
-  const tokens=/\\(?:noindent|indent)(?![A-Za-z])(?:\{\})?[ \t]*|\\[A-Za-z]+|\\[\s\S]|%[^\r\n]*(?:\r?\n|$)|\r?\n[ \t]*|[^\\%\r\n\u00a0§¶•…–—‘’“”®™©]+|[\s\S]/gu;
-  for(const {0:token,index} of raw.matchAll(tokens)){
-    const end=index+token.length;
+  const map=[0],comments=[],italic=[],protectedRanges=[];
+  const atoms=children.filter(n=>n.type!=='text').map(serialize);
+  if(atoms.some(a=>!a))return null;
+  let normalized='', nextAtom=0,match;
+  const tokens=/\\(?:noindent|indent)(?![A-Za-z])(?:\{\})?[ \t]*|\\[A-Za-z]+|\\[\s\S]|%[^\r\n]*(?:\r?\n|$)|\r?\n[ \t]*|[^\\%{}$\r\n\u00a0§¶•…–—‘’“”®™©]+|[\s\S]/gu;
+  while((match=tokens.exec(raw))){
+    const {index}=match;
+    let token=match[0],end=tokens.lastIndex;
     let value=token;
-    if(token[0]==='%'){
+    // Preserve formulas, references and other unchanged inline nodes verbatim.
+    // Their contents can use the same commands as prose with different meaning.
+    const atom=atoms[nextAtom];
+    const physicalAtom=atom==='\\\\\n' && token==='\\\\' ?
+      /^\\\\(?:[ \t]*\r?\n)?/.exec(raw.slice(index))[0] : atom;
+    if(physicalAtom && raw.startsWith(physicalAtom,index)){
+      token=physicalAtom;
+      value=atom;
+      end=tokens.lastIndex=index+token.length;
+      protectedRanges.push({from:index,to:end});
+      nextAtom++;
+    }else if(token[0]==='%'){
       const last=comments.at(-1);
       if(last?.offset===normalized.length)last.to=end;
       else comments.push({offset:normalized.length,from:index,to:end});
       map[normalized.length]=end;
       continue;
-    }
-    if(/^[\r\n]/.test(token))value=' ';
+    }else if(/^[\r\n]/.test(token))value=' ';
     else if(/^\\(?:noindent|indent)(?![A-Za-z])/.test(token))value=token.match(/^\\[A-Za-z]+/)[0]+' ';
     else if(/^\\(?:emph|textsl|textit)$/.test(token) && raw[end]==='{'){
       const close=groupEnd(raw,end);
@@ -33,9 +46,10 @@ export function proseSpelling(raw,target) {
     for(let i=1;i<value.length;i++)map[position+i]=value===token?index+i:null;
     map[normalized.length]=end;
   }
+  if(nextAtom!==atoms.length)return null;
   const start=normalized.indexOf(target);
   if(start<0 || normalized.slice(0,start).trim() || normalized.slice(start+target.length).trim())return null;
-  return {canonicalBody:target,map,start,comments,italic};
+  return {canonicalBody:target,map,start,comments,italic,protectedRanges};
 }
 
 // MathLive normalizes a field's outer whitespace on the first edit. Retain

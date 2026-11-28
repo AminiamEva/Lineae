@@ -5,13 +5,18 @@ import {richSourceMap,bindRichSpans} from '../apps/web/src/typesetting/rtex/rich
 import {paragraphFrame,paragraphHit,paragraphLineEdge} from '../apps/web/src/typesetting/rtex/paragraph-geometry.mjs';
 import {completePageDeltas} from '../apps/web/src/typesetting/rtex/page-deltas.mjs';
 import {changedTextblocks} from '../apps/web/src/editor/changed-textblocks.mjs';
-import {EditorState} from '@tiptap/pm/state';
+import {EditorState,TextSelection} from '@tiptap/pm/state';
 import {sourceProjection,requiresSourceProjection,standaloneParagraphDraft} from '../apps/web/src/editor/source-sync.js';
 import {importBlocks} from '../apps/web/src/editor/latex-codec.js';
 import {parseDocument} from '../apps/web/latex/document.mjs';
 import {projectDocumentEdits} from '../apps/web/src/project/include-document.mjs';
 
 const schema=new Schema({nodes:{doc:{content:'paragraph+'},paragraph:{content:'text*'},text:{}}});
+const prose=new Schema({nodes:{doc:{content:'paragraph+'},paragraph:{content:'inline*'},text:{group:'inline'},
+  math:{inline:true,group:'inline',attrs:{latex:{},display:{default:false},delimiter:{default:'$'}}},
+  cite:{inline:true,group:'inline',attrs:{key:{},command:{},starred:{},sourceCommand:{}}},
+  hardBreak:{inline:true,group:'inline'}
+},marks:{italic:{}}});
 const p=text=>schema.nodes.paragraph.create(null,text?schema.text(text):null);
 const file='main.tex';
 function fixture(){
@@ -109,7 +114,6 @@ test('splitting a paragraph preserves the original Unicode spelling on both side
 
 test('splitting text across original TeX line breaks, comments and emphasis preserves source bytes',()=>{
   const wrap=body=>'\\begin{document}\r\n'+body+'\r\n\r\nneighbor\r\n\\end{document}\r\n';
-  const prose=new Schema({nodes:schema.spec.nodes,marks:{italic:{}}});
   const read=body=>prose.nodeFromJSON({type:'doc',content:parseDocument(wrap(body)).blocks.flatMap(importBlocks)}).toJSON();
   for(const [body,run,cut,expected] of [
     ['alpha beta\r\n  gamma delta',0,5,'alpha\r\n\r\nX中Y beta\r\n  gamma delta'],
@@ -118,6 +122,10 @@ test('splitting text across original TeX line breaks, comments and emphasis pres
     ['alpha \\emph{two words} end',0,5,'alpha\r\n\r\nX中Y \\emph{two words} end'],
     ['alpha \\emph{two words} end',1,3,'alpha \\emph{two}\r\n\r\n\\emph{X中Y words} end'],
     ['alpha \\% beta\r\ngamma \\textsl{AB} end',1,1,'alpha \\% beta\r\ngamma \\textsl{A}\r\n\r\n\\textsl{X中YB} end'],
+    ['alpha beta\r\n  $x^2$ end',0,5,'alpha\r\n\r\nX中Y beta\r\n  $x^2$ end'],
+    ['after $x$ alpha beta\r\n  end',2,6,'after $x$ alpha\r\n\r\nX中Y beta\r\n  end'],
+    ['alpha beta\r\n  \\(\\textsl{A}+x\\) end',0,5,'alpha\r\n\r\nX中Y beta\r\n  \\(\\textsl{A}+x\\) end'],
+    ['alpha beta\r\n  \\cite{a} end',0,5,'alpha\r\n\r\nX中Y beta\r\n  \\cite{a} end'],
   ]){
     const saved=read(body),original=saved.content[0],leaf=original.content[run];
     const left={...original,content:[...original.content.slice(0,run),{...leaf,text:leaf.text.slice(0,cut)}]};
@@ -134,6 +142,31 @@ test('splitting text across original TeX line breaks, comments and emphasis pres
       source=result.draft;projection=result.projection;snapshot=JSON.stringify(after);before=after;
     }
     assert.equal(source,wrap(expected));
+  }
+});
+
+test('input survives at every split position around unchanged inline atoms and original line endings',()=>{
+  for(const body of ['alpha beta\r\n  $x^2$ end','after $x$ alpha beta\r\n  end',
+    '甲$\\textsl{乙}$\r\n  丙','alpha beta\r\n  \\cite{a} end','alpha beta\r\n  \\\\ \r\n gamma',
+    'alpha beta %keep\r\n gamma','alpha  beta\r\n  gamma','alpha\tbeta\r\n gamma']){
+    const raw='\\begin{document}\r\n'+body+'\r\n\r\nneighbor\r\n\\end{document}\r\n';
+    const doc=prose.nodeFromJSON({type:'doc',content:parseDocument(raw).blocks.flatMap(importBlocks)});
+    const saved=doc.toJSON();
+    for(let offset=0;offset<=doc.firstChild.content.size;offset++){
+      const caret=1+offset,initial=EditorState.create({schema:prose,doc,selection:TextSelection.create(doc,caret)});
+      let state=initial.apply(initial.tr.split(caret));
+      let source=raw,snapshot=JSON.stringify(saved),projection=sourceProjection(raw,saved);
+      for(const key of ['X','中','Y']){
+        const next=state.apply(state.tr.insertText(key)),after=next.doc.toJSON();
+        const result=standaloneParagraphDraft(source,projection,snapshot,state.doc.toJSON(),after,1);
+        assert.ok(result,JSON.stringify({body,offset,key}));
+        source=result.draft;projection=result.projection;snapshot=JSON.stringify(after);state=next;
+      }
+      assert.equal(source.split('X中Y').length,2);
+      const restored=source.replace('X中Y',''),breaks=[...restored.matchAll(/(?=\r\n\r\n)/g)];
+      assert.ok(breaks.some(({index})=>restored.slice(0,index)+restored.slice(index+4)===raw),
+        'Removing the authored text and paragraph break must recover every original byte: '+JSON.stringify({body,offset,source}));
+    }
   }
 });
 

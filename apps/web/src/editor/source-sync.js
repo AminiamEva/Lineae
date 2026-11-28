@@ -203,6 +203,13 @@ export function richSourceChanges(projection, doc, {editProse=false}={}) {
     let first=0, oldEnd=before.length, newEnd=doc.content.length;
     while(first<oldEnd && first<newEnd && same(before[first],doc.content[first])) first++;
     while(oldEnd>first && newEnd>first && same(before[oldEnd-1],doc.content[newEnd-1])) {oldEnd--;newEnd--;}
+    if(oldEnd===first && before[first]?.type==='paragraph' && doc.content.slice(first,newEnd).every(typingGap)){
+      const next=projection.blocks.find(b=>b.index===first && b.count===1);
+      if(next){
+        const eol=projection.text.match(/\r?\n/)?.[0]??'\n';
+        return [{from:next.from,to:next.from,insert:(eol+eol).repeat(newEnd-first)}];
+      }
+    }
     const block=projection.blocks.find(block=>ownsEditedRange(block,first,oldEnd));
     if (!block) {
       if(oldEnd>=first+2 && newEnd===first+1)return plainParagraphJoin(projection,before.slice(first,oldEnd),doc.content[first],first);
@@ -231,16 +238,17 @@ export function richSourceChanges(projection, doc, {editProse=false}={}) {
 
 function typedProseChange(block,before,after) {
   if(block.count!==1 || before?.type!=='paragraph' || after?.type!=='paragraph' ||
-    JSON.stringify(before.attrs)!==JSON.stringify(after.attrs) || !before.content?.length ||
-    before.content.length!==after.content?.length)return null;
-  let changed=0;
-  for(const [index,old] of before.content.entries()){
-    const next=after.content[index];
-    if(old.type!=='text' || next.type!=='text' || JSON.stringify(old.marks)!==JSON.stringify(next.marks))return null;
-    if(old.text!==next.text)changed++;
-  }
-  if(changed!==1)return null;
-  const spelling=proseSpelling(block.raw,serialize(before).slice(0,-2));
+      JSON.stringify(before.attrs)!==JSON.stringify(after.attrs) || !before.content?.length)return null;
+  const old=before.content,next=after.content??[];
+  const same=(a,b)=>JSON.stringify(a)===JSON.stringify(b);
+  let first=0,left=old.length,right=next.length;
+  while(first<left && first<right && same(old[first],next[first]))first++;
+  while(first<left && first<right && same(old[left-1],next[right-1])){left--;right--;}
+  if(left-first>1 || right-first>1 || (left===first && right===first))return null;
+  const removed=first<left?old[first]:null, inserted=first<right?next[first]:null;
+  if((removed && removed.type!=='text') || (inserted && inserted.type!=='text') ||
+      (removed && inserted && !same(removed.marks,inserted.marks)))return null;
+  const spelling=proseSpelling(block.raw,serialize(before).slice(0,-2),before.content);
   return spelling?patchSpelling(block,serialize(after).slice(0,-2),spelling):null;
 }
 
@@ -272,8 +280,7 @@ function paragraphSplitChange(projection,block,original,parts) {
   const at=block.raw.indexOf(previous);
   if(at>=0 && !block.raw.slice(0,at).trim() && !block.raw.slice(at+previous.length).trim())
     return minimalChange(previous,replacement,block.from+at);
-  if(!original.content?.every(child=>child.type==='text'))return null;
-  const mapped=proseSpelling(block.raw,previous);
+  const mapped=proseSpelling(block.raw,previous,original.content);
   return mapped?patchSpelling(block,replacement,mapped,true):null;
 }
 
@@ -583,7 +590,7 @@ function patchIsolatedTables(block,nodes) {
 }
 
 function patchSpelling(block,body,spelling,split=false){
-  const {canonicalBody:old,map,start,comments=[],italic=[]}=spelling;
+  const {canonicalBody:old,map,start,comments=[],italic=[],protectedRanges=[]}=spelling;
   const [patch]=minimalChange(old,body,0);
   let {from,to}=patch;
   while(from>0 && map[start+from]===null)from--;
@@ -595,6 +602,7 @@ function patchSpelling(block,body,spelling,split=false){
   const b=from===to?a:comments.find(c=>c.offset===start+to)?.from??map[start+to];
   if(!Number.isInteger(a)||!Number.isInteger(b))return null;
   if(comments.some(c=>a<c.to && b>c.from))return null;
+  if(protectedRanges.some(atom=>a<atom.to && b>atom.from))return null;
   let insert=patch.insert;
   if(split && insert.includes('\\textit{')){
     const mark=italic.findLast(m=>m.from<=a && a<=m.to);
