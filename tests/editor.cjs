@@ -2695,22 +2695,20 @@ A & B \\
     const operandMark=operandField.locator('[data-lineae-integrand]').first();
     await operandMark.waitFor();
     await operandField.click();
-    await operandField.evaluate(field=>field.focus());
-    await page.waitForFunction(()=>document.activeElement?.matches('math-field[data-lineae-editing]'));
+    await page.waitForFunction(()=>document.activeElement?.matches('math-field[data-lineae-editing]')&&
+      !document.activeElement._mathfield?.focusBlurInProgress);
     const editingBackground=await operandMark.evaluate(el=>getComputedStyle(el).backgroundColor);
     assert.ok(editingBackground && editingBackground!=='rgba(0, 0, 0, 0)',
       'Formula operands highlight while editing: '+editingBackground);
-    // MathLive delays native focus; do not blur during that transition.
-    await page.waitForFunction(()=>!document.querySelector('math-field')?._mathfield?.focusBlurInProgress);
-    // Transfer focus to a real control. Calling MathLive.blur() directly can
-    // race its queued native focus restoration before a different element owns it.
-    await page.locator('#settings-open').click();
-    await page.waitForFunction(()=>document.activeElement?.closest('dialog[open]')?.contains(document.querySelector('#settings-close')));
+    // Click the already selected Document mode to leave the formula without
+    // changing the document or opening a dialog.
+    const documentMode=page.locator('[data-source-mode="body"][aria-pressed="true"]');
+    await documentMode.click();
+    assert.equal(await documentMode.evaluate(button=>button===document.activeElement),true);
     await page.waitForFunction(()=>!document.querySelector('math-field')?.hasAttribute('data-lineae-editing'));
     const blurredBackground=await operandMark.evaluate(el=>getComputedStyle(el).backgroundColor);
     assert.ok(blurredBackground===''||blurredBackground==='rgba(0, 0, 0, 0)',
       'The operand highlight clears when editing ends: '+blurredBackground);
-    await page.locator('#settings-close').click();
     await importSource('\\[\\frac{\\placeholder{}}{\\placeholder{}}\\]');
     const slotField=paper.locator('math-field').first();
     await slotField.evaluate(field=>{field.focus();field.position=0;});

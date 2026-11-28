@@ -45,13 +45,17 @@ const server=createServer(async(req,res)=>{
   for(const width of [1440,900,600]){
    await page.setViewportSize({width,height:900});await revealToolbar(page);
    const boxes=await page.evaluate(()=>{
-     const row=document.querySelector('.ribbon-tab-row'),button=row.querySelector('#toolbar-collapse').getBoundingClientRect();
-     const tabs=[...row.children].filter(el=>el.id!=='toolbar-collapse' && !el.hidden);
-     return {gap:button.left-Math.max(...tabs.map(el=>el.getBoundingClientRect().right)),right:button.right,width:innerWidth};
+    const ribbon=document.querySelector('.floating-toolbar>.ribbon');
+    const control=ribbon.querySelector('#toolbar-collapse'),collapse=control.getBoundingClientRect();
+    const neighbors=[...control.parentElement.children].filter(el=>el!==control && !el.hidden);
+    return {ribbon:ribbon.getBoundingClientRect().toJSON(),tabs:ribbon.querySelector('.ribbon-tabs').getBoundingClientRect().toJSON(),
+      neighborsRight:Math.max(...neighbors.map(el=>el.getBoundingClientRect().right)),collapse:collapse.toJSON(),width:innerWidth};
    });
-   assert.ok(boxes.gap>=0,'Collapse control sits beside the tabs and scroll arrows without overlap');
-   assert.ok(boxes.right<=boxes.width,'Collapse control stays inside viewport');
+   assert.ok(boxes.collapse.left>=boxes.tabs.right,'Collapse control stays clear of the ribbon tabs');
+   assert.ok(boxes.collapse.left>=boxes.neighborsRight,'Collapse control also stays clear of the tab scroll arrows');
+   assert.ok(boxes.collapse.top>=boxes.ribbon.top&&boxes.collapse.bottom<=boxes.ribbon.bottom&&boxes.collapse.right<=boxes.ribbon.right,'Collapse control is inside the ribbon');
+   assert.ok(boxes.collapse.left>=0&&boxes.collapse.right<=boxes.width,'Collapse control stays inside the viewport');
   }
-  assert.deepEqual(errors,[]);console.log('PASS: visible project tree, imported CJK body edits, exact source spelling/CRLF, file switching, Source return, save/reopen, visible code selection and adjacent toolbar control');
+  assert.deepEqual(errors,[]);console.log('PASS: visible project tree, imported CJK body edits, exact source spelling/CRLF, file switching, Source return, save/reopen, visible code selection and integrated toolbar control');
  }finally{await browser.close();server.close();}
 })().catch(e=>{console.error(e);process.exitCode=1;server.close();});
