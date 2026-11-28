@@ -1,3 +1,5 @@
+import {paragraphFrame} from '../typesetting/rtex/paragraph-geometry.mjs';
+import {bindRichSpans} from '../typesetting/rtex/rich-source-map.mjs';
 import {nativeParagraphOverlay} from './native-paragraph-overlay.mjs';
 import {ctexEditStyle} from '../typesetting/rtex/ctex-edit-style.mjs';
 import {stagedRaster} from '../typesetting/rtex/raster-assets.mjs';
@@ -19,7 +21,7 @@ import {separateRepeatedOwners} from '../editor/native-surface/repeated-owners.m
 // Native LaTeX output is the primary page. The opt-in native input mode sends
 // supported keys, caret and IME through this surface into ProseMirror; the old
 // JS-formatted page and MathLive inputs stay available as the migration fallback.
-export function installNativeTexPreview({host,before,primary=false,documentZoom=100,richEditor,focusRichPage,isDocumentMode,splitHost,getSource,getSnapshot,isComposing,focusMathSlot,focusImage,listTikzDrawings,editTikzDrawing,openMeasuredDrawing,navigateReference,listSourceBlocks,openSourceBlock,continuationRegion,nativeTextEnvironment,continueNativeTextEnvironment,selectionRegions,foldedFiles,selectText,serializeTextSelection,commitMath,commitText,commitTextLines,commitInlinePaste,commitProjectRange,commitMixedSelection,canStartText,continuePendingProse,initialPageMetrics,commitInitialText,commitInitialMath,commitParagraphBreak,commitParagraphJoin,commitHardBreak,commitNewMath,commitAfterFormulaText,onEnvironmentChange,showTextCommands,history}) {
+export function installNativeTexPreview({host,before,primary=false,documentZoom=100,richEditor,focusRichPage,focusRichOffset,isDocumentMode,splitHost,getSource,getSnapshot,isComposing,focusMathSlot,focusImage,listTikzDrawings,editTikzDrawing,openMeasuredDrawing,navigateReference,listSourceBlocks,openSourceBlock,continuationRegion,nativeTextEnvironment,continueNativeTextEnvironment,selectionRegions,foldedFiles,selectText,serializeTextSelection,commitMath,commitText,commitTextLines,commitInlinePaste,commitProjectRange,commitMixedSelection,canStartText,continuePendingProse,initialPageMetrics,commitInitialText,commitInitialMath,commitParagraphBreak,commitParagraphJoin,commitHardBreak,commitNewMath,commitAfterFormulaText,onEnvironmentChange,showTextCommands,history}) {
   const invoke=window.__TAURI__?.core?.invoke;
   if(!invoke) return {refresh(){},documentChanged(){},relocalize(){}};
   const button=document.createElement('button');
@@ -118,6 +120,36 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
     }
   }
   const overlay=engineToggle&&richPage?nativeParagraphOverlay(richEditor,panel,pages,()=>!current()):null;
+  const richSources=new Map();
+  const futureFrames=[];
+  let geometryStamp=null,geometryOwners=null;
+  function recordSource(reply,snapshot){
+    if(!overlay)return;
+    const owners=bindRichSpans(snapshot.richBindings,reply.sourceSpans);
+    richSources.set(reply.sourceRevision,owners);
+    while(richSources.size>5)richSources.delete(richSources.keys().next().value);
+    syncParagraphFrame();
+  }
+  function syncParagraphFrame(){
+    if(!overlay)return;
+    const frame=renderer.paragraphLayout(), token=frame?.warm??frame?.layout;
+    const owners=richSources.get(frame?.revision);
+    if(geometryStamp===token&&geometryOwners===owners){overlay.update();return;}
+    geometryStamp=token;geometryOwners=owners;
+    let paintedOwners=owners;
+    if(frame?.warm && owners){
+      const base=richSources.get(frame.layout.versions.source_revision);
+      paintedOwners=new Map([...owners].filter(([id,entry])=>{
+        if(id===frame.warm.update.par_id)return true;
+        const previous=base?.get(id);
+        return previous && entry && previous.element===entry.element && previous.text===entry.text;
+      }));
+    }
+    overlay.present(frame?paragraphFrame(frame.layout,frame.pages,paintedOwners,frame.warm):null,frame?.revision??-1);
+  }
+  function resetParagraphFrames(){
+    richSources.clear();futureFrames.length=0;geometryStamp=null;geometryOwners=null;overlay?.present(null,-1);
+  }
   let richEditing=false,richRefreshTimer=null;
   function showRichEditor(number){
     if(!richEditing || number)overlay?.begin(number);
@@ -726,7 +758,7 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
   }
   const pdf=installNativePdf({host:pages,onPaint:revision=>{
     if(!active||mode!=='pdf')return;
-    overlay?.update();renderedRevision=revision;pdfRendered=revision;if(!terminal&&revision>=sourceRevision)error='';renderStatus();
+    syncParagraphFrame();renderedRevision=revision;pdfRendered=revision;if(!terminal&&revision>=sourceRevision)error='';renderStatus();
   },onError:failure=>{if(active&&mode==='pdf')fail(failure);}});
   const renderer=installNativePages({host:pages,
     paragraphIndent:()=>{
@@ -742,9 +774,10 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
     getTypeOneFont:key=>invoke('native_tex_type_one_font',{sessionId:session,key}),
     getRaster:file=>sentSnapshot?.dependencySignature===wantedSnapshot?.dependencySignature
       ? stagedRaster(sentSnapshot,file) : null,
+    onFrame:syncParagraphFrame,
     onPaint:revision=>{
       if(!active||mode!=='canvas')return;
-      renderedRevision=revision;if(richEditing&&current())overlay?.alignPainted(renderer);else overlay?.update();if(!terminal&&revision>=sourceRevision)error='';renderStatus();
+      renderedRevision=revision;if(!terminal&&revision>=sourceRevision)error='';renderStatus();
       syncCaret();
     },
     onError:(failure,revision)=>{if(active&&mode==='canvas')void fallback(failure,revision);},
@@ -928,6 +961,7 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
     clearTimeout(timer);clearTimeout(pollTimer);
     syncPresentation();
     const previous=session;session=null;
+    resetParagraphFrames();
     wantedSnapshot=null;sentSnapshot=null;wantedSource='';sentSource='';
     observation=null;targetStatus.textContent='';
     outlineTarget=null;
@@ -982,12 +1016,12 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
         try {
           const args={sessionId:flight.sessionId,sourceRevision:target};
           let bytes,registeredLayout;
-          if(pdfLayout?.source_revision===target){
+          if(pdfLayout?.versions.source_revision===target){
             // The host checks both revisions and retains the only permitted
             // path. Frontend never requests a file by name.
             const layout=pdfLayout,geometry=new Map(recordedPages);
             try {
-              bytes=await invoke('native_tex_pdf',{...args,layoutVersion:layout.layout_version});
+              bytes=await invoke('native_tex_pdf',{...args,layoutVersion:layout.versions.layout_version});
               registeredLayout={layout,geometry};
             }
             catch {/* The captured PDF may have expired; compile a clean copy. */}
@@ -1000,8 +1034,10 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
             observation=null;
             const views=await pdf.show(bytes,target);
             if(attempt!==generation||flight.sessionId!==session)return;
-            if(target===pdfWanted&&registeredLayout?.layout===pdfLayout&&views)
+            if(target===pdfWanted&&registeredLayout&&registeredLayout.layout===pdfLayout&&views){
               pdfGeometryAvailable=renderer.bindPdfLayout(pdfLayout,registeredLayout.geometry,views);
+              syncParagraphFrame();
+            }
             renderStatus();
           }
         }catch(problem){
@@ -1024,7 +1060,7 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
         const files=!changedEntry&&snapshot.dependencySignature===sentSnapshot.dependencySignature?undefined:snapshot.files;
         const sample=pendingLatency;
         const result=await invoke('native_tex_update',{sessionId:session,source:snapshot.source,files,
-          mainFile:changedEntry?snapshot.mainFile:undefined});
+          mainFile:changedEntry?snapshot.mainFile:undefined,spanPaths:overlay&&snapshot.richBindings?[...snapshot.richBindings.keys()]:undefined});
         if(attempt!==generation){
           if(result.sessionId)await invoke('native_tex_close',{sessionId:result.sessionId}).catch(()=>{});
           return;
@@ -1038,13 +1074,14 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
         if(restarted){
           session=result.sessionId;pollEpoch++;lastEventSequence=0;renderedRevision=-1;pdfRendered=-1;pdfWanted=-1;pdfLayout=null;
           pdfGeometryAvailable=false;recordedPages.clear();
-          renderer.reset({clear:false});pdf.reset({clear:false});
+          renderer.reset({clear:false});pdf.reset({clear:false});resetParagraphFrames();
           void poll(attempt,pollEpoch);
         }
         if(observation&&snapshot.signature!==sentSnapshot.signature){
           observation=null;targetStatus.textContent='';
         }
-        sentSource=snapshot.source;sentSnapshot=snapshot;sourceRevision=result.sourceRevision;error='';
+        sentSource=snapshot.source;sentSnapshot=snapshot;sourceRevision=result.sourceRevision;recordSource(result,snapshot);error='';
+        while(futureFrames.length && futureFrames[0].versions.source_revision<=sourceRevision)applyEvent(futureFrames.shift());
         if(composing())break;
       }
     } catch(failure) {if(attempt===generation)fail(failure);}
@@ -1135,6 +1172,14 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
       if(event.lineaeSequence<=lastEventSequence)return;
       lastEventSequence=event.lineaeSequence;
     }
+    if(overlay && updating===generation && event.versions?.source_revision>sourceRevision &&
+        ['LayoutUpdate','ParagraphUpdate'].includes(event.event)){
+      futureFrames.push(event);
+      return;
+    }
+    applyEvent(event);
+  }
+  function applyEvent(event) {
     if(event.event==='SessionFailure'){terminal=true;fail(event.failure);return;}
     if(event.event==='ParagraphUpdate'&&event.status==='error'){
       error=event.diagnostics?.map(item=>item.message??String(item)).join('\n').slice(0,2400)||
@@ -1143,7 +1188,7 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
       if(event.event==='LayoutUpdate'&&event.compile?.state==='Ok'){
         for(const page of event.pages_changed??[])recordedPages.set(page.page,page);
         for(const page of recordedPages.keys())if(page>event.pages_total)recordedPages.delete(page);
-        pdfLayout=event.pdf_fallback_registered&&event.convergence?.state==='Converged'?event.versions:null;
+        pdfLayout=event.pdf_fallback_registered&&event.convergence?.state==='Converged'?{versions:event.versions,placements:event.placements}:null;
       }
       if(event.event==='LayoutUpdate' && event.compile?.state!=='Ok') {
         const detail=event.compile?.message??event.diagnostics?.map(item=>item.message).filter(Boolean).join('\n');
@@ -1167,7 +1212,7 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
       if(attempt!==generation)return;
       wantedSource=initial.source;wantedSnapshot=initial;
       syncEditMetrics(initial.source);
-      const opened=await invoke('native_tex_open',{source:initial.source,mainFile:initial.mainFile,files:initial.files});
+      const opened=await invoke('native_tex_open',{source:initial.source,mainFile:initial.mainFile,files:initial.files,spanPaths:overlay&&initial.richBindings?[...initial.richBindings.keys()]:undefined});
       if(attempt!==generation) {
         if(opened)await invoke('native_tex_close',{sessionId:opened.sessionId});
         return;
@@ -1179,7 +1224,7 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
         return;
       }
       session=opened.sessionId;sourceRevision=opened.sourceRevision;sentSource=initial.source;sentSnapshot=initial;opening=false;
-      renderer.reset();pdf.reset();void poll(attempt);
+      renderer.reset();pdf.reset();resetParagraphFrames();recordSource(opened,initial);void poll(attempt);
       refresh();renderStatus();
     } catch(failure) {
       if(attempt!==generation)return;
@@ -1437,6 +1482,11 @@ export function installNativeTexPreview({host,before,primary=false,documentZoom=
       const sheet=canvas.closest('[data-native-page],[data-pdf-page]');
       const page=Number(sheet?.dataset.nativePage??sheet?.dataset.pdfPage??1);
       const x=(event.clientX-box.left)/box.width,y=(event.clientY-box.top)/box.height;
+      const hit=overlay.hit(page,x,y);
+      if(hit?.element.isConnected && hit.element.textContent===hit.text && focusRichOffset){
+        showRichEditor(page);overlay.reveal(hit.element);
+        if(focusRichOffset(hit.element,hit.offset)){overlay.update();return;}
+      }
       const block=focusRichPage(page,x,y,canStartText?.(),candidate=>{
         showRichEditor(page);overlay.reveal(candidate);
       });

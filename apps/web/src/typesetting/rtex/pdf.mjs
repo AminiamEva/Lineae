@@ -59,7 +59,7 @@ export function installNativePdf({host,onPaint,onError}) {
           void draw(entry,attempt).catch(onError);
         }
         else if(!entry.render&&entry.painted){
-          entry.canvas.width=1;entry.canvas.height=1;entry.painted=null;
+          entry.canvas.width=1;entry.canvas.height=1;entry.painted=null;delete entry.dom.dataset.paintRevision;
         }
       }
     });

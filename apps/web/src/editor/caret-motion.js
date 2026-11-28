@@ -8,6 +8,10 @@ const BLINK_FRAMES = [
   { opacity: 1, offset: 1 },
 ];
 
+export function blinkCaret(caret) {
+  return caret.animate(BLINK_FRAMES, { id: 'lineae-caret-blink', duration: 1040, iterations: Infinity });
+}
+
 const isCaretRect = rect => rect && rect.bottom > rect.top && rect.right - rect.left < 2;
 
 export function measurePage(page) {
@@ -96,7 +100,7 @@ export function createCaretMotion(view, page) {
   }
 
   function restartBlink(steady = false) {
-    blink ??= caret.animate(BLINK_FRAMES, { id: 'lineae-caret-blink', duration: 1040, iterations: Infinity });
+    blink ??= blinkCaret(caret);
     blink.currentTime = 0;
     if (steady) blink.pause();
     else blink.play();

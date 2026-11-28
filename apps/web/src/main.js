@@ -37,6 +37,7 @@ import {installFloatingToolbar} from './ui/floating-toolbar.js';
 import {installShortcutPriority} from './ui/shortcut-priority.mjs';
 import {installNativeTexPreview} from './ui/native-tex-preview.mjs';
 import {matchesRichFormula,richSlotPosition} from './editor/native-math/rich-slot.mjs';
+import {richSourceMap} from './typesetting/rtex/rich-source-map.mjs';
 import {nativeAttachedSnapshot,nativeProjectSnapshot} from './typesetting/rtex/project-snapshot.mjs';
 import {stagedRasterPath} from './typesetting/rtex/raster-assets.mjs';
 import {installSettingsPanel} from './ui/settings-panel.js';
@@ -4169,6 +4170,14 @@ function newNativeMath(text,display,numbering){
 }
 nativeTexPreview=installNativeTexPreview({host:footer,before:modes,primary:desktopEngineToggle()||nativeWorkspaceRequested(),documentZoom:Number(zoom.value),
   richEditor:editor.view.dom,
+  focusRichOffset:(element,offset)=>{
+    if(!editor.view.dom.contains(element))return false;
+    const pos=editor.view.posAtDOM(element,0),node=editor.state.doc.resolve(pos).parent;
+    if(!node.isTextblock||offset<0||offset>node.content.size)return false;
+    editor.view.dispatch(editor.state.tr.setSelection(TextSelection.create(editor.state.doc,pos+offset)).setMeta('addToHistory',false));
+    editor.view.focus();
+    return true;
+  },
   focusRichPage:(page,x,y,empty,show)=>{
     const sheet=documentPage.querySelectorAll('.document-sheet')[page-1]??documentPage;
     const rect=sheet.getBoundingClientRect();
@@ -4214,15 +4223,21 @@ nativeTexPreview=installNativeTexPreview({host:footer,before:modes,primary:deskt
       else editor.view.domObserver.flush();
       projectExplorer.changed();
       const active=project.activeFileId,{file,composition,wrapFragment}=nativeProjectEntry(project);
+      const activeFile=project.file(active), doc=editor.state.doc, composingView=projectDocument.composition;
       const snapshot=await nativeProjectSnapshot(project,{useModelAssets:true,includeGeneratedInputs:true,
         entryFileId:file.id,wrapFragment});
       if(projectExplorer.model!==project||project.activeFileId!==active)
         throw new Error(t('工程已改变，请重试。','Project changed; retry the preview.'));
-      return {...snapshot,editablePaths:new Set(composition.regions.map(region=>region.path))};
+      const richBindings=sourceView.hidden && editor.state.doc===doc ? richSourceMap(editor.view,{
+        path:activeFile.path,source:activeFile.draft,projection,composition:composingView,
+        prefix:wrapFragment?snapshot.fragment?.start:''
+      }) : null;
+      return {...snapshot,richBindings,editablePaths:new Set(composition.regions.map(region=>region.path))};
     }
     if(projectFileKind==='bib')throw new Error(t('请打开 .tex 文档。','Open a .tex document.'));
     const text=sourceView.hidden?source():sourceView.value;
-    return nativeAttachedSnapshot(text,projectAssets());
+    const richBindings=sourceView.hidden ? richSourceMap(editor.view,{path:'main.tex',source:text,projection}) : null;
+    return {...await nativeAttachedSnapshot(text,projectAssets()),richBindings};
   },
   isComposing:()=>editor.view.composing||sourceView.composing,
   listTikzDrawings:nativeTikzDrawings,

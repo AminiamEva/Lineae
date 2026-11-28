@@ -95,7 +95,7 @@ jobs:
           node --test tests/native-math-baseline.test.mjs tests/native-math-probe.test.mjs \
             tests/display-math-blocks.test.mjs tests/native-tex-project.test.mjs tests/native-math-hit.test.mjs \
             tests/native-math-source.test.mjs tests/native-math-warm-pages.test.mjs tests/native-surface.test.mjs \
-            tests/project-composition.test.mjs
+            tests/project-composition.test.mjs tests/native-paragraph-geometry.test.mjs
           bash -n scripts/install-native-tex-ci.sh
       - name: Build the native preview frontend
         run: |
@@ -179,6 +179,7 @@ jobs:
           export TEXMFVAR="$PWD/.native-tex/texlive/texmf-var"
           export TEXMFCONFIG="$PWD/.native-tex/texlive/texmf-config"
           export TEXMFHOME="$PWD/.native-tex/texlive/texmf-home"
+          node tests/native-hybrid-baseline-browser.cjs --app
           export LINEAE_NATIVE_EVIDENCE_DIR="$PWD/artifacts/native-tex/host"
           export LINEAE_NATIVE_TYPE_ONE_PAGE="$RUNNER_TEMP/lineae-native-type-one-pages.json"
           mkdir -p "$LINEAE_NATIVE_EVIDENCE_DIR"

@@ -62,6 +62,19 @@ fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
     mutex.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
 }
 
+// rtex edits use half-open UTF-8 byte ranges. Keep unchanged paragraphs and
+// their placement IDs alive even when adjacent characters share UTF-8 bytes.
+fn text_splice<'a>(before: &str, after: &'a str) -> (usize, usize, &'a str) {
+    let mut start = before.bytes().zip(after.bytes()).take_while(|(a, b)| a == b).count();
+    while !before.is_char_boundary(start) || !after.is_char_boundary(start) { start -= 1; }
+    let mut suffix = before[start..].bytes().rev().zip(after[start..].bytes().rev())
+        .take_while(|(a, b)| a == b).count();
+    while !before.is_char_boundary(before.len() - suffix) || !after.is_char_boundary(after.len() - suffix) {
+        suffix -= 1;
+    }
+    (start, before.len() - suffix, &after[start..after.len() - suffix])
+}
+
 fn validate_source(source: &str) -> Result<(), NativeTexError> {
     if source.len() > SOURCE_LIMIT || source.contains('\0') {
         return Err(error("invalid_source", "Source must be UTF-8 text without NUL, at most 2 MiB."));
@@ -346,6 +359,16 @@ pub struct NativeTexUpdate {
     edit_id: u64,
     source_revision: u64,
     routed: String,
+}
+
+/// Byte ranges and placement IDs are meaningful only for this session and source revision.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NativeLayoutReply<T> {
+    #[serde(flatten)]
+    reply: T,
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    source_spans: BTreeMap<String, Vec<Value>>,
 }
 
 #[derive(Debug, Serialize)]
@@ -918,6 +941,25 @@ impl Session {
         self.set_source(source)
     }
 
+    fn layout_reply<T>(&self, reply: T, revision: u64, paths: Option<Vec<String>>) -> Result<NativeLayoutReply<T>, NativeTexError> {
+        let mut source_spans = BTreeMap::new();
+        let _serial = lock(&self.commands);
+        if lock(&self.messages).revision == Some(revision) {
+            for path in paths.unwrap_or_default().into_iter().take(FILE_COUNT_LIMIT) {
+                if source_spans.contains_key(&path) || !path.to_ascii_lowercase().ends_with(".tex")
+                    || !lock(&self.snapshot).files.contains_key(&path) { continue; }
+                // An included file can be staged but have no separately tracked rtex spans.
+                let spans = match self.request(json!({"cmd":"spans","path":path}), "spans") {
+                    Ok(mut result) => result["spans"].as_array_mut().map(std::mem::take).unwrap_or_default(),
+                    Err(problem) if problem.code == "engine_command" => Vec::new(),
+                    Err(problem) => return Err(problem),
+                };
+                source_spans.insert(path, spans);
+            }
+        }
+        Ok(NativeLayoutReply { reply, source_spans })
+    }
+
     /// Caller holds commands, including while replacing a project snapshot.
     fn set_source(&self, source: String) -> Result<NativeTexUpdate, NativeTexError> {
         validate_source(&source)?;
@@ -946,7 +988,19 @@ impl Session {
     }
 
     fn set_tex_buffer(&self, path: String, source: String) -> Result<NativeTexUpdate, NativeTexError> {
-        let reply = self.request(json!({"cmd": "set_document", "path": &path, "text": &source}), "set_document")?;
+        let splice = {
+            let snapshot = lock(&self.snapshot);
+            snapshot.files.get(&path).and_then(|bytes| std::str::from_utf8(bytes).ok())
+                .filter(|old| path == snapshot.main_file && *old != source)
+                .map(|old| {
+                    let (start, end, text) = text_splice(old, &source);
+                    json!({"cmd":"edit", "path":&path, "start":start, "end":end, "text":text})
+                })
+        };
+        let reply = match splice {
+            Some(edit) => self.request(edit, "edit")?,
+            None => self.request(json!({"cmd":"set_document", "path":&path, "text":&source}), "set_document")?,
+        };
         let result = &reply["result"];
         let revision = integer(result, "source_revision")?;
         let edit_id = integer(result, "edit_id")?;
@@ -1370,7 +1424,8 @@ pub async fn native_tex_open(
     source: String,
     main_file: Option<String>,
     files: Option<Vec<NativeTexFile>>,
-) -> Result<Option<NativeTexInfo>, NativeTexError> {
+    span_paths: Option<Vec<String>>,
+) -> Result<Option<NativeLayoutReply<NativeTexInfo>>, NativeTexError> {
     let snapshot = Snapshot::new(&source, main_file.unwrap_or_else(|| "main.tex".into()), files.unwrap_or_default())?;
     let (generation, old) = {
         let mut manager = lock(&state.0);
@@ -1408,7 +1463,10 @@ pub async fn native_tex_open(
         manager.events = lock(&session.events).clone();
     }
     blocking(move || {
-        let result = session.start();
+        let result = session.start().and_then(|info| {
+            let revision = info.source_revision;
+            session.layout_reply(info, revision, span_paths)
+        });
         if let Err(problem) = &result {
             session.fail(problem.clone());
             session.terminate();
@@ -1418,7 +1476,7 @@ pub async fn native_tex_open(
 }
 
 #[tauri::command]
-pub async fn native_tex_update(state: State<'_, NativeTexSessions>, session_id: String, source: String, files: Option<Vec<NativeTexFile>>, main_file: Option<String>) -> Result<NativeTexUpdate, NativeTexError> {
+pub async fn native_tex_update(state: State<'_, NativeTexSessions>, session_id: String, source: String, files: Option<Vec<NativeTexFile>>, main_file: Option<String>, span_paths: Option<Vec<String>>) -> Result<NativeLayoutReply<NativeTexUpdate>, NativeTexError> {
     validate_source(&source)?;
     let session = state.get(&session_id)?;
     let manager = state.0.clone();
@@ -1431,7 +1489,12 @@ pub async fn native_tex_update(state: State<'_, NativeTexSessions>, session_id: 
                 session.terminate();
             }
         }
-        result.map_err(|problem| lock(&session.messages).diagnostic(problem))
+        let update = result.map_err(|problem| lock(&session.messages).diagnostic(problem))?;
+        let active = lock(&manager).session.clone()
+            .filter(|current| current.id == *update.session_id.as_ref().unwrap_or(&session.id))
+            .ok_or_else(|| error("stale_session", "The native layout session changed."))?;
+        let revision = update.source_revision;
+        active.layout_reply(update, revision, span_paths)
     }).await
 }
 
@@ -2166,6 +2229,17 @@ mod tests {
         assert!(validate_id("tex-00000001-00000000000000000000000000000001-0000000000000001").is_ok());
         assert!(integer(&json!({"revision": -1}), "revision").is_err());
         assert!(integer(&json!({"revision": MAX_SAFE_INTEGER + 1}), "revision").is_err());
+    }
+
+    #[test]
+    fn incremental_edits_preserve_utf8_boundaries_and_the_unchanged_source() {
+        for (before, after) in [("中文\n\n2", "中丈\n\n2"), ("a𝔸z", "a𝔹z"),
+            ("", "新"), ("旧", ""), ("x\n\nx", "x\n\n\n\nx"), ("new", "new"), ("aé", "b©")] {
+            let (start, end, inserted) = text_splice(before, after);
+            let mut applied = before.to_owned();
+            applied.replace_range(start..end, inserted);
+            assert_eq!(applied, after);
+        }
     }
 
     #[test]

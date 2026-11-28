@@ -1,10 +1,17 @@
-/** Align the mounted editor with the native page, exposing only its active block.
- * Moving or cloning a contenteditable subtree would invalidate the IME range.
- */
+import {blinkCaret} from '../editor/caret-motion.js';
+import {paragraphHit} from '../typesetting/rtex/paragraph-geometry.mjs';
+
+// The document model and the IME always own the same mounted editable node.
+// The paper owns confirmed pixels. A dirty paragraph temporarily owns its ink
+// and masks only its old native rows until both representations match again.
 export function nativeParagraphOverlay(editor, panel, pages, framePending) {
   const page=editor.closest('.document-page'),main=page.closest('main');
-  let number=1, anchor=null, block=null, dx=0, dy=0, frame=0;
-  const canvas=()=>pages.querySelector(`[data-native-page="${number}"] canvas,[data-pdf-page="${number}"] canvas`);
+  const metrics=document.createElement('canvas').getContext('2d');
+  let number=1, anchor=null, block=null, frame=0, layout=null, revision=-1, composing=false;
+  let maskOwner=null, maskPage=0, marker=null, finishMark=null, masks=[];
+  const removedInk=new Map();
+  const sheetFor=n=>pages.querySelector('[data-native-page="'+n+'"],[data-pdf-page="'+n+'"]');
+  const canvas=(n=number)=>sheetFor(n)?.querySelector('canvas');
   function selectedBlock(){
     const selection=document.getSelection();
     const target=page.contains(document.activeElement)&&document.activeElement!==editor
@@ -14,39 +21,157 @@ export function nativeParagraphOverlay(editor, panel, pages, framePending) {
     return candidate && candidate!==editor && page.contains(candidate)?candidate:
       editor.querySelector('.math-display.ProseMirror-selectednode');
   }
+  function rangePoint(element,offset) {
+    const walker=document.createTreeWalker(element,NodeFilter.SHOW_TEXT|NodeFilter.SHOW_ELEMENT,{
+      acceptNode:n=>n.nodeType===Node.TEXT_NODE || n.nodeName==='BR' ? NodeFilter.FILTER_ACCEPT :
+        n.matches('[contenteditable=false],.ProseMirror-widget') ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_SKIP
+    });
+    let left=offset, node;
+    while((node=walker.nextNode())){
+      if(node.nodeName==='BR'){left--;continue;}
+      if(left>node.length){left-=node.length;continue;}
+      if(left<0 || !node.length) continue;
+      const r=document.createRange(),end=left===node.length;
+      r.setStart(node,end?left-1:left);r.setEnd(node,end?left:left+1);
+      const rect=r.getBoundingClientRect();
+      if(rect.height)return {x:end?rect.right:rect.left,top:rect.top,element:node.parentElement};
+    }
+    return null;
+  }
+  function selectionOffset(element) {
+    const selection=document.getSelection();
+    if(!selection?.isCollapsed||!element.contains(selection.focusNode))return null;
+    const r=document.createRange();r.selectNodeContents(element);
+    r.setEnd(selection.focusNode,selection.focusOffset);
+    return r.toString().length;
+  }
+  function ascent(element,scale) {
+    const s=getComputedStyle(element);
+    metrics.font=s.fontStyle+' '+s.fontWeight+' '+s.fontSize+' '+s.fontFamily;
+    return (metrics.measureText('Mg').fontBoundingBoxAscent||parseFloat(s.fontSize)*.8)*scale;
+  }
+  function clearExact() {
+    main.classList.remove('native-ink-confirmed');
+    marker?.remove(); marker=null;
+    finishMark?.remove(); finishMark=null;
+  }
+  function coverRows(paragraph,onlyPage){
+    const covered=[];
+    for(const row of paragraph?.rows??[]){
+      if(onlyPage && row.page!==onlyPage)continue;
+      const sheet=sheetFor(row.page);
+      if(!sheet || sheet.dataset.paintRevision!==String(revision))continue;
+      const m=document.createElement('span');m.className='native-draft-mask';m.setAttribute('aria-hidden','true');
+      Object.assign(m.style,{left:'calc('+row.left*100+'% - 1px)',width:'calc('+(row.right-row.left)*100+'% + 2px)',
+        top:'calc('+row.top*100+'% - 1px)',height:'calc('+(row.bottom-row.top)*100+'% + 2px)'});
+      sheet.append(m);covered.push(m);
+    }
+    return covered;
+  }
+  function mask(paragraph) {
+    if(maskOwner===paragraph && maskPage===number && masks.every(m=>m.isConnected))return;
+    for(const m of masks)m.remove();
+    maskOwner=paragraph;maskPage=number;masks=coverRows(paragraph,number);
+  }
+  function clearRemovedInk(){
+    for(const items of removedInk.values())for(const mask of items)mask.remove();
+    removedInk.clear();
+  }
+  function hideRemovedInk(){
+    const previous=layout?.byElement.get(block);
+    if(previous && !editor.contains(block) && !removedInk.has(previous))removedInk.set(previous,coverRows(previous));
+  }
+  function confirmedCaret(stop,paragraph,height,scale) {
+    const sheet=sheetFor(stop.row.page);
+    if(!marker){
+      marker=document.createElement('span');marker.className='native-rich-caret';marker.setAttribute('aria-hidden','true');
+      if(!window.matchMedia('(prefers-reduced-motion: reduce)').matches)blinkCaret(marker);
+    }
+    if(marker.parentElement!==sheet)sheet.append(marker);
+    marker.style.left=stop.x*100+'%';marker.style.top=stop.y*100+'%';
+    marker.style.height=height+'px';marker.style.transform='translateY(-'+ascent(block,scale)+'px)';
+    const end=paragraph.stops.get(paragraph.entry.text.length);
+    if(end && page.dataset.formattingMarks==='true'){
+      if(!finishMark){finishMark=document.createElement('span');finishMark.className='native-rich-endmark';finishMark.setAttribute('aria-hidden','true');finishMark.textContent='¶';}
+      const last=sheetFor(end.row.page);
+      if(last && last.dataset.paintRevision===String(revision)){
+        if(finishMark.parentElement!==last)last.append(finishMark);
+        finishMark.style.left=end.x*100+'%';finishMark.style.top=end.y*100+'%';finishMark.style.fontSize=height*.60+'px';
+      }else finishMark.remove();
+    }else {finishMark?.remove();finishMark=null;}
+    main.classList.add('native-ink-confirmed');
+  }
+  function referenceFor(paragraph,scale) {
+    if(paragraph){
+      const offset=selectionOffset(block),old=paragraph.entry.text, live=block.textContent;
+      if(!composing && offset!==null && old===live && paragraph.stops?.has(offset))
+        return {stop:paragraph.stops.get(offset),offset,exact:true};
+      // Anchor the common prefix nearest the edit, including wrapped lines.
+      let i=0,limit=Math.min(offset??0,live.length,old?.length??0);
+      while(i<limit&&old[i]===live[i])i++;
+      while(i>0&&!paragraph.stops?.has(i))i--;
+      const first=paragraph.rows[0];
+      return {offset:i,stop:paragraph.stops?.get(i)??{row:first,x:first.left,y:first.baseline}};
+    }
+    // Consecutive empty editor paragraphs have no TeX line boxes. New ink
+    // starts below the last authored line, independent of how many Enters
+    // were used to reach it. DOM-only paragraphs still being typed count once.
+    let distance=1;
+    for(let prev=block?.previousElementSibling;prev;prev=prev.previousElementSibling){
+      const prior=layout?.byElement.get(prev);
+      if(prior){
+        const last=prior.rows.at(-1),sheet=canvas(last.page)?.getBoundingClientRect();
+        if(!sheet?.height)break;
+        const lineHeight=parseFloat(getComputedStyle(block).lineHeight)*scale/sheet.height;
+        if(!Number.isFinite(lineHeight))break;
+        const first=prior.rows[0],x=block.matches('p')&&prev.matches('p')?first.left:null;
+        return {offset:0,stop:{row:last,x,y:last.baseline+lineHeight*distance}};
+      }
+      if(prev.textContent.trim() || prev.matches('.math-display,figure,table'))distance++;
+    }
+    return null;
+  }
   function position(){
+    if(block&&!editor.contains(block)){hideRemovedInk();block=selectedBlock();anchor=null;}
+    const scale=page.currentCSSZoom||page.getBoundingClientRect().width/page.offsetWidth;
+    if(!Number.isFinite(scale)||scale<=0)return;
+    const paragraph=layout?.byElement.get(block);
+    let reference=block&&referenceFor(paragraph,scale);
+    if(reference && sheetFor(reference.stop.row.page)?.dataset.paintRevision!==String(revision))reference=null;
+    if(reference)number=reference.stop.row.page;
     const current=canvas(),sheet=page.querySelector('.document-sheets')?.children[number-1]??page;
     if(!current)return;
-    if(block&&!editor.contains(block)){block=selectedBlock();anchor=null;}
     const box=current.getBoundingClientRect(),paper=sheet.getBoundingClientRect();
     let shiftX=box.left-paper.left,shiftY=box.top-paper.top;
     const bounds=block?.getBoundingClientRect();
-    const scale=page.offsetWidth?paper.width/page.offsetWidth:1;
-    if(!Number.isFinite(scale)||scale<=0)return;
-    if(bounds&&anchor?.block?.isConnected){
-      const reference=anchor.block;
-      let textBox=null;
-      if(Number.isFinite(anchor.x) && reference.firstChild?.nodeType===Node.TEXT_NODE){
-        const range=document.createRange();
-        range.setStart(reference.firstChild,0);
-        range.setEnd(reference.firstChild,Math.min(1,reference.firstChild.length));
-        textBox=range.getClientRects()[0];
-      }
-      if(textBox)shiftX=box.left+anchor.x*box.width-textBox.left;
-      shiftY=box.top+anchor.y*box.height-(textBox?.top??reference.getBoundingClientRect().top)-(anchor.ascent??0)*scale;
+    const target=reference?.stop;
+    if(target && bounds){
+      const point=rangePoint(block,reference.offset);
+      const style=getComputedStyle(block);
+      const fallbackX=bounds.left+((parseFloat(style.paddingLeft)||0)+(parseFloat(style.textIndent)||0))*scale;
+      if(Number.isFinite(target.x))shiftX=box.left+target.x*box.width-(point?.x??fallbackX);
+      shiftY=box.top+target.y*box.height-(point?.top??bounds.top)-ascent(point?.element??block,scale);
+    }else if(bounds && anchor?.block?.isConnected){
+      const point=rangePoint(anchor.block,0);
+      if(point && Number.isFinite(anchor.x))shiftX=box.left+anchor.x*box.width-point.x;
+      shiftY=box.top+anchor.y*box.height-(point?.top??anchor.block.getBoundingClientRect().top);
     }
-    const viewport=panel.getBoundingClientRect(),host=main.getBoundingClientRect();
-    const viewRight=viewport.left+panel.clientWidth;
-    dx+=shiftX;dy+=shiftY;
-    const shift=`${(dx/scale).toFixed(3)}px ${(dy/scale).toFixed(3)}px`;
+    // Invert the *applied* CSS translation, not successive measurement
+    // deltas. Scrolling, zoom changes and re-entering a page are idempotent.
+    const applied=getComputedStyle(page).translate.split(' ').map(parseFloat);
+    const x=(Number.isFinite(applied[0])?applied[0]:0)+shiftX/scale;
+    const y=(Number.isFinite(applied[1])?applied[1]:0)+shiftY/scale;
+    const shift=x.toFixed(4)+'px '+y.toFixed(4)+'px';
     if(page.style.getPropertyValue('--native-edit-shift')!==shift)page.style.setProperty('--native-edit-shift',shift);
     if(!bounds)return;
-    const top=Math.max(bounds.top+shiftY-1,box.top,viewport.top);
-    const bottom=Math.min(bounds.bottom+shiftY+1,box.bottom,viewport.bottom);
+    const viewport=panel.getBoundingClientRect(),host=main.getBoundingClientRect();
+    const top=Math.max(bounds.top+shiftY-1,box.top,viewport.top),bottom=Math.min(bounds.bottom+shiftY+1,box.bottom,viewport.bottom);
     const gutter=block.matches('h1,h2,h3')?32*scale:2;
-    const left=Math.max(bounds.left+shiftX-gutter,box.left,viewport.left);
-    const right=Math.min(bounds.right+shiftX+2,box.right,viewRight);
-    main.style.setProperty('--native-edit-clip',`inset(${top-host.top}px ${host.right-right}px ${host.bottom-bottom}px ${left-host.left}px)`);
+    const left=Math.max(bounds.left+shiftX-gutter,box.left,viewport.left),right=Math.min(bounds.right+shiftX+2,box.right,viewport.left+panel.clientWidth);
+    main.style.setProperty('--native-edit-clip','inset('+(top-host.top)+'px '+(host.right-right)+'px '+(host.bottom-bottom)+'px '+(left-host.left)+'px)');
+    if(reference?.exact){
+      mask(null);confirmedCaret(target,paragraph,parseFloat(getComputedStyle(block).lineHeight)*scale||16,scale);
+    }else{clearExact();mask(paragraph??null);}
   }
   // On Enter the editing clip moves immediately, but a cold TeX pass may
   // still be drawing the preceding paragraph. Bridge ordinary prose only.
@@ -59,7 +184,8 @@ export function nativeParagraphOverlay(editor, panel, pages, framePending) {
   }
   function retainText(previous){
     const surface=canvas();
-    if(!surface || !previous?.isConnected || !previous.matches('p,h1,h2,h3') ||
+    if(layout?.byElement.get(previous)?.entry.text===previous?.textContent && previous)return;
+    if(!surface || !previous?.textContent.trim() || !previous.isConnected || !previous.matches('p,h1,h2,h3') ||
        previous.querySelector('math-field,img,input,[contenteditable=false]'))return;
     const sheet=surface.getBoundingClientRect(),rect=previous.getBoundingClientRect();
     if(!sheet.width || rect.top<sheet.top || rect.bottom>sheet.bottom)return;
@@ -108,7 +234,8 @@ export function nativeParagraphOverlay(editor, panel, pages, framePending) {
     if(!document.body.classList.contains('native-tex-rich-edit'))return;
     const next=selectedBlock();
     if(next && block!==next){
-      if(framePending() && block?.nextElementSibling===next)retainText(block);
+      hideRemovedInk();
+      if(framePending() && block?.nextElementSibling===next && layout?.byElement.get(block)?.entry.text!==block.textContent)retainText(block);
       pendingRows.get(next)?.remove();pendingRows.delete(next);
       if(block?.nextElementSibling!==next)anchor=null;
       block=next;
@@ -132,7 +259,7 @@ export function nativeParagraphOverlay(editor, panel, pages, framePending) {
       else if(y>rect.bottom)low=middle+1;
       else {index=middle;break;}
     }
-    if(index>=0 && index+1!==number && pages.querySelector('[data-native-page="'+(index+1)+'"],[data-pdf-page="'+(index+1)+'"]')){
+    if(!layout?.byElement.has(block) && index>=0 && index+1!==number && pages.querySelector('[data-native-page="'+(index+1)+'"],[data-pdf-page="'+(index+1)+'"]')){
       number=index+1;anchor=null;position();
     }
     const rect=range.getBoundingClientRect(),view=panel.getBoundingClientRect();
@@ -148,6 +275,13 @@ export function nativeParagraphOverlay(editor, panel, pages, framePending) {
   window.addEventListener('lineae-layout',schedule);
   document.addEventListener('selectionchange',schedule);
   page.addEventListener('focusin',schedule);
+  function beginDraft(){
+    if(!document.body.classList.contains('native-tex-rich-edit'))return;
+    clearExact();mask(layout?.byElement.get(block)??null);
+  }
+  page.addEventListener('beforeinput',beginDraft,true);
+  page.addEventListener('compositionstart',()=>{composing=true;beginDraft();},true);
+  page.addEventListener('compositionend',()=>{composing=false;schedule();},true);
   page.addEventListener('input',schedule);
   let followFrame=0;
   page.addEventListener('keyup',()=>{
@@ -182,30 +316,25 @@ export function nativeParagraphOverlay(editor, panel, pages, framePending) {
       anchor=Number.isFinite(y)?{block,y,x}:null;
       position();schedule();
     },
-    alignPainted(renderer){
-      update();
-      if(!block?.matches('p')||block.childNodes.length!==1||block.firstChild.nodeType!==Node.TEXT_NODE)return;
-      const text=block.textContent;
-      if(!text||/\s/.test(text))return;
-      const lines=renderer.paintedLines(number,text);
-      if(!lines.length)return;
-      const matches=[...editor.querySelectorAll('p')].filter(p=>p.textContent===text);
-      if(matches.length!==lines.length||matches.length>1&&pages.querySelectorAll('canvas').length!==1)return;
-      const line=lines[matches.indexOf(block)];
-      if(!line)return;
-      const style=getComputedStyle(block),ctx=document.createElement('canvas').getContext('2d');
-      ctx.font=style.fontStyle+' '+style.fontWeight+' '+style.fontSize+' '+style.fontFamily;
-      const ascent=ctx.measureText(text).fontBoundingBoxAscent;
-      if(!Number.isFinite(ascent))return;
-      anchor={block,x:line.x,y:line.baseline,ascent};
-      position();
+    present(next,stamp){
+      if(next!==layout)clearRemovedInk();
+      layout=next;revision=stamp;
+      for(const [element,row] of pendingRows){
+        const confirmed=layout?.byElement.get(element);
+        if(confirmed?.entry.text===element.textContent && confirmed.rows.every(r=>sheetFor(r.page)?.dataset.paintRevision===String(revision))){
+          row.remove();pendingRows.delete(element);
+        }
+      }
+      if(document.body.classList.contains('native-tex-rich-edit'))update();
     },
+    hit(page,x,y){return sheetFor(page)?.dataset.paintRevision===String(revision)?paragraphHit(layout,page,x,y):null;},
     update:schedule,releaseRows,
     clear(retain=false){
       if(retain)retainText(block);
       else releaseRows();
       cancelAnimationFrame(followFrame);followFrame=0;
-      cancelAnimationFrame(frame);frame=0;dx=0;dy=0;anchor=null;block=null;
+      cancelAnimationFrame(frame);frame=0;anchor=null;block=null;composing=false;clearExact();mask(null);
+      if(!retain)clearRemovedInk();
       main.style.removeProperty('--native-edit-clip');page.style.removeProperty('--native-edit-shift');
       document.body.classList.remove('native-tex-rich-edit');
     }

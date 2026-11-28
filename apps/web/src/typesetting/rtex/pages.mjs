@@ -12,7 +12,7 @@ const CSS_PER_SP=(96/72)/65781.76;
 
 // Strict read-only full-page adapter. No browser font fallback or inferred
 // glyph positions: a page is shown only when all its resources are exact.
-export function installNativePages({host,getFont,getTypeOneFont,getRaster,paragraphIndent,onPaint,onError,onMathHit,onImageHit,onDrawingHit,onReferenceHit,proseRanges,foldLabel,onExpandFile}) {
+export function installNativePages({host,getFont,getTypeOneFont,getRaster,paragraphIndent,onPaint,onFrame,onError,onMathHit,onImageHit,onDrawingHit,onReferenceHit,proseRanges,foldLabel,onExpandFile}) {
   let generation=0,epoch=0,zoom=.75,revision=-1,layoutVersion=-1;
   let fonts=new FontStore();
   const imageResources=new Map(),imageLoads=new Map();
@@ -473,10 +473,11 @@ export function installNativePages({host,getFont,getTypeOneFont,getRaster,paragr
             }
             else if(entry.painted){
               entry.canvas.width=1;entry.canvas.height=1;
-              entry.painted=null;entry.rasterHits=[];
+              entry.painted=null;entry.rasterHits=[];delete entry.dom.dataset.paintRevision;
             }
           }
         }
+        if(revision>=0)onFrame?.();
         if(revision>=0&&!warm)onPaint(revision);
       } catch(error) {onError(error,revision);}
     });
@@ -540,7 +541,7 @@ export function installNativePages({host,getFont,getTypeOneFont,getRaster,paragr
       try {
         await prepare(message.dl,generation);
         if(currentEpoch!==epoch)return;
-        warm={pages:overlay,dl:message.dl,revision:message.versions.source_revision};
+        warm={pages:overlay,dl:message.dl,revision:message.versions.source_revision,update:message};
         host.dataset.warmRevision=String(warm.revision);
         ownership=null;clearCaret();showFileBoundaries([]);showFoldedFiles([],false);redraw();
       } catch {/* Complete layout will handle unsupported resources. */}
@@ -554,7 +555,8 @@ export function installNativePages({host,getFont,getTypeOneFont,getRaster,paragr
     for(const resource of imageResources.values())resource.image.close();
     imageResources.clear();imageLoads.clear();if(clear)host.replaceChildren();
   }
-  function bindPdfLayout(stamp,geometry,views) {
+  function bindPdfLayout(message,geometry,views) {
+    const stamp=message.versions;
     if(geometry.size!==views.length||!views.length)return false;
     const entries=views.map(({number,dom,canvas,width,height})=>{
       const page=geometry.get(number);
@@ -569,6 +571,7 @@ export function installNativePages({host,getFont,getTypeOneFont,getRaster,paragr
     if(entries.some(entry=>!entry))return false;
     clearCaret();showFileBoundaries([]);showFoldedFiles([],false);ownership=null;pages.clear();pdfBacked=true;
     revision=stamp.source_revision;layoutVersion=stamp.layout_version;
+    complete=message;warm=null;
     for(const entry of entries){
       const {number,dom}=entry;
       dom.dataset.nativePage=String(number);
@@ -597,27 +600,10 @@ export function installNativePages({host,getFont,getTypeOneFont,getRaster,paragr
       x:first && group===owner?.paragraph && !glyphs.some(g=>g.number<page)
         ?first.glyph.bbox[0]/entry.dl.page_width:undefined};
   }
-  // Index the visible pixels once per painted frame. A paragraph update may
-  // translate a replacement line relative to its own display list.
-  function paintedLines(number,text){
-    const frame=pages.get(number)?.painted;
-    if(!frame)return [];
-    if(!frame.textLines){
-      frame.textLines=new Map();
-      for(const [i,original] of frame.dl.lines.entries()){
-        const replacement=frame.rows?.get(i),line=replacement?.line??original;
-        if(!line.items.every(item=>['g','m','c'].includes(item[0])))continue;
-        const glyphs=line.items.filter(item=>item[0]==='g');
-        if(!glyphs.length||glyphs.some(g=>!Number.isInteger(g[2])||g[2]<0||g[2]>0x10ffff))continue;
-        const key=glyphs.map(g=>String.fromCodePoint(g[2])).join('');
-        if(!frame.textLines.has(key))frame.textLines.set(key,[]);
-        frame.textLines.get(key).push({x:(glyphs[0][4]+(replacement?.dx??0))/frame.dl.page_width,
-          baseline:(glyphs[0][5]+(replacement?.dy??0))/frame.dl.page_height});
-      }
-    }
-    return frame.textLines.get(text)??[];
+  function paragraphLayout(){
+    return complete && {layout:complete,pages,warm,revision:warm?.revision??revision};
   }
-  return {paintedLines,blockAnchor,accept,reset,attachOwners,bindPdfLayout,showCaret,showSelection,showFileBoundaries,showFoldedFiles,clearCaret,redraw,setZoom(value){clearCaret();zoom=value;showFileBoundaries(boundaries);showFoldedFiles(foldedRanges,false);if(pdfBacked)return;for(const entry of pages.values()){
+  return {paragraphLayout,blockAnchor,accept,reset,attachOwners,bindPdfLayout,showCaret,showSelection,showFileBoundaries,showFoldedFiles,clearCaret,redraw,setZoom(value){clearCaret();zoom=value;showFileBoundaries(boundaries);showFoldedFiles(foldedRanges,false);if(pdfBacked)return;for(const entry of pages.values()){
     entry.dom.style.width=entry.dl.page_width*CSS_PER_SP*zoom+'px';
     entry.dom.style.height=entry.dl.page_height*CSS_PER_SP*zoom+'px';
   }redraw();}};
