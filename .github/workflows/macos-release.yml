@@ -8,6 +8,7 @@ on:
         type: boolean
         default: false
   push:
+    branches: [main]
     tags: ["v*"]
 
 permissions:
@@ -121,15 +122,15 @@ jobs:
     secrets: inherit
 
   linux:
-    if: ${{ !inputs.publish_preview }}
+    if: ${{ !(inputs.publish_preview || (github.event_name == 'push' && github.ref == 'refs/heads/main')) }}
     uses: ./.github/workflows/linux-release.yml
 
   native:
-    if: github.event_name == 'workflow_dispatch' && inputs.publish_preview
+    if: ${{ inputs.publish_preview || (github.event_name == 'push' && github.ref == 'refs/heads/main') }}
     uses: ./.github/workflows/native-tex.yml
 
   preview:
-    if: github.event_name == 'workflow_dispatch' && inputs.publish_preview
+    if: ${{ inputs.publish_preview || (github.event_name == 'push' && github.ref == 'refs/heads/main') }}
     needs: [web, build, windows, native]
     runs-on: ubuntu-24.04
     permissions:

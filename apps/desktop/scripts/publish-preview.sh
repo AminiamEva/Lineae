@@ -1,8 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Only explicit manual requests can publish; never replace a stable release.
-[[ "$GITHUB_EVENT_NAME" == workflow_dispatch && "$PUBLISH_PREVIEW" == true ]]
+# Main pushes publish automatically; other branches need an explicit manual
+# request. Never replace a stable release.
+if [[ "$GITHUB_EVENT_NAME" == workflow_dispatch ]]; then
+  [[ "$PUBLISH_PREVIEW" == true ]]
+else
+  [[ "$GITHUB_EVENT_NAME" == push && "$GITHUB_REF" == refs/heads/main ]]
+fi
 [[ "$GITHUB_SHA" =~ ^[0-9a-f]{40}$ && "$GITHUB_RUN_ID" =~ ^[0-9]+$ ]]
 test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
 tag="desktop-preview-$GITHUB_RUN_ID"

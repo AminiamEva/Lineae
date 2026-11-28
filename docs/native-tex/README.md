@@ -18,15 +18,16 @@ GitHub's Git refs API. No candidate source or font has been vendored.
 
 ## Download a matching two-device preview
 
-Run **Desktop release** (`macos-release.yml`) on the intended branch, explicitly checking
-`publish_preview`. CLI equivalent:
+Every push to `main` runs **Desktop release** (`macos-release.yml`) and publishes a
+matching preview automatically. To preview another branch without merging, run the
+workflow there with `publish_preview` explicitly checked:
 
 ```sh
-gh workflow run macos-release.yml --ref main -f publish_preview=true
+gh workflow run macos-release.yml --ref <branch> -f publish_preview=true
 ```
 
 Web checks, Windows checks/build and macOS arm64 packaging run remotely. Linux is skipped
-only for this manual preview request. Publication waits for all three required jobs;
+for previews. Publication waits for all three required jobs;
 macOS retains its packaged WKWebView smoke test and signature checks. Stable `v*` releases
 keep their existing platform gates and signing policy.
 
