@@ -1497,7 +1497,9 @@ function renderMeta() {
   metaDate.dataset.zhPlaceholder='日期';metaDate.dataset.enPlaceholder='Date';metaDate.dataset.placeholder=t('日期','Date');
 }
 renderMeta();
-typesetPagination=installTypesetPagination(documentPage,paper,metaBar,editor);
+typesetPagination=installTypesetPagination(documentPage,paper,metaBar,editor,{
+  engine: config.value.typesetting?.engine ?? 'xelatex',
+});
 typesetPagination.setTableContinuation(config.value.interface.continuedTables);
 window.addEventListener('lineae-image-layout',()=>{typesetPagination?.refresh();syncImageTab?.();});
 function source() {
@@ -2140,6 +2142,23 @@ function updateThemeButton(){
   themeButton.dataset.tooltipEn='Theme: '+label[1];
   themeButton.replaceChildren(icon({light:'sun',dark:'moon',system:'system'}[theme.getPreference()]));
 }
+const engineButton = document.createElement('button');
+engineButton.type = 'button';
+engineButton.className = 'engine-toggle';
+engineButton.addEventListener('mousedown', event => event.preventDefault());
+engineButton.addEventListener('click', () => {
+  const next = typesetPagination.getEngine() === 'pdflatex' ? 'xelatex' : 'pdflatex';
+  typesetPagination.setEngine(next);
+  updateEngineButton();
+});
+function updateEngineButton() {
+  const current = typesetPagination.getEngine();
+  engineButton.textContent = current === 'pdflatex' ? 'pdfLaTeX' : 'XeLaTeX';
+  engineButton.dataset.engine = current;
+  engineButton.setAttribute('aria-pressed', String(current === 'pdflatex'));
+  engineButton.dataset.tooltipZh = current === 'pdflatex' ? '切换到 XeLaTeX 引擎' : '切换到 pdfLaTeX 引擎';
+  engineButton.dataset.tooltipEn = current === 'pdflatex' ? 'Switch to XeLaTeX engine' : 'Switch to pdfLaTeX engine';
+}
 const modes = document.createElement('div');
 modes.className = 'tex-modes';
 modes.setAttribute('role','group');
@@ -2602,7 +2621,7 @@ function updateEnvironment() {
   environment.textContent=[labels[name],...(field ? mathEnvironment(field) : [])].join(' › ');
   environment.dataset.environment=name;
 }
-footer.append(count,document.querySelector('#status'),environment,zoom,percent,paginationButton,themeButton,modes);document.body.append(footer);sourceView.mountStatus(footer);scale();updatePaginationButton();
+footer.append(count,document.querySelector('#status'),environment,zoom,percent,paginationButton,engineButton,themeButton,modes);document.body.append(footer);sourceView.mountStatus(footer);scale();updatePaginationButton();updateEngineButton();
 const shortcutPriority=installShortcutPriority({host:footer,before:modes,getBindings:()=>config.bindings});
 nativeTexPreview=installNativeTexPreview({host:footer,before:modes,
   getSnapshot:async()=>{

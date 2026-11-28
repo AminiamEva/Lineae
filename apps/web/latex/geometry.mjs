@@ -24,6 +24,12 @@ const NATIVE_MARGINS = Object.freeze({
   legal: Object.freeze({ top: '44.379mm', right: '47.456mm', bottom: '42.003mm', left: '47.191mm' }),
 });
 
+// pdfLaTeX with Computer Modern (T1 encoding) uses the same article.cls layout
+// as XeLaTeX with Latin Modern. The TeX point dimensions are identical; the
+// rendering difference is purely in the font metrics (Computer Modern vs Latin
+// Modern). We reuse the same native margins but apply a different font stack.
+const PDFLATEX_NATIVE_MARGINS = NATIVE_MARGINS;
+
 // geometry.sty defaults: hscale = vscale = 0.7, hratio = 1:1,
 // vratio = 2:3 (top:bottom). The resulting body margins are 15% of the
 // paper width on each side and 12%/18% of the paper height at top/bottom.

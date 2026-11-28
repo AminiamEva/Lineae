@@ -505,7 +505,8 @@ const server=createServer(async(req,res)=>{
       const glyph=nativePage.dl.math_owners.glyphs.find(glyph=>glyph.owner===1);
       const nativeScale=.75*(96/72)/65781.76;
       await page.locator(`[data-native-page="${nativePage.page}"] canvas`).click({position:{
-        x:glyph.bbox[0]*nativeScale,y:((glyph.bbox[1]+glyph.bbox[3])/2)*nativeScale,
+        x:((glyph.bbox[0]+glyph.bbox[2])/2)*nativeScale,
+        y:((glyph.bbox[1]+glyph.bbox[3])/2)*nativeScale,
       }});
       await page.waitForFunction(()=>document.activeElement?.id==='native-tex-input');
       await page.keyboard.type('X');

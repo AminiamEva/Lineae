@@ -4,6 +4,10 @@ The native TeX preview is no longer the end goal. This page describes the
 architecture now being migrated toward: a directly interactive surface whose
 layout geometry comes only from rtex/LuaLaTeX.
 
+Status: the migration is in progress. Native input is opt-in, the old editor
+remains the default fallback, and the final acceptance gate (normal editing
+with the old JS typesetting engine disabled) is not met yet.
+
 ## Rules
 
 - ProseMirror remains the single document model and history.
@@ -65,6 +69,11 @@ in-flight update loop instead.
 
 Demonstrated in the browser regression by asserting that typing produces a
 source update without any additional `native_tex_poll` call.
+
+Real-engine evidence on both target platforms now covers prose as well:
+rtex reports attribute-tagged text glyphs outside math, and the browser
+regression clicks a recorded LuaLaTeX text box, places the native caret and
+writes the exact source byte.
 
 ## Latency
 

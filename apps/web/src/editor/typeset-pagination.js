@@ -114,7 +114,8 @@ function paragraphLines(editor, element, block, pageRect, zoom) {
   }));
 }
 
-export function installTypesetPagination(page, paper, meta, editor) {
+export function installTypesetPagination(page, paper, meta, editor, options = {}) {
+  let { engine = 'xelatex' } = options;
   const editable = paper.querySelector('.ProseMirror');
   const paragraphLayout=installParagraphLayout(editor);
   let paragraphPreamble='';
@@ -128,7 +129,7 @@ export function installTypesetPagination(page, paper, meta, editor) {
   document.head.append(paginationStyle);
 
   let frame = 0;
-  let profile = typesetProfile();
+  let profile = typesetProfile('', engine);
   let furniture = readPageFurniture();
   let maketitle = false;
   let lineBreaks = [];
@@ -285,9 +286,10 @@ export function installTypesetPagination(page, paper, meta, editor) {
 
   function applyProfile(preamble) {
     paragraphPreamble=preamble;
-    profile = typesetProfile(preamble);
+    profile = typesetProfile(preamble, engine);
     furniture = readPageFurniture(preamble);
     page.dataset.documentClass = profile.className;
+    page.dataset.engine = engine;
     page.dataset.frontmatter = String(/\\frontmatter/.test(preamble));
     setSerializationClass(profile.className);
     setHeadingBase(profile.className === 'book' || profile.className === 'report' ? 'chapter' : null);
@@ -311,15 +313,35 @@ export function installTypesetPagination(page, paper, meta, editor) {
     page.style.setProperty('--tex-chapter-label-size',(classSize===12?24.88:20.74)*texPx+'px');
     page.style.setProperty('--tex-chapter-label-line-height',(classSize===12?30:25)*texPx+'px');
     const fonts = profile.fonts ?? {};
-    page.style.setProperty('--tex-font-family', fonts.serif
-      ? stack(fonts.serif, 'Latin Modern Roman') : '"Latin Modern Roman"');
-    page.style.setProperty('--tex-heading-font-family', fonts.serif
-      ? stack(fonts.serif, 'Latin Modern Roman 12', 'Latin Modern Roman')
-      : '"Latin Modern Roman 12","Latin Modern Roman"');
-    page.style.setProperty('--tex-cjk-font-family', fonts.cjk
-      ? stack(fonts.cjk, 'Songti SC', 'SimSun') : '"Songti SC",SimSun');
-    page.style.setProperty('--tex-mono-font-family', fonts.mono
-      ? stack(fonts.mono, 'Latin Modern Mono') : '"Latin Modern Mono"');
+    if (engine === 'pdflatex') {
+      // pdfLaTeX uses Computer Modern (Type1) by default. When lmodern is
+      // loaded, it uses Latin Modern Type1 which is metrically identical to
+      // the OTF version. We serve Computer Modern via the CMU Serif webfont
+      // family for the closest match.
+      page.style.setProperty('--tex-font-family', fonts.serif
+        ? stack(fonts.serif, 'Computer Modern', 'CMU Serif')
+        : '"Computer Modern","CMU Serif"');
+      page.style.setProperty('--tex-heading-font-family', fonts.serif
+        ? stack(fonts.serif, 'Computer Modern', 'CMU Serif')
+        : '"Computer Modern","CMU Serif"');
+      page.style.setProperty('--tex-cjk-font-family', fonts.cjk
+        ? stack(fonts.cjk, 'Songti SC', 'SimSun') : '"Songti SC",SimSun');
+      page.style.setProperty('--tex-mono-font-family', fonts.mono
+        ? stack(fonts.mono, 'Computer Modern Typewriter', 'CMU Typewriter Text')
+        : '"Computer Modern Typewriter","CMU Typewriter Text"');
+      page.style.setProperty('--tex-math-font-family', '"Computer Modern Math","CMU Serif"');
+    } else {
+      page.style.setProperty('--tex-font-family', fonts.serif
+        ? stack(fonts.serif, 'Latin Modern Roman') : '"Latin Modern Roman"');
+      page.style.setProperty('--tex-heading-font-family', fonts.serif
+        ? stack(fonts.serif, 'Latin Modern Roman 12', 'Latin Modern Roman')
+        : '"Latin Modern Roman 12","Latin Modern Roman"');
+      page.style.setProperty('--tex-cjk-font-family', fonts.cjk
+        ? stack(fonts.cjk, 'Songti SC', 'SimSun') : '"Songti SC",SimSun');
+      page.style.setProperty('--tex-mono-font-family', fonts.mono
+        ? stack(fonts.mono, 'Latin Modern Mono') : '"Latin Modern Mono"');
+      page.style.removeProperty('--tex-math-font-family');
+    }
   }
 
   function layoutFlow() {
@@ -675,6 +697,14 @@ export function installTypesetPagination(page, paper, meta, editor) {
     },
     toggle() {
       return this.setMode(mode === 'pages' ? 'flow' : 'pages');
+    },
+    getEngine: () => engine,
+    setEngine(nextEngine) {
+      if (nextEngine === 'pdflatex' || nextEngine === 'xelatex') {
+        engine = nextEngine;
+        applyProfile(paragraphPreamble || '');
+        repaginate();
+      }
     },
   };
 }
