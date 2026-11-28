@@ -11,6 +11,8 @@ ProseMirror owns input, composition, selection and history for the lifetime of a
 | Host delta → displayed page | The next complete delta is reconstructed from its complete predecessor. A late complete page cannot roll back newer paragraph ink. Virtualized pages acquire the same revision when painted. | `tests/native-paragraph-geometry.test.mjs`, `tests/native-tex-preview-browser.cjs` |
 | Equation, history and source views | The ordinary editor still handles the active formula. Native geometry and transient DOM fragments stay outside the document and its saved TeX. | `tests/native-desktop-typing.cjs`, `tests/math-editing-browser.cjs`, `tests/native-hybrid-baseline-browser.cjs --app` |
 
+A complete justified line in one text run retains its measured width and is shaped together. Where several marks share a line, their partial runs retain their individual origins. The browser regression checks every visible character in both cases and checks that a long plain paragraph creates just one fragment per visual line.
+
 The Windows WebView test samples animation frames across pinyin composition, Han text commitment, repeated Enter, and the return of confirmed ink. It checks model and source contents separately from movement on screen. It uses the browser's composition protocol. Candidate-window placement in a particular system IME needs a separate hardware test.
 
 LuaLaTeX may legitimately change page or line placement after a font, paper, or paragraph-style change. Multiple empty TeX paragraphs can also typeset as a single break. In that case the active insertion point stays visible while the user edits, and the confirmed result uses TeX's spacing.

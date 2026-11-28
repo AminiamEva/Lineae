@@ -28,7 +28,7 @@ export function snapshotDraft(block,sheets,measure) {
     return {group,left:(x-sheet.box.left)*100/sheet.box.width+'%',top:(y-sheet.box.top)*100/sheet.box.height+'%'};
   };
   let firstBaseline=null;
-  function paintText(text,rect,parent) {
+  function paintText(text,rect,parent,wholeJustifiedLine=false) {
     if(!text || !rect.height || !rect.width)return;
     const style=getComputedStyle(parent);
     const fontBox=measure(parent,String.fromCodePoint(text.codePointAt(0)));
@@ -41,10 +41,23 @@ export function snapshotDraft(block,sheets,measure) {
       'lineHeight','letterSpacing','wordSpacing','color','textDecoration','direction','textTransform'])
       ink.style[prop]=style[prop];
     ink.style.position='absolute';ink.style.whiteSpace='pre';ink.style.textIndent='0';
+    if(wholeJustifiedLine){
+      // Give the browser the width of this *already broken* line, including
+      // any trailing space. It can reproduce its own justification and font
+      // shaping in one pass, without an element or font probe per character.
+      ink.style.width=rect.width/scale+'px';ink.style.textAlign='justify';
+      ink.style.textAlignLast='justify';ink.style.textJustify=style.textJustify;
+    }
     ink.style.left=place.left;ink.style.top=place.top;ink.style.transformOrigin='0 0';
     ink.style.transform='scale('+scale+') translateY(-'+fontBox.aboveLine+'px)';
     ink.textContent=text;
     place.group.append(ink);
+  }
+  const onlyText=block.firstChild?.nodeType===Node.TEXT_NODE &&
+    [...block.childNodes].slice(1).every(n=>n.nodeType===Node.ELEMENT_NODE && n.matches('br.ProseMirror-trailingBreak'));
+  function oneLine(rects){
+    // A hanging space in pre-wrap can have its own rectangle on the same row.
+    return rects.length<=1 || Math.abs(rects[0].top-rects[rects.length-1].top)<.25;
   }
   function paintLine(node,from,to){
     const text=node.data.slice(from,to);
@@ -54,6 +67,10 @@ export function snapshotDraft(block,sheets,measure) {
       paintText(text.slice(start,end),range.getBoundingClientRect(),node.parentElement);
     };
     if(!style.textAlign.startsWith('justify')){emit(0,text.length);return;}
+    if((onlyText || (from>0 && to<node.length)) && style.direction==='ltr'){
+      range.setStart(node,from);range.setEnd(node,to);
+      paintText(text,range.getBoundingClientRect(),node.parentElement,true);return;
+    }
     // Justification is computed for the entire line. A detached span loses
     // the extra space between words and between Han glyphs. Retain the
     // measured origins of those runs, keeping Latin ligatures shaped together.
@@ -79,13 +96,13 @@ export function snapshotDraft(block,sheets,measure) {
       const rects=range.getClientRects();
       if(!rects.length)return;
       let to=node.length;
-      if(rects.length>1){
+      if(!oneLine(rects)){
         // Long lines cost logarithmic range measurements, not one per glyph.
         let lo=from+1,hi=to;
         while(lo<hi){
           const mid=Math.ceil((lo+hi)/2);
           range.setEnd(node,mid);
-          if(range.getClientRects().length<=1)lo=mid;else hi=mid-1;
+          if(oneLine(range.getClientRects()))lo=mid;else hi=mid-1;
         }
         to=lo;
         if(to<node.length && /[\uDC00-\uDFFF]/.test(node.data[to]))to++;

@@ -91,13 +91,36 @@ async function testDraftPixels(page){
     const before=characters([block]);
     const ink=snapshotDraft(block,sheets.map(element=>({element,box:element.getBoundingClientRect()})),nativeEditMetrics(document));
     const after=characters(ink);
+    for(const group of ink)group.remove();
+    block.textContent=('两端对齐的长段落，“中文和 Office” 都要保持字距。 ').repeat(45);
+    block.style.width='510px';
+    block.style.textIndent='2em';
+    const plain=characters([block]);
+    const plainInk=snapshotDraft(block,sheets.map(element=>({element,box:element.getBoundingClientRect()})),nativeEditMetrics(document));
+    const plainAfter=characters(plainInk);
+    const fragments=plainInk.reduce((count,group)=>count+group.childElementCount,0);
+    const lines=new Set(plain.map(c=>c.y)).size;
+    for(const group of plainInk)group.remove();
+    const longMark=document.createElement('strong');
+    longMark.textContent=block.textContent;block.replaceChildren('Paragraph before ',longMark,' and after.');
+    const marked=characters([block]);
+    const markedInk=snapshotDraft(block,sheets.map(element=>({element,box:element.getBoundingClientRect()})),nativeEditMetrics(document));
+    const markedAfter=characters(markedInk);
     section.remove();style.remove();
     return {count:ink.length,text:after.map(c=>c.char).join(''),expected:before.map(c=>c.char).join(''),
-      dx:Math.max(...before.map((c,i)=>Math.abs(c.x-after[i]?.x))),
-      dy:Math.max(...before.map((c,i)=>Math.abs(c.y-after[i]?.y)))};
+      plainText:plainAfter.map(c=>c.char).join(''),plainExpected:plain.map(c=>c.char).join(''),fragments,lines,
+      markedText:markedAfter.map(c=>c.char).join(''),markedExpected:marked.map(c=>c.char).join(''),
+      dx:Math.max(...before.map((c,i)=>Math.abs(c.x-after[i]?.x)),...plain.map((c,i)=>Math.abs(c.x-plainAfter[i]?.x)),
+        ...marked.map((c,i)=>Math.abs(c.x-markedAfter[i]?.x))),
+      dy:Math.max(...before.map((c,i)=>Math.abs(c.y-after[i]?.y)),...plain.map((c,i)=>Math.abs(c.y-plainAfter[i]?.y)),
+        ...marked.map((c,i)=>Math.abs(c.y-markedAfter[i]?.y)))};
   });
   assert.equal(result.count,2);
   assert.equal(result.text,result.expected);
+  assert.equal(result.plainText,result.plainExpected);
+  assert.equal(result.markedText,result.markedExpected);
+  assert.ok(result.fragments<=result.lines,'Long justified text should paint once per visual line: '+
+    JSON.stringify({fragments:result.fragments,lines:result.lines,dx:result.dx,dy:result.dy}));
   assert.ok(result.dx<1 && result.dy<1,'Intermediate ink moved while waiting for native layout '+JSON.stringify(result));
   console.log('Intermediate glyph origin displacement in CSS pixels',JSON.stringify({x:result.dx,y:result.dy}));
 }
