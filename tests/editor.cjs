@@ -3054,7 +3054,8 @@ A & B \\
     await page.locator('[data-command="display-style"]').click();
     await page.waitForFunction(()=>{
       const field=document.querySelector('.ProseMirror math-field');
-      return field?.value.startsWith('\\displaystyle') && field.hasFocus() && field.position===Math.max(0,field.lastOffset-2);
+      return field===document.activeElement && field?.value.startsWith('\\displaystyle') &&
+        !field._mathfield?.focusBlurInProgress && field.position===Math.max(0,field.lastOffset-2);
     });
     await page.keyboard.type('c');
     const styledValue=await styleField.evaluate(field=>field.value);
