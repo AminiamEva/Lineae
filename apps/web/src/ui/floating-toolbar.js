@@ -24,7 +24,7 @@ export function installFloatingToolbar({header,ribbon,tabs,sourceView,getAutoHid
   const previous = scrollControl(-1);
   const next = scrollControl(1);
   tabs.before(tabRow);
-  tabRow.append(previous,tabs,next,button);
+  tabRow.append(previous,tabs,button,next);
   holder.append(ribbon);
   header.append(holder);
 
@@ -45,8 +45,9 @@ export function installFloatingToolbar({header,ribbon,tabs,sourceView,getAutoHid
     });
   }
   function updateTabOverflow() {
-    // The tab strip gets the same clearance on both sides.
-    const available = tabRow.clientWidth - 2 * button.offsetWidth;
+    // Decide whether arrows are needed using the width available without them.
+    const gap = parseFloat(getComputedStyle(tabRow).columnGap);
+    const available = tabRow.clientWidth - button.offsetWidth - gap;
     const overflow = tabs.scrollWidth > available + 1;
     previous.hidden = next.hidden = !overflow;
     previous.disabled = tabs.scrollLeft <= 1;

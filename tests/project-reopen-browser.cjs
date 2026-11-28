@@ -47,12 +47,17 @@ const server=createServer(async(req,res)=>{
    const boxes=await page.evaluate(()=>{
     const ribbon=document.querySelector('.floating-toolbar>.ribbon');
     const control=ribbon.querySelector('#toolbar-collapse'),collapse=control.getBoundingClientRect();
-    const neighbors=[...control.parentElement.children].filter(el=>el!==control && !el.hidden);
+    const previous=ribbon.querySelector('[data-direction=previous]:not([hidden])');
+    const next=ribbon.querySelector('[data-direction=next]:not([hidden])');
     return {ribbon:ribbon.getBoundingClientRect().toJSON(),tabs:ribbon.querySelector('.ribbon-tabs').getBoundingClientRect().toJSON(),
-      neighborsRight:Math.max(...neighbors.map(el=>el.getBoundingClientRect().right)),collapse:collapse.toJSON(),width:innerWidth};
+      previousRight:previous?.getBoundingClientRect().right,nextLeft:next?.getBoundingClientRect().left,
+      collapse:collapse.toJSON(),width:innerWidth};
    });
    assert.ok(boxes.collapse.left>=boxes.tabs.right,'Collapse control stays clear of the ribbon tabs');
-   assert.ok(boxes.collapse.left>=boxes.neighborsRight,'Collapse control also stays clear of the tab scroll arrows');
+   if (boxes.previousRight!==undefined) assert.ok(boxes.previousRight<=boxes.tabs.left,'Previous arrow stays clear of the tabs');
+   if (boxes.nextLeft!==undefined) assert.ok(boxes.nextLeft>=boxes.collapse.right,'Next arrow stays clear of the collapse button');
+   assert.ok(Math.abs((boxes.tabs.left+boxes.collapse.right-boxes.ribbon.left-boxes.ribbon.right)/2)<0.5,
+     'Tabs and the collapse button stay centered beside the project sidebar');
    assert.ok(boxes.collapse.top>=boxes.ribbon.top&&boxes.collapse.bottom<=boxes.ribbon.bottom&&boxes.collapse.right<=boxes.ribbon.right,'Collapse control is inside the ribbon');
    assert.ok(boxes.collapse.left>=0&&boxes.collapse.right<=boxes.width,'Collapse control stays inside the viewport');
   }

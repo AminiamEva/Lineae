@@ -2350,12 +2350,19 @@ A & B \\
         const layout=await page.locator('.ribbon').evaluate(element=>{
           const panel=[...element.querySelectorAll('.tools')].find(node=>!node.hidden);
           const bounds=element.getBoundingClientRect();
-          const tabs=element.querySelector('.ribbon-tabs').getBoundingClientRect();
+          const tabs=element.querySelector('.ribbon-tabs');
+          const collapse=element.querySelector('#toolbar-collapse').getBoundingClientRect();
+          const headerFooter=tabs.querySelector('[data-group=headerFooter]').getBoundingClientRect();
+          const sidebar=parseFloat(getComputedStyle(document.body).getPropertyValue('--sidebar-width'));
           return {left:bounds.left,right:bounds.right,height:bounds.height,scroll:panel.scrollWidth,client:panel.clientWidth,
-            panelHeight:panel.clientHeight,tabOffset:(tabs.left+tabs.right-bounds.left-bounds.right)/2};
+            panelHeight:panel.clientHeight,toolbarOffset:(bounds.left+bounds.right-innerWidth-sidebar)/2,
+            tabOffset:(tabs.getBoundingClientRect().left+collapse.right-bounds.left-bounds.right)/2,
+            collapseGap:tabs.scrollWidth===tabs.clientWidth ? collapse.left-headerFooter.right : null};
         });
         assert.ok(layout.left>=-1 && layout.right<=width+1 && layout.scroll<=layout.client+1,JSON.stringify({group,width,layout}));
-        assert.ok(Math.abs(layout.tabOffset)<0.5,'Tabs remain centered with a separate collapse button');
+        assert.ok(Math.abs(layout.toolbarOffset)<0.5,'The ribbon is centered in the editor area');
+        assert.ok(Math.abs(layout.tabOffset)<0.5,'Tabs and the collapse button are centered together');
+        if (layout.collapseGap!==null) assert.ok(layout.collapseGap>=0 && layout.collapseGap<=5,'Collapse follows Header & Footer');
         assert.ok(layout.panelHeight<72,'The ribbon command area is more compact');
         ribbonHeight??=layout.height;
         assert.equal(layout.height,ribbonHeight,'Switching tabs preserves the ribbon height');
@@ -2373,7 +2380,7 @@ A & B \\
     await page.locator('[data-group=headerFooter]').click();
     await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
     assert.equal(await page.evaluate(()=>Boolean(document.activeElement.closest('.hf-cell'))),false,
-      'Opening Header/Footer leaves header and footer fields unfocused');
+      'Opening Header & Footer leaves header and footer fields unfocused');
     await page.emulateMedia({reducedMotion:'no-preference'});
     const layoutFrames=await page.evaluate(async()=>{
       document.querySelector('[data-group="layout"]').click();
