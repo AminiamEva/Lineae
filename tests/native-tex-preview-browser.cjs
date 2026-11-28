@@ -315,6 +315,8 @@ const server=createServer(async(req,res)=>{
             assert.equal(wrappedSelection[2][0],wrappedSelection[2][1],'The input caret stays collapsed');
             await desktopPage.keyboard.press('Backspace');
             await desktopPage.waitForFunction(field=>field.value.trim()==='\\displaystyle x',formula);
+            assert.equal(await formula.evaluate(field=>field.closest('[data-latex]').dataset.latex),'\\displaystyle x',
+              'The source retains the original style declaration and exactly one letter');
           }catch(error){
             console.error('Inline formula after xy and Backspace',name,await fieldTrace.evaluate(probe=>probe.trace),await formula.evaluate(field=>({
               value:field.value,position:field.position,connected:field.isConnected,focus:document.activeElement?.tagName

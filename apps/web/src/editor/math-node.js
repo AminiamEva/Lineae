@@ -378,11 +378,23 @@ function unwrapBraces(value) {
   return text;
 }
 
-function applyDefaultDisplayStyle(field) {
-  if (!field.hasAttribute('data-lineae-default-displaystyle')) return;
-  const value = field.value;
+function editedFieldValue(field, previous) {
   const oldModel = field._mathfield?.model;
-  if (!oldModel || !value.trim() || value.includes('\\')) return;
+  const value = field.value;
+  if (!oldModel) return value;
+  if (!field.hasAttribute('data-lineae-default-displaystyle')) {
+    // After an edit MathLive reserializes a style as a braced group. Preserve
+    // the author's original whole-field declaration. The root's source cache
+    // is invalidated by the next model change, including inserting a sibling.
+    if (previous.startsWith('\\displaystyle ') && value.startsWith('{\\displaystyle ') &&
+        oldModel.root.body.length === 2 && oldModel.root.body[1].command === '\\displaystyle') {
+      const source = unwrapBraces(value);
+      oldModel.root.verbatimLatex = source;
+      return source;
+    }
+    return value;
+  }
+  if (!value.trim() || value.includes('\\')) return value;
   const selection = field.selection;
   const paths = selection.ranges.map(range => range.map(offset => mathPositionPath(oldModel, offset)));
   field.removeAttribute('data-lineae-default-displaystyle');
@@ -399,6 +411,7 @@ function applyDefaultDisplayStyle(field) {
     return offset >= 0 ? offset : Math.max(0, endOfBody);
   }));
   field.selection = {direction: selection.direction, ranges};
+  return field.value;
 }
 
 export function toggleDisplayStyle(field) {
@@ -768,8 +781,8 @@ export const MathNode = Node.create({
       field.addEventListener('lineae-commit-fences', () => commitUnclosedFences(field));
 
       field.addEventListener('input', () => {
-        applyDefaultDisplayStyle(field);
-        const latex=mathDocumentSource(field.value,node.attrs.latex,{inline:!node.isBlock});
+        const value = editedFieldValue(field, node.attrs.latex);
+        const latex=mathDocumentSource(value,node.attrs.latex,{inline:!node.isBlock});
         if(node.attrs.latex===latex)return;
         const position = getPos();
         if (typeof position === 'number') {
