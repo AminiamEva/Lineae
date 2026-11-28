@@ -44,9 +44,15 @@ const server=createServer(async(req,res)=>{
   await page.locator('#project-close').click();await revealToolbar(page);await page.locator('[data-group=files]').click();await page.locator('#project-open').click();await append(' Reopened');
   for(const width of [1440,900,600]){
    await page.setViewportSize({width,height:900});await revealToolbar(page);
-   const boxes=await page.evaluate(()=>{const a=document.querySelector('.floating-toolbar>.ribbon').getBoundingClientRect(),b=document.querySelector('#toolbar-collapse').getBoundingClientRect();return {gap:b.left-a.right,right:b.right,width:innerWidth};});
-   assert.ok(boxes.gap>=0,'Collapse control is beside the ribbon, without overlap');assert.ok(boxes.right<=boxes.width,'Collapse control stays inside viewport');
+   const boxes=await page.evaluate(()=>{
+    const ribbon=document.querySelector('.floating-toolbar>.ribbon');
+    const collapse=ribbon.querySelector('#toolbar-collapse').getBoundingClientRect();
+    return {ribbon:ribbon.getBoundingClientRect().toJSON(),tabs:ribbon.querySelector('.ribbon-tabs').getBoundingClientRect().toJSON(),collapse:collapse.toJSON(),width:innerWidth};
+   });
+   assert.ok(boxes.collapse.left>=boxes.tabs.right,'Collapse control stays clear of the ribbon tabs');
+   assert.ok(boxes.collapse.top>=boxes.ribbon.top&&boxes.collapse.bottom<=boxes.ribbon.bottom&&boxes.collapse.right<=boxes.ribbon.right,'Collapse control is inside the ribbon');
+   assert.ok(boxes.collapse.left>=0&&boxes.collapse.right<=boxes.width,'Collapse control stays inside the viewport');
   }
-  assert.deepEqual(errors,[]);console.log('PASS: visible project tree, imported CJK body edits, exact source spelling/CRLF, file switching, Source return, save/reopen, visible code selection and adjacent toolbar control');
+  assert.deepEqual(errors,[]);console.log('PASS: visible project tree, imported CJK body edits, exact source spelling/CRLF, file switching, Source return, save/reopen, visible code selection and integrated toolbar control');
  }finally{await browser.close();server.close();}
 })().catch(e=>{console.error(e);process.exitCode=1;server.close();});
